@@ -34,6 +34,7 @@ passed every gate. "Done" means `workcenter gates <project>` prints GREEN.
 | `blog-post` | A human asks for a public write-up of recent work. |
 | `procurement` | A human asks what a board costs, for its parts list, or to order its parts. |
 | `kistack` | Placing parts, reviewing a schematic, a layout or the Gerbers, choosing a part's derating, a footprint or symbol, or a panel: it names the kistack skill for the step, and where this workcenter's rules win. |
+| `verification` | A human asks for requirements, a review, an inspection, or proof that a design meets its parts' ratings: the verification package of P28, checked by `workcenter verify`. |
 
 ## Gates
 
@@ -114,6 +115,25 @@ the vendor published it. An expect bound with `"warn"` holds a model to its
 own datasheet rather than the design to its spec: outside it, the deck is
 named in the warnings, and only `--strict` fails.
 
+Not a gate: `workcenter verify <project>` checks the project's verification
+package (`PROCESSES.md` P28, the `verification` skill) in
+`<project>/verification/`: the files it must hold, a requirements table
+whose every row has a source, a method and an inspection clause, a writeup
+with every section for each circuit that names its `sim/<deck>.cir`, a
+writeup for every deck, links that lead somewhere, and a traceability row
+for every requirement. It runs the SIM gate and compares every number
+quoted beside a `deck.meas` in a table with the run, to half a unit of the
+quoted digit, and recomputes each traceability check (`deck.meas <= 30 V`)
+against the stated verdict. A FAIL verdict is a finding, not a problem;
+`--strict` fails on a FAIL or an OPEN requirement too. `--init` copies
+`templates/verification/` into the package, a writeup per deck, never over
+a file that exists. It writes `build/verify.json` and the decks' logs.
+
+A model under the deck's own folder (`sim/models/`) is the project's own,
+fitted to a datasheet when the maker publishes none: the SIM gate needs no
+library row for it. An expect bound may name the requirement it serves:
+`"req": "REQ-USB-05"`.
+
 A project may add gates. It may not remove these.
 
 ## Paths
@@ -130,7 +150,8 @@ A project may add gates. It may not remove these.
 - `.gitignore` entries: `build/`, `*.kicad_prl`
 - Files: one `<name>.kicad_pro` with `<name>.kicad_sch` and `<name>.kicad_pcb` beside it
 - Optional: `design.py` exposing `build() -> kicadgen.Design`, the source the KiCad files are generated from
-- Optional: `sim/<deck>.cir` with `sim/<deck>.expect.json` for the SIM gate
+- Optional: `sim/<deck>.cir` with `sim/<deck>.expect.json` for the SIM gate; `sim/models/` for the project's own fitted models
+- Optional: `verification/` for `workcenter verify` (P28)
 - Optional: `library/sources.csv` at or above the project, with the files it
   names beside it, for `workcenter sources` and the vendor models a deck
   includes. Columns: `MPN,Kind,URL,File,Member,Revision,Dated,Subckt,Ngspice,SHA256,Checked,Note`;

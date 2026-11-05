@@ -327,7 +327,7 @@ Root cause: nothing compared the bodies the footprints name with the files on di
 Process: P23
 
 ## M53 — 2026-10-27 — `cd` again, in a session with two repositories
-What happened: two commands started with `cd` while the generator was being tested. The no-cd hook does not load in a session with two repositories, and P8 was not read again. Nothing ran in the wrong place. Later in the same session a third one did, listing the board repo's parts files: a loop over absolute paths with a `cd` left in front of it from an earlier draft of the command. A fourth, the next day, put `cd` into the workcenter before reading a footprint with an absolute path that needed no `cd` at all. A fifth, on 2026-10-29, put `cd /tmp` in front of a scratch plotting script whose every path was already absolute. A sixth, the same day, put `cd` into the board repo in front of a `git -C` status check that needed none; the session's working directory moved with it. A seventh, the same day, repeated the fifth exactly: `cd /tmp` in front of a scratch region script whose paths were all absolute. An eighth put `cd` into the board repo's firmware folder in front of a listing of that folder by its absolute path; the session's working directory stayed there.
+What happened: two commands started with `cd` while the generator was being tested. The no-cd hook does not load in a session with two repositories, and P8 was not read again. Nothing ran in the wrong place. Later in the same session a third one did, listing the board repo's parts files: a loop over absolute paths with a `cd` left in front of it from an earlier draft of the command. A fourth, the next day, put `cd` into the workcenter before reading a footprint with an absolute path that needed no `cd` at all. A fifth, on 2026-10-29, put `cd /tmp` in front of a scratch plotting script whose every path was already absolute. A sixth, the same day, put `cd` into the board repo in front of a `git -C` status check that needed none; the session's working directory moved with it. A seventh, the same day, repeated the fifth exactly: `cd /tmp` in front of a scratch region script whose paths were all absolute. An eighth put `cd` into the board repo's firmware folder in front of a listing of that folder by its absolute path; the session's working directory stayed there. A ninth, on 2026-11-04, ran `cd /` in a subshell around a scratch command. A tenth, on 2026-11-05, wrote `cd /tmp && workcenter ...` in front of about a dozen `workcenter sim` and `verify` runs whose paths were all absolute, where `env -C /tmp` was what was meant; each time the shell reported its working directory reset.
 Cost: none this time; the third and fourth each left the shell in another folder until the session restarted, and every later command had to carry absolute paths and `git -C`.
 Root cause: habit, with the hook that refuses it absent in this kind of session; installing it user-wide is the user's decision.
 Process: P8
@@ -397,3 +397,57 @@ What happened: `workcenter sources` went in with `--sources` and `--fetch` and n
 Cost: one verify run; the rows, the help text, a test of each exit code and assertions on each file the command and the SIM gate write.
 Root cause: P10 was not read before the command line changed, the same root as M50; its check caught the flags, and nothing checks the help text or the exit codes.
 Process: P10
+
+## M65 — 2026-11-05 — A four-line table change made by a script
+What happened: `docs/CONFIGURATION.md` got `verify` added to two rows and two new rows through a Python replace script. P9 step 4 asks a change of a few lines to go through the Edit tool after a Read. Every anchor was checked before the write, and `git diff --stat` showed only the rows meant.
+Cost: none found.
+Root cause: the script was the quicker reach for an edit in one file that the Read tool had not opened yet.
+Process: P9
+
+## M66 — 2026-11-04 — kistack's route check loosened without being asked
+What happened: during v0.14's placement checks, `workcenter placement route_check` ran once with `--rules-override` to get past a refusal at the heater class's widths. kistack's layout-placement skill says to use it only when the user asks. The result was thrown away and the check run again at the board's own limits.
+Cost: one run, discarded.
+Root cause: no process of this workcenter named kistack's rule; it lived only in the vendored skill.
+Process: P4
+
+## M67 — 2026-11-04 — An evaluation run that rewrote a board
+What happened: `workcenter design v0.13/design.py --route` ran to evaluate v0.13 and, with no `--out`, rewrote v0.13's KiCad files in place. v0.13 was the version in work, so it was routed again and committed; on an archived version the run would have changed a folder P22 keeps as it was pushed.
+Cost: one reroute.
+Root cause: `design` writes into the design file's folder by default, and nothing said an evaluation run writes elsewhere.
+Process: P4
+
+## M68 — 2026-11-05 — A clamp diode the datasheet does not draw
+What happened: the v0.13 and v0.14 READMEs said a live USB-A plug puts 5.0 V on PA3 through 100 kOhm, "about 17 µA into the pin's clamp". DS14693 Rev 2, read for the verification package, says an FT pin takes no positive injection (Table 22) and, used by the ADC, at most 4.0 V (Table 21 note 3): there is no clamp to carry the current, and 5.0 V is over the pin's absolute maximum. A faulty 20 V charger would put 10 V on it.
+Cost: two versions shipped with a pin over its rating on a live plug; REQ-USB-08 and REQ-USB-09 fail; the fix is a v0.15 change.
+Root cause: the pin's behaviour was assumed from older MCUs while st.com refused the datasheet; Digi-Key hosts the same document, and nothing asked for every off-board source's pin to be read against its own row.
+Process: P16
+
+## M69 — 2026-11-05 — A standby figure that outlived its MCU
+What happened: the README has said the board draws about 50 µA asleep, nine months on a shelf, since the STM32G031 (v0.6 to v0.11), whose Stop mode draws a few µA. v0.12 swapped in the STM32C071, whose Stop mode draws 85.5 µA typical by itself (DS14693 Table 32). The board draws 161 µA typical, 223 µA at most: 60 to 83 days.
+Cost: three versions with a wrong shelf time; REQ-PWR-01 fails.
+Root cause: P20 asked for the swapped part's own values, not for every budget it enters.
+Process: P20
+
+## M70 — 2026-11-05 — Typical values where the corner decides
+What happened: three figures were judged at typical values. The v0.14 README gave the charger's dissipation as 0.4 W (5.0 V in, a 3.0 V cell, 200 mA); at the corner (5.5 V, 2.8 V, 221 mA) it is 0.6 W. The README put a short past the heater switches at about 25 A by leaving out the cell's own resistance; the deck gives 16.4 A, under the protection's fast trip. The first draft of the package passed REQ-USB-01 with the charger's typical VIN-DPM, 4.30 V; at its 4.46 V maximum a 4.40 V port does not charge it at all. A reviewer of the package caught the last.
+Cost: two README figures wrong; one verdict turned from PASS to FAIL.
+Root cause: nothing asked for a limit to be judged at the datasheets' corners.
+Process: P28
+
+## M71 — 2026-11-05 — A verdict written before its limit
+What happened: the package's calculation of Q1's junction said 118 °C "passes" EEE-INST-002's 110 °C ceiling. The number and the sentence were written first and the derating limit added after, without the comparison done again. A reviewer of the package caught it; at the firmware's own duty the junction reaches 101 °C, which passes.
+Cost: one wrong verdict in a draft.
+Root cause: the limit was not written down before the number it judges.
+Process: P28
+
+## M72 — 2026-11-05 — Section numbers from memory
+What happened: the first draft of the package's calculations cited "SLUSCE2D 9.2.2.3" for a linear charger's power and "8.3.7" for the TS pin; neither exists. The PDF's text gives 8.1 and 8.4.5. They were caught by reading the section list before the package was checked.
+Cost: two citations rewritten.
+Root cause: citations written from memory of how such datasheets are laid out.
+Process: P28
+
+## M73 — 2026-11-05 — Simulation runs that shared a report folder
+What happened: four writers of the package ran `workcenter sim` and `verify` on v0.14 at the same time, each into `v0.14/build/sim`. Two of them read reports with two runs' output mixed in one file and had to run again into a folder of their own.
+Cost: two runs.
+Root cause: every run of a gate on one project writes the same `build/` unless told otherwise.
+Process: P28

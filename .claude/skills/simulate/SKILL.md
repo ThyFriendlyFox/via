@@ -76,6 +76,21 @@ P27; `workcenter sources` checks the rows).
    the version's README with both values, and keep the warn bound so the
    next model revision shows whether it was fixed.
 
+## A part with no model
+
+A part whose maker publishes no model (a MOSFET, say) is fitted to its
+datasheet's table in `sim/models/`, the project's own file, which needs no
+library row; the `verification` skill gives the method. Check the fit as a
+vendor's model is checked: every table row a `warn` bound, the rows the
+fit did not use included.
+
+## A bound that serves a requirement
+
+In a project with a verification package (P28), a bound names its
+requirement: `{"req": "REQ-USB-05", "max": 30.0, "source": "..."}`.
+`workcenter verify` checks the name exists. A requirement the design fails
+gets no bound: the package's traceability table says FAIL.
+
 ## Checks
 
 - Every bound in an expect file traces to a line in the spec or the
