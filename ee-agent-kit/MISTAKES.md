@@ -517,3 +517,9 @@ What happened: v0.15's `config.h` cited Type-C's tCCDebounce for a debounce that
 Cost: one comment rewritten; nothing shipped.
 Root cause: M72's pattern outside the package: a citation written from memory in code.
 Process: P28
+
+## M85 — A design step's exit 1 read as a warning
+What happened: v0.15's `workcenter design --route` printed `via: +BATT via at (122.6, 107.1): on R12.2` and exited 1, but it wrote every file, the gates passed (the DRC's rounded pad corner cleared the via by 1 µm, the generator's box check did not), and I took the run as good. The board's CI regenerates each project and fails on that exit, so the v0.15 commit went red. The via moved 0.1 mm; the router then dropped VBUS_SENSE, which is now a hand route.
+Cost: a red CI run on the board's main, a reroute and a second commit.
+Root cause: the step's verdict is its exit code; I read its output and the files it left.
+Process: P4
