@@ -157,7 +157,9 @@ When the maker publishes no SPICE model (a MOSFET, say):
    the gate-charge curve after its plateau. Three numbers and three
    parameters: sweep them in ngspice.
 4. Make a maximum-column model the same way, and check it stays at or
-   under the maximum at the rows' own currents.
+   under the maximum at the rows' own currents. Away from those currents
+   it is no maximum: a worst case takes the nearest maximum row as flat
+   (M83).
 5. Check every row in a deck (`sim/mosfets.cir` style) with warn bounds,
    including rows the fit did not use. Say what the fit leaves out
    (temperature, avalanche, gate ESD diodes) and use the datasheet's
@@ -201,7 +203,18 @@ UL 8139:2024, DO-160H planned); name the edition read.
   a vector with `let` first. A step into a capacitor through a switch
   can stop the trapezoidal rule at the first step: `.options
   method=gear`. Run a deck that includes a PSpice model through the gate,
-  which sets its mode before parsing.
+  which sets its mode before parsing. `let` takes no SI suffix (`37e-3`,
+  not `37m`). Each analysis starts a new plot, and a `meas` result lives
+  in the plot it was measured in: compute what needs it right after the
+  `meas`, before the next `tran` (M78).
+- A corner named in a bound's `source` is built into the circuit the bound
+  reads: its own source, its own part values (M80).
+- A stand-in model that clamps at a part's absolute maximum hides the
+  violation it should show: an open drain emptying a 10 nF hold capacitor
+  asked 70 mA of a 10 mA pin. Measure every output's peak current into
+  what it drives and bound it with the rating (M81).
+- A limit computed from parts' values takes their tolerances, as the
+  design's own numbers do (M82).
 
 ## Done when
 

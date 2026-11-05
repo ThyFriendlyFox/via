@@ -1662,6 +1662,10 @@ def read_sources(path: Path) -> list[SourceRow]:
             raise ValueError(f"{path}: no column {', '.join(missing)}")
         for n, raw in enumerate(reader, start=2):
             where = f"{path.name}:{n}"
+            if raw.get(None):  # DictReader keeps a row's fields past the header under None
+                raise ValueError(
+                    f"{where}: {len(raw[None])} more field(s) than the header: an unquoted comma in a cell?"
+                )
             cells = {k: (v or "").strip() for k, v in raw.items() if k}
 
             def cell(name: str, cells: dict = cells) -> str:
