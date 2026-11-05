@@ -92,10 +92,13 @@ step_apt() {
   apt-get update -qq
   log "apt: install ${packages[*]}"
   # Visible progress: KiCad is a large download from a PPA that can be slow; a hidden install that
-  # takes 20 minutes looks hung. Non-interactive so no debconf prompt can wait on a terminal.
+  # takes 20 minutes looks hung. Both filters flush each line: into a pipe grep and sed buffer 4 KB,
+  # which hid every line for 50 minutes (M86). A stalled mirror gives up after 60 s and is retried,
+  # where the default waited on it. Non-interactive so no debconf prompt can wait on a terminal.
   DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    -o Dpkg::Options::=--force-confnew -o Acquire::Retries=3 "${packages[@]}" \
-    | grep -E '^(Get:|Setting up|Unpacking) ' | sed 's/^/[apt] /' || true
+    -o Dpkg::Options::=--force-confnew -o Acquire::Retries=3 \
+    -o Acquire::http::Timeout=60 -o Acquire::https::Timeout=60 "${packages[@]}" \
+    | grep --line-buffered -E '^(Get:[0-9]+|Setting up|Unpacking) ' | sed -u 's/^/[apt] /' || true
   kicad10_present || die "kicad-cli 10.x not found after install"
   log "apt: done; kicad-cli $(kicad-cli version)"
 }
