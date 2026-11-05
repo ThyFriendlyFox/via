@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/) · Versioning: [SemVer](
 
 ## [Unreleased]
 ### Changed
+- `install.sh`: apt's progress lines reach the log as they happen (the filter flushes per line and matches apt's `Get:<n>` lines, which it never did), and a silent mirror times out after 60 s and is retried (M86).
 - P4 reads a route's verdict from `workcenter design`'s exit code, which is 1 on a refused hand via although every file is written; P14 runs a board repository's own CI checks locally before the push (M85).
 - `workcenter sources` refuses a `sources.csv` row with more fields than its header (an unquoted comma in a note) instead of dropping the extra fields (M76).
 - P8 names `pgrep -f` in a wait loop beside `pkill -f`; P9 writes a rewritten file to a new file first and reads a script's ranges from the file it edits; the verification skill's ngspice traps add `let`'s missing SI suffixes and `meas` results living in their own plot (M74 to M80).

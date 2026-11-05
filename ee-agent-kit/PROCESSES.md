@@ -53,10 +53,14 @@ or any step that downloads, installs, or runs for more than a minute.
 
 1. Output stays visible. Never `>/dev/null` a network or install step;
    print a line per fetched package, downloaded file, or finished stage.
+   A filter in a pipe flushes per line (`grep --line-buffered`, `sed -u`,
+   `awk` with `fflush()`), and its pattern is tested against the tool's
+   real lines with a slow producer, each line arriving as it is printed
+   (M86).
 2. Non-interactive: `DEBIAN_FRONTEND=noninteractive`, `-y`, explicit
    `Dpkg::Options` for config prompts. Nothing may wait on a terminal.
 3. A timeout on every long step (`timeout-minutes`, `curl --max-time`,
-   `--connect-timeout`, `--retry`).
+   `--connect-timeout`, `--retry`, apt's `Acquire::http::Timeout`).
 4. Assume nothing about the host: not the default `python3`, not that
    `add-apt-repository` works, not that a keyserver answers quickly.
 5. The verdict steps (gates, verify) come before convenience steps
