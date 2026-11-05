@@ -523,3 +523,9 @@ What happened: v0.15's `workcenter design --route` printed `via: +BATT via at (1
 Cost: a red CI run on the board's main, a reroute and a second commit.
 Root cause: the step's verdict is its exit code; I read its output and the files it left.
 Process: P4
+
+## M86 — M12's progress filter never showed a line
+What happened: the board's CI install hung twice in three runs (12 and 50 minutes) in `apt-get install`, and its log showed no `[apt]` line either time. M12 piped apt through `grep` and `sed` to keep the step visible, but into a pipe both buffer 4 KB, and the pattern wanted a space after `Get:` where apt prints `Get:1 http...`, so download lines never matched. A stalled mirror had no timeout shorter than the job's. The filters now flush per line (`grep --line-buffered`, `sed -u`), match `Get:<n>`, and apt gives up on a silent connection after 60 s and retries.
+Cost: two cancelled board runs (an hour of runner time), a re-run, and an install whose progress was never visible since M12.
+Root cause: M12's fix was checked by reading it, never by watching a slow run; a filter in a pipe was taken to print as it reads.
+Process: P2
