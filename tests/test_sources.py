@@ -139,6 +139,8 @@ def test_read_sources_refuses_a_row_it_cannot_check(tmp_path):
         ("X,datasheet,,,,,,,,,,", "needs a Note"),
         ("X,schematic,,a.pdf,,,,,,,,", "Kind 'schematic'"),
         ("X,spice,,a.lib,,,,,pspice,,,", "Ngspice 'pspice'"),
+        # Last Hit v0.14's BQ21040 row: a note with an unquoted comma, one field too many (M76)
+        ("X,datasheet,,a.pdf,,,,,,,,Rev D, read in 2026", "more field"),
     ):
         path.write_text(HEADER + "\n" + row + "\n", encoding="utf-8")
         with pytest.raises(ValueError, match=why):

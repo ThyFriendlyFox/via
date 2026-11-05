@@ -52,6 +52,7 @@ the skills tell the agent which gate comes next.
 - Per-run output folders for the gates, or a lock on `build/`: two runs on one project at once mix their reports (M73).
 - `workcenter sources --fetch` compares PDFs by their bytes; onsemi serves each download with a new trailer ID, so an unchanged datasheet reads as changed. Compare the page content, not the trailer.
 - `workcenter placement route_check` at a heater class's widths (0.6 mm) fails links the router and the DRC pass on a dense board; let it take a class per net, as the DRC does.
+- The inner drill clearance in the DSN: kicadgen gives FreeRouting the board's copper clearance only, so a router via can land a few µm inside Sierra's 13 mil hole-to-inner-copper rule, which only the DRC knows (M79). Write it as a via-to-wire clearance on the inner layers, or reroute what the DRC flags.
 - `workcenter verify` reads a calculation's verdict as written; an equation checker for the calculations (each numbered line recomputed) would close the gap that M71 fell into.
 
 ## Shipped

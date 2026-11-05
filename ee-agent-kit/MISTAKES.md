@@ -451,3 +451,69 @@ What happened: four writers of the package ran `workcenter sim` and `verify` on 
 Cost: two runs.
 Root cause: every run of a gate on one project writes the same `build/` unless told otherwise.
 Process: P28
+
+## M74 — 2026-11-05 — `cd` three times in one session
+What happened: in the Last Hit v0.15 session three Bash commands ran `cd`: once into `/dev/null` by a slip, once into `v0.15/` before reading a file, once into the scratchpad to import a helper script. The harness reset the shell after each; nothing ran in the wrong place this time.
+Cost: none this time; the same slip has cost a wrong-repository commit before (P8).
+Root cause: the session was opened at `/home/user`, outside the workcenter, so its no-cd hook (`tools/hooks/no_cd.py`) was not loaded, and the user-wide install is the user's decision, still open. A helper in a scratch folder was imported by changing into it instead of `env -C` or `sys.path`.
+Process: P8
+
+## M75 — A wait loop that waited on itself
+What happened: two background "wait until the render script ends" loops polled `pgrep -f 'pics15.sh'` and `pgrep -f 'assembly.py'`. The loop's own shell carries the pattern in its command line, so `pgrep` always found it and the loops could never end; they were stopped by hand.
+Cost: two stopped tasks and a re-check.
+Root cause: P8 step 3 warns about `pkill -f` matching the shell that runs it; `pgrep -f` in a loop has the same trap and was not named.
+Process: P8
+
+## M76 — A CSV rewritten through a writer that failed
+What happened: adding v0.15's rows to the board repository's `library/sources.csv` by reading it with `csv.DictReader` and writing it back raised an error part-way and left the file truncated; it was restored with `git checkout` and the rows appended instead. The error came from v0.14's BQ21040 row, whose note held an unquoted comma: one field more than the header, which `workcenter sources` had read without a word.
+Cost: one restore; a malformed row in the library since v0.14.
+Root cause: the file was opened for writing before the new rows were known to write; and `read_sources` dropped a row's extra fields silently. P9 now writes a rewritten file to a new file and replaces the old one only when the write has finished; `read_sources` refuses a row with more fields than its header, with a test.
+Process: P9
+
+## M77 — A scripted stretch that skipped the far end
+What happened: v0.15's 5 mm mid-board stretch added 5 mm to every x between 121.1 and 140 in `design.py`. The board's right end runs to 143 after the stretch (138 before), and the cap left some coordinates past it unmoved, so parts overlapped; the DRC caught it. The pre-stretch file was rebuilt from v0.14 and the saved edit scripts and the stretch run again with the cap at 145.
+Cost: one rebuild of `design.py`.
+Root cause: the script's range was typed from memory of a shorter board, not read from the outline.
+Process: P9
+
+## M78 — ngspice vectors read where they do not exist
+What happened: two v0.15 decks stopped in ngspice. One `let` used an SI suffix (`37m`), which `let` does not parse. One `let` at the end of `vbus_hotplug.cir` read a `meas` result from an earlier `tran`: each analysis makes a new plot, and a `meas` vector lives in the plot that was current when it ran. Both were found by running the decks before the gate.
+Cost: two reruns.
+Root cause: neither rule was written down where a deck's author reads; the verification skill's ngspice traps now say both.
+Process: P28
+
+## M79 — The router does not know the inner drill rule
+What happened: FreeRouting keeps the board's 0.15 mm copper clearance from a via's pad on In2, which with 0.6 mm vias and 0.25 mm drills puts In2 copper 0.325 mm from the drill. Sierra's rule, in the `.kicad_dru` the DRC reads, is 13 mil (0.3302 mm). A router via on Last Hit v0.15 landed 0.0035 mm short and the DRC failed; the 3.1 V feed on In2 was hand-routed clear of it.
+Cost: two reroutes.
+Root cause: kicadgen's DSN gives the router the copper clearance only; the hole-to-inner-copper rule exists only in the DRC's rules. The ROADMAP's Later list now has writing it into the DSN.
+Process: P11
+
+## M80 — A corner written in a bound's text but not in its circuit
+What happened: v0.15's first `usb_input.cir` measured REQ-USB-04's current before configuration from the typical source (79.4 mA programmed) while its bound's source said "KISET at its maximum"; the deck's corner source sat at 4.40 V, under the charger's VIN-DPM maximum, where it draws nothing. Caught on the first run of the rewritten deck; the deck now has its own source at 5.5 V with KISET's maximum (87.9 mA).
+Cost: one deck fixed before the package.
+Root cause: M70's pattern: the corner was named in prose and not built into the circuit the bound reads.
+Process: P28
+
+## M81 — A pin driven past its absolute maximum, hidden by its model
+What happened: v0.15's overcurrent comparator (TI TLV3011B, open drain) pulled the keep-alive's hold capacitor, 10 nF at 2.8 V, straight to ground: about 70 mA from the pin where SBOS300C 6.2 allows 10 mA. The behavioural model written for the deck capped the output at 10 mA, so the deck showed a part that limits itself and the design passed. The heater writeup's review found it; R26, 330 Ohm, now holds the pin to 7.6 mA, a measure with a bound (`master_switch.i_u7_pk`).
+Cost: a reroute of the base board, the deck, the master switch's writeup and the README's trip figures (8.3 to 11.7 µs).
+Root cause: the design checked the comparator's inputs and threshold, not the current its output carries into what it drives; and a stand-in model turned an absolute maximum into a clamp.
+Process: P28
+
+## M82 — A requirement's limit from nominal values its own source gave tolerances for
+What happened: v0.15's REQ-CHG-01 set the charge currents at the charger's KISET over the nominal 6.8k and 2.68k, while its Source column named the resistors' 1 %. The calculation at the corners missed the limit by up to 1.7 % and called it a FAIL. The limits now include the 1 %, and the package's README says so.
+Cost: a false FAIL, a corrected requirement and its disclosure.
+Root cause: P28 step 4 judged the design at its corners but not the limit's own derivation.
+Process: P28
+
+## M83 — A worst case read from a fitted model below the datasheet's maximum
+What happened: v0.14's package passed REQ-PRT-02 (the protection's trip with Q5 warm) by 2.4 mV on the fitted maximum model's 18.26 mOhm at 3 A, where the datasheet's maximum is 21 mOhm, given only at 7 A. Read from the table rows, v0.15 fails it: 88 mV at a 3.2 V cell and 103 mV at a full one, against 85 mV. A review of the heater writeup flagged it.
+Cost: a requirement reported PASS for a version and a half; a new FAIL and a part choice for the user.
+Root cause: a fit's value at a condition the datasheet does not tabulate was taken as the maximum.
+Process: P28
+
+## M84 — A standard's table cited from memory in a firmware comment
+What happened: v0.15's `config.h` cited Type-C's tCCDebounce for a debounce that hides Power Delivery messages; the spec's text gives that job to tPDDebounce (Table 4-31), and tSinkAdj had no table at all. Caught by reading the spec before the commit.
+Cost: one comment rewritten; nothing shipped.
+Root cause: M72's pattern outside the package: a citation written from memory in code.
+Process: P28
