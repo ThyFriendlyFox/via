@@ -116,8 +116,11 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
    earlier generation routes against parts that have moved and ships
    shorts that look like the router's fault.
 2. P3's "Done when" holds on this exact design.
-3. One route per design change. Read the printed summary: segments,
-   vias, rounds, islands. Then `workcenter drc .` for what stayed open.
+3. One route per design change. Its verdict is the exit code: `workcenter
+   design` exits 1 on a hand via its own check refuses (a `via:` line)
+   even though it writes every file (M85). Read the printed summary:
+   segments, vias, rounds, islands. Then `workcenter drc .` for what
+   stayed open.
 4. kistack's placement checks before the route run at the board's own
    limits or stricter (`--track --clear --via --edge` for a board with a
    `.kicad_dru`). `--rules-override` is used only when the user asks for
@@ -328,9 +331,12 @@ names has a "Done when" line.
 
 When: a change is about to be called done.
 
-1. `make verify` green locally; for a board, `workcenter gates .` GREEN.
-   Run it with an absolute path (`make -C /path verify`), never behind a
-   `cd`, and in the background with a log.
+1. `make verify` green locally; for a board, `workcenter gates .` GREEN
+   and the project's own CI checks run locally the way CI runs them (a
+   board repository regenerates every project with `workcenter design
+   <p>/design.py --out <scratch>` and needs exit 0, M85). Run them with an
+   absolute path (`make -C /path verify`), never behind a `cd`, and in the
+   background with a log.
 2. Chain the commit and the push behind the verdict itself, never behind
    a look at the log: `grep -q 'VERIFY GREEN' log && git push ...`. A
    `tail` succeeds whatever the log says. Every check you run before a

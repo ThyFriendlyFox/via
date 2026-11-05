@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/) · Versioning: [SemVer](
 
 ## [Unreleased]
 ### Changed
+- P4 reads a route's verdict from `workcenter design`'s exit code, which is 1 on a refused hand via although every file is written; P14 runs a board repository's own CI checks locally before the push (M85).
 - `workcenter sources` refuses a `sources.csv` row with more fields than its header (an unquoted comma in a note) instead of dropping the extra fields (M76).
 - P8 names `pgrep -f` in a wait loop beside `pkill -f`; P9 writes a rewritten file to a new file first and reads a script's ranges from the file it edits; the verification skill's ngspice traps add `let`'s missing SI suffixes and `meas` results living in their own plot (M74 to M80).
 - P28 and the verification skill: a limit computed from parts' values carries their tolerances; a fitted model's value away from the datasheet's rows is no maximum; a stand-in never clamps at an absolute maximum, and every output driving a capacitor has its peak current bounded; citations in code comments come from the document's text too (M81 to M84).
