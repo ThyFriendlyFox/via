@@ -39,6 +39,29 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-05 — A verification package an inspector can check
+
+An engineer reviewed the Last Hit board and asked how anyone could check
+it: what it must survive, what each part is rated for, and the numbers
+behind every claim. The user asked for that as a method in the
+workcenter. We wrote it as P28 and the `verification` skill: conditions
+first, then requirements with their sources, a cited nodal analysis for
+every simulation, and a traceability table. `workcenter verify` now runs
+the simulations again and compares every quoted number with the run, so
+a reviewer does not have to trust the author.
+
+The first package, on v0.14, found what earlier reviews missed. The
+MCU's analog pin takes 4 V at most and has no clamp, so a live USB plug
+overstresses it. The board draws 161 µA asleep, not the 50 µA the README
+carried over from an older MCU. A shorted cartridge pulls the cell down
+so far that the firmware's fast trip never fires. Fifteen of sixty
+requirements fail; each has a measured size and a proposed fix. Four
+helpers wrote the writeups in parallel, and their reviews caught three of
+our own mistakes before the package was done.
+
+Evidence: `tests/test_verify.py`; the Last Hit repository's
+`v0.14/verification/`; `MISTAKES.md` M65 to M73.
+
 <!-- Entries below, newest first. -->
 
 ## 2026-10-29 — Every input held while the MCU sleeps in reset

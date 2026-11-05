@@ -49,11 +49,16 @@ the skills tell the agent which gate comes next.
 - BOM availability gate — `workcenter procure --strict` already fails on a line short of stock; a gate would run it before export. Needs a project-wide parts file first.
 - Digi-Key API refresh for `procure` — re-read every Digi-Key row's breaks and stock through Product Information v4 with the user's own credentials, instead of page by page.
 - STEP export in the EXPORT gate by default once the fixture proves it runs headless in CI within the time budget.
+- Per-run output folders for the gates, or a lock on `build/`: two runs on one project at once mix their reports (M73).
+- `workcenter sources --fetch` compares PDFs by their bytes; onsemi serves each download with a new trailer ID, so an unchanged datasheet reads as changed. Compare the page content, not the trailer.
+- `workcenter placement route_check` at a heater class's widths (0.6 mm) fails links the router and the DRC pass on a dense board; let it take a class per net, as the DRC does.
+- `workcenter verify` reads a calculation's verdict as written; an equation checker for the calculations (each numbered line recomputed) would close the gap that M71 fell into.
 
 ## Shipped
 
 | Week | Feature | Release | Evidence |
 |---|---|---|---|
+| 2026-11-05 | Verification packages: `workcenter verify` (every quoted number against a fresh ngspice run, every traceability check recomputed), `templates/verification/`, P28, the `verification` skill; project-fitted models in `sim/models/`; `"req"` on expect bounds | unreleased | `tests/test_verify.py` (16 tests), `tests/test_sources.py` (the own-model rule); the Last Hit v0.14 package: 60 requirements, 175 quoted values matching the run; `DEVLOG.md` 2026-11-05 |
 | 2026-10-29 | Pull-resistor check: `Design.undefined_inputs()`, `check_pulls`, `defined_nets` | unreleased | `tests/test_pulls.py`; Last Hit v0.11 checked; `DEVLOG.md` 2026-10-29 |
 | 2026-10-29 | Fabrication house rule sets: `rules/sierra-circuits-web.kicad_dru`, `workcenter drc|gates --fab`, `Design.fab` | unreleased | `tests/test_fab.py` (fixture `fail-fab-sierra` GREEN plain, red with the fab; the board-wide minimums; the project untouched); Last Hit v0.11 checked: 47 errors under Sierra's limits; `DEVLOG.md` 2026-10-29 |
 | 2026-10-29 | kistack vendored with the `kistack` skill; `workcenter placement` runs its placement checks headless | unreleased | `tests/test_placement.py`; `third_party/kistack/VENDORED.md`; `DEVLOG.md` 2026-10-29 |
@@ -77,4 +82,5 @@ the skills tell the agent which gate comes next.
 - 2026-10-23 — item 1 re-scoped: the generated-design half shipped out of band while building the first board; the remaining half is a `.kicad_pcb` reader in front of the same DSN writer.
 - 2026-10-29 — kistack shipped out of band: the user asked for it in the workflow.
 - 2026-10-29 — item 3 (fab rule sets) re-scoped from JLCPCB to Sierra Circuits' Web PCB, the user's fab, and shipped; `Design.fab` added so a generated board carries its fab's rules for good. The MCP server moves up to 3.
+- 2026-11-05 — verification packages shipped out of band: the user asked for requirements fit for a MIL-STD or DO-160 inspection, simulations traced to the requirements' sources, cited nodal analysis, and this method in the workcenter.
 - 2026-10-29 — the pull-resistor check shipped out of band: the user asked for pull-downs wherever one is needed, in case one was missed.

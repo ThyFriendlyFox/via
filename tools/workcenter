@@ -410,6 +410,394 @@ def gate_sim(project: Project, out: Path, strict: bool = False) -> Result:
     )
 
 
+# --------------------------------------------------------------- verify
+#
+# A board's verification package (PROCESSES.md P28, the `verification` skill): requirements with their
+# sources, the system and its modes, one writeup per simulation, hand calculations, and a traceability
+# table. `verify` checks that it is complete and that every number it quotes is the number ngspice gives.
+
+VERIFY_DIR = "verification"
+VERIFY_FILES = (
+    "README.md",
+    "requirements/README.md",
+    "system/README.md",
+    "calculations/README.md",
+    "traceability.md",
+)
+VERIFY_TEMPLATES = SRC_DIR / "templates" / "verification"
+DECK_TEMPLATE = Path("simulations") / "_deck" / "README.md"
+# Each simulation writeup has a `## ` heading containing each of these.
+SIM_SECTIONS = (
+    "purpose",
+    "circuit",
+    "inputs",
+    "outputs",
+    "expected",
+    "results",
+    "why",
+    "nodal analysis",
+    "sources",
+    "re-run",
+)
+REQ_HEADER = ("id", "requirement", "limit", "source", "method", "inspection")
+TRACE_HEADER = ("id", "check", "evidence", "measured", "verdict")
+REQ_ID_RE = re.compile(r"^REQ-[A-Z][A-Z0-9]*-\d{2,3}$")
+VERIFY_METHODS = {"analysis", "simulation", "examination", "demonstration", "test"}
+VERDICTS = ("PASS", "FAIL", "OPEN")
+UNFILLED = "<!-- fill"
+MEAS_NAME_RE = re.compile(r"^([A-Za-z_]\w*)\.([A-Za-z_]\w*)$")
+# `ldo_board.cir` in a table names a file, not a measure called "cir".
+FILE_SUFFIXES = {"cir", "json", "lib", "md", "py", "csv", "txt", "svg", "png", "kicad_sch", "kicad_pcb"}
+SI_PREFIX = {"p": 1e-12, "n": 1e-9, "u": 1e-6, "µ": 1e-6, "μ": 1e-6, "m": 1e-3, "k": 1e3, "M": 1e6, "G": 1e9}
+SI_UNITS = {"V", "A", "W", "Ω", "Ohm", "F", "H", "s", "Hz", "J", "C"}
+QUANTITY_RE = re.compile(r"^([-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)\s*(\S*)$")
+COMPARE_RE = re.compile(r"\s*(<=|>=|≤|≥|<|>)\s*")
+LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
+
+
+def quantity(text: str) -> tuple[float, float] | None:
+    """A number with an optional SI prefix and unit, in SI, and half a unit of its last quoted digit.
+
+    "4.7 mV" is (0.0047, 0.00005). A unit outside SI_UNITS ("°C", "%", "V/A") leaves the number as it is."""
+    m = QUANTITY_RE.match(text.strip().replace("−", "-"))
+    if not m:
+        return None
+    num, unit = m.group(1), m.group(2)
+    scale = 1.0
+    if unit not in SI_UNITS and len(unit) > 1 and unit[0] in SI_PREFIX and unit[1:] in SI_UNITS:
+        scale = SI_PREFIX[unit[0]]
+    mantissa, _, exponent = num.lower().partition("e")
+    decimals = len(mantissa.partition(".")[2])
+    half = 0.5 * 10.0 ** (int(exponent or 0) - decimals) * scale
+    return float(num) * scale, half
+
+
+def md_cells(line: str) -> list[str]:
+    cells = re.split(r"(?<!\\)\|", line.strip().strip("|"))
+    return [c.strip().replace("\\|", "|") for c in cells]
+
+
+def md_tables(text: str) -> list[list[list[str]]]:
+    """Every Markdown table in the text, as rows of cells, its separator row dropped."""
+    tables: list[list[list[str]]] = []
+    current: list[list[str]] | None = None
+    for line in text.splitlines():
+        s = line.strip()
+        if not (s.startswith("|") and s.endswith("|") and len(s) > 1):
+            current = None
+            continue
+        cells = md_cells(s)
+        if current is None:
+            current = []
+            tables.append(current)
+        if all(re.fullmatch(r":?-{3,}:?", c) for c in cells if c):
+            continue
+        current.append(cells)
+    return tables
+
+
+def code_span(cell: str) -> str | None:
+    m = re.fullmatch(r"`([^`]+)`", cell.strip())
+    return m.group(1).strip() if m else None
+
+
+def plain_id(cell: str) -> str:
+    return cell.strip().strip("`*").strip()
+
+
+def headings(text: str, level: str = "## ") -> list[str]:
+    return [ln[len(level) :].strip().lower() for ln in text.splitlines() if ln.startswith(level)]
+
+
+def broken_links(md: Path) -> list[str]:
+    out = []
+    for target in LINK_RE.findall(md.read_text(encoding="utf-8")):
+        if re.match(r"^[a-z][a-z0-9+.-]*:", target) or target.startswith("#"):
+            continue
+        path = target.split("#", 1)[0].replace("%20", " ")
+        if path and not (md.parent / path).exists():
+            out.append(f"{md.name}: link to {target} leads nowhere")
+    return out
+
+
+def parse_check(text: str) -> tuple[str, list[tuple[object, str, object]]] | None:
+    """`deck.meas <= 30 V` or `3.0 V <= deck.meas <= 3.6 V`: the measure and its comparisons."""
+    parts = COMPARE_RE.split(text.strip())
+    if len(parts) not in (3, 5):
+        return None
+    operands: list[object] = []
+    name = None
+    for token in parts[0::2]:
+        if MEAS_NAME_RE.match(token):
+            if name is not None:
+                return None
+            name = token
+            operands.append(None)
+            continue
+        q = quantity(token)
+        if q is None:
+            return None
+        operands.append(q[0])
+    if name is None:
+        return None
+    ops = [{"≤": "<=", "≥": ">="}.get(o, o) for o in parts[1::2]]
+    return name, [(operands[i], ops[i], operands[i + 1]) for i in range(len(ops))]
+
+
+def check_holds(comparisons: list[tuple[object, str, object]], value: float) -> bool:
+    for left, op, right in comparisons:
+        a = value if left is None else left
+        b = value if right is None else right
+        if not {"<=": a <= b, ">=": a >= b, "<": a < b, ">": a > b}[op]:
+            return False
+    return True
+
+
+def quoted_matches(cell: str, value: float) -> bool | None:
+    """None when the cell quotes no number; else whether the number is the run's, to its last digit."""
+    q = quantity(cell)
+    if q is None:
+        return None
+    quoted, half = q
+    return abs(quoted - value) <= half * 1.0001 + 1e-15
+
+
+def init_package(project: Project, package: Path) -> list[str]:
+    """Copy the templates into the package, never over a file that exists; a writeup per deck."""
+    created = []
+    for src in sorted(p for p in VERIFY_TEMPLATES.rglob("*") if p.is_file()):
+        rel = src.relative_to(VERIFY_TEMPLATES)
+        if rel == DECK_TEMPLATE:
+            continue
+        dest = package / rel
+        if not dest.exists():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, dest)
+            created.append(str(dest))
+    template = (VERIFY_TEMPLATES / DECK_TEMPLATE).read_text(encoding="utf-8")
+    named = " ".join(p.read_text(encoding="utf-8") for p in package.glob("simulations/*/README.md"))
+    sim_dir = project.dir / "sim"
+    for deck in sorted(sim_dir.glob("*.cir")) if sim_dir.is_dir() else []:
+        dest = package / "simulations" / deck.stem / "README.md"
+        if f"sim/{deck.name}" in named or dest.exists():
+            continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(template.replace("{deck}", deck.stem), encoding="utf-8")
+        created.append(str(dest))
+    return created
+
+
+@timed
+def gate_verify(
+    project: Project, out: Path, package: Path | None = None, init: bool = False, strict: bool = False
+) -> Result:
+    package = package or project.dir / VERIFY_DIR
+    created = init_package(project, package) if init else []
+    if not package.is_dir():
+        return Result("verify", "skip", f"no {package.name}/ package; `workcenter verify --init` writes one")
+    if not shutil.which(NGSPICE):
+        return Result("verify", "skip", f"engine missing: {NGSPICE}")
+    problems: list[str] = []
+    mds = sorted(package.rglob("*.md"))
+    for rel in VERIFY_FILES:
+        if not (package / rel).is_file():
+            problems.append(f"missing {rel}")
+    for md in mds:
+        text = md.read_text(encoding="utf-8")
+        if UNFILLED in text:
+            problems.append(f"{md.relative_to(package)}: a section still says {UNFILLED} ... -->")
+        problems += [f"{md.parent.relative_to(package)}/{p}" for p in broken_links(md)]
+
+    # The requirements: one table or more under the header ID | Requirement | Limit | Source | Method |
+    # Inspection, every cell filled and every method one of VERIFY_METHODS.
+    requirements: dict[str, list[str]] = {}
+    req_md = package / "requirements" / "README.md"
+    for table in md_tables(req_md.read_text(encoding="utf-8")) if req_md.is_file() else []:
+        if tuple(c.lower() for c in table[0][: len(REQ_HEADER)]) != REQ_HEADER:
+            continue
+        for row in table[1:]:
+            rid = plain_id(row[0])
+            if not REQ_ID_RE.match(rid):
+                problems.append(f"requirements: {rid!r} is not an ID like REQ-USB-01")
+                continue
+            if rid in requirements:
+                problems.append(f"requirements: {rid} twice")
+            empty = [
+                REQ_HEADER[i] for i in range(1, len(REQ_HEADER)) if i >= len(row) or not row[i].strip("—- ")
+            ]
+            if empty:
+                problems.append(f"requirements: {rid} has no {', '.join(empty)}")
+            methods = {m.strip().lower() for m in (row[4] if len(row) > 4 else "").split(",") if m.strip()}
+            if methods - VERIFY_METHODS:
+                problems.append(
+                    f"requirements: {rid} method {', '.join(sorted(methods - VERIFY_METHODS))} "
+                    f"is not one of {', '.join(sorted(VERIFY_METHODS))}"
+                )
+            requirements[rid] = row
+    if req_md.is_file() and not requirements:
+        problems.append("requirements: no table with the header " + " | ".join(REQ_HEADER))
+
+    sim = gate_sim(project, out)
+    decks = sim.details.get("decks", {})
+    measures = {f"{d}.{k}": v for d, info in decks.items() for k, v in info.get("measures", {}).items()}
+    problems += [f"sim: {f}" for f in sim.details.get("failures", [])]
+
+    # Every deck has a writeup, and every writeup has its sections and names a deck.
+    deck_names = set(decks)
+    explained: set[str] = set()
+    writeups = sorted(package.glob("simulations/*/README.md"))
+    for md in writeups:
+        if md.parent.name == DECK_TEMPLATE.parent.name:
+            continue
+        text = md.read_text(encoding="utf-8")
+        names = {d for d in deck_names if f"sim/{d}.cir" in text}
+        if not names:
+            problems.append(f"{md.relative_to(package)}: names no sim/<deck>.cir")
+        explained |= names
+        heads = headings(text)
+        missing = [s for s in SIM_SECTIONS if not any(s in h for h in heads)]
+        if missing:
+            problems.append(f"{md.relative_to(package)}: no section for {', '.join(missing)}")
+    for d in sorted(deck_names - explained):
+        problems.append(f"sim/{d}.cir: no writeup in simulations/ explains it")
+
+    system = package / "system" / "README.md"
+    if system.is_file() and not re.search(r"!\[[^\]]*\]\([^)]+\)", system.read_text(encoding="utf-8")):
+        problems.append("system/README.md: no block diagram image")
+
+    # Every number quoted beside a `deck.meas` in a table is the number this run gives.
+    quoted = 0
+    for md in mds:
+        if md.name == "traceability.md":
+            continue
+        for table in md_tables(md.read_text(encoding="utf-8")):
+            for row in table:
+                for i, cell in enumerate(row):
+                    name = code_span(cell)
+                    if not name or not MEAS_NAME_RE.match(name) or name.split(".")[0] not in deck_names:
+                        continue
+                    if name.split(".")[1] in FILE_SUFFIXES:
+                        continue
+                    if name not in measures:
+                        problems.append(f"{md.relative_to(package)}: {name} is not measured by its deck")
+                        break
+                    for later in row[i + 1 :]:
+                        ok = quoted_matches(later, measures[name])
+                        if ok is None:
+                            continue
+                        quoted += 1
+                        if not ok:
+                            problems.append(
+                                f"{md.relative_to(package)}: {name} quoted as {later}, "
+                                f"the run gives {measures[name]:.6g}"
+                            )
+                        break
+                    break
+
+    # The traceability table: every requirement, its check recomputed, its verdict the check's.
+    verdicts = {v: [] for v in VERDICTS}
+    traced: set[str] = set()
+    trace = package / "traceability.md"
+    for table in md_tables(trace.read_text(encoding="utf-8")) if trace.is_file() else []:
+        if tuple(c.lower() for c in table[0][: len(TRACE_HEADER)]) != TRACE_HEADER:
+            continue
+        for row in table[1:]:
+            row = row + [""] * (len(TRACE_HEADER) - len(row))
+            rid, check, evidence, measured, verdict = (
+                plain_id(row[0]),
+                row[1],
+                row[2],
+                row[3],
+                plain_id(row[4]).upper(),
+            )
+            if rid not in requirements:
+                problems.append(f"traceability: {rid} is not in the requirements")
+                continue
+            traced.add(rid)
+            if verdict not in VERDICTS:
+                problems.append(f"traceability: {rid} verdict {verdict!r} is not PASS, FAIL or OPEN")
+                continue
+            if not LINK_RE.search(evidence):
+                problems.append(f"traceability: {rid} links no evidence")
+            verdicts[verdict].append(rid)
+            expr = code_span(check)
+            parsed = parse_check(expr) if expr else None
+            if expr and parsed is None:
+                problems.append(f"traceability: {rid} check `{expr}` is not `deck.meas <= value`")
+            if not parsed:
+                continue
+            name, comparisons = parsed
+            if name not in measures:
+                problems.append(f"traceability: {rid} checks {name}, which no deck measures")
+                continue
+            value = measures[name]
+            ok = quoted_matches(measured, value)
+            if ok is None:
+                problems.append(f"traceability: {rid} quotes no measured value for {name}")
+            elif not ok:
+                problems.append(
+                    f"traceability: {rid} quotes {measured} for {name}, the run gives {value:.6g}"
+                )
+            else:
+                quoted += 1
+            computed = "PASS" if check_holds(comparisons, value) else "FAIL"
+            if verdict != computed:
+                problems.append(
+                    f"traceability: {rid} says {verdict}, `{expr}` with {value:.6g} is {computed}"
+                )
+    for rid in sorted(set(requirements) - traced):
+        problems.append(f"traceability: {rid} has no row")
+
+    # A bound in an expect file that names a requirement names one that exists.
+    sim_dir = project.dir / "sim"
+    for exp in sorted(sim_dir.glob("*.expect.json")) if sim_dir.is_dir() else []:
+        for meas, bounds in load_json(exp).items():
+            req = bounds.get("req") if isinstance(bounds, dict) else None
+            if req and req not in requirements:
+                problems.append(f"{exp.name}: {meas} names {req}, which is not a requirement")
+
+    failures = list(problems)
+    if strict:
+        failures += [f"{rid}: FAIL" for rid in verdicts["FAIL"]] + [
+            f"{rid}: OPEN" for rid in verdicts["OPEN"]
+        ]
+    counts = ", ".join(f"{len(verdicts[v])} {v.lower()}" for v in VERDICTS)
+    summary = f"{len(requirements)} requirements: {counts}; {quoted} quoted values match the run"
+    if verdicts["FAIL"]:
+        summary += f"; failing {', '.join(verdicts['FAIL'][:6])}" + (
+            " ..." if len(verdicts["FAIL"]) > 6 else ""
+        )
+    if problems:
+        summary += f"; {len(problems)} problems"
+    result = Result(
+        "verify",
+        "fail" if failures else "pass",
+        summary,
+        {
+            "package": str(package),
+            "requirements": len(requirements),
+            "verdicts": verdicts,
+            "quoted": quoted,
+            "writeups": len([w for w in writeups if w.parent.name != DECK_TEMPLATE.parent.name]),
+            "decks": sorted(deck_names),
+            "created": created,
+            "failures": failures,
+        },
+        sim.artifacts,
+    )
+    return result
+
+
+def cmd_verify(args) -> int:
+    project = find_project(args.project)
+    out = out_dir_for(project, args.out)
+    package = Path(args.package).resolve() if args.package else None
+    result = gate_verify(project, out, package, args.init, args.strict)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "verify.json").write_text(json.dumps(asdict(result), indent=2), encoding="utf-8")
+    return emit([result], args, None)
+
+
 @timed
 def gate_export(project: Project, out: Path, strict: bool = False, step: bool = False) -> Result:
     if not project.pcb:
@@ -1755,6 +2143,12 @@ def model_rows(
             continue
         digest = file_sha256(path)
         item["sha256"] = digest
+        # A model the project fits itself (to a datasheet's table, when its maker publishes none) lives
+        # beside the decks and is the project's own file: it has no library row to check.
+        if deck.parent.resolve() in path.parents:
+            item["own"] = True
+            models.append(item)
+            continue
         row = None
         if library and library in path.parents:
             rel = path.relative_to(library).as_posix()
@@ -2154,6 +2548,18 @@ def main(argv: list[str] | None = None) -> int:
         help="read every URL once more, under the workcenter's own name, into sources/fetched/, "
         "and say which differ from the library's copy",
     )
+    p = add_project_cmd(
+        "verify",
+        "check the project's verification package (P28): requirements, writeups, traceability, and every "
+        "quoted number against a fresh run of sim/*.cir; writes verify.json and the decks' logs in sim/; "
+        "--init writes the package's skeleton without overwriting a file",
+    )
+    p.add_argument("--package", help="the package directory (default <project>/verification)")
+    p.add_argument(
+        "--init",
+        action="store_true",
+        help="copy the templates into the package, a writeup per deck, never over a file that exists",
+    )
     p = sub.add_parser(
         "design", help="build a kicadgen design.py into a KiCad project; --route runs FreeRouting"
     )
@@ -2198,6 +2604,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_procure(args)
     if args.command == "sources":
         return cmd_sources(args)
+    if args.command == "verify":
+        return cmd_verify(args)
     if args.command == "autoroute":
         return cmd_gate(
             args, gate_autoroute, dsn=args.dsn, passes=args.passes, threads=args.threads, timeout=args.timeout
