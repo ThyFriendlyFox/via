@@ -40,6 +40,12 @@ or skill. **Done** is the observable result that ends the case.
 **Run.** `workcenter sim <project>`, guided by the `simulate` skill.
 **Done.** Every bound holds. A missed bound changes component values, never the bound.
 
+## Verify a board for inspection
+
+**Open.** A board with its decks, and a question: does it meet its parts' ratings and the user's conditions, in a form an inspector can check?
+**Run.** The `verification` skill and P28: `workcenter verify <project> --init`, then the requirements, the system, a writeup per deck, the calculations and the traceability table; `workcenter verify <project>`.
+**Done.** `workcenter verify` reports no problems; every FAIL has its size and a proposed fix.
+
 ## Route a board
 
 **Open.** A board with footprints placed and nets unrouted.

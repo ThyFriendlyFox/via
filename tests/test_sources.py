@@ -342,6 +342,28 @@ def test_sim_runs_a_listed_model_translated_and_checks_its_row(tmp_path):
 
 
 @needs_ngspice
+def test_a_model_the_project_fits_itself_needs_no_library_row(tmp_path):
+    # A model under the deck's own folder is the project's (P28: fitted to a datasheet's table); one
+    # outside it and outside the library still has no row and is a warning.
+    proj = sim_project(tmp_path, {"vout": {"min": 0.49, "max": 0.51}})
+    (proj / "sim" / "models").mkdir()
+    (proj / "sim" / "models" / "own.lib").write_text("* fitted\n.subckt OWN a b\nR1 a b 1k\n.ends\n")
+    (tmp_path / "loose.lib").write_text("* loose\n.subckt LOOSE a b\nR1 a b 1k\n.ends\n")
+    deck = proj / "sim" / "rdiv.cir"
+    deck.write_text(deck.read_text().replace(".control", '.include "models/own.lib"\n.control'))
+    code, records = run("sim", proj, "--out", tmp_path / "o")
+    assert code == 0, records
+    models = records[0]["details"]["decks"]["rdiv"]["models"]
+    assert [m.get("own") for m in models] == [None, True]
+    assert records[0]["details"]["warnings"] == []
+    run_dir = tmp_path / "o" / "sim" / "run" / "rdiv"
+    assert f'.include "{proj / "sim" / "models" / "own.lib"}"' in (run_dir / "rdiv.cir").read_text()
+    deck.write_text(deck.read_text().replace('"models/own.lib"', f'"{tmp_path / "loose.lib"}"'))
+    code, records = run("sim", proj, "--out", tmp_path / "o")
+    assert any("loose.lib has no row" in w for w in records[0]["details"]["warnings"]), records
+
+
+@needs_ngspice
 def test_a_warn_bound_names_a_model_off_its_datasheet_and_fails_only_strict(tmp_path):
     proj = sim_project(
         tmp_path, {"vout": {"min": 0.45, "max": 0.5, "warn": "the model against its datasheet's 0.5 V max"}}

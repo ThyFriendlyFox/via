@@ -118,6 +118,14 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
 2. P3's "Done when" holds on this exact design.
 3. One route per design change. Read the printed summary: segments,
    vias, rounds, islands. Then `workcenter drc .` for what stayed open.
+4. kistack's placement checks before the route run at the board's own
+   limits or stricter (`--track --clear --via --edge` for a board with a
+   `.kicad_dru`). `--rules-override` is used only when the user asks for
+   it (kistack's layout-placement skill); a result it produced is
+   discarded (M66).
+5. A route run only to evaluate (an archived version, a what-if) writes
+   with `--out` to the scratchpad: without it `workcenter design` rewrites
+   the project's KiCad files in place (M67).
 
 Done when: the DRC after the route lists 0 errors, or every remaining
 error is named in the next design change.
@@ -361,6 +369,12 @@ When: choosing or changing which MCU pin carries which signal.
    together on one timer; analog inputs on ADC channels; no pin in analog
    mode at reset sees a voltage above VDD; multi-bonded pins (several
    ports on one package pin) keep the unused ones as inputs.
+   Every pin a source off the board can reach (a divider from VBUS, a
+   monitor's output) is held to the datasheet's absolute maximum for that
+   pin's type and mode, read from the table, not assumed: an STM32 FT pin
+   takes no positive injection, and in analog mode at most 4 V (DS14693
+   Table 21 note 3). No clamp diode is assumed that the datasheet does not
+   draw (M68).
 4. Write the firmware's pin set-up from the same table and build it.
 5. Give every control input a level while the MCU is in reset: a gate, an
    enable, a switch, an I2C line that only an MCU pin drives floats until
@@ -456,10 +470,15 @@ switch) or changing its rating.
    change (M56). A pad for a part not yet chosen is an open item in the
    README, never a contact, and the README never claims a function no
    chosen part performs.
+4. Recompute every budget the part enters, not only its own ratings: the
+   standby current (the MCU's Stop or Standby current from its own
+   table), the power and thermal budgets, the input and output ranges of
+   the parts beside it. A figure carried over from the old part is
+   struck from the README until it is recomputed (M69).
 
 Done when: every value on the list cites the new part's rating in the
-README, and every function on the step 3 list names the part that does
-it now.
+README, every function on the step 3 list names the part that does
+it now, and every budget the part enters is recomputed.
 
 ## P21 — Moving files in a project
 
@@ -647,3 +666,44 @@ Done when: `workcenter sources` passes for every board of the version, each
 model a deck uses has its datasheet rows as `warn` bounds, and the README
 names each model that is off its datasheet and what the design trusts
 instead.
+
+## P28 — A board's verification package
+
+When: the user asks for requirements, a review, an inspection, or proof
+that a design meets its parts' ratings; before a version is called ready
+for anything beyond the bench; after a part swap or a feature, for the
+circuits it touches. The `verification` skill is the how-to.
+
+1. `workcenter verify <project> --init` writes the skeleton:
+   `verification/` with the requirements, the system, a writeup per deck,
+   the calculations and the traceability table.
+2. Write the operating profile and the conditions, expected and
+   unexpected: every source class the power input can meet at its range's
+   ends, a live plug, a faulty source up to the next standard voltage and
+   the input part's rating; every load and its faults; storage, shutdown,
+   the environment. Ask the user for what only they know.
+3. One requirement per limit, each with its source (a datasheet table or
+   figure and its revision, a standard's clause and edition, a firmware
+   constant), its method, and the clause it would be inspected under.
+   Read every section, table and figure number from the document's text,
+   never from memory (M72).
+4. Judge every limit at its corners: the datasheets' minimum and maximum
+   rows, the source's range, each setting resistor's tolerance, the
+   temperature. A typical value is a check of the model, never a verdict
+   (M70). Write the limit before the number it is compared with, then
+   compare (M71).
+5. One deck per circuit question; each bound that holds carries
+   `"req": "<ID>"`. A requirement the design fails gets no bound and a
+   FAIL in the traceability table, with its size and a proposed fix; a fix
+   that changes the board is a new version (P22). A part with no maker's
+   model is fitted to its datasheet and checked row by row.
+6. One writeup per circuit with the template's sections; the nodal
+   analysis solves the circuit by hand, cites each equation, and is
+   compared with the deck.
+7. Several runs at once on one project write to their own `--out`: runs
+   sharing `build/` mix their reports (M73).
+8. `workcenter verify <project>` until it reports no problems.
+
+Done when: `workcenter verify <project>` reports no problems, the
+package's README lists each FAIL with its size and its proposed fix, and
+the report to the user gives the counts of PASS, FAIL and OPEN.
