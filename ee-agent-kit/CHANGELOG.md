@@ -4,6 +4,11 @@ All notable changes to EE Workcenter are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/) · Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+- `workcenter sources` refuses a `sources.csv` row with more fields than its header (an unquoted comma in a note) instead of dropping the extra fields (M76).
+- P8 names `pgrep -f` in a wait loop beside `pkill -f`; P9 writes a rewritten file to a new file first and reads a script's ranges from the file it edits; the verification skill's ngspice traps add `let`'s missing SI suffixes and `meas` results living in their own plot (M74 to M80).
+- P28 and the verification skill: a limit computed from parts' values carries their tolerances; a fitted model's value away from the datasheet's rows is no maximum; a stand-in never clamps at an absolute maximum, and every output driving a capacitor has its peak current bounded; citations in code comments come from the document's text too (M81 to M84).
+
 ### Added
 - `workcenter verify <project>`: checks a verification package (`verification/`, P28): the files it holds, a requirements table with a source, method and inspection clause on every row, a writeup with every section for each circuit and for every deck, links that lead somewhere, a traceability row for every requirement; runs the SIM gate and compares every number quoted beside a `deck.meas` with the run (to half a unit of the quoted digit, SI prefixes understood) and recomputes each traceability check against its verdict. `--strict` fails on a FAIL or OPEN requirement; `--init` writes the skeleton from `templates/verification/`; `--package` names another folder. Writes `build/verify.json`.
 - The `verification` skill and P28: conditions, sourced requirements judged at the corners, one cited nodal analysis per deck, models fitted to datasheets where the maker publishes none, a standards map (DO-160G, MIL-STD-461G, MIL-STD-810H, IEC 61000-4-2, USB, UM10204, EEE-INST-002 derating) with the editions read.

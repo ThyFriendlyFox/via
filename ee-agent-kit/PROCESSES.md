@@ -205,7 +205,9 @@ When: every shell command.
 2. `--help` before a flag you have not used in this session. Global
    flags such as `--json` go before the subcommand.
 3. `pkill -x name`, never `pkill -f` with a pattern that matches the
-   shell running it.
+   shell running it. The same holds for `pgrep -f` in a wait loop: the
+   loop's own command line holds the pattern (M75). Wait on a file the job
+   writes last, or on the PID it printed.
 4. Long jobs run in the background with a log file; foreground commands
    stay under the tool's timeout.
 
@@ -222,22 +224,28 @@ Edit tool.
 2. Copy every anchor from the current file, not from memory or from an
    earlier version of this conversation.
 3. Check every anchor before writing anything; a script that writes the
-   first half and fails on the second leaves a file nobody has read.
-4. A change of a few lines goes through the Edit tool after a Read.
-5. Inside a quoted heredoc (`<<'EOF'`) the shell passes text through as
+   first half and fails on the second leaves a file nobody has read. A
+   file rewritten whole (a CSV through `csv.DictWriter`) is written to a
+   new file first and moved over the old one only when the write ended
+   (M76).
+4. A range in a script (every x between two values) comes from the file
+   it edits: read the outline or the coordinates' own extent, and after
+   the run count what it moved against what lay in the range (M77).
+5. A change of a few lines goes through the Edit tool after a Read.
+6. Inside a quoted heredoc (`<<'EOF'`) the shell passes text through as
    written. Write no backslash escapes in it at all: `chr(10)` for a line
    break, real line breaks inside a triple-quoted string.
-6. Tests are written with the Write or Edit tool, not appended by a
+7. Tests are written with the Write or Edit tool, not appended by a
    script, and read back before they run: every assertion must be able
    to fail. The `no_script_test_edits.py` hook refuses a Bash command
    that writes under `tests/` (M43). The hook does not load in a session
    with two repositories; the step holds there all the same (M61).
-7. A test's geometric expectation (inside or outside, how far, which
+8. A test's geometric expectation (inside or outside, how far, which
    side) is computed before it is written: one `python3 -c` with the
    distance printed, not a judgement by eye (M45). A timing expectation
    (the tick an event lands on) likewise, counted from the code's own
    start: a debounce's first sample, a timer's first period (M60).
-8. Rows added to a data file (a CSV, a table) go in as text inside the
+9. Rows added to a data file (a CSV, a table) go in as text inside the
    file's own bytes, keeping its line ends and quoting; a round trip
    through a reader and a writer rewrites every line. After the edit,
    `git diff --stat` shows only the rows meant (M59).
@@ -686,17 +694,24 @@ circuits it touches. The `verification` skill is the how-to.
    figure and its revision, a standard's clause and edition, a firmware
    constant), its method, and the clause it would be inspected under.
    Read every section, table and figure number from the document's text,
-   never from memory (M72).
+   never from memory (M72), in the package and in any code comment that
+   cites a standard or datasheet (M84). A limit computed from parts'
+   values carries the tolerances its source names (M82).
 4. Judge every limit at its corners: the datasheets' minimum and maximum
    rows, the source's range, each setting resistor's tolerance, the
    temperature. A typical value is a check of the model, never a verdict
-   (M70). Write the limit before the number it is compared with, then
-   compare (M71).
+   (M70). A fitted model's value at a condition the datasheet does not
+   tabulate is no maximum: take the nearest maximum row as flat, unless a
+   figure read from the datasheet says otherwise (M83). Write the limit
+   before the number it is compared with, then compare (M71).
 5. One deck per circuit question; each bound that holds carries
    `"req": "<ID>"`. A requirement the design fails gets no bound and a
    FAIL in the traceability table, with its size and a proposed fix; a fix
    that changes the board is a new version (P22). A part with no maker's
-   model is fitted to its datasheet and checked row by row.
+   model is fitted to its datasheet and checked row by row; a stand-in
+   never clamps at an absolute maximum, which is a bound on a measure
+   instead. Every output that drives a capacitor gets its peak current
+   measured and bounded by the pin's rating (M81).
 6. One writeup per circuit with the template's sections; the nodal
    analysis solves the circuit by hand, cites each equation, and is
    compared with the deck.
