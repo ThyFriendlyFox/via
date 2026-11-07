@@ -52,6 +52,16 @@ circle padstacks, non-plated holes as unconnected pins, net classes with
 their own widths and vias) and merges the session back into the board.
 FreeRouting writes session coordinates at 10 times its declared
 resolution; the merge takes the scale from the session's placement block.
+What 1.9.0 honours, measured by routing a fixture (`tests/test_routing.py`):
+a wire or via with `(type fix)` stays; `(type shove_fixed)` may be pushed
+aside but is never ripped up or reworked by the optimiser; one with no type
+(or `normal`) is unfixed, and the optimiser moves it, rips it up or removes
+it as a tail (`design --seed` holds connected seed copper and leaves loose
+ends unfixed); any other type is fixed by the user; a typed clearance such as `(clearance N (type via_wire))`
+is read but has no effect in the structure, globally or in a layer's
+`(rule ...)`, and inside a net class it holds only between that class's own
+vias and wires. A hole's clearance per layer therefore reaches it as grown
+copper on that layer (M79).
 For a hand-drawn `.kicad_pcb` both ends still happen in KiCad; reading an
 arbitrary board file into the DSN writer is ROADMAP item 1.
 

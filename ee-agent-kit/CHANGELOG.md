@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/) · Versioning: [SemVer](
 
 ## [Unreleased]
 ### Changed
+- The router keeps each layer's hole clearance: `kicadgen` reads the fab's layer rules (`Design.hole_clearances()`, Sierra's 13 mil inner drill to copper) and writes every via and drilled pad into the DSN with its copper grown by that rule on the layers where it exceeds the copper clearance (a 0.6/0.25 mm via is 0.6104 mm on In2 at 0.15 mm). FreeRouting 1.9.0 ignores a `via_wire` clearance in the DSN's structure and applies one in a net class to that class's own pairs only, both measured on a fixture. Hand vias, the via placers and island stitching hold the same rule (M79, P17).
+- `workcenter design` ends a red run (exit 1) with a line that names each failure and says the files are written for inspection only and a CI regenerate check fails on that exit code; `--json` adds `red` (M85).
 - P23 runs through `workcenter pictures <version>` and its `pictures.json`: the framing check is `--frames 4`, the assembly a scene script on `tools/scene.py`; the `board-gates`, `verification` and `procurement` skills name the new commands.
 - The `simulate` skill runs a deck by hand only through `workcenter sim --deck`, reads a datasheet's curve with `workcenter curve` and fetches a new model with `workcenter fetch`; the `procurement` skill keeps a chosen part's datasheet with `workcenter fetch --row`. P14 names `design --check` and `ci`, P18 `mutate`, P27 `fetch`.
 - `kicadgen.parse_all` parses every top-level form of a file, as its docstring said; it returned only the first, so a rule file read through it lost every rule after `(version 1)`.
@@ -16,6 +18,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/) · Versioning: [SemVer](
 - P28 and the verification skill: a limit computed from parts' values carries their tolerances; a fitted model's value away from the datasheet's rows is no maximum; a stand-in never clamps at an absolute maximum, and every output driving a capacitor has its peak current bounded; citations in code comments come from the document's text too (M81 to M84).
 
 ### Added
+- `workcenter design --route --seed <board>`: a previous routed board's router tracks and vias go to FreeRouting held (`shove_fixed`), so the paths that still fit stay and only the rest are routed; seed copper that hangs from nothing goes in unfixed, for the router to reuse or remove. Hand copper, stitching vias, lost nets and arcs are left out, and copper that now meets another net's pad or copper, a keepout or the board edge is dropped, each counted on a `seed:` line with how many seed tracks the new route kept (`kicadgen.board_copper()`, `Design.seed_wiring()`, M89).
+- `workcenter design` prints each via it drops through a pour's island after routing as a `stitch:` line: the net, the island's layer and pads, the layer the via reaches (`Design.stitches`; `--json` `stitches`).
 - `workcenter docs <version>`: the version's `CONTENTS.md` (its README's sections, design and KiCad files, scene scripts, decks, verification package, firmware, pictures, parts lists) and `datasheets/`, each part's datasheet copied from the library by `sources.csv` with its revision, or why there is none; `library/series.csv` names a part a series sheet covers; a stale copy is removed.
 - `workcenter costs <repo>`: `procure` on every board of every version with `parts/version/<id>.csv`, `parts/catalog.csv` and `parts/offboard/<id>.csv`, the lists in `parts/lists/`, the totals table in every `<!-- workcenter costs -->` block and the list links in every `<!-- workcenter costs lists -->` block (M97).
 - `workcenter pictures <version>`: P23 in one command from a `pictures.json` (written with defaults when absent): each board's stills and layers with `render --strict`, its turning GIFs, the scene scripts, the copies into `docs/` and `docs/layers/`; `--frames N` draws the framing check into `build/pictures/check/` and leaves `docs/` alone.
@@ -97,6 +101,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/) · Versioning: [SemVer](
 ### Deprecated
 ### Removed
 ### Fixed
+- The session merge keeps a short link that leaves a hand track at an angle, the joint of a T the router makes onto it. It took the link for an echo of the track and dropped it, and the wire after it ended off the track's centre line: Last Hit v0.16 routed with the new DSN showed one dangling HS_IN track.
 - A fab's rule file no longer loosens a board: in KiCad a custom rule overrides every net class's clearance, so the Sierra set's board-wide 4 mil clearance and 6 mil hole had let pours fill 0.1 mm from pads and a 0.25 mm minimum hole pass at 0.1524 mm. Its board-wide limits are now the board's own minimums (`kicadgen.fab_project_rules`, the `--fab` copy's project file) and only its layer and condition rules are copied, each raised to the board's own setting (M62).
 - `kicadgen`'s via check holds two nets to the larger of their net classes' clearances, as KiCad's DRC does, not to the board default (M62).
 - FreeRouting session coordinates are read at the scale the session's placement block implies, not the declared resolution.
