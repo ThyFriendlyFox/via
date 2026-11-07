@@ -338,9 +338,11 @@ When: a change is about to be called done.
 1. `make verify` green locally; for a board, `workcenter gates .` GREEN
    and the project's own CI checks run locally the way CI runs them (a
    board repository regenerates every project with `workcenter design
-   <p>/design.py --out <scratch>` and needs exit 0, M85). Run them with an
-   absolute path (`make -C /path verify`), never behind a `cd`, and in the
-   background with a log.
+   <p>/design.py --out <scratch>` and needs exit 0, M85; `workcenter design
+   <p>/design.py --check` is that step for one project, and `workcenter ci
+   <repo>` replays the whole workflow and prints `CI REPLAY GREEN`). Run them
+   with an absolute path (`make -C /path verify`), never behind a `cd`, and
+   in the background with a log.
 2. Chain the commit and the push behind the verdict itself, never behind
    a look at the log: `grep -q 'VERIFY GREEN' log && git push ...`. A
    `tail` succeeds whatever the log says. Every check you run before a
@@ -446,7 +448,8 @@ charger, or any other load from a battery.
 3. Every elapsed-time comparison is wrap-safe (subtract, then compare),
    and a test runs the counter across its wrap.
 4. Prove the tests can fail: break each safety behaviour once (a mutation
-   script kept with the firmware) and see a named test fail.
+   list kept with the firmware, run by `workcenter mutate <firmware>
+   --mutations <list>`) and see a named test fail.
 5. Every output that drives a load is off at reset, in every fault
    handler, and when the loop that commands it stops (a deadman).
 
@@ -665,8 +668,10 @@ comes from a vendor.
    and D (a model file, or a note saying why there is none), a step row
    where the vendor publishes a body. Fetch the sanctioned way (P25 step 1):
    `workcenter sources --fetch` asks once under its own name and records a
-   refusal; a file no site will serve is left for the user to download, and
-   its row's note says so and from where.
+   refusal, and `workcenter fetch <url> --to <library>/<maker>/<file> --mpn
+   <MPN> --row` does the same for a file the library does not hold yet; a
+   file no site will serve is left for the user to download, and its row's
+   note says so and from where.
 2. Keep each file as the vendor publishes it, its notice intact; a model
    that ngspice reads differently is translated into a copy in `build/`,
    never in the library. The row records what the file itself prints: the
@@ -737,3 +742,47 @@ circuits it touches. The `verification` skill is the how-to.
 Done when: `workcenter verify <project>` reports no problems, the
 package's README lists each FAIL with its size and its proposed fix, and
 the report to the user gives the counts of PASS, FAIL and OPEN.
+
+## P29 — Placing a part on a routed board
+
+When: before a part goes onto a board that has been routed, or moves on
+one: a fuse into a feed, a part shifted to make room. A spot is chosen
+from what the board holds on every layer, never from courtyards alone.
+
+1. The board's mechanical neighbours are in the design. Each strip,
+   spacer, cell, shell or body that stands on or over the board is a
+   `d.keepout(polygon, layers, name, parts=True)`, with `copper=False`
+   where tracks and vias may pass under it. An assembly script is not the
+   design: `workcenter design` and the DRC know only what `build()` holds
+   (M87).
+2. `workcenter inspect map <board> --box X0 X1 Y0 Y1` round the spot, and
+   read every layer: pads, tracks, vias, pours, keep-outs, courtyards.
+3. `workcenter inspect crossed <board> --box ...` on the spot lists the
+   nets the router ran through it. Write a path for each before the part
+   goes in: round the part, on another layer, or a hand route. A net with
+   no path means another spot (M89).
+4. `workcenter inspect islands <board>` (and `--net` for each other pour):
+   which piece of the pour holds the spot, what that piece holds, and how
+   many vias join it to the plane. A part that cuts the only path or via
+   of a piece's pads makes an island; check that the inner layers there
+   leave room for a new via, with `inspect probe --via` (M88).
+5. `workcenter inspect probe <board> --part REF --at X,Y [--rot DEG]`, with
+   `--footprint LIB:NAME --nets 1=NET,2=NET` for a part the board does not
+   have yet: its courtyard against the others, its pads against the copper
+   round them, and the keep-outs by name. A spot is taken only when the
+   probe says `clear` (M90).
+6. Every hand via and track the change needs goes through `workcenter
+   inspect probe --via X,Y --net N` or `--track "X,Y X,Y" --layer L --net
+   N` before it is written into `design.py`: the probe knows the keep-outs
+   and the project's inner-layer drill rule, which a check of copper and
+   holes alone misses (M91).
+7. Write the position and the hand copper into `design.py`. Route once
+   with `workcenter design design.py --route`, then run `workcenter
+   inspect islands` again and `workcenter inspect crossed <old board>
+   --box ... --new <board>`. A net it reports open gets the path step 3
+   wrote, not a second guess.
+8. `workcenter gates <project>`.
+
+Done when: `workcenter design` prints no `part:`, `via:` or `island:` line,
+`inspect crossed --new` reports no net open, and `workcenter gates` is
+GREEN after one route.

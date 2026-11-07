@@ -106,6 +106,25 @@ PyPI into the venv. kistack's skill names the 3.x command
 (`pygerber gerber convert png`); 2.4.3 is the newest stable release and has
 `raster-2d` instead. No gate runs it yet.
 
+## pdfminer.six
+
+Reads one PDF page's vector paths and text lines for `workcenter curve`:
+`tools/pdfcurve.py` runs under the venv and prints them as JSON; the CLI
+maps them onto a plot's axes with the standard library. Release 20260107,
+from PyPI into the venv. pdfminer keeps a path's end points only, drops
+Bezier control points, splits a path at each moveto, and repeats the first
+point of a path closed with `h`. Absent, the command skips (exit 2) and
+says so.
+
+## PyYAML
+
+Reads a GitHub workflow for `workcenter ci`: the venv turns the YAML into
+JSON, and the CLI runs the steps. Release 6.0.3, from PyPI into the venv.
+YAML 1.1 reads the key `on:` as true; the replay never reads it. The venv
+runs without `-s`, so it imports the copy pip reports: Ubuntu's
+python3-yaml 6.0.1 in the system packages comes second. Absent, the
+command skips (exit 2) and says so.
+
 ## kipy (planned)
 
 `kicad-python`, the official IPC API client, is installed in the venv

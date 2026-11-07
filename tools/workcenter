@@ -12,16 +12,25 @@ Exit codes: 0 every gate passed, 1 a gate failed or an engine errored,
 from __future__ import annotations
 
 import argparse
+import ast
+import bisect
+import contextlib
 import csv
 import datetime
+import hashlib
+import io
+import itertools
 import json
 import math
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
@@ -321,11 +330,24 @@ NGSPICE_ERROR_RE = re.compile(r"^(Error|.*\berror on line\b|Fatal|.*: no such)",
 
 
 @timed
-def gate_sim(project: Project, out: Path, strict: bool = False) -> Result:
+def gate_sim(
+    project: Project, out: Path, strict: bool = False, only: str | None = None, keep: bool = False
+) -> Result:
+    """Every sim/*.cir, or the one deck `only` names, run and held to its expect file. `keep` runs each
+    deck from its own folder in sim/run/, the deck run in place copied there too, and records the one
+    command that reruns it by hand the gate's way (M94)."""
     sim_dir = project.dir / "sim"
     decks = sorted(sim_dir.glob("*.cir")) if sim_dir.is_dir() else []
     if not decks:
         return Result("sim", "skip", "no sim/*.cir in project")
+    if only is not None:
+        name = only.removesuffix(".cir")
+        chosen = [d for d in decks if d.stem == name]
+        if not chosen:
+            return Result(
+                "sim", "error", f"no deck {name!r} in {sim_dir}: decks are {', '.join(d.stem for d in decks)}"
+            )
+        decks = chosen
     if not shutil.which(NGSPICE):
         return Result("sim", "skip", f"engine missing: {NGSPICE}")
     sim_out = out / "sim"
@@ -344,7 +366,9 @@ def gate_sim(project: Project, out: Path, strict: bool = False) -> Result:
     warned: list[str] = []
     for deck in decks:
         log = sim_out / f"{deck.stem}.log"
-        models, model_problems, model_warnings, plan = model_rows(deck, sources, sim_out / "run" / deck.stem)
+        models, model_problems, model_warnings, plan = model_rows(
+            deck, sources, sim_out / "run" / deck.stem, always=keep
+        )
         failures += model_problems
         warned += model_warnings
         if plan:
@@ -395,6 +419,9 @@ def gate_sim(project: Project, out: Path, strict: bool = False) -> Result:
             "models": models,
             "ran": str(plan or deck),
         }
+        if keep and plan:
+            # ngspice reads .spiceinit from its working directory, so the rerun starts in the run folder.
+            details[deck.stem]["rerun"] = f"env -C {shlex.quote(str(plan.parent))} {NGSPICE} -b {plan.name}"
         artifacts.append(str(log))
     if strict:
         failures += warned
@@ -408,6 +435,29 @@ def gate_sim(project: Project, out: Path, strict: bool = False) -> Result:
         {"decks": details, "failures": failures, "warnings": warned, "sources": str(sources or "")},
         artifacts,
     )
+
+
+def cmd_sim(args) -> int:
+    """The SIM gate; with --deck one deck and every value it printed, with --keep the hand-run command."""
+    project = find_project(args.project)
+    out = out_dir_for(project, args.out)
+    result = gate_sim(project, out, args.strict, only=args.deck, keep=args.keep)
+    code = emit([result], args, None)
+    if args.json:
+        return code
+    for name, deck in result.details.get("decks", {}).items():
+        if args.deck:
+            checks = deck["checks"]
+            for measure, value in deck["measures"].items():
+                c = checks.get(measure)
+                bound = "" if c is None else f"  [{c['min']}, {c['max']}] {'ok' if c['ok'] else 'OUT'}"
+                print(f"       {measure} = {value:.6g}{bound}")
+            for measure in sorted(set(checks) - set(deck["measures"])):
+                c = checks[measure]
+                print(f"       {measure}: not printed by the deck  [{c['min']}, {c['max']}]")
+        if deck.get("rerun"):
+            print(f"rerun {name}: {deck['rerun']}")
+    return code
 
 
 # --------------------------------------------------------------- verify
@@ -2123,13 +2173,14 @@ def gate_sources(
 
 
 def model_rows(
-    deck: Path, sources: Path | None, run_dir: Path
+    deck: Path, sources: Path | None, run_dir: Path, always: bool = False
 ) -> tuple[list[dict], list[str], list[str], Path | None]:
     """The library models a sim deck includes, each against its sources.csv row: (models, problems,
     warnings, the deck to run). A model whose file changed since its row is a problem; one with no
     row a warning. When the deck includes a listed model, it is written again into run_dir with
     every include absolute (the model's translated copy where its row lists fixes) and a .spiceinit
-    for the rows' ngspice mode; otherwise the deck to run is None and it runs as it is."""
+    for the rows' ngspice mode; otherwise the deck to run is None and it runs as it is, unless
+    `always` asks for the run folder anyway, with the deck folder's own .spiceinit when it has one."""
     text = deck.read_text(encoding="utf-8", errors="replace")
     rows = read_sources(sources) if sources else []
     library = sources.parent.resolve() if sources else None
@@ -2171,7 +2222,7 @@ def model_rows(
                 )
             replace[inc] = prepared_model(row, path, run_dir)
         models.append(item)
-    if not listed:
+    if not listed and not always:
         return models, problems, warnings, None
     if len(modes) > 1:
         problems.append(f"{deck.stem}: its models need different ngspice modes: {', '.join(sorted(modes))}")
@@ -2182,8 +2233,11 @@ def model_rows(
 
     (run_dir / deck.name).write_text(INCLUDE_RE.sub(absolute, text), encoding="utf-8")
     init = run_dir / ".spiceinit"
+    own_init = deck.parent / ".spiceinit"  # what ngspice reads when the deck runs in place
     if modes:
         init.write_text(f"set ngbehavior={sorted(modes)[0]}\n", encoding="utf-8")
+    elif not listed and own_init.is_file():
+        shutil.copyfile(own_init, init)
     elif init.exists():
         init.unlink()
     return models, problems, warnings, run_dir / deck.name
@@ -2197,6 +2251,451 @@ def cmd_sources(args) -> int:
         parts = [project.dir / "parts.csv"]
     sources = Path(args.sources).resolve() if args.sources else None
     return emit([gate_sources(project, out, parts, sources, args.fetch, args.strict)], args, None)
+
+
+# ------------------------------------------------------------------ fetch
+#
+# One file for a library, a part's datasheet, model or body, fetched once under the workcenter's own
+# name, and the sources.csv row that records it (PROCESSES.md P27). For a part before any board names it.
+
+SOURCES_HEADER = ("MPN", "Kind", "URL", "File", "Member", "Revision", "Dated", "Subckt", "Ngspice", "SHA256")
+SOURCES_HEADER += ("Checked", "Note")
+KIND_BY_SUFFIX = {".pdf": "datasheet", ".step": "step", ".stp": "step"}
+KIND_BY_SUFFIX |= {s: "spice" for s in (".lib", ".mod", ".cir", ".sub", ".spi", ".sp", ".ckt", ".subckt")}
+# Lines of a datasheet's text that may carry its revision and date, shown to the reader filling the row.
+REVISION_RE = re.compile(r"\b(rev(ision)?\b|rev\.|version\b|v\.\d|\d{4}-\d{2}\b|©|copyright\b)", re.I)
+
+
+def library_csv(start: Path) -> Path | None:
+    """The nearest sources.csv in `start` or a folder above it, up to the repository's root."""
+    for d in (start, *start.parents):
+        if (d / "sources.csv").is_file():
+            return d / "sources.csv"
+        if (d / ".git").exists():
+            break
+    return None
+
+
+def revision_lines(path: Path) -> list[str]:
+    text = file_text(path) or ""
+    if path.suffix.lower() in KIND_BY_SUFFIX and KIND_BY_SUFFIX[path.suffix.lower()] == "spice":
+        return spice_facts(text)["header"]
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    seen, found = set(), []
+    for ln in lines[:60] + lines[-40:]:
+        if REVISION_RE.search(ln) and ln not in seen and len(ln) < 160:
+            seen.add(ln)
+            found.append(ln)
+    return found[:8]
+
+
+def cmd_fetch(args) -> int:
+    """GET one URL once as FETCH_AGENT into --to, and print (with --row append) its sources.csv row."""
+    dest = Path(args.to).resolve()
+    sources = Path(args.sources).resolve() if args.sources else library_csv(dest.parent)
+    kind = (args.kind or KIND_BY_SUFFIX.get(dest.suffix.lower(), "")).lower()
+    report: dict = {"url": args.url, "file": str(dest), "kind": kind, "mpn": args.mpn or ""}
+
+    def fail(why: str) -> int:
+        report["error"] = why
+        if args.json:
+            print(json.dumps(report, indent=2))
+        else:
+            print(f"fetch: {why}", file=sys.stderr)
+        return EXIT_FAIL
+
+    if kind and kind not in SOURCE_KINDS:
+        return fail(f"--kind {kind!r} is not one of {', '.join(SOURCE_KINDS)}")
+    library = sources.parent if sources else dest.parent.parent
+    if not dest.is_relative_to(library):
+        return fail(f"{dest} is not under the library {library} that {sources} describes")
+    rel = dest.relative_to(library).as_posix()
+    # Read as bytes: text mode would turn a CRLF file's line ends into LF, and the append would too.
+    rows_text = sources.read_bytes().decode("utf-8") if sources and sources.is_file() else ""
+    if args.row:
+        if not sources:
+            return fail(f"no sources.csv in {dest.parent} or above: name one with --sources")
+        if not args.mpn or not kind:
+            return fail("--row needs --mpn and a --kind (or a file suffix that names one)")
+        for n, row in enumerate(csv.DictReader(io.StringIO(rows_text)), start=2):
+            if row.get("MPN") == args.mpn and (row.get("Kind") or "").lower() == kind:
+                return fail(f"{sources.name}:{n} already has a {kind} row for {args.mpn}; nothing fetched")
+
+    status, body, detail = fetch_url(args.url, args.member or "")
+    report.update({"status": status, "detail": detail})
+    if body is None:
+        return fail(
+            f"{args.url} {status} ({detail}); nothing written. A refusal is the site's answer: download the "
+            "file by hand, or keep a row with no File and a Note that says where it is"
+        )
+    digest = hashlib.sha256(body).hexdigest()
+    report.update({"bytes": len(body), "sha256": digest})
+    if detail != args.url:
+        report["final_url"] = detail
+    if dest.exists():
+        if file_sha256(dest) != digest:
+            return fail(
+                f"{dest} exists and differs from the download: move it away first, or name another --to"
+            )
+        report["state"] = "unchanged"
+    else:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        part = dest.with_name(dest.name + ".part")
+        part.write_bytes(body)
+        part.replace(dest)
+        report["state"] = "written"
+
+    subckt = ""
+    if kind == "spice":
+        subckts = list(spice_facts(dest.read_text(encoding="utf-8", errors="replace"))["subckts"])
+        subckt = subckts[0] if len(subckts) == 1 else ""
+    values = {
+        "MPN": args.mpn or "",
+        "Kind": kind,
+        "URL": args.url,
+        "File": rel,
+        "Member": args.member or "",
+        "Subckt": subckt,
+        "SHA256": digest,
+        "Checked": datetime.date.today().isoformat(),
+    }
+    header = SOURCES_HEADER
+    if rows_text:
+        header = tuple(next(csv.reader(io.StringIO(rows_text)), SOURCES_HEADER))
+    newline = "\r\n" if "\r\n" in rows_text else "\n"
+    line = io.StringIO()
+    csv.writer(line, lineterminator=newline).writerow([values.get(c, "") for c in header])
+    report["row"] = {c: values.get(c, "") for c in header}
+    report["revision_lines"] = revision_lines(dest)
+
+    if args.row:
+        # The row goes in as text after the file's own bytes (P9 step 9), through a new file that
+        # replaces the old one only once it reads back as a library (step 3).
+        text = rows_text or ",".join(header) + newline  # --sources may name a library not yet started
+        if not text.endswith(("\n", "\r")):
+            text += newline
+        part = sources.with_name(sources.name + ".part")
+        sources.parent.mkdir(parents=True, exist_ok=True)
+        part.write_text(text + line.getvalue(), encoding="utf-8", newline="")
+        try:
+            read_sources(part)
+        except ValueError as exc:
+            part.unlink()
+            return fail(f"the row would not read back: {exc}")
+        part.replace(sources)
+        report["appended"] = str(sources)
+
+    if args.json:
+        print(json.dumps(report, indent=2))
+        return EXIT_PASS
+    where = f"wrote {dest}" if report["state"] == "written" else f"{dest} already holds it"
+    print(f"fetch: {args.url} ok, {len(body)} bytes, SHA256 {digest}; {where}")
+    if report.get("final_url"):
+        print(f"  served from {report['final_url']}")
+    for ln in report["revision_lines"]:
+        print(f"  revision? {ln}")
+    print("row (Revision and Dated as the file prints them, filled by the reader):")
+    print(",".join(header))
+    print(line.getvalue().rstrip("\r\n"))
+    if report.get("appended"):
+        print(f"appended to {sources}")
+    return EXIT_PASS
+
+
+# ------------------------------------------------------------------ curve
+#
+# A datasheet's curve read from the PDF's own vectors (a fuse's time-current curve, a MOSFET's safe
+# operating area, a derating line), not from a picture. tools/pdfcurve.py lists the page's paths with
+# pdfminer under the venv; the frame, the axes, an outline's middle and the interpolation are here.
+
+AXIS_SCALES = ("log", "lin")
+FRAME_TOLERANCE = 2.0  # points: a curve's ends sit on the frame's lines, which have a width
+
+
+def curve_axis(text: str) -> tuple[str, float, float]:
+    """`log:MIN:MAX` or `lin:MIN:MAX`: the value at the frame's left (bottom) edge and at its right (top)."""
+    scale, _, rest = text.partition(":")
+    lo, _, hi = rest.partition(":")
+    try:
+        a, b = float(lo), float(hi)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"an axis is log:MIN:MAX or lin:MIN:MAX, not {text!r}") from None
+    if scale not in AXIS_SCALES or a == b or (scale == "log" and (a <= 0 or b <= 0)):
+        raise argparse.ArgumentTypeError(
+            f"an axis is log:MIN:MAX or lin:MIN:MAX, MIN and MAX apart, not {text!r}"
+        )
+    return scale, a, b
+
+
+def number_list(text: str) -> list[float]:
+    try:
+        return [float(v) for v in text.split(",") if v.strip()]
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"numbers separated by commas, not {text!r}") from None
+
+
+def curve_frame(text: str) -> tuple[float, float, float, float]:
+    vals = number_list(text)
+    if len(vals) != 4 or vals[0] == vals[2] or vals[1] == vals[3]:
+        raise argparse.ArgumentTypeError(f"a frame is x0,y0,x1,y1 in PDF points, not {text!r}")
+    return vals[0], vals[1], vals[2], vals[3]
+
+
+def axis_value(p: float, p0: float, p1: float, axis: tuple[str, float, float]) -> float:
+    """A page coordinate on the axis from p0 (the axis's MIN) to p1 (its MAX), as the axis's value."""
+    scale, lo, hi = axis
+    f = (p - p0) / (p1 - p0)
+    if scale == "log":
+        return 10 ** (math.log10(lo) + f * (math.log10(hi) - math.log10(lo)))
+    return lo + f * (hi - lo)
+
+
+def axis_unit(v: float, axis: tuple[str, float, float]) -> float:
+    """A value where the axis is linear: its log for a log axis."""
+    return math.log10(v) if axis[0] == "log" else v
+
+
+def stations(chain: list[tuple[float, float]]) -> list[float]:
+    """Each point's distance along a polyline, as a fraction of its length."""
+    run = [0.0]
+    for a, b in itertools.pairwise(chain):
+        run.append(run[-1] + math.dist(a, b))
+    return [s / (run[-1] or 1.0) for s in run]
+
+
+def point_at(chain: list[tuple[float, float]], st: list[float], s: float) -> tuple[float, float]:
+    """The point a fraction s along a polyline whose stations are st."""
+    k = min(max(bisect.bisect_right(st, s) - 1, 0), len(chain) - 2)
+    span = st[k + 1] - st[k]
+    t = 0.0 if span == 0 else (s - st[k]) / span
+    a, b = chain[k], chain[k + 1]
+    return a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])
+
+
+def outline_middle(pts: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """A line drawn as a filled outline, out along one edge and back along the other, reduced to its middle.
+    The stroke's two ends are the outline's farthest pair of points, which split the outline into two
+    chains from end to end. Points the same fraction along each chain are paired, at every point of
+    either chain, and each pair's midpoint is a point of the middle. Where both edges run straight their
+    every pair's midpoint lies on the middle; within a stroke's width of a cap the pairs cross the cap
+    and the middle is off by up to half the width. A line that doubles back on itself has other far
+    pairs: select it out of the outline by hand."""
+    p = list(pts)
+    if len(p) > 2 and p[0] == p[-1]:
+        p = p[:-1]
+    n = len(p)
+    i, j, far = 0, 0, -1.0
+    for a in range(n):
+        for b in range(a + 1, n):
+            d = (p[a][0] - p[b][0]) ** 2 + (p[a][1] - p[b][1]) ** 2
+            if d > far:
+                i, j, far = a, b, d
+    one = p[i : j + 1]
+    other = (p[j:] + p[: i + 1])[::-1]
+    st_one, st_other = stations(one), stations(other)
+    middle: list[tuple[float, float]] = []
+    for s in sorted(set(st_one) | set(st_other)):
+        a, b = point_at(one, st_one, s), point_at(other, st_other, s)
+        m = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+        if not middle or m != middle[-1]:
+            middle.append(m)
+    return middle
+
+
+def crossings(
+    points: list[tuple[float, float]], at: float, along: int, axes: tuple[tuple, tuple]
+) -> list[float]:
+    """Where a curve passes a value on one axis (`along` 0 for x, 1 for y): the other axis's values,
+    interpolated where both axes are linear (in decades on a log axis). Crossings closer than 0.2 % of
+    the axis apart are one."""
+    found: list[float] = []
+    other = 1 - along
+    v = axis_unit(at, axes[along])
+    for a, b in itertools.pairwise(points):
+        ua, ub = axis_unit(a[along], axes[along]), axis_unit(b[along], axes[along])
+        if ua == ub or not min(ua, ub) <= v <= max(ua, ub):
+            continue
+        t = (v - ua) / (ub - ua)
+        wa, wb = axis_unit(a[other], axes[other]), axis_unit(b[other], axes[other])
+        w = wa + t * (wb - wa)
+        found.append(10**w if axes[other][0] == "log" else w)
+    span = abs(axis_unit(axes[other][2], axes[other]) - axis_unit(axes[other][1], axes[other]))
+    merged: list[float] = []
+    for y in found:
+        if merged and abs(axis_unit(y, axes[other]) - axis_unit(merged[-1], axes[other])) < 0.002 * span:
+            continue
+        merged.append(y)
+    return merged
+
+
+def curve_groups(paths: list[dict]) -> list[dict]:
+    """The page's paths grouped by how they are drawn: kind, stroke width, stroke and fill, colours."""
+    groups: dict[tuple, dict] = {}
+    for p in paths:
+        key = (p["kind"], p["width"], p["stroke"], p["fill"], p["color"], p["fill_color"])
+        g = groups.setdefault(
+            key, {"kind": p["kind"], "width": p["width"], "stroke": p["stroke"], "fill": p["fill"]}
+        )
+        g.setdefault("color", p["color"] if p["stroke"] else p["fill_color"])
+        g.setdefault("ids", []).append(p["id"])
+        xs = [x for x, _ in p["pts"]]
+        ys = [y for _, y in p["pts"]]
+        box = g.setdefault("bbox", [min(xs), min(ys), max(xs), max(ys)])
+        g["bbox"] = [min(box[0], *xs), min(box[1], *ys), max(box[2], *xs), max(box[3], *ys)]
+        g["points"] = g.get("points", 0) + len(p["pts"])
+    return sorted(groups.values(), key=lambda g: (-g["width"], g["kind"], -len(g["ids"])))
+
+
+def inside(p: dict, frame: tuple[float, float, float, float]) -> bool:
+    x0, x1 = sorted((frame[0], frame[2]))
+    y0, y1 = sorted((frame[1], frame[3]))
+    return all(
+        x0 - FRAME_TOLERANCE <= x <= x1 + FRAME_TOLERANCE
+        and y0 - FRAME_TOLERANCE <= y <= y1 + FRAME_TOLERANCE
+        for x, y in p["pts"]
+    )
+
+
+def cmd_curve(args) -> int:
+    """List a PDF page's paths, or map the curves inside a frame onto the plot's axes."""
+    pdf = Path(args.pdf).resolve()
+    if not pdf.is_file():
+        raise SystemExit(f"curve: {pdf} not found")
+    mapping = (args.frame, args.x, args.y)
+    if any(mapping) and not all(mapping):
+        raise SystemExit("curve: --frame, --x and --y go together")
+    if (args.at or args.at_y or args.paths) and not all(mapping):
+        raise SystemExit("curve: --at, --at-y and --paths need --frame, --x and --y")
+    script = SRC_DIR / "tools" / "pdfcurve.py"
+    # No -s: the venv reads the packages pip installed and reports, wherever pip found them satisfied.
+    proc = subprocess.run(
+        [venv_python(), str(script), str(pdf), str(args.page)],
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    if "No module named 'pdfminer'" in proc.stderr:
+        print(f"curve: pdfminer.six is not in {venv_python()}; install.sh puts it there", file=sys.stderr)
+        return EXIT_SKIP
+    if proc.returncode != 0:
+        print(proc.stderr.strip() or f"curve: pdfcurve exited {proc.returncode}", file=sys.stderr)
+        return EXIT_FAIL
+    page = json.loads(proc.stdout)
+    paths = page["paths"]
+    labels = []
+    for t in page["texts"]:
+        if QUANTITY_RE.match(t["text"]) or re.fullmatch(r"[-+]?\d+(\.\d+)?[eE][-+]?\d+", t["text"]):
+            labels.append(
+                {
+                    "text": t["text"],
+                    "at": [
+                        round((t["bbox"][0] + t["bbox"][2]) / 2, 1),
+                        round((t["bbox"][1] + t["bbox"][3]) / 2, 1),
+                    ],
+                }
+            )
+    if not all(mapping):
+        groups = curve_groups(paths)
+        frames = [p for p in paths if p["kind"] == "rect" and p["stroke"]]
+        frames.sort(key=lambda p: -abs((p["pts"][2][0] - p["pts"][0][0]) * (p["pts"][2][1] - p["pts"][0][1])))
+        listing = {
+            "pdf": str(pdf),
+            "page": args.page,
+            "size": [page["width"], page["height"]],
+            "groups": groups,
+            "frames": [
+                [
+                    min(x for x, _ in p["pts"]),
+                    min(y for _, y in p["pts"]),
+                    max(x for x, _ in p["pts"]),
+                    max(y for _, y in p["pts"]),
+                ]
+                for p in frames[:4]
+            ],
+            "labels": labels,
+        }
+        if args.json:
+            print(json.dumps(listing, indent=2))
+            return EXIT_PASS
+        size = f"{page['width']:g} x {page['height']:g} pt"
+        print(f"curve: {pdf.name} page {args.page}, {size}, {len(paths)} paths")
+        by_id = {p["id"]: p for p in paths}
+        for n, g in enumerate(groups, 1):
+            how = (
+                ", ".join(w for w, on in (("stroked", g["stroke"]), ("filled", g["fill"])) if on)
+                or "unpainted"
+            )
+            b = g["bbox"]
+            kind = g["kind"] + ("s" if len(g["ids"]) > 1 else "")
+            print(
+                f"group {n}: {len(g['ids'])} {kind}, width {g['width']:g}, {how} {g['color']}, "
+                f"x {b[0]:.1f}-{b[2]:.1f} y {b[1]:.1f}-{b[3]:.1f}"
+            )
+            if g["kind"] == "path" or len(g["ids"]) <= 6:
+                for i in g["ids"]:
+                    p = by_id[i]
+                    xs = [x for x, _ in p["pts"]]
+                    ys = [y for _, y in p["pts"]]
+                    shape = (
+                        "outline"
+                        if p["fill"] and len(p["pts"]) >= 6
+                        else ("closed" if p["closed"] else "open")
+                    )
+                    print(
+                        f"   #{i:<5} {len(p['pts']):>4} points  x {min(xs):.2f}-{max(xs):.2f}  "
+                        f"y {min(ys):.2f}-{max(ys):.2f}  {shape}"
+                    )
+        for f in listing["frames"]:
+            print(f"frame? --frame {f[0]:.2f},{f[1]:.2f},{f[2]:.2f},{f[3]:.2f}  (a stroked rectangle)")
+        for lab in labels:
+            print(f"label {lab['text']!r} at x {lab['at'][0]} y {lab['at'][1]}")
+        return EXIT_PASS
+
+    frame, axes = args.frame, (args.x, args.y)
+    if args.paths:
+        wanted = {int(v) for v in args.paths}
+        chosen = [p for p in paths if p["id"] in wanted]
+        missing = sorted(wanted - {p["id"] for p in chosen})
+        if missing:
+            raise SystemExit(f"curve: no path {', '.join(f'#{m}' for m in missing)} on page {args.page}")
+    else:
+        chosen = [p for p in paths if p["kind"] == "path" and len(p["pts"]) >= 4 and inside(p, frame)]
+    chosen.sort(key=lambda p: min(x for x, _ in p["pts"]))
+    curves = []
+    for n, p in enumerate(chosen, 1):
+        pts = [tuple(xy) for xy in p["pts"]]
+        outline = p["fill"] and len(pts) >= 6
+        line = outline_middle(pts) if outline else pts
+        data = [
+            (axis_value(x, frame[0], frame[2], axes[0]), axis_value(y, frame[1], frame[3], axes[1]))
+            for x, y in line
+        ]
+        entry = {"curve": n, "path": p["id"], "points": len(pts), "outline": outline, "data": data}
+        entry["at"] = [{"x": x, "y": crossings(data, x, 0, axes)} for x in args.at or []]
+        entry["at_y"] = [{"y": y, "x": crossings(data, y, 1, axes)} for y in args.at_y or []]
+        curves.append(entry)
+    if args.json:
+        print(json.dumps({"pdf": str(pdf), "page": args.page, "frame": frame, "curves": curves}, indent=2))
+        return EXIT_PASS if curves else EXIT_FAIL
+    if not curves:
+        print(f"curve: no path of 4 points or more inside the frame on page {args.page}", file=sys.stderr)
+        return EXIT_FAIL
+    for c in curves:
+        xs = [x for x, _ in c["data"]]
+        ys = [y for _, y in c["data"]]
+        kind = f"an outline, its middle {len(c['data'])} points" if c["outline"] else "a line"
+        print(
+            f"curve {c['curve']} (#{c['path']}): {c['points']} points, {kind}; "
+            f"x {min(xs):.4g} to {max(xs):.4g}, y {min(ys):.4g} to {max(ys):.4g}"
+        )
+        for a in c["at"]:
+            print(f"  at x={a['x']:g}: y=" + (" / ".join(f"{v:.4g}" for v in a["y"]) or "outside the curve"))
+        for a in c["at_y"]:
+            print(f"  at y={a['y']:g}: x=" + (" / ".join(f"{v:.4g}" for v in a["x"]) or "outside the curve"))
+        if not c["at"] and not c["at_y"]:
+            for x, y in c["data"]:
+                print(f"  {x:.5g} {y:.5g}")
+    return EXIT_PASS
 
 
 # --------------------------------------------------------------- commands
@@ -2223,6 +2722,10 @@ def cmd_design(args) -> int:
     # each hand via's place, since a via passes every layer, and one in a keepout or on another face's
     # pad is a short the DRC would only find later (M40, M41).
     summary["via_problems"] = design.check_via_rules() + design.check_vias()
+    # A part inside an area the design keeps parts out of (a strip, a spacer, a body over the board, M87).
+    summary["part_problems"] = design.check_parts()
+    if summary["part_problems"]:
+        code = EXIT_FAIL
     # Control inputs that can float (a gate, an enable, a switch, an I2C line with nothing holding it):
     # listed for every design, and a failure for one that sets check_pulls.
     summary["pulls"] = design.undefined_inputs()
@@ -2273,11 +2776,521 @@ def cmd_design(args) -> int:
             print(f"  pull: {line}")
         for problem in summary["via_problems"]:
             print(f"  via: {problem}")
+        for problem in summary["part_problems"]:
+            print(f"  part: {problem}")
         for island in summary["islands"]:
             print(f"  island: {', '.join(island)} cut off from their pour; the DRC will report it")
         for f in summary["files"]:
             print(f"  wrote {f}")
     return code
+
+
+# --------------------------------------------------------------------- ci
+#
+# A repository's GitHub workflow replayed here, step by step as the runner runs it, so a push follows
+# the checks its CI runs (PROCESSES.md P14, M85). PyYAML reads the workflow under the venv; the CLI runs it.
+
+CI_SKIP = r"(?i)\b(install|upload)"
+CI_EXPR_RE = re.compile(r"\$\{\{\s*(.*?)\s*\}\}")
+CI_YAML_TO_JSON = (
+    "import json, sys, yaml\n"
+    "json.dump(yaml.safe_load(open(sys.argv[1], encoding='utf-8')), sys.stdout, default=str)\n"
+)
+# GitHub's shells on Linux: no `shell:` is `bash -e {0}`, `shell: bash` adds pipefail and no profile.
+CI_SHELLS = {
+    "": ["bash", "-e"],
+    "bash": ["bash", "--noprofile", "--norc", "-eo", "pipefail"],
+    "sh": ["sh", "-e"],
+    "python": ["python3"],
+}
+CI_RUN = ("", "success()", "always()", "true", "!cancelled()")
+CI_NOT_RUN = ("failure()", "cancelled()", "false")
+
+
+def ci_condition(cond: object) -> bool | None:
+    """An `if:` as the replay can judge it: True, False, or None when it names anything else."""
+    if cond is None or cond is True:
+        return True
+    if cond is False:
+        return False
+    text = str(cond).strip()
+    m = CI_EXPR_RE.fullmatch(text)
+    text = m.group(1).strip() if m else text
+    return True if text in CI_RUN else False if text in CI_NOT_RUN else None
+
+
+def ci_expand(text: str, env: dict, context: dict) -> tuple[str, list[str]]:
+    """`${{ ... }}` replaced as GitHub does before the shell runs: the env context and the github and runner
+    values in `context`. Returns the text and the expressions the replay cannot read."""
+    unknown: list[str] = []
+
+    def sub(m: re.Match) -> str:
+        expr = m.group(1)
+        if re.fullmatch(r"env\.\w+", expr):
+            return env.get(expr[4:], "")
+        if expr in context:
+            return context[expr]
+        unknown.append(expr)
+        return m.group(0)
+
+    return CI_EXPR_RE.sub(sub, text), unknown
+
+
+def ci_env_file(path: Path) -> dict[str, str]:
+    """What a step wrote to $GITHUB_ENV: NAME=value lines and NAME<<DELIMITER blocks."""
+    lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
+    out: dict[str, str] = {}
+    i = 0
+    while i < len(lines):
+        m = re.fullmatch(r"([A-Za-z_]\w*)<<(.+)", lines[i])
+        if m:
+            end = next((k for k in range(i + 1, len(lines)) if lines[k] == m.group(2)), len(lines))
+            out[m.group(1)] = "\n".join(lines[i + 1 : end])
+            i = end + 1
+            continue
+        name, eq, value = lines[i].partition("=")
+        if eq and re.fullmatch(r"[A-Za-z_]\w*", name):
+            out[name] = value
+        i += 1
+    return out
+
+
+def ci_job_order(jobs: dict) -> list[str]:
+    """Job ids in the file's order, each after the jobs it needs."""
+    order: list[str] = []
+
+    def visit(job: str, path: tuple[str, ...] = ()) -> None:
+        if job in order:
+            return
+        if job in path:
+            raise ValueError(f"jobs that need each other: {' -> '.join((*path, job))}")
+        needs = (jobs[job] or {}).get("needs") or []
+        for n in [needs] if isinstance(needs, str) else needs:
+            if n in jobs:
+                visit(n, (*path, job))
+        order.append(job)
+
+    for job in jobs:
+        visit(job)
+    return order
+
+
+def ci_step_name(step: dict) -> str:
+    if step.get("name"):
+        return str(step["name"])
+    if step.get("uses"):
+        return str(step["uses"])
+    return "Run " + (str(step.get("run") or "").strip().splitlines() or [""])[0]
+
+
+def cmd_ci(args) -> int:
+    """Replay a repository's workflow `run` steps in order, as the runner would; CI REPLAY GREEN or RED."""
+    repo = Path(args.repo).resolve()
+    flow_dir = repo / ".github" / "workflows"
+    if args.workflow:
+        named = flow_dir / args.workflow
+        flows = [named if named.is_file() else Path(args.workflow).resolve()]
+        if not flows[0].is_file():
+            raise SystemExit(f"ci: no workflow {args.workflow} in {flow_dir}")
+    else:
+        flows = sorted([*flow_dir.glob("*.yml"), *flow_dir.glob("*.yaml")]) if flow_dir.is_dir() else []
+    say = (lambda *a, **k: None) if args.json else (lambda *a, **k: print(*a, **k, flush=True))
+    if not flows:
+        say(f"ci: no workflow in {flow_dir}")
+        return EXIT_SKIP
+    specs = []
+    for flow in flows:
+        proc = subprocess.run(
+            [venv_python(), "-c", CI_YAML_TO_JSON, str(flow)],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if "No module named 'yaml'" in proc.stderr:
+            print(f"ci: PyYAML is not in {venv_python()}; install.sh puts it there", file=sys.stderr)
+            return EXIT_SKIP
+        if proc.returncode != 0:
+            print(f"ci: {flow}: {(proc.stderr.strip().splitlines() or ['unreadable'])[-1]}", file=sys.stderr)
+            return EXIT_FAIL
+        specs.append((flow, json.loads(proc.stdout) or {}))
+    known = {job for _, spec in specs for job in (spec.get("jobs") or {})}
+    unknown = sorted(set(args.job or []) - known)
+    if unknown:
+        raise SystemExit(f"ci: no job {', '.join(unknown)}; the jobs are {', '.join(sorted(known))}")
+    out = Path(args.out).resolve() if args.out else repo / "build" / "ci"
+    skip = re.compile(args.skip)
+    records: list[dict] = []
+    failed: list[str] = []
+    for flow, spec in specs:
+        jobs = spec.get("jobs") or {}
+        flow_env = {str(k): str(v) for k, v in (spec.get("env") or {}).items()}
+        flow_defaults = (spec.get("defaults") or {}).get("run") or {}
+        for job_id in ci_job_order(jobs):
+            if args.job and job_id not in args.job:
+                continue
+            job = jobs[job_id] or {}
+            jdir = out / (f"{flow.stem}-{job_id}" if len(specs) > 1 else job_id)
+            shutil.rmtree(jdir, ignore_errors=True)
+            (jdir / "runner-temp").mkdir(parents=True)
+            context = {
+                "github.workspace": str(repo),
+                "runner.temp": str(jdir / "runner-temp"),
+                "runner.os": "Linux",
+            }
+            why = None
+            if ci_condition(job.get("if")) is not True:
+                why = (
+                    f"if: {job.get('if')} not evaluated"
+                    if ci_condition(job.get("if")) is None
+                    else "if: false"
+                )
+            for key in ("strategy", "container", "services"):
+                if job.get(key):
+                    why = f"cannot replay a job with `{key}`"
+            if why:
+                records.append(
+                    {"job": job_id, "step": None, "state": "skip" if "if:" in why else "red", "why": why}
+                )
+                say(f"[{job_id}] {'skip ' if 'if:' in why else 'RED  '} the job: {why}")
+                if "if:" not in why:
+                    failed.append(f"{job_id}: {why}")
+                continue
+            defaults = (job.get("defaults") or {}).get("run") or {}
+            base = {**os.environ, **flow_env}
+            for k, v in (job.get("env") or {}).items():
+                base[str(k)], _ = ci_expand(str(v), base, context)
+            added: dict[str, str] = {}
+            paths: list[str] = []
+            started = time.monotonic()
+            job_limit = float(job.get("timeout-minutes") or 360) * 60
+            for n, step in enumerate(job.get("steps") or [], 1):
+                name = ci_step_name(step)
+                rec = {"job": job_id, "step": name}
+                cond = ci_condition(step.get("if"))
+                if "run" not in step:
+                    rec.update(state="skip", why=f"uses {step.get('uses')}")
+                elif skip.search(name):
+                    rec.update(state="skip", why=f"name matches {args.skip}")
+                elif cond is not True:
+                    rec.update(
+                        state="skip", why=f"if: {step['if']}" + (" not evaluated" if cond is None else "")
+                    )
+                if rec.get("state"):
+                    records.append(rec)
+                    say(f"[{job_id}] skip  {name}  ({rec['why']})")
+                    continue
+                env = {**base, **added}
+                bad: list[str] = []
+                for k, v in (step.get("env") or {}).items():
+                    env[str(k)], u = ci_expand(str(v), env, context)
+                    bad += u
+                script, u = ci_expand(str(step["run"]), env, context)
+                bad += u
+                shell = CI_SHELLS.get(
+                    str(step.get("shell") or defaults.get("shell") or flow_defaults.get("shell") or "")
+                )
+                if bad or shell is None:
+                    why = (
+                        f"cannot replay ${{{{ {bad[0]} }}}}"
+                        if bad
+                        else f"cannot replay shell {step.get('shell')}"
+                    )
+                    rec.update(state="red", why=why)
+                    records.append(rec)
+                    failed.append(f"{job_id}: {name} ({why})")
+                    say(f"[{job_id}] RED   {name}  ({why}; --skip its name to leave it out)")
+                    break
+                files = {
+                    k: jdir / f"{n:02d}.{k.lower()}" for k in ("GITHUB_ENV", "GITHUB_PATH", "GITHUB_OUTPUT")
+                }
+                files["GITHUB_STEP_SUMMARY"] = jdir / f"{n:02d}.summary.md"
+                for f in files.values():
+                    f.write_text("", encoding="utf-8")
+                env.update({k: str(f) for k, f in files.items()})
+                env.update(
+                    CI="true",
+                    GITHUB_WORKSPACE=str(repo),
+                    RUNNER_TEMP=context["runner.temp"],
+                    RUNNER_OS="Linux",
+                )
+                if paths:
+                    env["PATH"] = os.pathsep.join([*reversed(paths), env.get("PATH", "")])
+                script_file = jdir / f"{n:02d}.{'py' if shell[0] == 'python3' else 'sh'}"
+                script_file.write_text(script, encoding="utf-8")
+                folder = (
+                    step.get("working-directory")
+                    or defaults.get("working-directory")
+                    or flow_defaults.get("working-directory")
+                    or ""
+                )
+                cwd = repo / str(folder)
+                log = jdir / f"{n:02d}-{re.sub(r'[^A-Za-z0-9]+', '_', name).strip('_')[:60]}.log"
+                limit = job_limit - (time.monotonic() - started)
+                if step.get("timeout-minutes"):
+                    limit = min(limit, float(step["timeout-minutes"]) * 60)
+                say(f"[{job_id}] run   {name}  ({log})")
+                t0 = time.monotonic()
+                with log.open("w", encoding="utf-8") as fh:
+                    try:
+                        code = subprocess.run(
+                            [*shell, str(script_file)],
+                            cwd=cwd,
+                            env=env,
+                            stdout=fh,
+                            stderr=subprocess.STDOUT,
+                            timeout=max(limit, 1),
+                        ).returncode
+                    except subprocess.TimeoutExpired:
+                        code = "timeout"
+                added.update(ci_env_file(files["GITHUB_ENV"]))
+                paths += [
+                    ln.strip()
+                    for ln in files["GITHUB_PATH"].read_text(encoding="utf-8").splitlines()
+                    if ln.strip()
+                ]
+                seconds = round(time.monotonic() - t0, 1)
+                rec.update(state="ok" if code == 0 else "red", exit=code, seconds=seconds, log=str(log))
+                records.append(rec)
+                say(f"[{job_id}] exit {code}  {name}  [{seconds}s]")
+                if code != 0:
+                    for ln in log.read_text(encoding="utf-8", errors="replace").splitlines()[-15:]:
+                        say(f"       | {ln}")
+                    if step.get("continue-on-error") is True:
+                        rec["why"] = "continue-on-error"
+                        continue
+                    failed.append(f"{job_id}: {name}")
+                    break
+    ran = [r for r in records if r.get("state") in ("ok", "red")]
+    verdict = EXIT_FAIL if failed else EXIT_PASS if ran else EXIT_SKIP
+    line = (
+        "CI REPLAY GREEN"
+        if verdict == EXIT_PASS
+        else "CI REPLAY RED: " + "; ".join(failed)
+        if failed
+        else ("CI REPLAY: no run step to replay")
+    )
+    if args.json:
+        print(json.dumps({"repo": str(repo), "steps": records, "verdict": line}, indent=2))
+    else:
+        print(line)
+    return verdict
+
+
+# ----------------------------------------------------------------- mutate
+#
+# Proof that a firmware's host tests can fail (PROCESSES.md P18 step 4): each mutation breaks one behaviour
+# in a copy of the tree, and the project's own test command must fail on it. The list stays in the project.
+
+MUTATION_KEYS = ("name", "file", "old", "new")
+MUTATE_TEST = "make -k test"
+# A compiler's error line (gcc, clang): a mutant that does not build proves nothing about the tests.
+BUILD_ERROR_RE = re.compile(r"^\S+?:\d+(?::\d+)?: (?:fatal )?error: .*$", re.M)
+
+
+def read_mutations(path: Path) -> tuple[list[dict], str | None]:
+    """The project's mutation list and its test command (None: the default). JSON: a list of {"name",
+    "file", "old", "new"}, or {"test": CMD, "mutations": [...]}. Python: a top-level `MUTATIONS = [...]` of
+    (name, file, old, new) tuples or dicts, and an optional `TEST = "..."`, read as literals and never run."""
+    text = path.read_text(encoding="utf-8")
+    test = None
+    if path.suffix == ".py":
+        found = {}
+        for node in ast.parse(text, filename=str(path)).body:
+            target = node.targets[0] if isinstance(node, ast.Assign) and len(node.targets) == 1 else None
+            target = node.target if isinstance(node, ast.AnnAssign) else target
+            if isinstance(target, ast.Name) and target.id in ("MUTATIONS", "TEST") and node.value is not None:
+                try:
+                    found[target.id] = ast.literal_eval(node.value)
+                except ValueError as exc:
+                    raise ValueError(
+                        f"{path.name}:{node.lineno}: {target.id} is not a literal ({exc})"
+                    ) from None
+        if "MUTATIONS" not in found:
+            raise ValueError(f"{path.name}: no top-level MUTATIONS = [...]")
+        raw, test = found["MUTATIONS"], found.get("TEST")
+    else:
+        data = json.loads(text)
+        raw, test = (data.get("mutations"), data.get("test")) if isinstance(data, dict) else (data, None)
+    mutations: list[dict] = []
+    for i, m in enumerate(raw or [], 1):
+        if isinstance(m, (list, tuple)) and len(m) == len(MUTATION_KEYS):
+            m = dict(zip(MUTATION_KEYS, m, strict=True))
+        if not isinstance(m, dict) or any(not isinstance(m.get(k), str) for k in MUTATION_KEYS):
+            raise ValueError(f"{path.name}: mutation {i} needs name, file, old and new, each as text")
+        if not m["old"]:
+            raise ValueError(f"{path.name}: mutation {i} ({m['name']}) has an empty old text")
+        mutations.append({k: m[k] for k in MUTATION_KEYS})
+    names = [m["name"] for m in mutations]
+    twice = sorted({n for n in names if names.count(n) > 1})
+    if twice:
+        raise ValueError(f"{path.name}: mutation names used twice: {', '.join(twice)}")
+    if test is not None and not isinstance(test, str):
+        raise ValueError(f"{path.name}: TEST is not a command line")
+    return mutations, test
+
+
+def mutation_run(src: Path, work: Path, mutation: dict | None, test: str, timeout: int) -> dict:
+    """Copy the tree (without build/), apply one mutation, run the test command there."""
+    shutil.rmtree(work, ignore_errors=True)
+    shutil.copytree(src, work, ignore=shutil.ignore_patterns("build"), symlinks=True)
+    if mutation:
+        path = work / mutation["file"]
+        path.write_bytes(path.read_bytes().replace(mutation["old"].encode(), mutation["new"].encode(), 1))
+    t0 = time.monotonic()
+    try:
+        proc = subprocess.run(["bash", "-c", test], cwd=work, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return {"exit": None, "line": f"the tests did not finish in {timeout} s", "seconds": timeout}
+    text = (proc.stdout or "") + "\n" + (proc.stderr or "")
+    lines = text.splitlines()
+    error = BUILD_ERROR_RE.search(text)
+    line = next((ln for ln in lines if "FAIL" in ln or "failed:" in ln), None)
+    line = line or next((ln for ln in lines if "Error" in ln), "")
+    return {
+        "exit": proc.returncode,
+        "build_error": error.group(0).strip() if error and proc.returncode != 0 else None,
+        "line": line.strip(),
+        "seconds": round(time.monotonic() - t0, 1),
+        "tail": lines[-15:],
+    }
+
+
+def cmd_mutate(args) -> int:
+    """Each mutation in the project's list, in its own copy of the firmware, must fail the tests."""
+    src = Path(args.firmware).resolve()
+    if not src.is_dir():
+        raise SystemExit(f"mutate: {src} is not a folder")
+    try:
+        mutations, listed_test = read_mutations(Path(args.mutations).resolve())
+    except (OSError, ValueError, SyntaxError) as exc:
+        raise SystemExit(f"mutate: {exc}") from None
+    test = args.test or listed_test or MUTATE_TEST
+    if args.only:
+        mutations = [m for m in mutations if any(o in m["name"] for o in args.only)]
+    say = (lambda *a: None) if args.json else (lambda *a: print(*a, flush=True))
+    # Every anchor is checked before anything runs: an old text that is not in its file exactly once
+    # would mutate nothing, or the wrong place, and look like a survivor or a catch.
+    anchors = []
+    for m in mutations:
+        path = src / m["file"]
+        count = path.read_bytes().count(m["old"].encode()) if path.is_file() else -1
+        if count != 1:
+            anchors.append(
+                f"{m['name']}: {m['file']} "
+                + ("is not there" if count < 0 else f"holds the old text {count} times")
+            )
+    if anchors or not mutations:
+        for a in anchors:
+            print(f"mutate: anchor: {a}", file=sys.stderr)
+        if not mutations:
+            print("mutate: no mutation to run", file=sys.stderr)
+        return EXIT_FAIL
+    t0 = time.monotonic()
+    work = Path(args.work).resolve() if args.work else Path(tempfile.mkdtemp(prefix="workcenter-mutate-"))
+    try:
+        base = mutation_run(src, work / "unmutated", None, test, args.timeout)
+        if base["exit"] != 0:
+            how = base["line"] if base["exit"] is None else f"exit {base['exit']}"
+            print(f"mutate: `{test}` fails before any mutation ({how}):", file=sys.stderr)
+            for ln in base.get("tail", []):
+                print(f"       | {ln}", file=sys.stderr)
+            return EXIT_FAIL
+        say(f"mutate: {len(mutations)} mutations of {src}, `{test}` passes unmutated in {base['seconds']}s")
+
+        def one(item: tuple[int, dict]) -> dict:
+            copy = work / f"m{item[0]:03d}"
+            result = mutation_run(src, copy, item[1], test, args.timeout)
+            if not args.work:
+                shutil.rmtree(copy, ignore_errors=True)
+            return result
+
+        results = []
+        marks = {"caught": "caught  ", "survived": "SURVIVED", "no build": "NOBUILD "}
+        with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
+            for m, r in zip(mutations, pool.map(one, enumerate(mutations)), strict=True):
+                state = "no build" if r.get("build_error") else "caught" if r["exit"] != 0 else "survived"
+                results.append({"name": m["name"], "file": m["file"], "state": state, **r})
+                say(f"{marks[state]} {m['name']}: {r.get('build_error') or r['line']}")
+    finally:
+        if not args.work:
+            shutil.rmtree(work, ignore_errors=True)
+    counts = {s: sum(r["state"] == s for r in results) for s in ("caught", "survived", "no build")}
+    seconds = round(time.monotonic() - t0, 1)
+    if args.json:
+        for r in results:
+            r.pop("tail", None)
+        print(
+            json.dumps({"firmware": str(src), "test": test, "counts": counts, "mutations": results}, indent=2)
+        )
+    else:
+        print(
+            f"mutate: {len(results)} mutations, {counts['caught']} caught, {counts['survived']} survived, "
+            f"{counts['no build']} did not build  [{seconds}s]"
+        )
+        for r in results:
+            if r["state"] != "caught":
+                print(f"  {r['state']}: {r['name']} ({r['file']})")
+    return EXIT_FAIL if counts["survived"] or counts["no build"] else EXIT_PASS
+
+
+def check_design(args) -> int:
+    """`design --check`: regenerate the design into a scratch folder (or --out) and compare the project and
+    schematic files with the design's own, the way a board repository's CI does. Exit 1 on a difference
+    or on the design step's own failure (M85), whose files CI would compare all the same."""
+    if args.route:
+        raise SystemExit("design: --check regenerates without routing, as CI does; leave out --route")
+    design_path = Path(args.design).resolve()
+    project_dir = design_path.parent
+    keep = Path(args.out).resolve() if args.out else None
+    if keep == project_dir:
+        raise SystemExit("design: --check --out names the design's own folder; name a scratch folder")
+    with contextlib.ExitStack() as stack:
+        out_dir = keep or Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="workcenter-check-")))
+        run_args = argparse.Namespace(**{**vars(args), "out": str(out_dir), "route": False, "check": False})
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed) if args.json else contextlib.nullcontext():
+            code = cmd_design(run_args)
+        regenerated = sorted(out_dir.glob("*.kicad_pro")) + sorted(out_dir.glob("*.kicad_sch"))
+        files = []
+        for f in regenerated:
+            mine = project_dir / f.name
+            entry = {"file": f.name, "state": "same"}
+            if not mine.is_file():
+                entry["state"] = "missing"
+            elif mine.read_bytes() != f.read_bytes():
+                old, new = mine.read_bytes().splitlines(), f.read_bytes().splitlines()
+                pairs = enumerate(zip(old, new, strict=False))
+                line = next((i for i, (a, b) in pairs if a != b), min(len(old), len(new)))
+                entry.update(
+                    state="differs",
+                    line=line + 1,
+                    project=old[line].decode(errors="replace").strip()[:100] if line < len(old) else "(end)",
+                    design=new[line].decode(errors="replace").strip()[:100] if line < len(new) else "(end)",
+                )
+            files.append(entry)
+    bad = [f for f in files if f["state"] != "same"]
+    verdict = EXIT_FAIL if bad or code == EXIT_FAIL or not files else EXIT_PASS
+    if args.json:
+        summary = json.loads(printed.getvalue() or "{}")
+        print(json.dumps({"design": summary, "design_exit": code, "files": files, "exit": verdict}, indent=2))
+        return verdict
+    for f in files:
+        print(f"check: {f['state']:8} {f['file']}")
+        if f["state"] == "differs":
+            print(f"         line {f['line']}: project {f['project']!r}")
+            print(f"         line {f['line']}: design  {f['design']!r}")
+        elif f["state"] == "missing":
+            print(f"         {project_dir} has no {f['file']}: generate it and commit it")
+    if code == EXIT_FAIL:
+        print(f"check: the design step exited {code}; a board repository's CI fails on it (M85)")
+    if not files:
+        print("check: the design wrote no .kicad_pro or .kicad_sch")
+    name = design_path.parent.name
+    if verdict == EXIT_PASS:
+        print(f"check: {name}: {len(files)} files match {design_path.name}")
+    else:
+        print(f"check: {name}: red, {len(bad)} of {len(files)} files differ from {design_path.name}")
+    return verdict
 
 
 KISTACK_DIR = Path(os.environ.get("KISTACK_DIR", SRC_DIR / "third_party" / "kistack"))
@@ -2336,6 +3349,99 @@ def cmd_placement(args) -> int:
     if "No module named 'shapely'" in proc.stderr or "No module named 'pcbnew'" in proc.stderr:
         return EXIT_SKIP
     return EXIT_PASS if proc.returncode == 0 else EXIT_FAIL
+
+
+INSPECT_SCRIPT = SRC_DIR / "tools" / "inspect_board.py"
+INSPECT_VIEWS = ("map", "list", "probe", "net", "islands", "resistance", "crossed")
+
+
+def point(value: str) -> tuple[float, float]:
+    """x,y in mm."""
+    try:
+        x, y = (float(v) for v in value.split(","))
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"a point is x,y in mm, not {value!r}") from None
+    return (x, y)
+
+
+def track_points(value: str) -> list[tuple[float, float]]:
+    pts = [point(p) for p in value.split()]
+    if len(pts) < 2:
+        raise argparse.ArgumentTypeError(f'a track is 2 points or more, "x,y x,y ...", not {value!r}')
+    return pts
+
+
+def pad_nets(value: str) -> dict[str, str]:
+    nets = dict(item.split("=", 1) for item in value.split(",") if "=" in item)
+    if not nets or any(not k or not v for k, v in nets.items()):
+        raise argparse.ArgumentTypeError(f"pad nets are PAD=NET,PAD=NET, not {value!r}")
+    return nets
+
+
+def board_file(path: str) -> str:
+    project = find_project(path)
+    if project.pcb is None:
+        raise SystemExit(f"inspect: {project.dir} has no .kicad_pcb")
+    return str(project.pcb)
+
+
+def cmd_inspect(args) -> int:
+    """Read a board with KiCad's own geometry: tools/inspect_board.py under the venv's Python, which
+    sees pcbnew and Pillow; it writes only map's images, into --out."""
+    spec: dict = {"what": args.view, "board": board_file(args.board), "json": args.json or args.inspect_json}
+    if getattr(args, "box", None):
+        x0, x1, y0, y1 = args.box
+        if not (x0 < x1 and y0 < y1):
+            raise SystemExit("inspect: --box is X0 X1 Y0 Y1 with X0 < X1 and Y0 < Y1")
+        spec["box"] = args.box
+    if args.view == "map":
+        spec["layers"] = [ly for arg in args.layers or [] for ly in arg.split(",") if ly]
+        spec["scale"] = args.scale
+        spec["out"] = str(
+            Path(args.out).resolve() if args.out else Path(spec["board"]).parent / "build" / "inspect"
+        )
+    elif args.view == "list":
+        spec.update(layer=args.layer, net=args.net)
+    elif args.view == "probe":
+        if sum(x is not None for x in (args.via, args.track, args.part)) != 1:
+            raise SystemExit("inspect probe: give one of --via X,Y, --track 'X,Y X,Y ...' or --part REF")
+        if (args.via or args.track) and not args.net:
+            raise SystemExit("inspect probe: --via and --track need --net")
+        if args.track and not args.layer:
+            raise SystemExit("inspect probe: --track needs --layer")
+        if args.part and args.at is None:
+            raise SystemExit("inspect probe: --part needs --at X,Y")
+        spec.update(
+            via=args.via,
+            track=args.track,
+            part=args.part,
+            at=args.at,
+            rot=args.rot,
+            footprint=args.footprint,
+            nets=args.nets,
+            back=args.back,
+            net=args.net,
+            layer=args.layer,
+            size=args.size,
+            drill=args.drill,
+            width=args.width,
+        )
+    elif args.view == "net":
+        spec["net"] = args.net
+    elif args.view == "islands":
+        spec["net"] = args.net
+    elif args.view == "resistance":
+        spec.update(net=args.net, temp=args.temp, plating=args.plating)
+        spec["from"], spec["to"] = getattr(args, "from"), args.to
+    elif args.view == "crossed":
+        spec["new"] = board_file(args.new) if args.new else None
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    proc = subprocess.run(
+        [venv_python(), "-s", str(INSPECT_SCRIPT), json.dumps(spec)], capture_output=True, text=True, env=env
+    )
+    sys.stdout.write(proc.stdout)
+    sys.stderr.write("".join(ln for ln in proc.stderr.splitlines(True) if not KICAD_NOISE.search(ln)))
+    return proc.returncode if proc.returncode in (EXIT_PASS, EXIT_FAIL, EXIT_SKIP) else EXIT_FAIL
 
 
 USER_SETTINGS = Path.home() / ".claude" / "settings.json"
@@ -2498,7 +3604,18 @@ def main(argv: list[str] | None = None) -> int:
     add_project_cmd("erc", "electrical rules check on the schematic")
     p = add_project_cmd("drc", "design rules check on the board, with schematic parity")
     p.add_argument("--fab", help="also check a fab's limits: a rule set in rules/ or a .kicad_dru path")
-    add_project_cmd("sim", "run ngspice on sim/*.cir and check *.expect.json bounds")
+    p = add_project_cmd(
+        "sim",
+        "run ngspice on sim/*.cir and check *.expect.json bounds; writes sim/<deck>.log and, for a deck "
+        "that includes a library model, sim/run/<deck>/",
+    )
+    p.add_argument("--deck", help="run only sim/DECK.cir, the gate's way, and print every value it printed")
+    p.add_argument(
+        "--keep",
+        action="store_true",
+        help="run each deck from sim/run/<deck>/ (the deck, its translated models, its .spiceinit), "
+        "leave the folder, and print the one command that reruns it by hand",
+    )
     p = add_project_cmd("export", "fabrication outputs: gerbers, drill, BOM, schematic PDF")
     p.add_argument("--step", action="store_true", help="also export a STEP model")
     p = add_project_cmd("gates", "run erc, drc, sim, export in order; stop at the first red")
@@ -2584,6 +3701,73 @@ def main(argv: list[str] | None = None) -> int:
         help="copy the templates into the package, a writeup per deck, never over a file that exists",
     )
     p = sub.add_parser(
+        "fetch",
+        help="GET one datasheet, SPICE model or 3D body once, under the workcenter's own name, into --to; "
+        "print its sources.csv row; --row appends it to the library's sources.csv. Writes those 2 files only",
+    )
+    p.add_argument("url", help="the maker's URL for the file")
+    p.add_argument("--to", required=True, help="where the library keeps it: <library>/<maker>/<file>")
+    p.add_argument("--mpn", help="the manufacturer part number the row names")
+    p.add_argument("--kind", help="datasheet, spice or step (default: from the file's suffix)")
+    p.add_argument("--member", help="the file inside a zip at the URL")
+    p.add_argument(
+        "--sources", help="the library's sources.csv (default: the nearest sources.csv at or above --to)"
+    )
+    p.add_argument(
+        "--row",
+        action="store_true",
+        help="append the row to sources.csv; refused when the MPN has a row of that kind",
+    )
+    p = sub.add_parser(
+        "curve",
+        help="a PDF page's vector paths grouped by stroke; with --frame, --x and --y each curve inside the "
+        "frame as data on the plot's axes. Writes nothing",
+    )
+    p.add_argument("pdf", help="the datasheet")
+    p.add_argument("--page", type=int, default=1, help="the page, counted from 1 (default 1)")
+    p.add_argument("--frame", type=curve_frame, help="the plot's frame in PDF points: x0,y0,x1,y1")
+    p.add_argument("--x", type=curve_axis, help="the x axis from x0 to x1: log:MIN:MAX or lin:MIN:MAX")
+    p.add_argument("--y", type=curve_axis, help="the y axis from y0 to y1: log:MIN:MAX or lin:MIN:MAX")
+    p.add_argument(
+        "--paths", type=number_list, help="the path ids to map (default: every path inside the frame)"
+    )
+    p.add_argument("--at", type=number_list, help="print each curve's y at these x values")
+    p.add_argument("--at-y", type=number_list, help="print each curve's x at these y values")
+    p = sub.add_parser(
+        "ci",
+        help="replay a repository's GitHub workflow run steps here, in order, under bash -e with $GITHUB_ENV "
+        "carried between steps; prints CI REPLAY GREEN only when every step exits 0. Writes each step's "
+        "script and log in --out; the steps write what they write",
+    )
+    p.add_argument("repo", nargs="?", default=".", help="the repository (default: the current folder)")
+    p.add_argument("--job", action="append", help="replay only this job (repeatable)")
+    p.add_argument("--workflow", help="one workflow, a file in .github/workflows or a path (default: all)")
+    p.add_argument(
+        "--skip", default=CI_SKIP, help=f"skip steps whose name matches this regex (default {CI_SKIP})"
+    )
+    p.add_argument("--out", help="the steps' scripts and logs (default <repo>/build/ci)")
+    p = sub.add_parser(
+        "mutate",
+        help="apply each mutation in the project's list to its own copy of the firmware and run its tests; "
+        "fails when a mutation survives or does not build. Writes only the copies, in --work or a "
+        "temporary folder",
+    )
+    p.add_argument("firmware", help="the firmware folder the tests run in")
+    p.add_argument(
+        "--mutations", required=True, help="the project's list: a JSON file, or a .py with MUTATIONS"
+    )
+    p.add_argument(
+        "--test", help=f"the test command, run in each copy (default: the list's, else {MUTATE_TEST})"
+    )
+    p.add_argument(
+        "--only", action="append", help="run only mutations whose name holds this text (repeatable)"
+    )
+    p.add_argument("--jobs", type=int, default=1, help="mutations run at once (default 1)")
+    p.add_argument(
+        "--timeout", type=int, default=600, help="seconds per test run; a run past it counts as caught"
+    )
+    p.add_argument("--work", help="keep the copies here (default: a temporary folder, removed after)")
+    p = sub.add_parser(
         "design", help="build a kicadgen design.py into a KiCad project; --route runs FreeRouting"
     )
     p.add_argument("design", help="path to a design file exposing build() -> kicadgen.Design")
@@ -2594,6 +3778,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--rounds", type=int, default=4, help="route again with a via reserved beside each pad a pour lost"
     )
+    p.add_argument(
+        "--check",
+        action="store_true",
+        help="regenerate into a temporary folder (or --out) and compare the .kicad_pro and .kicad_sch with "
+        "the design's own; exit 1 on a difference or a failed design step. Writes nothing in the project",
+    )
     p = sub.add_parser(
         "placement",
         help="run a kistack layout-placement check on a board file: " + ", ".join(PLACEMENT_CHECKS),
@@ -2601,6 +3791,84 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("check", help=f"one of {', '.join(PLACEMENT_CHECKS)}")
     p.add_argument("board", help="project directory or .kicad_pcb")
     p.add_argument("args", nargs=argparse.REMAINDER, help="the check's own arguments, e.g. U1 or --ic U1")
+    p = sub.add_parser(
+        "inspect",
+        help="read a board with KiCad's own geometry: "
+        + ", ".join(INSPECT_VIEWS)
+        + "; only map writes files",
+    )
+    isub = p.add_subparsers(dest="view", required=True)
+
+    def add_view(name: str, help_text: str, box: bool = False):
+        q = isub.add_parser(name, help=help_text)
+        q.add_argument("board", help="project directory or .kicad_pcb")
+        q.add_argument("--json", dest="inspect_json", action="store_true", help="machine-readable output")
+        if box:
+            q.add_argument(
+                "--box",
+                nargs=4,
+                type=float,
+                required=True,
+                metavar=("X0", "X1", "Y0", "Y1"),
+                help="window, mm",
+            )
+        return q
+
+    q = add_view("map", "one PNG per copper layer of a window, written to --out", box=True)
+    q.add_argument("--layers", nargs="+", help="copper layers to draw (default every one), e.g. F.Cu In2.Cu")
+    q.add_argument("--scale", type=float, default=60.0, help="pixels per mm (default 60)")
+    q.add_argument("--out", help="folder for the PNGs (default <project>/build/inspect)")
+    q = add_view(
+        "list", "pads, tracks, vias, courtyards and keep-outs in a window, as text or --json", box=True
+    )
+    q.add_argument("--layer", help="one copper layer")
+    q.add_argument("--net", help="one net")
+    q = add_view(
+        "probe", "a via, a track or a part at a new place against the board's rules; exit 1 on a conflict"
+    )
+    q.add_argument("--via", type=point, metavar="X,Y", help="a via at X,Y (needs --net)")
+    q.add_argument(
+        "--track", type=track_points, metavar="'X,Y X,Y ...'", help="a track (needs --net, --layer)"
+    )
+    q.add_argument(
+        "--part", metavar="REF", help="a part on the board, or a new one with --footprint, put at --at"
+    )
+    q.add_argument(
+        "--footprint", metavar="LIB:NAME", help="a new part's footprint (project or KiCad library)"
+    )
+    q.add_argument(
+        "--nets", type=pad_nets, metavar="1=NET,2=NET", help="a new part's pad nets (default none)"
+    )
+    q.add_argument("--back", action="store_true", help="a new part on the bottom face")
+    q.add_argument("--at", type=point, metavar="X,Y", help="where --part goes, its anchor")
+    q.add_argument(
+        "--rot", type=float, help="--part's angle, degrees, as in the board file (default: as it is)"
+    )
+    q.add_argument("--net", help="the new via's or track's net")
+    q.add_argument("--layer", help="the track's copper layer")
+    q.add_argument("--size", type=float, help="via diameter, mm (default: the net class's)")
+    q.add_argument("--drill", type=float, help="via drill, mm (default: the net class's)")
+    q.add_argument("--width", type=float, help="track width, mm (default: the net class's)")
+    q = add_view(
+        "net", "a net's pads, tracks, vias and pours as connected groups; exit 1 on an unconnected one"
+    )
+    q.add_argument("net", help="the net's name")
+    q = add_view("islands", "a net's pour pieces per layer and what each holds; exit 1 on an island")
+    q.add_argument("--net", default="GND", help="the poured net (default GND)")
+    q = add_view("resistance", "the copper path's resistance between two pads, along the tracks")
+    q.add_argument("net", help="the net's name")
+    q.add_argument("--from", required=True, metavar="REF.PAD", help="one end, e.g. C5.1")
+    q.add_argument("--to", required=True, metavar="REF.PAD", help="the other end, e.g. U2.1")
+    q.add_argument("--temp", type=float, default=20.0, help="copper temperature, °C (default 20)")
+    q.add_argument("--plating", type=float, help="via barrel plating, mm (default: the board's setting)")
+    q = add_view(
+        "crossed",
+        "the nets whose tracks or vias crossed a window; with --new, which it leaves open",
+        box=True,
+    )
+    q.add_argument(
+        "--new", metavar="BOARD", help="the new board: says which of those nets it no longer connects"
+    )
 
     doctools().register(sub, sys.modules[__name__])
 
@@ -2611,8 +3879,10 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_doctor(args)
     if args.command == "placement":
         return cmd_placement(args)
+    if args.command == "inspect":
+        return cmd_inspect(args)
     if args.command == "design":
-        return cmd_design(args)
+        return check_design(args) if args.check else cmd_design(args)
     if args.command == "render":
         return cmd_gate(
             args,
@@ -2633,6 +3903,16 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_sources(args)
     if args.command == "verify":
         return cmd_verify(args)
+    if args.command == "sim":
+        return cmd_sim(args)
+    if args.command == "fetch":
+        return cmd_fetch(args)
+    if args.command == "curve":
+        return cmd_curve(args)
+    if args.command == "ci":
+        return cmd_ci(args)
+    if args.command == "mutate":
+        return cmd_mutate(args)
     if args.command == "autoroute":
         return cmd_gate(
             args, gate_autoroute, dsn=args.dsn, passes=args.passes, threads=args.threads, timeout=args.timeout

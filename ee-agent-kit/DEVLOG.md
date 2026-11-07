@@ -75,6 +75,51 @@ and moved it in before any commit.
 
 Evidence: `tests/test_doctools.py` (20 tests); `make verify` GREEN, 167
 tests.
+## 2026-11-07 — Datasheets, decks and CI checks without scratch scripts
+
+The owner asked for every tool the Last Hit work built outside the
+workcenter to move into it. This part covers datasheets, simulation and CI.
+`workcenter fetch` keeps a part's file and writes its library row.
+`workcenter curve` reads a datasheet's curve from the PDF's own lines.
+`workcenter sim --deck` runs one deck the gate's way. `design --check` and
+`ci` run a board repository's CI steps here. `mutate` runs a firmware's
+mutation list. `kicadgen.py symbol-add` draws a symbol from a pin table.
+
+On Last Hit v0.16, the heater deck read 0.505 V through `sim --deck`.
+A bare `ngspice -b` read 3.0 V, the trap of M94. The fuse's 1.0 A curve
+read 5.77 ms at 4 A, not the scratch script's 6.09 ms. That script
+averaged the nearest points, which on a steep stretch weighs one edge more.
+The middle of the two edges is 5.77 ms. The mutation run caught all 50
+mutations, after one fix in a scratch copy: one mutation's text no longer
+matched `app.c`, so the board's own script counts it as a survivor today.
+The replay of the board's firmware job tested 12 versions and printed
+`CI REPLAY GREEN`. One fetch of the fuse's datasheet returned the bytes its
+library row records.
+
+Evidence: `tests/test_fetch.py`, `test_curve.py`, `test_ci.py`,
+`test_mutate.py`, new tests in `test_sources.py` and `test_kicadgen.py`;
+`make verify` green on `feat/sources-sim`.
+## 2026-11-07 — Looking at a routed board before changing it
+
+Five mistakes on Last Hit v0.16 had one cause. A part or a via went onto a
+routed board before anyone looked at what was there. Fuse F1 first landed
+where the cell's strip stands, which only the assembly script knew. Fuse F2
+split a ground pour. F1 also sat on the path the router had used for the
+3.1 V feed, and the next route cost two hours. The scripts that found these were
+written for one board. The owner asked for every such tool in the
+workcenter.
+
+`workcenter inspect` now reads a board with KiCad's own geometry. It draws
+each layer of a window, lists what lies there, and probes a new via, track
+or part against the DRC's rules and every keep-out by name. It also gives a
+net's connected groups, a pour's islands, a path's resistance from the
+stackup, and the nets that crossed a spot. On v0.16 the probe finds the
+overlap and the keep-out that two of the mistakes hit. The joint's inner
+run reads 56.8 mOhm, where an older deck took 10. A design can now keep
+parts out of an area, and P29 says how to place a part on a routed board.
+
+Evidence: `tests/test_inspect.py`; the fixture `tests/boards/inspect-four-layer`;
+`MISTAKES.md` M87 to M91.
 
 ## 2026-11-05 — A verification package an inspector can check
 
