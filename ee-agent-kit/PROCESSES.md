@@ -217,6 +217,10 @@ When: every shell command.
    writes last, or on the PID it printed.
 4. Long jobs run in the background with a log file; foreground commands
    stay under the tool's timeout.
+5. A helper given a worktree writes only under it. A path is built from the
+   worktree, never from its parent; before the report, `git -C <worktree>
+   status` and a listing of the parent show nothing of the helper's outside
+   it (M102).
 
 Done when: the command ran where and how you meant, and the paths it
 printed are the ones you expected.
@@ -452,9 +456,14 @@ charger, or any other load from a battery.
    --mutations <list>`) and see a named test fail.
 5. Every output that drives a load is off at reset, in every fault
    handler, and when the loop that commands it stops (a deadman).
+6. After any firmware change, `workcenter mutate <firmware> --mutations
+   <list>` runs again. A mutation whose anchor no longer matches is fixed
+   in the same commit as the edit that moved it, never left to count as a
+   survivor (M101).
 
 Done when: the host tests cover steps 1, 2, 3 and 5, the mutation run
-catches every mutation, and the cut-off times are in the firmware README.
+catches every mutation after the last firmware change, and the cut-off
+times are in the firmware README.
 
 ## P19 — Footprint geometry the generator transforms
 
@@ -531,22 +540,47 @@ before the first edit of a request.
 1. A new feature is a new version. A feature is anything the boards or the
    firmware do or carry that the latest version does not: a part, a pad, a
    net, a connection, a board, a dimension, a firmware behaviour. Copy the
-   latest folder to the next number first (`cp -a`, then remove its
-   `build/` folders) and make every edit in the copy. When unsure whether a
-   change is a feature, it is one.
+   latest folder to the next number first and make every edit in the copy.
+   When unsure whether a change is a feature, it is one.
+   `workcenter version new <repo> <vNEXT>` makes the copy (`--from <vPREV>`
+   names another source): the folder without its `build/` folders, the new
+   README's banner naming where it came from, the previous README's banner
+   archived with its last commit, the root README's new row
+   (`(current) ... in work`) and the previous row's commit, CLAUDE.md's
+   version references, and the version's parts files. It prints what stays
+   by hand (the labels in `design.py`, the README's "What changed"): do each.
 2. The latest version takes only what finishes the request it was made
    for: gate fixes, renders, documents, what its own CI asks for. Once it is
    pushed and a new feature is asked for, it is finished: its README banner
    says archived, with its last commit.
 3. In the new folder, the README banner names the version it came from; the
    series index gets a row; the project's CLAUDE.md names the new version
-   as the one in work.
-4. `git diff --stat <its last commit> -- <previous version>/` shows one
+   as the one in work. Read each after `version new`.
+4. The version's README keeps the layout of
+   `templates/project/README-version.md`: the status table under the
+   title; "What changed in vX" above the older versions' sections, opening
+   with the findings, the owner's answers and what the version does (one
+   table), then Board, Simulation, Firmware, Parts and cost, Verification
+   summary; the standing sections, which describe the board as it is now;
+   Decisions, newest first, each with its version; Open items as
+   "Candidates for vNEXT" and "On the bench". The gates report,
+   `docs/gates.md`, keeps the layout of `templates/project/gates.md`.
+5. A generated table is never edited by hand, and every copy of it carries
+   its markers. The cost totals, in the root README and in
+   `parts/README.md`, sit between `<!-- workcenter costs -->` and
+   `<!-- /workcenter costs -->`, and `workcenter costs <repo>` writes every
+   marked copy (M97); a copy without markers gets them or goes. The gates
+   tables come from `workcenter gates <project> --report docs/gates.md`, once
+   per board. The version's `CONTENTS.md` and `datasheets/` come from
+   `workcenter docs <version dir>`, after any change to the version's parts,
+   files or a datasheet.
+6. `git diff --stat <its last commit> -- <previous version>/` shows one
    file, its README, with one line changed: the banner of step 2.
 
 Done when: the request's edits sit only in the new folder, the previous
-folder matches its commit but for the banner, and the index and CLAUDE.md
-name the new version.
+folder matches its commit but for the banner, the index and CLAUDE.md name
+the new version, the README keeps the template's layout, and `workcenter
+costs` and `workcenter docs` run last leave `git status` unchanged.
 
 ## P23 — Pictures of a finished board version
 
@@ -577,6 +611,10 @@ after any change to what the boards look like in that version.
    names `workcenter pictures <version>` and its `pictures.json`, which
    the next version copies with the folder and so draws the same way.
 5. Send the GIFs and the layer sheets with the report.
+6. An assembly scene draws every body its boards name. Build it with
+   `tools/scene.py`, which copies each 3D model the board names and reports
+   one it cannot find; then look at the bottom face in a still. A path
+   rewrite on a footprint's models changes a copy and draws nothing (M99).
 
 Done when: `workcenter pictures <version>` exits 0, the version's `docs/`
 holds a layer sheet and a turning GIF for every board and for the
@@ -689,6 +727,10 @@ comes from a vendor.
    the parts' operating ranges), never from the model's first result.
 5. A reference's whole letter prefix says what it is: D1 is a diode, DS1 a
    display, and a check that reads one letter takes one for the other (M63).
+6. A value read from a datasheet's curve comes from `workcenter curve` on
+   the PDF's vectors, the middle of the drawn line, with the figure and
+   page named beside the value. A hand reading or a script of one's own is
+   checked against a curve of known values first (M100).
 
 Done when: `workcenter sources` passes for every board of the version, each
 model a deck uses has its datasheet rows as `warn` bounds, and the README
@@ -716,7 +758,11 @@ circuits it touches. The `verification` skill is the how-to.
    Read every section, table and figure number from the document's text,
    never from memory (M72), in the package and in any code comment that
    cites a standard or datasheet (M84). A limit computed from parts'
-   values carries the tolerances its source names (M82).
+   values carries the tolerances its source names (M82). A requirement the
+   owner restates or adds names "the owner's decision of <date>" in its
+   Source; one the owner withdraws moves to the requirements' Withdrawn
+   table (ID, date, decision, by), and its traceability row and every
+   `"req"` naming it go.
 4. Judge every limit at its corners: the datasheets' minimum and maximum
    rows, the source's range, each setting resistor's tolerance, the
    temperature. A typical value is a check of the model, never a verdict
@@ -724,6 +770,13 @@ circuits it touches. The `verification` skill is the how-to.
    tabulate is no maximum: take the nearest maximum row as flat, unless a
    figure read from the datasheet says otherwise (M83). Write the limit
    before the number it is compared with, then compare (M71).
+   - A measurement behind a series part (a fuse, a shunt, a switch, a
+     track) lists every current through that part, in both directions: the
+     charge current, each rail's load, each load's edge. Each takes its
+     corner (M92).
+   - A fuse, or any series part, is checked at every event that moves
+     charge through it: each load edge, the surge at assembly, a plug-in, a
+     fault. Not only the event that put it there (M95).
 5. One deck per circuit question; each bound that holds carries
    `"req": "<ID>"`. A requirement the design fails gets no bound and a
    FAIL in the traceability table, with its size and a proposed fix; a fix
@@ -732,16 +785,39 @@ circuits it touches. The `verification` skill is the how-to.
    never clamps at an absolute maximum, which is a bound on a measure
    instead. Every output that drives a capacitor gets its peak current
    measured and bounded by the pin's rating (M81).
+   - Every track resistance a deck uses comes from `workcenter inspect
+     resistance <board> <NET> --from <REF.PAD> --to <REF.PAD>`, which reads
+     each layer's copper thickness from the stackup; the deck's comment
+     names the command and its result (M93).
+   - One deck run by hand runs only through `workcenter sim <project>
+     --deck <name> --keep`, which prepares it as the gate does (the vendor
+     models' translation, the PSpice mode). Never a bare `ngspice -b` on a
+     deck that includes a vendor model (M94).
 6. One writeup per circuit with the template's sections; the nodal
    analysis solves the circuit by hand, cites each equation, and is
    compared with the deck.
 7. Several runs at once on one project write to their own `--out`: runs
    sharing `build/` mix their reports (M73).
-8. `workcenter verify <project>` until it reports no problems.
+8. Helpers who write parts of one package at the same time work from
+   `templates/verification/BRIEF.md` and `FACTS.md`, filled in a folder of
+   the session's scratchpad (the `verification` skill's "Helpers"):
+   - Each helper owns named files and edits nothing else.
+   - Every fact is in FACTS.md with its home in the project; the brief
+     points at FACTS.md and copies no fact (M98). A fact that changes is
+     changed in its home, then in its FACTS.md row and change log, and
+     every helper is told which row moved.
+   - Every path in either file is a file that exists when the brief is
+     sent; a document still to be filed is named where it is (M96).
+   - The brief asks questions and states no behaviour that a run has not
+     shown (M95).
+   - The skill's two checks print nothing before the brief is sent.
+9. `workcenter verify <project>` until it reports no problems.
 
 Done when: `workcenter verify <project>` reports no problems, the
-package's README lists each FAIL with its size and its proposed fix, and
-the report to the user gives the counts of PASS, FAIL and OPEN.
+package's README lists each FAIL with its size and its proposed fix, each
+track resistance in a deck names the `workcenter inspect resistance` run it
+came from, and the report to the user gives the counts of PASS, FAIL and
+OPEN and names each withdrawn requirement.
 
 ## P29 — Placing a part on a routed board
 

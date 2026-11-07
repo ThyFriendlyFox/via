@@ -240,6 +240,22 @@ against the stated verdict. A FAIL verdict is a finding, not a problem;
 `templates/verification/` into the package, a writeup per deck, never over
 a file that exists. It writes `build/verify.json` and the decks' logs.
 
+The owner's decisions are part of the package. A requirement the owner
+withdrew moves to the requirements' Withdrawn table (`| ID | Date |
+Decision | By |`): `verify` names each withdrawn ID in its summary, leaves
+it out of the counts, and fails on a traceability row or an expect bound
+that still names it, or on a withdrawn ID still in a requirements table. A
+requirement the owner restated or added names "the owner's decision of
+2026-11-06" in its Source, and `verify` checks that the date is one.
+`templates/verification/BRIEF.md` and `FACTS.md` are the lead's brief and
+facts file for helpers who write parts of one package at the same time
+(the `verification` skill's "Helpers"); `--init` leaves them out.
+
+A project kept as version folders (`PROCESSES.md` P22) lays out each
+version's README as `templates/project/README-version.md` and its gates
+report, `docs/gates.md`, as `templates/project/gates.md`, whose marker
+comments `workcenter gates <project> --report` fills.
+
 A model under the deck's own folder (`sim/models/`) is the project's own,
 fitted to a datasheet when the maker publishes none: the SIM gate needs no
 library row for it. An expect bound may name the requirement it serves:

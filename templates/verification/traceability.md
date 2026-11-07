@@ -8,6 +8,8 @@ One row per requirement.
 - **Evidence** links the writeup or the calculation.
 - **Verdict** is PASS, FAIL or OPEN. OPEN means the evidence does not
   exist yet, for example a bench test.
+- A requirement the owner withdrew has no row: it is in the requirements'
+  Withdrawn table.
 
 | ID | Check | Evidence | Measured | Verdict |
 |---|---|---|---|---|
