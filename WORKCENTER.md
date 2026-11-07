@@ -21,6 +21,7 @@ passed every gate. "Done" means `workcenter gates <project>` prints GREEN.
 | kicadgen | this repo | `workcenter design <design.py> [--route]`; `python3 tools/kicadgen.py pins|footprint` | `install.sh` (part of the checkout) |
 | workcenter CLI | this repo | `workcenter` | `install.sh` (symlink to `tools/workcenter`) |
 | kistack | `641ade9` | `.claude/skills/kistack/SKILL.md` routes to `third_party/kistack/skills/`; `workcenter placement <check> <board> [args]` runs its placement checks | the checkout (vendored, `third_party/kistack/VENDORED.md`); shapely, numpy and pygerber by `install.sh` (PyPI) |
+| Board inspection | this repo | `workcenter inspect <view> <board> ...`, the views `map`, `list`, `probe`, `net`, `islands`, `resistance`, `crossed` (KiCad's `pcbnew` and Pillow under the venv); `python3 tools/stretch.py <design.py> --cut X --grow G` | `install.sh` (part of the checkout; Pillow from PyPI) |
 
 ## Skills
 
@@ -93,6 +94,37 @@ Python module reading the board, where kistack itself needs a KiCad server.
 Run `placement_audit` and `route_check` on each IC whose parts moved, before
 routing (the `kistack` skill). `move` is refused: a generated board changes in
 its design file.
+
+Not a gate: `workcenter inspect <view> <board>` reads a routed board with
+KiCad's own geometry, for a change made on it (`PROCESSES.md` P29). `map
+--box X0 X1 Y0 Y1` draws one PNG per copper layer of the window into
+`build/inspect/` (or `--out`): courtyards, pads with their names and nets,
+tracks with their nets, vias, keep-outs, pours, a 1 mm grid, back and inner
+layers as seen from the top. `list --box` prints what lies in the window,
+or `--json`. `probe` places a via (`--via X,Y --net N`), a track (`--track
+"X,Y X,Y" --layer L --net N`) or a part (`--part REF --at X,Y`) and lists
+every conflict the DRC would report: copper clearance by net class, hole to
+copper with the project's `.kicad_dru` (Sierra's 13 mil on inner layers),
+hole to hole, the board edge, courtyard overlaps, and each keep-out by name;
+exit 1 on a conflict. `net N` prints the net's connected groups and the
+pads each holds; `islands [--net GND]` the pour's pieces per layer, what
+each holds, and each island no via reaches; both exit 1 on a group cut off.
+`resistance N --from R.P --to R.P` gives the copper path's resistance: each
+track from its layer's thickness in the board's stackup, each via barrel
+from its drill and plating, copper at 20 °C (`--temp`). `crossed <old
+board> --box ... --new <board>` names the nets whose copper crossed the
+window and which of them the new board no longer connects (exit 1).
+
+`python3 tools/stretch.py design.py --cut X --grow G` grows a design at a
+cut: every board x-coordinate east of X in the file's code moves G mm east.
+It lists what it moved and every number it left that a person should check.
+
+`d.keepout(polygon, layers, name, parts=True)` keeps footprints out of an
+area: the board's mechanical neighbours (a strip standing on it, a spacer,
+a body above it) go in the design. KiCad gets a rule area with footprints
+disallowed, and `workcenter design` lists each part whose courtyard enters
+one as a `part:` line and exits 1. `copper=False` lets tracks and vias
+through the area.
 
 Not a gate: `workcenter sources <project> --parts parts.csv` checks every
 part on the schematic against the nearest `library/sources.csv` at or above

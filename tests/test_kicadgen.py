@@ -49,6 +49,15 @@ def test_parse_and_dump_round_trip_keeps_quoting():
     assert '"quoted \\"x\\""' in out
 
 
+def test_parse_all_reads_every_top_level_form():
+    """A rule file is one form per rule; parse_all once returned only the first, and `inspect probe`
+    lost Sierra's 13 mil inner drill rule with no error."""
+    forms = kicadgen.parse_all('(version 1)\n(rule "a" (layer inner))\n(rule "b")\n')
+    assert [f[0] for f in forms] == ["version", "rule", "rule"]
+    assert [str(f[1]) for f in forms[1:]] == ["a", "b"]
+    assert kicadgen.parse_all("(kicad_symbol_lib (version 1))")[0][0] == "kicad_symbol_lib"
+
+
 def test_children_and_atoms_helpers():
     node = kicadgen.parse('(pad "1" smd rect (at 1 2 90) (size 3 4))')
     assert kicadgen.atoms(node) == ["1", "smd", "rect"]
@@ -1008,6 +1017,69 @@ def test_design_command_reports_a_hand_via_problem_and_fails(tmp_path):
     code, records = run_cli("design", design, "--out", tmp_path / "out")
     assert code == 1, records
     assert records["via_problems"] == ["VIN via at (109.325, 106.5): on R2.2 (GND, F.Cu)"], records
+    assert (tmp_path / "out" / "gen_divider.kicad_pcb").is_file()  # still written, for the DRC
+
+
+# ------------------------------------------------------------- parts keep-outs (M87)
+
+# Over R2's east half: R2 (0603 at 108.5, 106.5) has its courtyard at x 107.02..109.98, y 105.77..107.23.
+STRIP = [(109.0, 105.0), (111.0, 105.0), (111.0, 108.0), (109.0, 108.0)]
+
+
+@needs_libs
+def test_parts_keepout_keeps_footprints_out_and_lets_copper_through():
+    """A mechanical neighbour (a strip standing on the face) as a design keep-out: KiCad gets a rule
+    area with footprints disallowed, the router nothing, and the via check lets vias through."""
+    d = divider()
+    d.keepout(STRIP, layers=("F.Cu",), name="strip", parts=True, copper=False)
+    block = d.board().split('(name "strip")')[1].split("(polygon")[0]
+    assert "(footprints not_allowed)" in block, block
+    assert "(tracks allowed)" in block and "(vias allowed)" in block, block
+    assert '"strip"' not in d.dsn()  # FreeRouting moves no part
+    assert d.check_parts() == ["R2 (courtyard 107.02..109.98, 105.77..107.23) in keepout 'strip'"]
+    assert d.keepout_at(110.0, 106.5, 0.3) is None and d.check_vias() == []
+    r2 = next(p for p in d.parts if p.ref == "R2")
+    r2.pcb_layer = "B.Cu"  # under the board, not under the strip
+    assert d.check_parts() == []
+    d.keepout(STRIP, layers=("F.Cu",), name="shell", parts=True)  # copper too: vias stay out
+    assert d.keepout_at(110.0, 106.5, 0.3) == "shell"
+    with pytest.raises(ValueError, match="parts=True"):
+        d.keepout(STRIP, copper=False)
+
+
+@needs_libs
+@needs_kicad
+def test_kicad_drc_reports_a_part_in_a_parts_keepout(tmp_path):
+    d = divider()
+    d.keepout(STRIP, layers=("F.Cu",), name="strip", parts=True, copper=False)
+    d.write(tmp_path)
+    run_cli("drc", tmp_path)
+    report = json.loads((tmp_path / "build" / "drc.json").read_text())
+    hits = [v for v in report["violations"] if v["type"] == "items_not_allowed"]
+    assert [i["description"] for v in hits for i in v["items"]] == ["Footprint R2"], hits
+    assert "strip" in hits[0]["description"]
+
+
+@needs_libs
+def test_design_command_fails_on_a_part_in_a_parts_keepout(tmp_path):
+    design = tmp_path / "design.py"
+    design.write_text(
+        "import sys, uuid\n"
+        f"sys.path.insert(0, {str(ROOT / 'tools')!r})\n"
+        "import kicadgen\n"
+        "def build():\n"
+        "    d = kicadgen.Design(name='gen_divider', namespace=uuid.UUID(int=9),\n"
+        "                        outline=(100.0, 100.0, 112.0, 110.0))\n"
+        "    r = 'Resistor_SMD:R_0603_1608Metric'\n"
+        "    d.add('R2', 'Device:R', '10k', r, sch_at=(71.12, 58.42), pcb_at=(108.5, 106.5),\n"
+        "          nets={'1': 'OUT', '2': 'GND'})\n"
+        f"    d.keepout({STRIP!r}, name='strip', parts=True, copper=False)\n"
+        "    return d\n",
+        encoding="utf-8",
+    )
+    code, records = run_cli("design", design, "--out", tmp_path / "out")
+    assert code == 1, records
+    assert records["part_problems"] == ["R2 (courtyard 107.02..109.98, 105.77..107.23) in keepout 'strip'"]
     assert (tmp_path / "out" / "gen_divider.kicad_pcb").is_file()  # still written, for the DRC
 
 

@@ -39,6 +39,28 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-07 — Looking at a routed board before changing it
+
+Five mistakes on Last Hit v0.16 had one cause. A part or a via went onto a
+routed board before anyone looked at what was there. Fuse F1 first landed
+where the cell's strip stands, which only the assembly script knew. Fuse F2
+split a ground pour. F1 also sat on the path the router had used for the
+3.1 V feed, and the next route cost two hours. The scripts that found these were
+written for one board. The owner asked for every such tool in the
+workcenter.
+
+`workcenter inspect` now reads a board with KiCad's own geometry. It draws
+each layer of a window, lists what lies there, and probes a new via, track
+or part against the DRC's rules and every keep-out by name. It also gives a
+net's connected groups, a pour's islands, a path's resistance from the
+stackup, and the nets that crossed a spot. On v0.16 the probe finds the
+overlap and the keep-out that two of the mistakes hit. The joint's inner
+run reads 56.8 mOhm, where an older deck took 10. A design can now keep
+parts out of an area, and P29 says how to place a part on a routed board.
+
+Evidence: `tests/test_inspect.py`; the fixture `tests/boards/inspect-four-layer`;
+`MISTAKES.md` M87 to M91.
+
 ## 2026-11-05 — A verification package an inspector can check
 
 An engineer reviewed the Last Hit board and asked how anyone could check
