@@ -39,6 +39,37 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-07 — The router starts from the last board and keeps the inner drill rule
+
+The owner asked for every tool of the Last Hit work in the workcenter. This
+part closes the router's gaps. On v0.16 one fuse landed on a path the router
+had used in v0.15, and four hand routes and five routing runs followed
+(M89). `workcenter design --route --seed <board>` now starts FreeRouting
+from the previous board's router tracks. Given as unfixed wiring, they did
+not hold: the display board kept 85 of v0.15's 117, where a route from
+nothing repeats 116. FreeRouting's optimiser reworks every unfixed track.
+Held as `shove_fixed`, which it may push but not rip up, the display board
+keeps 116 and the base board 76 of 87 (63 from nothing). Tracks that hang
+from nothing, such as a moved part's old ones, still go in unfixed, so the
+router extends them or removes them.
+
+M79 was a router via 3.5 µm inside Sierra's 13 mil inner drill rule. We
+tried four ways to tell FreeRouting 1.9.0 and routed a fixture each time. A
+via-to-wire clearance in the DSN's structure changed nothing, globally or
+per layer. Inside a net class it held only between that class's own nets.
+A via drawn larger on the inner layer worked for every pair, so the DSN now
+does that. On the fixture the old file put a via hole 0.3281 mm from an
+inner track and the DRC failed; the new one keeps 0.3581 mm. The hand-via
+check, the via placers and island stitching keep the same rule.
+
+The design command now ends a red run with a line that says so (M85), and
+it names the island and pads behind each stitching via. The new route on
+Last Hit showed a dangling track: the merge had dropped a short link from a
+hand track as an echo. The merge now keeps such a link when it leads to the
+router's own wire.
+
+Evidence: `tests/test_routing.py`, 11 tests; Last Hit v0.16 routed both
+ways into the scratchpad, DRC 0 errors and 0 unconnected on both boards.
 ## 2026-11-07 — The Last Hit documents, made by the workcenter
 
 The owner asked for every tool the Last Hit work built outside the

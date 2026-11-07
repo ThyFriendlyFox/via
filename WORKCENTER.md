@@ -14,11 +14,11 @@ passed every gate. "Done" means `workcenter gates <project>` prints GREEN.
 |---|---|---|---|
 | KiCad | 10.0 | `kicad-cli` | `install.sh` (PPA kicad/kicad-10.0-releases) |
 | ngspice | 42 | `ngspice` | `install.sh` (Ubuntu 24.04 archive) |
-| FreeRouting | 1.9.0 | `workcenter design <design.py> --route` (generated boards, headless); `workcenter autoroute <project> [--dsn file]` (hand-drawn boards, DSN from KiCad) | `install.sh` (GitHub release, SHA-256 pinned; 2.1.0 hangs after routing when its GitHub version check cannot succeed) |
+| FreeRouting | 1.9.0 | `workcenter design <design.py> --route [--seed <previous .kicad_pcb>]` (generated boards, headless); `workcenter autoroute <project> [--dsn file]` (hand-drawn boards, DSN from KiCad) | `install.sh` (GitHub release, SHA-256 pinned; 2.1.0 hangs after routing when its GitHub version check cannot succeed) |
 | kicad-python (kipy) | 0.8 | `/opt/workcenters/ee/venv/bin/python` | `install.sh` (PyPI) |
 | librsvg | 2.58 | `rsvg-convert` (SVG to PNG for `workcenter render`) | `install.sh` (Ubuntu 24.04 archive) |
 | FFmpeg | 6.1 | `ffmpeg` (the turning GIF of `workcenter render --views spin`) | `install.sh` (Ubuntu 24.04 archive) |
-| kicadgen | this repo | `workcenter design <design.py> [--route\|--check]`; `python3 tools/kicadgen.py pins\|footprint\|symbol-add` | `install.sh` (part of the checkout) |
+| kicadgen | this repo | `workcenter design <design.py> [--route [--seed <board>]\|--check]`; `python3 tools/kicadgen.py pins\|footprint\|symbol-add` | `install.sh` (part of the checkout) |
 | pdfminer.six, PyYAML | 20260107, 6.0.3 | `workcenter curve` (a PDF page's vector paths), `workcenter ci` (a GitHub workflow), each run under the venv | `install.sh` (PyPI) |
 | workcenter CLI | this repo | `workcenter` | `install.sh` (symlink to `tools/workcenter`) |
 | scene | this repo | `tools/scene.py`: assembly scenes a project's script builds, run by `workcenter pictures` | the checkout; KiCad's `pcbnew` and FFmpeg by `install.sh` |
@@ -55,11 +55,33 @@ drives and no resistor holds), as `pull:` lines; a design that sets
 `check_pulls` fails on one, and `defined_nets` names the nets held elsewhere
 with the reason (`PROCESSES.md` P16).
 
+Its verdict is its exit code. It writes every file even when it exits 1 (a
+hand via its check refuses, a floating input with `check_pulls`, an unrouted
+connection the router counts), and on exit 1 its last line says `red`, names
+each failure, and says the files are for inspection only: a CI regenerate
+check fails on that exit code (M85). Each via it drops through a pour's island
+after routing is printed as a `stitch:` line with the net, the island's layer,
+the pads the island holds and the layer the via reaches, so a via that moved
+between two runs can be traced to its pads.
+
+`workcenter design --route --seed <board>` starts the router from a previous
+routed board, usually the version the design was copied from: its router
+tracks and vias go to FreeRouting held (pushed aside if need be, never
+ripped up), so the paths that still fit stay and only the rest are routed;
+seed copper that hangs from nothing goes in unfixed, for the router to reuse
+or remove. The design's own hand copper, stitching
+vias, nets the design lost, and copper that now meets another net's pad or
+copper, a keepout or the board edge are left out first and counted on a
+`seed:` line, with how many seed tracks the new route kept. The seed board is
+only read.
+
 A board made for a particular fab checks that fab's published limits in the
 DRC: `rules/` holds them as KiCad design rules (`sierra-circuits-web` for
 Sierra Circuits' Web PCB: 4 mil trace and gap, 6 mil hole and ring, 13 mil
 inner drill to copper, 5 mil legend). A design file's `fab = "<name>"`
-writes the set into the project for good; `workcenter drc|gates --fab
+writes the set into the project for good, and the router and the generator's
+own via checks keep each layer's hole-to-copper rule (the 13 mil on the inner
+layers, M79); `workcenter drc|gates --fab
 <name> <project>` checks any project against one once, on a copy
 (`rules/README.md` says what each set cannot check). A fab's limits only
 add floors: its board-wide limits raise the board's own minimums, and only

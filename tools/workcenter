@@ -2733,13 +2733,28 @@ def cmd_design(args) -> int:
         code = EXIT_FAIL
     if summary["via_problems"]:
         code = EXIT_FAIL
+    # A previous board's routed copper, read before anything is written: --out may be the folder that
+    # holds it.
+    copper = kicadgen.board_copper(Path(args.seed).resolve()) if args.seed else None
     if args.route:
         fixed_segments, fixed_vias = list(design.segments), list(design.vias)  # hand-routed copper
         try:
             for round_no in range(1, args.rounds + 1):
+                # Each round sifts the seed again: a reserved via can stand on a seed track.
+                seed = design.seed_wiring(copper) if copper else None
                 summary["route"] = kicadgen.route(
-                    design, out_dir / "build" / "route", passes=args.passes, timeout=args.timeout
+                    design, out_dir / "build" / "route", passes=args.passes, timeout=args.timeout, seed=seed
                 )
+                if seed:
+                    summary["seed"] = {
+                        "board": str(Path(args.seed).resolve()),
+                        "tracks": seed["given"][0],
+                        "vias": seed["given"][1],
+                        "seeded": [len(seed["segments"]), len(seed["vias"])],
+                        "loose": [len(seed["loose"][0]), len(seed["loose"][1])],
+                        "left": seed["left"],
+                        "kept": design.seed_kept(seed),
+                    }
                 summary["files"] = [str(p) for p in design.write(out_dir)]
                 summary["rounds"] = round_no
                 if not design.islands or round_no == args.rounds:
@@ -2758,7 +2773,20 @@ def cmd_design(args) -> int:
     if "files" not in summary:
         summary["files"] = [str(p) for p in design.write(out_dir)]
     summary["islands"] = design.islands
+    summary["stitches"] = [{**s, "at": list(s["at"])} for s in design.stitches]
     summary["seconds"] = round(time.monotonic() - t0, 2)
+    # The verdict is the exit code even though every file is written (M85): say so on the last line.
+    red = []
+    if summary["via_problems"]:
+        red.append(f"{len(summary['via_problems'])} via problem(s)")
+    if summary["part_problems"]:
+        red.append(f"{len(summary['part_problems'])} part(s) in a parts keep-out")
+    if summary["pulls"] and design.check_pulls:
+        red.append(f"{len(summary['pulls'])} floating input(s)")
+    if summary.get("route", {}).get("unrouted"):
+        red.append(f"{summary['route']['unrouted']} unrouted")
+    if code == EXIT_FAIL:
+        summary["red"] = red
     if args.json:
         print(json.dumps(summary, indent=2))
     else:
@@ -2772,16 +2800,36 @@ def cmd_design(args) -> int:
             unrouted = "DRC decides" if r["unrouted"] is None else f"{r['unrouted']} unrouted"
             rounds = f"{summary.get('rounds', 1)} round(s)"
             print(f"  routed: {r['segments']} segments, {r['vias']} vias, {unrouted}, {rounds}  ({r['log']})")
+        s = summary.get("seed")
+        if s:
+            left = ", ".join(f"{n} {why}" for why, n in sorted(s["left"].items(), key=lambda kv: -kv[1]))
+            print(
+                f"  seed: {s['tracks']} tracks, {s['vias']} vias in {s['board']}; to the router "
+                f"{s['seeded'][0]} tracks, {s['seeded'][1]} vias "
+                f"({s['loose'][0]} tracks, {s['loose'][1]} vias loose); left out {left or 'none'}; "
+                f"the new route kept {s['kept']} of the {s['seeded'][0]} tracks"
+            )
         for line in summary["pulls"]:
             print(f"  pull: {line}")
         for problem in summary["via_problems"]:
             print(f"  via: {problem}")
+        for st in summary["stitches"]:
+            x, y = st["at"]
+            print(
+                f"  stitch: {st['net']} via at ({x:g}, {y:g}) ties the {st['layer']} island of "
+                f"{', '.join(st['pads']) or 'vias only'} to {st['to']}"
+            )
         for problem in summary["part_problems"]:
             print(f"  part: {problem}")
         for island in summary["islands"]:
             print(f"  island: {', '.join(island)} cut off from their pour; the DRC will report it")
         for f in summary["files"]:
             print(f"  wrote {f}")
+        if code == EXIT_FAIL:
+            print(
+                f"design {design.name} red: {', '.join(red)}. The files are written for inspection only; "
+                "a CI regenerate check fails on this exit code (1)."
+            )
     return code
 
 
@@ -3779,6 +3827,12 @@ def main(argv: list[str] | None = None) -> int:
         "--rounds", type=int, default=4, help="route again with a via reserved beside each pad a pour lost"
     )
     p.add_argument(
+        "--seed",
+        metavar="BOARD",
+        help="with --route: a routed .kicad_pcb, read only, whose router tracks and vias the router "
+        "starts from",
+    )
+    p.add_argument(
         "--check",
         action="store_true",
         help="regenerate into a temporary folder (or --out) and compare the .kicad_pro and .kicad_sch with "
@@ -3882,6 +3936,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "inspect":
         return cmd_inspect(args)
     if args.command == "design":
+        if args.seed and not args.route:
+            parser.error("design --seed needs --route")
+        if args.seed and not Path(args.seed).is_file():
+            parser.error(f"design --seed: no board file {args.seed}")
         return check_design(args) if args.check else cmd_design(args)
     if args.command == "render":
         return cmd_gate(

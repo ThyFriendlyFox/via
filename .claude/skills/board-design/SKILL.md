@@ -195,10 +195,19 @@ project and routes it with FreeRouting. No GUI at any step.
    `workcenter placement route_check . --ic U1` (kistack's checks; the
    `kistack` skill and its layout-placement guide say what to fix first).
 5. **Route.** `workcenter design design.py --route --passes 60`. The
-   command prints what the router did and which ground pads ended up on an
-   island; `workcenter drc .` lists what stayed unrouted. FreeRouting
-   stops early when it decides a connection cannot be made; more passes do
-   not help. For each one left:
+   command prints what the router did, a `stitch:` line for each via it
+   dropped through a pour's island with the pads that island holds, and
+   which ground pads ended up on an island; `workcenter drc .` lists what
+   stayed unrouted. Its exit code is the verdict: on exit 1 every file is
+   still written and the last line says `red` with each failure, and a CI
+   regenerate check fails on it (M85). On a board copied from a routed
+   version, route with `--seed <previous>/<name>.kicad_pcb`: the old
+   router copper that still fits stays and only the rest is rerouted, so a
+   part placed on a routed path costs its own nets, not the whole board
+   (M89). With `d.fab` set, router vias and the generator's own vias keep
+   each layer's hole clearance (Sierra's 13 mil on the inner layers, M79).
+   FreeRouting stops early when it decides a connection cannot be made;
+   more passes do not help. For each one left:
    - A width that cannot enter a pad, a crowded region, or a board too
      small: change the design, not the router settings.
    - A link the router could not find but a person can: draw it with
