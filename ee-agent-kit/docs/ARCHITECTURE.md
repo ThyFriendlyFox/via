@@ -40,14 +40,17 @@ of skills that together run 4 gates on a KiCad 10 project. The code has
 A generated board enters at step 3 from `workcenter design design.py
 --route`: the generator loads the libraries, writes the DSN, runs
 FreeRouting, merges the session, and writes the `.kicad_*` files that the
-gates then read like any other project.
+gates then read like any other project. With `--seed <board>` the
+generator first reads a previous board's tracks and vias (`board_copper`),
+keeps the router copper that still fits the design (`seed_wiring`), and
+writes it into the DSN, held where it connects and unfixed at its loose ends.
 
 ## CLI
 
 | File | Task |
 |---|---|
 | `tools/workcenter` | `find_project`, 1 `gate_*` function per gate, `gate_render` (with `parts_without_body`), `gate_procure` (parts files, `order_for`), `cmd_gates` for the ordered run, `cmd_design` for design files, `cmd_doctor` for engine status, `emit` for output and exit codes. |
-| `tools/kicadgen.py` | `parse`/`dumps` for S-expressions, `load_symbol`/`load_footprint`, `Design` with `schematic()` (stub-and-label, or wired by `SchRouter` when `sch_wires` is set), `board()`, `project()`, `dsn()`, `merge_ses()`, `write()`; `load_design()` and `route()` for the CLI. |
+| `tools/kicadgen.py` | `parse`/`dumps` for S-expressions, `load_symbol`/`load_footprint`, `Design` with `schematic()` (stub-and-label, or wired by `SchRouter` when `sch_wires` is set), `board()`, `project()`, `dsn()` (with each layer's hole clearance from `hole_clearances()`), `merge_ses()`, `seed_wiring()`, `write()` (island stitching recorded in `stitches`); `load_design()`, `board_copper()` and `route()` for the CLI. |
 
 ## Boundaries
 

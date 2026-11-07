@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/) · Versioning: [SemVer](
 
 ## [Unreleased]
 ### Changed
+- The router keeps each layer's hole clearance: `kicadgen` reads the fab's layer rules (`Design.hole_clearances()`, Sierra's 13 mil inner drill to copper) and writes every via and drilled pad into the DSN with its copper grown by that rule on the layers where it exceeds the copper clearance (a 0.6/0.25 mm via is 0.6104 mm on In2 at 0.15 mm). FreeRouting 1.9.0 ignores a `via_wire` clearance in the DSN's structure and applies one in a net class to that class's own pairs only, both measured on a fixture. Hand vias, the via placers and island stitching hold the same rule (M79, P17).
+- `workcenter design` ends a red run (exit 1) with a line that names each failure and says the files are written for inspection only and a CI regenerate check fails on that exit code; `--json` adds `red` (M85).
 - `install.sh`: apt's progress lines reach the log as they happen (the filter flushes per line and matches apt's `Get:<n>` lines, which it never did), and a silent mirror times out after 60 s and is retried (M86).
 - P4 reads a route's verdict from `workcenter design`'s exit code, which is 1 on a refused hand via although every file is written; P14 runs a board repository's own CI checks locally before the push (M85).
 - `workcenter sources` refuses a `sources.csv` row with more fields than its header (an unquoted comma in a note) instead of dropping the extra fields (M76).
@@ -12,6 +14,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/) · Versioning: [SemVer](
 - P28 and the verification skill: a limit computed from parts' values carries their tolerances; a fitted model's value away from the datasheet's rows is no maximum; a stand-in never clamps at an absolute maximum, and every output driving a capacitor has its peak current bounded; citations in code comments come from the document's text too (M81 to M84).
 
 ### Added
+- `workcenter design --route --seed <board>`: a previous routed board's router tracks and vias go to FreeRouting held (`shove_fixed`), so the paths that still fit stay and only the rest are routed; seed copper that hangs from nothing goes in unfixed, for the router to reuse or remove. Hand copper, stitching vias, lost nets and arcs are left out, and copper that now meets another net's pad or copper, a keepout or the board edge is dropped, each counted on a `seed:` line with how many seed tracks the new route kept (`kicadgen.board_copper()`, `Design.seed_wiring()`, M89).
+- `workcenter design` prints each via it drops through a pour's island after routing as a `stitch:` line: the net, the island's layer and pads, the layer the via reaches (`Design.stitches`; `--json` `stitches`).
 - `workcenter verify <project>`: checks a verification package (`verification/`, P28): the files it holds, a requirements table with a source, method and inspection clause on every row, a writeup with every section for each circuit and for every deck, links that lead somewhere, a traceability row for every requirement; runs the SIM gate and compares every number quoted beside a `deck.meas` with the run (to half a unit of the quoted digit, SI prefixes understood) and recomputes each traceability check against its verdict. `--strict` fails on a FAIL or OPEN requirement; `--init` writes the skeleton from `templates/verification/`; `--package` names another folder. Writes `build/verify.json`.
 - The `verification` skill and P28: conditions, sourced requirements judged at the corners, one cited nodal analysis per deck, models fitted to datasheets where the maker publishes none, a standards map (DO-160G, MIL-STD-461G, MIL-STD-810H, IEC 61000-4-2, USB, UM10204, EEE-INST-002 derating) with the editions read.
 - The SIM gate takes a model under the deck's own folder (`sim/models/`) as the project's own: no library row is asked for it. An expect bound may name its requirement (`"req"`).
@@ -73,6 +77,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/) · Versioning: [SemVer](
 ### Deprecated
 ### Removed
 ### Fixed
+- The session merge keeps a short link that leaves a hand track at an angle, the joint of a T the router makes onto it. It took the link for an echo of the track and dropped it, and the wire after it ended off the track's centre line: Last Hit v0.16 routed with the new DSN showed one dangling HS_IN track.
 - A fab's rule file no longer loosens a board: in KiCad a custom rule overrides every net class's clearance, so the Sierra set's board-wide 4 mil clearance and 6 mil hole had let pours fill 0.1 mm from pads and a 0.25 mm minimum hole pass at 0.1524 mm. Its board-wide limits are now the board's own minimums (`kicadgen.fab_project_rules`, the `--fab` copy's project file) and only its layer and condition rules are copied, each raised to the board's own setting (M62).
 - `kicadgen`'s via check holds two nets to the larger of their net classes' clearances, as KiCad's DRC does, not to the board default (M62).
 - FreeRouting session coordinates are read at the scale the session's placement block implies, not the declared resolution.
