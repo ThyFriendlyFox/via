@@ -100,8 +100,8 @@ def parse(text: str) -> Node:
 
 
 def parse_all(text: str) -> list[Node]:
-    """Parse every top-level S-expression in a file (a .kicad_sym has one)."""
-    return [parse(text)]
+    """Parse every top-level S-expression in a file: a .kicad_sym has one, a .kicad_dru one per rule."""
+    return parse(f"(\n{text}\n)")
 
 
 def quote(s: str) -> str:
@@ -743,6 +743,31 @@ def _seg_dist(p: tuple[float, float], a: tuple[float, float], b: tuple[float, fl
     return math.hypot(px - (ax + u * dx), py - (ay + u * dy))
 
 
+def _segments_cross(a, b, c, d) -> bool:
+    """True when segment ab meets segment cd (touching counts)."""
+
+    def side(p, q, r) -> float:
+        return (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
+
+    if side(c, d, a) * side(c, d, b) < 0 and side(a, b, c) * side(a, b, d) < 0:
+        return True
+    return min(_seg_dist(a, c, d), _seg_dist(b, c, d), _seg_dist(c, a, b), _seg_dist(d, a, b)) < 1e-9
+
+
+def _polygon_meets_box(poly: list[tuple[float, float]], box: tuple[float, float, float, float]) -> bool:
+    """True when polygon `poly` and the box (x1, y1, x2, y2) overlap: one holds a corner of the other,
+    or their edges cross."""
+    x1, y1, x2, y2 = box
+    corners = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
+    if any(_inside_polygon(x, y, poly) for x, y in corners):
+        return True
+    if any(x1 <= x <= x2 and y1 <= y <= y2 for x, y in poly):
+        return True
+    edges = list(zip(poly, poly[1:] + poly[:1], strict=True))
+    sides = list(zip(corners, corners[1:] + corners[:1], strict=True))
+    return any(_segments_cross(a, b, c, d) for a, b in edges for c, d in sides)
+
+
 @dataclass
 class Part:
     ref: str
@@ -852,7 +877,7 @@ class Design:
     # as <name>.kicad_dru, its board-wide minimums laid over the board's own (rules/README.md).
     fab: str = ""
     zones: list[dict] = field(default_factory=list)  # copper pours, see zone()
-    keepouts: list[dict] = field(default_factory=list)  # areas no track or via enters, see keepout()
+    keepouts: list[dict] = field(default_factory=list)  # areas no track, via or part enters, see keepout()
     islands: list[list[str]] = field(default_factory=list)  # pads cut off from their pour, set by write()
     # Nets taken as held at a level though nothing on this board holds them, each with the reason: an
     # internal pull in a datasheet, a pull on the other board of a joint (undefined_inputs()).
@@ -1468,24 +1493,70 @@ class Design:
         return out
 
     def keepout(
-        self, polygon: list[tuple[float, float]], layers: tuple[str, ...] = ("F.Cu",), name: str = ""
+        self,
+        polygon: list[tuple[float, float]],
+        layers: tuple[str, ...] = ("F.Cu",),
+        name: str = "",
+        parts: bool = False,
+        copper: bool = True,
     ) -> None:
         """An area no track or via may enter on `layers` (a metal shell sitting on the board).
 
         Pads and pours may: a ground pour under a grounded shell is what the area is for. KiCad gets a
         rule area, the router a Specctra keepout, and the generator's own via checks honour it.
+
+        `parts=True` keeps every footprint out too: the board's mechanical neighbours (a strip standing
+        on the face, a spacer, a body over the board) as the design's own areas (M87). A part on the
+        face of one of `layers` whose courtyard enters it is listed by `check_parts()` and by KiCad's
+        DRC. `copper=False` lets tracks and vias through such an area (a body that rests on the mask).
         """
         for layer in layers:
             self._check_layer("keepout", layer)
         if len(polygon) < 3:
             raise ValueError("keepout needs a polygon of at least 3 points")
+        if not (parts or copper):
+            raise ValueError("a keepout with copper=False needs parts=True: it would keep nothing out")
         self.keepouts.append(
             {
                 "polygon": [(float(x), float(y)) for x, y in polygon],
                 "layers": tuple(layers),
                 "name": name or f"keepout{len(self.keepouts) + 1}",
+                "parts": parts,
+                "copper": copper,
             }
         )
+
+    def check_parts(self) -> list[str]:
+        """Every placed part whose courtyard enters a keepout made with `parts=True` on its own face,
+        named with the area, before anything is written or routed (M87)."""
+        out = []
+        for part in self.parts:
+            box = self.courtyard_box(part)
+            if box is None:
+                continue
+            for k in self.keepouts:
+                if k.get("parts") and part.pcb_layer in k["layers"] and _polygon_meets_box(k["polygon"], box):
+                    x1, y1, x2, y2 = box
+                    out.append(
+                        f"{part.ref} (courtyard {fmt(x1)}..{fmt(x2)}, {fmt(y1)}..{fmt(y2)}) in keepout {k['name']!r}"
+                    )
+        return out
+
+    def courtyard_box(self, part: Part) -> tuple[float, float, float, float] | None:
+        """The part's courtyard as placed, as a box in board coordinates (x1, y1, x2, y2), or None
+        for a part with no footprint, position or courtyard."""
+        if not (part.footprint and part.pcb_at and part.footprint.courtyard):
+            return None
+        cx1, cy1, cx2, cy2 = part.footprint.courtyard
+        px, py = part.pcb_at
+        back = part.pcb_layer == "B.Cu"
+        th = math.radians(part.pcb_rot)
+        xs, ys = [], []
+        for fx, fy in ((cx1, cy1), (cx2, cy1), (cx2, cy2), (cx1, cy2)):
+            fy = -fy if back else fy  # the same mirror and turn as pad_boxes()
+            xs.append(px + fx * math.cos(th) + fy * math.sin(th))
+            ys.append(py - fx * math.sin(th) + fy * math.cos(th))
+        return (min(xs), min(ys), max(xs), max(ys))
 
     def in_keepout(self, x: float, y: float, r: float) -> bool:
         """True when a via of radius `r` at (x, y) would touch any keepout. A via spans every layer,
@@ -1493,8 +1564,11 @@ class Design:
         return self.keepout_at(x, y, r) is not None
 
     def keepout_at(self, x: float, y: float, r: float) -> str | None:
-        """The name of the first keepout a via of radius `r` at (x, y) would touch, or None."""
+        """The name of the first keepout a via of radius `r` at (x, y) would touch, or None. An area
+        made with `copper=False` lets vias through."""
         for k in self.keepouts:
+            if not k.get("copper", True):
+                continue
             poly = k["polygon"]
             edges = zip(poly, poly[1:] + poly[:1], strict=True)
             if _inside_polygon(x, y, poly) or min(_seg_dist((x, y), a, b) for a, b in edges) < r:
@@ -2600,11 +2674,11 @@ class Design:
                     ["filled_areas_thickness", "no"],
                     [
                         "keepout",
-                        ["tracks", "not_allowed"],
-                        ["vias", "not_allowed"],
+                        ["tracks", "not_allowed" if k.get("copper", True) else "allowed"],
+                        ["vias", "not_allowed" if k.get("copper", True) else "allowed"],
                         ["pads", "allowed"],
                         ["copperpour", "allowed"],
-                        ["footprints", "allowed"],
+                        ["footprints", "not_allowed" if k.get("parts") else "allowed"],
                     ],
                     ["fill", ["thermal_gap", "0.5"], ["thermal_bridge_width", "0.5"]],
                     ["polygon", ["pts", *[["xy", fmt(px), fmt(py)] for px, py in k["polygon"]]]],
@@ -2909,6 +2983,7 @@ class Design:
             + " ".join(f"{c(px)} {c(-py)}" for px, py in k["polygon"])
             + "))"
             for k in self.keepouts
+            if k.get("copper", True)  # the router moves no part: a parts-only area is not its business
             for layer in k["layers"]
         ]
         layer_defs = [

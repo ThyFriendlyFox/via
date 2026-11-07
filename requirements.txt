@@ -8,3 +8,5 @@ shapely==2.2.0
 numpy==2.5.4
 # Gerber layers as images, for kistack's Gerber review (`pygerber raster-2d`)
 pygerber==2.4.3
+# The maps of `workcenter inspect map` (tools/inspect_board.py, run under the venv)
+Pillow==12.3.0
