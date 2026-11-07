@@ -20,7 +20,7 @@ fresh ngspice run gives.
 
 ## Verdicts
 
-<!-- fill: the counts of PASS, FAIL and OPEN from `workcenter verify .`, then one line per FAIL: what fails, by how much, and the proposed fix. -->
+<!-- fill: the counts of PASS, FAIL and OPEN from `workcenter verify .`, then one line per FAIL: what fails, by how much, and the proposed fix. Name each requirement the owner withdrew or restated, with the decision's date. -->
 
 ## Re-run
 

@@ -426,6 +426,9 @@ VERIFY_FILES = (
 )
 VERIFY_TEMPLATES = SRC_DIR / "templates" / "verification"
 DECK_TEMPLATE = Path("simulations") / "_deck" / "README.md"
+# Templates `--init` leaves out of a package: the deck writeup (copied once per deck) and the brief and
+# facts file a lead hands parallel helpers, which live in the session's scratch folder.
+INIT_SKIPS = {DECK_TEMPLATE, Path("BRIEF.md"), Path("FACTS.md")}
 # Each simulation writeup has a `## ` heading containing each of these.
 SIM_SECTIONS = (
     "purpose",
@@ -440,8 +443,13 @@ SIM_SECTIONS = (
     "re-run",
 )
 REQ_HEADER = ("id", "requirement", "limit", "source", "method", "inspection")
+# A requirement the owner withdrew: its ID, the decision's date, the decision, and who made it.
+WITHDRAWN_HEADER = ("id", "date", "decision", "by")
 TRACE_HEADER = ("id", "check", "evidence", "measured", "verdict")
 REQ_ID_RE = re.compile(r"^REQ-[A-Z][A-Z0-9]*-\d{2,3}$")
+ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+# A requirement the owner restated or added names the decision in its Source cell.
+OWNER_DECISION_RE = re.compile(r"the owner['’]s decision of\s+([^\s,;)]+)", re.IGNORECASE)
 VERIFY_METHODS = {"analysis", "simulation", "examination", "demonstration", "test"}
 VERDICTS = ("PASS", "FAIL", "OPEN")
 UNFILLED = "<!-- fill"
@@ -470,6 +478,17 @@ def quantity(text: str) -> tuple[float, float] | None:
     decimals = len(mantissa.partition(".")[2])
     half = 0.5 * 10.0 ** (int(exponent or 0) - decimals) * scale
     return float(num) * scale, half
+
+
+def iso_date(text: str) -> bool:
+    """`2026-11-06` and nothing else: a day that exists, written year-month-day."""
+    if not ISO_DATE_RE.match(text.strip()):
+        return False
+    try:
+        datetime.date.fromisoformat(text.strip())
+    except ValueError:
+        return False
+    return True
 
 
 def md_cells(line: str) -> list[str]:
@@ -567,7 +586,7 @@ def init_package(project: Project, package: Path) -> list[str]:
     created = []
     for src in sorted(p for p in VERIFY_TEMPLATES.rglob("*") if p.is_file()):
         rel = src.relative_to(VERIFY_TEMPLATES)
-        if rel == DECK_TEMPLATE:
+        if rel in INIT_SKIPS:
             continue
         dest = package / rel
         if not dest.exists():
@@ -609,10 +628,13 @@ def gate_verify(
         problems += [f"{md.parent.relative_to(package)}/{p}" for p in broken_links(md)]
 
     # The requirements: one table or more under the header ID | Requirement | Limit | Source | Method |
-    # Inspection, every cell filled and every method one of VERIFY_METHODS.
+    # Inspection, every cell filled and every method one of VERIFY_METHODS. A requirement the owner
+    # restated or added says "the owner's decision of <date>" in its Source.
     requirements: dict[str, list[str]] = {}
+    owner_decisions: dict[str, str] = {}
     req_md = package / "requirements" / "README.md"
-    for table in md_tables(req_md.read_text(encoding="utf-8")) if req_md.is_file() else []:
+    req_tables = md_tables(req_md.read_text(encoding="utf-8")) if req_md.is_file() else []
+    for table in req_tables:
         if tuple(c.lower() for c in table[0][: len(REQ_HEADER)]) != REQ_HEADER:
             continue
         for row in table[1:]:
@@ -633,9 +655,42 @@ def gate_verify(
                     f"requirements: {rid} method {', '.join(sorted(methods - VERIFY_METHODS))} "
                     f"is not one of {', '.join(sorted(VERIFY_METHODS))}"
                 )
+            decision = OWNER_DECISION_RE.search(row[3] if len(row) > 3 else "")
+            if decision:
+                date = decision.group(1).rstrip(".:")
+                if not iso_date(date):
+                    problems.append(
+                        f"requirements: {rid} names the owner's decision of {date!r}, "
+                        "not a date like 2026-11-06"
+                    )
+                owner_decisions[rid] = date
             requirements[rid] = row
     if req_md.is_file() and not requirements:
         problems.append("requirements: no table with the header " + " | ".join(REQ_HEADER))
+
+    # Requirements the owner withdrew: a table under the header ID | Date | Decision | By. They leave
+    # the counts and the traceability table; their IDs are never given to a new requirement.
+    withdrawn: dict[str, dict[str, str]] = {}
+    for table in req_tables:
+        if tuple(c.lower() for c in table[0][: len(WITHDRAWN_HEADER)]) != WITHDRAWN_HEADER:
+            continue
+        for row in table[1:]:
+            row = row + [""] * (len(WITHDRAWN_HEADER) - len(row))
+            rid = plain_id(row[0])
+            if not REQ_ID_RE.match(rid):
+                problems.append(f"requirements: withdrawn {rid!r} is not an ID like REQ-USB-01")
+                continue
+            if rid in withdrawn:
+                problems.append(f"requirements: {rid} withdrawn twice")
+            date, decision, by = row[1].strip(), row[2].strip(), row[3].strip()
+            if not iso_date(date):
+                problems.append(f"requirements: withdrawn {rid} is dated {date!r}, not like 2026-11-06")
+            empty = [h for h, cell in (("decision", decision), ("by", by)) if not cell.strip("—- ")]
+            if empty:
+                problems.append(f"requirements: withdrawn {rid} has no {', '.join(empty)}")
+            withdrawn[rid] = {"date": date, "decision": decision, "by": by}
+    for rid in sorted(set(requirements) & set(withdrawn)):
+        problems.append(f"requirements: {rid} is withdrawn and still in a requirements table")
 
     sim = gate_sim(project, out)
     decks = sim.details.get("decks", {})
@@ -710,6 +765,10 @@ def gate_verify(
                 row[3],
                 plain_id(row[4]).upper(),
             )
+            if rid in withdrawn and rid not in requirements:
+                when, by = withdrawn[rid]["date"], withdrawn[rid]["by"]
+                problems.append(f"traceability: {rid} was withdrawn on {when} ({by}); remove its row")
+                continue
             if rid not in requirements:
                 problems.append(f"traceability: {rid} is not in the requirements")
                 continue
@@ -753,7 +812,9 @@ def gate_verify(
     for exp in sorted(sim_dir.glob("*.expect.json")) if sim_dir.is_dir() else []:
         for meas, bounds in load_json(exp).items():
             req = bounds.get("req") if isinstance(bounds, dict) else None
-            if req and req not in requirements:
+            if req and req in withdrawn and req not in requirements:
+                problems.append(f"{exp.name}: {meas} names {req}, withdrawn on {withdrawn[req]['date']}")
+            elif req and req not in requirements:
                 problems.append(f"{exp.name}: {meas} names {req}, which is not a requirement")
 
     failures = list(problems)
@@ -762,7 +823,10 @@ def gate_verify(
             f"{rid}: OPEN" for rid in verdicts["OPEN"]
         ]
     counts = ", ".join(f"{len(verdicts[v])} {v.lower()}" for v in VERDICTS)
-    summary = f"{len(requirements)} requirements: {counts}; {quoted} quoted values match the run"
+    summary = f"{len(requirements)} requirements: {counts}"
+    if withdrawn:
+        summary += f"; withdrawn {', '.join(sorted(withdrawn))}"
+    summary += f"; {quoted} quoted values match the run"
     if verdicts["FAIL"]:
         summary += f"; failing {', '.join(verdicts['FAIL'][:6])}" + (
             " ..." if len(verdicts["FAIL"]) > 6 else ""
@@ -777,6 +841,8 @@ def gate_verify(
             "package": str(package),
             "requirements": len(requirements),
             "verdicts": verdicts,
+            "withdrawn": withdrawn,
+            "owner_decisions": owner_decisions,
             "quoted": quoted,
             "writeups": len([w for w in writeups if w.parent.name != DECK_TEMPLATE.parent.name]),
             "decks": sorted(deck_names),
@@ -2555,14 +2621,16 @@ def main(argv: list[str] | None = None) -> int:
     p = add_project_cmd(
         "verify",
         "check the project's verification package (P28): requirements, writeups, traceability, and every "
-        "quoted number against a fresh run of sim/*.cir; writes verify.json and the decks' logs in sim/; "
+        "quoted number against a fresh run of sim/*.cir; requirements the owner withdrew are named and "
+        "left out of the counts; writes verify.json and the decks' logs in sim/; "
         "--init writes the package's skeleton without overwriting a file",
     )
     p.add_argument("--package", help="the package directory (default <project>/verification)")
     p.add_argument(
         "--init",
         action="store_true",
-        help="copy the templates into the package, a writeup per deck, never over a file that exists",
+        help="copy the templates into the package, a writeup per deck, never over a file that exists "
+        "(BRIEF.md and FACTS.md, the helpers' templates, stay out)",
     )
     p = sub.add_parser(
         "design", help="build a kicadgen design.py into a KiCad project; --route runs FreeRouting"

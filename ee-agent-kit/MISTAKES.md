@@ -529,3 +529,45 @@ What happened: the board's CI install hung twice in three runs (12 and 50 minute
 Cost: two cancelled board runs (an hour of runner time), a re-run, and an install whose progress was never visible since M12.
 Root cause: M12's fix was checked by reading it, never by watching a slow run; a filter in a pipe was taken to print as it reads.
 Process: P2
+
+## M92 — A reading moved behind a series part, one current direction counted
+What happened: v0.16 moved the cell divider behind the fuse F1. I counted the charge current lifting the reading (28.9 mV) and set the panel window's top at 4.16 V. The 3.1 V rail's 30 mA through F1 and the track lowers the reading by up to 5.8 mV the other way, so the panel could see 4.203 V against its 4.2 V. The REQ-DSP-02 calculation found it; the top is 4.15 V.
+Cost: a firmware constant and the README's window changed after three helpers had started from the old one (M98).
+Root cause: when a measurement moved behind a series element I listed one current through it, not every current in both directions. P28 step 4 now lists every current through a series part, both ways, each at its corner.
+Process: P28
+
+## M93 — An inner-layer run's resistance taken as outer copper
+What happened: v0.15's `sim/display_vbat.cir` took the joint's +BATT run, 10 mm of 0.2 mm track on In2, as 10 mOhm. In2 is 15 µm copper: the run is 57.6 mOhm. Found in v0.16; the deck now takes 60 mOhm with the via and the pad's run.
+Cost: one version's display deck and its writeup with the run at about a sixth of its resistance.
+Root cause: a track's resistance estimated by habit, without the layer's thickness from the stackup. P28 step 5 now takes every track resistance a deck uses from `workcenter inspect resistance`, which reads the stackup.
+Process: P28
+
+## M94 — A deck run by hand without the gate's model translation
+What happened: checking F1's effect, I ran `sim/heater_pulse.cir` with a bare `ngspice -b`. Diodes' current monitor needs the gate's `res-model` translation and PSpice mode. Without them ISENSE read 3.0 V where the gate gives 0.505 V, and the firmware's duty came out 6.6. Caught against the gate's own log.
+Cost: one wrong run and the comparison that unpicked it.
+Root cause: no command ran one deck the way the gate does. `workcenter sim <project> --deck NAME --keep` does, and P28 step 5 allows a hand run only through it.
+Process: P28
+
+## M95 — A helper's brief asserted a behaviour the deck contradicts
+What happened: v0.16's brief said C5 "barely takes part" in the heater edge once behind F1; the deck shows C5 and C15 still deliver 1.91 A through F1 at 106 ns. The helper's waveform reading also showed F1 takes 1 to 2.5 µA²s at every heater edge, which the REQ-PRT-07 calculation had left out: it counted only the surge at assembly.
+Cost: a writeup's premise and the REQ-PRT-07 calculation redone after the helper's report.
+Root cause: expectations written into a brief before the deck's waveforms were read, and a fuse's surges checked at one event instead of every event that moves charge through it. BRIEF.md now asks questions and states no behaviour a run has not shown; P28 step 4 checks a series part at every event.
+Process: P28
+
+## M96 — A brief named a path that was then filed differently
+What happened: the brief said the fuse's datasheet "will be filed as library/kyocera-avx/accu-guard-ii.pdf". It was filed under the maker's name, `AccuGuard2.pdf`, and one writeup carried the wrong path until a grep before the commit.
+Cost: one path rewritten, caught before the commit.
+Root cause: a brief promised a future path instead of pointing at a file that exists. BRIEF.md and FACTS.md now take absolute paths only, and the `verification` skill's check prints every one that does not exist.
+Process: P28
+
+## M97 — A totals table left three versions behind
+What happened: `parts/README.md`'s cost table, made by `parts/summary.py`, stopped at v0.12. v0.13 to v0.15 updated only the root README's copy.
+Cost: three versions' totals missing from the parts README.
+Root cause: one generated table lives in two files, and the version checklist named one. `workcenter costs` now writes every copy between its markers, and P22 step 5 names both copies.
+Process: P22
+
+## M98 — A brief left stale after the fact it stated changed
+What happened: the brief gave the panel window's top as 4.16 V. I changed it to 4.15 V (M92) while three helpers worked from it; two reported the mismatch.
+Cost: three helpers worked from a wrong figure; two stopped to report it.
+Root cause: briefs copy facts instead of pointing at the one file that holds them. FACTS.md now holds each fact with its home, the brief points at it, and a changed fact is changed in its home, then in FACTS.md, and every helper is told.
+Process: P28

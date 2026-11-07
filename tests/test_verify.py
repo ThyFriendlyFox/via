@@ -265,6 +265,130 @@ def test_a_deck_file_named_in_a_table_is_not_a_measure(tmp_path):
     assert code == 0, failures(results)
 
 
+WITHDRAWN = """
+## Withdrawn
+
+| ID | Date | Decision | By |
+|---|---|---|---|
+| REQ-OUT-02 | DATE | the resistors' tolerance is the BOM's business, not the package's | BY |
+"""
+
+
+def withdraw(
+    project: Path, date: str = "2026-11-06", by: str = "the owner", keep_row=False, keep_trace=False
+):
+    """REQ-OUT-02 moved from the requirements table to a Withdrawn table, its traceability row removed."""
+    req = project / "verification" / "requirements" / "README.md"
+    lines = req.read_text().splitlines()
+    if not keep_row:
+        lines = [ln for ln in lines if not ln.startswith("| REQ-OUT-02 ")]
+    req.write_text("\n".join(lines) + "\n" + WITHDRAWN.replace("DATE", date).replace("BY", by))
+    if not keep_trace:
+        trace = project / "verification" / "traceability.md"
+        kept = [ln for ln in trace.read_text().splitlines() if "REQ-OUT-02" not in ln]
+        trace.write_text("\n".join(kept) + "\n")
+
+
+@needs_ngspice
+def test_a_withdrawn_requirement_leaves_the_counts_and_is_named(tmp_path):
+    project = project_with_package(tmp_path)
+    withdraw(project)
+    code, results = run("verify", project, "--strict")
+    assert code == 0, failures(results)  # REQ-OUT-02 was OPEN; withdrawn, --strict no longer sees it
+    r = results[0]
+    assert r["details"]["requirements"] == 1
+    assert r["details"]["verdicts"] == {"PASS": ["REQ-OUT-01"], "FAIL": [], "OPEN": []}
+    assert r["details"]["withdrawn"] == {
+        "REQ-OUT-02": {
+            "date": "2026-11-06",
+            "decision": "the resistors' tolerance is the BOM's business, not the package's",
+            "by": "the owner",
+        }
+    }
+    summary = r["summary"]
+    assert summary.startswith("1 requirements: 1 pass, 0 fail, 0 open; withdrawn REQ-OUT-02;"), summary
+
+
+@needs_ngspice
+def test_a_withdrawn_requirement_in_the_traceability_table_fails(tmp_path):
+    project = project_with_package(tmp_path)
+    withdraw(project, keep_trace=True)
+    code, results = run("verify", project)
+    assert code == 1
+    found = failures(results)
+    assert "traceability: REQ-OUT-02 was withdrawn on 2026-11-06 (the owner); remove its row" in found, found
+    assert results[0]["details"]["verdicts"]["OPEN"] == []
+
+
+@needs_ngspice
+def test_a_withdrawn_requirement_still_in_the_requirements_fails(tmp_path):
+    project = project_with_package(tmp_path)
+    withdraw(project, keep_row=True, keep_trace=True)
+    code, results = run("verify", project)
+    assert code == 1
+    assert "requirements: REQ-OUT-02 is withdrawn and still in a requirements table" in failures(results)
+
+
+@needs_ngspice
+def test_a_withdrawal_names_its_date_and_who_made_it(tmp_path):
+    project = project_with_package(tmp_path)
+    withdraw(project, date="6 November", by="—")
+    code, results = run("verify", project)
+    assert code == 1
+    found = failures(results)
+    assert "requirements: withdrawn REQ-OUT-02 is dated '6 November', not like 2026-11-06" in found, found
+    assert "requirements: withdrawn REQ-OUT-02 has no by" in found, found
+
+
+@needs_ngspice
+def test_a_bound_naming_a_withdrawn_requirement_fails(tmp_path):
+    project = project_with_package(tmp_path)
+    withdraw(project)
+    expect = project / "sim" / "rc_divider.expect.json"
+    expect.write_text('{ "vout": { "min": 2.45, "max": 2.55, "req": "REQ-OUT-02" } }\n')
+    code, results = run("verify", project)
+    assert code == 1
+    assert "rc_divider.expect.json: vout names REQ-OUT-02, withdrawn on 2026-11-06" in failures(results)
+
+
+@needs_ngspice
+def test_a_requirement_the_owner_restated_names_the_decisions_date(tmp_path):
+    project = project_with_package(tmp_path)
+    md = project / "verification" / "requirements" / "README.md"
+    restated = "| the owner's decision of 2026-11-06; the fixture's spec | Examination"
+    md.write_text(md.read_text().replace("| the fixture's spec | Examination", restated))
+    code, results = run("verify", project)
+    assert code == 0, failures(results)
+    assert results[0]["details"]["owner_decisions"] == {"REQ-OUT-02": "2026-11-06"}
+    md.write_text(md.read_text().replace("decision of 2026-11-06;", "decision of Friday;"))
+    code, results = run("verify", project)
+    assert code == 1
+    assert (
+        "requirements: REQ-OUT-02 names the owner's decision of 'Friday', not a date like 2026-11-06"
+        in failures(results)
+    )
+
+
+@needs_ngspice
+def test_init_leaves_the_helpers_brief_and_facts_out(tmp_path):
+    templates = ROOT / "templates" / "verification"
+    assert (templates / "BRIEF.md").is_file() and (templates / "FACTS.md").is_file()
+    project = tmp_path / "rc"
+    shutil.copytree(BOARDS / "pass-rc-divider", project)
+    run("verify", project, "--init")
+    assert (project / "verification" / "traceability.md").is_file()
+    assert not (project / "verification" / "BRIEF.md").exists()
+    assert not (project / "verification" / "FACTS.md").exists()
+
+
+def test_iso_date_takes_a_real_day_written_year_first():
+    cli = load_cli()
+    assert cli.iso_date("2026-11-06")
+    assert not cli.iso_date("2026-02-30")
+    assert not cli.iso_date("20261106")
+    assert not cli.iso_date("6 November 2026")
+
+
 def test_parse_check_reads_one_and_two_sided_bounds():
     cli = load_cli()
     name, comparisons = cli.parse_check("vbus_hotplug.hp_worst <= 30 V")

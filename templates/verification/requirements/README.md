@@ -21,10 +21,24 @@ verification method, and the clause it would be inspected under.
   demonstration, test.
 - **Inspection** names the standard and clause, for example RTCA
   DO-160G section 17 (voltage spike) or MIL-STD-461G CS118 (ESD).
+- A requirement the owner restated or added names the decision in its
+  **Source**: "the owner's decision of 2026-11-06", with the date written
+  year, month, day. `workcenter verify` checks the date.
 
 | ID | Requirement | Limit | Source | Method | Inspection |
 |---|---|---|---|---|---|
 | REQ-PWR-01 | <!-- fill: the requirement --> | | | | |
+
+## Withdrawn
+
+A requirement the owner withdraws moves from the tables above to this
+table, with the date of the decision, the decision in the owner's terms,
+and who made it. `workcenter verify` names each withdrawn ID, leaves it
+out of the counts, and fails on a traceability row or an expect bound that
+still names it. A withdrawn ID is never given to a new requirement.
+
+| ID | Date | Decision | By |
+|---|---|---|---|
 
 ## Standards
 
