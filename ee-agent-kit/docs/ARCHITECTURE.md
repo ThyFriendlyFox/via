@@ -49,6 +49,8 @@ gates then read like any other project.
 | `tools/workcenter` | `find_project`, 1 `gate_*` function per gate, `gate_render` (with `parts_without_body`), `gate_procure` (parts files, `order_for`), `cmd_gates` for the ordered run, `cmd_design` for design files and `check_design` for `--check`, `cmd_sim` for one deck (`--deck`, `--keep`), `cmd_doctor` for engine status, `emit` for output and exit codes. Tools that are not gates: `cmd_fetch` (a library file and its `sources.csv` row), `cmd_curve` (a PDF's curves on a plot's axes: `outline_middle`, `crossings`), `cmd_ci` (a GitHub workflow replayed), `cmd_mutate` (a firmware's mutation list). |
 | `tools/pdfcurve.py` | One PDF page's vector paths and text lines as JSON, with pdfminer under the venv; `curve` reads its output. |
 | `tools/kicadgen.py` | `parse`/`dumps` for S-expressions, `load_symbol`/`load_footprint`, `Design` with `schematic()` (stub-and-label, or wired by `SchRouter` when `sch_wires` is set), `board()`, `project()`, `dsn()`, `merge_ses()`, `write()`; `load_design()` and `route()` for the CLI; `symbol_add()` for a symbol from a datasheet's pin table. |
+| `tools/inspect_board.py` | The engine of `workcenter inspect`: a `Board` read with KiCad's `pcbnew` (items, rule areas, courtyards, the stackup, the project's net classes and `.kicad_dru`), `touch`/`groups` for connectivity, one `cmd_*` per view. The CLI runs it under the venv's Python with its arguments as JSON; it writes only `map`'s images. |
+| `tools/stretch.py` | Grows a design file at a cut through Python's `ast`: board x-coordinates in code move, comments and strings never do. Standard library only. |
 
 ## Boundaries
 

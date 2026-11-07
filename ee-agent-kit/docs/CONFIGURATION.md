@@ -78,6 +78,29 @@ unset variable never causes a failure.
 | `--route` | design | off | Export the DSN, run FreeRouting, merge the session before writing. |
 | `--rounds N` | design | `4` | Route again, up to N rounds, with a via reserved beside each pad a pour lost. |
 | `CHECK BOARD ARGS` | placement | none | `CHECK` is one of `pin_sides`, `placement_audit`, `route_check`, `local_search`, `group_search`; `BOARD` a project folder or `.kicad_pcb`; `ARGS` go to the check as kistack documents them (`U1`, `--ic U1`, `--track 0.15 --clear 0.1 --via 0.5 --edge 0.3` for a board with a `.kicad_dru`). |
+| `VIEW BOARD` | inspect | none | `VIEW` is one of `map`, `list`, `probe`, `net`, `islands`, `resistance`, `crossed`; `BOARD` a project folder or `.kicad_pcb`. KiCad's `pcbnew` reads the board under the venv's Python; only `map` writes files. `--json` goes after the view too. |
+| `--box X0 X1 Y0 Y1` | inspect map, list, crossed | none (required) | The window in board millimetres, the x range first. |
+| `--layers L ...` | inspect map | every copper layer | The copper layers to draw, one PNG each (`F-Cu.png`); a back or inner layer is drawn as seen from the top, and the picture says so. |
+| `--scale PX` | inspect map | `60` | Pixels per millimetre; the longest side stays at 6000 px or under. |
+| `--out DIR` | inspect map | `<project>/build/inspect` | Where the PNGs go. |
+| `--layer L` | inspect list, probe | none | list: one copper layer only; probe: the track's layer. |
+| `--net NAME` | inspect list, probe, islands | none; islands `GND` | list: one net only; probe: the new via's or track's net; islands: the poured net. A local label's net is found as `NAME` or `/NAME`. |
+| `--via X,Y` | inspect probe | none | A via at X,Y on `--net`, through every copper layer. |
+| `--track "X,Y X,Y ..."` | inspect probe | none | A track through the points on `--layer` and `--net`. |
+| `--part REF` | inspect probe | none | A part on the board, moved to `--at` for the probe; its own pads and courtyard go with it. A part the board does not have yet needs `--footprint`. |
+| `--footprint LIB:NAME` | inspect probe | none | A new part's footprint, from the project's `fp-lib-table` or KiCad's footprint library. |
+| `--nets PAD=NET,...` | inspect probe | none | A new part's pad nets; a pad without one is held clear of every net. |
+| `--back` | inspect probe | off | A new part on the bottom face. |
+| `--at X,Y` | inspect probe | none (required with `--part`) | Where the part's anchor goes. |
+| `--rot DEG` | inspect probe | the part's angle | The part's angle, as the board file writes it. |
+| `--size MM` | inspect probe | the net class's via diameter (`.kicad_pro`) | The new via's diameter. |
+| `--drill MM` | inspect probe | the net class's via drill | The new via's hole. |
+| `--width MM` | inspect probe | the net class's track width | The new track's width. |
+| `--from REF.PAD` | inspect resistance | none (required) | One end of the path. |
+| `--to REF.PAD` | inspect resistance | none (required) | The other end. |
+| `--temp C` | inspect resistance | `20` | The copper's temperature: 1.72e-8 Ohm m at 20 °C, 0.393 % more per °C. |
+| `--plating MM` | inspect resistance | the board's hole plating (KiCad's default 0.02 mm) | The copper of each via barrel, round a hole the size of the via's drill. |
+| `--new BOARD` | inspect crossed | none | The board after the change: which of the nets that crossed the window it no longer connects (exit 1 on one). |
 | `--width PX` | render | `1600` | Image width; the schematic PNG is twice that, the GIF's frames at most 640. |
 | `--views LIST` | render | `schematic,2d,3d,layers` | What to draw, comma-separated, from `schematic`, `2d`, `3d`, `layers`, `spin`, or `all`. `layers` writes `render/layers/<layer>.png` for each layer with something on it and `render/layers.png`; `spin` writes `render/board-spin.gif`. |
 | `--spin-frames N` | render | `36` | Frames in the turning GIF, 12 a second. |
@@ -115,6 +138,17 @@ Every number is millimetres; the file is written in KiCad's VRML unit (0.1 inch)
 | `KICAD_SYMBOL_DIR` | path | `/usr/share/kicad/symbols` | Symbol libraries to read. |
 | `KICAD_FOOTPRINT_DIR` | path | `/usr/share/kicad/footprints` | Footprint libraries to read. |
 | `FREEROUTING_JAR` | path | `/opt/workcenters/ee/freerouting/freerouting.jar` | Used by `route()`. |
+
+## `tools/stretch.py`
+
+| Flag | Default | Use |
+|---|---|---|
+| `DESIGN` | none | The design file. Python's own parser reads it, so a number in a comment or a string never moves. |
+| `--cut X` | none (required) | The x of the cut, mm: every board x-coordinate east of it moves. |
+| `--grow G` | none (required) | How far, mm; a negative G moves west. |
+| `--outline X0 Y0 X1 Y1` | the file's `outline=(...)` | The board's extent, when the file computes its outline. A pair counts as a point within 5 mm of it. |
+| `--out FILE` | the design file | Write here instead. Either way the result goes to a new file first and replaces the target once it is complete. |
+| `--dry-run` | off | Print what would move and what stays for a look by hand; write nothing. |
 
 ## `tools/hooks/install_hooks.py`
 

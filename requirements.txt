@@ -12,3 +12,5 @@ pygerber==2.4.3
 pdfminer.six==20260107
 # A GitHub workflow read for `workcenter ci` (the replay of a repository's CI steps)
 PyYAML==6.0.3
+# The maps of `workcenter inspect map` (tools/inspect_board.py, run under the venv)
+Pillow==12.3.0
