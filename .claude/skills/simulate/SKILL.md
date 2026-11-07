@@ -52,11 +52,40 @@ A circuit meets its spec when every bound holds.
    Read `build/sim/<deck>.log`; the line number in the message points at
    the deck.
 
+## A deck by hand
+
+Run one deck only through `workcenter sim <project> --deck <deck>`, never
+with a bare `ngspice -b`. The command runs the deck the gate's way and
+prints every value the deck printed, each beside its bound. A bare run in
+`sim/` reads a vendor's model untranslated and in ngspice's own mode: a
+PSpice current monitor read 3.0 V there where the gate reads 0.505 V
+(M94).
+
+1. `workcenter sim <project> --deck <deck> --keep --out <scratch>` leaves
+   the run folder, `<scratch>/sim/run/<deck>/`: the deck with its includes
+   made absolute, the translated models, the `.spiceinit` with the mode.
+   It prints the command that reruns it: `env -C <run folder> ngspice -b
+   <deck>.cir`.
+2. Edit the copy in the run folder to probe a node or step a value, and
+   rerun with that command. The project's deck stays as it is.
+3. A number a writeup or a calculation quotes comes from `workcenter sim`
+   or `workcenter verify` on the project's own deck, never from a probe
+   run.
+
 ## A vendor's model
 
 A part with a published model is simulated with that model, kept in the
 project's `library/` and listed in `library/sources.csv` (`PROCESSES.md`
-P27; `workcenter sources` checks the rows).
+P27; `workcenter sources` checks the rows). Fetch a model the part has no
+row for yet with `workcenter fetch <url> --to library/<maker>/<file> --mpn
+<MPN> --row` (`--member` for a file inside a zip), then fill the row's
+`Revision`, `Dated` and `Ngspice` from the file.
+
+A number the deck needs from a datasheet's curve (a fuse's melting time at
+a current, a MOSFET's safe operating area) is read from the PDF's vectors
+with `workcenter curve <pdf> --page N`: the listing first, for the frame and
+the curve's path, then `--frame`, `--x`, `--y` and `--at`. Cite the page and
+the figure with the number.
 
 1. Include it by its library path from the deck, as the vendor ships it:
    `.include "../../library/ti/TLV75533P_TRANS.lib"`. The gate runs the deck

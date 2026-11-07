@@ -1291,3 +1291,170 @@ def test_wrlgen_package_bodies_put_pin_one_top_left(tmp_path):
     for preset in ("leadless", "gullwing"):
         assert wrlgen.main([preset, str(tmp_path / f"{preset}.wrl")]) == 0
         assert (tmp_path / f"{preset}.wrl").read_text().startswith("#VRML V2.0 utf8")
+
+
+# ------------------------------------------------- design --check (a board repository's CI)
+
+DIVIDER_PY = (
+    "import sys, uuid\n"
+    f"sys.path.insert(0, {str(ROOT / 'tools')!r})\n"
+    "import kicadgen\n"
+    "def build():\n"
+    "    d = kicadgen.Design(name='gen_divider', namespace=uuid.UUID(int=9),\n"
+    "                        outline=(100.0, 100.0, 112.0, 110.0))\n"
+    "    d.power_nets = {'GND': 'GND', 'VIN': 'VBUS'}\n"
+    "    d.flagged_nets = ['GND', 'VIN']\n"
+    "    r = 'Resistor_SMD:R_0603_1608Metric'\n"
+    "    hdr = 'Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical'\n"
+    "    d.add('J1', 'Connector_Generic:Conn_01x03', 'IN', hdr, sch_at=(50.8, 50.8),\n"
+    "          pcb_at=(103.0, 102.5), nets={'1': 'VIN', '2': 'OUT', '3': 'GND'})\n"
+    "    d.add('R1', 'Device:R', '10k', r, sch_at=(71.12, 45.72), pcb_at=(108.5, 102.5),\n"
+    "          nets={'1': 'VIN', '2': 'OUT'})\n"
+    "    d.add('R2', 'Device:R', '10k', r, sch_at=(71.12, 58.42), pcb_at=(108.5, 106.5),\n"
+    "          nets={'1': 'OUT', '2': 'GND'})\n"
+    "    return d\n"
+)
+
+
+def check(design: Path, *extra: object) -> tuple[int, dict]:
+    proc = subprocess.run(
+        [sys.executable, str(CLI), "--json", "design", str(design), "--check", *map(str, extra)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return proc.returncode, (json.loads(proc.stdout) if proc.stdout.strip() else {"stderr": proc.stderr})
+
+
+@needs_libs
+def test_design_check_compares_what_the_design_writes_with_the_project(tmp_path):
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    design = proj / "design.py"
+    design.write_text(DIVIDER_PY, encoding="utf-8")
+    code, _ = run_cli("design", design)
+    assert code == 0
+    committed = {p.name: p.read_bytes() for p in proj.iterdir() if p.is_file()}
+    code, report = check(design)
+    assert code == 0, report
+    assert report["files"] == [
+        {"file": "gen_divider.kicad_pro", "state": "same"},
+        {"file": "gen_divider.kicad_sch", "state": "same"},
+    ]
+    assert {p.name: p.read_bytes() for p in proj.iterdir() if p.is_file()} == committed  # nothing written
+    # the design changes and the committed schematic is now behind it
+    design.write_text(
+        DIVIDER_PY.replace("'R2', 'Device:R', '10k'", "'R2', 'Device:R', '22k'"), encoding="utf-8"
+    )
+    code, report = check(design)
+    assert code == 1
+    sch = next(f for f in report["files"] if f["file"] == "gen_divider.kicad_sch")
+    assert sch["state"] == "differs" and '"22k"' in sch["design"] and '"10k"' in sch["project"], sch
+    assert next(f for f in report["files"] if f["file"] == "gen_divider.kicad_pro")["state"] == "same"
+    # --out keeps the regenerated project; --route is refused, since CI regenerates without routing
+    code, report = check(design, "--out", tmp_path / "regen")
+    assert code == 1 and (tmp_path / "regen" / "gen_divider.kicad_sch").is_file()
+    code, report = check(design, "--route")
+    assert code == 1 and "leave out --route" in report["stderr"]
+
+
+@needs_libs
+def test_design_check_fails_on_the_design_steps_own_failure(tmp_path):
+    """M85: `workcenter design` exits 1 on a hand via it refuses, though it writes every file; CI's
+    regenerate step fails on that exit, so the check does too, even with every file the same."""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    design = proj / "design.py"
+    design.write_text(
+        DIVIDER_PY.replace("    return d\n", "    d.via('VIN', 109.325, 106.5)\n    return d\n")
+    )
+    code, _ = run_cli("design", design)
+    assert code == 1
+    code, report = check(design)
+    assert code == 1
+    assert report["design_exit"] == 1
+    assert {f["state"] for f in report["files"]} == {"same"}
+    assert report["design"]["via_problems"] == ["VIN via at (109.325, 106.5): on R2.2 (GND, F.Cu)"]
+
+
+# ------------------------------------------------- symbol-add (a symbol from a datasheet's pin table)
+
+COMPARATOR_PINS = (
+    "Number,Name,Type,Side\n1,OUT,open_collector,right\n2,V-,power_in,bottom\n3,IN+,input,left\n"
+)
+COMPARATOR_PINS += "4,IN-,input,left\n5,REF,output,right\n6,V+,power_in,top\n"
+
+
+def test_symbol_add_places_each_pin_on_its_side_on_the_grid(tmp_path):
+    table = tmp_path / "TLV3011.csv"
+    table.write_text(COMPARATOR_PINS, encoding="utf-8")
+    lib = tmp_path / "sym" / "Mine.kicad_sym"
+    args = ["symbol-add", str(lib), "--from", str(table), "--footprint", "Package_TO_SOT_SMD:SOT-363_SC-70-6"]
+    assert kicadgen.main([*args, "--datasheet", "https://www.ti.com/lit/ds/symlink/tlv3011.pdf"]) == 0
+    sym = kicadgen.load_symbol("Mine:TLV3011", {"Mine": lib})
+    pins = {p.number: (p.name, p.etype, p.x, p.y, p.angle, p.length) for p in sym.pins}
+    # Body 10.16 wide: the side names fit with room. 15.24 tall: the upright V+ and V- end before the
+    # side rows at y = +-1.27 begin.
+    assert pins == {
+        "3": ("IN+", "input", -7.62, 1.27, 0, 2.54),
+        "4": ("IN-", "input", -7.62, -1.27, 0, 2.54),
+        "1": ("OUT", "open_collector", 7.62, 1.27, 180, 2.54),
+        "5": ("REF", "output", 7.62, -1.27, 180, 2.54),
+        "6": ("V+", "power_in", 0, 10.16, 270, 2.54),
+        "2": ("V-", "power_in", 0, -10.16, 90, 2.54),
+    }
+    assert all(
+        abs(v / kicadgen.SCH_GRID - round(v / kicadgen.SCH_GRID)) < 1e-9 for p in sym.pins for v in (p.x, p.y)
+    )
+    props = {kicadgen.atoms(c)[0]: kicadgen.atoms(c)[1] for c in kicadgen.children(sym.node, "property")}
+    assert props["Reference"] == "U" and props["Footprint"] == "Package_TO_SOT_SMD:SOT-363_SC-70-6"
+    assert props["Datasheet"].endswith("tlv3011.pdf")
+    # a second symbol goes in after the first, whose bytes stay; a name already there is refused
+    before = lib.read_bytes()
+    (tmp_path / "TWO.csv").write_text("Number,Name,Type,Side\n1,A,passive,left\n2,B,passive,right\n")
+    assert kicadgen.main(["symbol-add", str(lib), "--from", str(tmp_path / "TWO.csv")]) == 0
+    after = lib.read_bytes()
+    assert after[: len(before.rstrip(b")\n"))] == before.rstrip(b")\n")
+    assert [kicadgen.atoms(s)[0] for s in kicadgen.children(kicadgen.parse(after.decode()), "symbol")] == [
+        "TLV3011",
+        "TWO",
+    ]
+    assert kicadgen.main(["symbol-add", str(lib), "--from", str(table)]) == 1
+    assert lib.read_bytes() == after
+    (tmp_path / "BAD.csv").write_text("Number,Name,Type,Side\n1,A,analog,left\n")
+    assert kicadgen.main(["symbol-add", str(lib), "--from", str(tmp_path / "BAD.csv")]) == 1
+    (tmp_path / "TWICE.csv").write_text("Number,Name,Type,Side\n1,A,passive,left\n1,B,passive,right\n")
+    assert kicadgen.main(["symbol-add", str(lib), "--from", str(tmp_path / "TWICE.csv")]) == 1
+    assert lib.read_bytes() == after
+
+
+@needs_libs
+@needs_kicad
+def test_a_symbol_from_a_pin_table_plots_and_passes_erc_in_a_design(tmp_path):
+    lib = tmp_path / "sym" / "Mine.kicad_sym"
+    table = tmp_path / "Fuse2.csv"
+    table.write_text("Number,Name,Type,Side\n1,~,passive,left\n2,~,passive,right\n", encoding="utf-8")
+    assert kicadgen.main(["symbol-add", str(lib), "--from", str(table), "--reference", "F"]) == 0
+    proc = subprocess.run(
+        ["kicad-cli", "sym", "export", "svg", str(lib), "--symbol", "Fuse2", "-o", str(tmp_path / "svg")],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert (tmp_path / "svg" / "Fuse2_unit1.svg").is_file()
+    d = divider()
+    d.symbol_dirs = {"Mine": lib}
+    d.add(
+        "F1",
+        "Mine:Fuse2",
+        "1A",
+        "Resistor_SMD:R_0603_1608Metric",
+        sch_at=(86.36, 58.42),
+        pcb_at=(106.0, 108.8),
+        nets={"1": "OUT", "2": "GND"},
+    )
+    out = tmp_path / "proj"
+    d.write(out)
+    code, records = run_cli("erc", out, "--out", out / "build", "--strict")
+    assert code == 0, records

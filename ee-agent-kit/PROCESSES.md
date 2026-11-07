@@ -338,9 +338,11 @@ When: a change is about to be called done.
 1. `make verify` green locally; for a board, `workcenter gates .` GREEN
    and the project's own CI checks run locally the way CI runs them (a
    board repository regenerates every project with `workcenter design
-   <p>/design.py --out <scratch>` and needs exit 0, M85). Run them with an
-   absolute path (`make -C /path verify`), never behind a `cd`, and in the
-   background with a log.
+   <p>/design.py --out <scratch>` and needs exit 0, M85; `workcenter design
+   <p>/design.py --check` is that step for one project, and `workcenter ci
+   <repo>` replays the whole workflow and prints `CI REPLAY GREEN`). Run them
+   with an absolute path (`make -C /path verify`), never behind a `cd`, and
+   in the background with a log.
 2. Chain the commit and the push behind the verdict itself, never behind
    a look at the log: `grep -q 'VERIFY GREEN' log && git push ...`. A
    `tail` succeeds whatever the log says. Every check you run before a
@@ -446,7 +448,8 @@ charger, or any other load from a battery.
 3. Every elapsed-time comparison is wrap-safe (subtract, then compare),
    and a test runs the counter across its wrap.
 4. Prove the tests can fail: break each safety behaviour once (a mutation
-   script kept with the firmware) and see a named test fail.
+   list kept with the firmware, run by `workcenter mutate <firmware>
+   --mutations <list>`) and see a named test fail.
 5. Every output that drives a load is off at reset, in every fault
    handler, and when the loop that commands it stops (a deadman).
 
@@ -660,8 +663,10 @@ comes from a vendor.
    and D (a model file, or a note saying why there is none), a step row
    where the vendor publishes a body. Fetch the sanctioned way (P25 step 1):
    `workcenter sources --fetch` asks once under its own name and records a
-   refusal; a file no site will serve is left for the user to download, and
-   its row's note says so and from where.
+   refusal, and `workcenter fetch <url> --to <library>/<maker>/<file> --mpn
+   <MPN> --row` does the same for a file the library does not hold yet; a
+   file no site will serve is left for the user to download, and its row's
+   note says so and from where.
 2. Keep each file as the vendor publishes it, its notice intact; a model
    that ngspice reads differently is translated into a copy in `build/`,
    never in the library. The row records what the file itself prints: the

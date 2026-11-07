@@ -65,6 +65,21 @@ runs `workcenter procure` for the priced list and the totals.
    keeps its documents; the report names the totals and every line in the
    three lists.
 
+## A part's datasheet
+
+A part chosen here also needs its datasheet in the project's library
+(`PROCESSES.md` P27), before any board names it:
+
+```sh
+workcenter fetch <maker's URL> --to library/<maker>/<file> --mpn <MPN> --row
+```
+
+It asks the maker's site once under the workcenter's own name, keeps the
+file, and appends its `sources.csv` row with the SHA256 and today's date.
+Fill `Revision` and `Dated` from the file itself; the command prints the
+lines that may carry them. A refusal is the site's answer: download the
+file by hand, or keep a row with no file and a note that says where it is.
+
 ## Checks
 
 - Every priced row has a URL and a date it was read; no price came from
