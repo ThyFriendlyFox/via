@@ -73,7 +73,10 @@ fails the check until it is written.
    environmental effects. The same rules: numbered equations, each with
    its source.
 9. **System.** Draw the block diagram (SVG; every net by its design name;
-   colour the charge path, the load path, logic, sensing, return). Write
+   colour the charge path, the load path, logic, sensing, return) from a
+   spec: `workcenter diagram system/block-diagram.json --out
+   system/block-diagram.svg --png`, starting from the spec `--init`
+   copies, so the next version changes the spec, not a drawing. Write
    one caption per mode: where the charge comes from, which path it takes,
    which parts conduct, which are off, what ends the mode. List every
    frequency on the board with its source.

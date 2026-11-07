@@ -55,7 +55,11 @@ never remove one.
    board, 3D and per-layer images in `build/render/`, and the turning GIFs
    (`--views spin`) that `PROCESSES.md` P23 asks of a finished version. Report the gates table, the
    counts, and the artifact paths. `build/` stays out of the repository;
-   images the README shows are copied into the project's `docs/`.
+   images the README shows are copied into the project's `docs/`. In a
+   project kept as version folders, `workcenter gates <board> --report
+   <version>/docs/gates.md` writes each board's table and deck list into
+   the report between its markers, and `workcenter pictures <version>`
+   draws and copies every picture P23 asks for.
 7. A generated design (`design.py`, see `board-design`) is fixed in the
    Python and regenerated with `workcenter design design.py --route`,
    never by editing the `.kicad_*` files.

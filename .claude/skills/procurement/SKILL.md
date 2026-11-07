@@ -65,6 +65,19 @@ runs `workcenter procure` for the priced list and the totals.
    keeps its documents; the report names the totals and every line in the
    three lists.
 
+## A project kept as version folders
+
+A repository of versions (`v0.1/`, `v0.2/`, ... with nested boards such as
+`v0.2/display/`) keeps its parts in `parts/`: `catalog.csv` for every
+version, `version/<id>.csv` for a part one version buys differently (read
+first, so the archived versions keep theirs), and `offboard/<id>.csv` for
+each version's items off the board, `<id>` being `v0.2` or `v0.2-display`.
+The bare board's row has an MPN beginning `bare board` (no datasheet is
+asked for it). `workcenter costs <repo>` prices every board of every
+version, keeps the lists in `parts/lists/`, and writes the totals into every
+file marked `<!-- workcenter costs -->` ... `<!-- /workcenter costs -->`:
+mark each place the table stands, never copy it by hand (M97).
+
 ## A part's datasheet
 
 A part chosen here also needs its datasheet in the project's library

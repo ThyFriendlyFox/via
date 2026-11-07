@@ -3563,7 +3563,20 @@ def cmd_gates(args) -> int:
     if not args.json:
         verdict = "GREEN" if code == EXIT_PASS else ("SKIPPED" if code == EXIT_SKIP else "RED")
         print(f"{verdict}: {project.name}  report {out / 'gates.json'}")
+    if args.report:
+        # The one file a gate run writes outside `out`: named by the user, only between its markers.
+        blocks = doctools().gates_report(Path(args.report).resolve(), project, results, sys.modules[__name__])
+        if not args.json:
+            print(f"wrote {', '.join(blocks)} into {args.report}")
     return code
+
+
+def doctools():
+    """tools/doctools.py: docs, costs, pictures, version, diagram and the gates report."""
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import doctools as module
+
+    return module
 
 
 def render_views(value: str) -> tuple[str, ...]:
@@ -3609,6 +3622,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--step", action="store_true", help="also export a STEP model")
     p.add_argument(
         "--fab", help="the DRC also checks a fab's limits: a rule set in rules/ or a .kicad_dru path"
+    )
+    p.add_argument(
+        "--report",
+        metavar="FILE",
+        help="also write the gates table and the deck list into FILE (docs/gates.md) between "
+        "<!-- workcenter gates NAME --> and <!-- workcenter decks NAME --> markers; prose stays",
     )
     p = add_project_cmd("autoroute", "run FreeRouting on the project's Specctra DSN, write a .ses")
     p.add_argument("--dsn", help="Specctra DSN exported from KiCad (default <project>/<name>.dsn)")
@@ -3851,7 +3870,11 @@ def main(argv: list[str] | None = None) -> int:
         "--new", metavar="BOARD", help="the new board: says which of those nets it no longer connects"
     )
 
+    doctools().register(sub, sys.modules[__name__])
+
     args = parser.parse_args(argv)
+    if getattr(args, "run", None):
+        return args.run(args)
     if args.command == "doctor":
         return cmd_doctor(args)
     if args.command == "placement":
