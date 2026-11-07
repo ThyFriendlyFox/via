@@ -231,6 +231,7 @@ def test_init_writes_the_skeleton_and_never_overwrites(tmp_path):
         "README.md",
         "requirements/README.md",
         "system/README.md",
+        "system/block-diagram.json",  # the starter spec for `workcenter diagram`
         "calculations/README.md",
         "traceability.md",
         "simulations/rc_divider/README.md",
@@ -238,7 +239,7 @@ def test_init_writes_the_skeleton_and_never_overwrites(tmp_path):
         assert (pkg / rel).is_file(), rel
     assert not (pkg / "simulations" / "_deck").exists()
     assert "sim/rc_divider.cir" in (pkg / "simulations" / "rc_divider" / "README.md").read_text()
-    assert len(results[0]["details"]["created"]) == 6
+    assert len(results[0]["details"]["created"]) == 7
     (pkg / "README.md").write_text("# Mine\n")
     code, results = run("verify", project, "--init")
     assert (pkg / "README.md").read_text() == "# Mine\n"

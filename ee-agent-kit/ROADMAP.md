@@ -59,6 +59,7 @@ the skills tell the agent which gate comes next.
 
 | Week | Feature | Release | Evidence |
 |---|---|---|---|
+| 2026-11-07 | Document curation: `workcenter docs`, `costs`, `pictures`, `gates --report`, `version new`, `diagram`, and `tools/scene.py`, from Last Hit's scripts | unreleased | `tests/test_doctools.py` (20 tests); on a copy of Last Hit: `docs v0.16` and `costs` reproduce the committed `CONTENTS.md` datasheet table and every list and total ($61.76 and $396.86 for v0.16), `version new v0.17` passes P22 step 4, `pictures v0.16` redraws the README's images; `DEVLOG.md` 2026-11-07 |
 | 2026-11-05 | Verification packages: `workcenter verify` (every quoted number against a fresh ngspice run, every traceability check recomputed), `templates/verification/`, P28, the `verification` skill; project-fitted models in `sim/models/`; `"req"` on expect bounds | unreleased | `tests/test_verify.py` (16 tests), `tests/test_sources.py` (the own-model rule); the Last Hit v0.14 package: 60 requirements, 175 quoted values matching the run; `DEVLOG.md` 2026-11-05 |
 | 2026-10-29 | Pull-resistor check: `Design.undefined_inputs()`, `check_pulls`, `defined_nets` | unreleased | `tests/test_pulls.py`; Last Hit v0.11 checked; `DEVLOG.md` 2026-10-29 |
 | 2026-10-29 | Fabrication house rule sets: `rules/sierra-circuits-web.kicad_dru`, `workcenter drc|gates --fab`, `Design.fab` | unreleased | `tests/test_fab.py` (fixture `fail-fab-sierra` GREEN plain, red with the fab; the board-wide minimums; the project untouched); Last Hit v0.11 checked: 47 errors under Sierra's limits; `DEVLOG.md` 2026-10-29 |
@@ -85,3 +86,4 @@ the skills tell the agent which gate comes next.
 - 2026-10-29 — item 3 (fab rule sets) re-scoped from JLCPCB to Sierra Circuits' Web PCB, the user's fab, and shipped; `Design.fab` added so a generated board carries its fab's rules for good. The MCP server moves up to 3.
 - 2026-11-05 — verification packages shipped out of band: the user asked for requirements fit for a MIL-STD or DO-160 inspection, simulations traced to the requirements' sources, cited nodal analysis, and this method in the workcenter.
 - 2026-10-29 — the pull-resistor check shipped out of band: the user asked for pull-downs wherever one is needed, in case one was missed.
+- 2026-11-07 — document curation (`workcenter docs`, `costs`, `pictures`, `gates --report`, `version new`, `diagram`, `tools/scene.py`) shipped out of band: the owner asked for every tool and convention of the Last Hit work in the workcenter.

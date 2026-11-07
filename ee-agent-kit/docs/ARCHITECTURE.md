@@ -48,6 +48,8 @@ gates then read like any other project.
 |---|---|
 | `tools/workcenter` | `find_project`, 1 `gate_*` function per gate, `gate_render` (with `parts_without_body`), `gate_procure` (parts files, `order_for`), `cmd_gates` for the ordered run, `cmd_design` for design files, `cmd_doctor` for engine status, `emit` for output and exit codes. |
 | `tools/kicadgen.py` | `parse`/`dumps` for S-expressions, `load_symbol`/`load_footprint`, `Design` with `schematic()` (stub-and-label, or wired by `SchRouter` when `sch_wires` is set), `board()`, `project()`, `dsn()`, `merge_ses()`, `write()`; `load_design()` and `route()` for the CLI. |
+| `tools/doctools.py` | The document commands: `docs`, `costs`, `pictures`, `version new`, `diagram`, and `gates_report()` for `gates --report`. `register()` adds them to the workcenter's parser with the CLI module as `cli`, so they report through its `Result` and `emit` and reuse `gate_procure` and `gate_render`. Marked blocks (`fill_block`) are the only text they rewrite in a hand-written file. Standard library only. |
+| `tools/scene.py` | Assembly scenes: a routed board loaded with KiCad's `pcbnew`, bodies on empty anchor footprints, stills from kicad-cli, the turning GIF from `workcenter render --views spin`. Runs under the venv's Python; a project's scene script imports it. |
 
 ## Boundaries
 

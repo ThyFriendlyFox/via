@@ -1,0 +1,36 @@
+{
+  "title": "<Board> vX.Y: blocks, nets and where the current goes",
+  "subtitle": "Net names as in design.py. Draw: workcenter diagram system/block-diagram.json --out system/block-diagram.svg --png",
+  "blocks": [
+    {"id": "J1", "x": 20, "y": 80, "w": 150, "h": 200, "title": "J1 USB-C", "notes": ["the power input"]},
+    {"id": "U1", "x": 230, "y": 80, "w": 200, "style": "power", "title": "U1 charger",
+     "lines": ["IN: its maximum rating", "charge current and how it is set"]},
+    {"id": "DIV", "x": 230, "y": 190, "w": 200, "dash": true, "fill": "#fafafa",
+     "lines": ["R1 / R2: VBUS to an ADC pin", "the ratio"]},
+    {"id": "U2", "x": 520, "y": 190, "w": 200, "style": "power", "title": "U2 regulator",
+     "lines": ["the rail it makes, its dropout"]},
+    {"id": "Q1", "x": 520, "y": 80, "w": 200, "style": "load", "title": "Q1 load switch",
+     "lines": ["the load and its current"]},
+    {"id": "U3", "x": 520, "y": 300, "w": 330, "style": "logic", "align": "left", "title": "U3 MCU",
+     "lines": ["PA0 VBUS_SENSE", "PA1 LOAD_EN", "VDD: +3V3"]},
+    {"id": "DS1", "x": 920, "y": 110, "w": 180, "style": "data", "title": "DS1 display", "lines": ["VDD: +3V3"]}
+  ],
+  "rails": [
+    {"id": "VBAT", "label": "+BATT", "style": "power", "x": 470, "y": 80, "h": 200},
+    {"id": "V3", "label": "+3V3", "style": "logic", "x": 780, "y": 190, "h": 90}
+  ],
+  "groups": [
+    {"label": "Display board, on its joint", "x": 900, "y": 70, "w": 220, "h": 120}
+  ],
+  "arrows": [
+    {"from": "J1", "to": "U1", "style": "power", "y": 110, "label": "VBUS"},
+    {"from": "J1", "to": "DIV", "style": "sense", "y": 215},
+    {"from": "U1", "to": "VBAT", "style": "power", "y": 110},
+    {"from": "VBAT", "to": "Q1", "style": "load", "y": 120, "label": "load"},
+    {"from": "VBAT", "to": "U2", "style": "power", "y": 215},
+    {"from": "U2", "to": "V3", "style": "logic", "y": 215},
+    {"from": "DIV", "to": "U3", "style": "sense", "x": 450, "label": "VBUS_SENSE"},
+    {"points": [[792, 230], [880, 230], [880, 150], [918, 150]], "style": "logic", "label": "+3V3", "label_on": 0}
+  ],
+  "dots": []
+}

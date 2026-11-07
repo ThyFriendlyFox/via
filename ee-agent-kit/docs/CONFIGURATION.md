@@ -41,7 +41,7 @@ unset variable never causes a failure.
 | `--fetch` | sources | off | Read each row's URL once more under the workcenter's own user agent into `<out>/sources/fetched/` and report each as same, changed, new, refused, gone or unreachable; a refusal is never retried. The library is not written. |
 | `--package DIR` | verify | `<project>/verification` | The verification package (`PROCESSES.md` P28): requirements, system, simulations, calculations, traceability. |
 | `--init` | verify | off | Copy `templates/verification/` into the package and a writeup per `sim/*.cir` into `simulations/<deck>/`, never over a file that exists. The new files fail the check until each `<!-- fill ... -->` is written. |
-| `--boards LIST` | procure | `1,10` | Units to price, comma-separated; each gets its cheapest order and totals per supplier. |
+| `--boards LIST` | procure, costs | `1,10` | Units to price, comma-separated; each gets its cheapest order and totals per supplier; for costs, a column each in the totals table, the largest also judging stock. |
 | `--step` | gates, export | off | Also export a STEP model. |
 | `--fab NAME` | gates, drc | none | Also check a fab's limits: a rule set in `rules/` (`sierra-circuits-web`) or a `.kicad_dru` path, laid over the project's own rules on a copy in `<out>/fab-<name>/`. A design file's `fab` field does the same for good (`rules/README.md`). |
 | `--dsn FILE` | autoroute | `<project>/<name>.dsn`, then `build/route/<name>.dsn` | Specctra DSN exported from KiCad. Absent means the command skips. |
@@ -57,6 +57,36 @@ unset variable never causes a failure.
 | `--spin-tilt DEG` | render | `-55` | The GIF's tilt about the board's x axis (kicad-cli `--rotate x`): `-55` looks down at the top face, `-125` up at the bottom face. |
 | `--spin-zoom Z` | render | `1.0` | The GIF's zoom; below 1 keeps long or tall parts in frame end-on. |
 | `--spin-pivot X,Y,Z` | render | none | The GIF's pivot, in cm from the board's centre (kicad-cli `--pivot`); raise Z to the middle of a tall assembly. |
+| `--report FILE` | gates | none | Also write the gates table and the deck list into FILE (a version's `docs/gates.md`) between `<!-- workcenter gates NAME -->` and `<!-- workcenter decks NAME -->` markers, NAME the project's `.kicad_pro` name; the prose outside them stays. The one file a gate run writes outside `--out`. |
+| `--library DIR` | docs | the nearest `library/` at or above the version | The library whose `sources.csv` names each part's datasheet; a `series.csv` beside it (`Pattern,MPN`) names the parts a series sheet covers. |
+| `--lists DIR` | docs | `<repo>/parts/lists` | The priced lists `costs` writes, `<id>.csv` and `<id>.md` per board. |
+| `--frames N` | pictures | `0`, off | The framing check: each GIF drawn with N frames into `build/pictures/check/` with one sheet of its frames; scene scripts draw no stills; `docs/` is not written. |
+| `--from VERSION` | version new | the latest version folder | The folder the new version copies. |
+| `--out FILE` | diagram | required | The SVG to write. |
+| `--png` | diagram | off | Also write `<out>.png` with `rsvg-convert`, at the drawing's width. |
+
+## `pictures.json` (a version's, for `workcenter pictures`)
+
+| Key | Type | Default | Use |
+|---|---|---|---|
+| `boards[].path` | path | `.` | The board's project folder, relative to the version. |
+| `boards[].name` | string | `base`, or the nested folder's name | The layer images' prefix in `docs/layers/` (`base-F-Cu.png`). |
+| `boards[].prefix` | string | empty, or `<name>-` | Put before each still's name in `docs/` (`display-board-top.png`). |
+| `boards[].strict` | bool | `true` | A part the 3D views draw without a body fails the board (`render --strict`). |
+| `boards[].stills` | list | the five board views and `schematic.png` | The images of `build/render/` copied into `docs/`. |
+| `boards[].layers` | file name | `layers-<name>.png` | The layer sheet's name in `docs/`; `null` copies no layers. |
+| `boards[].spins[]` | list | from above; from below too with parts on both faces | Each turning GIF: `as` (its name in `docs/`), `tilt`, `zoom`, `pivot`, `frames` (36). |
+| `scenes[].script` | path | each top-level script that imports `scene` | Run with the venv's Python from the version folder. |
+| `scenes[].what` | string | the script's docstring | What the script draws; `workcenter docs` lists the script with it. |
+| `scenes[].copy` | map | none | Files the script writes, relative to the version, and their names in `docs/`. |
+
+## `tools/scene.py`
+
+| Field | Type | Default | Use |
+|---|---|---|---|
+| `WORKCENTER_SPIN_FRAMES` | integer | the script's `frames` (36) | Frames in each turning GIF; `pictures --frames` sets it. |
+| `WORKCENTER_PICTURES_CHECK` | `0`/`1` | unset | Set by `pictures --frames`: `stills` draws nothing, `spin` writes a sheet of its frames and prints `frames: <path>`. |
+| `WORKCENTER_SRC` | path | set by `pictures` | The workcenter checkout, for a script that looks for its tools. |
 
 ## `tools/wrlgen.py`
 

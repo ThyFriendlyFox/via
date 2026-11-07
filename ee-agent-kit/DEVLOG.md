@@ -39,6 +39,43 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-07 — The Last Hit documents, made by the workcenter
+
+The owner asked for every tool the Last Hit work built outside the
+workcenter to move into it. This stream took the document scripts: the
+table of contents, the datasheet copies, the cost tables, the pictures,
+the version copy, the block diagram and the assembly renders. Each is now
+a command with tests. `workcenter costs` writes the totals into every file
+that marks a place for them; the list table in Last Hit's
+`parts/README.md` had stopped at v0.12 (M97). `workcenter pictures` runs
+P23 from a manifest, and `tools/scene.py` holds what each assembly script
+repeated. `workcenter version new` does P22's copying and banners,
+`workcenter diagram` draws a block diagram from a spec, and `gates
+--report` fills the gates report's tables round the prose.
+
+I ran each on a copy of the Last Hit repository. `costs` gave all 26
+lists byte for byte and every version's totals, $61.76 and $396.86 for
+v0.16. `docs v0.16` gave the same datasheet table and removed two stale
+copies the old script had left. `version new v0.17` left v0.16 differing
+from its commit by its banner alone. `pictures v0.16` redrew 21 of the
+README's 22 images in 15 minutes: 35 of its 51 files came out byte for
+byte, and the 3D stills differ from the committed ones in under 0.2 % of
+their pixels. `gates --report` refilled both boards' tables round the
+report's prose.
+
+The assembly rewritten on `tools/scene.py` showed a fault in the old
+script. pcbnew hands out copies of a footprint's 3D models, so the
+script's path rewrite never reached the saved board; only the two bodies
+it also copied were drawn. The scene copies every body the board names,
+and the landmine map now says why. Its four stills match the old
+script's within 0.08 % of their pixels.
+
+One slip: I wrote the starter diagram spec one folder above my worktree
+and moved it in before any commit.
+
+Evidence: `tests/test_doctools.py` (20 tests); `make verify` GREEN, 167
+tests.
+
 ## 2026-11-05 — A verification package an inspector can check
 
 An engineer reviewed the Last Hit board and asked how anyone could check

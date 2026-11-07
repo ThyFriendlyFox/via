@@ -177,7 +177,8 @@ def test_every_cli_flag_is_in_the_configuration_table():
     argparse flags, and kicadgen's, which it compares by hand (`a == "--lib"`)."""
     doc = (ROOT / "ee-agent-kit" / "docs" / "CONFIGURATION.md").read_text(encoding="utf-8")
     flag = re.compile(r'(?:add_argument\(\s*|\ba == )"(--[a-z0-9-]+)"')
-    for tool in ("tools/workcenter", "tools/kicadgen.py", "tools/wrlgen.py", "tools/hooks/install_hooks.py"):
+    tools = ("tools/workcenter", "tools/kicadgen.py", "tools/wrlgen.py", "tools/hooks/install_hooks.py")
+    for tool in (*tools, "tools/doctools.py"):  # doctools adds its commands to the workcenter's parser
         flags = set(flag.findall((ROOT / tool).read_text(encoding="utf-8")))
         assert flags, f"{tool}: no flags found; the pattern no longer matches its parser"
         assert sorted(f for f in flags if f"`{f}" not in doc) == [], tool

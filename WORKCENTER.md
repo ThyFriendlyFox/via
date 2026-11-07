@@ -20,6 +20,7 @@ passed every gate. "Done" means `workcenter gates <project>` prints GREEN.
 | FFmpeg | 6.1 | `ffmpeg` (the turning GIF of `workcenter render --views spin`) | `install.sh` (Ubuntu 24.04 archive) |
 | kicadgen | this repo | `workcenter design <design.py> [--route]`; `python3 tools/kicadgen.py pins|footprint` | `install.sh` (part of the checkout) |
 | workcenter CLI | this repo | `workcenter` | `install.sh` (symlink to `tools/workcenter`) |
+| scene | this repo | `tools/scene.py`: assembly scenes a project's script builds, run by `workcenter pictures` | the checkout; KiCad's `pcbnew` and FFmpeg by `install.sh` |
 | kistack | `641ade9` | `.claude/skills/kistack/SKILL.md` routes to `third_party/kistack/skills/`; `workcenter placement <check> <board> [args]` runs its placement checks | the checkout (vendored, `third_party/kistack/VENDORED.md`); shapely, numpy and pygerber by `install.sh` (PyPI) |
 
 ## Skills
@@ -134,6 +135,59 @@ fitted to a datasheet when the maker publishes none: the SIM gate needs no
 library row for it. An expect bound may name the requirement it serves:
 `"req": "REQ-USB-05"`.
 
+The documents a version carries come from commands too, so no copy goes
+stale (`tools/doctools.py`):
+
+- `workcenter gates <project> --report docs/gates.md` also writes the gates
+  table between `<!-- workcenter gates NAME -->` and
+  `<!-- /workcenter gates NAME -->`, and the deck list (each `sim/*.cir`, what
+  it simulates, its bounds and its result) between `<!-- workcenter decks
+  NAME -->` and `<!-- /workcenter decks NAME -->`, NAME being the project's
+  `.kicad_pro` name. A missing block is added at the end, a new file gets a
+  title; the prose round the blocks stays as written. The exit code is the
+  gates'.
+- `workcenter docs <version>` writes the version's `CONTENTS.md` (its
+  README's sections, design and KiCad files, scene scripts, decks, the
+  verification package, firmware, pictures, parts lists) and copies each
+  part's datasheet from the library into `<version>/datasheets/` by
+  `sources.csv`, with its revision, or says why there is none. It reads the
+  priced lists `costs` writes; a part whose datasheet is a series sheet
+  kept under another part number is named in `library/series.csv`
+  (`Pattern,MPN`). A copy of a library file no part names any more is
+  removed; with a board's list missing it copies and removes nothing and
+  exits 1.
+- `workcenter costs <repo>` runs `procure` on every board of every version
+  with `parts/version/<id>.csv` ahead of `parts/catalog.csv` and
+  `parts/offboard/<id>.csv`, `<id>` being the version (`v0.16`) or the
+  version and a nested board's folder (`v0.16-display`). It keeps the
+  lists in `parts/lists/<id>.csv` and `.md`, and writes the totals table
+  into every Markdown file holding `<!-- workcenter costs -->` ...
+  `<!-- /workcenter costs -->`, and the links to the lists into every
+  `<!-- workcenter costs lists -->` block (M97).
+- `workcenter pictures <version>` is `PROCESSES.md` P23 in one command,
+  from the version's `pictures.json` (written with the defaults when
+  absent): each board's `render --strict` stills and layers, its turning
+  GIFs, the scene scripts, then the copies into `docs/` and `docs/layers/`.
+  `--frames 4` is the framing check: one sheet of frames per GIF under
+  `build/pictures/check/`, `docs/` untouched.
+- `tools/scene.py` is the general part of an assembly: it loads a routed
+  board with KiCad's `pcbnew`, makes bodies (`cylinder`, `box`, a `wrlgen`
+  preset, another board through kicad-cli's VRML export), places each at
+  board coordinates, renders named views and turns the scene into a GIF.
+  A project's scene script holds only its placements; `pictures` runs it
+  with `tools/` on `PYTHONPATH`.
+- `workcenter version new <repo> <vNEXT>` does `PROCESSES.md` P22's
+  mechanical steps: the latest folder copied without `build/`, the new
+  README's banner naming where it came from, the previous README's banner
+  archived with its last commit, the root README's table row (`(current)`,
+  `in work`) and the previous row's commit, `CLAUDE.md`'s version
+  references moved, the parts files copied. It prints what stays by hand.
+- `workcenter diagram <spec.json> --out <file.svg> [--png]` draws a block
+  diagram from a spec: blocks, rails as bars, arrows coloured by what flows
+  in them (power, load, logic, sense, return, data), boards as dashed
+  groups, a legend of the styles used. `templates/verification/system/
+  block-diagram.json` is the starter `verify --init` copies.
+
 A project may add gates. It may not remove these.
 
 ## Paths
@@ -152,6 +206,11 @@ A project may add gates. It may not remove these.
 - Optional: `design.py` exposing `build() -> kicadgen.Design`, the source the KiCad files are generated from
 - Optional: `sim/<deck>.cir` with `sim/<deck>.expect.json` for the SIM gate; `sim/models/` for the project's own fitted models
 - Optional: `verification/` for `workcenter verify` (P28)
+- Optional, a project kept as version folders (`v0.1/`, `v0.2/`, ... at the
+  repository's root, a nested board one folder down): `parts/catalog.csv`,
+  `parts/version/<id>.csv` and `parts/offboard/<id>.csv` for `workcenter
+  costs`, which writes `parts/lists/`; `<version>/pictures.json` for
+  `workcenter pictures`; `library/series.csv` for `workcenter docs`
 - Optional: `library/sources.csv` at or above the project, with the files it
   names beside it, for `workcenter sources` and the vendor models a deck
   includes. Columns: `MPN,Kind,URL,File,Member,Revision,Dated,Subckt,Ngspice,SHA256,Checked,Note`;
