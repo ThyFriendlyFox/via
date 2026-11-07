@@ -112,6 +112,20 @@ project and routes it with FreeRouting. No GUI at any step.
      outside (the strips along the board edges, past the keep-out circle).
      `workcenter design` lists every hand via that lands in a keep-out or
      on any face's pad, and exits 1.
+   - The board's mechanical neighbours go in the design too: a strip
+     standing on the face, a spacer, a cell or body over the board.
+     `d.keepout(polygon, layers=("F.Cu",), name="positive strip",
+     parts=True, copper=False)` keeps every footprint out (KiCad gets a rule
+     area with footprints disallowed) and lets tracks and vias pass under it;
+     leave `copper` at its default when they may not. `workcenter design`
+     prints each part whose courtyard enters one as a `part:` line and exits
+     1. An assembly script that places the strip is not enough: the
+     generator and the DRC never read it (M87).
+   - A board that must grow at a cut: `python3 tools/stretch.py design.py
+     --cut X --grow G --dry-run`, read what it moves and the numbers it
+     lists as left, then run it without `--dry-run`. It moves every board
+     x-coordinate east of X in the code, never in a comment or a string, and
+     takes the board's extent from the outline.
    - The fab, before anything is placed: `d.fab = "sierra-circuits-web"`
      (or another set in `rules/`) writes its limits into the project as
      `<name>.kicad_dru` and raises the board's own minimums to its
@@ -168,7 +182,11 @@ project and routes it with FreeRouting. No GUI at any step.
    `pcb_rot`, 90 degrees at a time. Leave the router room: 0402 columns
    2.3 mm apart let one track pass, rows 1.7 mm apart let a via sit between
    them. A TSSOP's pads block its sides; signals reach them from under the
-   body or from the row ends.
+   body or from the row ends. On a board that has been routed, a new or
+   moved part follows `PROCESSES.md` P29: the spot is read with `workcenter
+   inspect map`, `crossed` and `islands`, and taken only when `workcenter
+   inspect probe . --part REF --at X,Y` (with `--footprint LIB:NAME --nets
+   1=NET,2=NET` for a new part) says `clear`.
 4. **Generate and check.** `workcenter design design.py` then
    `workcenter erc .` and `workcenter drc .`. Fix every error except
    unconnected items before routing. Courtyard overlaps and pad clearance
@@ -211,6 +229,33 @@ project and routes it with FreeRouting. No GUI at any step.
      one face with tracks and vias forbidden and the pour allowed. The pour
      then runs end to end on that face and every island on the other face
      can be stitched to it.
+
+   Read the routed board with `workcenter inspect`, never with a script of
+   your own; it uses KiCad's geometry and the board's own rules:
+   - `inspect map . --box X0 X1 Y0 Y1` before any hand route or move: one
+     PNG per copper layer of the window in `build/inspect/`, with pad names,
+     nets, tracks, vias, pours, keep-outs and courtyards on a 1 mm grid.
+     `inspect list . --box ...` prints the same items with their
+     coordinates (`--json`, `--layer`, `--net`), the source for a
+     coordinate in `d.track` or `d.via`.
+   - `inspect probe . --via X,Y --net N` and `--track "X,Y X,Y" --layer L
+     --net N` before every hand via and track: every other-net item nearer
+     than its clearance on each layer, hole to copper with the project's
+     `.kicad_dru` (13 mil on inner layers for Sierra), hole to hole, the
+     edge, and each keep-out by name. Write it into `design.py` only when the
+     probe says `clear` (M91).
+   - `inspect net . N` when the DRC reports a net unconnected: its connected
+     groups and the pads each holds, so the missing link is named.
+   - `inspect islands .` (GND by default) when the design prints an
+     `island:` line, and before and after a change in a poured area: each
+     piece per layer, what it holds, and the pieces no via reaches.
+   - `inspect crossed <old board> --box ... --new .` after a part moved
+     onto routed copper: the nets that ran through the spot, and the ones
+     the new route left open.
+   - `inspect resistance . N --from R.P --to R.P` for a track's resistance
+     in a deck or a calculation: each layer's thickness from the stackup
+     (inner layers are often 15 µm, not 35), each via barrel, 20 °C or
+     `--temp`. Never estimate it by habit (M93).
 6. **Gates.** `workcenter gates .` until GREEN. `workcenter render .` for
    the images: schematic, both faces, 3D top, bottom and isometric, and every
    layer on its own (`layers/`, `layers.png`); `--views spin` adds a GIF of

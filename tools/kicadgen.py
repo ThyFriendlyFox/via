@@ -10,12 +10,14 @@ router's session file back into the board. Standard library only.
     python3 tools/kicadgen.py footprint Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm
     python3 tools/kicadgen.py footprint --lib LastHit=footprints/LastHit.pretty LastHit:Connector_510
     python3 tools/kicadgen.py pins --lib LastHit=symbols/LastHit.kicad_sym LastHit:FDMB2307NZ
+    python3 tools/kicadgen.py symbol-add symbols/LastHit.kicad_sym --from tps7a02.csv --name TPS7A02_DQN
 
 A project keeps its own footprints in a `.pretty` folder and names it in
 `Design.footprint_dirs`; the generated project gets an `fp-lib-table` for it.
 Its own symbols go in a `.kicad_sym` file named in `Design.symbol_dirs`, for
 a part the KiCad library lacks or draws only in several units; the project
-gets a `sym-lib-table` for it.
+gets a `sym-lib-table` for it. `symbol-add` writes one there from the
+datasheet's pin table (a CSV of Number, Name, Type, Side).
 
 Coordinates are millimetres. Schematic y grows downward (KiCad); symbol
 library y grows upward and is flipped on placement. Board rotation keeps
@@ -26,6 +28,7 @@ angle, which is how KiCad stores rotated footprints.
 from __future__ import annotations
 
 import copy
+import csv
 import importlib.util
 import math
 import os
@@ -100,8 +103,8 @@ def parse(text: str) -> Node:
 
 
 def parse_all(text: str) -> list[Node]:
-    """Parse every top-level S-expression in a file (a .kicad_sym has one)."""
-    return [parse(text)]
+    """Parse every top-level S-expression in a file: a .kicad_sym has one, a .kicad_dru one per rule."""
+    return parse(f"(\n{text}\n)")
 
 
 def quote(s: str) -> str:
@@ -763,21 +766,20 @@ def _seg_dist(p: tuple[float, float], a: tuple[float, float], b: tuple[float, fl
     return math.hypot(px - (ax + u * dx), py - (ay + u * dy))
 
 
-def _crosses(a, b, c, d) -> bool:
-    """Do segments a-b and c-d cross or touch?"""
+def _segments_cross(a, b, c, d) -> bool:
+    """True when segment ab meets segment cd (touching counts)."""
 
     def side(p, q, r) -> float:
         return (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
 
-    d1, d2, d3, d4 = side(c, d, a), side(c, d, b), side(a, b, c), side(a, b, d)
-    if ((d1 > 0) != (d2 > 0)) and ((d3 > 0) != (d4 > 0)) and d1 and d2 and d3 and d4:
+    if side(c, d, a) * side(c, d, b) < 0 and side(a, b, c) * side(a, b, d) < 0:
         return True
     return min(_seg_dist(a, c, d), _seg_dist(b, c, d), _seg_dist(c, a, b), _seg_dist(d, a, b)) < 1e-9
 
 
 def _segs_dist(a, b, c, d) -> float:
     """The distance between segments a-b and c-d, 0 where they cross."""
-    if _crosses(a, b, c, d):
+    if _segments_cross(a, b, c, d):
         return 0.0
     return min(_seg_dist(a, c, d), _seg_dist(b, c, d), _seg_dist(c, a, b), _seg_dist(d, a, b))
 
@@ -787,6 +789,20 @@ def _seg_polygon_dist(a, b, poly: list[tuple[float, float]]) -> float:
     if _inside_polygon(a[0], a[1], poly) or _inside_polygon(b[0], b[1], poly):
         return 0.0
     return min(_segs_dist(a, b, p, q) for p, q in zip(poly, poly[1:] + poly[:1], strict=True))
+
+
+def _polygon_meets_box(poly: list[tuple[float, float]], box: tuple[float, float, float, float]) -> bool:
+    """True when polygon `poly` and the box (x1, y1, x2, y2) overlap: one holds a corner of the other,
+    or their edges cross."""
+    x1, y1, x2, y2 = box
+    corners = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
+    if any(_inside_polygon(x, y, poly) for x, y in corners):
+        return True
+    if any(x1 <= x <= x2 and y1 <= y <= y2 for x, y in poly):
+        return True
+    edges = list(zip(poly, poly[1:] + poly[:1], strict=True))
+    sides = list(zip(corners, corners[1:] + corners[:1], strict=True))
+    return any(_segments_cross(a, b, c, d) for a, b in edges for c, d in sides)
 
 
 @dataclass
@@ -898,7 +914,7 @@ class Design:
     # as <name>.kicad_dru, its board-wide minimums laid over the board's own (rules/README.md).
     fab: str = ""
     zones: list[dict] = field(default_factory=list)  # copper pours, see zone()
-    keepouts: list[dict] = field(default_factory=list)  # areas no track or via enters, see keepout()
+    keepouts: list[dict] = field(default_factory=list)  # areas no track, via or part enters, see keepout()
     islands: list[list[str]] = field(default_factory=list)  # pads cut off from their pour, set by write()
     # Nets taken as held at a level though nothing on this board holds them, each with the reason: an
     # internal pull in a datasheet, a pull on the other board of a joint (undefined_inputs()).
@@ -1539,24 +1555,70 @@ class Design:
         return out
 
     def keepout(
-        self, polygon: list[tuple[float, float]], layers: tuple[str, ...] = ("F.Cu",), name: str = ""
+        self,
+        polygon: list[tuple[float, float]],
+        layers: tuple[str, ...] = ("F.Cu",),
+        name: str = "",
+        parts: bool = False,
+        copper: bool = True,
     ) -> None:
         """An area no track or via may enter on `layers` (a metal shell sitting on the board).
 
         Pads and pours may: a ground pour under a grounded shell is what the area is for. KiCad gets a
         rule area, the router a Specctra keepout, and the generator's own via checks honour it.
+
+        `parts=True` keeps every footprint out too: the board's mechanical neighbours (a strip standing
+        on the face, a spacer, a body over the board) as the design's own areas (M87). A part on the
+        face of one of `layers` whose courtyard enters it is listed by `check_parts()` and by KiCad's
+        DRC. `copper=False` lets tracks and vias through such an area (a body that rests on the mask).
         """
         for layer in layers:
             self._check_layer("keepout", layer)
         if len(polygon) < 3:
             raise ValueError("keepout needs a polygon of at least 3 points")
+        if not (parts or copper):
+            raise ValueError("a keepout with copper=False needs parts=True: it would keep nothing out")
         self.keepouts.append(
             {
                 "polygon": [(float(x), float(y)) for x, y in polygon],
                 "layers": tuple(layers),
                 "name": name or f"keepout{len(self.keepouts) + 1}",
+                "parts": parts,
+                "copper": copper,
             }
         )
+
+    def check_parts(self) -> list[str]:
+        """Every placed part whose courtyard enters a keepout made with `parts=True` on its own face,
+        named with the area, before anything is written or routed (M87)."""
+        out = []
+        for part in self.parts:
+            box = self.courtyard_box(part)
+            if box is None:
+                continue
+            for k in self.keepouts:
+                if k.get("parts") and part.pcb_layer in k["layers"] and _polygon_meets_box(k["polygon"], box):
+                    x1, y1, x2, y2 = box
+                    out.append(
+                        f"{part.ref} (courtyard {fmt(x1)}..{fmt(x2)}, {fmt(y1)}..{fmt(y2)}) in keepout {k['name']!r}"
+                    )
+        return out
+
+    def courtyard_box(self, part: Part) -> tuple[float, float, float, float] | None:
+        """The part's courtyard as placed, as a box in board coordinates (x1, y1, x2, y2), or None
+        for a part with no footprint, position or courtyard."""
+        if not (part.footprint and part.pcb_at and part.footprint.courtyard):
+            return None
+        cx1, cy1, cx2, cy2 = part.footprint.courtyard
+        px, py = part.pcb_at
+        back = part.pcb_layer == "B.Cu"
+        th = math.radians(part.pcb_rot)
+        xs, ys = [], []
+        for fx, fy in ((cx1, cy1), (cx2, cy1), (cx2, cy2), (cx1, cy2)):
+            fy = -fy if back else fy  # the same mirror and turn as pad_boxes()
+            xs.append(px + fx * math.cos(th) + fy * math.sin(th))
+            ys.append(py - fx * math.sin(th) + fy * math.cos(th))
+        return (min(xs), min(ys), max(xs), max(ys))
 
     def in_keepout(self, x: float, y: float, r: float) -> bool:
         """True when a via of radius `r` at (x, y) would touch any keepout. A via spans every layer,
@@ -1564,8 +1626,11 @@ class Design:
         return self.keepout_at(x, y, r) is not None
 
     def keepout_at(self, x: float, y: float, r: float) -> str | None:
-        """The name of the first keepout a via of radius `r` at (x, y) would touch, or None."""
+        """The name of the first keepout a via of radius `r` at (x, y) would touch, or None. An area
+        made with `copper=False` lets vias through."""
         for k in self.keepouts:
+            if not k.get("copper", True):
+                continue
             poly = k["polygon"]
             edges = zip(poly, poly[1:] + poly[:1], strict=True)
             if _inside_polygon(x, y, poly) or min(_seg_dist((x, y), a, b) for a, b in edges) < r:
@@ -2671,11 +2736,11 @@ class Design:
                     ["filled_areas_thickness", "no"],
                     [
                         "keepout",
-                        ["tracks", "not_allowed"],
-                        ["vias", "not_allowed"],
+                        ["tracks", "not_allowed" if k.get("copper", True) else "allowed"],
+                        ["vias", "not_allowed" if k.get("copper", True) else "allowed"],
                         ["pads", "allowed"],
                         ["copperpour", "allowed"],
-                        ["footprints", "allowed"],
+                        ["footprints", "not_allowed" if k.get("parts") else "allowed"],
                     ],
                     ["fill", ["thermal_gap", "0.5"], ["thermal_bridge_width", "0.5"]],
                     ["polygon", ["pts", *[["xy", fmt(px), fmt(py)] for px, py in k["polygon"]]]],
@@ -3055,6 +3120,7 @@ class Design:
             + " ".join(f"{c(px)} {c(-py)}" for px, py in k["polygon"])
             + "))"
             for k in self.keepouts
+            if k.get("copper", True)  # the router moves no part: a parts-only area is not its business
             for layer in k["layers"]
         ]
         layer_defs = [
@@ -3895,6 +3961,191 @@ def route(
     }
 
 
+# ----------------------------------------------------------- symbol-add
+#
+# A project symbol from a datasheet's pin table: one unit, a rectangle, each pin on the side the table
+# row names, in the row's order, 2.54 mm apart, every pin end on KiCad's 1.27 mm connection grid.
+
+PIN_TYPES = (
+    "input",
+    "output",
+    "bidirectional",
+    "tri_state",
+    "passive",
+    "free",
+    "unspecified",
+    "power_in",
+    "power_out",
+    "open_collector",
+    "open_emitter",
+    "no_connect",
+)
+PIN_SIDES = ("left", "right", "top", "bottom")
+PIN_COLUMNS = ("Number", "Name", "Type", "Side")
+PIN_PITCH = 2.54
+PIN_LENGTH = 2.54
+SYMBOL_LIB_VERSION = 20241209  # KiCad 9's symbol library format, which KiCad 10 and _load_lib read
+NAME_WIDTH = 1.1  # mm per character of a 1.27 mm pin name (measured on a plot), to size the body round them
+
+
+def read_pin_table(path: Path) -> list[dict]:
+    """A datasheet's pin table as a CSV: Number, Name, Type (KiCad's electrical type), Side."""
+    with path.open(encoding="utf-8", newline="") as fh:
+        reader = csv.DictReader(fh)
+        missing = [c for c in PIN_COLUMNS if c not in (reader.fieldnames or [])]
+        if missing:
+            raise ValueError(
+                f"{path.name}: no column {', '.join(missing)} (the columns are {', '.join(PIN_COLUMNS)})"
+            )
+        pins = []
+        for n, row in enumerate(reader, start=2):
+            pin = {k.lower(): (row.get(k) or "").strip() for k in PIN_COLUMNS}
+            where = f"{path.name}:{n}"
+            if not pin["number"]:
+                raise ValueError(f"{where}: no pin number")
+            if pin["type"] not in PIN_TYPES:
+                raise ValueError(f"{where}: Type {pin['type']!r} is not one of {', '.join(PIN_TYPES)}")
+            if pin["side"].lower() not in PIN_SIDES:
+                raise ValueError(f"{where}: Side {pin['side']!r} is not one of {', '.join(PIN_SIDES)}")
+            pin["side"] = pin["side"].lower()
+            pin["name"] = pin["name"] or "~"
+            pins.append(pin)
+    numbers = [p["number"] for p in pins]
+    twice = sorted({n for n in numbers if numbers.count(n) > 1})
+    if twice:
+        raise ValueError(f"{path.name}: pin number {', '.join(twice)} twice")
+    if not pins:
+        raise ValueError(f"{path.name}: no pins")
+    return pins
+
+
+def _grid_up(v: float) -> float:
+    """Up to the next multiple of the pin pitch."""
+    return math.ceil(round(v / PIN_PITCH, 6)) * PIN_PITCH
+
+
+def symbol_node(
+    name: str,
+    pins: list[dict],
+    reference: str = "U",
+    footprint: str = "",
+    datasheet: str = "",
+    description: str = "",
+) -> Node:
+    """The library node of a one-unit symbol with `pins` placed on their sides, in their order."""
+    side = {s: [p for p in pins if p["side"] == s] for s in PIN_SIDES}
+    across = max(len(side["left"]), len(side["right"]), 1)
+    along = max(len(side["top"]), len(side["bottom"]), 0)
+
+    def longest(*sides: str) -> int:
+        return max((len(p["name"]) for s in sides for p in side[s] if p["name"] != "~"), default=0)
+
+    # A name is drawn inside the body from its pin's edge, 0.762 mm in. The left and right names must not
+    # meet; the top and bottom names, standing upright, must end before the rows of side names begin.
+    half_w = _grid_up(
+        max(
+            2 * PIN_PITCH,
+            (along - 1) * PIN_PITCH / 2 + PIN_PITCH,
+            (longest("left") + longest("right")) * NAME_WIDTH / 2 + 0.762 + 0.5,
+        )
+    )
+    side_rows = (across - 1) * PIN_PITCH / 2 + 0.75 if side["left"] or side["right"] else 0
+    upright = max(longest("top"), longest("bottom")) * NAME_WIDTH + 0.762 if along else 0
+    half_h = _grid_up(max(PIN_PITCH, (across - 1) * PIN_PITCH / 2 + PIN_PITCH, side_rows + upright + 0.5))
+
+    def font(hide: bool = False) -> Node:
+        effects: Node = ["effects", ["font", ["size", "1.27", "1.27"]]]
+        if hide:
+            effects.append(["hide", "yes"])
+        return effects
+
+    def prop(key: str, value: str, x: float, y: float, hide: bool) -> Node:
+        return ["property", Q(key), Q(value), ["at", fmt(x), fmt(y), "0"], font(hide)]
+
+    def pin(p: dict, x: float, y: float, angle: int) -> Node:
+        return [
+            "pin",
+            p["type"],
+            "line",
+            ["at", fmt(x), fmt(y), str(angle)],
+            ["length", fmt(PIN_LENGTH)],
+            ["name", Q(p["name"]), font()],
+            ["number", Q(p["number"]), font()],
+        ]
+
+    drawn: list[Node] = []
+    for s, angle in (("left", 0), ("right", 180)):
+        row = side[s]
+        top = (len(row) - 1) * PIN_PITCH / 2
+        x = -(half_w + PIN_LENGTH) if s == "left" else half_w + PIN_LENGTH
+        drawn += [pin(p, x, top - i * PIN_PITCH, angle) for i, p in enumerate(row)]
+    for s, angle in (("top", 270), ("bottom", 90)):
+        row = side[s]
+        first = -(len(row) - 1) * PIN_PITCH / 2
+        y = half_h + PIN_LENGTH if s == "top" else -(half_h + PIN_LENGTH)
+        drawn += [pin(p, first + i * PIN_PITCH, y, angle) for i, p in enumerate(row)]
+    above = half_h + (PIN_LENGTH if side["top"] else 0) + 1.27
+    below = half_h + (PIN_LENGTH if side["bottom"] else 0) + 1.27
+    return [
+        "symbol",
+        Q(name),
+        ["pin_names", ["offset", "0.762"]],
+        ["exclude_from_sim", "no"],
+        ["in_bom", "yes"],
+        ["on_board", "yes"],
+        prop("Reference", reference, 0, above, False),
+        prop("Value", name, 0, -below, False),
+        prop("Footprint", footprint, 0, -below - 2.54, True),
+        prop("Datasheet", datasheet, 0, -below - 5.08, True),
+        prop("Description", description, 0, 0, True),
+        [
+            "symbol",
+            Q(f"{name}_0_1"),
+            [
+                "rectangle",
+                ["start", fmt(-half_w), fmt(half_h)],
+                ["end", fmt(half_w), fmt(-half_h)],
+                ["stroke", ["width", "0.254"], ["type", "default"]],
+                ["fill", ["type", "background"]],
+            ],
+        ],
+        ["symbol", Q(f"{name}_1_1"), *drawn],
+        ["embedded_fonts", "no"],
+    ]
+
+
+def symbol_add(lib: Path, name: str, pins: list[dict], **props: str) -> Path:
+    """Add a symbol to a project library, creating the library when it does not exist. The symbol goes in
+    as text before the library's closing parenthesis, so the symbols already there keep their bytes; the
+    new file replaces the old one only once it reads back with the symbol in it. A name already in the
+    library is refused."""
+    if not re.fullmatch(r"[A-Za-z0-9_.+-]+", name):
+        raise ValueError(f"symbol name {name!r}: letters, digits and _ . + - only")
+    text = lib.read_bytes().decode("utf-8") if lib.is_file() else ""
+    if text:
+        existing = {atoms(c)[0] for c in children(parse(text), "symbol") if atoms(c)}
+        if name in existing:
+            raise ValueError(f"{lib.name} already has a symbol {name}")
+        body = text.rstrip()
+        if not body.endswith(")"):
+            raise ValueError(f"{lib.name} does not end with the library's closing parenthesis")
+        head = body[:-1].rstrip() + "\n"
+    else:
+        head = f'(kicad_symbol_lib\n\t(version {SYMBOL_LIB_VERSION})\n\t(generator "kicadgen")\n'
+    new = head + "\t" + dumps(symbol_node(name, pins, **props), 1) + "\n)\n"
+    part = lib.with_name(lib.name + ".part")
+    lib.parent.mkdir(parents=True, exist_ok=True)
+    part.write_text(new, encoding="utf-8", newline="")
+    try:
+        _find_symbol(parse(new), name)
+    except (KeyError, ValueError) as exc:
+        part.unlink()
+        raise ValueError(f"{lib.name}: the new library does not read back ({exc})") from None
+    part.replace(lib)
+    _LIB_CACHE.pop(lib, None)
+    return lib
+
+
 # ------------------------------------------------------------------- cli
 
 
@@ -3912,7 +4163,50 @@ def _libs_and_ids(args: list[str]) -> tuple[dict[str, Path], list[str]]:
     return dirs, ids
 
 
+def _symbol_add_cli(args: list[str]) -> int:
+    """`symbol-add LIB --from PINS.csv [--name N] [--reference R] [--footprint F] [--datasheet URL]
+    [--description TEXT]`: writes LIB only."""
+    lib, table = None, None
+    props: dict[str, str] = {}
+    name = ""
+    rest = iter(args)
+    for a in rest:
+        if a == "--from":
+            table = Path(next(rest, ""))
+        elif a == "--name":
+            name = next(rest, "")
+        elif a == "--reference":
+            props["reference"] = next(rest, "")
+        elif a == "--footprint":
+            props["footprint"] = next(rest, "")
+        elif a == "--datasheet":
+            props["datasheet"] = next(rest, "")
+        elif a == "--description":
+            props["description"] = next(rest, "")
+        elif lib is None and not a.startswith("--"):
+            lib = Path(a)
+        else:
+            print(f"symbol-add: {a!r} is not an option", file=sys.stderr)
+            return 2
+    if lib is None or table is None:
+        print("symbol-add: name the library and --from PINS.csv", file=sys.stderr)
+        return 2
+    try:
+        pins = read_pin_table(table)
+        symbol_add(lib, name or table.stem, pins, **props)
+    except (OSError, ValueError) as exc:
+        print(f"symbol-add: {exc}", file=sys.stderr)
+        return 1
+    sym = load_symbol(f"lib:{name or table.stem}", {"lib": lib})
+    print(f"symbol-add: {sym.name} with {len(sym.pins)} pins into {lib}")
+    for p in sym.pins:
+        print(f"  {p.number:>4}  {p.name:<14} {p.etype:<14} at=({fmt(p.x)}, {fmt(p.y)}) ang={fmt(p.angle)}")
+    return 0
+
+
 def main(argv: list[str]) -> int:
+    if len(argv) >= 2 and argv[0] == "symbol-add":
+        return _symbol_add_cli(argv[1:])
     if len(argv) >= 2 and argv[0] == "pins":
         dirs, ids = _libs_and_ids(argv[1:])  # --lib NAME=FILE: a project symbol library
         for lib_id in ids:

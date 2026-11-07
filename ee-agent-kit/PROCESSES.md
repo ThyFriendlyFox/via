@@ -338,9 +338,11 @@ When: a change is about to be called done.
 1. `make verify` green locally; for a board, `workcenter gates .` GREEN
    and the project's own CI checks run locally the way CI runs them (a
    board repository regenerates every project with `workcenter design
-   <p>/design.py --out <scratch>` and needs exit 0, M85). Run them with an
-   absolute path (`make -C /path verify`), never behind a `cd`, and in the
-   background with a log.
+   <p>/design.py --out <scratch>` and needs exit 0, M85; `workcenter design
+   <p>/design.py --check` is that step for one project, and `workcenter ci
+   <repo>` replays the whole workflow and prints `CI REPLAY GREEN`). Run them
+   with an absolute path (`make -C /path verify`), never behind a `cd`, and
+   in the background with a log.
 2. Chain the commit and the push behind the verdict itself, never behind
    a look at the log: `grep -q 'VERIFY GREEN' log && git push ...`. A
    `tail` succeeds whatever the log says. Every check you run before a
@@ -446,7 +448,8 @@ charger, or any other load from a battery.
 3. Every elapsed-time comparison is wrap-safe (subtract, then compare),
    and a test runs the counter across its wrap.
 4. Prove the tests can fail: break each safety behaviour once (a mutation
-   script kept with the firmware) and see a named test fail.
+   list kept with the firmware, run by `workcenter mutate <firmware>
+   --mutations <list>`) and see a named test fail.
 5. Every output that drives a load is off at reset, in every fault
    handler, and when the loop that commands it stops (a deadman).
 
@@ -550,30 +553,35 @@ name the new version.
 When: a board version's gates are GREEN and P14's close-out is next; again
 after any change to what the boards look like in that version.
 
-1. `workcenter render <board>` for every board of the version: the stills
-   and every layer (`build/render/layers/`, `build/render/layers.png`). Its
-   summary names each part the 3D views draw without a body (`--strict`
-   fails on one): give each its body before any picture is kept (M52).
-2. A turning GIF of every board, `workcenter render <board> --views spin`,
-   seen from the face that carries the parts; a board with parts on both
-   faces gets one from above and one from below (`--spin-tilt -125`, with
-   its own `--out` so the first is kept). An assembly gets its own, made by
-   the project's assembly script so it is redrawn with the stills, with
-   `--spin-zoom` and `--spin-pivot` set so its tallest part stays in frame.
-3. Check the framing before keeping a GIF. The frames at 0, 90, 180 and
-   270 degrees decide it, the end-on ones crop first: try with
-   `--spin-frames 4` (under half a minute) and lower `--spin-zoom` until
-   all four are whole.
-4. Copy the layer sheet, the layer images and the GIFs into the version's
-   `docs/`. The README shows the GIFs beside the stills and the layer
-   sheets, and names each command with its tilt, zoom and pivot, so the
-   next version draws them the same way.
+1. The version's `pictures.json` says what is drawn: every board (its
+   stills, its layer sheet, each turning GIF with its tilt, zoom and
+   pivot), every scene script (an assembly, a close-up) and the name each
+   file takes in `docs/`. `workcenter pictures <version>` writes one with
+   the defaults when there is none: each board seen from the face that
+   carries the parts, from below too (tilt `-125`) when it has parts on
+   both faces, and each script at the version's top that imports `scene`.
+   An assembly is a scene script on `tools/scene.py`, so it is redrawn
+   with the stills; the script holds only its placements.
+2. Check the framing before any GIF is kept: `workcenter pictures
+   <version> --frames 4` (under two minutes for a version of two boards
+   and an assembly) writes one sheet per GIF with the frames at 0, 90, 180
+   and 270 degrees, and leaves `docs/` alone. The end-on frames crop first:
+   lower `zoom`, and raise the pivot's z to the middle of a tall assembly,
+   in the manifest, until all four are whole.
+3. `workcenter pictures <version>`: every board's stills and every layer
+   (`render --strict`: a part the 3D views draw without a body fails its
+   board, and nothing of that board is copied; give the part its body,
+   M52), the GIFs, the scenes, then the copies into `docs/` and
+   `docs/layers/`. It exits 1 on any failure.
+4. The README shows the GIFs beside the stills and the layer sheets, and
+   names `workcenter pictures <version>` and its `pictures.json`, which
+   the next version copies with the folder and so draws the same way.
 5. Send the GIFs and the layer sheets with the report.
 
-Done when: the version's `docs/` holds a layer sheet and a turning GIF for
-every board and for the assembly, all four test frames of each GIF whole,
-no render names a part without a body, the README shows them and names
-their commands, and the report carried them.
+Done when: `workcenter pictures <version>` exits 0, the version's `docs/`
+holds a layer sheet and a turning GIF for every board and for the
+assembly, all four test frames of each GIF are whole, the README shows
+them and names the command, and the report carried them.
 
 ## P24 — A schematic someone reads
 
@@ -660,8 +668,10 @@ comes from a vendor.
    and D (a model file, or a note saying why there is none), a step row
    where the vendor publishes a body. Fetch the sanctioned way (P25 step 1):
    `workcenter sources --fetch` asks once under its own name and records a
-   refusal; a file no site will serve is left for the user to download, and
-   its row's note says so and from where.
+   refusal, and `workcenter fetch <url> --to <library>/<maker>/<file> --mpn
+   <MPN> --row` does the same for a file the library does not hold yet; a
+   file no site will serve is left for the user to download, and its row's
+   note says so and from where.
 2. Keep each file as the vendor publishes it, its notice intact; a model
    that ngspice reads differently is translated into a copy in `build/`,
    never in the library. The row records what the file itself prints: the
@@ -732,3 +742,47 @@ circuits it touches. The `verification` skill is the how-to.
 Done when: `workcenter verify <project>` reports no problems, the
 package's README lists each FAIL with its size and its proposed fix, and
 the report to the user gives the counts of PASS, FAIL and OPEN.
+
+## P29 — Placing a part on a routed board
+
+When: before a part goes onto a board that has been routed, or moves on
+one: a fuse into a feed, a part shifted to make room. A spot is chosen
+from what the board holds on every layer, never from courtyards alone.
+
+1. The board's mechanical neighbours are in the design. Each strip,
+   spacer, cell, shell or body that stands on or over the board is a
+   `d.keepout(polygon, layers, name, parts=True)`, with `copper=False`
+   where tracks and vias may pass under it. An assembly script is not the
+   design: `workcenter design` and the DRC know only what `build()` holds
+   (M87).
+2. `workcenter inspect map <board> --box X0 X1 Y0 Y1` round the spot, and
+   read every layer: pads, tracks, vias, pours, keep-outs, courtyards.
+3. `workcenter inspect crossed <board> --box ...` on the spot lists the
+   nets the router ran through it. Write a path for each before the part
+   goes in: round the part, on another layer, or a hand route. A net with
+   no path means another spot (M89).
+4. `workcenter inspect islands <board>` (and `--net` for each other pour):
+   which piece of the pour holds the spot, what that piece holds, and how
+   many vias join it to the plane. A part that cuts the only path or via
+   of a piece's pads makes an island; check that the inner layers there
+   leave room for a new via, with `inspect probe --via` (M88).
+5. `workcenter inspect probe <board> --part REF --at X,Y [--rot DEG]`, with
+   `--footprint LIB:NAME --nets 1=NET,2=NET` for a part the board does not
+   have yet: its courtyard against the others, its pads against the copper
+   round them, and the keep-outs by name. A spot is taken only when the
+   probe says `clear` (M90).
+6. Every hand via and track the change needs goes through `workcenter
+   inspect probe --via X,Y --net N` or `--track "X,Y X,Y" --layer L --net
+   N` before it is written into `design.py`: the probe knows the keep-outs
+   and the project's inner-layer drill rule, which a check of copper and
+   holes alone misses (M91).
+7. Write the position and the hand copper into `design.py`. Route once
+   with `workcenter design design.py --route`, then run `workcenter
+   inspect islands` again and `workcenter inspect crossed <old board>
+   --box ... --new <board>`. A net it reports open gets the path step 3
+   wrote, not a second guess.
+8. `workcenter gates <project>`.
+
+Done when: `workcenter design` prints no `part:`, `via:` or `island:` line,
+`inspect crossed --new` reports no net open, and `workcenter gates` is
+GREEN after one route.

@@ -18,9 +18,12 @@ passed every gate. "Done" means `workcenter gates <project>` prints GREEN.
 | kicad-python (kipy) | 0.8 | `/opt/workcenters/ee/venv/bin/python` | `install.sh` (PyPI) |
 | librsvg | 2.58 | `rsvg-convert` (SVG to PNG for `workcenter render`) | `install.sh` (Ubuntu 24.04 archive) |
 | FFmpeg | 6.1 | `ffmpeg` (the turning GIF of `workcenter render --views spin`) | `install.sh` (Ubuntu 24.04 archive) |
-| kicadgen | this repo | `workcenter design <design.py> [--route [--seed <board>]]`; `python3 tools/kicadgen.py pins|footprint` | `install.sh` (part of the checkout) |
+| kicadgen | this repo | `workcenter design <design.py> [--route [--seed <board>]\|--check]`; `python3 tools/kicadgen.py pins\|footprint\|symbol-add` | `install.sh` (part of the checkout) |
+| pdfminer.six, PyYAML | 20260107, 6.0.3 | `workcenter curve` (a PDF page's vector paths), `workcenter ci` (a GitHub workflow), each run under the venv | `install.sh` (PyPI) |
 | workcenter CLI | this repo | `workcenter` | `install.sh` (symlink to `tools/workcenter`) |
+| scene | this repo | `tools/scene.py`: assembly scenes a project's script builds, run by `workcenter pictures` | the checkout; KiCad's `pcbnew` and FFmpeg by `install.sh` |
 | kistack | `641ade9` | `.claude/skills/kistack/SKILL.md` routes to `third_party/kistack/skills/`; `workcenter placement <check> <board> [args]` runs its placement checks | the checkout (vendored, `third_party/kistack/VENDORED.md`); shapely, numpy and pygerber by `install.sh` (PyPI) |
+| Board inspection | this repo | `workcenter inspect <view> <board> ...`, the views `map`, `list`, `probe`, `net`, `islands`, `resistance`, `crossed` (KiCad's `pcbnew` and Pillow under the venv); `python3 tools/stretch.py <design.py> --cut X --grow G` | `install.sh` (part of the checkout; Pillow from PyPI) |
 
 ## Skills
 
@@ -116,6 +119,37 @@ Run `placement_audit` and `route_check` on each IC whose parts moved, before
 routing (the `kistack` skill). `move` is refused: a generated board changes in
 its design file.
 
+Not a gate: `workcenter inspect <view> <board>` reads a routed board with
+KiCad's own geometry, for a change made on it (`PROCESSES.md` P29). `map
+--box X0 X1 Y0 Y1` draws one PNG per copper layer of the window into
+`build/inspect/` (or `--out`): courtyards, pads with their names and nets,
+tracks with their nets, vias, keep-outs, pours, a 1 mm grid, back and inner
+layers as seen from the top. `list --box` prints what lies in the window,
+or `--json`. `probe` places a via (`--via X,Y --net N`), a track (`--track
+"X,Y X,Y" --layer L --net N`) or a part (`--part REF --at X,Y`) and lists
+every conflict the DRC would report: copper clearance by net class, hole to
+copper with the project's `.kicad_dru` (Sierra's 13 mil on inner layers),
+hole to hole, the board edge, courtyard overlaps, and each keep-out by name;
+exit 1 on a conflict. `net N` prints the net's connected groups and the
+pads each holds; `islands [--net GND]` the pour's pieces per layer, what
+each holds, and each island no via reaches; both exit 1 on a group cut off.
+`resistance N --from R.P --to R.P` gives the copper path's resistance: each
+track from its layer's thickness in the board's stackup, each via barrel
+from its drill and plating, copper at 20 °C (`--temp`). `crossed <old
+board> --box ... --new <board>` names the nets whose copper crossed the
+window and which of them the new board no longer connects (exit 1).
+
+`python3 tools/stretch.py design.py --cut X --grow G` grows a design at a
+cut: every board x-coordinate east of X in the file's code moves G mm east.
+It lists what it moved and every number it left that a person should check.
+
+`d.keepout(polygon, layers, name, parts=True)` keeps footprints out of an
+area: the board's mechanical neighbours (a strip standing on it, a spacer,
+a body above it) go in the design. KiCad gets a rule area with footprints
+disallowed, and `workcenter design` lists each part whose courtyard enters
+one as a `part:` line and exits 1. `copper=False` lets tracks and vias
+through the area.
+
 Not a gate: `workcenter sources <project> --parts parts.csv` checks every
 part on the schematic against the nearest `library/sources.csv` at or above
 the project: a datasheet row for each part, a spice row (a model file, or a
@@ -137,6 +171,61 @@ the vendor published it. An expect bound with `"warn"` holds a model to its
 own datasheet rather than the design to its spec: outside it, the deck is
 named in the warnings, and only `--strict` fails.
 
+A deck is run by hand only through `workcenter sim <project> --deck NAME`:
+one deck, the gate's way, with every value it printed beside its bound.
+`--keep` runs it from `build/sim/run/<deck>/` (a deck the gate runs in
+place is copied there too, with the deck folder's own `.spiceinit`), leaves
+the folder, and prints the one command that reruns it:
+`env -C <run folder> ngspice -b <deck>.cir`. A bare `ngspice -b` in `sim/`
+reads a vendor model untranslated and in ngspice's own mode (M94).
+
+Not a gate: `workcenter fetch <url> --to <library>/<maker>/<file>` fetches
+one datasheet, model or body once under the workcenter's own name (a
+refusal is reported, never retried), keeps it, and prints its
+`sources.csv` row: the URL, the file, its SHA256, today as `Checked`, a
+model's `.SUBCKT`, and lines of the file that may carry its revision.
+`Revision` and `Dated` are left for the reader to fill from the file.
+`--row` with `--mpn` appends the row and refuses a second row of one kind
+for one part. For a part before any board names it; `workcenter sources`
+then checks the row like any other (`PROCESSES.md` P27).
+
+Not a gate: `workcenter curve <pdf> --page N` lists the page's vector
+paths grouped by kind, stroke width, paint and colour, with the stroked
+rectangles as candidate frames and the numeric labels where they stand.
+With `--frame x0,y0,x1,y1 --x log|lin:MIN:MAX --y log|lin:MIN:MAX` it maps
+each curve inside the frame onto the plot's axes and prints it; `--at`
+gives each curve's y at the x values named, `--at-y` the x at the y values.
+A line drawn as a filled outline of its two edges is reduced to its middle.
+pdfminer reads the PDF under the venv. Use it for a curve the decks or the
+calculations take a number from (a fuse's time-current curve, a safe
+operating area), instead of reading the picture by eye.
+
+Not a gate: `workcenter design <design.py> --check` regenerates the design
+into a temporary folder and compares the `.kicad_pro` and `.kicad_sch` with
+the design's own, the step a board repository's CI runs. It exits 1 on a
+difference, and on the design step's own exit 1 even when every file is
+the same (M85).
+
+Not a gate: `workcenter ci [repo]` replays a repository's GitHub workflow
+here: every `run` step in order under `bash -e`, from the repository root,
+`$GITHUB_ENV` and `$GITHUB_PATH` carried between steps, `${{ env.X }}`
+read, steps whose name matches `--skip` (install and upload by default)
+and `uses:` steps skipped. It prints `CI REPLAY GREEN` only when every step
+it ran exited 0, and writes each step's script and log in `build/ci/`. Run
+it before a board repository's push (`PROCESSES.md` P14); the steps write
+what the workflow writes, so run it on a copy where the repository is
+read-only.
+
+Not a gate: `workcenter mutate <firmware> --mutations <file>` proves a
+firmware's host tests can fail (`PROCESSES.md` P18): each mutation in the
+project's list (JSON, or a Python file's `MUTATIONS` read as a literal) is
+applied to its own copy of the firmware without `build/`, and the test
+command (`make -k test` unless the list or `--test` names another) must
+fail on it. Every mutation's text must be in its file exactly once, checked
+before anything runs, and the tests must pass unmutated. A mutation that
+survives, or that a compiler stops, fails the run. The project's tree is
+never written.
+
 Not a gate: `workcenter verify <project>` checks the project's verification
 package (`PROCESSES.md` P28, the `verification` skill) in
 `<project>/verification/`: the files it must hold, a requirements table
@@ -156,6 +245,59 @@ fitted to a datasheet when the maker publishes none: the SIM gate needs no
 library row for it. An expect bound may name the requirement it serves:
 `"req": "REQ-USB-05"`.
 
+The documents a version carries come from commands too, so no copy goes
+stale (`tools/doctools.py`):
+
+- `workcenter gates <project> --report docs/gates.md` also writes the gates
+  table between `<!-- workcenter gates NAME -->` and
+  `<!-- /workcenter gates NAME -->`, and the deck list (each `sim/*.cir`, what
+  it simulates, its bounds and its result) between `<!-- workcenter decks
+  NAME -->` and `<!-- /workcenter decks NAME -->`, NAME being the project's
+  `.kicad_pro` name. A missing block is added at the end, a new file gets a
+  title; the prose round the blocks stays as written. The exit code is the
+  gates'.
+- `workcenter docs <version>` writes the version's `CONTENTS.md` (its
+  README's sections, design and KiCad files, scene scripts, decks, the
+  verification package, firmware, pictures, parts lists) and copies each
+  part's datasheet from the library into `<version>/datasheets/` by
+  `sources.csv`, with its revision, or says why there is none. It reads the
+  priced lists `costs` writes; a part whose datasheet is a series sheet
+  kept under another part number is named in `library/series.csv`
+  (`Pattern,MPN`). A copy of a library file no part names any more is
+  removed; with a board's list missing it copies and removes nothing and
+  exits 1.
+- `workcenter costs <repo>` runs `procure` on every board of every version
+  with `parts/version/<id>.csv` ahead of `parts/catalog.csv` and
+  `parts/offboard/<id>.csv`, `<id>` being the version (`v0.16`) or the
+  version and a nested board's folder (`v0.16-display`). It keeps the
+  lists in `parts/lists/<id>.csv` and `.md`, and writes the totals table
+  into every Markdown file holding `<!-- workcenter costs -->` ...
+  `<!-- /workcenter costs -->`, and the links to the lists into every
+  `<!-- workcenter costs lists -->` block (M97).
+- `workcenter pictures <version>` is `PROCESSES.md` P23 in one command,
+  from the version's `pictures.json` (written with the defaults when
+  absent): each board's `render --strict` stills and layers, its turning
+  GIFs, the scene scripts, then the copies into `docs/` and `docs/layers/`.
+  `--frames 4` is the framing check: one sheet of frames per GIF under
+  `build/pictures/check/`, `docs/` untouched.
+- `tools/scene.py` is the general part of an assembly: it loads a routed
+  board with KiCad's `pcbnew`, makes bodies (`cylinder`, `box`, a `wrlgen`
+  preset, another board through kicad-cli's VRML export), places each at
+  board coordinates, renders named views and turns the scene into a GIF.
+  A project's scene script holds only its placements; `pictures` runs it
+  with `tools/` on `PYTHONPATH`.
+- `workcenter version new <repo> <vNEXT>` does `PROCESSES.md` P22's
+  mechanical steps: the latest folder copied without `build/`, the new
+  README's banner naming where it came from, the previous README's banner
+  archived with its last commit, the root README's table row (`(current)`,
+  `in work`) and the previous row's commit, `CLAUDE.md`'s version
+  references moved, the parts files copied. It prints what stays by hand.
+- `workcenter diagram <spec.json> --out <file.svg> [--png]` draws a block
+  diagram from a spec: blocks, rails as bars, arrows coloured by what flows
+  in them (power, load, logic, sense, return, data), boards as dashed
+  groups, a legend of the styles used. `templates/verification/system/
+  block-diagram.json` is the starter `verify --init` copies.
+
 A project may add gates. It may not remove these.
 
 ## Paths
@@ -174,7 +316,15 @@ A project may add gates. It may not remove these.
 - Optional: `design.py` exposing `build() -> kicadgen.Design`, the source the KiCad files are generated from
 - Optional: `sim/<deck>.cir` with `sim/<deck>.expect.json` for the SIM gate; `sim/models/` for the project's own fitted models
 - Optional: `verification/` for `workcenter verify` (P28)
+- Optional, a project kept as version folders (`v0.1/`, `v0.2/`, ... at the
+  repository's root, a nested board one folder down): `parts/catalog.csv`,
+  `parts/version/<id>.csv` and `parts/offboard/<id>.csv` for `workcenter
+  costs`, which writes `parts/lists/`; `<version>/pictures.json` for
+  `workcenter pictures`; `library/series.csv` for `workcenter docs`
 - Optional: `library/sources.csv` at or above the project, with the files it
   names beside it, for `workcenter sources` and the vendor models a deck
   includes. Columns: `MPN,Kind,URL,File,Member,Revision,Dated,Subckt,Ngspice,SHA256,Checked,Note`;
-  `Kind` is `datasheet`, `spice` or `step`; a row with no `File` needs a `Note`
+  `Kind` is `datasheet`, `spice` or `step`; a row with no `File` needs a `Note`;
+  `workcenter fetch --row` adds one
+- Optional: a firmware mutation list (JSON, or a Python file with `MUTATIONS`)
+  kept with the firmware, for `workcenter mutate`

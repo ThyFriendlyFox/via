@@ -2,7 +2,7 @@
 
 ![Block diagram](block-diagram.svg)
 
-<!-- fill: draw block-diagram.svg: every block, every power path with its net name, the switches, and where each current is measured. Then write one caption per mode below. -->
+<!-- fill: draw block-diagram.svg from block-diagram.json (`workcenter diagram system/block-diagram.json --out system/block-diagram.svg --png`): every block, every power path with its net name, the switches, and where each current is measured. Then write one caption per mode below. -->
 
 ## Modes
 
