@@ -34,10 +34,37 @@ unset variable never causes a failure.
 | Flag | Commands | Default | Use |
 |---|---|---|---|
 | `--json` | all | off | Machine-readable output. |
-| `--out DIR` | gates, erc, drc, sim, export, autoroute, render, procure, sources, verify; design | `<project>/build`; design: the design file's folder | Where reports and artifacts go; for design, where the KiCad project is written. |
+| `--out DIR` | gates, erc, drc, sim, export, autoroute, render, procure, sources, verify; design; ci | `<project>/build`; design: the design file's folder (with `--check`, a temporary folder); ci: `<repo>/build/ci` | Where reports and artifacts go; for design, where the KiCad project is written; for ci, each step's script, `$GITHUB_ENV` file and log. |
 | `--strict` | gates, erc, drc, sim, export, render, procure, sources, verify | off | Warnings fail the gate; for verify, a requirement whose verdict is FAIL or OPEN; for render, a part the 3D views draw without a body fails it; for procure, a line short of stock or a price older than 90 days; for sim, a model outside a `warn` bound (its datasheet); for sources, a datasheet kept as a note only, a file with no SHA256 or revision recorded, a model older than its datasheet, or a load check skipped. |
 | `--parts FILE` | procure, sources | `<project>/parts.csv` | A parts CSV, repeatable; the first row whose Value and Footprint match a BOM line prices it (procure) or names its MPN (sources), and every row with no Footprint is an item off the board. Columns in the `procurement` skill. |
-| `--sources FILE` | sources | the nearest `library/sources.csv` at or above the project | The library's manifest: one row per datasheet, SPICE model or STEP file, the files beside it (`WORKCENTER.md`, "Project requirements"). The SIM gate finds it the same way. |
+| `--sources FILE` | sources, fetch | sources: the nearest `library/sources.csv` at or above the project; fetch: the nearest `sources.csv` at or above `--to` | The library's manifest: one row per datasheet, SPICE model or STEP file, the files beside it (`WORKCENTER.md`, "Project requirements"). The SIM gate finds it the same way. For fetch, a file not there yet is started with the header. |
+| `--deck NAME` | sim | every deck | Run only `sim/NAME.cir` (with or without `.cir`), the gate's way: the model rows' translation and mode, the expect bounds. Prints every value the deck printed, with its bound. An unknown name is an error that lists the decks. |
+| `--keep` | sim | off | Run each deck from `<out>/sim/run/<deck>/`, a deck the gate runs in place too (with the deck folder's own `.spiceinit`), leave the folder, and print the one command that reruns it by hand: `env -C <run folder> ngspice -b <deck>.cir` (M94). |
+| `URL` | fetch | none | The maker's URL for one file. Fetched once under the workcenter's own user agent; a refusal is reported and never retried. |
+| `--to FILE` | fetch | none (required) | Where the library keeps it, `<library>/<maker>/<file>`. An existing file that differs from the download is refused; the same file is left as it is. |
+| `--mpn MPN` | fetch | none | The part number the row names. Needed for `--row`. |
+| `--kind KIND` | fetch | from the file's suffix: `.pdf` datasheet, `.lib` `.mod` `.cir` `.sub` `.spi` `.sp` `.ckt` spice, `.step` `.stp` step | `datasheet`, `spice` or `step`. A spice file that defines one `.SUBCKT` fills the row's `Subckt`. |
+| `--member NAME` | fetch | none | The file inside a zip at the URL; the row records it in `Member`. |
+| `--row` | fetch | off | Append the row to `sources.csv`, as text after the file's own bytes and in its line ends. Refused, before any request, when the MPN already has a row of that kind. `Revision` and `Dated` stay empty for the reader to fill from the file. |
+| `PDF` | curve | none | The datasheet. |
+| `--page N` | curve | `1` | The page, counted from 1. |
+| `--frame X0,Y0,X1,Y1` | curve | none | The plot's frame in PDF points, y up (the listing names each stroked rectangle as a candidate). Without it, the command lists the page's paths grouped by kind, width, paint and colour, the frames and the numeric labels. |
+| `--x SCALE:MIN:MAX` | curve | none | The x axis from `X0` to `X1`: `log:0.1:100` or `lin:0:5`. Goes with `--frame` and `--y`. |
+| `--y SCALE:MIN:MAX` | curve | none | The y axis from `Y0` to `Y1`. |
+| `--paths IDS` | curve | every path of 4 points or more inside the frame | The path ids (`#N` in the listing) to map, comma-separated. |
+| `--at X,...` | curve | none | Print each curve's y at these x values, interpolated in decades on a log axis. |
+| `--at-y Y,...` | curve | none | Print each curve's x at these y values. |
+| `--check` | design | off | Regenerate into a temporary folder (or `--out`) and compare the `.kicad_pro` and `.kicad_sch` with the design's own, as a board repository's CI does. Exit 1 on a difference or on the design step's own exit 1 (M85). Writes nothing in the project. Refuses `--route`. |
+| `REPO` | ci | `.` | The repository whose `.github/workflows/*.yml` the replay runs, from its root, as the runner's checkout. |
+| `--job ID` | ci | every job, each after the jobs it `needs` | Replay only this job (repeatable). |
+| `--workflow FILE` | ci | every workflow | One workflow: a file name in `.github/workflows/` or a path. |
+| `--skip REGEX` | ci | `(?i)\b(install\|upload)` | Skip the steps whose name matches; `uses:` steps are always skipped. A step whose `${{ }}` the replay cannot read (only `env.*`, `github.workspace`, `runner.temp` and `runner.os` are read) is red until its name is skipped. |
+| `FIRMWARE` | mutate | none | The firmware folder the test command runs in; each mutation gets its own copy, without `build/`. |
+| `--mutations FILE` | mutate | none (required) | The project's list. JSON: `[{"name", "file", "old", "new"}]` or `{"test": CMD, "mutations": [...]}`. Python: a top-level `MUTATIONS = [(name, file, old, new), ...]` and an optional `TEST = "..."`, read as literals and never run. Every `old` must be in its file exactly once; the command checks each before running any. |
+| `--test CMD` | mutate | the list's `test`, else `make -k test` | The test command, run under `bash -c` in each copy. It must pass unmutated. A mutation that fails it is caught; one that a compiler's `file:line: error:` stops did not build, and fails the run as a survivor does. |
+| `--only TEXT` | mutate | every mutation | Run only the mutations whose name holds this text (repeatable). |
+| `--jobs N` | mutate | `1` | Mutations run at once. |
+| `--work DIR` | mutate | a temporary folder, removed after | Keep the copies here, one folder per mutation. |
 | `--fetch` | sources | off | Read each row's URL once more under the workcenter's own user agent into `<out>/sources/fetched/` and report each as same, changed, new, refused, gone or unreachable; a refusal is never retried. The library is not written. |
 | `--package DIR` | verify | `<project>/verification` | The verification package (`PROCESSES.md` P28): requirements, system, simulations, calculations, traceability. |
 | `--init` | verify | off | Copy `templates/verification/` into the package and a writeup per `sim/*.cir` into `simulations/<deck>/`, never over a file that exists. The new files fail the check until each `<!-- fill ... -->` is written. |
@@ -47,7 +74,7 @@ unset variable never causes a failure.
 | `--dsn FILE` | autoroute | `<project>/<name>.dsn`, then `build/route/<name>.dsn` | Specctra DSN exported from KiCad. Absent means the command skips. |
 | `--passes N` | autoroute, design | `20` autoroute, `60` design | FreeRouting optimisation passes. |
 | `--threads N` | autoroute | engine default | FreeRouting thread count. |
-| `--timeout S` | autoroute, design | `600` autoroute, `900` design | Kill the router after S seconds. |
+| `--timeout S` | autoroute, design, mutate | `600` autoroute, `900` design, `600` mutate | Kill the router after S seconds; for mutate, a test run past it counts as caught (the tests did not pass). |
 | `--route` | design | off | Export the DSN, run FreeRouting, merge the session before writing. |
 | `--rounds N` | design | `4` | Route again, up to N rounds, with a via reserved beside each pad a pour lost. |
 | `CHECK BOARD ARGS` | placement | none | `CHECK` is one of `pin_sides`, `placement_audit`, `route_check`, `local_search`, `group_search`; `BOARD` a project folder or `.kicad_pcb`; `ARGS` go to the check as kistack documents them (`U1`, `--ic U1`, `--track 0.15 --clear 0.1 --via 0.5 --edge 0.3` for a board with a `.kicad_dru`). |
@@ -79,6 +106,7 @@ Every number is millimetres; the file is written in KiCad's VRML unit (0.1 inch)
 |---|---|---|
 | `pins LIB:SYMBOL...` | | Pin numbers, names, types and positions of library symbols. |
 | `footprint LIB:FOOTPRINT...` | `--lib NAME=DIR` (repeatable) | Pads, layers, drills and courtyard; `--lib` reads a project `.pretty` folder. |
+| `symbol-add LIB.kicad_sym` | `--from PINS.csv` (required), `--name NAME` (default the CSV's stem), `--reference R` (default `U`), `--footprint LIB:FP`, `--datasheet URL`, `--description TEXT` | A one-unit symbol from a datasheet's pin table, a CSV of `Number,Name,Type,Side` (KiCad's electrical types; `left`, `right`, `top`, `bottom`; an empty name is `~`): each pin on its side in the table's order, 2.54 mm apart, every pin end on the 1.27 mm grid, the body sized round the names. Appended as text before the library's closing parenthesis, so the symbols there keep their bytes; a new library is started. Refuses a name already in the library, an unknown type or side, a pin number twice. Writes only `LIB`. |
 
 ## `tools/kicadgen.py`
 

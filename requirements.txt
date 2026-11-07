@@ -8,3 +8,7 @@ shapely==2.2.0
 numpy==2.5.4
 # Gerber layers as images, for kistack's Gerber review (`pygerber raster-2d`)
 pygerber==2.4.3
+# A PDF page's vector paths for `workcenter curve` (a datasheet's curves read from the drawing)
+pdfminer.six==20260107
+# A GitHub workflow read for `workcenter ci` (the replay of a repository's CI steps)
+PyYAML==6.0.3

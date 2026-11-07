@@ -46,14 +46,15 @@ gates then read like any other project.
 
 | File | Task |
 |---|---|
-| `tools/workcenter` | `find_project`, 1 `gate_*` function per gate, `gate_render` (with `parts_without_body`), `gate_procure` (parts files, `order_for`), `cmd_gates` for the ordered run, `cmd_design` for design files, `cmd_doctor` for engine status, `emit` for output and exit codes. |
-| `tools/kicadgen.py` | `parse`/`dumps` for S-expressions, `load_symbol`/`load_footprint`, `Design` with `schematic()` (stub-and-label, or wired by `SchRouter` when `sch_wires` is set), `board()`, `project()`, `dsn()`, `merge_ses()`, `write()`; `load_design()` and `route()` for the CLI. |
+| `tools/workcenter` | `find_project`, 1 `gate_*` function per gate, `gate_render` (with `parts_without_body`), `gate_procure` (parts files, `order_for`), `cmd_gates` for the ordered run, `cmd_design` for design files and `check_design` for `--check`, `cmd_sim` for one deck (`--deck`, `--keep`), `cmd_doctor` for engine status, `emit` for output and exit codes. Tools that are not gates: `cmd_fetch` (a library file and its `sources.csv` row), `cmd_curve` (a PDF's curves on a plot's axes: `outline_middle`, `crossings`), `cmd_ci` (a GitHub workflow replayed), `cmd_mutate` (a firmware's mutation list). |
+| `tools/pdfcurve.py` | One PDF page's vector paths and text lines as JSON, with pdfminer under the venv; `curve` reads its output. |
+| `tools/kicadgen.py` | `parse`/`dumps` for S-expressions, `load_symbol`/`load_footprint`, `Design` with `schematic()` (stub-and-label, or wired by `SchRouter` when `sch_wires` is set), `board()`, `project()`, `dsn()`, `merge_ses()`, `write()`; `load_design()` and `route()` for the CLI; `symbol_add()` for a symbol from a datasheet's pin table. |
 
 ## Boundaries
 
 | Boundary | Rule |
 |---|---|
-| CLI ↔ engines | Subprocess only. The CLI reads the engines' report files; it never imports KiCad or ngspice libraries. |
+| CLI ↔ engines | Subprocess only. The CLI reads the engines' report files; it never imports KiCad or ngspice libraries. A venv package (pcbnew, shapely, pdfminer, PyYAML) runs in a subprocess under the venv's Python and hands back text or JSON. |
 | Workcenter ↔ project | The workcenter reads the project and writes only `<project>/build/` or `--out`. Project source files are never modified by a gate run. |
 | Kit ↔ code | The kit is read by agents and humans. Nothing executes it. `verify/verify.sh` checks its invariants (placeholders, skill parity). |
 | Installer ↔ everything else | Every other part assumes the installer ran. Nothing else installs software. |

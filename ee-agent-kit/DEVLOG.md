@@ -39,6 +39,31 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-07 — Datasheets, decks and CI checks without scratch scripts
+
+The owner asked for every tool the Last Hit work built outside the
+workcenter to move into it. This part covers datasheets, simulation and CI.
+`workcenter fetch` keeps a part's file and writes its library row.
+`workcenter curve` reads a datasheet's curve from the PDF's own lines.
+`workcenter sim --deck` runs one deck the gate's way. `design --check` and
+`ci` run a board repository's CI steps here. `mutate` runs a firmware's
+mutation list. `kicadgen.py symbol-add` draws a symbol from a pin table.
+
+On Last Hit v0.16, the heater deck read 0.505 V through `sim --deck`.
+A bare `ngspice -b` read 3.0 V, the trap of M94. The fuse's 1.0 A curve
+read 5.77 ms at 4 A, not the scratch script's 6.09 ms. That script
+averaged the nearest points, which on a steep stretch weighs one edge more.
+The middle of the two edges is 5.77 ms. The mutation run caught all 50
+mutations, after one fix in a scratch copy: one mutation's text no longer
+matched `app.c`, so the board's own script counts it as a survivor today.
+The replay of the board's firmware job tested 12 versions and printed
+`CI REPLAY GREEN`. One fetch of the fuse's datasheet returned the bytes its
+library row records.
+
+Evidence: `tests/test_fetch.py`, `test_curve.py`, `test_ci.py`,
+`test_mutate.py`, new tests in `test_sources.py` and `test_kicadgen.py`;
+`make verify` green on `feat/sources-sim`.
+
 ## 2026-11-05 — A verification package an inspector can check
 
 An engineer reviewed the Last Hit board and asked how anyone could check
