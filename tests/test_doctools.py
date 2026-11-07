@@ -133,6 +133,8 @@ def docs_repo(tmp_path: Path) -> Path:
     write(v / "firmware" / "src" / "board" / "b.c", "")
     write(v / "firmware" / "tests" / "t.c", "")
     write(v / "firmware" / "build" / "app.elf", "")  # build output is not content
+    write(v / "firmware" / "mutations.py", "MUTATIONS = []\n")
+    write(v / "pictures.json", "{}\n")
     write(v / "verification" / "README.md", "# Package\n")
     write(v / "verification" / "simulations" / "rc" / "README.md", "# RC divider\n")
     write(v / "display" / "design.py", "")
@@ -174,6 +176,9 @@ def test_docs_writes_contents_and_copies_each_datasheet(tmp_path):
         "- [firmware/src/core/](firmware/src/core/): 1 file",
         "- [firmware/tests/](firmware/tests/): host tests, 1 file",
         "- [firmware/Makefile](firmware/Makefile): `make`, `make test`",
+        "- [firmware/mutations.py](firmware/mutations.py): the mutation list `workcenter mutate` runs; "
+        "every mutation must fail a host test",
+        "- [pictures.json](pictures.json): what `workcenter pictures` draws and copies into docs/",
         "- [docs/board-top.png](docs/board-top.png)",
         "- [docs/layers/](docs/layers/): every copper and technical layer, 1 image",
         "- The display board's priced parts list: "
