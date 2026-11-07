@@ -2223,6 +2223,10 @@ def cmd_design(args) -> int:
     # each hand via's place, since a via passes every layer, and one in a keepout or on another face's
     # pad is a short the DRC would only find later (M40, M41).
     summary["via_problems"] = design.check_via_rules() + design.check_vias()
+    # A part inside an area the design keeps parts out of (a strip, a spacer, a body over the board, M87).
+    summary["part_problems"] = design.check_parts()
+    if summary["part_problems"]:
+        code = EXIT_FAIL
     # Control inputs that can float (a gate, an enable, a switch, an I2C line with nothing holding it):
     # listed for every design, and a failure for one that sets check_pulls.
     summary["pulls"] = design.undefined_inputs()
@@ -2273,6 +2277,8 @@ def cmd_design(args) -> int:
             print(f"  pull: {line}")
         for problem in summary["via_problems"]:
             print(f"  via: {problem}")
+        for problem in summary["part_problems"]:
+            print(f"  part: {problem}")
         for island in summary["islands"]:
             print(f"  island: {', '.join(island)} cut off from their pour; the DRC will report it")
         for f in summary["files"]:
@@ -2336,6 +2342,99 @@ def cmd_placement(args) -> int:
     if "No module named 'shapely'" in proc.stderr or "No module named 'pcbnew'" in proc.stderr:
         return EXIT_SKIP
     return EXIT_PASS if proc.returncode == 0 else EXIT_FAIL
+
+
+INSPECT_SCRIPT = SRC_DIR / "tools" / "inspect_board.py"
+INSPECT_VIEWS = ("map", "list", "probe", "net", "islands", "resistance", "crossed")
+
+
+def point(value: str) -> tuple[float, float]:
+    """x,y in mm."""
+    try:
+        x, y = (float(v) for v in value.split(","))
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"a point is x,y in mm, not {value!r}") from None
+    return (x, y)
+
+
+def track_points(value: str) -> list[tuple[float, float]]:
+    pts = [point(p) for p in value.split()]
+    if len(pts) < 2:
+        raise argparse.ArgumentTypeError(f'a track is 2 points or more, "x,y x,y ...", not {value!r}')
+    return pts
+
+
+def pad_nets(value: str) -> dict[str, str]:
+    nets = dict(item.split("=", 1) for item in value.split(",") if "=" in item)
+    if not nets or any(not k or not v for k, v in nets.items()):
+        raise argparse.ArgumentTypeError(f"pad nets are PAD=NET,PAD=NET, not {value!r}")
+    return nets
+
+
+def board_file(path: str) -> str:
+    project = find_project(path)
+    if project.pcb is None:
+        raise SystemExit(f"inspect: {project.dir} has no .kicad_pcb")
+    return str(project.pcb)
+
+
+def cmd_inspect(args) -> int:
+    """Read a board with KiCad's own geometry: tools/inspect_board.py under the venv's Python, which
+    sees pcbnew and Pillow; it writes only map's images, into --out."""
+    spec: dict = {"what": args.view, "board": board_file(args.board), "json": args.json or args.inspect_json}
+    if getattr(args, "box", None):
+        x0, x1, y0, y1 = args.box
+        if not (x0 < x1 and y0 < y1):
+            raise SystemExit("inspect: --box is X0 X1 Y0 Y1 with X0 < X1 and Y0 < Y1")
+        spec["box"] = args.box
+    if args.view == "map":
+        spec["layers"] = [ly for arg in args.layers or [] for ly in arg.split(",") if ly]
+        spec["scale"] = args.scale
+        spec["out"] = str(
+            Path(args.out).resolve() if args.out else Path(spec["board"]).parent / "build" / "inspect"
+        )
+    elif args.view == "list":
+        spec.update(layer=args.layer, net=args.net)
+    elif args.view == "probe":
+        if sum(x is not None for x in (args.via, args.track, args.part)) != 1:
+            raise SystemExit("inspect probe: give one of --via X,Y, --track 'X,Y X,Y ...' or --part REF")
+        if (args.via or args.track) and not args.net:
+            raise SystemExit("inspect probe: --via and --track need --net")
+        if args.track and not args.layer:
+            raise SystemExit("inspect probe: --track needs --layer")
+        if args.part and args.at is None:
+            raise SystemExit("inspect probe: --part needs --at X,Y")
+        spec.update(
+            via=args.via,
+            track=args.track,
+            part=args.part,
+            at=args.at,
+            rot=args.rot,
+            footprint=args.footprint,
+            nets=args.nets,
+            back=args.back,
+            net=args.net,
+            layer=args.layer,
+            size=args.size,
+            drill=args.drill,
+            width=args.width,
+        )
+    elif args.view == "net":
+        spec["net"] = args.net
+    elif args.view == "islands":
+        spec["net"] = args.net
+    elif args.view == "resistance":
+        spec.update(net=args.net, temp=args.temp, plating=args.plating)
+        spec["from"], spec["to"] = getattr(args, "from"), args.to
+    elif args.view == "crossed":
+        spec["new"] = board_file(args.new) if args.new else None
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    proc = subprocess.run(
+        [venv_python(), "-s", str(INSPECT_SCRIPT), json.dumps(spec)], capture_output=True, text=True, env=env
+    )
+    sys.stdout.write(proc.stdout)
+    sys.stderr.write("".join(ln for ln in proc.stderr.splitlines(True) if not KICAD_NOISE.search(ln)))
+    return proc.returncode if proc.returncode in (EXIT_PASS, EXIT_FAIL, EXIT_SKIP) else EXIT_FAIL
 
 
 USER_SETTINGS = Path.home() / ".claude" / "settings.json"
@@ -2582,12 +2681,92 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("check", help=f"one of {', '.join(PLACEMENT_CHECKS)}")
     p.add_argument("board", help="project directory or .kicad_pcb")
     p.add_argument("args", nargs=argparse.REMAINDER, help="the check's own arguments, e.g. U1 or --ic U1")
+    p = sub.add_parser(
+        "inspect",
+        help="read a board with KiCad's own geometry: "
+        + ", ".join(INSPECT_VIEWS)
+        + "; only map writes files",
+    )
+    isub = p.add_subparsers(dest="view", required=True)
+
+    def add_view(name: str, help_text: str, box: bool = False):
+        q = isub.add_parser(name, help=help_text)
+        q.add_argument("board", help="project directory or .kicad_pcb")
+        q.add_argument("--json", dest="inspect_json", action="store_true", help="machine-readable output")
+        if box:
+            q.add_argument(
+                "--box",
+                nargs=4,
+                type=float,
+                required=True,
+                metavar=("X0", "X1", "Y0", "Y1"),
+                help="window, mm",
+            )
+        return q
+
+    q = add_view("map", "one PNG per copper layer of a window, written to --out", box=True)
+    q.add_argument("--layers", nargs="+", help="copper layers to draw (default every one), e.g. F.Cu In2.Cu")
+    q.add_argument("--scale", type=float, default=60.0, help="pixels per mm (default 60)")
+    q.add_argument("--out", help="folder for the PNGs (default <project>/build/inspect)")
+    q = add_view(
+        "list", "pads, tracks, vias, courtyards and keep-outs in a window, as text or --json", box=True
+    )
+    q.add_argument("--layer", help="one copper layer")
+    q.add_argument("--net", help="one net")
+    q = add_view(
+        "probe", "a via, a track or a part at a new place against the board's rules; exit 1 on a conflict"
+    )
+    q.add_argument("--via", type=point, metavar="X,Y", help="a via at X,Y (needs --net)")
+    q.add_argument(
+        "--track", type=track_points, metavar="'X,Y X,Y ...'", help="a track (needs --net, --layer)"
+    )
+    q.add_argument(
+        "--part", metavar="REF", help="a part on the board, or a new one with --footprint, put at --at"
+    )
+    q.add_argument(
+        "--footprint", metavar="LIB:NAME", help="a new part's footprint (project or KiCad library)"
+    )
+    q.add_argument(
+        "--nets", type=pad_nets, metavar="1=NET,2=NET", help="a new part's pad nets (default none)"
+    )
+    q.add_argument("--back", action="store_true", help="a new part on the bottom face")
+    q.add_argument("--at", type=point, metavar="X,Y", help="where --part goes, its anchor")
+    q.add_argument(
+        "--rot", type=float, help="--part's angle, degrees, as in the board file (default: as it is)"
+    )
+    q.add_argument("--net", help="the new via's or track's net")
+    q.add_argument("--layer", help="the track's copper layer")
+    q.add_argument("--size", type=float, help="via diameter, mm (default: the net class's)")
+    q.add_argument("--drill", type=float, help="via drill, mm (default: the net class's)")
+    q.add_argument("--width", type=float, help="track width, mm (default: the net class's)")
+    q = add_view(
+        "net", "a net's pads, tracks, vias and pours as connected groups; exit 1 on an unconnected one"
+    )
+    q.add_argument("net", help="the net's name")
+    q = add_view("islands", "a net's pour pieces per layer and what each holds; exit 1 on an island")
+    q.add_argument("--net", default="GND", help="the poured net (default GND)")
+    q = add_view("resistance", "the copper path's resistance between two pads, along the tracks")
+    q.add_argument("net", help="the net's name")
+    q.add_argument("--from", required=True, metavar="REF.PAD", help="one end, e.g. C5.1")
+    q.add_argument("--to", required=True, metavar="REF.PAD", help="the other end, e.g. U2.1")
+    q.add_argument("--temp", type=float, default=20.0, help="copper temperature, °C (default 20)")
+    q.add_argument("--plating", type=float, help="via barrel plating, mm (default: the board's setting)")
+    q = add_view(
+        "crossed",
+        "the nets whose tracks or vias crossed a window; with --new, which it leaves open",
+        box=True,
+    )
+    q.add_argument(
+        "--new", metavar="BOARD", help="the new board: says which of those nets it no longer connects"
+    )
 
     args = parser.parse_args(argv)
     if args.command == "doctor":
         return cmd_doctor(args)
     if args.command == "placement":
         return cmd_placement(args)
+    if args.command == "inspect":
+        return cmd_inspect(args)
     if args.command == "design":
         return cmd_design(args)
     if args.command == "render":

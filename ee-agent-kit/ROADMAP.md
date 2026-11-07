@@ -59,6 +59,7 @@ the skills tell the agent which gate comes next.
 
 | Week | Feature | Release | Evidence |
 |---|---|---|---|
+| 2026-11-07 | Board inspection: `workcenter inspect` (map, list, probe, net, islands, resistance, crossed) reads a routed board with KiCad's geometry and the board's own rules; `tools/stretch.py` grows a design at a cut; `d.keepout(..., parts=True)` keeps parts out of an area; P29 | unreleased | `tests/test_inspect.py` (21 tests) on the new fixture `inspect-four-layer`, `tests/test_kicadgen.py` (parts keep-outs, `parse_all`); Last Hit v0.16: its In2 run to the joint 56.8 mOhm, C5 to U2 64.3 mOhm, M90's overlap and M91's keep-out found again; `DEVLOG.md` 2026-11-07 |
 | 2026-11-05 | Verification packages: `workcenter verify` (every quoted number against a fresh ngspice run, every traceability check recomputed), `templates/verification/`, P28, the `verification` skill; project-fitted models in `sim/models/`; `"req"` on expect bounds | unreleased | `tests/test_verify.py` (16 tests), `tests/test_sources.py` (the own-model rule); the Last Hit v0.14 package: 60 requirements, 175 quoted values matching the run; `DEVLOG.md` 2026-11-05 |
 | 2026-10-29 | Pull-resistor check: `Design.undefined_inputs()`, `check_pulls`, `defined_nets` | unreleased | `tests/test_pulls.py`; Last Hit v0.11 checked; `DEVLOG.md` 2026-10-29 |
 | 2026-10-29 | Fabrication house rule sets: `rules/sierra-circuits-web.kicad_dru`, `workcenter drc|gates --fab`, `Design.fab` | unreleased | `tests/test_fab.py` (fixture `fail-fab-sierra` GREEN plain, red with the fab; the board-wide minimums; the project untouched); Last Hit v0.11 checked: 47 errors under Sierra's limits; `DEVLOG.md` 2026-10-29 |
@@ -85,3 +86,4 @@ the skills tell the agent which gate comes next.
 - 2026-10-29 — item 3 (fab rule sets) re-scoped from JLCPCB to Sierra Circuits' Web PCB, the user's fab, and shipped; `Design.fab` added so a generated board carries its fab's rules for good. The MCP server moves up to 3.
 - 2026-11-05 — verification packages shipped out of band: the user asked for requirements fit for a MIL-STD or DO-160 inspection, simulations traced to the requirements' sources, cited nodal analysis, and this method in the workcenter.
 - 2026-10-29 — the pull-resistor check shipped out of band: the user asked for pull-downs wherever one is needed, in case one was missed.
+- 2026-11-07 — board inspection (`workcenter inspect`, `tools/stretch.py`, parts keep-outs, P29) shipped out of band: the owner asked for every tool and convention of the Last Hit work in the workcenter.
