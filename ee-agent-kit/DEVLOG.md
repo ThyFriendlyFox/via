@@ -39,6 +39,32 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-07 — The Last Hit work's habits, written down
+
+The owner asked for every tool and convention of the Last Hit work in the
+workcenter, so the next agent given the same task produces the same
+outputs. This part covers the conventions. A version's README and its
+gates report now have templates, taken from Last Hit v0.16. P22 names the
+commands that make a new version and keep its generated tables current.
+One cost table had sat three versions behind because the checklist named
+only one of its two copies.
+
+`workcenter verify` now reads the owner's decisions. A withdrawn
+requirement moves to a Withdrawn table with its date and who decided; the
+check names it, leaves it out of the counts and refuses its old row. On
+v0.16's package, REQ-USB-01 moved there and the counts stayed 56 PASS, 2
+FAIL, 6 OPEN.
+
+Seven mistakes from v0.15 and v0.16 became rules in P28. A divider moved
+behind a fuse counted one current through it, not two. An inner track's
+resistance was taken as outer copper. A deck run by hand skipped the gate's
+model translation. Three came from briefs to helpers: an expectation the
+deck contradicted, a path promised before the file existed, a fact that
+changed after the brief went out. Helpers now get a brief that asks
+questions and a facts file that holds each fact once.
+
+Evidence: `tests/test_verify.py` (24 tests); the v0.16 package checked in
+a scratch copy; `MISTAKES.md` M92 to M98.
 ## 2026-11-07 — The router starts from the last board and keeps the inner drill rule
 
 The owner asked for every tool of the Last Hit work in the workcenter. This

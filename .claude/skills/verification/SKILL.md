@@ -54,6 +54,14 @@ fails the check until it is written.
      (MIL-STD-961E 5.9.1, simulation named apart).
    - Inspection names the clause an inspector would use, or
      "none: functional".
+   - The owner's decisions: a requirement the owner restates or adds
+     names "the owner's decision of 2026-11-06" in its Source (the date
+     year first; `verify` checks it). One the owner withdraws moves to the
+     `## Withdrawn` table, `| ID | Date | Decision | By |`, with the
+     decision in the owner's terms; its traceability row and every `"req"`
+     naming it go. `verify` names the withdrawn IDs, leaves them out of the
+     counts, and fails on a row or a bound that still names one. An ID is
+     never given again.
 4. **Worst case.** Every limit is checked at the datasheets' corners, not
    their typicals: the minimum and maximum rows, the supply's range, the
    temperature range, the tolerance of every resistor that sets a value.
@@ -190,6 +198,42 @@ for the first package (Last Hit v0.14, `verification/requirements/`):
 Newer editions exist for several (IEC 61000-4-2 Ed. 3.0, MIL-STD-461H,
 UL 8139:2024, DO-160H planned); name the edition read.
 
+## Helpers
+
+A package with many writeups can be split among helpers who work at the
+same time. The lead keeps the facts in one place and asks questions; the
+helpers read the runs (P28 step 8).
+
+1. Copy `templates/verification/BRIEF.md` and `FACTS.md` into one folder of
+   the session's scratchpad, never into the project. `verify --init`
+   leaves both out of a package.
+2. Fill BRIEF.md: each helper's files and decks, the questions, the paths
+   (absolute, in backticks). Fill FACTS.md: each fact with its value and
+   its home, the file in the project that holds it. A deck's numbers stay
+   in the runs; the brief copies no fact (M98).
+3. Write a question where you have an expectation: "how much current do C5
+   and C15 deliver through F1 at the edge?", never "C5 barely takes part"
+   (M95). A behaviour goes into FACTS.md only with the measure that shows
+   it.
+4. Name a document where it is today, never where it will be filed (M96).
+5. Delete each file's top comment, then run both checks; each prints
+   nothing when the files are ready:
+
+   ```sh
+   # every placeholder replaced and every "fill" written
+   grep -nE '\{(board|version|previous|task|repo|workcenter|scratch)\}|<!-- fill' /abs/folder/BRIEF.md /abs/folder/FACTS.md
+   # every absolute path in backticks names a file that exists
+   grep -ohE '`/[^`[:space:]<>]+`' /abs/folder/BRIEF.md /abs/folder/FACTS.md | tr -d '`' | sort -u \
+     | while read -r p; do [ -e "$p" ] || echo "no such file: $p"; done
+   ```
+
+6. When a fact changes during the work, change its home first, then its
+   row and the change log in FACTS.md, then send every helper one line
+   naming the row (M98).
+7. Read each report against its format: the files, every number old → new
+   with its measure, the answers with the vectors read, what looks wrong
+   elsewhere, and the `verify` lines naming the helper's files (none).
+
 ## Traps found so far
 
 - A part swap changes figures far from the swapped part: the STM32G031's
@@ -218,6 +262,27 @@ UL 8139:2024, DO-160H planned); name the edition read.
   what it drives and bound it with the rating (M81).
 - A limit computed from parts' values takes their tolerances, as the
   design's own numbers do (M82).
+- A reading moved behind a series part sees every current through it, in
+  both directions. v0.16's cell divider behind its fuse saw the charge
+  current lift it 28.9 mV and the rail's 30 mA lower it 5.8 mV; counting
+  only the first set the panel's window top 0.01 V too high (M92).
+- A track's resistance comes from the board, not from habit: 10 mm of
+  0.2 mm track on a 15 µm inner layer is 57.6 mOhm, not the 10 mOhm of
+  outer copper. `workcenter inspect resistance` reads the stackup (M93).
+- One deck by hand only through `workcenter sim <project> --deck <name>
+  --keep`. A bare `ngspice -b` skipped a vendor model's `res-model`
+  translation and PSpice mode: the current monitor read 3.0 V where the
+  gate gives 0.505 V (M94).
+- A fuse takes charge at every edge, not only at the event that put it
+  there: the heater's edge drew 1.91 A from C5 and C15 through F1, 1 to
+  2.5 µA²s each time, which a calculation of the assembly surge alone left
+  out. And a brief that expects a behaviour ("C5 barely takes part") before
+  the deck shows it is a guess the helper may copy (M95).
+- A brief names files that exist. A path promised for a datasheet not yet
+  filed reached a writeup and was wrong (M96).
+- A fact copied into a brief goes stale when it changes: three helpers
+  kept the panel window's old top after the lead moved it, and two
+  reported the mismatch. Facts live in FACTS.md with their homes (M98).
 
 ## Done when
 
