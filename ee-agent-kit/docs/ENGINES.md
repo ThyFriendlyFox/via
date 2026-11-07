@@ -52,6 +52,16 @@ circle padstacks, non-plated holes as unconnected pins, net classes with
 their own widths and vias) and merges the session back into the board.
 FreeRouting writes session coordinates at 10 times its declared
 resolution; the merge takes the scale from the session's placement block.
+What 1.9.0 honours, measured by routing a fixture (`tests/test_routing.py`):
+a wire or via with `(type fix)` stays; `(type shove_fixed)` may be pushed
+aside but is never ripped up or reworked by the optimiser; one with no type
+(or `normal`) is unfixed, and the optimiser moves it, rips it up or removes
+it as a tail (`design --seed` holds connected seed copper and leaves loose
+ends unfixed); any other type is fixed by the user; a typed clearance such as `(clearance N (type via_wire))`
+is read but has no effect in the structure, globally or in a layer's
+`(rule ...)`, and inside a net class it holds only between that class's own
+vias and wires. A hole's clearance per layer therefore reaches it as grown
+copper on that layer (M79).
 For a hand-drawn `.kicad_pcb` both ends still happen in KiCad; reading an
 arbitrary board file into the DSN writer is ROADMAP item 1.
 
@@ -105,6 +115,25 @@ Gerber layer as an image, for kistack's Gerber review. Release 2.4.3, from
 PyPI into the venv. kistack's skill names the 3.x command
 (`pygerber gerber convert png`); 2.4.3 is the newest stable release and has
 `raster-2d` instead. No gate runs it yet.
+
+## pdfminer.six
+
+Reads one PDF page's vector paths and text lines for `workcenter curve`:
+`tools/pdfcurve.py` runs under the venv and prints them as JSON; the CLI
+maps them onto a plot's axes with the standard library. Release 20260107,
+from PyPI into the venv. pdfminer keeps a path's end points only, drops
+Bezier control points, splits a path at each moveto, and repeats the first
+point of a path closed with `h`. Absent, the command skips (exit 2) and
+says so.
+
+## PyYAML
+
+Reads a GitHub workflow for `workcenter ci`: the venv turns the YAML into
+JSON, and the CLI runs the steps. Release 6.0.3, from PyPI into the venv.
+YAML 1.1 reads the key `on:` as true; the replay never reads it. The venv
+runs without `-s`, so it imports the copy pip reports: Ubuntu's
+python3-yaml 6.0.1 in the system packages comes second. Absent, the
+command skips (exit 2) and says so.
 
 ## kipy (planned)
 

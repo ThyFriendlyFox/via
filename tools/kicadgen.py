@@ -10,12 +10,14 @@ router's session file back into the board. Standard library only.
     python3 tools/kicadgen.py footprint Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm
     python3 tools/kicadgen.py footprint --lib LastHit=footprints/LastHit.pretty LastHit:Connector_510
     python3 tools/kicadgen.py pins --lib LastHit=symbols/LastHit.kicad_sym LastHit:FDMB2307NZ
+    python3 tools/kicadgen.py symbol-add symbols/LastHit.kicad_sym --from tps7a02.csv --name TPS7A02_DQN
 
 A project keeps its own footprints in a `.pretty` folder and names it in
 `Design.footprint_dirs`; the generated project gets an `fp-lib-table` for it.
 Its own symbols go in a `.kicad_sym` file named in `Design.symbol_dirs`, for
 a part the KiCad library lacks or draws only in several units; the project
-gets a `sym-lib-table` for it.
+gets a `sym-lib-table` for it. `symbol-add` writes one there from the
+datasheet's pin table (a CSV of Number, Name, Type, Side).
 
 Coordinates are millimetres. Schematic y grows downward (KiCad); symbol
 library y grows upward and is flipped on placement. Board rotation keeps
@@ -26,6 +28,7 @@ angle, which is how KiCad stores rotated footprints.
 from __future__ import annotations
 
 import copy
+import csv
 import importlib.util
 import math
 import os
@@ -100,8 +103,8 @@ def parse(text: str) -> Node:
 
 
 def parse_all(text: str) -> list[Node]:
-    """Parse every top-level S-expression in a file (a .kicad_sym has one)."""
-    return [parse(text)]
+    """Parse every top-level S-expression in a file: a .kicad_sym has one, a .kicad_dru one per rule."""
+    return parse(f"(\n{text}\n)")
 
 
 def quote(s: str) -> str:
@@ -677,6 +680,26 @@ def fab_minimums(text: str) -> dict[str, float]:
     return out
 
 
+_DRU_LAYER = re.compile(r'\(layer\s+"?([\w.]+)"?\s*\)')
+
+
+def fab_layer_minimums(text: str, constraint: str, copper: list[str]) -> list[tuple[list[str], float]]:
+    """The layer rules of a .kicad_dru for one constraint: (the copper layers each names, its minimum
+    in mm). `inner` and `outer` are KiCad's own layer sets; a rule with a condition or no layer is
+    not one of these."""
+    out = []
+    for block in re.split(r"(?m)^\(rule\b", text)[1:]:
+        m = _DRU_LAYER.search(block)
+        if m is None or "(condition" in block:
+            continue
+        sets = {"inner": copper[1:-1], "outer": [copper[0], copper[-1]]}
+        layers = sets.get(m.group(1), [m.group(1)] if m.group(1) in copper else [])
+        for kind, value in _DRU_MIN.findall(block):
+            if kind == constraint and layers:
+                out.append((layers, float(value)))
+    return out
+
+
 # A rule's constraint and the board setting that carries the same minimum, for raising a fab rule
 # that stays in the rule file (one with a layer or a condition) to the board's own where that is
 # stricter.
@@ -741,6 +764,45 @@ def _seg_dist(p: tuple[float, float], a: tuple[float, float], b: tuple[float, fl
         return math.hypot(px - ax, py - ay)
     u = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)))
     return math.hypot(px - (ax + u * dx), py - (ay + u * dy))
+
+
+def _segments_cross(a, b, c, d) -> bool:
+    """True when segment ab meets segment cd (touching counts)."""
+
+    def side(p, q, r) -> float:
+        return (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
+
+    if side(c, d, a) * side(c, d, b) < 0 and side(a, b, c) * side(a, b, d) < 0:
+        return True
+    return min(_seg_dist(a, c, d), _seg_dist(b, c, d), _seg_dist(c, a, b), _seg_dist(d, a, b)) < 1e-9
+
+
+def _segs_dist(a, b, c, d) -> float:
+    """The distance between segments a-b and c-d, 0 where they cross."""
+    if _segments_cross(a, b, c, d):
+        return 0.0
+    return min(_seg_dist(a, c, d), _seg_dist(b, c, d), _seg_dist(c, a, b), _seg_dist(d, a, b))
+
+
+def _seg_polygon_dist(a, b, poly: list[tuple[float, float]]) -> float:
+    """The distance from segment a-b to a polygon's area, 0 where it enters it."""
+    if _inside_polygon(a[0], a[1], poly) or _inside_polygon(b[0], b[1], poly):
+        return 0.0
+    return min(_segs_dist(a, b, p, q) for p, q in zip(poly, poly[1:] + poly[:1], strict=True))
+
+
+def _polygon_meets_box(poly: list[tuple[float, float]], box: tuple[float, float, float, float]) -> bool:
+    """True when polygon `poly` and the box (x1, y1, x2, y2) overlap: one holds a corner of the other,
+    or their edges cross."""
+    x1, y1, x2, y2 = box
+    corners = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
+    if any(_inside_polygon(x, y, poly) for x, y in corners):
+        return True
+    if any(x1 <= x <= x2 and y1 <= y <= y2 for x, y in poly):
+        return True
+    edges = list(zip(poly, poly[1:] + poly[:1], strict=True))
+    sides = list(zip(corners, corners[1:] + corners[:1], strict=True))
+    return any(_segments_cross(a, b, c, d) for a, b in edges for c, d in sides)
 
 
 @dataclass
@@ -852,7 +914,7 @@ class Design:
     # as <name>.kicad_dru, its board-wide minimums laid over the board's own (rules/README.md).
     fab: str = ""
     zones: list[dict] = field(default_factory=list)  # copper pours, see zone()
-    keepouts: list[dict] = field(default_factory=list)  # areas no track or via enters, see keepout()
+    keepouts: list[dict] = field(default_factory=list)  # areas no track, via or part enters, see keepout()
     islands: list[list[str]] = field(default_factory=list)  # pads cut off from their pour, set by write()
     # Nets taken as held at a level though nothing on this board holds them, each with the reason: an
     # internal pull in a datasheet, a pull on the other board of a joint (undefined_inputs()).
@@ -860,6 +922,10 @@ class Design:
     # Fail `workcenter design` on a control input that can float (undefined_inputs()); off by default so
     # boards made before the check regenerate as they were.
     check_pulls: bool = False
+    # Each via write() adds through a pour's island after routing, with the island it ties, so a via
+    # that moves between two runs can be traced to the pads it serves (stitch_zones()).
+    stitches: list[dict] = field(default_factory=list)
+    _holes_cache: tuple | None = field(default=None, repr=False)
     _symcache: dict[str, Symbol] = field(default_factory=dict, repr=False)
     _fpcache: dict[str, Footprint] = field(default_factory=dict, repr=False)
 
@@ -1332,9 +1398,17 @@ class Design:
         # The clearance between two nets is the larger of their net classes', as in KiCad's DRC; a hair
         # under it is the floating point, since the DRC measures in whole nanometres.
         mine = self.class_of(pcb_net)["clearance"]
+        # A via's hole keeps each layer's hole clearance from other nets' copper too, and the other
+        # copper's holes keep it from this via's copper; on an inner layer Sierra's 13 mil can be the
+        # larger rule (M79).
+        holes = self.hole_clearances()
+        hole_max = max(holes.values()) - 1e-6
 
         def clear(other: str) -> float:
             return max(mine, self.class_of(other)["clearance"]) - 1e-6
+
+        def reach(layer: str, other: str) -> float:
+            return max(r + clear(other), drill / 2 + holes[layer] - 1e-6)
 
         for pad in boxes:
             dx = max(pad.x1 - vx, 0.0, vx - pad.x2)
@@ -1355,20 +1429,33 @@ class Design:
                 < drill / 2 + pad.drill / 2 + 0.25
             ):
                 out.append(f"hole to hole with {pad.ref}.{pad.number}")
-            elif pad.net != pcb_net and gap < r + clear(pad.net):
+            elif pad.net != pcb_net and gap < reach(pad.layer, pad.net):
                 out.append(f"on {pad.ref}.{pad.number} ({pad.net or 'no net'}, {pad.layer})")
+            elif (
+                pad.net != pcb_net
+                and pad.drill
+                and math.hypot(vx - (pad.x1 + pad.x2) / 2, vy - (pad.y1 + pad.y2) / 2)
+                < pad.drill / 2 + holes[pad.layer] + r - 1e-6
+            ):
+                out.append(
+                    f"within {fmt(holes[pad.layer])} mm of {pad.ref}.{pad.number}'s hole ({pad.layer})"
+                )
             if first and out:
                 return out
         for i, (net, (ox, oy), size, odrill) in enumerate(self.vias):
             if i == skip_via:
                 continue
-            copper = r + size / 2 + clear(net) if (net != pcb_net or same_net_vias) else 0.0
+            copper = 0.0
+            if net != pcb_net or same_net_vias:
+                copper = max(
+                    r + size / 2 + clear(net), drill / 2 + hole_max + size / 2, odrill / 2 + hole_max + r
+                )
             if math.hypot(ox - vx, oy - vy) < max(copper, drill / 2 + odrill / 2 + 0.25):
                 out.append(f"on the {net} via at ({fmt(ox)}, {fmt(oy)})")
                 if first:
                     return out
         for n, (sx, sy), (ex, ey), w, layer in self.segments:
-            if tracks and n != pcb_net and _seg_dist((vx, vy), (sx, sy), (ex, ey)) < r + w / 2 + clear(n):
+            if tracks and n != pcb_net and _seg_dist((vx, vy), (sx, sy), (ex, ey)) < reach(layer, n) + w / 2:
                 out.append(f"on a {n} track ({layer})")
                 if first:
                     return out
@@ -1468,24 +1555,70 @@ class Design:
         return out
 
     def keepout(
-        self, polygon: list[tuple[float, float]], layers: tuple[str, ...] = ("F.Cu",), name: str = ""
+        self,
+        polygon: list[tuple[float, float]],
+        layers: tuple[str, ...] = ("F.Cu",),
+        name: str = "",
+        parts: bool = False,
+        copper: bool = True,
     ) -> None:
         """An area no track or via may enter on `layers` (a metal shell sitting on the board).
 
         Pads and pours may: a ground pour under a grounded shell is what the area is for. KiCad gets a
         rule area, the router a Specctra keepout, and the generator's own via checks honour it.
+
+        `parts=True` keeps every footprint out too: the board's mechanical neighbours (a strip standing
+        on the face, a spacer, a body over the board) as the design's own areas (M87). A part on the
+        face of one of `layers` whose courtyard enters it is listed by `check_parts()` and by KiCad's
+        DRC. `copper=False` lets tracks and vias through such an area (a body that rests on the mask).
         """
         for layer in layers:
             self._check_layer("keepout", layer)
         if len(polygon) < 3:
             raise ValueError("keepout needs a polygon of at least 3 points")
+        if not (parts or copper):
+            raise ValueError("a keepout with copper=False needs parts=True: it would keep nothing out")
         self.keepouts.append(
             {
                 "polygon": [(float(x), float(y)) for x, y in polygon],
                 "layers": tuple(layers),
                 "name": name or f"keepout{len(self.keepouts) + 1}",
+                "parts": parts,
+                "copper": copper,
             }
         )
+
+    def check_parts(self) -> list[str]:
+        """Every placed part whose courtyard enters a keepout made with `parts=True` on its own face,
+        named with the area, before anything is written or routed (M87)."""
+        out = []
+        for part in self.parts:
+            box = self.courtyard_box(part)
+            if box is None:
+                continue
+            for k in self.keepouts:
+                if k.get("parts") and part.pcb_layer in k["layers"] and _polygon_meets_box(k["polygon"], box):
+                    x1, y1, x2, y2 = box
+                    out.append(
+                        f"{part.ref} (courtyard {fmt(x1)}..{fmt(x2)}, {fmt(y1)}..{fmt(y2)}) in keepout {k['name']!r}"
+                    )
+        return out
+
+    def courtyard_box(self, part: Part) -> tuple[float, float, float, float] | None:
+        """The part's courtyard as placed, as a box in board coordinates (x1, y1, x2, y2), or None
+        for a part with no footprint, position or courtyard."""
+        if not (part.footprint and part.pcb_at and part.footprint.courtyard):
+            return None
+        cx1, cy1, cx2, cy2 = part.footprint.courtyard
+        px, py = part.pcb_at
+        back = part.pcb_layer == "B.Cu"
+        th = math.radians(part.pcb_rot)
+        xs, ys = [], []
+        for fx, fy in ((cx1, cy1), (cx2, cy1), (cx2, cy2), (cx1, cy2)):
+            fy = -fy if back else fy  # the same mirror and turn as pad_boxes()
+            xs.append(px + fx * math.cos(th) + fy * math.sin(th))
+            ys.append(py - fx * math.sin(th) + fy * math.cos(th))
+        return (min(xs), min(ys), max(xs), max(ys))
 
     def in_keepout(self, x: float, y: float, r: float) -> bool:
         """True when a via of radius `r` at (x, y) would touch any keepout. A via spans every layer,
@@ -1493,8 +1626,11 @@ class Design:
         return self.keepout_at(x, y, r) is not None
 
     def keepout_at(self, x: float, y: float, r: float) -> str | None:
-        """The name of the first keepout a via of radius `r` at (x, y) would touch, or None."""
+        """The name of the first keepout a via of radius `r` at (x, y) would touch, or None. An area
+        made with `copper=False` lets vias through."""
         for k in self.keepouts:
+            if not k.get("copper", True):
+                continue
             poly = k["polygon"]
             edges = zip(poly, poly[1:] + poly[:1], strict=True)
             if _inside_polygon(x, y, poly) or min(_seg_dist((x, y), a, b) for a, b in edges) < r:
@@ -2600,11 +2736,11 @@ class Design:
                     ["filled_areas_thickness", "no"],
                     [
                         "keepout",
-                        ["tracks", "not_allowed"],
-                        ["vias", "not_allowed"],
+                        ["tracks", "not_allowed" if k.get("copper", True) else "allowed"],
+                        ["vias", "not_allowed" if k.get("copper", True) else "allowed"],
                         ["pads", "allowed"],
                         ["copperpour", "allowed"],
-                        ["footprints", "allowed"],
+                        ["footprints", "not_allowed" if k.get("parts") else "allowed"],
                     ],
                     ["fill", ["thermal_gap", "0.5"], ["thermal_bridge_width", "0.5"]],
                     ["polygon", ["pts", *[["xy", fmt(px), fmt(py)] for px, py in k["polygon"]]]],
@@ -2642,6 +2778,30 @@ class Design:
             for key, value in fab_minimums(fab_rules(self.fab).read_text(encoding="utf-8")).items():
                 base[key] = max(base[key], value)
         return {**base, **self.rules}
+
+    def hole_clearances(self) -> dict[str, float]:
+        """The hole-to-copper distance the DRC asks on each copper layer, in mm: the board's own
+        minimum, raised by each of the fab's rules that names the layer, such as Sierra's 13 mil
+        inner drill to copper (M79). A rule with a condition stays the DRC's alone."""
+        key = (self.fab, tuple(sorted(self.rules.items())), self.copper_layers)
+        if self._holes_cache and self._holes_cache[0] == key:
+            return dict(self._holes_cache[1])
+        names = self.copper_names()
+        out = dict.fromkeys(names, self.board_rules()["min_hole_clearance"])
+        if self.fab:
+            for layers, value in fab_layer_minimums(
+                fab_rules(self.fab).read_text(encoding="utf-8"), "hole_clearance", names
+            ):
+                for layer in layers:
+                    out[layer] = max(out[layer], value)
+        self._holes_cache = (key, out)
+        return dict(out)
+
+    def via_reach(self, r: float, drill: float, layer: str, clear: float, holes: dict[str, float]) -> float:
+        """How far a via of radius `r` and hole `drill` keeps its centre from another net's copper on
+        `layer`: its copper's `clear`, or the layer's hole clearance (`holes`) from its hole,
+        whichever is further."""
+        return max(r + clear, drill / 2 + holes[layer])
 
     def check_via_rules(self) -> list[str]:
         """Every via size the board's own rules refuse: the default via, each net class's and each
@@ -2757,8 +2917,11 @@ class Design:
 
     # ---- Specctra
 
-    def dsn(self) -> str:
-        """Specctra DSN of the placed board, in 0.1 um units with y up (KiCad's own convention)."""
+    def dsn(self, seed: dict | None = None) -> str:
+        """Specctra DSN of the placed board, in 0.1 um units with y up (KiCad's own convention).
+
+        `seed` (from `seed_wiring()`) is the router's starting wiring: held where it connects, so the
+        router keeps it, and unfixed at its loose ends, which the router reuses or removes."""
         U = 10000.0  # mm -> 0.1 um
 
         def c(v: float) -> str:
@@ -2773,8 +2936,17 @@ class Design:
         # The router sees the routing layers only; a plane layer is KiCad's to fill. A through pad or
         # via has copper on every layer it sees, or the router would run an inner track through it.
         routing = self.routing_layers()
+        # A hole keeps each layer's hole clearance from other nets' copper (Sierra's 13 mil on the inner
+        # layers, M79), and FreeRouting 1.9.0 knows only copper clearances: it ignores a via_wire rule in
+        # the structure, and a net class's applies to that class's own vias and wires only. So a drilled
+        # item reaches the router with its copper grown on each layer to cover a circle of `hole/2 +
+        # hole clearance - clearance` round its centre; with the smallest clearance any net uses, every
+        # pair keeps at least the hole clearance from the hole.
+        holes = self.hole_clearances()
+        c_min = min([self.clearance, *(s["clearance"] for s in self.net_classes.values())])
 
-        def padstack_for(pad: Pad, part_rot: float) -> str:
+        def padstack_for(pad: Pad, part_rot: float, reach: dict[str, float] | None = None) -> str:
+            """`reach`: per layer, the radius round the pad's centre its copper must cover."""
             w, h = pad.w, pad.h
             # Pad angle relative to the image: the image is rotated by the placement.
             if round((pad.angle) % 180) == 90:
@@ -2784,15 +2956,27 @@ class Design:
             shape = (
                 "circle" if pad.shape == "circle" or (pad.shape == "oval" and abs(w - h) < 1e-6) else "rect"
             )
+            if reach is None and pad.kind == "thru_hole" and pad.drill:
+                reach = {layer: pad.drill / 2 + holes[layer] - c_min for layer in layers}
+            own = (max(w, h),) * 2 if shape == "circle" else (w, h)
+            size = {}
+            for layer in layers:
+                rr = 2 * (reach or {}).get(layer, 0.0)
+                size[layer] = (max(own[0], rr), max(own[1], rr))
             key = f"{shape}_{fmt(w)}x{fmt(h)}_{'TH' if through else 'SMD'}"
+            if any(size[layer] != own for layer in layers):
+                key += "_" + "_".join(f"{fmt(size[layer][0])}x{fmt(size[layer][1])}" for layer in layers)
             name = f"Pad_{key}"
             if name not in padstacks:
                 shapes = []
                 for layer in layers:
+                    sw, sh = size[layer]
                     if shape == "circle":
-                        shapes.append(f"(shape (circle {layer} {c(max(w, h))}))")
+                        shapes.append(f"(shape (circle {layer} {c(sw)}))")
                     else:
-                        shapes.append(f"(shape (rect {layer} {c(-w / 2)} {c(-h / 2)} {c(w / 2)} {c(h / 2)}))")
+                        shapes.append(
+                            f"(shape (rect {layer} {c(-sw / 2)} {c(-sh / 2)} {c(sw / 2)} {c(sh / 2)}))"
+                        )
                 padstacks[name] = (
                     f'    (padstack "{name}"\n      '
                     + "\n      ".join(shapes)
@@ -2824,8 +3008,15 @@ class Design:
                             pad.drill + margin,
                             ["*.Cu"],
                         )
+                        # The hole clearance of each layer counts as well (Sierra's inner 13 mil, M79).
+                        keep = {
+                            layer: pad.drill / 2
+                            + max(0.25, self.edge_clearance, holes[layer])
+                            - self.clearance
+                            for layer in routing
+                        }
                         pins.append(
-                            f'      (pin {padstack_for(hole, part.pcb_rot)} "{hole.number}" {c(pad.x)} {c(-pad.y)})'
+                            f'      (pin {padstack_for(hole, part.pcb_rot, keep)} "{hole.number}" {c(pad.x)} {c(-pad.y)})'
                         )
                         continue
                     ps = padstack_for(pad, part.pcb_rot)
@@ -2879,15 +3070,35 @@ class Design:
             f'    (via "{via_name(size, drill)}" {c(vx)} {c(-vy)} (net "{net}") (type fix))'
             for net, (vx, vy), size, drill in self.vias
         ]
-        for _net, _at, size, drill in self.vias:
+        # A previous route's copper. Held as shove_fixed, which FreeRouting may push aside but never rips
+        # up or reworks: as unfixed wiring its optimiser moved 32 of the 117 seed tracks on Last Hit
+        # v0.16's display board, where a route from nothing moved 1. Loose ends go in with no type,
+        # unfixed, so the router reuses them or removes them as tails.
+        seed = seed or {"segments": [], "vias": []}
+        loose_t, loose_v = seed.get("loose", [[], []])
+
+        def hold(item, loose) -> str:
+            return "" if item in loose else " (type shove_fixed)"
+
+        wiring += [
+            f'    (wire (path {s[4]} {c(s[3])} {c(s[1][0])} {c(-s[1][1])} {c(s[2][0])} {c(-s[2][1])}) (net "{s[0]}"){hold(s, loose_t)})'
+            for s in seed["segments"]
+        ] + [
+            f'    (via "{via_name(v[2], v[3])}" {c(v[1][0])} {c(-v[1][1])} (net "{v[0]}"){hold(v, loose_v)})'
+            for v in seed["vias"]
+        ]
+        for _net, _at, size, drill in [*self.vias, *seed["vias"]]:
             vias.setdefault(via_name(size, drill), (size, drill))
         # The router keeps `clearance` from the boundary; the DRC wants edge_clearance. Shrink the boundary.
         e = max(0.0, self.edge_clearance - self.clearance)
         via_ps = [
             f'    (padstack "{n}"\n'
-            + "".join(f"      (shape (circle {layer} {c(d)}))\n" for layer in routing)
+            + "".join(
+                f"      (shape (circle {layer} {c(max(d, drill + 2 * (holes[layer] - c_min)))}))\n"
+                for layer in routing
+            )
             + "      (attach off)\n    )"
-            for n, (d, _) in vias.items()
+            for n, (d, drill) in vias.items()
         ]
         ring = self.outline_polygon(e)
         boundary = "      (path pcb 0 " + " ".join(f"{c(px)} {c(-py)}" for px, py in [*ring, ring[0]]) + ")"
@@ -2909,6 +3120,7 @@ class Design:
             + " ".join(f"{c(px)} {c(-py)}" for px, py in k["polygon"])
             + "))"
             for k in self.keepouts
+            if k.get("copper", True)  # the router moves no part: a parts-only area is not its business
             for layer in k["layers"]
         ]
         layer_defs = [
@@ -2998,10 +3210,28 @@ class Design:
                 vals = atoms(path)
                 layer, width = str(vals[0]), mm(vals[1])
                 pts = [(mm(vals[i]), -mm(vals[i + 1])) for i in range(2, len(vals) - 1, 2)]
-                for a, b in zip(pts, pts[1:], strict=False):
-                    if math.hypot(a[0] - b[0], a[1] - b[1]) < 0.02:
-                        continue  # the router echoes fixed wires with a hair of a stub
-                    if not self._has_segment(name, a, b, layer) and not self._covered(name, a, b, layer):
+                # the router echoes fixed wires with a hair of a stub
+                pieces = [
+                    (a, b)
+                    for a, b in zip(pts, pts[1:], strict=False)
+                    if math.hypot(a[0] - b[0], a[1] - b[1]) >= 0.02
+                ]
+                echo = [
+                    self._has_segment(name, a, b, layer) or self._covered(name, a, b, layer)
+                    for a, b in pieces
+                ]
+                for i, (a, b) in enumerate(pieces):
+                    # An echo piece that crosses the fixed wire at an angle, next to a piece of the same
+                    # wire that is the router's own, is the joint of a T onto the fixed wire: dropped, it
+                    # left the rest of the wire ending off the fixed wire's centre line, which KiCad
+                    # reports as dangling. A wire that only echoes keeps none of its pieces.
+                    link = (
+                        echo[i]
+                        and not self._has_segment(name, a, b, layer)
+                        and any(0 <= j < len(pieces) and not echo[j] for j in (i - 1, i + 1))
+                        and self._crosswise(name, a, b, layer)
+                    )
+                    if not echo[i] or link:
                         self.segments.append((name, a, b, width, layer))
                         added_s += 1
             for via in children(net, "via"):
@@ -3053,6 +3283,19 @@ class Design:
             for n, s, e, _, ly in self.segments
         )
 
+    def _crosswise(self, net: str, a: tuple[float, float], b: tuple[float, float], layer: str) -> bool:
+        """True when a piece within reach of a segment of the net crosses it at an angle rather than
+        running along it."""
+        length = math.hypot(b[0] - a[0], b[1] - a[1])
+        for n, s, e, _, ly in self.segments:
+            if n != net or ly != layer or _seg_dist(a, s, e) >= 0.03 or _seg_dist(b, s, e) >= 0.03:
+                continue
+            along = math.hypot(e[0] - s[0], e[1] - s[1])
+            cross = (b[0] - a[0]) * (e[1] - s[1]) - (b[1] - a[1]) * (e[0] - s[0])
+            if length > 1e-9 and along > 1e-9 and abs(cross) / (length * along) < 0.1:  # within 6 degrees
+                return False
+        return True
+
     def _has_segment(self, net: str, a: tuple[float, float], b: tuple[float, float], layer: str) -> bool:
         def same(p, q):
             return math.hypot(p[0] - q[0], p[1] - q[1]) < 0.01
@@ -3061,6 +3304,223 @@ class Design:
             n == net and ly == layer and ((same(s, a) and same(e, b)) or (same(s, b) and same(e, a)))
             for n, s, e, _, ly in self.segments
         )
+
+    # ---- a previous route as the router's starting point
+
+    def seed_wiring(self, copper: dict) -> dict:
+        """The router's starting wiring from a previous board's copper (`board_copper()`), for
+        `workcenter design --route --seed`: the routed tracks and vias that still fit this design.
+
+        Left out as not the router's: copper of a net the design no longer has (`net gone`), the
+        design's own hand copper (`hand copper`: it goes to the router fixed), a via no track ends on
+        (`stitching via`: write() places those again) and arcs (`arc`: the router draws none).
+        Dropped: a track or via that now meets another net's pad (`on a pad`), hand copper or seed
+        copper already kept (`on other copper`), a keepout on its layer (`in a keepout`) or the board
+        edge (`past the edge`), at the clearances and hole clearances the via check uses (P17).
+        Returns {"segments", "vias", "loose": [tracks, vias] that hang from nothing (`_loose_ends()`),
+        "given": [tracks, vias], "left": {reason: count}}."""
+        nets = set(self.net_ids())
+        boxes = self.pad_boxes()
+        holes = self.hole_clearances()
+        hole_max = max(holes.values())
+        left: dict[str, int] = {}
+
+        def note(reason: str, count: int = 1) -> None:
+            left[reason] = left.get(reason, 0) + count
+
+        def clear(n1: str, n2: str) -> float:
+            return max(self.class_of(n1)["clearance"], self.class_of(n2)["clearance"]) - 1e-6
+
+        if copper.get("arcs"):
+            note("arc", copper["arcs"])
+        tracks: list = []
+        for seg in copper["segments"]:
+            net, a, b, _, layer = seg
+            if net not in nets:
+                note("net gone")
+            elif self._covered(net, a, b, layer):
+                note("hand copper")
+            elif why := self._track_problem(seg, boxes, holes, clear, tracks):
+                note(why)
+            else:
+                tracks.append(seg)
+        ends = [(n, p) for n, a, b, _, _ in [*copper["segments"], *self.segments] for p in (a, b)]
+        vias: list = []
+        for via in copper["vias"]:
+            net, (x, y), size, drill = via
+            if net not in nets:
+                note("net gone")
+                continue
+            if self._has_via(net, (x, y)):
+                note("hand copper")
+                continue
+            if not any(n == net and math.hypot(p[0] - x, p[1] - y) < 0.01 for n, p in ends):
+                note("stitching via")
+                continue
+            problems = self._via_problems(x, y, size / 2, drill, net, boxes, first=True, same_net_vias=False)
+            for n, s, e, w, ly in tracks:
+                if (
+                    n != net
+                    and _seg_dist((x, y), s, e)
+                    < self.via_reach(size / 2, drill, ly, clear(net, n), holes) + w / 2
+                ):
+                    problems.append("on a track")
+            for n, (ox, oy), osize, odrill in vias:
+                gap = drill / 2 + odrill / 2 + 0.25
+                if n != net:
+                    gap = max(
+                        gap,
+                        size / 2 + osize / 2 + clear(net, n),
+                        drill / 2 + hole_max + osize / 2,
+                        odrill / 2 + hole_max + size / 2,
+                    )
+                if math.hypot(ox - x, oy - y) < gap - 1e-6:
+                    problems.append("on the via")
+            if problems:
+                text = problems[0]
+                note(
+                    "past the edge"
+                    if text.startswith(("closer than", "too near"))
+                    else "in a keepout"
+                    if text.startswith("in keepout")
+                    else "on other copper"
+                    if text.startswith(("on the ", "on a "))
+                    else "on a pad"
+                )
+                continue
+            vias.append(via)
+        loose_tracks, loose_vias = self._loose_ends(tracks, vias, boxes)
+        return {
+            "segments": tracks,
+            "vias": vias,
+            "loose": [loose_tracks, loose_vias],
+            "given": [len(copper["segments"]), len(copper["vias"])],
+            "left": left,
+        }
+
+    def _loose_ends(self, tracks: list, vias: list, boxes: list[PadBox]) -> tuple[list, list]:
+        """The seed tracks and vias that hang from nothing: a track with an end that meets no pad,
+        hand copper or other seed copper of its net, a via that joins fewer than two layers, and,
+        round by round, what only those held. They reach the router unfixed, the rest held."""
+
+        def on_pad(net: str, p: tuple[float, float], layer: str) -> bool:
+            return any(
+                b.net == net
+                and b.layer == layer
+                and b.x1 - 0.01 <= p[0] <= b.x2 + 0.01
+                and b.y1 - 0.01 <= p[1] <= b.y2 + 0.01
+                for b in boxes
+            )
+
+        def held(net, p, layer, live_t, live_v, skip) -> bool:
+            if on_pad(net, p, layer):
+                return True
+            for n, s, e, w, ly in self.segments:
+                if n == net and ly == layer and _seg_dist(p, s, e) < w / 2:
+                    return True
+            for i, (n, s, e, _, ly) in enumerate(live_t):
+                if i != skip and n == net and ly == layer and _seg_dist(p, s, e) < 0.01:
+                    return True
+            return any(
+                n == net and math.hypot(p[0] - x, p[1] - y) < size / 2
+                for n, (x, y), size, _ in [*self.vias, *live_v]
+            )
+
+        live_t, live_v = list(tracks), list(vias)
+        while True:
+            keep_t = [
+                s
+                for i, s in enumerate(live_t)
+                if held(s[0], s[1], s[4], live_t, live_v, i) and held(s[0], s[2], s[4], live_t, live_v, i)
+            ]
+            keep_v = []
+            for net, (x, y), size, drill in live_v:
+                layers = {
+                    ly
+                    for n, a, b, _, ly in [*keep_t, *self.segments]
+                    for p in (a, b)
+                    if n == net and math.hypot(p[0] - x, p[1] - y) < size / 2
+                }
+                layers |= {b.layer for b in boxes if b.net == net and on_pad(net, (x, y), b.layer)}
+                if len(layers) >= 2:
+                    keep_v.append((net, (x, y), size, drill))
+            if len(keep_t) == len(live_t) and len(keep_v) == len(live_v):
+                break
+            live_t, live_v = keep_t, keep_v
+        return [s for s in tracks if s not in live_t], [v for v in vias if v not in live_v]
+
+    def _track_problem(
+        self, seg: tuple, boxes: list[PadBox], holes: dict[str, float], clear, kept: list
+    ) -> str:
+        """Why a seed track no longer fits the design, or "" when it does."""
+        net, a, b, w, layer = seg
+        hw = w / 2
+        margin = self.edge_clearance + hw - 1e-6
+        if not (self.inside_outline(*a, margin) and self.inside_outline(*b, margin)):
+            return "past the edge"
+        for k in self.keepouts:
+            # A keepout with copper allowed (`copper=False`) keeps footprints out, not tracks.
+            if k.get("copper", True) and layer in k["layers"] and _seg_polygon_dist(a, b, k["polygon"]) < hw:
+                return "in a keepout"
+        # Nothing more than 2 mm off the track's box can reach it: no clearance here is that large.
+        x1, x2 = min(a[0], b[0]) - hw - 2.0, max(a[0], b[0]) + hw + 2.0
+        y1, y2 = min(a[1], b[1]) - hw - 2.0, max(a[1], b[1]) + hw + 2.0
+
+        def far(bx1: float, by1: float, bx2: float, by2: float) -> bool:
+            return bx2 < x1 or bx1 > x2 or by2 < y1 or by1 > y2
+
+        for pad in boxes:
+            if pad.layer != layer or pad.net == net or far(pad.x1, pad.y1, pad.x2, pad.y2):
+                continue
+            cx, cy = (pad.x1 + pad.x2) / 2, (pad.y1 + pad.y2) / 2
+            if pad.shape == "circle":
+                gap = max(0.0, _seg_dist((cx, cy), a, b) - (pad.x2 - pad.x1) / 2)
+            else:
+                box = [(pad.x1, pad.y1), (pad.x2, pad.y1), (pad.x2, pad.y2), (pad.x1, pad.y2)]
+                gap = _seg_polygon_dist(a, b, box)
+            if pad.kind == "np_thru_hole":  # board edge to the DRC (M33)
+                need = max(self.edge_clearance, 0.25, holes[layer]) - 1e-6
+            else:
+                need = clear(net, pad.net)
+            if gap < need + hw:
+                return "on a pad"
+            if (
+                pad.kind == "thru_hole"
+                and pad.drill
+                and _seg_dist((cx, cy), a, b) < pad.drill / 2 + holes[layer] + hw - 1e-6
+            ):
+                return "on a pad"
+        for n, (vx, vy), size, drill in self.vias:
+            if (
+                n != net
+                and _seg_dist((vx, vy), a, b)
+                < self.via_reach(size / 2, drill, layer, clear(net, n), holes) + hw
+            ):
+                return "on other copper"
+        for n, s, e, w2, ly in [*self.segments, *kept]:
+            if (
+                ly != layer
+                or n == net
+                or far(min(s[0], e[0]), min(s[1], e[1]), max(s[0], e[0]), max(s[1], e[1]))
+            ):
+                continue
+            if _segs_dist(a, b, s, e) < hw + w2 / 2 + clear(net, n):
+                return "on other copper"
+        return ""
+
+    def seed_kept(self, seed: dict) -> int:
+        """How many of a seed's tracks the routed design still has, each along its whole length."""
+
+        def on_copper(net: str, p: tuple[float, float], layer: str) -> bool:
+            return any(
+                n == net and ly == layer and _seg_dist(p, s, e) < 0.03 for n, s, e, _, ly in self.segments
+            )
+
+        kept = 0
+        for net, a, b, _, layer in seed["segments"]:
+            points = [(a[0] + u * (b[0] - a[0]), a[1] + u * (b[1] - a[1])) for u in (0, 0.25, 0.5, 0.75, 1)]
+            kept += all(on_copper(net, p, layer) for p in points)
+        return kept
 
     # ---- files
 
@@ -3101,6 +3561,7 @@ class Design:
             table = out_dir / name
             table.write_text(f"({head}\n  (version 7)\n" + "\n".join(rows) + "\n)\n", encoding="utf-8")
             files[table] = table.read_text(encoding="utf-8")
+        self.stitches = []
         if self.zones:
             pcb = out_dir / f"{self.name}.kicad_pcb"
             fill_zones(pcb)
@@ -3229,7 +3690,9 @@ def stitch_zones(design: Design, pcb: Path, rounds: int = 6) -> int:
                                 size / 2,
                                 drill / 2,
                                 holes,
-                                blocked=_via_blocker(pcbnew, design, pieces, boxes, net, size / 2, rest),
+                                blocked=_via_blocker(
+                                    pcbnew, design, pieces, boxes, net, size / 2, rest, drill
+                                ),
                             )
                             if spot:
                                 break
@@ -3237,10 +3700,20 @@ def stitch_zones(design: Design, pcb: Path, rounds: int = 6) -> int:
                             break
                     if spot:
                         break
+                island = sorted({n for k in comp for n in pieces[k][3]})
                 if spot is None:
-                    left.append(sorted({n for k in comp for n in pieces[k][3]}))
+                    left.append(island)
                     continue
                 design.vias.append((net, spot, size, drill))
+                design.stitches.append(
+                    {
+                        "net": net,
+                        "at": spot,
+                        "layer": layer,
+                        "to": other,
+                        "pads": [n for n in island if not n.startswith("via@")],
+                    }
+                )
                 holes.append((pcbnew.VECTOR2I_MM(*spot), drill / 2))
                 added += 1
                 progress = True
@@ -3252,24 +3725,34 @@ def stitch_zones(design: Design, pcb: Path, rounds: int = 6) -> int:
 
 
 def _via_blocker(
-    pcbnew, design: Design, pieces: list, boxes: list[PadBox], net: str, r: float, rest: list[str]
+    pcbnew,
+    design: Design,
+    pieces: list,
+    boxes: list[PadBox],
+    net: str,
+    r: float,
+    rest: list[str],
+    drill: float = 0.0,
 ):
-    """The `blocked` test for a stitching via of `net` and radius `r`: True where a keepout refuses
-    it, or where on one of the `rest` layers (those it passes without joining) it is neither inside
-    the net's own fill nor clear of the other nets' tracks and pads."""
+    """The `blocked` test for a stitching via of `net`, radius `r` and hole `drill`: True where a
+    keepout refuses it, or where on one of the `rest` layers (those it passes without joining) it is
+    neither inside the net's own fill nor clear of the other nets' tracks and pads, by the copper
+    clearance or the layer's hole clearance, whichever is further (M79)."""
     c = design.clearance
+    holes = design.hole_clearances()
 
     def clear_on(layer: str, x: float, y: float) -> bool:
         if any(_inside_fill(pcbnew, polys, i, x, y, r + 0.05) for ly, polys, i, _ in pieces if ly == layer):
             return True
+        reach = design.via_reach(r, drill, layer, c, holes)
         for n, a, b, w, ly in design.segments:
-            if ly == layer and n != net and _seg_dist((x, y), a, b) < r + w / 2 + c:
+            if ly == layer and n != net and _seg_dist((x, y), a, b) < reach + w / 2:
                 return False
         for pad in boxes:
             if pad.layer == layer and pad.net != net:
                 dx = max(pad.x1 - x, 0.0, x - pad.x2)
                 dy = max(pad.y1 - y, 0.0, y - pad.y2)
-                if math.hypot(dx, dy) < r + c:
+                if math.hypot(dx, dy) < reach:
                     return False
         return True
 
@@ -3398,6 +3881,39 @@ def load_design(path: Path) -> Design:
     return design
 
 
+def board_copper(path: Path) -> dict:
+    """The tracks and vias of a .kicad_pcb as a Design holds them: "segments" (net, start, end, width,
+    layer) and "vias" (net, at, size, drill), with the number of "arcs", which are not read. Takes
+    the numbered nets kicadgen writes and the named nets KiCad 10 saves."""
+    root = parse(Path(path).read_text(encoding="utf-8"))
+    names = {str(a[0]): str(a[1]) for a in (atoms(n) for n in children(root, "net")) if len(a) >= 2}
+
+    def net_of(node: Node) -> str:
+        n = child(node, "net")
+        value = atoms(n)[0] if n is not None and atoms(n) else ""
+        return str(value) if isinstance(value, Q) else names.get(str(value), str(value))
+
+    def point(node: Node, head: str) -> tuple[float, float]:
+        x, y = atoms(child(node, head))[:2]
+        return (num(x), num(y))
+
+    segments = [
+        (
+            net_of(s),
+            point(s, "start"),
+            point(s, "end"),
+            num(atoms(child(s, "width"))[0]),
+            str(atoms(child(s, "layer"))[0]),
+        )
+        for s in children(root, "segment")
+    ]
+    vias = [
+        (net_of(v), point(v, "at"), num(atoms(child(v, "size"))[0]), num(atoms(child(v, "drill"))[0]))
+        for v in children(root, "via")
+    ]
+    return {"segments": segments, "vias": vias, "arcs": len(children(root, "arc"))}
+
+
 UNROUTED_RE = re.compile(r"Auto-routing was completed in .*?\((\d+) unrouted\)")
 
 
@@ -3408,8 +3924,10 @@ def route(
     passes: int = 60,
     timeout: int = 900,
     java: str = "java",
+    seed: dict | None = None,
 ) -> dict:
-    """Export the DSN, run FreeRouting, merge the session into the design. Returns a summary."""
+    """Export the DSN, run FreeRouting, merge the session into the design. Returns a summary.
+    `seed` is a previous route's copper as `Design.seed_wiring()` keeps it."""
     jar = jar or Path(os.environ.get("FREEROUTING_JAR", "/opt/workcenters/ee/freerouting/freerouting.jar"))
     if not jar.is_file():
         raise FileNotFoundError(str(jar))
@@ -3420,7 +3938,7 @@ def route(
         build_dir / f"{design.name}.ses",
         build_dir / "freerouting.log",
     )
-    dsn.write_text(design.dsn(), encoding="utf-8")
+    dsn.write_text(design.dsn(seed), encoding="utf-8")
     ses.unlink(missing_ok=True)
     # FreeRouting 1.9.0: -de/-do/-mp only. It needs a display; xvfb-run provides one headless.
     cmd = [java, "-jar", str(jar), "-de", str(dsn), "-do", str(ses), "-mp", str(passes)]
@@ -3443,6 +3961,191 @@ def route(
     }
 
 
+# ----------------------------------------------------------- symbol-add
+#
+# A project symbol from a datasheet's pin table: one unit, a rectangle, each pin on the side the table
+# row names, in the row's order, 2.54 mm apart, every pin end on KiCad's 1.27 mm connection grid.
+
+PIN_TYPES = (
+    "input",
+    "output",
+    "bidirectional",
+    "tri_state",
+    "passive",
+    "free",
+    "unspecified",
+    "power_in",
+    "power_out",
+    "open_collector",
+    "open_emitter",
+    "no_connect",
+)
+PIN_SIDES = ("left", "right", "top", "bottom")
+PIN_COLUMNS = ("Number", "Name", "Type", "Side")
+PIN_PITCH = 2.54
+PIN_LENGTH = 2.54
+SYMBOL_LIB_VERSION = 20241209  # KiCad 9's symbol library format, which KiCad 10 and _load_lib read
+NAME_WIDTH = 1.1  # mm per character of a 1.27 mm pin name (measured on a plot), to size the body round them
+
+
+def read_pin_table(path: Path) -> list[dict]:
+    """A datasheet's pin table as a CSV: Number, Name, Type (KiCad's electrical type), Side."""
+    with path.open(encoding="utf-8", newline="") as fh:
+        reader = csv.DictReader(fh)
+        missing = [c for c in PIN_COLUMNS if c not in (reader.fieldnames or [])]
+        if missing:
+            raise ValueError(
+                f"{path.name}: no column {', '.join(missing)} (the columns are {', '.join(PIN_COLUMNS)})"
+            )
+        pins = []
+        for n, row in enumerate(reader, start=2):
+            pin = {k.lower(): (row.get(k) or "").strip() for k in PIN_COLUMNS}
+            where = f"{path.name}:{n}"
+            if not pin["number"]:
+                raise ValueError(f"{where}: no pin number")
+            if pin["type"] not in PIN_TYPES:
+                raise ValueError(f"{where}: Type {pin['type']!r} is not one of {', '.join(PIN_TYPES)}")
+            if pin["side"].lower() not in PIN_SIDES:
+                raise ValueError(f"{where}: Side {pin['side']!r} is not one of {', '.join(PIN_SIDES)}")
+            pin["side"] = pin["side"].lower()
+            pin["name"] = pin["name"] or "~"
+            pins.append(pin)
+    numbers = [p["number"] for p in pins]
+    twice = sorted({n for n in numbers if numbers.count(n) > 1})
+    if twice:
+        raise ValueError(f"{path.name}: pin number {', '.join(twice)} twice")
+    if not pins:
+        raise ValueError(f"{path.name}: no pins")
+    return pins
+
+
+def _grid_up(v: float) -> float:
+    """Up to the next multiple of the pin pitch."""
+    return math.ceil(round(v / PIN_PITCH, 6)) * PIN_PITCH
+
+
+def symbol_node(
+    name: str,
+    pins: list[dict],
+    reference: str = "U",
+    footprint: str = "",
+    datasheet: str = "",
+    description: str = "",
+) -> Node:
+    """The library node of a one-unit symbol with `pins` placed on their sides, in their order."""
+    side = {s: [p for p in pins if p["side"] == s] for s in PIN_SIDES}
+    across = max(len(side["left"]), len(side["right"]), 1)
+    along = max(len(side["top"]), len(side["bottom"]), 0)
+
+    def longest(*sides: str) -> int:
+        return max((len(p["name"]) for s in sides for p in side[s] if p["name"] != "~"), default=0)
+
+    # A name is drawn inside the body from its pin's edge, 0.762 mm in. The left and right names must not
+    # meet; the top and bottom names, standing upright, must end before the rows of side names begin.
+    half_w = _grid_up(
+        max(
+            2 * PIN_PITCH,
+            (along - 1) * PIN_PITCH / 2 + PIN_PITCH,
+            (longest("left") + longest("right")) * NAME_WIDTH / 2 + 0.762 + 0.5,
+        )
+    )
+    side_rows = (across - 1) * PIN_PITCH / 2 + 0.75 if side["left"] or side["right"] else 0
+    upright = max(longest("top"), longest("bottom")) * NAME_WIDTH + 0.762 if along else 0
+    half_h = _grid_up(max(PIN_PITCH, (across - 1) * PIN_PITCH / 2 + PIN_PITCH, side_rows + upright + 0.5))
+
+    def font(hide: bool = False) -> Node:
+        effects: Node = ["effects", ["font", ["size", "1.27", "1.27"]]]
+        if hide:
+            effects.append(["hide", "yes"])
+        return effects
+
+    def prop(key: str, value: str, x: float, y: float, hide: bool) -> Node:
+        return ["property", Q(key), Q(value), ["at", fmt(x), fmt(y), "0"], font(hide)]
+
+    def pin(p: dict, x: float, y: float, angle: int) -> Node:
+        return [
+            "pin",
+            p["type"],
+            "line",
+            ["at", fmt(x), fmt(y), str(angle)],
+            ["length", fmt(PIN_LENGTH)],
+            ["name", Q(p["name"]), font()],
+            ["number", Q(p["number"]), font()],
+        ]
+
+    drawn: list[Node] = []
+    for s, angle in (("left", 0), ("right", 180)):
+        row = side[s]
+        top = (len(row) - 1) * PIN_PITCH / 2
+        x = -(half_w + PIN_LENGTH) if s == "left" else half_w + PIN_LENGTH
+        drawn += [pin(p, x, top - i * PIN_PITCH, angle) for i, p in enumerate(row)]
+    for s, angle in (("top", 270), ("bottom", 90)):
+        row = side[s]
+        first = -(len(row) - 1) * PIN_PITCH / 2
+        y = half_h + PIN_LENGTH if s == "top" else -(half_h + PIN_LENGTH)
+        drawn += [pin(p, first + i * PIN_PITCH, y, angle) for i, p in enumerate(row)]
+    above = half_h + (PIN_LENGTH if side["top"] else 0) + 1.27
+    below = half_h + (PIN_LENGTH if side["bottom"] else 0) + 1.27
+    return [
+        "symbol",
+        Q(name),
+        ["pin_names", ["offset", "0.762"]],
+        ["exclude_from_sim", "no"],
+        ["in_bom", "yes"],
+        ["on_board", "yes"],
+        prop("Reference", reference, 0, above, False),
+        prop("Value", name, 0, -below, False),
+        prop("Footprint", footprint, 0, -below - 2.54, True),
+        prop("Datasheet", datasheet, 0, -below - 5.08, True),
+        prop("Description", description, 0, 0, True),
+        [
+            "symbol",
+            Q(f"{name}_0_1"),
+            [
+                "rectangle",
+                ["start", fmt(-half_w), fmt(half_h)],
+                ["end", fmt(half_w), fmt(-half_h)],
+                ["stroke", ["width", "0.254"], ["type", "default"]],
+                ["fill", ["type", "background"]],
+            ],
+        ],
+        ["symbol", Q(f"{name}_1_1"), *drawn],
+        ["embedded_fonts", "no"],
+    ]
+
+
+def symbol_add(lib: Path, name: str, pins: list[dict], **props: str) -> Path:
+    """Add a symbol to a project library, creating the library when it does not exist. The symbol goes in
+    as text before the library's closing parenthesis, so the symbols already there keep their bytes; the
+    new file replaces the old one only once it reads back with the symbol in it. A name already in the
+    library is refused."""
+    if not re.fullmatch(r"[A-Za-z0-9_.+-]+", name):
+        raise ValueError(f"symbol name {name!r}: letters, digits and _ . + - only")
+    text = lib.read_bytes().decode("utf-8") if lib.is_file() else ""
+    if text:
+        existing = {atoms(c)[0] for c in children(parse(text), "symbol") if atoms(c)}
+        if name in existing:
+            raise ValueError(f"{lib.name} already has a symbol {name}")
+        body = text.rstrip()
+        if not body.endswith(")"):
+            raise ValueError(f"{lib.name} does not end with the library's closing parenthesis")
+        head = body[:-1].rstrip() + "\n"
+    else:
+        head = f'(kicad_symbol_lib\n\t(version {SYMBOL_LIB_VERSION})\n\t(generator "kicadgen")\n'
+    new = head + "\t" + dumps(symbol_node(name, pins, **props), 1) + "\n)\n"
+    part = lib.with_name(lib.name + ".part")
+    lib.parent.mkdir(parents=True, exist_ok=True)
+    part.write_text(new, encoding="utf-8", newline="")
+    try:
+        _find_symbol(parse(new), name)
+    except (KeyError, ValueError) as exc:
+        part.unlink()
+        raise ValueError(f"{lib.name}: the new library does not read back ({exc})") from None
+    part.replace(lib)
+    _LIB_CACHE.pop(lib, None)
+    return lib
+
+
 # ------------------------------------------------------------------- cli
 
 
@@ -3460,7 +4163,50 @@ def _libs_and_ids(args: list[str]) -> tuple[dict[str, Path], list[str]]:
     return dirs, ids
 
 
+def _symbol_add_cli(args: list[str]) -> int:
+    """`symbol-add LIB --from PINS.csv [--name N] [--reference R] [--footprint F] [--datasheet URL]
+    [--description TEXT]`: writes LIB only."""
+    lib, table = None, None
+    props: dict[str, str] = {}
+    name = ""
+    rest = iter(args)
+    for a in rest:
+        if a == "--from":
+            table = Path(next(rest, ""))
+        elif a == "--name":
+            name = next(rest, "")
+        elif a == "--reference":
+            props["reference"] = next(rest, "")
+        elif a == "--footprint":
+            props["footprint"] = next(rest, "")
+        elif a == "--datasheet":
+            props["datasheet"] = next(rest, "")
+        elif a == "--description":
+            props["description"] = next(rest, "")
+        elif lib is None and not a.startswith("--"):
+            lib = Path(a)
+        else:
+            print(f"symbol-add: {a!r} is not an option", file=sys.stderr)
+            return 2
+    if lib is None or table is None:
+        print("symbol-add: name the library and --from PINS.csv", file=sys.stderr)
+        return 2
+    try:
+        pins = read_pin_table(table)
+        symbol_add(lib, name or table.stem, pins, **props)
+    except (OSError, ValueError) as exc:
+        print(f"symbol-add: {exc}", file=sys.stderr)
+        return 1
+    sym = load_symbol(f"lib:{name or table.stem}", {"lib": lib})
+    print(f"symbol-add: {sym.name} with {len(sym.pins)} pins into {lib}")
+    for p in sym.pins:
+        print(f"  {p.number:>4}  {p.name:<14} {p.etype:<14} at=({fmt(p.x)}, {fmt(p.y)}) ang={fmt(p.angle)}")
+    return 0
+
+
 def main(argv: list[str]) -> int:
+    if len(argv) >= 2 and argv[0] == "symbol-add":
+        return _symbol_add_cli(argv[1:])
     if len(argv) >= 2 and argv[0] == "pins":
         dirs, ids = _libs_and_ids(argv[1:])  # --lib NAME=FILE: a project symbol library
         for lib_id in ids:

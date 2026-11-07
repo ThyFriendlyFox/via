@@ -530,6 +530,36 @@ Cost: two cancelled board runs (an hour of runner time), a re-run, and an instal
 Root cause: M12's fix was checked by reading it, never by watching a slow run; a filter in a pipe was taken to print as it reads.
 Process: P2
 
+## M87 — A part placed where the cell's strip stands
+What happened: v0.16's fuse F1 went first to (130.4, 102.75) on the base's top face, where the cell's positive nickel strip stands, 5.05 to 5.2 mm from the cell's axis on its way to its pad. The strip existed only in the assembly script, not in `design.py`, so neither the generator nor the DRC knew. The assembly picture showed it; F1 moved under the cell.
+Cost: one placement and one route redone.
+Root cause: the board's mechanical neighbours (strips, spacers, bodies over it) were not keep-outs in the design, and no check compared a new part with them. `d.keepout(..., parts=True)` now carries them: KiCad's DRC and `workcenter design` name a part inside one.
+Process: P29
+
+## M88 — A part dropped into a ground pour without looking at the pour
+What happened: v0.16's fuse F2 went first to the base's display joint. The generator reported `island: R10.1 cut off`: the fuse and its tracks split the top ground pour, and the In2 pocket there had room for one via. F2 moved to the display board.
+Cost: one placement and one route redone.
+Root cause: the spot was chosen from courtyards alone; the pour's continuity and the inner layers' room were not looked at first. `workcenter inspect islands` lists each pour piece, what it holds, and each island no via reaches.
+Process: P29
+
+## M89 — A part placed on the router's old path
+What happened: F1 landed where FreeRouting had run the puff sensor's 3.1 V feed in v0.15. The next route left +3V3 open; its hand route took a ground via's spot and moved a display line; the router then dropped the fused branch, the 3.1 V link to the MCU and the cell divider's line in turn, each found by a new DRC run.
+Cost: four hand routes, five routing runs, about two hours.
+Root cause: before placing a part on a routed board I did not list the nets the router had run through the spot and plan their paths. `workcenter inspect crossed` lists them: on v0.15 round F1 (x 126 to 134, y 101 to 106), 18 nets, +3V3 among them with 16 tracks on F.Cu; with `--new` it names the ones the new board leaves open.
+Process: P29
+
+## M90 — Courtyards overlapping by 0.05 mm on a first placement
+What happened: F1 at (130.9, 103.25) overlapped C5's courtyard by 0.05 mm. The DRC flagged it, and F1 moved 0.1 mm.
+Cost: one more generate and DRC run.
+Root cause: the spot was checked by eye on an occupancy map, not by a check that knows courtyards. `workcenter inspect probe --part F1 --at 130.9,103.25` names the overlap with C5 on today's board (0.93 x 0.03 mm, C5 having moved since), and says clear at the 103.15 that shipped.
+Process: P29
+
+## M91 — A via probed clear but inside a keep-out
+What happened: a hand via for the fused branch at (121.95, 104.05) passed the scratch clearance probe and failed the generator: 5.14 mm from cartridge B's centre, inside the collar's 5.25 mm via keep-out, its top-face track inside the collar's track keep-out.
+Cost: one refused design run and a moved via.
+Root cause: the probe checked copper and holes, not the design's keep-outs. `workcenter inspect probe --via` checks the board's rule areas by name and the project's `.kicad_dru` layer rules (Sierra's 13 mil inner drill); on v0.16 it names `collar B` at that spot.
+Process: P29
+
 ## M92 — A reading moved behind a series part, one current direction counted
 What happened: v0.16 moved the cell divider behind the fuse F1. I counted the charge current lifting the reading (28.9 mV) and set the panel window's top at 4.16 V. The 3.1 V rail's 30 mA through F1 and the track lowers the reading by up to 5.8 mV the other way, so the panel could see 4.203 V against its 4.2 V. The REQ-DSP-02 calculation found it; the top is 4.15 V.
 Cost: a firmware constant and the README's window changed after three helpers had started from the old one (M98).
@@ -571,3 +601,27 @@ What happened: the brief gave the panel window's top as 4.16 V. I changed it to 
 Cost: three helpers worked from a wrong figure; two stopped to report it.
 Root cause: briefs copy facts instead of pointing at the one file that holds them. FACTS.md now holds each fact with its home, the brief points at it, and a changed fact is changed in its home, then in FACTS.md, and every helper is told.
 Process: P28
+
+## M99 — Assembly pictures drawn without their bottom-face bodies
+What happened: the Last Hit assembly script rewrote each footprint's 3D model path through `pcbnew`, which hands out copies of a footprint's models, so the rewrite never reached the saved board. Only the 2 bodies the script also copied were drawn; the bottom-face parts (the MCU's QFN-28, the SOT-523s and others) were missing from every assembly picture since. `tools/scene.py` found it on 2026-11-07 when it redrew the scene.
+Cost: assembly pictures that showed fewer parts than the boards hold, for several versions.
+Root cause: P23 checked the board renders for parts without a body, not the assembly scene; a path rewrite was taken to work because it raised no error.
+Process: P23
+
+## M100 — A datasheet curve read by averaging the nearest points
+What happened: Last Hit v0.16's fuse timings came from a scratch script that averaged the 6 vector points nearest each current. On the curve's steep stretch that weighs one edge of the drawn line more: 6.1 ms at 4 A, where the middle of the line reads 5.77 ms (`workcenter curve`). The board's README, calculations and traceability quote 6.1 ms. The conclusion holds (both under the protection's 6.4 ms); the number does not.
+Cost: one wrong figure in 5 board documents, corrected in the next board commit.
+Root cause: a hand-written reader of a drawn curve, never checked against a curve of known values.
+Process: P27
+
+## M101 — A firmware mutation run left unrun while the firmware changed
+What happened: Last Hit's mutation list last ran at v0.14. A later edit re-indented `app.c`, so the mutation "app: refused puffs counted" no longer finds its anchor and counts as a survivor: the board's own mutation check fails today. `workcenter mutate` found it on 2026-11-07, running the list on v0.16.
+Cost: a firmware check silently red for 2 versions.
+Root cause: no step reran the mutation list after a firmware change, and nothing in CI runs it.
+Process: P18
+
+## M102 — A helper wrote outside its worktree
+What happened: the document-tools helper wrote its starter diagram spec to `/home/user/via-wt/templates/`, the parent of its worktree, then moved it in and removed the folders before any commit.
+Cost: none kept; stray folders for a few minutes.
+Root cause: a path built from the worktree's parent; the brief named the worktree, but nothing checked a write outside it.
+Process: P8

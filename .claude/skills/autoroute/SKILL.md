@@ -31,11 +31,23 @@ session (`.ses`). There are 2 ways in:
 1. `workcenter drc .` first. Fix courtyard overlaps and pad clearance in
    the placement; the router cannot.
 2. `workcenter design design.py --route --passes 60`. The command prints
-   the segment and via counts, how many rounds it took, and any ground
-   pad left on an island of its pour. Output: `build/route/<name>.dsn`,
-   `.ses`, `freerouting.log`, and the routed `.kicad_pcb` with its pours
-   filled. A 45-part board routes in under a minute; FreeRouting stops on
-   its own when it gives up on a connection.
+   the segment and via counts, how many rounds it took, a `stitch:` line
+   for each via it dropped through a pour's island (the net, the island's
+   layer and pads, the layer the via reaches), and any ground pad left on
+   an island of its pour. Output: `build/route/<name>.dsn`, `.ses`,
+   `freerouting.log`, and the routed `.kicad_pcb` with its pours filled.
+   A 45-part board routes in under a minute; FreeRouting stops on its own
+   when it gives up on a connection. The exit code is the verdict: exit 1
+   writes every file and ends on a line that says `red` and names each
+   failure (M85).
+   - A new version of a routed board (a part added or moved, P22): add
+     `--seed <previous>/<name>.kicad_pcb`. The previous board's router
+     tracks and vias go in held, so FreeRouting keeps the paths that
+     still fit and routes only the rest; the `seed:` line counts
+     what was left out (hand copper, stitching vias, copper on a pad,
+     other copper, a keepout or the edge) and how many seed tracks the
+     new route kept. Without `--seed` the router starts from nothing and
+     can move nets far from the change (M89).
 3. `workcenter drc .` reports what stayed unrouted. Unrouted nets mean a
    track width that cannot enter a pad, a crowded region, or a part
    placed where the net cannot reach it. Change the design, run again.
@@ -85,6 +97,22 @@ session (`.ses`). There are 2 ways in:
   session echoes them, sometimes cut at another point or extended into a
   pad centre; the merge drops the echoes and splits a track where the
   router joined one onto it, so the DRC sees no dangling ends.
+- Seed copper (`--seed`) that connects goes in as `(type shove_fixed)`:
+  FreeRouting may push it aside but never rips it up or reworks it. Seed
+  copper that hangs from nothing (a moved part's old tracks) goes in with
+  no type, unfixed: the router extends it to the part's new pads or
+  removes it as a tail. Seeded all unfixed, Last Hit v0.16's display board
+  kept 85 of v0.15's 117 router tracks, where an unseeded run kept 116;
+  held, it keeps 116 and the base board 76 of 87 (63 unseeded).
+- A hole keeps each layer's hole clearance from other nets' copper (a
+  fab's `(layer inner)` rule, Sierra's 13 mil). FreeRouting 1.9.0 knows
+  copper clearances only: a `via_wire` clearance in the DSN's structure
+  changes nothing, and one in a net class covers that class's own vias
+  and wires, not a via beside another class's track (measured on a
+  fixture). So the DSN grows each via's and drilled pad's copper on the
+  layers where the hole rule is the larger one (a 0.6/0.25 mm via is
+  0.6104 mm on In2 at a 0.15 mm clearance); the DRC sees the real via
+  (M79).
 
 ## Checks
 
