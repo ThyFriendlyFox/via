@@ -188,6 +188,8 @@ VERIFY_PAGES = (
     ("traceability.md", "each requirement's evidence, value and verdict"),
 )
 FIRMWARE_DIRS = {"tests": "host tests", "tools": "tools", "vendor": "vendored code", "sim": "host simulation"}
+# A firmware's mutation list, read by `workcenter mutate` (P18 step 4).
+MUTATION_LISTS = ("mutations.py", "mutations.json")
 SPLIT_DIRS = {"src"}
 # A bare board's row (the fab's order, as the procurement skill writes it) has no datasheet.
 BARE_BOARD = "bare board"
@@ -373,13 +375,25 @@ def contents_text(
             out.append(
                 f"- {md_link('firmware/Makefile', 'firmware/Makefile')}: {', '.join(dict.fromkeys(names))}"
             )
+        for m in MUTATION_LISTS:
+            if f"firmware/{m}" in files:
+                out.append(
+                    f"- {md_link('firmware/' + m, 'firmware/' + m)}: the mutation list "
+                    "`workcenter mutate` runs; every mutation must fail a host test"
+                )
         out.append("")
 
     pictures = [f for f in here("docs") if Path(f).suffix in IMAGE_SUFFIXES]
     data = [f for f in here("docs") if Path(f).suffix in (".json", ".md")]
     layers = [f for f in files if f.startswith("docs/layers/")]
-    if pictures or data or layers:
+    manifest = PICTURES_FILE in files
+    if pictures or data or layers or manifest:
         out += ["## Pictures and reports", ""]
+        if manifest:
+            out.append(
+                f"- {md_link(PICTURES_FILE, PICTURES_FILE)}: what `workcenter pictures` draws "
+                "and copies into docs/"
+            )
         out += [f"- {md_link(f, f)}" for f in pictures]
         if layers:
             out.append(
