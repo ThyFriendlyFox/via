@@ -13,6 +13,7 @@ import hashlib
 import http.server
 import importlib.machinery
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -375,3 +376,72 @@ def test_a_warn_bound_names_a_model_off_its_datasheet_and_fails_only_strict(tmp_
     assert any("against its datasheet" in w for w in records[0]["details"]["warnings"])
     code, records = run("sim", proj, "--out", tmp_path / "o", "--strict")
     assert code == 1
+
+
+PLAIN = """* a divider with no library model: 2 V in
+V1 in 0 DC 2
+R1 in out 1k
+R2 out 0 1k
+.control
+op
+let vout = v(out)
+print vout
+.endc
+.end
+"""
+
+
+def ngspice_vout(cmd: list[str], cwd: Path | None = None) -> float:
+    """vout as a deck run by hand prints it."""
+    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=False, timeout=120)
+    line = next(ln for ln in proc.stdout.splitlines() if ln.split("=")[0].strip() == "vout")
+    return float(line.split("=")[1])
+
+
+@needs_ngspice
+def test_one_deck_runs_the_gates_way_and_keep_gives_the_hand_run(tmp_path):
+    """M94: a deck run by hand with a bare `ngspice -b` reads the vendor's PSpice model untranslated. `sim
+    --deck` runs one deck as the gate does; `--keep` leaves its run folder and the command that reruns it."""
+    proj = sim_project(tmp_path, {"vout": {"min": 0.49, "max": 0.51}})
+    (proj / "sim" / "plain.cir").write_text(PLAIN, encoding="utf-8")
+    (proj / "sim" / "plain.expect.json").write_text(json.dumps({"vout": {"min": 0.99, "max": 1.01}}))
+    (proj / "sim" / ".spiceinit").write_text("* the project's own\nset numdgt=8\n", encoding="utf-8")
+    out = tmp_path / "o"
+    code, records = run("sim", proj, "--deck", "rdiv", "--out", out)
+    assert code == 0, records
+    decks = records[0]["details"]["decks"]
+    assert list(decks) == ["rdiv"]  # the other deck is not run
+    assert decks["rdiv"]["measures"]["vout"] == pytest.approx(100 / 199.5, abs=1e-3)
+    assert "rerun" not in decks["rdiv"]
+    # the trap: by hand, from sim/, the model is read untranslated and R1 is 1 Ohm, not 99.5
+    assert ngspice_vout(["ngspice", "-b", "rdiv.cir"], cwd=proj / "sim") == pytest.approx(100 / 101, abs=1e-3)
+    code, records = run("sim", proj, "--deck", "rdiv.cir", "--keep", "--out", out)
+    assert code == 0, records
+    rerun = records[0]["details"]["decks"]["rdiv"]["rerun"]
+    run_dir = out / "sim" / "run" / "rdiv"
+    assert rerun == f"env -C {run_dir} ngspice -b rdiv.cir"
+    assert ngspice_vout(rerun.split()) == pytest.approx(100 / 199.5, abs=1e-3)  # the gate's number
+    # a deck the gate runs in place gets a run folder too, with the deck folder's own .spiceinit
+    code, records = run("sim", proj, "--deck", "plain", "--keep", "--out", out)
+    assert code == 0, records
+    plain = out / "sim" / "run" / "plain"
+    assert (plain / ".spiceinit").read_text() == "* the project's own\nset numdgt=8\n"
+    assert (plain / "plain.cir").read_text() == PLAIN
+    assert ngspice_vout(records[0]["details"]["decks"]["plain"]["rerun"].split()) == pytest.approx(1.0)
+    proc = subprocess.run(
+        [sys.executable, str(CLI), "sim", proj, "--deck", "rdiv", "--keep", "--out", out],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0
+    assert re.search(r"^\s+vout = 0\.501\d*  \[0\.49, 0\.51\] ok$", proc.stdout, re.M), proc.stdout
+    assert f"rerun rdiv: env -C {run_dir} ngspice -b rdiv.cir" in proc.stdout
+
+
+def test_a_deck_that_is_not_there_is_named_with_the_decks_that_are(tmp_path):
+    proj = sim_project(tmp_path, {"vout": {"min": 0.49, "max": 0.51}})
+    code, records = run("sim", proj, "--deck", "nope", "--out", tmp_path / "o")
+    assert code == 1
+    assert records[0]["status"] == "error"
+    assert records[0]["summary"].endswith("decks are rdiv"), records

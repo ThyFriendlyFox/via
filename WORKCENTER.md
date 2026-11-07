@@ -18,7 +18,8 @@ passed every gate. "Done" means `workcenter gates <project>` prints GREEN.
 | kicad-python (kipy) | 0.8 | `/opt/workcenters/ee/venv/bin/python` | `install.sh` (PyPI) |
 | librsvg | 2.58 | `rsvg-convert` (SVG to PNG for `workcenter render`) | `install.sh` (Ubuntu 24.04 archive) |
 | FFmpeg | 6.1 | `ffmpeg` (the turning GIF of `workcenter render --views spin`) | `install.sh` (Ubuntu 24.04 archive) |
-| kicadgen | this repo | `workcenter design <design.py> [--route]`; `python3 tools/kicadgen.py pins|footprint` | `install.sh` (part of the checkout) |
+| kicadgen | this repo | `workcenter design <design.py> [--route\|--check]`; `python3 tools/kicadgen.py pins\|footprint\|symbol-add` | `install.sh` (part of the checkout) |
+| pdfminer.six, PyYAML | 20260107, 6.0.3 | `workcenter curve` (a PDF page's vector paths), `workcenter ci` (a GitHub workflow), each run under the venv | `install.sh` (PyPI) |
 | workcenter CLI | this repo | `workcenter` | `install.sh` (symlink to `tools/workcenter`) |
 | kistack | `641ade9` | `.claude/skills/kistack/SKILL.md` routes to `third_party/kistack/skills/`; `workcenter placement <check> <board> [args]` runs its placement checks | the checkout (vendored, `third_party/kistack/VENDORED.md`); shapely, numpy and pygerber by `install.sh` (PyPI) |
 | Board inspection | this repo | `workcenter inspect <view> <board> ...`, the views `map`, `list`, `probe`, `net`, `islands`, `resistance`, `crossed` (KiCad's `pcbnew` and Pillow under the venv); `python3 tools/stretch.py <design.py> --cut X --grow G` | `install.sh` (part of the checkout; Pillow from PyPI) |
@@ -147,6 +148,61 @@ the vendor published it. An expect bound with `"warn"` holds a model to its
 own datasheet rather than the design to its spec: outside it, the deck is
 named in the warnings, and only `--strict` fails.
 
+A deck is run by hand only through `workcenter sim <project> --deck NAME`:
+one deck, the gate's way, with every value it printed beside its bound.
+`--keep` runs it from `build/sim/run/<deck>/` (a deck the gate runs in
+place is copied there too, with the deck folder's own `.spiceinit`), leaves
+the folder, and prints the one command that reruns it:
+`env -C <run folder> ngspice -b <deck>.cir`. A bare `ngspice -b` in `sim/`
+reads a vendor model untranslated and in ngspice's own mode (M94).
+
+Not a gate: `workcenter fetch <url> --to <library>/<maker>/<file>` fetches
+one datasheet, model or body once under the workcenter's own name (a
+refusal is reported, never retried), keeps it, and prints its
+`sources.csv` row: the URL, the file, its SHA256, today as `Checked`, a
+model's `.SUBCKT`, and lines of the file that may carry its revision.
+`Revision` and `Dated` are left for the reader to fill from the file.
+`--row` with `--mpn` appends the row and refuses a second row of one kind
+for one part. For a part before any board names it; `workcenter sources`
+then checks the row like any other (`PROCESSES.md` P27).
+
+Not a gate: `workcenter curve <pdf> --page N` lists the page's vector
+paths grouped by kind, stroke width, paint and colour, with the stroked
+rectangles as candidate frames and the numeric labels where they stand.
+With `--frame x0,y0,x1,y1 --x log|lin:MIN:MAX --y log|lin:MIN:MAX` it maps
+each curve inside the frame onto the plot's axes and prints it; `--at`
+gives each curve's y at the x values named, `--at-y` the x at the y values.
+A line drawn as a filled outline of its two edges is reduced to its middle.
+pdfminer reads the PDF under the venv. Use it for a curve the decks or the
+calculations take a number from (a fuse's time-current curve, a safe
+operating area), instead of reading the picture by eye.
+
+Not a gate: `workcenter design <design.py> --check` regenerates the design
+into a temporary folder and compares the `.kicad_pro` and `.kicad_sch` with
+the design's own, the step a board repository's CI runs. It exits 1 on a
+difference, and on the design step's own exit 1 even when every file is
+the same (M85).
+
+Not a gate: `workcenter ci [repo]` replays a repository's GitHub workflow
+here: every `run` step in order under `bash -e`, from the repository root,
+`$GITHUB_ENV` and `$GITHUB_PATH` carried between steps, `${{ env.X }}`
+read, steps whose name matches `--skip` (install and upload by default)
+and `uses:` steps skipped. It prints `CI REPLAY GREEN` only when every step
+it ran exited 0, and writes each step's script and log in `build/ci/`. Run
+it before a board repository's push (`PROCESSES.md` P14); the steps write
+what the workflow writes, so run it on a copy where the repository is
+read-only.
+
+Not a gate: `workcenter mutate <firmware> --mutations <file>` proves a
+firmware's host tests can fail (`PROCESSES.md` P18): each mutation in the
+project's list (JSON, or a Python file's `MUTATIONS` read as a literal) is
+applied to its own copy of the firmware without `build/`, and the test
+command (`make -k test` unless the list or `--test` names another) must
+fail on it. Every mutation's text must be in its file exactly once, checked
+before anything runs, and the tests must pass unmutated. A mutation that
+survives, or that a compiler stops, fails the run. The project's tree is
+never written.
+
 Not a gate: `workcenter verify <project>` checks the project's verification
 package (`PROCESSES.md` P28, the `verification` skill) in
 `<project>/verification/`: the files it must hold, a requirements table
@@ -187,4 +243,7 @@ A project may add gates. It may not remove these.
 - Optional: `library/sources.csv` at or above the project, with the files it
   names beside it, for `workcenter sources` and the vendor models a deck
   includes. Columns: `MPN,Kind,URL,File,Member,Revision,Dated,Subckt,Ngspice,SHA256,Checked,Note`;
-  `Kind` is `datasheet`, `spice` or `step`; a row with no `File` needs a `Note`
+  `Kind` is `datasheet`, `spice` or `step`; a row with no `File` needs a `Note`;
+  `workcenter fetch --row` adds one
+- Optional: a firmware mutation list (JSON, or a Python file with `MUTATIONS`)
+  kept with the firmware, for `workcenter mutate`
