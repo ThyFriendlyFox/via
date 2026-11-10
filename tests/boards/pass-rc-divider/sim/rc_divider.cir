@@ -1,7 +1,9 @@
 * RC divider fixture: 5 V through 10k into 10k to ground. Expect vout = 2.5 V.
+* The resistors are 1 % parts of 100 ppm/K; the deck gives them opposite signs, the pair that moves
+* the ratio most, so a temperature corner has something to move.
 V1 in 0 DC 5
-R1 in out 10k
-R2 out 0 10k
+R1 in out 10k tc1=100u
+R2 out 0 10k tc1=-100u
 C1 out 0 100n
 .control
 op

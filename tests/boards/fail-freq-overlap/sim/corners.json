@@ -1,0 +1,3 @@
+{
+  "tolerance": { "L": 0.2, "C": 0.2, "source": "the fixture's parts: a 20 % inductor, a 20 % capacitor" }
+}

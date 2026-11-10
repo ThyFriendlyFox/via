@@ -657,8 +657,7 @@ def gates_report(report: Path, project, results: list, cli) -> list[str]:
     """Write or refresh the project's gates table and deck list in a Markdown report, between markers
     named after the project; prose outside the markers is left as it is. Returns the blocks written."""
     ran = {r.gate: r for r in results}
-    statuses = {r.status for r in results}
-    verdict = "RED" if statuses & {"fail", "error"} else ("GREEN" if "pass" in statuses else "SKIPPED")
+    verdict = cli.gates_verdict(results)[0]
     kicad = cli.tool_version([cli.KICAD_CLI, "version"]) or "absent"
     ngspice = cli.tool_version([cli.NGSPICE, "--version"], r"(?<=ngspice-)\d+") or "absent"
     rows = ["| Gate | Status | Summary |", "|---|---|---|"]
@@ -679,7 +678,7 @@ def gates_report(report: Path, project, results: list, cli) -> list[str]:
     if decks:
         sim = ran.get("sim")
         details = sim.details if sim else {}
-        lines = ["| Deck | What it simulates | Bounds | Result |", "|---|---|---|---|"]
+        lines = ["| Deck | What it simulates | Bounds | Corner runs | Result |", "|---|---|---|---|---|"]
         for deck in decks:
             # The first sentence of the deck's opening comment, which may run over several lines.
             head = []
@@ -709,7 +708,14 @@ def gates_report(report: Path, project, results: list, cli) -> list[str]:
                     )
                     or "pass"
                 )
-            lines.append(md_row([f"`sim/{deck.name}`", what, str(bounds), result]))
+            # The runs beside the deck as written (sim/corners.json): none without the file, and the
+            # project's own reason for a deck it keeps out.
+            corners = details.get("decks", {}).get(deck.stem, {}).get("corners")
+            if corners is None:
+                runs = "none"
+            else:
+                runs = f"none: {corners['skip']}" if "skip" in corners else str(corners["runs"])
+            lines.append(md_row([f"`sim/{deck.name}`", what, str(bounds), runs, result]))
         blocks[f"decks {project.name}"] = "\n".join(lines)
     text = report.read_text(encoding="utf-8") if report.is_file() else f"# Gates report: {project.name}\n"
     for name, body in blocks.items():

@@ -93,7 +93,9 @@ class Project:
 # ---------------------------------------------------------------- helpers
 
 
-def run(cmd: list[str], cwd: Path | None = None, timeout: int = 900) -> subprocess.CompletedProcess:
+def run(
+    cmd: list[str], cwd: Path | None = None, timeout: int = 900, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess:
     return subprocess.run(
         [str(c) for c in cmd],
         cwd=str(cwd) if cwd else None,
@@ -101,6 +103,7 @@ def run(cmd: list[str], cwd: Path | None = None, timeout: int = 900) -> subproce
         text=True,
         timeout=timeout,
         check=False,
+        env=env,
     )
 
 
@@ -193,7 +196,12 @@ def timed(fn):
         try:
             result = fn(*args, **kwargs)
         except FileNotFoundError as exc:
-            result = Result(fn.__name__.removeprefix("gate_"), "skip", f"engine missing: {exc.filename}")
+            result = Result(
+                fn.__name__.removeprefix("gate_"),
+                "skip",
+                f"engine missing: {exc.filename}",
+                {"engine_missing": str(exc.filename)},
+            )
         except subprocess.TimeoutExpired as exc:
             result = Result(fn.__name__.removeprefix("gate_"), "error", f"timed out after {exc.timeout}s")
         result.seconds = round(time.monotonic() - t0, 2)
@@ -325,19 +333,246 @@ def gate_drc(project: Project, out: Path, strict: bool = False, fab: str | None 
     )
 
 
-MEASURE_RE = re.compile(r"^\s*([A-Za-z_][\w]*)\s*=\s*([-+]?[\d.]+(?:[eE][-+]?\d+)?)")
-NGSPICE_ERROR_RE = re.compile(r"^(Error|.*\berror on line\b|Fatal|.*: no such)", re.IGNORECASE)
+# A measure is a line `name = number`. The number ends its token, so a complex value
+# (`h = 1.63e+00,-1.69e-01`) is not a measure and its real part is never taken for the whole.
+MEASURE_RE = re.compile(r"^\s*([A-Za-z_][\w]*)\s*=\s*([-+]?[\d.]+(?:[eE][-+]?\d+)?)(?=\s|$)")
+# An analysis ngspice gives up on (`doAnalyses: TRAN:  Timestep too small`, `tran simulation(s)
+# aborted`) leaves its vectors cut short, and a later analysis that completes makes the exit code 0:
+# both lines are errors, or measures taken on the cut vectors pass (M103).
+NGSPICE_ERROR_RE = re.compile(
+    r"^(Error|.*\berror on line\b|Fatal|.*: no such|doAnalyses: |.*\bsimulation\(s\) aborted)", re.IGNORECASE
+)
+# ngspice's own doubt about an operating point, after which it still prints numbers: a node that
+# floats, or every way it has of finding the point failed.
+NGSPICE_UNSOUND_RE = re.compile(r"^Warning: (singular matrix|source stepping failed)", re.IGNORECASE)
+EXPECT_KEYS = ("min", "max", "source", "warn", "req", "at")
+
+
+def simcorners():
+    """tools/simcorners.py: the corners a deck runs at."""
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import simcorners as module
+
+    return module
+
+
+def freqplan():
+    """tools/freqplan.py: a project's frequency plan."""
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import freqplan as module
+
+    return module
+
+
+def read_expect(path: Path) -> tuple[dict[str, dict], list[str]]:
+    """A deck's expect file: ({measure: bound}, problems). A bound is an object with `min`, `max` or
+    both as numbers; it may carry `source`, `warn`, `req` and `"at": "nominal"`. Anything else is a
+    problem, so a misspelt key never passes as a bound that holds nothing (M104)."""
+    if not path.is_file():
+        return {}, []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError as exc:
+        return {}, [f"not JSON: {exc}"]
+    if not isinstance(data, dict):
+        return {}, ["not an object of measure: bound"]
+    bounds: dict[str, dict] = {}
+    problems: list[str] = []
+    for name, entry in data.items():
+        if not isinstance(entry, dict):
+            problems.append(f"{name}: not an object with min or max")
+            continue
+        bad = [f"{name}: unknown key {key!r}" for key in sorted(set(entry) - set(EXPECT_KEYS))]
+        if name != name.lower():
+            bad.append(f"{name}: ngspice prints a name in lower case, so this one is never measured")
+        for key in ("min", "max"):
+            value = entry.get(key)
+            if key in entry and (isinstance(value, bool) or not isinstance(value, (int, float))):
+                bad.append(f"{name}: {key} {value!r} is not a number")
+        if "min" not in entry and "max" not in entry:
+            bad.append(f"{name}: neither min nor max")
+        if not bad and "min" in entry and "max" in entry and entry["min"] > entry["max"]:
+            bad.append(f"{name}: min {entry['min']} is above max {entry['max']}")
+        if "at" in entry and entry["at"] != "nominal":
+            bad.append(f'{name}: at {entry["at"]!r} is not "nominal"')
+        bad += [
+            f"{name}: {key} is not text"
+            for key in ("source", "warn", "req")
+            if not isinstance(entry.get(key, ""), str)
+        ]
+        problems += bad
+        if not bad:
+            bounds[name] = entry
+    return bounds, problems
+
+
+def ngspice_run(deck: Path, log: Path, home: Path) -> dict:
+    """One deck run in batch mode from its own folder: its exit code, its error lines, the lines that
+    put an operating point in doubt, every measure it printed, and its whole output. `home` stands in
+    for the user's home folder: ngspice reads the working directory's .spiceinit, then the home
+    folder's, so a ~/.spiceinit of the user's would change a deck that has none of its own."""
+    proc = run([NGSPICE, "-b", "-o", log, deck.name], cwd=deck.parent, env={**os.environ, "HOME": str(home)})
+    text = log.read_text(encoding="utf-8", errors="replace") if log.is_file() else ""
+    text += "\n" + (proc.stdout or "") + (proc.stderr or "")
+    lines = text.splitlines()
+    measures = {}
+    for ln in lines:
+        m = MEASURE_RE.match(ln)
+        if m:
+            measures[m.group(1)] = float(m.group(2))
+    return {
+        "exit": proc.returncode,
+        "errors": [ln.strip() for ln in lines if NGSPICE_ERROR_RE.match(ln)],
+        "unsound": sorted({ln.strip() for ln in lines if NGSPICE_UNSOUND_RE.match(ln)}),
+        "measures": measures,
+        "text": text,
+    }
+
+
+def bound_line(deck: str, name: str, value: float | None, bounds: dict, at: str = "") -> str:
+    """A bound that does not hold, as a failure names it."""
+    line = f"{deck}:{name}={value}{at} not in [{bounds.get('min')}, {bounds.get('max')}]"
+    return line + (f" ({bounds['source']})" if bounds.get("source") else "")
+
+
+def same_measures(a: dict[str, float], b: dict[str, float]) -> bool:
+    return a.keys() == b.keys() and all(math.isclose(a[k], b[k], rel_tol=1e-9, abs_tol=0.0) for k in a)
+
+
+def run_corners(
+    deck: Path,
+    spec,
+    sources: Path | None,
+    folder: Path,
+    expect: dict[str, dict],
+    written: dict,
+    jobs: int,
+    home: Path,
+    both_ways: set[str] = frozenset(),
+) -> tuple[dict, list[str], list[str]]:
+    """One deck at its corners (tools/simcorners.py, sim/corners.json): (record, failures, warnings).
+
+    Each corner is a copy of the deck in its own folder under `folder`, written from the deck as the
+    gate prepares it (includes absolute, models translated), so runs side by side never share a file
+    (M73). `written` is the run of the deck as written. First each range alone, then for each bound
+    the worst case those runs point at, then the Monte Carlo draws. A bound holds when it holds at
+    every corner; a corner that did not run, or ran at another temperature than its own, fails.
+    `both_ways` names measures something else reads the least and the greatest of (a resonance of the
+    frequency plan, a requirement's check): their worst case is looked for on both sides."""
+    sc = simcorners()
+    if spec.skip:
+        return {"skip": spec.skip}, [], []
+    if folder.exists():
+        shutil.rmtree(folder)
+    _, _, _, base = model_rows(deck, sources, folder / "base", always=True)
+    text = base.read_text(encoding="utf-8", errors="replace")
+    init = base.parent / ".spiceinit"
+    varied, problems, uncovered = sc.find_varied(text, spec.tolerance)
+    failures = [f"{deck.stem}: {p}" for p in problems]
+    warnings = [f"{deck.stem}: no tolerance covers {', '.join(uncovered)}"] if uncovered else []
+
+    def one(corner) -> tuple:
+        where = folder / corner.id
+        where.mkdir(parents=True)
+        (where / deck.name).write_text(sc.corner_text(text, varied, corner), encoding="utf-8")
+        if init.is_file():
+            shutil.copyfile(init, where / ".spiceinit")
+        return corner, ngspice_run(where / deck.name, where / "ngspice.log", home)
+
+    def many(corners: list) -> list[tuple]:
+        if not corners:
+            return []
+        with ThreadPoolExecutor(max_workers=jobs) as pool:
+            return list(pool.map(one, corners))
+
+    firsts = many(sc.first_corners(spec.temperatures, varied))
+    bounded = {n: ("min" in b, "max" in b) for n, b in expect.items() if not sc.nominal_only(b)}
+    bounded |= {n: (True, True) for n in both_ways}
+    worst = sc.worst_corners(
+        bounded,
+        written["measures"],
+        [c for c, _ in firsts],
+        {c.id: r["measures"] for c, r in firsts},
+        varied,
+    )
+    monte = sc.monte_carlo_corners(deck.stem, spec.monte_carlo, spec.temperatures, varied)
+    ran = firsts + many(worst) + many(monte)
+    sound = []
+    for corner, r in ran:
+        off = sc.temperature_problem(corner, r["text"])
+        if r["exit"] != 0 or r["errors"]:
+            failures.append(
+                f"{deck.stem}: at {corner.label}: ngspice exit {r['exit']}, {len(r['errors'])} error lines"
+            )
+        elif off:
+            failures.append(f"{deck.stem}: at {corner.label}: {off}")
+        else:
+            sound.append((corner, r["measures"]))
+    held: dict[str, bool] = {}
+    for name, bounds in expect.items():
+        if sc.nominal_only(bounds):
+            continue
+        offender = sc.worst_offender(name, bounds, sound)
+        held[name] = offender is None
+        # A bound the deck as written is already outside has its failure line; one line per bound.
+        if offender and sc.outside(written["measures"].get(name), bounds) == 0:
+            corner, value, count = offender
+            more = f" (and {count - 1} more corners)" if count > 1 else ""
+            failures.append(bound_line(deck.stem, name, value, bounds, f" at {corner.label}{more}"))
+    hot_cold = [m for c, m in sound if c.kind == "temperature"]
+    if hot_cold and all(same_measures(m, written["measures"]) for m in hot_cold):
+        warnings.append(
+            f"{deck.stem}: no measure moves with temperature: nothing in the deck or its models carries one"
+        )
+    record = {
+        "runs": len(ran),
+        "temperatures": sorted({c.temp for c, _ in firsts if c.kind == "temperature"}),
+        "varied": [{"name": v.name, "value": v.nominal, "tolerance": v.tol} for v in varied],
+        "uncovered": uncovered,
+        "envelope": sc.envelope(written["measures"], sound),
+        "held": held,
+        "folder": str(folder),
+    }
+    if monte:
+        record["monte_carlo"] = {**spec.monte_carlo, "statistics": sc.statistics(sound)}
+    rows = [
+        {
+            "id": c.id,
+            "kind": c.kind,
+            "label": c.label,
+            "temp": c.temp,
+            "scale": c.scale,
+            "exit": r["exit"],
+            "errors": r["errors"][:10],
+            "measures": r["measures"],
+        }
+        for c, r in ran
+    ]
+    (folder / "runs.json").write_text(json.dumps(rows, indent=1), encoding="utf-8")
+    return record, failures, warnings
 
 
 @timed
 def gate_sim(
-    project: Project, out: Path, strict: bool = False, only: str | None = None, keep: bool = False
+    project: Project,
+    out: Path,
+    strict: bool = False,
+    only: str | None = None,
+    keep: bool = False,
+    nominal: bool = False,
+    jobs: int = 0,
+    both_ways: set[str] = frozenset(),
 ) -> Result:
-    """Every sim/*.cir, or the one deck `only` names, run and held to its expect file. `keep` runs each
-    deck from its own folder in sim/run/, the deck run in place copied there too, and records the one
-    command that reruns it by hand the gate's way (M94)."""
+    """Every sim/*.cir, or the one deck `only` names, run and held to its expect file: as written, then
+    at each corner sim/corners.json names (`nominal` leaves the corners out, and says so). A full run
+    also judges sim/frequency-plan.json. `keep` runs each deck from its own folder in sim/run/, the deck
+    run in place copied there too, and records the one command that reruns it by hand the gate's way
+    (M94). `jobs` corners run at once (0: one per processor, 8 at most). `both_ways` names measures, as
+    `deck.measure`, whose least and greatest corner values a caller reads; the frequency plan's
+    resonances are added to them."""
     sim_dir = project.dir / "sim"
-    decks = sorted(sim_dir.glob("*.cir")) if sim_dir.is_dir() else []
+    every = sorted(sim_dir.glob("*.cir")) if sim_dir.is_dir() else []
+    decks = every
     if not decks:
         return Result("sim", "skip", "no sim/*.cir in project")
     if only is not None:
@@ -349,9 +584,10 @@ def gate_sim(
             )
         decks = chosen
     if not shutil.which(NGSPICE):
-        return Result("sim", "skip", f"engine missing: {NGSPICE}")
+        return Result("sim", "skip", f"engine missing: {NGSPICE}", {"engine_missing": NGSPICE})
     sim_out = out / "sim"
     sim_out.mkdir(parents=True, exist_ok=True)
+    jobs = jobs or min(8, os.cpu_count() or 1)
     details, artifacts, failures = {}, [], []
     # A vendor model a deck includes from a library is checked against its sources.csv row: a file
     # changed since its row fails the deck, one with no row is a warning (a failure with --strict).
@@ -363,100 +599,353 @@ def gate_sim(
             read_sources(sources)
         except (OSError, ValueError) as exc:
             return Result("sim", "error", f"{sources}: {exc}")
+    sc, fp = simcorners(), freqplan()
+    corners, corner_problems = sc.read_corners(sim_dir, [d.stem for d in every])
+    plan, plan_problems = fp.read_plan(sim_dir)
+    for file_name, problems in ((sc.CORNERS_FILE, corner_problems), (fp.PLAN_FILE, plan_problems)):
+        failures += [p if p.startswith(file_name) else f"{file_name}: {p}" for p in problems]
+    wanted = set(both_ways)
+    for r in plan.resonances if plan else []:
+        wanted |= {ref for ref in (r.hz, r.q) if isinstance(ref, str)}
     warned: list[str] = []
+    expects: dict[str, dict[str, dict]] = {}
+    corner_runs = 0
     for deck in decks:
         log = sim_out / f"{deck.stem}.log"
-        models, model_problems, model_warnings, plan = model_rows(
+        models, model_problems, model_warnings, prepared = model_rows(
             deck, sources, sim_out / "run" / deck.stem, always=keep
         )
         failures += model_problems
         warned += model_warnings
-        if plan:
-            proc = run([NGSPICE, "-b", "-o", log, plan.name], cwd=plan.parent)
-        else:
-            proc = run([NGSPICE, "-b", "-o", log, deck.name], cwd=sim_dir)
-        text = log.read_text(encoding="utf-8", errors="replace") if log.is_file() else ""
-        text += "\n" + (proc.stdout or "") + (proc.stderr or "")
-        errors = [ln.strip() for ln in text.splitlines() if NGSPICE_ERROR_RE.match(ln)]
-        measures = {}
-        for ln in text.splitlines():
-            m = MEASURE_RE.match(ln)
-            if m:
-                measures[m.group(1)] = float(m.group(2))
-        expect_file = sim_dir / f"{deck.stem}.expect.json"
+        written = ngspice_run(prepared or deck, log, sim_out)
+        measures = written["measures"]
+        warned += [f"{deck.stem}: ngspice: {ln}" for ln in written["unsound"]]
+        expect, expect_problems = read_expect(sim_dir / f"{deck.stem}.expect.json")
+        failures += [f"{deck.stem}.expect.json: {p}" for p in expect_problems]
+        expects[deck.stem] = expect
+        if not expect and not expect_problems:
+            warned.append(f"{deck.stem}: no bound in an expect file holds any of its measures")
         checks = {}
-        if expect_file.is_file():
-            for name, bounds in load_json(expect_file).items():
-                value = measures.get(name)
-                ok = value is not None and bounds.get("min", float("-inf")) <= value <= bounds.get(
-                    "max", float("inf")
-                )
-                checks[name] = {
-                    "value": value,
-                    "min": bounds.get("min"),
-                    "max": bounds.get("max"),
-                    "ok": ok,
-                    "source": bounds.get("source", ""),
-                }
-                if ok:
-                    continue
-                line = f"{deck.stem}:{name}={value} not in [{bounds.get('min')}, {bounds.get('max')}]"
-                if bounds.get("source"):
-                    line += f" ({bounds['source']})"
-                # "warn": a bound on the model against its own datasheet, not on the design: a model
-                # outside it is named, and fails only a strict run.
-                if bounds.get("warn") and value is not None:
-                    warned.append(f"{line}: {bounds['warn']}")
-                else:
-                    failures.append(line)
-        if proc.returncode != 0 or errors:
-            failures.append(f"{deck.stem}: ngspice exit {proc.returncode}, {len(errors)} error lines")
+        for name, bounds in expect.items():
+            value = measures.get(name)
+            ok = sc.outside(value, bounds) == 0
+            checks[name] = {
+                "value": value,
+                "min": bounds.get("min"),
+                "max": bounds.get("max"),
+                "ok": ok,
+                "source": bounds.get("source", ""),
+            }
+            if ok:
+                continue
+            line = bound_line(deck.stem, name, value, bounds)
+            # "warn": a bound on the model against its own datasheet, not on the design: a model
+            # outside it is named, and fails only a strict run.
+            if bounds.get("warn") and value is not None:
+                warned.append(f"{line}: {bounds['warn']}")
+            else:
+                failures.append(line)
+        ran_clean = written["exit"] == 0 and not written["errors"]
+        if not ran_clean:
+            failures.append(
+                f"{deck.stem}: ngspice exit {written['exit']}, {len(written['errors'])} error lines"
+            )
         details[deck.stem] = {
-            "exit": proc.returncode,
-            "errors": errors[:10],
+            "exit": written["exit"],
+            "errors": written["errors"][:10],
             "measures": measures,
             "checks": checks,
             "models": models,
-            "ran": str(plan or deck),
+            "ran": str(prepared or deck),
         }
-        if keep and plan:
+        if keep and prepared:
             # ngspice reads .spiceinit from its working directory, so the rerun starts in the run folder.
-            details[deck.stem]["rerun"] = f"env -C {shlex.quote(str(plan.parent))} {NGSPICE} -b {plan.name}"
+            details[deck.stem]["rerun"] = (
+                f"env -C {shlex.quote(str(prepared.parent))} {NGSPICE} -b {prepared.name}"
+            )
         artifacts.append(str(log))
+        # The corners, when the project names any: a deck that did not run as written has none to add.
+        if corners and deck.stem in corners and not nominal and ran_clean:
+            record, corner_failures, corner_warnings = run_corners(
+                deck,
+                corners[deck.stem],
+                sources,
+                sim_out / "corners" / deck.stem,
+                expect,
+                written,
+                jobs,
+                sim_out,
+                {ref.split(".", 1)[1] for ref in wanted if ref.split(".", 1)[0] == deck.stem},
+            )
+            failures += corner_failures
+            warned += corner_warnings
+            details[deck.stem]["corners"] = record
+            corner_runs += record.get("runs", 0)
+            for name, held in record.get("held", {}).items():
+                checks[name]["held"] = held
+    if corners is None:
+        warned.append(
+            f"no sim/{sc.CORNERS_FILE}: each deck ran once, at {sc.NOMINAL_TEMP:g} C with every part at "
+            "its written value"
+        )
+    elif nominal:
+        warned.append(f"the corners of sim/{sc.CORNERS_FILE} were not run (--nominal)")
+    else:
+        texts = [d.read_text(encoding="utf-8", errors="replace") for d in every]
+        present = set().union(*(sc.names_in(t) for t in texts))
+        named = set().union(*(set(c.tolerance["parts"]) for c in corners.values() if c.tolerance))
+        failures += [
+            f"{sc.CORNERS_FILE}: tolerance.parts names {n}, which no deck has"
+            for n in sorted(named - present)
+        ]
+    judged = None
+    if only is None:
+        # The frequency plan needs every deck's measures, so one deck alone does not judge it.
+        stimuli: dict[str, list[tuple[str, float]]] = {}
+        unread: list[str] = []
+        for d in every:
+            found, skipped = fp.stimuli(d.read_text(encoding="utf-8", errors="replace"))
+            if found:
+                stimuli[d.stem] = found
+            unread += [
+                f"{d.stem}: the period of {e} is not a number, so no plan can place it" for e in skipped
+            ]
+        if plan is None:
+            if stimuli:
+                said = "; ".join(f"{d} ({', '.join(e for e, _ in s)})" for d, s in sorted(stimuli.items()))
+                warned.append(f"no sim/{fp.PLAN_FILE}: {len(stimuli)} decks drive periodic sources: {said}")
+        elif not plan_problems:
+            values: dict[str, tuple[float, float]] = {}
+            bounded: set[str] = set()
+            for stem, info in details.items():
+                envelope = info.get("corners", {}).get("envelope", {})
+                for name, value in info["measures"].items():
+                    e = envelope.get(name)
+                    values[f"{stem}.{name}"] = (e["min"], e["max"]) if e else (value, value)
+                bounded |= {f"{stem}.{n}" for n, b in expects[stem].items() if not sc.nominal_only(b)}
+            judged = fp.check_plan(plan, values, bounded, stimuli)
+            failures += [f"frequency plan: {f}" for f in judged.pop("failures")]
+            warned += [f"frequency plan: {w}" for w in judged.pop("warnings")] + unread
     if strict:
         failures += warned
-    summary = f"{len(decks)} decks, {len(failures)} failures"
+    summary = f"{len(decks)} decks"
+    if corner_runs:
+        summary += f", {corner_runs} corner runs"
+    summary += f", {len(failures)} failures"
     if warned and not strict:
         summary += f", {len(warned)} warnings"
     return Result(
         "sim",
         "fail" if failures else "pass",
         summary,
-        {"decks": details, "failures": failures, "warnings": warned, "sources": str(sources or "")},
+        {
+            "decks": details,
+            "failures": failures,
+            "warnings": warned,
+            "sources": str(sources or ""),
+            "ngspice": tool_version([NGSPICE, "--version"], r"(?<=ngspice-)\d+"),
+            "corners": None if corners is None else {"runs": corner_runs, "nominal_only": nominal},
+            "frequency_plan": judged,
+        },
         artifacts,
     )
 
 
+BUNDLE_RUN = "run.sp"
+
+
+def write_bundle(
+    project: Project, deck: Path, sources: Path | None, bundle: Path, record: dict, version: str | None
+) -> tuple[Path, list[str]]:
+    """One deck as a folder any machine with ngspice runs: (folder, problems).
+
+    `<bundle>/<deck>/` holds the deck with every include pointing into `models/` beside it, each
+    included file there (its translated copy where the library's row lists fixes, and the files it
+    includes in turn), `run.sp`, which sets what the gate's .spiceinit set and then reads the deck from
+    its own folder, the expect file, the gate's measures, and a README. Nothing in it names a path of
+    this machine, so the folder runs from anywhere and gives the gate's numbers (M105)."""
+    folder = bundle / deck.stem
+    if folder.exists():
+        shutil.rmtree(folder)
+    (folder / "models").mkdir(parents=True)
+    problems: list[str] = []
+    copied: dict[Path, str] = {}
+
+    def bring(path: Path) -> str:
+        """Copy an included file into models/, the files it includes after it; its name there."""
+        path = path.resolve()
+        if path in copied:
+            return copied[path]
+        name, n = path.name, 1
+        while name in copied.values():
+            n += 1
+            name = f"{path.stem}-{n}{path.suffix}"
+        copied[path] = name
+        body = path.read_text(encoding="utf-8", errors="replace")
+
+        def nested(m: re.Match) -> str:
+            # `.lib name` inside a library opens a section; only a file that is there is an include.
+            target = path.parent / m.group(1)
+            return m.group(0).replace(m.group(1), bring(target)) if target.is_file() else m.group(0)
+
+        (folder / "models" / name).write_text(INCLUDE_RE.sub(nested, body), encoding="utf-8")
+        return name
+
+    with tempfile.TemporaryDirectory() as tmp:
+        models, model_problems, _, prepared = model_rows(deck, sources, Path(tmp), always=True)
+        problems += model_problems
+        init = Path(tmp) / ".spiceinit"
+        setup = init.read_text(encoding="utf-8").splitlines() if init.is_file() else []
+
+        placed: list[str] = []  # each include's name in models/, in the deck's order, as `models` is
+
+        def relative(m: re.Match) -> str:
+            target = Path(m.group(1))
+            placed.append(bring(target) if target.is_file() else "")
+            return m.group(0).replace(m.group(1), f"models/{placed[-1]}") if placed[-1] else m.group(0)
+
+        text = INCLUDE_RE.sub(relative, prepared.read_text(encoding="utf-8", errors="replace"))
+    (folder / deck.name).write_text(text, encoding="utf-8")
+    wrapper = [
+        f"* {deck.stem}: sim/{deck.name} of {project.name} as the EE Workcenter's SIM gate runs it.",
+        f"* Run this file, not {deck.name}: ngspice -b {BUNDLE_RUN}",
+        ".control",
+        *setup,
+        f"source $inputdir/{deck.name}",
+        ".endc",
+        ".end",
+        "",
+    ]
+    (folder / BUNDLE_RUN).write_text("\n".join(wrapper), encoding="utf-8")
+    expect = deck.with_suffix(".expect.json")
+    if expect.is_file():
+        shutil.copyfile(expect, folder / "expect.json")
+    (folder / "measures.json").write_text(
+        json.dumps(record["measures"], indent=1, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    rows = []
+    for m, name in zip(models, placed, strict=True):
+        if name:
+            changed = ", ".join(m.get("fixes", [])) or "no"
+            rows.append(
+                f"| `models/{name}` | {m.get('mpn', 'the project')} | {m.get('revision', '')} | {changed} |"
+            )
+    readme = [
+        f"# {deck.stem}: one simulation deck, ready to run",
+        "",
+        f"This folder holds `sim/{deck.name}` of {project.name} as the EE Workcenter's SIM gate runs it.",
+        f"The gate ran it with ngspice {version or 'of an unknown version'}. Run it in this folder, or",
+        f"from any other folder with the path to `{BUNDLE_RUN}`:",
+        "",
+        f"    ngspice -b {BUNDLE_RUN}",
+        "",
+        f"Run `{BUNDLE_RUN}`, not `{deck.name}`."
+        + (
+            f" `{BUNDLE_RUN}` first sets `{'; '.join(setup)}`: without it a model stops with an error or "
+            "gives another number."
+            if setup
+            else ""
+        ),
+        "",
+        "| File | What |",
+        "|---|---|",
+        f"| `{BUNDLE_RUN}` | the file to run |",
+        f"| `{deck.name}` | the deck; its includes point into `models/` |",
+        "| `models/` | every model the deck includes |",
+        "| `expect.json` | the bounds the gate holds the deck to |",
+        "| `measures.json` | the values the gate measured; a run here prints the same |",
+    ]
+    if rows:
+        readme += [
+            "",
+            "## Models",
+            "",
+            "| File | Part | Revision | Changed for ngspice |",
+            "|---|---|---|---|",
+            *rows,
+            "",
+            "A file marked as changed is a translated copy of its maker's file: the gate rewrites what",
+            "ngspice reads differently from PSpice. The maker's own file is in the project's library.",
+            "Read the maker's notice in a file before you pass it on.",
+        ]
+    (folder / "README.md").write_text("\n".join(readme) + "\n", encoding="utf-8")
+    return folder, problems
+
+
+def check_bundle(folder: Path, deck: str, measures: dict[str, float]) -> list[str]:
+    """Run a bundle the way its receiver does, from a copy in another place with an empty home folder,
+    and compare each measure with the gate's: the problems, empty when it gives the same numbers."""
+    with tempfile.TemporaryDirectory() as tmp:
+        moved = Path(tmp) / "moved" / folder.name
+        shutil.copytree(folder, moved)
+        home = Path(tmp) / "home"
+        home.mkdir()
+        proc = run([NGSPICE, "-b", moved / BUNDLE_RUN], cwd=home, env={**os.environ, "HOME": str(home)})
+    text = (proc.stdout or "") + "\n" + (proc.stderr or "")
+    got = {m.group(1): float(m.group(2)) for m in map(MEASURE_RE.match, text.splitlines()) if m}
+    errors = [ln for ln in text.splitlines() if NGSPICE_ERROR_RE.match(ln)]
+    problems = []
+    if proc.returncode != 0 or errors:
+        problems.append(
+            f"{deck}: the bundle does not run: ngspice exit {proc.returncode}, {len(errors)} error lines"
+        )
+    for name in sorted(set(measures) | set(got)):
+        want, have = measures.get(name), got.get(name)
+        if want is None or have is None or not math.isclose(want, have, rel_tol=1e-9, abs_tol=0.0):
+            problems.append(f"{deck}: the bundle gives {name}={have}, the gate {want}")
+    return problems
+
+
 def cmd_sim(args) -> int:
-    """The SIM gate; with --deck one deck and every value it printed, with --keep the hand-run command."""
+    """The SIM gate; with --deck one deck and every value it printed, with --keep the hand-run command,
+    with --bundle each deck as a folder that runs on any machine."""
     project = find_project(args.project)
     out = out_dir_for(project, args.out)
-    result = gate_sim(project, out, args.strict, only=args.deck, keep=args.keep)
+    result = gate_sim(
+        project, out, args.strict, only=args.deck, keep=args.keep, nominal=args.nominal, jobs=args.jobs
+    )
+    if args.bundle and result.status in ("pass", "fail"):
+        bundle = Path(args.bundle).resolve()
+        sources = Path(result.details["sources"]) if result.details.get("sources") else None
+        problems: list[str] = []
+        for deck, record in result.details["decks"].items():
+            folder, wrote = write_bundle(
+                project,
+                project.dir / "sim" / f"{deck}.cir",
+                sources,
+                bundle,
+                record,
+                result.details["ngspice"],
+            )
+            problems += wrote or check_bundle(folder, deck, record["measures"])
+            record["bundle"] = str(folder)
+        if problems:
+            result.status = "fail"
+            result.details["failures"] += problems
+            result.summary += f", {len(problems)} bundle problems"
     code = emit([result], args, None)
     if args.json:
         return code
     for name, deck in result.details.get("decks", {}).items():
         if args.deck:
             checks = deck["checks"]
+            envelope = deck.get("corners", {}).get("envelope", {})
             for measure, value in deck["measures"].items():
                 c = checks.get(measure)
                 bound = "" if c is None else f"  [{c['min']}, {c['max']}] {'ok' if c['ok'] else 'OUT'}"
-                print(f"       {measure} = {value:.6g}{bound}")
+                e = envelope.get(measure)
+                span = ""
+                if e and (e["min"] != value or e["max"] != value):
+                    span = f"  corners {e['min']:.6g} ({e['min_at']}) to {e['max']:.6g} ({e['max_at']})"
+                    span += " OUT" if c and c.get("held") is False else ""
+                print(f"       {measure} = {value:.6g}{bound}{span}")
             for measure in sorted(set(checks) - set(deck["measures"])):
                 c = checks[measure]
                 print(f"       {measure}: not printed by the deck  [{c['min']}, {c['max']}]")
         if deck.get("rerun"):
             print(f"rerun {name}: {deck['rerun']}")
+        if deck.get("bundle"):
+            print(f"bundle {name}: ngspice -b {deck['bundle']}/{BUNDLE_RUN}")
     return code
 
 
@@ -665,7 +1154,7 @@ def gate_verify(
     if not package.is_dir():
         return Result("verify", "skip", f"no {package.name}/ package; `workcenter verify --init` writes one")
     if not shutil.which(NGSPICE):
-        return Result("verify", "skip", f"engine missing: {NGSPICE}")
+        return Result("verify", "skip", f"engine missing: {NGSPICE}", {"engine_missing": NGSPICE})
     problems: list[str] = []
     mds = sorted(package.rglob("*.md"))
     for rel in VERIFY_FILES:
@@ -742,10 +1231,27 @@ def gate_verify(
     for rid in sorted(set(requirements) & set(withdrawn)):
         problems.append(f"requirements: {rid} is withdrawn and still in a requirements table")
 
-    sim = gate_sim(project, out)
+    # The measures the traceability table's checks name: the run looks for each one's least and
+    # greatest value over its deck's corners, so a check is judged at its worst.
+    trace = package / "traceability.md"
+    trace_tables = md_tables(trace.read_text(encoding="utf-8")) if trace.is_file() else []
+    checked: set[str] = set()
+    for table in trace_tables:
+        for row in table[1:]:
+            parsed = parse_check(code_span(row[1]) or "") if len(row) > 1 else None
+            if parsed:
+                checked.add(parsed[0])
+    sim = gate_sim(project, out, both_ways=checked)
     decks = sim.details.get("decks", {})
     measures = {f"{d}.{k}": v for d, info in decks.items() for k, v in info.get("measures", {}).items()}
     problems += [f"sim: {f}" for f in sim.details.get("failures", [])]
+    # Each measure's least and greatest value over its deck's corners (sim/corners.json). A measure
+    # whose bound is judged as written only, a model against its datasheet's row, has none.
+    spans: dict[str, dict] = {}
+    for d, info in decks.items():
+        for k, span in info.get("corners", {}).get("envelope", {}).items():
+            if k not in info["checks"] or "held" in info["checks"][k]:
+                spans[f"{d}.{k}"] = span
 
     # Every deck has a writeup, and every writeup has its sections and names a deck.
     deck_names = set(decks)
@@ -802,8 +1308,7 @@ def gate_verify(
     # The traceability table: every requirement, its check recomputed, its verdict the check's.
     verdicts = {v: [] for v in VERDICTS}
     traced: set[str] = set()
-    trace = package / "traceability.md"
-    for table in md_tables(trace.read_text(encoding="utf-8")) if trace.is_file() else []:
+    for table in trace_tables:
         if tuple(c.lower() for c in table[0][: len(TRACE_HEADER)]) != TRACE_HEADER:
             continue
         for row in table[1:]:
@@ -849,10 +1354,18 @@ def gate_verify(
                 )
             else:
                 quoted += 1
-            computed = "PASS" if check_holds(comparisons, value) else "FAIL"
+            # A requirement holds when its check holds at every corner the deck ran at, not only as
+            # the deck is written (P28 step 4).
+            holds, where = check_holds(comparisons, value), ""
+            span = spans.get(name)
+            for end in ("min", "max") if holds and span else ():
+                if not check_holds(comparisons, span[end]):
+                    holds, where = False, f" at {span[end + '_at']} ({span[end]:.6g})"
+                    break
+            computed = "PASS" if holds else "FAIL"
             if verdict != computed:
                 problems.append(
-                    f"traceability: {rid} says {verdict}, `{expr}` with {value:.6g} is {computed}"
+                    f"traceability: {rid} says {verdict}, `{expr}` with {value:.6g} is {computed}{where}"
                 )
     for rid in sorted(set(requirements) - traced):
         problems.append(f"traceability: {rid} has no row")
@@ -868,12 +1381,19 @@ def gate_verify(
                 problems.append(f"{exp.name}: {meas} names {req}, which is not a requirement")
 
     failures = list(problems)
+    cornered = sim.details.get("corners") is not None and not sim.details["corners"]["nominal_only"]
     if strict:
         failures += [f"{rid}: FAIL" for rid in verdicts["FAIL"]] + [
             f"{rid}: OPEN" for rid in verdicts["OPEN"]
         ]
+        if decks and not cornered:
+            failures.append(
+                "sim: no sim/corners.json: every verdict rests on one run of each deck as written"
+            )
     counts = ", ".join(f"{len(verdicts[v])} {v.lower()}" for v in VERDICTS)
     summary = f"{len(requirements)} requirements: {counts}"
+    if decks and not cornered:
+        summary += " as written, no corners"
     if withdrawn:
         summary += f"; withdrawn {', '.join(sorted(withdrawn))}"
     summary += f"; {quoted} quoted values match the run"
@@ -898,10 +1418,32 @@ def gate_verify(
             "decks": sorted(deck_names),
             "created": created,
             "failures": failures,
+            "problems": len(problems),
+            "corners": cornered or not decks,
         },
         sim.artifacts,
     )
     return result
+
+
+def requirements_verdict(result: Result) -> str:
+    """What a verify run says about the requirements themselves. The gate's status says only that the
+    package agrees with a fresh run, and a package that records a FAIL honestly passes it. REQUIREMENTS
+    MET needs every requirement PASS, no problem in the package, and the decks run at their corners."""
+    details = result.details
+    verdicts, total = details.get("verdicts", {}), details.get("requirements", 0)
+    passed, fail, still_open = (verdicts.get(v, []) for v in VERDICTS)
+    said = [f"{len(passed)} of {total} pass"]
+    if fail:
+        said.append(f"{len(fail)} fail: {', '.join(fail[:6])}{' ...' if len(fail) > 6 else ''}")
+    if still_open:
+        said.append(f"{len(still_open)} open")
+    if details.get("problems"):
+        said.append(f"{details['problems']} problems in the package")
+    if not details.get("corners", True):
+        said.append("no corners run")
+    met = total and len(said) == 1 and len(passed) == total
+    return f"REQUIREMENTS {'MET' if met else 'NOT MET'} ({'; '.join(said)})"
 
 
 def cmd_verify(args) -> int:
@@ -911,7 +1453,10 @@ def cmd_verify(args) -> int:
     result = gate_verify(project, out, package, args.init, args.strict)
     out.mkdir(parents=True, exist_ok=True)
     (out / "verify.json").write_text(json.dumps(asdict(result), indent=2), encoding="utf-8")
-    return emit([result], args, None)
+    code = emit([result], args, None)
+    if not args.json and result.status in ("pass", "fail"):
+        print(f"{requirements_verdict(result)}: {project.name}  report {out / 'verify.json'}")
+    return code
 
 
 @timed
@@ -986,9 +1531,14 @@ def gate_autoroute(
     if not project.pcb:
         return Result("autoroute", "skip", "no board in project")
     if not FREEROUTING_JAR.is_file():
-        return Result("autoroute", "skip", f"engine missing: {FREEROUTING_JAR}")
+        return Result(
+            "autoroute",
+            "skip",
+            f"engine missing: {FREEROUTING_JAR}",
+            {"engine_missing": str(FREEROUTING_JAR)},
+        )
     if not shutil.which(JAVA):
-        return Result("autoroute", "skip", f"engine missing: {JAVA}")
+        return Result("autoroute", "skip", f"engine missing: {JAVA}", {"engine_missing": JAVA})
     # kicad-cli 10 has no Specctra export. The DSN comes from KiCad
     # (File > Export > Specctra DSN) next to the board, or from --dsn.
     candidates = (
@@ -3629,14 +4179,36 @@ def cmd_doctor(args) -> int:
     return EXIT_FAIL if missing_required else EXIT_PASS
 
 
-def emit(results: list[Result], args, out: Path | None = None) -> int:
+def warning_count(result: Result) -> int:
+    """The warnings a gate named and did not fail on: ERC's and DRC's by severity, a list elsewhere."""
+    counts = result.details.get("counts")
+    if isinstance(counts, dict):
+        if "warning" in counts:
+            return int(counts["warning"])
+        return sum(int(c.get("warning", 0)) for c in counts.values() if isinstance(c, dict))
+    return len(result.details.get("warnings", []))
+
+
+def gates_verdict(results: list[Result]) -> tuple[str, int]:
+    """A run's verdict and its exit code. GREEN says every gate that had something to run passed, and
+    names the count of warnings beside the word, never behind it. A gate whose engine is absent did
+    not run: the run is then SKIPPED with exit code 2, never GREEN, however many others passed (M106)."""
     statuses = {r.status for r in results}
+    absent = [r.gate.upper() for r in results if r.status == "skip" and r.details.get("engine_missing")]
     if statuses & {"fail", "error"}:
-        worst = EXIT_FAIL
-    elif "skip" in statuses and "pass" not in statuses:
-        worst = EXIT_SKIP
-    else:
-        worst = EXIT_PASS
+        return "RED", EXIT_FAIL
+    if absent:
+        return f"SKIPPED ({', '.join(absent)}: engine missing)", EXIT_SKIP
+    if "pass" not in statuses:
+        return "SKIPPED", EXIT_SKIP
+    warnings = sum(warning_count(r) for r in results)
+    return (
+        f"GREEN with {warnings} warning{'' if warnings == 1 else 's'}" if warnings else "GREEN"
+    ), EXIT_PASS
+
+
+def emit(results: list[Result], args, out: Path | None = None) -> int:
+    _, worst = gates_verdict(results)
     if out is not None:
         (out / "gates.json").write_text(json.dumps([asdict(r) for r in results], indent=2), encoding="utf-8")
     if args.json:
@@ -3646,8 +4218,12 @@ def emit(results: list[Result], args, out: Path | None = None) -> int:
             print(f"{r.status.upper():6} {r.gate:10} {r.summary}  [{r.seconds}s]")
             for v in r.details.get("first", [])[:5]:
                 print(f"       - {v.get('severity')}: {v.get('type')}: {v.get('description')}")
-            for f in r.details.get("failures", [])[:5]:
+            failures = r.details.get("failures", [])
+            for f in failures[:5]:
                 print(f"       - {f}")
+            # A warning a strict run failed on is among the failures already.
+            for w in [w for w in r.details.get("warnings", []) if w not in failures][:5]:
+                print(f"       - warning: {w}")
     return worst
 
 
@@ -3675,8 +4251,7 @@ def cmd_gates(args) -> int:
             break
     code = emit(results, args, out)
     if not args.json:
-        verdict = "GREEN" if code == EXIT_PASS else ("SKIPPED" if code == EXIT_SKIP else "RED")
-        print(f"{verdict}: {project.name}  report {out / 'gates.json'}")
+        print(f"{gates_verdict(results)[0]}: {project.name}  report {out / 'gates.json'}")
     if args.report:
         # The one file a gate run writes outside `out`: named by the user, only between its markers.
         blocks = doctools().gates_report(Path(args.report).resolve(), project, results, sys.modules[__name__])
@@ -3720,15 +4295,35 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--fab", help="also check a fab's limits: a rule set in rules/ or a .kicad_dru path")
     p = add_project_cmd(
         "sim",
-        "run ngspice on sim/*.cir and check *.expect.json bounds; writes sim/<deck>.log and, for a deck "
-        "that includes a library model, sim/run/<deck>/",
+        "run ngspice on sim/*.cir and hold every *.expect.json bound, as written and at each corner of "
+        "sim/corners.json, then judge sim/frequency-plan.json; writes sim/<deck>.log, sim/run/<deck>/ for "
+        "a deck that includes a library model, and sim/corners/<deck>/ with a folder per corner",
     )
-    p.add_argument("--deck", help="run only sim/DECK.cir, the gate's way, and print every value it printed")
+    p.add_argument(
+        "--deck",
+        help="run only sim/DECK.cir, the gate's way, and print every value it printed; the frequency "
+        "plan is not judged",
+    )
     p.add_argument(
         "--keep",
         action="store_true",
         help="run each deck from sim/run/<deck>/ (the deck, its translated models, its .spiceinit), "
         "leave the folder, and print the one command that reruns it by hand",
+    )
+    p.add_argument(
+        "--nominal",
+        action="store_true",
+        help="run each deck as written only; the corners are left out, which the result names as a warning",
+    )
+    p.add_argument(
+        "--jobs", type=int, default=0, help="corners run at once (default: one per processor, 8 at most)"
+    )
+    p.add_argument(
+        "--bundle",
+        metavar="DIR",
+        help="also write each deck into DIR/<deck>/ as a folder any machine with ngspice runs (run.sp, the "
+        "deck, models/, expect.json, measures.json, README.md), then run it from a copy elsewhere and "
+        "compare with the gate's measures",
     )
     p = add_project_cmd("export", "fabrication outputs: gerbers, drill, BOM, schematic PDF")
     p.add_argument("--step", action="store_true", help="also export a STEP model")

@@ -1,0 +1,13 @@
+* Diode reference fixture: 5 V through 10k into a silicon diode; its forward voltage is the reference.
+* As written (27 C) the reference is 0.548 V, inside its 0.50 to 0.60 V window. It falls about
+* 2 mV per kelvin: 0.424 V at 85 C and 0.646 V at -20 C, both outside. Only a temperature corner sees it.
+V1 in 0 DC 5
+R1 in ref 10k
+D1 ref 0 DREF
+.model DREF D(IS=2.52n RS=0.568 N=1.752 EG=1.11 XTI=3)
+.control
+op
+let vref = v(ref)
+print vref
+.endc
+.end

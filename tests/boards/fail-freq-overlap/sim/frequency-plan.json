@@ -1,0 +1,8 @@
+{
+  "sources": [
+    { "name": "load", "hz": 5300, "tolerance": 0.01, "source": "the fixture's switching load, 5.3 kHz within 1 %" }
+  ],
+  "resonances": [
+    { "name": "input filter", "hz": "filter.f_peak", "q": "filter.q_peak", "source": "sim/filter.cir" }
+  ]
+}

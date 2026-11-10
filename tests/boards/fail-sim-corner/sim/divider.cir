@@ -1,0 +1,12 @@
+* Divider fixture: 5 V through 10k into 10k to ground, 2.5 V as written, inside its 2.45 to 2.55 V
+* window. With 5 % resistors R1 low alone gives 2.564 V, and R1 low with R2 high 2.625 V: outside.
+* Only a tolerance corner sees it.
+V1 in 0 DC 5
+R1 in out 10k
+R2 out 0 10k
+.control
+op
+let vout = v(out)
+print vout
+.endc
+.end

@@ -8,6 +8,7 @@ version and offboard files, and the lists `costs` writes.
 from __future__ import annotations
 
 import datetime
+import importlib.machinery
 import json
 import shutil
 import subprocess
@@ -321,12 +322,23 @@ def test_costs_without_a_catalog_skips(tmp_path):
 # ------------------------------------------------------------ gates report
 
 
+def load_cli():
+    loader = importlib.machinery.SourceFileLoader("workcenter_cli_doctools", str(CLI))
+    module = types.ModuleType("workcenter_cli_doctools")
+    module.__file__ = str(CLI)
+    sys.modules[module.__name__] = module  # dataclasses look the defining module up here
+    loader.exec_module(module)
+    return module
+
+
 def fake_cli() -> types.SimpleNamespace:
+    """The engines' versions made up, the verdict the command line's own."""
     return types.SimpleNamespace(
         tool_version=lambda *_a, **_k: "10.0.7",
         KICAD_CLI="kicad-cli",
         NGSPICE="ngspice",
         GATE_ORDER=("erc", "drc", "sim", "export"),
+        gates_verdict=load_cli().gates_verdict,
     )
 
 
@@ -360,8 +372,39 @@ def test_gates_report_writes_its_blocks_and_keeps_the_prose(tmp_path):
     )
     assert "| ERC | pass | 0 errors, 0 warnings |" in text and "\n## Simulation: rc_divider\n" in text
     assert f"GREEN on {TODAY}: `workcenter gates` with KiCad 10.0.7, ngspice 10.0.7." in text
-    deck = "| `sim/rc_divider.cir` | RC divider fixture: 5 V through 10k into 10k to ground | 1 | pass |"
+    deck = (
+        "| `sim/rc_divider.cir` | RC divider fixture: 5 V through 10k into 10k to ground | 1 | none | pass |"
+    )
     assert deck in text
+    # A warning a gate names stands beside the word, and the deck's corner runs in their column.
+    warned = green[:2] + [
+        result(
+            "sim",
+            "pass",
+            "1 decks, 18 corner runs, 0 failures, 1 warnings",
+            {
+                "decks": {"rc_divider": {"corners": {"runs": 18}}},
+                "failures": [],
+                "warnings": ["rc_divider: ngspice: Warning: singular matrix:  check node mid"],
+            },
+        ),
+        green[3],
+    ]
+    doctools.gates_report(tmp_path / "warned.md", project, warned, fake_cli())
+    text_warned = (tmp_path / "warned.md").read_text(encoding="utf-8")
+    assert f"GREEN with 1 warning on {TODAY}: `workcenter gates`" in text_warned
+    assert "to ground | 1 | 18 | 1 warning |" in text_warned
+    # A deck the project keeps out of the corners carries the project's reason.
+    skipped = green[:2] + [
+        result(
+            "sim",
+            "pass",
+            "1 decks, 0 failures",
+            {"decks": {"rc_divider": {"corners": {"skip": "a model check"}}}, "failures": [], "warnings": []},
+        )
+    ]
+    doctools.gates_report(tmp_path / "skipped.md", project, skipped, fake_cli())
+    assert "| 1 | none: a model check | pass |" in (tmp_path / "skipped.md").read_text(encoding="utf-8")
     # Prose written by hand round and between the blocks survives a refresh; the tables change.
     text = text.replace("## rc_divider\n\n", "## rc_divider\n\nWritten by hand.\n\n")
     report.write_text(text + "\nClosing words.\n", encoding="utf-8")
@@ -384,10 +427,7 @@ def test_gates_report_writes_its_blocks_and_keeps_the_prose(tmp_path):
         text.count("<!-- workcenter gates rc_divider -->") == 1 and text.count("<!-- workcenter decks") == 1
     )
     assert "| EXPORT | not run | an earlier gate was red |" in text and f"RED on {TODAY}" in text
-    assert (
-        "| `sim/rc_divider.cir` | RC divider fixture: 5 V through 10k into 10k to ground | 1 | 1 failure |"
-        in text
-    )
+    assert "5 V through 10k into 10k to ground | 1 | none | 1 failure |" in text
     report.write_text("<!-- workcenter gates rc_divider -->\nno end\n", encoding="utf-8")
     with pytest.raises(SystemExit, match="no closing marker"):
         doctools.gates_report(report, project, green, fake_cli())
@@ -401,7 +441,8 @@ def test_gates_with_report_fills_the_report_and_keeps_its_exit_code(tmp_path):
     assert code == 0 and [r["status"] for r in records] == ["pass"] * 4
     text = report.read_text(encoding="utf-8")
     assert "| ERC | pass | 0 errors, 0 warnings |" in text and "GREEN on" in text
-    assert "| `sim/rc_divider.cir` |" in text and "| 1 | pass |" in text
+    # the fixture's corners: 2 temperatures, 3 parts at both ends, 2 worst cases, 8 Monte Carlo draws
+    assert "| `sim/rc_divider.cir` |" in text and "| 1 | 18 | pass |" in text
     assert not (BOARDS / "pass-rc-divider" / "docs").exists()
 
 

@@ -358,7 +358,10 @@ def test_a_model_the_project_fits_itself_needs_no_library_row(tmp_path):
     assert code == 0, records
     models = records[0]["details"]["decks"]["rdiv"]["models"]
     assert [m.get("own") for m in models] == [None, True]
-    assert records[0]["details"]["warnings"] == []
+    # no warning for the project's own model; the one warning is that this project names no corners
+    assert records[0]["details"]["warnings"] == [
+        "no sim/corners.json: each deck ran once, at 27 C with every part at its written value"
+    ]
     run_dir = tmp_path / "o" / "sim" / "run" / "rdiv"
     assert f'.include "{proj / "sim" / "models" / "own.lib"}"' in (run_dir / "rdiv.cir").read_text()
     deck.write_text(deck.read_text().replace('"models/own.lib"', f'"{tmp_path / "loose.lib"}"'))

@@ -1,0 +1,17 @@
+{
+  "sources": [
+    { "name": "load", "hz": 100000, "tolerance": 0.01, "source": "the fixture's switching load, 100 kHz within 1 %" },
+    { "name": "clock", "hz": 16000, "tolerance": 0.01, "source": "the fixture's clock, 16 kHz within 1 %" }
+  ],
+  "resonances": [
+    { "name": "input filter", "hz": "filter.f_peak", "q": "filter.q_peak", "source": "sim/filter.cir" }
+  ],
+  "overlaps": [
+    {
+      "between": ["clock", "input filter"],
+      "evidence": "clock_ripple.v_pp",
+      "stimulus": "ICLK",
+      "why": "the clock draws 1 mA, and at the peak's 14 Ohm the rail moves 18 mV"
+    }
+  ]
+}

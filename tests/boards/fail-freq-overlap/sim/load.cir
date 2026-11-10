@@ -1,0 +1,19 @@
+* Input filter fixture: the load on the rail, 1 A switched at 5.3 kHz, half the time on. Its third
+* harmonic, 15.9 kHz, is the filter's resonance, and the rail swings 6.8 V peak to peak on a 5 V supply.
+* The deck's one bound holds the rail's average, 4.98 V, which the swing does not move: every bound of
+* this project holds, and only the frequency plan sees the overlap.
+V1 src 0 DC 5
+RS src a 50m
+L1 a rail 10u
+C1 rail c1e 10u
+RC1 c1e 0 20m
+ILOAD rail 0 PULSE(0 1 0 100n 100n 94.24u 188.68u)
+.control
+tran 200n 12m 8m
+meas tran v_avg avg v(rail) from=8m
+meas tran v_max max v(rail) from=8m
+meas tran v_min min v(rail) from=8m
+let v_pp = v_max - v_min
+print v_avg v_pp
+.endc
+.end

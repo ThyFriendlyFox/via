@@ -399,3 +399,77 @@ def test_parse_check_reads_one_and_two_sided_bounds():
     assert name == "ldo.vout"
     assert cli.check_holds(comparisons, 3.3) and not cli.check_holds(comparisons, 2.9)
     assert cli.parse_check("a.b <= c.d") is None
+
+
+# ----------------------------------------------------------------- corners
+
+
+@needs_ngspice
+def test_a_requirement_that_fails_at_a_corner_is_not_a_pass(tmp_path):
+    # The divider reads 2.5 V as written. With 5 % resistors it reads 5 x 9.5/(10.5 + 9.5) = 2.375 V
+    # at one corner, under the requirement's 2.45 V: the row that says PASS is wrong.
+    project = project_with_package(tmp_path)
+    corners = {"tolerance": {"R": 0.05, "source": "5 % parts"}}
+    (project / "sim" / "corners.json").write_text(json.dumps(corners), encoding="utf-8")
+    code, results = run("verify", project)
+    assert code == 1
+    said = [f for f in failures(results) if f.startswith("traceability: REQ-OUT-01")]
+    assert said == [
+        "traceability: REQ-OUT-01 says PASS, `2.45 V<=rc_divider.vout<=2.55 V` with 2.5 is FAIL at "
+        "R1 +5 %, R2 -5 % (2.375)"
+    ]
+    # the row that says FAIL agrees with the corner; the deck's own bound still fails the SIM gate
+    project2 = project_with_package(tmp_path / "2", verdict="FAIL")
+    (project2 / "sim" / "corners.json").write_text(json.dumps(corners), encoding="utf-8")
+    code, results = run("verify", project2)
+    assert not [f for f in failures(results) if f.startswith("traceability:")]
+    assert any(f.startswith("sim: rc_divider:vout=2.375 at R1 +5 %, R2 -5 %") for f in failures(results))
+
+
+@needs_ngspice
+def test_a_check_on_a_measure_no_bound_holds_is_judged_at_both_ends_of_its_corners(tmp_path):
+    # Without an expect bound on vout the SIM gate has no worst case to look for on its own account;
+    # the traceability check names the measure, so the run looks for both ends all the same.
+    project = project_with_package(tmp_path)
+    (project / "sim" / "rc_divider.expect.json").write_text('{"vout": {"max": 9}}', encoding="utf-8")
+    corners = {"tolerance": {"R": 0.05, "source": "5 % parts"}}
+    (project / "sim" / "corners.json").write_text(json.dumps(corners), encoding="utf-8")
+    code, results = run("verify", project)
+    assert code == 1
+    assert [f for f in failures(results) if f.startswith("traceability: REQ-OUT-01")] == [
+        "traceability: REQ-OUT-01 says PASS, `2.45 V<=rc_divider.vout<=2.55 V` with 2.5 is FAIL at "
+        "R1 +5 %, R2 -5 % (2.375)"
+    ]
+
+
+@needs_ngspice
+def test_verify_says_whether_the_requirements_are_met_apart_from_the_package(tmp_path):
+    project = project_with_package(tmp_path)
+    out = tmp_path / "out"
+    proc = subprocess.run(
+        [sys.executable, str(CLI), "verify", str(project), "--out", str(out)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    # the package agrees with the run, so the gate passes; one requirement is still OPEN
+    assert proc.returncode == 0 and proc.stdout.startswith("PASS   verify")
+    assert proc.stdout.splitlines()[-1] == (
+        f"REQUIREMENTS NOT MET (1 of 2 pass; 1 open): rc_divider  report {out / 'verify.json'}"
+    )
+
+
+@needs_ngspice
+def test_strict_verify_fails_verdicts_that_rest_on_decks_run_as_written_only(tmp_path):
+    project = project_with_package(tmp_path)
+    (project / "sim" / "corners.json").unlink()
+    code, results = run("verify", project)
+    assert (
+        code == 0 and "2 requirements: 1 pass, 0 fail, 1 open as written, no corners" in results[0]["summary"]
+    )
+    assert results[0]["details"]["corners"] is False
+    code, results = run("verify", project, "--strict")
+    assert code == 1
+    assert "sim: no sim/corners.json: every verdict rests on one run of each deck as written" in failures(
+        results
+    )

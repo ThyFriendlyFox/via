@@ -1,0 +1,21 @@
+* Input filter fixture: the impedance a load sees on a 5 V rail behind 50 mOhm and 10 uH, with a
+* 10 uF capacitor of 20 mOhm on the rail. The inductor and the capacitor resonate in parallel at
+* 1/(2 pi sqrt(L C)) = 15.9 kHz, where the rail is 14 Ohm; Q is sqrt(L/C) / 70 mOhm = 14.
+* A 1 A current source at the rail reads the impedance in ohms as the rail's voltage.
+V1 src 0 DC 5 AC 0
+RS src a 50m
+L1 a rail 10u
+C1 rail c1e 10u
+RC1 c1e 0 20m
+I1 0 rail DC 0 AC 1
+.control
+ac dec 400 100 10Meg
+meas ac z_peak max vm(rail)
+meas ac f_peak max_at vm(rail)
+let half = z_peak / sqrt(2)
+meas ac f_lo when vm(rail)=$&half rise=1
+meas ac f_hi when vm(rail)=$&half fall=1
+let q_peak = f_peak / (f_hi - f_lo)
+print z_peak f_peak q_peak
+.endc
+.end

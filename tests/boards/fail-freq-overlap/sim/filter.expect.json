@@ -1,0 +1,3 @@
+{
+  "f_peak": { "min": 10000, "max": 33000, "source": "the fixture's filter: its resonance between 10 and 33 kHz" }
+}

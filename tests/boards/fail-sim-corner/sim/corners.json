@@ -1,0 +1,4 @@
+{
+  "temperature": { "values": [-20, 85], "source": "the fixture's operating range, -20 to 85 C" },
+  "tolerance": { "R": 0.05, "source": "the fixture's resistors, 5 %" }
+}

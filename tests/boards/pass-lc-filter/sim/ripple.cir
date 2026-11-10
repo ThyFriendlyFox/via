@@ -1,0 +1,17 @@
+* Input filter fixture: the load on the rail, 1 A switched at 100 kHz, half the time on. The filter's
+* resonance is at 15.9 kHz, under the load's frequency and every harmonic of it, so the rail moves by
+* the capacitor's share alone: 0.27 V peak to peak once the start has rung out (6 ms).
+V1 src 0 DC 5
+RS src a 50m
+L1 a rail 10u
+C1 rail c1e 10u
+RC1 c1e 0 20m
+ILOAD rail 0 PULSE(0 1 0 100n 100n 4.9u 10u)
+.control
+tran 100n 8m 6m
+meas tran v_max max v(rail) from=6m
+meas tran v_min min v(rail) from=6m
+let v_pp = v_max - v_min
+print v_pp
+.endc
+.end

@@ -1,0 +1,17 @@
+* Input filter fixture: a 1 mA clock load at 16 kHz, on the filter's resonance. The frequency plan
+* names this overlap, and this deck answers it: the clock runs at the peak, where the rail is 14 Ohm,
+* and moves it 18 mV peak to peak once the start has rung out (8 ms).
+V1 src 0 DC 5
+RS src a 50m
+L1 a rail 10u
+C1 rail c1e 10u
+RC1 c1e 0 20m
+ICLK rail 0 PULSE(0 1m 0 100n 100n 31.15u 62.5u)
+.control
+tran 200n 12m 8m
+meas tran v_max max v(rail) from=8m
+meas tran v_min min v(rail) from=8m
+let v_pp = v_max - v_min
+print v_pp
+.endc
+.end
