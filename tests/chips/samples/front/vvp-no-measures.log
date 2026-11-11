@@ -1,0 +1,2 @@
+errors = 0
+/work/reg8/tb/tb_reg8.v:56: $finish called at 120000 (1ps)

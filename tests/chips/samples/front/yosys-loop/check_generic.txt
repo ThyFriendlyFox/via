@@ -1,0 +1,9 @@
+
+5. Executing CHECK pass (checking for obvious problems).
+Checking module reg8...
+Warning: found logic loop in module reg8:
+    cell $abc$82$auto$blifparse.cc:386:parse_blif$84 ($_NOR_)
+    cell $abc$82$auto$blifparse.cc:386:parse_blif$85 ($_ANDNOT_)
+    wire $abc$82$new_n5_
+    wire \a
+Found and reported 1 problems.
