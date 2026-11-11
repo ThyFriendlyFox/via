@@ -201,6 +201,7 @@ has every flag.
 |---|---|
 | `doctor` | Report each engine's status. |
 | `next` | Name the one next step for a project. |
+| `chip` | A chip project, from RTL to a GDSII layout: `chip init`, `chip gates` and 1 command for each of its 10 gates. The gates themselves are being built. |
 | `design` | Build a design file into a KiCad project; `--route` routes it; `--check` compares. |
 | `erc`, `drc`, `sim`, `export` | One gate, alone. |
 | `gates` | The 4 gates in order; the last line is the verdict. |
@@ -261,6 +262,7 @@ images are drawn.
 | `tools/kicadgen.py` | Design a board in Python from the KiCad libraries; writes the KiCad project and routes it headless. |
 | `tools/simcorners.py`, `tools/freqplan.py` | The corners a deck runs at; the frequency plan. Read by the SIM gate. |
 | `tools/guide.py` | `workcenter next`: the one next step and the fix for each kind of failure. |
+| `tools/chipflow.py` | `workcenter chip`: what the chip gates share. It reads `chip.json`, the constraints and a process table, selects the timing corners, starts the engines and drives the gates to a verdict. |
 | `tools/inspect_board.py`, `tools/stretch.py` | Read a routed board with KiCad's geometry; grow a design at a cut. |
 | `tools/doctools.py`, `tools/scene.py`, `tools/wrlgen.py` | Document commands; assembly scenes; 3D bodies. |
 | `tools/pdfcurve.py`, `tools/kistack_board.py` | A PDF page's vector paths; the board reader kistack's checks run on. |
