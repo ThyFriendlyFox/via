@@ -3,6 +3,8 @@
 [![CI](https://github.com/ThyFriendlyFox/via/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ThyFriendlyFox/via/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-1e49b7)](LICENSE)
 
+[Website](https://via-kappa-five.vercel.app) · [Contract](WORKCENTER.md) · [Status](ee-agent-kit/STATUS.md) · [Roadmap](ee-agent-kit/ROADMAP.md)
+
 Via is the EE Workcenter. A workcenter is a pre-packaged environment an
 agent steps into to do one kind of work well. This one does electronics:
 it turns a KiCad 10 project into fabrication outputs that passed every gate.
@@ -115,7 +117,8 @@ base. `release.yml` publishes it to GHCR on every tag.
 ## The website
 
 `site/` is the project's website: 1 static page with real runs of the
-commands. `python3 -m http.server 8000 --directory site` serves it at
+commands. It is live at <https://via-kappa-five.vercel.app>.
+`python3 -m http.server 8000 --directory site` serves it at
 http://localhost:8000. Vercel deploys it: every push to `main` deploys
 production, and every other branch gets a preview. `site/README.md` has
 the commands, the files and how the images are drawn.

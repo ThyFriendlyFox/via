@@ -66,9 +66,14 @@ Settings, General, Social preview. `og.png` is that image.
 
 ## Deploys
 
-The Vercel project's Root Directory is `site`. `vercel.json` runs
-`build.sh` with the project's production address and serves `dist/`. Every
-push to `main` deploys production. Every other branch gets a preview.
+The Vercel project is `via`, and production is <https://via-kappa-five.vercel.app>. Its Root
+Directory is `site`. `vercel.json` runs `build.sh` with the project's
+production address and serves `dist/`. Every push to `main` deploys
+production. Every other branch gets a preview.
+
+Vercel makes a new project's first deployment its production deployment,
+whatever branch it comes from. That is how this site went live from a
+branch on 2026-11-11.
 
 Any static host can serve the folder `build.sh` writes. For GitHub Pages,
 give it the Pages address: `sh site/build.sh out https://<owner>.github.io/via`.

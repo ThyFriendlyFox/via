@@ -739,3 +739,9 @@ What happened: I captured `workcenter next` for the website after a gates run an
 Cost: 2 red test runs and 3 corrections, all before the first commit.
 Root cause: A capture carries the state of the folder it ran in, and nothing beside the run said what had run before. The 2 facts are M118 again: P9 step 10 named counts in a commit message or a document, and I did not read a test's threshold or a version as one.
 Process: P9
+
+## M122 — 2026-11-11 — A preview that the host made production
+What happened: I linked a new Vercel project to the repository and deployed the branch, to give the owner a preview. Vercel made that first deployment the production deployment. The site was public at the project's production address before the branch was merged, and it describes commands that `main` does not have yet.
+Cost: a public page ahead of `main`, 1 devlog entry corrected by a second, the status and the README written twice.
+Root cause: I knew how a second deployment of a branch is treated and assumed the first is treated the same. No process named a deploy to an outside host, so nothing asked me to read the host's rule first.
+Process: P32

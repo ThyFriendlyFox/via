@@ -39,6 +39,20 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-11 — Correction: the site is served, and it went live from the branch
+
+The entry below says the site is not served yet. That stopped being true
+the same hour. I linked a Vercel project to the repository and deployed
+the branch, and expected a preview. Vercel makes a new project's first
+deployment its production deployment. So the site is live at
+<https://via-kappa-five.vercel.app>, built from commit `dced7bf` of the branch. The page answers 200
+with its own address in the canonical link and the Open Graph tags. It
+describes `workcenter next` and the corners, which `main` gets when this
+branch merges. P32 now says to read a host's rule for a first deployment
+before the first call (M122).
+
+Evidence: `curl` on the address and on each file the page names, 200 each; an unknown path, 404 with the site's own page.
+
 ## 2026-11-11 — The repository got a face: a website, a mark and an Open Graph image
 
 The owner asked for a professional open-source face that relies on the
