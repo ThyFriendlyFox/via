@@ -1150,3 +1150,447 @@ figcaption {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
+/* ---- motion: effects.js brings these in; without it they sit where they end ------------------- */
+.motion [data-reveal]:not([data-stagger]),
+.motion [data-reveal][data-stagger] > *,
+.motion .run pre .cmd,
+.motion .run pre .out,
+.motion .run pre .verdict {
+  opacity: 0;
+}
+.motion [data-logo] .lg-letter,
+.motion [data-logo] .lg-pad {
+  opacity: 0;
+}
+.logo .lg-letter,
+.logo .lg-pad {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.progress {
+  position: absolute;
+  inset: auto 0 0;
+  height: 2px;
+  background: var(--primary);
+  transform: scaleX(0);
+  transform-origin: left;
+  opacity: 0.8;
+}
+html:not(.motion) .progress {
+  display: none;
+}
+
+/* ---- the wordmark ------------------------------------------------------------------------------- */
+.brand svg.logo {
+  width: auto;
+  height: 26px;
+  aspect-ratio: 394 / 136;
+}
+.site-footer .brand svg.logo {
+  height: 18px;
+}
+.closing svg.logo {
+  width: auto;
+  height: 3.25rem;
+  margin-inline: auto;
+}
+
+/* ---- the hero's traces ------------------------------------------------------------------------- */
+.hero {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.traces {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+  stroke: var(--primary);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  opacity: 1;
+  color: var(--primary);
+  mask-image:
+    radial-gradient(ellipse 80% 70% at 50% 40%, transparent 30%, black 85%),
+    linear-gradient(to bottom, black 60%, transparent);
+  mask-composite: intersect;
+  -webkit-mask-composite: source-in;
+}
+.traces path {
+  stroke-opacity: 0.16;
+}
+.traces circle {
+  fill: var(--background);
+  stroke-opacity: 0.3;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* ---- the example: Rosetta --------------------------------------------------------------------- */
+.showcase .stage {
+  display: grid;
+  gap: 1.25rem;
+  margin-top: 3rem;
+  padding: 1rem;
+  border-radius: 1.5rem;
+  background: var(--card);
+  box-shadow:
+    0 0 0 1px var(--edge),
+    var(--shadow);
+}
+.modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  padding: 0.25rem;
+  border-radius: 999px;
+  background: var(--secondary);
+  justify-self: start;
+}
+.modes button {
+  min-width: 3.75rem;
+  padding: 0.5rem 0.875rem;
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  transition:
+    background-color 0.2s var(--ease),
+    color 0.2s var(--ease);
+}
+.modes button:hover {
+  color: var(--foreground);
+}
+.modes button[aria-selected="true"] {
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow:
+    0 0 0 1px var(--edge),
+    0 2px 8px -4px oklch(0 0 0 / 30%);
+}
+.face {
+  --mode: var(--primary);
+  min-width: 0;
+}
+.face-svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.face-svg .pcb {
+  fill: oklch(0.32 0.045 165);
+  stroke: oklch(0.25 0.04 165);
+  stroke-width: 0.4;
+}
+.face-svg .cu-b {
+  fill: none;
+  stroke: oklch(0.55 0.06 165);
+  stroke-linecap: round;
+  stroke-opacity: 0.35;
+}
+.face-svg .cu-i {
+  fill: none;
+  stroke: oklch(0.55 0.06 165);
+  stroke-linecap: round;
+  stroke-opacity: 0.25;
+}
+.face-svg .cu-f {
+  fill: none;
+  stroke: oklch(0.62 0.08 160);
+  stroke-linecap: round;
+  stroke-opacity: 0.9;
+}
+.face-svg .vias circle {
+  fill: oklch(0.78 0.11 85);
+}
+.face-svg .pads rect {
+  fill: oklch(0.8 0.12 85);
+}
+.face-svg .body {
+  fill: oklch(0.2 0.01 60 / 55%);
+  stroke: oklch(1 0 0 / 35%);
+  stroke-width: 0.25;
+  transition:
+    stroke 0.3s var(--ease),
+    fill 0.3s var(--ease);
+}
+.face-svg .body[data-ghost] {
+  fill: none;
+  stroke: oklch(1 0 0 / 30%);
+  stroke-dasharray: 1 0.8;
+}
+.face-svg .body.on {
+  stroke: var(--mode);
+  stroke-width: 0.6;
+  fill: color-mix(in oklch, var(--mode) 22%, transparent);
+}
+.face-svg .stick {
+  fill: oklch(0.2 0.01 60 / 45%);
+  stroke: oklch(1 0 0 / 25%);
+  stroke-width: 0.3;
+}
+.face-svg .stick-cap {
+  fill: oklch(0.16 0.01 60 / 80%);
+}
+.face-svg text {
+  fill: oklch(0.97 0.005 85);
+  text-anchor: middle;
+  font-family: var(--font-sans);
+  font-weight: 500;
+}
+.face-svg .silk {
+  fill: oklch(0.97 0.005 85 / 85%);
+}
+.face-svg .tag {
+  font-size: 1.6px;
+  fill: oklch(1 0 0 / 55%);
+}
+.face-svg .mode-label {
+  font-size: 1.5px;
+  letter-spacing: 0.05px;
+}
+.face-svg .knob-ring {
+  fill: oklch(0.18 0.01 60 / 70%);
+}
+.face-svg .knob {
+  fill: oklch(0.86 0.01 85);
+  stroke: oklch(0.6 0.01 85);
+  stroke-width: 0.4;
+}
+.face-svg .pointer {
+  stroke: var(--mode);
+  stroke-width: 1.1;
+  stroke-linecap: round;
+}
+.face-svg .led {
+  fill: oklch(0.4 0.01 60);
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: fill 0.3s var(--ease);
+}
+.face-svg .led.lit {
+  fill: var(--mode);
+  filter: drop-shadow(0 0 1.5px var(--mode)) drop-shadow(0 0 4px var(--mode));
+}
+.face-svg .route {
+  fill: none;
+  stroke: var(--mode);
+  stroke-width: 0.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0;
+  filter: drop-shadow(0 0 1.2px var(--mode));
+  transition: opacity 0.3s var(--ease);
+}
+.face-svg .route.on {
+  opacity: 1;
+}
+.readout {
+  --mode: var(--primary);
+  align-self: start;
+  padding: 1.25rem;
+  border-radius: 1rem;
+  background: var(--secondary);
+  box-shadow: inset 3px 0 0 var(--mode);
+}
+.readout .kicker {
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
+.readout h3 {
+  margin-top: 0.125rem;
+  font-size: 1.5rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.readout dl {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+.readout dt {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted-foreground);
+}
+.readout dd {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+.readout .note {
+  margin-top: 1rem;
+  font-size: 0.9375rem;
+  color: var(--muted-foreground);
+}
+.hard {
+  display: grid;
+  gap: 1rem;
+  margin-top: 3.5rem;
+}
+.hard > div {
+  padding: 1.25rem;
+  border-radius: 1rem;
+  background: var(--card);
+  box-shadow: 0 0 0 1px var(--edge);
+  transition:
+    transform 0.25s var(--ease),
+    box-shadow 0.25s var(--ease);
+}
+.hard > div:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 0 0 1px var(--edge),
+    var(--shadow);
+}
+.hard .ref {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--primary);
+}
+.hard h3 {
+  margin-top: 0.375rem;
+  font-size: 1.0625rem;
+  font-weight: 500;
+}
+.hard p {
+  margin-top: 0.375rem;
+  font-size: 0.9375rem;
+  color: var(--muted-foreground);
+}
+.renders {
+  display: grid;
+  gap: 2rem;
+  margin-top: 4rem;
+  align-items: center;
+}
+.flip-stage {
+  perspective: 1600px;
+}
+.flip {
+  position: relative;
+  transform-style: preserve-3d;
+}
+.flip img {
+  width: 100%;
+  height: auto;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  filter: drop-shadow(0 24px 30px oklch(0 0 0 / 22%));
+}
+.flip .flip-back {
+  position: absolute;
+  inset: 0;
+  transform: rotateY(180deg);
+}
+.renders-side h3 {
+  font-size: 1.25rem;
+  font-weight: 500;
+}
+.renders-side p {
+  margin-top: 0.5rem;
+  color: var(--muted-foreground);
+}
+.renders-side .btn {
+  margin-top: 1.25rem;
+}
+.layers-thumb {
+  width: 100%;
+  height: auto;
+  margin-top: 1.5rem;
+  border-radius: 0.75rem;
+  box-shadow: 0 0 0 1px var(--edge);
+  background: #fff;
+}
+.proof {
+  margin-top: 4rem;
+}
+.built {
+  display: grid;
+  gap: 1.25rem;
+  margin-top: 3rem;
+}
+.proj {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 1.25rem;
+  background: var(--card);
+  box-shadow: 0 0 0 1px var(--edge);
+  transition:
+    transform 0.3s var(--ease),
+    box-shadow 0.3s var(--ease);
+}
+.proj:hover {
+  transform: translateY(-4px);
+  box-shadow:
+    0 0 0 1px var(--edge),
+    var(--shadow);
+}
+.proj img {
+  width: 100%;
+  height: 13rem;
+  object-fit: cover;
+  background: var(--secondary);
+}
+.proj > div {
+  padding: 1.25rem;
+}
+.proj h3 {
+  font-size: 1.125rem;
+  font-weight: 500;
+}
+.proj p {
+  margin-top: 0.375rem;
+  font-size: 0.9375rem;
+  color: var(--muted-foreground);
+}
+@media (min-width: 640px) {
+  .hard {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1024px) {
+  .showcase .stage {
+    grid-template-columns: minmax(0, 1fr) 19rem;
+    grid-template-rows: auto 1fr;
+    padding: 1.5rem;
+    gap: 1.5rem 2rem;
+  }
+  .modes {
+    grid-column: 1 / -1;
+  }
+  .hard {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .renders {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    gap: 3rem;
+  }
+  .built {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 479px) {
+  .modes {
+    justify-self: stretch;
+    justify-content: space-between;
+  }
+  .modes button {
+    min-width: 0;
+    padding: 0.5rem 0.625rem;
+  }
+}
+.face-svg .antenna {
+  fill: color-mix(in oklch, var(--card) 70%, transparent);
+  stroke: oklch(0.5 0.01 60 / 50%);
+  stroke-width: 0.25;
+  stroke-dasharray: 1 0.8;
+}
+.face-svg .antenna.on {
+  fill: color-mix(in oklch, var(--mode) 25%, transparent);
+  stroke: var(--mode);
+}

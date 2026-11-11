@@ -39,6 +39,40 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-11 — An example project: a controller that speaks to 5 consoles
+
+The owner found the site's examples poor and asked for a prototype in the
+manner of Agentcast and Last Hit: a universal controller with a switch that
+picks a PS4, a PS5, an Xbox, a Switch or Bluetooth, with ideas that are
+hard to do, and a site that moves. Rosetta is in
+`examples/universal-controller/v0.1`: a routed 4-layer board in a
+controller's outline, 140 parts. The knob is 1 analog reading from a
+resistor ladder. Its first deck found that a 1 M pull-down and the ADC's
+leakage read 1 V between detents, a position; the ladder is 1k and the
+pull-down 100k now, and 6 decks hold each position at every corner. A
+USB host port relays a console's signature to a licensed donor through a
+second USB port the RP2040 runs in software. The ESP32's antenna hangs
+over the gap between the grips.
+
+This machine had no KiCad, and Launchpad reset every connection, so I ran
+the workcenter in the repository's Docker image. The image could not
+route: Debian's headless Java has no X11 library, and FreeRouting stops
+without it. `install.sh` now adds the full runtime where the library is
+missing. The wired schematic's first ERC found 3 faults the label sheet
+had hidden (M127). The router needed many runs: 60 passes ran out of time (M128), the
+RP2040's pins had no lanes until its caps moved to the corners and its
+vias shrank to 0.45 mm, and from there FreeRouting closed every
+connection in 1 run of 4. The IMU's supply pins stayed apart in 3 runs;
+that link is drawn by hand now. The site draws the routed board
+from its own files and turns the knob with Motion.
+
+Evidence: `workcenter gates examples/universal-controller/v0.1` GREEN with
+5 warnings (silkscreen over the edge the receptacles and the module hang
+past), 6 decks and 370 corner runs; `make -C firmware test` passing;
+`render --strict` naming no part without a body; in the Docker image,
+`tests/` 524 passed, 1 failed (`test_simgate`'s bundle test expects ngspice
+42's error lines and the image has ngspice 44), 3 skipped.
+
 ## 2026-11-11 — The front page shows a board
 
 The owner asked again for the repository to look good. The README was

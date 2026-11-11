@@ -1,8 +1,9 @@
 # site
 
 The Via website: 1 static page that says what the workcenter is, with real
-runs of its commands. Plain HTML, 1 stylesheet and 1 small script. No
-framework and no install step. Vercel deploys it.
+runs of its commands and its example project, Rosetta. Plain HTML, 1
+stylesheet, 2 small scripts and Motion. No framework and no install step.
+Vercel deploys it.
 
 The look follows the apparatus site
 (<https://github.com/reagent-systems/apparatus>): paper and ink, 1 ink-blue
@@ -33,6 +34,10 @@ empty.
 | `404.html` | The page a host serves for an unknown path. |
 | `site.css` | The look: the colour tokens for light and dark, the type scale, every component. `media/hero.html` takes its cards from it. |
 | `site.js` | The theme button and the copy button. |
+| `effects.js` | The motion, with Motion: the logo draws itself, sections rise into view, runs type out, the example's knob turns, the board leans toward the pointer and turns over. The head's script adds `motion` to `<html>` unless the reader asked for reduced motion or the page is a capture (`?shot=`); without Motion every element sits where it ends. The knob and the turn-over button work without Motion. |
+| `vendor/` | Motion 14.6.0 (motion.dev), its UMD build from the npm package `motion`, and its MIT license. SHA256 `5cd165acfdf8e14ca5358c3d876142e5465419ee0d100bcf195da474cf8db2bf`. |
+| `logo.svg` | The Via wordmark: V, I and A as copper, a pad on each and traces between. The header, the footer, the closing section and `og.html` draw it inline. |
+| `showcase/` | The example's pictures: KiCad's 3D renders of Rosetta (`rosetta-top.png`, `rosetta-bottom.png`, `rosetta-iso.png`), its layers (`rosetta-layers.png`), and Agentcast's (`agentcast.png`, from its repository's v0.5). `draw_face.py` writes the board drawing into `index.html` between `face:begin` and `face:end`. |
 | `favicon.svg` | The mark. It follows the system's colour scheme. |
 | `favicon-32.png`, `apple-touch-icon.png` | The mark as PNG, for a browser that takes no SVG icon and for a phone's home screen. |
 | `og.html` | The page the image below is a capture of. |
@@ -48,6 +53,20 @@ Each run on the page is what the command printed in a checkout of this
 repository. `tests/test_docs.py` runs each command again and compares: only
 the seconds and the checkout's folder may differ. When a gate's output
 changes, the test names the line, and the page gets the new text.
+
+## The example's pictures
+
+Run each from the repository's root, with KiCad 10 and the parts' 3D bodies
+(`site/media/README.md` says how to fetch them). The drawing comes from the
+design file and the routed board; draw it again when either changes:
+
+```sh
+python3 site/showcase/draw_face.py
+```
+
+The renders come from `workcenter render` on the example, cropped and
+scaled with FFmpeg; `examples/universal-controller/v0.1/README.md` shows
+them and names the commands.
 
 ## The images
 
@@ -92,3 +111,4 @@ give it the Pages address: `sh site/build.sh out https://<owner>.github.io/via`.
 |---|---|---|
 | `fonts/inter-latin-wght-normal.woff2` | Inter, the latin subset of the variable font, from the npm package `@fontsource-variable/inter` 5.3.0 | SIL Open Font License 1.1, in `fonts/LICENSE` |
 | The GitHub mark in `index.html` | Primer Octicons | MIT, © GitHub, Inc. |
+| `vendor/motion-14.6.0.js` | Motion 14.6.0, the npm package `motion` | MIT, © Motion B.V., in `vendor/MOTION-LICENSE.md` |

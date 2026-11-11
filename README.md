@@ -54,6 +54,17 @@ The 3D views show the part bodies of KiCad's own library.
 [site/media/README.md](site/media/README.md) has each picture and the
 command that draws it.
 
+## An example: Rosetta, a universal controller
+
+<a href="examples/universal-controller/v0.1/README.md"><img alt="Rosetta in 3D from above and to the side: a game controller's board with a D-pad, face buttons, a 5-position knob with a ring of LEDs, 2 USB-C ports" src="site/showcase/rosetta-iso.png"></a>
+
+[`examples/universal-controller/v0.1`](examples/universal-controller/v0.1/README.md) is a game
+controller made with the workcenter: a 5-position knob picks a PS4, a PS5, an Xbox, a Switch or
+Bluetooth. 160 x 92 mm in a controller's outline, 4 layers, routed and GREEN. An RP2040 runs a
+second USB port in software to relay a console's signature to a licensed donor; an ESP32 hangs its
+antenna over the gap between the grips; the knob is 1 analog reading, and 6 decks prove its 5
+positions never meet at any corner.
+
 ## What it does
 
 | Part | In short |

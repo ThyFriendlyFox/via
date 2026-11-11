@@ -4,6 +4,13 @@ All notable changes to EE Workcenter are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/) · Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- An example project, `examples/universal-controller/v0.1`: Rosetta, a game controller with a 5-position knob that picks a PS4, a PS5, an Xbox, a Switch or Bluetooth. A routed 4-layer board in a controller's outline (160 x 92 mm, 140 parts): an RP2040, an ESP32 for Bluetooth Classic and BLE with its antenna over the notch between the grips, a USB host port that relays a console's signature to a licensed donor, Hall-effect sticks and triggers on a 12-bit ADC, trigger motors, 2 haptic drivers, an IMU, a ring of RGB LEDs round the knob. 6 decks hold each knob position inside its window at every corner (370 runs), with the ADC's worst input leakage; the knob's decoder is C with host tests. The outline is a filleted polygon (`ControllerDesign`) whose inset is exact, so the router's boundary, the pours and the DRC agree.
+- The website shows the example: a drawing of the routed board written from its design file and its board (`site/showcase/draw_face.py`), with the knob turnable to each console, the path its data takes, and the readings the decks measured; KiCad's 3D renders, front and back; the gates run on it; a strip of boards built with Via. The page moves with Motion 14.6.0 (motion.dev, MIT), vendored in `site/vendor/`: the logo draws itself, sections rise into view, runs type out, the board leans toward the pointer. A reader who asks for reduced motion gets the page still. The header, the footer and the Open Graph image carry the Via wordmark.
+
+### Fixed
+- `install.sh` installs `openjdk-21-jre` when the Java runtime has no `libawt_xawt.so`. Debian's headless runtime, the base of the official KiCad image and so of the Dockerfile, has none, and FreeRouting stopped there with a `HeadlessException`: the image could not route. Ubuntu's headless runtime carries the library and is left as it is.
+
 ### Changed
 - P31 (work handed to helpers) gains 3 steps after a message to 2 helpers started a copy of each (M125): the signal that the health gate runs is a lock file the brief names, no message goes to a helper that a workflow runs, and a helper has stopped when its task says so. The root `README.md` links each document it names, and its table of parts has a header row.
 - `README.md` opens with a board: the first picture, 2 runs of the gates, the board turning and the sheet of its layers. What the workcenter does is a table, a diagram shows how a run goes, and the quick start takes a first board from the template to its gates. The 24 commands and the repository map fold away; a test holds that count to the CLI's own.

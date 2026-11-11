@@ -100,6 +100,16 @@ step_apt() {
     -o Acquire::http::Timeout=60 -o Acquire::https::Timeout=60 "${packages[@]}" \
     | grep --line-buffered -E '^(Get:[0-9]+|Setting up|Unpacking) ' | sed -u 's/^/[apt] /' || true
   kicad10_present || die "kicad-cli 10.x not found after install"
+  # FreeRouting draws its window under xvfb, so Java needs its X11 library. Ubuntu's headless
+  # runtime ships libawt_xawt.so; Debian's (the base of the official KiCad image) does not, and
+  # FreeRouting stops there with a HeadlessException. The full runtime carries it.
+  if ! find /usr/lib/jvm -name libawt_xawt.so 2>/dev/null | grep -q .; then
+    log "apt: install openjdk-21-jre (this runtime has no libawt_xawt.so, which FreeRouting needs)"
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openjdk-21-jre \
+      | grep --line-buffered -E '^(Setting up) ' | sed -u 's/^/[apt] /' || true
+    find /usr/lib/jvm -name libawt_xawt.so 2>/dev/null | grep -q . \
+      || die "libawt_xawt.so not found after installing openjdk-21-jre: FreeRouting cannot run"
+  fi
   log "apt: done; kicad-cli $(kicad-cli version)"
 }
 

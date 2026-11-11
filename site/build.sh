@@ -32,12 +32,15 @@ if [ -e "$out" ] && [ -n "$(ls -A "$out" 2>/dev/null)" ]; then
 fi
 
 here=$(dirname -- "$0")
-mkdir -p "$out/fonts" "$out/media"
+mkdir -p "$out/fonts" "$out/media" "$out/showcase" "$out/vendor"
 
-# What the site serves: of media/, the 2 pictures the page shows. og.html, the README's other
-# pictures, vercel.json and each README.md stay in the repository.
-for file in site.css site.js favicon.svg favicon-32.png apple-touch-icon.png og.png \
-  fonts/inter-latin-wght-normal.woff2 fonts/LICENSE media/schematic.png media/board.png; do
+# What the site serves: of media/, the 3 pictures the page shows; the example's pictures; Motion
+# and its license. og.html, the README's other pictures, the drawing's script, vercel.json and each
+# README.md stay in the repository.
+for file in site.css site.js effects.js favicon.svg favicon-32.png apple-touch-icon.png og.png logo.svg \
+  fonts/inter-latin-wght-normal.woff2 fonts/LICENSE media/schematic.png media/board.png media/board-spin.gif \
+  showcase/rosetta-top.png showcase/rosetta-bottom.png showcase/rosetta-iso.png showcase/rosetta-layers.png \
+  showcase/agentcast.png vendor/motion-14.6.0.js vendor/MOTION-LICENSE.md; do
   cp "$here/$file" "$out/$file"
 done
 

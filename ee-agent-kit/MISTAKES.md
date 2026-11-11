@@ -763,3 +763,21 @@ What happened: The front page was ready to push, and 2 helpers of a workflow ran
 Cost: 15 minutes of 2 runners nobody needed and 3 minutes of 2 more, about 10 minutes of 2 helpers' time on finding out who else wrote their files, and 1 false restore. No file was lost and no push was wrong.
 Root cause: Nothing on the machine said "the gate runs", so I used a message, and I did not know what a message does to a helper that a workflow runs. The tool's answer said "Resuming agent"; I read it and went on. Then I took silence for a stop.
 Process: P31
+
+## M126 — 2026-11-11 — An antenna turned into the board
+What happened: I placed the example controller's ESP32 module on the back face at 180 degrees, reasoning that it pointed the antenna out over the notch between the grips. On the back face the generator mirrors the footprint first, so 180 degrees pointed the antenna into the board. The DRC listed 41 courtyard overlaps against the antenna's keep-out and 8 through pads inside it. At 0 degrees the antenna hangs out as intended.
+Cost: 1 generate and DRC round, and every part I had moved to make room for the wrong orientation placed again.
+Root cause: I chose the rotation from the front face's rule. The `board-design` skill says a back-face part's pads are read from the board, not from memory, and I read them only after the DRC failed.
+Process: P19
+
+## M127 — 2026-11-11 — Nets named on 1 pin that the label sheet hid
+What happened: The example's stick connectors put each stick's click on a net named `L3` and `R3`, and the shift register read `BTN_L3` and `BTN_R3`. The label-only schematic passed what I ran; the clicks reached nothing. The first wired sheet's ERC named both labels as isolated, with 2 more faults: the DRV8833's sense pins and the IMU's strap pins tied straight to a rail. I fixed all 4.
+Cost: 1 board change after a route had started, and the route run again. I placed the 3 resistors of the fix by eye and routed without the unrouted board's DRC that P4 step 2 asks for: 5 courtyard overlaps and 2 shorts, and a third route.
+Root cause: I generated a label sheet to save the layout work and ran the DRC, which does not see a net with 1 pin. P24's wired sheet and its ERC were the check, and I had put them last. The fix went in as a quick change, and I skipped P4 for it.
+Process: P24
+
+## M128 — 2026-11-11 — 60 passes on a 140-part board, and no session
+What happened: I routed the example controller with `--passes 60`, the number the skill gives for small boards. FreeRouting ran for the workcenter's 15-minute limit and was killed; it writes its session only at the end, so the run left nothing. 12 passes finished in 13 minutes; 20 passes in 12 minutes from a better placement.
+Cost: 15 minutes of routing with no result.
+Root cause: I took the pass count from a 4-part template to a 140-part board, and did not set `--timeout` for a route whose length I did not know.
+Process: P4

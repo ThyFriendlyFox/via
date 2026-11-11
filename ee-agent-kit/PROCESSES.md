@@ -133,6 +133,10 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
 5. A route run only to evaluate (an archived version, a what-if) writes
    with `--out` to the scratchpad: without it `workcenter design` rewrites
    the project's KiCad files in place (M67).
+6. A board of more than about 50 parts routes with `--passes 12` to 20
+   and a `--timeout` of an hour, in the background. FreeRouting writes its
+   session only when it ends, so a run the timeout stops leaves nothing:
+   60 passes on 140 parts ran past the 15-minute default (M128).
 
 Done when: the DRC after the route lists 0 errors, or every remaining
 error is named in the next design change.
@@ -526,6 +530,11 @@ chamfered rectangles, paste-only apertures).
    of one footprint is the generator's bug, never the board's.
 3. Add a test that places the new shape on the bottom face and runs the
    DRC, and one that reads its pad size as the copper, not the anchor.
+4. A part on the back face whose direction matters (an antenna, a
+   connector's opening, a keep-out in its courtyard): generate the unrouted
+   board and read 2 of its named pads from `pad_boxes()` or `workcenter
+   inspect list` before anything else is placed round it. On the back face
+   the footprint is mirrored before it is turned (M126).
 
 Done when: the unrouted board's DRC shows no clearance inside any
 footprint, and the tests for the shape are in the suite.
@@ -682,7 +691,9 @@ close-out.
    named in a comment; every other net is a wire.
 3. Check the drawing against the design: ERC 0 errors and 0 warnings, and
    the DRC shows no parity warning, so every wired net carries the board's
-   name.
+   name. Do it before the first route: a net named on 1 pin joins nothing,
+   the DRC does not see it, and the wired sheet's ERC names it as an
+   isolated label (M127).
 4. Plot the sheet (`workcenter render . --views schematic`) and read it:
    follow each signal in the README's pin table from its MCU pin to its part.
    Move a part when a wire wanders round the sheet or text lands on a part,

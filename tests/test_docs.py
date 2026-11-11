@@ -219,7 +219,7 @@ def masked(line: str) -> str:
     """A printed line without what differs between 2 runs of 1 command: the seconds, and the folder
     the checkout is in."""
     line = re.sub(r"\[\d+\.\d+s\]", "[s]", line)
-    return re.sub(r"(report )\S*?(tests/boards/)", r"\1\2", line)
+    return re.sub(r"(report )\S*?((?:tests/boards|examples)/)", r"\1\2", line)
 
 
 @pytest.mark.skipif(
@@ -227,8 +227,9 @@ def masked(line: str) -> str:
     reason="kicad-cli and ngspice run the gates the documents show",
 )
 def test_every_run_a_document_shows_is_what_the_command_prints(tmp_path):
-    """The README, the site and the Open Graph image show runs on fixture boards. A gate's summary
-    changes when the gate does: 46 corner runs were 18. A run typed once and not run again goes stale."""
+    """The README, the site and the Open Graph image show runs on fixture boards and on the example
+    project. A gate's summary changes when the gate does: 46 corner runs were 18. A run typed once and
+    not run again goes stale."""
     documents = {
         "README.md": README,
         "site/index.html": as_document(SITE / "index.html"),
@@ -237,14 +238,10 @@ def test_every_run_a_document_shows_is_what_the_command_prints(tmp_path):
     shown = {
         (name, argv): lines for name, text in documents.items() for argv, lines in runs_in(text) if lines
     }
-    assert len(shown) == 7 and {name for name, _ in shown} == set(documents)
-    boards = {arg.split("/")[-1] for _, argv in shown for arg in argv if arg.startswith("tests/boards/")}
+    assert len(shown) == 8 and {name for name, _ in shown} == set(documents)
+    boards = {arg for _, argv in shown for arg in argv if arg.startswith(("tests/boards/", "examples/"))}
     for board in boards:
-        shutil.copytree(
-            ROOT / "tests" / "boards" / board,
-            tmp_path / "tests" / "boards" / board,
-            ignore=shutil.ignore_patterns("build", "__pycache__"),
-        )
+        shutil.copytree(ROOT / board, tmp_path / board, ignore=shutil.ignore_patterns("build", "__pycache__"))
     printed: dict[tuple[str, ...], list[str]] = {}
     for _, argv in shown:
         if argv not in printed:
@@ -340,6 +337,14 @@ def png_size(path: Path) -> tuple[int, int]:
     return struct.unpack(">II", data[16:24])
 
 
+def picture_size(path: Path) -> tuple[int, int]:
+    """A PNG's or a GIF's width and height, from its header."""
+    data = path.read_bytes()
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return struct.unpack("<HH", data[6:10])
+    return png_size(path)
+
+
 def test_the_open_graph_image_has_the_size_the_page_states():
     """GitHub asks 1280 x 640 and under 1 MB of a social preview. The page states the size to a
     crawler, so the file and the page say 1 size."""
@@ -422,11 +427,16 @@ def test_the_code_a_page_shows_is_a_run_of_lines_of_its_file():
                 assert (page.parent / link).is_file(), f"{page.name}: {link}"
     # The page states each picture's size, so the cards keep their place while a picture loads.
     text = (SITE / "index.html").read_text(encoding="utf-8")
+    pictures = re.findall(r'<img [^>]*?src="((?:media|showcase)/[^"]+)"', text)
     stated = {
         src: (int(width), int(height))
-        for src, width, height in re.findall(r'<img src="(media/[^"]+)" width="(\d+)" height="(\d+)"', text)
+        for src, width, height in re.findall(
+            r'<img [^>]*?src="((?:media|showcase)/[^"]+)" width="(\d+)" height="(\d+)"', text
+        )
     }
-    assert stated == {name: png_size(SITE / name) for name in ("media/schematic.png", "media/board.png")}
+    assert {"media/schematic.png", "media/board.png", "showcase/rosetta-top.png"} <= set(stated)
+    assert sorted(stated) == sorted(set(pictures))
+    assert stated == {name: picture_size(SITE / name) for name in stated}
 
 
 LOG_FORMAT = "--format=%H%x00%an <%ae>%x00%cn <%ce>%x00%B%x01"
