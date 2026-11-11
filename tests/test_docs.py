@@ -287,7 +287,7 @@ def test_every_link_on_the_site_names_what_exists():
                 found = (SITE / link).is_file()
             if not found:
                 missing.append(f"{page.name}: {link}")
-    assert to_repo >= 11 and into_page >= 7 and beside >= 11, "the site's links are no longer found"
+    assert to_repo >= 13 and into_page >= 8 and beside >= 11, "the site's links are no longer found"
     assert missing == []
 
 

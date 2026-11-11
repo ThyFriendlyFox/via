@@ -25,7 +25,8 @@ download fail the run; a green CI proves the autoroute engine installs.
   `site`, production branch `main`, production at <https://via-kappa-five.vercel.app>. `site/vercel.json` holds the build command,
   the output folder and the headers, so the project needs no other setting.
 - Every push to `main` deploys production. Every other branch gets a
-  preview. `make verify` runs the same `site/build.sh` in
+  preview. The project's setting that skips a deployment when a push
+  leaves the Root Directory unchanged is on. `make verify` runs the same `site/build.sh` in
   `tests/test_docs.py`, so a build that fails on Vercel fails here first.
 
 ## Social preview (repo Settings)
