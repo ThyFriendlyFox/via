@@ -162,7 +162,7 @@ DONE WHEN  the last line starts with GREEN</span></pre>
         <div class="wrap">
           <div class="head center">
             <h2 class="title" id="gates-title">A board is done when the last line says GREEN.</h2>
-            <p class="lede">The exit code says the same as the line. A gate that did not run is never a pass.</p>
+            <p class="lede">The exit code says the same as the line. A run with an absent engine is never GREEN.</p>
           </div>
           <ul class="verdicts" aria-label="The verdicts">
             <li class="ok"><i></i>GREEN <span>exit 0</span></li>
@@ -183,7 +183,7 @@ DONE WHEN  the last line starts with GREEN</span></pre>
             <li>
               <span class="n">03</span>
               <h3>SIM</h3>
-              <p>ngspice runs every deck. Each measured value is held to its bound, at every corner.</p>
+              <p>ngspice runs every deck. Each measured value is held to its bound, as written and at each corner.</p>
             </li>
             <li>
               <span class="n">04</span>
@@ -218,7 +218,7 @@ DONE WHEN  the last line starts with GREEN</span></pre>
             </div>
             <div>
               <h3>Tolerance</h3>
-              <p>Each part runs at both ends of its tolerance. Every combination of those ends runs where they are few, and Monte Carlo draws where they are many.</p>
+              <p>Each part runs at both ends of its tolerance and half-way to each. Every combination of the ends runs up to 64 runs. Above that, the gate runs a worst case for each bound and the Monte Carlo draws the project names.</p>
             </div>
             <div>
               <h3>Frequency plan</h3>
@@ -305,7 +305,7 @@ DONE WHEN  the last line starts with GREEN</span></pre>
               </div>
             </div>
           </div>
-          <p class="after">The command line is 1 Python file that needs only the standard library. <code>workcenter doctor</code> reports each engine's status. A gate whose engine is absent is skipped by name, and that run is never GREEN.</p>
+          <p class="after">The command line itself needs only Python's standard library. <code>workcenter doctor</code> reports each engine's status. A gate whose engine is absent is skipped by name, and that run is never GREEN.</p>
           <p class="after">Each procedure is a Markdown file, a skill: design a board, run the gates, simulate, route, price the parts, write the verification package. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/WORKCENTER.md">The contract</a> lists what a project gets.</p>
         </div>
       </section>

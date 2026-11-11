@@ -45,8 +45,9 @@ RED: rc_divider  report /home/user/via/tests/boards/fail-drc-clearance/build/gat
   refused first.
 - **Corners:** the SIM gate runs every deck at each temperature the
   project names and with each part at both ends of its tolerance. It runs
-  every combination of those ends where they are few, and Monte Carlo
-  draws. A bound holds at every corner or it does not hold.
+  every combination of those ends up to 64 runs, a worst case for each
+  bound above that, and the Monte Carlo draws the project names. A bound
+  holds at every corner or it does not hold.
 - **Frequency plan:** the SIM gate holds every switching frequency and its
   harmonics against every resonance a deck measured.
 - **The next step:** `workcenter next <project>` names the one step that is
@@ -119,9 +120,9 @@ base. `release.yml` publishes it to GHCR on every tag.
 `site/` is the project's website: 1 static page with real runs of the
 commands. It is live at <https://via-kappa-five.vercel.app>.
 `python3 -m http.server 8000 --directory site` serves it at
-http://localhost:8000. Vercel deploys it: every push to `main` deploys
-production, and every other branch gets a preview. `site/README.md` has
-the commands, the files and how the images are drawn.
+http://localhost:8000. Vercel deploys a push that changes `site/`: `main`
+to production, any other branch to a preview. `site/README.md` has the
+commands, the files and how the images are drawn.
 
 ## Repository map
 

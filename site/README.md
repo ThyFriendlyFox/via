@@ -77,8 +77,9 @@ Settings, General, Social preview. `og.png` is that image.
 
 The Vercel project is `via`, and production is <https://via-kappa-five.vercel.app>. Its Root
 Directory is `site`. `vercel.json` runs `build.sh` with the project's
-production address and serves `dist/`. Every push to `main` deploys
-production. Every other branch gets a preview.
+production address and serves `dist/`. A push to `main` deploys
+production, and a push to any other branch a preview. The project skips
+a push that leaves `site/` unchanged.
 
 Vercel makes a new project's first deployment its production deployment,
 whatever branch it comes from. That is how this site went live from a
