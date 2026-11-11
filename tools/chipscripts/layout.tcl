@@ -9,6 +9,23 @@ read_verilog $netlist
 link_design $top
 read_sdc $sdc
 
+# The part of the core the cells take, fill cells left out: the number the project's limit holds. It is
+# counted from the database, so it is the same number at each step of the build.
+proc utilization {fill_cells} {
+    set block [ord::get_db_block]
+    set core [$block getCoreArea]
+    set cells 0.0
+    foreach inst [$block getInsts] {
+        set master [$inst getMaster]
+        if {[lsearch -exact $fill_cells [$master getName]] < 0} {
+            set cells [expr {$cells + double([$master getWidth]) * [$master getHeight]}]
+        }
+    }
+    set unit [expr {double([$block getDbUnitsPerMicron])}]
+    set area [expr {double([$core xMax] - [$core xMin]) * ([$core yMax] - [$core yMin])}]
+    return [list [expr {$cells / $area}] [expr {$cells / ($unit * $unit)}]]
+}
+
 if {$die_area ne ""} {
     initialize_floorplan -die_area $die_area -core_area $core_area -site $site
 } else {
@@ -17,6 +34,23 @@ if {$die_area ne ""} {
 source tracks.tcl
 place_pins -hor_layers $pin_layer_h -ver_layers $pin_layer_v
 tapcell -distance $tap_distance -tapcell_master $tap_cell
+
+# The clock tree and the timing repair only add cells. A netlist that is over the project's limit here,
+# or that does not fit the core at all, stays so: the build stops before its long steps, and the gate
+# judges the number printed.
+set used [lindex [utilization $fill_cells] 0]
+puts [format "WORKCENTER utilization %.4f after the floorplan" $used]
+if {$used > 1.0 || ($utilization_limit ne "" && $used > $utilization_limit)} {
+    puts "WORKCENTER stopped: the cells take more of the core than it may hold"
+    exit
+}
+# The placer spreads the cells to the table's density, and stops with an error when they take more of
+# the core than that. On such a core the density is what the cells take, with room for the cells the
+# build adds.
+if {$used > $density} {
+    set density [expr {min(1.0, $used + $density_headroom)}]
+}
+puts [format "WORKCENTER density %.4f" $density]
 
 set_wire_rc -signal -layer $wire_rc_signal
 set_wire_rc -clock -layer $wire_rc_clock
@@ -68,6 +102,18 @@ detailed_route -guide $out/route.guide -output_drc $out/route_drc.rpt -output_ma
     -bottom_routing_layer $route_bottom -top_routing_layer $route_top -verbose 1
 puts "WORKCENTER routed"
 
+# A pin of a cell that takes a signal or a supply and is on no net floats. An output may stay open.
+set open_pins 0
+foreach inst [[ord::get_db_block] getInsts] {
+    foreach pin [$inst getITerms] {
+        if {[$pin getNet] eq "NULL" && [$pin getIoType] ne "OUTPUT"} {
+            incr open_pins
+            if {$open_pins <= 5} { puts "WORKCENTER open pin [$inst getName]/[[$pin getMTerm] getName]" }
+        }
+    }
+}
+puts "WORKCENTER open pins $open_pins"
+
 write_def $out/$top.def
 write_verilog $out/$top.v
 write_verilog -include_pwr_gnd $out/$top.pwr.v
@@ -79,4 +125,6 @@ foreach {wire rules} $rcx {
     write_spef $out/$top.$wire.spef
 }
 report_design_area
+lassign [utilization $fill_cells] used cells
+puts [format "WORKCENTER utilization %.4f of the core, %.2f um2 of cells" $used $cells]
 puts "WORKCENTER layout written"

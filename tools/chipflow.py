@@ -578,7 +578,7 @@ def read_table(name: str) -> tuple[dict | None, list[str]]:
     except ValueError as exc:
         return None, [f"{where}: not JSON: {exc}"]
     problems: list[str] = []
-    top = ("name", "process", "source", "version", "magic", "libraries", "drc", "lvs")
+    top = ("name", "process", "source", "version", "magic", "klayout", "libraries", "drc", "lvs")
     if not isinstance(table, dict):
         return None, [f"{where}: not an object"]
     unknown(table, top, where, problems)
@@ -658,7 +658,11 @@ def read_table(name: str) -> tuple[dict | None, list[str]]:
                 continue
             unknown(inner, wanted, f"{at}.{key}", problems)
             problems += [f"{at}.{key}: no {k}" for k in wanted if k not in inner]
-    for key, wanted in (("magic", ("rc", "tech", "needs", "source")), ("lvs", ("engine", "setup", "source"))):
+    for key, wanted in (
+        ("magic", ("rc", "tech", "needs", "source")),
+        ("klayout", ("layer_properties", "layer_map", "source")),
+        ("lvs", ("engine", "setup", "source")),
+    ):
         inner = table.get(key)
         if isinstance(inner, dict):
             unknown(inner, wanted, f"{where}: {key}", problems)

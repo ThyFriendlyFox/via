@@ -1,0 +1,102 @@
+Warning: /work/reg8/build/chip/layout/reg8.v line 142, module sky130_fd_sc_hd__tapvpwrvgnd_1 not found. Creating black box for TAP_0.
+Warning: /work/reg8/build/chip/layout/reg8.v line 153, module sky130_fd_sc_hd__fill_4 not found. Creating black box for FILLER_0_0.
+Warning: /work/reg8/build/chip/layout/reg8.v line 154, module sky130_fd_sc_hd__fill_8 not found. Creating black box for FILLER_0_10.
+Warning: /work/reg8/build/chip/layout/reg8.v line 162, module sky130_fd_sc_hd__fill_2 not found. Creating black box for FILLER_1_12.
+Warning: /work/reg8/build/chip/layout/reg8.v line 163, module sky130_fd_sc_hd__fill_1 not found. Creating black box for FILLER_1_14.
+WORKCENTER nets 43
+WORKCENTER check_setup begin
+Warning: There are 2 input ports missing set_input_delay.
+  VGND
+  VPWR
+WORKCENTER check_setup end
+WORKCENTER paths begin
+Startpoint: _47_ (rising edge-triggered flip-flop clocked by clk)
+Endpoint: q[6] (output port clocked by clk)
+Path Group: clk
+Path Type: max
+
+  Delay    Time   Description
+---------------------------------------------------------
+   0.00    0.00   clock clk (rise edge)
+   0.00    0.00   clock source latency
+   0.00    0.00 ^ clk (in)
+   0.11    0.11 ^ clkbuf_0_clk/X (sky130_fd_sc_hd__clkbuf_4)
+   0.13    0.25 ^ clkbuf_1_1__f_clk/X (sky130_fd_sc_hd__clkbuf_4)
+   0.00    0.25 ^ _47_/CLK (sky130_fd_sc_hd__dfxtp_1)
+   0.36    0.61 ^ _47_/Q (sky130_fd_sc_hd__dfxtp_1)
+   0.00    0.61 ^ q[6] (out)
+           0.61   data arrival time
+
+  20.00   20.00   clock clk (rise edge)
+   0.00   20.00   clock network delay (propagated)
+   0.00   20.00   clock reconvergence pessimism
+  -4.00   16.00   output external delay
+          16.00   data required time
+---------------------------------------------------------
+          16.00   data required time
+          -0.61   data arrival time
+---------------------------------------------------------
+          15.39   slack (MET)
+
+
+Startpoint: _49_ (rising edge-triggered flip-flop clocked by clk)
+Endpoint: _49_ (rising edge-triggered flip-flop clocked by clk)
+Path Group: clk
+Path Type: min
+
+  Delay    Time   Description
+---------------------------------------------------------
+   0.00    0.00   clock clk (rise edge)
+   0.00    0.00   clock source latency
+   0.00    0.00 ^ clk (in)
+   0.11    0.11 ^ clkbuf_0_clk/X (sky130_fd_sc_hd__clkbuf_4)
+   0.13    0.25 ^ clkbuf_1_0__f_clk/X (sky130_fd_sc_hd__clkbuf_4)
+   0.00    0.25 ^ _49_/CLK (sky130_fd_sc_hd__dfxtp_1)
+   0.31    0.56 v _49_/Q (sky130_fd_sc_hd__dfxtp_1)
+   0.06    0.62 ^ _35_/Y (sky130_fd_sc_hd__nand2b_1)
+   0.06    0.68 v _41_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.00    0.68 v _49_/D (sky130_fd_sc_hd__dfxtp_1)
+           0.68   data arrival time
+
+   0.00    0.00   clock clk (rise edge)
+   0.00    0.00   clock source latency
+   0.00    0.00 ^ clk (in)
+   0.11    0.11 ^ clkbuf_0_clk/X (sky130_fd_sc_hd__clkbuf_4)
+   0.13    0.25 ^ clkbuf_1_0__f_clk/X (sky130_fd_sc_hd__clkbuf_4)
+   0.00    0.25 ^ _49_/CLK (sky130_fd_sc_hd__dfxtp_1)
+   0.00    0.25   clock reconvergence pessimism
+  -0.05    0.20   library hold time
+           0.20   data required time
+---------------------------------------------------------
+           0.20   data required time
+          -0.68   data arrival time
+---------------------------------------------------------
+           0.48   slack (MET)
+
+
+WORKCENTER paths end
+WORKCENTER setup
+worst slack 15.3928
+WORKCENTER hold
+worst slack 0.4803
+WORKCENTER tns
+tns 0.0000
+WORKCENTER violators begin
+WORKCENTER violators end
+WORKCENTER skew begin
+Clock clk
+Latency      CRPR       Skew
+_44_/CLK ^
+ 0.2463
+_45_/CLK ^
+ 0.2453    0.0000     0.0010
+
+Clock clk
+Latency      CRPR       Skew
+_44_/CLK ^
+ 0.2463
+_45_/CLK ^
+ 0.2453    0.0000     0.0010
+
+WORKCENTER skew end
+WORKCENTER sta done

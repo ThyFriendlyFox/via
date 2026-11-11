@@ -1,0 +1,5 @@
+ERROR: In /kit/libs.tech/klayout/drc/sky130A_mr.drc: 'source': Unexpected end-of-file (position=59990, record number=4772, cell=reg8) in Layout::read
+ERROR: RuntimeError: 'source': Unexpected end-of-file (position=59990, record number=4772, cell=reg8) in Layout::read in Executable::execute
+  /kit/libs.tech/klayout/drc/sky130A_mr.drc:28:in `execute'
+  :/built-in-macros/drc_interpreters.lym:31:in `instance_eval'
+  :/built-in-macros/drc_interpreters.lym:31:in `execute'

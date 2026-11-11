@@ -1,0 +1,818 @@
+OpenROAD f12e2f474102bfb875eeee57fb610d7d7de17770 
+This program is licensed under the BSD-3 license. See the LICENSE file for details.
+Components of this program may be licensed under more restrictive licenses which must be honored.
+[INFO ORD-0030] Using 2 thread(s).
+[INFO ODB-0222] Reading LEF file: /kit/libs.ref/sky130_fd_sc_hd/techlef/sky130_fd_sc_hd__nom.tlef
+[INFO ODB-0223]     Created 14 technology layers
+[INFO ODB-0224]     Created 25 technology vias
+[INFO ODB-0226] Finished LEF file:  /kit/libs.ref/sky130_fd_sc_hd/techlef/sky130_fd_sc_hd__nom.tlef
+[INFO ODB-0222] Reading LEF file: /kit/libs.ref/sky130_fd_sc_hd/lef/sky130_fd_sc_hd.lef
+[WARNING ODB-0220] WARNING (LEFPARS-2008): NOWIREEXTENSIONATPIN statement is obsolete in version 5.6 or later.
+The NOWIREEXTENSIONATPIN statement will be ignored. See file /kit/libs.ref/sky130_fd_sc_hd/lef/sky130_fd_sc_hd.lef at line 2.
+
+[INFO ODB-0225]     Created 437 library cells
+[INFO ODB-0226] Finished LEF file:  /kit/libs.ref/sky130_fd_sc_hd/lef/sky130_fd_sc_hd.lef
+[WARNING IFP-0028] Core area lower left (10.880, 10.880) snapped to (11.040, 10.880).
+[INFO IFP-0001] Added 8 rows of 50 sites.
+Found 0 macro blocks.
+Using 1u default distance from corners.
+Using 2 tracks default min distance between IO pins.
+[INFO PPL-0010] Tentative 0 to set up sections.
+[INFO PPL-0001] Number of slots          164
+[INFO PPL-0002] Number of I/O            19
+[INFO PPL-0003] Number of I/O w/sink     19
+[INFO PPL-0004] Number of I/O w/o sink   0
+[INFO PPL-0005] Slots per section        200
+[INFO PPL-0006] Slots increase factor    0.01
+[INFO PPL-0008] Successfully assigned pins to sections.
+[INFO PPL-0012] I/O nets HPWL: 510.59 um.
+[INFO TAP-0001] Found 0 macro blocks.
+[INFO TAP-0002] Original rows: 8
+[INFO TAP-0003] Created 0 rows for a total of 8 rows.
+[INFO TAP-0005] Inserted 5 tapcells.
+WORKCENTER utilization 0.5525 after the floorplan
+WORKCENTER density 0.6000
+[INFO GPL-0002] DBU: 1000
+[INFO GPL-0003] SiteSize: 460 2720
+[INFO GPL-0004] CoreAreaLxLy: 11040 10880
+[INFO GPL-0005] CoreAreaUxUy: 34040 32640
+[INFO GPL-0006] NumInstances: 29
+[INFO GPL-0007] NumPlaceInstances: 24
+[INFO GPL-0008] NumFixedInstances: 5
+[INFO GPL-0009] NumDummyInstances: 0
+[INFO GPL-0010] NumNets: 35
+[INFO GPL-0011] NumPins: 99
+[INFO GPL-0012] DieAreaLxLy: 0 0
+[INFO GPL-0013] DieAreaUxUy: 45010 45010
+[INFO GPL-0014] CoreAreaLxLy: 11040 10880
+[INFO GPL-0015] CoreAreaUxUy: 34040 32640
+[INFO GPL-0016] CoreArea: 500480000
+[INFO GPL-0017] NonPlaceInstsArea: 6256000
+[INFO GPL-0018] PlaceInstsArea: 270259200
+[INFO GPL-0019] Util(%): 54.68
+[INFO GPL-0020] StdInstsArea: 270259200
+[INFO GPL-0021] MacroInstsArea: 0
+[InitialPlace]  Iter: 1 CG residual: 0.00000007 HPWL: 608740
+[InitialPlace]  Iter: 2 CG residual: 0.00000003 HPWL: 326777
+[InitialPlace]  Iter: 3 CG residual: 0.00000004 HPWL: 326851
+[InitialPlace]  Iter: 4 CG residual: 0.00000006 HPWL: 326919
+[InitialPlace]  Iter: 5 CG residual: 0.00000008 HPWL: 326422
+[INFO GPL-0031] FillerInit: NumGCells: 26
+[INFO GPL-0032] FillerInit: NumGNets: 35
+[INFO GPL-0033] FillerInit: NumGPins: 99
+[INFO GPL-0023] TargetDensity: 0.60
+[INFO GPL-0024] AveragePlaceInstArea: 11260800
+[INFO GPL-0025] IdealBinArea: 18768000
+[INFO GPL-0026] IdealBinCnt: 26
+[INFO GPL-0027] TotalBinArea: 500480000
+[INFO GPL-0028] BinCnt: 4 4
+[INFO GPL-0029] BinSize: 5750 5440
+[INFO GPL-0030] NumBins: 16
+[NesterovSolve] Iter: 1 overflow: 0.688562 HPWL: 396830
+[NesterovSolve] Iter: 10 overflow: 0.662588 HPWL: 397962
+[NesterovSolve] Iter: 20 overflow: 0.665852 HPWL: 397810
+[NesterovSolve] Iter: 30 overflow: 0.666417 HPWL: 397772
+[NesterovSolve] Iter: 40 overflow: 0.666502 HPWL: 397767
+[NesterovSolve] Iter: 50 overflow: 0.666516 HPWL: 397763
+[NesterovSolve] Iter: 60 overflow: 0.666547 HPWL: 397750
+[NesterovSolve] Iter: 70 overflow: 0.666544 HPWL: 397728
+[NesterovSolve] Iter: 80 overflow: 0.666488 HPWL: 397692
+[NesterovSolve] Iter: 90 overflow: 0.666444 HPWL: 397652
+[NesterovSolve] Iter: 100 overflow: 0.665983 HPWL: 397810
+[NesterovSolve] Iter: 110 overflow: 0.665641 HPWL: 397836
+[NesterovSolve] Iter: 120 overflow: 0.66506 HPWL: 397877
+[NesterovSolve] Iter: 130 overflow: 0.664095 HPWL: 397950
+[NesterovSolve] Iter: 140 overflow: 0.662308 HPWL: 398052
+[NesterovSolve] Iter: 150 overflow: 0.659184 HPWL: 398226
+[NesterovSolve] Iter: 160 overflow: 0.653503 HPWL: 398537
+[NesterovSolve] Iter: 170 overflow: 0.643416 HPWL: 399292
+[NesterovSolve] Iter: 180 overflow: 0.622785 HPWL: 401096
+[NesterovSolve] Iter: 190 overflow: 0.590787 HPWL: 403263
+[NesterovSolve] Iter: 200 overflow: 0.553978 HPWL: 412285
+[NesterovSolve] Iter: 210 overflow: 0.514706 HPWL: 430506
+[NesterovSolve] Iter: 220 overflow: 0.468067 HPWL: 457163
+[NesterovSolve] Iter: 230 overflow: 0.408747 HPWL: 476997
+[NesterovSolve] Iter: 240 overflow: 0.332547 HPWL: 498247
+[NesterovSolve] Iter: 250 overflow: 0.292879 HPWL: 514843
+[NesterovSolve] Iter: 260 overflow: 0.244533 HPWL: 531092
+[NesterovSolve] Iter: 270 overflow: 0.182886 HPWL: 543592
+[NesterovSolve] Iter: 280 overflow: 0.130617 HPWL: 549369
+[NesterovSolve] Iter: 290 overflow: 0.100569 HPWL: 551345
+[NesterovSolve] Finished with Overflow: 0.096218
+[WARNING DPL-0011] Could not find power special net.
+Placement Analysis
+---------------------------------
+total displacement         76.3 u
+average displacement        2.6 u
+max displacement            6.3 u
+original HPWL             550.0 u
+legalized HPWL            638.1 u
+delta HPWL                   16 %
+
+[INFO CTS-0038] Number of created patterns = 50000.
+[INFO CTS-0038] Number of created patterns = 100000.
+[INFO CTS-0039] Number of created patterns = 137808.
+[INFO CTS-0084] Compiling LUT.
+Min. len    Max. len    Min. cap    Max. cap    Min. slew   Max. slew
+2           8           1           35          1           155         
+[WARNING CTS-0043] 4752 wires are pure wire and no slew degradation.
+TritonCTS forced slew degradation on these wires.
+[INFO CTS-0046]     Number of wire segments: 137808.
+[INFO CTS-0047]     Number of keys in characterization LUT: 1931.
+[INFO CTS-0048]     Actual min input cap: 1.
+[INFO CTS-0007] Net "clk" found for clock "clk".
+[INFO CTS-0010]  Clock net "clk" has 8 sinks.
+[INFO CTS-0008] TritonCTS found 1 clock nets.
+[INFO CTS-0097] Characterization used 3 buffer(s) types.
+[INFO CTS-0027] Generating H-Tree topology for net clk.
+[INFO CTS-0028]  Total number of sinks: 8.
+[INFO CTS-0030]  Number of static layers: 0.
+[INFO CTS-0020]  Wire segment unit: 13000  dbu (13 um).
+[INFO CTS-0023]  Original sink region: [(11765, 12180), (25565, 28500)].
+[INFO CTS-0024]  Normalized sink region: [(0.905, 0.936923), (1.96654, 2.19231)].
+[INFO CTS-0025]     Width:  1.0615.
+[INFO CTS-0026]     Height: 1.2554.
+[WARNING CTS-0045] Creating fake entries in the LUT.
+ Level 1
+    Direction: Vertical
+    Sinks per sub-region: 4
+    Sub-region size: 1.0615 X 0.6277
+[INFO CTS-0034]     Segment length (rounded): 1.
+    Key: 137808 outSlew: 2 load: 1 length: 1 isBuffered: false
+[INFO CTS-0032]  Stop criterion found. Max number of sinks is 15.
+[INFO CTS-0035]  Number of sinks covered: 8.
+[INFO CTS-0036]  Average source sink dist: 13808.75 dbu.
+[INFO CTS-0037]  Number of outlier sinks: 0.
+[INFO CTS-0018]     Created 3 clock buffers.
+[INFO CTS-0012]     Minimum number of buffers in the clock path: 2.
+[INFO CTS-0013]     Maximum number of buffers in the clock path: 2.
+[INFO CTS-0015]     Created 3 clock nets.
+[INFO CTS-0016]     Fanout distribution for the current clock = 4:2..
+[INFO CTS-0017]     Max level of the clock tree: 1.
+[INFO CTS-0098] Clock net "clk"
+[INFO CTS-0099]  Sinks 8
+[INFO CTS-0100]  Leaf buffers 0
+[INFO CTS-0101]  Average sink wire length 59.90 um
+[INFO CTS-0102]  Path depth 2 - 2
+[WARNING RSZ-0021] no estimated parasitics. Using wire load models.
+[INFO RSZ-0058] Using max wire length 3176um.
+[WARNING DPL-0011] Could not find power special net.
+Placement Analysis
+---------------------------------
+total displacement         25.5 u
+average displacement        0.8 u
+max displacement           16.7 u
+original HPWL             701.1 u
+legalized HPWL            690.7 u
+delta HPWL                   -1 %
+
+[INFO RSZ-0033] No hold violations found.
+[WARNING DPL-0011] Could not find power special net.
+Placement Analysis
+---------------------------------
+total displacement          0.0 u
+average displacement        0.0 u
+max displacement            0.0 u
+original HPWL             690.7 u
+legalized HPWL            690.7 u
+delta HPWL                    0 %
+
+[INFO DPL-0001] Placed 44 filler instances.
+WORKCENTER placement checked
+[INFO PDN-0008] Design name is reg8.
+[INFO PDN-0009] Reading technology data.
+[WARNING PDN-0018] No macro grid specifications found - no straps added.
+[INFO PDN-0011] ****** INFO ******
+Type: stdcell, grid
+    Stdcell Rails
+      Layer: met1  -  width: 0.480  pitch: 5.440 
+    Straps
+      Layer: met4  -  width: 1.600  pitch: 23.000  offset: 5.750 
+    Connect: {met1 met4}
+[INFO PDN-0012] **** END INFO ****
+[INFO PDN-0013] Inserting stdcell grid - grid.
+[INFO PDN-0015] Writing to database.
+[WARNING PSM-0016] Voltage pad location (VSRC) file not specified, defaulting pad location to checkerboard pattern on core area.
+[WARNING PSM-0017] X direction bump pitch is not specified, defaulting to 140um.
+[WARNING PSM-0018] Y direction bump pitch is not specified, defaulting to 140um.
+[WARNING PSM-0019] Voltage on net VPWR is not explicitly set.
+[WARNING PSM-0022] Using voltage 1.800V for VDD network.
+[WARNING PSM-0063] Specified bump pitches of 140.000 and 140.000 are less than core width of 23.000 or core height of 21.760. Changing bump location to the center of the die at (11.500, 10.880).
+[WARNING PSM-0065] VSRC location not specified, using default checkerboard pattern with one VDD every size bumps in x-direction and one in two bumps in the y-direction
+[WARNING PSM-0030] VSRC location at (11.500um, 10.880um) and size 10.000um, is not located on an existing power stripe node. Moving to closest node at (28.290um, 10.640um).
+[INFO PSM-0031] Number of PDN nodes on net VPWR = 34.
+[INFO PSM-0064] Number of voltage sources = 1.
+[INFO PSM-0040] All PDN stripes on net VPWR are connected.
+WORKCENTER grid VPWR connected
+[WARNING PSM-0016] Voltage pad location (VSRC) file not specified, defaulting pad location to checkerboard pattern on core area.
+[WARNING PSM-0017] X direction bump pitch is not specified, defaulting to 140um.
+[WARNING PSM-0018] Y direction bump pitch is not specified, defaulting to 140um.
+[WARNING PSM-0019] Voltage on net VGND is not explicitly set.
+[WARNING PSM-0021] Using voltage 0.000V for ground network.
+[WARNING PSM-0063] Specified bump pitches of 140.000 and 140.000 are less than core width of 23.000 or core height of 21.760. Changing bump location to the center of the die at (11.500, 10.880).
+[WARNING PSM-0065] VSRC location not specified, using default checkerboard pattern with one VDD every size bumps in x-direction and one in two bumps in the y-direction
+[WARNING PSM-0030] VSRC location at (11.500um, 10.880um) and size 10.000um, is not located on an existing power stripe node. Moving to closest node at (16.790um, 10.880um).
+[INFO PSM-0031] Number of PDN nodes on net VGND = 42.
+[INFO PSM-0064] Number of voltage sources = 1.
+[INFO PSM-0040] All PDN stripes on net VGND are connected.
+WORKCENTER grid VGND connected
+[INFO GRT-0020] Min routing layer: met1
+[INFO GRT-0021] Max routing layer: met5
+[INFO GRT-0022] Global adjustment: 0%
+[INFO GRT-0023] Grid origin: (0, 0)
+[WARNING GRT-0043] No OR_DEFAULT vias defined.
+[INFO GRT-0088] Layer li1     Track-Pitch = 0.4600  line-2-Via Pitch: 0.3400
+[INFO GRT-0088] Layer met1    Track-Pitch = 0.3400  line-2-Via Pitch: 0.3400
+[INFO GRT-0088] Layer met2    Track-Pitch = 0.4600  line-2-Via Pitch: 0.3500
+[INFO GRT-0088] Layer met3    Track-Pitch = 0.6800  line-2-Via Pitch: 0.6150
+[INFO GRT-0088] Layer met4    Track-Pitch = 0.9200  line-2-Via Pitch: 1.0400
+[INFO GRT-0088] Layer met5    Track-Pitch = 3.4000  line-2-Via Pitch: 3.1100
+[INFO GRT-0019] Found 4 clock nets.
+[INFO GRT-0001] Minimum degree: 2
+[INFO GRT-0002] Maximum degree: 9
+[INFO GRT-0003] Macros: 0
+[INFO GRT-0004] Blockages: 112
+
+[INFO GRT-0053] Routing resources analysis:
+          Routing      Original      Derated      Resource
+Layer     Direction    Resources     Resources    Reduction (%)
+---------------------------------------------------------------
+li1        Vertical            0             0          0.00%
+met1       Horizontal        720           570          20.83%
+met2       Vertical          540           480          11.11%
+met3       Horizontal        360           315          12.50%
+met4       Vertical          216           199          7.87%
+met5       Horizontal         72            55          23.61%
+---------------------------------------------------------------
+
+[INFO GRT-0197] Via related to pin nodes: 117
+[INFO GRT-0198] Via related Steiner nodes: 0
+[INFO GRT-0199] Via filling finished.
+[INFO GRT-0111] Final number of vias: 126
+[INFO GRT-0112] Final usage 3D: 441
+
+[INFO GRT-0096] Final congestion report:
+Layer         Resource        Demand        Usage (%)    Max H / Max V / Total Overflow
+---------------------------------------------------------------------------------------
+li1                  0             0            0.00%             0 /  0 /  0
+met1               570            34            5.96%             0 /  0 /  0
+met2               480            29            6.04%             0 /  0 /  0
+met3               315             0            0.00%             0 /  0 /  0
+met4               199             0            0.00%             0 /  0 /  0
+met5                55             0            0.00%             0 /  0 /  0
+---------------------------------------------------------------------------------------
+Total             1619            63            3.89%             0 /  0 /  0
+
+[INFO GRT-0018] Total wirelength: 1193 um
+[INFO GRT-0014] Routed nets: 38
+[INFO DRT-0149] Reading tech and libs.
+
+Units:                1000
+Number of layers:     13
+Number of macros:     437
+Number of vias:       25
+Number of viarulegen: 25
+
+[INFO DRT-0150] Reading design.
+
+Design:                   reg8
+Die area:                 ( 0 0 ) ( 45010 45010 )
+Number of track patterns: 12
+Number of DEF vias:       3
+Number of components:     76
+Number of terminals:      21
+Number of snets:          2
+Number of nets:           38
+
+[INFO DRT-0167] List of default vias:
+  Layer mcon
+    default via: L1M1_PR
+  Layer via
+    default via: M1M2_PR
+  Layer via2
+    default via: M2M3_PR
+  Layer via3
+    default via: M3M4_PR
+  Layer via4
+    default via: M4M5_PR
+[INFO DRT-0162] Library cell analysis.
+[INFO DRT-0163] Instance analysis.
+[INFO DRT-0164] Number of unique instances = 18.
+[INFO DRT-0168] Init region query.
+[INFO DRT-0024]   Complete FR_MASTERSLICE.
+[INFO DRT-0024]   Complete licon.
+[INFO DRT-0024]   Complete li1.
+[INFO DRT-0024]   Complete mcon.
+[INFO DRT-0024]   Complete met1.
+[INFO DRT-0024]   Complete via.
+[INFO DRT-0024]   Complete met2.
+[INFO DRT-0024]   Complete via2.
+[INFO DRT-0024]   Complete met3.
+[INFO DRT-0024]   Complete via3.
+[INFO DRT-0024]   Complete met4.
+[INFO DRT-0024]   Complete via4.
+[INFO DRT-0024]   Complete met5.
+[INFO DRT-0033] FR_MASTERSLICE shape region query size = 0.
+[INFO DRT-0033] licon shape region query size = 0.
+[INFO DRT-0033] li1 shape region query size = 1028.
+[INFO DRT-0033] mcon shape region query size = 848.
+[INFO DRT-0033] met1 shape region query size = 282.
+[INFO DRT-0033] via shape region query size = 45.
+[INFO DRT-0033] met2 shape region query size = 37.
+[INFO DRT-0033] via2 shape region query size = 36.
+[INFO DRT-0033] met3 shape region query size = 18.
+[INFO DRT-0033] via3 shape region query size = 36.
+[INFO DRT-0033] met4 shape region query size = 13.
+[INFO DRT-0033] via4 shape region query size = 0.
+[INFO DRT-0033] met5 shape region query size = 0.
+[INFO DRT-0165] Start pin access.
+[INFO DRT-0078]   Complete 24 pins.
+[INFO DRT-0081]   Complete 8 unique inst patterns.
+[INFO DRT-0084]   Complete 14 groups.
+#scanned instances     = 76
+#unique  instances     = 18
+#stdCellGenAp          = 194
+#stdCellValidPlanarAp  = 0
+#stdCellValidViaAp     = 148
+#stdCellPinNoAp        = 0
+#stdCellPinCnt         = 86
+#instTermValidViaApCnt = 0
+#macroGenAp            = 0
+#macroValidPlanarAp    = 0
+#macroValidViaAp       = 0
+#macroNoAp             = 0
+[INFO DRT-0166] Complete pin access.
+[INFO DRT-0267] cpu time = 00:00:00, elapsed time = 00:00:00, memory = 315.54 (MB), peak = 315.37 (MB)
+[INFO DRT-0151] Reading guide.
+
+Number of guides:     197
+
+[INFO DRT-0169] Post process guides.
+[INFO DRT-0176] GCELLGRID X 0 DO 6 STEP 6900 ;
+[INFO DRT-0177] GCELLGRID Y 0 DO 6 STEP 6900 ;
+[INFO DRT-0028]   Complete FR_MASTERSLICE.
+[INFO DRT-0028]   Complete licon.
+[INFO DRT-0028]   Complete li1.
+[INFO DRT-0028]   Complete mcon.
+[INFO DRT-0028]   Complete met1.
+[INFO DRT-0028]   Complete via.
+[INFO DRT-0028]   Complete met2.
+[INFO DRT-0028]   Complete via2.
+[INFO DRT-0028]   Complete met3.
+[INFO DRT-0028]   Complete via3.
+[INFO DRT-0028]   Complete met4.
+[INFO DRT-0028]   Complete via4.
+[INFO DRT-0028]   Complete met5.
+[INFO DRT-0178] Init guide query.
+[INFO DRT-0035]   Complete FR_MASTERSLICE (guide).
+[INFO DRT-0035]   Complete licon (guide).
+[INFO DRT-0035]   Complete li1 (guide).
+[INFO DRT-0035]   Complete mcon (guide).
+[INFO DRT-0035]   Complete met1 (guide).
+[INFO DRT-0035]   Complete via (guide).
+[INFO DRT-0035]   Complete met2 (guide).
+[INFO DRT-0035]   Complete via2 (guide).
+[INFO DRT-0035]   Complete met3 (guide).
+[INFO DRT-0035]   Complete via3 (guide).
+[INFO DRT-0035]   Complete met4 (guide).
+[INFO DRT-0035]   Complete via4 (guide).
+[INFO DRT-0035]   Complete met5 (guide).
+[INFO DRT-0036] FR_MASTERSLICE guide region query size = 0.
+[INFO DRT-0036] licon guide region query size = 0.
+[INFO DRT-0036] li1 guide region query size = 71.
+[INFO DRT-0036] mcon guide region query size = 0.
+[INFO DRT-0036] met1 guide region query size = 55.
+[INFO DRT-0036] via guide region query size = 0.
+[INFO DRT-0036] met2 guide region query size = 40.
+[INFO DRT-0036] via2 guide region query size = 0.
+[INFO DRT-0036] met3 guide region query size = 0.
+[INFO DRT-0036] via3 guide region query size = 0.
+[INFO DRT-0036] met4 guide region query size = 0.
+[INFO DRT-0036] via4 guide region query size = 0.
+[INFO DRT-0036] met5 guide region query size = 0.
+[INFO DRT-0179] Init gr pin query.
+[WARNING DRT-0245] No output guide specified, skipped writing guide.
+[INFO DRT-0185] Post process initialize RPin region query.
+[INFO DRT-0181] Start track assignment.
+[INFO DRT-0184] Done with 111 vertical wires in 1 frboxes and 55 horizontal wires in 1 frboxes.
+[INFO DRT-0186] Done with 24 vertical wires in 1 frboxes and 13 horizontal wires in 1 frboxes.
+[INFO DRT-0182] Complete track assignment.
+[INFO DRT-0267] cpu time = 00:00:00, elapsed time = 00:00:00, memory = 315.88 (MB), peak = 315.77 (MB)
+[INFO DRT-0187] Start routing data preparation.
+[INFO DRT-0267] cpu time = 00:00:00, elapsed time = 00:00:00, memory = 315.88 (MB), peak = 315.77 (MB)
+[INFO DRT-0194] Start detail routing.
+[INFO DRT-0195] Start 0th optimization iteration.
+    Completing 10% with 0 violations.
+    elapsed time = 00:00:00, memory = 316.25 (MB).
+[INFO DRT-0199]   Number of violations = 5.
+[INFO DRT-0267] cpu time = 00:00:00, elapsed time = 00:00:00, memory = 598.89 (MB), peak = 598.77 (MB)
+Total wire length = 732 um.
+Total wire length on LAYER li1 = 0 um.
+Total wire length on LAYER met1 = 257 um.
+Total wire length on LAYER met2 = 474 um.
+Total wire length on LAYER met3 = 0 um.
+Total wire length on LAYER met4 = 0 um.
+Total wire length on LAYER met5 = 0 um.
+Total number of vias = 167.
+Up-via summary (total 167):.
+
+----------------------
+ FR_MASTERSLICE      0
+            li1     86
+           met1     81
+           met2      0
+           met3      0
+           met4      0
+----------------------
+                   167
+
+
+[INFO DRT-0195] Start 1st optimization iteration.
+    Completing 10% with 5 violations.
+    elapsed time = 00:00:00, memory = 598.89 (MB).
+    Completing 20% with 8 violations.
+    elapsed time = 00:00:00, memory = 599.13 (MB).
+    Completing 30% with 8 violations.
+    elapsed time = 00:00:00, memory = 599.15 (MB).
+    Completing 40% with 8 violations.
+    elapsed time = 00:00:00, memory = 599.15 (MB).
+[INFO DRT-0199]   Number of violations = 8.
+[INFO DRT-0267] cpu time = 00:00:00, elapsed time = 00:00:00, memory = 599.28 (MB), peak = 599.02 (MB)
+Total wire length = 731 um.
+Total wire length on LAYER li1 = 0 um.
+Total wire length on LAYER met1 = 258 um.
+Total wire length on LAYER met2 = 473 um.
+Total wire length on LAYER met3 = 0 um.
+Total wire length on LAYER met4 = 0 um.
+Total wire length on LAYER met5 = 0 um.
+Total number of vias = 169.
+Up-via summary (total 169):.
+
+----------------------
+ FR_MASTERSLICE      0
+            li1     86
+           met1     83
+           met2      0
+           met3      0
+           met4      0
+----------------------
+                   169
+
+
+[INFO DRT-0195] Start 2nd optimization iteration.
+    Completing 10% with 8 violations.
+    elapsed time = 00:00:00, memory = 599.28 (MB).
+    Completing 20% with 8 violations.
+    elapsed time = 00:00:00, memory = 599.28 (MB).
+    Completing 30% with 8 violations.
+    elapsed time = 00:00:00, memory = 599.28 (MB).
+    Completing 40% with 10 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+[INFO DRT-0199]   Number of violations = 13.
+[INFO DRT-0267] cpu time = 00:00:00, elapsed time = 00:00:00, memory = 611.99 (MB), peak = 611.77 (MB)
+Total wire length = 742 um.
+Total wire length on LAYER li1 = 0 um.
+Total wire length on LAYER met1 = 266 um.
+Total wire length on LAYER met2 = 476 um.
+Total wire length on LAYER met3 = 0 um.
+Total wire length on LAYER met4 = 0 um.
+Total wire length on LAYER met5 = 0 um.
+Total number of vias = 171.
+Up-via summary (total 171):.
+
+----------------------
+ FR_MASTERSLICE      0
+            li1     86
+           met1     85
+           met2      0
+           met3      0
+           met4      0
+----------------------
+                   171
+
+
+[INFO DRT-0195] Start 3rd optimization iteration.
+    Completing 10% with 13 violations.
+    elapsed time = 00:00:01, memory = 611.99 (MB).
+[INFO DRT-0199]   Number of violations = 0.
+[INFO DRT-0267] cpu time = 00:00:01, elapsed time = 00:00:01, memory = 611.99 (MB), peak = 611.77 (MB)
+Total wire length = 746 um.
+Total wire length on LAYER li1 = 0 um.
+Total wire length on LAYER met1 = 251 um.
+Total wire length on LAYER met2 = 483 um.
+Total wire length on LAYER met3 = 11 um.
+Total wire length on LAYER met4 = 0 um.
+Total wire length on LAYER met5 = 0 um.
+Total number of vias = 177.
+Up-via summary (total 177):.
+
+----------------------
+ FR_MASTERSLICE      0
+            li1     86
+           met1     87
+           met2      4
+           met3      0
+           met4      0
+----------------------
+                   177
+
+
+[INFO DRT-0195] Start 17th optimization iteration.
+    Completing 10% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 20% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 30% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 40% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+[INFO DRT-0199]   Number of violations = 0.
+[INFO DRT-0267] cpu time = 00:00:00, elapsed time = 00:00:00, memory = 611.99 (MB), peak = 611.77 (MB)
+Total wire length = 746 um.
+Total wire length on LAYER li1 = 0 um.
+Total wire length on LAYER met1 = 251 um.
+Total wire length on LAYER met2 = 483 um.
+Total wire length on LAYER met3 = 11 um.
+Total wire length on LAYER met4 = 0 um.
+Total wire length on LAYER met5 = 0 um.
+Total number of vias = 177.
+Up-via summary (total 177):.
+
+----------------------
+ FR_MASTERSLICE      0
+            li1     86
+           met1     87
+           met2      4
+           met3      0
+           met4      0
+----------------------
+                   177
+
+
+[INFO DRT-0195] Start 25th optimization iteration.
+    Completing 10% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 20% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 30% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 40% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+[INFO DRT-0199]   Number of violations = 0.
+[INFO DRT-0267] cpu time = 00:00:00, elapsed time = 00:00:00, memory = 611.99 (MB), peak = 611.77 (MB)
+Total wire length = 746 um.
+Total wire length on LAYER li1 = 0 um.
+Total wire length on LAYER met1 = 251 um.
+Total wire length on LAYER met2 = 483 um.
+Total wire length on LAYER met3 = 11 um.
+Total wire length on LAYER met4 = 0 um.
+Total wire length on LAYER met5 = 0 um.
+Total number of vias = 177.
+Up-via summary (total 177):.
+
+----------------------
+ FR_MASTERSLICE      0
+            li1     86
+           met1     87
+           met2      4
+           met3      0
+           met4      0
+----------------------
+                   177
+
+
+[INFO DRT-0195] Start 33rd optimization iteration.
+    Completing 10% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 20% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 30% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 40% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 50% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 60% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 70% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 80% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 90% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 100% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+[INFO DRT-0199]   Number of violations = 0.
+[INFO DRT-0267] cpu time = 00:00:00, elapsed time = 00:00:00, memory = 611.99 (MB), peak = 611.77 (MB)
+Total wire length = 746 um.
+Total wire length on LAYER li1 = 0 um.
+Total wire length on LAYER met1 = 251 um.
+Total wire length on LAYER met2 = 483 um.
+Total wire length on LAYER met3 = 11 um.
+Total wire length on LAYER met4 = 0 um.
+Total wire length on LAYER met5 = 0 um.
+Total number of vias = 177.
+Up-via summary (total 177):.
+
+----------------------
+ FR_MASTERSLICE      0
+            li1     86
+           met1     87
+           met2      4
+           met3      0
+           met4      0
+----------------------
+                   177
+
+
+[INFO DRT-0195] Start 41st optimization iteration.
+    Completing 10% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 20% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 30% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 40% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 50% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 60% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 70% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 80% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 90% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 100% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+[INFO DRT-0199]   Number of violations = 0.
+[INFO DRT-0267] cpu time = 00:00:00, elapsed time = 00:00:00, memory = 611.99 (MB), peak = 611.77 (MB)
+Total wire length = 746 um.
+Total wire length on LAYER li1 = 0 um.
+Total wire length on LAYER met1 = 251 um.
+Total wire length on LAYER met2 = 483 um.
+Total wire length on LAYER met3 = 11 um.
+Total wire length on LAYER met4 = 0 um.
+Total wire length on LAYER met5 = 0 um.
+Total number of vias = 177.
+Up-via summary (total 177):.
+
+----------------------
+ FR_MASTERSLICE      0
+            li1     86
+           met1     87
+           met2      4
+           met3      0
+           met4      0
+----------------------
+                   177
+
+
+[INFO DRT-0195] Start 49th optimization iteration.
+    Completing 10% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 20% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 30% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 40% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+[INFO DRT-0199]   Number of violations = 0.
+[INFO DRT-0267] cpu time = 00:00:00, elapsed time = 00:00:00, memory = 611.99 (MB), peak = 611.77 (MB)
+Total wire length = 746 um.
+Total wire length on LAYER li1 = 0 um.
+Total wire length on LAYER met1 = 251 um.
+Total wire length on LAYER met2 = 483 um.
+Total wire length on LAYER met3 = 11 um.
+Total wire length on LAYER met4 = 0 um.
+Total wire length on LAYER met5 = 0 um.
+Total number of vias = 177.
+Up-via summary (total 177):.
+
+----------------------
+ FR_MASTERSLICE      0
+            li1     86
+           met1     87
+           met2      4
+           met3      0
+           met4      0
+----------------------
+                   177
+
+
+[INFO DRT-0195] Start 57th optimization iteration.
+    Completing 10% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 20% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 30% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 40% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 50% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 60% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 70% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 80% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 90% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+    Completing 100% with 0 violations.
+    elapsed time = 00:00:00, memory = 611.99 (MB).
+[INFO DRT-0199]   Number of violations = 0.
+[INFO DRT-0267] cpu time = 00:00:00, elapsed time = 00:00:00, memory = 611.99 (MB), peak = 611.77 (MB)
+Total wire length = 746 um.
+Total wire length on LAYER li1 = 0 um.
+Total wire length on LAYER met1 = 251 um.
+Total wire length on LAYER met2 = 483 um.
+Total wire length on LAYER met3 = 11 um.
+Total wire length on LAYER met4 = 0 um.
+Total wire length on LAYER met5 = 0 um.
+Total number of vias = 177.
+Up-via summary (total 177):.
+
+----------------------
+ FR_MASTERSLICE      0
+            li1     86
+           met1     87
+           met2      4
+           met3      0
+           met4      0
+----------------------
+                   177
+
+
+[INFO DRT-0198] Complete detail routing.
+Total wire length = 746 um.
+Total wire length on LAYER li1 = 0 um.
+Total wire length on LAYER met1 = 251 um.
+Total wire length on LAYER met2 = 483 um.
+Total wire length on LAYER met3 = 11 um.
+Total wire length on LAYER met4 = 0 um.
+Total wire length on LAYER met5 = 0 um.
+Total number of vias = 177.
+Up-via summary (total 177):.
+
+----------------------
+ FR_MASTERSLICE      0
+            li1     86
+           met1     87
+           met2      4
+           met3      0
+           met4      0
+----------------------
+                   177
+
+
+[INFO DRT-0267] cpu time = 00:00:02, elapsed time = 00:00:02, memory = 611.99 (MB), peak = 611.77 (MB)
+
+[INFO DRT-0180] Post processing.
+WORKCENTER routed
+WORKCENTER open pins 0
+[INFO RCX-0431] Defined process_corner X with ext_model_index 0
+[INFO RCX-0029] Defined extraction corner X
+[INFO RCX-0008] extracting parasitics of reg8 ...
+Notice 0: Split top of 8 T shapes.
+[INFO RCX-0435] Reading extraction model file /kit/libs.tech/openlane/rules.openrcx.sky130A.max.calibre ...
+[INFO RCX-0436] RC segment generation reg8 (max_merge_res 50.0) ...
+[INFO RCX-0040] Final 103 rc segments
+[INFO RCX-0439] Coupling Cap extraction reg8 ...
+[INFO RCX-0440] Coupling threshhold is 0.1000 fF, coupling capacitance less than 0.1000 fF will be grounded.
+[INFO RCX-0043] 216 wires to be extracted
+[INFO RCX-0442] 51% completion -- 112 wires have been extracted
+[INFO RCX-0442] 100% completion -- 216 wires have been extracted
+[INFO RCX-0045] Extract 38 nets, 141 rsegs, 141 caps, 188 ccs
+[INFO RCX-0015] Finished extracting reg8.
+[INFO RCX-0016] Writing SPEF ...
+[INFO RCX-0443] 38 nets finished
+[INFO RCX-0017] Finished writing SPEF ...
+[INFO RCX-0008] extracting parasitics of reg8 ...
+[INFO RCX-0435] Reading extraction model file /kit/libs.tech/openlane/rules.openrcx.sky130A.min.calibre ...
+[INFO RCX-0436] RC segment generation reg8 (max_merge_res 50.0) ...
+[INFO RCX-0040] Final 96 rc segments
+[INFO RCX-0439] Coupling Cap extraction reg8 ...
+[INFO RCX-0440] Coupling threshhold is 0.1000 fF, coupling capacitance less than 0.1000 fF will be grounded.
+[INFO RCX-0043] 216 wires to be extracted
+[INFO RCX-0045] Extract 38 nets, 134 rsegs, 134 caps, 184 ccs
+[INFO RCX-0015] Finished extracting reg8.
+[INFO RCX-0016] Writing SPEF ...
+[INFO RCX-0443] 38 nets finished
+[INFO RCX-0017] Finished writing SPEF ...
+[INFO RCX-0008] extracting parasitics of reg8 ...
+[INFO RCX-0435] Reading extraction model file /kit/libs.tech/openlane/rules.openrcx.sky130A.nom.calibre ...
+[INFO RCX-0436] RC segment generation reg8 (max_merge_res 50.0) ...
+[INFO RCX-0040] Final 102 rc segments
+[INFO RCX-0439] Coupling Cap extraction reg8 ...
+[INFO RCX-0440] Coupling threshhold is 0.1000 fF, coupling capacitance less than 0.1000 fF will be grounded.
+[INFO RCX-0043] 216 wires to be extracted
+[INFO RCX-0045] Extract 38 nets, 140 rsegs, 140 caps, 184 ccs
+[INFO RCX-0015] Finished extracting reg8.
+[INFO RCX-0016] Writing SPEF ...
+[INFO RCX-0443] 38 nets finished
+[INFO RCX-0017] Finished writing SPEF ...
+Design area 299 u^2 60% utilization.
+WORKCENTER utilization 0.5975 of the core, 299.04 um2 of cells
+WORKCENTER layout written

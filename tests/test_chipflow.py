@@ -341,6 +341,7 @@ def test_the_committed_table_is_sound_and_names_the_kit_install_sh_pins():
     assert {c["process"] for c in corners.values()} == {"slow", "typical", "fast"}
     # every block says what it was read from
     assert all(d["source"] for d in table["drc"]) and table["lvs"]["source"] and table["magic"]["source"]
+    assert table["klayout"]["source"]
     assert {d["origin"] for d in table["drc"]} == {"community"}
 
 
@@ -349,6 +350,9 @@ def test_the_committed_table_is_sound_and_names_the_kit_install_sh_pins():
     [
         (lambda t: t.update(extra=1), "unknown key 'extra'"),
         (lambda t: t.pop("lvs"), "pdks/broken.json: no lvs"),
+        (lambda t: t.pop("klayout"), "pdks/broken.json: no klayout"),
+        (lambda t: t["klayout"].pop("layer_map"), "pdks/broken.json: klayout: no layer_map"),
+        (lambda t: t["klayout"].update(colours="x"), "pdks/broken.json: klayout: unknown key 'colours'"),
         (
             lambda t: t["libraries"]["sky130_fd_sc_hd"]["corners"]["tt_025C_1v80"].update(process="tt"),
             "corners.tt_025C_1v80: not {liberty, process (slow, typical, fast), volts, celsius}",
@@ -415,6 +419,8 @@ def test_the_table_says_what_the_installed_kit_says():
         library["floorplan"]["tracks"],
         table["magic"]["rc"],
         table["magic"]["tech"],
+        table["klayout"]["layer_properties"],
+        table["klayout"]["layer_map"],
         table["lvs"]["setup"],
     ]
     files += [d["file"] for d in table["drc"]]
