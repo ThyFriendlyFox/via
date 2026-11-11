@@ -765,21 +765,32 @@ def test_one_gate_runs_alone_and_one_corner_is_never_taken_for_all(tmp_path, mon
     assert chipflow.cmd_gates(args, cli, only="sta") == 1
 
 
-def test_a_gate_that_is_not_built_is_a_skip_and_the_runs_verdict(tmp_path):
-    """The driver runs before its gates exist: a gate whose module is absent did not run, and a chip run
-    with a gate that did not run is SKIPPED with exit code 2, never GREEN."""
-    if chipflow.gate_function("lint") is not None:
-        pytest.skip("the LINT gate is built: its own tests hold it")
+@needs_kit
+def test_a_gate_that_is_not_built_is_a_skip_and_the_runs_verdict(tmp_path, monkeypatch, capsys):
+    """The driver runs before all its gates exist: a gate whose function is absent did not run, and a
+    chip run with a gate that did not run is SKIPPED with exit code 2, never GREEN."""
+    cli = load_cli()
     command("chip", "init", tmp_path / "reg8", "--top", "reg8")
     fill(tmp_path / "reg8")
-    ran = command("chip", "gates", tmp_path / "reg8", "--out", tmp_path / "o")
-    assert ran.returncode == 2
-    assert ran.stdout.splitlines()[0].startswith(
-        "SKIP   lint       the LINT gate is not built in this workcenter"
+    real = chipflow.gate_function
+
+    def lint_only(name: str):
+        if name == "lint":
+            return lambda run: run.result("lint", [], [], "1 thing")
+        return None  # as gate_function answers for a module or a function that is not there
+
+    monkeypatch.setattr(chipflow, "gate_function", lint_only)
+    assert chipflow.cmd_gates(gates_args(tmp_path / "reg8", tmp_path / "o"), cli) == 2
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[1].startswith("SKIP   sim        the SIM gate is not built in this workcenter")
+    assert lines[-1] == (
+        "SKIPPED (SIM: the SIM gate is not built in this workcenter): reg8  "
+        f"report {tmp_path / 'o' / 'gates.json'}"
     )
-    assert ran.stdout.splitlines()[-1].startswith(
-        "SKIPPED (LINT: the LINT gate is not built in this workcenter)"
-    )
+    # a module that is not there is a gate that is not built; an error inside a module is an error
+    monkeypatch.setattr(chipflow, "gate_function", real)
+    monkeypatch.setattr(chipflow, "GATES", (("lint", "no_such_chip_module"),))
+    assert chipflow.gate_function("lint") is None
 
 
 def test_the_board_gates_name_the_chip_command_for_a_chip_folder(tmp_path):

@@ -1,0 +1,4 @@
+%Error: /work/reg8/rtl/reg8.v:2:3: syntax error, unexpected assign, expecting ';'
+    2 |   assign y = a
+      |   ^~~~~~
+%Error: Exiting due to 1 error(s)

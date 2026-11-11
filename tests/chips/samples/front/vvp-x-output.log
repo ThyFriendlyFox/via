@@ -1,0 +1,5 @@
+mismatch at 60000 ns: q is xx, expected 00
+errors = 1
+checks = 4
+x_outputs = 1
+/work/reg8/tb/tb_reg8.v:58: $finish called at 120000 (1ps)
