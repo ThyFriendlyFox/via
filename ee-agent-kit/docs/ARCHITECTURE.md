@@ -1,8 +1,8 @@
 # Architecture
 
 EE Workcenter is a toolchain installer, a Python command line, and a set
-of skills that together run 4 gates on a KiCad 10 project. The code has
-7 parts.
+of skills that together run 4 gates on a KiCad 10 project. The table
+has its 10 parts.
 
 | Part | Folder | Task |
 |---|---|---|
@@ -14,6 +14,7 @@ of skills that together run 4 gates on a KiCad 10 project. The code has
 | Manifest | `WORKCENTER.md` | The contract a project gets: tools, skills, gates, paths, requirements. |
 | Templates | `templates/` | The files a project starts from: the verification package (`workcenter verify --init` copies `templates/verification/`), the brief and facts file for helpers on one package, and a first design file, a version's README and gates report (`templates/project/`). |
 | Environment | `environment/`, `Dockerfile` | The 2 ways the installer reaches a machine: a Claude Code cloud environment setup script, or a Docker image on the official KiCad base. |
+| Website | `site/` | 1 static page that says what the workcenter is, with real runs of its commands. Plain HTML, 1 stylesheet, 1 script; no install step. `site/build.sh` writes the folder a host serves. `tests/test_docs.py` holds its runs, its links and its build to the code. |
 | Kit | `ee-agent-kit/` | How work on this repository is run. Process, not product. |
 
 ## Data flow

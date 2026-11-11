@@ -7,13 +7,19 @@ command added without its line in the README fails here, not in a reader's hands
 
 from __future__ import annotations
 
+import html
 import re
+import shutil
+import struct
 import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
+SITE = ROOT / "site"
 README = (ROOT / "README.md").read_text(encoding="utf-8")
 CONTRACT = (ROOT / "WORKCENTER.md").read_text(encoding="utf-8")
 MISTAKES = (ROOT / "ee-agent-kit" / "MISTAKES.md").read_text(encoding="utf-8")
@@ -78,6 +84,15 @@ def written_commands(text: str) -> list[tuple[str, set[str]]]:
     return found
 
 
+def as_document(path: Path) -> str:
+    """A file's text as these tests read a document. A page of the site gives each `<code>` span as
+    code, with its tags left out and its entities read."""
+    text = path.read_text(encoding="utf-8")
+    if path.suffix != ".html":
+        return text
+    return html.unescape(re.sub(r"<[^>]+>", "", re.sub(r"</?code>", "`", text)))
+
+
 def test_every_flag_a_document_gives_a_command_is_a_flag_of_that_command():
     """A reader copies a command as it is written. A flag the command does not take ends in a usage
     error with exit code 2, which is also the code of a skipped run."""
@@ -93,10 +108,12 @@ def test_every_flag_a_document_gives_a_command_is_a_flag_of_that_command():
         ROOT / "ee-agent-kit" / "docs" / "CONFIGURATION.md",
         *sorted((ROOT / ".claude" / "skills").glob("*/SKILL.md")),
         *sorted((ROOT / "templates").rglob("*.md")),
+        SITE / "index.html",
     ]
+    assert "`workcenter design design.py --route`" in as_document(SITE / "index.html")
     wrong, checked = [], 0
     for doc in documents:
-        for name, given in written_commands(doc.read_text(encoding="utf-8")):
+        for name, given in written_commands(as_document(doc)):
             if name in flags:
                 checked += 1
                 wrong += [
@@ -177,3 +194,159 @@ def test_the_root_instruction_files_are_one_text():
     text = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     for named in re.findall(r"`((?:ee-agent-kit/)?[A-Z]+\.md|ee-agent-kit/[A-Z]+\.md)`", text):
         assert (ROOT / named).is_file(), named
+
+
+def runs_in(text: str) -> list[tuple[tuple[str, ...], list[str]]]:
+    """Each `$ workcenter ...` line of a document, with the lines printed under it up to the next
+    blank line or the end of its block."""
+    runs: list[tuple[tuple[str, ...], list[str]]] = []
+    in_run = False
+    for line in text.splitlines():
+        if line.startswith("$ workcenter "):
+            runs.append((tuple(line.split()[2:]), []))
+            in_run = True
+        elif not line.strip() or line.startswith("```"):
+            in_run = False
+        elif in_run:
+            runs[-1][1].append(line.rstrip())
+    return runs
+
+
+def masked(line: str) -> str:
+    """A printed line without what differs between 2 runs of 1 command: the seconds, and the folder
+    the checkout is in."""
+    line = re.sub(r"\[\d+\.\d+s\]", "[s]", line)
+    return re.sub(r"(report )\S*?(tests/boards/)", r"\1\2", line)
+
+
+@pytest.mark.skipif(
+    shutil.which("kicad-cli") is None or shutil.which("ngspice") is None,
+    reason="kicad-cli and ngspice run the gates the documents show",
+)
+def test_every_run_a_document_shows_is_what_the_command_prints(tmp_path):
+    """The README, the site and the Open Graph image show runs on fixture boards. A gate's summary
+    changes when the gate does: 46 corner runs were 18. A run typed once and not run again goes stale."""
+    documents = {
+        "README.md": README,
+        "site/index.html": as_document(SITE / "index.html"),
+        "site/og.html": as_document(SITE / "og.html"),
+    }
+    shown = {
+        (name, argv): lines for name, text in documents.items() for argv, lines in runs_in(text) if lines
+    }
+    assert len(shown) == 7 and {name for name, _ in shown} == set(documents)
+    boards = {arg.split("/")[-1] for _, argv in shown for arg in argv if arg.startswith("tests/boards/")}
+    for board in boards:
+        shutil.copytree(
+            ROOT / "tests" / "boards" / board,
+            tmp_path / "tests" / "boards" / board,
+            ignore=shutil.ignore_patterns("build", "__pycache__"),
+        )
+    printed: dict[tuple[str, ...], list[str]] = {}
+    for _, argv in shown:
+        if argv not in printed:
+            if argv[0] == "next":
+                # `next` reads the last gates report. The page shows it after a run of the gates; before
+                # one, its first line is "Run the gates."
+                subprocess.run(
+                    [sys.executable, str(CLI), "gates", *argv[1:]],
+                    cwd=tmp_path,
+                    capture_output=True,
+                    check=False,
+                )
+            proc = subprocess.run(
+                [sys.executable, str(CLI), *argv], cwd=tmp_path, capture_output=True, text=True, check=False
+            )
+            printed[argv] = [masked(line.rstrip()) for line in proc.stdout.splitlines() if line.strip()]
+    for (name, argv), lines in shown.items():
+        assert [masked(line) for line in lines] == printed[argv], f"{name}: workcenter {' '.join(argv)}"
+
+
+def links_of(page: Path) -> list[str]:
+    return re.findall(r'(?:href|src)="([^"]+)"', page.read_text(encoding="utf-8"))
+
+
+def test_every_link_on_the_site_names_what_exists():
+    """A link to the repository names a path on `main`: a path the tree does not hold is a 404 after
+    the merge. A link into the page names an id, and a link beside the page names a file."""
+    blob = "https://github.com/ThyFriendlyFox/via/blob/main/"
+    missing, to_repo, into_page, beside = [], 0, 0, 0
+    for page in (SITE / "index.html", SITE / "404.html", SITE / "og.html"):
+        text = page.read_text(encoding="utf-8")
+        for link in links_of(page):
+            if link.startswith(blob):
+                to_repo += 1
+                found = (ROOT / link[len(blob) :]).is_file()
+            elif link.startswith("#"):
+                into_page += 1
+                found = f'id="{link[1:]}"' in text
+            elif re.match(r"https?://|\./$|%ORIGIN%", link):
+                continue
+            else:
+                beside += 1
+                found = (SITE / link).is_file()
+            if not found:
+                missing.append(f"{page.name}: {link}")
+    assert to_repo >= 11 and into_page >= 7 and beside >= 7, "the site's links are no longer found"
+    assert missing == []
+
+
+def test_the_site_builds_for_an_address_and_without_one(tmp_path):
+    """`site/build.sh` writes what a host serves. A page that names a file the script does not copy
+    breaks only after the deploy, so each link of a built page is looked up in the built folder."""
+
+    def build(*args: object) -> subprocess.CompletedProcess:
+        command = ["sh", str(SITE / "build.sh"), *map(str, args)]
+        return subprocess.run(command, capture_output=True, text=True, check=False)
+
+    served = tmp_path / "served"
+    assert build(served, "https://example.org/via/").returncode == 0
+    page = (served / "index.html").read_text(encoding="utf-8")
+    assert '<link rel="canonical" href="https://example.org/via/">' in page
+    assert '<meta property="og:image" content="https://example.org/via/og.png">' in page
+    assert '<base href="https://example.org/via/">' in (served / "404.html").read_text(encoding="utf-8")
+    assert (served / "og.png").is_file() and (served / "fonts" / "LICENSE").is_file()
+    looked_up = 0
+    for name in ("index.html", "404.html"):
+        assert "%ORIGIN%" not in (served / name).read_text(encoding="utf-8")
+        for link in links_of(served / name):
+            if not re.match(r"https?://|#|\./$", link):
+                looked_up += 1
+                assert (served / link).is_file(), f"{name} names {link}, and build.sh does not copy it"
+    assert looked_up >= 6
+
+    plain = tmp_path / "plain"
+    assert build(plain).returncode == 0
+    for name in ("index.html", "404.html"):
+        text = (plain / name).read_text(encoding="utf-8")
+        for absent in ("%ORIGIN%", "og:image", "og:url", 'rel="canonical"', "<base"):
+            assert absent not in text, f"{name} keeps {absent} with no address to write into it"
+
+    again = build(plain)
+    assert again.returncode == 2 and "is not empty" in again.stderr
+    for bad in ("ftp://example.org", "https://", "example.org", "https://example.org/a|b"):
+        refused = build(tmp_path / "refused", bad)
+        assert refused.returncode == 2 and bad in refused.stderr, bad
+        assert not (tmp_path / "refused").exists(), bad
+
+
+def test_the_open_graph_image_has_the_size_the_page_states():
+    """GitHub asks 1280 x 640 and under 1 MB of a social preview. The page states the size to a
+    crawler, so the 2 files and the page say 1 size."""
+    page = (SITE / "index.html").read_text(encoding="utf-8")
+    stated = tuple(
+        int(re.search(rf'og:image:{side}" content="(\d+)"', page).group(1)) for side in ("width", "height")
+    )
+    assert stated == (1280, 640)
+    for name in ("og.png", "og-dark.png"):
+        data = (SITE / name).read_bytes()
+        assert data[:8] == b"\x89PNG\r\n\x1a\n", name
+        assert struct.unpack(">II", data[16:24]) == stated, name
+        assert len(data) < 1_000_000, name
+
+
+def test_every_picture_and_link_in_the_readme_names_a_file():
+    found = re.findall(r'\]\(([^)#\s]+)\)|(?:src|srcset)="([^"]+)"', README)
+    local = [a or b for a, b in found if not (a or b).startswith(("http://", "https://"))]
+    assert {"site/og.png", "site/og-dark.png", "LICENSE", "site/fonts/LICENSE"} <= set(local)
+    assert [target for target in local if not (ROOT / target).is_file()] == []

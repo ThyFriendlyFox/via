@@ -19,6 +19,20 @@ runner is `ubuntu-24.04`, so the PPA step, the Java package, and ngspice
 match the cloud environment. `REQUIRE_FREEROUTING=1` makes a blocked JAR
 download fail the run; a green CI proves the autoroute engine installs.
 
+## The website (Vercel project settings)
+
+- A Vercel project linked to this repository, Root Directory `site`,
+  production branch `main`. `site/vercel.json` holds the build command,
+  the output folder and the headers, so the project needs no other setting.
+- Every push to `main` deploys production. Every other branch gets a
+  preview. `make verify` runs the same `site/build.sh` in
+  `tests/test_docs.py`, so a build that fails on Vercel fails here first.
+
+## Social preview (repo Settings)
+
+- Settings, General, Social preview: upload `site/og.png`. GitHub has no
+  file or API for this image.
+
 ## Branch protection on `main` (repo Settings)
 
 - Require the `verify` check; require PRs; require up-to-date branches;

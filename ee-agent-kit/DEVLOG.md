@@ -39,6 +39,25 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-11 — The repository got a face: a website, a mark and an Open Graph image
+
+The owner asked for a professional open-source face that relies on the
+kit, and then for a site in the look of the apparatus site. I read that
+site and its repository first. Its look is paper and ink, 1 ink-blue
+accent, Inter at 2 weights and no borders, with real captures in place of
+drawings. I built `site/` in that look: 1 static page, 1 stylesheet, 1
+script and no install step. The page shows 4 runs as the terminal printed
+them. The tool prints no colour, so the runs have none. My first mark
+looked like a magnifying glass. The mark is now a via in cross-section: a
+trace on the top layer, the plated hole, a trace on the bottom layer. A
+new test runs each command the documents show and compares the lines. It
+failed on its first run: `next` printed "Run the gates." on a fresh copy,
+because I had captured it after a gates run (M121). The site is not
+served yet: the Vercel project deploys production from `main`, and this
+work is on a branch.
+
+Evidence: `tests/test_docs.py`, 14 tests pass; 20 mutants, 18 caught and the 2 masks holding.
+
 ## 2026-11-11 — Two reviews broke the corner search, and a small model built a board
 
 Two reviewers read yesterday's gate with one aim: make it pass a circuit

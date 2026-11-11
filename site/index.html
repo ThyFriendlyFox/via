@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Via: an electronics workcenter for agents</title>
+    <meta name="description" content="Via holds the tools, skills and gates an agent needs to take a KiCad 10 project to fabrication outputs. ERC, DRC, simulation at every corner and export run in order. A board is done when the last line says GREEN. Open source under MIT.">
+    <link rel="canonical" href="%ORIGIN%/">
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="preload" href="fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="site.css">
+    <meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#1b1917" media="(prefers-color-scheme: dark)">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Via">
+    <meta property="og:title" content="Via: an electronics workcenter for agents">
+    <meta property="og:description" content="The tools, skills and gates an agent needs to take a KiCad 10 project to fabrication outputs. A board is done when the last line says GREEN. Open source under MIT.">
+    <meta property="og:url" content="%ORIGIN%/">
+    <meta property="og:image" content="%ORIGIN%/og.png"><meta property="og:image:width" content="1280"><meta property="og:image:height" content="640"><meta property="og:image:alt" content="Via, an electronics workcenter for agents, beside a run of its 4 gates that ends in GREEN"><meta name="twitter:card" content="summary_large_image">
+    <!-- Before first paint: the stored theme, else the system's. -->
+    <script>
+      (() => {
+        let stored = null;
+        try {
+          stored = localStorage.getItem("theme");
+        } catch {}
+        const dark = stored ? stored === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+        document.documentElement.classList.toggle("dark", dark);
+        if (stored) for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.content = dark ? "#1b1917" : "#fbfaf7";
+      })();
+    </script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="./" aria-label="Via, home">
+          <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9h18.5v14H30M11.5 9v14h9" stroke-width="3"/><path d="M2 16h5.5M24.5 16H30" stroke-width="3" stroke-opacity=".28"/></svg>
+          <span>via</span>
+        </a>
+        <nav class="site-nav" aria-label="Sections">
+          <ul>
+            <li><a href="#path">The path</a></li>
+            <li><a href="#gates">Gates</a></li>
+            <li><a href="#corners">Corners</a></li>
+            <li><a href="#how-it-works">How it works</a></li>
+            <li><a href="#run">Run it</a></li>
+          </ul>
+        </nav>
+        <div class="header-end">
+          <button class="icon-btn" type="button" data-theme-toggle aria-pressed="false" aria-label="Dark theme">
+            <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.2 14.6A8.4 8.4 0 1 1 9.4 3.8a6.6 6.6 0 0 0 10.8 10.8Z"/></svg>
+            <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>
+          </button>
+          <a class="gh-pill" href="https://github.com/ThyFriendlyFox/via" aria-label="Via on GitHub">
+            <!-- The GitHub mark (Primer Octicons, MIT). -->
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>
+            <span>GitHub</span>
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <main id="main" tabindex="-1">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="wrap">
+          <div>
+            <p class="eyebrow">Open source · MIT</p>
+            <h1 class="display" id="hero-title">An electronics workcenter for agents</h1>
+            <p class="lede">Via holds the tools, skills and gates an agent needs to take a KiCad 10 project to fabrication outputs. It runs ERC, DRC, simulation and export, in that order. A board is done when the last line says GREEN.</p>
+            <div class="actions">
+              <a class="btn btn-primary" href="https://github.com/ThyFriendlyFox/via">
+                <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>
+                Get the code
+              </a>
+              <a class="btn btn-quiet" href="#run">
+                Run it yourself
+                <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              </a>
+            </div>
+            <p class="small">Via is early: it has no release yet. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/STATUS.md">Where it stands</a>.</p>
+          </div>
+
+          <figure>
+            <div class="run">
+<pre data-run="gates"><span class="prompt">$ </span><span class="cmd">workcenter gates tests/boards/pass-rc-divider</span>
+<span class="out">PASS   erc        0 errors, 0 warnings  [0.27s]
+PASS   drc        0 errors, 0 warnings (0 unconnected, 0 parity)  [0.59s]
+PASS   sim        1 decks, 46 corner runs, 0 failures  [0.16s]
+PASS   export     4/4 outputs, 22 gerber files  [1.21s]</span>
+<span class="verdict">GREEN: rc_divider  report /home/user/via/tests/boards/pass-rc-divider/build/gates.json</span>
+
+<span class="prompt">$ </span><span class="cmd">workcenter gates tests/boards/fail-drc-clearance</span>
+<span class="out">PASS   erc        0 errors, 0 warnings  [0.27s]
+FAIL   drc        1 errors, 1 warnings (0 unconnected, 0 parity)  [0.63s]
+       - error: clearance: Clearance violation ( clearance 0.2000 mm; actual 0.0500 mm)
+       - warning: track_dangling: Track has unconnected end</span>
+<span class="verdict">RED: rc_divider  report /home/user/via/tests/boards/fail-drc-clearance/build/gates.json</span></pre>
+            </div>
+            <figcaption>2 runs on fixture boards from the repository, as the terminal printed them. The second board has a clearance error on purpose.</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="section" id="path" aria-labelledby="path-title">
+        <div class="wrap">
+          <div class="head">
+            <p class="eyebrow">The path</p>
+            <h2 class="title" id="path-title">Design. Gate. Fix. Done.</h2>
+          </div>
+          <div class="split">
+            <ol class="steps">
+              <li>
+                <span class="n">01</span>
+                <div>
+                  <h3>Design as code</h3>
+                  <p><code>workcenter design design.py --route</code> builds a schematic and a routed board from a Python file. The file names parts from the KiCad libraries. No GUI at any step.</p>
+                </div>
+              </li>
+              <li>
+                <span class="n">02</span>
+                <div>
+                  <h3>4 gates, in order</h3>
+                  <p><code>workcenter gates &lt;project&gt;</code> runs ERC, DRC, SIM and EXPORT. It prints 1 line for each gate. The last line is the verdict.</p>
+                </div>
+              </li>
+              <li>
+                <span class="n">03</span>
+                <div>
+                  <h3>The next step</h3>
+                  <p><code>workcenter next &lt;project&gt;</code> names the one step that is left, its command, and the fix for the first failure.</p>
+                </div>
+              </li>
+              <li>
+                <span class="n">04</span>
+                <div>
+                  <h3>Fabrication outputs</h3>
+                  <p>Gerbers, drill files, a BOM and a schematic PDF go to <code>build/fab/</code>. They come from a board that passed every gate.</p>
+                </div>
+              </li>
+            </ol>
+            <figure>
+              <div class="run">
+<pre data-run="next"><span class="prompt">$ </span><span class="cmd">workcenter next tests/boards/fail-sim-corner</span>
+<span class="out">NEXT       The circuit is inside its bound as written and outside it at that corner. Change the circuit: a tighter part, another value, another topology. A bound, a rule or a requirement is never changed to pass: the design changes.
+RUN        workcenter gates tests/boards/fail-sim-corner
+WHY        SIM failed: diode_ref:vref=0.4215933 at 85 C, R1 +5 % (and 5 more corners) not in [0.5, 0.6] (the fixture's reference window, 0.55 V within 0.05 V)
+READ       .claude/skills/simulate/SKILL.md, "Corners"
+DONE WHEN  the last line starts with GREEN</span></pre>
+              </div>
+              <figcaption>The next step for a fixture board whose circuit leaves its bound at a corner, after a run of the gates. A person and an agent of any size read the same 5 lines.</figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <section class="section band" id="gates" aria-labelledby="gates-title">
+        <div class="wrap">
+          <div class="head center">
+            <h2 class="title" id="gates-title">A board is done when the last line says GREEN.</h2>
+            <p class="lede">The exit code says the same as the line. A gate that did not run is never a pass.</p>
+          </div>
+          <ul class="verdicts" aria-label="The verdicts">
+            <li class="ok"><i></i>GREEN <span>exit 0</span></li>
+            <li class="bad"><i></i>RED <span>exit 1</span></li>
+            <li><i></i>SKIPPED <span>exit 2</span></li>
+          </ul>
+          <ol class="gates">
+            <li>
+              <span class="n">01</span>
+              <h3>ERC</h3>
+              <p>KiCad's electrical rules, on the schematic.</p>
+            </li>
+            <li>
+              <span class="n">02</span>
+              <h3>DRC</h3>
+              <p>KiCad's design rules, on the routed board. <code>--fab</code> adds a fabrication house's limits.</p>
+            </li>
+            <li>
+              <span class="n">03</span>
+              <h3>SIM</h3>
+              <p>ngspice runs every deck. Each measured value is held to its bound, at every corner.</p>
+            </li>
+            <li>
+              <span class="n">04</span>
+              <h3>EXPORT</h3>
+              <p>Gerbers, drill files, the BOM and the schematic PDF, written to <code>build/fab/</code>.</p>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="section" id="corners" aria-labelledby="corners-title">
+        <div class="wrap">
+          <div class="head">
+            <p class="eyebrow">Corners</p>
+            <h2 class="title" id="corners-title">A bound holds at every corner, or it does not hold.</h2>
+            <p class="lede">A circuit that works as written can leave its limits when a part is at the end of its tolerance, or the board is hot. The SIM gate runs those cases before the board is built.</p>
+          </div>
+          <figure class="shot">
+            <div class="run">
+<pre data-run="sim"><span class="prompt">$ </span><span class="cmd">workcenter sim tests/boards/fail-sim-corner</span>
+<span class="out">FAIL   sim        2 decks, 32 corner runs, 2 failures, 1 warnings  [0.13s]
+       - diode_ref:vref=0.4215933 at 85 C, R1 +5 % (and 5 more corners) not in [0.5, 0.6] (the fixture's reference window, 0.55 V within 0.05 V)
+       - divider:vout=2.625 at R1 -5 %, R2 +5 % (and 9 more corners) not in [2.45, 2.55] (the fixture's output window, 2.5 V within 2 %)
+       - warning: divider: no measure moves with temperature: nothing in the deck or its models carries one</span></pre>
+            </div>
+            <figcaption>A fixture board that is inside its bounds as written. It fails at 85 C, and with 2 resistors at opposite ends of 5 %.</figcaption>
+          </figure>
+          <div class="cards">
+            <div>
+              <h3>Temperature</h3>
+              <p>Every deck runs at each temperature the project names. The project gives each range with its source.</p>
+            </div>
+            <div>
+              <h3>Tolerance</h3>
+              <p>Each part runs at both ends of its tolerance. Every combination of those ends runs where they are few, and Monte Carlo draws where they are many.</p>
+            </div>
+            <div>
+              <h3>Frequency plan</h3>
+              <p>The gate holds every switching frequency and its harmonics against every resonance a deck measured.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="how-it-works" aria-labelledby="how-title">
+        <div class="wrap">
+          <div class="head">
+            <p class="eyebrow">How it works</p>
+            <h2 class="title" id="how-title">3 engines, 4 gates, 1 verdict.</h2>
+          </div>
+          <div class="frame diagram">
+            <div class="flow">
+              <div class="node">
+                <b><code>design.py</code></b>
+                <span>a Python file that names parts from the KiCad libraries</span>
+              </div>
+              <div class="hop">
+                <code>workcenter design</code>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg>
+              </div>
+              <div class="node">
+                <b>KiCad project</b>
+                <span>a schematic and a routed board</span>
+              </div>
+              <div class="hop">
+                <code>workcenter gates</code>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg>
+              </div>
+              <div class="node accent">
+                <b>ERC · DRC · SIM · EXPORT</b>
+                <span>4 gates, in order; the last line is the verdict</span>
+              </div>
+              <div class="hop">
+                <span>GREEN</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg>
+              </div>
+              <div class="node">
+                <b><code>build/fab/</code></b>
+                <span>gerbers, drill files, a BOM, a schematic PDF</span>
+              </div>
+            </div>
+            <p class="engines-label">The engines, all headless</p>
+            <div class="engines">
+              <div class="node">
+                <b>KiCad 10</b>
+                <span><code>kicad-cli</code> runs ERC, DRC and the export</span>
+              </div>
+              <div class="node">
+                <b>ngspice</b>
+                <span>runs every deck at every corner</span>
+              </div>
+              <div class="node">
+                <b>FreeRouting</b>
+                <span>routes the board</span>
+              </div>
+            </div>
+          </div>
+          <p class="after">The command line is 1 Python file that needs only the standard library. <code>workcenter doctor</code> reports each engine's status. A gate whose engine is absent is skipped by name, and that run is never GREEN.</p>
+          <p class="after">Each procedure is a Markdown file, a skill: design a board, run the gates, simulate, route, price the parts, write the verification package. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/WORKCENTER.md">The contract</a> lists what a project gets.</p>
+        </div>
+      </section>
+
+      <section class="section" id="run" aria-labelledby="run-title">
+        <div class="wrap">
+          <div class="head">
+            <p class="eyebrow">Run it</p>
+            <h2 class="title" id="run-title">Open source under MIT. Run it on your machine.</h2>
+            <p class="lede">On Ubuntu 24.04, <code>install.sh</code> installs KiCad 10, ngspice, Java 21 and FreeRouting. The fixture boards in the repository are the first projects to run.</p>
+          </div>
+          <div class="frame commands">
+<pre><span class="prompt">$ </span>git clone https://github.com/ThyFriendlyFox/via.git &amp;&amp; cd via
+<span class="prompt">$ </span>sudo ./install.sh
+<span class="prompt">$ </span>workcenter doctor
+<span class="prompt">$ </span>workcenter gates tests/boards/pass-rc-divider</pre>
+            <button class="copy" type="button" data-copy aria-label="Copy the commands">
+              <svg class="todo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></svg>
+              <svg class="done" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+            </button>
+          </div>
+          <p class="after"><b>Where it stands.</b> Via is early and has no release yet. The gates, the corners, the frequency plan and <code>workcenter next</code> run on the fixture boards in every check of the repository. The cloud setup script and the Docker build have not run yet. Chip design, from RTL to a mask layout, is in progress on a branch. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/STATUS.md">The status page</a> has the rest.</p>
+          <div class="cards">
+            <a class="card" href="https://github.com/ThyFriendlyFox/via/blob/main/tests/boards/README.md">
+              <h3>Fixture boards <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></h3>
+              <p>Each board passes everything or fails 1 named gate. They are the repository's tests.</p>
+            </a>
+            <a class="card" href="https://github.com/ThyFriendlyFox/via/blob/main/environment/README.md">
+              <h3>A cloud environment <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></h3>
+              <p>The environment carries the software. The board repository carries the board.</p>
+            </a>
+            <a class="card" href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/ROADMAP.md">
+              <h3>The roadmap <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></h3>
+              <p>What gets built next, in order. Every feature starts there.</p>
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section class="closing" aria-labelledby="closing-title">
+        <div class="wrap">
+          <svg class="mark" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9h18.5v14H30M11.5 9v14h9" stroke-width="3"/><path d="M2 16h5.5M24.5 16H30" stroke-width="3" stroke-opacity=".28"/></svg>
+          <h2 class="title" id="closing-title">Take a board to GREEN.</h2>
+          <p class="lede">Read the code, run the gates on a fixture board, or open your own project.</p>
+          <div class="actions">
+            <a class="btn btn-primary" href="https://github.com/ThyFriendlyFox/via">
+              <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>
+              Get the code
+            </a>
+            <a class="btn btn-fill" href="https://github.com/ThyFriendlyFox/via/blob/main/WORKCENTER.md">The contract</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap">
+        <div class="row">
+          <p class="brand">
+            <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9h18.5v14H30M11.5 9v14h9" stroke-width="3"/><path d="M2 16h5.5M24.5 16H30" stroke-width="3" stroke-opacity=".28"/></svg>
+            via
+          </p>
+          <nav aria-label="Footer">
+            <ul>
+              <li><a href="https://github.com/ThyFriendlyFox/via">GitHub</a></li>
+              <li><a href="https://github.com/ThyFriendlyFox/via/blob/main/WORKCENTER.md">Contract</a></li>
+              <li><a href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/STATUS.md">Status</a></li>
+              <li><a href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/ROADMAP.md">Roadmap</a></li>
+              <li><a href="https://github.com/ThyFriendlyFox/via/blob/main/LICENSE">MIT License</a></li>
+            </ul>
+          </nav>
+        </div>
+        <p class="small">KiCad, ngspice and FreeRouting keep their own licenses. Via is not part of the KiCad project.</p>
+      </div>
+    </footer>
+
+    <script src="site.js" defer></script>
+  </body>
+</html>

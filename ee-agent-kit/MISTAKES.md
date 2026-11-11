@@ -733,3 +733,9 @@ What happened: I started 3 helpers at once on the day after M113. The account's 
 Cost: 2 waits, 3 worktrees read by hand to find how far each came, 1 helper's work finished by me.
 Root cause: P31 step 1 says to count what the account has left. A session cannot read that number, so the step could not be followed, and I started 1 helper more than it allows.
 Process: P31
+
+## M121 — 2026-11-11 — A run shown without the state it was captured in, and 2 facts from memory
+What happened: I captured `workcenter next` for the website after a gates run and showed it alone. The new test ran it on a fresh copy and got "Run the gates." In the same hour I typed a link count into a test and a font's version into `site/README.md` from memory. The run counted 7 links where I wrote 8, and the font package's metadata does not name the version I wrote.
+Cost: 2 red test runs and 3 corrections, all before the first commit.
+Root cause: A capture carries the state of the folder it ran in, and nothing beside the run said what had run before. The 2 facts are M118 again: P9 step 10 named counts in a commit message or a document, and I did not read a test's threshold or a version as one.
+Process: P9

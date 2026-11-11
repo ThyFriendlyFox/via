@@ -11,7 +11,7 @@ doctor:             ## report engine status; the "build" of this repo is a worki
 	python3 tools/workcenter doctor
 
 lint:               ## shellcheck + ruff, read-only
-	shellcheck install.sh verify/verify.sh environment/setup.sh
+	shellcheck install.sh verify/verify.sh environment/setup.sh site/build.sh
 	$(PY) -m ruff check tools tests
 	$(PY) -m ruff format --check tools tests
 

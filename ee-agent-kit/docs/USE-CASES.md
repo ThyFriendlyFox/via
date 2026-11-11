@@ -75,3 +75,9 @@ or skill. **Done** is the observable result that ends the case.
 **Open.** A different kind of work with its own tools, such as firmware or mechanical CAD.
 **Run.** Copy the shape: `install.sh`, a `tools/<name>` CLI with gates, fixture projects, `WORKCENTER.md`, the kit with `attached-repos`.
 **Done.** `workcenter doctor` for the new workcenter reports `ok`, and its fixtures pass and fail as documented.
+
+## Find out what the workcenter is
+
+**Open.** A person or an agent who has not seen this repository.
+**Run.** Read the website (`site/`), or the top of `README.md`.
+**Done.** They know what the workcenter does, they saw a real run of the gates, and they have the 4 commands that run a fixture board.

@@ -14,7 +14,7 @@ PY=python3
 step() { printf '\n== %s\n' "$*"; }
 
 step "1/4 lint"
-shellcheck install.sh verify/verify.sh environment/setup.sh
+shellcheck install.sh verify/verify.sh environment/setup.sh site/build.sh
 "$PY" -m ruff check tools tests
 "$PY" -m ruff format --check tools tests
 

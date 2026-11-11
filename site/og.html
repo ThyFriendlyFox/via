@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Via: the Open Graph image</title>
+    <meta name="robots" content="noindex">
+    <link rel="stylesheet" href="site.css">
+    <!-- The page og.png and og-dark.png are captures of, at 1280 x 640. README.md has the command.
+         `og.html?dark` is the dark twin. The run is the first run of index.html. -->
+    <style>
+      html,
+      body {
+        width: 1280px;
+        height: 640px;
+        overflow: hidden;
+      }
+      body {
+        position: relative;
+        min-height: 0;
+      }
+      .left {
+        position: absolute;
+        left: 72px;
+        top: 0;
+        bottom: 0;
+        width: 440px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+      .left svg {
+        width: 132px;
+        height: 132px;
+        margin-left: -8px;
+      }
+      .left h1 {
+        margin-top: 28px;
+        font-size: 56px;
+        font-weight: 500;
+        letter-spacing: -0.03em;
+        line-height: 1;
+      }
+      .left p {
+        margin-top: 18px;
+        font-size: 30px;
+        line-height: 1.25;
+        letter-spacing: -0.012em;
+        color: var(--muted-foreground);
+      }
+      .right {
+        position: absolute;
+        left: 548px;
+        right: 48px;
+        top: 0;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+      }
+      .right .run {
+        width: 100%;
+      }
+      .right .run pre {
+        padding: 30px 30px 32px;
+        font-size: 14px;
+        line-height: 2;
+      }
+    </style>
+    <script>
+      if (location.search.includes("dark")) document.documentElement.classList.add("dark");
+    </script>
+  </head>
+  <body>
+    <div class="left">
+      <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9h18.5v14H30M11.5 9v14h9" stroke-width="3"/><path d="M2 16h5.5M24.5 16H30" stroke-width="3" stroke-opacity=".28"/></svg>
+      <h1>via</h1>
+      <p>An electronics workcenter for agents</p>
+    </div>
+    <div class="right">
+      <div class="run">
+<pre><span class="prompt">$ </span><span class="cmd">workcenter gates tests/boards/pass-rc-divider</span>
+<span class="out">PASS   erc        0 errors, 0 warnings  [0.27s]
+PASS   drc        0 errors, 0 warnings (0 unconnected, 0 parity)  [0.59s]
+PASS   sim        1 decks, 46 corner runs, 0 failures  [0.16s]
+PASS   export     4/4 outputs, 22 gerber files  [1.21s]</span>
+<span class="verdict">GREEN: rc_divider  report /home/user/via/tests/boards/pass-rc-divider/build/gates.json</span></pre>
+      </div>
+    </div>
+  </body>
+</html>

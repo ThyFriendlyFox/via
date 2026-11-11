@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <!-- The Via mark: a via in cross-section. A trace on the top copper layer, the plated hole through the board, a trace on the bottom layer. -->
+  <style>g{stroke:#1d1b18}@media (prefers-color-scheme:dark){g{stroke:#f1efeb}}</style>
+  <g><path d="M2 9h18.5v14H30M11.5 9v14h9" stroke-width="3"/><path d="M2 16h5.5M24.5 16H30" stroke-width="3" stroke-opacity=".28"/></g>
+</svg>

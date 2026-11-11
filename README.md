@@ -1,8 +1,35 @@
-# EE Workcenter
+# Via
 
-A workcenter is a pre-packaged environment an agent steps into to do one
-kind of work well. This one does electronics: it turns a KiCad 10
-project into fabrication outputs that passed every gate.
+[![CI](https://github.com/ThyFriendlyFox/via/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ThyFriendlyFox/via/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-1e49b7)](LICENSE)
+
+Via is the EE Workcenter. A workcenter is a pre-packaged environment an
+agent steps into to do one kind of work well. This one does electronics:
+it turns a KiCad 10 project into fabrication outputs that passed every gate.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="site/og-dark.png">
+  <img alt="Via, an electronics workcenter for agents, beside a run of its 4 gates on a fixture board that ends in GREEN" src="site/og.png">
+</picture>
+
+2 runs on fixture boards, as the terminal printed them. The second board
+has a clearance error on purpose.
+
+```text
+$ workcenter gates tests/boards/pass-rc-divider
+PASS   erc        0 errors, 0 warnings  [0.27s]
+PASS   drc        0 errors, 0 warnings (0 unconnected, 0 parity)  [0.59s]
+PASS   sim        1 decks, 46 corner runs, 0 failures  [0.16s]
+PASS   export     4/4 outputs, 22 gerber files  [1.21s]
+GREEN: rc_divider  report /home/user/via/tests/boards/pass-rc-divider/build/gates.json
+
+$ workcenter gates tests/boards/fail-drc-clearance
+PASS   erc        0 errors, 0 warnings  [0.27s]
+FAIL   drc        1 errors, 1 warnings (0 unconnected, 0 parity)  [0.63s]
+       - error: clearance: Clearance violation ( clearance 0.2000 mm; actual 0.0500 mm)
+       - warning: track_dangling: Track has unconnected end
+RED: rc_divider  report /home/user/via/tests/boards/fail-drc-clearance/build/gates.json
+```
 
 - **Engines:** KiCad 10 (`kicad-cli`), ngspice, FreeRouting.
 - **Gates:** ERC, DRC, SIM, EXPORT, in that order. A board is done when
@@ -85,6 +112,14 @@ next <project>` gives the step, `make verify` the repository's health.
 `docker build -t ee-workcenter .` on the official `kicad/kicad:10.0`
 base. `release.yml` publishes it to GHCR on every tag.
 
+## The website
+
+`site/` is the project's website: 1 static page with real runs of the
+commands. `python3 -m http.server 8000 --directory site` serves it at
+http://localhost:8000. Vercel deploys it: every push to `main` deploys
+production, and every other branch gets a preview. `site/README.md` has
+the commands, the files and how the images are drawn.
+
 ## Repository map
 
 | Path | What |
@@ -106,11 +141,25 @@ base. `release.yml` publishes it to GHCR on every tag.
 | `tests/boards/` | Fixture boards and what each proves. |
 | `third_party/kistack/` | The vendored kistack skills. |
 | `environment/` | Cloud environment setup script and hosts. |
+| `site/` | The website: 1 static page, its stylesheet, the Open Graph image. |
 | `ee-agent-kit/` | How work on this repository is run. Start at `ee-agent-kit/ROUTING.md`. |
 
 ## Working on this repository
 
 `make verify` must be green before any push. `ee-agent-kit/AGENTS.md` is
 binding; `ee-agent-kit/ROADMAP.md` decides what gets built.
+`ee-agent-kit/CONTRIBUTING.md` has the rules for a pull request.
+`ee-agent-kit/SECURITY.md` says how to report a vulnerability.
 
-MIT licensed. KiCad, ngspice, and FreeRouting keep their own licenses.
+## Where things stand
+
+`ee-agent-kit/STATUS.md` has each area's state with its evidence. In
+short: the gates, the corners, the frequency plan and `workcenter next`
+run on the fixture boards in `make verify`. Via has no release yet. The
+cloud setup script and the Docker build have not run yet.
+
+## License
+
+MIT; see [LICENSE](LICENSE). KiCad, ngspice, and FreeRouting keep their
+own licenses. Inter, the website's font, is under the SIL Open Font
+License: [site/fonts/LICENSE](site/fonts/LICENSE).

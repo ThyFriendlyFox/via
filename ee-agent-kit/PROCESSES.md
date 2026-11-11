@@ -282,7 +282,11 @@ Edit tool.
     of the command that gives it: tests passed, corner runs, findings.
     Run that command first, on the tree the text describes. Never type a
     count from memory, and never carry one over from an earlier run
-    (M112, M118).
+    (M112, M118). A threshold in a test and a version in a document are
+    counts too: read each from a run or from the file that states it.
+11. A run a document shows is captured on a fresh copy of its project,
+    or the text beside it names what ran before. A command that reads
+    the last report prints something else on a fresh copy (M121).
 
 Done when: the script reported every anchor found, and the formatter and
 linter pass on the result.
