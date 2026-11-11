@@ -841,3 +841,9 @@ What happened: In round 6 of the fire alarm example I drew keep-outs on B.Cu und
 Cost: 4 routes (12 minutes) with an open net or an island. The groups' lines moved down behind the front's names, and C24 and C13 moved out of the bands, each found from the DRC.
 Root cause: P3 step 4 says a keep-out that bans vias bans them on every layer, and to list every pad inside its polygon. I filtered the list by the keep-out's own layer, which hid the front's pads.
 Process: P3
+
+## M146 — 2026-11-11 — A few lines changed by a script, not the Edit tool
+What happened: To add 2 cards to the site's page and 2 pictures to `site/build.sh`, I wrote a Python replace. It checked each anchor before it wrote. P9 step 5 sends a change of a few lines through the Edit tool after a Read. The hook stopped my next script, for `site/README.md`, because it named a test file. I read P9 then, and read the first change's diff back: it was right.
+Cost: 1 diff read back; no wrong text reached a commit.
+Root cause: The change spanned 2 files, and I reached for a script without reading P9 first.
+Process: P9

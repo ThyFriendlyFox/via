@@ -1,7 +1,7 @@
 # site
 
 The Via website: 1 static page that says what the workcenter is, with real
-runs of its commands and its example project, Rosetta. Plain HTML, 1
+runs of its commands and its example projects. Plain HTML, 1
 stylesheet, 2 small scripts and Motion. No framework and no install step.
 Vercel deploys it.
 
@@ -37,7 +37,7 @@ empty.
 | `effects.js` | The motion, with Motion: the logo draws itself, sections rise into view, runs type out, the example's knob turns, the board leans toward the pointer and turns over. The head's script adds `motion` to `<html>` unless the reader asked for reduced motion or the page is a capture (`?shot=`); without Motion every element sits where it ends. The knob and the turn-over button work without Motion. |
 | `vendor/` | Motion 14.6.0 (motion.dev), its UMD build from the npm package `motion`, and its MIT license. SHA256 `5cd165acfdf8e14ca5358c3d876142e5465419ee0d100bcf195da474cf8db2bf`. |
 | `logo.svg` | The Via wordmark: V, I and A as copper, a pad on each and traces between. The header, the footer, the closing section and `og.html` draw it inline. |
-| `showcase/` | The example's pictures: KiCad's 3D renders of Rosetta (`rosetta-top.png`, `rosetta-bottom.png`, `rosetta-iso.png`), its layers (`rosetta-layers.png`), and Agentcast's (`agentcast.png`, from its repository's v0.5). `draw_face.py` writes the board drawing into `index.html` between `face:begin` and `face:end`. |
+| `showcase/` | The examples' pictures: KiCad's 3D renders of Rosetta (`rosetta-top.png`, `rosetta-bottom.png`, `rosetta-iso.png`), its layers (`rosetta-layers.png`), Signet's and Herald's cards (`signet.png`, `herald.png`), and Agentcast's (`agentcast.png`, from its repository's v0.5). `draw_face.py` writes the board drawing into `index.html` between `face:begin` and `face:end`. |
 | `favicon.svg` | The icon: the wordmark of `logo.svg`, centred in a square. It follows the system's colour scheme. |
 | `favicon-32.png`, `apple-touch-icon.png` | The icon as PNG, for a browser that takes no SVG icon and for a phone's home screen. |
 | `og.html` | The page the image below is a capture of. |
@@ -54,7 +54,7 @@ repository. `tests/test_docs.py` runs each command again and compares: only
 the seconds and the checkout's folder may differ. When a gate's output
 changes, the test names the line, and the page gets the new text.
 
-## The example's pictures
+## The examples' pictures
 
 Run each from the repository's root, with KiCad 10 and the parts' 3D bodies
 (`site/media/README.md` says how to fetch them). The drawing comes from the
@@ -64,9 +64,34 @@ design file and the routed board; draw it again when either changes:
 python3 site/showcase/draw_face.py
 ```
 
-The renders come from `workcenter render` on the example, cropped and
-scaled with FFmpeg; `examples/universal-controller/v0.1/README.md` shows
-them and names the commands.
+Rosetta's renders come from `workcenter render` on the example, cropped and
+scaled with FFmpeg; `examples/universal-controller/v0.2/README.md` shows
+them and names the render command.
+
+Signet's and Herald's cards are their own 3D renders, cropped to the
+card's shape and scaled to 1000 x 571 with FFmpeg:
+
+```sh
+ffmpeg -i examples/ring-mouse/v0.4/docs/assembly-iso.png \
+  -vf "crop=1330:760:130:105,scale=1000:571:flags=lanczos,format=rgb24" site/showcase/signet.png
+ffmpeg -i examples/fire-alarm-communicator/v0.1/docs/board-3d-iso.png \
+  -vf "crop=1500:857:34:127,scale=1000:571:flags=lanczos,format=rgb24" site/showcase/herald.png
+```
+
+## A new example on the page
+
+The section "Boards, not demos." (`id="built"`) holds 1 card for each
+example. To add an example when it lands on `main`:
+
+1. Crop the example's 3D render to 1.75 to 1 and scale it to 1000 x 571
+   into `showcase/<name>.png`, with a command like the 2 above.
+2. Add an `<a class="proj">` to the section. Its `href` is the example's
+   README on GitHub. Its `<img>` states `width="1000" height="571"`, and
+   its text says what the board is, then its size, layers and parts.
+3. Add `showcase/<name>.png` to the file list in `build.sh`.
+4. Add its FFmpeg command to the list above.
+5. Run `python3 -m pytest tests/test_docs.py`. It checks each picture's
+   stated size against the file, and each link of the built page.
 
 ## The images
 

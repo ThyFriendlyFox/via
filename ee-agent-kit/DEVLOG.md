@@ -39,6 +39,33 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-11 — The branches sorted; Signet and Herald on the site
+
+The owner asked for the branches consolidated and for more examples on
+the site. Of 52 branches on GitHub, 48 hold nothing that `main` lacks. 39
+are the merged pull requests from before the history rewrite, each at the
+head its pull request merged. 4 are closed Dependabot pull requests. 4
+`claude/` branches are ancestors of `main`. 1 more, Rosetta v0.2's, has
+its 1 commit on `main` with a new name: 48 of the 59 files it changed are
+the same there, and its 2 mistakes are there as M135 and M136. The other
+11 are documents and the favicon, which `main` changed since. This
+session's git access refused a deletion too, so the owner
+deletes them. 4 branches hold work. The chip branch stays until its gates
+are tested. Hush, Basalt and Wyvern are examples whose sessions still run.
+While I sorted them, Signet, Rosetta v0.2 and Herald each landed on
+`main` from its own session.
+
+The site showed Rosetta alone of the 3. Its section "Boards, not demos."
+now has a card for Signet and for Herald, cropped from their own renders.
+The site said Rosetta v0.2 is 4 layers; its board has 6, and the page
+says 6. `site/README.md` gives the steps that put the next example on the
+page. I changed `index.html` and `build.sh` with a script where P9 asks
+for the Edit tool (M146). Hush's branch holds M139 to M145, so this
+entry takes the next number after them.
+
+Evidence: `make verify` and `tests/test_docs.py` at the commit; each old
+branch's tip equal to its pull request's head, 43 of 43.
+
 ## 2026-11-11 — A third example: a fire alarm communicator
 
 The owner asked for a fire alarm communicator made with Via: compact, good
