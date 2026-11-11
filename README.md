@@ -195,13 +195,13 @@ has the procedure from a spec to a GREEN board.
 has every flag.
 
 <details>
-<summary>The 24 commands</summary>
+<summary>The 25 commands</summary>
 
 | Command | What |
 |---|---|
 | `doctor` | Report each engine's status. |
 | `next` | Name the one next step for a project. |
-| `chip` | A chip project, from RTL to a GDSII layout: `chip init`, `chip gates` and 1 command for each of its 10 gates. All 10 gates run. Tests hold LINT, SIM, SYNTH and GLSIM; the tests of the 6 gates from LAYOUT on are being written. |
+| `chip` | A chip project, from RTL to a GDSII layout: `chip init`, `chip gates`, 1 command for each of its 10 gates, and `chip render` for a picture of the layout. Tests hold all 10 gates. The acceptance processor is not GREEN yet: the build repairs no slew and no antenna. |
 | `design` | Build a design file into a KiCad project; `--route` routes it; `--check` compares. |
 | `erc`, `drc`, `sim`, `export` | One gate, alone. |
 | `gates` | The 4 gates in order; the last line is the verdict. |
