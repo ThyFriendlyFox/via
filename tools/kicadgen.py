@@ -932,7 +932,10 @@ class PadBox:
 @dataclass
 class Design:
     name: str
-    namespace: uuid.UUID
+    # Every UUID in the generated files is uuid5(namespace, key): a design writes the same bytes each
+    # time, and 2 designs with their own namespaces share no UUID. Required: None is the default only so
+    # that a design without one gets __post_init__'s message, which says what to write, and not Python's.
+    namespace: uuid.UUID | None = None
     parts: list[Part] = field(default_factory=list)
     power_nets: dict[str, str] = field(
         default_factory=dict
@@ -1007,6 +1010,14 @@ class Design:
     _fpcache: dict[str, Footprint] = field(default_factory=dict, repr=False)
 
     # ---- construction
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.namespace, uuid.UUID):
+            raise TypeError(
+                f"Design({self.name!r}): namespace is {self.namespace!r}, not a uuid.UUID. Write "
+                f'Design({quote(str(self.name))}, uuid.UUID("{uuid.uuid4()}")) after `import uuid`. That UUID '
+                "is new; keep it, since every UUID in the generated files comes from it."
+            )
 
     def uid(self, key: str) -> Q:
         return uid(self.namespace, key)
@@ -1310,6 +1321,46 @@ class Design:
         """Power nets are global; signal nets are local labels on the root sheet."""
         return name if name in self.power_nets else f"/{name}"
 
+    def check_power_nets(self) -> None:
+        """Raise on a `power_nets` or a `flagged_nets` the schematic writer cannot read, with what to
+        write. The writer would stop on it with a bare TypeError or KeyError, and only after the route."""
+        nets, flagged = self.power_nets, self.flagged_nets
+        # An empty list or tuple names no net and reads as an empty dict everywhere: it stays allowed.
+        if nets and not isinstance(nets, dict):
+            listed = isinstance(nets, (list, tuple, set, frozenset))
+            names = [n for n in nets if isinstance(n, str)] if listed else []
+            if isinstance(nets, (set, frozenset)):
+                names.sort()  # a set has no order of its own
+            example = ", ".join(f"{quote(n)}: {quote(n)}" for n in names or ("GND", "VCC"))
+            raise TypeError(
+                f"power_nets is a {type(nets).__name__}, not a dict. Write d.power_nets = {{{example}}}: each "
+                "power net, then the symbol of KiCad's power library that draws it."
+            )
+        if flagged and isinstance(flagged, str):
+            raise TypeError(
+                f"flagged_nets is the str {flagged!r}, not a list. Write d.flagged_nets = [{quote(flagged)}]."
+            )
+        missing = [n for n in flagged if n not in nets]
+        if missing:
+            first = quote(str(missing[0]))
+            raise ValueError(
+                f"flagged_nets names {', '.join(map(repr, missing))}, and power_nets does not. A PWR_FLAG stands "
+                f"on a power symbol: write d.power_nets[{first}] = {first} (the net, then the symbol of KiCad's "
+                "power library that draws it), or take the net out of flagged_nets."
+            )
+
+    def _power_symbol(self, net: str) -> Symbol:
+        """The symbol that draws the power net `net`: the one `power_nets` names, from the power library."""
+        name = self.power_nets[net]
+        try:
+            return self.symbol(f"{POWER_LIB}:{name}")
+        except KeyError:
+            raise ValueError(
+                f"power_nets[{net!r}] is {name!r}, and KiCad's power library has no symbol of that name. Write "
+                f'one it has, as d.power_nets[{quote(net)}] = "VCC": GND, VCC, VDD, VBUS, +3V3, +5V and +BATT '
+                f"are there, and `python3 tools/kicadgen.py pins {POWER_LIB}:VCC` prints a symbol that is."
+            ) from None
+
     def unconnected_nets(self) -> dict[tuple[str, str], str]:
         """(ref, pad number) -> unconnected-(...) net for every board pin the schematic leaves open."""
         out: dict[tuple[str, str], str] = {}
@@ -1327,6 +1378,24 @@ class Design:
         for name in self.unconnected_nets().values():
             ids.setdefault(name, len(ids) + 1)
         return ids
+
+    def bare_connections(self) -> int:
+        """The pad-to-pad connections of a board that holds copper for none of them, else 0.
+
+        A net counts when the router gets it (2 or more pins on placed parts, as dsn() lists them) and
+        no pour carries it. With a track or a via on any such net the answer is 0: only the DRC can
+        then say what is joined."""
+        poured = {self.pcb_net_name(z["net"]) for z in self.zones}
+        pins: dict[str, int] = {}
+        for part in self.parts:
+            if part.on_board and part.pcb_at and part.footprint:
+                for net in part.nets.values():
+                    name = self.pcb_net_name(net)
+                    pins[name] = pins.get(name, 0) + 1
+        needed = {name: n for name, n in pins.items() if n >= 2 and name not in poured}
+        if any(item[0] in needed for item in (*self.segments, *self.vias)):
+            return 0
+        return sum(n - 1 for n in needed.values())
 
     def text(
         self,
@@ -1648,7 +1717,8 @@ class Design:
             by = f", driven only by {', '.join(drivers)} (high-impedance in reset)" if drivers else ""
             out.append(
                 f"{net}: {', '.join(dict.fromkeys(what))}{by}, and no resistor to a rail holds it: add a pull, or"
-                " name the net in defined_nets with the reason"
+                f" name the net in defined_nets with the reason, as d.defined_nets[{quote(net)}] ="
+                ' "a 10k resistor to a rail on the other board, R4"'
             )
         return out
 
@@ -1845,7 +1915,9 @@ class Design:
 
     def check_parts(self) -> list[str]:
         """Every placed part whose courtyard enters a keepout made with `parts=True` on its own face,
-        named with the area, before anything is written or routed (M87)."""
+        named with the area, before anything is written or routed (M87). Then every part with all of its
+        pads outside the outline's box: `pcb_at` was written from another origin, and the router joins
+        nothing there. A part with 1 pad on the board stays: a connector may overhang the edge."""
         out = []
         for part in self.parts:
             box = self.courtyard_box(part)
@@ -1857,6 +1929,27 @@ class Design:
                     out.append(
                         f"{part.ref} (courtyard {fmt(x1)}..{fmt(x2)}, {fmt(y1)}..{fmt(y2)}) in keepout {k['name']!r}"
                     )
+        x1, y1, x2, y2 = self.outline
+        pads: dict[str, list[PadBox]] = {}
+        for b in self.pad_boxes():
+            pads.setdefault(b.ref, []).append(b)
+        for part in self.parts:
+            boxes = pads.get(part.ref, [])
+            if not boxes or any(b.x1 < x2 and b.x2 > x1 and b.y1 < y2 and b.y2 > y1 for b in boxes):
+                continue
+            px, py = part.pcb_at
+            line = (
+                f"{part.ref} at ({fmt(px)}, {fmt(py)}): every pad lies outside the outline, ({fmt(x1)}, {fmt(y1)}) "
+                f"to ({fmt(x2)}, {fmt(y2)}). pcb_at is in board coordinates, as the outline is: the board's top "
+                f"left corner is ({fmt(x1)}, {fmt(y1)})"
+            )
+            # The place read as an offset from that corner, when it then lies on the board: what to write.
+            if px >= 0 and py >= 0 and self.inside_outline(x1 + px, y1 + py):
+                line += (
+                    f", so a part {fmt(px)} mm right of it and {fmt(py)} mm below it is at "
+                    f"pcb_at=({fmt(x1 + px)}, {fmt(y1 + py)})"
+                )
+            out.append(line)
         return out
 
     def courtyard_box(self, part: Part) -> tuple[float, float, float, float] | None:
@@ -2015,6 +2108,7 @@ class Design:
         return [(round(x0, 3), round(y0 - 1.27, 3)), (round(x0, 3), round(y1 + 1.905, 3))][: len(texts)]
 
     def schematic(self) -> str:
+        self.check_power_nets()
         ns = self.namespace
         root = uid(ns, "sheet/root")
         lib_symbols: dict[str, Node] = {}
@@ -2029,7 +2123,7 @@ class Design:
         def power_symbol(net: str, x: float, y: float, key: str) -> None:
             nonlocal power_counter
             power_counter += 1
-            sym = self.symbol(f"{POWER_LIB}:{self.power_nets[net]}")
+            sym = self._power_symbol(net)
             lib_symbols.setdefault(sym.lib_id, sym.node)
             ref = f"#PWR{power_counter:02d}"
             body.append(
@@ -2216,7 +2310,7 @@ class Design:
             while its drawing would land on something already on the sheet."""
             nonlocal power_count
             power_count += 1
-            sym = self.symbol(f"{POWER_LIB}:{self.power_nets[net]}")
+            sym = self._power_symbol(net)
             lib_symbols.setdefault(sym.lib_id, sym.node)
             y0, y1 = symbol_box(sym)[1::2]
             natural = (0, 1) if y0 + y1 < 0 else (0, -1)  # where the symbol's drawing hangs from its pin
@@ -4155,6 +4249,7 @@ def load_design(path: Path) -> Design:
     design = build()
     if not isinstance(design, Design):
         raise TypeError(f"{path}: build() returned {type(design).__name__}, not Design")
+    design.check_power_nets()  # here, before a caller checks, routes or writes anything
     return design
 
 
@@ -4204,7 +4299,9 @@ def route(
     seed: dict | None = None,
 ) -> dict:
     """Export the DSN, run FreeRouting, merge the session into the design. Returns a summary.
-    `seed` is a previous route's copper as `Design.seed_wiring()` keeps it."""
+    `seed` is a previous route's copper as `Design.seed_wiring()` keeps it. The summary's `unrouted` is
+    FreeRouting's own count when its log has one, else `Design.bare_connections()` when the route left
+    every connection without copper, else None."""
     jar = jar or Path(os.environ.get("FREEROUTING_JAR", "/opt/workcenters/ee/freerouting/freerouting.jar"))
     if not jar.is_file():
         raise FileNotFoundError(str(jar))
@@ -4228,13 +4325,17 @@ def route(
         raise RuntimeError(f"FreeRouting exited {proc.returncode}; see {log}")
     segments, vias = design.merge_ses(ses.read_text(encoding="utf-8"))
     m = UNROUTED_RE.search(text)
+    # FreeRouting 1.9.0 logs no count, and it ends with exit code 0 on a board where it joined nothing
+    # (every part outside the outline, a width that enters no pad). Such a board holds no copper for any
+    # net that needs it, and its connections are the count; with copper on one of them the DRC decides.
+    unrouted = int(m.group(1)) if m else design.bare_connections() or None
     return {
         "dsn": str(dsn),
         "ses": str(ses),
         "log": str(log),
         "segments": segments,
         "vias": vias,
-        "unrouted": int(m.group(1)) if m else None,
+        "unrouted": unrouted,
     }
 
 

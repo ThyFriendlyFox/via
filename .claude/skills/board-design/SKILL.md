@@ -30,12 +30,37 @@ project and routes it with FreeRouting. No GUI at any step.
 1. **Pick parts from the libraries.** Check each symbol and footprint
    exists first; several common modules are not in KiCad's libraries.
    Record the choice and the reason in the project README.
-2. **Write `design.py`.** One `d.add(ref, "Lib:Symbol", value, "Lib:Footprint",
+2. **Write `design.py`.** Start from a copy of the workcenter's
+   `templates/project/design.py`, the smallest complete design file: it
+   generates, routes and passes `workcenter gates . --strict` as it stands,
+   and a comment states the rule on each line a first design gets wrong.
+   One `d.add(ref, "Lib:Symbol", value, "Lib:Footprint",
    sch_at=(x, y), pcb_at=(x, y), nets={pin: net})` per part. Rules:
+   - The design is `d = kicadgen.Design("name", uuid.UUID("..."))`, with
+     `import uuid` above it. The name is the name of the generated files.
+     The namespace is a `uuid.UUID`, never a string: every UUID in the
+     generated files comes from it. Make 1 for each design
+     (`python3 -c "import uuid; print(uuid.uuid4())"`) and keep it. A
+     design without one stops with the call to write.
    - Power nets go in `d.power_nets` and get power symbols. Nets with no
      power-output pin (GND, VBUS from a connector) go in `d.flagged_nets`
      for a PWR_FLAG. A net that already has a power-output pin must not be
      flagged: two drivers is an ERC error.
+     `d.power_nets` is a dict, never a list: each power net, then the
+     symbol of KiCad's `power` library that draws it, as
+     `d.power_nets = {"VCC": "VCC", "GND": "GND"}`. A net with no symbol of
+     its own name takes another (`{"VIN": "VBUS"}`). `d.flagged_nets` is a
+     list, and each net in it is in `d.power_nets` too. A design that
+     breaks one of these stops when it is loaded, with the line to write.
+   - `outline=(x1, y1, x2, y2)` on `Design` is the board's edge in mm, y
+     downward: (100, 100) to (125, 120) unless the design gives another.
+     Every `pcb_at`, track, via, text and keep-out is in those same board
+     coordinates: a part 3 mm inside the left edge of that board is at
+     x = 103, not 3. `workcenter design` prints a `part:` line for each
+     part whose pads all lie outside the outline, and exits 1. The line
+     names the board's top left corner, and the place to write when the
+     part's numbers are an offset from that corner. A part with 1 pad on
+     the board (a connector over the edge) passes.
    - Stacked hidden connector pins (USB-C VBUS A4/A9/B4/B9, GND A1/B1/A12/
      B12) all need the net, or their pads stay open.
    - Every unused pin is left out of `nets`; the generator places a
@@ -67,6 +92,8 @@ project and routes it with FreeRouting. No GUI at any step.
      as `pull:` lines. A net held elsewhere goes in `d.defined_nets` with the
      reason: `{"BTN": "PB7's internal pull-up, set in firmware gpio.c"}`,
      `{"I2C_SDA": "4.7k to 3V3 on the display board, R4"}`.
+     Each `pull:` line ends with that entry for its own net, as
+     `d.defined_nets["BTN"] = "..."`: write the reason that is true for it.
    - Simulation: say how each part simulates, so the schematic runs in
      KiCad's simulator and `kicad-cli sch export netlist --format spice`
      writes a netlist ngspice reads. Without it KiCad writes `U2 __U2` for
@@ -221,7 +248,10 @@ project and routes it with FreeRouting. No GUI at any step.
    which ground pads ended up on an island; `workcenter drc .` lists what
    stayed unrouted. Its exit code is the verdict: on exit 1 every file is
    still written and the last line says `red` with each failure, and a CI
-   regenerate check fails on it (M85). On a board copied from a routed
+   regenerate check fails on it (M85). A route that leaves every
+   connection without copper (parts placed off the board, a width that
+   enters no pad) prints the count as `unrouted` and exits 1; a board with
+   nothing to route exits 0. On a board copied from a routed
    version, route with `--seed <previous>/<name>.kicad_pcb`: the old
    router copper that still fits stays and only the rest is rerouted, so a
    part placed on a routed path costs its own nets, not the whole board

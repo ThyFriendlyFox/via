@@ -30,6 +30,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
@@ -3585,7 +3586,27 @@ def cmd_design(args) -> int:
     design_path = Path(args.design).resolve()
     out_dir = Path(args.out).resolve() if args.out else design_path.parent
     t0 = time.monotonic()
-    design = kicadgen.load_design(design_path)
+    try:
+        design = kicadgen.load_design(design_path)
+    except (TypeError, ValueError) as exc:
+        # A design file the generator refuses (a namespace that is no UUID, power_nets that is no dict)
+        # is 1 line and exit 1, as every other refusal of this step is: the message says what to write,
+        # and the line of the design file it was raised from says where.
+        at = [
+            frame.lineno
+            for frame in traceback.extract_tb(exc.__traceback__)
+            if Path(frame.filename).resolve() == design_path
+        ]
+        problem = f"line {at[-1]}: {exc}" if at else str(exc)
+        red = "the design file is refused"
+        if args.json:
+            print(
+                json.dumps({"design": str(design_path), "file_problems": [problem], "red": [red]}, indent=2)
+            )
+        else:
+            print(f"  file: {problem}")
+            print(f"design {design_path.parent.name} red: {red}. Nothing is written: correct the file first.")
+        return EXIT_FAIL
     summary: dict = {
         "design": str(design_path),
         "name": design.name,
@@ -3598,7 +3619,8 @@ def cmd_design(args) -> int:
     # each hand via's place, since a via passes every layer, and one in a keepout or on another face's
     # pad is a short the DRC would only find later (M40, M41).
     summary["via_problems"] = design.check_via_rules() + design.check_vias()
-    # A part inside an area the design keeps parts out of (a strip, a spacer, a body over the board, M87).
+    # A part inside an area the design keeps parts out of (a strip, a spacer, a body over the board, M87),
+    # or with every pad outside the outline (placed from another origin than the board's).
     summary["part_problems"] = design.check_parts()
     if summary["part_problems"]:
         code = EXIT_FAIL
@@ -3661,7 +3683,7 @@ def cmd_design(args) -> int:
     if summary["via_problems"]:
         red.append(f"{len(summary['via_problems'])} via problem(s)")
     if summary["part_problems"]:
-        red.append(f"{len(summary['part_problems'])} part(s) in a parts keep-out")
+        red.append(f"{len(summary['part_problems'])} part(s) in a keep-out or off the board")
     if summary["pulls"] and design.check_pulls:
         red.append(f"{len(summary['pulls'])} floating input(s)")
     if summary["sim_problems"]:

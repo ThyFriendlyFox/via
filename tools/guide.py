@@ -12,10 +12,15 @@ answer asks no judgement of its caller, so a person or an agent of any size foll
     READ       .claude/skills/board-gates/SKILL.md, "Steps"
     DONE WHEN  the last line starts with GREEN
 
-The order: the toolchain, the project's files, the design file against the KiCad files it generates,
-the gates' report (run again when any input is newer), the first failure of the first red gate, the
-first warning of a GREEN run, the verification package when the project has one. A failure or a
+The order: the path (a folder, or a KiCad file that names its project), the project's files, the
+toolchain, the design file against the KiCad files it generates, the gates' report (run again when any
+input is newer, or when it is from a run without an engine), the first failure of the first red gate,
+the first warning of a GREEN run, the verification package when the project has one. A failure or a
 warning is answered from HINTS: the fix this workcenter's skills give for that kind of line.
+
+A reader runs every RUN line as written, so a RUN line is 1 command a shell takes, and an answer with
+no such command has none. Each sentence of an answer is 1 instruction of at most 20 words
+(ee-agent-kit/docs/STYLE.md, rules 1 and 2). The command writes nothing.
 
 Standard library only. `tools/workcenter` supplies the engines' names, `find_project` and the verdicts.
 """
@@ -23,6 +28,7 @@ Standard library only. `tools/workcenter` supplies the engines' names, `find_pro
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
 import shutil
@@ -36,6 +42,10 @@ DESIGN = ".claude/skills/board-design/SKILL.md"
 SIMULATE = ".claude/skills/simulate/SKILL.md"
 VERIFICATION = ".claude/skills/verification/SKILL.md"
 INPUT_SUFFIXES = (".kicad_sch", ".kicad_pcb", ".kicad_pro", ".kicad_dru")
+# A file of these names its project, as `find_project` reads it. Any other file is inside a project.
+PROJECT_FILES = (".kicad_pro", ".kicad_sch", ".kicad_pcb")
+# A path that is not there and ends like these is a file's name: a folder made under it is no project.
+FILE_SUFFIXES = (*PROJECT_FILES, ".cir", ".json", ".py")
 RULE = "A bound, a rule or a requirement is never changed to pass: the design changes."
 
 # A failure or warning line, as `gate: line`, and the fix for its kind: (pattern, what to do, what to
@@ -50,27 +60,37 @@ HINTS: list[tuple[str, str, str]] = [
     (r"^erc: lib_symbol", "Update the symbol from its library.", f'{GATES}, "Common violations"'),
     (
         r"^erc: simulation_model_issue",
-        "KiCad cannot load the model a part names: the file, the name in it, or a node of its pin map. "
-        "Correct the part's d.sim() in the design file, or leave the part out with d.no_sim() and the "
-        "reason, then regenerate.",
+        "KiCad cannot load the model a part names. The fault is the file, the name in it, or a node of "
+        "its pin map. Correct the part's d.sim() in the design file. A part outside the simulation gets "
+        "a d.no_sim() with the reason. Regenerate the KiCad project after the change.",
         f'{DESIGN}, "Steps"',
     ),
     (
         r"^design: sim: ",
         "Correct what the design file says about that part's simulation. A d.sim() names every pin "
-        "number of the symbol in `pins` (a node of the model, or None) and every node of the model once, "
-        "and its library path starts at the design's folder. A part outside the simulation gets a "
-        "d.no_sim() with the reason.",
+        "number of the symbol in `pins`. Each pin maps to a node of the model, or to None. The d.sim() "
+        "names every node of the model once. Its library path starts at the design's folder. A part "
+        "outside the simulation gets a d.no_sim() with the reason.",
         f'{DESIGN}, "Steps"',
     ),
     (
         r"^design: pull: ",
-        "Hold the net at a level with a resistor to a rail, or name it in d.defined_nets with the reason.",
+        "Hold the net at a level with a resistor to a rail, or name it in d.defined_nets with why.",
         f'{DESIGN}, "Steps"',
     ),
     (
         r"^design: via: ",
         "Move the via, or give it a size the board's rules allow.",
+        f'{DESIGN}, "Steps"',
+    ),
+    (
+        r"^design: file: ",
+        "Correct the design file as the line says: it names what to write.",
+        f'{DESIGN}, "Steps"',
+    ),
+    (
+        r"^design: part: .*every pad lies outside the outline",
+        "Write the part's pcb_at in board coordinates, from the corner the line names.",
         f'{DESIGN}, "Steps"',
     ),
     (
@@ -109,14 +129,50 @@ HINTS: list[tuple[str, str, str]] = [
     ),
     (
         r"^sim: .*no measure moves with temperature",
-        "Give the deck's parts their temperature behaviour (a resistor's coefficient from its datasheet: "
-        "`R1 a b 10k tc1=100u`; a model that carries temperature), or set the deck's temperature to false "
-        "in sim/corners.json with why.",
+        "Give the deck's parts their temperature behaviour. A resistor takes its coefficient from its "
+        "datasheet: `R1 a b 10k tc1=100u`. Another part takes a model that carries temperature. The "
+        "other way: set the deck's temperature to false in sim/corners.json, with why.",
         f'{SIMULATE}, "Corners"',
     ),
     (
         r"^sim: .*no tolerance covers",
         "Add the kind (R, C or L) or the part to tolerance in sim/corners.json, with its source.",
+        f'{SIMULATE}, "Corners"',
+    ),
+    (
+        r"^sim: .*which a corner cannot scale",
+        "A corner scales the value `alter` sets only when the deck writes it as a number. Write that "
+        "value as a number in the `alter` line.",
+        f'{SIMULATE}, "Corners"',
+    ),
+    (
+        r"^sim: .*which a corner cannot move",
+        "Take that name out of tolerance.parts in sim/corners.json: no corner moves such a part. Write a "
+        "value whose spread matters as a .param, and name the .param under tolerance.parts.",
+        f'{SIMULATE}, "Corners"',
+    ),
+    (
+        r"^sim: .*which no corner moves",
+        "Write those parts in the deck, not in the file it includes. A corner reads the deck's own "
+        "lines only.",
+        f'{SIMULATE}, "Corners"',
+    ),
+    (
+        r"^sim: .*in \.subckt \S+ is \d+ parts on the board",
+        "Write each of those parts as its own element, outside the .subckt. A corner then moves each "
+        "part on its own.",
+        f'{SIMULATE}, "Corners"',
+    ),
+    (
+        r"^sim: .*the worst case is searched",
+        'Name monte_carlo in sim/corners.json with its runs and its seed: `"monte_carlo": {"runs": 100, '
+        '"seed": 1}`. Its draws move the parts together.',
+        f'{SIMULATE}, "Corners"',
+    ),
+    (
+        r"^sim: .*is not printed at ",
+        "The deck prints that measure as written and not at that corner. Read the corner's log under "
+        "build/sim/corners/ at its first error line. Write the measure so it exists at every corner.",
         f'{SIMULATE}, "Corners"',
     ),
     (
@@ -133,8 +189,7 @@ HINTS: list[tuple[str, str, str]] = [
     (
         r"^sim: .*is held at its own temperature",
         "A part's line fixes its temperature (temp=27), so a hot or a cold run leaves it there. Remove "
-        "the setting so the part follows the circuit, or set the deck's temperature to false in "
-        "sim/corners.json with why.",
+        "the setting, or set the deck's temperature to false in sim/corners.json with why.",
         f'{SIMULATE}, "Corners"',
     ),
     (
@@ -145,8 +200,14 @@ HINTS: list[tuple[str, str, str]] = [
     ),
     (
         r"^sim: \S+?:\S+=None ",
-        "The deck does not print that measure. Print it as `name = value` (a complex value prints none: "
-        "take its magnitude with vm()), or correct the name in the expect file.",
+        "The deck does not print that measure. Print it as `name = value`, or correct the name in the "
+        "expect file. A complex value prints none: take its magnitude with vm().",
+        f'{SIMULATE}, "Steps"',
+    ),
+    (
+        r"^sim: .*the deck prints \S+ more than once",
+        "Print each measure once: the gate holds every printed value to the bound. Give each further "
+        "value a name of its own.",
         f'{SIMULATE}, "Steps"',
     ),
     (
@@ -192,8 +253,8 @@ HINTS: list[tuple[str, str, str]] = [
     (
         r"^sim: frequency plan: .*no overlap answers it",
         "A source and a resonance meet. Move the source's frequency or the resonance apart, or damp the "
-        "resonance. If they still meet, write a deck that runs the source at the resonance and bounds "
-        "the result, and name it under overlaps in sim/frequency-plan.json.",
+        "resonance. If they still meet, write a deck that runs the source at the resonance. Bound the "
+        "deck's result in its expect file. Name the deck under overlaps in sim/frequency-plan.json.",
         f'{SIMULATE}, "The frequency plan"',
     ),
     (
@@ -204,8 +265,21 @@ HINTS: list[tuple[str, str, str]] = [
     ),
     (
         r"^sim: frequency plan: .*names no resonance",
-        "Sweep each supply rail with an .ac deck (a 1 A AC current source at the load reads the rail's "
-        "impedance in ohms) and name the peak under resonances.",
+        "Sweep each supply rail with an .ac deck. A 1 A AC current source at the load reads the rail's "
+        "impedance in ohms. Name the peak under resonances in sim/frequency-plan.json.",
+        f'{SIMULATE}, "The frequency plan"',
+    ),
+    (
+        r"^sim: frequency plan: .*which no tolerance moves",
+        "Give that deck its tolerances in sim/corners.json: the resonance then moves with its parts. A "
+        "deck under `skip`, or with `tolerance` set to false, moves no part.",
+        f'{SIMULATE}, "The frequency plan"',
+    ),
+    (
+        r"^sim: .*is periodic and the deck gives its frequency as no number",
+        "The plan reads the deck's text: it places a frequency only when the deck gives a number. Write "
+        "the stimulus's period or frequency as a number. Write a PWL that repeats, or an expression of "
+        "time, as a PULSE or a SIN.",
         f'{SIMULATE}, "The frequency plan"',
     ),
     (
@@ -228,6 +302,12 @@ HINTS: list[tuple[str, str, str]] = [
         r"^verify: traceability: .* says PASS, .* is FAIL at ",
         "The requirement holds as the deck is written and fails at that corner. Change the design, or "
         "write FAIL in the row with its size and a proposed fix.",
+        f'{VERIFICATION}, "Corners"',
+    ),
+    (
+        r"^verify: REQ-\S+: judged as written only",
+        "A requirement holds at every corner, and its deck ran none. Give the deck its corners in "
+        "sim/corners.json. The line's last words say why it ran none.",
         f'{VERIFICATION}, "Corners"',
     ),
     (
@@ -305,28 +385,73 @@ def next_step(cli, target: str, run_check=True) -> Step:
     wc = "workcenter"
     path = Path(target).resolve()
     quoted = shlex.quote(target)
-    design = path / "design.py" if path.is_dir() else None
+
+    def to_folder(file: Path, why: str) -> Step:
+        """A file is no project: the answer names its folder, the one above sim/ for a deck. Taken
+        for a project, a deck gets its build/ inside sim/ and its next steps under its own name."""
+        folder = file.parent.parent if file.parent.name == "sim" else file.parent
+        again = f"{wc} next {shlex.quote(str(folder))}"
+        return Step(
+            "Name the project's folder: the path leads to a file, and a project is a folder.",
+            again,
+            why,
+            done_when=f"`{again}` names another step",
+        )
+
+    if path.is_file() and path.suffix not in PROJECT_FILES:
+        return to_folder(path, f"{path} is a file; a project is named by its folder")
     try:
         project = cli.find_project(str(path))
     except SystemExit as exc:
-        if design and design.is_file():
+        why = str(exc)
+        again = f"`{wc} next {quoted}` names another step"
+        if not path.exists():
+            above = next(p for p in path.parents if p.exists())
+            if above.is_file():
+                return to_folder(above, f"{why}; {above} is a file")
+            if path.suffix in FILE_SUFFIXES:
+                return to_folder(path, f"{why}; a project is named by its folder")
+            return Step(
+                "Create the project's folder: it does not exist yet.",
+                f"mkdir -p {quoted}",
+                why,
+                done_when=again,
+            )
+        pros = sorted(path.glob("*.kicad_pro")) if path.is_dir() else []
+        if len(pros) > 1:
+            # Before the design file: generated again, the folder holds as many project files.
+            one = f"{wc} next {shlex.quote(str(Path(target) / pros[0].name))}"
+            return Step(
+                f"Name one of the folder's {len(pros)} project files: {', '.join(p.name for p in pros)}. "
+                "The RUN line names the first.",
+                one,
+                why,
+                done_when=f"`{one}` names another step",
+            )
+        if (path / "design.py").is_file():
             return Step(
                 "Generate the KiCad project from its design file.",
                 f"{wc} design {quoted}/design.py --route",
                 "the folder holds a design file and no KiCad project",
                 f'{DESIGN}, "Steps"',
-                "the command exits 0 and prints no sim:, pull:, via:, part: or island: line",
+                "the command exits 0 and prints no file:, sim:, pull:, via:, part: or island: line",
             )
+        # 2 ways to start are not 1 command, so this answer has no RUN line.
         return Step(
-            "Start the project. For a circuit to prove before any board, write its deck as "
-            f"{quoted}/sim/<name>.cir with its bounds in sim/<name>.expect.json "
-            '(`{"vout": {"min": 2.4, "max": 2.6, "source": "the spec\'s line"}}`). For a board, write '
-            f"{quoted}/design.py: the parts from the KiCad libraries, the nets as names.",
-            f"{wc} sim {quoted}   (a deck)   or   {wc} design {quoted}/design.py --route   (a board)",
-            str(exc),
-            f'{SIMULATE}, "Steps"; {DESIGN}, "Steps"',
-            f"`{wc} next {quoted}` names another step",
+            "Start the project with a deck, or with a design file for a board. "
+            f"To prove a circuit before any board, write its deck as {quoted}/sim/<name>.cir. "
+            f"Write the deck's bounds in {quoted}/sim/<name>.expect.json "
+            '(`{"vout": {"min": 2.4, "max": 2.6, "source": "the spec\'s line"}}`). '
+            f"For a board, write {quoted}/design.py: the parts from the KiCad libraries, the nets as "
+            "names. A board's design file can start from a copy of "
+            f"{cli.SRC_DIR / 'templates' / 'project' / 'design.py'}.",
+            why=why,
+            read=f'{SIMULATE}, "Steps"; {DESIGN}, "Steps"',
+            done_when=again,
         )
+    # A command takes the project as it was named, a KiCad file too. A path inside the project starts
+    # at its folder.
+    folder = quoted if path.is_dir() else shlex.quote(str(project.dir))
     has_kicad = bool(project.sch or project.pcb)
     decks = sorted((project.dir / "sim").glob("*.cir")) if (project.dir / "sim").is_dir() else []
     absent = [
@@ -344,11 +469,13 @@ def next_step(cli, target: str, run_check=True) -> Step:
         )
     design = project.dir / "design.py"
     if design.is_file() and run_check:
+        # The check imports the design file. Bytecode beside it would be a file `next` wrote.
         proc = subprocess.run(
             [sys.executable, str(cli.SRC_DIR / "tools" / "workcenter"), "design", str(design), "--check"],
             capture_output=True,
             text=True,
             check=False,
+            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
         )
         if proc.returncode != 0:
             said = [ln.strip() for ln in proc.stdout.splitlines() if ln.strip()]
@@ -356,10 +483,11 @@ def next_step(cli, target: str, run_check=True) -> Step:
             # The design step's own refusal comes before any comparison: regenerating a design file
             # that is refused gives the same refusal. Its red line names the kinds; the first printed
             # line of a kind it names is the problem to answer.
-            red = next((ln for ln in said if re.match(r"design \S+ red: ", ln)), "")
+            red = next((ln for ln in said if re.match(r"design .+ red: ", ln)), "")
             kinds = [
                 kind
                 for kind, word in (
+                    ("file", "the design file is refused"),
                     ("sim", "simulation"),
                     ("via", "via"),
                     ("part", "part("),
@@ -379,7 +507,7 @@ def next_step(cli, target: str, run_check=True) -> Step:
                 )
             return Step(
                 "Regenerate the KiCad project: it no longer matches its design file.",
-                f"{wc} design {shlex.quote(str(design))} --route",
+                regenerate,
                 said[-1] if said else "design --check exited 1",
                 f'{DESIGN}, "Steps"',
                 f"`{wc} design {shlex.quote(str(design))} --check` exits 0",
@@ -406,17 +534,19 @@ def next_step(cli, target: str, run_check=True) -> Step:
     results = [cli.Result(**r) for r in json.loads(report.read_text(encoding="utf-8"))]
     verdict, _ = cli.gates_verdict(results)
     if verdict.startswith("SKIPPED ("):
+        # Every engine the project needs was found above, so the report is older than the toolchain.
+        # An answer to install it here is given again after every installation.
         return Step(
-            "Install the toolchain: a gate did not run.",
-            f"sudo {cli.SRC_DIR / 'install.sh'}",
-            verdict,
-            "ee-agent-kit/docs/ENGINES.md",
-            f"`{wc} doctor` prints ok or degraded, then {gates}",
+            "Run the gates again: the report is from a run with an engine absent.",
+            gates,
+            f"build/gates.json says {verdict}; every engine the project needs is on PATH now",
+            f'{GATES}, "Steps"',
+            "the last line starts with GREEN",
         )
     if verdict == "SKIPPED":
         return Step(
             "Give the gates something to run: the project holds no schematic, no board and no deck. "
-            f"Write {quoted}/sim/<name>.cir, or {quoted}/design.py for a board.",
+            f"Write {folder}/sim/<name>.cir, or {folder}/design.py for a board.",
             gates,
             "every gate was skipped: " + "; ".join(f"{r.gate}: {r.summary}" for r in results),
             f'{SIMULATE}, "Steps"; {DESIGN}, "Steps"',
@@ -477,8 +607,10 @@ def next_step(cli, target: str, run_check=True) -> Step:
         )
     return Step(
         "Nothing for the bench: the gates are GREEN with no warning.",
-        why="a board that leaves the bench has its requirements proven first: "
-        f"`{wc} verify {quoted} --init` writes the package's skeleton (ee-agent-kit/PROCESSES.md, P28)",
+        why="a board that leaves the bench has its parts and its requirements proven first. "
+        f"`{wc} sources {quoted}` holds each part to its datasheet and its model "
+        "(ee-agent-kit/PROCESSES.md, P27). "
+        f"`{wc} verify {quoted} --init` starts the requirements (ee-agent-kit/PROCESSES.md, P28)",
         done=True,
     )
 
