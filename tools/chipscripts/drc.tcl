@@ -1,5 +1,5 @@
 # The DRC gate's Magic script: every rule of the technology file on the whole layout. It writes each
-# rule that is broken with its boxes, and the count. The environment gives GDS, TOP and OUT.
+# rule that is broken with its boxes, and the count. The environment gives GDS, TOP and REPORT.
 if {![file exists $::env(GDS)]} { puts "ERROR: no layout file $::env(GDS)"; exit 2 }
 gds read $::env(GDS)
 load $::env(TOP)
@@ -13,7 +13,7 @@ drc catchup
 set result [drc listall why]
 set oscale [cif scale out]
 set count 0
-set f [open $::env(OUT)/magic.rpt w]
+set f [open $::env(REPORT) w]
 foreach {why boxes} $result {
     puts $f $why
     foreach b $boxes {

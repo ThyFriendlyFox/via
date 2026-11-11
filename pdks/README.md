@@ -25,6 +25,7 @@ not know. Each block has a `source`: what the values were read from.
 | `process` | 1 line for a reader: the foundry, the node, the build. |
 | `version` | `file` and `pattern`: where the kit states its own version. `value`: the version this table was read from. `commit`: what `install.sh` pins. A project names the version it is proven on as `pdk.version`; a gate fails when the installed kit states another. |
 | `magic` | The start file (`rc`) and the technology file (`tech`) Magic reads, and the Magic version the kit asks for (`needs`). |
+| `klayout` | What `workcenter chip render` draws with: the layer properties file (`layer_properties`), and the map from a layer's name to its GDS layer and datatype (`layer_map`). |
 | `libraries.<library>.corners` | Each library corner: its `liberty` file, its `process` (`slow`, `typical` or `fast`), its `volts` and its `celsius`. |
 | `libraries.<library>.wires` | Each wire corner: its technology LEF (`techlef`) and its extraction rules (`rcx`). |
 | `libraries.<library>.lef`, `gds`, `spice` | The cells' abstract views, layouts and transistor netlists. |
