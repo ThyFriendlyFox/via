@@ -985,6 +985,19 @@ a task.
 6. Count the machine too: its memory, not only its processors. Helpers
    that run engines, a health gate and a browser do not run together.
    The health gate that gates a push runs alone (M124).
+7. The signal for "the gate runs" is a file, not a message. The brief
+   names 1 lock file. The lead makes it before a health gate and removes
+   it after. A helper looks for it before each command that runs an
+   engine or a test, and starts none while it is there. The lead starts
+   the gate when the lock is there and no engine of a helper runs (M125).
+8. Send no message to a helper that a workflow runs. A message to its id
+   starts a second runner from its transcript, and the 2 write the same
+   files. The brief tells each helper the same: it sends no message to
+   another helper's id or to its own. Talk to a running helper through
+   the files its brief names: the lock, and its notes file (M125).
+9. A helper has stopped when its task says so: the workflow's notice, or
+   the stop the lead asked for. A quiet transcript is no stop. Change no
+   file a helper owns before that (M125).
 
 Done when: every report is read, each helper's changes are merged or
 removed, and `git worktree list` shows only what is still in use.

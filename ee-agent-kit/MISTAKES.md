@@ -757,3 +757,9 @@ What happened: I ran the health gate while 2 helpers ran chip engines, and I sta
 Cost: 1 run of the health gate and 10 minutes of 2 helpers' work, started again.
 Root cause: P31 counted helpers against the account's usage limit and the processors. Nothing counted helpers, the gate and a browser together against the machine's memory.
 Process: P31
+
+## M125 — 2026-11-11 — A message to 2 helpers started a copy of each
+What happened: The front page was ready to push, and 2 helpers of a workflow ran engines. P31 says the health gate runs alone. I asked both by message to hold their engines. The message did not reach them: it started a second runner of each from its transcript. For 15 minutes 4 helpers ran where I had started 2. A copy rewrote 1 file of its original and killed its original's script once. I stopped the copies, read 90 seconds of quiet transcripts as proof that the originals had stopped too, and undid 13 breaks that 1 original had put into its fixtures on purpose, to see its tests fail. Files went on changing; I put the 13 breaks back 2 minutes later and answered both originals in their notes files. Before it read the answer, 1 original asked the other by message who wrote its files, and that message started 2 more copies; it stopped 1 and I stopped the other. The gate had started on a quiet process list and ran beside 1 small engine job of an original for 40 seconds. It ended GREEN.
+Cost: 15 minutes of 2 runners nobody needed and 3 minutes of 2 more, about 10 minutes of 2 helpers' time on finding out who else wrote their files, and 1 false restore. No file was lost and no push was wrong.
+Root cause: Nothing on the machine said "the gate runs", so I used a message, and I did not know what a message does to a helper that a workflow runs. The tool's answer said "Resuming agent"; I read it and went on. Then I took silence for a stop.
+Process: P31

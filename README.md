@@ -56,13 +56,13 @@ command that draws it.
 
 ## What it does
 
-| | |
+| Part | In short |
 |---|---|
 | **Engines** | KiCad 10 (`kicad-cli`), ngspice, FreeRouting. |
 | **Gates** | ERC, DRC, SIM, EXPORT, in that order. A board is done when `workcenter gates <project>` prints GREEN. |
 | **Design as code** | `workcenter design design.py --route` builds a schematic and a routed board from a Python file that names parts from the KiCad libraries. No GUI at any step. |
 | **A schematic that simulates** | The design file says how each part simulates (`d.sim`, `d.no_sim`), and the schematic KiCad opens exports a netlist ngspice runs. A pin map KiCad would complete by position is refused first. |
-| **Corners** | The SIM gate runs every deck at each temperature the project names and with each part at both ends of its tolerance. It runs every combination of those ends up to 64 runs, a worst case for each bound above that, and the Monte Carlo draws the project names. A bound holds at every corner or it does not hold. |
+| **Corners** | The SIM gate runs every deck at each temperature the project names and with each part at both ends of its tolerance. It runs every combination of those ends up to 64 runs, and a worst case for each bound above that. It also runs the Monte Carlo draws the project names. A bound holds at every corner or it does not hold. |
 | **Frequency plan** | The SIM gate holds every switching frequency and its harmonics against every resonance a deck measured. |
 | **The next step** | `workcenter next <project>` names the one step that is left, its command, and the fix for the first failure. A person or an agent of any size follows the same path. |
 | **Skills** | Procedures for each kind of step, as Markdown files. |
@@ -104,13 +104,14 @@ workcenter design divider/design.py --route    # the KiCad project, routed
 workcenter gates divider --strict              # GREEN, and SIM has no deck to run yet
 ```
 
-`.claude/skills/board-design/SKILL.md` has the procedure from a spec to a
-GREEN board.
+[`.claude/skills/board-design/SKILL.md`](.claude/skills/board-design/SKILL.md)
+has the procedure from a spec to a GREEN board.
 
 ## Commands
 
 `workcenter <command> --help` says what each writes and where.
-`ee-agent-kit/docs/CONFIGURATION.md` has every flag.
+[`ee-agent-kit/docs/CONFIGURATION.md`](ee-agent-kit/docs/CONFIGURATION.md)
+has every flag.
 
 <details>
 <summary>The 24 commands</summary>
@@ -139,9 +140,10 @@ GREEN board.
 
 **A Claude Code cloud environment.** The environment carries the
 software; the board repository carries the board. Create an environment
-whose setup script is the 3 lines in `environment/setup.sh`, with the
-network hosts from `environment/README.md`. Open any board repository in
-it. Attach this repository as a second repository when its skills should
+whose setup script is the 3 lines in
+[`environment/setup.sh`](environment/setup.sh), with the network hosts from
+[`environment/README.md`](environment/README.md). Open any board repository
+in it. Attach this repository as a second repository when its skills should
 load.
 
 **Another agent host.** `AGENTS.md` at the root is the entry for a host
@@ -160,8 +162,9 @@ GHCR on every tag.
 commands and the board above. It is live at <https://via-kappa-five.vercel.app>.
 `python3 -m http.server 8000 --directory site` serves it at
 http://localhost:8000. Vercel deploys a push that changes `site/`: `main`
-to production, any other branch to a preview. `site/README.md` has the
-commands, the files and how the images are drawn.
+to production, any other branch to a preview.
+[`site/README.md`](site/README.md) has the commands, the files and how the
+images are drawn.
 
 ## Repository map
 
@@ -194,15 +197,17 @@ commands, the files and how the images are drawn.
 
 ## Working on this repository
 
-`make verify` must be green before any push. `ee-agent-kit/AGENTS.md` is
-binding; `ee-agent-kit/ROADMAP.md` decides what gets built.
-`ee-agent-kit/CONTRIBUTING.md` has the rules for a pull request.
-`ee-agent-kit/SECURITY.md` says how to report a vulnerability.
+`make verify` must be green before any push.
+[`ee-agent-kit/AGENTS.md`](ee-agent-kit/AGENTS.md) is binding;
+[`ee-agent-kit/ROADMAP.md`](ee-agent-kit/ROADMAP.md) decides what gets built.
+[`ee-agent-kit/CONTRIBUTING.md`](ee-agent-kit/CONTRIBUTING.md) has the rules
+for a pull request. [`ee-agent-kit/SECURITY.md`](ee-agent-kit/SECURITY.md)
+says how to report a vulnerability.
 
 ## Where things stand
 
-`ee-agent-kit/STATUS.md` has each area's state with its evidence. In
-short: the gates, the corners, the frequency plan and `workcenter next`
+[`ee-agent-kit/STATUS.md`](ee-agent-kit/STATUS.md) has each area's state
+with its evidence. In short: the gates, the corners, the frequency plan and `workcenter next`
 run on the fixture boards in `make verify`. Via has no release yet. The
 cloud setup script and the Docker build have not run yet.
 
