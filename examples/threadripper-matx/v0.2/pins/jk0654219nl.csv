@@ -1,0 +1,18 @@
+Number,Name,Type,Side,Function
+1,MXCT3,passive,left,PHY-side centre tap of pair 3 transformer (pair MX3+ pin 3 / MX3- pin 2; cable contacts 4/5). Datasheet gives no termination for it.
+2,MX3-,passive,left,PHY-side pair 3 negative (to RJ45 contact 5 MX3-)
+3,MX3+,passive,left,PHY-side pair 3 positive (to RJ45 contact 4 MX3+)
+4,MX2+,passive,left,PHY-side pair 2 positive (to RJ45 contact 3 MX2+)
+5,MX2-,passive,left,PHY-side pair 2 negative (to RJ45 contact 6 MX2-)
+6,MXCT2,passive,left,PHY-side centre tap of pair 2 transformer (pair MX2+ pin 4 / MX2- pin 5; cable contacts 3/6). Datasheet gives no termination for it.
+7,MXCT4,passive,left,PHY-side centre tap of pair 4 transformer (pair MX4+ pin 8 / MX4- pin 9; cable contacts 7/8). Datasheet gives no termination for it.
+8,MX4+,passive,left,PHY-side pair 4 positive (to RJ45 contact 7 MX4+)
+9,MX4-,passive,left,PHY-side pair 4 negative (to RJ45 contact 8 MX4-)
+10,MX1-,passive,left,PHY-side pair 1 negative (to RJ45 contact 2 MX1-)
+11,MX1+,passive,left,PHY-side pair 1 positive (to RJ45 contact 1 MX1+)
+12,MXCT1,passive,left,PHY-side centre tap of pair 1 transformer (pair MX1+ pin 11 / MX1- pin 10; cable contacts 1/2). Datasheet gives no termination for it.
+13,LED2_GRN_K,passive,right,Green LED cathode (LED between pins 14 and 13). Datasheet does not say whether this is the left or right LED.
+14,LED2_GRN_A,passive,right,Green LED anode (LED between pins 14 and 13). Datasheet does not say whether this is the left or right LED.
+15,LED1_GRN_K,passive,right,Green LED cathode (LED between pins 16 and 15). Datasheet does not say whether this is the left or right LED.
+16,LED1_GRN_A,passive,right,Green LED anode (LED between pins 16 and 15). Datasheet does not say whether this is the left or right LED.
+SH,SHIELD,passive,bottom,Metal shield / chassis (two SH pads in the footprint). Internally the four cable-side centre taps go through 75 ohm each to a common node and 1000 pF 2 kV to SHIELD.
