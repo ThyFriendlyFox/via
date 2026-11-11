@@ -137,10 +137,21 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
    and a `--timeout` of an hour, in the background. FreeRouting writes its
    session only when it ends, so a run the timeout stops leaves nothing:
    60 passes on 140 parts ran past the 15-minute default (M128).
-7. A part of 0.65 mm pitch or finer stands at a multiple of 90 degrees.
-   FreeRouting 1.9.0 reached none of an MSOP's pins at 26 degrees and all
-   of them at 0 (M132). A board that turns its parts with a curve turns
-   its passives and leaves its fine-pitch parts square.
+7. A route that leaves a link open: read `AGENTS.md`'s landmine row "FreeRouting
+   gives up" before routing again. More passes give the same board. Draw the
+   whole net that stays open with `d.track`, pad to pad, along a path an
+   earlier route of the board found where there is one, then route (M132).
+8. On a shaped outline, render the unrouted board once and look before the
+   first route. The generator's part check and the DRC read the outline's
+   bounding box, so a part off a notch or a grip says nothing (M135).
+9. When 2 routes leave connections open at the same chip, add room before
+   drawing links: inner layers, narrower classes for the nets that enter its
+   pins, its decoupling moved off the pin rows. Draw a link by hand only
+   when 1 or 2 are left in different places (M136).
+10. A part of 0.65 mm pitch or finer stands at a multiple of 90 degrees.
+    FreeRouting 1.9.0 reached none of an MSOP's pins at 26 degrees and all
+    of them at 0 (M140). A board that turns its parts with a curve turns
+    its passives and leaves its fine-pitch parts square.
 
 Done when: the DRC after the route lists 0 errors, or every remaining
 error is named in the next design change.
@@ -542,7 +553,7 @@ chamfered rectangles, paste-only apertures).
 5. A custom pad also reaches the router: read its padstack in
    `build/route/<name>.dsn` (`Pad_custom_...`, a polygon) and check that
    no other pad of the footprint lies inside it. The KiCad DRC reads the
-   real shapes and cannot see what the router file made of them (M130).
+   real shapes and cannot see what the router file made of them (M138).
 
 Done when: the unrouted board's DRC shows no clearance inside any
 footprint, no custom pad's padstack covers another pad, and the tests for
@@ -672,7 +683,9 @@ after any change to what the boards look like in that version.
    (`render --strict`: a part the 3D views draw without a body fails its
    board, and nothing of that board is copied; give the part its body,
    M52), the GIFs, the scenes, then the copies into `docs/` and
-   `docs/layers/`. It exits 1 on any failure.
+   `docs/layers/`. It exits 1 on any failure. A still shows the board's
+   own stackup colours: kicad-cli draws its preset's green unless it is
+   given `--use-board-stackup-colors`, which the workcenter passes (M134).
 4. The README shows the GIFs beside the stills and the layer sheets, and
    names `workcenter pictures <version>` and its `pictures.json`, which
    the next version copies with the folder and so draws the same way.
@@ -681,6 +694,13 @@ after any change to what the boards look like in that version.
    `tools/scene.py`, which copies each 3D model the board names and reports
    one it cannot find; then look at the bottom face in a still. A path
    rewrite on a footprint's models changes a copy and draws nothing (M99).
+7. Before an assembly places a second body, place 1 board's body beside
+   its own board and render it from the side: `scene.place` measures a
+   height from the scene board's outer face, a `board_body` has its origin
+   at its mid-plane, and KiCad turns a model the other way from the
+   right-hand rule (the `board-design` skill). A picture that looks wrong
+   is fixed by measuring 1 body, never by moving the scene until it looks
+   right: 2 errors can show as 1 (M131).
 
 Done when: `workcenter pictures <version>` exits 0, the version's `docs/`
 holds a layer sheet and a turning GIF for every board and for the
@@ -809,18 +829,18 @@ written for the project, or a 3D body comes from a vendor.
    third party.
 8. Step 4 holds for a model written for the project too (a behavioural
    amplifier, a model fitted to a maker's): its own deck runs before any
-   design deck includes it (M129).
+   design deck includes it (M137).
 9. A deck with a feedback loop runs each model alone first, and holds
    its operating point with bounds: the mid-rail, each amplifier's output
    at its DC value. ngspice's `source stepping failed` can end on a point
-   with an output at a rail whose AC numbers pass (M133). A maker's model
+   with an output at a rail whose AC numbers pass (M141). A maker's model
    that will not settle in the loop is replaced there by one fitted to it,
    which step 4 holds to the maker's within its own deck.
 10. A deck that stalls (a transient's step falls to nanoseconds, a corner
     never ends) is fixed in its step control, not skipped: `.options
     method=gear` with `reltol`, `vntol` and `chgtol` loosened, its answer
     checked against the other integration method. A deck is left out of
-    the corners only with a reason no option fixes (M134).
+    the corners only with a reason no option fixes (M142).
 
 Done when: `workcenter sources` passes for every board of the version, each
 model a deck uses has its datasheet rows as `warn` bounds, each loop deck
@@ -980,7 +1000,7 @@ capacitor on a supply rail.
    corners (its L and C at their ends), not from the sweep's start. A
    corner that damps it flat has no peak, and the search returns the
    window's edge: check that the plan's band round that edge holds no
-   source's harmonic (M135).
+   source's harmonic (M143).
 3. Write both lists into `sim/frequency-plan.json`.
 4. Run `workcenter sim <project>`. It names each overlap: a source's
    harmonic in a resonance's band, or 2 sources that can run at 1
@@ -1089,3 +1109,30 @@ author, a message line, a file that must leave every commit.
 Done when: the remote's branches are the checked commits, `make verify`
 is GREEN on them, and the owner holds the old history and the list of
 step 8.
+
+## P34 — The form of a new product
+
+When: a request names a thing to make and its form is not written yet:
+where it sits, how it is held or worn, how many boards and how each lies.
+Again before boards that join into a solid are laid out.
+
+1. Before the first design file, write the form in 2 sentences: what the
+   thing is, where it sits on or by its user and how it is held or worn;
+   how many boards, and how each lies (flat, round a finger, folded,
+   stacked). Take the form from how the thing is used, never from the
+   request's word for the board.
+2. Say those sentences in the first message to the owner, with the first
+   board's size, and go on working. A wrong reading then costs a reply,
+   not a design (M129).
+3. When the owner has a project of the same kind (a prototype series),
+   read it before the first version and keep its layout (P22).
+4. Boards that join into a solid: compute each board's corners in the
+   solid's frame, and check in the project's own code, each time it loads,
+   that every 2 boards that join share their corners. Angles that sum to a
+   turn are not enough: faces round a circle that all touch it close only
+   when their alternate faces add up equally (M130). A render is not the
+   check.
+
+Done when: the form's sentences are in the first message and in the
+version's README, and the project's code refuses a solid whose joints
+miss.

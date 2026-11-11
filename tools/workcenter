@@ -1929,13 +1929,10 @@ def gate_render(
     spin_zoom: float = 1.0,
     spin_pivot: str | None = None,
     strict: bool = False,
-    stackup_colors: bool = False,
 ) -> Result:
     """Images of the design: schematic, board top and bottom (2D), board 3D top, bottom and isometric,
     every layer on its own with an overview sheet, and on request a GIF that turns the 3D board round.
-    The record names each part the 3D views draw bare (`parts_without_body`); `strict` fails on one.
-    `stackup_colors` draws the 3D views in the colours the board's stackup names (its mask, silk and
-    finish) instead of kicad-cli's preset."""
+    The record names each part the 3D views draw bare (`parts_without_body`); `strict` fails on one."""
     rdir = out / "render"
     rdir.mkdir(parents=True, exist_ok=True)
     artifacts: list[str] = []
@@ -1969,7 +1966,9 @@ def gate_render(
             "opaque",
             "--quality",
             "high",
-            *(["--use-board-stackup-colors"] if stackup_colors else []),
+            # The board's own mask, legend and finish where its stackup names them; without this the
+            # preset's green mask is drawn whatever the board says.
+            "--use-board-stackup-colors",
             *extra,
             project.pcb,
         ]
@@ -4698,11 +4697,6 @@ def main(argv: list[str] | None = None) -> int:
         "--spin-pivot",
         help="the GIF's pivot, x,y,z in cm from the board's centre (kicad-cli --pivot); z for tall parts",
     )
-    p.add_argument(
-        "--stackup-colors",
-        action="store_true",
-        help="draw the 3D views and the GIF in the board stackup's colours (mask, silk, finish)",
-    )
     p = add_project_cmd(
         "procure", "price the schematic's BOM from parts files; writes procure/bom.csv, parts.csv, parts.md"
     )
@@ -4963,7 +4957,6 @@ def main(argv: list[str] | None = None) -> int:
             spin_zoom=args.spin_zoom,
             spin_pivot=args.spin_pivot,
             strict=args.strict,
-            stackup_colors=args.stackup_colors,
         )
     if args.command == "gates":
         return cmd_gates(args)

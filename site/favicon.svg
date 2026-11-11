@@ -1,5 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" stroke-linecap="round" stroke-linejoin="round">
-  <!-- The Via mark: a via in cross-section. A trace on the top copper layer, the plated hole through the board, a trace on the bottom layer. -->
-  <style>g{stroke:#1d1b18}@media (prefers-color-scheme:dark){g{stroke:#f1efeb}}</style>
-  <g><path d="M2 9h18.5v14H30M11.5 9v14h9" stroke-width="3"/><path d="M2 16h5.5M24.5 16H30" stroke-width="3" stroke-opacity=".28"/></g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="283 73 394 394" fill="none" stroke-linejoin="round">
+  <!-- The Via wordmark (logo.svg) in a square: V, I and A drawn as copper, a pad on each letter and a trace between them. -->
+  <style>g{fill:#1d1b18;stroke:#1d1b18}.t{fill:none}@media (prefers-color-scheme:dark){g{fill:#f1efeb;stroke:#f1efeb}.t{fill:none}}</style>
+  <g stroke-width="12">
+    <path d="m378.4252 269.28348-44.566925-60.472458h-44.566925l89.13385 120.9449z"/>
+    <path d="M389.88452 208.81102h39.46457v33.10237h-39.46457z"/>
+    <path d="M464.09186 210.2441h39.46457v120.94487h-39.46457z"/>
+    <path d="m581.5748 269.28348 44.566895 60.472443h44.566956l-89.13385-120.9449z"/>
+    <path d="M570.1155 329.75592h-39.46454v-33.102386h39.46454z"/>
+    <path class="t" d="M409.6168 241.91339v57.606293h-31.181091M503.55643 270.71652h46.834625v25.952759M570.1155 313.2047h18.233643v-13.669281h15.498657M429.3491 225.3622h17.37146v45.354324h17.368683"/>
+  </g>
 </svg>

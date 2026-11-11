@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "Rosetta")(type "KiCad")(uri "/home/user/via/examples/universal-controller/v0.2/footprints/Rosetta.pretty")(options "")(descr ""))
+)

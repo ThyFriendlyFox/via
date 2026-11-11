@@ -5,7 +5,6 @@
       "name": "hush",
       "prefix": "",
       "strict": true,
-      "stackup_colors": true,
       "stills": ["board-top.png", "board-bottom.png", "board-3d-top.png", "board-3d-bottom.png", "board-3d-iso.png", "schematic.png"],
       "layers": "layers.png",
       "spins": [

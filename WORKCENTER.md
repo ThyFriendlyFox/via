@@ -95,7 +95,7 @@ or a `.model` in a file with a map from every pin to a node, or gives it a
 value of its own; `d.no_sim` leaves a part out with the reason;
 `d.sim_directives` puts SPICE lines on the sheet. `workcenter design` then
 writes KiCad's Sim fields on the symbols, and hidden on their footprints so
-the DRC's parity check finds the same fields on both (M131), so the
+the DRC's parity check finds the same fields on both (M139), so the
 schematic runs in KiCad's simulator and `kicad-cli sch export netlist --format spice` writes a netlist
 ngspice reads. It prints each problem as a `sim:` line and exits 1 on any: a
 map that leaves a pin or a node out (KiCad would bind it by position and say
@@ -155,9 +155,8 @@ layer with the outline, bottom layers seen from below) with an overview sheet,
 the 3D board turning once round (`--spin-frames`, `--spin-tilt`, `--spin-zoom`,
 `--spin-pivot`;
 a minute or two of frames). `--views` takes any of schematic, 2d, 3d, layers,
-spin, or all. `--stackup-colors` draws the 3D views and the GIF in the
-board stackup's colours (its masks, silkscreens and finish) in place of
-kicad-cli's preset. Its summary names every part the 3D views draw without a body
+spin, or all. The 3D views and the GIF are drawn in the board stackup's
+colours (its masks, silkscreens and finish). Its summary names every part the 3D views draw without a body
 (a footprint naming a model that is not on disk); `--strict` fails on one.
 A finished board version shows its layer sheets and a turning
 GIF of every board and its assembly in its README (`PROCESSES.md` P23), and
@@ -422,8 +421,6 @@ stale (`tools/doctools.py`):
   from the version's `pictures.json` (written with the defaults when
   absent): each board's `render --strict` stills and layers, its turning
   GIFs, the scene scripts, then the copies into `docs/` and `docs/layers/`.
-  A board with `"stackup_colors": true` is drawn in its stackup's colours;
-  a scene's view takes the same key, and `Scene.spin(stackup_colors=True)`.
   `--frames 4` is the framing check: one sheet of frames per GIF under
   `build/pictures/check/`, `docs/` untouched.
 - `tools/scene.py` is the general part of an assembly: it loads a routed

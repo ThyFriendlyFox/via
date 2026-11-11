@@ -782,43 +782,91 @@ Cost: 15 minutes of routing with no result.
 Root cause: I took the pass count from a 4-part template to a 140-part board, and did not set `--timeout` for a route whose length I did not know.
 Process: P4
 
-## M129 — 2026-11-11 — A model I wrote ran in the loop before its own deck
+## M129 — 2026-11-11 — A ring read as a flat board, twice
+What happened: The owner asked for an example of what the workcenter makes: "a ring that functions as a mouse for a computer", on "a compact board". I drew the face of a signet ring, a round board 22 mm across with a touch wheel, and placed 45 parts on it. The owner stopped it: "the mouse is a ring that someone literally wears." I then drew 1 flat board in the shape of a ring, a finger hole and a crown, and routed it. The owner stopped that too: the ring is three-dimensional, so the circuit sits on small boards on the surface of the cylinder. I had stated neither form before I built it.
+Cost: 2 designs set aside, about 50 minutes, and 2 interruptions of the owner.
+Root cause: I took the form from the words "compact board" and from what 1 flat board can do, not from how the thing is worn, and the owner learned the form only from the work. No process asked for a new product's form before its first design file.
+Process: P34
+
+## M130 — 2026-11-11 — A ring of 6 tiles that could not close
+What happened: Signet is 6 boards round the finger, each inner face tangent to a 20 mm cylinder at its middle. The radio's tile was 15.6 mm and the other 5 shared the rest of the circle, 10.82 mm each. A hexagon whose faces all touch a circle closes only when its alternate faces add up equally, and this one did not: the radio's 2 corners stood 1.3 mm out from its neighbours'. v0.1 to v0.3 were drawn so, the solder at those 2 joints in the air. I found it in v0.3's pass, measuring the assembly's heights.
+Cost: 3 versions drawn with 2 open joints; v0.4 laid 4 tiles out again at new widths.
+Root cause: I checked that the tiles' angles summed to a turn and that 2 equal neighbours met, not that every 2 neighbours shared their corner. The renders showed the gap from v0.1, and I read it as the solder's shape.
+Process: P34
+
+## M131 — 2026-11-11 — A scene's heights fixed by eye
+What happened: In Signet's first assembly the radio tile looked 0.8 mm high against its neighbours. I moved the ring's axis until the ring looked closed, and wrote in `assembly.py` that a board body's origin is its inner face and that the scene's heights start at the radio's inner face. `tools/scene.py` says otherwise, and rightly: `place` measures from the scene board's outer face and a `board_body` has its origin at its mid-plane. A side render of 1 body beside its own board at 0, -0.4 and -0.8 mm lay flush at -0.4. v0.1 to v0.3 drew the radio 0.4 mm inside its neighbours and the solder 0.4 to 0.8 mm off the boards. The tiles had first been turned the wrong way as well (M42, M47); the `board-design` skill holds that convention, and I had not read it.
+Cost: 3 versions' pictures with the error in them; 4 test renders.
+Root cause: 2 errors showed in 1 picture, the open joints of M130 and the heights, and I fixed the picture instead of measuring 1 body. I placed the first body without reading the conventions where they are written.
+Process: P23
+
+## M132 — 2026-11-11 — More passes for a link the router gave up on
+What happened: With narrower joint pads, Signet v0.3's power tile routed with 1 VBAT link open. I routed again with 80 passes and got the same board; `AGENTS.md`'s landmine map says more passes change nothing once FreeRouting gives up. A hand track for half the net moved the wall and left another link open; the whole net by hand, along the path v0.2's route had found, routed GREEN.
+Cost: 2 route runs and 2 gate runs, about 5 minutes.
+Root cause: I did not read the landmine map's row on a router that gives up before the second run, and then drew less of the net than stayed open.
+Process: P4
+
+## M133 — 2026-11-11 — The PPA's key from 1 keyserver
+What happened: `install.sh` fetched the KiCad PPA's signing key from keyserver.ubuntu.com only. The session's proxy reset every connection there, and the install stopped before KiCad. Launchpad's API serves the same key; `install.sh` now falls back to it, and the fingerprint check decides either way.
+Cost: 1 failed install and a fix, 5 minutes.
+Root cause: An install step that downloads had 1 source and no fallback, where P2 step 4 says not to assume a keyserver answers.
+Process: P2
+
+## M134 — 2026-11-11 — Every 3D render drew a green board
+What happened: Signet's tiles name a black mask, a white legend and ENIG in their stackup. `workcenter render` and `tools/scene.py` drew them green with HASL pads: kicad-cli draws its preset's colours unless asked for the board's (`--use-board-stackup-colors`). Every board the workcenter had drawn so far was green in its stackup or had none, so no picture showed it.
+Cost: 1 round of pictures, and a test and a fix in the workcenter.
+Root cause: The render commands were written from kicad-cli's defaults and checked only on green boards.
+Process: P23
+
+## M135 — 2026-11-11 — A back paddle placed off the board, and no check said so
+What happened: On Rosetta v0.2's controller-shaped outline I placed the left back paddle at (110, 172), below the left grip's edge. The generator printed no `part:` line and the DRC listed nothing about it: both read the outline's bounding box, and the point is inside the box. A 3D render before the route showed the switch floating off the board, and I moved it.
+Cost: 1 render and 1 placement round; no route ran with it.
+Root cause: I placed by numbers on a shaped board without drawing it first, and took the silence of the part check for a check of the shape.
+Process: P4
+
+## M136 — 2026-11-11 — 4 routes of hand-drawn links on a board that needed more layers
+What happened: Rosetta v0.2 on 4 layers left 2 to 6 connections open after each route, most of them at the RP2040's 0.4 mm pins. I drew each open link by hand and routed again, 4 times; each new link moved the router's choices and opened others. 6 layers and narrower rail and motor classes left 1 link open, which 1 hand route closed.
+Cost: about 1 hour of routes.
+Root cause: I treated each open link as the problem. The same chip's pins failing route after route said the board had too little room round it, which a link drawn by hand does not add.
+Process: P4
+
+## M137 — 2026-11-11 — A model I wrote ran in the loop before its own deck
 What happened: The example speaker's amplifier, a PAM8302A, has no maker's model, so I wrote one (`sim/models/pam8302a.lib`) with its delay as a transmission line. The line's 1k impedance loaded the stage that fed it, and the model's gain came out half the datasheet's. The loop decks ran on it first. The model's own deck at the datasheet's conditions found it; a buffer before the line gives 22.83 dB against the Gain row's 23.5 dB.
 Cost: 1 round of loop tuning on a plant 6 dB short, done again.
 Root cause: P27 step 4 asks for that deck before a maker's model serves a design deck. I read it as about makers' models and ran my own without one.
 Process: P27
 
-## M130 — 2026-11-11 — A custom pad the router saw as a box over 4 pads
+## M138 — 2026-11-11 — A custom pad the router saw as a box over 4 pads
 What happened: The mic of the example speaker, an IM73A135, has a custom pad: a ring round its port. The router file wrote each pad as a rectangle, and the ring's rectangle covered the mic's other 4 pads. FreeRouting saw them inside 1 copper shape and left them open. The router file now writes a custom pad as its outline, a polygon.
 Cost: 2 routes that left the mic unconnected, and the time to find why.
 Root cause: P19 checks a new pad shape with the KiCad DRC, which reads the real shapes. Nothing read what the router file makes of the shape.
 Process: P19
 
-## M131 — 2026-11-11 — A parity warning for every part bound to a model
+## M139 — 2026-11-11 — A parity warning for every part bound to a model
 What happened: On the example speaker's first board the DRC warned `Missing symbol field 'Sim.Library' in footprint` for each part the design binds to a model. The generator wrote the simulation fields on the symbol only. It now writes them on the footprint too, hidden.
 Cost: 1 generator change and its tests, before the first route.
 Root cause: The tests of a schematic that simulates checked the schematic and its netlist. None put a bound part on a board and read the DRC's parity.
 Process: P24
 
-## M132 — 2026-11-11 — A fine-pitch part turned off the grid, and no route to it
+## M140 — 2026-11-11 — A fine-pitch part turned off the grid, and no route to it
 What happened: I turned the example speaker's amplifier, an MSOP of 0.65 mm pitch, 26 degrees to follow the ring. FreeRouting 1.9.0 reached none of its pins. Turned square to the board, it reached all of them.
 Cost: 1 route of the board and 2 test routes to find the cause.
 Root cause: I placed for the look and did not know the router's limit on fine pitch at angles that are not multiples of 90 degrees.
 Process: P4
 
-## M133 — 2026-11-11 — A maker's model in a feedback loop, and an operating point that was not one
+## M141 — 2026-11-11 — A maker's model in a feedback loop, and an operating point that was not one
 What happened: The example speaker's loop decks first ran TI's TLV9062 model for both op-amps. In the closed loop ngspice reported `source stepping failed` and settled on points with an output at a rail, and the AC numbers taken there passed. `.nodeset` fixed 1 deck and broke another; `optran` ran minutes for each corner. The loop decks now run a model fitted to TI's, held within 1 dB and 5 degrees of it in its own deck, and 2 bounds in each deck hold the mid-rail and the controller's output at their DC values.
 Cost: About 2 hours of deck changes.
 Root cause: I put a model with noise sources and switches into a loop before I ran it alone. No bound checked that the operating point was the circuit's.
 Process: P27
 
-## M134 — 2026-11-11 — A deck skipped at the corners for a stall that was ngspice's
+## M142 — 2026-11-11 — A deck skipped at the corners for a stall that was ngspice's
 What happened: The example speaker's hum deck, a 250 ms transient through the loop, stopped advancing at some corners, so I skipped it at the corners. When I changed 1 resistor from 6.8k to 6.2k it stopped advancing as written too: the step fell to 1 ns from the start. With looser step control (`reltol=1e-3 vntol=1e-5 chgtol=1e-12`) it ran in 1 second at every value, and the trapezoidal method gave the same answer to 0.001 dB. It now runs at all corners.
 Cost: 10 minutes of a stalled gate run, and a deck the corners did not judge while the loop was tuned.
 Root cause: I took a stall for the circuit's and skipped the deck instead of changing the step control.
 Process: P27
 
-## M135 — 2026-11-11 — A rail's peak read from the floor of its sweep
+## M143 — 2026-11-11 — A rail's peak read from the floor of its sweep
 What happened: The example speaker's rail deck took the +5 V rail's peak impedance from 1 kHz up. At the corners where the cable's resistance damps the resonance, the highest point was the floor at 1 kHz. The plan put a band round it that held the test hum's 6th harmonic at 900 Hz, and failed the gate on a resonance that was not there. The cable's inductance with the rail's capacitors resonates between 37 and 72 kHz over the corners, so the search now starts at 20 kHz. A corner damped flat still returns the window's edge, and a band round 20 kHz holds no harmonic of the plan's sources.
 Cost: 1 red gate run and 1 deck change.
 Root cause: I searched the whole sweep for the peak. A damped corner has no peak, and the search returns its edge.

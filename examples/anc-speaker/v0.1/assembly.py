@@ -38,8 +38,8 @@ RUBBER = (0.18, 0.18, 0.19)
 STEEL = (0.62, 0.63, 0.66)
 RED = (0.78, 0.10, 0.10)
 
-# The board's own colours (black mask, white silk, gold finish) in every view.
-LOOK = {"stackup_colors": True, "pivot": "0,0,-1.0"}
+# Every view turns about the driver's face, 1 mm under the board.
+LOOK = {"pivot": "0,0,-1.0"}
 VIEWS = {
     "assembly-iso": {**LOOK, "rotate": "-55,0,30", "perspective": True, "zoom": 0.85},
     "assembly-front": {**LOOK, "rotate": "0,0,0", "zoom": 1.0},
@@ -135,7 +135,7 @@ def main() -> int:
         tabs.append((x * (FRAME_R - 1.5) / r, y * (FRAME_R - 1.5) / r))
     s.place(s.write("speaker_wires.wrl", wires(tabs, pads), "the speaker's wires"), (*CENTRE, 0.0))
     s.stills(VIEWS)
-    s.spin("assembly-spin.gif", tilt=-60, zoom=0.95, pivot="0,0,-1.0", stackup_colors=True)
+    s.spin("assembly-spin.gif", tilt=-60, zoom=0.95, pivot="0,0,-1.0")
     return 0
 
 

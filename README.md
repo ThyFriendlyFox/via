@@ -56,16 +56,28 @@ command that draws it.
 
 ## An example: Rosetta, a universal controller
 
-<a href="examples/universal-controller/v0.1/README.md"><img alt="Rosetta in 3D from above and to the side: a game controller's board with a D-pad, face buttons, a 5-position knob with a ring of LEDs, 2 USB-C ports" src="site/showcase/rosetta-iso.png"></a>
+<a href="examples/universal-controller/v0.2/README.md"><img alt="Rosetta v0.2 in 3D: an Xbox 360-style controller board with 2 thumbsticks, a D-pad, face buttons, a 5-position knob with a ring of LEDs and 2 USB-C ports" src="site/showcase/rosetta-iso.png"></a>
 
-[`examples/universal-controller/v0.1`](examples/universal-controller/v0.1/README.md) is a game
+[`examples/universal-controller/v0.2`](examples/universal-controller/v0.2/README.md) is a game
 controller made with the workcenter: a 5-position knob picks a PS4, a PS5, an Xbox, a Switch or
-Bluetooth. 160 x 92 mm in a controller's outline, 4 layers, routed and GREEN. An RP2040 runs a
-second USB port in software to relay a console's signature to a licensed donor; an ESP32 hangs its
-antenna over the gap between the grips; the knob is 1 analog reading, and 6 decks prove its 5
-positions never meet at any corner.
+Bluetooth. Its board is laid out like an Xbox 360 controller's, 148 x 82 mm, 6 layers, routed
+and GREEN: thumbsticks soldered on (the footprint written from ALPS's drawing), Hall-effect
+triggers on the shoulder horns, an RP2040 that runs a second USB port in software to relay a
+console's signature to a licensed donor, an ESP32 whose antenna hangs past the dip between the
+horns, and a knob read as 1 number whose 5 positions 6 decks prove never meet.
 
-## A second example: Hush, a speaker that cancels noise
+## An example: Signet, a mouse worn as a ring
+
+<a href="examples/ring-mouse/README.md"><img alt="Signet turning: six black boards with gold edge pads in a hexagonal ring, soldered edge to edge, the radio module on top and a foil cell at the bottom" src="examples/ring-mouse/v0.4/docs/assembly-spin.gif" width="560"></a>
+
+[`examples/ring-mouse`](examples/ring-mouse/README.md) is a mouse you wear on the index finger, made
+with the workcenter as a series of prototypes, a version per pass of a loop. Six 4-layer boards, 12
+mm along the finger, sit on the faces of a hexagonal prism round it, each soldered to the next by 8
+plated edge pads. The ring turns with the hand and the cursor follows its gyroscope; the thumb slides
+along a 3-channel strip to scroll and presses the side to click. A Bluetooth LE module, a charger,
+a 3.3 V rail and a 20 mAh cell ride on the other tiles, and every tile is GREEN.
+
+## An example: Hush, a speaker that cancels noise
 
 <table>
   <tr>

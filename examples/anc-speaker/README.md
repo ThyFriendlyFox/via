@@ -25,3 +25,6 @@ supplies the tools and the gates.
 | Version | Board | What it does | State |
 |---|---|---|---|
 | [v0.1](v0.1/README.md) | 62 mm ring, 4 layers, 62 parts | Feedback cancelling from 50 to 500 Hz on the cone's axis, music through the loop, a depth trimmer and an on/off switch | Routed, gates GREEN; not built |
+
+The board was polished in a Ralph loop: [`LOOP.md`](LOOP.md) holds its prompt, its checklist and
+the log of each iteration.

@@ -48,8 +48,8 @@ the 3D bodies KiCad has none for in [`models/`](models/), the pictures in [`docs
 | <img src="docs/layers.png" width="400" alt="Every layer of the board on its own"> | <img src="docs/schematic.png" width="400" alt="The schematic, wired, left to right: power, the mic, the error amplifier, the controller, the amplifier"> |
 
 `workcenter pictures .` draws them all from [`pictures.json`](pictures.json): the board's stills,
-layers and both turning GIFs in the board's own colours (`"stackup_colors": true`, `render
---stackup-colors`), and [`assembly.py`](assembly.py), the ring on its driver, on the workcenter's
+layers and both turning GIFs in the board's own colours, and [`assembly.py`](assembly.py), the
+ring on its driver, on the workcenter's
 `tools/scene.py`. The 3D bodies of the mic, the jack, the trimmer and the speaker's wires come from
 [`models/make_models.py`](models/make_models.py); every other body is KiCad's own
 (`KICAD10_3DMODEL_DIR`).
@@ -74,7 +74,7 @@ layers and both turning GIFs in the board's own colours (`"stackup_colors": true
   speaker's pads south-east, the line input west. Within a block the passives stand in radial
   columns 8 degrees apart, so parts on neighbouring tracks line up. U5, the amplifier, stands square
   to the board: FreeRouting 1.9.0 reached none of its 0.65 mm pins with it turned 26 degrees along
-  the ring (M132, P4 step 7). The two lower spokes are track keep-outs on F.Cu and In2.Cu: the hub
+  the ring (M140, P4 step 10). The two lower spokes are track keep-outs on F.Cu and In2.Cu: the hub
   and its spoke north carry the mic's lines and nothing else.
 - **Layers.** F.Cu carries the parts and most signals; In1.Cu is a whole ground plane; In2.Cu
   carries signals; B.Cu is a whole ground pour that no track crosses, so the back's art and its gold
@@ -123,7 +123,7 @@ bandwidth and delay, USB's 4.75 to 5.25 V, and 48 Monte Carlo draws.
 | `tlv9061_model` | the fitted op-amp against TI's model and the datasheet | 0.52 dB and 0.03° from TI's to 10 kHz; 125.7 dB, 9.16 MHz | (not cornered) | ±1 dB, ±5°, `warn` |
 
 Every loop deck also holds VREF and U3's output at their DC values (1.36 to 1.44 V at every
-corner): a false operating point fails there (M133). The music's flatness is judged at nominal: the
+corner): a false operating point fails there (M141). The music's flatness is judged at nominal: the
 driver's own spread moves it further than the board can correct (Open items). The frequency plan
 ([`sim/frequency-plan.json`](sim/frequency-plan.json)) holds the amplifier's 200 to 300 kHz and
 the test hum's harmonics against the rail's resonance: no overlap.
@@ -231,9 +231,9 @@ TI's TLV9062 model is right against its datasheet, but in a closed loop ngspice 
 operating points with it (`source stepping failed`, an output at a rail), so the loop decks run
 [`sim/models/tlv9061_fit.lib`](sim/models/tlv9061_fit.lib): its open-loop gain, its
 gain-bandwidth and a second pole, fitted to TI's, within 0.52 dB and 0.03 degrees of it up to
-10 kHz in `tlv9061_model` (M133). The PAM8302A has no maker's model;
+10 kHz in `tlv9061_model` (M141). The PAM8302A has no maker's model;
 [`sim/models/pam8302a.lib`](sim/models/pam8302a.lib) is its gain, its 10k inputs, its bandwidth
-and its delay from the datasheet, held to the Gain row in `pam_model` (M129).
+and its delay from the datasheet, held to the Gain row in `pam_model` (M137).
 
 The `tlv9061_model` deck runs TI's own model, and ngspice warns there: `singular matrix` at a node
 inside TI's model and `source stepping failed` on the way to an operating point it then finds. The
@@ -320,7 +320,7 @@ assembly.py`.
   band; the bound says so in its source. Chosen over loosening the bound or narrowing the driver's
   spreads below what makers state.
 - **A fitted op-amp model in the loop decks** (v0.1). TI's model settles on false operating points
-  in the closed loop; the fitted one is held to it within 0.52 dB in its own deck (M133).
+  in the closed loop; the fitted one is held to it within 0.52 dB in its own deck (M141).
 - **Black mask as a custom colour** (v0.1). KiCad's named "Black" renders the ground pour brown
   through the mask; `#0B0B0CF2` renders black. The fab's job file then names an RGB value, not
   "Black".

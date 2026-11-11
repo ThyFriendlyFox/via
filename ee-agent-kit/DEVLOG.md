@@ -39,7 +39,7 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
-## 2026-11-11 — A second example: a speaker that plays the inverse of what it hears
+## 2026-11-11 — Another example: a speaker that plays the inverse of what it hears
 
 The owner asked for a noise cancelling speaker as an example of what Via makes: compact, gorgeous,
 iterated until it is, in its own folder on `main`. Hush is in `examples/anc-speaker/v0.1`: a ring
@@ -49,11 +49,54 @@ noise at 50 Hz and 12 dB from 200 to 300 Hz at the worst of them. On the way, TI
 settled on false operating points inside the loop, so the loop decks run a model fitted to it; my
 own amplifier model ran in the loop before its own deck and was half the gain. The generator
 learned 2 things: a custom pad reaches the router as its outline, not a box over its neighbours, and
-a simulated part's fields go on its footprint too. The renders learned the board's own colours. A
-reviewer who had not seen the board read its renders each round; the back's art ended in a jack's
-peg hole until the second round. 7 mistakes, M129 to M135, each with its process.
+a simulated part's fields go on its footprint too. Main had meanwhile learned to render a board in
+its own colours, which this board's black mask needed. A reviewer who had not seen the board read
+its renders each round; the back's art ended in a jack's peg hole until the second round. 7
+mistakes, M137 to M143, each with its process.
 
 Evidence: `workcenter gates examples/anc-speaker/v0.1` GREEN with 6 warnings; the pictures in its `docs/`.
+
+## 2026-11-11 — Rosetta v0.2: the controller as a controller's own board
+
+The owner sent a picture of an Xbox 360 controller's main board and asked for that: the
+joysticks, the Hall-effect sensors and the Bluetooth module on a curved board. v0.1 had carried
+modules on cables. v0.2 has the thumbsticks soldered on, linear Hall sensors under the triggers,
+right-angle bumpers on the shoulder horns, rumble motors at the grips and both USB-C ports in a
+tab at the bottom. KiCad has no thumbstick footprint, so I read ALPS's mounting-hole drawing for
+the RKJXV122400R and wrote one from it; Hall-effect sticks are made to drop into those holes. A
+render before the route showed a back paddle off the board, which no check had seen (M135). On 4
+layers every route left 2 to 6 of the RP2040's links open, and I chased them by hand for 4 routes
+before I gave the board 6 layers and narrower supply tracks (M136). Then 1 link was left, and 1
+hand route closed it. The owner also started the other example boards in other sessions.
+
+Evidence: `workcenter gates examples/universal-controller/v0.2` GREEN with 6 warnings
+(silkscreen at the edge); `render --strict` naming no part without a body.
+
+## 2026-11-11 — A second example project: a mouse worn as a ring
+
+The owner asked for an example of what people can make with the
+workcenter: a compact board that looks great, made with a loop that keeps
+iterating, and a ring that works as a mouse. I first drew the face of a
+signet ring, then a flat ring-shaped board; the owner stopped both. The
+ring is worn, and its circuit lies on small boards on the surface of the
+cylinder. Signet is 6 tiles on a hexagonal prism round the index finger,
+each soldered to the next by 8 plated edge pads, kept as version folders
+the way Last Hit keeps its prototypes. The loop made 4 versions. v0.2 made
+every face black and drew solder in the joints and a foil cell. v0.3 moved
+the light out from under the thumb and guarded the charging pads. v0.4
+closed the ring: a hexagon whose faces all touch the finger closes only
+when its alternate faces add up equally, and the radio's 2 joints had
+stood 1.3 mm open since v0.1. The renders showed it all along; I had read
+the gap as the solder's shape. The assembly's heights were wrong too, by
+0.4 mm, because I had fixed a picture by eye instead of measuring 1 body.
+Every render had also drawn the black boards green: kicad-cli draws its
+own colours unless asked for the board's, and the workcenter now asks.
+P34 asks for a new product's form before its first design file.
+
+Evidence: every tile of `examples/ring-mouse/v0.4` GREEN (the radio with
+2 legend warnings, the power tile with 1); 52 corner runs on the gauge's
+deck; `make -C firmware test`; `ring.py` refuses a ring whose neighbours
+miss their corner; M129 to M134.
 
 ## 2026-11-11 — An example project: a controller that speaks to 5 consoles
 

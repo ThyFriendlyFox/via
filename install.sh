@@ -56,9 +56,19 @@ add_kicad_ppa() {
   install -d -m 0755 /etc/apt/keyrings
   if [[ ! -s "$KICAD_KEYRING" ]]; then
     log "apt: fetching PPA signing key ${KICAD_PPA_FPR}"
-    curl -fsSL --retry 3 --connect-timeout 20 \
+    rm -f "${KICAD_KEYRING}.tmp"
+    # Some proxies reset every connection to the keyserver; Launchpad's API serves the same key
+    # as a JSON string. Either way the fingerprint check below decides whether it is trusted.
+    if ! curl -fsSL --retry 3 --connect-timeout 20 --max-time 120 \
       "https://keyserver.ubuntu.com/pks/lookup?op=get&options=mr&search=0x${KICAD_PPA_FPR}" \
-      | gpg --dearmor -o "${KICAD_KEYRING}.tmp"
+      | gpg --dearmor -o "${KICAD_KEYRING}.tmp" || [[ ! -s "${KICAD_KEYRING}.tmp" ]]; then
+      warn "apt: keyserver.ubuntu.com did not answer; fetching the key from api.launchpad.net"
+      rm -f "${KICAD_KEYRING}.tmp"
+      curl -fsSL --retry 3 --connect-timeout 20 --max-time 120 \
+        "https://api.launchpad.net/devel/~kicad/+archive/ubuntu/kicad-10.0-releases?ws.op=getSigningKeyData" \
+        | python3 -c 'import json, sys; sys.stdout.write(json.load(sys.stdin))' \
+        | gpg --dearmor -o "${KICAD_KEYRING}.tmp"
+    fi
     gpg --no-default-keyring --keyring "${KICAD_KEYRING}.tmp" --list-keys --with-colons 2>/dev/null \
       | grep -q "^fpr:::::::::${KICAD_PPA_FPR}:" \
       || die "apt: PPA key fingerprint mismatch; refusing to trust it"

@@ -1,0 +1,16 @@
+* The cell's gauge on the power tile: R2 (1M) from the cell to VBAT_SENSE, R3 (1M) to ground, C5
+* (100n) holding the node for the radio's ADC (PC3, ADC1_IN4). The cell at its charged voltage,
+* 4.2 V (MCP73831-2: VREG 4.20 V, datasheet DS20001984H). The firmware doubles the reading, so the
+* ratio is what it must know; the drain is what the gauge costs the cell all the time.
+VB vbat 0 DC 4.2
+R2 vbat sense 1Meg
+R3 sense 0 1Meg
+C5 sense 0 100n
+.control
+op
+let ratio = v(sense) / v(vbat)
+let drain = -i(vb)
+let vsense = v(sense)
+print ratio drain vsense
+.endc
+.end
