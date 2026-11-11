@@ -1,0 +1,304 @@
+{
+  "name": "sky130A",
+  "process": "SkyWater SKY130, 130 nm, 5 metal layers, the open_pdks build for Magic, Netgen, KLayout and OpenROAD",
+  "source": "The kit's own files as ciel 3.2.0 installs them at open_pdks commit 6d4d11780c40b20ee63cc98e645307a9bf2b2ab8, read on 2026-11-11. Each block names what it was read from.",
+  "version": {
+    "file": "libs.tech/magic/sky130A.tech",
+    "pattern": "^version\\n\\s*version (\\S+)$",
+    "value": "1.0.470-0-g6d4d117",
+    "commit": "6d4d11780c40b20ee63cc98e645307a9bf2b2ab8",
+    "source": "the version section of the kit's Magic technology file; install.sh pins the commit as SKY130_COMMIT"
+  },
+  "magic": {
+    "rc": "libs.tech/magic/sky130A.magicrc",
+    "tech": "libs.tech/magic/sky130A.tech",
+    "needs": "8.3.411",
+    "source": "the technology file's own line `requires magic-8.3.411`; Magic 8.3.465 is installed"
+  },
+  "libraries": {
+    "sky130_fd_sc_hd": {
+      "source": "the kit's libs.ref/sky130_fd_sc_hd/ folder and libs.tech/openlane/; the floorplan block is the proof flow that routed an 8-bit counter with 0 violations on 2026-11-11",
+      "corners": {
+        "ff_100C_1v65": {
+          "liberty": "libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__ff_100C_1v65.lib",
+          "process": "fast",
+          "volts": 1.65,
+          "celsius": 100.0
+        },
+        "ff_100C_1v95": {
+          "liberty": "libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__ff_100C_1v95.lib",
+          "process": "fast",
+          "volts": 1.95,
+          "celsius": 100.0
+        },
+        "ff_n40C_1v56": {
+          "liberty": "libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__ff_n40C_1v56.lib",
+          "process": "fast",
+          "volts": 1.56,
+          "celsius": -40.0
+        },
+        "ff_n40C_1v65": {
+          "liberty": "libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__ff_n40C_1v65.lib",
+          "process": "fast",
+          "volts": 1.65,
+          "celsius": -40.0
+        },
+        "ff_n40C_1v76": {
+          "liberty": "libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__ff_n40C_1v76.lib",
+          "process": "fast",
+          "volts": 1.76,
+          "celsius": -40.0
+        },
+        "ff_n40C_1v95": {
+          "liberty": "libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__ff_n40C_1v95.lib",
+          "process": "fast",
+          "volts": 1.95,
+          "celsius": -40.0
+        },
+        "ss_100C_1v40": {
+          "liberty": "libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__ss_100C_1v40.lib",
+          "process": "slow",
+          "volts": 1.4,
+          "celsius": 100.0
+        },
+        "ss_100C_1v60": {
+          "liberty": "libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__ss_100C_1v60.lib",
+          "process": "slow",
+          "volts": 1.6,
+          "celsius": 100.0
+        },
+        "ss_n40C_1v28": {
+          "liberty": "libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__ss_n40C_1v28.lib",
+          "process": "slow",
+          "volts": 1.28,
+          "celsius": -40.0
+        },
+        "ss_n40C_1v35": {
+          "liberty": "libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__ss_n40C_1v35.lib",
+          "process": "slow",
+          "volts": 1.35,
+          "celsius": -40.0
+        },
+        "ss_n40C_1v40": {
+          "liberty": "libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__ss_n40C_1v40.lib",
+          "process": "slow",
+          "volts": 1.4,
+          "celsius": -40.0
+        },
+        "ss_n40C_1v44": {
+          "liberty": "libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__ss_n40C_1v44.lib",
+          "process": "slow",
+          "volts": 1.44,
+          "celsius": -40.0
+        },
+        "ss_n40C_1v60": {
+          "liberty": "libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__ss_n40C_1v60.lib",
+          "process": "slow",
+          "volts": 1.6,
+          "celsius": -40.0
+        },
+        "ss_n40C_1v76": {
+          "liberty": "libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__ss_n40C_1v76.lib",
+          "process": "slow",
+          "volts": 1.76,
+          "celsius": -40.0
+        },
+        "tt_025C_1v80": {
+          "liberty": "libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib",
+          "process": "typical",
+          "volts": 1.8,
+          "celsius": 25.0
+        },
+        "tt_100C_1v80": {
+          "liberty": "libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_100C_1v80.lib",
+          "process": "typical",
+          "volts": 1.8,
+          "celsius": 100.0
+        }
+      },
+      "wires": {
+        "min": {
+          "techlef": "libs.ref/sky130_fd_sc_hd/techlef/sky130_fd_sc_hd__min.tlef",
+          "rcx": "libs.tech/openlane/rules.openrcx.sky130A.min.calibre"
+        },
+        "nom": {
+          "techlef": "libs.ref/sky130_fd_sc_hd/techlef/sky130_fd_sc_hd__nom.tlef",
+          "rcx": "libs.tech/openlane/rules.openrcx.sky130A.nom.calibre"
+        },
+        "max": {
+          "techlef": "libs.ref/sky130_fd_sc_hd/techlef/sky130_fd_sc_hd__max.tlef",
+          "rcx": "libs.tech/openlane/rules.openrcx.sky130A.max.calibre"
+        }
+      },
+      "lef": "libs.ref/sky130_fd_sc_hd/lef/sky130_fd_sc_hd.lef",
+      "gds": "libs.ref/sky130_fd_sc_hd/gds/sky130_fd_sc_hd.gds",
+      "spice": "libs.ref/sky130_fd_sc_hd/spice/sky130_fd_sc_hd.spice",
+      "verilog": {
+        "files": [
+          "libs.ref/sky130_fd_sc_hd/verilog/primitives.v",
+          "libs.ref/sky130_fd_sc_hd/verilog/sky130_fd_sc_hd.v"
+        ],
+        "defines": [
+          "FUNCTIONAL",
+          "UNIT_DELAY=#1"
+        ],
+        "source": "the defines the proof flow gave Icarus Verilog 12.0: the functional models, 1 time unit of delay in each cell"
+      },
+      "cells": {
+        "prefix": "sky130_fd_sc_hd__",
+        "flop_with_reset": [
+          "dfbbn",
+          "dfbbp",
+          "dfrbp",
+          "dfrtn",
+          "dfrtp",
+          "dfsbp",
+          "dfstp",
+          "sdfbbn",
+          "sdfbbp",
+          "sdfrbp",
+          "sdfrtn",
+          "sdfrtp",
+          "sdfsbp",
+          "sdfstp"
+        ],
+        "flop_without_reset": [
+          "dfxbp",
+          "dfxtp",
+          "edfxbp",
+          "edfxtp",
+          "sdfxbp",
+          "sdfxtp",
+          "sedfxbp",
+          "sedfxtp"
+        ],
+        "latch": [
+          "dlrbn",
+          "dlrbp",
+          "dlrtn",
+          "dlrtp",
+          "dlxbn",
+          "dlxbp",
+          "dlxtn",
+          "dlxtp",
+          "lpflow_inputisolatch"
+        ],
+        "clock_gate": [
+          "dlclkp",
+          "sdlclkp"
+        ],
+        "tie_high": {
+          "cell": "sky130_fd_sc_hd__conb_1",
+          "pin": "HI"
+        },
+        "tie_low": {
+          "cell": "sky130_fd_sc_hd__conb_1",
+          "pin": "LO"
+        },
+        "tap": "sky130_fd_sc_hd__tapvpwrvgnd_1",
+        "fill": [
+          "sky130_fd_sc_hd__fill_1",
+          "sky130_fd_sc_hd__fill_2",
+          "sky130_fd_sc_hd__fill_4",
+          "sky130_fd_sc_hd__fill_8"
+        ],
+        "decap": [
+          "sky130_fd_sc_hd__decap_3",
+          "sky130_fd_sc_hd__decap_4",
+          "sky130_fd_sc_hd__decap_6",
+          "sky130_fd_sc_hd__decap_8",
+          "sky130_fd_sc_hd__decap_12"
+        ],
+        "diode": {
+          "cell": "sky130_fd_sc_hd__diode_2",
+          "pin": "DIODE"
+        },
+        "clock_root": "sky130_fd_sc_hd__clkbuf_4",
+        "clock_buffers": [
+          "sky130_fd_sc_hd__clkbuf_2",
+          "sky130_fd_sc_hd__clkbuf_4",
+          "sky130_fd_sc_hd__clkbuf_8"
+        ],
+        "source": "the ff and latch groups of the tt_025C_1v80 liberty file: a flop with a clear or a preset attribute has a reset; a family is a cell's name without the library's prefix and its drive strength; a clock gate is a cell with clock_gating_integrated_cell; tap and fill cells from the cell LEF; the clock buffers are the proof flow's"
+      },
+      "supply": {
+        "power": {
+          "net": "VPWR",
+          "pins": [
+            "VPWR",
+            "VPB"
+          ]
+        },
+        "ground": {
+          "net": "VGND",
+          "pins": [
+            "VGND",
+            "VNB"
+          ]
+        },
+        "source": "the cells' supply pins in the cell LEF: VPWR and VGND, with VPB and VNB for the wells"
+      },
+      "floorplan": {
+        "site": "unithd",
+        "tracks": "libs.tech/openlane/sky130_fd_sc_hd/tracks.info",
+        "tap_distance_um": 14,
+        "pin_layers": {
+          "horizontal": "met3",
+          "vertical": "met2"
+        },
+        "wire_rc_layers": {
+          "signal": "met2",
+          "clock": "met3"
+        },
+        "routing_layers": {
+          "bottom": "met1",
+          "top": "met5"
+        },
+        "grid": {
+          "rails": {
+            "layer": "met1",
+            "width_um": 0.48
+          },
+          "stripes": {
+            "layer": "met4",
+            "width_um": 1.6,
+            "pitch_um": 27.14,
+            "offset_um": 13.57
+          }
+        },
+        "placement_density": 0.6,
+        "source": "site unithd and the layers from the technology LEF; the tracks file is the kit's; the tap distance, the pin and wire layers, the grid and the density are the proof flow's choices, not rules of the kit"
+      }
+    }
+  },
+  "drc": [
+    {
+      "name": "magic",
+      "engine": "magic",
+      "file": "libs.tech/magic/sky130A.tech",
+      "origin": "community",
+      "cannot": "a short between 2 nets (LVS finds it), antenna charge, metal density",
+      "source": "the drc section of the kit's Magic technology file, written by the open_pdks maintainers from SkyWater's published rules; it is no foundry's sign-off deck"
+    },
+    {
+      "name": "klayout-mr",
+      "engine": "klayout",
+      "file": "libs.tech/klayout/drc/sky130A_mr.drc",
+      "variables": {
+        "feol": "true",
+        "beol": "true",
+        "offgrid": "true",
+        "floating_met": "false",
+        "seal": "false"
+      },
+      "origin": "community",
+      "cannot": "a short between 2 nets, antenna charge; density and the seal ring are off for a block that is no whole die",
+      "source": "the kit's KLayout deck of manufacturing rules as open_pdks ships it; the variables are the proof flow's; it is no foundry's sign-off deck"
+    }
+  ],
+  "lvs": {
+    "engine": "netgen",
+    "setup": "libs.tech/netgen/sky130A_setup.tcl",
+    "source": "the kit's Netgen setup file"
+  }
+}
