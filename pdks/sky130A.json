@@ -267,7 +267,11 @@
           }
         },
         "placement_density": 0.6,
-        "source": "site unithd and the layers from the technology LEF; the tracks file is the kit's; the tap distance, the pin and wire layers, the grid and the density are the proof flow's choices, not rules of the kit"
+        "core_margin_um": [
+          10.12,
+          10.88
+        ],
+        "source": "site unithd and the layers from the technology LEF; the tracks file is the kit's; the tap distance, the pin and wire layers, the grid, the density and the core margin (22 sites and 4 rows from the die's edge) are the proof flow's choices, not rules of the kit"
       }
     }
   },

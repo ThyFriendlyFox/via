@@ -139,6 +139,7 @@ TABLE_BLOCKS = {
         "routing_layers",
         "grid",
         "placement_density",
+        "core_margin_um",
         "source",
     ),
 }
@@ -1267,6 +1268,8 @@ def cmd_render(args, cli) -> int:
         if exc.name != "chipback":
             raise
         raise SystemExit("chip render: not built in this workcenter") from None
+    if not hasattr(chipback, "render"):
+        raise SystemExit("chip render: not built in this workcenter")
     project = find_chip(args.project)
     out = Path(args.out).resolve() if args.out else project / "build"
     run, problems = prepare(cli, project, out, args)

@@ -529,7 +529,8 @@ def hand_on_as_final(folder: Path) -> None:
 @needs_verilator
 def test_glsim_runs_the_benches_on_the_netlist_and_only_on_the_file_layout_recorded(tmp_path):
     folder = a_project(tmp_path)
-    command("chip", "gates", folder)  # LINT, SIM and SYNTH pass; LAYOUT is another module's
+    for front in ("lint", "sim", "synth"):  # each by its own command: `chip gates` would go on to LAYOUT
+        assert command("chip", front, folder).returncode == 0, front
     ran = command("chip", "glsim", folder)
     assert ran.returncode == 2 and ran.stdout.splitlines()[0].startswith(
         "SKIP   glsim      chip/layout/reg8.v is not there: the gate that writes it has not run"
@@ -544,6 +545,23 @@ def test_glsim_runs_the_benches_on_the_netlist_and_only_on_the_file_layout_recor
     assert code == 1 and record["details"]["failures"] == [
         "chip/layout/reg8.v changed after LAYOUT recorded it: its hash differs"
     ]
+
+
+def test_an_open_supply_port_is_no_warning_and_an_open_logic_port_is_one():
+    """The layout build gives the netlist's top module its supply ports. A bench drives the logic ports
+    only, so Icarus notes VPWR and VGND as open on every netlist run. The same note on a logic port is
+    the bench's fault, and it stays."""
+    notes = sample("iverilog-open-supply.log").splitlines()
+    assert len(notes) == 2 and "(VPWR)" in notes[0] and "(VGND)" in notes[1]
+    supply = {"VPWR", "VGND"}
+    assert chipfront.netlist_warnings(notes, "/kit", supply) == []
+    logic = notes[0].replace("(VPWR)", "(en)")
+    assert chipfront.netlist_warnings([*notes, logic], "/kit", supply) == [logic]
+    assert chipfront.netlist_warnings(notes, "/kit", {"VPWR"}) == [notes[1]]
+    inside = (
+        "/kit/libs.ref/sky130_fd_sc_hd/verilog/primitives.v:12: warning: a note in the library's own model"
+    )
+    assert chipfront.netlist_warnings([inside, logic], "/kit", supply) == [logic]
 
 
 @needs_synth
