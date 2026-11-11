@@ -1,6 +1,9 @@
 # Gates report — Wyvern v0.1
 
-<!-- intro -->
+The 4 gates on Wyvern v0.1, in their order: ERC on the schematic, DRC on the routed board at Sierra
+Circuits' limits, every simulation deck at every corner, and the fabrication outputs. `workcenter
+gates . --report docs/gates.md` runs them and rewrites the table below; the sections after it say
+what each gate held the board to.
 
 ## Wyvern
 

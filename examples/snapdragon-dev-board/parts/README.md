@@ -11,6 +11,9 @@ supplier's page showed them on 2026-11-11, before shipping and tax.
   two files above.
 
 <!-- workcenter costs lists -->
+| Version | Lists |
+|---|---|
+| v0.1 | [base](lists/v0.1.md) ([csv](lists/v0.1.csv)) |
 <!-- /workcenter costs lists -->
 
 ## Totals
@@ -19,6 +22,9 @@ The board and the priced items off it, for one unit and for ten (each line bough
 quantity that covers it, so ten units cost less than ten times one):
 
 <!-- workcenter costs -->
+| Version | 1 unit | 10 units | Per unit at 10 | Not priced | Short of stock |
+|---|---|---|---|---|---|
+| v0.1 | $32.76 | $257.08 | $25.71 | C7,C8; C23; L1; U4; Lantronix Open-Q 845 uSOM, 4 GB / 32 GB; PCB 60.96 x 30.48 mm, 6 layers, 1.6 mm; Wi-Fi and Bluetooth antennas, U.FL, 2.4 and 5 GHz | C1,C2; C3-C5; C9-C11; C12-C19,C22,C24; J1-J3; R15; U2; U6,U7 |
 <!-- /workcenter costs -->
 
 Made by `workcenter costs ..` from the lists.

@@ -141,7 +141,7 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
    its supply pins before the first route: past the pad's outer end, or
    inward to a via inside the ring of pads, with no pad of another net
    across it closer than a via and its clearance. A capacitor sits beside
-   its pin's way out, not across it. Read the pads with `workcenter
+   its pin's way out, not across it, with its supply pad toward the pin. Read the pads with `workcenter
    inspect list --box` round the part; where no way out is left, draw the
    rail by hand (M129).
 

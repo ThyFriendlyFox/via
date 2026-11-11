@@ -38,4 +38,5 @@ The commit is where that version was finished; its folder holds the files from t
 |---|---|
 | [`v0.1/`](v0.1/) | the board: `design.py` and what it generates, `sim/`, `docs/`, `assembly.py` |
 | [`parts/`](parts/) | an orderable part for every line (`catalog.csv`), what is off the board (`offboard/`), the priced lists |
+| [`library/`](library/) | `sources.csv`: each datasheet the design reads, its address, revision and the SHA-256 of the copy read; the PDFs stay with their makers, so the workcenter stays small |
 | [`CLAUDE.md`](CLAUDE.md) | the commands, for an agent or a person working on the series |

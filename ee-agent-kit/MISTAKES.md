@@ -783,8 +783,8 @@ Root cause: I took the pass count from a 4-part template to a 140-part board, an
 Process: P4
 
 ## M129 — 2026-11-11 — A chip's core pins with no way out
-What happened: I placed the Snapdragon example's RP2350 parts the way Raspberry Pi's minimal design lists them: a 100 nF beside each supply pin, the crystal under XIN and XOUT, the core regulator's parts in a row to the north. Each core pin (DVDD 6, 23 and 39, VREG_FB 50) then faced another net's pad 1 to 2 mm out: C18's ground pad, the crystal, C14's ground pad, C9. FreeRouting ran 14 minutes and left every pad of the core net bare, and 5 more connections open round it. The core rail is drawn by hand now: a stub inward from each pin to a via inside the ring of pads, joined on In3 under the ground pad.
-Cost: a 15-minute route kept only as a seed, a hand route, and a second route.
+What happened: I placed the Snapdragon example's RP2350 parts the way Raspberry Pi's minimal design lists them: a 100 nF beside each supply pin, the crystal under XIN and XOUT, the core regulator's parts in a row to the north. Each core pin (DVDD 6, 23 and 39, VREG_FB 50) then faced another net's pad 1 to 2 mm out: C18's ground pad, the crystal, C14's ground pad, C9. FreeRouting ran 14 minutes and left every pad of the core net bare, and 5 more connections open round it. The core rail is drawn by hand now: a stub inward from each pin to a via inside the ring of pads, joined on In3 under the ground pad. The next routes left the 3.3 V pins open instead: 4 of the 100 nF capacitors had their ground pad toward the chip and their supply pad on the far side. They are turned, and each 3.3 V pin's stub to its capacitor is drawn by hand.
+Cost: a 15-minute route kept only as a seed, 3 more routes, and the hand routes.
 Root cause: I checked each pin's net and not its way out. Rosetta's route had met the same wall (its RP2040's pins had no lanes until its capacitors moved), and that lesson was in the devlog, not in a process.
 Process: P4
 

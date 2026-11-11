@@ -21,7 +21,7 @@ the `.kicad_*` files beside it are what `workcenter design` writes from it.
 | USB | the USB-C port's 4 SuperSpeed pairs and its USB 2 pair drawn by hand in `design.py` as coupled 90 ohm pairs on the outer layers, each over a ground plane; no pair crosses another or turns over |
 | Power | 5 V from USB-C (or the 5V pin) to the SOM's 3.8 V by a TPS62130 buck, 3 A for the module's 8.7 W boot peak; 3.3 V from that by an AP2112K; the SOM's own 1.8 V on a pin |
 | Simulation | 6 decks, each at every corner of its parts' tolerances (`sim/`): the 3.8 V rail inside the SOM's window, the Snapdragon's I2C on the pins, the RP2350's reset and boot lines, the USB input's resonance with a cable; a frequency plan holds the 3 clocks against it |
-| Parts and cost | an orderable part for every line on the board (`../parts/catalog.csv`) but 5, each with its reason; the Snapdragon module is not priced: Digi-Key lists it as obsolete |
+| Parts and cost | an orderable part for every line (`../parts/catalog.csv`); the board's parts $32.76 for 1, $25.71 each for 10, with 4 lines not priced and each reason named; the Snapdragon module is not priced: Digi-Key lists it as obsolete |
 | Firmware | none yet |
 
 ## Images
@@ -63,8 +63,8 @@ chip, compact, as the workcenter's example of what it can make.
 
 | Finding | The owner's answer | What v0.1 does |
 |---|---|---|
-| A Snapdragon cannot stand alone on a board this size: it needs LPDDR4X, flash and 3 PMICs, and its 0.4 mm BGA needs microvias and length-matched memory lanes the workcenter's router does not draw | not asked in this round | carries the Snapdragon 845 on Lantronix's Open-Q 845 uSOM, whose pinout and land pattern are public ("The Snapdragon module") |
-| A Snapdragon's pins run at 1.8 V; a Teensy's at 3.3 V | not asked in this round; the owner was shown the plan on 2026-11-11 | an RP2350 drives the pins at 3.3 V; the Snapdragon's own I2C, debug UART, power key and reset are on the pins too, marked 1.8 V ("The RP2350") |
+| A Snapdragon cannot stand alone on a board this size: it needs LPDDR4X, flash and 3 PMICs, and its 0.4 mm BGA needs microvias and length-matched memory lanes the workcenter's router does not draw | shown the plan (the module on a Teensy-shaped carrier, an RP2350 on the pins) on 2026-11-11; the answer named vape-prototype as the layout to follow, and the work went on | carries the Snapdragon 845 on Lantronix's Open-Q 845 uSOM, whose pinout and land pattern are public ("The Snapdragon module") |
+| A Snapdragon's pins run at 1.8 V; a Teensy's at 3.3 V | part of the same plan | an RP2350 drives the pins at 3.3 V; the Snapdragon's own I2C, debug UART, power key and reset are on the pins too, marked 1.8 V ("The RP2350") |
 
 ### Board
 
@@ -209,7 +209,38 @@ Every GPIO of the RP2350 is on a pin; functions from its datasheet's function ta
 UART, F3 I2C, F4 PWM; section 1.2.3). GP12 to GP19 also carry HSTX, the RP2350's high-speed serial
 output (DVI). The header's pins count from the USB-C end.
 
-<!-- pinplan -->
+| GPIO | RP2350 pin | Header | Functions (F1 to F4) | Also |
+|---|---|---|---|---|
+| GP0 | 2 | bottom 2 | SPI0 RX, UART0 TX, I2C0 SDA, PWM0 A |  |
+| GP1 | 3 | bottom 3 | SPI0 CSn, UART0 RX, I2C0 SCL, PWM0 B |  |
+| GP2 | 4 | bottom 4 | SPI0 SCK, UART0 CTS, I2C1 SDA, PWM1 A |  |
+| GP3 | 5 | bottom 5 | SPI0 TX, UART0 RTS, I2C1 SCL, PWM1 B |  |
+| GP4 | 7 | bottom 6 | SPI0 RX, UART1 TX, I2C0 SDA, PWM2 A |  |
+| GP5 | 8 | bottom 7 | SPI0 CSn, UART1 RX, I2C0 SCL, PWM2 B |  |
+| GP6 | 9 | bottom 8 | SPI0 SCK, UART1 CTS, I2C1 SDA, PWM3 A |  |
+| GP7 | 10 | bottom 9 | SPI0 TX, UART1 RTS, I2C1 SCL, PWM3 B |  |
+| GP8 | 12 | bottom 10 | SPI1 RX, UART1 TX, I2C0 SDA, PWM4 A |  |
+| GP9 | 13 | bottom 11 | SPI1 CSn, UART1 RX, I2C0 SCL, PWM4 B |  |
+| GP10 | 14 | bottom 12 | SPI1 SCK, UART1 CTS, I2C1 SDA, PWM5 A |  |
+| GP11 | 15 | bottom 13 | SPI1 TX, UART1 RTS, I2C1 SCL, PWM5 B |  |
+| GP12 | 16 | bottom 14 | SPI1 RX, UART0 TX, I2C0 SDA, PWM6 A | HSTX (DVI) |
+| GP13 | 17 | bottom 15 | SPI1 CSn, UART0 RX, I2C0 SCL, PWM6 B | HSTX (DVI) |
+| GP14 | 18 | bottom 16 | SPI1 SCK, UART0 CTS, I2C1 SDA, PWM7 A | HSTX (DVI) |
+| GP15 | 19 | bottom 17 | SPI1 TX, UART0 RTS, I2C1 SCL, PWM7 B | HSTX (DVI) |
+| GP16 | 27 | bottom 18 | SPI0 RX, UART0 TX, I2C0 SDA, PWM0 A | HSTX (DVI) |
+| GP17 | 28 | bottom 19 | SPI0 CSn, UART0 RX, I2C0 SCL, PWM0 B | HSTX (DVI) |
+| GP18 | 29 | bottom 20 | SPI0 SCK, UART0 CTS, I2C1 SDA, PWM1 A | HSTX (DVI) |
+| GP19 | 31 | bottom 21 | SPI0 TX, UART0 RTS, I2C1 SCL, PWM1 B | HSTX (DVI) |
+| GP20 | 32 | top 22 | SPI0 RX, UART1 TX, I2C0 SDA, PWM2 A |  |
+| GP21 | 33 | top 21 | SPI0 CSn, UART1 RX, I2C0 SCL, PWM2 B |  |
+| GP22 | 34 | top 20 | SPI0 SCK, UART1 CTS, I2C1 SDA, PWM3 A |  |
+| GP23 | 35 | top 19 | SPI0 TX, UART1 RTS, I2C1 SCL, PWM3 B |  |
+| GP24 | 36 | top 18 | SPI1 RX, UART1 TX, I2C0 SDA, PWM4 A |  |
+| GP25 | 37 | top 17 | SPI1 CSn, UART1 RX, I2C0 SCL, PWM4 B | LED D4 through R12 |
+| GP26 | 40 | top 16 | SPI1 SCK, UART1 CTS, I2C1 SDA, PWM5 A | ADC0 |
+| GP27 | 41 | top 15 | SPI1 TX, UART1 RTS, I2C1 SCL, PWM5 B | ADC1 |
+| GP28 | 42 | top 14 | SPI1 RX, UART0 TX, I2C0 SDA, PWM6 A | ADC2 |
+| GP29 | 43 | top 13 | SPI1 CSn, UART0 RX, I2C0 SCL, PWM6 B | ADC3 |
 
 The other pins:
 
@@ -286,7 +317,87 @@ output, and none of the 3 makers publishes its output impedance.
 
 ## Bill of materials
 
-<!-- bom -->
+| Ref | Value | Package | Face | Part |
+|---|---|---|---|---|
+| C1 | 10u | C_0805_2012Metric | bottom | Murata GRM21BR61C106KE15L |
+| C2 | 10u | C_0805_2012Metric | bottom | Murata GRM21BR61C106KE15L |
+| C3 | 22u | C_0805_2012Metric | bottom | Murata GRM21BR61A226ME51L |
+| C4 | 22u | C_0805_2012Metric | bottom | Murata GRM21BR61A226ME51L |
+| C5 | 22u | C_0805_2012Metric | bottom | Murata GRM21BR61A226ME51L |
+| C6 | 3.3n | C_0402_1005Metric | bottom | Murata GRM155R71H332KA01D |
+| C7 | 1u | C_0402_1005Metric | bottom | Murata GRM155R61A105KE15D |
+| C8 | 1u | C_0402_1005Metric | bottom | Murata GRM155R61A105KE15D |
+| C9 | 4.7u | C_0402_1005Metric | top | Murata GRM155R61A475MEAAD |
+| C10 | 4.7u | C_0402_1005Metric | top | Murata GRM155R61A475MEAAD |
+| C11 | 4.7u | C_0402_1005Metric | top | Murata GRM155R61A475MEAAD |
+| C12 | 100n | C_0402_1005Metric | top | Murata GRM155R71C104KA88D |
+| C13 | 100n | C_0402_1005Metric | top | Murata GRM155R71C104KA88D |
+| C14 | 100n | C_0402_1005Metric | top | Murata GRM155R71C104KA88D |
+| C15 | 100n | C_0402_1005Metric | top | Murata GRM155R71C104KA88D |
+| C16 | 100n | C_0402_1005Metric | top | Murata GRM155R71C104KA88D |
+| C17 | 100n | C_0402_1005Metric | top | Murata GRM155R71C104KA88D |
+| C18 | 100n | C_0402_1005Metric | top | Murata GRM155R71C104KA88D |
+| C19 | 100n | C_0402_1005Metric | top | Murata GRM155R71C104KA88D |
+| C20 | 15p | C_0402_1005Metric | top | Murata GRM1555C1H150JA01D |
+| C21 | 15p | C_0402_1005Metric | top | Murata GRM1555C1H150JA01D |
+| C22 | 100n | C_0402_1005Metric | top | Murata GRM155R71C104KA88D |
+| C23 | 4.7u | C_0603_1608Metric | bottom | Murata GRM188R61A475KE15D |
+| C24 | 100n | C_0402_1005Metric | bottom | Murata GRM155R71C104KA88D |
+| D1 | red | LED_0603_1608Metric | top | Lite-On LTST-C191KRKT |
+| D2 | green | LED_0603_1608Metric | top | Lite-On LTST-C191KGKT |
+| D3 | blue | LED_0603_1608Metric | top | Lite-On LTST-C191TBKT |
+| D4 | green | LED_0603_1608Metric | top | Lite-On LTST-C191KGKT |
+| J1 | DF40HC(3.0)-100DS-0.4V | Hirose_DF40HC(3.0)-100DS-0.4V_2x50_P0.4mm_SOM | top | Hirose DF40HC(3.0)-100DS-0.4V(51) |
+| J2 | DF40HC(3.0)-100DS-0.4V | Hirose_DF40HC(3.0)-100DS-0.4V_2x50_P0.4mm_SOM | top | Hirose DF40HC(3.0)-100DS-0.4V(51) |
+| J3 | DF40HC(3.0)-100DS-0.4V | Hirose_DF40HC(3.0)-100DS-0.4V_2x50_P0.4mm_SOM | top | Hirose DF40HC(3.0)-100DS-0.4V(51) |
+| J4 | 12401610E4#2A | USB_C_Receptacle_Amphenol_12401610E4-2A_Ring6mil | top | Amphenol ICC 12401610E4#2A |
+| J5 | 1x24 header | PinHeader_1x24_P2.54mm_Vertical | bottom | Sullins PRPC024SAAN-RC |
+| J6 | 1x24 header | PinHeader_1x24_P2.54mm_Vertical | bottom | Sullins PRPC024SAAN-RC |
+| J7 | 104031-0811 | microSD_HC_Molex_104031-0811 | bottom | Molex 1040310811 |
+| L1 | 2.2u XAL4020-222 | L_Coilcraft_XAL4020-XXX | bottom | Coilcraft XAL4020-222MEB |
+| L2 | 3.3u AOTA-B201610S3R3 | L_Abracon_AOTA-B201610S | top | Abracon AOTA-B201610S3R3-101-T |
+| R1 | 374k | R_0402_1005Metric | bottom | YAGEO RC0402FR-07374KL |
+| R2 | 100k | R_0402_1005Metric | bottom | YAGEO RC0402FR-07100KL |
+| R3 | 33 | R_0402_1005Metric | top | YAGEO RC0402FR-0733RL |
+| R4 | 10k | R_0402_1005Metric | top | YAGEO RC0402FR-0710KL |
+| R5 | 1k | R_0402_1005Metric | top | YAGEO RC0402FR-071KL |
+| R6 | 27 | R_0402_1005Metric | top | YAGEO RC0402FR-0727RL |
+| R7 | 27 | R_0402_1005Metric | top | YAGEO RC0402FR-0727RL |
+| R8 | 10k | R_0402_1005Metric | top | YAGEO RC0402FR-0710KL |
+| R9 | 1k | R_0402_1005Metric | top | YAGEO RC0402FR-071KL |
+| R10 | 100k | R_0402_1005Metric | top | YAGEO RC0402FR-07100KL |
+| R11 | 100k | R_0402_1005Metric | top | YAGEO RC0402FR-07100KL |
+| R12 | 1k | R_0402_1005Metric | top | YAGEO RC0402FR-071KL |
+| R13 | 1k | R_0402_1005Metric | bottom | YAGEO RC0402FR-071KL |
+| R14 | 100k | R_0402_1005Metric | bottom | YAGEO RC0402FR-07100KL |
+| R15 | 0 | R_0402_1005Metric | bottom | YAGEO RC0402JR-070RL |
+| R16 | 2.2k | R_0402_1005Metric | bottom | YAGEO RC0402FR-072K2L |
+| R17 | 2.2k | R_0402_1005Metric | bottom | YAGEO RC0402FR-072K2L |
+| R18 | 47k | R_0402_1005Metric | bottom | YAGEO RC0402FR-0747KL |
+| R19 | 47k | R_0402_1005Metric | bottom | YAGEO RC0402FR-0747KL |
+| R20 | 47k | R_0402_1005Metric | bottom | YAGEO RC0402FR-0747KL |
+| R21 | 47k | R_0402_1005Metric | bottom | YAGEO RC0402FR-0747KL |
+| R22 | 47k | R_0402_1005Metric | bottom | YAGEO RC0402FR-0747KL |
+| R23 | 100k | R_0402_1005Metric | bottom | YAGEO RC0402FR-07100KL |
+| SW1 | PWR | SW_Push_1P1T_NO_CK_KMR2 | top | C&K KMR221GLFS |
+| SW2 | BOOT | SW_Push_1P1T_NO_CK_KMR2 | top | C&K KMR221GLFS |
+| SW3 | RUN | SW_Push_1P1T_NO_CK_KMR2 | bottom | C&K KMR221GLFS |
+| SW4 | VOL- | SW_Push_1P1T_NO_CK_KMR2 | bottom | C&K KMR221GLFS |
+| SW5 | EDL | SW_Push_1P1T_NO_CK_KMR2 | bottom | C&K KMR221GLFS |
+| TH1 | 100k NCP15WF104 | R_0402_1005Metric | bottom | Murata NCP15WF104F03RC |
+| TP1 | SWCLK | TestPoint_Pad_D1.0mm | bottom |   |
+| TP2 | SWDIO | TestPoint_Pad_D1.0mm | bottom |   |
+| U1 | USBLC6-2SC6 | SOT-23-6 | top | STMicroelectronics USBLC6-2SC6 |
+| U2 | TPS62130 | VQFN-16-1EP_3x3mm_P0.5mm_EP1.68x1.68mm | bottom | Texas Instruments TPS62130RGTR |
+| U3 | AP2112K-3.3 | SOT-23-5 | bottom | Diodes AP2112K-3.3TRG1 |
+| U4 | RP2350A | QFN-60-1EP_7x7mm_P0.4mm_EP3.4x3.4mm | top | Raspberry Pi RP2350A |
+| U5 | W25Q128JV | WSON-8-1EP_6x5mm_P1.27mm_EP3.4x4.3mm | top | Winbond W25Q128JVPIQ |
+| U6 | 74LVC1G07 | SOT-353_SC-70-5 | top | Texas Instruments SN74LVC1G07DCKR |
+| U7 | 74LVC1G07 | SOT-353_SC-70-5 | top | Texas Instruments SN74LVC1G07DCKR |
+| Y1 | 12MHz ABM8-272-T3 | Crystal_SMD_3225-4Pin_3.2x2.5mm | top | Abracon ABM8-272-T3 |
+
+The module, the bare board and the antennas are off the board: `../parts/offboard/v0.1.csv`. The
+priced list is `../parts/lists/v0.1.md`.
 
 ## Working on this board
 
@@ -305,8 +416,11 @@ python3 models/make_models.py                # the 5 bodies KiCad's 3D library h
 ```
 
 `design.py` is the source of truth; the `.kicad_*` files are generated from it and committed so
-KiCad can open them. Its last function, `usb_pairs`, draws the USB pairs, their vias and the stubs
-round the receptacle by hand; the router keeps them and fills in the rest.
+KiCad can open them. 2 functions draw copper by hand, and the router keeps it and fills in the rest:
+`usb_pairs` draws the USB pairs, their vias and the stubs round the receptacle; `core_rail` draws the
+RP2350's 1.1 V core, from each core pin inward to a via inside the ring of pads and across In3 under
+the chip, with XIN down the gap between the crystal's pads (the router had left all of them open).
+Ground vias stitch the patch of top copper the top-layer pairs ring under the module.
 
 ## Decisions
 
