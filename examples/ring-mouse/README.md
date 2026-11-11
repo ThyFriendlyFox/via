@@ -11,20 +11,21 @@ its own folder, each tile in it a whole KiCad project built from its `design.py`
 its pictures under `docs/` and its firmware. The versions came from a loop: each pass judged the
 last version against a checklist and made the next ([`LOOP.md`](LOOP.md)).
 
-The latest version, [v0.2](v0.2/), turning:
+The latest version, [v0.3](v0.3/), turning:
 
-<img src="v0.2/docs/assembly-spin.gif" width="616" alt="Signet v0.2: six black tiles with gold pads in a hexagonal ring, solder in every joint, the radio module on top, the foil cell at the bottom">
+<img src="v0.3/docs/assembly-spin.gif" width="616" alt="Signet v0.3: six black tiles with gold pads in a hexagonal ring, solder in every joint, the radio module on top, the foil cell at the bottom">
 
 | The thumb's side | Along the finger |
 |---|---|
-| <img src="v0.2/docs/assembly-iso.png" width="400" alt="The ring from the thumb's side: the scroll strip's six stripes and the two click switches"> | <img src="v0.2/docs/assembly-end.png" width="400" alt="The ring seen along the finger: a hexagon of tiles, each joint closed at its inner corner"> |
+| <img src="v0.3/docs/assembly-iso.png" width="400" alt="The ring from the thumb's side: the scroll strip's six stripes and the two click switches"> | <img src="v0.3/docs/assembly-end.png" width="400" alt="The ring seen along the finger: a hexagon of tiles, the radio on top, the cell at the bottom"> |
 
 ## Versions
 
 | Version | Ring | What changed | Firmware | Commit |
 |---|---|---|---|---|
 | [v0.1](v0.1/) | 6 tiles round a 20 mm cylinder, 12 mm along the finger; the radio tile 15.6 mm wide, 4 layers; touch 4 layers; the others 10.8 mm, 2 layers | the first ring: a BLE module, an IMU, a 3-channel scroll strip, 2 clicks, a charger, a 3.3 V rail and a 20 mAh cell on 6 tiles joined by 8-pad solder joints | the scroll strip's decoder, 8 host tests | `e4181fa` |
-| [v0.2](v0.2/) (current) | as v0.1; every tile 4 layers | the first pass of the loop: ground only inside, so every face is black; solder in every joint and a foil cell in the pictures; L and R on the clicks, the name on the motion tile | the air mouse: the gyro turned back from the motion tile's angle into cursor counts, with the strip as a clutch, 7 host tests | in work |
+| [v0.2](v0.2/) | as v0.1; every tile 4 layers | the first pass of the loop: ground only inside, so every face is black; solder in every joint and a foil cell in the pictures; L and R on the clicks, the name on the motion tile | the air mouse: the gyro turned back from the motion tile's angle into cursor counts, with the strip as a clutch, 7 host tests | `254e0bb` |
+| [v0.3](v0.3/) (current) | as v0.2; the joint pads 0.8 mm along the edge | the second pass: the light moves from under the thumb to the motion tile, by the name; a TVS diode guards the charging pads; 0.5 mm of mask between the joint pads; smaller solder beads in the pictures | as v0.2 | in work |
 
 Before v0.1, a single flat board was tried: a ring-shaped PCB with a finger hole and a crown. It
 did not wrap the finger, and the owner asked for the circuit on the surface of the cylinder. It has
