@@ -1,0 +1,3 @@
+# Each version's per-layer PNGs: `workcenter pictures` writes them beside layers.png, the sheet the
+# README shows, and they would add 5 MB a version.
+*/docs/layers/
