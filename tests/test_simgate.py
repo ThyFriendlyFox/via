@@ -492,7 +492,15 @@ def test_a_bundle_runs_from_anywhere_and_gives_the_gates_numbers(tmp_path):
         assert str(tmp_path) not in (folder / name).read_text(encoding="utf-8"), name
     assert '.include "models/rdiv.ngspice.lib"' in (folder / "rdiv.cir").read_text(encoding="utf-8")
     wrapper = (folder / "run.sp").read_text(encoding="utf-8").splitlines()
-    assert wrapper[2:] == [".control", "set ngbehavior=ps", "source $inputdir/rdiv.cir", ".endc", ".end"]
+    # the deck is read from its own folder, so a file it names beside it is found from anywhere
+    assert wrapper[2:] == [
+        ".control",
+        "set ngbehavior=ps",
+        "cd $inputdir",
+        "source rdiv.cir",
+        ".endc",
+        ".end",
+    ]
     assert json.loads((folder / "measures.json").read_text(encoding="utf-8")) == deck["measures"]
     assert json.loads((folder / "expect.json").read_text(encoding="utf-8")) == {
         "vout": {"min": 0.49, "max": 0.51}
@@ -533,7 +541,8 @@ def test_the_deck_alone_is_the_trap_the_bundle_closes(tmp_path):
     assert code == 0, records
     assert (tmp_path / "b" / "rdiv" / "run.sp").read_text(encoding="utf-8").splitlines()[2:] == [
         ".control",
-        "source $inputdir/rdiv.cir",
+        "cd $inputdir",
+        "source rdiv.cir",
         ".endc",
         ".end",
     ]
@@ -575,3 +584,200 @@ def test_a_model_that_includes_another_file_takes_it_into_the_bundle(tmp_path):
     folder = tmp_path / "b" / "d"
     assert sorted(p.name for p in (folder / "models").iterdir()) == ["inner.lib", "outer.lib"]
     assert '.include "inner.lib"' in (folder / "models" / "outer.lib").read_text(encoding="utf-8")
+
+
+# ------------------------------------------------- what 2 reviews of the gate found
+
+
+def test_a_bound_that_is_no_number_or_leaves_the_corners_with_no_reason_is_refused(tmp_path):
+    """Python's json reads NaN and Infinity, and every comparison with NaN is false: such a bound would
+    hold at any value. `"at": "nominal"` takes a bound out of every corner, so it says why."""
+    cli = load_cli()
+    path = tmp_path / "d.expect.json"
+    path.write_text('{"a": {"max": NaN}, "b": {"min": -Infinity, "max": 1}}', encoding="utf-8")
+    assert cli.read_expect(path) == (
+        {},
+        ["a: max nan is not a number", "b: min -inf is not a number"],
+    )
+    path.write_text('{"vout": {"min": 2.4, "max": 2.6, "at": "nominal"}}', encoding="utf-8")
+    assert cli.read_expect(path) == (
+        {},
+        ['vout: "at": "nominal" needs a source that says why the bound holds as written only'],
+    )
+    entry = {"min": 2.4, "max": 2.6, "at": "nominal", "source": "the model's 25 C row, datasheet table 6.5"}
+    path.write_text(json.dumps({"vout": entry}), encoding="utf-8")
+    assert cli.read_expect(path) == ({"vout": entry}, [])
+
+
+TWICE = """* 1 name printed by 2 analyses
+V1 in 0 DC 5
+R1 in out 10k
+R2 out 0 90k
+.control
+op
+let vout = v(out)
+print vout
+alter r2 10k
+op
+let vout = v(out)
+print vout
+.endc
+.end
+"""
+
+
+@needs_ngspice
+def test_a_name_printed_twice_is_held_to_its_bound_each_time(tmp_path):
+    """5 x 90 / 100 = 4.5 V first, 2.5 V after the alter. The last value is the measure; the first is
+    outside the bound too and was never judged."""
+    proj = project(tmp_path, {"twice": TWICE}, {"twice": {"vout": {"min": 2.3, "max": 2.7}}})
+    code, records = run("sim", proj, "--out", tmp_path / "o")
+    assert code == 1
+    assert records[0]["details"]["decks"]["twice"]["measures"] == {"vout": 2.5}
+    assert records[0]["details"]["failures"] == [
+        "twice:vout=4.5 not in [2.3, 2.7]: the deck prints vout more than once, and this value came "
+        "before its last"
+    ]
+    # 1 value printed 2 times, as `meas` and then `print` do, is 1 value
+    same = DIVIDER.replace("print vout", "print vout\nprint vout")
+    proj = project(tmp_path / "2", {"d": same}, {"d": {"vout": {"min": 2.4, "max": 2.6}}})
+    code, records = run("sim", proj, "--out", tmp_path / "o2")
+    assert code == 0 and records[0]["details"]["failures"] == []
+
+
+SOURCED = """* a file read inside .control
+V1 in 0 DC 5
+R1 in out 10k
+R2 out 0 10k tc1=100u
+.control
+op
+let vout = v(out)
+source print_it.sp
+.endc
+.end
+"""
+
+
+@needs_ngspice
+def test_a_deck_that_reads_a_file_beside_it_runs_at_its_corners_and_in_its_bundle(tmp_path):
+    """A corner is a copy of the deck in a folder of its own. `source print_it.sp` names a file of the
+    deck's folder, which the copy must still find. At 85 C: 5 x 10058 / 20058 = 2.5072 V."""
+    proj = project(tmp_path, {"d": SOURCED}, {"d": {"vout": {"min": 2.4, "max": 2.6}}})
+    (proj / "sim" / "print_it.sp").write_text(
+        "* helper: prints the output\n.control\nprint vout\n.endc\n", encoding="utf-8"
+    )
+    (proj / "sim" / "corners.json").write_text(
+        json.dumps({"temperature": {"values": [85], "source": "x"}}), encoding="utf-8"
+    )
+    before = sorted(str(p.relative_to(proj)) for p in proj.rglob("*"))
+    code, records = run("sim", proj, "--out", tmp_path / "o", "--bundle", tmp_path / "b")
+    assert code == 0, records
+    span = records[0]["details"]["decks"]["d"]["corners"]["envelope"]["vout"]
+    assert span["max"] == pytest.approx(2.507229, abs=1e-6) and span["max_at"] == "85 C"
+    # nothing is written into the project, and the bundle carries the file and runs from elsewhere
+    assert sorted(str(p.relative_to(proj)) for p in proj.rglob("*")) == before
+    assert (tmp_path / "b" / "d" / "print_it.sp").is_file()
+    assert "cd $inputdir" in (tmp_path / "b" / "d" / "run.sp").read_text(encoding="utf-8")
+
+
+@needs_ngspice
+def test_a_path_with_a_space_runs_at_a_corner_and_in_a_bundle(tmp_path):
+    """The gate writes a deck's includes as whole paths. Written without quotes, a path with a space
+    is cut at the space, and every corner fails on a deck that runs in place."""
+    proj = tmp_path / "my board" / "p"
+    (proj / "sim" / "models").mkdir(parents=True)
+    (proj / "sim" / "my models").mkdir()
+    sim, out = proj / "sim", tmp_path / "my board" / "o"
+    (sim / "models" / "rsub.lib").write_text(".subckt rsub a b\nRLOW a b 10k\n.ends\n", encoding="utf-8")
+    (sim / "my models" / "rsub2.lib").write_text(".subckt rsub2 a b\nRLOW a b 30k\n.ends\n", encoding="utf-8")
+    bare = "V1 in 0 DC 5\nR1 in out 10k tc1=100u\n.include models/rsub.lib\nXLOW out 0 rsub\n"
+    quoted = 'V1 in 0 DC 5\nR1 in out 10k\n.include "my models/rsub2.lib"\nXLOW out 0 rsub2\n'
+    tail = ".control\nop\nlet vout = v(out)\nprint vout\n.endc\n.end\n"
+    (sim / "q.cir").write_text("* an include without quotes\n" + bare + tail, encoding="utf-8")
+    (sim / "space.cir").write_text("* a quoted include with a space\n" + quoted + tail, encoding="utf-8")
+    (sim / "corners.json").write_text(
+        json.dumps({"temperature": {"values": [85], "source": "x"}}), encoding="utf-8"
+    )
+    code, text = text_of("sim", proj, "--out", out, "--bundle", tmp_path / "my board" / "b")
+    assert code == 0, text
+    code, records = run("sim", proj, "--out", tmp_path / "my board" / "o2")
+    decks = records[0]["details"]["decks"]
+    # 5 x 10000 / 20058 = 2.4928 V hot; 5 x 30 / 40 = 3.75 V
+    assert decks["q"]["corners"]["envelope"]["vout"]["min"] == pytest.approx(2.492771, abs=1e-6)
+    assert decks["space"]["measures"]["vout"] == pytest.approx(3.75)
+    bundle = tmp_path / "my board" / "b"
+    assert '.include "models/rsub.lib"' in (bundle / "q" / "q.cir").read_text(encoding="utf-8")
+    assert '.include "models/rsub2.lib"' in (bundle / "space" / "space.cir").read_text(encoding="utf-8")
+    assert str(tmp_path) not in (bundle / "q" / "q.cir").read_text(encoding="utf-8")
+    # the command it prints is one a shell takes as written
+    assert f"bundle q: ngspice -b '{bundle / 'q' / 'run.sp'}'" in text
+
+
+@needs_ngspice
+def test_a_bundle_never_replaces_a_folder_that_is_no_bundle(tmp_path):
+    proj = project(tmp_path, {"d": DIVIDER}, {"d": {"vout": {"min": 2.4, "max": 2.6}}})
+    mine = tmp_path / "b" / "d"
+    mine.mkdir(parents=True)
+    (mine / "notes.txt").write_text("my own\n", encoding="utf-8")
+    code, records = run("sim", proj, "--out", tmp_path / "o", "--bundle", tmp_path / "b")
+    assert code == 1
+    assert records[0]["details"]["failures"] == [
+        f"d: {mine} is there and is no bundle (it holds no run.sp): name another folder, or remove it"
+    ]
+    assert sorted(p.name for p in mine.iterdir()) == ["notes.txt"]
+    # an earlier bundle is replaced, and the README lists only what the folder holds
+    code, _ = run("sim", proj, "--out", tmp_path / "o", "--bundle", tmp_path / "b2")
+    (tmp_path / "b2" / "d" / "stale.txt").write_text("from the run before\n", encoding="utf-8")
+    (proj / "sim" / "d.expect.json").unlink()
+    code, _ = run("sim", proj, "--out", tmp_path / "o", "--bundle", tmp_path / "b2")
+    assert code == 0
+    assert sorted(p.name for p in (tmp_path / "b2" / "d").iterdir()) == [
+        "README.md",
+        "d.cir",
+        "measures.json",
+        "models",
+        "run.sp",
+    ]
+    assert "expect.json" not in (tmp_path / "b2" / "d" / "README.md").read_text(encoding="utf-8")
+
+
+@needs_ngspice
+def test_every_warning_is_printed_and_the_verdict_is_the_last_line(tmp_path):
+    decks = {f"d{n}": DIVIDER for n in range(1, 8)}
+    proj = project(tmp_path, decks)
+    code, text = text_of("gates", proj, "--out", tmp_path / "o")
+    lines = text.splitlines()
+    # 7 decks with no bound, and no corners.json: 8 things named, each on its own line
+    assert code == 0 and sum(ln.startswith("       - warning: ") for ln in lines) == 8
+    assert lines[-1].startswith("GREEN with 8 warnings (nothing to run for: erc, drc, export): proj  report ")
+    # with --report the line about the report comes first: a reader takes the verdict from the end
+    code, text = text_of("gates", proj, "--out", tmp_path / "o", "--report", tmp_path / "docs" / "gates.md")
+    lines = text.splitlines()
+    assert lines[-2].startswith("wrote ") and lines[-1].startswith("GREEN with 8 warnings")
+    assert "GREEN with 8 warnings (nothing to run for: erc, drc, export) on" in (
+        tmp_path / "docs" / "gates.md"
+    ).read_text(encoding="utf-8")
+
+
+def test_a_count_of_jobs_under_zero_is_a_usage_error(tmp_path):
+    proj = project(tmp_path, {"d": DIVIDER})
+    command = [sys.executable, str(CLI), "sim", str(proj), "--jobs", "-1"]
+    proc = subprocess.run(command, capture_output=True, text=True, check=False)
+    assert proc.returncode == 2 and "Traceback" not in proc.stderr
+    assert "argument --jobs: '-1' is not a count of jobs: a whole number, 0 or more" in proc.stderr
+
+
+@needs_ngspice
+def test_the_users_own_spiceinit_does_not_reach_a_corner(tmp_path):
+    proj = project(tmp_path, {"d": DIVIDER}, {"d": {"vout": {"min": 2.4, "max": 2.6}}})
+    (proj / "sim" / "corners.json").write_text(
+        json.dumps({"tolerance": {"R": 0.01, "source": "x"}}), encoding="utf-8"
+    )
+    home = tmp_path / "home"
+    home.mkdir()
+    # were it read at a corner, the corner would print one more measure than the deck as written
+    (home / ".spiceinit").write_text('echo "home_init = 1"\n', encoding="utf-8")
+    code, records = run("sim", proj, "--out", tmp_path / "o", env={"HOME": str(home)})
+    assert code == 0, records
+    rows = json.loads((tmp_path / "o" / "sim" / "corners" / "d" / "runs.json").read_text(encoding="utf-8"))
+    assert len(rows) == 12 and all(set(r["measures"]) == {"vout"} for r in rows)

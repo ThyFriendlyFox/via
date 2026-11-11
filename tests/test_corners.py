@@ -739,3 +739,274 @@ def test_what_the_file_cannot_do_is_a_failure_and_what_it_leaves_open_a_warning(
     write_corners(proj / "sim", {"temperature": {"values": [85]}})
     code, records = run("sim", proj, "--out", tmp_path / "o")
     assert code == 1 and "corners.json: temperature: no source" in records[0]["details"]["failures"][0]
+
+
+# ------------------------------------------- what 2 reviews of the corners found
+#
+# Each deck below passed its bound and should not have. The numbers are the circuit's own: computed
+# by hand in the comment, then read from a run.
+
+WINDOW = {"min": 2.42, "max": 2.58}
+FIVE_PERCENT = {"tolerance": {"R": 0.05, "source": "5 % resistors"}}
+SET_AGAIN = """* a divider whose lower resistor is set again before the analysis
+V1 in 0 DC 5
+R1 in out 10k
+R2 out 0 20k
+.control
+ALTER
+op
+let vout = v(out)
+print vout
+.endc
+.end
+"""
+
+
+def span_of(records: list[dict], measure: str = "vout") -> dict:
+    return records[0]["details"]["decks"]["d"]["corners"]["envelope"][measure]
+
+
+@needs_ngspice
+def test_two_resistors_written_from_one_parameter_reach_their_worst_case(tmp_path):
+    # R1 +5 %, R2 -5 %: 5 x 9.5 / (10.5 + 9.5) = 2.375 V; the other way 2.625 V
+    deck = DIVIDER.replace("R1 in out 10k", ".param rdiv=10k\nR1 in out {rdiv}").replace(
+        "R2 out 0 10k", "R2 out 0 {rdiv}"
+    )
+    proj = project(tmp_path, deck, WINDOW, FIVE_PERCENT)
+    code, records = run("sim", proj, "--out", tmp_path / "o")
+    assert code == 1
+    span = span_of(records)
+    assert span["min"] == pytest.approx(2.375, abs=1e-6) and span["max"] == pytest.approx(2.625, abs=1e-6)
+    assert [v["name"] for v in records[0]["details"]["decks"]["d"]["corners"]["varied"]] == ["R1", "R2"]
+
+
+@needs_ngspice
+@pytest.mark.parametrize(
+    "command",
+    [
+        "alter r2 10k",
+        "alter r2 = 10k",
+        "alter @r2[resistance] = 10k",
+        "alter r2 resistance = 10k",
+        "alter r2 10k $ the fitted value",
+        "alter r2 10k ; echo done",
+    ],
+)
+def test_a_value_set_again_in_control_moves_in_each_form_ngspice_takes(tmp_path, command):
+    """R2 is 20k in the netlist and 10k before the analysis: 2.5 V. A form the reader passes over puts
+    R2 back to exactly 10k at every corner; the span is then R1's alone, 2.439 to 2.564 V, inside the
+    bound, where the 2 resistors together reach 2.375 and 2.625 V."""
+    proj = project(tmp_path, SET_AGAIN.replace("ALTER", command), WINDOW, FIVE_PERCENT)
+    code, records = run("sim", proj, "--out", tmp_path / "o")
+    assert code == 1, records
+    span = span_of(records)
+    assert span["min"] == pytest.approx(2.375, abs=1e-6) and span["max"] == pytest.approx(2.625, abs=1e-6)
+
+
+@needs_ngspice
+def test_alterparam_moves_and_a_value_no_corner_can_scale_fails_the_deck(tmp_path):
+    aparam = SET_AGAIN.replace("R2 out 0 20k", ".param rbot=20k\nR2 out 0 {rbot}").replace(
+        "ALTER", "alterparam rbot=10k\nreset"
+    )
+    code, records = run("sim", project(tmp_path, aparam, WINDOW, FIVE_PERCENT), "--out", tmp_path / "o")
+    assert code == 1
+    assert span_of(records)["min"] == pytest.approx(2.375, abs=1e-6)
+    by_variable = SET_AGAIN.replace("ALTER", "let rv = 10k\nalter r2 = $&rv")
+    proj = project(tmp_path / "2", by_variable, WINDOW, FIVE_PERCENT)
+    code, records = run("sim", proj, "--out", tmp_path / "o2")
+    assert code == 1
+    assert records[0]["details"]["failures"] == [
+        "d: R2 moves and `.control` sets it again with `alter r2 = $&rv`, which a corner cannot scale: "
+        "write that value as a number"
+    ]
+
+
+@needs_ngspice
+def test_a_supply_named_under_parts_moves_and_a_name_no_corner_moves_fails(tmp_path):
+    # 5.5 V x 10.01 / (9.99 + 10.01) = 2.75275 V and 4.5 V x 9.99 / 20 = 2.24775 V
+    spec = {"tolerance": {"R": 0.001, "parts": {"V1": 0.1}, "source": "0.1 % resistors, a 10 % supply"}}
+    code, records = run("sim", project(tmp_path, DIVIDER, WINDOW, spec), "--out", tmp_path / "o")
+    assert code == 1
+    span = span_of(records)
+    assert (
+        span["max"] == pytest.approx(2.75275, abs=1e-6) and span["max_at"] == "R1 -0.1 %, R2 +0.1 %, V1 +10 %"
+    )
+    assert (
+        span["min"] == pytest.approx(2.24775, abs=1e-6) and span["min_at"] == "R1 +0.1 %, R2 -0.1 %, V1 -10 %"
+    )
+    # a diode is no part a corner can move: the file's line is answered, never passed over
+    spec = {"tolerance": {"R": 0.01, "parts": {"D1": 0.1}, "source": "x"}}
+    proj = project(tmp_path / "2", PINNED.replace(" temp=27", ""), {"min": 0.4, "max": 0.7}, spec)
+    code, records = run("sim", proj, "--out", tmp_path / "o2")
+    assert code == 1
+    assert records[0]["details"]["failures"] == [
+        "d: tolerance.parts names D1, which a corner cannot move: it moves R, C and L elements, V and I "
+        "sources with a DC value, and .param"
+    ]
+
+
+@needs_ngspice
+def test_a_parameter_on_a_continuation_line_is_in_the_deck(tmp_path):
+    deck = DIVIDER.replace("R1 in out 10k", ".param rtop=10k\n+ rbot=10k\nR1 in out {rtop}").replace(
+        "R2 out 0 10k", "R2 out 0 {rbot}"
+    )
+    spec = {"tolerance": {"parts": {"rtop": 0.01, "rbot": 0.01}, "source": "1 % resistors"}}
+    code, records = run(
+        "sim", project(tmp_path, deck, {"min": 2.3, "max": 2.7}, spec), "--out", tmp_path / "o"
+    )
+    assert code == 0, records
+    # 5 x 10.1 / (9.9 + 10.1) = 2.525 V
+    assert span_of(records)["max"] == pytest.approx(2.525, abs=1e-6)
+    assert [v["name"] for v in records[0]["details"]["decks"]["d"]["corners"]["varied"]] == ["rtop", "rbot"]
+
+
+@needs_ngspice
+def test_parts_a_corner_does_not_reach_are_named(tmp_path):
+    # 2 instances of 1 subcircuit are 2 resistors on the board, and they move together
+    twice = DIVIDER.replace("R1 in out 10k\nR2 out 0 10k", "X1 in out half\nX2 out 0 half").replace(
+        ".control", ".subckt half a b\nR1 a b 10k\n.ends\n.control"
+    )
+    code, records = run("sim", project(tmp_path, twice, WINDOW, FIVE_PERCENT), "--out", tmp_path / "o")
+    assert code == 0
+    assert records[0]["details"]["warnings"] == [
+        "d: R1 in .subckt half is 2 parts on the board (X1, X2): a corner moves them together"
+    ]
+    code, _ = run(
+        "sim", project(tmp_path / "s", twice, WINDOW, FIVE_PERCENT), "--out", tmp_path / "os", "--strict"
+    )
+    assert code == 1
+    # a part in a file of the project's own that the deck includes is read by no corner
+    included = DIVIDER.replace("R2 out 0 10k", '.include "lower.inc"')
+    proj = project(tmp_path / "2", included, WINDOW, FIVE_PERCENT)
+    (proj / "sim" / "lower.inc").write_text("R2 out 0 10k\n", encoding="utf-8")
+    code, records = run("sim", proj, "--out", tmp_path / "o2")
+    assert code == 0
+    assert records[0]["details"]["warnings"] == [
+        "d: lower.inc holds R2, which no corner moves: a corner reads the deck's own lines. Write those "
+        "parts in the deck"
+    ]
+
+
+@needs_ngspice
+def test_parts_that_act_only_together_are_found_by_running_every_end(tmp_path):
+    """A bridge's imbalance is 0 as written and at most 0.064 V with 1 resistor off. With R1 9.5k, R2
+    10.5k, R3 10.5k and R4 9.5k it is |2.625 - 2.375| = 0.25 V. One range at a time never shows it."""
+    bridge = DIVIDER.replace(
+        "R1 in out 10k\nR2 out 0 10k", "R1 in a 10k\nR2 a 0 10k\nR3 in b 10k\nR4 b 0 10k"
+    )
+    bridge = bridge.replace("let vout = v(out)", "let vout = abs(v(a) - v(b))")
+    code, records = run("sim", project(tmp_path, bridge, {"max": 0.1}, FIVE_PERCENT), "--out", tmp_path / "o")
+    assert code == 1
+    corners = records[0]["details"]["decks"]["d"]["corners"]
+    assert corners["search"] == "every combination of the ends"
+    assert corners["envelope"]["vout"]["max"] == pytest.approx(0.25, abs=1e-6)
+    assert corners["envelope"]["vout"]["max_at"] in (
+        "R1 -5 %, R2 +5 %, R3 +5 %, R4 -5 %",
+        "R1 +5 %, R2 -5 %, R3 -5 %, R4 +5 %",
+    )
+
+
+@needs_ngspice
+def test_a_measure_that_peaks_inside_a_range_is_closed_in_on(tmp_path):
+    """The gain of a series LC at 10 kHz is 0.147 as written, 0.239 with C1 20 % low and 0.072 with it
+    20 % high. With C1 13.5 % low the resonance, 1 / (2 pi sqrt(10 mH x 25.33 nF)), is the 10 kHz of
+    the test and the gain is 1.0. Neither end shows it; the run closes in from the half-way point."""
+    deck = "\n".join(
+        [
+            "* band-pass gain at 10 kHz",
+            "V1 in 0 DC 0 AC 1",
+            "LCOIL in m 10m",
+            "C1 m out 29.28n",
+            "RSER out 0 12.57",
+            ".control",
+            "ac lin 1 10k 10k",
+            "let vout = vm(out)",
+            "print vout",
+            ".endc",
+            ".end",
+            "",
+        ]
+    )
+    spec = {"tolerance": {"C": 0.2, "source": "a 20 % capacitor"}}
+    code, records = run("sim", project(tmp_path, deck, {"max": 0.5}, spec), "--out", tmp_path / "o")
+    assert code == 1
+    span = span_of(records)
+    assert span["max"] > 0.99 and span["max_at"] == "C1 -13.4375 %"
+    assert records[0]["details"]["failures"] == [
+        "d:vout=0.9995508 at C1 -13.4375 % (and 7 more corners) not in [None, 0.5]"
+    ]
+
+
+@needs_ngspice
+def test_a_deck_with_too_many_ranges_says_its_worst_case_is_a_guess(tmp_path):
+    # 7 resistors in a chain: 128 combinations of the ends, past the 64 runs the search spends
+    chain = DIVIDER.replace(
+        "R1 in out 10k\nR2 out 0 10k",
+        "R1 in n1 1k\nR2 n1 n2 1k\nR3 n2 n3 1k\nR4 n3 n4 1k\nR5 n4 n5 1k\nR6 n5 out 1k\nR7 out 0 1k",
+    )
+    spec = {"tolerance": {"R": 0.01, "source": "x"}}
+    code, records = run(
+        "sim", project(tmp_path, chain, {"min": 0.6, "max": 0.8}, spec), "--out", tmp_path / "o"
+    )
+    assert code == 0
+    assert records[0]["details"]["warnings"] == [
+        "d: 7 ranges move and the worst case is searched 1 range at a time, so 2 parts off together can "
+        "hide a miss: name monte_carlo in corners.json"
+    ]
+    corners = records[0]["details"]["decks"]["d"]["corners"]
+    assert corners["search"] == "1 range at a time, then 1 worst case for each bound"
+    # a chain runs one way with each part, so the guess is right here: 5 x 0.99 / (6 x 1.01 + 0.99)
+    assert corners["envelope"]["vout"]["min"] == pytest.approx(0.7021277, abs=1e-6)
+    spec["monte_carlo"] = {"runs": 4, "seed": 1}
+    code, records = run(
+        "sim", project(tmp_path / "2", chain, {"min": 0.6, "max": 0.8}, spec), "--out", tmp_path / "o2"
+    )
+    assert code == 0 and records[0]["details"]["warnings"] == []
+
+
+@needs_ngspice
+def test_the_temperature_the_project_names_runs_when_the_deck_sets_another(tmp_path):
+    """The deck sets 40 C among its netlist lines, so as written it gives 0.5202 V, under the 0.53 V
+    ceiling. The project names 27 C, where the reference is 0.5478 V: that run is made and fails."""
+    deck = PINNED.replace(" temp=27", "").replace(".control", ".options temp=40\n.control")
+    spec = {"temperature": {"values": [27, 85], "source": "27 to 85 C"}}
+    code, records = run("sim", project(tmp_path, deck, {"max": 0.53}, spec), "--out", tmp_path / "o")
+    assert code == 1
+    assert records[0]["details"]["decks"]["d"]["measures"]["vout"] == pytest.approx(0.520193, abs=1e-6)
+    assert records[0]["details"]["failures"] == ["d:vout=0.5477564 at 27 C not in [None, 0.53]"]
+
+
+def test_monte_carlo_draws_its_temperatures_inside_the_range_the_project_names():
+    draws = simcorners.monte_carlo_corners("d", {"runs": 300, "seed": 1}, [60, 85], [])
+    assert len(draws) == 300 and all(60 <= c.temp <= 85 for c in draws)
+    # a single temperature has no range: the draws run from the deck's own temperature to it
+    draws = simcorners.monte_carlo_corners("d", {"runs": 300, "seed": 1}, [85], [], written_at=27.0)
+    assert min(c.temp for c in draws) < 30 and all(27 <= c.temp <= 85 for c in draws)
+
+
+def test_every_end_is_every_combination_until_it_is_too_many():
+    parts = two_parts()
+    ends = simcorners.every_end([-20, 85], parts)
+    # 2 parts, 4 combinations, at the deck's own temperature and at each of the 2 named
+    assert len(ends) == 12 and {c.temp for c in ends} == {None, -20, 85}
+    assert ends[0].label == "R1 -1 %, R2 -5 %" and ends[-1].label == "85 C, R1 +1 %, R2 +5 %"
+    assert ends[3].scale == {"R1": 1.01, "R2": 1.05}
+    assert simcorners.every_end([85], []) == []
+    seven = [simcorners.Varied(f"R{n}", "R", 0.01, [simcorners.Site(n, 0, 1, 1e3)]) for n in range(1, 8)]
+    assert simcorners.every_end([], seven) is None  # 128 runs: past the 64 the search spends
+    assert len(simcorners.every_end([], seven[:6])) == 64
+
+
+def test_a_resonance_is_carried_across_its_span_for_a_deck_that_answers_an_overlap():
+    coil = simcorners.Varied("L1", "L", 0.2, [simcorners.Site(1, 0, 1, 1e-5)])
+    cap = simcorners.Varied("C1", "C", 0.2, [simcorners.Site(2, 0, 1, 1e-5)])
+    other = simcorners.Varied("R1", "R", 0.01, [simcorners.Site(3, 0, 1, 1.0)])
+    sweep = simcorners.sweep_corners([coil, cap, other])
+    # 0.4 of the value in steps of 0.02: 21 runs with the inductor high and the capacitor stepped,
+    # 21 with the capacitor low and the inductor stepped; the resistor stays where it is
+    assert len(sweep) == 42 and all("R1" not in c.scale for c in sweep)
+    assert sweep[0].scale == pytest.approx({"L1": 1.2, "C1": 0.8})
+    assert sweep[20].scale == pytest.approx({"L1": 1.2, "C1": 1.2})
+    assert sweep[21].scale == pytest.approx({"C1": 0.8, "L1": 0.8})
+    assert sweep[10].label == "L1 +20 %" and sweep[5].label == "L1 +20 %, C1 -10 %"
+    assert simcorners.sweep_corners([cap, other]) == []  # nothing resonates without both kinds

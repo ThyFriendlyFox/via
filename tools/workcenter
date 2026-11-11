@@ -1001,7 +1001,9 @@ def write_bundle(
         f"* Run this file, not {deck.name}: ngspice -b {BUNDLE_RUN}",
         ".control",
         *setup,
-        f"source $inputdir/{deck.name}",
+        # The deck's own folder first: a file the deck reads by name is found from any place.
+        "cd $inputdir",
+        f"source {deck.name}",
         ".endc",
         ".end",
         "",
@@ -1013,6 +1015,15 @@ def write_bundle(
     (folder / "measures.json").write_text(
         json.dumps(record["measures"], indent=1, sort_keys=True) + "\n", encoding="utf-8"
     )
+    # The other files of the deck's folder go along: one the deck reads by a statement the gate does
+    # not rewrite (`source print.sp`, a model's `file="stim.txt"`) is then beside it, as in the project.
+    beside = []
+    held = {simcorners().CORNERS_FILE, freqplan().PLAN_FILE, ".spiceinit"}
+    for entry in sorted(deck.parent.iterdir()):
+        own = entry.suffix == ".cir" or entry.name.endswith(".expect.json") or entry.name in held
+        if entry.is_file() and not own and not (folder / entry.name).exists():
+            shutil.copyfile(entry, folder / entry.name)
+            beside.append(entry.name)
     rows = []
     for m, name in zip(models, placed, strict=True):
         if name:
@@ -1044,6 +1055,7 @@ def write_bundle(
         "| `models/` | every model the deck includes |",
         *(["| `expect.json` | the bounds the gate holds the deck to |"] if expect.is_file() else []),
         "| `measures.json` | the values the gate measured; a run here prints the same |",
+        *[f"| `{name}` | a file of the deck's own folder, for a deck that reads it |" for name in beside],
     ]
     if rows:
         readme += [
