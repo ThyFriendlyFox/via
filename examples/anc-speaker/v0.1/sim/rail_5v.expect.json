@@ -1,0 +1,3 @@
+{
+  "z_250k": {"max": 0.1, "source": "the rail at the PAM8302A switching frequency: 0.1 ohm times its 0.5 A ripple is 50 mV, 1 % of +5V"}
+}

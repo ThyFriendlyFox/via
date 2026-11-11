@@ -137,6 +137,10 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
    and a `--timeout` of an hour, in the background. FreeRouting writes its
    session only when it ends, so a run the timeout stops leaves nothing:
    60 passes on 140 parts ran past the 15-minute default (M128).
+7. A part of 0.65 mm pitch or finer stands at a multiple of 90 degrees.
+   FreeRouting 1.9.0 reached none of an MSOP's pins at 26 degrees and all
+   of them at 0 (M132). A board that turns its parts with a curve turns
+   its passives and leaves its fine-pitch parts square.
 
 Done when: the DRC after the route lists 0 errors, or every remaining
 error is named in the next design change.
@@ -535,9 +539,14 @@ chamfered rectangles, paste-only apertures).
    board and read 2 of its named pads from `pad_boxes()` or `workcenter
    inspect list` before anything else is placed round it. On the back face
    the footprint is mirrored before it is turned (M126).
+5. A custom pad also reaches the router: read its padstack in
+   `build/route/<name>.dsn` (`Pad_custom_...`, a polygon) and check that
+   no other pad of the footprint lies inside it. The KiCad DRC reads the
+   real shapes and cannot see what the router file made of them (M130).
 
 Done when: the unrouted board's DRC shows no clearance inside any
-footprint, and the tests for the shape are in the suite.
+footprint, no custom pad's padstack covers another pad, and the tests for
+the shape are in the suite.
 
 ## P20 — Swapping a part
 
@@ -757,8 +766,8 @@ entry conditions cite their source, and a host test runs the steps.
 
 ## P27 — A part's datasheet, SPICE model and 3D model
 
-When: a part enters a BOM, a simulation uses a vendor's model, or a 3D body
-comes from a vendor.
+When: a part enters a BOM, a simulation uses a vendor's model or one
+written for the project, or a 3D body comes from a vendor.
 
 1. Every part on the schematic gets rows in the project's
    `library/sources.csv`: a datasheet for each, a spice row for each U, Q
@@ -798,9 +807,25 @@ comes from a vendor.
    with exit code 0 (M105). A translated model is a changed copy of its
    maker's file: read the maker's notice before the folder goes to a
    third party.
+8. Step 4 holds for a model written for the project too (a behavioural
+   amplifier, a model fitted to a maker's): its own deck runs before any
+   design deck includes it (M129).
+9. A deck with a feedback loop runs each model alone first, and holds
+   its operating point with bounds: the mid-rail, each amplifier's output
+   at its DC value. ngspice's `source stepping failed` can end on a point
+   with an output at a rail whose AC numbers pass (M133). A maker's model
+   that will not settle in the loop is replaced there by one fitted to it,
+   which step 4 holds to the maker's within its own deck.
+10. A deck that stalls (a transient's step falls to nanoseconds, a corner
+    never ends) is fixed in its step control, not skipped: `.options
+    method=gear` with `reltol`, `vntol` and `chgtol` loosened, its answer
+    checked against the other integration method. A deck is left out of
+    the corners only with a reason no option fixes (M134).
 
 Done when: `workcenter sources` passes for every board of the version, each
-model a deck uses has its datasheet rows as `warn` bounds, the README
+model a deck uses has its datasheet rows as `warn` bounds, each loop deck
+bounds its operating point, no deck is skipped at the corners for a stall,
+the README
 names each model that is off its datasheet and what the design trusts
 instead, and what left the project for another machine left as a bundle.
 
@@ -951,7 +976,11 @@ capacitor on a supply rail.
 2. Sweep each supply rail a source loads with an `.ac` deck. A 1 A AC
    current source at the load reads the rail's impedance in ohms. Measure
    each peak's frequency and its Q (the `simulate` skill, "The frequency
-   plan").
+   plan"). Search each peak from below where it can lie over the
+   corners (its L and C at their ends), not from the sweep's start. A
+   corner that damps it flat has no peak, and the search returns the
+   window's edge: check that the plan's band round that edge holds no
+   source's harmonic (M135).
 3. Write both lists into `sim/frequency-plan.json`.
 4. Run `workcenter sim <project>`. It names each overlap: a source's
    harmonic in a resonance's band, or 2 sources that can run at 1

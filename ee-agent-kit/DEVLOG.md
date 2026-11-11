@@ -39,6 +39,22 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-11 — A second example: a speaker that plays the inverse of what it hears
+
+The owner asked for a noise cancelling speaker as an example of what Via makes: compact, gorgeous,
+iterated until it is, in its own folder on `main`. Hush is in `examples/anc-speaker/v0.1`: a ring
+62 mm across on the face of a 40 mm speaker, a microphone on its hub 4 mm from the cone, and an
+analog loop that plays the inverse wave. 7 decks hold it to its numbers at 986 corners: 3 dB less
+noise at 50 Hz and 12 dB from 200 to 300 Hz at the worst of them. On the way, TI's op-amp model
+settled on false operating points inside the loop, so the loop decks run a model fitted to it; my
+own amplifier model ran in the loop before its own deck and was half the gain. The generator
+learned 2 things: a custom pad reaches the router as its outline, not a box over its neighbours, and
+a simulated part's fields go on its footprint too. The renders learned the board's own colours. A
+reviewer who had not seen the board read its renders each round; the back's art ended in a jack's
+peg hole until the second round. 7 mistakes, M129 to M135, each with its process.
+
+Evidence: `workcenter gates examples/anc-speaker/v0.1` GREEN with 6 warnings; the pictures in its `docs/`.
+
 ## 2026-11-11 — An example project: a controller that speaks to 5 consoles
 
 The owner found the site's examples poor and asked for a prototype in the

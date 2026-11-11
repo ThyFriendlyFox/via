@@ -247,6 +247,28 @@ def test_render_spin_without_ffmpeg_skips_with_the_reason(tmp_path, monkeypatch)
     assert result.details["skipped"] == ["board-spin.gif: ffmpeg missing"]
 
 
+def test_render_asks_kicad_for_the_stackups_colours_only_when_told(tmp_path, monkeypatch):
+    """A board's stackup can name its mask, silk and finish (black, white, ENIG); kicad-cli's preset
+    ignores them unless asked. `--stackup-colors` asks, for every 3D view."""
+    cli = load_cli_module()
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        cmd = [str(c) for c in cmd]
+        calls.append(cmd)
+        Path(cmd[cmd.index("--output") + 1]).write_bytes(b"png")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(cli, "run", fake_run)
+    project = cli.find_project(str(BOARDS / "pass-rc-divider"))
+    for asked in (False, True):
+        calls.clear()
+        cli.gate_render(project, tmp_path / str(asked), views=("3d",), stackup_colors=asked)
+        renders = [c for c in calls if "render" in c and "pcb" in c]
+        assert len(renders) == 3, calls
+        assert all(("--use-board-stackup-colors" in c) == asked for c in renders)
+
+
 def test_footprint_blocks_skip_brackets_inside_quotes():
     cli = load_cli_module()
     text = '(kicad_pcb (version 1) (footprint "A:B" (property "Value" "a)b(") (at 1 2)) (footprint "C:D"))'

@@ -781,3 +781,45 @@ What happened: I routed the example controller with `--passes 60`, the number th
 Cost: 15 minutes of routing with no result.
 Root cause: I took the pass count from a 4-part template to a 140-part board, and did not set `--timeout` for a route whose length I did not know.
 Process: P4
+
+## M129 — 2026-11-11 — A model I wrote ran in the loop before its own deck
+What happened: The example speaker's amplifier, a PAM8302A, has no maker's model, so I wrote one (`sim/models/pam8302a.lib`) with its delay as a transmission line. The line's 1k impedance loaded the stage that fed it, and the model's gain came out half the datasheet's. The loop decks ran on it first. The model's own deck at the datasheet's conditions found it; a buffer before the line gives 22.83 dB against the Gain row's 23.5 dB.
+Cost: 1 round of loop tuning on a plant 6 dB short, done again.
+Root cause: P27 step 4 asks for that deck before a maker's model serves a design deck. I read it as about makers' models and ran my own without one.
+Process: P27
+
+## M130 — 2026-11-11 — A custom pad the router saw as a box over 4 pads
+What happened: The mic of the example speaker, an IM73A135, has a custom pad: a ring round its port. The router file wrote each pad as a rectangle, and the ring's rectangle covered the mic's other 4 pads. FreeRouting saw them inside 1 copper shape and left them open. The router file now writes a custom pad as its outline, a polygon.
+Cost: 2 routes that left the mic unconnected, and the time to find why.
+Root cause: P19 checks a new pad shape with the KiCad DRC, which reads the real shapes. Nothing read what the router file makes of the shape.
+Process: P19
+
+## M131 — 2026-11-11 — A parity warning for every part bound to a model
+What happened: On the example speaker's first board the DRC warned `Missing symbol field 'Sim.Library' in footprint` for each part the design binds to a model. The generator wrote the simulation fields on the symbol only. It now writes them on the footprint too, hidden.
+Cost: 1 generator change and its tests, before the first route.
+Root cause: The tests of a schematic that simulates checked the schematic and its netlist. None put a bound part on a board and read the DRC's parity.
+Process: P24
+
+## M132 — 2026-11-11 — A fine-pitch part turned off the grid, and no route to it
+What happened: I turned the example speaker's amplifier, an MSOP of 0.65 mm pitch, 26 degrees to follow the ring. FreeRouting 1.9.0 reached none of its pins. Turned square to the board, it reached all of them.
+Cost: 1 route of the board and 2 test routes to find the cause.
+Root cause: I placed for the look and did not know the router's limit on fine pitch at angles that are not multiples of 90 degrees.
+Process: P4
+
+## M133 — 2026-11-11 — A maker's model in a feedback loop, and an operating point that was not one
+What happened: The example speaker's loop decks first ran TI's TLV9062 model for both op-amps. In the closed loop ngspice reported `source stepping failed` and settled on points with an output at a rail, and the AC numbers taken there passed. `.nodeset` fixed 1 deck and broke another; `optran` ran minutes for each corner. The loop decks now run a model fitted to TI's, held within 1 dB and 5 degrees of it in its own deck, and 2 bounds in each deck hold the mid-rail and the controller's output at their DC values.
+Cost: About 2 hours of deck changes.
+Root cause: I put a model with noise sources and switches into a loop before I ran it alone. No bound checked that the operating point was the circuit's.
+Process: P27
+
+## M134 — 2026-11-11 — A deck skipped at the corners for a stall that was ngspice's
+What happened: The example speaker's hum deck, a 250 ms transient through the loop, stopped advancing at some corners, so I skipped it at the corners. When I changed 1 resistor from 6.8k to 6.2k it stopped advancing as written too: the step fell to 1 ns from the start. With looser step control (`reltol=1e-3 vntol=1e-5 chgtol=1e-12`) it ran in 1 second at every value, and the trapezoidal method gave the same answer to 0.001 dB. It now runs at all corners.
+Cost: 10 minutes of a stalled gate run, and a deck the corners did not judge while the loop was tuned.
+Root cause: I took a stall for the circuit's and skipped the deck instead of changing the step control.
+Process: P27
+
+## M135 — 2026-11-11 — A rail's peak read from the floor of its sweep
+What happened: The example speaker's rail deck took the +5 V rail's peak impedance from 1 kHz up. At the corners where the cable's resistance damps the resonance, the highest point was the floor at 1 kHz. The plan put a band round it that held the test hum's 6th harmonic at 900 Hz, and failed the gate on a resonance that was not there. The cable's inductance with the rail's capacitors resonates between 37 and 72 kHz over the corners, so the search now starts at 20 kHz. A corner damped flat still returns the window's edge, and a band round 20 kHz holds no harmonic of the plan's sources.
+Cost: 1 red gate run and 1 deck change.
+Root cause: I searched the whole sweep for the peak. A damped corner has no peak, and the search returns its edge.
+Process: P30

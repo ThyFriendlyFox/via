@@ -861,7 +861,9 @@ def cmd_pictures(args, cli) -> int:
         name, prefix = b.get("name", project.name), b.get("prefix", "")
         build = project.dir / "build"
         if not args.frames:
-            r = cli.gate_render(project, build, strict=b.get("strict", True))
+            r = cli.gate_render(
+                project, build, strict=b.get("strict", True), stackup_colors=b.get("stackup_colors", False)
+            )
             if r.status != "pass":
                 failures.append(f"{name}: render {r.status}: {r.summary}")
             else:
@@ -883,6 +885,7 @@ def cmd_pictures(args, cli) -> int:
                 spin_tilt=float(s.get("tilt", SPIN_TOP)),
                 spin_zoom=float(s.get("zoom", 1.0)),
                 spin_pivot=s.get("pivot"),
+                stackup_colors=b.get("stackup_colors", False),
             )
             gif = out / "render" / "board-spin.gif"
             if r.status != "pass":

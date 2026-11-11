@@ -48,9 +48,12 @@ KIPRJMOD = "${KIPRJMOD}"
 
 
 def render_cmd(png: Path, pcb: Path, view: dict, width: int, height: int) -> list[str]:
-    """kicad-cli's render of one view: rotate "x,y,z", zoom, pivot "x,y,z" in cm, pan, side, perspective."""
+    """kicad-cli's render of one view: rotate "x,y,z", zoom, pivot "x,y,z" in cm, pan, side, perspective,
+    and stackup_colors (the board stackup's mask, silk and finish instead of kicad-cli's preset)."""
     cmd = ["kicad-cli", "pcb", "render", "--output", str(png), "--width", str(view.get("width", width))]
     cmd += ["--height", str(view.get("height", height)), "--background", "opaque", "--quality", "high"]
+    if view.get("stackup_colors"):
+        cmd.append("--use-board-stackup-colors")
     for key in ("rotate", "zoom", "pivot", "pan", "side"):
         if key in view:
             cmd += [f"--{key}", str(view[key])]
@@ -195,10 +198,16 @@ class Scene:
         return done
 
     def spin(
-        self, gif: str, tilt: float = -55.0, zoom: float = 1.0, pivot: str | None = None, frames: int = 36
+        self,
+        gif: str,
+        tilt: float = -55.0,
+        zoom: float = 1.0,
+        pivot: str | None = None,
+        frames: int = 36,
+        stackup_colors: bool = False,
     ):
         """The scene turning once round its vertical axis: `workcenter render --views spin` on the
-        scene's board, the GIF moved to `out/<gif>`."""
+        scene's board, the GIF moved to `out/<gif>`; `stackup_colors` as `render --stackup-colors`."""
         pcb = self.save()
         frames = int(os.environ.get("WORKCENTER_SPIN_FRAMES") or frames)
         work = self.out / "spin"
@@ -214,6 +223,7 @@ class Scene:
         ]
         cmd += ["--spin-frames", str(frames), "--spin-tilt", f"{tilt:g}", "--spin-zoom", f"{zoom:g}"]
         cmd += ["--spin-pivot", pivot] if pivot else []
+        cmd += ["--stackup-colors"] if stackup_colors else []
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
         path = (work / "render" / "board-spin.gif").replace(self.out / gif)
         print(f"scene: {path}")

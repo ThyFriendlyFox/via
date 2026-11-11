@@ -1,0 +1,49 @@
+{
+  "temperature": {
+    "values": [
+      0,
+      40
+    ],
+    "source": "Hush is an indoor speaker: 0 to 40 C (README, What it must do). The decks carry the coil's copper (RSPKE tc1=3.93m), 0.393 % of Re per kelvin."
+  },
+  "tolerance": {
+    "R": 0.01,
+    "C": 0.1,
+    "parts": {
+      "C10": 0.05,
+      "C11": 0.05,
+      "C12": 0.05,
+      "C13": 0.05,
+      "C16": 0.05,
+      "C17": 0.05,
+      "RV1": 0.9,
+      "VSUP": 0.02,
+      "VP5": 0.05,
+      "re": 0.05,
+      "le": 0.3,
+      "bl": 0.1,
+      "mms": 0.1,
+      "cms": 0.2,
+      "qms": 0.2,
+      "kmic": 0.122,
+      "rmic": 0.25,
+      "fbw": 0.5,
+      "tdel": 0.25,
+      "LCABLE": 0.5,
+      "RCABLE": 0.5
+    },
+    "source": "Resistors 1 % thick film and capacitors 10 % X5R or X7R (the parts list); C10-C13, C16 and C17 are C0G, 5 %. RV1 at its end stop: 2 to 38 ohm. VSUP: the LP5907's output, +-2 % (SNVS798Q, Features). VP5: USB's 4.75 to 5.25 V. The CE40-4's sheet gives no spread for its parameters: Re +-5 %, Bl and Mms +-10 %, Cms and Qms +-20 %, Le +-30 %, the spreads driver makers commonly state. kmic: the IM73A135's sensitivity, -39 to -37 dBV (Table 3). rmic: the cone's centre 3 to 5 mm below the port: the driver's flange sets it, a gasket and the assembly move it by 1 mm (the 4 mm itself is an estimate from the CE40-4's drawing, to be measured on the first board: README, Open items). fbw: the PAM8302A's bandwidth, which its datasheet does not give, 20 to 60 kHz. tdel: half a period of its oscillator, 200 to 300 kHz (fOSC row): 1.7 to 2.5 us. LCABLE and RCABLE: a USB cable's pair, half to one and a half times the values in rail_5v.cir."
+  },
+  "monte_carlo": {
+    "runs": 48,
+    "seed": 11
+  },
+  "decks": {
+    "pam_model": {
+      "skip": "the fitted model against its datasheet's rows, which are stated at 25 C"
+    },
+    "tlv9061_model": {
+      "skip": "TI's model against its datasheet's rows, which are stated at 25 C"
+    }
+  }
+}
