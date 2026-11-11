@@ -277,9 +277,11 @@ def test_the_verdict_names_the_warnings_and_never_calls_a_missing_engine_green()
 def test_requirements_are_met_only_when_every_one_passes_at_its_corners():
     cli = load_cli()
 
-    def said(verdicts: dict, problems: int = 0, corners: bool = True) -> str:
+    def said(verdicts: dict, problems: int = 0, corners: bool = True, as_written: dict | None = None) -> str:
         total = sum(len(v) for v in verdicts.values())
         details = {"verdicts": verdicts, "requirements": total, "problems": problems, "corners": corners}
+        if as_written is not None:
+            details["as_written"] = as_written
         return cli.requirements_verdict(cli.Result("verify", "pass", "", details))
 
     assert said({"PASS": ["A", "B"], "FAIL": [], "OPEN": []}) == "REQUIREMENTS MET (2 of 2 pass)"
@@ -294,6 +296,13 @@ def test_requirements_are_met_only_when_every_one_passes_at_its_corners():
         "REQUIREMENTS NOT MET (1 of 1 pass; no corners run)"
     )
     assert said({"PASS": [], "FAIL": [], "OPEN": []}) == "REQUIREMENTS NOT MET (0 of 0 pass)"
+    # every requirement PASS, and 1 of them rests on a deck that ran no corner: not met
+    assert said({"PASS": ["A", "B"], "FAIL": [], "OPEN": []}, as_written={"B": "d"}) == (
+        "REQUIREMENTS NOT MET (2 of 2 pass; 1 judged as written only)"
+    )
+    assert (
+        said({"PASS": ["A", "B"], "FAIL": [], "OPEN": []}, as_written={}) == "REQUIREMENTS MET (2 of 2 pass)"
+    )
     seven = [f"R{n}" for n in range(7)]
     assert "7 fail: R0, R1, R2, R3, R4, R5 ..." in said({"PASS": [], "FAIL": seven, "OPEN": []})
 

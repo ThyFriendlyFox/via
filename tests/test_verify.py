@@ -476,3 +476,80 @@ def test_strict_verify_fails_verdicts_that_rest_on_decks_run_as_written_only(tmp
     assert "sim: no sim/corners.json: every verdict rests on one run of each deck as written" in failures(
         results
     )
+
+
+# ------------------------------------------------- what 2 reviews of verify found
+
+FIVE_PERCENT = {"tolerance": {"R": 0.05, "source": "5 % parts"}}
+AT_THE_CORNER = (
+    "traceability: REQ-OUT-01 says PASS, `2.45 V<=rc_divider.vout<=2.55 V` with 2.5 is FAIL at "
+    "R1 +5 %, R2 -5 % (2.375)"
+)
+
+
+@needs_ngspice
+@pytest.mark.parametrize(
+    "bound",
+    [
+        {"min": 2.4, "max": 2.6, "at": "nominal", "source": "the model's row at 25 C"},
+        {"min": 2.4, "max": 2.6, "warn": "watched, not a limit of the design"},
+    ],
+)
+def test_a_requirement_is_judged_at_the_corners_whatever_its_decks_bound_says(tmp_path, bound):
+    """`"at": "nominal"` and `warn` take a deck's bound out of the corners. A requirement's check is not
+    that bound: the divider reads 2.375 V with its resistors 5 % apart, under the requirement's 2.45 V,
+    and a row that says PASS is wrong whatever the expect file says about vout."""
+    project = project_with_package(tmp_path)
+    (project / "sim" / "rc_divider.expect.json").write_text(json.dumps({"vout": bound}), encoding="utf-8")
+    (project / "sim" / "corners.json").write_text(json.dumps(FIVE_PERCENT), encoding="utf-8")
+    code, results = run("verify", project)
+    assert code == 1 and failures(results) == [AT_THE_CORNER]
+
+
+@needs_ngspice
+def test_a_requirement_whose_deck_ran_no_corner_is_judged_as_written_only_and_says_so(tmp_path):
+    """A deck skipped in corners.json ran once. A PASS that rests on it is a PASS as written: the run
+    says so, --strict fails on it, and the requirements are not met."""
+    project = project_with_package(tmp_path)
+    skipped = {**FIVE_PERCENT, "decks": {"rc_divider": {"skip": "a characterisation with no design bound"}}}
+    (project / "sim" / "corners.json").write_text(json.dumps(skipped), encoding="utf-8")
+    code, results = run("verify", project)
+    assert code == 0, failures(results)
+    assert results[0]["summary"] == (
+        "2 requirements: 1 pass, 0 fail, 1 open; 1 judged as written only; 2 quoted values match the run"
+    )
+    assert results[0]["details"]["as_written"] == {"REQ-OUT-01": "rc_divider"}
+    out = tmp_path / "out"
+    proc = subprocess.run(
+        [sys.executable, str(CLI), "verify", str(project), "--out", str(out)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.stdout.splitlines()[-1] == (
+        "REQUIREMENTS NOT MET (1 of 2 pass; 1 open; 1 judged as written only): rc_divider  "
+        f"report {out / 'verify.json'}"
+    )
+    code, results = run("verify", project, "--strict")
+    assert code == 1
+    assert failures(results) == [
+        "REQ-OUT-02: OPEN",
+        "REQ-OUT-01: judged as written only: its deck rc_divider ran no corner (a characterisation with "
+        "no design bound)",
+    ]
+
+
+@needs_ngspice
+def test_an_expect_file_that_is_not_json_is_a_problem_line_not_a_traceback(tmp_path):
+    project = project_with_package(tmp_path)
+    (project / "sim" / "rc_divider.expect.json").write_text('{"vout": {"min": 2.4,}', encoding="utf-8")
+    proc = subprocess.run(
+        [sys.executable, str(CLI), "--json", "verify", str(project)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 1 and "Traceback" not in proc.stderr
+    (problem,) = failures(json.loads(proc.stdout))
+    # the words after "not JSON:" are the JSON reader's own, and they differ between Python versions
+    assert problem.startswith("sim: rc_divider.expect.json: not JSON: ")

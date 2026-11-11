@@ -79,6 +79,62 @@ def test_a_decks_periodic_stimuli_are_read_and_a_single_event_is_not():
     assert unread == ["V5"]  # its period is a parameter: named, so it is not passed over in silence
 
 
+# The forms a review found the first reader lost or misread. A source it lost was a source no plan had
+# to place, so a deck could drive a resonance and pass.
+FORMS = """* every form of a periodic source
+V1 a 0 SINE(0 1 2k)
+V2 b 0 SIN(0 1 {fsw})
+V3 c 0 PULSE(0 1 0 1n 1n {ton} 20u)
+V4 d 0 PULSE(0 {vhi} 0 1n 1n 5u 10u)
+V5 e 0 PULSE(0 1 0 1n 1n 5u {1/fsw})
+V6 f 0 PULSE(0 1 0 1n 1n 5u 10u) ; a comment with PULSE(0 1 0 1n 1n 1u 2u)
+V7 g 0 PULSE(0 1 0 1n 1n 5u 40u) $ another with SIN(0 1 9k)
+* V8 h 0 PULSE(0 1 0 1n 1n 5u 10u)
+V9 i 0 PWL(0 0 1u 1 2u 0) r=0
+V10 j 0 PWL(0 0 1u 1 2u 0)
+V11 k 0 SFFM(0 1 20k 5 1k)
+V12 l 0 AM(1 0 1k 20k 0)
+B1 m 0 V=sin(2*3.14159*5k*time)
+B2 n 0 V=v(a)*2
+I13 0 o PULSE(0 1 0 1n 1n 'ton' 50u)
+V14 p 0 dc 0 ac 1 SIN(0 1 3k 0 0)
+V15 q 0 PULSE(0 1 0 1n 1n 5u, 25u)
+V16 r 0 EXP(0 1 1u 1u 5u 1u)
+V17 s 0 DC 5 ; sin 0 1 2k is the tone the next deck will use
+V18 t 0 DC 5 $ PULSE(0 1 0 1n 1n 1u 2u) was here
+V19 u 0 PULSE(0 {vdd * 1} 0 1n 1n 5u 10u)
+V20 w 0 PULSE(0 {max(vdd,3)} 0 1n 1n 5u 10u)
+R1 a 0 1k
+.end
+"""
+
+
+def test_a_source_is_read_in_every_form_a_deck_writes_it_and_named_when_it_cannot_be():
+    found, unread = freqplan.stimuli(FORMS)
+    # SINE as SIN; a braced or quoted argument before the period; a comment that holds another
+    # stimulus; DC and AC values before the stimulus; a comma between arguments; a braced argument
+    # with spaces in it (once read as 3 words: 1000 MHz) and one with parentheses in it (once cut
+    # at the inner `)`: 1 event, so no source at all)
+    assert [(e, round(hz)) for e, hz in found] == [
+        ("V1", 2000),
+        ("V3", 50000),
+        ("V4", 100000),
+        ("V6", 100000),
+        ("V7", 25000),
+        ("I13", 20000),
+        ("V14", 3000),
+        ("V15", 40000),
+        ("V19", 100000),
+        ("V20", 100000),
+    ]
+    # periodic, and the frequency is no number in the text: a parameter, an expression, a PWL that
+    # repeats, SFFM, AM, a B source of `time`
+    assert unread == ["V2", "V5", "V9", "V11", "V12", "B1"]
+    # not periodic, so neither list holds it: a commented line, a PWL that runs once, a B source
+    # that reads no time, a single EXP, and 2 DC sources with a stimulus in their comment
+    assert {"V8", "V10", "B2", "V16", "V17", "V18"}.isdisjoint([e for e, _ in found] + unread)
+
+
 def test_a_project_without_the_file_has_no_plan(tmp_path):
     assert freqplan.read_plan(tmp_path) == (None, [])
 
@@ -472,3 +528,88 @@ def test_a_plan_the_gate_cannot_read_or_whose_resonance_no_deck_measures_fails(t
         f.startswith("frequency-plan.json: sources[1] (load): no source")
         for f in records[0]["details"]["failures"]
     )
+
+
+# ------------------------------------------------- what a review of the plan found
+
+
+def filter_project(tmp_path: Path) -> Path:
+    proj = tmp_path / "proj"
+    shutil.copytree(BOARDS / "pass-lc-filter", proj, ignore=shutil.ignore_patterns("build"))
+    return proj
+
+
+@needs_ngspice
+def test_a_resonance_that_meets_the_clock_between_the_ends_of_its_parts_is_found(tmp_path):
+    """With 11.3 uF the filter resonates at 15.0 kHz as written, and from 12.4 to 18.7 kHz over its 20 %
+    parts. The 16 kHz clock is on the peak where L x C is 0.876 of nominal: between the ends, at none of
+    them. A deck that answers an overlap is also run with L stepped against C, and the ripple there is
+    the number judged."""
+    proj = filter_project(tmp_path)
+    sim = proj / "sim"
+    for name in ("clock_ripple.cir", "filter.cir"):
+        text = (sim / name).read_text(encoding="utf-8")
+        assert "C1 rail c1e 10u" in text
+        (sim / name).write_text(text.replace("C1 rail c1e 10u", "C1 rail c1e 11.3u"), encoding="utf-8")
+    for name in ("ripple.cir", "ripple.expect.json"):
+        (sim / name).unlink()
+    plan = json.loads((sim / freqplan.PLAN_FILE).read_text(encoding="utf-8"))
+    plan["sources"] = [s for s in plan["sources"] if s["name"] == "clock"]
+    (sim / freqplan.PLAN_FILE).write_text(json.dumps(plan), encoding="utf-8")
+    bound = {"v_pp": {"max": 0.017, "source": "the rail's ripple with the clock on the resonance"}}
+    (sim / "clock_ripple.expect.json").write_text(json.dumps(bound), encoding="utf-8")
+    code, records = run("sim", proj, "--out", tmp_path / "o")
+    assert code == 1
+    decks = records[0]["details"]["decks"]
+    corners = decks["clock_ripple"]["corners"]
+    # 7.9 mV as written; the 4 combinations of the ends give 2.6 to 13.2 mV, all under the 17 mV bound
+    assert decks["clock_ripple"]["measures"]["v_pp"] == pytest.approx(0.007862, abs=1e-6)
+    rows = json.loads((tmp_path / "o" / "sim" / "corners" / "clock_ripple" / "runs.json").read_text("utf-8"))
+    ends = {r["label"]: r["measures"]["v_pp"] for r in rows if r["label"].count("20 %") == 2}
+    assert len(ends) == 4 and max(ends.values()) == pytest.approx(0.013248, abs=1e-6)
+    assert corners["search"] == "every combination of the ends, then L stepped against C between them"
+    assert corners["swept"] == 38
+    assert corners["envelope"]["v_pp"]["max"] == pytest.approx(0.022048, abs=1e-6)
+    assert corners["envelope"]["v_pp"]["max_at"] == "L1 +10 %, C1 -20 %"
+    assert records[0]["details"]["failures"] == [
+        "clock_ripple:v_pp=0.022048 at L1 +10 %, C1 -20 % (and 12 more corners) not in [None, 0.017] "
+        "(the rail's ripple with the clock on the resonance)"
+    ]
+    # the filter's own deck answers no overlap: its corners are the ends alone
+    assert decks["filter"]["corners"]["swept"] == 0
+    assert decks["filter"]["corners"]["search"] == "every combination of the ends"
+
+
+@needs_ngspice
+def test_a_resonance_read_from_a_deck_that_runs_no_corner_fails(tmp_path):
+    """A band is a resonance over its parts' tolerances. A deck taken out of the corners gives 1 number,
+    and a band drawn from it would be too narrow by the whole tolerance."""
+    proj = filter_project(tmp_path)
+    corners_file = proj / "sim" / "corners.json"
+    spec = json.loads(corners_file.read_text(encoding="utf-8"))
+    spec["decks"] = {"filter": {"skip": "an AC characterisation with no design bound"}}
+    corners_file.write_text(json.dumps(spec), encoding="utf-8")
+    code, records = run("sim", proj, "--out", tmp_path / "o")
+    assert code == 1
+    assert records[0]["details"]["failures"] == [
+        "frequency plan: resonance input filter is read from filter, which no tolerance moves, so its "
+        "band holds no part's tolerance: give the deck its corners in sim/corners.json"
+    ]
+
+
+@needs_ngspice
+def test_a_measure_the_plan_reads_must_be_printed_at_every_corner(tmp_path):
+    """The band's ends are the least and the greatest of a measure over the corners. A measure the deck
+    prints at some corners only has an end nobody saw."""
+    proj = filter_project(tmp_path)
+    deck = proj / "sim" / "filter.cir"
+    text = deck.read_text(encoding="utf-8")
+    assert "print z_peak f_peak q_peak" in text
+    some = "print z_peak f_peak\nif q_peak > 13\nprint q_peak\nend"
+    deck.write_text(text.replace("print z_peak f_peak q_peak", some), encoding="utf-8")
+    code, records = run("sim", proj, "--out", tmp_path / "o")
+    assert code == 1
+    assert records[0]["details"]["failures"] == [
+        "filter: q_peak is not printed at L1 -20 %; L1 -20 %, C1 +20 %: its least and its greatest are "
+        "not known"
+    ]

@@ -614,7 +614,12 @@ def run_corners(
     else:
         search = "every combination of the ends"
     monte = sc.monte_carlo_corners(deck.stem, spec.monte_carlo, spec.temperatures, varied, written_at)
-    ran = firsts + many(every) + many(sc.sweep_corners(varied) if sweep else []) + many(monte)
+    ends = many(every)
+    # A resonance can sit on a source between the ends of an L and a C, where no end shows it.
+    swept = many(sc.sweep_corners(varied) if sweep else [])
+    if swept:
+        search += ", then L stepped against C between them"
+    ran = firsts + ends + swept + many(monte)
     sound = []
     cornered = {n: b for n, b in expect.items() if not sc.nominal_only(b)}
     early: dict[str, str] = {}  # one line for each name, from the first corner that shows it
@@ -661,6 +666,7 @@ def run_corners(
     record = {
         "runs": len(ran),
         "search": search if varied else "each temperature",
+        "swept": len(swept),
         "temperatures": sorted({c.temp for c, _ in firsts if c.kind == "temperature"}),
         "varied": [{"name": v.name, "value": v.nominal, "tolerance": v.tol} for v in varied],
         "uncovered": uncovered,
