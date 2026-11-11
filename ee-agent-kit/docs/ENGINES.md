@@ -146,6 +146,47 @@ but no gate uses it yet. It needs a running KiCad, which under Xvfb is
 possible in the cloud environment (`xvfb` is installed). First use:
 session import (ROADMAP item 1).
 
+## The chip engines
+
+The engines that take RTL to a GDSII layout. A board needs none of them,
+so they install on request: `sudo INSTALL_CHIP=1 ./install.sh`, or
+`sudo ./install.sh --chip` for this step alone. The step takes 32 s and
+1.9 GB on the workcenter's machine. A second run downloads nothing.
+
+| Engine | Version | From | Where |
+|---|---|---|---|
+| Verilator | 5.020 | Ubuntu's archive | `PATH` |
+| Icarus Verilog (`iverilog`, `vvp`) | 12.0 | Ubuntu's archive | `PATH` |
+| Yosys | 0.33 | Ubuntu's archive | `PATH` |
+| KLayout | 0.28.16 | Ubuntu's archive | `PATH` |
+| OpenROAD | commit `f12e2f47`, a build of 2022-03-17 | conda, channel litex-hub | `<root>/chip/bin/openroad` |
+| OpenSTA | 2.3.1 | inside the OpenROAD package | `<root>/chip/bin/sta` |
+| Magic | 8.3.465 | conda, channel litex-hub | `<root>/chip/bin/magic` |
+| Netgen | 1.5.272 | conda, channel litex-hub | `<root>/chip/bin/netgen` |
+| The sky130A process kit, library `sky130_fd_sc_hd` | open_pdks commit `6d4d117` | ciel 3.2.0 | `<root>/chip/pdk/sky130A` |
+
+`<root>` is `WORKCENTER_ROOT`, `/opt/workcenters/ee` unless set.
+`WORKCENTER_CHIP_TOOLS` names another folder that holds `bin/` and `pdk/`.
+
+Every download is pinned: micromamba by its SHA256, each conda package by
+its URL and MD5 (`environment/chip/openroad.explicit.txt`,
+`layout.explicit.txt`), ciel and each package under it by version
+(`ciel.requirements.txt`), the process kit by its commit. On 2026-11-11
+these engines took an 8-bit counter from RTL to a layout on this machine:
+the router's last count 0, Magic's DRC count 0, 0 items in the KLayout
+deck, Netgen's "Circuits match uniquely.", 54 timing corners met.
+
+The traps found here:
+
+| Trap | What happens | What the workcenter does |
+|---|---|---|
+| Magic and Netgen read standard input | Started from a terminal with no input, each waits. An install stood still for 10 minutes on Netgen's version line. | Every call gets `< /dev/null`. |
+| The process kit is pinned to the Magic | The kit's technology file states the Magic it needs: `requires magic-8.3.411` for commit `6d4d117`. The newest kit asks for 8.3.693. With an older Magic the file loads with errors and `def read` never returns. | The kit's commit and the Magic's version change together, and every engine call has a time limit. |
+| Ubuntu's Magic is too old | `apt install magic` gives 8.3.105, which refuses the kit: `Magic version 8.3.411 is required by this techfile`. | The step takes Magic from conda. Ubuntu's package is not installed. |
+| The OpenROAD is a build of 2022 | It is the newest litex-hub build that conda-forge's packages can feed. Later builds ask for a `libboost` that only Anaconda's `main` channel has, and that channel has other terms of service. Its help lacks `check_antennas -net` and the scan commands of the current documents. | The lock names this build. A newer one is a roadmap item. |
+| micromamba makes a folder in the home it is given | `~/.mamba/pkgs` appears in the user's home. | The step gives it a home inside `<root>/chip/mamba`. |
+| OpenROAD-flow-scripts' own flow | Its first step stops with Yosys 0.33: it asks for Yosys 0.58 with the slang plugin. | The workcenter runs the engines with its own scripts. |
+
 ## Writing a new engine
 
 A new engine PR includes all of these:
