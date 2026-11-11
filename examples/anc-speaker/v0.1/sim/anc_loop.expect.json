@@ -1,0 +1,10 @@
+{
+  "vref_dc": {"min": 1.35, "max": 1.45, "source": "VREF is half of +2V8 (R3, R4): a value outside means ngspice settled on a false operating point"},
+  "ctout_dc": {"min": 1.3, "max": 1.5, "source": "U3 follows VREF at DC (C15 blocks its input): the same check on the integrator"},
+  "att_50": {"max": -3, "source": "README, What it must do: at least 3 dB less noise at 50 Hz"},
+  "att_100": {"max": -8, "source": "README, What it must do: at least 8 dB less noise at 100 Hz"},
+  "att_200": {"max": -12, "source": "README, What it must do: at least 12 dB less noise from 200 to 300 Hz"},
+  "att_300": {"max": -12, "source": "README, What it must do: at least 12 dB less noise from 200 to 300 Hz"},
+  "att_500": {"max": -6, "source": "README, What it must do: at least 6 dB less noise at 500 Hz"},
+  "s_peak": {"max": 6, "source": "README, What it must do: no frequency louder by more than 6 dB. A sensitivity peak Ms of 2 guarantees a gain margin of Ms/(Ms-1) = 2 and a phase margin of 2 asin(1/(2 Ms)) = 29 degrees"}
+}

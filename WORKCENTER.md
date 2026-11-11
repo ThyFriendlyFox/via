@@ -94,8 +94,9 @@ A design may say how each part simulates: `d.sim` binds a part to a `.subckt`
 or a `.model` in a file with a map from every pin to a node, or gives it a
 value of its own; `d.no_sim` leaves a part out with the reason;
 `d.sim_directives` puts SPICE lines on the sheet. `workcenter design` then
-writes KiCad's Sim fields on the symbols, so the schematic runs in KiCad's
-simulator and `kicad-cli sch export netlist --format spice` writes a netlist
+writes KiCad's Sim fields on the symbols, and hidden on their footprints so
+the DRC's parity check finds the same fields on both (M141), so the
+schematic runs in KiCad's simulator and `kicad-cli sch export netlist --format spice` writes a netlist
 ngspice reads. It prints each problem as a `sim:` line and exits 1 on any: a
 map that leaves a pin or a node out (KiCad would bind it by position and say
 nothing), a file or a name that is not there, a node the model does not have.
@@ -154,7 +155,8 @@ layer with the outline, bottom layers seen from below) with an overview sheet,
 the 3D board turning once round (`--spin-frames`, `--spin-tilt`, `--spin-zoom`,
 `--spin-pivot`;
 a minute or two of frames). `--views` takes any of schematic, 2d, 3d, layers,
-spin, or all. Its summary names every part the 3D views draw without a body
+spin, or all. The 3D views and the GIF are drawn in the board stackup's
+colours (its masks, silkscreens and finish). Its summary names every part the 3D views draw without a body
 (a footprint naming a model that is not on disk); `--strict` fails on one.
 A finished board version shows its layer sheets and a turning
 GIF of every board and its assembly in its README (`PROCESSES.md` P23), and

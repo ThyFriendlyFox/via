@@ -230,6 +230,66 @@ def test_the_fields_kicad_reads_are_written_on_each_symbol():
     assert severities["simulation_model_issue"] == "error"
 
 
+def on_a_board() -> kicadgen.Design:
+    """The mixer and a resistor with footprints, the mixer bound to its model, the resistor saying
+    nothing about simulation."""
+    d = kicadgen.Design(name="simtest", namespace=uuid.UUID("11111111-2222-3333-4444-55555555555a"))
+    d.power_nets = {"GND": "GND"}
+    d.flagged_nets = ["GND"]
+    g = 2.54
+    d.add("U1", "Regulator_Linear:AP2112K-3.3", "MIX", "Package_TO_SOT_SMD:SOT-23-5", sch_at=(40 * g, 20 * g),
+          pcb_at=(108.0, 110.0), nets={"1": "VIN", "2": "GND", "3": "MID", "5": "OUT"})  # fmt: skip
+    d.add("R1", "Device:R", "10k", "Resistor_SMD:R_0603_1608Metric", sch_at=(20 * g, 20 * g),
+          pcb_at=(116.0, 110.0), nets={"1": "VIN", "2": "MID"})  # fmt: skip
+    d.sim("U1", library="models/test.lib", name="MIX", pins=MIX_PINS)
+    return d
+
+
+def footprint_fields(pcb: str) -> dict[str, dict[str, tuple[str, bool]]]:
+    """Each footprint's Sim properties, by reference: the text and whether it is hidden."""
+    placed = {}
+    for fp in kicadgen.children(kicadgen.parse(pcb), "footprint"):
+        props = kicadgen.children(fp, "property")
+        ref = next(str(kicadgen.atoms(p)[1]) for p in props if str(kicadgen.atoms(p)[0]) == "Reference")
+        placed[ref] = {
+            str(kicadgen.atoms(p)[0]): (str(kicadgen.atoms(p)[1]), kicadgen.child(p, "hide") is not None)
+            for p in props
+            if str(kicadgen.atoms(p)[0]).startswith("Sim.")
+        }
+    return placed
+
+
+@needs_libs
+def test_a_footprint_carries_its_symbols_sim_fields_hidden():
+    """KiCad's own update from the schematic copies every symbol field onto the footprint; a footprint
+    without the Sim fields is a parity warning in the DRC ("Missing symbol field 'Sim.Library'"). A
+    part that says nothing about simulation gets none, so a board that simulates nothing is written as
+    before."""
+    placed = footprint_fields(on_a_board().board())
+    assert placed["U1"] == {
+        "Sim.Library": ("models/test.lib", True),
+        "Sim.Name": ("MIX", True),
+        "Sim.Pins": ("1=IN 2=GND 3=EN 5=OUT", True),
+    }
+    assert placed["R1"] == {}
+
+
+@needs_libs
+@needs_kicad
+def test_a_board_with_a_bound_part_has_no_parity_warning(tmp_path):
+    d = on_a_board()
+    project(tmp_path, d)
+    (tmp_path / "simtest.kicad_pcb").write_text(d.board(), encoding="utf-8")
+    report = tmp_path / "drc.json"
+    subprocess.run(
+        ["kicad-cli", "pcb", "drc", "--schematic-parity", "--format", "json", "--output", str(report),
+         str(tmp_path / "simtest.kicad_pcb")],
+        capture_output=True, text=True, check=False,
+    )  # fmt: skip
+    parity = json.loads(report.read_text(encoding="utf-8"))["schematic_parity"]
+    assert [v["description"] for v in parity if v["type"] == "footprint_symbol_field_mismatch"] == []
+
+
 @needs_libs
 def test_pin_numbers_given_as_numbers_are_taken_as_text():
     d = circuit()

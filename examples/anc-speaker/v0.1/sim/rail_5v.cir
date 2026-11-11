@@ -1,0 +1,36 @@
+* Hush: the +5V rail's impedance at U5's VDD pin, for the frequency plan (PROCESSES.md P30).
+*
+* USB brings 5 V down a cable; C1 (10u) and C2 (1u) hold it at U5, which switches at 200 to
+* 300 kHz. A 1 A AC current source at U5's VDD reads the rail's impedance in ohms.
+*   The cable, 1 m: VBUS and GND are 2 wires about 3 mm apart, 0.25 mm in radius, so
+*   L = (mu0/pi) * ln(d/a) = 0.4 uH * ln(12) = 1.0 uH for the pair. Their resistance: the USB
+*   Type-C specification allows 250 mV of VBUS drop and 250 mV of GND drop at 3 A, 0.167 ohm for
+*   the pair; a cheap cable has more. LCABLE and RCABLE move by half each way (sim/corners.json).
+*   C1, C2: X5R ceramics; ESR and ESL of an 0805 and an 0603.
+*   R25 and C3 filter U1's input; U1 draws about 3.5 mA and is a current here.
+* The peak is looked for above 20 kHz. The cable's L with C1 and C2 resonates at 37 kHz at the
+* lowest (1.5 uH, 12.1 uF) and 72 kHz at the highest, so the peak lies above 20 kHz at every corner.
+* A cable with more resistance damps it flat; the search then returns 20 kHz, the window's edge,
+* whose band holds no harmonic of the plan's sources (the frequency plan's Q bounds it).
+VHOST host 0 DC 5
+RCABLE host nc 0.25 tc1=3.93m
+LCABLE nc p5v 1u
+C1 p5v c1e 10u
+RC1ESR c1e c1l 5m
+LC1ESL c1l 0 0.6n
+C2 p5v c2e 1u
+RC2ESR c2e c2l 10m
+LC2ESL c2l 0 0.4n
+R25 p5v ldo_in 10
+C3 ldo_in 0 1u
+ILDO ldo_in 0 DC 3.5m
+ITEST 0 p5v DC 0 AC 1
+.control
+ac dec 100 10 10Meg
+meas ac z_peak max vm(p5v) from=20k to=10Meg
+meas ac f_peak max_at vm(p5v) from=20k to=10Meg
+meas ac z_250k find vm(p5v) at=250k
+meas ac ldo_250k find vm(ldo_in) at=250k
+print z_peak f_peak
+.endc
+.end
