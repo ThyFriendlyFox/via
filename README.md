@@ -77,6 +77,18 @@ plated edge pads. The ring turns with the hand and the cursor follows its gyrosc
 along a 3-channel strip to scroll and presses the side to click. A Bluetooth LE module, a charger,
 a 3.3 V rail and a 20 mAh cell ride on the other tiles, and every tile is GREEN.
 
+## An example: Herald, a fire alarm communicator
+
+<a href="examples/fire-alarm-communicator/v0.1/README.md"><img alt="Herald in 3D from above and to the side: a red board with an LTE-M module, a nano SIM, an ESP32-S3 module, a relay, a column of status lights, a USB-C port and black screw terminals along its front edge" src="examples/fire-alarm-communicator/v0.1/docs/board-3d-iso.png"></a>
+
+[`examples/fire-alarm-communicator/v0.1`](examples/fire-alarm-communicator/v0.1/README.md) sits
+beside a fire alarm panel and reports to a monitoring station over LTE-M, with Wi-Fi as the second
+path. 84.4 x 64 mm, 4 layers, every part on the front, red with a white legend and black terminals.
+It answers the panel's own phone dialer as if it were the line: a current-limited loop feed, dial
+tone and the handshake from a PWM pin, and the panel's DTMF digits decoded in firmware with a
+Goertzel filter. 3 supervised inputs read a closed contact, a whole loop and a cut wire apart at
+every corner, and a fail-safe relay tells the panel when Herald itself fails.
+
 ## What it does
 
 | Part | In short |

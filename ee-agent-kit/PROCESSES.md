@@ -90,7 +90,13 @@ classes.
    (tracks, vias, pours) and on which layers. A keep-out that forbids
    vias forbids them on every layer, since a via passes them all. Mark the
    via-free areas; a part placed in one is wired out on its own face to a
-   via outside, so give it a path there.
+   via outside, so give it a path there. A keep-out added to a placed
+   board gets the same check: list every pad inside its polygon with
+   `workcenter inspect list . --box X0 X1 Y0 Y1` and give each a path
+   out before the route (M137). List it with no `--layer`: a keep-out on
+   one face that bans vias holds the other face's pads too, and a pad of
+   a poured net counts, since it reaches the pour through a via beside it
+   (M138).
 5. Via sizes are rules too. The default via, each net class's and each
    hand via must meet the board's minimum hole (0.3 mm), minimum via
    (0.5 mm) and annular ring (0.1 mm), as `Design.board_rules()` gives

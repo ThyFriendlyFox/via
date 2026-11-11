@@ -1,0 +1,21 @@
+* The DTMF receive path: TIP through C29 (100n) and R28 (22k) onto the bias R29/R30 (100k each) at
+* the ESP32's ADC (GPIO7). The dialer's tones ride on TIP's DC; the path passes 697 to 1633 Hz with
+* the same gain, so a pair keeps its twist, and the bias sits at half of +3V3. D5 clamps a surge and
+* conducts no current between 0 and 3.3 V; it is not in the deck.
+VDD vdd 0 DC 3.3
+VTIP tip 0 DC 12 AC 1
+C29 tip dac 100n
+R28 dac adc 22k tc1=100u
+R29 vdd adc 100k tc1=100u
+R30 adc 0 100k tc1=100u
+.control
+op
+let v_bias = v(adc)
+print v_bias
+ac dec 100 100 10k
+meas ac g_low find vm(adc) at=697
+meas ac g_high find vm(adc) at=1633
+let twist = g_high / g_low
+print twist
+.endc
+.end

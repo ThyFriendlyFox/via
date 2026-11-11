@@ -829,3 +829,15 @@ What happened: Rosetta v0.2 on 4 layers left 2 to 6 connections open after each 
 Cost: about 1 hour of routes.
 Root cause: I treated each open link as the problem. The same chip's pins failing route after route said the board had too little room round it, which a link drawn by hand does not add.
 Process: P4
+
+## M137 — 2026-11-11 — A pad inside the strip the names keep clear
+What happened: On the fire alarm example I drew a keep-out on F.Cu under the terminal block names, so no track crosses them. I drew it after the parts were placed. R43 and R44 sat inside it; I saw them in the plot and moved them before the route. D4's TIP pad sat inside it too, at the footprint's rotation, and I did not see it. The router left TIP open between Q3 and D4, and the DRC named 1 unconnected item. D4 turned over took a second route.
+Cost: 1 route of 2 minutes with an open net, and a second route of 19 minutes.
+Root cause: P3 step 4 lists each keep-out and what it forbids before parts are placed, and marks the areas a part's pad must not enter. I added the keep-out to a placed board and checked the parts against it by eye, not by its polygon.
+Process: P3
+
+## M138 — 2026-11-11 — Front pads under a back keep-out, listed by the back layer only
+What happened: In round 6 of the fire alarm example I drew keep-outs on B.Cu under the back's words (the subtitles, the write-on boxes, each terminal group's 2 lines) and checked each with `workcenter inspect list --box ... --layer B.Cu`. Every part is on the front, so each list held no pads. The keep-outs ban vias, and a via passes every layer. R43 and U8 sat under the groups' lines with no spot for the tamper line's vias; C24.2 and C13.2, ground pads that reach the pours through a via beside them, sat under the serial box and the subtitles. The routes left the tamper line open and the 2 pads on islands of the front pour.
+Cost: 4 routes (12 minutes) with an open net or an island. The groups' lines moved down behind the front's names, and C24 and C13 moved out of the bands, each found from the DRC.
+Root cause: P3 step 4 says a keep-out that bans vias bans them on every layer, and to list every pad inside its polygon. I filtered the list by the keep-out's own layer, which hid the front's pads.
+Process: P3
