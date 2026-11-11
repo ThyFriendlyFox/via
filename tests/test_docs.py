@@ -144,7 +144,7 @@ def test_every_fixture_board_has_its_row():
 def test_every_mistake_and_process_a_file_cites_exists():
     mistakes = {int(n) for n in re.findall(r"^## M(\d+) ", MISTAKES, re.M)}
     processes = {int(n) for n in re.findall(r"^## P(\d+) ", PROCESSES, re.M)}
-    assert max(mistakes) >= 113 and max(processes) >= 31
+    assert max(mistakes) >= 115 and max(processes) >= 31
     for rel in CITING:
         text = (ROOT / rel).read_text(encoding="utf-8")
         # a mistake is cited in parentheses, alone or in a list: (M94), (M42, M47)

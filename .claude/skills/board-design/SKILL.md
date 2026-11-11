@@ -67,6 +67,27 @@ project and routes it with FreeRouting. No GUI at any step.
      as `pull:` lines. A net held elsewhere goes in `d.defined_nets` with the
      reason: `{"BTN": "PB7's internal pull-up, set in firmware gpio.c"}`,
      `{"I2C_SDA": "4.7k to 3V3 on the display board, R4"}`.
+   - Simulation: say how each part simulates, so the schematic runs in
+     KiCad's simulator and `kicad-cli sch export netlist --format spice`
+     writes a netlist ngspice reads. Without it KiCad writes `U2 __U2` for
+     every part but a plain R, C or L.
+     `d.sim("U2", library="sim/models/reg.lib", name="REG", pins={"1":
+     "OUT", "2": "GND", "3": "EN", "4": "IN", "5": None})` binds a part to a
+     `.subckt` or a `.model` in a file. The path starts at the design's
+     folder. `pins` names every pin number of the symbol: the model's node,
+     or `None` for a pin the model has no node for. A `.model`'s nodes are
+     `A K` for a diode, `C B E` for a transistor, `D G S` for a MOSFET.
+     `d.sim("F1", device="R", params="r=0.13")` gives a part a value of its
+     own. `d.no_sim("J1", "a connector")` leaves a part out, with the
+     reason. `d.sim_directives = [".param V_out=3.1"]` puts SPICE lines on
+     the sheet. `d.check_sim = True` makes `workcenter design` fail until
+     every part has a `sim` or a `no_sim`; a part named R, C or L and a
+     number (R7, C5) with a value KiCad reads as a number (`10k`, `4.7uF`,
+     `4k7`) needs neither. Each problem prints as a `sim:` line. KiCad
+     binds a node the map leaves out to a pin by position and says nothing
+     (a regulator's rail read 1981 V with exit code 0), so the check refuses
+     a map that is not whole. A model file KiCad cannot load fails the ERC
+     gate as `simulation_model_issue`.
    - `d.net_classes` for heavy nets. The widest track that enters a pad is
      the pad pitch minus the pad width minus 2 x clearance: 0.6 mm for
      SOT-23 and 0603, 0.5 mm for 0402, 0.4 mm for TSSOP. Put the ADC sense
@@ -272,6 +293,8 @@ project and routes it with FreeRouting. No GUI at any step.
   the generated project because every symbol and footprint is embedded.
 - The schematic is wired (`sch_wires`) and its plot was read; DRC shows no
   parity warning (each wired net carries its own name).
+- A design that declares simulation prints no `sim:` line, and the netlist
+  KiCad exports from its schematic ran once in ngspice.
 - `workcenter render` names no part drawn without a 3D body.
 - DRC: 0 errors. Silkscreen warnings near board edges are acceptable;
   clearance and courtyard warnings are not.

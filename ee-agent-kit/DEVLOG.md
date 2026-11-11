@@ -39,6 +39,42 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-11 — The schematic simulates, and a small model followed `next`
+
+Both items at the top of yesterday's queue moved. A design file now says
+how each part simulates: `d.sim` binds a part to a model with a map from
+every pin to a node, and `d.no_sim` leaves a part out with its reason. The
+generator writes KiCad's Sim fields, and the netlist KiCad exports runs in
+ngspice. On a copy of Last Hit v0.16 the exported netlist had 29 lines
+ngspice could not read; with 10 parts declared it has none, and it gives
+the engineer's current-sense numbers: 1.198 V at 27 C and 1.099 V at 85 C.
+
+KiCad has a trap here. A pin map that leaves out a node of the model is
+completed by position, with exit code 0 and no ERC line. I measured it: a
+regulator's enable node took pin 3 though the map never named it. The
+check refuses a map that is not whole before KiCad sees it.
+
+The smallest model I can start built a supply filter from one paragraph,
+reading only what `workcenter next` named. The first filter resonated at
+the heater's 5 kHz PWM and the rail swung from 10.64 V to 13.19 V. The
+frequency plan failed it, the model raised the capacitor to move the
+resonance to 1.4 kHz, and the rail then held 11.77 V to 12.04 V over 131
+corner runs. It reported 9 places where it had to guess. The worst was
+ours: the skill's own example for measuring a resonance fails on a rail
+with series resistance. Each is fixed in a gate, a hint or the skill.
+
+I ran `workcenter sim <project> --json` and got a usage error. That was
+M18 again, and the `board-gates` skill had taught that order all along.
+The flag now reads on either side of the command, and a test holds every
+flag a document gives a command to that command's `--help`.
+
+The board half of the small-model run is not made yet. Two reviewers are
+still reading the gate change; their findings come in a later commit.
+
+Evidence: `make verify` green (433 tests); `tests/test_simfields.py` (16
+tests); the small model's project and its report in the session's scratch
+folder; `MISTAKES.md` M114 and M115.
+
 ## 2026-11-10 — An engineer checked the board, and the gates learned the questions
 
 An electrical engineer reviewed Last Hit v0.16 by hand. The engineer could
@@ -74,10 +110,10 @@ I started 8 helpers at once, then 3 more. The account's limit stopped 7
 of them with nothing returned. P31 now sets a budget before any helper
 starts.
 
-Evidence: `make verify` green (405 tests); `tests/test_corners.py`,
+Evidence: `make verify` green; `tests/test_corners.py`,
 `test_freqplan.py`, `test_simgate.py`, `test_guide.py`, `test_docs.py`;
 the runs on a scratch copy of Last Hit v0.16 in `STATUS.md`; `MISTAKES.md`
-M103 to M113.
+M103 to M114.
 
 ## 2026-11-07 — The Last Hit work's habits, written down
 

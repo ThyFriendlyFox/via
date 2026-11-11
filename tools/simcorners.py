@@ -431,6 +431,31 @@ def find_varied(text: str, tolerance: dict | None) -> tuple[list[Varied], list[s
     return varied, problems, uncovered
 
 
+def held(text: str, varied: list[Varied]) -> list[str]:
+    """The R, C and L elements of a deck that no corner moves, by the names the deck writes: an
+    element with a word for a name (`LCABLE`) that `tolerance.parts` does not name. Each stays at its
+    written value in every run, so a reader of a corner run sees what it did not vary. An element
+    named like a board reference is not listed here: with no tolerance it is `uncovered`, a warning."""
+    lines = text.split("\n")
+    elements, params = deck_values(lines)
+    names = {ln.split()[0].upper(): ln.split()[0] for ln in (lines[i] for i in netlist_lines(lines))}
+    moving = {site for v in varied for site in v.sites}
+    out: list[str] = []
+    for key, places in elements.items():
+        if REFERENCE_RE.match(key):
+            continue
+        sites: list[Site] = []
+        for site, token in places:
+            if site is not None:
+                sites.append(site)
+                continue
+            braced = BRACED_RE.match(token)
+            sites += [s for s in params.get((braced.group(1) if braced else token).upper(), []) if s]
+        if any(s.value != 0 for s in sites) and not any(s in moving for s in sites):
+            out.append(names[key])
+    return out
+
+
 def names_in(text: str) -> set[str]:
     """Every element and parameter name a deck's own netlist lines define, upper case."""
     lines = text.split("\n")

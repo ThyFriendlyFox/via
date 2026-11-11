@@ -435,6 +435,13 @@ def bound_line(deck: str, name: str, value: float | None, bounds: dict, at: str 
     return line + (f" ({bounds['source']})" if bounds.get("source") else "")
 
 
+def run_failure(what: str, r: dict, log: Path) -> str:
+    """A run ngspice did not finish, as a failure names it: the count of error lines, the first of
+    them, and the log that holds the rest, so the reader opens one file and not a folder of them."""
+    first = f": {r['errors'][0]}" if r["errors"] else ""
+    return f"{what}: ngspice exit {r['exit']}, {len(r['errors'])} error lines{first} (log {log})"
+
+
 def same_measures(a: dict[str, float], b: dict[str, float]) -> bool:
     return a.keys() == b.keys() and all(math.isclose(a[k], b[k], rel_tol=1e-9, abs_tol=0.0) for k in a)
 
@@ -502,7 +509,7 @@ def run_corners(
         off = sc.temperature_problem(corner, r["text"])
         if r["exit"] != 0 or r["errors"]:
             failures.append(
-                f"{deck.stem}: at {corner.label}: ngspice exit {r['exit']}, {len(r['errors'])} error lines"
+                run_failure(f"{deck.stem}: at {corner.label}", r, folder / corner.id / "ngspice.log")
             )
         elif off:
             failures.append(f"{deck.stem}: at {corner.label}: {off}")
@@ -529,6 +536,8 @@ def run_corners(
         "temperatures": sorted({c.temp for c, _ in firsts if c.kind == "temperature"}),
         "varied": [{"name": v.name, "value": v.nominal, "tolerance": v.tol} for v in varied],
         "uncovered": uncovered,
+        # What a tolerance run left where the deck wrote it: a word-named R, C or L no `parts` names.
+        "fixed": sc.held(text, varied) if spec.tolerance else [],
         "envelope": sc.envelope(written["measures"], sound),
         "held": held,
         "folder": str(folder),
@@ -647,9 +656,7 @@ def gate_sim(
                 failures.append(line)
         ran_clean = written["exit"] == 0 and not written["errors"]
         if not ran_clean:
-            failures.append(
-                f"{deck.stem}: ngspice exit {written['exit']}, {len(written['errors'])} error lines"
-            )
+            failures.append(run_failure(deck.stem, written, log))
         details[deck.stem] = {
             "exit": written["exit"],
             "errors": written["errors"][:10],
@@ -942,6 +949,9 @@ def cmd_sim(args) -> int:
             for measure in sorted(set(checks) - set(deck["measures"])):
                 c = checks[measure]
                 print(f"       {measure}: not printed by the deck  [{c['min']}, {c['max']}]")
+            fixed = deck.get("corners", {}).get("fixed")
+            if fixed:
+                print(f"       at its written value in every run: {', '.join(fixed)}")
         if deck.get("rerun"):
             print(f"rerun {name}: {deck['rerun']}")
         if deck.get("bundle"):
@@ -3347,6 +3357,11 @@ def cmd_design(args) -> int:
     summary["pulls"] = design.undefined_inputs()
     if summary["pulls"] and design.check_pulls:
         code = EXIT_FAIL
+    # What the design says about simulation, held to its symbols and its model files: a pin map KiCad
+    # would complete by position is refused here, since KiCad says nothing about it.
+    summary["sim_problems"] = design.sim_problems(design_path.parent)
+    if summary["sim_problems"]:
+        code = EXIT_FAIL
     if summary["via_problems"]:
         code = EXIT_FAIL
     # A previous board's routed copper, read before anything is written: --out may be the folder that
@@ -3399,6 +3414,8 @@ def cmd_design(args) -> int:
         red.append(f"{len(summary['part_problems'])} part(s) in a parts keep-out")
     if summary["pulls"] and design.check_pulls:
         red.append(f"{len(summary['pulls'])} floating input(s)")
+    if summary["sim_problems"]:
+        red.append(f"{len(summary['sim_problems'])} simulation problem(s)")
     if summary.get("route", {}).get("unrouted"):
         red.append(f"{summary['route']['unrouted']} unrouted")
     if code == EXIT_FAIL:
@@ -3427,6 +3444,8 @@ def cmd_design(args) -> int:
             )
         for line in summary["pulls"]:
             print(f"  pull: {line}")
+        for problem in summary["sim_problems"]:
+            print(f"  sim: {problem}")
         for problem in summary["via_problems"]:
             print(f"  via: {problem}")
         for st in summary["stitches"]:

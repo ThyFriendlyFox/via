@@ -211,6 +211,22 @@ def test_no_tolerance_moves_nothing():
     assert simcorners.find_varied(DECK, None) == ([], [], [])
 
 
+def test_a_word_named_element_no_tolerance_moves_is_listed_as_held():
+    """A reader of a corner run sees what it left where the deck wrote it. An element named like a
+    board part is not in this list: with no tolerance it is `uncovered`, which warns."""
+
+    def held(deck: str, tolerance: dict) -> list[str]:
+        return simcorners.held(deck, simcorners.find_varied(deck, tolerance)[0])
+
+    assert held(DECK, {"R": 0.05}) == ["RLOAD"]
+    assert held(DECK, {"R": 0.05, "parts": {"CX": 0.1, "RLOAD": 0.02}}) == []
+    cable = "* x\nV1 a 0 5\nRCABLE a b 0.05\nLCABLE b c {lc}\nCBULK c 0 0\nR1 c 0 1k\n.param lc=1u\n.end\n"
+    assert held(cable, {"R": 0.01}) == ["RCABLE", "LCABLE"]
+    # a parameter `parts` names moves the element written from it; a value of 0 has nowhere to move
+    assert held(cable, {"R": 0.01, "parts": {"LC": 0.2}}) == ["RCABLE"]
+    assert held(cable, {"R": 0.01, "parts": {"RCABLE": 0.1}}) == ["LCABLE"]
+
+
 def test_a_corner_rewrites_each_value_in_place_and_sets_the_temperature_before_control():
     varied, _, _ = simcorners.find_varied(DECK, {"R": 0.05, "parts": {"CX": 0.1}})
     corner = simcorners.Corner("w1", "worst", "", temp=-20, scale={"R1": 1.05, "CX": 0.9})
@@ -532,6 +548,26 @@ def test_a_value_the_deck_sets_again_moves_with_its_part(tmp_path):
     assert code == 0, records
     span = records[0]["details"]["decks"]["d"]["corners"]["envelope"]["vout"]
     assert span["min"] == pytest.approx(3.3110, abs=1e-4) and span["max"] == pytest.approx(3.3555, abs=1e-4)
+
+
+@needs_ngspice
+def test_a_corner_run_names_the_parts_it_left_at_their_written_value(tmp_path):
+    deck = DIVIDER.replace("R2 out 0 10k\n", "R2 out 0 10k\nRPROBE out 0 10Meg\n")
+    proj = project(tmp_path, deck, {"min": 2.4, "max": 2.6}, {"tolerance": {"R": 0.01, "source": "x"}})
+    code, records = run("sim", proj, "--out", tmp_path / "o", "--strict")
+    assert code == 0, records
+    assert records[0]["details"]["decks"]["d"]["corners"]["fixed"] == ["RPROBE"]
+    proc = subprocess.run(
+        [sys.executable, str(CLI), "sim", proj, "--deck", "d", "--out", tmp_path / "o2"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert "       at its written value in every run: RPROBE\n" in proc.stdout
+    # with no tolerance in the file there is no tolerance run to speak of
+    write_corners(proj / "sim", {"temperature": {"values": [85], "source": "x"}})
+    code, records = run("sim", proj, "--out", tmp_path / "o3")
+    assert records[0]["details"]["decks"]["d"]["corners"]["fixed"] == []
 
 
 @needs_ngspice

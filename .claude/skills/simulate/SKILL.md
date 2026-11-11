@@ -51,7 +51,10 @@ names. A circuit meets its spec when every bound holds at every corner.
    `print` writes `vout = 2.500000e+00`, which the gate parses. A complex
    value prints no measure: print its magnitude, `let hm = vm(out)`.
 3. Write `sim/<deck>.expect.json` with the bounds from the spec, not from
-   the first result.
+   the first result. A limit that holds "at every moment" is measured over
+   the whole run, from its start: `meas tran vmin min v(rail) from=0
+   to=12m`. A window that starts later leaves the start-up out; the bound's
+   `source` then names the requirement that allows it.
 4. Run `workcenter sim <project>`. The record has `decks.<deck>.measures`
    (every printed value), `decks.<deck>.checks` (bound by bound),
    `decks.<deck>.corners` (each value's least and greatest), and
@@ -113,7 +116,12 @@ deck at every one. Copy `templates/project/corners.json` and fill it.
 7. Read a failure as `<deck>:<measure>=<value> at <corner> not in
    [min, max]`. The corner names the temperature and each part's end.
    `workcenter sim <project> --deck <deck>` prints every value with its
-   least and greatest corner.
+   least and greatest corner, and the elements no tolerance moved (`at its
+   written value in every run: LCABLE`). An element with a word for a
+   name moves only when `parts` names it: name each whose value has a
+   spread, a cable, a cell, a contact. A corner ngspice did not finish
+   names its first error and its log: `... 1 error lines: Error: measure
+   f_lo when(WHEN) : out of interval (log <path>)`.
 8. `--nominal` runs the decks as written only, for a quick look. The
    result names the corners as not run; such a run closes nothing.
 
@@ -148,17 +156,21 @@ the rail's average stays inside its bound (`tests/boards/fail-freq-overlap`).
 
 1. List every periodic source: each PWM output, each regulator's
    switching frequency, each charge pump, each clock. Give its frequency
-   with `tolerance`, or its range, and where the number comes from.
+   with `tolerance`, or its range, and where the number comes from: the
+   firmware's constant, the datasheet's row, the owner's spec in its own
+   words. `tolerance` is the oscillator's. A frequency with none stated
+   is taken as exact, and the band's `guard` is the margin.
 2. Find each resonance with an `.ac` deck. For a supply rail, put a 1 A
    AC current source at the load: the rail's voltage is its impedance in
    ohms.
    ```
    I1 0 rail DC 0 AC 1
    .control
-   ac dec 400 100 10Meg
+   ac dec 400 10 10Meg
    meas ac z_peak max vm(rail)
    meas ac f_peak max_at vm(rail)
-   let half = z_peak / sqrt(2)
+   meas ac z_floor find vm(rail) at=10
+   let half = z_floor + (z_peak - z_floor) / sqrt(2)
    meas ac f_lo when vm(rail)=$&half rise=1
    meas ac f_hi when vm(rail)=$&half fall=1
    let q_peak = f_peak / (f_hi - f_lo)
@@ -166,14 +178,20 @@ the rail's average stays inside its bound (`tests/boards/fail-freq-overlap`).
    .endc
    ```
    Name the measures under `resonances`. The gate reads them at every
-   corner, so a resonance moves with its parts' tolerances.
+   corner, so a resonance moves with its parts' tolerances. A rail's
+   impedance has a floor at low frequency: the resistance of the cable and
+   the inductor. The half height is taken above that floor. Taken from
+   zero it can lie under the floor: the crossing then does not exist at
+   some corner, the `meas` fails there, and the corner fails.
 3. Run `workcenter sim <project>`. The gate finds each overlap: a
    source's harmonic (1 to `harmonics`, 10 unless the plan says) inside a
    resonance's band, or 2 sources that can run at 1 frequency. A band
    reaches `guard` (0.1 unless the plan says) or 1/(2 Q), whichever is
    wider, past each end of the resonance.
 4. Remove an overlap first: move the frequency, move the resonance, or
-   damp it.
+   damp it. A changed value is another part: take its series resistance
+   and its tolerance from that part's datasheet, not from the part it
+   replaces.
 5. Answer an overlap that stays. Write a deck that runs the source at the
    resonance and bounds what it does to the rail. Name it under
    `overlaps`: `evidence` is the bounded measure, `stimulus` the deck's

@@ -49,6 +49,36 @@ HINTS: list[tuple[str, str, str]] = [
     (r"^erc: power_pin_not_driven", "Add a PWR_FLAG symbol to the net.", f'{GATES}, "Common violations"'),
     (r"^erc: lib_symbol", "Update the symbol from its library.", f'{GATES}, "Common violations"'),
     (
+        r"^erc: simulation_model_issue",
+        "KiCad cannot load the model a part names: the file, the name in it, or a node of its pin map. "
+        "Correct the part's d.sim() in the design file, or leave the part out with d.no_sim() and the "
+        "reason, then regenerate.",
+        f'{DESIGN}, "Steps"',
+    ),
+    (
+        r"^design: sim: ",
+        "Correct what the design file says about that part's simulation. A d.sim() names every pin "
+        "number of the symbol in `pins` (a node of the model, or None) and every node of the model once, "
+        "and its library path starts at the design's folder. A part outside the simulation gets a "
+        "d.no_sim() with the reason.",
+        f'{DESIGN}, "Steps"',
+    ),
+    (
+        r"^design: pull: ",
+        "Hold the net at a level with a resistor to a rail, or name it in d.defined_nets with the reason.",
+        f'{DESIGN}, "Steps"',
+    ),
+    (
+        r"^design: via: ",
+        "Move the via, or give it a size the board's rules allow.",
+        f'{DESIGN}, "Steps"',
+    ),
+    (
+        r"^design: part: ",
+        "Move the part out of the area the design keeps parts out of.",
+        f'{DESIGN}, "Steps"',
+    ),
+    (
         r"^drc: clearance",
         "Move the track or the pad apart; check the net class clearance.",
         f'{GATES}, "Common violations"',
@@ -272,11 +302,12 @@ def next_step(cli, target: str, run_check=True) -> Step:
                 f"{wc} design {quoted}/design.py --route",
                 "the folder holds a design file and no KiCad project",
                 f'{DESIGN}, "Steps"',
-                "the command exits 0 and prints no pull:, via:, part: or island: line",
+                "the command exits 0 and prints no sim:, pull:, via:, part: or island: line",
             )
         return Step(
             "Start the project. For a circuit to prove before any board, write its deck as "
-            f"{quoted}/sim/<name>.cir with its bounds in sim/<name>.expect.json. For a board, write "
+            f"{quoted}/sim/<name>.cir with its bounds in sim/<name>.expect.json "
+            '(`{"vout": {"min": 2.4, "max": 2.6, "source": "the spec\'s line"}}`). For a board, write '
             f"{quoted}/design.py: the parts from the KiCad libraries, the nets as names.",
             f"{wc} sim {quoted}   (a deck)   or   {wc} design {quoted}/design.py --route   (a board)",
             str(exc),
@@ -307,7 +338,32 @@ def next_step(cli, target: str, run_check=True) -> Step:
             check=False,
         )
         if proc.returncode != 0:
-            said = [ln for ln in proc.stdout.splitlines() if ln.strip()]
+            said = [ln.strip() for ln in proc.stdout.splitlines() if ln.strip()]
+            regenerate = f"{wc} design {shlex.quote(str(design))} --route"
+            # The design step's own refusal comes before any comparison: regenerating a design file
+            # that is refused gives the same refusal. Its red line names the kinds; the first printed
+            # line of a kind it names is the problem to answer.
+            red = next((ln for ln in said if re.match(r"design \S+ red: ", ln)), "")
+            kinds = [
+                kind
+                for kind, word in (
+                    ("sim", "simulation"),
+                    ("via", "via"),
+                    ("part", "part("),
+                    ("pull", "floating"),
+                )
+                if word in red
+            ]
+            first = next((ln for kind in kinds for ln in said if ln.startswith(f"{kind}: ")), None)
+            if first:
+                do, read = hint("design", first)
+                return Step(
+                    do,
+                    regenerate,
+                    f"the design file is refused: {first}",
+                    read,
+                    f"`{wc} design {shlex.quote(str(design))} --check` exits 0",
+                )
             return Step(
                 "Regenerate the KiCad project: it no longer matches its design file.",
                 f"{wc} design {shlex.quote(str(design))} --route",
@@ -398,11 +454,18 @@ def next_step(cli, target: str, run_check=True) -> Step:
             why="close out the change: ee-agent-kit/PROCESSES.md, P14",
             done=True,
         )
+    # A finished project gets no RUN line: a reader who follows each line would run one more command.
+    if not has_kicad:
+        return Step(
+            "Nothing: every deck holds its bounds, GREEN with no warning.",
+            why="the project holds decks and no board; a board starts with a design file "
+            f'({DESIGN}, "Steps")',
+            done=True,
+        )
     return Step(
         "Nothing for the bench: the gates are GREEN with no warning.",
-        f"{wc} verify {quoted} --init",
-        "a board that leaves the bench needs its requirements proven: the command writes the skeleton",
-        "ee-agent-kit/PROCESSES.md, P28",
+        why="a board that leaves the bench has its requirements proven first: "
+        f"`{wc} verify {quoted} --init` writes the package's skeleton (ee-agent-kit/PROCESSES.md, P28)",
         done=True,
     )
 

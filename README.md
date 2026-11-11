@@ -10,6 +10,10 @@ project into fabrication outputs that passed every gate.
 - **Design as code:** `workcenter design design.py --route` builds a
   schematic and a routed board from a Python file that names parts from
   the KiCad libraries. No GUI at any step.
+- **A schematic that simulates:** the design file says how each part
+  simulates (`d.sim`, `d.no_sim`), and the schematic KiCad opens exports a
+  netlist ngspice runs. A pin map KiCad would complete by position is
+  refused first.
 - **Corners:** the SIM gate runs every deck at each temperature and part
   tolerance the project names, at the worst case of each bound, and at
   Monte Carlo draws. A bound holds at every corner or it does not hold.

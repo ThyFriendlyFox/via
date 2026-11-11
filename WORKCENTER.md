@@ -84,9 +84,24 @@ drives and no resistor holds), as `pull:` lines; a design that sets
 `check_pulls` fails on one, and `defined_nets` names the nets held elsewhere
 with the reason (`PROCESSES.md` P16).
 
+A design may say how each part simulates: `d.sim` binds a part to a `.subckt`
+or a `.model` in a file with a map from every pin to a node, or gives it a
+value of its own; `d.no_sim` leaves a part out with the reason;
+`d.sim_directives` puts SPICE lines on the sheet. `workcenter design` then
+writes KiCad's Sim fields on the symbols, so the schematic runs in KiCad's
+simulator and `kicad-cli sch export netlist --format spice` writes a netlist
+ngspice reads. It prints each problem as a `sim:` line and exits 1 on any: a
+map that leaves a pin or a node out (KiCad would bind it by position and say
+nothing), a file or a name that is not there, a node the model does not have.
+With `check_sim` every part needs a `sim` or a `no_sim`, a plain R, C or L
+excepted. The project raises KiCad's `simulation_model_issue` to an error, so
+the ERC gate reports a model KiCad cannot load. A design that says nothing
+about simulation regenerates byte for byte as before (the `board-design`
+skill).
+
 Its verdict is its exit code. It writes every file even when it exits 1 (a
-hand via its check refuses, a floating input with `check_pulls`, an unrouted
-connection the router counts), and on exit 1 its last line says `red`, names
+hand via its check refuses, a floating input with `check_pulls`, a `sim:`
+problem, an unrouted connection the router counts), and on exit 1 its last line says `red`, names
 each failure, and says the files are for inspection only: a CI regenerate
 check fails on that exit code (M85). Each via it drops through a pour's island
 after routing is printed as a `stitch:` line with the net, the island's layer,
@@ -252,8 +267,10 @@ Not a gate: `workcenter next <project>` names the one next step
 (`tools/guide.py`): what to do, the command, why, what to read, and when
 the step is done. It reads `build/gates.json` and `build/verify.json`,
 asks for a new run when an input is newer than a report, and answers the
-first failure or warning with the fix for its kind. It exits 0 when
-nothing is left and 1 when a step is. It writes nothing.
+first failure or warning with the fix for its kind; a design file that
+`workcenter design` refuses is answered with its first problem. It exits 0
+when nothing is left and 1 when a step is. A finished project gets no `RUN`
+line. It writes nothing.
 
 Not a gate: `workcenter fetch <url> --to <library>/<maker>/<file>` fetches
 one datasheet, model or body once under the workcenter's own name (a

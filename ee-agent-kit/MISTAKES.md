@@ -697,3 +697,9 @@ What happened: I ran `workcenter sim <project> --json`. The command line read `-
 Cost: one wasted command each time; a skill whose second step could not run as written.
 Root cause: M18's fix was a sentence in P8 for the reader to remember. Nothing held a command a document writes to the parser that reads it.
 Process: P10
+
+## M115 — 2026-11-11 — A test appended with a shell command
+What happened: I added a test to `tests/test_guide.py` with `cat >> ... <<'EOF'` and ran it before reading it back. P9 step 7 says a test goes in with the Write or Edit tool and is read back first. The hook that refuses a shell write under `tests/` does not load in a session with 2 repositories (M61), so nothing refused it. I read the test back afterwards: each assertion can fail, and its main one fails against the code before the fix.
+Cost: none found; the rule exists because a scripted test has asserted nothing before (M43).
+Root cause: the append was one command shorter than an Edit, and the step rests on memory wherever the hook is absent.
+Process: P9

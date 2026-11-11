@@ -303,7 +303,44 @@ def test_an_analysis_that_aborted_fails_its_deck_though_a_later_one_completed(tm
     deck = records[0]["details"]["decks"]["abort"]
     assert deck["exit"] == 0 and deck["checks"]["vmax"]["ok"] is True
     assert [e.split(":")[0] for e in deck["errors"]] == ["doAnalyses", "tran simulation(s) aborted"]
-    assert "abort: ngspice exit 0, 2 error lines" in records[0]["details"]["failures"]
+    # the failure names the first error line and the one log to open
+    (line,) = records[0]["details"]["failures"]
+    assert line.startswith("abort: ngspice exit 0, 2 error lines: doAnalyses: TRAN:  Timestep too small")
+    assert line.endswith(f"(log {tmp_path / 'o' / 'sim' / 'abort.log'})")
+    assert (tmp_path / "o" / "sim" / "abort.log").is_file()
+
+
+CROSSING = """* a crossing that exists as written and not with a resistor 5 % off
+V1 in 0 DC 0
+R1 in out 10k
+R2 out 0 10k
+.control
+dc V1 0 5 0.01
+meas dc v_at when v(out)=2.49
+print v_at
+.endc
+.end
+"""
+
+
+@needs_ngspice
+def test_a_corner_ngspice_does_not_finish_fails_and_names_its_error_and_its_log(tmp_path):
+    """The output reaches 2.49 V at 4.98 V in as written. With R1 5 % high or R2 5 % low it never does:
+    the `meas` fails, ngspice exits 0, and the corner fails with the error and the one log to open."""
+    proj = project(tmp_path, {"cross": CROSSING}, {"cross": {"v_at": {"min": 4.5, "max": 5.0}}})
+    (proj / "sim" / "corners.json").write_text(
+        json.dumps({"tolerance": {"R": 0.05, "source": "the test"}}), encoding="utf-8"
+    )
+    code, records = run("sim", proj, "--out", tmp_path / "o")
+    details = records[0]["details"]
+    assert code == 1 and details["decks"]["cross"]["measures"] == {"v_at": 4.98}
+    corners = tmp_path / "o" / "sim" / "corners" / "cross"
+    error = "ngspice exit 0, 1 error lines: Error: measure  v_at  when(WHEN) : out of interval"
+    assert details["failures"] == [
+        f"cross: at R1 +5 %: {error} (log {corners / 'R1+' / 'ngspice.log'})",
+        f"cross: at R2 -5 %: {error} (log {corners / 'R2-' / 'ngspice.log'})",
+    ]
+    assert "out of interval" in (corners / "R2-" / "ngspice.log").read_text(encoding="utf-8")
 
 
 @needs_ngspice

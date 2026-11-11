@@ -805,6 +805,55 @@ def _polygon_meets_box(poly: list[tuple[float, float]], box: tuple[float, float,
     return any(_segments_cross(a, b, c, d) for a, b in edges for c, d in sides)
 
 
+# A value KiCad reads as a number when it writes the R, C or L line of a part that has no Sim field:
+# 10k, 4.7uF, 1e3, 4k7, 0R1, 1Meg. Narrower than KiCad's own reading on purpose: each form here was
+# seen to come out as a number from KiCad 10.0.8. `10k 1%`, `100nF/50V`, `10kOhm`, `R47` and `DNP` go
+# into the netlist as written, and `10µ` leaves a line with no nodes.
+PLAIN_VALUE_RE = re.compile(
+    r"(?:\d+(?:[.,]\d+)?|\.\d+)(?:[eE][-+]?\d+)? ?(?:[fpnumkKMGT]|[Mm]eg|MEG)?[RFH]?|\d+[pnumkKMR]\d*[1-9]"
+)
+# The terminals KiCad names for a `.model` of each type, as a Sim.Pins map writes them. A MOSFET
+# model of ngspice's levels has 4: with the bulk left out KiCad writes a node of its own for it
+# (`NC-Q1-0`), which floats.
+MODEL_TERMINALS = {
+    "d": ("A", "K"),
+    "npn": ("C", "B", "E"),
+    "pnp": ("C", "B", "E"),
+    "nmos": ("D", "G", "S", "B"),
+    "pmos": ("D", "G", "S", "B"),
+    "vdmos": ("D", "G", "S"),
+    "njf": ("D", "G", "S"),
+    "pjf": ("D", "G", "S"),
+}
+
+
+def spice_models(text: str) -> dict[str, tuple[str, list[str]]]:
+    """Each `.subckt` and `.model` a SPICE library defines, by its name in lower case: `("subckt",
+    nodes)` or `("model", [type])`. Continuation lines are joined. A subcircuit's nodes end at
+    `params:` or at the first `name=value`."""
+    lines: list[str] = []
+    for raw in text.splitlines():
+        line = re.split(r";| \$", raw, maxsplit=1)[0].rstrip()
+        if line.lstrip().startswith("+") and lines:
+            lines[-1] += " " + line.lstrip()[1:]
+        elif line.strip() and not line.lstrip().startswith("*"):
+            lines.append(line.strip())
+    found: dict[str, tuple[str, list[str]]] = {}
+    for line in lines:
+        words = line.replace("(", " ( ").split()
+        kind = words[0].lower()
+        if kind == ".subckt" and len(words) > 1:
+            nodes = []
+            for word in words[2:]:
+                if "=" in word or word.lower() == "params:":
+                    break
+                nodes.append(word)
+            found.setdefault(words[1].lower(), ("subckt", nodes))
+        elif kind == ".model" and len(words) > 2:
+            found.setdefault(words[1].lower(), ("model", [words[2].lower()]))
+    return found
+
+
 @dataclass
 class Part:
     ref: str
@@ -922,6 +971,16 @@ class Design:
     # Fail `workcenter design` on a control input that can float (undefined_inputs()); off by default so
     # boards made before the check regenerate as they were.
     check_pulls: bool = False
+    # How each part simulates (sim()), the parts left out of the simulation with the reason (no_sim()),
+    # and SPICE lines the schematic carries as text (`.param V_out=3.1`). KiCad writes them into the
+    # netlist it exports (`kicad-cli sch export netlist --format spice`). A design that names none of
+    # the three writes the schematic and the project it wrote before.
+    sims: dict[str, dict] = field(default_factory=dict)
+    not_simulated: dict[str, str] = field(default_factory=dict)
+    sim_directives: list[str] = field(default_factory=list)
+    # Fail `workcenter design` on a part with neither a sim() nor a no_sim() (sim_problems()); off by
+    # default so boards made before the check regenerate as they were.
+    check_sim: bool = False
     # Each via write() adds through a pour's island after routing, with the island it ties, so a via
     # that moves between two runs can be traced to the pads it serves (stitch_zones()).
     stitches: list[dict] = field(default_factory=list)
@@ -1011,6 +1070,49 @@ class Design:
                 "replace": replace,
             }
         )
+
+    def sim(
+        self,
+        ref: str,
+        library: str = "",
+        name: str = "",
+        pins: dict[str, str | None] | None = None,
+        params: str = "",
+        device: str = "",
+        kind: str = "",
+    ) -> None:
+        """How a part simulates, written as KiCad's Sim fields on its symbol.
+
+        A subcircuit or a `.model` in a file: `library` is the file's path from the design's folder
+        (KiCad reads a relative path from the project's folder), `name` the `.subckt` or `.model` in
+        it, `params` its parameters (`"vref=1.242 tpd=4u"`). `pins` maps every pin number of the
+        symbol to the model's node, or to None for a pin the model has no node for:
+        `{"1": "IN", "2": "GND", "3": "EN", "4": None, "5": "OUT"}`. A `.model`'s nodes are KiCad's
+        names for its terminals (MODEL_TERMINALS): `{"1": "G", "2": "S", "3": "D"}`.
+
+        A part with no file: `device` is KiCad's device (`"R"`, `"C"`, `"L"`, `"D"`, `"NPN"`), `kind`
+        its model type where the device has several (`"GUMMELPOON"`), `params` its values
+        (`"r=0.13"`). A 2-pin R, C or L needs no `pins`.
+
+        sim_problems() checks the map against the symbol and the file. KiCad binds a pin the map leaves
+        out by its position and says nothing, so no map is taken on trust."""
+        if not any(p.ref == ref for p in self.parts):
+            raise KeyError(f"{ref}: no such part")
+        self.sims[ref] = {
+            "library": library,
+            "name": name,
+            "pins": dict(pins) if pins is not None else None,
+            "params": params,
+            "device": device,
+            "kind": kind,
+        }
+
+    def no_sim(self, ref: str, reason: str) -> None:
+        """Leave a part out of the simulation (`exclude_from_sim yes` on its symbol), with the reason:
+        a connector, a test point, a part the decks stand in for."""
+        if not any(p.ref == ref for p in self.parts):
+            raise KeyError(f"{ref}: no such part")
+        self.not_simulated[ref] = reason
 
     # ---- outline
 
@@ -1541,6 +1643,138 @@ class Design:
                 continue
         return out
 
+    def simulates(self) -> bool:
+        """Whether the design says anything about simulation. Only then do the schematic and the project
+        carry it, so a design that says nothing regenerates as it was."""
+        return bool(self.sims or self.not_simulated or self.sim_directives or self.check_sim)
+
+    def _sim_fields(self, ref: str, sym: Symbol) -> list[tuple[str, str]]:
+        """A part's Sim fields as KiCad reads them, in one fixed order. A 2-pin R, C or L declared
+        without `pins` takes KiCad's own names for a passive's ends."""
+        s = self.sims.get(ref)
+        if s is None:
+            return []
+        numbers = list(dict.fromkeys(p.number for p in sym.pins if p.number))
+        pins = s["pins"]
+        if pins is None and not s["library"] and s["device"].upper() in ("R", "C", "L") and len(numbers) == 2:
+            pins = {numbers[0]: "+", numbers[1]: "-"}
+        fields = [
+            ("Sim.Device", s["device"]),
+            ("Sim.Type", s["kind"]),
+            ("Sim.Library", s["library"]),
+            ("Sim.Name", s["name"]),
+            ("Sim.Params", s["params"]),
+            ("Sim.Pins", " ".join(f"{n}={node}" for n, node in (pins or {}).items() if node)),
+        ]
+        return [(name, text) for name, text in fields if text]
+
+    def sim_problems(self, base: Path | None = None) -> list[str]:
+        """What stands between the design and a schematic KiCad simulates, one line each; empty when
+        nothing does. Checked without KiCad.
+
+        A pin map names every pin number of the symbol, each mapped to a node of the model or to None,
+        and every node of the model once: KiCad binds a node the map leaves out to a pin by position
+        and says nothing (a regulator's rail read 1981 V with exit code 0). `base` is the design's
+        folder, where a `library` path starts; with it, each file is read for the `.subckt` or `.model`
+        the part names and for its nodes. With `check_sim`, every part has a sim() or a no_sim(); an R,
+        C or L (by its reference) with 2 pins and a value KiCad reads as a number needs neither."""
+        out: list[str] = []
+        parts = {p.ref: p for p in self.parts}
+        for ref, reason in sorted(self.not_simulated.items()):
+            if not reason.strip():
+                out.append(f"{ref}: no_sim without a reason")
+            if ref in self.sims:
+                out.append(f"{ref}: both sim() and no_sim(): keep one")
+        for ref, s in sorted(self.sims.items()):
+            part = parts[ref]
+            numbers = list(dict.fromkeys(p.number for p in part.symbol.pins if p.number))
+            pins, library, name = s["pins"], s["library"], s["name"]
+            if library and not name:
+                out.append(f"{ref}: library {library} without the name of a .subckt or .model in it")
+            if name and not library:
+                out.append(f"{ref}: name {name} without the library that holds it")
+            if not library and not name and not s["device"]:
+                out.append(f"{ref}: neither a library nor a device")
+            passive = not library and s["device"].upper() in ("R", "C", "L") and len(numbers) == 2
+            mapped: list[str] = []
+            if pins is None:
+                if not passive:
+                    out.append(
+                        f"{ref}: no pins: KiCad would bind the symbol's pins by position; map each of "
+                        f"{', '.join(numbers)} to a node of the model, or to None"
+                    )
+            else:
+                unknown = [n for n in pins if n not in numbers]
+                missing = [n for n in numbers if n not in pins]
+                mapped = [node for node in pins.values() if node]
+                lowered = [node.lower() for node in mapped]
+                twice = list(dict.fromkeys(node for node in mapped if lowered.count(node.lower()) > 1))
+                if unknown:
+                    out.append(
+                        f"{ref}: pins names {', '.join(unknown)}, which {part.symbol.lib_id} does not have"
+                    )
+                if missing:
+                    out.append(
+                        f"{ref}: pins leaves out {', '.join(missing)}: map each to a node of the model, or "
+                        "to None for a pin the model has no node for"
+                    )
+                if twice:
+                    out.append(
+                        f"{ref}: pins maps 2 pins to {', '.join(twice)}: KiCad takes 1 pin for a node; "
+                        "map the others to None"
+                    )
+            if base is None or not (library and name):
+                continue
+            path = Path(base) / library
+            if not path.is_file():
+                out.append(f"{ref}: library {library} is not a file in {base}")
+                continue
+            found = spice_models(path.read_text(encoding="utf-8", errors="replace")).get(name.lower())
+            if found is None:
+                out.append(f"{ref}: {library} holds no .subckt or .model named {name}")
+                continue
+            what, info = found
+            nodes = info if what == "subckt" else list(MODEL_TERMINALS.get(info[0], ()))
+            if pins is None or not nodes:
+                continue
+            said = f".subckt {name}" if what == "subckt" else f".model {name} ({info[0]})"
+            known = {n.lower() for n in nodes}
+            extra = [node for node in dict.fromkeys(mapped) if node.lower() not in known]
+            unbound = [n for n in nodes if n.lower() not in {m.lower() for m in mapped}]
+            if extra:
+                out.append(
+                    f"{ref}: pins names {', '.join(extra)}, no node of {said}: its nodes are {', '.join(nodes)}"
+                )
+            if unbound and what == "subckt":
+                out.append(
+                    f"{ref}: no pin maps to {', '.join(unbound)} of {said}: KiCad would bind it by position"
+                )
+            elif unbound:
+                out.append(
+                    f"{ref}: no pin maps to {', '.join(unbound)} of {said}: KiCad writes a node of its own "
+                    "for it, which floats; map a pin to it, or name a model or a subcircuit with the "
+                    "terminals the part has"
+                )
+        if self.check_sim:
+            for part in self.parts:
+                if part.ref in self.sims or part.ref in self.not_simulated:
+                    continue
+                numbers = list(dict.fromkeys(p.number for p in part.symbol.pins if p.number))
+                if re.fullmatch(r"[RCL]\d+", part.ref) and len(numbers) == 2:
+                    if PLAIN_VALUE_RE.fullmatch(part.value):
+                        continue
+                    out.append(
+                        f"{part.ref}: KiCad does not read the value {part.value!r} as a number: give the "
+                        f'part a sim() with its value (device="{part.ref[0]}", params="{part.ref[0].lower()}=..."), '
+                        "or a no_sim() with the reason"
+                    )
+                    continue
+                out.append(
+                    f"{part.ref}: neither sim() nor no_sim(): say how the part simulates, or leave it out "
+                    "with the reason"
+                )
+        return out
+
     def check_vias(self) -> list[str]:
         """Every via on the design that breaks a clearance, a keepout or the board edge, with what it
         hits: the hand-placed ones are checked before routing, where the DRC would find them only
@@ -1876,6 +2110,20 @@ class Design:
             sch.append(["title_block", ["title", Q(self.title)], ["company", Q("EE Workcenter")]])
         sch.append(["lib_symbols", *lib_symbols.values()])
         sch.extend(body)
+        # A text item that starts with a dot is a SPICE line to KiCad: it copies each into the netlist
+        # it exports. They stand in the sheet's bottom left corner, the first on top.
+        height = SHEETS.get(self.sheet, SHEETS["A3"])[1]
+        for i, line in enumerate(self.sim_directives):
+            sch.append(
+                [
+                    "text",
+                    Q(line),
+                    ["exclude_from_sim", "no"],
+                    ["at", "25.4", fmt(height - 25.4 - 2.54 * (len(self.sim_directives) - 1 - i)), "0"],
+                    ["effects", ["font", ["size", "1.27", "1.27"]], ["justify", "left", "bottom"]],
+                    ["uuid", uid(ns, f"simtext/{i}")],
+                ]
+            )
         sch.append(["sheet_instances", ["path", Q("/"), ["page", Q("1")]]])
         sch.append(["embedded_fonts", "no"])
         return dumps(sch) + "\n"
@@ -2290,7 +2538,7 @@ class Design:
             ["lib_id", Q(sym.lib_id)],
             ["at", fmt(x), fmt(y), str(rot)],
             ["unit", "1"],
-            ["exclude_from_sim", "no"],
+            ["exclude_from_sim", "yes" if ref in self.not_simulated else "no"],
             ["in_bom", "yes" if in_bom else "no"],
             ["on_board", "no" if ref.startswith("#") else "yes"],
             ["dnp", "no"],
@@ -2300,6 +2548,8 @@ class Design:
         node.append(["property", Q("Footprint"), Q(footprint), ["at", fmt(x), fmt(y), "0"], hide])
         node.append(["property", Q("Datasheet"), Q(datasheet), ["at", fmt(x), fmt(y), "0"], hide])
         node.append(["property", Q("Description"), Q(descr), ["at", fmt(x), fmt(y), "0"], hide])
+        for name, text in self._sim_fields(ref, sym):
+            node.append(["property", Q(name), Q(text), ["at", fmt(x), fmt(y), "0"], hide])
         for pin in sym.pins:
             if pin.number:
                 node.append(["pin", Q(pin.number), ["uuid", uid(ns, f"{key}/pin/{pin.number}")]])
@@ -2872,7 +3122,13 @@ class Design:
             "erc": {
                 "erc_exclusions": [],
                 "meta": {"version": 0},
-                "rule_severities": {"footprint_link_issues": "ignore", "lib_symbol_issues": "ignore"},
+                # A design that declares simulation has KiCad's own check of each binding (the library,
+                # the model's name, each pin) raised to an error, so the ERC gate reports a broken one.
+                "rule_severities": {
+                    "footprint_link_issues": "ignore",
+                    "lib_symbol_issues": "ignore",
+                    **({"simulation_model_issue": "error"} if self.simulates() else {}),
+                },
             },
             "libraries": {"pinned_footprint_libs": [], "pinned_symbol_libs": []},
             "meta": {"filename": f"{self.name}.kicad_pro", "version": 3},

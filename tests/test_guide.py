@@ -97,6 +97,20 @@ def test_every_hint_points_at_a_file_and_a_heading_that_exist():
     ("gate", "line", "said"),
     [
         ("erc", "pin_not_connected: Pin not connected at (10, 20)", "Wire the pin"),
+        (
+            "erc",
+            "simulation_model_issue: Simulation model library not found at '/p/models/none.lib'",
+            "KiCad cannot load the model",
+        ),
+        (
+            "design",
+            "sim: U1: pins leaves out 3, 4: map each to a node of the model, or to None for a pin the "
+            "model has no node for",
+            "names every pin number of the symbol",
+        ),
+        ("design", "pull: GATE: Q1.1 (G, input), and no resistor to a rail holds it", "Hold the net"),
+        ("design", "via: GND via at (1, 2) is 0.05 mm from R1.1", "Move the via"),
+        ("design", "part: R1 stands in the keep-out 'strip'", "Move the part"),
         ("drc", "clearance: Clearance violation ( clearance 0.2000 mm; actual 0.0500 mm)", "Move the track"),
         ("drc", "unconnected_items: Missing connection between items", "Route the net"),
         ("sim", "no sim/corners.json: each deck ran once, at 27 C with every part", "Write sim/corners.json"),
@@ -320,7 +334,23 @@ def test_next_walks_a_failing_project_to_its_corner_and_a_passing_one_to_done(tm
     shutil.copytree(BOARDS / "pass-lc-filter", passing, ignore=shutil.ignore_patterns("build"))
     subprocess.run([sys.executable, str(CLI), "gates", str(passing)], capture_output=True, check=False)
     code, step = ask(passing)
+    assert code == 0 and step["next"] == "Nothing: every deck holds its bounds, GREEN with no warning."
+    # a finished project is given no command: a reader who runs every RUN line would run one more
+    assert step["run"] == "" and step["done"] is True
+
+
+@pytest.mark.skipif(
+    shutil.which("kicad-cli") is None or shutil.which("ngspice") is None,
+    reason="kicad-cli or ngspice is not installed",
+)
+def test_a_finished_board_is_told_what_proves_it_and_given_no_command(tmp_path):
+    proj = tmp_path / "divider"
+    shutil.copytree(BOARDS / "pass-rc-divider", proj, ignore=shutil.ignore_patterns("build"))
+    gates = ("erc", "drc", "sim", "export")
+    report(proj, [record(gate, "pass", {"failures": [], "warnings": []}) for gate in gates])
+    code, step = ask(proj)
     assert code == 0 and step["next"] == "Nothing for the bench: the gates are GREEN with no warning."
+    assert step["run"] == "" and f"`workcenter verify {proj} --init`" in step["why"]
 
 
 def test_the_steps_follow_the_command_lines_own_verdict():
@@ -330,3 +360,51 @@ def test_the_steps_follow_the_command_lines_own_verdict():
     assert cli.gates_verdict(results) == ("GREEN with 1 warning", 0)
     assert guide.trouble(cli, results) == ("sim", "w", False)
     assert guide.trouble(cli, [cli.Result("sim", "pass", "", {"warnings": []})]) is None
+
+
+REFUSED = """
+import sys, uuid
+sys.path.insert(0, {tools!r})
+from kicadgen import Design
+
+def build():
+    d = Design(name="refused", namespace=uuid.UUID("11111111-2222-3333-4444-55555555555b"))
+    d.power_nets = {{"GND": "GND"}}
+    d.flagged_nets = ["GND"]
+    d.outline = (100.0, 100.0, 110.0, 110.0)
+    d.add("R1", "Device:R", "10k", None, sch_at=(50.8, 50.8), nets={{"1": "A", "2": "GND"}})
+    d.add("D1", "Device:D", "D", None, sch_at=(76.2, 50.8), nets={{"1": "GND", "2": "A"}})
+    PINS
+    return d
+"""
+
+
+@pytest.mark.skipif(
+    not Path("/usr/share/kicad/symbols/Device.kicad_sym").is_file(),
+    reason="KiCad symbol libraries are not installed",
+)
+def test_a_design_file_that_is_refused_is_answered_with_its_first_problem(tmp_path):
+    """`design --check` exits 1 on a difference and on the design step's own refusal. Told to
+    regenerate, a reader of the second gets the same refusal again: the step names the problem."""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    src = proj / "design.py"
+    body = REFUSED.format(tools=str(ROOT / "tools"))
+    src.write_text(body.replace("PINS", "pass"), encoding="utf-8")
+    made = subprocess.run(
+        [sys.executable, str(CLI), "design", str(src)], capture_output=True, text=True, check=False
+    )
+    assert made.returncode == 0, made.stdout + made.stderr
+    code, step = ask(proj)
+    assert code == 1 and step["next"] == "Run the gates."
+    src.write_text(body.replace("PINS", 'd.sim("D1", device="D", pins={"1": "K"})'), encoding="utf-8")
+    code, step = ask(proj)
+    assert code == 1 and step["next"].startswith("Correct what the design file says about that part's")
+    assert step["why"].startswith("the design file is refused: sim: D1: pins leaves out 2: map each")
+    assert step["run"].endswith("design.py --route") and step["read"].endswith(
+        'board-design/SKILL.md, "Steps"'
+    )
+    # a design file that differs from the project and is not refused is still told to regenerate
+    src.write_text(body.replace("PINS", 'd.no_sim("D1", "left out of this test")'), encoding="utf-8")
+    code, step = ask(proj)
+    assert code == 1 and step["next"].startswith("Regenerate the KiCad project")
