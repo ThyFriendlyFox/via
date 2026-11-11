@@ -15,6 +15,11 @@
     "needs": "8.3.411",
     "source": "the technology file's own line `requires magic-8.3.411`; Magic 8.3.465 is installed"
   },
+  "klayout": {
+    "layer_properties": "libs.tech/klayout/tech/sky130A.lyp",
+    "layer_map": "libs.tech/klayout/tech/sky130A.map",
+    "source": "the kit's KLayout technology folder: the colours KLayout draws each layer with, and the map from a layer's name in the LEF to its GDS layer and datatype"
+  },
   "libraries": {
     "sky130_fd_sc_hd": {
       "source": "the kit's libs.ref/sky130_fd_sc_hd/ folder and libs.tech/openlane/; the floorplan block is the proof flow that routed an 8-bit counter with 0 violations on 2026-11-11",

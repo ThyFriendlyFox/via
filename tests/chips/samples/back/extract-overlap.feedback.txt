@@ -1,0 +1,138 @@
+box 3398 4486 3401 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 3399 4486 3448 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 3478 4486 3528 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 3887 4514 3939 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 3887 4486 3895 4514
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 3895 4486 3929 4514
+feedback add "Illegal overlap between ndiffc and poly (types do not connect)" medium
+box 3929 4486 3939 4514
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 3969 4486 4023 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 4053 4486 4063 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 4063 4486 4097 4516
+feedback add "Illegal overlap between ndiffc and poly (types do not connect)" medium
+box 4097 4486 4105 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 4167 4513 4219 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 4167 4486 4175 4513
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 4175 4486 4209 4513
+feedback add "Illegal overlap between ndiffc and poly (types do not connect)" medium
+box 4209 4486 4219 4513
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 4249 4487 4259 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 4259 4487 4293 4516
+feedback add "Illegal overlap between ndiffc and poly (types do not connect)" medium
+box 4293 4487 4303 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 4249 4486 4303 4487
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 4333 4486 4347 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 4347 4486 4381 4516
+feedback add "Illegal overlap between ndiffc and poly (types do not connect)" medium
+box 4381 4486 4389 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 4443 4486 4495 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 4525 4486 4579 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 4609 4486 4661 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 4715 4486 4723 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 4723 4486 4757 4516
+feedback add "Illegal overlap between ndiffc and poly (types do not connect)" medium
+box 4757 4486 4767 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 4797 4486 4801 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 4997 4497 5031 4516
+feedback add "Illegal overlap between psubdiff and poly (types do not connect)" medium
+box 4997 4486 5031 4497
+feedback add "Illegal overlap between psubdiffcont and poly (types do not connect)" medium
+box 4799 4486 4849 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 5087 4513 5139 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 5087 4486 5095 4513
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 5095 4486 5129 4513
+feedback add "Illegal overlap between ndiffc and poly (types do not connect)" medium
+box 5129 4486 5139 4513
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 5169 4487 5179 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 5179 4487 5213 4516
+feedback add "Illegal overlap between ndiffc and poly (types do not connect)" medium
+box 5213 4487 5223 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 5169 4486 5223 4487
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 5253 4486 5267 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 5267 4486 5301 4516
+feedback add "Illegal overlap between ndiffc and poly (types do not connect)" medium
+box 5301 4486 5309 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 5363 4486 5415 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 5445 4486 5499 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 5529 4486 5581 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 5635 4486 5643 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 5643 4486 5677 4516
+feedback add "Illegal overlap between ndiffc and poly (types do not connect)" medium
+box 5677 4486 5687 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 5717 4486 5769 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 5823 4513 5875 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 5823 4486 5831 4513
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 5831 4486 5865 4513
+feedback add "Illegal overlap between ndiffc and poly (types do not connect)" medium
+box 5865 4486 5875 4513
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 5905 4487 5915 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 5915 4487 5949 4516
+feedback add "Illegal overlap between ndiffc and poly (types do not connect)" medium
+box 5949 4487 5959 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 5905 4486 5959 4487
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 5989 4486 6003 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 6003 4486 6037 4516
+feedback add "Illegal overlap between ndiffc and poly (types do not connect)" medium
+box 6037 4486 6045 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 6099 4486 6151 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 6181 4486 6201 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 6199 4486 6235 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 6265 4486 6317 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 6371 4486 6379 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 6379 4486 6413 4516
+feedback add "Illegal overlap between ndiffc and poly (types do not connect)" medium
+box 6413 4486 6423 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
+box 6453 4486 6505 4516
+feedback add "Illegal overlap between ndiff and poly (types do not connect)" medium
