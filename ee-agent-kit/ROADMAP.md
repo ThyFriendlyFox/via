@@ -145,3 +145,4 @@ command that says it (`workcenter next`), never in the reader's judgement.
 - 2026-11-11 — the owner had every branch collapsed into `main`, and every commit name the owner alone (P33). Work still starts on a branch and lands on `main` when `make verify` is GREEN on it. The chip branch (item 1) lands when its gates are tested.
 - 2026-11-11 — the front page (a fixture board from a design file, and its pictures at the head of the README) shipped out of band: the owner asked again for the repository to look good.
 - 2026-11-11 — an example project shipped out of band: the owner found the site's examples poor and asked for a prototype like Agentcast and Last Hit, a universal controller with a switch that picks the console, with ideas that are hard to do, and a site that moves with Motion.
+- 2026-11-11 — the favicon fix shipped out of band: the owner found the favicon was not the site's current logo, the wordmark.

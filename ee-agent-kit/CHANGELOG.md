@@ -9,6 +9,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/) · Versioning: [SemVer](
 - The website shows the example: a drawing of the routed board written from its design file and its board (`site/showcase/draw_face.py`), with the knob turnable to each console, the path its data takes, and the readings the decks measured; KiCad's 3D renders, front and back; the gates run on it; a strip of boards built with Via. The page moves with Motion 14.6.0 (motion.dev, MIT), vendored in `site/vendor/`: the logo draws itself, sections rise into view, runs type out, the board leans toward the pointer. A reader who asks for reduced motion gets the page still. The header, the footer and the Open Graph image carry the Via wordmark.
 
 ### Fixed
+- The site's favicon is the Via wordmark of `site/logo.svg`, centred in a square. It was the old mark, a via in cross-section, after the header and the footer moved to the wordmark. `favicon-32.png` and `apple-touch-icon.png` are drawn again from it; the touch icon's wordmark is 148 px wide on its 180 px square.
 - `install.sh` installs `openjdk-21-jre` when the Java runtime has no `libawt_xawt.so`. Debian's headless runtime, the base of the official KiCad image and so of the Dockerfile, has none, and FreeRouting stopped there with a `HeadlessException`: the image could not route. Ubuntu's headless runtime carries the library and is left as it is.
 
 ### Changed
