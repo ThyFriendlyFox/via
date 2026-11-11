@@ -31,7 +31,7 @@ not know. Each block has a `source`: what the values were read from.
 | `libraries.<library>.verilog` | The cell models for simulation (`files`) and the defines they are compiled with. |
 | `libraries.<library>.cells` | The cells of each kind. `flop_with_reset`, `flop_without_reset`, `latch` and `clock_gate` are families: a cell's name without `prefix` and without its drive strength. `tie_high`, `tie_low` and `diode` are a cell and its pin. `tap`, `fill`, `decap`, `clock_root` and `clock_buffers` are cell names. |
 | `libraries.<library>.supply` | The power and the ground net, and the cell pins that connect to each. |
-| `libraries.<library>.floorplan` | What the layout build needs: the placement site, the tracks file, the tap distance, the pin, wire and routing layers, the supply grid, the placement density. |
+| `libraries.<library>.floorplan` | What the layout build needs: the placement site, the tracks file, the tap distance, the pin, wire and routing layers, the supply grid, the placement density, the margin from the die's edge to the core. |
 | `drc` | Each rule deck: its `name`, its `engine` (`magic` or `klayout`), its `file`, its `origin` (`foundry` or `community`), and what it `cannot` judge. A KLayout deck's `variables` are passed as `-rd name=value`. |
 | `lvs` | The engine and its setup file. |
 

@@ -359,6 +359,25 @@ def gate_sim(run):
     )
 
 
+OPEN_PORT = re.compile(r"dangling input port \d+ \((\w+)\) floating")
+
+
+def netlist_warnings(warnings: list[str], kit: str, supply: set[str]) -> list[str]:
+    """The warnings of a run on the netlist that are the project's to answer.
+
+    A warning inside the library's own cell models is not. Nor is the simulator's note on an open
+    supply port of the top module: the layout build gives the netlist its supply ports, a bench drives
+    the logic ports only, and the cells' models read no supply. An open logic port stays a warning.
+    """
+    kept = []
+    for warning in warnings:
+        port = OPEN_PORT.search(warning)
+        if kit in warning or (port and port.group(1) in supply):
+            continue
+        kept.append(warning)
+    return kept
+
+
 def gate_glsim(run):
     missing = run.need_pdk("glsim") or run.need_engines("glsim", "iverilog", "vvp")
     if missing:
@@ -387,9 +406,8 @@ def gate_glsim(run):
     sources = [str(netlist), *[str(run.pdk.file(f)) for f in models["files"]]]
     run.fresh("glsim")
     failures, warnings, measures = run_benches(run, "glsim", chosen, sources, list(models["defines"]))
-    # A warning inside the library's own cell models is not the project's to answer.
-    kit = str(run.pdk.root)
-    warnings = [w for w in warnings if kit not in w]
+    supply = {run.pdk.library["supply"][side]["net"] for side in ("power", "ground")}
+    warnings = netlist_warnings(warnings, str(run.pdk.root), supply)
     for name, after in measures.items():
         if "checks" in after and after["checks"] != before[name].get("checks"):
             failures.append(
