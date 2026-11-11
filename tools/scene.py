@@ -51,6 +51,7 @@ def render_cmd(png: Path, pcb: Path, view: dict, width: int, height: int) -> lis
     """kicad-cli's render of one view: rotate "x,y,z", zoom, pivot "x,y,z" in cm, pan, side, perspective."""
     cmd = ["kicad-cli", "pcb", "render", "--output", str(png), "--width", str(view.get("width", width))]
     cmd += ["--height", str(view.get("height", height)), "--background", "opaque", "--quality", "high"]
+    cmd.append("--use-board-stackup-colors")  # the board's own colours, as `workcenter render` draws it
     for key in ("rotate", "zoom", "pivot", "pan", "side"):
         if key in view:
             cmd += [f"--{key}", str(view[key])]

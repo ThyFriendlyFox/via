@@ -1,0 +1,45 @@
+# Signet — prototype series
+
+A mouse you wear as a ring. Six small boards sit on the faces of a hexagonal ring round the index
+finger, soldered edge to edge. The ring turns with the hand and moves the cursor; the thumb slides
+along a strip to scroll and presses the ring's side to click. It talks Bluetooth LE to the computer
+as an ordinary mouse.
+
+This folder is a project made with the EE Workcenter, kept the way
+[Last Hit](https://github.com/ThyFriendlyFox/vape-prototype) keeps its prototypes: each version is
+its own folder, each tile in it a whole KiCad project built from its `design.py`, with its README,
+its pictures under `docs/` and its firmware. The versions came from a loop: each pass judged the
+last version against a checklist and made the next ([`LOOP.md`](LOOP.md)).
+
+The latest version, [v0.4](v0.4/), turning:
+
+<img src="v0.4/docs/assembly-spin.gif" width="616" alt="Signet v0.4: six black tiles with gold pads in a hexagonal ring, solder in every joint, the radio module on top, the foil cell at the bottom">
+
+| The thumb's side | Along the finger |
+|---|---|
+| <img src="v0.4/docs/assembly-iso.png" width="400" alt="The ring from the thumb's side: the scroll strip's six stripes and the two click switches"> | <img src="v0.4/docs/assembly-end.png" width="400" alt="The ring seen along the finger: a closed hexagon of tiles, the radio on top, the cell at the bottom"> |
+
+## Versions
+
+| Version | Ring | What changed | Firmware | Commit |
+|---|---|---|---|---|
+| [v0.1](v0.1/) | 6 tiles round a 20 mm cylinder, 12 mm along the finger; the radio tile 15.6 mm wide, 4 layers; touch 4 layers; the others 10.8 mm, 2 layers | the first ring: a BLE module, an IMU, a 3-channel scroll strip, 2 clicks, a charger, a 3.3 V rail and a 20 mAh cell on 6 tiles joined by 8-pad solder joints | the scroll strip's decoder, 8 host tests | `e4181fa` |
+| [v0.2](v0.2/) | as v0.1; every tile 4 layers | the first pass of the loop: ground only inside, so every face is black; solder in every joint and a foil cell in the pictures; L and R on the clicks, the name on the motion tile | the air mouse: the gyro turned back from the motion tile's angle into cursor counts, with the strip as a clutch, 7 host tests | `254e0bb` |
+| [v0.3](v0.3/) | as v0.2; the joint pads 0.8 mm along the edge | the second pass: the light moves from under the thumb to the motion tile, by the name; a TVS diode guards the charging pads; 0.5 mm of mask between the joint pads; smaller solder beads in the pictures | as v0.2 | `07a3ccb` |
+| [v0.4](v0.4/) (current) | 6 tiles whose neighbours share each inner corner: radio 15.6 mm, touch and motion 12.18 mm, clicks and power 9.79 mm, cell 10.82 mm | the third pass: the ring closes at the radio's 2 joints, which stood 1.3 mm open; the assembly at its measured heights | the air mouse at the motion tile's new angle, -75.90 degrees | in work |
+
+Before v0.1, 2 flat boards were tried: the face of a signet ring, then a ring-shaped PCB with a
+finger hole and a crown. Neither wrapped the finger, and the owner asked for the circuit on the
+surface of the cylinder. They have no folder.
+
+## Working on the ring
+
+Run from a version's folder; each tile is a nested project.
+
+```sh
+python3 footprints/make_footprints.py           # the joint and the scroll strip, into footprints/Ring.pretty
+workcenter design radio/design.py --route       # one tile's KiCad project, routed; likewise each tile
+workcenter gates radio --strict                 # ERC, DRC, simulation, export; GREEN means done
+make -C firmware test                           # the firmware's host tests
+workcenter pictures .                           # every tile's renders and GIF, and the assembly (assembly.py)
+```

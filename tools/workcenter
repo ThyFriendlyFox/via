@@ -1966,6 +1966,9 @@ def gate_render(
             "opaque",
             "--quality",
             "high",
+            # The board's own mask, legend and finish where its stackup names them; without this the
+            # preset's green mask is drawn whatever the board says.
+            "--use-board-stackup-colors",
             *extra,
             project.pcb,
         ]
