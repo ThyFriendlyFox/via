@@ -1,0 +1,13 @@
+* SOM_SYS at its highest: the TPS62130's reference at 822.4 mV (SLVSAG7F, 6.5) and 100 nA drawn into
+* the FB pin (ILKG_FB), which R1 must carry too. See sys_rail_low.cir for the circuit.
+VREF ref 0 DC 0.8224
+EAMP out 0 ref fb 1e6
+R1 out fb 374k
+R2 fb 0 100k
+IFB fb 0 DC 100n
+.control
+op
+let vout = v(out)
+print vout
+.endc
+.end

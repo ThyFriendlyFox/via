@@ -781,3 +781,27 @@ What happened: I routed the example controller with `--passes 60`, the number th
 Cost: 15 minutes of routing with no result.
 Root cause: I took the pass count from a 4-part template to a 140-part board, and did not set `--timeout` for a route whose length I did not know.
 Process: P4
+
+## M129 — 2026-11-11 — A chip's core pins with no way out
+What happened: I placed the Snapdragon example's RP2350 parts the way Raspberry Pi's minimal design lists them: a 100 nF beside each supply pin, the crystal under XIN and XOUT, the core regulator's parts in a row to the north. Each core pin (DVDD 6, 23 and 39, VREG_FB 50) then faced another net's pad 1 to 2 mm out: C18's ground pad, the crystal, C14's ground pad, C9. FreeRouting ran 14 minutes and left every pad of the core net bare, and 5 more connections open round it. The core rail is drawn by hand now: a stub inward from each pin to a via inside the ring of pads, joined on In3 under the ground pad.
+Cost: a 15-minute route kept only as a seed, a hand route, and a second route.
+Root cause: I checked each pin's net and not its way out. Rosetta's route had met the same wall (its RP2040's pins had no lanes until its capacitors moved), and that lesson was in the devlog, not in a process.
+Process: P4
+
+## M130 — 2026-11-11 — 60 passes and the 15-minute limit, after M128
+What happened: I routed the same example, 76 parts on 6 layers, with `--passes 60` and no `--timeout`, which P4 step 6 forbids since M128. The first round ended 32 seconds inside the 15-minute limit. The second round, which `workcenter design` starts when a pour loses a pad, would have been stopped by the limit and left no session; I stopped it for M129's fix.
+Cost: none in the end; the board's first route was 32 seconds from being lost.
+Root cause: I copied the command from my first route of the example, written before I read P4's step 6, and did not read the step again before the next route.
+Process: P4
+
+## M131 — 2026-11-11 — `cd` and `pkill -f` in my own commands
+What happened: In the same work the no-`cd` hook refused 2 of my commands, and I stopped routes with `pkill -f` and a pattern the command's own shell held, twice. The second time the command printed nothing after the `pkill`: the shell may have ended there.
+Cost: 2 refused commands; a check that may not have run.
+Root cause: I wrote the commands from habit, not from P8, which names both.
+Process: P8
+
+## M132 — 2026-11-11 — Back-face parts turned by the front face's rule, after M126
+What happened: I placed the example's 2 pin headers on the back face at 90 degrees, and they stood off the board; 270 put them on it. The microSD socket on the back face was turned the wrong way twice before its card slot faced the edge. Each was found only after a generate.
+Cost: at least 3 generate and DRC rounds.
+Root cause: As in M126, I chose a back-face rotation from the front face's rule instead of reading 2 named pads from the generated board first, as P19 step 4 says.
+Process: P19

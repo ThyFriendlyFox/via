@@ -137,6 +137,13 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
    and a `--timeout` of an hour, in the background. FreeRouting writes its
    session only when it ends, so a run the timeout stops leaves nothing:
    60 passes on 140 parts ran past the 15-minute default (M128).
+7. A fine-pitch part (0.5 mm pitch or less) gets a way out for each of
+   its supply pins before the first route: past the pad's outer end, or
+   inward to a via inside the ring of pads, with no pad of another net
+   across it closer than a via and its clearance. A capacitor sits beside
+   its pin's way out, not across it. Read the pads with `workcenter
+   inspect list --box` round the part; where no way out is left, draw the
+   rail by hand (M129).
 
 Done when: the DRC after the route lists 0 errors, or every remaining
 error is named in the next design change.
