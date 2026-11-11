@@ -1,0 +1,59 @@
+<?xml version="1.0" ?>
+<!-- DESCRIPTION: Verilator output: XML representation of netlist -->
+<verilator_xml>
+  <files>
+    <file id="d" filename="/work/reg8/rtl/reg8.v" language="1800-2017"/>
+    <file id="c" filename="/usr/share/verilator/include/verilated_std.sv" language="1800-2017"/>
+    <file id="a" filename="&lt;built-in&gt;" language="1800-2017"/>
+    <file id="b" filename="&lt;command-line&gt;" language="1800-2017"/>
+  </files>
+  <module_files>
+    <file id="d" filename="/work/reg8/rtl/reg8.v" language="1800-2017"/>
+  </module_files>
+  <cells>
+    <cell loc="d,3,8,3,12" name="reg8" submodname="reg8" hier="reg8"/>
+  </cells>
+  <netlist>
+    <module loc="d,3,8,3,12" name="reg8" origName="reg8" topModule="1">
+      <var loc="d,4,23,4,26" name="clk" dtype_id="1" dir="input" pinIndex="1" vartype="logic" origName="clk"/>
+      <var loc="d,5,23,5,26" name="rst" dtype_id="1" dir="input" pinIndex="2" vartype="logic" origName="rst"/>
+      <var loc="d,6,23,6,25" name="en" dtype_id="1" dir="input" pinIndex="3" vartype="logic" origName="en"/>
+      <var loc="d,7,23,7,24" name="d" dtype_id="2" dir="input" pinIndex="4" vartype="logic" origName="d"/>
+      <var loc="d,8,23,8,24" name="q" dtype_id="2" dir="output" pinIndex="5" vartype="logic" origName="q"/>
+      <always loc="d,10,5,10,11">
+        <sentree loc="d,10,12,10,13">
+          <senitem loc="d,10,14,10,21" edgeType="POS">
+            <varref loc="d,10,22,10,25" name="clk" dtype_id="1"/>
+          </senitem>
+        </sentree>
+        <begin loc="d,10,27,10,32">
+          <if loc="d,11,9,11,11">
+            <varref loc="d,11,13,11,16" name="rst" dtype_id="1"/>
+            <begin>
+              <assigndly loc="d,11,20,11,22" dtype_id="2">
+                <const loc="d,11,23,11,27" name="8&apos;h0" dtype_id="2"/>
+                <varref loc="d,11,18,11,19" name="q" dtype_id="2"/>
+              </assigndly>
+            </begin>
+            <begin>
+              <if loc="d,12,14,12,16">
+                <varref loc="d,12,18,12,20" name="en" dtype_id="1"/>
+                <begin>
+                  <assigndly loc="d,12,24,12,26" dtype_id="2">
+                    <varref loc="d,12,27,12,28" name="d" dtype_id="2"/>
+                    <varref loc="d,12,22,12,23" name="q" dtype_id="2"/>
+                  </assigndly>
+                </begin>
+              </if>
+            </begin>
+          </if>
+        </begin>
+      </always>
+    </module>
+    <typetable loc="a,0,0,0,0">
+      <basicdtype loc="c,50,22,50,24" id="1" name="logic"/>
+      <voiddtype loc="c,51,21,51,30" id="3"/>
+      <basicdtype loc="d,7,17,7,18" id="2" name="logic" left="7" right="0"/>
+    </typetable>
+  </netlist>
+</verilator_xml>
