@@ -32,11 +32,12 @@ if [ -e "$out" ] && [ -n "$(ls -A "$out" 2>/dev/null)" ]; then
 fi
 
 here=$(dirname -- "$0")
-mkdir -p "$out/fonts"
+mkdir -p "$out/fonts" "$out/media"
 
-# What the site serves. og.html, og-dark.png, vercel.json and README.md stay in the repository.
+# What the site serves: of media/, the 2 pictures the page shows. og.html, the README's other
+# pictures, vercel.json and each README.md stay in the repository.
 for file in site.css site.js favicon.svg favicon-32.png apple-touch-icon.png og.png \
-  fonts/inter-latin-wght-normal.woff2 fonts/LICENSE; do
+  fonts/inter-latin-wght-normal.woff2 fonts/LICENSE media/schematic.png media/board.png; do
   cp "$here/$file" "$out/$file"
 done
 

@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Via: the README's first picture</title>
+    <meta name="robots" content="noindex">
+    <link rel="stylesheet" href="../site.css">
+    <!-- The page hero.png and hero-dark.png are captures of, at 1320 x 500. README.md has the command.
+         `hero.html?dark` is the dark twin. The 3 cards are the cards of index.html's board section, at
+         the sizes of a picture that GitHub shows at 2 thirds of its width. -->
+    <style>
+      html,
+      body {
+        width: 1320px;
+        height: 500px;
+        overflow: hidden;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        padding: 34px 44px 38px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .brand svg {
+        width: 36px;
+        height: 36px;
+      }
+      .brand b {
+        font-size: 26px;
+        font-weight: 500;
+        letter-spacing: -0.03em;
+        line-height: 1;
+      }
+      .brand code {
+        margin-left: auto;
+        font-size: 14px;
+        color: var(--muted-foreground);
+      }
+      .brand code span {
+        color: var(--foreground);
+      }
+      .files {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 20px;
+        flex: 1;
+        min-height: 0;
+        margin-top: 26px;
+      }
+      .files figure {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+      .files .file {
+        flex: 1;
+        height: auto;
+        min-height: 0;
+      }
+      .file pre {
+        font-size: 15px;
+      }
+      .files figcaption {
+        margin-top: 14px;
+        font-size: 16px;
+        line-height: 1.35;
+        letter-spacing: -0.006em;
+      }
+    </style>
+    <script>
+      if (location.search.includes("dark")) document.documentElement.classList.add("dark");
+    </script>
+  </head>
+  <body>
+    <div class="brand">
+      <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9h18.5v14H30M11.5 9v14h9" stroke-width="3"/><path d="M2 16h5.5M24.5 16H30" stroke-width="3" stroke-opacity=".28"/></svg>
+      <b>via</b>
+      <code>$ <span>workcenter design design.py --route</span></code>
+    </div>
+    <div class="files">
+      <figure>
+        <div class="file code">
+          <h3>design.py</h3>
+<pre data-file="tests/boards/pass-first-design/design.py">d.add(
+    <span class="s">"R1"</span>,
+    <span class="s">"Device:R"</span>,
+    <span class="s">"10k"</span>,
+    R_0603,
+    sch_at=(<span class="n">101.6</span>, <span class="n">76.2</span>),
+    pcb_at=(<span class="n">110.0</span>, <span class="n">106.0</span>),
+    nets={<span class="s">"1"</span>: <span class="s">"VCC"</span>, <span class="s">"2"</span>: <span class="s">"OUT"</span>},
+)
+d.add(
+    <span class="s">"R2"</span>,
+    <span class="s">"Device:R"</span>,</pre>
+        </div>
+        <figcaption><b>A part is 1 call</b> in a Python file.</figcaption>
+      </figure>
+      <figure>
+        <div class="file sheet">
+          <h3>divider.kicad_sch</h3>
+          <div class="view"><img src="schematic.png" alt=""></div>
+        </div>
+        <figcaption><b>1 command writes the schematic</b></figcaption>
+      </figure>
+      <figure>
+        <div class="file">
+          <h3>divider.kicad_pcb</h3>
+          <div class="view bleed"><img src="board.png" alt=""></div>
+        </div>
+        <figcaption><b>and routes the board.</b> No GUI at any step.</figcaption>
+      </figure>
+    </div>
+  </body>
+</html>

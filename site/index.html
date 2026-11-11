@@ -19,16 +19,19 @@
     <meta property="og:description" content="The tools, skills and gates an agent needs to take a KiCad 10 project to fabrication outputs. A board is done when the last line says GREEN. Open source under MIT.">
     <meta property="og:url" content="%ORIGIN%/">
     <meta property="og:image" content="%ORIGIN%/og.png"><meta property="og:image:width" content="1280"><meta property="og:image:height" content="640"><meta property="og:image:alt" content="Via, an electronics workcenter for agents, beside a run of its 4 gates that ends in GREEN"><meta name="twitter:card" content="summary_large_image">
-    <!-- Before first paint: the stored theme, else the system's. -->
+    <!-- Before first paint: the theme the address asks for (?theme=dark), else the stored one, else
+         the system's. ?shot=diagram shows 1 part of the page alone, for a capture (README.md). -->
     <script>
       (() => {
-        let stored = null;
+        const asked = new URLSearchParams(location.search);
+        let stored = asked.get("theme");
         try {
-          stored = localStorage.getItem("theme");
+          stored = stored || localStorage.getItem("theme");
         } catch {}
         const dark = stored ? stored === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
         document.documentElement.classList.toggle("dark", dark);
         if (stored) for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.content = dark ? "#1b1917" : "#fbfaf7";
+        if (asked.get("shot")) document.documentElement.dataset.shot = asked.get("shot");
       })();
     </script>
   </head>
@@ -103,6 +106,50 @@ FAIL   drc        1 errors, 1 warnings (0 unconnected, 0 parity)  [0.63s]
             </div>
             <figcaption>2 runs on fixture boards from the repository, as the terminal printed them. The second board has a clearance error on purpose.</figcaption>
           </figure>
+        </div>
+      </section>
+
+      <section class="section" id="board" aria-labelledby="board-title">
+        <div class="wrap">
+          <div class="head">
+            <p class="eyebrow">Design as code</p>
+            <h2 class="title" id="board-title">A Python file becomes a board.</h2>
+          </div>
+          <div class="files">
+            <figure>
+              <div class="file code">
+                <h3>design.py</h3>
+<pre data-file="tests/boards/pass-first-design/design.py">d.add(
+    <span class="s">"R1"</span>,
+    <span class="s">"Device:R"</span>,
+    <span class="s">"10k"</span>,
+    R_0603,
+    sch_at=(<span class="n">101.6</span>, <span class="n">76.2</span>),
+    pcb_at=(<span class="n">110.0</span>, <span class="n">106.0</span>),
+    nets={<span class="s">"1"</span>: <span class="s">"VCC"</span>, <span class="s">"2"</span>: <span class="s">"OUT"</span>},
+)
+d.add(
+    <span class="s">"R2"</span>,
+    <span class="s">"Device:R"</span>,</pre>
+              </div>
+              <figcaption><b>A part is 1 call</b> in a Python file.</figcaption>
+            </figure>
+            <figure>
+              <div class="file sheet">
+                <h3>divider.kicad_sch</h3>
+                <div class="view"><img src="media/schematic.png" width="1600" height="1152" loading="lazy" alt="The schematic: R1 and R2 between VCC and GND, C1 across R2, and a 3-pin header"></div>
+              </div>
+              <figcaption><b>1 command writes the schematic</b></figcaption>
+            </figure>
+            <figure>
+              <div class="file">
+                <h3>divider.kicad_pcb</h3>
+                <div class="view bleed"><img src="media/board.png" width="1176" height="840" loading="lazy" alt="The routed board in 3D: a 3-pin header, R1, R2 and C1"></div>
+              </div>
+              <figcaption><b>and routes the board.</b> No GUI at any step.</figcaption>
+            </figure>
+          </div>
+          <p class="after">A fixture board from the repository, <code>tests/boards/pass-first-design</code>: lines of its design file, then the schematic and the routed board that <code>workcenter design design.py --route</code> writes from the file.</p>
         </div>
       </section>
 
@@ -277,7 +324,7 @@ DONE WHEN  the last line starts with GREEN</span></pre>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg>
               </div>
               <div class="node accent">
-                <b>ERC · DRC · SIM · EXPORT</b>
+                <b>ERC · DRC<br>SIM · EXPORT</b>
                 <span>4 gates, in order; the last line is the verdict</span>
               </div>
               <div class="hop">

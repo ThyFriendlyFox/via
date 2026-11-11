@@ -29,15 +29,15 @@ empty.
 
 | Path | Holds |
 |---|---|
-| `index.html` | The page: the sections in order. `%ORIGIN%` marks each line that needs the site's address. |
+| `index.html` | The page: the sections in order. `%ORIGIN%` marks each line that needs the site's address. `?theme=dark` and `?theme=light` ask for a theme; `?shot=diagram` shows the diagram alone, for a capture. |
 | `404.html` | The page a host serves for an unknown path. |
-| `site.css` | The look: the colour tokens for light and dark, the type scale, every component. |
+| `site.css` | The look: the colour tokens for light and dark, the type scale, every component. `media/hero.html` takes its cards from it. |
 | `site.js` | The theme button and the copy button. |
 | `favicon.svg` | The mark. It follows the system's colour scheme. |
 | `favicon-32.png`, `apple-touch-icon.png` | The mark as PNG, for a browser that takes no SVG icon and for a phone's home screen. |
-| `og.html` | The page the 2 images below are captures of. `og.html?dark` is the dark twin. |
+| `og.html` | The page the image below is a capture of. |
 | `og.png` | The Open Graph image, 1280 x 640. Also the image for the repository's social preview. |
-| `og-dark.png` | The same in the dark theme, for the top of the root `README.md`. |
+| `media/` | The pictures of the root `README.md`, with the page its first picture is a capture of. `media/README.md` shows each and the command that draws it. The site serves 2 of them, `schematic.png` and `board.png`: its board section shows them. |
 | `fonts/` | Inter, the latin file, with its license. |
 | `build.sh` | Makes the folder a host serves. |
 | `vercel.json` | The Vercel project's build command, output folder and headers. |
@@ -51,16 +51,14 @@ changes, the test names the line, and the page gets the new text.
 
 ## The images
 
-Chromium draws them, so the type is Inter itself:
+Chromium draws the Open Graph image, so the type is Inter itself:
 
 ```sh
 chromium --headless --hide-scrollbars --force-device-scale-factor=1 --window-size=1280,640 \
   --virtual-time-budget=4000 --screenshot=site/og.png "file://$PWD/site/og.html"
-chromium --headless --hide-scrollbars --force-device-scale-factor=1 --window-size=1280,640 \
-  --virtual-time-budget=4000 --screenshot=site/og-dark.png "file://$PWD/site/og.html?dark"
 ```
 
-Draw both again when `og.html`, the mark or the run in it changes.
+Draw it again when `og.html`, the mark or the run in it changes.
 
 librsvg draws the 2 PNG icons from `favicon.svg`:
 

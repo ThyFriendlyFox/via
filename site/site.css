@@ -162,6 +162,27 @@ html.theme-switching *::after {
   transition: none !important;
 }
 
+/* A capture of 1 part of the page: index.html?shot=diagram shows the diagram alone, edge to edge. */
+html[data-shot] .skip,
+html[data-shot] .site-header,
+html[data-shot] .site-footer,
+html[data-shot="diagram"] main > :not(#how-it-works),
+html[data-shot="diagram"] #how-it-works .head,
+html[data-shot="diagram"] #how-it-works .after {
+  display: none;
+}
+
+html[data-shot="diagram"] #how-it-works > .wrap {
+  max-width: none;
+  padding: 0;
+}
+
+html[data-shot="diagram"] .diagram {
+  min-height: 100vh;
+  margin-top: 0;
+  border-radius: 0;
+}
+
 /* ---------------------------------------------------------------- pieces */
 
 .wrap {
@@ -510,6 +531,101 @@ figcaption {
   line-height: 1.55;
   color: var(--muted-foreground);
   text-wrap: pretty;
+}
+
+/* ----------------------------------------------------------------- files */
+
+/* 3 files side by side: lines of a design file, and the 2 files the command writes from it. */
+.files {
+  display: grid;
+  gap: 2rem 1.25rem;
+  margin-top: 3rem;
+}
+
+.file {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 1rem;
+  background: var(--card);
+  box-shadow:
+    0 0 0 1px var(--edge),
+    var(--shadow);
+}
+
+.file h3 {
+  padding: 0.875rem 1.25rem 0;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--muted-foreground);
+}
+
+.file pre {
+  overflow: hidden;
+  padding: 0.75rem 1.25rem 0;
+  font-size: 0.8125rem;
+  line-height: 1.62;
+}
+
+.file pre .s {
+  color: var(--primary);
+}
+
+.file pre .n {
+  color: var(--muted-foreground);
+}
+
+/* The file goes on below the card: its last lines fade out. */
+.file.code {
+  position: relative;
+}
+
+.file.code::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 5.25rem;
+  background: linear-gradient(to bottom, transparent, var(--card) 88%);
+}
+
+.file .view {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 0.375rem 0.875rem 0.875rem;
+}
+
+.file .view img {
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: 100%;
+}
+
+/* The board runs off the picture's right and lower edges, so it meets the card's. */
+.file .view.bleed {
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 0;
+}
+
+/* KiCad draws a schematic for a white sheet, and the picture carries its own: on GitHub's dark
+   page a schematic with no background is dark red on black. The card is that white in both themes. */
+.file.sheet {
+  background: #fff;
+}
+
+.file.sheet h3 {
+  color: oklch(0.52 0.015 70);
+}
+
+.files figcaption b {
+  font-weight: 500;
+  color: var(--foreground);
 }
 
 /* -------------------------------------------------------------- sections */
@@ -1017,6 +1133,12 @@ figcaption {
   }
   .gates {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .files {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .files .file {
+    height: 20.5rem;
   }
   .flow {
     grid-template-columns: minmax(0, 1fr) 7.5rem minmax(0, 1fr) 7.5rem minmax(0, 1.2fr) 5rem minmax(0, 1fr);

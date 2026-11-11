@@ -49,6 +49,7 @@ def test_every_command_is_in_the_readme_and_in_the_contract():
     found = commands()
     assert len(found) >= 24 and "next" in found and "gates" in found
     assert [c for c in found if f"`{c}`" not in README] == []
+    assert f"<summary>The {len(found)} commands</summary>" in README
     assert [c for c in found if not re.search(rf"workcenter {c}\b", CONTRACT)] == []
 
 
@@ -109,6 +110,8 @@ def test_every_flag_a_document_gives_a_command_is_a_flag_of_that_command():
         *sorted((ROOT / ".claude" / "skills").glob("*/SKILL.md")),
         *sorted((ROOT / "templates").rglob("*.md")),
         SITE / "index.html",
+        SITE / "media" / "README.md",
+        SITE / "media" / "hero.html",
     ]
     assert "`workcenter design design.py --route`" in as_document(SITE / "index.html")
     wrong, checked = [], 0
@@ -330,26 +333,100 @@ def test_the_site_builds_for_an_address_and_without_one(tmp_path):
         assert not (tmp_path / "refused").exists(), bad
 
 
+def png_size(path: Path) -> tuple[int, int]:
+    """A PNG's width and height, from its header."""
+    data = path.read_bytes()
+    assert data[:8] == b"\x89PNG\r\n\x1a\n", path.name
+    return struct.unpack(">II", data[16:24])
+
+
 def test_the_open_graph_image_has_the_size_the_page_states():
     """GitHub asks 1280 x 640 and under 1 MB of a social preview. The page states the size to a
-    crawler, so the 2 files and the page say 1 size."""
+    crawler, so the file and the page say 1 size."""
     page = (SITE / "index.html").read_text(encoding="utf-8")
     stated = tuple(
         int(re.search(rf'og:image:{side}" content="(\d+)"', page).group(1)) for side in ("width", "height")
     )
     assert stated == (1280, 640)
-    for name in ("og.png", "og-dark.png"):
-        data = (SITE / name).read_bytes()
-        assert data[:8] == b"\x89PNG\r\n\x1a\n", name
-        assert struct.unpack(">II", data[16:24]) == stated, name
-        assert len(data) < 1_000_000, name
+    assert png_size(SITE / "og.png") == stated
+    assert (SITE / "og.png").stat().st_size < 1_000_000
 
 
-def test_every_picture_and_link_in_the_readme_names_a_file():
-    found = re.findall(r'\]\(([^)#\s]+)\)|(?:src|srcset)="([^"]+)"', README)
-    local = [a or b for a, b in found if not (a or b).startswith(("http://", "https://"))]
-    assert {"site/og.png", "site/og-dark.png", "LICENSE", "site/fonts/LICENSE"} <= set(local)
-    assert [target for target in local if not (ROOT / target).is_file()] == []
+def local_links(path: Path) -> list[str]:
+    """Each file a Markdown document links to or shows, as the document writes it: `](path)`, and the
+    `src`, `srcset` and `href` of its HTML. An address on the web is left out."""
+    found = re.findall(r'\]\(([^)#\s]+)\)|(?:src|srcset|href)="([^"#]+)"', path.read_text(encoding="utf-8"))
+    return [a or b for a, b in found if not (a or b).startswith(("http://", "https://"))]
+
+
+def test_every_picture_and_link_in_a_readme_names_a_file():
+    """GitHub draws a missing picture as a broken image, and a missing link is a 404. A path is read
+    from the document's own folder, as GitHub reads it."""
+    media = SITE / "media"
+    shown = {
+        ROOT / "README.md": {
+            "LICENSE",
+            "site/fonts/LICENSE",
+            "site/media/README.md",
+            "site/media/hero.png",
+            "site/media/hero-dark.png",
+            "site/media/board-spin.gif",
+            "site/media/layers.png",
+            "site/media/diagram.png",
+            "site/media/diagram-dark.png",
+        },
+        media / "README.md": {
+            "hero.png",
+            "hero-dark.png",
+            "schematic.png",
+            "board.png",
+            "board-spin.gif",
+            "layers.png",
+            "diagram.png",
+            "diagram-dark.png",
+        },
+    }
+    for document, expected in shown.items():
+        local = local_links(document)
+        assert expected <= set(local), document.relative_to(ROOT)
+        assert [target for target in local if not (document.parent / target).is_file()] == []
+    # Every picture in the folder is shown by its README, and a picture and its dark twin have 1 size.
+    pictures = {p.name for p in media.iterdir() if p.suffix in (".png", ".gif")}
+    assert pictures == set(local_links(media / "README.md")) == shown[media / "README.md"]
+    for name in ("hero", "diagram"):
+        assert png_size(media / f"{name}.png") == png_size(media / f"{name}-dark.png"), name
+    assert all((media / name).stat().st_size < 2_000_000 for name in pictures)
+
+
+def test_the_code_a_page_shows_is_a_run_of_lines_of_its_file():
+    """The site's page and `site/media/hero.html`, the page the README's first picture is a capture
+    of, show lines of the fixture's design file. A `<pre data-file>` names its file, and its lines
+    are a run of that file's lines, so a page shows no call the file does not make. Each page's 2
+    pictures of the board are files, at the path the page gives."""
+    file = "tests/boards/pass-first-design/design.py"
+    pictures = {SITE / "index.html": "media/", SITE / "media" / "hero.html": ""}
+    for page, folder in pictures.items():
+        text = page.read_text(encoding="utf-8")
+        shown = re.findall(r'<pre data-file="([^"]+)">(.*?)</pre>', text, re.S)
+        assert [name for name, _ in shown] == [file], page.name
+        code = html.unescape(re.sub(r"<[^>]+>", "", shown[0][1]))
+        lines = [line.strip() for line in code.splitlines()]
+        source = [line.strip() for line in (ROOT / file).read_text(encoding="utf-8").splitlines()]
+        assert len(lines) == 12 and lines[:2] == ["d.add(", '"R1",'], page.name
+        starts = [i for i in range(len(source)) if source[i : i + len(lines)] == lines]
+        assert len(starts) == 1, f"{page.name}: the code is no run of lines of {file}"
+        drawn = [link for link in links_of(page) if link.endswith(("schematic.png", "board.png"))]
+        assert drawn == [f"{folder}schematic.png", f"{folder}board.png"], page.name
+        for link in links_of(page):
+            if not re.match(r"https?://|#|\./$|%ORIGIN%", link):
+                assert (page.parent / link).is_file(), f"{page.name}: {link}"
+    # The page states each picture's size, so the cards keep their place while a picture loads.
+    text = (SITE / "index.html").read_text(encoding="utf-8")
+    stated = {
+        src: (int(width), int(height))
+        for src, width, height in re.findall(r'<img src="(media/[^"]+)" width="(\d+)" height="(\d+)"', text)
+    }
+    assert stated == {name: png_size(SITE / name) for name in ("media/schematic.png", "media/board.png")}
 
 
 LOG_FORMAT = "--format=%H%x00%an <%ae>%x00%cn <%ce>%x00%B%x01"

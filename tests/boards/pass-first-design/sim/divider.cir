@@ -1,0 +1,17 @@
+* First design fixture: the divider of design.py on a 5 V supply. R1 and R2 halve the supply: 2.5 V.
+* With C1 they are a low-pass of 1 / (2 pi (R1 || R2) C1) = 318 Hz, where the output is 0.5 / sqrt(2)
+* of the input. The resistors are 1 % parts of 100 ppm/K; the deck gives them opposite signs, the pair
+* that moves the ratio most, so a temperature corner has something to move.
+V1 vcc 0 DC 5 AC 1
+R1 vcc out 10k tc1=100u
+R2 out 0 10k tc1=-100u
+C1 out 0 100n
+.control
+op
+let vout = v(out)
+print vout
+ac dec 200 10 100k
+meas ac f3 when vm(out)=0.3535534 fall=1
+print f3
+.endc
+.end

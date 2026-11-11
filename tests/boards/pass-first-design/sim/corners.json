@@ -1,0 +1,5 @@
+{
+  "temperature": { "values": [-40, 85], "source": "the fixture's operating range, -40 to 85 C" },
+  "tolerance": { "R": 0.01, "C": 0.1, "source": "the fixture's parts: 1 % resistors, a 10 % capacitor" },
+  "monte_carlo": { "runs": 8, "seed": 1 }
+}

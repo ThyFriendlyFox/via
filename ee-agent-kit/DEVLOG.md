@@ -39,6 +39,32 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-11 — The front page shows a board
+
+The owner asked again for the repository to look good. The README was
+text under 1 banner. Its first screen now shows a board: lines of a design
+file, then the schematic and the routed board that `workcenter design`
+writes from the file, then 2 runs of the gates. I took the owner's own
+apparatus repository as the pattern: real captures, light and dark, with a
+line under each. The board is a new fixture, `pass-first-design`: the
+template's design file, built, with a deck of 2 bounds. It is the first
+fixture that goes from a design file through all 4 gates. The build wrote
+the same 3 files 3 times in 3 folders. A test compares the schematic and
+the project file only, because the router's tracks may differ on another
+machine; the fixture's own DRC holds the board to the schematic. The 3D
+views need the parts' bodies, and this machine has none. I fetched the 3
+files the board names from KiCad's library into a scratch folder and
+committed none of them. The template's board is 25 x 20 mm with 4 parts
+on its left third, so the close view and the GIF frame the parts. Every
+picture has its command in `site/media/README.md`. I drew each committed
+picture with those commands, from fresh folders. The site's page shows
+the same 3 cards in a new section, and the first picture is a capture of
+those cards.
+
+Evidence: `tests/test_docs.py` 16 passed and `tests/test_designfile.py`
+14 passed; each new assertion failed on a broken copy first, 15 copies;
+the README drawn with GitHub's stylesheet, light and dark, before the push.
+
 ## 2026-11-11 — One branch, and the owner's name on every commit
 
 The owner asked for every branch collapsed into `main`, everything in 1

@@ -27,6 +27,7 @@ import kicadgen  # noqa: E402
 
 CLI = ROOT / "tools" / "workcenter"
 TEMPLATE = ROOT / "templates" / "project" / "design.py"
+FIXTURE = ROOT / "tests" / "boards" / "pass-first-design"
 LIBS = kicadgen.SYMBOL_DIR / "Device.kicad_sym"
 JAR = Path("/opt/workcenters/ee/freerouting/freerouting.jar")
 
@@ -122,6 +123,19 @@ def test_the_template_generates_routes_and_passes_erc_and_drc(tmp_path):
     assert gates.returncode == 0, gates.stdout + gates.stderr
     status = {record["gate"]: record["status"] for record in json.loads(gates.stdout)}
     assert (status["erc"], status["drc"]) == ("pass", "pass")
+    # The fixture pass-first-design is this design, built: the README's pictures and its first run are
+    # of that board. Its design file is the template, and its schematic and project file are what the
+    # template writes. The router's tracks may differ between 2 machines, so the board is held by the
+    # fixture's own DRC, which compares it with that schematic.
+    assert (FIXTURE / "design.py").read_bytes() == TEMPLATE.read_bytes()
+    for name in ("divider.kicad_pro", "divider.kicad_sch"):
+        assert (tmp_path / name).read_bytes() == (FIXTURE / name).read_bytes(), name
+    built = run("--json", "gates", FIXTURE, "--strict", "--out", tmp_path / "fixture")
+    assert built.returncode == 0, built.stdout + built.stderr
+    records = {record["gate"]: record for record in json.loads(built.stdout)}
+    assert [records[gate]["status"] for gate in ("erc", "drc", "sim", "export")] == ["pass"] * 4
+    assert records["drc"]["summary"] == "0 errors, 0 warnings (0 unconnected, 0 parity)"
+    assert records["sim"]["summary"] == "1 decks, 46 corner runs, 0 failures"
 
 
 OPAMP = """    d.add(

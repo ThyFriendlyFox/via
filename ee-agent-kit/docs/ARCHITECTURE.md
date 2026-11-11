@@ -14,7 +14,7 @@ has its 10 parts.
 | Manifest | `WORKCENTER.md` | The contract a project gets: tools, skills, gates, paths, requirements. |
 | Templates | `templates/` | The files a project starts from: the verification package (`workcenter verify --init` copies `templates/verification/`), the brief and facts file for helpers on one package, and a first design file, a version's README and gates report (`templates/project/`). |
 | Environment | `environment/`, `Dockerfile` | The 2 ways the installer reaches a machine: a Claude Code cloud environment setup script, or a Docker image on the official KiCad base. |
-| Website | `site/` | 1 static page that says what the workcenter is, with real runs of its commands. Plain HTML, 1 stylesheet, 1 script; no install step. `site/build.sh` writes the folder a host serves. `tests/test_docs.py` holds its runs, its links and its build to the code. |
+| Website | `site/` | 1 static page that says what the workcenter is, with real runs of its commands and a fixture board from its design file. Plain HTML, 1 stylesheet, 1 script; no install step. `site/build.sh` writes the folder a host serves. `site/media/` holds the pictures of the root `README.md`, each with the command that draws it. `tests/test_docs.py` holds the site's runs, its links and its build to the code, and each picture to the README that shows it. |
 | Kit | `ee-agent-kit/` | How work on this repository is run. Process, not product. |
 
 ## Data flow
