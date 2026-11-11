@@ -52,9 +52,45 @@ learned 2 things: a custom pad reaches the router as its outline, not a box over
 a simulated part's fields go on its footprint too. Main had meanwhile learned to render a board in
 its own colours, which this board's black mask needed. A reviewer who had not seen the board read
 its renders each round; the back's art ended in a jack's peg hole until the second round. 7
-mistakes, M137 to M143, each with its process.
+mistakes, M139 to M145, each with its process.
 
 Evidence: `workcenter gates examples/anc-speaker/v0.1` GREEN with 6 warnings; the pictures in its `docs/`.
+
+## 2026-11-11 — A third example: a fire alarm communicator
+
+The owner asked for a fire alarm communicator made with Via: compact, good
+to look at, iterated in a review loop, and merged to `main` in its own
+folder. Herald is in `examples/fire-alarm-communicator/v0.1`: 84.4 x 64
+mm, 4 layers, 127 parts, every part on the front, red with a white legend
+and black terminals. It answers a fire panel's dialer as its phone line,
+reads 3 supervised inputs, holds a fail-safe trouble relay, and reports
+over LTE-M with Wi-Fi as the second path. The panel's DTMF digits are read
+in firmware by a Goertzel filter, held to ITU-T Q.24's limits by host
+tests.
+
+The loop ran 8 rounds. Each round I generated, routed and rendered the
+board; in 6 of them a reader who had not seen it before reviewed the
+pictures against 1 fixed prompt, and its list was the next round's work.
+The board went from 96 to 84.4 mm wide, the tamper input became a screw
+terminal, the terminal row was spread to equal gaps, keep-outs now hold
+copper off every word but the back's notes, the terminals turned black,
+and the back became an installer's sheet. The last review found 3 mm of
+height in the lower band; moving 25 parts for it is left for v0.2. The
+tone deck found the first filter too weak: 28 mV on the line, where the
+deck asks for 62 mV. A keep-out I added late held a diode's pad, and the
+route left 1 net open (M137). The router could not reach the relay's NO
+contact past that keep-out; that link is drawn by hand. My first schematic
+layout sorted nets by a key with ties, so 2 generations drew 2 sheets; the
+key is complete now. The back's keep-outs ban vias through every layer,
+and I checked them for pads on the back only: 4 routes left the tamper
+line open or a ground pad on an island (M138). The router twice walled a
+pin in: CC1 is drawn by hand, and a ground via beside 4 pads is placed
+before the route.
+
+Evidence: `workcenter gates examples/fire-alarm-communicator/v0.1` GREEN
+with 7 warnings (the terminal blocks' and the USB shell's silkscreen at the
+edge), 8 decks and 573 corner runs; `make -C firmware test` passing;
+`render --strict` naming no part without a body.
 
 ## 2026-11-11 — Rosetta v0.2: the controller as a controller's own board
 

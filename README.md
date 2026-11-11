@@ -77,6 +77,18 @@ plated edge pads. The ring turns with the hand and the cursor follows its gyrosc
 along a 3-channel strip to scroll and presses the side to click. A Bluetooth LE module, a charger,
 a 3.3 V rail and a 20 mAh cell ride on the other tiles, and every tile is GREEN.
 
+## An example: Herald, a fire alarm communicator
+
+<a href="examples/fire-alarm-communicator/v0.1/README.md"><img alt="Herald in 3D from above and to the side: a red board with an LTE-M module, a nano SIM, an ESP32-S3 module, a relay, a column of status lights, a USB-C port and black screw terminals along its front edge" src="examples/fire-alarm-communicator/v0.1/docs/board-3d-iso.png"></a>
+
+[`examples/fire-alarm-communicator/v0.1`](examples/fire-alarm-communicator/v0.1/README.md) sits
+beside a fire alarm panel and reports to a monitoring station over LTE-M, with Wi-Fi as the second
+path. 84.4 x 64 mm, 4 layers, every part on the front, red with a white legend and black terminals.
+It answers the panel's own phone dialer as if it were the line: a current-limited loop feed, dial
+tone and the handshake from a PWM pin, and the panel's DTMF digits decoded in firmware with a
+Goertzel filter. 3 supervised inputs read a closed contact, a whole loop and a cut wire apart at
+every corner, and a fail-safe relay tells the panel when Herald itself fails.
+
 ## An example: Hush, a speaker that cancels noise
 
 <table>
@@ -90,9 +102,8 @@ a 3.3 V rail and a 20 mAh cell ride on the other tiles, and every tile is GREEN.
 sits on the face of a 40 mm speaker. A microphone on its hub listens 4 mm in front of the cone, and
 an analog feedback loop plays the inverse of what it hears: 7 decks hold 3 dB less noise at 50 Hz
 and 12 dB from 200 to 300 Hz at every one of 986 corner runs, and take a 150 Hz hum 18.8 dB down
-(13.4 dB at the worst corner). Music from a phone
-plays through the loop as its target. The back draws the idea: the noise and its inverse, meeting
-as one line.
+(13.4 dB at the worst corner). Music from a phone plays through the loop as its target. The back
+draws the idea: the noise and its inverse, meeting as one line.
 
 ## What it does
 

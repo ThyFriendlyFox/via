@@ -1,0 +1,7 @@
+{
+  "v_adc": {
+    "min": 1.35,
+    "max": 2.05,
+    "source": "firmware/src/zone.c ZONE_NORMAL_MIN_MV (1100) and ZONE_NORMAL_MAX_MV (2300), each with 250 mV of margin"
+  }
+}

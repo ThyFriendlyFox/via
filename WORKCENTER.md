@@ -95,7 +95,7 @@ or a `.model` in a file with a map from every pin to a node, or gives it a
 value of its own; `d.no_sim` leaves a part out with the reason;
 `d.sim_directives` puts SPICE lines on the sheet. `workcenter design` then
 writes KiCad's Sim fields on the symbols, and hidden on their footprints so
-the DRC's parity check finds the same fields on both (M139), so the
+the DRC's parity check finds the same fields on both (M141), so the
 schematic runs in KiCad's simulator and `kicad-cli sch export netlist --format spice` writes a netlist
 ngspice reads. It prints each problem as a `sim:` line and exits 1 on any: a
 map that leaves a pin or a node out (KiCad would bind it by position and say

@@ -1,0 +1,15 @@
+* The off-hook detector: RING returns to GND through R22 (47 ohm), and R23 (10k) with C24 (10n)
+* brings that voltage to the ESP32's ADC (GPIO5).
+* The dialer is off hook: the feed (Q3, Q4, R18) passes 22 mA, held between 16.5 and 27.5 mA by
+* the corners (Q4's 0.55 to 0.75 V across R18).
+ILOOP 0 ring DC 22m
+R22 ring 0 47 tc1=100u
+R23 ring adc 10k tc1=100u
+C24 adc 0 10n
+ILEAK 0 adc DC 1u
+.control
+op
+let v_loop = v(adc)
+print v_loop
+.endc
+.end

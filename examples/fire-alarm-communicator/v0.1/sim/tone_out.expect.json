@@ -1,0 +1,21 @@
+{
+  "v_350": {
+    "min": 0.062,
+    "max": 0.62,
+    "source": "dial tone at -25 to -5 dBm on 600 ohm (62 mV to 0.62 V peak): above a dialer's -30 dBm detect level, under the 0 dBm a line may carry"
+  },
+  "v_1400": {
+    "min": 0.062,
+    "max": 0.62,
+    "source": "the handshake's and the kissoff's 1400 Hz, -25 to -5 dBm"
+  },
+  "v_2300": {
+    "min": 0.062,
+    "max": 0.62,
+    "source": "the handshake's 2300 Hz, -25 to -5 dBm"
+  },
+  "carrier_ratio": {
+    "max": 0.01,
+    "source": "the PWM's carrier 40 dB under the 1400 Hz tone on the line"
+  }
+}

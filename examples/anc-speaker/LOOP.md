@@ -62,7 +62,7 @@ In2.Cu route the ring.
 
 **Iteration 1.** Gates: GREEN with 6 warnings. The loop's numbers settled first: R14 6.2k and C16
 1.2n held every bound at every corner, and the hum deck ran at every corner once its step control
-was loosened (M142). The reviewer's top 3: the waves on the back ended in the jack's inner peg hole,
+was loosened (M144). The reviewer's top 3: the waves on the back ended in the jack's inner peg hole,
 the jack's outer peg and the USB-C slots cut the outer gold rim, and about 25 vias stood under the
 waves; the speaker's pads had no polarity mark, the switch no ON or OFF, the LED no label; the
 schematic's text overlapped (fixed in the layout table before the review landed). Found in the
@@ -74,7 +74,7 @@ unmarked: the PCM12's switching diagram was not to hand.
 
 **Iteration 2.** The first route after those changes left U2's output pad walled in by the waves'
 via band and 2 tracks: the waves moved in 0.2 mm and a hand via let it out. The rail deck searched
-its peak from 20 kHz (M143). Gates: GREEN with 6 warnings. The GIFs' framing: whole at zoom 0.95;
+its peak from 20 kHz (M145). Gates: GREEN with 6 warnings. The GIFs' framing: whole at zoom 0.95;
 1.0 and above clip the connectors that overhang the edge. The reviewer's top 3: the + and - turned
 with the ring and read as "x" and "/"; the top band almost lined up; labels still touched parts on
 the schematic. Nits: vias in the back's lettering, DEPTH touching the trimmer's outline, the music's
