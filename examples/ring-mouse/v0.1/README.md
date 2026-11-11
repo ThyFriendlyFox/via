@@ -1,6 +1,6 @@
 # Signet — prototype v0.1
 
-> The current version of the [Signet prototype series](../README.md), its first.
+> Archived: v0.1 of the [Signet prototype series](../README.md), as of commit `e4181fa`. The design and KiCad files are the ones that commit holds. The next version, [`../v0.2/`](../v0.2/), makes every face black, draws the solder in the joints and the cell, and turns the gyro into cursor motion.
 
 A mouse you wear as a ring. Six small boards sit on the faces of a hexagonal ring round the index
 finger, each soldered to the next along its edge. Turn the ring's crown toward the thumb: the ring
