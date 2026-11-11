@@ -137,6 +137,13 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
    and a `--timeout` of an hour, in the background. FreeRouting writes its
    session only when it ends, so a run the timeout stops leaves nothing:
    60 passes on 140 parts ran past the 15-minute default (M128).
+7. On a shaped outline, render the unrouted board once and look before the
+   first route. The generator's part check and the DRC read the outline's
+   bounding box, so a part off a notch or a grip says nothing (M129).
+8. When 2 routes leave connections open at the same chip, add room before
+   drawing links: inner layers, narrower classes for the nets that enter its
+   pins, its decoupling moved off the pin rows. Draw a link by hand only
+   when 1 or 2 are left in different places (M130).
 
 Done when: the DRC after the route lists 0 errors, or every remaining
 error is named in the next design change.
