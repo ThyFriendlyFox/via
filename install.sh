@@ -29,6 +29,7 @@ SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # different default python3 do not have.
 KICAD_PPA_URL="https://ppa.launchpadcontent.net/kicad/kicad-10.0-releases/ubuntu/"
 KICAD_PPA_FPR="FDA854F61C4D0D9572BB95E5245D5502FAD7A805"   # "PPA for KiCad: 10.0 releases"
+KICAD_PPA_API="https://api.launchpad.net/devel/~kicad/+archive/ubuntu/kicad-10.0-releases"
 KICAD_KEYRING="/etc/apt/keyrings/kicad-10.0-releases.gpg"
 KICAD_SOURCES="/etc/apt/sources.list.d/kicad-10.0-releases.sources"
 KICAD_PACKAGES=(kicad kicad-symbols kicad-footprints kicad-templates)
@@ -56,9 +57,18 @@ add_kicad_ppa() {
   install -d -m 0755 /etc/apt/keyrings
   if [[ ! -s "$KICAD_KEYRING" ]]; then
     log "apt: fetching PPA signing key ${KICAD_PPA_FPR}"
-    curl -fsSL --retry 3 --connect-timeout 20 \
-      "https://keyserver.ubuntu.com/pks/lookup?op=get&options=mr&search=0x${KICAD_PPA_FPR}" \
-      | gpg --dearmor -o "${KICAD_KEYRING}.tmp"
+    rm -f "${KICAD_KEYRING}.asc" "${KICAD_KEYRING}.tmp"
+    # keyserver.ubuntu.com resets connections from some networks (a cloud session, 2026-11-11);
+    # Launchpad's own API serves the PPA's key. Either way the fingerprint is checked below.
+    if ! curl -fsSL --retry 3 --connect-timeout 20 --max-time 60 -o "${KICAD_KEYRING}.asc" \
+      "https://keyserver.ubuntu.com/pks/lookup?op=get&options=mr&search=0x${KICAD_PPA_FPR}"; then
+      log "apt: keyserver.ubuntu.com did not answer; asking Launchpad for the PPA's key"
+      curl -fsSL --retry 3 --connect-timeout 20 --max-time 60 "${KICAD_PPA_API}?ws.op=getSigningKeyData" \
+        | python3 -c 'import json, sys; sys.stdout.write(json.load(sys.stdin))' > "${KICAD_KEYRING}.asc" \
+        || die "apt: neither keyserver.ubuntu.com nor api.launchpad.net gave the PPA's key"
+    fi
+    gpg --dearmor -o "${KICAD_KEYRING}.tmp" < "${KICAD_KEYRING}.asc"
+    rm -f "${KICAD_KEYRING}.asc"
     gpg --no-default-keyring --keyring "${KICAD_KEYRING}.tmp" --list-keys --with-colons 2>/dev/null \
       | grep -q "^fpr:::::::::${KICAD_PPA_FPR}:" \
       || die "apt: PPA key fingerprint mismatch; refusing to trust it"

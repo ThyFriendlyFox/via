@@ -781,3 +781,27 @@ What happened: I routed the example controller with `--passes 60`, the number th
 Cost: 15 minutes of routing with no result.
 Root cause: I took the pass count from a 4-part template to a 140-part board, and did not set `--timeout` for a route whose length I did not know.
 Process: P4
+
+## M129 — 2026-11-11 — A motherboard's supplies given to the router as tracks
+What happened: I gave FreeRouting the example motherboard's 4 supply nets as tracks: +12V, +3V3, +5V and +12V_CPU, 136 pins across a 244 x 244 mm board round a socket of 4844 lands. The first run went 20 minutes without finishing a pass: 10 power stages' driver-supply pins were boxed in by their own sense tracks. With those links drawn by hand, the second run went 20 minutes without finishing a pass, and I stopped it. The supplies are pours on the power layer and on In7, and 1 track on In6, drawn by the design now; the first DRC after found 0 unconnected.
+Cost: 2 routes of 20 minutes with no result, and the time spent between them freeing pins the router did not need.
+Root cause: I routed because the skill's loop routes. A board this size carries its supplies in planes, and nothing before a route asked whether a net that spans the board belongs in a pour.
+Process: P4
+
+## M130 — 2026-11-11 — A sheet laid out with the library's y for the sheet's
+What happened: I placed the example motherboard's symbols on the sheet in shelves, each as tall as `kicadgen.symbol_box` said. That box is in the library's frame, y up; the sheet's y runs down. Symbols whose bodies sit off their origin overlapped their neighbours on the first sheet.
+Cost: 1 generate and 1 look at the sheet.
+Root cause: I read the box's numbers and not its frame. P24 asked for a table of positions and said nothing of where a computed position's size comes from.
+Process: P24
+
+## M131 — 2026-11-11 — A wide track from a narrow pad's centre
+What happened: Each power stage's switch node leaves its 0.8 mm pad by a 2.0 mm track. I started the track at the pad's centre, as P1 says; its round end reached 1.0 mm past the centre, over the stage's ground pad 0.4 mm away, and the DRC listed the switch nodes shorted to ground. The track starts at the pad's outer edge now.
+Cost: 1 generate and DRC round.
+Root cause: P1 step 5 says to end a track on the pad centre, which holds for a track no wider than its pad. Step 4 sizes a track from the pad and stops there.
+Process: P1
+
+## M132 — 2026-11-11 — A floor plan placed before the buses' paths
+What happened: The example motherboard's first version placed every big part from the microATX and CEM drawings and left each bus for its own version. Planning the memory and PCI Express buses for the next versions moved 4 groups of parts in a version I had called placed: the cooler's holes (65.2 mm apart across the socket, now 46) and 2 phases of the top row stood in the memory buses' combs, the M.2 sockets faced away from the lanes' trunk, and the memory slots moved 0.9 mm for a row of slot 1's capacitors.
+Cost: 2 placement rounds of the first version, each with a generate, a DRC and new renders.
+Root cause: I treated the floor plan as the drawings' positions alone. Where a bus can run decides where the parts it passes may stand, and P22 asked for no plan of the later versions before the first was placed.
+Process: P22

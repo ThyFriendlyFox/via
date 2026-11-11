@@ -1015,6 +1015,31 @@ def test_check_vias_holds_each_pair_of_nets_to_their_classes_clearance():
 
 
 @needs_libs
+def test_check_vias_finds_across_its_grid_what_holding_each_via_to_everything_finds():
+    """Each via is held only to the items filed in its own cell of a grid, every item filed within its
+    reach. A track whose ends are far from a via, 2 vias on either side of a cell's edge and a via near
+    a drilled pad are found as before, in the same order: the check compared every via with every item
+    and took a minute on a socket's 7000 vias."""
+    d = divider()
+    d.track("OUT", [(101.0, 102.0), (111.0, 102.0)], "B.Cu", width=0.2)  # its ends 5 mm from the via
+    d.via("VIN", 106.0, 102.4)
+    # The grid's cells are under 2 mm here, so a row of vias 0.5 mm apart over 2 mm crosses an edge.
+    for x in (101.0, 101.5, 102.0, 102.5, 103.0):
+        d.via("GND" if x % 1 else "VIN", x, 104.6)
+    for x, y in ((104.0, 108.0), (104.1, 107.6), (110.0, 109.0)):
+        d.via("VIN", x, y)
+    boxes = d.pad_boxes()
+    everything = [
+        f"{net} via at ({kicadgen.fmt(x)}, {kicadgen.fmt(y)}): {problem}"
+        for i, (net, (x, y), size, drill) in enumerate(d.vias)
+        for problem in d._via_problems(x, y, size / 2, drill, net, boxes, skip_via=i, same_net_vias=False)
+    ]
+    assert any("(106, 102.4): on a /OUT track" in p for p in everything), everything
+    assert any("on the GND via" in p for p in everything), everything
+    assert d.check_vias() == everything
+
+
+@needs_libs
 def test_design_command_reports_a_hand_via_problem_and_fails(tmp_path):
     design = tmp_path / "design.py"
     design.write_text(
@@ -1282,6 +1307,75 @@ def test_wired_schematic_labels_the_nets_it_is_told_to():
     d.sch_label_nets = ("OUT",)
     labels = re.findall(r'\(label "([^"]+)"', d.schematic())
     assert labels == ["OUT", "OUT", "OUT"]  # one on each of J1 pin 2, R1 pin 2, R2 pin 1
+
+
+BANKED = """(kicad_symbol_lib (version 20241209) (generator "test")
+  (symbol "TWO_BANKS" (pin_names (offset 0.762)) (exclude_from_sim no) (in_bom yes) (on_board yes)
+    (property "Reference" "U" (at 0 5.08 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "TWO_BANKS" (at 0 7.62 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
+    (property "Datasheet" "" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
+    (property "Description" "" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
+    (symbol "TWO_BANKS_0_1"
+      (rectangle (start -5.08 2.54) (end 5.08 -2.54)
+        (stroke (width 0.254) (type default)) (fill (type background)))
+      (rectangle (start 20.32 2.54) (end 30.48 -2.54)
+        (stroke (width 0.254) (type default)) (fill (type background)))
+      (text "BANK B" (at 25.4 3.81 0) (effects (font (size 1.27 1.27)))))
+    (symbol "TWO_BANKS_1_1"
+      (pin bidirectional line (at -7.62 0 0) (length 2.54)
+        (name "A1" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
+      (pin bidirectional line (at 7.62 0 180) (length 2.54)
+        (name "A2" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
+      (pin bidirectional line (at 17.78 0 0) (length 2.54)
+        (name "B1" (effects (font (size 1.27 1.27)))) (number "3" (effects (font (size 1.27 1.27)))))
+      (pin bidirectional line (at 33.02 0 180) (length 2.54)
+        (name "B2" (effects (font (size 1.27 1.27)))) (number "4" (effects (font (size 1.27 1.27))))))
+    (embedded_fonts no)))
+"""
+
+
+@needs_libs
+def test_a_symbol_drawn_as_banks_is_wired_between_its_banks(tmp_path):
+    """A part of a thousand pins is drawn as banks side by side, each with pins left and right. The
+    banks' bounding box covers the pins between 2 banks, and the wiring refused them; each bank is
+    blocked on its own now. A library symbol keeps its one body: a connector's pin rectangles sit
+    inside its outline."""
+    lib = tmp_path / "banked.kicad_sym"
+    lib.write_text(BANKED, encoding="utf-8")
+    d = divider()
+    d.sch_wires = True
+    d.symbol_dirs = {"T": lib}
+    d.add("U1", "T:TWO_BANKS", "TWO_BANKS", None, sch_at=(101.6, 50.8), nets={"2": "BUS", "3": "BUS"})
+    banks = kicadgen.symbol_banks(d.parts[-1].symbol)
+    assert banks == [(-5.08, -2.54, 5.08, 2.54), (20.32, -2.54, 30.48, 2.54)]
+    text = d.schematic()  # pins 2 and 3 face each other between the banks; before, it raised
+    wires = re.findall(r"\(wire\s*\(pts\s*\(xy ([\d.]+) ([\d.]+)\)\s*\(xy ([\d.]+) ([\d.]+)\)", text)
+    between = sorted(
+        (min(float(a), float(c)), max(float(a), float(c)))
+        for a, b, c, e in wires
+        if b == e == "50.8" and 109.22 <= min(float(a), float(c)) and max(float(a), float(c)) <= 119.38
+    )
+    assert between and between[0][0] == 109.22 and between[-1][1] == 119.38  # pin 2's end to pin 3's
+    assert all(p[1] == q[0] for p, q in zip(between, between[1:], strict=False))  # 1 unbroken run
+    conn = kicadgen.load_symbol("Connector_Generic:Conn_02x04_Odd_Even")
+    assert kicadgen.symbol_banks(conn) == [kicadgen.symbol_box(conn)]
+
+
+@needs_libs
+def test_a_sheet_of_a0_is_written_and_wired_across_its_width():
+    """A processor of a thousand pins and its memory slots need a sheet past A1; the wiring grid takes
+    the sheet's size, so a part at the far edge of A0 is wired, and a size with no paper is refused."""
+    d = divider()
+    d.sch_wires = True
+    d.sheet = "A0"
+    d.parts[0].sch_at = (1061.72, 50.8)  # past A1's 841 mm
+    text = d.schematic()
+    assert '(paper "A0")' in text
+    assert "(at 1061.72 50.8" in text
+    d.sheet = "B0"
+    with pytest.raises(ValueError, match="A0"):
+        d.schematic()
 
 
 @needs_libs

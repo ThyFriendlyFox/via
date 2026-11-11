@@ -415,7 +415,13 @@ def load_footprint(lib_id: str, dirs: dict[str, Path] | None = None) -> Footprin
 
 SCH_GRID = 1.27  # KiCad's connection grid: every pin end of a library symbol sits on it
 TEXT_ADVANCE = 1.34  # mm a character of 1.27 mm text takes in KiCad's font, read off a plotted "R1"
-SHEETS = {"A4": (297.0, 210.0), "A3": (420.0, 297.0), "A2": (594.0, 420.0), "A1": (841.0, 594.0)}
+SHEETS = {
+    "A4": (297.0, 210.0),
+    "A3": (420.0, 297.0),
+    "A2": (594.0, 420.0),
+    "A1": (841.0, 594.0),
+    "A0": (1189.0, 841.0),
+}
 STEPS = ((1, 0), (0, 1), (-1, 0), (0, -1))  # east, south, west, north on the sheet (y down)
 Cell = tuple[int, int]
 
@@ -464,6 +470,32 @@ def symbol_box(sym: Symbol) -> tuple[float, float, float, float]:
             xs.append(p.x + p.length * math.cos(a))
             ys.append(p.y + p.length * math.sin(a))
     return min(xs), min(ys), max(xs), max(ys)
+
+
+def symbol_banks(sym: Symbol) -> list[tuple[float, float, float, float]]:
+    """The rectangles of a symbol drawn as banks (2 or more rectangles, none touching another, and no
+    other drawing), each in library coordinates; for any other symbol its one body, symbol_box. A part
+    of a thousand pins is drawn as banks side by side, each with pins on its left and right; their
+    bounding box would cover the pins between 2 banks."""
+    rects: list[tuple[float, float, float, float]] = []
+    for unit in children(sym.node, "symbol"):
+        for g in unit[2:]:
+            if (
+                not isinstance(g, list)
+                or not g
+                or g[0] not in ("rectangle", "polyline", "arc", "bezier", "circle")
+            ):
+                continue  # pins, text
+            if g[0] != "rectangle":
+                return [symbol_box(sym)]
+            (x0, y0), (x1, y1) = (tuple(num(v) for v in atoms(child(g, k))[:2]) for k in ("start", "end"))
+            rects.append((min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1)))
+    apart = all(
+        a[2] < b[0] or b[2] < a[0] or a[3] < b[1] or b[3] < a[1]
+        for i, a in enumerate(rects)
+        for b in rects[i + 1 :]
+    )
+    return rects if len(rects) >= 2 and apart else [symbol_box(sym)]
 
 
 class SchRouter:
@@ -946,7 +978,7 @@ class Design:
     # one-pin nets, and a pin no wire can reach. Wiring needs every pin on the 1.27 mm grid.
     sch_wires: bool = False
     sch_label_nets: tuple[str, ...] = ()
-    sheet: str = "A3"  # paper: A4, A3, A2 or A1
+    sheet: str = "A3"  # paper: A4, A3, A2, A1 or A0 (a processor with a thousand pins and its slots)
     outline: tuple[float, float, float, float] = (100.0, 100.0, 125.0, 120.0)
     track_width: float = 0.25
     clearance: float = 0.2
@@ -1571,12 +1603,17 @@ class Design:
         first: bool = False,
         skip_via: int | None = None,
         same_net_vias: bool = True,
+        vias: list | None = None,
+        segments: list | None = None,
     ) -> list[str]:
         """What stops a via at (vx, vy), one line each; empty when it fits. A via passes every copper
         layer, so a pad or track of another net on any layer blocks it (M41). `first` stops at the
-        first problem; `skip_via` leaves out the design's own via of that index; `same_net_vias=False`
+        first problem; `skip_via` leaves out the via of that index in `vias`; `same_net_vias=False`
         holds a via of the same net only to the hole-to-hole rule, as the DRC does (the placers keep
-        their vias apart)."""
+        their vias apart). `vias` and `segments` are the design's own unless the caller gives the ones
+        near the via (`check_vias`)."""
+        vias = self.vias if vias is None else vias
+        segments = self.segments if segments is None else segments
         out: list[str] = []
         if not self.inside_outline(vx, vy, self.edge_clearance + r):
             out.append(f"closer than {fmt(self.edge_clearance)} mm to the board edge")
@@ -1634,7 +1671,7 @@ class Design:
                 )
             if first and out:
                 return out
-        for i, (net, (ox, oy), size, odrill) in enumerate(self.vias):
+        for i, (net, (ox, oy), size, odrill) in enumerate(vias):
             if i == skip_via:
                 continue
             copper = 0.0
@@ -1646,7 +1683,7 @@ class Design:
                 out.append(f"on the {net} via at ({fmt(ox)}, {fmt(oy)})")
                 if first:
                     return out
-        for n, (sx, sy), (ex, ey), w, layer in self.segments:
+        for n, (sx, sy), (ex, ey), w, layer in segments:
             if tracks and n != pcb_net and _seg_dist((vx, vy), (sx, sy), (ex, ey)) < reach(layer, n) + w / 2:
                 out.append(f"on a {n} track ({layer})")
                 if first:
@@ -1869,12 +1906,55 @@ class Design:
     def check_vias(self) -> list[str]:
         """Every via on the design that breaks a clearance, a keepout or the board edge, with what it
         hits: the hand-placed ones are checked before routing, where the DRC would find them only
-        after (M40, M41)."""
+        after (M40, M41).
+
+        Each via is shown only the pads, vias and tracks that could be too near it: every item is filed
+        in the cells of a grid within its reach, the largest distance any rule asks between it and a
+        via, and a via is held to the items filed in its own cell. The verdicts are those of holding it
+        to everything, in the same order; a socket's 7000 vias took a minute that way, and take a
+        second."""
         boxes = self.pad_boxes()
+        holes = self.hole_clearances()
+        sizes = [(s, d) for _, _, s, d in self.vias] or [(0.0, 0.0)]
+        classes = [self.clearance, *(spec["clearance"] for spec in self.net_classes.values())]
+        # A via of the largest size and drill, the largest clearance and hole clearance, the edge's
+        # clearance to a non-plated hole and the 0.25 mm hole to hole: no rule reaches farther.
+        base = (
+            max(s for s, _ in sizes)
+            + max(d for _, d in sizes)
+            + max(classes)
+            + max(holes.values(), default=0.0)
+            + self.edge_clearance
+            + 0.25
+        )
+        cell = max(base, 1.0)
+        grid: dict[tuple[int, int], tuple[list, list, list]] = {}
+
+        def file(kind: int, item, x1: float, y1: float, x2: float, y2: float, reach: float) -> None:
+            for gx in range(math.floor((x1 - reach) / cell), math.floor((x2 + reach) / cell) + 1):
+                for gy in range(math.floor((y1 - reach) / cell), math.floor((y2 + reach) / cell) + 1):
+                    grid.setdefault((gx, gy), ([], [], []))[kind].append(item)
+
+        for b in boxes:
+            file(0, b, b.x1, b.y1, b.x2, b.y2, base + b.drill)
+        for i, (_, (x, y), _, _) in enumerate(self.vias):
+            file(1, i, x, y, x, y, base)
+        for i, (_, (sx, sy), (ex, ey), w, _) in enumerate(self.segments):
+            file(2, i, min(sx, ex), min(sy, ey), max(sx, ex), max(sy, ey), base + w)
         out = []
         for i, (net, (x, y), size, drill) in enumerate(self.vias):
+            near_b, near_v, near_s = grid[(math.floor(x / cell), math.floor(y / cell))]
             for problem in self._via_problems(
-                x, y, size / 2, drill, net, boxes, skip_via=i, same_net_vias=False
+                x,
+                y,
+                size / 2,
+                drill,
+                net,
+                near_b,
+                skip_via=near_v.index(i),
+                same_net_vias=False,
+                vias=[self.vias[j] for j in near_v],
+                segments=[self.segments[j] for j in near_s],
             ):
                 out.append(f"{net} via at ({fmt(x)}, {fmt(y)}): {problem}")
         return out
@@ -2056,9 +2136,12 @@ class Design:
         return x, y, round(dx), round(dy)
 
     @staticmethod
-    def _sheet_box(sym: Symbol, at: tuple[float, float], rot: int) -> tuple[float, float, float, float]:
-        """A symbol's body on the sheet (y down) at a position and angle."""
-        x0, y0, x1, y1 = symbol_box(sym)
+    def _sheet_box(
+        sym: Symbol, at: tuple[float, float], rot: int, box: tuple[float, float, float, float] | None = None
+    ) -> tuple[float, float, float, float]:
+        """A symbol's body (or `box`, a part of it in library coordinates) on the sheet (y down) at a
+        position and angle."""
+        x0, y0, x1, y1 = box or symbol_box(sym)
         pts = [rot_vec(x, -y, rot) for x, y in ((x0, y0), (x1, y0), (x1, y1), (x0, y1))]
         xs = [at[0] + p[0] for p in pts]
         ys = [at[1] + p[1] for p in pts]
@@ -2361,9 +2444,10 @@ class Design:
         pin_ends: set[Cell] = set()
         for part in self.parts:
             sym = part.symbol
-            box = self._sheet_box(sym, part.sch_at, part.sch_rot)
-            area((box[0] - g, box[1] - g, box[2] + g, box[3] + g), SchRouter.NEAR)
-            area(box)
+            for bank in symbol_banks(sym):  # a banked symbol's rectangles each, else its body
+                box = self._sheet_box(sym, part.sch_at, part.sch_rot, bank)
+                area((box[0] - g, box[1] - g, box[2] + g, box[3] + g), SchRouter.NEAR)
+                area(box)
             sides: set[tuple[int, int]] = set()
             for pin in sym.pins:
                 if pin.hidden or not pin.number:

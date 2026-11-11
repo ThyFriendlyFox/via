@@ -205,6 +205,28 @@ def test_copper_layers_and_render_views():
         cli.render_views("layers,photo")
 
 
+def test_a_board_whose_stackup_names_its_colours_is_drawn_in_them(tmp_path):
+    """KiCad's 3D render takes its preset's colours unless told to take the stackup's: a black board
+    came out olive. A colour outside the stackup (a zone's, a layer's in the editor) does not count."""
+    cli = load_cli_module()
+    assert cli.stackup_colors(BOARDS / "pass-rc-divider" / "rc_divider.kicad_pcb") is False
+    black = tmp_path / "black.kicad_pcb"
+    black.write_text(
+        '(kicad_pcb (setup (stackup (layer "F.SilkS" (type "Top Silk Screen") (color "White"))\n'
+        '  (layer "F.Mask" (type "Top Solder Mask") (color "Black") (thickness 0.01))))\n'
+        '  (net 0 ""))\n',
+        encoding="utf-8",
+    )
+    assert cli.stackup_colors(black) is True
+    plain = tmp_path / "plain.kicad_pcb"
+    plain.write_text(
+        '(kicad_pcb (setup (stackup (layer "F.Mask" (type "Top Solder Mask") (thickness 0.01))))\n'
+        '  (gr_text "a (color \\"Red\\")" (at 0 0)))\n',
+        encoding="utf-8",
+    )
+    assert cli.stackup_colors(plain) is False
+
+
 def test_render_refuses_an_unknown_view(tmp_path):
     code, records = run("render", BOARDS / "pass-rc-divider", "--out", tmp_path, "--views", "photo")
     assert code == 2 and records == []

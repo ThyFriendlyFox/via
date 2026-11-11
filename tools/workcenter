@@ -1879,6 +1879,21 @@ def copper_layers(pcb: Path) -> list[str]:
     return re.findall(r"\(\s*\d+\s+\"([^\"]+\.Cu)\"", table.group(1)) if table else []
 
 
+def stackup_colors(pcb: Path) -> bool:
+    """Whether the board's stackup names a colour for a layer (a black mask, a white silkscreen). KiCad's
+    3D render draws its preset's colours unless told to take the stackup's."""
+    text = pcb.read_text(encoding="utf-8", errors="replace")
+    start = text.find("(stackup")
+    if start < 0:
+        return False
+    depth, end = 0, start
+    for end in range(start, len(text)):
+        depth += {"(": 1, ")": -1}.get(text[end], 0)
+        if depth == 0:
+            break
+    return re.search(r"\(color\s+\"", text[start : end + 1]) is not None
+
+
 def png_size(png: Path) -> tuple[int, int]:
     """Width and height from a PNG's header."""
     head = png.read_bytes()[:24]
@@ -1939,6 +1954,8 @@ def gate_render(
     failures: list[str] = []
     skipped: list[str] = []
     rsvg = shutil.which("rsvg-convert")
+    # A board whose stackup names its colours is drawn in them; any other in KiCad's preset, as before.
+    own_colors = ["--use-board-stackup-colors"] if project.pcb and stackup_colors(project.pcb) else []
 
     def to_png(svg: Path, png: Path, w: int, background: str = "white") -> bool:
         if not rsvg:
@@ -1966,6 +1983,7 @@ def gate_render(
             "opaque",
             "--quality",
             "high",
+            *own_colors,
             *extra,
             project.pcb,
         ]

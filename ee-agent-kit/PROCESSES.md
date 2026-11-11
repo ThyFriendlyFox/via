@@ -31,7 +31,9 @@ must clear or land on a pad.
 4. Track widths come from the pad: the widest track into a pad is pitch
    minus pad width minus 2 x clearance. A sense tap on a heavy net is
    drawn thinner with `width=`.
-5. End a track on the pad centre. Route one net, run `workcenter drc .`,
+5. End a track on the pad centre, when the track is no wider than the
+   pad. A wider track starts at the pad's edge on the side it leaves by:
+   its round end reaches half its width past where it starts (M131). Route one net, run `workcenter drc .`,
    read every clearance line it prints, fix, then the next net.
 6. A via is on every copper layer. Before writing `d.via`, look at what
    sits on the other face and the inner layers at that spot; then
@@ -137,6 +139,12 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
    and a `--timeout` of an hour, in the background. FreeRouting writes its
    session only when it ends, so a run the timeout stops leaves nothing:
    60 passes on 140 parts ran past the 15-minute default (M128).
+7. A net that spans the board and carries a supply (a 12 V or 3.3 V
+   rail to slots and connectors far apart, a regulator's input across a
+   row of stages) is a pour on a layer the design gives it, drawn by the
+   design, and goes to the router as a plane net: 1 pin, its vias
+   obstacles. A motherboard's 4 supply nets as tracks ran 20 minutes
+   without finishing a pass, twice (M129).
 
 Done when: the DRC after the route lists 0 errors, or every remaining
 error is named in the next design change.
@@ -633,6 +641,12 @@ before the first edit of a request.
    files or a datasheet.
 6. `git diff --stat <its last commit> -- <previous version>/` shows one
    file, its README, with one line changed: the banner of step 2.
+7. Before the first version of a board whose later versions add buses
+   (a processor's memory and expansion lanes), plan each bus's path: which
+   layers, where it turns, where its vias stand. Then place what lies in
+   those paths. Placed from the mechanical drawings alone, the first
+   version of a motherboard moved 4 groups of parts while its buses were planned
+   (M132).
 
 Done when: the request's edits sit only in the new folder, the previous
 folder matches its commit but for the banner, the index and CLAUDE.md name
@@ -687,6 +701,8 @@ close-out.
    positions and angles (`SCHEMATIC`), in blocks the way the signal flows:
    power left to right along the top, each support part beside the pin it
    serves, connectors facing the circuit they feed.
+   A position computed from a symbol's size reads `kicadgen.symbol_box`,
+   which is in the library's frame, y up; the sheet's y runs down (M130).
 2. Labels only for nets that cross the whole sheet (`sch_label_nets`), each
    named in a comment; every other net is a wire.
 3. Check the drawing against the design: ERC 0 errors and 0 warnings, and

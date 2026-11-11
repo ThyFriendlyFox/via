@@ -20,7 +20,8 @@ Add these:
 | Host | Used by |
 |---|---|
 | `ppa.launchpadcontent.net` | KiCad 10 packages |
-| `keyserver.ubuntu.com` | `add-apt-repository` fetches the PPA signing key |
+| `keyserver.ubuntu.com` | `install.sh` fetches the PPA signing key |
+| `api.launchpad.net` | the same key from Launchpad, when the keyserver does not answer |
 | `release-assets.githubusercontent.com` | FreeRouting JAR download |
 
 ## Time budget

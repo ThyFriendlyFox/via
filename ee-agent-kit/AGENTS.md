@@ -64,7 +64,7 @@ provides them. `python3 tools/workcenter doctor` says what is present.
 
 | Area | Why it bites |
 |---|---|
-| `install.sh` PPA step | `add-apt-repository` needs the system python's `apt_pkg`. Images with another default `python3` break it. The script writes the sources file and verifies the key fingerprint itself. Keep it that way. |
+| `install.sh` PPA step | `add-apt-repository` needs the system python's `apt_pkg`. Images with another default `python3` break it. The script writes the sources file and verifies the key fingerprint itself. Keep it that way. keyserver.ubuntu.com resets connections from some networks; the key then comes from Launchpad's API, checked against the same fingerprint. |
 | `install.sh` package list | `kicad-packages3d` is 3.3 GB installed and pushes the cloud setup past the 5-minute snapshot window. Never add it to the default list. |
 | `tools/workcenter` exit codes | `--exit-code-violations` makes `kicad-cli` return 5 on violations. The CLI treats 0 and 5 as "ran" and parses the JSON report. Every other code is an engine error. |
 | `tools/workcenter` doctor | `java -version` prints to stderr, and some images inject `JAVA_TOOL_OPTIONS` with a proxy address. The version regex anchors on `version "`. |
