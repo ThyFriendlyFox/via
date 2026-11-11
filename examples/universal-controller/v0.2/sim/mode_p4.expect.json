@@ -1,0 +1,7 @@
+{
+  "ratio": {
+    "min": 0.2933,
+    "max": 0.3733,
+    "source": "position 4 (Switch) at 2/6 of full scale, within 0.04: half the 0.0833 margin to the decoder's thresholds"
+  }
+}

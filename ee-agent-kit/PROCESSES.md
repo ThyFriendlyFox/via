@@ -141,6 +141,13 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
    gives up" before routing again. More passes give the same board. Draw the
    whole net that stays open with `d.track`, pad to pad, along a path an
    earlier route of the board found where there is one, then route (M132).
+8. On a shaped outline, render the unrouted board once and look before the
+   first route. The generator's part check and the DRC read the outline's
+   bounding box, so a part off a notch or a grip says nothing (M135).
+9. When 2 routes leave connections open at the same chip, add room before
+   drawing links: inner layers, narrower classes for the nets that enter its
+   pins, its decoupling moved off the pin rows. Draw a link by hand only
+   when 1 or 2 are left in different places (M136).
 
 Done when: the DRC after the route lists 0 errors, or every remaining
 error is named in the next design change.

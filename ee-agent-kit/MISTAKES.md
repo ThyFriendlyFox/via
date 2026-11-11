@@ -817,3 +817,15 @@ What happened: Signet's tiles name a black mask, a white legend and ENIG in thei
 Cost: 1 round of pictures, and a test and a fix in the workcenter.
 Root cause: The render commands were written from kicad-cli's defaults and checked only on green boards.
 Process: P23
+
+## M135 — 2026-11-11 — A back paddle placed off the board, and no check said so
+What happened: On Rosetta v0.2's controller-shaped outline I placed the left back paddle at (110, 172), below the left grip's edge. The generator printed no `part:` line and the DRC listed nothing about it: both read the outline's bounding box, and the point is inside the box. A 3D render before the route showed the switch floating off the board, and I moved it.
+Cost: 1 render and 1 placement round; no route ran with it.
+Root cause: I placed by numbers on a shaped board without drawing it first, and took the silence of the part check for a check of the shape.
+Process: P4
+
+## M136 — 2026-11-11 — 4 routes of hand-drawn links on a board that needed more layers
+What happened: Rosetta v0.2 on 4 layers left 2 to 6 connections open after each route, most of them at the RP2040's 0.4 mm pins. I drew each open link by hand and routed again, 4 times; each new link moved the router's choices and opened others. 6 layers and narrower rail and motor classes left 1 link open, which 1 hand route closed.
+Cost: about 1 hour of routes.
+Root cause: I treated each open link as the problem. The same chip's pins failing route after route said the board had too little room round it, which a link drawn by hand does not add.
+Process: P4

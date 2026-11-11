@@ -39,6 +39,22 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-11 — Rosetta v0.2: the controller as a controller's own board
+
+The owner sent a picture of an Xbox 360 controller's main board and asked for that: the
+joysticks, the Hall-effect sensors and the Bluetooth module on a curved board. v0.1 had carried
+modules on cables. v0.2 has the thumbsticks soldered on, linear Hall sensors under the triggers,
+right-angle bumpers on the shoulder horns, rumble motors at the grips and both USB-C ports in a
+tab at the bottom. KiCad has no thumbstick footprint, so I read ALPS's mounting-hole drawing for
+the RKJXV122400R and wrote one from it; Hall-effect sticks are made to drop into those holes. A
+render before the route showed a back paddle off the board, which no check had seen (M135). On 4
+layers every route left 2 to 6 of the RP2040's links open, and I chased them by hand for 4 routes
+before I gave the board 6 layers and narrower supply tracks (M136). Then 1 link was left, and 1
+hand route closed it. The owner also started the other example boards in other sessions.
+
+Evidence: `workcenter gates examples/universal-controller/v0.2` GREEN with 6 warnings
+(silkscreen at the edge); `render --strict` naming no part without a body.
+
 ## 2026-11-11 — A second example project: a mouse worn as a ring
 
 The owner asked for an example of what people can make with the
