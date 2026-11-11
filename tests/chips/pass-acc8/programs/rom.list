@@ -1,0 +1,6 @@
+# The ROM's 4 slots: <slot> <program>. `python3 acc8.py rom` writes
+# rtl/acc8_rom.v from this list; the boot pins pick the slot at reset.
+0 sum.asm
+1 mul.asm
+2 gcd.asm
+3 crc.asm

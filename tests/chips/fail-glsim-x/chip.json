@@ -1,0 +1,43 @@
+{
+  "top": "counter",
+  "pdk": {
+    "name": "sky130A",
+    "library": "sky130_fd_sc_hd",
+    "version": "1.0.470-0-g6d4d117",
+    "source": "`workcenter doctor` on 2026-11-11, its line `pdk sky130A`"
+  },
+  "corners": {
+    "temperature": {
+      "values": [0, 70],
+      "source": "the fixture's premise: the commercial range, 0 to 70 C"
+    },
+    "supply": {
+      "nominal": 1.8,
+      "tolerance": 0.05,
+      "source": "the fixture's premise: the library's 1.8 V supply within 5 %"
+    }
+  },
+  "floorplan": {
+    "die_um": [50, 50],
+    "source": "the fixture's premise: a block of 50 um by 50 um"
+  },
+  "limits": {
+    "utilization": {
+      "max": 0.5,
+      "source": "the fixture's premise: the cells take half of the core at most, which leaves the router room"
+    },
+    "clock_skew_ns": {
+      "max": 0.5,
+      "source": "the fixture's premise: a skew of 0.5 ns at most, a fortieth of the 20 ns clock period"
+    }
+  },
+  "answers": {
+    "flops_without_reset": [
+      {
+        "match": "count[*]",
+        "why": "the initial block sets the count to 0 before the first clock edge",
+        "evidence": "tb_counter: errors = 0 and x_outputs = 0 on the RTL"
+      }
+    ]
+  }
+}
