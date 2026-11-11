@@ -456,6 +456,7 @@ A project may add gates. It may not remove these.
 | Engine environment | `/opt/workcenters/ee/env.sh` |
 | Tool cache | the session scratchpad; the engines write nothing outside the output directory |
 | Project output | `<project>/build/` (reports, `fab/`, `sim/`, `route/`, `render/`) |
+| Chip project output | `<project>/build/gates.json`, the report, and `<project>/build/chip/`: 1 folder for each gate that ran, and `hashes.json` with the hash of each file a gate wrote or judged. `<gate>/passed.json` is there when LAYOUT, STA, DRC, ANTENNA or LVS passed: the hash of each file the gate judged. `tapeout/` holds the files EXPORT hands out, `manifest.json` and the judging gates' reports; a back gate that runs again takes it away. `render/` holds the pictures of `workcenter chip render`. |
 
 ## Project requirements
 

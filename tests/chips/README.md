@@ -29,8 +29,9 @@ acts in another way.
 DRC, ANTENNA, LVS and EXPORT have no failing fixture. A fixture holds RTL,
 and the engines make its layout: no line of RTL asks for a spacing error, a
 wire that collects charge, a swapped net or a file changed after a gate
-judged it. Real reports of the engines hold the failures of those 4 gates,
-under `tests/chips/samples/back/`.
+judged it. Real reports of the engines hold the failures of DRC, ANTENNA
+and LVS, under `tests/chips/samples/back/`. Runs in
+`tests/test_chipback.py` hold what EXPORT refuses.
 
 ## Run one
 
