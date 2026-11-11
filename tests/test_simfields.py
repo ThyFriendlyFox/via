@@ -156,6 +156,21 @@ R1 IN OUT 1
     assert kicadgen.spice_models(LIBRARY)["mix"] == ("subckt", ["IN", "GND", "EN", "OUT"])
 
 
+def test_a_librarys_includes_are_read_with_it(tmp_path):
+    """KiCad finds a model that a library takes from another file; so does the check. A loop of
+    includes ends, and a file that is not there adds nothing."""
+    (tmp_path / "inner").mkdir()
+    (tmp_path / "outer.lib").write_text(
+        '* outer\n.include "inner/mix.lib"\n.lib inner/none.lib\n', encoding="utf-8"
+    )
+    (tmp_path / "inner" / "mix.lib").write_text(
+        ".subckt MIX a b\n.ends\n.include ../outer.lib\n", encoding="utf-8"
+    )
+    text = kicadgen.spice_library_text(tmp_path / "outer.lib")
+    assert kicadgen.spice_models(text) == {"mix": ("subckt", ["a", "b"])}
+    assert kicadgen.spice_library_text(tmp_path / "none.lib") == ""
+
+
 # ------------------------------------------------- what the design writes
 
 
@@ -213,6 +228,14 @@ def test_the_fields_kicad_reads_are_written_on_each_symbol():
     assert '(text ".param k_in=0.3"' in sch
     severities = json.loads(d.project())["erc"]["rule_severities"]
     assert severities["simulation_model_issue"] == "error"
+
+
+@needs_libs
+def test_pin_numbers_given_as_numbers_are_taken_as_text():
+    d = circuit()
+    d.sim("D1", library="models/test.lib", name="DX", pins={1: "K", 2: "A"})
+    assert d.sims["D1"]["pins"] == {"1": "K", "2": "A"} and d.sim_problems() == []
+    assert placed_symbols(d.schematic())["D1"]["Sim.Pins"] == "1=K 2=A"
 
 
 @needs_libs
@@ -367,6 +390,22 @@ def test_kicad_writes_the_netlist_the_design_declares(tmp_path):
         "R4 /VIN /DRAIN 1k",
         "XU1 /VIN GND /MID /OUT MIX",
     ]
+
+
+@needs_libs
+@needs_kicad
+def test_kicad_finds_a_model_through_a_librarys_include_as_the_check_does(tmp_path):
+    d = declared()
+    d.sims["U1"]["library"] = "models/outer.lib"
+    sch = project(tmp_path, d)
+    (tmp_path / "models" / "inner").mkdir()
+    (tmp_path / "models" / "outer.lib").write_text('* outer\n.include "inner/mix.lib"\n', encoding="utf-8")
+    mix = LIBRARY[LIBRARY.index(".subckt MIX") : LIBRARY.index(".model DX")]
+    (tmp_path / "models" / "inner" / "mix.lib").write_text(mix, encoding="utf-8")
+    assert d.sim_problems(tmp_path) == []
+    code, lines = export(sch)
+    assert code == 0 and "XU1 /VIN GND /MID /OUT MIX" in lines
+    assert f'.include "{tmp_path}/models/outer.lib"' in lines
 
 
 @needs_libs

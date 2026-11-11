@@ -477,6 +477,14 @@ def run_corners(
     varied, problems, uncovered = sc.find_varied(text, spec.tolerance)
     failures = [f"{deck.stem}: {p}" for p in problems]
     warnings = [f"{deck.stem}: no tolerance covers {', '.join(uncovered)}"] if uncovered else []
+    pinned = sc.pinned_temperatures(text) if spec.temperatures else []
+    if pinned:
+        # ngspice names the circuit's temperature for the run, so the read-back below cannot see it.
+        failures.append(
+            f"{deck.stem}: {', '.join(pinned)} is held at its own temperature (temp=), so no temperature "
+            f"corner moves it: remove the setting, or set the deck's temperature to false in "
+            f"{sc.CORNERS_FILE} with why"
+        )
 
     def one(corner) -> tuple:
         where = folder / corner.id
@@ -629,6 +637,11 @@ def gate_sim(
         written = ngspice_run(prepared or deck, log, sim_out)
         measures = written["measures"]
         warned += [f"{deck.stem}: ngspice: {ln}" for ln in written["unsound"]]
+        # A value ngspice reads as another number than it looks (`4k7` is 4k) fails the deck: every
+        # result that rests on it is of another circuit.
+        failures += [
+            f"{deck.stem}: {p}" for p in sc.misread_values(deck.read_text(encoding="utf-8", errors="replace"))
+        ]
         expect, expect_problems = read_expect(sim_dir / f"{deck.stem}.expect.json")
         failures += [f"{deck.stem}.expect.json: {p}" for p in expect_problems]
         expects[deck.stem] = expect

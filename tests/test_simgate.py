@@ -343,6 +343,32 @@ def test_a_corner_ngspice_does_not_finish_fails_and_names_its_error_and_its_log(
     assert "out of interval" in (corners / "R2-" / "ngspice.log").read_text(encoding="utf-8")
 
 
+RKM = """* a divider with a value written the way a schematic writes 4.7 k
+V1 in 0 DC 5
+R1 in out 4k7
+R2 out 0 4.7k
+.control
+op
+let vout = v(out)
+print vout
+.endc
+.end
+"""
+
+
+@needs_ngspice
+def test_a_value_ngspice_reads_as_another_number_fails_its_deck(tmp_path):
+    """ngspice takes `4k7` for 4k and says nothing: the output is 5 x 4.7 / 8.7 = 2.7011 V where the
+    author meant 2.5 V. The bound here is wide enough to hold either; the deck fails on the value."""
+    proj = project(tmp_path, {"rkm": RKM}, {"rkm": {"vout": {"min": 2.0, "max": 3.0}}})
+    code, records = run("sim", proj, "--out", tmp_path / "o")
+    assert code == 1
+    assert records[0]["details"]["decks"]["rkm"]["measures"]["vout"] == pytest.approx(2.701149, abs=1e-6)
+    assert records[0]["details"]["failures"] == [
+        "rkm: R1: ngspice reads the value 4k7 as 4k: it drops a digit after the scale letter. Write 4.7k"
+    ]
+
+
 @needs_ngspice
 def test_a_node_that_floats_is_a_warning_and_fails_a_strict_run(tmp_path):
     proj = project(tmp_path, {"floating": FLOATING}, {"floating": {"vout": {"min": 2.4, "max": 2.6}}})

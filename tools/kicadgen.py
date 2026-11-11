@@ -854,6 +854,24 @@ def spice_models(text: str) -> dict[str, tuple[str, list[str]]]:
     return found
 
 
+def spice_library_text(path: Path, seen: set[Path] | None = None) -> str:
+    """A SPICE library's text with the text of each file it includes after it (`.include file`,
+    `.inc file`, `.lib file` with no section), found from the including file's folder. A model a
+    library takes from another file is then found where KiCad finds it."""
+    seen = set() if seen is None else seen
+    path = path.resolve()
+    if path in seen or not path.is_file():
+        return ""
+    seen.add(path)
+    text = path.read_text(encoding="utf-8", errors="replace")
+    more = []
+    for line in text.splitlines():
+        words = line.split()
+        if len(words) == 2 and words[0].lower() in (".include", ".inc", ".lib"):
+            more.append(spice_library_text(path.parent / words[1].strip("\"'"), seen))
+    return "\n".join([text, *more])
+
+
 @dataclass
 class Part:
     ref: str
@@ -1101,7 +1119,10 @@ class Design:
         self.sims[ref] = {
             "library": library,
             "name": name,
-            "pins": dict(pins) if pins is not None else None,
+            # pin numbers and nodes are text to KiCad: `{1: "IN"}` means `{"1": "IN"}`
+            "pins": None
+            if pins is None
+            else {str(n): None if node is None else str(node) for n, node in pins.items()},
             "params": params,
             "device": device,
             "kind": kind,
@@ -1729,7 +1750,7 @@ class Design:
             if not path.is_file():
                 out.append(f"{ref}: library {library} is not a file in {base}")
                 continue
-            found = spice_models(path.read_text(encoding="utf-8", errors="replace")).get(name.lower())
+            found = spice_models(spice_library_text(path)).get(name.lower())
             if found is None:
                 out.append(f"{ref}: {library} holds no .subckt or .model named {name}")
                 continue

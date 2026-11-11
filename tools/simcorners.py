@@ -48,9 +48,10 @@ TOLERANCE_KEYS = (*KINDS, "parts", "source")
 MAX_RUNS = 10000  # Monte Carlo runs one deck may ask for
 
 # A SPICE number: digits, an optional exponent, an optional scale suffix, then letters ngspice ignores
-# (10uF, 1kOhm). M is milli and Meg is mega; F alone is femto.
+# (10uF, 1kOhm). M is milli and Meg is mega; F alone is femto and A alone is atto (ngspice 42 reads
+# `5a` as 5e-18).
 NUMBER_RE = re.compile(
-    r"^([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)(meg|mil|[tgkmunpf])?[a-zA-Z]*$", re.IGNORECASE
+    r"^([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)(meg|mil|[tgkmunpfa])?[a-zA-Z]*$", re.IGNORECASE
 )
 SCALE = {
     "t": 1e12,
@@ -63,7 +64,14 @@ SCALE = {
     "n": 1e-9,
     "p": 1e-12,
     "f": 1e-15,
+    "a": 1e-18,
 }
+# A value with a digit after its scale letter, the way a schematic writes 4.7 k: ngspice 42 reads
+# `4k7` as 4k and says nothing.
+DROPPED_DIGITS_RE = re.compile(
+    r"^([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)(meg|mil|[tgkmunpfa])(\d+)[a-zA-Z]*$", re.IGNORECASE
+)
+TOKEN_RE = re.compile(r"[^\s=]+|=")
 # A deck element named the way a board names its parts: the kind's letter and a number.
 REFERENCE_RE = re.compile(r"^[RCL]\d+$", re.IGNORECASE)
 ELEMENT_RE = re.compile(r"^(\s*)(\S+)(\s+)(\S+)(\s+)(\S+)(\s+)(\S+)")
@@ -331,6 +339,43 @@ def control_lines(lines: list[str]) -> list[int]:
     return out
 
 
+def logical_tokens(lines: list[str], i: int) -> list[tuple[int, int, int, str]]:
+    """The tokens of the netlist line at index i with its continuation lines, as (line, start, end,
+    text) in order. ngspice joins every following line that starts with `+`, and passes over a comment
+    or an empty line between them; a `;` ends a line. `=` is a token of its own, so `r=10k`, `r =10k`
+    and `r = 10k` read alike."""
+    out: list[tuple[int, int, int, str]] = []
+    j = i
+    while j < len(lines):
+        raw = lines[j]
+        begin = 0
+        if j > i:
+            s = raw.strip()
+            if not s or s.startswith("*"):
+                j += 1
+                continue
+            if not s.startswith("+"):
+                break
+            begin = raw.index("+") + 1
+        cut = raw.find(";", begin)
+        body = raw[begin : cut if cut >= 0 else len(raw)]
+        out += [(j, begin + m.start(), begin + m.end(), m.group()) for m in TOKEN_RE.finditer(body)]
+        j += 1
+    return out
+
+
+def value_place(tokens: list[tuple[int, int, int, str]]) -> tuple[int, int, int, str] | None:
+    """Where an R, C or L element writes its value among its tokens: the fourth token, or the one
+    after `r =` (`c =`, `l =`) when the fourth is the kind's own parameter. None for an element with
+    no fourth token."""
+    if len(tokens) < 4:
+        return None
+    kind = tokens[0][3][0].lower()
+    if len(tokens) >= 6 and tokens[3][3].lower() == kind and tokens[4][3] == "=":
+        return tokens[5]
+    return tokens[3]
+
+
 def deck_values(lines: list[str]) -> tuple[dict[str, list[tuple[Site | None, str]]], dict[str, list]]:
     """Where a deck writes each value: (elements, params). Each maps an upper-case name to its places,
     in the deck's order: for an R, C or L element (the place of its fourth token, or None when that is
@@ -350,11 +395,13 @@ def deck_values(lines: list[str]) -> tuple[dict[str, list[tuple[Site | None, str
             continue
         if line.strip()[0].upper() not in KINDS:
             continue
-        m = ELEMENT_RE.match(line)
-        if m:
-            value = spice_number(m.group(8))
-            site = None if value is None else Site(i, m.start(8), m.end(8), value)
-            elements.setdefault(m.group(2).upper(), []).append((site, m.group(8)))
+        tokens = logical_tokens(lines, i)
+        place = value_place(tokens)
+        if place:
+            j, start, end, token = place
+            value = spice_number(token)
+            site = None if value is None else Site(j, start, end, value)
+            elements.setdefault(tokens[0][3].upper(), []).append((site, token))
     for i in control_lines(lines):
         m = ALTER_RE.match(lines[i])
         if m and m.group(1).upper() in elements:
@@ -453,6 +500,48 @@ def held(text: str, varied: list[Varied]) -> list[str]:
             sites += [s for s in params.get((braced.group(1) if braced else token).upper(), []) if s]
         if any(s.value != 0 for s in sites) and not any(s in moving for s in sites):
             out.append(names[key])
+    return out
+
+
+def pinned_temperatures(text: str) -> list[str]:
+    """The devices a deck holds at a temperature of their own: `temp=` on a device's line or its
+    continuation lines, or `alter <device> temp = ...` in `.control`. A temperature corner sets the
+    circuit's temperature and ngspice names that one for the analysis, while such a device stays
+    where the deck put it: the run is not at the corner's temperature for the part that matters.
+    `dtemp=` is a difference from the circuit's temperature and moves with it."""
+    lines = text.split("\n")
+    pinned: list[str] = []
+    for i in netlist_lines(lines):
+        tokens = [t[3] for t in logical_tokens(lines, i)]
+        if not tokens or not tokens[0][0].isalpha():
+            continue
+        if any(a.lower() == "temp" and b == "=" for a, b in zip(tokens[1:], tokens[2:], strict=False)):
+            pinned.append(tokens[0])
+    for i in control_lines(lines):
+        m = re.match(r"^\s*alter\s+@?([A-Za-z]\w*)(?:\[temp\]|\s+temp)\s*=", lines[i], re.IGNORECASE)
+        if m:
+            pinned.append(m.group(1))
+    return list(dict.fromkeys(pinned))
+
+
+def misread_values(text: str) -> list[str]:
+    """R, C and L values ngspice reads as another number than they look: a digit after the scale
+    letter (`4k7`, `2n2`) is dropped, so `4k7` is 4k. One line for each, with the value ngspice takes."""
+    lines = text.split("\n")
+    out: list[str] = []
+    for i in netlist_lines(lines):
+        if lines[i].strip()[0].upper() not in KINDS:
+            continue
+        tokens = logical_tokens(lines, i)
+        place = value_place(tokens)
+        m = DROPPED_DIGITS_RE.match(place[3]) if place else None
+        if m:
+            number, scale, digits = m.groups()
+            meant = f"{number}.{digits}{scale}" if number.isdigit() else "the number with its point"
+            out.append(
+                f"{tokens[0][3]}: ngspice reads the value {place[3]} as {number}{scale}: it drops a digit "
+                f"after the scale letter. Write {meant}"
+            )
     return out
 
 

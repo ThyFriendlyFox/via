@@ -131,6 +131,19 @@ HINTS: list[tuple[str, str, str]] = [
         f'{SIMULATE}, "Corners"',
     ),
     (
+        r"^sim: .*is held at its own temperature",
+        "A part's line fixes its temperature (temp=27), so a hot or a cold run leaves it there. Remove "
+        "the setting so the part follows the circuit, or set the deck's temperature to false in "
+        "sim/corners.json with why.",
+        f'{SIMULATE}, "Corners"',
+    ),
+    (
+        r"^sim: .*ngspice reads the value",
+        "Write the value the way ngspice reads a number: 4.7k, not 4k7. It drops a digit after the scale "
+        "letter and says nothing.",
+        f'{SIMULATE}, "Steps"',
+    ),
+    (
         r"^sim: \S+?:\S+=None ",
         "The deck does not print that measure. Print it as `name = value` (a complex value prints none: "
         "take its magnitude with vm()), or correct the name in the expect file.",

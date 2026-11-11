@@ -75,6 +75,7 @@ def write_corners(sim: Path, spec: dict) -> None:
         ("1Meg", 1e6),
         ("1M", 1e-3),  # M is milli in SPICE; mega is Meg
         ("1F", 1e-15),  # F alone is femto, not farad
+        ("5a", 5e-18),  # A alone is atto: ngspice 42 prints @r8[resistance] = 5.000000e-18 for `5a`
         ("100nF", 100e-9),
         ("1kOhm", 1e3),
         ("1e-9", 1e-9),
@@ -240,6 +241,79 @@ def test_a_corner_rewrites_each_value_in_place_and_sets_the_temperature_before_c
     # an element this corner does not move, and a source, stay as written
     assert lines[13:15] == ["alter rload = 2Meg", "alter v1 dc=4.2"]
     assert len(lines) == len(DECK.split("\n")) + 1
+
+
+# Every way ngspice 42 was seen to read an element's value: on a continuation line, behind the
+# kind's own parameter with and without spaces, behind a comment line between continuations.
+FORMS = """* values written the long way
+V1 in 0 DC 5
+R1 in out
++ 10k
+R2 out 0 r=20k
+R3 out 0 r = 30k ; a comment
+C1 out 0 c=10u
+L1 out x l = 10m
+R5 x 0
++ r=2k
+* a comment between
++ tc1=2m
+R9 in w 4k7
+.end
+"""
+
+
+def test_a_value_is_found_on_a_continuation_line_and_behind_its_parameter():
+    varied, problems, uncovered = simcorners.find_varied(FORMS, {"R": 0.05, "C": 0.1, "L": 0.1})
+    found = {v.name: [(s.line, FORMS.split("\n")[s.line][s.start : s.end]) for s in v.sites] for v in varied}
+    assert found == {
+        "R1": [(3, "10k")],
+        "R2": [(4, "20k")],
+        "R3": [(5, "30k")],
+        "C1": [(6, "10u")],
+        "L1": [(7, "10m")],
+        "R5": [(9, "2k")],
+    }
+    values = {v.name: v.nominal for v in varied}
+    assert values == pytest.approx({"R1": 1e4, "R2": 2e4, "R3": 3e4, "C1": 1e-5, "L1": 1e-2, "R5": 2e3})
+    assert problems == [] and uncovered == ["R9"]  # 4k7 is no number the corners can scale
+    corner = simcorners.Corner("w", "worst", "", temp=None, scale={"R1": 1.05, "C1": 1.1, "R5": 0.95})
+    lines = simcorners.corner_text(FORMS, varied, corner).split("\n")
+    assert lines[2:4] == ["R1 in out", "+ 10500"]
+    assert lines[6] == "C1 out 0 c=1.1e-05" and lines[9] == "+ r=1900" and lines[11] == "+ tc1=2m"
+    assert lines[5] == "R3 out 0 r = 30k ; a comment"
+
+
+def test_a_digit_after_the_scale_letter_is_named_with_what_ngspice_takes():
+    """ngspice 42 prints @r9[resistance] = 4.000000e+03 for `R9 in w 4k7` and says nothing."""
+    assert simcorners.misread_values(FORMS) == [
+        "R9: ngspice reads the value 4k7 as 4k: it drops a digit after the scale letter. Write 4.7k"
+    ]
+    assert simcorners.misread_values("* t\nC1 a 0 2n2\nL1 a b 1.5m5\nR1 a 0 1e3\nR2 a 0 10kOhm\n.end\n") == [
+        "C1: ngspice reads the value 2n2 as 2n: it drops a digit after the scale letter. Write 2.2n",
+        "L1: ngspice reads the value 1.5m5 as 1.5m: it drops a digit after the scale letter. Write the "
+        "number with its point",
+    ]
+
+
+def test_a_device_held_at_its_own_temperature_is_named():
+    deck = """* pinned
+R1 in ref 10k tc1=100u
+D1 ref 0 DREF temp=27
+D2 ref 0 DREF
++ temp = 40
+D3 ref 0 DREF dtemp=5
+.model DREF D(IS=2.52n tnom=27)
+.options temp=50
+.control
+alter d4 temp=27
+alter @d5[temp] = 30
+alter r1 2k
+.endc
+.end
+"""
+    # dtemp moves with the circuit; a model's tnom and the circuit's own temperature are not a pin
+    assert simcorners.pinned_temperatures(deck) == ["D1", "D2", "d4", "d5"]
+    assert simcorners.pinned_temperatures(DECK) == []
 
 
 def test_a_corner_with_no_temperature_adds_no_line_and_a_deck_without_control_gets_it_before_end():
@@ -536,6 +610,46 @@ def test_a_deck_that_sets_its_own_temperature_does_not_pass_for_a_hot_run(tmp_pa
     span = records[0]["details"]["decks"]["d"]["corners"]["envelope"]["vout"]
     assert span["min"] == pytest.approx(2.4295, abs=1e-4) and span["min_at"] == "85 C"
     assert span["max"] == pytest.approx(2.4716, abs=1e-4) and span["max_at"] == "nominal"
+
+
+PINNED = """* a diode reference whose diode is held at 27 C
+V1 in 0 DC 5
+R1 in ref 10k tc1=100u
+D1 ref 0 DREF temp=27
+.model DREF D(IS=2.52n RS=0.568 N=1.752 EG=1.11 XTI=3)
+.control
+op
+let vout = v(ref)
+print vout
+.endc
+.end
+"""
+
+
+@needs_ngspice
+def test_a_part_held_at_its_own_temperature_does_not_pass_for_a_hot_run(tmp_path):
+    """ngspice names the circuit's 85 C for the run while the diode stays at 27 C, and the resistor's
+    coefficient still moves the output a little: only the deck's text shows the pin. Without the pin
+    the reference is 0.4239 V at 85 C, under its 0.5 V bound."""
+    spec = {"temperature": {"values": [85], "source": "x"}}
+    proj = project(tmp_path, PINNED, {"min": 0.5, "max": 0.6}, spec)
+    code, records = run("sim", proj, "--out", tmp_path / "o")
+    assert code == 1
+    assert records[0]["details"]["failures"] == [
+        "d: D1 is held at its own temperature (temp=), so no temperature corner moves it: remove the "
+        "setting, or set the deck's temperature to false in corners.json with why"
+    ]
+    proj2 = project(tmp_path / "2", PINNED.replace(" temp=27", ""), {"min": 0.5, "max": 0.6}, spec)
+    code, records = run("sim", proj2, "--out", tmp_path / "o2")
+    assert code == 1
+    assert records[0]["details"]["failures"] == ["d:vout=0.4239014 at 85 C not in [0.5, 0.6]"]
+    # a deck that says why it runs at one temperature has no temperature corner to fail
+    spec = {"decks": {"d": {"temperature": False, "why": "the diode sits in an oven at 27 C"}}}
+    proj3 = project(
+        tmp_path / "3", PINNED, {"min": 0.5, "max": 0.6}, {**spec, "tolerance": {"R": 0.01, "source": "x"}}
+    )
+    code, records = run("sim", proj3, "--out", tmp_path / "o3")
+    assert code == 0, records
 
 
 @needs_ngspice

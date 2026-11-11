@@ -127,6 +127,17 @@ def test_every_hint_points_at_a_file_and_a_heading_that_exist():
             "sets its own temperature",
         ),
         ("sim", "abort: ngspice exit 0, 2 error lines", "did not run the deck to its end"),
+        (
+            "sim",
+            "inst: D1 is held at its own temperature (temp=), so no temperature corner moves it: remove "
+            "the setting, or set the deck's temperature to false in corners.json with why",
+            "fixes its temperature",
+        ),
+        (
+            "sim",
+            "d: R1: ngspice reads the value 4k7 as 4k: it drops a digit after the scale letter. Write 4.7k",
+            "the way ngspice reads a number",
+        ),
         ("sim", "typo.expect.json: vout: unknown key 'minimum'", "Correct the expect file"),
         ("sim", "d: no measure moves with temperature: nothing in the deck", "temperature behaviour"),
         ("sim", "d: no tolerance covers R1, R2", "Add the kind"),
