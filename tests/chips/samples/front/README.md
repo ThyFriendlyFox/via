@@ -19,6 +19,7 @@ engine. 2 paths are rewritten in each file: the project's folder is
 | `vvp-no-finish.log` | a bench that runs out of events with no `$finish` |
 | `vvp-no-measures.log` | a bench that prints `errors` only |
 | `iverilog-no-root.log` | a bench whose module is not named as its file |
+| `iverilog-open-supply.log` | the template's bench compiled on its routed netlist: the 2 supply ports open |
 | `yosys-ok/` | the template through the SYNTH gate's script |
 | `yosys-latch/` | the latch design: 8 latch bits, 12 flops with no reset, an open net |
 | `yosys-loop/` | 2 gates that feed each other |

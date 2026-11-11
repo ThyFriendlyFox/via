@@ -1,0 +1,2 @@
+/work/reg8/tb/tb_reg8.v:16: warning: Instantiating module reg8 with dangling input port 6 (VPWR) floating.
+/work/reg8/tb/tb_reg8.v:16: warning: Instantiating module reg8 with dangling input port 7 (VGND) floating.
