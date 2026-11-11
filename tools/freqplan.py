@@ -32,7 +32,9 @@ a deck that drives it and bounds the result:
   source `between` names: it runs at the source's frequency with a harmonic in the band, or the two
   elements run at one frequency. Two sources whose harmonics alone coincide are no overlap of their
   own: each harmonic is held against every resonance.
-- A periodic stimulus in any deck (a PULSE with a period, a SIN) is a source the plan names.
+- A periodic stimulus in any deck (a PULSE with a period, a SIN or SINE) is a source the plan names.
+  One with no frequency to read (a period that is not a number, a PWL that repeats, an SFFM, an AM, a
+  B source of `time`) is named as unread.
 
 This module reads the file, reads a deck's stimuli, and judges; `tools/workcenter` supplies the
 measures. Standard library only.
@@ -43,6 +45,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from itertools import takewhile
 from pathlib import Path
 
 from simcorners import netlist_lines, spice_number, stated
@@ -56,8 +59,20 @@ SOURCE_KEYS = ("name", "hz", "tolerance", "source")
 RESONANCE_KEYS = ("name", "hz", "q", "source")
 OVERLAP_KEYS = ("between", "evidence", "stimulus", "why")
 MEASURE_RE = re.compile(r"^[A-Za-z_]\w*\.[A-Za-z_]\w*$")
-# A stimulus function and its arguments, in parentheses or to the end of the line.
-STIMULUS_RE = re.compile(r"\b(pulse|sin)\b\s*\(?([^)]*)\)?", re.IGNORECASE)
+# A source's stimulus function as one word of its line, with the list written against it. ngspice 42
+# ran each of these forms at the frequency `stimuli` reads from it: PULSE(...) in either case,
+# `PULSE ...` without parentheses (a list of 6 before `AC 1` is one event), `PULSE (...)`, commas between
+# arguments, `{vdd * 1}`, `{max(vdd,3)}` and `'vdd * 1'` as one argument, a list continued on a `+` line
+# with a comment line or an empty one before it, SIN(...) and SINE(...), on a V and on an I source,
+# inside a .subckt. It takes SFFM(...) and AM(...), and repeats a V source's PWL that has `r=0`, `r = 0`,
+# `r 0` or `r` alone after its points, inside the parentheses or past them.
+STIMULUS_RE = re.compile(r"\b(pulse|sine?|pwl|sffm|am)\b(\(.*)?", re.IGNORECASE)
+REPEAT_RE = re.compile(r"r(=|$)", re.IGNORECASE)
+# Where ngspice 42 ends a netlist line: at `;` or `//` anywhere, and at `$` after a space, a tab or a
+# comma. `DC 5$ PULSE(...)` runs its PULSE.
+COMMENT_RE = re.compile(r";|//|(?<=[\s,])\$")
+TIME_RE = re.compile(r"\btime\b", re.IGNORECASE)
+GROUPS = {"(": ")", "{": "}"}
 RANGE_SLACK = 1e-3  # a deck's stimulus against a source's range, as a fraction
 ALIGNED = 0.01  # two stimuli run at one frequency within this fraction
 MAX_WIDTH = 0.9  # a band's half-width as a fraction of its frequency: below Q 0.56 nothing peaks
@@ -228,37 +243,104 @@ def read_plan(sim_dir: Path) -> tuple[Plan | None, list[str]]:
     return plan, problems
 
 
+def uncommented(line: str) -> str:
+    return COMMENT_RE.split(line, maxsplit=1)[0]
+
+
+def split(text: str) -> list[str] | None:
+    """`text` cut at its spaces and commas, with `{...}`, '...' and `(...)` whole inside the word they
+    are written in: `PULSE(0 {max(vdd, 3)} 0)` is one word. None when one of them is left open, or
+    closes what nothing opened."""
+    words: list[str] = []
+    word = ""
+    closers: list[str] = []
+    quoted = False
+    for ch in text:
+        if quoted:
+            quoted = ch != "'"
+        elif ch == "'":
+            quoted = True
+        elif ch in GROUPS:
+            closers.append(GROUPS[ch])
+        elif ch in GROUPS.values():
+            if not closers or closers.pop() != ch:
+                return None
+        elif not closers and (ch.isspace() or ch == ","):
+            if word:
+                words.append(word)
+            word = ""
+            continue
+        word += ch
+    if quoted or closers:
+        return None
+    return [*words, word] if word else words
+
+
 def stimuli(text: str) -> tuple[list[tuple[str, float]], list[str]]:
     """The periodic stimuli of a deck's own netlist: ([(element, Hz)], unread). A PULSE with a period
-    and a SIN with a frequency are periodic; a PULSE without a period is one event. `unread` names the
-    elements whose period or frequency is written as something other than a number."""
+    and a SIN or SINE with a frequency are periodic; a PULSE without a period is one event, and so is a
+    PWL without `r`. `unread` names each periodic source no frequency is read from: a period or a
+    frequency written as something other than a number, a list that cannot be split, a PWL that
+    repeats, an SFFM, an AM, and a B source whose expression holds `time`."""
     lines = text.split("\n")
     found: list[tuple[str, float]] = []
     unread: list[str] = []
     for i in netlist_lines(lines):
-        line = lines[i]
-        if line.strip()[0].upper() not in "VI":
+        kind = lines[i].strip()[0].upper()
+        if kind not in "VIB":
             continue
-        # A continuation line carries the rest of a long stimulus.
+        line = uncommented(lines[i])
+        # A continuation line carries the rest of a long stimulus. Each line loses its own comment before
+        # they are joined, and a comment line or an empty one between them does not end the source.
         j = i + 1
-        while j < len(lines) and lines[j].lstrip().startswith("+"):
-            line += " " + lines[j].lstrip()[1:]
+        while j < len(lines):
+            s = lines[j].strip()
+            if s.startswith("+"):
+                line += " " + uncommented(s[1:])
+            elif s and not s.startswith("*"):
+                break
             j += 1
         # The function follows the element's name and its two nodes; a node may be called `sin`.
         tokens = line.split(None, 3)
-        m = STIMULUS_RE.search(tokens[3]) if len(tokens) == 4 else None
-        if not m:
+        if len(tokens) < 4:
             continue
-        element = tokens[0]
-        args = [a for a in re.split(r"[\s,]+", m.group(2).strip()) if a]
-        index = 6 if m.group(1).lower() == "pulse" else 2
-        if len(args) <= index:
+        element, rest = tokens[0], tokens[3]
+        if kind == "B":
+            if TIME_RE.search(rest):
+                unread.append(element)
             continue
-        value = spice_number(args[index])
-        if value is None:
+        words = split(rest)
+        if words is None:
+            if STIMULUS_RE.search(rest):
+                unread.append(element)
+            continue
+        hits = ((n, m) for n, w in enumerate(words) if (m := STIMULUS_RE.fullmatch(w)))
+        at, m = next(hits, (0, None))
+        if m is None:
+            continue
+        name, listed = m.group(1).lower(), m.group(2)
+        after = words[at + 1 :]
+        if listed is None and after and after[0].startswith("("):
+            listed, after = after[0], after[1:]
+        if listed is None:
+            # Without parentheses the list runs to `AC` or `DC`, or to the end of the line.
+            args = list(takewhile(lambda w: w.lower() not in ("ac", "dc"), after))
+        else:
+            args = split(listed[1:-1]) if listed.endswith(")") else None
+        if args is None or name in ("sffm", "am"):
             unread.append(element)
-        elif value > 0:
-            found.append((element, 1 / value if index == 6 else value))
+        elif name == "pwl":
+            if any(REPEAT_RE.match(w) for w in (*args, *after)):
+                unread.append(element)
+        else:
+            index = 6 if name == "pulse" else 2
+            if len(args) <= index:
+                continue
+            value = spice_number(args[index])
+            if value is None:
+                unread.append(element)
+            elif value > 0:
+                found.append((element, 1 / value if index == 6 else value))
     return found, unread
 
 

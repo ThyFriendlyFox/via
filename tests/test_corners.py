@@ -193,12 +193,17 @@ def test_a_tolerance_finds_board_named_elements_parts_and_parameters():
         # the parameter `parts` names moves under its own name, so C1, written from it, claims nothing
         "cx": ("param", 0.1, [(1, 1e-9)]),
         # R1 is written from rtop at the top level, as a number in the .subckt, and set again by an
-        # `alter` in .control: all three places move; R2, written from the same parameter, adds none
-        "R1": ("R", 0.05, [(1, 10e3), (8, 5e3), (11, 2e3)]),
+        # `alter` in .control: all three places move. Its top-level place is its own token, `{rtop}`,
+        # which has no number (None) and is scaled where it stands, not the parameter's number
+        "R1": ("R", 0.05, [(2, None), (8, 5e3), (11, 2e3)]),
+        # R2 is written from the same parameter and is another resistor: it moves by itself
+        "R2": ("R", 0.05, [(3, None)]),
+        # an expression is scaled where it stands too
+        "R3": ("R", 0.01, [(5, None)]),
         # a word, not a board reference: moved only because `parts` names it, its `alter` with it
         "RLOAD": ("R", 0.02, [(6, 1e6), (12, 2e6)]),
     }
-    assert problems == ["R3 is named in corners.json and its value {2*rtop} is not a number"]
+    assert problems == []
     assert uncovered == []  # C has no tolerance of its own, and C1 moves with cx
 
 
@@ -208,8 +213,26 @@ def test_an_element_named_like_a_board_part_with_no_tolerance_is_listed():
     assert uncovered == ["R1", "R2", "R3"]  # RLOAD is a word: no board part, so not expected
 
 
-def test_no_tolerance_moves_nothing():
-    assert simcorners.find_varied(DECK, None) == ([], [], [])
+def test_no_tolerance_moves_nothing_and_says_which_parts_that_leaves():
+    # a file with temperatures and no tolerance block leaves every board part where it is written
+    assert simcorners.find_varied(DECK, None) == ([], [], ["R1", "R2", "C1", "R3"])
+    # a deck whose tolerance the project set to false, with why, is not asked again
+    assert simcorners.find_varied(DECK, None, declined=True) == ([], [], [])
+
+
+def test_two_parts_written_from_one_parameter_move_apart():
+    """`.param rdiv=10k`, `R1 in out {rdiv}`, `R2 out 0 {rdiv}` is 2 resistors. Moved as 1, their ratio
+    never changes and a 5 % divider that reaches 2.375 V passes [2.42, 2.58]."""
+    deck = "* d\n.param rdiv=10k\nV1 in 0 DC 5\nR1 in out {rdiv}\nR2 out 0 'rdiv'\nR3 out 0 rdiv\n.end\n"
+    varied, problems, uncovered = simcorners.find_varied(deck, {"R": 0.05, "parts": {}})
+    assert [v.name for v in varied] == ["R1", "R2", "R3"] and not problems and not uncovered
+    corner = simcorners.Corner("w", "worst", "", scale={"R1": 1.05, "R2": 0.95, "R3": 0.95})
+    lines = simcorners.corner_text(deck, varied, corner).split("\n")
+    assert lines[1] == ".param rdiv=10k"
+    assert lines[3:6] == ["R1 in out {(rdiv)*1.05}", "R2 out 0 '(rdiv)*0.95'", "R3 out 0 {(rdiv)*0.95}"]
+    # a parameter `parts` names is 1 quantity: it moves as 1, and the parts written from it with it
+    varied, _, _ = simcorners.find_varied(deck, {"R": 0.05, "parts": {"RDIV": 0.01}})
+    assert [(v.name, v.kind, v.tol) for v in varied] == [("rdiv", "param", 0.01)]
 
 
 def test_a_word_named_element_no_tolerance_moves_is_listed_as_held():
@@ -232,9 +255,11 @@ def test_a_corner_rewrites_each_value_in_place_and_sets_the_temperature_before_c
     varied, _, _ = simcorners.find_varied(DECK, {"R": 0.05, "parts": {"CX": 0.1}})
     corner = simcorners.Corner("w1", "worst", "", temp=-20, scale={"R1": 1.05, "CX": 0.9})
     lines = simcorners.corner_text(DECK, varied, corner).split("\n")
-    assert lines[1] == ".param rtop=10500 cx = 9e-10"
-    assert lines[8] == "R1 a b 5250"
-    assert lines[2] == "R1 in out {rtop}" and lines[5] == "R3 a b {2*rtop}"  # the rest is as written
+    # the parameter `parts` names moves by its number; R1's own `{rtop}` is scaled where it stands, so
+    # rtop keeps its number for R2, which this corner does not move
+    assert lines[1] == ".param rtop=10k cx = 9e-10"
+    assert lines[2] == "R1 in out {(rtop)*1.05}" and lines[8] == "R1 a b 5250"
+    assert lines[3] == "R2 out 0 rtop" and lines[5] == "R3 a b {2*rtop}"  # the rest is as written
     assert lines[10:12] == [".options temp=-20", ".control"]
     # the part is as far off its value in the analyses after the deck sets it again
     assert lines[12] == "alter r1 2100"
@@ -337,11 +362,19 @@ def test_the_first_corners_move_one_range_at_a_time():
     assert [(c.id, c.kind, c.label, c.temp, c.scale) for c in firsts] == [
         ("t-20", "temperature", "-20 C", -20, {}),
         ("t85", "temperature", "85 C", 85, {}),  # 27 C is the deck as written: no run of its own
+        # each part alone at both ends, then half-way to each: a peak inside the range shows there
         ("R1-", "tolerance", "R1 -1 %", None, {"R1": 0.99}),
         ("R1+", "tolerance", "R1 +1 %", None, {"R1": 1.01}),
+        ("R1-h", "tolerance", "R1 -0.5 %", None, {"R1": 0.995}),
+        ("R1+h", "tolerance", "R1 +0.5 %", None, {"R1": 1.005}),
         ("R2-", "tolerance", "R2 -5 %", None, {"R2": 0.95}),
         ("R2+", "tolerance", "R2 +5 %", None, {"R2": 1.05}),
+        ("R2-h", "tolerance", "R2 -2.5 %", None, {"R2": 0.975}),
+        ("R2+h", "tolerance", "R2 +2.5 %", None, {"R2": 1.025}),
     ]
+    # a deck that sets its own 40 C as written leaves the 27 C the project names to be run
+    at_40 = simcorners.first_corners([27, 85], [], written_at=40.0)
+    assert [(c.id, c.temp) for c in at_40] == [("t27", 27), ("t85", 85)]
 
 
 def test_the_worst_corner_sets_every_range_to_the_end_that_pushed_the_measure():
@@ -471,11 +504,13 @@ def project(tmp_path: Path, deck: str, bounds: dict, corners: dict | None) -> Pa
 def test_the_passing_fixture_holds_its_bound_at_every_corner_even_strict(tmp_path):
     code, records = run("sim", BOARDS / "pass-rc-divider", "--out", tmp_path, "--strict")
     assert code == 0, records
-    # 2 temperatures, R1, R2 and C1 at both ends, the 2 worst cases of vout, 8 Monte Carlo draws
-    assert records[0]["summary"] == "1 decks, 18 corner runs, 0 failures"
-    assert records[0]["details"]["corners"] == {"runs": 18, "nominal_only": False}
+    # 2 temperatures; R1, R2 and C1 each alone at both ends and half-way (12); the 8 combinations of
+    # their ends at the deck's own temperature and at each of the 2 (24); 8 Monte Carlo draws
+    assert records[0]["summary"] == "1 decks, 46 corner runs, 0 failures"
+    assert records[0]["details"]["corners"] == {"runs": 46, "nominal_only": False}
     deck = records[0]["details"]["decks"]["rc_divider"]
     corners = deck["corners"]
+    assert corners["search"] == "every combination of the ends"
     assert corners["temperatures"] == [-40.0, 85.0] and corners["uncovered"] == []
     assert [(v["name"], v["tolerance"]) for v in corners["varied"]] == [
         ("R1", 0.01),
@@ -485,18 +520,25 @@ def test_the_passing_fixture_holds_its_bound_at_every_corner_even_strict(tmp_pat
     # R1 = 10k x 1.01 x (1 + 100e-6 x 58), R2 = 10k x 0.99 x (1 - 100e-6 x 58): 5 R2/(R1 + R2) = 2.4605;
     # cold with the parts the other way, 67 K under 27 C: 2.5417
     span = corners["envelope"]["vout"]
-    assert span["min"] == pytest.approx(2.4605, abs=1e-4) and span["min_at"] == "85 C, R1 +1 %, R2 -1 %"
-    assert span["max"] == pytest.approx(2.5417, abs=1e-4) and span["max_at"] == "-40 C, R1 -1 %, R2 +1 %"
+    assert span["min"] == pytest.approx(2.4605, abs=1e-4)
+    assert span["min_at"].startswith("85 C, R1 +1 %, R2 -1 %")  # C1 is at an end too and moves nothing
+    assert span["max"] == pytest.approx(2.5417, abs=1e-4)
+    assert span["max_at"].startswith("-40 C, R1 -1 %, R2 +1 %")
     assert deck["checks"]["vout"]["ok"] is True and deck["checks"]["vout"]["held"] is True
+    # how far inside its bound the output stays at its worst: 2.55 - 2.54175
+    assert deck["checks"]["vout"]["margin"] == pytest.approx(0.00825, abs=1e-5)
     assert corners["monte_carlo"]["statistics"]["vout"]["runs"] == 8
     # what it writes: a folder per corner with its own deck and log, and every run's measures
     folder = tmp_path / "sim" / "corners" / "rc_divider"
     assert corners["folder"] == str(folder)
-    assert sorted(p.name for p in folder.iterdir() if p.is_dir())[:4] == ["C1+", "C1-", "R1+", "R1-"]
-    assert "R1 in out 10100 tc1=100u" in (folder / "w1" / "rc_divider.cir").read_text(encoding="utf-8")
-    assert (folder / "t85" / "ngspice.log").is_file()
+    assert sorted(p.name for p in folder.iterdir() if p.is_dir())[:4] == ["C1+", "C1+h", "C1-", "C1-h"]
     rows = json.loads((folder / "runs.json").read_text(encoding="utf-8"))
-    assert len(rows) == 18 and {r["kind"] for r in rows} == {
+    # the run that gives the least output: hot, R1 high, R2 low
+    least = next(r for r in rows if r["label"] == "85 C, R1 +1 %, R2 -1 %, C1 -10 %")
+    text = (folder / least["id"] / "rc_divider.cir").read_text(encoding="utf-8")
+    assert "R1 in out 10100 tc1=100u" in text and ".options temp=85" in text
+    assert (folder / "t85" / "ngspice.log").is_file()
+    assert len(rows) == 46 and {r["kind"] for r in rows} == {
         "temperature",
         "tolerance",
         "worst",
@@ -512,11 +554,11 @@ def test_a_bound_that_holds_as_written_fails_at_the_corner_that_breaks_it(tmp_pa
     assert len(failures) == 2
     # the diode's forward voltage: 0.548 V as written, 0.42 V hot, with R1 high a little lower still
     assert failures[0] == (
-        "diode_ref:vref=0.4215933 at 85 C, R1 +5 % (and 3 more corners) not in [0.5, 0.6] "
+        "diode_ref:vref=0.4215933 at 85 C, R1 +5 % (and 5 more corners) not in [0.5, 0.6] "
         "(the fixture's reference window, 0.55 V within 0.05 V)"
     )
     # 5 x 9.5/(10.5 + 9.5) = 2.375 and 5 x 10.5/(9.5 + 10.5) = 2.625 are as far out as each other
-    worst = r"divider:vout=2\.[36]\d+ at R1 [+-]5 %, R2 [+-]5 % \(and 5 more corners\) "
+    worst = r"divider:vout=2\.[36]\d+ at R1 [+-]5 %, R2 [+-]5 % \(and 9 more corners\) "
     assert re.fullmatch(worst + r"not in \[2\.45, 2\.55\] .*", failures[1]), failures[1]
     decks = records[0]["details"]["decks"]
     for name, measure in (("diode_ref", "vref"), ("divider", "vout")):

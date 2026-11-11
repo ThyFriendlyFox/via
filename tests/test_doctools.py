@@ -441,8 +441,9 @@ def test_gates_with_report_fills_the_report_and_keeps_its_exit_code(tmp_path):
     assert code == 0 and [r["status"] for r in records] == ["pass"] * 4
     text = report.read_text(encoding="utf-8")
     assert "| ERC | pass | 0 errors, 0 warnings |" in text and "GREEN on" in text
-    # the fixture's corners: 2 temperatures, 3 parts at both ends, 2 worst cases, 8 Monte Carlo draws
-    assert "| `sim/rc_divider.cir` |" in text and "| 1 | 18 | pass |" in text
+    # the fixture's corners: 2 temperatures, 3 parts alone at 4 points each, the 8 combinations of
+    # their ends at 3 temperatures, 8 Monte Carlo draws: 2 + 12 + 24 + 8
+    assert "| `sim/rc_divider.cir` |" in text and "| 1 | 46 | pass |" in text
     assert not (BOARDS / "pass-rc-divider" / "docs").exists()
 
 

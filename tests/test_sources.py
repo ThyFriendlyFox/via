@@ -438,7 +438,10 @@ def test_one_deck_runs_the_gates_way_and_keep_gives_the_hand_run(tmp_path):
         check=False,
     )
     assert proc.returncode == 0
-    assert re.search(r"^\s+vout = 0\.501\d*  \[0\.49, 0\.51\] ok$", proc.stdout, re.M), proc.stdout
+    # the value, its bound, and how far inside it stays: 0.51 - 0.501253 = 0.00875
+    assert re.search(r"^\s+vout = 0\.501\d*  \[0\.49, 0\.51\] ok  margin 0\.00875$", proc.stdout, re.M), (
+        proc.stdout
+    )
     assert f"rerun rdiv: env -C {run_dir} ngspice -b rdiv.cir" in proc.stdout
 
 

@@ -31,6 +31,7 @@ corner move, writing the deck as a corner runs it, choosing the worst-case runs,
 
 from __future__ import annotations
 
+import itertools
 import json
 import math
 import operator
@@ -46,6 +47,11 @@ TOP_KEYS = ("temperature", "tolerance", "monte_carlo", "decks")
 DECK_KEYS = ("skip", "why", "temperature", "tolerance", "monte_carlo")
 TOLERANCE_KEYS = (*KINDS, "parts", "source")
 MAX_RUNS = 10000  # Monte Carlo runs one deck may ask for
+# The most runs spent on every combination of the ends of a deck's ranges: 6 ranges, or 5 and a
+# temperature. Past it the worst case is a guess from one range at a time, and the run says so.
+EXHAUSTIVE_RUNS = 64
+SWEEP_STEP = 0.02  # of a part's value, for a deck that answers an overlap
+REFINE_ROUNDS = 5  # halvings toward a peak inside a part's range: to 1/64 of the tolerance
 
 # A SPICE number: digits, an optional exponent, an optional scale suffix, then letters ngspice ignores
 # (10uF, 1kOhm). M is milli and Meg is mega; F alone is femto and A alone is atto (ngspice 42 reads
@@ -71,14 +77,31 @@ SCALE = {
 DROPPED_DIGITS_RE = re.compile(
     r"^([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)(meg|mil|[tgkmunpfa])(\d+)[a-zA-Z]*$", re.IGNORECASE
 )
-TOKEN_RE = re.compile(r"[^\s=]+|=")
+# A token of a netlist line: a braced or a quoted expression whole, whatever stands inside it, then
+# words; `=` is a token of its own.
+TOKEN_RE = re.compile(r"\{[^{}]*\}|'[^']*'|[^\s=]+|=")
 # A deck element named the way a board names its parts: the kind's letter and a number.
 REFERENCE_RE = re.compile(r"^[RCL]\d+$", re.IGNORECASE)
-ELEMENT_RE = re.compile(r"^(\s*)(\S+)(\s+)(\S+)(\s+)(\S+)(\s+)(\S+)")
+# The words that may stand before an element's value on its line or in an `alter`: `R1 a b r=10k`,
+# `alter r2 resistance = 10k`, `V1 in 0 DC 5`, `alter v1 dc = 4.2`.
+VALUE_WORDS = {
+    "R": ("r", "resistance"),
+    "C": ("c", "capacitance"),
+    "L": ("l", "inductance"),
+    "V": ("dc",),
+    "I": ("dc",),
+}
 PARAM_RE = re.compile(r"([A-Za-z_]\w*)\s*=\s*([^\s=,]+)")
 BRACED_RE = re.compile(r"^[{']\s*([A-Za-z_]\w*)\s*[}']$")
-# `alter rcoil 0.8` and `alter c4 = 1u` in a .control block: an element's value set again.
-ALTER_RE = re.compile(r"^\s*alter\s+([A-Za-z]\w*)\s*=?\s*(\S+)\s*$", re.IGNORECASE)
+# A value set again in a .control block, in each form ngspice 42 takes: `alter @r2[resistance] = 10k`,
+# `alter r2 resistance = 10k`, `alterparam rbot = 10k`, `alter r2 10k` and `alter r2 = 10k`.
+ALTER_FORMS = (
+    re.compile(r"^\s*alter\s+@(?P<dev>[A-Za-z]\w*)\[(?P<param>\w+)\]\s*=?\s*(?P<value>\S+)\s*$", re.I),
+    re.compile(r"^\s*alter\s+(?P<dev>[A-Za-z]\w*)\s+(?P<param>[A-Za-z]\w*)\s*=\s*(?P<value>\S+)\s*$", re.I),
+    re.compile(r"^\s*alterparam\s+(?P<dev>[A-Za-z_]\w*)\s*=\s*(?P<value>\S+)\s*$", re.I),
+    re.compile(r"^\s*alter\s+(?P<dev>[A-Za-z]\w*)\s*=?\s*(?P<value>\S+)\s*$", re.I),
+)
+ALTER_ANY_RE = re.compile(r"^\s*alter(?:param)?\s+@?(?P<dev>[A-Za-z_]\w*)", re.I)
 # ngspice names the temperature of every analysis it starts; a corner's run is checked against it.
 ANALYSIS_TEMP_RE = re.compile(r"^Doing analysis at TEMP = ([-+]?[\d.]+(?:[eE][-+]?\d+)?)", re.MULTILINE)
 TEMP_MATCH = 0.01  # C: a run's printed temperature against the corner's
@@ -99,12 +122,15 @@ def spice_text(value: float) -> str:
 
 @dataclass(frozen=True)
 class Site:
-    """One place a deck writes a number: the line's index, the token's span in it, and its value."""
+    """One place a deck writes a value: the line's index, the token's span in it, and the number there.
+    `value` is None where the deck writes an expression or a parameter's name (`{rtop}`, `rtop`,
+    `{2*rtop}`): a corner scales such a place by wrapping it, `{(2*rtop)*1.05}`, so 2 parts written
+    from 1 parameter still move apart."""
 
     line: int
     start: int
     end: int
-    value: float
+    value: float | None
 
 
 @dataclass
@@ -122,7 +148,8 @@ class Varied:
         return self.name.upper()
 
     @property
-    def nominal(self) -> float:
+    def nominal(self) -> float | None:
+        """The part's written value, or None when the deck writes it as an expression."""
         return self.sites[0].value
 
 
@@ -149,6 +176,7 @@ class DeckCorners:
     temperatures: list[float] = field(default_factory=list)
     tolerance: dict | None = None
     monte_carlo: dict | None = None
+    declined: bool = False  # the project set this deck's tolerance to false, with why
 
 
 # ------------------------------------------------------------------ the file
@@ -283,7 +311,7 @@ def read_corners(sim_dir: Path, decks: list[str]) -> tuple[dict[str, DeckCorners
                 )
         if "tolerance" in entry:
             if entry["tolerance"] is False:
-                resolved.tolerance, off = None, True
+                resolved.tolerance, resolved.declined, off = None, True, True
             else:
                 resolved.tolerance = check_tolerance(entry["tolerance"], f"{where}.tolerance", problems)
         if "monte_carlo" in entry:
@@ -339,12 +367,11 @@ def control_lines(lines: list[str]) -> list[int]:
     return out
 
 
-def logical_tokens(lines: list[str], i: int) -> list[tuple[int, int, int, str]]:
-    """The tokens of the netlist line at index i with its continuation lines, as (line, start, end,
-    text) in order. ngspice joins every following line that starts with `+`, and passes over a comment
-    or an empty line between them; a `;` ends a line. `=` is a token of its own, so `r=10k`, `r =10k`
-    and `r = 10k` read alike."""
-    out: list[tuple[int, int, int, str]] = []
+def statement_lines(lines: list[str], i: int) -> list[tuple[int, int, int]]:
+    """The physical lines of the netlist statement that starts at index i, as (line, begin, end):
+    the line itself, then every following line that starts with `+`, a comment or an empty line
+    between them passed over, as ngspice joins them. `begin` is past the `+`; `end` stops at a `;`."""
+    out: list[tuple[int, int, int]] = []
     j = i
     while j < len(lines):
         raw = lines[j]
@@ -358,124 +385,219 @@ def logical_tokens(lines: list[str], i: int) -> list[tuple[int, int, int, str]]:
                 break
             begin = raw.index("+") + 1
         cut = raw.find(";", begin)
-        body = raw[begin : cut if cut >= 0 else len(raw)]
-        out += [(j, begin + m.start(), begin + m.end(), m.group()) for m in TOKEN_RE.finditer(body)]
+        out.append((j, begin, cut if cut >= 0 else len(raw)))
         j += 1
     return out
 
 
+def logical_tokens(lines: list[str], i: int) -> list[tuple[int, int, int, str]]:
+    """The tokens of the netlist statement at index i, continuation lines included, as (line, start,
+    end, text) in order. `=` is a token of its own, so `r=10k`, `r =10k` and `r = 10k` read alike; a
+    braced or quoted expression is 1 token."""
+    return [
+        (j, begin + m.start(), begin + m.end(), m.group())
+        for j, begin, end in statement_lines(lines, i)
+        for m in TOKEN_RE.finditer(lines[j][begin:end])
+    ]
+
+
 def value_place(tokens: list[tuple[int, int, int, str]]) -> tuple[int, int, int, str] | None:
-    """Where an R, C or L element writes its value among its tokens: the fourth token, or the one
-    after `r =` (`c =`, `l =`) when the fourth is the kind's own parameter. None for an element with
-    no fourth token."""
+    """Where an element writes its value among its tokens. An R, C or L: the fourth token, or the one
+    after `r =` (`c =`, `l =`) when the fourth is the kind's own parameter. A V or I source: the
+    fourth token, or the one after `dc`. None for an element with no such token."""
     if len(tokens) < 4:
         return None
-    kind = tokens[0][3][0].lower()
-    if len(tokens) >= 6 and tokens[3][3].lower() == kind and tokens[4][3] == "=":
-        return tokens[5]
-    return tokens[3]
+    words = VALUE_WORDS.get(tokens[0][3][0].upper(), ())
+    at = 3
+    if tokens[at][3].lower() in words and len(tokens) > at + 1:
+        at += 2 if tokens[at + 1][3] == "=" else 1
+    return tokens[at] if at < len(tokens) else None
 
 
-def deck_values(lines: list[str]) -> tuple[dict[str, list[tuple[Site | None, str]]], dict[str, list]]:
-    """Where a deck writes each value: (elements, params). Each maps an upper-case name to its places,
-    in the deck's order: for an R, C or L element (the place of its fourth token, or None when that is
-    not a number, with the token), for a `.param` (its number's place, or None). A value the deck sets
-    again in `.control` (`alter rcoil 0.8`) is one more place of that element: the part is as far off
-    its value in every analysis the deck runs."""
-    elements: dict[str, list[tuple[Site | None, str]]] = {}
+def place_of(place: tuple[int, int, int, str], params: dict) -> Site | None:
+    """A value token as a place a corner can scale: a number, an expression in braces or quotes, or the
+    bare name of a parameter. None for anything else (a model's name, `4k7`)."""
+    j, start, end, token = place
+    value = spice_number(token)
+    if value is not None:
+        return Site(j, start, end, value)
+    if (token[0], token[-1]) in (("{", "}"), ("'", "'")) or token.upper() in params:
+        return Site(j, start, end, None)
+    return None
+
+
+def control_commands(lines: list[str]) -> list[tuple[int, int, str]]:
+    """Each command of the deck's `.control` blocks as (line, offset, text). A line holds several
+    commands between `;`, and ends at a `$ ` comment."""
+    out = []
+    for i in control_lines(lines):
+        raw = lines[i]
+        comment = re.search(r"(?:^|\s)\$(?:\s|$)", raw)
+        body = raw[: comment.start()] if comment else raw
+        offset = 0
+        for part in body.split(";"):
+            out.append((i, offset, part))
+            offset += len(part) + 1
+    return out
+
+
+def deck_values(lines: list[str]) -> tuple[dict, dict, dict, dict]:
+    """Where a deck writes each value: (elements, params, sources, unscaled). The first 3 map an
+    upper-case name to its places in the deck's order: an R, C or L element's value, a `.param`'s
+    number, a V or I source's DC value; a place is None where the deck writes something a corner
+    cannot scale. A value the deck sets again in `.control` (`alter rcoil 0.8`, `alter @r2[resistance]
+    = 10k`, `alterparam rbot = 10k`) is one more place: the part is as far off its value in every
+    analysis the deck runs. `unscaled` maps a name to each such command whose value is no number
+    (`alter r2 = $&rv`): a corner cannot follow it."""
+    elements: dict[str, list[Site | None]] = {}
     params: dict[str, list[Site | None]] = {}
-    for i in netlist_lines(lines):
-        line = lines[i]
-        if line.strip().lower().startswith(".param"):
-            offset = line.lower().index(".param") + len(".param")
-            for m in PARAM_RE.finditer(line, offset):
-                value = spice_number(m.group(2))
-                site = None if value is None else Site(i, m.start(2), m.end(2), value)
-                params.setdefault(m.group(1).upper(), []).append(site)
+    sources: dict[str, list[Site | None]] = {}
+    unscaled: dict[str, list[str]] = {}
+    starts = netlist_lines(lines)
+    for i in starts:
+        if not lines[i].strip().lower().startswith(".param"):
             continue
-        if line.strip()[0].upper() not in KINDS:
+        for j, begin, end in statement_lines(lines, i):
+            if j == i:
+                begin = lines[i].lower().index(".param") + len(".param")
+            for m in PARAM_RE.finditer(lines[j][:end], begin):
+                value = spice_number(m.group(2))
+                site = None if value is None else Site(j, m.start(2), m.end(2), value)
+                params.setdefault(m.group(1).upper(), []).append(site)
+    for i in starts:
+        first = lines[i].strip()[0].upper()
+        if first not in VALUE_WORDS:
             continue
         tokens = logical_tokens(lines, i)
         place = value_place(tokens)
         if place:
-            j, start, end, token = place
-            value = spice_number(token)
-            site = None if value is None else Site(j, start, end, value)
-            elements.setdefault(tokens[0][3].upper(), []).append((site, token))
-    for i in control_lines(lines):
-        m = ALTER_RE.match(lines[i])
-        if m and m.group(1).upper() in elements:
-            value = spice_number(m.group(2))
-            if value is not None:
-                elements[m.group(1).upper()].append((Site(i, m.start(2), m.end(2), value), m.group(2)))
-    return elements, params
+            held_in = elements if first in KINDS else sources
+            held_in.setdefault(tokens[0][3].upper(), []).append(place_of(place, params))
+    for i, offset, text in control_commands(lines):
+        m = next((m for m in (form.match(text) for form in ALTER_FORMS) if m), None)
+        if m is None:
+            loose = ALTER_ANY_RE.match(text)
+            if loose:
+                unscaled.setdefault(loose.group("dev").upper(), []).append(text.strip())
+            continue
+        name = m.group("dev").upper()
+        param = m.groupdict().get("param")
+        is_param = text.strip().lower().startswith("alterparam")
+        held_in = params if is_param else elements if name in elements else sources
+        if name not in held_in or (param and param.lower() not in VALUE_WORDS.get(name[0], ())):
+            continue
+        value = spice_number(m.group("value"))
+        if value is None:
+            unscaled.setdefault(name, []).append(text.strip())
+        else:
+            held_in[name].append(Site(i, offset + m.start("value"), offset + m.end("value"), value))
+    return elements, params, sources, unscaled
 
 
-def find_varied(text: str, tolerance: dict | None) -> tuple[list[Varied], list[str], list[str]]:
-    """What a deck's text lets a tolerance corner move: (varied, problems, uncovered). A part is moved
-    at every place the deck writes it, the copies inside its own `.subckt` blocks included. A problem
-    is a part `tolerance.parts` names whose value the deck writes as something other than a number.
-    `uncovered` lists the elements named like board references that no tolerance covers."""
-    if tolerance is None:
-        return [], [], []
+def deck_names(lines: list[str]) -> dict[str, str]:
+    """Each element of the deck's own netlist lines as the deck writes its name, by upper-case name."""
+    names = {}
+    for i in netlist_lines(lines):
+        word = lines[i].split()[0]
+        if not word.startswith("."):
+            names.setdefault(word.upper(), word)
+    return names
+
+
+def find_varied(
+    text: str, tolerance: dict | None, declined: bool = False
+) -> tuple[list[Varied], list[str], list[str]]:
+    """What a deck's text lets a tolerance corner move: (varied, problems, uncovered).
+
+    Each R, C or L element named like a board reference moves by its kind's tolerance, and whatever
+    `tolerance.parts` names moves by its own: an element, a `.param`, a V or I source's DC value. A
+    part moves at every place the deck writes it, the copies inside its own `.subckt` blocks and the
+    values `.control` sets again included. An element written as an expression or from a parameter
+    is scaled where it stands, so 2 parts written from 1 parameter move apart; a parameter `parts`
+    names moves as one, and the elements written from it with it.
+
+    A problem is something the file asks for that the deck's text does not allow: a named part
+    whose value is no number, a value `.control` sets again in a way a corner cannot scale, a name
+    a corner cannot move. `uncovered` lists the elements named like board references that no
+    tolerance covers; with no tolerance block at all that is every one of them, unless the project
+    declined the tolerance for this deck with its reason (`declined`)."""
     lines = text.split("\n")
+    elements, params, sources, unscaled = deck_values(lines)
+    names = deck_names(lines)
+    if tolerance is None:
+        return [], [], [] if declined else [names[k] for k in elements if REFERENCE_RE.match(k)]
     parts: dict[str, float] = tolerance.get("parts", {})
-    elements, params = deck_values(lines)
-    names = {ln.split()[0].upper(): ln.split()[0] for ln in (lines[i] for i in netlist_lines(lines))}
 
     varied: list[Varied] = []
     problems: list[str] = []
     uncovered: list[str] = []
-    taken: dict[Site, str] = {}  # a place moves with one part: the first that claims it
+    by_param: set[Site] = set()  # the places of the parameters `parts` moves
 
     def claim(key: str, kind: str, tol: float, sites: list[Site]) -> None:
-        free = [s for s in sites if s.value != 0 and s not in taken]
-        for s in free:
-            taken[s] = key
+        free = [s for s in sites if s.value != 0]
         if free:
             varied.append(Varied(names.get(key, key.lower()), kind, tol, free))
+        for command in unscaled.get(key, []):
+            problems.append(
+                f"{names.get(key, key.lower())} moves and `.control` sets it again with `{command}`, which "
+                "a corner cannot scale: write that value as a number"
+            )
 
-    # A parameter `parts` names moves first, so an element written from it does not claim its number.
+    # A parameter `parts` names moves first, and as one: the elements written from it move with it.
     for key, tol in parts.items():
-        if key not in params or key in elements:
+        if key in elements or key in sources or key not in params:
             continue
         sites = [s for s in params[key] if s is not None]
         if len(sites) < len(params[key]):
             problems.append(f".param {key} is named in {CORNERS_FILE} and its value is not a number")
+        by_param.update(sites)
         claim(key, "param", tol, sites)
 
-    def written_from(token: str) -> list[Site]:
+    def moved_by_param(site: Site) -> bool:
+        """Whether a place is a bare reference to a parameter that `parts` already moves."""
+        token = lines[site.line][site.start : site.end]
         braced = BRACED_RE.match(token)
-        return [s for s in params.get((braced.group(1) if braced else token).upper(), []) if s]
+        target = params.get((braced.group(1) if braced else token).upper(), [])
+        return site.value is None and any(s in by_param for s in target if s)
 
     for key, places in elements.items():
         kind = key[0]
         tol = parts.get(key)
         if tol is None and REFERENCE_RE.match(key):
             tol = tolerance.get(kind)
-            # An element written from a parameter that `parts` moves is covered by that parameter.
-            moved = all(s is None and any(t in taken for t in written_from(tok)) for s, tok in places)
-            if tol is None and not moved:
+            covered = all(s is not None and moved_by_param(s) for s in places)
+            if tol is None and not covered:
                 uncovered.append(names[key])
         if tol is None:
             continue
-        sites: list[Site] = []
-        for site, token in places:
-            if site is not None:
-                sites.append(site)
-                continue
-            # A value written as one parameter moves that parameter's own number.
-            target = written_from(token)
-            if target:
-                sites += target
-            elif key in parts:
-                problems.append(
-                    f"{names[key]} is named in {CORNERS_FILE} and its value {token} is not a number"
-                )
+        if any(s is None for s in places):
+            if key in parts:
+                problems.append(f"{names[key]} is named in {CORNERS_FILE} and its value is not a number")
             else:
                 uncovered.append(names[key])
-        claim(key, kind, tol, sites)
+        claim(key, kind, tol, [s for s in places if s is not None and not moved_by_param(s)])
+
+    for key, tol in parts.items():
+        if key not in sources:
+            continue
+        sites = [s for s in sources[key] if s is not None]
+        if len(sites) < len(sources[key]) or not sites:
+            problems.append(
+                f"{names[key]} is named in {CORNERS_FILE} and its DC value is not a number a corner can "
+                f"scale: write it as `{names[key]} n+ n- DC 5`, or from a .param that `parts` names"
+            )
+        claim(key, key[0], tol, sites)
     return varied, problems, uncovered
+
+
+def unmoved(text: str, tolerance: dict | None, varied: list[Varied]) -> list[str]:
+    """The names under `tolerance.parts` that this deck holds and no corner moves: something other
+    than an R, C or L element, a V or I source, or a `.param` (a diode, a subcircuit, a model)."""
+    if tolerance is None:
+        return []
+    present = names_in(text)
+    moving = {v.key for v in varied}
+    return [name for name in tolerance.get("parts", {}) if name in present and name not in moving]
 
 
 def held(text: str, varied: list[Varied]) -> list[str]:
@@ -484,22 +606,75 @@ def held(text: str, varied: list[Varied]) -> list[str]:
     written value in every run, so a reader of a corner run sees what it did not vary. An element
     named like a board reference is not listed here: with no tolerance it is `uncovered`, a warning."""
     lines = text.split("\n")
-    elements, params = deck_values(lines)
-    names = {ln.split()[0].upper(): ln.split()[0] for ln in (lines[i] for i in netlist_lines(lines))}
+    elements, params, _, _ = deck_values(lines)
+    names = deck_names(lines)
     moving = {site for v in varied for site in v.sites}
     out: list[str] = []
     for key, places in elements.items():
         if REFERENCE_RE.match(key):
             continue
-        sites: list[Site] = []
-        for site, token in places:
-            if site is not None:
-                sites.append(site)
-                continue
-            braced = BRACED_RE.match(token)
-            sites += [s for s in params.get((braced.group(1) if braced else token).upper(), []) if s]
-        if any(s.value != 0 for s in sites) and not any(s in moving for s in sites):
+        sites = [s for s in places if s is not None]
+        from_params = {
+            s
+            for site in sites
+            if site.value is None
+            for s in params.get(lines[site.line][site.start : site.end].strip("{}'").upper(), [])
+            if s
+        }
+        if any(s.value != 0 for s in sites) and not any(s in moving for s in [*sites, *from_params]):
             out.append(names[key])
+    return out
+
+
+def shared_parts(text: str, varied: list[Varied]) -> list[str]:
+    """Moved elements that are more than 1 part on the board: an element inside a `.subckt` the deck
+    places more than once. Every copy moves with the others, so nothing that rests on 2 copies
+    differing (2 cells, 2 channels, the 2 halves of a divider) can show."""
+    lines = text.split("\n")
+    scope: dict[int, str] = {}
+    inside = ""
+    placed: dict[str, list[str]] = {}
+    for i, raw in enumerate(lines):
+        words = raw.split()
+        low = words[0].lower() if words else ""
+        if low == ".subckt" and len(words) > 1:
+            inside = words[1]
+        elif low == ".ends":
+            inside = ""
+        scope[i] = inside
+    for i in netlist_lines(lines):
+        if lines[i].strip()[0].upper() != "X":
+            continue
+        words = [t[3] for t in logical_tokens(lines, i)]
+        cut = words.index("=") - 1 if "=" in words else len(words)
+        if cut >= 2:
+            placed.setdefault(words[cut - 1].lower(), []).append(words[0])
+    out = []
+    for v in varied:
+        for sub in dict.fromkeys(scope[s.line] for s in v.sites if scope.get(s.line)):
+            copies = placed.get(sub.lower(), [])
+            if len(copies) > 1:
+                out.append(
+                    f"{v.name} in .subckt {sub} is {len(copies)} parts on the board "
+                    f"({', '.join(copies)}): a corner moves them together"
+                )
+    return out
+
+
+def top_level_parts(text: str) -> list[str]:
+    """The R, C and L elements named like board references that a file holds outside any `.subckt`:
+    the parts of a netlist fragment a deck includes, not the insides of a model."""
+    lines = ["*", *text.split("\n")]  # an included file has no title line
+    out: list[str] = []
+    inside = False
+    for i in netlist_lines(lines):
+        word = lines[i].split()[0]
+        if word.lower() == ".subckt":
+            inside = True
+        elif word.lower() == ".ends":
+            inside = False
+        elif not inside and REFERENCE_RE.match(word):
+            out.append(word)
     return out
 
 
@@ -548,15 +723,17 @@ def misread_values(text: str) -> list[str]:
 def names_in(text: str) -> set[str]:
     """Every element and parameter name a deck's own netlist lines define, upper case."""
     lines = text.split("\n")
-    out: set[str] = set()
-    for i in netlist_lines(lines):
-        line = lines[i]
-        if line.strip().lower().startswith(".param"):
-            offset = line.lower().index(".param") + len(".param")
-            out |= {m.group(1).upper() for m in PARAM_RE.finditer(line, offset)}
-        elif not line.strip().startswith("."):
-            out.add(line.split()[0].upper())
-    return out
+    return set(deck_names(lines)) | set(deck_values(lines)[1])
+
+
+def scaled(token: str, site: Site, factor: float) -> str:
+    """A place's text at a corner: a number times the factor, or an expression wrapped in the factor
+    (`{rtop}` is `{(rtop)*1.05}`, a bare `rtop` too), which ngspice evaluates where it stands."""
+    if site.value is not None:
+        return spice_text(site.value * factor)
+    inner = token[1:-1] if token[0] in "{'" else token
+    quote = ("'", "'") if token[0] == "'" else ("{", "}")
+    return f"{quote[0]}({inner})*{spice_text(factor)}{quote[1]}"
 
 
 def corner_text(text: str, varied: list[Varied], corner: Corner) -> str:
@@ -573,7 +750,7 @@ def corner_text(text: str, varied: list[Varied], corner: Corner) -> str:
     for i, group in edits.items():
         line = lines[i]
         for site, factor in sorted(group, key=lambda g: g[0].start, reverse=True):
-            line = line[: site.start] + spice_text(site.value * factor) + line[site.end :]
+            line = line[: site.start] + scaled(line[site.start : site.end], site, factor) + line[site.end :]
         lines[i] = line
     if corner.temp is not None:
         ends = [
@@ -594,24 +771,131 @@ def file_id(text: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.+-]", "_", text)
 
 
-def first_corners(temperatures: list[float], varied: list[Varied]) -> list[Corner]:
-    """One range at a time: each temperature with the parts as written, then each part at both ends of
-    its tolerance at the deck's own temperature."""
-    out = []
-    for t in sorted(set(temperatures)):
-        if abs(t - NOMINAL_TEMP) > TEMP_MATCH:
-            out.append(Corner(f"t{t:g}", "temperature", f"{t:g} C", temp=t))
+def ran_at(output: str) -> float:
+    """The temperature a deck ran at as written: the one ngspice names for its analyses, or 27 C when
+    it names none or more than one."""
+    seen = {round(float(t), 2) for t in ANALYSIS_TEMP_RE.findall(output)}
+    return seen.pop() if len(seen) == 1 else NOMINAL_TEMP
+
+
+def other_temperatures(temperatures: list[float], written_at: float) -> list[float]:
+    """The temperatures a corner must set: those the project names, without the one the deck as
+    written already ran at. A deck that sets its own 40 C leaves 27 C to be run when the file names it."""
+    return [t for t in sorted(set(temperatures)) if abs(t - written_at) > TEMP_MATCH]
+
+
+def end_label(v: Varied, factor: float) -> str:
+    return f"{v.name} {'+' if factor > 1 else '-'}{percent(abs(factor - 1))}"
+
+
+def first_corners(
+    temperatures: list[float], varied: list[Varied], written_at: float = NOMINAL_TEMP
+) -> list[Corner]:
+    """One range at a time: each temperature with the parts as written, then each part alone at both
+    ends of its tolerance and half-way to each, at the deck's own temperature. The half-way runs see
+    a measure that peaks inside a part's range, which neither end shows."""
+    out = [
+        Corner(f"t{t:g}", "temperature", f"{t:g} C", temp=t)
+        for t in other_temperatures(temperatures, written_at)
+    ]
     for v in varied:
-        out.append(
-            Corner(
-                file_id(f"{v.name}-"), "tolerance", f"{v.name} -{percent(v.tol)}", scale={v.key: 1 - v.tol}
+        for mark, share in (("-", -1.0), ("+", 1.0), ("-h", -0.5), ("+h", 0.5)):
+            factor = 1 + share * v.tol
+            out.append(
+                Corner(file_id(f"{v.name}{mark}"), "tolerance", end_label(v, factor), scale={v.key: factor})
             )
-        )
-        out.append(
-            Corner(
-                file_id(f"{v.name}+"), "tolerance", f"{v.name} +{percent(v.tol)}", scale={v.key: 1 + v.tol}
-            )
-        )
+    return out
+
+
+def refine_corners(
+    bounded: dict[str, tuple[bool, bool]],
+    nominal: dict[str, float],
+    alone: list[tuple[Corner, dict[str, float]]],
+    varied: list[Varied],
+) -> list[Corner]:
+    """The next runs for a measure that peaks inside a part's range: where a part moved alone gives a
+    bounded measure its furthest value at neither end, 2 runs half-way between that point and its
+    neighbours. Called again on the larger set of runs, it closes on the peak; it returns nothing for
+    a measure that runs one way across each range, which is the usual case. `alone` holds the runs
+    that moved 1 part, with their measures."""
+    by_key = {v.key: v for v in varied}
+    points: dict[str, dict[float, dict[str, float]]] = {v.key: {0.0: nominal} for v in varied}
+    for corner, measures in alone:
+        if len(corner.scale) == 1 and corner.temp is None:
+            ((key, factor),) = corner.scale.items()
+            if key in by_key:
+                points[key][round((factor - 1) / by_key[key].tol, 6)] = measures
+    asked: dict[tuple[str, float], Corner] = {}
+    for measure in sorted(bounded):
+        for side, wanted in zip(("min", "max"), bounded[measure], strict=True):
+            if not wanted:
+                continue
+            for key, runs in points.items():
+                seen = sorted((share, m[measure]) for share, m in runs.items() if measure in m)
+                if len(seen) < 3:
+                    continue
+                values = [value for _, value in seen]
+                top = min(values) if side == "min" else max(values)
+                ends = (values[0], values[-1])
+                scale = max(abs(v) for v in values) or 1.0
+                if any(abs(top - end) <= 1e-9 * scale for end in ends):
+                    continue  # an end is as far as any point between: the measure runs one way
+                at = values.index(top)
+                for a, b in ((seen[at - 1][0], seen[at][0]), (seen[at][0], seen[at + 1][0])):
+                    share = round((a + b) / 2, 6)
+                    if share not in runs and (key, share) not in asked:
+                        v = by_key[key]
+                        factor = 1 + share * v.tol
+                        asked[(key, share)] = Corner(
+                            file_id(f"{v.name}{share:+g}"),
+                            "tolerance",
+                            end_label(v, factor),
+                            scale={key: factor},
+                        )
+    return list(asked.values())
+
+
+def every_end(
+    temperatures: list[float], varied: list[Varied], written_at: float = NOMINAL_TEMP
+) -> list[Corner] | None:
+    """Every combination of the ends: each part at the low or the high end of its tolerance, at the
+    deck's own temperature and at each one the project names. None when that is more than
+    EXHAUSTIVE_RUNS runs; then the worst case is a guess from the first corners (worst_corners)."""
+    temps = [None, *other_temperatures(temperatures, written_at)]
+    if not varied:
+        return []
+    if 2 ** len(varied) * len(temps) > EXHAUSTIVE_RUNS:
+        return None
+    out: list[Corner] = []
+    for temp in temps:
+        for ends in itertools.product((-1, 1), repeat=len(varied)):
+            scale = {v.key: 1 + end * v.tol for v, end in zip(varied, ends, strict=True)}
+            said = ([f"{temp:g} C"] if temp is not None else []) + [
+                end_label(v, scale[v.key]) for v in varied
+            ]
+            out.append(Corner(f"e{len(out) + 1:03d}", "worst", ", ".join(said), temp=temp, scale=scale))
+    return out
+
+
+def sweep_corners(varied: list[Varied]) -> list[Corner]:
+    """The runs that carry a resonance across its whole span along the side where it is strongest,
+    for a deck that answers an overlap of the frequency plan. A resonance rises with L / C, so: every
+    inductor at its high end with the capacitors stepped from low to high, then every capacitor at
+    its low end with the inductors stepped from high to low. A step is SWEEP_STEP of a part's value,
+    which moves the resonance by half as much. The worst-case runs put each part at an end, where the
+    resonance has left the source; the coincidence lies between the ends."""
+    coils = [v for v in varied if v.kind == "L"]
+    caps = [v for v in varied if v.kind == "C"]
+    if not coils or not caps:
+        return []
+    steps = max(2, math.ceil(2 * max(v.tol for v in [*coils, *caps]) / SWEEP_STEP))
+    out: list[Corner] = []
+    for fixed, end, moved in ((coils, 1, caps), (caps, -1, coils)):
+        for n in range(steps + 1):
+            share = -1 + 2 * n / steps
+            scale = {v.key: 1 + end * v.tol for v in fixed} | {v.key: 1 + share * v.tol for v in moved}
+            said = ", ".join(end_label(v, scale[v.key]) for v in varied if scale.get(v.key, 1) != 1)
+            out.append(Corner(f"s{len(out) + 1:03d}", "sweep", said, scale=scale))
     return out
 
 
@@ -668,14 +952,20 @@ def worst_corners(
 
 
 def monte_carlo_corners(
-    deck: str, monte: dict | None, temperatures: list[float], varied: list[Varied]
+    deck: str,
+    monte: dict | None,
+    temperatures: list[float],
+    varied: list[Varied],
+    written_at: float = NOMINAL_TEMP,
 ) -> list[Corner]:
     """`runs` draws for one deck: each covered value evenly inside its tolerance, the temperature evenly
     inside its range. The seed and the deck's name fix the draws, so a run repeats."""
     if not monte or not (varied or temperatures):
         return []
     rng = random.Random(f"{monte['seed']}:{deck}")
-    span = [*temperatures, NOMINAL_TEMP]
+    # The range is the one the project names. A single temperature has none, so its draws run from
+    # the deck's own temperature to it.
+    span = temperatures if len(set(temperatures)) > 1 else [*temperatures, written_at]
     low, high = min(span), max(span)
     width = len(str(monte["runs"]))
     out = []

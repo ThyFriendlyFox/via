@@ -10,6 +10,7 @@ from __future__ import annotations
 import importlib.machinery
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -423,7 +424,9 @@ def test_a_requirement_that_fails_at_a_corner_is_not_a_pass(tmp_path):
     (project2 / "sim" / "corners.json").write_text(json.dumps(corners), encoding="utf-8")
     code, results = run("verify", project2)
     assert not [f for f in failures(results) if f.startswith("traceability:")]
-    assert any(f.startswith("sim: rc_divider:vout=2.375 at R1 +5 %, R2 -5 %") for f in failures(results))
+    # 2.375 V is as far under 2.45 V as 2.625 V is over 2.55 V: the line names one of the 2 corners
+    line = r"sim: rc_divider:vout=(2\.375 at R1 \+5 %, R2 -5 %|2\.625 at R1 -5 %, R2 \+5 %) "
+    assert any(re.match(line, f) for f in failures(results)), failures(results)
 
 
 @needs_ngspice

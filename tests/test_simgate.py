@@ -257,10 +257,17 @@ def test_the_verdict_names_the_warnings_and_never_calls_a_missing_engine_green()
     )
     clean = cli.Result("export", "pass", "")
     assert cli.gates_verdict([clean]) == ("GREEN", 0)
-    # a gate with nothing to run (no decks) leaves the run GREEN; one whose engine is absent does not
+    # a gate with nothing to run (no decks) leaves the run GREEN and is named beside the word, so a
+    # project with decks and no board is not read as a finished board; one whose engine is absent
+    # is never GREEN
     nothing = cli.Result("sim", "skip", "no sim/*.cir in project")
     absent = cli.Result("sim", "skip", "engine missing: ngspice", {"engine_missing": "ngspice"})
-    assert cli.gates_verdict([clean, nothing]) == ("GREEN", 0)
+    assert cli.gates_verdict([clean, nothing]) == ("GREEN (nothing to run for: sim)", 0)
+    idle = [cli.Result(g, "skip", "nothing") for g in ("erc", "drc")]
+    assert cli.gates_verdict([*idle, sim, cli.Result("export", "skip", "no board")]) == (
+        "GREEN with 3 warnings (nothing to run for: erc, drc, export)",
+        0,
+    )
     assert cli.gates_verdict([clean, absent]) == ("SKIPPED (SIM: engine missing)", 2)
     assert cli.gates_verdict([nothing]) == ("SKIPPED", 2)
     assert cli.gates_verdict([clean, absent, cli.Result("drc", "fail", "")]) == ("RED", 1)
@@ -336,9 +343,13 @@ def test_a_corner_ngspice_does_not_finish_fails_and_names_its_error_and_its_log(
     assert code == 1 and details["decks"]["cross"]["measures"] == {"v_at": 4.98}
     corners = tmp_path / "o" / "sim" / "corners" / "cross"
     error = "ngspice exit 0, 1 error lines: Error: measure  v_at  when(WHEN) : out of interval"
+    # each part alone at its end and half-way to it, then both at their ends together
     assert details["failures"] == [
         f"cross: at R1 +5 %: {error} (log {corners / 'R1+' / 'ngspice.log'})",
+        f"cross: at R1 +2.5 %: {error} (log {corners / 'R1+h' / 'ngspice.log'})",
         f"cross: at R2 -5 %: {error} (log {corners / 'R2-' / 'ngspice.log'})",
+        f"cross: at R2 -2.5 %: {error} (log {corners / 'R2-h' / 'ngspice.log'})",
+        f"cross: at R1 +5 %, R2 -5 %: {error} (log {corners / 'e003' / 'ngspice.log'})",
     ]
     assert "out of interval" in (corners / "R2-" / "ngspice.log").read_text(encoding="utf-8")
 
@@ -541,9 +552,12 @@ def test_a_bundle_that_gives_another_number_than_the_gate_is_named(tmp_path):
     assert len(problems) == 2
     assert problems[0] == "rdiv: the bundle gives gone=None, the gate 1.0"
     assert re.fullmatch(r"rdiv: the bundle gives vout=0\.501\d*, the gate 0\.9", problems[1]), problems
-    # a bundle whose model is gone does not run
+    # a bundle whose model is gone does not run, and the line carries ngspice's own first error
     (folder / "models" / "rdiv.ngspice.lib").unlink()
-    assert cli.check_bundle(folder, "rdiv", {})[0].startswith("rdiv: the bundle does not run: ngspice exit ")
+    assert cli.check_bundle(folder, "rdiv", {})[0] == (
+        "rdiv: the bundle does not run from another folder: ngspice exit 1, 1 error lines: Error: Could "
+        "not find include file models/rdiv.ngspice.lib"
+    )
 
 
 @needs_ngspice
