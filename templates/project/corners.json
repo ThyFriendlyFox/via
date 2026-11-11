@@ -1,0 +1,14 @@
+{
+  "temperature": {
+    "values": [0, 40],
+    "source": "fill: the requirement or datasheet that states the range the board works in"
+  },
+  "tolerance": {
+    "R": 0.01,
+    "C": 0.1,
+    "L": 0.2,
+    "parts": {},
+    "source": "fill: where each tolerance comes from: the parts list, each part's datasheet"
+  },
+  "monte_carlo": { "runs": 50, "seed": 1 }
+}

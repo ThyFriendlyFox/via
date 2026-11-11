@@ -7,6 +7,29 @@
 
 The EE Workcenter turns a KiCad 10 project into fabrication outputs that
 passed every gate. "Done" means `workcenter gates <project>` prints GREEN.
+`workcenter next <project>` names the one step that is left at any point.
+
+## Verdicts
+
+The last line of `workcenter gates` is the verdict. Its exit code says the
+same.
+
+| Last line | Meaning | Exit code |
+|---|---|---|
+| `GREEN` | Every gate that had something to run passed, with no warning. | 0 |
+| `GREEN with N warnings` | Every gate passed, and N things were named and not failed on. Each is printed. The project's gates report names each one it keeps, and why. `--strict` fails on all of them. | 0 |
+| `RED` | A gate failed, or an engine stopped with an error. | 1 |
+| `SKIPPED (GATE: engine missing)` | A gate did not run because its engine is absent. A run with an absent engine is never GREEN. | 2 |
+| `SKIPPED` | No gate had anything to run. | 2 |
+
+`workcenter doctor` reports each engine as ok, absent or MISSING. A gate
+whose engine is absent is skipped with the engine's name.
+
+`workcenter verify` ends with a line of its own. `REQUIREMENTS MET` needs
+every requirement PASS, no problem in the package, and the decks run at
+their corners. `REQUIREMENTS NOT MET (...)` names what is short. The gate's
+own status, `PASS verify`, says only that the package agrees with a fresh
+run: a package that records a FAIL honestly passes it.
 
 ## Tools
 
@@ -24,8 +47,14 @@ passed every gate. "Done" means `workcenter gates <project>` prints GREEN.
 | scene | this repo | `tools/scene.py`: assembly scenes a project's script builds, run by `workcenter pictures` | the checkout; KiCad's `pcbnew` and FFmpeg by `install.sh` |
 | kistack | `641ade9` | `.claude/skills/kistack/SKILL.md` routes to `third_party/kistack/skills/`; `workcenter placement <check> <board> [args]` runs its placement checks | the checkout (vendored, `third_party/kistack/VENDORED.md`); shapely, numpy and pygerber by `install.sh` (PyPI) |
 | Board inspection | this repo | `workcenter inspect <view> <board> ...`, the views `map`, `list`, `probe`, `net`, `islands`, `resistance`, `crossed` (KiCad's `pcbnew` and Pillow under the venv); `python3 tools/stretch.py <design.py> --cut X --grow G` | `install.sh` (part of the checkout; Pillow from PyPI) |
+| Corners and frequency plan | this repo | `sim/corners.json` and `sim/frequency-plan.json`, read by `workcenter sim` (`tools/simcorners.py`, `tools/freqplan.py`); `workcenter sim --bundle <dir>` for a deck that runs on any machine | the checkout; ngspice by `install.sh` |
+| Next step | this repo | `workcenter next <project>` (`tools/guide.py`) | the checkout |
 
 ## Skills
+
+A skill is a Markdown procedure at `.claude/skills/<name>/SKILL.md`. A
+host that loads skills offers each by name. Any other reader opens the
+file: it needs nothing else.
 
 | Skill | Use when |
 |---|---|
@@ -33,7 +62,7 @@ passed every gate. "Done" means `workcenter gates <project>` prints GREEN.
 | `board-design` | A board is designed from a spec, as a Python design file built from the KiCad libraries. |
 | `board-gates` | A board must pass ERC, DRC, simulation, and export. The fix loop. |
 | `autoroute` | A board has unrouted nets and FreeRouting should route them. Headless for generated designs. |
-| `simulate` | A circuit must meet a measurable spec before layout. |
+| `simulate` | A circuit must meet a measurable spec before layout; a part switches; a deck must run on another machine. Corners, the frequency plan, bundles. |
 | `blog-post` | A human asks for a public write-up of recent work. |
 | `procurement` | A human asks what a board costs, for its parts list, or to order its parts. |
 | `kistack` | Placing parts, reviewing a schematic, a layout or the Gerbers, choosing a part's derating, a footprint or symbol, or a panel: it names the kistack skill for the step, and where this workcenter's rules win. |
@@ -45,9 +74,9 @@ passed every gate. "Done" means `workcenter gates <project>` prints GREEN.
 |---|---|---|---|
 | ERC | `workcenter erc <project>` | 0 errors in the ERC report | layout |
 | DRC | `workcenter drc <project>` | 0 errors, 0 unconnected items, 0 parity errors; with the project's fab rules (`<name>.kicad_dru`) when its design names a fab | export |
-| SIM | `workcenter sim <project>` | every `sim/*.cir` runs clean, every `*.expect.json` bound holds, and every library model a deck includes is unchanged since its `sources.csv` row | export |
+| SIM | `workcenter sim <project>` | every `sim/*.cir` runs clean with no analysis aborted, every `*.expect.json` bound holds as written and at every corner of `sim/corners.json`, every overlap `sim/frequency-plan.json` shows is answered, and every library model a deck includes is unchanged since its `sources.csv` row | export |
 | EXPORT | `workcenter export <project>` | gerbers, drill, BOM, schematic PDF produced | hand-off to fabrication |
-| ALL | `workcenter gates <project>` | the 4 gates above in order, none red | a board is called done |
+| ALL | `workcenter gates <project>` | the 4 gates above in order, none red, none skipped for a missing engine | a board is called done |
 
 `workcenter design` also lists every control input that can float while the
 MCU is in reset (a gate, a logic input, a switch or an I2C line that no output
@@ -179,6 +208,53 @@ the folder, and prints the one command that reruns it:
 `env -C <run folder> ngspice -b <deck>.cir`. A bare `ngspice -b` in `sim/`
 reads a vendor model untranslated and in ngspice's own mode (M94).
 
+The SIM gate runs every deck at its corners (`tools/simcorners.py`, the
+`simulate` skill's "Corners"). `sim/corners.json` names the temperature
+range, each part's tolerance and a count of Monte Carlo runs, each range
+with its source. The gate runs a deck once for each temperature, twice for
+each part (its value less and plus the tolerance), once for the worst case
+of each bound, and once for each Monte Carlo draw, each run in its own
+folder under `build/sim/corners/<deck>/`. A bound holds when it holds at
+every corner; a failure names the corner: `isense:v_6a=1.076259 at 85 C,
+R16 -1 %, R7 -1 % not in [1.14, 1.26]`. A bound with `"warn"` or `"at":
+"nominal"` is judged as written only. A project with decks and no
+`sim/corners.json` gets a warning, as does a deck whose measures do not
+move with temperature and a part named like a board reference that no
+tolerance covers. `--nominal` leaves the corners out and says so.
+
+The SIM gate judges the project's frequency plan (`tools/freqplan.py`, the
+`simulate` skill's "The frequency plan"). `sim/frequency-plan.json` names
+every periodic source with its frequency and every resonance an `.ac`
+deck measured. The gate fails on a source whose harmonic lies in a
+resonance's band, and on 2 sources that can run at 1 frequency, unless the
+plan answers the overlap with a bounded measure of a deck that drives it.
+It fails on a periodic stimulus in a deck that the plan does not name. A
+project whose decks drive periodic sources and that has no plan gets a
+warning.
+
+The gate reads what it is given strictly. An expect file with a key it does
+not know, a bound with neither `min` nor `max`, or text that is not JSON
+fails the gate with the line that is wrong. An analysis ngspice gave up on
+fails its deck even when a later analysis completes. A complex value is no
+measure. The user's own `~/.spiceinit` does not reach a deck. A node that
+floats (`singular matrix`) is a warning.
+
+`workcenter sim <project> --bundle <dir>` writes each deck as a folder
+that plain ngspice runs on any machine: `run.sp` (the file to run),
+the deck with its includes pointing into `models/`, every included file
+there (translated where its row says), `expect.json`, `measures.json` and
+a README. The command runs each folder from a copy in another place and
+fails when a measure differs from the gate's. Send the folder, not the
+deck, to a person who runs it elsewhere: the deck alone stops with an
+error or prints another number (M105).
+
+Not a gate: `workcenter next <project>` names the one next step
+(`tools/guide.py`): what to do, the command, why, what to read, and when
+the step is done. It reads `build/gates.json` and `build/verify.json`,
+asks for a new run when an input is newer than a report, and answers the
+first failure or warning with the fix for its kind. It exits 0 when
+nothing is left and 1 when a step is. It writes nothing.
+
 Not a gate: `workcenter fetch <url> --to <library>/<maker>/<file>` fetches
 one datasheet, model or body once under the workcenter's own name (a
 refusal is reported, never retried), keeps it, and prints its
@@ -235,8 +311,11 @@ writeup for every deck, links that lead somewhere, and a traceability row
 for every requirement. It runs the SIM gate and compares every number
 quoted beside a `deck.meas` in a table with the run, to half a unit of the
 quoted digit, and recomputes each traceability check (`deck.meas <= 30 V`)
-against the stated verdict. A FAIL verdict is a finding, not a problem;
-`--strict` fails on a FAIL or an OPEN requirement too. `--init` copies
+against the stated verdict, at the least and the greatest value its measure
+takes over the deck's corners: a row that says PASS while a corner fails is
+a problem. A FAIL verdict is a finding, not a problem;
+`--strict` fails on a FAIL or an OPEN requirement too, and on decks that
+ran without corners. `--init` copies
 `templates/verification/` into the package, a writeup per deck, never over
 a file that exists. It writes `build/verify.json` and the decks' logs.
 
@@ -331,6 +410,8 @@ A project may add gates. It may not remove these.
 - Files: one `<name>.kicad_pro` with `<name>.kicad_sch` and `<name>.kicad_pcb` beside it
 - Optional: `design.py` exposing `build() -> kicadgen.Design`, the source the KiCad files are generated from
 - Optional: `sim/<deck>.cir` with `sim/<deck>.expect.json` for the SIM gate; `sim/models/` for the project's own fitted models
+- With decks: `sim/corners.json`, the temperature range and the parts' tolerances every bound must hold over (start from `templates/project/corners.json`); the gate warns without it
+- With decks that drive periodic sources: `sim/frequency-plan.json`, the sources and the measured resonances (start from `templates/project/frequency-plan.json`); the gate warns without it
 - Optional: `verification/` for `workcenter verify` (P28)
 - Optional, a project kept as version folders (`v0.1/`, `v0.2/`, ... at the
   repository's root, a nested board one folder down): `parts/catalog.csv`,

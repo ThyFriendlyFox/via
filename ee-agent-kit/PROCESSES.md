@@ -190,9 +190,18 @@ axis it defines (a 3D model's rotation or offset, an export's origin).
    the convention down where its next use will read it (the skill for
    that tool), and use the written one instead of working it out again.
    KiCad 10's is in the `board-design` skill (M42, M47).
+5. Keep a sample of what the tool prints when it fails, one for every way
+   it fails: an error, a run it gave up on part of the way, a result it
+   doubts. An exit code of 0 is not a verdict: ngspice exits 0 when one
+   analysis aborts and a later one completes (M103).
+6. A file a person writes for a tool to read (an expect file,
+   `corners.json`, `frequency-plan.json`) is read against the keys it may
+   hold. A key the reader does not know, a value of the wrong kind, and
+   text that is not the format are each a problem named with its line,
+   never passed over and never a traceback (M104).
 
-Done when: a test parses a real sample and the parser's assumptions are
-written next to it.
+Done when: a test parses a real sample of each shape, failures among them,
+and the parser's assumptions are written next to it.
 
 ## P8 — Shell discipline
 
@@ -209,8 +218,8 @@ When: every shell command.
    ask the human whether to install it user-wide
    (`python3 tools/hooks/install_hooks.py`); never write their settings
    unasked.
-2. `--help` before a flag you have not used in this session. Global
-   flags such as `--json` go before the subcommand.
+2. `--help` before a flag you have not used in this session. `--json`
+   is read before the command or after it (M114).
 3. `pkill -x name`, never `pkill -f` with a pattern that matches the
    shell running it. The same holds for `pgrep -f` in a wait loop: the
    loop's own command line holds the pattern (M75). Wait on a file the job
@@ -276,9 +285,15 @@ When: touching `tools/workcenter` or `tools/kicadgen.py`'s command line.
 4. `docs/CONFIGURATION.md` gets the new flag in the same PR, in its
    command's table; `test_every_cli_flag_is_in_the_configuration_table`
    fails the PR when a flag has no row (M50).
+5. A reader copies a command as a document writes it. A flag of the
+   whole program is read on either side of the command, and
+   `tests/test_docs.py` holds each flag a document gives a command to
+   that command's own `--help` (M114). A rule that tells the reader to
+   reorder a command is not a fix.
 
-Done when: `make verify` is green and the configuration table names the
-flag.
+Done when: `make verify` is green, the configuration table names the
+flag, and every document that writes the command writes one the parser
+takes.
 
 ## P11 — Changing what the router sees
 
@@ -310,9 +325,13 @@ that may be absent.
 3. `make verify` runs the tests with the same Python the CLI uses; the
    venv is created with `--system-site-packages` so it sees `pcbnew`.
 4. Read the test summary for skips before calling a run green.
+5. A gate has 2 kinds of skip, and they are told apart: nothing to run
+   (no deck, no board), and an engine that is absent. The second carries
+   the engine's name, and a run that holds one is SKIPPED with exit code
+   2, never GREEN, however many other gates passed (M106).
 
-Done when: the summary shows no unexpected skips and the engine test is
-green on the runner.
+Done when: the summary shows no unexpected skips, the engine test is
+green on the runner, and a run with an engine taken away is not GREEN.
 
 ## P13 — Recording a mistake
 
@@ -356,7 +375,11 @@ When: a change is about to be called done.
 4. Watch CI to the end; red CI is work now, not later.
 5. The report names the commit, the run link, and the numbers from the
    gate report; a skipped or blocked part is named as such. A board
-   version's report carries its pictures (P23).
+   version's report carries its pictures (P23). It gives each verdict as
+   the command printed it, the whole line: `GREEN with 7 warnings`,
+   `REQUIREMENTS NOT MET (56 of 64 pass; 2 fail: ...; 6 open)`. Never a
+   shorter word for it: `PASS verify` says the package agrees with the
+   run, not that the requirements are met (M109).
 
 Done when: the remote has the commit, its CI run is green, and the report
 has been sent.
@@ -731,11 +754,19 @@ comes from a vendor.
    the PDF's vectors, the middle of the drawn line, with the figure and
    page named beside the value. A hand reading or a script of one's own is
    checked against a curve of known values first (M100).
+7. A deck that goes to a person outside the project goes as a bundle:
+   `workcenter sim <project> --bundle <dir>` writes each deck with its
+   models, translated as the gate reads them, and the file that sets the
+   mode, and proves the folder prints the gate's numbers from another
+   place. The deck alone stops with an error or prints another number
+   with exit code 0 (M105). A translated model is a changed copy of its
+   maker's file: read the maker's notice before the folder goes to a
+   third party.
 
 Done when: `workcenter sources` passes for every board of the version, each
-model a deck uses has its datasheet rows as `warn` bounds, and the README
+model a deck uses has its datasheet rows as `warn` bounds, the README
 names each model that is off its datasheet and what the design trusts
-instead.
+instead, and what left the project for another machine left as a bundle.
 
 ## P28 — A board's verification package
 
@@ -765,8 +796,16 @@ circuits it touches. The `verification` skill is the how-to.
    `"req"` naming it go.
 4. Judge every limit at its corners: the datasheets' minimum and maximum
    rows, the source's range, each setting resistor's tolerance, the
-   temperature. A typical value is a check of the model, never a verdict
-   (M70). A fitted model's value at a condition the datasheet does not
+   temperature. The SIM gate runs the temperature and the tolerances:
+   write `sim/corners.json` first, the temperature range from the
+   requirement that states it and each tolerance from its part's
+   datasheet, each with its source (the `simulate` skill, "Corners").
+   `verify` then judges each check at its measure's least and greatest
+   corner (M107). A corner moves only what the deck and its models
+   carry: give each resistor its coefficient, and where a model says it
+   has no temperature in it, rest the requirement on the datasheet's own
+   range in a calculation. A typical value is a check of the model, never
+   a verdict (M70). A fitted model's value at a condition the datasheet does not
    tabulate is no maximum: take the nearest maximum row as flat, unless a
    figure read from the datasheet says otherwise (M83). Write the limit
    before the number it is compared with, then compare (M71).
@@ -813,11 +852,12 @@ circuits it touches. The `verification` skill is the how-to.
    - The skill's two checks print nothing before the brief is sent.
 9. `workcenter verify <project>` until it reports no problems.
 
-Done when: `workcenter verify <project>` reports no problems, the
-package's README lists each FAIL with its size and its proposed fix, each
-track resistance in a deck names the `workcenter inspect resistance` run it
-came from, and the report to the user gives the counts of PASS, FAIL and
-OPEN and names each withdrawn requirement.
+Done when: `workcenter verify <project>` reports no problems with the decks
+run at their corners, the package's README lists each FAIL with its size
+and its proposed fix, each track resistance in a deck names the `workcenter
+inspect resistance` run it came from, and the report to the user gives the
+command's last line, the counts of PASS, FAIL and OPEN, and each withdrawn
+requirement.
 
 ## P29 — Placing a part on a routed board
 
@@ -862,3 +902,56 @@ from what the board holds on every layer, never from courtyards alone.
 Done when: `workcenter design` prints no `part:`, `via:` or `island:` line,
 `inspect crossed --new` reports no net open, and `workcenter gates` is
 GREEN after one route.
+
+## P30 — A frequency plan
+
+When: a board has a part that switches or a clock (a PWM output, a
+switching regulator, a charge pump, a bus), before its SIM gate is called
+done; again after a change of a frequency, or of an inductor or a
+capacitor on a supply rail.
+
+1. List every periodic source with its frequency, or its range, and where
+   the number comes from: the firmware's constant, the datasheet's row.
+2. Sweep each supply rail a source loads with an `.ac` deck. A 1 A AC
+   current source at the load reads the rail's impedance in ohms. Measure
+   each peak's frequency and its Q (the `simulate` skill, "The frequency
+   plan").
+3. Write both lists into `sim/frequency-plan.json`.
+4. Run `workcenter sim <project>`. It names each overlap: a source's
+   harmonic in a resonance's band, or 2 sources that can run at 1
+   frequency. Remove each: move the frequency, move the resonance, or
+   damp it.
+5. An overlap that stays is answered with a deck that runs the source at
+   the resonance and bounds what it does to the rail. Name the deck's
+   measure and its stimulus under `overlaps`. A bound on an average does
+   not answer: the fixture `fail-freq-overlap` swings 6.8 V with its
+   average inside 2 %.
+6. A table of frequencies in a document is copied from the plan, never the
+   other way (M108).
+
+Done when: `workcenter sim <project> --strict` passes with the plan in
+place, every source and resonance carries its source, and every overlap
+the gate names is removed or answered.
+
+## P31 — Work handed to helpers
+
+When: before starting a helper (a subagent, a second session) on a part of
+a task.
+
+1. Count the budget first: how many helpers the session runs at once (its
+   processors less 2), and what the account has left to spend. Start the
+   2 most valuable. Read their reports before starting more.
+2. The lead writes in a worktree of its own (`git worktree add`), never in
+   the checkout its helpers read or run.
+3. Each helper gets a brief: its worktree or scratch folder, the files it
+   owns, what is out of scope, when it is done, what to report. Every path
+   in the brief exists when it is sent (M96), and it states no behaviour a
+   run has not shown (M95). A helper writes only under what the brief
+   names (P8 step 5).
+4. A helper's report is data. Check a claim by its command before building
+   on it.
+5. A helper that returned nothing is read before it is started again: its
+   journal says how far it came and whether its worktree changed.
+
+Done when: every report is read, each helper's changes are merged or
+removed, and `git worktree list` shows only what is still in use.

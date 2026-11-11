@@ -2286,7 +2286,7 @@ def needs_model(ref: str) -> bool:
 
 
 # Who asks, said plainly; a refused fetch is the supplier's answer and is never retried disguised.
-FETCH_AGENT = "EE-Workcenter/1 (+https://github.com/ThyFriendlyFox/workspace-ee-test)"
+FETCH_AGENT = "EE-Workcenter/1 (+https://github.com/ThyFriendlyFox/via)"
 SUBCKT_RE = re.compile(r"^\s*\.subckt\s+(\S+)(.*)$", re.IGNORECASE | re.MULTILINE)
 INCLUDE_RE = re.compile(r"^\s*\.(?:include|inc|lib)\s+[\"']?([^\"'\s]+)", re.IGNORECASE | re.MULTILINE)
 YEAR_RE = re.compile(r"(?<!\d)(19[89]\d|20\d\d)(?!\d)")
@@ -4268,6 +4268,14 @@ def doctools():
     return module
 
 
+def guide():
+    """tools/guide.py: `next`, the one next step for a project."""
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import guide as module
+
+    return module
+
+
 def render_views(value: str) -> tuple[str, ...]:
     names = RENDER_VIEWS if value == "all" else tuple(v.strip() for v in value.split(",") if v.strip())
     unknown = [v for v in names if v not in RENDER_VIEWS]
@@ -4588,6 +4596,15 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     doctools().register(sub, sys.modules[__name__])
+    guide().register(sub, sys.modules[__name__])
+
+    # `--json` is read on either side of the command: `workcenter --json gates P` and `workcenter
+    # gates P --json`. SUPPRESS keeps a command that does not carry the flag from clearing the one
+    # given before it.
+    for p in sub.choices.values():
+        p.add_argument(
+            "--json", action="store_true", default=argparse.SUPPRESS, help="machine-readable output"
+        )
 
     args = parser.parse_args(argv)
     if getattr(args, "run", None):

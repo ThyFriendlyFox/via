@@ -153,6 +153,12 @@ def fraction(value: object, where: str, problems: list[str]) -> float | None:
     return float(value)
 
 
+def stated(text: object) -> bool:
+    """Whether a `source`, a `why` or a name says something: text that is not the template's own
+    `fill: ...`, which a project copied from templates/project/ still carries until it is written."""
+    return isinstance(text, str) and bool(text.strip()) and not text.strip().lower().startswith("fill:")
+
+
 def check_temperature(block: object, where: str, problems: list[str]) -> list[float]:
     if not isinstance(block, dict):
         problems.append(f"{where}: not an object with values and source")
@@ -168,7 +174,7 @@ def check_temperature(block: object, where: str, problems: list[str]) -> list[fl
     if not numbers:
         problems.append(f"{where}: values is not a list of temperatures in C")
         return []
-    if not str(block.get("source", "")).strip():
+    if not stated(block.get("source")):
         problems.append(f"{where}: no source: the requirement or datasheet the range comes from")
     return [float(v) for v in values]
 
@@ -191,7 +197,7 @@ def check_tolerance(block: object, where: str, problems: list[str]) -> dict | No
         tol = fraction(value, f"{where}.parts.{name}", problems)
         if tol is not None:
             out["parts"][str(name).upper()] = tol
-    if not str(block.get("source", "")).strip():
+    if not stated(block.get("source")):
         problems.append(f"{where}: no source: where the tolerances come from")
     return out
 
@@ -249,7 +255,7 @@ def read_corners(sim_dir: Path, decks: list[str]) -> tuple[dict[str, DeckCorners
         for key in sorted(set(entry) - set(DECK_KEYS)):
             problems.append(f"{where}: unknown key {key!r}")
         if "skip" in entry:
-            reason = str(entry["skip"]).strip() if isinstance(entry["skip"], str) else ""
+            reason = entry["skip"].strip() if stated(entry["skip"]) else ""
             if not reason:
                 problems.append(f"{where}.skip: no reason")
             out[deck] = DeckCorners(skip=reason or "no reason given")
@@ -279,7 +285,7 @@ def read_corners(sim_dir: Path, decks: list[str]) -> tuple[dict[str, DeckCorners
                 resolved.monte_carlo = check_monte_carlo(
                     entry["monte_carlo"], f"{where}.monte_carlo", problems
                 )
-        if off and not str(entry.get("why", "")).strip():
+        if off and not stated(entry.get("why")):
             problems.append(f"{where}: a corner set to false needs why")
         out[deck] = resolved
     return out, problems

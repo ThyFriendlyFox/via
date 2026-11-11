@@ -181,6 +181,19 @@ def test_a_plan_that_is_not_json_is_one_problem(tmp_path):
     assert len(problems) == 1 and "not JSON" in problems[0]
 
 
+def test_the_template_is_refused_until_it_is_written(tmp_path):
+    template = ROOT / "templates" / "project" / freqplan.PLAN_FILE
+    shutil.copyfile(template, tmp_path / freqplan.PLAN_FILE)
+    plan, problems = freqplan.read_plan(tmp_path)
+    assert problems == ["sources[1]: no name", "resonances[1]: no name"] and plan.sources == []
+    spec = json.loads(template.read_text(encoding="utf-8"))
+    spec["sources"][0].update(name="pump", source="its datasheet, table 6.5")
+    spec["resonances"][0].update(name="input filter", source="sim/filter.cir")
+    plan, problems = plan_of(tmp_path, spec)
+    assert problems == [] and (plan.harmonics, plan.guard) == (10, 0.1)
+    assert [(s.name, s.low, s.high) for s in plan.sources] == [("pump", 98000.0, 102000.0)]
+
+
 def test_a_harmonic_in_a_resonances_band_and_two_sources_at_one_frequency_are_found(tmp_path):
     plan, _ = plan_of(tmp_path, PLAN)
     result = freqplan.check_plan(plan, VALUES, set(), {})

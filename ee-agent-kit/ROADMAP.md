@@ -16,23 +16,43 @@ without a human running a tool by hand. Everything here serves that:
 the toolchain installs itself, the gates are the definition of done, and
 the skills tell the agent which gate comes next.
 
+The owner's measure, 2026-11-10: a small model reaches the same working
+design as a large one, and no electrical engineer has to find afterwards
+what the gates left out. So what an engineer would ask lives in a gate
+that runs it (corners, the frequency plan), and what comes next lives in a
+command that says it (`workcenter next`), never in the reader's judgement.
+
 ## Feature Queue — ordered; top unblocked item ships next
 
-### 1. Headless autoroute for hand-drawn boards
+### 1. A generated schematic that simulates
+- **Promise:** A design file says how each part simulates (`d.sim(ref, library, name, pins)`, `d.no_sim(ref, reason)`, directives), `kicadgen` writes those as Sim fields on the symbols, and `kicad-cli sch export netlist --format spice` on the generated schematic gives a netlist ngspice runs. `workcenter design` refuses a part with neither declaration and a pin map that leaves a pin out, as `sim:` lines. A design that declares nothing regenerates to the bytes it has today.
+- **Evidence:** A test that generates a design with a resistor, a library diode and a part bound to a subcircuit, exports its netlist with `kicad-cli`, runs it in ngspice and holds a value computed by hand; the byte-for-byte test of `tests/boards/inspect-four-layer` still green.
+- **Use case:** Simulate before layout (`docs/USE-CASES.md`).
+- **Scope guard:** No netlist written without KiCad. No change to the SIM gate. A symbol that holds 2 devices is refused or excluded, not wrapped. Facts from runs on KiCad 10.0.8: instance fields are enough; without `Sim.Pins` KiCad binds by position and says nothing (a rail read 1981 V with exit 0); a relative `Sim.Library` resolves against the project folder; `.param` goes in as a schematic text item; `simulation_model_issue` raised to an error makes the ERC gate report a broken binding.
+- **Status:** ready. An engineer reviewing Last Hit v0.16 is redrawing its schematic by hand because the generated one carries no model (29 of 66 parts export as placeholders).
+
+### 2. A small model builds a board with `next` alone
+- **Promise:** The smallest model a session can start builds a board of a kind the workcenter has not seen (a switching regulator, an active filter) from a one-paragraph spec to `workcenter gates --strict` GREEN, reading only what `workcenter next` names. Every place it stops is recorded as a defect of the workcenter, with the line that should have told it what to do.
+- **Evidence:** The run's transcript, the board's `gates.json`, and the list of defects with the commit that closes each.
+- **Use case:** Design a board from a spec; Fix a red board.
+- **Scope guard:** The model gets no hint outside the repository. A defect is fixed in a gate, a hint or a template, never in the brief.
+- **Status:** ready. `workcenter next` exists; the run has not been made.
+
+### 3. Headless autoroute for hand-drawn boards
 - **Promise:** `workcenter autoroute --apply <project>` reads any `.kicad_pcb` (footprints, pads, outline, nets, existing tracks) into the DSN writer that `kicadgen` already has, runs FreeRouting, merges the session into the board file, and the new fixture `route-me` passes DRC with 0 unconnected items afterwards, with no KiCad GUI step.
 - **Evidence:** `tests/test_gates.py::test_autoroute_apply_routes_fixture` green in `make verify`; the fixture's DRC report attached to the PR.
 - **Use case:** Route a board (`docs/USE-CASES.md`).
 - **Scope guard:** No routing heuristics of our own. No GUI automation. The generated-design path already works (`workcenter design --route`); this item is the board-file parser in front of it. Zones and arcs may be out of scope for the first cut and must be reported, not silently dropped.
 - **Status:** ready
 
-### 2. Board gates as a reusable GitHub workflow for board repositories
-- **Promise:** A board repository that adds 1 workflow calling `ThyFriendlyFox/workspace-ee-test/.github/workflows/board-gates.yml@main` gets `workcenter gates` run on every PR, with the gates table in the job summary and a red check on a red gate.
+### 4. Board gates as a reusable GitHub workflow for board repositories
+- **Promise:** A board repository that adds 1 workflow calling `ThyFriendlyFox/via/.github/workflows/board-gates.yml@main` gets `workcenter gates` run on every PR, with the gates table in the job summary and a red check on a red gate.
 - **Evidence:** A run link from a board repository, plus `tests/boards/pass-rc-divider` run through the workflow in this repository's CI.
 - **Use case:** Review a board PR.
 - **Scope guard:** No comments posted to the PR; the check and the summary are the output.
 - **Status:** ready
 
-### 3. MCP server for hosts that are not Claude Code
+### 5. MCP server for hosts that are not Claude Code
 - **Promise:** `workcenter mcp` serves `doctor`, `gates`, `erc`, `drc`, `sim`, `export`, and `autoroute` as MCP tools over stdio, and the MCP inspector lists all 7 with their schemas.
 - **Evidence:** An inspector screenshot and a test that drives the server with a scripted JSON-RPC session.
 - **Use case:** Build another workcenter from this one.
@@ -53,11 +73,21 @@ the skills tell the agent which gate comes next.
 - `workcenter sources --fetch` compares PDFs by their bytes; onsemi serves each download with a new trailer ID, so an unchanged datasheet reads as changed. Compare the page content, not the trailer.
 - `workcenter placement route_check` at a heater class's widths (0.6 mm) fails links the router and the DRC pass on a dense board; let it take a class per net, as the DRC does.
 - `workcenter verify` reads a calculation's verdict as written; an equation checker for the calculations (each numbered line recomputed) would close the gap that M71 fell into.
+- Deck values held to the schematic: `kicad-cli sch export netlist --format spice` gives every R and C with its value, so a deck element named like a board reference can be compared with the part it models, a derated value needing its reason. Last Hit's decks write C5 as 2.5 uF in two decks and 4.7 uF in a third.
+- A maker's own tolerances as corners: the `tolerance` fix deletes the LOT and DEV specs of a vendor model; kept as a side table they would move the model's internal parts too (`alter r.xu4.r1` reaches one). Last Hit's current sense crosses its bound inside 0 to 40 C once the monitor's 1.5 % is counted.
+- What a model carries, declared: a `sources.csv` column, or a probe at 2 temperatures, saying whether a model has temperature in it, so a requirement that rests on one that has none is named. The gate today warns only when no measure of a whole deck moves.
+- A requirement that rests on a model off its datasheet: a `warn` bound that fails names the model, and every traceability row whose deck includes that model would carry the name. Last Hit's REQ-REG-01 passes by 13 mV on a dropout its own warn bound calls wrong.
+- Accepted warnings as a file the gates read: each warning a project keeps, with its reason, who accepted it and when, so `--strict` passes on those and fails on a new one or on an entry that no longer matches.
+- Measures from ngspice's own data: a `wrdata` or raw file the gate reads, so a deck's `echo "vout = 2.5"` cannot stand for a measure.
+- A rail's impedance deck written from the board: the capacitors with their ESR and bias, the track's resistance from `inspect resistance`, an inductance from its geometry, so the frequency plan's resonances are not typed by hand.
+- Ratings as data: each part's absolute maximum, voltage rating and power in a parts column, so a pin's worst net voltage, a capacitor's derating and a resistor's dissipation are checked by a command, not in a calculation's prose.
+- The board as one netlist: once a schematic carries its models (queue item 1), a deck is the board's netlist plus an overlay of sources and measures, and the 12 retyped circuits of a project become 1.
 
 ## Shipped
 
 | Week | Feature | Release | Evidence |
 |---|---|---|---|
+| 2026-11-10 | The SIM gate asks an engineer's questions: corners (`sim/corners.json`: each temperature, each tolerance, a worst case per bound, Monte Carlo draws), a frequency plan (`sim/frequency-plan.json`, P30), bundles that run on any machine (`sim --bundle`); an analysis ngspice gave up on and a malformed expect file refused; verdicts that say what ran (`GREEN with N warnings`, `SKIPPED (SIM: engine missing)`, `REQUIREMENTS MET` or `NOT MET`); `workcenter next`; a root `AGENTS.md`; the documents held to the code by tests | unreleased | 168 new tests, 405 in all: `tests/test_corners.py`, `test_freqplan.py`, `test_simgate.py`, `test_guide.py`, `test_docs.py`, 4 in `test_verify.py`; fixtures `fail-sim-corner`, `pass-lc-filter`, `fail-freq-overlap`; a scratch copy of Last Hit v0.16: 153 corner runs, the reviewing engineer's 85 C finding found by the gate (1.0763 V against 1.14 to 1.26 V), 12 bundles giving the gate's numbers from another folder; `MISTAKES.md` M103 to M113; `DEVLOG.md` 2026-11-10 |
 | 2026-11-07 | The Last Hit work's conventions: `templates/project/` (a version's README and gates report), `templates/verification/BRIEF.md` and `FACTS.md` for helpers on one package, the owner's decisions in `workcenter verify` (a Withdrawn table, "the owner's decision of <date>"), P22 and P28 extended, the verification skill's "Helpers" and traps | unreleased | `tests/test_verify.py` (8 new tests, 24 in all); the Last Hit v0.16 package with REQ-USB-01 in a Withdrawn table: 64 requirements, the withdrawn ID named, its old traceability row refused, 276 quoted values matching the run; `MISTAKES.md` M92 to M98; `DEVLOG.md` 2026-11-07 |
 | 2026-11-07 | Router and generator gaps: `workcenter design --route --seed <board>` (a previous route held as the router's starting wiring, loose ends unfixed, what no longer fits dropped and counted, M89); each layer's hole clearance in the DSN as grown via and drilled-pad copper and in every via check (the Later item for M79; FreeRouting 1.9.0 ignores a structure `via_wire` clearance and holds a class's to that class); a `stitch:` line per island via; the red last line of `workcenter design` (M85); the merge keeps a T-link onto a hand track | unreleased | `tests/test_routing.py` (11 tests): the M79 fixture's router via 0.3281 mm from an inner track before, 0.3581 after; a moved part rerouted from the seed with the five untouched lines kept. Last Hit v0.16 seeded from v0.15: base board 76 of 87 router tracks kept (63 unseeded), display 116 of 117 (116 unseeded; 85 with the seed all unfixed), DRC 0 errors and 0 unconnected on both either way; `DEVLOG.md` 2026-11-07 |
 | 2026-11-07 | Document curation: `workcenter docs`, `costs`, `pictures`, `gates --report`, `version new`, `diagram`, and `tools/scene.py`, from Last Hit's scripts | unreleased | `tests/test_doctools.py` (20 tests); on a copy of Last Hit: `docs v0.16` and `costs` reproduce the committed `CONTENTS.md` datasheet table and every list and total ($61.76 and $396.86 for v0.16), `version new v0.17` passes P22 step 4, `pictures v0.16` redraws the README's images; `DEVLOG.md` 2026-11-07 |
@@ -94,3 +124,4 @@ the skills tell the agent which gate comes next.
 - 2026-11-07 — document curation (`workcenter docs`, `costs`, `pictures`, `gates --report`, `version new`, `diagram`, `tools/scene.py`) shipped out of band: the owner asked for every tool and convention of the Last Hit work in the workcenter.
 - 2026-11-07 — `workcenter fetch`, `curve`, `sim --deck`, `design --check`, `ci`, `mutate` and `kicadgen.py symbol-add` shipped out of band: the owner asked for every tool and convention of the Last Hit work in the workcenter.
 - 2026-11-07 — board inspection (`workcenter inspect`, `tools/stretch.py`, parts keep-outs, P29) shipped out of band: the owner asked for every tool and convention of the Last Hit work in the workcenter.
+- 2026-11-10 — corners, the frequency plan, bundles, the verdict lines and `workcenter next` shipped out of band: an engineer's review of Last Hit v0.16 found what the gates left out, and the owner asked for a core a small model can follow to the same working design as a large one. Items 1 (a generated schematic that simulates) and 2 (a small model builds a board with `next` alone) enter at the top for the same reason; the autoroute, workflow and MCP items move to 3, 4 and 5. Nine candidates join Later.

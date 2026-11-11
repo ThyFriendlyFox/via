@@ -65,6 +65,8 @@ fails the check until it is written.
 4. **Worst case.** Every limit is checked at the datasheets' corners, not
    their typicals: the minimum and maximum rows, the supply's range, the
    temperature range, the tolerance of every resistor that sets a value.
+   The SIM gate runs the temperature and the tolerances itself: write
+   `sim/corners.json` ("Corners" below) before the first verdict.
 5. **Decks.** One deck per circuit question, in `sim/`. Each bound in
    `sim/<deck>.expect.json` that holds carries `"req": "<ID>"`. A
    requirement the design fails gets no bound (the gate stays the
@@ -87,7 +89,10 @@ fails the check until it is written.
    copies, so the next version changes the spec, not a drawing. Write
    one caption per mode: where the charge comes from, which path it takes,
    which parts conduct, which are off, what ends the mode. List every
-   frequency on the board with its source.
+   frequency on the board with its source, and write the same list as
+   `sim/frequency-plan.json` (the `simulate` skill, "The frequency
+   plan"): the gate holds each source and its harmonics against every
+   resonance a deck measured.
 10. **Traceability.** One row per requirement:
     `| ID | Check | Evidence | Measured | Verdict |`. Check is
     `deck.meas <= 30 V` or `3.0 V <= deck.meas <= 3.6 V`; `verify`
@@ -96,6 +101,29 @@ fails the check until it is written.
 11. **Run** `workcenter verify <project>` until it reports no problems.
     A FAIL is a finding, not a problem: report it with its size and the
     proposed fix; a fix that changes the board is a new version (P22).
+    The last line says whether the requirements are met: `REQUIREMENTS
+    MET` needs every requirement PASS, no problem, and the corners run.
+
+## Corners
+
+A requirement holds when its check holds at every corner its deck ran at,
+not only as the deck is written.
+
+1. Write `sim/corners.json` (the `simulate` skill, "Corners"): the
+   temperature range from the requirement that states it, each tolerance
+   from its part's datasheet.
+2. `verify` looks for the least and the greatest value of every measure a
+   traceability check names, and judges the check at both.
+3. A row that says PASS while a corner fails is a problem: `REQ-HTR-08
+   says PASS, ... is FAIL at 85 C, R16 -1 %, R7 -1 % (1.07626)`. Change
+   the design, or write FAIL in the row with its size and a proposed fix.
+4. The Measured cell quotes the value of the deck as written. Give the
+   worst corner's value in the writeup's Results beside it.
+5. A corner moves what the deck and its models carry. A model that says
+   it has no temperature in it answers every temperature the same: the
+   gate names such a deck, and the requirement then rests on the
+   datasheet's own range, cited in a calculation.
+6. `verify --strict` fails a package whose decks ran without corners.
 
 ## Citation rules
 
@@ -286,6 +314,7 @@ helpers read the runs (P28 step 8).
 
 ## Done when
 
-`workcenter verify <project>` reports no problems, every FAIL has its
-size and a proposed fix in the package's README, and the report to the
-user names the counts of PASS, FAIL and OPEN.
+`workcenter verify <project>` reports no problems with the decks run at
+their corners, every FAIL has its size and a proposed fix in the
+package's README, and the report to the user names the counts of PASS,
+FAIL and OPEN and the command's last line.

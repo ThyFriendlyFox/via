@@ -47,6 +47,18 @@ provides them. `python3 tools/workcenter doctor` says what is present.
 12. A generated board is regenerated from its design file. No commit
     edits a generated `.kicad_*` file by hand. Board projects live in
     their own repositories; this one holds tools, fixtures, and docs.
+13. A verdict is never stronger than its run. A run that holds a gate
+    skipped for an absent engine is SKIPPED with exit code 2, never
+    GREEN. GREEN names the count of warnings beside it. `PASS verify`
+    is followed by a line that says whether the requirements are met.
+14. `tools/simcorners.py`, `tools/freqplan.py` and `tools/guide.py` use
+    the standard library only, as the CLI does. They run no engine:
+    `tools/workcenter` does.
+15. A bound holds at every corner the project names, or it does not hold.
+    A corner run is a copy of the deck in its own folder; no corner
+    writes into the project.
+16. `CLAUDE.md` and `AGENTS.md` at the repository's root are the same
+    text. `make verify` checks it.
 
 ## Landmine map
 
@@ -74,6 +86,12 @@ provides them. `python3 tools/workcenter doctor` says what is present.
 | Pour islands | A `d.zone` is a plane to the router, so it routes no track for that net, then other nets' tracks wall pads off from the pour. `write()` fills the pour with `kicad-cli pcb drc --refill-zones --save-board`, reads the pieces with KiCad's `pcbnew` module, and stitches islands with vias; `workcenter design --route` reserves a via beside what is left and routes again. Both need `pcbnew`, which the venv sees only because `install.sh` creates it with `--system-site-packages`. |
 | pcbnew 3D model paths | `footprint.Models()` hands out copies: a path set on one (`m.m_Filename = ...`) never reaches the saved board, and nothing says so. A board saved elsewhere then resolves `${KIPRJMOD}` against its new folder and draws those parts bare. `tools/scene.py` copies the board's own bodies to the same path beside the saved scene. |
 | `install.sh` apt output | KiCad is a large download from a PPA that GitHub runners fetch slowly. The install step prints each fetched and unpacked package; a silent 30-minute step looked hung and got cancelled. Keep it visible and non-interactive. |
+| ngspice's exit code | ngspice 42 exits 0 when one analysis of a `.control` block aborts (`doAnalyses: TRAN:  Timestep too small`, `tran simulation(s) aborted`) and a later one completes; `meas` then reads the cut vectors. `NGSPICE_ERROR_RE` takes both lines for errors. A new failure shape gets its sample in `tests/test_simgate.py` (M103). |
+| ngspice's `.spiceinit` | It reads the working directory's file, else the home folder's. A deck with none of its own would take the user's. `ngspice_run` points `HOME` at the output folder. |
+| ngspice's temperature | The last `.options temp` of a netlist wins, and `set temp` or `option temp` inside `.control` wins over both. A corner writes its line just before `.control`, then reads `Doing analysis at TEMP = ...` back for each analysis: a deck that sets its own fails the corner, it does not pass at the wrong temperature. |
+| ngspice `.meas ac` in batch | A deck with `.ac` and `.meas ac ... vm(x)` as netlist lines and no `.control` block saves nothing (`no data saved for A.C. Small signal analysis`). Run the analysis and the `meas` lines inside `.control`. |
+| A deck outside the gate | A deck that includes a maker's model needs the gate's mode (`set ngbehavior=ps`) and translation. Bare, TI's models stop with `no such function 'if'` and Diodes' print other numbers with exit 0. A deck leaves the machine only as a bundle (`sim --bundle`), whose `run.sp` sets the mode and reads the deck through `$inputdir` (M105). |
+| Expect files | A measure's name is lower case as ngspice prints it. A complex value (`h = 8.4e-01,-5.3e-01`) is no measure: the deck prints its magnitude. `read_expect` refuses a key it does not know (M104). |
 
 ## House style
 

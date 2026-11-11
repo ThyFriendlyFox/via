@@ -15,6 +15,9 @@ already defines.
 | Writing or changing ANY code, at any time | `AGENTS.md` | The binding contract: commands, invariants, landmines, style. Always in effect. |
 | About to do something `PROCESSES.md` names (a hand route, a CI step, a route, a doc that names a tag or run, a scripted edit, a close-out) | `PROCESSES.md` | Binding checklists. Follow the steps; done means its "Done when" holds. |
 | You made a mistake, redid work, or a run was red because of you | `MISTAKES.md` | Append the entry and point it at a process, same PR. No process yet → write it (`P13`). |
+| On a board, and the next step is not plain | `workcenter next <project>` | The one next step: the command, why, what to read, when it is done. Exit 0 when nothing is left. |
+| A circuit's limit, a part that switches, a deck for another machine | `../.claude/skills/simulate/SKILL.md` | Corners (`sim/corners.json`), the frequency plan (`sim/frequency-plan.json`, `PROCESSES.md` P30), bundles (`sim --bundle`). |
+| About to start a helper on part of a task | `PROCESSES.md` P31 | Budget first, the lead in its own worktree, a brief per helper. |
 | Asked "where does this project stand?" | `STATUS.md` | Answer from it; update it when state changes. |
 | The gate fails, or you're adding/changing checks | `VERIFICATION.md` | One command answers "is this repo healthy". |
 | Cutting a release / tagging | `RELEASING.md` | Weekly cycle ends here. |

@@ -41,6 +41,8 @@ for kit_skill in ee-agent-kit/skills/*/; do
     || { echo "ee-agent-kit/skills/$name drifted from .claude/skills/$name"; exit 1; }
 done
 [[ -f WORKCENTER.md ]] || { echo "WORKCENTER.md missing at repo root"; exit 1; }
+# One text for every agent host: CLAUDE.md for those that read it, AGENTS.md for the rest.
+cmp -s CLAUDE.md AGENTS.md || { echo "CLAUDE.md and AGENTS.md at the root differ"; exit 1; }
 # Every mistake names a process that exists; every process says when it is done.
 grep -oE '^Process: P[0-9]+' ee-agent-kit/MISTAKES.md | awk '{print $2}' | sort -u | while read -r p; do
   grep -qE "^## $p " ee-agent-kit/PROCESSES.md || { echo "MISTAKES.md names $p; PROCESSES.md has no '## $p'"; exit 1; }

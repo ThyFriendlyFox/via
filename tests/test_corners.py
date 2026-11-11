@@ -166,6 +166,23 @@ def test_a_file_that_is_not_json_is_one_problem(tmp_path):
     assert spec == {} and len(problems) == 1 and "not JSON" in problems[0]
 
 
+def test_the_template_is_refused_until_its_sources_are_written(tmp_path):
+    template = ROOT / "templates" / "project" / simcorners.CORNERS_FILE
+    shutil.copyfile(template, tmp_path / simcorners.CORNERS_FILE)
+    _, problems = simcorners.read_corners(tmp_path, ["a"])
+    assert problems == [
+        "temperature: no source: the requirement or datasheet the range comes from",
+        "tolerance: no source: where the tolerances come from",
+    ]
+    spec = json.loads(template.read_text(encoding="utf-8"))
+    spec["temperature"]["source"] = "REQ-ENV-01"
+    spec["tolerance"]["source"] = "the parts list"
+    write_corners(tmp_path, spec)
+    resolved, problems = simcorners.read_corners(tmp_path, ["a"])
+    assert problems == [] and resolved["a"].temperatures == [0.0, 40.0]
+    assert resolved["a"].monte_carlo == {"runs": 50, "seed": 1}
+
+
 def test_a_tolerance_finds_board_named_elements_parts_and_parameters():
     varied, problems, uncovered = simcorners.find_varied(
         DECK, {"R": 0.05, "parts": {"CX": 0.1, "R3": 0.01, "RLOAD": 0.02}}

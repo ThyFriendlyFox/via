@@ -39,6 +39,46 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-10 — An engineer checked the board, and the gates learned the questions
+
+An electrical engineer reviewed Last Hit v0.16 by hand. The engineer could
+not run our decks: 3 stopped with an error on that machine and 3 printed
+other numbers. A sweep of the current sense over temperature found the 6 A
+reading at 1.098 V at 85 C, outside our own bound. The engineer ran the
+board's first frequency sweep, and started to redraw the schematic to test
+it. Every one of these was a question the gates never asked.
+
+The SIM gate now asks them. A project names its temperature range and its
+parts' tolerances in `sim/corners.json`, and each deck runs at every
+corner. On a copy of the board the gate finds the engineer's number
+itself: 1.076 V at 85 C with 2 resistors 1 % low. Over the board's own 0
+to 40 C the 12 decks hold in 153 corner runs. A project names what
+switches and what resonates in `sim/frequency-plan.json`, and the gate
+fails a harmonic that lands on a resonance until a deck drives it there.
+`workcenter sim --bundle` writes a deck as a folder that plain ngspice
+runs anywhere, and proves it from another folder.
+
+Reading the gate for this turned up older faults. A transient ngspice gave
+up on passed its bounds, because a later analysis made the exit code 0. A
+misspelt key in an expect file held nothing and passed. `gates` printed
+GREEN with the simulator absent, and `verify` printed PASS beside 2 failed
+requirements. Each is fixed and has its test.
+
+The owner wants a small model to reach the same working board as a large
+one. `workcenter next` is the first step: it names the one next action,
+its command, and the section to read. No small model has followed it yet.
+A generated schematic still does not simulate inside KiCad, which is what
+the engineer needs to stop redrawing. Both are at the top of the queue.
+
+I started 8 helpers at once, then 3 more. The account's limit stopped 7
+of them with nothing returned. P31 now sets a budget before any helper
+starts.
+
+Evidence: `make verify` green (405 tests); `tests/test_corners.py`,
+`test_freqplan.py`, `test_simgate.py`, `test_guide.py`, `test_docs.py`;
+the runs on a scratch copy of Last Hit v0.16 in `STATUS.md`; `MISTAKES.md`
+M103 to M113.
+
 ## 2026-11-07 — The Last Hit work's habits, written down
 
 The owner asked for every tool and convention of the Last Hit work in the

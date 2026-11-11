@@ -1,0 +1,21 @@
+{
+  "sources": [
+    {
+      "name": "fill: what switches, in the project's own words",
+      "hz": 100000,
+      "tolerance": 0.02,
+      "source": "fill: the datasheet row or firmware constant that sets the frequency"
+    }
+  ],
+  "resonances": [
+    {
+      "name": "fill: what resonates: the parts that form it",
+      "hz": "deck.f_peak",
+      "q": "deck.q_peak",
+      "source": "fill: the .ac deck that measures it"
+    }
+  ],
+  "harmonics": 10,
+  "guard": 0.1,
+  "overlaps": []
+}

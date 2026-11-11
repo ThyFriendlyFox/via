@@ -12,6 +12,13 @@ Read in this order:
    every mistake lands in `ee-agent-kit/MISTAKES.md` with its process, in
    the same PR.
 
+On a board, `workcenter next <project>` names the one next step: what to
+do, the command, why, what to read, and when the step is done. Follow it
+until it says nothing is left.
+
+A skill is a procedure at `.claude/skills/<name>/SKILL.md`. A host that
+loads skills offers each by name; any other reader opens the file.
+
 Session with more than 1 repository: run the `attached-repos` skill before
 the first edit. This repository is read-only during a board task unless the
 task is about the workcenter itself.

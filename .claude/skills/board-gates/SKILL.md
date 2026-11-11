@@ -5,10 +5,14 @@ description: Runs ERC, DRC, simulation, and fabrication export on a KiCad 10 pro
 
 # Board Gates
 
-A board is done when `workcenter gates <project>` prints GREEN. This
-skill runs the gates, reads the reports, and fixes the design until they
-pass. The gates are listed in `WORKCENTER.md`; a project may add gates,
-never remove one.
+A board is done when `workcenter gates <project> --strict` prints GREEN.
+This skill runs the gates, reads the reports, and fixes the design until
+they pass. The gates are listed in `WORKCENTER.md`; a project may add
+gates, never remove one.
+
+`workcenter next <project>` names the one next step at any point: the
+command, the reason, the fix for the first failure or warning, and when
+the step is done. Run it whenever the next step is not plain.
 
 ## When
 
@@ -32,7 +36,14 @@ never remove one.
 2. Run `workcenter gates <project> --json`. The output is 1 record per
    gate with `status`, `summary`, `details`, `artifacts`. The same data
    lands in `<project>/build/gates.json`. The run stops at the first red
-   gate.
+   gate. Without `--json` the last line is the verdict:
+
+   | Last line | Meaning | Exit code |
+   |---|---|---|
+   | `GREEN` | Every gate that had something to run passed, with no warning. | 0 |
+   | `GREEN with N warnings` | The gates passed and named N things they did not fail on. Each is printed. Not done. | 0 |
+   | `RED` | A gate failed or an engine stopped with an error. | 1 |
+   | `SKIPPED (SIM: engine missing)` | A gate did not run because its engine is absent. Never GREEN. | 2 |
 3. For a red gate, read its report before touching the design:
    - ERC: `build/erc.json`, `sheets[].violations[]`.
    - DRC: `build/drc.json`, `violations[]`, `unconnected_items[]`,
@@ -78,11 +89,18 @@ never remove one.
 | DRC | `courtyards_overlap` | Move the footprint. |
 | DRC | `silk_over_copper` | Move the silkscreen text. |
 | SIM | bound failed | The circuit misses the spec. Change values in the schematic, then update the deck. |
+| SIM | bound failed `at <corner>` | The circuit holds as written and fails at that temperature or tolerance. Change the circuit; the `simulate` skill, "Corners". |
+| SIM | `no sim/corners.json` | Write the file: the temperature range and each part's tolerance, each with its source. |
+| SIM | `frequency plan: ... no overlap answers it` | A source or its harmonic is on a resonance. Move one of them or damp it; the `simulate` skill, "The frequency plan". |
+| SIM | `ngspice exit` | Read `build/sim/<deck>.log` at its first error line. |
 
 ## Checks
 
 - A gate with status `skip` on ERC or DRC never counts as done. Report
   why it skipped.
-- Release candidates run with `--strict` so warnings fail too.
+- A run whose engine is absent prints SKIPPED and exits 2. It never
+  counts as GREEN.
+- A board is called done only on `--strict`, so warnings fail too. A
+  plain run that prints `GREEN with N warnings` has N things left.
 - The commit that fixes a violation names the violation type.
 - No `build/` directory is committed.

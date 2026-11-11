@@ -7,13 +7,13 @@
 # environment snapshot. See environment/README.md for the network hosts.
 #
 # Setup script:
-#   git clone --depth 1 https://github.com/ThyFriendlyFox/workspace-ee-test /opt/workcenters/ee/src
+#   git clone --depth 1 https://github.com/ThyFriendlyFox/via /opt/workcenters/ee/src
 #   bash /opt/workcenters/ee/src/install.sh
 #   bash /opt/workcenters/ee/src/install.sh --check
 set -euo pipefail
 
 SRC=/opt/workcenters/ee/src
-REPO="${WORKCENTER_REPO:-https://github.com/ThyFriendlyFox/workspace-ee-test}"
+REPO="${WORKCENTER_REPO:-https://github.com/ThyFriendlyFox/via}"
 REF="${WORKCENTER_REF:-main}"
 
 if [[ -d "$SRC/.git" ]]; then

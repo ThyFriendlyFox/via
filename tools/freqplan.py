@@ -45,7 +45,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from simcorners import netlist_lines, spice_number
+from simcorners import netlist_lines, spice_number, stated
 
 PLAN_FILE = "frequency-plan.json"
 DEFAULT_HARMONICS = 10
@@ -99,7 +99,9 @@ def number(value: object) -> bool:
 
 
 def said(entry: dict, key: str) -> str:
-    return str(entry.get(key, "")).strip() if isinstance(entry.get(key, ""), str) else ""
+    """An entry's text for a key, or "" when it says nothing: absent, not text, or the template's
+    own `fill: ...`."""
+    return entry[key].strip() if stated(entry.get(key)) else ""
 
 
 def read_plan(sim_dir: Path) -> tuple[Plan | None, list[str]]:

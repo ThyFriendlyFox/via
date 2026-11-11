@@ -625,3 +625,75 @@ What happened: the document-tools helper wrote its starter diagram spec to `/hom
 Cost: none kept; stray folders for a few minutes.
 Root cause: a path built from the worktree's parent; the brief named the worktree, but nothing checked a write outside it.
 Process: P8
+
+## M103 — 2026-11-10 — An analysis ngspice gave up on passed its bounds
+What happened: the SIM gate took a line that starts with `Error` or `Fatal` for an error. A transient that stops with `doAnalyses: TRAN:  Timestep too small` and `tran simulation(s) aborted` prints neither, and ngspice exits 0 when a later analysis in the same `.control` block completes. The gate passed such a deck, its `max` and `min` taken on the vectors cut at the abort. A reader found it with a probe deck; no board deck is known to have met it.
+Cost: none found on a board; since the first SIM gate a circuit ngspice could not solve could read as inside its bounds.
+Root cause: the error pattern came from the lines seen on the day it was written. No sample of an aborted analysis was kept in `tests/`.
+Process: P7
+
+## M104 — 2026-11-10 — A misspelt key in an expect file passed as a bound
+What happened: the gate read `min` and `max` from each expect entry and passed over every other key. `{"vout": {"mx": 3.0}}` held nothing and passed, as did a bound with neither key. `null`, a string or a trailing comma ended the run in a Python traceback with no gate result.
+Cost: none found on a board; every project's bounds rested on their spelling.
+Root cause: a file a person writes was read for the keys the code wanted, never against the keys it may hold.
+Process: P7
+
+## M105 — 2026-11-10 — A deck left the gate's machine as a wrong answer
+What happened: an engineer reviewing Last Hit v0.16 ran its decks on their own machine. The 3 decks that include TI's regulator model stop with `no such function 'if'`. The 3 that include Diodes' current monitor exit 0 with other numbers: the 6 A reading is 3.26 V where the gate reads 1.198 V, and `heater_pulse` passes all 7 of its own bounds that way. The translation and the mode live in the gate, and `--keep` leaves a folder of absolute paths. The engineer began to redraw the circuit by hand.
+Cost: a review that could not rerun one deck with a vendor model; days of an engineer's time.
+Root cause: M94's fix was a rule to use the workcenter, which helps nobody who does not have it. Nothing a project could hand over ran elsewhere.
+Process: P27
+
+## M106 — 2026-11-10 — GREEN with the simulator absent
+What happened: `gates` counted a skipped gate as nothing to do. Without ngspice, a board with decks printed `SKIP sim engine missing: ngspice` and then `GREEN`, exit 0. AGENTS.md invariant 5 says a gate that cannot run never reports pass; the combined verdict did it for the gate.
+Cost: none found; a machine without the engine would have called any board done.
+Root cause: one status, skip, for 2 things: a gate with nothing to run, and a gate that could not run.
+Process: P12
+
+## M107 — 2026-11-10 — Every bound judged at one temperature and one value of each part
+What happened: P28 step 4 said to judge every limit at its corners, and the gate ran each deck once: 27 C, every part at its written value. An engineer's 5-point temperature sweep of Last Hit's current sense found the 6 A reading at 1.098 V at 85 C, under the firmware's 1.2 V trip and outside the deck's own 1.14 to 1.26 V bound. Diodes' model carried the coefficient all along; the board's writeup said the model had no temperature behaviour. With the shunt and the load resistor 1 % low the reading is 1.076 V. On the board's own stated range, 0 to 40 C, the bound holds by 17 mV.
+Cost: a bound recorded as holding that fails over the range a reviewer checked, found by a person outside the project.
+Root cause: the corners were a sentence in a process. Nothing ran them, so each deck's author chose which to write, and no deck of 42 set a temperature.
+Process: P28
+
+## M108 — 2026-11-10 — No frequency was ever swept
+What happened: a board's periodic sources and its resonances were a table in a document. Last Hit's lists 1 kHz, 33 kHz, 100 kHz and 370 kHz beside a 340 kHz ring, typed from formulas and transient plots. The 3 `.ac` statements in 42 decks are single points. Nothing held a source or its harmonics against a resonance. The reviewing engineer ran the board's first sweep.
+Cost: none found on the board yet; the first check an engineer makes on a board with switching parts did not exist.
+Root cause: a table no command reads.
+Process: P30
+
+## M109 — 2026-11-10 — PASS printed beside failed requirements, GREEN beside warnings
+What happened: `workcenter verify` printed `PASS verify 64 requirements: 56 pass, 2 fail, 6 open`, and `gates` printed `GREEN` under 7 warnings whose text only `--json` showed. The board's documents carried both words as "done".
+Cost: a board version reported GREEN and verified with 2 failed requirements and 7 warnings.
+Root cause: one word for 2 claims. PASS meant the package agrees with the run; a reader took it for the requirements being met.
+Process: P14
+
+## M110 — 2026-11-10 — `cd` in front of a `git log`
+What happened: my first command on the board repository began `cd /home/user/vape-prototype &&`. The no-cd hook refused it and I ran it again with `git -C`.
+Cost: one refused command.
+Root cause: habit. The hook held this time because the session began in this repository alone.
+Process: P8
+
+## M111 — 2026-11-10 — A new file edited by script, unformatted
+What happened: minutes after writing `tools/simcorners.py` I changed 4 places in it with a Python replace script, before the formatter had run on it. Every anchor was checked before the write and nothing broke.
+Cost: none.
+Root cause: a script felt quicker than 4 edits; P9 steps 1 and 5 say otherwise.
+Process: P9
+
+## M112 — 2026-11-10 — Expectations written from reasoning
+What happened: 4 numbers went into text without the command that gives them. A test expected 2 strings in an order I reasoned out wrongly. A test expected a divider's output at 50 C as 2.4719 V, which is 2.4716 V. A test expected 9 fixture folders where there are 8. A commit message said 230 tests where the run had 206. The runs caught the first 3; I amended the message.
+Cost: 4 corrections.
+Root cause: "close enough to know" for a number one command prints.
+Process: P9
+
+## M113 — 2026-11-10 — Helpers started past the session's budget, into a tree the lead was writing
+What happened: I started 8 readers at once, then an implementer with 2 reviewers behind it. The account's usage limit stopped them: 6 readers and the implementer returned nothing. While the readers read the checkout I also wrote new files into it, and 2 of them reported files they could not explain.
+Cost: about 1.8 million tokens of helper work for 2 reports; an hour's wait; the schematic simulation work not started that day.
+Root cause: a fan-out sized by the work and not by the budget, and no rule on where the lead writes while helpers read.
+Process: P31
+
+## M114 — 2026-11-10 — The flag order of M18 again, and a skill that taught it
+What happened: I ran `workcenter sim <project> --json`. The command line read `--json` only before the command and answered with a usage error, exit code 2, which is also the code of a skipped run. M18 was the same slip 18 days earlier. The `board-gates` skill's step 2 wrote `workcenter gates <project> --json` the whole time: a reader who copied it got the usage error.
+Cost: one wasted command each time; a skill whose second step could not run as written.
+Root cause: M18's fix was a sentence in P8 for the reader to remember. Nothing held a command a document writes to the parser that reads it.
+Process: P10
