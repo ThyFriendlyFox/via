@@ -287,7 +287,7 @@ def test_every_link_on_the_site_names_what_exists():
                 found = (SITE / link).is_file()
             if not found:
                 missing.append(f"{page.name}: {link}")
-    assert to_repo >= 11 and into_page >= 7 and beside >= 7, "the site's links are no longer found"
+    assert to_repo >= 11 and into_page >= 7 and beside >= 11, "the site's links are no longer found"
     assert missing == []
 
 
@@ -313,7 +313,7 @@ def test_the_site_builds_for_an_address_and_without_one(tmp_path):
             if not re.match(r"https?://|#|\./$", link):
                 looked_up += 1
                 assert (served / link).is_file(), f"{name} names {link}, and build.sh does not copy it"
-    assert looked_up >= 6
+    assert looked_up >= 10
 
     plain = tmp_path / "plain"
     assert build(plain).returncode == 0

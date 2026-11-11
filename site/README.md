@@ -34,6 +34,7 @@ empty.
 | `site.css` | The look: the colour tokens for light and dark, the type scale, every component. |
 | `site.js` | The theme button and the copy button. |
 | `favicon.svg` | The mark. It follows the system's colour scheme. |
+| `favicon-32.png`, `apple-touch-icon.png` | The mark as PNG, for a browser that takes no SVG icon and for a phone's home screen. |
 | `og.html` | The page the 2 images below are captures of. `og.html?dark` is the dark twin. |
 | `og.png` | The Open Graph image, 1280 x 640. Also the image for the repository's social preview. |
 | `og-dark.png` | The same in the dark theme, for the top of the root `README.md`. |
@@ -60,6 +61,14 @@ chromium --headless --hide-scrollbars --force-device-scale-factor=1 --window-siz
 ```
 
 Draw both again when `og.html`, the mark or the run in it changes.
+
+librsvg draws the 2 PNG icons from `favicon.svg`:
+
+```sh
+rsvg-convert -w 32 -h 32 site/favicon.svg -o site/favicon-32.png
+rsvg-convert -w 112 -h 112 --page-width 180 --page-height 180 --left 34 --top 34 -b '#fbfaf7' \
+  site/favicon.svg -o site/apple-touch-icon.png
+```
 
 GitHub shows a repository's social preview from an image its owner uploads:
 Settings, General, Social preview. `og.png` is that image.

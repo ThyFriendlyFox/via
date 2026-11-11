@@ -35,7 +35,8 @@ here=$(dirname -- "$0")
 mkdir -p "$out/fonts"
 
 # What the site serves. og.html, og-dark.png, vercel.json and README.md stay in the repository.
-for file in site.css site.js favicon.svg og.png fonts/inter-latin-wght-normal.woff2 fonts/LICENSE; do
+for file in site.css site.js favicon.svg favicon-32.png apple-touch-icon.png og.png \
+  fonts/inter-latin-wght-normal.woff2 fonts/LICENSE; do
   cp "$here/$file" "$out/$file"
 done
 
