@@ -46,6 +46,12 @@ def build() -> kicadgen.Design:
     d.flagged_nets = ["VCC", "GND"]
     # The schematic gets a wire between the pins of each net. Without this line each pin gets a label.
     d.sch_wires = True
+    # Every part says how it simulates, or why it does not. With this line `workcenter design` fails
+    # until each part has a d.sim() or a d.no_sim(); a plain R, C or L needs neither. An IC, a
+    # transistor or a diode gets its maker's model: `workcenter fetch` puts the file in library/, and
+    #   d.sim("U1", library="library/<maker>/<file>", name="<subcircuit>", pins={"1": "<node>", ...})
+    # names it. A deck that stands in for such a part with a source of its own proves another part.
+    d.check_sim = True
 
     # 1 d.add() for each part: reference, "Library:Symbol", value, "Library:Footprint", then
     #   sch_at  the symbol's place on the sheet in mm. Use multiples of 2.54: each pin then sits on
@@ -63,6 +69,7 @@ def build() -> kicadgen.Design:
         pcb_at=(104.0, 107.5),
         nets={"1": "VCC", "2": "OUT", "3": "GND"},
     )
+    d.no_sim("J1", "a connector: the header's pins are the circuit's terminals")
     d.add(
         "R1",
         "Device:R",

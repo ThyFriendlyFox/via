@@ -43,7 +43,7 @@ unset variable never causes a failure.
 | `PROJECT` | next | none | The project directory. `next` prints the one next step for it: `NEXT` (what to do), `RUN` (the command), `WHY`, `READ` (the section that explains it) and `DONE WHEN`; with `--json`, the same as an object. Exit 0 when nothing is left, 1 when a step is; a finished project gets no `RUN` line. It reads `build/gates.json` and `build/verify.json` and writes nothing. |
 | `--trust-design` | next | off | Do not run `design --check` on the project's design file. That check takes a few seconds and needs the KiCad libraries; without it the KiCad files are taken to match the design file. |
 | `--nominal` | sim | off | Run each deck as written only. The corners of `sim/corners.json` are left out, and the result names that as a warning, so a quick run is never taken for a full one. |
-| `--bundle DIR` | sim | none | Also write each deck into `DIR/<deck>/` as a folder any machine with ngspice runs: `run.sp` (sets the mode the models need, then reads the deck), the deck with its includes pointing into `models/`, every included file there (the translated copy where its row lists fixes), `expect.json`, `measures.json` and `README.md`. The command then runs each folder from a copy in another place with an empty home folder and fails when a measure differs from the gate's (M105). The receiver runs `ngspice -b run.sp`. |
+| `--bundle DIR` | sim | none | Also write each deck into `DIR/<deck>/` as a folder any machine with ngspice runs: `run.sp` (sets the mode the models need, changes to its own folder, then reads the deck), the deck with its includes pointing into `models/`, every included file there (the translated copy where its row lists fixes), the other files of the deck's folder, `expect.json`, `measures.json` and `README.md`. The command then runs each folder from a copy in another place with an empty home folder and fails when a measure differs from the gate's (M105). An earlier bundle in `DIR/<deck>/` is replaced; a folder of that name that holds no `run.sp` is refused. The receiver runs `ngspice -b run.sp`. |
 | `URL` | fetch | none | The maker's URL for one file. Fetched once under the workcenter's own user agent; a refusal is reported and never retried. |
 | `--to FILE` | fetch | none (required) | Where the library keeps it, `<library>/<maker>/<file>`. An existing file that differs from the download is refused; the same file is left as it is. |
 | `--mpn MPN` | fetch | none | The part number the row names. Needed for `--row`. |
@@ -67,7 +67,7 @@ unset variable never causes a failure.
 | `--mutations FILE` | mutate | none (required) | The project's list. JSON: `[{"name", "file", "old", "new"}]` or `{"test": CMD, "mutations": [...]}`. Python: a top-level `MUTATIONS = [(name, file, old, new), ...]` and an optional `TEST = "..."`, read as literals and never run. Every `old` must be in its file exactly once; the command checks each before running any. |
 | `--test CMD` | mutate | the list's `test`, else `make -k test` | The test command, run under `bash -c` in each copy. It must pass unmutated. A mutation that fails it is caught; one that a compiler's `file:line: error:` stops did not build, and fails the run as a survivor does. |
 | `--only TEXT` | mutate | every mutation | Run only the mutations whose name holds this text (repeatable). |
-| `--jobs N` | mutate, sim | mutate: `1`; sim: one per processor, 8 at most | Mutations run at once; for sim, corner runs of one deck at once. |
+| `--jobs N` | mutate, sim | mutate: `1`; sim: one per processor, 8 at most | Mutations run at once; for sim, corner runs of one deck at once. A whole number, 0 or more: anything else is a usage error, exit 2. |
 | `--work DIR` | mutate | a temporary folder, removed after | Keep the copies here, one folder per mutation. |
 | `--fetch` | sources | off | Read each row's URL once more under the workcenter's own user agent into `<out>/sources/fetched/` and report each as same, changed, new, refused, gone or unreachable; a refusal is never retried. The library is not written. |
 | `--package DIR` | verify | `<project>/verification` | The verification package (`PROCESSES.md` P28): requirements, system, simulations, calculations, traceability. |
@@ -189,7 +189,7 @@ Every number is millimetres; the file is written in KiCad's VRML unit (0.1 inch)
 
 | Flag | Default | Use |
 |---|---|---|
-| `--settings PATH` | `~/.claude/settings.json` | The Claude Code settings file to add the no-cd PreToolUse hook to. Existing settings and hooks are kept; a second run changes nothing. Writes only that file. Run by hand: writing a user's settings is their decision. |
+| `--settings PATH` | `~/.claude/settings.json` | The Claude Code settings file to add the 2 PreToolUse hooks to: the one that refuses `cd` and the one that refuses a test edited by a script. Existing settings and hooks are kept; each hook is added once, and a second run changes nothing. Writes only that file. Run by hand: writing a user's settings is their decision. |
 
 ## `environment/setup.sh`
 

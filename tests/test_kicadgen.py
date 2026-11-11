@@ -403,7 +403,8 @@ def test_hook_refuses_a_scripted_edit_to_a_test_file(command, blocked):
 
 
 def test_hook_installer_merges_once_into_user_settings(tmp_path):
-    """install.sh puts the no-cd hook in the user settings (M35): kept settings, added once, then a no-op."""
+    """The installer puts both hooks in the user settings (M35, M119): the one that refuses `cd` and the
+    one that refuses a test edited by a script. Kept settings, each added once, then a no-op."""
     settings = tmp_path / ".claude" / "settings.json"
     settings.parent.mkdir()
     keep = {"model": "x", "hooks": {"SessionStart": [{"matcher": "startup", "hooks": []}]}}
@@ -413,21 +414,44 @@ def test_hook_installer_merges_once_into_user_settings(tmp_path):
     first = subprocess.run(run, capture_output=True, text=True, check=True).stdout
     second = subprocess.run(run, capture_output=True, text=True, check=True).stdout
     data = json.loads(settings.read_text())
-    assert "added to" in first and "already in" in second, (first, second)
+    assert first.splitlines() == [
+        f"hooks: no-cd hook added to {settings}",
+        f"hooks: test hook added to {settings}",
+    ]
+    assert second.splitlines() == [
+        f"hooks: no-cd hook already in {settings}",
+        f"hooks: test hook already in {settings}",
+    ]
     assert data["model"] == "x" and data["hooks"]["SessionStart"] == keep["hooks"]["SessionStart"]
     hooks = [h["command"] for e in data["hooks"]["PreToolUse"] for h in e["hooks"]]
-    assert len(hooks) == 1 and "no_cd.py" in hooks[0], hooks
+    assert len(hooks) == 2 and "no_cd.py" in hooks[0] and "no_script_test_edits.py" in hooks[1], hooks
+    # An installed hook is one that runs: the command the settings hold refuses what the hook refuses.
+    call = json.dumps({"tool_name": "Bash", "tool_input": {"command": "sed -i s/a/b/ tests/test_x.py"}})
+    refused = subprocess.run(hooks[1], shell=True, input=call, capture_output=True, text=True, check=False)
+    assert refused.returncode == 2 and "Edit" in refused.stderr
 
-    # The doctor reports it from the user settings ($HOME), and a settings file without it as absent.
-    def doctor_sees_hook() -> bool:
+    # The doctor reports each from the user settings ($HOME), and a settings file without them as absent.
+    def doctor_sees(name: str) -> bool:
         env = {**os.environ, "HOME": str(tmp_path)}
         cmd = [sys.executable, str(ROOT / "tools" / "workcenter"), "--json", "doctor"]
         proc = subprocess.run(cmd, capture_output=True, text=True, env=env, check=False)
-        return json.loads(proc.stdout)["checks"]["no-cd hook"]["ok"]
+        return json.loads(proc.stdout)["checks"][name]["ok"]
 
-    assert doctor_sees_hook() is True
+    assert doctor_sees("no-cd hook") is True and doctor_sees("test hook") is True
     settings.write_text(json.dumps(keep))
-    assert doctor_sees_hook() is False
+    assert doctor_sees("no-cd hook") is False and doctor_sees("test hook") is False
+    # A settings file that holds only the first hook, as one installed before this change does
+    settings.write_text(json.dumps(keep))
+    subprocess.run(run, capture_output=True, text=True, check=True)
+    data = json.loads(settings.read_text())
+    data["hooks"]["PreToolUse"] = data["hooks"]["PreToolUse"][:1]
+    settings.write_text(json.dumps(data))
+    assert doctor_sees("no-cd hook") is True and doctor_sees("test hook") is False
+    third = subprocess.run(run, capture_output=True, text=True, check=True).stdout
+    assert third.splitlines() == [
+        f"hooks: no-cd hook already in {settings}",
+        f"hooks: test hook added to {settings}",
+    ]
 
 
 @needs_libs

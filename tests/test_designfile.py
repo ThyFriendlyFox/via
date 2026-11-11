@@ -124,6 +124,42 @@ def test_the_template_generates_routes_and_passes_erc_and_drc(tmp_path):
     assert (status["erc"], status["drc"]) == ("pass", "pass")
 
 
+OPAMP = """    d.add(
+        "U1",
+        "Amplifier_Operational:MCP6001-OT",
+        "MCP6001-OT",
+        "Package_TO_SOT_SMD:SOT-23-5",
+        sch_at=(152.4, 114.3),
+        pcb_at=(118.0, 110.0),
+        nets={"1": "OUT", "2": "GND", "3": "OUT", "4": "OUT", "5": "VCC"},
+    )
+    return d
+"""
+
+
+@needs_libs
+def test_a_part_added_to_the_template_says_how_it_simulates_or_is_refused(tmp_path):
+    """A small model put an op-amp on its first board and proved the circuit with a source of its own
+    in the deck: GREEN, and nothing said which part the numbers were of. The template turns
+    `check_sim` on, so the part's model, or the reason it has none, is written before a file is."""
+    text = TEMPLATE.read_text(encoding="utf-8")
+    assert text.count("    return d\n") == 1 and "d.check_sim = True" in text
+    (tmp_path / "design.py").write_text(text.replace("    return d\n", OPAMP), encoding="utf-8")
+    r = run("design", tmp_path / "design.py")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert [ln for ln in r.stdout.splitlines() if ln.startswith("  sim: ")] == [
+        "  sim: U1: neither sim() nor no_sim(): say how the part simulates, or leave it out with the reason"
+    ]
+    # the connector's own line is what keeps the template itself clean
+    bare = text.replace(
+        '    d.no_sim("J1", "a connector: the header\'s pins are the circuit\'s terminals")\n', ""
+    )
+    assert bare != text
+    (tmp_path / "design.py").write_text(bare, encoding="utf-8")
+    r = run("design", tmp_path / "design.py")
+    assert r.returncode == 1 and "  sim: J1: neither sim() nor no_sim()" in r.stdout
+
+
 # ------------------------------------------------------------- the namespace
 
 

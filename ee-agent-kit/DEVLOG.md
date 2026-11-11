@@ -39,6 +39,52 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-11 — Two reviews broke the corner search, and a small model built a board
+
+Two reviewers read yesterday's gate with one aim: make it pass a circuit
+that fails. They did: the first review holds 22 findings. The search ran
+each part at the 2 ends of its tolerance. A series LC's gain is 0.239 and
+0.072 at those ends and 1.0 between them. A bridge reads 0.064 V with 1
+resistor off and 0.25 V with 4 off together. I wrote the search again. It
+runs each part half-way too, follows a peak, and runs every combination of
+the ends up to 64 runs. On the copy of Last Hit v0.16 it makes 678 corner
+runs where it made 153. The board's own range still passes. The engineer's
+85 C finding still fails, now with "and 8 more corners" beside it.
+
+The second review read `workcenter next` as a small model does: it ran
+every RUN line as written. 1 answer was no command, 1 looped, and 1
+asked for an install for good. Each state now gives 1 command that runs.
+
+The smallest model I can start then built a board. It took a low-pass
+filter on an op-amp from a paragraph to ERC 0 errors, DRC 0 errors, 14
+corner runs and 22 gerber files, in 38 tool calls. It met 8 traps. A
+design file with no UUID gave a Python error. Parts placed from (0, 0)
+gave a route of 0 tracks with exit code 0. Each trap now stops with the
+line to write, and a first design file starts from a template that
+passes as it stands.
+
+1 trap has no gate yet. The model wrote the op-amp as 2 sources in its
+deck, and every gate passed: nothing holds a deck to the board's parts.
+The template now makes the design file name each part's model. The deck
+is still typed by hand. That is the roadmap's "the board as one netlist".
+
+The engineer left 2 notes on Last Hit's branch: the power path walked
+stage by stage, and a breadboard plan. Both are queue items now. The
+owner asked for chip design, down to the mask layout. 3 scouts showed the
+open engines run here: a counter went from RTL to a layout in 82 s, with
+0 DRC items, a matching LVS and 54 timing corners met. The chip gates are
+not built. Helpers hit the account's usage limit 2 more times, so that
+build starts at the limit's reset, on its own branch.
+
+I made 5 mistakes worth a process step: the search itself, a reader that
+did not read values as ngspice does, 2 counts typed from memory, tests
+edited by script again, and a third helper past the budget.
+
+Evidence: `make verify` green on this commit; `tests/test_designfile.py`
+(14 tests) and the new tests in 5 files; the reviewers' 6 mutants, all
+caught; the 2 reviews and the small model's project in the session's
+scratch folder; `MISTAKES.md` M116 to M120.
+
 ## 2026-11-11 — The schematic simulates, and a small model followed `next`
 
 Both items at the top of yesterday's queue moved. A design file now says

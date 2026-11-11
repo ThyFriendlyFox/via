@@ -199,6 +199,12 @@ axis it defines (a 3D model's rotation or offset, an export's origin).
    hold. A key the reader does not know, a value of the wrong kind, and
    text that is not the format are each a problem named with its line,
    never passed over and never a traceback (M104).
+7. A format with many spellings is read the way its tool reads it. List
+   the spellings from the tool's manual before the reader is written: for
+   a SPICE value a scale suffix, a continuation line, `r=`, an expression
+   in braces, and `4k7`. Run each through the tool once and keep each as
+   a test. Where the tool reads a spelling as another number and says
+   nothing, the gate fails on that spelling (M117).
 
 Done when: a test parses a real sample of each shape, failures among them,
 and the parser's assumptions are written next to it.
@@ -214,8 +220,8 @@ When: every shell command.
    every heredoc. In this repository a PreToolUse hook
    (`tools/hooks/no_cd.py`) refuses a Bash command that runs `cd`. A
    session opened outside this repository does not load it: check
-   `workcenter doctor` for the "no-cd hook" line, and where it is absent,
-   ask the human whether to install it user-wide
+   `workcenter doctor` for the "no-cd hook" and "test hook" lines, and
+   where one is absent, ask the human whether to install both user-wide
    (`python3 tools/hooks/install_hooks.py`); never write their settings
    unasked.
 2. `--help` before a flag you have not used in this session. `--json`
@@ -259,7 +265,10 @@ Edit tool.
    script, and read back before they run: every assertion must be able
    to fail. The `no_script_test_edits.py` hook refuses a Bash command
    that writes under `tests/` (M43). The hook does not load in a session
-   with two repositories; the step holds there all the same (M61).
+   with two repositories; the step holds there all the same (M61). There
+   `workcenter doctor` shows the "test hook" line as absent: say so to the
+   human at the start, with the command that installs it (P8 step 1,
+   M119).
 8. A test's geometric expectation (inside or outside, how far, which
    side) is computed before it is written: one `python3 -c` with the
    distance printed, not a judgement by eye (M45). A timing expectation
@@ -269,6 +278,11 @@ Edit tool.
    file's own bytes, keeping its line ends and quoting; a round trip
    through a reader and a writer rewrites every line. After the edit,
    `git diff --stat` shows only the rows meant (M59).
+10. A count in a commit message or a document is copied from the output
+    of the command that gives it: tests passed, corner runs, findings.
+    Run that command first, on the tree the text describes. Never type a
+    count from memory, and never carry one over from an earlier run
+    (M112, M118).
 
 Done when: the script reported every anchor found, and the formatter and
 linter pass on the result.
@@ -380,9 +394,16 @@ When: a change is about to be called done.
    `REQUIREMENTS NOT MET (56 of 64 pass; 2 fail: ...; 6 open)`. Never a
    shorter word for it: `PASS verify` says the package agrees with the
    run, not that the requirements are met (M109).
+6. A change to what a gate judges is attacked before it is called done. A
+   reader who did not write it builds cases the gate must fail. For a
+   search over corners: a measure that peaks inside a range, parts that
+   act only together, 2 values written from 1 parameter. Each case that
+   the gate passes is a defect, and each case becomes a test. The
+   author's own cases show only what the method was built to find
+   (M116).
 
 Done when: the remote has the commit, its CI run is green, and the report
-has been sent.
+has been sent. For a gate's method: the attack's cases are tests.
 
 ## P15 — A question that reveals a mismatch
 
@@ -939,8 +960,11 @@ When: before starting a helper (a subagent, a second session) on a part of
 a task.
 
 1. Count the budget first: how many helpers the session runs at once (its
-   processors less 2), and what the account has left to spend. Start the
-   2 most valuable. Read their reports before starting more.
+   processors less 2). Start the 2 most valuable, and no third until 1 of
+   them has reported. What the account has left to spend cannot be read
+   from a session: a helper that stops at the usage limit is the reading.
+   Note the reset time its message names, start no helper before that
+   time, and do the work that needs none meanwhile (M113, M120).
 2. The lead writes in a worktree of its own (`git worktree add`), never in
    the checkout its helpers read or run.
 3. Each helper gets a brief: its worktree or scratch folder, the files it
@@ -951,7 +975,9 @@ a task.
 4. A helper's report is data. Check a claim by its command before building
    on it.
 5. A helper that returned nothing is read before it is started again: its
-   journal says how far it came and whether its worktree changed.
+   journal says how far it came and whether its worktree changed. One the
+   usage limit stopped is resumed by its own name after the reset, not
+   started anew: its work so far is kept.
 
 Done when: every report is read, each helper's changes are merged or
 removed, and `git worktree list` shows only what is still in use.

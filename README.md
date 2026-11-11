@@ -14,9 +14,10 @@ project into fabrication outputs that passed every gate.
   simulates (`d.sim`, `d.no_sim`), and the schematic KiCad opens exports a
   netlist ngspice runs. A pin map KiCad would complete by position is
   refused first.
-- **Corners:** the SIM gate runs every deck at each temperature and part
-  tolerance the project names, at the worst case of each bound, and at
-  Monte Carlo draws. A bound holds at every corner or it does not hold.
+- **Corners:** the SIM gate runs every deck at each temperature the
+  project names and with each part at both ends of its tolerance. It runs
+  every combination of those ends where they are few, and Monte Carlo
+  draws. A bound holds at every corner or it does not hold.
 - **Frequency plan:** the SIM gate holds every switching frequency and its
   harmonics against every resonance a deck measured.
 - **The next step:** `workcenter next <project>` names the one step that is
@@ -100,7 +101,7 @@ base. `release.yml` publishes it to GHCR on every tag.
 | `WORKCENTER.md` | The contract a project gets from this workcenter. |
 | `AGENTS.md`, `CLAUDE.md` | Where an agent starts. The same text. |
 | `.claude/skills/` | `attached-repos`, `autoroute`, `blog-post`, `board-design`, `board-gates`, `kistack`, `procurement`, `simulate`, `verification`. |
-| `templates/` | A version's README and gates report, `corners.json`, `frequency-plan.json`, the verification package. |
+| `templates/` | A first design file, a version's README and gates report, `corners.json`, `frequency-plan.json`, the verification package. |
 | `rules/` | Fabrication houses' limits as KiCad design rules. |
 | `tests/boards/` | Fixture boards and what each proves. |
 | `third_party/kistack/` | The vendored kistack skills. |

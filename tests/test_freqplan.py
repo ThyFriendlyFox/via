@@ -580,6 +580,51 @@ def test_a_resonance_that_meets_the_clock_between_the_ends_of_its_parts_is_found
     assert decks["filter"]["corners"]["search"] == "every combination of the ends"
 
 
+PARAM_PERIOD = """* a source whose period is a parameter
+.param per=10u
+V1 in 0 PULSE(0 5 0 1n 1n 5u {per})
+R1 in out 10k
+R2 out 0 10k
+.control
+tran 100n 100u
+meas tran vavg avg v(out) from=20u to=100u
+print vavg
+.endc
+.end
+"""
+
+
+@needs_ngspice
+def test_a_source_the_gate_cannot_place_is_named_with_and_without_a_plan(tmp_path):
+    """A period written as a parameter is a 100 kHz source the reader gets no number from. It is held
+    against no resonance, so the run says so: a deck could drive a resonance through it unseen."""
+    proj = tmp_path / "proj"
+    (proj / "sim").mkdir(parents=True)
+    (proj / "sim" / "d.cir").write_text(PARAM_PERIOD, encoding="utf-8")
+    bound = {"vavg": {"min": 1.2, "max": 1.3, "source": "half of 2.5 V"}}
+    (proj / "sim" / "d.expect.json").write_text(json.dumps(bound), encoding="utf-8")
+    unread = (
+        "d: V1 is periodic and the deck gives its frequency as no number (a parameter, a PWL that "
+        "repeats, an expression of time), so no plan can place it"
+    )
+    code, records = run("sim", proj, "--out", tmp_path / "o")
+    assert code == 0
+    assert records[0]["details"]["warnings"] == [
+        "no sim/corners.json: each deck ran once, at 27 C with every part at its written value",
+        unread,
+        "no sim/frequency-plan.json: 1 decks drive periodic sources: d (V1)",
+    ]
+    plan = {
+        "sources": [{"name": "pwm", "hz": 100000, "tolerance": 0.01, "source": "the test's premise"}],
+        "resonances": [],
+    }
+    (proj / "sim" / freqplan.PLAN_FILE).write_text(json.dumps(plan), encoding="utf-8")
+    code, records = run("sim", proj, "--out", tmp_path / "o")
+    assert code == 0 and unread in records[0]["details"]["warnings"]
+    code, records = run("sim", proj, "--out", tmp_path / "o", "--strict")
+    assert code == 1 and unread in records[0]["details"]["failures"]
+
+
 @needs_ngspice
 def test_a_resonance_read_from_a_deck_that_runs_no_corner_fails(tmp_path):
     """A band is a resonance over its parts' tolerances. A deck taken out of the corners gives 1 number,

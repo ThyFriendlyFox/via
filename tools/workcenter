@@ -4408,14 +4408,16 @@ def cmd_inspect(args) -> int:
 USER_SETTINGS = Path.home() / ".claude" / "settings.json"
 
 
-def no_cd_hook_installed(settings: Path = USER_SETTINGS) -> bool:
-    """True when the user-wide Claude Code settings run the no-cd hook (install.sh puts it there, M35)."""
+def hook_installed(file_name: str, settings: Path = USER_SETTINGS) -> bool:
+    """True when the user-wide Claude Code settings run the hook of that file name. A session opened
+    outside this repository loads no hook of its own: tools/hooks/install_hooks.py puts them there, by
+    the user's hand (M35, M119)."""
     try:
         data = json.loads(settings.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return False
     entries = data.get("hooks", {}).get("PreToolUse", []) if isinstance(data, dict) else []
-    return any("no_cd.py" in h.get("command", "") for e in entries for h in e.get("hooks", []))
+    return any(file_name in h.get("command", "") for e in entries for h in e.get("hooks", []))
 
 
 def cmd_doctor(args) -> int:
@@ -4447,7 +4449,12 @@ def cmd_doctor(args) -> int:
             "ok": (SRC_DIR / "WORKCENTER.md").is_file(),
             "path": str(SRC_DIR / "WORKCENTER.md"),
         },
-        "no-cd hook": {"required": False, "ok": no_cd_hook_installed(), "path": str(USER_SETTINGS)},
+        "no-cd hook": {"required": False, "ok": hook_installed("no_cd.py"), "path": str(USER_SETTINGS)},
+        "test hook": {
+            "required": False,
+            "ok": hook_installed("no_script_test_edits.py"),
+            "path": str(USER_SETTINGS),
+        },
         "kistack": {
             "required": False,
             "ok": (KISTACK_DIR / "skills" / "layout-placement" / "scripts").is_dir(),

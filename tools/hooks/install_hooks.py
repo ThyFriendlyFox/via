@@ -3,15 +3,16 @@
 
 The repository's own `.claude/settings.json` only loads in a session opened inside this repository.
 A board session opened elsewhere (a project with the workcenter beside it, a session rooted above
-both) runs without the no-`cd` hook (M35). Writing the user's settings is the user's call, so
-nothing runs this automatically: run it once by hand to enable the hook everywhere, and
-`workcenter doctor` reports whether it is there.
+both) runs without the no-`cd` hook (M35) and without the hook that refuses a test edited by a
+script (M61, M119). Writing the user's settings is the user's call, so nothing runs this
+automatically: run it once by hand to enable both hooks everywhere, and `workcenter doctor` reports
+whether each is there.
 
     python3 tools/hooks/install_hooks.py                      # ~/.claude/settings.json
     python3 tools/hooks/install_hooks.py --settings PATH      # another settings file
 
-Merges: existing settings and hooks are kept, the hook is added once, and a run that finds it
-already there changes nothing. Prints one line saying what it did.
+Merges: existing settings and hooks are kept, each hook is added once, and a run that finds it
+already there changes nothing. Prints one line for each hook saying what it did.
 """
 
 from __future__ import annotations
@@ -21,22 +22,24 @@ import json
 import sys
 from pathlib import Path
 
-HOOK = Path(__file__).resolve().parent / "no_cd.py"
+HERE = Path(__file__).resolve().parent
+# Each hook's name as the doctor and this command print it, and its file.
+HOOKS = {"no-cd hook": HERE / "no_cd.py", "test hook": HERE / "no_script_test_edits.py"}
 
 
-def has_hook(settings: dict) -> bool:
-    """True when a PreToolUse hook on Bash already runs no_cd.py."""
+def has_hook(settings: dict, hook: Path) -> bool:
+    """True when a PreToolUse hook on Bash already runs the file `hook`."""
     for entry in settings.get("hooks", {}).get("PreToolUse", []):
-        for hook in entry.get("hooks", []):
-            if "no_cd.py" in hook.get("command", ""):
+        for item in entry.get("hooks", []):
+            if hook.name in item.get("command", ""):
                 return True
     return False
 
 
-def install(path: Path, hook: Path = HOOK) -> bool:
-    """Add the no-cd hook to the settings file at `path`. Returns True when the file changed."""
+def install(path: Path, hook: Path) -> bool:
+    """Add 1 hook to the settings file at `path`. Returns True when the file changed."""
     settings = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
-    if has_hook(settings):
+    if has_hook(settings, hook):
         return False
     entry = {"matcher": "Bash", "hooks": [{"type": "command", "command": f'python3 "{hook}"', "timeout": 10}]}
     settings.setdefault("hooks", {}).setdefault("PreToolUse", []).append(entry)
@@ -49,8 +52,9 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--settings", type=Path, default=Path.home() / ".claude" / "settings.json")
     args = ap.parse_args(argv)
-    changed = install(args.settings)
-    print(f"hooks: no-cd hook {'added to' if changed else 'already in'} {args.settings}")
+    for name, hook in HOOKS.items():
+        changed = install(args.settings, hook)
+        print(f"hooks: {name} {'added to' if changed else 'already in'} {args.settings}")
     return 0
 
 

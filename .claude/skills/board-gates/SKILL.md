@@ -36,12 +36,14 @@ the step is done. Run it whenever the next step is not plain.
 2. Run `workcenter gates <project> --json`. The output is 1 record per
    gate with `status`, `summary`, `details`, `artifacts`. The same data
    lands in `<project>/build/gates.json`. The run stops at the first red
-   gate. Without `--json` the last line is the verdict:
+   gate. Without `--json` the last line is the verdict, and every
+   failure and warning is printed above it:
 
    | Last line | Meaning | Exit code |
    |---|---|---|
    | `GREEN` | Every gate that had something to run passed, with no warning. | 0 |
    | `GREEN with N warnings` | The gates passed and named N things they did not fail on. Each is printed. Not done. | 0 |
+   | `GREEN ... (nothing to run for: erc, drc, export)` | The same, for a project with decks and no board. The line names the gates that had nothing to run. | 0 |
    | `RED` | A gate failed or an engine stopped with an error. | 1 |
    | `SKIPPED (SIM: engine missing)` | A gate did not run because its engine is absent. Never GREEN. | 2 |
 3. For a red gate, read its report before touching the design:

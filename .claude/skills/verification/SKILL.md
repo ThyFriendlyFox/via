@@ -103,6 +103,8 @@ fails the check until it is written.
     proposed fix; a fix that changes the board is a new version (P22).
     The last line says whether the requirements are met: `REQUIREMENTS
     MET` needs every requirement PASS, no problem, and the corners run.
+    `REQUIREMENTS NOT MET (...)` names what is short, as `1 of 2 pass; 1
+    open; 1 judged as written only`.
 
 ## Corners
 
@@ -113,7 +115,9 @@ not only as the deck is written.
    temperature range from the requirement that states it, each tolerance
    from its part's datasheet.
 2. `verify` looks for the least and the greatest value of every measure a
-   traceability check names, and judges the check at both.
+   traceability check names, and judges the check at both. It does so
+   whatever the deck's own bound says: `warn` and `"at": "nominal"` are
+   about that bound, not about the requirement.
 3. A row that says PASS while a corner fails is a problem: `REQ-HTR-08
    says PASS, ... is FAIL at 85 C, R16 -1 %, R7 -1 % (1.07626)`. Change
    the design, or write FAIL in the row with its size and a proposed fix.
@@ -124,6 +128,11 @@ not only as the deck is written.
    gate names such a deck, and the requirement then rests on the
    datasheet's own range, cited in a calculation.
 6. `verify --strict` fails a package whose decks ran without corners.
+7. A deck skipped in `sim/corners.json` runs once. A requirement that
+   rests on it is "judged as written only": the summary counts it, the
+   requirements are not met, and `--strict` fails with `REQ-OUT-01: judged
+   as written only: its deck rc_divider ran no corner (<the reason>)`.
+   Give the deck its corners, or prove the requirement another way.
 
 ## Citation rules
 

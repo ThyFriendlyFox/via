@@ -12,7 +12,7 @@ of skills that together run 4 gates on a KiCad 10 project. The code has
 | Skills | `.claude/skills/*/SKILL.md` | Tell the agent which gate comes next and how to read a report. Loaded by Claude Code from this repository or from a copy. |
 | Fixture boards | `tests/boards/*`, `tests/test_gates.py` | The tests of the gates. 1 board passes everything; the others fail 1 named gate. |
 | Manifest | `WORKCENTER.md` | The contract a project gets: tools, skills, gates, paths, requirements. |
-| Templates | `templates/` | The files a project starts from: the verification package (`workcenter verify --init` copies `templates/verification/`), the brief and facts file for helpers on one package, and a version's README and gates report (`templates/project/`). |
+| Templates | `templates/` | The files a project starts from: the verification package (`workcenter verify --init` copies `templates/verification/`), the brief and facts file for helpers on one package, and a first design file, a version's README and gates report (`templates/project/`). |
 | Environment | `environment/`, `Dockerfile` | The 2 ways the installer reaches a machine: a Claude Code cloud environment setup script, or a Docker image on the official KiCad base. |
 | Kit | `ee-agent-kit/` | How work on this repository is run. Process, not product. |
 

@@ -114,7 +114,11 @@ project and routes it with FreeRouting. No GUI at any step.
      binds a node the map leaves out to a pin by position and says nothing
      (a regulator's rail read 1981 V with exit code 0), so the check refuses
      a map that is not whole. A model file KiCad cannot load fails the ERC
-     gate as `simulation_model_issue`.
+     gate as `simulation_model_issue`. The template turns `check_sim` on.
+     An IC, a transistor or a diode takes its maker's model, fetched into
+     `library/` (the `simulate` skill, "A vendor's model"). A deck that
+     stands in for such a part with a source of its own proves another
+     part.
    - `d.net_classes` for heavy nets. The widest track that enters a pad is
      the pad pitch minus the pad width minus 2 x clearance: 0.6 mm for
      SOT-23 and 0603, 0.5 mm for 0402, 0.4 mm for TSSOP. Put the ADC sense

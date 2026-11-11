@@ -11,13 +11,15 @@ passed every gate. "Done" means `workcenter gates <project>` prints GREEN.
 
 ## Verdicts
 
-The last line of `workcenter gates` is the verdict. Its exit code says the
-same.
+The last line of `workcenter gates` is the verdict, also with `--report`.
+Its exit code says the same. Every failure and every warning is printed
+above it, each on its own line.
 
 | Last line | Meaning | Exit code |
 |---|---|---|
 | `GREEN` | Every gate that had something to run passed, with no warning. | 0 |
 | `GREEN with N warnings` | Every gate passed, and N things were named and not failed on. Each is printed. The project's gates report names each one it keeps, and why. `--strict` fails on all of them. | 0 |
+| `GREEN ... (nothing to run for: erc, drc, export)` | As above, for a project that gives some gates nothing to run: decks and no board. The line names those gates. | 0 |
 | `RED` | A gate failed, or an engine stopped with an error. | 1 |
 | `SKIPPED (GATE: engine missing)` | A gate did not run because its engine is absent. A run with an absent engine is never GREEN. | 2 |
 | `SKIPPED` | No gate had anything to run. | 2 |
@@ -27,9 +29,13 @@ whose engine is absent is skipped with the engine's name.
 
 `workcenter verify` ends with a line of its own. `REQUIREMENTS MET` needs
 every requirement PASS, no problem in the package, and the decks run at
-their corners. `REQUIREMENTS NOT MET (...)` names what is short. The gate's
-own status, `PASS verify`, says only that the package agrees with a fresh
-run: a package that records a FAIL honestly passes it.
+their corners. `REQUIREMENTS NOT MET (...)` names what is short. A
+requirement whose deck ran no corner is "judged as written only": the
+line counts it, the requirements are not met, and `--strict` fails on it.
+A requirement's check is judged at the corners whatever its deck's own
+bound says about them. The gate's own status, `PASS verify`, says only
+that the package agrees with a fresh run: a package that records a FAIL
+honestly passes it.
 
 ## Tools
 
@@ -99,11 +105,18 @@ the ERC gate reports a model KiCad cannot load. A design that says nothing
 about simulation regenerates byte for byte as before (the `board-design`
 skill).
 
-Its verdict is its exit code. It writes every file even when it exits 1 (a
-hand via its check refuses, a floating input with `check_pulls`, a `sim:`
-problem, an unrouted connection the router counts), and on exit 1 its last line says `red`, names
+Its verdict is its exit code. It writes every file even when it exits 1.
+The causes of exit 1: a hand via its check refuses; a part in a keep-out or
+with every pad outside the outline; a floating input with `check_pulls`; a
+`sim:` problem; an unrouted connection the router counts; a route that left
+every connection without copper. On exit 1 its last line says `red`, names
 each failure, and says the files are for inspection only: a CI regenerate
-check fails on that exit code (M85). Each via it drops through a pour's island
+check fails on that exit code (M85). The generator refuses some design
+files when it loads them: a namespace that is no UUID, `power_nets` that is
+no dict. That refusal is 1 `file:` line with the file's line number and
+what to write. Its exit code is 1, and nothing is written. A first design
+file starts from a copy of `templates/project/design.py`, a divider that
+generates, routes and passes ERC and DRC as it stands. Each via it drops through a pour's island
 after routing is printed as a `stitch:` line with the net, the island's layer,
 the pads the island holds and the layer the via reaches, so a via that moved
 between two runs can be traced to its pads.
@@ -226,16 +239,23 @@ reads a vendor model untranslated and in ngspice's own mode (M94).
 The SIM gate runs every deck at its corners (`tools/simcorners.py`, the
 `simulate` skill's "Corners"). `sim/corners.json` names the temperature
 range, each part's tolerance and a count of Monte Carlo runs, each range
-with its source. The gate runs a deck once for each temperature, twice for
-each part (its value less and plus the tolerance), once for the worst case
-of each bound, and once for each Monte Carlo draw, each run in its own
-folder under `build/sim/corners/<deck>/`. A bound holds when it holds at
-every corner; a failure names the corner: `isense:v_6a=1.076259 at 85 C,
-R16 -1 %, R7 -1 % not in [1.14, 1.26]`. A bound with `"warn"` or `"at":
-"nominal"` is judged as written only. A project with decks and no
-`sim/corners.json` gets a warning, as does a deck whose measures do not
-move with temperature and a part named like a board reference that no
-tolerance covers. `--nominal` leaves the corners out and says so.
+with its source. The gate runs a deck once for each temperature. It runs
+each part alone at both ends of its tolerance and half-way to each, and
+follows a measure that peaks between the ends toward its peak. It runs
+every combination of the ends when that is 64 runs or fewer; above that
+it runs 1 worst case for each bound and warns that 2 parts off together
+can hide a miss. It runs once for each Monte Carlo draw. Each run has its
+own folder under `build/sim/corners/<deck>/`. A tolerance moves R, C and L
+elements, the DC value of a V or I source, and a `.param`; 2 parts written
+from 1 parameter move apart. A bound holds when it holds at
+every corner; a failure names the worst corner and how many more miss:
+`divider:vout=2.625 at R1 -5 %, R2 +5 % (and 9 more corners) not in [2.45,
+2.55]`, from `tests/boards/fail-sim-corner`. A bound with `"warn"` or `"at": "nominal"` is judged as
+written only; the second needs a `source` that says why. A project with
+decks and no `sim/corners.json` gets a warning, as does a deck whose
+measures do not move with temperature and a part named like a board
+reference that no tolerance covers. `--nominal` leaves the corners out and
+says so.
 
 The SIM gate judges the project's frequency plan (`tools/freqplan.py`, the
 `simulate` skill's "The frequency plan"). `sim/frequency-plan.json` names
@@ -245,23 +265,32 @@ resonance's band, and on 2 sources that can run at 1 frequency, unless the
 plan answers the overlap with a bounded measure of a deck that drives it.
 It fails on a periodic stimulus in a deck that the plan does not name. A
 project whose decks drive periodic sources and that has no plan gets a
-warning.
+warning. A deck that answers an overlap is also run with L stepped
+against C between their ends: a resonance meets its source there, where no
+end shows it. A resonance read from a deck that runs no corner fails the
+plan, as does a measure of the plan that some corner does not print. A
+source whose frequency the deck gives as no number is named in a warning.
 
 The gate reads what it is given strictly. An expect file with a key it does
-not know, a bound with neither `min` nor `max`, or text that is not JSON
-fails the gate with the line that is wrong. An analysis ngspice gave up on
-fails its deck even when a later analysis completes. A complex value is no
-measure. The user's own `~/.spiceinit` does not reach a deck. A node that
-floats (`singular matrix`) is a warning.
+not know, a bound with neither `min` nor `max`, a bound that is no finite
+number, or text that is not JSON fails the gate with the line that is
+wrong. An analysis ngspice gave up on fails its deck even when a later
+analysis completes. A complex value is no measure. A name printed 2 times
+with 2 values is judged on each. A value ngspice reads as another number
+than it looks (`4k7` is 4 k) fails its deck. The user's own `~/.spiceinit`
+does not reach a deck or a corner. A node that floats (`singular matrix`)
+is a warning.
 
 `workcenter sim <project> --bundle <dir>` writes each deck as a folder
 that plain ngspice runs on any machine: `run.sp` (the file to run),
 the deck with its includes pointing into `models/`, every included file
-there (translated where its row says), `expect.json`, `measures.json` and
-a README. The command runs each folder from a copy in another place and
-fails when a measure differs from the gate's. Send the folder, not the
-deck, to a person who runs it elsewhere: the deck alone stops with an
-error or prints another number (M105).
+there (translated where its row says), the other files of the deck's
+folder, `expect.json`, `measures.json` and a README. The command runs each
+folder from a copy in another place and fails when a measure differs from
+the gate's. It replaces an earlier bundle and refuses a folder of that
+name that holds no `run.sp`. Send the folder, not the deck, to a person
+who runs it elsewhere: the deck alone stops with an error or prints
+another number (M105).
 
 Not a gate: `workcenter next <project>` names the one next step
 (`tools/guide.py`): what to do, the command, why, what to read, and when

@@ -87,47 +87,75 @@ deck at every one. Copy `templates/project/corners.json` and fill it.
 | Key | What the gate does |
 |---|---|
 | `temperature.values` | 1 run for each value, with `.options temp=<value>` and the parts as written. |
-| `tolerance.R`, `.C`, `.L` | A fraction: 0.01 is 1 %. Each element of that kind named like a board reference runs at its value less and plus the fraction. |
-| `tolerance.parts` | The same for 1 element or `.param` by name. It wins over the kind. |
-| worst case | For each bound, 1 run with every range at the end that pushed its measure furthest. No key: the gate adds it. |
+| `tolerance.R`, `.C`, `.L` | A fraction: 0.01 is 1 %. Each element of that kind named like a board reference moves by it. |
+| `tolerance.parts` | The same for 1 name: an R, C or L element, the DC value of a V or I source, or a `.param`. It wins over the kind. |
 | `monte_carlo` | `runs` more runs. Each part is drawn evenly inside its tolerance, the temperature inside its range. `seed` fixes the draws. |
 | `decks.<deck>.skip` | The deck runs as written only. The text says why. |
 | `decks.<deck>.temperature`, `.tolerance`, `.monte_carlo` | `false` with `why`, or a block that replaces the project's for that deck. |
 | `source` | Where the range comes from: a requirement, a datasheet, the parts list. The gate refuses a range without one. |
 
+The gate picks the tolerance runs itself. No key asks for them.
+
+| Runs | What |
+|---|---|
+| Each part alone | At both ends of its tolerance and half-way to each. A measure that peaks between the ends is followed toward its peak, for 5 rounds at most. |
+| Every combination of the ends | Each part low or high, at the deck's own temperature and at each named one. The gate runs them when they are 64 runs or fewer. 4 parts over 2 temperatures: 16 x 3 = 48 runs. |
+| The worst case | Above 64 runs. For each bound, 1 run with every range at the end that pushed its measure furthest alone. The gate then warns: 2 parts off together can hide a miss, so name `monte_carlo`. |
+
 1. Take the temperature range from the requirement that states it. A
    wider range is a new requirement, not a habit.
 2. Take each tolerance from the part's datasheet. Name a part under
    `parts` when it differs from its kind: a 0.1 % divider, a 20 % cell
-   resistance.
+   resistance. A supply's spread is named there too, by its source:
+   `"VBAT": 0.05`.
 3. Give each part its temperature behaviour in the deck: a resistor's
    coefficient from its datasheet (`R1 a b 10k tc1=100u`), a model that
    carries temperature. The gate warns when no measure of a deck moves
    with temperature: such a deck proves nothing about heat or cold.
 4. A bound holds at every corner. 2 kinds hold as written only: a bound
    with `warn` (a model against its datasheet's row, which is stated at
-   the row's own conditions), and a bound that says `"at": "nominal"`,
-   whose `source` says why.
-5. A value the deck sets again in `.control` (`alter rcoil 0.8`) moves
-   with its part: the corner scales it too.
-6. A deck that sets its own temperature in `.control` fails its
-   temperature corners. Remove the line, or set the deck's `temperature`
-   to `false` with `why`.
-7. Read a failure as `<deck>:<measure>=<value> at <corner> not in
-   [min, max]`. The corner names the temperature and each part's end.
-   `workcenter sim <project> --deck <deck>` prints every value with its
-   least and greatest corner, and the elements no tolerance moved (`at its
-   written value in every run: LCABLE`). An element with a word for a
-   name moves only when `parts` names it: name each whose value has a
-   spread, a cable, a cell, a contact. A corner ngspice did not finish
-   names its first error and its log: `... 1 error lines: Error: measure
-   f_lo when(WHEN) : out of interval (log <path>)`.
-8. `--nominal` runs the decks as written only, for a quick look. The
-   result names the corners as not run; such a run closes nothing.
+   the row's own conditions), and a bound that says `"at": "nominal"`.
+   The second needs a `source` that says why; the gate refuses it without
+   one.
+5. 2 parts written from 1 `.param` move apart: each is scaled where it
+   stands (`{(rdiv)*1.05}`). A `.param` that `parts` names moves as one,
+   and the parts written from it move with it.
+6. A value the deck sets again in `.control` moves with its part. The
+   corner scales `alter rcoil 0.8`, `alter rcoil = 0.8`,
+   `alter @rcoil[resistance] = 0.8` and `alterparam`. Write that value
+   as a number: the gate fails on `alter r2 = $&rv`, which it cannot
+   scale.
+7. A deck that sets its own temperature in `.control` fails its
+   temperature corners. So does an element held at its own temperature
+   (`temp=` on its line). Remove the setting, or set the deck's
+   `temperature` to `false` with `why`.
+8. Write 4.7 k as `4.7k`. ngspice reads `4k7` as 4 k and says nothing;
+   the gate fails the deck and names the value.
+9. Print each measure once. A name printed 2 times with 2 values is
+   judged on each value.
+10. Write a part in the deck, not in a file the deck includes. A corner
+    reads the deck's own lines; the gate warns about a part it finds in
+    an included file of the project. A part inside a `.subckt` placed
+    more than once moves in every copy together, and the gate says so.
+11. Read a failure as `<deck>:<measure>=<value> at <corner> (and N more
+    corners) not in [min, max]`. The corner names the temperature and
+    each part's end.
+    `workcenter sim <project> --deck <deck>` prints every value with its
+    least and greatest corner and its `margin`: the least distance to a
+    limit at the worst corner. It also prints the elements no tolerance
+    moved (`at its written value in every run: LCABLE`). An element with
+    a word for a name moves only when `parts` names it: name each whose
+    value has a spread, a cable, a cell, a contact. A corner ngspice did
+    not finish names its first error and its log: `... 1 error lines:
+    Error: measure f_lo when(WHEN) : out of interval (log <path>)`.
+12. `--nominal` runs the decks as written only, for a quick look. The
+    result names the corners as not run; such a run closes nothing.
+    `--jobs N` sets how many corners run at once.
 
-What a corner cannot move: a tolerance inside a maker's model, and a value
-written as an expression. The worst case assumes each range pushes a
-measure 1 way across its span; the Monte Carlo draws cover the rest.
+What a corner cannot move: a tolerance inside a maker's model. A range
+that pushes a measure 1 way across its span has its worst case at an end.
+The half-way runs, the combinations and the Monte Carlo draws look for
+the rest.
 
 ## The frequency plan
 
@@ -178,7 +206,11 @@ the rail's average stays inside its bound (`tests/boards/fail-freq-overlap`).
    .endc
    ```
    Name the measures under `resonances`. The gate reads them at every
-   corner, so a resonance moves with its parts' tolerances. A rail's
+   corner, so a resonance moves with its parts' tolerances. Give that
+   deck its corners: a resonance read from a deck that runs no corner
+   fails the plan. Print each measure the plan reads at every corner: one
+   that is missing at a corner fails, since its least and its greatest
+   are not known. A rail's
    impedance has a floor at low frequency: the resistance of the cable and
    the inductor. The half height is taken above that floor. Taken from
    zero it can lie under the floor: the crossing then does not exist at
@@ -197,9 +229,17 @@ the rail's average stays inside its bound (`tests/boards/fail-freq-overlap`).
    `overlaps`: `evidence` is the bounded measure, `stimulus` the deck's
    element that runs each source. The gate checks that the element runs
    at the source's frequency with a harmonic in the band, or that 2
-   elements run at 1 frequency.
-6. A PULSE with a period, or a SIN, in any deck is a source the plan
-   names. Write a stimulus that is 1 event without a period.
+   elements run at 1 frequency. A resonance meets its source between the
+   ends of its parts, where no end shows it. So the gate also runs that
+   deck with L stepped against C between their ends, 2 % of a value at a
+   step.
+6. A PULSE with a period, or a SIN, on a V, I or B source in any deck is
+   a source the plan names. Write a stimulus that is 1 event without a
+   period.
+7. Write a stimulus's frequency as a number. The gate reads the deck's
+   text. It warns about a source whose frequency is a parameter or an
+   expression, a PWL that repeats, an SFFM, an AM or a B source of
+   `time`: no plan can place it.
 
 The plan holds each harmonic against each resonance. It does not see an
 edge that rings a resonance once: a transient deck with the real edge
@@ -214,16 +254,21 @@ deck as a folder that plain ngspice runs anywhere:
 
 | File | What |
 |---|---|
-| `run.sp` | The file to run: `ngspice -b run.sp`. It sets the mode the models need, then reads the deck. |
+| `run.sp` | The file to run: `ngspice -b run.sp`. It sets the mode the models need, changes to its own folder, then reads the deck. |
 | `<deck>.cir` | The deck. Its includes point into `models/`. |
 | `models/` | Every file the deck includes, translated where its library row says. |
+| Other files | Each other file of the deck's folder, for a deck that reads one beside it (`source print_it.sp`, a file source). |
 | `expect.json`, `measures.json` | The bounds, and the values the gate measured. |
 | `README.md` | How to run it, the ngspice version, each model's part and revision. |
 
 1. Send the folder, not the deck, to a person who runs it elsewhere.
 2. The command runs each folder from a copy in another place and fails
-   when a measure differs from the gate's.
-3. A translated model is a changed copy of its maker's file. Read the
+   when a measure differs from the gate's, or when a file the deck
+   includes is not there.
+3. An earlier bundle in `<dir>/<deck>/` is replaced. A folder of that
+   name that holds no `run.sp` is refused: name another folder, or remove
+   it.
+4. A translated model is a changed copy of its maker's file. Read the
    maker's notice before the folder goes to a third party.
 
 ## A deck by hand
