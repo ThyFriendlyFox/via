@@ -48,6 +48,20 @@ What this folder holds, for Wyvern — board prototype v0.1. Made by `workcenter
 ## Pictures and reports
 
 - [pictures.json](pictures.json): what `workcenter pictures` draws and copies into docs/
+- [docs/assembly-bottom.png](docs/assembly-bottom.png)
+- [docs/assembly-end.png](docs/assembly-end.png)
+- [docs/assembly-iso.png](docs/assembly-iso.png)
+- [docs/assembly-spin.gif](docs/assembly-spin.gif)
+- [docs/assembly-top.png](docs/assembly-top.png)
+- [docs/board-3d-bottom.png](docs/board-3d-bottom.png)
+- [docs/board-3d-iso.png](docs/board-3d-iso.png)
+- [docs/board-3d-top.png](docs/board-3d-top.png)
+- [docs/board-bottom.png](docs/board-bottom.png)
+- [docs/board-spin-bottom.gif](docs/board-spin-bottom.gif)
+- [docs/board-spin.gif](docs/board-spin.gif)
+- [docs/board-top.png](docs/board-top.png)
+- [docs/layers.png](docs/layers.png)
+- [docs/schematic.png](docs/schematic.png)
 - [docs/gates.md](docs/gates.md)
 
 ## Parts

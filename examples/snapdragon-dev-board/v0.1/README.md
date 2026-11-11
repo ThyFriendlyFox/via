@@ -17,7 +17,7 @@ the `.kicad_*` files beside it are what `workcenter design` writes from it.
 |---|---|
 | Schematic | drawn with wires in blocks, the SOM's 300 pins named from its datasheet; ERC <!-- erc -->0 errors, 0 warnings<!-- /erc -->; no parity warning |
 | Board | 60.96 x 30.48 mm (2.4 x 1.2 in), **6 layers**, 1.6 mm, made to Sierra Circuits' Web PCB limits; 2 rows of 24 pins on the 0.1 in grid, 1.1 in apart; the SOM's sockets, USB-C, the RP2350 and its flash on the top face, the power, the microSD and the pinout card on the bottom |
-| Gates | <!-- gates -->see `docs/gates.md`<!-- /gates --> |
+| Gates | <!-- gates -->GREEN with 13 warnings: ERC 0 and 0; DRC 0 errors, 0 unconnected, 0 parity, 7 warnings (silkscreen at the edge, 2 vias with nothing past them); SIM 6 decks, 488 corner runs, 0 failures; EXPORT 4 of 4 (`docs/gates.md`)<!-- /gates --> |
 | USB | the USB-C port's 4 SuperSpeed pairs and its USB 2 pair drawn by hand in `design.py` as coupled 90 ohm pairs on the outer layers, each over a ground plane; no pair crosses another or turns over |
 | Power | 5 V from USB-C (or the 5V pin) to the SOM's 3.8 V by a TPS62130 buck, 3 A for the module's 8.7 W boot peak; 3.3 V from that by an AP2112K; the SOM's own 1.8 V on a pin |
 | Simulation | 6 decks, each at every corner of its parts' tolerances (`sim/`): the 3.8 V rail inside the SOM's window, the Snapdragon's I2C on the pins, the RP2350's reset and boot lines, the USB input's resonance with a cable; a frequency plan holds the 3 clocks against it |
@@ -73,7 +73,7 @@ degrees so its power socket (JT2) sits next to USB-C. The pins run outside the m
 edges, so the board is the module's width plus 2 rows. Everything a hand touches is on top at the
 USB-C end (PWR, BOOT, the Snapdragon's 3 lights and GP25's); the RP2350 and its flash sit under the
 module on top; the power, the microSD and the buttons the board rarely needs are on the bottom. The
-router (FreeRouting) drew <!-- route -->everything but the USB pairs<!-- /route -->.
+router (FreeRouting) drew <!-- route -->789 segments and 51 vias round what `design.py` draws by hand: the USB pairs, the RP2350's supplies and its pins fanned out to vias on 3 sides, the crystal's lines, the RGB lines<!-- /route -->.
 
 ### Simulation
 
@@ -191,7 +191,9 @@ U1, a USBLC6-2SC6, clamps D+ and D- inside the top layer's pairs.
 U4, an RP2350A (QFN-60), with a 16 MB W25Q128JV (U5), the ABM8-272-T3 crystal and the 3.3 uH
 inductor Raspberry Pi tuned its oscillator and its core regulator to, and their resistors and
 capacitors as Raspberry Pi's minimal design has them. It sits under the module, where everything is
-1.0 mm tall or less.
+1.0 mm tall or less. The crystal, its 2 load capacitors and XOUT's 1k are on the back, under the
+chip's south edge: on top they stood 0.6 mm from 7 of its pins and left them no way out. Each 100 nF
+faces its supply pin with its supply pad.
 
 - **USB.** Its USB pins, through R6 and R7 (27 ohm), go to the SOM's second USB port (USB2_HS on
   JT3), a host. Linux sees the RP2350 as a device: its bootloader as a drive, then whatever its
@@ -338,8 +340,8 @@ output, and none of the 3 makers publishes its output impedance.
 | C17 | 100n | C_0402_1005Metric | top | Murata GRM155R71C104KA88D |
 | C18 | 100n | C_0402_1005Metric | top | Murata GRM155R71C104KA88D |
 | C19 | 100n | C_0402_1005Metric | top | Murata GRM155R71C104KA88D |
-| C20 | 15p | C_0402_1005Metric | top | Murata GRM1555C1H150JA01D |
-| C21 | 15p | C_0402_1005Metric | top | Murata GRM1555C1H150JA01D |
+| C20 | 15p | C_0402_1005Metric | bottom | Murata GRM1555C1H150JA01D |
+| C21 | 15p | C_0402_1005Metric | bottom | Murata GRM1555C1H150JA01D |
 | C22 | 100n | C_0402_1005Metric | top | Murata GRM155R71C104KA88D |
 | C23 | 4.7u | C_0603_1608Metric | bottom | Murata GRM188R61A475KE15D |
 | C24 | 100n | C_0402_1005Metric | bottom | Murata GRM155R71C104KA88D |
@@ -360,7 +362,7 @@ output, and none of the 3 makers publishes its output impedance.
 | R2 | 100k | R_0402_1005Metric | bottom | YAGEO RC0402FR-07100KL |
 | R3 | 33 | R_0402_1005Metric | top | YAGEO RC0402FR-0733RL |
 | R4 | 10k | R_0402_1005Metric | top | YAGEO RC0402FR-0710KL |
-| R5 | 1k | R_0402_1005Metric | top | YAGEO RC0402FR-071KL |
+| R5 | 1k | R_0402_1005Metric | bottom | YAGEO RC0402FR-071KL |
 | R6 | 27 | R_0402_1005Metric | top | YAGEO RC0402FR-0727RL |
 | R7 | 27 | R_0402_1005Metric | top | YAGEO RC0402FR-0727RL |
 | R8 | 10k | R_0402_1005Metric | top | YAGEO RC0402FR-0710KL |
@@ -394,7 +396,7 @@ output, and none of the 3 makers publishes its output impedance.
 | U5 | W25Q128JV | WSON-8-1EP_6x5mm_P1.27mm_EP3.4x4.3mm | top | Winbond W25Q128JVPIQ |
 | U6 | 74LVC1G07 | SOT-353_SC-70-5 | top | Texas Instruments SN74LVC1G07DCKR |
 | U7 | 74LVC1G07 | SOT-353_SC-70-5 | top | Texas Instruments SN74LVC1G07DCKR |
-| Y1 | 12MHz ABM8-272-T3 | Crystal_SMD_3225-4Pin_3.2x2.5mm | top | Abracon ABM8-272-T3 |
+| Y1 | 12MHz ABM8-272-T3 | Crystal_SMD_3225-4Pin_3.2x2.5mm | bottom | Abracon ABM8-272-T3 |
 
 The module, the bare board and the antennas are off the board: `../parts/offboard/v0.1.csv`. The
 priced list is `../parts/lists/v0.1.md`.
@@ -417,10 +419,12 @@ python3 models/make_models.py                # the 5 bodies KiCad's 3D library h
 
 `design.py` is the source of truth; the `.kicad_*` files are generated from it and committed so
 KiCad can open them. 2 functions draw copper by hand, and the router keeps it and fills in the rest:
-`usb_pairs` draws the USB pairs, their vias and the stubs round the receptacle; `core_rail` draws the
-RP2350's 1.1 V core, from each core pin inward to a via inside the ring of pads and across In3 under
-the chip, with XIN down the gap between the crystal's pads (the router had left all of them open).
-Ground vias stitch the patch of top copper the top-layer pairs ring under the module.
+`usb_pairs` draws the USB pairs, their vias and the stubs round the receptacle; `core_rail` draws
+what the router left open round the RP2350 in its first routes: the 1.1 V core (each core pin inward
+to a via inside the ring of pads, joined on In3 under the chip), each 3.3 V pin's stub to its
+100 nF, the east side's 11 GPIOs fanned out to vias in 2 columns, VREG_PGND to the ground pad, the
+module's VBUS and 3.8 V sense pins, and a ground via beside each pad the pour would cut off. 6
+more ground vias stitch the patch of top copper the top-layer pairs ring under the module.
 
 ## Decisions
 

@@ -306,22 +306,112 @@ def core_rail(d: kicadgen.Design) -> None:
     for pts in (
         [(138.05, 112.70), (136.4, 112.70), (136.4, 113.02)],  # 1 to C12
         [(138.05, 116.70), (136.4, 116.70), (136.4, 117.02)],  # 11 to C13
-        [(144.95, 115.50), (145.85, 115.50), (146.33, 115.98), (146.6, 115.98)],  # 38 to C14
+        [(144.95, 115.50), (146.0, 115.50), (146.4, 115.80), (146.6, 115.98)],  # 38 to C14
         [(144.95, 112.70), (145.25, 112.70), (145.25, 113.10)],  # 45 to 44
         [(144.95, 113.10), (146.6, 113.10)],  # 44 to C15
-        [(144.3, 118.95), (144.3, 119.60), (145.0, 119.60), (146.6, 118.0)],  # 30 to C16
+        [(144.3, 118.95), (144.3, 119.60), (146.6, 119.60), (146.6, 117.98)],  # 30 to C16, round the fan-out
         [(143.1, 112.05), (143.1, 110.38)],  # 49 to C9
         [(141.1, 112.05), (141.5, 112.05)],  # 54 to 53
-        [(141.3, 112.05), (141.3, 113.0)],
+        [(141.3, 112.05), (141.45, 113.3)],
     ):
         d.track("+3V3", pts, "F.Cu", width=0.25)
-    hand_via(d, "+3V3", 141.3, 113.0)
-    # XIN straight down the gap between the crystal's pads to its pin 1: the router had put a supply
-    # via in that gap and left XIN open.
-    d.track("XIN", [(140.7, 118.95), (140.7, 119.55), (140.4, 119.85), (140.4, 122.28), (139.3, 122.28)], "F.Cu")
+    hand_via(d, "+3V3", 141.45, 113.3)
+    # The east side fanned out by hand (M129): its 11 GPIOs alternate between a via in the gap before
+    # the capacitors and a via inside the ring of pads, 0.7 mm or more apart (Sierra's 13 mil from a
+    # hole to inner copper), so no stub crosses another; the outer column skips the band of pin 38's
+    # stub. The router then only runs the inner layers to the pins.
+    east = {31: (145.8, 118.3), 32: (143.95, 117.9), 33: (145.8, 117.55), 34: (143.95, 117.1),
+            35: (145.8, 116.8), 36: (143.95, 116.3), 37: (145.8, 116.05), 40: (145.8, 114.7),
+            41: (143.95, 114.3), 42: (145.8, 113.95), 43: (143.95, 113.6)}  # fmt: skip
+    for pin, via in east.items():
+        net = f"GP{ {31: 19, 32: 20, 33: 21, 34: 22, 35: 23, 36: 24, 37: 25, 40: 26, 41: 27, 42: 28, 43: 29}[pin]}"
+        d.track(net, [(144.95, 118.3 - 0.4 * (pin - 31)), via], "F.Cu")
+        hand_via(d, net, *via)
+    # The west side the same way: 12 GPIOs between a column in the gap before C12, C18 and C13 (clear of
+    # their 3 stubs) and a column inside the ring (clear of the core rail's via by pin 6).
+    west = {2: (138.95, 113.2), 3: (137.2, 113.45), 4: (138.95, 113.95), 5: (137.2, 114.2),
+            7: (137.2, 115.2), 8: (138.95, 115.45), 9: (137.2, 115.95), 10: (138.95, 116.25),
+            12: (137.2, 117.2), 13: (138.95, 117.5), 14: (137.2, 117.95), 15: (137.2, 118.7)}  # fmt: skip
+    for pin, via in west.items():
+        net = f"GP{ {2: 0, 3: 1, 4: 2, 5: 3, 7: 4, 8: 5, 9: 6, 10: 7, 12: 8, 13: 9, 14: 10, 15: 11}[pin]}"
+        d.track(net, [(138.05, 112.7 + 0.4 * (pin - 1)), via], "F.Cu")
+        hand_via(d, net, *via)
+    # The north side's QSPI: the flash's pins run the other way round from the chip's, so its 6 lines
+    # cannot all stay on the top layer; 5 escape to vias (3 under the resistor row, 2 inside the
+    # ring) and QSPI_SS runs straight up to its pull-ups, R9 and R4.
+    north = {"QSPI_SD1": ((139.1, 112.05), (139.1, 111.15)), "QSPI_SD0": ((139.9, 112.05), (139.9, 111.15)),
+             "QSPI_SD3": ((140.7, 112.05), (140.7, 111.15)), "QSPI_SD2": ((139.5, 112.05), (139.75, 113.05)),
+             "QSPI_SCLK": ((140.3, 112.05), (140.55, 113.05))}  # fmt: skip
+    for net, (pad, via) in north.items():
+        d.track(net, [pad, via], "F.Cu")
+        hand_via(d, net, *via)
+    d.track("QSPI_SS", [(138.7, 112.05), (138.7, 111.55), (138.5, 111.35), (138.5, 110.41), (139.6, 110.41)], "F.Cu")
+    # XIN through the gap between the crystal's pads to its pin 1 on the back.
+    d.track("XIN", [(140.7, 118.95), (140.7, 119.45), (140.4, 119.75)], "F.Cu")
+    hand_via(d, "XIN", 140.4, 119.75)
+    d.track("XIN", [(140.4, 119.75), (139.7, 119.75)], "B.Cu")
+    # XOUT inward to a via, then on the back round the crystal to R5; SWDIO inward to a via.
+    d.track("XOUT", [(141.1, 118.95), (141.0, 118.15)], "F.Cu")
+    hand_via(d, "XOUT", 141.0, 118.15)
+    d.track("XOUT", [(141.0, 118.15), (141.0, 118.85), (143.3, 118.85), (143.6, 119.15), (143.6, 119.75), (144.3, 120.39)],
+            "B.Cu")
+    d.track("SWDIO", [(142.3, 118.95), (142.3, 117.95)], "F.Cu")
+    hand_via(d, "SWDIO", 142.3, 117.95)
+    # The core regulator: VREG_LX up to L2, VREG_AVDD east under the regulator's row to C11 and R3.
+    d.track("VREG_LX", [(143.5, 112.05), (143.5, 111.0), (144.2, 110.3)], "F.Cu")
+    d.track("VREG_AVDD", [(144.3, 112.05), (144.3, 111.75), (149.8, 111.75), (149.8, 110.38), (148.7, 110.41)],
+            "F.Cu", width=0.25)
+    d.track("+3V3", [(148.7, 109.39), (148.7, 108.7)], "F.Cu", width=0.25)  # R3's 3.3 V end to a via
+    hand_via(d, "+3V3", 148.7, 108.7)
+    # A 3.3 V via beside each 100 nF's supply pad, and pin 20 inward: the router joins vias.
+    for pad, via in (((136.4, 113.02), (135.7, 113.0)), ((136.4, 117.02), (135.7, 117.0)),
+                     ((146.6, 113.02), (147.3, 113.0)), ((146.6, 115.98), (147.3, 116.0)),
+                     ((146.6, 117.98), (147.3, 118.0)), ((140.3, 118.95), (140.3, 117.95))):  # fmt: skip
+        d.track("+3V3", [pad, via], "F.Cu", width=0.25)
+        hand_via(d, "+3V3", *via)
+    # VREG_PGND (47) to the ground pad, inside the ring.
+    d.track("GND", [(143.9, 112.05), (143.9, 112.8), (143.3, 113.4), (143.1, 113.9)], "F.Cu", width=0.25)
     # The module's fuel gauge senses the 3.8 V rail at its own socket: JT2's VBATT_CONN_VSENSE_P (24)
     # to SOM_SYS_PWR (23) straight across, between the socket's rows.
     d.track("SOM_SYS", [(117.8, 103.37), (117.8, 106.45)], "F.Cu", width=0.2)
+    # The buck's output sense (VOS, U2 14): up on the back to a via the router joins to the rail.
+    d.track("SOM_SYS", [(119.35, 105.94), (119.35, 104.6)], "B.Cu", width=0.2)
+    hand_via(d, "SOM_SYS", 119.35, 104.6)
+    # A ground via beside each 100 nF's ground pad, the shortest return for its pin; and one in the
+    # pocket of top pour between JT2's rows by its ground pins 2 and 4. Placed before the route, the
+    # router keeps clear of them; the generator's own stitches, placed after it, landed by the buck's
+    # switch node.
+    for cap, x in (("C12", 135.7), ("C18", 135.7), ("C13", 135.7), ("C15", 147.3), ("C14", 147.3), ("C16", 147.3)):
+        y = {"C12": 113.98, "C18": 115.98, "C13": 117.98, "C15": 113.98, "C14": 115.02, "C16": 117.02}[cap]
+        d.track("GND", [(136.4 if x < 140 else 146.6, y), (x, y)], "F.Cu", width=0.25)
+        hand_via(d, "GND", x, y)
+    hand_via(d, "GND", 113.6, 104.35)
+    d.track("GND", [(123.41, 111.5), (124.25, 111.5)], "B.Cu", width=0.25)  # R2's ground end, cut off
+    hand_via(d, "GND", 124.25, 111.5)
+    # Pads the pour cut off in the first routes, each tied down: JT2's ground pins 16 to 22 and 60 and
+    # 66 between its rows, C9, C11, C6, the buffers' ground pins, VOL-'s ground lug.
+    for x, y in ((116.8, 104.2), (125.0, 104.2), (126.2, 104.2), (143.45, 123.25), (120.75, 110.4)):
+        hand_via(d, "GND", x, y)
+    for pad, via in (((143.0, 109.42), (143.0, 108.75)), ((149.8, 109.42), (149.8, 108.75)),
+                     ((148.162, 121.25), (147.45, 121.4)), ((151.562, 121.25), (150.7, 121.6))):  # fmt: skip
+        d.track("GND", [pad, via], "F.Cu", width=0.25)
+        hand_via(d, "GND", *via)
+    # JT2's 5 USB_VBUS pins are the module's VBUS sense: a thin comb between the socket's rows, a via,
+    # and the buck's VBUS pin 13 on the back. The router ran the 0.6 mm supply width into these 0.2 mm
+    # pads, 0 mm from USB_CC2 beside them.
+    d.track("VBUS", [(118.2, 106.45), (118.2, 105.85), (119.8, 105.85), (119.8, 106.45)], "F.Cu", width=0.2)
+    for x in (118.6, 119.0, 119.4):
+        d.track("VBUS", [(x, 106.45), (x, 105.85)], "F.Cu", width=0.2)
+    d.track("VBUS", [(118.6, 105.85), (118.6, 105.2)], "F.Cu", width=0.2)
+    hand_via(d, "VBUS", 118.6, 105.2)
+    d.track("VBUS", [(118.6, 105.2), (118.85, 105.45), (118.85, 105.94)], "B.Cu", width=0.25)
+    # The module's RGB lines (JT2 39, 41, 43) to D3, D2, D1 as 3 nested L's under JT2's bottom row:
+    # the westmost pin takes the line nearest the socket and turns first, so none crosses another.
+    for x0, y, x1, net in ((121.0, 108.4, 109.3, "LED_B"), (121.4, 108.7, 107.5, "LED_G"), (121.8, 109.0, 105.7, "LED_R")):
+        d.track(net, [(x0, 106.45), (x0, y), (x1, y), (x1, 105.39)], "F.Cu", width=0.15)
+    # The back pour between L1's pads is cut off by the buck's tracks; a via in the middle ties it down,
+    # 0.44 mm from each pad, where the generator's own stitch stood 0.13 mm from the 3.8 V pad.
+    hand_via(d, "GND", 114.2, 107.6)
 
 
 # ---- the schematic: blocks the way the signal flows, each IC with its own parts ------------------
@@ -397,8 +487,8 @@ def build() -> kicadgen.Design:
         plane_layers=("In1.Cu", "In4.Cu"),
         # Rounded only as far as the corner pins' square pads allow (0.3 mm to the edge).
         corner_radius=0.6,
-        track_width=0.15,
-        clearance=0.12,
+        track_width=0.127,  # 5 mil: the router needs the room round the RP2350 (M129)
+        clearance=0.11,
         # 0.2 mm copper to an edge or a hole: the USB-C receptacle's rear shell slot and its locating peg
         # are 0.375 mm apart, so a 6 mil ring leaves 0.22 mm, under the workcenter's 0.3 mm default.
         edge_clearance=0.2,
@@ -507,7 +597,7 @@ def build() -> kicadgen.Design:
         {"1": "VREG_LX", "2": "+1V1"}, 0)  # fmt: skip
     c("C9", "4.7u", "+3V3", (143.0, ny), 90)
     c("C10", "4.7u", "+1V1", (147.6, ny), 90)
-    r("R3", "33", "+3V3", "VREG_AVDD", (148.7, ny), 90)
+    r("R3", "33", "+3V3", "VREG_AVDD", (148.7, ny), 270)  # its 3.3 V end north, out of VREG_AVDD's loop
     c("C11", "4.7u", "VREG_AVDD", (149.8, ny), 90)
     r("R6", "27", "MCU_DP", "MCU_USB_P", (141.8, ny), 90)
     r("R7", "27", "MCU_DM", "MCU_USB_N", (140.7, ny), 90)
@@ -528,11 +618,13 @@ def build() -> kicadgen.Design:
         {"1": "QSPI_SS", "2": "QSPI_SD1", "3": "QSPI_SD2", "4": "GND", "5": "QSPI_SD0", "6": "QSPI_SCLK",
          "7": "QSPI_SD3", "8": "+3V3", "9": "GND"}, 90)  # fmt: skip
     c("C19", "100n", "+3V3", (132.3, 117.0))
+    # The crystal and its 3 parts on the back, under the chip's south edge: on the top face the crystal
+    # stood 0.6 mm from pins 16 to 22 and left them no way out (M129).
     add("Y1", "Device:Crystal_GND24", "12MHz ABM8-272-T3", "Crystal:Crystal_SMD_3225-4Pin_3.2x2.5mm",
-        (140.4, 121.43), {"1": "XIN", "2": "GND", "3": "XTAL_O", "4": "GND"}, 0)  # fmt: skip
-    c("C20", "15p", "XIN", (137.3, 120.9), 90)
-    c("C21", "15p", "XTAL_O", (143.5, 121.9), 90)
-    r("R5", "1k", "XTAL_O", "XOUT", (144.6, 121.9), 90)
+        (140.4, 120.9), {"1": "XIN", "2": "GND", "3": "XTAL_O", "4": "GND"}, 0, B)  # fmt: skip
+    c("C20", "15p", "XIN", (137.6, 120.9), 90, B)
+    c("C21", "15p", "XTAL_O", (143.2, 120.9), 90, B)
+    r("R5", "1k", "XTAL_O", "XOUT", (144.3, 120.9), 90, B)
     c("C17", "100n", "+3V3", (136.2, 120.9), 90)
     r("R8", "10k", "MCU_RUN", "+3V3", (145.7, 121.9), 90)
     # The Snapdragon's 2 GPIOs (1.8 V) pull RUN and QSPI_SS low through open-drain buffers on its own
@@ -547,8 +639,10 @@ def build() -> kicadgen.Design:
 
     # ---- the USB end, on top: PWR and its 3 lights above J4, BOOT and GP25's light below -----------
     add("SW1", "Switch:SW_Push", "PWR", BUTTON, (102.6, 106.0), {"1": "SOM_PWR_N", "2": "GND"}, 90)
+    # Each LED's anode at the bottom, so the 3 tracks leave side by side; with the anodes up, the middle
+    # one was boxed in by its neighbours' tracks and stayed unrouted.
     for k, (net, colour) in enumerate((("LED_R", "red"), ("LED_G", "green"), ("LED_B", "blue"))):
-        add(f"D{k + 1}", "Device:LED", colour, LED0603, (105.7 + 1.8 * k, 104.6), {"1": "GND", "2": net}, 90)
+        add(f"D{k + 1}", "Device:LED", colour, LED0603, (105.7 + 1.8 * k, 104.6), {"1": "GND", "2": net}, 270)
     add("SW2", "Switch:SW_Push", "BOOT", BUTTON, (102.6, 124.5), {"1": "BOOT_R", "2": "GND"}, 90)
     add("D4", "Device:LED", "green", LED0603, (106.9, 126.6), {"1": "GND", "2": "LED_GP25"}, 0)
     r("R12", "1k", "LED_GP25", "GP25", (106.9, 125.0), 0)
@@ -595,7 +689,7 @@ def build() -> kicadgen.Design:
     d.text("v0.1", 138.6, 118.6, "B.SilkS", 0.6, 0.13)
     # Each back button's name over it; the generator mirrors back-face text so it reads from below.
     for name, x in (("RUN", 135.6), ("VOL-", 141.4), ("EDL", 147.2)):
-        d.text(name, x, 122.55, "B.SilkS", 0.6, 0.13)
+        d.text(name, x, 122.75, "B.SilkS", 0.6, 0.13)
     # The mark on the top face, in the patch of copper the pairs ring, under the module.
     d.text("WYVERN", 120.5, 120.5, "F.SilkS", 1.6, 0.25)
 
@@ -616,10 +710,9 @@ def build() -> kicadgen.Design:
     d.check_pulls = True
     usb_pairs(d)
     core_rail(d)
-    # The top-layer pairs ring a patch of top copper under the module; without a via it is an island
-    # and its pour is dropped. 6 ground vias keep it and stitch it to In1 and In4 beside the pairs.
-    for x, y in ((118.5, 118.5), (122.5, 118.5), (115.0, 121.5), (118.5, 122.5), (122.5, 122.5), (125.5, 120.5)):
-        hand_via(d, "GND", x, y)
+    # The top-layer pairs ring a patch of the top layer under the module. It is left bare: 6 ground
+    # vias there kept its pour, and the route through the inner layers under it then left 3
+    # connections open.
     # 3D bodies for the 4 parts KiCad's 3D library has none for (models/make_models.py).
     d.model("U4", "${KIPRJMOD}/models/rp2350_qfn60.wrl", replace=True)
     d.model("U2", "${KIPRJMOD}/models/tps62130_vqfn16.wrl", replace=True)

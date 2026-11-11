@@ -783,15 +783,15 @@ Root cause: I took the pass count from a 4-part template to a 140-part board, an
 Process: P4
 
 ## M129 — 2026-11-11 — A chip's core pins with no way out
-What happened: I placed the Snapdragon example's RP2350 parts the way Raspberry Pi's minimal design lists them: a 100 nF beside each supply pin, the crystal under XIN and XOUT, the core regulator's parts in a row to the north. Each core pin (DVDD 6, 23 and 39, VREG_FB 50) then faced another net's pad 1 to 2 mm out: C18's ground pad, the crystal, C14's ground pad, C9. FreeRouting ran 14 minutes and left every pad of the core net bare, and 5 more connections open round it. The core rail is drawn by hand now: a stub inward from each pin to a via inside the ring of pads, joined on In3 under the ground pad. The next routes left the 3.3 V pins open instead: 4 of the 100 nF capacitors had their ground pad toward the chip and their supply pad on the far side. They are turned, and each 3.3 V pin's stub to its capacitor is drawn by hand.
-Cost: a 15-minute route kept only as a seed, 3 more routes, and the hand routes.
+What happened: I placed the Snapdragon example's RP2350 parts the way Raspberry Pi's minimal design lists them: a 100 nF beside each supply pin, the crystal under XIN and XOUT, the core regulator's parts in a row to the north. Each core pin (DVDD 6, 23 and 39, VREG_FB 50) then faced another net's pad 1 to 2 mm out: C18's ground pad, the crystal, C14's ground pad, C9. FreeRouting ran 14 minutes and left every pad of the core net bare, and 5 more connections open round it. The core rail is drawn by hand now: a stub inward from each pin to a via inside the ring of pads, joined on In3 under the ground pad. The next routes left the 3.3 V pins open instead: 4 of the 100 nF capacitors had their ground pad toward the chip and their supply pad on the far side. They are turned, and each 3.3 V pin's stub to its capacitor is drawn by hand. Last, the crystal stood 0.6 mm below pins 16 to 22 and left them no way out; it and its 3 parts moved to the back, and the fresh route after it left 3 connections open where the ones before left 7 to 17.
+Cost: a 15-minute route kept only as a seed, 8 more routes, and the hand routes.
 Root cause: I checked each pin's net and not its way out. Rosetta's route had met the same wall (its RP2040's pins had no lanes until its capacitors moved), and that lesson was in the devlog, not in a process.
 Process: P4
 
 ## M130 — 2026-11-11 — 60 passes and the 15-minute limit, after M128
 What happened: I routed the same example, 76 parts on 6 layers, with `--passes 60` and no `--timeout`, which P4 step 6 forbids since M128. The first round ended 32 seconds inside the 15-minute limit. The second round, which `workcenter design` starts when a pour loses a pad, would have been stopped by the limit and left no session; I stopped it for M129's fix.
 Cost: none in the end; the board's first route was 32 seconds from being lost.
-Root cause: I copied the command from my first route of the example, written before I read P4's step 6, and did not read the step again before the next route.
+Root cause: I copied the command from my first route of the example, written before I read P4's step 6, and did not read the step again before the next route. Then I tried to finish the board with seeded routes; each lost connections its seed had, and 6 such routes went nowhere.
 Process: P4
 
 ## M131 — 2026-11-11 — `cd` and `pkill -f` in my own commands

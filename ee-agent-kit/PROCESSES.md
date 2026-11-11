@@ -136,7 +136,12 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
 6. A board of more than about 50 parts routes with `--passes 12` to 20
    and a `--timeout` of an hour, in the background. FreeRouting writes its
    session only when it ends, so a run the timeout stops leaves nothing:
-   60 passes on 140 parts ran past the 15-minute default (M128).
+   60 passes on 140 parts ran past the 15-minute default (M128). Where 20
+   passes leave connections open on a dense board, a fresh route of up
+   to 100 passes inside the hour is next; FreeRouting is deterministic,
+   so past the pass where it settles more passes give the same board
+   (Wyvern: 100 and 150). A seeded route can lose connections its seed
+   had; it is no way to finish a board (M130).
 7. A fine-pitch part (0.5 mm pitch or less) gets a way out for each of
    its supply pins before the first route: past the pad's outer end, or
    inward to a via inside the ring of pads, with no pad of another net

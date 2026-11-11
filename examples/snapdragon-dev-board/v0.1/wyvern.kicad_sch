@@ -13464,8 +13464,8 @@
 				(justify left)
 			)
 		)
-		(property "Value" "DF40HC(3.0)-100DS (JT1)"
-			(at 484.8 29.21 0)
+		(property "Value" "DF40HC(3.0)-100DS-0.4V"
+			(at 486.14 29.21 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -14031,8 +14031,8 @@
 				(justify left)
 			)
 		)
-		(property "Value" "DF40HC(3.0)-100DS (JT2)"
-			(at 73.32 31.75 0)
+		(property "Value" "DF40HC(3.0)-100DS-0.4V"
+			(at 74.66 31.75 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -14638,8 +14638,8 @@
 				(justify left)
 			)
 		)
-		(property "Value" "DF40HC(3.0)-100DS (JT3)"
-			(at 225.72 29.21 0)
+		(property "Value" "DF40HC(3.0)-100DS-0.4V"
+			(at 227.06 29.21 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -18465,8 +18465,8 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "aa622832-46a5-5c06-bf02-a0802241c294")
-		(property "Reference" "D2"
+		(uuid "92b22bca-e6e6-59d2-9120-693364022f17")
+		(property "Reference" "D1"
 			(at 97.72 144.78 0)
 			(effects
 				(font
@@ -18512,15 +18512,15 @@
 			)
 		)
 		(pin "1"
-			(uuid "5dbea646-e07f-558c-a616-60e0e1dd811a")
+			(uuid "7f2af387-004d-53dd-ba5c-0ac16ccb7aaf")
 		)
 		(pin "2"
-			(uuid "b269b44c-2d09-589c-a7c5-a53c4f0e9915")
+			(uuid "36131779-0797-55ec-addb-e8ebe3ce1164")
 		)
 		(instances
 			(project "wyvern"
 				(path "/a9d54b1a-2f3d-551a-913b-031373e3a959"
-					(reference "D2")
+					(reference "D1")
 					(unit 1)
 				)
 			)
@@ -18534,8 +18534,8 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "11c75476-d757-5c74-965f-5f3a0283aa9a")
-		(property "Reference" "D3"
+		(uuid "aa622832-46a5-5c06-bf02-a0802241c294")
+		(property "Reference" "D2"
 			(at 120.58 144.78 0)
 			(effects
 				(font
@@ -18581,15 +18581,15 @@
 			)
 		)
 		(pin "1"
-			(uuid "4ec352a8-9d88-5ba2-9561-9fdb75bbc033")
+			(uuid "5dbea646-e07f-558c-a616-60e0e1dd811a")
 		)
 		(pin "2"
-			(uuid "84e0c559-0ad6-5b25-94b6-d7c2d2f4bddd")
+			(uuid "b269b44c-2d09-589c-a7c5-a53c4f0e9915")
 		)
 		(instances
 			(project "wyvern"
 				(path "/a9d54b1a-2f3d-551a-913b-031373e3a959"
-					(reference "D3")
+					(reference "D2")
 					(unit 1)
 				)
 			)
@@ -18603,8 +18603,8 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "487a9de9-c585-536a-81c8-06bdb6008b9c")
-		(property "Reference" "D4"
+		(uuid "11c75476-d757-5c74-965f-5f3a0283aa9a")
+		(property "Reference" "D3"
 			(at 143.44 144.78 0)
 			(effects
 				(font
@@ -18650,15 +18650,15 @@
 			)
 		)
 		(pin "1"
-			(uuid "28039383-8033-59a1-a126-c16e846219ac")
+			(uuid "4ec352a8-9d88-5ba2-9561-9fdb75bbc033")
 		)
 		(pin "2"
-			(uuid "aa24cb95-0fbd-5d77-8460-2ec0bf66ceeb")
+			(uuid "84e0c559-0ad6-5b25-94b6-d7c2d2f4bddd")
 		)
 		(instances
 			(project "wyvern"
 				(path "/a9d54b1a-2f3d-551a-913b-031373e3a959"
-					(reference "D4")
+					(reference "D3")
 					(unit 1)
 				)
 			)
@@ -18741,8 +18741,8 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "c55cd46a-714c-514a-b325-677fddfb320d")
-		(property "Reference" "D5"
+		(uuid "487a9de9-c585-536a-81c8-06bdb6008b9c")
+		(property "Reference" "D4"
 			(at 181.54 403.86 0)
 			(effects
 				(font
@@ -18788,15 +18788,15 @@
 			)
 		)
 		(pin "1"
-			(uuid "1110cc8e-29ba-59f2-87bc-156dfb960ade")
+			(uuid "28039383-8033-59a1-a126-c16e846219ac")
 		)
 		(pin "2"
-			(uuid "f9d56e50-575b-58e7-9d09-34d85f86d0ab")
+			(uuid "aa24cb95-0fbd-5d77-8460-2ec0bf66ceeb")
 		)
 		(instances
 			(project "wyvern"
 				(path "/a9d54b1a-2f3d-551a-913b-031373e3a959"
-					(reference "D5")
+					(reference "D4")
 					(unit 1)
 				)
 			)
@@ -20290,8 +20290,8 @@
 				(justify left)
 			)
 		)
-		(property "Value" "TOP ROW"
-			(at 500.77 274.32 0)
+		(property "Value" "1x24 header"
+			(at 498.09 274.32 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -20425,8 +20425,8 @@
 				(justify left)
 			)
 		)
-		(property "Value" "BOTTOM ROW"
-			(at 539.4 274.32 0)
+		(property "Value" "1x24 header"
+			(at 538.73 274.32 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -24972,7 +24972,7 @@
 		(in_bom no)
 		(on_board no)
 		(dnp no)
-		(uuid "cf14ffa0-f1c9-530d-9f8a-336a397d8a5e")
+		(uuid "1b4e8de7-9848-52de-9471-2045dd342f16")
 		(property "Reference" "#PWR63"
 			(at 95.25 146.05 90)
 			(effects
@@ -25019,7 +25019,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "a8d3024c-a6d8-5383-8e24-b44150032858")
+			(uuid "7734e183-24ed-519f-82d6-7ca9e0474638")
 		)
 		(instances
 			(project "wyvern"
@@ -25038,7 +25038,7 @@
 		(in_bom no)
 		(on_board no)
 		(dnp no)
-		(uuid "cdafd08e-7cfd-5a7b-8910-e26f9c5e8c9c")
+		(uuid "a808d6db-1f95-5398-8899-1b03a12e7981")
 		(property "Reference" "#PWR64"
 			(at 118.11 146.05 90)
 			(effects
@@ -25085,7 +25085,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "a4d44bf3-edee-5700-909a-bf3868dbc513")
+			(uuid "9dec70a0-c0d5-5ca5-b5a2-509aa6e815d6")
 		)
 		(instances
 			(project "wyvern"
@@ -25104,7 +25104,7 @@
 		(in_bom no)
 		(on_board no)
 		(dnp no)
-		(uuid "2d6d4e6f-fa48-5b9d-8b8c-9e5d04a089fa")
+		(uuid "462f686c-c27f-5cde-bd1a-f6041e884968")
 		(property "Reference" "#PWR65"
 			(at 140.97 146.05 90)
 			(effects
@@ -25151,7 +25151,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "197ccc0f-4115-577f-a8e2-b39dbebed454")
+			(uuid "eeb586c4-a386-5b6a-bfcc-b22cc3c98931")
 		)
 		(instances
 			(project "wyvern"
@@ -25170,7 +25170,7 @@
 		(in_bom no)
 		(on_board no)
 		(dnp no)
-		(uuid "68a74ada-1379-513b-9fbe-cbe9c3390224")
+		(uuid "172b20c6-7ed5-52ad-acd5-05ea4b7c287d")
 		(property "Reference" "#PWR66"
 			(at 179.07 405.13 90)
 			(effects
@@ -25217,7 +25217,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "4fdc7f8c-f99a-5fde-994f-c72d93e8fcfb")
+			(uuid "ba6a99bf-a4b1-5952-82b7-b47fba2cf6de")
 		)
 		(instances
 			(project "wyvern"

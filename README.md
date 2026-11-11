@@ -65,6 +65,17 @@ second USB port in software to relay a console's signature to a licensed donor; 
 antenna over the gap between the grips; the knob is 1 analog reading, and 6 decks prove its 5
 positions never meet at any corner.
 
+## An example: Wyvern, a Teensy with a Snapdragon
+
+<a href="examples/snapdragon-dev-board/README.md"><img alt="Wyvern in 3D: a stick the size of a Teensy with 2 rows of pins, a USB-C port at one end and the Snapdragon 845 module on 3 sockets on top" src="site/showcase/wyvern-iso.png"></a>
+
+[`examples/snapdragon-dev-board`](examples/snapdragon-dev-board/README.md) is a development board
+the size of a Teensy with a Snapdragon 845 on it, laid out as a board repository is. 60.96 x 30.48 mm,
+6 layers, 2 rows of 24 pins. The Snapdragon comes on a module whose 300 pins are named from its
+datasheet; an RP2350 under it drives the pins at 3.3 V, and Linux flashes it over USB. One USB-C
+port carries power, USB 3.1 and DisplayPort: 5 coupled pairs drawn by hand in the design file, none
+crossing another. A frequency plan holds the buck's power-save pulses against the cable's resonance.
+
 ## What it does
 
 | Part | In short |
