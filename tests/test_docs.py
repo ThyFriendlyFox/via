@@ -350,3 +350,82 @@ def test_every_picture_and_link_in_the_readme_names_a_file():
     local = [a or b for a, b in found if not (a or b).startswith(("http://", "https://"))]
     assert {"site/og.png", "site/og-dark.png", "LICENSE", "site/fonts/LICENSE"} <= set(local)
     assert [target for target in local if not (ROOT / target).is_file()] == []
+
+
+LOG_FORMAT = "--format=%H%x00%an <%ae>%x00%cn <%ce>%x00%B%x01"
+ASSISTANT = re.compile(r"claude|anthropic", re.I)
+CREDIT = re.compile(
+    r"^[ \t]*(co-authored-by:.*(?:claude|anthropic).*|claude-session:.*|.*generated with \[claude code\].*)$",
+    re.I | re.M,
+)
+
+
+def credits(log: str) -> list[str]:
+    """Each place where a `git log` in LOG_FORMAT names an assistant as a commit's author or committer,
+    or where a message credits one, as `<subject>: <what>`. A message may name a file or a product:
+    `CLAUDE.md` and `Claude Code` are no credit."""
+    found = []
+    for entry in log.split("\x01"):
+        if not entry.strip():
+            continue
+        _, author, committer, message = entry.strip("\n").split("\x00")
+        subject = message.split("\n")[0]
+        found += [f"{subject}: author {author}"] if ASSISTANT.search(author) else []
+        found += [f"{subject}: committer {committer}"] if ASSISTANT.search(committer) else []
+        found += [f"{subject}: {line.group(0).strip()}" for line in CREDIT.finditer(message)]
+    return found
+
+
+def test_no_commit_names_an_assistant_as_its_author(tmp_path):
+    """The owner's decision of 2026-11-11: a commit names the repository's owner as its author, and no
+    message credits an assistant. The check reads every commit this checkout holds; CI's shallow clone
+    holds the newest. It is proven first on a history made here."""
+
+    def git(repo: Path, *args: str, name: str = "Owner", email: str = "owner@example.org") -> str:
+        identity = ["-c", f"user.name={name}", "-c", f"user.email={email}", "-c", "commit.gpgsign=false"]
+        ran = subprocess.run(["git", "-C", str(repo), *identity, *args], capture_output=True, text=True)
+        assert ran.returncode == 0, ran.stderr
+        return ran.stdout
+
+    made = tmp_path / "made"
+    made.mkdir()
+    git(made, "init", "-q")
+    git(made, "commit", "-q", "--allow-empty", "-m", "Rule: CLAUDE.md and Claude Code hooks are files")
+    git(
+        made,
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "By the tool",
+        name="Claude",
+        email="noreply@anthropic.com",
+    )
+    git(
+        made,
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "Credited\n\nCo-Authored-By: Claude <noreply@anthropic.com>",
+    )
+    git(
+        made,
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "Session\n\nBody.\n\nClaude-Session: https://example.org/s",
+    )
+    git(made, "commit", "-q", "--allow-empty", "-m", "With a person\n\nCo-authored-by: Ada <ada@example.org>")
+    assert credits(git(made, "log", "--reverse", LOG_FORMAT)) == [
+        "By the tool: author Claude <noreply@anthropic.com>",
+        "By the tool: committer Claude <noreply@anthropic.com>",
+        "Credited: Co-Authored-By: Claude <noreply@anthropic.com>",
+        "Session: Claude-Session: https://example.org/s",
+    ]
+
+    here = subprocess.run(["git", "-C", str(ROOT), "log", LOG_FORMAT], capture_output=True, text=True)
+    if here.returncode != 0:
+        pytest.skip("this checkout is no git repository")
+    assert credits(here.stdout) == []

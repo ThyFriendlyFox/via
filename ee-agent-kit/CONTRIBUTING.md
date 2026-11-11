@@ -7,6 +7,8 @@
 - Feature-sized ideas go to ROADMAP.md's queue via an issue — that's the
   path to getting built.
 - One logical change per PR; refactors separate from behavior changes.
+- A commit names its human author. No message credits an assistant as
+  author or co-author; `make verify` fails on a commit that does.
 
 ## Workflow
 

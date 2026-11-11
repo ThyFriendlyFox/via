@@ -1004,3 +1004,32 @@ Pages), or sending it a first deployment.
 
 Done when: the address answers with the page of the commit the document
 names, and the document names the target the host reports.
+
+## P33 — Rewriting a history
+
+When: the owner asks for commits to change that are already pushed: an
+author, a message line, a file that must leave every commit.
+
+1. Give the owner the old history first, as 1 bundle of every ref
+   (`git bundle create <file> --all`).
+2. Rewrite in a fresh clone, never in a work tree. Change only what was
+   asked: a message that loses no line keeps every byte (M123).
+3. A commit that a file cites gets its new name in that file too, in the
+   same rewrite: rewrite once to learn the name, then again with it.
+4. Before the push, have the result rebuilt from the old commits by a
+   check that is not yours: each new commit object from its old one and
+   the rules, hashed, equal to the new id. Fix what it finds and have it
+   checked again.
+5. Run `make verify` on the exact trees that will be pushed.
+6. Name what follows the default branch before it moves: CI, a deploy,
+   another repository that clones it. Replay that repository's checks
+   with the old tree and with the new one.
+7. Push every rewritten branch in 1 atomic push, with a lease on each
+   branch at its full old hash.
+8. Afterwards move each work tree to its new commit. Tell the owner what
+   the push cannot change: the commits a pull request page keeps, a
+   branch this session cannot delete, a clone that holds the old history.
+
+Done when: the remote's branches are the checked commits, `make verify`
+is GREEN on them, and the owner holds the old history and the list of
+step 8.

@@ -35,6 +35,7 @@ The base is Simplified Technical English:
 
 - **Commit message:** first line under 65 characters, imperative or
   plain past, says the real change. Body: what changed, why, evidence.
+  No line credits an assistant: the author is the repository's owner.
 - **Devlog entry:** the shape in `DEVLOG.md`.
 - **Report to the human:** lead with the outcome in one sentence.
   Then the evidence. Then what is next. Under 10 sentences unless

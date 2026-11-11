@@ -19,6 +19,11 @@ until it says nothing is left.
 A skill is a procedure at `.claude/skills/<name>/SKILL.md`. A host that
 loads skills offers each by name; any other reader opens the file.
 
+A commit names the repository's owner as its author and its committer, as
+`git log -1 origin/main` names them. No message carries a `Co-Authored-By`
+line for an assistant, a session line, or a tool's name as an author.
+`make verify` fails on a commit that does.
+
 Session with more than 1 repository: run the `attached-repos` skill before
 the first edit. This repository is read-only during a board task unless the
 task is about the workcenter itself.

@@ -745,3 +745,9 @@ What happened: I linked a new Vercel project to the repository and deployed the 
 Cost: a public page ahead of `main`, 1 devlog entry corrected by a second, the status and the README written twice.
 Root cause: I knew how a second deployment of a branch is treated and assumed the first is treated the same. No process named a deploy to an outside host, so nothing asked me to read the host's rule first.
 Process: P32
+
+## M123 — 2026-11-11 — A rewrite that changed 1 message nobody asked about
+What happened: The owner asked for my name off every commit. My first rewrite ended every message with 1 newline. 1 commit of the owner's own held no line of mine and no final newline, and the rewrite added one. An independent checker found the byte by rebuilding the commit objects. I rewrote again and had the result checked again.
+Cost: 1 rewrite thrown away, 2 more runs of the health gate, 40 minutes.
+Root cause: The callback normalised every message, not only those it took a line from. My own check compared messages after stripping their ends, so it could not see the byte.
+Process: P33

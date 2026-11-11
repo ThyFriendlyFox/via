@@ -39,6 +39,27 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-11 — One branch, and the owner's name on every commit
+
+The owner asked for every branch collapsed into `main`, everything in 1
+place, and my name off every commit. `main` now holds the gates work and
+the site: 55 commits. Each names the owner as its author, and no message
+carries a co-author line or a session line. I rewrote the history in a
+scratch clone and pushed nothing before it was checked by others. 2
+checkers read the first rewrite. It had 1 fault: a newline added to the 1
+message that had no line to lose (M123). A third checker rebuilt the
+second rewrite from the old commits, byte for byte: 59 of 59. Every commit
+has a new name, and where this log named a commit of that day it now
+gives the new name. Before the push I replayed Last Hit's CI with the old
+workcenter and with the new: 55 steps, each exit 0 with both, and every
+regenerated file equal. Vercel built production from `main` minutes after
+the push. The 39 branches of merged pull requests are still on GitHub:
+this session's git access refuses a deletion, so the owner deletes them.
+The chip branch stays until its gates are tested. The old history is with
+the owner, as 1 bundle file. P33 holds the steps.
+
+Evidence: `make verify` GREEN on the pushed trees, 526 tests on `main` and 609 on the chip branch; the third checker's rebuild, 59 of 59 commit objects equal; Last Hit's CI replay, 55 of 55 steps exit 0.
+
 ## 2026-11-11 — Correction: the site is served, and it went live from the branch
 
 The entry below says the site is not served yet. That stopped being true

@@ -116,6 +116,10 @@ provides them. `python3 tools/workcenter doctor` says what is present.
 - After adding/removing/renaming source files, run the stack's
   regeneration step (project gen, lockfile, tidy) and commit the result.
 - Commit at boundaries; message says what changed and cites evidence.
+- A commit's author and committer are the repository's owner. No message
+  carries a `Co-Authored-By` line for an assistant or a session line (the
+  owner's decision of 2026-11-11). `tests/test_docs.py` fails on a commit
+  that does.
 - Docs move with behavior — same commit or PR.
 - Report outcomes faithfully; failing is failing, with output.
 - `PROCESSES.md` is binding: before an action it names, follow its steps;
