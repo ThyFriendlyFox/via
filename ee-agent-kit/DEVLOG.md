@@ -39,6 +39,32 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-11 — A second example project: a mouse worn as a ring
+
+The owner asked for an example of what people can make with the
+workcenter: a compact board that looks great, made with a loop that keeps
+iterating, and a ring that works as a mouse. I first drew the face of a
+signet ring, then a flat ring-shaped board; the owner stopped both. The
+ring is worn, and its circuit lies on small boards on the surface of the
+cylinder. Signet is 6 tiles on a hexagonal prism round the index finger,
+each soldered to the next by 8 plated edge pads, kept as version folders
+the way Last Hit keeps its prototypes. The loop made 4 versions. v0.2 made
+every face black and drew solder in the joints and a foil cell. v0.3 moved
+the light out from under the thumb and guarded the charging pads. v0.4
+closed the ring: a hexagon whose faces all touch the finger closes only
+when its alternate faces add up equally, and the radio's 2 joints had
+stood 1.3 mm open since v0.1. The renders showed it all along; I had read
+the gap as the solder's shape. The assembly's heights were wrong too, by
+0.4 mm, because I had fixed a picture by eye instead of measuring 1 body.
+Every render had also drawn the black boards green: kicad-cli draws its
+own colours unless asked for the board's, and the workcenter now asks.
+P34 asks for a new product's form before its first design file.
+
+Evidence: every tile of `examples/ring-mouse/v0.4` GREEN (the radio with
+2 legend warnings, the power tile with 1); 52 corner runs on the gauge's
+deck; `make -C firmware test`; `ring.py` refuses a ring whose neighbours
+miss their corner; M129 to M134.
+
 ## 2026-11-11 — An example project: a controller that speaks to 5 consoles
 
 The owner found the site's examples poor and asked for a prototype in the

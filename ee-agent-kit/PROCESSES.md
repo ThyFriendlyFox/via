@@ -137,6 +137,10 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
    and a `--timeout` of an hour, in the background. FreeRouting writes its
    session only when it ends, so a run the timeout stops leaves nothing:
    60 passes on 140 parts ran past the 15-minute default (M128).
+7. A route that leaves a link open: read `AGENTS.md`'s landmine row "FreeRouting
+   gives up" before routing again. More passes give the same board. Draw the
+   whole net that stays open with `d.track`, pad to pad, along a path an
+   earlier route of the board found where there is one, then route (M132).
 
 Done when: the DRC after the route lists 0 errors, or every remaining
 error is named in the next design change.
@@ -663,7 +667,9 @@ after any change to what the boards look like in that version.
    (`render --strict`: a part the 3D views draw without a body fails its
    board, and nothing of that board is copied; give the part its body,
    M52), the GIFs, the scenes, then the copies into `docs/` and
-   `docs/layers/`. It exits 1 on any failure.
+   `docs/layers/`. It exits 1 on any failure. A still shows the board's
+   own stackup colours: kicad-cli draws its preset's green unless it is
+   given `--use-board-stackup-colors`, which the workcenter passes (M134).
 4. The README shows the GIFs beside the stills and the layer sheets, and
    names `workcenter pictures <version>` and its `pictures.json`, which
    the next version copies with the folder and so draws the same way.
@@ -672,6 +678,13 @@ after any change to what the boards look like in that version.
    `tools/scene.py`, which copies each 3D model the board names and reports
    one it cannot find; then look at the bottom face in a still. A path
    rewrite on a footprint's models changes a copy and draws nothing (M99).
+7. Before an assembly places a second body, place 1 board's body beside
+   its own board and render it from the side: `scene.place` measures a
+   height from the scene board's outer face, a `board_body` has its origin
+   at its mid-plane, and KiCad turns a model the other way from the
+   right-hand rule (the `board-design` skill). A picture that looks wrong
+   is fixed by measuring 1 body, never by moving the scene until it looks
+   right: 2 errors can show as 1 (M131).
 
 Done when: `workcenter pictures <version>` exits 0, the version's `docs/`
 holds a layer sheet and a turning GIF for every board and for the
@@ -1060,3 +1073,30 @@ author, a message line, a file that must leave every commit.
 Done when: the remote's branches are the checked commits, `make verify`
 is GREEN on them, and the owner holds the old history and the list of
 step 8.
+
+## P34 — The form of a new product
+
+When: a request names a thing to make and its form is not written yet:
+where it sits, how it is held or worn, how many boards and how each lies.
+Again before boards that join into a solid are laid out.
+
+1. Before the first design file, write the form in 2 sentences: what the
+   thing is, where it sits on or by its user and how it is held or worn;
+   how many boards, and how each lies (flat, round a finger, folded,
+   stacked). Take the form from how the thing is used, never from the
+   request's word for the board.
+2. Say those sentences in the first message to the owner, with the first
+   board's size, and go on working. A wrong reading then costs a reply,
+   not a design (M129).
+3. When the owner has a project of the same kind (a prototype series),
+   read it before the first version and keep its layout (P22).
+4. Boards that join into a solid: compute each board's corners in the
+   solid's frame, and check in the project's own code, each time it loads,
+   that every 2 boards that join share their corners. Angles that sum to a
+   turn are not enough: faces round a circle that all touch it close only
+   when their alternate faces add up equally (M130). A render is not the
+   check.
+
+Done when: the form's sentences are in the first message and in the
+version's README, and the project's code refuses a solid whose joints
+miss.
