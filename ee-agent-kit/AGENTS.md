@@ -106,6 +106,12 @@ provides them. `python3 tools/workcenter doctor` says what is present.
 | FreeRouting's exit code | FreeRouting 1.9.0 ends with exit code 0 and logs no count on a board where it joined nothing: every part outside the outline, a width that enters no pad. `route()` counts the connections of a board that holds copper for none of them, and `workcenter design` exits 1 on that count. |
 | The account's usage limit | A helper stops with `You've hit your 5-hour limit` and the time the limit resets. A session cannot read what is left before that. P31 step 1: 2 helpers at most until 1 reports, and none before the reset a stopped helper names (M113, M120). |
 | A shell tool call | The host runs a call's text inside a list, where bash ignores `errexit`: `set -e; false; echo went on` prints `went on`. Join commands that depend on each other with `&&`, or run them in `bash -e -c '...'` (M159). | P8 |
+| OpenSTA's `read_spef` | A SPEF with a syntax error is read up to the error: `Warning: ... line N, syntax error.`, exit 0. A net the SPEF leaves out gets an estimate from the library and no line at all. The STA gate holds the SPEF's net names to the design's (`tests/chips/samples/back/sta-spef-cut-short.log`). |
+| OpenSTA's digits | 2 digits print a slack of -0.004 ns as `-0.00`, which reads as 0. `tools/chipscripts/sta.tcl` asks for 4. |
+| OpenROAD's `link_design` | A cell the liberty file or the LEF lacks is dropped: `[WARNING STA-0198]`, `[WARNING ORD-1013]`, exit 0, and a layout built without the cell. The LAYOUT gate fails on either line (`tests/chips/samples/back/layout-unknown-cell.log`). |
+| OpenROAD's `report_design_area` | It rounds the utilisation to 1 %: `Design area 299 u^2 60% utilization.` for 0.5975. `tools/chipscripts/layout.tcl` counts it from the database and prints 4 digits. |
+| Magic's exit code | Magic exits 0 after a layout file it read in part (`Error while reading cell`) and after an extraction with illegal overlaps (`Total of N errors`). The gates read both lines (`magic-drc-cut-short.log` and `extract-overlap.log` under `tests/chips/samples/back/`). |
+| Netgen's final result | `Final result: Circuits match uniquely.` stands over a cell whose transistor has another size. That cell's comparison reads `Netlists match uniquely with property errors.`, and the cell is named under the final result. The line `Property errors were found.` is not in such a report (`tests/chips/samples/back/lvs-property-error.rpt`). |
 
 ## House style
 

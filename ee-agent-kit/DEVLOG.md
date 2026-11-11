@@ -424,6 +424,36 @@ past), 6 decks and 370 corner runs; `make -C firmware test` passing;
 `tests/` 524 passed, 1 failed (`test_simgate`'s bundle test expects ngspice
 42's error lines and the image has ngspice 44), 3 skipped.
 
+## 2026-11-11 — The 10 chip gates run, and the processor is not GREEN yet
+
+The owner asked for chips, down to the mask layout. The 10 gates now run
+on the chip branch: LINT, SIM, SYNTH, LAYOUT, STA, GLSIM, DRC, ANTENNA,
+LVS and EXPORT. 2 helpers built the last parts side by side. 1 rebuilt
+the 6 gates that build and judge the layout, and made each judge prove
+itself on a real report of its engine. Those reports showed 6 ways an
+engine lets a fault read as none, and each is a row of the landmine map
+now. The
+other helper built 9 fixture chips: a counter that passes, 7 counters
+with 1 fault each, and an 8-bit processor of 770 cells. The counter goes
+from RTL to a layout in 60 s, and EXPORT hands out the layout whose hash
+the gates judged. The processor does not pass. Its layout is built, and
+then STA fails at 13 of 15 corners: signals change more slowly than the
+cell library allows. The gate is right, and the build is short: it
+repairs no slew. A test holds exactly that fault, and it fails on the day the
+processor is GREEN. The 2 helpers finished at the same time, so the
+fixtures' tests held lines of the old gates. A third helper captured the
+lines again, and a fourth, who had not written them, ran every fixture
+itself and found each held line whole in its own runs. I made 2 mistakes
+on the way. A helper's edit lost a space, and I wrote a cause for it
+into 3 briefs that a test of mine later did not show (M158). And a list
+of commands went on after its failed command, because `set -e` stops
+nothing in this session's shell (M159).
+
+Evidence: `tests/test_chips.py`, 14 passed and 1 expected failure in
+897 s, and again in 930 s by the checker; `tests/test_chipflow.py`,
+`tests/test_chipfront.py` and `tests/test_chipback.py`, 114 tests;
+`make verify` GREEN on the pushed tree.
+
 ## 2026-11-11 — The front page shows a board
 
 The owner asked again for the repository to look good. The README was
