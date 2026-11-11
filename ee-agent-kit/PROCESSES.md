@@ -982,6 +982,9 @@ a task.
    journal says how far it came and whether its worktree changed. One the
    usage limit stopped is resumed by its own name after the reset, not
    started anew: its work so far is kept.
+6. Count the machine too: its memory, not only its processors. Helpers
+   that run engines, a health gate and a browser do not run together.
+   The health gate that gates a push runs alone (M124).
 
 Done when: every report is read, each helper's changes are merged or
 removed, and `git worktree list` shows only what is still in use.

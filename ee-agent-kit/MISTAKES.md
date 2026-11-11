@@ -751,3 +751,9 @@ What happened: The owner asked for my name off every commit. My first rewrite en
 Cost: 1 rewrite thrown away, 2 more runs of the health gate, 40 minutes.
 Root cause: The callback normalised every message, not only those it took a line from. My own check compared messages after stripping their ends, so it could not see the byte.
 Process: P33
+
+## M124 — 2026-11-11 — The machine ran out of memory under my own jobs
+What happened: I ran the health gate while 2 helpers ran chip engines, and I started a browser for a screenshot. The machine has 15 GB of memory. It was killed and it restarted. The gate's run and both helpers stopped. No file and no push was lost.
+Cost: 1 run of the health gate and 10 minutes of 2 helpers' work, started again.
+Root cause: P31 counted helpers against the account's usage limit and the processors. Nothing counted helpers, the gate and a browser together against the machine's memory.
+Process: P31
