@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Via: an electronics workcenter for agents</title>
-    <meta name="description" content="Via holds the tools, skills and gates an agent needs to take a KiCad 10 project to fabrication outputs. ERC, DRC, simulation at every corner and export run in order. A board is done when the last line says GREEN. Open source under MIT.">
+    <title>Via: AI-assisted circuit board design, checked from schematic to fabrication</title>
+    <meta name="description" content="Via lets an AI agent design printed circuit boards in code and checks every board the way an experienced engineer would: electrical rules, design rules, simulation across temperature and part tolerances, and fabrication export. Open source under the MIT license.">
     <link rel="canonical" href="%ORIGIN%/">
     <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
@@ -15,10 +15,10 @@
     <meta name="theme-color" content="#1b1917" media="(prefers-color-scheme: dark)">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Via">
-    <meta property="og:title" content="Via: an electronics workcenter for agents">
-    <meta property="og:description" content="The tools, skills and gates an agent needs to take a KiCad 10 project to fabrication outputs. A board is done when the last line says GREEN. Open source under MIT.">
+    <meta property="og:title" content="Via: AI-assisted circuit board design, checked from schematic to fabrication">
+    <meta property="og:description" content="Design printed circuit boards with an AI agent, and get fabrication files only for boards that pass every check. Open source under the MIT license.">
     <meta property="og:url" content="%ORIGIN%/">
-    <meta property="og:image" content="%ORIGIN%/og.png"><meta property="og:image:width" content="1280"><meta property="og:image:height" content="640"><meta property="og:image:alt" content="The Via wordmark beside a run of its 4 gates that ends in GREEN"><meta name="twitter:card" content="summary_large_image">
+    <meta property="og:image" content="%ORIGIN%/og.png"><meta property="og:image:width" content="1280"><meta property="og:image:height" content="640"><meta property="og:image:alt" content="The Via wordmark beside a terminal run of its four checks, ending in GREEN"><meta name="twitter:card" content="summary_large_image">
     <!-- Before first paint: the theme the address asks for (?theme=dark), else the stored one, else
          the system's. ?shot=diagram shows 1 part of the page alone, for a capture (README.md).
          `motion` hides what effects.js brings in, unless the reader asked for reduced motion or
@@ -58,11 +58,11 @@
         <nav class="site-nav" aria-label="Sections">
           <ul>
             <li><a href="#herald">Example</a></li>
-            <li><a href="#path">The path</a></li>
-            <li><a href="#gates">Gates</a></li>
-            <li><a href="#corners">Corners</a></li>
-            <li><a href="#how-it-works">How it works</a></li>
-            <li><a href="#run">Run it</a></li>
+            <li><a href="#path">Process</a></li>
+            <li><a href="#gates">Checks</a></li>
+            <li><a href="#corners">Simulation</a></li>
+            <li><a href="#how-it-works">Architecture</a></li>
+            <li><a href="#run">Get started</a></li>
           </ul>
         </nav>
         <div class="header-end">
@@ -91,39 +91,25 @@
         </svg>
         <div class="wrap">
           <div data-reveal data-stagger>
-            <p class="eyebrow">Open source · MIT</p>
-            <h1 class="display" id="hero-title">An electronics workcenter for agents</h1>
-            <p class="lede">Via holds the tools, skills and gates an agent needs to take a KiCad 10 project to fabrication outputs. It runs ERC, DRC, simulation and export, in that order. A board is done when the last line says GREEN.</p>
+            <p class="eyebrow">Open source · MIT license</p>
+            <h1 class="display" id="hero-title">Design circuit boards with AI, verified at every step</h1>
+            <p class="lede">Via gives an AI agent what it needs to take a KiCad project from a written brief to fabrication files: the design written as code, automatic routing, and the checks an experienced engineer would run. A board is finished only when it passes every one of them.</p>
             <div class="actions">
               <a class="btn btn-primary" href="https://github.com/ThyFriendlyFox/via">
                 <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>
                 Get the code
               </a>
               <a class="btn btn-quiet" href="#herald">
-                See a board it made
+                See an example board
                 <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
               </a>
             </div>
-            <p class="small">Via is early: it has no release yet. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/STATUS.md">Where it stands</a>.</p>
+            <p class="small">Via is in early development and has no release yet. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/STATUS.md">See the current status</a>.</p>
           </div>
 
-          <figure data-reveal>
-            <div class="run">
-<pre data-run="gates"><span class="prompt">$ </span><span class="cmd">workcenter gates tests/boards/pass-rc-divider</span>
-<span class="out">PASS   erc        0 errors, 0 warnings  [0.27s]
-PASS   drc        0 errors, 0 warnings (0 unconnected, 0 parity)  [0.59s]
-PASS   sim        1 decks, 46 corner runs, 0 failures  [0.16s]
-PASS   export     4/4 outputs, 22 gerber files  [1.21s]</span>
-<span class="verdict">GREEN: rc_divider  report /home/user/via/tests/boards/pass-rc-divider/build/gates.json</span>
-
-<span class="prompt">$ </span><span class="cmd">workcenter gates tests/boards/fail-drc-clearance</span>
-<span class="out">PASS   erc        0 errors, 0 warnings  [0.27s]
-FAIL   drc        1 errors, 1 warnings (0 unconnected, 0 parity)  [0.63s]
-       - error: clearance: Clearance violation ( clearance 0.2000 mm; actual 0.0500 mm)
-       - warning: track_dangling: Track has unconnected end</span>
-<span class="verdict">RED: rc_divider  report /home/user/via/tests/boards/fail-drc-clearance/build/gates.json</span></pre>
-            </div>
-            <figcaption>2 runs on fixture boards from the repository, as the terminal printed them. The second board has a clearance error on purpose.</figcaption>
+          <figure class="hero-board" data-reveal>
+            <img src="showcase/herald.png" width="1000" height="571" alt="Herald, a fire alarm communicator designed with Via, in 3D: a red board with an LTE-M modem, an ESP32-S3 module, a relay, status lights and black screw terminals">
+            <figcaption>Herald, a fire alarm communicator designed with Via: 127 parts on a four-layer board, routed and checked.</figcaption>
           </figure>
         </div>
       </section>
@@ -131,9 +117,9 @@ FAIL   drc        1 errors, 1 warnings (0 unconnected, 0 parity)  [0.63s]
       <section class="section showcase" id="herald" aria-labelledby="herald-title">
         <div class="wrap">
           <div class="head" data-reveal data-stagger>
-            <p class="eyebrow">Example project · <code>examples/fire-alarm-communicator</code></p>
-            <h2 class="title" id="herald-title">A fire panel dials. Herald answers.</h2>
-            <p class="lede">Herald sits beside a fire alarm panel and reports what the panel reports to a monitoring station: over LTE-M first, over Wi-Fi when the cell path is down. Via took it from a page of notes to a routed 4-layer board, 84.4 x 64 mm, 127 parts, every part on the front. Pick a signal and see where it goes.</p>
+            <p class="eyebrow">Example project</p>
+            <h2 class="title" id="herald-title">A fire alarm communicator, designed end to end with Via</h2>
+            <p class="lede">Herald connects a fire alarm control panel to a monitoring station over LTE-M, with Wi-Fi as a backup. Via took it from a written brief to a routed four-layer board, 84.4 × 64 mm with 127 parts on one side, and the files a fabricator needs. Every part on the board below is labelled with the information Via gathered for it.</p>
           </div>
 
           <div class="stage tour" data-reveal data-tour>
@@ -338,17 +324,17 @@ FAIL   drc        1 errors, 1 warnings (0 unconnected, 0 parity)  [0.63s]
             <div class="tour-cards" data-cards="right"></div>
             <svg class="leaders" data-leaders aria-hidden="true"></svg>
           </div>
-          <p class="after">The drawing is the board: <code>site/showcase/draw_face.py</code> writes it from the design file and the routed board, in the board's own millimetres. Each label is what Via holds on the part, and nothing else: the value, the footprint and the nets from the design file; the description and the datasheet from KiCad's library; the problem it answers and the reason for it from the README; each deck that varies it, with what the deck measured at every corner of the gates' last run. The labels go through the design file's sections, 4 parts or fewer at a time. Click a part to read its label.</p>
+          <p class="after">This view is generated from Herald's design file and routed board. Each label shows what Via recorded for that part: its value, footprint and connections; the manufacturer's description and datasheet; why it was chosen; and every simulation that tests it, with the results across temperature and tolerance. Select any part on the board to see its label.</p>
 
           <div class="hard" data-reveal data-stagger>
-            <div><span class="ref">J2 · Q3 · Q4</span><h3>A phone line that is not there</h3><p>A fire panel reports by phone. Herald feeds the dialer's line a current-limited loop from the 24 V input, and R22 reads the loop current to see the dialer go off hook.</p></div>
-            <div><span class="ref">U5 · GPIO7</span><h3>DTMF without a DTMF chip</h3><p>A Goertzel filter per frequency, 25.6 ms windows at 8 kHz, takes and refuses what ITU-T Q.24 says a receiver must. Host tests play a whole Contact ID call through it.</p></div>
-            <div><span class="ref">GPIO14 · R25–R27</span><h3>Tones from a PWM pin</h3><p>Dial tone, the handshake and the kissoff go through 2 RC poles onto the line's 600 ohm. The first poles gave 28 mV; the deck found it, and the poles changed.</p></div>
-            <div><span class="ref">J3 · R31 · R32 · U8</span><h3>3 supervised inputs</h3><p>Each loop ends in a 4.7k resistor, so 1 ADC reading tells a closed contact, a whole loop and a cut wire apart, 0.2 V or more from each threshold at every corner.</p></div>
-            <div><span class="ref">K1 · Q6 · J7</span><h3>A relay that fails safe</h3><p>K1 is held on while Herald is healthy. A lost supply or a reset opens it, and the panel sees its trouble input change.</p></div>
-            <div><span class="ref">U3 · J4 · J5</span><h3>LTE-M first</h3><p>A Quectel BG95-M1 with a nano SIM. A TXS0104E carries its 1.8 V UART to the ESP32's 3.3 V. The antenna feed is 50 ohm, drawn by hand.</p></div>
-            <div><span class="ref">U5</span><h3>Wi-Fi second</h3><p>The ESP32-S3's own radio, on the module's u.FL, for an antenna outside a metal cabinet.</p></div>
-            <div><span class="ref">Q5 · R21</span><h3>When neither path works</h3><p>The firmware drops the line feed. The panel sees no phone line and reports its own communication trouble, as it does for a cut line.</p></div>
+            <div><span class="ref">J2 · Q3 · Q4</span><h3>A phone line for a panel that expects one</h3><p>Fire panels report by telephone. Herald supplies the panel's dialer with a current-limited line from its 24 V input and detects when the dialer goes off hook.</p></div>
+            <div><span class="ref">U5 · GPIO7</span><h3>Tone decoding in firmware</h3><p>A Goertzel filter decodes the dialer's DTMF digits to the limits of ITU-T Q.24, verified on the host with a complete Contact ID call.</p></div>
+            <div><span class="ref">GPIO14 · R25–R27</span><h3>Line tones from a PWM pin</h3><p>Dial tone, handshake and acknowledgement come from a microcontroller pin through two RC stages. Simulation caught a first design that was too weak for the line before any board was made.</p></div>
+            <div><span class="ref">J3 · R31 · R32 · U8</span><h3>Three supervised inputs</h3><p>End-of-line resistors let one ADC reading tell a closed contact, an intact loop and a cut wire apart, with at least 0.2 V of margin at every simulated corner.</p></div>
+            <div><span class="ref">K1 · Q6 · J7</span><h3>A fail-safe trouble relay</h3><p>The relay is held on while Herald is healthy. A power loss or a reset releases it, and the panel reports the fault.</p></div>
+            <div><span class="ref">U3 · J4 · J5</span><h3>Cellular first</h3><p>A Quectel BG95-M1 LTE-M module with a nano SIM, level-shifted to the ESP32-S3, with a hand-routed 50 Ω antenna feed.</p></div>
+            <div><span class="ref">U5</span><h3>Wi-Fi as backup</h3><p>The ESP32-S3's own radio, with an external antenna connector for installation in a metal cabinet.</p></div>
+            <div><span class="ref">Q5 · R21</span><h3>When both paths fail</h3><p>Herald drops the line feed, so the panel reports a communication fault just as it would for a cut phone line.</p></div>
           </div>
 
           <div class="renders" data-reveal>
@@ -359,9 +345,9 @@ FAIL   drc        1 errors, 1 warnings (0 unconnected, 0 parity)  [0.63s]
               </div>
             </div>
             <div class="renders-side">
-              <h3>The board KiCad renders</h3>
-              <p>KiCad's own 3D view of the routed board, front and back, in its stackup's colours: red mask, white legend, gold pads. Every part is on the front; the back is an installer's sheet.</p>
-              <button class="btn btn-fill" type="button" data-flip aria-controls="herald-flip" aria-pressed="false">Turn it over</button>
+              <h3>The board in 3D</h3>
+              <p>KiCad's render of the routed board in its real colours: red solder mask, white legend and gold-plated pads. Every part sits on the front, and the back carries the installer's notes.</p>
+              <button class="btn btn-fill" type="button" data-flip aria-controls="herald-flip" aria-pressed="false">Flip the board</button>
               <img class="layers-thumb" src="showcase/herald-layers.png" width="1200" height="722" loading="lazy" alt="Every layer of Herald on its own, from workcenter render">
             </div>
           </div>
@@ -380,7 +366,7 @@ PASS   sim        8 decks, 573 corner runs, 0 failures  [1.56s]
 PASS   export     4/4 outputs, 24 gerber files  [1.55s]</span>
 <span class="verdict">GREEN with 7 warnings: herald  report /home/user/via/examples/fire-alarm-communicator/v0.1/build/gates.json</span></pre>
             </div>
-            <figcaption>The gates on the example, as the terminal printed them. The warnings are silkscreen at the board's edge: the outlines of the 5 terminal blocks and the USB-C receptacle, which face the edge their wires enter from. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/fire-alarm-communicator/v0.1/README.md">Its README</a> has the call, the pin plan, every part and why, and what is still open; <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/fire-alarm-communicator/v0.1/design.py">its design file</a> is the board.</figcaption>
+            <figcaption>Via's four checks on Herald, exactly as the terminal printed them. The seven warnings flag silkscreen outlines that meet the board edge, where the terminal blocks and the USB-C connector face outward. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/fire-alarm-communicator/v0.1/README.md">The project README</a> covers the specification, the pin plan, every part and the open items, and <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/fire-alarm-communicator/v0.1/design.py">the design file</a> is the board itself.</figcaption>
           </figure>
         </div>
       </section>
@@ -389,36 +375,32 @@ PASS   export     4/4 outputs, 24 gerber files  [1.55s]</span>
         <div class="wrap">
           <div class="head" data-reveal>
             <p class="eyebrow">Built with Via</p>
-            <h2 class="title" id="built-title">Boards, not demos.</h2>
+            <h2 class="title" id="built-title">More boards designed with Via</h2>
           </div>
           <div class="built" data-reveal data-stagger>
             <a class="proj" href="#herald">
               <img src="showcase/herald.png" width="1000" height="571" loading="lazy" alt="Herald in 3D: a red board with an LTE-M module, a nano SIM, an ESP32-S3 module, a relay, status lights and black screw terminals">
-              <div><h3>Herald</h3><p>A fire alarm communicator: it answers the panel's dialer as a phone line and reports over LTE-M or Wi-Fi. 84.4 x 64 mm, 4 layers, 127 parts.</p></div>
+              <div><h3>Herald</h3><p>A fire alarm communicator that answers the panel's dialer as a phone line and reports over LTE-M or Wi-Fi.</p><p class="spec">84.4 × 64 mm · 4 layers · 127 parts</p></div>
             </a>
             <a class="proj" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/anc-speaker/v0.1/README.md">
               <img src="showcase/hush.png" width="1000" height="571" loading="lazy" alt="Hush in 3D on its speaker: a black ring with 3 spokes to a microphone on the hub, parts round the ring, a line-in jack and a USB-C port at the edge">
-              <div><h3>Hush</h3><p>A speaker that cancels noise: a mic in front of the cone, and an analog loop that plays the inverse of what it hears. 62 mm across, 4 layers, 62 parts.</p></div>
+              <div><h3>Hush</h3><p>A speaker that cancels noise. A microphone in front of the cone drives an analog loop that plays back the inverse of what it hears.</p><p class="spec">62 mm across · 4 layers · 62 parts</p></div>
             </a>
             <a class="proj" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/ring-mouse/README.md">
               <img src="showcase/signet.png" width="1000" height="571" loading="lazy" alt="Signet in 3D: 6 black boards in a hexagonal ring, soldered edge to edge, the radio module on top and a foil cell at the bottom">
-              <div><h3>Signet</h3><p>A mouse worn as a ring: the cursor follows the hand, and the thumb scrolls and clicks. 6 boards round the finger, 4 layers each, 57 parts.</p></div>
+              <div><h3>Signet</h3><p>A mouse worn as a ring. The cursor follows your hand, and your thumb scrolls and clicks.</p><p class="spec">6 boards around the finger · 4 layers each · 57 parts</p></div>
             </a>
             <a class="proj" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/universal-controller/v0.2/README.md">
               <img src="showcase/rosetta-iso.png" width="1000" height="671" loading="lazy" alt="Rosetta, the universal controller, in 3D: an Xbox 360-style board with 2 thumbsticks and a knob">
-              <div><h3>Rosetta</h3><p>A game controller with a knob that picks the console, laid out like a 360 pad. 148 x 82 mm, 6 layers, 135 parts.</p></div>
+              <div><h3>Rosetta</h3><p>A game controller with a selector knob that switches between consoles, laid out like an Xbox 360 controller.</p><p class="spec">148 × 82 mm · 6 layers · 135 parts</p></div>
             </a>
             <a class="proj" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/snapdragon-dev-board/README.md">
               <img src="showcase/wyvern-iso.png" width="1000" height="600" loading="lazy" alt="Wyvern in 3D: a stick the size of a Teensy with 2 rows of pins, a USB-C port and the Snapdragon 845 module on 3 sockets">
-              <div><h3>Wyvern</h3><p>A Teensy with a Snapdragon 845: Linux on a module, an RP2350 on the pins, USB 3.1 and DisplayPort on 1 USB-C port. 61 x 30.5 mm, 6 layers.</p></div>
+              <div><h3>Wyvern</h3><p>A Snapdragon 845 board in a Teensy footprint: Linux on a module, an RP2350 on the pins, and USB 3.1 with DisplayPort over one USB-C port.</p><p class="spec">61 × 30.5 mm · 6 layers</p></div>
             </a>
             <a class="proj" href="https://github.com/ThyFriendlyFox/agentcast-prototype">
               <img src="showcase/agentcast.png" width="780" height="420" loading="lazy" alt="Agentcast, an HDMI stick, in 3D: an ESP32-P4, an HDMI bridge, 2 USB-C ports and the plug">
-              <div><h3>Agentcast</h3><p>An HDMI stick with far-field microphones: plug it into a TV, talk, and an agent's work shows on the screen. 80 x 30 mm, 8 layers.</p></div>
-            </a>
-            <a class="proj" href="https://github.com/ThyFriendlyFox/via/blob/main/tests/boards/README.md">
-              <img src="media/board-spin.gif" width="616" height="368" loading="lazy" alt="The first fixture board turning: a 3-pin header, 2 resistors and a capacitor">
-              <div><h3>The fixture boards</h3><p>The repository's tests: each passes every gate or fails 1 named gate on purpose.</p></div>
+              <div><h3>Agentcast</h3><p>An HDMI stick with far-field microphones. Plug it into a TV, speak, and your agent's work appears on the screen.</p><p class="spec">80 × 30 mm · 8 layers</p></div>
             </a>
           </div>
         </div>
@@ -428,43 +410,39 @@ PASS   export     4/4 outputs, 24 gerber files  [1.55s]</span>
         <div class="wrap">
           <div class="head" data-reveal data-stagger>
             <p class="eyebrow">Design as code</p>
-            <h2 class="title" id="board-title">A Python file becomes a board.</h2>
+            <h2 class="title" id="board-title">Your board is a Python file you can review</h2>
+            <p class="lede">Parts, connections and placement live in one file under version control. Change a line, regenerate, and Via rebuilds the schematic and the routed board, with no manual steps in a GUI.</p>
           </div>
-          <div class="files" data-reveal data-stagger>
+          <div class="files wide" data-reveal data-stagger>
             <figure>
               <div class="file code">
                 <h3>design.py</h3>
-<pre data-file="tests/boards/pass-first-design/design.py">d.add(
-    <span class="s">"R1"</span>,
-    <span class="s">"Device:R"</span>,
-    <span class="s">"10k"</span>,
-    R_0603,
-    sch_at=(<span class="n">101.6</span>, <span class="n">76.2</span>),
-    pcb_at=(<span class="n">110.0</span>, <span class="n">106.0</span>),
-    nets={<span class="s">"1"</span>: <span class="s">"VCC"</span>, <span class="s">"2"</span>: <span class="s">"OUT"</span>},
-)
-d.add(
-    <span class="s">"R2"</span>,
-    <span class="s">"Device:R"</span>,</pre>
+<pre data-file="examples/fire-alarm-communicator/v0.1/design.py">for k in range(<span class="n">3</span>):
+    n = k + <span class="n">1</span>
+    x = J_IN + <span class="n">3.5</span> * k
+    r(<span class="s">f"R{31 + 4 * k}"</span>, <span class="s">"100"</span>, <span class="s">f"Z{n}_EXT"</span>, <span class="s">f"ZONE{n}"</span>, (x, <span class="n">147.6</span>), <span class="n">90</span>, fp=R0603)
+    r(<span class="s">f"R{32 + 4 * k}"</span>, <span class="s">"4.7k"</span>, <span class="s">"+3V3"</span>, <span class="s">f"ZONE{n}"</span>, (x - <span class="n">0.6</span>, <span class="n">144.0</span>), <span class="n">90</span>)
+    r(<span class="s">f"R{33 + 4 * k}"</span>, <span class="s">"10k"</span>, <span class="s">f"ZONE{n}"</span>, <span class="s">f"ZONE{n}_ADC"</span>, (x + <span class="n">0.6</span>, <span class="n">144.0</span>), <span class="n">90</span>)
+    c(<span class="s">f"C{30 + k}"</span>, <span class="s">"10n"</span>, <span class="s">f"ZONE{n}_ADC"</span>, (x + <span class="n">0.6</span>, <span class="n">141.6</span>), <span class="n">90</span>)</pre>
               </div>
-              <figcaption><b>A part is 1 call</b> in a Python file.</figcaption>
+              <figcaption><b>Herald's three supervised inputs</b> are a seven-line loop in its design file.</figcaption>
             </figure>
             <figure>
               <div class="file sheet">
-                <h3>divider.kicad_sch</h3>
-                <div class="view"><img src="media/schematic.png" width="1600" height="1152" loading="lazy" alt="The schematic: R1 and R2 between VCC and GND, C1 across R2, and a 3-pin header"></div>
+                <h3>herald.kicad_sch</h3>
+                <div class="view"><img src="showcase/herald-schematic.png" width="1600" height="1159" loading="lazy" alt="The supervised inputs in Herald's schematic: the INPUTS terminal J3, a pull-up, series and filter resistor for each zone, and U8 clamping the field wiring"></div>
               </div>
-              <figcaption><b>1 command writes the schematic</b></figcaption>
+              <figcaption><b>One command draws the schematic</b></figcaption>
             </figure>
             <figure>
               <div class="file">
-                <h3>divider.kicad_pcb</h3>
-                <div class="view bleed"><img src="media/board.png" width="1176" height="840" loading="lazy" alt="The routed board in 3D: a 3-pin header, R1, R2 and C1"></div>
+                <h3>herald.kicad_pcb</h3>
+                <div class="view"><img src="showcase/herald-top.png" width="1200" height="762" loading="lazy" alt="Herald's routed board in 3D, from the front"></div>
               </div>
-              <figcaption><b>and routes the board.</b> No GUI at any step.</figcaption>
+              <figcaption><b>and routes the board,</b> with no manual steps in a GUI.</figcaption>
             </figure>
           </div>
-          <p class="after">A fixture board from the repository, <code>tests/boards/pass-first-design</code>: lines of its design file, then the schematic and the routed board that <code>workcenter design design.py --route</code> writes from the file.</p>
+          <p class="after"><code>workcenter design design.py --route</code> writes Herald's KiCad schematic and routed board from its design file, so every change to the board is a change you can review.</p>
         </div>
       </section>
 
@@ -472,37 +450,37 @@ d.add(
       <section class="section" id="path" aria-labelledby="path-title">
         <div class="wrap">
           <div class="head" data-reveal data-stagger>
-            <p class="eyebrow">The path</p>
-            <h2 class="title" id="path-title">Design. Gate. Fix. Done.</h2>
+            <p class="eyebrow">Process</p>
+            <h2 class="title" id="path-title">From a design file to fabrication files in four steps</h2>
           </div>
           <div class="split">
             <ol class="steps" data-reveal data-stagger>
               <li>
                 <span class="n">01</span>
                 <div>
-                  <h3>Design as code</h3>
-                  <p><code>workcenter design design.py --route</code> builds a schematic and a routed board from a Python file. The file names parts from the KiCad libraries. No GUI at any step.</p>
+                  <h3>Describe the board in code</h3>
+                  <p><code>workcenter design design.py --route</code> turns a Python file of KiCad library parts into a schematic and a fully routed board.</p>
                 </div>
               </li>
               <li>
                 <span class="n">02</span>
                 <div>
-                  <h3>4 gates, in order</h3>
-                  <p><code>workcenter gates &lt;project&gt;</code> runs ERC, DRC, SIM and EXPORT. It prints 1 line for each gate. The last line is the verdict.</p>
+                  <h3>Run the four checks</h3>
+                  <p><code>workcenter gates &lt;project&gt;</code> runs the electrical rules, the design rules, simulation and export, in that order, and ends with a single verdict.</p>
                 </div>
               </li>
               <li>
                 <span class="n">03</span>
                 <div>
-                  <h3>The next step</h3>
-                  <p><code>workcenter next &lt;project&gt;</code> names the one step that is left, its command, and the fix for the first failure.</p>
+                  <h3>See exactly what to fix</h3>
+                  <p><code>workcenter next &lt;project&gt;</code> names the next step: the command to run, why the last check failed, and the guide to read.</p>
                 </div>
               </li>
               <li>
                 <span class="n">04</span>
                 <div>
-                  <h3>Fabrication outputs</h3>
-                  <p>Gerbers, drill files, a BOM and a schematic PDF go to <code>build/fab/</code>. They come from a board that passed every gate.</p>
+                  <h3>Send the files to your fabricator</h3>
+                  <p>Gerbers, drill files, a bill of materials and a schematic PDF, written to <code>build/fab/</code> only for a board that passed every check.</p>
                 </div>
               </li>
             </ol>
@@ -515,7 +493,7 @@ WHY        SIM failed: diode_ref:vref=0.4215933 at 85 C, R1 +5 % (and 5 more cor
 READ       .claude/skills/simulate/SKILL.md, "Corners"
 DONE WHEN  the last line starts with GREEN</span></pre>
               </div>
-              <figcaption>The next step for a fixture board whose circuit leaves its bound at a corner, after a run of the gates. A person and an agent of any size read the same 5 lines.</figcaption>
+              <figcaption>When a check fails, <code>workcenter next</code> says what to do. Here, a test circuit meets its limit at room temperature but drifts out of it at 85 °C. Engineers and AI agents get the same guidance.</figcaption>
             </figure>
           </div>
         </div>
@@ -525,8 +503,8 @@ DONE WHEN  the last line starts with GREEN</span></pre>
       <section class="section band" id="gates" aria-labelledby="gates-title">
         <div class="wrap">
           <div class="head center" data-reveal data-stagger>
-            <h2 class="title" id="gates-title">A board is done when the last line says GREEN.</h2>
-            <p class="lede">The exit code says the same as the line. A run with an absent engine is never GREEN.</p>
+            <h2 class="title" id="gates-title">Four checks before any board is released</h2>
+            <p class="lede">Each check reports on one line, and the last line is the verdict. The exit code matches it, so scripts and CI can rely on it. If a tool is missing, the run is never reported as a pass.</p>
           </div>
           <ul class="verdicts" aria-label="The verdicts" data-reveal data-stagger>
             <li class="ok"><i></i>GREEN <span>exit 0</span></li>
@@ -537,22 +515,22 @@ DONE WHEN  the last line starts with GREEN</span></pre>
             <li>
               <span class="n">01</span>
               <h3>ERC</h3>
-              <p>KiCad's electrical rules, on the schematic.</p>
+              <p>Electrical rules: KiCad's electrical rule check on the schematic.</p>
             </li>
             <li>
               <span class="n">02</span>
               <h3>DRC</h3>
-              <p>KiCad's design rules, on the routed board. <code>--fab</code> adds a fabrication house's limits.</p>
+              <p>Design rules: KiCad's design rule check on the routed board, with your fabricator's limits added by <code>--fab</code>.</p>
             </li>
             <li>
               <span class="n">03</span>
               <h3>SIM</h3>
-              <p>ngspice runs every deck. Each measured value is held to its bound, as written and at each corner.</p>
+              <p>Simulation: ngspice runs every circuit simulation and holds each measured value to its limit, as designed and at every corner.</p>
             </li>
             <li>
               <span class="n">04</span>
               <h3>EXPORT</h3>
-              <p>Gerbers, drill files, the BOM and the schematic PDF, written to <code>build/fab/</code>.</p>
+              <p>Fabrication files: Gerbers, drill files, the bill of materials and the schematic PDF, written to <code>build/fab/</code>.</p>
             </li>
           </ol>
         </div>
@@ -562,9 +540,9 @@ DONE WHEN  the last line starts with GREEN</span></pre>
       <section class="section" id="corners" aria-labelledby="corners-title">
         <div class="wrap">
           <div class="head" data-reveal data-stagger>
-            <p class="eyebrow">Corners</p>
-            <h2 class="title" id="corners-title">A bound holds at every corner, or it does not hold.</h2>
-            <p class="lede">A circuit that works as written can leave its limits when a part is at the end of its tolerance, or the board is hot. The SIM gate runs those cases before the board is built.</p>
+            <p class="eyebrow">Simulation</p>
+            <h2 class="title" id="corners-title">Tested across temperature and part tolerance before you build</h2>
+            <p class="lede">A circuit that works on paper can fail when the board is hot or a part sits at the edge of its tolerance. Via simulates those cases automatically, so problems surface before the first prototype is made.</p>
           </div>
           <figure class="shot">
             <div class="run">
@@ -574,20 +552,20 @@ DONE WHEN  the last line starts with GREEN</span></pre>
        - divider:vout=2.625 at R1 -5 %, R2 +5 % (and 9 more corners) not in [2.45, 2.55] (the fixture's output window, 2.5 V within 2 %)
        - warning: divider: no measure moves with temperature: nothing in the deck or its models carries one</span></pre>
             </div>
-            <figcaption>A fixture board that is inside its bounds as written. It fails at 85 C, and with 2 resistors at opposite ends of 5 %.</figcaption>
+            <figcaption>A test circuit that meets its limits as designed. Simulation shows it fails at 85 °C, and when two resistors sit at opposite ends of their 5 % tolerance.</figcaption>
           </figure>
           <div class="cards" data-reveal data-stagger>
             <div>
               <h3>Temperature</h3>
-              <p>Every deck runs at each temperature the project names. The project gives each range with its source.</p>
+              <p>Every simulation runs at each temperature the project specifies, and each range records its source.</p>
             </div>
             <div>
               <h3>Tolerance</h3>
-              <p>Each part runs at both ends of its tolerance and half-way to each. Every combination of the ends runs up to 64 runs. Above that, the gate runs a worst case for each bound and the Monte Carlo draws the project names.</p>
+              <p>Each part is tested at both ends of its tolerance and halfway between. Up to 64 combinations run exhaustively; beyond that, Via runs a worst case for each limit plus the project's Monte Carlo draws.</p>
             </div>
             <div>
               <h3>Frequency plan</h3>
-              <p>The gate holds every switching frequency and its harmonics against every resonance a deck measured.</p>
+              <p>Switching frequencies and their harmonics are checked against every resonance the simulations measure.</p>
             </div>
           </div>
         </div>
@@ -597,22 +575,22 @@ DONE WHEN  the last line starts with GREEN</span></pre>
       <section class="section band" id="agents" aria-labelledby="agents-title">
         <div class="wrap">
           <div class="head" data-reveal data-stagger>
-            <p class="eyebrow">Any agent</p>
-            <h2 class="title" id="agents-title">The knowledge is in the gates, not in the model.</h2>
-            <p class="lede">The aim: a small model reaches the same working board as a large one. So each question an engineer asks is a gate that runs, and each next step is a command that names it.</p>
+            <p class="eyebrow">Works with any agent</p>
+            <h2 class="title" id="agents-title">Engineering judgement built into the checks</h2>
+            <p class="lede">Via turns the questions an experienced engineer asks into automated checks, and every failure comes with its next step. The goal is for a small, fast model to reach the same working board as the largest one.</p>
           </div>
           <div class="cards" data-reveal data-stagger>
             <div>
-              <h3>A small model built a board</h3>
-              <p>On 2026-11-11 a small model took a low-pass filter from a paragraph to 0 ERC errors, 0 DRC errors, 14 corner runs and 22 gerber files. It took 38 tool calls and met 8 traps. Each trap but 1 now stops with the line to write.</p>
+              <h3>Proven with a small model</h3>
+              <p>A small model took a low-pass filter from a one-paragraph brief to a board with no ERC or DRC errors, 14 simulated corners and 22 Gerber files, in 38 tool calls. Seven of the eight problems it hit now stop with the exact fix.</p>
             </div>
             <div>
-              <h3>An engineer reviewed a board</h3>
-              <p>The gates had passed a circuit that fails at 85 C. The engineer found it. That question is now the SIM gate's corners: the fixture above fails at 85 C.</p>
+              <h3>Reviewed by an engineer</h3>
+              <p>An engineer found a circuit that had passed the checks but failed at 85 °C. Temperature and tolerance corners are now part of every simulation.</p>
             </div>
             <div>
-              <h3>What is still open</h3>
-              <p>1 trap has no gate yet: nothing holds a deck typed by hand to the board's parts. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/ROADMAP.md">The roadmap</a> names it, and <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/DEVLOG.md">the devlog</a> has each day.</p>
+              <h3>Known gaps</h3>
+              <p>One check is still missing: a simulation written by hand is not yet tied to the board's parts. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/ROADMAP.md">The roadmap</a> tracks it, and <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/DEVLOG.md">the development log</a> records progress.</p>
             </div>
           </div>
         </div>
@@ -622,8 +600,8 @@ DONE WHEN  the last line starts with GREEN</span></pre>
       <section class="section" id="how-it-works" aria-labelledby="how-title">
         <div class="wrap">
           <div class="head" data-reveal data-stagger>
-            <p class="eyebrow">How it works</p>
-            <h2 class="title" id="how-title">3 engines, 4 gates, 1 verdict.</h2>
+            <p class="eyebrow">Architecture</p>
+            <h2 class="title" id="how-title">Built on KiCad, ngspice and FreeRouting</h2>
           </div>
           <div class="frame diagram">
             <div class="flow">
@@ -645,7 +623,7 @@ DONE WHEN  the last line starts with GREEN</span></pre>
               </div>
               <div class="node accent">
                 <b>ERC · DRC<br>SIM · EXPORT</b>
-                <span>4 gates, in order; the last line is the verdict</span>
+                <span>four checks in order, ending in a single verdict</span>
               </div>
               <div class="hop">
                 <span>GREEN</span>
@@ -653,10 +631,10 @@ DONE WHEN  the last line starts with GREEN</span></pre>
               </div>
               <div class="node">
                 <b><code>build/fab/</code></b>
-                <span>gerbers, drill files, a BOM, a schematic PDF</span>
+                <span>Gerbers, drill files, a bill of materials and a schematic PDF</span>
               </div>
             </div>
-            <p class="engines-label">The engines, all headless</p>
+            <p class="engines-label">Open-source engines, all running headless</p>
             <div class="engines">
               <div class="node">
                 <b>KiCad 10</b>
@@ -672,8 +650,8 @@ DONE WHEN  the last line starts with GREEN</span></pre>
               </div>
             </div>
           </div>
-          <p class="after">The command line itself needs only Python's standard library. <code>workcenter doctor</code> reports each engine's status. A gate whose engine is absent is skipped by name, and that run is never GREEN.</p>
-          <p class="after">Each procedure is a Markdown file, a skill: design a board, run the gates, simulate, route, price the parts, write the verification package. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/WORKCENTER.md">The contract</a> lists what a project gets.</p>
+          <p class="after">The command-line tool needs only Python's standard library. <code>workcenter doctor</code> reports the status of each engine, and a check whose engine is missing is reported as skipped, never as passed.</p>
+          <p class="after">Every procedure is written as a skill an agent can follow: designing a board, running the checks, simulating, routing, pricing parts and writing a verification package. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/WORKCENTER.md">The contract</a> lists everything a project receives.</p>
         </div>
       </section>
 
@@ -681,33 +659,33 @@ DONE WHEN  the last line starts with GREEN</span></pre>
       <section class="section" id="run" aria-labelledby="run-title">
         <div class="wrap">
           <div class="head" data-reveal data-stagger>
-            <p class="eyebrow">Run it</p>
-            <h2 class="title" id="run-title">Open source under MIT. Run it on your machine.</h2>
-            <p class="lede">On Ubuntu 24.04, <code>install.sh</code> installs KiCad 10, ngspice, Java 21 and FreeRouting. The fixture boards in the repository are the first projects to run.</p>
+            <p class="eyebrow">Get started</p>
+            <h2 class="title" id="run-title">Free and open source under the MIT license</h2>
+            <p class="lede">On Ubuntu 24.04, <code>install.sh</code> installs KiCad 10, ngspice, Java 21 and FreeRouting. Start with one of the example projects, then describe your own board.</p>
           </div>
           <div class="frame commands">
 <pre><span class="prompt">$ </span>git clone https://github.com/ThyFriendlyFox/via.git &amp;&amp; cd via
 <span class="prompt">$ </span>sudo ./install.sh
 <span class="prompt">$ </span>workcenter doctor
-<span class="prompt">$ </span>workcenter gates tests/boards/pass-rc-divider</pre>
+<span class="prompt">$ </span>workcenter gates examples/fire-alarm-communicator/v0.1</pre>
             <button class="copy" type="button" data-copy aria-label="Copy the commands">
               <svg class="todo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></svg>
               <svg class="done" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
             </button>
           </div>
-          <p class="after"><b>Where it stands.</b> Via is early and has no release yet. The gates, the corners, the frequency plan and <code>workcenter next</code> run on the fixture boards in every check of the repository. The cloud setup script and the Docker build have not run yet. Chip design, from RTL to a mask layout, is in progress on a branch. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/STATUS.md">The status page</a> has the rest.</p>
+          <p class="after"><b>Current status.</b> Via is in early development and has no release yet. The checks, the simulation corners, the frequency plan and <code>workcenter next</code> run in every test of the repository. The Docker image and the cloud setup script are not released yet, and chip design, from RTL to mask layout, is in progress. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/STATUS.md">The status page</a> has the details.</p>
           <div class="cards" data-reveal data-stagger>
-            <a class="card" href="https://github.com/ThyFriendlyFox/via/blob/main/tests/boards/README.md">
-              <h3>Fixture boards <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></h3>
-              <p>Each board passes everything or fails 1 named gate. They are the repository's tests.</p>
+            <a class="card" href="https://github.com/ThyFriendlyFox/via/tree/main/examples">
+              <h3>Example projects <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></h3>
+              <p>Complete designs with their source files, simulations, renders and documentation.</p>
             </a>
             <a class="card" href="https://github.com/ThyFriendlyFox/via/blob/main/environment/README.md">
-              <h3>A cloud environment <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></h3>
-              <p>The environment carries the software. The board repository carries the board.</p>
+              <h3>Cloud environment <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></h3>
+              <p>Run Via in a hosted environment that carries the tools, while your board lives in its own repository.</p>
             </a>
             <a class="card" href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/ROADMAP.md">
-              <h3>The roadmap <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></h3>
-              <p>What gets built next, in order. Every feature starts there.</p>
+              <h3>Roadmap <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></h3>
+              <p>What is being built next, in priority order.</p>
             </a>
           </div>
         </div>
@@ -716,14 +694,14 @@ DONE WHEN  the last line starts with GREEN</span></pre>
       <section class="closing" aria-labelledby="closing-title">
         <div class="wrap">
           <svg class="logo" data-reveal viewBox="283 202 394 136" fill="currentColor" stroke="currentColor" stroke-width="12" stroke-linejoin="round" aria-hidden="true"><path class="lg-letter" d="m378.4252 269.28348-44.566925-60.472458h-44.566925l89.13385 120.9449z"/><path class="lg-pad" d="M389.88452 208.81102h39.46457v33.10237h-39.46457z"/><path class="lg-letter" d="M464.09186 210.2441h39.46457v120.94487h-39.46457z"/><path class="lg-letter" d="m581.5748 269.28348 44.566895 60.472443h44.566956l-89.13385-120.9449z"/><path class="lg-pad" d="M570.1155 329.75592h-39.46454v-33.102386h39.46454z"/><g fill="none"><path class="lg-trace" d="M409.6168 241.91339v57.606293h-31.181091"/><path class="lg-trace" d="M503.55643 270.71652h46.834625v25.952759"/><path class="lg-trace" d="M570.1155 313.2047h18.233643v-13.669281h15.498657"/><path class="lg-trace" d="M429.3491 225.3622h17.37146v45.354324h17.368683"/></g></svg>
-          <h2 class="title" id="closing-title">Take a board to GREEN.</h2>
-          <p class="lede">Read the code, run the gates on a fixture board, or open your own project.</p>
+          <h2 class="title" id="closing-title">Start your first board</h2>
+          <p class="lede">Clone the repository, run the checks on an example project, then describe your own board.</p>
           <div class="actions">
             <a class="btn btn-primary" href="https://github.com/ThyFriendlyFox/via">
               <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>
               Get the code
             </a>
-            <a class="btn btn-fill" href="https://github.com/ThyFriendlyFox/via/blob/main/WORKCENTER.md">The contract</a>
+            <a class="btn btn-fill" href="https://github.com/ThyFriendlyFox/via/blob/main/WORKCENTER.md">Read the documentation</a>
           </div>
         </div>
       </section>

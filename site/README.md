@@ -1,9 +1,12 @@
 # site
 
-The Via website: 1 static page that says what the workcenter is, with real
-runs of its commands and its example projects. Plain HTML, 1
-stylesheet, 2 small scripts and Motion. No framework and no install step.
-Vercel deploys it.
+The Via website: 1 static page that says what Via does for the person
+reading it, shown on its example projects and on real runs of its
+commands. Plain HTML, 1 stylesheet, 2 small scripts and Motion. No
+framework and no install step. Vercel deploys it. Its words follow the
+website section of `ee-agent-kit/docs/STYLE.md`: plain headlines that say
+what the reader gets, no slogans, and an example project, not a fixture
+board, as the thing it shows.
 
 The look follows the apparatus site
 (<https://github.com/reagent-systems/apparatus>): paper and ink, 1 ink-blue
@@ -37,12 +40,12 @@ empty.
 | `effects.js` | The motion, with Motion: the logo draws itself, sections rise into view, runs type out, the example's copper sweeps in a layer at a time, its parts' labels go by 4 or fewer at a time with a leader from each part, the board leans toward the pointer and turns over. The head's script adds `motion` to `<html>` unless the reader asked for reduced motion or the page is a capture (`?shot=`); without Motion every element sits where it ends, and the labels turn only when the reader turns them. The labels' buttons, a click on a part and the turn-over button work without Motion. |
 | `vendor/` | Motion 14.6.0 (motion.dev), its UMD build from the npm package `motion`, and its MIT license. SHA256 `5cd165acfdf8e14ca5358c3d876142e5465419ee0d100bcf195da474cf8db2bf`. |
 | `logo.svg` | The Via wordmark: V, I and A as copper, a pad on each and traces between. The header, the footer, the closing section and `og.html` draw it inline. |
-| `showcase/` | The examples' pictures: KiCad's 3D renders of Herald, the example the page shows (`herald-top.png`, `herald-bottom.png`) and its layers (`herald-layers.png`); a card for each example (`herald.png`, `hush.png`, `signet.png`, `rosetta-iso.png`, `wyvern-iso.png`) and Agentcast's (`agentcast.png`, from its repository's v0.5). `draw_face.py` writes Herald's board drawing into `index.html` between `face:begin` and `face:end`, with the label of each part as JSON (`#herald-parts`). |
+| `showcase/` | The examples' pictures: KiCad's 3D renders of Herald, the example the page shows (`herald-top.png`, `herald-bottom.png`), its layers (`herald-layers.png`) and its supervised inputs from its schematic (`herald-schematic.png`); a card for each example (`herald.png`, `hush.png`, `signet.png`, `rosetta-iso.png`, `wyvern-iso.png`) and Agentcast's (`agentcast.png`, from its repository's v0.5). `draw_face.py` writes Herald's board drawing into `index.html` between `face:begin` and `face:end`, with the label of each part as JSON (`#herald-parts`). |
 | `favicon.svg` | The icon: the wordmark of `logo.svg`, centred in a square. It follows the system's colour scheme. |
 | `favicon-32.png`, `apple-touch-icon.png` | The icon as PNG, for a browser that takes no SVG icon and for a phone's home screen. |
 | `og.html` | The page the image below is a capture of. |
 | `og.png` | The Open Graph image, 1280 x 640. Also the image for the repository's social preview. |
-| `media/` | The pictures of the root `README.md`, with the page its first picture is a capture of. `media/README.md` shows each and the command that draws it. The site serves 2 of them, `schematic.png` and `board.png`: its board section shows them. |
+| `media/` | The pictures of the root `README.md`, with the page its first picture is a capture of. `media/README.md` shows each and the command that draws it. The site serves none of them: they show a fixture board, and the site shows Herald. |
 | `fonts/` | Inter, the latin file, with its license. |
 | `build.sh` | Makes the folder a host serves. It names `site.css`, `site.js` and `effects.js` with their checksum (`site.css?v=...`): the custom domain's cache keeps them 4 hours and asks again for each page, so a page and its stylesheet always come from 1 build. |
 | `vercel.json` | The Vercel project's build command, output folder and headers. |
@@ -64,6 +67,16 @@ the gates first, then draw it again when any of them changes:
 ```sh
 workcenter gates examples/fire-alarm-communicator/v0.1
 python3 site/showcase/draw_face.py
+```
+
+The design-as-code section shows Herald's supervised inputs. KiCad exports
+the schematic as SVG, librsvg draws it 8000 px wide, and FFmpeg crops the
+inputs' block:
+
+```sh
+kicad-cli sch export svg examples/fire-alarm-communicator/v0.1/herald.kicad_sch -o /tmp/sch --exclude-drawing-sheet
+rsvg-convert -w 8000 -b white /tmp/sch/herald.svg -o /tmp/sch/full.png
+ffmpeg -i /tmp/sch/full.png -vf "crop=1600:1159:2920:3277" site/showcase/herald-schematic.png
 ```
 
 Herald's renders come from `workcenter render` on the example
@@ -117,7 +130,8 @@ chromium --headless --hide-scrollbars --force-device-scale-factor=1 --window-siz
   --virtual-time-budget=4000 --screenshot=site/og.png "file://$PWD/site/og.html"
 ```
 
-Draw it again when `og.html`, the wordmark or the run in it changes.
+It holds the wordmark, the page's headline and Herald's card picture (`showcase/herald.png`).
+Draw it again when `og.html`, the wordmark, the headline or the picture changes.
 
 `favicon.svg` holds the paths of `logo.svg`. Copy them again when the
 wordmark changes. librsvg draws the 2 PNG icons from `favicon.svg`:

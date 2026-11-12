@@ -39,6 +39,28 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-12 — The site's words, for the person who reads them
+
+The owner sent a screenshot of the headline "3 engines, 4 gates, 1
+verdict." and said the site read like an assistant wrote it. They asked
+for a professional tone, a professional display, and copy about what Via
+does for the reader, without the fixture boards. Every headline was a
+slogan: fragments with periods, "Boards, not demos.", a maxim about
+corners. STYLE.md's own rules made them: digits for every number, and no
+words meant to sell. I rewrote the page's words, the Open Graph image and
+the 404 page, and added a website section to STYLE.md that keeps them so.
+
+The fixture boards left the page. The hero shows Herald. The section on
+design as code shows Herald's 3 supervised inputs: 7 lines of its design
+file, its schematic cropped to that block, and its routed board. The 2
+runs on a circuit that fails at 85 °C stay, because they show a check
+catching a fault; the caption calls it a test circuit. The gallery holds
+the 6 example boards, 3 to a row.
+
+Evidence: `tests/test_docs.py` at the commit, its runs and pictures held
+to the new page; the page in Chromium at 1440 and 390 px, light and dark,
+no sideways scroll and no console error; `make verify` before the push.
+
 ## 2026-11-12 — Every part of Herald labelled; a stylesheet that outlived its page
 
 The owner found the site's 5 signals made up: paths I drew from part to

@@ -227,18 +227,17 @@ def masked(line: str) -> str:
     reason="kicad-cli and ngspice run the gates the documents show",
 )
 def test_every_run_a_document_shows_is_what_the_command_prints(tmp_path):
-    """The README, the site and the Open Graph image show runs on fixture boards and on the example
-    project. A gate's summary changes when the gate does: 46 corner runs were 18. A run typed once and
-    not run again goes stale."""
+    """The README and the site show runs on fixture boards and on the example project. A gate's
+    summary changes when the gate does: 46 corner runs were 18. A run typed once and not run again
+    goes stale."""
     documents = {
         "README.md": README,
         "site/index.html": as_document(SITE / "index.html"),
-        "site/og.html": as_document(SITE / "og.html"),
     }
     shown = {
         (name, argv): lines for name, text in documents.items() for argv, lines in runs_in(text) if lines
     }
-    assert len(shown) == 8 and {name for name, _ in shown} == set(documents)
+    assert len(shown) == 5 and {name for name, _ in shown} == set(documents)
     boards = {arg for _, argv in shown for arg in argv if arg.startswith(("tests/boards/", "examples/"))}
     for board in boards:
         shutil.copytree(ROOT / board, tmp_path / board, ignore=shutil.ignore_patterns("build", "__pycache__"))
@@ -411,25 +410,35 @@ def test_every_picture_and_link_in_a_readme_names_a_file():
 
 
 def test_the_code_a_page_shows_is_a_run_of_lines_of_its_file():
-    """The site's page and `site/media/hero.html`, the page the README's first picture is a capture
-    of, show lines of the fixture's design file. A `<pre data-file>` names its file, and its lines
-    are a run of that file's lines, so a page shows no call the file does not make. Each page's 2
-    pictures of the board are files, at the path the page gives."""
-    file = "tests/boards/pass-first-design/design.py"
-    pictures = {SITE / "index.html": "media/", SITE / "media" / "hero.html": ""}
-    for page, folder in pictures.items():
+    """The site's page shows lines of its example's design file, and `site/media/hero.html`, the page
+    the README's first picture is a capture of, lines of the fixture's. A `<pre data-file>` names its
+    file, and its lines are a run of that file's lines, so a page shows no call the file does not
+    make. Each page's 2 pictures, the schematic and the board, are files at the path the page gives."""
+    shows = {
+        SITE / "index.html": (
+            "examples/fire-alarm-communicator/v0.1/design.py",
+            7,
+            ["showcase/herald-schematic.png", "showcase/herald-top.png"],
+        ),
+        SITE / "media" / "hero.html": (
+            "tests/boards/pass-first-design/design.py",
+            12,
+            ["schematic.png", "board.png"],
+        ),
+    }
+    for page, (file, count, drawn) in shows.items():
         text = page.read_text(encoding="utf-8")
         shown = re.findall(r'<pre data-file="([^"]+)">(.*?)</pre>', text, re.S)
         assert [name for name, _ in shown] == [file], page.name
         code = html.unescape(re.sub(r"<[^>]+>", "", shown[0][1]))
         lines = [line.strip() for line in code.splitlines()]
         source = [line.strip() for line in (ROOT / file).read_text(encoding="utf-8").splitlines()]
-        assert len(lines) == 12 and lines[:2] == ["d.add(", '"R1",'], page.name
+        assert len(lines) == count, page.name
         starts = [i for i in range(len(source)) if source[i : i + len(lines)] == lines]
         assert len(starts) == 1, f"{page.name}: the code is no run of lines of {file}"
-        drawn = [link for link in links_of(page) if link.endswith(("schematic.png", "board.png"))]
-        assert drawn == [f"{folder}schematic.png", f"{folder}board.png"], page.name
-        for link in links_of(page):
+        links = links_of(page)
+        assert all(picture in links for picture in drawn), page.name
+        for link in links:
             if not re.match(r"https?://|#|\./$|%ORIGIN%", link):
                 assert (page.parent / link).is_file(), f"{page.name}: {link}"
     # The page states each picture's size, so the cards keep their place while a picture loads.
@@ -441,7 +450,7 @@ def test_the_code_a_page_shows_is_a_run_of_lines_of_its_file():
             r'<img [^>]*?src="((?:media|showcase)/[^"]+)" width="(\d+)" height="(\d+)"', text
         )
     }
-    assert {"media/schematic.png", "media/board.png", "showcase/herald-top.png"} <= set(stated)
+    assert {"showcase/herald.png", "showcase/herald-schematic.png", "showcase/herald-top.png"} <= set(stated)
     assert sorted(stated) == sorted(set(pictures))
     assert stated == {name: picture_size(SITE / name) for name in stated}
 

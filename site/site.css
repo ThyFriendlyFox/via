@@ -463,7 +463,23 @@ html.dark .icon-btn .sun {
 }
 
 .hero .display {
-  max-width: 14ch;
+  max-width: 17ch;
+}
+
+.hero-board img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 1.25rem;
+  box-shadow:
+    0 0 0 1px var(--edge),
+    var(--shadow);
+}
+
+.hero-board figcaption {
+  margin-top: 0.875rem;
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
 }
 
 .hero .lede {
@@ -630,6 +646,20 @@ figcaption {
 .files figcaption b {
   font-weight: 500;
   color: var(--foreground);
+}
+
+/* The design file's lines across the top, whole; the 2 files it writes side by side below. */
+.files.wide .file.code::after {
+  display: none;
+}
+
+.files.wide figure {
+  min-width: 0;
+}
+
+.files.wide .file pre {
+  overflow-x: auto;
+  padding-bottom: 1.25rem;
 }
 
 /* -------------------------------------------------------------- sections */
@@ -1144,6 +1174,18 @@ figcaption {
   .files .file {
     height: 20.5rem;
   }
+  .files.wide {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .files.wide figure:first-child {
+    grid-column: 1 / -1;
+  }
+  .files.wide .file.code {
+    height: auto;
+  }
+  .files.wide .file {
+    height: 24rem;
+  }
   .flow {
     grid-template-columns: minmax(0, 1fr) 7.5rem minmax(0, 1fr) 7.5rem minmax(0, 1.2fr) 5rem minmax(0, 1fr);
   }
@@ -1606,6 +1648,12 @@ html:not(.motion) .progress {
   font-size: 0.9375rem;
   color: var(--muted-foreground);
 }
+.proj .spec {
+  margin-top: 0.75rem;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--foreground);
+}
 @media (min-width: 640px) {
   .hard {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1643,9 +1691,6 @@ html:not(.motion) .progress {
 }
 @media (min-width: 1200px) {
   .built {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-  .built .proj img {
-    height: 11rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
