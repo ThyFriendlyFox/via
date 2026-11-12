@@ -418,6 +418,7 @@ def build() -> kicadgen.Design:
     # The charge path: BAT's 2 pins into a bar and 2 vias.
     d.track("BAT", [(119.963, 150.75), (120.9, 150.75)], B, width=0.25)
     d.track("BAT", [(119.963, 151.25), (120.9, 151.25)], B, width=0.25)
+    d.track("VSYS", [(120.2, 151.75), (120.2, 152.25)], B, width=0.24)  # SYS's 2 pins joined at their pads
     d.track("BAT", [(120.9, 149.6), (120.9, 151.25)], B, width=0.5)
     d.track("BAT", [(120.9, 150.6), (121.6, 150.6)], B, width=0.5)
     d.via("BAT", 120.9, 149.6)
@@ -459,6 +460,7 @@ def build() -> kicadgen.Design:
     # down through a via at each and along In2 under the chip, between its ground vias.
     d.via("+1V1", 139.8, 132.2)
     d.via("+1V1", 138.6, 121.8)
+    d.track("+3V3", [(138.2, 130.6), (138.6, 130.6)], B, width=0.2)  # IOVDD pins 48 and 49, joined at their pads
     d.track("+1V1", [(139.8, 130.44), (139.8, 132.2)], "B.Cu")
     d.track("+1V1", [(138.6, 123.56), (138.6, 121.8)], "B.Cu")
     d.track("+1V1", [(138.6, 121.8), (139.5, 122.7), (139.5, 131.3), (139.8, 132.2)], "In2.Cu")
