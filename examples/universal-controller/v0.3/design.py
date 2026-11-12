@@ -410,6 +410,8 @@ def build() -> kicadgen.Design:
     d.track("GND", [(114.6, 166.0), (115.4, 166.0)], B, width=0.24)  # U12 PGND to its pad
     d.track("VSYS", [(117.4, 166.0), (118.2, 166.0), (118.2, 165.0), (117.4, 165.0)], B, width=0.24)  # VINA, EN
     d.track("VSYS", [(118.2, 165.5), (119.0, 165.5)], B, width=0.24)
+    for y in (165.5, 166.5):  # PS/SYNC and GND, inside the VSYS neck: in to the pad
+        d.track("GND", [(117.4, y), (116.7, y)], B, width=0.24)
     d.via("VSYS", 119.0, 165.5)
     d.track("VSYS", [(113.825, 163.2), (114.6, 164.0), (114.6, 165.0)], B, width=0.24)  # C50 to VIN
     d.track("GND", [(115.375, 163.2), (115.6, 163.7), (115.6, 164.6)], B, width=0.24)
@@ -649,6 +651,13 @@ def build() -> kicadgen.Design:
             if k % 2 == 1:  # 1 cap for each 2 LEDs, behind the second of the pair
                 c(f"C{55 + n // 2}", "100n", "VSYS", at, 0)
             n += 1
+    # The right ring's link under its stick: 12 passes left it open, so it is drawn on In3, probed
+    # clear on the unrouted board.
+    d.track("LED_S14", [(175.34, 167.31), (174.4, 167.31)], "F.Cu")
+    d.via("LED_S14", 174.4, 167.31)
+    d.track("LED_S14", [(174.4, 167.31), (174.4, 168.7), (189.4, 168.7), (189.4, 168.41)], "In3.Cu")
+    d.via("LED_S14", 189.4, 168.41)
+    d.track("LED_S14", [(189.4, 168.41), (188.66, 168.41)], "F.Cu")
 
     # ---- the face's words -----------------------------------------------------------------------
     for label, x, y in (("LB", 114.0, 107.0), ("RB", 206.0, 107.0), ("LT", 110.0, 115.0), ("RT", 210.0, 115.0),
