@@ -1025,11 +1025,16 @@ class Run:
         log: Path,
         timeout: int | None = None,
         env: dict[str, str] | None = None,
+        at_most: int | None = None,
     ) -> Started:
         """Start 1 engine and wait for it. Standard input is /dev/null (Magic and Netgen wait on a
         terminal), HOME is a folder of the run (an engine reads its start file from the user's home),
-        the output goes to `log`, and an engine past its time limit is stopped with its children."""
+        the output goes to `log`, and an engine past its time limit is stopped with its children.
+        `timeout` is the gate's limit, which --timeout replaces. `at_most` is a limit that --timeout
+        cannot raise: a run that is meant to be stopped when it takes far longer than its like."""
         limit = self.timeout or timeout or DEFAULT_LIMIT
+        if at_most is not None:
+            limit = min(limit, at_most)
         home = self.base / "home"
         home.mkdir(parents=True, exist_ok=True)
         log.parent.mkdir(parents=True, exist_ok=True)

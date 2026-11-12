@@ -1,5 +1,4 @@
 {
-  "test": "workcenter chip sim .",
   "mutations": [
     {
       "name": "decode-hlt-ld",
