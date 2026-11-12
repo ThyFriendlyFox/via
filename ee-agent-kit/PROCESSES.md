@@ -458,7 +458,9 @@ When: a change is about to be called done.
    a look at the log: `grep -q 'VERIFY GREEN' log && git push ...`. A
    `tail` succeeds whatever the log says. Every check you run before a
    push is in the chain (`ruff check ... && make test && git push`); a
-   check whose result only prints is not a gate.
+   check whose result only prints is not a gate. A rebase, a merge of
+   `main` or a renumbering of log entries after the run makes a new tree:
+   run `make verify` on it before its push, force-push included (M166).
 3. Push, then confirm the remote holds it: `git ls-remote`.
 4. Watch CI to the end; red CI is work now, not later.
 5. The report names the commit, the run link, and the numbers from the

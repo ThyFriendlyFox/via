@@ -1002,3 +1002,9 @@ What happened: While writing Wyvern v0.2, I changed design.py, the series README
 Cost: no wrong text; the diffs read back.
 Root cause: Long design sessions batch many small changes, and a script that does 5 at once looked faster than 5 Edits. P9 step 5 holds anyway.
 Process: P9
+
+## M166 — 2026-11-12 — A rebased tree force-pushed without `make verify`
+What happened: `make verify` passed on Wyvern v0.2's branch, and I pushed it. Then I rebased the branch onto `main`, which had added M158 to M161 meanwhile, renumbered my 4 entries to M162 to M165, and force-pushed within a minute, with no run on the new tree. STATUS.md still said `MISTAKES.md` M1 to M161, and `test_docs.py` fails on that. The next `make verify`, 50 minutes later, found it: 1 failed, 539 passed.
+Cost: a red tree on the remote branch for an hour, with no pull request open on it; 1 run of `make verify`.
+Root cause: P14 step 2 chains a push behind the verdict but did not say that a rebase after the verdict makes a new tree. A renumbering felt like bookkeeping, not a change.
+Process: P14

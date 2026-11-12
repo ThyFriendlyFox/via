@@ -66,9 +66,10 @@ module's pad line, which no fan-out via touches, held it together; the
 next route left only the converter's output off the plane, and 3 vias
 closed it. An unseeded route then left 1 link of the SD card's supply
 open; seeded with the route before it, the router kept every track and
-closed it. Simulations: 7 decks, 397 corner runs. 4 mistakes recorded
-(M162 to M165), 2 processes extended. The website's Wyvern card shows
-the new board.
+closed it. Simulations: 7 decks, 397 corner runs. 5 mistakes recorded
+(M162 to M166), 3 processes extended; the last mistake is a rebased
+tree pushed without its own `make verify`, which a later run caught.
+The website's Wyvern card shows the new board.
 
 Evidence: `workcenter gates v0.2` GREEN with 16 warnings (DRC 0 errors,
 0 unconnected, 0 parity; the 4 dangling vias and 5 silkscreen edges
