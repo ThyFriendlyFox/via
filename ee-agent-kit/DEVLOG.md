@@ -39,6 +39,35 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-11 — A second example: a microATX board for Threadripper
+
+The owner asked for a compact, good-looking example of what the
+workcenter makes: a microATX motherboard for a Threadripper. None
+exists; the smallest TRX50 board is ATX. Basalt is in
+`examples/threadripper-matx`, kept as version folders the way the
+owner's vape prototype keeps its own, and built in a loop that ran 1
+prompt again and again and logged each pass in `LOOP.md`.
+
+v0.1 placed the 4844-land socket, the slots, the memory and 14 phases
+from the microATX and PCI Express drawings. The router ran 20 minutes
+twice on the 4 supply nets without finishing a pass, so the design
+draws every supply as a pour now, as a real board carries it (M129).
+v0.2 drew the 4 memory channels' 576 traces by rule, and the first DRC
+found nothing. Midway the owner asked for the ports every desktop board
+has; v0.3 adds 77 parts, from SATA ports and fan headers to the CMOS
+battery. FreeRouting finished their nets in a third of a second with
+none routed, so the project's own grid router learned to change layer
+through a via and joined all 51.
+
+The workcenter gained on the way: `kicadgen` wires a processor drawn
+as banks on an A0 sheet, checks a socket's 3457 vias in 0.3 s where it
+took 63, and `render` draws a board in its own colours. The PCI Express
+and M.2 lanes are not on the board yet: 151 of 234 route, and the rest
+need a trunk drawn by rule, like the memory's.
+
+Evidence: `workcenter gates` GREEN with no warning on v0.1, v0.2 and
+v0.3; `make verify` GREEN.
+
 ## 2026-11-11 — An example project: a controller that speaks to 5 consoles
 
 The owner found the site's examples poor and asked for a prototype in the

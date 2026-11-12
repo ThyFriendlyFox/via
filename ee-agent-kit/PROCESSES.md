@@ -131,7 +131,10 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
    limits or stricter (`--track --clear --via --edge` for a board with a
    `.kicad_dru`). `--rules-override` is used only when the user asks for
    it (kistack's layout-placement skill); a result it produced is
-   discarded (M66).
+   discarded (M66). Before a grid router or FreeRouting runs on new
+   parts, every new courtyard is checked against every other: a
+   router's failures near 2 parts on each other read as routing
+   problems (M134).
 5. A route run only to evaluate (an archived version, a what-if) writes
    with `--out` to the scratchpad: without it `workcenter design` rewrites
    the project's KiCad files in place (M67).
@@ -686,6 +689,9 @@ after any change to what the boards look like in that version.
    `tools/scene.py`, which copies each 3D model the board names and reports
    one it cannot find; then look at the bottom face in a still. A path
    rewrite on a footprint's models changes a copy and draws nothing (M99).
+7. Pictures of a large board take a while: a 244 mm motherboard's took 17
+   minutes, most of it the turning GIF. Run them as a background job with
+   a limit over the sum of every step the job holds (M133).
 
 Done when: `workcenter pictures <version>` exits 0, the version's `docs/`
 holds a layer sheet and a turning GIF for every board and for the

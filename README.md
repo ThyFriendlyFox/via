@@ -65,6 +65,18 @@ second USB port in software to relay a console's signature to a licensed donor; 
 antenna over the gap between the grips; the knob is 1 analog reading, and 6 decks prove its 5
 positions never meet at any corner.
 
+## An example: Basalt, a microATX Threadripper board
+
+<a href="examples/threadripper-matx/README.md"><img alt="Basalt in 3D from the slots' corner: a black microATX board with an sTR5 socket, 4 DDR5 slots, 3 PCI Express x16 slots, 2 M.2 drives, heatsinks over 14 power stages, and fan, RGB, SATA and front panel headers along its right and bottom edges" src="examples/threadripper-matx/v0.3/docs/hero-iso.png"></a>
+
+[`examples/threadripper-matx`](examples/threadripper-matx/README.md) is a workstation motherboard
+for an AMD Threadripper on sTR5, on a microATX board (244 x 244 mm), which no maker has built. It is
+a prototype series built in a loop logged in its [`LOOP.md`](examples/threadripper-matx/LOOP.md),
+one version a feature, each GREEN: v0.1 the floor plan, a 4844-land socket and 14 phases with every
+supply in a pour; v0.2 the 4 DDR5 channels, 576 traces drawn by rule with 0 DRC errors on the first
+run; v0.3 the ports and headers a desktop board carries, routed by the project's own grid router.
+10 layers, black and silver.
+
 ## What it does
 
 | Part | In short |

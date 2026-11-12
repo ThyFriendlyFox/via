@@ -805,3 +805,15 @@ What happened: The example motherboard's first version placed every big part fro
 Cost: 2 placement rounds of the first version, each with a generate, a DRC and new renders.
 Root cause: I treated the floor plan as the drawings' positions alone. Where a bus can run decides where the parts it passes may stand, and P22 asked for no plan of the later versions before the first was placed.
 Process: P22
+
+## M133 — 2026-11-11 — A render stopped by the background limit
+What happened: I ran the example motherboard's v0.2 generate, gates and pictures as 1 background job. The job runner stops a background job at 30 minutes unless it is given a longer limit; the generate took 8 minutes, the gates 4 and the pictures 17, and the job was stopped while the turning GIF was drawn. The stills had been copied; the GIF and the headline views had not.
+Cost: the pictures run again, 17 minutes.
+Root cause: I knew how long each step took alone and did not add them up against the job's limit. P23 said nothing of how long pictures of a large board take.
+Process: P23
+
+## M134 — 2026-11-11 — 11 courtyard overlaps in a first placement
+What happened: I placed the example motherboard's 77 port and header parts from numbers I chose, with the size of a few footprints in mind. The grid router failed 8 to 14 links on each try, and a drawing of the copper showed why: 2 capacitors under the battery holder's pads, a pull-down on a header's pins, 3 transistors on each other. A courtyard check listed 11 overlaps; placed again, every link routed.
+Cost: 4 routes of 2 minutes each and the drawings to read them.
+Root cause: P4 step 4 asks for kistack's placement checks before a route; I routed first, and read the router's failures as routing problems.
+Process: P4
