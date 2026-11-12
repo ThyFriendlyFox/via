@@ -143,6 +143,17 @@ project and routes it with FreeRouting. No GUI at any step.
      otherwise); any other value writes a stackup, on two layers too. A
      daughter board soldered upright on another is often 0.8 mm. Say it in
      the README's fab notes.
+   - `mask_color=`, `silk_color=` and `copper_finish=` on `Design` name the
+     solder mask's colour, the legend's colour and the pads' finish. A
+     colour is `Green`, `Red`, `Blue`, `Purple`, `Black`, `White`, `Yellow`
+     or `"#RRGGBBAA"`; a finish is `ENIG`, `HAL lead-free` or another name
+     of KiCad's list, which `workcenter design` prints when it refuses one.
+     They go into the board's stackup: `workcenter render` draws the board
+     in them, and the fab's job file carries them. Under the named `Black`
+     a copper pour shows brown through the mask in the 3D views;
+     `"#0B0C0EFF"` is an opaque black, and the job file then says
+     `R11G12B14`, so the README's fab notes say "black". Never override
+     `Design._stackup` for them.
    - A part the library lacks gets a project footprint: a `.pretty` folder
      in the project, named in `d.footprint_dirs = {"Name": path}` and used
      as `"Name:Footprint"`. Read it with

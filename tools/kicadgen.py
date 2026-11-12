@@ -489,6 +489,24 @@ SHEETS = {
     "A1": (841.0, 594.0),
     "A0": (1189.0, 841.0),
 }
+# What KiCad 10's board setup names for a solder mask or a legend, and for the pads' finish. Any other
+# colour is "#RRGGBBAA": red, green, blue and opacity, 2 hexadecimal digits each.
+COLOURS = ("Green", "Red", "Blue", "Purple", "Black", "White", "Yellow")
+FINISHES = (
+    "None",
+    "ENIG",
+    "ENEPIG",
+    "HAL SnPb",
+    "HAL lead-free",
+    "Hard gold",
+    "Immersion tin",
+    "Immersion nickel",
+    "Immersion silver",
+    "Immersion gold",
+    "HT_OSP",
+    "OSP",
+)
+HEX_COLOUR_RE = re.compile(r"#[0-9A-Fa-f]{8}")
 STEPS = ((1, 0), (0, 1), (-1, 0), (0, -1))  # east, south, west, north on the sheet (y down)
 Cell = tuple[int, int]
 
@@ -1054,6 +1072,13 @@ class Design:
     # or four, (top-left, top-right, bottom-right, bottom-left), to round one end and square the other.
     corner_radius: float | tuple[float, float, float, float] = 0.0
     thickness: float = 1.6  # the finished board, mm; any other value writes a stackup on two layers too
+    # The solder mask's colour, the legend's colour and the pads' finish: a colour is one of COLOURS or
+    # "#RRGGBBAA", a finish one of FINISHES. Each goes into the board's stackup, where the 3D renders
+    # and the fab's job file read it, and any of the 3 writes a stackup on two layers too. A design
+    # that names none writes the board it wrote before.
+    mask_color: str = ""
+    silk_color: str = ""
+    copper_finish: str = ""
     footprint_dirs: dict[str, Path] = field(
         default_factory=dict
     )  # project footprint libraries: name -> .pretty
@@ -3073,6 +3098,36 @@ class Design:
         ]
         return out
 
+    def check_look(self) -> None:
+        """Refuse a mask colour, a legend colour or a finish that KiCad's board setup does not name."""
+        for name in ("mask_color", "silk_color"):
+            value = getattr(self, name)
+            if value and value not in COLOURS and not HEX_COLOUR_RE.fullmatch(value):
+                raise ValueError(
+                    f"{name} is {value!r}. KiCad names {', '.join(COLOURS)}. Any other colour is "
+                    '"#RRGGBBAA": red, green, blue and opacity, 2 hexadecimal digits each.'
+                )
+        if self.copper_finish and self.copper_finish not in FINISHES:
+            raise ValueError(f"copper_finish is {self.copper_finish!r}. KiCad names {', '.join(FINISHES)}.")
+
+    def _look(self, stack: Node) -> Node:
+        """A stackup with the design's mask colour, legend colour and finish, each where KiCad writes
+        it: a layer's colour after its type, the finish in `copper_finish`."""
+        self.check_look()
+        colours = {
+            "F.Mask": self.mask_color,
+            "B.Mask": self.mask_color,
+            "F.SilkS": self.silk_color,
+            "B.SilkS": self.silk_color,
+        }
+        for item in stack[1:]:
+            if item[0] == "layer" and colours.get(str(item[1])):
+                item[:] = [c for c in item if not (isinstance(c, list) and c[0] == "color")]
+                item.insert(3, ["color", Q(colours[str(item[1])])])
+            elif item[0] == "copper_finish" and self.copper_finish:
+                item[1] = Q(self.copper_finish)
+        return stack
+
     def board(self) -> str:
         ns = self.namespace
         net_ids = self.net_ids()
@@ -3154,10 +3209,15 @@ class Design:
             ["layers", *layers],
             [
                 "setup",
-                # A two-layer board at the default thickness keeps KiCad's own stackup, as it always has.
+                # A two-layer board at the default thickness keeps KiCad's own stackup, as it always has,
+                # unless the design names a colour or a finish: the stackup is where KiCad keeps them.
                 *(
-                    [self._stackup(copper, self.thickness)]
-                    if len(copper) > 2 or abs(self.thickness - 1.6) > 1e-9
+                    [self._look(self._stackup(copper, self.thickness))]
+                    if len(copper) > 2
+                    or abs(self.thickness - 1.6) > 1e-9
+                    or self.mask_color
+                    or self.silk_color
+                    or self.copper_finish
                     else []
                 ),
                 ["pad_to_mask_clearance", "0"],
@@ -4449,6 +4509,7 @@ def load_design(path: Path) -> Design:
     if not isinstance(design, Design):
         raise TypeError(f"{path}: build() returned {type(design).__name__}, not Design")
     design.check_power_nets()  # here, before a caller checks, routes or writes anything
+    design.check_look()
     return design
 
 
