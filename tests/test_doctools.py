@@ -57,7 +57,7 @@ def write(path: Path, text: str | bytes) -> Path:
 
 def test_a_marker_named_in_a_sentence_is_no_block():
     """A board repository's CLAUDE.md says `costs` writes between the `<!-- workcenter costs -->`
-    markers; `workcenter costs` took that for a block with no end and failed (M163)."""
+    markers; `workcenter costs` took that for a block with no end and failed (M167)."""
     prose = "- writes the totals between the `<!-- workcenter costs -->`\n  markers (README.md)\n"
     assert not doctools.unclosed(prose, "costs")
     block = "<!-- workcenter costs -->\nold\n<!-- /workcenter costs -->\n"
