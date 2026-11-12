@@ -8,6 +8,7 @@ command added without its line in the README fails here, not in a reader's hands
 from __future__ import annotations
 
 import html
+import os
 import re
 import shutil
 import struct
@@ -176,6 +177,51 @@ def test_every_mistake_and_process_a_file_cites_exists():
         assert sorted(cited - processes) == [], f"{rel} cites a process that PROCESSES.md does not hold"
 
 
+def test_a_count_of_tests_in_the_status_file_is_what_pytest_collects():
+    """STATUS.md gives a test file's count beside its name: `tests/test_gates.py` (26 tests). 2 of the
+    18 counts were stale on 2026-11-12: 21 for 25, 11 for 13. The count is what pytest collects."""
+    status = (ROOT / "ee-agent-kit" / "STATUS.md").read_text(encoding="utf-8")
+    stated = {name: int(count) for name, count in re.findall(r"`tests/(test_\w+\.py)` \((\d+)\b", status)}
+    assert len(stated) >= 15
+    proc = subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider", "tests"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    collected: dict[str, int] = {}
+    for line in proc.stdout.splitlines():
+        if line.startswith("tests/") and "::" in line:
+            name = line.split("::")[0].removeprefix("tests/")
+            collected[name] = collected.get(name, 0) + 1
+    assert collected, proc.stdout + proc.stderr
+    wrong = {name: (count, collected.get(name)) for name, count in stated.items()}
+    assert {name: pair for name, pair in wrong.items() if pair[0] != pair[1]} == {}
+    # The same row of counts names the last mistake and the last process: it read M145 while the log
+    # held M157.
+    last = {
+        letter: max(int(n) for n in re.findall(rf"^## {letter}(\d+) ", text, re.M))
+        for letter, text in (("M", MISTAKES), ("P", PROCESSES))
+    }
+    assert f"`MISTAKES.md` M1 to M{last['M']}, `PROCESSES.md` P1 to P{last['P']};" in status
+
+
+def test_a_pointer_to_a_roadmap_item_gives_its_number_and_its_title():
+    """The queue is renumbered when an item ships. STATUS.md pointed at `ROADMAP item 2` for the
+    autoroute work after that item had become item 4 (M160). A pointer carries the item's title, and
+    the pair is a heading of the roadmap."""
+    roadmap = (ROOT / "ee-agent-kit" / "ROADMAP.md").read_text(encoding="utf-8")
+    items = dict(re.findall(r"^### (\d+)\. (.+)$", roadmap, re.M))
+    assert len(items) >= 4
+    pointers = []
+    for rel in ("README.md", "WORKCENTER.md", "ee-agent-kit/STATUS.md", "ee-agent-kit/docs/USE-CASES.md"):
+        text = (ROOT / rel).read_text(encoding="utf-8")
+        pointers += [(rel, n, title) for n, title in re.findall(r'ROADMAP item (\d+)(?:, "([^"]+)")?', text)]
+    assert len(pointers) >= 2
+    assert [p for p in pointers if items.get(p[1]) != p[2]] == []
+
+
 def test_no_file_names_the_repository_by_its_old_name():
     """The repository was `workspace-ee-test`. The mistakes log keeps the name where an entry tells
     what happened then; no command, script or document that is read today does."""
@@ -261,6 +307,74 @@ def test_every_run_a_document_shows_is_what_the_command_prints(tmp_path):
         assert [masked(line) for line in lines] == printed[argv], f"{name}: workcenter {' '.join(argv)}"
 
 
+# Each command of the README's quick start, in its order: the exit code it ends with, and the start
+# of a line it prints ("^" for its first line). From runs of 2026-11-11 on fresh copies.
+QUICK_START = {
+    "workcenter doctor": (0, "^workcenter ee: "),
+    "workcenter gates tests/boards/pass-first-design": (0, "GREEN: divider  report "),
+    "workcenter gates tests/boards/fail-drc-clearance": (1, "RED: rc_divider  report "),
+    "workcenter next tests/boards/fail-drc-clearance": (
+        1,
+        "^NEXT       Move the track or the pad apart; check the net class clearance.",
+    ),
+    "workcenter sim tests/boards/fail-sim-corner": (
+        1,
+        "^FAIL   sim        2 decks, 32 corner runs, 2 failures, 1 warnings",
+    ),
+    "workcenter sim tests/boards/fail-freq-overlap": (1, "       - frequency plan: load's harmonic 3 "),
+    "mkdir ~/divider": (0, ""),
+    "cp templates/project/design.py ~/divider/": (0, ""),
+    "workcenter design ~/divider/design.py --route": (0, "  routed: "),
+    "workcenter gates ~/divider --strict": (0, "GREEN (nothing to run for: sim): divider  report "),
+}
+
+
+@pytest.mark.skipif(
+    shutil.which("kicad-cli") is None
+    or shutil.which("ngspice") is None
+    or shutil.which("java") is None
+    or not Path("/opt/workcenters/ee/freerouting/freerouting.jar").is_file(),
+    reason="kicad-cli, ngspice and FreeRouting run the commands of the quick start",
+)
+def test_the_quick_start_runs_as_written_and_ends_as_its_comments_say(tmp_path):
+    """No test held the quick start: with a fixture's name misspelt in it every test here passed (a
+    review of 2026-11-11). Each line of its 2 blocks runs as written and in its order. `workcenter`
+    is this tree's CLI, the fixtures and the templates are copies, and `~` is a folder of the test."""
+    section = README.split("\n## Quick start\n", 1)[1].split("\n## ", 1)[0]
+    lines = [line for block in re.findall(r"```sh\n(.*?)```", section, re.S) for line in block.splitlines()]
+    written = {line.partition("#")[0].strip(): line.partition("#")[2] for line in lines if line.strip()}
+    assert list(written) == ["sudo ./install.sh", *QUICK_START]
+    for command, (code, _) in QUICK_START.items():
+        assert ("GREEN" in written[command]) <= (code == 0), command
+        assert ("red" in written[command]) <= (code == 1), command
+    work = tmp_path / "checkout"
+    words = [word for command in QUICK_START for word in command.split()]
+    for board in {word.split("/")[-1] for word in words if "/boards/" in word}:
+        shutil.copytree(
+            ROOT / "tests" / "boards" / board,
+            work / "tests" / "boards" / board,
+            ignore=shutil.ignore_patterns("build", "__pycache__"),
+        )
+    shutil.copytree(ROOT / "templates", work / "templates")
+    shim = tmp_path / "bin" / "workcenter"
+    shim.parent.mkdir()
+    shim.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{CLI}" "$@"\n', encoding="utf-8")
+    shim.chmod(0o755)
+    home = tmp_path / "home"
+    home.mkdir()
+    env = {**os.environ, "PATH": f"{shim.parent}{os.pathsep}{os.environ['PATH']}", "HOME": str(home)}
+    for command, (code, said) in QUICK_START.items():
+        ran = subprocess.run(
+            ["bash", "-c", command], cwd=work, env=env, capture_output=True, text=True, check=False
+        )
+        printed = ran.stdout.splitlines()
+        assert ran.returncode == code, f"{command}: {ran.stdout}{ran.stderr}"
+        if said.startswith("^"):
+            assert printed[0].startswith(said[1:]), (command, printed[0])
+        elif said:
+            assert any(line.startswith(said) for line in printed), (command, printed)
+
+
 def links_of(page: Path) -> list[str]:
     return re.findall(r'(?:href|src)="([^"]+)"', page.read_text(encoding="utf-8"))
 
@@ -320,6 +434,14 @@ def test_the_site_builds_for_an_address_and_without_one(tmp_path):
                 path = link.split("?")[0]
                 assert (served / path).is_file(), f"{name} names {link}, and build.sh does not copy it"
     assert looked_up >= 10
+    # A part's label names the first page of its datasheet in the page's JSON, not in an attribute,
+    # so each is looked up here, with the size the label reserves for it.
+    parts = re.search(r'<script type="application/json" id="herald-parts">(.*?)</script>', page, re.S)
+    sheets = {tuple(entry) for entry in re.findall(r'"dp":\["([^"]+)",(\d+),(\d+)\]', parts.group(1))}
+    assert len(sheets) >= 5, "the labels no longer show their datasheets' first pages"
+    for path, width, height in sheets:
+        assert (served / path).is_file(), f"a label names {path}, and build.sh does not copy it"
+        assert png_size(served / path) == (int(width), int(height)), path
 
     plain = tmp_path / "plain"
     assert build(plain).returncode == 0
@@ -365,14 +487,20 @@ def test_the_open_graph_image_has_the_size_the_page_states():
 
 def local_links(path: Path) -> list[str]:
     """Each file a Markdown document links to or shows, as the document writes it: `](path)`, and the
-    `src`, `srcset` and `href` of its HTML. An address on the web is left out."""
-    found = re.findall(r'\]\(([^)#\s]+)\)|(?:src|srcset|href)="([^"#]+)"', path.read_text(encoding="utf-8"))
+    `src`, `srcset` and `href` of its HTML. A link to a place inside a file names the file: the part
+    from `#` on is left out. An address on the web is left out."""
+    found = re.findall(
+        r'\]\(([^)#\s]+)(?:#[^)\s]*)?\)|(?:src|srcset|href)="([^"#]+)(?:#[^"]*)?"',
+        path.read_text(encoding="utf-8"),
+    )
     return [a or b for a, b in found if not (a or b).startswith(("http://", "https://"))]
 
 
 def test_every_picture_and_link_in_a_readme_names_a_file():
     """GitHub draws a missing picture as a broken image, and a missing link is a 404. A path is read
-    from the document's own folder, as GitHub reads it."""
+    from the document's own folder, as GitHub reads it. The 2 documents are the root's README and the
+    README of `site/media/`: the front page and the page of its pictures. The test holds that a
+    picture is a file of a size, not what the picture shows."""
     media = SITE / "media"
     shown = {
         ROOT / "README.md": {
@@ -481,8 +609,9 @@ def credits(log: str) -> list[str]:
 
 def test_no_commit_names_an_assistant_as_its_author(tmp_path):
     """The owner's decision of 2026-11-11: a commit names the repository's owner as its author, and no
-    message credits an assistant. The check reads every commit this checkout holds; CI's shallow clone
-    holds the newest. It is proven first on a history made here."""
+    message credits an assistant. The check reads the history of the checked-out branch, not the
+    remote's other branches; CI's shallow clone holds the newest commit. It is proven first on a
+    history made here."""
 
     def git(repo: Path, *args: str, name: str = "Owner", email: str = "owner@example.org") -> str:
         identity = ["-c", f"user.name={name}", "-c", f"user.email={email}", "-c", "commit.gpgsign=false"]

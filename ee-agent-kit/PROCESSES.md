@@ -200,7 +200,14 @@ README, devlog, status line, or PR body.
    hash instead of the tag.
 3. Numbers in a document (segments, vias, warnings) are copied from the
    gate report of the committed board, not from an earlier run.
-4. A fact about a board (a part's face, its position, what stands beside
+4. A sentence about what a command prints or writes is checked against
+   that command's own output on the day it is written: the help of the
+   command named, not of the one above it (M160).
+5. A pointer to a roadmap item gives the item's number and its title in
+   quotes: `ROADMAP item 4, "Headless autoroute for hand-drawn boards"`.
+   The queue is renumbered when an item ships; `tests/test_docs.py` holds
+   each pair to the roadmap's headings (M160).
+6. A fact about a board (a part's face, its position, what stands beside
    it) is read from the board with `workcenter inspect list <board> --box
    X0 X1 Y0 Y1` before it goes into a document, never written from memory
    (M170).
@@ -293,7 +300,16 @@ When: every shell command.
    worktree, never from its parent; before the report, `git -C <worktree>
    status` and a listing of the parent show nothing of the helper's outside
    it (M102).
-6. A scratch script writes to absolute paths in the session's scratchpad.
+6. Commands that depend on each other are joined with `&&`. `set -e` at
+   the start of a tool call is no gate until a test shows it:
+   `set -e; false; echo went on` must print nothing. Where it prints
+   `went on`, join with `&&`, or run the lines in a child shell
+   (`bash -e -c '...'`). A hash goes into a command from `git rev-parse`,
+   never from the keyboard (M159).
+7. In a repository that is read-only for the task, read with
+   `git --no-optional-locks`: a plain `git status` rewrites that
+   repository's index file (M161).
+8. A scratch script writes to absolute paths in the session's scratchpad.
    Under `python3 - <<EOF`, `__file__` is no file and a path built from it
    is the working directory, which may be a repository (M166).
 
@@ -347,6 +363,15 @@ Edit tool.
 11. A run a document shows is captured on a fresh copy of its project,
     or the text beside it names what ran before. A command that reads
     the last report prints something else on a fresh copy (M121).
+12. The old text and the new text of an edit each end on a visible
+    character: take the next word into both. A new text that ended on a
+    space was written without the space once (M158). After a restore,
+    compare the file's hash with the hash taken before the change.
+13. A script whose text holds shell lines or a heredoc goes into a file
+    made with the Write tool, and runs from there. A heredoc ends at the
+    first line that is its end word: read every line of the text for that
+    word before the command is sent, or the shell runs the rest of the
+    text as commands (M161).
 
 Done when: the script reported every anchor found, and the formatter and
 linter pass on the result.

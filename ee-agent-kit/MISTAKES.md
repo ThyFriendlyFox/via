@@ -956,6 +956,30 @@ Cost: the owner saw a page half new and half old; a change to `site/build.sh` an
 Root cause: A file the page names kept its name when its content changed, and P32 step 3 fetched only the host's own address, without the headers that would have shown the 4 hours.
 Process: P32
 
+## M158 — 2026-11-11 — An edit lost the space at the end of its text, and I named a cause no run showed
+What happened: A helper broke a fixture on purpose, to see its test fail. With the Edit tool it replaced `-period 5.4 ` by `-period 20 `, and the file got `-period 20[get_ports clk]`: the space at the end of the new text was gone. In M125 I undid that break from the line as I saw it, so the space stayed lost: `-period 5.4[get_ports clk]`. I saw it when I put the breaks back. The helper restored the file against its manifest of hashes about 15 minutes after its break. I then wrote into 3 briefs that the tool drops a space at the end of a replacement. Later that day I tested the sentence: the tool kept the space. Where the space was lost is not found.
+Cost: 1 fixture file with a broken line for about 15 minutes, and 1 sentence in 3 briefs that names a cause no run showed.
+Root cause: A text that ends on a space looks whole when the space is gone, and nobody read or hashed the file after the edit. Then I wrote my first explanation down as a fact: in the briefs, and again in the first draft of this entry, which said my own restore had lost the space. The session's record showed the helper's break had (M95).
+Process: P9
+
+## M159 — 2026-11-11 — `set -e` did not stop a tool call at its failed command
+What happened: I moved a branch to 2 rebuilt commits with a list of commands in 1 tool call that began with `set -e`. The ref update failed on a hash I had typed with 1 character too many (`not a valid old SHA1`). The commands after it ran all the same: a `git reset -q`, a status, a log. The branch had not moved, so the reset changed nothing. A test showed the rule: in this session's shell `set -e; false; echo went on` prints `went on`, and a subshell does the same. A child shell stops: `bash -e -c '...'`.
+Cost: 1 command run again. On another day the command after the failed one resets or deletes something.
+Root cause: I took `set -e` for a gate and had never tested it in this shell. The host runs a tool call's text inside a list, where bash ignores the option. And I typed a hash that `git rev-parse` would have given whole.
+Process: P8
+
+## M160 — 2026-11-11 — 3 sentences of the front page said what no run showed
+What happened: A reviewer who had not written the front page checked each sentence by a command and found 3 false ones. The README said that `workcenter <command> --help` tells what each command writes: the help of 18 of the 24 commands names no file. STATUS.md pointed at "ROADMAP item 2" for the autoroute work: the queue had been renumbered that day, and the item is item 4. The landmine map said that FreeRouting 1.9.0 has no network code: its log shows a version check that fails, and before each route a wait of 20 s that 1 flag removes. The test written for the pointer found a second stale one in USE-CASES.md. The same review found a track segment that the generator wrote 2 times, and `doctor` reading `degraded` after a clean install.
+Cost: 1 review and 1 commit. 20 s in every routing run since the router was pinned, in each test that routes.
+Root cause: I wrote each sentence from what I believed and ran no command for it (M95). The pointer was a bare number in a queue that is renumbered when an item ships. Nobody had read the router's log between its first line and its last.
+Process: P5
+
+## M161 — 2026-11-11 — A heredoc ended at a line of its own text, and the shell ran the rest
+What happened: I changed 4 documents with a Python script inside a shell heredoc that ended at `EOF`. 1 text of the script was a shell block of a README, and that block has a heredoc of its own with the same end word. The shell ended my heredoc there. Python stopped on a syntax error, and the shell ran the rest of the script's text as commands: words of prose, a `workcenter render`, a `cp`, then a `sh` that waited for input. Each failed or did nothing. I stopped the shell and checked the 3 work trees and the read-only project: no file had changed. That check ran `git status` in the read-only project, which rewrites that repository's index file.
+Cost: 5 minutes. A text with `rm` or a `git` command in it would have run too.
+Root cause: A heredoc's end word is a promise about every line of its text, and I did not read my own text for it. P9 step 6 warns about backslashes in a heredoc and says nothing about its end.
+Process: P9
+
 ## M162 — 2026-11-11 — A deck read with bare ngspice, M94 again
 What happened: To quote the current-sense deck's temperature results for Last Hit v0.17, I ran `ngspice -b isense.cir` in its folder. It printed 16.1 A for a true 6 A and 3.26 V where the monitor gives 1.2 V: without the gate's PSpice mode and translation, Diodes' model ran as another circuit, with exit 0. P28 step 5 says a deck run by hand runs only through `workcenter sim <project> --deck <name>`. The gate's run gave 6.007 A.
 Cost: 1 wrong reading, caught before it was written; the deck run again the gate's way.

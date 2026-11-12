@@ -50,7 +50,7 @@ or skill. **Done** is the observable result that ends the case.
 
 **Open.** A board with footprints placed and nets unrouted.
 **Run.** `workcenter autoroute <project>`, then the session import, then `workcenter drc`.
-**Done.** DRC reports 0 unconnected items. Today the import step is manual in KiCad; ROADMAP item 1 makes it part of the command.
+**Done.** DRC reports 0 unconnected items. Today the import step is manual in KiCad; ROADMAP item 4, "Headless autoroute for hand-drawn boards", makes it part of the command.
 
 ## Review a board PR
 

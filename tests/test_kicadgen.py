@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,8 @@ import wrlgen  # noqa: E402
 CLI = ROOT / "tools" / "workcenter"
 LIBS = kicadgen.SYMBOL_DIR / "Device.kicad_sym"
 JAR = Path("/opt/workcenters/ee/freerouting/freerouting.jar")
+# The time at the start of each line of FreeRouting's log.
+STAMP = "%Y-%m-%d %H:%M:%S.%f"
 
 needs_libs = pytest.mark.skipif(not LIBS.is_file(), reason="KiCad symbol libraries are not installed")
 needs_kicad = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
@@ -226,6 +229,14 @@ def test_route_round_trip_makes_drc_green(tmp_path):
     summary = kicadgen.route(d, tmp_path / "build" / "route", passes=10, timeout=600)
     assert summary["unrouted"] in (0, None), summary  # 1.9.0 logs no count; the DRC below is the proof
     assert summary["segments"] > 0
+    # The router starts at once. Without `-dct 0` it waits 20 s for a click on a dialog nobody sees:
+    # 22.5 s lay between these 2 lines of its log on 2026-11-11, and 1.5 s with the flag.
+    log = Path(summary["log"]).read_text(encoding="utf-8")
+    opened, started = (
+        datetime.strptime(re.search(rf"^(\S+ \S+) \[\S+\] INFO  {mark}", log, re.M).group(1), STAMP)
+        for mark in ("Opening ", "Starting auto-routing")
+    )
+    assert (started - opened).total_seconds() < 10, log
     d.write(tmp_path)
     code, records = run_cli("gates", tmp_path, "--out", tmp_path / "build")
     assert code == 0, records
@@ -301,6 +312,40 @@ def test_merge_skips_router_echoes_and_splits_t_junctions():
         ((105.0, 105.0), (105.0, 107.0)),
         ((105.0, 105.0), (108.0, 105.0)),
     ]
+
+
+@needs_libs
+def test_merge_keeps_one_segment_where_two_wires_of_the_router_share_a_stretch():
+    """FreeRouting 1.9.0 writes wires of 1 net that share a stretch: these 3 are GND's in the session
+    of the fixture pass-first-design (2026-11-11). Each wire was split at the other's end, and the
+    board file held the shared piece, 113.5964 to 113.9115, 2 times."""
+    d = divider()
+    ses = """(session gen_divider (placement (resolution um 10)
+      (component "Resistor_SMD:R_0603_1608Metric" (place R1 10850000 -10250000 front 0)))
+      (routes (resolution um 10) (network_out
+        (net GND
+          (wire (path F.Cu 25000 11077500 -11359640 11077500 -11391150 10988480 -11480170
+            10622170 -11480170 10400000 -11258000))
+          (wire (path F.Cu 25000 11077500 -11359640 11077500 -11400000))
+          (wire (path F.Cu 25000 11082500 -11080170 11077500 -11085170 11077500 -11359640))))))"""
+    assert d.merge_ses(ses) == (7, 0)
+    f = kicadgen.fmt
+    written = sorted(tuple(sorted(((f(s[0]), f(s[1])), (f(e[0]), f(e[1]))))) for _, s, e, _, _ in d.segments)
+    assert written == [
+        (("104", "112.58"), ("106.2217", "114.8017")),
+        (("106.2217", "114.8017"), ("109.8848", "114.8017")),
+        (("109.8848", "114.8017"), ("110.775", "113.9115")),
+        (("110.775", "110.8517"), ("110.775", "113.5964")),
+        (("110.775", "110.8517"), ("110.825", "110.8017")),
+        (("110.775", "113.5964"), ("110.775", "113.9115")),
+        (("110.775", "113.9115"), ("110.775", "114")),
+    ]
+    # the same stretch drawn by hand and thinner: 1 segment, at the router's greater width, which is
+    # the copper the 2 segments made together
+    d = divider()
+    d.track("GND", [(110.775, 113.5964), (110.775, 113.9115)], "F.Cu", width=0.15)
+    d.merge_ses(ses)
+    assert [w for _, s, e, w, _ in d.segments if (f(s[1]), f(e[1])) == ("113.5964", "113.9115")] == [0.25]
 
 
 @needs_libs

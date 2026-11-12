@@ -25,7 +25,11 @@ above it, each on its own line.
 | `SKIPPED` | No gate had anything to run. | 2 |
 
 `workcenter doctor` reports each engine as ok, absent or MISSING. A gate
-whose engine is absent is skipped with the engine's name.
+whose engine is absent is skipped with the engine's name. Its first line
+reads `ok`, or `degraded` or `fail` with the names of what is absent:
+`workcenter ee: degraded, without freerouting`. `fail` is a required
+engine. The 2 hook lines are for a Claude Code session (P8 step 1); an
+absent hook does not make the line `degraded`.
 
 `workcenter verify` ends with a line of its own. `REQUIREMENTS MET` needs
 every requirement PASS, no problem in the package, and the decks run at

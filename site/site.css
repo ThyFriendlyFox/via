@@ -466,6 +466,19 @@ html.dark .icon-btn .sun {
   max-width: 17ch;
 }
 
+/* Paragraphs are justified to their column, and hyphenated so the spaces between words stay even.
+   A part's label is too narrow for it: its lines stay ragged. */
+main p:not(.eyebrow):not(.spec):not(.board3d-hint):not(.part-d),
+main figcaption {
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+}
+
+.head.center .lede {
+  text-align-last: center;
+}
+
 .hero-board img {
   display: block;
   width: 100%;
@@ -1287,70 +1300,51 @@ html:not(.motion) .progress {
     0 0 0 1px var(--edge),
     var(--shadow);
 }
-/* The tour: the board in the middle, the labels of 3 or 4 of its parts beside it, a leader from each
-   part to its label. Under 1024 px the labels stack below the board, and the numbers pair them. */
+/* The tour: the board in the middle, the labels of up to 4 of its parts beside it, 1 more every 3 s,
+   a leader from each part to its label. Under 1024 px the labels stack below the board in their
+   turn's order, and the numbers pair them. A label waits in its place, unseen, until its turn, so
+   none moves. */
 .tour {
   position: relative;
-  grid-template-areas: "bar" "face" "left" "right";
-}
-.tour-bar {
-  grid-area: bar;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
   gap: 0.75rem;
 }
-.tour-status {
-  font-size: 0.9375rem;
-  color: var(--muted-foreground);
+.tour .face {
+  grid-area: auto;
+  order: -1;
+  margin-bottom: 0.5rem;
 }
-.tour-status b {
-  color: var(--foreground);
-  font-weight: 500;
+.part-card.is-waiting {
+  visibility: hidden;
 }
-.tour-buttons {
-  display: flex;
-  gap: 0.375rem;
+.part-card.has-sheet {
+  display: grid;
+  grid-template-columns: 3.5rem minmax(0, 1fr);
+  column-gap: 0.875rem;
+  align-items: start;
 }
-.tour-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 2.5rem;
-  height: 2.5rem;
-  padding: 0 0.875rem;
-  border-radius: 999px;
-  background: var(--secondary);
-  color: var(--foreground);
-  font-size: 0.875rem;
-  font-weight: 500;
-  transition: background-color 0.2s var(--ease);
-}
-.tour-btn:hover {
-  background: color-mix(in oklch, var(--secondary), var(--foreground) 8%);
-}
-.tour-btn svg {
-  width: 1.125rem;
-  height: 1.125rem;
+.part-sheet img {
+  display: block;
+  width: 3.5rem;
+  height: auto;
+  border-radius: 0.3rem;
+  background: #fff;
+  box-shadow:
+    0 0 0 1px var(--edge),
+    0 2px 8px -3px oklch(0 0 0 / 35%);
 }
 .face {
   grid-area: face;
   min-width: 0;
 }
 .tour-cards {
-  display: grid;
+  display: contents;
   gap: 0.75rem;
-  align-content: start;
 }
 .tour-cards[data-cards="left"] {
   grid-area: left;
 }
 .tour-cards[data-cards="right"] {
   grid-area: right;
-}
-.tour-cards:empty {
-  display: none;
 }
 .part-card {
   padding: 0.875rem 1rem;
@@ -1567,24 +1561,52 @@ html:not(.motion) .progress {
   margin-top: 4rem;
   align-items: center;
 }
-.flip-stage {
-  perspective: 1600px;
-}
-.flip {
+/* The board in 3D: KiCad's picture first, in the same frame the model then fills. The frame's
+   gradient is the picture's own background, so the swap does not show. */
+.board3d {
   position: relative;
-  transform-style: preserve-3d;
+  overflow: hidden;
+  aspect-ratio: 1200 / 762;
+  border-radius: 1.25rem;
+  background: linear-gradient(180deg, rgb(195 195 220), rgb(163 163 187) 50%, rgb(119 119 144));
+  box-shadow:
+    0 0 0 1px var(--edge),
+    var(--shadow);
 }
-.flip img {
-  width: 100%;
-  height: auto;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-  filter: drop-shadow(0 24px 30px oklch(0 0 0 / 22%));
-}
-.flip .flip-back {
+.board3d-poster,
+.board3d model-viewer {
   position: absolute;
   inset: 0;
-  transform: rotateY(180deg);
+  width: 100%;
+  height: 100%;
+}
+.board3d-poster {
+  object-fit: cover;
+  transition: opacity 0.6s var(--ease);
+}
+.board3d model-viewer {
+  --poster-color: transparent;
+  background: transparent;
+}
+.board3d.is-live .board3d-poster {
+  opacity: 0;
+  pointer-events: none;
+}
+.board3d-hint {
+  position: absolute;
+  left: 1rem;
+  bottom: 0.875rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 999px;
+  background: oklch(0.2 0.01 60 / 45%);
+  color: oklch(0.98 0 0);
+  font-size: 0.8125rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s var(--ease);
+}
+.board3d.is-live .board3d-hint {
+  opacity: 1;
 }
 .renders-side h3 {
   font-size: 1.25rem;
@@ -1665,13 +1687,16 @@ html:not(.motion) .progress {
   }
   .tour {
     grid-template-columns: 16.5rem minmax(0, 1fr) 16.5rem;
-    grid-template-areas: "bar bar bar" "left face right";
+    grid-template-areas: "left face right";
     align-items: center;
     column-gap: 2.75rem;
     row-gap: 1.25rem;
   }
-  .tour-cards,
-  .tour-cards:empty {
+  .tour .face {
+    grid-area: face;
+    margin-bottom: 0;
+  }
+  .tour-cards {
     display: grid;
     align-content: center;
   }
