@@ -315,7 +315,9 @@ first failure or warning with the fix for its kind; a design file that
 when nothing is left and 1 when a step is. A finished project gets no `RUN`
 line. It writes nothing. For a chip project (`tools/chipguide.py`) the
 order is `chip.json`, the engines and the process kit, the RTL, a bench,
-the chip gates' report, its first failure, its first warning.
+a file that is still the example `chip init` wrote, the chip gates'
+report, its first failure, its first warning, and a `README.md` that
+still says `fill:`.
 
 Not a gate: `workcenter fetch <url> --to <library>/<maker>/<file>` fetches
 one datasheet, model or body once under the workcenter's own name (a

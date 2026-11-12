@@ -43,7 +43,10 @@ the last.
 
 1. Start the project: `workcenter chip init <dir> --top <module>`. It
    writes `chip.json`, `constraints.sdc`, `rtl/<module>.v`,
-   `tb/tb_<module>.v` and `README.md`. It never writes over a file.
+   `tb/tb_<module>.v` and `README.md`. It never writes over a file. The
+   RTL and the bench it writes are an example, an 8-bit register and its
+   bench: replace both with the design. `workcenter next` names a file
+   that is still the example.
 2. Fill `chip.json`: see "chip.json".
 3. Write the RTL in `rtl/`: see "The RTL".
 4. Write 1 bench in `tb/` for each thing the spec promises: see "A bench".
@@ -72,8 +75,8 @@ starts with `fill:` is a problem, and no gate runs on a file with one.
 | `corners.temperature` | `values`: the least and the greatest temperature in C, with their `source`. |
 | `corners.supply` | `nominal` in volts and `tolerance` as a fraction (0.05 is 5 %), with their `source`. |
 | `floorplan.die_um` | The die's width and height in um. Left out: the build chooses a square die from the utilisation limit. |
-| `limits.utilization` | `max`: the part of the core the cells may take (0.6 is 60 %). |
-| `limits.clock_skew_ns` | `max`: the clock skew STA holds. Left out: STA warns that it holds none. |
+| `limits.utilization` | `max`: the part of the core the cells may take (0.6 is 60 %). "The 2 limits" says where the number comes from. |
+| `limits.clock_skew_ns` | `max`: the clock skew STA holds, in ns. Left out: STA warns that it holds none. "The 2 limits" says where the number comes from. |
 | `benches.<bench>.rtl_only` | The reason a bench cannot run on the routed netlist. Only a bench that reads signals inside the design needs one. |
 | `answers.flops_without_reset` | For a flop that has no reset on purpose: `match` (its name), `why`, and `evidence` (the bench that proves it starts known). |
 
@@ -81,6 +84,32 @@ STA runs at every corner of the cell library that the 2 ranges select: on
 `sky130A` with 0 to 70 C and 1.8 V within 5 % that is 15 corners.
 `chip.json` names 1 of `floorplan.die_um` and `limits.utilization` at
 least: the build needs a size to aim at.
+
+### The 2 limits
+
+A limit comes from the spec when the spec names it. When it names none,
+the limit is the project's own budget, and the source says so.
+
+1. `limits.utilization.max`: 0.6 is the density the build spreads the
+   cells to on `sky130A` (`pdks/sky130A.json`, `placement_density`). Take
+   0.6 with the source `pdks/sky130A.json, placement_density: the build
+   spreads the cells to 0.6 of the core`, unless a shuttle's guide or the
+   spec gives another number.
+2. `limits.clock_skew_ns.max`: the greatest difference between the times
+   the clock reaches 2 flops. STA holds setup and hold with the clock
+   tree as it is built; this limit holds the tree itself. With no number
+   in the spec, take a twentieth of the clock period (1 ns for a 20 ns
+   clock) and write the source as `the project's budget: a twentieth of
+   the 20 ns clock period`.
+3. Write each budget the project sets itself under "Decisions" in
+   `README.md`, with its reason.
+
+```json
+"limits": {
+  "utilization": {"max": 0.6, "source": "pdks/sky130A.json, placement_density: the build spreads the cells to 0.6 of the core"},
+  "clock_skew_ns": {"max": 1.0, "source": "the project's budget: a twentieth of the 20 ns clock period"}
+}
+```
 
 ## The RTL
 
