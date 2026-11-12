@@ -166,6 +166,19 @@ Every number is millimetres; the file is written in KiCad's VRML unit (0.1 inch)
 | `footprint LIB:FOOTPRINT...` | `--lib NAME=DIR` (repeatable) | Pads, layers, drills and courtyard; `--lib` reads a project `.pretty` folder. |
 | `symbol-add LIB.kicad_sym` | `--from PINS.csv` (required), `--name NAME` (default the CSV's stem), `--reference R` (default `U`), `--footprint LIB:FP`, `--datasheet URL`, `--description TEXT` | A one-unit symbol from a datasheet's pin table, a CSV of `Number,Name,Type,Side` (KiCad's electrical types; `left`, `right`, `top`, `bottom`; an empty name is `~`): each pin on its side in the table's order, 2.54 mm apart, every pin end on the 1.27 mm grid, the body sized round the names. Appended as text before the library's closing parenthesis, so the symbols there keep their bytes; a new library is started. Refuses a name already in the library, an unknown type or side, a pin number twice. Writes only `LIB`. |
 
+## `tools/harvest.py`
+
+What the projects taught the workcenter, read from the repository itself
+(`PROCESSES.md` P35). Each listing reads git objects and writes nothing.
+`--repo DIR` (default this checkout) and `--json` stand before the
+listing's name.
+
+| Command | Flags | Use |
+|---|---|---|
+| `branches` | `--main REF` (default `origin/main`), `--refs PREFIX` (default `refs/remotes/origin`) | Every branch under the prefix: its own commits, and the share of the lines they added to the workcenter itself that main holds. A line counts without the number of a mistake, a process or a step. |
+| `scripts` | `--ref REF` (default `HEAD`), `--root DIR` (default `examples`) | The scripts the projects wrote for themselves, by file name: the projects that wrote each, and the functions 2 or more of them define. |
+| `mistakes` | `--ref REF` (default `HEAD`) | The mistakes log by process: its entries, and the entries that name an earlier entry of the same process. |
+
 ## `tools/kicadgen.py`
 
 | Field | Type | Default | Use |

@@ -39,6 +39,31 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-12 — What the projects found, read from the branches
+
+The owner asked for a way to bring in what each project's branch had
+found, and to rate it. A project leaves its findings in 4 places: commits
+that never reached `main`, scripts it wrote because the workcenter had no
+tool, the mistakes log, and its own notes.
+
+Git cannot say what a branch still holds: the history was rewritten on
+2026-11-11 (P33), and a branch from before shares no commit with `main`.
+`tools/harvest.py` compares lines. A branch's base is the newest of its
+commits whose files `main` once had, and a line it added has landed when
+`main` holds it. The first listing was wrong 2 times. It called a step
+missing that `main` holds under another number, and it could not see a
+version pin, a line too short to count. Both are tests now.
+
+Of the remote's 59 branches, 45 hold nothing of their own. 1 held tested
+work that `main` lacked: Last Hit v0.17's 10 mistakes with 2 fixes, an
+`altermod` line of which ngspice applies the first parameter only, and a
+marker named inside a sentence. They are on `main` as M171 to M180. The
+procedure is P35. The projects' notes are read and rated next.
+
+Evidence: `tests/test_harvest.py`, 6 tests, and each of 12 lines of the
+tool, broken alone, fails at least 1 of them; `python3 tools/harvest.py
+branches` on the remote's branches, 2026-11-12.
+
 ## 2026-11-12 — A small model built a chip, a reviewer attacked the gates, and the chip work reached `main`
 
 A small model built 2 chips of its own with `workcenter next` alone. The
