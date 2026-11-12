@@ -1274,3 +1274,73 @@ Again before boards that join into a solid are laid out.
 Done when: the form's sentences are in the first message and in the
 version's README, and the project's code refuses a solid whose joints
 miss.
+
+## P35 — Harvesting what the projects found
+
+When: a project's version has landed, a branch is about to be deleted, or
+the owner asks what the projects taught the workcenter.
+
+Every project leaves findings in 4 places: commits on a branch that never
+reached `main`, scripts it wrote because the workcenter had no tool, the
+mistakes log, and its own notes (`LOOP.md`, each version's README). A
+finding is a gap in the workcenter, never a board's own fault.
+
+1. Fetch every branch: `git fetch origin
+   '+refs/heads/*:refs/remotes/origin/*'`. Run `python3 tools/harvest.py
+   branches`. A branch at 100 % has landed, whatever its commits are
+   called on `main`. For a branch under 100 %, read the lines the listing
+   names. Each is on `main` in other words, or is a finding.
+2. Work that `main` lacks belongs to its branch. List the open pull
+   requests, and fetch the branch again right before any change that
+   builds on it: its own session can be at work (M181).
+   - A branch with an open pull request lands by its own commits. Start
+     the harvest's branch on its head, change nothing of it, and say in
+     the report that it waits for its merge.
+   - A branch with no pull request and no commit for a day is copied:
+     `git diff <base> <tip>` applied with `git apply --3way`, its mistakes
+     at the next free numbers first, in its entries and in every added
+     line that cites one. Then read each log the copy touched: a 3-way
+     apply puts an entry where its context matched, which can be the
+     middle of the log. See each of its tests fail on `main`'s code.
+   The work has landed when the listing shows the branch at 100 %.
+3. Run `python3 tools/harvest.py scripts`. A script that 2 or more
+   projects wrote is a tool the workcenter lacks. Read the newest file of
+   each project, and write the finding with the calls they share.
+4. Run `python3 tools/harvest.py mistakes`. An entry that names an
+   earlier entry of its own process is a step that did not hold. A step
+   broken 2 times gets a machine check (P13 step 3): a hook, a test, a
+   tool's refusal. The finding names the check.
+5. Read each project's `LOOP.md` and its versions' READMEs since the last
+   harvest. What the project did by hand, or worked round, is a finding.
+6. Write each finding with its evidence: a path with its line, or an
+   entry's number, and the words as they stand there. Look for the thing
+   in `tools/` and `.claude/skills/` first, and write what the search
+   found. Much has landed already.
+7. Give each finding 6 whole numbers:
+   - `frequency`: 1 = met once; 2 = met in 2 projects, or 2 times; 3 = 3
+     or more.
+   - `cost`: 1 = minutes; 2 = an hour, or a route, a render or a version
+     done again; 3 = several hours, or a wrong result that reached a
+     committed file, a fabrication output or the owner.
+   - `leverage`: 0 = cosmetic; 1 = saves an expert time; 2 = turns a step
+     done by hand into 1 command; 3 = turns a judgement, or an error
+     nothing reported, into a gate's failure or a tool's refusal.
+   - `generality`: 1 = this board only; 2 = a class of boards; 3 = every
+     project.
+   - `effort`: 1 = half a day with its tests; 2 = 1 or 2 days; 3 = a week,
+     or a new subsystem.
+   - `risk`: 1 = adds beside what is there; 2 = changes what a tool
+     writes; 3 = changes what a gate judges.
+   `value` is the sum of the first 4, `price` the sum of the last 2, and
+   the rating is `value` less `price`.
+8. A reader who did not write a finding tries to refute it before it is
+   rated (P31 for a helper): each quote at its place, the thing missing
+   from the tools, each score against its anchor. A finding the reader
+   cannot stand behind is dropped.
+9. The findings go into ROADMAP.md under "Later", each with its rating,
+   the highest first. The queue's next item comes from the top of that
+   list unless the owner names another.
+
+Done when: every branch is at 100 % or its row of the listing has an
+answer; every finding under "Later" has its evidence, its 6 scores and a
+reader who checked it.

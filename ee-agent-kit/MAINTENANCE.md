@@ -6,6 +6,7 @@
 |---|---|---|
 | Issue/PR triage | Weekly, start of cycle | Label, ask for repro, close-with-reason or queue on ROADMAP.md |
 | Dependency updates | Weekly (automated) | Merge green Dependabot PRs; batch minors |
+| Harvest of the projects' findings | When a project's version lands, and before a branch is deleted | `PROCESSES.md` P35: `python3 tools/harvest.py branches`, `scripts` and `mistakes`; findings go to ROADMAP.md with their scores |
 | Security advisories | Immediately | SECURITY.md |
 | Stale sweep | Automated | `stale.yml` (CI.md) |
 | Health check | Per PR + nightly | `make verify` in CI |

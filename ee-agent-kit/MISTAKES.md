@@ -1093,3 +1093,9 @@ What happened: Last Hit's board CI ran every version's mutation list in turn in 
 Cost: a red run on `main` and a workflow change after the merge.
 Root cause: A step whose work grows with every version kept 1 fixed limit, and a green run was read for its verdict, not for how much of its limit it used.
 Process: P2
+
+## M181 — 2026-11-12 — A branch's work copied onto `main` while its own session renumbered it
+What happened: The first harvest's listing showed `fix/v017-mistakes`, an open pull request, as the 1 branch with tested work that `main` lacked. At 22:21 UTC I applied its diff to `main` with `git apply --3way`, gave its 10 entries the numbers M171 to M180, and committed the copy. At 22:41 the branch's own session pushed the same renumbering. Between the two I had fetched `main` alone. At 22:45 I started `make verify` on the copy, with the push to `main` chained behind it. A listing of the open pull requests 16 minutes into the gate showed the branch's new head. The copy had also put the branch's devlog entry 111 lines down the log, under 4 newer entries and joined to the one above it with no blank line: the 3-way apply put it where its context matched. I stopped the gate, dropped the copy, and built the harvest's change on the branch's own head.
+Cost: 16 minutes of a health gate, and the copy's commit. Nothing was pushed. Had the gate ended first, `main` would have held a second copy of the branch's work, placed differently in 2 logs, for its pull request to meet.
+Root cause: I took a branch for finished because its listing said so 20 minutes before, and its pull request for a record, not for a session at work. P35 step 2 said how to copy a branch's work and not when a copy is the wrong way.
+Process: P35
