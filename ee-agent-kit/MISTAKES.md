@@ -978,6 +978,7 @@ Process: P5
 What happened: I changed 4 documents with a Python script inside a shell heredoc that ended at `EOF`. 1 text of the script was a shell block of a README, and that block has a heredoc of its own with the same end word. The shell ended my heredoc there. Python stopped on a syntax error, and the shell ran the rest of the script's text as commands: words of prose, a `workcenter render`, a `cp`, then a `sh` that waited for input. Each failed or did nothing. I stopped the shell and checked the 3 work trees and the read-only project: no file had changed. That check ran `git status` in the read-only project, which rewrites that repository's index file.
 Cost: 5 minutes. A text with `rm` or a `git` command in it would have run too.
 Root cause: A heredoc's end word is a promise about every line of its text, and I did not read my own text for it. P9 step 6 warns about backslashes in a heredoc and says nothing about its end.
+Process: P9
 
 ## M162 — 2026-11-12 — `cd`, and a `pgrep -f` wait loop, in a session opened outside the repository
 What happened: The session for Wyvern v0.2 opened in `/home/user`, above the workcenter's clone, so the hook that refuses a `cd` (`tools/hooks/no_cd.py`) never loaded. Twice I ran a command with a `cd` in it (into the scratch folder, then into the repository). The first was undone by the shell; the second moved the session's working folder into the repository. Nothing ran in the wrong place. I had not run `workcenter doctor` at the start, which shows both hooks as absent. Later I waited on a route with `until ... || ! pgrep -f "<the route's file>"`: the loop's own command line holds that pattern, so the loop could never see the router stop (M75). I stopped it before it mattered; the route's own background task reports its end. After the session's context was summarised, a check of 2 image sizes began with `cd /home/user/via;` a third time: absolute paths followed it, so it changed nothing.
@@ -1004,7 +1005,7 @@ Root cause: Long design sessions batch many small changes, and a script that doe
 Process: P9
 
 ## M166 — 2026-11-12 — A rebased tree force-pushed without `make verify`
-What happened: `make verify` passed on Wyvern v0.2's branch, and I pushed it. Then I rebased the branch onto `main`, which had added M158 to M161 meanwhile, renumbered my 4 entries to M162 to M165, and force-pushed within a minute, with no run on the new tree. STATUS.md still said `MISTAKES.md` M1 to M161, and `test_docs.py` fails on that. The next `make verify`, 50 minutes later, found it: 1 failed, 539 passed.
-Cost: a red tree on the remote branch for an hour, with no pull request open on it; 1 run of `make verify`.
+What happened: `make verify` passed on Wyvern v0.2's branch, and I pushed it. Then I rebased the branch onto `main`, which had added M158 to M161 meanwhile, renumbered my 4 entries to M162 to M165, and force-pushed within a minute, with no run on the new tree. STATUS.md still said `MISTAKES.md` M1 to M161, and `test_docs.py` fails on that. The rebase's conflict in this file had also lost M161's `Process: P9` line, which `main` holds; the kit checks fail on that. The next `make verify`, 50 minutes later, found the first (1 failed, 539 passed); the run after its fix found the second.
+Cost: a red tree on the remote branch for an hour, with no pull request open on it; 2 runs of `make verify`.
 Root cause: P14 step 2 chains a push behind the verdict but did not say that a rebase after the verdict makes a new tree. A renumbering felt like bookkeeping, not a change.
 Process: P14
