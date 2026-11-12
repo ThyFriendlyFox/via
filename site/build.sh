@@ -32,18 +32,21 @@ if [ -e "$out" ] && [ -n "$(ls -A "$out" 2>/dev/null)" ]; then
 fi
 
 here=$(dirname -- "$0")
-mkdir -p "$out/fonts" "$out/showcase" "$out/vendor"
+mkdir -p "$out/fonts" "$out/showcase/datasheets" "$out/vendor"
 
-# What the site serves: the examples' pictures, Motion and its license. og.html, media/ (the README's
-# pictures), the drawing's script, vercel.json and each README.md stay in the repository.
+# What the site serves: the examples' pictures, Herald's 3D model and its datasheets' first pages,
+# Motion, model-viewer and the meshopt decoder with their licenses. og.html, media/ (the README's
+# pictures), the scripts that draw, vercel.json and each README.md stay in the repository.
 for file in site.css site.js effects.js favicon.svg favicon-32.png apple-touch-icon.png og.png logo.svg \
   fonts/inter-latin-wght-normal.woff2 fonts/LICENSE \
-  showcase/herald-top.png showcase/herald-bottom.png showcase/herald-layers.png showcase/herald.png \
-  showcase/herald-schematic.png \
+  showcase/herald-top.png showcase/herald-layers.png showcase/herald.png showcase/herald-schematic.png \
+  showcase/herald.glb \
   showcase/hush.png showcase/signet.png showcase/rosetta-iso.png showcase/wyvern-iso.png showcase/agentcast.png \
-  vendor/motion-14.6.0.js vendor/MOTION-LICENSE.md; do
+  vendor/motion-14.6.0.js vendor/MOTION-LICENSE.md vendor/model-viewer-4.4.0.min.js vendor/MODEL-VIEWER-LICENSE \
+  vendor/meshopt_decoder-1.2.0.js vendor/MESHOPTIMIZER-LICENSE.md; do
   cp "$here/$file" "$out/$file"
 done
+cp "$here"/showcase/datasheets/*.png "$out/showcase/datasheets/"
 
 # A host may keep a stylesheet or a script for hours while it asks again for each page: the custom
 # domain keeps them 4 hours. Each page names them with their checksum, so a new page never runs with

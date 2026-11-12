@@ -18,16 +18,19 @@ report changes.
 
 from __future__ import annotations
 
+import hashlib
 import html
 import json
 import math
 import re
+import struct
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PROJECT = ROOT / "examples" / "fire-alarm-communicator" / "v0.1"
 REPORT = PROJECT / "build" / "gates.json"
+SHEETS = ROOT / "site" / "showcase" / "datasheets"  # first pages, from datasheets.py
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(PROJECT))
 
@@ -220,7 +223,9 @@ def main() -> int:
     for b in d.pad_boxes():
         if b.layer != "F.Cu" or b.kind == "np_thru_hole":
             continue
-        rects.append(f'<rect x="{f(b.x1)}" y="{f(b.y1)}" width="{f(b.x2 - b.x1)}" height="{f(b.y2 - b.y1)}"/>')
+        rects.append(
+            f'<rect x="{f(b.x1)}" y="{f(b.y1)}" width="{f(b.x2 - b.x1)}" height="{f(b.y2 - b.y1)}"/>'
+        )
     out.append('<g class="pads">' + "".join(rects) + "</g>")
 
     # The silkscreen's art on the front: the mark, the rules, the boxes, the words.
@@ -231,7 +236,9 @@ def main() -> int:
             continue
         if kind == "line":
             (ax, ay), (bx, by), w = item[1], item[2], item[4]
-            out.append(f'<path class="silk-line" stroke-width="{f(w)}" d="M{f(ax)} {f(ay)}L{f(bx)} {f(by)}"/>')
+            out.append(
+                f'<path class="silk-line" stroke-width="{f(w)}" d="M{f(ax)} {f(ay)}L{f(bx)} {f(by)}"/>'
+            )
         elif kind == "rect":
             (ax, ay), (bx, by), w = item[1], item[2], item[5]
             out.append(
@@ -299,6 +306,11 @@ def main() -> int:
         }
         if sheet.startswith(("http://", "https://")):
             entry["ds"] = sheet
+            # The datasheet's first page, where datasheets.py could draw it.
+            preview = SHEETS / f"{hashlib.sha1(sheet.encode()).hexdigest()[:12]}.png"
+            if preview.is_file():
+                width, height = struct.unpack(">II", preview.read_bytes()[16:24])
+                entry["dp"] = [f"showcase/datasheets/{preview.name}", width, height]
         for key, source in (("r", role), ("w", why), ("c", pins)):
             if ref in source:
                 entry[key] = source[ref]
@@ -312,17 +324,21 @@ def main() -> int:
     page = ROOT / "site" / "index.html"
     text = page.read_text(encoding="utf-8")
     new, n = re.subn(
-        r"(<!-- face:begin -->).*?(\n[ \t]*<!-- face:end -->)", lambda m: m.group(1) + "\n" + drawing + m.group(2), text, flags=re.S
+        r"(<!-- face:begin -->).*?(\n[ \t]*<!-- face:end -->)",
+        lambda m: m.group(1) + "\n" + drawing + m.group(2),
+        text,
+        flags=re.S,
     )
     if n != 1:
         print("site/index.html has no face:begin / face:end pair", file=sys.stderr)
         return 1
     page.write_text(new, encoding="utf-8")
-    counted = {k: sum(1 for e in data.values() if k in e) for k in ("ds", "r", "w", "c", "s")}
+    counted = {k: sum(1 for e in data.values() if k in e) for k in ("ds", "dp", "r", "w", "c", "s")}
     print(
         f"site/index.html: the face drawn, {len(drawing) // 1024} KB, {len(copper['segments'])} tracks, "
         f"{len(copper['vias'])} vias, {len(data)} parts in {len(payload['groups'])} groups; with a datasheet "
-        f"{counted['ds']}, a problem {counted['r']}, a reason {counted['w']}, pins {counted['c']}, a deck {counted['s']}"
+        f"{counted['ds']} ({counted['dp']} with its first page), a problem {counted['r']}, a reason {counted['w']}, "
+        f"pins {counted['c']}, a deck {counted['s']}"
     )
     return 0
 

@@ -6,7 +6,7 @@
   const root = document.documentElement;
   root.dataset.motionReady = "1";
 
-  // ---- the example's parts, a few at a time, each labelled: works with or without Motion --------
+  // ---- the example's parts, a label every 3 s: works with or without Motion ---------------------
   const M = window.Motion;
   const moving = root.classList.contains("motion") && M;
   if (root.classList.contains("motion") && !M) root.classList.remove("motion");
@@ -15,27 +15,19 @@
   if (tour && partsData) {
     const { groups, parts } = JSON.parse(partsData.textContent);
     const NS = "http://www.w3.org/2000/svg";
+    const STEP = 3000;
+    const ease = [0.2, 0, 0, 1];
     const face = tour.querySelector("[data-face]");
     const svg = face.querySelector("svg");
     const lists = { left: tour.querySelector('[data-cards="left"]'), right: tour.querySelector('[data-cards="right"]') };
     const leaders = tour.querySelector("[data-leaders]");
-    const title = tour.querySelector("[data-tour-title]");
-    const count = tour.querySelector("[data-tour-count]");
-    const play = tour.querySelector("[data-tour-play]");
-    const total = Object.keys(parts).length;
-    const first = [];
     const groupOf = {};
-    let before = 0;
-    groups.forEach((g, i) => {
-      first[i] = before;
-      before += g.p.length;
-      for (const ref of g.p) groupOf[ref] = i;
-    });
+    groups.forEach((g, i) => g.p.forEach((ref) => (groupOf[ref] = i)));
     const middle = svg.viewBox.baseVal.x + svg.viewBox.baseVal.width / 2;
     const body = (ref) => svg.querySelector(`.body[data-ref="${ref}"]`);
     let at = 0;
-    let playing = Boolean(moving); // the labels turn by themselves only where motion is welcome
-    let hovered = false;
+    let order = [];
+    let shown = 0;
     let seen = false;
     let timer = 0;
 
@@ -43,8 +35,27 @@
     function card(ref, n) {
       const p = parts[ref];
       const el = document.createElement("article");
-      el.className = "part-card";
+      el.className = "part-card is-waiting";
       el.dataset.ref = ref;
+      // Stacked under the board, the labels come in their turn's order, top to bottom.
+      el.style.order = n;
+      if (p.dp) {
+        el.classList.add("has-sheet");
+        const sheet = document.createElement("a");
+        sheet.className = "part-sheet";
+        sheet.href = p.ds;
+        sheet.target = "_blank";
+        sheet.rel = "noopener";
+        const img = document.createElement("img");
+        img.src = p.dp[0];
+        img.width = p.dp[1];
+        img.height = p.dp[2];
+        img.loading = "lazy";
+        img.alt = `The first page of the ${ref} datasheet`;
+        sheet.append(img);
+        el.append(sheet);
+      }
+      const text = document.createElement("div");
       const head = document.createElement("header");
       const num = document.createElement("span");
       num.className = "part-n";
@@ -59,13 +70,13 @@
       what.className = "part-d";
       what.textContent = [p.d, p.fp].filter(Boolean).join(" · ");
       const rows = document.createElement("dl");
-      const row = (label, text) => {
-        if (!text) return;
+      const row = (label, value) => {
+        if (!value) return;
         const div = document.createElement("div");
         const dt = document.createElement("dt");
         const dd = document.createElement("dd");
         dt.textContent = label;
-        dd.textContent = text;
+        dd.textContent = value;
         div.append(dt, dd);
         rows.append(div);
       };
@@ -74,7 +85,7 @@
       row("Why this part", p.w);
       row("Its terminals", p.c);
       if (p.s) row("Simulated", p.s.slice(0, 2).join("\n") + (p.s.length > 2 ? `\nand ${p.s.length - 2} more decks` : ""));
-      el.append(head, what, rows);
+      text.append(head, what, rows);
       if (p.ds) {
         const link = document.createElement("a");
         link.className = "part-ds";
@@ -82,27 +93,30 @@
         link.target = "_blank";
         link.rel = "noopener";
         link.textContent = "Datasheet";
-        el.append(link);
+        text.append(link);
       }
+      el.append(text);
       return el;
     }
 
-    // A leader from each part to its label, where the labels stand beside the board.
-    function lead(animated) {
+    // A leader in 2 segments: a diagonal from the part, then a break to a horizontal into its label,
+    // where the labels stand beside the board. Under the board the numbers pair them instead.
+    function lead(fresh) {
       const s = tour.getBoundingClientRect();
       const f = face.getBoundingClientRect();
       leaders.setAttribute("viewBox", `0 0 ${s.width} ${s.height}`);
       leaders.replaceChildren();
-      for (const el of tour.querySelectorAll(".part-card")) {
+      for (const el of tour.querySelectorAll(".part-card:not(.is-waiting)")) {
         const c = el.getBoundingClientRect();
         const onLeft = c.right <= f.left + 2;
-        if (!onLeft && c.left < f.right - 2) continue; // stacked under the board: the numbers pair them
+        if (!onLeft && c.left < f.right - 2) continue;
         const r = body(el.dataset.ref).getBoundingClientRect();
         const px = r.left + r.width / 2 - s.left;
         const py = r.top + r.height / 2 - s.top;
-        const ay = c.top + 20 - s.top;
+        const ay = c.top + 21 - s.top;
         const ax = (onLeft ? c.right + 4 : c.left - 4) - s.left;
-        const ex = (onLeft ? f.left - 12 : f.right + 12) - s.left;
+        const room = Math.max(Math.abs(ax - px) - 24, 0);
+        const ex = px + (onLeft ? -1 : 1) * Math.min(Math.abs(ay - py), room);
         const path = document.createElementNS(NS, "path");
         path.setAttribute("d", `M${px} ${py} L${ex} ${ay} L${ax} ${ay}`);
         path.setAttribute("pathLength", "1");
@@ -111,29 +125,24 @@
         dot.setAttribute("cy", py);
         dot.setAttribute("r", 2.5);
         leaders.append(path, dot);
-      }
-      if (animated && moving) {
-        M.animate(leaders.querySelectorAll("path"), { pathLength: [0, 1] }, { delay: M.stagger(0.08, { startDelay: 0.1 }), duration: 0.55, ease: [0.2, 0, 0, 1] });
+        if (fresh === el.dataset.ref && moving) {
+          M.animate(path, { pathLength: [0, 1] }, { duration: 0.6, ease });
+          M.animate(dot, { opacity: [0, 1] }, { duration: 0.3 });
+        }
       }
     }
 
-    function schedule() {
-      clearTimeout(timer);
-      if (playing && seen && !hovered && !document.hidden) timer = setTimeout(() => show(at + 1, true), 6500);
-    }
-
-    function show(i, animated) {
+    // A group's labels go in place at once, unseen, so none moves when the next appears: each to the
+    // side of the board its part sits on, at most half to a side, each side from the top down.
+    function place(i) {
       at = (i + groups.length) % groups.length;
-      const g = groups[at];
-      title.textContent = g.t;
-      count.textContent = `parts ${first[at] + 1} to ${first[at] + g.p.length} of ${total}`;
+      shown = 0;
       for (const el of svg.querySelectorAll(".body.on")) el.classList.remove("on");
       for (const el of svg.querySelectorAll(".part-tag")) el.remove();
-      // Each part's label goes to the side of the board it sits on, at most half of them to a side,
-      // and each side in the parts' order from the top, so no 2 leaders cross.
-      const placed = g.p.map((ref) => {
+      leaders.replaceChildren();
+      const placed = groups[at].p.map((ref, k) => {
         const b = body(ref).getBBox();
-        return { ref, x: b.x + b.width / 2, y: b.y + b.height / 2 };
+        return { ref, n: k + 1, x: b.x + b.width / 2, y: b.y + b.height / 2 };
       });
       const half = Math.ceil(placed.length / 2);
       const left = placed.filter((p) => p.x < middle).sort((u, v) => u.x - v.x);
@@ -142,57 +151,55 @@
       while (right.length > half) left.push(right.pop());
       left.sort((u, v) => u.y - v.y);
       right.sort((u, v) => u.y - v.y);
-      [...left, ...right].forEach((p, k) => (p.n = k + 1));
       lists.left.replaceChildren(...left.map((p) => card(p.ref, p.n)));
       lists.right.replaceChildren(...right.map((p) => card(p.ref, p.n)));
-      for (const p of placed) {
-        body(p.ref).classList.add("on");
-        const tag = document.createElementNS(NS, "g");
-        tag.setAttribute("class", "part-tag");
-        const c = document.createElementNS(NS, "circle");
-        c.setAttribute("cx", p.x);
-        c.setAttribute("cy", p.y);
-        c.setAttribute("r", 1.5);
-        const t = document.createElementNS(NS, "text");
-        t.setAttribute("x", p.x);
-        t.setAttribute("y", p.y + 0.68);
-        t.textContent = p.n;
-        tag.append(c, t);
-        svg.append(tag);
-      }
-      lead(animated);
+      order = placed;
+    }
+
+    // The next label of the group: its card, its part lit, its number on the board, its leader.
+    function reveal(animated) {
+      const p = order[shown];
+      shown += 1;
+      const el = tour.querySelector(`.part-card[data-ref="${p.ref}"]`);
+      el.classList.remove("is-waiting");
+      body(p.ref).classList.add("on");
+      const tag = document.createElementNS(NS, "g");
+      tag.setAttribute("class", "part-tag");
+      const c = document.createElementNS(NS, "circle");
+      c.setAttribute("cx", p.x);
+      c.setAttribute("cy", p.y);
+      c.setAttribute("r", 1.5);
+      const t = document.createElementNS(NS, "text");
+      t.setAttribute("x", p.x);
+      t.setAttribute("y", p.y + 0.68);
+      t.textContent = p.n;
+      tag.append(c, t);
+      svg.append(tag);
+      lead(animated ? p.ref : null);
       if (animated && moving) {
-        M.animate(tour.querySelectorAll(".part-card"), { opacity: [0, 1], y: [8, 0] }, { delay: M.stagger(0.08), duration: 0.4, ease: [0.2, 0, 0, 1] });
-        M.animate(svg.querySelectorAll(".part-tag"), { scale: [0, 1] }, { delay: M.stagger(0.08), duration: 0.35 });
+        M.animate(el, { opacity: [0, 1], y: [8, 0] }, { duration: 0.45, ease });
+        M.animate(tag, { scale: [0, 1] }, { duration: 0.35 });
       }
+    }
+
+    function tick() {
+      if (shown >= order.length) place(at + 1);
+      reveal(true);
       schedule();
     }
 
-    function setPlaying(on) {
-      playing = on;
-      play.textContent = on ? "Pause" : "Play";
-      // A screen reader hears each new group only when the reader turns the labels, not every 6.5 s.
-      title.parentElement.setAttribute("aria-live", on ? "off" : "polite");
-      schedule();
+    // The labels turn by themselves while the board is in view and the page is shown.
+    function schedule() {
+      clearTimeout(timer);
+      if (seen && !document.hidden) timer = setTimeout(tick, STEP);
     }
 
-    tour.querySelector("[data-tour-prev]").addEventListener("click", () => show(at - 1, true));
-    tour.querySelector("[data-tour-next]").addEventListener("click", () => show(at + 1, true));
-    play.addEventListener("click", () => setPlaying(!playing));
+    // A click on a part shows its group whole; the next group follows 3 s later.
     svg.addEventListener("click", (e) => {
       const hit = e.target.closest(".body");
       if (!hit) return;
-      setPlaying(false);
-      show(groupOf[hit.dataset.ref], true);
-    });
-    tour.addEventListener("pointerenter", (e) => {
-      if (e.pointerType !== "mouse") return;
-      hovered = true;
-      schedule();
-    });
-    tour.addEventListener("pointerleave", (e) => {
-      if (e.pointerType !== "mouse") return;
-      hovered = false;
+      place(groupOf[hit.dataset.ref]);
+      while (shown < order.length) reveal(false);
       schedule();
     });
     document.addEventListener("visibilitychange", schedule);
@@ -203,25 +210,58 @@
       },
       { threshold: 0.35 },
     ).observe(tour);
-    new ResizeObserver(() => lead(false)).observe(tour);
-    setPlaying(playing);
-    show(0, false);
+    new ResizeObserver(() => lead(null)).observe(tour);
+    place(0);
+    reveal(false);
   }
 
-  // The front and the back of the board, one button.
-  const flip = document.querySelector("[data-flip]");
-  if (flip) {
-    const card = document.querySelector(flip.getAttribute("aria-controls") && `#${flip.getAttribute("aria-controls")}`);
-    flip.addEventListener("click", () => {
-      const back = flip.getAttribute("aria-pressed") !== "true";
-      flip.setAttribute("aria-pressed", String(back));
-      if (!card) return;
-      if (moving) {
-        M.animate(card, { rotateY: back ? 180 : 0 }, { type: "spring", stiffness: 120, damping: 18 });
-      } else {
-        card.style.transform = back ? "rotateY(180deg)" : "";
-      }
-    });
+  // ---- the board in 3D: the viewer and the model load only as the reader nears them --------------
+  // The page loads with KiCad's picture alone. 600 px before the picture comes into view, the
+  // viewer (model-viewer, 1 MB) and the model (0.6 MB) load, and the model takes the picture's place.
+  // Without WebGL, or if either fails to load, the picture stays.
+  const board3d = document.querySelector("[data-board3d]");
+  if (board3d && "IntersectionObserver" in window) {
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const script = (src) =>
+      new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = src;
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.append(s);
+      });
+    const near = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return;
+        near.disconnect();
+        script(board3d.dataset.viewerSrc)
+          .then(() => customElements.whenDefined("model-viewer"))
+          .then(() => {
+            // The model's meshes are meshopt-compressed; model-viewer turns its decoder on from here.
+            customElements.get("model-viewer").meshoptDecoderLocation = board3d.dataset.decoderSrc;
+            const viewer = document.createElement("model-viewer");
+            const settings = {
+              src: board3d.dataset.src,
+              alt: "Herald in 3D, to turn with a finger or the pointer",
+              "camera-controls": "",
+              "camera-orbit": "0deg 50deg 78%",
+              "touch-action": "pan-y",
+              "interaction-prompt": "none",
+              "environment-image": "neutral",
+              exposure: "1.05",
+              "shadow-intensity": "0.7",
+              loading: "eager",
+            };
+            if (!still) Object.assign(settings, { "auto-rotate": "", "auto-rotate-delay": "0", "rotation-per-second": "12deg" });
+            for (const [name, value] of Object.entries(settings)) viewer.setAttribute(name, value);
+            viewer.addEventListener("load", () => board3d.classList.add("is-live"), { once: true });
+            board3d.append(viewer);
+          })
+          .catch(() => {});
+      },
+      { rootMargin: "600px 0px" },
+    );
+    near.observe(board3d);
   }
 
   if (!moving) return;

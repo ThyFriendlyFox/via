@@ -67,3 +67,8 @@ there.
    fault, and its caption calls it a test circuit.
 7. A claim still needs its evidence (`PROCESSES.md` P5). Marketing copy
    claims nothing a run, a file or a test does not show.
+8. Justify a paragraph to its column, with hyphenation on. A part's label
+   on the example's board is too narrow for it, and stays ragged.
+
+The hero's headline is the owner's wording of 2026-11-12, in title case on
+3 lines: "Circuit Boards / From / AI". It is the one exception to rule 2.
