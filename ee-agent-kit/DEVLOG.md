@@ -39,6 +39,30 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-12 — Every part of Herald labelled; a stylesheet that outlived its page
+
+The owner found the site's 5 signals made up: paths I drew from part to
+part, which were not the board's tracks. They asked for every part
+labelled with a leader instead, a few at a time, with its documents and
+what Via gathered on it. The page now labels all 127 parts, 4 or fewer at
+a time, in the design file's sections. Each label holds only what Via's
+files hold: the design file's value, footprint and nets, KiCad's
+description and datasheet, the README's reason and the problem the part
+answers, and each deck in the gates' report that varies it, with what it
+measured at every corner. 19 parts have a datasheet, 26 a problem, 16 a
+reason, 19 a deck. The rest say what the design file says.
+
+The same screenshot showed Herald's board in the old green. The custom
+domain's cache keeps a stylesheet 4 hours and asks again for each page,
+so the phone ran the new page with the old stylesheet (M157). I had
+fetched the Vercel address and not the one the canonical link names.
+`site/build.sh` now names each stylesheet and script with its checksum,
+and a test holds it.
+
+Evidence: `make verify` and `tests/test_docs.py` at the commit; the tour
+drawn in Chromium at 1440, 1280 and 390 px, light and dark, no console
+error; the old `build.sh` writes no version, so the new test fails on it.
+
 ## 2026-11-12 — The branches sorted; Herald is the site's example
 
 The owner asked for the branches consolidated and for more examples on

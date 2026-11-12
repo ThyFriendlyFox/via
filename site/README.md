@@ -34,17 +34,17 @@ empty.
 | `404.html` | The page a host serves for an unknown path. |
 | `site.css` | The look: the colour tokens for light and dark, the type scale, every component. `media/hero.html` takes its cards from it. |
 | `site.js` | The theme button and the copy button. |
-| `effects.js` | The motion, with Motion: the logo draws itself, sections rise into view, runs type out, the example's copper sweeps in a layer at a time and its signals light their path on the board, the board leans toward the pointer and turns over. The head's script adds `motion` to `<html>` unless the reader asked for reduced motion or the page is a capture (`?shot=`); without Motion every element sits where it ends. The signal buttons and the turn-over button work without Motion. |
+| `effects.js` | The motion, with Motion: the logo draws itself, sections rise into view, runs type out, the example's copper sweeps in a layer at a time, its parts' labels go by 4 or fewer at a time with a leader from each part, the board leans toward the pointer and turns over. The head's script adds `motion` to `<html>` unless the reader asked for reduced motion or the page is a capture (`?shot=`); without Motion every element sits where it ends, and the labels turn only when the reader turns them. The labels' buttons, a click on a part and the turn-over button work without Motion. |
 | `vendor/` | Motion 14.6.0 (motion.dev), its UMD build from the npm package `motion`, and its MIT license. SHA256 `5cd165acfdf8e14ca5358c3d876142e5465419ee0d100bcf195da474cf8db2bf`. |
 | `logo.svg` | The Via wordmark: V, I and A as copper, a pad on each and traces between. The header, the footer, the closing section and `og.html` draw it inline. |
-| `showcase/` | The examples' pictures: KiCad's 3D renders of Herald, the example the page shows (`herald-top.png`, `herald-bottom.png`) and its layers (`herald-layers.png`); a card for each example (`herald.png`, `hush.png`, `signet.png`, `rosetta-iso.png`, `wyvern-iso.png`) and Agentcast's (`agentcast.png`, from its repository's v0.5). `draw_face.py` writes Herald's board drawing into `index.html` between `face:begin` and `face:end`. |
+| `showcase/` | The examples' pictures: KiCad's 3D renders of Herald, the example the page shows (`herald-top.png`, `herald-bottom.png`) and its layers (`herald-layers.png`); a card for each example (`herald.png`, `hush.png`, `signet.png`, `rosetta-iso.png`, `wyvern-iso.png`) and Agentcast's (`agentcast.png`, from its repository's v0.5). `draw_face.py` writes Herald's board drawing into `index.html` between `face:begin` and `face:end`, with the label of each part as JSON (`#herald-parts`). |
 | `favicon.svg` | The icon: the wordmark of `logo.svg`, centred in a square. It follows the system's colour scheme. |
 | `favicon-32.png`, `apple-touch-icon.png` | The icon as PNG, for a browser that takes no SVG icon and for a phone's home screen. |
 | `og.html` | The page the image below is a capture of. |
 | `og.png` | The Open Graph image, 1280 x 640. Also the image for the repository's social preview. |
 | `media/` | The pictures of the root `README.md`, with the page its first picture is a capture of. `media/README.md` shows each and the command that draws it. The site serves 2 of them, `schematic.png` and `board.png`: its board section shows them. |
 | `fonts/` | Inter, the latin file, with its license. |
-| `build.sh` | Makes the folder a host serves. |
+| `build.sh` | Makes the folder a host serves. It names `site.css`, `site.js` and `effects.js` with their checksum (`site.css?v=...`): the custom domain's cache keeps them 4 hours and asks again for each page, so a page and its stylesheet always come from 1 build. |
 | `vercel.json` | The Vercel project's build command, output folder and headers. |
 
 ## The runs on the page
@@ -57,10 +57,12 @@ changes, the test names the line, and the page gets the new text.
 ## The examples' pictures
 
 Run each from the repository's root, with KiCad 10. Herald's drawing comes
-from its design file and its routed board; draw it again when either
-changes:
+from its design file and its routed board, and its parts' labels from the
+design file, KiCad's library, its README and the report of its gates. Run
+the gates first, then draw it again when any of them changes:
 
 ```sh
+workcenter gates examples/fire-alarm-communicator/v0.1
 python3 site/showcase/draw_face.py
 ```
 

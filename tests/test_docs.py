@@ -306,13 +306,20 @@ def test_the_site_builds_for_an_address_and_without_one(tmp_path):
     assert '<meta property="og:image" content="https://example.org/via/og.png">' in page
     assert '<base href="https://example.org/via/">' in (served / "404.html").read_text(encoding="utf-8")
     assert (served / "og.png").is_file() and (served / "fonts" / "LICENSE").is_file()
+    # A host may keep a stylesheet or a script for hours while it asks again for the page (M157): the
+    # built page names each with its checksum, so a new page never runs with the last build's.
+    for name in ("site.css", "site.js", "effects.js"):
+        named = re.findall(rf'"{re.escape(name)}\?v=(\d+)"', page)
+        cksum = subprocess.run(["cksum"], input=(SITE / name).read_bytes(), capture_output=True, check=True)
+        assert named == [cksum.stdout.split()[0].decode()], f"the built page names {name} with no version"
     looked_up = 0
     for name in ("index.html", "404.html"):
         assert "%ORIGIN%" not in (served / name).read_text(encoding="utf-8")
         for link in links_of(served / name):
             if not re.match(r"https?://|#|\./$", link):
                 looked_up += 1
-                assert (served / link).is_file(), f"{name} names {link}, and build.sh does not copy it"
+                path = link.split("?")[0]
+                assert (served / path).is_file(), f"{name} names {link}, and build.sh does not copy it"
     assert looked_up >= 10
 
     plain = tmp_path / "plain"

@@ -949,3 +949,9 @@ What happened: To add 2 cards to the site's page and 2 pictures to `site/build.s
 Cost: 1 diff read back; no wrong text reached a commit.
 Root cause: The change spanned 2 files, and I reached for a script without reading P9 first.
 Process: P9
+
+## M157 — 2026-11-12 — A new page with the stylesheet a phone kept from before
+What happened: I changed `site/site.css` and `site/effects.js` under the same names and merged. The site's custom domain serves it through Cloudflare, which tells a browser to keep a stylesheet or a script 4 hours (`max-age=14400`) and to ask again for the page each time. The owner's phone loaded the new page with the old stylesheet: Herald's board in the green of the page before. I had fetched the Vercel address after the deploy, not the custom domain that the canonical link names, and I read no cache header.
+Cost: the owner saw a page half new and half old; a change to `site/build.sh` and a test.
+Root cause: A file the page names kept its name when its content changed, and P32 step 3 fetched only the host's own address, without the headers that would have shown the 4 hours.
+Process: P32

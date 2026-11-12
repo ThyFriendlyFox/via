@@ -6,66 +6,206 @@
   const root = document.documentElement;
   root.dataset.motionReady = "1";
 
-  // ---- the example's signals: works with or without Motion -------------------------------------
-  const face = document.querySelector("[data-face]");
-  const tabs = [...document.querySelectorAll("[data-mode]")];
-  const readout = document.querySelector("[data-readout]");
+  // ---- the example's parts, a few at a time, each labelled: works with or without Motion --------
   const M = window.Motion;
   const moving = root.classList.contains("motion") && M;
   if (root.classList.contains("motion") && !M) root.classList.remove("motion");
-
-  function choose(tab, animated) {
-    const d = tab.dataset;
-    for (const t of tabs) {
-      const on = t === tab;
-      t.setAttribute("aria-selected", String(on));
-      t.tabIndex = on ? 0 : -1;
-    }
-    if (readout) {
-      for (const field of readout.querySelectorAll("[data-f]")) {
-        field.textContent = d[field.dataset.f] || "";
-      }
-      readout.style.setProperty("--mode", d.color);
-    }
-    if (!face) return;
-    face.style.setProperty("--mode", d.color);
-    face.dataset.active = d.mode;
-    // The status light the signal turns on lights in the signal's colour.
-    for (const led of face.querySelectorAll("[data-led]")) {
-      const on = led.dataset.led === d.mode;
-      led.classList.toggle("lit", on);
-      if (animated && moving && on) M.animate(led, { scale: [0.6, 1.25, 1] }, { duration: 0.5 });
-    }
-    // The path the signal takes, drawn from where it enters to where it goes.
-    for (const path of face.querySelectorAll("[data-route]")) {
-      const on = path.dataset.route.split(" ").includes(d.mode);
-      path.classList.toggle("on", on);
-      if (animated && moving && on) {
-        M.animate(path, { pathLength: [0, 1] }, { duration: 0.9, ease: [0.2, 0, 0, 1] });
-      }
-    }
-    for (const part of face.querySelectorAll("[data-part]")) {
-      const on = part.dataset.part.split(" ").includes(d.mode);
-      part.classList.toggle("on", on);
-    }
-    if (animated && moving && readout) {
-      M.animate(readout.querySelectorAll("[data-f]"), { opacity: [0, 1], y: [6, 0] }, { delay: M.stagger(0.04), duration: 0.35 });
-    }
-  }
-
-  if (tabs.length) {
-    tabs.forEach((tab, i) => {
-      tab.addEventListener("click", () => choose(tab, true));
-      tab.addEventListener("keydown", (e) => {
-        const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
-        if (!step) return;
-        e.preventDefault();
-        const next = tabs[(i + step + tabs.length) % tabs.length];
-        next.focus();
-        choose(next, true);
-      });
+  const tour = document.querySelector("[data-tour]");
+  const partsData = document.getElementById("herald-parts");
+  if (tour && partsData) {
+    const { groups, parts } = JSON.parse(partsData.textContent);
+    const NS = "http://www.w3.org/2000/svg";
+    const face = tour.querySelector("[data-face]");
+    const svg = face.querySelector("svg");
+    const lists = { left: tour.querySelector('[data-cards="left"]'), right: tour.querySelector('[data-cards="right"]') };
+    const leaders = tour.querySelector("[data-leaders]");
+    const title = tour.querySelector("[data-tour-title]");
+    const count = tour.querySelector("[data-tour-count]");
+    const play = tour.querySelector("[data-tour-play]");
+    const total = Object.keys(parts).length;
+    const first = [];
+    const groupOf = {};
+    let before = 0;
+    groups.forEach((g, i) => {
+      first[i] = before;
+      before += g.p.length;
+      for (const ref of g.p) groupOf[ref] = i;
     });
-    choose(tabs.find((t) => t.getAttribute("aria-selected") === "true") || tabs[0], false);
+    const middle = svg.viewBox.baseVal.x + svg.viewBox.baseVal.width / 2;
+    const body = (ref) => svg.querySelector(`.body[data-ref="${ref}"]`);
+    let at = 0;
+    let playing = Boolean(moving); // the labels turn by themselves only where motion is welcome
+    let hovered = false;
+    let seen = false;
+    let timer = 0;
+
+    // A part's label: what the page's data holds on it, the rows it has and no others.
+    function card(ref, n) {
+      const p = parts[ref];
+      const el = document.createElement("article");
+      el.className = "part-card";
+      el.dataset.ref = ref;
+      const head = document.createElement("header");
+      const num = document.createElement("span");
+      num.className = "part-n";
+      num.textContent = n;
+      const name = document.createElement("b");
+      name.textContent = ref;
+      const value = document.createElement("span");
+      value.className = "part-v";
+      value.textContent = p.v;
+      head.append(num, name, value);
+      const what = document.createElement("p");
+      what.className = "part-d";
+      what.textContent = [p.d, p.fp].filter(Boolean).join(" · ");
+      const rows = document.createElement("dl");
+      const row = (label, text) => {
+        if (!text) return;
+        const div = document.createElement("div");
+        const dt = document.createElement("dt");
+        const dd = document.createElement("dd");
+        dt.textContent = label;
+        dd.textContent = text;
+        div.append(dt, dd);
+        rows.append(div);
+      };
+      row("Nets", p.n);
+      row("The problem it answers", p.r);
+      row("Why this part", p.w);
+      row("Its terminals", p.c);
+      if (p.s) row("Simulated", p.s.slice(0, 2).join("\n") + (p.s.length > 2 ? `\nand ${p.s.length - 2} more decks` : ""));
+      el.append(head, what, rows);
+      if (p.ds) {
+        const link = document.createElement("a");
+        link.className = "part-ds";
+        link.href = p.ds;
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.textContent = "Datasheet";
+        el.append(link);
+      }
+      return el;
+    }
+
+    // A leader from each part to its label, where the labels stand beside the board.
+    function lead(animated) {
+      const s = tour.getBoundingClientRect();
+      const f = face.getBoundingClientRect();
+      leaders.setAttribute("viewBox", `0 0 ${s.width} ${s.height}`);
+      leaders.replaceChildren();
+      for (const el of tour.querySelectorAll(".part-card")) {
+        const c = el.getBoundingClientRect();
+        const onLeft = c.right <= f.left + 2;
+        if (!onLeft && c.left < f.right - 2) continue; // stacked under the board: the numbers pair them
+        const r = body(el.dataset.ref).getBoundingClientRect();
+        const px = r.left + r.width / 2 - s.left;
+        const py = r.top + r.height / 2 - s.top;
+        const ay = c.top + 20 - s.top;
+        const ax = (onLeft ? c.right + 4 : c.left - 4) - s.left;
+        const ex = (onLeft ? f.left - 12 : f.right + 12) - s.left;
+        const path = document.createElementNS(NS, "path");
+        path.setAttribute("d", `M${px} ${py} L${ex} ${ay} L${ax} ${ay}`);
+        path.setAttribute("pathLength", "1");
+        const dot = document.createElementNS(NS, "circle");
+        dot.setAttribute("cx", px);
+        dot.setAttribute("cy", py);
+        dot.setAttribute("r", 2.5);
+        leaders.append(path, dot);
+      }
+      if (animated && moving) {
+        M.animate(leaders.querySelectorAll("path"), { pathLength: [0, 1] }, { delay: M.stagger(0.08, { startDelay: 0.1 }), duration: 0.55, ease: [0.2, 0, 0, 1] });
+      }
+    }
+
+    function schedule() {
+      clearTimeout(timer);
+      if (playing && seen && !hovered && !document.hidden) timer = setTimeout(() => show(at + 1, true), 6500);
+    }
+
+    function show(i, animated) {
+      at = (i + groups.length) % groups.length;
+      const g = groups[at];
+      title.textContent = g.t;
+      count.textContent = `parts ${first[at] + 1} to ${first[at] + g.p.length} of ${total}`;
+      for (const el of svg.querySelectorAll(".body.on")) el.classList.remove("on");
+      for (const el of svg.querySelectorAll(".part-tag")) el.remove();
+      // Each part's label goes to the side of the board it sits on, at most half of them to a side,
+      // and each side in the parts' order from the top, so no 2 leaders cross.
+      const placed = g.p.map((ref) => {
+        const b = body(ref).getBBox();
+        return { ref, x: b.x + b.width / 2, y: b.y + b.height / 2 };
+      });
+      const half = Math.ceil(placed.length / 2);
+      const left = placed.filter((p) => p.x < middle).sort((u, v) => u.x - v.x);
+      const right = placed.filter((p) => p.x >= middle).sort((u, v) => v.x - u.x);
+      while (left.length > half) right.push(left.pop());
+      while (right.length > half) left.push(right.pop());
+      left.sort((u, v) => u.y - v.y);
+      right.sort((u, v) => u.y - v.y);
+      [...left, ...right].forEach((p, k) => (p.n = k + 1));
+      lists.left.replaceChildren(...left.map((p) => card(p.ref, p.n)));
+      lists.right.replaceChildren(...right.map((p) => card(p.ref, p.n)));
+      for (const p of placed) {
+        body(p.ref).classList.add("on");
+        const tag = document.createElementNS(NS, "g");
+        tag.setAttribute("class", "part-tag");
+        const c = document.createElementNS(NS, "circle");
+        c.setAttribute("cx", p.x);
+        c.setAttribute("cy", p.y);
+        c.setAttribute("r", 1.5);
+        const t = document.createElementNS(NS, "text");
+        t.setAttribute("x", p.x);
+        t.setAttribute("y", p.y + 0.68);
+        t.textContent = p.n;
+        tag.append(c, t);
+        svg.append(tag);
+      }
+      lead(animated);
+      if (animated && moving) {
+        M.animate(tour.querySelectorAll(".part-card"), { opacity: [0, 1], y: [8, 0] }, { delay: M.stagger(0.08), duration: 0.4, ease: [0.2, 0, 0, 1] });
+        M.animate(svg.querySelectorAll(".part-tag"), { scale: [0, 1] }, { delay: M.stagger(0.08), duration: 0.35 });
+      }
+      schedule();
+    }
+
+    function setPlaying(on) {
+      playing = on;
+      play.textContent = on ? "Pause" : "Play";
+      // A screen reader hears each new group only when the reader turns the labels, not every 6.5 s.
+      title.parentElement.setAttribute("aria-live", on ? "off" : "polite");
+      schedule();
+    }
+
+    tour.querySelector("[data-tour-prev]").addEventListener("click", () => show(at - 1, true));
+    tour.querySelector("[data-tour-next]").addEventListener("click", () => show(at + 1, true));
+    play.addEventListener("click", () => setPlaying(!playing));
+    svg.addEventListener("click", (e) => {
+      const hit = e.target.closest(".body");
+      if (!hit) return;
+      setPlaying(false);
+      show(groupOf[hit.dataset.ref], true);
+    });
+    tour.addEventListener("pointerenter", (e) => {
+      if (e.pointerType !== "mouse") return;
+      hovered = true;
+      schedule();
+    });
+    tour.addEventListener("pointerleave", (e) => {
+      if (e.pointerType !== "mouse") return;
+      hovered = false;
+      schedule();
+    });
+    document.addEventListener("visibilitychange", schedule);
+    new IntersectionObserver(
+      (entries) => {
+        seen = entries.some((e) => e.isIntersecting);
+        schedule();
+      },
+      { threshold: 0.35 },
+    ).observe(tour);
+    new ResizeObserver(() => lead(false)).observe(tour);
+    setPlaying(playing);
+    show(0, false);
   }
 
   // The front and the back of the board, one button.

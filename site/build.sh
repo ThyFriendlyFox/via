@@ -45,11 +45,19 @@ for file in site.css site.js effects.js favicon.svg favicon-32.png apple-touch-i
   cp "$here/$file" "$out/$file"
 done
 
+# A host may keep a stylesheet or a script for hours while it asks again for each page: the custom
+# domain keeps them 4 hours. Each page names them with their checksum, so a new page never runs with
+# the last build's stylesheet.
+css=$(cksum <"$here/site.css" | cut -d ' ' -f 1)
+js=$(cksum <"$here/site.js" | cut -d ' ' -f 1)
+fx=$(cksum <"$here/effects.js" | cut -d ' ' -f 1)
+version="s|href=\"site.css\"|href=\"site.css?v=$css\"|; s|src=\"site.js\"|src=\"site.js?v=$js\"|; s|src=\"effects.js\"|src=\"effects.js?v=$fx\"|"
+
 for page in index.html 404.html; do
   if [ -n "$origin" ]; then
-    sed "s|%ORIGIN%|$origin|g" "$here/$page" >"$out/$page"
+    sed "s|%ORIGIN%|$origin|g; $version" "$here/$page" >"$out/$page"
   else
-    sed '/%ORIGIN%/d' "$here/$page" >"$out/$page"
+    sed "/%ORIGIN%/d; $version" "$here/$page" >"$out/$page"
   fi
 done
 
