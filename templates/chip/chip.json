@@ -20,7 +20,7 @@
   "limits": {
     "utilization": {
       "max": 0.6,
-      "source": "fill: where the limit comes from: a routed fixture, a shuttle's guide"
+      "source": "fill: where the limit comes from: the process table's placement density (pdks/sky130A.json), a shuttle's guide, or the spec"
     }
   }
 }

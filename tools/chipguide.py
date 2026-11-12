@@ -11,9 +11,10 @@ module, which reads what is on disk and names the first step that is not done:
     READ       .claude/skills/chip-gates/SKILL.md, "Steps"
     DONE WHEN  the last line starts with GREEN
 
-The order: chip.json, the engines and the process kit, the RTL, a bench, the gates' report (run again
-when a file a gate reads is newer, or when the report is from a run without an engine), the first
-failure of the first red gate, the first warning of a GREEN run. A failure or a warning is answered
+The order: chip.json, the engines and the process kit, the RTL, a bench, a file that is still the
+template's example, the gates' report (run again when a file a gate reads is newer, or when the report
+is from a run without an engine), the first failure of the first red gate, the first warning of a GREEN
+run, a README that still holds the template's `fill:` lines. A failure or a warning is answered
 from HINTS: the fix this workcenter's skills give for that kind of line. Most lines of the chip gates
 say what to do themselves; the hint adds where to read.
 
@@ -122,7 +123,7 @@ HINTS: list[tuple[str, str, str]] = [
     (
         r"^sta: chip\.json names no limits\.clock_skew_ns",
         "Name a limit for the clock skew in chip.json, with its source.",
-        f'{DESIGN}, "chip.json"',
+        f'{DESIGN}, "The 2 limits"',
     ),
     (
         r"^sta: .*pins break a limit",
@@ -169,6 +170,17 @@ def hint(gate: str, line: str) -> tuple[str, str]:
 def is_chip(path: Path) -> bool:
     """Whether a path names a chip project: a folder that holds a chip.json, or that file."""
     return (path / chipflow.CHIP_FILE).is_file() or (path.is_file() and path.name == chipflow.CHIP_FILE)
+
+
+def as_the_template_wrote_it(folder: Path, template: str, top: str) -> bool:
+    """Whether a file of the project is byte for byte what `chip init` writes for that top module.
+    `template` is the file's name in the template's folder, with `__TOP__` where the module's name goes."""
+    source = chipflow.TEMPLATE_DIR / template
+    path = folder / template.replace("__TOP__", top)
+    if not source.is_file() or not path.is_file():
+        return False
+    written = source.read_text(encoding="utf-8").replace("__TOP__", top)
+    return path.read_text(encoding="utf-8", errors="replace") == written
 
 
 def inputs_of(run) -> list[Path]:
@@ -239,6 +251,29 @@ def next_step(cli, target: str) -> Step:
             read=f'{DESIGN}, "A bench"',
             done_when=again,
         )
+    # `chip init` writes a working register as the RTL and its bench as the bench. The gates pass on
+    # them, so a file that is still the template's is named before any gate runs: it is no design yet.
+    examples = (
+        (
+            "rtl/__TOP__.v",
+            "Write the design in {path}: the file still holds the template's register.",
+            f'{DESIGN}, "The RTL"',
+        ),
+        (
+            "tb/tb___TOP__.v",
+            "Write the design's bench in {path}: the file still holds the template's.",
+            f'{DESIGN}, "A bench"',
+        ),
+    )
+    for template, do, read in examples:
+        if as_the_template_wrote_it(folder, template, chip.top):
+            relative = template.replace("__TOP__", chip.top)
+            return Step(
+                do.format(path=f"{quoted}/{relative}"),
+                why=f"{relative} is as `{wc} chip init` wrote it",
+                read=read,
+                done_when=again,
+            )
     report = folder / "build" / "gates.json"
     green = "the last line starts with GREEN"
     if not report.is_file():
@@ -284,6 +319,18 @@ def next_step(cli, target: str) -> Step:
             f"build/gates.json says {verdict}",
             f'{GATES}, "A gate that did not run"',
             green,
+        )
+    # The gates judge the design. The README says what the design is for, and a reader of the layout
+    # needs it: a line the template left is named last, when nothing else is.
+    readme = folder / "README.md"
+    written = readme.read_text(encoding="utf-8", errors="replace") if readme.is_file() else ""
+    left = [line.strip() for line in written.splitlines() if "fill:" in line]
+    if left:
+        return Step(
+            f"Fill {quoted}/README.md: the spec with its sources, the pins, how to test, each decision.",
+            why=f"{len(left)} lines of README.md still say fill:, the first: {left[0]}",
+            read=f'{DESIGN}, "Steps"',
+            done_when=again,
         )
     return Step(
         "Nothing: all 10 chip gates are GREEN with no warning.",
