@@ -1,4 +1,4 @@
 {
   "vout": { "min": 2.45, "max": 2.55, "source": "the fixture's requirement: half of the 5 V supply within 2 %" },
-  "f3": { "min": 250, "max": 400, "source": "the fixture's requirement: the output's low-pass corner between 250 and 400 Hz" }
+  "f3": { "min": 250, "max": 400, "source": "the fixture's requirement: the output falls to 0.3536 of the input between 250 and 400 Hz, the low-pass corner at a gain of 0.5" }
 }

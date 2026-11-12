@@ -90,12 +90,12 @@
 
           <figure>
             <div class="run">
-<pre data-run="gates"><span class="prompt">$ </span><span class="cmd">workcenter gates tests/boards/pass-rc-divider</span>
-<span class="out">PASS   erc        0 errors, 0 warnings  [0.27s]
-PASS   drc        0 errors, 0 warnings (0 unconnected, 0 parity)  [0.59s]
-PASS   sim        1 decks, 46 corner runs, 0 failures  [0.16s]
-PASS   export     4/4 outputs, 22 gerber files  [1.21s]</span>
-<span class="verdict">GREEN: rc_divider  report /home/user/via/tests/boards/pass-rc-divider/build/gates.json</span>
+<pre data-run="gates"><span class="prompt">$ </span><span class="cmd">workcenter gates tests/boards/pass-first-design</span>
+<span class="out">PASS   erc        0 errors, 0 warnings  [0.41s]
+PASS   drc        0 errors, 0 warnings (0 unconnected, 0 parity)  [0.75s]
+PASS   sim        1 decks, 46 corner runs, 0 failures  [0.23s]
+PASS   export     4/4 outputs, 22 gerber files  [1.6s]</span>
+<span class="verdict">GREEN: divider  report /home/user/via/tests/boards/pass-first-design/build/gates.json</span>
 
 <span class="prompt">$ </span><span class="cmd">workcenter gates tests/boards/fail-drc-clearance</span>
 <span class="out">PASS   erc        0 errors, 0 warnings  [0.27s]
@@ -132,7 +132,7 @@ d.add(
     <span class="s">"R2"</span>,
     <span class="s">"Device:R"</span>,</pre>
               </div>
-              <figcaption><b>A part is 1 call</b> in a Python file.</figcaption>
+              <figcaption><b>A resistor is 1 call</b> in a Python file.</figcaption>
             </figure>
             <figure>
               <div class="file sheet">
@@ -149,7 +149,7 @@ d.add(
               <figcaption><b>and routes the board.</b> No GUI at any step.</figcaption>
             </figure>
           </div>
-          <p class="after">A fixture board from the repository, <code>tests/boards/pass-first-design</code>: lines of its design file, then the schematic and the routed board that <code>workcenter design design.py --route</code> writes from the file.</p>
+          <p class="after">A fixture board from the repository, <code>tests/boards/pass-first-design</code>. The cards show lines of its design file, then the schematic and the routed board that <code>workcenter design design.py --route</code> writes from the file. The middle card shows the circuit's part of the sheet.</p>
         </div>
       </section>
 
@@ -265,7 +265,7 @@ DONE WHEN  the last line starts with GREEN</span></pre>
             </div>
             <div>
               <h3>Tolerance</h3>
-              <p>Each part runs at both ends of its tolerance and half-way to each. Every combination of the ends runs up to 64 runs. Above that, the gate runs a worst case for each bound and the Monte Carlo draws the project names.</p>
+              <p>Each part runs at both ends of its tolerance and half-way to each. Every combination of the ends runs up to 64 runs. Above that, the gate runs a worst case for each bound. It also runs the Monte Carlo draws the project names.</p>
             </div>
             <div>
               <h3>Frequency plan</h3>
@@ -368,7 +368,7 @@ DONE WHEN  the last line starts with GREEN</span></pre>
 <pre><span class="prompt">$ </span>git clone https://github.com/ThyFriendlyFox/via.git &amp;&amp; cd via
 <span class="prompt">$ </span>sudo ./install.sh
 <span class="prompt">$ </span>workcenter doctor
-<span class="prompt">$ </span>workcenter gates tests/boards/pass-rc-divider</pre>
+<span class="prompt">$ </span>workcenter gates tests/boards/pass-first-design</pre>
             <button class="copy" type="button" data-copy aria-label="Copy the commands">
               <svg class="todo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></svg>
               <svg class="done" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>

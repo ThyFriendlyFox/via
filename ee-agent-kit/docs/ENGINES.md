@@ -35,9 +35,11 @@ Java autorouter, release 1.9.0. Powers `workcenter design --route` and the
 autoroute command: Specctra DSN in, Specctra session out. Needs Java 21.
 `install.sh` downloads the pinned release JAR and checks its SHA-256; a
 blocked download leaves the engine absent and `doctor` reports
-`degraded`. Release 2.1.0 is not used: it checks GitHub for updates at
-start and never finishes a job when that call fails, which it does in
-every proxied environment. For a hand-drawn board `kicad-cli` 10 cannot
+`degraded, without freerouting`. Release 2.1.0 is not used: it checks
+GitHub for updates at start and never finishes a job when that call fails,
+which it does in every proxied environment. Both commands start the router
+with `-de`, `-do`, `-mp` and `-dct 0`. Without `-dct 0` release 1.9.0 waits
+20 s before each route, for a click on a dialog. For a hand-drawn board `kicad-cli` 10 cannot
 export a DSN, so the autoroute command takes one exported from KiCad
 (`<project>/<name>.dsn` or `--dsn`) and skips loudly without it.
 

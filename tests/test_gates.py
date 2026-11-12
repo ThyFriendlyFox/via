@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.machinery
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -100,6 +101,41 @@ def test_doctor_reports_every_engine():
     assert set(payload["checks"]) >= {"kicad-cli", "ngspice", "python", "java", "freerouting", "manifest"}
     assert payload["checks"]["manifest"]["ok"] is True
     assert code in (0, 1)
+
+
+def test_doctor_names_what_is_absent_and_an_absent_hook_degrades_nothing(tmp_path):
+    """A reader ran `sudo ./install.sh`, then `workcenter doctor`, and read `degraded`: 2 hooks of 1
+    agent host were absent, which the install does not write (2026-11-11). A hook's line still says
+    whether it is there. The first line names what is absent when it reads `degraded` or `fail`."""
+
+    def doctor(**env: str) -> tuple[str, dict]:
+        said = []
+        for argv in (["doctor"], ["--json", "doctor"]):
+            proc = subprocess.run(
+                [sys.executable, str(CLI), *argv],
+                capture_output=True,
+                text=True,
+                check=False,
+                env={**os.environ, "HOME": str(tmp_path), **env},
+            )
+            said.append(proc.stdout)
+        return said[0].splitlines()[0], json.loads(said[1])
+
+    def first_line(report: dict) -> str:
+        named = report["missing_required"] or report["degraded"]
+        return f"workcenter ee: {report['status']}{', without ' + ', '.join(named) if named else ''}  (root "
+
+    first, report = doctor()
+    hooks = {name: check["ok"] for name, check in report["checks"].items() if name.endswith(" hook")}
+    assert hooks == {"no-cd hook": False, "test hook": False}  # the home folder has no settings file
+    assert not set(hooks) & set(report["degraded"])
+    assert first.startswith(first_line(report))
+    if not report["missing_required"] and not report["degraded"]:
+        assert first.startswith("workcenter ee: ok  (root ")
+    first, report = doctor(FREEROUTING_JAR=str(tmp_path / "absent.jar"))
+    assert "freerouting" in report["degraded"] and first.startswith(first_line(report))
+    if not report["missing_required"]:
+        assert report["status"] == "degraded" and ", without " in first and "freerouting" in first
 
 
 # -------------------------------------------------------------- SIM gate
