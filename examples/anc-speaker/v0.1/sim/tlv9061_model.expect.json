@@ -1,0 +1,35 @@
+{
+  "aol_db": {
+    "min": 104,
+    "warn": "the model against its datasheet: AOL min 104 dB at VS = 5.5 V, RL = 10k (SBOS839N, 6.10)"
+  },
+  "vos_mv": {
+    "min": -1.6,
+    "max": 1.6,
+    "warn": "the model against its datasheet: VOS max +-1.6 mV at VS = 5 V (SBOS839N, 6.10)"
+  },
+  "iq_ua": {
+    "max": 750,
+    "warn": "the model against its datasheet: IQ max 750 uA at VS = 5.5 V (SBOS839N, 6.10)"
+  },
+  "fit_db_100": {
+    "min": -1.0,
+    "max": 1.0,
+    "warn": "the loop decks' fitted model against TI's: open-loop gain within 1 dB at the loop's frequencies"
+  },
+  "fit_db_1k": {
+    "min": -1.0,
+    "max": 1.0,
+    "warn": "the loop decks' fitted model against TI's: open-loop gain within 1 dB at the loop's frequencies"
+  },
+  "fit_db_10k": {
+    "min": -1.0,
+    "max": 1.0,
+    "warn": "the loop decks' fitted model against TI's: open-loop gain within 1 dB at the loop's frequencies"
+  },
+  "fit_deg_10k": {
+    "min": -5.0,
+    "max": 5.0,
+    "warn": "the loop decks' fitted model against TI's: open-loop phase within 5 degrees at 10 kHz"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "vref_dc": {"min": 1.35, "max": 1.45, "source": "VREF is half of +2V8 (R3, R4): a value outside means ngspice settled on a false operating point"},
+  "ctout_dc": {"min": 1.3, "max": 1.5, "source": "U3 follows VREF at DC (C15 blocks its input)"},
+  "pm_hi": {"min": 45, "source": "README, What it must do: 45 degrees of phase margin at each crossing"},
+  "pm_lo": {"min": 45, "source": "README, What it must do: 45 degrees of phase margin at each crossing"},
+  "lg_200": {"min": 14, "source": "README, What it must do: 12 dB less noise at 200 Hz needs a loop gain of 14 dB or more there"}
+}

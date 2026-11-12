@@ -48,7 +48,9 @@ JAVA=java
 
 For a kicadgen design the whole round trip is headless: `tools/kicadgen.py`
 writes the DSN from the design model (0.1 um units, y up, pads as rect or
-circle padstacks, non-plated holes as unconnected pins, net classes with
+circle padstacks, a custom pad as the polygon of its shapes' hull (a box
+round them covered a mic's other pads, M140), non-plated holes as
+unconnected pins, net classes with
 their own widths and vias) and merges the session back into the board.
 FreeRouting writes session coordinates at 10 times its declared
 resolution; the merge takes the scale from the session's placement block.

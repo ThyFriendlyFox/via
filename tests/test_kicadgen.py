@@ -934,6 +934,47 @@ def test_custom_pad_is_sized_from_its_primitives():
     assert (corner.w, corner.h) == pytest.approx((0.755, 0.25), abs=1e-6)
 
 
+MIC = "Sensor_Audio:Infineon_PG-LLGA-5-2"  # pad 5 is a ring round the port, off its anchor
+
+
+def _inside(poly: list[tuple[float, float]], x: float, y: float) -> bool:
+    inside = False
+    for (ax, ay), (bx, by) in zip(poly, poly[1:] + poly[:1], strict=True):
+        if (ay > y) != (by > y) and x < ax + (y - ay) * (bx - ax) / (by - ay):
+            inside = not inside
+    return inside
+
+
+@needs_libs
+def test_a_custom_pad_reaches_the_router_as_its_outline_not_a_box_round_its_anchor():
+    """The mic's ground pad is a ring 0.81 mm round its port, its anchor 0.81 mm off the ring's centre.
+    A box centred on the anchor that covers the ring (3.7 x 2.08 mm) covered the mic's 4 other pads,
+    and the router connected none of them (Hush v0.1). The DSN gives the router the pad's outline."""
+    pads = {p.number: p for p in kicadgen.load_footprint(MIC).pads}
+    ring = pads["5"]
+    assert ring.shape == "custom" and ring.outline
+    # The outline in the footprint's frame: turned by the pad's angle about its anchor.
+    a = math.radians(ring.angle)
+    outline = [(ring.x + u * math.cos(a) + v * math.sin(a), ring.y - u * math.sin(a) + v * math.cos(a))
+               for u, v in ring.outline]  # fmt: skip
+    assert _inside(outline, 0.68, 0.0)  # the port's centre, inside the ring
+    for n in ("1", "2", "3", "4"):
+        assert not _inside(outline, pads[n].x, pads[n].y), n
+    # The router gets that polygon, and every other pad keeps its rectangle.
+    d = kicadgen.Design(name="mic", namespace=uuid.UUID(int=129), outline=(100.0, 100.0, 110.0, 110.0))
+    d.add("MIC1", "Sensor_Audio:IM73A135V01", "IM73A135V01", MIC, sch_at=(50.8, 50.8), pcb_at=(105.0, 105.0),
+          nets={"1": "OUTP", "2": "VDD", "3": "OUTN", "4": "GND", "5": "GND"})  # fmt: skip
+    dsn = d.dsn()
+    pin5 = next(ln for ln in dsn.splitlines() if ln.strip().startswith("(pin") and '"5"' in ln)
+    name = pin5.split()[1]
+    stack = dsn.split(f'(padstack "{name}"')[1].split("(attach off)")[0]
+    assert "(shape (polygon F.Cu 0 " in stack and "(rect" not in stack
+    nums = [int(v) / 10000 for v in stack.split("(polygon F.Cu 0 ")[1].split(")")[0].split()]
+    poly = [(x + ring.x, -y + ring.y) for x, y in zip(nums[::2], nums[1::2], strict=True)]
+    for n in ("1", "2", "3", "4"):
+        assert not _inside(poly, pads[n].x, pads[n].y), n
+
+
 @needs_libs
 @needs_kicad
 def test_back_face_custom_pads_mirror_their_shapes_and_keep_clearance(tmp_path):

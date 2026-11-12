@@ -1,0 +1,8 @@
+MPN,Kind,URL,File,Member,Revision,Dated,Subckt,Ngspice,SHA256,Checked,Note
+TLV9061,datasheet,https://www.ti.com/lit/ds/symlink/tlv9061.pdf,ti/tlv9061.pdf,,SBOS839N,2026-07,,,7a5517d7f74bedddf4b8404fce93e21100d2833a6f4ae16a93f934eaf0c6477c,2026-11-11,
+TLV9061,spice,https://www.ti.com/lit/zip/sbomag1e,ti/tlv9062.lib,tlv9062.lib,Rev. D,2021-06,TLV9062,ps res-model,94f6ec5479e928f03403c107df2b67c46a780cc541a2eac5c5e5e923230e2b90,2026-11-11,TI publishes the family's model as the TLV9062 (zip SBOMAG1E); one channel of it is the TLV9061 of the same datasheet
+LP5907MFX-2.8,datasheet,https://www.ti.com/lit/ds/symlink/lp5907.pdf,ti/lp5907.pdf,,SNVS798Q,2025-07,,,f5deda2f0cd6f251622fa0fbb57fd0ddff831b797f96b9a0a53ed35059e1c4ba,2026-11-11,
+PAM8302AAS,datasheet,https://www.diodes.com/assets/Datasheets/PAM8302A.pdf,diodes/PAM8302A.pdf,,DS41333 Rev. 6 - 2,2021-05,,,fb2ab762c31b5fd45f352b116a5e528fa434e9f46aebbee2582e362fc64ef516,2026-11-11,
+IM73A135V01,datasheet,https://www.infineon.com/dgdl/Infineon-IM73A135-DataSheet-v01_00-EN.pdf?fileId=8ac78c8c7f2a768a017fadec36b84500,infineon/IM73A135.pdf,,V 1.20,2021-07,,,c45dffc1cd10abcca82df0fd62f502564e5c5b67e69324756e06286228e0993a,2026-11-11,
+CE40-4,datasheet,https://www.daytonaudio.com/images/resources/285-155--dayton-audio-ce40-4-specification-sheet.pdf,dayton/CE40-4.pdf,,,2023-09,,,f893a8ae040e88b34f91e838cefd848aa8db715eaf3aba647d94b45317ff1365,2026-11-11,the speaker driver off the board; the sheet prints no revision and its PDF is dated 2023-09-21
+TS5A3166DCKR,datasheet,https://www.ti.com/lit/ds/symlink/ts5a3166.pdf,ti/ts5a3166.pdf,,SCDS186E,2018-02,,,1f2ead12bd7ceb7135bd017cb7554008d71ae2dcfdddb6eb6e2189fbdbd7a2ad,2026-11-11,

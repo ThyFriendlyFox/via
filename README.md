@@ -89,6 +89,22 @@ tone and the handshake from a PWM pin, and the panel's DTMF digits decoded in fi
 Goertzel filter. 3 supervised inputs read a closed contact, a whole loop and a cut wire apart at
 every corner, and a fail-safe relay tells the panel when Herald itself fails.
 
+## An example: Hush, a speaker that cancels noise
+
+<table>
+  <tr>
+    <td width="50%"><a href="examples/anc-speaker/v0.1/README.md"><img alt="Hush from the front: a black ring with three windows, a microphone on the hub, the parts on arcs round the ring, USB-C and a line-in jack at the edge" src="examples/anc-speaker/v0.1/docs/board-3d-top.png"></a></td>
+    <td width="50%"><a href="examples/anc-speaker/v0.1/README.md"><img alt="Hush from the back: a noise wave and its inverse braided round the ring in white, shrinking to one line, gold rims round the edge and the windows" src="examples/anc-speaker/v0.1/docs/board-3d-bottom.png"></a></td>
+  </tr>
+</table>
+
+[`examples/anc-speaker/v0.1`](examples/anc-speaker/v0.1/README.md) is a ring 62 mm across that
+sits on the face of a 40 mm speaker. A microphone on its hub listens 4 mm in front of the cone, and
+an analog feedback loop plays the inverse of what it hears: 7 decks hold 3 dB less noise at 50 Hz
+and 12 dB from 200 to 300 Hz at every one of 986 corner runs, and take a 150 Hz hum 18.8 dB down
+(13.4 dB at the worst corner). Music from a phone plays through the loop as its target. The back
+draws the idea: the noise and its inverse, meeting as one line.
+
 ## What it does
 
 | Part | In short |
