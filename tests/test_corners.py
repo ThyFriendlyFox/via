@@ -320,6 +320,29 @@ def test_a_digit_after_the_scale_letter_is_named_with_what_ngspice_takes():
     ]
 
 
+def test_an_altermod_line_with_several_parameters_is_named():
+    """One line per parameter is what ngspice 42 applies; a netlist line outside .control is no
+    altermod and a single parameter, written either way, is right (M172)."""
+    deck = """* models switched in .control
+.model DMOD D(is=1e-14)
+.control
+altermod DMOD is=1e-12 rs=500
+altermod DMOD rs=1
+altermod @DMOD[is] = 1e-13
+altermod QMAX vto = 1.0 kp = 550 rd=1.15m ; the maximum model
+op
+.endc
+.end
+"""
+    assert simcorners.crowded_altermods(deck) == [
+        "altermod DMOD: ngspice applies only the first parameter on the line (is) and drops rs. Write 1 "
+        "altermod line for each parameter",
+        "altermod QMAX: ngspice applies only the first parameter on the line (vto) and drops kp, rd. Write "
+        "1 altermod line for each parameter",
+    ]
+    assert simcorners.crowded_altermods("* t\nR1 a 0 1k\n.end\n") == []
+
+
 def test_a_device_held_at_its_own_temperature_is_named():
     deck = """* pinned
 R1 in ref 10k tc1=100u

@@ -199,6 +199,12 @@ HINTS: list[tuple[str, str, str]] = [
         f'{SIMULATE}, "Steps"',
     ),
     (
+        r"^sim: .*ngspice applies only the first parameter on the line",
+        "Split the altermod line: 1 parameter to a line, each `altermod <model> <name>=<value>`. ngspice "
+        "keeps the first parameter of a line and drops the rest without a word.",
+        f'{SIMULATE}, "Corners"',
+    ),
+    (
         r"^sim: \S+?:\S+=None ",
         "The deck does not print that measure. Print it as `name = value`, or correct the name in the "
         "expect file. A complex value prints none: take its magnitude with vm().",

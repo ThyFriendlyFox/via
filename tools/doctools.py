@@ -81,9 +81,12 @@ def boards_of(vdir: Path) -> list[Board]:
 
 
 def block_pattern(name: str) -> re.Pattern:
+    """A block is its 2 markers, each alone on its line, as `wrap_block` writes them. A marker named
+    inside a sentence (`` the `<!-- workcenter costs -->` markers ``) is prose, not a block."""
+    n = re.escape(name)
     return re.compile(
-        rf"(<!-- workcenter {re.escape(name)} -->[ \t]*\r?\n)(.*?)(<!-- /workcenter {re.escape(name)} -->)",
-        re.S,
+        rf"(^[ \t]*<!-- workcenter {n} -->[ \t]*\r?\n)(.*?)(^[ \t]*<!-- /workcenter {n} -->)",
+        re.S | re.M,
     )
 
 
@@ -97,7 +100,9 @@ def wrap_block(name: str, body: str) -> str:
 
 
 def unclosed(text: str, name: str) -> bool:
-    return f"<!-- workcenter {name} -->" in text and not block_pattern(name).search(text)
+    """An opening marker alone on its line with no closing one after it."""
+    opening = re.compile(rf"^[ \t]*<!-- workcenter {re.escape(name)} -->[ \t]*\r?$", re.M)
+    return bool(opening.search(text)) and not block_pattern(name).search(text)
 
 
 def git(repo: Path, *args: str) -> str | None:
