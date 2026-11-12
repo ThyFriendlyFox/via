@@ -142,7 +142,9 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
 6. A board of more than about 50 parts routes with `--passes 12` to 20
    and a `--timeout` of an hour, in the background. FreeRouting writes its
    session only when it ends, so a run the timeout stops leaves nothing:
-   60 passes on 140 parts ran past the 15-minute default (M128).
+   60 passes on 140 parts ran past the 15-minute default (M128). A route
+   seeded from a previous one can lose connections its seed had; it is no
+   way to finish a board (M147).
 7. A route that leaves a link open: read `AGENTS.md`'s landmine row "FreeRouting
    gives up" before routing again. More passes give the same board. Draw the
    whole net that stays open with `d.track`, pad to pad, along a path an
@@ -158,6 +160,13 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
     FreeRouting 1.9.0 reached none of an MSOP's pins at 26 degrees and all
     of them at 0 (M142). A board that turns its parts with a curve turns
     its passives and leaves its fine-pitch parts square.
+11. A fine-pitch part (0.5 mm pitch or less) gets a way out for each of
+    its supply pins before the first route: past the pad's outer end, or
+    inward to a via inside the ring of pads, with no pad of another net
+    across it closer than a via and its clearance. Its capacitors sit
+    beside those ways out with their supply pads toward the pins, and its
+    crystal clear of the pin rows. Read the pads with `workcenter inspect
+    list --box` round the part (M146).
 
 Done when: the DRC after the route lists 0 errors, or every remaining
 error is named in the next design change.

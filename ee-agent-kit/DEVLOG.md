@@ -39,6 +39,36 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-11 — A fifth example: a Teensy with a Snapdragon
+
+The owner asked for a compact board that looks good, as an example of what Via makes: a
+microcontroller development board like a Teensy, with a Snapdragon on it. A Snapdragon cannot stand
+alone on a board that size (it needs memory, flash and 3 power chips on a fine board), so Wyvern
+carries a Snapdragon 845 on Lantronix's Open-Q 845 module, whose pinout is public, on a stick the
+size of a Teensy. An RP2350 under the module drives the pins at 3.3 V. The owner pointed at
+vape-prototype for the layout, and the example has its shape: a series README, a version folder,
+`parts/`, a gates report, pictures with the module on its sockets.
+
+The USB-C port's 5 pairs are drawn by hand: wired the way a plug turned over sees them, no 2 pairs
+cross. The first route ran 14 of its 15 minutes, with no timeout set (M147), and left the RP2350's
+core pins bare: a capacitor or the crystal stood across each one's way out (M146). That rail is
+drawn by hand now, then the 3.3 V pins' stubs, after 4 capacitors were turned to face their pins;
+P4 asks for each supply pin's way out before a route. Seeding did not help on this board: a route
+seeded from the same design's own route, with 1 pass, lost 6 connections the seed had. Fresh routes
+are what closed it, and they are deterministic: 100 and 150 passes gave the same board, so more passes
+were no lever. What moved the count was room: the crystal to the back, the capacitors turned to
+their pins, and the RP2350's pins fanned out to vias by hand on 3 sides, as a person lays out a
+QFN, so the router only joins vias; 5 mil tracks gave it the last room.
+
+The frequency plan found the buck's power-save pulses can land on the USB cable's resonance; a deck
+shows 10.5 mV at most. It also showed that a long cable and derated capacitors leave the input's
+peak impedance only 0.13 ohm under the buck's negative resistance: stable, with the damping left
+for v0.2.
+
+Evidence: `workcenter gates examples/snapdragon-dev-board/v0.1` GREEN with 13 warnings (5 silkscreen outlines at the edge, 2 vias with nothing past them, 6 decks with no temperature term): DRC 0 errors and 0 unconnected; 6 decks, 488
+corner runs; `workcenter pictures v0.1`: the board, its layers, 3 turning GIFs, the module on its sockets;
+`workcenter costs` $32.76 for 1 board's parts.
+
 ## 2026-11-11 — Another example: a speaker that plays the inverse of what it hears
 
 The owner asked for a noise cancelling speaker as an example of what Via makes: compact, gorgeous,

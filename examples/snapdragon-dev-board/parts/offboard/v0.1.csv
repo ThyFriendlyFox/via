@@ -1,0 +1,4 @@
+Value,Footprint,Qty,Manufacturer,MPN,Supplier,SKU,Pack,Breaks,Stock,Checked,URL,Note
+"Lantronix Open-Q 845 uSOM, 4 GB / 32 GB",,1,Lantronix,QC-DB-P10004,,,,,,2026-11-11,https://www.digikey.com/en/products/detail/lantronix-canada-ulc/QC-DB-P10004/26119975,"Not priced: Digi-Key lists it as obsolete with no price; Lantronix sells it to order (its datasheet, 7.2). The board's reason for being: the Snapdragon 845, its memory, flash and PMICs"
+"PCB 60.96 x 30.48 mm, 6 layers, 1.6 mm",,1,Sierra Circuits,bare board to this version's gerbers,,,,,,2026-11-11,https://www.protoexpress.com/,Not priced: Sierra's Web PCB quotes by order; the board is made to its limits (rules/sierra-circuits-web.kicad_dru)
+"Wi-Fi and Bluetooth antennas, U.FL, 2.4 and 5 GHz",,2,,,,,,,,2026-11-11,,"Not chosen: the SOM's 2 U.FL sockets take 2 dual-band antennas for 2x2 MIMO; its certification names the ones it was tested with (datasheet, 9.1)"

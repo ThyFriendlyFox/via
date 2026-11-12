@@ -1,0 +1,6 @@
+{
+  "run_low": {"max": 0.8, "source": "RUN reads low below 0.8 V (RP2350 datasheet, Table 1683, VIL at IOVDD 3.3 V)"},
+  "ss_low_u7": {"max": 0.8, "source": "QSPI_SS reads low below 0.8 V at reset (RP2350 datasheet, Table 1683), so the RP2350 starts in its USB bootloader"},
+  "ss_low_button": {"max": 0.8, "source": "the same, with the BOOT button pressed"},
+  "i_u7": {"max": 0.004, "source": "the current U7 sinks stays under the 4 mA its VOL is stated at (SCES296AG)"}
+}

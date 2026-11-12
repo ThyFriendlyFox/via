@@ -1,0 +1,23 @@
+* The TPS62130 (U2) in power save, its pulses at the resonance of the USB cable with C1 and C2
+* (vbus_pdn.cir). Each pulse turns the high-side switch on for tON = VOUT / VIN x 400 ns = 303 ns
+* and ramps the inductor to (VIN - VOUT) x tON / L (SLVSAG7F 8.4.2, equations 1 and 2): 0.21 A with
+* L1's 2.2 uH 20 % low. The switch draws that ramp from the input, then opens. In power save the
+* pulses come at a rate that falls with the load, through every frequency from 2 kHz to 2.5 MHz;
+* here they come at 41 kHz, the resonance with every part as written. The gate also steps LCABLE
+* against C1 and C2 between their ends.
+VS src 0 DC 5
+RCABLE src a 50m
+LCABLE a vbus 0.75u
+C1 vbus e1 10u
+RE1 e1 0 5m
+C2 vbus e2 10u
+RE2 e2 0 5m
+IPSM vbus 0 PULSE(0 0.21 0 303n 1n 1n 24.4u)
+.control
+tran 20n 1.5m 1m
+meas tran v_max max v(vbus) from=1m
+meas tran v_min min v(vbus) from=1m
+let v_pp = v_max - v_min
+print v_pp
+.endc
+.end
