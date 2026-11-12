@@ -1,0 +1,21 @@
+* The mode knob's ladder (R40-R45, 1k each) with the wiper on tap 5 (Bluetooth), the pull-down R46 (100k) and
+* the MCP3208's input. The ADC reads the wiper against its own reference, the same +3V3 that feeds
+* the ladder, so the firmware sees a ratio. Position k sits at (6 - k) / 6 of full scale; the
+* decoder's thresholds lie halfway between neighbours, 1/12 of full scale (0.0833) from each
+* (firmware/src/mode.c). The ADC input leaks up to +-1 uA (MCP3208 datasheet DS21298E, Table 1-1):
+* I1 injects 1 uA into the wiper, the sign that lifts it toward the position above.
+VDD vdd 0 DC 3.3
+R40 vdd a 1k
+R41 a b 1k
+R42 b c 1k
+R43 c d 1k
+R44 d e 1k
+R45 e 0 1k
+R46 e 0 100k
+I1 0 e DC 1u
+.control
+op
+let ratio = v(e) / v(vdd)
+print ratio
+.endc
+.end

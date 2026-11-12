@@ -1,0 +1,6 @@
+{
+  "v_adc": {
+    "max": 0.35,
+    "source": "firmware/src/zone.c ZONE_SHORT_MAX_MV (600 mV), less 250 mV of margin"
+  }
+}

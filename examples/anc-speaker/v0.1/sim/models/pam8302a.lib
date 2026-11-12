@@ -1,0 +1,34 @@
+* PAM8302A, 2.5 W mono filterless class-D amplifier: the project's model, fitted to the
+* datasheet (Diodes DS41333 Rev. 6 - 2, May 2021). Diodes publishes no SPICE model for it.
+*
+* Pins in the order of KiCad's symbol: SD, IN+, IN-, VDD, GND, OUT+, OUT-.
+*   Input:  10k from each input pin to an internal summing node held at VDD/2 (the functional
+*           block diagram, page 2; "the DC level is held at VDD/2", page 7).
+*   Gain:   the differential output is 150k/10k = 15 times IN+ - IN- (A = 20*log(RF/RI),
+*           page 7; the Gain row, 23.5 dB). An external RIN in series lowers it to
+*           150k/(10k + RIN), as the datasheet says.
+*   Speed:  the datasheet gives no bandwidth. A pole at fbw and a delay of tdel stand for the
+*           modulator: 40 kHz, and 2 us, half a period of the 250 kHz oscillator (fOSC row,
+*           200 to 300 kHz). The decks move both.
+*   Output: each side through its switches, 0.45 ohm high side and 0.20 ohm low side (RDS(ON)
+*           rows): 0.33 ohm per side on average. The swing stops at the rails.
+*   SD:     the outputs run above 1.2 V on SD (VSH row) and are 0 below.
+.subckt PAM8302A SD INP INN VDD GND OUTP OUTN params: fbw=40k tdel=2u
+RINP INP SP 10k
+RINN INN SN 10k
+VSP SP MID 0
+VSN SN MID 0
+EMID MID GND VDD GND 0.5
+HDIF D1 GND POLY(2) VSP VSN 0 150k -150k
+RBW D1 D2 1k
+CBW D2 GND {1/(6.283185307*1k*fbw)}
+EBUF D2B GND D2 GND 1
+TDL D2B GND D3 GND Z0=1k TD={tdel}
+RTL D3 GND 1k
+* The swing reaches the rails smoothly (tanh): a hard clamp leaves the DC solve no slope to follow.
+BDIF VD GND V = u(V(SD,GND) - 1.2) * V(VDD,GND) * tanh(V(D3,GND) / V(VDD,GND))
+BOP OP GND V = V(VDD,GND)/2 + V(VD,GND)/2
+BON ON GND V = V(VDD,GND)/2 - V(VD,GND)/2
+ROP OP OUTP 0.33
+RON ON OUTN 0.33
+.ends PAM8302A

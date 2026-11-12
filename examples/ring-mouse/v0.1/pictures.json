@@ -1,0 +1,138 @@
+{
+  "boards": [
+    {
+      "path": "radio",
+      "name": "radio",
+      "prefix": "radio-",
+      "strict": true,
+      "stills": [
+        "board-3d-top.png",
+        "board-3d-bottom.png",
+        "board-3d-iso.png",
+        "schematic.png"
+      ],
+      "layers": "layers-radio.png",
+      "spins": [
+        {
+          "as": "radio-spin.gif",
+          "tilt": -55,
+          "zoom": 0.9
+        }
+      ]
+    },
+    {
+      "path": "touch",
+      "name": "touch",
+      "prefix": "touch-",
+      "strict": true,
+      "stills": [
+        "board-3d-top.png",
+        "board-3d-bottom.png",
+        "board-3d-iso.png",
+        "schematic.png"
+      ],
+      "layers": "layers-touch.png",
+      "spins": [
+        {
+          "as": "touch-spin.gif",
+          "tilt": -55,
+          "zoom": 0.9
+        }
+      ]
+    },
+    {
+      "path": "clicks",
+      "name": "clicks",
+      "prefix": "clicks-",
+      "strict": true,
+      "stills": [
+        "board-3d-top.png",
+        "board-3d-bottom.png",
+        "board-3d-iso.png",
+        "schematic.png"
+      ],
+      "layers": "layers-clicks.png",
+      "spins": [
+        {
+          "as": "clicks-spin.gif",
+          "tilt": -55,
+          "zoom": 0.9
+        }
+      ]
+    },
+    {
+      "path": "cell",
+      "name": "cell",
+      "prefix": "cell-",
+      "strict": true,
+      "stills": [
+        "board-3d-top.png",
+        "board-3d-bottom.png",
+        "board-3d-iso.png",
+        "schematic.png"
+      ],
+      "layers": "layers-cell.png",
+      "spins": [
+        {
+          "as": "cell-spin.gif",
+          "tilt": -55,
+          "zoom": 0.9
+        }
+      ]
+    },
+    {
+      "path": "power",
+      "name": "power",
+      "prefix": "power-",
+      "strict": true,
+      "stills": [
+        "board-3d-top.png",
+        "board-3d-bottom.png",
+        "board-3d-iso.png",
+        "schematic.png"
+      ],
+      "layers": "layers-power.png",
+      "spins": [
+        {
+          "as": "power-spin.gif",
+          "tilt": -55,
+          "zoom": 0.9
+        }
+      ]
+    },
+    {
+      "path": "motion",
+      "name": "motion",
+      "prefix": "motion-",
+      "strict": true,
+      "stills": [
+        "board-3d-top.png",
+        "board-3d-bottom.png",
+        "board-3d-iso.png",
+        "schematic.png"
+      ],
+      "layers": "layers-motion.png",
+      "spins": [
+        {
+          "as": "motion-spin.gif",
+          "tilt": -55,
+          "zoom": 0.9
+        }
+      ]
+    }
+  ],
+  "scenes": [
+    {
+      "script": "assembly.py",
+      "what": "the 6 tiles round the finger, and the cell on its tile",
+      "copy": {
+        "build/assembly/assembly-iso.png": "assembly-iso.png",
+        "build/assembly/assembly-iso-back.png": "assembly-iso-back.png",
+        "build/assembly/assembly-end.png": "assembly-end.png",
+        "build/assembly/assembly-top.png": "assembly-top.png",
+        "build/assembly/assembly-palm.png": "assembly-palm.png",
+        "build/assembly/assembly-spin.gif": "assembly-spin.gif"
+      }
+    }
+  ]
+}

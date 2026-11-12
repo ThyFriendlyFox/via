@@ -1,0 +1,18 @@
+{
+  "sources": [
+    {"name": "TPS62130 switching", "hz": [2000, 2500000], "source": "SLVSAG7F 8.4.1 and 8.4.2: 2.5 MHz in PWM with FSW low; in power save the rate falls with the load, to 2 kHz at the board's least (the feedback divider's 8 uA and the AP2112K's 55 uA, 33 nC a pulse from equations 1 and 2)"},
+    {"name": "RP2350 core regulator", "hz": 3000000, "source": "RP2350 datasheet Table 1689, fsw 3 MHz typical; no limits given"},
+    {"name": "RP2350 crystal", "hz": 12000000, "tolerance": 0.001, "source": "Y1, ABM8-272-T3 at 12 MHz; 0.1 %, wider than any crystal's"}
+  ],
+  "resonances": [
+    {"name": "VBUS behind a USB-C cable", "hz": "vbus_pdn.f_peak", "q": "vbus_pdn.q_peak", "source": "sim/vbus_pdn.cir"}
+  ],
+  "overlaps": [
+    {
+      "between": ["TPS62130 switching", "VBUS behind a USB-C cable"],
+      "evidence": "vbus_psm.v_pp",
+      "stimulus": "IPSM",
+      "why": "in power save the buck's pulses pass through every rate under 2.5 MHz; at the cable's resonance each draws 33 nC, and the input moves a few mV"
+    }
+  ]
+}

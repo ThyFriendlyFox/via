@@ -33,7 +33,7 @@ must clear or land on a pad.
    drawn thinner with `width=`.
 5. End a track on the pad centre, when the track is no wider than the
    pad. A wider track starts at the pad's edge on the side it leaves by:
-   its round end reaches half its width past where it starts (M131). Route one net, run `workcenter drc .`,
+   its round end reaches half its width past where it starts (M152). Route one net, run `workcenter drc .`,
    read every clearance line it prints, fix, then the next net.
 6. A via is on every copper layer. Before writing `d.via`, look at what
    sits on the other face and the inner layers at that spot; then
@@ -92,7 +92,13 @@ classes.
    (tracks, vias, pours) and on which layers. A keep-out that forbids
    vias forbids them on every layer, since a via passes them all. Mark the
    via-free areas; a part placed in one is wired out on its own face to a
-   via outside, so give it a path there.
+   via outside, so give it a path there. A keep-out added to a placed
+   board gets the same check: list every pad inside its polygon with
+   `workcenter inspect list . --box X0 X1 Y0 Y1` and give each a path
+   out before the route (M137). List it with no `--layer`: a keep-out on
+   one face that bans vias holds the other face's pads too, and a pad of
+   a poured net counts, since it reaches the pour through a via beside it
+   (M138).
 5. Via sizes are rules too. The default via, each net class's and each
    hand via must meet the board's minimum hole (0.3 mm), minimum via
    (0.5 mm) and annular ring (0.1 mm), as `Design.board_rules()` gives
@@ -134,20 +140,44 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
    discarded (M66). Before a grid router or FreeRouting runs on new
    parts, every new courtyard is checked against every other: a
    router's failures near 2 parts on each other read as routing
-   problems (M134).
+   problems (M155).
 5. A route run only to evaluate (an archived version, a what-if) writes
    with `--out` to the scratchpad: without it `workcenter design` rewrites
    the project's KiCad files in place (M67).
 6. A board of more than about 50 parts routes with `--passes 12` to 20
    and a `--timeout` of an hour, in the background. FreeRouting writes its
    session only when it ends, so a run the timeout stops leaves nothing:
-   60 passes on 140 parts ran past the 15-minute default (M128).
-7. A net that spans the board and carries a supply (a 12 V or 3.3 V
-   rail to slots and connectors far apart, a regulator's input across a
-   row of stages) is a pour on a layer the design gives it, drawn by the
-   design, and goes to the router as a plane net: 1 pin, its vias
-   obstacles. A motherboard's 4 supply nets as tracks ran 20 minutes
-   without finishing a pass, twice (M129).
+   60 passes on 140 parts ran past the 15-minute default (M128). A route
+   seeded from a previous one can lose connections its seed had; it is no
+   way to finish a board (M147).
+7. A route that leaves a link open: read `AGENTS.md`'s landmine row "FreeRouting
+   gives up" before routing again. More passes give the same board. Draw the
+   whole net that stays open with `d.track`, pad to pad, along a path an
+   earlier route of the board found where there is one, then route (M132).
+8. On a shaped outline, render the unrouted board once and look before the
+   first route. The generator's part check and the DRC read the outline's
+   bounding box, so a part off a notch or a grip says nothing (M135).
+9. When 2 routes leave connections open at the same chip, add room before
+   drawing links: inner layers, narrower classes for the nets that enter its
+   pins, its decoupling moved off the pin rows. Draw a link by hand only
+   when 1 or 2 are left in different places (M136).
+10. A part of 0.65 mm pitch or finer stands at a multiple of 90 degrees.
+    FreeRouting 1.9.0 reached none of an MSOP's pins at 26 degrees and all
+    of them at 0 (M142). A board that turns its parts with a curve turns
+    its passives and leaves its fine-pitch parts square.
+11. A fine-pitch part (0.5 mm pitch or less) gets a way out for each of
+    its supply pins before the first route: past the pad's outer end, or
+    inward to a via inside the ring of pads, with no pad of another net
+    across it closer than a via and its clearance. Its capacitors sit
+    beside those ways out with their supply pads toward the pins, and its
+    crystal clear of the pin rows. Read the pads with `workcenter inspect
+    list --box` round the part (M146).
+12. A net that spans the board and carries a supply (a 12 V or 3.3 V
+    rail to slots and connectors far apart, a regulator's input across a
+    row of stages) is a pour on a layer the design gives it, drawn by the
+    design, and goes to the router as a plane net: 1 pin, its vias
+    obstacles. A motherboard's 4 supply nets as tracks ran 20 minutes
+    without finishing a pass, twice (M150).
 
 Done when: the DRC after the route lists 0 errors, or every remaining
 error is named in the next design change.
@@ -546,9 +576,14 @@ chamfered rectangles, paste-only apertures).
    board and read 2 of its named pads from `pad_boxes()` or `workcenter
    inspect list` before anything else is placed round it. On the back face
    the footprint is mirrored before it is turned (M126).
+5. A custom pad also reaches the router: read its padstack in
+   `build/route/<name>.dsn` (`Pad_custom_...`, a polygon) and check that
+   no other pad of the footprint lies inside it. The KiCad DRC reads the
+   real shapes and cannot see what the router file made of them (M140).
 
 Done when: the unrouted board's DRC shows no clearance inside any
-footprint, and the tests for the shape are in the suite.
+footprint, no custom pad's padstack covers another pad, and the tests for
+the shape are in the suite.
 
 ## P20 — Swapping a part
 
@@ -649,7 +684,7 @@ before the first edit of a request.
    layers, where it turns, where its vias stand. Then place what lies in
    those paths. Placed from the mechanical drawings alone, the first
    version of a motherboard moved 4 groups of parts while its buses were planned
-   (M132).
+   (M153).
 
 Done when: the request's edits sit only in the new folder, the previous
 folder matches its commit but for the banner, the index and CLAUDE.md name
@@ -680,7 +715,9 @@ after any change to what the boards look like in that version.
    (`render --strict`: a part the 3D views draw without a body fails its
    board, and nothing of that board is copied; give the part its body,
    M52), the GIFs, the scenes, then the copies into `docs/` and
-   `docs/layers/`. It exits 1 on any failure.
+   `docs/layers/`. It exits 1 on any failure. A still shows the board's
+   own stackup colours: kicad-cli draws its preset's green unless it is
+   given `--use-board-stackup-colors`, which the workcenter passes (M134).
 4. The README shows the GIFs beside the stills and the layer sheets, and
    names `workcenter pictures <version>` and its `pictures.json`, which
    the next version copies with the folder and so draws the same way.
@@ -689,9 +726,16 @@ after any change to what the boards look like in that version.
    `tools/scene.py`, which copies each 3D model the board names and reports
    one it cannot find; then look at the bottom face in a still. A path
    rewrite on a footprint's models changes a copy and draws nothing (M99).
-7. Pictures of a large board take a while: a 244 mm motherboard's took 17
+7. Before an assembly places a second body, place 1 board's body beside
+   its own board and render it from the side: `scene.place` measures a
+   height from the scene board's outer face, a `board_body` has its origin
+   at its mid-plane, and KiCad turns a model the other way from the
+   right-hand rule (the `board-design` skill). A picture that looks wrong
+   is fixed by measuring 1 body, never by moving the scene until it looks
+   right: 2 errors can show as 1 (M131).
+8. Pictures of a large board take a while: a 244 mm motherboard's took 17
    minutes, most of it the turning GIF. Run them as a background job with
-   a limit over the sum of every step the job holds (M133).
+   a limit over the sum of every step the job holds (M154).
 
 Done when: `workcenter pictures <version>` exits 0, the version's `docs/`
 holds a layer sheet and a turning GIF for every board and for the
@@ -708,7 +752,7 @@ close-out.
    power left to right along the top, each support part beside the pin it
    serves, connectors facing the circuit they feed.
    A position computed from a symbol's size reads `kicadgen.symbol_box`,
-   which is in the library's frame, y up; the sheet's y runs down (M130).
+   which is in the library's frame, y up; the sheet's y runs down (M151).
 2. Labels only for nets that cross the whole sheet (`sch_label_nets`), each
    named in a comment; every other net is a wire.
 3. Check the drawing against the design: ERC 0 errors and 0 warnings, and
@@ -779,8 +823,8 @@ entry conditions cite their source, and a host test runs the steps.
 
 ## P27 — A part's datasheet, SPICE model and 3D model
 
-When: a part enters a BOM, a simulation uses a vendor's model, or a 3D body
-comes from a vendor.
+When: a part enters a BOM, a simulation uses a vendor's model or one
+written for the project, or a 3D body comes from a vendor.
 
 1. Every part on the schematic gets rows in the project's
    `library/sources.csv`: a datasheet for each, a spice row for each U, Q
@@ -820,9 +864,25 @@ comes from a vendor.
    with exit code 0 (M105). A translated model is a changed copy of its
    maker's file: read the maker's notice before the folder goes to a
    third party.
+8. Step 4 holds for a model written for the project too (a behavioural
+   amplifier, a model fitted to a maker's): its own deck runs before any
+   design deck includes it (M139).
+9. A deck with a feedback loop runs each model alone first, and holds
+   its operating point with bounds: the mid-rail, each amplifier's output
+   at its DC value. ngspice's `source stepping failed` can end on a point
+   with an output at a rail whose AC numbers pass (M143). A maker's model
+   that will not settle in the loop is replaced there by one fitted to it,
+   which step 4 holds to the maker's within its own deck.
+10. A deck that stalls (a transient's step falls to nanoseconds, a corner
+    never ends) is fixed in its step control, not skipped: `.options
+    method=gear` with `reltol`, `vntol` and `chgtol` loosened, its answer
+    checked against the other integration method. A deck is left out of
+    the corners only with a reason no option fixes (M144).
 
 Done when: `workcenter sources` passes for every board of the version, each
-model a deck uses has its datasheet rows as `warn` bounds, the README
+model a deck uses has its datasheet rows as `warn` bounds, each loop deck
+bounds its operating point, no deck is skipped at the corners for a stall,
+the README
 names each model that is off its datasheet and what the design trusts
 instead, and what left the project for another machine left as a bundle.
 
@@ -973,7 +1033,11 @@ capacitor on a supply rail.
 2. Sweep each supply rail a source loads with an `.ac` deck. A 1 A AC
    current source at the load reads the rail's impedance in ohms. Measure
    each peak's frequency and its Q (the `simulate` skill, "The frequency
-   plan").
+   plan"). Search each peak from below where it can lie over the
+   corners (its L and C at their ends), not from the sweep's start. A
+   corner that damps it flat has no peak, and the search returns the
+   window's edge: check that the plan's band round that edge holds no
+   source's harmonic (M145).
 3. Write both lists into `sim/frequency-plan.json`.
 4. Run `workcenter sim <project>`. It names each overlap: a source's
    harmonic in a resonance's band, or 2 sources that can run at 1
@@ -1082,3 +1146,30 @@ author, a message line, a file that must leave every commit.
 Done when: the remote's branches are the checked commits, `make verify`
 is GREEN on them, and the owner holds the old history and the list of
 step 8.
+
+## P34 — The form of a new product
+
+When: a request names a thing to make and its form is not written yet:
+where it sits, how it is held or worn, how many boards and how each lies.
+Again before boards that join into a solid are laid out.
+
+1. Before the first design file, write the form in 2 sentences: what the
+   thing is, where it sits on or by its user and how it is held or worn;
+   how many boards, and how each lies (flat, round a finger, folded,
+   stacked). Take the form from how the thing is used, never from the
+   request's word for the board.
+2. Say those sentences in the first message to the owner, with the first
+   board's size, and go on working. A wrong reading then costs a reply,
+   not a design (M129).
+3. When the owner has a project of the same kind (a prototype series),
+   read it before the first version and keep its layout (P22).
+4. Boards that join into a solid: compute each board's corners in the
+   solid's frame, and check in the project's own code, each time it loads,
+   that every 2 boards that join share their corners. Angles that sum to a
+   turn are not enough: faces round a circle that all touch it close only
+   when their alternate faces add up equally (M130). A render is not the
+   check.
+
+Done when: the form's sentences are in the first message and in the
+version's README, and the project's code refuses a solid whose joints
+miss.

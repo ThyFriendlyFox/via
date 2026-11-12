@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-PROJECT = ROOT / "examples" / "universal-controller" / "v0.1"
+PROJECT = ROOT / "examples" / "universal-controller" / "v0.2"
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(PROJECT))
 
@@ -48,7 +48,7 @@ def main() -> int:
         f'<svg class="face-svg" viewBox="{f(x1 - pad)} {f(y1 - pad)} {f(x2 - x1 + 2 * pad)} {f(y2 - y1 + 2 * pad)}" '
         'role="img" aria-labelledby="face-title">'
     )
-    out.append('<title id="face-title">Rosetta v0.1 from the front: its outline, copper, buttons, the mode knob and its ring</title>')
+    out.append('<title id="face-title">Rosetta v0.2 from the front: its outline, copper, thumbsticks, buttons, the mode knob and its ring</title>')
     out.append(f'<path class="pcb" d="{path_of(d.outline_polygon(0.0, 10))}"/>')
 
     # The copper: the back first, faint, then the front. Each layer is 1 path per track width.
@@ -86,18 +86,16 @@ def main() -> int:
     # The parts on the back that the modes use, as outlines seen through the board.
     usb_modes = "ps4 ps5 xbox switch"
     # The ESP32 module's body, not its courtyard: the courtyard holds the antenna's keep-out. The
-    # module is 18 x 25.5 mm; its last 6.44 mm, the antenna, hangs past the notch's edge.
+    # module is 18 x 25.5 mm; its last 6.44 mm, the antenna, hangs up past the dip's edge.
     ex, ey = source.ESP_AT
     out.append(
         f'<rect class="body" data-part="bluetooth" data-ghost="" x="{f(ex - 9)}" y="{f(ey - 12.75)}" '
         f'width="18" height="25.5" rx="0.8"/>'
     )
-    out.append(f'<rect class="antenna" data-part="bluetooth" x="{f(ex - 9)}" y="{f(source.NOTCH_Y)}" width="18" height="{f(ey + 12.75 - source.NOTCH_Y)}" rx="0.8"/>')
-    out.append(f'<text class="tag" x="{f(ex)}" y="{f(ey + 12.75 + 2.6)}">ESP32 · back · antenna</text>')
+    out.append(f'<rect class="antenna" data-part="bluetooth" x="{f(ex - 9)}" y="{f(ey - 12.75)}" width="18" height="{f(source.DIP_Y - (ey - 12.75))}" rx="0.8"/>')
+    out.append(f'<text class="tag" x="{f(ex)}" y="{f(ey + 4.0)}">ESP32 · back</text>')
     box("U1", 'data-part="ps4 ps5 xbox switch bluetooth" data-ghost=""', "RP2040 · back")
-    box("U6", 'data-part="ps5" data-ghost=""', "")
-    box("U9", 'data-part="switch ps5" data-ghost=""', "")
-    box("U10", 'data-part="switch ps5" data-ghost=""', "")
+    box("U6", 'data-part="ps4 ps5 xbox switch" data-ghost=""', "")
 
     # The parts a hand meets: buttons, connectors.
     for ref, part in parts.items():
@@ -108,14 +106,17 @@ def main() -> int:
             extra = f'data-part="{usb_modes}"'
         elif ref == "J2":
             extra = 'data-part="ps4 ps5 xbox"'
-        elif ref in ("J3", "J4"):
-            extra = 'data-part="ps5"'
         elif ref in ("J7", "J8"):
-            extra = 'data-part="switch ps5"'
+            extra = 'data-part="ps4 ps5 xbox switch"'
         box(ref, extra, inset=0.4 if ref.startswith("SW") else 0.0)
-    for (x, y) in (source.STICK_L, source.STICK_R):
-        out.append(f'<circle class="stick" cx="{f(x)}" cy="{f(y)}" r="{f(source.STICK_R_ZONE)}"/>')
-        out.append(f'<circle class="stick-cap" cx="{f(x)}" cy="{f(y)}" r="{f(source.STICK_R_ZONE * 0.55)}"/>')
+    # The thumbsticks: the body from the footprint's courtyard, the cap the hand meets.
+    for ref, (x, y) in (("SL", source.STICK_L), ("SR", source.STICK_R)):
+        box(ref)
+        out.append(f'<circle class="stick" cx="{f(x)}" cy="{f(y)}" r="8.5"/>')
+        out.append(f'<circle class="stick-cap" cx="{f(x)}" cy="{f(y)}" r="5.2"/>')
+    # The trigger's Hall sensors on the horns.
+    for ref in ("U15", "U16"):
+        box(ref, 'data-part="ps4 ps5 xbox switch bluetooth"')
 
     # The words on the silkscreen.
     for text, x, y, layer, size, _ in d.texts:
@@ -124,15 +125,13 @@ def main() -> int:
 
     # The routes each mode's data takes, drawn over the board from the port to the RP2040.
     u1 = parts["U1"].pcb_at
-    j1 = (170.0, 101.5)
-    j2 = (205.0, 101.5)
-    esp = (source.ESP_AT[0], source.ESP_AT[1] + 2.0)
+    j1 = (parts["J1"].pcb_at[0] + 2.975, source.TAB_Y - 1.5)
+    j2 = (parts["J2"].pcb_at[0] + 2.975, source.TAB_Y - 1.5)
+    esp = (source.ESP_AT[0], source.ESP_AT[1] + 4.0)
     routes = [
-        ("ps4 ps5 xbox switch", [j1, (170.0, 113.0), (u1[0] + 6, 113.0), (u1[0] + 6, u1[1]), u1]),
-        ("ps4 ps5 xbox", [j2, (205.0, 113.5), (u1[0] + 8, 113.5), (u1[0] + 8, u1[1] + 2), (u1[0], u1[1] + 2)]),
-        ("bluetooth", [esp, (esp[0], 133.0), (u1[0] + 6, 133.0), (u1[0] + 6, u1[1] + 4), (u1[0], u1[1] + 4)]),
-        ("ps5", [(127.0, 103.0), (127.0, 110.0), (186.0, 110.0)]),
-        ("switch ps5", [(110.0, 163.0), (110.0, 152.0), (112.0, 152.0)]),
+        ("ps4 ps5 xbox switch", [j1, (j1[0], 166.0), (u1[0] + 6, 166.0), (u1[0] + 6, u1[1]), u1]),
+        ("ps4 ps5 xbox", [j2, (j2[0], 168.5), (u1[0] + 8, 168.5), (u1[0] + 8, u1[1] + 2), (u1[0], u1[1] + 2)]),
+        ("bluetooth", [esp, (esp[0], 132.0), (u1[0] + 4, 132.0), (u1[0] + 4, u1[1] - 2), (u1[0], u1[1] - 2)]),
     ]
     for modes, pts in routes:
         out.append(f'<path class="route" data-route="{modes}" pathLength="1" d="{path_of(pts, close=False)}"/>')

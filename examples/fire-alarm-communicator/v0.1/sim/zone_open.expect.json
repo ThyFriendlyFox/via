@@ -1,0 +1,6 @@
+{
+  "v_adc": {
+    "min": 2.95,
+    "source": "firmware/src/zone.c ZONE_OPEN_MIN_MV (2700 mV), with 250 mV of margin"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "sources": [
+    {
+      "name": "PAM8302A oscillator",
+      "hz": [
+        200000,
+        300000
+      ],
+      "source": "PAM8302A datasheet DS41333 Rev. 6 - 2, fOSC row: 200 to 300 kHz"
+    },
+    {
+      "name": "test hum",
+      "hz": 150,
+      "source": "sim/anc_hum.cir's stimulus VNOISE: the hum the loop cancels in time, not a part of the board"
+    }
+  ],
+  "resonances": [
+    {
+      "name": "USB cable with C1 and C2 on +5V",
+      "hz": "rail_5v.f_peak",
+      "q": 3.5,
+      "source": "sim/rail_5v.cir measures where; Q = sqrt(L/C)/R at the corners' sharpest end (LCABLE +50 %, C1 and C2 -10 %, RCABLE -50 %) is 3.1, taken as 3.5"
+    }
+  ],
+  "harmonics": 10,
+  "guard": 0.1,
+  "overlaps": []
+}

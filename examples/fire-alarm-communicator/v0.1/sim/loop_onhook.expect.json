@@ -1,0 +1,6 @@
+{
+  "v_loop": {
+    "max": 0.15,
+    "source": "firmware/src/line.h LINE_OFFHOOK_MV (400 mV), with 250 mV of margin"
+  }
+}

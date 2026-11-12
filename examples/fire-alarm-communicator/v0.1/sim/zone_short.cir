@@ -1,0 +1,18 @@
+* A supervised input (J3, zone 1; zones 2 and 3 are the same parts): R32 (4.7k) pulls ZONE1 to
+* +3V3, R31 (100) meets the field wiring, R33 (10k) and C30 (10n) filter the ADC pin (GPIO1).
+* The panel's contact is closed: the loop is shorted at its far end through 100 ohm of wire.
+* The ESP32's pin and U8's channel leak up to 1 uA together (the design's allowance); ILEAK takes
+* the sign that pushes the reading toward the nearest threshold.
+VDD vdd 0 DC 3.3
+R32 vdd zone 4.7k tc1=100u
+R31 zone ext 100 tc1=100u
+RWIRE ext 0 100
+ILEAK 0 adc DC 1u
+R33 zone adc 10k tc1=100u
+C30 adc 0 10n
+.control
+op
+let v_adc = v(adc)
+print v_adc
+.endc
+.end

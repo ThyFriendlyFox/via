@@ -1,0 +1,18 @@
+* SOM_SYS, the Snapdragon module's supply (SOM_SYS_PWR on JT2), from the TPS62130 (U2) set by R1 374k
+* over R2 100k: VOUT = VFB x (1 + R1/R2) + IFB x R1. The part holds FB at 800 mV: 781.6 to 822.4 mV in
+* power-save mode with 22 uF out, the wider of its 2 ranges (TPS62130 datasheet SLVSAG7F, 6.5, initial
+* output voltage accuracy); FB draws or gives up to 100 nA (ILKG_FB). An amplifier of gain 1e6 stands
+* in for the loop: it moves the output until FB sits at VFB. This deck takes the lowest reference and
+* 100 nA out of the pin into FB; sys_rail_high.cir takes the highest and 100 nA into the pin. The
+* corners move R1 and R2 by their 1 %.
+VREF ref 0 DC 0.7816
+EAMP out 0 ref fb 1e6
+R1 out fb 374k
+R2 fb 0 100k
+IFB 0 fb DC 100n
+.control
+op
+let vout = v(out)
+print vout
+.endc
+.end
