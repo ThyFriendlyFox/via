@@ -54,16 +54,15 @@ build takes 192 s of them.
 ## The mutation lists
 
 A passing fixture carries `rtl/mutations.json`: 1 change of the RTL for
-each thing a bench must catch, and the command that judges a changed copy,
-`workcenter chip sim .`. `workcenter mutate` proves the list. It makes each
-change in its own copy of the project and runs the command there:
+each thing a bench must catch. The SIM gate proves the list on every run.
+When the benches pass on the RTL, it makes each change in its own copy of
+the sources under `build/chip/sim/mutants/` and runs the benches there. A
+change that every bench passes on fails the gate, and so does a change
+that does not compile: it shows nothing.
 
-```
-workcenter mutate tests/chips/pass-counter --mutations tests/chips/pass-counter/rtl/mutations.json
-```
-
-Its last line is `mutate: 5 mutations, 5 caught, 0 survived, 0 did not build`
-and the seconds; for `pass-acc8` the counts are 18 and 18.
+SIM's line for `pass-counter` ends `5 of 5 changes of the RTL caught`, and
+for `pass-acc8` `18 of 18`. A failing fixture has no list, and SIM names
+that as a warning.
 
 ## What `pass-acc8` shows
 
@@ -76,7 +75,7 @@ After the placement the build's log reads `Found 2 slew violations.`,
 | Gate | What it prints for `pass-acc8` |
 |---|---|
 | LINT | `4 RTL files, top acc8, 0 failures` |
-| SIM | `5 benches, 1098 checks, 0 failures` |
+| SIM | `5 benches, 1098 checks, 18 of 18 changes of the RTL caught, 0 failures` |
 | SYNTH | `760 cells, 132 flops, 8530.7 um2, the mapping removed 24 flops that nothing reads (--json names each), 0 failures` |
 | LAYOUT | `8379.29 um2 of cells, utilisation 0.493, 0 failures` |
 | STA | `15 corners, least setup slack 25.1717 ns at max_ss_n40C_1v60, least hold slack 0.2974 ns at min_ff_n40C_1v95, 0 failures` |

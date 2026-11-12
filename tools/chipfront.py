@@ -13,7 +13,9 @@ the judge its output. Standard library only.
 from __future__ import annotations
 
 import json
+import math
 import re
+import shutil
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -102,7 +104,7 @@ def project_inputs(run, gate: str) -> list[Path]:
         "sim": [
             *read_with([*chip.rtl, *found], folders),
             *expect_files(found),
-            run.project / "rtl" / "mutations.json",
+            run.project / MUTATIONS,
             own,
         ],
         "synth": [*read_with(chip.rtl, folders), own],
@@ -361,17 +363,11 @@ def judge_bench(
     return failures, warnings, measures
 
 
-def run_bench(
-    run, gate: str, bench: Path, sources: list[str], defines: list[str]
-) -> tuple[list[str], list[str], dict]:
-    """Compile and run 1 bench in its own folder. `sources` is what the bench is compiled with: the RTL
-    for SIM, the final netlist and the library's cell models for GLSIM."""
+def bench_runs(run, bench: Path, sources: list, defines: list, includes: list, folder: Path, **limit):
+    """Compile 1 bench with its sources and run it, in `folder`: (the compile, the run or None when the
+    bench did not compile). `limit` is the time each engine may take, as `Run.start` reads it."""
     name = bench.stem
-    folder = run.base / gate / name
     folder.mkdir(parents=True, exist_ok=True)
-    expect, problems = run.cli.read_expect(run.project / "tb" / f"{name}.expect.json")
-    if problems:
-        return [f"{name}.expect.json: {p}" for p in problems], [], {}
     compiled = run.start(
         [
             run.engine("iverilog"),
@@ -381,7 +377,7 @@ def run_bench(
             *[f"-D{d}" for d in defines],
             "-s",
             name,
-            *include_dirs(run),
+            *includes,
             "-o",
             folder / f"{name}.vvp",
             bench,
@@ -389,34 +385,160 @@ def run_bench(
         ],
         cwd=folder,
         log=folder / "compile.log",
-        timeout=chipflow.TIME_LIMITS[gate],
+        **limit,
     )
     ran = None
     if compiled.exit == 0 and (folder / f"{name}.vvp").is_file():
         # -N: a $stop ends the run with exit code 1, where -n would end it like a $finish.
         ran = run.start(
-            [run.engine("vvp"), "-N", folder / f"{name}.vvp"],
-            cwd=folder,
-            log=folder / "run.log",
-            timeout=chipflow.TIME_LIMITS[gate],
+            [run.engine("vvp"), "-N", folder / f"{name}.vvp"], cwd=folder, log=folder / "run.log", **limit
         )
+    return compiled, ran
+
+
+def run_bench(
+    run, gate: str, bench: Path, sources: list[str], defines: list[str]
+) -> tuple[list[str], list[str], dict, float]:
+    """Compile and run 1 bench in its own folder: (failures, warnings, measures, the seconds its run
+    took). `sources` is what the bench is compiled with: the RTL for SIM, the final netlist and the
+    library's cell models for GLSIM."""
+    name = bench.stem
+    expect, problems = run.cli.read_expect(run.project / "tb" / f"{name}.expect.json")
+    if problems:
+        return [f"{name}.expect.json: {p}" for p in problems], [], {}, 0.0
+    compiled, ran = bench_runs(
+        run,
+        bench,
+        sources,
+        defines,
+        include_dirs(run),
+        run.base / gate / name,
+        timeout=chipflow.TIME_LIMITS[gate],
+    )
     failures, warnings, measures = judge_bench(name, compiled, ran, expect or {})
     failures = [short(line, run) for line in failures]
     warnings = [short(line, run) for line in warnings]
     path = run.measures(gate, name)
     path.write_text(json.dumps(measures, indent=2, sort_keys=True), encoding="utf-8")
     run.record(gate, path)
-    return failures, warnings, measures
+    return failures, warnings, measures, ran.seconds if ran else 0.0
 
 
 def run_benches(
     run, gate: str, chosen: list[Path], sources: list[str], defines: list[str]
-) -> tuple[list, list, dict]:
+) -> tuple[list, list, dict, dict]:
+    """Each bench in its own folder, `--jobs` at a time: (failures, warnings, {bench: measures},
+    {bench: the seconds its run took})."""
     with ThreadPoolExecutor(max_workers=max(1, run.jobs)) as pool:
         results = list(pool.map(lambda b: run_bench(run, gate, b, sources, defines), chosen))
-    failures = [line for f, _, _ in results for line in f]
-    warnings = [line for _, w, _ in results for line in w]
-    return failures, warnings, {b.stem: m for b, (_, _, m) in zip(chosen, results, strict=True)}
+    failures = [line for f, _, _, _ in results for line in f]
+    warnings = [line for _, w, _, _ in results for line in w]
+    measures = {b.stem: m for b, (_, _, m, _) in zip(chosen, results, strict=True)}
+    return failures, warnings, measures, {b.stem: s for b, (_, _, _, s) in zip(chosen, results, strict=True)}
+
+
+MUTATIONS = "rtl/mutations.json"
+# A changed copy of the RTL may run each bench 10 times as long as the RTL itself did, and 20 s at
+# least: a change that makes a bench wait for ever is caught by the wait, not by the gate's own limit.
+MUTANT_TIMES, MUTANT_SECONDS = 10, 20
+
+
+def run_mutations(run, found: list[Path], seconds: dict[str, float]) -> tuple[list[str], list[str], dict]:
+    """The project's list of changes to the RTL, each made in a copy of the sources and judged by the
+    benches: (failures, warnings, {name: {"state", "by"}}). A bench that passes on every wrong design
+    proves nothing about the right one, so each change must fail at least 1 bench: `by` is the line
+    of the first bench that failed. A change that does not compile shows nothing, and is a failure of
+    the list. The benches passed on the RTL as it is before this runs."""
+    path = run.project / MUTATIONS
+    if not path.is_file():
+        return (
+            [],
+            [
+                f"no {MUTATIONS}: nothing shows that the benches can fail. List 1 change of the RTL for "
+                "each thing a bench must catch"
+            ],
+            {},
+        )
+    try:
+        listed, _ = run.cli.read_mutations(path)
+    except (OSError, ValueError, SyntaxError) as exc:
+        return [f"{MUTATIONS}: {exc}"], [], {}
+    if not listed:
+        return [], [f"{MUTATIONS} lists no change: nothing shows that the benches can fail"], {}
+    folders = sorted({p.parent.resolve() for p in run.chip.rtl} | {(run.project / "tb").resolve()})
+    read = {p.resolve() for p in read_with(run.chip.rtl, folders)}
+    failures = []
+    for change in listed:
+        target = (run.project / change["file"]).resolve()
+        count = target.read_bytes().count(change["old"].encode()) if target.is_file() else -1
+        if target not in read:
+            failures.append(
+                f"{MUTATIONS}: {change['name']}: {change['file']} is no file the RTL is read from: a "
+                "change is made in the RTL, and the benches stay as they are"
+            )
+        elif count != 1:
+            failures.append(
+                f"{MUTATIONS}: {change['name']}: {change['file']} holds the old text {count} times: it "
+                "must name 1 place"
+            )
+    if failures:
+        return failures, [], {}
+    root, out = run.project.resolve(), run.out.resolve()
+
+    def not_the_output(folder: str, names: list[str]) -> list[str]:
+        """A source folder is copied without the folder the gates write into."""
+        return [name for name in names if (Path(folder) / name).resolve() == out]
+
+    def one(item: tuple[int, dict]) -> tuple[str, str]:
+        """(state, the line that says why): `caught` by a bench's failure, `survived`, or `no build`."""
+        index, change = item
+        folder = run.base / "sim" / "mutants" / f"{index:03d}"
+        copies = {source: folder / "src" / source.relative_to(root) for source in folders}
+        for source, copy in copies.items():
+            shutil.copytree(source, copy, ignore=not_the_output, dirs_exist_ok=True)
+        changed = folder / "src" / (run.project / change["file"]).resolve().relative_to(root)
+        changed.write_bytes(changed.read_bytes().replace(change["old"].encode(), change["new"].encode(), 1))
+        sources = [folder / "src" / p.resolve().relative_to(root) for p in run.chip.rtl]
+        includes = [f"-I{copy}" for copy in copies.values()]
+        for bench in found:
+            name = bench.stem
+            expect, _ = run.cli.read_expect(run.project / "tb" / f"{name}.expect.json")
+            compiled, ran = bench_runs(
+                run,
+                folder / "src" / bench.resolve().relative_to(root),
+                sources,
+                [],
+                includes,
+                folder / name,
+                at_most=max(MUTANT_SECONDS, math.ceil(MUTANT_TIMES * seconds.get(name, 0.0))),
+            )
+            said, _, _ = judge_bench(name, compiled, ran, expect or {})
+            if ran is None:
+                return "no build", short(said[0], run)
+            if said:
+                return "caught", short(said[0], run)
+        return "survived", ""
+
+    with ThreadPoolExecutor(max_workers=max(1, run.jobs)) as pool:
+        states = list(pool.map(one, enumerate(listed, 1)))
+    for change, (state, line) in zip(listed, states, strict=True):
+        if state == "survived":
+            failures.append(
+                f"the benches pass with the change {change['name']} in {change['file']}: add the check that "
+                "fails on it"
+            )
+        elif state == "no build":
+            failures.append(
+                f"{MUTATIONS}: the change {change['name']} does not compile, so it shows nothing: {line}"
+            )
+    return (
+        failures,
+        [],
+        {
+            change["name"]: {"state": state, "by": line}
+            for change, (state, line) in zip(listed, states, strict=True)
+        },
+    )
 
 
 def gate_sim(run):
@@ -430,20 +552,25 @@ def gate_sim(run):
         return run.skip("sim", "no file matches chip.json's rtl patterns: write the RTL")
     run.begin("sim")
     taken = inputs_taken(run, "sim")
-    failures, warnings, measures = run_benches(run, "sim", found, [str(p) for p in run.chip.rtl], [])
+    sources = [str(p) for p in run.chip.rtl]
+    failures, warnings, measures, seconds = run_benches(run, "sim", found, sources, [])
     for name in run.chip.rtl_only:
         if name not in measures:
             failures.append(f"chip.json: benches.{name}: tb/ holds no bench of that name")
-    if not (run.project / "rtl" / "mutations.json").is_file():
-        warnings.append(
-            "no rtl/mutations.json: nothing shows that the benches can fail. List 1 change of the RTL for "
-            "each thing a bench must catch, and run `workcenter mutate`"
-        )
     checks = sum(int(m.get("checks", 0)) for m in measures.values())
+    summary = f"{len(found)} benches, {checks} checks"
+    details: dict = {"benches": measures}
+    if not failures:
+        # The benches pass on the RTL as it is. Now each listed change of the RTL must fail 1 of them.
+        failed, warned, states = run_mutations(run, found, seconds)
+        failures += failed
+        warnings += warned
+        if states:
+            details["mutations"] = states
+            caught = sum(entry["state"] == "caught" for entry in states.values())
+            summary += f", {caught} of {len(states)} changes of the RTL caught"
     failures += inputs_moved(run, "sim", taken)
-    result = run.result(
-        "sim", failures, warnings, f"{len(found)} benches, {checks} checks", {"benches": measures}
-    )
+    result = run.result("sim", failures, warnings, summary, details)
     return passed(run, "sim", result, taken)
 
 
@@ -494,7 +621,7 @@ def gate_glsim(run):
     sources = [str(netlist), *[str(run.pdk.file(f)) for f in models["files"]]]
     run.begin("glsim")
     taken = inputs_taken(run, "glsim", netlist)
-    failures, warnings, measures = run_benches(run, "glsim", chosen, sources, list(models["defines"]))
+    failures, warnings, measures, _ = run_benches(run, "glsim", chosen, sources, list(models["defines"]))
     supply = {run.pdk.library["supply"][side]["net"] for side in ("power", "ground")}
     warnings = netlist_warnings(warnings, str(run.pdk.root), supply)
     for name, after in measures.items():

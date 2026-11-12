@@ -14,7 +14,8 @@ Read in this order:
 
 On a board, `workcenter next <project>` names the one next step: what to
 do, the command, why, what to read, and when the step is done. Follow it
-until it says nothing is left.
+until it says nothing is left. A chip project, a folder with `chip.json`,
+takes the same command.
 
 A skill is a procedure at `.claude/skills/<name>/SKILL.md`. A host that
 loads skills offers each by name; any other reader opens the file.
