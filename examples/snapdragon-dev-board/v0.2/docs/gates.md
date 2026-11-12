@@ -111,5 +111,6 @@ crossed its narrow strip. A spine of 0.38 mm copper along the module's middle pa
 fan-out via touches, held it together; the next route left only the converter's output off the
 plane, and 3 vias closed it. The same command without a seed then left SD_VDD's last link open
 (C23 to J4); seeded with the route before it, the router kept all 1001 of its seed's tracks and
-closed it. FreeRouting is deterministic, so the committed board is what that command writes from
-the committed board.
+closed it. That command, seeded with the committed board, keeps 1006 of its 1007 tracks; the board
+it writes differs by a few hundredths of a millimetre where 3 tracks split or join, with 0 errors
+and 0 unconnected.

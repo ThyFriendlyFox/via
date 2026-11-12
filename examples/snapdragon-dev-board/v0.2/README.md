@@ -457,7 +457,7 @@ The tools come from the EE Workcenter, this repository's `tools/`. Run the comma
 folder.
 
 ```sh
-workcenter design design.py --route          # regenerate the KiCad project and route it
+workcenter design design.py --route --seed wyvern.kicad_pcb   # regenerate and route from the committed route
 workcenter gates . --report docs/gates.md    # ERC, DRC, simulation, export; GREEN means done
 workcenter sim .                             # the sim/ decks at every corner
 workcenter pictures .                        # what pictures.json names: renders, layers, GIFs
@@ -475,6 +475,12 @@ receptacle, the B row's vias and the mux's control vias; `core_rail` is v0.1's c
 RP2350, turned with it; `module_fanout` puts a via beside each module pad the board uses;
 `five_volt_spine` runs 5 V on In3 along the module's middle pad line, which no fan-out via touches,
 so the router cannot cut the 5 V plane under the module in pieces.
+
+Route with `--seed wyvern.kicad_pcb`. The committed board is a route seeded with the one before it.
+The same design routed without a seed leaves 1 link of SD_VDD (C23 to J4) open. Seeded with the
+committed board, the router keeps 1006 of its 1007 tracks, and the board it writes differs from
+the committed one by a few hundredths of a millimetre where 3 tracks split or join (0 errors, 0
+unconnected).
 
 ## Decisions
 

@@ -9,7 +9,8 @@ make; the workcenter itself stays as it is during board work.
   version is the one in work. Every new feature is a new version: `workcenter version new . v0.3`
   copies the latest folder and does the bookkeeping (workcenter PROCESSES.md P22).
 - `design.py` is the source of truth. Edit it, then regenerate: `workcenter design v0.2/design.py
-  --route`. Never hand-edit the `.kicad_*` files.
+  --route --seed v0.2/wyvern.kicad_pcb` (unseeded, v0.2's route leaves 1 link open; its README,
+  "Working on this board"). Never hand-edit the `.kicad_*` files.
 - A board is done when `workcenter gates v0.2 --report v0.2/docs/gates.md` prints GREEN.
 - `workcenter pictures v0.2` draws what `v0.2/pictures.json` names (the board, every layer, the
   turning GIFs) and copies them into `v0.2/docs/`.
