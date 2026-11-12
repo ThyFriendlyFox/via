@@ -65,6 +65,13 @@ threw the copy away: this change stands on the branch's own commits
 (M181). The procedure is P35. The projects' notes are read and rated
 next.
 
+The first finding shipped with it. 5 of the 6 example projects had
+overridden a private method of the generator to give their board a black
+or a red mask, a white legend and a finish. A design file now names the
+3 in 3 fields, and the fields write the stackup those 5 boards carry,
+byte for byte. A render showed what 3 of the projects had noted: under
+KiCad's named Black a pour shows brown through the mask.
+
 Evidence: `tests/test_harvest.py`, 7 tests, and each of 12 lines of the
 tool, broken alone, fails at least 1 of them; `python3 tools/harvest.py
 branches` on the remote's branches, 2026-11-12.

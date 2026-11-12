@@ -770,6 +770,116 @@ def test_thickness_writes_a_two_layer_stackup_and_the_default_does_not():
         d.board()  # thinner than its own copper
 
 
+def stackup_of(board: Path) -> tuple[kicadgen.Node, str]:
+    """A board file's stackup and its thickness, cut out of the file's head: a board can be 45 MB."""
+    with board.open(encoding="utf-8") as handle:
+        head = handle.read(20000)
+    start = head.index("(stackup")
+    depth = 0
+    for end in range(start, len(head)):
+        depth += {"(": 1, ")": -1}.get(head[end], 0)
+        if depth == 0:
+            break
+    return kicadgen.parse(head[start : end + 1]), re.search(r"\(thickness ([\d.]+)\)", head).group(1)
+
+
+def look_of(stack: kicadgen.Node) -> dict[str, str]:
+    """Each colour a stackup names, by layer, and its finish."""
+    found = {"finish": kicadgen.atoms(kicadgen.child(stack, "copper_finish"))[0]}
+    for layer in kicadgen.children(stack, "layer"):
+        if kicadgen.child(layer, "color") is not None:
+            found[kicadgen.atoms(layer)[0]] = kicadgen.atoms(kicadgen.child(layer, "color"))[0]
+    return found
+
+
+@needs_libs
+def test_a_design_names_its_mask_colour_its_legend_colour_and_its_finish():
+    """5 of the 6 example projects wrote these 3 values by overriding the private `_stackup`."""
+    d = divider()
+    d.mask_color, d.silk_color, d.copper_finish = "#0B0C0EFF", "White", "Immersion silver"
+    text = d.board()
+    # A two-layer board at 1.6 mm has no stackup of its own; a colour or a finish writes one.
+    stack = kicadgen.child(kicadgen.child(kicadgen.parse(text), "setup"), "stackup")
+    assert look_of(stack) == {
+        "finish": "Immersion silver",
+        "F.SilkS": "White",
+        "F.Mask": "#0B0C0EFF",
+        "B.Mask": "#0B0C0EFF",
+        "B.SilkS": "White",
+    }
+    # KiCad writes a layer's colour after its type and before its thickness.
+    mask = next(ly for ly in kicadgen.children(stack, "layer") if kicadgen.atoms(ly)[0] == "F.Mask")
+    assert [c[0] for c in mask[2:]] == ["type", "color", "thickness"]
+    assert '(color "#0B0C0EFF")' in text and '(copper_finish "Immersion silver")' in text
+    # 1 of the 3 alone writes the stackup too, and leaves the other 2 as they were.
+    d = divider()
+    d.copper_finish = "ENIG"
+    stack = kicadgen.child(kicadgen.child(kicadgen.parse(d.board()), "setup"), "stackup")
+    assert look_of(stack) == {"finish": "ENIG"}
+    d = divider()
+    d.mask_color = "Red"
+    stack = kicadgen.child(kicadgen.child(kicadgen.parse(d.board()), "setup"), "stackup")
+    assert look_of(stack) == {"finish": "None", "F.Mask": "Red", "B.Mask": "Red"}
+    # A design that names none writes the stackup it wrote before.
+    stack = kicadgen.child(kicadgen.child(kicadgen.parse(four_layer_divider().board()), "setup"), "stackup")
+    assert look_of(stack) == {"finish": "None"}
+
+
+@pytest.mark.parametrize(
+    "name, value, said",
+    [
+        (
+            "mask_color",
+            "black",
+            "mask_color is 'black'. KiCad names Green, Red, Blue, Purple, Black, White, Yellow.",
+        ),
+        ("silk_color", "#FFF", 'Any other colour is "#RRGGBBAA"'),
+        (
+            "copper_finish",
+            "HASL",
+            "copper_finish is 'HASL'. KiCad names None, ENIG, ENEPIG, HAL SnPb, HAL lead-free,",
+        ),
+    ],
+)
+@needs_libs
+def test_a_colour_or_a_finish_kicad_does_not_name_is_refused(name, value, said):
+    d = divider()
+    setattr(d, name, value)
+    with pytest.raises(ValueError) as refused:
+        d.board()
+    assert said in str(refused.value)
+
+
+EXAMPLE_BOARDS = (
+    "anc-speaker/v0.1/hush.kicad_pcb",
+    "fire-alarm-communicator/v0.1/herald.kicad_pcb",
+    "ring-mouse/v0.4/power/signet_power.kicad_pcb",
+    "snapdragon-dev-board/v0.2/wyvern.kicad_pcb",
+    "threadripper-matx/v0.3/basalt.kicad_pcb",
+)
+
+
+@pytest.mark.parametrize("board", EXAMPLE_BOARDS)
+def test_the_3_fields_write_the_stackup_an_example_board_carries(board):
+    """Each of these boards got its colours from an override of `_stackup` in its design file. The 3
+    fields, set to the values the committed board names, write the same stackup byte for byte."""
+    kept, thickness = stackup_of(ROOT / "examples" / board)
+    look = look_of(kept)
+    assert look["F.Mask"] == look["B.Mask"] and look["F.SilkS"] == look["B.SilkS"]
+    copper = [ly for ly in kicadgen.children(kept, "layer") if kicadgen.atoms(ly)[0].endswith(".Cu")]
+    d = kicadgen.Design(
+        name="look",
+        namespace=uuid.UUID(int=41),
+        copper_layers=len(copper),
+        thickness=float(thickness),
+        mask_color=look["F.Mask"],
+        silk_color=look["F.SilkS"],
+        copper_finish=look["finish"],
+    )
+    written = kicadgen.child(kicadgen.child(kicadgen.parse(d.board()), "setup"), "stackup")
+    assert kicadgen.dumps(written) == kicadgen.dumps(kept)
+
+
 def test_wrlgen_510_presets_have_an_internal_thread_and_glass(tmp_path):
     collar = wrlgen.connector_510()[0]
     bore = [math.hypot(x, y) for x, y, z in collar.vertices if 0.7 < z < 3.9 and math.hypot(x, y) < 4.0]

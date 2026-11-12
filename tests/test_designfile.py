@@ -251,6 +251,30 @@ def test_power_nets_that_is_no_dict_is_refused_with_the_dict_to_write(tmp_path):
 
 
 @needs_libs
+def test_a_finish_kicad_does_not_name_stops_the_design_before_a_file_is_written(tmp_path):
+    """KiCad reads any text as a finish and a fab's job file passes it on: `HASL` is no name of its
+    list. The command refuses the design when it is loaded, as it refuses power_nets that is a list."""
+    r = run("design", design_file(tmp_path, 'd.copper_finish = "HASL"'))
+    assert r.returncode == 1 and r.stderr == ""
+    names = (
+        "None, ENIG, ENEPIG, HAL SnPb, HAL lead-free, Hard gold, Immersion tin, Immersion nickel, "
+        "Immersion silver, Immersion gold, HT_OSP, OSP"
+    )
+    red = "the design file is refused. Nothing is written: correct the file first."
+    assert r.stdout.splitlines() == [
+        f"  file: copper_finish is 'HASL'. KiCad names {names}.",
+        f"design {tmp_path.name} red: {red}",
+    ]
+    assert list(tmp_path.glob("*.kicad_*")) == []
+    r = run(
+        "design", design_file(tmp_path / "ok", 'd.copper_finish = "HAL lead-free"', 'd.mask_color = "Blue"')
+    )
+    assert r.returncode == 0, r.stdout + r.stderr
+    text = (tmp_path / "ok" / "t.kicad_pcb").read_text(encoding="utf-8")
+    assert '(copper_finish "HAL lead-free")' in text and text.count('(color "Blue")') == 2
+
+
+@needs_libs
 def test_an_empty_list_of_power_nets_still_reads_as_none():
     """It never reached the line that fails, so a design that has one keeps writing what it wrote."""
     listed, empty = board(), board()
