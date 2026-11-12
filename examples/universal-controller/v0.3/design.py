@@ -374,7 +374,7 @@ def build() -> kicadgen.Design:
                          "21": "BTST", "22": "REGN", "23": "PMID"}, 0, B)  # fmt: skip
     add("L1", "Device:L", "1u", "Inductor_SMD:L_Coilcraft_XAL4020-XXX", (118.0, 159.5),
         {"1": "CHG_SW", "2": "VSYS"}, 0, B)  # fmt: skip
-    r("R12", "120", "ILIM", "GND", (113.5, 156.0), 90)
+    r("R12", "120", "ILIM", "GND", (113.5, 156.6), 90)  # clear of PMID's neck
     r("R13", "5.23k", "REGN", "TS", (122.6, 155.5), 90)  # the TS divider of TI's BQ2589x EVM for a 103AT
     r("R15", "30.1k", "TS", "GND", (125.0, 155.5), 90)
     c("C3", "1u", "VBUS", (113.5, 149.0), 90)
@@ -391,7 +391,7 @@ def build() -> kicadgen.Design:
          "10": "GAUGE_BIN", "13": "GND"}, 0, B)  # fmt: skip
     r("R14", "10m", "BAT_N", "GND", (108.5, 157.6), 0, fp="Resistor_SMD:R_0805_2012Metric")
     r("R53", "10k", "GAUGE_BIN", "GND", (131.2, 161.6), 0)  # the cell is always in: BIN held low
-    c("C51", "470n", "GAUGE_VDD", (137.4, 166.0), 90)
+    c("C51", "470n", "GAUGE_VDD", (137.4, 167.0), 90)
     c("C52", "100n", "BAT", (139.4, 166.0), 90)
     # U12, TPS63001: a buck-boost that holds +3V3 from the cell's 4.35 V down to its end, where the
     # v0.1 regulator dropped out. PS/SYNC low: power save at light load, for battery life.
@@ -402,7 +402,30 @@ def build() -> kicadgen.Design:
     c("C47", "10u", "VSYS", (112.0, 166.0), 90, fp=C0805)
     c("C48", "10u", "+3V3", (127.0, 165.0), 90, fp=C0805)
     c("C49", "10u", "+3V3", (129.4, 165.0), 90, fp=C0805)
-    c("C50", "100n", "VSYS", (116.0, 169.6))
+    c("C50", "100n", "VSYS", (114.6, 163.2))
+
+    # Necks out of the 0.5 mm pins of U11, U12 and U17 (P4 step 11). The power class's 0.4 mm does
+    # not fit between them, and an 8-pass route left each of these open. Each pin leaves at its own
+    # width and widens past the pad row.
+    d.track("GND", [(114.6, 166.0), (115.4, 166.0)], B, width=0.24)  # U12 PGND to its pad
+    d.track("VSYS", [(117.4, 166.0), (118.2, 166.0), (118.2, 165.0), (117.4, 165.0)], B, width=0.24)  # VINA, EN
+    d.track("VSYS", [(118.2, 165.5), (119.0, 165.5)], B, width=0.24)
+    d.via("VSYS", 119.0, 165.5)
+    d.track("VSYS", [(113.825, 163.2), (114.6, 164.0), (114.6, 165.0)], B, width=0.24)  # C50 to VIN
+    d.track("GND", [(115.375, 163.2), (115.6, 163.7), (115.6, 164.6)], B, width=0.24)
+    # The charge path: BAT's 2 pins into a bar and 2 vias.
+    d.track("BAT", [(119.963, 150.75), (120.9, 150.75)], B, width=0.25)
+    d.track("BAT", [(119.963, 151.25), (120.9, 151.25)], B, width=0.25)
+    d.track("BAT", [(120.9, 149.6), (120.9, 151.25)], B, width=0.5)
+    d.track("BAT", [(120.9, 150.6), (121.6, 150.6)], B, width=0.5)
+    d.via("BAT", 120.9, 149.6)
+    d.via("BAT", 121.6, 150.6)
+    # PMID to its capacitor, under the package's edge.
+    d.track("PMID", [(117.25, 153.963), (117.25, 154.85)], B, width=0.25)
+    d.track("PMID", [(117.25, 154.85), (114.4, 154.85), (113.9, 154.35), (113.9, 153.6)], B, width=0.4)
+    # The gauge's sense pin SRP out to a via.
+    d.track("BAT_N", [(135.9, 164.4), (137.0, 164.4)], B, width=0.2)
+    d.via("BAT_N", 137.0, 164.4)
     # The system rail for the ADC (channel 7), halved.
     r("R54", "100k", "VSYS", "VSYS_DIV", (135.6, 147.2), 90)
     r("R55", "100k", "VSYS_DIV", "GND", (137.6, 147.2), 90)
