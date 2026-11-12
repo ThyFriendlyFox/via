@@ -93,18 +93,92 @@ def test_the_top_modules_ports_are_read_from_verilators_xml():
     assert chipfront.top_ports("<not xml", "reg8") is None
 
 
-def test_a_comment_that_turns_off_a_failing_class_is_a_failure(tmp_path):
-    """Verilator obeys `lint_off` and prints nothing: a latch behind one passes its report."""
+def test_text_that_1_engine_reads_and_the_next_does_not_is_a_failure(tmp_path):
+    """Verilator obeys `lint_off` and prints nothing: a latch behind one passes its report. The gate
+    read the comment in upper case and for its failing classes only. Verilator takes `widthtrunc` and
+    the group `WIDTH` as it takes WIDTHTRUNC, a config block does the same in another form, and under
+    `ifdef VERILATOR` or `ifdef SYNTHESIS` 1 engine reads a design the others never see: 4 projects
+    with a width cut short passed LINT, and 1 was GREEN with --strict (2026-11-12)."""
     (tmp_path / "rtl").mkdir()
     rtl = tmp_path / "rtl" / "a.v"
     rtl.write_text(
-        "module a;\n  /* verilator lint_off LATCH */\n  // verilator lint_off UNUSEDSIGNAL\nendmodule\n",
+        "module a;\n"
+        "  /* verilator lint_off LATCH */\n"
+        "  // verilator lint_off UNUSEDSIGNAL\n"
+        "  // verilator lint_off widthtrunc\n"
+        "  // Verilator  Lint_Off WIDTH\n"
+        "  // verilator lint_on WIDTH\n"
+        "`ifdef VERILATOR\n"
+        "`verilator_config\n"
+        "lint_off -rule WIDTHTRUNC\n"
+        "`endif\n"
+        "`ifndef SYNTHESIS\n"
+        "`elsif YOSYS\n"
+        "`ifdef __ICARUS__\n"
+        "`ifdef WIDE  // the project's own macro\n"
+        "  // `ifdef SYNTHESIS in a comment is no text an engine reads\n"
+        "  // synopsys translate_off\n"
+        "  // pragma translate_on\n"
+        "  case (x) // synthesis full_case parallel_case\n"
+        '  initial $readmemh("rom.hex", q);\n'
+        '  initial $readmemb ("rom.bin", q);\n'
+        "endmodule\n",
         encoding="utf-8",
     )
-    assert chipfront.lint_off([rtl], tmp_path) == [
-        "rtl/a.v:2: lint_off LATCH turns off a class this gate fails on: remove the comment and change the "
-        "code"
+    off = "turns off a check of this gate: remove the comment and change the code"
+    config = "a verilator_config block turns off checks of this gate: remove it and change the code"
+    alone = ALONE
+    hidden = "marks text that the synthesizer skips and the simulator reads: remove the comment"
+    file = (
+        "reads a file while an engine runs, and each engine looks for it in another folder: write the "
+        "contents in the RTL, as a `case`"
+    )
+    assert chipfront.two_designs([rtl], tmp_path) == [
+        f"rtl/a.v:2: lint_off LATCH {off}",
+        f"rtl/a.v:3: lint_off UNUSEDSIGNAL {off}",
+        f"rtl/a.v:4: lint_off widthtrunc {off}",
+        f"rtl/a.v:5: lint_off WIDTH {off}",
+        f"rtl/a.v:7: `VERILATOR` {alone}",
+        f"rtl/a.v:8: {config}",
+        f"rtl/a.v:9: {config}",
+        f"rtl/a.v:11: `SYNTHESIS` {alone}",
+        f"rtl/a.v:12: `YOSYS` {alone}",
+        f"rtl/a.v:13: `__ICARUS__` {alone}",
+        f"rtl/a.v:16: translate_off {hidden}",
+        f"rtl/a.v:17: translate_on {hidden}",
+        "rtl/a.v:18: full_case tells the synthesizer what the simulator is not told: write the `default:` "
+        "instead",
+        f"rtl/a.v:19: $readmemh {file}",
+        f"rtl/a.v:20: $readmemb {file}",
     ]
+
+
+def test_a_bench_that_asks_for_a_define_of_the_netlists_run_is_a_failure(tmp_path):
+    """GLSIM compiles a bench with the defines the cells' models need, and SIM with none. A bench that
+    asks for 1 of them is another text in each gate: it can skip on the netlist what it counts on the
+    RTL, with the same count of checks."""
+    (tmp_path / "tb").mkdir()
+    bench = tmp_path / "tb" / "tb_a.v"
+    bench.write_text(
+        "module tb_a;\n"
+        "`ifndef FUNCTIONAL\n"
+        "  // `ifdef UNIT_DELAY in a comment\n"
+        "`elsif UNIT_DELAY\n"
+        "`ifdef FUNCTIONAL_MODEL\n"
+        "`ifdef TB_STREAM\n"
+        "endmodule\n",
+        encoding="utf-8",
+    )
+    said = (
+        "is defined for the run on the netlist and not for the run on the RTL: the bench would be another "
+        "text in each. Write 1 text for both"
+    )
+    defines = ["FUNCTIONAL", "UNIT_DELAY=#1"]
+    assert chipfront.netlist_only([bench], defines, tmp_path) == [
+        f"tb/tb_a.v:2: `FUNCTIONAL` {said}",
+        f"tb/tb_a.v:4: `UNIT_DELAY` {said}",
+    ]
+    assert chipfront.netlist_only([bench], [], tmp_path) == []
 
 
 # ------------------------------------------------------------- the judges: a bench
@@ -383,15 +457,15 @@ def a_run(folder: Path) -> chipflow.Run:
 
 def test_a_gates_inputs_are_its_sources_and_every_file_they_name(tmp_path):
     """A gate's record of a pass names each of the project's files the gate read. Until 2026-11-12 it
-    named the RTL and the benches alone: a header, a memory's contents and a bench's bounds could
-    change after the gate passed, and EXPORT handed the layout out. No engine runs here."""
+    named the RTL and the benches alone: a header and a bench's bounds could change after the gate
+    passed, and EXPORT handed the layout out. A header named with no space after `include was in no
+    record either, and the 3 engines take that form. No engine runs here."""
     folder = a_project(tmp_path)
     rtl, tb = folder / "rtl", folder / "tb"
     swap(rtl / "reg8.v", "module reg8 (", '`include "widths.vh"\n`include "nowhere.vh"\nmodule reg8 (')
-    swap(rtl / "reg8.v", "endmodule", '    initial $readmemh("rom.hex", q);\nendmodule')
-    (rtl / "widths.vh").write_text('`include "deep.vh"\n', encoding="utf-8")
+    (rtl / "widths.vh").write_text('`include "deep.vh"\n`include"tight.vh"\n', encoding="utf-8")
     (rtl / "deep.vh").write_text("// the last of 3\n", encoding="utf-8")
-    (rtl / "rom.hex").write_text("00\n", encoding="utf-8")
+    (rtl / "tight.vh").write_text("// named with no space\n", encoding="utf-8")
     swap(tb / "tb_reg8.v", "module tb_reg8;", '`include "common.vh"\nmodule tb_reg8;')
     (tb / "common.vh").write_text("// shared by the benches\n", encoding="utf-8")
     run = a_run(folder)
@@ -400,7 +474,7 @@ def test_a_gates_inputs_are_its_sources_and_every_file_they_name(tmp_path):
         return [run.name_of(path) for path in chipfront.project_inputs(run, gate)]
 
     # a file, then each file it names, in the order it names them; the name with no file is left out
-    sources = ["rtl/reg8.v", "rtl/widths.vh", "rtl/deep.vh", "rtl/rom.hex"]
+    sources = ["rtl/reg8.v", "rtl/widths.vh", "rtl/deep.vh", "rtl/tight.vh"]
     assert names("lint") == [*sources, "constraints.sdc", "chip.json"]
     assert names("synth") == [*sources, "chip.json"]
     # a file that is not there yet is named too: EXPORT sees it come
@@ -416,7 +490,7 @@ def test_a_gates_inputs_are_its_sources_and_every_file_they_name(tmp_path):
     assert names("layout") == ["constraints.sdc", "chip.json"]
     # a header of 1 name in 2 folders of the engines' list: both are named, whichever an engine takes
     (tb / "widths.vh").write_text("// another file of that name\n", encoding="utf-8")
-    assert names("lint") == [*sources[:3], "tb/widths.vh", sources[3], "constraints.sdc", "chip.json"]
+    assert names("lint") == [*sources, "tb/widths.vh", "constraints.sdc", "chip.json"]
     (tb / "widths.vh").unlink()
     # the hashes are taken before the engines start and again after: a file that is other bytes, new
     # or gone between the 2 is a failure, and the gate writes no record of a pass
@@ -425,10 +499,10 @@ def test_a_gates_inputs_are_its_sources_and_every_file_they_name(tmp_path):
     assert chipfront.inputs_moved(run, "sim", taken) == []
     (rtl / "deep.vh").write_text("// edited while the bench ran\n", encoding="utf-8")
     (tb / "tb_reg8.expect.json").write_text("{}", encoding="utf-8")
-    (rtl / "rom.hex").unlink()
+    (rtl / "tight.vh").unlink()
     assert chipfront.inputs_moved(run, "sim", taken) == [
         "rtl/deep.vh changed while the gate ran: its hash differs",
-        "rtl/rom.hex changed while the gate ran: its hash differs",
+        "rtl/tight.vh changed while the gate ran: its hash differs",
         "tb/tb_reg8.expect.json changed while the gate ran: its hash differs",
     ]
 
@@ -487,10 +561,107 @@ def test_lint_passes_the_template_and_fails_a_latch_a_lint_off_and_an_open_port(
     swap(folder / "rtl" / "reg8.v", "    output wire       loose\n", "    output wire       loose\n")
     code, record = gate("lint", folder)
     assert code == 1 and (
-        "rtl/reg8.v:9: lint_off LATCH turns off a class this gate fails on: remove the comment and change "
-        "the code" in record["details"]["failures"]
+        "rtl/reg8.v:9: lint_off LATCH turns off a check of this gate: remove the comment and change the code"
+        in record["details"]["failures"]
     )
     assert not any(line.startswith("LATCH") for line in record["details"]["failures"])
+
+
+WIDE = "else if (en) q <= d + 9'd1;"
+OFF = "turns off a check of this gate: remove the comment and change the code"
+ALONE = "is defined by 1 engine and by no other: each would read another design. Write 1 text for all of them"
+
+
+@needs_verilator
+def test_lint_fails_a_check_turned_off_in_any_spelling_and_text_for_1_engine_alone(tmp_path):
+    """The reviewer's 5 projects of 2026-11-12, on the template: each has a sum 1 bit too wide for its
+    register, and LINT passed 4 of them. Each fails now, with the line that turns the check off."""
+
+    def lint(name: str, edit) -> list[str]:
+        folder = a_project(tmp_path / name)
+        swap(folder / "rtl" / "reg8.v", "else if (en) q <= d;", WIDE)
+        edit(folder / "rtl")
+        code, record = gate("lint", folder)
+        assert code == 1 and not (folder / "build" / "chip" / "lint" / "passed.json").exists()
+        return record["details"]["failures"]
+
+    block = "    always @(posedge clk) begin"
+    assert lint("as-it-is", lambda rtl: None) == [
+        "WIDTHTRUNC: rtl/reg8.v:12:24: Operator ASSIGNDLY expects 8 bits on the Assign RHS, but Assign "
+        "RHS's ADD generates 9 bits."
+    ]
+    for name, spelling in (("lower", "widthtrunc"), ("group", "WIDTH")):
+        above = f"    // verilator lint_off {spelling}\n{block}"
+        assert lint(name, lambda rtl, above=above: swap(rtl / "reg8.v", block, above)) == [
+            f"rtl/reg8.v:10: lint_off {spelling} {OFF}"
+        ]
+    waive = "`ifdef VERILATOR\n`verilator_config\nlint_off -rule WIDTHTRUNC\n`endif\n"
+    config = "a verilator_config block turns off checks of this gate: remove it and change the code"
+    assert lint("config", lambda rtl: (rtl / "a_waive.v").write_text(waive, encoding="utf-8")) == [
+        f"rtl/a_waive.v:1: `VERILATOR` {ALONE}",
+        f"rtl/a_waive.v:2: {config}",
+        f"rtl/a_waive.v:3: {config}",
+    ]
+    # under `ifdef VERILATOR this gate judges text that no other engine reads
+    split = f"`ifdef VERILATOR\n        else if (en) q <= d;\n`else\n        {WIDE}\n`endif"
+    assert lint("for-1-engine", lambda rtl: swap(rtl / "reg8.v", f"        {WIDE}", split)) == [
+        f"rtl/reg8.v:12: `VERILATOR` {ALONE}"
+    ]
+    # Yosys defines SYNTHESIS, Verilator and Icarus Verilog do not: the netlist would be another design
+    split = split.replace("VERILATOR", "SYNTHESIS").replace(WIDE, "else if (en) q <= ~d;")
+    assert lint("for-synthesis", lambda rtl: swap(rtl / "reg8.v", f"        {WIDE}", split)) == [
+        f"rtl/reg8.v:12: `SYNTHESIS` {ALONE}"
+    ]
+    # A memory's contents from a file: Yosys looks for it beside the RTL, and vvp in the folder the
+    # bench runs in. LINT and SYNTH passed such RTL and SIM failed it on unknown outputs.
+    memory = '    reg [7:0] step [0:1];\n    initial $readmemh("step.hex", step);\nendmodule'
+    assert lint("memory", lambda rtl: swap(rtl / "reg8.v", "endmodule", memory)) == [
+        "WIDTHTRUNC: rtl/reg8.v:12:24: Operator ASSIGNDLY expects 8 bits on the Assign RHS, but Assign "
+        "RHS's ADD generates 9 bits.",
+        "rtl/reg8.v:15: $readmemh reads a file while an engine runs, and each engine looks for it in "
+        "another folder: write the contents in the RTL, as a `case`",
+    ]
+
+
+@needs_verilator
+@needs_iverilog
+@needs_synth
+def test_each_front_gate_records_the_files_its_engine_says_it_read(tmp_path):
+    """A header named with no space after `include, and one named through a macro, were in no record:
+    the header changed after GREEN and `chip export` handed the old layout out (2026-11-12). The gates
+    find a quoted name by the text, and take every other from the engine: Verilator's XML, the list
+    Icarus Verilog writes with -M, the rule Yosys writes with -E."""
+    folder = a_project(tmp_path)
+    rtl, tb = folder / "rtl", folder / "tb"
+    named = '`include"tight.vh"\n`define MORE "more.vh"\n`include `MORE\n'
+    swap(rtl / "reg8.v", "module reg8 (", f"{named}module reg8 (")
+    (rtl / "tight.vh").write_text("// named with no space\n", encoding="utf-8")
+    (rtl / "more.vh").write_text("// named through a macro\n", encoding="utf-8")
+    swap(tb / "tb_reg8.v", "module tb_reg8;", '`define SHARED "shared.vh"\n`include `SHARED\nmodule tb_reg8;')
+    (tb / "shared.vh").write_text("// the bench's own, named through a macro\n", encoding="utf-8")
+    run = a_run(folder)
+    # the text gives the quoted name and neither macro's
+    assert [run.name_of(p) for p in chipfront.project_inputs(run, "sim")][:3] == [
+        "rtl/reg8.v",
+        "rtl/tight.vh",
+        "tb/tb_reg8.v",
+    ]
+
+    def judged(name: str) -> list[str]:
+        assert gate(name, folder)[0] == 0, name
+        record = folder / "build" / "chip" / name / "passed.json"
+        return sorted(json.loads(record.read_text(encoding="utf-8"))["judged"])
+
+    headers = ["rtl/more.vh", "rtl/reg8.v", "rtl/tight.vh"]
+    assert judged("lint") == ["chip.json", "constraints.sdc", *headers]
+    assert judged("sim") == ["chip.json", *headers, "tb/shared.vh", "tb/tb_reg8.v"]
+    assert judged("synth") == ["chip.json", "chip/synth/reg8.v", *headers]
+    hand_on_as_final(folder)
+    assert judged("glsim") == ["chip.json", "chip/layout/reg8.v", "tb/shared.vh", "tb/tb_reg8.v"]
+    # a file the gate did not find by the text is read as the others are
+    (rtl / "more.vh").write_text("// verilator lint_off WIDTHTRUNC\n", encoding="utf-8")
+    code, record = gate("lint", folder)
+    assert code == 1 and record["details"]["failures"] == [f"rtl/more.vh:1: lint_off WIDTHTRUNC {OFF}"]
 
 
 @needs_verilator
@@ -501,6 +672,34 @@ def test_lint_holds_the_constraints_to_the_ports_and_skips_with_no_rtl(tmp_path)
     assert code == 1 and record["details"]["failures"] == [
         "constraints.sdc: input d has no set_input_delay: STA cannot judge a path through it"
     ]
+    # The gate knows each bus's width from Verilator: 1 bit does not stand for its bus, and the
+    # outputs do not stand for the inputs. LINT passed both, and STA failed them 35 s later.
+    swap(folder / "constraints.sdc", "{rst en}", "{rst en d[*]}")
+    swap(folder / "constraints.sdc", "{q[*]}", "{q[0]}")
+    code, record = gate("lint", folder)
+    assert code == 1 and record["details"]["failures"] == [
+        "constraints.sdc: output q: 7 of its 8 bits have no set_output_delay (q[1], q[2], q[3], q[4] ...): "
+        "name the bus as q[*]"
+    ]
+    swap(folder / "constraints.sdc", "{q[0]}", "{q[*]}")
+    swap(folder / "constraints.sdc", "[get_ports {rst en d[*]}]", "[all_outputs]")
+    code, record = gate("lint", folder)
+    assert code == 1 and record["details"]["failures"] == [
+        "constraints.sdc: line 3: set_input_delay takes [all_inputs], not [all_outputs]: a delay of 1 "
+        "direction is not a delay of the other",
+        "constraints.sdc: input d has no set_input_delay: STA cannot judge a path through it",
+        "constraints.sdc: input en has no set_input_delay: STA cannot judge a path through it",
+        "constraints.sdc: input rst has no set_input_delay: STA cannot judge a path through it",
+    ]
+    swap(folder / "constraints.sdc", "[all_outputs]", "[all_inputs]")
+    assert gate("lint", folder)[0] == 0
+    # a period written 2 times: this reader would record 20 ns where the engines take 2000 ns
+    swap(folder / "constraints.sdc", "-period 20 ", "-period 20 -period 2000 ")
+    code, record = gate("lint", folder)
+    assert code == 1 and record["details"]["failures"] == [
+        "constraints.sdc: line 2: create_clock writes -period 2 times: write it 1 time"
+    ]
+    swap(folder / "constraints.sdc", "-period 20 -period 2000 ", "-period 20 ")
     swap(folder / "constraints.sdc", "[get_ports clk] ;#", "[get_ports clock] ;#")
     code, record = gate("lint", folder)
     assert (
@@ -625,6 +824,95 @@ def test_sim_proves_the_benches_with_the_list_of_changes_and_holds_the_list_itse
 
 
 @needs_iverilog
+def test_a_change_is_made_in_a_file_that_the_rtl_alone_reads(tmp_path):
+    """A header that the RTL and a bench both include is a file the RTL is read from, and a change in
+    it changes the bench too. SIM printed "1 of 1 changes of the RTL caught" for a change that only
+    the bench read: a macro that made the bench count 1 error itself (2026-11-12). Which text is the
+    RTL's and which a bench's comes from the engine, which reads each alone."""
+    folder = a_project(tmp_path)
+    rtl, tb = folder / "rtl", folder / "tb"
+    (rtl / "defs.vh").write_text("`define RESET 8'd0\n`define SELFTEST 0\n", encoding="utf-8")
+    swap(rtl / "reg8.v", "module reg8 (", '`include "defs.vh"\nmodule reg8 (')
+    swap(rtl / "reg8.v", "if (rst) q <= 8'd0;", "if (rst) q <= `RESET;")
+    swap(tb / "tb_reg8.v", "module tb_reg8;", '`include "defs.vh"\nmodule tb_reg8;')
+    counted = '        $display("errors = %0d", errors);'
+    swap(tb / "tb_reg8.v", counted, f"        if (`SELFTEST) errors = errors + 1;\n{counted}")
+    listed = rtl / "mutations.json"
+
+    def sim(name: str, file: str, old: str, new: str) -> tuple[int, dict]:
+        change = {"name": name, "file": file, "old": old, "new": new}
+        listed.write_text(json.dumps({"mutations": [change]}), encoding="utf-8")
+        return gate("sim", folder)
+
+    code, record = sim("selftest", "rtl/defs.vh", "`define SELFTEST 0", "`define SELFTEST 1")
+    assert code == 1 and record["details"]["failures"] == [
+        "rtl/mutations.json: selftest: the bench tb/tb_reg8.v reads rtl/defs.vh too: the change would "
+        "change the bench with the RTL. Make it in a file the RTL alone reads"
+    ]
+    assert "mutations" not in record["details"]
+    assert not (folder / "build" / "chip" / "sim" / "mutants").exists()
+    # the same fault in the RTL's own file is a change, and the bench catches it
+    code, record = sim("reset-to-1", "rtl/reg8.v", "q <= `RESET", "q <= 8'd1")
+    assert code == 0 and record["details"]["mutations"]["reset-to-1"]["state"] == "caught"
+    # so is a change in a header that the RTL alone includes
+    (rtl / "own.vh").write_text("`define LOAD d\n", encoding="utf-8")
+    swap(rtl / "reg8.v", '`include "defs.vh"', '`include "defs.vh"\n`include "own.vh"')
+    swap(rtl / "reg8.v", "else if (en) q <= d;", "else if (en) q <= `LOAD;")
+    code, record = sim("loads-not-d", "rtl/own.vh", "`define LOAD d", "`define LOAD ~d")
+    assert code == 0 and record["details"]["mutations"] == {
+        "loads-not-d": {"state": "caught", "by": "tb_reg8: errors=3 not in [None, 0]"}
+    }
+
+
+@needs_iverilog
+def test_sim_refuses_a_file_that_is_read_while_a_bench_runs(tmp_path):
+    """vvp opens a file from the folder it runs in, and names no file it opened. A bench that read
+    `../../../../tb/want.hex` ran, and each changed copy of the RTL, 2 folders deeper, failed on the
+    file alone: SIM printed "5 of 5 changes of the RTL caught" for a bench that catches 2, and the
+    file was in no record (2026-11-12). A value a bench needs is text the compiler reads."""
+    reads = (
+        "reads a file while the bench runs. A bench runs in a folder of the gate's own, and no record of a "
+        "pass would hold the file. Write the values in the text: in a header the bench includes, or as a "
+        "`case` in the RTL"
+    )
+    start = "    initial begin\n        repeat (2)"
+    folder = a_project(tmp_path / "bench")
+    bench = folder / "tb" / "tb_reg8.v"
+    named = '    reg [7:0] want [0:0];\n    initial $readmemh("../../../../tb/want.hex", want);\n'
+    swap(bench, start, named + start)
+    (folder / "tb" / "want.hex").write_text("00\n", encoding="utf-8")
+    change = {"name": "enable-ignored", "file": "rtl/reg8.v", "old": "else if (en) q", "new": "else q"}
+    (folder / "rtl" / "mutations.json").write_text(json.dumps([change]), encoding="utf-8")
+    code, record = gate("sim", folder)
+    assert (code, record["summary"]) == (1, "1 benches, none run, 1 failures")
+    assert record["details"]["failures"] == [f"tb/tb_reg8.v:39: $readmemh {reads}"]
+    # no bench ran and no copy was made
+    assert list((folder / "build" / "chip" / "sim").iterdir()) == []
+    # the RTL: Yosys finds the file beside it, and vvp does not
+    folder = a_project(tmp_path / "rtl")
+    memory = '    reg [7:0] step [0:1];\n    initial $readmemh("step.hex", step);\nendmodule'
+    swap(folder / "rtl" / "reg8.v", "endmodule", memory)
+    (folder / "rtl" / "step.hex").write_text("01\n01\n", encoding="utf-8")
+    code, record = gate("sim", folder)
+    assert code == 1 and record["details"]["failures"] == [f"rtl/reg8.v:15: $readmemh {reads}"]
+    # a header the text does not give (its name is a macro's) is read after the compile names it
+    folder = a_project(tmp_path / "header")
+    bench = folder / "tb" / "tb_reg8.v"
+    swap(bench, "module tb_reg8;", '`define STIM "stim.vh"\nmodule tb_reg8;')
+    swap(bench, start, "    integer fd, got;\n`include `STIM\n" + start)
+    stim = folder / "tb" / "stim.vh"
+    stim.write_text("    // the stimulus\n", encoding="utf-8")
+    assert gate("sim", folder)[0] == 0
+    stim.write_text(
+        '    initial begin fd = $fopen("stim.txt", "r"); got = $fscanf(fd, "%d", got); end\n',
+        encoding="utf-8",
+    )
+    code, record = gate("sim", folder)
+    assert code == 1 and record["details"]["failures"] == [f"tb/stim.vh:1: $fscanf {reads}"]
+    assert not (folder / "build" / "chip" / "sim" / "passed.json").exists()
+
+
+@needs_iverilog
 def test_a_change_that_makes_a_bench_wait_for_ever_is_stopped_and_caught(tmp_path):
     """A bench with no count of cycles waits for a value. With a change that never gives the value the
     simulation never ends. SIM stops a changed copy at 10 times the bench's own run, 20 s at least,
@@ -661,6 +949,20 @@ def test_sim_fails_a_bench_that_never_ends_or_is_not_there(tmp_path):
     swap(folder / "tb" / "tb_reg8.v", "module tb_reg8;", "module bench;")
     code, record = gate("sim", folder)
     assert record["details"]["failures"][0].endswith("name the bench's module as its file, tb_reg8")
+    # A bench that prints the words and ends with no event left has not reached $finish: the gate asked
+    # for the 2 words anywhere in the log, and vvp's own line holds the file, the line and the time.
+    words = a_project(tmp_path, "words")
+    swap(words / "tb" / "tb_reg8.v", "    always #10 clk = ~clk;", "    initial repeat (40) #10 clk = ~clk;")
+    swap(words / "tb" / "tb_reg8.v", "        $finish;\n", '        $display("$finish called at the end");\n')
+    code, record = gate("sim", words)
+    assert code == 1 and record["details"]["failures"] == [
+        "tb_reg8: does not reach $finish: end the bench with $finish after its last check"
+    ]
+    log = (words / "build" / "chip" / "sim" / "tb_reg8" / "run.log").read_text(encoding="utf-8")
+    assert log.splitlines() == ["errors = 0", "checks = 4", "x_outputs = 0", "$finish called at the end"]
+    # a folder of a bench's name is no bench
+    (words / "tb" / "notes.v").mkdir()
+    assert [p.name for p in chipfront.benches(a_run(words))] == ["tb_reg8.v"]
     (folder / "tb" / "tb_reg8.v").unlink()
     ran = command("chip", "sim", folder)
     assert ran.returncode == 2 and ran.stdout.splitlines()[0].startswith(
@@ -692,6 +994,17 @@ def test_sim_holds_a_benchs_own_bounds_and_refuses_an_expect_file_it_cannot_read
     expect.write_text(json.dumps({"last_q": {"mx": 61}}), encoding="utf-8")
     code, record = gate("sim", folder)
     assert code == 1 and record["details"]["failures"][0].startswith("tb_reg8.expect.json: last_q: ")
+    # A bench prints a name as it is written. The reader of a board's bounds refused a capital letter
+    # with a line about ngspice, which prints every name in lower case: here the bound is held.
+    swap(folder / "tb" / "tb_reg8.v", '$display("last_q = %0d", q);', '$display("Last_Q = %0d", q);')
+    expect.write_text(json.dumps({"Last_Q": {"min": 60, "source": "0x3C is 60"}}), encoding="utf-8")
+    code, record = gate("sim", folder)
+    assert code == 0 and record["details"]["benches"]["tb_reg8"]["Last_Q"] == 60.0
+    expect.write_text(json.dumps({"Last_Q": {"min": 61, "source": "a wrong bound"}}), encoding="utf-8")
+    code, record = gate("sim", folder)
+    assert code == 1 and record["details"]["failures"] == [
+        "tb_reg8: Last_Q=60 not in [61, None] (a wrong bound)"
+    ]
 
 
 @needs_synth
@@ -811,6 +1124,27 @@ def test_glsim_runs_the_benches_on_the_netlist_and_only_on_the_file_layout_recor
     assert code == 1 and record["details"]["failures"] == [
         "chip/layout/reg8.v changed after LAYOUT recorded it: its hash differs"
     ]
+
+
+@needs_synth
+@needs_iverilog
+@needs_verilator
+def test_glsim_fails_a_bench_that_is_another_text_on_the_netlist(tmp_path):
+    """The bench counts no error where FUNCTIONAL is defined, and GLSIM defines it: the run on the
+    netlist would pass with the same 4 checks whatever the netlist does."""
+    folder = a_project(tmp_path)
+    counts = "                errors = errors + 1;"
+    swap(folder / "tb" / "tb_reg8.v", counts, f"`ifndef FUNCTIONAL\n{counts}\n`endif")
+    for front in ("lint", "sim", "synth"):
+        assert command("chip", front, folder).returncode == 0, front
+    hand_on_as_final(folder)
+    code, record = gate("glsim", folder)
+    assert (code, record["summary"]) == (1, "1 benches on the final netlist, 1 failures")
+    assert record["details"]["failures"] == [
+        "tb/tb_reg8.v:32: `FUNCTIONAL` is defined for the run on the netlist and not for the run on the "
+        "RTL: the bench would be another text in each. Write 1 text for both"
+    ]
+    assert not (folder / "build" / "chip" / "glsim" / "passed.json").exists()
 
 
 def test_an_open_supply_port_is_no_warning_and_an_open_logic_port_is_one():

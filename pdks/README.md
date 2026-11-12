@@ -29,7 +29,7 @@ not know. Each block has a `source`: what the values were read from.
 | `libraries.<library>.corners` | Each library corner: its `liberty` file, its `process` (`slow`, `typical` or `fast`), its `volts` and its `celsius`. |
 | `libraries.<library>.wires` | Each wire corner: its technology LEF (`techlef`) and its extraction rules (`rcx`). |
 | `libraries.<library>.lef`, `gds`, `spice` | The cells' abstract views, layouts and transistor netlists. |
-| `libraries.<library>.verilog` | The cell models for simulation (`files`) and the defines they are compiled with. |
+| `libraries.<library>.verilog` | The cell models for simulation (`files`) and the defines they are compiled with. GLSIM gives a bench these defines and SIM gives it none, so GLSIM fails a bench that asks for 1 of them in an `` `ifdef ``. |
 | `libraries.<library>.cells` | The cells of each kind. `flop_with_reset`, `flop_without_reset`, `latch` and `clock_gate` are families: a cell's name without `prefix` and without its drive strength. `tie_high`, `tie_low` and `diode` are a cell and its pin. `tap`, `fill`, `decap`, `clock_root` and `clock_buffers` are cell names. `dont_use` names files of the kit, 1 cell name on a line: see "Cells the kit keeps out". |
 | `libraries.<library>.supply` | The power and the ground net, and the cell pins that connect to each. |
 | `libraries.<library>.floorplan` | What the layout build needs: the placement site, the tracks file, the tap distance, the pin, wire and routing layers, the supply grid, the placement density, the margin from the die's edge to the core. `wire_capacitance_ff_per_um` and `repair` are the numbers the build repairs with: see "Wires before the routing". |

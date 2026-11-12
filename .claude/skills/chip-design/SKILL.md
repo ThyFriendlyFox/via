@@ -44,9 +44,10 @@ the last.
 1. Start the project: `workcenter chip init <dir> --top <module>`. It
    writes `chip.json`, `constraints.sdc`, `rtl/<module>.v`,
    `tb/tb_<module>.v` and `README.md`. It never writes over a file. The
-   RTL and the bench it writes are an example, an 8-bit register and its
-   bench: replace both with the design. `workcenter next` names a file
-   that is still the example.
+   RTL, the bench and the constraints it writes are an example, an 8-bit
+   register with its bench and its ports' delays: replace all 3 with the
+   design's. `workcenter next` names a file that is still the example.
+   The project's path holds no white space: Yosys ends a path at a space.
 2. Fill `chip.json`: see "chip.json".
 3. Write the RTL in `rtl/`: see "The RTL".
 4. Write 1 bench in `tb/` for each thing the spec promises: see "A bench".
@@ -130,6 +131,18 @@ the limit is the project's own budget, and the source says so.
 9. A register that nothing reads is not built. SYNTH names each flop
    that the mapping removed: read the names, and remove the register or
    read it.
+10. The RTL is 1 text for every engine. LINT judges what Verilator reads,
+    SIM what Icarus Verilog reads and SYNTH what Yosys reads. LINT fails
+    each line that speaks to 1 of them alone:
+    - a `verilator lint_off` comment, in any spelling and for any class,
+      and a `verilator_config` block;
+    - an `` `ifdef ``, `` `ifndef `` or `` `elsif `` on a name that an
+      engine defines: `VERILATOR`, `SYNTHESIS`, `YOSYS`, `__ICARUS__`;
+    - a `translate_off` comment, `full_case` and `parallel_case`.
+11. No `$readmemh` and no `$readmemb` in the RTL: each engine looks for
+    the file in another folder. Write the contents as a `case`.
+12. A header is named in quotes: `` `include "widths.vh" ``. It lies
+    beside the file that names it, or in `tb/`.
 
 ## A bench
 
@@ -146,15 +159,27 @@ template is a working example.
    output is unknown: `if (^q === 1'bx) x_outputs = x_outputs + 1;`.
 4. Print the 3 measures, each on its own line, then end:
    `$display("errors = %0d", errors);`, the same for `checks` and
-   `x_outputs`, then `$finish;`.
+   `x_outputs`, then `$finish;`. A bench that runs out of events with no
+   `$finish` has not ended.
 5. The gate holds `errors` to 0, `checks` to 1 at least and `x_outputs`
    to 0. Another printed measure gets its bound in
    `tb/<bench>.expect.json`:
-   `{"latency": {"max": 4, "source": "the spec's line"}}`.
+   `{"latency": {"max": 4, "source": "the spec's line"}}`. The name in
+   the file is the name as the bench prints it, letter for letter.
 6. Change inputs on the falling edge of the clock and compare there too,
    so that no input changes at the edge that reads it.
 7. A bench that waits for an event stops after a count of cycles:
    a design that never answers must end the bench, with an error.
+8. A bench reads no file while it runs: no `$readmemh`, `$readmemb`,
+   `$fscanf`, `$fgets`, `$fgetc` and no `$fread`. The simulator opens such
+   a file from the folder the gate runs the bench in, and no record of a
+   pass would hold it. Write the values as text in a header that the
+   bench includes: `tb/program.vh` with 1 assignment on a line
+   (`rom[0] = 8'h3A;`), and `` `include "program.vh" `` inside an
+   `initial` block. SIM fails a bench that reads a file, before it runs.
+9. A bench is 1 text for SIM and GLSIM. No `` `ifdef `` on a name that
+   GLSIM defines for the cells' models: `FUNCTIONAL` and `UNIT_DELAY` on
+   `sky130A`. GLSIM fails a bench that asks for one.
 
 GLSIM fails a bench that makes another count of `checks` on the netlist
 than on the RTL: the bench took another path.
@@ -170,15 +195,27 @@ a number ends with `;# source: <where the number comes from>`.
    but the clock: how long after the clock edge the input is valid.
 3. `set_output_delay <ns> -clock clk [get_ports {...}]` for every output:
    how long before the clock edge the output is read.
-4. A port with no delay is a failure of LINT: STA cannot judge a path
-   through it.
-5. Write 1 command on a line, with each value itself and no variable.
-   The gates take `create_clock`, `set_clock_uncertainty`,
+4. A delay covers each bit of each port. Name a bus as `d[*]` or by its
+   bare name `d`: `d[0]` names 1 bit. `[all_inputs]` in `set_input_delay`
+   names every input, and `[all_outputs]` in `set_output_delay` every
+   output. A port, or a bit of a bus, with no delay is a failure of LINT:
+   STA cannot judge a path through it.
+5. A delay with no `-min` and no `-max` is the delay for setup and for
+   hold. With `-max` it is for setup alone, and with `-min` for hold
+   alone: write both lines, or neither flag. A delay names its `-clock`.
+   `-rise` and `-fall` are not taken: 1 delay is for both edges.
+6. Write 1 command on a line, with each value itself and no variable,
+   and each option 1 time: of 2 `-period` values Tcl takes the last. The
+   gates take `create_clock`, `set_clock_uncertainty`,
    `set_input_delay`, `set_output_delay`, `set_driving_cell`,
    `set_input_transition`, `set_load`, `set_max_fanout`,
    `set_max_transition`, `set_timing_derate`, `set_false_path` and
    `set_multicycle_path`. An exception (`set_false_path`,
    `set_multicycle_path`) carries its source too.
+7. A margin takes time away from a path, never gives it:
+   `set_clock_uncertainty` is 0 or more, `set_timing_derate -late` is 1
+   or more, and `set_timing_derate -early` is 1 or less. LINT fails the
+   other sign whatever the source says.
 
 The period is a requirement of the spec. A path that is too slow is
 shortened in the RTL; the period does not grow to pass STA.
@@ -202,6 +239,9 @@ benches do not check what the change breaks.
 1. Write 1 change for each thing the spec promises: a reset value, an
    enable, a carry, a wrap, each branch of each `case`, each flag.
 2. `old` is text that stands in `file` exactly 1 time. `new` replaces it.
+   `file` is a file that the RTL alone reads: an RTL file, or a header
+   that no bench includes. A change in a header that a bench includes too
+   would change the bench with the RTL, and SIM refuses it.
 3. A change must compile. One that does not shows nothing, and SIM fails
    the list on it.
 4. A change that changes nothing a pin can show is not a fault: remove

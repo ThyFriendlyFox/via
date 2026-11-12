@@ -1390,6 +1390,84 @@ def test_export_refuses_a_file_that_came_later_a_changed_header_and_a_layout_of_
 
 
 @needs_flow
+def test_export_holds_a_header_of_any_spelling_and_a_file_the_project_keeps_under_chip_layout(project):
+    """2 files that changed after GREEN while `chip export` handed the old layout out (2026-11-12). A
+    header named with no space after `include, or through a macro, was in no record: each gate takes
+    the files from its engine now. And a file the project keeps under its own folder `chip/layout` was
+    named like a file the gates write there: EXPORT read the name back from the output folder and then
+    left out every name of that folder. A project's file under `chip/` is named with `./` in front."""
+    out = project / "build"
+    tapeout = out / "chip" / "tapeout"
+    rtl = project / "rtl" / "reg8.v"
+    headers = {
+        "rtl/tight.vh": '`include"tight.vh"\n',
+        "rtl/more.vh": '`define MORE "more.vh"\n`include `MORE\n',
+        "chip/layout/own.vh": '`include "../chip/layout/own.vh"\n',
+    }
+    for name in headers:
+        (project / name).parent.mkdir(parents=True, exist_ok=True)
+        (project / name).write_text("// a header of reg8\n", encoding="utf-8")
+    rtl.write_text("".join(headers.values()) + rtl.read_text(encoding="utf-8"), encoding="utf-8")
+    # The 4 gates that read the project's files run again and name each header. The mapped netlist is
+    # the same bytes, so the layout still stands for it.
+    for name in ("lint", "sim", "synth", "glsim"):
+        assert gate(name, project)[0] == 0, name
+    named = ["./chip/layout/own.vh", "rtl/more.vh", "rtl/tight.vh"]
+    for name in ("lint", "sim", "synth"):
+        assert [n for n in sorted(passed(project, name)["judged"]) if n.endswith(".vh")] == named, name
+    assert gate("export", project)[0] == 0 and (tapeout / "manifest.json").is_file()
+    for name, record in zip(headers, ("rtl/tight.vh", "rtl/more.vh", "./chip/layout/own.vh"), strict=True):
+        (project / name).write_text("// a header of reg8, edited after the gates passed\n", encoding="utf-8")
+        code, said = gate("export", project)
+        assert (code, said["details"]["failures"]) == (
+            1,
+            [f"{record} changed after LINT passed: its hash differs. Run the gates again"],
+        )
+        assert not tapeout.exists()
+        (project / name).write_text("// a header of reg8\n", encoding="utf-8")
+        assert gate("export", project)[0] == 0 and (tapeout / "manifest.json").is_file()
+    # the gates' own netlist of that folder is still held to LAYOUT's record, under its own name
+    with (out / "chip" / "layout" / "reg8.v").open("a", encoding="utf-8") as fh:
+        fh.write("// edited by hand\n")
+    code, said = gate("export", project)
+    assert code == 1 and said["details"]["failures"][0] == (
+        "chip/layout/reg8.v changed after LAYOUT recorded it: its hash differs"
+    )
+
+
+@needs_flow
+def test_export_passes_with_the_output_folder_above_the_project(project):
+    """`--out` set to the folder that holds the project: a record named the project's files from the
+    output folder (`reg8/chip.json`) and read the names back from the project's (`reg8/reg8/chip.json`).
+    EXPORT failed a sound project with 5 files "gone since LINT passed on it" (2026-11-12)."""
+    above = project.parent
+    (project / "build" / "chip").rename(above / "chip")
+    (project / "build" / "gates.json").rename(above / "gates.json")
+    for name in ("lint", "sim", "glsim"):
+        assert gate(name, project, "--out", above)[0] == 0, name
+    records = {
+        name: json.loads((above / "chip" / name / "passed.json").read_text(encoding="utf-8"))["judged"]
+        for name in ("lint", "sim", "glsim")
+    }
+    assert {name: sorted(judged) for name, judged in records.items()} == {
+        "lint": ["chip.json", "constraints.sdc", "rtl/reg8.v"],
+        "sim": ["chip.json", "rtl/reg8.v", "tb/tb_reg8.v"],
+        "glsim": ["chip.json", "chip/layout/reg8.v", "tb/tb_reg8.v"],
+    }
+    code, said = gate("export", project, "--out", above)
+    assert (code, said["details"]["failures"]) == (0, [])
+    assert (above / "chip" / "tapeout" / "manifest.json").is_file()
+    # and a file of the project that changes is still named, from the project's folder
+    with (project / "rtl" / "reg8.v").open("a", encoding="utf-8") as fh:
+        fh.write("// a line the gates did not see\n")
+    code, said = gate("export", project, "--out", above)
+    assert (code, said["details"]["failures"]) == (
+        1,
+        ["rtl/reg8.v changed after LINT passed: its hash differs. Run the gates again"],
+    )
+
+
+@needs_flow
 def test_export_copies_what_every_gate_passed_and_its_manifest_names_each_hash(project):
     out = project / "build"
     tapeout = out / "chip" / "tapeout"

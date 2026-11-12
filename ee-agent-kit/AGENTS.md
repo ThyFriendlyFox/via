@@ -65,14 +65,20 @@ provides them. `python3 tools/workcenter doctor` says what is present.
     `SKIPPED (GATE: reason)`, however many passed.
 18. A chip gate that passes writes a record: the hash of each file it
     read, taken before its engines start and held after, and of each file
-    it hands on. EXPORT copies a layout only when all 9 records agree
-    with the files as they are.
+    it hands on. The files of the project in it are those its engine says
+    it read. EXPORT copies a layout only when all 9 records agree with
+    the files as they are, and `workcenter next` says a chip is done only
+    then. A gate that is asked to run takes back the record of its
+    earlier pass before its function starts.
 19. No file, cell, layer or number of a process is written in
     `tools/chip*.py` or `tools/chipscripts/`: each comes from a table in
     `pdks/`, with its source. A test holds it.
 20. `tools/chipflow.py`, `tools/chipfront.py`, `tools/chipback.py` and
     `tools/chipguide.py` use the standard library only, as the CLI does.
 21. A number a gate prints about a file is counted in that file (M167).
+22. LINT, SIM and SYNTH judge 1 design in 3 engines. No line of a chip's
+    RTL speaks to 1 engine alone, and no bench reads a file while it
+    runs: every input of a simulation is text its compiler read (M169).
 
 ## Landmine map
 
@@ -133,6 +139,11 @@ provides them. `python3 tools/workcenter doctor` says what is present.
 | OpenROAD's second `detailed_route` | A second routing in 1 run of build f12e2f47 crashes: `vector::_M_range_check`. The build routes once. The repair works on the global route, and it does not see what the detailed router then leaves: a gate that still collects too much charge is ANTENNA's failure. |
 | Yosys's flop count | Yosys removes a flop that nothing reads. `synth` removes some before `generic.json` is written, and the full `abc` proves more: on the acceptance processor 24 of 156 flops go after the mapping. A count of flops is true only of the file it was counted in (M167). SYNTH counts the flop cells of `stat.json` and names each flop of `generic.json` that `mapped.json` no longer holds. A flop that `synth` itself removed is in neither file, and nothing names it yet. |
 | Yosys 0.33's mapping | `abc` and `dfflibmap` have no option that keeps a cell out. A cell stays out of the mapping only when the liberty file does not offer it: SYNTH writes `mapping.lib` without the cells of the kit's `no_synth.cells` and `drc_exclude.cells`, and counts what the netlist holds of either list. |
+| What an engine read | Each engine takes more spellings than a pattern over its input finds: `` `include"x.vh" `` with no space, and a header named through a macro (`` `include `HDR ``). Each can say what it read: Verilator in the `files` block of its XML, Icarus Verilog with `-Mall=<file>` (1 path on a line; with `-E` for 1 source alone), Yosys with `-E <file>` (a Makefile rule). A gate's record takes the project's files from there (M169). |
+| Verilator's `lint_off` | Verilator 5 obeys the comment in any case of letters, takes the old group name `WIDTH` for `WIDTHTRUNC`, and takes the same from a `` `verilator_config `` block. It prints nothing for a check that is off. It defines `VERILATOR`; Yosys defines `SYNTHESIS` and `YOSYS`; Icarus Verilog defines `__ICARUS__`: text under an `` `ifdef `` of one is a design 1 engine reads. LINT fails each (`TWO_DESIGNS`). |
+| vvp's files | vvp opens the file of a `$readmemh` or a `$fopen` from the folder it runs in, and names no file it opened. Yosys looks for a `$readmemh` file beside the RTL. A bench runs in `build/chip/sim/<bench>/`, and a changed copy of the RTL 2 folders deeper: a path from the bench's folder fails there, and the copy fails for that alone. SIM refuses a line that reads a file (`READS_A_FILE`). vvp's own line for a bench that ended is `<file>:<line>: $finish called at <time> (<unit>)`. |
+| A delay OpenSTA does not count | `check_setup` lists a port with no delay. It does not list a port whose delay has `-min` alone, or no `-clock`: no setup path through the pin is judged, and nothing says so. A `set_clock_uncertainty` under 0 and a `set_timing_derate -late` under 1 are taken as written, by the layout build too, which then repairs nothing. Tcl takes the last of an option written 2 times. `read_sdc` in `tools/chipflow.py` fails each. |
+| A path with a space | Yosys reads its script word by word and takes no quoting: a project under `my chips/` fails SYNTH with `Can't open input file`. `chip` refuses a project, an output folder or a source file whose path holds white space, before any gate. |
 
 ## House style
 

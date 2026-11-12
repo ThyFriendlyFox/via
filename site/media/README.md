@@ -1,9 +1,10 @@
 # Media
 
 The pictures of the root `README.md`, and the 2 its first picture is made
-of: 7 stills and 1 GIF. 6 are of the fixture board
+of: 12 stills and 1 GIF. 6 are of the fixture board
 `tests/boards/pass-first-design`, as commands of this repository draw it.
-2 are captures of the site's diagram.
+2 are captures of the site's diagram. 5 are of the fixture chip
+`tests/chips/pass-acc8`, an 8-bit processor.
 
 ## The first picture
 
@@ -49,6 +50,31 @@ pages.
 `diagram.png`, `diagram-dark.png`: the diagram of the site's page, alone
 and edge to edge. `index.html?shot=diagram` shows it that way, and
 `&theme=dark` asks for the dark theme.
+
+## The chip
+
+<table>
+  <tr>
+    <td width="50%"><img alt="The mask layout of the processor: rows of cells between supply rails, wires on 4 metal layers, supply stripes from top to bottom" src="chip.png"></td>
+    <td width="50%"><img alt="The wires of the first metal layer alone" src="chip-met1.png"><img alt="The wires of the second metal layer alone" src="chip-met2.png"></td>
+  </tr>
+  <tr>
+    <td><code>chip.png</code>: every layer of the layout, 152.38 um by 152.38 um.</td>
+    <td><code>chip-met1.png</code> and <code>chip-met2.png</code>: 1 metal layer each.</td>
+  </tr>
+  <tr>
+    <td width="50%"><img alt="The wires of the third metal layer alone" src="chip-met3.png"></td>
+    <td width="50%"><img alt="The fourth metal layer alone, with the supply stripes" src="chip-met4.png"></td>
+  </tr>
+  <tr>
+    <td><code>chip-met3.png</code></td>
+    <td><code>chip-met4.png</code>: the layer of the supply stripes.</td>
+  </tr>
+</table>
+
+`workcenter chip render` draws the layout that the gates recorded: the top
+cell with every layer, and 1 picture for each routing layer that holds a
+shape. The processor's layout holds none on the fifth.
 
 ## Draw them again
 
@@ -114,7 +140,28 @@ chromium --headless --hide-scrollbars --force-device-scale-factor=2 --window-siz
   --virtual-time-budget=4000 --screenshot=site/media/diagram-dark.png "file://$PWD/site/index.html?shot=diagram&theme=dark"
 ```
 
+The chip's 5 pictures need the chip engines and the process kit
+(`sudo ./install.sh --chip`). The gates build the layout in a copy, and
+`chip render` draws what they recorded:
+
+```sh
+chip=$(mktemp -d)
+cp -r tests/chips/pass-acc8 "$chip/"
+workcenter chip gates "$chip/pass-acc8" --strict
+workcenter chip render "$chip/pass-acc8"
+cp "$chip/pass-acc8/build/chip/render/acc8.png" site/media/chip.png
+for layer in met1 met2 met3 met4; do
+  cp "$chip/pass-acc8/build/chip/render/acc8.$layer.png" "site/media/chip-$layer.png"
+done
+```
+
 ## What is not ours
+
+The cells in the chip's layout are those of the SkyWater `sky130A`
+process kit, library `sky130_fd_sc_hd` (Copyright 2020 The SkyWater PDK
+Authors, Apache License 2.0). The kit is not in this repository: the
+pictures show the cells. 1 test sample holds the head of the library's
+timing file and 5 of its cells (`tests/chips/samples/front/README.md`).
 
 The part bodies in the 3D views are from KiCad's 3D library. Its license
 is CC BY-SA 4.0, with an exception for a design that uses the library and

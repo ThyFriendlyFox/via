@@ -64,7 +64,6 @@ prints it under the gate, and `workcenter next` keys its hints on `<gate>: <line
 
 from __future__ import annotations
 
-import fnmatch
 import hashlib
 import json
 import math
@@ -103,6 +102,9 @@ DEFAULT_LIMIT = 1800
 LEDGER_LOCK = threading.Lock()
 # A gate that passes writes this file into its own folder; EXPORT asks each of the 9 gates for it.
 PASSED = "passed.json"
+# The ledger of hashes in `<out>/chip`. It is the first file the gates write there, and the mark that
+# the folder is theirs.
+LEDGER = "hashes.json"
 # Each engine: where it is looked for ("path": on PATH; "chip": the chip folder's bin/, then PATH),
 # the arguments that make it print its version, and the pattern that reads the version.
 ENGINES = {
@@ -190,6 +192,7 @@ class Chip:
     clock_skew_max_ns: float | None = None
     rtl_only: dict[str, str] = field(default_factory=dict)
     flops_without_reset: list[dict] = field(default_factory=list)
+    rtl_patterns: list[str] = field(default_factory=list)
 
 
 def unknown(block: dict, known: tuple[str, ...], where: str, problems: list[str]) -> None:
@@ -245,8 +248,9 @@ def read_chip(project: Path) -> tuple[Chip | None, list[str]]:
         top = ""
     patterns = data.get("rtl", ["rtl/*.v", "rtl/*.sv"])
     rtl: list[Path] = []
-    if not isinstance(patterns, list) or not all(isinstance(p, str) and p for p in patterns):
+    if not isinstance(patterns, list) or not patterns or not all(isinstance(p, str) and p for p in patterns):
         problems.append("rtl: not a list of file patterns")
+        patterns = []
     else:
         for pattern in patterns:
             found = sorted(p for p in project.glob(pattern) if p.is_file())
@@ -375,6 +379,7 @@ def read_chip(project: Path) -> tuple[Chip | None, list[str]]:
             clock_skew_max_ns=skew,
             rtl_only=rtl_only,
             flops_without_reset=flops,
+            rtl_patterns=list(patterns),
         ),
         [],
     )
@@ -433,23 +438,48 @@ def sdc_statements(text: str) -> list[tuple[int, str]]:
     return out
 
 
-def port_patterns(statement: str) -> tuple[bool, list[str]]:
-    """What a delay command covers: (every port of its direction, the port patterns it names)."""
-    everything = bool(re.search(r"\[\s*all_(?:inputs|outputs)\b", statement))
+def port_patterns(statement: str) -> tuple[list[str], list[str]]:
+    """What a delay command names: (the `all_inputs` and `all_outputs` queries it holds, the port
+    patterns of its `get_ports`, each as written)."""
+    everything = re.findall(r"\[\s*(all_inputs|all_outputs)\b", statement)
     names: list[str] = []
     # A braced list may hold a bus as `d[*]`, whose `]` is not the end of the query.
     for braced, single in re.findall(r"\[\s*get_ports\s+(?:\{([^{}]*)\}|([^\s\]]+))", statement):
         names += (braced or single).split()
-    return everything, [re.sub(r"\[[^\]]*\]\Z", "", name) for name in names]
+    return everything, names
 
 
-def read_sdc(path: Path, ports: dict[str, str] | None = None) -> Sdc:
+def names_port(pattern: str, bit: str, port: str) -> bool:
+    """Whether a port pattern of the constraints names a bit of a port. `*` stands for any text and
+    `?` for 1 character; a bracket is itself, as in a bus bit's name. A bus's bare name names each of
+    its bits. So `count[0]` names 1 bit of `count`, and `count`, `count[*]` and `*` name them all."""
+    regex = "".join(".*" if ch == "*" else "." if ch == "?" else re.escape(ch) for ch in pattern)
+    return bool(re.fullmatch(regex, bit) or re.fullmatch(regex, port))
+
+
+def without_queries(body: str) -> str:
+    """A statement without its bracketed queries and braced lists: its command, options and numbers."""
+    plain = body
+    while True:
+        shorter = re.sub(r"\[[^\[\]]*\]|\{[^{}]*\}", " ", plain)
+        if shorter == plain:
+            return plain
+        plain = shorter
+
+
+def read_sdc(
+    path: Path, ports: dict[str, str] | None = None, widths: dict[str, tuple[int, int]] | None = None
+) -> Sdc:
     """The constraints, read against what they may hold. `ports` is the top module's ports as
-    {name: "input" | "output"} when the caller knows them: each then needs its delay.
+    {name: "input" | "output"} when the caller knows them, and `widths` the first and last index of
+    each port that is a bus: each bit of each port then needs its delay, for setup and for hold.
 
     A constraints file is Tcl, and Tcl can do anything. So a statement is 1 command of `SDC_COMMANDS`,
     its brackets hold only the queries of `SDC_QUERIES`, it holds no variable and no second command,
-    and a statement with a number or a path exception ends with `;# source: <where it comes from>`."""
+    and a statement with a number or a path exception ends with `;# source: <where it comes from>`.
+    No source makes a margin true that gives time away: an uncertainty under 0, a derate that makes a
+    late path faster or an early path slower. An option written 2 times is refused: this reader would
+    take 1 of the 2 values and an engine the other."""
     name = path.name
     sdc = Sdc()
     try:
@@ -458,7 +488,8 @@ def read_sdc(path: Path, ports: dict[str, str] | None = None) -> Sdc:
         sdc.problems.append(f"{name}: not found: write the clock, and a delay for each input and output")
         return sdc
     clocks: list[tuple[int, str]] = []
-    covered = {"input": (False, []), "output": (False, [])}
+    # Each delay command as (what it is for: setup, hold or both; the patterns it names), by direction.
+    covered: dict[str, list[tuple[tuple[str, ...], list[str]]]] = {"input": [], "output": []}
     for line, statement in sdc_statements(text):
         if not statement or statement.startswith("#"):
             continue
@@ -501,14 +532,61 @@ def read_sdc(path: Path, ports: dict[str, str] | None = None) -> Sdc:
                 sdc.problems.append(
                     f"{where}: {command}: the source says nothing yet: write where the number comes from"
                 )
+        plain = without_queries(body)
+        options = re.findall(r"(?<!\S)-[A-Za-z_]\w*", plain)
+        twice = sorted({option for option in options if options.count(option) > 1})
+        if twice:
+            sdc.problems.append(
+                f"{where}: {command} writes {twice[0]} {options.count(twice[0])} times: write it 1 time"
+            )
+        numbers = [float(n) for n in NUMBER_RE.findall(plain)]
         if command == "create_clock":
             clocks.append((line, body))
         elif command == "set_max_fanout":
             sdc.max_fanout = True
+        elif command == "set_clock_uncertainty" and any(n < 0 for n in numbers):
+            sdc.problems.append(
+                f"{where}: set_clock_uncertainty under 0 gives every path time that is not there: an "
+                "uncertainty is 0 or more"
+            )
+        elif command == "set_timing_derate":
+            late, early = "-late" in options, "-early" in options
+            gives_time = any(n < 1 for n in numbers) if late else any(n > 1 for n in numbers)
+            if late == early:
+                sdc.problems.append(
+                    f"{where}: set_timing_derate takes 1 of -late and -early: write which paths the factor "
+                    "is for"
+                )
+            elif gives_time:
+                sdc.problems.append(
+                    f"{where}: set_timing_derate {'-late under' if late else '-early over'} 1 makes "
+                    f"{'a late path faster' if late else 'an early path slower'} than the library says: "
+                    f"{'a late' if late else 'an early'} derate is 1 or {'more' if late else 'less'}"
+                )
         elif command in ("set_input_delay", "set_output_delay"):
             direction = "input" if command == "set_input_delay" else "output"
             everything, names = port_patterns(body)
-            covered[direction] = (covered[direction][0] or everything, covered[direction][1] + names)
+            wrong = [query for query in everything if query != f"all_{direction}s"]
+            edges = [option for option in options if option in ("-rise", "-fall")]
+            if wrong:
+                sdc.problems.append(
+                    f"{where}: {command} takes [all_{direction}s], not [{wrong[0]}]: a delay of 1 direction "
+                    "is not a delay of the other"
+                )
+            elif "-clock" not in options:
+                sdc.problems.append(
+                    f"{where}: {command} names no -clock: a delay is counted from the clock's edge"
+                )
+            elif edges:
+                sdc.problems.append(
+                    f"{where}: {command} {edges[0]} is a delay for 1 edge of the port: write 1 delay for both"
+                )
+            else:
+                # -max is the delay setup is judged with and -min the one hold is judged with; a delay
+                # with neither is both.
+                kinds = tuple(k for k, option in (("setup", "-max"), ("hold", "-min")) if option in options)
+                patterns = ["*"] if everything else names
+                covered[direction].append((kinds or ("setup", "hold"), patterns))
     if not clocks:
         sdc.problems.append(f"{name}: no create_clock: name the clock, its period and its port")
     for line, _ in clocks[1:]:
@@ -532,11 +610,53 @@ def read_sdc(path: Path, ports: dict[str, str] | None = None) -> Sdc:
     for port, direction in sorted((ports or {}).items()):
         if direction not in covered or port == sdc.clock_port:
             continue
-        everything, names = covered[direction]
-        if not everything and not any(fnmatch.fnmatchcase(port, pattern) for pattern in names):
+        first, last = (widths or {}).get(port, (None, None))
+        low, high = (min(first, last), max(first, last)) if first is not None else (0, 0)
+        bits = [f"{port}[{i}]" for i in range(low, high + 1)] if first is not None else [port]
+
+        def names(pattern: str, bit: str, port: str = port) -> bool:
+            # With no widths from the caller a bus is 1 name here: a pattern's index names it then.
+            if widths is None:
+                pattern = re.sub(r"\[[^\]]*\]\Z", "", pattern)
+            return names_port(pattern, bit, port)
+
+        named = {
+            kind: [
+                bit
+                for bit in bits
+                if any(
+                    kind in kinds and any(names(pattern, bit) for pattern in patterns)
+                    for kinds, patterns in covered[direction]
+                )
+            ]
+            for kind in ("setup", "hold")
+        }
+
+        def some(left: list[str]) -> str:
+            return f"{', '.join(left[:4])}{' ...' if len(left) > 4 else ''}"
+
+        neither = [bit for bit in bits if bit not in named["setup"] and bit not in named["hold"]]
+        if len(neither) == len(bits):
             sdc.problems.append(
                 f"{name}: {direction} {port} has no set_{direction}_delay: STA cannot judge a path through it"
             )
+            continue
+        if neither:
+            sdc.problems.append(
+                f"{name}: {direction} {port}: {len(neither)} of its {len(bits)} bits have no "
+                f"set_{direction}_delay ({some(neither)}): name the bus as {port}[*]"
+            )
+            continue
+        for kind, option in (("setup", "-min"), ("hold", "-max")):
+            left = [bit for bit in bits if bit not in named[kind]]
+            if left:
+                which = (
+                    "" if len(left) == len(bits) else f": {len(left)} of its {len(bits)} bits ({some(left)})"
+                )
+                sdc.problems.append(
+                    f"{name}: {direction} {port}{which}: a set_{direction}_delay {option} only: no {kind} "
+                    f"path through it is judged. Write 1 delay without {option}, or both"
+                )
     return sdc
 
 
@@ -979,7 +1099,17 @@ class Run:
     def base(self) -> Path:
         return self.out / "chip"
 
+    def claim(self) -> None:
+        """Mark `<out>/chip` as the gates' own, before anything else is written there: a ledger with
+        no entry. `out_problem` refuses a folder of that name that holds files and no ledger, so the
+        gates empty no folder they did not make."""
+        self.base.mkdir(parents=True, exist_ok=True)
+        ledger = self.base / LEDGER
+        if not ledger.is_file():
+            ledger.write_text("{}", encoding="utf-8")
+
     def fresh(self, gate: str) -> Path:
+        self.claim()
         folder = self.base / gate
         if folder.exists():
             shutil.rmtree(folder)
@@ -1071,7 +1201,7 @@ class Run:
 
     def ledger(self) -> dict:
         try:
-            return json.loads((self.base / "hashes.json").read_text(encoding="utf-8"))
+            return json.loads((self.base / LEDGER).read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return {}
 
@@ -1087,8 +1217,8 @@ class Run:
             if changed is None:
                 return
             self.base.mkdir(parents=True, exist_ok=True)
-            target = self.base / "hashes.json"
-            beside = target.with_name(f"hashes.json.{os.getpid()}.{threading.get_ident()}.part")
+            target = self.base / LEDGER
+            beside = target.with_name(f"{LEDGER}.{os.getpid()}.{threading.get_ident()}.part")
             beside.write_text(json.dumps(changed, indent=2, sort_keys=True), encoding="utf-8")
             os.replace(beside, target)
 
@@ -1125,16 +1255,34 @@ class Run:
         shutil.rmtree(self.base / "tapeout", ignore_errors=True)
         return self.fresh(gate)
 
+    def retract(self, gate: str) -> None:
+        """Take back the record of an earlier pass of `gate`, and the hand-off folder. The driver calls
+        this before a gate's function: a gate that is asked to run and then skips, or fails before it
+        empties its folder, leaves no pass of an earlier run behind. The gate's other files stay."""
+        name = str((self.base / gate / PASSED).relative_to(self.out))
+
+        def drop(ledger: dict) -> dict | None:
+            return {key: entry for key, entry in ledger.items() if key != name} if name in ledger else None
+
+        self._change_ledger(drop)
+        (self.base / gate / PASSED).unlink(missing_ok=True)
+        shutil.rmtree(self.base / "tapeout", ignore_errors=True)
+
     def name_of(self, path: Path) -> str:
-        """A file's name in a record: from the output folder for what a gate wrote, from the project's
-        folder for the project's own files."""
+        """A file's name in a record. A file the gates wrote lies under the output folder's `chip/` and
+        is named from the output folder: `chip/layout/top.gds`. Every other file is the project's own
+        and is named from the project's folder, wherever the output folder is: `rtl/top.v`. A project
+        can keep files of its own under a folder named `chip`: such a name starts with `./`
+        (`./chip/layout/top.v`), so that no name stands for 2 files."""
         path = Path(path)
-        for folder in (self.out, self.project):
-            try:
-                return str(path.resolve().relative_to(folder.resolve()))
-            except ValueError:
-                continue
-        return str(path)
+        resolved, base = path.resolve(), self.base.resolve()
+        if resolved == base or base in resolved.parents:
+            return str(resolved.relative_to(self.out.resolve()))
+        try:
+            name = str(resolved.relative_to(self.project.resolve()))
+        except ValueError:
+            return str(path)
+        return f"./{name}" if name.startswith("chip/") else name
 
     def file_of(self, name: str) -> Path:
         """The file a record's name stands for: `name_of`, read back."""
@@ -1270,11 +1418,46 @@ def find_chip(target: str) -> Path:
     return path
 
 
+def out_problem(project: Path, out: Path, chip: Chip) -> str | None:
+    """Why the gates cannot run with these folders, or None. The gates empty the folders under
+    `<out>/chip`, 1 for each gate. So that folder is not the project's own or one above it, no file
+    of the project lies in it, and when it is there it is one the gates made (it holds their ledger):
+    a project named `chip` with `--out` set to its parent would lose its folders named as gates."""
+    base, root = (out / "chip").resolve(), project.resolve()
+    if base == root or base in root.parents:
+        return (
+            f"--out {out}: the gates empty the folders under {base}, and the project lies there. Name an "
+            "output folder beside the project, or 1 inside it"
+        )
+    own = (root / CHIP_FILE, chip.constraints, *chip.rtl, *sorted((root / "tb").glob("*")))
+    inside = [path for path in own if base in path.resolve().parents]
+    if inside:
+        return (
+            f"--out {out}: {inside[0].resolve().relative_to(root)} is a file of the project, and it lies "
+            f"under {base}, which the gates empty. Name another output folder"
+        )
+    if base.is_dir() and any(base.iterdir()) and not (base / LEDGER).is_file():
+        return (
+            f"--out {out}: {base} is there, not empty, and holds no {LEDGER}: the gates did not make it, "
+            "and they empty the folders under it. Name another output folder, or move that one away"
+        )
+    # Yosys reads its script word by word and takes no quoting: a path with a space in it is 2 names
+    # to it, and SYNTH fails on `Can't open input file`. No other engine was run on such a path.
+    spaced = next((path for path in (root, out.resolve(), *own) if re.search(r"\s", str(path))), None)
+    if spaced is not None:
+        return f"{spaced}: the path holds white space, and Yosys ends a path there. Use a path with none"
+    return None
+
+
 def prepare(cli, project: Path, out: Path, args) -> tuple[Run | None, list[str]]:
-    """The Run for a project, or (None, the problems of its chip.json)."""
+    """The Run for a project, or (None, the problems of its chip.json). An output folder the gates
+    cannot use ends the command: no gate may run there."""
     chip, problems = read_chip(project)
     if chip is None:
         return None, problems
+    refused = out_problem(project, out, chip)
+    if refused:
+        raise SystemExit(f"chip: {refused}")
     run = Run(
         cli=cli,
         project=project,
@@ -1304,6 +1487,8 @@ def run_gate(run: Run, name: str):
     if function is None:
         return run.skip(name, f"the {name.upper()} gate is not built in this workcenter")
     t0 = time.monotonic()
+    run.claim()
+    run.retract(name)
     result = function(run)
     result.seconds = round(time.monotonic() - t0, 2)
     return result

@@ -14,6 +14,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -26,6 +27,7 @@ CLI = ROOT / "tools" / "workcenter"
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "tests"))
 import chipflow  # noqa: E402
+import chipfront  # noqa: E402
 import chipguide  # noqa: E402
 from test_chipflow import VERSION, command, fill, load_cli  # noqa: E402
 from test_chips import EVERY, needs  # noqa: E402
@@ -93,8 +95,28 @@ def record(gate: str, status: str = "pass", failures=(), warnings=(), **details)
 
 
 def report(folder: Path, records: list[dict]) -> None:
-    (folder / "build").mkdir(exist_ok=True)
-    (folder / "build" / "gates.json").write_text(json.dumps(records), encoding="utf-8")
+    """The report of a run of the gates, and what that run leaves beside it: for each gate that passed
+    the record of its pass, with the hash of each file of the project it read, and the hand-off folder
+    when EXPORT passed. The spine writes them, as it does for the gates."""
+    out = folder / "build"
+    shutil.rmtree(out / "chip", ignore_errors=True)
+    out.mkdir(exist_ok=True)
+    chip, problems = chipflow.read_chip(folder)
+    assert problems == []
+    run = chipflow.Run(cli=None, project=folder, out=out, chip=chip)
+    for entry in records:
+        if entry["status"] != "pass":
+            continue
+        if entry["gate"] != "export":
+            reads = entry["gate"] in chipfront.INPUT_GATES
+            run.write_passed(entry["gate"], chipfront.inputs_taken(run, entry["gate"]) if reads else {})
+            continue
+        tapeout = run.base / "tapeout"
+        tapeout.mkdir(parents=True)
+        (tapeout / "reg8.gds").write_bytes(b"a layout\n")
+        named = {"files": {"reg8.gds": chipflow.sha256(tapeout / "reg8.gds")}, "reports": {}}
+        (tapeout / "manifest.json").write_text(json.dumps(named), encoding="utf-8")
+    (out / "gates.json").write_text(json.dumps(records), encoding="utf-8")
 
 
 def passed(upto: str | None = None) -> list[dict]:
@@ -154,10 +176,47 @@ def test_every_chip_hint_points_at_a_file_and_a_heading_that_exist():
             f'{DESIGN}, "The constraints"',
         ),
         (
+            "lint",
+            "rtl/counter.v:9: lint_off widthtrunc turns off a check of this gate: remove the comment and "
+            "change the code",
+            "Remove the comment, then correct what the class names.",
+            f'{GATES}, "LINT"',
+        ),
+        (
+            "lint",
+            "constraints.sdc: input en: a set_input_delay -min only: no setup path through it is judged. "
+            "Write 1 delay without -min, or both",
+            "Correct the constraints file as the line says.",
+            f'{DESIGN}, "The constraints"',
+        ),
+        (
             "sim",
             "tb_counter: errors=5 not in [None, 0]",
             "Read the first mismatch in the bench's run.log, then correct the RTL.",
             f'{GATES}, "SIM"',
+        ),
+        (
+            # a line that names no mismatch: the hint for a failed bench would send the reader to a log
+            "sim",
+            "tb/tb_counter.v:15: $readmemh reads a file while the bench runs. A bench runs in a folder of "
+            "the gate's own, and no record of a pass would hold the file. Write the values in the text: in "
+            "a header the bench includes, or as a `case` in the RTL",
+            "Write the values in a header that the bench includes, or as a `case` in the RTL.",
+            f'{DESIGN}, "A bench"',
+        ),
+        (
+            "sim",
+            "rtl/mutations.json: selftest: the bench tb/tb_counter.v reads rtl/defs.vh too: the change "
+            "would change the bench with the RTL. Make it in a file the RTL alone reads",
+            "Correct the list of changes as the line says.",
+            f'{DESIGN}, "The list of changes"',
+        ),
+        (
+            "glsim",
+            "tb/tb_reg8.v:32: `FUNCTIONAL` is defined for the run on the netlist and not for the run on "
+            "the RTL: the bench would be another text in each. Write 1 text for both",
+            "Remove the `ifdef` from the bench: it is 1 text for SIM and GLSIM.",
+            f'{DESIGN}, "A bench"',
         ),
         (
             "sim",
@@ -290,7 +349,28 @@ def test_chip_json_comes_first_then_the_engines_the_kit_the_rtl_and_a_bench(tmp_
     code, step = ask(folder, env)
     assert step["next"] == f"Write the RTL: the module reg8 in {folder}/rtl/reg8.v."
     assert (step["run"], step["read"]) == ("", f'{DESIGN}, "The RTL"')
+    assert step["why"] == "no file matches chip.json's rtl patterns (rtl/*.v, rtl/*.sv)"
     rtl.write_text(kept, encoding="utf-8")
+    # The file is named from chip.json's own patterns. The answer named rtl/reg8.v whatever they were:
+    # with `"rtl": ["src/*.v"]` that file was there, and the answer never changed (2026-11-12).
+    for patterns, where in (
+        (["src/*.v"], f"in {folder}/src/reg8.v"),
+        (["hdl/top_*.v"], f"in {folder}/hdl/top_reg8.v"),
+        (["src/**/*.sv", "rtl/x/*.v"], f"in a file of {folder} that the pattern src/**/*.sv matches"),
+    ):
+        (folder / "chip.json").write_text(json.dumps({**data, "rtl": patterns}), encoding="utf-8")
+        code, step = ask(folder, env)
+        assert step["next"] == f"Write the RTL: the module reg8 {where}."
+        assert step["why"] == f"no file matches chip.json's rtl patterns ({', '.join(patterns)})"
+    (folder / "src").mkdir()
+    (folder / "src" / "reg8.v").write_text(kept + OWN, encoding="utf-8")
+    (folder / "chip.json").write_text(json.dumps({**data, "rtl": ["src/*.v"]}), encoding="utf-8")
+    # the template's rtl/reg8.v is no file of this project now, and is not named as its design
+    assert ask(folder, env)[1]["next"] == (
+        f"Write the design's bench in {folder}/tb/tb_reg8.v: the file still holds the template's."
+    )
+    shutil.rmtree(folder / "src")
+    (folder / "chip.json").write_text(json.dumps(data), encoding="utf-8")
     example = bench.read_text(encoding="utf-8")
     bench.unlink()
     code, step = ask(folder, env)
@@ -317,6 +397,22 @@ def test_chip_json_comes_first_then_the_engines_the_kit_the_rtl_and_a_bench(tmp_
         f'{DESIGN}, "A bench"',
     )
     bench.write_text(example + OWN, encoding="utf-8")
+    assert ask(folder, env)[1]["next"] == "Run the chip gates."
+    # the constraints name the template's ports: as `chip init` wrote them they are no design's either
+    constraints = folder / "constraints.sdc"
+    filled = constraints.read_text(encoding="utf-8")
+    written = (chipflow.TEMPLATE_DIR / "constraints.sdc").read_text(encoding="utf-8")
+    constraints.write_text(written.replace("__TOP__", "reg8"), encoding="utf-8")
+    code, step = ask(folder, env)
+    assert (code, step["run"]) == (1, "")
+    assert step["next"] == (
+        f"Write the design's constraints in {folder}/constraints.sdc: the file still holds the template's."
+    )
+    assert (step["why"], step["read"]) == (
+        "constraints.sdc is as `workcenter chip init` wrote it",
+        f'{DESIGN}, "The constraints"',
+    )
+    constraints.write_text(filled, encoding="utf-8")
     assert ask(folder, env)[1]["next"] == "Run the chip gates."
     # The README comes last. With all 10 gates GREEN, a line the template left keeps the project open.
     report(folder, passed())
@@ -359,6 +455,96 @@ def test_the_gates_run_again_when_a_file_a_gate_reads_is_newer_than_the_report(t
         assert step["run"] == f"workcenter chip gates {folder}"
         os.utime(path, (before, before))
     assert ask(folder, env)[0] == 0
+
+
+def test_a_report_is_held_to_the_hash_of_each_file_and_green_to_the_hand_off_folder(tmp_path):
+    """A date says little. With a GREEN report the answer was "Nothing ... build/chip/tapeout holds the
+    layout" after a gate run alone had taken the folder away, after a file a gate read was moved away,
+    and after the RTL was replaced by another design with an older date (2026-11-12). Each gate's
+    record of its pass names the hash of each file it judged: the answer holds the files to them, as
+    EXPORT does, and reads the hand-off folder before it says where the layout is."""
+    env = toolchain(tmp_path / "tools")
+    folder = a_project(tmp_path)
+    rtl, header = folder / "rtl" / "reg8.v", folder / "rtl" / "widths.vh"
+    rtl.write_text('`include "widths.vh"\n' + rtl.read_text(encoding="utf-8"), encoding="utf-8")
+    header.write_text("// the widths\n", encoding="utf-8")
+    changes = folder / "rtl" / "mutations.json"
+    changes.write_text('{"mutations": []}', encoding="utf-8")
+    old = time.time() - 3600
+    done = "Nothing: all 10 chip gates are GREEN with no warning."
+
+    def asked(next_line: str, run: str, why: str, read: str) -> None:
+        code, step = ask(folder, env)
+        assert (code, step["next"], step["run"]) == (1, next_line, run)
+        assert (step["why"], step["read"]) == (why, read)
+        assert step["done_when"] == "the last line starts with GREEN"
+
+    def stale(why: str) -> None:
+        asked(
+            "Run the chip gates again: the report is not of the files as they are.",
+            f"workcenter chip gates {folder}",
+            why,
+            f'{GATES}, "Steps"',
+        )
+
+    def not_handed_off(why: str) -> None:
+        asked(
+            "Run EXPORT again: the hand-off folder does not hold what its gate wrote.",
+            f"workcenter chip export {folder}",
+            why,
+            f'{GATES}, "EXPORT"',
+        )
+
+    report(folder, passed())
+    assert ask(folder, env)[1]["next"] == done
+    # the hand-off folder: gone, a file of it other bytes, a file of it gone, a manifest that names nothing
+    tapeout = folder / "build" / "chip" / "tapeout"
+    tapeout.rename(tapeout.with_name("kept"))
+    not_handed_off("build/gates.json says GREEN, and build/chip/tapeout/manifest.json is not there")
+    tapeout.with_name("kept").rename(tapeout)
+    (tapeout / "reg8.gds").write_bytes(b"another layout\n")
+    not_handed_off("build/chip/tapeout/reg8.gds is not the file manifest.json names: its hash differs")
+    (tapeout / "reg8.gds").unlink()
+    not_handed_off("build/chip/tapeout/reg8.gds is not there, and manifest.json names it")
+    (tapeout / "reg8.gds").write_bytes(b"a layout\n")
+    (tapeout / "manifest.json").write_text("[]", encoding="utf-8")
+    not_handed_off("build/chip/tapeout/manifest.json does not name its files")
+    report(folder, passed())
+    # a file a gate read: moved away, other bytes with an older date, come since with an older date
+    changes.rename(changes.with_name("kept.json"))
+    stale("rtl/mutations.json is gone since SIM passed on it")
+    changes.with_name("kept.json").rename(changes)
+    for path, name in ((rtl, "rtl/reg8.v"), (header, "rtl/widths.vh")):
+        kept = path.read_text(encoding="utf-8")
+        path.write_text(kept + "// another design\n", encoding="utf-8")
+        os.utime(path, (old, old))
+        stale(f"{name} changed after LINT passed: its hash differs")
+        path.write_text(kept, encoding="utf-8")
+        os.utime(path, (old, old))
+    bounds = folder / "tb" / "tb_reg8.expect.json"
+    bounds.write_text("{}", encoding="utf-8")
+    os.utime(bounds, (old, old))
+    stale("tb/tb_reg8.expect.json was added after SIM passed")
+    bounds.unlink()
+    assert ask(folder, env)[1]["next"] == done
+    # a gate's record: edited, then gone
+    out = folder / "build"
+    record_of_sim = out / "chip" / "sim" / "passed.json"
+    written = record_of_sim.read_text(encoding="utf-8")
+    record_of_sim.write_text(written.replace('"gate"', '"gate" '), encoding="utf-8")
+    stale(
+        "build/gates.json says GREEN, and chip/sim/passed.json changed after SIM recorded it: its hash "
+        "differs"
+    )
+    record_of_sim.unlink()
+    stale(f"build/gates.json says GREEN, and SIM has not run in {out}")
+    # a red report is held the same way for the gates that passed: its failure is of other files
+    lines = ["max_ss_n40C_1v60: setup slack -0.3277 ns, from _49_ to count[3]"]
+    report(folder, [*passed("sta"), record("sta", "fail", lines)])
+    assert ask(folder, env)[1]["why"] == f"STA failed: {lines[0]}"
+    rtl.write_text(rtl.read_text(encoding="utf-8") + "// another design\n", encoding="utf-8")
+    os.utime(rtl, (old, old))
+    stale("rtl/reg8.v changed after LINT passed: its hash differs")
 
 
 def test_a_red_gate_a_warning_a_skip_and_a_green_run_are_each_answered(tmp_path):
@@ -488,6 +674,10 @@ def test_no_sentence_of_a_chip_hint_or_step_is_over_20_words_and_every_step_is_r
     answer(folder)  # the README still says fill:
     (folder / "README.md").write_text("# reg8\n", encoding="utf-8")
     answer(folder)
+    (folder / "build" / "chip" / "tapeout" / "manifest.json").unlink()
+    answer(folder)  # the hand-off folder holds no manifest
+    (folder / "build" / "chip" / "sim" / "passed.json").unlink()
+    answer(folder)  # GREEN, and a gate has no record of its pass
 
     texts = [do for _, do, _ in chipguide.HINTS]
     texts += [text for step in steps for text in (step.next, step.done_when)]
@@ -608,3 +798,13 @@ def test_next_walks_the_template_from_its_first_file_to_green(tmp_path):
     code, step = ask(folder, {})
     assert (code, step["done"]) == (0, True)
     assert step["next"] == "Nothing: all 10 chip gates are GREEN with no warning."
+    # A gate that runs alone takes the hand-off folder away, and build/gates.json still says GREEN: the
+    # answer is no longer "Nothing", and its RUN line brings the folder back.
+    assert command("chip", "lint", folder).returncode == 0
+    assert not (folder / "build" / "chip" / "tapeout").exists()
+    code, step = ask(folder, {})
+    assert (code, step["run"]) == (1, f"workcenter chip export {folder}")
+    assert step["next"] == "Run EXPORT again: the hand-off folder does not hold what its gate wrote."
+    ran = run_line(step)
+    assert ran.returncode == 0 and ran.stdout.splitlines()[-1] == "GREEN: reg8"
+    assert ask(folder, {})[1]["next"] == "Nothing: all 10 chip gates are GREEN with no warning."

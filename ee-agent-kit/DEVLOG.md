@@ -39,6 +39,37 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-12 — A small model built a chip, a reviewer attacked the gates, and the chip work reached `main`
+
+A small model built 2 chips of its own with `workcenter next` alone. The
+first, an 8-bit PWM, passed all 10 gates and stopped at `--strict`: the
+answer said "Name a limit for the clock skew", and nothing said where such
+a number comes from. The model did not invent one. The guide and the skill
+were mended, and the second chip, a UART transmitter, reached GREEN with
+`--strict` in 13 answers. A bench written by another hand from the same 8
+rules passes on its RTL and on its routed netlist.
+
+Then a reviewer who had not written the gates built cases that they must
+fail (P14 step 6), and found 15 in 36 minutes. 7 times a gate passed what
+it must fail: a sum cut short behind `lint_off widthtrunc`, a design that
+Yosys alone reads under `` `ifdef SYNTHESIS ``, a clock uncertainty of
+-1 ns that turned a red STA GREEN, an input with a `-min` delay only. 2
+times EXPORT handed out the old layout after a file had changed. And
+`workcenter next` answered "Nothing" for a project whose hand-off folder
+was gone. Each case is a test now, seen to fail on the code before.
+
+The fixes share 1 idea: where an engine can say what it read, the gate
+asks the engine. Verilator, Icarus Verilog and Yosys each list their
+files, and every record takes them from there. A bench reads no file
+while it runs, so every input of a simulation is text its compiler read.
+`next` holds a report to the hashes in the gates' records, not to a date.
+The small model's transmitter is GREEN with `--strict` under the stricter
+gates too.
+
+The chip work reached `main` with the processor's layout on the front
+page. GREEN still says what the scope line says: the open engines found
+no fault, and no foundry deck ran.
+
 ## 2026-11-12 — Wyvern v0.2: one flat board with a QCS6490 soldered on
 
 The owner looked at Wyvern v0.1 and said it had a lot of open hinges,
@@ -76,6 +107,7 @@ Evidence: `workcenter gates v0.2` GREEN with 16 warnings (DRC 0 errors,
 named in `docs/gates.md`); `workcenter design --check` same;
 `workcenter sources` 0 problems; `workcenter pictures` 26 files;
 `make verify` before the push.
+
 ## 2026-11-12 — A chip has its one next step, and its benches are proven on every run
 
 `workcenter next` now answers for a chip project as it does for a board.

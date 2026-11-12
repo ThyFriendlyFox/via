@@ -155,6 +155,8 @@ def test_a_sound_chip_json_is_read_with_its_defaults(tmp_path):
             lambda d: d.update(rtl=["../other/*.v"]),
             "chip.json: rtl: '../other/*.v' leaves the project's folder",
         ),
+        # a list with no pattern names no RTL: `workcenter next` names the first pattern for the file
+        (lambda d: d.update(rtl=[]), "chip.json: rtl: not a list of file patterns"),
         (
             lambda d: d["corners"]["supply"].update(tolerance=5),
             "chip.json: corners.supply.tolerance: 5 is not a fraction from 0 to under 1 (0.05 is 5 %)",
@@ -297,11 +299,60 @@ def test_sound_constraints_give_the_clock_and_cover_every_port(tmp_path):
             SDC.replace("-period 20 ", ""),
             ["c.sdc: line 2: create_clock has no -period over 0, in ns"],
         ),
+        (
+            # Tcl takes the last of 2 values and this reader the first: the record would name 20 ns
+            # where the engines take 2000 ns
+            SDC.replace("-period 20 ", "-period 20 -period 2000 "),
+            ["c.sdc: line 2: create_clock writes -period 2 times: write it 1 time"],
+        ),
+        (
+            SDC + "set_clock_uncertainty -1 [get_clocks clk] ;# source: x\n",
+            [
+                "c.sdc: line 7: set_clock_uncertainty under 0 gives every path time that is not there: an "
+                "uncertainty is 0 or more"
+            ],
+        ),
+        (
+            SDC + "set_clock_uncertainty -setup -0.5 [get_clocks clk] ;# source: x\n",
+            [
+                "c.sdc: line 7: set_clock_uncertainty under 0 gives every path time that is not there: an "
+                "uncertainty is 0 or more"
+            ],
+        ),
+        (
+            SDC + "set_timing_derate -late 0.1 ;# source: x\n",
+            [
+                "c.sdc: line 7: set_timing_derate -late under 1 makes a late path faster than the library "
+                "says: a late derate is 1 or more"
+            ],
+        ),
+        (
+            SDC + "set_timing_derate -early 1.2 ;# source: x\n",
+            [
+                "c.sdc: line 7: set_timing_derate -early over 1 makes an early path slower than the library "
+                "says: an early derate is 1 or less"
+            ],
+        ),
+        (
+            SDC + "set_timing_derate 1.1 ;# source: x\n",
+            [
+                "c.sdc: line 7: set_timing_derate takes 1 of -late and -early: write which paths the factor "
+                "is for"
+            ],
+        ),
+        (
+            SDC
+            + "set_clock_uncertainty 0.25 [get_clocks clk] ;# source: x\n"
+            + "set_timing_derate -late 1.05 ;# source: y\n"
+            + "set_timing_derate -early 0.95 ;# source: z\n",
+            [],
+        ),
     ],
 )
 def test_constraints_hold_only_what_they_may(tmp_path, text, said):
     """A constraints file is Tcl. A command outside the list, a second command on a line, a bracket that
-    runs anything but a query, and a number with no source are each refused with the line."""
+    runs anything but a query, and a number with no source are each refused with the line. So is a
+    margin that gives time away, whatever its source says, and an option written 2 times."""
     assert sdc(tmp_path, text).problems == said
 
 
@@ -327,6 +378,93 @@ def test_each_port_needs_its_delay_and_the_clock_needs_none(tmp_path):
     assert chipflow.read_sdc(tmp_path / "nothere.sdc").problems == [
         "nothere.sdc: not found: write the clock, and a delay for each input and output"
     ]
+
+
+WIDTHS = {"d": (7, 0), "q": (7, 0)}
+CLOCK = "\n".join(SDC.splitlines()[:2]) + "\n"
+INPUTS = "set_input_delay 4 -clock clk [get_ports {rst en d[*]}] ;# source: a\n"
+OUTPUTS = "set_output_delay 4 -clock clk [get_ports {q[*]}] ;# source: b\n"
+EARLY = INPUTS.replace("delay 4", "delay -min 1")
+NO_INPUT = [
+    f"c.sdc: input {port} has no set_input_delay: STA cannot judge a path through it"
+    for port in ("d", "en", "rst")
+]
+
+
+@pytest.mark.parametrize(
+    ("text", "said"),
+    [
+        (CLOCK + INPUTS + OUTPUTS, []),
+        # a bus's bare name names each of its bits, and 2 delays may share setup and hold between them
+        (CLOCK + INPUTS.replace("d[*]", "d") + OUTPUTS.replace("{q[*]}", "q"), []),
+        (CLOCK + EARLY + INPUTS.replace("delay 4", "delay -max 4") + OUTPUTS, []),
+        (
+            # OpenSTA lists no port that has a -min delay as a port without one, and judges no setup
+            # path from it: the reviewer's project was GREEN with 19.9 ns of a 20 ns period given away
+            CLOCK + INPUTS.replace("delay 4", "delay -min 19.9") + OUTPUTS,
+            [
+                f"c.sdc: input {port}: a set_input_delay -min only: no setup path through it is judged. "
+                "Write 1 delay without -min, or both"
+                for port in ("d", "en", "rst")
+            ],
+        ),
+        (
+            CLOCK + INPUTS + OUTPUTS.replace("delay 4", "delay -max 4"),
+            [
+                "c.sdc: output q: a set_output_delay -max only: no hold path through it is judged. Write 1 "
+                "delay without -max, or both"
+            ],
+        ),
+        (
+            CLOCK + INPUTS.replace(" -clock clk", "") + OUTPUTS,
+            [
+                "c.sdc: line 3: set_input_delay names no -clock: a delay is counted from the clock's edge",
+                *NO_INPUT,
+            ],
+        ),
+        (
+            CLOCK + INPUTS.replace("delay 4", "delay -rise 4") + OUTPUTS,
+            [
+                "c.sdc: line 3: set_input_delay -rise is a delay for 1 edge of the port: write 1 delay for "
+                "both",
+                *NO_INPUT,
+            ],
+        ),
+        (
+            # 1 bit does not stand for its bus
+            CLOCK + INPUTS + OUTPUTS.replace("{q[*]}", "{q[0]}"),
+            [
+                "c.sdc: output q: 7 of its 8 bits have no set_output_delay (q[1], q[2], q[3], q[4] ...): "
+                "name the bus as q[*]"
+            ],
+        ),
+        (
+            CLOCK
+            + INPUTS
+            + OUTPUTS.replace("delay 4", "delay -max 4")
+            + OUTPUTS.replace("delay 4", "delay -min 1").replace("q[*]", "q[7]"),
+            [
+                "c.sdc: output q: 7 of its 8 bits (q[0], q[1], q[2], q[3] ...): a set_output_delay -max "
+                "only: no hold path through it is judged. Write 1 delay without -max, or both"
+            ],
+        ),
+        (
+            # the outputs do not stand for the inputs
+            CLOCK + "set_input_delay 4 -clock clk [all_outputs] ;# source: a\n" + OUTPUTS,
+            [
+                "c.sdc: line 3: set_input_delay takes [all_inputs], not [all_outputs]: a delay of 1 "
+                "direction is not a delay of the other",
+                *NO_INPUT,
+            ],
+        ),
+    ],
+)
+def test_a_delay_covers_a_port_only_for_each_bit_and_for_setup_and_hold(tmp_path, text, said):
+    """STA judges a path through a pin only when the pin has a delay it can use. LINT holds each bit of
+    each port to 1 for setup and 1 for hold, where STA would say so 35 s later or not at all."""
+    path = tmp_path / "c.sdc"
+    path.write_text(text, encoding="utf-8")
+    assert chipflow.read_sdc(path, PORTS, WIDTHS).problems == said
 
 
 # ------------------------------------------------------------ the process table
@@ -655,6 +793,149 @@ def test_the_ledger_keeps_every_entry_that_the_threads_of_a_gate_record_at_once(
     assert list(run.ledger()) == ["chip/synth/reg8.v"]
 
 
+@pytest.mark.parametrize("out", ["proj/build", ".", "elsewhere"])
+def test_a_record_names_each_file_1_way_wherever_the_output_folder_is(tmp_path, out):
+    """A record names a file the gates wrote from the output folder and a file of the project from the
+    project's folder, and reads each name back to its file. With the output folder above the project,
+    EXPORT named `proj/chip.json` and looked for `proj/proj/chip.json`: 5 files "gone" in a sound
+    project. A project's own file under a folder `chip/layout` was read back as the gates' netlist of
+    that name and never held: its RTL changed after GREEN and EXPORT handed the old layout out."""
+    project = tmp_path / "proj"
+    run = chipflow.Run(cli=load_cli(), project=project, out=tmp_path / out, chip=a_chip())
+    files = {
+        project / "rtl" / "reg8.v": "rtl/reg8.v",
+        project / "chip" / "layout" / "reg8.v": "./chip/layout/reg8.v",
+        project / "chip" / "notes.v": "./chip/notes.v",
+        run.final_netlist(): "chip/layout/reg8.v",
+        run.base / "lint" / "passed.json": "chip/lint/passed.json",
+    }
+    for path, name in files.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"{name}\n", encoding="utf-8")
+        assert run.name_of(path) == name
+        assert run.file_of(name).resolve() == path.resolve()
+    # the 2 files named reg8.v under a folder chip/layout are 2 names with 2 hashes
+    assert len(set(run.judged(files).values())) == len(files)
+    # a file outside both folders keeps its path
+    assert run.name_of(Path("/kit/cells.v")) == "/kit/cells.v"
+
+
+@needs_kit
+def test_an_output_folder_that_the_gates_would_empty_the_project_in_is_refused(tmp_path):
+    """The gates empty `<out>/chip/<gate>` before they write. A project named `chip` with `--out` set to
+    its parent would lose its own folders named lint, sim, layout: the command ends before any gate."""
+    own = tmp_path / "own" / "chip"
+    command("chip", "init", own, "--top", "reg8")
+    fill(own)
+    (own / "lint").mkdir()
+    (own / "lint" / "notes.txt").write_text("mine\n", encoding="utf-8")
+    ran = command("chip", "lint", own, "--out", own.parent)
+    assert (ran.returncode, ran.stdout) == (1, "")
+    assert ran.stderr == (
+        f"chip: --out {own.parent}: the gates empty the folders under {own}, and the project lies there. "
+        "Name an output folder beside the project, or 1 inside it\n"
+    )
+    assert (own / "lint" / "notes.txt").read_text(encoding="utf-8") == "mine\n"
+    # RTL under <out>/chip would be emptied the same way
+    other = tmp_path / "other"
+    command("chip", "init", other, "--top", "reg8")
+    fill(other)
+    (other / "chip" / "rtl").mkdir(parents=True)
+    (other / "rtl" / "reg8.v").rename(other / "chip" / "rtl" / "reg8.v")
+    data = json.loads((other / "chip.json").read_text(encoding="utf-8"))
+    (other / "chip.json").write_text(json.dumps({**data, "rtl": ["chip/rtl/*.v"]}), encoding="utf-8")
+    ran = command("chip", "lint", other, "--out", other)
+    assert (ran.returncode, ran.stdout) == (1, "")
+    assert ran.stderr == (
+        f"chip: --out {other}: chip/rtl/reg8.v is a file of the project, and it lies under "
+        f"{other / 'chip'}, which the gates empty. Name another output folder\n"
+    )
+    assert (other / "chip" / "rtl" / "reg8.v").is_file()
+
+
+@needs_verilator
+def test_the_gates_empty_only_a_folder_they_made(tmp_path):
+    """`--out` can name any folder, and the gates empty `<out>/chip/<gate>` before they write. A folder
+    `chip` that was there before, with someone's own `layout` in it, would lose that folder. The gates
+    write their ledger first in a folder they make, and take a folder of that name only with it."""
+    folder = tmp_path / "reg8"
+    command("chip", "init", folder, "--top", "reg8")
+    fill(folder)
+    shared = tmp_path / "shared"
+    mine = shared / "chip" / "layout" / "mine.txt"
+    mine.parent.mkdir(parents=True)
+    mine.write_text("not the gates'\n", encoding="utf-8")
+    ran = command("chip", "lint", folder, "--out", shared)
+    assert (ran.returncode, ran.stdout) == (1, "")
+    assert ran.stderr == (
+        f"chip: --out {shared}: {shared / 'chip'} is there, not empty, and holds no hashes.json: the gates "
+        "did not make it, and they empty the folders under it. Name another output folder, or move that "
+        "one away\n"
+    )
+    assert mine.read_text(encoding="utf-8") == "not the gates'\n"
+    # an empty folder of that name is taken, and so is the folder the gates made, run after run
+    empty = tmp_path / "empty"
+    (empty / "chip").mkdir(parents=True)
+    for _ in range(2):
+        assert command("chip", "lint", folder, "--out", empty).returncode == 0
+        assert command("chip", "lint", folder).returncode == 0
+    assert sorted(p.name for p in (empty / "chip").iterdir()) == ["hashes.json", "home", "lint"]
+    # a gate that fails before it records anything leaves the ledger too: the next run is not refused
+    (folder / "rtl" / "reg8.v").write_text("module reg8; wire x = ; endmodule\n", encoding="utf-8")
+    red = tmp_path / "red"
+    for _ in range(2):
+        ran = command("chip", "lint", folder, "--out", red)
+        assert (ran.returncode, ran.stderr) == (1, "")
+    assert (red / "chip" / "hashes.json").read_text(encoding="utf-8") == "{}"
+
+
+def test_a_path_with_white_space_is_refused_before_an_engine_fails_on_it(tmp_path):
+    """Yosys reads its script word by word: in a project under `my chips/` SYNTH failed with "Can't
+    open input file `chips/reg8/rtl/reg8.v'", a line that names no cause. The command says it first."""
+    folder = tmp_path / "my chips" / "reg8"
+    command("chip", "init", folder, "--top", "reg8")
+    fill(folder)
+    ran = command("chip", "lint", folder)
+    assert (ran.returncode, ran.stdout) == (1, "")
+    assert ran.stderr == (
+        f"chip: {folder}: the path holds white space, and Yosys ends a path there. Use a path with none\n"
+    )
+    assert not (folder / "build").exists()
+    plain = tmp_path / "reg8"
+    command("chip", "init", plain, "--top", "reg8")
+    fill(plain)
+    out = tmp_path / "my chips" / "out"
+    ran = command("chip", "lint", plain, "--out", out)
+    assert ran.returncode == 1 and ran.stderr.startswith(f"chip: {out}: the path holds white space")
+    spaced = plain / "rtl" / "more rtl.v"
+    spaced.write_text("module more; endmodule\n", encoding="utf-8")
+    ran = command("chip", "lint", plain)
+    assert ran.returncode == 1 and ran.stderr.startswith(f"chip: {spaced}: the path holds white space")
+
+
+def test_a_gate_that_is_asked_to_run_takes_back_the_record_of_its_earlier_pass(tmp_path, monkeypatch):
+    """A gate returns on several paths before it empties its folder: an engine that is absent, no layout
+    to judge, no bench that runs on the netlist. The record of an earlier pass and the hand-off folder
+    stayed then. The driver takes both back before the gate's function, on every path."""
+    run = a_run(tmp_path)
+    report = run.base / "glsim" / "tb_reg8" / "run.log"
+    report.parent.mkdir(parents=True)
+    report.write_text("errors = 0\n", encoding="utf-8")
+    run.record("glsim", report)
+    run.write_passed("glsim", {})
+    run.write_passed("sim", {})
+    (run.base / "tapeout").mkdir()
+    (run.base / "tapeout" / "manifest.json").write_text("{}", encoding="utf-8")
+    assert run.read_passed("glsim")[0] is not None
+    monkeypatch.setattr(chipflow, "gate_function", lambda name: lambda run: run.skip(name, "no bench"))
+    assert chipflow.run_gate(run, "glsim").status == "skip"
+    assert run.read_passed("glsim") == (None, f"GLSIM did not pass in {run.out}", True)
+    assert sorted(run.ledger()) == ["chip/glsim/tb_reg8/run.log", "chip/sim/passed.json"]
+    assert report.is_file() and not (run.base / "tapeout").exists()
+    # the record of another gate stays
+    assert run.read_passed("sim")[0] is not None
+
+
 def test_a_gates_result_fails_on_a_failure_and_with_strict_on_a_warning(tmp_path):
     run = a_run(tmp_path)
     red = run.result("sim", ["tb_reg8: errors=2 not in [None, 0]"], ["no mutation list"], "1 bench")
@@ -665,10 +946,16 @@ def test_a_gates_result_fails_on_a_failure_and_with_strict_on_a_warning(tmp_path
     strict = run.result("sim", [], ["no mutation list"], "1 bench")
     assert (strict.status, strict.summary) == ("fail", "1 bench, 1 failures")
     assert strict.details == {"failures": ["no mutation list"], "warnings": []}
-    # an engine or a kit that is absent is a skip, and a run with no table read is never a pass
-    skip = run.need_engines("layout", "openroad", "no-such-engine")
+    # An engine or a kit that is absent is a skip, and a run with no table read is never a pass. The
+    # engine that is there is `sh`, which every machine has: this test named `openroad` for it, and
+    # failed on a machine without the chip engines, which is what CI is (2026-11-12).
+    skip = run.need_engines("layout", "sh", "no-such-engine")
     assert (skip.status, skip.details["engine_missing"]) == ("skip", True)
     assert skip.summary == "no-such-engine is not installed: `workcenter doctor` lists the chip engines"
+    both = run.need_engines("layout", "no-such-engine", "nor-this-one")
+    assert both.summary == (
+        "no-such-engine, nor-this-one is not installed: `workcenter doctor` lists the chip engines"
+    )
     assert run.need_engines("lint", "sh") is None
     unread = run.need_pdk("synth")
     assert (unread.status, unread.details["failures"]) == ("fail", ["the process table was not read"])
