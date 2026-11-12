@@ -1,0 +1,29 @@
+* The Snapdragon resets the RP2350 and puts it in its bootloader through U7 and U8, 74LVC1G07 open-drain
+* buffers on the module's 1.8 V. Each output low is 0.45 V at most sinking 4 mA at VCC 1.65 V (SN74LVC1G07
+* datasheet SCES296AG, VOL): 112.5 Ohm. RUN is held up by R8 (10k) and the RP2350's own pull-up, 32k at
+* its lowest (RP2350 datasheet, Table 1683, RPU at IOVDD 3.3 V); QSPI_SS by R4 (10k) and the same
+* pull-up, and pulled down through R9 (1k), by U8 or by the BOOT button. Both are inputs of the RP2350
+* that read low below 0.8 V (Table 1683, VIL at IOVDD 3.3 V).
+VDD v33 0 DC 3.3
+* RUN, U7 on
+R8 v33 run 10k
+RPURUN v33 run 32k
+RU7 run 0 112.5
+* QSPI_SS, U8 on
+R4 v33 ss 10k
+RPUSS v33 ss 32k
+R9 ss bootr 1k
+RU8 bootr 0 112.5
+* QSPI_SS, the BOOT button pressed
+R4B v33 ssb 10k
+RPUSSB v33 ssb 32k
+R9B ssb 0 1k
+.control
+op
+let run_low = v(run)
+let ss_low_u8 = v(ss)
+let ss_low_button = v(ssb)
+let i_u8 = (3.3 - v(ss)) / 10k + (3.3 - v(ss)) / 32k
+print run_low ss_low_u8 ss_low_button i_u8
+.endc
+.end

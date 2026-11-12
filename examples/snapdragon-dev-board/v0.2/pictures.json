@@ -1,0 +1,17 @@
+{
+  "boards": [
+    {
+      "path": ".",
+      "name": "wyvern",
+      "prefix": "",
+      "strict": true,
+      "stills": ["board-top.png", "board-bottom.png", "board-3d-top.png", "board-3d-bottom.png", "board-3d-iso.png", "schematic.png"],
+      "layers": "layers.png",
+      "spins": [
+        {"as": "board-spin.gif", "tilt": -55, "zoom": 1.0},
+        {"as": "board-spin-bottom.gif", "tilt": -125, "zoom": 0.9}
+      ]
+    }
+  ],
+  "scenes": []
+}

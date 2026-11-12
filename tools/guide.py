@@ -391,6 +391,11 @@ def next_step(cli, target: str, run_check=True) -> Step:
     wc = "workcenter"
     path = Path(target).resolve()
     quoted = shlex.quote(target)
+    # A folder that holds a chip.json is a chip project: its steps are the chip gates' (chipguide.py).
+    import chipguide
+
+    if chipguide.is_chip(path):
+        return chipguide.next_step(cli, target)
 
     def to_folder(file: Path, why: str) -> Step:
         """A file is no project: the answer names its folder, the one above sim/ for a deck. Taken
@@ -450,9 +455,10 @@ def next_step(cli, target: str, run_check=True) -> Step:
             '(`{"vout": {"min": 2.4, "max": 2.6, "source": "the spec\'s line"}}`). '
             f"For a board, write {quoted}/design.py: the parts from the KiCad libraries, the nets as "
             "names. A board's design file can start from a copy of "
-            f"{cli.SRC_DIR / 'templates' / 'project' / 'design.py'}.",
+            f"{cli.SRC_DIR / 'templates' / 'project' / 'design.py'}. "
+            f"For a chip, `{wc} chip init {quoted} --top <module>` writes the project's first files.",
             why=why,
-            read=f'{SIMULATE}, "Steps"; {DESIGN}, "Steps"',
+            read=f'{SIMULATE}, "Steps"; {DESIGN}, "Steps"; {chipguide.DESIGN}, "Steps"',
             done_when=again,
         )
     # A command takes the project as it was named, a KiCad file too. A path inside the project starts

@@ -14,6 +14,7 @@ supplier's page showed them on 2026-11-11, before shipping and tax.
 | Version | Lists |
 |---|---|
 | v0.1 | [base](lists/v0.1.md) ([csv](lists/v0.1.csv)) |
+| v0.2 | [base](lists/v0.2.md) ([csv](lists/v0.2.csv)) |
 <!-- /workcenter costs lists -->
 
 ## Totals
@@ -25,6 +26,7 @@ quantity that covers it, so ten units cost less than ten times one):
 | Version | 1 unit | 10 units | Per unit at 10 | Not priced | Short of stock |
 |---|---|---|---|---|---|
 | v0.1 | $32.76 | $257.08 | $25.71 | C7,C8; C23; L1; U4; Lantronix Open-Q 845 uSOM, 4 GB / 32 GB; PCB 60.96 x 30.48 mm, 6 layers, 1.6 mm; Wi-Fi and Bluetooth antennas, U.FL, 2.4 and 5 GHz | C1,C2; C3-C5; C9-C11; C12-C19,C22,C24; J1-J3; R15; U2; U6,U7 |
+| v0.2 | $34.18 | $260.04 | $26.00 | C23; C43,C44,C49; L1; U1; U5; PCB 76.2 x 53.34 mm, 6 layers, 1.6 mm; Heatsink for the module, 40 x 40 mm, with thermal tape | C9-C11,C40; C12-C19,C22,C24,C32,C37-C39,C45-C48; C30,C31; C33-C36,C42,C50,C51; R36; U3; U7,U8 |
 <!-- /workcenter costs -->
 
 Made by `workcenter costs ..` from the lists.

@@ -1,0 +1,7 @@
+
+5. Executing CHECK pass (checking for obvious problems).
+Checking module reg8...
+Warning: multiple conflicting drivers for reg8.\a:
+    module input a[0]
+    module input b[0]
+Found and reported 1 problems.

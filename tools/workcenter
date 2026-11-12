@@ -365,10 +365,11 @@ def freqplan():
     return module
 
 
-def read_expect(path: Path) -> tuple[dict[str, dict], list[str]]:
+def read_expect(path: Path, lower_case: bool = True) -> tuple[dict[str, dict], list[str]]:
     """A deck's expect file: ({measure: bound}, problems). A bound is an object with `min`, `max` or
     both as numbers; it may carry `source`, `warn`, `req` and `"at": "nominal"`. Anything else is a
-    problem, so a misspelt key never passes as a bound that holds nothing (M104)."""
+    problem, so a misspelt key never passes as a bound that holds nothing (M104). `lower_case` is
+    ngspice's rule for a measure's name; a chip's bench prints a name as it is written."""
     if not path.is_file():
         return {}, []
     try:
@@ -384,7 +385,7 @@ def read_expect(path: Path) -> tuple[dict[str, dict], list[str]]:
             problems.append(f"{name}: not an object with min or max")
             continue
         bad = [f"{name}: unknown key {key!r}" for key in sorted(set(entry) - set(EXPECT_KEYS))]
-        if name != name.lower():
+        if lower_case and name != name.lower():
             bad.append(f"{name}: ngspice prints a name in lower case, so this one is never measured")
         for key in ("min", "max"):
             value = entry.get(key)
@@ -4476,6 +4477,11 @@ def cmd_doctor(args) -> int:
             "path": str(KISTACK_DIR),
         },
     }
+    # The chip engines install on request. A workcenter without them is whole for boards, so their
+    # rows are listed only where the chip step ran: an absent one then says what the step lost.
+    chip_folder = chipflow().chip_root(sys.modules[__name__])
+    if chip_folder.is_dir():
+        checks.update(chipflow().doctor_rows(sys.modules[__name__]))
     missing_required = [k for k, v in checks.items() if v["required"] and not v["ok"]]
     degraded = [k for k, v in checks.items() if not v["required"] and not v.get("advisory") and not v["ok"]]
     status = "fail" if missing_required else ("degraded" if degraded else "ok")
@@ -4486,6 +4492,7 @@ def cmd_doctor(args) -> int:
         "checks": checks,
         "missing_required": missing_required,
         "degraded": degraded,
+        "chip_engines": chip_folder.is_dir(),
     }
     if args.json:
         print(json.dumps(payload, indent=2))
@@ -4497,6 +4504,11 @@ def cmd_doctor(args) -> int:
             mark = "ok " if c["ok"] else ("MISSING" if c["required"] else "absent ")
             extra = c.get("version") or c.get("path") or ""
             print(f"  {mark:8} {name:12} {extra}")
+        if not chip_folder.is_dir():
+            print(
+                f"  no chip engines in {chip_folder}: `sudo ./install.sh --chip` adds them; "
+                "a board needs none"
+            )
     return EXIT_FAIL if missing_required else EXIT_PASS
 
 
@@ -4569,6 +4581,12 @@ def job_count(text: str) -> int:
 
 
 def cmd_gates(args) -> int:
+    folder = Path(args.project).resolve()
+    if (folder / "chip.json").is_file() and not list(folder.glob("*.kicad_*")):
+        # A chip has gates of its own, in an order of its own: say so, and run nothing here.
+        raise SystemExit(
+            f"{folder}: a chip project (it holds chip.json): run `workcenter chip gates {folder}`"
+        )
     project = find_project(args.project)
     out = out_dir_for(project, args.out)
     results: list[Result] = []
@@ -4607,6 +4625,14 @@ def guide():
     """tools/guide.py: `next`, the one next step for a project."""
     sys.path.insert(0, str(SRC_DIR / "tools"))
     import guide as module
+
+    return module
+
+
+def chipflow():
+    """tools/chipflow.py: `chip`, a chip project from RTL to a GDSII layout."""
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import chipflow as module
 
     return module
 
@@ -4936,6 +4962,7 @@ def main(argv: list[str] | None = None) -> int:
 
     doctools().register(sub, sys.modules[__name__])
     guide().register(sub, sys.modules[__name__])
+    chipflow().register(sub, sys.modules[__name__])
 
     # `--json` is read on either side of the command: `workcenter --json gates P` and `workcenter
     # gates P --json`. SUPPRESS keeps a command that does not carry the flag from clearing the one

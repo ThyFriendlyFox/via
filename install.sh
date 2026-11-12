@@ -4,6 +4,7 @@
 # Usage:
 #   sudo ./install.sh            install or update every engine
 #   ./install.sh --check         report engine status; install nothing
+#   sudo ./install.sh --chip     install or update the chip engines only
 #
 # Every step skips work that is already done, so the script is safe to
 # run again. A required step that fails exits non-zero, so a cloud
@@ -17,6 +18,9 @@
 #   FREEROUTING_URL       JAR download URL        (default: GitHub release asset)
 #   REQUIRE_FREEROUTING   1 makes a failed JAR download fatal (default 0: warn)
 #   SKIP_APT              1 skips the apt step (for images that ship KiCad 10)
+#   INSTALL_CHIP          1 also installs the chip engines and the sky130A
+#                         process kit, 1.9 GB under WORKCENTER_ROOT/chip
+#                         (default 0: a board needs none of them)
 
 set -euo pipefail
 
@@ -40,6 +44,17 @@ FREEROUTING_SHA256="${FREEROUTING_SHA256:-9084a4888937a7f31f857ecc12aa7a37407f51
 FREEROUTING_URL="${FREEROUTING_URL:-https://github.com/freerouting/freerouting/releases/download/v${FREEROUTING_VERSION}/freerouting-${FREEROUTING_VERSION}.jar}"
 REQUIRE_FREEROUTING="${REQUIRE_FREEROUTING:-0}"
 SKIP_APT="${SKIP_APT:-0}"
+
+# The chip engines (RTL to a GDSII layout), opt-in. Every download is pinned: Ubuntu's own packages,
+# micromamba by its SHA256, the conda packages by URL and MD5 in environment/chip/*.explicit.txt,
+# ciel's Python packages by version, the process kit by its open_pdks commit. The kit is pinned to
+# the Magic of layout.explicit.txt: a newer kit asks for a newer Magic and Magic then never returns.
+INSTALL_CHIP="${INSTALL_CHIP:-0}"
+CHIP_PACKAGES=(yosys iverilog verilator klayout bzip2)
+MICROMAMBA_VERSION="2.10.0"
+MICROMAMBA_URL="https://conda.anaconda.org/conda-forge/linux-64/micromamba-${MICROMAMBA_VERSION}-0.tar.bz2"
+MICROMAMBA_SHA256="9a97976244929bbae28fb1fae504e74a3e7e6d1932870e3a03321f01b7fbd07b"
+SKY130_COMMIT="6d4d11780c40b20ee63cc98e645307a9bf2b2ab8"
 
 log() { printf '[install] %s\n' "$*"; }
 warn() { printf '[install] WARN: %s\n' "$*" >&2; }
@@ -177,16 +192,105 @@ EOF
   log "link: manifest at ${WC_ROOT}/WORKCENTER.md"
 }
 
+# 1 conda environment from its lock file. The stamp holds the lock's SHA256: a second run with the
+# same lock downloads nothing, and a changed lock builds the environment again.
+chip_env() {
+  local name="$1" lock="$2" root="${WC_ROOT}/chip"
+  local env="${root}/mamba/envs/${name}" want
+  want="$(sha256sum "$lock" | cut -d' ' -f1)"
+  if [[ -d "$env" && "$(cat "${env}/.lock-sha256" 2>/dev/null)" == "$want" ]]; then
+    log "chip: ${name} environment present"
+    return
+  fi
+  log "chip: creating the ${name} environment from $(basename "$lock")"
+  rm -rf "$env"
+  # HOME points inside the root: micromamba makes a package folder in the home it is given.
+  HOME="${root}/mamba/home" MAMBA_ROOT_PREFIX="${root}/mamba" "${root}/mm/bin/micromamba" create --no-rc -y -q \
+    -p "$env" --file "$lock" < /dev/null || die "chip: the ${name} environment failed"
+  echo "$want" > "${env}/.lock-sha256"
+}
+
+step_chip() {
+  local root="${WC_ROOT}/chip" locks="${SRC_DIR}/environment/chip" py="${WC_ROOT}/venv/bin/python"
+  local kit="${root}/pdk/ciel/ciel/sky130/versions/${SKY130_COMMIT}/sky130A" tool want
+  [[ -x "$py" ]] || py="python3"
+  if [[ "$SKIP_APT" == "1" ]]; then
+    log "chip: apt skipped (SKIP_APT=1)"
+  else
+    log "chip: apt install ${CHIP_PACKAGES[*]}"
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      -o Acquire::Retries=3 -o Acquire::http::Timeout=60 -o Acquire::https::Timeout=60 "${CHIP_PACKAGES[@]}" \
+      | grep --line-buffered -E '^(Get:[0-9]+|Setting up|Unpacking) ' | sed -u 's/^/[apt] /' || true
+  fi
+  for tool in yosys iverilog vvp verilator klayout bzip2; do
+    command -v "$tool" >/dev/null 2>&1 || die "chip: ${tool} is not on PATH after the apt step"
+  done
+  mkdir -p "${root}/mm" "${root}/bin" "${root}/mamba/home"
+  if [[ "$("${root}/mm/bin/micromamba" --version 2>/dev/null)" != "$MICROMAMBA_VERSION" ]]; then
+    log "chip: downloading micromamba ${MICROMAMBA_VERSION}"
+    curl -fsSL --retry 3 --connect-timeout 20 -o "${root}/micromamba.tar.bz2" "$MICROMAMBA_URL" \
+      || die "chip: micromamba download failed"
+    echo "${MICROMAMBA_SHA256}  ${root}/micromamba.tar.bz2" | sha256sum -c - >/dev/null \
+      || die "chip: checksum mismatch for micromamba"
+    tar -xjf "${root}/micromamba.tar.bz2" -C "${root}/mm" bin/micromamba
+    rm -f "${root}/micromamba.tar.bz2"
+  fi
+  chip_env openroad "${locks}/openroad.explicit.txt"
+  chip_env layout "${locks}/layout.explicit.txt"
+  HOME="${root}/mamba/home" MAMBA_ROOT_PREFIX="${root}/mamba" "${root}/mm/bin/micromamba" clean --no-rc -y --all \
+    < /dev/null > /dev/null 2>&1 || true
+  want="$(sha256sum "${locks}/ciel.requirements.txt" | cut -d' ' -f1)"
+  if [[ "$(cat "${root}/ciel-app/.lock-sha256" 2>/dev/null)" != "$want" ]]; then
+    log "chip: installing ciel from ciel.requirements.txt"
+    rm -rf "${root}/ciel-app"
+    "$py" -m pip install -q --no-deps --root-user-action=ignore --target "${root}/ciel-app" \
+      -r "${locks}/ciel.requirements.txt" || die "chip: ciel failed to install"
+    echo "$want" > "${root}/ciel-app/.lock-sha256"
+  fi
+  if [[ -f "${kit}/libs.tech/magic/sky130A.tech" ]]; then
+    log "chip: sky130A ${SKY130_COMMIT:0:7} present"
+  else
+    log "chip: fetching sky130A at ${SKY130_COMMIT:0:7} (the sky130_fd_sc_hd library)"
+    PYTHONPATH="${root}/ciel-app" "$py" -m ciel enable --pdk-root "${root}/pdk/ciel" --pdk-family sky130 \
+      -l sky130_fd_sc_hd "$SKY130_COMMIT" < /dev/null > "${root}/ciel.log" 2>&1 \
+      || die "chip: the process kit failed to install; see ${root}/ciel.log"
+    [[ -f "${kit}/libs.tech/magic/sky130A.tech" ]] || die "chip: ${kit} is not there after ciel"
+  fi
+  # Stable names for the gates: the engines by name, the kit at its pinned commit. ciel's own
+  # sky130A link moves when another version is enabled; this one names the commit above.
+  ln -sfn "${root}/mamba/envs/openroad/bin/openroad" "${root}/bin/openroad"
+  ln -sfn "${root}/mamba/envs/openroad/bin/sta" "${root}/bin/sta"
+  ln -sfn "${root}/mamba/envs/layout/bin/magic" "${root}/bin/magic"
+  ln -sfn "${root}/mamba/envs/layout/bin/netgen" "${root}/bin/netgen"
+  ln -sfn "$kit" "${root}/pdk/sky130A"
+  # Magic and Netgen wait on standard input when it is a terminal: every call gets /dev/null.
+  "${root}/bin/openroad" -version < /dev/null > /dev/null 2>&1 || die "chip: openroad does not run"
+  "${root}/bin/magic" --version < /dev/null > /dev/null 2>&1 || die "chip: magic does not run"
+  "${root}/bin/netgen" -batch quit < /dev/null > /dev/null 2>&1 || die "chip: netgen does not run"
+  log "chip: openroad $("${root}/bin/openroad" -version < /dev/null 2>/dev/null | head -1 | cut -c1-12)," \
+      "opensta $("${root}/bin/sta" -version < /dev/null 2>/dev/null | head -1)," \
+      "magic $("${root}/bin/magic" --version < /dev/null 2>/dev/null | head -1)," \
+      "sky130A ${SKY130_COMMIT:0:7}, $(du -sh "$root" | cut -f1) in ${root}"
+}
+
 main() {
   if [[ "${1:-}" == "--check" ]]; then
     exec python3 "${SRC_DIR}/tools/workcenter" doctor
   fi
   [[ "$EUID" -eq 0 ]] || die "run as root (sudo ./install.sh)"
   local t0=$SECONDS
+  if [[ "${1:-}" == "--chip" ]]; then
+    step_chip
+    log "done in $((SECONDS - t0))s"
+    return
+  fi
   step_apt
   step_freerouting
   step_python
   step_link
+  if [[ "$INSTALL_CHIP" == "1" ]]; then
+    step_chip
+  fi
   log "done in $((SECONDS - t0))s"
   python3 "${SRC_DIR}/tools/workcenter" doctor
 }

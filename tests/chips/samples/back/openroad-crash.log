@@ -1,0 +1,28 @@
+OpenROAD f12e2f474102bfb875eeee57fb610d7d7de17770 
+This program is licensed under the BSD-3 license. See the LICENSE file for details.
+Components of this program may be licensed under more restrictive licenses which must be honored.
+[WARNING PSM-0016] Voltage pad location (VSRC) file not specified, defaulting pad location to checkerboard pattern on core area.
+[WARNING PSM-0017] X direction bump pitch is not specified, defaulting to 140um.
+[WARNING PSM-0018] Y direction bump pitch is not specified, defaulting to 140um.
+[WARNING PSM-0019] Voltage on net VPWR is not explicitly set.
+Stack trace:
+ 0# 0x000055AE5E898AB6 in /chip/bin/openroad
+ 1# 0x00007F0142445330 in /lib/x86_64-linux-gnu/libc.so.6
+ 2# sta::LibertyLibrary::defaultOperatingConditions() const in /chip/bin/openroad
+ 3# psm::SupplyVoltage::getSupplyVoltage(sta::dbSta*) in /chip/bin/openroad
+ 4# psm::IRSolver::GetSupplyVoltage() in /chip/bin/openroad
+ 5# psm::IRSolver::ReadC4Data() in /chip/bin/openroad
+ 6# psm::IRSolver::BuildConnection() in /chip/bin/openroad
+ 7# psm::PDNSim::check_connectivity() in /chip/bin/openroad
+ 8# 0x000055AE5F5FA7AB in /chip/bin/openroad
+ 9# TclNRRunCallbacks in /chip/mamba/envs/openroad/bin/../lib/libtcl8.6.so
+10# 0x00007F0143133A42 in /chip/mamba/envs/openroad/bin/../lib/libtcl8.6.so
+11# Tcl_EvalEx in /chip/mamba/envs/openroad/bin/../lib/libtcl8.6.so
+12# Tcl_Eval in /chip/mamba/envs/openroad/bin/../lib/libtcl8.6.so
+13# sta::sourceTclFile(char const*, bool, bool, Tcl_Interp*) in /chip/bin/openroad
+14# ord::tclAppInit(Tcl_Interp*) in /chip/bin/openroad
+15# Tcl_MainEx in /chip/mamba/envs/openroad/bin/../lib/libtcl8.6.so
+16# main in /chip/bin/openroad
+17# 0x00007F014242A1CA in /lib/x86_64-linux-gnu/libc.so.6
+18# __libc_start_main in /lib/x86_64-linux-gnu/libc.so.6
+19# 0x000055AE5E893745 in /chip/bin/openroad

@@ -1,0 +1,37 @@
+{
+   "creator": "Yosys 0.33 (git sha1 2584903a060)",
+   "invocation": "stat -liberty /kit/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib -json ",
+   "modules": {
+      "\\reg8": {
+         "num_wires":         7,
+         "num_wire_bits":     31,
+         "num_pub_wires":     7,
+         "num_pub_wire_bits": 31,
+         "num_memories":      0,
+         "num_memory_bits":   0,
+         "num_processes":     0,
+         "num_cells":         20,
+         "area":              255.244800,
+         "num_cells_by_type": {
+            "$_DLATCH_P_": 8,
+            "sky130_fd_sc_hd__dfxtp_2": 12
+         }
+      }
+   },
+      "design": {
+         "num_wires":         7,
+         "num_wire_bits":     31,
+         "num_pub_wires":     7,
+         "num_pub_wire_bits": 31,
+         "num_memories":      0,
+         "num_memory_bits":   0,
+         "num_processes":     0,
+         "num_cells":         20,
+         "area":              255.244800,
+         "num_cells_by_type": {
+            "$_DLATCH_P_": 8,
+            "sky130_fd_sc_hd__dfxtp_2": 12
+         }
+      }
+}
+

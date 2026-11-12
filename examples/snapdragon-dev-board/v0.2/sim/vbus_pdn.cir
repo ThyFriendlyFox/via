@@ -1,0 +1,32 @@
+* VBUS, the converter's input, as U3 draws from it: a USB-C charger behind its cable, C30 and C31 at
+* U3's input, and the damper C42 with R45. The cable is an assumption: 0.5 to 1.5 m at about
+* 0.75 uH a metre of loop (LCABLE 0.75u, 50 % either way in sim/corners.json); its resistance is held
+* at 50 mOhm, the low end, which damps the least. C30 and C31 are 10 uF 16 V X5R 0805, C42 22 uF
+* 0805: their 10 % and what X5R loses at 5 V of DC bias are taken as 50 % (sim/corners.json), with
+* 5 mOhm of ESR each. A 1 A AC current into the input reads the rail's impedance in ohms.
+* U3 holds its output's power, so its input is a negative resistance, -VIN^2 / PIN. It can draw no
+* more than the 3 A a USB-C source offers, so PIN is at most VIN x 3 A and the resistance is at
+* least VIN / 3 A: 1.33 Ohm at the 4.0 V the board starts from (vbus_uvlo_high.cir). The input's peak
+* impedance under that keeps the pair stable (Middlebrook).
+VS src 0 DC 5
+RCABLE src a 50m
+LCABLE a vbus 0.75u
+C30 vbus e1 10u
+RE1 e1 0 5m
+C31 vbus e2 10u
+RE2 e2 0 5m
+C42 vbus d1 22u
+R45 d1 0 0.33
+I1 0 vbus DC 0 AC 1
+.control
+ac dec 400 10 10Meg
+meas ac z_peak max vm(vbus)
+meas ac f_peak max_at vm(vbus)
+meas ac z_floor find vm(vbus) at=10
+let half = z_floor + (z_peak - z_floor) / sqrt(2)
+meas ac f_lo when vm(vbus)=$&half rise=1
+meas ac f_hi when vm(vbus)=$&half fall=1
+let q_peak = f_peak / (f_hi - f_lo)
+print z_peak f_peak q_peak
+.endc
+.end

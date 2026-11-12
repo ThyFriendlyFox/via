@@ -269,6 +269,21 @@ axis it defines (a 3D model's rotation or offset, an export's origin).
    in braces, and `4k7`. Run each through the tool once and keep each as
    a test. Where the tool reads a spelling as another number and says
    nothing, the gate fails on that spelling (M117).
+8. A number a gate prints about a file is counted in that file. A tool
+   run writes several files, and a later pass can remove what an earlier
+   file holds: a count from the earlier file is printed under that file's
+   name (`flops_before_mapping`), never as the later file's. Where the
+   next engine counts the same thing (the sinks of a clock tree for the
+   flops of a netlist), read the 2 numbers against each other once, on a
+   design where they can differ (M167).
+9. Where the tool can say what it read or took, the gate asks the tool.
+   Verilator lists each file in its XML, Icarus Verilog writes them with
+   `-M` and Yosys with `-E`. A pattern over the tool's input finds the
+   spellings its author knew: it is a first look, never the record. Where
+   the tool cannot say (a file a simulation opens while it runs), the gate
+   refuses what it cannot follow. A flag that changes what a command is
+   for (`-min`, `-max`, a missing `-clock`) is a spelling too: read each
+   flag the tool takes on that command before the command counts (M169).
 
 Done when: a test parses a real sample of each shape, failures among them,
 and the parser's assumptions are written next to it.
@@ -333,7 +348,10 @@ Edit tool.
 4. A range in a script (every x between two values) comes from the file
    it edits: read the outline or the coordinates' own extent, and after
    the run count what it moved against what lay in the range (M77).
-5. A change of a few lines goes through the Edit tool after a Read.
+5. A change of a few lines goes through the Edit tool after a Read: 1
+   place or 5, in 1 file or in 2. A script is for a change the Edit tool
+   cannot hold: a range, a table, the same change in 20 places (M156,
+   M165, M168).
 6. Inside a quoted heredoc (`<<'EOF'`) the shell passes text through as
    written. Write no backslash escapes in it at all: `chr(10)` for a line
    break, real line breaks inside a triple-quoted string.
@@ -432,9 +450,17 @@ that may be absent.
    (no deck, no board), and an engine that is absent. The second carries
    the engine's name, and a run that holds one is SKIPPED with exit code
    2, never GREEN, however many other gates passed (M106).
+6. An engine that CI does not install is absent on CI. Before a branch
+   with tests of such an engine lands, run its test files once with the
+   engine off the path: a folder of links to `/usr/bin` without it, and
+   the engines' own folder set to one that is not there. A test that
+   names the engine as present carries no mark, and fails only there
+   (M170).
 
 Done when: the summary shows no unexpected skips, the engine test is
 green on the runner, and a run with an engine taken away is not GREEN.
+For an engine CI does not install: the test files pass with it off the
+path.
 
 ## P13 — Recording a mistake
 
@@ -473,7 +499,9 @@ When: a change is about to be called done.
    a look at the log: `grep -q 'VERIFY GREEN' log && git push ...`. A
    `tail` succeeds whatever the log says. Every check you run before a
    push is in the chain (`ruff check ... && make test && git push`); a
-   check whose result only prints is not a gate.
+   check whose result only prints is not a gate. A rebase, a merge of
+   `main` or a renumbering of log entries after the run makes a new tree:
+   run `make verify` on it before its push, force-push included (M166).
 3. Push, then confirm the remote holds it: `git ls-remote`.
 4. Watch CI to the end; red CI is work now, not later.
 5. The report names the commit, the run link, and the numbers from the
@@ -524,7 +552,10 @@ When: choosing or changing which MCU pin carries which signal.
 
 1. Read the alternate-function table from the vendor's data: ST's open
    pin data (`STM32_open_pin_data`, the MCU and GPIO-modes XML) or the
-   datasheet. Never from memory.
+   datasheet. Never from memory. A table a script pulls out of a PDF's
+   text is a draft: a cell that wraps onto a second line or a name with a
+   slash lands in another row without an error. Read every pin the board
+   uses from the page itself before a net takes its name (M163).
 2. Write the plan as a table: pin, port, and the exact function each
    signal uses (AF number and timer channel, ADC channel, EXTI line, I2C
    or UART instance).
@@ -974,6 +1005,10 @@ circuits it touches. The `verification` skill is the how-to.
    tabulate is no maximum: take the nearest maximum row as flat, unless a
    figure read from the datasheet says otherwise (M83). Write the limit
    before the number it is compared with, then compare (M71).
+   - The gate moves an element only when it is named like a board
+     reference: name each part the corners should move as the board does
+     (R34, not R34A). A deck that needs 2 copies of a part is 2 decks;
+     read the deck's "varied" list in the gate's JSON once (M164).
    - A measurement behind a series part (a fuse, a shunt, a switch, a
      track) lists every current through that part, in both directions: the
      charge current, each rail's load, each load's edge. Each takes its

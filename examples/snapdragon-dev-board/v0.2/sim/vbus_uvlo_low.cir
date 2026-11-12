@@ -1,0 +1,15 @@
+* Where U3 starts, at the earliest. Its EN/UVLO pin turns it on when the pin rises past VUVLO, 1.20 to
+* 1.26 V (SLVSH28A, 6.5), and R34 (100k, from VBUS) and R35 (51k, to ground) divide VBUS onto it. An
+* ideal amplifier drives VBUS until EN sits at VUVLO's 1.20 V minimum: the lowest VBUS that starts it.
+* The pin's 5 uA source switches on only once the pin is above VUVLO (7.3.5), so it moves the turn-off
+* point, not this one. See vbus_uvlo_high.cir for the latest start.
+VUV ref 0 DC 1.20
+EAMP vbus 0 ref en 1e6
+R34 vbus en 100k
+R35 en 0 51k
+.control
+op
+let v_on = v(vbus)
+print v_on
+.endc
+.end

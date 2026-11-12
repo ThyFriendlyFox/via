@@ -108,16 +108,17 @@ and 12 dB from 200 to 300 Hz at every one of 986 corner runs, and take a 150 Hz 
 (13.4 dB at the worst corner). Music from a phone plays through the loop as its target. The back
 draws the idea: the noise and its inverse, meeting as one line.
 
-## An example: Wyvern, a Teensy with a Snapdragon
+## An example: Wyvern, a Snapdragon development board
 
-<a href="examples/snapdragon-dev-board/README.md"><img alt="Wyvern in 3D: a stick the size of a Teensy with 2 rows of pins, a USB-C port at one end and the Snapdragon 845 module on 3 sockets on top" src="site/showcase/wyvern-iso.png"></a>
+<a href="examples/snapdragon-dev-board/README.md"><img alt="Wyvern v0.2 in 3D: one flat black board with 2 rows of 30 pins, a USB-C port at one end and the QCS6490 module soldered on its top" src="site/showcase/wyvern-iso.png"></a>
 
 [`examples/snapdragon-dev-board`](examples/snapdragon-dev-board/README.md) is a development board
-the size of a Teensy with a Snapdragon 845 on it, laid out as a board repository is. 60.96 x 30.48 mm,
-6 layers, 2 rows of 24 pins. The Snapdragon comes on a module whose 300 pins are named from its
-datasheet; an RP2350 under it drives the pins at 3.3 V, and Linux flashes it over USB. One USB-C
-port carries power, USB 3.1 and DisplayPort: 5 coupled pairs drawn by hand in the design file, none
-crossing another. A frequency plan holds the buck's power-save pulses against the cable's resonance.
+with a Snapdragon on it, laid out like a Teensy and kept as version folders. v0.2 is one flat board,
+76.2 x 53.34 mm, 6 layers, 2 rows of 30 pins: a Qualcomm QCS6490 on Vantron's VOSM6490 is soldered
+straight on by its 662 pads, a land pattern generated from SGET's OSM standard. An RP2350 beside it
+drives the pins at 3.3 V, and Linux flashes it over USB. A buck-boost holds the module's 5.0 V from
+any USB-C cable, and an HD3SS3220 switches its USB 3 lane to the side the plug is on; the lane and
+the converter's 0.25 mm power pads are drawn by hand in the design file.
 
 ## An example: Basalt, a microATX Threadripper board
 
@@ -130,6 +131,63 @@ one version a feature, each GREEN: v0.1 the floor plan, a 4844-land socket and 1
 supply in a pour; v0.2 the 4 DDR5 channels, 576 traces drawn by rule with 0 DRC errors on the first
 run; v0.3 the ports and headers a desktop board carries, routed by the project's own grid router.
 10 layers, black and silver.
+
+## A chip: acc8, an 8-bit processor
+
+Via also takes a chip from RTL to a GDSII mask layout: the drawing a
+foundry etches from. The project is Verilog, benches, timing constraints
+and `chip.json`. 10 gates run in order on open engines and the open
+SkyWater 130 nm process, and stop at the first that does not pass.
+
+<table>
+  <tr>
+    <td width="50%"><img alt="The mask layout of the processor: rows of cells between supply rails, wires on 4 metal layers, supply stripes from top to bottom" src="site/media/chip.png"></td>
+    <td width="50%"><img alt="The wires of the second metal layer alone: vertical runs between the cells' rows" src="site/media/chip-met2.png"></td>
+  </tr>
+  <tr>
+    <td>The layout of <code>tests/chips/pass-acc8</code>, every layer: 760 cells on a die of 152.38 um by 152.38 um. <code>workcenter chip render</code> draws it.</td>
+    <td>The second metal layer alone. The command draws 1 picture for each routing layer.</td>
+  </tr>
+</table>
+
+acc8 is an accumulator processor with 16 opcodes and 4 programs in its
+ROM. 5 benches make 1098 checks on the RTL, 4 of them again on the
+routed netlist. The run, as the terminal printed it:
+
+```text
+$ workcenter chip gates tests/chips/pass-acc8 --strict
+PASS   lint       4 RTL files, top acc8, 0 failures  [0.19s]
+PASS   sim        5 benches, 1098 checks, 18 of 18 changes of the RTL caught, 0 failures  [0.74s]
+PASS   synth      760 cells, 132 flops, 8530.7 um2, the mapping removed 24 flops that nothing reads (--json names each), 0 failures  [1.84s]
+PASS   layout     8379.29 um2 of cells, utilisation 0.493, 0 failures  [194.64s]
+PASS   sta        15 corners, least setup slack 25.1717 ns at max_ss_n40C_1v60, least hold slack 0.2974 ns at min_ff_n40C_1v95, 0 failures  [4.56s]
+PASS   glsim      4 benches on the final netlist, 1 on the RTL only, 0 failures  [0.51s]
+PASS   drc        2 decks: magic 0, klayout-mr 0, 0 failures  [15.16s]
+PASS   antenna    the routed database, 0 failures  [0.31s]
+PASS   lvs        the layout against the netlist with its supply pins: 792 devices against 792, 0 failures  [2.82s]
+PASS   export     22 files, 20 reports and manifest.json in chip/tapeout, 0 failures  [0.37s]
+scope: open engines, sky130A 1.0.470-0-g6d4d117, decks: magic (community), klayout-mr (community), corners: max_ss_n40C_1v60, max_ss_100C_1v60, max_ff_n40C_1v95, max_ff_100C_1v95, max_tt_025C_1v80, min_ss_n40C_1v60, min_ss_100C_1v60, min_ff_n40C_1v95, min_ff_100C_1v95, min_tt_025C_1v80, nom_ss_n40C_1v60, nom_ss_100C_1v60, nom_ff_n40C_1v95, nom_ff_100C_1v95, nom_tt_025C_1v80; no foundry deck ran; no shuttle's limits were checked
+GREEN: pass-acc8  report /home/user/via/tests/chips/pass-acc8/build/gates.json
+```
+
+| Gate | What it holds |
+|---|---|
+| LINT, SIM | The RTL reads the same to a simulator and to a synthesizer. Every bench passes, and every listed change of the RTL fails a bench: a bench that passes on a wrong design proves nothing. |
+| SYNTH, LAYOUT | The RTL maps onto the library's cells, with a reset on every flop. The cells are placed and routed with no violation. |
+| STA, GLSIM | Timing holds at every corner of temperature and supply the project names, with the routed wires. The benches pass again on the routed netlist. |
+| DRC, ANTENNA, LVS | The layout breaks no rule of 2 decks, no wire collects too much charge, and the layout is the netlist, device by device. |
+| EXPORT | The layout is handed out only when each of the 9 gates passed on the files as they are now. |
+
+The line before the verdict is the scope of the run. GREEN says that the
+open engines found no fault in these files. It does not say that a foundry
+accepts the layout or that the silicon works: no foundry deck runs here.
+
+The engines install on request: `sudo ./install.sh --chip`.
+`workcenter chip init <dir> --top <module>` starts a project, and
+`workcenter next <dir>` names each step from there.
+[`.claude/skills/chip-design/SKILL.md`](.claude/skills/chip-design/SKILL.md)
+has the procedure, and [`tests/chips/README.md`](tests/chips/README.md)
+the 9 fixture chips.
 
 ## What it does
 
@@ -194,12 +252,13 @@ has the procedure from a spec to a GREEN board.
 has every flag.
 
 <details>
-<summary>The 24 commands</summary>
+<summary>The 25 commands</summary>
 
 | Command | What |
 |---|---|
 | `doctor` | Report each engine's status. |
 | `next` | Name the one next step for a project. |
+| `chip` | A chip project, from RTL to a GDSII layout: `chip init`, `chip gates`, 1 command for each of its 10 gates, and `chip render` for a picture of the layout. Tests hold all 10 gates. The acceptance design, an 8-bit processor of 760 cells on the sky130A process, is GREEN with `--strict` in under 4 minutes. |
 | `design` | Build a design file into a KiCad project; `--route` routes it; `--check` compares. |
 | `erc`, `drc`, `sim`, `export` | One gate, alone. |
 | `gates` | The 4 gates in order; the last line is the verdict. |
@@ -260,13 +319,16 @@ images are drawn.
 | `tools/kicadgen.py` | Design a board in Python from the KiCad libraries; writes the KiCad project and routes it headless. |
 | `tools/simcorners.py`, `tools/freqplan.py` | The corners a deck runs at; the frequency plan. Read by the SIM gate. |
 | `tools/guide.py` | `workcenter next`: the one next step and the fix for each kind of failure. |
+| `tools/chipflow.py` | `workcenter chip`: what the chip gates share. It reads `chip.json`, the constraints and a process table, selects the timing corners, starts the engines and drives the gates to a verdict. |
+| `tools/chipfront.py`, `tools/chipback.py`, `tools/chipscripts/` | The chip gates LINT, SIM, SYNTH and GLSIM; the chip gates LAYOUT, STA, DRC, ANTENNA, LVS and EXPORT; the engine scripts the chip gates run. |
+| `tools/chipguide.py` | `workcenter next` for a chip project: the one next step, from `chip.json` to a GREEN layout. |
 | `tools/inspect_board.py`, `tools/stretch.py` | Read a routed board with KiCad's geometry; grow a design at a cut. |
 | `tools/doctools.py`, `tools/scene.py`, `tools/wrlgen.py` | Document commands; assembly scenes; 3D bodies. |
 | `tools/pdfcurve.py`, `tools/kistack_board.py` | A PDF page's vector paths; the board reader kistack's checks run on. |
 | `tools/hooks/` | Claude Code hooks: no `cd` in a command, no test written by a script. |
 | `WORKCENTER.md` | The contract a project gets from this workcenter. |
 | `AGENTS.md`, `CLAUDE.md` | Where an agent starts. The same text. |
-| `.claude/skills/` | `attached-repos`, `autoroute`, `blog-post`, `board-design`, `board-gates`, `kistack`, `procurement`, `simulate`, `verification`. |
+| `.claude/skills/` | `attached-repos`, `autoroute`, `blog-post`, `board-design`, `board-gates`, `chip-design`, `chip-gates`, `kistack`, `procurement`, `simulate`, `verification`. |
 | `templates/` | A first design file, a version's README and gates report, `corners.json`, `frequency-plan.json`, the verification package. |
 | `rules/` | A fabrication house's limits as KiCad design rules. One house so far. |
 | `tests/` | The tests of the tools. `tests/boards/` holds the fixture boards and what each proves. |

@@ -66,6 +66,118 @@ Evidence: the tests of the touched files and the new gate test, which
 runs ngspice on a diode deck (0.5172 V with 1 parameter applied, 0.6715 V
 with both); `make verify` before the push.
 
+## 2026-11-12 — A small model built a chip, a reviewer attacked the gates, and the chip work reached `main`
+
+A small model built 2 chips of its own with `workcenter next` alone. The
+first, an 8-bit PWM, passed all 10 gates and stopped at `--strict`: the
+answer said "Name a limit for the clock skew", and nothing said where such
+a number comes from. The model did not invent one. The guide and the skill
+were mended, and the second chip, a UART transmitter, reached GREEN with
+`--strict` in 13 answers. A bench written by another hand from the same 8
+rules passes on its RTL and on its routed netlist.
+
+Then a reviewer who had not written the gates built cases that they must
+fail (P14 step 6), and found 15 in 36 minutes. 7 times a gate passed what
+it must fail: a sum cut short behind `lint_off widthtrunc`, a design that
+Yosys alone reads under `` `ifdef SYNTHESIS ``, a clock uncertainty of
+-1 ns that turned a red STA GREEN, an input with a `-min` delay only. 2
+times EXPORT handed out the old layout after a file had changed. And
+`workcenter next` answered "Nothing" for a project whose hand-off folder
+was gone. Each case is a test now, seen to fail on the code before.
+
+The fixes share 1 idea: where an engine can say what it read, the gate
+asks the engine. Verilator, Icarus Verilog and Yosys each list their
+files, and every record takes them from there. A bench reads no file
+while it runs, so every input of a simulation is text its compiler read.
+`next` holds a report to the hashes in the gates' records, not to a date.
+The small model's transmitter is GREEN with `--strict` under the stricter
+gates too.
+
+The chip work reached `main` with the processor's layout on the front
+page. GREEN still says what the scope line says: the open engines found
+no fault, and no foundry deck ran.
+
+## 2026-11-12 — Wyvern v0.2: one flat board with a QCS6490 soldered on
+
+The owner looked at Wyvern v0.1 and said it had a lot of open hinges,
+in power, data and routing, and looked like 2 boards slapped together.
+They chose one flat board about 53 x 76 mm with a QCS6490 module
+soldered straight on. v0.2 carries Vantron's VOSM6490 on SGET's OSM
+Size-L standard: 662 round pads on a 1.25 mm grid, generated from the
+standard's contact map and checked pad for pad against Antmicro's open
+footprint. The module's pads are named from the standard and, for the
+64 the board uses, from Vantron's datasheet, read by hand after a
+script mis-read the PDF's table.
+
+The hinges closed one by one. A TPS552892 buck-boost holds the module's
+4.8 to 5.2 V from whatever a USB-C cable delivers. An HD3SS3220 answers
+the charger's CC before anything is powered and switches the module's
+single SuperSpeed lane to the plug's side; its lane and the converter's
+0.25 mm power pads are drawn by hand. A damper keeps the cable's
+resonance under the converter's input resistance, and forced PWM keeps
+the converter's harmonics out of it. The RP2350 block is v0.1's, turned
+a quarter turn as a whole.
+
+The first 2 routes left the 5 V plane under the module in 3 pieces:
+the router crossed its narrow strip on In3. A spine of copper along the
+module's pad line, which no fan-out via touches, held it together; the
+next route left only the converter's output off the plane, and 3 vias
+closed it. An unseeded route then left 1 link of the SD card's supply
+open; seeded with the route before it, the router kept every track and
+closed it. Simulations: 7 decks, 397 corner runs. 5 mistakes recorded
+(M162 to M166), 3 processes extended; the last mistake is a rebased
+tree pushed without its own `make verify`, which a later run caught.
+The website's Wyvern card shows the new board.
+
+Evidence: `workcenter gates v0.2` GREEN with 16 warnings (DRC 0 errors,
+0 unconnected, 0 parity; the 4 dangling vias and 5 silkscreen edges
+named in `docs/gates.md`); `workcenter design --check` same;
+`workcenter sources` 0 problems; `workcenter pictures` 26 files;
+`make verify` before the push.
+
+## 2026-11-12 — A chip has its one next step, and its benches are proven on every run
+
+`workcenter next` now answers for a chip project as it does for a board.
+It reads `chip.json`, the engines, the RTL, the benches and the gates'
+report, and names the first step that is not done. In a test its answers
+alone took the template from its first file to a GREEN layout. 2 skills
+hold the procedure: `chip-design` writes the project, and `chip-gates`
+drives the 10 gates. The contract has its section "Chip gates". The SIM
+gate now proves the benches itself. It makes each change of the project's
+list in a copy of the RTL and runs the benches there, and a change that
+every bench passes on fails the gate. Before, the gate only asked that the
+list be there: an empty list passed `--strict`, and the command that ran a
+list counted a change that does not compile as caught. The processor's 18
+changes and the counter's 5 are each caught, in under 1 s.
+
+Evidence: `tests/test_chipguide.py`, 24 tests; the chip, guide and docs
+test files, 267 tests passed; `make verify` GREEN on the pushed tree.
+
+## 2026-11-12 — The processor is GREEN: every chip gate passes, from RTL to the mask layout
+
+The acceptance processor now passes all 10 chip gates with `--strict`, in
+under 4 minutes. Yesterday its layout failed timing at 13 of 15 corners.
+The gates were right, and the build was short in 3 places. It repaired no
+slow signal. It took each wire for half its real capacitance, from a file
+that leaves out the wires beside a wire. And the layout writer added
+slivers of its own that a rule deck counted. A helper found the cause of
+each by experiment and fixed the build. The account's usage limit stopped
+it 2 times, so I checked its copy with my own runs and installed it from
+its notes. Then I fixed 3 things in what the gates share. The ledger of
+hashes lost entries when benches ran side by side: it is locked now and
+written whole. Every gate leaves a record of each file it read and wrote,
+and EXPORT asks all 9 before it hands out a layout. Before, EXPORT asked 5
+gates about the layout's own files. A bench changed after SIM had passed
+went unseen, and so did a header, and a layout built from the netlist of
+an older RTL. And 2 numbers the gates printed were not true. SYNTH printed
+156 flops for a netlist of 132, because the mapping removes 3 registers
+that no program reads (M167). STA counted a pin 1 time for each limit it
+broke.
+
+Evidence: the 4 chip test files, 151 tests; 5 builds of the processor at
+1, 2, 4 and 8 jobs with 1 GDS hash, `0c51debe623a0a18`; each new test seen
+to fail on the code before its fix; `make verify` GREEN on the pushed tree.
+
 ## 2026-11-12 — Herald in 3D, and its labels 1 every 3 seconds
 
 The owner asked for the render's corners rounded, or the board itself in
@@ -412,6 +524,36 @@ past), 6 decks and 370 corner runs; `make -C firmware test` passing;
 `render --strict` naming no part without a body; in the Docker image,
 `tests/` 524 passed, 1 failed (`test_simgate`'s bundle test expects ngspice
 42's error lines and the image has ngspice 44), 3 skipped.
+
+## 2026-11-11 — The 10 chip gates run, and the processor is not GREEN yet
+
+The owner asked for chips, down to the mask layout. The 10 gates now run
+on the chip branch: LINT, SIM, SYNTH, LAYOUT, STA, GLSIM, DRC, ANTENNA,
+LVS and EXPORT. 2 helpers built the last parts side by side. 1 rebuilt
+the 6 gates that build and judge the layout, and made each judge prove
+itself on a real report of its engine. Those reports showed 6 ways an
+engine lets a fault read as none, and each is a row of the landmine map
+now. The
+other helper built 9 fixture chips: a counter that passes, 7 counters
+with 1 fault each, and an 8-bit processor of 770 cells. The counter goes
+from RTL to a layout in 60 s, and EXPORT hands out the layout whose hash
+the gates judged. The processor does not pass. Its layout is built, and
+then STA fails at 13 of 15 corners: signals change more slowly than the
+cell library allows. The gate is right, and the build is short: it
+repairs no slew. A test holds exactly that fault, and it fails on the day the
+processor is GREEN. The 2 helpers finished at the same time, so the
+fixtures' tests held lines of the old gates. A third helper captured the
+lines again, and a fourth, who had not written them, ran every fixture
+itself and found each held line whole in its own runs. I made 2 mistakes
+on the way. A helper's edit lost a space, and I wrote a cause for it
+into 3 briefs that a test of mine later did not show (M158). And a list
+of commands went on after its failed command, because `set -e` stops
+nothing in this session's shell (M159).
+
+Evidence: `tests/test_chips.py`, 14 passed and 1 expected failure in
+897 s, and again in 930 s by the checker; `tests/test_chipflow.py`,
+`tests/test_chipfront.py` and `tests/test_chipback.py`, 114 tests;
+`make verify` GREEN on the pushed tree.
 
 ## 2026-11-11 — The front page shows a board
 

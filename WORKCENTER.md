@@ -9,6 +9,11 @@ The EE Workcenter turns a KiCad 10 project into fabrication outputs that
 passed every gate. "Done" means `workcenter gates <project>` prints GREEN.
 `workcenter next <project>` names the one step that is left at any point.
 
+It also turns a chip project (RTL, benches, timing constraints and
+`chip.json`) into a GDSII mask layout on an open process. "Done" there
+means `workcenter chip gates <project> --strict` prints GREEN; see "Chip
+gates". `workcenter next <project>` names the one step for a chip too.
+
 ## Verdicts
 
 The last line of `workcenter gates` is the verdict, also with `--report`.
@@ -58,7 +63,8 @@ honestly passes it.
 | kistack | `641ade9` | `.claude/skills/kistack/SKILL.md` routes to `third_party/kistack/skills/`; `workcenter placement <check> <board> [args]` runs its placement checks | the checkout (vendored, `third_party/kistack/VENDORED.md`); shapely, numpy and pygerber by `install.sh` (PyPI) |
 | Board inspection | this repo | `workcenter inspect <view> <board> ...`, the views `map`, `list`, `probe`, `net`, `islands`, `resistance`, `crossed` (KiCad's `pcbnew` and Pillow under the venv); `python3 tools/stretch.py <design.py> --cut X --grow G` | `install.sh` (part of the checkout; Pillow from PyPI) |
 | Corners and frequency plan | this repo | `sim/corners.json` and `sim/frequency-plan.json`, read by `workcenter sim` (`tools/simcorners.py`, `tools/freqplan.py`); `workcenter sim --bundle <dir>` for a deck that runs on any machine | the checkout; ngspice by `install.sh` |
-| Next step | this repo | `workcenter next <project>` (`tools/guide.py`) | the checkout |
+| Next step | this repo | `workcenter next <project>` (`tools/guide.py`; `tools/chipguide.py` for a chip project) | the checkout |
+| Chip projects | this repo | `workcenter chip init <dir> --top NAME`, `workcenter chip gates <project>` (`tools/chipflow.py`, `tools/chipfront.py`, `tools/chipback.py`, a process table in `pdks/`); all 10 gates run and tests hold each; the acceptance processor (760 cells, a 40 ns clock, the sky130A process) is GREEN with `--strict` | the checkout; the engines in `<root>/chip` (`sudo ./install.sh --chip`) |
 
 ## Skills
 
@@ -71,6 +77,8 @@ file: it needs nothing else.
 | `attached-repos` | The session holds more than 1 repository. Run first. |
 | `board-design` | A board is designed from a spec, as a Python design file built from the KiCad libraries. |
 | `board-gates` | A board must pass ERC, DRC, simulation, and export. The fix loop. |
+| `chip-design` | A chip is designed from a spec: `chip.json`, the RTL, the benches, the constraints, the list of changes the benches must catch. |
+| `chip-gates` | A chip must pass the 10 chip gates to its GDSII layout. The fix loop, gate by gate. |
 | `autoroute` | A board has unrouted nets and FreeRouting should route them. Headless for generated designs. |
 | `simulate` | A circuit must meet a measurable spec before layout; a part switches; a deck must run on another machine. Corners, the frequency plan, bundles. |
 | `blog-post` | A human asks for a public write-up of recent work. |
@@ -307,7 +315,11 @@ asks for a new run when an input is newer than a report, and answers the
 first failure or warning with the fix for its kind; a design file that
 `workcenter design` refuses is answered with its first problem. It exits 0
 when nothing is left and 1 when a step is. A finished project gets no `RUN`
-line. It writes nothing.
+line. It writes nothing. For a chip project (`tools/chipguide.py`) the
+order is `chip.json`, the engines and the process kit, the RTL, a bench,
+a file that is still the example `chip init` wrote, the chip gates'
+report, its first failure, its first warning, and a `README.md` that
+still says `fill:`.
 
 Not a gate: `workcenter fetch <url> --to <library>/<maker>/<file>` fetches
 one datasheet, model or body once under the workcenter's own name (a
@@ -451,6 +463,41 @@ stale (`tools/doctools.py`):
 
 A project may add gates. It may not remove these.
 
+### Chip gates
+
+A chip project is a folder that holds `chip.json`. Its gates run in this
+order and stop at the first that does not pass. Every one is required: a
+gate that did not run is the verdict, `SKIPPED (GATE: reason)`, however
+many passed.
+
+| Gate | Command | Pass condition |
+|---|---|---|
+| LINT | `workcenter chip lint <project>` | Verilator names no construct that a simulator and a synthesizer read differently, and no line of the RTL speaks to 1 engine alone (a `lint_off` comment, an `` `ifdef `` on an engine's own macro, `translate_off`, `$readmemh`); `chip.json` is sound, with a source for each number; the constraints name 1 clock, a delay for setup and for hold on each bit of each port, each option 1 time, and no margin that gives time away |
+| SIM | `workcenter chip sim <project>` | every bench in `tb/` ends at `$finish` with `errors = 0`, 1 check at least and `x_outputs = 0`, holds the bounds of its expect file, and reads no file while it runs; every change of `rtl/mutations.json`, each made in a file the RTL alone reads, fails a bench |
+| SYNTH | `workcenter chip synth <project>` | Yosys maps the RTL onto the library's cells with 0 problems: no latch, no loop, no net with 2 drivers, a reset on every flop or an answer in `chip.json` |
+| LAYOUT | `workcenter chip layout <project>` | OpenROAD places and routes with 0 violations and no open pin, each supply net's grid connected, within the utilisation limit; Magic writes the GDS with the top cell alone |
+| STA | `workcenter chip sta <project>` | at every corner the project's ranges select: setup and hold slack 0 or more, no pin over a slew, capacitance or fanout limit, the skew within its limit, every net with its extracted parasitics |
+| GLSIM | `workcenter chip glsim <project>` | the benches pass on the routed netlist with the library's cell models, with the count of checks they made on the RTL; no bench asks for a name the gate defines for this run alone |
+| DRC | `workcenter chip drc <project>` | 0 items in each deck of the process table: Magic's and KLayout's |
+| ANTENNA | `workcenter chip antenna <project>` | no net and no pin over its antenna ratio on the routed database |
+| LVS | `workcenter chip lvs <project>` | Netgen matches the extracted layout and the netlist with its supply pins, every comparison uniquely |
+| EXPORT | `workcenter chip export <project>` | each of the 9 gates holds a record of its pass on the files as they are now; the layout, the netlists, the parasitics and 1 SDF file for each corner are copied to `build/chip/tapeout/` with `manifest.json` |
+| ALL | `workcenter chip gates <project>` | the 10 gates above in order; `--strict` makes each warning a failure |
+
+The last line is the verdict with the project's name and the report:
+`GREEN: uart  report <project>/build/gates.json`. The words and the exit
+codes are those of "Verdicts". The line above it is the scope of the run:
+the engines are open, the process kit and its version, each rule deck
+with its origin, the corners. GREEN says that these engines found no
+fault in these files. It does not say that a foundry accepts the layout
+or that the silicon works: no foundry deck runs here, and no shuttle's
+limits are held.
+
+The process is a table in `pdks/` (`pdks/README.md`): `sky130A` with the
+library `sky130_fd_sc_hd`. The first flow takes 1 clock, no memory macro
+and no analog block. The engines install on request:
+`sudo ./install.sh --chip`.
+
 ## Paths
 
 | Purpose | Path |
@@ -459,6 +506,7 @@ A project may add gates. It may not remove these.
 | Engine environment | `/opt/workcenters/ee/env.sh` |
 | Tool cache | the session scratchpad; the engines write nothing outside the output directory |
 | Project output | `<project>/build/` (reports, `fab/`, `sim/`, `route/`, `render/`) |
+| Chip project output | `<project>/build/gates.json`, the report, and `<project>/build/chip/`: 1 folder for each gate that ran, and `hashes.json` with the hash of each file a gate wrote or judged. `<gate>/passed.json` is there when that gate passed: the hash of each file it read, taken before its engines started and held to the same bytes after, and of each file it hands on. The files of the project in it are those the gate finds by the text and those its engine says it read (Verilator's XML, the list Icarus Verilog writes, the rule Yosys writes): a header is in the record however the RTL names it. A file of the project is named from the project's folder (`rtl/top.v`, and `./chip/notes.v` for one under a folder `chip`) and a file the gates wrote from the output folder (`chip/layout/top.gds`), wherever `--out` points. EXPORT asks each of the 9 gates before it for that record and holds every file to it: the RTL and each header it includes, the benches and their bounds, the constraints, `chip.json`, the mapped netlist the layout was built from, and the layout's own files. A file of the project that came after a gate passed is refused too. `workcenter next` holds the files to the same records before it reads the report. `tapeout/` holds the files EXPORT hands out, `manifest.json` and the judging gates' reports; a gate that is asked to run takes it away, with the record of its own earlier pass. `render/` holds the pictures of `workcenter chip render`. The gates empty the folders under `<out>/chip`, and only in a folder they made: `--out` is refused when that folder is the project's, holds a file of it, or is there with files and without `hashes.json`. A path with white space is refused too. |
 
 ## Project requirements
 
@@ -481,3 +529,10 @@ A project may add gates. It may not remove these.
   `workcenter fetch --row` adds one
 - Optional: a firmware mutation list (JSON, or a Python file with `MUTATIONS`)
   kept with the firmware, for `workcenter mutate`
+- A chip project (`workcenter chip init <dir> --top <module>` writes its
+  first files): `chip.json`, the constraints (`constraints.sdc`), the RTL
+  (`rtl/*.v`, `rtl/*.sv`) and 1 bench at least (`tb/tb_<name>.v`);
+  `.gitignore` entry `build/`. With benches: `rtl/mutations.json`, the
+  changes of the RTL that the benches must catch (the SIM gate warns
+  without it). Optional: `tb/<bench>.expect.json`, bounds on what a bench
+  prints

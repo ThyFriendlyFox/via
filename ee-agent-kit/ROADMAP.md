@@ -24,42 +24,35 @@ command that says it (`workcenter next`), never in the reader's judgement.
 
 ## Feature Queue — ordered; top unblocked item ships next
 
-### 1. A chip from RTL to a mask layout
-- **Promise:** `workcenter chip gates <project>` takes a chip project (RTL, test benches, timing constraints, `chip.json`) through 10 gates in order on an open process: LINT, SIM, SYNTH, LAYOUT, STA, GLSIM, DRC, ANTENNA, LVS, EXPORT. The acceptance design, an 8-bit processor, reaches GREEN with `--strict` and a GDSII layout whose hash the gates judged.
-- **Evidence:** The fixture chips under `tests/chips/`, 1 that passes and 1 that fails for each gate; the processor's gates report with its die size, its clock, and its least setup and hold slack with their corners; a small model that takes a chip of its own to GREEN with `workcenter next` alone.
-- **Use case:** Design a chip from a spec (a new use case).
-- **Scope guard:** Open engines and open processes only, 130 nm and 180 nm. GREEN says the open engines found no fault in the files. It does not say a foundry accepts the layout or that the silicon works: no foundry deck runs here, and a shuttle asks for more than a GDS. The first flow takes 1 clock, no memory macro and no analog block.
-- **Status:** in progress on branch `claude/chip-design-jjyyxb`. The engines and the sky130A process kit install and run on the workcenter's machine. On 2026-11-11 an 8-bit counter went from RTL to a layout there: the router's last count 0, Magic's DRC count 0, 0 items in the KLayout deck, Netgen's "Circuits match uniquely.", 54 timing corners met, the test bench passing on the routed netlist with 2318 checks, 82 s for all stages. The gates themselves are not built yet.
-
-### 2. A circuit walked stage by stage
+### 1. A circuit walked stage by stage
 - **Promise:** A command writes 1 page for a power or signal path from the project's decks and their corner records. Each stage is a chain: given, equation, computed value, the deck's measure with its span over the corners, what follows, and what the stage hands on. The range a stage is given is the range the stage before it hands on, and the command fails a page where the 2 differ. A node table gives each node's value under each condition, and every stage states its margin.
 - **Evidence:** The page the reviewing engineer wrote by hand for Last Hit v0.16's power path (9 stages and a summary, on the project's branch `community/power-path-breadboard-notes`), written again by the command from the project's files with every number matching a fresh run. The thin margin that page found, a hardware trip at 6.17 A over a firmware limit of 6 A, is named by the command.
 - **Use case:** Review a board before the bench (a new use case).
 - **Scope guard:** The designer writes each equation in a writeup (P28). The command checks the chain and assembles the page. It derives nothing.
 - **Status:** ready
 
-### 3. A bench plan with the readings the decks predict
+### 2. A bench plan with the readings the decks predict
 - **Promise:** A command writes a bench plan for a board, stage by stage: the stand-in for each part a breadboard cannot hold, what the breadboard cannot prove and which deck or board test proves it instead, the stand-ins for the controller's lines, the instruments, and for each test point the reading the decks predict with its span over the corners.
 - **Evidence:** The reviewing engineer's breadboard notes for Last Hit v0.16 (the same branch) written again by the command: the stage-by-stage substitutes, the list of what a breadboard cannot prove, and each expected reading taken from a corner record.
 - **Use case:** Bring a board up on the bench (a new use case).
 - **Scope guard:** A stand-in comes from a table a person fills, each row with its source and what differs from the board's part. The command never invents an equivalence.
 - **Status:** ready
 
-### 4. Headless autoroute for hand-drawn boards
+### 3. Headless autoroute for hand-drawn boards
 - **Promise:** `workcenter autoroute --apply <project>` reads any `.kicad_pcb` (footprints, pads, outline, nets, existing tracks) into the DSN writer that `kicadgen` already has, runs FreeRouting, merges the session into the board file, and the new fixture `route-me` passes DRC with 0 unconnected items afterwards, with no KiCad GUI step.
 - **Evidence:** `tests/test_gates.py::test_autoroute_apply_routes_fixture` green in `make verify`; the fixture's DRC report attached to the PR.
 - **Use case:** Route a board (`docs/USE-CASES.md`).
 - **Scope guard:** No routing heuristics of our own. No GUI automation. The generated-design path already works (`workcenter design --route`); this item is the board-file parser in front of it. Zones and arcs may be out of scope for the first cut and must be reported, not silently dropped.
 - **Status:** ready
 
-### 5. Board gates as a reusable GitHub workflow for board repositories
+### 4. Board gates as a reusable GitHub workflow for board repositories
 - **Promise:** A board repository that adds 1 workflow calling `ThyFriendlyFox/via/.github/workflows/board-gates.yml@main` gets `workcenter gates` run on every PR, with the gates table in the job summary and a red check on a red gate.
 - **Evidence:** A run link from a board repository, plus `tests/boards/pass-rc-divider` run through the workflow in this repository's CI.
 - **Use case:** Review a board PR.
 - **Scope guard:** No comments posted to the PR; the check and the summary are the output.
 - **Status:** ready
 
-### 6. MCP server for hosts that are not Claude Code
+### 5. MCP server for hosts that are not Claude Code
 - **Promise:** `workcenter mcp` serves `doctor`, `gates`, `erc`, `drc`, `sim`, `export`, and `autoroute` as MCP tools over stdio, and the MCP inspector lists all 7 with their schemas.
 - **Evidence:** An inspector screenshot and a test that drives the server with a scripted JSON-RPC session.
 - **Use case:** Build another workcenter from this one.
@@ -95,12 +88,15 @@ command that says it (`workcenter next`), never in the reader's judgement.
 - Ratings as data: each part's absolute maximum, voltage rating and power in a parts column, so a pin's worst net voltage, a capacitor's derating and a resistor's dissipation are checked by a command, not in a calculation's prose.
 - The board as one netlist: a generated schematic now carries its models (`d.sim`), so the SIM gate can export the board's netlist with `kicad-cli` and a deck becomes that netlist plus an overlay of sources and measures; the 12 retyped circuits of a project become 1. Until then nothing holds a deck to the board's parts: a small model's filter passed every gate with its op-amp written as 2 controlled sources in the deck. The design template now turns `check_sim` on, so the design file names each part's model or says why it has none; the deck is still typed by hand. On a copy of Last Hit v0.16 the exported netlist gave the current-sense reading of the hand-typed deck, 1.198 V at 27 C and 1.099 V at 85 C.
 - A maker's model KiCad cannot read, at a path a schematic can name: the gate translates a vendor's file into `build/`, which is not committed, and `Sim.Library` needs a file the project keeps. A checked, translated copy beside the library row (its source, its fixes and its SHA256 recorded) would let `d.sim` name it; Diodes' current monitor file fails KiCad's parser as shipped.
+- Every register of the RTL held to the netlist: SYNTH names a flop that the mapping removes, and says nothing of a flop that Yosys's `synth` pass removed before it. A view of the design before any cleaning would name each register bit the chip does not hold, for an answer in `chip.json`. 2 things make it more than a comparison of names: a state machine that Yosys writes with other bits, and a memory that becomes flops under other names.
 - A part's pin map in its library row: a `Pins` cell in `sources.csv` (`1=VOUT 2=GND 3=EN 4=VIN`), so `d.sim` takes a part's binding from the row of its MPN and the map is written once, where the datasheet is open.
 
 ## Shipped
 
 | Week | Feature | Release | Evidence |
 |---|---|---|---|
+| 2026-11-12 | A chip from RTL to a mask layout (queue item 1 of 2026-11-11): `workcenter chip gates` takes RTL, benches, constraints and `chip.json` through LINT, SIM, SYNTH, LAYOUT, STA, GLSIM, DRC, ANTENNA, LVS and EXPORT on the sky130A process; `chip init` and `chip render`; `workcenter next` for a chip; the skills `chip-design` and `chip-gates`; the engines and the process kit by `install.sh --chip` | unreleased | 9 fixture chips (`tests/test_chips.py`, 15 items): 7 red at 1 gate each, `pass-counter` and the acceptance processor `pass-acc8` GREEN with `--strict` (760 cells and 132 flops on a die of 152.38 um by 152.38 um, 217 s on 4 processors, least setup slack 25.1717 ns at `max_ss_n40C_1v60`, least hold slack 0.2974 ns at `min_ff_n40C_1v95`); 171 tests on the readers and each gate's judgement (`tests/test_chipflow.py`, `tests/test_chipfront.py`, `tests/test_chipback.py`) and 30 on the chip's next step (`tests/test_chipguide.py`); a small model's own UART transmitter GREEN with `--strict` in 13 answers of `next`; a reviewer's 15 cases against the gates, each a test (M169). GREEN says the open engines found no fault: no foundry deck runs here |
+| 2026-11-12 | Wyvern v0.2 (`examples/snapdragon-dev-board/v0.2`): one flat board with a QCS6490 OSM Size-L module soldered on by its 662 pads, a buck-boost for its 5.0 V, an HD3SS3220 for its USB 3 lane, the RP2350 on the pins; P14, P16 and P28 extended (M166, M163, M164) | unreleased | the example's `workcenter gates v0.2` GREEN with 16 warnings (5 silkscreen outlines at the edge, 4 vias with nothing past them, 7 decks with no temperature term): DRC 0 errors, 0 unconnected, 0 parity; 7 decks, 397 corner runs, a frequency plan with no overlap; `workcenter design --check` same; `workcenter sources` 0 problems; `make verify` GREEN; `DEVLOG.md` 2026-11-12 |
 | 2026-11-11 | A fifth example project, Wyvern (`examples/snapdragon-dev-board`): a Teensy-sized 6-layer board carrying a Snapdragon 845 module, an RP2350 on the pins and USB 3.1 with DisplayPort on 1 USB-C port, laid out as a board repository; its frequency plan; P4 step 11 (M146) | unreleased | the example's `workcenter gates v0.1` GREEN with 13 warnings (5 silkscreen outlines at the edge, 2 vias with nothing past them, 6 decks with no temperature term): DRC 0 errors and 0 unconnected; 6 decks, 488 corner runs; `make verify` GREEN; `DEVLOG.md` 2026-11-11 |
 | 2026-11-11 | The repository's public face (out of band): the website in `site/`, 1 static page in the look of the apparatus site with real runs of `gates`, `next` and `sim`; the mark; the Open Graph image `site/og.png` with a dark twin; `site/build.sh` for any static host and `site/vercel.json` for Vercel; the README's head with the picture and 2 runs | unreleased | `tests/test_docs.py` (14 tests): each run a document shows against a fresh run of its command, every link on the site, the build with an address and without one, the image's size; 20 mutants, 18 caught and the 2 masks holding; `DEVLOG.md` 2026-11-11 |
 | 2026-11-11 | The front page (out of band): the README opens with the fixture board `pass-first-design` as lines of its design file, its schematic and its routed board, then 2 runs, the board turning and its layers; the pictures in `site/media/` with the command that draws each | unreleased | `tests/test_docs.py` (16 tests) and `tests/test_designfile.py`: the fixture against a fresh build, its gates GREEN, the first picture's code against the design file; `DEVLOG.md` 2026-11-11 |
@@ -163,3 +159,4 @@ command that says it (`workcenter next`), never in the reader's judgement.
 - 2026-11-12 — Herald's labelled parts shipped out of band: the owner found the highlighted signal paths made up, and asked for every part labelled with a leader, a few at a time, with its documents and what Via gathered on it.
 - 2026-11-12 — a review of the README's front page by a reader who had not written it shipped out of band, with what it found in the tools (the router's 20 s wait, a doubled track segment, `doctor`'s first line). 5 candidates join Later from it.
 - 2026-11-12 — Herald as a 3D model on the site, its labels 1 every 3 seconds with their datasheets' first pages, and the owner's headline shipped out of band: the owner asked for the board in 3D without a slower page, the labels played 1 at a time with 2-run leaders, and for the headline, the footer and justified paragraphs in their words.
+- 2026-11-12 — item 1 (a chip from RTL to a mask layout) shipped: the chip branch is on `main`. The walked circuit, the bench plan, autoroute, the workflow and the MCP server are now items 1 to 5. A candidate joined Later on the way: every register of the RTL held to the netlist.

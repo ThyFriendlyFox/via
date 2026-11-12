@@ -1,0 +1,29 @@
+* The Snapdragon's I2C on the pins (SOM_I2C_SDA, SOM_I2C_SCL: APPS_I2C on the module's AA16 and AA15,
+* the header's SDA and SCL), pulled up by R40 and R41, 2.2k, to +1V8 (the module's VCC_OUT_IO). The
+* OSM standard puts a 2.2k pull-up on the module's side as well (F&S Application Note OSM01, OSM
+* Implementation Guide, Table 18, I2C_A; www.fs-net.de/filelicence/get?fileid=16705):
+* RMOD, so the line sees both. One line is modelled: an open-drain low released at 100 ns, then
+* pulled low again at 2.1 us. The bus capacitance is a budget, not an estimate of the board alone:
+* 100 pF for the module's pad, the board's lane to the pin and whatever the user plugs in. A device's
+* low is VOL 0.36 V at 2 mA at most (UM10204 Rev. 7.0 Table 10, VOL2, VDD under 2 V), 180 Ohm.
+* The second bus (R42, R43 on EXT_I2C2) is the same circuit.
+VDD vdd 0 1.8
+R40 vdd sda 2.2k
+RMOD vdd sda 2.2k
+CB sda 0 100p
+SW sda 0 ctl 0 SWOD
+VCTL ctl 0 PWL(0 1 100n 1 101n 0 2.1u 0 2.101u 1)
+.model SWOD SW(Ron=180 Roff=1G Vt=0.5 Vh=0.1)
+.tran 0.5n 4u
+.control
+run
+* 30 % and 70 % of the 1.8 V rail (UM10204 Table 11 measures tr from 30 % to 70 % of VDD)
+meas tran t30 when v(sda)=0.54 rise=1
+meas tran t70 when v(sda)=1.26 rise=1
+let tr = t70 - t30
+meas tran vol find v(sda) at=3.5u
+meas tran ilow find i(vdd) at=3.5u
+let isink = abs(ilow)
+print tr vol isink
+.endc
+.end

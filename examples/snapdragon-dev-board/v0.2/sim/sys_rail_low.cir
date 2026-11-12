@@ -1,0 +1,16 @@
+* +5V, the module's supply, at its lowest. U3, the TPS552892 buck-boost, regulates its FB pin to VREF
+* through R30 (100k, from +5V) and R31 (31.6k, to ground): VOUT = VREF x (1 + R30 / R31). The error
+* amplifier is an ideal one holding FB at VREF. Low end: VREF at its 1.188 V minimum (SLVSH28A, 6.5)
+* and the FB pin's leakage, 100 nA at most (IFB_LKG), taken as flowing out of the pin, which lifts
+* FB and lowers VOUT. See sys_rail_high.cir for the other end.
+VREF ref 0 DC 1.188
+EAMP out 0 ref fb 1e6
+R30 out fb 100k
+R31 fb 0 31.6k
+IFB 0 fb DC 100n
+.control
+op
+let vout = v(out)
+print vout
+.endc
+.end

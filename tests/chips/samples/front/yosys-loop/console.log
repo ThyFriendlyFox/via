@@ -1,0 +1,10 @@
+Warning: found logic loop in module reg8:
+    cell $and$/work/reg8/rtl/reg8.v:3$1 ($and)
+    cell $or$/work/reg8/rtl/reg8.v:4$2 ($or)
+    wire \a
+    wire \b
+Warning: found logic loop in module reg8:
+    cell $abc$82$auto$blifparse.cc:386:parse_blif$84 ($_NOR_)
+    cell $abc$82$auto$blifparse.cc:386:parse_blif$85 ($_ANDNOT_)
+    wire $abc$82$new_n5_
+    wire \a

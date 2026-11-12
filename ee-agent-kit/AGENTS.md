@@ -59,6 +59,26 @@ provides them. `python3 tools/workcenter doctor` says what is present.
     writes into the project.
 16. `CLAUDE.md` and `AGENTS.md` at the repository's root are the same
     text. `make verify` checks it.
+17. The chip gates run in the order LINT, SIM, SYNTH, LAYOUT, STA, GLSIM,
+    DRC, ANTENNA, LVS, EXPORT and stop at the first that does not pass.
+    Every one is required: a chip gate that did not run is the verdict,
+    `SKIPPED (GATE: reason)`, however many passed.
+18. A chip gate that passes writes a record: the hash of each file it
+    read, taken before its engines start and held after, and of each file
+    it hands on. The files of the project in it are those its engine says
+    it read. EXPORT copies a layout only when all 9 records agree with
+    the files as they are, and `workcenter next` says a chip is done only
+    then. A gate that is asked to run takes back the record of its
+    earlier pass before its function starts.
+19. No file, cell, layer or number of a process is written in
+    `tools/chip*.py` or `tools/chipscripts/`: each comes from a table in
+    `pdks/`, with its source. A test holds it.
+20. `tools/chipflow.py`, `tools/chipfront.py`, `tools/chipback.py` and
+    `tools/chipguide.py` use the standard library only, as the CLI does.
+21. A number a gate prints about a file is counted in that file (M167).
+22. LINT, SIM and SYNTH judge 1 design in 3 engines. No line of a chip's
+    RTL speaks to 1 engine alone, and no bench reads a file while it
+    runs: every input of a simulation is text its compiler read (M169).
 
 ## Landmine map
 
@@ -107,6 +127,24 @@ provides them. `python3 tools/workcenter doctor` says what is present.
 | FreeRouting's exit code | FreeRouting 1.9.0 ends with exit code 0 and logs no count on a board where it joined nothing: every part outside the outline, a width that enters no pad. `route()` counts the connections of a board that holds copper for none of them, and `workcenter design` exits 1 on that count. |
 | The account's usage limit | A helper stops with `You've hit your 5-hour limit` and the time the limit resets. A session cannot read what is left before that. P31 step 1: 2 helpers at most until 1 reports, and none before the reset a stopped helper names (M113, M120). |
 | A shell tool call | The host runs a call's text inside a list, where bash ignores `errexit`: `set -e; false; echo went on` prints `went on`. Join commands that depend on each other with `&&`, or run them in `bash -e -c '...'` (M159). | P8 |
+| OpenSTA's `read_spef` | A SPEF with a syntax error is read up to the error: `Warning: ... line N, syntax error.`, exit 0. A net the SPEF leaves out gets an estimate from the library and no line at all. The STA gate holds the SPEF's net names to the design's (`tests/chips/samples/back/sta-spef-cut-short.log`). |
+| OpenSTA's digits | 2 digits print a slack of -0.004 ns as `-0.00`, which reads as 0. `tools/chipscripts/sta.tcl` asks for 4. |
+| OpenROAD's `link_design` | A cell the liberty file or the LEF lacks is dropped: `[WARNING STA-0198]`, `[WARNING ORD-1013]`, exit 0, and a layout built without the cell. The LAYOUT gate fails on either line (`tests/chips/samples/back/layout-unknown-cell.log`). |
+| OpenROAD's `report_design_area` | It rounds the utilisation to 1 %: `Design area 299 u^2 60% utilization.` for 0.5975. `tools/chipscripts/layout.tcl` counts it from the database and prints 4 digits. |
+| Magic's exit code | Magic exits 0 after a layout file it read in part (`Error while reading cell`) and after an extraction with illegal overlaps (`Total of N errors`). The gates read both lines (`magic-drc-cut-short.log` and `extract-overlap.log` under `tests/chips/samples/back/`). |
+| Netgen's final result | `Final result: Circuits match uniquely.` stands over a cell whose transistor has another size. That cell's comparison reads `Netlists match uniquely with property errors.`, and the cell is named under the final result. The line `Property errors were found.` is not in such a report (`tests/chips/samples/back/lvs-property-error.rpt`). |
+| Magic's GDS writer | With its hierarchy output on, Magic 8.3.465 works out the implant layers again where 2 cells meet and writes its own shapes into the top cell. They differ from the kit's drawn ones by slivers of 5 nm, and the kit's KLayout deck counts each: 8 items (`npc.2`, `nsd.2`, `psd.2`) on the processor of 2026-11-11, none of them a fault of a cell. `tools/chipscripts/gds.tcl` sets `cif *hier write disable` and `cif *array write disable` before `gds write`, as the kit's own scripts do. `cif help` lists neither option. |
+| Magic's GDS dates | Magic writes the date a library and each cell were made as 1970-01-01, and the date they changed as the minute of the run: 2 builds of 1 layout differ in 128 bytes. `gds_undated` in `tools/chipback.py` sets each date of change to the date made, so 1 layout has 1 hash. |
+| OpenROAD's wire estimate | `set_wire_rc -layer met2` reads the technology LEF: 0.078 fF/um. The kit's extraction rules give the routed wires of the processor 0.166 fF/um for a signal and 0.151 for a clock. With the LEF's value the repair after placement passed 2 nets that STA then failed. `pdks/sky130A.json` holds the measured values (`wire_capacitance_ff_per_um`), `layout.tcl` hands them to `set_wire_rc`, and LAYOUT holds the line the engine prints to the table. |
+| OpenROAD's `repair_antennas` | 3 things in build f12e2f47. It takes 1 library pin, and `get_lib_pins` gives 1 for each corner the build read: `TypeError in method 'repair_antennas', argument 1`. It keeps a diode off cells that are FIRM and not off cells that are LOCKED, so a diode lands on a tap cell: `[ERROR DPL-0033]`. It deletes every fill cell when it puts a diode in: `[INFO GRT-0011] Deleted 61 filler cells.`, and a layout with fill placed only before it fails DRC and LVS. `layout.tcl` takes the first pin, sets the taps FIRM before the repair and places the fill after it. |
+| OpenROAD's second `detailed_route` | A second routing in 1 run of build f12e2f47 crashes: `vector::_M_range_check`. The build routes once. The repair works on the global route, and it does not see what the detailed router then leaves: a gate that still collects too much charge is ANTENNA's failure. |
+| Yosys's flop count | Yosys removes a flop that nothing reads. `synth` removes some before `generic.json` is written, and the full `abc` proves more: on the acceptance processor 24 of 156 flops go after the mapping. A count of flops is true only of the file it was counted in (M167). SYNTH counts the flop cells of `stat.json` and names each flop of `generic.json` that `mapped.json` no longer holds. A flop that `synth` itself removed is in neither file, and nothing names it yet. |
+| Yosys 0.33's mapping | `abc` and `dfflibmap` have no option that keeps a cell out. A cell stays out of the mapping only when the liberty file does not offer it: SYNTH writes `mapping.lib` without the cells of the kit's `no_synth.cells` and `drc_exclude.cells`, and counts what the netlist holds of either list. |
+| What an engine read | Each engine takes more spellings than a pattern over its input finds: `` `include"x.vh" `` with no space, and a header named through a macro (`` `include `HDR ``). Each can say what it read: Verilator in the `files` block of its XML, Icarus Verilog with `-Mall=<file>` (1 path on a line; with `-E` for 1 source alone), Yosys with `-E <file>` (a Makefile rule). A gate's record takes the project's files from there (M169). |
+| Verilator's `lint_off` | Verilator 5 obeys the comment in any case of letters, takes the old group name `WIDTH` for `WIDTHTRUNC`, and takes the same from a `` `verilator_config `` block. It prints nothing for a check that is off. It defines `VERILATOR`; Yosys defines `SYNTHESIS` and `YOSYS`; Icarus Verilog defines `__ICARUS__`: text under an `` `ifdef `` of one is a design 1 engine reads. LINT fails each (`TWO_DESIGNS`). |
+| vvp's files | vvp opens the file of a `$readmemh` or a `$fopen` from the folder it runs in, and names no file it opened. Yosys looks for a `$readmemh` file beside the RTL. A bench runs in `build/chip/sim/<bench>/`, and a changed copy of the RTL 2 folders deeper: a path from the bench's folder fails there, and the copy fails for that alone. SIM refuses a line that reads a file (`READS_A_FILE`). vvp's own line for a bench that ended is `<file>:<line>: $finish called at <time> (<unit>)`. |
+| A delay OpenSTA does not count | `check_setup` lists a port with no delay. It does not list a port whose delay has `-min` alone, or no `-clock`: no setup path through the pin is judged, and nothing says so. A `set_clock_uncertainty` under 0 and a `set_timing_derate -late` under 1 are taken as written, by the layout build too, which then repairs nothing. Tcl takes the last of an option written 2 times. `read_sdc` in `tools/chipflow.py` fails each. |
+| A path with a space | Yosys reads its script word by word and takes no quoting: a project under `my chips/` fails SYNTH with `Can't open input file`. `chip` refuses a project, an output folder or a source file whose path holds white space, before any gate. |
 
 ## House style
 
