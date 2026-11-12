@@ -1,0 +1,9 @@
+Number,Name,Type,Side,Function
+S1,GND,passive,left,ground
+S2,A+,passive,right,the host's transmit pair
+S3,A-,passive,right,the host's transmit pair
+S4,GND,passive,left,ground
+S5,B-,passive,right,the host's receive pair
+S6,B+,passive,right,the host's receive pair
+S7,GND,passive,left,ground
+MP,MP,passive,left,the hold-downs

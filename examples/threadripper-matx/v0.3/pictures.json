@@ -1,0 +1,37 @@
+{
+  "boards": [
+    {
+      "path": ".",
+      "name": "basalt",
+      "prefix": "",
+      "strict": true,
+      "stills": [
+        "board-top.png",
+        "board-bottom.png",
+        "board-3d-top.png",
+        "board-3d-bottom.png",
+        "board-3d-iso.png",
+        "schematic.png"
+      ],
+      "layers": "layers.png",
+      "spins": [
+        {
+          "as": "board-spin.gif",
+          "tilt": -55,
+          "zoom": 0.92
+        }
+      ]
+    }
+  ],
+  "scenes": [
+    {
+      "script": "hero.py",
+      "what": "the headline views: perspective on a dark ground",
+      "copy": {
+        "build/hero/hero-iso.png": "hero-iso.png",
+        "build/hero/hero-right.png": "hero-right.png",
+        "build/hero/hero-top.png": "hero-top.png"
+      }
+    }
+  ]
+}

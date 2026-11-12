@@ -1,6 +1,6 @@
 # Basalt — board prototype v0.2
 
-> The current version of the [Basalt prototype series](../README.md), started as a copy of [`../v0.1/`](../v0.1/). The earlier version is [`../v0.1/`](../v0.1/).
+> Archived: v0.2 of the [Basalt prototype series](../README.md), as of commit `4cd1d72`. The design and KiCad files are the ones that commit holds. The next version, [`../v0.3/`](../v0.3/), adds the ports and headers a modern board carries.
 
 Basalt is a microATX motherboard for an AMD Threadripper 7000 or 9000 on the sTR5 socket (the TRX50
 platform): 4 DDR5 RDIMM slots, 3 PCI Express 5.0 x16 slots, 2 M.2 sockets, 14 phases of power
