@@ -1,0 +1,79 @@
+(footprint "TouchStrip_3ch_6x"
+	(version 20241229)
+	(generator "make_footprints")
+	(layer "F.Cu")
+	(descr "Self-capacitance scroll strip: 6 stripes 7.4 x 1.2 mm, 0.35 mm apart, channels A B C repeated, under the solder mask")
+	(tags "touch slider capacitive TSC")
+	(property "Reference" "E**"
+		(at 0 -5.475 0)
+		(layer "F.SilkS")
+		(hide yes)
+		(uuid "d1cb5b7b-061c-5d36-a537-b234e84a65aa")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.1)
+			)
+		)
+	)
+	(property "Value" "TouchStrip_3ch_6x"
+		(at 0 5.475 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "d10bbb74-e00d-5c98-b372-dcccb9754d48")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.1)
+			)
+		)
+	)
+	(attr smd exclude_from_bom)
+	(fp_rect
+		(start -3.9 -4.675)
+		(end 3.9 4.675)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "f123fa89-f25e-5e81-8b39-1228df2037d4")
+	)
+	(pad "1" smd rect
+		(at 0 -3.875)
+		(size 7.4 1.2)
+		(layers "F.Cu")
+		(uuid "2f08d667-b41e-54d0-9c9a-864eca67d1c7")
+	)
+	(pad "2" smd rect
+		(at 0 -2.325)
+		(size 7.4 1.2)
+		(layers "F.Cu")
+		(uuid "91a3ba9d-a60e-58c6-9fac-82fde64549b2")
+	)
+	(pad "3" smd rect
+		(at 0 -0.775)
+		(size 7.4 1.2)
+		(layers "F.Cu")
+		(uuid "9753e12c-e41b-5c59-9b37-4bd5c0cf4e1b")
+	)
+	(pad "1" smd rect
+		(at 0 0.775)
+		(size 7.4 1.2)
+		(layers "F.Cu")
+		(uuid "63c54e06-a7d5-5bf0-be02-895e6a0aebde")
+	)
+	(pad "2" smd rect
+		(at 0 2.325)
+		(size 7.4 1.2)
+		(layers "F.Cu")
+		(uuid "db34c6df-cda9-58ce-b82f-e07813f6a411")
+	)
+	(pad "3" smd rect
+		(at 0 3.875)
+		(size 7.4 1.2)
+		(layers "F.Cu")
+		(uuid "849500b6-961d-535c-9739-7c8f132b1d9e")
+	)
+)

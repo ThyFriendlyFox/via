@@ -1,0 +1,112 @@
+* Hush: a 150 Hz hum in time. 0.2 Pa (80 dB SPL) of hum arrives at the mic from t = 0; the loop
+* answers with the inverse wave from the speaker. After 150 ms the hum left at the mic is measured
+* against the hum that arrived, as an rms ratio in dB, and the anti-noise against the hum: the
+* speaker plays the hum's opposite (prs_d is its pressure at the mic). Everything else is
+* anc_loop.cir's.
+.include "models/tlv9061_fit.lib"
+.include "models/pam8302a.lib"
+
+.param re=3.6 le=0.06m bl=1.5 mms=0.73m cms=0.92m qms=5 sd=7.07e-4
+.param rmic=4m kmic=12.59m fbw=40k tdel=2u
+.param rho=1.2 c0=343 pi4=3.14159265
+.param fsp={1/(2*pi4*sqrt(mms*cms))} rmsm={2*pi4*fsp*mms/qms}
+.param am={sqrt(sd/pi4)} dnf={sqrt(rmic*rmic + am*am) - rmic} tair={rmic/c0 + dnf/(2*c0)}
+
+* ---- supplies (the LDO's +2V8, USB's +5V) and the mid-rail reference
+VSUP p2v8 0 DC 2.8
+VP5 p5v 0 DC 5
+R3 p2v8 vref 100k
+R4 vref 0 100k
+C6 vref 0 10u
+
+* ---- the noise, the speaker's pressure, the mic
+VNOISE pn 0 DC 0 SIN(0 0.2 150)
+EPS1 pm pnx prs_d 0 1
+EPS2 pnx 0 pn 0 1
+EMIC md 0 pm 0 {kmic}
+CMICHP md mh 1u
+RMICHP mh 0 7958
+VMDC mdc 0 DC 1.35
+EMP mpi mdc mh 0 0.5
+EMN mni mdc mh 0 -0.5
+RMOUTP mpi mic_p 250
+RMOUTN mni mic_n 250
+
+* ---- U2: mic minus music reference, with a lag shelf in each leg
+C8 mic_p ea_inp 2.2u
+R6 ea_inp ea_p 30k
+C9 mic_n ea_inn 2.2u
+R7 ea_inn ea_n 30k
+R8 ea_n ea_out 2.2Meg
+R9 ea_n ea_fbn 150k
+C10 ea_fbn ea_out 47n
+R10 ea_p vref 2.2Meg
+R11 ea_p ea_fbp 150k
+C11 ea_fbp vref 47n
+R12 music ref_p 56k
+C12 ref_p ea_p 15n
+R13 vref ref_n 56k
+C13 ref_n ea_n 15n
+XU2 ea_p ea_n p2v8 0 ea_out TLV9061_FIT
+
+* ---- U3: the depth trimmer, the lead, the integrator. U4 (TS5A3166) open, ANC on: its off
+* capacitance to ground on each port, 19 pF on NO (ct_n) and 18 pF on COM (ct_out) (SCDS186E, 6.6).
+C15 ea_out ct_in 10u
+RV1 ct_in ct_rv 20
+R14 ct_rv ct_lead 6.2k
+R15 ct_lead ct_n 15k
+C16 ct_lead ct_n 1.2n
+C17 ct_n ct_out 10n
+R16 ct_n ct_out 10Meg
+CSWN ct_n 0 19p
+CSWO ct_out 0 18p
+XU3 vref ct_n p2v8 0 ct_out TLV9061_FIT
+
+* ---- U5: anti-noise on IN+, music on IN-
+C20 ct_out amp_inp_c 2.2u
+R17 amp_inp_c amp_inp 20k
+C21 music amp_inn_c 2.2u
+R18 amp_inn_c amp_inn 20k
+VSD amp_sd 0 DC 5
+XU5 amp_sd amp_inp amp_inn p5v 0 spk_p spk_n PAM8302A fbw={fbw} tdel={tdel}
+
+* ---- the line input, nothing plugged in
+R20 aud_l music 10k
+R21 aud_r music 10k
+R22 music 0 47k
+VAUDL aud_l 0 DC 0
+VAUDR aud_r 0 DC 0
+
+* ---- the speaker: the coil, the motional branch, the cone's velocity and acceleration
+* The coil is copper: Re rises 0.393 % per kelvin.
+RSPKE spk_p ns1 {re} tc1=3.93m
+LSPKE ns1 ns2 {le}
+RSPKM ns2 spk_n {bl*bl/rmsm}
+LSPKM ns2 spk_n {cms*bl*bl}
+CSPKM ns2 spk_n {mms/(bl*bl)}
+EVEL vel 0 ns2 spk_n {1/bl}
+CACC vel acc0 1
+VACC acc0 0 DC 0
+HPRS prs 0 VACC {rho*dnf}
+TAIR prs 0 prs_d 0 Z0=100 TD={tair}
+RAIR prs_d 0 100
+
+* Gear integration with looser step control: at its defaults ngspice's step collapses to 1 ns
+* from t = 0 for some controller values (R14 at 6.2k, not at 6.8k) while every signal is still
+* microvolts. With reltol 1e-3, vntol 10 uV and chgtol 1e-12 the run takes a second, and the
+* trapezoidal method gives the same hum_db to 0.001 dB.
+.options method=gear reltol=1e-3 vntol=1e-5 chgtol=1e-12
+.control
+op
+let vref_dc = v(vref)
+let ctout_dc = v(ct_out)
+print vref_dc ctout_dc
+tran 10u 250m 0 10u
+meas tran hum_in rms v(pn) from=150m to=250m
+meas tran hum_left rms v(pm) from=150m to=250m
+meas tran anti rms v(prs_d) from=150m to=250m
+let hum_db = 20*log10(hum_left/hum_in)
+let anti_ratio = anti/hum_in
+print hum_db anti_ratio
+.endc
+.end

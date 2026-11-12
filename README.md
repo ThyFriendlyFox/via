@@ -56,14 +56,54 @@ command that draws it.
 
 ## An example: Rosetta, a universal controller
 
-<a href="examples/universal-controller/v0.1/README.md"><img alt="Rosetta in 3D from above and to the side: a game controller's board with a D-pad, face buttons, a 5-position knob with a ring of LEDs, 2 USB-C ports" src="site/showcase/rosetta-iso.png"></a>
+<a href="examples/universal-controller/v0.2/README.md"><img alt="Rosetta v0.2 in 3D: an Xbox 360-style controller board with 2 thumbsticks, a D-pad, face buttons, a 5-position knob with a ring of LEDs and 2 USB-C ports" src="site/showcase/rosetta-iso.png"></a>
 
-[`examples/universal-controller/v0.1`](examples/universal-controller/v0.1/README.md) is a game
+[`examples/universal-controller/v0.2`](examples/universal-controller/v0.2/README.md) is a game
 controller made with the workcenter: a 5-position knob picks a PS4, a PS5, an Xbox, a Switch or
-Bluetooth. 160 x 92 mm in a controller's outline, 4 layers, routed and GREEN. An RP2040 runs a
-second USB port in software to relay a console's signature to a licensed donor; an ESP32 hangs its
-antenna over the gap between the grips; the knob is 1 analog reading, and 6 decks prove its 5
-positions never meet at any corner.
+Bluetooth. Its board is laid out like an Xbox 360 controller's, 148 x 82 mm, 6 layers, routed
+and GREEN: thumbsticks soldered on (the footprint written from ALPS's drawing), Hall-effect
+triggers on the shoulder horns, an RP2040 that runs a second USB port in software to relay a
+console's signature to a licensed donor, an ESP32 whose antenna hangs past the dip between the
+horns, and a knob read as 1 number whose 5 positions 6 decks prove never meet.
+
+## An example: Signet, a mouse worn as a ring
+
+<a href="examples/ring-mouse/README.md"><img alt="Signet turning: six black boards with gold edge pads in a hexagonal ring, soldered edge to edge, the radio module on top and a foil cell at the bottom" src="examples/ring-mouse/v0.4/docs/assembly-spin.gif" width="560"></a>
+
+[`examples/ring-mouse`](examples/ring-mouse/README.md) is a mouse you wear on the index finger, made
+with the workcenter as a series of prototypes, a version per pass of a loop. Six 4-layer boards, 12
+mm along the finger, sit on the faces of a hexagonal prism round it, each soldered to the next by 8
+plated edge pads. The ring turns with the hand and the cursor follows its gyroscope; the thumb slides
+along a 3-channel strip to scroll and presses the side to click. A Bluetooth LE module, a charger,
+a 3.3 V rail and a 20 mAh cell ride on the other tiles, and every tile is GREEN.
+
+## An example: Herald, a fire alarm communicator
+
+<a href="examples/fire-alarm-communicator/v0.1/README.md"><img alt="Herald in 3D from above and to the side: a red board with an LTE-M module, a nano SIM, an ESP32-S3 module, a relay, a column of status lights, a USB-C port and black screw terminals along its front edge" src="examples/fire-alarm-communicator/v0.1/docs/board-3d-iso.png"></a>
+
+[`examples/fire-alarm-communicator/v0.1`](examples/fire-alarm-communicator/v0.1/README.md) sits
+beside a fire alarm panel and reports to a monitoring station over LTE-M, with Wi-Fi as the second
+path. 84.4 x 64 mm, 4 layers, every part on the front, red with a white legend and black terminals.
+It answers the panel's own phone dialer as if it were the line: a current-limited loop feed, dial
+tone and the handshake from a PWM pin, and the panel's DTMF digits decoded in firmware with a
+Goertzel filter. 3 supervised inputs read a closed contact, a whole loop and a cut wire apart at
+every corner, and a fail-safe relay tells the panel when Herald itself fails.
+
+## An example: Hush, a speaker that cancels noise
+
+<table>
+  <tr>
+    <td width="50%"><a href="examples/anc-speaker/v0.1/README.md"><img alt="Hush from the front: a black ring with three windows, a microphone on the hub, the parts on arcs round the ring, USB-C and a line-in jack at the edge" src="examples/anc-speaker/v0.1/docs/board-3d-top.png"></a></td>
+    <td width="50%"><a href="examples/anc-speaker/v0.1/README.md"><img alt="Hush from the back: a noise wave and its inverse braided round the ring in white, shrinking to one line, gold rims round the edge and the windows" src="examples/anc-speaker/v0.1/docs/board-3d-bottom.png"></a></td>
+  </tr>
+</table>
+
+[`examples/anc-speaker/v0.1`](examples/anc-speaker/v0.1/README.md) is a ring 62 mm across that
+sits on the face of a 40 mm speaker. A microphone on its hub listens 4 mm in front of the cone, and
+an analog feedback loop plays the inverse of what it hears: 7 decks hold 3 dB less noise at 50 Hz
+and 12 dB from 200 to 300 Hz at every one of 986 corner runs, and take a 150 Hz hum 18.8 dB down
+(13.4 dB at the worst corner). Music from a phone plays through the loop as its target. The back
+draws the idea: the noise and its inverse, meeting as one line.
 
 ## An example: Wyvern, a Teensy with a Snapdragon
 

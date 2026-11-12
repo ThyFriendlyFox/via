@@ -1,0 +1,126 @@
+* Hush: the noise-cancelling loop, closed, at full depth (RV1 at its end).
+*
+* 1 Pa of noise arrives at the mic (VNOISE, AC 1). The mic hears it plus what the speaker plays;
+* the loop plays the inverse. v(pm) is the pressure left at the mic, so vdb(pm) is the
+* cancellation in dB: -20 means the noise is 10 times quieter where the mic listens.
+*
+* The board: U2 subtracts the music reference from the mic (a balanced difference amplifier with a
+* lag shelf in each leg, R8-R11, C10-C11), U3 integrates (C17, R16) behind a lead network (R14,
+* R15, C16) and the depth trimmer RV1; U5 drives the speaker. The values are the schematic's.
+*
+* Off the board, each from its source:
+*   The speaker: Dayton Audio CE40-4 (library/dayton/CE40-4.pdf): Re 3.6 ohm, Le 0.06 mH at
+*   10 kHz, Bl 1.50 Tm, Mms 0.73 g, Cms 0.92 mm/N, Qms 5.00, Sd 7.07 cm2. Its motional impedance
+*   is the parallel Res, Lces, Ces; the voltage across it is Bl times the cone's velocity.
+*   The air: the mic's port sits rmic in front of the centre of the cone, which radiates as a
+*   piston of radius a = sqrt(Sd/pi) = 15 mm. On its axis, at low frequency, the pressure is
+*   p = rho * (sqrt(rmic^2 + a^2) - rmic) * acceleration, delayed by rmic/c plus half the path
+*   difference (Kinsler and Frey, Fundamentals of Acoustics, the piston's axial pressure).
+*   The mic: Infineon IM73A135V01 (library/infineon/IM73A135.pdf, Table 3, Table 7): -38 dBV/Pa
+*   differential at 1 kHz, a 20 Hz low-frequency cut-off, 1.35 V DC on each output, 250 ohm out.
+*   The amp: sim/models/pam8302a.lib, fitted to its datasheet.
+*   The op-amps: sim/models/tlv9061_fit.lib, fitted to the TLV9061's datasheet and held to TI's own
+*   model by tlv9061_model.cir (why the loop decks do not run TI's model is in the file).
+*   The rail: LP5907 holds +2V8 (the decks take it as a source).
+.include "models/tlv9061_fit.lib"
+.include "models/pam8302a.lib"
+
+.param re=3.6 le=0.06m bl=1.5 mms=0.73m cms=0.92m qms=5 sd=7.07e-4
+.param rmic=4m kmic=12.59m fbw=40k tdel=2u
+.param rho=1.2 c0=343 pi4=3.14159265
+.param fsp={1/(2*pi4*sqrt(mms*cms))} rmsm={2*pi4*fsp*mms/qms}
+.param am={sqrt(sd/pi4)} dnf={sqrt(rmic*rmic + am*am) - rmic} tair={rmic/c0 + dnf/(2*c0)}
+
+* ---- supplies (the LDO's +2V8, USB's +5V) and the mid-rail reference
+VSUP p2v8 0 DC 2.8
+VP5 p5v 0 DC 5
+R3 p2v8 vref 100k
+R4 vref 0 100k
+C6 vref 0 10u
+
+* ---- the noise, the speaker's pressure, the mic
+VNOISE pn 0 DC 0 AC 1
+EPS1 pm pnx prs_d 0 1
+EPS2 pnx 0 pn 0 1
+EMIC md 0 pm 0 {kmic}
+CMICHP md mh 1u
+RMICHP mh 0 7958
+VMDC mdc 0 DC 1.35
+EMP mpi mdc mh 0 0.5
+EMN mni mdc mh 0 -0.5
+RMOUTP mpi mic_p 250
+RMOUTN mni mic_n 250
+
+* ---- U2: mic minus music reference, with a lag shelf in each leg
+C8 mic_p ea_inp 2.2u
+R6 ea_inp ea_p 30k
+C9 mic_n ea_inn 2.2u
+R7 ea_inn ea_n 30k
+R8 ea_n ea_out 2.2Meg
+R9 ea_n ea_fbn 150k
+C10 ea_fbn ea_out 47n
+R10 ea_p vref 2.2Meg
+R11 ea_p ea_fbp 150k
+C11 ea_fbp vref 47n
+R12 music ref_p 56k
+C12 ref_p ea_p 15n
+R13 vref ref_n 56k
+C13 ref_n ea_n 15n
+XU2 ea_p ea_n p2v8 0 ea_out TLV9061_FIT
+
+* ---- U3: the depth trimmer, the lead, the integrator. U4 (TS5A3166) open, ANC on: its off
+* capacitance to ground on each port, 19 pF on NO (ct_n) and 18 pF on COM (ct_out) (SCDS186E, 6.6).
+C15 ea_out ct_in 10u
+RV1 ct_in ct_rv 20
+R14 ct_rv ct_lead 6.2k
+R15 ct_lead ct_n 15k
+C16 ct_lead ct_n 1.2n
+C17 ct_n ct_out 10n
+R16 ct_n ct_out 10Meg
+CSWN ct_n 0 19p
+CSWO ct_out 0 18p
+XU3 vref ct_n p2v8 0 ct_out TLV9061_FIT
+
+* ---- U5: anti-noise on IN+, music on IN-
+C20 ct_out amp_inp_c 2.2u
+R17 amp_inp_c amp_inp 20k
+C21 music amp_inn_c 2.2u
+R18 amp_inn_c amp_inn 20k
+VSD amp_sd 0 DC 5
+XU5 amp_sd amp_inp amp_inn p5v 0 spk_p spk_n PAM8302A fbw={fbw} tdel={tdel}
+
+* ---- the line input, nothing plugged in
+R20 aud_l music 10k
+R21 aud_r music 10k
+R22 music 0 47k
+VAUDL aud_l 0 DC 0
+VAUDR aud_r 0 DC 0
+
+* ---- the speaker: the coil, the motional branch, the cone's velocity and acceleration
+* The coil is copper: Re rises 0.393 % per kelvin.
+RSPKE spk_p ns1 {re} tc1=3.93m
+LSPKE ns1 ns2 {le}
+RSPKM ns2 spk_n {bl*bl/rmsm}
+LSPKM ns2 spk_n {cms*bl*bl}
+CSPKM ns2 spk_n {mms/(bl*bl)}
+EVEL vel 0 ns2 spk_n {1/bl}
+CACC vel acc0 1
+VACC acc0 0 DC 0
+HPRS prs 0 VACC {rho*dnf}
+TAIR prs 0 prs_d 0 Z0=100 TD={tair}
+RAIR prs_d 0 100
+
+.control
+op
+let vref_dc = v(vref)
+let ctout_dc = v(ct_out)
+print vref_dc ctout_dc
+ac dec 50 1 1Meg
+meas ac att_50 find vdb(pm) at=50
+meas ac att_100 find vdb(pm) at=100
+meas ac att_200 find vdb(pm) at=200
+meas ac att_300 find vdb(pm) at=300
+meas ac att_500 find vdb(pm) at=500
+meas ac s_peak max vdb(pm) from=5 to=100k
+.endc
+.end

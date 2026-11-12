@@ -281,7 +281,7 @@ def usb_pairs(d: kicadgen.Design) -> None:
 
 def core_rail(d: kicadgen.Design) -> None:
     """The RP2350's 1.1 V core (DVDD 6, 23, 39 and VREG_FB 50) by hand. Each pin's straight way out is
-    taken (C18's ground pad, the crystal, C14, C9), and the router left all 4 bare (M129). So each pin
+    taken (C18's ground pad, the crystal, C14, C9), and the router left all 4 bare (M146). So each pin
     has a stub inward to a via inside the ring of pads, and In3 joins the 4 vias under the ground pad,
     with C18 west and the regulator's output (C10, L2) north-east. 4 vias tie the ground pad to the
     planes clear of them."""
@@ -301,7 +301,7 @@ def core_rail(d: kicadgen.Design) -> None:
     d.track("+1V1", [vias["23"], (141.5, 114.70)], "In3.Cu")
     for x, y in ((140.4, 115.6), (140.4, 116.6), (142.6, 116.0), (142.6, 116.7)):
         hand_via(d, "GND", x, y)
-    # 3.3 V: each supply pin to its 100 nF on the top layer, the shortest way (M129); pins 53 and 54
+    # 3.3 V: each supply pin to its 100 nF on the top layer, the shortest way (M146); pins 53 and 54
     # joined and taken inward to a via. The router joins the capacitors to the rest of the rail.
     for pts in (
         [(138.05, 112.70), (136.4, 112.70), (136.4, 113.02)],  # 1 to C12
@@ -316,7 +316,7 @@ def core_rail(d: kicadgen.Design) -> None:
     ):
         d.track("+3V3", pts, "F.Cu", width=0.25)
     hand_via(d, "+3V3", 141.45, 113.3)
-    # The east side fanned out by hand (M129): its 11 GPIOs alternate between a via in the gap before
+    # The east side fanned out by hand (M146): its 11 GPIOs alternate between a via in the gap before
     # the capacitors and a via inside the ring of pads, 0.7 mm or more apart (Sierra's 13 mil from a
     # hole to inner copper), so no stub crosses another; the outer column skips the band of pin 38's
     # stub. The router then only runs the inner layers to the pins.
@@ -477,8 +477,27 @@ def lay_out_schematic(d: kicadgen.Design) -> None:
     d.sch_wires = True
 
 
+class WyvernDesign(kicadgen.Design):
+    """The generator's Design with the board's colours in its stackup: black masks, white legends and
+    an ENIG finish, as Hush's design writes them (examples/anc-speaker). The renders read them, and
+    the fab's job file names them for the order."""
+
+    @staticmethod
+    def _stackup(copper: list[str], thickness: float = 1.6) -> list:
+        Q = kicadgen.Q
+        out = kicadgen.Design._stackup(copper, thickness)
+        black = "#0B0B0CF2"  # 95 % opaque: under KiCad's named "Black" the pour renders brown
+        colours = {"F.SilkS": "White", "B.SilkS": "White", "F.Mask": black, "B.Mask": black}
+        for item in out[1:]:
+            if item[0] == "layer" and item[1] in colours:
+                item.insert(3, ["color", Q(colours[item[1]])])
+            if item[0] == "copper_finish":
+                item[1] = Q("ENIG")
+        return out
+
+
 def build() -> kicadgen.Design:
-    d = kicadgen.Design(
+    d = WyvernDesign(
         name="wyvern",
         namespace=uuid.UUID("3f2b8c4e-91d7-4a6e-b5c2-7e0d4f1a9c63"),
         outline=(LEFT, TOP, RIGHT, BOTTOM),
@@ -487,7 +506,7 @@ def build() -> kicadgen.Design:
         plane_layers=("In1.Cu", "In4.Cu"),
         # Rounded only as far as the corner pins' square pads allow (0.3 mm to the edge).
         corner_radius=0.6,
-        track_width=0.127,  # 5 mil: the router needs the room round the RP2350 (M129)
+        track_width=0.127,  # 5 mil: the router needs the room round the RP2350 (M146)
         clearance=0.11,
         # 0.2 mm copper to an edge or a hole: the USB-C receptacle's rear shell slot and its locating peg
         # are 0.375 mm apart, so a 6 mil ring leaves 0.22 mm, under the workcenter's 0.3 mm default.
@@ -606,7 +625,7 @@ def build() -> kicadgen.Design:
     # 100n on each supply pin's side: IOVDD 1 and DVDD 6 west, IOVDD 38 and ADC_AVDD 44 east, IOVDD 20
     # and 30 south beside the crystal.
     mx, my = MCU
-    # Each turned so its supply pad faces its pin and its ground pad faces out (M129).
+    # Each turned so its supply pad faces its pin and its ground pad faces out (M146).
     c("C12", "100n", "+3V3", (mx - 5.1, my - 2.0), 270)
     c("C18", "100n", "+1V1", (mx - 5.1, my + 0.0), 270)
     c("C13", "100n", "+3V3", (mx - 5.1, my + 2.0), 270)
@@ -619,7 +638,7 @@ def build() -> kicadgen.Design:
          "7": "QSPI_SD3", "8": "+3V3", "9": "GND"}, 90)  # fmt: skip
     c("C19", "100n", "+3V3", (132.3, 117.0))
     # The crystal and its 3 parts on the back, under the chip's south edge: on the top face the crystal
-    # stood 0.6 mm from pins 16 to 22 and left them no way out (M129).
+    # stood 0.6 mm from pins 16 to 22 and left them no way out (M146).
     add("Y1", "Device:Crystal_GND24", "12MHz ABM8-272-T3", "Crystal:Crystal_SMD_3225-4Pin_3.2x2.5mm",
         (140.4, 120.9), {"1": "XIN", "2": "GND", "3": "XTAL_O", "4": "GND"}, 0, B)  # fmt: skip
     c("C20", "15p", "XIN", (137.6, 120.9), 90, B)

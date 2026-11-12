@@ -39,7 +39,7 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
-## 2026-11-11 — A second example: a Teensy with a Snapdragon
+## 2026-11-11 — A fifth example: a Teensy with a Snapdragon
 
 The owner asked for a compact board that looks good, as an example of what Via makes: a
 microcontroller development board like a Teensy, with a Snapdragon on it. A Snapdragon cannot stand
@@ -50,8 +50,8 @@ vape-prototype for the layout, and the example has its shape: a series README, a
 `parts/`, a gates report, pictures with the module on its sockets.
 
 The USB-C port's 5 pairs are drawn by hand: wired the way a plug turned over sees them, no 2 pairs
-cross. The first route ran 14 of its 15 minutes, with no timeout set (M130), and left the RP2350's
-core pins bare: a capacitor or the crystal stood across each one's way out (M129). That rail is
+cross. The first route ran 14 of its 15 minutes, with no timeout set (M147), and left the RP2350's
+core pins bare: a capacitor or the crystal stood across each one's way out (M146). That rail is
 drawn by hand now, then the 3.3 V pins' stubs, after 4 capacitors were turned to face their pins;
 P4 asks for each supply pin's way out before a route. Seeding did not help on this board: a route
 seeded from the same design's own route, with 1 pass, lost 6 connections the seed had. Fresh routes
@@ -68,6 +68,101 @@ for v0.2.
 Evidence: `workcenter gates examples/snapdragon-dev-board/v0.1` GREEN with 13 warnings (5 silkscreen outlines at the edge, 2 vias with nothing past them, 6 decks with no temperature term): DRC 0 errors and 0 unconnected; 6 decks, 488
 corner runs; `workcenter pictures v0.1`: the board, its layers, 3 turning GIFs, the module on its sockets;
 `workcenter costs` $32.76 for 1 board's parts.
+
+## 2026-11-11 — Another example: a speaker that plays the inverse of what it hears
+
+The owner asked for a noise cancelling speaker as an example of what Via makes: compact, gorgeous,
+iterated until it is, in its own folder on `main`. Hush is in `examples/anc-speaker/v0.1`: a ring
+62 mm across on the face of a 40 mm speaker, a microphone on its hub 4 mm from the cone, and an
+analog loop that plays the inverse wave. 7 decks hold it to its numbers at 986 corners: 3 dB less
+noise at 50 Hz and 12 dB from 200 to 300 Hz at the worst of them. On the way, TI's op-amp model
+settled on false operating points inside the loop, so the loop decks run a model fitted to it; my
+own amplifier model ran in the loop before its own deck and was half the gain. The generator
+learned 2 things: a custom pad reaches the router as its outline, not a box over its neighbours, and
+a simulated part's fields go on its footprint too. Main had meanwhile learned to render a board in
+its own colours, which this board's black mask needed. A reviewer who had not seen the board read
+its renders each round; the back's art ended in a jack's peg hole until the second round. 7
+mistakes, M139 to M145, each with its process.
+
+Evidence: `workcenter gates examples/anc-speaker/v0.1` GREEN with 6 warnings; the pictures in its `docs/`.
+
+## 2026-11-11 — A third example: a fire alarm communicator
+
+The owner asked for a fire alarm communicator made with Via: compact, good
+to look at, iterated in a review loop, and merged to `main` in its own
+folder. Herald is in `examples/fire-alarm-communicator/v0.1`: 84.4 x 64
+mm, 4 layers, 127 parts, every part on the front, red with a white legend
+and black terminals. It answers a fire panel's dialer as its phone line,
+reads 3 supervised inputs, holds a fail-safe trouble relay, and reports
+over LTE-M with Wi-Fi as the second path. The panel's DTMF digits are read
+in firmware by a Goertzel filter, held to ITU-T Q.24's limits by host
+tests.
+
+The loop ran 8 rounds. Each round I generated, routed and rendered the
+board; in 6 of them a reader who had not seen it before reviewed the
+pictures against 1 fixed prompt, and its list was the next round's work.
+The board went from 96 to 84.4 mm wide, the tamper input became a screw
+terminal, the terminal row was spread to equal gaps, keep-outs now hold
+copper off every word but the back's notes, the terminals turned black,
+and the back became an installer's sheet. The last review found 3 mm of
+height in the lower band; moving 25 parts for it is left for v0.2. The
+tone deck found the first filter too weak: 28 mV on the line, where the
+deck asks for 62 mV. A keep-out I added late held a diode's pad, and the
+route left 1 net open (M137). The router could not reach the relay's NO
+contact past that keep-out; that link is drawn by hand. My first schematic
+layout sorted nets by a key with ties, so 2 generations drew 2 sheets; the
+key is complete now. The back's keep-outs ban vias through every layer,
+and I checked them for pads on the back only: 4 routes left the tamper
+line open or a ground pad on an island (M138). The router twice walled a
+pin in: CC1 is drawn by hand, and a ground via beside 4 pads is placed
+before the route.
+
+Evidence: `workcenter gates examples/fire-alarm-communicator/v0.1` GREEN
+with 7 warnings (the terminal blocks' and the USB shell's silkscreen at the
+edge), 8 decks and 573 corner runs; `make -C firmware test` passing;
+`render --strict` naming no part without a body.
+
+## 2026-11-11 — Rosetta v0.2: the controller as a controller's own board
+
+The owner sent a picture of an Xbox 360 controller's main board and asked for that: the
+joysticks, the Hall-effect sensors and the Bluetooth module on a curved board. v0.1 had carried
+modules on cables. v0.2 has the thumbsticks soldered on, linear Hall sensors under the triggers,
+right-angle bumpers on the shoulder horns, rumble motors at the grips and both USB-C ports in a
+tab at the bottom. KiCad has no thumbstick footprint, so I read ALPS's mounting-hole drawing for
+the RKJXV122400R and wrote one from it; Hall-effect sticks are made to drop into those holes. A
+render before the route showed a back paddle off the board, which no check had seen (M135). On 4
+layers every route left 2 to 6 of the RP2040's links open, and I chased them by hand for 4 routes
+before I gave the board 6 layers and narrower supply tracks (M136). Then 1 link was left, and 1
+hand route closed it. The owner also started the other example boards in other sessions.
+
+Evidence: `workcenter gates examples/universal-controller/v0.2` GREEN with 6 warnings
+(silkscreen at the edge); `render --strict` naming no part without a body.
+
+## 2026-11-11 — A second example project: a mouse worn as a ring
+
+The owner asked for an example of what people can make with the
+workcenter: a compact board that looks great, made with a loop that keeps
+iterating, and a ring that works as a mouse. I first drew the face of a
+signet ring, then a flat ring-shaped board; the owner stopped both. The
+ring is worn, and its circuit lies on small boards on the surface of the
+cylinder. Signet is 6 tiles on a hexagonal prism round the index finger,
+each soldered to the next by 8 plated edge pads, kept as version folders
+the way Last Hit keeps its prototypes. The loop made 4 versions. v0.2 made
+every face black and drew solder in the joints and a foil cell. v0.3 moved
+the light out from under the thumb and guarded the charging pads. v0.4
+closed the ring: a hexagon whose faces all touch the finger closes only
+when its alternate faces add up equally, and the radio's 2 joints had
+stood 1.3 mm open since v0.1. The renders showed it all along; I had read
+the gap as the solder's shape. The assembly's heights were wrong too, by
+0.4 mm, because I had fixed a picture by eye instead of measuring 1 body.
+Every render had also drawn the black boards green: kicad-cli draws its
+own colours unless asked for the board's, and the workcenter now asks.
+P34 asks for a new product's form before its first design file.
+
+Evidence: every tile of `examples/ring-mouse/v0.4` GREEN (the radio with
+2 legend warnings, the power tile with 1); 52 corner runs on the gauge's
+deck; `make -C firmware test`; `ring.py` refuses a ring whose neighbours
+miss their corner; M129 to M134.
 
 ## 2026-11-11 — An example project: a controller that speaks to 5 consoles
 

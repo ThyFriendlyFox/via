@@ -1,0 +1,13 @@
+{
+  "temperature": {
+    "values": [0, 50],
+    "source": "the design's range: an indoor cabinet beside the fire panel, 0 to 50 C (README, Board)"
+  },
+  "tolerance": {
+    "R": 0.01,
+    "C": 0.1,
+    "parts": { "REOL": 0.05, "VDD": 0.03, "ILOOP": 0.25 },
+    "source": "the parts list: 1 % thick-film resistors, 10 % X7R capacitors; REOL is the installer's 5 % end-of-line resistor; VDD is +3V3 within the 3 % the firmware allows for U2; ILOOP is the feed's 16.5 to 27.5 mA (0.55 to 0.75 V across R18, 27 ohm)"
+  },
+  "monte_carlo": { "runs": 32, "seed": 11 }
+}

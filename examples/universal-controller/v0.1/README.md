@@ -1,5 +1,8 @@
 # Rosetta v0.1: a universal game controller
 
+Archived: [v0.2](../v0.2/README.md) is current. It is laid out like an Xbox 360 controller's main
+board, with the thumbsticks, the Hall-effect triggers and the bumpers on it.
+
 One controller for a PS4, a PS5, an Xbox, a Switch, or anything over Bluetooth. A 5-position
 knob on its face picks the console. The controller drops off the bus while the knob turns and
 comes back as the chosen console's own controller.

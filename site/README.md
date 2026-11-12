@@ -38,8 +38,8 @@ empty.
 | `vendor/` | Motion 14.6.0 (motion.dev), its UMD build from the npm package `motion`, and its MIT license. SHA256 `5cd165acfdf8e14ca5358c3d876142e5465419ee0d100bcf195da474cf8db2bf`. |
 | `logo.svg` | The Via wordmark: V, I and A as copper, a pad on each and traces between. The header, the footer, the closing section and `og.html` draw it inline. |
 | `showcase/` | The example's pictures: KiCad's 3D renders of Rosetta (`rosetta-top.png`, `rosetta-bottom.png`, `rosetta-iso.png`), its layers (`rosetta-layers.png`), and Agentcast's (`agentcast.png`, from its repository's v0.5). `draw_face.py` writes the board drawing into `index.html` between `face:begin` and `face:end`. |
-| `favicon.svg` | The mark. It follows the system's colour scheme. |
-| `favicon-32.png`, `apple-touch-icon.png` | The mark as PNG, for a browser that takes no SVG icon and for a phone's home screen. |
+| `favicon.svg` | The icon: the wordmark of `logo.svg`, centred in a square. It follows the system's colour scheme. |
+| `favicon-32.png`, `apple-touch-icon.png` | The icon as PNG, for a browser that takes no SVG icon and for a phone's home screen. |
 | `og.html` | The page the image below is a capture of. |
 | `og.png` | The Open Graph image, 1280 x 640. Also the image for the repository's social preview. |
 | `media/` | The pictures of the root `README.md`, with the page its first picture is a capture of. `media/README.md` shows each and the command that draws it. The site serves 2 of them, `schematic.png` and `board.png`: its board section shows them. |
@@ -77,13 +77,14 @@ chromium --headless --hide-scrollbars --force-device-scale-factor=1 --window-siz
   --virtual-time-budget=4000 --screenshot=site/og.png "file://$PWD/site/og.html"
 ```
 
-Draw it again when `og.html`, the mark or the run in it changes.
+Draw it again when `og.html`, the wordmark or the run in it changes.
 
-librsvg draws the 2 PNG icons from `favicon.svg`:
+`favicon.svg` holds the paths of `logo.svg`. Copy them again when the
+wordmark changes. librsvg draws the 2 PNG icons from `favicon.svg`:
 
 ```sh
 rsvg-convert -w 32 -h 32 site/favicon.svg -o site/favicon-32.png
-rsvg-convert -w 112 -h 112 --page-width 180 --page-height 180 --left 34 --top 34 -b '#fbfaf7' \
+rsvg-convert -w 148 -h 148 --page-width 180 --page-height 180 --left 16 --top 16 -b '#fbfaf7' \
   site/favicon.svg -o site/apple-touch-icon.png
 ```
 

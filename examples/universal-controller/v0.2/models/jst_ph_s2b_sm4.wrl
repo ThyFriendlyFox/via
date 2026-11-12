@@ -1,0 +1,11 @@
+#VRML V2.0 utf8
+# wrlgen: JST S2B-PH-SM4-TB
+Shape {
+  appearance Appearance { material Material { diffuseColor 0.930 0.910 0.850 specularColor 0.35 0.35 0.35 shininess 0.45 } }
+  geometry IndexedFaceSet {
+    solid FALSE
+    creaseAngle 0.9
+    coord Coordinate { point [ -1.18110 -1.25984 0.00000, 1.18110 -1.25984 0.00000, 1.18110 1.02362 0.00000, -1.18110 1.02362 0.00000, -1.18110 -1.25984 1.88976, 1.18110 -1.25984 1.88976, 1.18110 1.02362 1.88976, -1.18110 1.02362 1.88976 ] }
+    coordIndex [ 0 1 5 4 -1, 1 2 6 5 -1, 2 3 7 6 -1, 3 0 4 7 -1, 3 2 1 0 -1, 4 5 6 7 -1 ]
+  }
+}

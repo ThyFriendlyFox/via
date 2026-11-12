@@ -16,7 +16,7 @@ the `.kicad_*` files beside it are what `workcenter design` writes from it.
 | Item | State |
 |---|---|
 | Schematic | drawn with wires in blocks, the SOM's 300 pins named from its datasheet; ERC <!-- erc -->0 errors, 0 warnings<!-- /erc -->; no parity warning |
-| Board | 60.96 x 30.48 mm (2.4 x 1.2 in), **6 layers**, 1.6 mm, made to Sierra Circuits' Web PCB limits; 2 rows of 24 pins on the 0.1 in grid, 1.1 in apart; the SOM's sockets, USB-C, the RP2350 and its flash on the top face, the power, the microSD and the pinout card on the bottom |
+| Board | 60.96 x 30.48 mm (2.4 x 1.2 in), **6 layers**, 1.6 mm, black mask, white legend, ENIG, made to Sierra Circuits' Web PCB limits; 2 rows of 24 pins on the 0.1 in grid, 1.1 in apart; the SOM's sockets, USB-C, the RP2350 and its flash on the top face, the power, the microSD and the pinout card on the bottom |
 | Gates | <!-- gates -->GREEN with 13 warnings: ERC 0 and 0; DRC 0 errors, 0 unconnected, 0 parity, 7 warnings (silkscreen at the edge, 2 vias with nothing past them); SIM 6 decks, 488 corner runs, 0 failures; EXPORT 4 of 4 (`docs/gates.md`)<!-- /gates --> |
 | USB | the USB-C port's 4 SuperSpeed pairs and its USB 2 pair drawn by hand in `design.py` as coupled 90 ohm pairs on the outer layers, each over a ground plane; no pair crosses another or turns over |
 | Power | 5 V from USB-C (or the 5V pin) to the SOM's 3.8 V by a TPS62130 buck, 3 A for the module's 8.7 W boot peak; 3.3 V from that by an AP2112K; the SOM's own 1.8 V on a pin |
@@ -469,8 +469,6 @@ more ground vias stitch the patch of top copper the top-layer pairs ring under t
   its GPIO27 and GPIO11.
 - **Camera and display.** The SOM's 4 MIPI CSI and 2 DSI lanes are unused; an FPC connector at the
   far end would bring one of each out.
-- **The board's colours.** A black mask and gold finish in the renders needs the workcenter's
-  generator to write them into the stackup; not done in this version.
 
 ### On the bench
 

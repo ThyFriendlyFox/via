@@ -15,7 +15,7 @@ what each gate held the board to.
 | SIM | pass | 6 decks, 488 corner runs, 0 failures, 6 warnings |
 | EXPORT | pass | 4/4 outputs, 26 gerber files |
 
-GREEN with 13 warnings on 2026-11-11: `workcenter gates` with KiCad 10.0.8, ngspice 42.
+GREEN with 13 warnings on 2026-11-12: `workcenter gates` with KiCad 10.0.8, ngspice 42.
 <!-- /workcenter gates wyvern -->
 
 ## Simulation
@@ -82,7 +82,8 @@ Snapdragon's SD clock, and each GPIO on the pins (firmware sets it).
 
 `workcenter export .` writes `build/fab/`: the Gerbers of all 6 copper layers, masks, pastes,
 silkscreens and the outline; the drill files; the positions; the BOM. The board file carries the 6
-layer, 1.6 mm stackup (`kicadgen`'s 7628 prepregs, 35 um outer and 15 um inner copper) and Sierra
+layer, 1.6 mm stackup (`kicadgen`'s 7628 prepregs, 35 um outer and 15 um inner copper; black masks,
+white legends and ENIG, from `WyvernDesign` in `design.py`) and Sierra
 Circuits' Web PCB limits as `wyvern.kicad_dru` (`rules/sierra-circuits-web.kicad_dru`): 4 mil track
 and gap, 6 mil hole and ring, 13 mil from a hole to inner-layer copper.
 
@@ -98,4 +99,4 @@ to the back, each 100 nF faced its pin, and the pins were fanned out to vias by 
 tracks with 4.3 mil of clearance (`track_width=0.127`, `clearance=0.11`, inside Sierra's 4 mil)
 gave it the last room. The route is deterministic: 100 and 150 passes gave the same board, and the
 same command in this folder gives the board that is committed. A route seeded from a previous one
-lost connections its seed had, so none is used (workcenter MISTAKES.md M129, M130).
+lost connections its seed had, so none is used (workcenter MISTAKES.md M146, M147).

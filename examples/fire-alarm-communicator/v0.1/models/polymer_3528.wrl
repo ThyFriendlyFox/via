@@ -1,0 +1,29 @@
+#VRML V2.0 utf8
+# wrlgen: KEMET T520B polymer capacitor, 3528
+Shape {
+  appearance Appearance { material Material { diffuseColor 0.080 0.080 0.090 specularColor 0.35 0.35 0.35 shininess 0.45 } }
+  geometry IndexedFaceSet {
+    solid FALSE
+    creaseAngle 0.9
+    coord Coordinate { point [ -0.57087 -0.55118 0.03937, 0.57087 -0.55118 0.03937, 0.57087 0.55118 0.03937, -0.57087 0.55118 0.03937, -0.57087 -0.55118 0.74803, 0.57087 -0.55118 0.74803, 0.57087 0.55118 0.74803, -0.57087 0.55118 0.74803 ] }
+    coordIndex [ 0 1 5 4 -1, 1 2 6 5 -1, 2 3 7 6 -1, 3 0 4 7 -1, 3 2 1 0 -1, 4 5 6 7 -1 ]
+  }
+}
+Shape {
+  appearance Appearance { material Material { diffuseColor 0.450 0.450 0.480 specularColor 0.35 0.35 0.35 shininess 0.45 } }
+  geometry IndexedFaceSet {
+    solid FALSE
+    creaseAngle 0.9
+    coord Coordinate { point [ -0.51181 -0.55118 0.74803, -0.31496 -0.55118 0.74803, -0.31496 0.55118 0.74803, -0.51181 0.55118 0.74803, -0.51181 -0.55118 0.75197, -0.31496 -0.55118 0.75197, -0.31496 0.55118 0.75197, -0.51181 0.55118 0.75197 ] }
+    coordIndex [ 0 1 5 4 -1, 1 2 6 5 -1, 2 3 7 6 -1, 3 0 4 7 -1, 3 2 1 0 -1, 4 5 6 7 -1 ]
+  }
+}
+Shape {
+  appearance Appearance { material Material { diffuseColor 0.750 0.750 0.780 specularColor 0.35 0.35 0.35 shininess 0.45 } }
+  geometry IndexedFaceSet {
+    solid FALSE
+    creaseAngle 0.9
+    coord Coordinate { point [ -0.72835 -0.43307 0.00000, -0.53150 -0.43307 0.00000, -0.53150 0.43307 0.00000, -0.72835 0.43307 0.00000, -0.72835 -0.43307 0.35433, -0.53150 -0.43307 0.35433, -0.53150 0.43307 0.35433, -0.72835 0.43307 0.35433, 0.53150 -0.43307 0.00000, 0.72835 -0.43307 0.00000, 0.72835 0.43307 0.00000, 0.53150 0.43307 0.00000, 0.53150 -0.43307 0.35433, 0.72835 -0.43307 0.35433, 0.72835 0.43307 0.35433, 0.53150 0.43307 0.35433 ] }
+    coordIndex [ 0 1 5 4 -1, 1 2 6 5 -1, 2 3 7 6 -1, 3 0 4 7 -1, 3 2 1 0 -1, 4 5 6 7 -1, 8 9 13 12 -1, 9 10 14 13 -1, 10 11 15 14 -1, 11 8 12 15 -1, 11 10 9 8 -1, 12 13 14 15 -1 ]
+  }
+}

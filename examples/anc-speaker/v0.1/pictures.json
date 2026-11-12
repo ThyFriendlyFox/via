@@ -1,0 +1,29 @@
+{
+  "boards": [
+    {
+      "path": ".",
+      "name": "hush",
+      "prefix": "",
+      "strict": true,
+      "stills": ["board-top.png", "board-bottom.png", "board-3d-top.png", "board-3d-bottom.png", "board-3d-iso.png", "schematic.png"],
+      "layers": "layers.png",
+      "spins": [
+        {"as": "board-spin.gif", "tilt": -55, "zoom": 0.95},
+        {"as": "board-spin-back.gif", "tilt": -125, "zoom": 0.95}
+      ]
+    }
+  ],
+  "scenes": [
+    {
+      "script": "assembly.py",
+      "what": "the assembly: the ring on the face of its CE40-4 driver, the speaker's wires to its tabs",
+      "copy": {
+        "build/assembly/assembly-iso.png": "assembly-iso.png",
+        "build/assembly/assembly-front.png": "assembly-front.png",
+        "build/assembly/assembly-side.png": "assembly-side.png",
+        "build/assembly/assembly-back.png": "assembly-back.png",
+        "build/assembly/assembly-spin.gif": "assembly-spin.gif"
+      }
+    }
+  ]
+}

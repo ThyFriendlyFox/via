@@ -309,6 +309,70 @@ class Pad:
     h: float
     layers: list[str]
     drill: float = 0.0
+    # A custom pad's copper as a convex polygon in the pad's own frame (before `angle`); empty for
+    # every other shape. w x h is a box centred on the pad that covers it, which is wrong for the
+    # router when the copper sits off the anchor (a mic's sealing ring round its port).
+    outline: tuple[tuple[float, float], ...] = ()
+
+
+def _hull(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """The convex hull of the points, counter-clockwise (Andrew's monotone chain)."""
+    pts = sorted(set(points))
+    if len(pts) < 3:
+        return pts
+
+    def cross(o, a, b) -> float:
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    lower: list[tuple[float, float]] = []
+    upper: list[tuple[float, float]] = []
+    for p in pts:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
+            lower.pop()
+        lower.append(p)
+    for p in reversed(pts):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0:
+            upper.pop()
+        upper.append(p)
+    return lower[:-1] + upper[:-1]
+
+
+def _custom_pad_outline(pad: Node, w: float, h: float) -> tuple[tuple[float, float], ...]:
+    """A custom pad's copper, the anchor and every primitive with its stroke, as a convex polygon in
+    the pad's frame. A stroke is taken as an octagon round each point it passes through."""
+    pts: list[tuple[float, float]] = [(sx * w / 2, sy * h / 2) for sx in (-1, 1) for sy in (-1, 1)]
+    prims = child(pad, "primitives")
+    for prim in prims[1:] if prims else []:
+        if not isinstance(prim, list) or not prim:
+            continue
+        width = child(prim, "width")
+        half = num(atoms(width)[0]) / 2 if width else 0.0
+        core: list[tuple[float, float]] = []
+        if prim[0] == "gr_circle" and child(prim, "center") and child(prim, "end"):
+            c, e = atoms(child(prim, "center")), atoms(child(prim, "end"))
+            cx, cy = num(c[0]), num(c[1])
+            r = math.hypot(num(e[0]) - cx, num(e[1]) - cy) + half
+            pts += [
+                (cx + r * math.cos(2 * math.pi * k / 32), cy + r * math.sin(2 * math.pi * k / 32))
+                for k in range(32)
+            ]
+            continue
+        if child(prim, "pts"):
+            core += [(num(a[0]), num(a[1])) for a in map(atoms, children(child(prim, "pts"), "xy"))]
+        if prim[0] == "gr_rect" and child(prim, "start") and child(prim, "end"):
+            s, e = atoms(child(prim, "start")), atoms(child(prim, "end"))
+            core += [(num(x), num(y)) for x in (s[0], e[0]) for y in (s[1], e[1])]
+        else:
+            core += [(num(a[0]), num(a[1])) for head in ("start", "end", "mid") if child(prim, head)
+                     for a in [atoms(child(prim, head))]]  # fmt: skip
+        for x, y in core:
+            pts.append((x, y))
+            if half:
+                pts += [
+                    (x + half * math.cos(math.pi * k / 4), y + half * math.sin(math.pi * k / 4))
+                    for k in range(8)
+                ]
+    return tuple(_hull(pts))
 
 
 @dataclass
@@ -363,7 +427,9 @@ def load_footprint(lib_id: str, dirs: dict[str, Path] | None = None) -> Footprin
             vals = [a for a in atoms(drill) if a not in ("oval",)]
             drill_d = num(vals[0]) if vals else 0.0
         w, h = num(size[0]), num(size[1])
+        outline: tuple[tuple[float, float], ...] = ()
         if str(p[3]) == "custom":  # the copper is the primitives; `size` is only the anchor
+            outline = _custom_pad_outline(p, w, h)
             w, h = _custom_pad_extent(p, w, h)
         pads.append(
             Pad(
@@ -377,6 +443,7 @@ def load_footprint(lib_id: str, dirs: dict[str, Path] | None = None) -> Footprin
                 h=h,
                 layers=layers,
                 drill=drill_d,
+                outline=outline,
             )
         )
     court = None
@@ -2791,6 +2858,22 @@ class Design:
                 fab_hidden,
             ]
         )
+        # The symbol's Sim fields, hidden, as KiCad's own update from the schematic copies every field: a
+        # footprint without them is a parity warning ("Missing symbol field 'Sim.Library'"). A part that
+        # says nothing about simulation has none, and its footprint is written as before.
+        for name, text in self._sim_fields(part.ref, part.symbol):
+            out.append(
+                [
+                    "property",
+                    Q(name),
+                    Q(text),
+                    ["at", "0", "0", fmt(rot)],
+                    ["layer", Q("F.Fab")],
+                    ["hide", "yes"],
+                    ["uuid", uid(ns, f"fp/{part.ref}/{name}")],
+                    fab_hidden,
+                ]
+            )
         out.append(["path", Q(f"/{uid(ns, f'symbol/{part.ref}')}")])
         out.append(["sheetname", Q("/")])
         out.append(["sheetfile", Q(f"{self.name}.kicad_sch")])
@@ -3329,6 +3412,24 @@ class Design:
             )
             if reach is None and pad.kind == "thru_hole" and pad.drill:
                 reach = {layer: pad.drill / 2 + holes[layer] - c_min for layer in layers}
+            if pad.outline and not reach:
+                # A custom pad goes to the router as its own outline, turned by the pad's angle (KiCad
+                # turns counter-clockwise with y down); the image's y is up.
+                a = math.radians(pad.angle)
+                ring = [
+                    (u * math.cos(a) + v * math.sin(a), -u * math.sin(a) + v * math.cos(a))
+                    for u, v in pad.outline
+                ]
+                coords = " ".join(f"{c(x)} {c(-y)}" for x, y in ring)
+                name = f"Pad_custom_{uuid.uuid5(uuid.NAMESPACE_OID, coords).hex[:12]}_{'TH' if through else 'SMD'}"
+                if name not in padstacks:
+                    shapes = [f"(shape (polygon {layer} 0 {coords}))" for layer in layers]
+                    padstacks[name] = (
+                        f'    (padstack "{name}"\n      '
+                        + "\n      ".join(shapes)
+                        + "\n      (attach off)\n    )"
+                    )
+                return name
             own = (max(w, h),) * 2 if shape == "circle" else (w, h)
             size = {}
             for layer in layers:
