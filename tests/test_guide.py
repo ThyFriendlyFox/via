@@ -500,18 +500,23 @@ def test_a_folder_that_is_not_there_is_created_first(tmp_path):
 # ------------------------------------------------------------- the steps
 
 
-def test_a_folder_with_nothing_in_it_is_told_the_two_ways_to_start(tmp_path):
+def test_a_folder_with_nothing_in_it_is_told_the_ways_to_start(tmp_path):
     code, step = ask(tmp_path)
     assert code == 1 and step["done"] is False
     assert step["next"].startswith("Start the project with a deck, or with a design file for a board.")
     assert f"{tmp_path}/sim/<name>.cir" in step["next"] and f"{tmp_path}/design.py" in step["next"]
     assert f"{tmp_path}/sim/<name>.expect.json" in step["next"]
     assert f"can start from a copy of {ROOT}/templates/project/design.py." in step["next"]
-    # 2 ways to start are not 1 command: a reader who runs every RUN line is given none
+    # a chip starts with its own command, which writes the folder's first files
+    assert step["next"].endswith(
+        f"For a chip, `workcenter chip init {tmp_path} --top <module>` writes the project's first files."
+    )
+    # 3 ways to start are not 1 command: a reader who runs every RUN line is given none
     assert step["run"] == ""
     assert step["done_when"] == f"`workcenter next {tmp_path}` names another step"
     assert step["read"] == (
-        '.claude/skills/simulate/SKILL.md, "Steps"; .claude/skills/board-design/SKILL.md, "Steps"'
+        '.claude/skills/simulate/SKILL.md, "Steps"; .claude/skills/board-design/SKILL.md, "Steps"; '
+        '.claude/skills/chip-design/SKILL.md, "Steps"'
     )
     (tmp_path / "design.py").write_text("# a design\n", encoding="utf-8")
     code, step = ask(tmp_path)

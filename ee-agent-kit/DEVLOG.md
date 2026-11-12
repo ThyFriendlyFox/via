@@ -76,6 +76,24 @@ Evidence: `workcenter gates v0.2` GREEN with 16 warnings (DRC 0 errors,
 named in `docs/gates.md`); `workcenter design --check` same;
 `workcenter sources` 0 problems; `workcenter pictures` 26 files;
 `make verify` before the push.
+## 2026-11-12 — A chip has its one next step, and its benches are proven on every run
+
+`workcenter next` now answers for a chip project as it does for a board.
+It reads `chip.json`, the engines, the RTL, the benches and the gates'
+report, and names the first step that is not done. In a test its answers
+alone took the template from its first file to a GREEN layout. 2 skills
+hold the procedure: `chip-design` writes the project, and `chip-gates`
+drives the 10 gates. The contract has its section "Chip gates". The SIM
+gate now proves the benches itself. It makes each change of the project's
+list in a copy of the RTL and runs the benches there, and a change that
+every bench passes on fails the gate. Before, the gate only asked that the
+list be there: an empty list passed `--strict`, and the command that ran a
+list counted a change that does not compile as caught. The processor's 18
+changes and the counter's 5 are each caught, in under 1 s.
+
+Evidence: `tests/test_chipguide.py`, 24 tests; the chip, guide and docs
+test files, 267 tests passed; `make verify` GREEN on the pushed tree.
+
 ## 2026-11-12 — The processor is GREEN: every chip gate passes, from RTL to the mask layout
 
 The acceptance processor now passes all 10 chip gates with `--strict`, in

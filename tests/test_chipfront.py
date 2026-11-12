@@ -531,9 +531,20 @@ def test_sim_passes_the_template_and_names_what_a_bench_shows(tmp_path):
         "errors": 0.0,
         "x_outputs": 0.0,
     }
-    # with a mutation list the warning is gone, and --strict passes
-    (folder / "rtl" / "mutations.json").write_text("[]", encoding="utf-8")
-    assert gate("sim", folder, "--strict")[0] == 0
+    # A list with nothing in it shows as little as no list: `[]` passed --strict until 2026-11-12. With
+    # 1 change that the bench catches the warning is gone, and --strict passes.
+    listed = folder / "rtl" / "mutations.json"
+    listed.write_text("[]", encoding="utf-8")
+    code, record = gate("sim", folder, "--strict")
+    assert code == 1 and record["details"]["failures"] == [
+        "rtl/mutations.json lists no change: nothing shows that the benches can fail"
+    ]
+    change = {"name": "enable-ignored", "file": "rtl/reg8.v", "old": "else if (en) q", "new": "else q"}
+    listed.write_text(json.dumps([change]), encoding="utf-8")
+    code, record = gate("sim", folder, "--strict")
+    assert code == 0
+    assert record["summary"] == "1 benches, 4 checks, 1 of 1 changes of the RTL caught, 0 failures"
+    listed.unlink()
     # the RTL ignores its enable: 1 comparison fails
     swap(folder / "rtl" / "reg8.v", "else if (en) q <= d;", "else q <= d;")
     code, record = gate("sim", folder)
@@ -547,6 +558,88 @@ def test_sim_passes_the_template_and_names_what_a_bench_shows(tmp_path):
         "tb_reg8: errors=1 not in [None, 0]",
         "tb_reg8: x_outputs=1 not in [None, 0]",
     ]
+
+
+@needs_iverilog
+def test_sim_proves_the_benches_with_the_list_of_changes_and_holds_the_list_itself(tmp_path):
+    """A bench that passes on every wrong design proves nothing about the right one. SIM makes each
+    change of rtl/mutations.json in a copy of the RTL and runs the benches there. Before 2026-11-12 the
+    gate only asked that the file be there, and `workcenter mutate` counted a change that does not
+    compile as caught."""
+    folder = a_project(tmp_path)
+    listed = folder / "rtl" / "mutations.json"
+    mutants = folder / "build" / "chip" / "sim" / "mutants"
+
+    def sim(*changes: tuple[str, str, str, str]) -> tuple[int, dict]:
+        keys = ("name", "file", "old", "new")
+        text = json.dumps({"mutations": [dict(zip(keys, change, strict=True)) for change in changes]})
+        listed.write_text(text, encoding="utf-8")
+        return gate("sim", folder)
+
+    enable = ("enable-ignored", "rtl/reg8.v", "else if (en) q", "else q")
+    code, record = sim(enable)
+    assert code == 0 and record["details"]["mutations"] == {
+        "enable-ignored": {"state": "caught", "by": "tb_reg8: errors=1 not in [None, 0]"}
+    }
+    # the change is made in a copy under the output folder: the project's RTL is as it was
+    changed = mutants / "001" / "src" / "rtl" / "reg8.v"
+    assert "else q <= d;" in changed.read_text(encoding="utf-8")
+    assert "else if (en) q <= d;" in (folder / "rtl" / "reg8.v").read_text(encoding="utf-8")
+    assert json.loads((folder / "build" / "chip" / "sim" / "passed.json").read_text(encoding="utf-8"))
+    # a change that no check of the bench sees: the bench loads A5 and 3C, never FF
+    blind = ("ff-loads-0", "rtl/reg8.v", "q <= d;", "q <= (d == 8'hFF) ? 8'h00 : d;")
+    code, record = sim(enable, blind)
+    assert code == 1 and record["details"]["failures"] == [
+        "the benches pass with the change ff-loads-0 in rtl/reg8.v: add the check that fails on it"
+    ]
+    assert record["summary"] == "1 benches, 4 checks, 1 of 2 changes of the RTL caught, 1 failures"
+    assert record["details"]["mutations"]["ff-loads-0"] == {"state": "survived", "by": ""}
+    assert not (folder / "build" / "chip" / "sim" / "passed.json").exists()
+    # a change that does not compile shows nothing: it is a failure of the list, not a catch
+    broken = ("no-semicolon", "rtl/reg8.v", "q <= d;", "q <= d")
+    code, record = sim(enable, broken)
+    assert code == 1 and len(record["details"]["failures"]) == 1
+    assert record["details"]["failures"][0].startswith(
+        "rtl/mutations.json: the change no-semicolon does not compile, so it shows nothing: tb_reg8: does "
+        "not compile: "
+    )
+    assert record["details"]["mutations"]["no-semicolon"]["state"] == "no build"
+    # each change names 1 place of a file the RTL is read from; a list that does not is not run at all
+    twice = ("vague", "rtl/reg8.v", "q <= ", "q <= ~")
+    absent = ("gone", "rtl/reg8.v", "no such text", "x")
+    bench = ("in-the-bench", "tb/tb_reg8.v", "expect_q(8'h3C);", "expect_q(8'h3D);")
+    code, record = sim(enable, twice, absent, bench)
+    assert code == 1 and record["details"]["failures"] == [
+        "rtl/mutations.json: vague: rtl/reg8.v holds the old text 2 times: it must name 1 place",
+        "rtl/mutations.json: gone: rtl/reg8.v holds the old text 0 times: it must name 1 place",
+        "rtl/mutations.json: in-the-bench: tb/tb_reg8.v is no file the RTL is read from: a change is made in "
+        "the RTL, and the benches stay as they are",
+    ]
+    assert "mutations" not in record["details"] and not mutants.exists()
+    # a list the gate cannot read
+    listed.write_text('{"mutations": [{"name": "half"}]}', encoding="utf-8")
+    code, record = gate("sim", folder)
+    assert code == 1 and record["details"]["failures"] == [
+        "rtl/mutations.json: mutations.json: mutation 1 needs name, file, old and new, each as text"
+    ]
+
+
+@needs_iverilog
+def test_a_change_that_makes_a_bench_wait_for_ever_is_stopped_and_caught(tmp_path):
+    """A bench with no count of cycles waits for a value. With a change that never gives the value the
+    simulation never ends. SIM stops a changed copy at 10 times the bench's own run, 20 s at least,
+    whatever --timeout says: the wait is what caught the change."""
+    folder = a_project(tmp_path)
+    first = "expect_q(8'h00);  //"
+    swap(folder / "tb" / "tb_reg8.v", first, f"wait (q === 8'h00);\n        {first}")
+    change = {"name": "reset-to-1", "file": "rtl/reg8.v", "old": "q <= 8'd0", "new": "q <= 8'd1"}
+    (folder / "rtl" / "mutations.json").write_text(json.dumps([change]), encoding="utf-8")
+    code, record = gate("sim", folder, "--timeout", 3600)
+    assert code == 0, record["details"]["failures"]
+    caught = record["details"]["mutations"]["reset-to-1"]
+    assert caught["state"] == "caught"
+    assert caught["by"].startswith("tb_reg8: vvp passed its time limit of 20 s and was stopped (log ")
+    assert 20 <= record["seconds"] < 40
 
 
 @needs_iverilog

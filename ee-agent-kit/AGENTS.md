@@ -59,6 +59,20 @@ provides them. `python3 tools/workcenter doctor` says what is present.
     writes into the project.
 16. `CLAUDE.md` and `AGENTS.md` at the repository's root are the same
     text. `make verify` checks it.
+17. The chip gates run in the order LINT, SIM, SYNTH, LAYOUT, STA, GLSIM,
+    DRC, ANTENNA, LVS, EXPORT and stop at the first that does not pass.
+    Every one is required: a chip gate that did not run is the verdict,
+    `SKIPPED (GATE: reason)`, however many passed.
+18. A chip gate that passes writes a record: the hash of each file it
+    read, taken before its engines start and held after, and of each file
+    it hands on. EXPORT copies a layout only when all 9 records agree
+    with the files as they are.
+19. No file, cell, layer or number of a process is written in
+    `tools/chip*.py` or `tools/chipscripts/`: each comes from a table in
+    `pdks/`, with its source. A test holds it.
+20. `tools/chipflow.py`, `tools/chipfront.py`, `tools/chipback.py` and
+    `tools/chipguide.py` use the standard library only, as the CLI does.
+21. A number a gate prints about a file is counted in that file (M167).
 
 ## Landmine map
 

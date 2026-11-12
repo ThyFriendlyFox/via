@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import json
 import re
-import shlex
 import shutil
 import subprocess
 import sys
@@ -28,7 +27,7 @@ CHIPS = ROOT / "tests" / "chips"
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "tests"))
 import chipflow  # noqa: E402
-from test_chipflow import CHIP, CLI, KIT, command  # noqa: E402
+from test_chipflow import CHIP, KIT, command  # noqa: E402
 
 # What a run needs, by the last gate it reaches: each engine by its name, the process kit as "kit".
 LINT = ("verilator",)
@@ -320,16 +319,31 @@ def test_the_processor_is_green_with_strict_and_its_layout_is_the_one_of_the_rea
     assert by_gate["drc"]["gds_sha256"] == built
 
 
-@pytest.mark.parametrize(("name", "mutations", "checks"), [("pass-counter", 5, 8), ("pass-acc8", 18, 1098)])
+@pytest.mark.parametrize(
+    ("name", "benches", "checks", "changes"), [("pass-counter", 1, 8, 5), ("pass-acc8", 5, 1098, 18)]
+)
 @needs(SIM)
-def test_every_mutation_of_a_passing_fixture_is_caught_by_a_comparison(name, mutations, checks):
-    fixture = CHIPS / name
-    sim = shlex.join([sys.executable, str(CLI), "chip", "sim", "."])
-    ran = command("mutate", fixture, "--mutations", fixture / "rtl" / "mutations.json", "--test", sim)
-    lines = ran.stdout.splitlines()
-    assert ran.returncode == 0, ran.stdout + ran.stderr
-    assert lines[-1].startswith(f"mutate: {mutations} mutations, {mutations} caught, 0 survived, 0 did not ")
-    # A mutant that does not compile fails the gate too, and `mutate` counts it as caught. Each of these
-    # ran every check of every bench: a comparison caught it.
-    caught = [line for line in lines if line.startswith("caught ")]
-    assert len(caught) == mutations and all(f" {checks} checks, " in line for line in caught), caught
+def test_sim_proves_each_change_of_a_passing_fixtures_list(name, benches, checks, changes, tmp_path):
+    """SIM makes each change of rtl/mutations.json in a copy of the RTL and runs the benches on it. Each
+    change here compiles, and a bench's own measure catches it: a count of errors, and for the change
+    that leaves the output port out of the reset a count of unknown outputs. No compile failed, and no
+    bench was stopped."""
+    project = copy_of(name, tmp_path)
+    ran = command("--json", "chip", "sim", project, "--strict")
+    record = json.loads(ran.stdout)[0]
+    assert ran.returncode == 0, record["details"]["failures"]
+    assert record["summary"] == (
+        f"{benches} benches, {checks} checks, {changes} of {changes} changes of the RTL caught, 0 failures"
+    )
+    proven = record["details"]["mutations"]
+    listed = json.loads((project / "rtl" / "mutations.json").read_text(encoding="utf-8"))["mutations"]
+    assert list(proven) == [change["name"] for change in listed] and len(proven) == changes
+    assert {entry["state"] for entry in proven.values()} == {"caught"}
+    by = {change: entry["by"] for change, entry in proven.items()}
+    unknown = by.pop("reset-leaves-out-port", None)
+    assert unknown == (None if name == "pass-counter" else "tb_crc: x_outputs=73 not in [None, 0]")
+    assert all(re.fullmatch(r"tb_\w+: errors=\d+ not in \[None, 0\]", line) for line in by.values()), by
+    # the copies are under the output folder, and the project is as it was
+    assert sorted(p.name for p in (project / "build" / "chip" / "sim" / "mutants").iterdir()) == [
+        f"{n:03d}" for n in range(1, changes + 1)
+    ]

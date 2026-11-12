@@ -264,13 +264,14 @@ images are drawn.
 | `tools/guide.py` | `workcenter next`: the one next step and the fix for each kind of failure. |
 | `tools/chipflow.py` | `workcenter chip`: what the chip gates share. It reads `chip.json`, the constraints and a process table, selects the timing corners, starts the engines and drives the gates to a verdict. |
 | `tools/chipfront.py`, `tools/chipback.py`, `tools/chipscripts/` | The chip gates LINT, SIM, SYNTH and GLSIM; the chip gates LAYOUT, STA, DRC, ANTENNA, LVS and EXPORT; the engine scripts the chip gates run. |
+| `tools/chipguide.py` | `workcenter next` for a chip project: the one next step, from `chip.json` to a GREEN layout. |
 | `tools/inspect_board.py`, `tools/stretch.py` | Read a routed board with KiCad's geometry; grow a design at a cut. |
 | `tools/doctools.py`, `tools/scene.py`, `tools/wrlgen.py` | Document commands; assembly scenes; 3D bodies. |
 | `tools/pdfcurve.py`, `tools/kistack_board.py` | A PDF page's vector paths; the board reader kistack's checks run on. |
 | `tools/hooks/` | Claude Code hooks: no `cd` in a command, no test written by a script. |
 | `WORKCENTER.md` | The contract a project gets from this workcenter. |
 | `AGENTS.md`, `CLAUDE.md` | Where an agent starts. The same text. |
-| `.claude/skills/` | `attached-repos`, `autoroute`, `blog-post`, `board-design`, `board-gates`, `kistack`, `procurement`, `simulate`, `verification`. |
+| `.claude/skills/` | `attached-repos`, `autoroute`, `blog-post`, `board-design`, `board-gates`, `chip-design`, `chip-gates`, `kistack`, `procurement`, `simulate`, `verification`. |
 | `templates/` | A first design file, a version's README and gates report, `corners.json`, `frequency-plan.json`, the verification package. |
 | `rules/` | A fabrication house's limits as KiCad design rules. One house so far. |
 | `tests/` | The tests of the tools. `tests/boards/` holds the fixture boards and what each proves. |
