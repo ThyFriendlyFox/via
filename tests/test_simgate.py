@@ -389,6 +389,35 @@ def test_a_value_ngspice_reads_as_another_number_fails_its_deck(tmp_path):
     ]
 
 
+ALTERMOD = """* a diode's model switched in .control, 2 parameters on 1 altermod line
+V1 in 0 DC 1
+R1 in a 1k
+D1 a 0 DMOD
+.model DMOD D(is=1e-14 rs=0)
+.control
+altermod DMOD is=1e-12 rs=500
+op
+let va = v(a)
+print va
+.endc
+.end
+"""
+
+
+@needs_ngspice
+def test_an_altermod_line_with_two_parameters_fails_its_deck(tmp_path):
+    """ngspice 42 applies `is` and drops `rs` without a word: v(a) is 0.5172 V, the diode with is=1e-12
+    alone; with both it is 0.6715 V. The bound holds either; the deck fails on the line (M159)."""
+    proj = project(tmp_path, {"alt": ALTERMOD}, {"alt": {"va": {"min": 0.4, "max": 0.8}}})
+    code, records = run("sim", proj, "--out", tmp_path / "o")
+    assert code == 1
+    assert records[0]["details"]["decks"]["alt"]["measures"]["va"] == pytest.approx(0.5171734, abs=1e-5)
+    assert records[0]["details"]["failures"] == [
+        "alt: altermod DMOD: ngspice applies only the first parameter on the line (is) and drops rs. "
+        "Write 1 altermod line for each parameter"
+    ]
+
+
 @needs_ngspice
 def test_a_node_that_floats_is_a_warning_and_fails_a_strict_run(tmp_path):
     proj = project(tmp_path, {"floating": FLOATING}, {"floating": {"vout": {"min": 2.4, "max": 2.6}}})

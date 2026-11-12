@@ -955,3 +955,57 @@ What happened: I changed `site/site.css` and `site/effects.js` under the same na
 Cost: the owner saw a page half new and half old; a change to `site/build.sh` and a test.
 Root cause: A file the page names kept its name when its content changed, and P32 step 3 fetched only the host's own address, without the headers that would have shown the 4 hours.
 Process: P32
+
+## M158 — 2026-11-11 — A deck read with bare ngspice, M94 again
+What happened: To quote the current-sense deck's temperature results for Last Hit v0.17, I ran `ngspice -b isense.cir` in its folder. It printed 16.1 A for a true 6 A and 3.26 V where the monitor gives 1.2 V: without the gate's PSpice mode and translation, Diodes' model ran as another circuit, with exit 0. P28 step 5 says a deck run by hand runs only through `workcenter sim <project> --deck <name>`. The gate's run gave 6.007 A.
+Cost: 1 wrong reading, caught before it was written; the deck run again the gate's way.
+Root cause: I reached for ngspice by habit and did not read P28 step 5 again before a hand run.
+Process: P28
+
+## M159 — 2026-11-12 — A corner's model switch that moved 1 parameter of 5
+What happened: Last Hit's heater deck switches the protection switch to its maximum model with `altermod SISF12_TYP vto=1.0 kp=550 rd=1.15m rs=0.125m rg=1.7`. ngspice 42 applies the first parameter of an altermod line and drops the rest without a word, so the "maximum" case moved only the threshold. Every version since v0.14 had a line like it. In v0.16 its result, 64.6 mV, sat near the old switch's 21 mΩ row by chance and agreed with the hand analysis. With v0.17's switch the deck read 21.4 mV where the hand value was 23.3 mV. The drop across the switch, measured in a copy of the deck, gave 3.67 mΩ: the typical model with the maximum's threshold. A diode deck showed the same: `altermod DMOD is=1e-12 rs=500` changes `is` only.
+Cost: 3 versions' REQ-PRT-01 rested on a model change that did not happen (each passed by a wide margin either way); 1 deck fixed and 7 quotes corrected in v0.17.
+Root cause: Nothing checked that a model switch took: the deck printed the protection's reading, never the switch's resistance in that case, and ngspice says nothing. The SIM gate now fails a deck with several parameters on 1 altermod line.
+Process: P28
+
+## M160 — 2026-11-11 — A model fitted at a coarse step
+What happened: I fitted the SiSF12EDN's gate capacitances to its 2 gate-charge rows with a standalone transient at a 10 ns step: 44.7 and 24.2 nC against the table's 45.5 and 25. In the MOSFET deck, at a 2 ns step, the same model gave 53.0 and 32.5 nC, 16 and 30 % high. A grid fitted at 2 ns gave 42.5 and 26.4 nC.
+Cost: 1 refit, and the model library's comment rewritten.
+Root cause: A value read from a transient's crossing time depends on the step; I fitted at one step and checked at another.
+Process: P28
+
+## M161 — 2026-11-11 — 3 helpers at once, facts pasted into their briefs, the lead in their checkout
+What happened: For Last Hit v0.17's verification package I started 3 helpers at once. Each brief pasted the settled numbers instead of pointing at a FACTS.md, and I kept editing the README in the checkout they wrote to. The comparator's highest trip went out as 7.06 A; the requirements helper derived 7.09 A, and 2 files disagreed until I aligned them. The dead short went out as v0.16's 39 A, a figure taken with v0.16's switch in its loop; the calculations helper found 43.6 A. I ran `git stash` and `git stash pop` in that checkout while 2 helpers wrote to it; the pop came back clean. When the owner changed the part, 2 helpers were stopped part-way, and 2 more were started on their partial files.
+Cost: 2 numbers corrected in 6 files; 2 helpers' work restarted; a stash that could have lost a helper's write.
+Root cause: I did not read P31 and P28 step 8 before starting the helpers.
+Process: P31
+
+## M162 — 2026-11-11 — A scratch script wrote into the project
+What happened: A grid fit run as `python3 - <<EOF` wrote its deck to `os.path.dirname(os.path.abspath(__file__))`. Under `python3 -` that is the working directory, here the board repository, and `f.cir` landed in its root. `git status` showed it before a commit.
+Cost: 1 stray file, found and removed before it was committed.
+Root cause: The script built its output path from `__file__`, which a script read from stdin does not have as a file.
+Process: P8
+
+## M163 — 2026-11-11 — `workcenter costs` failed on a sentence that named its marker
+What happened: A board repository's CLAUDE.md says `costs` "writes the totals between the `<!-- workcenter costs -->` markers". `workcenter costs` priced every board, wrote both tables, and failed on `CLAUDE.md: <!-- workcenter costs --> has no closing marker`. The check looked for the marker's text anywhere in a file, and the sentence holds it. I rephrased the sentence to get past it.
+Cost: a red costs run and a sentence rewritten in the board repository; the check fixed here.
+Root cause: `unclosed()` matched the marker as a substring, not as the line `wrap_block` writes.
+Process: P7
+
+## M164 — 2026-11-12 — A merge by switching the checkout, stopped half-way
+What happened: To put Last Hit v0.17 on `main` I ran `git checkout main && git merge --ff-only v0.17 && git push` in the working checkout. The owner stopped the command during the checkout. The tree was left half switched: on `main`, with v0.17's README and 4 more files changed, 185 untracked files of v0.17, and the base schematic cut to 0 bytes. Every file was in the pushed branch. I compared each with it, moved the untracked files aside, stashed the 5, switched back and dropped the stash. The merge then went as `git push origin origin/v0.17:refs/heads/main` after `git merge-base --is-ancestor`, with no switch.
+Cost: a half-switched checkout, inspected and restored file by file.
+Root cause: A fast-forward needs no checkout, and I switched the working tree to make one.
+Process: P14
+
+## M165 — 2026-11-11 — A part placed against its nominal body
+What happened: I placed Last Hit v0.17's protection switch, a PowerPAK 1212-8SCD (3.30 mm nominal, 3.40 mm at most by its drawing), between the USB receptacle's shell legs and checked its body against the legs' pads at 3.30 mm: 0.03 mm clear. The DRC then put the legs' holes inside its courtyard, and at the drawing's 3.40 mm the body's corner met a leg's pad by 0.035 mm. The switch moved 0.2 mm, which moved a via and cost another route.
+Cost: 1 extra route and a moved via.
+Root cause: The clearance was judged at the body's nominal size, not at the package drawing's largest.
+Process: P29
+
+## M166 — 2026-11-12 — A board fact written from memory
+What happened: In Last Hit v0.17's README I wrote that the current monitor sits "on the other face of the board" from the MCU, as the reason the MCU's die temperature is a poor stand-in for the monitor's. Reading back, I checked the board: both are on the bottom face, 7 mm apart, the monitor beside the shunt. The sentence was corrected before the commit.
+Cost: 1 sentence rewritten.
+Root cause: A position stated without reading it from the board.
+Process: P5

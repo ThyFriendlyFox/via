@@ -55,6 +55,17 @@ def write(path: Path, text: str | bytes) -> Path:
 # ------------------------------------------------------------ shared logic
 
 
+def test_a_marker_named_in_a_sentence_is_no_block():
+    """A board repository's CLAUDE.md says `costs` writes between the `<!-- workcenter costs -->`
+    markers; `workcenter costs` took that for a block with no end and failed (M163)."""
+    prose = "- writes the totals between the `<!-- workcenter costs -->`\n  markers (README.md)\n"
+    assert not doctools.unclosed(prose, "costs")
+    block = "<!-- workcenter costs -->\nold\n<!-- /workcenter costs -->\n"
+    assert doctools.fill_block(prose + block, "costs", "new") == (prose + block.replace("old", "new"), 1)
+    named = "say `<!-- workcenter costs -->`\nold\n<!-- /workcenter costs -->\n"
+    assert doctools.fill_block(named, "costs", "x") == (named, 0)
+
+
 def test_fill_block_rewrites_only_between_its_markers():
     text = (
         "intro\n<!-- workcenter costs -->\nold\n<!-- /workcenter costs -->\nmiddle\n"

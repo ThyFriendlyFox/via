@@ -279,7 +279,9 @@ number, or text that is not JSON fails the gate with the line that is
 wrong. An analysis ngspice gave up on fails its deck even when a later
 analysis completes. A complex value is no measure. A name printed 2 times
 with 2 values is judged on each. A value ngspice reads as another number
-than it looks (`4k7` is 4 k) fails its deck. The user's own `~/.spiceinit`
+than it looks (`4k7` is 4 k) fails its deck, and so does an `altermod`
+line with more than 1 parameter: ngspice 42 applies the first and drops
+the rest. The user's own `~/.spiceinit`
 does not reach a deck or a corner. A node that floats (`singular matrix`)
 is a warning.
 
@@ -416,7 +418,9 @@ stale (`tools/doctools.py`):
   lists in `parts/lists/<id>.csv` and `.md`, and writes the totals table
   into every Markdown file holding `<!-- workcenter costs -->` ...
   `<!-- /workcenter costs -->`, and the links to the lists into every
-  `<!-- workcenter costs lists -->` block (M97).
+  `<!-- workcenter costs lists -->` block (M97). A marker counts only alone
+  on its line, as the command writes it: one named in a sentence is prose
+  (M163).
 - `workcenter pictures <version>` is `PROCESSES.md` P23 in one command,
   from the version's `pictures.json` (written with the defaults when
   absent): each board's `render --strict` stills and layers, its turning
