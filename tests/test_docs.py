@@ -210,15 +210,17 @@ def test_a_count_of_tests_in_the_status_file_is_what_pytest_collects():
 def test_a_pointer_to_a_roadmap_item_gives_its_number_and_its_title():
     """The queue is renumbered when an item ships. STATUS.md pointed at `ROADMAP item 2` for the
     autoroute work after that item had become item 4 (M160). A pointer carries the item's title, and
-    the pair is a heading of the roadmap."""
+    the pair is a heading of the roadmap. ENGINES.md kept 2 bare `ROADMAP item 1` for that work through
+    3 renumberings, until the chip item shipped on 2026-11-12: it is read here too."""
     roadmap = (ROOT / "ee-agent-kit" / "ROADMAP.md").read_text(encoding="utf-8")
     items = dict(re.findall(r"^### (\d+)\. (.+)$", roadmap, re.M))
     assert len(items) >= 4
     pointers = []
-    for rel in ("README.md", "WORKCENTER.md", "ee-agent-kit/STATUS.md", "ee-agent-kit/docs/USE-CASES.md"):
+    documents = ("README.md", "WORKCENTER.md", "ee-agent-kit/STATUS.md", "ee-agent-kit/CHANGELOG.md")
+    for rel in (*documents, "ee-agent-kit/docs/USE-CASES.md", "ee-agent-kit/docs/ENGINES.md"):
         text = (ROOT / rel).read_text(encoding="utf-8")
         pointers += [(rel, n, title) for n, title in re.findall(r'ROADMAP item (\d+)(?:, "([^"]+)")?', text)]
-    assert len(pointers) >= 2
+    assert len(pointers) >= 4
     assert [p for p in pointers if items.get(p[1]) != p[2]] == []
 
 
@@ -261,11 +263,19 @@ def runs_in(text: str) -> list[tuple[tuple[str, ...], list[str]]]:
     return runs
 
 
+def chip_engines_absent() -> list[str]:
+    """Each chip engine, and the process kit, that this machine lacks: a chip's run needs them all."""
+    sys.path.insert(0, str(ROOT / "tests"))
+    from test_chips import EVERY, absent
+
+    return absent(EVERY)
+
+
 def masked(line: str) -> str:
     """A printed line without what differs between 2 runs of 1 command: the seconds, and the folder
     the checkout is in."""
     line = re.sub(r"\[\d+\.\d+s\]", "[s]", line)
-    return re.sub(r"(report )\S*?((?:tests/boards|examples)/)", r"\1\2", line)
+    return re.sub(r"(report )\S*?((?:tests/boards|tests/chips|examples)/)", r"\1\2", line)
 
 
 @pytest.mark.skipif(
@@ -273,9 +283,10 @@ def masked(line: str) -> str:
     reason="kicad-cli and ngspice run the gates the documents show",
 )
 def test_every_run_a_document_shows_is_what_the_command_prints(tmp_path):
-    """The README and the site show runs on fixture boards and on the example project. A gate's
-    summary changes when the gate does: 46 corner runs were 18. A run typed once and not run again
-    goes stale."""
+    """The README and the site show runs on fixture boards, on the example project and on the fixture
+    processor. A gate's summary changes when the gate does: 46 corner runs were 18. A run typed once
+    and not run again goes stale. The chip's run is made where the chip engines are installed: they
+    install on request, and it takes 4 minutes."""
     documents = {
         "README.md": README,
         "site/index.html": as_document(SITE / "index.html"),
@@ -283,8 +294,14 @@ def test_every_run_a_document_shows_is_what_the_command_prints(tmp_path):
     shown = {
         (name, argv): lines for name, text in documents.items() for argv, lines in runs_in(text) if lines
     }
-    assert len(shown) == 5 and {name for name, _ in shown} == set(documents)
-    boards = {arg for _, argv in shown for arg in argv if arg.startswith(("tests/boards/", "examples/"))}
+    assert len(shown) == 6 and {name for name, _ in shown} == set(documents)
+    assert [argv for _, argv in shown if argv[0] == "chip"] == [
+        ("chip", "gates", "tests/chips/pass-acc8", "--strict")
+    ]
+    if chip_engines_absent():
+        shown = {key: lines for key, lines in shown.items() if key[1][0] != "chip"}
+    kept = ("tests/boards/", "tests/chips/", "examples/")
+    boards = {arg for _, argv in shown for arg in argv if arg.startswith(kept)}
     for board in boards:
         shutil.copytree(ROOT / board, tmp_path / board, ignore=shutil.ignore_patterns("build", "__pycache__"))
     printed: dict[tuple[str, ...], list[str]] = {}
@@ -513,6 +530,8 @@ def test_every_picture_and_link_in_a_readme_names_a_file():
             "site/media/layers.png",
             "site/media/diagram.png",
             "site/media/diagram-dark.png",
+            "site/media/chip.png",
+            "site/media/chip-met2.png",
         },
         media / "README.md": {
             "hero.png",
@@ -523,6 +542,11 @@ def test_every_picture_and_link_in_a_readme_names_a_file():
             "layers.png",
             "diagram.png",
             "diagram-dark.png",
+            "chip.png",
+            "chip-met1.png",
+            "chip-met2.png",
+            "chip-met3.png",
+            "chip-met4.png",
         },
     }
     for document, expected in shown.items():

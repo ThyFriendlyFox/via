@@ -1242,13 +1242,7 @@ def gate_export(run):
 
     named: set[str] = set()
     for gate in chipfront.INPUT_GATES:
-        lines = run.changed_since(gate, records[gate])
-        lines += [
-            f"{run.name_of(path)} was added after {gate.upper()} passed. Run the gates again"
-            for path in chipfront.project_inputs(run, gate)
-            if path.is_file() and run.name_of(path) not in records[gate]["judged"]
-        ]
-        for line in lines:
+        for line in chipfront.not_as_passed(run, gate, records[gate]):
             name = line.split(" ", 1)[0]
             if name not in named and not name.startswith("chip/layout/"):
                 named.add(name)

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 import shutil
 import xml.etree.ElementTree as ET
@@ -42,7 +43,45 @@ LINT_FAIL = (
     "BLKANDNBLK",
 )
 VERILATOR_RE = re.compile(r"^%(Warning|Error)(?:-([A-Z0-9_]+))?: (.*)$")
-LINT_OFF_RE = re.compile(r"verilator\s+lint_off\s+([A-Z0-9_]+)")
+# Text that makes 1 engine read another design than the next. LINT judges what Verilator reads, SIM
+# what Icarus Verilog reads and SYNTH what Yosys reads: the 3 are 1 design only while no line speaks to
+# 1 of them alone. Each entry: (pattern, whether it is looked for in comments too, what the line says).
+# A comment that turns a check off is read in any case of letters and for any class: Verilator takes
+# `widthtrunc` and the group name `WIDTH` as it takes `WIDTHTRUNC`.
+TWO_DESIGNS = (
+    (
+        re.compile(r"verilator\s+lint_off\s+(-rule\s+)?(?P<what>\w+)", re.I),
+        True,
+        "lint_off {what} turns off a check of this gate: remove the comment and change the code",
+    ),
+    (
+        re.compile(r"`verilator_config\b|^\s*lint_off\s+-", re.I),
+        True,
+        "a verilator_config block turns off checks of this gate: remove it and change the code",
+    ),
+    (
+        re.compile(r"`(?:ifdef|ifndef|elsif)\s+(?P<what>VERILATOR|SYNTHESIS|YOSYS|__ICARUS__)\b"),
+        False,
+        "`{what}` is defined by 1 engine and by no other: each would read another design. Write 1 text "
+        "for all of them",
+    ),
+    (
+        re.compile(r"\b(?P<what>(?:translate|synthesis)_(?:off|on))\b", re.I),
+        True,
+        "{what} marks text that the synthesizer skips and the simulator reads: remove the comment",
+    ),
+    (
+        re.compile(r"\b(?P<what>full_case|parallel_case)\b", re.I),
+        True,
+        "{what} tells the synthesizer what the simulator is not told: write the `default:` instead",
+    ),
+    (
+        re.compile(r"(?P<what>\$readmem[bh])\b"),
+        False,
+        "{what} reads a file while an engine runs, and each engine looks for it in another folder: "
+        "write the contents in the RTL, as a `case`",
+    ),
+)
 # What every bench prints, and the bound each holds without an expect file.
 BENCH_MEASURES = {"errors": {"max": 0}, "checks": {"min": 1}, "x_outputs": {"max": 0}}
 MEASURE_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)\s*$")
@@ -58,17 +97,27 @@ CHECK_RE = re.compile(r"has no driver|conflicting drivers|logic loop|unmapped in
 CONSTANT_RE = re.compile(r"\b\d+'[bhd][0-9a-fA-FxXzZ_]+")
 LIBERTY_CELL_RE = re.compile(r'^\s*cell\s*\(\s*"?([^"\s)]+)"?\s*\)\s*\{')
 QUOTED_RE = re.compile(r'"[^"]*"')
-# A file that Verilog source names and the engine then reads: a header, a memory's contents.
-NAMED_FILE_RE = re.compile(r'(?:`include\s+|\$readmem[bh]\s*\(\s*)"([^"\n]+)"')
+# A header that Verilog source names by a text in quotes. The engines take `include"x.vh"` with no
+# space as they take it with one. A name written another way (through a macro) is not found here: each
+# gate adds the files its engine says it read to its record.
+NAMED_FILE_RE = re.compile(r'`include\s*"([^"\n]+)"')
+# vvp's own line for a bench that ended, `<file>:<line>: $finish called at <time> (<unit>)`: a bench
+# that prints the 2 words has not written this line.
+FINISHED_RE = re.compile(r"^.+:\d+: \$finish called at \d+ \(\w+\)\s*$", re.M)
+# The system tasks that read a file while a simulation runs. vvp opens such a file from the folder it
+# runs in, which is the gate's own, and names no file it opened: no record of a pass could hold it.
+READS_A_FILE = re.compile(r"\$(?:readmem[bh]?|fread|fscanf|fgets|fgetc|sdf_annotate)\b")
+# The list a compile writes of the files it read, in the folder of its bench.
+FILES_READ = "files.txt"
 # The gates that read the project's own files, in the order they run.
 INPUT_GATES = ("lint", "sim", "synth", "layout", "glsim")
 
 
 def read_with(sources: list[Path], folders: list[Path]) -> list[Path]:
-    """The sources and each file they name in an `include` or a `$readmemh`, and each file those name,
-    1 time each. An engine looks for a named file beside the file that names it or in a folder of
-    its `-I` list, and which one it takes differs between the engines: every file of that name in
-    any of those places is listed. A name with no file is left out: the engine's own error names it."""
+    """The sources and each header they name in an `include`, and each header those name, 1 time each.
+    An engine looks for a header beside the file that names it or in a folder of its `-I` list, and
+    which one it takes differs between the engines: every file of that name in any of those places is
+    listed. A name with no file is left out: the engine's own error names it."""
     out: list[Path] = []
     seen: set[Path] = set()
 
@@ -130,6 +179,20 @@ def inputs_moved(run, gate: str, taken: dict[str, str], *more: Path) -> list[str
     ]
 
 
+def not_as_passed(run, gate: str, record: dict) -> list[str]:
+    """A line for each file that is not what a gate's record of its pass names: a file of the record
+    that is other bytes now or gone, and a file the gate would read now that the record does not name.
+    EXPORT holds the files to this before it hands a layout out, and `workcenter next` before it reads
+    the report."""
+    lines = run.changed_since(gate, record)
+    lines += [
+        f"{run.name_of(path)} was added after {gate.upper()} passed. Run the gates again"
+        for path in project_inputs(run, gate)
+        if path.is_file() and run.name_of(path) not in record["judged"]
+    ]
+    return lines
+
+
 def passed(run, gate: str, result, taken: dict[str, str], *written: Path):
     """A gate's result, and on a pass the record of it: the hash of each file the gate judged. That is
     `taken`, the files it read, and `written`, the files it hands on. EXPORT asks every gate for its
@@ -169,19 +232,57 @@ def judge_lint(text: str) -> tuple[list[str], list[str]]:
     return failures, warnings
 
 
-def lint_off(files: list[Path], project: Path) -> list[str]:
-    """Each comment in the RTL that turns off a class LINT fails on. Verilator obeys the comment and
-    prints nothing, so the gate reads the text itself."""
+def two_designs(files: list[Path], project: Path) -> list[str]:
+    """A failure for each line of the RTL, and of each file it names, that makes 1 engine read another
+    design than the next (`TWO_DESIGNS`). Verilator obeys such a line and prints nothing, so the gate
+    reads the text itself."""
     out: list[str] = []
+    root = project.resolve()
     for path in files:
+        try:
+            where = str(path.resolve().relative_to(root))
+        except ValueError:
+            where = str(path)
         for n, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
-            for name in LINT_OFF_RE.findall(line):
-                if name in LINT_FAIL:
-                    out.append(
-                        f"{path.relative_to(project)}:{n}: lint_off {name} turns off a class this gate "
-                        "fails on: remove the comment and change the code"
-                    )
+            code = line.split("//", 1)[0]
+            for pattern, in_comments, said in TWO_DESIGNS:
+                found = pattern.search(line if in_comments else code)
+                if found:
+                    out.append(f"{where}:{n}: {said.format(**found.groupdict())}")
     return out
+
+
+def xml_files(xml_text: str) -> list[Path]:
+    """Each file Verilator says it read, from the `files` block of its XML: the RTL and every file an
+    `include` of any spelling brought in. A name that is no file (`<built-in>`) is left out."""
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        return []
+    found = [Path(node.get("filename", "")) for node in root.iter("file")]
+    return list(dict.fromkeys(path for path in found if path.is_file()))
+
+
+def port_widths(xml_text: str, top: str) -> dict[str, tuple[int, int]] | None:
+    """The top module's buses as {name: (first index, last index)} from Verilator's XML, or None when
+    it holds no such module. A port of 1 bit is not in it."""
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        return None
+    ranges = {
+        node.get("id"): (int(node.get("left")), int(node.get("right")))
+        for node in root.iter("basicdtype")
+        if node.get("left") is not None and node.get("right") is not None
+    }
+    for module in root.iter("module"):
+        if module.get("topModule") == "1" or module.get("origName") == top:
+            return {
+                v.get("origName") or v.get("name"): ranges[v.get("dtype_id")]
+                for v in module.findall("var")
+                if v.get("dir") and v.get("dtype_id") in ranges
+            }
+    return None
 
 
 def top_ports(xml_text: str, top: str) -> dict[str, str] | None:
@@ -211,11 +312,11 @@ def gate_lint(run):
     if missing:
         return missing
     chip = run.chip
+    folder = run.begin("lint")
     if not chip.rtl:
         return run.skip(
             "lint", f"chip.json names top {chip.top} and no file matches its rtl patterns: write the RTL"
         )
-    folder = run.begin("lint")
     taken = inputs_taken(run, "lint")
     files = [str(p) for p in chip.rtl]
     started = run.start(
@@ -240,8 +341,9 @@ def gate_lint(run):
     if stopped and not failures:
         # Verilator ended badly and named no error: the exit code is all there is.
         failures.append(stopped)
-    failures += lint_off(chip.rtl, run.project)
-    ports = None
+    folders = [Path(flag[2:]) for flag in include_dirs(run)]
+    failures += two_designs(read_with(chip.rtl, folders), run.project)
+    ports, widths, read = None, None, []
     if not failures:
         xml = run.start(
             [
@@ -259,16 +361,20 @@ def gate_lint(run):
             timeout=chipflow.TIME_LIMITS["lint"],
         )
         written = folder / "xml" / f"V{chip.top}.xml"
-        ports = (
-            top_ports(written.read_text(encoding="utf-8", errors="replace"), chip.top)
-            if written.is_file()
-            else None
-        )
+        said = written.read_text(encoding="utf-8", errors="replace") if written.is_file() else ""
+        ports = top_ports(said, chip.top) if said else None
         if ports is None:
             failures.append(
                 xml.problem("the top module's ports") or f"verilator wrote no ports for {chip.top}"
             )
-    sdc = chipflow.read_sdc(chip.constraints, ports)
+        else:
+            widths = port_widths(said, chip.top) or {}
+            # What Verilator itself says it read. A file of the project among them that the gate did
+            # not find by the text is read and goes into the record too: no spelling of an `include`
+            # keeps a header out of either.
+            read = [p for p in of_the_project(run, xml_files(said)) if run.name_of(p) not in taken]
+            failures += two_designs(read, run.project)
+    sdc = chipflow.read_sdc(chip.constraints, ports, widths)
     failures += sdc.problems
     if ports is not None and sdc.clock_port and ports.get(sdc.clock_port) != "input":
         failures.append(
@@ -288,15 +394,18 @@ def gate_lint(run):
         details,
         [folder / "verilator.log"],
     )
-    return passed(run, "lint", result, taken)
+    return passed(run, "lint", result, taken, *read)
 
 
 # ------------------------------------------------------------- SIM and GLSIM
 
 
 def benches(run) -> list[Path]:
+    """The project's benches: each file of `tb/` that is Verilog. A folder of such a name is none."""
     folder = run.project / "tb"
-    return sorted(p for p in folder.iterdir() if p.suffix in BENCH_SUFFIXES) if folder.is_dir() else []
+    if not folder.is_dir():
+        return []
+    return sorted(p for p in folder.iterdir() if p.suffix in BENCH_SUFFIXES and p.is_file())
 
 
 def bench_measures(text: str) -> dict[str, list[float]]:
@@ -334,7 +443,7 @@ def judge_bench(
     stopped = ran.problem(name)
     if stopped:
         return [stopped], warnings, {}
-    if "$finish called" not in ran.text:
+    if not FINISHED_RE.search(ran.text):
         failures.append(f"{name}: does not reach $finish: end the bench with $finish after its last check")
     printed = bench_measures(ran.text)
     measures = {key: values[-1] for key, values in printed.items()}
@@ -363,9 +472,78 @@ def judge_bench(
     return failures, warnings, measures
 
 
+def listed_files(path: Path) -> list[Path]:
+    """The files Icarus Verilog says it read (`-Mall`), 1 on a line: each source, and every file an
+    `include` of any spelling brought in."""
+    if not path.is_file():
+        return []
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    return list(dict.fromkeys(Path(line) for line in lines if line.strip()))
+
+
+def of_the_project(run, files) -> list[Path]:
+    """Those of the files that lie in the project's folder and are not the gates' own output."""
+    root, base = run.project.resolve(), run.base.resolve()
+    return [
+        path
+        for path in files
+        if root in path.resolve().parents and base not in path.resolve().parents and path.is_file()
+    ]
+
+
+def read_by(run, gate: str, chosen: list[Path]) -> list[Path]:
+    """The project's files that the compiles of these benches read, as the engine lists them."""
+    found = [p for bench in chosen for p in listed_files(run.base / gate / bench.stem / FILES_READ)]
+    return of_the_project(run, dict.fromkeys(found))
+
+
+def reads_a_file(files: list[Path], project: Path) -> list[str]:
+    """A failure for each line that reads a file while a simulation runs (`READS_A_FILE`)."""
+    out: list[str] = []
+    root = project.resolve()
+    for path in files:
+        try:
+            where = str(path.resolve().relative_to(root))
+        except ValueError:
+            where = str(path)
+        for n, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            found = READS_A_FILE.search(line.split("//", 1)[0])
+            if found:
+                out.append(
+                    f"{where}:{n}: {found.group(0)} reads a file while the bench runs. A bench runs in a "
+                    "folder of the gate's own, and no record of a pass would hold the file. Write the "
+                    "values in the text: in a header the bench includes, or as a `case` in the RTL"
+                )
+    return out
+
+
+def read_alone(run, sources: list[Path], folder: Path) -> set[Path] | None:
+    """The files the preprocessor reads for these sources and no other, each resolved: the sources and
+    every file an `include` of any spelling brings in. None when the engine wrote no list."""
+    folder.mkdir(parents=True, exist_ok=True)
+    started = run.start(
+        [
+            run.engine("iverilog"),
+            "-E",
+            "-g2012",
+            *include_dirs(run),
+            f"-Mall={folder / FILES_READ}",
+            "-o",
+            os.devnull,
+            *sources,
+        ],
+        cwd=folder,
+        log=folder / "preprocess.log",
+        timeout=chipflow.TIME_LIMITS["sim"],
+    )
+    listed = listed_files(folder / FILES_READ)
+    return {path.resolve() for path in listed} if started.exit == 0 and listed else None
+
+
 def bench_runs(run, bench: Path, sources: list, defines: list, includes: list, folder: Path, **limit):
     """Compile 1 bench with its sources and run it, in `folder`: (the compile, the run or None when the
-    bench did not compile). `limit` is the time each engine may take, as `Run.start` reads it."""
+    bench did not compile). `limit` is the time each engine may take, as `Run.start` reads it. The
+    compile writes the list of the files it read beside its log (`FILES_READ`)."""
     name = bench.stem
     folder.mkdir(parents=True, exist_ok=True)
     compiled = run.start(
@@ -378,6 +556,7 @@ def bench_runs(run, bench: Path, sources: list, defines: list, includes: list, f
             "-s",
             name,
             *includes,
+            f"-Mall={folder / FILES_READ}",
             "-o",
             folder / f"{name}.vvp",
             bench,
@@ -403,7 +582,7 @@ def run_bench(
     took). `sources` is what the bench is compiled with: the RTL for SIM, the final netlist and the
     library's cell models for GLSIM."""
     name = bench.stem
-    expect, problems = run.cli.read_expect(run.project / "tb" / f"{name}.expect.json")
+    expect, problems = run.cli.read_expect(run.project / "tb" / f"{name}.expect.json", lower_case=False)
     if problems:
         return [f"{name}.expect.json: {p}" for p in problems], [], {}, 0.0
     compiled, ran = bench_runs(
@@ -466,15 +645,27 @@ def run_mutations(run, found: list[Path], seconds: dict[str, float]) -> tuple[li
     if not listed:
         return [], [f"{MUTATIONS} lists no change: nothing shows that the benches can fail"], {}
     folders = sorted({p.parent.resolve() for p in run.chip.rtl} | {(run.project / "tb").resolve()})
-    read = {p.resolve() for p in read_with(run.chip.rtl, folders)}
+    # Which text is the RTL's and which a bench's, from the engine: it reads each alone.
+    reads = run.base / "sim" / "reads"
+    of_rtl = read_alone(run, run.chip.rtl, reads / "rtl")
+    of_bench = {bench: read_alone(run, [bench], reads / bench.stem) for bench in found}
+    if of_rtl is None or None in of_bench.values():
+        where = short(str(reads), run)
+        return [f"iverilog wrote no list of the files it read: {where} holds its logs"], [], {}
     failures = []
     for change in listed:
         target = (run.project / change["file"]).resolve()
         count = target.read_bytes().count(change["old"].encode()) if target.is_file() else -1
-        if target not in read:
+        also = [bench for bench in found if target in of_bench[bench]]
+        if target not in of_rtl:
             failures.append(
                 f"{MUTATIONS}: {change['name']}: {change['file']} is no file the RTL is read from: a "
                 "change is made in the RTL, and the benches stay as they are"
+            )
+        elif also:
+            failures.append(
+                f"{MUTATIONS}: {change['name']}: the bench {run.name_of(also[0])} reads {change['file']} "
+                "too: the change would change the bench with the RTL. Make it in a file the RTL alone reads"
             )
         elif count != 1:
             failures.append(
@@ -484,6 +675,8 @@ def run_mutations(run, found: list[Path], seconds: dict[str, float]) -> tuple[li
     if failures:
         return failures, [], {}
     root, out = run.project.resolve(), run.out.resolve()
+    # A file of another folder that a compile read, by a path from the file that names it.
+    others = [p.resolve() for p in read_by(run, "sim", found) if p.resolve().parent not in folders]
 
     def not_the_output(folder: str, names: list[str]) -> list[str]:
         """A source folder is copied without the folder the gates write into."""
@@ -496,13 +689,17 @@ def run_mutations(run, found: list[Path], seconds: dict[str, float]) -> tuple[li
         copies = {source: folder / "src" / source.relative_to(root) for source in folders}
         for source, copy in copies.items():
             shutil.copytree(source, copy, ignore=not_the_output, dirs_exist_ok=True)
+        for source in others:
+            copy = folder / "src" / source.relative_to(root)
+            copy.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, copy)
         changed = folder / "src" / (run.project / change["file"]).resolve().relative_to(root)
         changed.write_bytes(changed.read_bytes().replace(change["old"].encode(), change["new"].encode(), 1))
         sources = [folder / "src" / p.resolve().relative_to(root) for p in run.chip.rtl]
         includes = [f"-I{copy}" for copy in copies.values()]
         for bench in found:
             name = bench.stem
-            expect, _ = run.cli.read_expect(run.project / "tb" / f"{name}.expect.json")
+            expect, _ = run.cli.read_expect(run.project / "tb" / f"{name}.expect.json", lower_case=False)
             compiled, ran = bench_runs(
                 run,
                 folder / "src" / bench.resolve().relative_to(root),
@@ -552,8 +749,16 @@ def gate_sim(run):
         return run.skip("sim", "no file matches chip.json's rtl patterns: write the RTL")
     run.begin("sim")
     taken = inputs_taken(run, "sim")
+    folders = [Path(flag[2:]) for flag in include_dirs(run)]
+    failures = reads_a_file(read_with([*run.chip.rtl, *found], folders), run.project)
+    if failures:
+        return run.result("sim", failures, [], f"{len(found)} benches, none run")
     sources = [str(p) for p in run.chip.rtl]
     failures, warnings, measures, seconds = run_benches(run, "sim", found, sources, [])
+    # What the compiles themselves say they read. A file of the project among them that the gate did
+    # not find by the text is read and goes into the record too.
+    read = [p for p in read_by(run, "sim", found) if run.name_of(p) not in taken]
+    failures += reads_a_file(read, run.project)
     for name in run.chip.rtl_only:
         if name not in measures:
             failures.append(f"chip.json: benches.{name}: tb/ holds no bench of that name")
@@ -571,7 +776,7 @@ def gate_sim(run):
             summary += f", {caught} of {len(states)} changes of the RTL caught"
     failures += inputs_moved(run, "sim", taken)
     result = run.result("sim", failures, warnings, summary, details)
-    return passed(run, "sim", result, taken)
+    return passed(run, "sim", result, taken, *read)
 
 
 OPEN_PORT = re.compile(r"dangling input port \d+ \((\w+)\) floating")
@@ -591,6 +796,28 @@ def netlist_warnings(warnings: list[str], kit: str, supply: set[str]) -> list[st
             continue
         kept.append(warning)
     return kept
+
+
+def netlist_only(files: list[Path], defines: list[str], project: Path) -> list[str]:
+    """A failure for each line of a bench, or of a header it includes, that asks whether a name is
+    defined which the gate defines for the run on the netlist alone (the table's `defines`): the bench
+    would be 1 text in SIM and another in GLSIM, and the 2 gates would not judge the same checks."""
+    names = "|".join(re.escape(define.split("=", 1)[0]) for define in defines)
+    if not names:
+        return []
+    asked = re.compile(rf"`(?:ifdef|ifndef|elsif)\s+(?P<what>{names})\b")
+    out: list[str] = []
+    root = project.resolve()
+    for path in files:
+        where = str(path.resolve().relative_to(root))
+        for n, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            found = asked.search(line.split("//", 1)[0])
+            if found:
+                out.append(
+                    f"{where}:{n}: `{found.group('what')}` is defined for the run on the netlist and not for "
+                    "the run on the RTL: the bench would be another text in each. Write 1 text for both"
+                )
+    return out
 
 
 def gate_glsim(run):
@@ -622,6 +849,9 @@ def gate_glsim(run):
     run.begin("glsim")
     taken = inputs_taken(run, "glsim", netlist)
     failures, warnings, measures, _ = run_benches(run, "glsim", chosen, sources, list(models["defines"]))
+    compiled_from = read_by(run, "glsim", chosen)
+    read = [p for p in compiled_from if run.name_of(p) not in taken]
+    failures += netlist_only(compiled_from, list(models["defines"]), run.project)
     supply = {run.pdk.library["supply"][side]["net"] for side in ("power", "ground")}
     warnings = netlist_warnings(warnings, str(run.pdk.root), supply)
     for name, after in measures.items():
@@ -636,7 +866,7 @@ def gate_glsim(run):
     result = run.result(
         "glsim", failures, warnings, f"{len(chosen)} benches on the final netlist{skipped}", details
     )
-    return passed(run, "glsim", result, taken)
+    return passed(run, "glsim", result, taken, *read)
 
 
 # ----------------------------------------------------------------------- SYNTH
@@ -906,12 +1136,21 @@ def gate_synth(run):
     for key, value in values.items():
         script = script.replace(f"@{key}@", value)
     (folder / "synth.ys").write_text(script, encoding="utf-8")
+    # -E: Yosys writes the files it read, as a Makefile rule: `<what it wrote>: <each file it read>`.
+    reads = folder / "reads.d"
     started = run.start(
-        [run.engine("yosys"), "-q", "-T", "-l", folder / "yosys.log", "-s", folder / "synth.ys"],
+        [run.engine("yosys"), "-q", "-T", "-E", reads, "-l", folder / "yosys.log", "-s", folder / "synth.ys"],
         cwd=folder,
         log=folder / "console.log",
         timeout=chipflow.TIME_LIMITS["synth"],
     )
+    listed = reads.read_text(encoding="utf-8", errors="replace") if reads.is_file() else ""
+    # A file of the project among them that the gate did not find by the text goes into the record.
+    read = [
+        path
+        for path in of_the_project(run, dict.fromkeys(map(Path, listed.partition(":")[2].split())))
+        if run.name_of(path) not in taken
+    ]
 
     def text_of(name: str) -> str:
         path = folder / name
@@ -960,4 +1199,4 @@ def gate_synth(run):
     if removed:
         summary += f", the mapping removed {len(removed)} flops that nothing reads (--json names each)"
     result = run.result("synth", failures, warnings, summary, details, [written, folder / "yosys.log"])
-    return passed(run, "synth", result, taken, written)
+    return passed(run, "synth", result, taken, written, *read)

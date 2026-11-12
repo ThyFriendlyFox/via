@@ -36,3 +36,12 @@ again, byte for byte.
 
 A new failure shape of an engine gets a sample here in the commit that
 teaches a judge to read it.
+
+## What is not ours
+
+`liberty-5-cells.lib` is a part of a file of the SkyWater `sky130A`
+process kit, library `sky130_fd_sc_hd`: Copyright 2020 The SkyWater PDK
+Authors, licensed under the Apache License, Version 2.0
+(https://www.apache.org/licenses/LICENSE-2.0). It is cut, not changed:
+the file's head and 5 of its cells as the kit writes them. The reports of
+the engines name the kit's cells and files and hold none of them.

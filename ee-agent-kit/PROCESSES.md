@@ -264,6 +264,14 @@ axis it defines (a 3D model's rotation or offset, an export's origin).
    next engine counts the same thing (the sinks of a clock tree for the
    flops of a netlist), read the 2 numbers against each other once, on a
    design where they can differ (M162).
+9. Where the tool can say what it read or took, the gate asks the tool.
+   Verilator lists each file in its XML, Icarus Verilog writes them with
+   `-M` and Yosys with `-E`. A pattern over the tool's input finds the
+   spellings its author knew: it is a first look, never the record. Where
+   the tool cannot say (a file a simulation opens while it runs), the gate
+   refuses what it cannot follow. A flag that changes what a command is
+   for (`-min`, `-max`, a missing `-clock`) is a spelling too: read each
+   flag the tool takes on that command before the command counts (M164).
 
 Done when: a test parses a real sample of each shape, failures among them,
 and the parser's assumptions are written next to it.
@@ -325,7 +333,10 @@ Edit tool.
 4. A range in a script (every x between two values) comes from the file
    it edits: read the outline or the coordinates' own extent, and after
    the run count what it moved against what lay in the range (M77).
-5. A change of a few lines goes through the Edit tool after a Read.
+5. A change of a few lines goes through the Edit tool after a Read: 1
+   place or 5, in 1 file or in 2. A script is for a change the Edit tool
+   cannot hold: a range, a table, the same change in 20 places (M156,
+   M163).
 6. Inside a quoted heredoc (`<<'EOF'`) the shell passes text through as
    written. Write no backslash escapes in it at all: `chr(10)` for a line
    break, real line breaks inside a triple-quoted string.

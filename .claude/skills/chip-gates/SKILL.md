@@ -47,23 +47,31 @@ the step is done. Run it whenever the next step is not plain.
 4. Run `workcenter chip gates <project>` again: all 10 gates, every time.
    A gate run alone (`workcenter chip sta <project>`) is for a quick
    look; EXPORT hands out a layout only when all 9 gates before it
-   passed on the files as they are.
+   passed on the files as they are. A gate that is asked to run takes
+   back the record of its earlier pass and the hand-off folder
+   `build/chip/tapeout/`: after a gate run alone, `workcenter chip export
+   <project>` writes the folder again, when every record still holds.
 5. On `GREEN with N warnings`, correct each warning, then run with
    `--strict`: a warning fails its gate there.
 6. Done: the last line is `GREEN: <name>` with `--strict`. Report that
    line, the scope line above it, and the path of
    `<project>/build/chip/tapeout/manifest.json`.
 
-`--out <dir>` writes elsewhere than `<project>/build`. `--jobs N` sets
-how many engine runs go at once; the layout is the same at any count.
-`workcenter --json chip gates <project>` prints each gate's record.
+`--out <dir>` writes elsewhere than `<project>/build`: a folder beside
+the project, above it or inside it. The gates empty the folders under
+`<dir>/chip`, so the command refuses a `<dir>/chip` that is the project,
+that holds a file of it, or that is there with files and without the
+gates' own `hashes.json`. It refuses a path with white space too.
+`--jobs N` sets how many engine runs go at once; the layout is the same
+at any count. `workcenter --json chip gates <project>` prints each gate's
+record.
 
 ## The 10 gates
 
 | Gate | Engine | What it holds |
 |---|---|---|
-| LINT | Verilator | The RTL reads the same to a simulator and to a synthesizer. `chip.json` and the constraints are sound, and every port has a delay. |
-| SIM | Icarus Verilog | Every bench passes on the RTL, and every change of `rtl/mutations.json` fails a bench. |
+| LINT | Verilator | The RTL reads the same to a simulator and to a synthesizer, and no line of it speaks to 1 engine alone. `chip.json` and the constraints are sound, and every bit of every port has a delay for setup and for hold. |
+| SIM | Icarus Verilog | Every bench passes on the RTL and reads no file while it runs, and every change of `rtl/mutations.json` fails a bench. |
 | SYNTH | Yosys | The RTL maps onto the library's cells: no latch, no loop, a reset on every flop. |
 | LAYOUT | OpenROAD, Magic | The cells are placed and routed with no violation, every supply pin on its grid, within the utilisation limit. Writes the GDS. |
 | STA | OpenSTA | Setup, hold, slew, capacitance and skew hold at every corner the project's ranges select, with the routed wires. |
@@ -73,7 +81,14 @@ how many engine runs go at once; the layout is the same at any count.
 | LVS | Magic, Netgen | The layout is the netlist, device by device. |
 | EXPORT | none | Each of the 9 gates passed on the files as they are now. Copies the layout into `build/chip/tapeout/` with `manifest.json`. |
 
-Every gate writes into `<project>/build/chip/<gate>/`.
+Every gate writes into `<project>/build/chip/<gate>/`. A gate that passes
+writes `passed.json` there: the SHA256 of each file it judged. The files
+of the project in it are the ones its engine says it read (Verilator's
+XML, the list Icarus Verilog writes, the rule Yosys writes), so a header
+is held however the RTL names it. A file of the project is named from the
+project's folder (`rtl/top.v`; `./chip/notes.v` for one under a folder
+`chip`), and a file the gates wrote from the output folder
+(`chip/layout/top.gds`).
 
 ## LINT
 
@@ -88,7 +103,16 @@ Report: `build/chip/lint/verilator.log`.
 | `COMBDLY`, `BLKANDNBLK` | `<=` in a clocked block, `=` in a combinational one, never both for 1 signal. |
 | `constraints.sdc: line N: a second clock` | Use 1 clock, and an enable where the second clock was. |
 | `constraints.sdc: input X has no set_input_delay` | Add the delay for the port, with its source. |
-| `rtl/x.v:N: lint_off LATCH turns off a class this gate fails on` | Remove the comment and change the code. |
+| `constraints.sdc: output X: N of its W bits have no set_output_delay` | Name the bus as `X[*]`: `X[0]` names 1 bit. |
+| `constraints.sdc: input X: a set_input_delay -min only` | Write 1 delay with no `-min` and no `-max`, or 1 line of each. |
+| `constraints.sdc: line N: set_input_delay names no -clock` | Add `-clock <the clock's name>`. |
+| `constraints.sdc: line N: set_input_delay takes [all_inputs], not [all_outputs]` | Name the inputs in `set_input_delay` and the outputs in `set_output_delay`. |
+| `constraints.sdc: line N: create_clock writes -period 2 times` | Write the option 1 time. |
+| `constraints.sdc: line N: set_clock_uncertainty under 0`, `set_timing_derate -late under 1` | Remove the line, or write a margin that takes time away. No source makes the other sign true. |
+| `rtl/x.v:N: lint_off LATCH turns off a check of this gate` | Remove the comment and change the code. The same for a `verilator_config` block. |
+| ``rtl/x.v:N: `SYNTHESIS` is defined by 1 engine and by no other`` | Remove the `` `ifdef ``: write 1 text that every engine reads. |
+| `rtl/x.v:N: translate_off ...`, `full_case ...` | Remove the comment; write the `default:`. |
+| `rtl/x.v:N: $readmemh reads a file while an engine runs` | Write the contents in the RTL, as a `case`. |
 | `chip.json: ...` | Correct `chip.json` as the line says: `chip-design`, "chip.json". |
 
 ## SIM
@@ -106,6 +130,9 @@ Report: `build/chip/sim/<bench>/run.log` and `compile.log`.
 | `the benches pass with the change X in F` | Add a check to a bench that fails on that change. Do not remove the change. |
 | `rtl/mutations.json: the change X does not compile` | Correct its `new` text. |
 | `rtl/mutations.json: X: F holds the old text N times` | Make `old` longer, until it stands in the file 1 time. |
+| `rtl/mutations.json: X: the bench B reads F too` | Make the change in a file that the RTL alone reads: the RTL itself, or a header no bench includes. |
+| `tb/x.v:N: $readmemh reads a file while the bench runs` | Write the values in a header the bench includes: `chip-design`, "A bench", rule 8. The line says `N benches, none run`. |
+| `tb_x.expect.json: ...` | Correct the bound's file as the line says. A name is held as the bench prints it. |
 
 ## SYNTH
 
@@ -166,6 +193,7 @@ Report: `build/chip/glsim/<bench>/run.log`.
 | `tb_x: x_outputs=N not in [None, 0]` | A flop starts unknown on the netlist. An `initial` block does not exist in silicon: use the reset. |
 | `tb_x: errors=N not in [None, 0]` | The netlist differs from the RTL: a race in the bench (change inputs on the falling edge), or RTL a simulator reads another way than Yosys. |
 | `tb_x: checks=N on the netlist and M on the RTL` | The bench took another path: make it wait for cycles, not for values inside the design. |
+| ``tb/x.v:N: `FUNCTIONAL` is defined for the run on the netlist`` | Remove the `` `ifdef ``: the bench is 1 text for SIM and GLSIM. |
 | `every bench is marked rtl_only` | Write 1 bench that reads the top module's ports only. |
 
 ## DRC
@@ -199,13 +227,18 @@ the workcenter.
 | Line | Fix |
 |---|---|
 | `<file> changed after <GATE> passed` | A file is not the one a gate passed. Run all the gates again. |
-| `<file> was added after <GATE> passed` | The same: run all the gates again. |
+| `<file> was added after <GATE> passed`, `<file> is gone since <GATE> passed on it` | The same: run all the gates again. |
 | `SKIPPED (EXPORT: <GATE> did not pass ...)` | That gate is red or has not run: run all the gates. |
 | `STA passed at N of the M corners` | STA ran with `--corner`. Run all the gates with no `--corner`. |
 
 `build/chip/tapeout/` holds what leaves: the GDS, the DEF, 2 netlists, 3
 SPEF files, 1 SDF file for each corner, the reports of the judging gates
 and `manifest.json` with each file's SHA256.
+
+`workcenter next <project>` holds the same things before it answers
+`Nothing`: each gate's record against the files as they are, by hash, and
+each file of `build/chip/tapeout/` against `manifest.json`. Its answer
+`Run EXPORT again` names the command that writes the folder again.
 
 ## A gate that did not run
 

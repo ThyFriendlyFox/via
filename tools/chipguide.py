@@ -12,11 +12,12 @@ module, which reads what is on disk and names the first step that is not done:
     DONE WHEN  the last line starts with GREEN
 
 The order: chip.json, the engines and the process kit, the RTL, a bench, a file that is still the
-template's example, the gates' report (run again when a file a gate reads is newer, or when the report
-is from a run without an engine), the first failure of the first red gate, the first warning of a GREEN
-run, a README that still holds the template's `fill:` lines. A failure or a warning is answered
-from HINTS: the fix this workcenter's skills give for that kind of line. Most lines of the chip gates
-say what to do themselves; the hint adds where to read.
+template's example, the gates' report (run again when a file a gate reads is newer than the report, is
+not the bytes of that gate's record of its pass, or when the report is from a run without an engine),
+the first failure of the first red gate, the first warning of a GREEN run, a README that still holds
+the template's `fill:` lines, the hand-off folder against its manifest. A failure or a warning is
+answered from HINTS: the fix this workcenter's skills give for that kind of line. Most lines of the
+chip gates say what to do themselves; the hint adds where to read.
 
 A reader runs every RUN line as written, so a RUN line is 1 command a shell takes, and an answer with
 no such command has none. Each sentence of an answer is 1 instruction of at most 20 words
@@ -77,6 +78,16 @@ HINTS: list[tuple[str, str, str]] = [
         r"^sim: the benches pass with the change ",
         "Add a check to a bench that fails on the change the line names.",
         f'{DESIGN}, "The list of changes"',
+    ),
+    (
+        r"^sim: .*reads a file while the bench runs",
+        "Write the values in a header that the bench includes, or as a `case` in the RTL.",
+        f'{DESIGN}, "A bench"',
+    ),
+    (
+        r"^glsim: .*is defined for the run on the netlist",
+        "Remove the `ifdef` from the bench: it is 1 text for SIM and GLSIM.",
+        f'{DESIGN}, "A bench"',
     ),
     (
         r"^(sim|glsim): .*(does not compile|does not reach \$finish|does not print|expect\.json)",
@@ -194,6 +205,47 @@ def inputs_of(run) -> list[Path]:
     return list(found)
 
 
+def moved(run, whole: bool) -> str | None:
+    """Why the gates' records no longer stand for the files, or None. A gate's record of its pass names
+    the hash of each file it judged: the first file that is other bytes now, gone or new is named.
+    `whole` is a report that says every gate passed: then a gate with no record is named too."""
+    for gate in chipflow.GATE_NAMES[:-1]:
+        record, problem, _ = run.read_passed(gate)
+        if record is None:
+            if whole:
+                return f"build/gates.json says GREEN, and {problem}"
+            continue
+        lines = (
+            chipfront.not_as_passed(run, gate, record)
+            if gate in chipfront.INPUT_GATES
+            else run.changed_since(gate, record)
+        )
+        if lines:
+            return lines[0].removesuffix(". Run the gates again")
+    return None
+
+
+def handed_off(run) -> str | None:
+    """Why `build/chip/tapeout` is not the hand-off EXPORT wrote, or None: its manifest is not there,
+    or a file the manifest names is gone or is other bytes."""
+    folder = run.base / "tapeout"
+    manifest = folder / "manifest.json"
+    if not manifest.is_file():
+        return "build/gates.json says GREEN, and build/chip/tapeout/manifest.json is not there"
+    try:
+        named = json.loads(manifest.read_text(encoding="utf-8"))
+        files = {**named["files"], **named["reports"]}
+    except (ValueError, KeyError, TypeError):
+        return "build/chip/tapeout/manifest.json does not name its files"
+    for name, digest in files.items():
+        path = folder / name
+        if not path.is_file():
+            return f"build/chip/tapeout/{name} is not there, and manifest.json names it"
+        if chipflow.sha256(path) != digest:
+            return f"build/chip/tapeout/{name} is not the file manifest.json names: its hash differs"
+    return None
+
+
 def trouble(results: list) -> tuple[str, str, bool] | None:
     """The first thing a run of the chip gates asks for: (gate, line, whether it is a failure). A red
     gate's first failure, else the first warning of any gate, else None."""
@@ -237,9 +289,17 @@ def next_step(cli, target: str) -> Step:
         do, read = hint("lint", pdk_problems[0])
         return Step(do, why=pdk_problems[0], read=read, done_when=again)
     if not chip.rtl:
+        # The file is named from chip.json's own first pattern: a file anywhere else is not the RTL.
+        first = chip.rtl_patterns[0]
+        plain = first.count("*") == 1 and "*" in Path(first).name and not re.search(r"[?\[]", first)
+        where = (
+            f"in {quoted}/{first.replace('*', chip.top)}"
+            if plain
+            else f"in a file of {quoted} that the pattern {first} matches"
+        )
         return Step(
-            f"Write the RTL: the module {chip.top} in {quoted}/rtl/{chip.top}.v.",
-            why="no file matches chip.json's rtl patterns",
+            f"Write the RTL: the module {chip.top} {where}.",
+            why=f"no file matches chip.json's rtl patterns ({', '.join(chip.rtl_patterns)})",
             read=f'{DESIGN}, "The RTL"',
             done_when=again,
         )
@@ -251,23 +311,34 @@ def next_step(cli, target: str) -> Step:
             read=f'{DESIGN}, "A bench"',
             done_when=again,
         )
-    # `chip init` writes a working register as the RTL and its bench as the bench. The gates pass on
-    # them, so a file that is still the template's is named before any gate runs: it is no design yet.
+    # `chip init` writes a working register as the RTL, its bench as the bench and its ports' delays as
+    # the constraints. The gates pass on them, so a file that is still the template's is named before
+    # any gate runs: it is no design yet. A file the project does not read is not named.
     examples = (
         (
             "rtl/__TOP__.v",
             "Write the design in {path}: the file still holds the template's register.",
             f'{DESIGN}, "The RTL"',
+            [p.resolve() for p in chip.rtl],
         ),
         (
             "tb/tb___TOP__.v",
             "Write the design's bench in {path}: the file still holds the template's.",
             f'{DESIGN}, "A bench"',
+            [p.resolve() for p in chipfront.benches(run)],
+        ),
+        (
+            "constraints.sdc",
+            "Write the design's constraints in {path}: the file still holds the template's.",
+            f'{DESIGN}, "The constraints"',
+            [chip.constraints.resolve()],
         ),
     )
-    for template, do, read in examples:
+    for template, do, read, read_by_the_gates in examples:
+        relative = template.replace("__TOP__", chip.top)
+        if (folder / relative).resolve() not in read_by_the_gates:
+            continue
         if as_the_template_wrote_it(folder, template, chip.top):
-            relative = template.replace("__TOP__", chip.top)
             return Step(
                 do.format(path=f"{quoted}/{relative}"),
                 why=f"{relative} is as `{wc} chip init` wrote it",
@@ -290,6 +361,18 @@ def next_step(cli, target: str) -> Step:
         )
     results = [cli.Result(**r) for r in json.loads(report.read_text(encoding="utf-8"))]
     verdict, _ = chipflow.chip_verdict(results, whole=True)
+    # A date says little: a file copied with its old date, a file taken away, a gate run alone since.
+    # Each gate's record of its pass names the hash of each file it judged, and EXPORT holds the files
+    # to them: this command holds them the same way before it reads the report.
+    other = moved(run, whole=verdict.startswith("GREEN"))
+    if other:
+        return Step(
+            "Run the chip gates again: the report is not of the files as they are.",
+            gates,
+            other,
+            f'{GATES}, "Steps"',
+            green,
+        )
     skipped = next((r for r in results if r.status == "skip"), None)
     if skipped is not None and skipped.details.get("engine_missing"):
         # Every engine was found above, so the report is older than the toolchain.
@@ -331,6 +414,17 @@ def next_step(cli, target: str) -> Step:
             why=f"{len(left)} lines of README.md still say fill:, the first: {left[0]}",
             read=f'{DESIGN}, "Steps"',
             done_when=again,
+        )
+    # The last answer says where the layout is, so the folder is read first: a gate that ran alone
+    # since took it away, and a file of it may have been changed by hand.
+    absent = handed_off(run)
+    if absent:
+        return Step(
+            "Run EXPORT again: the hand-off folder does not hold what its gate wrote.",
+            f"{wc} chip export {quoted}",
+            absent,
+            f'{GATES}, "EXPORT"',
+            green,
         )
     return Step(
         "Nothing: all 10 chip gates are GREEN with no warning.",
