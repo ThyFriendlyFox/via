@@ -19,6 +19,7 @@ already defines.
 | On a chip (a folder with `chip.json`): RTL, benches, a mask layout | `workcenter next <project>`, then `../.claude/skills/chip-design/SKILL.md` and `../.claude/skills/chip-gates/SKILL.md` | The same command names a chip's one next step. The 2 skills write the project and drive the 10 chip gates to GREEN. |
 | A circuit's limit, a part that switches, a deck for another machine | `../.claude/skills/simulate/SKILL.md` | Corners (`sim/corners.json`), the frequency plan (`sim/frequency-plan.json`, `PROCESSES.md` P30), bundles (`sim --bundle`). |
 | About to start a helper on part of a task | `PROCESSES.md` P31 | Budget first, the lead in its own worktree, a brief per helper. |
+| A project's version landed, a branch is about to be deleted, or "what did the projects teach the workcenter?" | `PROCESSES.md` P35 | `python3 tools/harvest.py branches`, `scripts`, `mistakes`; each finding with its evidence and 6 scores into ROADMAP.md under "Later", the highest rating first. |
 | Asked "where does this project stand?" | `STATUS.md` | Answer from it; update it when state changes. |
 | The gate fails, or you're adding/changing checks | `VERIFICATION.md` | One command answers "is this repo healthy". |
 | Cutting a release / tagging | `RELEASING.md` | Weekly cycle ends here. |
