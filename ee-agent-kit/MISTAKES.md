@@ -943,3 +943,9 @@ What happened: I placed the example motherboard's 77 port and header parts from 
 Cost: 4 routes of 2 minutes each and the drawings to read them.
 Root cause: P4 step 4 asks for kistack's placement checks before a route; I routed first, and read the router's failures as routing problems.
 Process: P4
+
+## M156 — 2026-11-11 — A few lines changed by a script, not the Edit tool
+What happened: To add 2 cards to the site's page and 2 pictures to `site/build.sh`, I wrote a Python replace. It checked each anchor before it wrote. P9 step 5 sends a change of a few lines through the Edit tool after a Read. The hook stopped my next script, for `site/README.md`, because it named a test file. I read P9 then, and read the first change's diff back: it was right.
+Cost: 1 diff read back; no wrong text reached a commit.
+Root cause: The change spanned 2 files, and I reached for a script without reading P9 first.
+Process: P9

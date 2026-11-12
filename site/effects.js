@@ -6,15 +6,13 @@
   const root = document.documentElement;
   root.dataset.motionReady = "1";
 
-  // ---- the mode knob: works with or without Motion --------------------------------------------
+  // ---- the example's signals: works with or without Motion -------------------------------------
   const face = document.querySelector("[data-face]");
   const tabs = [...document.querySelectorAll("[data-mode]")];
   const readout = document.querySelector("[data-readout]");
   const M = window.Motion;
   const moving = root.classList.contains("motion") && M;
   if (root.classList.contains("motion") && !M) root.classList.remove("motion");
-
-  const spring = { type: "spring", stiffness: 260, damping: 22 };
 
   function choose(tab, animated) {
     const d = tab.dataset;
@@ -32,19 +30,13 @@
     if (!face) return;
     face.style.setProperty("--mode", d.color);
     face.dataset.active = d.mode;
-    // The knob's pointer turns to the LED of the mode; that LED lights in the mode's colour.
-    const pointer = face.querySelector("[data-pointer]");
-    const angle = Number(d.angle);
-    if (pointer) {
-      if (animated && moving) M.animate(pointer, { rotate: angle }, spring);
-      else pointer.style.transform = `rotate(${angle}deg)`;
-    }
+    // The status light the signal turns on lights in the signal's colour.
     for (const led of face.querySelectorAll("[data-led]")) {
       const on = led.dataset.led === d.mode;
       led.classList.toggle("lit", on);
       if (animated && moving && on) M.animate(led, { scale: [0.6, 1.25, 1] }, { duration: 0.5 });
     }
-    // The path the data takes for this mode, drawn from the port to the RP2040.
+    // The path the signal takes, drawn from where it enters to where it goes.
     for (const path of face.querySelectorAll("[data-route]")) {
       const on = path.dataset.route.split(" ").includes(d.mode);
       path.classList.toggle("on", on);
@@ -122,6 +114,20 @@
     },
     { amount: 0.2 },
   );
+
+  // ---- the example's copper sweeps in a layer at a time: the back, the inner layer, the front ---
+  const copper = [...document.querySelectorAll("[data-face] [data-copper]")];
+  if (copper.length) {
+    const hidden = "inset(0% 100% 0% 0%)";
+    for (const layer of copper) layer.style.clipPath = hidden;
+    inView(
+      "[data-face]",
+      () => {
+        animate(copper, { clipPath: [hidden, "inset(0% 0% 0% 0%)"] }, { delay: stagger(0.35), duration: 1.3, ease });
+      },
+      { amount: 0.3 },
+    );
+  }
 
   // ---- a run types out a line at a time when it comes into view -------------------------------
   inView(
