@@ -979,3 +979,10 @@ What happened: I changed 4 documents with a Python script inside a shell heredoc
 Cost: 5 minutes. A text with `rm` or a `git` command in it would have run too.
 Root cause: A heredoc's end word is a promise about every line of its text, and I did not read my own text for it. P9 step 6 warns about backslashes in a heredoc and says nothing about its end.
 Process: P9
+
+## M162 — 2026-11-12 — 2 routes ran an image's old tools, at passes P4 no longer named
+What happened: I routed Rosetta v0.3 (176 parts) twice in parallel, at 30 and 40 passes with a 3500 s timeout. Both ran out of time before FreeRouting wrote its session, and left nothing. The runs used the `workcenter` installed in the Docker image, a copy of the tools from the day the image was built: its traceback named `/opt/workcenters/ee/src/tools/kicadgen.py`, not the checkout, which had moved 13 commits. P4 step 6 had changed in those commits to 12 to 20 passes; I took 30 to 40 from memory. A 2-pass run on the checkout's tools took 6 minutes and left 30 connections open.
+Cost: 1 hour of 2 router slots, and a check that "the board is the same under the new tools" that ran the old ones.
+Root cause: I took the installed command for the checkout's, and read a process step from what I remembered instead of the file.
+Process: P4
+
