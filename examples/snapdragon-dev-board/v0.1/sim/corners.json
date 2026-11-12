@@ -1,0 +1,22 @@
+{
+  "temperature": {
+    "values": [
+      0,
+      40
+    ],
+    "source": "a development board on a bench, 0 to 40 C round it"
+  },
+  "tolerance": {
+    "R": 0.01,
+    "parts": {
+      "C1": 0.5,
+      "C2": 0.5,
+      "LCABLE": 0.5
+    },
+    "source": "1 % thick-film resistors on the board. The RP2350's pull-up (32k) and the buffer's resistance (112.5 Ohm) are already their datasheets' worst values; the corners move them 1 % too, past the worst. C1 and C2, 10 uF X5R: 10 % and their loss at 5 V of DC bias, taken as 50 %. LCABLE: a USB-C cable 0.5 to 1.5 m long"
+  },
+  "monte_carlo": {
+    "runs": 32,
+    "seed": 7
+  }
+}

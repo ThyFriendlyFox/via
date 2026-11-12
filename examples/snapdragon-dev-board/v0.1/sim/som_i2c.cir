@@ -1,0 +1,25 @@
+* The Snapdragon's I2C on the pins (SOM_I2C_SDA, SOM_I2C_SCL: QUP10 on JT2 pins 68 and 70, the header's
+* SDA and SCL), pulled up by R16 and R17, 2.2k, to +1V8 (the SOM's VREG_S4A). One line is modelled:
+* an open-drain low released at 100 ns, then pulled low again at 2.1 us. The bus capacitance is a budget, not
+* an estimate of the board alone: 100 pF for the SOM's pad, the board's lane to the pin and whatever
+* the user plugs in. The SOM's low is VOL 0.36 V at 2 mA at most (UM10204 Rev. 7.0 Table 10, VOL2,
+* VDD under 2 V), 180 Ohm.
+VDD vdd 0 1.8
+R16 vdd sda 2.2k
+CB sda 0 100p
+SW sda 0 ctl 0 SWOD
+VCTL ctl 0 PWL(0 1 100n 1 101n 0 2.1u 0 2.101u 1)
+.model SWOD SW(Ron=180 Roff=1G Vt=0.5 Vh=0.1)
+.tran 0.5n 4u
+.control
+run
+* 30 % and 70 % of the 1.8 V rail (UM10204 Table 11 measures tr from 30 % to 70 % of VDD)
+meas tran t30 when v(sda)=0.54 rise=1
+meas tran t70 when v(sda)=1.26 rise=1
+let tr = t70 - t30
+meas tran vol find v(sda) at=3.5u
+meas tran ilow find i(vdd) at=3.5u
+let isink = abs(ilow)
+print tr vol isink
+.endc
+.end

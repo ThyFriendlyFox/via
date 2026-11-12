@@ -61,7 +61,7 @@ now has a card for Signet, Herald and Hush, cropped from their own
 renders. The site said Rosetta v0.2 is 4 layers; its board has 6, and the
 page says 6. `site/README.md` gives the steps that put the next example
 on the page. I changed `index.html` and `build.sh` with a script where P9
-asks for the Edit tool (M146).
+asks for the Edit tool (M156).
 
 Then the owner asked for Herald to replace Rosetta as the site's example
 of what Via makes. The section after the hero is now Herald's: its board
@@ -84,6 +84,64 @@ branch's tip equal to its pull request's head, 43 of 43; Hush's branch
 tree `8cf093a` equal to `main`'s at `e4e0364`; `workcenter gates
 examples/fire-alarm-communicator/v0.1` GREEN with 7 warnings, the run the
 page shows.
+## 2026-11-11 — Another example: a microATX board for Threadripper
+
+The owner asked for a compact, good-looking example of what the
+workcenter makes: a microATX motherboard for a Threadripper. None
+exists; the smallest TRX50 board is ATX. Basalt is in
+`examples/threadripper-matx`, kept as version folders the way the
+owner's vape prototype keeps its own, and built in a loop that ran 1
+prompt again and again and logged each pass in `LOOP.md`.
+
+v0.1 placed the 4844-land socket, the slots, the memory and 14 phases
+from the microATX and PCI Express drawings. The router ran 20 minutes
+twice on the 4 supply nets without finishing a pass, so the design
+draws every supply as a pour now, as a real board carries it (M150).
+v0.2 drew the 4 memory channels' 576 traces by rule, and the first DRC
+found nothing. Midway the owner asked for the ports every desktop board
+has; v0.3 adds 77 parts, from SATA ports and fan headers to the CMOS
+battery. FreeRouting finished their nets in a third of a second with
+none routed, so the project's own grid router learned to change layer
+through a via and joined all 51.
+
+The workcenter gained on the way: `kicadgen` wires a processor drawn
+as banks on an A0 sheet and checks a socket's 3457 vias in 0.3 s where
+it took 63. The PCI Express
+and M.2 lanes are not on the board yet: 151 of 234 route, and the rest
+need a trunk drawn by rule, like the memory's.
+
+Evidence: `workcenter gates` GREEN with no warning on v0.1, v0.2 and
+v0.3; `make verify` GREEN.
+
+## 2026-11-11 — A fifth example: a Teensy with a Snapdragon
+
+The owner asked for a compact board that looks good, as an example of what Via makes: a
+microcontroller development board like a Teensy, with a Snapdragon on it. A Snapdragon cannot stand
+alone on a board that size (it needs memory, flash and 3 power chips on a fine board), so Wyvern
+carries a Snapdragon 845 on Lantronix's Open-Q 845 module, whose pinout is public, on a stick the
+size of a Teensy. An RP2350 under the module drives the pins at 3.3 V. The owner pointed at
+vape-prototype for the layout, and the example has its shape: a series README, a version folder,
+`parts/`, a gates report, pictures with the module on its sockets.
+
+The USB-C port's 5 pairs are drawn by hand: wired the way a plug turned over sees them, no 2 pairs
+cross. The first route ran 14 of its 15 minutes, with no timeout set (M147), and left the RP2350's
+core pins bare: a capacitor or the crystal stood across each one's way out (M146). That rail is
+drawn by hand now, then the 3.3 V pins' stubs, after 4 capacitors were turned to face their pins;
+P4 asks for each supply pin's way out before a route. Seeding did not help on this board: a route
+seeded from the same design's own route, with 1 pass, lost 6 connections the seed had. Fresh routes
+are what closed it, and they are deterministic: 100 and 150 passes gave the same board, so more passes
+were no lever. What moved the count was room: the crystal to the back, the capacitors turned to
+their pins, and the RP2350's pins fanned out to vias by hand on 3 sides, as a person lays out a
+QFN, so the router only joins vias; 5 mil tracks gave it the last room.
+
+The frequency plan found the buck's power-save pulses can land on the USB cable's resonance; a deck
+shows 10.5 mV at most. It also showed that a long cable and derated capacitors leave the input's
+peak impedance only 0.13 ohm under the buck's negative resistance: stable, with the damping left
+for v0.2.
+
+Evidence: `workcenter gates examples/snapdragon-dev-board/v0.1` GREEN with 13 warnings (5 silkscreen outlines at the edge, 2 vias with nothing past them, 6 decks with no temperature term): DRC 0 errors and 0 unconnected; 6 decks, 488
+corner runs; `workcenter pictures v0.1`: the board, its layers, 3 turning GIFs, the module on its sockets;
+`workcenter costs` $32.76 for 1 board's parts.
 
 ## 2026-11-11 — Another example: a speaker that plays the inverse of what it hears
 

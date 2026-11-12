@@ -81,7 +81,7 @@ project and routes it with FreeRouting. No GUI at any step.
      pin it serves, and let a connector face the circuit it feeds.
      `d.sch_label_nets` keeps labels for nets that cross the whole sheet;
      a pin no wire reaches gets a label by itself. `d.sheet` picks the paper
-     (A4 to A1). The generator raises on a pin off the grid, two pins on one
+     (A4 to A0; A0 holds a processor of a thousand pins drawn as banks). The generator raises on a pin off the grid, two pins on one
      point, or a pin whose first cell out is taken: move the part. Plot the
      sheet (`workcenter render . --views schematic`) and read it before the
      close-out.
