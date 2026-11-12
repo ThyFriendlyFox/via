@@ -32,19 +32,28 @@ if [ -e "$out" ] && [ -n "$(ls -A "$out" 2>/dev/null)" ]; then
 fi
 
 here=$(dirname -- "$0")
-mkdir -p "$out/fonts" "$out/media" "$out/showcase" "$out/vendor"
+mkdir -p "$out/fonts" "$out/media" "$out/showcase" "$out/vendor" "$out/examples"
 
-# What the site serves: of media/, the 3 pictures the page shows; the example's pictures; Motion
-# and its license. og.html, the README's other pictures, the drawing's script, vercel.json and each
-# README.md stay in the repository.
-for file in site.css site.js effects.js favicon.svg favicon-32.png apple-touch-icon.png og.png logo.svg \
-  fonts/inter-latin-wght-normal.woff2 fonts/LICENSE media/schematic.png media/board.png media/board-spin.gif \
-  showcase/rosetta-top.png showcase/rosetta-bottom.png showcase/rosetta-iso.png showcase/rosetta-layers.png \
-  showcase/agentcast.png vendor/motion-14.6.0.js vendor/MOTION-LICENSE.md; do
+# What the site serves: of media/, the 2 pictures the page shows; the cards' pictures; the agents'
+# marks; Motion and its license. og.html, the README's other pictures, the scripts that draw the
+# pictures and write the example pages, vercel.json and each README.md stay in the repository.
+for file in site.css site.js effects.js example.js agents.svg favicon.svg favicon-32.png apple-touch-icon.png \
+  og.png logo.svg fonts/inter-latin-wght-normal.woff2 fonts/LICENSE media/schematic.png media/board.png \
+  showcase/agentcast.png showcase/fixture.png vendor/motion-14.6.0.js vendor/MOTION-LICENSE.md; do
   cp "$here/$file" "$out/$file"
 done
 
-for page in index.html 404.html; do
+# Each example's page and the files it shows, as site/examples.py writes them.
+for folder in "$here"/examples/*/; do
+  [ -d "$folder" ] || continue
+  name=$(basename -- "$folder")
+  mkdir -p "$out/examples/$name"
+  cp "$folder"* "$out/examples/$name/"
+done
+
+for path in "$here/index.html" "$here/404.html" "$here/examples.html" "$here"/examples/*.html; do
+  [ -f "$path" ] || continue
+  page=${path#"$here"/}
   if [ -n "$origin" ]; then
     sed "s|%ORIGIN%|$origin|g" "$here/$page" >"$out/$page"
   else

@@ -1,4 +1,4 @@
-// The page's motion, with Motion (motion.dev, vendor/). The page reads the same without it: every
+// The pages' motion, with Motion (motion.dev, vendor/). A page reads the same without it: every
 // element starts where it ends, and the head's script adds `motion` to <html> only when the reader
 // has not asked for reduced motion. This file removes it again if Motion did not load.
 
@@ -101,6 +101,28 @@
     animate(logo.querySelectorAll(".lg-pad, .lg-letter"), { opacity: [0, 1], scale: [0.7, 1] }, { delay: stagger(0.06), duration: 0.45, ease });
     animate(logo.querySelectorAll(".lg-trace"), { pathLength: [0, 1] }, { delay: stagger(0.12, { startDelay: 0.25 }), duration: 0.6, ease });
   }
+
+  // ---- the hero's wordmark is built the way a board is: sketched, its corners set, its copper ----
+  //      laid, its traces run; then the sketch and the points go, and the mark is as logo.svg draws it
+  const build = document.querySelector("[data-build]");
+  if (build) {
+    const sketch = build.querySelectorAll(".wm-sketch");
+    const points = build.querySelectorAll(".wm-pt");
+    const sequence = [
+      [sketch, { opacity: [0, 1], pathLength: [0, 1] }, { duration: 0.8, delay: stagger(0.12), ease, at: 0.15 }],
+      [points, { opacity: [0, 1], scale: [0, 1] }, { duration: 0.3, delay: stagger(0.03), at: 0.45 }],
+      [build.querySelectorAll(".wm-cu"), { opacity: [0, 1], scale: [0.96, 1] }, { duration: 0.5, delay: stagger(0.09), ease, at: 1.45 }],
+      [build.querySelectorAll(".wm-tr"), { opacity: [0, 1], pathLength: [0, 1] }, { duration: 0.6, delay: stagger(0.12), ease, at: 2.0 }],
+      [points, { opacity: 0 }, { duration: 0.4, at: 2.3 }],
+      [sketch, { opacity: 0 }, { duration: 0.5, at: 2.5 }],
+    ];
+    const paper = document.querySelector(".wm-paper");
+    if (paper) sequence.unshift([paper, { opacity: [0, 1] }, { duration: 0.6, at: 0 }]);
+    animate(sequence);
+  }
+
+  // ---- a drawing draws itself when it comes into view: site.css times each stroke ---------------
+  inView(".draw", (el) => el.classList.add("drawn"), { amount: 0.35 });
 
   // ---- the hero's traces draw, then drift with the scroll -------------------------------------
   const traces = document.querySelector("[data-traces]");

@@ -146,3 +146,4 @@ command that says it (`workcenter next`), never in the reader's judgement.
 - 2026-11-11 — the front page (a fixture board from a design file, and its pictures at the head of the README) shipped out of band: the owner asked again for the repository to look good.
 - 2026-11-11 — an example project shipped out of band: the owner found the site's examples poor and asked for a prototype like Agentcast and Last Hit, a universal controller with a switch that picks the console, with ideas that are hard to do, and a site that moves with Motion.
 - 2026-11-11 — the favicon fix shipped out of band: the owner found the favicon was not the site's current logo, the wordmark.
+- 2026-11-12 — a redrawn website shipped out of band, on a branch: the owner asked for the site to look better, with the text-to-cad site as the reference: a page for each example with how it was built, the agents' strip with every agent text-to-cad lists, and the boards in 3D.

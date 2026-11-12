@@ -169,8 +169,10 @@ GHCR on every tag.
 
 ## The website
 
-`site/` is the project's website: 1 static page with real runs of the
-commands and the board above. It is live at <https://via-kappa-five.vercel.app>.
+`site/` is the project's website: a home page with real runs of the
+commands, drawings of what each gate catches and the board above, and a
+page for each example, written by `site/examples.py` from the example's
+README, its `TIMELINE.md` and its board. It is live at <https://via-kappa-five.vercel.app>.
 `python3 -m http.server 8000 --directory site` serves it at
 http://localhost:8000. Vercel deploys a push that changes `site/`: `main`
 to production, any other branch to a preview.

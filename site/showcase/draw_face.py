@@ -4,7 +4,8 @@
 
 It reads examples/universal-controller/v0.1/design.py (the outline, every pad, where each part
 sits) and rosetta.kicad_pcb (the routed tracks and vias), and writes the drawing into
-site/index.html between the `face:begin` and `face:end` comments. Every coordinate is the board's
+site/showcase/rosetta-knob.html between the `face:begin` and `face:end` comments; site/examples.py
+puts that file on the example's page. Every coordinate is the board's
 own, in mm: the drawing is the board, not a picture of it. Draw it again when the board changes.
 """
 
@@ -155,16 +156,19 @@ def main() -> int:
     out.append("</svg>")
     drawing = "\n".join(out)
 
-    page = ROOT / "site" / "index.html"
+    page = ROOT / "site" / "showcase" / "rosetta-knob.html"
     text = page.read_text(encoding="utf-8")
     new, n = re.subn(
         r"(<!-- face:begin -->).*?(\n[ \t]*<!-- face:end -->)", lambda m: m.group(1) + "\n" + drawing + m.group(2), text, flags=re.S
     )
     if n != 1:
-        print("site/index.html has no face:begin / face:end pair", file=sys.stderr)
+        print("site/showcase/rosetta-knob.html has no face:begin / face:end pair", file=sys.stderr)
         return 1
     page.write_text(new, encoding="utf-8")
-    print(f"site/index.html: the face drawn, {len(drawing) // 1024} KB, {len(copper['segments'])} tracks, {len(copper['vias'])} vias")
+    print(
+        f"site/showcase/rosetta-knob.html: the face drawn, {len(drawing) // 1024} KB, "
+        f"{len(copper['segments'])} tracks, {len(copper['vias'])} vias. Run site/examples.py to put it on the page."
+    )
     return 0
 
 

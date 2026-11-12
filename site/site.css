@@ -1,5 +1,6 @@
-/* The Via site's look: paper and ink, one ink-blue accent, weights 400 and 500,
-   no borders. Colours for state only: green for GREEN, red for red.
+/* The Via site's look: paper and ink, one steel-blue accent, weights 400 and 500,
+   no borders. Colours for state only: green for GREEN, red for red. Drawings are
+   ink on dotted paper: blue for a dimension or a bound, red for what a gate caught.
    The text face is Inter, 1 latin file. Commands use the system's monospace
    face, so the first load carries no second font. */
 
@@ -16,16 +17,17 @@
   --background: oklch(0.985 0.004 85);
   --foreground: oklch(0.2 0.01 60);
   --card: oklch(0.995 0.002 85);
-  --primary: oklch(0.45 0.18 264);
+  --primary: oklch(0.5 0.09 237);
   --primary-foreground: oklch(0.985 0.004 85);
   --secondary: oklch(0.955 0.006 80);
   --muted-foreground: oklch(0.52 0.015 70);
-  --accent: oklch(0.93 0.03 264);
-  --accent-foreground: oklch(0.3 0.09 264);
-  --ring: oklch(0.6 0.14 264);
+  --accent: oklch(0.94 0.025 237);
+  --accent-foreground: oklch(0.33 0.07 237);
+  --ring: oklch(0.6 0.09 237);
   --status-ok: oklch(0.5 0.14 150);
-  --status-red: oklch(0.52 0.2 25);
+  --status-red: oklch(0.55 0.2 27);
   --edge: oklch(0.2 0.01 60 / 7%);
+  --dot: oklch(0.2 0.01 60 / 15%);
   --shadow: 0 8px 24px -12px oklch(0.2 0.01 60 / 25%);
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
@@ -40,16 +42,17 @@ html.dark {
   --background: oklch(0.19 0.006 60);
   --foreground: oklch(0.95 0.005 85);
   --card: oklch(0.23 0.006 60);
-  --primary: oklch(0.72 0.13 264);
-  --primary-foreground: oklch(0.15 0.03 264);
+  --primary: oklch(0.74 0.09 230);
+  --primary-foreground: oklch(0.17 0.03 237);
   --secondary: oklch(0.27 0.006 60);
   --muted-foreground: oklch(0.68 0.012 75);
-  --accent: oklch(0.3 0.04 264);
-  --accent-foreground: oklch(0.88 0.06 264);
-  --ring: oklch(0.62 0.13 264);
+  --accent: oklch(0.31 0.035 237);
+  --accent-foreground: oklch(0.88 0.05 230);
+  --ring: oklch(0.64 0.09 237);
   --status-ok: oklch(0.76 0.15 150);
-  --status-red: oklch(0.72 0.17 25);
+  --status-red: oklch(0.72 0.17 27);
   --edge: oklch(1 0 0 / 10%);
+  --dot: oklch(1 0 0 / 13%);
   --shadow: 0 8px 24px -12px oklch(0 0 0 / 60%);
 }
 
@@ -447,36 +450,11 @@ html.dark .icon-btn .sun {
 
 /* ------------------------------------------------------------------ hero */
 
-.hero .wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 2.5rem;
-  padding-top: 2.5rem;
-}
-
-.hero .eyebrow {
-  margin-bottom: 1rem;
-}
-
-.hero .display {
-  max-width: 14ch;
-}
-
-.hero .lede {
-  max-width: 36rem;
-  margin-top: 1.25rem;
-}
-
 .actions {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
   margin-top: 1.75rem;
-}
-
-.hero .small {
-  max-width: 36rem;
-  margin-top: 1.5rem;
 }
 
 /* A run: what the command printed, as it printed it. Long lines wrap as they do
@@ -659,49 +637,16 @@ figcaption {
   text-align: center;
 }
 
-.split {
-  display: grid;
-  gap: 3rem;
-  margin-top: 3rem;
-}
-
-.steps {
-  display: grid;
-  gap: 2.25rem;
-}
-
-.steps li {
-  display: grid;
-  grid-template-columns: 2rem minmax(0, 1fr);
-  column-gap: 1rem;
-}
-
-.steps .n {
-  padding-top: 0.2rem;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  color: var(--primary);
-}
-
-.steps h3,
-.cards h3,
-.gates h3 {
+.cards h3 {
   font-size: 1.0625rem;
   line-height: 1.4;
   font-weight: 500;
 }
 
-.steps p,
-.cards p,
-.gates p {
+.cards p {
   margin-top: 0.5rem;
   color: var(--muted-foreground);
   text-wrap: pretty;
-}
-
-.steps p {
-  max-width: 34rem;
 }
 
 .cards {
@@ -710,8 +655,7 @@ figcaption {
   margin-top: 3.5rem;
 }
 
-.cards p,
-.gates p {
+.cards p {
   font-size: 0.9375rem;
   line-height: 1.6;
 }
@@ -742,34 +686,6 @@ figcaption {
 .cards a.card:hover h3 svg {
   color: var(--foreground);
   transform: translate(1px, -1px);
-}
-
-.gates {
-  display: grid;
-  gap: 1rem;
-  margin-top: 3.5rem;
-  text-align: left;
-}
-
-.gates li {
-  padding: 1.5rem;
-  border-radius: 1rem;
-  background: var(--background);
-}
-
-.gates .n {
-  display: block;
-  margin-bottom: 1.75rem;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  color: var(--muted-foreground);
-}
-
-.gates h3 {
-  font-family: var(--font-mono);
-  font-size: 1rem;
-  letter-spacing: 0.02em;
 }
 
 .verdicts {
@@ -1076,9 +992,6 @@ figcaption {
   .cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .gates {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
   .site-footer .row {
     flex-direction: row;
     align-items: center;
@@ -1096,9 +1009,6 @@ figcaption {
   .section.band > .wrap {
     padding-block: 9rem;
   }
-  .hero .wrap {
-    padding-top: 3.5rem;
-  }
 }
 
 @media (min-width: 1024px) {
@@ -1114,25 +1024,9 @@ figcaption {
   .run pre[data-run="gates"] {
     white-space: pre-wrap;
   }
-  .hero .wrap {
-    display: grid;
-    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-    align-items: center;
-    gap: 3.5rem;
-    padding-top: 4.5rem;
-    padding-bottom: 2rem;
-  }
-  .split {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
-    gap: 4rem;
-    align-items: start;
-  }
   .cards {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 3rem 2.5rem;
-  }
-  .gates {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
   .files {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1184,7 +1078,7 @@ html:not(.motion) .progress {
 /* ---- the wordmark ------------------------------------------------------------------------------- */
 .brand svg.logo {
   width: auto;
-  height: 26px;
+  height: 30px;
   aspect-ratio: 394 / 136;
 }
 .site-footer .brand svg.logo {
@@ -1204,10 +1098,10 @@ html:not(.motion) .progress {
 }
 .traces {
   position: absolute;
-  inset: 0;
+  inset: 0 0 auto;
   z-index: -1;
   width: 100%;
-  height: 100%;
+  height: min(100%, 46rem);
   stroke: var(--primary);
   stroke-width: 2;
   stroke-linejoin: round;
@@ -1593,4 +1487,848 @@ html:not(.motion) .progress {
 .face-svg .antenna.on {
   fill: color-mix(in oklch, var(--mode) 25%, transparent);
   stroke: var(--mode);
+}
+
+/* ---- the hero: the wordmark builds itself as a board, then the line, the install, the agents ---- */
+.hero > .wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 2.5rem;
+  padding-bottom: 3rem;
+  text-align: center;
+}
+.wm-stage {
+  position: relative;
+  width: min(100%, 36rem);
+}
+/* Drafting paper behind the wordmark, fading out at its edges. */
+.wm-paper {
+  position: absolute;
+  inset: -18% -12%;
+  z-index: -1;
+  background-image: radial-gradient(circle, var(--dot) 1px, transparent 1.3px);
+  background-size: 16px 16px;
+  mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 40%, transparent 100%);
+}
+.wordmark {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.wordmark .wm-sketch {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+.wordmark .wm-pt {
+  fill: var(--background);
+  stroke: var(--primary);
+  stroke-width: 2.5;
+}
+.wordmark .wm-cu,
+.wordmark .wm-tr {
+  stroke: currentColor;
+  stroke-width: 12;
+  stroke-linejoin: round;
+}
+.wordmark .wm-cu {
+  fill: currentColor;
+}
+.wordmark .wm-tr {
+  fill: none;
+}
+/* Still: the finished wordmark on its paper. Moving: effects.js brings each stage in. */
+html:not(.motion) .wordmark .wm-sketch,
+html:not(.motion) .wordmark .wm-pt,
+.motion .wordmark .wm-sketch,
+.motion .wordmark .wm-pt,
+.motion .wordmark .wm-cu,
+.motion .wordmark .wm-tr,
+.motion .wm-paper {
+  opacity: 0;
+}
+.wordmark .wm-pt,
+.wordmark .wm-cu {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+/* The copy is as wide as the page and centres each line; a long command scrolls inside its box. */
+.hero-copy {
+  width: 100%;
+  min-width: 0;
+}
+.hero-copy > * {
+  margin-inline: auto;
+}
+.hero-line {
+  max-width: 48rem;
+  margin-top: 2.25rem;
+  font-size: clamp(1.625rem, 1.15rem + 1.7vw, 2.5rem);
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+  font-weight: 500;
+  text-wrap: balance;
+}
+.hero-line em {
+  display: block;
+  font-style: normal;
+  color: var(--primary);
+}
+.hero .lede {
+  max-width: 40rem;
+  margin-top: 1rem;
+}
+.hero .actions {
+  align-items: stretch;
+  width: 100%;
+}
+.install {
+  width: 100%;
+  max-width: 44rem;
+  margin-top: 2.25rem;
+  border-radius: 1rem;
+  background: var(--card);
+  box-shadow:
+    0 0 0 1px var(--edge),
+    var(--shadow);
+  text-align: left;
+}
+.install-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 0.75rem 0 1.25rem;
+}
+.install-head .eyebrow {
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+}
+.install pre {
+  overflow-x: auto;
+  padding: 0.625rem 1.25rem 1.125rem;
+  font-size: 0.8125rem;
+  line-height: 1.7;
+  scrollbar-width: thin;
+}
+.install pre .prompt {
+  color: var(--muted-foreground);
+  user-select: none;
+}
+.install .copy {
+  position: static;
+  flex: none;
+}
+.install .copy:hover {
+  background: var(--secondary);
+}
+@media (min-width: 640px) {
+  .hero .actions {
+    width: auto;
+    justify-content: center;
+  }
+}
+@media (min-width: 1024px) {
+  .hero > .wrap {
+    padding-top: 4rem;
+  }
+}
+
+/* ---- the agents: a strip that drifts sideways, and that a mouse, a finger or the keys move ----- */
+.agents {
+  width: 100%;
+  margin-top: 4.5rem;
+}
+.agents > .eyebrow {
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+}
+.strip-mask {
+  margin-top: 1.5rem;
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+.strip-mask:has(:focus-visible) {
+  mask-image: none;
+}
+.strip {
+  display: flex;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  cursor: grab;
+}
+.strip::-webkit-scrollbar {
+  display: none;
+}
+.strip[data-dragging] {
+  cursor: grabbing;
+}
+.strip:focus-visible {
+  outline-offset: -2px;
+}
+.strip ul {
+  display: flex;
+  flex-shrink: 0;
+}
+.strip li {
+  display: flex;
+  width: 6.5rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.625rem;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.strip svg {
+  width: 2.5rem;
+  height: 2.5rem;
+  color: var(--foreground);
+  pointer-events: none;
+}
+.strip span {
+  font-size: 0.75rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  color: var(--muted-foreground);
+}
+.agents > .small {
+  max-width: 40rem;
+  margin: 1.5rem auto 0;
+}
+
+/* ---- drawings: ink on dotted paper, a file's name under each, drawn as they come into view ------ */
+.draws {
+  display: grid;
+  gap: 1.25rem;
+  margin-top: 3rem;
+}
+.draw {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 1rem;
+  background: var(--card);
+  box-shadow: 0 0 0 1px var(--edge);
+}
+.draw .paper {
+  display: grid;
+  min-height: 14rem;
+  flex: 1;
+  place-items: center;
+  padding: 1.25rem;
+  background-image: radial-gradient(circle, var(--dot) 1px, transparent 1.3px);
+  background-size: 14px 14px;
+  background-position: 7px 7px;
+}
+.draw .paper svg {
+  width: 100%;
+  max-width: 26rem;
+  height: auto;
+  overflow: visible;
+}
+.draw .fname {
+  padding: 0.5rem 1.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--muted-foreground);
+  box-shadow:
+    0 -1px 0 var(--edge),
+    0 1px 0 var(--edge);
+}
+.draw .text {
+  padding: 1rem 1.25rem 1.375rem;
+}
+.draw h3 {
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.draw p {
+  margin-top: 0.375rem;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--muted-foreground);
+  text-wrap: pretty;
+}
+.draw p code {
+  font-size: 0.85em;
+}
+/* A drawing's inks. */
+.dwg .s-ink,
+.dwg .s-thin,
+.dwg .s-faint,
+.dwg .s-dim,
+.dwg .s-err {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.dwg .s-ink {
+  stroke: var(--foreground);
+  stroke-width: 2;
+}
+.dwg .s-thin {
+  stroke: var(--foreground);
+  stroke-width: 1.25;
+}
+.dwg .s-faint {
+  stroke: var(--muted-foreground);
+  stroke-width: 1.25;
+}
+.dwg .s-dim {
+  stroke: var(--primary);
+  stroke-width: 1.25;
+}
+.dwg .s-err {
+  stroke: var(--status-red);
+  stroke-width: 2;
+}
+.dwg .dash {
+  stroke-dasharray: 4 4;
+}
+.dwg .f-ink {
+  fill: var(--foreground);
+}
+.dwg .f-dim {
+  fill: var(--primary);
+}
+.dwg .f-err {
+  fill: var(--status-red);
+}
+.dwg .f-card {
+  fill: var(--card);
+}
+.dwg .f-band {
+  fill: color-mix(in oklch, var(--primary) 12%, transparent);
+}
+.dwg text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  fill: var(--muted-foreground);
+  paint-order: stroke;
+  stroke: var(--card);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+.dwg text.t-dim {
+  fill: var(--primary);
+}
+.dwg text.t-err {
+  fill: var(--status-red);
+}
+.dwg text.t-ink {
+  fill: var(--foreground);
+}
+.dwg text.big {
+  font-size: 13px;
+}
+/* Drawn: each stroke marked .d draws from its start, then what is marked .fade comes in. */
+.motion .dwg .d {
+  stroke-dasharray: 1 1;
+  stroke-dashoffset: 1;
+}
+.motion .dwg .fade {
+  opacity: 0;
+}
+.motion .draw.drawn .d {
+  animation: dwg-draw 0.9s cubic-bezier(0.65, 0, 0.35, 1) var(--at, 0s) forwards;
+}
+.motion .draw.drawn .fade {
+  animation: dwg-fade 0.5s ease-out calc(var(--at, 0s) + 0.5s) forwards;
+}
+@keyframes dwg-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes dwg-fade {
+  to {
+    opacity: 1;
+  }
+}
+/* A run in a drawing card: what the command printed, in place of a drawing. */
+.draw .paper.term {
+  place-items: stretch;
+  padding: 0;
+  background: none;
+}
+.draw .paper.term pre {
+  padding: 1.25rem;
+  font-size: 0.75rem;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.runs {
+  display: grid;
+  gap: 1.25rem;
+  margin-top: 1.25rem;
+}
+.runs figure {
+  min-width: 0;
+}
+@media (min-width: 768px) {
+  .draws {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .draw.wide {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ---- examples: each board in 3D, a link to its page --------------------------------------------- */
+.proj .shot3d {
+  display: grid;
+  height: 13rem;
+  place-items: center;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 60%, color-mix(in oklch, var(--primary) 9%, transparent), transparent 70%),
+    var(--secondary);
+}
+.proj .shot3d img {
+  width: 92%;
+  height: 92%;
+  object-fit: contain;
+  background: none;
+  filter: drop-shadow(0 18px 18px oklch(0 0 0 / 22%));
+  transition: transform 0.4s var(--ease);
+}
+.proj:hover .shot3d img {
+  transform: scale(1.04) rotate(-1deg);
+}
+.proj .meta {
+  margin-top: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+.more {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 2rem;
+  font-weight: 500;
+}
+.more svg {
+  width: 1rem;
+  height: 1rem;
+  transition: transform 150ms var(--ease);
+}
+.more:hover svg {
+  transform: translateX(2px);
+}
+/* A track, drawn as copper is on a fab drawing: an outline, hollow. */
+.dwg .trk-o,
+.dwg .trk-i {
+  fill: none;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.dwg .trk-o {
+  stroke: var(--foreground);
+  stroke-width: 12;
+}
+.dwg .trk-i {
+  stroke: var(--card);
+  stroke-width: 9;
+}
+.draw .term .run {
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+.verdict-side {
+  align-self: start;
+  padding: 1.5rem;
+  border-radius: 1rem;
+  background: var(--secondary);
+}
+.verdict-side .verdicts {
+  justify-content: flex-start;
+  margin-top: 0;
+}
+.verdict-side p {
+  margin-top: 1rem;
+  font-size: 0.9375rem;
+  color: var(--muted-foreground);
+  text-wrap: pretty;
+}
+@media (min-width: 1024px) {
+  .runs {
+    grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+/* ---- an example's page ---------------------------------------------------------------------------- */
+.ex-hero > .wrap {
+  padding-top: 3rem;
+  padding-bottom: 2rem;
+}
+.crumb {
+  color: var(--primary);
+}
+.ex-hero .display {
+  margin-top: 0.75rem;
+}
+.ex-tagline {
+  margin-top: 0.5rem;
+  font-size: var(--text-lede);
+  font-weight: 500;
+}
+.ex-hero .lede {
+  max-width: 44rem;
+  margin-top: 1rem;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}
+.chips li {
+  padding: 0.3125rem 0.75rem;
+  border-radius: 999px;
+  background: var(--secondary);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+.chips li.ok {
+  background: color-mix(in oklch, var(--status-ok) 14%, transparent);
+  color: var(--status-ok);
+}
+.turntable {
+  position: relative;
+  max-width: 56rem;
+  margin: 2rem auto 0;
+  cursor: grab;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.turntable[data-dragging] {
+  cursor: grabbing;
+}
+.turntable:focus-visible {
+  border-radius: 1rem;
+}
+.tt-frames {
+  aspect-ratio: 616 / 368;
+  background-repeat: no-repeat;
+}
+.tt-hint {
+  margin-top: 0.25rem;
+  text-align: center;
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
+.stills {
+  display: grid;
+  gap: 1.5rem;
+  margin-top: 3rem;
+}
+.stills img {
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 18px 22px oklch(0 0 0 / 18%));
+}
+.stills figcaption {
+  text-align: center;
+}
+.hard > div h3 {
+  margin-top: 0;
+}
+@media (min-width: 768px) {
+  .stills {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* The explorer: the board as its file holds it, on a dark canvas in both themes, as KiCad draws it. */
+.explorer {
+  margin-top: 2.5rem;
+}
+.ex-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.ex-layers,
+.ex-zoom {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+.ex-tools button {
+  display: inline-flex;
+  height: 2.25rem;
+  align-items: center;
+  gap: 0.5rem;
+  padding-inline: 0.875rem;
+  border-radius: 999px;
+  background: var(--background);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  box-shadow: 0 0 0 1px var(--edge);
+}
+.ex-tools button[aria-pressed="false"] {
+  color: var(--muted-foreground);
+}
+.ex-tools button i {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 2px;
+  background: currentColor;
+}
+.ex-tools button[data-layer="F.Cu"] i {
+  background: var(--cu-f);
+}
+.ex-tools button[data-layer="In1.Cu"] i {
+  background: var(--cu-in1);
+}
+.ex-tools button[data-layer="In2.Cu"] i {
+  background: var(--cu-in2);
+}
+.ex-tools button[data-layer="B.Cu"] i {
+  background: var(--cu-b);
+}
+.ex-tools button[aria-pressed="false"] i {
+  opacity: 0.3;
+}
+.ex-zoom button {
+  min-width: 2.25rem;
+  justify-content: center;
+}
+.ex-view {
+  margin-top: 0.75rem;
+  overflow: hidden;
+  border-radius: 1rem;
+  background: oklch(0.17 0.02 250);
+  min-height: 12rem;
+}
+.ex-view svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  cursor: grab;
+  touch-action: none;
+}
+.ex-view svg:active {
+  cursor: grabbing;
+}
+.ex-info {
+  min-height: 1.6em;
+  margin-top: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
+:root {
+  --cu-f: oklch(0.66 0.19 27);
+  --cu-in1: oklch(0.7 0.14 150);
+  --cu-in2: oklch(0.8 0.14 85);
+  --cu-b: oklch(0.68 0.13 250);
+}
+.board .edge {
+  fill: oklch(0.22 0.025 250);
+  stroke: oklch(0.85 0.1 90);
+  stroke-width: 0.25;
+}
+.board .pour {
+  fill: var(--cu-in1);
+  fill-opacity: 0.14;
+}
+.board .tracks path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.board [data-layer="F.Cu"] path {
+  stroke: var(--cu-f);
+}
+.board [data-layer="In2.Cu"] path {
+  stroke: var(--cu-in2);
+  stroke-opacity: 0.85;
+}
+.board [data-layer="B.Cu"] path {
+  stroke: var(--cu-b);
+  stroke-opacity: 0.85;
+}
+.board .vias circle {
+  fill: oklch(0.82 0.08 85);
+  stroke: oklch(0.17 0.02 250);
+  stroke-width: 0.06;
+}
+.board .part .p {
+  fill: oklch(0.83 0.12 85);
+}
+.board .part[data-side="back"] .p {
+  fill: oklch(0.72 0.09 250);
+}
+.board .part .th {
+  fill: oklch(0.83 0.12 85);
+}
+.board .part .hole {
+  fill: oklch(0.12 0.01 250);
+  pointer-events: none;
+}
+.board .part.near-part .p,
+.board .part.near-part .th {
+  fill: oklch(0.97 0.02 85);
+}
+.board .refs text {
+  font-family: var(--font-mono);
+  font-size: 1.1px;
+  fill: oklch(0.95 0 0 / 85%);
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: oklch(0.17 0.02 250 / 70%);
+  stroke-width: 0.25px;
+}
+.board .tracks path,
+.board .vias circle,
+.board .part > * {
+  transition: opacity 0.2s var(--ease);
+}
+.board.focus [data-net]:not(.hl),
+.board.focus .pour:not(.hl) {
+  opacity: 0.12;
+}
+.board.focus .tracks .hl {
+  stroke: oklch(0.98 0.03 95);
+  stroke-opacity: 1;
+}
+.board.focus .vias .hl,
+.board.focus .part .hl {
+  fill: oklch(0.98 0.03 95);
+}
+.board.off-FCu [data-layer="F.Cu"],
+.board.off-FCu .part[data-side="front"] .p,
+.board.off-BCu [data-layer="B.Cu"],
+.board.off-BCu .part[data-side="back"] .p,
+.board.off-In1Cu [data-layer="In1.Cu"],
+.board.off-In2Cu [data-layer="In2.Cu"],
+.board.off-refs .refs {
+  display: none;
+}
+.board.off-FCu.off-BCu .part .th,
+.board.off-FCu.off-BCu .part .hole {
+  display: none;
+}
+
+/* The timeline: each step with its date, its stage and what it changed. */
+.timeline {
+  position: relative;
+  display: grid;
+  gap: 2.25rem;
+  margin-top: 3rem;
+  padding-left: 1.5rem;
+}
+.timeline::before {
+  content: "";
+  position: absolute;
+  inset: 0.5rem auto 0.5rem 0.3125rem;
+  width: 1px;
+  background: var(--edge);
+  box-shadow: 0 0 0 0.5px var(--edge);
+}
+.timeline > li {
+  position: relative;
+  display: grid;
+  gap: 0.5rem;
+}
+.timeline > li::before {
+  content: "";
+  position: absolute;
+  top: 0.4rem;
+  left: -1.5rem;
+  width: 0.6875rem;
+  height: 0.6875rem;
+  border-radius: 999px;
+  background: var(--background);
+  box-shadow:
+    inset 0 0 0 2px var(--primary),
+    0 0 0 4px var(--background);
+}
+.tl-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+.tl-meta .stage {
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-foreground);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 0.6875rem;
+}
+.tl-body {
+  max-width: 46rem;
+}
+.tl-body h3 {
+  font-size: 1.125rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.tl-body p {
+  margin-top: 0.5rem;
+  color: var(--muted-foreground);
+  text-wrap: pretty;
+}
+.tl-body p.evidence {
+  font-size: 0.8125rem;
+}
+.tl-body .run {
+  margin-top: 1rem;
+}
+.open {
+  display: grid;
+  gap: 1rem;
+  max-width: 50rem;
+  margin-top: 2.5rem;
+  list-style: disc;
+  padding-left: 1.25rem;
+}
+.open li {
+  color: var(--muted-foreground);
+  text-wrap: pretty;
+}
+.open li b {
+  font-weight: 500;
+  color: var(--foreground);
+}
+.open + .actions {
+  margin-top: 2.5rem;
+}
+@media (min-width: 768px) {
+  .timeline > li {
+    grid-template-columns: 13rem minmax(0, 1fr);
+    gap: 1.5rem;
+  }
+  .tl-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.375rem;
+    padding-top: 0.2rem;
+  }
+}
+/* On a phone the traces would run behind the headline. */
+@media (max-width: 639px) {
+  .traces {
+    display: none;
+  }
 }

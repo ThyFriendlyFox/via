@@ -39,6 +39,23 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-12 — The website, redrawn: drawings, the agents, a page per example
+
+The owner pointed at the text-to-cad site and asked for ours to look better, on a branch. The
+home page opens with the wordmark built as a board is, then the install line and the 21 agents.
+The gates are 6 drawings of boards that a gate stopped. A test holds each value they mark to
+its board's files or to a run on the page. Rosetta has its own page, written by
+`site/examples.py` from its README, a new TIMELINE.md and its board. The explorer first drew only
+the outline and the vias: its buttons and the drawing's layers shared 1 attribute. On a phone the
+hero was wider than the screen: the install line set its column's width. `build.sh` looked for
+the example pages in the folder it ran from. Rosetta's outline measures 159.4 x 92 mm; 160 x 92 is
+its polygon before the corners are rounded. This machine has no KiCad, so the pages' runs did not
+run again here.
+
+Evidence: `tests/test_docs.py` 17 passed, 1 skipped (it needs kicad-cli and ngspice). `tests/`
+295 passed, 1 failed, 234 skipped; the failure, `test_fab` without KiCad's symbols, fails the same
+on `main`. The home page is 7,947 px tall at 1440 px wide, where it was 10,865.
+
 ## 2026-11-11 — An example project: a controller that speaks to 5 consoles
 
 The owner found the site's examples poor and asked for a prototype in the
