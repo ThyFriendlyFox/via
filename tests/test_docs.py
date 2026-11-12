@@ -434,6 +434,14 @@ def test_the_site_builds_for_an_address_and_without_one(tmp_path):
                 path = link.split("?")[0]
                 assert (served / path).is_file(), f"{name} names {link}, and build.sh does not copy it"
     assert looked_up >= 10
+    # A part's label names the first page of its datasheet in the page's JSON, not in an attribute,
+    # so each is looked up here, with the size the label reserves for it.
+    parts = re.search(r'<script type="application/json" id="herald-parts">(.*?)</script>', page, re.S)
+    sheets = {tuple(entry) for entry in re.findall(r'"dp":\["([^"]+)",(\d+),(\d+)\]', parts.group(1))}
+    assert len(sheets) >= 5, "the labels no longer show their datasheets' first pages"
+    for path, width, height in sheets:
+        assert (served / path).is_file(), f"a label names {path}, and build.sh does not copy it"
+        assert png_size(served / path) == (int(width), int(height)), path
 
     plain = tmp_path / "plain"
     assert build(plain).returncode == 0

@@ -39,6 +39,43 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-12 — Herald in 3D, and its labels 1 every 3 seconds
+
+The owner asked for the render's corners rounded, or the board itself in
+3D for the reader to turn, without slowing the page. They asked for the
+labels to play 1 at a time, 3 seconds apart, with the first page of each
+datasheet in its label and a leader in 2 runs, a diagonal then a level
+line, and for the status line and the pause buttons gone. Mid-turn they
+gave the hero's headline, "Circuit Boards / From / AI", the footer's
+license line, and justified paragraphs.
+
+KiCad's own GLB export reads STEP bodies only, and left out the project's
+bodies in `models/`. Its VRML export carries all of them, so three.js in
+Chromium turns the VRML into a GLB, 12.6 MB, and gltf-transform
+compresses it to 0.6 MB with meshopt. With GPU instancing on, each
+quantized instance lost its scale and the board drew 2 m wide; it is off.
+`site/showcase/make_glb.mjs` runs the 3 steps and wrote the committed
+file byte for byte. The page loads model-viewer, the decoder and the
+model only when the reader comes within 600 px, and the render stays in
+their place if any of it fails. model-viewer 4.4 ignores the global
+decoder setting; the page sets it on the element's class before making
+one.
+
+`site/showcase/datasheets.py` fetches the labels' 19 datasheets and draws
+each first page 160 px wide. 10 PDFs came back, 12 parts' worth. Nexperia,
+Littelfuse and ST refuse a script, 1 Vishay address answers 404, and the
+USB connector's is a zip. Their labels keep the link without a page. On a
+phone the labels stack under the board; they sat in the board's order, so
+the next one came in above the last with a gap over it. They stack in
+their turn's order now. Justified text in a label 16 rem wide left gaps
+wider than words, so labels stay ragged; `docs/STYLE.md` says so.
+
+Evidence: `tests/test_docs.py`, with a new check that each datasheet page
+a label names is built at the size it reserves (it fails with 1 removed);
+the page in Chromium at 1440, 800 and 390 px: 1 label every 3 seconds,
+the model drawn with no console error, no sideways scroll; `make verify`
+before the push.
+
 ## 2026-11-12 — A reader who trusts nothing read the README's front page
 
 A helper that had written none of the README's front page checked every
