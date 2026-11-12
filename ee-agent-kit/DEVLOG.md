@@ -72,7 +72,12 @@ readings come from runs of the decks, and the firmware's thresholds from
 `zone.h` and `line.h`. The page says what the firmware does not do yet:
 the tone sequencer, the modem, the station's protocol, the lights and
 the relay's watchdog. Rosetta keeps its card, and the README leads with
-Herald.
+Herald. The owner then asked for the traces over the models: the drawing
+now shows every track of its 3 signal layers in copper on a deep red,
+each layer sweeping in after the last, and the parts as faint outlines
+that light only for a signal. 2 signals' colours moved off the copper's,
+which hid their paths. From here the owner wants each change merged to
+`main`.
 
 Evidence: `make verify` and `tests/test_docs.py` at the commit; each old
 branch's tip equal to its pull request's head, 43 of 43; Hush's branch

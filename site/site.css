@@ -1280,53 +1280,52 @@ html:not(.motion) .progress {
   height: auto;
   overflow: visible;
 }
-/* Herald's stackup: red mask, white legend, gold (ENIG) pads. */
+/* Herald's stackup, with the copper as the subject: a deep red mask so the tracks stand out, each
+   layer in copper of its own depth, the front's with a glow; the parts as faint outlines. */
 .face-svg .pcb {
-  fill: oklch(0.5 0.17 28);
-  stroke: oklch(0.4 0.15 28);
+  fill: oklch(0.34 0.12 25);
+  stroke: oklch(0.28 0.1 25);
   stroke-width: 0.4;
 }
-.face-svg .cu-b {
-  fill: none;
-  stroke: oklch(0.6 0.16 30);
-  stroke-linecap: round;
-  stroke-opacity: 0.3;
-}
-.face-svg .cu-i {
-  fill: none;
-  stroke: oklch(0.6 0.16 30);
-  stroke-linecap: round;
-  stroke-opacity: 0.25;
-}
+.face-svg .cu-b,
+.face-svg .cu-i,
 .face-svg .cu-f {
   fill: none;
-  stroke: oklch(0.64 0.18 32);
   stroke-linecap: round;
-  stroke-opacity: 0.9;
+  stroke-linejoin: round;
+}
+.face-svg .cu-b {
+  stroke: oklch(0.66 0.11 45);
+  stroke-opacity: 0.45;
+}
+.face-svg .cu-i {
+  stroke: oklch(0.74 0.12 60);
+  stroke-opacity: 0.6;
+}
+.face-svg .cu-f {
+  stroke: oklch(0.86 0.14 75);
+  filter: drop-shadow(0 0 0.5px oklch(0.86 0.14 75 / 70%));
 }
 .face-svg .vias circle {
-  fill: oklch(0.78 0.11 85);
+  fill: oklch(0.88 0.13 85);
 }
 .face-svg .pads rect {
-  fill: oklch(0.8 0.12 85);
+  fill: oklch(0.82 0.12 85 / 85%);
 }
 .face-svg .body {
-  fill: oklch(0.2 0.01 60 / 55%);
-  stroke: oklch(1 0 0 / 35%);
-  stroke-width: 0.25;
+  fill: none;
+  stroke: oklch(1 0 0 / 22%);
+  stroke-width: 0.2;
+  stroke-dasharray: 0.8 0.6;
   transition:
     stroke 0.3s var(--ease),
     fill 0.3s var(--ease);
 }
-.face-svg .body[data-ghost] {
-  fill: none;
-  stroke: oklch(1 0 0 / 30%);
-  stroke-dasharray: 1 0.8;
-}
 .face-svg .body.on {
   stroke: var(--mode);
-  stroke-width: 0.6;
-  fill: color-mix(in oklch, var(--mode) 22%, transparent);
+  stroke-width: 0.5;
+  stroke-dasharray: none;
+  fill: color-mix(in oklch, var(--mode) 12%, transparent);
 }
 .face-svg text {
   fill: oklch(0.97 0.005 85);
@@ -1335,16 +1334,16 @@ html:not(.motion) .progress {
   font-weight: 500;
 }
 .face-svg .silk {
-  fill: oklch(0.97 0.005 85 / 85%);
+  fill: oklch(0.97 0.005 85 / 70%);
 }
 .face-svg .silk-line {
   fill: none;
-  stroke: oklch(0.97 0.005 85 / 85%);
+  stroke: oklch(0.97 0.005 85 / 70%);
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 .face-svg .silk-fill {
-  fill: oklch(0.97 0.005 85 / 85%);
+  fill: oklch(0.97 0.005 85 / 70%);
 }
 .face-svg .tag {
   font-size: 1.6px;

@@ -77,15 +77,18 @@ def main() -> int:
     )
     out.append(f'<path class="pcb" d="{path_of(d.outline_polygon(0.0, 10))}"/>')
 
-    # The copper: the back first, faint, then the inner signal layer, then the front.
+    # The copper, the drawing's subject: the back first, then the inner signal layer, then the front,
+    # each layer in a group of its own (`data-copper`) that the page sweeps in.
     for layer, cls in (("B.Cu", "cu-b"), ("In2.Cu", "cu-i"), ("F.Cu", "cu-f")):
         widths: dict[float, list[str]] = {}
         for _, a, b, w, lay in copper["segments"]:
             if lay == layer:
                 widths.setdefault(round(w, 2), []).append(f"M{f(a[0])} {f(a[1])}L{f(b[0])} {f(b[1])}")
+        out.append(f'<g class="{cls}" data-copper="{layer}">')
         for w, segs in sorted(widths.items()):
-            out.append(f'<path class="{cls}" stroke-width="{f(w)}" d="{"".join(segs)}"/>')
-    out.append('<g class="vias">' + "".join(
+            out.append(f'<path stroke-width="{f(w)}" d="{"".join(segs)}"/>')
+        out.append("</g>")
+    out.append('<g class="vias" data-copper="vias">' + "".join(
         f'<circle cx="{f(at[0])}" cy="{f(at[1])}" r="{f(size / 2)}"/>' for _, at, size, _ in copper["vias"]
     ) + "</g>")  # fmt: skip
 

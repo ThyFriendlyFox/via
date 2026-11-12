@@ -115,6 +115,20 @@
     { amount: 0.2 },
   );
 
+  // ---- the example's copper sweeps in a layer at a time: the back, the inner layer, the front ---
+  const copper = [...document.querySelectorAll("[data-face] [data-copper]")];
+  if (copper.length) {
+    const hidden = "inset(0% 100% 0% 0%)";
+    for (const layer of copper) layer.style.clipPath = hidden;
+    inView(
+      "[data-face]",
+      () => {
+        animate(copper, { clipPath: [hidden, "inset(0% 0% 0% 0%)"] }, { delay: stagger(0.35), duration: 1.3, ease });
+      },
+      { amount: 0.3 },
+    );
+  }
+
   // ---- a run types out a line at a time when it comes into view -------------------------------
   inView(
     ".run pre",
