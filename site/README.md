@@ -37,7 +37,7 @@ empty.
 | `effects.js` | The motion, with Motion: the logo draws itself, sections rise into view, runs type out, the example's knob turns, the board leans toward the pointer and turns over. The head's script adds `motion` to `<html>` unless the reader asked for reduced motion or the page is a capture (`?shot=`); without Motion every element sits where it ends. The knob and the turn-over button work without Motion. |
 | `vendor/` | Motion 14.6.0 (motion.dev), its UMD build from the npm package `motion`, and its MIT license. SHA256 `5cd165acfdf8e14ca5358c3d876142e5465419ee0d100bcf195da474cf8db2bf`. |
 | `logo.svg` | The Via wordmark: V, I and A as copper, a pad on each and traces between. The header, the footer, the closing section and `og.html` draw it inline. |
-| `showcase/` | The examples' pictures: KiCad's 3D renders of Rosetta (`rosetta-top.png`, `rosetta-bottom.png`, `rosetta-iso.png`), its layers (`rosetta-layers.png`), Signet's and Herald's cards (`signet.png`, `herald.png`), and Agentcast's (`agentcast.png`, from its repository's v0.5). `draw_face.py` writes the board drawing into `index.html` between `face:begin` and `face:end`. |
+| `showcase/` | The examples' pictures: KiCad's 3D renders of Rosetta (`rosetta-top.png`, `rosetta-bottom.png`, `rosetta-iso.png`), its layers (`rosetta-layers.png`), Signet's, Herald's and Hush's cards (`signet.png`, `herald.png`, `hush.png`), and Agentcast's (`agentcast.png`, from its repository's v0.5). `draw_face.py` writes the board drawing into `index.html` between `face:begin` and `face:end`. |
 | `favicon.svg` | The icon: the wordmark of `logo.svg`, centred in a square. It follows the system's colour scheme. |
 | `favicon-32.png`, `apple-touch-icon.png` | The icon as PNG, for a browser that takes no SVG icon and for a phone's home screen. |
 | `og.html` | The page the image below is a capture of. |
@@ -68,14 +68,16 @@ Rosetta's renders come from `workcenter render` on the example, cropped and
 scaled with FFmpeg; `examples/universal-controller/v0.2/README.md` shows
 them and names the render command.
 
-Signet's and Herald's cards are their own 3D renders, cropped to the
-card's shape and scaled to 1000 x 571 with FFmpeg:
+Signet's, Herald's and Hush's cards are their own 3D renders, cropped to
+the card's shape and scaled to 1000 x 571 with FFmpeg:
 
 ```sh
 ffmpeg -i examples/ring-mouse/v0.4/docs/assembly-iso.png \
   -vf "crop=1330:760:130:105,scale=1000:571:flags=lanczos,format=rgb24" site/showcase/signet.png
 ffmpeg -i examples/fire-alarm-communicator/v0.1/docs/board-3d-iso.png \
   -vf "crop=1500:857:34:127,scale=1000:571:flags=lanczos,format=rgb24" site/showcase/herald.png
+ffmpeg -i examples/anc-speaker/v0.1/docs/assembly-iso.png \
+  -vf "crop=1160:663:180:125,scale=1000:571:flags=lanczos,format=rgb24" site/showcase/hush.png
 ```
 
 ## A new example on the page
@@ -84,7 +86,7 @@ The section "Boards, not demos." (`id="built"`) holds 1 card for each
 example. To add an example when it lands on `main`:
 
 1. Crop the example's 3D render to 1.75 to 1 and scale it to 1000 x 571
-   into `showcase/<name>.png`, with a command like the 2 above.
+   into `showcase/<name>.png`, with a command like the 3 above.
 2. Add an `<a class="proj">` to the section. Its `href` is the example's
    README on GitHub. Its `<img>` states `width="1000" height="571"`, and
    its text says what the board is, then its size, layers and parts.
