@@ -178,6 +178,11 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
     design, and goes to the router as a plane net: 1 pin, its vias
     obstacles. A motherboard's 4 supply nets as tracks ran 20 minutes
     without finishing a pass, twice (M150).
+13. Run the checkout's own tools: `python3 tools/workcenter` from the
+    repository, or the installed `workcenter` only after `workcenter doctor`
+    names the checkout as its source. A container image holds the copy of
+    the tools it was built from. Read step 6 as the file says it now, not
+    as an earlier session remembered it (M162).
 
 Done when: the DRC after the route lists 0 errors, or every remaining
 error is named in the next design change.
