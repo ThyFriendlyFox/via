@@ -15,7 +15,9 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import types
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -365,6 +367,58 @@ def test_the_committed_table_is_sound_and_names_the_kit_install_sh_pins():
             lambda t: t["libraries"]["sky130_fd_sc_hd"]["floorplan"].update(sight="unithd"),
             "libraries.sky130_fd_sc_hd.floorplan: unknown key 'sight'",
         ),
+        (
+            lambda t: t["libraries"]["sky130_fd_sc_hd"]["floorplan"].pop("repair"),
+            "libraries.sky130_fd_sc_hd.floorplan: no repair",
+        ),
+        (
+            lambda t: t["libraries"]["sky130_fd_sc_hd"]["floorplan"]["repair"].pop("antenna_iterations"),
+            "floorplan.repair: not {slew_margin_percent, capacitance_margin_percent, antenna_iterations}",
+        ),
+        (
+            lambda t: t["libraries"]["sky130_fd_sc_hd"]["floorplan"]["repair"].update(
+                slew_margin_percent=100
+            ),
+            "floorplan.repair: not {slew_margin_percent, capacitance_margin_percent, antenna_iterations}",
+        ),
+        (
+            lambda t: t["libraries"]["sky130_fd_sc_hd"]["floorplan"]["repair"].update(antenna_iterations=0),
+            "2 margins from 0 to under 100 and a count of 1 or more",
+        ),
+        (
+            lambda t: t["libraries"]["sky130_fd_sc_hd"]["floorplan"].pop("wire_capacitance_ff_per_um"),
+            "libraries.sky130_fd_sc_hd.floorplan: no wire_capacitance_ff_per_um",
+        ),
+        (
+            lambda t: t["libraries"]["sky130_fd_sc_hd"]["floorplan"]["wire_capacitance_ff_per_um"].update(
+                clock=0
+            ),
+            "floorplan.wire_capacitance_ff_per_um: not {signal, clock}, each a number over 0",
+        ),
+        (
+            lambda t: t["libraries"]["sky130_fd_sc_hd"]["floorplan"]["wire_capacitance_ff_per_um"].pop(
+                "signal"
+            ),
+            "floorplan.wire_capacitance_ff_per_um: not {signal, clock}, each a number over 0",
+        ),
+        (
+            lambda t: t["libraries"]["sky130_fd_sc_hd"]["cells"].pop("dont_use"),
+            "libraries.sky130_fd_sc_hd.cells: no dont_use",
+        ),
+        (
+            lambda t: t["libraries"]["sky130_fd_sc_hd"]["cells"]["dont_use"].pop("layout"),
+            "cells.dont_use: not {synthesis, layout}, each a list of files of the kit",
+        ),
+        (
+            lambda t: t["libraries"]["sky130_fd_sc_hd"]["cells"]["dont_use"].update(
+                synthesis="no_synth.cells"
+            ),
+            "cells.dont_use: not {synthesis, layout}, each a list of files of the kit",
+        ),
+        (
+            lambda t: t["libraries"]["sky130_fd_sc_hd"]["cells"]["dont_use"].update(layout=["fill: a file"]),
+            "cells.dont_use: not {synthesis, layout}, each a list of files of the kit",
+        ),
         (lambda t: t["drc"][0].update(origin="vendor"), "drc[0]: not {name, engine (magic, klayout), origin"),
     ],
 )
@@ -424,7 +478,19 @@ def test_the_table_says_what_the_installed_kit_says():
         table["lvs"]["setup"],
     ]
     files += [d["file"] for d in table["drc"]]
+    # the kit's own lists of cells not to use are read from the kit, by the 2 names the table gives
+    assert list(cells["dont_use"]) == list(chipflow.DONT_USE) == ["synthesis", "layout"]
+    files += [name for names in cells["dont_use"].values() for name in names]
     assert [f for f in files if not (KIT / f).is_file()] == []
+    listed = {
+        kind: {n for f in names for n in (KIT / f).read_text(encoding="utf-8").split()}
+        for kind, names in cells["dont_use"].items()
+    }
+    assert (len(listed["synthesis"]), len(listed["layout"])) == (185, 53)
+    # every cell the build itself places by name is one the kit lets it place
+    placed = [cells["tap"], cells["clock_root"], cells["diode"]["cell"], cells["tie_high"]["cell"]]
+    placed += [*cells["fill"], *cells["clock_buffers"]]
+    assert not [name for name in placed if name in listed["layout"]]
 
 
 def test_a_projects_ranges_select_the_corners_at_or_beyond_each_end():
@@ -541,6 +607,52 @@ def test_a_file_is_taken_only_with_the_hash_a_gate_recorded(tmp_path):
     ]
     assert str(run.sdf("max_ss_100C_1v60").relative_to(run.out)) == "chip/sta/max_ss_100C_1v60/reg8.sdf"
     assert str(run.measures("sim", "tb_reg8").relative_to(run.out)) == "chip/sim/tb_reg8/measures.json"
+
+
+def test_the_ledger_keeps_every_entry_that_the_threads_of_a_gate_record_at_once(tmp_path):
+    """A gate's pool records from several threads. Each read the ledger, added its entry and wrote the
+    whole file back: of 30 runs of SIM at 4 jobs, 5 lost entries and 1 left a file that was no JSON
+    (2026-11-11), and GLSIM then skipped a sound design at 2 jobs. Here 8 threads record 40 files
+    each while another thread reads the ledger: no entry is lost, and each read finds whole JSON."""
+    run = a_run(tmp_path)
+    folder = run.base / "sim"
+    folder.mkdir(parents=True)
+    files = []
+    for n in range(320):
+        path = folder / f"measures-{n}.json"
+        path.write_text(f'{{"n": {n}}}\n', encoding="utf-8")
+        files.append(path)
+    torn, done = [], threading.Event()
+
+    def read() -> None:
+        target = run.base / "hashes.json"
+        while not done.is_set():
+            try:
+                json.loads(target.read_text(encoding="utf-8"))
+            except FileNotFoundError:
+                pass
+            except ValueError as problem:
+                torn.append(str(problem))
+
+    reader = threading.Thread(target=read)
+    reader.start()
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        digests = list(pool.map(lambda path: run.record("sim", path), files))
+    done.set()
+    reader.join()
+    ledger = run.ledger()
+    assert torn == []
+    assert len(ledger) == 320 and len(set(digests)) == 320
+    kept = {name: entry["sha256"] for name, entry in ledger.items() if entry["gate"] == "sim"}
+    assert kept == {f"chip/sim/{path.name}": d for path, d in zip(files, digests, strict=True)}
+    assert sorted(p.name for p in run.base.iterdir()) == ["hashes.json", "sim"]  # no part file is left
+    # a gate that runs again drops its own entries and no other gate's
+    other = run.base / "synth" / "reg8.v"
+    other.parent.mkdir()
+    other.write_text("module reg8; endmodule\n", encoding="utf-8")
+    run.record("synth", other)
+    run.forget("sim")
+    assert list(run.ledger()) == ["chip/synth/reg8.v"]
 
 
 def test_a_gates_result_fails_on_a_failure_and_with_strict_on_a_warning(tmp_path):

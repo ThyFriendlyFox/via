@@ -8,14 +8,14 @@ first failure line.
 
 | Project | Proves | Its run ends with |
 |---|---|---|
-| `pass-counter` | GREEN on `workcenter chip gates`, with `--strict` too. An 8-bit counter with an enable and a synchronous reset: 31 cells and 8 flops on a die of 50 um by 50 um, a 20 ns clock, 15 timing corners, 1 bench with 8 checks. Its `rtl/mutations.json` lists 5 changes of the RTL, and the bench catches each. | `GREEN: pass-counter  report <project>/build/gates.json` |
-| `pass-acc8` | The acceptance design: acc8, an 8-bit processor with 4 programs in its ROM, 770 cells and 156 flops, a 40 ns clock. Its 5 benches make 1098 checks and catch each of the 18 changes of `rtl/mutations.json`. LINT, SIM, SYNTH and LAYOUT pass with `--strict`. STA fails: see "What `pass-acc8` shows". | `RED: pass-acc8  report <project>/build/gates.json` |
+| `pass-counter` | GREEN on `workcenter chip gates`, with `--strict` too. An 8-bit counter with an enable and a synchronous reset: 29 cells and 8 flops on a die of 50 um by 50 um, a 20 ns clock, 15 timing corners, 1 bench with 8 checks. Its `rtl/mutations.json` lists 5 changes of the RTL, and the bench catches each. | `GREEN: pass-counter  report <project>/build/gates.json` |
+| `pass-acc8` | The acceptance design, GREEN with `--strict`: acc8, an 8-bit processor with 4 programs in its ROM, 760 cells and 132 flops on a die of 152.38 um by 152.38 um, a 40 ns clock. Its 5 benches make 1098 checks and catch each of the 18 changes of `rtl/mutations.json`. See "What `pass-acc8` shows". | `GREEN: pass-acc8  report <project>/build/gates.json` |
 | `fail-lint-latch` | LINT fails on a latch. 1 branch of a combinational block assigns nothing: `LATCH: rtl/counter.v:11:5: Latch inferred for signal 'counter.next' (not all control paths of combinational always assign a value)`. | `RED: fail-lint-latch  report <project>/build/gates.json` |
 | `fail-lint-second-clock` | LINT fails on a second clock in the constraints. The RTL is the passing counter's: `constraints.sdc: line 4: a second clock: the first flow takes 1 clock. Use 1 clock and an enable`. | `RED: fail-lint-second-clock  report <project>/build/gates.json` |
 | `fail-sim-spec` | SIM fails on a bench that counts an error. The counter counts by 2, and 5 of the bench's 8 comparisons fail: `tb_counter: errors=5 not in [None, 0]`. | `RED: fail-sim-spec  report <project>/build/gates.json` |
 | `fail-synth-noreset` | SYNTH fails on a flop with no reset and no answer in `chip.json`. The flop `en_q` registers the enable, and SIM passes with 10 checks: `1 flops have no reset: en_q: reset each, or name it in chip.json's answers.flops_without_reset with why and the bench that proves it`. | `RED: fail-synth-noreset  report <project>/build/gates.json` |
-| `fail-layout-area` | LAYOUT fails on a die too small for the cells. On a die of 46 um by 46 um the build of the passing counter stops after the floorplan: `utilisation 0.5223 is over the limit 0.5 of chip.json after the floorplan, before the clock tree adds cells: take a larger die, or cut logic. Do not raise the limit`. | `RED: fail-layout-area  report <project>/build/gates.json` |
-| `fail-sta-corner` | STA fails at the slow corners alone, as `fail-sim-corner` does for a board. The passing counter with a clock period of 5.4 ns: each typical and each fast corner meets it, and each of the 6 slow corners misses it. The first line: `max_ss_n40C_1v60: setup slack -0.5704 ns, from en to _49_`. | `RED: fail-sta-corner  report <project>/build/gates.json` |
+| `fail-layout-area` | LAYOUT fails on a die too small for the cells. On a die of 46 um by 46 um the build of the passing counter stops after the floorplan: `utilisation 0.6451 is over the limit 0.5 of chip.json after the floorplan, before the clock tree adds cells: take a larger die, or cut logic. Do not raise the limit`. | `RED: fail-layout-area  report <project>/build/gates.json` |
+| `fail-sta-corner` | STA fails at the slow corners alone, as `fail-sim-corner` does for a board. The passing counter with a clock period of 5 ns: each typical and each fast corner meets it by 0.36 ns or more, and each of the 6 slow corners misses it by 0.29 to 0.33 ns. The layout build says so first, as a warning of LAYOUT: `[WARNING RSZ-0062] Unable to repair all setup violations.` The first line of STA: `max_ss_n40C_1v60: setup slack -0.3277 ns, from _49_ to count[3]`. | `RED: fail-sta-corner  report <project>/build/gates.json` |
 | `fail-glsim-x` | GLSIM fails on an output that is unknown on the netlist while the RTL run hides it. An `initial` block stands where the reset should clear the count, and `chip.json` answers for the 8 flops. SIM passes with `x_outputs = 0`. On the routed netlist the count is never known: `tb_counter: errors=8 not in [None, 0]`, then `tb_counter: x_outputs=266 not in [None, 0]`. | `RED: fail-glsim-x  report <project>/build/gates.json` |
 
 Each failing fixture is the passing counter with 1 fault. It differs from
@@ -36,20 +36,20 @@ and LVS, under `tests/chips/samples/back/`. Runs in
 ## Run one
 
 ```
-workcenter chip gates tests/chips/fail-sim-spec --out <scratch> --jobs 1
-workcenter chip gates tests/chips/pass-counter --out <scratch> --strict --jobs 1
+workcenter chip gates tests/chips/fail-sim-spec --out <scratch>
+workcenter chip gates tests/chips/pass-counter --out <scratch> --strict
 ```
 
 `--out` keeps the run out of the repository, and the last line then names
 `<scratch>/gates.json`. Without it the run writes `build/` beside
-`chip.json`, which git ignores. `tests/test_chips.py` runs each fixture
-with `--jobs 1`, 1 engine at a time: run a fixture the same way.
+`chip.json`, which git ignores. `tests/test_chips.py` runs a copy of each
+fixture the same way, with the default of `--jobs`.
 
-Measured on 2026-11-11 on 4 processors, 1 fixture at a time: a fixture that
-stops at LINT, SIM or SYNTH takes under 2 s. `fail-layout-area` takes under
-3 s: its build stops after the floorplan. `fail-sta-corner`, `fail-glsim-x` and
-`pass-counter` take 52 to 60 s. `pass-acc8` takes 11 minutes to its STA
-failure: its layout build takes 668 s.
+Measured on 2026-11-12 on 4 processors, 1 fixture at a time: a fixture that
+stops at LINT, SIM or SYNTH takes under 2 s. `fail-layout-area` takes 5 s:
+its build stops after the floorplan. `fail-sta-corner` and `fail-glsim-x`
+take 36 s and `pass-counter` 42 s. `pass-acc8` takes 217 s: its layout
+build takes 192 s of them.
 
 ## The mutation lists
 
@@ -67,18 +67,42 @@ and the seconds; for `pass-acc8` the counts are 18 and 18.
 
 ## What `pass-acc8` shows
 
-The processor is the first design here that the layout build must repair,
-and the build of 2026-11-11 does not. Its run with `--strict` stops at STA:
+The processor is the first design here that the layout build must repair.
+After the placement the build's log reads `Found 2 slew violations.`,
+`Found 2 capacitance violations.`, `Inserted 3 buffers in 2 nets.` and
+`Resized 647 instances.` After the global route it reads
+`Antenna violations: 0`. The run with `--strict` ends GREEN:
 
 | Gate | What it prints for `pass-acc8` |
 |---|---|
-| LAYOUT | `6909.13 um2 of cells, utilisation 0.528, 0 failures` on a die of 136.665 um by 136.665 um |
-| STA | 13 of the 15 corners fail. The first line starts `max_ss_n40C_1v60: 477 pins break a limit of the library or the constraints (max slew, max capacitance)`. The least setup slack is 15.4277 ns at `max_ss_n40C_1v60`, and the least hold slack 0.2841 ns at `min_ff_n40C_1v95`. |
-| GLSIM, run alone on that layout | `4 benches on the final netlist, 1 on the RTL only, 0 failures` |
-| DRC, run alone | `2 decks: magic 0, klayout-mr 8, 1 failures`: `klayout-mr: 8 items break a rule: npc.2, nsd.2, psd.2` |
-| ANTENNA, run alone | `1 nets and 1 pins collect more charge than their gates take: build again with diodes or more repair` |
-| LVS, run alone | `the layout against the netlist with its supply pins: 787 devices against 787, 0 failures` |
+| LINT | `4 RTL files, top acc8, 0 failures` |
+| SIM | `5 benches, 1098 checks, 0 failures` |
+| SYNTH | `760 cells, 132 flops, 8530.7 um2, the mapping removed 24 flops that nothing reads (--json names each), 0 failures` |
+| LAYOUT | `8379.29 um2 of cells, utilisation 0.493, 0 failures` |
+| STA | `15 corners, least setup slack 25.1717 ns at max_ss_n40C_1v60, least hold slack 0.2974 ns at min_ff_n40C_1v95, 0 failures` |
+| GLSIM | `4 benches on the final netlist, 1 on the RTL only, 0 failures` |
+| DRC | `2 decks: magic 0, klayout-mr 0, 0 failures` |
+| ANTENNA | `the routed database, 0 failures` |
+| LVS | `the layout against the netlist with its supply pins: 792 devices against 792, 0 failures` |
+| EXPORT | `22 files, 20 reports and manifest.json in chip/tapeout, 0 failures` |
 
-The fixture stays as it is. `tests/test_chips.py` holds the STA failure as
-a known fault of the build and fails on the day the run is GREEN: change
-the row of `pass-acc8` and remove the known fault then.
+The RTL describes 16 registers and the chip holds 13. With these 4
+programs in the ROM nothing reads `r6`, `r9` and `r10`: the mapping proves
+it and removes their 24 flops. SYNTH counts the flops of the netlist, and
+its record names each flop the mapping removed. `tb_random` drives the
+core alone, so `chip.json` keeps that bench on the RTL.
+
+1 set of files gives 1 layout: 5 builds at 1, 2, 4 and 8 jobs wrote the
+same GDS, and `tests/test_chips.py` holds the run to its hash, which
+starts `0c51debe623a0a18`. A change of a script or of the process table
+that moves 1 wire changes it.
+
+GREEN says what the run's scope line says: the open engines found no fault
+in these files, with the community decks, at the 15 corners the project's
+ranges select. No foundry deck ran.
+
+The round of 2026-11-11 ended RED here. STA failed 13 of the 15 corners,
+the first with 477 slew and capacitance limits broken; KLayout's deck
+counted 8 items; 1 net collected too much charge. The gates were right and
+the build was short. `pdks/README.md` says what the build does now, and
+the landmine map in `ee-agent-kit/AGENTS.md` what each engine did.

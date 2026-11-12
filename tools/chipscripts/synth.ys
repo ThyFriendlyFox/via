@@ -11,10 +11,14 @@ synth -top @TOP@ -flatten
 tee -o @OUT@/check_generic.txt check
 # Each flop as Yosys names it by what it has: a synchronous reset is still a part of the flop here.
 json -o @OUT@/generic.json @TOP@
-dfflibmap -liberty @LIBERTY@
-abc -liberty @LIBERTY@
+# The mapping chooses from the liberty file without the cells the process kit lists as not to use.
+dfflibmap -liberty @MAPPING@
+abc -liberty @MAPPING@
 hilomap -singleton -hicell @TIE_HIGH@ -locell @TIE_LOW@
 opt_clean -purge
+# The netlist as it is handed on, each cell under the name it had before the mapping. The pass above
+# removes a flop that nothing reads: a flop of generic.json with no cell here was removed.
+json -o @OUT@/mapped.json @TOP@
 # After them: a cell the library has no cell for.
 tee -o @OUT@/check.txt check -mapped
 tee -o @OUT@/stat.json stat -liberty @LIBERTY@ -json

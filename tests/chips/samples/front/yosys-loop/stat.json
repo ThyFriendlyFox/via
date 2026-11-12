@@ -11,9 +11,9 @@
          "num_memory_bits":   0,
          "num_processes":     0,
          "num_cells":         1,
-         "area":              7.507200,
+         "area":              8.758400,
          "num_cells_by_type": {
-            "sky130_fd_sc_hd__o21a_1": 1
+            "sky130_fd_sc_hd__o21a_2": 1
          }
       }
    },
@@ -26,9 +26,9 @@
          "num_memory_bits":   0,
          "num_processes":     0,
          "num_cells":         1,
-         "area":              7.507200,
+         "area":              8.758400,
          "num_cells_by_type": {
-            "sky130_fd_sc_hd__o21a_1": 1
+            "sky130_fd_sc_hd__o21a_2": 1
          }
       }
 }

@@ -9,7 +9,7 @@ module reg8(clk, d, q, zero);
   wire q;
   output zero;
   wire zero;
-  sky130_fd_sc_hd__dfxtp_1 _0_ (
+  sky130_fd_sc_hd__dfxtp_2 _0_ (
     .CLK(clk),
     .D(d),
     .Q(q)

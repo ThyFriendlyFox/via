@@ -19,10 +19,11 @@ _17_
 _18_
 _19_
 _20_
+_21_
 clk
 clknet_0_clk
-clknet_1_0__leaf_clk
-clknet_1_1__leaf_clk
+clknet_1_0_0_clk
+clknet_1_1_0_clk
 d[0]
 d[1]
 d[2]
