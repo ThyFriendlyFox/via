@@ -7,7 +7,7 @@ module reg8(x, y, a);
   wire x;
   input y;
   wire y;
-  sky130_fd_sc_hd__o21a_1 _0_ (
+  sky130_fd_sc_hd__o21a_2 _0_ (
     .A1(y),
     .A2(a),
     .B1(x),

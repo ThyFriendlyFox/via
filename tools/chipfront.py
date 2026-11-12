@@ -54,6 +54,88 @@ LATCH_RE = re.compile(r"^\$_(DLATCH|SR_)")
 YOSYS_NOTE_RE = re.compile(r"Found unsupported expression .* in pin attribute of cell")
 CHECK_RE = re.compile(r"has no driver|conflicting drivers|logic loop|unmapped internal cell")
 CONSTANT_RE = re.compile(r"\b\d+'[bhd][0-9a-fA-FxXzZ_]+")
+LIBERTY_CELL_RE = re.compile(r'^\s*cell\s*\(\s*"?([^"\s)]+)"?\s*\)\s*\{')
+QUOTED_RE = re.compile(r'"[^"]*"')
+# A file that Verilog source names and the engine then reads: a header, a memory's contents.
+NAMED_FILE_RE = re.compile(r'(?:`include\s+|\$readmem[bh]\s*\(\s*)"([^"\n]+)"')
+# The gates that read the project's own files, in the order they run.
+INPUT_GATES = ("lint", "sim", "synth", "layout", "glsim")
+
+
+def read_with(sources: list[Path], folders: list[Path]) -> list[Path]:
+    """The sources and each file they name in an `include` or a `$readmemh`, and each file those name,
+    1 time each. An engine looks for a named file beside the file that names it or in a folder of
+    its `-I` list, and which one it takes differs between the engines: every file of that name in
+    any of those places is listed. A name with no file is left out: the engine's own error names it."""
+    out: list[Path] = []
+    seen: set[Path] = set()
+
+    def read(path: Path) -> None:
+        if path.resolve() in seen or not path.is_file():
+            return
+        seen.add(path.resolve())
+        out.append(path)
+        for name in NAMED_FILE_RE.findall(path.read_text(encoding="utf-8", errors="replace")):
+            for folder in (path.parent, *folders):
+                read(folder / name)
+
+    for source in sources:
+        read(Path(source))
+    return out
+
+
+def project_inputs(run, gate: str) -> list[Path]:
+    """The project's own files that a gate reads, each whether it is there or not. A gate's record of
+    a pass names the hash of each one that is there. EXPORT asks again: a file that is there now and
+    not in the record came after the gate passed."""
+    chip = run.chip
+    own = run.project / chipflow.CHIP_FILE
+    folders = [Path(flag[2:]) for flag in include_dirs(run)]
+    found = benches(run)
+    chosen = [b for b in found if b.stem not in chip.rtl_only]
+
+    def expect_files(of: list[Path]) -> list[Path]:
+        return [run.project / "tb" / f"{bench.stem}.expect.json" for bench in of]
+
+    return {
+        "lint": [*read_with(chip.rtl, folders), chip.constraints, own],
+        "sim": [
+            *read_with([*chip.rtl, *found], folders),
+            *expect_files(found),
+            run.project / "rtl" / "mutations.json",
+            own,
+        ],
+        "synth": [*read_with(chip.rtl, folders), own],
+        "layout": [chip.constraints, own],
+        "glsim": [*read_with(chosen, folders), *expect_files(chosen), own],
+    }[gate]
+
+
+def inputs_taken(run, gate: str, *more: Path) -> dict[str, str]:
+    """{name: SHA256} of the files a gate reads, taken before its engines start: the project's own, and
+    `more`, the files of the output folder that a gate before it handed on."""
+    return run.judged([*project_inputs(run, gate), *more])
+
+
+def inputs_moved(run, gate: str, taken: dict[str, str], *more: Path) -> list[str]:
+    """A failure for each of those files that is other bytes, gone or new when the engines have ended:
+    an engine read 1 of the 2, and the record of a pass names 1 hash."""
+    now = inputs_taken(run, gate, *more)
+    return [
+        f"{name} changed while the gate ran: its hash differs"
+        for name in sorted({*taken, *now})
+        if taken.get(name) != now.get(name)
+    ]
+
+
+def passed(run, gate: str, result, taken: dict[str, str], *written: Path):
+    """A gate's result, and on a pass the record of it: the hash of each file the gate judged. That is
+    `taken`, the files it read, and `written`, the files it hands on. EXPORT asks every gate for its
+    record and holds each file to it. So a layout is handed out only for the RTL, the headers, the
+    benches, their bounds, the constraints and the chip.json that each gate passed on."""
+    if result.status == "pass":
+        run.write_passed(gate, {**taken, **run.judged(written)})
+    return result
 
 
 def short(text: str, run) -> str:
@@ -131,7 +213,8 @@ def gate_lint(run):
         return run.skip(
             "lint", f"chip.json names top {chip.top} and no file matches its rtl patterns: write the RTL"
         )
-    folder = run.fresh("lint")
+    folder = run.begin("lint")
+    taken = inputs_taken(run, "lint")
     files = [str(p) for p in chip.rtl]
     started = run.start(
         [
@@ -194,7 +277,8 @@ def gate_lint(run):
         "ports": ports or {},
         "clock": {"port": sdc.clock_port, "name": sdc.clock_name, "period_ns": sdc.period_ns},
     }
-    return run.result(
+    failures += inputs_moved(run, "lint", taken)
+    result = run.result(
         "lint",
         failures,
         warnings,
@@ -202,6 +286,7 @@ def gate_lint(run):
         details,
         [folder / "verilator.log"],
     )
+    return passed(run, "lint", result, taken)
 
 
 # ------------------------------------------------------------- SIM and GLSIM
@@ -343,7 +428,8 @@ def gate_sim(run):
         return run.skip("sim", "tb/ holds no bench: write a bench that prints errors, checks and x_outputs")
     if not run.chip.rtl:
         return run.skip("sim", "no file matches chip.json's rtl patterns: write the RTL")
-    run.fresh("sim")
+    run.begin("sim")
+    taken = inputs_taken(run, "sim")
     failures, warnings, measures = run_benches(run, "sim", found, [str(p) for p in run.chip.rtl], [])
     for name in run.chip.rtl_only:
         if name not in measures:
@@ -354,9 +440,11 @@ def gate_sim(run):
             "each thing a bench must catch, and run `workcenter mutate`"
         )
     checks = sum(int(m.get("checks", 0)) for m in measures.values())
-    return run.result(
+    failures += inputs_moved(run, "sim", taken)
+    result = run.result(
         "sim", failures, warnings, f"{len(found)} benches, {checks} checks", {"benches": measures}
     )
+    return passed(run, "sim", result, taken)
 
 
 OPEN_PORT = re.compile(r"dangling input port \d+ \((\w+)\) floating")
@@ -404,7 +492,8 @@ def gate_glsim(run):
         before[bench.stem] = json.loads(path.read_text(encoding="utf-8"))
     models = run.pdk.library["verilog"]
     sources = [str(netlist), *[str(run.pdk.file(f)) for f in models["files"]]]
-    run.fresh("glsim")
+    run.begin("glsim")
+    taken = inputs_taken(run, "glsim", netlist)
     failures, warnings, measures = run_benches(run, "glsim", chosen, sources, list(models["defines"]))
     supply = {run.pdk.library["supply"][side]["net"] for side in ("power", "ground")}
     warnings = netlist_warnings(warnings, str(run.pdk.root), supply)
@@ -416,9 +505,11 @@ def gate_glsim(run):
             )
     details = {"benches": measures, "rtl_only": dict(run.chip.rtl_only), "netlist": str(netlist)}
     skipped = f", {len(run.chip.rtl_only)} on the RTL only" if run.chip.rtl_only else ""
-    return run.result(
+    failures += inputs_moved(run, "glsim", taken, netlist)
+    result = run.result(
         "glsim", failures, warnings, f"{len(chosen)} benches on the final netlist{skipped}", details
     )
+    return passed(run, "glsim", result, taken)
 
 
 # ----------------------------------------------------------------------- SYNTH
@@ -459,9 +550,9 @@ def names(pattern: str, bit: str) -> bool:
     return bool(re.fullmatch(regex, bit) or re.fullmatch(regex, re.sub(r"\[\d+\]\Z", "", bit)))
 
 
-def register_names(generic: dict, top: str) -> dict[str, list[str]]:
-    """{cell type: the register bits it holds} for each flop and latch of the design before the
-    library's cells replace them. A bit is named by the net its Q drives: `q[3]`, `core.pc[0]`."""
+def register_cells(generic: dict, top: str) -> list[tuple[str, str, str]]:
+    """(cell name, cell type, register bit) for each flop and latch of the design before the library's
+    cells replace them. A bit is named by the net its Q drives: `q[3]`, `core.pc[0]`."""
     module = generic.get("modules", {}).get(top, {})
     names: dict[int, str] = {}
     for name, net in module.get("netnames", {}).items():
@@ -470,12 +561,21 @@ def register_names(generic: dict, top: str) -> dict[str, list[str]]:
         bits = net.get("bits", [])
         for i, bit in enumerate(bits):
             names.setdefault(bit, f"{name}[{i}]" if len(bits) > 1 else name)
-    out: dict[str, list[str]] = {}
+    out = []
     for cell_name, cell in module.get("cells", {}).items():
         kind = cell.get("type", "")
         if FLOP_RE.match(kind) or LATCH_RE.match(kind):
             bit = (cell.get("connections", {}).get("Q") or [None])[0]
-            out.setdefault(kind, []).append(names.get(bit, cell_name))
+            out.append((cell_name, kind, names.get(bit, cell_name)))
+    return out
+
+
+def register_names(generic: dict, top: str) -> dict[str, list[str]]:
+    """{cell type: the register bits it holds} for each flop and latch of the design before the
+    library's cells replace them."""
+    out: dict[str, list[str]] = {}
+    for _, kind, bit in register_cells(generic, top):
+        out.setdefault(kind, []).append(bit)
     return {kind: sorted(bits) for kind, bits in out.items()}
 
 
@@ -485,6 +585,7 @@ def judge_synth(
     check_mapped: str,
     stat: dict | None,
     generic: dict | None,
+    mapped: dict | None,
     netlist: str | None,
     top: str,
     cells: dict,
@@ -493,7 +594,9 @@ def judge_synth(
     """Yosys's reports as (failures, warnings, details). The design maps onto the library when Yosys
     names no error, `check` finds 0 problems before and after the mapping, no internal cell and no
     latch is left, every flop has a reset or an answer in chip.json, and no input is tied to a
-    constant without a tie cell."""
+    constant without a tie cell. `generic` is the design before the library's cells and `mapped` the
+    netlist that is handed on: the flops counted are the netlist's, and a flop of `generic` that the
+    netlist does not hold is named as removed by the mapping."""
     failures = [line.strip() for line in console.splitlines() if line.startswith("ERROR:")]
     said = [
         line[len("Warning: ") :].strip()
@@ -519,7 +622,7 @@ def judge_synth(
     failures += [f"check: {line}" for line in found]
     warnings = [w for w in said if not CHECK_RE.search(w)]
     details: dict = {}
-    if stat is None or generic is None or netlist is None:
+    if stat is None or generic is None or mapped is None or netlist is None:
         if not failures:
             failures.append("Yosys wrote no netlist: its log says where it stopped")
         return failures, warnings, details
@@ -571,11 +674,19 @@ def judge_synth(
             f"the netlist ties inputs to {', '.join(constants)} with no tie cell: a net there has no driver, "
             "or holds an unknown value"
         )
-    flops = sum(len(bits) for kind, bits in registers.items() if FLOP_RE.match(kind))
+    # The flops counted are the netlist's. The mapping proves more than `synth` does, and the script's
+    # last pass then removes a flop that nothing reads: the netlist can hold fewer flops than the design
+    # had before the mapping. A flop keeps its cell's name through the mapping, so each one removed is
+    # named by its register bit. A flop that `synth` itself removed is in neither file and is not named.
+    flop_kinds = {*cells["flop_with_reset"], *cells["flop_without_reset"]}
+    built = (mapped.get("modules", {}).get(top) or {}).get("cells", {})
+    before = [(name, bit) for name, kind, bit in register_cells(generic, top) if FLOP_RE.match(kind)]
     details = {
         "cells": sum(counts.values()),
         "cells_by_type": dict(sorted(counts.items())),
-        "flops": flops,
+        "flops": sum(n for kind, n in counts.items() if family(kind) in flop_kinds),
+        "flops_before_mapping": len(before),
+        "flops_removed_by_mapping": sorted(bit for name, bit in before if name not in built),
         "flops_without_reset": bare,
         "area_um2": (stat.get("design") or {}).get("area", design.get("area")),
     }
@@ -594,6 +705,45 @@ def synth_liberty(run) -> Path:
     return run.pdk.file(corners[typical[0]]["liberty"])
 
 
+def dont_use_files(run, *kinds: str) -> list[str]:
+    """The files of the kit that list the cells not to use for these kinds, as the table names them."""
+    listed = run.pdk.library["cells"]["dont_use"]
+    return list(dict.fromkeys(name for kind in kinds for name in listed[kind]))
+
+
+def dont_use(run, *kinds: str) -> list[str]:
+    """The cells the kit's own lists keep out, each once, in the lists' order. `synthesis` is what the
+    mapping may not choose; `layout` is what no step may place: neither the mapping nor the layout
+    build. A list is a file of the kit with 1 cell name on a line."""
+    names: list[str] = []
+    for relative in dont_use_files(run, *kinds):
+        for line in run.pdk.file(relative).read_text(encoding="utf-8", errors="replace").splitlines():
+            name = line.split("#")[0].strip()
+            if name and name not in names:
+                names.append(name)
+    return names
+
+
+def liberty_without(text: str, cells: set[str]) -> tuple[str, list[str]]:
+    """A liberty file's text without the group of each named cell, and the names of the groups left
+    out. A cell is a group `cell (name) { ... }` that starts a line; it ends at the brace that closes
+    its first one, counted outside quoted text. Yosys 0.33 has no flag that keeps a cell out of the
+    mapping, so the mapping reads a file that does not offer it."""
+    kept: list[str] = []
+    left: list[str] = []
+    depth = 0
+    for line in text.splitlines(keepends=True):
+        if depth == 0:
+            found = LIBERTY_CELL_RE.match(line)
+            if not found or found.group(1) not in cells:
+                kept.append(line)
+                continue
+            left.append(found.group(1))
+        bare = QUOTED_RE.sub("", line)
+        depth += bare.count("{") - bare.count("}")
+    return "".join(kept), left
+
+
 def gate_synth(run):
     missing = run.need_pdk("synth") or run.need_engines("synth", "yosys")
     if missing:
@@ -601,11 +751,23 @@ def gate_synth(run):
     chip = run.chip
     if not chip.rtl:
         return run.skip("synth", "no file matches chip.json's rtl patterns: write the RTL")
-    folder = run.fresh("synth")
+    folder = run.begin("synth")
+    taken = inputs_taken(run, "synth")
     cells = run.pdk.library["cells"]
     liberty = synth_liberty(run)
+    # A liberty file and a list of cells are engines too: without one the gate did not run.
+    lists = dont_use_files(run, *chipflow.DONT_USE)
+    needed = (str(liberty.relative_to(run.pdk.root)), *lists)
+    absent = [name for name in needed if not run.pdk.file(name).is_file()]
+    if absent:
+        return run.skip("synth", f"the process kit {run.pdk.name} has no {', '.join(absent)}", engine=True)
+    kept_out = dont_use(run, *chipflow.DONT_USE)
+    mapping = folder / "mapping.lib"
+    offered, left_out = liberty_without(liberty.read_text(encoding="utf-8", errors="replace"), set(kept_out))
+    mapping.write_text(offered, encoding="utf-8")
     values = {
         "LIBERTY": str(liberty),
+        "MAPPING": str(mapping),
         "RTL": " ".join(f'"{p}"' for p in chip.rtl),
         "INCLUDES": " ".join(f'-I"{p.parent}"' for p in chip.rtl),
         "TOP": chip.top,
@@ -641,6 +803,7 @@ def gate_synth(run):
         text_of("check.txt"),
         json_of("stat.json"),
         json_of("generic.json"),
+        json_of("mapped.json"),
         written.read_text(encoding="utf-8", errors="replace") if written.is_file() else None,
         chip.top,
         cells,
@@ -649,12 +812,25 @@ def gate_synth(run):
     stopped = started.problem("yosys")
     if stopped and not any(line.startswith("ERROR:") for line in failures):
         failures.insert(0, stopped)
-    failures = [short(line, run) for line in failures]
+    # The mapping was offered none of them: one in the netlist is a cell the RTL names itself.
+    named = sorted(kind for kind in details.get("cells_by_type", {}) if kind in set(kept_out))
+    if named:
+        failures.append(
+            f"the netlist holds {', '.join(named[:4])}{' ...' if len(named) > 4 else ''}: the process kit "
+            f"lists {'it' if len(named) == 1 else 'them'} as not to use ({', '.join(lists)}). Name another "
+            "cell in the RTL, or none"
+        )
+    failures = [short(line, run) for line in failures] + inputs_moved(run, "synth", taken)
     warnings = [short(line, run) for line in warnings]
     details["liberty"] = str(liberty)
+    details["cells_not_offered"] = len(left_out)
     if written.is_file():
         details["sha256"] = run.record("synth", written)
     summary = f"{details.get('cells', 0)} cells, {details.get('flops', 0)} flops"
     if details.get("area_um2") is not None:
         summary += f", {details['area_um2']:.1f} um2"
-    return run.result("synth", failures, warnings, summary, details, [written, folder / "yosys.log"])
+    removed = details.get("flops_removed_by_mapping") or []
+    if removed:
+        summary += f", the mapping removed {len(removed)} flops that nothing reads (--json names each)"
+    result = run.result("synth", failures, warnings, summary, details, [written, folder / "yosys.log"])
+    return passed(run, "synth", result, taken, written)

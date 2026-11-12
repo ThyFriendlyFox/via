@@ -224,7 +224,15 @@
           "sky130_fd_sc_hd__clkbuf_4",
           "sky130_fd_sc_hd__clkbuf_8"
         ],
-        "source": "the ff and latch groups of the tt_025C_1v80 liberty file: a flop with a clear or a preset attribute has a reset; a family is a cell's name without the library's prefix and its drive strength; a clock gate is a cell with clock_gating_integrated_cell; tap and fill cells from the cell LEF; the clock buffers are the proof flow's"
+        "dont_use": {
+          "synthesis": [
+            "libs.tech/openlane/sky130_fd_sc_hd/no_synth.cells"
+          ],
+          "layout": [
+            "libs.tech/openlane/sky130_fd_sc_hd/drc_exclude.cells"
+          ]
+        },
+        "source": "the ff and latch groups of the tt_025C_1v80 liberty file: a flop with a clear or a preset attribute has a reset; a family is a cell's name without the library's prefix and its drive strength; a clock gate is a cell with clock_gating_integrated_cell; tap and fill cells from the cell LEF; the clock buffers are the proof flow's; the 2 dont_use lists are the kit's own files, which libs.tech/openlane/config.tcl names NO_SYNTH_CELL_LIST and DRC_EXCLUDE_CELL_LIST; the same file gives the library a flow optimises with a DRC exclude list alone (DRC_EXCLUDE_CELL_LIST_OPT), so the layout build is kept from the cells of that 1 list"
       },
       "supply": {
         "power": {
@@ -255,6 +263,10 @@
           "signal": "met2",
           "clock": "met3"
         },
+        "wire_capacitance_ff_per_um": {
+          "signal": 0.166,
+          "clock": 0.151
+        },
         "routing_layers": {
           "bottom": "met1",
           "top": "met5"
@@ -272,11 +284,16 @@
           }
         },
         "placement_density": 0.6,
+        "repair": {
+          "slew_margin_percent": 20,
+          "capacitance_margin_percent": 20,
+          "antenna_iterations": 3
+        },
         "core_margin_um": [
           10.12,
           10.88
         ],
-        "source": "site unithd and the layers from the technology LEF; the tracks file is the kit's; the tap distance, the pin and wire layers, the grid, the density and the core margin (22 sites and 4 rows from the die's edge) are the proof flow's choices, not rules of the kit"
+        "source": "site unithd and the layers from the technology LEF; the tracks file is the kit's; the tap distance, the pin and wire layers, the grid, the density and the core margin (22 sites and 4 rows from the die's edge) are the proof flow's choices, not rules of the kit; wire_capacitance_ff_per_um is measured, not read: OpenRCX with the kit's nom rules on the routed acceptance processor (tests/chips/pass-acc8) on 2026-11-11 found 3.2016 pF on 19261 um of signal wire in 771 nets and 0.2246 pF on 1488 um of clock wire in 18 nets, where the technology LEF's own numbers give 0.078 fF/um for met2; repair: with those values and no margin 1 pin of that routed processor was 1.5 % over its capacitance limit at max_ss_n40C_1v60 (0.05579 pF against 0.05494), the max wire corner holds 1.10 times the nom capacitance and 1 net up to 1.23 times the average for its length, and with 20 % every limit held at the 15 corners; antenna_iterations: with the ratio for a gate with no diode set 10 times stricter the template's repair needed 2 passes (9, 1, then 0 violations)"
       }
     }
   },
