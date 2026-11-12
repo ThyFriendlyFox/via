@@ -1939,6 +1939,7 @@ def gate_render(
     failures: list[str] = []
     skipped: list[str] = []
     rsvg = shutil.which("rsvg-convert")
+    # A board whose stackup names its colours is drawn in them; any other in KiCad's preset, as before.
 
     def to_png(svg: Path, png: Path, w: int, background: str = "white") -> bool:
         if not rsvg:

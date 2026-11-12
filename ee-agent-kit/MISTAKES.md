@@ -907,3 +907,39 @@ What happened: I placed the example's 2 pin headers on the back face at 90 degre
 Cost: at least 3 generate and DRC rounds.
 Root cause: As in M126, I chose a back-face rotation from the front face's rule instead of reading 2 named pads from the generated board first, as P19 step 4 says.
 Process: P19
+
+## M150 — 2026-11-11 — A motherboard's supplies given to the router as tracks
+What happened: I gave FreeRouting the example motherboard's 4 supply nets as tracks: +12V, +3V3, +5V and +12V_CPU, 136 pins across a 244 x 244 mm board round a socket of 4844 lands. The first run went 20 minutes without finishing a pass: 10 power stages' driver-supply pins were boxed in by their own sense tracks. With those links drawn by hand, the second run went 20 minutes without finishing a pass, and I stopped it. The supplies are pours on the power layer and on In7, and 1 track on In6, drawn by the design now; the first DRC after found 0 unconnected.
+Cost: 2 routes of 20 minutes with no result, and the time spent between them freeing pins the router did not need.
+Root cause: I routed because the skill's loop routes. A board this size carries its supplies in planes, and nothing before a route asked whether a net that spans the board belongs in a pour.
+Process: P4
+
+## M151 — 2026-11-11 — A sheet laid out with the library's y for the sheet's
+What happened: I placed the example motherboard's symbols on the sheet in shelves, each as tall as `kicadgen.symbol_box` said. That box is in the library's frame, y up; the sheet's y runs down. Symbols whose bodies sit off their origin overlapped their neighbours on the first sheet.
+Cost: 1 generate and 1 look at the sheet.
+Root cause: I read the box's numbers and not its frame. P24 asked for a table of positions and said nothing of where a computed position's size comes from.
+Process: P24
+
+## M152 — 2026-11-11 — A wide track from a narrow pad's centre
+What happened: Each power stage's switch node leaves its 0.8 mm pad by a 2.0 mm track. I started the track at the pad's centre, as P1 says; its round end reached 1.0 mm past the centre, over the stage's ground pad 0.4 mm away, and the DRC listed the switch nodes shorted to ground. The track starts at the pad's outer edge now.
+Cost: 1 generate and DRC round.
+Root cause: P1 step 5 says to end a track on the pad centre, which holds for a track no wider than its pad. Step 4 sizes a track from the pad and stops there.
+Process: P1
+
+## M153 — 2026-11-11 — A floor plan placed before the buses' paths
+What happened: The example motherboard's first version placed every big part from the microATX and CEM drawings and left each bus for its own version. Planning the memory and PCI Express buses for the next versions moved 4 groups of parts in a version I had called placed: the cooler's holes (65.2 mm apart across the socket, now 46) and 2 phases of the top row stood in the memory buses' combs, the M.2 sockets faced away from the lanes' trunk, and the memory slots moved 0.9 mm for a row of slot 1's capacitors.
+Cost: 2 placement rounds of the first version, each with a generate, a DRC and new renders.
+Root cause: I treated the floor plan as the drawings' positions alone. Where a bus can run decides where the parts it passes may stand, and P22 asked for no plan of the later versions before the first was placed.
+Process: P22
+
+## M154 — 2026-11-11 — A render stopped by the background limit
+What happened: I ran the example motherboard's v0.2 generate, gates and pictures as 1 background job. The job runner stops a background job at 30 minutes unless it is given a longer limit; the generate took 8 minutes, the gates 4 and the pictures 17, and the job was stopped while the turning GIF was drawn. The stills had been copied; the GIF and the headline views had not.
+Cost: the pictures run again, 17 minutes.
+Root cause: I knew how long each step took alone and did not add them up against the job's limit. P23 said nothing of how long pictures of a large board take.
+Process: P23
+
+## M155 — 2026-11-11 — 11 courtyard overlaps in a first placement
+What happened: I placed the example motherboard's 77 port and header parts from numbers I chose, with the size of a few footprints in mind. The grid router failed 8 to 14 links on each try, and a drawing of the copper showed why: 2 capacitors under the battery holder's pads, a pull-down on a header's pins, 3 transistors on each other. A courtyard check listed 11 overlaps; placed again, every link routed.
+Cost: 4 routes of 2 minutes each and the drawings to read them.
+Root cause: P4 step 4 asks for kistack's placement checks before a route; I routed first, and read the router's failures as routing problems.
+Process: P4

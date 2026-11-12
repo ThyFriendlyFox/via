@@ -31,7 +31,9 @@ must clear or land on a pad.
 4. Track widths come from the pad: the widest track into a pad is pitch
    minus pad width minus 2 x clearance. A sense tap on a heavy net is
    drawn thinner with `width=`.
-5. End a track on the pad centre. Route one net, run `workcenter drc .`,
+5. End a track on the pad centre, when the track is no wider than the
+   pad. A wider track starts at the pad's edge on the side it leaves by:
+   its round end reaches half its width past where it starts (M152). Route one net, run `workcenter drc .`,
    read every clearance line it prints, fix, then the next net.
 6. A via is on every copper layer. Before writing `d.via`, look at what
    sits on the other face and the inner layers at that spot; then
@@ -135,7 +137,10 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
    limits or stricter (`--track --clear --via --edge` for a board with a
    `.kicad_dru`). `--rules-override` is used only when the user asks for
    it (kistack's layout-placement skill); a result it produced is
-   discarded (M66).
+   discarded (M66). Before a grid router or FreeRouting runs on new
+   parts, every new courtyard is checked against every other: a
+   router's failures near 2 parts on each other read as routing
+   problems (M155).
 5. A route run only to evaluate (an archived version, a what-if) writes
    with `--out` to the scratchpad: without it `workcenter design` rewrites
    the project's KiCad files in place (M67).
@@ -167,6 +172,12 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
     beside those ways out with their supply pads toward the pins, and its
     crystal clear of the pin rows. Read the pads with `workcenter inspect
     list --box` round the part (M146).
+12. A net that spans the board and carries a supply (a 12 V or 3.3 V
+    rail to slots and connectors far apart, a regulator's input across a
+    row of stages) is a pour on a layer the design gives it, drawn by the
+    design, and goes to the router as a plane net: 1 pin, its vias
+    obstacles. A motherboard's 4 supply nets as tracks ran 20 minutes
+    without finishing a pass, twice (M150).
 
 Done when: the DRC after the route lists 0 errors, or every remaining
 error is named in the next design change.
@@ -668,6 +679,12 @@ before the first edit of a request.
    files or a datasheet.
 6. `git diff --stat <its last commit> -- <previous version>/` shows one
    file, its README, with one line changed: the banner of step 2.
+7. Before the first version of a board whose later versions add buses
+   (a processor's memory and expansion lanes), plan each bus's path: which
+   layers, where it turns, where its vias stand. Then place what lies in
+   those paths. Placed from the mechanical drawings alone, the first
+   version of a motherboard moved 4 groups of parts while its buses were planned
+   (M153).
 
 Done when: the request's edits sit only in the new folder, the previous
 folder matches its commit but for the banner, the index and CLAUDE.md name
@@ -716,6 +733,9 @@ after any change to what the boards look like in that version.
    right-hand rule (the `board-design` skill). A picture that looks wrong
    is fixed by measuring 1 body, never by moving the scene until it looks
    right: 2 errors can show as 1 (M131).
+8. Pictures of a large board take a while: a 244 mm motherboard's took 17
+   minutes, most of it the turning GIF. Run them as a background job with
+   a limit over the sum of every step the job holds (M154).
 
 Done when: `workcenter pictures <version>` exits 0, the version's `docs/`
 holds a layer sheet and a turning GIF for every board and for the
@@ -731,6 +751,8 @@ close-out.
    positions and angles (`SCHEMATIC`), in blocks the way the signal flows:
    power left to right along the top, each support part beside the pin it
    serves, connectors facing the circuit they feed.
+   A position computed from a symbol's size reads `kicadgen.symbol_box`,
+   which is in the library's frame, y up; the sheet's y runs down (M151).
 2. Labels only for nets that cross the whole sheet (`sch_label_nets`), each
    named in a comment; every other net is a wire.
 3. Check the drawing against the design: ERC 0 errors and 0 warnings, and
