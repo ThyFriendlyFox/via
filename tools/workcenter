@@ -1791,7 +1791,8 @@ def gate_autoroute(
     route = out / "route"
     route.mkdir(parents=True, exist_ok=True)
     ses = route / f"{project.name}.ses"
-    cmd = [JAVA, "-jar", FREEROUTING_JAR, "-de", dsn_path, "-do", ses, "-mp", str(passes)]
+    # `-dct 0`: no 20 s wait for a click on the dialog that asks to confirm the start.
+    cmd = [JAVA, "-jar", FREEROUTING_JAR, "-de", dsn_path, "-do", ses, "-mp", str(passes), "-dct", "0"]
     if threads:
         cmd += ["-mt", str(threads)]
     proc = run(cmd, cwd=route, timeout=timeout)
@@ -4453,9 +4454,17 @@ def cmd_doctor(args) -> int:
             "ok": (SRC_DIR / "WORKCENTER.md").is_file(),
             "path": str(SRC_DIR / "WORKCENTER.md"),
         },
-        "no-cd hook": {"required": False, "ok": hook_installed("no_cd.py"), "path": str(USER_SETTINGS)},
+        # A hook is a habit of 1 agent host, not a part of the toolchain: its line says whether it is
+        # there (P8 step 1 reads it), and its absence does not degrade the workcenter.
+        "no-cd hook": {
+            "required": False,
+            "advisory": True,
+            "ok": hook_installed("no_cd.py"),
+            "path": str(USER_SETTINGS),
+        },
         "test hook": {
             "required": False,
+            "advisory": True,
             "ok": hook_installed("no_script_test_edits.py"),
             "path": str(USER_SETTINGS),
         },
@@ -4466,7 +4475,7 @@ def cmd_doctor(args) -> int:
         },
     }
     missing_required = [k for k, v in checks.items() if v["required"] and not v["ok"]]
-    degraded = [k for k, v in checks.items() if not v["required"] and not v["ok"]]
+    degraded = [k for k, v in checks.items() if not v["required"] and not v.get("advisory") and not v["ok"]]
     status = "fail" if missing_required else ("degraded" if degraded else "ok")
     payload = {
         "status": status,
@@ -4479,7 +4488,9 @@ def cmd_doctor(args) -> int:
     if args.json:
         print(json.dumps(payload, indent=2))
     else:
-        print(f"workcenter ee: {status}  (root {WC_ROOT}, src {SRC_DIR})")
+        named = missing_required or degraded
+        without = f", without {', '.join(named)}" if named else ""
+        print(f"workcenter ee: {status}{without}  (root {WC_ROOT}, src {SRC_DIR})")
         for name, c in checks.items():
             mark = "ok " if c["ok"] else ("MISSING" if c["required"] else "absent ")
             extra = c.get("version") or c.get("path") or ""

@@ -39,6 +39,37 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-12 — A reader who trusts nothing read the README's front page
+
+A helper that had written none of the README's front page checked every
+sentence of it by a command. The runs, the numbers and the commands came
+out as written, and the documented commands drew the same 8 pictures. 4
+sentences were false, and I had written each without a run. The README
+said a command's help tells what the command writes. A pointer in the
+status file named a roadmap item by a number that had moved. The
+landmine map said the router has no network code. The review also read
+the router's log from its first line to its last: 20 of the 25 s of a
+routing run were a wait for a click on a dialog nobody sees. 1 flag
+removes the wait, and the session file is the same. The generator wrote
+1 track segment 2 times where the router's wires share a stretch, and
+`doctor` read `degraded` after a clean install. All of these are
+corrected. The review broke the tests 11 ways and 6 breaks passed: the
+quick start was held by no test, and a count in the status file by
+none. 3 tests hold them now. While I made the changes, a heredoc of
+mine ended at a line of its own text, and the shell ran the rest of my
+script as commands. Nothing was harmed, and a script with shell text
+runs from a file now (M161). The account's usage limit stopped the
+helpers 2 times, and the work went on from their notes. Meanwhile
+`main` had moved by 21 commits from other sessions: 6 example projects
+and a new site. I put this change on top of it. The site's page no
+longer shows the board the review read, so its findings there are gone
+with the old page. What stays open is on the roadmap: nothing holds a
+deck to the schematic's parts, `design --check` does not hold the
+board, and the first picture's text is too small on a phone.
+
+Evidence: `make verify` GREEN on the pushed tree; each new test seen to
+fail on a broken copy; `design --route` on the template in 6 s.
+
 ## 2026-11-12 — The site's words, for the person who reads them
 
 The owner sent a screenshot of the headline "3 engines, 4 gates, 1

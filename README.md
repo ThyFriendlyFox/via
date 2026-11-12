@@ -5,20 +5,22 @@
 
 [Website](https://via-kappa-five.vercel.app) · [Contract](WORKCENTER.md) · [Status](ee-agent-kit/STATUS.md) · [Roadmap](ee-agent-kit/ROADMAP.md)
 
-Via is the EE Workcenter. A workcenter is a pre-packaged environment an
-agent steps into to do one kind of work well. This one does electronics:
-it turns a KiCad 10 project into fabrication outputs that passed every gate.
+Via is the EE Workcenter. A workcenter is a set of tools, skills and gates
+that an agent steps into to do one kind of work well. This one does
+electronics: it turns a KiCad 10 project into fabrication outputs that
+passed every gate.
 
 <a href="https://via-kappa-five.vercel.app">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="site/media/hero-dark.png">
-    <img alt="Lines of a design file that add a resistor; the schematic of a voltage divider; a 3D view of the routed board with a 3-pin header, 2 resistors and a capacitor" src="site/media/hero.png">
+    <img alt="3 cards: lines of a design file, the schematic of a voltage divider, and the routed board in 3D" src="site/media/hero.png">
   </picture>
 </a>
 
 The fixture board `tests/boards/pass-first-design`: lines of its design
 file, then the schematic and the routed board that `workcenter design`
-writes from the file.
+writes from the file. The middle card shows the circuit's part of the
+sheet.
 
 2 runs of the gates, as the terminal printed them: that board, and a
 fixture board with a clearance error on purpose.
@@ -42,17 +44,18 @@ RED: rc_divider  report /home/user/via/tests/boards/fail-drc-clearance/build/gat
 <table>
   <tr>
     <td width="50%"><img alt="The routed board with its parts, turning through a full circle" src="site/media/board-spin.gif"></td>
-    <td width="50%"><img alt="9 panels, 1 for each layer of the board: copper, silkscreen, mask, paste, fabrication, courtyard, edge" src="site/media/layers.png"></td>
+    <td width="50%"><img alt="9 panels, 1 for each layer of the board that holds something: copper, silkscreen, mask, paste, fabrication, courtyard, edge" src="site/media/layers.png"></td>
   </tr>
   <tr>
-    <td>The same board, turned. <code>workcenter render --views spin</code> draws it.</td>
-    <td>Every layer of it. <code>workcenter render</code> draws 1 picture for each and this sheet.</td>
+    <td>The same board, turned. <code>workcenter render</code> draws it with <code>--views spin</code>.</td>
+    <td>Each layer that holds something. <code>workcenter render</code> draws 1 picture for each and this sheet.</td>
   </tr>
 </table>
 
-The 3D views show the part bodies of KiCad's own library.
-[site/media/README.md](site/media/README.md) has each picture and the
-command that draws it.
+The 3D views show the part bodies of KiCad's own library. `install.sh`
+installs none of them, and without them the same command draws the bare
+board. [site/media/README.md](site/media/README.md) has each picture, how
+to fetch the 3 bodies, and the whole command that draws it.
 
 ## An example: Herald, a fire alarm communicator
 
@@ -136,7 +139,8 @@ run; v0.3 the ports and headers a desktop board carries, routed by the project's
 | **Gates** | ERC, DRC, SIM, EXPORT, in that order. A board is done when `workcenter gates <project>` prints GREEN. |
 | **Design as code** | `workcenter design design.py --route` builds a schematic and a routed board from a Python file that names parts from the KiCad libraries. No GUI at any step. |
 | **A schematic that simulates** | The design file says how each part simulates (`d.sim`, `d.no_sim`), and the schematic KiCad opens exports a netlist ngspice runs. A pin map KiCad would complete by position is refused first. |
-| **Corners** | The SIM gate runs every deck at each temperature the project names and with each part at both ends of its tolerance. It runs every combination of those ends up to 64 runs, and a worst case for each bound above that. It also runs the Monte Carlo draws the project names. A bound holds at every corner or it does not hold. |
+| **Decks** | The SIM gate runs the decks under `sim/` and holds each measured value to its bound. A deck is a file of its own. Nothing holds a deck typed by hand to the schematic's parts yet: the roadmap names that gap. |
+| **Corners** | The SIM gate runs every deck at each temperature the project names and with each part at each end of its tolerance. It runs every combination of those ends up to 64 runs, and a worst case for each bound above that. It also runs the Monte Carlo draws the project names. A bound holds at every corner or it does not hold. |
 | **Frequency plan** | The SIM gate holds every switching frequency and its harmonics against every resonance a deck measured. |
 | **The next step** | `workcenter next <project>` names the one step that is left, its command, and the fix for the first failure. A person or an agent of any size follows the same path. |
 | **Skills** | Procedures for each kind of step, as Markdown files. |
@@ -158,7 +162,7 @@ GREEN, RED or SKIPPED. The fabrication outputs of a GREEN board are in
 
 ```sh
 sudo ./install.sh     # Ubuntu 24.04: KiCad 10, ngspice, Java 21, FreeRouting
-workcenter doctor     # is every engine present?
+workcenter doctor     # each engine's status; ok when nothing is absent
 workcenter gates tests/boards/pass-first-design     # GREEN
 workcenter gates tests/boards/fail-drc-clearance    # red at DRC, on purpose
 workcenter next tests/boards/fail-drc-clearance     # the one next step: the fix
@@ -169,13 +173,14 @@ workcenter sim tests/boards/fail-freq-overlap       # red on the frequency plan
 Output goes to `<project>/build/`: `erc.json`, `drc.json`, `sim/`,
 `fab/` (gerbers, drill, BOM, schematic PDF), `gates.json`.
 
-A first board starts from a copy of the template's design file:
+A first board starts from a copy of the template's design file, in a
+folder of its own outside this checkout:
 
 ```sh
-mkdir divider
-cp templates/project/design.py divider/
-workcenter design divider/design.py --route    # the KiCad project, routed
-workcenter gates divider --strict              # GREEN, and SIM has no deck to run yet
+mkdir ~/divider
+cp templates/project/design.py ~/divider/
+workcenter design ~/divider/design.py --route    # the KiCad project, routed
+workcenter gates ~/divider --strict              # GREEN, and SIM has no deck to run yet
 ```
 
 [`.claude/skills/board-design/SKILL.md`](.claude/skills/board-design/SKILL.md)
@@ -183,7 +188,8 @@ has the procedure from a spec to a GREEN board.
 
 ## Commands
 
-`workcenter <command> --help` says what each writes and where.
+`workcenter --help` describes each command, and
+`workcenter <command> --help` lists its flags.
 [`ee-agent-kit/docs/CONFIGURATION.md`](ee-agent-kit/docs/CONFIGURATION.md)
 has every flag.
 
@@ -195,10 +201,10 @@ has every flag.
 | `doctor` | Report each engine's status. |
 | `next` | Name the one next step for a project. |
 | `design` | Build a design file into a KiCad project; `--route` routes it; `--check` compares. |
-| `erc`, `drc`, `sim`, `export` | One gate. |
+| `erc`, `drc`, `sim`, `export` | One gate, alone. |
 | `gates` | The 4 gates in order; the last line is the verdict. |
 | `verify` | Check a verification package against a fresh run; say whether the requirements are met. |
-| `autoroute` | Route a hand-drawn board's DSN with FreeRouting. |
+| `autoroute` | Write FreeRouting's session file for a hand-drawn board's DSN. The import into KiCad is by hand. |
 | `inspect` | Read a routed board: `map`, `list`, `probe`, `net`, `islands`, `resistance`, `crossed`. |
 | `placement` | Run a kistack placement check on a board. |
 | `render`, `pictures` | Images of the schematic, the board, every layer; turning GIFs; assembly scenes. |
@@ -213,22 +219,23 @@ has every flag.
 ## Where it runs
 
 **A Claude Code cloud environment.** The environment carries the
-software; the board repository carries the board. Create an environment
+software; the project's repository carries the board. Create an environment
 whose setup script is the 3 lines in
 [`environment/setup.sh`](environment/setup.sh), with the network hosts from
-[`environment/README.md`](environment/README.md). Open any board repository
-in it. Attach this repository as a second repository when its skills should
-load.
+[`environment/README.md`](environment/README.md). Open any project's
+repository in it. Attach this repository as a second repository when its
+skills should load.
 
 **Another agent host.** `AGENTS.md` at the root is the entry for a host
 that does not read `CLAUDE.md`; the 2 files are the same text. Every
 procedure is a Markdown file under `.claude/skills/`, and every check is a
-command: `workcenter next <project>` gives the step, `make verify` the
-repository's health.
+command. `workcenter next <project>` gives the step, and `make verify`
+the repository's health.
 
 **A Docker image.** `docker build -t ee-workcenter .` builds on the
 official `kicad/kicad:10.0` base. `release.yml` publishes the image to
-GHCR on every tag.
+GHCR on a version tag (`v*.*.*`). No tag exists yet, and the build has
+not run.
 
 ## The website
 
@@ -247,7 +254,8 @@ images are drawn.
 
 | Path | What |
 |---|---|
-| `install.sh` | The single source of the toolchain. |
+| `install.sh` | The only source of the toolchain. |
+| `Makefile`, `verify/verify.sh` | `make verify`: the repository's health gate, one command. |
 | `tools/workcenter` | The CLI and the gates. Standard library only. |
 | `tools/kicadgen.py` | Design a board in Python from the KiCad libraries; writes the KiCad project and routes it headless. |
 | `tools/simcorners.py`, `tools/freqplan.py` | The corners a deck runs at; the frequency plan. Read by the SIM gate. |
@@ -260,10 +268,13 @@ images are drawn.
 | `AGENTS.md`, `CLAUDE.md` | Where an agent starts. The same text. |
 | `.claude/skills/` | `attached-repos`, `autoroute`, `blog-post`, `board-design`, `board-gates`, `kistack`, `procurement`, `simulate`, `verification`. |
 | `templates/` | A first design file, a version's README and gates report, `corners.json`, `frequency-plan.json`, the verification package. |
-| `rules/` | Fabrication houses' limits as KiCad design rules. |
-| `tests/boards/` | Fixture boards and what each proves. |
+| `rules/` | A fabrication house's limits as KiCad design rules. One house so far. |
+| `tests/` | The tests of the tools. `tests/boards/` holds the fixture boards and what each proves. |
+| `examples/` | Example projects made with the workcenter, each in version folders with its own README. |
 | `third_party/kistack/` | The vendored kistack skills. |
 | `environment/` | Cloud environment setup script and hosts. |
+| `Dockerfile`, `.github/workflows/` | The image. CI on each pull request and push to `main`, a nightly run, the release, stale issues. |
+| `requirements.txt`, `pyproject.toml` | The venv's packages for tests and lint; the settings of ruff and pytest. |
 | `site/` | The website: 1 static page, its stylesheet, the Open Graph image. `site/media/` holds this file's pictures. |
 | `ee-agent-kit/` | How work on this repository is run. Start at `ee-agent-kit/ROUTING.md`. |
 

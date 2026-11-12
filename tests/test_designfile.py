@@ -136,6 +136,23 @@ def test_the_template_generates_routes_and_passes_erc_and_drc(tmp_path):
     assert [records[gate]["status"] for gate in ("erc", "drc", "sim", "export")] == ["pass"] * 4
     assert records["drc"]["summary"] == "0 errors, 0 warnings (0 unconnected, 0 parity)"
     assert records["sim"]["summary"] == "1 decks, 46 corner runs, 0 failures"
+    # The 2 bounds are the fixture's premise, and its row in tests/boards/README.md gives the span the
+    # 46 runs reach. A bound opened wide still reads "0 failures": it fails here, and so does a row
+    # whose numbers no run gave.
+    checks = records["sim"]["details"]["decks"]["divider"]["checks"]
+    assert {name: (c["min"], c["max"]) for name, c in checks.items()} == {
+        "vout": (2.45, 2.55),
+        "f3": (250, 400),
+    }
+    runs = json.loads((tmp_path / "fixture" / "sim" / "corners" / "divider" / "runs.json").read_text())
+    reach = {name: [run["measures"][name] for run in runs] for name in ("vout", "f3")}
+    row = next(
+        line
+        for line in (ROOT / "tests" / "boards" / "README.md").read_text(encoding="utf-8").splitlines()
+        if line.startswith("| `pass-first-design` |")
+    )
+    assert f"between {min(reach['vout']):.4f} and {max(reach['vout']):.4f} V" in row
+    assert f"`f3` between {min(reach['f3']):.1f} and {max(reach['f3']):.1f} Hz" in row
 
 
 OPAMP = """    d.add(

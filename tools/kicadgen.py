@@ -3805,7 +3805,10 @@ class Design:
 
     def _split_junctions(self) -> None:
         """Split a segment wherever another segment of its net ends on it, so a T-junction the
-        router made onto a hand-routed track is two proper segment ends, not a dangling end."""
+        router made onto a hand-routed track is two proper segment ends, not a dangling end.
+
+        FreeRouting 1.9.0 also writes 2 wires of a net that share a stretch. Each is split at the
+        other's end, and the shared piece comes out 2 times: 1 of them is kept, at the greater width."""
         ends = [(n, p, ly) for n, a, b, _, ly in self.segments for p in (a, b)]
         out = []
         for n, a, b, w, ly in self.segments:
@@ -3826,7 +3829,18 @@ class Design:
             )
             pts = [a] + [(a[0] + u * (b[0] - a[0]), a[1] + u * (b[1] - a[1])) for u in cuts] + [b]
             out.extend((n, p, q, w, ly) for p, q in zip(pts, pts[1:], strict=False))
-        self.segments = out
+        # The same segment is one the board file would write with the same ends: `fmt` is what it writes.
+        first: dict[tuple, int] = {}
+        distinct = []
+        for n, p, q, w, ly in out:
+            key = (n, ly, *sorted(((fmt(p[0]), fmt(p[1])), (fmt(q[0]), fmt(q[1])))))
+            if key in first:
+                kept = distinct[first[key]]
+                distinct[first[key]] = (*kept[:3], max(kept[3], w), kept[4])
+                continue
+            first[key] = len(distinct)
+            distinct.append((n, p, q, w, ly))
+        self.segments = distinct
 
     def _has_via(self, net: str, at: tuple[float, float]) -> bool:
         return any(n == net and math.hypot(vx - at[0], vy - at[1]) < 0.01 for n, (vx, vy), _, _ in self.vias)
@@ -4499,8 +4513,10 @@ def route(
     )
     dsn.write_text(design.dsn(seed), encoding="utf-8")
     ses.unlink(missing_ok=True)
-    # FreeRouting 1.9.0: -de/-do/-mp only. It needs a display; xvfb-run provides one headless.
-    cmd = [java, "-jar", str(jar), "-de", str(dsn), "-do", str(ses), "-mp", str(passes)]
+    # FreeRouting 1.9.0: -de, -do, -mp and -dct. Without `-dct 0` it waits 20 s for a click on a dialog
+    # that asks to confirm the start, and nobody sees a dialog here. It needs a display; xvfb-run
+    # provides one headless.
+    cmd = [java, "-jar", str(jar), "-de", str(dsn), "-do", str(ses), "-mp", str(passes), "-dct", "0"]
     if not os.environ.get("DISPLAY") and shutil.which("xvfb-run"):
         cmd = ["xvfb-run", "-a", *cmd]
     proc = subprocess.run(cmd, cwd=build_dir, capture_output=True, text=True, timeout=timeout, check=False)
