@@ -6,7 +6,7 @@
 * 5 mOhm of ESR each. A 1 A AC current into the input reads the rail's impedance in ohms.
 * U3 holds its output's power, so its input is a negative resistance, -VIN^2 / PIN. It can draw no
 * more than the 3 A a USB-C source offers, so PIN is at most VIN x 3 A and the resistance is at
-* least VIN / 3 A: 1.33 Ohm at the 4.0 V the board starts from (vbus_uvlo.cir). The input's peak
+* least VIN / 3 A: 1.33 Ohm at the 4.0 V the board starts from (vbus_uvlo_high.cir). The input's peak
 * impedance under that keeps the pair stable (Middlebrook).
 VS src 0 DC 5
 RCABLE src a 50m

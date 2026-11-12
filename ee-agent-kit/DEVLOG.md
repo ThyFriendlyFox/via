@@ -39,6 +39,43 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-12 — Wyvern v0.2: one flat board with a QCS6490 soldered on
+
+The owner looked at Wyvern v0.1 and said it had a lot of open hinges,
+in power, data and routing, and looked like 2 boards slapped together.
+They chose one flat board about 53 x 76 mm with a QCS6490 module
+soldered straight on. v0.2 carries Vantron's VOSM6490 on SGET's OSM
+Size-L standard: 662 round pads on a 1.25 mm grid, generated from the
+standard's contact map and checked pad for pad against Antmicro's open
+footprint. The module's pads are named from the standard and, for the
+64 the board uses, from Vantron's datasheet, read by hand after a
+script mis-read the PDF's table.
+
+The hinges closed one by one. A TPS552892 buck-boost holds the module's
+4.8 to 5.2 V from whatever a USB-C cable delivers. An HD3SS3220 answers
+the charger's CC before anything is powered and switches the module's
+single SuperSpeed lane to the plug's side; its lane and the converter's
+0.25 mm power pads are drawn by hand. A damper keeps the cable's
+resonance under the converter's input resistance, and forced PWM keeps
+the converter's harmonics out of it. The RP2350 block is v0.1's, turned
+a quarter turn as a whole.
+
+The first 2 routes left the 5 V plane under the module in 3 pieces:
+the router crossed its narrow strip on In3. A spine of copper along the
+module's pad line, which no fan-out via touches, held it together; the
+next route left only the converter's output off the plane, and 3 vias
+closed it. An unseeded route then left 1 link of the SD card's supply
+open; seeded with the route before it, the router kept every track and
+closed it. Simulations: 7 decks, 397 corner runs. 4 mistakes recorded
+(M162 to M165), 2 processes extended. The website's Wyvern card shows
+the new board.
+
+Evidence: `workcenter gates v0.2` GREEN with 16 warnings (DRC 0 errors,
+0 unconnected, 0 parity; the 4 dangling vias and 5 silkscreen edges
+named in `docs/gates.md`); `workcenter design --check` same;
+`workcenter sources` 0 problems; `workcenter pictures` 26 files;
+`make verify` before the push.
+
 ## 2026-11-12 — Herald in 3D, and its labels 1 every 3 seconds
 
 The owner asked for the render's corners rounded, or the board itself in
