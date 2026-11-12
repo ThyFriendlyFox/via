@@ -1,7 +1,7 @@
 # Reports of the front engines
 
 Real output of Verilator 5.020, Icarus Verilog 12.0 and Yosys 0.33, written
-on 2026-11-11 by the chip gates on copies of the template project
+on 2026-11-11 and 2026-11-12 by the chip gates on copies of the template project
 (`workcenter chip init reg8 --top reg8`) with 1 thing changed. The judges
 in `tools/chipfront.py` read them in `tests/test_chipfront.py`, with no
 engine. 2 paths are rewritten in each file: the project's folder is
@@ -20,11 +20,19 @@ engine. 2 paths are rewritten in each file: the project's folder is
 | `vvp-no-measures.log` | a bench that prints `errors` only |
 | `iverilog-no-root.log` | a bench whose module is not named as its file |
 | `iverilog-open-supply.log` | the template's bench compiled on its routed netlist: the 2 supply ports open |
-| `yosys-ok/` | the template through the SYNTH gate's script |
+| `yosys-ok/` | the template through the SYNTH gate's script: the mapping is offered no cell of the kit's 2 `dont_use` lists |
 | `yosys-latch/` | the latch design: 8 latch bits, 12 flops with no reset, an open net |
 | `yosys-loop/` | 2 gates that feed each other |
 | `yosys-two-drivers/` | 1 net assigned 2 times |
 | `yosys-no-reset/` | 1 flop with no reset and a constant output |
+| `liberty-5-cells.lib` | no report: the head of the kit's `sky130_fd_sc_hd__tt_025C_1v80.lib` and 5 of its 428 cells as the kit writes them (`conb_1`, `decap_3`, `inv_1`, `inv_2`, `or2_0`), for the function that cuts cells out of a liberty file |
+
+Each `yosys-*` folder holds the 7 files the SYNTH judge reads: the console,
+the 2 `check` reports, `stat.json`, the netlist, `generic.json` (the design
+before the library's cells) and `mapped.json` (the netlist as it is handed
+on, each cell under the name it had before the mapping). The `mapped.json`
+files are of 2026-11-12: the runs that wrote them wrote the other 6 files
+again, byte for byte.
 
 A new failure shape of an engine gets a sample here in the commit that
 teaches a judge to read it.

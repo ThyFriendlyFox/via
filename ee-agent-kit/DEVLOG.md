@@ -76,6 +76,30 @@ Evidence: `workcenter gates v0.2` GREEN with 16 warnings (DRC 0 errors,
 named in `docs/gates.md`); `workcenter design --check` same;
 `workcenter sources` 0 problems; `workcenter pictures` 26 files;
 `make verify` before the push.
+## 2026-11-12 — The processor is GREEN: every chip gate passes, from RTL to the mask layout
+
+The acceptance processor now passes all 10 chip gates with `--strict`, in
+under 4 minutes. Yesterday its layout failed timing at 13 of 15 corners.
+The gates were right, and the build was short in 3 places. It repaired no
+slow signal. It took each wire for half its real capacitance, from a file
+that leaves out the wires beside a wire. And the layout writer added
+slivers of its own that a rule deck counted. A helper found the cause of
+each by experiment and fixed the build. The account's usage limit stopped
+it 2 times, so I checked its copy with my own runs and installed it from
+its notes. Then I fixed 3 things in what the gates share. The ledger of
+hashes lost entries when benches ran side by side: it is locked now and
+written whole. Every gate leaves a record of each file it read and wrote,
+and EXPORT asks all 9 before it hands out a layout. Before, EXPORT asked 5
+gates about the layout's own files. A bench changed after SIM had passed
+went unseen, and so did a header, and a layout built from the netlist of
+an older RTL. And 2 numbers the gates printed were not true. SYNTH printed
+156 flops for a netlist of 132, because the mapping removes 3 registers
+that no program reads (M167). STA counted a pin 1 time for each limit it
+broke.
+
+Evidence: the 4 chip test files, 151 tests; 5 builds of the processor at
+1, 2, 4 and 8 jobs with 1 GDS hash, `0c51debe623a0a18`; each new test seen
+to fail on the code before its fix; `make verify` GREEN on the pushed tree.
 
 ## 2026-11-12 — Herald in 3D, and its labels 1 every 3 seconds
 

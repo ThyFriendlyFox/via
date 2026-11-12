@@ -257,6 +257,13 @@ axis it defines (a 3D model's rotation or offset, an export's origin).
    in braces, and `4k7`. Run each through the tool once and keep each as
    a test. Where the tool reads a spelling as another number and says
    nothing, the gate fails on that spelling (M117).
+8. A number a gate prints about a file is counted in that file. A tool
+   run writes several files, and a later pass can remove what an earlier
+   file holds: a count from the earlier file is printed under that file's
+   name (`flops_before_mapping`), never as the later file's. Where the
+   next engine counts the same thing (the sinks of a clock tree for the
+   flops of a netlist), read the 2 numbers against each other once, on a
+   design where they can differ (M167).
 
 Done when: a test parses a real sample of each shape, failures among them,
 and the parser's assumptions are written next to it.

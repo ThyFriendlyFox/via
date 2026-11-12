@@ -30,5 +30,5 @@ Using 2 tracks default min distance between IO pins.
 [INFO TAP-0002] Original rows: 3
 [INFO TAP-0003] Created 0 rows for a total of 3 rows.
 [INFO TAP-0005] Inserted 0 tapcells.
-WORKCENTER utilization 3.4286 after the floorplan
+WORKCENTER utilization 4.1905 after the floorplan
 WORKCENTER stopped: the cells take more of the core than it may hold

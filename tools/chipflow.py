@@ -33,7 +33,9 @@ which module holds it: LINT, SIM, SYNTH and GLSIM are in `tools/chipfront.py`, t
                                `started.text` and the reports the engine wrote, never the exit code
                                alone; `started.problem(what)` is the failure line for an engine that
                                exited non-zero or passed its time limit, else None
-    run.record(gate, path)     keep the SHA256 of a file this gate wrote or judged
+    run.record(gate, path)     keep the SHA256 of a file this gate wrote or judged; safe from each
+                               thread of a gate's pool
+    run.forget(gate)           drop the entries of a gate's own folder, before the gate runs again
     run.take(path)             (path, None) when the file is there with the hash a gate recorded,
                                else (path, problem): a later gate judges only such files
     run.need_pdk(gate), run.need_engines(gate, *names)
@@ -72,6 +74,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -96,6 +99,10 @@ GATE_NAMES = tuple(name for name, _ in GATES)
 # Seconds an engine may run in each gate; --timeout sets another. A build that stands still is a failure.
 TIME_LIMITS = {"lint": 300, "sim": 600, "synth": 900, "layout": 7200, "sta": 900, "glsim": 900}
 DEFAULT_LIMIT = 1800
+# 1 change of the ledger of hashes at a time, whichever thread of a gate's pool makes it.
+LEDGER_LOCK = threading.Lock()
+# A gate that passes writes this file into its own folder; EXPORT asks each of the 9 gates for it.
+PASSED = "passed.json"
 # Each engine: where it is looked for ("path": on PATH; "chip": the chip folder's bin/, then PATH),
 # the arguments that make it print its version, and the pattern that reads the version.
 ENGINES = {
@@ -127,6 +134,7 @@ TABLE_BLOCKS = {
         "diode",
         "clock_root",
         "clock_buffers",
+        "dont_use",
         "source",
     ),
     "supply": ("power", "ground", "source"),
@@ -136,13 +144,19 @@ TABLE_BLOCKS = {
         "tap_distance_um",
         "pin_layers",
         "wire_rc_layers",
+        "wire_capacitance_ff_per_um",
         "routing_layers",
         "grid",
         "placement_density",
+        "repair",
         "core_margin_um",
         "source",
     ),
 }
+# Where a cell of a `dont_use` list is kept out: of the mapping; of the mapping and of the layout build.
+DONT_USE = ("synthesis", "layout")
+# What the layout build's repair takes from the table: 2 margins in percent, then a count of passes.
+REPAIR = ("slew_margin_percent", "capacitance_margin_percent", "antenna_iterations")
 IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 
 
@@ -658,6 +672,41 @@ def read_table(name: str) -> tuple[dict | None, list[str]]:
                 continue
             unknown(inner, wanted, f"{at}.{key}", problems)
             problems += [f"{at}.{key}: no {k}" for k in wanted if k not in inner]
+        # The kit's own lists of cells not to use are named by their files, never copied into the table.
+        cells = block.get("cells")
+        listed = cells.get("dont_use") if isinstance(cells, dict) else None
+        if listed is not None and not (
+            isinstance(listed, dict)
+            and set(listed) == set(DONT_USE)
+            and all(isinstance(v, list) and all(stated(f) for f in v) for v in listed.values())
+        ):
+            problems.append(
+                f"{at}.cells.dont_use: not {{{', '.join(DONT_USE)}}}, each a list of files of the kit"
+            )
+        # The numbers the layout build repairs with: a number that is not one stops the build's script.
+        plan = block.get("floorplan")
+        wire = plan.get("wire_capacitance_ff_per_um") if isinstance(plan, dict) else None
+        if wire is not None and not (
+            isinstance(wire, dict)
+            and set(wire) == {"signal", "clock"}
+            and all(number(v) and v > 0 for v in wire.values())
+        ):
+            problems.append(
+                f"{at}.floorplan.wire_capacitance_ff_per_um: not {{signal, clock}}, each a number over 0"
+            )
+        repair = plan.get("repair") if isinstance(plan, dict) else None
+        if repair is not None and not (
+            isinstance(repair, dict)
+            and set(repair) == set(REPAIR)
+            and all(number(repair[key]) and 0 <= repair[key] < 100 for key in REPAIR[:2])
+            and isinstance(repair[REPAIR[2]], int)
+            and not isinstance(repair[REPAIR[2]], bool)
+            and repair[REPAIR[2]] >= 1
+        ):
+            problems.append(
+                f"{at}.floorplan.repair: not {{{', '.join(REPAIR)}}}: 2 margins from 0 to under 100 and a "
+                "count of 1 or more"
+            )
     for key, wanted in (
         ("magic", ("rc", "tech", "needs", "source")),
         ("klayout", ("layer_properties", "layer_map", "source")),
@@ -1021,14 +1070,115 @@ class Run:
         except (OSError, ValueError):
             return {}
 
+    def _change_ledger(self, change) -> None:
+        """Read the ledger, change it and write it back as 1 step, for every thread of this run. A gate
+        runs its benches and its corners in a pool, and each records what it wrote: 2 threads that read
+        the same ledger each wrote it back without the other's entry (5 of 30 runs of SIM at 4 jobs lost
+        entries on 2026-11-11). The file is written beside itself and moved into place, so a reader
+        finds a whole ledger at every moment. 2 processes that write 1 output folder are not held."""
+        with LEDGER_LOCK:
+            ledger = self.ledger()
+            changed = change(ledger)
+            if changed is None:
+                return
+            self.base.mkdir(parents=True, exist_ok=True)
+            target = self.base / "hashes.json"
+            beside = target.with_name(f"hashes.json.{os.getpid()}.{threading.get_ident()}.part")
+            beside.write_text(json.dumps(changed, indent=2, sort_keys=True), encoding="utf-8")
+            os.replace(beside, target)
+
     def record(self, gate: str, path: Path) -> str:
         """Keep the SHA256 of a file `gate` wrote or judged. Returns the hash."""
-        ledger = self.ledger()
         digest = sha256(path)
-        ledger[str(path.relative_to(self.out))] = {"sha256": digest, "gate": gate}
-        self.base.mkdir(parents=True, exist_ok=True)
-        (self.base / "hashes.json").write_text(json.dumps(ledger, indent=2, sort_keys=True), encoding="utf-8")
+        name = str(path.relative_to(self.out))
+
+        def add(ledger: dict) -> dict:
+            ledger[name] = {"sha256": digest, "gate": gate}
+            return ledger
+
+        self._change_ledger(add)
         return digest
+
+    def forget(self, gate: str) -> None:
+        """Drop each entry of a gate's own folder: what the gate handed on before stands for nothing
+        until it writes it again."""
+
+        def drop(ledger: dict) -> dict | None:
+            kept = {name: entry for name, entry in ledger.items() if not name.startswith(f"chip/{gate}/")}
+            return kept if kept != ledger else None
+
+        self._change_ledger(drop)
+
+    # ---- the record of a gate's pass
+
+    def begin(self, gate: str) -> Path:
+        """The gate's own folder, emptied, with nothing of it left in the ledger of hashes and no
+        hand-off folder: what the gate handed on before stands for nothing until it passes again. A
+        gate calls this before it reads any input, so a run that ends in any other way than a pass
+        leaves no record of a pass and no report of an earlier run behind."""
+        self.forget(gate)
+        shutil.rmtree(self.base / "tapeout", ignore_errors=True)
+        return self.fresh(gate)
+
+    def name_of(self, path: Path) -> str:
+        """A file's name in a record: from the output folder for what a gate wrote, from the project's
+        folder for the project's own files."""
+        path = Path(path)
+        for folder in (self.out, self.project):
+            try:
+                return str(path.resolve().relative_to(folder.resolve()))
+            except ValueError:
+                continue
+        return str(path)
+
+    def file_of(self, name: str) -> Path:
+        """The file a record's name stands for: `name_of`, read back."""
+        return self.out / name if name.startswith("chip/") else self.project / name
+
+    def judged(self, paths) -> dict[str, str]:
+        """{name: SHA256} of the files a gate judged, for its record of a pass."""
+        return {self.name_of(path): sha256(path) for path in paths if Path(path).is_file()}
+
+    def write_passed(self, gate: str, judged: dict[str, str], reports=(), **more) -> None:
+        """The record that `gate` passed, `chip/<gate>/passed.json`: the hash of each file it judged,
+        and the reports that say so."""
+        path = self.base / gate / PASSED
+        record = {"gate": gate, "judged": judged, "reports": [self.name_of(p) for p in reports], **more}
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(record, indent=2, sort_keys=True), encoding="utf-8")
+        self.record(gate, path)
+
+    def read_passed(self, gate: str) -> tuple[dict | None, str | None, bool]:
+        """A gate's record of its pass as (record, None, False), or (None, why not, whether the gate
+        only did not run or did not pass: a skip for the gate that asks, where a record that changed
+        is a failure)."""
+        folder = self.base / gate
+        path = folder / PASSED
+        if not path.is_file():
+            said = "did not pass" if folder.is_dir() and any(folder.iterdir()) else "has not run"
+            return None, f"{gate.upper()} {said} in {self.out}", True
+        _, problem = self.take(path)
+        if problem:
+            return None, problem, False
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except ValueError:
+            return None, f"{self.name_of(path)} is not JSON", False
+        if not isinstance(record, dict) or not isinstance(record.get("judged"), dict):
+            return None, f"{self.name_of(path)} names no judged files", False
+        return record, None, False
+
+    def changed_since(self, gate: str, record: dict) -> list[str]:
+        """A line for each file of a gate's record that is not the bytes the gate judged."""
+        said = []
+        for name, digest in record["judged"].items():
+            path = self.file_of(name)
+            again = f"{gate.upper()} passed: its hash differs. Run the gates again"
+            if not path.is_file():
+                said.append(f"{name} is gone since {gate.upper()} passed on it. Run the gates again")
+            elif sha256(path) != digest:
+                said.append(f"{name} changed after {again}")
+        return said
 
     def take(self, path: Path) -> tuple[Path, str | None]:
         """A file a gate before this one handed on: (path, None) when it is there with the hash that

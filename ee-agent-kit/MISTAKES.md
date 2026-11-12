@@ -1009,3 +1009,9 @@ What happened: `make verify` passed on Wyvern v0.2's branch, and I pushed it. Th
 Cost: a red tree on the remote branch for an hour, with no pull request open on it; 2 runs of `make verify`.
 Root cause: P14 step 2 chains a push behind the verdict but did not say that a rebase after the verdict makes a new tree. A renumbering felt like bookkeeping, not a change.
 Process: P14
+
+## M167 — 2026-11-12 — SYNTH printed the flops of the design before the mapping as the netlist's
+What happened: The SYNTH gate printed `770 cells, 156 flops` for the acceptance processor, and the fixtures' README, STATUS.md and 2 tests repeated the 156. The cell count came from Yosys's `stat` of the mapped netlist. The flop count came from `generic.json`, the design before the library's cells, where the reset judgement reads the flops. With the 4 programs in the ROM nothing reads 3 of the 16 registers: the mapping proves it, the script's last pass removes their 24 flops, and the netlist holds 132. I saw it on 2026-11-12, when the layout log read `Clock net "clk" has 132 sinks` under a gate line that said 156 flops.
+Cost: 1 wrong number in a gate's line since round 1, on the chip branch only. An hour to find the cause, count the netlist's flops and name each flop the mapping removed.
+Root cause: 2 numbers of 1 line came from 2 files of 2 stages, and the line named neither file. Every sample was a design where the 2 counts are equal, so no test could tell them apart.
+Process: P7

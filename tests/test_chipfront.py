@@ -8,6 +8,7 @@ the engine itself; those skip by name where the engine is absent.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -199,6 +200,7 @@ def synth(name: str, answers: tuple = ()) -> tuple[list[str], list[str], dict]:
         text("check.txt"),
         data("stat.json"),
         data("generic.json"),
+        data("mapped.json"),
         text("reg8.v") or None,
         "reg8",
         cells(),
@@ -213,12 +215,14 @@ def test_a_design_that_maps_onto_the_library_passes_with_its_counts():
     failures, warnings, details = synth("yosys-ok")
     assert (failures, warnings) == ([], [])
     assert (details["cells"], details["flops"], details["flops_without_reset"]) == (24, 8, [])
+    assert (details["flops_before_mapping"], details["flops_removed_by_mapping"]) == (8, [])
+    # the mapping was offered no cell of the kit's 2 lists: the weakest flop and gates are on 1 of them
     assert details["cells_by_type"] == {
-        "sky130_fd_sc_hd__dfxtp_1": 8,
-        "sky130_fd_sc_hd__mux2i_1": 8,
-        "sky130_fd_sc_hd__nor2_1": 8,
+        "sky130_fd_sc_hd__and2b_2": 8,
+        "sky130_fd_sc_hd__dfxtp_2": 8,
+        "sky130_fd_sc_hd__mux2_1": 8,
     }
-    assert details["area_um2"] == pytest.approx(270.2592)
+    assert details["area_um2"] == pytest.approx(330.3168)
 
 
 def test_a_latch_an_open_net_a_loop_and_2_drivers_each_fail_synthesis():
@@ -263,9 +267,44 @@ def test_a_flop_with_no_reset_needs_an_answer_and_an_answer_needs_a_flop():
     assert not any(chipfront.names(p, b) for p, b in [("q", "qq[0]"), ("q[1]", "q[11]"), ("sr_*", "q[0]")])
 
 
+def test_the_flops_counted_are_the_netlists_and_a_flop_the_mapping_removed_is_named():
+    """The mapping proves more than `synth` does: a flop that nothing reads after it is removed by the
+    script's last pass. On the acceptance processor that is 24 of 156 flops, and the gate printed 156.
+    The judge counts the netlist's flops and names each flop the netlist no longer holds."""
+    folder = SAMPLES / "yosys-ok"
+    parts = {
+        name: json.loads((folder / f"{name}.json").read_text(encoding="utf-8"))
+        for name in ("stat", "generic", "mapped")
+    }
+    texts = [(folder / name).read_text(encoding="utf-8") for name in ("check_generic.txt", "check.txt")]
+    netlist = (folder / "reg8.v").read_text(encoding="utf-8")
+
+    def judged() -> dict:
+        got = chipfront.judge_synth(
+            "", *texts, parts["stat"], parts["generic"], parts["mapped"], netlist, "reg8", cells(), []
+        )
+        assert got[:2] == ([], [])
+        return got[2]
+
+    flop = "sky130_fd_sc_hd__dfxtp_2"
+    assert (judged()["flops"], judged()["flops_before_mapping"]) == (8, 8)
+    # as if the mapping had found that nothing reads q[3]: its flop is in neither the netlist nor the counts
+    built = parts["mapped"]["modules"]["reg8"]["cells"]
+    before = parts["generic"]["modules"]["reg8"]["cells"]
+    q3 = parts["generic"]["modules"]["reg8"]["netnames"]["q"]["bits"][3]
+    gone = [name for name, cell in before.items() if cell["connections"].get("Q") == [q3]]
+    assert len(gone) == 1 and built[gone[0]]["type"] == flop
+    del built[gone[0]]
+    for counts in (parts["stat"]["modules"]["\\reg8"], parts["stat"]["design"]):
+        counts["num_cells_by_type"][flop] -= 1
+    details = judged()
+    assert (details["flops"], details["flops_before_mapping"]) == (7, 8)
+    assert details["flops_removed_by_mapping"] == ["q[3]"]
+
+
 def test_yosys_stopping_before_its_reports_is_a_failure_not_an_empty_pass():
     failures, _, details = chipfront.judge_synth(
-        "ERROR: Module `\\reg9' not found!\n", "", "", None, None, None, "reg8", cells(), []
+        "ERROR: Module `\\reg9' not found!\n", "", "", None, None, None, None, "reg8", cells(), []
     )
     assert failures == [
         "ERROR: Module `\\reg9' not found!",
@@ -275,9 +314,44 @@ def test_yosys_stopping_before_its_reports_is_a_failure_not_an_empty_pass():
     assert details == {}
     # with no error named and no netlist either, the absence is the failure
     console = "Found and reported 0 problems.\n"
-    assert chipfront.judge_synth("", console, console, None, None, None, "reg8", cells(), [])[0] == [
+    assert chipfront.judge_synth("", console, console, None, None, None, None, "reg8", cells(), [])[0] == [
         "Yosys wrote no netlist: its log says where it stopped"
     ]
+
+
+def liberty_cells(text: str) -> list[str]:
+    return re.findall(r'^\s*cell \("([^"]+)"\) \{', text, re.M)
+
+
+def test_the_mapping_reads_a_liberty_file_without_the_cells_kept_out_of_it():
+    """Yosys 0.33 has no flag that keeps a cell out of the mapping. So the mapping reads a copy of the
+    liberty file without the cells the kit lists. The sample is the head of the kit's own file with 5
+    of its cells, each as the kit writes it."""
+    text = sample("liberty-5-cells.lib")
+    prefix = "sky130_fd_sc_hd__"
+    assert liberty_cells(text) == [
+        f"{prefix}{name}" for name in ("conb_1", "decap_3", "inv_1", "inv_2", "or2_0")
+    ]
+    out = {f"{prefix}{name}" for name in ("decap_3", "inv_1", "or2_0", "nothere_1")}
+    kept, left = chipfront.liberty_without(text, out)
+    assert left == [f"{prefix}decap_3", f"{prefix}inv_1", f"{prefix}or2_0"]
+    assert liberty_cells(kept) == [f"{prefix}conb_1", f"{prefix}inv_2"]
+    # what stays is the file's own text, line for line, and every group of it still closes
+    assert (len(text.splitlines()), len(kept.splitlines())) == (733, 340)
+    assert kept.count("{") == kept.count("}") == 37
+    rest = iter(text.splitlines())
+    assert all(line in rest for line in kept.splitlines())
+    assert kept.startswith('library ("sky130_fd_sc_hd__tt_025C_1v80") {\n') and kept.endswith("\n}\n")
+    # a name the file does not hold, and no name at all, leave it as it is
+    assert chipfront.liberty_without(text, {f"{prefix}nothere_1"}) == (text, [])
+    assert chipfront.liberty_without(text, set()) == (text, [])
+    # a cell on 1 line, a name with no quotes, a brace inside quoted text that closes nothing
+    tiny = 'library (l) {\n  cell (a) { area : 1; }\n  cell(b) {\n    pin (Y) { function : "A}"; }\n  }\n'
+    tiny += '  cell ( "c" ) {\n  }\n}\n'
+    assert chipfront.liberty_without(tiny, {"a", "b"}) == (
+        'library (l) {\n  cell ( "c" ) {\n  }\n}\n',
+        ["a", "b"],
+    )
 
 
 # -------------------------------------------------------- the gates, with engines
@@ -299,6 +373,64 @@ def swap(path: Path, old: str, new: str) -> None:
     text = path.read_text(encoding="utf-8")
     assert old in text, old
     path.write_text(text.replace(old, new), encoding="utf-8")
+
+
+def a_run(folder: Path) -> chipflow.Run:
+    chip, problems = chipflow.read_chip(folder)
+    assert problems == []
+    return chipflow.Run(cli=None, project=folder, out=folder / "build", chip=chip)
+
+
+def test_a_gates_inputs_are_its_sources_and_every_file_they_name(tmp_path):
+    """A gate's record of a pass names each of the project's files the gate read. Until 2026-11-12 it
+    named the RTL and the benches alone: a header, a memory's contents and a bench's bounds could
+    change after the gate passed, and EXPORT handed the layout out. No engine runs here."""
+    folder = a_project(tmp_path)
+    rtl, tb = folder / "rtl", folder / "tb"
+    swap(rtl / "reg8.v", "module reg8 (", '`include "widths.vh"\n`include "nowhere.vh"\nmodule reg8 (')
+    swap(rtl / "reg8.v", "endmodule", '    initial $readmemh("rom.hex", q);\nendmodule')
+    (rtl / "widths.vh").write_text('`include "deep.vh"\n', encoding="utf-8")
+    (rtl / "deep.vh").write_text("// the last of 3\n", encoding="utf-8")
+    (rtl / "rom.hex").write_text("00\n", encoding="utf-8")
+    swap(tb / "tb_reg8.v", "module tb_reg8;", '`include "common.vh"\nmodule tb_reg8;')
+    (tb / "common.vh").write_text("// shared by the benches\n", encoding="utf-8")
+    run = a_run(folder)
+
+    def names(gate: str) -> list[str]:
+        return [run.name_of(path) for path in chipfront.project_inputs(run, gate)]
+
+    # a file, then each file it names, in the order it names them; the name with no file is left out
+    sources = ["rtl/reg8.v", "rtl/widths.vh", "rtl/deep.vh", "rtl/rom.hex"]
+    assert names("lint") == [*sources, "constraints.sdc", "chip.json"]
+    assert names("synth") == [*sources, "chip.json"]
+    # a file that is not there yet is named too: EXPORT sees it come
+    assert names("sim") == [
+        *sources,
+        "tb/tb_reg8.v",
+        "tb/common.vh",
+        "tb/tb_reg8.expect.json",
+        "rtl/mutations.json",
+        "chip.json",
+    ]
+    assert names("glsim") == ["tb/tb_reg8.v", "tb/common.vh", "tb/tb_reg8.expect.json", "chip.json"]
+    assert names("layout") == ["constraints.sdc", "chip.json"]
+    # a header of 1 name in 2 folders of the engines' list: both are named, whichever an engine takes
+    (tb / "widths.vh").write_text("// another file of that name\n", encoding="utf-8")
+    assert names("lint") == [*sources[:3], "tb/widths.vh", sources[3], "constraints.sdc", "chip.json"]
+    (tb / "widths.vh").unlink()
+    # the hashes are taken before the engines start and again after: a file that is other bytes, new
+    # or gone between the 2 is a failure, and the gate writes no record of a pass
+    taken = chipfront.inputs_taken(run, "sim")
+    assert sorted(taken) == sorted([*sources, "tb/tb_reg8.v", "tb/common.vh", "chip.json"])
+    assert chipfront.inputs_moved(run, "sim", taken) == []
+    (rtl / "deep.vh").write_text("// edited while the bench ran\n", encoding="utf-8")
+    (tb / "tb_reg8.expect.json").write_text("{}", encoding="utf-8")
+    (rtl / "rom.hex").unlink()
+    assert chipfront.inputs_moved(run, "sim", taken) == [
+        "rtl/deep.vh changed while the gate ran: its hash differs",
+        "rtl/rom.hex changed while the gate ran: its hash differs",
+        "tb/tb_reg8.expect.json changed while the gate ran: its hash differs",
+    ]
 
 
 LATCHED = """module reg8 (
@@ -474,7 +606,7 @@ def test_synth_maps_the_template_and_hands_its_netlist_on_with_its_hash(tmp_path
     folder = a_project(tmp_path)
     code, record = gate("synth", folder)
     assert (code, record["status"]) == (0, "pass")
-    assert record["summary"] == "24 cells, 8 flops, 270.3 um2, 0 failures"
+    assert record["summary"] == "24 cells, 8 flops, 330.3 um2, 0 failures"
     details = record["details"]
     assert details["liberty"].endswith("sky130_fd_sc_hd__tt_025C_1v80.lib")
     netlist = folder / "build" / "chip" / "synth" / "reg8.v"
@@ -486,6 +618,47 @@ def test_synth_maps_the_template_and_hands_its_netlist_on_with_its_hash(tmp_path
     assert "@" not in script and "hilomap -singleton -hicell sky130_fd_sc_hd__conb_1 HI" in script
     assert "sky130" not in (ROOT / "tools" / "chipscripts" / "synth.ys").read_text(encoding="utf-8")
     assert "sky130" not in (ROOT / "tools" / "chipfront.py").read_text(encoding="utf-8")
+    # the mapping reads the gate's own copy of the liberty file, without the 236 cells of the kit's 2
+    # lists; the cells' areas and the black boxes come from the kit's file as it is
+    mapping = folder / "build" / "chip" / "synth" / "mapping.lib"
+    assert f"dfflibmap -liberty {mapping}\nabc -liberty {mapping}\n" in script
+    assert f"read_liberty -lib {details['liberty']}\n" in script
+    assert details["cells_not_offered"] == 236
+    offered = liberty_cells(mapping.read_text(encoding="utf-8"))
+    kept_out = {
+        name
+        for listed in cells()["dont_use"].values()
+        for file in listed
+        for name in (KIT / file).read_text(encoding="utf-8").split()
+    }
+    assert len(offered) == 192 and len(kept_out) == 236 and not kept_out & set(offered)
+    assert not kept_out & set(details["cells_by_type"])
+    assert set(details["cells_by_type"]) <= set(offered) and "sky130_fd_sc_hd__dfxtp_1" in kept_out
+
+
+@needs_synth
+def test_synth_fails_a_cell_the_rtl_names_itself_when_the_kit_lists_it_as_not_to_use(tmp_path):
+    """The mapping is offered no cell of the kit's lists, so one in the netlist is there by name: here
+    an OR gate of the list of cells that break a rule deck, in place of the register's reset."""
+    folder = a_project(tmp_path)
+    swap(
+        folder / "rtl" / "reg8.v",
+        "    always @(posedge clk) begin",
+        "    wire both;\n    sky130_fd_sc_hd__or2_0 named (.A(rst), .B(en), .X(both));\n"
+        "    always @(posedge clk) begin",
+    )
+    swap(folder / "rtl" / "reg8.v", "        if (rst) q <= 8'd0;", "        if (both & rst) q <= 8'd0;")
+    code, record = gate("synth", folder)
+    assert code == 1 and record["details"]["failures"] == [
+        "the netlist holds sky130_fd_sc_hd__or2_0: the process kit lists it as not to use "
+        "(libs.tech/openlane/sky130_fd_sc_hd/no_synth.cells, "
+        "libs.tech/openlane/sky130_fd_sc_hd/drc_exclude.cells). Name another cell in the RTL, or none"
+    ]
+    assert record["details"]["cells_by_type"]["sky130_fd_sc_hd__or2_0"] == 1
+    # a cell of neither list may be named
+    swap(folder / "rtl" / "reg8.v", "sky130_fd_sc_hd__or2_0 named", "sky130_fd_sc_hd__or2_2 named")
+    code, record = gate("synth", folder)
+    assert code == 0 and record["details"]["cells_by_type"]["sky130_fd_sc_hd__or2_2"] == 1
 
 
 @needs_synth

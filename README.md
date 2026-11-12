@@ -201,7 +201,7 @@ has every flag.
 |---|---|
 | `doctor` | Report each engine's status. |
 | `next` | Name the one next step for a project. |
-| `chip` | A chip project, from RTL to a GDSII layout: `chip init`, `chip gates`, 1 command for each of its 10 gates, and `chip render` for a picture of the layout. Tests hold all 10 gates. The acceptance processor is not GREEN yet: the build repairs no slew and no antenna. |
+| `chip` | A chip project, from RTL to a GDSII layout: `chip init`, `chip gates`, 1 command for each of its 10 gates, and `chip render` for a picture of the layout. Tests hold all 10 gates. The acceptance design, an 8-bit processor of 760 cells on the sky130A process, is GREEN with `--strict` in under 4 minutes. |
 | `design` | Build a design file into a KiCad project; `--route` routes it; `--check` compares. |
 | `erc`, `drc`, `sim`, `export` | One gate, alone. |
 | `gates` | The 4 gates in order; the last line is the verdict. |

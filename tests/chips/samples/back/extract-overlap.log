@@ -15,39 +15,43 @@ Loading "/workcenter/tools/chipscripts/extract.tcl" from command line.
 Warning: Calma reading is not undoable!  I hope that's OK.
 Library written using GDS-II Release 6.0
 Library name: LIB
-Reading "sky130_fd_sc_hd__fill_8".
 Reading "sky130_fd_sc_hd__clkbuf_4".
-Reading "sky130_fd_sc_hd__nor2_1".
-Reading "sky130_fd_sc_hd__mux2i_1".
+Reading "sky130_fd_sc_hd__clkbuf_2".
+Reading "sky130_fd_sc_hd__mux2_1".
 Reading "sky130_fd_sc_hd__tapvpwrvgnd_1".
-Reading "sky130_fd_sc_hd__fill_4".
 Reading "sky130_fd_sc_hd__dfxtp_1".
-Reading "sky130_fd_sc_hd__fill_2".
+Reading "sky130_fd_sc_hd__and2b_1".
 Reading "sky130_fd_sc_hd__fill_1".
+Reading "sky130_fd_sc_hd__fill_2".
+Reading "sky130_fd_sc_hd__fill_4".
+Reading "sky130_fd_sc_hd__fill_8".
 Reading "reg8".
 CIF file read warning: CIF style sky130(): units rescaled by factor of 5 / 1
-Processing sky130_fd_sc_hd__fill_1
-Processing sky130_fd_sc_hd__fill_2
-Processing sky130_fd_sc_hd__dfxtp_1
-Processing sky130_fd_sc_hd__fill_4
-Processing sky130_fd_sc_hd__tapvpwrvgnd_1
-Processing sky130_fd_sc_hd__mux2i_1
-Processing sky130_fd_sc_hd__nor2_1
-Processing sky130_fd_sc_hd__clkbuf_4
+CIF file read warning: Input off lambda grid by 3/5; snapped to grid.
 Processing sky130_fd_sc_hd__fill_8
+Processing sky130_fd_sc_hd__fill_4
+Processing sky130_fd_sc_hd__fill_2
+Processing sky130_fd_sc_hd__fill_1
+Processing sky130_fd_sc_hd__and2b_1
+Processing sky130_fd_sc_hd__dfxtp_1
+Processing sky130_fd_sc_hd__tapvpwrvgnd_1
+Processing sky130_fd_sc_hd__mux2_1
+Processing sky130_fd_sc_hd__clkbuf_2
+Processing sky130_fd_sc_hd__clkbuf_4
 Processing reg8
-Extracting sky130_fd_sc_hd__fill_1 into sky130_fd_sc_hd__fill_1.ext:
-Extracting sky130_fd_sc_hd__fill_2 into sky130_fd_sc_hd__fill_2.ext:
-Extracting sky130_fd_sc_hd__dfxtp_1 into sky130_fd_sc_hd__dfxtp_1.ext:
-Extracting sky130_fd_sc_hd__fill_4 into sky130_fd_sc_hd__fill_4.ext:
-Extracting sky130_fd_sc_hd__tapvpwrvgnd_1 into sky130_fd_sc_hd__tapvpwrvgnd_1.ext:
-Extracting sky130_fd_sc_hd__mux2i_1 into sky130_fd_sc_hd__mux2i_1.ext:
-Extracting sky130_fd_sc_hd__nor2_1 into sky130_fd_sc_hd__nor2_1.ext:
-Extracting sky130_fd_sc_hd__clkbuf_4 into sky130_fd_sc_hd__clkbuf_4.ext:
 Extracting sky130_fd_sc_hd__fill_8 into sky130_fd_sc_hd__fill_8.ext:
+Extracting sky130_fd_sc_hd__fill_4 into sky130_fd_sc_hd__fill_4.ext:
+Extracting sky130_fd_sc_hd__fill_2 into sky130_fd_sc_hd__fill_2.ext:
+Extracting sky130_fd_sc_hd__fill_1 into sky130_fd_sc_hd__fill_1.ext:
+Extracting sky130_fd_sc_hd__and2b_1 into sky130_fd_sc_hd__and2b_1.ext:
+Extracting sky130_fd_sc_hd__dfxtp_1 into sky130_fd_sc_hd__dfxtp_1.ext:
+Extracting sky130_fd_sc_hd__tapvpwrvgnd_1 into sky130_fd_sc_hd__tapvpwrvgnd_1.ext:
+Extracting sky130_fd_sc_hd__mux2_1 into sky130_fd_sc_hd__mux2_1.ext:
+Extracting sky130_fd_sc_hd__clkbuf_2 into sky130_fd_sc_hd__clkbuf_2.ext:
+Extracting sky130_fd_sc_hd__clkbuf_4 into sky130_fd_sc_hd__clkbuf_4.ext:
 Extracting reg8 into reg8.ext:
 freeMagic called with NULL argument.
-reg8: 69 errors
-Total of 69 errors (check feedback entries).
+reg8: 11 errors
+Total of 11 errors (check feedback entries).
 exttospice finished.
 WORKCENTER extracted

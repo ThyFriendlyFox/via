@@ -60,71 +60,114 @@ def physical() -> tuple[str, ...]:
 
 
 def test_a_layout_that_was_built_passes_with_its_numbers():
-    built = {"router_violations": 0, "open_pins": 0, "utilization": 0.5975, "area_um2": 299.04}
+    built = {
+        "wire_ff_per_um": {"signal": 0.166, "clock": 0.151},
+        "router_violations": 0,
+        "open_pins": 0,
+        "dont_use_cells": 0,
+        "utilization": 0.5394,
+        "area_um2": 334.07,
+    }
     assert chipback.judge_layout(sample("layout-pass.log"), 0.6, SUPPLY) == ([], [], built)
     # no limit named: the number is reported and held to nothing
     assert chipback.judge_layout(sample("layout-pass.log"), None, SUPPLY) == ([], [], built)
     failures, warnings, details = chipback.judge_layout(sample("layout-slow-clock.log"), 0.6, SUPPLY)
     # the build could not repair every path: STA judges that, and LAYOUT names it
     assert (failures, warnings) == ([], ["[WARNING RSZ-0062] Unable to repair all setup violations."])
-    assert (details["utilization"], details["area_um2"]) == (0.6, 300.29)
+    assert (details["utilization"], details["area_um2"]) == (0.5475, 339.08)
+    # a layout with the 12 diodes of the antenna repair in it: no pin of a diode is left open
+    assert "[INFO GRT-0015] 12 diodes inserted." in sample("layout-diodes.log")
+    failures, _, details = chipback.judge_layout(sample("layout-diodes.log"), 0.6, SUPPLY)
+    assert failures == [] and (details["open_pins"], details["utilization"]) == (0, 0.5673)
+
+
+def test_the_build_estimates_its_wires_with_the_tables_capacitance_or_fails():
+    """The script gives the engine the table's capacitance for 1 um of wire in the library's own units,
+    and prints what the engine then holds. A build that repaired with another value repaired another
+    design: the technology LEF's own number for this kit is 0.078 fF, half of what routed wires show."""
+    log = sample("layout-pass.log")
+    assert "WORKCENTER wire 0.8929 ohm/um and 0.166 fF/um for a signal, 0.1567 and 0.151 for a clock\n" in log
+    assert chipback.judge_layout(log, 0.6, SUPPLY, (0.166, 0.151))[0] == []
+    assert chipback.judge_layout(log, 0.6, SUPPLY, (0.078, 0.151))[0] == [
+        "the build estimated 1 um of signal wire at 0.166 fF and of clock wire at 0.151 fF, and the process "
+        "table gives 0.078 and 0.151: the repair worked on other wires than the table's"
+    ]
+    assert chipback.judge_layout(log, 0.6, SUPPLY, (0.166, 0.152))[0] == [
+        "the build estimated 1 um of signal wire at 0.166 fF and of clock wire at 0.151 fF, and the process "
+        "table gives 0.166 and 0.152: the repair worked on other wires than the table's"
+    ]
+    # a build that printed no such line gave the gate nothing to hold
+    assert chipback.judge_layout(without(log, "WORKCENTER wire"), 0.6, SUPPLY, (0.166, 0.151))[0] == [
+        "OpenROAD stopped before the wires were given their resistance and capacitance"
+    ]
 
 
 def test_a_core_the_cells_do_not_fit_or_fill_over_the_limit_fails():
     assert chipback.judge_layout(sample("layout-does-not-fit.log"), 0.6, SUPPLY) == (
         [
-            "the cells take 3.4286 times the core's area after the floorplan: they do not fit. Take a "
+            "the cells take 4.1905 times the core's area after the floorplan: they do not fit. Take a "
             "larger die, or cut logic"
         ],
         [],
-        {"utilization": 3.4286},
+        {"utilization": 4.1905},
     )
     # the script stops before its long steps on a netlist that is over the limit already
     assert chipback.judge_layout(sample("layout-over-limit.log"), 0.6, SUPPLY) == (
         [
-            "utilisation 0.6687 is over the limit 0.6 of chip.json after the floorplan, before the clock "
+            "utilisation 0.6381 is over the limit 0.6 of chip.json after the floorplan, before the clock "
             f"tree adds cells: {OVER}"
         ],
         [],
-        {"utilization": 0.6687, "over_limit": True},
+        {"utilization": 0.6381, "over_limit": True},
     )
-    # under the limit after the floorplan, over it once the clock tree is built
+    # under the limit after the floorplan, over it once the repair made the drivers of 0.2 pF stronger
     late = sample("layout-over-limit-after-build.log")
-    failures, _, details = chipback.judge_layout(late, 0.7, SUPPLY)
-    assert failures == [f"utilisation 0.7234 is over the limit 0.7 of chip.json: {OVER}"]
+    assert "WORKCENTER utilization 0.6381 after the floorplan\n" in late
+    failures, _, details = chipback.judge_layout(late, 0.68, SUPPLY)
+    assert failures == [f"utilisation 0.6905 is over the limit 0.68 of chip.json: {OVER}"]
     assert details == {
+        "wire_ff_per_um": {"signal": 0.166, "clock": 0.151},
         "router_violations": 0,
         "open_pins": 0,
-        "utilization": 0.7234,
-        "area_um2": 297.79,
+        "dont_use_cells": 0,
+        "utilization": 0.6905,
+        "area_um2": 362.85,
         "over_limit": True,
     }
-    assert chipback.judge_layout(late, 0.75, SUPPLY)[0] == []
-    # the engine's own line rounds to 1 %: 0.5975 reads `60%`, and so would 0.604
-    assert "Design area 299 u^2 60% utilization." in sample("layout-pass.log")
-    assert chipback.judge_layout(sample("layout-pass.log"), 0.597, SUPPLY)[0] == [
-        f"utilisation 0.5975 is over the limit 0.597 of chip.json: {OVER}"
+    assert chipback.judge_layout(late, 0.7, SUPPLY)[0] == []
+    # the engine's own line rounds to 1 %: 0.5394 reads `54%`, and so would 0.544
+    assert "Design area 334 u^2 54% utilization." in sample("layout-pass.log")
+    assert chipback.judge_layout(sample("layout-pass.log"), 0.539, SUPPLY)[0] == [
+        f"utilisation 0.5394 is over the limit 0.539 of chip.json: {OVER}"
     ]
 
 
 def test_what_openroad_leaves_wrong_in_a_layout_fails_it():
+    # the processor with the router held to its first pass: 762 violations, then 411
     assert chipback.judge_layout(sample("layout-router-violations.log"), 0.6, SUPPLY)[0] == [
-        "the router left 8 violations: shorts or spacing errors between wires. Give the design more room"
+        "the router left 411 violations: shorts or spacing errors between wires. Give the design more room"
     ]
     assert chipback.judge_layout(sample("layout-grid-open.log"), 0.6, SUPPLY)[0] == [
         "[ERROR PSM-0069] Check connectivity failed.",
         "the supply grid leaves parts of VPWR unconnected: its rails do not all reach a stripe",
     ]
     assert chipback.judge_layout(sample("layout-open-pin.log"), 0.6, SUPPLY)[0] == [
-        "1 pins of cells are on no net: _17_/A: an open input floats"
+        "1 pins of cells are on no net: _17_/A_N: an open input floats"
     ]
     # OpenROAD warns about a cell the library lacks, builds the layout without it and exits 0
     failures, _, details = chipback.judge_layout(sample("layout-unknown-cell.log"), 0.7, SUPPLY)
     assert failures == [
-        "the library has no cell sky130_fd_sc_hd__nor2_99: OpenROAD built the layout without _17_, so the "
+        "the library has no cell sky130_fd_sc_hd__and2b_99: OpenROAD built the layout without _17_, so the "
         "layout is not the netlist SYNTH wrote"
     ]
     assert details["router_violations"] == 0
+    # a cell the kit lists as not to place: the build chooses none, so the script counts what is there
+    failures, _, details = chipback.judge_layout(sample("layout-dont-use-cell.log"), 0.6, SUPPLY)
+    assert failures == [
+        "1 cells of the layout are ones the process kit lists as not to place: _16_ "
+        "(sky130_fd_sc_hd__xor3_1): no step of the build may choose one"
+    ]
+    assert (details["dont_use_cells"], details["router_violations"], details["open_pins"]) == (1, 0, 0)
     assert chipback.judge_layout(sample("openroad-crash.log"), 0.6, SUPPLY)[0] == [
         "OpenROAD crashed: its log ends with the stack trace",
         "OpenROAD stopped before the floorplan was made",
@@ -136,7 +179,7 @@ def test_a_mark_the_layout_script_did_not_print_is_a_failure_never_a_pass():
     not judged on it: the limit, the open pins, the supply grid and the router's count each fail by
     their absence."""
     log = sample("layout-pass.log")
-    assert chipback.judge_layout(without(log, "WORKCENTER utilization 0.5975 of the core"), 0.6, SUPPLY)[
+    assert chipback.judge_layout(without(log, "WORKCENTER utilization 0.5394 of the core"), 0.6, SUPPLY)[
         0
     ] == ["OpenROAD stopped before the layout was written"]
     assert chipback.judge_layout(without(log, "WORKCENTER layout written"), 0.6, SUPPLY)[0] == [
@@ -145,13 +188,16 @@ def test_a_mark_the_layout_script_did_not_print_is_a_failure_never_a_pass():
     assert chipback.judge_layout(without(log, "WORKCENTER open pins"), 0.6, SUPPLY)[0] == [
         "OpenROAD stopped before the open pins were counted"
     ]
+    assert chipback.judge_layout(without(log, "WORKCENTER dont_use cells"), 0.6, SUPPLY)[0] == [
+        "OpenROAD stopped before the cells not to use were counted"
+    ]
     assert chipback.judge_layout(without(log, "WORKCENTER grid VGND"), 0.6, SUPPLY)[0] == [
         "OpenROAD stopped before the supply grid of VGND was checked"
     ]
     assert chipback.judge_layout(without(log, "Number of violations ="), 0.6, SUPPLY)[0] == [
         "the router printed no count of violations"
     ]
-    assert chipback.judge_layout(without(log, "WORKCENTER utilization 0.5525 after"), 0.6, SUPPLY)[0] == [
+    assert chipback.judge_layout(without(log, "WORKCENTER utilization 0.5434 after"), 0.6, SUPPLY)[0] == [
         "OpenROAD stopped before the floorplan was made"
     ]
     # the router's last count is the one that stands: the passes before it count what it then repairs
@@ -188,8 +234,8 @@ def test_a_corner_that_holds_passes_with_its_slack_its_nets_and_its_skew():
     assert sta("sta-pass.log") == (
         [],
         {
-            "setup_slack_ns": 15.4204,
-            "hold_slack_ns": 0.4965,
+            "setup_slack_ns": 15.415,
+            "hold_slack_ns": 0.5816,
             "tns_ns": 0.0,
             "nets": 38,
             "nets_without_parasitics": 0,
@@ -206,13 +252,15 @@ def test_a_corner_that_holds_passes_with_its_slack_its_nets_and_its_skew():
 
 def test_a_path_too_slow_a_path_too_fast_and_a_broken_limit_each_fail_their_corner():
     failures, details = sta("sta-setup.log")
-    assert failures == [f"{CORNER}: setup slack -4.7112 ns, from _33_ to q[1]"]
-    assert details["setup_slack_ns"] == -4.7112 and details["tns_ns"] < 0
-    assert sta("sta-hold.log")[0] == [f"{CORNER}: hold slack -0.7012 ns, from _39_ to _39_"]
+    assert failures == [f"{CORNER}: setup slack -4.7339 ns, from _35_ to q[3]"]
+    assert details["setup_slack_ns"] == -4.7339 and details["tns_ns"] < 0
+    assert sta("sta-hold.log")[0] == [f"{CORNER}: hold slack -0.6400 ns, from _34_ to _34_"]
+    # 16 pins are over their slew limit and 8 of those over their capacitance limit too: the report has
+    # 24 rows, and a pin is counted 1 time
     assert sta("sta-load.log")[0] == [
-        f"{CORNER}: setup slack -16.8628 ns, from _33_ to q[1]",
-        f"{CORNER}: 40 pins break a limit of the library or the constraints (max slew, max capacitance): "
-        "_33_/Q 1.50 46.02 -44.53 (VIOLATED)",
+        f"{CORNER}: setup slack -16.8581 ns, from _32_ to q[0]",
+        f"{CORNER}: 16 pins break a limit of the library or the constraints, 24 limits in all (max slew, "
+        "max capacitance): _32_/Q 1.50 46.03 -44.53 (VIOLATED)",
     ]
     assert sta("sta-fanout.log")[0] == [
         f"{CORNER}: 5 pins break a limit of the library or the constraints (max fanout): en 1 8 -7 (VIOLATED)"
@@ -250,12 +298,12 @@ def test_a_net_the_spef_leaves_out_fails_and_so_does_a_spef_opensta_read_in_part
     ]
     # a SPEF cut short: OpenSTA names a syntax error as a warning, goes on and exits 0
     cut = chipback.spef_nets(sample("reg8.cut-short.spef"))
-    assert len(cut) == 21
+    assert len(cut) == 22
     assert sta("sta-spef-cut-short.log", wired=cut)[0] == [
-        f"{CORNER}: OpenSTA did not take all it read: /work/reg8/build/chip/layout/reg8.nom.spef line 516, "
+        f"{CORNER}: OpenSTA did not take all it read: /work/reg8/build/chip/layout/reg8.nom.spef line 526, "
         "syntax error.",
-        f"{CORNER}: 17 of 38 nets have no parasitics in the SPEF (clknet_0_clk, clknet_1_0__leaf_clk, "
-        "clknet_1_1__leaf_clk, d[4] ...): OpenSTA gives their wires an estimate",
+        f"{CORNER}: 16 of 38 nets have no parasitics in the SPEF (clknet_0_clk, clknet_1_0_0_clk, "
+        "clknet_1_1_0_clk, d[5] ...): OpenSTA gives their wires an estimate",
     ]
     # a name with its brackets escaped in 1 file and bare in the other is the same net
     assert (
@@ -279,7 +327,7 @@ def test_a_line_of_the_timing_report_that_is_not_there_fails_and_never_passes():
     assert judge(log.replace("WORKCENTER nets 38", "WORKCENTER nets 0"), names=[]) == [
         f"{CORNER}: the script named no net that joins 2 pins: the parasitics are not judged"
     ]
-    assert judge(without(log, "worst slack 15.4204")) == [
+    assert judge(without(log, "worst slack 15.4150")) == [
         f"{CORNER}: no setup slack was reported: no path is constrained"
     ]
     assert judge(without(log, "tns 0.0000")) == [f"{CORNER}: no total negative slack was reported"]
@@ -296,11 +344,12 @@ def test_a_line_of_the_timing_report_that_is_not_there_fails_and_never_passes():
 
 
 def test_the_skew_is_held_to_the_projects_limit_and_a_limit_with_no_skew_fails():
-    assert sta("sta-skew.log")[1]["clock_skew_ns"] == 0.001
-    assert sta("sta-skew.log", skew_limit=0.0005)[0] == [
-        f"{CORNER}: clock skew 0.001 ns is over the limit 0.0005 ns of chip.json"
+    assert sta("sta-skew.log")[1]["clock_skew_ns"] == 0.0001
+    assert sta("sta-skew.log", skew_limit=0.00005)[0] == [
+        f"{CORNER}: clock skew 0.0001 ns is over the limit 5e-05 ns of chip.json"
     ]
-    assert sta("sta-skew.log", skew_limit=0.002)[0] == []
+    assert sta("sta-skew.log", skew_limit=0.0002)[0] == []
+    assert sta("sta-skew.log", skew_limit=0.0001)[0] == []  # a skew at its limit is within it
     # no path from a flop to a flop: OpenSTA reports no skew, and a limit then holds nothing
     assert "No launch/capture paths found." in sample("sta-no-flop-to-flop.log")
     failures, details = sta("sta-no-flop-to-flop.log", skew_limit=0.5)
@@ -342,7 +391,7 @@ def test_magics_count_passes_at_0_and_fails_on_a_box_or_on_a_layout_read_in_part
     assert chipback.judge_magic_drc(cut, sample("magic-drc-cut-short.rpt")) == (
         [
             'Magic did not read the layout whole: Error while reading cell "reg8" (byte position 60000): '
-            "Error while reading path for boundary/box; ignored."
+            "Unexpected record type in input:"
         ],
         None,
     )
@@ -376,18 +425,19 @@ def test_a_klayout_report_database_is_counted_and_what_is_no_report_is_no_count(
 def test_antennas_pass_at_0_and_fail_on_1_and_on_a_count_that_is_not_there():
     log, report = sample("antenna-pass.log"), sample("antenna-pass.rpt")
     assert chipback.judge_antenna(log, report) == ([], {"net_violations": 0, "pin_violations": 0})
+    # a rule 10 times stricter than the kit's: the build's 12 diodes leave 3 gates over their ratio
     assert chipback.judge_antenna(sample("antenna-violations.log"), sample("antenna-violations.rpt")) == (
         [
-            "38 nets and 58 pins collect more charge than their gates take: build again with diodes or "
+            "3 nets and 3 pins collect more charge than their gates take: build again with diodes or "
             "more repair"
         ],
-        {"net_violations": 38, "pin_violations": 58},
+        {"net_violations": 3, "pin_violations": 3},
     )
     assert chipback.judge_antenna(log, None)[0] == ["OpenROAD wrote no antenna report with its counts"]
     assert chipback.judge_antenna(log, "")[0] == ["OpenROAD wrote no antenna report with its counts"]
     # a report of another run: its counts are not the log's
     assert chipback.judge_antenna(log, sample("antenna-violations.rpt"))[0] == [
-        "the antenna report counts 38 nets and 58 pins, and the log 0 and 0"
+        "the antenna report counts 3 nets and 3 pins, and the log 0 and 0"
     ]
     none = (["OpenROAD wrote no antenna counts: its log says where"], {})
     assert chipback.judge_antenna(without(log, "WORKCENTER antenna done"), report) == none
@@ -400,9 +450,9 @@ def test_antennas_pass_at_0_and_fail_on_1_and_on_a_count_that_is_not_there():
 
 def test_an_extraction_passes_clean_and_fails_on_an_overlap_magic_exits_0_with():
     assert chipback.judge_extract(sample("extract-pass.log"), "") == []
-    assert "Total of 69 errors (check feedback entries)." in sample("extract-overlap.log")
+    assert "Total of 11 errors (check feedback entries)." in sample("extract-overlap.log")
     assert chipback.judge_extract(sample("extract-overlap.log"), sample("extract-overlap.feedback.txt")) == [
-        "the extraction names 69 errors: Illegal overlap between ndiff and poly (types do not connect)"
+        "the extraction names 11 errors: Illegal overlap between pdiff and poly (types do not connect)"
     ]
     assert chipback.judge_extract(sample("extract-pass.log"), None) == [
         "Magic wrote no list of what it found while extracting"
@@ -412,7 +462,7 @@ def test_an_extraction_passes_clean_and_fails_on_an_overlap_magic_exits_0_with()
     ]
     assert chipback.judge_extract(sample("magic-drc-cut-short.log"), "") == [
         'Magic did not read the layout whole: Error while reading cell "reg8" (byte position 60000): '
-        "Error while reading path for boundary/box; ignored."
+        "Unexpected record type in input:"
     ]
 
 
@@ -421,7 +471,7 @@ def test_netgens_report_passes_only_on_a_unique_match_of_the_top_cells():
         [],
         {
             "result": "Circuits match uniquely.",
-            "comparisons": 5,
+            "comparisons": 6,
             "devices": {"layout": 27, "netlist": 27},
         },
     )
@@ -438,16 +488,17 @@ def test_netgens_report_passes_only_on_a_unique_match_of_the_top_cells():
 
 def test_netgens_final_result_does_not_pass_a_report_that_says_otherwise_above_or_below_it():
     """Netgen ends a report with `Final result: Circuits match uniquely.` for a layout whose transistor
-    is 139 times wider than the netlist's. The comparison of that cell reads `Netlists match uniquely
-    with property errors.` far above the final result, and the cell is named under it."""
+    is 215 times wider than the netlist's (90.42 um for 0.42 um). The comparison of that cell reads
+    `Netlists match uniquely with property errors.` far above the final result, and the cell is named
+    under it."""
     report = sample("lvs-property-error.rpt")
     assert "Final result: Circuits match uniquely." in report
     assert "Property errors were found." not in report
     assert chipback.judge_lvs(report)[0] == [
-        "1 of the report's 5 comparisons do not read `Netlists match uniquely.`, under a final result "
+        "1 of the report's 6 comparisons do not read `Netlists match uniquely.`, under a final result "
         "that does: Netlists match uniquely with property errors.",
         "a device's size in the layout differs from the netlist's: Netgen names property errors in "
-        "sky130_fd_sc_hd__nor2_1",
+        "sky130_fd_sc_hd__and2b_1",
     ]
     # 1 report is 1 comparison of the top cells: Netgen starts its report file anew for each, so each
     # sample holds 1 final result. 2 reports in 1 file are no such report, whichever comes first.
@@ -480,6 +531,37 @@ def test_a_gds_stream_names_its_top_cells_and_a_value_is_1_tcl_word(tmp_path):
     assert path.read_text(encoding="utf-8") == "set top {reg8}\nset pins {VPWR VPB}\nset die_area {}\n"
     assert chipback.time_limit("layout") == chipflow.TIME_LIMITS["layout"] == 7200
     assert [chipback.time_limit(g) for g in ("drc", "antenna", "lvs", "render")] == [3600, 900, 3600, 600]
+
+
+def test_a_gds_stream_keeps_no_time_of_the_run_that_wrote_it():
+    """Magic 8.3.465 writes 2 dates into the library's record and into each cell's: made, then changed.
+    With `gds nodatestamp yes` the first is 1970-01-01 and the second is the time of the run. The 2
+    dates here are what it wrote into 1 layout at 09:13:53 and at 09:22:29 on 2026-11-11."""
+
+    def record(kind: int, data: bytes = b"") -> bytes:
+        data += b"\0" * (len(data) % 2)
+        return struct.pack(">HBB", 4 + len(data), kind, 2 if data else 0) + data
+
+    made = struct.pack(">6h", 70, 1, 1, 0, 0, 0)
+    first, second = struct.pack(">6h", 126, 11, 11, 9, 13, 53), struct.pack(">6h", 126, 11, 11, 9, 22, 29)
+
+    def stream(changed: bytes) -> bytes:
+        cell = record(0x05, made + changed) + record(0x06, b"top") + record(0x07)
+        return (
+            record(0x00, b"\0\3") + record(0x01, made + changed) + record(0x02, b"lib") + cell + record(0x04)
+        )
+
+    assert stream(first) != stream(second)
+    undated = chipback.gds_undated(stream(first))
+    assert undated == chipback.gds_undated(stream(second)) == stream(made)
+    assert chipback.gds_undated(undated) == undated and chipback.gds_top_cells(undated) == ["top"]
+    # nothing changes but the date changed of the 2 records: 6 numbers each, of which 1 byte differs
+    differ = [n for n, (a, b) in enumerate(zip(stream(first), undated, strict=True)) if a != b]
+    assert differ == [23, 25, 27, 29, 31, 33, 59, 61, 63, 65, 67, 69]
+    # a stream that is not whole is not rewritten: the gate fails it for its top cell
+    cut = stream(first)[:-4]
+    assert chipback.gds_undated(cut) == cut and chipback.gds_undated(b"") == b""
+    assert chipback.gds_undated(stream(first)[:40]) == stream(first)[:40]
 
 
 def test_the_scripts_and_the_gates_name_no_file_cell_or_layer_of_a_process():
@@ -543,6 +625,31 @@ def hand_on(folder: Path, *names: str) -> None:
 
 def ledger(folder: Path) -> dict:
     return json.loads((folder / "build" / "chip" / "hashes.json").read_text(encoding="utf-8"))
+
+
+def gds_records(data: bytes):
+    """The offset of each record of a GDSII stream, to its ENDLIB (0x04)."""
+    at = 0
+    while at + 4 <= len(data):
+        length, kind = struct.unpack(">HB", data[at : at + 3])
+        yield at
+        if kind == 0x04 or length < 4:
+            return
+        at += length
+
+
+def gds_cell_layers(data: bytes, cell: str) -> set[int]:
+    """The layer numbers of what 1 cell of a GDSII stream holds itself: each LAYER record (0x0D) after
+    the cell's STRNAME (0x06) and before the next cell's."""
+    layers: set[int] = set()
+    name = None
+    for at in gds_records(data):
+        length, kind = struct.unpack(">HB", data[at : at + 3])
+        if kind == 0x06:
+            name = data[at + 4 : at + length].rstrip(b"\0").decode("ascii", "replace")
+        elif kind == 0x0D and name == cell:
+            layers.add(struct.unpack(">h", data[at + 4 : at + 6])[0])
+    return layers
 
 
 def passed(folder: Path, name: str) -> dict | None:
@@ -611,11 +718,14 @@ def test_the_flow_is_green_and_each_back_gate_keeps_the_record_of_its_pass(built
     records = {r["gate"]: r for r in json.loads((built / "build" / "gates.json").read_text(encoding="utf-8"))}
     assert [r["status"] for r in records.values()] == ["pass"] * 10
     layout, timing = records["layout"], records["sta"]
-    assert layout["summary"] == "299.04 um2 of cells, utilisation 0.5975, 0 failures"
-    assert {k: layout["details"][k] for k in ("router_violations", "open_pins", "floorplans")} == {
+    assert layout["summary"] == "334.07 um2 of cells, utilisation 0.5394, 0 failures"
+    held = ("router_violations", "open_pins", "dont_use_cells", "floorplans", "wire_ff_per_um")
+    assert {k: layout["details"][k] for k in held} == {
         "router_violations": 0,
         "open_pins": 0,
+        "dont_use_cells": 0,
         "floorplans": 1,
+        "wire_ff_per_um": {"signal": 0.166, "clock": 0.151},
     }
     assert layout["details"]["gds_top_cells"] == ["reg8"]
     corners = timing["details"]["corners"]
@@ -644,8 +754,13 @@ def test_the_flow_is_green_and_each_back_gate_keeps_the_record_of_its_pass(built
     kept, base = ledger(built), built / "build"
     gds = "chip/layout/reg8.gds"
     assert kept[gds] == {"gate": "layout", "sha256": chipflow.sha256(base / gds)}
-    assert passed(built, "layout")["judged"] == layout["details"]["sha256"]
-    assert sorted(layout["details"]["sha256"]) == [
+    # LAYOUT's record names what it wrote and, beside that, what the layout was built from: the netlist
+    # is the one SYNTH recorded
+    judged, written = passed(built, "layout")["judged"], layout["details"]["sha256"]
+    assert {name: judged[name] for name in written} == written
+    assert sorted(set(judged) - set(written)) == ["chip.json", "chip/synth/reg8.v", "constraints.sdc"]
+    assert judged["chip/synth/reg8.v"] == passed(built, "synth")["judged"]["chip/synth/reg8.v"]
+    assert sorted(written) == [
         "chip/layout/reg8.def",
         "chip/layout/reg8.gds",
         "chip/layout/reg8.max.spef",
@@ -677,6 +792,90 @@ def test_the_flow_is_green_and_each_back_gate_keeps_the_record_of_its_pass(built
     assert "set utilization_limit {0.6}\n" in variables and "set density {0.6}\n" in variables
     # with no die named the gate aims at the limit less its headroom
     assert "set die_area {}\n" in variables and variables.endswith("set utilization {50.0}\n")
+    # the build reads each library corner the project's ranges select, the slow cold one first, and
+    # repairs with the table's wire capacitance, margins and diode; it may place no cell of the kit's list
+    read = re.search(r"^set liberty \{(.*)\}$", variables, re.M).group(1).split()
+    assert read[0::2] == ["ss_n40C_1v60", "ss_100C_1v60", "ff_n40C_1v95", "ff_100C_1v95", "tt_025C_1v80"]
+    assert all(
+        Path(path).is_file() and name in path for name, path in zip(read[0::2], read[1::2], strict=True)
+    )
+    assert "set wire_rc {{signal met2 0.166} {clock met3 0.151}}\n" in variables
+    assert "set slew_margin {20}\nset cap_margin {20}\nset antenna_iterations {3}\n" in variables
+    assert "set diode {sky130_fd_sc_hd__diode_2/DIODE}\n" in variables
+    kept_out = re.search(r"^set dont_use \{(.*)\}$", variables, re.M).group(1).split()
+    assert len(kept_out) == 53 and kept_out[0] == "sky130_fd_sc_hd__a2111oi_0"
+    netlist = (base / "chip" / "layout" / "reg8.v").read_text(encoding="utf-8")
+    assert not [name for name in kept_out if f"{name} " in netlist]
+    # the layout holds the kit's cells as they are drawn. The top cell holds wires and no implant: where
+    # 2 cells meet, Magic would write nsdm (93), psdm (94) and npc (95) shapes of its own, and those
+    # break the kit's KLayout deck beside a tap cell (8 items on the processor)
+    stream = (base / gds).read_bytes()
+    own = gds_cell_layers(stream, "reg8")
+    assert {68, 69} <= own and not own & {93, 94, 95}, sorted(own)
+    # the 2 dates of each record are the same, so the bytes name the layout and no run
+    dates = [
+        stream[at + 4 : at + 28]
+        for at in gds_records(stream)
+        if stream[at + 2] in (0x01, 0x05) and stream[at : at + 2] == b"\x00\x1c"
+    ]
+    assert len(dates) >= 2 and all(date[:12] == date[12:] for date in dates)
+
+
+@needs_flow
+def test_a_second_build_of_the_same_inputs_writes_the_same_bytes(built, project):
+    """Magic writes the time of a run into the GDS: 4 builds of 1 layout had 4 hashes. The gate sets the
+    date each cell was changed to the date it was made, which the script holds at 0. So a hash names a
+    layout, and the hash in a manifest can be made again from the project. `project` is another folder
+    than `built`, and it is built later."""
+    first = passed(built, "layout")["judged"]
+    assert gate("layout", project)[0] == 0
+    second = passed(project, "layout")["judged"]
+    # the 8 files the build writes and the 3 it is built from
+    assert len(first) == 11 and "chip/layout/reg8.gds" in first
+    assert second == first
+    assert (
+        chipflow.sha256(project / "build" / "chip" / "layout" / "reg8.gds") == first["chip/layout/reg8.gds"]
+    )
+
+
+# The kit's rule for a wire with no diode on it, and the same rule 10 times stricter.
+ANTENNA_RULE = "ANTENNADIFFSIDEAREARATIO PWL ( ( 0 400 ) ( 0.0125 400 ) ( 0.0225 2609 ) ( 22.5 11600 ) )"
+STRICT_RULE = "ANTENNADIFFSIDEAREARATIO PWL ( ( 0 40 ) ( 0.0125 40 ) ( 0.0225 2609 ) ( 22.5 11600 ) )"
+
+
+@needs_flow
+def test_the_build_puts_diodes_in_and_antenna_still_judges_the_wires_as_routed(project):
+    """The template breaks no antenna rule of the kit, so its build puts no diode in. With a copy of the
+    technology LEF that allows a gate with no diode 40 times its area, not 400, the build's repair
+    finds 9 gates on the global route and puts 12 diodes in, in 3 passes. Each diode stands on free
+    sites, takes its supply after the grid was made, and is in the layout and in both netlists. The
+    repair works on the global route: the wires the detailed router then makes leave 3 gates over the
+    ratio, and ANTENNA fails the layout the build passed."""
+    run = a_run(project)
+    wires = run.pdk.library["wires"]["nom"]
+    text = run.pdk.file(wires["techlef"]).read_text(encoding="utf-8")
+    assert text.count(ANTENNA_RULE) == 5
+    strict = project / "strict.tlef"
+    strict.write_text(text.replace(ANTENNA_RULE, STRICT_RULE), encoding="utf-8")
+    wires["techlef"] = str(strict)
+    made = chipback.gate_layout(run)
+    assert made.status == "pass", made.details["failures"]
+    log = (run.base / "layout" / "openroad.log").read_text(encoding="utf-8")
+    assert re.findall(r"\[INFO GRT-0012\] Antenna violations: (\d+)", log) == ["9", "1", "0"]
+    # with the tap cells left LOCKED a diode lands on one, and the repair stops with DPL-0033
+    # (`ANTENNA_4 overlaps TAP_3`); the script marks them FIRM first
+    assert "[INFO GRT-0015] 12 diodes inserted." in log and "DPL-0033" not in log
+    assert (made.details["open_pins"], made.details["router_violations"]) == (0, 0)
+    for netlist in (run.final_netlist(), run.power_netlist()):
+        placed = re.findall(r"^\s*sky130_fd_sc_hd__diode_2 (\S+)", netlist.read_text(encoding="utf-8"), re.M)
+        assert len(placed) == 12 and all(name.startswith("ANTENNA_") for name in placed)
+    assert chipback.gate_drc(run).details["decks"] == {"magic": 0, "klayout-mr": 0}
+    compared = chipback.gate_lvs(run)
+    assert (compared.status, compared.details["devices"]) == ("pass", {"layout": 37, "netlist": 37})
+    judged = chipback.gate_antenna(run)
+    assert judged.status == "fail" and judged.details["failures"] == [
+        "3 nets and 3 pins collect more charge than their gates take: build again with diodes or more repair"
+    ]
 
 
 @needs_flow
@@ -685,14 +884,14 @@ def test_layout_stops_on_a_die_the_cells_overfill_and_hands_nothing_on(project):
     change(project, lambda d: d.update(floorplan={"die_um": [30, 30], "source": "a die too small"}))
     code, record = gate("layout", project)
     assert code == 1 and record["details"]["failures"] == [
-        "the cells take 3.4286 times the core's area after the floorplan: they do not fit. Take a larger "
+        "the cells take 4.1905 times the core's area after the floorplan: they do not fit. Take a larger "
         "die, or cut logic"
     ]
-    change(project, lambda d: d.update(floorplan={"die_um": [42, 42], "source": "a die a little small"}))
+    change(project, lambda d: d.update(floorplan={"die_um": [48, 41], "source": "a die a little small"}))
     code, record = gate("layout", project)
     assert code == 1 and record["summary"] == "the layout, 1 failures"
     assert record["details"]["failures"] == [
-        "utilisation 0.6687 is over the limit 0.6 of chip.json after the floorplan, before the clock tree "
+        "utilisation 0.6381 is over the limit 0.6 of chip.json after the floorplan, before the clock tree "
         f"adds cells: {OVER}"
     ]
     assert record["seconds"] < 20  # the script stops before the clock tree, the longest step
@@ -730,23 +929,30 @@ def test_layout_stops_on_a_die_the_cells_overfill_and_hands_nothing_on(project):
 
 @needs_flow
 def test_layout_builds_on_a_core_fuller_than_the_tables_density_and_holds_the_limit_at_the_end(project):
-    """A die on which the cells take 0.67 of the core. The placer stops with an error at the table's
-    density of 0.6, so the script raises it; the clock tree then takes the build over the limit."""
+    """A die of 48 by 41 um, on which the cells take 0.64 of the core, and 0.2 pF on each output. The
+    placer stops with an error at the table's density of 0.6, so the script raises it; the repair then
+    makes the 8 output drivers stronger, and that takes the build over the limit. The core is 27.6 um
+    wide: at the table's pitch of 27.14 um the second supply net's stripe does not fit, and 1 net's
+    rails stay apart; the script gives such a core its own width as the pitch."""
 
     def fuller(data: dict) -> None:
-        data["floorplan"] = {"die_um": [42, 42], "source": "a die a little small"}
-        data["limits"]["utilization"]["max"] = 0.7
+        data["floorplan"] = {"die_um": [48, 41], "source": "a die a little small"}
+        data["limits"]["utilization"]["max"] = 0.68
 
     change(project, fuller)
+    with (project / "constraints.sdc").open("a", encoding="utf-8") as fh:
+        fh.write("set_load 0.2 [all_outputs] ;# source: the test's premise: 0.2 pF on each output\n")
     code, record = gate("layout", project)
     assert code == 1 and record["details"]["failures"] == [
-        f"utilisation 0.7234 is over the limit 0.7 of chip.json: {OVER}"
+        f"utilisation 0.6905 is over the limit 0.68 of chip.json: {OVER}"
     ]
-    assert record["summary"] == "297.79 um2 of cells, utilisation 0.7234, 1 failures"
+    assert record["summary"] == "362.85 um2 of cells, utilisation 0.6905, 1 failures"
     assert (record["details"]["router_violations"], record["details"]["floorplans"]) == (0, 1)
     log = (project / "build" / "chip" / "layout" / "openroad.log").read_text(encoding="utf-8")
-    assert "WORKCENTER utilization 0.6687 after the floorplan\nWORKCENTER density 0.7687\n" in log
+    assert "WORKCENTER utilization 0.6381 after the floorplan\nWORKCENTER density 0.7381\n" in log
     assert "[ERROR GPL-" not in log
+    assert "WORKCENTER grid VPWR connected\n" in log and "WORKCENTER grid VGND connected\n" in log
+    assert "[INFO IFP-0001] Added 7 rows of 60 sites.\n" in log  # 60 sites of 0.46 um: 27.6 um
 
 
 def fake_start(run, texts: dict[str, list[str]], seen: list) -> None:
@@ -768,7 +974,7 @@ def fake_start(run, texts: dict[str, list[str]], seen: list) -> None:
 @needs_flow
 def test_layout_makes_its_own_floorplan_again_with_more_room_when_it_ends_over_the_limit(project):
     """With a limit and no die the floorplan is the gate's own. The engine's answers here are 2 real
-    reports: a build that ends at 0.7234, then one that ends at 0.5975."""
+    reports: a build that ends at 0.6905, then one that ends at 0.5394."""
     run, seen = a_run(project), []
     over, good = sample("layout-over-limit-after-build.log"), sample("layout-pass.log")
     fake_start(run, {"openroad": [over, good]}, seen)
@@ -776,7 +982,7 @@ def test_layout_makes_its_own_floorplan_again_with_more_room_when_it_ends_over_t
     aims = [
         re.search(r"^set utilization \{(\S+)\}$", v, re.M).group(1) for e, _, v in seen if e == "openroad"
     ]
-    assert aims == ["50.0", "39.4"]  # 0.6 less the headroom, then 0.5 * 0.6 / 0.7234 * 0.95
+    assert aims == ["50.0", "41.3"]  # 0.6 less the headroom, then 0.5 * 0.6 / 0.6905 * 0.95
     assert result.details["floorplans"] == 2
     assert (run.base / "layout" / "openroad.1.log").read_text(encoding="utf-8") == over
     # the stand-in for Magic prints nothing, so the gate fails there: the 2 floorplans are what is held
@@ -787,7 +993,7 @@ def test_layout_makes_its_own_floorplan_again_with_more_room_when_it_ends_over_t
     result = chipback.gate_layout(run)
     assert [engine for engine, _, _ in seen] == ["openroad"] * 3
     assert result.details["failures"] == [
-        f"utilisation 0.7234 is over the limit 0.6 of chip.json: {OVER}",
+        f"utilisation 0.6905 is over the limit 0.6 of chip.json: {OVER}",
         "3 floorplans of the gate's own were each over the limit: name floorplan.die_um",
     ]
     # a die the project names is never changed: 1 build, and the failure
@@ -843,14 +1049,14 @@ def test_sta_fails_a_path_that_is_too_slow_and_a_path_that_is_too_fast(project):
     swap(project / "constraints.sdc", "-period 20 ", "-period 0.5 ")
     code, record = gate("sta", project, "--corner", "max_ss_n40C_1v60")
     assert code == 1 and record["details"]["failures"] == [
-        "max_ss_n40C_1v60: setup slack -4.7112 ns, from _33_ to q[1]"
+        "max_ss_n40C_1v60: setup slack -4.7339 ns, from _35_ to q[3]"
     ]
     swap(project / "constraints.sdc", "-period 0.5 ", "-period 20 ")
     with (project / "constraints.sdc").open("a", encoding="utf-8") as fh:
         fh.write("set_clock_uncertainty -hold 1 [get_clocks clk] ;# source: the test's premise\n")
     code, record = gate("sta", project, "--corner", "min_ff_n40C_1v95")
     assert code == 1 and record["details"]["failures"] == [
-        "min_ff_n40C_1v95: hold slack -0.7012 ns, from _39_ to _39_"
+        "min_ff_n40C_1v95: hold slack -0.6400 ns, from _34_ to _34_"
     ]
     assert record["details"]["corners"]["min_ff_n40C_1v95"]["setup_slack_ns"] > 0
     sdf = "chip/sta/min_ff_n40C_1v95/reg8.sdf"
@@ -921,9 +1127,10 @@ def test_a_gate_with_no_layout_to_judge_is_a_skip_with_the_reason(tmp_path):
         assert record["summary"] == (
             f"LAYOUT has not run in {out}: {name.upper()} judges only a layout that LAYOUT passed"
         )
+    # EXPORT asks all 9 gates in their order, and names the first that holds no record of a pass
     assert last_line("export", folder) == (
         2,
-        f"SKIPPED (EXPORT: LAYOUT has not run in {out}: EXPORT hands out only a layout that every gate "
+        f"SKIPPED (EXPORT: LINT has not run in {out}: EXPORT hands out only a layout that every gate "
         "passed): reg8",
     )
 
@@ -1057,7 +1264,7 @@ def test_lvs_fails_a_netlist_and_a_layout_that_differ_and_export_refuses_them(pr
         "the netlist has no VPWR, VGND pins: LVS compares the supply too, so it takes the netlist written "
         "with them"
     ]
-    # the netlist as it was, and a bar of poly across the cells of the layout: Magic names 69 errors,
+    # the netlist as it was, and a bar of poly across the cells of the layout: Magic names 11 errors,
     # exits 0 and writes a netlist all the same
     netlist.write_text(text, encoding="utf-8")
     edit_gds(project, "poly")
@@ -1065,10 +1272,121 @@ def test_lvs_fails_a_netlist_and_a_layout_that_differ_and_export_refuses_them(pr
     code, record = gate("lvs", project)
     assert code == 1 and record["summary"] == "the extraction, 1 failures"
     assert record["details"]["failures"] == [
-        "the extraction names 69 errors: Illegal overlap between ndiff and poly (types do not connect) "
+        "the extraction names 11 errors: Illegal overlap between pdiff and poly (types do not connect) "
         "(log build/chip/lvs/extract.log)"
     ]
     assert (out / "chip" / "lvs" / "reg8.lvs.spice").is_file()
+
+
+@needs_flow
+def test_export_asks_all_9_gates_and_holds_the_projects_files_to_what_each_passed(project):
+    """EXPORT asked the 5 gates of the layout alone. With the RTL changed since LINT, or after a red
+    GLSIM, `chip export` run alone still handed the layout out (2026-11-11). Each of the 9 gates
+    leaves a record of its pass now, and the 4 that judge the project's own files name those files."""
+    out = project / "build"
+    tapeout = out / "chip" / "tapeout"
+    assert (tapeout / "manifest.json").is_file()
+    records = {name: passed(project, name) for name in chipflow.GATE_NAMES[:-1]}
+    assert sorted(name for name, record in records.items() if record) == sorted(chipflow.GATE_NAMES[:-1])
+    assert {name: sorted(records[name]["judged"]) for name in ("lint", "sim", "synth", "glsim")} == {
+        "lint": ["chip.json", "constraints.sdc", "rtl/reg8.v"],
+        "sim": ["chip.json", "rtl/reg8.v", "tb/tb_reg8.v"],
+        "synth": ["chip.json", "chip/synth/reg8.v", "rtl/reg8.v"],
+        "glsim": ["chip.json", "chip/layout/reg8.v", "tb/tb_reg8.v"],
+    }
+    # LAYOUT's record names what the layout was built from beside what it wrote
+    built_from = [name for name in sorted(records["layout"]["judged"]) if not name.startswith("chip/layout/")]
+    assert built_from == ["chip.json", "chip/synth/reg8.v", "constraints.sdc"]
+    # GLSIM judged the netlist that is handed out
+    manifest = json.loads((tapeout / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["judged"]["glsim"]["chip/layout/reg8.v"] == manifest["files"]["reg8.v"]
+
+    def changed(path: Path, said: str) -> None:
+        written = path.read_text(encoding="utf-8")
+        path.write_text(written + "// a line the gates did not see\n", encoding="utf-8")
+        code, record = gate("export", project)
+        assert (code, record["details"]["failures"]) == (1, [said])
+        assert not tapeout.exists()
+        path.write_text(written, encoding="utf-8")
+        assert gate("export", project)[0] == 0 and (tapeout / "manifest.json").is_file()
+
+    # a file that 3 gates judged is named 1 time, with the first of them
+    again = "its hash differs. Run the gates again"
+    changed(project / "rtl" / "reg8.v", f"rtl/reg8.v changed after LINT passed: {again}")
+    changed(project / "tb" / "tb_reg8.v", f"tb/tb_reg8.v changed after SIM passed: {again}")
+    # a gate whose record is gone did not pass, whatever its folder holds
+    record = out / "chip" / "sim" / "passed.json"
+    kept = record.read_bytes()
+    record.unlink()
+    said = "EXPORT hands out only a layout that every gate passed"
+    assert last_line("export", project) == (2, f"SKIPPED (EXPORT: SIM did not pass in {out}: {said}): reg8")
+    assert not tapeout.exists()
+    record.write_bytes(kept)
+    assert gate("export", project)[0] == 0
+    # a red GLSIM takes its record and the hand-off away, and EXPORT run alone after it hands nothing out
+    bench = project / "tb" / "tb_reg8.v"
+    text = bench.read_text(encoding="utf-8")
+    assert text.count("expect_q(8'h3C);") == 1
+    bench.write_text(text.replace("expect_q(8'h3C);", "expect_q(8'h3D);"), encoding="utf-8")
+    code, judged = gate("glsim", project)
+    assert code == 1 and judged["details"]["failures"] == ["tb_reg8: errors=1 not in [None, 0]"]
+    assert passed(project, "glsim") is None and not tapeout.exists()
+    assert last_line("export", project) == (2, f"SKIPPED (EXPORT: GLSIM did not pass in {out}: {said}): reg8")
+    assert not tapeout.exists()
+
+
+@needs_flow
+def test_export_refuses_a_file_that_came_later_a_changed_header_and_a_layout_of_an_older_netlist(project):
+    """3 ways the project could differ from what the gates passed while every record agreed with its
+    own files (2026-11-12). A file added after a gate passed was in no record. A header was in none
+    either. And LAYOUT's record named what it wrote, not what it was built from: with the RTL changed
+    and LINT, SIM and SYNTH run again alone, `chip export` handed out the layout of the RTL before."""
+    out = project / "build"
+    tapeout = out / "chip" / "tapeout"
+    again = "Run the gates again"
+
+    def refused(said: str) -> None:
+        code, record = gate("export", project)
+        assert (code, record["details"]["failures"]) == (1, [said])
+        assert not tapeout.exists()
+
+    def handed_out() -> None:
+        assert gate("export", project)[0] == 0 and (tapeout / "manifest.json").is_file()
+
+    # a bench's bounds and a second RTL file, each written after the gates passed
+    bounds = project / "tb" / "tb_reg8.expect.json"
+    bounds.write_text('{"errors": {"max": 3, "source": "wider than the gates held"}}', encoding="utf-8")
+    refused(f"tb/tb_reg8.expect.json was added after SIM passed. {again}")
+    bounds.unlink()
+    handed_out()
+    extra = project / "rtl" / "extra.v"
+    extra.write_text("module extra (input wire a, output wire y);\n    assign y = a;\nendmodule\n", "utf-8")
+    refused(f"rtl/extra.v was added after LINT passed. {again}")
+    extra.unlink()
+    handed_out()
+    # A header the RTL includes: the 4 gates that read the project's files run again and name it. The
+    # mapped netlist is the same bytes, so the layout still stands for it.
+    rtl = project / "rtl" / "reg8.v"
+    header = project / "rtl" / "widths.vh"
+    header.write_text("// the widths of reg8\n", encoding="utf-8")
+    rtl.write_text('`include "widths.vh"\n' + rtl.read_text(encoding="utf-8"), encoding="utf-8")
+    for name in ("lint", "sim", "synth", "glsim"):
+        assert gate(name, project)[0] == 0, name
+    named = [name for name in ("lint", "sim", "synth") if "rtl/widths.vh" in passed(project, name)["judged"]]
+    assert named == ["lint", "sim", "synth"]
+    handed_out()
+    header.write_text("// the widths of reg8, edited after the gates passed\n", encoding="utf-8")
+    refused(f"rtl/widths.vh changed after LINT passed: its hash differs. {again}")
+    header.write_text("// the widths of reg8\n", encoding="utf-8")
+    handed_out()
+    # The RTL changed in a way the bench does not see, and LINT, SIM and SYNTH ran again: their records
+    # agree with the new RTL. The layout is of the netlist before.
+    text = rtl.read_text(encoding="utf-8")
+    assert text.count("else if (en) q <= d;") == 1
+    rtl.write_text(text.replace("q <= d;", "q <= (d == 8'hFF) ? 8'h00 : d;"), encoding="utf-8")
+    for name in ("lint", "sim", "synth"):
+        assert gate(name, project)[0] == 0, name
+    refused(f"chip/synth/reg8.v changed after LAYOUT passed: its hash differs. {again}")
 
 
 @needs_flow
@@ -1120,7 +1438,7 @@ def test_export_copies_what_every_gate_passed_and_its_manifest_names_each_hash(p
     constraints.write_text(written + "set_max_fanout 4 [current_design] ;# source: REQ-7\n", encoding="utf-8")
     code, record = gate("export", project)
     assert code == 1 and record["details"]["failures"] == [
-        "constraints.sdc changed after STA passed: its hash differs. Run STA again"
+        "constraints.sdc changed after LINT passed: its hash differs. Run the gates again"
     ]
     assert not tapeout.exists()
     constraints.write_text(written, encoding="utf-8")

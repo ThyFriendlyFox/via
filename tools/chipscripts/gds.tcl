@@ -9,6 +9,12 @@ lef read $::env(TECH_LEF)
 def read $::env(DEF)
 load $::env(TOP) -dereference
 select top cell
+# Where 2 cells meet, Magic works the mask layers out again from its own view of both and writes them
+# into the top cell. Those shapes differ from the kit's drawn ones by slivers that break its rule deck.
+# The cells are drawn to stand side by side as they are: the top cell holds the wires alone. `cif help`
+# does not list an option that starts with `*`.
+cif *hier write disable
+cif *array write disable
 gds nodatestamp yes
 gds write $::env(OUT)/$::env(TOP).gds
 puts "WORKCENTER gds written"

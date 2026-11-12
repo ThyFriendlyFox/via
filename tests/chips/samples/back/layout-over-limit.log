@@ -13,22 +13,22 @@ The NOWIREEXTENSIONATPIN statement will be ignored. See file /kit/libs.ref/sky13
 [INFO ODB-0225]     Created 437 library cells
 [INFO ODB-0226] Finished LEF file:  /kit/libs.ref/sky130_fd_sc_hd/lef/sky130_fd_sc_hd.lef
 [WARNING IFP-0028] Core area lower left (10.120, 10.880) snapped to (10.120, 10.880).
-[INFO IFP-0001] Added 7 rows of 47 sites.
+[INFO IFP-0001] Added 7 rows of 60 sites.
 Found 0 macro blocks.
 Using 1u default distance from corners.
 Using 2 tracks default min distance between IO pins.
 [INFO PPL-0010] Tentative 0 to set up sections.
-[INFO PPL-0001] Number of slots          154
+[INFO PPL-0001] Number of slots          164
 [INFO PPL-0002] Number of I/O            19
 [INFO PPL-0003] Number of I/O w/sink     19
 [INFO PPL-0004] Number of I/O w/o sink   0
 [INFO PPL-0005] Slots per section        200
 [INFO PPL-0006] Slots increase factor    0.01
 [INFO PPL-0008] Successfully assigned pins to sections.
-[INFO PPL-0012] I/O nets HPWL: 521.66 um.
+[INFO PPL-0012] I/O nets HPWL: 472.45 um.
 [INFO TAP-0001] Found 0 macro blocks.
 [INFO TAP-0002] Original rows: 7
 [INFO TAP-0003] Created 0 rows for a total of 7 rows.
 [INFO TAP-0005] Inserted 4 tapcells.
-WORKCENTER utilization 0.6687 after the floorplan
+WORKCENTER utilization 0.6381 after the floorplan
 WORKCENTER stopped: the cells take more of the core than it may hold

@@ -59,7 +59,7 @@ honestly passes it.
 | Board inspection | this repo | `workcenter inspect <view> <board> ...`, the views `map`, `list`, `probe`, `net`, `islands`, `resistance`, `crossed` (KiCad's `pcbnew` and Pillow under the venv); `python3 tools/stretch.py <design.py> --cut X --grow G` | `install.sh` (part of the checkout; Pillow from PyPI) |
 | Corners and frequency plan | this repo | `sim/corners.json` and `sim/frequency-plan.json`, read by `workcenter sim` (`tools/simcorners.py`, `tools/freqplan.py`); `workcenter sim --bundle <dir>` for a deck that runs on any machine | the checkout; ngspice by `install.sh` |
 | Next step | this repo | `workcenter next <project>` (`tools/guide.py`) | the checkout |
-| Chip projects | this repo | `workcenter chip init <dir> --top NAME`, `workcenter chip gates <project>` (`tools/chipflow.py`, `tools/chipfront.py`, `tools/chipback.py`, a process table in `pdks/`); all 10 gates run and tests hold each; the acceptance processor is not GREEN yet, because the build repairs no slew and no antenna | the checkout; the engines in `<root>/chip` (`sudo ./install.sh --chip`) |
+| Chip projects | this repo | `workcenter chip init <dir> --top NAME`, `workcenter chip gates <project>` (`tools/chipflow.py`, `tools/chipfront.py`, `tools/chipback.py`, a process table in `pdks/`); all 10 gates run and tests hold each; the acceptance processor (760 cells, a 40 ns clock, the sky130A process) is GREEN with `--strict` | the checkout; the engines in `<root>/chip` (`sudo ./install.sh --chip`) |
 
 ## Skills
 
@@ -456,7 +456,7 @@ A project may add gates. It may not remove these.
 | Engine environment | `/opt/workcenters/ee/env.sh` |
 | Tool cache | the session scratchpad; the engines write nothing outside the output directory |
 | Project output | `<project>/build/` (reports, `fab/`, `sim/`, `route/`, `render/`) |
-| Chip project output | `<project>/build/gates.json`, the report, and `<project>/build/chip/`: 1 folder for each gate that ran, and `hashes.json` with the hash of each file a gate wrote or judged. `<gate>/passed.json` is there when LAYOUT, STA, DRC, ANTENNA or LVS passed: the hash of each file the gate judged. `tapeout/` holds the files EXPORT hands out, `manifest.json` and the judging gates' reports; a back gate that runs again takes it away. `render/` holds the pictures of `workcenter chip render`. |
+| Chip project output | `<project>/build/gates.json`, the report, and `<project>/build/chip/`: 1 folder for each gate that ran, and `hashes.json` with the hash of each file a gate wrote or judged. `<gate>/passed.json` is there when that gate passed: the hash of each file it read, taken before its engines started and held to the same bytes after, and of each file it hands on. EXPORT asks each of the 9 gates before it for that record and holds every file to it: the RTL and each header or memory file it names, the benches and their bounds, the constraints, `chip.json`, the mapped netlist the layout was built from, and the layout's own files. A file of the project that came after a gate passed is refused too. `tapeout/` holds the files EXPORT hands out, `manifest.json` and the judging gates' reports; a gate that runs again takes it away. `render/` holds the pictures of `workcenter chip render`. |
 
 ## Project requirements
 

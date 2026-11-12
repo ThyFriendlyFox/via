@@ -34,7 +34,7 @@ from pathlib import Path
 import chipflow
 
 SCRIPTS = Path(__file__).resolve().parent / "chipscripts"
-PASSED = "passed.json"
+PASSED = chipflow.PASSED
 # Seconds an engine may run in the gates the spine names no limit for; --timeout sets another.
 TIME_LIMITS = {"drc": 3600, "antenna": 900, "lvs": 3600, "render": 600}
 ROUTER_RE = re.compile(r"\[INFO DRT-0199\]\s+Number of violations = (\d+)\.")
@@ -48,6 +48,8 @@ NO_LEF_RE = re.compile(r"^\[WARNING ORD-1013\] instance (\S+) LEF master (\S+) n
 EARLY_RE = re.compile(r"^WORKCENTER utilization ([\d.]+) after the floorplan", re.M)
 FINAL_RE = re.compile(r"^WORKCENTER utilization ([\d.]+) of the core, ([\d.]+) um2 of cells", re.M)
 OPEN_PINS_RE = re.compile(r"^WORKCENTER open pins (\d+)", re.M)
+KEPT_OUT_RE = re.compile(r"^WORKCENTER dont_use cells (\d+)", re.M)
+WIRE_RE = re.compile(r"^WORKCENTER wire \S+ ohm/um and (\S+) fF/um for a signal, \S+ and (\S+) for a", re.M)
 SLACK_RE = re.compile(r"^worst slack (-?[\d.]+)", re.M)
 TNS_RE = re.compile(r"^tns (-?[\d.]+)", re.M)
 BLACK_BOX_RE = re.compile(r"^Warning: .* module (\S+) not found\. Creating black box for (\S+)\.$", re.M)
@@ -131,45 +133,18 @@ def need_files(run, gate: str, relatives: list[str]):
 
 
 def begin(run, gate: str) -> Path:
-    """The gate's own folder, emptied, with nothing of it left in the ledger of hashes and no hand-off
-    folder: what the gate handed on before stands for nothing until it passes again. A gate calls
-    this before it reads any input, so a run that ends in any other way than a pass leaves no record
-    of a pass and no report of an earlier run behind."""
-    ledger = run.ledger()
-    kept = {name: entry for name, entry in ledger.items() if not name.startswith(f"chip/{gate}/")}
-    if kept != ledger:
-        (run.base / "hashes.json").write_text(json.dumps(kept, indent=2, sort_keys=True), encoding="utf-8")
-    shutil.rmtree(run.base / "tapeout", ignore_errors=True)
-    return run.fresh(gate)
+    """The gate's own folder, emptied: `Run.begin` in the spine."""
+    return run.begin(gate)
 
 
 def write_passed(run, gate: str, judged: dict[str, str], reports: list[Path] | tuple = (), **more) -> None:
-    """The record that `gate` passed: the hash of each file it judged, and the reports that say so."""
-    path = run.base / gate / PASSED
-    record = {"gate": gate, "judged": judged, "reports": [relative(run, p) for p in reports], **more}
-    path.write_text(json.dumps(record, indent=2, sort_keys=True), encoding="utf-8")
-    run.record(gate, path)
+    """The record that `gate` passed: `Run.write_passed` in the spine."""
+    run.write_passed(gate, judged, reports, **more)
 
 
 def read_passed(run, gate: str) -> tuple[dict | None, str | None, bool]:
-    """A gate's record of its pass as (record, None, False), or (None, why not, whether the gate only
-    did not run or did not pass: a skip for the gate that asks, where a record that changed is a
-    failure)."""
-    folder = run.base / gate
-    path = folder / PASSED
-    if not path.is_file():
-        said = "did not pass" if folder.is_dir() and any(folder.iterdir()) else "has not run"
-        return None, f"{gate.upper()} {said} in {run.out}", True
-    _, problem = run.take(path)
-    if problem:
-        return None, problem, False
-    try:
-        record = json.loads(path.read_text(encoding="utf-8"))
-    except ValueError:
-        return None, f"{relative(run, path)} is not JSON", False
-    if not isinstance(record, dict) or not isinstance(record.get("judged"), dict):
-        return None, f"{relative(run, path)} names no judged files", False
-    return record, None, False
+    """A gate's record of its pass: `Run.read_passed` in the spine."""
+    return run.read_passed(gate)
 
 
 def need_layout(run, gate: str):
@@ -214,6 +189,26 @@ def gds_top_cells(data: bytes) -> list[str]:
     return []
 
 
+def gds_undated(data: bytes) -> bytes:
+    """A GDSII stream with the date each cell was changed set to the date it was made. BGNLIB (0x01) and
+    BGNSTR (0x05) each hold 2 dates of 6 numbers of 2 bytes: made, then changed. With `gds nodatestamp
+    yes` Magic 8.3.465 writes the first as 1970-01-01 and the time of the run as the second, and its
+    help names no option for the second: 2 builds of 1 layout then differ in those bytes alone. A
+    stream that is not whole comes back as it is."""
+    out = bytearray(data)
+    at = 0
+    while at + 4 <= len(data):
+        length, kind = struct.unpack(">HB", data[at : at + 3])
+        if length < 4 or at + length > len(data):
+            return data
+        if kind == 0x04:
+            return bytes(out)
+        if kind in (0x01, 0x05) and length == 28:
+            out[at + 16 : at + 28] = data[at + 4 : at + 16]
+        at += length
+    return data
+
+
 def between(text: str, begin_mark: str, end_mark: str) -> str | None:
     """The text between 2 marker lines of a script's output, or None when either is not there."""
     start = text.find(begin_mark)
@@ -236,12 +231,15 @@ def with_error(line: str, text: str) -> str:
 
 
 def judge_layout(
-    text: str, limit: float | None, supply: tuple[str, ...] = ()
+    text: str, limit: float | None, supply: tuple[str, ...] = (), wire: tuple[float, float] | None = None
 ) -> tuple[list[str], list[str], dict]:
     """OpenROAD's output as (failures, warnings, details). The build stands when no error is named,
     the script reached each of its marks, each supply net's grid is connected, the detailed router's
-    last count of violations is 0, no pin of a cell is left open, and the cells take no more of the
-    core than the project's limit. A mark that is not there is a failure, never a pass."""
+    last count of violations is 0, no pin of a cell is left open, no cell is one the process kit
+    lists as not to place, and the cells take no more of the core than the project's limit. A mark
+    that is not there is a failure, never a pass. `wire` is the capacitance of 1 um of signal wire and
+    of clock wire in fF, as the process table gives them: the engine reads them back in its own units,
+    and a build that estimated its wires with other values repaired the wrong design."""
     failures = [line.strip() for line in ERROR_RE.findall(text)][:5]
     dropped = {instance: cell for cell, instance in NO_LIBERTY_RE.findall(text)}
     dropped.update(dict(NO_LEF_RE.findall(text)))
@@ -279,17 +277,30 @@ def judge_layout(
     grid = [net for net in supply if not re.search(rf"^WORKCENTER grid {re.escape(net)} ", text, re.M)]
     final = FINAL_RE.search(text)
     open_pins = OPEN_PINS_RE.search(text)
+    kept_out = KEPT_OUT_RE.search(text)
+    estimated = WIRE_RE.search(text)
     for reached, stage in (
         (early, "the floorplan was made"),
-        ("WORKCENTER placement checked" in text, "the placement was checked"),
+        (estimated or wire is None, "the wires were given their resistance and capacitance"),
         (not grid, f"the supply grid of {', '.join(grid)} was checked"),
+        ("WORKCENTER placement checked" in text, "the placement was checked"),
         ("WORKCENTER routed" in text, "the routing ended"),
         (open_pins, "the open pins were counted"),
+        (kept_out, "the cells not to use were counted"),
         (final and "WORKCENTER layout written" in text, "the layout was written"),
     ):
         if not reached:
             failures.append(f"OpenROAD stopped before {stage}")
             break
+    if estimated:
+        details["wire_ff_per_um"] = {"signal": float(estimated.group(1)), "clock": float(estimated.group(2))}
+        held = tuple(details["wire_ff_per_um"].values())
+        if wire is not None and any(abs(a - b) > 0.001 * b for a, b in zip(held, wire, strict=True)):
+            failures.append(
+                f"the build estimated 1 um of signal wire at {held[0]:g} fF and of clock wire at {held[1]:g} "
+                f"fF, and the process table gives {wire[0]:g} and {wire[1]:g}: the repair worked on other "
+                "wires than the table's"
+            )
     for net in re.findall(r"^WORKCENTER grid (\S+) open", text, re.M):
         failures.append(
             f"the supply grid leaves parts of {net} unconnected: its rails do not all reach a stripe"
@@ -311,6 +322,16 @@ def judge_layout(
             failures.append(
                 f"{details['open_pins']} pins of cells are on no net: {', '.join(named)}"
                 f"{' ...' if details['open_pins'] > len(named) else ''}: an open input floats"
+            )
+    if kept_out:
+        details["dont_use_cells"] = int(kept_out.group(1))
+        if details["dont_use_cells"]:
+            named = re.findall(r"^WORKCENTER dont_use cell (\S+) (\S+)", text, re.M)
+            said = ", ".join(f"{instance} ({cell})" for instance, cell in named)
+            failures.append(
+                f"{details['dont_use_cells']} cells of the layout are ones the process kit lists as not to "
+                f"place: {said}{' ...' if details['dont_use_cells'] > len(named) else ''}: no step of the "
+                "build may choose one"
             )
     if final:
         details["utilization"], details["area_um2"] = float(final.group(1)), float(final.group(2))
@@ -346,6 +367,19 @@ def layout_files(run) -> list[Path]:
     return handed + [run.spef(w) for w in wires]
 
 
+def build_corners(run) -> dict[str, Path]:
+    """The library corners the build times and repairs the design at, as {name: liberty file}: each one
+    the project's ranges select, whatever --corner names, so the build aims at what STA judges. With
+    none selected, the corner the mapping read: STA then fails on the range no corner covers."""
+    import chipfront
+
+    chosen = {c.library_corner: c.liberty for c in chipflow.select_corners(run.pdk, run.chip)[0]}
+    if not chosen:
+        liberty = chipfront.synth_liberty(run)
+        chosen = {liberty.stem: liberty}
+    return chosen
+
+
 def gate_layout(run):
     missing = run.need_pdk("layout") or run.need_engines("layout", "openroad", "magic")
     if missing:
@@ -357,12 +391,13 @@ def gate_layout(run):
     chip, library = run.chip, run.pdk.library
     plan, cells, supply = library["floorplan"], library["cells"], library["supply"]
     wire = nominal_wire(library)
-    liberty = chipfront.synth_liberty(run)
+    liberty = build_corners(run)
     missing = need_files(
         run,
         "layout",
         [
-            str(liberty.relative_to(run.pdk.root)),
+            *[str(path.relative_to(run.pdk.root)) for path in liberty.values()],
+            *chipfront.dont_use_files(run, "layout"),
             library["lef"],
             library["gds"],
             plan["tracks"],
@@ -375,6 +410,9 @@ def gate_layout(run):
     netlist, stopped = taken(run, "layout", run.mapped_netlist())
     if stopped:
         return stopped
+    # What the layout is built from: the mapped netlist, the constraints and chip.json. The record of a
+    # pass names their hashes with the layout's own, so a layout stands for those bytes and no later ones.
+    built_from = chipfront.inputs_taken(run, "layout", netlist)
     if chip.die_um is None and chip.utilization_max is None:
         return run.result(
             "layout",
@@ -399,7 +437,12 @@ def gate_layout(run):
         "out": folder,
         "netlist": netlist,
         "sdc": chip.constraints,
-        "liberty": liberty,
+        "liberty": [word for name, path in liberty.items() for word in (name, path)],
+        "dont_use": chipfront.dont_use(run, "layout"),
+        "diode": f"{cells['diode']['cell']}/{cells['diode']['pin']}",
+        "slew_margin": plan["repair"]["slew_margin_percent"],
+        "cap_margin": plan["repair"]["capacitance_margin_percent"],
+        "antenna_iterations": plan["repair"]["antenna_iterations"],
         "tech_lef": run.pdk.file(library["wires"][wire]["techlef"]),
         "cell_lef": run.pdk.file(library["lef"]),
         "die_area": die,
@@ -411,8 +454,10 @@ def gate_layout(run):
         "pin_layer_v": plan["pin_layers"]["vertical"],
         "tap_cell": cells["tap"],
         "tap_distance": plan["tap_distance_um"],
-        "wire_rc_signal": plan["wire_rc_layers"]["signal"],
-        "wire_rc_clock": plan["wire_rc_layers"]["clock"],
+        "wire_rc": [
+            [kind, plan["wire_rc_layers"][kind], plan["wire_capacitance_ff_per_um"][kind]]
+            for kind in ("signal", "clock")
+        ],
         "density": plan["placement_density"],
         "density_headroom": UTILIZATION_HEADROOM,
         "clock_root": cells["clock_root"],
@@ -451,7 +496,10 @@ def gate_layout(run):
             timeout=time_limit("layout"),
         )
         failures, warnings, details = judge_layout(
-            started.text, chip.utilization_max, (supply["power"]["net"], supply["ground"]["net"])
+            started.text,
+            chip.utilization_max,
+            (supply["power"]["net"], supply["ground"]["net"]),
+            tuple(plan["wire_capacitance_ff_per_um"][kind] for kind in ("signal", "clock")),
         )
         stopped = started.problem("openroad")
         if stopped and not failures:
@@ -500,6 +548,8 @@ def gate_layout(run):
         elif unread:
             failures.append(f"Magic did not read the cells' layouts whole: {unread[0]}")
         else:
+            # The same layout is the same bytes, whenever it is built: a hash then names a layout.
+            run.gds().write_bytes(gds_undated(run.gds().read_bytes()))
             tops = gds_top_cells(run.gds().read_bytes())
             details["gds_top_cells"] = tops
             if tops != [chip.top]:
@@ -510,6 +560,7 @@ def gate_layout(run):
         if absent:
             failures.append(f"the build did not write {', '.join(absent)}")
     failures = [chipfront.short(line, run) for line in failures]
+    failures += chipfront.inputs_moved(run, "layout", built_from, netlist)
     summary = "the layout"
     if "area_um2" in details:
         summary = f"{details['area_um2']:g} um2 of cells, utilisation {details['utilization']:g}"
@@ -518,7 +569,7 @@ def gate_layout(run):
         # Only a build that passed hands its files on: a gate after it takes none of a build that failed.
         hashes = {relative(run, p): run.record("layout", p) for p in handed}
         result.details["sha256"] = hashes
-        write_passed(run, "layout", hashes, [folder / "openroad.log"])
+        write_passed(run, "layout", {**built_from, **hashes}, [folder / "openroad.log"])
     return result
 
 
@@ -633,8 +684,11 @@ def judge_sta(
     broken = [line.strip() for line in violators.splitlines() if "(VIOLATED)" in line]
     if broken:
         kinds = [k for k in CHECK_KINDS if re.search(rf"^{k}$", violators, re.M)]
+        # The report has 1 row for each limit a pin breaks: a pin over 2 limits is 2 rows and 1 pin.
+        pins = len({line.split()[0] for line in broken})
         failures.append(
-            f"{corner}: {len(broken)} pins break a limit of the library or the constraints "
+            f"{corner}: {pins} pins break a limit of the library or the constraints"
+            f"{f', {len(broken)} limits in all' if len(broken) != pins else ''} "
             f"({', '.join(kinds) or 'slew, capacitance, fanout, pulse width or period'}): "
             f"{' '.join(broken[0].split())}"
         )
@@ -1148,7 +1202,10 @@ def gate_export(run):
     manifest: each file's SHA256, each engine's version, the process kit and its version, the corners.
     A file is copied only when it is the bytes LAYOUT recorded and each gate that judges it passed on
     those bytes: STA on the netlist and the parasitics at every corner the project's ranges select,
-    DRC and LVS on the GDS, ANTENNA on the routed database, LVS on the netlist with its supply pins."""
+    GLSIM on the netlist, DRC and LVS on the GDS, ANTENNA on the routed database, LVS on the netlist
+    with its supply pins. And only while the project's own files are the bytes each gate passed on: the
+    RTL and the headers it includes, the benches and their bounds, the constraints, chip.json, and the
+    mapped netlist LAYOUT was built from. All 9 gates before EXPORT hold a record of their pass."""
     missing = run.need_pdk("export")
     if missing:
         return missing
@@ -1157,7 +1214,7 @@ def gate_export(run):
     library = run.pdk.library
     every = [c.name for c in chipflow.select_corners(run.pdk, run.chip)[0]]
     records: dict[str, dict] = {}
-    for gate in ("layout", "sta", "drc", "antenna", "lvs"):
+    for gate in chipflow.GATE_NAMES[:-1]:
         record, problem, absent = read_passed(run, gate)
         if record is None:
             said = f"{problem}: EXPORT hands out only a layout that every gate passed"
@@ -1176,8 +1233,28 @@ def gate_export(run):
     wanted += [run.spef(w) for w in sorted(library["wires"])]
     wanted += [run.sdf(name) for name in every]
     failures: list[str] = []
+    # LINT, SIM, SYNTH, LAYOUT and GLSIM read the project's own files, and LAYOUT the mapped netlist:
+    # each file must still be the bytes its gate passed on, and no file may have come since, or the
+    # layout is of another design than the one that was proven. A file is named 1 time, with the first
+    # gate that read it. The files of the layout's own folder are held below, to every gate that
+    # judged them.
+    import chipfront
+
+    named: set[str] = set()
+    for gate in chipfront.INPUT_GATES:
+        lines = run.changed_since(gate, records[gate])
+        lines += [
+            f"{run.name_of(path)} was added after {gate.upper()} passed. Run the gates again"
+            for path in chipfront.project_inputs(run, gate)
+            if path.is_file() and run.name_of(path) not in records[gate]["judged"]
+        ]
+        for line in lines:
+            name = line.split(" ", 1)[0]
+            if name not in named and not name.startswith("chip/layout/"):
+                named.add(name)
+                failures.append(line)
     constraints = chipflow.sha256(run.chip.constraints) if run.chip.constraints.is_file() else ""
-    if records["sta"].get("constraints") != constraints:
+    if records["sta"].get("constraints") != constraints and run.name_of(run.chip.constraints) not in named:
         failures.append(
             f"{run.chip.constraints.name} changed after STA passed: its hash differs. Run STA again"
         )
@@ -1191,7 +1268,7 @@ def gate_export(run):
     # Each gate's record names the hash of what it judged: it must be the hash of what is copied.
     judges = {
         run.gds(): ("layout", "drc", "lvs"),
-        run.final_netlist(): ("layout", "sta"),
+        run.final_netlist(): ("layout", "sta", "glsim"),
         run.power_netlist(): ("layout", "lvs"),
         run.def_file(): ("layout",),
         run.database(): ("layout", "antenna"),

@@ -34,62 +34,62 @@ module reg8(clk, sel, d, q, narrow, loose);
     .E(sel),
     .Q(held[7])
   );
-  sky130_fd_sc_hd__dfxtp_1 _04_ (
+  sky130_fd_sc_hd__dfxtp_2 _04_ (
     .CLK(clk),
     .D(held[0]),
     .Q(q[0])
   );
-  sky130_fd_sc_hd__dfxtp_1 _05_ (
+  sky130_fd_sc_hd__dfxtp_2 _05_ (
     .CLK(clk),
     .D(held[1]),
     .Q(q[1])
   );
-  sky130_fd_sc_hd__dfxtp_1 _06_ (
+  sky130_fd_sc_hd__dfxtp_2 _06_ (
     .CLK(clk),
     .D(held[2]),
     .Q(q[2])
   );
-  sky130_fd_sc_hd__dfxtp_1 _07_ (
+  sky130_fd_sc_hd__dfxtp_2 _07_ (
     .CLK(clk),
     .D(held[3]),
     .Q(q[3])
   );
-  sky130_fd_sc_hd__dfxtp_1 _08_ (
+  sky130_fd_sc_hd__dfxtp_2 _08_ (
     .CLK(clk),
     .D(held[4]),
     .Q(q[4])
   );
-  sky130_fd_sc_hd__dfxtp_1 _09_ (
+  sky130_fd_sc_hd__dfxtp_2 _09_ (
     .CLK(clk),
     .D(held[5]),
     .Q(q[5])
   );
-  sky130_fd_sc_hd__dfxtp_1 _10_ (
+  sky130_fd_sc_hd__dfxtp_2 _10_ (
     .CLK(clk),
     .D(held[6]),
     .Q(q[6])
   );
-  sky130_fd_sc_hd__dfxtp_1 _11_ (
+  sky130_fd_sc_hd__dfxtp_2 _11_ (
     .CLK(clk),
     .D(held[7]),
     .Q(q[7])
   );
-  sky130_fd_sc_hd__dfxtp_1 _12_ (
+  sky130_fd_sc_hd__dfxtp_2 _12_ (
     .CLK(clk),
     .D(d[0]),
     .Q(narrow[0])
   );
-  sky130_fd_sc_hd__dfxtp_1 _13_ (
+  sky130_fd_sc_hd__dfxtp_2 _13_ (
     .CLK(clk),
     .D(d[1]),
     .Q(narrow[1])
   );
-  sky130_fd_sc_hd__dfxtp_1 _14_ (
+  sky130_fd_sc_hd__dfxtp_2 _14_ (
     .CLK(clk),
     .D(d[2]),
     .Q(narrow[2])
   );
-  sky130_fd_sc_hd__dfxtp_1 _15_ (
+  sky130_fd_sc_hd__dfxtp_2 _15_ (
     .CLK(clk),
     .D(d[3]),
     .Q(narrow[3])

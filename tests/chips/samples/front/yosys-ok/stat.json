@@ -11,11 +11,11 @@
          "num_memory_bits":   0,
          "num_processes":     0,
          "num_cells":         24,
-         "area":              270.259200,
+         "area":              330.316800,
          "num_cells_by_type": {
-            "sky130_fd_sc_hd__dfxtp_1": 8,
-            "sky130_fd_sc_hd__mux2i_1": 8,
-            "sky130_fd_sc_hd__nor2_1": 8
+            "sky130_fd_sc_hd__and2b_2": 8,
+            "sky130_fd_sc_hd__dfxtp_2": 8,
+            "sky130_fd_sc_hd__mux2_1": 8
          }
       }
    },
@@ -28,11 +28,11 @@
          "num_memory_bits":   0,
          "num_processes":     0,
          "num_cells":         24,
-         "area":              270.259200,
+         "area":              330.316800,
          "num_cells_by_type": {
-            "sky130_fd_sc_hd__dfxtp_1": 8,
-            "sky130_fd_sc_hd__mux2i_1": 8,
-            "sky130_fd_sc_hd__nor2_1": 8
+            "sky130_fd_sc_hd__and2b_2": 8,
+            "sky130_fd_sc_hd__dfxtp_2": 8,
+            "sky130_fd_sc_hd__mux2_1": 8
          }
       }
 }

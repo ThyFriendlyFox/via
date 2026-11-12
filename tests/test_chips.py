@@ -3,13 +3,12 @@
 Each fixture is copied to a temporary folder and run through `workcenter chip gates`. A passing fixture
 ends GREEN with --strict. A failing one ends RED at the gate its name states, for 1 reason, with every
 gate before that one passing. The exit code, the last line and each failure line here are copied from
-runs of 2026-11-11 with Verilator 5.020, Icarus Verilog 12.0, Yosys 0.33, OpenROAD f12e2f47, OpenSTA
+runs of 2026-11-12 with Verilator 5.020, Icarus Verilog 12.0, Yosys 0.33, OpenROAD f12e2f47, OpenSTA
 2.3.1, Magic 8.3.465, Netgen 1.5.272, KLayout 0.28.16 and sky130A 1.0.470-0-g6d4d117. A test skips by
 name where an engine or the process kit is absent.
 
-Every run takes `--jobs 1`. With more jobs the benches of SIM write the ledger of hashes from several
-threads at once, and entries are lost: of 30 runs of `chip sim --jobs 4` on pass-acc8 on 2026-11-11, 4
-kept 2 or 4 of the 5 benches' entries and 1 left a ledger that is no JSON.
+Every run takes the default of `--jobs`: the machine's processors, 8 at most. The count changes the
+seconds and not the layout: 5 builds of the processor at 1, 2, 4 and 8 jobs wrote the same GDS.
 """
 
 from __future__ import annotations
@@ -65,7 +64,7 @@ FAILING = {
         LAYOUT,
         "layout",
         [
-            "utilisation 0.5223 is over the limit 0.5 of chip.json after the floorplan, before the clock "
+            "utilisation 0.6451 is over the limit 0.5 of chip.json after the floorplan, before the clock "
             "tree adds cells: take a larger die, or cut logic. Do not raise the limit"
         ],
     ),
@@ -73,12 +72,12 @@ FAILING = {
         STA,
         "sta",
         [
-            "max_ss_n40C_1v60: setup slack -0.5704 ns, from en to _49_",
-            "max_ss_100C_1v60: setup slack -0.4918 ns, from en to _49_",
-            "min_ss_n40C_1v60: setup slack -0.5220 ns, from en to _49_",
-            "min_ss_100C_1v60: setup slack -0.4476 ns, from en to _49_",
-            "nom_ss_n40C_1v60: setup slack -0.5473 ns, from en to _49_",
-            "nom_ss_100C_1v60: setup slack -0.4704 ns, from en to _49_",
+            "max_ss_n40C_1v60: setup slack -0.3277 ns, from _49_ to count[3]",
+            "max_ss_100C_1v60: setup slack -0.3229 ns, from en to _45_",
+            "min_ss_n40C_1v60: setup slack -0.2887 ns, from _49_ to count[3]",
+            "min_ss_100C_1v60: setup slack -0.3113 ns, from en to _45_",
+            "nom_ss_n40C_1v60: setup slack -0.3070 ns, from _49_ to count[3]",
+            "nom_ss_100C_1v60: setup slack -0.3184 ns, from en to _45_",
         ],
     ),
     "fail-glsim-x": (
@@ -99,16 +98,11 @@ DIFFERS = {
     "fail-glsim-x": ["chip.json", "rtl/counter.v", "tb/tb_counter.v"],
 }
 PASSING = ("pass-acc8", "pass-counter")
-# Why the processor's run does not end GREEN yet; empty when it does. While this says something, the
-# GREEN run is an expected failure and the README's row for pass-acc8 ends with RED.
-ACC8_BLOCKED = (
-    "the layout build repairs no slew: STA fails pass-acc8 at 13 of its 15 corners, the first with 477 "
-    "pins over a limit of the library at max_ss_n40C_1v60 (2026-11-11: tools/chipscripts/layout.tcl holds "
-    "no repair_design)"
-)
 # The checks each bench of the processor makes: 3 a program run, 2 for the run that is left in its
 # middle, 1 a word of the random stream.
 ACC8_CHECKS = {"tb_crc": 15, "tb_gcd": 24, "tb_mul": 18, "tb_random": 1024, "tb_sum": 17}
+# The processor's layout of 2026-11-12, the same at 1, 2, 4 and 8 jobs: the first 16 digits of its GDS hash.
+ACC8_GDS = "0c51debe623a0a18"
 
 
 def absent(names: tuple[str, ...]) -> list[str]:
@@ -138,7 +132,7 @@ def copy_of(name: str, tmp_path: Path) -> Path:
 def run_fixture(name: str, tmp_path: Path, *flags: str) -> tuple[int, str, list[dict]]:
     """A copy of a fixture through `chip gates`: (the exit code, the last line, the gates' records)."""
     project = copy_of(name, tmp_path)
-    ran = command("chip", "gates", project, "--jobs", 1, *flags)
+    ran = command("chip", "gates", project, *flags)
     lines = ran.stdout.splitlines()
     assert lines, ran.stderr
     records = json.loads((project / "build" / "gates.json").read_text(encoding="utf-8"))
@@ -168,8 +162,8 @@ def test_every_fixture_has_its_row_in_the_readme_and_its_test_here():
     rows = re.findall(r"^\| `((?:pass|fail)-[a-z0-9-]+)` \| (.*) \| `([^`]+)` \|$", text, re.M)
     assert sorted(name for name, _, _ in rows) == names, "1 row for each fixture, its name as code"
     for name, proves, ends in rows:
-        red = name in FAILING or (name == "pass-acc8" and bool(ACC8_BLOCKED))
-        assert ends == f"{'RED' if red else 'GREEN'}: {name}  report <project>/build/gates.json", name
+        verdict = "RED" if name in FAILING else "GREEN"
+        assert ends == f"{verdict}: {name}  report <project>/build/gates.json", name
         if name in FAILING:
             # the row quotes the gate's first failure line as the run prints it
             assert f"`{FAILING[name][2][0]}`" in proves, name
@@ -236,6 +230,11 @@ def test_a_failing_fixture_fails_its_1_gate_with_every_gate_before_it_passing(na
     if name == "fail-glsim-x":
         # the RTL run hides it: the same bench passes in SIM with the same count of checks
         assert records[1]["details"]["benches"] == {"tb_counter": {"errors": 0, "checks": 8, "x_outputs": 0}}
+    if name == "fail-sta-corner":
+        # the build's repair names the period first, as a warning: LAYOUT passes and STA is the judge
+        assert records[3]["details"]["warnings"] == [
+            "[WARNING RSZ-0062] Unable to repair all setup violations."
+        ]
 
 
 # ------------------------------------------------------- the passing fixtures
@@ -250,7 +249,7 @@ def test_the_passing_counter_is_green_with_strict_and_hands_on_the_gds_its_gates
     by_gate = {r["gate"]: r["details"] for r in records}
     measures = {"tb_counter": {"errors": 0, "checks": 8, "x_outputs": 0}}
     assert by_gate["sim"]["benches"] == by_gate["glsim"]["benches"] == measures
-    assert (by_gate["synth"]["cells"], by_gate["synth"]["flops"]) == (31, 8)
+    assert (by_gate["synth"]["cells"], by_gate["synth"]["flops"]) == (29, 8)
     out = tmp_path.resolve() / "pass-counter" / "build" / "chip"
     manifest = json.loads((out / "tapeout" / "manifest.json").read_text(encoding="utf-8"))
     built = chipflow.sha256(out / "layout" / "counter.gds")
@@ -261,53 +260,71 @@ def test_the_passing_counter_is_green_with_strict_and_hands_on_the_gds_its_gates
 @needs(SYNTH)
 def test_the_processor_passes_lint_sim_and_synth_with_strict(tmp_path):
     project = copy_of("pass-acc8", tmp_path)
-    details = {}
+    details, summary = {}, {}
     for gate in ("lint", "sim", "synth"):
-        ran = command("--json", "chip", gate, project, "--jobs", 1, "--strict")
+        ran = command("--json", "chip", gate, project, "--strict")
         assert ran.returncode == 0, ran.stdout
-        details[gate] = json.loads(ran.stdout)[0]["details"]
+        record = json.loads(ran.stdout)[0]
+        details[gate], summary[gate] = record["details"], record["summary"]
     assert details["sim"]["benches"] == {
         bench: {"errors": 0, "checks": checks, "x_outputs": 0} for bench, checks in ACC8_CHECKS.items()
     }
     synth = details["synth"]
     # the 2 top bits of the program counter take the boot pins at reset: chip.json answers for both
-    assert (synth["cells"], synth["flops"]) == (770, 156)
     assert synth["flops_without_reset"] == ["rom_addr[6]", "rom_addr[7]"]
+    # With these 4 programs in the ROM nothing reads r6, r9 and r10: the mapping proves it and removes
+    # their 24 flops. The count is the netlist's, and the line says where the others went.
+    assert (synth["cells"], synth["flops"], synth["flops_before_mapping"]) == (760, 132, 156)
+    assert synth["flops_removed_by_mapping"] == [
+        f"u_core.u_regfile.q[{bit}]" for bit in (*range(48, 56), *range(72, 88))
+    ]
+    assert summary["synth"] == (
+        "760 cells, 132 flops, 8530.7 um2, the mapping removed 24 flops that nothing reads "
+        "(--json names each), 0 failures"
+    )
 
 
 @needs(EVERY)
-def test_the_processor_is_green_with_strict(tmp_path):
+def test_the_processor_is_green_with_strict_and_its_layout_is_the_one_of_the_readme(tmp_path):
     code, last, records = run_fixture("pass-acc8", tmp_path, "--strict")
-    if ACC8_BLOCKED:
-        # Only the fault ACC8_BLOCKED names is excused: the run reaches STA with every gate before it
-        # passing, and each of STA's 13 lines is a count of pins over a slew or a capacitance limit. A
-        # run that stops elsewhere, or that goes on, fails here; when it goes on to GREEN, empty
-        # ACC8_BLOCKED and change the row.
-        assert [(r["gate"], r["status"]) for r in records] == [
-            ("lint", "pass"),
-            ("sim", "pass"),
-            ("synth", "pass"),
-            ("layout", "pass"),
-            ("sta", "fail"),
-        ]
-        failures = records[-1]["details"]["failures"]
-        over = " pins break a limit of the library or the constraints "
-        kinds = ("(max slew, max capacitance): ", "(max capacitance): ")
-        assert len(failures) == 13, failures
-        assert all(line.partition(over)[2].startswith(kinds) for line in failures), failures
-        assert failures[0].startswith(f"max_ss_n40C_1v60: 477{over}{kinds[0]}_1013_/Y ")
-        assert (code, last) == (1, last_line("RED", "pass-acc8", tmp_path))
-        pytest.xfail(ACC8_BLOCKED)
     all_pass(records)
     assert code == 0
     assert last == last_line("GREEN", "pass-acc8", tmp_path)
+    by_gate = {r["gate"]: r["details"] for r in records}
+    checks = {bench: {"errors": 0, "checks": n, "x_outputs": 0} for bench, n in ACC8_CHECKS.items()}
+    assert by_gate["sim"]["benches"] == checks
+    # tb_random drives the core alone: chip.json keeps it on the RTL, and the 4 others run on the netlist
+    assert sorted(by_gate["glsim"]["rtl_only"]) == ["tb_random"]
+    assert by_gate["glsim"]["benches"] == {b: m for b, m in checks.items() if b != "tb_random"}
+    assert (by_gate["synth"]["cells"], by_gate["synth"]["flops"]) == (760, 132)
+    layout = by_gate["layout"]
+    assert (layout["area_um2"], layout["utilization"]) == (8379.29, 0.493)
+    assert (layout["router_violations"], layout["open_pins"], layout["dont_use_cells"]) == (0, 0, 0)
+    # the build repaired what round 1 left: no corner has a pin over a limit, and the least slacks are
+    # the README's
+    corners = by_gate["sta"]["corners"]
+    assert len(corners) == 15
+    assert min(c["setup_slack_ns"] for c in corners.values()) == corners["max_ss_n40C_1v60"]["setup_slack_ns"]
+    assert corners["max_ss_n40C_1v60"]["setup_slack_ns"] == 25.1717
+    assert min(c["hold_slack_ns"] for c in corners.values()) == corners["min_ff_n40C_1v95"]["hold_slack_ns"]
+    assert corners["min_ff_n40C_1v95"]["hold_slack_ns"] == 0.2974
+    assert by_gate["drc"]["decks"] == {"magic": 0, "klayout-mr": 0}
+    assert (by_gate["antenna"]["net_violations"], by_gate["antenna"]["pin_violations"]) == (0, 0)
+    assert by_gate["lvs"]["devices"] == {"layout": 792, "netlist": 792}
+    # 1 layout from these files on any count of jobs: the hash every judge passed is the hash handed out
+    out = tmp_path.resolve() / "pass-acc8" / "build" / "chip"
+    manifest = json.loads((out / "tapeout" / "manifest.json").read_text(encoding="utf-8"))
+    built = chipflow.sha256(out / "layout" / "acc8.gds")
+    assert built.startswith(ACC8_GDS)
+    assert manifest["files"]["acc8.gds"] == built == chipflow.sha256(out / "tapeout" / "acc8.gds")
+    assert by_gate["drc"]["gds_sha256"] == built
 
 
 @pytest.mark.parametrize(("name", "mutations", "checks"), [("pass-counter", 5, 8), ("pass-acc8", 18, 1098)])
 @needs(SIM)
 def test_every_mutation_of_a_passing_fixture_is_caught_by_a_comparison(name, mutations, checks):
     fixture = CHIPS / name
-    sim = shlex.join([sys.executable, str(CLI), "chip", "sim", ".", "--jobs", "1"])
+    sim = shlex.join([sys.executable, str(CLI), "chip", "sim", "."])
     ran = command("mutate", fixture, "--mutations", fixture / "rtl" / "mutations.json", "--test", sim)
     lines = ran.stdout.splitlines()
     assert ran.returncode == 0, ran.stdout + ran.stderr
