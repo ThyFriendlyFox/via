@@ -502,7 +502,10 @@ When: choosing or changing which MCU pin carries which signal.
 
 1. Read the alternate-function table from the vendor's data: ST's open
    pin data (`STM32_open_pin_data`, the MCU and GPIO-modes XML) or the
-   datasheet. Never from memory.
+   datasheet. Never from memory. A table a script pulls out of a PDF's
+   text is a draft: a cell that wraps onto a second line or a name with a
+   slash lands in another row without an error. Read every pin the board
+   uses from the page itself before a net takes its name (M163).
 2. Write the plan as a table: pin, port, and the exact function each
    signal uses (AF number and timer channel, ADC channel, EXTI line, I2C
    or UART instance).
@@ -952,6 +955,10 @@ circuits it touches. The `verification` skill is the how-to.
    tabulate is no maximum: take the nearest maximum row as flat, unless a
    figure read from the datasheet says otherwise (M83). Write the limit
    before the number it is compared with, then compare (M71).
+   - The gate moves an element only when it is named like a board
+     reference: name each part the corners should move as the board does
+     (R34, not R34A). A deck that needs 2 copies of a part is 2 decks;
+     read the deck's "varied" list in the gate's JSON once (M164).
    - A measurement behind a series part (a fuse, a shunt, a switch, a
      track) lists every current through that part, in both directions: the
      charge current, each rail's load, each load's edge. Each takes its

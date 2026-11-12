@@ -1,6 +1,6 @@
 # Wyvern — board prototype v0.1
 
-> The first version of the [Wyvern prototype series](../README.md).
+> Archived: v0.1 of the [Wyvern prototype series](../README.md), as of commit `04fd430`. The design and KiCad files are the ones that commit holds. The next version, [`../v0.2/`](../v0.2/), makes it one flat board: a QCS6490 module soldered straight on, no sockets.
 
 A development board the size of a Teensy with a Snapdragon on it. The Snapdragon 845 (4 Kryo 385
 Gold cores at 2.65 GHz and 4 Silver at 1.77 GHz, an Adreno 630, a Hexagon 685 DSP, 4 GB of LPDDR4X,

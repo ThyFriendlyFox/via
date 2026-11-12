@@ -1,0 +1,3 @@
+{
+  "z_peak": {"max": 1.33, "source": "U3's input resistance at its most negative: VIN / 3 A at the 4.0 V the board starts from, 1.33 Ohm; a peak above it lets the input filter and the converter oscillate (Middlebrook)"}
+}

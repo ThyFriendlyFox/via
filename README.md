@@ -108,16 +108,17 @@ and 12 dB from 200 to 300 Hz at every one of 986 corner runs, and take a 150 Hz 
 (13.4 dB at the worst corner). Music from a phone plays through the loop as its target. The back
 draws the idea: the noise and its inverse, meeting as one line.
 
-## An example: Wyvern, a Teensy with a Snapdragon
+## An example: Wyvern, a Snapdragon development board
 
-<a href="examples/snapdragon-dev-board/README.md"><img alt="Wyvern in 3D: a stick the size of a Teensy with 2 rows of pins, a USB-C port at one end and the Snapdragon 845 module on 3 sockets on top" src="site/showcase/wyvern-iso.png"></a>
+<a href="examples/snapdragon-dev-board/README.md"><img alt="Wyvern v0.2 in 3D: one flat black board with 2 rows of 30 pins, a USB-C port at one end and the QCS6490 module soldered on its top" src="site/showcase/wyvern-iso.png"></a>
 
 [`examples/snapdragon-dev-board`](examples/snapdragon-dev-board/README.md) is a development board
-the size of a Teensy with a Snapdragon 845 on it, laid out as a board repository is. 60.96 x 30.48 mm,
-6 layers, 2 rows of 24 pins. The Snapdragon comes on a module whose 300 pins are named from its
-datasheet; an RP2350 under it drives the pins at 3.3 V, and Linux flashes it over USB. One USB-C
-port carries power, USB 3.1 and DisplayPort: 5 coupled pairs drawn by hand in the design file, none
-crossing another. A frequency plan holds the buck's power-save pulses against the cable's resonance.
+with a Snapdragon on it, laid out like a Teensy and kept as version folders. v0.2 is one flat board,
+76.2 x 53.34 mm, 6 layers, 2 rows of 30 pins: a Qualcomm QCS6490 on Vantron's VOSM6490 is soldered
+straight on by its 662 pads, a land pattern generated from SGET's OSM standard. An RP2350 beside it
+drives the pins at 3.3 V, and Linux flashes it over USB. A buck-boost holds the module's 5.0 V from
+any USB-C cable, and an HD3SS3220 switches its USB 3 lane to the side the plug is on; the lane and
+the converter's 0.25 mm power pads are drawn by hand in the design file.
 
 ## An example: Basalt, a microATX Threadripper board
 
