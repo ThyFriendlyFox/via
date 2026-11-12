@@ -1229,7 +1229,7 @@ html:not(.motion) .progress {
   transform-origin: center;
 }
 
-/* ---- the example: Rosetta --------------------------------------------------------------------- */
+/* ---- the example: Herald ---------------------------------------------------------------------- */
 .showcase .stage {
   display: grid;
   gap: 1.25rem;
@@ -1280,26 +1280,27 @@ html:not(.motion) .progress {
   height: auto;
   overflow: visible;
 }
+/* Herald's stackup: red mask, white legend, gold (ENIG) pads. */
 .face-svg .pcb {
-  fill: oklch(0.32 0.045 165);
-  stroke: oklch(0.25 0.04 165);
+  fill: oklch(0.5 0.17 28);
+  stroke: oklch(0.4 0.15 28);
   stroke-width: 0.4;
 }
 .face-svg .cu-b {
   fill: none;
-  stroke: oklch(0.55 0.06 165);
+  stroke: oklch(0.6 0.16 30);
   stroke-linecap: round;
-  stroke-opacity: 0.35;
+  stroke-opacity: 0.3;
 }
 .face-svg .cu-i {
   fill: none;
-  stroke: oklch(0.55 0.06 165);
+  stroke: oklch(0.6 0.16 30);
   stroke-linecap: round;
   stroke-opacity: 0.25;
 }
 .face-svg .cu-f {
   fill: none;
-  stroke: oklch(0.62 0.08 160);
+  stroke: oklch(0.64 0.18 32);
   stroke-linecap: round;
   stroke-opacity: 0.9;
 }
@@ -1327,14 +1328,6 @@ html:not(.motion) .progress {
   stroke-width: 0.6;
   fill: color-mix(in oklch, var(--mode) 22%, transparent);
 }
-.face-svg .stick {
-  fill: oklch(0.2 0.01 60 / 45%);
-  stroke: oklch(1 0 0 / 25%);
-  stroke-width: 0.3;
-}
-.face-svg .stick-cap {
-  fill: oklch(0.16 0.01 60 / 80%);
-}
 .face-svg text {
   fill: oklch(0.97 0.005 85);
   text-anchor: middle;
@@ -1344,26 +1337,18 @@ html:not(.motion) .progress {
 .face-svg .silk {
   fill: oklch(0.97 0.005 85 / 85%);
 }
+.face-svg .silk-line {
+  fill: none;
+  stroke: oklch(0.97 0.005 85 / 85%);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.face-svg .silk-fill {
+  fill: oklch(0.97 0.005 85 / 85%);
+}
 .face-svg .tag {
   font-size: 1.6px;
-  fill: oklch(1 0 0 / 55%);
-}
-.face-svg .mode-label {
-  font-size: 1.5px;
-  letter-spacing: 0.05px;
-}
-.face-svg .knob-ring {
-  fill: oklch(0.18 0.01 60 / 70%);
-}
-.face-svg .knob {
-  fill: oklch(0.86 0.01 85);
-  stroke: oklch(0.6 0.01 85);
-  stroke-width: 0.4;
-}
-.face-svg .pointer {
-  stroke: var(--mode);
-  stroke-width: 1.1;
-  stroke-linecap: round;
+  fill: oklch(1 0 0 / 70%);
 }
 .face-svg .led {
   fill: oklch(0.4 0.01 60);

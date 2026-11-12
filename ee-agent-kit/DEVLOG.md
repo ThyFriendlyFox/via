@@ -39,7 +39,7 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
-## 2026-11-12 — The branches sorted; Signet, Herald and Hush on the site
+## 2026-11-12 — The branches sorted; Herald is the site's example
 
 The owner asked for the branches consolidated and for more examples on
 the site. Of 52 branches on GitHub, 49 hold nothing that `main` lacks. 39
@@ -63,9 +63,23 @@ page says 6. `site/README.md` gives the steps that put the next example
 on the page. I changed `index.html` and `build.sh` with a script where P9
 asks for the Edit tool (M146).
 
+Then the owner asked for Herald to replace Rosetta as the site's example
+of what Via makes. The section after the hero is now Herald's: its board
+drawn from its design file and routed board in its red, 5 signals that
+each light their parts, their path and their status light, the reading
+each deck measured, 8 hard parts, its renders and its gates run. The
+readings come from runs of the decks, and the firmware's thresholds from
+`zone.h` and `line.h`. The page says what the firmware does not do yet:
+the tone sequencer, the modem, the station's protocol, the lights and
+the relay's watchdog. Rosetta keeps its card, and the README leads with
+Herald.
+
 Evidence: `make verify` and `tests/test_docs.py` at the commit; each old
 branch's tip equal to its pull request's head, 43 of 43; Hush's branch
-tree `8cf093a` equal to `main`'s at `e4e0364`.
+tree `8cf093a` equal to `main`'s at `e4e0364`; `workcenter gates
+examples/fire-alarm-communicator/v0.1` GREEN with 7 warnings, the run the
+page shows.
+
 ## 2026-11-11 — Another example: a speaker that plays the inverse of what it hears
 
 The owner asked for a noise cancelling speaker as an example of what Via makes: compact, gorgeous,

@@ -434,7 +434,7 @@ def test_the_code_a_page_shows_is_a_run_of_lines_of_its_file():
             r'<img [^>]*?src="((?:media|showcase)/[^"]+)" width="(\d+)" height="(\d+)"', text
         )
     }
-    assert {"media/schematic.png", "media/board.png", "showcase/rosetta-top.png"} <= set(stated)
+    assert {"media/schematic.png", "media/board.png", "showcase/herald-top.png"} <= set(stated)
     assert sorted(stated) == sorted(set(pictures))
     assert stated == {name: picture_size(SITE / name) for name in stated}
 

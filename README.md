@@ -54,6 +54,18 @@ The 3D views show the part bodies of KiCad's own library.
 [site/media/README.md](site/media/README.md) has each picture and the
 command that draws it.
 
+## An example: Herald, a fire alarm communicator
+
+<a href="examples/fire-alarm-communicator/v0.1/README.md"><img alt="Herald in 3D from above and to the side: a red board with an LTE-M module, a nano SIM, an ESP32-S3 module, a relay, a column of status lights, a USB-C port and black screw terminals along its front edge" src="examples/fire-alarm-communicator/v0.1/docs/board-3d-iso.png"></a>
+
+[`examples/fire-alarm-communicator/v0.1`](examples/fire-alarm-communicator/v0.1/README.md) sits
+beside a fire alarm panel and reports to a monitoring station over LTE-M, with Wi-Fi as the second
+path. 84.4 x 64 mm, 4 layers, every part on the front, red with a white legend and black terminals.
+It answers the panel's own phone dialer as if it were the line: a current-limited loop feed, dial
+tone and the handshake from a PWM pin, and the panel's DTMF digits decoded in firmware with a
+Goertzel filter. 3 supervised inputs read a closed contact, a whole loop and a cut wire apart at
+every corner, and a fail-safe relay tells the panel when Herald itself fails.
+
 ## An example: Rosetta, a universal controller
 
 <a href="examples/universal-controller/v0.2/README.md"><img alt="Rosetta v0.2 in 3D: an Xbox 360-style controller board with 2 thumbsticks, a D-pad, face buttons, a 5-position knob with a ring of LEDs and 2 USB-C ports" src="site/showcase/rosetta-iso.png"></a>
@@ -76,18 +88,6 @@ mm along the finger, sit on the faces of a hexagonal prism round it, each solder
 plated edge pads. The ring turns with the hand and the cursor follows its gyroscope; the thumb slides
 along a 3-channel strip to scroll and presses the side to click. A Bluetooth LE module, a charger,
 a 3.3 V rail and a 20 mAh cell ride on the other tiles, and every tile is GREEN.
-
-## An example: Herald, a fire alarm communicator
-
-<a href="examples/fire-alarm-communicator/v0.1/README.md"><img alt="Herald in 3D from above and to the side: a red board with an LTE-M module, a nano SIM, an ESP32-S3 module, a relay, a column of status lights, a USB-C port and black screw terminals along its front edge" src="examples/fire-alarm-communicator/v0.1/docs/board-3d-iso.png"></a>
-
-[`examples/fire-alarm-communicator/v0.1`](examples/fire-alarm-communicator/v0.1/README.md) sits
-beside a fire alarm panel and reports to a monitoring station over LTE-M, with Wi-Fi as the second
-path. 84.4 x 64 mm, 4 layers, every part on the front, red with a white legend and black terminals.
-It answers the panel's own phone dialer as if it were the line: a current-limited loop feed, dial
-tone and the handshake from a PWM pin, and the panel's DTMF digits decoded in firmware with a
-Goertzel filter. 3 supervised inputs read a closed contact, a whole loop and a cut wire apart at
-every corner, and a fail-safe relay tells the panel when Herald itself fails.
 
 ## An example: Hush, a speaker that cancels noise
 

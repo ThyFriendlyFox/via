@@ -39,8 +39,8 @@ mkdir -p "$out/fonts" "$out/media" "$out/showcase" "$out/vendor"
 # README.md stay in the repository.
 for file in site.css site.js effects.js favicon.svg favicon-32.png apple-touch-icon.png og.png logo.svg \
   fonts/inter-latin-wght-normal.woff2 fonts/LICENSE media/schematic.png media/board.png media/board-spin.gif \
-  showcase/rosetta-top.png showcase/rosetta-bottom.png showcase/rosetta-iso.png showcase/rosetta-layers.png \
-  showcase/signet.png showcase/herald.png showcase/hush.png showcase/agentcast.png \
+  showcase/herald-top.png showcase/herald-bottom.png showcase/herald-layers.png showcase/herald.png \
+  showcase/hush.png showcase/signet.png showcase/rosetta-iso.png showcase/agentcast.png \
   vendor/motion-14.6.0.js vendor/MOTION-LICENSE.md; do
   cp "$here/$file" "$out/$file"
 done
