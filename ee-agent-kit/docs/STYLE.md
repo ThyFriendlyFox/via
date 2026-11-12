@@ -43,3 +43,27 @@ the report path.
 | doctor | health check, status, preflight |
 | session file | SES, routing result |
 | report | log (a log is `build/sim/*.log`), output |
+
+## The website
+
+The website (`site/`) speaks to a person deciding whether to use Via. The
+owner asked on 2026-11-12 for professional copy that says what Via does
+for the reader. These rules win over the ones above on the site, and only
+there.
+
+1. Lead with what the reader gets, then how Via does it.
+2. Write a headline as 1 plain sentence in sentence case, with no closing
+   period: "Four checks before any board is released".
+3. Do not write slogans: no run of fragments ("Design. Gate. Fix.
+   Done."), no "X, not Y" ("Boards, not demos."), no maxim ("A bound holds
+   at every corner, or it does not hold.").
+4. In running text, write the numbers one to nine as words. Keep digits
+   for measurements, for counts over nine, and on a specification line
+   ("84.4 × 64 mm · 4 layers · 127 parts").
+5. Name a check by what it does for the reader ("electrical rules",
+   "simulation") before its short name (ERC, SIM).
+6. Show the reader's kind of board: an example project. A fixture board is
+   a test of this repository; it appears only to show a check catching a
+   fault, and its caption calls it a test circuit.
+7. A claim still needs its evidence (`PROCESSES.md` P5). Marketing copy
+   claims nothing a run, a file or a test does not show.

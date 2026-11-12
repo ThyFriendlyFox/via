@@ -1102,7 +1102,7 @@ removed, and `git worktree list` shows only what is still in use.
 ## P32 — A deploy to an outside host
 
 When: creating a project on a host that serves pages (Vercel, GitHub
-Pages), or sending it a first deployment.
+Pages), sending it a first deployment, or changing a file a site serves.
 
 1. Before the first call, read what the host does with a project's first
    deployment. Vercel makes it the production deployment, whatever branch
@@ -1110,10 +1110,14 @@ Pages), or sending it a first deployment.
 2. A page that describes work on a branch goes to a preview. Where the
    host cannot give a new project a preview first, say so to the owner
    before the call, and name what production will show.
-3. After the deploy, fetch the address the host reports: the status code,
-   the canonical link, and each file the page names.
+3. After the deploy, fetch each address the site answers at, the one its
+   canonical link names included: the status code, the canonical link,
+   and each file the page names with its `Cache-Control` (M157).
 4. Write an address into a document only after that fetch (P5), with the
    deployment's target as the host reports it.
+5. A stylesheet or a script the page names gets a new address when its
+   content changes: `site/build.sh` names each with its checksum. A cache
+   that keeps it longer than the page then fetches the new one (M157).
 
 Done when: the address answers with the page of the commit the document
 names, and the document names the target the host reports.

@@ -32,24 +32,32 @@ if [ -e "$out" ] && [ -n "$(ls -A "$out" 2>/dev/null)" ]; then
 fi
 
 here=$(dirname -- "$0")
-mkdir -p "$out/fonts" "$out/media" "$out/showcase" "$out/vendor"
+mkdir -p "$out/fonts" "$out/showcase" "$out/vendor"
 
-# What the site serves: of media/, the 3 pictures the page shows; the examples' pictures; Motion
-# and its license. og.html, the README's other pictures, the drawing's script, vercel.json and each
-# README.md stay in the repository.
+# What the site serves: the examples' pictures, Motion and its license. og.html, media/ (the README's
+# pictures), the drawing's script, vercel.json and each README.md stay in the repository.
 for file in site.css site.js effects.js favicon.svg favicon-32.png apple-touch-icon.png og.png logo.svg \
-  fonts/inter-latin-wght-normal.woff2 fonts/LICENSE media/schematic.png media/board.png media/board-spin.gif \
+  fonts/inter-latin-wght-normal.woff2 fonts/LICENSE \
   showcase/herald-top.png showcase/herald-bottom.png showcase/herald-layers.png showcase/herald.png \
+  showcase/herald-schematic.png \
   showcase/hush.png showcase/signet.png showcase/rosetta-iso.png showcase/wyvern-iso.png showcase/agentcast.png \
   vendor/motion-14.6.0.js vendor/MOTION-LICENSE.md; do
   cp "$here/$file" "$out/$file"
 done
 
+# A host may keep a stylesheet or a script for hours while it asks again for each page: the custom
+# domain keeps them 4 hours. Each page names them with their checksum, so a new page never runs with
+# the last build's stylesheet.
+css=$(cksum <"$here/site.css" | cut -d ' ' -f 1)
+js=$(cksum <"$here/site.js" | cut -d ' ' -f 1)
+fx=$(cksum <"$here/effects.js" | cut -d ' ' -f 1)
+version="s|href=\"site.css\"|href=\"site.css?v=$css\"|; s|src=\"site.js\"|src=\"site.js?v=$js\"|; s|src=\"effects.js\"|src=\"effects.js?v=$fx\"|"
+
 for page in index.html 404.html; do
   if [ -n "$origin" ]; then
-    sed "s|%ORIGIN%|$origin|g" "$here/$page" >"$out/$page"
+    sed "s|%ORIGIN%|$origin|g; $version" "$here/$page" >"$out/$page"
   else
-    sed '/%ORIGIN%/d' "$here/$page" >"$out/$page"
+    sed "/%ORIGIN%/d; $version" "$here/$page" >"$out/$page"
   fi
 done
 
