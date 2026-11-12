@@ -43,7 +43,7 @@ Evidence: <commit / tag / gate run / screenshot>
 
 Last Hit v0.17 answered a collaborator's review: a new protection switch,
 a current reading corrected for temperature, a joint pad that can no
-longer short the cell's feed. The work made 10 mistakes, now M162 to M171.
+longer short the cell's feed. The work made 10 mistakes, now M171 to M180.
 The one that mattered most was 3 versions old: the heater deck switched
 the protection switch to its maximum model with 1 `altermod` line of 5
 parameters, and ngspice applies only the first. The deck's worst case had

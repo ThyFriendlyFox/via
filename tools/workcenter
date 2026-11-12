@@ -772,7 +772,7 @@ def gate_sim(
         deck_text = deck.read_text(encoding="utf-8", errors="replace")
         failures += [f"{deck.stem}: {p}" for p in sc.misread_values(deck_text)]
         # An altermod line with several parameters keeps only its first (ngspice 42): a corner that
-        # switches a part to its maximum model runs with the rest as they were (M163).
+        # switches a part to its maximum model runs with the rest as they were (M172).
         failures += [f"{deck.stem}: {p}" for p in sc.crowded_altermods(deck_text)]
         expect, expect_problems = read_expect(sim_dir / f"{deck.stem}.expect.json")
         failures += [f"{deck.stem}.expect.json: {p}" for p in expect_problems]

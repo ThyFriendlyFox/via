@@ -407,7 +407,7 @@ print va
 @needs_ngspice
 def test_an_altermod_line_with_two_parameters_fails_its_deck(tmp_path):
     """ngspice 42 applies `is` and drops `rs` without a word: v(a) is 0.5172 V, the diode with is=1e-12
-    alone; with both it is 0.6715 V. The bound holds either; the deck fails on the line (M163)."""
+    alone; with both it is 0.6715 V. The bound holds either; the deck fails on the line (M172)."""
     proj = project(tmp_path, {"alt": ALTERMOD}, {"alt": {"va": {"min": 0.4, "max": 0.8}}})
     code, records = run("sim", proj, "--out", tmp_path / "o")
     assert code == 1

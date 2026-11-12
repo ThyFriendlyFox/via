@@ -135,7 +135,7 @@ The gate picks the tolerance runs itself. No key asks for them.
    switches a part to its maximum model does: ngspice 42 applies the
    first parameter of `altermod M vto=1.0 kp=550` and drops the rest
    without a word. The gate fails the deck and names what it dropped
-   (M163).
+   (M172).
 9. Print each measure once. A name printed 2 times with 2 values is
    judged on each value.
 10. Write a part in the deck, not in a file the deck includes. A corner

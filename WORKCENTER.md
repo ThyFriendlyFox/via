@@ -424,7 +424,7 @@ stale (`tools/doctools.py`):
   `<!-- /workcenter costs -->`, and the links to the lists into every
   `<!-- workcenter costs lists -->` block (M97). A marker counts only alone
   on its line, as the command writes it: one named in a sentence is prose
-  (M167).
+  (M176).
 - `workcenter pictures <version>` is `PROCESSES.md` P23 in one command,
   from the version's `pictures.json` (written with the defaults when
   absent): each board's `render --strict` stills and layers, its turning

@@ -322,7 +322,7 @@ def test_a_digit_after_the_scale_letter_is_named_with_what_ngspice_takes():
 
 def test_an_altermod_line_with_several_parameters_is_named():
     """One line per parameter is what ngspice 42 applies; a netlist line outside .control is no
-    altermod and a single parameter, written either way, is right (M163)."""
+    altermod and a single parameter, written either way, is right (M172)."""
     deck = """* models switched in .control
 .model DMOD D(is=1e-14)
 .control

@@ -76,7 +76,7 @@ or any step that downloads, installs, or runs for more than a minute.
    one: run each item as a matrix job under its own limit, not all of
    them in 1 step. A green run is read for its time too: a step that
    used more than half its limit is split or given room before a merge
-   rests on it (M171).
+   rests on it (M180).
 
 Done when: the run is green, its log shows progress lines in every long
 step, no step used more than half its limit, and no step depended on a
@@ -210,7 +210,7 @@ README, devlog, status line, or PR body.
 6. A fact about a board (a part's face, its position, what stands beside
    it) is read from the board with `workcenter inspect list <board> --box
    X0 X1 Y0 Y1` before it goes into a document, never written from memory
-   (M170).
+   (M179).
 
 Done when: every name in the document resolves on the remote at the time
 of the push.
@@ -242,7 +242,7 @@ axis it defines (a 3D model's rotation or offset, an export's origin).
    section header), never on free text that a proxy or a locale can
    change. A marker a command writes into a document is matched as the
    command writes it, alone on its line: a person's sentence that names
-   the marker is prose, not a block (M167).
+   the marker is prose, not a block (M176).
 2. Derive scales and units from data the file contains (the placement
    block of a session), not from a declaration the writer may not honour.
 3. Keep a real sample of the output in `tests/` and parse it there, one
@@ -311,7 +311,7 @@ When: every shell command.
    repository's index file (M161).
 8. A scratch script writes to absolute paths in the session's scratchpad.
    Under `python3 - <<EOF`, `__file__` is no file and a path built from it
-   is the working directory, which may be a repository (M166).
+   is the working directory, which may be a repository (M175).
 
 Done when: the command ran where and how you meant, and the paths it
 printed are the ones you expected.
@@ -496,7 +496,7 @@ When: a change is about to be called done.
    switching the working checkout: `git merge-base --is-ancestor
    origin/main origin/<branch> && git push origin
    origin/<branch>:refs/heads/main`. A switch stopped half-way leaves a
-   tree on neither branch (M168).
+   tree on neither branch (M177).
 
 Done when: the remote has the commit, its CI run is green, and the report
 has been sent. For a gate's method: the attack's cases are tests.
@@ -996,17 +996,17 @@ circuits it touches. The `verification` skill is the how-to.
    - One deck run by hand runs only through `workcenter sim <project>
      --deck <name> --keep`, which prepares it as the gate does (the vendor
      models' translation, the PSpice mode). Never a bare `ngspice -b` on a
-     deck that includes a vendor model (M94, M162).
+     deck that includes a vendor model (M94, M171).
    - A deck that switches a part to another model (a case at the part's
      maximum) writes 1 `altermod` line for each parameter, and prints a
      measure that shows the switch took: the part's resistance or
      threshold in that case, beside the hand value. ngspice 42 applies the
      first parameter of a line and drops the rest; the SIM gate fails a
-     deck that has several on 1 line (M163).
+     deck that has several on 1 line (M172).
    - A model value fitted from a transient (a gate charge, a delay) is
      fitted at the step of the deck that checks it, and the fit runs again
      at half that step: the 2 agree within 1 % before the model is written
-     (M164).
+     (M173).
 6. One writeup per circuit with the template's sections; the nodal
    analysis solves the circuit by hand, cites each equation, and is
    compared with the deck.
@@ -1015,7 +1015,7 @@ circuits it touches. The `verification` skill is the how-to.
 8. Helpers who write parts of one package at the same time work from
    `templates/verification/BRIEF.md` and `FACTS.md`, filled in a folder of
    the session's scratchpad (the `verification` skill's "Helpers"). A
-   number pasted into a brief instead goes out stale or 2 ways (M165):
+   number pasted into a brief instead goes out stale or 2 ways (M174):
    - Each helper owns named files and edits nothing else.
    - Every fact is in FACTS.md with its home in the project; the brief
      points at FACTS.md and copies no fact (M98). A fact that changes is
@@ -1065,7 +1065,7 @@ from what the board holds on every layer, never from courtyards alone.
    probe says `clear` (M90). The part's body is judged at its package
    drawing's largest dimensions, not its nominal ones: a body that clears a
    neighbour's pad at nominal and meets it at its maximum is no spot
-   (M169).
+   (M178).
 6. Every hand via and track the change needs goes through `workcenter
    inspect probe --via X,Y --net N` or `--track "X,Y X,Y" --layer L --net
    N` before it is written into `design.py`: the probe knows the keep-outs
@@ -1126,10 +1126,10 @@ a task.
    them has reported. What the account has left to spend cannot be read
    from a session: a helper that stops at the usage limit is the reading.
    Note the reset time its message names, start no helper before that
-   time, and do the work that needs none meanwhile (M113, M120, M165).
+   time, and do the work that needs none meanwhile (M113, M120, M174).
 2. The lead writes in a worktree of its own (`git worktree add`), never in
    the checkout its helpers read or run, and runs no `git stash`,
-   `checkout` or `reset` there while one writes (M165).
+   `checkout` or `reset` there while one writes (M174).
 3. Each helper gets a brief: its worktree or scratch folder, the files it
    owns, what is out of scope, when it is done, what to report. Every path
    in the brief exists when it is sent (M96), and it states no behaviour a
