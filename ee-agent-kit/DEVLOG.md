@@ -43,7 +43,7 @@ Evidence: <commit / tag / gate run / screenshot>
 
 Last Hit v0.17 answered a collaborator's review: a new protection switch,
 a current reading corrected for temperature, a joint pad that can no
-longer short the cell's feed. The work made 9 mistakes, now M158 to M166.
+longer short the cell's feed. The work made 10 mistakes, now M158 to M167.
 The one that mattered most was 3 versions old: the heater deck switched
 the protection switch to its maximum model with 1 `altermod` line of 5
 parameters, and ngspice applies only the first. The deck's worst case had
@@ -58,8 +58,9 @@ The rest are process: a deck read without the gate's preparation, a fit
 made at one time step and checked at another, 3 helpers started at once
 with facts pasted into their briefs, a scratch file written into the
 project, a merge done by switching the checkout, a part judged at its
-nominal size, and a board fact written from memory. Each now has a step in
-PROCESSES.md.
+nominal size, a board fact written from memory, and a CI step that ran
+every version's mutation list under 1 limit until `main` ran past it.
+Each now has a step in PROCESSES.md.
 
 Evidence: the tests of the touched files and the new gate test, which
 runs ngspice on a diode deck (0.5172 V with 1 parameter applied, 0.6715 V

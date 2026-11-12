@@ -72,9 +72,15 @@ or any step that downloads, installs, or runs for more than a minute.
 6. After pushing a CI change, watch its run to the end. A run that
    looks stuck is read, not waited out: fetch the job log and find the
    last line printed.
+7. A step that loops over versions, folders or boards grows with each
+   one: run each item as a matrix job under its own limit, not all of
+   them in 1 step. A green run is read for its time too: a step that
+   used more than half its limit is split or given room before a merge
+   rests on it (M167).
 
 Done when: the run is green, its log shows progress lines in every long
-step, and no step depended on a terminal.
+step, no step used more than half its limit, and no step depended on a
+terminal.
 
 ## P3 — Design rules before geometry
 

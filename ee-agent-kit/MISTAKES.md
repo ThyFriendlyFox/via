@@ -1009,3 +1009,9 @@ What happened: In Last Hit v0.17's README I wrote that the current monitor sits 
 Cost: 1 sentence rewritten.
 Root cause: A position stated without reading it from the board.
 Process: P5
+
+## M167 — 2026-11-12 — A CI step that grows with every version, under 1 limit
+What happened: Last Hit's board CI ran every version's mutation list in turn in 1 step under a 25-minute limit. With v0.17's 54 mutations added to v0.16's 50, the branch run took 18 min 54 s and passed, and I put v0.17 on `main` on that run. The same commit on `main` ran past 25 minutes on a slower runner (run 43256806535), every mutation it reached caught. The step became a matrix job, 1 job per folder, each under its own limit: v0.17 took 12.5 minutes and v0.16 18.5.
+Cost: a red run on `main` and a workflow change after the merge.
+Root cause: A step whose work grows with every version kept 1 fixed limit, and a green run was read for its verdict, not for how much of its limit it used.
+Process: P2
