@@ -1,0 +1,11 @@
+{
+  "sources": [
+    {"name": "TPS552892 switching", "hz": 746000, "tolerance": 0.1, "source": "U3 in forced PWM (MODE high): fSW = 1000 / (0.05 x 26.1k + 35) MHz = 746 kHz (SLVSH28A, equation 3); 10 %, the spread its 6.5 table gives at 100k and at 8.4k"},
+    {"name": "RP2350 core regulator", "hz": 3000000, "source": "RP2350 datasheet Table 1689, fsw 3 MHz typical; no limits given"},
+    {"name": "RP2350 crystal", "hz": 12000000, "tolerance": 0.001, "source": "Y1, ABM8-272-T3 at 12 MHz; 0.1 %, wider than any crystal's"}
+  ],
+  "resonances": [
+    {"name": "VBUS behind a USB-C cable", "hz": "vbus_pdn.f_peak", "q": "vbus_pdn.q_peak", "source": "sim/vbus_pdn.cir"}
+  ],
+  "overlaps": []
+}

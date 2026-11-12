@@ -1,0 +1,3 @@
+{
+  "v_on": {"max": 4.0, "source": "the design's own floor: the board starts from 4.0 V of VBUS, under a USB-C source's 4.75 V less the drop of a cable carrying 3 A"}
+}

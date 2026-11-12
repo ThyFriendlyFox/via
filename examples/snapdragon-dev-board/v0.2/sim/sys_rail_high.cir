@@ -1,0 +1,14 @@
+* +5V at its highest: VREF at its 1.212 V maximum (SLVSH28A, 6.5), and the FB pin sinking its most:
+* 100 nA of leakage (IFB_LKG) and 0.3 uA of the cable-droop current (IFB_CDC; ISP and ISN are tied
+* together, so the CDC current is at its 0 mV figure), which R30 must carry too. See sys_rail_low.cir.
+VREF ref 0 DC 1.212
+EAMP out 0 ref fb 1e6
+R30 out fb 100k
+R31 fb 0 31.6k
+IFB fb 0 DC 400n
+.control
+op
+let vout = v(out)
+print vout
+.endc
+.end

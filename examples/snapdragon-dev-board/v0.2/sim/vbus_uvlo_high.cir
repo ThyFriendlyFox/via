@@ -1,0 +1,12 @@
+* Where U3 starts, at the latest: as vbus_uvlo_low.cir, with VUVLO at its 1.26 V maximum (SLVSH28A,
+* 6.5): the highest VBUS it may need before it starts.
+VUV ref 0 DC 1.26
+EAMP vbus 0 ref en 1e6
+R34 vbus en 100k
+R35 en 0 51k
+.control
+op
+let v_on = v(vbus)
+print v_on
+.endc
+.end
