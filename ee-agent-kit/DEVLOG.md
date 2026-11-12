@@ -39,6 +39,28 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-12 — Rosetta v0.3: a screen, rings round the sticks, turbo and a cell
+
+The owner asked for the controller to be wireless and run more of itself
+in software: a screen, lights round the sticks, back buttons for turbo,
+a rechargeable cell with fast USB-C charging, and USB-C data when the
+cell is flat. v0.3 has all of them on the same outline. Turbo repeats a
+button at a fixed rate; I said I would not build timing meant to get
+past a game's detection, and did not. The charger's 9 and 12 V modes
+stay off, because the same 5 V feeds the licensed controller on the
+second port. A ring of LEDs could not sit on a circle round a stick's
+rectangular body at first; turned by half a step, all 8 clear it. The
+first 2 routes ran an old copy of the tools inside the container, at
+more passes than the process now names, and timed out with nothing.
+Routed with the repository's tools at 12 passes, 6 power links stayed
+open at chips whose pins are closer than the power tracks are wide; short
+narrow tracks out of each pin closed them, and 3 more links were drawn
+by hand.
+
+Evidence: `workcenter gates examples/universal-controller/v0.3` GREEN with
+5 warnings; `make -C examples/universal-controller/v0.3/firmware test`;
+M162
+
 ## 2026-11-12 — A reader who trusts nothing read the README's front page
 
 A helper that had written none of the README's front page checked every

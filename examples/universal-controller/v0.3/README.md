@@ -147,7 +147,20 @@ python3 models/make_models.py               # the bodies KiCad's 3D library lack
 ```
 
 <!-- gates:begin -->
-`workcenter gates .`: see the run below once the board is routed.
+`workcenter gates .` prints GREEN with 5 warnings, all silkscreen at the board's edge: the
+outlines of the 2 USB-C receptacles and the ESP32 module, which hang over it on purpose. 6 decks,
+370 corner runs: the knob's, unchanged from v0.1. The route is 12 passes; a 2-pass route took 6
+minutes and left 30 links open.
+
+Hand-drawn links in `design.py`, each probed clear on the unrouted board with `workcenter inspect
+probe` before it went in:
+
+- v0.2's 5: J1's CC1 and CC2 and J2's CC2, the RP2040's 1.1 V core supply on In2, the knob's pin 5.
+- Necks out of the 0.5 mm pins of U11, U12 and U17, where the power class's 0.4 mm does not fit:
+  BAT's 2 pins to a bar and 2 vias, PMID to C4, VSYS's 2 pins joined, U12's VIN, VINA and EN to
+  C50 and a via, U12's 3 ground pins in to its pad, the gauge's sense pin to a via.
+- The RP2040's IOVDD pins 48 and 49 joined at their pads.
+- The right stick's ring, D20 to D21, under the stick on In3.
 <!-- gates:end -->
 
 ## Parts and why
