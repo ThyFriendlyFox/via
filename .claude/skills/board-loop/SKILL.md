@@ -12,10 +12,15 @@ those. The loop finds them. 1 prompt runs again and again; each pass starts
 from what the last one left on disk and from a log; a pass ends when its
 findings are answered and written down.
 
-3 example projects were made this way, each with a prompt and a checklist
-it wrote for itself: `examples/anc-speaker/LOOP.md`,
-`examples/ring-mouse/LOOP.md`, `examples/threadripper-matx/LOOP.md`. Read 1
-of them before the first pass.
+3 example projects each wrote such a loop for themselves, in 3 shapes.
+Hush made its passes inside 1 version, with a reviewer who had not seen
+the earlier rounds (`examples/anc-speaker/LOOP.md`). Signet made a version
+a pass and judged each version itself (`examples/ring-mouse/LOOP.md`).
+Basalt worked down a list of features and scored each pass on a scorecard
+(`examples/threadripper-matx/LOOP.md`). Signet's loop had no outside
+reader, and its ring stood 1.3 mm open at 2 joints through 3 versions
+(M130). So the pass below has Hush's reviewer, whatever the shape. Read 1
+of the 3 files before the first pass.
 
 Use it when the board is GREEN (the `board-gates` skill comes first) and
 the owner asks for a board that is compact, correct and good to look at,
@@ -30,6 +35,11 @@ The project keeps `LOOP.md` beside its version folders. Copy
   and what it must be, in the owner's words.
 - **The checklist**. The loop is done when every line holds.
 - **The log**, 1 entry a pass.
+
+Its first paragraph says which shape the loop has: passes inside 1
+version, a version a pass, or a list of features worked down 1 a pass.
+Where a pass is a version, the version's README holds what the pass found
+and changed (`PROCESSES.md` P22), and the log's entry names the version.
 
 ## The checklist
 
@@ -61,9 +71,10 @@ chosen) gets a line that names it as a stand-in.
 4. Fresh eyes. A reviewer who has not seen the earlier rounds reads the
    pictures against the checklist and returns the 3 worst problems, each
    with where it is (the picture, the part's reference, the place) and why
-   it matters. In a host that can start a helper, the reviewer is a helper
+   it matters. In a host that can start a helper, the reviewer is 1 helper
    whose brief holds the checklist and the pictures' paths and nothing of
-   the log (`PROCESSES.md` P31). In a host that cannot, write your own 3
+   the log; it reads and writes no file, and its report is data that step
+   6 checks (`PROCESSES.md` P31). In a host that cannot, write your own 3
    now, before step 5.
 5. Now read the log's last entry. A problem the last pass answered and
    that is back says the answer did not hold: it goes first.
