@@ -1589,11 +1589,42 @@ class Design:
             )
         )
 
-    def pad_boxes(self) -> list[PadBox]:
-        """Every pad as placed on the board; a through-hole pad appears once per copper layer."""
+    def pad_box(self, ref: str, number: str, layer: str | None = None, which: int = 0) -> PadBox:
+        """1 placed pad's copper, as `pad_boxes()` gives it: on the part's own face, or on `layer` for a
+        through-hole pad, which is on every copper layer. `which` picks among pads that share a number
+        (a shield's tabs), in the footprint's order. A hand track or a via takes its place from here,
+        never from a position worked out by hand (P1 step 2)."""
+        part = next((p for p in self.parts if p.ref == ref), None)
+        if part is None:
+            raise ValueError(f"pad_box: no part {ref!r} in the design")
+        if not (part.on_board and part.footprint and part.pcb_at):
+            raise ValueError(f"pad_box: {ref} is not placed on the board")
+        boxes = self.pad_boxes(only=part)
+        found = [b for b in boxes if b.number == str(number)]
+        if not found:
+            numbers = sorted({b.number for b in boxes}, key=lambda n: (len(n), n))
+            raise ValueError(f"pad_box: {ref} has no pad {number!r}; its pads are {', '.join(numbers)}")
+        face = layer or part.pcb_layer
+        there = [b for b in found if b.layer == face]
+        if not there:
+            layers = ", ".join(sorted({b.layer for b in found}))
+            raise ValueError(f"pad_box: {ref} pad {number} has no copper on {face}; it is on {layers}")
+        if not 0 <= which < len(there):
+            count = f"{len(there)} pad{'' if len(there) == 1 else 's'}"
+            raise ValueError(f"pad_box: {ref} has {count} numbered {number} on {face}; which={which}")
+        return there[which]
+
+    def pad_at(self, ref: str, number: str, layer: str | None = None, which: int = 0) -> tuple[float, float]:
+        """1 placed pad's centre in board coordinates, mm (see `pad_box`)."""
+        box = self.pad_box(ref, number, layer, which)
+        return (round((box.x1 + box.x2) / 2, 4), round((box.y1 + box.y2) / 2, 4))
+
+    def pad_boxes(self, only: Part | None = None) -> list[PadBox]:
+        """Every pad as placed on the board; a through-hole pad appears once per copper layer. `only`
+        gives the pads of that 1 part."""
         boxes: list[PadBox] = []
         open_nets = self.unconnected_nets()
-        for part in self.parts:
+        for part in self.parts if only is None else [only]:
             if not (part.on_board and part.footprint and part.pcb_at):
                 continue
             px, py = part.pcb_at
