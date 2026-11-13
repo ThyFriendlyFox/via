@@ -58,7 +58,7 @@ unset variable never causes a failure.
 | `--paths IDS` | curve | every path of 4 points or more inside the frame | The path ids (`#N` in the listing) to map, comma-separated. |
 | `--at X,...` | curve | none | Print each curve's y at these x values, interpolated in decades on a log axis. |
 | `--at-y Y,...` | curve | none | Print each curve's x at these y values. |
-| `--check` | design | off | Regenerate into a temporary folder (or `--out`) and compare the `.kicad_pro` and `.kicad_sch` with the design's own, as a board repository's CI does. Exit 1 on a difference or on the design step's own exit 1 (M85). Writes nothing in the project. Refuses `--route`. |
+| `--check` | design | off | Regenerate into a temporary folder (or `--out`) and compare the `.kicad_pro` and `.kicad_sch` with the design's own, as a board repository's CI does, and the project's `fp-lib-table` and `sym-lib-table` with what the design writes in its own folder. Exit 1 on a difference or on the design step's own exit 1 (M85). Writes nothing in the project. Refuses `--route`. |
 | `REPO` | ci | `.` | The repository whose `.github/workflows/*.yml` the replay runs, from its root, as the runner's checkout. |
 | `--job ID` | ci | every job, each after the jobs it `needs` | Replay only this job (repeatable). |
 | `--workflow FILE` | ci | every workflow | One workflow: a file name in `.github/workflows/` or a path. |

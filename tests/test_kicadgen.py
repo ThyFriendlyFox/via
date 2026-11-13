@@ -1672,6 +1672,77 @@ def test_design_check_compares_what_the_design_writes_with_the_project(tmp_path)
     assert code == 1 and "leave out --route" in report["stderr"]
 
 
+SHARED_LIB_PY = DIVIDER_PY.replace(
+    "    return d\n",
+    "    from pathlib import Path\n"
+    "    d.footprint_dirs = {'Mine': Path(__file__).resolve().parents[1] / 'footprints' / 'Mine.pretty'}\n"
+    "    d.add('TP1', 'Connector:TestPoint', 'W', 'Mine:Wire_Pad', sch_at=(50.8, 76.2),\n"
+    "          pcb_at=(110.5, 108.5), nets={'1': 'GND'})\n"
+    "    return d\n",
+)
+
+
+@needs_libs
+def test_a_library_table_names_a_project_library_from_the_project_not_from_the_machine(tmp_path):
+    """51 of the 61 library tables under examples/ held a path that began /home/user/via: a library
+    outside the output folder (a footprint library that 6 boards of 1 version share, a board
+    generated into a scratch folder) was written by its absolute path. 4 tables of Signet v0.4 named
+    v0.3's libraries that way, copied with the version's folder, and no check said so: the DRC reads
+    the footprints the board embeds, with or without a table."""
+    assert SHARED_LIB_PY != DIVIDER_PY
+    lib = tmp_path / "footprints" / "Mine.pretty"
+    lib.mkdir(parents=True)
+    src = kicadgen.FOOTPRINT_DIR / "TestPoint.pretty" / "TestPoint_THTPad_D1.5mm_Drill0.7mm.kicad_mod"
+    name = "TestPoint_THTPad_D1.5mm_Drill0.7mm"
+    (lib / "Wire_Pad.kicad_mod").write_text(src.read_text().replace(f'"{name}"', '"Wire_Pad"', 1))
+    board = tmp_path / "board"
+    board.mkdir()
+    design = board / "design.py"
+    design.write_text(SHARED_LIB_PY, encoding="utf-8")
+    code, _ = run_cli("design", design)
+    assert code == 0
+    table = (board / "fp-lib-table").read_text(encoding="utf-8")
+    uri = '(uri "${KIPRJMOD}/../footprints/Mine.pretty")'
+    assert table.splitlines()[2] == f'  (lib (name "Mine")(type "KiCad"){uri}(options "")(descr ""))'
+    assert str(tmp_path) not in table
+    # `design --check` regenerates into a scratch folder, where the same library has another way
+    # from the table; it holds the project's table to what the design writes in the project
+    code, report = check(design)
+    assert code == 0, report
+    assert [f["file"] for f in report["files"]][-1] == "fp-lib-table"
+    assert all(f["state"] == "same" for f in report["files"]), report["files"]
+    # a table copied in from a board generated elsewhere names the library from that other folder
+    code, _ = run_cli("design", design, "--out", tmp_path / "elsewhere" / "deep")
+    assert code == 0
+    shutil.copy(tmp_path / "elsewhere" / "deep" / "fp-lib-table", board / "fp-lib-table")
+    code, report = check(design)
+    assert code == 1
+    stale = next(f for f in report["files"] if f["file"] == "fp-lib-table")
+    assert stale["state"] == "differs" and stale["line"] == 3
+    assert '(uri "${KIPRJMOD}/../../footprints/Mine.pretty")' in stale["project"]
+    assert '(uri "${KIPRJMOD}/../footprints/Mine.pretty")' in stale["design"]
+
+
+def test_no_committed_library_table_names_the_machine_that_wrote_it():
+    """Every `fp-lib-table` and `sym-lib-table` in the repository names each library from its own
+    folder, and the library is there."""
+    tables = [
+        path
+        for folder in ("examples", "tests", "templates")
+        for name in ("fp-lib-table", "sym-lib-table")
+        for path in (ROOT / folder).rglob(name)
+        if "build" not in path.parts
+    ]
+    assert len(tables) >= 61
+    wrong = []
+    for table in tables:
+        for uri in kicadgen.URI_RE.findall(table.read_text(encoding="utf-8")):
+            lib = table.parent / uri.removeprefix(kicadgen.KIPRJMOD)
+            if not (uri.startswith(kicadgen.KIPRJMOD) and lib.exists()):
+                wrong.append(f"{table.relative_to(ROOT)}: {uri}")
+    assert wrong == []
+
+
 @needs_libs
 def test_design_check_fails_on_the_design_steps_own_failure(tmp_path):
     """M85: `workcenter design` exits 1 on a hand via it refuses, though it writes every file; CI's

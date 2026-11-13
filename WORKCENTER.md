@@ -344,9 +344,11 @@ operating area), instead of reading the picture by eye.
 
 Not a gate: `workcenter design <design.py> --check` regenerates the design
 into a temporary folder and compares the `.kicad_pro` and `.kicad_sch` with
-the design's own, the step a board repository's CI runs. It exits 1 on a
-difference, and on the design step's own exit 1 even when every file is
-the same (M85).
+the design's own, the step a board repository's CI runs. It holds the
+project's library tables (`fp-lib-table`, `sym-lib-table`) to what the
+design writes in its own folder: each project library named from that
+folder, never by an absolute path. It exits 1 on a difference, and on the
+design step's own exit 1 even when every file is the same (M85).
 
 Not a gate: `workcenter ci [repo]` replays a repository's GitHub workflow
 here: every `run` step in order under `bash -e`, from the repository root,
