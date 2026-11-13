@@ -285,9 +285,12 @@ project and routes it with FreeRouting. No GUI at any step.
      around it. Draw the heavy loop first (battery feed, heater return),
      then the taps and gate drives, one net at a time, with
      `workcenter drc .` between rounds: the DRC names the pad or track
-     each slip touches. End tracks on pad centres. A part moved in the
-     same change is regenerated and its pads read before its tracks are
-     written. A long hand route is a wall on its layer: list the pads it
+     each slip touches. End tracks on pad centres, taken from the design:
+     `d.pad_at("J1", "2")` is the pad's centre as the generator places it
+     (mirrored for a part on the back, turned with the part), and
+     `d.pad_box("J1", "2")` its copper. Never type a pad's place or work
+     it out from the footprint. A part moved in the same change then takes
+     its tracks with it. A long hand route is a wall on its layer: list the pads it
      cuts off from their nets first, and move a part rather than draw a
      lane that leaves one with no way in.
    - A ground pad cut off from the pour: the design command already

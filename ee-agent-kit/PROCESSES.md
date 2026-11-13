@@ -22,9 +22,11 @@ must clear or land on a pad.
    shield, mounting holes).
 2. Generate the unrouted board and run `workcenter drc .`. The report
    names each pad with its board position. Those positions are the only
-   source for a coordinate; never a position computed in your head. A
-   part moved in the same change is regenerated and its pads read after
-   the move; its tracks are never written in the edit that moves it.
+   source for a coordinate; never a position computed in your head. In a
+   design file `d.pad_at(ref, number)` gives the same position, and a
+   track written with it moves with its part. A part moved in the same
+   change is regenerated and its pads read after the move; tracks typed
+   as numbers are never written in the edit that moves it.
 3. A part on `B.Cu` is mirrored about the X axis: at rotation 0 its pad 1
    is on the left and its pads' y are flipped. Confirm against the DRC
    report, every time.

@@ -770,6 +770,37 @@ def test_thickness_writes_a_two_layer_stackup_and_the_default_does_not():
         d.board()  # thinner than its own copper
 
 
+@needs_libs
+def test_one_pads_place_comes_from_the_design_not_from_a_scan_or_a_sum():
+    """3 projects wrote `next(b for b in d.pad_boxes() if ...)` before each hand track, 15 times in 7
+    files, and 1 redid the generator's rotation from a table. P1 step 2: a coordinate is never
+    worked out by hand."""
+    d = divider()
+    assert d.pad_at("R1", "1") == (107.675, 102.5) and d.pad_at("R1", "2") == (109.325, 102.5)
+    box = d.pad_box("R1", "1")
+    assert (box.layer, box.net) == ("F.Cu", "VIN")
+    assert (round(box.x2 - box.x1, 4), round(box.y2 - box.y1, 4)) == (0.8, 0.95)
+    # a through-hole pad is on every copper layer; a number as an int is taken as its text
+    assert d.pad_at("J1", "2") == d.pad_at("J1", "2", layer="B.Cu") == d.pad_at("J1", 2) == (103.0, 105.04)
+    # a part on the back, turned: what pad_boxes() gives, mirrored and turned by the generator
+    r2 = next(p for p in d.parts if p.ref == "R2")
+    r2.pcb_layer, r2.pcb_rot = "B.Cu", 90
+    assert d.pad_at("R2", "1") == (108.5, 107.325) and d.pad_at("R2", "2") == (108.5, 105.675)
+    assert d.pad_box("R2", "1").layer == "B.Cu"
+    every = {(b.ref, b.number, b.layer): b for b in d.pad_boxes()}
+    assert d.pad_box("R2", "1") == every[("R2", "1", "B.Cu")]
+    # a miss says what is there
+    for call, said in (
+        (lambda: d.pad_at("R9", "1"), "pad_box: no part 'R9' in the design"),
+        (lambda: d.pad_at("R1", "3"), "pad_box: R1 has no pad '3'; its pads are 1, 2"),
+        (lambda: d.pad_at("R1", "1", layer="B.Cu"), "pad_box: R1 pad 1 has no copper on B.Cu; it is on F.Cu"),
+        (lambda: d.pad_at("R1", "1", which=1), "pad_box: R1 has 1 pad numbered 1 on F.Cu; which=1"),
+    ):
+        with pytest.raises(ValueError) as refused:
+            call()
+        assert str(refused.value) == said
+
+
 def stackup_of(board: Path) -> tuple[kicadgen.Node, str]:
     """A board file's stackup and its thickness, cut out of the file's head: a board can be 45 MB."""
     with board.open(encoding="utf-8") as handle:
