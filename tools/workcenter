@@ -4204,10 +4204,14 @@ def cmd_mutate(args) -> int:
 
 def check_design(args) -> int:
     """`design --check`: regenerate the design into a scratch folder (or --out) and compare the project and
-    schematic files with the design's own, the way a board repository's CI does. Exit 1 on a difference
-    or on the design step's own failure (M85), whose files CI would compare all the same."""
+    schematic files, and the project's library tables, with the design's own, the way a board
+    repository's CI does. Exit 1 on a difference or on the design step's own failure (M85), whose files
+    CI would compare all the same."""
     if args.route:
         raise SystemExit("design: --check regenerates without routing, as CI does; leave out --route")
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import kicadgen
+
     design_path = Path(args.design).resolve()
     project_dir = design_path.parent
     keep = Path(args.out).resolve() if args.out else None
@@ -4220,14 +4224,22 @@ def check_design(args) -> int:
         with contextlib.redirect_stdout(printed) if args.json else contextlib.nullcontext():
             code = cmd_design(run_args)
         regenerated = sorted(out_dir.glob("*.kicad_pro")) + sorted(out_dir.glob("*.kicad_sch"))
+        # A library table names each project library from the folder the table lies in, so the one
+        # written into the scratch folder is first read as the design's own folder would hold it.
+        tables = {
+            f.name: kicadgen.lib_table_at(f.read_text(encoding="utf-8"), out_dir, project_dir).encode()
+            for f in (out_dir / "fp-lib-table", out_dir / "sym-lib-table")
+            if f.is_file()
+        }
         files = []
-        for f in regenerated:
+        for f in [*regenerated, *(out_dir / name for name in tables)]:
             mine = project_dir / f.name
+            written = tables.get(f.name) or f.read_bytes()
             entry = {"file": f.name, "state": "same"}
             if not mine.is_file():
                 entry["state"] = "missing"
-            elif mine.read_bytes() != f.read_bytes():
-                old, new = mine.read_bytes().splitlines(), f.read_bytes().splitlines()
+            elif mine.read_bytes() != written:
+                old, new = mine.read_bytes().splitlines(), written.splitlines()
                 pairs = enumerate(zip(old, new, strict=False))
                 line = next((i for i, (a, b) in pairs if a != b), min(len(old), len(new)))
                 entry.update(
@@ -4871,8 +4883,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--check",
         action="store_true",
-        help="regenerate into a temporary folder (or --out) and compare the .kicad_pro and .kicad_sch with "
-        "the design's own; exit 1 on a difference or a failed design step. Writes nothing in the project",
+        help="regenerate into a temporary folder (or --out) and compare the .kicad_pro, the .kicad_sch and "
+        "the library tables with the design's own; exit 1 on a difference or a failed design step. "
+        "Writes nothing in the project",
     )
     p = sub.add_parser(
         "placement",

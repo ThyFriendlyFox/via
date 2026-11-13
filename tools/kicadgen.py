@@ -173,6 +173,37 @@ def uid(ns: uuid.UUID, key: str) -> Q:
     return Q(str(uuid.uuid5(ns, key)))
 
 
+URI_RE = re.compile(r'\(uri "([^"]*)"\)')
+KIPRJMOD = "${KIPRJMOD}/"
+
+
+def lib_uri(lib: Path, project: Path) -> str:
+    """A project library as a library table of the project in `project` names it: from the project's
+    own folder, `${KIPRJMOD}/footprints/Mine.pretty` or, for a library a level up that several boards
+    share, `${KIPRJMOD}/../footprints/Mine.pretty`. The table then reads the same wherever the
+    repository is cloned. The library's absolute path named the machine that wrote the table; it is
+    written only where no relative path exists, a library on another drive under Windows."""
+    lib = Path(lib).resolve()
+    try:
+        return KIPRJMOD + Path(os.path.relpath(lib, Path(project).resolve())).as_posix()
+    except ValueError:
+        return lib.as_posix()
+
+
+def lib_table_at(text: str, written_in: Path, project: Path) -> str:
+    """A library table that was written into `written_in`, as the same design writes it into `project`:
+    each library named from the folder the table lies in. `design --check` regenerates into a scratch
+    folder, and holds the project's own tables to this."""
+
+    def moved(found: re.Match) -> str:
+        uri = found.group(1)
+        if not uri.startswith(KIPRJMOD):
+            return found.group(0)
+        return f'(uri "{lib_uri(Path(written_in) / uri[len(KIPRJMOD) :], project)}")'
+
+    return URI_RE.sub(moved, text)
+
+
 # ------------------------------------------------------------- libraries
 
 _LIB_CACHE: dict[Path, Node] = {}
@@ -4154,6 +4185,25 @@ class Design:
 
     # ---- files
 
+    def lib_tables(self, out_dir: Path) -> dict[Path, str]:
+        """The project's library tables as files of `out_dir`: `fp-lib-table` for its own footprints
+        and `sym-lib-table` for its own symbols, so KiCad finds them when the project is opened. Both
+        are embedded in the board and the schematic as well. A library is named from the project's
+        folder (`lib_uri`), so a table reads the same on every machine."""
+        tables = {}
+        for libs, name, head in (
+            (self.footprint_dirs, "fp-lib-table", "fp_lib_table"),
+            (self.symbol_dirs, "sym-lib-table", "sym_lib_table"),
+        ):
+            if not libs:
+                continue
+            rows = [
+                f'  (lib (name "{lib}")(type "KiCad")(uri "{lib_uri(d, out_dir)}")(options "")(descr ""))'
+                for lib, d in sorted(libs.items())
+            ]
+            tables[out_dir / name] = f"({head}\n  (version 7)\n" + "\n".join(rows) + "\n)\n"
+        return tables
+
     def write(self, out_dir: Path) -> list[Path]:
         out_dir.mkdir(parents=True, exist_ok=True)
         files = {
@@ -4170,27 +4220,9 @@ class Design:
                 fab_project_rules(src.read_text(encoding="utf-8"), self.board_rules()).rstrip("\n")
                 + f"\n\n# Copied by the workcenter from {src.name} (Design.fab); edit the source, not this file.\n"
             )
+        files.update(self.lib_tables(out_dir))
         for p, text in files.items():
             p.write_text(text, encoding="utf-8")
-        # So KiCad finds the project's own footprints and symbols when the files are opened; both are
-        # embedded in the board and the schematic as well.
-        for libs, name, head in (
-            (self.footprint_dirs, "fp-lib-table", "fp_lib_table"),
-            (self.symbol_dirs, "sym-lib-table", "sym_lib_table"),
-        ):
-            if not libs:
-                continue
-            rows = []
-            for lib, d in sorted(libs.items()):
-                d = Path(d).resolve()
-                try:
-                    uri = "${KIPRJMOD}/" + d.relative_to(out_dir.resolve()).as_posix()
-                except ValueError:
-                    uri = d.as_posix()
-                rows.append(f'  (lib (name "{lib}")(type "KiCad")(uri "{uri}")(options "")(descr ""))')
-            table = out_dir / name
-            table.write_text(f"({head}\n  (version 7)\n" + "\n".join(rows) + "\n)\n", encoding="utf-8")
-            files[table] = table.read_text(encoding="utf-8")
         self.stitches = []
         if self.zones:
             pcb = out_dir / f"{self.name}.kicad_pcb"
