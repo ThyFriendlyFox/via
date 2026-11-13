@@ -39,6 +39,33 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-12 — Last Hit v0.17's mistakes, and 2 checks they asked for
+
+Last Hit v0.17 answered a collaborator's review: a new protection switch,
+a current reading corrected for temperature, a joint pad that can no
+longer short the cell's feed. The work made 10 mistakes, now M171 to M180.
+The one that mattered most was 3 versions old: the heater deck switched
+the protection switch to its maximum model with 1 `altermod` line of 5
+parameters, and ngspice applies only the first. The deck's worst case had
+moved only the switch's threshold since v0.14. The SIM gate now fails a
+deck with such a line.
+
+`workcenter costs` failed on the board repository's CLAUDE.md because a
+sentence there names the costs marker. The doc tools now take a marker
+only alone on its line, as they write it.
+
+The rest are process: a deck read without the gate's preparation, a fit
+made at one time step and checked at another, 3 helpers started at once
+with facts pasted into their briefs, a scratch file written into the
+project, a merge done by switching the checkout, a part judged at its
+nominal size, a board fact written from memory, and a CI step that ran
+every version's mutation list under 1 limit until `main` ran past it.
+Each now has a step in PROCESSES.md.
+
+Evidence: the tests of the touched files and the new gate test, which
+runs ngspice on a diode deck (0.5172 V with 1 parameter applied, 0.6715 V
+with both); `make verify` before the push.
+
 ## 2026-11-12 — A small model built a chip, a reviewer attacked the gates, and the chip work reached `main`
 
 A small model built 2 chips of its own with `workcenter next` alone. The

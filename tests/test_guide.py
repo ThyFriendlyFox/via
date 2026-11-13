@@ -264,6 +264,12 @@ def test_every_hint_points_at_a_file_and_a_heading_that_exist():
             "d: R1: ngspice reads the value 4k7 as 4k: it drops a digit after the scale letter. Write 4.7k",
             "the way ngspice reads a number",
         ),
+        (
+            "sim",
+            "d: altermod DMOD: ngspice applies only the first parameter on the line (is) and drops rs. "
+            "Write 1 altermod line for each parameter",
+            "Split the altermod line",
+        ),
         ("sim", "typo.expect.json: vout: unknown key 'minimum'", "Correct the expect file"),
         ("sim", "d: no measure moves with temperature: nothing in the deck", "temperature behaviour"),
         ("sim", "d: no tolerance covers R1, R2", "Add the kind"),
