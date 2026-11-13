@@ -331,7 +331,7 @@ images are drawn.
 | `tools/hooks/` | Claude Code hooks: no `cd` in a command, no test written by a script. |
 | `WORKCENTER.md` | The contract a project gets from this workcenter. |
 | `AGENTS.md`, `CLAUDE.md` | Where an agent starts. The same text. |
-| `.claude/skills/` | `attached-repos`, `autoroute`, `blog-post`, `board-design`, `board-gates`, `chip-design`, `chip-gates`, `kistack`, `procurement`, `simulate`, `verification`. |
+| `.claude/skills/` | `attached-repos`, `autoroute`, `blog-post`, `board-design`, `board-gates`, `board-loop`, `chip-design`, `chip-gates`, `kistack`, `procurement`, `simulate`, `verification`. |
 | `templates/` | A first design file, a version's README and gates report, `corners.json`, `frequency-plan.json`, the verification package. |
 | `rules/` | A fabrication house's limits as KiCad design rules. One house so far. |
 | `tests/` | The tests of the tools. `tests/boards/` holds the fixture boards and what each proves. |

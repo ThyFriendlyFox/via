@@ -77,6 +77,7 @@ file: it needs nothing else.
 | `attached-repos` | The session holds more than 1 repository. Run first. |
 | `board-design` | A board is designed from a spec, as a Python design file built from the KiCad libraries. |
 | `board-gates` | A board must pass ERC, DRC, simulation, and export. The fix loop. |
+| `board-loop` | A board that passes its gates is to become compact, correct and good to look at: 1 prompt run again and again, with a reviewer who has not seen the earlier rounds. The project's `LOOP.md` holds the prompt, the checklist and the log. |
 | `chip-design` | A chip is designed from a spec: `chip.json`, the RTL, the benches, the constraints, the list of changes the benches must catch. |
 | `chip-gates` | A chip must pass the 10 chip gates to its GDSII layout. The fix loop, gate by gate. |
 | `autoroute` | A board has unrouted nets and FreeRouting should route them. Headless for generated designs. |
@@ -401,7 +402,10 @@ facts file for helpers who write parts of one package at the same time
 A project kept as version folders (`PROCESSES.md` P22) lays out each
 version's README as `templates/project/README-version.md` and its gates
 report, `docs/gates.md`, as `templates/project/gates.md`, whose marker
-comments `workcenter gates <project> --report` fills.
+comments `workcenter gates <project> --report` fills. A project that is
+improved in a review loop keeps the loop's prompt, its checklist and its
+log in `LOOP.md` beside the version folders, from
+`templates/project/LOOP.md` (the `board-loop` skill).
 
 A model under the deck's own folder (`sim/models/`) is the project's own,
 fitted to a datasheet when the maker publishes none: the SIM gate needs no
