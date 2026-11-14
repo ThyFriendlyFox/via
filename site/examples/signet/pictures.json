@@ -2,13 +2,6 @@
  "sources": {
   "top.png": "assembly-top.png",
   "bottom.png": "assembly-iso-back.png",
-  "iso.png": "assembly-iso.png",
-  "spin.webp": "assembly-spin.gif",
   "card.png": "assembly-iso.png"
- },
- "spin": {
-  "frames": 36,
-  "width": 616,
-  "height": 368
  }
 }

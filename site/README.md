@@ -43,7 +43,7 @@ empty.
 |---|---|
 | `index.html` | The home page: the hero (the wordmark built as a board is, the owner's headline, the install line and the agents' strip), Herald, the boards, the checks, design as code, the architecture and getting started. `%ORIGIN%` marks each line that needs the site's address. `?theme=dark` and `?theme=light` ask for a theme; `?shot=diagram` shows the diagram alone, for a capture. |
 | `examples.html`, `examples/<name>.html` | The list of examples, and 1 page for each. `examples.py` writes them; do not edit them by hand. |
-| `examples/<name>/` | What an example's page shows: `board.svg`, the board drawn from its file for the explorer; `spin.webp`, the turntable's views side by side; `top.png`, `bottom.png` and `iso.png`, KiCad's renders with the backdrop taken out; `card.png`, the picture on its card (the assembly where there is one); `pictures.json`, the render each came from and the turntable's frames. |
+| `examples/<name>/` | What an example's page shows: `board.svg`, the board drawn from its file for the explorer; `spin.webp`, the turntable's views side by side, where they show the whole of it; `top.png` and `bottom.png`, KiCad's renders with the backdrop taken out, at most 1100 px wide; `card.png`, the picture on its card (the assembly where there is one), 760 px wide; all 3 in 256 colours; `pictures.json`, the render each came from and the turntable's frames. |
 | `examples.py` | Writes the example pages. "The example pages" below says what it reads. |
 | `404.html` | The page a host serves for an unknown path. |
 | `site.css` | The look: the colour tokens for light and dark, the type scale, every component. `media/hero.html` takes its cards from it. |
@@ -128,9 +128,13 @@ python3 site/examples.py
 The renders come from `workcenter render` on the example, in its `docs/`.
 `python3 -B site/examples.py --pictures` takes KiCad's backdrop out of
 them, crops and scales them, and lays the turntable's frames side by side.
-An assembly's render (Signet round a finger) also has the backdrop that its
-boards enclose taken out (`--holes`); a board's render does not, since a
-metal lid mirrors the backdrop. Agentcast's card was keyed the same way,
+An assembly's render (Signet round a finger), and the render of a board with
+an opening of 25 mm² or more through its outline (Hush's ring), also has the
+backdrop they enclose taken out (`--holes`), with the shadow round it; any
+other board's render does not, since a metal lid mirrors the backdrop. A
+turning render whose frames cut the thing off (Signet's, at the top and the
+bottom) is left out, and the card's picture leads the page in its place.
+Agentcast's card was keyed the same way,
 once, from the render in its own repository (v0.5):
 
 ```sh

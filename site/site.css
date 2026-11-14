@@ -2135,11 +2135,22 @@ html:not(.motion) .wordmark .wm-pt,
   font-size: 0.8125rem;
   color: var(--muted-foreground);
 }
+.lead {
+  max-width: 40rem;
+  margin: 2.5rem auto 0;
+}
+.lead figcaption {
+  margin-top: 0.75rem;
+  text-align: center;
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
 .stills {
   display: grid;
   gap: 1.5rem;
   margin-top: 3rem;
 }
+.lead img,
 .stills img {
   width: 100%;
   height: auto;

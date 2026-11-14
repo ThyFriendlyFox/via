@@ -8,8 +8,9 @@ colour, or lavender (blue over red and green, red and green alike: the backdrop,
 GIF's dither of both), and joined to the border through pixels like it, is backdrop. It becomes
 clear, or, where it is darker than its row, a neutral shadow as dark. No board colour is lavender:
 green, black, white, grey, gold. What the border reaches is taken out. --holes also takes out a
-wide area of the backdrop's own colour that the board encloses, such as a ring's middle; it is not
-the default, since a board's metal lid mirrors the backdrop in colours close to it. --frame N takes
+wide area of the backdrop's own colour that the board encloses, such as a ring's middle, and the
+shadow round it; it is not the default, since a board's metal lid mirrors the backdrop in colours
+close to it. --frame N takes
 frame N of an animated GIF; --crop trims the clear margin.
 Needs numpy and Pillow, both in the workcenter's venv.
 """
@@ -69,6 +70,15 @@ def key(picture: Image.Image, holes: bool = False) -> Image.Image:
             wide = ~grow(~wide)
         for _ in range(OPEN):
             wide = grow(wide) & seen
+        # Of it, what is like the backdrop by the border's own test, and from there, through pixels
+        # like it, as from the border: the shadow the hole's walls cast is darker than its row, and
+        # lavender still. A silver part that mirrors the backdrop is mostly not like it, and stays.
+        wide &= like
+        while True:
+            grown = grow(wide) & like
+            if (grown == wide).all():
+                break
+            wide = grown
         clear |= wide
 
     # Backdrop as bright as its row is clear; darker, it is the board's shadow, in grey.

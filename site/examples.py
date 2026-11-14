@@ -20,9 +20,10 @@ slug is the README title's first word (`# Herald v0.1: ...` and `# Hush — boar
 - From the board (`*.kicad_pcb` in the version folder): the size, the copper layers, the parts, the
   tracks and the vias, and `board.svg`, the board drawn from the file for the page's explorer. An
   example of several boards, each in a folder of its own, has no explorer.
-- With --pictures, from `docs/`: the board's 3D renders from the top, the bottom and the side (or
-  the assembly's, for an example with no board of its own) with KiCad's backdrop taken out
-  (`site/showcase/key.py`), and its turning render as `spin.webp`, its frames side by side.
+- With --pictures, from `docs/`: the board's 3D renders from the top and the bottom (or the
+  assembly's, for an example with no board of its own) and its card (the assembly's render where
+  there is one), with KiCad's backdrop taken out (`site/showcase/key.py`), in 256 colours; its
+  turning render as `spin.webp`, its frames side by side; and `pictures.json`, what each came from.
 
 The pages and the drawings are committed; the docs tests write them again and compare.
 """
@@ -55,11 +56,15 @@ WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight",
 PICTURES = {
     "top.png": ("board-3d-top.png", "assembly-top.png", "assembly-front.png"),
     "bottom.png": ("board-3d-bottom.png", "assembly-back.png", "assembly-iso-back.png"),
-    "iso.png": ("board-3d-iso.png", "assembly-iso.png"),
     "spin.webp": ("board-spin.gif", "assembly-spin.gif"),
     # The card that names the example on the site: the made thing, where there is more than a board.
     "card.png": ("assembly-iso.png", "board-3d-iso.png"),
 }
+# The widest each picture is written: twice the most a page shows it at. A picture is written in 256
+# colours with its transparency, a fifth of the bytes, and no banding a reader sees on a render.
+WIDTHS = {"top.png": 1100, "bottom.png": 1100, "card.png": 760}
+# Below this opacity a pixel of a picture is written clear: the shadow's faint edge, not the board.
+CLEAR = 8
 
 
 def words(n: int) -> str:
@@ -349,6 +354,20 @@ def outline(root) -> list[list[tuple[float, float]]]:
                 break
         loops.append(loop)
     return loops
+
+
+def openings(path: Path) -> int:
+    """The openings through the board, 25 mm² or more: the loops of its outline inside the largest.
+    A render shows KiCad's backdrop through each of them."""
+    loops = outline(k.parse(path.read_text(encoding="utf-8")))
+    areas = sorted(
+        (
+            abs(sum(x1 * y2 - x2 * y1 for (x1, y1), (x2, y2) in zip(loop, loop[1:] + loop[:1], strict=True))) / 2
+            for loop in loops
+        ),
+        reverse=True,
+    )
+    return sum(1 for a in areas[1:] if a >= 25)
 
 
 def simplify(points: list[tuple[float, float]], tolerance: float) -> list[tuple[float, float]]:
@@ -765,6 +784,11 @@ def example_page(ex: Example, board: Board | None, pictures: set[str]) -> str:
             <div class="tt-frames" style="aspect-ratio:{turn["width"]} / {turn["height"]};background-image:url({folder}spin.webp)"></div>
           </div>
           <p class="tt-hint">Drag to turn the board. KiCad's render of it, {turn["frames"]} views, {round(360 / turn["frames"])} degrees apart.</p>"""
+    elif "card.png" in pictures:
+        # No turning render that shows the whole of it: the card's picture stands in its place.
+        w, h = pictures_size(ex, "card.png")
+        spin = f"""
+          <figure class="lead"><img src="{folder}card.png" width="{w}" height="{h}" alt="{html.escape(ex.name)} in 3D"><figcaption>KiCad's render of it.</figcaption></figure>"""
     stills = ""
     if {"top.png", "bottom.png"} <= pictures:
         figures = []
@@ -957,11 +981,11 @@ def pictures_size(ex: Example, name: str) -> tuple[int, int]:
 def index_page(found: list[tuple[Example, Board | None]]) -> str:
     cards = []
     for ex, board in found:
-        picture = OUT / ex.slug / "iso.png"
+        picture = OUT / ex.slug / "card.png"
         shot = ""
         if picture.is_file():
-            w, h = pictures_size(ex, "iso.png")
-            shot = f'<div class="shot3d"><img src="examples/{ex.slug}/iso.png" width="{w}" height="{h}" loading="lazy" alt="{html.escape(ex.name)} in 3D"></div>'
+            w, h = pictures_size(ex, "card.png")
+            shot = f'<div class="shot3d"><img src="examples/{ex.slug}/card.png" width="{w}" height="{h}" loading="lazy" alt="{html.escape(ex.name)} in 3D"></div>'
         spec = " · ".join(html.escape(s) for s in stats(ex, board)[:4])
         cards.append(
             f'<a class="proj" href="examples/{ex.slug}.html">{shot}<div><h3>{html.escape(ex.name)}</h3>'
@@ -992,35 +1016,68 @@ def index_page(found: list[tuple[Example, Board | None]]) -> str:
 # ---------------------------------------------------------------- pictures
 
 
+def few_colours(picture):
+    """`picture` in 255 colours and 1 clear, every pixel fainter than CLEAR on the clear one: a palette
+    alone puts the backdrop on the nearest shadow colour, and a grey box shows round the board."""
+    from PIL import Image
+
+    clear = picture.getchannel("A").point(lambda a: 255 if a < CLEAR else 0)
+    picture = picture.quantize(colors=255, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.FLOYDSTEINBERG)
+    palette = picture.getpalette(rawmode="RGBA")
+    palette += [0] * (256 * 4 - len(palette))
+    palette[255 * 4 : 256 * 4] = [0, 0, 0, 0]
+    picture.putpalette(palette, rawmode="RGBA")
+    picture.paste(255, mask=clear)
+    return picture
+
+
 def write_pictures(ex: Example) -> None:
     sys.path.insert(0, str(SITE / "showcase"))
     import key
     from PIL import Image
 
-    def keyed(picture: Image.Image, holes: bool) -> Image.Image:
-        """The picture with KiCad's backdrop taken out, or as it is when its corners are clear. An
-        assembly's render (a ring round a finger) has the backdrop in its middle too."""
+    # A board with openings through it (Hush's ring) shows the backdrop in its middle, as an
+    # assembly's render does (a ring round a finger); any other board's render keeps what is enclosed,
+    # a module's lid as pale as the backdrop.
+    through = ex.board is not None and openings(ex.board) > 0
+
+    def keyed(picture: Image.Image, source: Path) -> Image.Image:
+        """The picture with KiCad's backdrop taken out, or as it is when its corners are clear."""
         rgba = picture.convert("RGBA")
         w, h = rgba.size
         if all(rgba.getpixel(c)[3] == 0 for c in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1))):
             return rgba
-        return key.key(picture, holes=holes)
+        return key.key(picture, holes=through or source.name.startswith("assembly"))
+
+    def turning(source: Path) -> list[Image.Image] | None:
+        """The turning render's frames, or None when the camera cut the thing off: a frame where it
+        runs from the top edge to the bottom or from side to side is not the whole of it."""
+        gif = Image.open(source)
+        frames = []
+        for i in range(gif.n_frames):
+            gif.seek(i)
+            frame = keyed(gif, source)
+            box = frame.getchannel("A").point(lambda a: 255 if a > 128 else 0).getbbox()
+            if box and (box[1] == 0 and box[3] == frame.height or box[0] == 0 and box[2] == frame.width):
+                print(f"site/examples/{ex.slug}/spin.webp: left out, {source.name} cuts it off at frame {i}")
+                return None
+            frames.append(frame)
+        return frames
 
     docs = ex.folder / "docs"
     folder = OUT / ex.slug
     folder.mkdir(parents=True, exist_ok=True)
     record: dict = {"sources": {}}
     for name, sources in PICTURES.items():
+        (folder / name).unlink(missing_ok=True)
         source = next((docs / s for s in sources if (docs / s).is_file()), None)
         if source is None:
             continue
-        record["sources"][name] = source.name
         if name == "spin.webp":
-            gif = Image.open(source)
-            frames = []
-            for i in range(gif.n_frames):
-                gif.seek(i)
-                frames.append(keyed(gif, source.name.startswith("assembly")))
+            frames = turning(source)
+            if frames is None:
+                continue
+            record["sources"][name] = source.name
             w, h = frames[0].size
             rows = math.ceil(len(frames) / SPIN_COLUMNS)
             sheet = Image.new("RGBA", (w * SPIN_COLUMNS, h * rows), (0, 0, 0, 0))
@@ -1032,11 +1089,14 @@ def write_pictures(ex: Example) -> None:
                 f"site/examples/{ex.slug}/{name}: {len(frames)} frames of {w} x {h}, {(folder / name).stat().st_size // 1024} KB"
             )
             continue
-        picture = keyed(Image.open(source), source.name.startswith("assembly"))
+        record["sources"][name] = source.name
+        picture = keyed(Image.open(source), source)
         box = picture.getchannel("A").getbbox()
         picture = picture.crop(box) if box else picture
-        if picture.width > 1200:
-            picture = picture.resize((1200, round(picture.height * 1200 / picture.width)), Image.LANCZOS)
+        widest = WIDTHS[name]
+        if picture.width > widest:
+            picture = picture.resize((widest, round(picture.height * widest / picture.width)), Image.LANCZOS)
+        picture = few_colours(picture)
         picture.save(folder / name, optimize=True)
         print(f"site/examples/{ex.slug}/{name}: {picture.width} x {picture.height}, from {source.name}")
     (folder / "pictures.json").write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
