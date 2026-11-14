@@ -5,8 +5,10 @@
 
 It reads examples/fire-alarm-communicator/v0.1/design.py (the outline, every pad, every part and
 where it sits, the silkscreen's words and mark) and herald.kicad_pcb (the routed tracks and vias),
-and writes the drawing into site/index.html between the `face:begin` and `face:end` comments. Every
-coordinate is the board's own, in mm: the drawing is the board, not a picture of it.
+and writes the drawing into site/index.html between the `face:begin` and `face:end` comments, and
+into site/og.html, the page the Open Graph image is a capture of, without the labels' data. Every
+coordinate is the board's own, in mm: the drawing is the board, not a picture of it. Draw og.png
+again after it (site/README.md).
 
 Beside the drawing it writes what Via holds on each part, as JSON the page labels the parts from:
 the value, footprint and nets from the design file; the description and datasheet from the KiCad
@@ -182,6 +184,20 @@ def groups_of(order: list[str], section: dict[str, str]) -> list[dict]:
     return out
 
 
+def write_between(page: Path, block: str) -> bool:
+    """Put `block` in `page` between its `face:begin` and `face:end` comments; False when it has no pair."""
+    new, n = re.subn(
+        r"(<!-- face:begin -->).*?(\n[ \t]*<!-- face:end -->)",
+        lambda m: m.group(1) + "\n" + block + m.group(2),
+        page.read_text(encoding="utf-8"),
+        flags=re.S,
+    )
+    if n != 1:
+        return False
+    page.write_text(new, encoding="utf-8")
+    return True
+
+
 def main() -> int:
     if not REPORT.is_file():
         print(f"{REPORT.relative_to(ROOT)} is missing: run the gates on the example first", file=sys.stderr)
@@ -319,20 +335,14 @@ def main() -> int:
         data[ref] = entry
     payload = {"groups": groups_of(list(parts), section), "parts": data}
     blob = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
-    drawing = "\n".join(out) + f'\n<script type="application/json" id="herald-parts">{blob}</script>'
+    svg = "\n".join(out)
+    drawing = svg + f'\n<script type="application/json" id="herald-parts">{blob}</script>'
 
-    page = ROOT / "site" / "index.html"
-    text = page.read_text(encoding="utf-8")
-    new, n = re.subn(
-        r"(<!-- face:begin -->).*?(\n[ \t]*<!-- face:end -->)",
-        lambda m: m.group(1) + "\n" + drawing + m.group(2),
-        text,
-        flags=re.S,
-    )
-    if n != 1:
-        print("site/index.html has no face:begin / face:end pair", file=sys.stderr)
-        return 1
-    page.write_text(new, encoding="utf-8")
+    # The page, and the page the Open Graph image is a capture of: the drawing alone, no labels.
+    for page, block in ((ROOT / "site" / "index.html", drawing), (ROOT / "site" / "og.html", svg)):
+        if not write_between(page, block):
+            print(f"{page.relative_to(ROOT)} has no face:begin / face:end pair", file=sys.stderr)
+            return 1
     counted = {k: sum(1 for e in data.values() if k in e) for k in ("ds", "dp", "r", "w", "c", "s")}
     print(
         f"site/index.html: the face drawn, {len(drawing) // 1024} KB, {len(copper['segments'])} tracks, "

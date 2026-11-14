@@ -64,6 +64,38 @@ its `scene:` lines and the close-up as an added scene, with the GIFs at
 0.95 and 0.9 on the base and 0.95 on the display board (0.95, 0.85 and
 0.9 by hand). `make verify`: 708 passed, 64 skipped.
 
+## 2026-11-14 — The redrawn site meets main: Herald, the 6 boards, a page for each
+
+The owner liked the redrawn site on its branch and asked for the boards and the Herald section
+from the current site, below the agents' strip. `main` had moved 35 commits, so I merged it into the
+branch. The page, the stylesheet, the build, the tests and 4 documents conflicted. I kept main's
+Herald section, its design, architecture and getting-started sections, its footer and the owner's
+headline, and wrote the redrawn sections in the website's rules of `docs/STYLE.md`. `site/examples.py`
+now writes a page for each of the 6 examples. It reads 2 README shapes, every version's steps, a
+gates report and boards of 6 to 10 layers. Hush's ring outline was a circle, which the reader did not
+know, and Basalt's planes made its drawing 4.2 MB until large boards' pours were simplified. Taking
+the backdrop out of a ring's middle also took it out of a metal lid that mirrors it, so it runs on
+assembly renders, and on a board whose outline has openings through it, only. The knob drawing went:
+it showed Rosetta v0.1, and the site shows v0.2.
+
+Then the pictures. Each is in 256 colours, at most twice as wide as a page shows it: a card is 23 to
+78 KB, from up to 944 KB. A palette alone put the clear backdrop on the nearest shadow colour and drew
+a grey box round 2 cards, so clear pixels keep a palette slot of their own. Hush's ring showed KiCad's
+lavender through its 3 openings until the backdrop a board's openings enclose, and the shadow round
+it, came out. Signet's turning render cuts the ring off at the top and the bottom, so its page leads
+with the ring at an angle instead.
+
+The owner asked for Herald's labels 4 at a time with 1 swapped every few seconds, a label too tall for
+its place to end in an ellipsis, the design-as-code headline "How a Python File Becomes a Board", and
+a hero paragraph in the owner's words. A side's 2 labels now always fit beside the board, which never
+moves. Each label's number had set its order beside the board as well as under it, so label 1 stood
+on top whatever its part's place: the leaders crossed in 19 of 30 samples, and cross in none of 80.
+
+Evidence: `tests/test_docs.py` 19 passed, 2 skipped (KiCad and the chip engines). `tests/` 463
+passed, 1 failed, 307 skipped; the failure, `test_fab` without KiCad's symbols, fails the same on
+`main` (461 passed). Basalt's drawing is 2,271 KB, 388 KB compressed. In Chromium, all 127 labels,
+brought in 1 by 1, fit beside the board at 1100 and 1280 px, the stage at 373 and 451 px throughout.
+
 ## 2026-11-12 — Last Hit v0.17's mistakes, and 2 checks they asked for
 
 Last Hit v0.17 answered a collaborator's review: a new protection switch,
@@ -362,6 +394,23 @@ branch's tip equal to its pull request's head, 43 of 43; Hush's branch
 tree `8cf093a` equal to `main`'s at `e4e0364`; `workcenter gates
 examples/fire-alarm-communicator/v0.1` GREEN with 7 warnings, the run the
 page shows.
+## 2026-11-12 — The website, redrawn: drawings, the agents, a page per example
+
+The owner pointed at the text-to-cad site and asked for ours to look better, on a branch. The
+home page opens with the wordmark built as a board is, then the install line and the 21 agents.
+The gates are 6 drawings of boards that a gate stopped. A test holds each value they mark to
+its board's files or to a run on the page. Rosetta has its own page, written by
+`site/examples.py` from its README, a new TIMELINE.md and its board. The explorer first drew only
+the outline and the vias: its buttons and the drawing's layers shared 1 attribute. On a phone the
+hero was wider than the screen: the install line set its column's width. `build.sh` looked for
+the example pages in the folder it ran from. Rosetta's outline measures 159.4 x 92 mm; 160 x 92 is
+its polygon before the corners are rounded. This machine has no KiCad, so the pages' runs did not
+run again here.
+
+Evidence: `tests/test_docs.py` 17 passed, 1 skipped (it needs kicad-cli and ngspice). `tests/`
+295 passed, 1 failed, 234 skipped; the failure, `test_fab` without KiCad's symbols, fails the same
+on `main`. The home page is 7,947 px tall at 1440 px wide, where it was 10,865.
+
 ## 2026-11-11 — Another example: a microATX board for Threadripper
 
 The owner asked for a compact, good-looking example of what the

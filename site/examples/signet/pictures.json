@@ -1,0 +1,7 @@
+{
+ "sources": {
+  "top.png": "assembly-top.png",
+  "bottom.png": "assembly-iso-back.png",
+  "card.png": "assembly-iso.png"
+ }
+}

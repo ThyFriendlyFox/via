@@ -32,16 +32,16 @@ if [ -e "$out" ] && [ -n "$(ls -A "$out" 2>/dev/null)" ]; then
 fi
 
 here=$(dirname -- "$0")
-mkdir -p "$out/fonts" "$out/showcase/datasheets" "$out/vendor"
+mkdir -p "$out/fonts" "$out/showcase/datasheets" "$out/vendor" "$out/examples"
 
 # What the site serves: the examples' pictures, Herald's 3D model and its datasheets' first pages,
-# Motion, model-viewer and the meshopt decoder with their licenses. og.html, media/ (the README's
-# pictures), the scripts that draw, vercel.json and each README.md stay in the repository.
-for file in site.css site.js effects.js favicon.svg favicon-32.png apple-touch-icon.png og.png logo.svg \
-  fonts/inter-latin-wght-normal.woff2 fonts/LICENSE \
-  showcase/herald-top.png showcase/herald-layers.png showcase/herald.png showcase/herald-schematic.png \
-  showcase/herald.glb \
-  showcase/hush.png showcase/signet.png showcase/rosetta-iso.png showcase/wyvern-iso.png showcase/agentcast.png \
+# the agents' marks, Motion, model-viewer and the meshopt decoder with their licenses. og.html,
+# media/ (the README's pictures), the scripts that draw the pictures and write the example pages,
+# vercel.json and each README.md stay in the repository.
+for file in site.css site.js effects.js example.js agents.svg favicon.svg favicon-32.png apple-touch-icon.png \
+  og.png logo.svg fonts/inter-latin-wght-normal.woff2 fonts/LICENSE \
+  showcase/herald-top.png showcase/herald-layers.png showcase/herald-schematic.png showcase/herald.glb \
+  showcase/agentcast.png \
   vendor/motion-14.6.0.js vendor/MOTION-LICENSE.md vendor/model-viewer-4.4.0.min.js vendor/MODEL-VIEWER-LICENSE \
   vendor/meshopt_decoder-1.2.0.js vendor/MESHOPTIMIZER-LICENSE.md; do
   cp "$here/$file" "$out/$file"
@@ -54,9 +54,23 @@ cp "$here"/showcase/datasheets/*.png "$out/showcase/datasheets/"
 css=$(cksum <"$here/site.css" | cut -d ' ' -f 1)
 js=$(cksum <"$here/site.js" | cut -d ' ' -f 1)
 fx=$(cksum <"$here/effects.js" | cut -d ' ' -f 1)
-version="s|href=\"site.css\"|href=\"site.css?v=$css\"|; s|src=\"site.js\"|src=\"site.js?v=$js\"|; s|src=\"effects.js\"|src=\"effects.js?v=$fx\"|"
+ex=$(cksum <"$here/example.js" | cut -d ' ' -f 1)
+# An example's page names them from its folder, as ../site.css.
+up='\(\(\.\./\)*\)'
+version="s|href=\"${up}site.css\"|href=\"\1site.css?v=$css\"|; s|src=\"${up}site.js\"|src=\"\1site.js?v=$js\"|"
+version="$version; s|src=\"${up}effects.js\"|src=\"\1effects.js?v=$fx\"|; s|src=\"${up}example.js\"|src=\"\1example.js?v=$ex\"|"
 
-for page in index.html 404.html; do
+# Each example's page and the files it shows, as site/examples.py writes them.
+for folder in "$here"/examples/*/; do
+  [ -d "$folder" ] || continue
+  name=$(basename -- "$folder")
+  mkdir -p "$out/examples/$name"
+  cp "$folder"* "$out/examples/$name/"
+done
+
+for path in "$here/index.html" "$here/404.html" "$here/examples.html" "$here"/examples/*.html; do
+  [ -f "$path" ] || continue
+  page=${path#"$here"/}
   if [ -n "$origin" ]; then
     sed "s|%ORIGIN%|$origin|g; $version" "$here/$page" >"$out/$page"
   else

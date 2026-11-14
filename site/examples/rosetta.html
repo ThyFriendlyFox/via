@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Rosetta, designed with Via</title>
+    <meta name="description" content="Rosetta v0.2: One controller for a PS4, a PS5, an Xbox, a Switch, or anything over Bluetooth. A 5-position knob where an Xbox 360 pad has its guide button picks the console. The controller drops off the bus while the knob turns and comes back as the chosen console&#x27;s own controller.">
+    <link rel="canonical" href="%ORIGIN%/examples/rosetta">
+    <link rel="icon" href="../favicon-32.png" sizes="32x32" type="image/png">
+    <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="../apple-touch-icon.png">
+    <link rel="preload" href="../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="../site.css">
+    <meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#1b1917" media="(prefers-color-scheme: dark)">
+    <!-- Before first paint: the theme the address asks for, else the stored one, else the system's;
+         and `motion` unless the reader asked for reduced motion or the page is a capture. -->
+    <script>
+      (() => {
+        const root = document.documentElement;
+        const asked = new URLSearchParams(location.search);
+        let stored = asked.get("theme");
+        try {
+          stored = stored || localStorage.getItem("theme");
+        } catch {}
+        const dark = stored ? stored === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+        root.classList.toggle("dark", dark);
+        if (stored) for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.content = dark ? "#1b1917" : "#fbfaf7";
+        if (asked.get("shot")) root.dataset.shot = asked.get("shot");
+        if (!asked.get("shot") && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          root.classList.add("motion");
+          setTimeout(() => root.dataset.motionReady || root.classList.remove("motion"), 3000);
+        }
+      })();
+    </script>
+    <script src="../vendor/motion-14.6.0.js" defer></script>
+    <script src="../site.js" defer></script>
+    <script src="../effects.js" defer></script>
+    <script src="../example.js" defer></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <div class="progress" data-progress aria-hidden="true"></div>
+      <div class="wrap">
+        <a class="brand" href="../" aria-label="Via, home">
+          <svg class="logo" data-logo viewBox="283 202 394 136" fill="currentColor" stroke="currentColor" stroke-width="12" stroke-linejoin="round" aria-hidden="true"><path class="lg-letter" d="m378.4252 269.28348-44.566925-60.472458h-44.566925l89.13385 120.9449z"/><path class="lg-pad" d="M389.88452 208.81102h39.46457v33.10237h-39.46457z"/><path class="lg-letter" d="M464.09186 210.2441h39.46457v120.94487h-39.46457z"/><path class="lg-letter" d="m581.5748 269.28348 44.566895 60.472443h44.566956l-89.13385-120.9449z"/><path class="lg-pad" d="M570.1155 329.75592h-39.46454v-33.102386h39.46454z"/><g fill="none"><path class="lg-trace" d="M409.6168 241.91339v57.606293h-31.181091"/><path class="lg-trace" d="M503.55643 270.71652h46.834625v25.952759"/><path class="lg-trace" d="M570.1155 313.2047h18.233643v-13.669281h15.498657"/><path class="lg-trace" d="M429.3491 225.3622h17.37146v45.354324h17.368683"/></g></svg>
+        </a>
+        <nav class="site-nav" aria-label="Site">
+          <ul>
+            <li><a href="../index.html#herald">Example</a></li>
+            <li><a href="../examples.html">Boards</a></li>
+            <li><a href="../index.html#gates">Checks</a></li>
+            <li><a href="../index.html#run">Get started</a></li>
+          </ul>
+        </nav>
+        <div class="header-end">
+          <button class="icon-btn" type="button" data-theme-toggle aria-pressed="false" aria-label="Dark theme">
+            <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.2 14.6A8.4 8.4 0 1 1 9.4 3.8a6.6 6.6 0 0 0 10.8 10.8Z"/></svg>
+            <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>
+          </button>
+          <a class="gh-pill" href="https://github.com/ThyFriendlyFox/via" aria-label="Via on GitHub">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>
+            <span>GitHub</span>
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <main id="main" tabindex="-1">
+      <section class="ex-hero" aria-labelledby="ex-title">
+        <div class="wrap">
+          <div data-reveal data-stagger>
+            <p class="eyebrow"><a class="crumb" href="../examples.html">Examples</a> · <code>examples/universal-controller/v0.2</code></p>
+            <h1 class="display" id="ex-title">Rosetta</h1>
+            <p class="ex-tagline">A universal game controller, as a controller&#x27;s own main board</p>
+            <p class="lede">One controller for a PS4, a PS5, an Xbox, a Switch, or anything over Bluetooth. A 5-position knob where an Xbox 360 pad has its guide button picks the console. The controller drops off the bus while the knob turns and comes back as the chosen console's own controller.</p>
+            <ul class="chips" aria-label="The board"><li>v0.2</li><li>145.5 × 82 mm</li><li>6 layers</li><li>135 parts</li><li>2,141 track segments</li><li>220 vias</li></ul>
+          </div>
+          <div class="turntable" data-turntable data-frames="36" data-columns="6" tabindex="0" role="img" aria-label="Rosetta in 3D, turning; drag or use the arrow keys to turn it">
+            <div class="tt-frames" style="aspect-ratio:616 / 368;background-image:url(rosetta/spin.webp)"></div>
+          </div>
+          <p class="tt-hint">Drag to turn the board. KiCad's render of it, 36 views, 10 degrees apart.</p>
+          <div class="stills">
+            <figure><img src="rosetta/top.png" width="1033" height="639" loading="lazy" alt="Rosetta, the front"><figcaption>The front</figcaption></figure>
+            <figure><img src="rosetta/bottom.png" width="1100" height="689" loading="lazy" alt="Rosetta, the back"><figcaption>The back</figcaption></figure>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="hard" aria-labelledby="hard-title">
+        <div class="wrap">
+          <div class="head" data-reveal data-stagger>
+            <p class="eyebrow">The hard parts</p>
+            <h2 class="title" id="hard-title">What is hard about it, and where each part lives</h2>
+          </div>
+          <div class="hard" data-reveal data-stagger><div><h3>Thumbsticks on the board, with no drift</h3><p>SL and SR take ALPS RKJXV122400R sticks, the stick of PlayStation and Xbox pads, or a Hall-effect drop-in in the same holes. KiCad has no footprint for it: <code>footprints/make_footprints.py</code> writes one from the catalog's mounting-hole drawing (6 axis pins at 2.5 mm, 4 frame legs, 2 locating holes, 4 push-switch pins), and the drawing's "prohibited wiring area" under each stick is a keep-out on the front. Each axis's 3 pins are the rails and the output: a pot is a divider, a Hall stick drives its output.</p></div><div><h3>Triggers that read a magnet</h3><p>U15 and U16 (DRV5055A1, ratiometric linear Hall sensors) sit on the shoulder horns under each trigger's magnet. Their output is a fraction of +3V3, read by the ADC against +3V3.</p></div><div><h3>1 knob, 5 consoles</h3><p>SW1, an NKK NR01 1-pole 5-position rotary switch, taps a ladder of 6 x 1k (R40-R45). The ADC reads 1 number: position k at (6 - k)/6 of full scale; between detents R46 (100k) pulls the wiper to ~0. 6 decks hold every position inside its window at every corner (<code>sim/</code>).</p></div><div><h3>A PS4, a PS5 and an Xbox talk only to a licensed controller</h3><p>J2 is a USB host port for a licensed donor. The RP2040 runs a second USB port in software (PIO-USB, GPIO16 and GPIO17) and relays the console's challenge to the donor. U13 switches the donor's 5 V.</p></div><div><h3>Bluetooth Classic and BLE</h3><p>U3, an ESP32-WROOM-32E on the RP2040's UART, on the back. Its antenna hangs past the dip between the shoulder horns, where the footprint's keep-out lies in the air. The RP2040 holds its EN and IO0, so 1 USB cable updates both chips.</p></div><div><h3>Rumble</h3><p>2 motors on J7 and J8 at the grips, as the 360's are, each on 1 bridge of U6 (DRV8833), whose current is limited to 400 mA by R50 and R51.</p></div><div><h3>Gyro aim</h3><p>U5, an LSM6DSL 6-axis IMU.</p></div><div><h3>A light that names the console</h3><p>5 RGB LEDs (D2-D6) round the knob, fed from VSYS, their data lifted to that rail by U14 (74AHCT1G125).</p></div><div><h3>16 buttons and 2 paddles</h3><p>2 74HC165 shift registers (U7, U8) on 3 pins; the bumpers SW10 and SW11 are right-angle switches whose plungers stand out of the horns' top edge.</p></div></div>
+        </div>
+      </section>
+
+      <section class="section band" id="board" aria-labelledby="board-title">
+        <div class="wrap">
+          <div class="head" data-reveal data-stagger>
+            <p class="eyebrow">Explore the board</p>
+            <h2 class="title" id="board-title">Every track and part of the routed board, drawn from its file</h2>
+            <p class="lede">The board as <code>examples/universal-controller/v0.2/rosetta.kicad_pcb</code> holds it: six copper layers, 2,141 track segments, 220 vias and 102 nets. Point at a pad to see its part, and click a track, a via or a pad to follow its connection across the board.</p>
+          </div>
+          <div class="explorer" data-explorer data-src="rosetta/board.svg">
+            <div class="ex-tools" role="toolbar" aria-label="The drawing">
+              <div class="ex-layers" aria-label="Layers">
+                <button type="button" aria-pressed="true" data-layer="F.Cu"><i></i>Front</button>
+                <button type="button" aria-pressed="true" data-layer="In1.Cu"><i></i>In1</button>
+                <button type="button" aria-pressed="true" data-layer="In2.Cu"><i></i>In2</button>
+                <button type="button" aria-pressed="true" data-layer="In3.Cu"><i></i>In3</button>
+                <button type="button" aria-pressed="true" data-layer="In4.Cu"><i></i>In4</button>
+                <button type="button" aria-pressed="true" data-layer="B.Cu"><i></i>Back</button>
+                <button type="button" aria-pressed="false" data-layer="refs"><i></i>Names</button>
+              </div>
+              <div class="ex-zoom">
+                <button type="button" data-zoom="out" aria-label="Zoom out">&#8722;</button>
+                <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
+                <button type="button" data-zoom="home">Whole board</button>
+              </div>
+            </div>
+            <div class="ex-view" data-view></div>
+            <p class="ex-info" data-info aria-live="polite">Drag to move. Pinch, or hold Ctrl and scroll, to zoom.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="timeline" aria-labelledby="timeline-title">
+        <div class="wrap">
+          <div class="head" data-reveal data-stagger>
+            <p class="eyebrow">How it was built</p>
+            <h2 class="title" id="timeline-title">Every step of the design, with what it changed</h2>
+            <p class="lede">Each step as <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/universal-controller/v0.1/TIMELINE.md">v0.1/TIMELINE.md</a> records it, oldest first.</p>
+          </div>
+          <ol class="timeline">
+            <li data-reveal><div class="tl-meta"><time datetime="2026-11-11">2026-11-11</time><span class="stage">v0.1</span><span class="step">Idea</span></div><div class="tl-body"><h3>1 controller, 5 consoles, a knob that picks</h3><p>The owner found the site's examples poor and asked for a prototype in the manner of Agentcast and Last Hit: a universal controller with a switch that picks a PS4, a PS5, an Xbox, a Switch or Bluetooth, with ideas that are hard to do.</p></div></li>
+            <li data-reveal><div class="tl-meta"><time datetime="2026-11-11">2026-11-11</time><span class="stage">v0.1</span><span class="step">Design</span></div><div class="tl-body"><h3>The board is a Python file</h3><p><code>design.py</code> names 140 parts and places them in a controller's outline, on 4 layers. The knob is 1 analog reading: SW1 taps a ladder of 6 x 1k, and position k reads (6 - k)/6 of full scale. A USB host port relays a console's signature to a licensed donor through a second USB port the RP2040 runs in software.</p>
+<p class="evidence">Evidence: <code>design.py</code>; the README's table "What is hard about it".</p></div></li>
+            <li data-reveal><div class="tl-meta"><time datetime="2026-11-11">2026-11-11</time><span class="stage">v0.1</span><span class="step">Simulate</span></div><div class="tl-body"><h3>The first deck found a sixth position</h3><p>The knob's first deck held a 1 M pull-down on the wiper. With the ADC's input leakage it read 1 V between detents: a position the decoder would act on. The ladder is 1k and the pull-down 100k now, and 6 decks hold each position inside its window at every corner.</p>
+<p class="evidence">Evidence: <code>sim/mode_between.cir</code>, <code>sim/mode_p1.cir</code> to <code>sim/mode_p5.cir</code>, <code>sim/corners.json</code>.</p></div></li>
+            <li data-reveal><div class="tl-meta"><time datetime="2026-11-11">2026-11-11</time><span class="stage">v0.1</span><span class="step">Place</span></div><div class="tl-body"><h3>An antenna turned into the board</h3><p>The ESP32 module went on the back face at 180 degrees, to point its antenna out over the notch between the grips. On the back face the generator mirrors the footprint first, so 180 degrees pointed the antenna into the board. The DRC listed 41 courtyard overlaps against the antenna's keep-out and 8 through pads inside it. At 0 degrees the antenna hangs out as intended.</p>
+<p class="evidence">Evidence: mistake M126; process P19.</p></div></li>
+            <li data-reveal><div class="tl-meta"><time datetime="2026-11-11">2026-11-11</time><span class="stage">v0.1</span><span class="step">Tooling</span></div><div class="tl-body"><h3>The Docker image could not route</h3><p>The machine had no KiCad, so the workcenter ran in the repository's Docker image. The image could not route: Debian's headless Java has no X11 library, and FreeRouting stops without it. <code>install.sh</code> now adds the full Java runtime where the library is missing.</p>
+<p class="evidence">Evidence: <code>install.sh</code>; the changelog's Fixed entry.</p></div></li>
+            <li data-reveal><div class="tl-meta"><time datetime="2026-11-11">2026-11-11</time><span class="stage">v0.1</span><span class="step">Route</span></div><div class="tl-body"><h3>60 passes and no session</h3><p>The first route ran FreeRouting with 60 passes, the number the skill gives for small boards. It ran for the workcenter's 15-minute limit and was killed, and a killed run writes no session. 12 passes finished in 13 minutes; 20 passes in 12 minutes from a better placement.</p>
+<p class="evidence">Evidence: mistake M128; process P4.</p></div></li>
+            <li data-reveal><div class="tl-meta"><time datetime="2026-11-11">2026-11-11</time><span class="stage">v0.1</span><span class="step">Schematic</span></div><div class="tl-body"><h3>The wired sheet's ERC found 3 faults</h3><p>A label-only schematic passed the checks that ran, and the DRC does not see a net with 1 pin. The first wired sheet's ERC did: each stick's click was on a net named <code>L3</code> or <code>R3</code> while the shift registers read <code>BTN_L3</code> and <code>BTN_R3</code>, the DRV8833's sense pins were tied straight to a rail, and so were the IMU's strap pins. The fixes are <code>BTN_L3</code> and <code>BTN_R3</code>, R50 and R51 (0.5 ohm, a 400 mA limit on each trigger motor), and R52. The board was routed again.</p>
+<p class="evidence">Evidence: mistake M127; process P24.</p></div></li>
+            <li data-reveal><div class="tl-meta"><time datetime="2026-11-11">2026-11-11</time><span class="stage">v0.1</span><span class="step">Route</span></div><div class="tl-body"><h3>Lanes for the RP2040</h3><p>The RP2040's pins had no lanes until its capacitors moved to its corners and its vias shrank to 0.45 mm. From there FreeRouting closed every connection in 1 run of 4. The IMU's supply pins stayed apart in 3 runs; that link is drawn by hand.</p>
+<p class="evidence">Evidence: <code>rosetta.kicad_pcb</code>.</p></div></li>
+            <li data-reveal><div class="tl-meta"><time datetime="2026-11-11">2026-11-11</time><span class="stage">v0.1</span><span class="step">Gates</span></div><div class="tl-body"><h3>GREEN with 5 warnings</h3><p>The 5 warnings are the silkscreen outlines of the 2 USB-C receptacles and the ESP32 module, which hang over the board's edge on purpose. The firmware's host tests pass: <code>make -C firmware test</code>.</p>
+<div class="run">
+<pre data-run="example"><span class="prompt">$ </span><span class="cmd">workcenter gates examples/universal-controller/v0.1</span>
+<span class="out">PASS   erc        0 errors, 0 warnings  [0.64s]
+PASS   drc        0 errors, 5 warnings (0 unconnected, 0 parity)  [1.37s]
+       - warning: silk_edge_clearance: Silkscreen clipped by board edge
+       - warning: silk_edge_clearance: Silkscreen clipped by board edge
+       - warning: silk_edge_clearance: Silkscreen clipped by board edge
+       - warning: silk_edge_clearance: Silkscreen clipped by board edge
+       - warning: silk_edge_clearance: Silkscreen clipped by board edge
+PASS   sim        6 decks, 370 corner runs, 0 failures  [1.32s]
+PASS   export     4/4 outputs, 24 gerber files  [2.07s]</span>
+<span class="verdict">GREEN with 5 warnings: rosetta  report examples/universal-controller/v0.1/build/gates.json</span></pre>
+</div></div></li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="section band" id="open" aria-labelledby="open-title">
+        <div class="wrap">
+          <div class="head" data-reveal data-stagger>
+            <p class="eyebrow">What is open</p>
+            <h2 class="title" id="open-title">What is still to be done on this board</h2>
+          </div>
+          <ul class="open" data-reveal data-stagger><li><b>The stick's switch pins.</b> The drawing names the push switch's 4 holes a to d but not which pairs are joined inside. The board uses a for the click and d for GND, which is right if a-b and c-d, or a-c and b-d, are the joined pairs, and wrong if a-d are. The formal specification ALPS sends on request settles it.</li><li><b>The triggers' magnets and pivots</b> are not designed: the shell holds them. Each DRV5055 needs its magnet's field across the trigger's travel inside its 21 mT range (A1).</li><li>Everything v0.1 lists as open: the firmware beyond the knob's decoder, the auth relay against a real console, the regulator's dropout at the end of the cell.</li></ul>
+          <div class="actions">
+            <a class="btn btn-primary" href="https://github.com/ThyFriendlyFox/via/tree/main/examples/universal-controller/v0.2"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>Browse the project's files</a>
+            <a class="btn btn-fill" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/universal-controller/v0.2/README.md">Read its README</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap">
+        <div class="row">
+          <p class="brand"><a href="../" aria-label="Via, home"><svg class="logo" viewBox="283 202 394 136" fill="currentColor" stroke="currentColor" stroke-width="12" stroke-linejoin="round" aria-hidden="true"><path class="lg-letter" d="m378.4252 269.28348-44.566925-60.472458h-44.566925l89.13385 120.9449z"/><path class="lg-pad" d="M389.88452 208.81102h39.46457v33.10237h-39.46457z"/><path class="lg-letter" d="M464.09186 210.2441h39.46457v120.94487h-39.46457z"/><path class="lg-letter" d="m581.5748 269.28348 44.566895 60.472443h44.566956l-89.13385-120.9449z"/><path class="lg-pad" d="M570.1155 329.75592h-39.46454v-33.102386h39.46454z"/><g fill="none"><path class="lg-trace" d="M409.6168 241.91339v57.606293h-31.181091"/><path class="lg-trace" d="M503.55643 270.71652h46.834625v25.952759"/><path class="lg-trace" d="M570.1155 313.2047h18.233643v-13.669281h15.498657"/><path class="lg-trace" d="M429.3491 225.3622h17.37146v45.354324h17.368683"/></g></svg></a></p>
+          <nav aria-label="Footer">
+            <ul>
+              <li><a href="https://github.com/ThyFriendlyFox/via">GitHub</a></li>
+              <li><a href="https://github.com/ThyFriendlyFox/via/blob/main/WORKCENTER.md">Contract</a></li>
+              <li><a href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/STATUS.md">Status</a></li>
+              <li><a href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/ROADMAP.md">Roadmap</a></li>
+              <li><a href="https://github.com/ThyFriendlyFox/via/blob/main/LICENSE">MIT License</a></li>
+            </ul>
+          </nav>
+        </div>
+        <p class="small">Via is built under the MIT License.</p>
+      </div>
+    </footer>
+
+  </body>
+</html>

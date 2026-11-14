@@ -283,18 +283,19 @@ def masked(line: str) -> str:
     reason="kicad-cli and ngspice run the gates the documents show",
 )
 def test_every_run_a_document_shows_is_what_the_command_prints(tmp_path):
-    """The README and the site show runs on fixture boards, on the example project and on the fixture
-    processor. A gate's summary changes when the gate does: 46 corner runs were 18. A run typed once
-    and not run again goes stale. The chip's run is made where the chip engines are installed: they
-    install on request, and it takes 4 minutes."""
+    """The README, the site and its example pages show runs on fixture boards, on the example projects
+    and on the fixture processor. A gate's summary changes when the gate does: 46 corner runs were 18.
+    A run typed once and not run again goes stale. The chip's run is made where the chip engines are
+    installed: they install on request, and it takes 4 minutes."""
     documents = {
         "README.md": README,
         "site/index.html": as_document(SITE / "index.html"),
+        **{str(p.relative_to(ROOT)): as_document(p) for p in example_pages() if runs_in(as_document(p))},
     }
     shown = {
         (name, argv): lines for name, text in documents.items() for argv, lines in runs_in(text) if lines
     }
-    assert len(shown) == 6 and {name for name, _ in shown} == set(documents)
+    assert len(shown) == 8 and {name for name, _ in shown} == set(documents)
     assert [argv for _, argv in shown if argv[0] == "chip"] == [
         ("chip", "gates", "tests/chips/pass-acc8", "--strict")
     ]
@@ -393,7 +394,22 @@ def test_the_quick_start_runs_as_written_and_ends_as_its_comments_say(tmp_path):
 
 
 def links_of(page: Path) -> list[str]:
-    return re.findall(r'(?:href|src)="([^"]+)"', page.read_text(encoding="utf-8"))
+    """Each address a page names: its links, its pictures and its scripts, and what a `url()` in its
+    markup loads."""
+    text = page.read_text(encoding="utf-8")
+    return re.findall(r'(?:href|src)="([^"]+)"', text) + re.findall(r"url\(([^)\s]+)\)", text)
+
+
+def example_pages() -> list[Path]:
+    """The pages site/examples.py writes: the list of examples, and 1 page for each."""
+    return [SITE / "examples.html", *sorted((SITE / "examples").glob("*.html"))]
+
+
+def beside_page(page: Path, link: str) -> bool:
+    """Whether a link read from the page's own folder names a file: `agents.svg#cursor` is
+    agents.svg, `site.css?v=1` is site.css, and a folder is its index.html."""
+    target = page.parent / link.split("#")[0].split("?")[0]
+    return target.is_file() or (target / "index.html").is_file()
 
 
 def test_every_link_on_the_site_names_what_exists():
@@ -401,7 +417,7 @@ def test_every_link_on_the_site_names_what_exists():
     the merge. A link into the page names an id, and a link beside the page names a file."""
     blob = "https://github.com/ThyFriendlyFox/via/blob/main/"
     missing, to_repo, into_page, beside = [], 0, 0, 0
-    for page in (SITE / "index.html", SITE / "404.html", SITE / "og.html"):
+    for page in (SITE / "index.html", SITE / "404.html", SITE / "og.html", *example_pages()):
         text = page.read_text(encoding="utf-8")
         for link in links_of(page):
             if link.startswith(blob):
@@ -414,10 +430,10 @@ def test_every_link_on_the_site_names_what_exists():
                 continue
             else:
                 beside += 1
-                found = (SITE / link).is_file()
+                found = beside_page(page, link)
             if not found:
-                missing.append(f"{page.name}: {link}")
-    assert to_repo >= 13 and into_page >= 8 and beside >= 11, "the site's links are no longer found"
+                missing.append(f"{page.relative_to(SITE)}: {link}")
+    assert to_repo >= 20 and into_page >= 8 and beside >= 70, "the site's links are no longer found"
     assert missing == []
 
 
@@ -436,21 +452,30 @@ def test_the_site_builds_for_an_address_and_without_one(tmp_path):
     assert '<meta property="og:image" content="https://example.org/via/og.png">' in page
     assert '<base href="https://example.org/via/">' in (served / "404.html").read_text(encoding="utf-8")
     assert (served / "og.png").is_file() and (served / "fonts" / "LICENSE").is_file()
+    pages = ["index.html", "404.html", *(str(p.relative_to(SITE)) for p in example_pages())]
+    example = (served / "examples" / "rosetta.html").read_text(encoding="utf-8")
+    assert '<link rel="canonical" href="https://example.org/via/examples/rosetta">' in example
     # A host may keep a stylesheet or a script for hours while it asks again for the page (M157): the
-    # built page names each with its checksum, so a new page never runs with the last build's.
-    for name in ("site.css", "site.js", "effects.js"):
-        named = re.findall(rf'"{re.escape(name)}\?v=(\d+)"', page)
-        cksum = subprocess.run(["cksum"], input=(SITE / name).read_bytes(), capture_output=True, check=True)
-        assert named == [cksum.stdout.split()[0].decode()], f"the built page names {name} with no version"
+    # built page names each with its checksum, so a new page never runs with the last build's. An
+    # example's page names them from its folder, as ../site.css.
+    for built, names in (
+        (page, ("site.css", "site.js", "effects.js")),
+        (example, ("site.css", "example.js")),
+    ):
+        for name in names:
+            named = re.findall(rf'"(?:\.\./)*{re.escape(name)}\?v=(\d+)"', built)
+            cksum = subprocess.run(
+                ["cksum"], input=(SITE / name).read_bytes(), capture_output=True, check=True
+            )
+            assert named == [cksum.stdout.split()[0].decode()], f"the built page names {name} with no version"
     looked_up = 0
-    for name in ("index.html", "404.html"):
+    for name in pages:
         assert "%ORIGIN%" not in (served / name).read_text(encoding="utf-8")
         for link in links_of(served / name):
             if not re.match(r"https?://|#|\./$", link):
                 looked_up += 1
-                path = link.split("?")[0]
-                assert (served / path).is_file(), f"{name} names {link}, and build.sh does not copy it"
-    assert looked_up >= 10
+                assert beside_page(served / name, link), f"{name} names {link}, and build.sh does not copy it"
+    assert looked_up >= 60
     # A part's label names the first page of its datasheet in the page's JSON, not in an attribute,
     # so each is looked up here, with the size the label reserves for it.
     parts = re.search(r'<script type="application/json" id="herald-parts">(.*?)</script>', page, re.S)
@@ -462,7 +487,7 @@ def test_the_site_builds_for_an_address_and_without_one(tmp_path):
 
     plain = tmp_path / "plain"
     assert build(plain).returncode == 0
-    for name in ("index.html", "404.html"):
+    for name in pages:
         text = (plain / name).read_text(encoding="utf-8")
         for absent in ("%ORIGIN%", "og:image", "og:url", 'rel="canonical"', "<base"):
             assert absent not in text, f"{name} keeps {absent} with no address to write into it"
@@ -592,19 +617,91 @@ def test_the_code_a_page_shows_is_a_run_of_lines_of_its_file():
         assert all(picture in links for picture in drawn), page.name
         for link in links:
             if not re.match(r"https?://|#|\./$|%ORIGIN%", link):
-                assert (page.parent / link).is_file(), f"{page.name}: {link}"
-    # The page states each picture's size, so the cards keep their place while a picture loads.
+                assert beside_page(page, link), f"{page.name}: {link}"
+    # Each page states each picture's size, so the cards keep their place while a picture loads.
+    for page in (SITE / "index.html", *example_pages()):
+        text = page.read_text(encoding="utf-8")
+        pictures = re.findall(r'<img [^>]*?src="([^"]+\.(?:png|gif))"', text)
+        stated = {
+            src: (int(width), int(height))
+            for src, width, height in re.findall(
+                r'<img [^>]*?src="([^"]+\.(?:png|gif))" width="(\d+)" height="(\d+)"', text
+            )
+        }
+        assert sorted(stated) == sorted(set(pictures)), page.name
+        assert stated == {name: picture_size(page.parent / name) for name in stated}, page.name
+        if page.name == "index.html":
+            herald = {"examples/herald/card.png", "showcase/herald-schematic.png", "showcase/herald-top.png"}
+            assert herald <= set(stated)
+
+
+def test_the_example_pages_are_what_site_examples_writes():
+    """An example's page is written from its README, its versions' TIMELINE.md or "What changed"
+    sections, and its board. A page edited by hand, or an example changed and its page not written
+    again, differs from what the script writes."""
+    proc = subprocess.run(
+        [sys.executable, str(SITE / "examples.py"), "--check"], capture_output=True, text=True, check=False
+    )
+    assert proc.returncode == 0, proc.stderr
+    sys.path.insert(0, str(SITE))
+    import examples
+
+    found = {ex.slug: ex for ex in examples.examples()}
+    assert set(found) == {p.stem for p in (SITE / "examples").glob("*.html")}
+    # Rosetta shows v0.2, its board and its card's numbers, and v0.1's steps from v0.1's TIMELINE.md.
+    rosetta = found["rosetta"]
+    board = examples.draw_board(rosetta.board)
+    page = examples.example_page(rosetta, board, {"spin.webp", "top.png", "bottom.png"})
+    assert rosetta.version == "v0.2" and (board.layers, board.parts) == (6, 135)
+    assert len(rosetta.timeline) >= 8 and {entry.version for entry in rosetta.timeline} == {"v0.1"}
+    assert f"{board.segments:,} track segments" in page
+    # Wyvern's steps are its README's "What changed" sections, oldest first; its verdict is its report's.
+    wyvern = found["wyvern"]
+    assert [entry.stage for entry in wyvern.timeline] == ["v0.1", "v0.2"]
+    assert wyvern.verdict.startswith("GREEN")
+    assert [gate for gate, _, _ in wyvern.checks] == ["ERC", "DRC", "SIM", "EXPORT"]
+    # Signet is 6 boards: 1 verdict each, and no board drawing.
+    signet = found["signet"]
+    assert signet.board is None and len(signet.per_board) == 6 and signet.verdict == "GREEN on all 6 boards"
+    # The page follows its sources: a step's title, changed, changes the page.
+    rosetta.timeline[0].title = "A title no step has"
+    assert "A title no step has" in examples.example_page(rosetta, board, set())
+
+
+def numbers(text: str) -> list[str]:
+    """The numbers with a decimal point in a text, as written: 0.4216, 15.9."""
+    return re.findall(r"(?<![\w.])\d+\.\d+(?![\w.]*\d)", text)
+
+
+def test_the_gates_drawings_hold_numbers_their_boards_give():
+    """Each drawing of the gates on the home page names the board it shows under it. A value it marks
+    (0.4216 V, 15.9 kHz) is a number of that board's files, of the fixtures' README, or of a run the
+    page shows, to the places the drawing gives: a drawing does not make up a reading."""
     text = (SITE / "index.html").read_text(encoding="utf-8")
-    pictures = re.findall(r'<img [^>]*?src="((?:media|showcase)/[^"]+)"', text)
-    stated = {
-        src: (int(width), int(height))
-        for src, width, height in re.findall(
-            r'<img [^>]*?src="((?:media|showcase)/[^"]+)" width="(\d+)" height="(\d+)"', text
-        )
-    }
-    assert {"showcase/herald.png", "showcase/herald-schematic.png", "showcase/herald-top.png"} <= set(stated)
-    assert sorted(stated) == sorted(set(pictures))
-    assert stated == {name: picture_size(SITE / name) for name in stated}
+    runs = " ".join(re.findall(r"<pre data-run[^>]*>(.*?)</pre>", text, re.S))
+    drawings = re.findall(r'<article class="draw[^"]*">(.*?)</article>', text, re.S)
+    assert len(drawings) == 7
+    checked = 0
+    for drawing in drawings:
+        svg = re.search(r"<svg.*?</svg>", drawing, re.S)
+        if not svg:
+            continue
+        name = re.search(r'<p class="fname">([^<]+)</p>', drawing).group(1)
+        project = ROOT / Path(*Path(name).parts[:3])  # tests/boards/<board>, examples/<name>/<version>
+        sources = [p for p in project.rglob("*") if p.suffix in (".cir", ".json", ".md", ".py")]
+        corpus = runs + (ROOT / "tests" / "boards" / "README.md").read_text(encoding="utf-8")
+        corpus += " ".join(p.read_text(encoding="utf-8") for p in sources)
+        known = [float(n) for n in numbers(corpus)]
+        # An axis's tick is a place on the paper, not a reading: it is marked `tick`.
+        for attrs, label in re.findall(r"<text([^>]*)>(.*?)</text>", svg.group(0)):
+            if "tick" in attrs:
+                continue
+            for shown in numbers(html.unescape(label)):
+                places = len(shown.split(".")[1])
+                checked += 1
+                found = any(round(n, places) == float(shown) for n in known)
+                assert found, f"{name}: {shown} is in no source"
+    assert checked >= 12
 
 
 LOG_FORMAT = "--format=%H%x00%an <%ae>%x00%cn <%ce>%x00%B%x01"

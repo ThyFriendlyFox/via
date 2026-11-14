@@ -58,10 +58,9 @@
         <nav class="site-nav" aria-label="Sections">
           <ul>
             <li><a href="#herald">Example</a></li>
-            <li><a href="#path">Process</a></li>
+            <li><a href="#built">Boards</a></li>
             <li><a href="#gates">Checks</a></li>
-            <li><a href="#corners">Simulation</a></li>
-            <li><a href="#how-it-works">Architecture</a></li>
+            <li><a href="#board">Design as code</a></li>
             <li><a href="#run">Get started</a></li>
           </ul>
         </nav>
@@ -90,10 +89,22 @@
           <circle cx="760" cy="270" r="6"/><circle cx="780" cy="340" r="6"/><circle cx="480" cy="140" r="6"/><circle cx="840" cy="150" r="6"/><circle cx="620" cy="430" r="6"/>
         </svg>
         <div class="wrap">
-          <div data-reveal data-stagger>
+          <!-- The wordmark (logo.svg) built the way a board is: sketched, its corners set, its copper
+               laid, its traces run. Without motion it is the finished mark. -->
+          <div class="wm-stage">
+            <div class="wm-paper" aria-hidden="true"></div>
+            <svg class="wordmark" data-build viewBox="273 192 414 156" role="img" aria-labelledby="wm-title">
+            <title id="wm-title">Via</title>
+            <g><path class="wm-sketch" d="m378.4252 269.28348-44.566925-60.472458h-44.566925l89.13385 120.9449z"/><path class="wm-sketch" d="M389.88452 208.81102h39.46457v33.10237h-39.46457z"/><path class="wm-sketch" d="M464.09186 210.2441h39.46457v120.94487h-39.46457z"/><path class="wm-sketch" d="m581.5748 269.28348 44.566895 60.472443h44.566956l-89.13385-120.9449z"/><path class="wm-sketch" d="M570.1155 329.75592h-39.46454v-33.102386h39.46454z"/></g>
+            <g><path class="wm-cu lg-letter" d="m378.4252 269.28348-44.566925-60.472458h-44.566925l89.13385 120.9449z"/><path class="wm-cu lg-pad" d="M389.88452 208.81102h39.46457v33.10237h-39.46457z"/><path class="wm-cu lg-letter" d="M464.09186 210.2441h39.46457v120.94487h-39.46457z"/><path class="wm-cu lg-letter" d="m581.5748 269.28348 44.566895 60.472443h44.566956l-89.13385-120.9449z"/><path class="wm-cu lg-pad" d="M570.1155 329.75592h-39.46454v-33.102386h39.46454z"/></g>
+            <g><path class="wm-tr" d="M409.6168 241.91339v57.606293h-31.181091"/><path class="wm-tr" d="M503.55643 270.71652h46.834625v25.952759"/><path class="wm-tr" d="M570.1155 313.2047h18.233643v-13.669281h15.498657"/><path class="wm-tr" d="M429.3491 225.3622h17.37146v45.354324h17.368683"/></g>
+            <g><circle class="wm-pt" cx="378.4" cy="269.3" r="4.5"/><circle class="wm-pt" cx="333.9" cy="208.8" r="4.5"/><circle class="wm-pt" cx="289.3" cy="208.8" r="4.5"/><circle class="wm-pt" cx="378.4" cy="329.8" r="4.5"/><circle class="wm-pt" cx="389.9" cy="208.8" r="4.5"/><circle class="wm-pt" cx="429.3" cy="208.8" r="4.5"/><circle class="wm-pt" cx="429.3" cy="241.9" r="4.5"/><circle class="wm-pt" cx="389.9" cy="241.9" r="4.5"/><circle class="wm-pt" cx="464.1" cy="210.2" r="4.5"/><circle class="wm-pt" cx="503.6" cy="210.2" r="4.5"/><circle class="wm-pt" cx="503.6" cy="331.2" r="4.5"/><circle class="wm-pt" cx="464.1" cy="331.2" r="4.5"/><circle class="wm-pt" cx="581.6" cy="269.3" r="4.5"/><circle class="wm-pt" cx="626.1" cy="329.8" r="4.5"/><circle class="wm-pt" cx="670.7" cy="329.8" r="4.5"/><circle class="wm-pt" cx="581.6" cy="208.8" r="4.5"/><circle class="wm-pt" cx="570.1" cy="329.8" r="4.5"/><circle class="wm-pt" cx="530.7" cy="329.8" r="4.5"/><circle class="wm-pt" cx="530.7" cy="296.7" r="4.5"/><circle class="wm-pt" cx="570.1" cy="296.7" r="4.5"/></g>
+            </svg>
+          </div>
+          <div class="hero-copy" data-reveal data-stagger>
             <p class="eyebrow">Open source · MIT license</p>
-            <h1 class="display" id="hero-title">Circuit Boards<br>From<br>AI</h1>
-            <p class="lede">Via gives an AI agent what it needs to take a KiCad project from a written brief to fabrication files: the design written as code, automatic routing, and the checks an experienced engineer would run. A board is finished only when it passes every one of them.</p>
+            <h1 class="hero-title" id="hero-title">Circuit Boards<br>From<br>AI</h1>
+            <p class="lede">Via is our dream for lowering the difficulty to getting into electronics design. It's a package of tools, skills and gates an agent needs to make production-ready PCBs. Designed by EE's in Florida.</p>
             <div class="actions">
               <a class="btn btn-primary" href="https://github.com/ThyFriendlyFox/via">
                 <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>
@@ -104,13 +115,49 @@
                 <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
               </a>
             </div>
-            <p class="small">Via is in early development and has no release yet. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/STATUS.md">See the current status</a>.</p>
+                        <p class="small">Via is in early development and has no release yet. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/STATUS.md">See the current status</a>.</p>
+            <div class="install" data-copyable>
+              <div class="install-head">
+                <p class="eyebrow">Install on Ubuntu 24.04</p>
+                <button class="copy" type="button" data-copy aria-label="Copy the command">
+                  <svg class="todo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></svg>
+                  <svg class="done" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+                </button>
+              </div>
+<pre><span class="prompt">$ </span>git clone https://github.com/ThyFriendlyFox/via.git &amp;&amp; cd via &amp;&amp; sudo ./install.sh</pre>
+            </div>
           </div>
 
-          <figure class="hero-board" data-reveal>
-            <img src="showcase/herald.png" width="1000" height="571" alt="Herald, a fire alarm communicator designed with Via, in 3D: a red board with an LTE-M modem, an ESP32-S3 module, a relay, status lights and black screw terminals">
-            <figcaption>Herald, a fire alarm communicator designed with Via: 127 parts on a four-layer board, routed and checked.</figcaption>
-          </figure>
+          <div class="agents" aria-labelledby="agents-label">
+            <p class="eyebrow" id="agents-label">Works with any agent</p>
+            <div class="strip-mask">
+              <div class="strip" role="region" aria-label="The agents Via works with" tabindex="0" data-strip>
+                <ul>
+                  <li><svg aria-hidden="true"><use href="agents.svg#claude-code"/></svg><span>Claude Code</span></li>
+                  <li><svg aria-hidden="true"><use href="agents.svg#codex"/></svg><span>Codex</span></li>
+                  <li><svg aria-hidden="true"><use href="agents.svg#cursor"/></svg><span>Cursor</span></li>
+                  <li><svg aria-hidden="true"><use href="agents.svg#gemini"/></svg><span>Gemini</span></li>
+                  <li><svg aria-hidden="true"><use href="agents.svg#grok"/></svg><span>Grok</span></li>
+                  <li><svg aria-hidden="true"><use href="agents.svg#copilot"/></svg><span>GitHub Copilot</span></li>
+                  <li><svg aria-hidden="true"><use href="agents.svg#windsurf"/></svg><span>Windsurf</span></li>
+                  <li><svg aria-hidden="true"><use href="agents.svg#cline"/></svg><span>Cline</span></li>
+                  <li><svg aria-hidden="true"><use href="agents.svg#amp"/></svg><span>AMP</span></li>
+                  <li><svg aria-hidden="true"><use href="agents.svg#antigravity"/></svg><span>Antigravity</span></li>
+                  <li><svg aria-hidden="true"><use href="agents.svg#openclaw"/></svg><span>OpenClaw</span></li>
+                  <li><svg aria-hidden="true"><use href="agents.svg#droid"/></svg><span>Droid</span></li>
+                  <li><svg aria-hidden="true"><use href="agents.svg#goose"/></svg><span>Goose</span></li>
+                  <li><svg aria-hidden="true"><use href="agents.svg#kilo"/></svg><span>Kilo</span></li>
+                  <li><svg aria-hidden="true"><use href="agents.svg#kiro"/></svg><span>Kiro CLI</span></li>
+                  <li><svg aria-hidden="true"><use href="agents.svg#hermes"/></svg><span>Hermes</span></li>
+                  <li><svg aria-hidden="true"><use href="agents.svg#opencode"/></svg><span>OpenCode</span></li>
+                  <li><svg aria-hidden="true"><use href="agents.svg#roo"/></svg><span>Roo</span></li>
+                  <li><svg aria-hidden="true"><use href="agents.svg#trae"/></svg><span>Trae</span></li>
+                  <li><svg aria-hidden="true"><use href="agents.svg#vscode"/></svg><span>VS Code</span></li>
+                  <li><svg aria-hidden="true"><use href="agents.svg#zed"/></svg><span>Zed</span></li>
+                </ul>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -359,35 +406,231 @@ PASS   export     4/4 outputs, 24 gerber files  [1.55s]</span>
 
       <section class="section band" id="built" aria-labelledby="built-title">
         <div class="wrap">
-          <div class="head" data-reveal>
+          <div class="head" data-reveal data-stagger>
             <p class="eyebrow">Built with Via</p>
             <h2 class="title" id="built-title">More boards designed with Via</h2>
+            <p class="lede">Each example is a complete KiCad project in this repository. Open one to turn it in 3D, explore every track on the board, and read how it was built.</p>
           </div>
           <div class="built" data-reveal data-stagger>
-            <a class="proj" href="#herald">
-              <img src="showcase/herald.png" width="1000" height="571" loading="lazy" alt="Herald in 3D: a red board with an LTE-M module, a nano SIM, an ESP32-S3 module, a relay, status lights and black screw terminals">
+            <a class="proj" href="examples/herald.html">
+              <div class="shot3d"><img src="examples/herald/card.png" width="760" height="530" loading="lazy" alt="Herald in 3D: a red board with an LTE-M module, a nano SIM, an ESP32-S3 module, a relay, status lights and black screw terminals"></div>
               <div><h3>Herald</h3><p>A fire alarm communicator that answers the panel's dialer as a phone line and reports over LTE-M or Wi-Fi.</p><p class="spec">84.4 × 64 mm · 4 layers · 127 parts</p></div>
             </a>
-            <a class="proj" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/anc-speaker/v0.1/README.md">
-              <img src="showcase/hush.png" width="1000" height="571" loading="lazy" alt="Hush in 3D on its speaker: a black ring with 3 spokes to a microphone on the hub, parts round the ring, a line-in jack and a USB-C port at the edge">
+            <a class="proj" href="examples/hush.html">
+              <div class="shot3d"><img src="examples/hush/card.png" width="760" height="476" loading="lazy" alt="Hush in 3D on its speaker: a black ring with 3 spokes to a microphone on the hub, parts round the ring, a line-in jack and a USB-C port at the edge"></div>
               <div><h3>Hush</h3><p>A speaker that cancels noise. A microphone in front of the cone drives an analog loop that plays back the inverse of what it hears.</p><p class="spec">62 mm across · 4 layers · 62 parts</p></div>
             </a>
-            <a class="proj" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/ring-mouse/README.md">
-              <img src="showcase/signet.png" width="1000" height="571" loading="lazy" alt="Signet in 3D: 6 black boards in a hexagonal ring, soldered edge to edge, the radio module on top and a foil cell at the bottom">
+            <a class="proj" href="examples/signet.html">
+              <div class="shot3d"><img src="examples/signet/card.png" width="760" height="581" loading="lazy" alt="Signet in 3D: 6 black boards in a hexagonal ring, soldered edge to edge, the radio module on top and a foil cell at the bottom"></div>
               <div><h3>Signet</h3><p>A mouse worn as a ring. The cursor follows your hand, and your thumb scrolls and clicks.</p><p class="spec">6 boards around the finger · 4 layers each · 57 parts</p></div>
             </a>
-            <a class="proj" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/universal-controller/v0.2/README.md">
-              <img src="showcase/rosetta-iso.png" width="1000" height="671" loading="lazy" alt="Rosetta, the universal controller, in 3D: an Xbox 360-style board with 2 thumbsticks and a knob">
+            <a class="proj" href="examples/rosetta.html">
+              <div class="shot3d"><img src="examples/rosetta/card.png" width="760" height="532" loading="lazy" alt="Rosetta, the universal controller, in 3D: an Xbox 360-style board with 2 thumbsticks and a knob"></div>
               <div><h3>Rosetta</h3><p>A game controller with a selector knob that switches between consoles, laid out like an Xbox 360 controller.</p><p class="spec">148 × 82 mm · 6 layers · 135 parts</p></div>
             </a>
-            <a class="proj" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/snapdragon-dev-board/README.md">
-              <img src="showcase/wyvern-iso.png" width="1000" height="600" loading="lazy" alt="Wyvern v0.2 in 3D: one flat black board with 2 rows of 30 pins, a USB-C port and the QCS6490 module soldered on top">
+            <a class="proj" href="examples/wyvern.html">
+              <div class="shot3d"><img src="examples/wyvern/card.png" width="760" height="522" loading="lazy" alt="Wyvern v0.2 in 3D: one flat black board with 2 rows of 30 pins, a USB-C port and the QCS6490 module soldered on top"></div>
               <div><h3>Wyvern</h3><p>A Snapdragon development board on one flat board: a QCS6490 module soldered on by its 662 pads, an RP2350 on the pins, and USB 3 over one USB-C port.</p><p class="spec">76 × 53 mm · 6 layers</p></div>
             </a>
             <a class="proj" href="https://github.com/ThyFriendlyFox/agentcast-prototype">
-              <img src="showcase/agentcast.png" width="780" height="420" loading="lazy" alt="Agentcast, an HDMI stick, in 3D: an ESP32-P4, an HDMI bridge, 2 USB-C ports and the plug">
-              <div><h3>Agentcast</h3><p>An HDMI stick with far-field microphones. Plug it into a TV, speak, and your agent's work appears on the screen.</p><p class="spec">80 × 30 mm · 8 layers</p></div>
+              <div class="shot3d"><img src="showcase/agentcast.png" width="780" height="420" loading="lazy" alt="Agentcast, an HDMI stick, in 3D: an ESP32-P4, an HDMI bridge, 2 USB-C ports and the plug"></div>
+              <div><h3>Agentcast</h3><p>An HDMI stick with far-field microphones. Plug it into a TV, speak, and your agent's work appears on the screen.</p><p class="spec">80 × 30 mm · 8 layers · its own repository</p></div>
             </a>
+          </div>
+          <a class="more link" href="examples.html">All examples <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        </div>
+      </section>
+
+      <section class="section" id="gates" aria-labelledby="gates-title">
+        <div class="wrap">
+          <div class="head" data-reveal data-stagger>
+            <p class="eyebrow">Checks</p>
+            <h2 class="title" id="gates-title">Four checks before any board is released</h2>
+            <p class="lede">Each check reports on one line, and the last line is the verdict. The drawings below show each check catching a fault in a test circuit from this repository, with the numbers its run printed.</p>
+          </div>
+          <div class="draws">
+            <article class="draw">
+              <div class="paper">
+                <svg class="dwg" viewBox="0 0 400 220" role="img" aria-label="J5's pin 4 on a net labelled L3, and U7's input D5 on a net labelled BTN_L3: 2 labels of 1 pin each">
+                  <text class="t-ink fade" x="20" y="30">J5</text><text class="fade" x="40" y="30">STICK_L</text>
+                  <rect class="s-ink d" pathLength="1" x="20" y="40" width="44" height="140" rx="3"/>
+                  <g class="fade" text-anchor="end"><text x="58" y="64">1</text><text x="58" y="89">2</text><text x="58" y="114">3</text><text x="58" y="139">4</text><text x="58" y="164">5</text></g>
+                  <path class="s-thin d" pathLength="1" style="--at:.2s" d="M64 60H84M64 85H84M64 110H84M64 135H84M64 160H84"/>
+                  <g class="fade"><text x="88" y="64">+3V3</text><text x="88" y="89">STICK_LX</text><text x="88" y="114">STICK_LY</text><text x="88" y="164">GND</text></g>
+                  <path class="s-err d" pathLength="1" style="--at:.5s" d="M84 135l8-8h26v16h-26z"/><text class="t-err fade" x="97" y="139">L3</text>
+                  <text class="t-ink fade" x="300" y="50">U7</text><text class="fade" x="320" y="50">74HC165</text>
+                  <rect class="s-ink d" pathLength="1" x="300" y="60" width="60" height="110" rx="3"/>
+                  <g class="fade"><text x="308" y="84">D4</text><text x="308" y="114">D5</text><text x="308" y="144">D6</text></g>
+                  <path class="s-thin d" pathLength="1" style="--at:.2s" d="M280 80H300M280 110H300M280 140H300"/>
+                  <g class="fade" text-anchor="end"><text x="276" y="84">BTN_L1</text><text x="276" y="144">BTN_SHARE</text></g>
+                  <path class="s-err d" pathLength="1" style="--at:.5s" d="M280 110l-8-8h-52v16h52z"/><text class="t-err fade" x="266" y="114" text-anchor="end">BTN_L3</text>
+                  <path class="s-err dash fade" d="M122 135C160 135 180 110 216 110"/><text class="t-err big fade" x="166" y="114">&#8800;</text>
+                  <text class="t-err fade" x="200" y="206" text-anchor="middle">two labels, one pin each: the clicks reached nothing</text>
+                </svg>
+              </div>
+              <p class="fname">examples/universal-controller/v0.1/rosetta.kicad_sch</p>
+              <div class="text">
+                <h3>Electrical rules (ERC)</h3>
+                <p>KiCad's electrical rule check on the schematic. On Rosetta's first wired schematic it found a stick's click on a net named <code>L3</code> while the shift register read <code>BTN_L3</code>: two labels, each on one pin, connected to nothing.</p>
+              </div>
+            </article>
+            <article class="draw">
+              <div class="paper">
+                <svg class="dwg" viewBox="0 0 400 220" role="img" aria-label="2 tracks 0.05 mm apart where the rule asks for 0.20 mm, and a track with an unconnected end">
+                  <path class="s-ink d" pathLength="1" d="M44 44h20a4 4 0 0 1 4 4v20a4 4 0 0 1-4 4h-20a4 4 0 0 1-4-4v-20a4 4 0 0 1 4-4zM336 44h20a4 4 0 0 1 4 4v20a4 4 0 0 1-4 4h-20a4 4 0 0 1-4-4v-20a4 4 0 0 1 4-4zM44 150h20a4 4 0 0 1 4 4v20a4 4 0 0 1-4 4h-20a4 4 0 0 1-4-4v-20a4 4 0 0 1 4-4zM336 150h20a4 4 0 0 1 4 4v20a4 4 0 0 1-4 4h-20a4 4 0 0 1-4-4v-20a4 4 0 0 1 4-4z"/>
+                  <g style="--at:.25s"><path class="trk-o d" pathLength="1" d="M68 58H332"/><path class="trk-i d" pathLength="1" d="M68 58H332"/></g>
+                  <g style="--at:.35s"><path class="trk-o d" pathLength="1" d="M68 164H150L176 76H262L288 164H332"/><path class="trk-i d" pathLength="1" d="M68 164H150L176 76H262L288 164H332"/></g>
+                  <g style="--at:.45s"><path class="trk-o d" pathLength="1" d="M54 178V200H118"/><path class="trk-i d" pathLength="1" d="M54 178V200H118"/></g>
+                  <ellipse class="s-err d" pathLength="1" style="--at:.8s" cx="219" cy="67" rx="30" ry="13"/>
+                  <path class="s-err fade" d="M232 55L246 34"/>
+                  <text class="t-err fade" x="250" y="26">0.05 mm apart</text><text class="t-dim fade" x="250" y="40">rule: 0.20 mm</text>
+                  <circle class="s-faint dash fade" cx="118" cy="200" r="9"/><text class="fade" x="134" y="204">unconnected end, a warning</text>
+                </svg>
+              </div>
+              <p class="fname">tests/boards/fail-drc-clearance</p>
+              <div class="text">
+                <h3>Design rules (DRC)</h3>
+                <p>KiCad's design rule check on the routed board, with your fabricator's limits added by <code>--fab</code>. In this test circuit two tracks pass 0.05 mm apart where the rule asks for 0.20 mm.</p>
+              </div>
+            </article>
+            <article class="draw">
+              <div class="paper">
+                <svg class="dwg" viewBox="0 0 400 220" role="img" aria-label="The diode reference across temperature: 0.646 V at minus 20 C, 0.548 V as written, 0.4216 V at 85 C with R1 5 % high; its window is 0.50 to 0.60 V">
+                  <text class="t-ink fade" x="44" y="24" text-anchor="middle">5 V</text>
+                  <path class="s-ink d" pathLength="1" d="M44 30V44l8 4-16 8 16 8-16 8 16 8-16 8 16 8-8 4V116"/>
+                  <text class="fade" x="58" y="66">R1 10k</text><text class="t-dim fade" x="58" y="80">&#177;5 %</text>
+                  <circle class="f-ink fade" cx="44" cy="104" r="3"/><text class="t-ink fade" x="52" y="108">vref</text>
+                  <path class="s-ink d" pathLength="1" style="--at:.15s" d="M34 116H54L44 134ZM34 134H54M44 134V150M32 150H56M37 156H51M42 162H46"/>
+                  <text class="fade" x="60" y="130">D1</text>
+                  <path class="s-faint d" pathLength="1" d="M150 30V180H385"/>
+                  <rect class="f-band fade" x="150" y="80" width="235" height="45"/>
+                  <path class="s-dim dash fade" d="M150 80H385M150 125H385"/>
+                  <g class="fade" text-anchor="end"><text class="t-dim" x="144" y="84">0.60</text><text class="t-dim" x="144" y="129">0.50</text><text class="tick" x="144" y="174">0.40</text></g>
+                  <path class="s-faint fade" d="M170 180v4M255 180v4M360 180v4"/>
+                  <g class="fade" text-anchor="middle"><text x="170" y="198">&#8722;20 &#176;C</text><text x="255" y="198">27 &#176;C</text><text x="360" y="198">85 &#176;C</text></g>
+                  <path class="s-ink d" pathLength="1" style="--at:.4s" d="M170 59.3L255 103.4L360 160.3"/>
+                  <circle class="f-err fade" cx="170" cy="59.3" r="4.5"/><circle class="f-ink fade" cx="255" cy="103.4" r="4.5"/><circle class="f-err fade" cx="360" cy="160.3" r="4.5"/>
+                  <text class="t-err fade" x="180" y="52">0.646 V</text>
+                  <text class="t-dim fade" x="385" y="72" text-anchor="end">window 0.50&#8211;0.60 V</text>
+                  <text class="t-ink fade" x="264" y="99">0.548 V as written</text>
+                  <text class="t-err fade" x="350" y="174" text-anchor="end">0.4216 V at 85 &#176;C, R1 +5 %</text>
+                </svg>
+              </div>
+              <p class="fname">tests/boards/fail-sim-corner/sim/diode_ref.cir</p>
+              <div class="text">
+                <h3>Simulation at every corner (SIM)</h3>
+                <p>ngspice runs every simulation as designed, at each temperature the project names, and with each part at both ends of its tolerance. This test circuit's reference is inside its window at room temperature and leaves it hot and cold.</p>
+              </div>
+            </article>
+            <article class="draw">
+              <div class="paper">
+                <svg class="dwg" viewBox="0 0 400 220" role="img" aria-label="A filter's resonance at 15.9 kHz, Q 14, and the harmonics of a 5.3 kHz load: the third lands on the peak">
+                  <text class="t-err fade" x="40" y="24">the rail swings 6.8 V on 5 V</text>
+                  <text class="fade" x="40" y="38">its average holds 4.9&#8211;5.1 V</text>
+                  <path class="s-faint d" pathLength="1" d="M30 44V180H372"/>
+                  <path class="s-faint dash fade" d="M132.9 180V64M206.2 180V64M279.4 180V64M302.9 180V64"/>
+                  <g class="fade" text-anchor="middle"><text x="132.9" y="58">5.3 kHz load</text><text x="206.2" y="58">&#215;2</text><text x="279.4" y="58">&#215;4</text><text x="302.9" y="58">&#215;5</text></g>
+                  <path class="s-ink d" pathLength="1" style="--at:.2s" d="M30.0 178.8 L45.6 178.6 L61.2 178.4 L76.8 178.1 L92.4 177.8 L108.1 177.4 L123.7 176.9 L139.3 176.2 L154.9 175.4 L170.5 174.3 L186.1 172.7 L198.6 170.7 L208.0 168.4 L217.3 164.8 L223.6 161.1 L229.8 155.0 L232.9 150.3 L236.1 143.6 L238.2 137.2 L240.3 128.3 L242.0 118.5 L243.2 108.7 L244.5 96.3 L245.8 81.1 L246.6 70.0 L247.5 59.6 L248.3 52.1 L249.1 50.1 L250.0 54.3 L250.8 63.2 L251.7 74.1 L252.5 85.1 L253.4 95.1 L254.6 107.7 L255.9 117.7 L257.6 127.8 L259.7 136.8 L261.8 143.3 L263.9 148.2 L265.2 150.6 L268.3 155.2 L274.5 161.2 L280.8 164.9 L290.1 168.4 L302.6 171.3 L318.2 173.4 L337.0 175.0 L355.7 176.1 L368.2 176.6"/>
+                  <path class="s-err d" pathLength="1" style="--at:.7s" d="M249 180V44"/>
+                  <text class="t-err fade" x="255" y="42">&#215;3 = 15.9 kHz</text>
+                  <text class="t-dim fade" x="232" y="96" text-anchor="end">filter peak 15.9 kHz, Q 14</text>
+                  <path class="s-faint fade" d="M126.8 180v4M200 180v4M273.2 180v4M370 180v4"/>
+                  <g class="fade"><text x="30" y="198">2 kHz</text><text x="126.8" y="198" text-anchor="middle">5k</text><text x="200" y="198" text-anchor="middle">10k</text><text x="273.2" y="198" text-anchor="middle">20k</text><text x="370" y="198" text-anchor="end">50k</text></g>
+                </svg>
+              </div>
+              <p class="fname">tests/boards/fail-freq-overlap/sim/frequency-plan.json</p>
+              <div class="text">
+                <h3>The frequency plan</h3>
+                <p>Switching frequencies and their harmonics are checked against every resonance the simulations measure. In this test circuit the load's third harmonic lands on the filter's peak: the rail swings while its average still passes.</p>
+              </div>
+            </article>
+            <article class="draw">
+              <div class="paper">
+                <svg class="dwg" viewBox="0 0 400 220" role="img" aria-label="Before: a chip's connections as straight lines that cross. After: routed tracks, one of them through a via to the other side">
+                  <g class="fade" text-anchor="middle"><text x="105" y="24">ratsnest</text><text x="295" y="24">routed</text></g>
+                  <rect class="s-ink d" pathLength="1" x="87" y="92" width="36" height="36" rx="3"/>
+                  <path class="s-thin d" pathLength="1" d="M83 100h4M83 120h4M123 100h4M123 120h4M105 128v4"/>
+                  <path class="s-ink d" pathLength="1" d="M30 40h10v10h-10zM30 170h10v10h-10zM170 40h10v10h-10zM170 170h10v10h-10zM100 185h10v10h-10z"/>
+                  <path class="s-faint dash fade" d="M83 100L35 175M83 120L35 45M127 100L175 45M127 120L175 175M105 132V185"/>
+                  <path class="s-dim d" pathLength="1" style="--at:.3s" d="M186 110H214M208 104l6 6-6 6"/>
+                  <text class="t-dim fade" x="200" y="96" text-anchor="middle">FreeRouting</text>
+                  <rect class="s-ink d" pathLength="1" x="277" y="92" width="36" height="36" rx="3"/>
+                  <path class="s-thin d" pathLength="1" d="M273 100h4M273 120h4M313 100h4M313 120h4M295 128v4"/>
+                  <path class="s-ink d" pathLength="1" d="M220 40h10v10h-10zM220 170h10v10h-10zM360 40h10v10h-10zM360 170h10v10h-10zM290 185h10v10h-10z"/>
+                  <path class="s-ink d" pathLength="1" style="--at:.6s" d="M273 100H255L240 115V160L225 175M273 120H262M317 100H335L365 70V45M317 120H335L365 150V175M295 132V185"/>
+                  <path class="s-thin dash fade" d="M262 120V70L237 45H225"/>
+                  <circle class="f-card s-ink fade" cx="262" cy="120" r="5"/><circle class="f-ink fade" cx="262" cy="120" r="1.8"/>
+                  <text class="fade" x="200" y="214" text-anchor="middle">Rosetta: 2,700 segments, 256 vias, 3 routed layers</text>
+                </svg>
+              </div>
+              <p class="fname">examples/universal-controller/v0.1/rosetta.kicad_pcb</p>
+              <div class="text">
+                <h3>Automatic routing</h3>
+                <p>FreeRouting routes the board from the design file, with no manual steps in a GUI. Rosetta v0.1's four layers routed once the RP2040's capacitors moved to its corners and its vias shrank to 0.45 mm.</p>
+              </div>
+            </article>
+            <article class="draw">
+              <div class="paper">
+                <svg class="dwg" viewBox="0 0 400 220" role="img" aria-label="The board's layers pulled apart: silkscreen, mask, front and back copper, mask, outline; 2 drills through all">
+                  <path class="s-ink f-card d" pathLength="1" style="--at:0.00s" d="M40 180L210 180L250 150L80 150Z"/><path class="s-ink f-card d" pathLength="1" style="--at:0.08s" d="M40 158L210 158L250 128L80 128Z"/><path class="s-ink f-card d" pathLength="1" style="--at:0.16s" d="M40 136L210 136L250 106L80 106Z"/><path class="s-ink f-card d" pathLength="1" style="--at:0.24s" d="M40 114L210 114L250 84L80 84Z"/><path class="s-ink f-card d" pathLength="1" style="--at:0.32s" d="M40 92L210 92L250 62L80 62Z"/><path class="s-ink f-card d" pathLength="1" style="--at:0.40s" d="M40 70L210 70L250 40L80 40Z"/>
+                  <path class="s-thin d" pathLength="1" style="--at:.6s" d="M64 106H200M70 128L130 128L140 122H190"/>
+                  <text class="fade" x="92" y="64" style="font-size:9px">R1  R2  C1</text>
+                  <path class="s-dim dash fade" d="M118 36V176M178 36V176"/><text class="t-dim fade" x="122" y="32">drill</text>
+                  <g class="fade"><text x="262" y="60">F.Silk</text><text x="262" y="82">F.Mask</text><text x="262" y="104">F.Cu</text><text x="262" y="126">B.Cu</text><text x="262" y="148">B.Mask</text><text x="262" y="170">Edge.Cuts</text></g>
+                  <text class="t-ink fade" x="40" y="206">4/4 outputs, 22 gerber files</text>
+                </svg>
+              </div>
+              <p class="fname">tests/boards/pass-rc-divider/build/fab/</p>
+              <div class="text">
+                <h3>Fabrication files (EXPORT)</h3>
+                <p>Gerbers, drill files, the bill of materials and the schematic PDF, written to <code>build/fab/</code> only for a board that passed every check. This test circuit writes four outputs.</p>
+              </div>
+            </article>
+            <article class="draw wide">
+              <div class="paper term">
+<div class="run">
+<pre data-run="next"><span class="prompt">$ </span><span class="cmd">workcenter next tests/boards/fail-sim-corner</span>
+<span class="out">NEXT       The circuit is inside its bound as written and outside it at that corner. Change the circuit: a tighter part, another value, another topology. A bound, a rule or a requirement is never changed to pass: the design changes.
+RUN        workcenter gates tests/boards/fail-sim-corner
+WHY        SIM failed: diode_ref:vref=0.4215933 at 85 C, R1 +5 % (and 5 more corners) not in [0.5, 0.6] (the fixture's reference window, 0.55 V within 0.05 V)
+READ       .claude/skills/simulate/SKILL.md, "Corners"
+DONE WHEN  the last line starts with GREEN</span></pre>
+</div>
+              </div>
+              <p class="fname">workcenter next</p>
+              <div class="text">
+                <h3>What to fix next</h3>
+                <p>When a check fails, <code>workcenter next</code> says what to do: the change to make, the command to run, why the check failed and the guide to read. Here, a test circuit meets its limit at room temperature but drifts out of it at 85 °C. Engineers and AI agents get the same guidance.</p>
+              </div>
+            </article>
+          </div>
+          <div class="runs">
+            <figure data-reveal>
+              <div class="run">
+<pre data-run="gates"><span class="prompt">$ </span><span class="cmd">workcenter gates tests/boards/pass-rc-divider</span>
+<span class="out">PASS   erc        0 errors, 0 warnings  [0.27s]
+PASS   drc        0 errors, 0 warnings (0 unconnected, 0 parity)  [0.59s]
+PASS   sim        1 decks, 46 corner runs, 0 failures  [0.16s]
+PASS   export     4/4 outputs, 22 gerber files  [1.21s]</span>
+<span class="verdict">GREEN: rc_divider  report tests/boards/pass-rc-divider/build/gates.json</span>
+
+<span class="prompt">$ </span><span class="cmd">workcenter gates tests/boards/fail-drc-clearance</span>
+<span class="out">PASS   erc        0 errors, 0 warnings  [0.27s]
+FAIL   drc        1 errors, 1 warnings (0 unconnected, 0 parity)  [0.63s]
+       - error: clearance: Clearance violation ( clearance 0.2000 mm; actual 0.0500 mm)
+       - warning: track_dangling: Track has unconnected end</span>
+<span class="verdict">RED: rc_divider  report tests/boards/fail-drc-clearance/build/gates.json</span></pre>
+              </div>
+              <figcaption>Two test circuits from this repository, as the terminal printed them. The second has a clearance error on purpose.</figcaption>
+            </figure>
+            <div class="verdict-side" data-reveal>
+              <ul class="verdicts" aria-label="The verdicts">
+                <li class="ok"><i></i>GREEN <span>exit 0</span></li>
+                <li class="bad"><i></i>RED <span>exit 1</span></li>
+                <li><i></i>SKIPPED <span>exit 2</span></li>
+              </ul>
+              <p>The exit code matches the last line, so scripts and CI can rely on it. A check whose tool is missing is reported as skipped, never as passed.</p>
+            </div>
           </div>
         </div>
       </section>
@@ -396,7 +639,7 @@ PASS   export     4/4 outputs, 24 gerber files  [1.55s]</span>
         <div class="wrap">
           <div class="head" data-reveal data-stagger>
             <p class="eyebrow">Design as code</p>
-            <h2 class="title" id="board-title">Your board is a Python file you can review</h2>
+            <h2 class="title" id="board-title">How a Python File Becomes a Board</h2>
             <p class="lede">Parts, connections and placement live in one file under version control. Change a line, regenerate, and Via rebuilds the schematic and the routed board, with no manual steps in a GUI.</p>
           </div>
           <div class="files wide" data-reveal data-stagger>
@@ -431,157 +674,6 @@ PASS   export     4/4 outputs, 24 gerber files  [1.55s]</span>
           <p class="after"><code>workcenter design design.py --route</code> writes Herald's KiCad schematic and routed board from its design file, so every change to the board is a change you can review.</p>
         </div>
       </section>
-
-
-      <section class="section" id="path" aria-labelledby="path-title">
-        <div class="wrap">
-          <div class="head" data-reveal data-stagger>
-            <p class="eyebrow">Process</p>
-            <h2 class="title" id="path-title">From a design file to fabrication files in four steps</h2>
-          </div>
-          <div class="split">
-            <ol class="steps" data-reveal data-stagger>
-              <li>
-                <span class="n">01</span>
-                <div>
-                  <h3>Describe the board in code</h3>
-                  <p><code>workcenter design design.py --route</code> turns a Python file of KiCad library parts into a schematic and a fully routed board.</p>
-                </div>
-              </li>
-              <li>
-                <span class="n">02</span>
-                <div>
-                  <h3>Run the four checks</h3>
-                  <p><code>workcenter gates &lt;project&gt;</code> runs the electrical rules, the design rules, simulation and export, in that order, and ends with a single verdict.</p>
-                </div>
-              </li>
-              <li>
-                <span class="n">03</span>
-                <div>
-                  <h3>See exactly what to fix</h3>
-                  <p><code>workcenter next &lt;project&gt;</code> names the next step: the command to run, why the last check failed, and the guide to read.</p>
-                </div>
-              </li>
-              <li>
-                <span class="n">04</span>
-                <div>
-                  <h3>Send the files to your fabricator</h3>
-                  <p>Gerbers, drill files, a bill of materials and a schematic PDF, written to <code>build/fab/</code> only for a board that passed every check.</p>
-                </div>
-              </li>
-            </ol>
-            <figure>
-              <div class="run">
-<pre data-run="next"><span class="prompt">$ </span><span class="cmd">workcenter next tests/boards/fail-sim-corner</span>
-<span class="out">NEXT       The circuit is inside its bound as written and outside it at that corner. Change the circuit: a tighter part, another value, another topology. A bound, a rule or a requirement is never changed to pass: the design changes.
-RUN        workcenter gates tests/boards/fail-sim-corner
-WHY        SIM failed: diode_ref:vref=0.4215933 at 85 C, R1 +5 % (and 5 more corners) not in [0.5, 0.6] (the fixture's reference window, 0.55 V within 0.05 V)
-READ       .claude/skills/simulate/SKILL.md, "Corners"
-DONE WHEN  the last line starts with GREEN</span></pre>
-              </div>
-              <figcaption>When a check fails, <code>workcenter next</code> says what to do. Here, a test circuit meets its limit at room temperature but drifts out of it at 85 °C. Engineers and AI agents get the same guidance.</figcaption>
-            </figure>
-          </div>
-        </div>
-      </section>
-
-
-      <section class="section band" id="gates" aria-labelledby="gates-title">
-        <div class="wrap">
-          <div class="head center" data-reveal data-stagger>
-            <h2 class="title" id="gates-title">Four checks before any board is released</h2>
-            <p class="lede">Each check reports on one line, and the last line is the verdict. The exit code matches it, so scripts and CI can rely on it. If a tool is missing, the run is never reported as a pass.</p>
-          </div>
-          <ul class="verdicts" aria-label="The verdicts" data-reveal data-stagger>
-            <li class="ok"><i></i>GREEN <span>exit 0</span></li>
-            <li class="bad"><i></i>RED <span>exit 1</span></li>
-            <li><i></i>SKIPPED <span>exit 2</span></li>
-          </ul>
-          <ol class="gates" data-reveal data-stagger>
-            <li>
-              <span class="n">01</span>
-              <h3>ERC</h3>
-              <p>Electrical rules: KiCad's electrical rule check on the schematic.</p>
-            </li>
-            <li>
-              <span class="n">02</span>
-              <h3>DRC</h3>
-              <p>Design rules: KiCad's design rule check on the routed board, with your fabricator's limits added by <code>--fab</code>.</p>
-            </li>
-            <li>
-              <span class="n">03</span>
-              <h3>SIM</h3>
-              <p>Simulation: ngspice runs every circuit simulation and holds each measured value to its limit, as designed and at every corner.</p>
-            </li>
-            <li>
-              <span class="n">04</span>
-              <h3>EXPORT</h3>
-              <p>Fabrication files: Gerbers, drill files, the bill of materials and the schematic PDF, written to <code>build/fab/</code>.</p>
-            </li>
-          </ol>
-        </div>
-      </section>
-
-
-      <section class="section" id="corners" aria-labelledby="corners-title">
-        <div class="wrap">
-          <div class="head" data-reveal data-stagger>
-            <p class="eyebrow">Simulation</p>
-            <h2 class="title" id="corners-title">Tested across temperature and part tolerance before you build</h2>
-            <p class="lede">A circuit that works on paper can fail when the board is hot or a part sits at the edge of its tolerance. Via simulates those cases automatically, so problems surface before the first prototype is made.</p>
-          </div>
-          <figure class="shot">
-            <div class="run">
-<pre data-run="sim"><span class="prompt">$ </span><span class="cmd">workcenter sim tests/boards/fail-sim-corner</span>
-<span class="out">FAIL   sim        2 decks, 32 corner runs, 2 failures, 1 warnings  [0.13s]
-       - diode_ref:vref=0.4215933 at 85 C, R1 +5 % (and 5 more corners) not in [0.5, 0.6] (the fixture's reference window, 0.55 V within 0.05 V)
-       - divider:vout=2.625 at R1 -5 %, R2 +5 % (and 9 more corners) not in [2.45, 2.55] (the fixture's output window, 2.5 V within 2 %)
-       - warning: divider: no measure moves with temperature: nothing in the deck or its models carries one</span></pre>
-            </div>
-            <figcaption>A test circuit that meets its limits as designed. Simulation shows it fails at 85 °C, and when two resistors sit at opposite ends of their 5 % tolerance.</figcaption>
-          </figure>
-          <div class="cards" data-reveal data-stagger>
-            <div>
-              <h3>Temperature</h3>
-              <p>Every simulation runs at each temperature the project specifies, and each range records its source.</p>
-            </div>
-            <div>
-              <h3>Tolerance</h3>
-              <p>Each part is tested at both ends of its tolerance and halfway between. Up to 64 combinations run exhaustively; beyond that, Via runs a worst case for each limit plus the project's Monte Carlo draws.</p>
-            </div>
-            <div>
-              <h3>Frequency plan</h3>
-              <p>Switching frequencies and their harmonics are checked against every resonance the simulations measure.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-
-      <section class="section band" id="agents" aria-labelledby="agents-title">
-        <div class="wrap">
-          <div class="head" data-reveal data-stagger>
-            <p class="eyebrow">Works with any agent</p>
-            <h2 class="title" id="agents-title">Engineering judgement built into the checks</h2>
-            <p class="lede">Via turns the questions an experienced engineer asks into automated checks, and every failure comes with its next step. The goal is for a small, fast model to reach the same working board as the largest one.</p>
-          </div>
-          <div class="cards" data-reveal data-stagger>
-            <div>
-              <h3>Proven with a small model</h3>
-              <p>A small model took a low-pass filter from a one-paragraph brief to a board with no ERC or DRC errors, 14 simulated corners and 22 Gerber files, in 38 tool calls. Seven of the eight problems it hit now stop with the exact fix.</p>
-            </div>
-            <div>
-              <h3>Reviewed by an engineer</h3>
-              <p>An engineer found a circuit that had passed the checks but failed at 85 °C. Temperature and tolerance corners are now part of every simulation.</p>
-            </div>
-            <div>
-              <h3>Known gaps</h3>
-              <p>One check is still missing: a simulation written by hand is not yet tied to the board's parts. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/ROADMAP.md">The roadmap</a> tracks it, and <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/DEVLOG.md">the development log</a> records progress.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
 
       <section class="section" id="how-it-works" aria-labelledby="how-title">
         <div class="wrap">
@@ -640,7 +732,6 @@ DONE WHEN  the last line starts with GREEN</span></pre>
           <p class="after">Every procedure is written as a skill an agent can follow: designing a board, running the checks, simulating, routing, pricing parts and writing a verification package. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/WORKCENTER.md">The contract</a> lists everything a project receives.</p>
         </div>
       </section>
-
 
       <section class="section" id="run" aria-labelledby="run-title">
         <div class="wrap">
