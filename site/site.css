@@ -1179,10 +1179,10 @@ html:not(.motion) .progress {
     var(--shadow);
 }
 /* The tour: the board in the middle, the labels of 4 of its parts beside it, 2 to a side, 1 of them
-   swapped for the next every 3 s, a leader from each part to its label. The board stays at the top
-   of its row: 2 tall labels make the stage taller below it, and the labels slide (effects.js), so
-   the board never moves. Under 1024 px the labels stack below the board, 1 to 4, and the numbers
-   pair them. */
+   swapped for the next every 3 s, a leader from each part to its label. Beside the board a label
+   stands at most half its height and ends in an ellipsis where it is cut (effects.js), so a side's
+   2 fit and the board never moves. Under 1024 px the labels stack below the board, 1 to 4, whole,
+   and the numbers pair them. */
 .tour {
   position: relative;
   gap: 0.75rem;
@@ -1277,6 +1277,21 @@ html:not(.motion) .progress {
   margin: 0;
   white-space: pre-line;
   overflow-wrap: anywhere;
+}
+/* A label cut to its room beside the board (effects.js): the text where the room ends keeps the
+   lines that fit and ends in an ellipsis; what is under it is left out. */
+.part-card [data-cut] {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--lines);
+  line-clamp: var(--lines);
+  overflow: hidden;
+}
+.part-card [data-gone] {
+  display: none;
+}
+.part-card [data-last]::after {
+  content: " …";
 }
 .part-ds {
   display: inline-block;

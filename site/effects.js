@@ -191,6 +191,46 @@
       return false;
     }
 
+    // The most a label stands beside the board: half the board's height less half the gap between
+    // 2 labels, so a side's 2 always fit beside it and the board never moves. Stacked under the
+    // board, a label is whole.
+    function room() {
+      if (getComputedStyle(leaders).display === "none") return 0;
+      const gap = parseFloat(getComputedStyle(lists.left).rowGap) || 0;
+      return (face.getBoundingClientRect().height - gap) / 2;
+    }
+
+    // A label taller than its room ends in an ellipsis where the room ends: the text there keeps the
+    // lines that fit, and the rows under it, and the datasheet's link, are left out (its picture
+    // still links it). Where no line of a row fits, the row goes and the text above it ends in "…".
+    function fit(el, limit) {
+      for (const x of el.querySelectorAll("[data-cut], [data-gone], [data-last]")) {
+        delete x.dataset.cut;
+        delete x.dataset.gone;
+        delete x.dataset.last;
+      }
+      const box = el.getBoundingClientRect();
+      if (!limit || box.height <= limit + 0.5) return;
+      const bottom = box.top + limit - parseFloat(getComputedStyle(el).paddingBottom);
+      const blocks = [...el.querySelectorAll(".part-d, dd, .part-ds")];
+      const gone = (x) => ((x.matches("dd") ? x.parentElement : x).dataset.gone = "");
+      for (let i = 0; i < blocks.length; i += 1) {
+        const r = blocks[i].getBoundingClientRect();
+        if (r.bottom <= bottom + 0.5) continue;
+        blocks.slice(i + 1).forEach(gone);
+        const line = parseFloat(getComputedStyle(blocks[i]).lineHeight) || r.height;
+        const lines = blocks[i].matches(".part-ds") ? 0 : Math.floor((bottom - r.top) / line);
+        if (lines >= 1) {
+          blocks[i].dataset.cut = "";
+          blocks[i].style.setProperty("--lines", lines);
+        } else {
+          gone(blocks[i]);
+          if (i > 0) blocks[i - 1].dataset.last = "";
+        }
+        return;
+      }
+    }
+
     // A side's labels stand in the order of their parts from the top of the board down; where 2
     // parts sit side by side and their leaders would cross, the other way up. Under the board the
     // numbers order them instead (site.css).
@@ -237,6 +277,8 @@
       const item = { p, n, el: card(p.ref, n), tag: tag(p, n) };
       body(p.ref).classList.add("on");
       list.push(item);
+      lists[side].append(item.el);
+      fit(item.el, room());
       arrange(side);
       if (!motion) {
         lead(null);
@@ -269,10 +311,13 @@
       lead(p.ref);
     }
 
-    // Once the stage has its size (its fonts, its pictures, a new width), each side's order is
-    // checked again, between swaps: a label's height decides where its leader runs.
+    // Once the stage has its size (its fonts, its pictures, a new width), each label is fitted to its
+    // room and each side's order checked again, between swaps: a label's height decides where its
+    // leader runs.
     function settle() {
       if (sliding) return;
+      const limit = room();
+      for (const el of tour.querySelectorAll(".part-card")) fit(el, limit);
       arrange("left");
       arrange("right");
       lead(null);
