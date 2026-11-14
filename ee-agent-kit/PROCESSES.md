@@ -774,21 +774,25 @@ costs` and `workcenter docs` run last leave `git status` unchanged.
 When: a board version's gates are GREEN and P14's close-out is next; again
 after any change to what the boards look like in that version.
 
-1. The version's `pictures.json` says what is drawn: every board (its
-   stills, its layer sheet, each turning GIF with its tilt, zoom and
-   pivot), every scene script (an assembly, a close-up) and the name each
-   file takes in `docs/`. `workcenter pictures <version>` writes one with
-   the defaults when there is none: each board seen from the face that
-   carries the parts, from below too (tilt `-125`) when it has parts on
-   both faces, and each script at the version's top that imports `scene`.
-   An assembly is a scene script on `tools/scene.py`, so it is redrawn
-   with the stills; the script holds only its placements.
+1. `workcenter pictures <version>` works out what is drawn from the
+   version on each run: every board (its stills, its layer sheet, a
+   turning GIF from the face that carries the parts, and from below too,
+   tilt `-125`, when both faces do) and every script at the version's top
+   that imports `scene`, with each picture the script prints on a
+   `scene:` line. An assembly is a scene script on `tools/scene.py`, so it
+   is redrawn with the stills; the script holds only its placements. The
+   version's `pictures.json` is optional and holds only what differs,
+   keyed by board name and by script (`docs/CONFIGURATION.md`): a GIF's
+   name or tilt, a pivot, a script that does not import `scene`.
 2. Check the framing before any GIF is kept: `workcenter pictures
-   <version> --frames 4` (under two minutes for a version of two boards
-   and an assembly) writes one sheet per GIF with the frames at 0, 90, 180
-   and 270 degrees, and leaves `docs/` alone. The end-on frames crop first:
-   lower `zoom`, and raise the pivot's z to the middle of a tall assembly,
-   in the manifest, until all four are whole.
+   <version> --frames 4` (a few minutes for a version of two boards and
+   an assembly) writes one sheet per GIF with the frames at 0, 90, 180 and
+   270 degrees, and leaves `docs/` alone. A GIF with no `zoom` has it
+   fitted (the largest up to 1 that keeps the board 5 % of the height
+   clear in a test frame every 45 degrees) and the summary names it. A
+   frame still cropped is a tall assembly about the wrong pivot: raise the
+   pivot's z to its middle. Write a `zoom` only to draw it smaller than
+   the fit.
 3. `workcenter pictures <version>`: every board's stills and every layer
    (`render --strict`: a part the 3D views draw without a body fails its
    board, and nothing of that board is copied; give the part its body,
@@ -797,8 +801,9 @@ after any change to what the boards look like in that version.
    own stackup colours: kicad-cli draws its preset's green unless it is
    given `--use-board-stackup-colors`, which the workcenter passes (M134).
 4. The README shows the GIFs beside the stills and the layer sheets, and
-   names `workcenter pictures <version>` and its `pictures.json`, which
-   the next version copies with the folder and so draws the same way.
+   names `workcenter pictures <version>` and, when there is one, its
+   `pictures.json`, which the next version copies with the folder and so
+   draws the same way.
 5. Send the GIFs and the layer sheets with the report.
 6. An assembly scene draws every body its boards name. Build it with
    `tools/scene.py`, which copies each 3D model the board names and reports

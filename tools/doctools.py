@@ -463,15 +463,16 @@ def cmd_docs(args, cli) -> int:
     rows = datasheet_rows(sources)
     series = read_series(sources.parent)
     lines, missing = list_lines(boards, lists)
-    scripts = {}
-    manifest = vdir / PICTURES_FILE
-    if manifest.is_file():
-        try:
-            scripts = {
-                s["script"]: s.get("what", "") for s in json.loads(manifest.read_text()).get("scenes", [])
-            }
-        except (ValueError, KeyError, AttributeError):
-            scripts = {}
+    manifest, problems = effective_manifest(vdir)
+    scripts = (
+        {}
+        if problems
+        else {
+            s["script"]: s.get("what", "")
+            for s in manifest["scenes"]
+            if isinstance(s, dict) and "script" in s
+        }
+    )
     copied: dict[str, Path] = {}
     if not missing:
         for r in lines:
@@ -738,11 +739,14 @@ def gates_report(report: Path, project, results: list, cli) -> list[str]:
 # ----------------------------------------------------------------- pictures
 #
 # P23 in one command: each board's stills, layer images and turning GIFs, the project's scene scripts
-# (an assembly, a close-up), and the copies into the version's docs/, from a manifest in the version.
+# (an assembly, a close-up), and the copies into the version's docs/. What is drawn is worked out from
+# the version each run; a pictures.json in the version holds only what differs (`effective_manifest`).
 
 PICTURES_FILE = "pictures.json"
 STILLS = ("board-top.png", "board-bottom.png", "board-3d-top.png", "board-3d-bottom.png", "board-3d-iso.png")
 SPIN_TOP, SPIN_BOTTOM = -55.0, -125.0
+KEYED = {"boards": "name", "scenes": "script"}  # a manifest's lists, and the field an object form keys on
+SCENE_LINE = re.compile(r"^scene: (.+)$", re.M)  # a picture a scene script wrote (`tools/scene.py`)
 
 
 def both_faces(pcb: Path) -> bool:
@@ -752,45 +756,101 @@ def both_faces(pcb: Path) -> bool:
     return layers == {"F", "B"}
 
 
+def board_entry(vdir: Path, path: Path, name: str) -> dict:
+    """A board's defaults: its stills, its layer sheet, and a turning GIF from above, with one from
+    below when it carries parts on both faces; no zoom, so each GIF's is fitted (`render`)."""
+    prefix = "" if path == vdir else f"{name}-"
+    pcbs = sorted(path.glob("*.kicad_pcb"))
+    spins = [{"as": f"{prefix}board-spin.gif", "tilt": SPIN_TOP}]
+    if pcbs and both_faces(pcbs[0]):
+        spins.append({"as": f"{prefix}board-spin-bottom.gif", "tilt": SPIN_BOTTOM})
+    return {
+        "path": os.path.relpath(path, vdir).replace(os.sep, "/"),
+        "name": name,
+        "prefix": prefix,
+        "strict": True,
+        "stills": [*STILLS, "schematic.png"],
+        "layers": f"layers-{name}.png",
+        "spins": spins,
+    }
+
+
 def default_manifest(vdir: Path) -> dict:
-    boards = []
-    for b in boards_of(vdir):
-        prefix = "" if b.path == vdir else f"{b.label}-"
-        pcbs = sorted(b.path.glob("*.kicad_pcb"))
-        spins = [{"as": f"{prefix}board-spin.gif", "tilt": SPIN_TOP, "zoom": 1.0}]
-        if pcbs and both_faces(pcbs[0]):
-            spins.append({"as": f"{prefix}board-spin-bottom.gif", "tilt": SPIN_BOTTOM, "zoom": 1.0})
-        boards.append(
-            {
-                "path": os.path.relpath(b.path, vdir).replace(os.sep, "/"),
-                "name": b.label,
-                "prefix": prefix,
-                "strict": True,
-                "stills": [*STILLS, "schematic.png"],
-                "layers": f"layers-{b.label}.png",
-                "spins": spins,
-            }
-        )
+    """What `pictures` draws with no pictures.json: every board of the version, and every script at its
+    top that imports `scene`, each picture the script prints on a `scene:` line copied under its name."""
+    boards = [board_entry(vdir, b.path, b.label) for b in boards_of(vdir)]
     scenes = []
     for script in sorted(vdir.glob("*.py")):
         if script.name != "design.py" and re.search(
             r"^\s*(import scene|from scene import)", script.read_text(), re.M
         ):
-            scenes.append({"script": script.name, "what": script_summary(script), "copy": {}})
+            scenes.append({"script": script.name, "what": script_summary(script)})
     return {"boards": boards, "scenes": scenes}
+
+
+def effective_manifest(vdir: Path) -> tuple[dict, list[str]]:
+    """The defaults with the version's pictures.json over them, and what is wrong with the file.
+    `boards` or `scenes` given as a list is exactly what is drawn, as before. Given as an object, it is
+    keyed by a board's name or a scene's script: an entry's fields replace that default's, null drops
+    it, and a key the defaults lack adds one (a board then needs its `path`)."""
+    manifest = default_manifest(vdir)
+    path = vdir / PICTURES_FILE
+    if not path.is_file():
+        return manifest, []
+    try:
+        given = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError as exc:
+        return manifest, [f"{path.name}: {exc}"]
+    if not isinstance(given, dict):
+        return manifest, [f"{path.name}: an object holding `boards`, `scenes` or both"]
+    problems = [f"{path.name}: `{k}` is neither `boards` nor `scenes`" for k in given if k not in KEYED]
+    for key, field in KEYED.items():
+        over = given.get(key)
+        if over is None:
+            continue
+        if isinstance(over, list):
+            manifest[key] = over
+            continue
+        if not isinstance(over, dict):
+            problems.append(f"{key}: a list (exactly these) or an object (changes to the defaults)")
+            continue
+        merged = {e[field]: e for e in manifest[key]}
+        for name, fields in over.items():
+            if fields is None:
+                if merged.pop(name, None) is None:
+                    problems.append(f"{key}.{name}: null drops a default, and none has that name")
+            elif not isinstance(fields, dict):
+                problems.append(f"{key}.{name}: an object of fields, or null")
+            elif name in merged:
+                merged[name] = {**merged[name], **fields}
+            elif key == "boards":
+                if "path" not in fields:
+                    known = ", ".join(merged) or "none"
+                    problems.append(f"boards.{name}: no board of that name ({known}); a new one needs `path`")
+                    continue
+                merged[name] = {**board_entry(vdir, (vdir / fields["path"]).resolve(), name), **fields}
+            else:
+                merged[name] = {"script": name, "what": "", **fields}
+        manifest[key] = list(merged.values())
+    return manifest, problems
 
 
 def manifest_problems(manifest: dict, vdir: Path) -> list[str]:
     problems = []
     for i, b in enumerate(manifest.get("boards", [])):
+        if not isinstance(b, dict):
+            problems.append(f"boards[{i}]: an object of fields")
+            continue
         if not (vdir / b.get("path", ".")).is_dir():
             problems.append(f"boards[{i}]: no folder {b.get('path')}")
-        for j, s in enumerate(b.get("spins", [])):
-            if not s.get("as", "").endswith(".gif"):
+        for j, sp in enumerate(b.get("spins", [])):
+            if not isinstance(sp, dict) or not str(sp.get("as", "")).endswith(".gif"):
                 problems.append(f"boards[{i}].spins[{j}]: `as` names the GIF in docs/, ending .gif")
-    for i, s in enumerate(manifest.get("scenes", [])):
-        if not (vdir / s.get("script", "")).is_file():
-            problems.append(f"scenes[{i}]: no script {s.get('script')}")
+    for i, sc in enumerate(manifest.get("scenes", [])):
+        if not isinstance(sc, dict) or not (vdir / sc.get("script", "")).is_file():
+            problems.append(f"scenes[{i}]: no script {sc.get('script') if isinstance(sc, dict) else sc}")
+        elif not isinstance(sc.get("copy", {}), dict):
+            problems.append(f"scenes[{i}].copy: an object of the files and their names in docs/")
     return problems
 
 
@@ -836,19 +896,13 @@ def cmd_pictures(args, cli) -> int:
     t0 = time.monotonic()
     vdir = Path(args.version).resolve()
     path = vdir / PICTURES_FILE
-    notes = []
-    if not path.is_file():
-        path.write_text(json.dumps(default_manifest(vdir), indent=2) + "\n", encoding="utf-8")
-        notes.append(f"wrote {path.name} with the defaults; edit it and run again to change what is drawn")
-    try:
-        manifest = json.loads(path.read_text(encoding="utf-8"))
-    except ValueError as exc:
-        return finish(cli, cli.Result("pictures", "error", f"{path}: {exc}"), t0, args)
-    problems = manifest_problems(manifest, vdir)
+    notes = [] if path.is_file() else [f"the defaults: no {path.name}, which would hold only what differs"]
+    manifest, problems = effective_manifest(vdir)
+    problems += manifest_problems(manifest, vdir)
     if problems:
-        return finish(
-            cli, cli.Result("pictures", "error", f"{path}: {problems[0]}", {"failures": problems}), t0, args
-        )
+        details = {"failures": problems, "manifest": manifest}
+        return finish(cli, cli.Result("pictures", "error", f"{path}: {problems[0]}", details), t0, args)
+    zooms: dict[str, float] = {}
     docs = vdir / "docs"
     failures, copied, checks = [], [], []
 
@@ -886,9 +940,11 @@ def cmd_pictures(args, cli) -> int:
                 views=("spin",),
                 spin_frames=args.frames or s.get("frames", 36),
                 spin_tilt=float(s.get("tilt", SPIN_TOP)),
-                spin_zoom=float(s.get("zoom", 1.0)),
+                spin_zoom=None if s.get("zoom") is None else float(s["zoom"]),
                 spin_pivot=s.get("pivot"),
             )
+            if r.details.get("spin_fit"):
+                zooms[s["as"]] = r.details["spin_zoom"]
             gif = out / "render" / "board-spin.gif"
             if r.status != "pass":
                 failures.append(f"{s['as']}: render {r.status}: {r.summary}")
@@ -913,11 +969,21 @@ def cmd_pictures(args, cli) -> int:
         if args.frames:
             checks += re.findall(r"^frames: (\S+)$", proc.stdout, re.M)
             continue
-        for src, dest in s.get("copy", {}).items():
+        # With no `copy`, each picture the script printed on a `scene:` line, under its own name.
+        copy = s.get("copy") or {line: Path(line).name for line in SCENE_LINE.findall(proc.stdout)}
+        for src, dest in copy.items():
             keep(vdir / src, dest)
+    fitted = "; zoom fitted: " + ", ".join(f"{k} {v:g}" for k, v in zooms.items()) if zooms else ""
     if args.frames:
         summary = f"framing check, {args.frames} frames: {len(checks)} sheets to look at; docs/ untouched"
-        details = {"failures": failures, "sheets": checks, "notes": notes}
+        summary += fitted
+        details = {
+            "failures": failures,
+            "sheets": checks,
+            "notes": notes,
+            "zooms": zooms,
+            "manifest": manifest,
+        }
         code = finish(
             cli, cli.Result("pictures", "fail" if failures else "pass", summary, details, checks), t0, args
         )
@@ -925,10 +991,9 @@ def cmd_pictures(args, cli) -> int:
             for c in checks:
                 print(f"       look at {c}")
         return code
-    summary = f"{len(copied)} files into {docs.relative_to(vdir.parent)}/" + (
-        f"; {notes[0]}" if notes else ""
-    )
-    details = {"failures": failures, "copied": copied, "notes": notes}
+    summary = f"{len(copied)} files into {docs.relative_to(vdir.parent)}/" + fitted
+    summary += f"; {notes[0]}" if notes else ""
+    details = {"failures": failures, "copied": copied, "notes": notes, "zooms": zooms, "manifest": manifest}
     return finish(cli, cli.Result("pictures", "fail" if failures else "pass", summary, details), t0, args)
 
 

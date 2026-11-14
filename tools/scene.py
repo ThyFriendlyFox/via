@@ -23,10 +23,12 @@ rotation is the body's own, read the way KiCad reads a model's (M42: opposite to
 `workcenter pictures` runs a scene script with this folder on PYTHONPATH; by hand,
 `PYTHONPATH=<workcenter>/tools python3 <script>`. Paths are relative to the script's folder. Needs
 KiCad's pcbnew module and kicad-cli; `spin` needs FFmpeg. Writes only in `out`: bodies/ (the scene's
-bodies), a copy of each body the board names under ${KIPRJMOD} at the same path, the scene's board,
-the stills and the GIF. With WORKCENTER_SPIN_FRAMES set, `spin` draws that many frames; with
-WORKCENTER_PICTURES_CHECK set (`workcenter pictures --frames N`), `stills` draws nothing and `spin`
-also writes a sheet of its frames and prints `frames: <path>`.
+bodies), a copy of each body the board names under ${KIPRJMOD} at the same path, the scene's board, the
+stills and the GIF. Each picture is printed as `scene: <path>`, and `workcenter pictures` copies those
+into the version's docs/ under their names unless the manifest's `copy` says otherwise. With
+WORKCENTER_SPIN_FRAMES set, `spin` draws that many frames; with WORKCENTER_PICTURES_CHECK set
+(`workcenter pictures --frames N`), `stills` draws nothing and `spin` also writes a sheet of its frames
+and prints `frames: <path>`.
 """
 
 from __future__ import annotations
@@ -196,10 +198,16 @@ class Scene:
         return done
 
     def spin(
-        self, gif: str, tilt: float = -55.0, zoom: float = 1.0, pivot: str | None = None, frames: int = 36
+        self,
+        gif: str,
+        tilt: float = -55.0,
+        zoom: float | None = None,
+        pivot: str | None = None,
+        frames: int = 36,
     ):
         """The scene turning once round its vertical axis: `workcenter render --views spin` on the
-        scene's board, the GIF moved to `out/<gif>`."""
+        scene's board, the GIF moved to `out/<gif>`. With no zoom, render fits the largest at which
+        every frame is whole; a tall scene still wants its pivot's z at its middle."""
         pcb = self.save()
         frames = int(os.environ.get("WORKCENTER_SPIN_FRAMES") or frames)
         work = self.out / "spin"
@@ -213,7 +221,8 @@ class Scene:
             "--views",
             "spin",
         ]
-        cmd += ["--spin-frames", str(frames), "--spin-tilt", f"{tilt:g}", "--spin-zoom", f"{zoom:g}"]
+        cmd += ["--spin-frames", str(frames), "--spin-tilt", f"{tilt:g}"]
+        cmd += ["--spin-zoom", f"{zoom:g}"] if zoom is not None else []
         cmd += ["--spin-pivot", pivot] if pivot else []
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
         path = (work / "render" / "board-spin.gif").replace(self.out / gif)

@@ -166,7 +166,9 @@ layer with the outline, bottom layers seen from below) with an overview sheet,
 `build/render/layers.png`. `--views spin` adds `build/render/board-spin.gif`,
 the 3D board turning once round (`--spin-frames`, `--spin-tilt`, `--spin-zoom`,
 `--spin-pivot`;
-a minute or two of frames). `--views` takes any of schematic, 2d, 3d, layers,
+a minute or two of frames). Without `--spin-zoom` the zoom is fitted: the
+largest up to 1 at which every test frame, one each 45 degrees, keeps the
+board 5 % of the height from its edges. `--views` takes any of schematic, 2d, 3d, layers,
 spin, or all. The 3D views and the GIF are drawn in the board stackup's
 colours (its masks, silkscreens and finish). Its summary names every part the 3D views draw without a body
 (a footprint naming a model that is not on disk); `--strict` fails on one.
@@ -437,12 +439,15 @@ stale (`tools/doctools.py`):
   `<!-- workcenter costs lists -->` block (M97). A marker counts only alone
   on its line, as the command writes it: one named in a sentence is prose
   (M176).
-- `workcenter pictures <version>` is `PROCESSES.md` P23 in one command,
-  from the version's `pictures.json` (written with the defaults when
-  absent): each board's `render --strict` stills and layers, its turning
-  GIFs, the scene scripts, then the copies into `docs/` and `docs/layers/`.
-  `--frames 4` is the framing check: one sheet of frames per GIF under
-  `build/pictures/check/`, `docs/` untouched.
+- `workcenter pictures <version>` is `PROCESSES.md` P23 in one command:
+  each board's `render --strict` stills and layers, its turning GIFs with
+  their zoom fitted, the scene scripts, then the copies into `docs/` and
+  `docs/layers/`, a scene's being each picture it prints on a `scene:`
+  line. What is drawn is worked out from the version on each run; the
+  version's `pictures.json`, optional, holds only what differs, keyed by
+  board and by script (`docs/CONFIGURATION.md`), and nothing is written
+  into the version. `--frames 4` is the framing check: one sheet of frames
+  per GIF under `build/pictures/check/`, `docs/` untouched.
 - `tools/scene.py` is the general part of an assembly: it loads a routed
   board with KiCad's `pcbnew`, makes bodies (`cylinder`, `box`, a `wrlgen`
   preset, another board through kicad-cli's VRML export), places each at
@@ -520,8 +525,8 @@ and no analog block. The engines install on request:
 - Optional, a project kept as version folders (`v0.1/`, `v0.2/`, ... at the
   repository's root, a nested board one folder down): `parts/catalog.csv`,
   `parts/version/<id>.csv` and `parts/offboard/<id>.csv` for `workcenter
-  costs`, which writes `parts/lists/`; `<version>/pictures.json` for
-  `workcenter pictures`; `library/series.csv` for `workcenter docs`
+  costs`, which writes `parts/lists/`; `<version>/pictures.json` for what
+  `workcenter pictures` draws beyond its defaults; `library/series.csv` for `workcenter docs`
 - Optional: `library/sources.csv` at or above the project, with the files it
   names beside it, for `workcenter sources` and the vendor models a deck
   includes. Columns: `MPN,Kind,URL,File,Member,Revision,Dated,Subckt,Ngspice,SHA256,Checked,Note`;

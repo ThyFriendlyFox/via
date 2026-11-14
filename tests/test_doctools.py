@@ -657,11 +657,162 @@ def test_default_manifest_names_each_board_and_each_scene(tmp_path):
         (".", "base", "", "layers-base.png"),
         ("display", "display", "display-", "layers-display.png"),
     ]
-    # The fixture has parts on its top face only: one GIF from above.
-    assert [s["as"] for s in manifest["boards"][1]["spins"]] == ["display-board-spin.gif"]
-    assert manifest["scenes"] == [{"script": "assembly.py", "what": "The assembly", "copy": {}}]
+    # The fixture has parts on its top face only: one GIF from above, its zoom left to the fit.
+    assert manifest["boards"][1]["spins"] == [{"as": "display-board-spin.gif", "tilt": -55.0}]
+    # No copy list: the scene's pictures are the ones it prints.
+    assert manifest["scenes"] == [{"script": "assembly.py", "what": "The assembly"}]
     write(tmp_path / "both.kicad_pcb", '(footprint "A" (layer "F.Cu"))\n(footprint "B" (layer "B.Cu"))\n')
     assert doctools.both_faces(tmp_path / "both.kicad_pcb")
+
+
+def test_a_manifest_holds_only_what_differs_from_the_defaults(tmp_path):
+    v = tmp_path / "v0.1"
+    shutil.copytree(BOARDS / "pass-rc-divider", v)
+    shutil.copytree(BOARDS / "pass-rc-divider", v / "display")
+    write(v / "assembly.py", '"""The assembly."""\nimport scene\n')
+    write(v / "closeup.py", '"""A close-up that writes docs/ itself."""\n')
+    # No file: the defaults, and nothing written into the version.
+    manifest, problems = doctools.effective_manifest(v)
+    assert problems == [] and manifest == doctools.default_manifest(v)
+    assert not (v / "pictures.json").exists()
+    # The object form: a board's fields over its defaults, a scene dropped, one the defaults lack added.
+    spins = [{"as": "display-board-spin.gif"}, {"as": "display-board-spin-back.gif", "tilt": -125}]
+    over = {"boards": {"display": {"spins": spins}}, "scenes": {"assembly.py": None, "closeup.py": {}}}
+    write(v / "pictures.json", json.dumps(over))
+    manifest, problems = doctools.effective_manifest(v)
+    assert problems == []
+    base, display = manifest["boards"]
+    assert base == doctools.default_manifest(v)["boards"][0]
+    assert display["spins"] == spins and display["layers"] == "layers-display.png"
+    assert manifest["scenes"] == [{"script": "closeup.py", "what": ""}]
+    # The list form is exactly what is drawn, as every manifest before it was.
+    listed = {"boards": [{"path": ".", "name": "base"}], "scenes": []}
+    write(v / "pictures.json", json.dumps(listed))
+    assert doctools.effective_manifest(v) == (listed, [])
+    # A copy list that is not an object is named, not run.
+    write(v / "pictures.json", json.dumps({"scenes": {"assembly.py": {"copy": ["a.png"]}}}))
+    manifest, problems = doctools.effective_manifest(v)
+    assert doctools.manifest_problems(manifest, v) == [
+        "scenes[0].copy: an object of the files and their names in docs/"
+    ]
+    # What it cannot read is named: an unknown board with no path, a list of the wrong kind, a stray key.
+    bad = {"boards": {"radio": {"layers": None}, "display": None}, "scenes": "assembly.py", "zoom": 1}
+    write(v / "pictures.json", json.dumps(bad))
+    manifest, problems = doctools.effective_manifest(v)
+    assert [b["name"] for b in manifest["boards"]] == ["base"]
+    assert problems == [
+        "pictures.json: `zoom` is neither `boards` nor `scenes`",
+        "boards.radio: no board of that name (base, display); a new one needs `path`",
+        "scenes: a list (exactly these) or an object (changes to the defaults)",
+    ]
+    # A board the defaults do not find takes the defaults of its folder.
+    write(v / "pictures.json", json.dumps({"boards": {"spare": {"path": "display", "strict": False}}}))
+    spare = doctools.effective_manifest(v)[0]["boards"][2]
+    assert (spare["path"], spare["prefix"], spare["layers"], spare["strict"]) == (
+        "display",
+        "spare-",
+        "layers-spare.png",
+        False,
+    )
+
+
+def png_rgba(width: int, rows: list[bytes], filters: list[int]) -> bytes:
+    """An RGBA PNG written with the given row filter on each row (0 None, 1 Sub, 2 Up, 3 Average,
+    4 Paeth), as an encoder may choose them; the reader under test must undo each."""
+    import struct
+    import zlib
+
+    def paeth(a: int, b: int, c: int) -> int:
+        p = a + b - c
+        pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+        return a if pa <= pb and pa <= pc else b if pb <= pc else c
+
+    out, prev = bytearray(), bytes(len(rows[0]))
+    for row, f in zip(rows, filters, strict=True):
+        enc = bytearray()
+        for x, v in enumerate(row):
+            a, b, c = (row[x - 4] if x >= 4 else 0), prev[x], (prev[x - 4] if x >= 4 else 0)
+            pred = (0, a, b, (a + b) // 2, paeth(a, b, c))[f]
+            enc.append((v - pred) & 0xFF)
+        out += bytes([f]) + enc
+        prev = row
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+    head = struct.pack(">IIBBBBB", width, len(rows), 8, 6, 0, 0, 0)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", head)
+        + chunk(b"IDAT", zlib.compress(bytes(out)))
+        + chunk(b"IEND", b"")
+    )
+
+
+def test_a_frames_opaque_box_is_read_through_every_row_filter(tmp_path):
+    cli = load_cli()
+    w, h = 9, 10
+    rows = []
+    for y in range(h):
+        row = bytearray()
+        for x in range(w):
+            inside = 2 <= x <= 6 and 3 <= y <= 7
+            row += bytes([(x * 29 + y * 7) % 256, (x * y * 13) % 256, 200 - x - y, 255 if inside else 0])
+        rows.append(bytes(row))
+    png = write(tmp_path / "f.png", png_rgba(w, rows, [y % 5 for y in range(h)]))
+    width, height, alpha = cli.png_alpha(png)
+    assert (width, height) == (w, h) and alpha == [r[3::4] for r in rows]
+    frame = cli.opaque_box(png)
+    assert frame == (9, 10, (2, 3, 6, 7))
+    assert cli.spin_clear(frame)  # 2 px clear of every edge, the least margin a frame keeps
+    assert not cli.spin_clear((9, 10, (1, 3, 6, 7)))
+    assert cli.spin_clear((9, 10, None)) and cli.spin_room((9, 10, None)) == float("inf")
+    # About the centre (4, 4.5), keeping 2 px: 2 px of room across for the box's 2, 2.5 down for its 2.5.
+    assert cli.spin_room(frame) == pytest.approx(1.0)
+    assert cli.spin_room((9, 10, (3, 4, 5, 5))) == pytest.approx(2.0)  # half as wide, half as tall: twice
+    write(tmp_path / "rgb.png", png_rgba(w, rows, [0] * h).replace(bytes([8, 6]), bytes([8, 2]), 1))
+    assert cli.png_alpha(tmp_path / "rgb.png") is None  # not RGBA: not read, never guessed
+
+
+def test_the_turning_gifs_zoom_is_the_largest_that_keeps_every_frame_whole(tmp_path, monkeypatch):
+    cli = load_cli()
+    tried = []
+
+    def fake_run(cmd, cwd=None, timeout=None):
+        """A board whose half-width is 330 px times the zoom in a 640 x 400 frame: it crops at 1, and
+        keeps 20 px clear (5 % of 400) while that half-width is 300 px or less, up to zoom 0.9106."""
+        cmd = [str(c) for c in cmd]
+        zoom = float(cmd[cmd.index("--zoom") + 1])
+        tried.append(zoom)
+        half = round(330 * zoom)
+        Path(cmd[cmd.index("--output") + 1]).write_bytes(b"png")
+        fake_run.boxes[cmd[cmd.index("--output") + 1]] = (640, 400, (320 - half, 150, 319 + half, 250))
+        return types.SimpleNamespace(returncode=0)
+
+    fake_run.boxes = {}
+    monkeypatch.setattr(cli, "run", fake_run)
+    monkeypatch.setattr(cli, "opaque_box", lambda png: fake_run.boxes[str(png)])
+    project = types.SimpleNamespace(pcb=tmp_path / "b.kicad_pcb", dir=tmp_path)
+    zoom, note = cli.fit_spin_zoom(project, tmp_path / "fit", -55.0, None)
+    assert (zoom, note) == (0.91, "zoom 0.91 fitted")
+    # 8 frames at 1, 8 at 0.5 to measure the room, 8 to check the scaled zoom.
+    assert tried == [1.0] * 8 + [0.5] * 8 + [0.91] * 8
+    # A board that fits at 1 costs 8 test frames and keeps zoom 1.
+    tried.clear()
+    monkeypatch.setattr(cli, "opaque_box", lambda png: (640, 400, (100, 100, 500, 300)))
+    assert (
+        cli.fit_spin_zoom(project, tmp_path / "fit", -55.0, None) == (1.0, "zoom 1 fits") and len(tried) == 8
+    )
+    # A board that crops even at a small zoom (a pivot far off) is not called fitted.
+    monkeypatch.setattr(cli, "opaque_box", lambda png: (640, 400, (0, 0, 639, 399)))
+    zoom, note = cli.fit_spin_zoom(project, tmp_path / "fit", -55.0, None)
+    assert zoom < 0.05 and "crops at every zoom tried" in note
+    # A frame that is not drawn leaves zoom 1 and says so.
+    monkeypatch.setattr(cli, "opaque_box", lambda png: None)
+    assert cli.fit_spin_zoom(project, tmp_path / "fit", -55.0, None) == (
+        1.0,
+        "zoom 1: a test frame was not drawn or not read",
+    )
 
 
 def test_pictures_refuses_a_manifest_naming_what_is_not_there(tmp_path):
@@ -681,6 +832,8 @@ out.mkdir(parents=True, exist_ok=True)
 (out / "pic.txt").write_text(os.environ["WORKCENTER_SRC"])
 if os.environ.get("WORKCENTER_PICTURES_CHECK"):
     print(f"frames: {out / 'pic.txt'}")
+else:
+    print(f"scene: {out / 'pic.txt'}")
 """
 
 
@@ -690,27 +843,27 @@ def test_pictures_draws_copies_and_checks_the_framing(tmp_path):
     v = tmp_path / "v0.1"
     shutil.copytree(BOARDS / "pass-rc-divider", v)
     write(v / "stub.py", SCENE_STUB)
-    manifest = {
-        "boards": [
-            {
-                "path": ".",
-                "name": "base",
-                "prefix": "",
-                "strict": False,  # the fixture's library bodies are not installed everywhere
-                "stills": ["board-top.png", "schematic.png"],
-                "layers": "layers-base.png",
-                "spins": [{"as": "board-spin.gif", "tilt": -55, "zoom": 0.9, "frames": 2}],
-            }
-        ],
-        "scenes": [{"script": "stub.py", "copy": {"build/stub/pic.txt": "pic.txt"}}],
+    # No manifest: the framing check of the defaults' GIF, its zoom fitted, and no file written.
+    code, records = run("pictures", v, "--frames", "2")
+    assert code == 0, records
+    assert not (v / "pictures.json").exists() and not (v / "docs").exists()
+    assert list(records[0]["details"]["zooms"]) == ["board-spin.gif"]
+    # Only what differs: the base board's fields, and a scene that does not import `scene`, its
+    # pictures the ones it prints.
+    spins = [{"as": "board-spin.gif", "tilt": -55, "zoom": 0.9, "frames": 2}]
+    stills = ["board-top.png", "schematic.png"]
+    over = {
+        "boards": {"base": {"strict": False, "stills": stills, "spins": spins}},  # library bodies vary
+        "scenes": {"stub.py": {}},
     }
-    write(v / "pictures.json", json.dumps(manifest))
+    write(v / "pictures.json", json.dumps(over))
     code, records = run("pictures", v, "--frames", "2")
     assert code == 0, records
     assert not (v / "docs").exists()  # the framing check writes into build/ only
     sheet = v / "build" / "pictures" / "check" / "board-spin" / "board-spin-frames.png"
     assert records[0]["artifacts"] == [str(sheet), str(v / "build" / "stub" / "pic.txt")]
     assert sheet.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+    assert records[0]["details"]["zooms"] == {}  # a zoom the manifest gives is drawn as given
     code, records = run("pictures", v)
     assert code == 0, records
     docs = v / "docs"
