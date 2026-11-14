@@ -53,7 +53,7 @@ empty.
 | `agents.svg` | The marks of the 21 agents in the strip, 1 symbol each, drawn in the text colour. "What is not ours" names where each comes from. |
 | `vendor/` | Motion 14.6.0 (motion.dev), its UMD build from the npm package `motion`, with its MIT license, SHA256 `5cd165acfdf8e14ca5358c3d876142e5465419ee0d100bcf195da474cf8db2bf`. model-viewer 4.4.0 (modelviewer.dev), `dist/model-viewer-umd.min.js` from the npm package `@google/model-viewer`, with its Apache-2.0 license, SHA256 `d785423b1d046ea84a9f59ef6cf15f3077603e1bf938b01ced9b0240691884a2`. The meshopt decoder 1.2.0, `meshopt_decoder.cjs` from the npm package `meshoptimizer`, with its MIT license, SHA256 `fedf06f101ff2ba59d66335578230b7e8f5fac5057dee084be64c67444ac6c12`. |
 | `logo.svg` | The Via wordmark: V, I and A as copper, a pad on each and traces between. Every page's header and footer, the hero, the closing section, `og.html` and `media/hero.html` draw it inline. |
-| `showcase/` | The examples' pictures: Herald, the example the page shows, as a 3D model (`herald.glb`, 0.6 MB) with KiCad's render of its top as the model's picture until it loads (`herald-top.png`), its layers (`herald-layers.png`) and its supervised inputs from its schematic (`herald-schematic.png`); `herald.png`, the picture `og.html` shows; `rosetta-iso.png` and `wyvern-iso.png`, which the root README shows; and Agentcast's card (`agentcast.png`, from its repository's v0.5, its backdrop taken out by `key.py`). The other cards show `examples/<name>/card.png`. `draw_face.py` writes Herald's board drawing into `index.html` between `face:begin` and `face:end`, with the label of each part as JSON (`#herald-parts`). `datasheets.py` draws the first page of each part's datasheet into `datasheets/`, 160 px wide, for its label. `make_glb.mjs` writes `herald.glb`. |
+| `showcase/` | The examples' pictures: Herald, the example the page shows, as a 3D model (`herald.glb`, 0.6 MB) with KiCad's render of its top as the model's picture until it loads (`herald-top.png`), its layers (`herald-layers.png`) and its supervised inputs from its schematic (`herald-schematic.png`); `rosetta-iso.png` and `wyvern-iso.png`, which the root README shows; and Agentcast's card (`agentcast.png`, from its repository's v0.5, its backdrop taken out by `key.py`). The other cards show `examples/<name>/card.png`. `draw_face.py` writes Herald's board drawing into `index.html` between `face:begin` and `face:end`, with the label of each part as JSON (`#herald-parts`). `datasheets.py` draws the first page of each part's datasheet into `datasheets/`, 160 px wide, for its label. `make_glb.mjs` writes `herald.glb`. |
 | `favicon.svg` | The icon: the wordmark of `logo.svg`, centred in a square. It follows the system's colour scheme. |
 | `favicon-32.png`, `apple-touch-icon.png` | The icon as PNG, for a browser that takes no SVG icon and for a phone's home screen. |
 | `og.html` | The page the image below is a capture of. |
@@ -187,12 +187,8 @@ ffmpeg -i examples/fire-alarm-communicator/v0.1/docs/layers.png \
   -vf "scale=1200:-2:flags=lanczos,format=rgb24" site/showcase/herald-layers.png
 ```
 
-`og.html` shows Herald's 3D render, cropped and scaled with FFmpeg:
-
-```sh
-ffmpeg -i examples/fire-alarm-communicator/v0.1/docs/board-3d-iso.png \
-  -vf "crop=1500:857:34:127,scale=1000:571:flags=lanczos,format=rgb24" site/showcase/herald.png
-```
+`og.html` shows Herald's board as the page draws it, from its file, on the page's own paper:
+`draw_face.py` writes the drawing into `og.html` too, without the labels' data.
 
 ## A new example on the page
 
@@ -217,8 +213,8 @@ chromium --headless --hide-scrollbars --force-device-scale-factor=1 --window-siz
   --virtual-time-budget=4000 --screenshot=site/og.png "file://$PWD/site/og.html"
 ```
 
-It holds the wordmark, the page's headline and Herald's card picture (`showcase/herald.png`).
-Draw it again when `og.html`, the wordmark, the headline or the picture changes.
+It holds the wordmark, the page's headline and Herald's board drawing.
+Draw it again when `og.html`, the wordmark, the headline or the drawing changes.
 
 `favicon.svg` holds the paths of `logo.svg`. Copy them again when the
 wordmark changes. librsvg draws the 2 PNG icons from `favicon.svg`:
