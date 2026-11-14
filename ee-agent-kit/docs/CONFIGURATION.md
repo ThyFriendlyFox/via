@@ -110,17 +110,34 @@ unset variable never causes a failure.
 | `--views LIST` | render | `schematic,2d,3d,layers` | What to draw, comma-separated, from `schematic`, `2d`, `3d`, `layers`, `spin`, or `all`. `layers` writes `render/layers/<layer>.png` for each layer with something on it and `render/layers.png`; `spin` writes `render/board-spin.gif`. |
 | `--spin-frames N` | render | `36` | Frames in the turning GIF, 12 a second. |
 | `--spin-tilt DEG` | render | `-55` | The GIF's tilt about the board's x axis (kicad-cli `--rotate x`): `-55` looks down at the top face, `-125` up at the bottom face. |
-| `--spin-zoom Z` | render | `1.0` | The GIF's zoom; below 1 keeps long or tall parts in frame end-on. |
+| `--spin-zoom Z` | render | fitted | The GIF's zoom. Without it, the largest up to 1, in steps of 0.01, at which the board keeps 5 % of the frame's height clear of every edge in test frames at every 45 degrees, drawn fast with a transparent background: 8 when zoom 1 fits, 24 when the zoom scaled from the room at 0.5 fits, at most 48. The record names the zoom (`spin_zoom`) and how it was found (`spin_fit`). |
 | `--spin-pivot X,Y,Z` | render | none | The GIF's pivot, in cm from the board's centre (kicad-cli `--pivot`); raise Z to the middle of a tall assembly. |
 | `--report FILE` | gates | none | Also write the gates table and the deck list into FILE (a version's `docs/gates.md`) between `<!-- workcenter gates NAME -->` and `<!-- workcenter decks NAME -->` markers, NAME the project's `.kicad_pro` name; the prose outside them stays. The one file a gate run writes outside `--out`. |
 | `--library DIR` | docs | the nearest `library/` at or above the version | The library whose `sources.csv` names each part's datasheet; a `series.csv` beside it (`Pattern,MPN`) names the parts a series sheet covers. |
 | `--lists DIR` | docs | `<repo>/parts/lists` | The priced lists `costs` writes, `<id>.csv` and `<id>.md` per board. |
-| `--frames N` | pictures | `0`, off | The framing check: each GIF drawn with N frames into `build/pictures/check/` with one sheet of its frames; scene scripts draw no stills; `docs/` is not written. |
+| `--frames N` | pictures | `0`, off | The framing check: each GIF drawn with N frames into `build/pictures/check/` with one sheet of its frames, its zoom fitted as the GIF's will be; scene scripts draw no stills; `docs/` is not written. |
 | `--from VERSION` | version new | the latest version folder | The folder the new version copies. |
 | `--out FILE` | diagram | required | The SVG to write. |
 | `--png` | diagram | off | Also write `<out>.png` with `rsvg-convert`, at the drawing's width. |
 
 ## `pictures.json` (a version's, for `workcenter pictures`)
+
+Optional. Without it, `pictures` draws the defaults below, worked out from the version on each run;
+nothing is written into the version. The file holds what differs:
+
+- `boards` or `scenes` as an object is keyed by a board's `name` or a scene's `script`. Each entry's
+  fields replace that default's; `null` drops it; a key the defaults lack adds one (a board then
+  needs its `path`, and takes the defaults of that folder).
+- `boards` or `scenes` as a list is exactly what is drawn, each entry's missing fields taking the
+  defaults below: the form every manifest had before, still read as it was.
+
+```json
+{
+  "boards": {"display": {"spins": [{"as": "display-board-spin.gif"},
+                                   {"as": "display-board-spin-back.gif", "tilt": -125}]}},
+  "scenes": {"puff_closeup.py": {"what": "the puff sensor's close-up"}}
+}
+```
 
 | Key | Type | Default | Use |
 |---|---|---|---|
@@ -130,10 +147,10 @@ unset variable never causes a failure.
 | `boards[].strict` | bool | `true` | A part the 3D views draw without a body fails the board (`render --strict`). |
 | `boards[].stills` | list | the five board views and `schematic.png` | The images of `build/render/` copied into `docs/`. |
 | `boards[].layers` | file name | `layers-<name>.png` | The layer sheet's name in `docs/`; `null` copies no layers. |
-| `boards[].spins[]` | list | from above; from below too with parts on both faces | Each turning GIF: `as` (its name in `docs/`), `tilt`, `zoom`, `pivot`, `frames` (36). |
+| `boards[].spins[]` | list | from above; from below too with parts on both faces | Each turning GIF: `as` (its name in `docs/`), `tilt` (-55), `zoom` (fitted, as `render --spin-zoom` says), `pivot`, `frames` (36). |
 | `scenes[].script` | path | each top-level script that imports `scene` | Run with the venv's Python from the version folder. |
 | `scenes[].what` | string | the script's docstring | What the script draws; `workcenter docs` lists the script with it. |
-| `scenes[].copy` | map | none | Files the script writes, relative to the version, and their names in `docs/`. |
+| `scenes[].copy` | map | each file the script prints on a `scene: <path>` line, under its own name | Files the script writes, relative to the version, and their names in `docs/`. `tools/scene.py` prints the line for each still and GIF; a script that writes into `docs/` itself prints none. |
 
 ## `tools/scene.py`
 

@@ -39,6 +39,31 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-14 — A pictures manifest that holds only what differs
+
+The owner asked whether `pictures.json` could be made general. Every
+manifest in the examples and in Last Hit wrote the same 3 things by hand:
+each scene's copy list, which named exactly the files its script printed;
+each GIF's zoom, lowered from 1.0 to between 0.85 and 0.95 because the
+end-on frames cropped; and the whole file again in every version folder.
+
+`workcenter pictures` now works out what to draw from the version on each
+run and writes nothing into it. A `pictures.json`, when there is one,
+holds what differs, keyed by board and by script; a list still means
+exactly that list, so the manifests already written draw as they did. A
+scene's pictures are the ones it prints on `scene:` lines. A GIF with no
+zoom has it fitted: test frames every 45 degrees with a transparent
+background, read by a PNG reader in the standard library, and the largest
+zoom up to 1 that keeps the board 5 % of the height from every edge. At
+2 % the fit met the rule and left Last Hit's cartridge collars 8 px from
+the top of an end-on frame; 5 % lands where the hand-picked values were.
+
+Evidence: on a copy of Last Hit v0.17, an 11-line file in place of its 76
+lines drew the same 51 files into `docs/` in 916 s, the assembly's 5 from
+its `scene:` lines and the close-up as an added scene, with the GIFs at
+0.95 and 0.9 on the base and 0.95 on the display board (0.95, 0.85 and
+0.9 by hand). `make verify`: 708 passed, 64 skipped.
+
 ## 2026-11-14 — The redrawn site meets main: Herald, the 6 boards, a page for each
 
 The owner liked the redrawn site on its branch and asked for the boards and the Herald section

@@ -26,11 +26,13 @@ import os
 import re
 import shlex
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
 import time
 import traceback
+import zlib
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
@@ -65,6 +67,12 @@ LAYER_IMAGES = (
 LAYER_BACKGROUND = "#001023"  # KiCad's board-editor background: silkscreen and courtyards stay visible
 DRAWN = re.compile(r"<(path|circle|polygon|polyline|rect|line|ellipse|text)\b")
 SPIN_WIDTH = 640  # GIF frames: wider ones make a GIF of tens of megabytes
+# The turning GIF's zoom when none is given: the frames are tried at these angles, every 45 degrees, as
+# the end-on frames crop first and a long board's diagonal next. The board keeps 5 % of the height clear
+# of every edge: at 2 %, Last Hit's cartridge collars came within 8 px of the top in an end-on frame.
+SPIN_FIT_ANGLES = (0, 45, 90, 135, 180, 225, 270, 315)
+SPIN_FIT_MARGIN = 0.05
+SPIN_FIT_TRIES = 4
 DEFAULT_3DMODEL_DIR = "/usr/share/kicad/3dmodels"  # where the PPA's kicad-packages3d puts the library bodies
 
 
@@ -1922,6 +1930,139 @@ def layer_sheet(plotted: list[tuple[str, Path]], rdir: Path) -> tuple[Path, int]
     return sheet, width
 
 
+def png_alpha(png: Path) -> tuple[int, int, list[bytes]] | None:
+    """Width, height and each row's alpha of an 8-bit RGBA PNG that is not interlaced, which is what
+    kicad-cli writes; None for any other PNG. The standard library reads no PNG: this undoes the 5 row
+    filters of the PNG specification."""
+    data = png.read_bytes()
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        return None
+    w, h, depth, kind, _, _, interlace = struct.unpack(">IIBBBBB", data[16:29])
+    if depth != 8 or kind != 6 or interlace:
+        return None
+    idat, i = bytearray(), 8
+    while i + 8 <= len(data):
+        (n,) = struct.unpack(">I", data[i : i + 4])
+        if data[i + 4 : i + 8] == b"IDAT":
+            idat += data[i + 8 : i + 8 + n]
+        i += 12 + n
+    try:
+        raw = zlib.decompress(bytes(idat))
+    except zlib.error:
+        return None
+    stride = w * 4
+    if len(raw) < h * (stride + 1):
+        return None
+    prev, rows = bytearray(stride), []
+    for y in range(h):
+        start = y * (stride + 1)
+        filt, line = raw[start], bytearray(raw[start + 1 : start + 1 + stride])
+        if filt == 1:  # Sub
+            for x in range(4, stride):
+                line[x] = (line[x] + line[x - 4]) & 0xFF
+        elif filt == 2:  # Up
+            line = bytearray((a + b) & 0xFF for a, b in zip(line, prev, strict=True))
+        elif filt == 3:  # Average
+            for x in range(stride):
+                left = line[x - 4] if x >= 4 else 0
+                line[x] = (line[x] + ((left + prev[x]) >> 1)) & 0xFF
+        elif filt == 4:  # Paeth
+            for x in range(stride):
+                a, b = (line[x - 4] if x >= 4 else 0), prev[x]
+                c = prev[x - 4] if x >= 4 else 0
+                pa, pb, pc = abs(b - c), abs(a - c), abs(a + b - 2 * c)
+                line[x] = (line[x] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 0xFF
+        elif filt != 0:
+            return None
+        rows.append(bytes(line[3::4]))
+        prev = line
+    return w, h, rows
+
+
+def opaque_box(png: Path) -> tuple[int, int, tuple[int, int, int, int] | None] | None:
+    """A frame's size and the box round its pixels that are not transparent, (x0, y0, x1, y1) with both
+    ends included; the box is None for an empty frame, and the whole is None for a PNG not read."""
+    alpha = png_alpha(png)
+    if alpha is None:
+        return None
+    w, h, rows = alpha
+    drawn = [(y, r) for y, r in enumerate(rows) if r.strip(b"\0")]
+    if not drawn:
+        return w, h, None
+    x0 = min(len(r) - len(r.lstrip(b"\0")) for _, r in drawn)
+    x1 = max(len(r.rstrip(b"\0")) - 1 for _, r in drawn)
+    return w, h, (x0, drawn[0][0], x1, drawn[-1][0])
+
+
+def spin_clear(frame: tuple[int, int, tuple[int, int, int, int] | None]) -> bool:
+    """Whether a test frame's drawing keeps SPIN_FIT_MARGIN of its height from every edge."""
+    w, h, box = frame
+    m = max(2, round(SPIN_FIT_MARGIN * h))
+    return box is None or (box[0] >= m and box[1] >= m and box[2] <= w - 1 - m and box[3] <= h - 1 - m)
+
+
+def spin_room(frame: tuple[int, int, tuple[int, int, int, int] | None]) -> float:
+    """How much a frame's drawing could grow about the frame's centre and keep the margin."""
+    w, h, box = frame
+    if box is None:
+        return math.inf
+    m = max(2, round(SPIN_FIT_MARGIN * h))
+    cx, cy = (w - 1) / 2, (h - 1) / 2
+    need_x, need_y = max(cx - box[0], box[2] - cx, 1e-9), max(cy - box[1], box[3] - cy, 1e-9)
+    return min((cx - m) / need_x, (cy - m) / need_y)
+
+
+def fit_spin_zoom(project: Project, work: Path, tilt: float, pivot: str | None) -> tuple[float, str]:
+    """The largest zoom, up to 1 and to 0.01, at which the turning board keeps clear of every edge of
+    every test frame: the GIF's camera at SPIN_FIT_ANGLES, drawn fast with a transparent background, so
+    a pixel that is not transparent is the board. A zoom that crops is scaled by the room the frames
+    leave at a smaller one, then drawn again to be sure. A frame that cannot be drawn or read leaves the
+    zoom at 1, and the note says so."""
+    work.mkdir(parents=True, exist_ok=True)
+
+    def frames(zoom: float) -> list | None:
+        out = []
+        for angle in SPIN_FIT_ANGLES:
+            png = work / f"fit-{angle:03d}.png"
+            png.unlink(missing_ok=True)
+            cmd = [KICAD_CLI, "pcb", "render", "--output", png, "--width", str(SPIN_WIDTH)]
+            cmd += ["--height", str(int(SPIN_WIDTH * 0.625)), "--background", "transparent"]
+            cmd += ["--quality", "basic", "--rotate", f"{tilt:g},0,{angle}", "--perspective"]
+            cmd += ["--zoom", f"{zoom:g}", *(["--pivot", pivot] if pivot else []), project.pcb]
+            if not os.environ.get("DISPLAY") and shutil.which("xvfb-run"):
+                cmd = ["xvfb-run", "-a", *cmd]
+            proc = run(cmd, cwd=project.dir, timeout=300)
+            frame = opaque_box(png) if proc.returncode == 0 and png.is_file() else None
+            if frame is None:
+                return None
+            out.append(frame)
+        return out
+
+    shown = frames(1.0)
+    if shown is None:
+        return 1.0, "zoom 1: a test frame was not drawn or not read"
+    if all(spin_clear(f) for f in shown):
+        return 1.0, "zoom 1 fits"
+    low = 0.5
+    shown = frames(low)
+    while shown is not None and not all(spin_clear(f) for f in shown) and low > 0.05:
+        low /= 2
+        shown = frames(low)
+    if shown is None:
+        return 1.0, "zoom 1: a test frame was not drawn or not read"
+    if not all(spin_clear(f) for f in shown):
+        return low, f"zoom {low:g}: a frame crops at every zoom tried; the pivot is far from the board"
+    zoom = math.floor(min(1.0, low * min(spin_room(f) for f in shown)) * 100) / 100
+    for _ in range(SPIN_FIT_TRIES):
+        if zoom <= low:
+            break
+        shown = frames(zoom)
+        if shown is not None and all(spin_clear(f) for f in shown):
+            return zoom, f"zoom {zoom:g} fitted"
+        zoom = math.floor(zoom * 95) / 100
+    return low, f"zoom {low:g} fitted"
+
+
 @timed
 def gate_render(
     project: Project,
@@ -1930,13 +2071,15 @@ def gate_render(
     views: tuple[str, ...] = DEFAULT_VIEWS,
     spin_frames: int = 36,
     spin_tilt: float = -55.0,
-    spin_zoom: float = 1.0,
+    spin_zoom: float | None = None,
     spin_pivot: str | None = None,
     strict: bool = False,
 ) -> Result:
     """Images of the design: schematic, board top and bottom (2D), board 3D top, bottom and isometric,
     every layer on its own with an overview sheet, and on request a GIF that turns the 3D board round.
-    The record names each part the 3D views draw bare (`parts_without_body`); `strict` fails on one."""
+    The record names each part the 3D views draw bare (`parts_without_body`); `strict` fails on one.
+    A GIF with no zoom given takes the largest at which every frame is whole (`fit_spin_zoom`); the
+    record names the zoom it was drawn at."""
     rdir = out / "render"
     rdir.mkdir(parents=True, exist_ok=True)
     artifacts: list[str] = []
@@ -2077,12 +2220,17 @@ def gate_render(
             sheet, sheet_w = layer_sheet(plotted, rdir)
             to_png(sheet, rdir / "layers.png", sheet_w, LAYER_BACKGROUND)
             sheet.unlink()
+    spin: dict = {}
     if project.pcb and "spin" in views:
         ffmpeg = shutil.which("ffmpeg")
         gif = rdir / "board-spin.gif"
         if not ffmpeg:
             skipped.append(f"{gif.name}: ffmpeg missing")
         else:
+            if spin_zoom is None:
+                spin_zoom, spin["spin_fit"] = fit_spin_zoom(project, rdir / "spin-fit", spin_tilt, spin_pivot)
+                shutil.rmtree(rdir / "spin-fit", ignore_errors=True)
+            spin["spin_zoom"] = spin_zoom
             frames = rdir / "spin-frames"
             shutil.rmtree(frames, ignore_errors=True)
             frames.mkdir()
@@ -2133,11 +2281,13 @@ def gate_render(
     summary = f"{len(artifacts)} images in {rdir}" + (f", {len(skipped)} skipped" if skipped else "")
     if bare:
         summary += f"; {len(bare)} parts drawn without a 3D body: {', '.join(b['ref'] for b in bare)}"
+    if spin.get("spin_fit"):
+        summary += f"; the GIF's {spin['spin_fit']}"
     return Result(
         "render",
         "fail" if failures or (strict and bare) else "pass",
         summary,
-        {"failures": failures, "skipped": skipped, "no_body": bare},
+        {"failures": failures, "skipped": skipped, "no_body": bare, **spin},
         artifacts,
     )
 
@@ -4731,7 +4881,10 @@ def main(argv: list[str] | None = None) -> int:
         "--spin-tilt", type=float, default=-55.0, help="the GIF's tilt about the board's x axis, degrees"
     )
     p.add_argument(
-        "--spin-zoom", type=float, default=1.0, help="the GIF's zoom; below 1 keeps tall parts in frame"
+        "--spin-zoom",
+        type=float,
+        help="the GIF's zoom (default: the largest up to 1 at which every frame is whole, fitted on test "
+        "frames)",
     )
     p.add_argument(
         "--spin-pivot",

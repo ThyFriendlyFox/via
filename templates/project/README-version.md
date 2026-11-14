@@ -52,7 +52,8 @@
      board the top and bottom, the 3D views, the turning GIF from the face
      that carries the parts (and from below when both faces do), and the
      layer sheet (`workcenter render`, `--views spin` with its tilt, zoom and
-     pivot). `workcenter pictures .` draws them from `pictures.json`. -->
+     pivot). `workcenter pictures .` draws them, and `pictures.json` holds only
+     what differs from its defaults. -->
 
 | Assembly | Turning |
 |---|---|
