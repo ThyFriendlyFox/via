@@ -70,5 +70,14 @@ there.
 8. Justify a paragraph to its column, with hyphenation on. A part's label
    on the example's board is too narrow for it, and stays ragged.
 
-The hero's headline is the owner's wording of 2026-11-12, in title case on
-3 lines: "Circuit Boards / From / AI". It is the one exception to rule 2.
+The owner's own wording stands as the owner wrote it, and is the only
+exception to these rules:
+
+- The hero's headline, of 2026-11-12, in title case on 3 lines: "Circuit
+  Boards / From / AI".
+- The hero's paragraph, of 2026-11-14: "Via is our dream for lowering the
+  difficulty to getting to electronics design. It's a package of tools,
+  skills and gates an agent needs to make production-ready PCBs. Designed
+  by EE's in Florida."
+- The design-as-code section's headline, of 2026-11-14, in title case:
+  "How a Python File Becomes a Board".

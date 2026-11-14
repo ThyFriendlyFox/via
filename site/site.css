@@ -1178,10 +1178,11 @@ html:not(.motion) .progress {
     0 0 0 1px var(--edge),
     var(--shadow);
 }
-/* The tour: the board in the middle, the labels of up to 4 of its parts beside it, 1 more every 3 s,
-   a leader from each part to its label. Under 1024 px the labels stack below the board in their
-   turn's order, and the numbers pair them. A label waits in its place, unseen, until its turn, so
-   none moves. */
+/* The tour: the board in the middle, the labels of 4 of its parts beside it, 2 to a side, 1 of them
+   swapped for the next every 3 s, a leader from each part to its label. The board stays at the top
+   of its row: 2 tall labels make the stage taller below it, and the labels slide (effects.js), so
+   the board never moves. Under 1024 px the labels stack below the board, 1 to 4, and the numbers
+   pair them. */
 .tour {
   position: relative;
   gap: 0.75rem;
@@ -1190,9 +1191,6 @@ html:not(.motion) .progress {
   grid-area: auto;
   order: -1;
   margin-bottom: 0.5rem;
-}
-.part-card.is-waiting {
-  visibility: hidden;
 }
 .part-card.has-sheet {
   display: grid;
@@ -1225,6 +1223,7 @@ html:not(.motion) .progress {
   grid-area: right;
 }
 .part-card {
+  order: var(--n, 0);
   padding: 0.875rem 1rem;
   border-radius: 0.875rem;
   background: var(--secondary);
@@ -1572,11 +1571,15 @@ html:not(.motion) .progress {
   }
   .tour .face {
     grid-area: face;
+    align-self: start;
     margin-bottom: 0;
   }
   .tour-cards {
     display: grid;
     align-content: center;
+  }
+  .tour-cards .part-card {
+    order: 0;
   }
   .leaders {
     display: block;

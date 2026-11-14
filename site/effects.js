@@ -6,7 +6,8 @@
   const root = document.documentElement;
   root.dataset.motionReady = "1";
 
-  // ---- the example's parts, a label every 3 s: works with or without Motion ---------------------
+  // ---- the example's parts: 4 labels at a time, 1 of them swapped for the next every 3 s --------
+  //      works with or without Motion
   const M = window.Motion;
   const moving = root.classList.contains("motion") && M;
   if (root.classList.contains("motion") && !M) root.classList.remove("motion");
@@ -16,29 +17,46 @@
     const { groups, parts } = JSON.parse(partsData.textContent);
     const NS = "http://www.w3.org/2000/svg";
     const STEP = 3000;
+    const GLIDE = 0.5; // s: a label that stays slides to its new place, its leader with it
     const ease = [0.2, 0, 0, 1];
     const face = tour.querySelector("[data-face]");
     const svg = face.querySelector("svg");
     const lists = { left: tour.querySelector('[data-cards="left"]'), right: tour.querySelector('[data-cards="right"]') };
     const leaders = tour.querySelector("[data-leaders]");
-    const groupOf = {};
-    groups.forEach((g, i) => g.p.forEach((ref) => (groupOf[ref] = i)));
     const middle = svg.viewBox.baseVal.x + svg.viewBox.baseVal.width / 2;
     const body = (ref) => svg.querySelector(`.body[data-ref="${ref}"]`);
-    let at = 0;
-    let order = [];
-    let shown = 0;
+
+    // Each side's parts in the tour's order, a circuit at a time, with where each sits on the board.
+    // A side holds 2 labels, numbered 1 and 2 on the left, 3 and 4 on the right: the sides take turns,
+    // and the side's older label gives way to its next part, which takes the label's number.
+    const queues = { left: [], right: [] };
+    for (const g of groups) {
+      for (const ref of g.p) {
+        const b = body(ref).getBBox();
+        const p = { ref, x: b.x + b.width / 2, y: b.y + b.height / 2 };
+        queues[p.x < middle ? "left" : "right"].push(p);
+      }
+    }
+    const where = {};
+    for (const side of ["left", "right"]) queues[side].forEach((p, i) => (where[p.ref] = { side, i }));
+    const shown = { left: [], right: [] }; // oldest first: { p, n, el, tag }
+    const next = { left: 0, right: 0 };
+    const FIRST = { left: 1, right: 3 };
+    let turn = "left";
     let seen = false;
     let timer = 0;
+    let busy = Promise.resolve();
+    let sliding = false;
 
     // A part's label: what the page's data holds on it, the rows it has and no others.
     function card(ref, n) {
       const p = parts[ref];
       const el = document.createElement("article");
-      el.className = "part-card is-waiting";
+      el.className = "part-card";
       el.dataset.ref = ref;
-      // Stacked under the board, the labels come in their turn's order, top to bottom.
-      el.style.order = n;
+      // Stacked under the board, the labels stand by their numbers, 1 to 4 (site.css); beside it, in
+      // the order arrange() gives them.
+      el.style.setProperty("--n", n);
       if (p.dp) {
         el.classList.add("has-sheet");
         const sheet = document.createElement("a");
@@ -101,22 +119,19 @@
 
     // A leader in 2 segments: a diagonal from the part, then a break to a horizontal into its label,
     // where the labels stand beside the board. Under the board the numbers pair them instead.
+    // A label on its way in or out has none.
     function lead(fresh) {
       const s = tour.getBoundingClientRect();
       const f = face.getBoundingClientRect();
       leaders.setAttribute("viewBox", `0 0 ${s.width} ${s.height}`);
       leaders.replaceChildren();
-      for (const el of tour.querySelectorAll(".part-card:not(.is-waiting)")) {
+      for (const el of tour.querySelectorAll(".part-card:not([data-moving])")) {
         const c = el.getBoundingClientRect();
         const onLeft = c.right <= f.left + 2;
         if (!onLeft && c.left < f.right - 2) continue;
-        const r = body(el.dataset.ref).getBoundingClientRect();
-        const px = r.left + r.width / 2 - s.left;
-        const py = r.top + r.height / 2 - s.top;
-        const ay = c.top + 21 - s.top;
-        const ax = (onLeft ? c.right + 4 : c.left - 4) - s.left;
-        const room = Math.max(Math.abs(ax - px) - 24, 0);
-        const ex = px + (onLeft ? -1 : 1) * Math.min(Math.abs(ay - py), room);
+        const [[px, py], [ex, ay], [ax]] = route(el.dataset.ref, c.top, onLeft ? c.right : c.left, onLeft).map(
+          ([x, y]) => [x - s.left, y - s.top],
+        );
         const path = document.createElementNS(NS, "path");
         path.setAttribute("d", `M${px} ${py} L${ex} ${ay} L${ax} ${ay}`);
         path.setAttribute("pathLength", "1");
@@ -132,39 +147,10 @@
       }
     }
 
-    // A group's labels go in place at once, unseen, so none moves when the next appears: each to the
-    // side of the board its part sits on, at most half to a side, each side from the top down.
-    function place(i) {
-      at = (i + groups.length) % groups.length;
-      shown = 0;
-      for (const el of svg.querySelectorAll(".body.on")) el.classList.remove("on");
-      for (const el of svg.querySelectorAll(".part-tag")) el.remove();
-      leaders.replaceChildren();
-      const placed = groups[at].p.map((ref, k) => {
-        const b = body(ref).getBBox();
-        return { ref, n: k + 1, x: b.x + b.width / 2, y: b.y + b.height / 2 };
-      });
-      const half = Math.ceil(placed.length / 2);
-      const left = placed.filter((p) => p.x < middle).sort((u, v) => u.x - v.x);
-      const right = placed.filter((p) => p.x >= middle).sort((u, v) => v.x - u.x);
-      while (left.length > half) right.push(left.pop());
-      while (right.length > half) left.push(right.pop());
-      left.sort((u, v) => u.y - v.y);
-      right.sort((u, v) => u.y - v.y);
-      lists.left.replaceChildren(...left.map((p) => card(p.ref, p.n)));
-      lists.right.replaceChildren(...right.map((p) => card(p.ref, p.n)));
-      order = placed;
-    }
-
-    // The next label of the group: its card, its part lit, its number on the board, its leader.
-    function reveal(animated) {
-      const p = order[shown];
-      shown += 1;
-      const el = tour.querySelector(`.part-card[data-ref="${p.ref}"]`);
-      el.classList.remove("is-waiting");
-      body(p.ref).classList.add("on");
-      const tag = document.createElementNS(NS, "g");
-      tag.setAttribute("class", "part-tag");
+    // A part's number on the board, where its leader starts.
+    function tag(p, n) {
+      const g = document.createElementNS(NS, "g");
+      g.setAttribute("class", "part-tag");
       const c = document.createElementNS(NS, "circle");
       c.setAttribute("cx", p.x);
       c.setAttribute("cy", p.y);
@@ -172,19 +158,145 @@
       const t = document.createElementNS(NS, "text");
       t.setAttribute("x", p.x);
       t.setAttribute("y", p.y + 0.68);
-      t.textContent = p.n;
-      tag.append(c, t);
-      svg.append(tag);
-      lead(animated ? p.ref : null);
-      if (animated && moving) {
-        M.animate(el, { opacity: [0, 1], y: [8, 0] }, { duration: 0.45, ease });
-        M.animate(tag, { scale: [0, 1] }, { duration: 0.35 });
-      }
+      t.textContent = n;
+      g.append(c, t);
+      svg.append(g);
+      return g;
     }
 
+    // The leader from a part to the label whose top is at `top` and whose near edge is at `edge`, on
+    // the page: from the part a diagonal, then level into the label.
+    function route(ref, top, edge, onLeft) {
+      const r = body(ref).getBoundingClientRect();
+      const px = r.left + r.width / 2;
+      const py = r.top + r.height / 2;
+      const ay = top + 21;
+      const ax = onLeft ? edge + 4 : edge - 4;
+      const room = Math.max(Math.abs(ax - px) - 24, 0);
+      const ex = px + (onLeft ? -1 : 1) * Math.min(Math.abs(ay - py), room);
+      return [
+        [px, py],
+        [ex, ay],
+        [ax, ay],
+      ];
+    }
+
+    // Whether 2 leaders cross: a segment of one strictly across a segment of the other.
+    function crosses(a, b) {
+      const orient = (u, v, w) => (v[0] - u[0]) * (w[1] - u[1]) - (v[1] - u[1]) * (w[0] - u[0]);
+      const across = (p, q, r, t) => orient(p, q, r) * orient(p, q, t) < 0 && orient(r, t, p) * orient(r, t, q) < 0;
+      for (let i = 0; i < 2; i += 1) {
+        for (let j = 0; j < 2; j += 1) if (across(a[i], a[i + 1], b[j], b[j + 1])) return true;
+      }
+      return false;
+    }
+
+    // A side's labels stand in the order of their parts from the top of the board down; where 2
+    // parts sit side by side and their leaders would cross, the other way up. Under the board the
+    // numbers order them instead (site.css).
+    function arrange(side) {
+      const items = [...shown[side]].sort((u, v) => u.p.y - v.p.y);
+      lists[side].append(...items.map((s) => s.el));
+      if (items.length !== 2 || getComputedStyle(leaders).display === "none") return;
+      const [a, b] = items;
+      const ra = a.el.getBoundingClientRect();
+      const rb = b.el.getBoundingClientRect();
+      const onLeft = side === "left";
+      const edge = onLeft ? ra.right : ra.left;
+      if (!crosses(route(a.p.ref, ra.top, edge, onLeft), route(b.p.ref, rb.top, edge, onLeft))) return;
+      // The other way up the 2 labels fill the same height: b at the top, a below it by b's height.
+      const under = ra.top + rb.height + (rb.top - ra.bottom);
+      if (!crosses(route(b.p.ref, ra.top, edge, onLeft), route(a.p.ref, under, edge, onLeft))) lists[side].append(b.el, a.el);
+    }
+
+    // Part p takes the place of its side's older label: that label fades, the other one slides to
+    // its new place with its leader, and p's label comes in, its leader drawn from its part.
+    async function swap(p, animated) {
+      const { side } = where[p.ref];
+      const list = shown[side];
+      if (list.some((s) => s.p.ref === p.ref)) return;
+      const old = list.length >= 2 ? list.shift() : null;
+      const n = old ? old.n : FIRST[side] + list.length;
+      const motion = animated && moving;
+      if (motion) sliding = true;
+      if (old && motion) {
+        old.el.dataset.moving = "";
+        lead(null);
+        await Promise.all([
+          M.animate(old.el, { opacity: 0 }, { duration: 0.25 }),
+          M.animate(old.tag, { opacity: 0 }, { duration: 0.25 }),
+        ]);
+      }
+      const before = new Map([...tour.querySelectorAll(".part-card")].map((el) => [el, el.getBoundingClientRect().top]));
+      const height = tour.getBoundingClientRect().height;
+      if (old) {
+        old.el.remove();
+        old.tag.remove();
+        body(old.p.ref).classList.remove("on");
+      }
+      const item = { p, n, el: card(p.ref, n), tag: tag(p, n) };
+      body(p.ref).classList.add("on");
+      list.push(item);
+      arrange(side);
+      if (!motion) {
+        lead(null);
+        return;
+      }
+      item.el.dataset.moving = "";
+      for (const [el, top] of before) {
+        if (!el.isConnected) continue;
+        const dy = top - el.getBoundingClientRect().top;
+        if (Math.abs(dy) > 0.5) M.animate(el, { y: [dy, 0] }, { duration: GLIDE, ease });
+      }
+      const now = tour.getBoundingClientRect().height;
+      if (Math.abs(now - height) > 0.5) {
+        M.animate(tour, { height: [`${height}px`, `${now}px`] }, { duration: GLIDE, ease }).then(() => (tour.style.height = ""));
+      }
+      M.animate(item.el, { opacity: [0, 1], y: [8, 0] }, { duration: 0.45, ease });
+      M.animate(item.tag, { scale: [0, 1] }, { duration: 0.35 });
+      // The leaders follow the labels as they slide; the new one is drawn once its label is still.
+      const end = performance.now() + GLIDE * 1000;
+      await new Promise((done) => {
+        const frame = () => {
+          lead(null);
+          if (performance.now() < end) requestAnimationFrame(frame);
+          else done();
+        };
+        requestAnimationFrame(frame);
+      });
+      delete item.el.dataset.moving;
+      sliding = false;
+      lead(p.ref);
+    }
+
+    // Once the stage has its size (its fonts, its pictures, a new width), each side's order is
+    // checked again, between swaps: a label's height decides where its leader runs.
+    function settle() {
+      if (sliding) return;
+      arrange("left");
+      arrange("right");
+      lead(null);
+    }
+
+    // One swap at a time: a click during a swap waits for it.
+    function then(p, animated) {
+      busy = busy.then(() => swap(p, animated)).catch(() => {});
+      return busy;
+    }
+
+    // The side whose turn it is brings in its next part that is not already shown.
     function tick() {
-      if (shown >= order.length) place(at + 1);
-      reveal(true);
+      const side = turn;
+      turn = side === "left" ? "right" : "left";
+      const queue = queues[side];
+      for (let k = 0; k < queue.length; k += 1) {
+        const p = queue[next[side]];
+        next[side] = (next[side] + 1) % queue.length;
+        if (!shown[side].some((s) => s.p.ref === p.ref)) {
+          then(p, true);
+          break;
+        }
+      }
       schedule();
     }
 
@@ -194,12 +306,14 @@
       if (seen && !document.hidden) timer = setTimeout(tick, STEP);
     }
 
-    // A click on a part shows its group whole; the next group follows 3 s later.
+    // A click on a part brings its label in at once, and its side goes on from there.
     svg.addEventListener("click", (e) => {
       const hit = e.target.closest(".body");
-      if (!hit) return;
-      place(groupOf[hit.dataset.ref]);
-      while (shown < order.length) reveal(false);
+      if (!hit || !where[hit.dataset.ref]) return;
+      const { side, i } = where[hit.dataset.ref];
+      next[side] = (i + 1) % queues[side].length;
+      turn = side === "left" ? "right" : "left";
+      then(queues[side][i], true);
       schedule();
     });
     document.addEventListener("visibilitychange", schedule);
@@ -210,9 +324,12 @@
       },
       { threshold: 0.35 },
     ).observe(tour);
-    new ResizeObserver(() => lead(null)).observe(tour);
-    place(0);
-    reveal(false);
+    new ResizeObserver(settle).observe(tour);
+    window.addEventListener("load", settle);
+    for (const side of ["left", "right"]) {
+      for (const p of queues[side].slice(0, 2)) swap(p, false);
+      next[side] = Math.min(2, queues[side].length) % Math.max(queues[side].length, 1);
+    }
   }
 
   // ---- the board in 3D: the viewer and the model load only as the reader nears them --------------
