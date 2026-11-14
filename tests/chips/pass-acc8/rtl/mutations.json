@@ -1,0 +1,112 @@
+{
+  "mutations": [
+    {
+      "name": "decode-hlt-ld",
+      "file": "rtl/acc8_core.v",
+      "old": "OP_HLT = 4'h0;\n    localparam [3:0] OP_LD  = 4'h1;",
+      "new": "OP_HLT = 4'h1;\n    localparam [3:0] OP_LD  = 4'h0;"
+    },
+    {
+      "name": "decode-st-add",
+      "file": "rtl/acc8_core.v",
+      "old": "OP_ST  = 4'h2;\n    localparam [3:0] OP_ADD = 4'h3;",
+      "new": "OP_ST  = 4'h3;\n    localparam [3:0] OP_ADD = 4'h2;"
+    },
+    {
+      "name": "decode-sub-cmp",
+      "file": "rtl/acc8_core.v",
+      "old": "OP_SUB = 4'h4;\n    localparam [3:0] OP_CMP = 4'h5;",
+      "new": "OP_SUB = 4'h5;\n    localparam [3:0] OP_CMP = 4'h4;"
+    },
+    {
+      "name": "decode-and-or",
+      "file": "rtl/acc8_core.v",
+      "old": "OP_AND = 4'h6;\n    localparam [3:0] OP_OR  = 4'h7;",
+      "new": "OP_AND = 4'h7;\n    localparam [3:0] OP_OR  = 4'h6;"
+    },
+    {
+      "name": "decode-xor-shl",
+      "file": "rtl/acc8_core.v",
+      "old": "OP_XOR = 4'h8;\n    localparam [3:0] OP_SHL = 4'h9;",
+      "new": "OP_XOR = 4'h9;\n    localparam [3:0] OP_SHL = 4'h8;"
+    },
+    {
+      "name": "decode-shr-in",
+      "file": "rtl/acc8_core.v",
+      "old": "OP_SHR = 4'ha;\n    localparam [3:0] OP_IN  = 4'hb;",
+      "new": "OP_SHR = 4'hb;\n    localparam [3:0] OP_IN  = 4'ha;"
+    },
+    {
+      "name": "decode-out-jmp",
+      "file": "rtl/acc8_core.v",
+      "old": "OP_OUT = 4'hc;\n    localparam [3:0] OP_JMP = 4'hd;",
+      "new": "OP_OUT = 4'hd;\n    localparam [3:0] OP_JMP = 4'hc;"
+    },
+    {
+      "name": "decode-jz-jc",
+      "file": "rtl/acc8_core.v",
+      "old": "OP_JZ  = 4'he;\n    localparam [3:0] OP_JC  = 4'hf;",
+      "new": "OP_JZ  = 4'hf;\n    localparam [3:0] OP_JC  = 4'he;"
+    },
+    {
+      "name": "jz-ignores-m",
+      "file": "rtl/acc8_core.v",
+      "old": "jump = z ^ m;",
+      "new": "jump = z;"
+    },
+    {
+      "name": "jc-ignores-m",
+      "file": "rtl/acc8_core.v",
+      "old": "jump = c ^ m;",
+      "new": "jump = c;"
+    },
+    {
+      "name": "ld-keeps-z",
+      "file": "rtl/acc8_core.v",
+      "old": "OP_LD : begin acc_we = 1'b1; z_we = 1'b1; end",
+      "new": "OP_LD : begin acc_we = 1'b1; end"
+    },
+    {
+      "name": "sub-carry-inverted",
+      "file": "rtl/acc8_core.v",
+      "old": "OP_SUB: begin res = diff[7:0]; cy = diff[8];",
+      "new": "OP_SUB: begin res = diff[7:0]; cy = ~diff[8];"
+    },
+    {
+      "name": "boot-ignored",
+      "file": "rtl/acc8_core.v",
+      "old": "pc        <= {boot, 6'd0};",
+      "new": "pc        <= 8'd0;"
+    },
+    {
+      "name": "reset-leaves-out-port",
+      "file": "rtl/acc8_core.v",
+      "old": "            out_port  <= 8'd0;\n",
+      "new": ""
+    },
+    {
+      "name": "out-valid-never",
+      "file": "rtl/acc8_core.v",
+      "old": "out_valid <= out_we;",
+      "new": "out_valid <= 1'b0;"
+    },
+    {
+      "name": "hlt-does-not-halt",
+      "file": "rtl/acc8_core.v",
+      "old": "halted    <= halt;",
+      "new": "halted    <= 1'b0;"
+    },
+    {
+      "name": "regfile-reads-r3-for-r2",
+      "file": "rtl/acc8_regfile.v",
+      "old": "4'h2: rdata = q[ 23: 16];",
+      "new": "4'h2: rdata = q[ 31: 24];"
+    },
+    {
+      "name": "rom-add-1-is-add-2",
+      "file": "rtl/acc8_rom.v",
+      "old": "8'h08: data = 13'h0701;",
+      "new": "8'h08: data = 13'h0702;"
+    }
+  ]
+}

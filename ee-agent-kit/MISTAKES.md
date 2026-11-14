@@ -781,3 +781,315 @@ What happened: I routed the example controller with `--passes 60`, the number th
 Cost: 15 minutes of routing with no result.
 Root cause: I took the pass count from a 4-part template to a 140-part board, and did not set `--timeout` for a route whose length I did not know.
 Process: P4
+
+## M129 — 2026-11-11 — A ring read as a flat board, twice
+What happened: The owner asked for an example of what the workcenter makes: "a ring that functions as a mouse for a computer", on "a compact board". I drew the face of a signet ring, a round board 22 mm across with a touch wheel, and placed 45 parts on it. The owner stopped it: "the mouse is a ring that someone literally wears." I then drew 1 flat board in the shape of a ring, a finger hole and a crown, and routed it. The owner stopped that too: the ring is three-dimensional, so the circuit sits on small boards on the surface of the cylinder. I had stated neither form before I built it.
+Cost: 2 designs set aside, about 50 minutes, and 2 interruptions of the owner.
+Root cause: I took the form from the words "compact board" and from what 1 flat board can do, not from how the thing is worn, and the owner learned the form only from the work. No process asked for a new product's form before its first design file.
+Process: P34
+
+## M130 — 2026-11-11 — A ring of 6 tiles that could not close
+What happened: Signet is 6 boards round the finger, each inner face tangent to a 20 mm cylinder at its middle. The radio's tile was 15.6 mm and the other 5 shared the rest of the circle, 10.82 mm each. A hexagon whose faces all touch a circle closes only when its alternate faces add up equally, and this one did not: the radio's 2 corners stood 1.3 mm out from its neighbours'. v0.1 to v0.3 were drawn so, the solder at those 2 joints in the air. I found it in v0.3's pass, measuring the assembly's heights.
+Cost: 3 versions drawn with 2 open joints; v0.4 laid 4 tiles out again at new widths.
+Root cause: I checked that the tiles' angles summed to a turn and that 2 equal neighbours met, not that every 2 neighbours shared their corner. The renders showed the gap from v0.1, and I read it as the solder's shape.
+Process: P34
+
+## M131 — 2026-11-11 — A scene's heights fixed by eye
+What happened: In Signet's first assembly the radio tile looked 0.8 mm high against its neighbours. I moved the ring's axis until the ring looked closed, and wrote in `assembly.py` that a board body's origin is its inner face and that the scene's heights start at the radio's inner face. `tools/scene.py` says otherwise, and rightly: `place` measures from the scene board's outer face and a `board_body` has its origin at its mid-plane. A side render of 1 body beside its own board at 0, -0.4 and -0.8 mm lay flush at -0.4. v0.1 to v0.3 drew the radio 0.4 mm inside its neighbours and the solder 0.4 to 0.8 mm off the boards. The tiles had first been turned the wrong way as well (M42, M47); the `board-design` skill holds that convention, and I had not read it.
+Cost: 3 versions' pictures with the error in them; 4 test renders.
+Root cause: 2 errors showed in 1 picture, the open joints of M130 and the heights, and I fixed the picture instead of measuring 1 body. I placed the first body without reading the conventions where they are written.
+Process: P23
+
+## M132 — 2026-11-11 — More passes for a link the router gave up on
+What happened: With narrower joint pads, Signet v0.3's power tile routed with 1 VBAT link open. I routed again with 80 passes and got the same board; `AGENTS.md`'s landmine map says more passes change nothing once FreeRouting gives up. A hand track for half the net moved the wall and left another link open; the whole net by hand, along the path v0.2's route had found, routed GREEN.
+Cost: 2 route runs and 2 gate runs, about 5 minutes.
+Root cause: I did not read the landmine map's row on a router that gives up before the second run, and then drew less of the net than stayed open.
+Process: P4
+
+## M133 — 2026-11-11 — The PPA's key from 1 keyserver
+What happened: `install.sh` fetched the KiCad PPA's signing key from keyserver.ubuntu.com only. The session's proxy reset every connection there, and the install stopped before KiCad. Launchpad's API serves the same key; `install.sh` now falls back to it, and the fingerprint check decides either way.
+Cost: 1 failed install and a fix, 5 minutes.
+Root cause: An install step that downloads had 1 source and no fallback, where P2 step 4 says not to assume a keyserver answers.
+Process: P2
+
+## M134 — 2026-11-11 — Every 3D render drew a green board
+What happened: Signet's tiles name a black mask, a white legend and ENIG in their stackup. `workcenter render` and `tools/scene.py` drew them green with HASL pads: kicad-cli draws its preset's colours unless asked for the board's (`--use-board-stackup-colors`). Every board the workcenter had drawn so far was green in its stackup or had none, so no picture showed it.
+Cost: 1 round of pictures, and a test and a fix in the workcenter.
+Root cause: The render commands were written from kicad-cli's defaults and checked only on green boards.
+Process: P23
+
+## M135 — 2026-11-11 — A back paddle placed off the board, and no check said so
+What happened: On Rosetta v0.2's controller-shaped outline I placed the left back paddle at (110, 172), below the left grip's edge. The generator printed no `part:` line and the DRC listed nothing about it: both read the outline's bounding box, and the point is inside the box. A 3D render before the route showed the switch floating off the board, and I moved it.
+Cost: 1 render and 1 placement round; no route ran with it.
+Root cause: I placed by numbers on a shaped board without drawing it first, and took the silence of the part check for a check of the shape.
+Process: P4
+
+## M136 — 2026-11-11 — 4 routes of hand-drawn links on a board that needed more layers
+What happened: Rosetta v0.2 on 4 layers left 2 to 6 connections open after each route, most of them at the RP2040's 0.4 mm pins. I drew each open link by hand and routed again, 4 times; each new link moved the router's choices and opened others. 6 layers and narrower rail and motor classes left 1 link open, which 1 hand route closed.
+Cost: about 1 hour of routes.
+Root cause: I treated each open link as the problem. The same chip's pins failing route after route said the board had too little room round it, which a link drawn by hand does not add.
+Process: P4
+
+## M137 — 2026-11-11 — A pad inside the strip the names keep clear
+What happened: On the fire alarm example I drew a keep-out on F.Cu under the terminal block names, so no track crosses them. I drew it after the parts were placed. R43 and R44 sat inside it; I saw them in the plot and moved them before the route. D4's TIP pad sat inside it too, at the footprint's rotation, and I did not see it. The router left TIP open between Q3 and D4, and the DRC named 1 unconnected item. D4 turned over took a second route.
+Cost: 1 route of 2 minutes with an open net, and a second route of 19 minutes.
+Root cause: P3 step 4 lists each keep-out and what it forbids before parts are placed, and marks the areas a part's pad must not enter. I added the keep-out to a placed board and checked the parts against it by eye, not by its polygon.
+Process: P3
+
+## M138 — 2026-11-11 — Front pads under a back keep-out, listed by the back layer only
+What happened: In round 6 of the fire alarm example I drew keep-outs on B.Cu under the back's words (the subtitles, the write-on boxes, each terminal group's 2 lines) and checked each with `workcenter inspect list --box ... --layer B.Cu`. Every part is on the front, so each list held no pads. The keep-outs ban vias, and a via passes every layer. R43 and U8 sat under the groups' lines with no spot for the tamper line's vias; C24.2 and C13.2, ground pads that reach the pours through a via beside them, sat under the serial box and the subtitles. The routes left the tamper line open and the 2 pads on islands of the front pour.
+Cost: 4 routes (12 minutes) with an open net or an island. The groups' lines moved down behind the front's names, and C24 and C13 moved out of the bands, each found from the DRC.
+Root cause: P3 step 4 says a keep-out that bans vias bans them on every layer, and to list every pad inside its polygon. I filtered the list by the keep-out's own layer, which hid the front's pads.
+Process: P3
+
+## M139 — 2026-11-11 — A model I wrote ran in the loop before its own deck
+What happened: The example speaker's amplifier, a PAM8302A, has no maker's model, so I wrote one (`sim/models/pam8302a.lib`) with its delay as a transmission line. The line's 1k impedance loaded the stage that fed it, and the model's gain came out half the datasheet's. The loop decks ran on it first. The model's own deck at the datasheet's conditions found it; a buffer before the line gives 22.83 dB against the Gain row's 23.5 dB.
+Cost: 1 round of loop tuning on a plant 6 dB short, done again.
+Root cause: P27 step 4 asks for that deck before a maker's model serves a design deck. I read it as about makers' models and ran my own without one.
+Process: P27
+
+## M140 — 2026-11-11 — A custom pad the router saw as a box over 4 pads
+What happened: The mic of the example speaker, an IM73A135, has a custom pad: a ring round its port. The router file wrote each pad as a rectangle, and the ring's rectangle covered the mic's other 4 pads. FreeRouting saw them inside 1 copper shape and left them open. The router file now writes a custom pad as its outline, a polygon.
+Cost: 2 routes that left the mic unconnected, and the time to find why.
+Root cause: P19 checks a new pad shape with the KiCad DRC, which reads the real shapes. Nothing read what the router file makes of the shape.
+Process: P19
+
+## M141 — 2026-11-11 — A parity warning for every part bound to a model
+What happened: On the example speaker's first board the DRC warned `Missing symbol field 'Sim.Library' in footprint` for each part the design binds to a model. The generator wrote the simulation fields on the symbol only. It now writes them on the footprint too, hidden.
+Cost: 1 generator change and its tests, before the first route.
+Root cause: The tests of a schematic that simulates checked the schematic and its netlist. None put a bound part on a board and read the DRC's parity.
+Process: P24
+
+## M142 — 2026-11-11 — A fine-pitch part turned off the grid, and no route to it
+What happened: I turned the example speaker's amplifier, an MSOP of 0.65 mm pitch, 26 degrees to follow the ring. FreeRouting 1.9.0 reached none of its pins. Turned square to the board, it reached all of them.
+Cost: 1 route of the board and 2 test routes to find the cause.
+Root cause: I placed for the look and did not know the router's limit on fine pitch at angles that are not multiples of 90 degrees.
+Process: P4
+
+## M143 — 2026-11-11 — A maker's model in a feedback loop, and an operating point that was not one
+What happened: The example speaker's loop decks first ran TI's TLV9062 model for both op-amps. In the closed loop ngspice reported `source stepping failed` and settled on points with an output at a rail, and the AC numbers taken there passed. `.nodeset` fixed 1 deck and broke another; `optran` ran minutes for each corner. The loop decks now run a model fitted to TI's, held within 1 dB and 5 degrees of it in its own deck, and 2 bounds in each deck hold the mid-rail and the controller's output at their DC values.
+Cost: About 2 hours of deck changes.
+Root cause: I put a model with noise sources and switches into a loop before I ran it alone. No bound checked that the operating point was the circuit's.
+Process: P27
+
+## M144 — 2026-11-11 — A deck skipped at the corners for a stall that was ngspice's
+What happened: The example speaker's hum deck, a 250 ms transient through the loop, stopped advancing at some corners, so I skipped it at the corners. When I changed 1 resistor from 6.8k to 6.2k it stopped advancing as written too: the step fell to 1 ns from the start. With looser step control (`reltol=1e-3 vntol=1e-5 chgtol=1e-12`) it ran in 1 second at every value, and the trapezoidal method gave the same answer to 0.001 dB. It now runs at all corners.
+Cost: 10 minutes of a stalled gate run, and a deck the corners did not judge while the loop was tuned.
+Root cause: I took a stall for the circuit's and skipped the deck instead of changing the step control.
+Process: P27
+
+## M145 — 2026-11-11 — A rail's peak read from the floor of its sweep
+What happened: The example speaker's rail deck took the +5 V rail's peak impedance from 1 kHz up. At the corners where the cable's resistance damps the resonance, the highest point was the floor at 1 kHz. The plan put a band round it that held the test hum's 6th harmonic at 900 Hz, and failed the gate on a resonance that was not there. The cable's inductance with the rail's capacitors resonates between 37 and 72 kHz over the corners, so the search now starts at 20 kHz. A corner damped flat still returns the window's edge, and a band round 20 kHz holds no harmonic of the plan's sources.
+Cost: 1 red gate run and 1 deck change.
+Root cause: I searched the whole sweep for the peak. A damped corner has no peak, and the search returns its edge.
+Process: P30
+
+## M146 — 2026-11-11 — A chip's core pins with no way out
+What happened: I placed the Snapdragon example's RP2350 parts the way Raspberry Pi's minimal design lists them: a 100 nF beside each supply pin, the crystal under XIN and XOUT, the core regulator's parts in a row to the north. Each core pin (DVDD 6, 23 and 39, VREG_FB 50) then faced another net's pad 1 to 2 mm out: C18's ground pad, the crystal, C14's ground pad, C9. FreeRouting ran 14 minutes and left every pad of the core net bare, and 5 more connections open round it. The core rail is drawn by hand now: a stub inward from each pin to a via inside the ring of pads, joined on In3 under the ground pad. The next routes left the 3.3 V pins open instead: 4 of the 100 nF capacitors had their ground pad toward the chip and their supply pad on the far side. They are turned, and each 3.3 V pin's stub to its capacitor is drawn by hand. Last, the crystal stood 0.6 mm below pins 16 to 22 and left them no way out; it and its 3 parts moved to the back, and the fresh route after it left 3 connections open where the ones before left 7 to 17.
+Cost: a 15-minute route kept only as a seed, 8 more routes, and the hand routes.
+Root cause: I checked each pin's net and not its way out. Rosetta's route had met the same wall (its RP2040's pins had no lanes until its capacitors moved), and that lesson was in the devlog, not in a process.
+Process: P4
+
+## M147 — 2026-11-11 — 60 passes and the 15-minute limit, after M128
+What happened: I routed the same example, 76 parts on 6 layers, with `--passes 60` and no `--timeout`, which P4 step 6 forbids since M128. The first round ended 32 seconds inside the 15-minute limit. The second round, which `workcenter design` starts when a pour loses a pad, would have been stopped by the limit and left no session; I stopped it for M146's fix.
+Cost: none in the end; the board's first route was 32 seconds from being lost.
+Root cause: I copied the command from my first route of the example, written before I read P4's step 6, and did not read the step again before the next route. Then I tried to finish the board with seeded routes; each lost connections its seed had, and 6 such routes went nowhere.
+Process: P4
+
+## M148 — 2026-11-11 — `cd` and `pkill -f` in my own commands
+What happened: In the same work the no-`cd` hook refused 2 of my commands, and I stopped routes with `pkill -f` and a pattern the command's own shell held, twice. The second time the command printed nothing after the `pkill`: the shell may have ended there.
+Cost: 2 refused commands; a check that may not have run.
+Root cause: I wrote the commands from habit, not from P8, which names both.
+Process: P8
+
+## M149 — 2026-11-11 — Back-face parts turned by the front face's rule, after M126
+What happened: I placed the example's 2 pin headers on the back face at 90 degrees, and they stood off the board; 270 put them on it. The microSD socket on the back face was turned the wrong way twice before its card slot faced the edge. Each was found only after a generate.
+Cost: at least 3 generate and DRC rounds.
+Root cause: As in M126, I chose a back-face rotation from the front face's rule instead of reading 2 named pads from the generated board first, as P19 step 4 says.
+Process: P19
+
+## M150 — 2026-11-11 — A motherboard's supplies given to the router as tracks
+What happened: I gave FreeRouting the example motherboard's 4 supply nets as tracks: +12V, +3V3, +5V and +12V_CPU, 136 pins across a 244 x 244 mm board round a socket of 4844 lands. The first run went 20 minutes without finishing a pass: 10 power stages' driver-supply pins were boxed in by their own sense tracks. With those links drawn by hand, the second run went 20 minutes without finishing a pass, and I stopped it. The supplies are pours on the power layer and on In7, and 1 track on In6, drawn by the design now; the first DRC after found 0 unconnected.
+Cost: 2 routes of 20 minutes with no result, and the time spent between them freeing pins the router did not need.
+Root cause: I routed because the skill's loop routes. A board this size carries its supplies in planes, and nothing before a route asked whether a net that spans the board belongs in a pour.
+Process: P4
+
+## M151 — 2026-11-11 — A sheet laid out with the library's y for the sheet's
+What happened: I placed the example motherboard's symbols on the sheet in shelves, each as tall as `kicadgen.symbol_box` said. That box is in the library's frame, y up; the sheet's y runs down. Symbols whose bodies sit off their origin overlapped their neighbours on the first sheet.
+Cost: 1 generate and 1 look at the sheet.
+Root cause: I read the box's numbers and not its frame. P24 asked for a table of positions and said nothing of where a computed position's size comes from.
+Process: P24
+
+## M152 — 2026-11-11 — A wide track from a narrow pad's centre
+What happened: Each power stage's switch node leaves its 0.8 mm pad by a 2.0 mm track. I started the track at the pad's centre, as P1 says; its round end reached 1.0 mm past the centre, over the stage's ground pad 0.4 mm away, and the DRC listed the switch nodes shorted to ground. The track starts at the pad's outer edge now.
+Cost: 1 generate and DRC round.
+Root cause: P1 step 5 says to end a track on the pad centre, which holds for a track no wider than its pad. Step 4 sizes a track from the pad and stops there.
+Process: P1
+
+## M153 — 2026-11-11 — A floor plan placed before the buses' paths
+What happened: The example motherboard's first version placed every big part from the microATX and CEM drawings and left each bus for its own version. Planning the memory and PCI Express buses for the next versions moved 4 groups of parts in a version I had called placed: the cooler's holes (65.2 mm apart across the socket, now 46) and 2 phases of the top row stood in the memory buses' combs, the M.2 sockets faced away from the lanes' trunk, and the memory slots moved 0.9 mm for a row of slot 1's capacitors.
+Cost: 2 placement rounds of the first version, each with a generate, a DRC and new renders.
+Root cause: I treated the floor plan as the drawings' positions alone. Where a bus can run decides where the parts it passes may stand, and P22 asked for no plan of the later versions before the first was placed.
+Process: P22
+
+## M154 — 2026-11-11 — A render stopped by the background limit
+What happened: I ran the example motherboard's v0.2 generate, gates and pictures as 1 background job. The job runner stops a background job at 30 minutes unless it is given a longer limit; the generate took 8 minutes, the gates 4 and the pictures 17, and the job was stopped while the turning GIF was drawn. The stills had been copied; the GIF and the headline views had not.
+Cost: the pictures run again, 17 minutes.
+Root cause: I knew how long each step took alone and did not add them up against the job's limit. P23 said nothing of how long pictures of a large board take.
+Process: P23
+
+## M155 — 2026-11-11 — 11 courtyard overlaps in a first placement
+What happened: I placed the example motherboard's 77 port and header parts from numbers I chose, with the size of a few footprints in mind. The grid router failed 8 to 14 links on each try, and a drawing of the copper showed why: 2 capacitors under the battery holder's pads, a pull-down on a header's pins, 3 transistors on each other. A courtyard check listed 11 overlaps; placed again, every link routed.
+Cost: 4 routes of 2 minutes each and the drawings to read them.
+Root cause: P4 step 4 asks for kistack's placement checks before a route; I routed first, and read the router's failures as routing problems.
+Process: P4
+
+## M156 — 2026-11-11 — A few lines changed by a script, not the Edit tool
+What happened: To add 2 cards to the site's page and 2 pictures to `site/build.sh`, I wrote a Python replace. It checked each anchor before it wrote. P9 step 5 sends a change of a few lines through the Edit tool after a Read. The hook stopped my next script, for `site/README.md`, because it named a test file. I read P9 then, and read the first change's diff back: it was right.
+Cost: 1 diff read back; no wrong text reached a commit.
+Root cause: The change spanned 2 files, and I reached for a script without reading P9 first.
+Process: P9
+
+## M157 — 2026-11-12 — A new page with the stylesheet a phone kept from before
+What happened: I changed `site/site.css` and `site/effects.js` under the same names and merged. The site's custom domain serves it through Cloudflare, which tells a browser to keep a stylesheet or a script 4 hours (`max-age=14400`) and to ask again for the page each time. The owner's phone loaded the new page with the old stylesheet: Herald's board in the green of the page before. I had fetched the Vercel address after the deploy, not the custom domain that the canonical link names, and I read no cache header.
+Cost: the owner saw a page half new and half old; a change to `site/build.sh` and a test.
+Root cause: A file the page names kept its name when its content changed, and P32 step 3 fetched only the host's own address, without the headers that would have shown the 4 hours.
+Process: P32
+
+## M158 — 2026-11-11 — An edit lost the space at the end of its text, and I named a cause no run showed
+What happened: A helper broke a fixture on purpose, to see its test fail. With the Edit tool it replaced `-period 5.4 ` by `-period 20 `, and the file got `-period 20[get_ports clk]`: the space at the end of the new text was gone. In M125 I undid that break from the line as I saw it, so the space stayed lost: `-period 5.4[get_ports clk]`. I saw it when I put the breaks back. The helper restored the file against its manifest of hashes about 15 minutes after its break. I then wrote into 3 briefs that the tool drops a space at the end of a replacement. Later that day I tested the sentence: the tool kept the space. Where the space was lost is not found.
+Cost: 1 fixture file with a broken line for about 15 minutes, and 1 sentence in 3 briefs that names a cause no run showed.
+Root cause: A text that ends on a space looks whole when the space is gone, and nobody read or hashed the file after the edit. Then I wrote my first explanation down as a fact: in the briefs, and again in the first draft of this entry, which said my own restore had lost the space. The session's record showed the helper's break had (M95).
+Process: P9
+
+## M159 — 2026-11-11 — `set -e` did not stop a tool call at its failed command
+What happened: I moved a branch to 2 rebuilt commits with a list of commands in 1 tool call that began with `set -e`. The ref update failed on a hash I had typed with 1 character too many (`not a valid old SHA1`). The commands after it ran all the same: a `git reset -q`, a status, a log. The branch had not moved, so the reset changed nothing. A test showed the rule: in this session's shell `set -e; false; echo went on` prints `went on`, and a subshell does the same. A child shell stops: `bash -e -c '...'`.
+Cost: 1 command run again. On another day the command after the failed one resets or deletes something.
+Root cause: I took `set -e` for a gate and had never tested it in this shell. The host runs a tool call's text inside a list, where bash ignores the option. And I typed a hash that `git rev-parse` would have given whole.
+Process: P8
+
+## M160 — 2026-11-11 — 3 sentences of the front page said what no run showed
+What happened: A reviewer who had not written the front page checked each sentence by a command and found 3 false ones. The README said that `workcenter <command> --help` tells what each command writes: the help of 18 of the 24 commands names no file. STATUS.md pointed at "ROADMAP item 2" for the autoroute work: the queue had been renumbered that day, and the item is item 4. The landmine map said that FreeRouting 1.9.0 has no network code: its log shows a version check that fails, and before each route a wait of 20 s that 1 flag removes. The test written for the pointer found a second stale one in USE-CASES.md. The same review found a track segment that the generator wrote 2 times, and `doctor` reading `degraded` after a clean install.
+Cost: 1 review and 1 commit. 20 s in every routing run since the router was pinned, in each test that routes.
+Root cause: I wrote each sentence from what I believed and ran no command for it (M95). The pointer was a bare number in a queue that is renumbered when an item ships. Nobody had read the router's log between its first line and its last.
+Process: P5
+
+## M161 — 2026-11-11 — A heredoc ended at a line of its own text, and the shell ran the rest
+What happened: I changed 4 documents with a Python script inside a shell heredoc that ended at `EOF`. 1 text of the script was a shell block of a README, and that block has a heredoc of its own with the same end word. The shell ended my heredoc there. Python stopped on a syntax error, and the shell ran the rest of the script's text as commands: words of prose, a `workcenter render`, a `cp`, then a `sh` that waited for input. Each failed or did nothing. I stopped the shell and checked the 3 work trees and the read-only project: no file had changed. That check ran `git status` in the read-only project, which rewrites that repository's index file.
+Cost: 5 minutes. A text with `rm` or a `git` command in it would have run too.
+Root cause: A heredoc's end word is a promise about every line of its text, and I did not read my own text for it. P9 step 6 warns about backslashes in a heredoc and says nothing about its end.
+Process: P9
+
+## M162 — 2026-11-12 — `cd`, and a `pgrep -f` wait loop, in a session opened outside the repository
+What happened: The session for Wyvern v0.2 opened in `/home/user`, above the workcenter's clone, so the hook that refuses a `cd` (`tools/hooks/no_cd.py`) never loaded. Twice I ran a command with a `cd` in it (into the scratch folder, then into the repository). The first was undone by the shell; the second moved the session's working folder into the repository. Nothing ran in the wrong place. I had not run `workcenter doctor` at the start, which shows both hooks as absent. Later I waited on a route with `until ... || ! pgrep -f "<the route's file>"`: the loop's own command line holds that pattern, so the loop could never see the router stop (M75). I stopped it before it mattered; the route's own background task reports its end. After the session's context was summarised, a check of 2 image sizes began with `cd /home/user/via;` a third time: absolute paths followed it, so it changed nothing.
+Cost: no wrong output; 4 commands and this entry.
+Root cause: P8 asks for the doctor check when a session opens outside the repository (step 1) and forbids `pgrep -f` in a wait loop (step 3); I skipped the first and wrote the second from habit, with no hook to stop either.
+Process: P8
+
+## M163 — 2026-11-12 — A module's pin table read by a script from the PDF's text
+What happened: I read the VOSM6490's pin tables with a script over `pdftotext`. Cells that wrap onto a second line and names with a slash landed in the wrong rows: E3 came out as "POWER_ON" (the page says GPIO/CAMERA_POWER_ON), and 3 of the 17 VCC_IN_5V pads (Y8, Y9, Y17) were missing. Each pad the board uses was then read by hand from the page, and the script's table was dropped. The hand read also found that D9 and C8, the standard's USB_C_ID and USB_C_OC#, are the module PMIC's own Type-C CC pins on this module.
+Cost: one pass over the table by hand; no wrong pad reached the design.
+Root cause: P16 step 1 sends a pin table to the vendor's data and says nothing of a table a script pulls out of a PDF's text.
+Process: P16
+
+## M164 — 2026-11-12 — A deck whose resistors the corners did not move
+What happened: To find where Wyvern v0.2's buck-boost starts at both ends of its enable threshold, I wrote 1 deck holding 2 copies of the enable divider, named R34A, R35A and R34B, R35B. The gate passed it with no corner moving anything: it varies only elements named like a board reference (the `simulate` skill, "Corners"). The sim gate's JSON showed the deck's "varied" list empty. Split into 2 decks with R34 and R35, the corners ran.
+Cost: 1 rerun; the first numbers were nominal only, and no document had quoted them.
+Root cause: P28 step 4 says a corner moves only what the deck carries; I named the copies for the deck, not for the board.
+Process: P28
+
+## M165 — 2026-11-12 — A few lines changed by a script, again
+What happened: While writing Wyvern v0.2, I changed design.py, the series README and v0.1's banner several times with a Python replace of 1 to 10 lines, each anchor checked before the write. P9 step 5 sends a change of a few lines through the Edit tool after a Read; M156 recorded the same slip the day before. Each change was read back by the generator, the DRC or `git diff`, and none was wrong.
+Cost: no wrong text; the diffs read back.
+Root cause: Long design sessions batch many small changes, and a script that does 5 at once looked faster than 5 Edits. P9 step 5 holds anyway.
+Process: P9
+
+## M166 — 2026-11-12 — A rebased tree force-pushed without `make verify`
+What happened: `make verify` passed on Wyvern v0.2's branch, and I pushed it. Then I rebased the branch onto `main`, which had added M158 to M161 meanwhile, renumbered my 4 entries to M162 to M165, and force-pushed within a minute, with no run on the new tree. STATUS.md still said `MISTAKES.md` M1 to M161, and `test_docs.py` fails on that. The rebase's conflict in this file had also lost M161's `Process: P9` line, which `main` holds; the kit checks fail on that. The next `make verify`, 50 minutes later, found the first (1 failed, 539 passed); the run after its fix found the second.
+Cost: a red tree on the remote branch for an hour, with no pull request open on it; 2 runs of `make verify`.
+Root cause: P14 step 2 chains a push behind the verdict but did not say that a rebase after the verdict makes a new tree. A renumbering felt like bookkeeping, not a change.
+Process: P14
+
+## M167 — 2026-11-12 — SYNTH printed the flops of the design before the mapping as the netlist's
+What happened: The SYNTH gate printed `770 cells, 156 flops` for the acceptance processor, and the fixtures' README, STATUS.md and 2 tests repeated the 156. The cell count came from Yosys's `stat` of the mapped netlist. The flop count came from `generic.json`, the design before the library's cells, where the reset judgement reads the flops. With the 4 programs in the ROM nothing reads 3 of the 16 registers: the mapping proves it, the script's last pass removes their 24 flops, and the netlist holds 132. I saw it on 2026-11-12, when the layout log read `Clock net "clk" has 132 sinks` under a gate line that said 156 flops.
+Cost: 1 wrong number in a gate's line since round 1, on the chip branch only. An hour to find the cause, count the netlist's flops and name each flop the mapping removed.
+Root cause: 2 numbers of 1 line came from 2 files of 2 stages, and the line named neither file. Every sample was a design where the 2 counts are equal, so no test could tell them apart.
+Process: P7
+
+## M168 — 2026-11-12 — 2 places of `tools/workcenter` changed by a script, the day after M156
+What happened: To give `read_expect` a parameter I changed 2 places of `tools/workcenter` with a Python replace. It checked each anchor before it wrote. P9 step 5 sends a change of a few lines through the Edit tool after a Read. M156 was the same act the day before, and M165 the same act that day in the session for Wyvern v0.2. I read the diff back: it was right.
+Cost: 1 diff read back; no wrong text reached a commit.
+Root cause: The step said "a few lines", and I counted 2 places as a job for a script. The hook stops a script only when it names a test file, so nothing stopped this one.
+Process: P9
+
+## M169 — 2026-11-12 — 5 readers of the chip gates took 1 spelling of what their engine takes in several
+What happened: A reviewer who had not written the chip gates built 15 cases against them (P14 step 6). 7 came from readers that knew 1 spelling. LINT failed a `lint_off` comment in upper case and for its failing classes only: Verilator takes `widthtrunc`, the group name `WIDTH` and a config block, and 4 projects with a sum 1 bit too wide passed, 1 of them GREEN with `--strict`. The records found a header by `` `include `` with a space after it: a header named with no space was in no record, it changed after GREEN, and `chip export` handed the old layout out. The constraints' reader counted any `set_input_delay` that names a port as that port's delay: with `-min` alone no setup path from the pin was judged, and the run was GREEN. It took the first of 2 `-period` values where Tcl takes the last, 1 bit of a bus for the bus, and a clock uncertainty of -1 ns as written. A record told a project's file from a gate's by the first folder of its name: RTL kept under `chip/layout/` was never held.
+Cost: 4 cases where a gate passed what it must fail, 2 where EXPORT handed out a layout of other files and 1 record with a period the engines did not take, on the chip branch before it reached `main`. 1 review and 1 round of fixes.
+Root cause: Each reader was a pattern over the text an engine reads, written from the 1 spelling my own fixtures use. P7 step 7 asks for the spellings from the tool's manual before the reader is written, and I had listed none. And 3 engines can say what they read; I parsed their input.
+Process: P7
+
+## M170 — 2026-11-12 — A test that named `openroad` as an engine that is there
+What happened: A test of the chip spine asked for the engines `openroad` and `no-such-engine`, and expected the skip to name 1 of them. It was written on a machine that has the chip engines, and every run of it since was on that machine. CI installs none, and the chip branch had no pull request: CI's first run of the chip tests would have been on `main`, and red. Before the push I ran the chip, guide and docs test files with the chip engines off the path: 1 failed, 250 passed, 64 skipped. The test names `sh` now, and the same files give 251 passed, 64 skipped.
+Cost: 2 runs of 75 s and 1 changed test; no red run reached `main`. The health gate was stopped once to make room for the check.
+Root cause: P12 asks for a named skip on a test that needs an engine. It said nothing of a test that carries no mark and still reads which engines the machine has, and nothing of a run without them before a landing.
+Process: P12
+
+## M171 — 2026-11-11 — A deck read with bare ngspice, M94 again
+What happened: To quote the current-sense deck's temperature results for Last Hit v0.17, I ran `ngspice -b isense.cir` in its folder. It printed 16.1 A for a true 6 A and 3.26 V where the monitor gives 1.2 V: without the gate's PSpice mode and translation, Diodes' model ran as another circuit, with exit 0. P28 step 5 says a deck run by hand runs only through `workcenter sim <project> --deck <name>`. The gate's run gave 6.007 A.
+Cost: 1 wrong reading, caught before it was written; the deck run again the gate's way.
+Root cause: I reached for ngspice by habit and did not read P28 step 5 again before a hand run.
+Process: P28
+
+## M172 — 2026-11-12 — A corner's model switch that moved 1 parameter of 5
+What happened: Last Hit's heater deck switches the protection switch to its maximum model with `altermod SISF12_TYP vto=1.0 kp=550 rd=1.15m rs=0.125m rg=1.7`. ngspice 42 applies the first parameter of an altermod line and drops the rest without a word, so the "maximum" case moved only the threshold. Every version since v0.14 had a line like it. In v0.16 its result, 64.6 mV, sat near the old switch's 21 mΩ row by chance and agreed with the hand analysis. With v0.17's switch the deck read 21.4 mV where the hand value was 23.3 mV. The drop across the switch, measured in a copy of the deck, gave 3.67 mΩ: the typical model with the maximum's threshold. A diode deck showed the same: `altermod DMOD is=1e-12 rs=500` changes `is` only.
+Cost: 3 versions' REQ-PRT-01 rested on a model change that did not happen (each passed by a wide margin either way); 1 deck fixed and 7 quotes corrected in v0.17.
+Root cause: Nothing checked that a model switch took: the deck printed the protection's reading, never the switch's resistance in that case, and ngspice says nothing. The SIM gate now fails a deck with several parameters on 1 altermod line.
+Process: P28
+
+## M173 — 2026-11-11 — A model fitted at a coarse step
+What happened: I fitted the SiSF12EDN's gate capacitances to its 2 gate-charge rows with a standalone transient at a 10 ns step: 44.7 and 24.2 nC against the table's 45.5 and 25. In the MOSFET deck, at a 2 ns step, the same model gave 53.0 and 32.5 nC, 16 and 30 % high. A grid fitted at 2 ns gave 42.5 and 26.4 nC.
+Cost: 1 refit, and the model library's comment rewritten.
+Root cause: A value read from a transient's crossing time depends on the step; I fitted at one step and checked at another.
+Process: P28
+
+## M174 — 2026-11-11 — 3 helpers at once, facts pasted into their briefs, the lead in their checkout
+What happened: For Last Hit v0.17's verification package I started 3 helpers at once. Each brief pasted the settled numbers instead of pointing at a FACTS.md, and I kept editing the README in the checkout they wrote to. The comparator's highest trip went out as 7.06 A; the requirements helper derived 7.09 A, and 2 files disagreed until I aligned them. The dead short went out as v0.16's 39 A, a figure taken with v0.16's switch in its loop; the calculations helper found 43.6 A. I ran `git stash` and `git stash pop` in that checkout while 2 helpers wrote to it; the pop came back clean. When the owner changed the part, 2 helpers were stopped part-way, and 2 more were started on their partial files.
+Cost: 2 numbers corrected in 6 files; 2 helpers' work restarted; a stash that could have lost a helper's write.
+Root cause: I did not read P31 and P28 step 8 before starting the helpers.
+Process: P31
+
+## M175 — 2026-11-11 — A scratch script wrote into the project
+What happened: A grid fit run as `python3 - <<EOF` wrote its deck to `os.path.dirname(os.path.abspath(__file__))`. Under `python3 -` that is the working directory, here the board repository, and `f.cir` landed in its root. `git status` showed it before a commit.
+Cost: 1 stray file, found and removed before it was committed.
+Root cause: The script built its output path from `__file__`, which a script read from stdin does not have as a file.
+Process: P8
+
+## M176 — 2026-11-11 — `workcenter costs` failed on a sentence that named its marker
+What happened: A board repository's CLAUDE.md says `costs` "writes the totals between the `<!-- workcenter costs -->` markers". `workcenter costs` priced every board, wrote both tables, and failed on `CLAUDE.md: <!-- workcenter costs --> has no closing marker`. The check looked for the marker's text anywhere in a file, and the sentence holds it. I rephrased the sentence to get past it.
+Cost: a red costs run and a sentence rewritten in the board repository; the check fixed here.
+Root cause: `unclosed()` matched the marker as a substring, not as the line `wrap_block` writes.
+Process: P7
+
+## M177 — 2026-11-12 — A merge by switching the checkout, stopped half-way
+What happened: To put Last Hit v0.17 on `main` I ran `git checkout main && git merge --ff-only v0.17 && git push` in the working checkout. The owner stopped the command during the checkout. The tree was left half switched: on `main`, with v0.17's README and 4 more files changed, 185 untracked files of v0.17, and the base schematic cut to 0 bytes. Every file was in the pushed branch. I compared each with it, moved the untracked files aside, stashed the 5, switched back and dropped the stash. The merge then went as `git push origin origin/v0.17:refs/heads/main` after `git merge-base --is-ancestor`, with no switch.
+Cost: a half-switched checkout, inspected and restored file by file.
+Root cause: A fast-forward needs no checkout, and I switched the working tree to make one.
+Process: P14
+
+## M178 — 2026-11-11 — A part placed against its nominal body
+What happened: I placed Last Hit v0.17's protection switch, a PowerPAK 1212-8SCD (3.30 mm nominal, 3.40 mm at most by its drawing), between the USB receptacle's shell legs and checked its body against the legs' pads at 3.30 mm: 0.03 mm clear. The DRC then put the legs' holes inside its courtyard, and at the drawing's 3.40 mm the body's corner met a leg's pad by 0.035 mm. The switch moved 0.2 mm, which moved a via and cost another route.
+Cost: 1 extra route and a moved via.
+Root cause: The clearance was judged at the body's nominal size, not at the package drawing's largest.
+Process: P29
+
+## M179 — 2026-11-12 — A board fact written from memory
+What happened: In Last Hit v0.17's README I wrote that the current monitor sits "on the other face of the board" from the MCU, as the reason the MCU's die temperature is a poor stand-in for the monitor's. Reading back, I checked the board: both are on the bottom face, 7 mm apart, the monitor beside the shunt. The sentence was corrected before the commit.
+Cost: 1 sentence rewritten.
+Root cause: A position stated without reading it from the board.
+Process: P5
+
+## M180 — 2026-11-12 — A CI step that grows with every version, under 1 limit
+What happened: Last Hit's board CI ran every version's mutation list in turn in 1 step under a 25-minute limit. With v0.17's 54 mutations added to v0.16's 50, the branch run took 18 min 54 s and passed, and I put v0.17 on `main` on that run. The same commit on `main` ran past 25 minutes on a slower runner (run 43256806535), every mutation it reached caught. The step became a matrix job, 1 job per folder, each under its own limit: v0.17 took 12.5 minutes and v0.16 18.5.
+Cost: a red run on `main` and a workflow change after the merge.
+Root cause: A step whose work grows with every version kept 1 fixed limit, and a green run was read for its verdict, not for how much of its limit it used.
+Process: P2

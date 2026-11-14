@@ -1,0 +1,14 @@
+%Warning-WIDTHTRUNC: /work/reg8/rtl/reg8.v:16:16: Operator ASSIGNDLY expects 4 bits on the Assign RHS, but Assign RHS's VARREF 'd' generates 8 bits.
+                                                                                                                                     : ... note: In instance 'reg8'
+   16 |         narrow <= d;
+      |                ^~
+                     ... For warning description see https://verilator.org/warn/WIDTHTRUNC?v=5.020
+                     ... Use "/* verilator lint_off WIDTHTRUNC */" and lint_on around source to disable this message.
+%Warning-UNDRIVEN: /work/reg8/rtl/reg8.v:7:23: Signal is not driven: 'loose'
+                                                                                                                                  : ... note: In instance 'reg8'
+    7 |     output wire       loose
+      |                       ^~~~~
+%Warning-LATCH: /work/reg8/rtl/reg8.v:11:5: Latch inferred for signal 'reg8.held' (not all control paths of combinational always assign a value)
+                                                                                                                               : ... Suggest use of always_latch for intentional latches
+   11 |     always @(*) begin
+      |     ^~~~~~

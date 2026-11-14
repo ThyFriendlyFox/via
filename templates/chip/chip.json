@@ -1,0 +1,26 @@
+{
+  "top": "__TOP__",
+  "pdk": {
+    "name": "sky130A",
+    "library": "sky130_fd_sc_hd",
+    "version": "fill: the version `workcenter doctor` prints on its `pdk sky130A` line",
+    "source": "fill: the day and the command that read the version"
+  },
+  "corners": {
+    "temperature": {
+      "values": [0, 70],
+      "source": "fill: the requirement that states the temperature range the chip works in"
+    },
+    "supply": {
+      "nominal": 1.8,
+      "tolerance": 0.05,
+      "source": "fill: the datasheet row of the regulator that feeds the chip"
+    }
+  },
+  "limits": {
+    "utilization": {
+      "max": 0.6,
+      "source": "fill: where the limit comes from: the process table's placement density (pdks/sky130A.json), a shuttle's guide, or the spec"
+    }
+  }
+}

@@ -1,0 +1,54 @@
+* TI's TLV9062 model (library/ti/tlv9062.lib, Rev. D), 1 channel, against the TLV9061 datasheet
+* (SBOS839N, section 6.10): VS = 5.5 V, VCM = VOUT = VS/2, RL = 10k to VS/2.
+*   aol_db:  open-loop voltage gain at 1 Hz, min 104 dB (VS = 5.5 V, RL = 10k).
+*   gbw_mhz: where the open-loop gain falls to 1, GBP 10 MHz typical (VS = 5 V, G = +1).
+*   vos_mv:  input offset voltage, max +-1.6 mV (VS = 5 V).
+*   iq_ua:   quiescent current, max 750 uA (VS = 5.5 V, IO = 0).
+*   fit_*:   the project's model the loop decks use (models/tlv9061_fit.lib), the same buffer beside
+*            it: its open-loop gain and phase against TI's at 100 Hz, 1 kHz and 10 kHz.
+* A buffer: VINJ sits in series in its feedback (Middlebrook's injection), so the loop is closed at
+* DC and the open-loop gain is -v(out)/v(inn) at every frequency.
+* ngspice's own DC solve fails on the model's noise generators; optran ramps to the operating point.
+.include "../../library/ti/tlv9062.lib"
+.include "models/tlv9061_fit.lib"
+VPOS vp 0 DC 5.5
+VMID mid 0 DC 2.75
+XU2 mid inn vp 0 out TLV9062
+VINJ inn out DC 0 AC 1
+RL out mid 10k
+VPOSF vpf 0 DC 5.5
+XFIT mid finn vpf 0 fout TLV9061_FIT
+VFINJ finn fout DC 0 AC 1
+RLF fout mid 10k
+.control
+optran 1 1 1 1n 100u 0
+op
+let vos_mv = 1000*(v(out) - v(mid))
+let iq_ua = -1e6*i(VPOS)
+print vos_mv iq_ua
+ac dec 50 0.1 100Meg
+let aol = mag(-v(out)/v(inn))
+meas ac aol1 find aol at=1
+meas ac fu when aol=1 fall=1
+let aol_db = 20*log10(aol1)
+let gbw_mhz = fu/1e6
+print aol_db gbw_mhz
+let tg = db(-v(out)/v(inn))
+let fg = db(-v(fout)/v(finn))
+let tp = 180/3.14159265*ph(-v(out)/v(inn))
+let fp = 180/3.14159265*ph(-v(fout)/v(finn))
+meas ac tg100 find tg at=100
+meas ac fg100 find fg at=100
+meas ac tg1k find tg at=1000
+meas ac fg1k find fg at=1000
+meas ac tg10k find tg at=10000
+meas ac fg10k find fg at=10000
+meas ac tp10k find tp at=10000
+meas ac fp10k find fp at=10000
+let fit_db_100 = fg100 - tg100
+let fit_db_1k = fg1k - tg1k
+let fit_db_10k = fg10k - tg10k
+let fit_deg_10k = fp10k - tp10k
+print fit_db_100 fit_db_1k fit_db_10k fit_deg_10k
+.endc
+.end

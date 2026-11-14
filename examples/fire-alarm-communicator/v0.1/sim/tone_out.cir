@@ -1,0 +1,25 @@
+* The tone path: the LEDC PWM (GPIO14) through R25/C26 and R26/C27 (2 poles at 2.3 kHz), then C28
+* (1u) and R27 (470) onto TIP. The line's AC load is R24 (620) through C25 (2.2u) and the dialer's
+* own off-hook load, 600 ohm (RDACT). VTONE is a full-scale sine (1.65 V peak), so
+* vm(tip) is the peak level on the line. The PWM's carrier is 78.125 kHz (80 MHz / 1024).
+VTONE tone 0 DC 1.65 AC 1.65
+R25 tone t1 1k tc1=100u
+C26 t1 0 68n
+R26 t1 t2 1k tc1=100u
+C27 t2 0 68n
+C28 t2 tac 1u
+R27 tac tip 470 tc1=100u
+R24 tip term 620 tc1=100u
+C25 term ring 2.2u
+RDACT tip ring 600
+R22 ring 0 47 tc1=100u
+.control
+ac dec 200 100 200k
+meas ac v_350 find vm(tip) at=350
+meas ac v_1400 find vm(tip) at=1400
+meas ac v_2300 find vm(tip) at=2300
+meas ac v_carrier find vm(tip) at=78125
+let carrier_ratio = v_carrier / v_1400
+print carrier_ratio
+.endc
+.end

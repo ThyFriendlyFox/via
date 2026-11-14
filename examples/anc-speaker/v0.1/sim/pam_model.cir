@@ -1,0 +1,28 @@
+* The PAM8302A model (sim/models/pam8302a.lib) against its datasheet (Diodes DS41333 Rev. 6 - 2):
+* VDD 5 V, 1 kHz into IN+ through 1 uF, IN- to ground through 1 uF, no external RIN, an 8 ohm load.
+*   gain_db: the Gain row, 23.5 dB typical (no limits printed).
+*   zin_k:   the input resistance in kilohms, 10k in the functional block diagram (page 2).
+*   vout_dc: the outputs' common level, VDD/2 (page 7).
+.include "models/pam8302a.lib"
+VDD vdd 0 DC 5
+VSD sd 0 DC 5
+VIN in 0 DC 0 AC 0.1
+CINP in inp 1u
+CINN 0 inn 1u
+XU5 sd inp inn vdd 0 outp outn PAM8302A
+RLOAD outp outn 8
+.control
+op
+let vout_dc = v(outp)
+print vout_dc
+ac dec 50 100 10k
+let gd = db(v(outp)-v(outn))
+meas ac g1k find gd at=1000
+meas ac vin1k find vdb(in) at=1000
+let zmag = mag(v(inp)/vin#branch)
+meas ac zin find zmag at=1000
+let gain_db = g1k - vin1k
+let zin_k = zin/1000
+print gain_db zin_k
+.endc
+.end

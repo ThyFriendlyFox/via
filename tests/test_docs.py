@@ -8,6 +8,7 @@ command added without its line in the README fails here, not in a reader's hands
 from __future__ import annotations
 
 import html
+import os
 import re
 import shutil
 import struct
@@ -176,6 +177,53 @@ def test_every_mistake_and_process_a_file_cites_exists():
         assert sorted(cited - processes) == [], f"{rel} cites a process that PROCESSES.md does not hold"
 
 
+def test_a_count_of_tests_in_the_status_file_is_what_pytest_collects():
+    """STATUS.md gives a test file's count beside its name: `tests/test_gates.py` (26 tests). 2 of the
+    18 counts were stale on 2026-11-12: 21 for 25, 11 for 13. The count is what pytest collects."""
+    status = (ROOT / "ee-agent-kit" / "STATUS.md").read_text(encoding="utf-8")
+    stated = {name: int(count) for name, count in re.findall(r"`tests/(test_\w+\.py)` \((\d+)\b", status)}
+    assert len(stated) >= 15
+    proc = subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider", "tests"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    collected: dict[str, int] = {}
+    for line in proc.stdout.splitlines():
+        if line.startswith("tests/") and "::" in line:
+            name = line.split("::")[0].removeprefix("tests/")
+            collected[name] = collected.get(name, 0) + 1
+    assert collected, proc.stdout + proc.stderr
+    wrong = {name: (count, collected.get(name)) for name, count in stated.items()}
+    assert {name: pair for name, pair in wrong.items() if pair[0] != pair[1]} == {}
+    # The same row of counts names the last mistake and the last process: it read M145 while the log
+    # held M157.
+    last = {
+        letter: max(int(n) for n in re.findall(rf"^## {letter}(\d+) ", text, re.M))
+        for letter, text in (("M", MISTAKES), ("P", PROCESSES))
+    }
+    assert f"`MISTAKES.md` M1 to M{last['M']}, `PROCESSES.md` P1 to P{last['P']};" in status
+
+
+def test_a_pointer_to_a_roadmap_item_gives_its_number_and_its_title():
+    """The queue is renumbered when an item ships. STATUS.md pointed at `ROADMAP item 2` for the
+    autoroute work after that item had become item 4 (M160). A pointer carries the item's title, and
+    the pair is a heading of the roadmap. ENGINES.md kept 2 bare `ROADMAP item 1` for that work through
+    3 renumberings, until the chip item shipped on 2026-11-12: it is read here too."""
+    roadmap = (ROOT / "ee-agent-kit" / "ROADMAP.md").read_text(encoding="utf-8")
+    items = dict(re.findall(r"^### (\d+)\. (.+)$", roadmap, re.M))
+    assert len(items) >= 4
+    pointers = []
+    documents = ("README.md", "WORKCENTER.md", "ee-agent-kit/STATUS.md", "ee-agent-kit/CHANGELOG.md")
+    for rel in (*documents, "ee-agent-kit/docs/USE-CASES.md", "ee-agent-kit/docs/ENGINES.md"):
+        text = (ROOT / rel).read_text(encoding="utf-8")
+        pointers += [(rel, n, title) for n, title in re.findall(r'ROADMAP item (\d+)(?:, "([^"]+)")?', text)]
+    assert len(pointers) >= 4
+    assert [p for p in pointers if items.get(p[1]) != p[2]] == []
+
+
 def test_no_file_names_the_repository_by_its_old_name():
     """The repository was `workspace-ee-test`. The mistakes log keeps the name where an entry tells
     what happened then; no command, script or document that is read today does."""
@@ -215,11 +263,19 @@ def runs_in(text: str) -> list[tuple[tuple[str, ...], list[str]]]:
     return runs
 
 
+def chip_engines_absent() -> list[str]:
+    """Each chip engine, and the process kit, that this machine lacks: a chip's run needs them all."""
+    sys.path.insert(0, str(ROOT / "tests"))
+    from test_chips import EVERY, absent
+
+    return absent(EVERY)
+
+
 def masked(line: str) -> str:
     """A printed line without what differs between 2 runs of 1 command: the seconds, and the folder
     the checkout is in."""
     line = re.sub(r"\[\d+\.\d+s\]", "[s]", line)
-    return re.sub(r"(report )\S*?((?:tests/boards|examples)/)", r"\1\2", line)
+    return re.sub(r"(report )\S*?((?:tests/boards|tests/chips|examples)/)", r"\1\2", line)
 
 
 @pytest.mark.skipif(
@@ -227,20 +283,26 @@ def masked(line: str) -> str:
     reason="kicad-cli and ngspice run the gates the documents show",
 )
 def test_every_run_a_document_shows_is_what_the_command_prints(tmp_path):
-    """The README, the site, its example pages and the Open Graph image show runs on fixture boards
-    and on the example project. A gate's summary changes when the gate does: 46 corner runs were 18.
-    A run typed once and not run again goes stale."""
+    """The README, the site and its example pages show runs on fixture boards, on the example projects
+    and on the fixture processor. A gate's summary changes when the gate does: 46 corner runs were 18.
+    A run typed once and not run again goes stale. The chip's run is made where the chip engines are
+    installed: they install on request, and it takes 4 minutes."""
     documents = {
         "README.md": README,
         "site/index.html": as_document(SITE / "index.html"),
-        "site/og.html": as_document(SITE / "og.html"),
-        **{str(p.relative_to(ROOT)): as_document(p) for p in example_pages()},
+        **{str(p.relative_to(ROOT)): as_document(p) for p in example_pages() if runs_in(as_document(p))},
     }
     shown = {
         (name, argv): lines for name, text in documents.items() for argv, lines in runs_in(text) if lines
     }
-    assert len(shown) == 7 and {name for name, _ in shown} == set(documents)
-    boards = {arg for _, argv in shown for arg in argv if arg.startswith(("tests/boards/", "examples/"))}
+    assert len(shown) == 8 and {name for name, _ in shown} == set(documents)
+    assert [argv for _, argv in shown if argv[0] == "chip"] == [
+        ("chip", "gates", "tests/chips/pass-acc8", "--strict")
+    ]
+    if chip_engines_absent():
+        shown = {key: lines for key, lines in shown.items() if key[1][0] != "chip"}
+    kept = ("tests/boards/", "tests/chips/", "examples/")
+    boards = {arg for _, argv in shown for arg in argv if arg.startswith(kept)}
     for board in boards:
         shutil.copytree(ROOT / board, tmp_path / board, ignore=shutil.ignore_patterns("build", "__pycache__"))
     printed: dict[tuple[str, ...], list[str]] = {}
@@ -263,6 +325,74 @@ def test_every_run_a_document_shows_is_what_the_command_prints(tmp_path):
         assert [masked(line) for line in lines] == printed[argv], f"{name}: workcenter {' '.join(argv)}"
 
 
+# Each command of the README's quick start, in its order: the exit code it ends with, and the start
+# of a line it prints ("^" for its first line). From runs of 2026-11-11 on fresh copies.
+QUICK_START = {
+    "workcenter doctor": (0, "^workcenter ee: "),
+    "workcenter gates tests/boards/pass-first-design": (0, "GREEN: divider  report "),
+    "workcenter gates tests/boards/fail-drc-clearance": (1, "RED: rc_divider  report "),
+    "workcenter next tests/boards/fail-drc-clearance": (
+        1,
+        "^NEXT       Move the track or the pad apart; check the net class clearance.",
+    ),
+    "workcenter sim tests/boards/fail-sim-corner": (
+        1,
+        "^FAIL   sim        2 decks, 32 corner runs, 2 failures, 1 warnings",
+    ),
+    "workcenter sim tests/boards/fail-freq-overlap": (1, "       - frequency plan: load's harmonic 3 "),
+    "mkdir ~/divider": (0, ""),
+    "cp templates/project/design.py ~/divider/": (0, ""),
+    "workcenter design ~/divider/design.py --route": (0, "  routed: "),
+    "workcenter gates ~/divider --strict": (0, "GREEN (nothing to run for: sim): divider  report "),
+}
+
+
+@pytest.mark.skipif(
+    shutil.which("kicad-cli") is None
+    or shutil.which("ngspice") is None
+    or shutil.which("java") is None
+    or not Path("/opt/workcenters/ee/freerouting/freerouting.jar").is_file(),
+    reason="kicad-cli, ngspice and FreeRouting run the commands of the quick start",
+)
+def test_the_quick_start_runs_as_written_and_ends_as_its_comments_say(tmp_path):
+    """No test held the quick start: with a fixture's name misspelt in it every test here passed (a
+    review of 2026-11-11). Each line of its 2 blocks runs as written and in its order. `workcenter`
+    is this tree's CLI, the fixtures and the templates are copies, and `~` is a folder of the test."""
+    section = README.split("\n## Quick start\n", 1)[1].split("\n## ", 1)[0]
+    lines = [line for block in re.findall(r"```sh\n(.*?)```", section, re.S) for line in block.splitlines()]
+    written = {line.partition("#")[0].strip(): line.partition("#")[2] for line in lines if line.strip()}
+    assert list(written) == ["sudo ./install.sh", *QUICK_START]
+    for command, (code, _) in QUICK_START.items():
+        assert ("GREEN" in written[command]) <= (code == 0), command
+        assert ("red" in written[command]) <= (code == 1), command
+    work = tmp_path / "checkout"
+    words = [word for command in QUICK_START for word in command.split()]
+    for board in {word.split("/")[-1] for word in words if "/boards/" in word}:
+        shutil.copytree(
+            ROOT / "tests" / "boards" / board,
+            work / "tests" / "boards" / board,
+            ignore=shutil.ignore_patterns("build", "__pycache__"),
+        )
+    shutil.copytree(ROOT / "templates", work / "templates")
+    shim = tmp_path / "bin" / "workcenter"
+    shim.parent.mkdir()
+    shim.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{CLI}" "$@"\n', encoding="utf-8")
+    shim.chmod(0o755)
+    home = tmp_path / "home"
+    home.mkdir()
+    env = {**os.environ, "PATH": f"{shim.parent}{os.pathsep}{os.environ['PATH']}", "HOME": str(home)}
+    for command, (code, said) in QUICK_START.items():
+        ran = subprocess.run(
+            ["bash", "-c", command], cwd=work, env=env, capture_output=True, text=True, check=False
+        )
+        printed = ran.stdout.splitlines()
+        assert ran.returncode == code, f"{command}: {ran.stdout}{ran.stderr}"
+        if said.startswith("^"):
+            assert printed[0].startswith(said[1:]), (command, printed[0])
+        elif said:
+            assert any(line.startswith(said) for line in printed), (command, printed)
+
+
 def links_of(page: Path) -> list[str]:
     """Each address a page names: its links, its pictures and its scripts, and what a `url()` in its
     markup loads."""
@@ -277,8 +407,8 @@ def example_pages() -> list[Path]:
 
 def beside_page(page: Path, link: str) -> bool:
     """Whether a link read from the page's own folder names a file: `agents.svg#cursor` is
-    agents.svg, and a folder is its index.html."""
-    target = page.parent / link.split("#")[0]
+    agents.svg, `site.css?v=1` is site.css, and a folder is its index.html."""
+    target = page.parent / link.split("#")[0].split("?")[0]
     return target.is_file() or (target / "index.html").is_file()
 
 
@@ -323,9 +453,21 @@ def test_the_site_builds_for_an_address_and_without_one(tmp_path):
     assert '<base href="https://example.org/via/">' in (served / "404.html").read_text(encoding="utf-8")
     assert (served / "og.png").is_file() and (served / "fonts" / "LICENSE").is_file()
     pages = ["index.html", "404.html", *(str(p.relative_to(SITE)) for p in example_pages())]
-    assert '<link rel="canonical" href="https://example.org/via/examples/rosetta">' in (
-        served / "examples" / "rosetta.html"
-    ).read_text(encoding="utf-8")
+    example = (served / "examples" / "rosetta.html").read_text(encoding="utf-8")
+    assert '<link rel="canonical" href="https://example.org/via/examples/rosetta">' in example
+    # A host may keep a stylesheet or a script for hours while it asks again for the page (M157): the
+    # built page names each with its checksum, so a new page never runs with the last build's. An
+    # example's page names them from its folder, as ../site.css.
+    for built, names in (
+        (page, ("site.css", "site.js", "effects.js")),
+        (example, ("site.css", "example.js")),
+    ):
+        for name in names:
+            named = re.findall(rf'"(?:\.\./)*{re.escape(name)}\?v=(\d+)"', built)
+            cksum = subprocess.run(
+                ["cksum"], input=(SITE / name).read_bytes(), capture_output=True, check=True
+            )
+            assert named == [cksum.stdout.split()[0].decode()], f"the built page names {name} with no version"
     looked_up = 0
     for name in pages:
         assert "%ORIGIN%" not in (served / name).read_text(encoding="utf-8")
@@ -334,6 +476,14 @@ def test_the_site_builds_for_an_address_and_without_one(tmp_path):
                 looked_up += 1
                 assert beside_page(served / name, link), f"{name} names {link}, and build.sh does not copy it"
     assert looked_up >= 60
+    # A part's label names the first page of its datasheet in the page's JSON, not in an attribute,
+    # so each is looked up here, with the size the label reserves for it.
+    parts = re.search(r'<script type="application/json" id="herald-parts">(.*?)</script>', page, re.S)
+    sheets = {tuple(entry) for entry in re.findall(r'"dp":\["([^"]+)",(\d+),(\d+)\]', parts.group(1))}
+    assert len(sheets) >= 5, "the labels no longer show their datasheets' first pages"
+    for path, width, height in sheets:
+        assert (served / path).is_file(), f"a label names {path}, and build.sh does not copy it"
+        assert png_size(served / path) == (int(width), int(height)), path
 
     plain = tmp_path / "plain"
     assert build(plain).returncode == 0
@@ -379,14 +529,20 @@ def test_the_open_graph_image_has_the_size_the_page_states():
 
 def local_links(path: Path) -> list[str]:
     """Each file a Markdown document links to or shows, as the document writes it: `](path)`, and the
-    `src`, `srcset` and `href` of its HTML. An address on the web is left out."""
-    found = re.findall(r'\]\(([^)#\s]+)\)|(?:src|srcset|href)="([^"#]+)"', path.read_text(encoding="utf-8"))
+    `src`, `srcset` and `href` of its HTML. A link to a place inside a file names the file: the part
+    from `#` on is left out. An address on the web is left out."""
+    found = re.findall(
+        r'\]\(([^)#\s]+)(?:#[^)\s]*)?\)|(?:src|srcset|href)="([^"#]+)(?:#[^"]*)?"',
+        path.read_text(encoding="utf-8"),
+    )
     return [a or b for a, b in found if not (a or b).startswith(("http://", "https://"))]
 
 
 def test_every_picture_and_link_in_a_readme_names_a_file():
     """GitHub draws a missing picture as a broken image, and a missing link is a 404. A path is read
-    from the document's own folder, as GitHub reads it."""
+    from the document's own folder, as GitHub reads it. The 2 documents are the root's README and the
+    README of `site/media/`: the front page and the page of its pictures. The test holds that a
+    picture is a file of a size, not what the picture shows."""
     media = SITE / "media"
     shown = {
         ROOT / "README.md": {
@@ -399,6 +555,8 @@ def test_every_picture_and_link_in_a_readme_names_a_file():
             "site/media/layers.png",
             "site/media/diagram.png",
             "site/media/diagram-dark.png",
+            "site/media/chip.png",
+            "site/media/chip-met2.png",
         },
         media / "README.md": {
             "hero.png",
@@ -409,6 +567,11 @@ def test_every_picture_and_link_in_a_readme_names_a_file():
             "layers.png",
             "diagram.png",
             "diagram-dark.png",
+            "chip.png",
+            "chip-met1.png",
+            "chip-met2.png",
+            "chip-met3.png",
+            "chip-met4.png",
         },
     }
     for document, expected in shown.items():
@@ -424,25 +587,35 @@ def test_every_picture_and_link_in_a_readme_names_a_file():
 
 
 def test_the_code_a_page_shows_is_a_run_of_lines_of_its_file():
-    """The site's page and `site/media/hero.html`, the page the README's first picture is a capture
-    of, show lines of the fixture's design file. A `<pre data-file>` names its file, and its lines
-    are a run of that file's lines, so a page shows no call the file does not make. Each page's 2
-    pictures of the board are files, at the path the page gives."""
-    file = "tests/boards/pass-first-design/design.py"
-    pictures = {SITE / "index.html": "media/", SITE / "media" / "hero.html": ""}
-    for page, folder in pictures.items():
+    """The site's page shows lines of its example's design file, and `site/media/hero.html`, the page
+    the README's first picture is a capture of, lines of the fixture's. A `<pre data-file>` names its
+    file, and its lines are a run of that file's lines, so a page shows no call the file does not
+    make. Each page's 2 pictures, the schematic and the board, are files at the path the page gives."""
+    shows = {
+        SITE / "index.html": (
+            "examples/fire-alarm-communicator/v0.1/design.py",
+            7,
+            ["showcase/herald-schematic.png", "showcase/herald-top.png"],
+        ),
+        SITE / "media" / "hero.html": (
+            "tests/boards/pass-first-design/design.py",
+            12,
+            ["schematic.png", "board.png"],
+        ),
+    }
+    for page, (file, count, drawn) in shows.items():
         text = page.read_text(encoding="utf-8")
         shown = re.findall(r'<pre data-file="([^"]+)">(.*?)</pre>', text, re.S)
         assert [name for name, _ in shown] == [file], page.name
         code = html.unescape(re.sub(r"<[^>]+>", "", shown[0][1]))
         lines = [line.strip() for line in code.splitlines()]
         source = [line.strip() for line in (ROOT / file).read_text(encoding="utf-8").splitlines()]
-        assert len(lines) == 12 and lines[:2] == ["d.add(", '"R1",'], page.name
+        assert len(lines) == count, page.name
         starts = [i for i in range(len(source)) if source[i : i + len(lines)] == lines]
         assert len(starts) == 1, f"{page.name}: the code is no run of lines of {file}"
-        drawn = [link for link in links_of(page) if link.endswith(("schematic.png", "board.png"))]
-        assert drawn == [f"{folder}schematic.png", f"{folder}board.png"], page.name
-        for link in links_of(page):
+        links = links_of(page)
+        assert all(picture in links for picture in drawn), page.name
+        for link in links:
             if not re.match(r"https?://|#|\./$|%ORIGIN%", link):
                 assert beside_page(page, link), f"{page.name}: {link}"
     # Each page states each picture's size, so the cards keep their place while a picture loads.
@@ -458,12 +631,14 @@ def test_the_code_a_page_shows_is_a_run_of_lines_of_its_file():
         assert sorted(stated) == sorted(set(pictures)), page.name
         assert stated == {name: picture_size(page.parent / name) for name in stated}, page.name
         if page.name == "index.html":
-            assert {"media/schematic.png", "media/board.png", "examples/rosetta/iso.png"} <= set(stated)
+            herald = {"examples/herald/card.png", "showcase/herald-schematic.png", "showcase/herald-top.png"}
+            assert herald <= set(stated)
 
 
 def test_the_example_pages_are_what_site_examples_writes():
-    """An example's page is written from its README, its TIMELINE.md and its board. A page edited by
-    hand, or an example changed and its page not written again, differs from what the script writes."""
+    """An example's page is written from its README, its versions' TIMELINE.md or "What changed"
+    sections, and its board. A page edited by hand, or an example changed and its page not written
+    again, differs from what the script writes."""
     proc = subprocess.run(
         [sys.executable, str(SITE / "examples.py"), "--check"], capture_output=True, text=True, check=False
     )
@@ -473,11 +648,21 @@ def test_the_example_pages_are_what_site_examples_writes():
 
     found = {ex.slug: ex for ex in examples.examples()}
     assert set(found) == {p.stem for p in (SITE / "examples").glob("*.html")}
+    # Rosetta shows v0.2, its board and its card's numbers, and v0.1's steps from v0.1's TIMELINE.md.
     rosetta = found["rosetta"]
     board = examples.draw_board(rosetta.board)
     page = examples.example_page(rosetta, board, {"spin.webp", "top.png", "bottom.png"})
-    assert rosetta.verdict == "GREEN with 5 warnings" and len(rosetta.timeline) >= 8
-    assert f"{board.segments:,} track segments" in page and board.parts == 140
+    assert rosetta.version == "v0.2" and (board.layers, board.parts) == (6, 135)
+    assert len(rosetta.timeline) >= 8 and {entry.version for entry in rosetta.timeline} == {"v0.1"}
+    assert f"{board.segments:,} track segments" in page
+    # Wyvern's steps are its README's "What changed" sections, oldest first; its verdict is its report's.
+    wyvern = found["wyvern"]
+    assert [entry.stage for entry in wyvern.timeline] == ["v0.1", "v0.2"]
+    assert wyvern.verdict.startswith("GREEN")
+    assert [gate for gate, _, _ in wyvern.checks] == ["ERC", "DRC", "SIM", "EXPORT"]
+    # Signet is 6 boards: 1 verdict each, and no board drawing.
+    signet = found["signet"]
+    assert signet.board is None and len(signet.per_board) == 6 and signet.verdict == "GREEN on all 6 boards"
     # The page follows its sources: a step's title, changed, changes the page.
     rosetta.timeline[0].title = "A title no step has"
     assert "A title no step has" in examples.example_page(rosetta, board, set())
@@ -545,8 +730,9 @@ def credits(log: str) -> list[str]:
 
 def test_no_commit_names_an_assistant_as_its_author(tmp_path):
     """The owner's decision of 2026-11-11: a commit names the repository's owner as its author, and no
-    message credits an assistant. The check reads every commit this checkout holds; CI's shallow clone
-    holds the newest. It is proven first on a history made here."""
+    message credits an assistant. The check reads the history of the checked-out branch, not the
+    remote's other branches; CI's shallow clone holds the newest commit. It is proven first on a
+    history made here."""
 
     def git(repo: Path, *args: str, name: str = "Owner", email: str = "owner@example.org") -> str:
         identity = ["-c", f"user.name={name}", "-c", f"user.email={email}", "-c", "commit.gpgsign=false"]

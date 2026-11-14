@@ -1,0 +1,3 @@
+{
+  "z_peak": {"max": 2.29, "source": "the buck's input resistance at the module's 8.7 W boot peak (PDS-0007 Table 9) and USB's 4.75 V: VIN^2 / PIN = 2.29 Ohm; a peak above it makes the input filter and the buck oscillate (Middlebrook)"}
+}

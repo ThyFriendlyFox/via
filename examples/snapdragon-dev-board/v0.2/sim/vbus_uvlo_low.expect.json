@@ -1,0 +1,3 @@
+{
+  "v_on": {"min": 3.0, "source": "the TPS552892's own input range starts at 3.0 V (SLVSH28A, 6.3): below it the converter is not to run"}
+}

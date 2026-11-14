@@ -29,6 +29,8 @@
   --edge: oklch(0.2 0.01 60 / 7%);
   --dot: oklch(0.2 0.01 60 / 15%);
   --shadow: 0 8px 24px -12px oklch(0.2 0.01 60 / 25%);
+  --tour: oklch(0.6 0.13 220);
+  --tour-ink: oklch(0.99 0.005 220);
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   --ease: cubic-bezier(0.2, 0, 0, 1);
@@ -54,6 +56,8 @@ html.dark {
   --edge: oklch(1 0 0 / 10%);
   --dot: oklch(1 0 0 / 13%);
   --shadow: 0 8px 24px -12px oklch(0 0 0 / 60%);
+  --tour: oklch(0.8 0.12 210);
+  --tour-ink: oklch(0.18 0.03 220);
 }
 
 *,
@@ -450,6 +454,19 @@ html.dark .icon-btn .sun {
 
 /* ------------------------------------------------------------------ hero */
 
+/* Paragraphs in a section are justified to their column, and hyphenated so the spaces between words
+   stay even. A part's label is too narrow for it: its lines stay ragged. The hero is centred. */
+main .section p:not(.eyebrow):not(.spec):not(.board3d-hint):not(.part-d):not(.fname):not(.meta),
+main .section figcaption {
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+}
+
+.head.center .lede {
+  text-align-last: center;
+}
+
 .actions {
   display: flex;
   flex-direction: column;
@@ -604,6 +621,20 @@ figcaption {
 .files figcaption b {
   font-weight: 500;
   color: var(--foreground);
+}
+
+/* The design file's lines across the top, whole; the 2 files it writes side by side below. */
+.files.wide .file.code::after {
+  display: none;
+}
+
+.files.wide figure {
+  min-width: 0;
+}
+
+.files.wide .file pre {
+  overflow-x: auto;
+  padding-bottom: 1.25rem;
 }
 
 /* -------------------------------------------------------------- sections */
@@ -1034,6 +1065,18 @@ figcaption {
   .files .file {
     height: 20.5rem;
   }
+  .files.wide {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .files.wide figure:first-child {
+    grid-column: 1 / -1;
+  }
+  .files.wide .file.code {
+    height: auto;
+  }
+  .files.wide .file {
+    height: 24rem;
+  }
   .flow {
     grid-template-columns: minmax(0, 1fr) 7.5rem minmax(0, 1fr) 7.5rem minmax(0, 1.2fr) 5rem minmax(0, 1fr);
   }
@@ -1123,7 +1166,7 @@ html:not(.motion) .progress {
   transform-origin: center;
 }
 
-/* ---- the example: Rosetta --------------------------------------------------------------------- */
+/* ---- the example: Herald ---------------------------------------------------------------------- */
 .showcase .stage {
   display: grid;
   gap: 1.25rem;
@@ -1135,99 +1178,188 @@ html:not(.motion) .progress {
     0 0 0 1px var(--edge),
     var(--shadow);
 }
-.modes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-  padding: 0.25rem;
-  border-radius: 999px;
-  background: var(--secondary);
-  justify-self: start;
+/* The tour: the board in the middle, the labels of up to 4 of its parts beside it, 1 more every 3 s,
+   a leader from each part to its label. Under 1024 px the labels stack below the board in their
+   turn's order, and the numbers pair them. A label waits in its place, unseen, until its turn, so
+   none moves. */
+.tour {
+  position: relative;
+  gap: 0.75rem;
 }
-.modes button {
-  min-width: 3.75rem;
-  padding: 0.5rem 0.875rem;
-  border-radius: 999px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--muted-foreground);
-  transition:
-    background-color 0.2s var(--ease),
-    color 0.2s var(--ease);
+.tour .face {
+  grid-area: auto;
+  order: -1;
+  margin-bottom: 0.5rem;
 }
-.modes button:hover {
-  color: var(--foreground);
+.part-card.is-waiting {
+  visibility: hidden;
 }
-.modes button[aria-selected="true"] {
-  background: var(--card);
-  color: var(--foreground);
+.part-card.has-sheet {
+  display: grid;
+  grid-template-columns: 3.5rem minmax(0, 1fr);
+  column-gap: 0.875rem;
+  align-items: start;
+}
+.part-sheet img {
+  display: block;
+  width: 3.5rem;
+  height: auto;
+  border-radius: 0.3rem;
+  background: #fff;
   box-shadow:
     0 0 0 1px var(--edge),
-    0 2px 8px -4px oklch(0 0 0 / 30%);
+    0 2px 8px -3px oklch(0 0 0 / 35%);
 }
 .face {
-  --mode: var(--primary);
+  grid-area: face;
   min-width: 0;
+}
+.tour-cards {
+  display: contents;
+  gap: 0.75rem;
+}
+.tour-cards[data-cards="left"] {
+  grid-area: left;
+}
+.tour-cards[data-cards="right"] {
+  grid-area: right;
+}
+.part-card {
+  padding: 0.875rem 1rem;
+  border-radius: 0.875rem;
+  background: var(--secondary);
+  box-shadow: inset 3px 0 0 var(--tour);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+.part-card header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.part-n {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 999px;
+  background: var(--tour);
+  color: var(--tour-ink);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.part-card b {
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+.part-v {
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+.part-d {
+  margin-top: 0.25rem;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+.part-card dl {
+  display: grid;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+}
+.part-card dt {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted-foreground);
+}
+.part-card dd {
+  margin: 0;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.part-ds {
+  display: inline-block;
+  margin-top: 0.5rem;
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.leaders {
+  position: absolute;
+  inset: 0;
+  display: none;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.leaders path {
+  fill: none;
+  stroke: var(--tour);
+  stroke-width: 1.25;
+  stroke-linejoin: round;
+}
+.leaders circle {
+  fill: var(--tour);
 }
 .face-svg {
   width: 100%;
   height: auto;
   overflow: visible;
 }
+/* Herald's stackup, with the copper as the subject: a deep red mask so the tracks stand out, each
+   layer in copper of its own depth, the front's with a glow; the parts as faint outlines. */
 .face-svg .pcb {
-  fill: oklch(0.32 0.045 165);
-  stroke: oklch(0.25 0.04 165);
+  fill: oklch(0.34 0.12 25);
+  stroke: oklch(0.28 0.1 25);
   stroke-width: 0.4;
 }
-.face-svg .cu-b {
-  fill: none;
-  stroke: oklch(0.55 0.06 165);
-  stroke-linecap: round;
-  stroke-opacity: 0.35;
-}
-.face-svg .cu-i {
-  fill: none;
-  stroke: oklch(0.55 0.06 165);
-  stroke-linecap: round;
-  stroke-opacity: 0.25;
-}
+.face-svg .cu-b,
+.face-svg .cu-i,
 .face-svg .cu-f {
   fill: none;
-  stroke: oklch(0.62 0.08 160);
   stroke-linecap: round;
-  stroke-opacity: 0.9;
+  stroke-linejoin: round;
+}
+.face-svg .cu-b {
+  stroke: oklch(0.66 0.11 45);
+  stroke-opacity: 0.45;
+}
+.face-svg .cu-i {
+  stroke: oklch(0.74 0.12 60);
+  stroke-opacity: 0.6;
+}
+.face-svg .cu-f {
+  stroke: oklch(0.86 0.14 75);
+  filter: drop-shadow(0 0 0.5px oklch(0.86 0.14 75 / 70%));
 }
 .face-svg .vias circle {
-  fill: oklch(0.78 0.11 85);
+  fill: oklch(0.88 0.13 85);
 }
 .face-svg .pads rect {
-  fill: oklch(0.8 0.12 85);
+  fill: oklch(0.82 0.12 85 / 85%);
 }
 .face-svg .body {
-  fill: oklch(0.2 0.01 60 / 55%);
-  stroke: oklch(1 0 0 / 35%);
-  stroke-width: 0.25;
+  fill: none;
+  stroke: oklch(1 0 0 / 22%);
+  stroke-width: 0.2;
+  stroke-dasharray: 0.8 0.6;
+  cursor: pointer;
+  pointer-events: all;
   transition:
     stroke 0.3s var(--ease),
     fill 0.3s var(--ease);
 }
-.face-svg .body[data-ghost] {
-  fill: none;
-  stroke: oklch(1 0 0 / 30%);
-  stroke-dasharray: 1 0.8;
+.face-svg .body:hover {
+  stroke: oklch(1 0 0 / 60%);
 }
 .face-svg .body.on {
-  stroke: var(--mode);
-  stroke-width: 0.6;
-  fill: color-mix(in oklch, var(--mode) 22%, transparent);
-}
-.face-svg .stick {
-  fill: oklch(0.2 0.01 60 / 45%);
-  stroke: oklch(1 0 0 / 25%);
-  stroke-width: 0.3;
-}
-.face-svg .stick-cap {
-  fill: oklch(0.16 0.01 60 / 80%);
+  stroke: var(--tour);
+  stroke-width: 0.45;
+  stroke-dasharray: none;
+  fill: color-mix(in oklch, var(--tour) 16%, transparent);
 }
 .face-svg text {
   fill: oklch(0.97 0.005 85);
@@ -1236,89 +1368,35 @@ html:not(.motion) .progress {
   font-weight: 500;
 }
 .face-svg .silk {
-  fill: oklch(0.97 0.005 85 / 85%);
+  fill: oklch(0.97 0.005 85 / 70%);
+}
+.face-svg .silk-line {
+  fill: none;
+  stroke: oklch(0.97 0.005 85 / 70%);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.face-svg .silk-fill {
+  fill: oklch(0.97 0.005 85 / 70%);
 }
 .face-svg .tag {
   font-size: 1.6px;
-  fill: oklch(1 0 0 / 55%);
+  fill: oklch(1 0 0 / 70%);
 }
-.face-svg .mode-label {
-  font-size: 1.5px;
-  letter-spacing: 0.05px;
-}
-.face-svg .knob-ring {
-  fill: oklch(0.18 0.01 60 / 70%);
-}
-.face-svg .knob {
-  fill: oklch(0.86 0.01 85);
-  stroke: oklch(0.6 0.01 85);
-  stroke-width: 0.4;
-}
-.face-svg .pointer {
-  stroke: var(--mode);
-  stroke-width: 1.1;
-  stroke-linecap: round;
-}
-.face-svg .led {
-  fill: oklch(0.4 0.01 60);
+.face-svg .part-tag {
   transform-box: fill-box;
   transform-origin: center;
-  transition: fill 0.3s var(--ease);
+  pointer-events: none;
 }
-.face-svg .led.lit {
-  fill: var(--mode);
-  filter: drop-shadow(0 0 1.5px var(--mode)) drop-shadow(0 0 4px var(--mode));
+.face-svg .part-tag circle {
+  fill: var(--tour);
+  stroke: oklch(0.15 0.01 260 / 60%);
+  stroke-width: 0.2;
 }
-.face-svg .route {
-  fill: none;
-  stroke: var(--mode);
-  stroke-width: 0.9;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  opacity: 0;
-  filter: drop-shadow(0 0 1.2px var(--mode));
-  transition: opacity 0.3s var(--ease);
-}
-.face-svg .route.on {
-  opacity: 1;
-}
-.readout {
-  --mode: var(--primary);
-  align-self: start;
-  padding: 1.25rem;
-  border-radius: 1rem;
-  background: var(--secondary);
-  box-shadow: inset 3px 0 0 var(--mode);
-}
-.readout .kicker {
-  font-size: 0.8125rem;
-  color: var(--muted-foreground);
-}
-.readout h3 {
-  margin-top: 0.125rem;
-  font-size: 1.5rem;
-  font-weight: 500;
-  letter-spacing: -0.01em;
-}
-.readout dl {
-  display: grid;
-  gap: 0.75rem;
-  margin-top: 1rem;
-}
-.readout dt {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted-foreground);
-}
-.readout dd {
-  margin: 0;
-  font-size: 0.9375rem;
-}
-.readout .note {
-  margin-top: 1rem;
-  font-size: 0.9375rem;
-  color: var(--muted-foreground);
+.face-svg .part-tag text {
+  fill: var(--tour-ink);
+  font-size: 1.9px;
+  font-weight: 600;
 }
 .hard {
   display: grid;
@@ -1361,24 +1439,52 @@ html:not(.motion) .progress {
   margin-top: 4rem;
   align-items: center;
 }
-.flip-stage {
-  perspective: 1600px;
-}
-.flip {
+/* The board in 3D: KiCad's picture first, in the same frame the model then fills. The frame's
+   gradient is the picture's own background, so the swap does not show. */
+.board3d {
   position: relative;
-  transform-style: preserve-3d;
+  overflow: hidden;
+  aspect-ratio: 1200 / 762;
+  border-radius: 1.25rem;
+  background: linear-gradient(180deg, rgb(195 195 220), rgb(163 163 187) 50%, rgb(119 119 144));
+  box-shadow:
+    0 0 0 1px var(--edge),
+    var(--shadow);
 }
-.flip img {
-  width: 100%;
-  height: auto;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-  filter: drop-shadow(0 24px 30px oklch(0 0 0 / 22%));
-}
-.flip .flip-back {
+.board3d-poster,
+.board3d model-viewer {
   position: absolute;
   inset: 0;
-  transform: rotateY(180deg);
+  width: 100%;
+  height: 100%;
+}
+.board3d-poster {
+  object-fit: cover;
+  transition: opacity 0.6s var(--ease);
+}
+.board3d model-viewer {
+  --poster-color: transparent;
+  background: transparent;
+}
+.board3d.is-live .board3d-poster {
+  opacity: 0;
+  pointer-events: none;
+}
+.board3d-hint {
+  position: absolute;
+  left: 1rem;
+  bottom: 0.875rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 999px;
+  background: oklch(0.2 0.01 60 / 45%);
+  color: oklch(0.98 0 0);
+  font-size: 0.8125rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s var(--ease);
+}
+.board3d.is-live .board3d-hint {
+  opacity: 1;
 }
 .renders-side h3 {
   font-size: 1.25rem;
@@ -1442,6 +1548,12 @@ html:not(.motion) .progress {
   font-size: 0.9375rem;
   color: var(--muted-foreground);
 }
+.proj .spec {
+  margin-top: 0.75rem;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--foreground);
+}
 @media (min-width: 640px) {
   .hard {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1449,13 +1561,25 @@ html:not(.motion) .progress {
 }
 @media (min-width: 1024px) {
   .showcase .stage {
-    grid-template-columns: minmax(0, 1fr) 19rem;
-    grid-template-rows: auto 1fr;
     padding: 1.5rem;
-    gap: 1.5rem 2rem;
   }
-  .modes {
-    grid-column: 1 / -1;
+  .tour {
+    grid-template-columns: 16.5rem minmax(0, 1fr) 16.5rem;
+    grid-template-areas: "left face right";
+    align-items: center;
+    column-gap: 2.75rem;
+    row-gap: 1.25rem;
+  }
+  .tour .face {
+    grid-area: face;
+    margin-bottom: 0;
+  }
+  .tour-cards {
+    display: grid;
+    align-content: center;
+  }
+  .leaders {
+    display: block;
   }
   .hard {
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1465,30 +1589,14 @@ html:not(.motion) .progress {
     gap: 3rem;
   }
   .built {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1200px) {
+  .built {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
-@media (max-width: 479px) {
-  .modes {
-    justify-self: stretch;
-    justify-content: space-between;
-  }
-  .modes button {
-    min-width: 0;
-    padding: 0.5rem 0.625rem;
-  }
-}
-.face-svg .antenna {
-  fill: color-mix(in oklch, var(--card) 70%, transparent);
-  stroke: oklch(0.5 0.01 60 / 50%);
-  stroke-width: 0.25;
-  stroke-dasharray: 1 0.8;
-}
-.face-svg .antenna.on {
-  fill: color-mix(in oklch, var(--mode) 25%, transparent);
-  stroke: var(--mode);
-}
-
 /* ---- the hero: the wordmark builds itself as a board, then the line, the install, the agents ---- */
 .hero > .wrap {
   display: flex;
@@ -2331,4 +2439,123 @@ html:not(.motion) .wordmark .wm-pt,
   .traces {
     display: none;
   }
+}
+
+/* The owner's headline, on 3 lines in title case (docs/STYLE.md, the website). */
+.hero-title {
+  margin-top: 0.5rem;
+  font-size: var(--text-display);
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+  font-weight: 500;
+}
+.hero-copy > .eyebrow {
+  margin-top: 2rem;
+}
+
+/* An example's checks: each gate, or each board, with what its last run printed. */
+.checks-run {
+  margin-top: 2.5rem;
+}
+.checks {
+  display: grid;
+  gap: 0.5rem;
+  max-width: 46rem;
+}
+.checks li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+  padding: 0.875rem 1.125rem;
+  border-radius: 0.75rem;
+  background: var(--card);
+  box-shadow: 0 0 0 1px var(--edge);
+}
+.checks li span {
+  font-weight: 500;
+}
+.checks li b {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--muted-foreground);
+}
+.tl-meta .step {
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Inner copper layers past the second, for boards of 6 layers and more. */
+:root {
+  --cu-in3: oklch(0.7 0.13 300);
+  --cu-in4: oklch(0.75 0.11 200);
+  --cu-in5: oklch(0.72 0.12 330);
+  --cu-in6: oklch(0.78 0.12 120);
+  --cu-in7: oklch(0.7 0.1 50);
+  --cu-in8: oklch(0.75 0.08 260);
+}
+.board [data-layer="In3.Cu"] path,
+.board .pour[data-layer="In3.Cu"] {
+  stroke: var(--cu-in3);
+  fill: var(--cu-in3);
+}
+.board [data-layer="In4.Cu"] path,
+.board .pour[data-layer="In4.Cu"] {
+  stroke: var(--cu-in4);
+  fill: var(--cu-in4);
+}
+.board [data-layer="In5.Cu"] path,
+.board .pour[data-layer="In5.Cu"] {
+  stroke: var(--cu-in5);
+  fill: var(--cu-in5);
+}
+.board [data-layer="In6.Cu"] path,
+.board .pour[data-layer="In6.Cu"] {
+  stroke: var(--cu-in6);
+  fill: var(--cu-in6);
+}
+.board [data-layer="In7.Cu"] path,
+.board .pour[data-layer="In7.Cu"] {
+  stroke: var(--cu-in7);
+  fill: var(--cu-in7);
+}
+.board [data-layer="In8.Cu"] path,
+.board .pour[data-layer="In8.Cu"] {
+  stroke: var(--cu-in8);
+  fill: var(--cu-in8);
+}
+.board .tracks path {
+  fill: none;
+}
+.board .pour {
+  stroke: none;
+}
+.board .pour[data-layer="F.Cu"] {
+  fill: var(--cu-f);
+}
+.board .pour[data-layer="B.Cu"] {
+  fill: var(--cu-b);
+}
+.board .pour[data-layer="In2.Cu"] {
+  fill: var(--cu-in2);
+}
+.ex-tools button[data-layer="In3.Cu"] i {
+  background: var(--cu-in3);
+}
+.ex-tools button[data-layer="In4.Cu"] i {
+  background: var(--cu-in4);
+}
+.ex-tools button[data-layer="In5.Cu"] i {
+  background: var(--cu-in5);
+}
+.ex-tools button[data-layer="In6.Cu"] i {
+  background: var(--cu-in6);
+}
+.ex-tools button[data-layer="In7.Cu"] i {
+  background: var(--cu-in7);
+}
+.ex-tools button[data-layer="In8.Cu"] i {
+  background: var(--cu-in8);
 }

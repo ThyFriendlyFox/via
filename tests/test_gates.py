@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.machinery
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -100,6 +101,41 @@ def test_doctor_reports_every_engine():
     assert set(payload["checks"]) >= {"kicad-cli", "ngspice", "python", "java", "freerouting", "manifest"}
     assert payload["checks"]["manifest"]["ok"] is True
     assert code in (0, 1)
+
+
+def test_doctor_names_what_is_absent_and_an_absent_hook_degrades_nothing(tmp_path):
+    """A reader ran `sudo ./install.sh`, then `workcenter doctor`, and read `degraded`: 2 hooks of 1
+    agent host were absent, which the install does not write (2026-11-11). A hook's line still says
+    whether it is there. The first line names what is absent when it reads `degraded` or `fail`."""
+
+    def doctor(**env: str) -> tuple[str, dict]:
+        said = []
+        for argv in (["doctor"], ["--json", "doctor"]):
+            proc = subprocess.run(
+                [sys.executable, str(CLI), *argv],
+                capture_output=True,
+                text=True,
+                check=False,
+                env={**os.environ, "HOME": str(tmp_path), **env},
+            )
+            said.append(proc.stdout)
+        return said[0].splitlines()[0], json.loads(said[1])
+
+    def first_line(report: dict) -> str:
+        named = report["missing_required"] or report["degraded"]
+        return f"workcenter ee: {report['status']}{', without ' + ', '.join(named) if named else ''}  (root "
+
+    first, report = doctor()
+    hooks = {name: check["ok"] for name, check in report["checks"].items() if name.endswith(" hook")}
+    assert hooks == {"no-cd hook": False, "test hook": False}  # the home folder has no settings file
+    assert not set(hooks) & set(report["degraded"])
+    assert first.startswith(first_line(report))
+    if not report["missing_required"] and not report["degraded"]:
+        assert first.startswith("workcenter ee: ok  (root ")
+    first, report = doctor(FREEROUTING_JAR=str(tmp_path / "absent.jar"))
+    assert "freerouting" in report["degraded"] and first.startswith(first_line(report))
+    if not report["missing_required"]:
+        assert report["status"] == "degraded" and ", without " in first and "freerouting" in first
 
 
 # -------------------------------------------------------------- SIM gate
@@ -235,6 +271,24 @@ def test_render_spin_writes_a_looping_gif(tmp_path):
     assert b"NETSCAPE2.0" in gif  # loops
     assert gif.count(b"\x21\xf9\x04") == 3  # one graphic control block per frame
     assert not (tmp_path / "render" / "spin-frames").exists()
+
+
+def test_render_draws_each_3d_view_in_the_boards_own_stackup_colours(tmp_path, monkeypatch):
+    # kicad-cli draws a board in its preset's colours (green mask) unless asked for the stackup's: a
+    # board whose stackup names a black mask and ENIG came out green in every still.
+    cli = load_cli_module()
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, cwd=None, timeout=900, env=None):
+        calls.append([str(c) for c in cmd])
+        return subprocess.CompletedProcess(cmd, 1, "", "")
+
+    monkeypatch.setattr(cli, "run", fake_run)
+    project = cli.find_project(str(BOARDS / "pass-rc-divider"))
+    cli.gate_render(project, tmp_path, views=("3d",))
+    renders = [c for c in calls if "render" in c and "pcb" in c]
+    assert len(renders) == 3, calls
+    assert all("--use-board-stackup-colors" in c for c in renders), renders
 
 
 def test_render_spin_without_ffmpeg_skips_with_the_reason(tmp_path, monkeypatch):

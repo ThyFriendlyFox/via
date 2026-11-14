@@ -1,0 +1,4 @@
+{
+  "tolerance": { "R": 0.01, "C": 0.1, "source": "the BOM: 1 % thick-film 0402 resistors (R2, R3), 10 % X7R 0402 capacitor (C5)" },
+  "monte_carlo": { "runs": 32, "seed": 11 }
+}

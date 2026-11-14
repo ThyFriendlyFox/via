@@ -193,7 +193,12 @@
         b.hidden = true;
         continue;
       }
-      const apply = () => svg.classList.toggle(`off-${layer.replace(".", "")}`, b.getAttribute("aria-pressed") !== "true");
+      // Any copper layer's tracks and pours go; a class takes its side's pads (Front, Back) or the names.
+      const apply = () => {
+        const on = b.getAttribute("aria-pressed") === "true";
+        svg.classList.toggle(`off-${layer.replace(".", "")}`, !on);
+        for (const el of svg.querySelectorAll(`[data-layer="${layer}"]`)) el.style.display = on ? "" : "none";
+      };
       apply();
       b.addEventListener("click", () => {
         b.setAttribute("aria-pressed", String(b.getAttribute("aria-pressed") !== "true"));

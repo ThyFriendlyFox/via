@@ -1,0 +1,3 @@
+{
+  "v_pp": {"max": 0.05, "source": "the design's own limit, 50 mV (1 % of the input) of ripple the buck's power-save pulses may put on VBUS at the cable's resonance; the USB specification sets none for a device"}
+}

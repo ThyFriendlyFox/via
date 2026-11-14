@@ -6,90 +6,262 @@
   const root = document.documentElement;
   root.dataset.motionReady = "1";
 
-  // ---- the mode knob: works with or without Motion --------------------------------------------
-  const face = document.querySelector("[data-face]");
-  const tabs = [...document.querySelectorAll("[data-mode]")];
-  const readout = document.querySelector("[data-readout]");
+  // ---- the example's parts, a label every 3 s: works with or without Motion ---------------------
   const M = window.Motion;
   const moving = root.classList.contains("motion") && M;
   if (root.classList.contains("motion") && !M) root.classList.remove("motion");
+  const tour = document.querySelector("[data-tour]");
+  const partsData = document.getElementById("herald-parts");
+  if (tour && partsData) {
+    const { groups, parts } = JSON.parse(partsData.textContent);
+    const NS = "http://www.w3.org/2000/svg";
+    const STEP = 3000;
+    const ease = [0.2, 0, 0, 1];
+    const face = tour.querySelector("[data-face]");
+    const svg = face.querySelector("svg");
+    const lists = { left: tour.querySelector('[data-cards="left"]'), right: tour.querySelector('[data-cards="right"]') };
+    const leaders = tour.querySelector("[data-leaders]");
+    const groupOf = {};
+    groups.forEach((g, i) => g.p.forEach((ref) => (groupOf[ref] = i)));
+    const middle = svg.viewBox.baseVal.x + svg.viewBox.baseVal.width / 2;
+    const body = (ref) => svg.querySelector(`.body[data-ref="${ref}"]`);
+    let at = 0;
+    let order = [];
+    let shown = 0;
+    let seen = false;
+    let timer = 0;
 
-  const spring = { type: "spring", stiffness: 260, damping: 22 };
-
-  function choose(tab, animated) {
-    const d = tab.dataset;
-    for (const t of tabs) {
-      const on = t === tab;
-      t.setAttribute("aria-selected", String(on));
-      t.tabIndex = on ? 0 : -1;
-    }
-    if (readout) {
-      for (const field of readout.querySelectorAll("[data-f]")) {
-        field.textContent = d[field.dataset.f] || "";
+    // A part's label: what the page's data holds on it, the rows it has and no others.
+    function card(ref, n) {
+      const p = parts[ref];
+      const el = document.createElement("article");
+      el.className = "part-card is-waiting";
+      el.dataset.ref = ref;
+      // Stacked under the board, the labels come in their turn's order, top to bottom.
+      el.style.order = n;
+      if (p.dp) {
+        el.classList.add("has-sheet");
+        const sheet = document.createElement("a");
+        sheet.className = "part-sheet";
+        sheet.href = p.ds;
+        sheet.target = "_blank";
+        sheet.rel = "noopener";
+        const img = document.createElement("img");
+        img.src = p.dp[0];
+        img.width = p.dp[1];
+        img.height = p.dp[2];
+        img.loading = "lazy";
+        img.alt = `The first page of the ${ref} datasheet`;
+        sheet.append(img);
+        el.append(sheet);
       }
-      readout.style.setProperty("--mode", d.color);
+      const text = document.createElement("div");
+      const head = document.createElement("header");
+      const num = document.createElement("span");
+      num.className = "part-n";
+      num.textContent = n;
+      const name = document.createElement("b");
+      name.textContent = ref;
+      const value = document.createElement("span");
+      value.className = "part-v";
+      value.textContent = p.v;
+      head.append(num, name, value);
+      const what = document.createElement("p");
+      what.className = "part-d";
+      what.textContent = [p.d, p.fp].filter(Boolean).join(" · ");
+      const rows = document.createElement("dl");
+      const row = (label, value) => {
+        if (!value) return;
+        const div = document.createElement("div");
+        const dt = document.createElement("dt");
+        const dd = document.createElement("dd");
+        dt.textContent = label;
+        dd.textContent = value;
+        div.append(dt, dd);
+        rows.append(div);
+      };
+      row("Nets", p.n);
+      row("The problem it answers", p.r);
+      row("Why this part", p.w);
+      row("Its terminals", p.c);
+      if (p.s) row("Simulated", p.s.slice(0, 2).join("\n") + (p.s.length > 2 ? `\nand ${p.s.length - 2} more decks` : ""));
+      text.append(head, what, rows);
+      if (p.ds) {
+        const link = document.createElement("a");
+        link.className = "part-ds";
+        link.href = p.ds;
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.textContent = "Datasheet";
+        text.append(link);
+      }
+      el.append(text);
+      return el;
     }
-    if (!face) return;
-    face.style.setProperty("--mode", d.color);
-    face.dataset.active = d.mode;
-    // The knob's pointer turns to the LED of the mode; that LED lights in the mode's colour.
-    const pointer = face.querySelector("[data-pointer]");
-    const angle = Number(d.angle);
-    if (pointer) {
-      if (animated && moving) M.animate(pointer, { rotate: angle }, spring);
-      else pointer.style.transform = `rotate(${angle}deg)`;
-    }
-    for (const led of face.querySelectorAll("[data-led]")) {
-      const on = led.dataset.led === d.mode;
-      led.classList.toggle("lit", on);
-      if (animated && moving && on) M.animate(led, { scale: [0.6, 1.25, 1] }, { duration: 0.5 });
-    }
-    // The path the data takes for this mode, drawn from the port to the RP2040.
-    for (const path of face.querySelectorAll("[data-route]")) {
-      const on = path.dataset.route.split(" ").includes(d.mode);
-      path.classList.toggle("on", on);
-      if (animated && moving && on) {
-        M.animate(path, { pathLength: [0, 1] }, { duration: 0.9, ease: [0.2, 0, 0, 1] });
+
+    // A leader in 2 segments: a diagonal from the part, then a break to a horizontal into its label,
+    // where the labels stand beside the board. Under the board the numbers pair them instead.
+    function lead(fresh) {
+      const s = tour.getBoundingClientRect();
+      const f = face.getBoundingClientRect();
+      leaders.setAttribute("viewBox", `0 0 ${s.width} ${s.height}`);
+      leaders.replaceChildren();
+      for (const el of tour.querySelectorAll(".part-card:not(.is-waiting)")) {
+        const c = el.getBoundingClientRect();
+        const onLeft = c.right <= f.left + 2;
+        if (!onLeft && c.left < f.right - 2) continue;
+        const r = body(el.dataset.ref).getBoundingClientRect();
+        const px = r.left + r.width / 2 - s.left;
+        const py = r.top + r.height / 2 - s.top;
+        const ay = c.top + 21 - s.top;
+        const ax = (onLeft ? c.right + 4 : c.left - 4) - s.left;
+        const room = Math.max(Math.abs(ax - px) - 24, 0);
+        const ex = px + (onLeft ? -1 : 1) * Math.min(Math.abs(ay - py), room);
+        const path = document.createElementNS(NS, "path");
+        path.setAttribute("d", `M${px} ${py} L${ex} ${ay} L${ax} ${ay}`);
+        path.setAttribute("pathLength", "1");
+        const dot = document.createElementNS(NS, "circle");
+        dot.setAttribute("cx", px);
+        dot.setAttribute("cy", py);
+        dot.setAttribute("r", 2.5);
+        leaders.append(path, dot);
+        if (fresh === el.dataset.ref && moving) {
+          M.animate(path, { pathLength: [0, 1] }, { duration: 0.6, ease });
+          M.animate(dot, { opacity: [0, 1] }, { duration: 0.3 });
+        }
       }
     }
-    for (const part of face.querySelectorAll("[data-part]")) {
-      const on = part.dataset.part.split(" ").includes(d.mode);
-      part.classList.toggle("on", on);
-    }
-    if (animated && moving && readout) {
-      M.animate(readout.querySelectorAll("[data-f]"), { opacity: [0, 1], y: [6, 0] }, { delay: M.stagger(0.04), duration: 0.35 });
-    }
-  }
 
-  if (tabs.length) {
-    tabs.forEach((tab, i) => {
-      tab.addEventListener("click", () => choose(tab, true));
-      tab.addEventListener("keydown", (e) => {
-        const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
-        if (!step) return;
-        e.preventDefault();
-        const next = tabs[(i + step + tabs.length) % tabs.length];
-        next.focus();
-        choose(next, true);
+    // A group's labels go in place at once, unseen, so none moves when the next appears: each to the
+    // side of the board its part sits on, at most half to a side, each side from the top down.
+    function place(i) {
+      at = (i + groups.length) % groups.length;
+      shown = 0;
+      for (const el of svg.querySelectorAll(".body.on")) el.classList.remove("on");
+      for (const el of svg.querySelectorAll(".part-tag")) el.remove();
+      leaders.replaceChildren();
+      const placed = groups[at].p.map((ref, k) => {
+        const b = body(ref).getBBox();
+        return { ref, n: k + 1, x: b.x + b.width / 2, y: b.y + b.height / 2 };
       });
+      const half = Math.ceil(placed.length / 2);
+      const left = placed.filter((p) => p.x < middle).sort((u, v) => u.x - v.x);
+      const right = placed.filter((p) => p.x >= middle).sort((u, v) => v.x - u.x);
+      while (left.length > half) right.push(left.pop());
+      while (right.length > half) left.push(right.pop());
+      left.sort((u, v) => u.y - v.y);
+      right.sort((u, v) => u.y - v.y);
+      lists.left.replaceChildren(...left.map((p) => card(p.ref, p.n)));
+      lists.right.replaceChildren(...right.map((p) => card(p.ref, p.n)));
+      order = placed;
+    }
+
+    // The next label of the group: its card, its part lit, its number on the board, its leader.
+    function reveal(animated) {
+      const p = order[shown];
+      shown += 1;
+      const el = tour.querySelector(`.part-card[data-ref="${p.ref}"]`);
+      el.classList.remove("is-waiting");
+      body(p.ref).classList.add("on");
+      const tag = document.createElementNS(NS, "g");
+      tag.setAttribute("class", "part-tag");
+      const c = document.createElementNS(NS, "circle");
+      c.setAttribute("cx", p.x);
+      c.setAttribute("cy", p.y);
+      c.setAttribute("r", 1.5);
+      const t = document.createElementNS(NS, "text");
+      t.setAttribute("x", p.x);
+      t.setAttribute("y", p.y + 0.68);
+      t.textContent = p.n;
+      tag.append(c, t);
+      svg.append(tag);
+      lead(animated ? p.ref : null);
+      if (animated && moving) {
+        M.animate(el, { opacity: [0, 1], y: [8, 0] }, { duration: 0.45, ease });
+        M.animate(tag, { scale: [0, 1] }, { duration: 0.35 });
+      }
+    }
+
+    function tick() {
+      if (shown >= order.length) place(at + 1);
+      reveal(true);
+      schedule();
+    }
+
+    // The labels turn by themselves while the board is in view and the page is shown.
+    function schedule() {
+      clearTimeout(timer);
+      if (seen && !document.hidden) timer = setTimeout(tick, STEP);
+    }
+
+    // A click on a part shows its group whole; the next group follows 3 s later.
+    svg.addEventListener("click", (e) => {
+      const hit = e.target.closest(".body");
+      if (!hit) return;
+      place(groupOf[hit.dataset.ref]);
+      while (shown < order.length) reveal(false);
+      schedule();
     });
-    choose(tabs.find((t) => t.getAttribute("aria-selected") === "true") || tabs[0], false);
+    document.addEventListener("visibilitychange", schedule);
+    new IntersectionObserver(
+      (entries) => {
+        seen = entries.some((e) => e.isIntersecting);
+        schedule();
+      },
+      { threshold: 0.35 },
+    ).observe(tour);
+    new ResizeObserver(() => lead(null)).observe(tour);
+    place(0);
+    reveal(false);
   }
 
-  // The front and the back of the board, one button.
-  const flip = document.querySelector("[data-flip]");
-  if (flip) {
-    const card = document.querySelector(flip.getAttribute("aria-controls") && `#${flip.getAttribute("aria-controls")}`);
-    flip.addEventListener("click", () => {
-      const back = flip.getAttribute("aria-pressed") !== "true";
-      flip.setAttribute("aria-pressed", String(back));
-      if (!card) return;
-      if (moving) {
-        M.animate(card, { rotateY: back ? 180 : 0 }, { type: "spring", stiffness: 120, damping: 18 });
-      } else {
-        card.style.transform = back ? "rotateY(180deg)" : "";
-      }
-    });
+  // ---- the board in 3D: the viewer and the model load only as the reader nears them --------------
+  // The page loads with KiCad's picture alone. 600 px before the picture comes into view, the
+  // viewer (model-viewer, 1 MB) and the model (0.6 MB) load, and the model takes the picture's place.
+  // Without WebGL, or if either fails to load, the picture stays.
+  const board3d = document.querySelector("[data-board3d]");
+  if (board3d && "IntersectionObserver" in window) {
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const script = (src) =>
+      new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = src;
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.append(s);
+      });
+    const near = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return;
+        near.disconnect();
+        script(board3d.dataset.viewerSrc)
+          .then(() => customElements.whenDefined("model-viewer"))
+          .then(() => {
+            // The model's meshes are meshopt-compressed; model-viewer turns its decoder on from here.
+            customElements.get("model-viewer").meshoptDecoderLocation = board3d.dataset.decoderSrc;
+            const viewer = document.createElement("model-viewer");
+            const settings = {
+              src: board3d.dataset.src,
+              alt: "Herald in 3D, to turn with a finger or the pointer",
+              "camera-controls": "",
+              "camera-orbit": "0deg 50deg 78%",
+              "touch-action": "pan-y",
+              "interaction-prompt": "none",
+              "environment-image": "neutral",
+              exposure: "1.05",
+              "shadow-intensity": "0.7",
+              loading: "eager",
+            };
+            if (!still) Object.assign(settings, { "auto-rotate": "", "auto-rotate-delay": "0", "rotation-per-second": "12deg" });
+            for (const [name, value] of Object.entries(settings)) viewer.setAttribute(name, value);
+            viewer.addEventListener("load", () => board3d.classList.add("is-live"), { once: true });
+            board3d.append(viewer);
+          })
+          .catch(() => {});
+      },
+      { rootMargin: "600px 0px" },
+    );
+    near.observe(board3d);
   }
 
   if (!moving) return;
@@ -144,6 +316,20 @@
     },
     { amount: 0.2 },
   );
+
+  // ---- the example's copper sweeps in a layer at a time: the back, the inner layer, the front ---
+  const copper = [...document.querySelectorAll("[data-face] [data-copper]")];
+  if (copper.length) {
+    const hidden = "inset(0% 100% 0% 0%)";
+    for (const layer of copper) layer.style.clipPath = hidden;
+    inView(
+      "[data-face]",
+      () => {
+        animate(copper, { clipPath: [hidden, "inset(0% 0% 0% 0%)"] }, { delay: stagger(0.35), duration: 1.3, ease });
+      },
+      { amount: 0.3 },
+    );
+  }
 
   // ---- a run types out a line at a time when it comes into view -------------------------------
   inView(

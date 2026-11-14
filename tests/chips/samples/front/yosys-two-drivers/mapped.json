@@ -1,0 +1,50 @@
+{
+  "creator": "Yosys 0.33 (git sha1 2584903a060)",
+  "modules": {
+    "reg8": {
+      "attributes": {
+        "top": "00000000000000000000000000000001",
+        "src": "/work/reg8/rtl/reg8.v:1.1-4.10"
+      },
+      "ports": {
+        "a": {
+          "direction": "input",
+          "bits": [ 2 ]
+        },
+        "b": {
+          "direction": "input",
+          "bits": [ 2 ]
+        },
+        "y": {
+          "direction": "output",
+          "bits": [ 2 ]
+        }
+      },
+      "cells": {
+      },
+      "netnames": {
+        "a": {
+          "hide_name": 0,
+          "bits": [ 2 ],
+          "attributes": {
+            "src": "/work/reg8/rtl/reg8.v:1.25-1.26"
+          }
+        },
+        "b": {
+          "hide_name": 0,
+          "bits": [ 2 ],
+          "attributes": {
+            "src": "/work/reg8/rtl/reg8.v:1.39-1.40"
+          }
+        },
+        "y": {
+          "hide_name": 0,
+          "bits": [ 2 ],
+          "attributes": {
+            "src": "/work/reg8/rtl/reg8.v:1.54-1.55"
+          }
+        }
+      }
+    }
+  }
+}

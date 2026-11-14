@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,8 @@ import wrlgen  # noqa: E402
 CLI = ROOT / "tools" / "workcenter"
 LIBS = kicadgen.SYMBOL_DIR / "Device.kicad_sym"
 JAR = Path("/opt/workcenters/ee/freerouting/freerouting.jar")
+# The time at the start of each line of FreeRouting's log.
+STAMP = "%Y-%m-%d %H:%M:%S.%f"
 
 needs_libs = pytest.mark.skipif(not LIBS.is_file(), reason="KiCad symbol libraries are not installed")
 needs_kicad = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
@@ -226,6 +229,14 @@ def test_route_round_trip_makes_drc_green(tmp_path):
     summary = kicadgen.route(d, tmp_path / "build" / "route", passes=10, timeout=600)
     assert summary["unrouted"] in (0, None), summary  # 1.9.0 logs no count; the DRC below is the proof
     assert summary["segments"] > 0
+    # The router starts at once. Without `-dct 0` it waits 20 s for a click on a dialog nobody sees:
+    # 22.5 s lay between these 2 lines of its log on 2026-11-11, and 1.5 s with the flag.
+    log = Path(summary["log"]).read_text(encoding="utf-8")
+    opened, started = (
+        datetime.strptime(re.search(rf"^(\S+ \S+) \[\S+\] INFO  {mark}", log, re.M).group(1), STAMP)
+        for mark in ("Opening ", "Starting auto-routing")
+    )
+    assert (started - opened).total_seconds() < 10, log
     d.write(tmp_path)
     code, records = run_cli("gates", tmp_path, "--out", tmp_path / "build")
     assert code == 0, records
@@ -301,6 +312,40 @@ def test_merge_skips_router_echoes_and_splits_t_junctions():
         ((105.0, 105.0), (105.0, 107.0)),
         ((105.0, 105.0), (108.0, 105.0)),
     ]
+
+
+@needs_libs
+def test_merge_keeps_one_segment_where_two_wires_of_the_router_share_a_stretch():
+    """FreeRouting 1.9.0 writes wires of 1 net that share a stretch: these 3 are GND's in the session
+    of the fixture pass-first-design (2026-11-11). Each wire was split at the other's end, and the
+    board file held the shared piece, 113.5964 to 113.9115, 2 times."""
+    d = divider()
+    ses = """(session gen_divider (placement (resolution um 10)
+      (component "Resistor_SMD:R_0603_1608Metric" (place R1 10850000 -10250000 front 0)))
+      (routes (resolution um 10) (network_out
+        (net GND
+          (wire (path F.Cu 25000 11077500 -11359640 11077500 -11391150 10988480 -11480170
+            10622170 -11480170 10400000 -11258000))
+          (wire (path F.Cu 25000 11077500 -11359640 11077500 -11400000))
+          (wire (path F.Cu 25000 11082500 -11080170 11077500 -11085170 11077500 -11359640))))))"""
+    assert d.merge_ses(ses) == (7, 0)
+    f = kicadgen.fmt
+    written = sorted(tuple(sorted(((f(s[0]), f(s[1])), (f(e[0]), f(e[1]))))) for _, s, e, _, _ in d.segments)
+    assert written == [
+        (("104", "112.58"), ("106.2217", "114.8017")),
+        (("106.2217", "114.8017"), ("109.8848", "114.8017")),
+        (("109.8848", "114.8017"), ("110.775", "113.9115")),
+        (("110.775", "110.8517"), ("110.775", "113.5964")),
+        (("110.775", "110.8517"), ("110.825", "110.8017")),
+        (("110.775", "113.5964"), ("110.775", "113.9115")),
+        (("110.775", "113.9115"), ("110.775", "114")),
+    ]
+    # the same stretch drawn by hand and thinner: 1 segment, at the router's greater width, which is
+    # the copper the 2 segments made together
+    d = divider()
+    d.track("GND", [(110.775, 113.5964), (110.775, 113.9115)], "F.Cu", width=0.15)
+    d.merge_ses(ses)
+    assert [w for _, s, e, w, _ in d.segments if (f(s[1]), f(e[1])) == ("113.5964", "113.9115")] == [0.25]
 
 
 @needs_libs
@@ -934,6 +979,47 @@ def test_custom_pad_is_sized_from_its_primitives():
     assert (corner.w, corner.h) == pytest.approx((0.755, 0.25), abs=1e-6)
 
 
+MIC = "Sensor_Audio:Infineon_PG-LLGA-5-2"  # pad 5 is a ring round the port, off its anchor
+
+
+def _inside(poly: list[tuple[float, float]], x: float, y: float) -> bool:
+    inside = False
+    for (ax, ay), (bx, by) in zip(poly, poly[1:] + poly[:1], strict=True):
+        if (ay > y) != (by > y) and x < ax + (y - ay) * (bx - ax) / (by - ay):
+            inside = not inside
+    return inside
+
+
+@needs_libs
+def test_a_custom_pad_reaches_the_router_as_its_outline_not_a_box_round_its_anchor():
+    """The mic's ground pad is a ring 0.81 mm round its port, its anchor 0.81 mm off the ring's centre.
+    A box centred on the anchor that covers the ring (3.7 x 2.08 mm) covered the mic's 4 other pads,
+    and the router connected none of them (Hush v0.1). The DSN gives the router the pad's outline."""
+    pads = {p.number: p for p in kicadgen.load_footprint(MIC).pads}
+    ring = pads["5"]
+    assert ring.shape == "custom" and ring.outline
+    # The outline in the footprint's frame: turned by the pad's angle about its anchor.
+    a = math.radians(ring.angle)
+    outline = [(ring.x + u * math.cos(a) + v * math.sin(a), ring.y - u * math.sin(a) + v * math.cos(a))
+               for u, v in ring.outline]  # fmt: skip
+    assert _inside(outline, 0.68, 0.0)  # the port's centre, inside the ring
+    for n in ("1", "2", "3", "4"):
+        assert not _inside(outline, pads[n].x, pads[n].y), n
+    # The router gets that polygon, and every other pad keeps its rectangle.
+    d = kicadgen.Design(name="mic", namespace=uuid.UUID(int=129), outline=(100.0, 100.0, 110.0, 110.0))
+    d.add("MIC1", "Sensor_Audio:IM73A135V01", "IM73A135V01", MIC, sch_at=(50.8, 50.8), pcb_at=(105.0, 105.0),
+          nets={"1": "OUTP", "2": "VDD", "3": "OUTN", "4": "GND", "5": "GND"})  # fmt: skip
+    dsn = d.dsn()
+    pin5 = next(ln for ln in dsn.splitlines() if ln.strip().startswith("(pin") and '"5"' in ln)
+    name = pin5.split()[1]
+    stack = dsn.split(f'(padstack "{name}"')[1].split("(attach off)")[0]
+    assert "(shape (polygon F.Cu 0 " in stack and "(rect" not in stack
+    nums = [int(v) / 10000 for v in stack.split("(polygon F.Cu 0 ")[1].split(")")[0].split()]
+    poly = [(x + ring.x, -y + ring.y) for x, y in zip(nums[::2], nums[1::2], strict=True)]
+    for n in ("1", "2", "3", "4"):
+        assert not _inside(poly, pads[n].x, pads[n].y), n
+
+
 @needs_libs
 @needs_kicad
 def test_back_face_custom_pads_mirror_their_shapes_and_keep_clearance(tmp_path):
@@ -1012,6 +1098,31 @@ def test_check_vias_holds_each_pair_of_nets_to_their_classes_clearance():
     d.net_classes = {}
     d.vias[-1] = ("VIN", (106.0, 109.2 - 0.3 - 0.1 - 0.2), *d.vias[-1][2:])  # exactly 0.2 mm
     assert d.check_vias() == []
+
+
+@needs_libs
+def test_check_vias_finds_across_its_grid_what_holding_each_via_to_everything_finds():
+    """Each via is held only to the items filed in its own cell of a grid, every item filed within its
+    reach. A track whose ends are far from a via, 2 vias on either side of a cell's edge and a via near
+    a drilled pad are found as before, in the same order: the check compared every via with every item
+    and took a minute on a socket's 7000 vias."""
+    d = divider()
+    d.track("OUT", [(101.0, 102.0), (111.0, 102.0)], "B.Cu", width=0.2)  # its ends 5 mm from the via
+    d.via("VIN", 106.0, 102.4)
+    # The grid's cells are under 2 mm here, so a row of vias 0.5 mm apart over 2 mm crosses an edge.
+    for x in (101.0, 101.5, 102.0, 102.5, 103.0):
+        d.via("GND" if x % 1 else "VIN", x, 104.6)
+    for x, y in ((104.0, 108.0), (104.1, 107.6), (110.0, 109.0)):
+        d.via("VIN", x, y)
+    boxes = d.pad_boxes()
+    everything = [
+        f"{net} via at ({kicadgen.fmt(x)}, {kicadgen.fmt(y)}): {problem}"
+        for i, (net, (x, y), size, drill) in enumerate(d.vias)
+        for problem in d._via_problems(x, y, size / 2, drill, net, boxes, skip_via=i, same_net_vias=False)
+    ]
+    assert any("(106, 102.4): on a /OUT track" in p for p in everything), everything
+    assert any("on the GND via" in p for p in everything), everything
+    assert d.check_vias() == everything
 
 
 @needs_libs
@@ -1282,6 +1393,75 @@ def test_wired_schematic_labels_the_nets_it_is_told_to():
     d.sch_label_nets = ("OUT",)
     labels = re.findall(r'\(label "([^"]+)"', d.schematic())
     assert labels == ["OUT", "OUT", "OUT"]  # one on each of J1 pin 2, R1 pin 2, R2 pin 1
+
+
+BANKED = """(kicad_symbol_lib (version 20241209) (generator "test")
+  (symbol "TWO_BANKS" (pin_names (offset 0.762)) (exclude_from_sim no) (in_bom yes) (on_board yes)
+    (property "Reference" "U" (at 0 5.08 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "TWO_BANKS" (at 0 7.62 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
+    (property "Datasheet" "" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
+    (property "Description" "" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
+    (symbol "TWO_BANKS_0_1"
+      (rectangle (start -5.08 2.54) (end 5.08 -2.54)
+        (stroke (width 0.254) (type default)) (fill (type background)))
+      (rectangle (start 20.32 2.54) (end 30.48 -2.54)
+        (stroke (width 0.254) (type default)) (fill (type background)))
+      (text "BANK B" (at 25.4 3.81 0) (effects (font (size 1.27 1.27)))))
+    (symbol "TWO_BANKS_1_1"
+      (pin bidirectional line (at -7.62 0 0) (length 2.54)
+        (name "A1" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
+      (pin bidirectional line (at 7.62 0 180) (length 2.54)
+        (name "A2" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
+      (pin bidirectional line (at 17.78 0 0) (length 2.54)
+        (name "B1" (effects (font (size 1.27 1.27)))) (number "3" (effects (font (size 1.27 1.27)))))
+      (pin bidirectional line (at 33.02 0 180) (length 2.54)
+        (name "B2" (effects (font (size 1.27 1.27)))) (number "4" (effects (font (size 1.27 1.27))))))
+    (embedded_fonts no)))
+"""
+
+
+@needs_libs
+def test_a_symbol_drawn_as_banks_is_wired_between_its_banks(tmp_path):
+    """A part of a thousand pins is drawn as banks side by side, each with pins left and right. The
+    banks' bounding box covers the pins between 2 banks, and the wiring refused them; each bank is
+    blocked on its own now. A library symbol keeps its one body: a connector's pin rectangles sit
+    inside its outline."""
+    lib = tmp_path / "banked.kicad_sym"
+    lib.write_text(BANKED, encoding="utf-8")
+    d = divider()
+    d.sch_wires = True
+    d.symbol_dirs = {"T": lib}
+    d.add("U1", "T:TWO_BANKS", "TWO_BANKS", None, sch_at=(101.6, 50.8), nets={"2": "BUS", "3": "BUS"})
+    banks = kicadgen.symbol_banks(d.parts[-1].symbol)
+    assert banks == [(-5.08, -2.54, 5.08, 2.54), (20.32, -2.54, 30.48, 2.54)]
+    text = d.schematic()  # pins 2 and 3 face each other between the banks; before, it raised
+    wires = re.findall(r"\(wire\s*\(pts\s*\(xy ([\d.]+) ([\d.]+)\)\s*\(xy ([\d.]+) ([\d.]+)\)", text)
+    between = sorted(
+        (min(float(a), float(c)), max(float(a), float(c)))
+        for a, b, c, e in wires
+        if b == e == "50.8" and 109.22 <= min(float(a), float(c)) and max(float(a), float(c)) <= 119.38
+    )
+    assert between and between[0][0] == 109.22 and between[-1][1] == 119.38  # pin 2's end to pin 3's
+    assert all(p[1] == q[0] for p, q in zip(between, between[1:], strict=False))  # 1 unbroken run
+    conn = kicadgen.load_symbol("Connector_Generic:Conn_02x04_Odd_Even")
+    assert kicadgen.symbol_banks(conn) == [kicadgen.symbol_box(conn)]
+
+
+@needs_libs
+def test_a_sheet_of_a0_is_written_and_wired_across_its_width():
+    """A processor of a thousand pins and its memory slots need a sheet past A1; the wiring grid takes
+    the sheet's size, so a part at the far edge of A0 is wired, and a size with no paper is refused."""
+    d = divider()
+    d.sch_wires = True
+    d.sheet = "A0"
+    d.parts[0].sch_at = (1061.72, 50.8)  # past A1's 841 mm
+    text = d.schematic()
+    assert '(paper "A0")' in text
+    assert "(at 1061.72 50.8" in text
+    d.sheet = "B0"
+    with pytest.raises(ValueError, match="A0"):
+        d.schematic()
 
 
 @needs_libs

@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "Ring")(type "KiCad")(uri "/home/user/via/examples/ring-mouse/v0.1/footprints/Ring.pretty")(options "")(descr ""))
+)

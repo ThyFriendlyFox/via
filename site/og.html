@@ -5,8 +5,8 @@
     <title>Via: the Open Graph image</title>
     <meta name="robots" content="noindex">
     <link rel="stylesheet" href="site.css">
-    <!-- The page og.png is a capture of, at 1280 x 640. README.md has the command. The run is the
-         first run of index.html. -->
+    <!-- The page og.png is a capture of, at 1280 x 640. README.md has the command. The tagline is
+         the headline of index.html, and the board is its example, Herald. -->
     <style>
       html,
       body {
@@ -48,30 +48,24 @@
         display: flex;
         align-items: center;
       }
-      .right .run {
+      .right img {
+        display: block;
         width: 100%;
-      }
-      .right .run pre {
-        padding: 30px 30px 32px;
-        font-size: 14px;
-        line-height: 2;
+        height: auto;
+        border-radius: 24px;
+        box-shadow:
+          0 0 0 1px var(--edge),
+          var(--shadow);
       }
     </style>
   </head>
   <body>
     <div class="left">
       <svg viewBox="283 202 394 136" fill="currentColor" stroke="currentColor" stroke-width="12" stroke-linejoin="round" role="img" aria-label="Via"><path d="m378.4252 269.28348-44.566925-60.472458h-44.566925l89.13385 120.9449z"/><path d="M389.88452 208.81102h39.46457v33.10237h-39.46457z"/><path d="M464.09186 210.2441h39.46457v120.94487h-39.46457z"/><path d="m581.5748 269.28348 44.566895 60.472443h44.566956l-89.13385-120.9449z"/><path d="M570.1155 329.75592h-39.46454v-33.102386h39.46454z"/><path fill="none" d="M409.6168 241.91339v57.606293h-31.181091M503.55643 270.71652h46.834625v25.952759M570.1155 313.2047h18.233643v-13.669281h15.498657M429.3491 225.3622h17.37146v45.354324h17.368683"/></svg>
-      <p>An electronics workcenter for agents</p>
+      <p>Circuit Boards From AI</p>
     </div>
     <div class="right">
-      <div class="run">
-<pre><span class="prompt">$ </span><span class="cmd">workcenter gates tests/boards/pass-rc-divider</span>
-<span class="out">PASS   erc        0 errors, 0 warnings  [0.27s]
-PASS   drc        0 errors, 0 warnings (0 unconnected, 0 parity)  [0.59s]
-PASS   sim        1 decks, 46 corner runs, 0 failures  [0.16s]
-PASS   export     4/4 outputs, 22 gerber files  [1.21s]</span>
-<span class="verdict">GREEN: rc_divider  report /home/user/via/tests/boards/pass-rc-divider/build/gates.json</span></pre>
-      </div>
+      <img src="showcase/herald.png" width="1000" height="571" alt="Herald, a fire alarm communicator designed with Via, in 3D">
     </div>
   </body>
 </html>

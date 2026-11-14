@@ -1,0 +1,22 @@
+box 3153 4732 3203 4762
+feedback add "Illegal overlap between pdiff and poly (types do not connect)" medium
+box 3233 4736 3285 4762
+feedback add "Illegal overlap between pdiff and poly (types do not connect)" medium
+box 3233 4732 3243 4736
+feedback add "Illegal overlap between pdiff and poly (types do not connect)" medium
+box 3243 4732 3277 4736
+feedback add "Illegal overlap between pdiffc and poly (types do not connect)" medium
+box 3277 4732 3285 4736
+feedback add "Illegal overlap between pdiff and poly (types do not connect)" medium
+box 4997 4732 5031 4762
+feedback add "Illegal overlap between nsubdiff and poly (types do not connect)" medium
+box 5453 4732 5503 4762
+feedback add "Illegal overlap between pdiff and poly (types do not connect)" medium
+box 5533 4736 5585 4762
+feedback add "Illegal overlap between pdiff and poly (types do not connect)" medium
+box 5533 4732 5543 4736
+feedback add "Illegal overlap between pdiff and poly (types do not connect)" medium
+box 5543 4732 5577 4736
+feedback add "Illegal overlap between pdiffc and poly (types do not connect)" medium
+box 5577 4732 5585 4736
+feedback add "Illegal overlap between pdiff and poly (types do not connect)" medium

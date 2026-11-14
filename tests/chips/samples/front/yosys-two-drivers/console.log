@@ -1,0 +1,3 @@
+Warning: multiple conflicting drivers for reg8.\a:
+    module input a[0]
+    module input b[0]

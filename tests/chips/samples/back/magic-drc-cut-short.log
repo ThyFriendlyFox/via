@@ -1,0 +1,36 @@
+
+Magic 8.3 revision 465 - Compiled on Tue Mar 19 23:17:55 UTC 2024.
+Starting magic under Tcl interpreter
+Using the terminal as the console.
+Using NULL graphics device.
+Processing system .magicrc file
+Sourcing design .magicrc for technology sky130A ...
+2 Magic internal units = 1 Lambda
+Input style sky130(): scaleFactor=2, multiplier=2
+The following types are not handled by extraction and will be treated as non-electrical types:
+    ubm 
+Scaled tech values by 2 / 1 to match internal grid scaling
+Loading sky130A Device Generator Menu ...
+Loading "/workcenter/tools/chipscripts/drc.tcl" from command line.
+Warning: Calma reading is not undoable!  I hope that's OK.
+Library written using GDS-II Release 3.0
+Library name: reg8
+Reading "sky130_fd_sc_hd__fill_8".
+Reading "sky130_fd_sc_hd__fill_4".
+Reading "sky130_fd_sc_hd__fill_2".
+Reading "sky130_fd_sc_hd__fill_1".
+Reading "sky130_fd_sc_hd__and2b_1".
+Reading "sky130_fd_sc_hd__dfxtp_1".
+Reading "sky130_fd_sc_hd__tapvpwrvgnd_1".
+Reading "sky130_fd_sc_hd__mux2_1".
+Reading "sky130_fd_sc_hd__clkbuf_2".
+Reading "sky130_fd_sc_hd__clkbuf_4".
+Reading "reg8".
+Error while reading cell "reg8" (byte position 60000): Unexpected record type in input: 
+    Expected LAYER record but got -1.
+Error while reading cell "reg8" (byte position 60000): Missing layer or datatype in boundary/box.
+Error while reading cell "reg8" (byte position 60000): Unexpected EOF.
+Error while reading cell "reg8" (byte position 60000): Unexpected EOF.
+DRC style is now "drc(full)"
+Loading DRC CIF style.
+WORKCENTER drc count 324

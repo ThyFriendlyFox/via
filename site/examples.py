@@ -4,22 +4,27 @@
     python3 site/examples.py --check      # exit 1 when a page or a board drawing is not what it writes
     python3 site/examples.py --pictures   # also each example's 3D pictures (numpy and Pillow)
 
-An example is a folder `examples/<name>/<version>/` that holds a README.md; the newest version is the
-one shown. Its page is `site/examples/<slug>.html`, where the slug is the README title's first word
-(`# Rosetta v0.1: ...` is `rosetta`), and the files it shows are in `site/examples/<slug>/`:
+An example is a folder `examples/<name>/` whose version folders `v0.1`, `v0.2`, ... each hold a
+README.md; the newest version is the one shown. Its page is `site/examples/<slug>.html`, where the
+slug is the README title's first word (`# Herald v0.1: ...` and `# Hush — board prototype v0.1` are
+`herald` and `hush`), and the files it shows are in `site/examples/<slug>/`:
 
-- From README.md: the title, the first paragraph, the table under "What is hard about it", and the
-  list under "What is open".
-- From TIMELINE.md, when there is one: each `## <date> · <stage> · <title>` entry, in order. A
-  fenced run of `workcenter gates` in it is shown as it stands; its last line is the verdict.
-- From the board (`*.kicad_pcb`): the size, the copper layers, the parts, the tracks and the vias,
-  and `board.svg`, the board drawn from the file for the page's explorer.
-- `site/showcase/<slug>-knob.html`, when there is one: a part of the page written for that example.
-- With --pictures, from `docs/`: `board-3d-top.png`, `board-3d-bottom.png` and `board-3d-iso.png`
-  with KiCad's backdrop taken out (`site/showcase/key.py`), and `board-spin.gif` as `spin.webp`,
-  its frames side by side, for the page's turntable.
+- From the newest README: the name, the version, the line under the name (the title's words after
+  its colon, else the introduction's first sentence), the first paragraph, the table under "What is
+  hard about it", and the list under "What is open" or "Open items".
+- How it was built, oldest first: for each version, its TIMELINE.md's `## <date> · <stage> ·
+  <title>` entries when it has one, else the newest README's "What changed in <version>: <title>"
+  section, its first paragraphs. A fenced run of `workcenter gates` in the newest version's
+  TIMELINE.md is shown as it stands.
+- The checks: the verdict and the 4 gates' lines of that run, else of `docs/gates.md`.
+- From the board (`*.kicad_pcb` in the version folder): the size, the copper layers, the parts, the
+  tracks and the vias, and `board.svg`, the board drawn from the file for the page's explorer. An
+  example of several boards, each in a folder of its own, has no explorer.
+- With --pictures, from `docs/`: the board's 3D renders from the top, the bottom and the side (or
+  the assembly's, for an example with no board of its own) with KiCad's backdrop taken out
+  (`site/showcase/key.py`), and its turning render as `spin.webp`, its frames side by side.
 
-The pages and the drawings are committed; tests/test_docs.py writes them again and compares.
+The pages and the drawings are committed; the docs tests write them again and compare.
 """
 
 # ruff: noqa: E501 - the page's templates are HTML, with its lines as long as the site's pages'.
@@ -27,7 +32,9 @@ from __future__ import annotations
 
 import argparse
 import html
+import json
 import math
+import posixpath
 import re
 import sys
 from dataclasses import dataclass, field
@@ -42,6 +49,22 @@ sys.path.insert(0, str(ROOT / "tools"))
 import kicadgen as k  # noqa: E402
 
 SPIN_COLUMNS = 6  # the turntable's frames, 6 to a row of spin.webp
+OPEN_ITEMS = 8  # the most open items a page lists; the README has the rest
+WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"]
+# docs/ names for each of an example's pictures, the board's first.
+PICTURES = {
+    "top.png": ("board-3d-top.png", "assembly-top.png", "assembly-front.png"),
+    "bottom.png": ("board-3d-bottom.png", "assembly-back.png", "assembly-iso-back.png"),
+    "iso.png": ("board-3d-iso.png", "assembly-iso.png"),
+    "spin.webp": ("board-spin.gif", "assembly-spin.gif"),
+    # The card that names the example on the site: the made thing, where there is more than a board.
+    "card.png": ("assembly-iso.png", "board-3d-iso.png"),
+}
+
+
+def words(n: int) -> str:
+    """A count as the site writes it in running text: one to nine in words (docs/STYLE.md)."""
+    return WORDS[n] if 0 < n < 10 else f"{n:,}"
 
 
 # ---------------------------------------------------------------- reading an example
@@ -53,6 +76,7 @@ class Entry:
     stage: str
     title: str
     blocks: list[tuple[str, str]]  # ("p", text) or ("pre", text)
+    version: str = ""
 
 
 @dataclass
@@ -67,19 +91,14 @@ class Example:
     still_open: list[str] = field(default_factory=list)
     timeline: list[Entry] = field(default_factory=list)
     board: Path | None = None
+    verdict: str = ""
+    checks: list[tuple[str, str, str]] = field(default_factory=list)  # (gate, status, summary)
+    per_board: list[tuple[str, str]] = field(default_factory=list)  # (board, verdict), several boards
+    run: str = ""  # the newest version's gates run, as the terminal printed it
 
     @property
     def rel(self) -> str:
         return self.folder.relative_to(ROOT).as_posix()
-
-    @property
-    def verdict(self) -> str:
-        for entry in self.timeline:
-            for kind, text in entry.blocks:
-                if kind == "pre" and text.startswith("$ workcenter gates"):
-                    last = text.rstrip().splitlines()[-1]
-                    return last.split(":")[0]
-        return ""
 
 
 def version_key(path: Path) -> tuple[int, ...]:
@@ -95,10 +114,25 @@ def sections(text: str) -> dict[str, str]:
     return out
 
 
-def first_paragraph(text: str) -> str:
-    body = text.split("\n", 1)[1] if text.startswith("# ") else text
-    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", body) if p.strip()]
-    return " ".join(paragraphs[0].split()) if paragraphs else ""
+def paragraphs(text: str) -> list[str]:
+    """The plain paragraphs of a piece of Markdown, up to its first table or sub-heading: a quote, a
+    list, a picture and a comment are left out."""
+    out = []
+    for block in re.split(r"\n\s*\n", re.sub(r"<!--.*?-->", "", text, flags=re.S)):
+        block = block.strip()
+        if not block:
+            continue
+        if block.startswith(("|", "#")):
+            break
+        if block.startswith((">", "- ", "* ", "<", "```", "!")):
+            continue
+        out.append(" ".join(block.split()))
+    return out
+
+
+def first_sentence(text: str) -> str:
+    sentence = re.split(r"(?<=[.:;])\s", text, maxsplit=1)[0]
+    return sentence.rstrip(".:;")
 
 
 def table(text: str) -> list[tuple[str, str]]:
@@ -118,8 +152,6 @@ def bullets(text: str) -> list[str]:
             items.append(line[2:].strip())
         elif line.startswith("  ") and items:
             items[-1] += " " + line.strip()
-        elif not line.strip() and items:
-            continue
     return items
 
 
@@ -140,26 +172,92 @@ def timeline(path: Path) -> list[Entry]:
     return entries
 
 
-def read(readme: Path) -> Example:
-    text = readme.read_text(encoding="utf-8")
+def changes(readme: str) -> dict[str, Entry]:
+    """The README's "What changed in <version>: <title>" sections, by version, each its first 2
+    paragraphs and the first date it names."""
+    out = {}
+    for heading, body in sections(readme).items():
+        m = re.match(r"What changed in (v[\d.]+): (.+)", heading)
+        if m:
+            date = re.search(r"\d{4}-\d{2}-\d{2}", body)
+            blocks = [("p", p) for p in paragraphs(body)[:2]]
+            out[m.group(1)] = Entry(date.group(0) if date else "", m.group(1), m.group(2), blocks)
+    return out
+
+
+def gates_report(path: Path) -> tuple[str, list[tuple[str, str, str]], list[tuple[str, str]]]:
+    """The verdict and the gates' rows of a `workcenter gates --report` file. A report on several
+    boards gives each board's verdict, and 1 verdict for them all."""
+    if not path.is_file():
+        return "", [], []
+    text = path.read_text(encoding="utf-8")
+    verdicts = re.findall(
+        r"^## (\S+)\n(?:(?!^## ).*\n)*?((?:GREEN|RED|SKIPPED).*?) on \d{4}-\d{2}-\d{2}:", text, re.M
+    )
+    rows = re.findall(r"^\| (ERC|DRC|SIM|EXPORT) \| (\w+) \| ([^|]+?) \|$", text, re.M)
+    if len(verdicts) == 1:
+        return verdicts[0][1], rows, []
+    if not verdicts:
+        return "", rows, []
+    red = [board for board, verdict in verdicts if not verdict.startswith("GREEN")]
+    total = (
+        f"GREEN on all {len(verdicts)} boards" if not red else f"RED on {len(red)} of {len(verdicts)} boards"
+    )
+    return total, [], verdicts
+
+
+def checks_of(run: str) -> tuple[str, list[tuple[str, str, str]]]:
+    """The verdict and the gates' lines of a run of `workcenter gates`."""
+    lines = run.rstrip().splitlines()
+    rows = []
+    for line in lines:
+        m = re.match(r"^(PASS|FAIL|SKIP)\s+(erc|drc|sim|export)\s+(.*?)\s*(?:\[[\d.]+s\])?$", line)
+        if m:
+            rows.append((m.group(2).upper(), m.group(1).lower(), m.group(3).strip()))
+    return lines[-1].split(":")[0], rows
+
+
+def read(versions: list[Path]) -> Example:
+    newest = versions[-1]
+    text = (newest / "README.md").read_text(encoding="utf-8")
     title = text.splitlines()[0].lstrip("# ").strip()
-    head, _, tagline = title.partition(":")
-    name, _, version = head.partition(" ")
+    name = title.split()[0]
+    version = (re.search(r"\bv\d+(?:\.\d+)*\b", title) or re.search(r"v[\d.]+", newest.name)).group(0)
+    intro = (paragraphs(text.split("\n", 1)[1]) or [""])[0]
+    tagline = title.partition(":")[2].strip()
+    if not tagline:
+        # The introduction's first sentence names the board; the page shows it once, under the name.
+        tagline = first_sentence(intro)
+        intro = intro[len(tagline) :].lstrip(".:; ")
     parts = sections(text)
     hard = next((table(body) for heading, body in parts.items() if heading.startswith("What is hard")), [])
-    still_open = bullets(parts.get("What is open", ""))
-    boards = sorted(readme.parent.glob("*.kicad_pcb"))
+    still_open = bullets(parts.get("What is open", "") or parts.get("Open items", ""))
+    changed = changes(text)
+    history: list[Entry] = []
+    for folder in versions:
+        kept = timeline(folder / "TIMELINE.md")
+        for entry in kept:
+            entry.version = folder.name
+        history += kept or ([changed[folder.name]] if folder.name in changed else [])
+    runs = [b for e in timeline(newest / "TIMELINE.md") for kind, b in e.blocks if kind == "pre"]
+    run = next((b for b in runs if b.startswith("$ workcenter gates")), "")
+    verdict, checks, per_board = (*checks_of(run), []) if run else gates_report(newest / "docs" / "gates.md")
+    boards = sorted(newest.glob("*.kicad_pcb"))
     return Example(
-        folder=readme.parent,
+        folder=newest,
         slug=name.lower(),
         name=name,
         version=version,
-        tagline=tagline.strip(),
-        intro=first_paragraph(text),
+        tagline=tagline,
+        intro=intro,
         hard=hard,
         still_open=still_open,
-        timeline=timeline(readme.parent / "TIMELINE.md"),
+        timeline=history,
         board=boards[0] if boards else None,
+        verdict=verdict,
+        checks=checks,
+        per_board=per_board,
+        run=run,
     )
 
 
@@ -168,7 +266,7 @@ def examples() -> list[Example]:
     for project in sorted((ROOT / "examples").iterdir()):
         versions = sorted((p for p in project.glob("v*") if (p / "README.md").is_file()), key=version_key)
         if versions:
-            found.append(read(versions[-1] / "README.md"))
+            found.append(read(versions))
     return found
 
 
@@ -213,6 +311,27 @@ def outline(root) -> list[list[tuple[float, float]]]:
             start, mid, end = (tuple(map(float, k.atoms(k.child(g, h))[:2])) for h in ("start", "mid", "end"))
             pieces.append(arc_points(start, mid, end))
     loops = []
+    # A circle, a rectangle and a polygon are closed loops of their own.
+    for g in k.children(root, "gr_circle"):
+        if k.atoms(k.child(g, "layer"))[0] == "Edge.Cuts":
+            (cx, cy), (ex, ey) = (tuple(map(float, k.atoms(k.child(g, h))[:2])) for h in ("center", "end"))
+            r = math.hypot(ex - cx, ey - cy)
+            loops.append(
+                [
+                    (cx + r * math.cos(2 * math.pi * i / 96), cy + r * math.sin(2 * math.pi * i / 96))
+                    for i in range(97)
+                ]
+            )
+    for g in k.children(root, "gr_rect"):
+        if k.atoms(k.child(g, "layer"))[0] == "Edge.Cuts":
+            (x1, y1), (x2, y2) = (tuple(map(float, k.atoms(k.child(g, h))[:2])) for h in ("start", "end"))
+            loops.append([(x1, y1), (x2, y1), (x2, y2), (x1, y2), (x1, y1)])
+    for g in k.children(root, "gr_poly"):
+        if k.atoms(k.child(g, "layer"))[0] == "Edge.Cuts":
+            points = [
+                (float(k.atoms(p)[0]), float(k.atoms(p)[1])) for p in k.children(k.child(g, "pts"), "xy")
+            ]
+            loops.append(points + points[:1])
     while pieces:
         loop = pieces.pop(0)
         joined = True
@@ -280,6 +399,7 @@ class Board:
     segments: int
     vias: int
     nets: int
+    signal: list[str]
 
 
 def draw_board(path: Path) -> Board:
@@ -301,12 +421,15 @@ def draw_board(path: Path) -> Board:
         f"<!-- {path.name}, drawn by site/examples.py: every coordinate is the board's own, in mm. -->",
     ]
     out.append(
-        '<path class="edge" d="'
+        '<path class="edge" fill-rule="evenodd" d="'
         + " ".join("M" + " L".join(f"{f(x)} {f(y)}" for x, y in loop) + " Z" for loop in loops)
         + '"/>'
     )
 
-    # Pours, by layer: each filled polygon, its points kept within 0.05 mm.
+    # Pours, by layer: each filled polygon, its points kept within 0.05 mm; on a board over 250 mm
+    # across, within 0.3 mm and to 0.1 mm, where its planes would be megabytes of points.
+    large = math.hypot(x2 - x1, y2 - y1) > 250
+    tolerance, at = (0.3, lambda v: f"{v:.1f}".rstrip("0").rstrip(".")) if large else (0.05, f)
     for zone in k.children(root, "zone"):
         layer = k.child(zone, "layer")
         if layer is None:
@@ -318,8 +441,8 @@ def draw_board(path: Path) -> Board:
             points = [
                 (float(k.atoms(p)[0]), float(k.atoms(p)[1])) for p in k.children(k.child(poly, "pts"), "xy")
             ]
-            points = simplify(points, 0.05)
-            d = "M" + " L".join(f"{f(x)} {f(y)}" for x, y in points) + " Z"
+            points = simplify(points, tolerance)
+            d = "M" + " L".join(f"{at(x)} {at(y)}" for x, y in points) + " Z"
             out.append(
                 f'<path class="pour" data-layer="{name}" data-net="{html.escape(net_label)}" d="{d}"/>'
             )
@@ -425,6 +548,7 @@ def draw_board(path: Path) -> Board:
         segments=len(copper["segments"]),
         vias=len(copper["vias"]),
         nets=len(nets),
+        signal=signal,
     )
 
 
@@ -441,7 +565,10 @@ def inline(text: str, base: str) -> str:
     def link(m: re.Match) -> str:
         label, target = m.group(1), m.group(2)
         if not re.match(r"https?://", target):
-            target = f"{REPO}/blob/main/{(Path(base) / target).as_posix()}"
+            # A path in the repository, as GitHub shows it: a file's blob, a folder's tree.
+            path = posixpath.normpath(posixpath.join(base, target.split("#")[0]))
+            kind = "tree" if (ROOT / path).is_dir() else "blob"
+            target = f"{REPO}/{kind}/main/{path}"
         return f'<a class="link" href="{html.escape(target)}">{label}</a>'
 
     return re.sub(r"\[([^\]]+)\]\(([^)\s]+)\)", link, out)
@@ -526,9 +653,10 @@ def shell(title: str, description: str, canonical: str, up: str, body: str, scri
         </a>
         <nav class="site-nav" aria-label="Site">
           <ul>
-            <li><a href="{up}index.html#gates">Gates</a></li>
-            <li><a href="{up}examples.html">Examples</a></li>
-            <li><a href="{up}index.html#run">Run it</a></li>
+            <li><a href="{up}index.html#herald">Example</a></li>
+            <li><a href="{up}examples.html">Boards</a></li>
+            <li><a href="{up}index.html#gates">Checks</a></li>
+            <li><a href="{up}index.html#run">Get started</a></li>
           </ul>
         </nav>
         <div class="header-end">
@@ -562,7 +690,7 @@ def shell(title: str, description: str, canonical: str, up: str, body: str, scri
             </ul>
           </nav>
         </div>
-        <p class="small">KiCad, ngspice and FreeRouting keep their own licenses. Via is not part of the KiCad project. The page moves with <a class="link" href="https://motion.dev">Motion</a> (MIT).</p>
+        <p class="small">Via is built under the MIT License.</p>
       </div>
     </footer>
 
@@ -578,10 +706,11 @@ def mm(v: float) -> str:
 
 
 def stats(ex: Example, board: Board | None) -> list[str]:
-    out = []
+    """The board's specification line: digits, as the site writes a specification (docs/STYLE.md)."""
+    out = [ex.version]
     if board:
         out += [
-            f"{mm(board.width)} x {mm(board.height)} mm",
+            f"{mm(board.width)} × {mm(board.height)} mm",
             f"{board.layers} layers",
             f"{board.parts} parts",
             f"{board.segments:,} track segments",
@@ -590,6 +719,32 @@ def stats(ex: Example, board: Board | None) -> list[str]:
     if ex.verdict:
         out.append(ex.verdict)
     return out
+
+
+GATES = {
+    "ERC": "Electrical rules (ERC)",
+    "DRC": "Design rules (DRC)",
+    "SIM": "Simulation (SIM)",
+    "EXPORT": "Fabrication files (EXPORT)",
+}
+LAYER_NAMES = {"F.Cu": "Front", "B.Cu": "Back"}
+
+
+def made(ex: Example) -> dict:
+    """What --pictures wrote: the docs/ render each picture came from, and the turntable's frames."""
+    path = OUT / ex.slug / "pictures.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+
+
+# A still's caption by the render it came from: a board's sides, or an assembly seen from a side.
+CAPTIONS = {
+    "board-3d-top.png": "The front",
+    "board-3d-bottom.png": "The back",
+    "assembly-top.png": "From above",
+    "assembly-front.png": "From the front",
+    "assembly-back.png": "From behind",
+    "assembly-iso-back.png": "From behind",
+}
 
 
 def example_page(ex: Example, board: Board | None, pictures: set[str]) -> str:
@@ -602,25 +757,32 @@ def example_page(ex: Example, board: Board | None, pictures: set[str]) -> str:
 
     # The board in 3D: the turntable, then the front and the back.
     spin = ""
-    if "spin.webp" in pictures:
+    record = made(ex)
+    turn = record.get("spin", {})
+    if "spin.webp" in pictures and turn:
         spin = f"""
-          <div class="turntable" data-turntable data-frames="36" data-columns="{SPIN_COLUMNS}" tabindex="0" role="img" aria-label="{html.escape(ex.name)} in 3D, turning; drag or use the arrow keys to turn it">
-            <div class="tt-frames" style="background-image:url({folder}spin.webp)"></div>
+          <div class="turntable" data-turntable data-frames="{turn["frames"]}" data-columns="{SPIN_COLUMNS}" tabindex="0" role="img" aria-label="{html.escape(ex.name)} in 3D, turning; drag or use the arrow keys to turn it">
+            <div class="tt-frames" style="aspect-ratio:{turn["width"]} / {turn["height"]};background-image:url({folder}spin.webp)"></div>
           </div>
-          <p class="tt-hint">Drag to turn it. KiCad's own render of the routed board, 36 views, 10 degrees apart.</p>"""
+          <p class="tt-hint">Drag to turn the board. KiCad's render of it, {turn["frames"]} views, {round(360 / turn["frames"])} degrees apart.</p>"""
     stills = ""
     if {"top.png", "bottom.png"} <= pictures:
-        stills = f"""
-          <div class="stills">
-            <figure><img src="{folder}top.png" width="{pictures_size(ex, "top.png")[0]}" height="{pictures_size(ex, "top.png")[1]}" loading="lazy" alt="{html.escape(ex.name)} from the front"><figcaption>The front</figcaption></figure>
-            <figure><img src="{folder}bottom.png" width="{pictures_size(ex, "bottom.png")[0]}" height="{pictures_size(ex, "bottom.png")[1]}" loading="lazy" alt="{html.escape(ex.name)} from the back"><figcaption>The back</figcaption></figure>
-          </div>"""
+        figures = []
+        for name in ("top.png", "bottom.png"):
+            caption = CAPTIONS.get(
+                record.get("sources", {}).get(name, ""), "The front" if name == "top.png" else "The back"
+            )
+            w, h = pictures_size(ex, name)
+            figures.append(
+                f'            <figure><img src="{folder}{name}" width="{w}" height="{h}" loading="lazy" alt="{html.escape(ex.name)}, {caption.lower()}"><figcaption>{caption}</figcaption></figure>'
+            )
+        stills = '\n          <div class="stills">\n' + "\n".join(figures) + "\n          </div>"
     parts.append(f"""      <section class="ex-hero" aria-labelledby="ex-title">
         <div class="wrap">
           <div data-reveal data-stagger>
             <p class="eyebrow"><a class="crumb" href="../examples.html">Examples</a> · <code>{html.escape(ex.rel)}</code></p>
             <h1 class="display" id="ex-title">{html.escape(ex.name)}</h1>
-            <p class="ex-tagline">{html.escape(ex.tagline[:1].upper() + ex.tagline[1:])}, {html.escape(ex.version)}.</p>
+            <p class="ex-tagline">{html.escape(ex.tagline[:1].upper() + ex.tagline[1:])}</p>
             <p class="lede">{inline(ex.intro, ex.rel)}</p>
             <ul class="chips" aria-label="The board">{chips}</ul>
           </div>{spin}{stills}
@@ -636,41 +798,28 @@ def example_page(ex: Example, board: Board | None, pictures: set[str]) -> str:
         <div class="wrap">
           <div class="head" data-reveal data-stagger>
             <p class="eyebrow">The hard parts</p>
-            <h2 class="title" id="hard-title">What is hard about it, and where each part lives.</h2>
+            <h2 class="title" id="hard-title">What is hard about it, and where each part lives</h2>
           </div>
           <div class="hard" data-reveal data-stagger>{cards}</div>
         </div>
       </section>""")
 
-    knob = SITE / "showcase" / f"{ex.slug}-knob.html"
-    if knob.is_file():
-        fragment = knob.read_text(encoding="utf-8").rstrip("\n")
-        fragment = "\n".join(("          " + line) if line else line for line in fragment.splitlines())
-        parts.append(f"""      <section class="section showcase" id="try" aria-labelledby="try-title">
-        <div class="wrap">
-          <div class="head" data-reveal data-stagger>
-            <p class="eyebrow">Turn the knob</p>
-            <h2 class="title" id="try-title">5 positions, 1 reading each.</h2>
-          </div>
-{fragment}
-        </div>
-      </section>""")
-
     if board:
+        buttons = "\n".join(
+            f'                <button type="button" aria-pressed="true" data-layer="{layer}"><i></i>{LAYER_NAMES.get(layer, layer.split(".")[0])}</button>'
+            for layer in board.signal
+        )
         parts.append(f"""      <section class="section band" id="board" aria-labelledby="board-title">
         <div class="wrap">
           <div class="head" data-reveal data-stagger>
             <p class="eyebrow">Explore the board</p>
-            <h2 class="title" id="board-title">Every track, from the board file.</h2>
-            <p class="lede">The routed board as <code>{html.escape(board_rel(ex))}</code> holds it: {board.layers} copper layers, {board.segments:,} track segments, {board.vias:,} vias and {board.nets} nets. Point at a pad to name its part; click a track, a via or a pad to follow its net.</p>
+            <h2 class="title" id="board-title">Every track and part of the routed board, drawn from its file</h2>
+            <p class="lede">The board as <code>{html.escape(board_rel(ex))}</code> holds it: {words(board.layers)} copper layers, {board.segments:,} track segments, {words(board.vias)} vias and {words(board.nets)} nets. Point at a pad to see its part, and click a track, a via or a pad to follow its connection across the board.</p>
           </div>
           <div class="explorer" data-explorer data-src="{folder}board.svg">
             <div class="ex-tools" role="toolbar" aria-label="The drawing">
               <div class="ex-layers" aria-label="Layers">
-                <button type="button" aria-pressed="true" data-layer="F.Cu"><i></i>Front</button>
-                <button type="button" aria-pressed="true" data-layer="In1.Cu"><i></i>In1</button>
-                <button type="button" aria-pressed="true" data-layer="In2.Cu"><i></i>In2</button>
-                <button type="button" aria-pressed="true" data-layer="B.Cu"><i></i>Back</button>
+{buttons}
                 <button type="button" aria-pressed="false" data-layer="refs"><i></i>Names</button>
               </div>
               <div class="ex-zoom">
@@ -682,6 +831,41 @@ def example_page(ex: Example, board: Board | None, pictures: set[str]) -> str:
             <div class="ex-view" data-view></div>
             <p class="ex-info" data-info aria-live="polite">Drag to move. Pinch, or hold Ctrl and scroll, to zoom.</p>
           </div>
+        </div>
+      </section>""")
+
+    if ex.run or ex.checks or ex.per_board:
+        if ex.run:
+            shown = f'<div class="run">\n{run_block(ex.run)}\n</div>'
+            where = f'<a class="link" href="{REPO}/blob/main/{ex.rel}/TIMELINE.md">its timeline</a>'
+        elif ex.per_board:
+            shown = (
+                '<ul class="checks">'
+                + "".join(
+                    f"<li><span>{html.escape(name)}</span><b>{html.escape(verdict)}</b></li>"
+                    for name, verdict in ex.per_board
+                )
+                + "</ul>"
+            )
+            where = f'<a class="link" href="{REPO}/blob/main/{ex.rel}/docs/gates.md">its gates report</a>'
+        else:
+            shown = (
+                '<ul class="checks">'
+                + "".join(
+                    f"<li><span>{GATES.get(gate, gate)}</span><b>{html.escape(summary)}</b></li>"
+                    for gate, _, summary in ex.checks
+                )
+                + "</ul>"
+            )
+            where = f'<a class="link" href="{REPO}/blob/main/{ex.rel}/docs/gates.md">its gates report</a>'
+        parts.append(f"""      <section class="section" id="checks" aria-labelledby="checks-title">
+        <div class="wrap">
+          <div class="head" data-reveal data-stagger>
+            <p class="eyebrow">Checks</p>
+            <h2 class="title" id="checks-title">The four checks on {html.escape(ex.name)} {html.escape(ex.version)}</h2>
+            <p class="lede">The verdict of the last run, as {where} records it: <b>{html.escape(ex.verdict)}</b>.</p>
+          </div>
+          <div class="checks-run" data-reveal>{shown}</div>
         </div>
       </section>""")
 
@@ -698,18 +882,30 @@ def example_page(ex: Example, board: Board | None, pictures: set[str]) -> str:
                     body.append(f'<p class="evidence">{inline(text, ex.rel)}</p>')
                 else:
                     body.append(f"<p>{inline(text, ex.rel)}</p>")
+            meta = f'<time datetime="{entry.date}">{entry.date}</time>' if entry.date else ""
+            meta += f'<span class="stage">{html.escape(entry.version or entry.stage)}</span>'
+            if entry.version and entry.stage != entry.version:
+                meta += f'<span class="step">{html.escape(entry.stage)}</span>'
             items.append(
-                f'<li data-reveal><div class="tl-meta"><time datetime="{entry.date}">{entry.date}</time><span class="stage">{html.escape(entry.stage)}</span></div>'
-                f'<div class="tl-body"><h3>{inline(entry.title, ex.rel)}</h3>'
+                f'<li data-reveal><div class="tl-meta">{meta}</div>'
+                f'<div class="tl-body"><h3>{inline(entry.title[:1].upper() + entry.title[1:], ex.rel)}</h3>'
                 + "\n".join(body)
                 + "</div></li>"
             )
+        sources = sorted({f"{e.version}/TIMELINE.md" for e in ex.timeline if e.version})
+        records = " and ".join(
+            f'<a class="link" href="{REPO}/blob/main/{ex.folder.parent.relative_to(ROOT).as_posix()}/{s}">{s}</a>'
+            for s in sources
+        )
+        if any(not e.version for e in ex.timeline):
+            readme = f'the README\'s "What changed" sections (<a class="link" href="{REPO}/blob/main/{ex.rel}/README.md">{html.escape(ex.version)}/README.md</a>)'
+            records = f"{records} and {readme}" if records else readme
         parts.append(f"""      <section class="section" id="timeline" aria-labelledby="timeline-title">
         <div class="wrap">
           <div class="head" data-reveal data-stagger>
             <p class="eyebrow">How it was built</p>
-            <h2 class="title" id="timeline-title">From a page of notes to GREEN.</h2>
-            <p class="lede">Each step as <a class="link" href="{REPO}/blob/main/{ex.rel}/TIMELINE.md">TIMELINE.md</a> records it, with what went wrong and what it changed.</p>
+            <h2 class="title" id="timeline-title">Every step of the design, with what it changed</h2>
+            <p class="lede">Each step as {records} records it, oldest first.</p>
           </div>
           <ol class="timeline">
 {chr(10).join("            " + item for item in items)}
@@ -718,25 +914,30 @@ def example_page(ex: Example, board: Board | None, pictures: set[str]) -> str:
       </section>""")
 
     if ex.still_open:
-        items = "".join(f"<li>{inline(item, ex.rel)}</li>" for item in ex.still_open)
+        items = "".join(f"<li>{inline(item, ex.rel)}</li>" for item in ex.still_open[:OPEN_ITEMS])
+        more = len(ex.still_open) - OPEN_ITEMS
+        rest = (
+            f'<p class="after">{words(more).capitalize()} more in <a class="link" href="{REPO}/blob/main/{ex.rel}/README.md">its README</a>.</p>'
+            if more > 0
+            else ""
+        )
         parts.append(f"""      <section class="section band" id="open" aria-labelledby="open-title">
         <div class="wrap">
           <div class="head" data-reveal data-stagger>
             <p class="eyebrow">What is open</p>
-            <h2 class="title" id="open-title">Not done yet.</h2>
+            <h2 class="title" id="open-title">What is still to be done on this board</h2>
           </div>
-          <ul class="open" data-reveal data-stagger>{items}</ul>
+          <ul class="open" data-reveal data-stagger>{items}</ul>{rest}
           <div class="actions">
-            <a class="btn btn-primary" href="{REPO}/tree/main/{ex.rel}"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="{GH_PATH}"/></svg>The project's files</a>
-            <a class="btn btn-fill" href="{REPO}/blob/main/{ex.rel}/README.md">Its README</a>
+            <a class="btn btn-primary" href="{REPO}/tree/main/{ex.rel}"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="{GH_PATH}"/></svg>Browse the project's files</a>
+            <a class="btn btn-fill" href="{REPO}/blob/main/{ex.rel}/README.md">Read its README</a>
           </div>
         </div>
       </section>""")
 
-    title = f"{ex.name}: {ex.tagline}, made with Via"
     return shell(
-        title,
-        f"{ex.name} {ex.version}, {ex.tagline}: {ex.intro}",
+        f"{ex.name}, designed with Via",
+        f"{ex.name} {ex.version}: {ex.intro}",
         f"examples/{ex.slug}",
         "../",
         "\n\n".join(parts),
@@ -761,17 +962,17 @@ def index_page(found: list[tuple[Example, Board | None]]) -> str:
         if picture.is_file():
             w, h = pictures_size(ex, "iso.png")
             shot = f'<div class="shot3d"><img src="examples/{ex.slug}/iso.png" width="{w}" height="{h}" loading="lazy" alt="{html.escape(ex.name)} in 3D"></div>'
-        meta = " &#183; ".join(html.escape(s) for s in stats(ex, board)[:3])
+        spec = " · ".join(html.escape(s) for s in stats(ex, board)[:4])
         cards.append(
             f'<a class="proj" href="examples/{ex.slug}.html">{shot}<div><h3>{html.escape(ex.name)}</h3>'
-            f'<p>{html.escape(ex.tagline[:1].upper() + ex.tagline[1:])}.</p><p class="meta">{meta}</p></div></a>'
+            f'<p>{html.escape(ex.tagline[:1].upper() + ex.tagline[1:])}.</p><p class="spec">{spec}</p></div></a>'
         )
     body = f"""      <section class="section" aria-labelledby="examples-title">
         <div class="wrap">
           <div class="head" data-reveal data-stagger>
             <p class="eyebrow">Examples</p>
-            <h1 class="title" id="examples-title">Boards, not demos.</h1>
-            <p class="lede">Each example is a whole KiCad project in the repository, made with Via from a design file: its board in 3D, every track, and how it was built, step by step.</p>
+            <h1 class="title" id="examples-title">Boards designed with Via</h1>
+            <p class="lede">Each example is a complete KiCad project in this repository, designed with Via from a Python design file. Open one to turn it in 3D, explore every track on the board, and read how it was built.</p>
           </div>
           <div class="built" data-reveal data-stagger>
             {"".join(cards)}
@@ -779,8 +980,8 @@ def index_page(found: list[tuple[Example, Board | None]]) -> str:
         </div>
       </section>"""
     return shell(
-        "Examples: boards made with Via",
-        "Each example is a whole KiCad project made with Via from a design file: its board in 3D, every track, and how it was built.",
+        "Examples: boards designed with Via",
+        "Each example is a complete KiCad project designed with Via from a Python design file: its board in 3D, every track, and how it was built.",
         "examples",
         "",
         body,
@@ -796,39 +997,49 @@ def write_pictures(ex: Example) -> None:
     import key
     from PIL import Image
 
+    def keyed(picture: Image.Image, holes: bool) -> Image.Image:
+        """The picture with KiCad's backdrop taken out, or as it is when its corners are clear. An
+        assembly's render (a ring round a finger) has the backdrop in its middle too."""
+        rgba = picture.convert("RGBA")
+        w, h = rgba.size
+        if all(rgba.getpixel(c)[3] == 0 for c in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1))):
+            return rgba
+        return key.key(picture, holes=holes)
+
     docs = ex.folder / "docs"
     folder = OUT / ex.slug
     folder.mkdir(parents=True, exist_ok=True)
-    for source, name in (
-        ("board-3d-top.png", "top.png"),
-        ("board-3d-bottom.png", "bottom.png"),
-        ("board-3d-iso.png", "iso.png"),
-    ):
-        if not (docs / source).is_file():
+    record: dict = {"sources": {}}
+    for name, sources in PICTURES.items():
+        source = next((docs / s for s in sources if (docs / s).is_file()), None)
+        if source is None:
             continue
-        keyed = key.key(Image.open(docs / source))
-        box = keyed.getchannel("A").getbbox()
-        keyed = keyed.crop(box) if box else keyed
-        if keyed.width > 1200:
-            keyed = keyed.resize((1200, round(keyed.height * 1200 / keyed.width)), Image.LANCZOS)
-        keyed.save(folder / name, optimize=True)
-        print(f"site/examples/{ex.slug}/{name}: {keyed.width} x {keyed.height}")
-    spin = docs / "board-spin.gif"
-    if spin.is_file():
-        gif = Image.open(spin)
-        frames = []
-        for i in range(gif.n_frames):
-            gif.seek(i)
-            frames.append(key.key(gif))
-        w, h = frames[0].size
-        rows = math.ceil(len(frames) / SPIN_COLUMNS)
-        sheet = Image.new("RGBA", (w * SPIN_COLUMNS, h * rows), (0, 0, 0, 0))
-        for i, frame in enumerate(frames):
-            sheet.paste(frame, ((i % SPIN_COLUMNS) * w, (i // SPIN_COLUMNS) * h))
-        sheet.save(folder / "spin.webp", quality=82, method=6)
-        print(
-            f"site/examples/{ex.slug}/spin.webp: {len(frames)} frames of {w} x {h}, {(folder / 'spin.webp').stat().st_size // 1024} KB"
-        )
+        record["sources"][name] = source.name
+        if name == "spin.webp":
+            gif = Image.open(source)
+            frames = []
+            for i in range(gif.n_frames):
+                gif.seek(i)
+                frames.append(keyed(gif, source.name.startswith("assembly")))
+            w, h = frames[0].size
+            rows = math.ceil(len(frames) / SPIN_COLUMNS)
+            sheet = Image.new("RGBA", (w * SPIN_COLUMNS, h * rows), (0, 0, 0, 0))
+            for i, frame in enumerate(frames):
+                sheet.paste(frame, ((i % SPIN_COLUMNS) * w, (i // SPIN_COLUMNS) * h))
+            sheet.save(folder / name, quality=82, method=6)
+            record["spin"] = {"frames": len(frames), "width": w, "height": h}
+            print(
+                f"site/examples/{ex.slug}/{name}: {len(frames)} frames of {w} x {h}, {(folder / name).stat().st_size // 1024} KB"
+            )
+            continue
+        picture = keyed(Image.open(source), source.name.startswith("assembly"))
+        box = picture.getchannel("A").getbbox()
+        picture = picture.crop(box) if box else picture
+        if picture.width > 1200:
+            picture = picture.resize((1200, round(picture.height * 1200 / picture.width)), Image.LANCZOS)
+        picture.save(folder / name, optimize=True)
+        print(f"site/examples/{ex.slug}/{name}: {picture.width} x {picture.height}, from {source.name}")
+    (folder / "pictures.json").write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
 
 
 # ---------------------------------------------------------------- main

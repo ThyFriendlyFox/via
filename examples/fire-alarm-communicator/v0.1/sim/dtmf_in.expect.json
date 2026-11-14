@@ -1,0 +1,22 @@
+{
+  "v_bias": {
+    "min": 1.55,
+    "max": 1.75,
+    "source": "mid-scale of the ADC's 0 to 3.1 V range at 12 dB (ESP32-S3 datasheet), within 100 mV"
+  },
+  "g_low": {
+    "min": 0.6,
+    "max": 0.8,
+    "source": "a 0 dBm pair (2.2 V peak) must stay inside 0 to 3.1 V around the bias: gain at most 0.8; at least 0.6 keeps a -20 dBm digit 30 dB over the ADC's noise"
+  },
+  "g_high": {
+    "min": 0.6,
+    "max": 0.8,
+    "source": "as g_low, at the top DTMF column, 1633 Hz"
+  },
+  "twist": {
+    "min": 0.98,
+    "max": 1.02,
+    "source": "the path adds under 0.2 dB of twist; the decoder takes the high tone 4 dB over to 8 dB under the low (firmware/src/dtmf.h DTMF_TWIST_FWD_DB, DTMF_TWIST_REV_DB; ITU-T Q.24 Table A-1)"
+  }
+}

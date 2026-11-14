@@ -1,0 +1,4 @@
+Number,Name,Type,Side,Function
+1,+5V,passive,left,the LEDs' supply
+2,DIN,passive,left,the data in
+4,GND,passive,left,ground

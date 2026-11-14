@@ -1,0 +1,32 @@
+* TLV9061: the project's model, fitted to the datasheet (TI SBOS839N, section 6.10) for the loop decks.
+*
+* TI's own model (library/ti/tlv9062.lib, the TLV9062's, one channel) is the maker's, and
+* tlv9061_model.cir checks it against the datasheet. In ngspice 42 its operating point does not solve
+* at most of the loop decks' corners: plain Newton, gmin and source stepping fail on its noise
+* generators and hysteretic switches, and the transient ramp ngspice falls back on stops with
+* "timestep too small" (1 to 4 of 15 corners solved, whatever the method). The loop decks need every
+* corner, so they use this model; tlv9061_model.cir bounds its gain and phase against TI's model at
+* the loop's frequencies.
+*
+* Pins as TI's: IN+ IN- VCC VEE OUT.
+*   Aol 125.7 dB at DC, its first pole where it meets GBW: TI's model printed 125.7 dB and 9.16 MHz
+*   (tlv9061_model.cir); the datasheet's AOL row is 104 dB minimum at 5.5 V, 10k.
+*   A second pole at 13 MHz leaves 55 degrees of phase margin at G = +1, the datasheet's typical.
+*   The output: 100 ohm open loop (the ZO row, 10 MHz), within 20 mV of each rail (VO, RL = 10k),
+*   reached smoothly.
+*   Supply current 538 uA (IQ row, typical).
+.subckt TLV9061_FIT INP INN VCC VEE OUT params: aol=1.93e6 gbw=9.16e6 fp2=13e6
+RIN INP INN 1e12
+EMID MID VEE VCC VEE 0.5
+G1 MID N1 INP INN 1
+R1 N1 MID {aol}
+C1 N1 MID {1/(6.283185307*gbw)}
+E2 N2 MID N1 MID 1
+R2 N2 N3 1k
+C2 N3 MID {1/(6.283185307*1k*fp2)}
+* A smooth limit (tanh), never a hard clamp: at a clamp's flat top Newton's step sees no slope and
+* the DC solve stalls with the output at a rail.
+BOUT N4 MID V = (V(VCC,VEE)/2 - 0.02) * tanh(V(N3,MID) / (V(VCC,VEE)/2 - 0.02))
+ROUT N4 OUT 100
+IQ VCC VEE 538u
+.ends TLV9061_FIT

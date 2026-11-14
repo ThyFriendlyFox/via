@@ -1,0 +1,9 @@
+Warning: Wire reg8.\loose is used but has no driver.
+Warning: Cell reg8.$auto$ff.cc:266:slice$100 is an unmapped internal cell of type $_DLATCH_P_.
+Warning: Cell reg8.$auto$ff.cc:266:slice$101 is an unmapped internal cell of type $_DLATCH_P_.
+Warning: Cell reg8.$auto$ff.cc:266:slice$102 is an unmapped internal cell of type $_DLATCH_P_.
+Warning: Cell reg8.$auto$ff.cc:266:slice$103 is an unmapped internal cell of type $_DLATCH_P_.
+Warning: Cell reg8.$auto$ff.cc:266:slice$96 is an unmapped internal cell of type $_DLATCH_P_.
+Warning: Cell reg8.$auto$ff.cc:266:slice$97 is an unmapped internal cell of type $_DLATCH_P_.
+Warning: Cell reg8.$auto$ff.cc:266:slice$98 is an unmapped internal cell of type $_DLATCH_P_.
+Warning: Cell reg8.$auto$ff.cc:266:slice$99 is an unmapped internal cell of type $_DLATCH_P_.

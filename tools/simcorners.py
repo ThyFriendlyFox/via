@@ -720,6 +720,30 @@ def misread_values(text: str) -> list[str]:
     return out
 
 
+ALTERMOD_RE = re.compile(r"^\s*altermod\s+(\S+)\s+(.*)$", re.IGNORECASE)
+ASSIGNMENT_RE = re.compile(r"([A-Za-z_]\w*)\s*=\s*[^\s=]+")
+
+
+def crowded_altermods(text: str) -> list[str]:
+    """`altermod` lines in `.control` that set more than one parameter. ngspice 42 applies the first
+    and drops the rest without a word: `altermod DMOD is=1e-12 rs=500` changes `is` only, so a corner
+    meant to switch a part to its maximum model moves 1 parameter of 5. One line for each, with the
+    parameter it keeps and the ones it drops."""
+    lines = text.split("\n")
+    out: list[str] = []
+    for i in control_lines(lines):
+        m = ALTERMOD_RE.match(lines[i].split(";")[0])
+        if not m:
+            continue
+        names = [a.group(1) for a in ASSIGNMENT_RE.finditer(m.group(2))]
+        if len(names) > 1:
+            out.append(
+                f"altermod {m.group(1)}: ngspice applies only the first parameter on the line ({names[0]}) "
+                f"and drops {', '.join(names[1:])}. Write 1 altermod line for each parameter"
+            )
+    return out
+
+
 def names_in(text: str) -> set[str]:
     """Every element and parameter name a deck's own netlist lines define, upper case."""
     lines = text.split("\n")

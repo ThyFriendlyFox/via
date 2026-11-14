@@ -81,7 +81,7 @@ project and routes it with FreeRouting. No GUI at any step.
      pin it serves, and let a connector face the circuit it feeds.
      `d.sch_label_nets` keeps labels for nets that cross the whole sheet;
      a pin no wire reaches gets a label by itself. `d.sheet` picks the paper
-     (A4 to A1). The generator raises on a pin off the grid, two pins on one
+     (A4 to A0; A0 holds a processor of a thousand pins drawn as banks). The generator raises on a pin off the grid, two pins on one
      point, or a pin whose first cell out is taken: move the part. Plot the
      sheet (`workcenter render . --views schematic`) and read it before the
      close-out.
@@ -209,7 +209,10 @@ project and routes it with FreeRouting. No GUI at any step.
      offset has y up. A board exported with `kicad-cli pcb export vrml`
      lies with y up its face and z out of it: (-90, 0, -90) stands it on
      edge with its face along +x, (90, 0, 90) hangs it below the board
-     (M42, M47). Render once before composing views (P7 step 4).
+     (M42, M47). Render once before composing views (P7 step 4). In a
+     `tools/scene.py` scene, `place` measures a height from the scene
+     board's outer face and a `board_body` has its origin at its mid-plane:
+     a body at -T/2 lies flush with a board T thick (M131, P23 step 7).
    - `d.text(label, x, y, "F.SilkS", size, thickness)` for contact labels.
      Below 0.8 mm text, set `d.rules = {"min_text_height": ..,
      "min_text_thickness": ..}` or the DRC flags every label.

@@ -1,0 +1,5 @@
+{
+  "tr": {"max": 3.0e-7, "source": "Fast-mode rise time, 300 ns at most (UM10204 Rev. 7.0 Table 11), with 100 pF on the line"},
+  "vol": {"max": 0.36, "source": "the low level, 0.2 x VDD at most for VDD under 2 V (UM10204 Rev. 7.0 Table 10, VOL2)"},
+  "isink": {"max": 0.002, "source": "the current a device must sink at that level, 2 mA (UM10204 Rev. 7.0 Table 10, VOL2): the pull-up asks less"}
+}

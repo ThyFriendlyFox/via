@@ -1,0 +1,25 @@
+# The SYNTH gate's Yosys script. tools/chipfront.py fills each word between 2 at signs from chip.json
+# and the process table: no path, cell or pin of a process is written here. 1 command on a line.
+#
+# The liberty file is read as black boxes first, so `check` knows which pin of a cell drives.
+read_liberty -lib @LIBERTY@
+read_verilog -sv @INCLUDES@ @RTL@
+hierarchy -check -top @TOP@
+synth -top @TOP@ -flatten
+# Before the library's cells: a loop of gates, a net with 2 drivers, a net with none. The mapping can
+# hide a loop inside 1 cell, so this check is the one that sees it.
+tee -o @OUT@/check_generic.txt check
+# Each flop as Yosys names it by what it has: a synchronous reset is still a part of the flop here.
+json -o @OUT@/generic.json @TOP@
+# The mapping chooses from the liberty file without the cells the process kit lists as not to use.
+dfflibmap -liberty @MAPPING@
+abc -liberty @MAPPING@
+hilomap -singleton -hicell @TIE_HIGH@ -locell @TIE_LOW@
+opt_clean -purge
+# The netlist as it is handed on, each cell under the name it had before the mapping. The pass above
+# removes a flop that nothing reads: a flop of generic.json with no cell here was removed.
+json -o @OUT@/mapped.json @TOP@
+# After them: a cell the library has no cell for.
+tee -o @OUT@/check.txt check -mapped
+tee -o @OUT@/stat.json stat -liberty @LIBERTY@ -json
+write_verilog -noattr -noexpr -nohex -nodec @OUT@/@TOP@.v

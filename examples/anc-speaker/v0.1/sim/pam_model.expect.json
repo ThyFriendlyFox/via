@@ -1,0 +1,5 @@
+{
+  "gain_db": {"min": 22.5, "max": 24.5, "warn": "the model against its datasheet: the Gain row prints 23.5 dB typical and no limits; +-1 dB is the fit allowed"},
+  "zin_k": {"min": 9.5, "max": 10.5, "warn": "the model against its datasheet: 10k input resistors in the functional block diagram, page 2"},
+  "vout_dc": {"min": 2.45, "max": 2.55, "warn": "the model against its datasheet: the outputs sit at VDD/2, page 7"}
+}

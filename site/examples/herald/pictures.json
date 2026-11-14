@@ -1,0 +1,14 @@
+{
+ "sources": {
+  "top.png": "board-3d-top.png",
+  "bottom.png": "board-3d-bottom.png",
+  "iso.png": "board-3d-iso.png",
+  "spin.webp": "board-spin.gif",
+  "card.png": "board-3d-iso.png"
+ },
+ "spin": {
+  "frames": 36,
+  "width": 616,
+  "height": 368
+ }
+}

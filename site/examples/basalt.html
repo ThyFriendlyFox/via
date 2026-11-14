@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Basalt, designed with Via</title>
+    <meta name="description" content="Basalt v0.3: 4 DDR5 RDIMM slots, 3 PCI Express 5.0 x16 slots, 2 M.2 sockets, 14 phases of power stages for a 350 W processor, and the rear I/O, on 244 x 244 mm. No microATX TRX50 board has been made; the smallest is ATX.">
+    <link rel="canonical" href="%ORIGIN%/examples/basalt">
+    <link rel="icon" href="../favicon-32.png" sizes="32x32" type="image/png">
+    <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="../apple-touch-icon.png">
+    <link rel="preload" href="../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="../site.css">
+    <meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#1b1917" media="(prefers-color-scheme: dark)">
+    <!-- Before first paint: the theme the address asks for, else the stored one, else the system's;
+         and `motion` unless the reader asked for reduced motion or the page is a capture. -->
+    <script>
+      (() => {
+        const root = document.documentElement;
+        const asked = new URLSearchParams(location.search);
+        let stored = asked.get("theme");
+        try {
+          stored = stored || localStorage.getItem("theme");
+        } catch {}
+        const dark = stored ? stored === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+        root.classList.toggle("dark", dark);
+        if (stored) for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.content = dark ? "#1b1917" : "#fbfaf7";
+        if (asked.get("shot")) root.dataset.shot = asked.get("shot");
+        if (!asked.get("shot") && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          root.classList.add("motion");
+          setTimeout(() => root.dataset.motionReady || root.classList.remove("motion"), 3000);
+        }
+      })();
+    </script>
+    <script src="../vendor/motion-14.6.0.js" defer></script>
+    <script src="../site.js" defer></script>
+    <script src="../effects.js" defer></script>
+    <script src="../example.js" defer></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <div class="progress" data-progress aria-hidden="true"></div>
+      <div class="wrap">
+        <a class="brand" href="../" aria-label="Via, home">
+          <svg class="logo" data-logo viewBox="283 202 394 136" fill="currentColor" stroke="currentColor" stroke-width="12" stroke-linejoin="round" aria-hidden="true"><path class="lg-letter" d="m378.4252 269.28348-44.566925-60.472458h-44.566925l89.13385 120.9449z"/><path class="lg-pad" d="M389.88452 208.81102h39.46457v33.10237h-39.46457z"/><path class="lg-letter" d="M464.09186 210.2441h39.46457v120.94487h-39.46457z"/><path class="lg-letter" d="m581.5748 269.28348 44.566895 60.472443h44.566956l-89.13385-120.9449z"/><path class="lg-pad" d="M570.1155 329.75592h-39.46454v-33.102386h39.46454z"/><g fill="none"><path class="lg-trace" d="M409.6168 241.91339v57.606293h-31.181091"/><path class="lg-trace" d="M503.55643 270.71652h46.834625v25.952759"/><path class="lg-trace" d="M570.1155 313.2047h18.233643v-13.669281h15.498657"/><path class="lg-trace" d="M429.3491 225.3622h17.37146v45.354324h17.368683"/></g></svg>
+        </a>
+        <nav class="site-nav" aria-label="Site">
+          <ul>
+            <li><a href="../index.html#herald">Example</a></li>
+            <li><a href="../examples.html">Boards</a></li>
+            <li><a href="../index.html#gates">Checks</a></li>
+            <li><a href="../index.html#run">Get started</a></li>
+          </ul>
+        </nav>
+        <div class="header-end">
+          <button class="icon-btn" type="button" data-theme-toggle aria-pressed="false" aria-label="Dark theme">
+            <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.2 14.6A8.4 8.4 0 1 1 9.4 3.8a6.6 6.6 0 0 0 10.8 10.8Z"/></svg>
+            <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>
+          </button>
+          <a class="gh-pill" href="https://github.com/ThyFriendlyFox/via" aria-label="Via on GitHub">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>
+            <span>GitHub</span>
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <main id="main" tabindex="-1">
+      <section class="ex-hero" aria-labelledby="ex-title">
+        <div class="wrap">
+          <div data-reveal data-stagger>
+            <p class="eyebrow"><a class="crumb" href="../examples.html">Examples</a> · <code>examples/threadripper-matx/v0.3</code></p>
+            <h1 class="display" id="ex-title">Basalt</h1>
+            <p class="ex-tagline">Basalt is a microATX motherboard for an AMD Threadripper 7000 or 9000 on the sTR5 socket (the TRX50 platform)</p>
+            <p class="lede">4 DDR5 RDIMM slots, 3 PCI Express 5.0 x16 slots, 2 M.2 sockets, 14 phases of power stages for a 350 W processor, and the rear I/O, on 244 x 244 mm. No microATX TRX50 board has been made; the smallest is ATX.</p>
+            <ul class="chips" aria-label="The board"><li>v0.3</li><li>243.8 × 243.8 mm</li><li>10 layers</li><li>179 parts</li><li>5,915 track segments</li><li>5,137 vias</li><li class="ok">GREEN (nothing to run for: sim)</li></ul>
+          </div>
+          <div class="turntable" data-turntable data-frames="36" data-columns="6" tabindex="0" role="img" aria-label="Basalt in 3D, turning; drag or use the arrow keys to turn it">
+            <div class="tt-frames" style="aspect-ratio:616 / 368;background-image:url(basalt/spin.webp)"></div>
+          </div>
+          <p class="tt-hint">Drag to turn the board. KiCad's render of it, 36 views, 10 degrees apart.</p>
+          <div class="stills">
+            <figure><img src="basalt/top.png" width="1099" height="984" loading="lazy" alt="Basalt, the front"><figcaption>The front</figcaption></figure>
+            <figure><img src="basalt/bottom.png" width="1154" height="984" loading="lazy" alt="Basalt, the back"><figcaption>The back</figcaption></figure>
+          </div>
+        </div>
+      </section>
+
+      <section class="section band" id="board" aria-labelledby="board-title">
+        <div class="wrap">
+          <div class="head" data-reveal data-stagger>
+            <p class="eyebrow">Explore the board</p>
+            <h2 class="title" id="board-title">Every track and part of the routed board, drawn from its file</h2>
+            <p class="lede">The board as <code>examples/threadripper-matx/v0.3/basalt.kicad_pcb</code> holds it: 10 copper layers, 5,915 track segments, 5,137 vias and 676 nets. Point at a pad to see its part, and click a track, a via or a pad to follow its connection across the board.</p>
+          </div>
+          <div class="explorer" data-explorer data-src="basalt/board.svg">
+            <div class="ex-tools" role="toolbar" aria-label="The drawing">
+              <div class="ex-layers" aria-label="Layers">
+                <button type="button" aria-pressed="true" data-layer="F.Cu"><i></i>Front</button>
+                <button type="button" aria-pressed="true" data-layer="In1.Cu"><i></i>In1</button>
+                <button type="button" aria-pressed="true" data-layer="In2.Cu"><i></i>In2</button>
+                <button type="button" aria-pressed="true" data-layer="In3.Cu"><i></i>In3</button>
+                <button type="button" aria-pressed="true" data-layer="In4.Cu"><i></i>In4</button>
+                <button type="button" aria-pressed="true" data-layer="In5.Cu"><i></i>In5</button>
+                <button type="button" aria-pressed="true" data-layer="In6.Cu"><i></i>In6</button>
+                <button type="button" aria-pressed="true" data-layer="In7.Cu"><i></i>In7</button>
+                <button type="button" aria-pressed="true" data-layer="In8.Cu"><i></i>In8</button>
+                <button type="button" aria-pressed="true" data-layer="B.Cu"><i></i>Back</button>
+                <button type="button" aria-pressed="false" data-layer="refs"><i></i>Names</button>
+              </div>
+              <div class="ex-zoom">
+                <button type="button" data-zoom="out" aria-label="Zoom out">&#8722;</button>
+                <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
+                <button type="button" data-zoom="home">Whole board</button>
+              </div>
+            </div>
+            <div class="ex-view" data-view></div>
+            <p class="ex-info" data-info aria-live="polite">Drag to move. Pinch, or hold Ctrl and scroll, to zoom.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="checks" aria-labelledby="checks-title">
+        <div class="wrap">
+          <div class="head" data-reveal data-stagger>
+            <p class="eyebrow">Checks</p>
+            <h2 class="title" id="checks-title">The four checks on Basalt v0.3</h2>
+            <p class="lede">The verdict of the last run, as <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/threadripper-matx/v0.3/docs/gates.md">its gates report</a> records it: <b>GREEN (nothing to run for: sim)</b>.</p>
+          </div>
+          <div class="checks-run" data-reveal><ul class="checks"><li><span>Electrical rules (ERC)</span><b>0 errors, 0 warnings</b></li><li><span>Design rules (DRC)</span><b>0 errors, 0 warnings (0 unconnected, 0 parity)</b></li><li><span>Simulation (SIM)</span><b>no sim/*.cir in project</b></li><li><span>Fabrication files (EXPORT)</span><b>4/4 outputs, 30 gerber files</b></li></ul></div>
+        </div>
+      </section>
+
+      <section class="section" id="timeline" aria-labelledby="timeline-title">
+        <div class="wrap">
+          <div class="head" data-reveal data-stagger>
+            <p class="eyebrow">How it was built</p>
+            <h2 class="title" id="timeline-title">Every step of the design, with what it changed</h2>
+            <p class="lede">Each step as the README's "What changed" sections (<a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/threadripper-matx/v0.3/README.md">v0.3/README.md</a>) records it, oldest first.</p>
+          </div>
+          <ol class="timeline">
+            <li data-reveal><div class="tl-meta"><time datetime="2026-11-11">2026-11-11</time><span class="stage">v0.1</span></div><div class="tl-body"><h3>The floor plan and the power</h3><p>The first version places every part whose position the form factor or another part fixes and joins what carries power, so that each later version adds one bus to a board that is already GREEN.</p></div></li>
+            <li data-reveal><div class="tl-meta"><span class="stage">v0.2</span></div><div class="tl-body"><h3>The memory buses</h3></div></li>
+            <li data-reveal><div class="tl-meta"><time datetime="2026-11-11">2026-11-11</time><span class="stage">v0.3</span></div><div class="tl-body"><h3>The ports and headers</h3></div></li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="section band" id="open" aria-labelledby="open-title">
+        <div class="wrap">
+          <div class="head" data-reveal data-stagger>
+            <p class="eyebrow">What is open</p>
+            <h2 class="title" id="open-title">What is still to be done on this board</h2>
+          </div>
+          <ul class="open" data-reveal data-stagger><li>The PCI Express and M.2 lanes, with the host transmitters' AC capacitors. Tried on a copy of v0.3 (<code>../LOOP.md</code>, pass 12): the grid router joins 151 of the 234; the M.2 lanes need a trunk beside the slots drawn by rule, as the memory's combs are, before the slots' lanes fill the way.</li><li>The processor's slow signals: the SATA pairs (lanes in SATA mode), USB 2.0 to the headers and the board controller, SPI to the flash and the TPM, the buttons, VBAT and RTC_RST, the drive LED.</li><li>The rear I/O's controllers, on the processor's remaining lanes.</li><li>The board controller's firmware.</li><li>Length tuning inside each memory byte lane (12.3 mm at most).</li><li>The sheet: the ports' parts sit in the shelves one by one, and their wires run long; each port's parts belong in a block of their own, as each phase's are (P24 step 4).</li><li>The socket's housing, frame and cooler holes, and the land pitch, against a socket drawing (Lotes, Foxconn; NDA).</li><li>AMD's pin map in place of the stand-in.</li></ul><p class="after">Two more in <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/threadripper-matx/v0.3/README.md">its README</a>.</p>
+          <div class="actions">
+            <a class="btn btn-primary" href="https://github.com/ThyFriendlyFox/via/tree/main/examples/threadripper-matx/v0.3"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>Browse the project's files</a>
+            <a class="btn btn-fill" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/threadripper-matx/v0.3/README.md">Read its README</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap">
+        <div class="row">
+          <p class="brand"><a href="../" aria-label="Via, home"><svg class="logo" viewBox="283 202 394 136" fill="currentColor" stroke="currentColor" stroke-width="12" stroke-linejoin="round" aria-hidden="true"><path class="lg-letter" d="m378.4252 269.28348-44.566925-60.472458h-44.566925l89.13385 120.9449z"/><path class="lg-pad" d="M389.88452 208.81102h39.46457v33.10237h-39.46457z"/><path class="lg-letter" d="M464.09186 210.2441h39.46457v120.94487h-39.46457z"/><path class="lg-letter" d="m581.5748 269.28348 44.566895 60.472443h44.566956l-89.13385-120.9449z"/><path class="lg-pad" d="M570.1155 329.75592h-39.46454v-33.102386h39.46454z"/><g fill="none"><path class="lg-trace" d="M409.6168 241.91339v57.606293h-31.181091"/><path class="lg-trace" d="M503.55643 270.71652h46.834625v25.952759"/><path class="lg-trace" d="M570.1155 313.2047h18.233643v-13.669281h15.498657"/><path class="lg-trace" d="M429.3491 225.3622h17.37146v45.354324h17.368683"/></g></svg></a></p>
+          <nav aria-label="Footer">
+            <ul>
+              <li><a href="https://github.com/ThyFriendlyFox/via">GitHub</a></li>
+              <li><a href="https://github.com/ThyFriendlyFox/via/blob/main/WORKCENTER.md">Contract</a></li>
+              <li><a href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/STATUS.md">Status</a></li>
+              <li><a href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/ROADMAP.md">Roadmap</a></li>
+              <li><a href="https://github.com/ThyFriendlyFox/via/blob/main/LICENSE">MIT License</a></li>
+            </ul>
+          </nav>
+        </div>
+        <p class="small">Via is built under the MIT License.</p>
+      </div>
+    </footer>
+
+  </body>
+</html>

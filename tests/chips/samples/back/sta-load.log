@@ -1,0 +1,132 @@
+Warning: /work/reg8/build/chip/layout/reg8.v line 116, module sky130_fd_sc_hd__tapvpwrvgnd_1 not found. Creating black box for TAP_0.
+Warning: /work/reg8/build/chip/layout/reg8.v line 127, module sky130_fd_sc_hd__fill_8 not found. Creating black box for FILLER_0_0.
+Warning: /work/reg8/build/chip/layout/reg8.v line 129, module sky130_fd_sc_hd__fill_4 not found. Creating black box for FILLER_0_16.
+Warning: /work/reg8/build/chip/layout/reg8.v line 130, module sky130_fd_sc_hd__fill_1 not found. Creating black box for FILLER_0_20.
+Warning: /work/reg8/build/chip/layout/reg8.v line 136, module sky130_fd_sc_hd__fill_2 not found. Creating black box for FILLER_1_0.
+WORKCENTER nets 38
+WORKCENTER check_setup begin
+Warning: There are 2 input ports missing set_input_delay.
+  VGND
+  VPWR
+WORKCENTER check_setup end
+WORKCENTER paths begin
+Startpoint: _32_ (rising edge-triggered flip-flop clocked by clk)
+Endpoint: q[0] (output port clocked by clk)
+Path Group: clk
+Path Type: max
+
+  Delay    Time   Description
+---------------------------------------------------------
+   0.00    0.00   clock clk (rise edge)
+   0.00    0.00   clock source latency
+   0.00    0.00 ^ clk (in)
+   0.11    0.11 ^ clkbuf_0_clk/X (sky130_fd_sc_hd__clkbuf_4)
+   0.13    0.24 ^ clkbuf_1_1_0_clk/X (sky130_fd_sc_hd__clkbuf_2)
+   0.00    0.24 ^ _32_/CLK (sky130_fd_sc_hd__dfxtp_1)
+  32.33   32.57 ^ _32_/Q (sky130_fd_sc_hd__dfxtp_1)
+   0.29   32.86 ^ q[0] (out)
+          32.86   data arrival time
+
+  20.00   20.00   clock clk (rise edge)
+   0.00   20.00   clock network delay (propagated)
+   0.00   20.00   clock reconvergence pessimism
+  -4.00   16.00   output external delay
+          16.00   data required time
+---------------------------------------------------------
+          16.00   data required time
+         -32.86   data arrival time
+---------------------------------------------------------
+         -16.86   slack (VIOLATED)
+
+
+Startpoint: rst (input port clocked by clk)
+Endpoint: _39_ (rising edge-triggered flip-flop clocked by clk)
+Path Group: clk
+Path Type: min
+
+  Delay    Time   Description
+---------------------------------------------------------
+   0.00    0.00   clock clk (rise edge)
+   0.00    0.00   clock network delay (propagated)
+   4.00    4.00 v input external delay
+   0.00    4.00 v rst (in)
+   0.16    4.16 ^ _31_/X (sky130_fd_sc_hd__and2b_1)
+   0.00    4.16 ^ _39_/D (sky130_fd_sc_hd__dfxtp_1)
+           4.16   data arrival time
+
+   0.00    0.00   clock clk (rise edge)
+   0.00    0.00   clock source latency
+   0.00    0.00 ^ clk (in)
+   0.11    0.11 ^ clkbuf_0_clk/X (sky130_fd_sc_hd__clkbuf_4)
+   0.12    0.24 ^ clkbuf_1_0_0_clk/X (sky130_fd_sc_hd__clkbuf_2)
+   0.00    0.24 ^ _39_/CLK (sky130_fd_sc_hd__dfxtp_1)
+   0.00    0.24   clock reconvergence pessimism
+  -0.03    0.21   library hold time
+           0.21   data required time
+---------------------------------------------------------
+           0.21   data required time
+          -4.16   data arrival time
+---------------------------------------------------------
+           3.95   slack (MET)
+
+
+WORKCENTER paths end
+WORKCENTER setup
+worst slack -16.8581
+WORKCENTER hold
+worst slack 3.9483
+WORKCENTER tns
+tns -251.8193
+WORKCENTER violators begin
+max slew
+
+Pin                                    Limit    Slew   Slack
+------------------------------------------------------------
+_32_/Q                                  1.50   46.03  -44.53 (VIOLATED)
+_16_/A0                                 1.50   46.03  -44.53 (VIOLATED)
+_37_/Q                                  1.50   46.01  -44.51 (VIOLATED)
+_26_/A0                                 1.50   46.01  -44.51 (VIOLATED)
+_36_/Q                                  1.50   46.00  -44.51 (VIOLATED)
+_24_/A0                                 1.50   46.00  -44.50 (VIOLATED)
+_35_/Q                                  1.50   45.96  -44.47 (VIOLATED)
+_22_/A0                                 1.50   45.96  -44.46 (VIOLATED)
+_33_/Q                                  1.50   45.91  -44.41 (VIOLATED)
+_18_/A0                                 1.50   45.91  -44.41 (VIOLATED)
+_38_/Q                                  1.50   45.90  -44.40 (VIOLATED)
+_28_/A0                                 1.50   45.90  -44.40 (VIOLATED)
+_39_/Q                                  1.50   45.89  -44.39 (VIOLATED)
+_30_/A0                                 1.50   45.89  -44.39 (VIOLATED)
+_34_/Q                                  1.50   45.88  -44.39 (VIOLATED)
+_20_/A0                                 1.50   45.89  -44.39 (VIOLATED)
+
+max capacitance
+
+Pin                                    Limit     Cap   Slack
+------------------------------------------------------------
+_32_/Q                                  0.16    5.00   -4.84 (VIOLATED)
+_33_/Q                                  0.16    5.00   -4.84 (VIOLATED)
+_34_/Q                                  0.16    5.00   -4.84 (VIOLATED)
+_35_/Q                                  0.16    5.00   -4.84 (VIOLATED)
+_36_/Q                                  0.16    5.00   -4.84 (VIOLATED)
+_37_/Q                                  0.16    5.00   -4.84 (VIOLATED)
+_38_/Q                                  0.16    5.00   -4.84 (VIOLATED)
+_39_/Q                                  0.16    5.00   -4.84 (VIOLATED)
+
+WORKCENTER violators end
+WORKCENTER skew begin
+Clock clk
+Latency      CRPR       Skew
+_32_/CLK ^
+ 0.2380
+_32_/CLK ^
+ 0.2380    0.0000     0.0000
+
+Clock clk
+Latency      CRPR       Skew
+_32_/CLK ^
+ 0.2380
+_32_/CLK ^
+ 0.2380    0.0000     0.0000
+
+WORKCENTER skew end
+WORKCENTER sta done

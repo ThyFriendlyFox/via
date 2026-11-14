@@ -39,6 +39,321 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-14 — The redrawn site meets main: Herald, the 6 boards, a page for each
+
+The owner liked the redrawn site on its branch and asked for the boards and the Herald section
+from the current site, below the agents' strip. `main` had moved 35 commits, so I merged it into the
+branch. The page, the stylesheet, the build, the tests and 4 documents conflicted. I kept main's
+Herald section, its design, architecture and getting-started sections, its footer and the owner's
+headline, and wrote the redrawn sections in the website's rules of `docs/STYLE.md`. `site/examples.py`
+now writes a page for each of the 6 examples. It reads 2 README shapes, every version's steps, a
+gates report and boards of 6 to 10 layers. Hush's ring outline was a circle, which the reader did not
+know, and Basalt's planes made its drawing 4.2 MB until large boards' pours were simplified. Taking
+the backdrop out of a ring's middle also took it out of a metal lid that mirrors it, so it runs on
+assembly renders only. The knob drawing went: it showed Rosetta v0.1, and the site shows v0.2.
+
+Evidence: `tests/test_docs.py` 19 passed, 2 skipped (KiCad and the chip engines). `tests/` 463
+passed, 1 failed, 307 skipped; the failure, `test_fab` without KiCad's symbols, fails the same on
+`main` (461 passed). Basalt's drawing is 2,271 KB, 388 KB compressed.
+
+## 2026-11-12 — Last Hit v0.17's mistakes, and 2 checks they asked for
+
+Last Hit v0.17 answered a collaborator's review: a new protection switch,
+a current reading corrected for temperature, a joint pad that can no
+longer short the cell's feed. The work made 10 mistakes, now M171 to M180.
+The one that mattered most was 3 versions old: the heater deck switched
+the protection switch to its maximum model with 1 `altermod` line of 5
+parameters, and ngspice applies only the first. The deck's worst case had
+moved only the switch's threshold since v0.14. The SIM gate now fails a
+deck with such a line.
+
+`workcenter costs` failed on the board repository's CLAUDE.md because a
+sentence there names the costs marker. The doc tools now take a marker
+only alone on its line, as they write it.
+
+The rest are process: a deck read without the gate's preparation, a fit
+made at one time step and checked at another, 3 helpers started at once
+with facts pasted into their briefs, a scratch file written into the
+project, a merge done by switching the checkout, a part judged at its
+nominal size, a board fact written from memory, and a CI step that ran
+every version's mutation list under 1 limit until `main` ran past it.
+Each now has a step in PROCESSES.md.
+
+Evidence: the tests of the touched files and the new gate test, which
+runs ngspice on a diode deck (0.5172 V with 1 parameter applied, 0.6715 V
+with both); `make verify` before the push.
+
+## 2026-11-12 — A small model built a chip, a reviewer attacked the gates, and the chip work reached `main`
+
+A small model built 2 chips of its own with `workcenter next` alone. The
+first, an 8-bit PWM, passed all 10 gates and stopped at `--strict`: the
+answer said "Name a limit for the clock skew", and nothing said where such
+a number comes from. The model did not invent one. The guide and the skill
+were mended, and the second chip, a UART transmitter, reached GREEN with
+`--strict` in 13 answers. A bench written by another hand from the same 8
+rules passes on its RTL and on its routed netlist.
+
+Then a reviewer who had not written the gates built cases that they must
+fail (P14 step 6), and found 15 in 36 minutes. 7 times a gate passed what
+it must fail: a sum cut short behind `lint_off widthtrunc`, a design that
+Yosys alone reads under `` `ifdef SYNTHESIS ``, a clock uncertainty of
+-1 ns that turned a red STA GREEN, an input with a `-min` delay only. 2
+times EXPORT handed out the old layout after a file had changed. And
+`workcenter next` answered "Nothing" for a project whose hand-off folder
+was gone. Each case is a test now, seen to fail on the code before.
+
+The fixes share 1 idea: where an engine can say what it read, the gate
+asks the engine. Verilator, Icarus Verilog and Yosys each list their
+files, and every record takes them from there. A bench reads no file
+while it runs, so every input of a simulation is text its compiler read.
+`next` holds a report to the hashes in the gates' records, not to a date.
+The small model's transmitter is GREEN with `--strict` under the stricter
+gates too.
+
+The chip work reached `main` with the processor's layout on the front
+page. GREEN still says what the scope line says: the open engines found
+no fault, and no foundry deck ran.
+
+## 2026-11-12 — Wyvern v0.2: one flat board with a QCS6490 soldered on
+
+The owner looked at Wyvern v0.1 and said it had a lot of open hinges,
+in power, data and routing, and looked like 2 boards slapped together.
+They chose one flat board about 53 x 76 mm with a QCS6490 module
+soldered straight on. v0.2 carries Vantron's VOSM6490 on SGET's OSM
+Size-L standard: 662 round pads on a 1.25 mm grid, generated from the
+standard's contact map and checked pad for pad against Antmicro's open
+footprint. The module's pads are named from the standard and, for the
+64 the board uses, from Vantron's datasheet, read by hand after a
+script mis-read the PDF's table.
+
+The hinges closed one by one. A TPS552892 buck-boost holds the module's
+4.8 to 5.2 V from whatever a USB-C cable delivers. An HD3SS3220 answers
+the charger's CC before anything is powered and switches the module's
+single SuperSpeed lane to the plug's side; its lane and the converter's
+0.25 mm power pads are drawn by hand. A damper keeps the cable's
+resonance under the converter's input resistance, and forced PWM keeps
+the converter's harmonics out of it. The RP2350 block is v0.1's, turned
+a quarter turn as a whole.
+
+The first 2 routes left the 5 V plane under the module in 3 pieces:
+the router crossed its narrow strip on In3. A spine of copper along the
+module's pad line, which no fan-out via touches, held it together; the
+next route left only the converter's output off the plane, and 3 vias
+closed it. An unseeded route then left 1 link of the SD card's supply
+open; seeded with the route before it, the router kept every track and
+closed it. Simulations: 7 decks, 397 corner runs. 5 mistakes recorded
+(M162 to M166), 3 processes extended; the last mistake is a rebased
+tree pushed without its own `make verify`, which a later run caught.
+The website's Wyvern card shows the new board.
+
+Evidence: `workcenter gates v0.2` GREEN with 16 warnings (DRC 0 errors,
+0 unconnected, 0 parity; the 4 dangling vias and 5 silkscreen edges
+named in `docs/gates.md`); `workcenter design --check` same;
+`workcenter sources` 0 problems; `workcenter pictures` 26 files;
+`make verify` before the push.
+
+## 2026-11-12 — A chip has its one next step, and its benches are proven on every run
+
+`workcenter next` now answers for a chip project as it does for a board.
+It reads `chip.json`, the engines, the RTL, the benches and the gates'
+report, and names the first step that is not done. In a test its answers
+alone took the template from its first file to a GREEN layout. 2 skills
+hold the procedure: `chip-design` writes the project, and `chip-gates`
+drives the 10 gates. The contract has its section "Chip gates". The SIM
+gate now proves the benches itself. It makes each change of the project's
+list in a copy of the RTL and runs the benches there, and a change that
+every bench passes on fails the gate. Before, the gate only asked that the
+list be there: an empty list passed `--strict`, and the command that ran a
+list counted a change that does not compile as caught. The processor's 18
+changes and the counter's 5 are each caught, in under 1 s.
+
+Evidence: `tests/test_chipguide.py`, 24 tests; the chip, guide and docs
+test files, 267 tests passed; `make verify` GREEN on the pushed tree.
+
+## 2026-11-12 — The processor is GREEN: every chip gate passes, from RTL to the mask layout
+
+The acceptance processor now passes all 10 chip gates with `--strict`, in
+under 4 minutes. Yesterday its layout failed timing at 13 of 15 corners.
+The gates were right, and the build was short in 3 places. It repaired no
+slow signal. It took each wire for half its real capacitance, from a file
+that leaves out the wires beside a wire. And the layout writer added
+slivers of its own that a rule deck counted. A helper found the cause of
+each by experiment and fixed the build. The account's usage limit stopped
+it 2 times, so I checked its copy with my own runs and installed it from
+its notes. Then I fixed 3 things in what the gates share. The ledger of
+hashes lost entries when benches ran side by side: it is locked now and
+written whole. Every gate leaves a record of each file it read and wrote,
+and EXPORT asks all 9 before it hands out a layout. Before, EXPORT asked 5
+gates about the layout's own files. A bench changed after SIM had passed
+went unseen, and so did a header, and a layout built from the netlist of
+an older RTL. And 2 numbers the gates printed were not true. SYNTH printed
+156 flops for a netlist of 132, because the mapping removes 3 registers
+that no program reads (M167). STA counted a pin 1 time for each limit it
+broke.
+
+Evidence: the 4 chip test files, 151 tests; 5 builds of the processor at
+1, 2, 4 and 8 jobs with 1 GDS hash, `0c51debe623a0a18`; each new test seen
+to fail on the code before its fix; `make verify` GREEN on the pushed tree.
+
+## 2026-11-12 — Herald in 3D, and its labels 1 every 3 seconds
+
+The owner asked for the render's corners rounded, or the board itself in
+3D for the reader to turn, without slowing the page. They asked for the
+labels to play 1 at a time, 3 seconds apart, with the first page of each
+datasheet in its label and a leader in 2 runs, a diagonal then a level
+line, and for the status line and the pause buttons gone. Mid-turn they
+gave the hero's headline, "Circuit Boards / From / AI", the footer's
+license line, and justified paragraphs.
+
+KiCad's own GLB export reads STEP bodies only, and left out the project's
+bodies in `models/`. Its VRML export carries all of them, so three.js in
+Chromium turns the VRML into a GLB, 12.6 MB, and gltf-transform
+compresses it to 0.6 MB with meshopt. With GPU instancing on, each
+quantized instance lost its scale and the board drew 2 m wide; it is off.
+`site/showcase/make_glb.mjs` runs the 3 steps and wrote the committed
+file byte for byte. The page loads model-viewer, the decoder and the
+model only when the reader comes within 600 px, and the render stays in
+their place if any of it fails. model-viewer 4.4 ignores the global
+decoder setting; the page sets it on the element's class before making
+one.
+
+`site/showcase/datasheets.py` fetches the labels' 19 datasheets and draws
+each first page 160 px wide. 10 PDFs came back, 12 parts' worth. Nexperia,
+Littelfuse and ST refuse a script, 1 Vishay address answers 404, and the
+USB connector's is a zip. Their labels keep the link without a page. On a
+phone the labels stack under the board; they sat in the board's order, so
+the next one came in above the last with a gap over it. They stack in
+their turn's order now. Justified text in a label 16 rem wide left gaps
+wider than words, so labels stay ragged; `docs/STYLE.md` says so.
+
+Evidence: `tests/test_docs.py`, with a new check that each datasheet page
+a label names is built at the size it reserves (it fails with 1 removed);
+the page in Chromium at 1440, 800 and 390 px: 1 label every 3 seconds,
+the model drawn with no console error, no sideways scroll; `make verify`
+before the push.
+
+## 2026-11-12 — A reader who trusts nothing read the README's front page
+
+A helper that had written none of the README's front page checked every
+sentence of it by a command. The runs, the numbers and the commands came
+out as written, and the documented commands drew the same 8 pictures. 4
+sentences were false, and I had written each without a run. The README
+said a command's help tells what the command writes. A pointer in the
+status file named a roadmap item by a number that had moved. The
+landmine map said the router has no network code. The review also read
+the router's log from its first line to its last: 20 of the 25 s of a
+routing run were a wait for a click on a dialog nobody sees. 1 flag
+removes the wait, and the session file is the same. The generator wrote
+1 track segment 2 times where the router's wires share a stretch, and
+`doctor` read `degraded` after a clean install. All of these are
+corrected. The review broke the tests 11 ways and 6 breaks passed: the
+quick start was held by no test, and a count in the status file by
+none. 3 tests hold them now. While I made the changes, a heredoc of
+mine ended at a line of its own text, and the shell ran the rest of my
+script as commands. Nothing was harmed, and a script with shell text
+runs from a file now (M161). The account's usage limit stopped the
+helpers 2 times, and the work went on from their notes. Meanwhile
+`main` had moved by 21 commits from other sessions: 6 example projects
+and a new site. I put this change on top of it. The site's page no
+longer shows the board the review read, so its findings there are gone
+with the old page. What stays open is on the roadmap: nothing holds a
+deck to the schematic's parts, `design --check` does not hold the
+board, and the first picture's text is too small on a phone.
+
+Evidence: `make verify` GREEN on the pushed tree; each new test seen to
+fail on a broken copy; `design --route` on the template in 6 s.
+
+## 2026-11-12 — The site's words, for the person who reads them
+
+The owner sent a screenshot of the headline "3 engines, 4 gates, 1
+verdict." and said the site read like an assistant wrote it. They asked
+for a professional tone, a professional display, and copy about what Via
+does for the reader, without the fixture boards. Every headline was a
+slogan: fragments with periods, "Boards, not demos.", a maxim about
+corners. STYLE.md's own rules made them: digits for every number, and no
+words meant to sell. I rewrote the page's words, the Open Graph image and
+the 404 page, and added a website section to STYLE.md that keeps them so.
+
+The fixture boards left the page. The hero shows Herald. The section on
+design as code shows Herald's 3 supervised inputs: 7 lines of its design
+file, its schematic cropped to that block, and its routed board. The 2
+runs on a circuit that fails at 85 °C stay, because they show a check
+catching a fault; the caption calls it a test circuit. The gallery holds
+the 6 example boards, 3 to a row.
+
+Evidence: `tests/test_docs.py` at the commit, its runs and pictures held
+to the new page; the page in Chromium at 1440 and 390 px, light and dark,
+no sideways scroll and no console error; `make verify` before the push.
+
+## 2026-11-12 — Every part of Herald labelled; a stylesheet that outlived its page
+
+The owner found the site's 5 signals made up: paths I drew from part to
+part, which were not the board's tracks. They asked for every part
+labelled with a leader instead, a few at a time, with its documents and
+what Via gathered on it. The page now labels all 127 parts, 4 or fewer at
+a time, in the design file's sections. Each label holds only what Via's
+files hold: the design file's value, footprint and nets, KiCad's
+description and datasheet, the README's reason and the problem the part
+answers, and each deck in the gates' report that varies it, with what it
+measured at every corner. 19 parts have a datasheet, 26 a problem, 16 a
+reason, 19 a deck. The rest say what the design file says.
+
+The same screenshot showed Herald's board in the old green. The custom
+domain's cache keeps a stylesheet 4 hours and asks again for each page,
+so the phone ran the new page with the old stylesheet (M157). I had
+fetched the Vercel address and not the one the canonical link names.
+`site/build.sh` now names each stylesheet and script with its checksum,
+and a test holds it.
+
+Evidence: `make verify` and `tests/test_docs.py` at the commit; the tour
+drawn in Chromium at 1440, 1280 and 390 px, light and dark, no console
+error; the old `build.sh` writes no version, so the new test fails on it.
+
+## 2026-11-12 — The branches sorted; Herald is the site's example
+
+The owner asked for the branches consolidated and for more examples on
+the site. Of 52 branches on GitHub, 49 hold nothing that `main` lacks. 39
+are the merged pull requests from before the history rewrite, each at the
+head its pull request merged. 4 are closed Dependabot pull requests. 4
+`claude/` branches are ancestors of `main`. Hush's branch has the same
+tree as its squash on `main`, pull request 49. Rosetta v0.2's has its 1
+commit on `main` with a new name: 48 of the 59 files it changed are the
+same there, and its 2 mistakes are there as M135 and M136. The other 11
+are documents and the favicon, which `main` changed since. This session's
+git access refused a deletion too, so the owner deletes them. 3 branches
+hold work. The chip branch stays until its gates are tested. Basalt and
+Wyvern are examples whose sessions still run. While I sorted them,
+Signet, Rosetta v0.2, Herald and Hush each landed on `main` from its own
+session, and each session ended.
+
+The site showed Rosetta alone of the 4. Its section "Boards, not demos."
+now has a card for Signet, Herald and Hush, cropped from their own
+renders. The site said Rosetta v0.2 is 4 layers; its board has 6, and the
+page says 6. `site/README.md` gives the steps that put the next example
+on the page. I changed `index.html` and `build.sh` with a script where P9
+asks for the Edit tool (M156).
+
+Then the owner asked for Herald to replace Rosetta as the site's example
+of what Via makes. The section after the hero is now Herald's: its board
+drawn from its design file and routed board in its red, 5 signals that
+each light their parts, their path and their status light, the reading
+each deck measured, 8 hard parts, its renders and its gates run. The
+readings come from runs of the decks, and the firmware's thresholds from
+`zone.h` and `line.h`. The page says what the firmware does not do yet:
+the tone sequencer, the modem, the station's protocol, the lights and
+the relay's watchdog. Rosetta keeps its card, and the README leads with
+Herald. The owner then asked for the traces over the models: the drawing
+now shows every track of its 3 signal layers in copper on a deep red,
+each layer sweeping in after the last, and the parts as faint outlines
+that light only for a signal. 2 signals' colours moved off the copper's,
+which hid their paths. From here the owner wants each change merged to
+`main`.
+
+Evidence: `make verify` and `tests/test_docs.py` at the commit; each old
+branch's tip equal to its pull request's head, 43 of 43; Hush's branch
+tree `8cf093a` equal to `main`'s at `e4e0364`; `workcenter gates
+examples/fire-alarm-communicator/v0.1` GREEN with 7 warnings, the run the
+page shows.
 ## 2026-11-12 — The website, redrawn: drawings, the agents, a page per example
 
 The owner pointed at the text-to-cad site and asked for ours to look better, on a branch. The
@@ -55,6 +370,160 @@ run again here.
 Evidence: `tests/test_docs.py` 17 passed, 1 skipped (it needs kicad-cli and ngspice). `tests/`
 295 passed, 1 failed, 234 skipped; the failure, `test_fab` without KiCad's symbols, fails the same
 on `main`. The home page is 7,947 px tall at 1440 px wide, where it was 10,865.
+
+## 2026-11-11 — Another example: a microATX board for Threadripper
+
+The owner asked for a compact, good-looking example of what the
+workcenter makes: a microATX motherboard for a Threadripper. None
+exists; the smallest TRX50 board is ATX. Basalt is in
+`examples/threadripper-matx`, kept as version folders the way the
+owner's vape prototype keeps its own, and built in a loop that ran 1
+prompt again and again and logged each pass in `LOOP.md`.
+
+v0.1 placed the 4844-land socket, the slots, the memory and 14 phases
+from the microATX and PCI Express drawings. The router ran 20 minutes
+twice on the 4 supply nets without finishing a pass, so the design
+draws every supply as a pour now, as a real board carries it (M150).
+v0.2 drew the 4 memory channels' 576 traces by rule, and the first DRC
+found nothing. Midway the owner asked for the ports every desktop board
+has; v0.3 adds 77 parts, from SATA ports and fan headers to the CMOS
+battery. FreeRouting finished their nets in a third of a second with
+none routed, so the project's own grid router learned to change layer
+through a via and joined all 51.
+
+The workcenter gained on the way: `kicadgen` wires a processor drawn
+as banks on an A0 sheet and checks a socket's 3457 vias in 0.3 s where
+it took 63. The PCI Express
+and M.2 lanes are not on the board yet: 151 of 234 route, and the rest
+need a trunk drawn by rule, like the memory's.
+
+Evidence: `workcenter gates` GREEN with no warning on v0.1, v0.2 and
+v0.3; `make verify` GREEN.
+
+## 2026-11-11 — A fifth example: a Teensy with a Snapdragon
+
+The owner asked for a compact board that looks good, as an example of what Via makes: a
+microcontroller development board like a Teensy, with a Snapdragon on it. A Snapdragon cannot stand
+alone on a board that size (it needs memory, flash and 3 power chips on a fine board), so Wyvern
+carries a Snapdragon 845 on Lantronix's Open-Q 845 module, whose pinout is public, on a stick the
+size of a Teensy. An RP2350 under the module drives the pins at 3.3 V. The owner pointed at
+vape-prototype for the layout, and the example has its shape: a series README, a version folder,
+`parts/`, a gates report, pictures with the module on its sockets.
+
+The USB-C port's 5 pairs are drawn by hand: wired the way a plug turned over sees them, no 2 pairs
+cross. The first route ran 14 of its 15 minutes, with no timeout set (M147), and left the RP2350's
+core pins bare: a capacitor or the crystal stood across each one's way out (M146). That rail is
+drawn by hand now, then the 3.3 V pins' stubs, after 4 capacitors were turned to face their pins;
+P4 asks for each supply pin's way out before a route. Seeding did not help on this board: a route
+seeded from the same design's own route, with 1 pass, lost 6 connections the seed had. Fresh routes
+are what closed it, and they are deterministic: 100 and 150 passes gave the same board, so more passes
+were no lever. What moved the count was room: the crystal to the back, the capacitors turned to
+their pins, and the RP2350's pins fanned out to vias by hand on 3 sides, as a person lays out a
+QFN, so the router only joins vias; 5 mil tracks gave it the last room.
+
+The frequency plan found the buck's power-save pulses can land on the USB cable's resonance; a deck
+shows 10.5 mV at most. It also showed that a long cable and derated capacitors leave the input's
+peak impedance only 0.13 ohm under the buck's negative resistance: stable, with the damping left
+for v0.2.
+
+Evidence: `workcenter gates examples/snapdragon-dev-board/v0.1` GREEN with 13 warnings (5 silkscreen outlines at the edge, 2 vias with nothing past them, 6 decks with no temperature term): DRC 0 errors and 0 unconnected; 6 decks, 488
+corner runs; `workcenter pictures v0.1`: the board, its layers, 3 turning GIFs, the module on its sockets;
+`workcenter costs` $32.76 for 1 board's parts.
+
+## 2026-11-11 — Another example: a speaker that plays the inverse of what it hears
+
+The owner asked for a noise cancelling speaker as an example of what Via makes: compact, gorgeous,
+iterated until it is, in its own folder on `main`. Hush is in `examples/anc-speaker/v0.1`: a ring
+62 mm across on the face of a 40 mm speaker, a microphone on its hub 4 mm from the cone, and an
+analog loop that plays the inverse wave. 7 decks hold it to its numbers at 986 corners: 3 dB less
+noise at 50 Hz and 12 dB from 200 to 300 Hz at the worst of them. On the way, TI's op-amp model
+settled on false operating points inside the loop, so the loop decks run a model fitted to it; my
+own amplifier model ran in the loop before its own deck and was half the gain. The generator
+learned 2 things: a custom pad reaches the router as its outline, not a box over its neighbours, and
+a simulated part's fields go on its footprint too. Main had meanwhile learned to render a board in
+its own colours, which this board's black mask needed. A reviewer who had not seen the board read
+its renders each round; the back's art ended in a jack's peg hole until the second round. 7
+mistakes, M139 to M145, each with its process.
+
+Evidence: `workcenter gates examples/anc-speaker/v0.1` GREEN with 6 warnings; the pictures in its `docs/`.
+
+## 2026-11-11 — A third example: a fire alarm communicator
+
+The owner asked for a fire alarm communicator made with Via: compact, good
+to look at, iterated in a review loop, and merged to `main` in its own
+folder. Herald is in `examples/fire-alarm-communicator/v0.1`: 84.4 x 64
+mm, 4 layers, 127 parts, every part on the front, red with a white legend
+and black terminals. It answers a fire panel's dialer as its phone line,
+reads 3 supervised inputs, holds a fail-safe trouble relay, and reports
+over LTE-M with Wi-Fi as the second path. The panel's DTMF digits are read
+in firmware by a Goertzel filter, held to ITU-T Q.24's limits by host
+tests.
+
+The loop ran 8 rounds. Each round I generated, routed and rendered the
+board; in 6 of them a reader who had not seen it before reviewed the
+pictures against 1 fixed prompt, and its list was the next round's work.
+The board went from 96 to 84.4 mm wide, the tamper input became a screw
+terminal, the terminal row was spread to equal gaps, keep-outs now hold
+copper off every word but the back's notes, the terminals turned black,
+and the back became an installer's sheet. The last review found 3 mm of
+height in the lower band; moving 25 parts for it is left for v0.2. The
+tone deck found the first filter too weak: 28 mV on the line, where the
+deck asks for 62 mV. A keep-out I added late held a diode's pad, and the
+route left 1 net open (M137). The router could not reach the relay's NO
+contact past that keep-out; that link is drawn by hand. My first schematic
+layout sorted nets by a key with ties, so 2 generations drew 2 sheets; the
+key is complete now. The back's keep-outs ban vias through every layer,
+and I checked them for pads on the back only: 4 routes left the tamper
+line open or a ground pad on an island (M138). The router twice walled a
+pin in: CC1 is drawn by hand, and a ground via beside 4 pads is placed
+before the route.
+
+Evidence: `workcenter gates examples/fire-alarm-communicator/v0.1` GREEN
+with 7 warnings (the terminal blocks' and the USB shell's silkscreen at the
+edge), 8 decks and 573 corner runs; `make -C firmware test` passing;
+`render --strict` naming no part without a body.
+
+## 2026-11-11 — Rosetta v0.2: the controller as a controller's own board
+
+The owner sent a picture of an Xbox 360 controller's main board and asked for that: the
+joysticks, the Hall-effect sensors and the Bluetooth module on a curved board. v0.1 had carried
+modules on cables. v0.2 has the thumbsticks soldered on, linear Hall sensors under the triggers,
+right-angle bumpers on the shoulder horns, rumble motors at the grips and both USB-C ports in a
+tab at the bottom. KiCad has no thumbstick footprint, so I read ALPS's mounting-hole drawing for
+the RKJXV122400R and wrote one from it; Hall-effect sticks are made to drop into those holes. A
+render before the route showed a back paddle off the board, which no check had seen (M135). On 4
+layers every route left 2 to 6 of the RP2040's links open, and I chased them by hand for 4 routes
+before I gave the board 6 layers and narrower supply tracks (M136). Then 1 link was left, and 1
+hand route closed it. The owner also started the other example boards in other sessions.
+
+Evidence: `workcenter gates examples/universal-controller/v0.2` GREEN with 6 warnings
+(silkscreen at the edge); `render --strict` naming no part without a body.
+
+## 2026-11-11 — A second example project: a mouse worn as a ring
+
+The owner asked for an example of what people can make with the
+workcenter: a compact board that looks great, made with a loop that keeps
+iterating, and a ring that works as a mouse. I first drew the face of a
+signet ring, then a flat ring-shaped board; the owner stopped both. The
+ring is worn, and its circuit lies on small boards on the surface of the
+cylinder. Signet is 6 tiles on a hexagonal prism round the index finger,
+each soldered to the next by 8 plated edge pads, kept as version folders
+the way Last Hit keeps its prototypes. The loop made 4 versions. v0.2 made
+every face black and drew solder in the joints and a foil cell. v0.3 moved
+the light out from under the thumb and guarded the charging pads. v0.4
+closed the ring: a hexagon whose faces all touch the finger closes only
+when its alternate faces add up equally, and the radio's 2 joints had
+stood 1.3 mm open since v0.1. The renders showed it all along; I had read
+the gap as the solder's shape. The assembly's heights were wrong too, by
+0.4 mm, because I had fixed a picture by eye instead of measuring 1 body.
+Every render had also drawn the black boards green: kicad-cli draws its
+own colours unless asked for the board's, and the workcenter now asks.
+P34 asks for a new product's form before its first design file.
+
+Evidence: every tile of `examples/ring-mouse/v0.4` GREEN (the radio with
+2 legend warnings, the power tile with 1); 52 corner runs on the gauge's
+deck; `make -C firmware test`; `ring.py` refuses a ring whose neighbours
+miss their corner; M129 to M134.
 
 ## 2026-11-11 — An example project: a controller that speaks to 5 consoles
 
@@ -89,6 +558,36 @@ past), 6 decks and 370 corner runs; `make -C firmware test` passing;
 `render --strict` naming no part without a body; in the Docker image,
 `tests/` 524 passed, 1 failed (`test_simgate`'s bundle test expects ngspice
 42's error lines and the image has ngspice 44), 3 skipped.
+
+## 2026-11-11 — The 10 chip gates run, and the processor is not GREEN yet
+
+The owner asked for chips, down to the mask layout. The 10 gates now run
+on the chip branch: LINT, SIM, SYNTH, LAYOUT, STA, GLSIM, DRC, ANTENNA,
+LVS and EXPORT. 2 helpers built the last parts side by side. 1 rebuilt
+the 6 gates that build and judge the layout, and made each judge prove
+itself on a real report of its engine. Those reports showed 6 ways an
+engine lets a fault read as none, and each is a row of the landmine map
+now. The
+other helper built 9 fixture chips: a counter that passes, 7 counters
+with 1 fault each, and an 8-bit processor of 770 cells. The counter goes
+from RTL to a layout in 60 s, and EXPORT hands out the layout whose hash
+the gates judged. The processor does not pass. Its layout is built, and
+then STA fails at 13 of 15 corners: signals change more slowly than the
+cell library allows. The gate is right, and the build is short: it
+repairs no slew. A test holds exactly that fault, and it fails on the day the
+processor is GREEN. The 2 helpers finished at the same time, so the
+fixtures' tests held lines of the old gates. A third helper captured the
+lines again, and a fourth, who had not written them, ran every fixture
+itself and found each held line whole in its own runs. I made 2 mistakes
+on the way. A helper's edit lost a space, and I wrote a cause for it
+into 3 briefs that a test of mine later did not show (M158). And a list
+of commands went on after its failed command, because `set -e` stops
+nothing in this session's shell (M159).
+
+Evidence: `tests/test_chips.py`, 14 passed and 1 expected failure in
+897 s, and again in 930 s by the checker; `tests/test_chipflow.py`,
+`tests/test_chipfront.py` and `tests/test_chipback.py`, 114 tests;
+`make verify` GREEN on the pushed tree.
 
 ## 2026-11-11 — The front page shows a board
 

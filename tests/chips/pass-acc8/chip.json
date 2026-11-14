@@ -1,0 +1,49 @@
+{
+  "top": "acc8",
+  "pdk": {
+    "name": "sky130A",
+    "library": "sky130_fd_sc_hd",
+    "version": "1.0.470-0-g6d4d117",
+    "source": "`workcenter doctor` on 2026-11-11, its line `pdk sky130A`"
+  },
+  "corners": {
+    "temperature": {
+      "values": [0, 70],
+      "source": "the fixture's premise: the commercial range, 0 to 70 C"
+    },
+    "supply": {
+      "nominal": 1.8,
+      "tolerance": 0.05,
+      "source": "the fixture's premise: the library's 1.8 V supply within 5 %"
+    }
+  },
+  "limits": {
+    "utilization": {
+      "max": 0.6,
+      "source": "pdks/sky130A.json, floorplan.placement_density: the build spreads the cells to 0.6 of the core"
+    },
+    "clock_skew_ns": {
+      "max": 1.0,
+      "source": "the fixture's premise: a skew of 1 ns at most, a fortieth of the 40 ns clock period"
+    }
+  },
+  "benches": {
+    "tb_random": {
+      "rtl_only": "it drives acc8_core alone, and the routed netlist of acc8 holds no module of that name"
+    }
+  },
+  "answers": {
+    "flops_without_reset": [
+      {
+        "match": "rom_addr[6]",
+        "why": "bit 6 of the program counter has no fixed reset value: while rst is high it takes boot[0], the pin that picks the slot the program starts in",
+        "evidence": "tb_mul and tb_crc start in slots 1 and 3, and x_outputs is 0 in both"
+      },
+      {
+        "match": "rom_addr[7]",
+        "why": "bit 7 of the program counter has no fixed reset value: while rst is high it takes boot[1], the pin that picks the slot the program starts in",
+        "evidence": "tb_gcd and tb_crc start in slots 2 and 3, and x_outputs is 0 in both"
+      }
+    ]
+  }
+}
