@@ -55,10 +55,14 @@ css=$(cksum <"$here/site.css" | cut -d ' ' -f 1)
 js=$(cksum <"$here/site.js" | cut -d ' ' -f 1)
 fx=$(cksum <"$here/effects.js" | cut -d ' ' -f 1)
 ex=$(cksum <"$here/example.js" | cut -d ' ' -f 1)
+# X and Discord keep a shared link's picture by its address, for days: the Open Graph image is named
+# with its checksum too, so a new picture is fetched anew.
+og=$(cksum <"$here/og.png" | cut -d ' ' -f 1)
 # An example's page names them from its folder, as ../site.css.
 up='\(\(\.\./\)*\)'
 version="s|href=\"${up}site.css\"|href=\"\1site.css?v=$css\"|; s|src=\"${up}site.js\"|src=\"\1site.js?v=$js\"|"
 version="$version; s|src=\"${up}effects.js\"|src=\"\1effects.js?v=$fx\"|; s|src=\"${up}example.js\"|src=\"\1example.js?v=$ex\"|"
+version="$version; s|/og.png\"|/og.png?v=$og\"|g"
 
 # Each example's page and the files it shows, as site/examples.py writes them.
 for folder in "$here"/examples/*/; do

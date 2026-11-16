@@ -449,7 +449,15 @@ def test_the_site_builds_for_an_address_and_without_one(tmp_path):
     assert build(served, "https://example.org/via/").returncode == 0
     page = (served / "index.html").read_text(encoding="utf-8")
     assert '<link rel="canonical" href="https://example.org/via/">' in page
-    assert '<meta property="og:image" content="https://example.org/via/og.png">' in page
+    # X and Discord keep a link's picture by its address: the image is named with its checksum, and X
+    # is given it and its words as well as the Open Graph tags.
+    og = subprocess.run(["cksum"], input=(SITE / "og.png").read_bytes(), capture_output=True, check=True)
+    image = f"https://example.org/via/og.png?v={og.stdout.split()[0].decode()}"
+    assert f'<meta property="og:image" content="{image}">' in page
+    assert f'<meta name="twitter:image" content="{image}">' in page
+    assert '<meta name="twitter:card" content="summary_large_image">' in page
+    alts = re.findall(r'<meta (?:property="og|name="twitter):image:alt" content="([^"]+)">', page)
+    assert len(alts) == 2 and alts[0] == alts[1] and "Herald" in alts[0]
     assert '<base href="https://example.org/via/">' in (served / "404.html").read_text(encoding="utf-8")
     assert (served / "og.png").is_file() and (served / "fonts" / "LICENSE").is_file()
     pages = ["index.html", "404.html", *(str(p.relative_to(SITE)) for p in example_pages())]

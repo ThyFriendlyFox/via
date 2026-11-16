@@ -60,7 +60,7 @@ empty.
 | `og.png` | The Open Graph image, 1280 x 640. Also the image for the repository's social preview. |
 | `media/` | The pictures of the root `README.md`, with the page its first picture is a capture of. `media/README.md` shows each and the command that draws it. The site serves none of them: they show a fixture board, and the site shows Herald. |
 | `fonts/` | Inter, the latin file, with its license. |
-| `build.sh` | Makes the folder a host serves. It names `site.css`, `site.js` and `effects.js` with their checksum (`site.css?v=...`): the custom domain's cache keeps them 4 hours and asks again for each page, so a page and its stylesheet always come from 1 build. |
+| `build.sh` | Makes the folder a host serves. It names `site.css`, `site.js` and `effects.js` with their checksum (`site.css?v=...`): the custom domain's cache keeps them 4 hours and asks again for each page, so a page and its stylesheet always come from 1 build. It names `og.png` with its checksum too: X and Discord keep a shared link's picture by its address for days, so a new picture is fetched anew. |
 | `vercel.json` | The Vercel project's build command, output folder and headers. |
 
 ## The runs on the pages
