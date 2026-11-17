@@ -5,6 +5,7 @@
 # `fab = "pcbway-standard"`, or for one run with `workcenter drc --fab pcbway-standard`, the rules with no
 # layer and no condition raise the board's own minimums, and only the others are copied into the
 # project (rules/README.md, M62). rules/README.md lists what PCBWay publishes that this file leaves out.
+# second_reader: 2026-11-17, every number compared; the page fetched again had SHA256 d6623fcf6223e137831cd6b9855d16d7e1e18faa6c9d8fb44fe77ffafe6b6a88
 
 # "Min Trace 0.1mm/4mil"
 (rule "pcbway-standard: trace 0.1 mm"
@@ -27,7 +28,7 @@
 	(constraint annular_width (min 0.15mm))
 	(severity error))
 
-# "Minimum Character Width(Legend) 0.15mm" and "Minimum Character Height (Legend) 0.8mm"
+# "Minimum Character Width(Legend) 0.15mm" and "Minimum Character Height (Legend) - 0.8mm"
 (rule "pcbway-standard: legend 0.15 mm stroke, 0.8 mm high"
 	(condition "A.Layer == 'F.Silkscreen' || A.Layer == 'B.Silkscreen'")
 	(constraint text_thickness (min 0.15mm))

@@ -29,12 +29,16 @@ the width and vias for its current, which `workcenter drc` judges when a project
 Each fab's page was fetched under the workcenter's own client name, `ee-workcenter/1.0`; each file
 names the page's SHA256 as fetched.
 
-| File | Fab and service | Read |
-|---|---|---|
-| `sierra-circuits-web.kicad_dru` | Sierra Circuits (Protoexpress), Web PCB: the online order, "Standard PCBs", IPC-6012 Class 2 | 2026-10-29 |
-| `jlcpcb-2layer.kicad_dru` | JLCPCB, 2-layer FR-4, 1 oz copper | 2026-11-17 |
-| `pcbway-standard.kicad_dru` | PCBWay, standard rigid PCB | 2026-11-17 |
-| `oshpark-2layer.kicad_dru` | OSH Park, 2 layer prototype service | 2026-11-17 |
+| File | Fab and service | Read | Second reader |
+|---|---|---|---|
+| `sierra-circuits-web.kicad_dru` | Sierra Circuits (Protoexpress), Web PCB: the online order, "Standard PCBs", IPC-6012 Class 2 | 2026-10-29 | no |
+| `jlcpcb-2layer.kicad_dru` | JLCPCB, 2-layer FR-4, 1 oz copper | 2026-11-17 | 2026-11-17 |
+| `pcbway-standard.kicad_dru` | PCBWay, standard rigid PCB | 2026-11-17 | 2026-11-17 |
+| `oshpark-2layer.kicad_dru` | OSH Park, 2 layer prototype service | 2026-11-17 | 2026-11-17 |
+
+A second reader fetches the page again under the workcenter's own client name, compares every number
+of the file with it, and writes `# second_reader: <date>, every number compared; the page fetched again
+had SHA256 <hash>` under the file's header. A file with a number not compared gets no such line.
 
 ## JLCPCB, 2-layer
 
