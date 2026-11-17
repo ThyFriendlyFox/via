@@ -1964,7 +1964,7 @@ KIKIT_PYTHON = os.environ.get("KIKIT_PYTHON")
 
 def assembly_jobs(project: Project, fab: Path, facts: dict) -> list[tuple[str, list, Path]]:
     """kicad-cli 10's placement file (DNP parts left out), an assembly page per side that holds a part
-    (the back one mirrored, as the assembler sees it), and IPC-2581."""
+    (DNP parts hidden, the back one mirrored, as the assembler sees it), and IPC-2581."""
     pcb = project.pcb
     jobs: list[tuple[str, list, Path]] = [
         (
@@ -1983,6 +1983,7 @@ def assembly_jobs(project: Project, fab: Path, facts: dict) -> list[tuple[str, l
                     [KICAD_CLI, "pcb", "export", "pdf", "--mode-single", "--layers", f"{layer},Edge.Cuts"]
                     + [
                         "--sketch-pads-on-fab-layers",
+                        "--hide-DNP-footprints-on-fab-layers",
                         "--include-border-title",
                         *extra,
                         "--output",
