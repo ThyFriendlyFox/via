@@ -226,7 +226,10 @@ to put it right now:
     - `#N <column>: moved from <column>`, `added and placed`, `already
       there`: the card stands right now. Nothing to do.
     - `#N not moved: <reason>`: the body names no column (no line, 2 lines,
-      another word). Fix the card's line with step 6; its edit moves it.
+      another word, an HTML comment that does not close). Fix the card's
+      body with step 6; its edit moves it.
+    - `#N not moved: it is not from the owner, a member or a collaborator`:
+      a stranger's issue. It is never put on the board. Nothing to do.
     - `#N FAIL: <what>`: that card's write failed; the others were written.
       Run step 11 again. The same line twice: read what it names
       (`tests/board/README.md`, "Reading a run of every card").
