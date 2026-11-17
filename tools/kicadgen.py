@@ -1102,6 +1102,9 @@ class Design:
     # Rounded board corners: one radius for all four (0 a rectangle, half the short side a stadium),
     # or four, (top-left, top-right, bottom-right, bottom-left), to round one end and square the other.
     corner_radius: float | tuple[float, float, float, float] = 0.0
+    # Rectangles cut through the board, (x1, y1, x2, y2): a slot that lengthens the way along the face
+    # between 2 nets (tools/creepage.py). The router does not see them: place no track across one.
+    cutouts: list[tuple[float, float, float, float]] = field(default_factory=list)
     thickness: float = 1.6  # the finished board, mm; any other value writes a stackup on two layers too
     # The solder mask's colour, the legend's colour and the pads' finish: a colour is one of COLOURS or
     # "#RRGGBBAA", a finish one of FINISHES. Each goes into the board's stackup, where the 3D renders
@@ -3295,6 +3298,18 @@ class Design:
             if part.on_board and part.pcb_at:
                 pcb.append(self._footprint_instance(part, net_ids))
         pcb.extend(self._edge_cuts(ns))
+        for i, (cx1, cy1, cx2, cy2) in enumerate(self.cutouts):
+            pcb.append(
+                [
+                    "gr_rect",
+                    ["start", fmt(cx1), fmt(cy1)],
+                    ["end", fmt(cx2), fmt(cy2)],
+                    ["stroke", ["width", "0.1"], ["type", "default"]],
+                    ["fill", "no"],
+                    ["layer", Q("Edge.Cuts")],
+                    ["uuid", uid(ns, f"edge/cutout/{i}")],
+                ]
+            )
         if self.title:
             pcb.append(
                 [
