@@ -1,0 +1,12 @@
+{
+  "z_f0_ohm": {
+    "value": 376.730313412,
+    "name": "characteristic impedance of vacuum",
+    "source": "NIST, 2022 CODATA recommended values, physics.nist.gov/cgi-bin/cuu/Value?z0, read 2026-11-17"
+  },
+  "c0_m_per_s": {
+    "value": 299792458,
+    "name": "speed of light in vacuum",
+    "source": "NIST, 2022 CODATA recommended values, physics.nist.gov/cgi-bin/cuu/Value?c, read 2026-11-17"
+  }
+}
