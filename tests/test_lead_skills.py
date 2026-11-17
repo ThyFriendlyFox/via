@@ -96,14 +96,38 @@ def test_the_card_skill_keeps_the_owners_decision():
     prefix = re.search(r'^PREFIX = "([^"]+)"', board, re.M).group(1)
     words = re.findall(r'"([^"]+)"', re.search(r"^WORDS = \(([^)]*)\)", board, re.M).group(1))
     assert prefix == "Work card:" and words == ["Todo", "In progress", "Done"]
-    assert f'--title "{prefix} ' in text
+    # The issue's title is the one `workcenter now --title` prints, `Work card: <the work>`.
+    assert f"`{prefix} <the work>`" in text
+    assert '-t "$(workcenter now . <the same options> --title)"' in text
     assert [w for w in words if f"`**Status:** {w}`" not in text] == []
-    assert re.findall(r"--state (?:working|blocked|landed|dropped)\b", text) == []
+    assert re.findall(r"--(?:state|status) (?:working|blocked|landed|dropped)\b", text) == []
     given = [a or b for a, b in re.findall(r'--(?:add-|remove-)?label (?:"([^"]+)"|([a-z]+))', text)]
     assert given and sorted(set(given) - CARD_LABELS) == []
     assert "gh label create" not in text
     for name in ("BOARD_TOKEN", "BOARD_URL", ".github/workflows/board.yml", "tests/board/README.md"):
         assert name in text, name
+
+
+@pytest.mark.parametrize("name", SKILLS)
+def test_every_status_a_skill_gives_workcenter_now_is_1_it_takes(name, tmp_path):
+    """Each `--status` value a skill writes is run through `workcenter now` on a scratch tree: it prints
+    a card, with the board's word on its **Status:** line. The `now` skill writes all 3 words."""
+    text = (ROOT / ".claude" / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
+    # gh's own `--state open` is gh's and no flag of `workcenter now`; `--status` is the command's.
+    lines = [span for span in code_spans(text) if "--status" in span and not span.startswith("gh ")]
+    states = {a or b for line in lines for a, b in re.findall(r'--status (?:"([^"]+)"|([A-Za-z]+))', line)}
+    if name == "now":
+        assert states == {"Todo", "In progress", "Done"}
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    identity = ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false"]
+    for args in (["init", "-q", "-b", "wip/x"], ["commit", "-q", "--allow-empty", "-m", "Start"]):
+        subprocess.run(["git", "-C", str(tree), *identity, *args], check=True, capture_output=True)
+    for state in sorted(states):
+        argv = [sys.executable, str(CLI), "now", str(tree), "--item", "A card", "--status", state]
+        proc = subprocess.run(argv, capture_output=True, text=True)
+        assert proc.returncode == 0, (name, state, proc.stderr)
+        assert f"**Status:** {state}" in proc.stdout.splitlines(), (name, state)
 
 
 def test_the_pattern_finds_what_a_skill_names_and_passes_over_placeholders():

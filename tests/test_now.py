@@ -140,6 +140,18 @@ def test_the_board_reads_the_status_of_the_card_the_command_prints(tmp_path):
     assert lower.stdout.startswith("**Status:** In progress\n")
 
 
+def test_a_card_that_waits_keeps_the_boards_word_for_each_status(tmp_path):
+    """A wait is said under Blocked on alone: with `--blocked`, the board still reads each of its 3
+    words from the card, and the card names no other state word."""
+    tree = make_tree(tmp_path)
+    assert list(board.WORDS) == ["Todo", "In progress", "Done"]
+    for word in board.WORDS:
+        proc = now(str(tree), "--item", "7", "--status", word, "--blocked", "the owner")
+        assert proc.returncode == 0, proc.stderr
+        assert board.status_of(proc.stdout) == (word, ""), word
+        assert "## Blocked on\nthe owner\n" in proc.stdout
+
+
 def test_work_with_no_item_no_record_and_a_wait(tmp_path):
     """1 line of work is the title as given; no record is `none yet`; nothing doing or left is `nothing`.
     Work that waits on someone stays In progress and says so in its Blocked on line."""
