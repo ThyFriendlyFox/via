@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # verify/verify.sh — one command answers "is this repo healthy".
-# Runs the same steps locally and in CI, in this order:
-#   1 lint  2 doctor (toolchain present)  3 tests on fixture boards
-#   4 kit checks (no placeholders, every skill has frontmatter, manifest copied)
-# A step that cannot run fails loudly; nothing passes silently.
+# Runs the same steps locally and in CI, in this order, the steps with no engine first:
+#   1 lint  2 kit checks (no placeholders, every skill has frontmatter, manifest copied)
+#   3 doctor (toolchain present)  4 tests on fixture boards, in shards side by side
+# A step that cannot run fails loudly; nothing passes silently. The last lines say each step's time.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -20,7 +20,17 @@ PY=python3
 [[ -x "$VENV_PY" ]] && PY="$VENV_PY"
 
 STEP="0/4 start"
-step() { STEP="$*"; printf '\n== %s\n' "$*"; }
+# step "<name>" starts a step and notes the time the one before took; step "" ends the last one.
+current=""
+mark=$SECONDS
+timings=()
+step() {
+  [[ -n "$current" ]] && timings+=("$(printf '%5d s  %s' $((SECONDS - mark)) "$current")")
+  current="$*"
+  mark=$SECONDS
+  [[ -n "$current" ]] && STEP="$current" && printf '\n== %s\n' "$current"
+  return 0
+}
 
 # `verify.sh site` is the fast gate (make verify-site): for a change tools/ci/scope.py calls fast.
 # It starts no engine: the tests marked `engine` are left out, and any other test that starts one
@@ -90,16 +100,22 @@ trap 'python3 tools/now.py record "$?" "$STEP" --head "$GATE_HEAD" --dirty "$GAT
 
 step "1/4 lint"
 shellcheck install.sh verify/verify.sh environment/setup.sh site/build.sh ee-agent-kit/lead/gate-and-push.sh
-"$PY" -m ruff check tools tests ee-agent-kit/lead
-"$PY" -m ruff format --check tools tests ee-agent-kit/lead
+"$PY" -m ruff check tools tests verify ee-agent-kit/lead
+"$PY" -m ruff format --check tools tests verify ee-agent-kit/lead
 
-step "2/4 doctor"
-python3 tools/workcenter doctor
-
-step "3/4 tests"
-"$PY" -m pytest -q tests
-
-step "4/4 kit checks"
+step "2/4 kit checks"
 kit_checks
 
+step "3/4 doctor"
+python3 tools/workcenter doctor
+
+step "4/4 tests"
+# 1 pytest per processor, files split by verify/shards.csv; red when a shard fails, ends with no
+# summary line, or the ids run differ from the ids 1 process collects.
+"$PY" verify/testshards.py run --table verify/shards.csv --python "$PY"
+
+step ""
+printf '\n== time\n'
+printf '%s\n' "${timings[@]}"
+printf '%5d s  in all\n' "$SECONDS"
 printf '\nVERIFY GREEN\n'
