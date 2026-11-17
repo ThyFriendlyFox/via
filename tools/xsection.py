@@ -284,6 +284,14 @@ def answer(req: dict) -> dict:
     sec = Section(
         [tuple(x) for x in s["slabs"]], s["top_plane"], s["y"], s["t"], s["widths"], s.get("gap", 0.0)
     )
+    bad = [f"slab {i + 1} is {h:g} mm thick" for i, (h, _) in enumerate(sec.slabs) if not h > 0]
+    bad += [f"slab {i + 1} has an er of {er:g}" for i, (_, er) in enumerate(sec.slabs) if not er > 0]
+    bad += [f"the strip is {sec.t:g} mm thick"] if not sec.t > 0 else []
+    bad += [f"a strip is {w:g} mm wide" for w in sec.widths if not w > 0]
+    bad += [f"the gap is {sec.gap:g} mm" for _ in [1] if len(sec.widths) == 2 and not sec.gap > 0]
+    if not sec.slabs or bad:
+        # A size of 0 makes the grid's finest step 0, and the grid then has no end.
+        return {"error": f"{'; '.join(bad) or 'no slab'}: every size must be above 0"}
     out: dict = {}
     try:
         w = width_for(sec, req["target"])

@@ -35,6 +35,19 @@
       "doc": "spraar7j",
       "where": "Table A-2, row 'Skew within any USB3/SATA/PCIe/HDMI differential pair', 5 mil maximum, page 16"
     },
+    "vias": {
+      "max": 2,
+      "unit": "vias on each net",
+      "doc": "spraar7j",
+      "where": "Table A-2, row 'Number of vias allowed on any USB3 differential trace (Total)', 2 maximum, page 16"
+    },
+    "stubs": {
+      "max": 0,
+      "unit": "stubs",
+      "doc": "spraar7j",
+      "where": "Table A-2, row 'Number of stubs allowed on any differential pair trace (Total)', 0 maximum, page 16; sections 3.5 (page 10) and 3.6 (page 11) name a through pin and a via's barrel past the signal's layer as stubs",
+      "not_judged": "the stubs, 0 allowed, are not judged: the command does not trace a branch, a test point, or the barrel of a via or a through pin past the layer the signal leaves on"
+    },
     "plane": {
       "doc": "spraar7j",
       "where": "section 2.4 'High-Speed Signal Reference Planes', page 6: over a solid reference plane, not across a split or a void"
