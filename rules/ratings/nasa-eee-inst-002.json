@@ -84,6 +84,20 @@
       "where": "section S1, table 4, page 13 of 13"
     },
     {
+      "id": "fuse.cartridge.current",
+      "stress": "fuse.current",
+      "kinds": ["fuse.cartridge"],
+      "by_rating": [
+        {"rated": [2, 2.5, 3, 4, 5, 7, 10, 15], "max": 0.50, "above": {"temperature": "case", "celsius": 25, "falls_to": 0.0, "at": 275}},
+        {"rated": [1, 1.5], "max": 0.45, "above": {"temperature": "case", "celsius": 25, "falls_to": 0.0, "at": 250}},
+        {"rated": [0.5, 0.75], "max": 0.40, "above": {"temperature": "case", "celsius": 25, "falls_to": 0.0, "at": 225}},
+        {"rated": [0.375], "max": 0.35, "above": {"temperature": "case", "celsius": 25, "falls_to": 0.0, "at": 200}},
+        {"rated": [0.25], "max": 0.30, "above": {"temperature": "case", "celsius": 25, "falls_to": 0.0, "at": 175}},
+        {"rated": [0.125], "max": 0.25, "above": {"temperature": "case", "celsius": 25, "falls_to": 0.0, "at": 150}}
+      ],
+      "where": "section F3, table 4, page 6 of 7, its column Temperature Derating Factor: 0.2 % of the rating less for each C of the fuse body above 25 C"
+    },
+    {
       "id": "output.current.linear",
       "stress": "rail.load",
       "kinds": ["ic.linear", "ic.regulator"],
