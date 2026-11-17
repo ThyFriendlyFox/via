@@ -1237,3 +1237,9 @@ What happened: On `wip/now` the card carried a `State` section with 4 words of i
 Cost: 1 rewrite of the card, the skill, the template and 18 tests.
 Root cause: 2 tools that share 1 line were built on 2 branches, and neither held the other's reader. A test now feeds the card `workcenter now` prints into `tools/board.py`'s own reader.
 Process: P14
+
+## M205 — 2026-11-17 — A production address left to the host's choice
+What happened: I added `via.computer` to the Vercel project and built production 2 times: once as a redeploy, once from `main` without the cache. Both builds printed `site/build.sh: the site for https://via.reagent-systems.com is in dist`. `VERCEL_PROJECT_PRODUCTION_URL` kept the older domain, so the canonical link did not move. `site/vercel.json` now names `https://via.computer`.
+Cost: 2 production builds that changed nothing.
+Root cause: I expected the host to hand the build the new domain, and I did not read which domain it hands over before the builds.
+Process: P32

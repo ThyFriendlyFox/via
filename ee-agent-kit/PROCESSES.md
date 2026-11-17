@@ -1223,6 +1223,9 @@ Pages), sending it a first deployment, or changing a file a site serves.
 5. A stylesheet or a script the page names gets a new address when its
    content changes: `site/build.sh` names each with its checksum. A cache
    that keeps it longer than the page then fetches the new one (M157).
+6. The site's address is written in `site/vercel.json`. A new production
+   domain changes that file. Vercel's `VERCEL_PROJECT_PRODUCTION_URL` kept
+   the older domain after a new one was added (M205).
 
 Done when: the address answers with the page of the commit the document
 names, and the document names the target the host reports.

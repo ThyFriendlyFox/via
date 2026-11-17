@@ -406,16 +406,18 @@ def example_pages() -> list[Path]:
 
 
 # The 1 address a page names that the host answers and no file of the repository holds: Vercel's Web
-# Analytics script, served by the owner's Vercel project (pull request 62). Another static host
-# answers it with a 404, and the page works without it.
+# Analytics script, served by the owner's Vercel project (pull request 62) on each deployment. Neither
+# the tree nor the build holds the file; another static host answers it with a 404, and the page works
+# without it.
 HOSTED = "/_vercel/insights/script.js"
+SERVED_BY_HOST = {HOSTED}
 
 
 def beside_page(page: Path, link: str) -> bool:
     """Whether a link read from the page's own folder names a file: `agents.svg#cursor` is
-    agents.svg, `site.css?v=1` is site.css, and a folder is its index.html. The address the host
-    serves (HOSTED) is no file and counts as found."""
-    if link == HOSTED:
+    agents.svg, `site.css?v=1` is site.css, and a folder is its index.html. A path the host serves
+    (`SERVED_BY_HOST`) names a file too."""
+    if link in SERVED_BY_HOST:
         return True
     target = page.parent / link.split("#")[0].split("?")[0]
     return target.is_file() or (target / "index.html").is_file()
