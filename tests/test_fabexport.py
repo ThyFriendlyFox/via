@@ -70,8 +70,9 @@ def test_export_writes_a_placement_file_ipc2581_and_an_assembly_drawing_that_agr
     conductors = {e.get("name") for e in root.iter() if e.get("layerFunction") == "CONDUCTOR"}
     assert conductors == {"F.Cu", "B.Cu"}
     assert {e.get("net") for e in root.iter() if e.get("net") is not None} == {"VCC", "/OUT", "GND"}
-    named = set(fabfiles.PDF_REF.findall((fab / "assembly-top.pdf").read_bytes()))
-    assert named == {b"C1", b"J1", b"R1", b"R2"}
+    page = (fab / "assembly-top.pdf").read_bytes()
+    assert set(fabfiles.PDF_REF.findall(page)) == {b"C1", b"J1", b"R1", b"R2"}
+    assert {"C1", "J1", "R1", "R2"} <= set(fabfiles.drawn_words(page))
     # no part on the back, so no page for it
     assert not (fab / "assembly-bottom.pdf").exists()
     assert result["details"]["failures"] == []
@@ -100,6 +101,25 @@ def test_a_placement_file_that_disagrees_with_the_board_fails_export_on_1_line(t
     assert result["details"]["failures"] == [
         "placement.csv: R2 is not in the file; the board places it on the top"
     ]
+
+
+@needs_kicad
+def test_a_part_not_fitted_is_in_no_placement_file_and_not_drawn_on_the_assembly_page(tmp_path):
+    """R2 is set DNP in the copy's board: the placement file leaves it out and the top page hides it.
+    Without --hide-DNP-footprints-on-fab-layers kicad-cli draws its designator (a run on 2026-11-17)."""
+    folder = project(tmp_path)
+    pcb = folder / "divider.kicad_pcb"
+    head, tail = pcb.read_text(encoding="utf-8").split('(property "Reference" "R2"', 1)
+    pcb.write_text(
+        head + '(property "Reference" "R2"' + tail.replace("(attr smd)", "(attr smd dnp)", 1), "utf-8"
+    )
+    code, result = export(folder, tmp_path / "out")
+    assert code == 0 and result["status"] == "pass", result
+    fab = tmp_path / "out" / "fab"
+    with (fab / "placement.csv").open(encoding="utf-8") as f:
+        assert {row["Ref"] for row in csv.DictReader(f)} == {"C1", "J1", "R1"}
+    drawn = set(fabfiles.drawn_words((fab / "assembly-top.pdf").read_bytes()))
+    assert {"C1", "J1", "R1"} <= drawn and "R2" not in drawn
 
 
 @needs_kicad
