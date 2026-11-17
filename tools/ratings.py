@@ -863,6 +863,8 @@ class Project:
     accepted: dict[tuple[str, str], str | list[tuple[str, str]]]
     # `C7`: the greatest voltage across a part of 2 pins, where the spans of its 2 nets cannot give it
     volts: dict[str, float] = field(default_factory=dict)
+    # `U1`: the heat a part gives off, which `workcenter copper` spreads through the board
+    watts: dict[str, float] = field(default_factory=dict)
 
 
 def read_project(path: Path, net: Netlist) -> Project:
@@ -888,16 +890,21 @@ def read_project(path: Path, net: Netlist) -> Project:
         ambient = _number(f"{name}: ambient: max", entry["max"])
     amps: dict[str, float] = {}
     volts: dict[str, float] = {}
+    watts: dict[str, float] = {}
     for key, raw in _object(f"{name}: parts", data.get("parts", {}), "part or pin").items():
-        entry = _keys(f"{name}: parts: {key}", raw, ("source",), ("amps", "volts"))
+        entry = _keys(f"{name}: parts: {key}", raw, ("source",), ("amps", "volts", "watts"))
         _text(f"{name}: parts: {key}: source", entry["source"])
         ref, _, pin = key.partition(".")
         if ref not in net.parts or (pin and pin not in net.parts[ref].pins):
             raise Refusal(
                 f"{name}: parts: {key}: the schematic has no such part" + (" and pin" if pin else "")
             )
-        if "amps" not in entry and "volts" not in entry:
-            raise Refusal(f"{name}: parts: {key}: `amps` or `volts` is asked")
+        if not any(k in entry for k in ("amps", "volts", "watts")):
+            raise Refusal(f"{name}: parts: {key}: `amps`, `volts` or `watts` is asked")
+        if "watts" in entry:
+            if pin:
+                raise Refusal(f"{name}: parts: {key}: watts: the heat of a whole part is asked, `{ref}`")
+            watts[key] = _number(f"{name}: parts: {key}: watts", entry["watts"], 0)
         if "amps" in entry:
             amps[key] = _number(f"{name}: parts: {key}: amps", entry["amps"], 0)
         if "volts" in entry:
@@ -928,7 +935,7 @@ def read_project(path: Path, net: Netlist) -> Project:
             raise Refusal(f"{where}: entry {first[(*key, piece)]} accepts the same part, rule and line")
         first[(*key, piece)] = i
         accepted.setdefault(key, []).append((piece, words))
-    return Project(_text(f"{name}: pack", data["pack"]), ambient, nets, amps, accepted, volts)
+    return Project(_text(f"{name}: pack", data["pack"]), ambient, nets, amps, accepted, volts, watts)
 
 
 # ---------------------------------------------------------------- the facts of a part

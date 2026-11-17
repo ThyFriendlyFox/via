@@ -4437,6 +4437,33 @@ def cmd_inspect(args) -> int:
     return proc.returncode if proc.returncode in (EXIT_PASS, EXIT_FAIL, EXIT_SKIP) else EXIT_FAIL
 
 
+COPPER_SCRIPT = SRC_DIR / "tools" / "copper.py"
+
+
+def cmd_copper(args) -> int:
+    """The drop, the current density and the temperature of a board: tools/copper.py under the venv's
+    Python, which sees numpy, pcbnew and Pillow; it writes only into <out>/copper/."""
+    project = find_project(args.project)
+    if project.pcb is None:
+        raise SystemExit(f"copper: {project.dir} has no .kicad_pcb")
+    out = (Path(args.out).resolve() if args.out else project.dir / "build") / "copper"
+    spec = {
+        "board": str(project.pcb),
+        "out": str(out),
+        "strict": args.strict,
+        "json": getattr(args, "json", False),
+    }
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    proc = subprocess.run(
+        [venv_python(), "-s", str(COPPER_SCRIPT), json.dumps(spec)], capture_output=True, text=True, env=env
+    )
+    sys.stdout.write(proc.stdout)
+    sys.stderr.write("".join(ln for ln in proc.stderr.splitlines(True) if not KICAD_NOISE.search(ln)))
+    if "No module named 'numpy'" in proc.stderr:
+        return EXIT_SKIP
+    return proc.returncode if proc.returncode in (EXIT_PASS, EXIT_FAIL, EXIT_SKIP) else EXIT_FAIL
+
+
 USER_SETTINGS = Path.home() / ".claude" / "settings.json"
 
 
@@ -4992,6 +5019,14 @@ def main(argv: list[str] | None = None) -> int:
     q.add_argument(
         "--new", metavar="BOARD", help="the new board: says which of those nets it no longer connects"
     )
+
+    p = add_project_cmd(
+        "copper",
+        "each power net's voltage drop and current density on the board's copper, and the board's "
+        "temperature from its parts' heat, against the limits of copper.json; currents and heat from "
+        "ratings.json; writes report.md, report.json and the pictures into <out>/copper/",
+    )
+    p.set_defaults(run=cmd_copper)
 
     doctools().register(sub, sys.modules[__name__])
     guide().register(sub, sys.modules[__name__])

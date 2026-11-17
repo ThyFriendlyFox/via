@@ -2926,7 +2926,7 @@ STATED = {
         ),
         (
             changed(STATED, "parts", "C1", to={"source": "s"}),
-            "ratings.json: parts: C1: `amps` or `volts` is asked",
+            "ratings.json: parts: C1: `amps`, `volts` or `watts` is asked",
         ),
         (
             changed(STATED, "parts", "R1.1", to={"volts": 3, "source": "s"}),
