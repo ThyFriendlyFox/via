@@ -29,6 +29,8 @@ behave in a known way.
 | `fail-sim-bias` | SIM fail on 1 line, the `vpp` bound, which names C2 | The schematic of `fail-ratings-bias` with C2 a 10 uF 10 V Samsung CL10A106KP8NNN, and L1 Coilcraft's XAL4020-222MEC. `sim/buck.cir` is the regulator's power stage at 1.5 MHz into the 1.1 A load. With ideal parts the ripple is 3.04 mV, under its 5 mV bound. The gate runs C2 at its working voltage on Samsung's DC bias and temperature data and L1 at its current on Coilcraft's curve, each from its own `library/facts/` and with its row in `library/sources.csv`: 6.755 mV, and C2 alone on its data misses the bound. |
 | `pass-fields-microstrip` | `workcenter fields --strict` prints `FIELDS HELD` | A board file alone, written by hand: 1 track 10 mm long and 0.36 mm wide on F.Cu, over a GND pour on B.Cu, 0.2 mm of dielectric of 4.5 between. `fields.json` holds 3 made-up wide limits for 0.1 to 10 GHz, and says so. openEMS 0.0.35 gave 50.88 ohm (the median over 197 frequencies), 25.57 dB of return loss at 10 GHz and 0.16 dB of insertion loss at 5.59 GHz, on 58968 cells in 8.1 s (3770 steps). Hammerstad and Jensen give 51.34 ohm for this line with copper as a sheet: the run is 0.9% under it, and `tests/test_fields_solver.py` holds it within 3%. With the track's edges on mesh lines the run gave 43.14 ohm, 16% under. |
 | `fail-fields-stub` | `fields` fails on 1 line, `insertion_loss_db` | The same stack-up, the track cut at its middle by an open stub 7 mm long. The stub is a quarter wave between c / (4 x 7 mm x sqrt(4.5)) = 5.05 GHz and c / (4 x 7 mm) = 10.71 GHz, and shorts the line there: openEMS 0.0.35 gave 30.10 dB at 5.81 GHz against a made-up 3 dB, on 111150 cells in 20.4 s; 2 runs, each of 9405 steps, gave it to the last digit. The net branches at (105, 100), so its impedance is not judged. The ports are named by 2 pads, J2 turned 90 degrees. Without them the stub's open end would be a third port, and the command refuses that. |
+| `pass-copper-strip` | `workcenter copper --strict` prints `COPPER HELD` | The board of `copper_strip.py`: J1 feeds 5 V along a 1.5 mm F.Cu track 44 mm to J2, and GND back on B.Cu; R1 (220R) hangs off the supply. `ratings.json` states 1 A at J2 and 0.024 A through R1; `copper.json` names each net's entry on J1 and the fixture's own limits: 50 mV, 50 A/mm2, 105 C. The run: +5V drops 14.64 mV, 1 A in 1.5 mm is 19.05 A/mm2, R1's 0.1267 W puts the board at 60.07 C. |
+| `fail-copper-neck` | `copper` fails on 1 line, `+5V current density` | The same board with the supply 0.3 mm wide for 4 mm in its middle: 1 A in 0.3 mm x 0.035 mm is 95.24 A/mm2, over the 50 the fixture allows, and 104.3 where the wide track's round end meets the neck. The drop (18.51 mV) and the heat (60.23 C) hold. |
 | `library` | No board: the facts of the ratings fixtures' parts | `library/facts/`, found by `workcenter ratings` as a project's own library is: in a folder above the project. The regulator, the 2 buffers, the resistors, the bypass capacitors and the 2 inductors are real parts, each entry read from its maker's datasheet with the URL, the SHA256 and the pages. The 10 uF capacitors and the headers are made up, and their entries say so. `ti-tlv755p.json` is the thermal fixtures' regulator, with its thermal figures; no second reader has read it yet. |
 
 Symbols and footprints are embedded in the files, so no library tables are
@@ -43,6 +45,10 @@ from it, and a test compares. To write them again, and no board with them:
 
 and copy the 2 files in. The boards are not routed and not built: `ratings`
 reads the schematic alone.
+
+The 2 copper fixtures are 1 design, `copper_strip.py`, with the neck planted in 1. Their tracks are
+drawn in the design, not routed; `workcenter design tests/boards/<fixture>/design.py` writes all 3
+KiCad files again, and a test compares them.
 
 `kicad-cli` writes a `<name>.kicad_prl` next to the project when it runs.
 It is a KiCad side file with no design content and is ignored by git.
