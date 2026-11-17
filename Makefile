@@ -2,7 +2,7 @@
 VENV_PY := /opt/workcenters/ee/venv/bin/python
 PY := $(shell test -x $(VENV_PY) && echo $(VENV_PY) || echo python3)
 
-.PHONY: install doctor lint format test verify image
+.PHONY: install doctor lint format test verify image mutate-ratings
 
 install:            ## install or update every engine (root)
 	./install.sh
@@ -23,6 +23,9 @@ test:               ## gate tests on the fixture boards
 
 verify:             ## the full health gate: lint -> doctor -> test -> kit checks
 	verify/verify.sh
+
+mutate-ratings:     ## every change of tests/ratings_mutations.py must fail the ratings tests (minutes; not in verify)
+	PYTHON=$(PY) python3 tools/workcenter mutate . --mutations tests/ratings_mutations.py --jobs 4
 
 image:              ## build the Docker image (needs a Docker daemon)
 	docker build -t ee-workcenter:dev .

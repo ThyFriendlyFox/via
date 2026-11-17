@@ -365,6 +365,36 @@ sound. Check such a line by hand before the design changes:
 - 2 needs on 1 pair of nets take their capacitors in the order of the
   parts' references, each in its own unit.
 
+## Changing the engine
+
+`tools/ratings.py` keeps a mutation list, as a firmware does (PROCESSES.md
+P18): `tests/ratings_mutations.py`, single changes that the ratings tests
+must each fail on. After any change of `tools/ratings.py`:
+
+1. Run `python -m pytest tests/test_ratings_mutations.py -q`. It runs in
+   `make verify`, in about 11 s. A line `the old text stands 0 times`
+   names a mutation whose text the change moved: write its `old` and
+   `new` again from the engine as it is now, in the same commit. A
+   `SyntaxError` names a `new` that no longer compiles: correct it.
+2. Run `make mutate-ratings`. It takes minutes and is not in `make verify`:
+   run it before a commit that changes `tools/ratings.py`, and in a
+   change's review. Each line starts with the mutation's state:
+   - `caught`: a test failed on it. Nothing to do.
+   - `SURVIVED`: no test failed. Write the test that does, in
+     `tests/test_ratings_edges.py`, with the mutation's name in its
+     docstring. Then run `PYTHON=<venv python> python3 tools/workcenter
+     mutate . --mutations tests/ratings_mutations.py --only <NAME>` and see
+     `caught`. A change that no test can catch, since the engine gives the
+     same answer for every input, moves to `EQUIVALENT` with the reason.
+   - `mutate: anchor:` before any run: step 1 was skipped.
+   - `fails before any mutation`: the tests fail on the engine as it is.
+     Make them pass first.
+3. A new branch of the engine gets mutations of its own in the list,
+   named for what they change, and each is caught.
+
+The last line, `mutate: N mutations, N caught, 0 survived, 0 did not
+build`, and exit code 0 are the pass.
+
 ## Done when
 
 `workcenter ratings <project> --strict` exits 0 and prints `RATINGS HELD`,
