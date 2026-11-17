@@ -2503,6 +2503,39 @@ def test_a_pack_is_found_by_its_name_or_by_a_path_from_the_project(tmp_path):
         "ratings.json: pack: `mil-hdbk` is no pack; the workcenter holds "
         "ecss-q-st-30-11c-rev2, nasa-eee-inst-002"
     )
+    # a pack of the workcenter goes by its name alone: a path out of the packs' folder names none
+    assert (PACKS / ".." / "ratings" / "nasa-eee-inst-002.json").is_file()
+    with pytest.raises(ratings.Refusal, match=r"`\.\./ratings/nasa-eee-inst-002` is no pack"):
+        ratings.find_pack("../ratings/nasa-eee-inst-002", tmp_path, PACKS)
+
+
+def test_a_pack_of_the_project_s_own_goes_by_its_path_and_says_whose_it_is(tmp_path):
+    """A copy of the NASA pack cut down to its 2 rules of a rail's load keeps the name `nasa-eee-inst-002`
+    inside. 5.5 V on a 6.3 V ceramic capacitor is 0.87, over NASA's 0.60; the copy has no rule for it
+    and holds it at the part's own rating. The first line and the page name the file that judged."""
+    data = json.loads((PACKS / "nasa-eee-inst-002.json").read_text(encoding="utf-8"))
+    data["rules"] = [rule for rule in data["rules"] if rule["stress"] == "rail.load"]
+    (tmp_path / "house.json").write_text(json.dumps(data), encoding="utf-8")
+    assert data["pack"] == "nasa-eee-inst-002"
+    assert ratings.read_pack(tmp_path / "house.json").name == "nasa-eee-inst-002"
+    own = ratings.read_pack(tmp_path / "house.json", own="house.json")
+    assert own.name == "house.json (the project's own)"
+    (tmp_path / "facts").mkdir()
+    net, mpns = circuit(C1=("10u", "C-6V3", {"1": "V5", "2": "GND"}))
+    facts = library(tmp_path / "facts", ceramic("C-6V3", 6.3))
+    report = ratings.judge(net, mpns, facts, project({"V5": (4.75, 5.5), **GND}), own)
+    assert found(report, "hold") == [
+        "hold C1 10u between V5 and GND: 5.5 V on 6.3 V rated is 0.87, the limit is 1.00 "
+        "[DS-1, rev A: the part's own rating]"
+    ]
+    head = "ratings: 0 fail, 0 accepted, 1 hold, 0 not judged; pack house.json (the project's own)"
+    assert ratings.lines(report)[0] == head
+    assert ratings.markdown(report).splitlines()[2] == head
+    shipped = ratings.judge(net, mpns, facts, project({"V5": (4.75, 5.5), **GND}), NASA)
+    assert (
+        ratings.lines(shipped)[0]
+        == "ratings: 1 fail, 0 accepted, 0 hold, 0 not judged; pack nasa-eee-inst-002"
+    )
 
 
 def test_the_facts_are_the_nearest_library_at_or_above_a_folder(tmp_path):

@@ -372,6 +372,36 @@ def test_a_wrong_file_is_refused_with_its_place_and_leaves_its_record(case, tmp_
     assert record["status"] == "fail" and record["details"]["failures"][0].startswith(line)
 
 
+def test_a_pack_of_the_project_s_own_is_named_by_its_file_and_as_the_project_s_own(tmp_path):
+    """house.json is the NASA pack cut down to its 2 rules of a rail's load, with NASA's name left
+    inside. It holds what NASA's pack holds on this board, and it would hold a capacitor NASA's fails.
+    The first line, the record and the page say which file judged."""
+    project = node(tmp_path)
+    own_pack(lambda pack: pack.update(rules=[r for r in pack["rules"] if r["stress"] == "rail.load"]))(
+        project
+    )
+    code, text = say("ratings", project, "--strict")
+    assert code == 0, text
+    first = text.splitlines()[0]
+    assert first.startswith("PASS   ratings    0 fail, 0 accepted, ")
+    assert " hold, 0 not judged; pack house.json (the project's own)" in first
+    assert "nasa-eee-inst-002" not in first
+    folder = project / "build" / "ratings"
+    record = json.loads((folder / "report.json").read_text(encoding="utf-8"))
+    assert record["details"]["pack"] == "house.json (the project's own)"
+    page = (folder / "report.md").read_text(encoding="utf-8").splitlines()
+    assert " hold, 0 not judged; pack house.json (the project's own)" in page[2]
+    # a pack of the workcenter is the workcenter's by whatever path the project names its file
+    packs = ROOT / "rules" / "ratings"
+    rewrite(
+        project / "ratings.json", lambda stated: stated.update(pack=str(packs / "nasa-eee-inst-002.json"))
+    )
+    code, text = say("ratings", project, "--strict")
+    first = text.splitlines()[0]
+    assert code == 0 and " hold, 0 not judged; pack nasa-eee-inst-002" in first, text
+    assert "the project's own" not in first
+
+
 def test_a_parts_file_that_is_not_there_is_refused_by_its_path(tmp_path):
     project = node(tmp_path)
     code, text = say("ratings", project, "--parts", tmp_path / "none.csv")

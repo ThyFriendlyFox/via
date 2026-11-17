@@ -120,7 +120,9 @@ parts, each entry read from its datasheet.
 ```
 
 - `pack`: `nasa-eee-inst-002` or `ecss-q-st-30-11c-rev2`, or the path of
-  a pack of your own from the project's folder.
+  a pack of your own from the project's folder. A run that a pack of
+  your own judged says so in its first line:
+  `pack house.json (the project's own)`.
 - `ambient`: the highest air temperature. A limit that falls with
   temperature is judged there; without it, as under the temperature where
   it starts to fall, and the report says so.

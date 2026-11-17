@@ -670,7 +670,10 @@ class Pack:
         return None
 
 
-def read_pack(path: Path) -> Pack:
+def read_pack(path: Path, own: str = "") -> Pack:
+    """A rule pack. `own` is the path ratings.json names a pack of the project's own by: the pack then
+    goes by that path, and every line that names it says whose it is. The name inside such a file is
+    its writer's word, and a copy of a shipped pack keeps the shipped pack's."""
     data = _keys(path.name, _json(path), ("pack", "document", "rules"))
     document = _keys(f"{path.name}: document", data["document"], DOCUMENT_KEYS)
     for key in DOCUMENT_KEYS:
@@ -713,7 +716,8 @@ def read_pack(path: Path) -> Pack:
                 above,
             )
         )
-    return Pack(_text(f"{path.name}: pack", data["pack"]), document, rules)
+    name = _text(f"{path.name}: pack", data["pack"])
+    return Pack(f"{own} (the project's own)" if own else name, document, rules)
 
 
 def factor(rule: Rule, ambient: float | None) -> tuple[float, str]:
@@ -2224,10 +2228,13 @@ def find_facts(start: Path) -> Path | None:
 
 
 def find_pack(name: str, project_dir: Path, packs: Path) -> Path:
-    """A pack by its name among the workcenter's, or by a path from the project's folder."""
-    for path in (packs / f"{name}.json", project_dir / name):
-        if path.is_file():
-            return path
+    """A pack by its name among the workcenter's, or by a path from the project's folder. A pack of the
+    workcenter goes by its name alone: a name that walks out of the packs' folder is none of them."""
+    shipped = packs / f"{name}.json"
+    if shipped.parent == packs and shipped.is_file():
+        return shipped
+    if (project_dir / name).is_file():
+        return project_dir / name
     known = ", ".join(sorted(p.stem for p in packs.glob("*.json")))
     raise Refusal(f"ratings.json: pack: `{name}` is no pack; the workcenter holds {known}")
 
@@ -2374,7 +2381,10 @@ def gate_ratings(project, out: Path, parts: list[Path], strict: bool, cli):
         return cli.Result("ratings", "error", "kicad-cli wrote no netlist", {"stderr": stderr})
     try:
         asked = read_project(stated, net)
-        pack = read_pack(find_pack(asked.pack, project.dir, cli.SRC_DIR / "rules" / "ratings"))
+        packs = cli.SRC_DIR / "rules" / "ratings"
+        found = find_pack(asked.pack, project.dir, packs)
+        # a file of the workcenter's packs is the workcenter's, by whatever path the project names it
+        pack = read_pack(found, "" if found.resolve().parent == packs.resolve() else asked.pack)
         library = find_facts(project.dir)
         facts = read_facts(library) if library else []
         mpns = part_numbers(net, parts_rows(parts, cli))
