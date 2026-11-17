@@ -1,0 +1,6 @@
+{
+  "ipeak": {
+    "max": 1.26,
+    "source": "L1 SRN2010TA-2R2M saturates at 1.26 A [Bourns SRN2010TA series datasheet, REV. 06/25]"
+  }
+}
