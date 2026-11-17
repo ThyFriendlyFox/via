@@ -4466,17 +4466,24 @@ BUILD_ERROR_RE = re.compile(r"^\S+?:\d+(?::\d+)?: (?:fatal )?error: .*$", re.M)
 
 
 def read_mutations(path: Path) -> tuple[list[dict], str | None]:
-    """The project's mutation list and its test command (None: the default). JSON: a list of {"name",
-    "file", "old", "new"}, or {"test": CMD, "mutations": [...]}. Python: a top-level `MUTATIONS = [...]` of
-    (name, file, old, new) tuples or dicts, and an optional `TEST = "..."`, read as literals and never run."""
+    """The project's mutation list and its test command (None: the default)."""
+    return read_mutation_list(path)[:2]
+
+
+def read_mutation_list(path: Path) -> tuple[list[dict], str | None, list[str] | None]:
+    """The project's mutation list, its test command and the paths a copy holds (None: the defaults).
+    JSON: a list of {"name", "file", "old", "new"}, or {"test": CMD, "copy": [...], "mutations": [...]}.
+    Python: a top-level `MUTATIONS = [...]` of (name, file, old, new) tuples or dicts, and an optional
+    `TEST = "..."` and `COPY = [...]`, read as literals and never run."""
     text = path.read_text(encoding="utf-8")
-    test = None
+    test = copy = None
     if path.suffix == ".py":
         found = {}
         for node in ast.parse(text, filename=str(path)).body:
             target = node.targets[0] if isinstance(node, ast.Assign) and len(node.targets) == 1 else None
             target = node.target if isinstance(node, ast.AnnAssign) else target
-            if isinstance(target, ast.Name) and target.id in ("MUTATIONS", "TEST") and node.value is not None:
+            named = ("MUTATIONS", "TEST", "COPY")
+            if isinstance(target, ast.Name) and target.id in named and node.value is not None:
                 try:
                     found[target.id] = ast.literal_eval(node.value)
                 except ValueError as exc:
@@ -4485,10 +4492,11 @@ def read_mutations(path: Path) -> tuple[list[dict], str | None]:
                     ) from None
         if "MUTATIONS" not in found:
             raise ValueError(f"{path.name}: no top-level MUTATIONS = [...]")
-        raw, test = found["MUTATIONS"], found.get("TEST")
+        raw, test, copy = found["MUTATIONS"], found.get("TEST"), found.get("COPY")
     else:
         data = json.loads(text)
-        raw, test = (data.get("mutations"), data.get("test")) if isinstance(data, dict) else (data, None)
+        raw = data.get("mutations") if isinstance(data, dict) else data
+        test, copy = (data.get("test"), data.get("copy")) if isinstance(data, dict) else (None, None)
     mutations: list[dict] = []
     for i, m in enumerate(raw or [], 1):
         if isinstance(m, (list, tuple)) and len(m) == len(MUTATION_KEYS):
@@ -4504,13 +4512,24 @@ def read_mutations(path: Path) -> tuple[list[dict], str | None]:
         raise ValueError(f"{path.name}: mutation names used twice: {', '.join(twice)}")
     if test is not None and not isinstance(test, str):
         raise ValueError(f"{path.name}: TEST is not a command line")
-    return mutations, test
+    if copy is not None and (not isinstance(copy, list) or not all(isinstance(p, str) and p for p in copy)):
+        raise ValueError(f"{path.name}: COPY is not a list of paths")
+    return mutations, test, copy
 
 
-def mutation_run(src: Path, work: Path, mutation: dict | None, test: str, timeout: int) -> dict:
-    """Copy the tree (without build/), apply one mutation, run the test command there."""
+def mutation_run(
+    src: Path, work: Path, mutation: dict | None, test: str, timeout: int, copy: list[str] | None = None
+) -> dict:
+    """Copy the tree (without build/), or only the paths `copy` names, apply one mutation, run the test
+    command there."""
     shutil.rmtree(work, ignore_errors=True)
-    shutil.copytree(src, work, ignore=shutil.ignore_patterns("build"), symlinks=True)
+    skip = shutil.ignore_patterns("build")
+    for part in copy or ["."]:
+        if (src / part).is_dir():
+            shutil.copytree(src / part, work / part, ignore=skip, symlinks=True)
+        else:
+            (work / part).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src / part, work / part)
     if mutation:
         path = work / mutation["file"]
         path.write_bytes(path.read_bytes().replace(mutation["old"].encode(), mutation["new"].encode(), 1))
@@ -4539,9 +4558,12 @@ def cmd_mutate(args) -> int:
     if not src.is_dir():
         raise SystemExit(f"mutate: {src} is not a folder")
     try:
-        mutations, listed_test = read_mutations(Path(args.mutations).resolve())
+        mutations, listed_test, copy = read_mutation_list(Path(args.mutations).resolve())
     except (OSError, ValueError, SyntaxError) as exc:
         raise SystemExit(f"mutate: {exc}") from None
+    gone = [p for p in copy or [] if not (src / p).exists()]
+    if gone:
+        raise SystemExit("\n".join(f"mutate: copy: {p} is not there" for p in gone))
     test = args.test or listed_test or MUTATE_TEST
     if args.only:
         mutations = [m for m in mutations if any(o in m["name"] for o in args.only)]
@@ -4566,7 +4588,7 @@ def cmd_mutate(args) -> int:
     t0 = time.monotonic()
     work = Path(args.work).resolve() if args.work else Path(tempfile.mkdtemp(prefix="workcenter-mutate-"))
     try:
-        base = mutation_run(src, work / "unmutated", None, test, args.timeout)
+        base = mutation_run(src, work / "unmutated", None, test, args.timeout, copy)
         if base["exit"] != 0:
             how = base["line"] if base["exit"] is None else f"exit {base['exit']}"
             print(f"mutate: `{test}` fails before any mutation ({how}):", file=sys.stderr)
@@ -4576,10 +4598,10 @@ def cmd_mutate(args) -> int:
         say(f"mutate: {len(mutations)} mutations of {src}, `{test}` passes unmutated in {base['seconds']}s")
 
         def one(item: tuple[int, dict]) -> dict:
-            copy = work / f"m{item[0]:03d}"
-            result = mutation_run(src, copy, item[1], test, args.timeout)
+            folder = work / f"m{item[0]:03d}"
+            result = mutation_run(src, folder, item[1], test, args.timeout, copy)
             if not args.work:
-                shutil.rmtree(copy, ignore_errors=True)
+                shutil.rmtree(folder, ignore_errors=True)
             return result
 
         results = []
