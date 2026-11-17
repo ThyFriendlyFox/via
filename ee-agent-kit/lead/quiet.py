@@ -3,7 +3,8 @@
 
 usage: quiet.py <pid whose tree is left out> [folder]...
 
-Busy is: an engine (ENGINES), a Python that runs pytest or tools/workcenter, and any process whose
+Busy is: an engine (ENGINES), a test run or a workcenter run (RUNNERS: the script `pytest`, `py.test`
+or `workcenter`, as ps names it or as a python runs it, or `python -m pytest`), and any process whose
 command line names 1 of the folders, except a shell script that only sleeps (it waits for the lock)
 and `bash -c` lines. The process tree under the given pid (the gate itself) is left out, as are the
 process names in the environment variable QUIET_IGNORE (',' between them): the lead's own host, whose
@@ -29,6 +30,20 @@ ENGINES = (
     "Xvfb",
 )
 SHELLS = ("bash", "sh", "sleep")
+# A test run or a workcenter run, by the name of the script that starts it: ps gives an entry-point
+# script's own name as the command (`pytest`, `workcenter`), and a python that runs it names it.
+RUNNERS = ("pytest", "py.test", "workcenter")
+
+
+def runs_tests(comm: str, args: str) -> bool:
+    if comm in RUNNERS:
+        return True
+    if not comm.startswith("python"):
+        return False
+    words = args.split()
+    return (
+        "pytest" in args or "tools/workcenter" in args or any(w.rsplit("/", 1)[-1] in RUNNERS for w in words)
+    )
 
 
 def processes() -> dict[int, tuple[int, str, str]]:
@@ -79,7 +94,7 @@ def busy(root: int, folders: list[str], ignore: set[str]) -> list[tuple[int, str
         in_folder = any(folder and folder in args for folder in folders)
         if comm.startswith(ENGINES):
             found.append((pid, comm, args))
-        elif comm.startswith("python") and ("pytest" in args or "tools/workcenter" in args):
+        elif runs_tests(comm, args):
             found.append((pid, comm, args))
         elif in_folder and comm not in SHELLS:
             found.append((pid, comm, args))
