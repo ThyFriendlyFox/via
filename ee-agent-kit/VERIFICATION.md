@@ -1,20 +1,28 @@
 # VERIFICATION.md — one command answers "is this repo healthy"
 
-`make verify` runs `verify/verify.sh`, in order:
+`make verify` runs `verify/verify.sh`, in order, the steps with no engine
+first so that their failures show early:
 
 1. Lint — `shellcheck` on every shell script, `ruff check` and
-   `ruff format --check` on `tools/` and `tests/`.
-2. Doctor — `python3 tools/workcenter doctor`. A missing required engine
-   (kicad-cli 10, ngspice, python 3.12) fails here, before any test.
-3. Tests — `pytest tests`. The fixture boards under `tests/boards` are
-   the gate tests: `pass-rc-divider` must be GREEN, `fail-drc-clearance`
-   must stop at DRC with a `clearance` violation, `fail-sim-spec` must
-   fail its `vout` bound. KiCad-dependent tests skip loudly without
-   `kicad-cli`; step 2 already failed in that case.
-4. Kit checks — no unfilled placeholder outside `ee-agent-kit/SETUP.md`;
+   `ruff format --check` on `tools/`, `tests/` and `verify/`.
+2. Kit checks — no unfilled placeholder outside `ee-agent-kit/SETUP.md`;
    every `SKILL.md` has frontmatter with `name` and `description`;
    `ee-agent-kit/skills/*` and `.claude/skills/*` are identical;
    `WORKCENTER.md` exists at the root.
+3. Doctor — `python3 tools/workcenter doctor`. A missing required engine
+   (kicad-cli 10, ngspice, python 3.12) fails here, before any test.
+4. Tests — `verify/testshards.py run`: the files of `tests/` in 1 pytest
+   process per processor, split by the seconds `verify/shards.csv` gives
+   each (`verify/README.md`). The step is red when a shard fails, when a
+   shard ends with no summary line, or when the ids the shards ran are
+   not the ids 1 process collects. The fixture boards under `tests/boards`
+   are the gate tests: `pass-rc-divider` must be GREEN,
+   `fail-drc-clearance` must stop at DRC with a `clearance` violation,
+   `fail-sim-spec` must fail its `vout` bound. KiCad-dependent tests skip
+   loudly without `kicad-cli`; step 3 already failed in that case.
+
+The last lines print each step's seconds; step 4 prints each shard's
+seconds and the 10 slowest test files.
 
 ## Rules
 
