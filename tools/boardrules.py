@@ -337,6 +337,7 @@ class Pad:
     at: tuple[float, float]
     reach: float  # half the pad's greater side
     layers: list[str]
+    footprint: str = ""  # the footprint's library and name, as `Connector_USB:USB_C_...`
 
 
 @dataclass
@@ -462,7 +463,7 @@ def read_board(text: str) -> Board:
                 reach = max(_xy(size)) / 2 if size else 0.0
                 names = [str(x) for x in kicadgen.atoms(kicadgen.child(pad, "layers") or ["layers"])]
                 on = list(copper) if "*.Cu" in names else [n for n in names if n in copper]
-                board.pads.append(Pad(ref, str(pad[1]), net_of(pad), at, reach, on))
+                board.pads.append(Pad(ref, str(pad[1]), net_of(pad), at, reach, on, str(node[1])))
         elif head == "zone":
             net = net_of(node)
             for filled in kicadgen.children(node, "filled_polygon"):

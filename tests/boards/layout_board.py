@@ -8,8 +8,9 @@ section 2.1.1 applies. Each fixture's own `design.py` calls `build()` with its v
 
 pass:  J1.1 to D1.1 2.55 mm of 1.2 mm track (2.125 to 1), D1.1 to C1.1 2.8875 mm (2.41 to 1). Each data
        line runs on F.Cu from J1 to its TVS, then by a via to B.Cu and on to its resistor 6.54 mm away.
-esd:   VBUS reaches D1 from J1 by B.Cu and a via (rule no-via); D2 stands at x 108.4, 4.35 mm from J1.2,
-       and R1.1 3.94 mm from D2.1 (rule nearest); DB has no TVS (rule protector).
+esd:   VBUS reaches D1 from J1 by B.Cu and a via (rule no-via), 4.67 mm of copper, while C1.1 lies 2.89 mm
+       of copper from D1.1 (rule nearest); D2 stands at x 108.4, 4.35 mm from J1.2, and R1.1 3.94 mm
+       from D2.1 (rule nearest); DB has no TVS (rule protector).
 emi:   C1 stands 0.8 mm further: D1.1 to C1.1 is 3.6875 mm of 1.2 mm track, 3.07 to 1 (rule power-ratio).
 """
 

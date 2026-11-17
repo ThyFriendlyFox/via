@@ -51,9 +51,17 @@ board file cannot say:
      "connectors": {"J1": "the USB cable"}, "inside": ["J2"],
      "protectors": {"D1": "TPD2E2U06"}, "ground": ["GND"], "power": ["VBUS", "GND"]}
 
-A connector is a part whose reference is J or P and digits (IEEE 315's letters). One not named in
-`connectors` or `inside` is `not judged`. The DRC line names every pack:
+A connector is a part whose reference is J or P and digits (IEEE 315's letters), or whose footprint is in
+a KiCad library whose name starts with `Connector` (`Connector_USB`, `Connector_JST`, ...). One not named
+in `connectors` or `inside` is `not judged`. A `connectors` with no part is `not judged` too: the pack
+then judges no line. A connector with another reference and a footprint of another library is found by
+neither: name it in `connectors`. The DRC line names every pack:
 `board rules ti-slva680a-esd + ti-szza009-emi: 0 fail, 0 not judged`.
+
+Both packs read the copper of a net as a graph. Its points lie on the centre lines of the tracks: each
+track's ends, where another track's end lands inside its copper, where 2 tracks cross, and where a via,
+a pad or a pour touches it. A via joins its layers and ends nothing. A pad or a pour is an end. Lengths
+are along the centre lines, from pad centre to pad centre.
 
 ### ti-slva680a-esd
 
@@ -63,13 +71,15 @@ ground:
 
 | Rule | Where | Judged |
 |---|---|---|
-| `protector` | section 1 and figure 1-2, page 2 | a part in `protectors` stands on the net |
-| `nearest` | section 2.1, Summary, page 4 | every other part's pad on the net stands further from the nearest protector's pad than that pad stands from the connector's, centre to centre |
+| `protector` | section 1 and figure 1-2, page 2 | a part in `protectors` stands on the net, and has a pad on a net in `ground` |
+| `nearest` | section 2.1, Summary, page 4 | the shortest copper from the connector's pad to the protector's meets no other part's pad; every other part's pad on the net stands further from the protector's pad than that pad from the connector's, centre to centre, and lies further along the copper too |
 | `no-via` | section 2.1, page 4; section 2.3, page 6 | the connector's pad and the protector's pad lie in 1 piece of copper on 1 layer |
 
-Not judged, and named in the pack: the stub between the TVS and the line, the TVS's path to ground,
-unprotected traces beside the path and its corners (section 2.2, page 6), the ground scheme (section 2.4),
-and how much further the protected part stands ("much further"): the check holds further.
+The protector is the nearest part of `protectors` with a pad on ground, centre to centre. A part at the
+same distance as the protector fails: the note asks further. Not judged, and named in the pack: the stub
+between the TVS and the line, whether the TVS's ground pad reaches the ground plane and by what
+inductance, unprotected traces beside the path and its corners (section 2.2, page 6), the ground scheme
+(section 2.4), and how much further the protected part stands ("much further"): the check holds further.
 
 ### ti-szza009-emi
 
@@ -78,10 +88,12 @@ Read 2026-11-17, with no second reader yet.
 
 | Rule | Where | Judged |
 |---|---|---|
-| `power-ratio` | section 2.1.1, page 4; section 2.2.4, page 10 | on a board of 2 copper layers, each run of track of a net in `power` is at most 3 times as long as its narrowest width |
+| `power-ratio` | section 2.1.1, page 4; section 2.2.4, page 10 | on a board of 2 copper layers, each trace of a net in `power` or `ground` is at most 3 times as long as its narrowest width |
 
-A run is the segments of 1 net on 1 layer joined end to end, up to a pad, a via, or a point where 3
-segments meet. A pour is no trace and is not judged. A board of another count of layers gets a note.
+A trace runs between 2 ends, pads or pours, that the copper joins without passing another end. Its
+length is the shortest way along the tracks, through vias, joins, overlaps and stubs; its width is the
+narrowest track on that way. 2 tracks between the same 2 ends count as 1, the shorter. A pour is no trace
+and is not judged. A board of another count of layers gets a note.
 
 ## ecss-q-st-70-12c-rev1
 
