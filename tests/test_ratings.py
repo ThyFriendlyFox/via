@@ -2636,7 +2636,12 @@ def test_the_value_a_capacitor_keeps_is_read_between_the_maker_s_points_and_not_
 
 
 def refused(read, path: Path, data: object) -> str:
-    path.write_text(data if isinstance(data, str) else json.dumps(data), encoding="utf-8")
+    """What a reader says of a file it refuses: the file is the text or the bytes given, or the JSON
+    of the value given."""
+    if isinstance(data, bytes):
+        path.write_bytes(data)
+    else:
+        path.write_text(data if isinstance(data, str) else json.dumps(data), encoding="utf-8")
     with pytest.raises(ratings.Refusal) as caught:
         read(path)
     return str(caught.value)
@@ -2668,6 +2673,12 @@ STATED = {
     ("data", "message"),
     [
         ("{", "ratings.json: not JSON: "),
+        (b'{"pack": "nasa-eee-inst-002", "nets": {"\xff": 1}}', "ratings.json: not UTF-8: "),
+        pytest.param(
+            "[" * 100000,
+            "ratings.json: not JSON: nested deeper than a file of the command is",
+            id="100000 lists in each other",
+        ),
         (changed(STATED, "nets", drop=True), "ratings.json: `nets` is missing"),
         (
             changed(STATED, "speed", to=1),

@@ -606,8 +606,12 @@ def _json(path: Path) -> object:
         raise Refusal(f"{path.name}: {exc.strerror}") from None
     except Refusal:
         raise
+    except UnicodeDecodeError as exc:
+        raise Refusal(f"{path.name}: not UTF-8: {exc}") from None
     except ValueError as exc:
         raise Refusal(f"{path.name}: not JSON: {exc}") from None
+    except RecursionError:  # thousands of lists in each other: JSON's reader follows each one deeper
+        raise Refusal(f"{path.name}: not JSON: nested deeper than a file of the command is") from None
 
 
 def _keys(where: str, data: object, required: tuple[str, ...], optional: tuple[str, ...] = ()) -> dict:
