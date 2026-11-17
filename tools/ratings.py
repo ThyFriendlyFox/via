@@ -2411,7 +2411,7 @@ def skeleton(net: Netlist, ref: str, mpn: str) -> dict:
 
 def gate_ratings(project, out: Path, parts: list[Path], strict: bool, cli):
     """The command's run as a Result of the workcenter's kind: skip when the project asks for no
-    judgement or holds no schematic, fail on a file that is not strict, on a failure, and with
+    judgement or holds no schematic, fail on a file the command does not take, on a failure, and with
     --strict on what was not judged."""
     if not project.sch:
         return cli.Result("ratings", "skip", "no schematic in project")
@@ -2486,10 +2486,12 @@ def cmd_ratings(args, cli) -> int:
         where = f"--out {folder}" if args.out else folder
         return cli.emit([refusal(Refusal(f"{where}: {why}"), cli)], args, None)
     if args.facts:
+        if not project.sch:  # as a run says it: kicad-cli is not asked, and no folder is made
+            return cli.emit([cli.Result("ratings", "skip", "no schematic in project")], args, None)
         folder = out / "ratings"
         try:
             folder.mkdir(parents=True, exist_ok=True)
-            net, stderr = export_netlist(project, folder, cli) if project.sch else (None, "no schematic")
+            net, stderr = export_netlist(project, folder, cli)
             if net is None:
                 raise SystemExit(f"{project.dir}: kicad-cli wrote no netlist: {stderr}")
             if args.facts not in net.parts:

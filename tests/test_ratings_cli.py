@@ -524,6 +524,17 @@ def test_an_engine_that_is_missing_is_named_with_and_without_facts(tmp_path):
         assert text.startswith(f"SKIP   ratings    engine missing: {absent}"), text
 
 
+def test_a_project_with_no_schematic_is_told_so_with_and_without_facts(tmp_path):
+    """`pass-lc-filter` holds decks and no schematic. kicad-cli is not run on it, and no line says it was."""
+    project = copy("pass-lc-filter", tmp_path)
+    (project / "ratings.json").write_text('{"pack": "nasa-eee-inst-002", "nets": {}}', encoding="utf-8")
+    code, text = say("ratings", project)
+    assert code == 2 and text.startswith("SKIP   ratings    no schematic in project"), text
+    code, text = say("ratings", project, "--facts", "U1")
+    assert code == 2 and text.startswith("SKIP   ratings    no schematic in project"), text
+    assert "kicad-cli" not in text and not (project / "build" / "ratings").exists()
+
+
 def test_facts_prints_an_entry_to_fill_with_the_part_s_number_and_pins(tmp_path):
     code, text = say("ratings", BOARDS / "pass-ratings-node", "--out", tmp_path, "--facts", "U1")
     assert code == 0, text
