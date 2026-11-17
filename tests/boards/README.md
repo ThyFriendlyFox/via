@@ -21,6 +21,10 @@ behave in a known way.
 | `fail-ratings-decoupling` | `ratings` fails on 1 line, `needs.capacitor` | C1 is left out. The regulator's supply pin has no capacitor, and its datasheet asks for 4.7 uF. |
 | `fail-ratings-inductor` | `ratings` fails on 1 line, `inductor.current` | L1 is a 2.0 x 1.6 mm part that saturates at 1.26 A. At the least output the ripple is (5.25 - 3.199) x 3.199 / (5.25 x 0.9) / (1.35e6 x 1.76e-6) = 0.584 A; the 1.1 A load and half of it is 1.392 A. |
 | `fail-ratings-bias` | `ratings` fails on 1 line, `needs.capacitor` | C3 is left out. C2, 10 uF less 20 %, keeps 0.50 - 0.12 x 0.440 = 0.447 of its value at 3.440 V: 3.58 uF. The 2 bypass capacitors have no curve and give 0.11 uF each at the most: 3.80 uF, under the 5 uF the datasheet asks for. |
+| `pass-highspeed` | `workcenter highspeed --strict` prints `HIGHSPEED HELD: 7 held, 0 not judged`; KiCad's DRC with the rules it writes passes | The board of `highspeed_pair.py`: a USB 2.0 pair on F.Cu between 2 headers, 0.31 mm wide and 0.2 mm apart, 30.1136 mm a track, over a ground plane on In1.Cu. Its `interfaces.json` names `ti-am57xx-usb2`. |
+| `fail-highspeed-width` | `highspeed` fails on `width` alone, 2 lines | Both tracks are 0.2 mm wide. The solver gives 0.2517 to 0.3865 mm for 81 to 99 ohm at a 0.2 mm gap. |
+| `fail-highspeed-skew` | `highspeed` fails on `skew` alone, 1 line | USB_D_N steps 1 mm aside and back: 32.1136 mm against 30.1136 mm, 2 mm of skew against 1.27 mm (50 mil). |
+| `fail-highspeed-plane` | `highspeed` fails on `plane` alone, 2 lines | The plane on In1.Cu is 2 pours with a 1 mm gap at x = 120 to 121 mm; both tracks cross it. |
 | `library` | No board: the facts of the ratings fixtures' parts | `library/facts/`, found by `workcenter ratings` as a project's own library is: in a folder above the project. The regulator, the 2 buffers, the resistors, the bypass capacitors and the 2 inductors are real parts, each entry read from its maker's datasheet with the URL, the SHA256 and the pages. The 10 uF capacitors and the headers are made up, and their entries say so. |
 
 Symbols and footprints are embedded in the files, so no library tables are
@@ -35,6 +39,11 @@ from it, and a test compares. To write them again, and no board with them:
 
 and copy the 2 files in. The boards are not routed and not built: `ratings`
 reads the schematic alone.
+
+The 4 high-speed fixtures are 1 design, `highspeed_pair.py`, with 1 fault planted in each of 3. Every
+track is drawn in the design; the boards are written, not routed:
+
+    workcenter design tests/boards/<fixture>/design.py
 
 `kicad-cli` writes a `<name>.kicad_prl` next to the project when it runs.
 It is a KiCad side file with no design content and is ignored by git.

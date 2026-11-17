@@ -272,10 +272,14 @@ def gap_for(sec: Section, target: float, stop: float = 0.002) -> float:
 
 
 def main(argv: list[str]) -> int:
+    print(json.dumps(answer(json.loads(argv[0]))))
+    return 0
+
+
+def answer(req: dict) -> dict:
     """Request: {"section": {...Section...}, "target": ohm, "low": ohm, "high": ohm}. Answer: the width
     for the target and for each end of the band (a pair keeps its gap), the gap range at that width for
     a pair, and the line at the target width."""
-    req = json.loads(argv[0])
     s = req["section"]
     sec = Section(
         [tuple(x) for x in s["slabs"]], s["top_plane"], s["y"], s["t"], s["widths"], s.get("gap", 0.0)
@@ -294,8 +298,7 @@ def main(argv: list[str]) -> int:
             out["gap_max"] = gap_for(at, req["high"]) if req.get("high") else None
     except ValueError as exc:
         out["error"] = str(exc)
-    print(json.dumps(out))
-    return 0
+    return out
 
 
 if __name__ == "__main__":
