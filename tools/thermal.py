@@ -25,6 +25,11 @@ from pathlib import Path
 
 import ratings
 
+# The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
+CITES = {
+    "ti-spra953d": "section 1.1, equation 1, page 2; section 1.2, page 3; sections 2 to 5",
+    "ecss-q-st-30-11c-rev2": "clause 3.2, page 12",
+}
 PLAN_FILE = "thermal.json"
 JUNCTION = ratings.JUNCTION
 FIGURES = ratings.FIGURES

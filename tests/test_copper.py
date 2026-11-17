@@ -22,6 +22,13 @@ sys.path.insert(0, str(ROOT / "tools"))
 np = pytest.importorskip("numpy")
 import copper  # noqa: E402
 
+# The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
+CITES = {
+    "nbs-hb100": "sections 2a and 2b, page 3: copper's resistivity and its temperature coefficient",
+    "ti-snva419c": "table 1, page 4: copper's and FR-4's conductivity, and h for natural convection",
+    "incropera-heat-and-mass-transfer": "section 3.6, table 3.4, case B: a fin with an adiabatic tip",
+}
+
 BOARDS = ROOT / "tests" / "boards"
 CLI = ROOT / "tools" / "workcenter"
 

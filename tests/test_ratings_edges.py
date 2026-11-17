@@ -68,6 +68,9 @@ from test_ratings import (
     supply,
 )
 
+# The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
+CITES = {"ti-slva477c": "section 2, the efficiency; equation 11, the divider"}
+
 CERAMIC = f"[{NASA_SOURCE}, section C1, table 4, page 23 of 23]"
 
 # ---------------------------------------------------------------- the Value of a passive part

@@ -1062,6 +1062,11 @@ ROLES = {
 }
 SWING = {"output": 2, "io": 2, "switched": 2, "open_drain": 1}  # how many pins a role's swing names
 OUTSIDE = ("source", "load", "nothing")  # what stands behind a connector's pin
+# The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
+CITES = {
+    "ti-slva477c": "section 2, the efficiency; equations 1, 2, 4 and 11",
+    "ti-spra953d": "the names of a datasheet's thermal figures",
+}
 # TI SLVA477C, "Basic Calculation of a Buck Converter's Power Stage" (revised September 2026): the
 # efficiency its section 2 names for a duty cycle when a datasheet gives none, and where its sums stand.
 BUCK_EFFICIENCY = 0.9

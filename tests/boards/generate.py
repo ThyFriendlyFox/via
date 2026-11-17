@@ -24,6 +24,8 @@ import uuid
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+# The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
+CITES = {"ecss-q-st-70-12c-rev1": "13.6.3c, the board's size for the current model"}
 NS = uuid.UUID("8d3e9c4a-5f1b-4f2e-9a7d-2c1b3e4f5a6b")
 NAME = "rc_divider"
 ROOT_UUID = str(uuid.uuid5(NS, "sheet/root"))

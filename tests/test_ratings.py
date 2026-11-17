@@ -20,6 +20,12 @@ PACKS = ROOT / "rules" / "ratings"
 sys.path.insert(0, str(ROOT / "tools"))
 import ratings  # noqa: E402
 
+# The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
+CITES = {
+    "nasa-eee-inst-002": "sections C1, M4, R2 and S1, each table 4",
+    "ti-slva477c": "equations 1, 2, 4 and 11, and section 2",
+}
+
 # What kicad-cli 10.0.8 writes for a divider from VIN to GND with a capacitor on its tap, a header and
 # a pin left open: the elements and attributes are copied from an export of tests/boards/pass-rc-divider
 # and of a board with an IC (the `+no_connect` type, the `unconnected-(...)` net, and `pinfunction`,

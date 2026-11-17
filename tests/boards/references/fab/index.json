@@ -1,0 +1,15 @@
+{
+  "rules": [],
+  "code": [],
+  "documents": [
+    {
+      "id": "fab-example-specs",
+      "kind": "web page",
+      "maker": "A fab made up for the tests",
+      "title": "Capabilities, a page made up for the tests",
+      "url": "https://fab.example/specs/",
+      "read": "2026-11-17",
+      "values": [{"says": "Minimum trace 4 mil (0.1016 mm)", "for": "fab: trace 4 mil"}]
+    }
+  ]
+}
