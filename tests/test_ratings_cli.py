@@ -419,6 +419,39 @@ def test_a_pack_of_the_project_s_own_is_named_by_its_file_and_as_the_project_s_o
     assert "the project's own" not in first
 
 
+def test_a_run_that_judged_nothing_leaves_its_own_page_and_none_of_an_earlier_run(tmp_path):
+    """A run that holds writes `RATINGS HELD` into its page. The next run refuses a file, and the one
+    after exports no netlist: each leaves a page that says nothing was judged, and why, beside its
+    record. A page of the first run would show the verdict of other files."""
+    project = node(tmp_path)
+    folder = project / "build" / "ratings"
+    code, text = say("ratings", project)
+    assert code == 0, text
+    assert "\nRATINGS HELD\n" in (folder / "report.md").read_text(encoding="utf-8")
+    rewrite(project / "ratings.json", lambda stated: stated.update(speed=1))
+    code, text = say("ratings", project)
+    assert code == 1 and text.startswith(REFUSED), text
+    line = "ratings.json: `speed` is no key here; the keys are pack, nets, ambient, parts, accepted"
+    assert (folder / "report.md").read_text(encoding="utf-8") == (
+        f"# Ratings\n\nratings: a file is not as the command reads it\n\nNothing was judged.\n\n- {line}\n"
+    )
+    record = json.loads((folder / "report.json").read_text(encoding="utf-8"))
+    assert (record["status"], record["details"]["failures"]) == ("fail", [line])
+    assert record["artifacts"] == [str(folder / "report.md")]
+    # a schematic cut short: kicad-cli loads none, and the netlist of the run before is gone too
+    assert (folder / "netlist.xml").is_file()
+    sch = project / "node.kicad_sch"
+    sch.write_text(sch.read_text(encoding="utf-8")[:40000], encoding="utf-8")
+    code, text = say("ratings", project)
+    assert code == 1 and text.startswith("ERROR  ratings    kicad-cli wrote no netlist"), text
+    page = (folder / "report.md").read_text(encoding="utf-8")
+    assert page.startswith("# Ratings\n\nratings: kicad-cli wrote no netlist\n\nNothing was judged.\n")
+    assert "RATINGS HELD" not in page and "speed" not in page
+    record = json.loads((folder / "report.json").read_text(encoding="utf-8"))
+    assert (record["status"], record["artifacts"]) == ("error", [str(folder / "report.md")])
+    assert sorted(p.name for p in folder.iterdir()) == ["report.json", "report.md"]
+
+
 def test_a_parts_file_that_is_not_there_is_refused_by_its_path(tmp_path):
     project = node(tmp_path)
     code, text = say("ratings", project, "--parts", tmp_path / "none.csv")
