@@ -4060,6 +4060,7 @@ def cmd_design(args) -> int:
                     seed=seed,
                     threads=args.threads,
                     order=args.order,
+                    router=args.router,
                 )
                 if seed:
                     summary["seed"] = {
@@ -4086,6 +4087,12 @@ def cmd_design(args) -> int:
         except FileNotFoundError as exc:
             summary["route"] = {"skip": f"engine missing: {exc}"}
             code = EXIT_SKIP
+        except RuntimeError as exc:
+            # The router failed or ran past the time limit: nothing it wrote is merged, and no board is
+            # written over the one the project has. 1 line, exit 1.
+            summary["route"] = {"failed": str(exc)}
+            summary.setdefault("files", [])  # a round before the failed one may have written them
+            code = EXIT_FAIL
     if "files" not in summary:
         summary["files"] = [str(p) for p in design.write(out_dir)]
     summary["islands"] = design.islands
@@ -4103,6 +4110,8 @@ def cmd_design(args) -> int:
         red.append(f"{len(summary['sim_problems'])} simulation problem(s)")
     if summary.get("route", {}).get("unrouted"):
         red.append(f"{summary['route']['unrouted']} unrouted")
+    if summary.get("route", {}).get("failed"):
+        red.append("the route failed")
     if code == EXIT_FAIL:
         summary["red"] = red
     if args.json:
@@ -4114,6 +4123,8 @@ def cmd_design(args) -> int:
         r = summary.get("route")
         if r and "skip" in r:
             print(f"  route skipped: {r['skip']}")
+        elif r and "failed" in r:
+            print(f"  route failed: {r['failed']}")
         elif r:
             unrouted = "DRC decides" if r["unrouted"] is None else f"{r['unrouted']} unrouted"
             rounds = f"{summary.get('rounds', 1)} round(s)"
@@ -4151,7 +4162,9 @@ def cmd_design(args) -> int:
             print(f"  island: {', '.join(island)} cut off from their pour; the DRC will report it")
         for f in summary["files"]:
             print(f"  wrote {f}")
-        if code == EXIT_FAIL:
+        if code == EXIT_FAIL and not summary["files"]:
+            print(f"design {design.name} red: {', '.join(red)}. Nothing is written.")
+        elif code == EXIT_FAIL:
             print(
                 f"design {design.name} red: {', '.join(red)}. The files are written for inspection only; "
                 "a CI regenerate check fails on this exit code (1)."
@@ -4872,6 +4885,21 @@ def hook_installed(file_name: str, settings: Path = USER_SETTINGS) -> bool:
     return any(file_name in h.get("command", "") for e in entries for h in e.get("hooks", []))
 
 
+def freerouting2_row() -> dict:
+    """Doctor's row for FreeRouting 2.5.0: ok when its jar and a Java 25 are there; the version names the
+    jar, the path where it is looked for; `why` says what is missing."""
+    r = routers().get("freerouting2")
+    why = r.absent()
+    row = {"required": False, "ok": not why, "path": str(r.jar())}
+    if not why:
+        row["version"] = f"{r.version()} on Java {r.java_major()}"
+    else:
+        row["why"] = why
+    if not (WC_ROOT / "freerouting2").exists() and not os.environ.get(r.jar_env):
+        row["advisory"] = True
+    return row
+
+
 def cmd_doctor(args) -> int:
     kicad = tool_version([KICAD_CLI, "version"])
     ngspice = tool_version([NGSPICE, "--version"], r"(?<=ngspice-)\d+")
@@ -4884,6 +4912,9 @@ def cmd_doctor(args) -> int:
         "python": {"required": True, "ok": sys.version_info >= (3, 12), "version": py},
         "java": {"required": False, "ok": bool(java and int(java.split(".")[0]) >= 21), "version": java},
         "freerouting": {"required": False, "ok": FREEROUTING_JAR.is_file(), "path": str(FREEROUTING_JAR)},
+        # The second router installs on request (install.sh --freerouting2): where it never was, its row
+        # is advisory; where its folder is and it cannot run, the workcenter is degraded.
+        "freerouting2": freerouting2_row(),
         "venv": {
             "required": False,
             "ok": (WC_ROOT / "venv" / "bin" / "python").exists(),
@@ -5109,6 +5140,14 @@ def routebench():
     """tools/routebench.py: `bench`, design files routed by each router and the runs compared."""
     sys.path.insert(0, str(SRC_DIR / "tools"))
     import routebench as module
+
+    return module
+
+
+def routers():
+    """tools/routers.py: the routers behind `design --route` and `bench`, each with its presence and run."""
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import routers as module
 
     return module
 
@@ -5344,6 +5383,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--passes", type=int, default=60)
     p.add_argument("--timeout", type=int, default=900)
     p.add_argument("--threads", type=int, default=0, help="FreeRouting's threads, -mt (default: its own)")
+    p.add_argument(
+        "--router",
+        choices=tuple(routers().ROUTERS),
+        default=routers().DEFAULT,
+        help="with --route: the router (default freerouting, FreeRouting 1.9.0; freerouting2 is 2.5.0)",
+    )
     p.add_argument(
         "--order",
         action="store_true",
