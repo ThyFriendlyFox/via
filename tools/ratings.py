@@ -863,7 +863,8 @@ class Project:
     accepted: dict[tuple[str, str], str | list[tuple[str, str]]]
     # `C7`: the greatest voltage across a part of 2 pins, where the spans of its 2 nets cannot give it
     volts: dict[str, float] = field(default_factory=dict)
-    # `U1`: the heat a part gives off, which `workcenter copper` spreads through the board
+    # `U1`, or `U1.2` for 1 pad: the heat a part gives off, which `workcenter copper` spreads through
+    # the board from its pads, or from the pad named
     watts: dict[str, float] = field(default_factory=dict)
 
 
@@ -902,8 +903,6 @@ def read_project(path: Path, net: Netlist) -> Project:
         if not any(k in entry for k in ("amps", "volts", "watts")):
             raise Refusal(f"{name}: parts: {key}: `amps`, `volts` or `watts` is asked")
         if "watts" in entry:
-            if pin:
-                raise Refusal(f"{name}: parts: {key}: watts: the heat of a whole part is asked, `{ref}`")
             watts[key] = _number(f"{name}: parts: {key}: watts", entry["watts"], 0)
         if "amps" in entry:
             amps[key] = _number(f"{name}: parts: {key}: amps", entry["amps"], 0)
@@ -911,6 +910,13 @@ def read_project(path: Path, net: Netlist) -> Project:
             if pin or len(net.parts[ref].pins) != 2:
                 raise Refusal(f"{name}: parts: {key}: volts: the voltage across a part of 2 pins is asked")
             volts[key] = _number(f"{name}: parts: {key}: volts", entry["volts"], 0)
+    for key in watts:  # a part's heat on the part, or on its pads: both would count it twice
+        ref, _, pin = key.partition(".")
+        if pin and ref in watts:
+            raise Refusal(
+                f"{name}: parts: {key}: watts: {ref} states the whole part's heat; state it on the part or "
+                "on its pads, not both"
+            )
     accepted: dict[tuple[str, str], list[tuple[str, str]]] = {}
     first: dict[tuple[str, str, str], int] = {}
     if not isinstance(data.get("accepted", []), list):
