@@ -108,6 +108,37 @@ def test_a_long_gap_grows_then_stays_at_the_largest_cell():
     assert len(lines) == 10
 
 
+def test_lines_closer_than_the_least_cell_are_one_line():
+    """A slanted track's corners put lines 0.0002 apart (Wyvern's TX1 pair: 134.1248 and 134.125), and
+    the time step falls with the least cell: 4.4e-16 s, 200000 steps for 87 ps. With a least cell of
+    0.01, 0.1002 joins 0.1. Then 0.1 to 1 grows 0.15, 0.225, 0.3375 (0.7125); 0.1875 is left, under
+    0.3375 / 1.5 = 0.225, so 0.3375 is taken back and 0.525 cut in ceil(0.525 / 0.3375) = 2 cells of
+    0.2625. Lines 0, 0.1, 0.25, 0.475, 0.7375, 1."""
+    lines = fields.mesh_lines([0, 0.1, 0.1002, 1.0], 1.0, min_cell=0.01)
+    assert lines == pytest.approx([0, 0.1, 0.25, 0.475, 0.7375, 1.0])
+
+
+def test_a_slanted_track_gets_no_cell_under_a_sixth_of_its_width():
+    """Wyvern's TX1 pair runs on F.Cu with slanted pieces 0.15 to 0.25 mm wide. The least cell is the
+    narrowest width over 2 x 3 cells across it: 0.15 / 6 = 0.025 mm."""
+    t = fields.Track
+    board = fields.Board(
+        path=Path("s.kicad_pcb"),
+        copper_z={"F.Cu": 0.2, "B.Cu": 0.0},
+        dielectrics=[(0.0, 0.2, 4.5, 0.02)],
+        tracks=[
+            t("S", "F.Cu", (110.0, 134.0), (109.25, 134.05), 0.15),
+            t("S", "F.Cu", (110.3172, 134.0), (110.0, 134.0), 0.25),
+        ],
+        zones=[("GND", ("B.Cu",))],
+    )
+    group = {"name": "s", "nets": ["S"], "band_ghz": [0.1, 10]}
+    model = fields.build_model(board, group, {"reference": "GND", "settings": dict(fields.SETTINGS)})
+    for axis in "xy":
+        lines = model["mesh"][axis]
+        assert min(b - a for a, b in pairwise(lines)) >= 0.025 - 1e-9, axis
+
+
 def test_a_fixed_line_is_a_line_to_the_digit():
     """Cells summed one by one drift in the last digits: 0 is held as 0, not 1.5e-15, or a sheet at 0
     lies on no line of the mesh and the solver leaves it out."""

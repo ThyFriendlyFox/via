@@ -172,7 +172,14 @@ Traps, each met on the fixtures:
 - With first-order absorbing walls (`MUR`) around a microstrip the energy
   stayed at -15 dB after 200000 steps. With 8 cells of PML outside the box
   on every side, the dielectric and the plane running into them, the same
-  line fell to -44.85 dB in 2650 steps.
+  line fell to -44.85 dB in 2650 steps (148596 cells, before the mesh grew
+  its cells by 1.5).
+- A slanted track's corners put mesh lines 0.0002 mm apart; the time step
+  fell to 4.4e-16 s, and the Gaussian pulse alone wanted 1309644 steps:
+  openEMS cut it to the step limit (`Cutting to max number of timesteps`)
+  and ran with 0 energy in the box. `mesh_lines` drops a line closer than
+  half a cell across the narrowest track, and the run counts that line as a
+  fault.
 - A run that reaches `NumberOfTimesteps` before its end criterion prints
   a warning and exits 0. The run counts it as a fault.
 
