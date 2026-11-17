@@ -33,6 +33,8 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
 BOARDS = ROOT / "tests" / "boards"
+# The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
+CITES = {"ecss-q-st-70-12c-rev1": "13.8.2d and table 13-7, the gap; 13.6 and annex D, the track's width"}
 DOC = "ECSS-Q-ST-70-12C Rev.1"
 PLATING = (
     "7.4.2c NOTE 2, page 44: plated copper as designed; table 7-3, page 45, and table 7-4, page 46: the "

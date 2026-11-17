@@ -23,6 +23,9 @@ sys.path.insert(0, str(ROOT / "tools"))
 import boardrules  # noqa: E402
 import ratings  # noqa: E402
 
+# The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
+CITES = {"ecss-q-st-70-12c-rev1": "annex D, the current model; table 13-7, the spacing; clause 13.6"}
+
 DOC = "ECSS-Q-ST-70-12C Rev.1"
 
 
