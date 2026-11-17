@@ -128,6 +128,33 @@ def test_a_router_that_is_no_worse_and_faster_takes_the_board():
     assert why == "joins 10/10 (100.0 %) with 0 DRC errors in 80.0 s; fr-a 10/10 (100.0 %), 0 in 100.0 s"
 
 
+def test_a_faster_router_with_more_drc_errors_does_not_take_the_board():
+    """Both join 10 of 10. The other is faster, 50 s against 100 s, but its board has 7 DRC errors
+    where the default's has 0: 7 > 0."""
+    runs = [judged("fr-a", 100.0, 0), judged("fr-b", 50.0, 0, errors=7)]
+    router, why = routebench.choose(runs, "fr-a")["b"]
+    assert router == "fr-a"
+    assert why == "no other router joined as many connections with as few DRC errors in as little time"
+
+
+def test_a_router_equal_to_the_default_does_not_take_the_board():
+    """Both join 10 of 10 with 0 DRC errors in 100 s: the other is better in none of the 3."""
+    runs = [judged("fr-a", 100.0, 0), judged("fr-b", 100.0, 0)]
+    router, why = routebench.choose(runs, "fr-a")["b"]
+    assert router == "fr-a"
+    assert why == "no other router joined as many connections with as few DRC errors in as little time"
+
+
+def test_no_router_takes_a_board_from_a_default_that_did_not_finish():
+    """The default stopped at its time limit; the other joined 5 of 10 with 9 DRC errors. Against a
+    default with no numbers the comparison is not judged, and the default stays."""
+    stopped = {"board": "b", "router": "fr-a", "status": "time limit", "seconds": 300.1, "why": "300 s"}
+    runs = [stopped, judged("fr-b", 290.0, 5, errors=9)]
+    router, why = routebench.choose(runs, "fr-a")["b"]
+    assert router == "fr-a"
+    assert why == "not judged: fr-a did not finish, so no router is held against it; fr-a stays"
+
+
 def test_no_judged_run_keeps_the_default_and_says_so():
     stopped = {"board": "b", "router": "fr-a", "status": "time limit", "seconds": 300.0}
     router, why = routebench.choose([stopped], "fr-a")["b"]
@@ -169,6 +196,158 @@ def test_bench_with_no_design_rebuilds_the_table_from_the_runs_in_its_folder(tmp
     assert "| b | fr-a | 41.2 | 10/10 (100.0 %) | 0 | 2 | 100 | judged |" in table
     assert "- b: fr-a, the only router run on this board" in table
     assert f"wrote {out / 'bench.md'}" in text
+
+
+def test_a_rebuild_of_a_table_with_a_run_not_judged_exits_2(tmp_path):
+    """fr-a stopped at its time limit, fr-b judged: the table holds 1 run not judged, so exit 2."""
+    out = tmp_path / "bench"
+    stopped = {"board": "b", "router": "fr-a", "status": "time limit", "seconds": 300.1, "why": "300 s"}
+    other = {**judged("fr-b", 290.0, 5, errors=9), "commands": ["x", "y"], "output_bytes": 1}
+    for run in (stopped, other):
+        (out / "b" / run["router"]).mkdir(parents=True)
+        (out / "b" / run["router"] / "run.json").write_text(json.dumps(run), encoding="utf-8")
+    code, text = run_cli("bench", "--out", out, "--router", "fr-a=a.jar", "--router", "fr-b=b.jar")
+    assert code == 2, text
+    assert "  b takes fr-a: not judged: fr-a did not finish, so no router is held against it" in text
+
+
+@pytest.mark.parametrize(
+    ("content", "reason"),
+    [
+        ("{}", "no key 'board'"),
+        (
+            '{"board": "b", ',
+            "not JSON at line 1 column 16: Expecting property name enclosed in double quotes",
+        ),
+        (
+            json.dumps({**judged("fr-a", 1.0, 0), "commands": [], "output_bytes": 1, "drc_errors": None}),
+            "'drc_errors' is not a number",
+        ),
+        (json.dumps({**judged("fr-a", 1.0, 0), "output_bytes": 1}), "no key 'commands'"),
+    ],
+)
+def test_a_run_file_that_cannot_be_read_is_named_and_not_judged(tmp_path, content, reason):
+    """`{"board": "b", ` is 15 characters: the decoder stops at character 15, column 16 of line 1. A
+    judged run needs every number it is judged on and its commands."""
+    out = tmp_path / "bench"
+    (out / "b" / "fr-a").mkdir(parents=True)
+    path = out / "b" / "fr-a" / "run.json"
+    path.write_text(content, encoding="utf-8")
+    code, text = run_cli("bench", "--out", out, "--router", "fr-a=a.jar")
+    assert code == 2, text
+    assert f"bench {path}: not judged: {reason}" in text
+    table = (out / "bench.md").read_text(encoding="utf-8")
+    assert f"| b | fr-a | - | not judged | not judged | - | - | unreadable: {reason} |" in table
+
+
+def fake_workcenter(tmp_path: Path, design: str, drc: str) -> object:
+    """A stand-in for tools/workcenter: `design` and `drc` run the Python given for each."""
+    script = tmp_path / "fake_workcenter.py"
+    script.write_text(f"import sys\nif sys.argv[1] == 'design':\n{design}\nelse:\n{drc}\n", encoding="utf-8")
+    return type("cli", (), {"__file__": str(script)})
+
+
+def stale_folder(out: Path, design: Path) -> Path:
+    """What an earlier run that routed and passed the DRC left in a run's folder."""
+    folder = out / routebench.label_of(design).replace("/", "-") / "fr"
+    (folder / "board" / "build").mkdir(parents=True)
+    (folder / "board" / "old.kicad_pcb").write_text(BOARD, encoding="utf-8")
+    (folder / "board" / "build" / "drc.json").write_text("{}", encoding="utf-8")
+    (folder / "run.json").write_text(json.dumps({"design": str(design)}), encoding="utf-8")
+    return folder
+
+
+def bench_args() -> object:
+    return type("args", (), {"time_limit": 60, "threads": 1, "passes": 1})
+
+
+def test_a_route_that_raised_is_not_judged_on_the_board_an_earlier_run_left(tmp_path):
+    """The route raises and exits 1 with no `routed:` line; the folder still holds an earlier run's
+    board and a DRC report of 0 items. The run is an error, not 3/3 joined with 0 DRC errors."""
+    design = tmp_path / "x" / "design.py"
+    design.parent.mkdir()
+    design.write_text("", encoding="utf-8")
+    jar = tmp_path / "fr.jar"
+    jar.write_text("", encoding="utf-8")
+    folder = stale_folder(tmp_path / "bench", design)
+    cli = fake_workcenter(
+        tmp_path, "    print('RuntimeError: FreeRouting exited 1')\n    sys.exit(1)", "    sys.exit(0)"
+    )
+    run = routebench.bench_one(design, "fr", jar, tmp_path / "bench", bench_args(), cli)
+    assert run["status"] == "error", run
+    assert run["why"] == f"the route ended with exit code 1 and no `routed:` line; see {folder / 'route.txt'}"
+    assert not (folder / "board" / "old.kicad_pcb").exists()
+
+
+def test_a_drc_that_wrote_no_report_is_not_judged_on_an_earlier_report(tmp_path):
+    """The route writes a board and its `routed:` line; the DRC exits 0 and writes no report. The
+    earlier run's drc.json of 0 items is gone, so the run is an error."""
+    design = tmp_path / "x" / "design.py"
+    design.parent.mkdir()
+    design.write_text("", encoding="utf-8")
+    jar = tmp_path / "fr.jar"
+    jar.write_text("", encoding="utf-8")
+    folder = stale_folder(tmp_path / "bench", design)
+    write_board = (
+        "    import pathlib\n"
+        "    out = pathlib.Path(sys.argv[sys.argv.index('--out') + 1])\n"
+        "    out.mkdir(parents=True, exist_ok=True)\n"
+        f"    (out / 'x.kicad_pcb').write_text({BOARD!r})\n"
+        "    print('  routed: 3 segments, 0 vias, 0 unrouted, 1 round(s)')"
+    )
+    cli = fake_workcenter(tmp_path, write_board, "    sys.exit(0)")
+    run = routebench.bench_one(design, "fr", jar, tmp_path / "bench", bench_args(), cli)
+    assert run["status"] == "error", run
+    assert run["why"] == f"the DRC wrote no report; see {folder / 'drc.txt'}"
+
+
+@pytest.mark.parametrize(
+    ("design", "label"),
+    [
+        ("/w/examples/ring-mouse/v0.4/cell/design.py", "ring-mouse/v0.4/cell"),
+        ("/w/examples/universal-controller/v0.2/design.py", "universal-controller/v0.2"),
+        ("/home/u/vape-prototype/v0.16/display/design.py", "vape-prototype/v0.16/display"),
+        ("/s/bus/v1/design.py", "bus/v1"),
+        ("/s/a/b/design.py", "a/b"),
+    ],
+)
+def test_a_boards_label_names_its_project_and_version(design, label):
+    """The label starts at the folder above the last version folder (v and digits): the example's
+    or project's name. With no version folder it is the last 2 folders."""
+    assert routebench.label_of(Path(design)) == label
+
+
+def test_2_designs_with_1_label_are_refused(tmp_path):
+    """p1/x/v1 and p2/x/v1 are both x/v1: 1 folder would hold both runs."""
+    designs = [tmp_path / p / "x" / "v1" / "design.py" for p in ("p1", "p2")]
+    for d in designs:
+        d.parent.mkdir(parents=True)
+        d.write_text("", encoding="utf-8")
+    code, text = run_cli("bench", *designs, "--out", tmp_path / "out", "--router", f"fr={tmp_path / 'n.jar'}")
+    assert code == 1, text
+    assert f"bench: {designs[0]} and {designs[1]} are both x/v1; bench them into 2 folders" in text
+
+
+def test_a_folder_that_holds_another_designs_run_is_refused(tmp_path):
+    """p1's run is in out/x-v1/fr; p2's design, also x/v1, would overwrite it."""
+    designs = [tmp_path / p / "x" / "v1" / "design.py" for p in ("p1", "p2")]
+    for d in designs:
+        d.parent.mkdir(parents=True)
+        d.write_text("", encoding="utf-8")
+    jar = f"fr={tmp_path / 'n.jar'}"
+    assert run_cli("bench", designs[0], "--out", tmp_path / "out", "--router", jar)[0] == 2
+    code, text = run_cli("bench", designs[1], "--out", tmp_path / "out", "--router", jar)
+    assert code == 1, text
+    folder = tmp_path / "out" / "x-v1" / "fr"
+    assert f"bench: {folder} holds the run of {designs[0]}; give another --out" in text
+
+
+@pytest.mark.parametrize("flag", ["--time-limit", "--threads", "--passes"])
+@pytest.mark.parametrize("value", ["0", "-5"])
+def test_a_count_that_cannot_be_right_is_refused(tmp_path, flag, value):
+    code, text = run_cli("bench", tmp_path / "d.py", "--out", tmp_path / "out", flag, value)
+    assert code == 2, text
+    assert f"argument {flag}: {value} is not a whole number above 0" in text
 
 
 def test_a_router_whose_jar_is_not_there_is_not_run(tmp_path):
