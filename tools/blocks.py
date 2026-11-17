@@ -68,6 +68,15 @@ class Block:
     files: dict[str, str] = field(default_factory=dict)  # path beside the project -> text
 
 
+def __getattr__(name: str):
+    """A block in a module of its own: `blocks.charger` and `blocks.Cell` are tools/blocks_charger.py's."""
+    if name in ("charger", "Cell"):
+        import blocks_charger
+
+        return getattr(blocks_charger, name)
+    raise AttributeError(f"module 'blocks' has no attribute {name!r}")
+
+
 def load_rules(path: Path) -> dict:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
