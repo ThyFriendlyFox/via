@@ -639,13 +639,16 @@ def test_every_document_a_rule_of_the_repository_names_is_in_the_index():
     laboratory uses, with none: 4 + 1 + 2 = 7 not judged. Files: 2 + 3 + 1 + 5 + 1 + 1 + 8 JSON and 4 fab
     rule files = 25. The USB-C block adds rules/blocks/usbc.json, 4 (the 2 usb.org specifications, its
     receptacle's drawing, its clamp's datasheet), and the facts of its receptacle, its clamp and its
-    capacitor, 1 each: 37 + 4 + 3 = 44 named in 25 + 4 = 29 files."""
+    capacitor, 1 each: 37 + 4 + 3 = 44 named in 25 + 4 = 29 files. The I2C block adds
+    rules/blocks/i2c.json, 2 (its note TI SLVA689A, and its `short` label, which names the note with no
+    place beside it and so is also 1 not judged), and the facts of its fixtures' TCA9534, its
+    datasheet: 44 + 2 + 1 = 47 named in 29 + 2 = 31 files, 7 + 1 = 8 not judged."""
     globs = json.loads(INDEX.read_text(encoding="utf-8"))["rules"]
     files = sorted({p for pattern in globs for p in ROOT.glob(pattern)})
     code, out = run("rules", *files)
     assert code == 0, out
     assert out.splitlines()[-1] == (
-        "references rules: 44 documents named in 29 files, 44 in the index, 0 not; 7 not judged"
+        "references rules: 47 documents named in 31 files, 47 in the index, 0 not; 8 not judged"
     )
 
 
