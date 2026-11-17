@@ -16,6 +16,7 @@ that `workcenter ratings` and the SIM gate read.
 | `blocks.usbc` | USB Type-C R2.5, tables 4-20, 4-27, 4-28, 4-35, 4-36 and 3-5; USB 2.0 table 7-7 and 2 ECNs. Its steps: `usbc.md` beside this file | `rules/blocks/usbc.json` | GCT USB4115-03-C, TI TPD2E2U06DCKR |
 | `blocks.i2c` | TI SLVA689A, equations 1, 5 and 6, table 2-1, section 3 | `rules/blocks/i2c.json` | any device whose facts give its bus pins (see "The I2C block" below) |
 | `blocks.mcu` | TI SLAA322D, equations 1, 3 and 5 and table 2; the datasheet SLASE35C, sections 5.3 and 5.13; SLAU278AH figure 2-3; SLAU272D table 1-4 | `rules/blocks/mcu.json` | MSP430FR5720IRGE |
+| `blocks.ldo` | TI SLVA079, equations 1, 8, 10 and 11; the datasheet's equations 6 and 7, table 6-1 and sections 5.3, 5.5 and 7.1.1 | `rules/blocks/ldo.json` | TLV75533PDBVR, TLV75533PDRVR |
 
 A block holds what its note states and no more. A part the note does not
 cover is your own schematic, and `workcenter ratings` judges it.
@@ -167,6 +168,55 @@ Spy-Bi-Wire header. `tests/boards/block_mcu.py` is a whole example.
    typical C0 is printed as not judged against the 1.6 pF limit.
 5. Run `workcenter ratings . --strict`, then `workcenter design design.py
    --route` and `workcenter gates . --strict`.
+
+## The linear regulator, `blocks.ldo`
+
+The block takes the first stocked IC of `rules/blocks/ldo.json` that holds 5
+checks, then 1 input and 1 output capacitor. List the ICs in your stock in the
+order you want them tried; a package with a lower RthetaJA after a smaller one
+lets the block move to it when the junction runs hot.
+
+1. In `design.py`, call it after your own parts:
+
+   ```python
+   block = blocks.ldo(d, vin=(4.75, 5.25), vout=3.3, amps=0.1, ambient=(0, 30),
+                      pack="nasa-eee-inst-002", nets=("+5V", "+3V3", "GND"),
+                      stock=STOCK, facts=Path(__file__).parent / "library" / "facts",
+                      sch_at=(76.2, 76.2), pcb_at=(111.0, 108.0))
+   ```
+
+   `ambient` is the least and the greatest air temperature around the board,
+   in C. `pack` is the pack of your `ratings.json`. `tests/boards/block_ldo.py`
+   is a whole example.
+2. Run `workcenter design design.py`. What it prints:
+   - `ldo U1: no stocked IC holds the spec: <MPN>: ...`: each stocked IC and
+     why it missed, with its equation and page. Do as each says:
+     - `gives A V to B V, not X V`: the IC is fixed at another output. Stock
+       the IC of the output you ask.
+     - `the input reaches X V, IN operates from ...`: change the input range
+       or the IC.
+     - `IOUT of X A is over ...`: the IC cannot give the load.
+     - `VDO = ...; VOUT(NOM) + VDO = X V, not under the least input`: the
+       least input is too low for the full load (SLVA079 equation 1). Raise
+       the least input, lower the load, or stock an IC of lower dropout.
+     - `TJ = ... C, over ... C`: the junction at the greatest ambient passes
+       the pack's limit. Stock a package of lower RthetaJA, lower the input,
+       the load or the ambient.
+   - `ldo U1: no stocked capacitor holds C2 at X V: ...`: each stocked
+     capacitor and why it missed: its dielectric, its rating, its value
+     outside the datasheet's span, no curve of the value it keeps, or what it
+     keeps at the pin's voltage less its tolerance not over 0.47 uF. Stock a
+     part that holds, with its facts and its curve.
+   - `ldo U1: a load of 0 A`: give the load you draw.
+3. Read `block.sums` in `sim/ldo.cir` after `* The sums:`. A line
+   `U1: <MPN> passed over: ...` names an IC the block tried first. The line
+   `its CSR is not judged` says the datasheet gives no stable CSR range: the
+   block does not judge the output capacitor's ESR. Copy the sums into the
+   version's README.
+4. Run `workcenter ratings . --strict`, then `workcenter design design.py
+   --route` and `workcenter gates . --strict`. The SIM gate runs `sim/ldo.cir`
+   at each temperature of `sim/corners.json` and holds U1's junction under the
+   pack's limit (`sim/thermal.json`).
 
 ## Adding an IC to a block
 
