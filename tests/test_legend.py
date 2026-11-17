@@ -18,6 +18,9 @@ and OSH Park's 0.0762 mm stroke (rules/oshpark-2layer.kicad_dru: "Silkscreen min
 
 from __future__ import annotations
 
+import json
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -355,6 +358,37 @@ def test_the_dense_fixture_fails_as_the_library_places_it_and_holds_once_placed(
     design = dense(True)
     placed = judge(design.board())
     assert [f.line for f in placed] == []
+
+
+@pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+def test_the_drc_gate_fails_the_fixture_on_its_3_rules_and_no_other(tmp_path):
+    """`workcenter drc` on fail-legend: red, the 3 lines of the check above, and every legend line, KiCad's
+    own included, on 1 of the 3 rules."""
+    board = tmp_path / "fail-legend"
+    shutil.copytree(ROOT / "tests" / "boards" / "fail-legend", board)
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "tools" / "workcenter"),
+            "--json",
+            "drc",
+            str(board),
+            "--out",
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    (result,) = json.loads(proc.stdout)
+    lines = result["details"]["failures"]
+    assert any(line.startswith('legend overlap: text "AB"') for line in lines), lines
+    assert any(line.startswith('legend size: text "EF"') for line in lines), lines
+    assert any(line.startswith("legend hidden: designator U1") for line in lines), lines
+    rules = {line.split(":")[0] for line in lines}
+    assert rules <= {"legend overlap", "legend size", "legend hidden"}, lines
+    assert "legend (no fab named" in result["summary"]
 
 
 @pytest.mark.parametrize("fab", ["jlcpcb-2layer", "pcbway-standard", "oshpark-2layer", "sierra-circuits-web"])
