@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import datetime
 import json
+import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -58,6 +60,7 @@ def put_record(tree: Path, **fields) -> None:
         "commit": git(tree, "rev-parse", "HEAD"),
         "branch": BRANCH,
         "dirty": False,
+        "moved_to": None,
         "time": "2026-11-17T09:41:00Z",
     }
     record.update(fields)
@@ -214,6 +217,26 @@ def test_refusals_are_one_line_each(tmp_path):
             "item 99 has no heading '### 99.' in ee-agent-kit/ROADMAP.md",
         ),
         "a line break": ((str(tree), "--item", "7", "--state", "working", "--doing", "a\nb"), "1 line"),
+        "a line break in --item": (
+            (str(tree), "--item", "a\nb", "--state", "working"),
+            "--item holds a line",
+        ),
+        "a line break in --left": (
+            (str(tree), "--item", "7", "--state", "working", "--left", "a\rb"),
+            "--left holds a line",
+        ),
+        "a line break in --blocked": (
+            (str(tree), "--item", "7", "--state", "blocked", "--blocked", "a\nb"),
+            "--blocked holds a line",
+        ),
+        "a heading in --item": (
+            (str(tree), "--item", "## Health gate", "--state", "working"),
+            "--item starts with '#'",
+        ),
+        "a heading in --blocked": (
+            (str(tree), "--item", "7", "--state", "blocked", "--blocked", " ## Left"),
+            "--blocked starts with '#'",
+        ),
         "not a git tree": ((str(tmp_path / "nowhere"), "--item", "x", "--state", "working"), "git"),
         "detached": ((str(detached), "--item", "x", "--state", "working"), "on no branch"),
     }
@@ -294,22 +317,23 @@ def test_write_refuses_a_checkout_that_is_not_the_status_branch_alone(tmp_path):
         assert files_of(checkout) == before, name
 
 
+def record_cli(tree: Path, code: str, step: str, head: str, dirty: str) -> subprocess.CompletedProcess:
+    argv = [sys.executable, str(NOW_PY), "record", code, step, "--tree", str(tree), "--head", head]
+    return subprocess.run([*argv, "--dirty", dirty], capture_output=True, text=True, check=False)
+
+
 def test_the_gate_leaves_a_record_the_card_reads(tmp_path):
     """verify.sh calls `tools/now.py record <exit code> <step>` on exit; code 0 is GREEN, any other RED."""
     assert re.search(r"^trap .*tools/now\.py record ", (ROOT / "verify" / "verify.sh").read_text(), re.M)
     tree = make_tree(tmp_path)
     head = git(tree, "rev-parse", "HEAD")
     for code, verdict in (("0", "GREEN"), ("1", "RED"), ("2", "RED")):
-        proc = subprocess.run(
-            [sys.executable, str(NOW_PY), "record", code, "3/4 tests", "--tree", str(tree)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        proc = record_cli(tree, code, "3/4 tests", head, "no")
         assert proc.returncode == 0, proc.stderr
         record = json.loads((tree / "build" / "verify.json").read_text())
         assert (record["verdict"], record["step"], record["commit"]) == (verdict, "3/4 tests", head)
         assert (record["branch"], record["dirty"], record["gate"]) == (BRANCH, False, "make verify")
+        assert record["moved_to"] is None
         assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", record["time"])
     assert git(tree, "status", "--porcelain") == ""
     ignored = subprocess.run(["git", "-C", str(ROOT), "check-ignore", "-q", "build/verify.json"], check=False)
@@ -341,3 +365,194 @@ def test_the_skill_names_the_labels_and_the_stale_run_spares_open_cards():
     stale = (ROOT / ".github" / "workflows" / "stale.yml").read_text(encoding="utf-8")
     exempt = re.search(r"exempt-issue-labels: '([^']*)'", stale).group(1).split(",")
     assert {"working", "blocked on owner"} <= set(exempt)
+
+
+def gate_lines() -> str:
+    """verify.sh's own lines from `STEP=` up to its first step: what it notes at the start, and its trap."""
+    text = (ROOT / "verify" / "verify.sh").read_text(encoding="utf-8")
+    return text[text.index('STEP="0/4 start"') : text.index('step "1/4 lint"')]
+
+
+def test_the_record_names_the_commit_the_gate_started_on(tmp_path):
+    """The gate starts on commit A; during step 3/4 commit B lands; it exits 0. The record holds A, not
+    B, and that the branch moved to B. The card: GREEN on `A` at 2026-11-17 09:41 UTC, the branch moved
+    to `B` during the run, 1 commit before the last (`git rev-list --count A..B` is 1)."""
+    tree = make_tree(tmp_path)
+    (tree / "tools").mkdir()
+    (tree / "tools" / "now.py").write_text(NOW_PY.read_text(encoding="utf-8"), encoding="utf-8")
+    git(tree, "add", "tools/now.py")
+    git(tree, "commit", "-q", "-m", "A")
+    a, a_short = git(tree, "rev-parse", "HEAD"), git(tree, "rev-parse", "--short", "HEAD")
+    gate = (
+        f"set -euo pipefail\ncd {shlex.quote(str(tree))}\n{gate_lines()}"
+        f'step "3/4 tests"\n{shlex.join(GIT)} commit -q --allow-empty -m B\n'
+    )
+    proc = subprocess.run(["bash", "-c", gate], capture_output=True, text=True, check=False)
+    assert proc.returncode == 0, proc.stderr
+    b, b_short = git(tree, "rev-parse", "HEAD"), git(tree, "rev-parse", "--short", "HEAD")
+    record = json.loads((tree / "build" / "verify.json").read_text(encoding="utf-8"))
+    assert (record["verdict"], record["step"], record["commit"]) == ("GREEN", "3/4 tests", a)
+    assert (record["moved_to"], record["dirty"]) == (b, False)
+    put_record(tree, commit=a, moved_to=b)
+    proc = now(str(tree), "--item", "7", "--state", "working")
+    assert (
+        f"## Health gate\nGREEN on `{a_short}` at 2026-11-17 09:41 UTC, the branch moved to `{b_short}` "
+        "during the run, 1 commit before the last\n" in proc.stdout
+    )
+
+
+def test_the_record_counts_untracked_and_changed_files_as_uncommitted(tmp_path):
+    """dirty is the tree's state at the start (--dirty) or at the end. Clean and `no`: false. Clean and
+    `yes`: true. An untracked file, which pytest and ruff read: true. A changed tracked file: true."""
+    tree = make_tree(tmp_path)
+    head = git(tree, "rev-parse", "HEAD")
+
+    def dirty(flag: str) -> bool:
+        proc = record_cli(tree, "0", "4/4 kit checks", head, flag)
+        assert proc.returncode == 0, proc.stderr
+        return json.loads((tree / "build" / "verify.json").read_text(encoding="utf-8"))["dirty"]
+
+    assert (dirty("no"), dirty("yes")) == (False, True)
+    (tree / "test_new.py").write_text("def test_new():\n    pass\n", encoding="utf-8")
+    assert dirty("no") is True
+    (tree / "test_new.py").unlink()
+    (tree / ".gitignore").write_text("build/\nx/\n", encoding="utf-8")
+    assert dirty("no") is True
+
+
+def test_a_record_two_commits_back_and_three_doing_lines(tmp_path):
+    """2 commits after the record's: `git rev-list --count <record>..HEAD` is 2, so `2 commits`. 3
+    --doing lines is the most a card holds, and is printed."""
+    tree = make_tree(tmp_path)
+    first, first_short = git(tree, "rev-parse", "HEAD"), git(tree, "rev-parse", "--short", "HEAD")
+    for name in ("b", "c"):
+        git(tree, "commit", "-q", "--allow-empty", "-m", f"Add {name}")
+    put_record(tree, commit=first)
+    proc = now(str(tree), "--item", "7", "--state", "working", *("--doing", "a") * 3)
+    assert proc.returncode == 0, proc.stderr
+    assert "## Doing now\n- a\n- a\n- a\n" in proc.stdout
+    assert (
+        f"## Health gate\nGREEN on `{first_short}` at 2026-11-17 09:41 UTC, 2 commits before the last\n"
+        in proc.stdout
+    )
+
+
+def test_a_record_verify_sh_does_not_write_is_refused_in_one_line(tmp_path):
+    tree = make_tree(tmp_path)
+    good = {
+        "gate": "make verify",
+        "verdict": "GREEN",
+        "step": "4/4 kit checks",
+        "commit": git(tree, "rev-parse", "HEAD"),
+        "branch": BRANCH,
+        "dirty": False,
+        "moved_to": None,
+        "time": "2026-11-17T09:41:00Z",
+    }
+    cases = {
+        "bad JSON": "{",
+        "a list": "[]",
+        "empty": "",
+        "no verdict": json.dumps({k: v for k, v in good.items() if k != "verdict"}),
+        "no moved_to": json.dumps({k: v for k, v in good.items() if k != "moved_to"}),
+        "a null commit": json.dumps({**good, "commit": None}),
+        "a short commit": json.dumps({**good, "commit": good["commit"][:7]}),
+        "dirty as a string": json.dumps({**good, "dirty": "false"}),
+        "a step that is no string": json.dumps({**good, "step": 3}),
+        "moved_to no commit": json.dumps({**good, "moved_to": "x"}),
+        "a time with no zone": json.dumps({**good, "time": "2026-11-17 09:41"}),
+    }
+    (tree / "build").mkdir()
+    for name, text in cases.items():
+        (tree / "build" / "verify.json").write_text(text, encoding="utf-8")
+        proc = now(str(tree), "--item", "7", "--state", "working")
+        lines = proc.stderr.splitlines()
+        assert proc.returncode == 1 and proc.stdout == "", name
+        assert len(lines) == 1 and "is not a gate record verify.sh writes" in lines[0], (name, lines)
+
+
+def test_a_card_that_names_an_assistant_a_model_or_a_session_is_refused(tmp_path):
+    """The card names no assistant, no model and no session (the skill; CLAUDE.md's rule for what the
+    repository publishes). A file's name, `CLAUDE.md`, is no such name."""
+    tree = make_tree(tmp_path)
+    named = make_tree(tmp_path / "n", branch="claude/fix-gate-01UhK1vD")
+    base = (str(tree), "--item", "7", "--state", "working")
+    cases = {
+        "--item": ((str(tree), "--item", "Claude Opus 5.5 work", "--state", "working"), "--item"),
+        "--doing": ((*base, "--doing", "session https://claude.ai/code/session_01UhK1vD"), "--doing"),
+        "a session id": ((*base, "--doing", "Resume session_01UhK1vD"), "--doing"),
+        "--left": ((*base, "--left", "Ask Sonnet to review"), "--left"),
+        "--blocked": (
+            (str(tree), "--item", "7", "--state", "blocked", "--blocked", "Anthropic"),
+            "--blocked",
+        ),
+        "the branch": ((str(named), "--item", "x", "--state", "working"), "the branch claude/fix-gate"),
+    }
+    for name, (argv, words) in cases.items():
+        proc = now(*argv)
+        lines = proc.stderr.splitlines()
+        assert proc.returncode == 1 and proc.stdout == "", name
+        assert len(lines) == 1 and "names an assistant, a model or a session" in lines[0], (name, lines)
+        assert words in lines[0], (name, lines)
+    proc = now(*base, "--doing", "Editing CLAUDE.md and AGENTS.md")
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_the_skills_gh_lines_give_gh_no_card_when_the_command_refuses(tmp_path):
+    """The skill's lines write the card to build/now.md and run gh only when `workcenter now` exits 0:
+    a refusal leaves the issue's body as it was. No line pipes the command into another."""
+    skill = SKILL.read_text(encoding="utf-8")
+    assert not re.search(r"workcenter now[^`\n]*\|", skill)
+    lines = re.findall(
+        r"`(mkdir -p build && workcenter now \. [^`]*> build/now\.md && gh issue [^`]*)`", skill
+    )
+    assert [("create" in x, "edit N" in x) for x in lines] == [(True, False), (False, True)]
+    tree = make_tree(tmp_path)
+    stubs = tmp_path / "bin"
+    stubs.mkdir()
+    called = tmp_path / "gh-called"
+    (stubs / "workcenter").write_text(f'#!/bin/sh\nexec {sys.executable} {shlex.quote(str(CLI))} "$@"\n')
+    (stubs / "gh").write_text(f'#!/bin/sh\necho "$@" > {shlex.quote(str(called))}\n')
+    for stub in stubs.iterdir():
+        stub.chmod(0o755)
+    env = {**os.environ, "PATH": f"{stubs}{os.pathsep}{os.environ['PATH']}"}
+    for line in lines:
+        line = line.replace("<branch>", BRANCH)
+        for options, ok in (("--item 7 --state paused", False), ("--item 7 --state working", True)):
+            called.unlink(missing_ok=True)
+            run = line.replace("<the same options>", options).replace("<options>", options)
+            proc = subprocess.run(["bash", "-c", run], cwd=tree, env=env, capture_output=True, text=True)
+            assert (proc.returncode == 0, called.exists()) == (ok, ok), (run, proc.stderr)
+        assert called.read_text().rstrip("\n").endswith("--body-file build/now.md")
+        card = (tree / "build" / "now.md").read_text(encoding="utf-8")
+        assert card.startswith("## Work\nRoadmap item 7: A card for each piece of work\n")
+
+
+def test_the_printed_git_commands_run_with_a_space_in_the_path_and_a_quote_in_the_branch(tmp_path):
+    """A checkout `my status` and a branch `wip/it's`: the add and commit lines run in bash as printed,
+    and the commit holds now/wip-it's.md with the message `now: wip/it's working`."""
+    tree = make_tree(tmp_path, branch="wip/it's")
+    status = tmp_path / "my status"
+    status.mkdir()
+    git(status, "init", "-q", "-b", "status")
+    git(status, "commit", "-q", "--allow-empty", "-m", "init")
+    proc = now(str(tree), "--item", "7", "--state", "working", "--write", str(status))
+    assert proc.returncode == 0, proc.stderr
+    out = proc.stdout.splitlines()
+    env = {
+        **os.environ,
+        **{f"GIT_{who}_{what}": value for who in ("AUTHOR", "COMMITTER") for what, value in
+           (("NAME", "Test"), ("EMAIL", "test@example.invalid"))},
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "commit.gpgsign",
+        "GIT_CONFIG_VALUE_0": "false",
+    }  # fmt: skip
+    for line in out[1:3]:
+        run = subprocess.run(["bash", "-c", line], env=env, capture_output=True, text=True, check=False)
+        assert run.returncode == 0, (line, run.stderr)
+    assert git(status, "log", "-1", "--format=%s") == "now: wip/it's working"
+    assert git(status, "ls-tree", "-r", "--name-only", "HEAD") == "now/wip-it's.md"
+    assert [shlex.split(x) for x in out[3:]] == [
+        ["git", "-C", str(status), "pull", "--rebase", "origin", "status"],
+        ["git", "-C", str(status), "push", "origin", "status"],
+    ]

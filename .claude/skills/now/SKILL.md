@@ -34,10 +34,13 @@ GREEN on `abc1234` at 2026-11-17 09:41 UTC
 RED at 3/4 tests on `abc1234` at 2026-11-17 09:41 UTC
 ```
 
-It adds `with uncommitted changes` when the
-gate ran on a tree with changes, and `, 2 commits before the last` when
-the branch moved on after the gate. A record of another branch is
-`none yet`.
+The commit is the one the gate started on. The line adds `with uncommitted
+changes` when the tree differed from that commit at the start or at the
+end, untracked files included; `, the branch moved to <hash> during the
+run` when a commit landed while the gate ran; and `, 2 commits before the
+last` when the branch moved on after the gate's commit. A record of
+another branch is `none yet`. A record `verify.sh` would not write is
+refused in 1 line.
 
 ## Where the card goes
 
@@ -73,15 +76,20 @@ number and `<branch>` your branch.
    - It prints the card: go on to step 2.
    - `now: refused: <reason>`: fix what the line names and run it again.
      `--item is missing`, a state that is not 1 of the 4, more than 3
-     `--doing`, a value with a line break, or a detached HEAD (make a
-     branch first) are the usual ones.
+     `--doing`, a value with a line break, `--item` or `--blocked` that
+     starts with `#`, a value, branch or commit subject that names an
+     assistant, a model or a session, or a detached HEAD (make a branch
+     first) are the usual ones.
 2. Find a card this branch has already:
    `gh issue list --state open --search "in:title now: <branch>"`.
    - A row: that is `N`. Go to "When it is rewritten".
    - No row: go on to step 3.
 3. Open the issue with the card as its body:
-   `workcenter now . <the same options> | gh issue create --title "now: <branch>" --label working --body-file -`.
-   It prints the issue's URL; its last number is `N`. A host with its own
+   `mkdir -p build && workcenter now . <the same options> > build/now.md && gh issue create --title "now: <branch>" --label working --body-file build/now.md`.
+   The card goes to a file first, and `gh` runs only when the command
+   printed one: never pipe `workcenter now` into `gh`, as a refusal then
+   gives the issue an empty body. It prints the issue's URL; its last
+   number is `N`. A host with its own
    GitHub tool creates the issue with that title, the label `working` and
    the card's text as its body instead.
    - `gh` is not there, or answers that it is not logged in, and the host
@@ -108,8 +116,9 @@ number and `<branch>` your branch.
    For a block: `--state blocked --blocked "<who or what>"`; without
    `--blocked` the command refuses.
 6. Rewrite the body, never comment:
-   `workcenter now . <options> | gh issue edit N --body-file -`,
-   or the host's own GitHub tool that updates an issue's body (for
+   `mkdir -p build && workcenter now . <options> > build/now.md && gh issue edit N --body-file build/now.md`.
+   On `now: refused:` gh does not run and the issue keeps its last card:
+   fix what the line names and run it again. Or the host's own GitHub tool that updates an issue's body (for
    example the GitHub MCP server's `issue_write` with method `update`),
    with the card's text as the body. On the status branch: `--write
    ../status` and the 4 commands it prints.
