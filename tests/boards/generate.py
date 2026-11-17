@@ -281,6 +281,18 @@ CLEARANCE_DEFECT = [((119.0, 116.0), (119.0, 112.65)), ((119.0, 112.65), (116.5,
 # bottom-face return of VOUT to J1 pin 2; and a legend label stroked 0.10 mm, under their 5 mil.
 FAB_DEFECT_VIA = (110.0, 107.54)
 FAB_DEFECT_BACK = ((110.0, 107.54), (105.0, 107.54))
+# pass-board-ecss and fail-board-ecss: the divider on an 80 x 80 mm outline (ECSS-Q-ST-70-12C Rev.1
+# 13.6.3c asks more than 75 x 75 mm for its current model), VIN and GND drawn 0.8 mm for the 1 A their
+# ratings.json states (0.752 mm asked, rules/board/README.md). The fault: 1 VIN segment left at 0.25 mm,
+# and a GND stub on B.Cu whose end stands 0.22 mm from J1 pin 1 (VIN), where table 13-7 asks 0.25 mm.
+ECSS_OUTLINE = (180, 180)
+ECSS_WIDE = 0.8
+ECSS_NARROW = ((109.0, 105.0), (109.0, 103.0))
+ECSS_STUB = [
+    ((105.0, 110.08), (102.0, 110.08)),
+    ((102.0, 110.08), (102.0, 105.0)),
+    ((102.0, 105.0), (103.53, 105.0)),
+]
 
 FP_FONT = "(effects (font (size 1 1) (thickness 0.15)))"
 
@@ -374,7 +386,7 @@ def footprint_header(ref: str) -> str:
 	)"""
 
 
-def board(defect: bool, fab_defect: bool = False) -> str:
+def board(defect: bool, fab_defect: bool = False, ecss: str = "") -> str:
     layers = """
 		(0 "F.Cu" signal)
 		(2 "B.Cu" signal)
@@ -459,15 +471,23 @@ def board(defect: bool, fab_defect: bool = False) -> str:
     out.append(footprint_0603("R1", "R", "10k", "Resistor"))
     out.append(footprint_0603("R2", "R", "10k", "Resistor"))
     out.append(footprint_0603("C1", "C", "100n", "Unpolarized capacitor"))
+    end = ECSS_OUTLINE if ecss else (125, 120)
     out.append(f"""
-	(gr_rect (start 100 100) (end 125 120)
+	(gr_rect (start 100 100) (end {end[0]} {end[1]})
 		(stroke (width 0.1) (type default)) (fill no) (layer "Edge.Cuts") (uuid "{uid("edge")}"))""")
     tracks = [(net, seg) for net, segs in TRACKS.items() for seg in segs]
     if defect:
         tracks += [("/GND", seg) for seg in CLEARANCE_DEFECT]
     for i, (net, (a, b)) in enumerate(tracks):
+        width = 0.25
+        if ecss and net in ("/VIN", "/GND") and not (ecss == "fail" and (a, b) == ECSS_NARROW):
+            width = ECSS_WIDE
         out.append(f"""
-	(segment (start {fmt(a[0])} {fmt(a[1])}) (end {fmt(b[0])} {fmt(b[1])}) (width 0.25) (layer "F.Cu") (net {NETS[net]}) (uuid "{uid(f"seg/{i}/{net}")}"))""")
+	(segment (start {fmt(a[0])} {fmt(a[1])}) (end {fmt(b[0])} {fmt(b[1])}) (width {fmt(width)}) (layer "F.Cu") (net {NETS[net]}) (uuid "{uid(f"seg/{i}/{net}")}"))""")
+    if ecss == "fail":
+        for i, (a, b) in enumerate(ECSS_STUB):
+            out.append(f"""
+	(segment (start {fmt(a[0])} {fmt(a[1])}) (end {fmt(b[0])} {fmt(b[1])}) (width {fmt(ECSS_WIDE)}) (layer "B.Cu") (net {NETS["/GND"]}) (uuid "{uid(f"ecss/stub/{i}")}"))""")
     if fab_defect:
         (a, b), (x, y) = FAB_DEFECT_BACK, FAB_DEFECT_VIA
         out.append(f"""
@@ -579,6 +599,8 @@ FIXTURES = {
     "pass-rc-divider": {"defect": False},
     "fail-drc-clearance": {"defect": True},
     "fail-fab-sierra": {"defect": False, "fab_defect": True},
+    "pass-board-ecss": {"defect": False, "ecss": "pass"},
+    "fail-board-ecss": {"defect": False, "ecss": "fail"},
 }
 
 
@@ -589,7 +611,7 @@ def render() -> dict[Path, str]:
         files[d / f"{NAME}.kicad_pro"] = project()
         files[d / f"{NAME}.kicad_sch"] = schematic()
         files[d / f"{NAME}.kicad_pcb"] = board(
-            defect=opts["defect"], fab_defect=opts.get("fab_defect", False)
+            defect=opts["defect"], fab_defect=opts.get("fab_defect", False), ecss=opts.get("ecss", "")
         )
     return files
 
