@@ -3,14 +3,14 @@
 [![CI](https://github.com/ThyFriendlyFox/via/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ThyFriendlyFox/via/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-1e49b7)](LICENSE)
 
-[Website](https://via-kappa-five.vercel.app) · [Contract](WORKCENTER.md) · [Status](ee-agent-kit/STATUS.md) · [Roadmap](ee-agent-kit/ROADMAP.md)
+[Website](https://via.computer) · [Contract](WORKCENTER.md) · [Status](ee-agent-kit/STATUS.md) · [Roadmap](ee-agent-kit/ROADMAP.md)
 
 Via is the EE Workcenter. A workcenter is a set of tools, skills and gates
 that an agent steps into to do one kind of work well. This one does
 electronics: it turns a KiCad 10 project into fabrication outputs that
 passed every gate.
 
-<a href="https://via-kappa-five.vercel.app">
+<a href="https://via.computer">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="site/media/hero-dark.png">
     <img alt="3 cards: lines of a design file, the schematic of a voltage divider, and the routed board in 3D" src="site/media/hero.png">
@@ -301,7 +301,7 @@ not run.
 `site/` is the project's website: a home page with real runs of the
 commands, drawings of what each gate catches and the board above, and a
 page for each example, written by `site/examples.py` from the example's
-README, its `TIMELINE.md` and its board. It is live at <https://via-kappa-five.vercel.app>.
+README, its `TIMELINE.md` and its board. It is live at <https://via.computer>.
 `python3 -m http.server 8000 --directory site` serves it at
 http://localhost:8000. Vercel deploys a push that changes `site/`: `main`
 to production, any other branch to a preview.

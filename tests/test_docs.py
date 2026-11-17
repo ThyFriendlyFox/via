@@ -395,10 +395,9 @@ def test_the_quick_start_runs_as_written_and_ends_as_its_comments_say(tmp_path):
 
 def links_of(page: Path) -> list[str]:
     """Each address a page names: its links, its pictures and its scripts, and what a `url()` in its
-    markup loads. Not the host's own: Vercel serves `/_vercel/insights/script.js`, its analytics."""
+    markup loads."""
     text = page.read_text(encoding="utf-8")
-    found = re.findall(r'(?:href|src)="([^"]+)"', text) + re.findall(r"url\(([^)\s]+)\)", text)
-    return [link for link in found if not link.startswith("/_vercel/")]
+    return re.findall(r'(?:href|src)="([^"]+)"', text) + re.findall(r"url\(([^)\s]+)\)", text)
 
 
 def example_pages() -> list[Path]:
@@ -411,9 +410,17 @@ def blog_pages() -> list[Path]:
     return [SITE / "blog.html", *sorted((SITE / "blog").glob("*.html"))]
 
 
+# Vercel serves Web Analytics' script at this path on each deployment of the project. Neither the
+# tree nor the build holds the file.
+SERVED_BY_HOST = {"/_vercel/insights/script.js"}
+
+
 def beside_page(page: Path, link: str) -> bool:
     """Whether a link read from the page's own folder names a file: `agents.svg#cursor` is
-    agents.svg, `site.css?v=1` is site.css, and a folder is its index.html."""
+    agents.svg, `site.css?v=1` is site.css, and a folder is its index.html. A path the host serves
+    (`SERVED_BY_HOST`) names a file too."""
+    if link in SERVED_BY_HOST:
+        return True
     target = page.parent / link.split("#")[0].split("?")[0]
     return target.is_file() or (target / "index.html").is_file()
 
@@ -695,7 +702,7 @@ def test_the_blog_is_what_site_blog_writes():
 
 
 def test_each_post_is_in_tone_md_english():
-    """A post is American Simplified Technical English (TONE.md, P35, M181): each sentence under 20
+    """A post is American Simplified Technical English (TONE.md, P35, M182): each sentence under 20
     words, American spelling, no em dash, no contraction, none of the words TONE.md bans."""
     banned = re.compile(
         r"—|\b(colour|centre|grey|behaviour|organis|realis|metre|litre)\w*"

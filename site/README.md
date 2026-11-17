@@ -258,11 +258,26 @@ Settings, General, Social preview. `og.png` is that image.
 
 ## Deploys
 
-The Vercel project is `via`, and production is <https://via-kappa-five.vercel.app>. Its Root
-Directory is `site`. `vercel.json` runs `build.sh` with the project's
-production address and serves `dist/`. A push to `main` deploys
+The Vercel project is `via`, and production is <https://via.computer>. Its Root
+Directory is `site`. `vercel.json` runs `build.sh` with the address
+`https://via.computer` and serves `dist/`. It names the address itself:
+Vercel's `VERCEL_PROJECT_PRODUCTION_URL` kept the older domain after
+`via.computer` was added (M181). A push to `main` deploys
 production, and a push to any other branch a preview. The project skips
 a push that leaves `site/` unchanged.
+
+Each other address sends the reader to `via.computer`. A redirect from
+Cloudflare adds `ref=` with the address it came from, so the analytics
+count each one.
+
+| Address | Answers | From |
+|---|---|---|
+| `www.via.computer` | 308 to `https://via.computer/` | Vercel |
+| `via.reagent-systems.com` | 301 to the same path on `via.computer`, with `?ref=reagent-systems` | Cloudflare |
+| `viapcb.dev`, `www.viapcb.dev` | 302 to `https://via.computer/?ref=viapcb` | Cloudflare |
+| `circuitboards.dev`, `www.circuitboards.dev` | 302 to `https://via.computer/?ref=circuitboards` | Cloudflare |
+| `texttopcb.com`, `www.texttopcb.com` | 302 to `https://via.computer/?ref=texttopcb` | Cloudflare |
+| `via-kappa-five.vercel.app` | the site, with its canonical link on `via.computer` | Vercel |
 
 Vercel makes a new project's first deployment its production deployment,
 whatever branch it comes from. That is how this site went live from a

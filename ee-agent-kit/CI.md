@@ -22,7 +22,7 @@ download fail the run; a green CI proves the autoroute engine installs.
 ## The website (Vercel project settings)
 
 - The Vercel project `via`, linked to this repository, Root Directory
-  `site`, production branch `main`, production at <https://via-kappa-five.vercel.app>. `site/vercel.json` holds the build command,
+  `site`, production branch `main`, production at <https://via.computer>. `site/vercel.json` holds the build command,
   the output folder and the headers, so the project needs no other setting.
 - Every push to `main` deploys production. Every other branch gets a
   preview. The project's setting that skips a deployment when a push

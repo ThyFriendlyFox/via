@@ -1094,7 +1094,13 @@ Cost: a red run on `main` and a workflow change after the merge.
 Root cause: A step whose work grows with every version kept 1 fixed limit, and a green run was read for its verdict, not for how much of its limit it used.
 Process: P2
 
-## M181 — 2026-11-17 — A blog post in my own voice, not TONE.md's English
+## M181 — 2026-11-17 — A production address left to the host's choice
+What happened: I added `via.computer` to the Vercel project and built production 2 times: once as a redeploy, once from `main` without the cache. Both builds printed `site/build.sh: the site for https://via.reagent-systems.com is in dist`. `VERCEL_PROJECT_PRODUCTION_URL` kept the older domain, so the canonical link did not move. `site/vercel.json` now names `https://via.computer`.
+Cost: 2 production builds that changed nothing.
+Root cause: I expected the host to hand the build the new domain, and I did not read which domain it hands over before the builds.
+Process: P32
+
+## M182 — 2026-11-17 — A blog post in my own voice, not TONE.md's English
 What happened: The owner asked for a blog. I wrote the first post and the blog's own words in a voice of my own: personification ("the router did not finish alone"), an intensifier ("a real fault"), lists of 3 for rhythm, and headlines such as "What changed in Via, and what we learned". The owner read the preview and said it reads as a model's text, and that every message is to be in American Simplified Technical English, with none of those patterns.
 Cost: a rewrite of the post and of the blog's words, and a preview the owner could not use.
 Root cause: `TONE.md` held my own words and `docs/STYLE.md` the site's, and neither named the blog, so I wrote the post to the website's rules and not to STE's limits. Neither named American spelling or the patterns that mark text as a model's. Nothing counted a post's sentences.
