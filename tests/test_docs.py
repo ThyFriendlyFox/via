@@ -405,9 +405,17 @@ def example_pages() -> list[Path]:
     return [SITE / "examples.html", *sorted((SITE / "examples").glob("*.html"))]
 
 
+# Vercel serves Web Analytics' script at this path on each deployment of the project. Neither the
+# tree nor the build holds the file.
+SERVED_BY_HOST = {"/_vercel/insights/script.js"}
+
+
 def beside_page(page: Path, link: str) -> bool:
     """Whether a link read from the page's own folder names a file: `agents.svg#cursor` is
-    agents.svg, `site.css?v=1` is site.css, and a folder is its index.html."""
+    agents.svg, `site.css?v=1` is site.css, and a folder is its index.html. A path the host serves
+    (`SERVED_BY_HOST`) names a file too."""
+    if link in SERVED_BY_HOST:
+        return True
     target = page.parent / link.split("#")[0].split("?")[0]
     return target.is_file() or (target / "index.html").is_file()
 
