@@ -82,6 +82,36 @@ The worked example is `tests/boards/pass-board-ecss`, and
    `sierra-circuits-web`). Each `- error: ...` line names the fab's rule.
    To keep the fab for good, set `fab = "<name>"` in the design file.
 
+## Layout packs: ESD at each connector, and power traces for emissions
+
+A layout pack holds rules a maker's note states (`rules/board/README.md`,
+"Layout packs"). The worked examples are `tests/boards/pass-layout`, and
+`fail-layout-esd` and `fail-layout-emi` that break each rule once.
+
+11. Add to `board-rules.json` the packs and what they ask you to state:
+    `"layout": ["ti-slva680a-esd", "ti-szza009-emi"]`;
+    `"connectors": {"J1": "<why it leaves the device>"}` for each connector
+    a cable or a user reaches; `"inside": ["J2"]` for each that stays
+    inside; `"protectors": {"D1": "<the TVS part and its datasheet>"}`;
+    `"ground": ["GND"]`; `"power": ["VBUS", "GND"]`, every power and
+    ground net. `"pack"` may stay or go: a board can name layout packs
+    alone.
+12. Run `workcenter drc <project> --strict`. Act on each line:
+    - `fail esd J1.2 <net>: no protector on the net`: put a TVS from that
+      net to ground, at the connector.
+    - `fail esd J1.2 <net>: R1.1 stands 1.41 mm from D2.1, and D2.1 stands 4.35 mm from J1.2`:
+      move the TVS nearer the connector, or the part further from the TVS.
+    - `fail esd J1.1 <net>: joined to D1.1 through a via`: route the
+      connector's pin to the TVS on 1 layer.
+    - `fail length to width <net> on <layer> ...: 3.69 mm by 1.2 mm, 3.07 to 1, limit 3 to 1`:
+      widen the trace, shorten it, or make the net a pour.
+    - `not judged esd J2: board-rules.json does not say whether it leaves the device`:
+      add J2 to `connectors` or to `inside`.
+    - `not judged esd ...: no copper joins it to D1.1`: route the net.
+13. A run that names `ti-szza009-emi` on a board of 4 layers prints the
+    note `the rule is for a board of 2 copper layers`: the rule is not
+    for this board, and nothing is judged.
+
 ## Done when
 
 `workcenter gates <project> --strict` prints GREEN, and its DRC line names
