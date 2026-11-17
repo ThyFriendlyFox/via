@@ -4457,6 +4457,7 @@ def cmd_doctor(args) -> int:
     ngspice = tool_version([NGSPICE, "--version"], r"(?<=ngspice-)\d+")
     java = tool_version([JAVA, "-version"], r'(?<=version ")\d+(\.\d+)*')
     py = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    openems = fields().OpenEMS.version()
     checks = {
         "kicad-cli": {"required": True, "ok": bool(kicad and kicad.startswith("10.")), "version": kicad},
         "ngspice": {"required": True, "ok": bool(ngspice), "version": ngspice},
@@ -4471,6 +4472,13 @@ def cmd_doctor(args) -> int:
         "xvfb": {"required": False, "ok": shutil.which("Xvfb") is not None},
         "rsvg-convert": {"required": False, "ok": shutil.which("rsvg-convert") is not None},
         "ffmpeg": {"required": False, "ok": shutil.which("ffmpeg") is not None},
+        # The field solver of `fields`: absent, that command skips and nothing else needs it.
+        "openems": {
+            "required": False,
+            "ok": openems is not None,
+            "version": openems,
+            "path": fields().OpenEMS.binary() or str(WC_ROOT / "openems" / "bin" / "openEMS"),
+        },
         "symbols": {
             "required": False,
             "ok": Path("/usr/share/kicad/symbols/Device.kicad_sym").is_file(),
@@ -4665,6 +4673,14 @@ def ratings():
     """tools/ratings.py: `ratings`, a schematic held to its parts' ratings."""
     sys.path.insert(0, str(SRC_DIR / "tools"))
     import ratings as module
+
+    return module
+
+
+def fields():
+    """tools/fields.py: `fields`, the critical nets simulated by a field solver from the board file."""
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import fields as module
 
     return module
 
@@ -4997,6 +5013,7 @@ def main(argv: list[str] | None = None) -> int:
     guide().register(sub, sys.modules[__name__])
     chipflow().register(sub, sys.modules[__name__])
     ratings().register(sub, sys.modules[__name__])
+    fields().register(sub, sys.modules[__name__])
 
     # `--json` is read on either side of the command: `workcenter --json gates P` and `workcenter
     # gates P --json`. SUPPRESS keeps a command that does not carry the flag from clearing the one
