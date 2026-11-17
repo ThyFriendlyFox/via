@@ -153,7 +153,8 @@ ROADMAP item 5).
 2. `workcenter design design.py --route --router freerouting2 --out <scratch>`.
    Read the lines as for the default router. `route skipped: engine
    missing: freerouting2: ...` names what is missing (the jar, the Java,
-   or a Java older than 25): exit 2, nothing routed.
+   or a Java older than 25): exit 2, nothing routed, and nothing written,
+   so a routed board in `--out` stays as it was.
 3. `workcenter bench <copy>/design.py --out <scratch>/bench --router freerouting --router freerouting2`.
    The first router named is the default the others are held against.
    A board takes `freerouting2` only on the bench's rule.
@@ -169,11 +170,14 @@ router. The number is the test's rule number.
 
 Before the route:
 1. The DSN is written from the design in the same command, over any DSN
-   left in `build/route` (P4 step 1).
+   left in `build/route` (P4 step 1). A `<board>.rules` beside it is
+   removed before the router starts: FreeRouting 2.5.0 reads one when
+   none is named and applies its clearances, net classes and vias over
+   the DSN's (its `command_line_arguments.md`, the `-de` entry).
 2. A session left by an earlier run is removed before the router starts;
    a router that writes none has failed.
-3. An absent router skips the route as an absent engine (exit 2) and
-   names what is missing.
+3. An absent router skips the route as an absent engine (exit 2), names
+   what is missing, and writes no file: a routed board stays as it was.
 4. `--order` with `--seed` is refused before the router runs (exit 2).
    Also before the route, and not the router's: via sizes against the
    board's rules and hand vias' places (M46, M40, M41), parts in a
@@ -208,8 +212,12 @@ The run:
     exit 1; nothing is merged and no board is written.
 
 What is read back:
-15. The router's own count, `(N unrouted)` in its log, is the verdict:
-    above 0, exit 1 and a red last line.
+15. The router's own count is the verdict: above 0, exit 1 and a red
+    last line. FreeRouting 2.5.0 writes it in its score, `(N unrouted and
+    M violations)`, after `final score:` (headless) or `with the score
+    of` (with a window), 1 line per stage; the last line counts. Its `M`
+    is printed as `router violations: M ...; not judged here`: the DRC
+    judges clearances. FreeRouting 1.9.0 writes no count: rules 16 and 17.
 16. No count and no copper on any net that needs it: every connection is
     counted open (each net's pads less 1).
 17. No count and some copper: `DRC decides`, exit 0.
@@ -242,6 +250,13 @@ The second router:
   Java 21.0.13 reads up to version 65 (`java -XshowSettings:properties
   -version` prints `java.class.version = 65.0`). None of them has been
   benchmarked.
+- `-da` stops FreeRouting 2.5.0's usage data, not its version check. No
+  flag or setting stops that: each run asks api.github.com for the latest
+  release, under its own User-Agent `Freerouting-Version-Checker`, not
+  the workcenter's `ee-workcenter/1.0` (read with `javap` in
+  `app.freerouting.Freerouting` and `app.freerouting.util.VersionChecker`
+  of the pinned jar). It runs on a daemon thread with a 5 s timeout, so it
+  does not hold the route as 2.1.0's did.
 - Per-net widths and vias come from `d.net_classes`; FreeRouting honours
   them through DSN classes. The DRC checks them through the project's
   net class patterns.

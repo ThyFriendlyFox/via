@@ -4085,7 +4085,10 @@ def cmd_design(args) -> int:
             if summary["route"].get("unrouted"):
                 code = EXIT_FAIL
         except FileNotFoundError as exc:
+            # The router is absent: nothing is routed, and no unrouted board is written over the routed
+            # one the project has. 1 line, exit 2.
             summary["route"] = {"skip": f"engine missing: {exc}"}
+            summary.setdefault("files", [])
             code = EXIT_SKIP
         except RuntimeError as exc:
             # The router failed or ran past the time limit: nothing it wrote is merged, and no board is
@@ -4129,6 +4132,12 @@ def cmd_design(args) -> int:
             unrouted = "DRC decides" if r["unrouted"] is None else f"{r['unrouted']} unrouted"
             rounds = f"{summary.get('rounds', 1)} round(s)"
             print(f"  routed: {r['segments']} segments, {r['vias']} vias, {unrouted}, {rounds}  ({r['log']})")
+            if r.get("violations") is not None:
+                label = routers().get(r["router"]).label
+                print(
+                    f"  router violations: {r['violations']}, counted by {label}; not judged here: the DRC "
+                    "judges clearances"
+                )
             for i, st in enumerate(r.get("stages", []), start=1):
                 left = "no count" if st["unrouted"] is None else f"{st['unrouted']} unrouted"
                 print(
