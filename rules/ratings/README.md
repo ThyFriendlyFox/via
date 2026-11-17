@@ -70,10 +70,61 @@ In the ECSS pack the 2 resistor rules are the chip table (6-30) of 8 resistor ta
 capacitor rule is table 6-4 for a part rated above 100 C. Where a table adds "or the SEE safe
 operating area, whichever is lower", the pack holds the factor alone.
 
+## A junction's temperature
+
+A rule of stress `junction.temperature` is read by the SIM gate, not by `workcenter ratings`
+(`sim/thermal.json`, the `simulate` skill). It holds no share. It holds up to 3 limits, and the
+junction may reach the least of them:
+
+```json
+{
+  "id": "junction.ic.regulator",
+  "stress": "junction.temperature",
+  "kinds": ["ic.regulator"],
+  "share": 0.70,
+  "celsius": 85,
+  "below_rating": 40,
+  "where": "section M4, table 4, page 10 of 10, the column Linear/Mixed Signal and note 2"
+}
+```
+
+`celsius` is a temperature, `share` a share of the part's greatest junction temperature in C, and
+`below_rating` a margin under it. The part's greatest junction temperature is `junction_max` of its
+facts: the absolute maximum rating, which ECSS names Tjmax (clause 3.3, page 14). A rule names 1 of the
+3 at least. A part whose kind has no junction rule is held to its own `junction_max`, and its line says
+so.
+
+| Pack | Kinds | Limit | Where |
+|---|---|---|---|
+| NASA | `ic.regulator` | 0.7 x Tjmax, 85 C, Tjmax - 40 C | M4 table 4, p 10 of 10, Linear/Mixed Signal, note 2 |
+| NASA | `ic.linear` | 0.7 x Tjmax, 85 C | M4 table 4, p 10 of 10, Linear/Mixed Signal |
+| NASA | `ic.digital` | 0.8 x Tjmax, 95 C | M4 table 4, p 10 of 10, Digital |
+| NASA | `diode` | 0.8 x Tjmax, 125 C, Tjmax - 40 C | S1 table 4 of diodes, note 1, p 12 of 13 |
+| NASA | `transistor.mosfet` | 0.8 x Tjmax, 125 C, Tjmax - 40 C | S1 table 4 of transistors, note 2, p 13 of 13 |
+| ECSS | `ic.linear`, `ic.regulator` | 110 C, Tjmax - 40 C | clause 6.21.2, table 6-21, p 57 |
+| ECSS | `ic.digital` | 110 C, Tjmax - 40 C | clause 6.19.2, table 6-19, p 52 |
+| ECSS | `diode.rectifier` | 110 C, Tjmax - 40 C | clause 6.14.2.1, table 6-13, p 43 |
+| ECSS | `diode.clamp` | 110 C, Tjmax - 40 C | clause 6.14.2.2, table 6-14, p 44 |
+| ECSS | `transistor.mosfet` | 110 C, Tjmax - 40 C | clause 6.29.2, table 6-36, p 76 |
+
+How each pack reads its document:
+
+- NASA's note 2 of section M4 holds "power devices" to 110 C or 40 C below the maker's rating. The
+  document does not say whether the note replaces the column or adds to it. The pack takes it for a
+  regulator and adds it to the column: the lower limit holds. For a part of 125 C or more the column's
+  85 C is the lower.
+- NASA's table of diodes has a junction row without note 1 for a bidirectional suppressor. The pack
+  holds every `diode` to note 1 all the same, since a clamp's facts do not say which kind it is.
+- Each ECSS table allows 125 C as an exception when the maker's Tjmax is 150 C or more and ESCC
+  evaluation reports are at hand. The pack does not hold the exception: a project with the reports
+  writes a pack of its own.
+- The plastic parts of NASA's section M4 are the workcenter's parts, as for a regulator's output
+  current. Section M3, for hermetic parts, has 0.8 and 0.75 with note 2: 110 C or 40 C under.
+
 ## What the packs leave out
 
-Limits the 2 documents state and the command does not compute, among others: every junction
-temperature and power dissipation, a diode's surge current, a zener's and a suppressor's power, a
+Limits the 2 documents state and the command does not compute, among others: every power
+dissipation, a diode's surge current, a zener's and a suppressor's power, a
 connector's voltage and current, a switch's voltage, a tantalum capacitor's surge current, reverse
 voltage and ripple, the insulation voltage of an inductor, and a regulator's input less its output.
 Both documents derate the sum of a capacitor's steady voltage and its ripple; the command judges

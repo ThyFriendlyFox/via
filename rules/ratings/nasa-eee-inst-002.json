@@ -96,6 +96,49 @@
       "kinds": ["ic"],
       "max": 0.80,
       "where": "section M4, table 4, page 10 of 10, the column Digital"
+    },
+    {
+      "id": "junction.ic.regulator",
+      "stress": "junction.temperature",
+      "kinds": ["ic.regulator"],
+      "share": 0.70,
+      "celsius": 85,
+      "below_rating": 40,
+      "where": "section M4, table 4, page 10 of 10, the column Linear/Mixed Signal and note 2"
+    },
+    {
+      "id": "junction.ic.linear",
+      "stress": "junction.temperature",
+      "kinds": ["ic.linear"],
+      "share": 0.70,
+      "celsius": 85,
+      "where": "section M4, table 4, page 10 of 10, the column Linear/Mixed Signal"
+    },
+    {
+      "id": "junction.ic.digital",
+      "stress": "junction.temperature",
+      "kinds": ["ic.digital"],
+      "share": 0.80,
+      "celsius": 95,
+      "where": "section M4, table 4, page 10 of 10, the column Digital"
+    },
+    {
+      "id": "junction.diode",
+      "stress": "junction.temperature",
+      "kinds": ["diode"],
+      "share": 0.80,
+      "celsius": 125,
+      "below_rating": 40,
+      "where": "section S1, table 4 of diodes and its note 1, page 12 of 13"
+    },
+    {
+      "id": "junction.mosfet",
+      "stress": "junction.temperature",
+      "kinds": ["transistor.mosfet"],
+      "share": 0.80,
+      "celsius": 125,
+      "below_rating": 40,
+      "where": "section S1, table 4 of transistors and its note 2, page 13 of 13"
     }
   ]
 }
