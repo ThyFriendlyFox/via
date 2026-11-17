@@ -97,7 +97,10 @@ parts, each entry read from its datasheet.
    owner's reason, as `"by": "the owner's decision of 2026-11-17"`; the
    part and the rule to name stand under the failure in
    `build/ratings/report.md`. The line then prints as `accepted`. An entry
-   whose failure is gone fails the run until it is taken out.
+   whose failure is gone fails the run until it is taken out. An entry
+   accepts 1 failure. Where 2 failures of 1 part stand under 1 rule,
+   neither is accepted until each entry says which it means, with words of
+   that failure's line: `"line": "pin IN"`.
 8. The last line is the verdict: `RATINGS HELD`, `RATINGS HELD, N NOT
    JUDGED`, `NOTHING JUDGED` or `RATINGS NOT HELD`. Run with `--strict` in
    CI once nothing is left not judged: what is not judged then fails.

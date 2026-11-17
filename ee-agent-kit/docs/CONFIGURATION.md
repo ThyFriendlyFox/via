@@ -130,7 +130,7 @@ unset variable never causes a failure.
 | `nets` | object | none (required) | Each net a source off the board holds: `{"volts": [least, greatest], "source": "..."}` under the net's name, with or without its sheet's slash. `[0, 0]` is the reference. |
 | `ambient` | object | none | `{"max": C, "source": "..."}`: the highest air temperature. A limit that falls with temperature is judged there. |
 | `parts` | object | none | What the board cannot say of a part: `REF.PIN` with `amps` for the load behind a connector's pin, `REF` with `amps` for the current through a part (RMS for a resistor and a transistor, the average for a diode, the peak for an inductor), `REF` with `volts` for the greatest voltage across a part of 2 pins whose 2 nets move together; each with a `source`. |
-| `accepted` | list | none | Failures the owner takes on: `{"part", "rule", "why", "by"}`, `by` as `the owner's decision of YYYY-MM-DD`. An entry nothing fails under fails the run. |
+| `accepted` | list | none | Failures the owner takes on: `{"part", "rule", "why", "by"}`, `by` as `the owner's decision of YYYY-MM-DD`. An entry accepts 1 failure: where 2 of 1 part stand under 1 rule, `line` holds words of the line the entry means. An entry nothing fails under fails the run. |
 
 A part's facts are 1 entry of a file in `library/facts/`, in the project's
 folder or a folder above it; a rule pack is 1 file of `rules/ratings/`. The

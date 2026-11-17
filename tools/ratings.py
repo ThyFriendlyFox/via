@@ -826,7 +826,9 @@ class Project:
     ambient: float | None
     nets: dict[str, Span]  # the nets nothing on the board fixes, by the netlist's own names
     amps: dict[str, float]  # `R5`, or `J6.1` for 1 pin: a current nothing on the board gives
-    accepted: dict[tuple[str, str], str]  # (part, rule) -> the owner's words for the report
+    # (part, rule) -> the owner's words for the report, or a list of (words of the 1 failure's line
+    # that an entry means, the owner's words): an entry accepts 1 failure
+    accepted: dict[tuple[str, str], str | list[tuple[str, str]]]
     # `C7`: the greatest voltage across a part of 2 pins, where the spans of its 2 nets cannot give it
     volts: dict[str, float] = field(default_factory=dict)
 
@@ -870,16 +872,29 @@ def read_project(path: Path, net: Netlist) -> Project:
             if pin or len(net.parts[ref].pins) != 2:
                 raise Refusal(f"{name}: parts: {key}: volts: the voltage across a part of 2 pins is asked")
             volts[key] = _number(f"{name}: parts: {key}: volts", entry["volts"], 0)
-    accepted: dict[tuple[str, str], str] = {}
+    accepted: dict[tuple[str, str], list[tuple[str, str]]] = {}
+    first: dict[tuple[str, str, str], int] = {}
     if not isinstance(data.get("accepted", []), list):
         raise Refusal(f"{name}: accepted: a list is asked")
     for i, raw in enumerate(data.get("accepted", []), start=1):
         where = f"{name}: accepted: entry {i}"
-        entry = _keys(where, raw, ("part", "rule", "why", "by"))
+        entry = _keys(where, raw, ("part", "rule", "why", "by"), ("line",))
         if not OWNER_RE.fullmatch(_text(f"{where}: by", entry["by"])):
             raise Refusal(f"{where}: by: write `the owner's decision of YYYY-MM-DD`")
+        day = entry["by"].rsplit(" ", 1)[1]
+        try:
+            datetime.date.fromisoformat(day)
+        except ValueError:
+            raise Refusal(f"{where}: by: {day} is no date") from None
+        if "line" in entry and not (isinstance(entry["line"], str) and entry["line"].strip()):
+            raise Refusal(f"{where}: line: words of the failure's line are asked")
         words = f"{_text(f'{where}: why', entry['why'])} ({entry['by']})"
-        accepted[(_text(f"{where}: part", entry["part"]), _text(f"{where}: rule", entry["rule"]))] = words
+        key = (_text(f"{where}: part", entry["part"]), _text(f"{where}: rule", entry["rule"]))
+        piece = entry.get("line", "")
+        if (*key, piece) in first:
+            raise Refusal(f"{where}: entry {first[(*key, piece)]} accepts the same part, rule and line")
+        first[(*key, piece)] = i
+        accepted.setdefault(key, []).append((piece, words))
     return Project(_text(f"{name}: pack", data["pack"]), ambient, nets, amps, accepted, volts)
 
 
@@ -1614,14 +1629,22 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
             notes.append(note)
         return share, rule.id, f"{pack.document['number']}, {rule.where}"
 
+    def entries(key: tuple[str, str]) -> list[tuple[str, str]]:
+        """The acceptances of 1 part under 1 rule: (words of the line an entry means, the owner's)."""
+        said = project.accepted.get(key, [])
+        return [("", said)] if isinstance(said, str) else said
+
+    met: dict[tuple[str, str, str], list[Finding]] = {}  # an acceptance -> the failures it meets
+
     def judged(ref: str, rule: str, holds: bool, text: str, source: str) -> None:
         if holds:
             out.append(Finding("hold", ref, rule, text, source))
-        elif (ref, rule) in project.accepted:
-            words = project.accepted[(ref, rule)]
-            out.append(Finding("accepted", ref, rule, f"{text}; accepted: {words}", source))
-        else:
-            out.append(Finding("fail", ref, rule, text, source))
+            return
+        out.append(Finding("fail", ref, rule, text, source))
+        for piece, _ in entries((ref, rule)):
+            if piece in text:  # an entry with no `line` means the part's 1 failure under the rule
+                met.setdefault((ref, rule, piece), []).append(out[-1])
+                break
 
     def ratio(ref: str, stress: str, label: str, value: float | str, rated: float, unit: str) -> None:
         """One stress against one rating: a voltage across a part, a power in it."""
@@ -1870,11 +1893,20 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
         if found.kind == "ic" and "switching" in found.data:
             _judge_buck(net, ref, of, spans, project, notes, judged, out, rails, loads)
 
-    for (ref, rule), _words in project.accepted.items():
-        if not any(f.status == "accepted" and (f.part, f.rule) == (ref, rule) for f in out):
+    # An acceptance is the owner's word on 1 failure. One that meets 1 failure accepts it. One that
+    # meets 2 accepts neither: the second is a failure the owner has not seen. One that meets none
+    # fails the run, unless its part is not judged now.
+    for ref, rule in project.accepted:
+        for piece, words in entries((ref, rule)):
+            hits = met.get((ref, rule, piece), [])
             text = f"{ref}: ratings.json accepts a failure of {rule}"
             part_ref = ref.partition(".")[0]
-            if any(f.status == "not judged" and f.part.partition(".")[0] == part_ref for f in out):
+            if len(hits) == 1:
+                hits[0].status, hits[0].text = "accepted", f"{hits[0].text}; accepted: {words}"
+            elif hits:
+                text = f"{ref}: ratings.json accepts 1 failure of {rule}, and {len(hits)} fail there"
+                out.append(Finding("fail", ref, "accepted", f"{text}: name the 1 it means with `line`"))
+            elif any(f.status == "not judged" and f.part.partition(".")[0] == part_ref for f in out):
                 # the failure is not gone: it comes back with what is missing
                 out.append(
                     Finding("not judged", ref, "accepted", f"{text}, and {part_ref} is not judged now")

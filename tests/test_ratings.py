@@ -2295,6 +2295,34 @@ def test_an_accepted_failure_that_fails_no_more_is_a_failure_of_its_own(tmp_path
     ]
 
 
+def test_1_acceptance_covers_1_failure_and_not_every_failure_of_its_part(tmp_path):
+    """The datasheet asks for a capacitor on IN and one on OUT, and neither stands there. The owner
+    accepted 1 failure of `needs.capacitor` for U1, and 2 fail under it: the second is one the owner
+    has not seen. Neither is accepted until the entry says which, with words of its line."""
+    in_cap = {"capacitor": {"from": "IN", "to": "GND", "farads_min": 1e-6}, "page": 5}
+    net, mpns = circuit(U1=("LDO", "LDO-1", LDO))
+    facts = library(tmp_path, regulator(needs=[in_cap, OUT_CAP]))
+    words = "the input capacitor is on the other board (the owner's decision of 2026-11-17)"
+    both = [
+        "fail U1 pin IN (V5) needs a capacitor to GND, and none stands there [DS-1, rev A, p 5]",
+        "fail U1 pin OUT (V33) needs a capacitor to GND, and none stands there [DS-1, rev A, p 5]",
+    ]
+    report = ratings.judge(net, mpns, facts, project(V5, accepted={("U1", "needs.capacitor"): words}), NASA)
+    assert found(report, "accepted") == []
+    assert found(report, "fail") == [
+        *both,
+        "fail U1: ratings.json accepts 1 failure of needs.capacitor, and 2 fail there: "
+        "name the 1 it means with `line`",
+    ]
+    named = {("U1", "needs.capacitor"): [("pin IN", words)]}
+    report = ratings.judge(net, mpns, facts, project(V5, accepted=named), NASA)
+    assert found(report, "accepted") == [
+        f"accepted U1 pin IN (V5) needs a capacitor to GND, and none stands there; accepted: {words} "
+        "[DS-1, rev A, p 5]"
+    ]
+    assert found(report, "fail") == [both[1]]
+
+
 def test_an_accepted_failure_of_a_part_that_is_not_judged_now_is_not_called_gone(tmp_path):
     """C1's facts are away: its failure is not gone, it is not judged. Telling the owner to take the
     entry out would be wrong, since the failure comes back with the facts."""
@@ -2512,6 +2540,18 @@ STATED = {
             "ratings.json: accepted: entry 1: by: write `the owner's decision of YYYY-MM-DD`",
         ),
         (changed(STATED, "accepted", to={}), "ratings.json: accepted: a list is asked"),
+        (
+            changed(STATED, "accepted", 0, "by", to="the owner's decision of 2026-99-99"),
+            "ratings.json: accepted: entry 1: by: 2026-99-99 is no date",
+        ),
+        (
+            changed(STATED, "accepted", to=STATED["accepted"] * 2),
+            "ratings.json: accepted: entry 2: entry 1 accepts the same part, rule and line",
+        ),
+        (
+            changed(STATED, "accepted", 0, "line", to=""),
+            "ratings.json: accepted: entry 1: line: words of the failure's line are asked",
+        ),
         # a value of the wrong type is refused as a wrong word is, with its place
         (
             changed(STATED, "nets", to=5),
