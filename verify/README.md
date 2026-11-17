@@ -64,4 +64,7 @@ module, the chip tools in their own folder).
    them into `seconds`.
 3. A new test file that runs an engine gets `yes`.
 4. A file gets a reason in `alone` only when a run side by side showed it
-   fail and the cause cannot be fixed in the test.
+   fail and the cause cannot be fixed in the test. 1 file has one:
+   `tests/test_fab.py` lists the files of a fixture before and after a DRC
+   run, and kicad-cli writes `~rc_divider.kicad_pro.lck` into that fixture
+   while another shard runs a gate on it.
