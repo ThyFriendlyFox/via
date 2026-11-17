@@ -465,7 +465,7 @@ OTHER_SHA = "0" * 64
         (
             [GOOD | {"kind": "note"}],
             "documents[0] acme-an-17: kind 'note' is none of standard, application note, datasheet, "
-            "report, web page, paper, book",
+            "report, user's guide, web page, paper, book",
         ),
         (
             [GOOD | {"id": "AN-17"}],
