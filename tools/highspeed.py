@@ -13,8 +13,13 @@ The command writes KiCad's rules (`track_width`, `diff_pair_gap`, `length`, `ske
 
     width   every segment of a fast net within the band the solver gave for its layer, at the gap the
             board has there
-    gap     the board's gap is the one interfaces.json gives, when it gives one. KiCad's own
+    gap     every run of the pair at the gap interfaces.json gives, when it gives one; else each gap
+            but the main one solved at the tracks' widths and held to the band. KiCad's own
             diff_pair_gap rule reads only nets whose names end in _P/_N or +/-
+    coupling  the stretches of a net with no parallel partner: break-out within the interface's
+            distance of the pair's pads holds, any other is not judged
+    spacing, stitching  the TI files' 30 mil to other signals' tracks, and a ground via within 200 mil
+            of a via that moves the pair to other ground planes
     length  each net's track length (or its delay, where the document sets a delay) under the limit
     skew    the difference of the pair's 2 lengths under the limit
     vias    the vias of each net, where the document sets a count
@@ -23,8 +28,10 @@ The command writes KiCad's rules (`track_width`, `diff_pair_gap`, `length`, `ske
             another net (a power plane) nearer to the track fails.
 
 A ground pour is a pour of a net named GND or VSS, or whose name begins or ends with GND. Via barrels
-are not counted in a length. A limit the documents set that the command does not judge, and a limit
-they do not set, is printed as not judged, with the reason. Standard library only.
+are not counted in a length. The width is not judged beside ground on the track's own layer (COPLANAR),
+and length, skew and plane are not judged on a net whose tracks do not reach all its pads. A dielectric
+of several sublayers is read sublayer by sublayer. A limit the documents set that the command does not
+judge, and a limit they do not set, is printed as not judged, with the reason. Standard library only.
 """
 
 from __future__ import annotations
@@ -45,6 +52,12 @@ STEP = 0.01  # mm between the points of a track's centre line the plane check lo
 READ = 3  # decimals of a mm a gap is read to: 1 um
 PARALLEL = 1e-3  # the sine of the angle under which 2 tracks count as parallel
 RAYS = 16  # directions looked along from a via or a pad for the fill round its hole
+# Ground poured on a track's own layer within this many times the track's height over its plane makes
+# the width not judged: the solver has no ground beside the track. With 2 grounded strips added to the
+# solver's grid, a pour 3 heights from the pair's outer edges moved Z_diff by 0.11 % on the fixtures'
+# 0.2104 mm microstrip and 0.26 % on a 1.51 mm 2-layer board; 1 height away, by 2.3 % and 1.0 %.
+COPLANAR = 3.0
+BREAK_SAMPLE = 0.1  # mm between the points of a stretch held to the pads' break-out distance
 
 
 class NotJudged(Exception):
@@ -104,10 +117,27 @@ class Board:
     nets: set[str]
     holes: list[tuple[str, float, float, float]] = field(default_factory=list)  # net, x, y, half diagonal
     margins: dict[str, float] = field(default_factory=dict)  # layer -> pour clearance + min thickness
+    pads: list[Pad] = field(default_factory=list)
+    via_at: list[tuple[str, float, float, float]] = field(default_factory=list)  # net, x, y, radius
+    fill_nets: dict[str, list[str]] = field(default_factory=dict)  # layer -> the net of each of its fills
 
     def planes(self) -> set[str]:
         """The layers that hold a ground pour."""
         return {layer for layer, nets in self.pours.items() if any(is_ground(n) for n in nets)}
+
+
+@dataclass
+class Pad:
+    net: str
+    name: str  # "J2 pad 1"
+    x: float
+    y: float
+    reach: float  # half the pad's diagonal: a track end within it lands on the pad
+    through: bool
+    layers: list[str]
+
+    def on(self, layer: str) -> bool:
+        return self.through or layer in self.layers or ("*.Cu" in self.layers and layer.endswith(".Cu"))
 
 
 def is_ground(net: str) -> bool:
@@ -132,6 +162,26 @@ def _arc_length(a, m, b) -> float:
     return r * angle
 
 
+def _to_segment(p, a, b) -> float:
+    """The distance from point p to the segment a b."""
+    (px, py), (ax, ay), (bx, by) = p, a, b
+    dx, dy = bx - ax, by - ay
+    span = dx * dx + dy * dy
+    s = 0.0 if span == 0 else max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / span))
+    return math.hypot(px - ax - s * dx, py - ay - s * dy)
+
+
+def _between(a, b, c, d) -> float:
+    """The least distance between the segments a b and c d."""
+
+    def side(p, q, r):
+        return (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
+
+    if side(a, b, c) * side(a, b, d) < 0 and side(c, d, a) * side(c, d, b) < 0:
+        return 0.0
+    return min(_to_segment(a, c, d), _to_segment(b, c, d), _to_segment(c, a, b), _to_segment(d, a, b))
+
+
 def _xy(node) -> tuple[float, float]:
     vals = kicadgen.atoms(node)
     return (kicadgen.num(vals[0]), kicadgen.num(vals[1]))
@@ -147,6 +197,38 @@ def _text(node, head: str) -> str:
     return kicadgen.atoms(c)[0] if c is not None and kicadgen.atoms(c) else ""
 
 
+def _number(value: str, layer: str, what: str) -> float:
+    try:
+        return kicadgen.num(value)
+    except ValueError:
+        given = f"gives its {what} as {value!r}" if value else f"gives no {what}"
+        raise ValueError(f"stackup layer {layer!r} {given}; the command cannot read this stack") from None
+
+
+def _sublayers(layer: list, name: str) -> list[tuple]:
+    """A dielectric's slabs, top down: ("dielectric", thickness, er or None, name). KiCad writes a
+    dielectric of several sublayers as 1 layer whose children run on after the bare word `addsublayer`,
+    1 run a sublayer. Neighbouring sublayers of one er are 1 slab."""
+    runs: list[list] = [[]]
+    for item in layer[2:]:
+        if item == "addsublayer":
+            runs.append([])
+        elif isinstance(item, list):
+            runs[-1].append(item)
+    out: list[tuple] = []
+    for i, run in enumerate(runs):
+        node = ["sublayer", *run]
+        label = name if len(runs) == 1 else f"{name}, sublayer {i + 1}"
+        thick = _number(_text(node, "thickness"), label, "thickness")
+        er_text = _text(node, "epsilon_r")
+        er = _number(er_text, label, "epsilon_r") if er_text else None
+        if out and er is not None and out[-1][2] == er:
+            out[-1] = ("dielectric", out[-1][1] + thick, er, name)
+        else:
+            out.append(("dielectric", thick, er, name))
+    return out
+
+
 def read_board(text: str) -> Board:
     root = kicadgen.parse(text)
     setup = kicadgen.child(root, "setup")
@@ -155,13 +237,11 @@ def read_board(text: str) -> Board:
     if stackup is not None:
         for layer in kicadgen.children(stackup, "layer"):
             kind = _text(layer, "type")
-            thick = _text(layer, "thickness")
             name = kicadgen.atoms(layer)[0]
             if kind == "copper":
-                stack.append(("copper", name, kicadgen.num(thick)))
-            elif kind in ("core", "prepreg") and thick:
-                er = _text(layer, "epsilon_r")
-                stack.append(("dielectric", kicadgen.num(thick), kicadgen.num(er) if er else None, name))
+                stack.append(("copper", name, _number(_text(layer, "thickness"), name, "thickness")))
+            elif kind in ("core", "prepreg"):
+                stack += _sublayers(layer, name)
     tracks, vias, nets = [], {}, set()
     for net in kicadgen.children(root, "net"):
         vals = kicadgen.atoms(net)
@@ -175,12 +255,16 @@ def read_board(text: str) -> Board:
             points = [_xy(kicadgen.child(item, k)) for k in keys]
             tracks.append(Track(net, _text(item, "layer"), points, kicadgen.num(_text(item, "width"))))
     holes: list[tuple[str, float, float, float]] = []
+    via_at: list[tuple[str, float, float, float]] = []
+    pads: list[Pad] = []
     for item in kicadgen.children(root, "via"):
         net = _text(item, "net")
         vias[net] = vias.get(net, 0) + 1
         x, y = _xy(kicadgen.child(item, "at"))
         holes.append((net, x, y, kicadgen.num(_text(item, "size")) / 2))
+        via_at.append((net, x, y, kicadgen.num(_text(item, "size")) / 2))
     fills: dict[str, list] = {}
+    fill_nets: dict[str, list[str]] = {}
     pours: dict[str, set[str]] = {}
     margins: dict[str, float] = {}
     for zone in kicadgen.children(root, "zone"):
@@ -196,6 +280,7 @@ def read_board(text: str) -> Board:
         if is_ground(net):
             for filled in kicadgen.children(zone, "filled_polygon"):
                 fills.setdefault(_text(filled, "layer"), []).append(_pts(filled))
+                fill_nets.setdefault(_text(filled, "layer"), []).append(net)
         clearance = kicadgen.child(zone, "connect_pads")
         clear = (
             kicadgen.num(_text(clearance, "clearance"))
@@ -208,18 +293,29 @@ def read_board(text: str) -> Board:
     for item in kicadgen.children(root, "footprint"):
         fx, fy, *rot = (kicadgen.num(v) for v in kicadgen.atoms(kicadgen.child(item, "at")))
         angle = math.radians(rot[0]) if rot else 0.0
+        ref = next(
+            (
+                kicadgen.atoms(p)[1]
+                for p in kicadgen.children(item, "property")
+                if kicadgen.atoms(p)[:1] == ["Reference"] and len(kicadgen.atoms(p)) > 1
+            ),
+            "?",
+        )
         for pad in kicadgen.children(item, "pad"):
             n = _text(pad, "net")
             if n:
                 nets.add(n)
-            if "thru_hole" not in kicadgen.atoms(pad):
-                continue  # only a hole through the board makes a hole in an inner plane
             px, py = _xy(kicadgen.child(pad, "at"))
             sx, sy = _xy(kicadgen.child(pad, "size"))
             x = fx + px * math.cos(angle) + py * math.sin(angle)
             y = fy - px * math.sin(angle) + py * math.cos(angle)
-            holes.append((n, x, y, math.hypot(sx, sy) / 2))
-    return Board(stack, tracks, vias, fills, pours, nets, holes, margins)
+            through = "thru_hole" in kicadgen.atoms(pad)
+            layers = kicadgen.atoms(kicadgen.child(pad, "layers")) if kicadgen.child(pad, "layers") else []
+            name = kicadgen.atoms(pad)[0] if kicadgen.atoms(pad) else "?"
+            pads.append(Pad(n, f"{ref} pad {name}", x, y, math.hypot(sx, sy) / 2, through, layers))
+            if through:  # only a hole through the board makes a hole in an inner plane
+                holes.append((n, x, y, math.hypot(sx, sy) / 2))
+    return Board(stack, tracks, vias, fills, pours, nets, holes, margins, pads, via_at, fill_nets)
 
 
 def _index(board: Board, layer: str) -> int | None:
@@ -358,43 +454,60 @@ def pair_runs(board: Board, nets: list[str], layer: str) -> list[tuple[float, fl
     """Where the pair's 2 tracks on `layer` run side by side: (gap edge to edge, length, first point,
     last point). Each piece of a P track is paired with the nearest parallel N track beside it. An arc
     counts as its 2 chords."""
-    n_chords = [
+    return coverage(board, nets[0], nets[1], layer)[0]
+
+
+def _chords(board: Board, net: str, layer: str) -> list[tuple[tuple, tuple, float]]:
+    return [
         (a, b, t.width)
         for t in board.tracks
-        if t.net == nets[1] and t.layer == layer
+        if t.net == net and t.layer == layer
         for a, b in zip(t.points, t.points[1:], strict=False)
     ]
+
+
+def coverage(board: Board, net: str, other: str, layer: str) -> tuple[list, list]:
+    """The pieces of `net`'s tracks on `layer` with a parallel track of `other` beside them, as runs
+    (gap edge to edge, length, first point, last point), and the stretches with none, as (length, first
+    point, last point), 1 for each straight piece. The runs' lengths and the stretches' lengths add up to
+    the net's length on the layer (an arc as its 2 chords)."""
+    partners = _chords(board, other, layer)
     runs: list[tuple[float, float, tuple, tuple]] = []
-    for track in (t for t in board.tracks if t.net == nets[0] and t.layer == layer):
-        for (ax, ay), (bx, by) in zip(track.points, track.points[1:], strict=False):
-            length = math.hypot(bx - ax, by - ay)
-            if length < 1e-9:
+    free: list[tuple[float, tuple, tuple]] = []
+    for (ax, ay), (bx, by), own in _chords(board, net, layer):
+        length = math.hypot(bx - ax, by - ay)
+        if length < 1e-9:
+            continue
+        ux, uy = (bx - ax) / length, (by - ay) / length
+
+        def at(s: float, ax=ax, ay=ay, ux=ux, uy=uy) -> tuple[float, float]:
+            return (round(ax + ux * s, 3), round(ay + uy * s, 3))
+
+        near = []
+        for (cx, cy), (dx, dy), width in partners:
+            span = math.hypot(dx - cx, dy - cy)
+            if span < 1e-9 or abs(ux * (dy - cy) - uy * (dx - cx)) / span > PARALLEL:
                 continue
-            ux, uy = (bx - ax) / length, (by - ay) / length
-            near = []
-            for (cx, cy), (dx, dy), width in n_chords:
-                other = math.hypot(dx - cx, dy - cy)
-                if other < 1e-9 or abs(ux * (dy - cy) - uy * (dx - cx)) / other > PARALLEL:
-                    continue
-                s0 = (cx - ax) * ux + (cy - ay) * uy
-                s1 = (dx - ax) * ux + (dy - ay) * uy
-                lo, hi = max(0.0, min(s0, s1)), min(length, max(s0, s1))
-                if hi - lo > 1e-6:
-                    apart = abs((cy - ay) * ux - (cx - ax) * uy)
-                    near.append((lo, hi, apart, apart - (track.width + width) / 2))
-            cuts = sorted({c for lo, hi, _, _ in near for c in (lo, hi)})
-            for s, e in zip(cuts, cuts[1:], strict=False):
-                over = [n for n in near if n[0] <= s + 1e-9 and n[1] >= e - 1e-9]
-                if not over:
-                    continue
-                gap = round(min(over, key=lambda n: n[2])[3], READ)
-                first = (round(ax + ux * s, 3), round(ay + uy * s, 3))
-                last = (round(ax + ux * e, 3), round(ay + uy * e, 3))
-                if runs and runs[-1][0] == gap and runs[-1][3] == first:
-                    runs[-1] = (gap, runs[-1][1] + e - s, runs[-1][2], last)
-                else:
-                    runs.append((gap, e - s, first, last))
-    return runs
+            s0 = (cx - ax) * ux + (cy - ay) * uy
+            s1 = (dx - ax) * ux + (dy - ay) * uy
+            lo, hi = max(0.0, min(s0, s1)), min(length, max(s0, s1))
+            if hi - lo > 1e-6:
+                apart = abs((cy - ay) * ux - (cx - ax) * uy)
+                near.append((lo, hi, apart, apart - (own + width) / 2))
+        cuts = sorted({0.0, length} | {c for lo, hi, _, _ in near for c in (lo, hi)})
+        for s, e in zip(cuts, cuts[1:], strict=False):
+            if e - s < 1e-9:
+                continue
+            over = [n for n in near if n[0] <= s + 1e-9 and n[1] >= e - 1e-9]
+            if not over:
+                free.append((e - s, (ax + ux * s, ay + uy * s), (ax + ux * e, ay + uy * e)))
+                continue
+            gap = round(min(over, key=lambda n: n[2])[3], READ)
+            if runs and runs[-1][0] == gap and runs[-1][3] == at(s):
+                runs[-1] = (gap, runs[-1][1] + e - s, runs[-1][2], at(e))
+            else:
+                runs.append((gap, e - s, at(s), at(e)))
+    return runs, free
 
 
 def _gap_of(entry: dict, label: str) -> float | None:
@@ -471,6 +584,8 @@ def _judge_pair(board, spec, label, nets, declared, cond, blocks, report, solver
 
     # ---- gap and width, per layer: the solver's band at the gap the board has
     for layer in layers:
+        for net, other in (nets, nets[::-1]):
+            report.findings += _coupling(board, spec, nets, net, other, layer)
         here = [n for n in nets if any(t.net == n and t.layer == layer for t in board.tracks)]
         runs = pair_runs(board, nets, layer) if len(here) == 2 else []
         if not runs:
@@ -490,48 +605,66 @@ def _judge_pair(board, spec, label, nets, declared, cond, blocks, report, solver
         for gap, length, _, _ in runs:
             totals[gap] = totals.get(gap, 0.0) + length
         main = max(totals, key=lambda g: totals[g])
-        for gap, total in totals.items():
-            if gap != main:
-                first = next(r for r in runs if r[0] == gap)
-                report.findings.append(
-                    Finding(
-                        "not judged",
-                        "gap",
-                        f"{label} on {layer}: {total:.4g} mm of the pair runs {gap:g} mm apart, from "
-                        f"{first[2]} to {first[3]} mm; the width is judged at {main:g} mm, the gap over the "
-                        "most of its length",
-                    )
-                )
+
+        def stretch(gap: float, layer=layer, totals=totals, runs=runs) -> str:
+            first = next(r for r in runs if r[0] == gap)
+            more = sum(1 for r in runs if r[0] == gap) - 1
+            return (
+                f"{label} on {layer}: {totals[gap]:.4g} mm of the pair runs {gap:g} mm apart, edge to "
+                f"edge, from {first[2]} to {first[3]} mm" + (f" and {more} more" if more > 0 else "")
+            )
+
+        # Every run at a gap other than the declared one fails: the gap is a limit the project set.
         if declared is not None:
-            if abs(declared - main) > 0.5 * 10**-READ:
-                report.findings.append(
-                    Finding(
-                        "fail",
-                        "gap",
-                        f"{label} on {layer}: the 2 tracks run {main:g} mm apart, edge to edge, over "
-                        f"{totals[main]:.4g} mm; limit {declared:g} mm, the gap interfaces.json gives and "
-                        "the KiCad rule is written for",
+            for gap in sorted(totals, key=lambda g: (g != main, g)):
+                if abs(declared - gap) > 0.5 * 10**-READ:
+                    report.findings.append(
+                        Finding(
+                            "fail",
+                            "gap",
+                            f"{stretch(gap)}; limit {declared:g} mm, the gap interfaces.json gives and the "
+                            "KiCad rule is written for",
+                        )
                     )
-                )
-            else:
-                report.findings.append(
-                    Finding(
-                        "held",
-                        "gap",
-                        f"{label} on {layer}: the 2 tracks run {main:g} mm apart over {totals[main]:.4g} mm, "
-                        "the gap interfaces.json gives",
+                else:
+                    report.findings.append(
+                        Finding(
+                            "held",
+                            "gap",
+                            f"{label} on {layer}: the 2 tracks run {gap:g} mm apart over "
+                            f"{totals[gap]:.4g} mm, the gap interfaces.json gives",
+                        )
                     )
-                )
+        others = [] if declared is not None else [g for g in sorted(totals) if g != main]
+
+        def others_not_judged(why: str, others=others, stretch=stretch) -> None:
+            for gap in others:
+                report.findings.append(Finding("not judged", "gap", f"{stretch(gap)}; {why}"))
+
         if main <= 0:
             each_net("width", f"the 2 tracks touch or overlap ({main:g} mm apart)")
+            others_not_judged(f"the pair's main run touches or overlaps ({main:g} mm apart)")
             continue
         try:
             section, refs = section_for(board, layer)
         except NotJudged as exc:
             each_net("width", str(exc))
+            others_not_judged(str(exc))
             continue
         if section is None:
             each_net("width", "no ground pour on any copper layer to stand as its plane")
+            others_not_judged("no ground pour on any copper layer to stand as its plane")
+            continue
+        beside = _ground_beside(board, nets, layer, COPLANAR * section["y"])
+        if beside is not None:
+            fill_net, apart, (x, y) = beside
+            why = (
+                f"{fill_net.lstrip('/')} is poured on {layer} itself, {apart:.3g} mm from the track's edge "
+                f"at ({x:g}, {y:g}) mm, within {COPLANAR:g} times its {section['y']:g} mm height over its "
+                "plane; the solver puts no ground beside the track, and such ground lowers the impedance"
+            )
+            each_net("width", why)
+            others_not_judged(why)
             continue
         section.update({"widths": [0.3, 0.3], "gap": main})
         band = "min" in imp and "max" in imp
@@ -541,6 +674,7 @@ def _judge_pair(board, spec, label, nets, declared, cond, blocks, report, solver
         ans = solver(req)
         if "error" in ans:
             each_net("width", ans["error"])
+            others_not_judged(ans["error"])
             continue
         eps_by_layer[layer] = ans["line"]["eps_eff"]
         report.bands[layer] = {**ans, "refs": refs, "gap": main}
@@ -554,6 +688,7 @@ def _judge_pair(board, spec, label, nets, declared, cond, blocks, report, solver
             report.findings.append(
                 Finding("not judged", "width", f"{label} on {layer}: {imp['band_not_stated']}")
             )
+            others_not_judged(imp["band_not_stated"])
             continue
         wmin, wmax = round(ans["width_min"], 4), round(ans["width_max"], 4)
         blocks.append(
@@ -565,14 +700,13 @@ def _judge_pair(board, spec, label, nets, declared, cond, blocks, report, solver
             )
         )
         gmin, gmax = ans.get("gap_min"), ans.get("gap_max")
-        if gmin and gmax:
+        if ans.get("gap_error"):
+            blocks.append(f"# {label} gap {layer}: {ans['gap_error']}; that bound is left out")
+        bounds = [f"(min {gmin:.4f}mm)"] if gmin else []
+        bounds += [f"(opt {opt_gap:.4f}mm)"] + ([f"(max {gmax:.4f}mm)"] if gmax else [])
+        if gmin or gmax:
             blocks.append(
-                _rule_block(
-                    f"{label} gap {layer}",
-                    layer,
-                    cond,
-                    f"diff_pair_gap (min {gmin:.4f}mm) (opt {opt_gap:.4f}mm) (max {gmax:.4f}mm)",
-                )
+                _rule_block(f"{label} gap {layer}", layer, cond, f"diff_pair_gap {' '.join(bounds)}")
             )
         for net in nets:
             widths = [t.width for t in board.tracks if t.net == net and t.layer == layer]
@@ -591,6 +725,55 @@ def _judge_pair(board, spec, label, nets, declared, cond, blocks, report, solver
                         f"{main:g} mm gap over {', '.join(refs)}; source: {src}",
                     )
                 )
+        # The runs at the other gaps: the impedance of the tracks there, at their own widths.
+        widths = [
+            sorted({t.width for t in board.tracks if t.net == net and t.layer == layer}) for net in nets
+        ]
+        for gap in others:
+            if gap <= 0:
+                report.findings.append(
+                    Finding("fail", "gap", f"{stretch(gap)}: the 2 tracks touch or overlap; source: {src}")
+                )
+                continue
+            # The narrowest tracks give the highest impedance, the widest the lowest.
+            picks = sorted({tuple(w[0] for w in widths), tuple(w[-1] for w in widths)})
+            zs = []
+            for pick in picks:
+                got = solver(
+                    {"section": {**section, "widths": list(pick), "gap": gap}, "impedance_only": True}
+                )
+                if "error" in got:
+                    break
+                zs.append(got["impedance"])
+            if len(zs) < len(picks):
+                report.findings.append(Finding("not judged", "gap", f"{stretch(gap)}; {got['error']}"))
+                continue
+            low, high = min(zs), max(zs)
+            shown = f"{low:.1f} ohm" if high - low < 0.05 else f"{low:.1f} to {high:.1f} ohm"
+            ok = imp["min"] <= low and high <= imp["max"]
+            report.findings.append(
+                Finding(
+                    "held" if ok else "fail",
+                    "gap",
+                    f"{stretch(gap)}: Z_diff {shown} there at its tracks' widths; limit {imp['min']:g} to "
+                    f"{imp['max']:g} ohm {imp['mode']}; source: {src}",
+                )
+            )
+
+    # ---- spacing to other signals, per layer
+    for net in nets:
+        for layer in sorted({t.layer for t in board.tracks if t.net == net}):
+            report.findings += _spacing(board, spec, nets, net, layer)
+
+    # ---- a route that does not reach every pad of its net is not judged as if it were finished
+    unjoined = {n: _unjoined(board, n) for n in nets}
+
+    def unfinished(net: str) -> str | None:
+        pads = unjoined[net]
+        if not pads:
+            return None
+        names = ", ".join(f"{p.name} at ({p.x:g}, {p.y:g}) mm" for p in pads)
+        return f"{net.lstrip('/')}: its tracks do not reach {names}; the route is not finished"
 
     # ---- length, or delay
     lengths = {n: net_length(board, n) for n in nets}
@@ -601,12 +784,18 @@ def _judge_pair(board, spec, label, nets, declared, cond, blocks, report, solver
         blocks.append(f"# {label} length: {cite(spec, lim)}")
         blocks.append(_rule_block(f"{label} length", None, cond, f"length (max {lim['max']:.4f}mm)"))
         for net, value in lengths.items():
+            if unfinished(net):
+                report.findings.append(Finding("not judged", "length", unfinished(net)))
+                continue
             text = f"{net.lstrip('/')} is {value:.4f} mm long{tail}; limit {lim['max']:g} mm; "
             text += f"source: {cite(spec, lim)}"
             report.findings.append(Finding("fail" if value > lim["max"] else "held", "length", text))
     elif "max" in limits.get("delay", {}):
         lim = limits["delay"]
         for net in nets:
+            if unfinished(net):
+                report.findings.append(Finding("not judged", "length", unfinished(net)))
+                continue
             delays = [
                 t.length() * math.sqrt(eps_by_layer[t.layer]) / C0 * 1e6
                 for t in board.tracks
@@ -627,7 +816,12 @@ def _judge_pair(board, spec, label, nets, declared, cond, blocks, report, solver
 
     # ---- skew
     lim = limits.get("skew", {})
-    if "max" in lim:
+    open_nets = [unfinished(n) for n in nets if unfinished(n)]
+    if "max" in lim and open_nets:
+        blocks.append(f"# {label} skew: {cite(spec, lim)}")
+        blocks.append(_rule_block(f"{label} skew", None, cond, f"skew (max {lim['max']:.4f}mm)"))
+        report.findings.append(Finding("not judged", "skew", f"{label}: {'; '.join(open_nets)}"))
+    elif "max" in lim:
         blocks.append(f"# {label} skew: {cite(spec, lim)}")
         blocks.append(_rule_block(f"{label} skew", None, cond, f"skew (max {lim['max']:.4f}mm)"))
         value = abs(lengths[nets[0]] - lengths[nets[1]])
@@ -647,6 +841,9 @@ def _judge_pair(board, spec, label, nets, declared, cond, blocks, report, solver
             text = f"{net.lstrip('/')} has {count} vias; limit {lim['max']:g}; source: {cite(spec, lim)}"
             report.findings.append(Finding("fail" if count > lim["max"] else "held", "vias", text))
 
+    # ---- a via that changes the ground planes, and its ground via
+    report.findings += _stitching(board, spec, nets)
+
     # ---- what the documents set and the command does not judge
     for name, lim in limits.items():
         if "not_judged" in lim:
@@ -662,8 +859,199 @@ def _judge_pair(board, spec, label, nets, declared, cond, blocks, report, solver
         )
         return
     for net in nets:
+        if unfinished(net):
+            report.findings.append(Finding("not judged", "plane", unfinished(net)))
+            continue
         for layer in sorted({t.layer for t in board.tracks if t.net == net}):
             report.findings += _plane(board, spec, lim, net, layer)
+
+
+def _ground_beside(board: Board, nets: list[str], layer: str, reach: float):
+    """The nearest ground fill on the pair's own layer within `reach` of a track's edge: (its net, the
+    distance edge to fill, the track's point nearest it), or None."""
+    best = None
+    for net, poly in zip(board.fill_nets.get(layer, []), board.fills.get(layer, []), strict=True):
+        edges = list(zip(poly, poly[1:] + poly[:1], strict=True))
+        for a, b, width in (c for n in nets for c in _chords(board, n, layer)):
+            for c, d in edges:
+                apart = _between(a, b, c, d) - width / 2
+                if apart <= reach and (best is None or apart < best[1]):
+                    near = min((a, b), key=lambda p, c=c, d=d: _to_segment(p, c, d))
+                    best = (net, max(apart, 0.0), (round(near[0], 3), round(near[1], 3)))
+    return best
+
+
+def _coupling(board: Board, spec: dict, nets: list[str], net: str, other: str, layer: str) -> list[Finding]:
+    """The stretches of `net` on `layer` with no parallel track of `other` beside them: held when each
+    lies within the interface's break-out distance of the pair's pads, else not judged (the solver
+    gives no impedance to an uncoupled stretch of a pair)."""
+    if not any(t.net == net and t.layer == layer for t in board.tracks):
+        return []
+    runs, free = coverage(board, net, other, layer)
+    loose = sum(f[0] for f in free)
+    if loose < 1e-6:
+        return []
+    total = loose + sum(r[1] for r in runs)
+    lim = spec["limits"].get("coupling", {})
+    reach = lim.get("break_out")
+    pads = [(p.x, p.y) for p in board.pads if p.net in nets and p.on(layer)]
+
+    def broken_out(piece) -> bool:
+        if reach is None or not pads:
+            return False
+        length, (ax, ay), (bx, by) = piece
+        n = max(1, math.ceil(length / BREAK_SAMPLE))
+        points = [(ax + (bx - ax) * i / n, ay + (by - ay) * i / n) for i in range(n + 1)]
+        return all(min(math.hypot(x - px, y - py) for px, py in pads) <= reach for x, y in points)
+
+    away = [f for f in free if not broken_out(f)]
+    where = f"{net.lstrip('/')} on {layer}"
+    partner = other.lstrip("/")
+    head = f"{where}: {loose:.4g} mm of its {total:.4g} mm has no parallel track of {partner} beside it"
+    if not away:
+        return [
+            Finding(
+                "held",
+                "coupling",
+                f"{head}, all within {reach:g} mm of the pair's pads: break-out; limit: break-out within "
+                f"{reach:g} mm of the package; source: {cite(spec, lim)}",
+            )
+        ]
+    # The first stretch away from the pads, run on through the pieces that join it.
+    (_, start, end), joined = away[0], 1
+    for piece in away[1:]:
+        if math.hypot(piece[1][0] - end[0], piece[1][1] - end[1]) > 1e-6:
+            break
+        end, joined = piece[2], joined + 1
+    more = len(away) - joined
+    spot = f"from ({start[0]:.6g}, {start[1]:.6g}) to ({end[0]:.6g}, {end[1]:.6g}) mm"
+    text = head + (
+        f"; {sum(f[0] for f in away):.4g} mm of that lies more than {reach:g} mm from the pair's pads"
+        if reach is not None
+        else ""
+    )
+    text += f", {spot}" + (f" and {more} more" if more > 0 else "")
+    text += "; the impedance of a track with no partner is not judged"
+    return [Finding("not judged", "coupling", text)]
+
+
+def _unjoined(board: Board, net: str) -> list[Pad]:
+    """The pads of `net` its tracks do not join to the rest: tracks join where an end lies on another
+    track of the layer, on a via, or within a pad on that layer (half the pad's diagonal)."""
+    pads = [p for p in board.pads if p.net == net]
+    tracks = [t for t in board.tracks if t.net == net]
+    vias = [v for v in board.via_at if v[0] == net]
+    if not pads or not tracks:
+        return []
+    items = len(tracks) + len(vias) + len(pads)
+    root = list(range(items))
+
+    def find(i: int) -> int:
+        while root[i] != i:
+            root[i] = root[root[i]]
+            i = root[i]
+        return i
+
+    def join(i: int, j: int) -> None:
+        root[find(i)] = find(j)
+
+    for i, t in enumerate(tracks):
+        ends = (t.points[0], t.points[-1])
+        for j, u in enumerate(tracks[:i]):
+            if u.layer == t.layer:
+                reach = max(t.width, u.width) / 2
+                chords = list(zip(u.points, u.points[1:], strict=False))
+                if any(_to_segment(e, a, b) <= reach for e in ends for a, b in chords) or any(
+                    _to_segment(e, a, b) <= reach
+                    for e in (u.points[0], u.points[-1])
+                    for a, b in zip(t.points, t.points[1:], strict=False)
+                ):
+                    join(i, j)
+        for k, (_, x, y, r) in enumerate(vias):
+            if any(math.hypot(e[0] - x, e[1] - y) <= r for e in ends):
+                join(i, len(tracks) + k)
+        for k, p in enumerate(pads):
+            if p.on(t.layer) and any(math.hypot(e[0] - p.x, e[1] - p.y) <= p.reach for e in ends):
+                join(i, len(tracks) + len(vias) + k)
+    for k, (_, x, y, _r) in enumerate(vias):
+        for m, p in enumerate(pads):
+            if math.hypot(x - p.x, y - p.y) <= p.reach:
+                join(len(tracks) + k, len(tracks) + len(vias) + m)
+    groups: dict[int, int] = {}
+    for i in range(len(tracks)):
+        groups[find(i)] = groups.get(find(i), 0) + 1
+    routed = max(groups, key=lambda g: groups[g])
+    return [p for m, p in enumerate(pads) if find(len(tracks) + len(vias) + m) != routed]
+
+
+def _stitching(board: Board, spec: dict, nets: list[str]) -> list[Finding]:
+    """A via of the pair whose tracks change their ground planes needs a ground via (or through pad)
+    within the interface's distance of it."""
+    lim = spec["limits"].get("stitching", {})
+    if "max" not in lim:
+        return []
+    grounds = [(x, y) for n, x, y, _ in board.holes if is_ground(n)]
+    out = []
+    for net, x, y, r in board.via_at:
+        if net not in nets:
+            continue
+        layers = sorted(
+            {
+                t.layer
+                for t in board.tracks
+                if t.net == net
+                and any(math.hypot(e[0] - x, e[1] - y) <= r for e in (t.points[0], t.points[-1]))
+            }
+        )
+        refs = {layer: plane_refs(board, layer) for layer in layers}
+        if len({tuple(v) for v in refs.values()}) < 2:
+            continue
+        change = " to ".join(f"{layer} over {', '.join(v) or 'no plane'}" for layer, v in refs.items())
+        where = f"{net.lstrip('/')}'s via at ({x:g}, {y:g}) mm, {change}"
+        near = min((math.hypot(gx - x, gy - y) for gx, gy in grounds), default=None)
+        src = cite(spec, lim)
+        if near is not None and near <= lim["max"] + 1e-9:
+            text = f"{where}: a ground via {near:.3g} mm from it; limit {lim['max']:g} mm; source: {src}"
+            out.append(Finding("held", "stitching", text))
+        else:
+            got = f"the nearest ground via is {near:.3g} mm from it" if near is not None else "no ground via"
+            out.append(
+                Finding(
+                    "fail",
+                    "stitching",
+                    f"{where}: {got}; limit: a ground via within {lim['max']:g} mm, center to center; "
+                    f"source: {cite(spec, lim)}",
+                )
+            )
+    return out
+
+
+def _spacing(board: Board, spec: dict, nets: list[str], net: str, layer: str) -> list[Finding]:
+    """The nearest track of another signal on the same layer, edge to edge (ground nets are no signal)."""
+    lim = spec["limits"].get("spacing", {})
+    if "min" not in lim:
+        return []
+    where = f"{net.lstrip('/')} on {layer}"
+    best = None
+    own = _chords(board, net, layer)
+    for t in board.tracks:
+        if t.layer != layer or t.net in nets or is_ground(t.net):
+            continue
+        for c, d in zip(t.points, t.points[1:], strict=False):
+            for a, b, width in own:
+                apart = _between(a, b, c, d) - (width + t.width) / 2
+                if best is None or apart < best[0]:
+                    best = (apart, t.net)
+    src = cite(spec, lim)
+    if best is None:
+        text = f"{where}: no track of another signal on {layer}; limit {lim['min']:g} mm; source: {src}"
+        return [Finding("held", "spacing", text)]
+    apart, other = best
+    text = (
+        f"{where}: the nearest track of another signal, {other.lstrip('/')}, is {apart:.3g} mm from it, "
+        f"edge to edge; limit {lim['min']:g} mm; source: {src}"
+    )
+    return [Finding("fail" if apart < lim["min"] - 1e-9 else "held", "spacing", text)]
 
 
 def _plane(board: Board, spec: dict, lim: dict, net: str, layer: str) -> list[Finding]:

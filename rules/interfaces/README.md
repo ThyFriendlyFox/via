@@ -10,10 +10,17 @@ reason. The command prints both as not judged.
 |---|---|---|---|---|---|---|---|
 | `usb2.json` | 90 ohm differential, 76.5 to 103.5 (+-15 %) | 4 ns of delay, both boards together | not stated | - | not stated | - | USB 2.0, 7.1.1.3 (page 129), 7.1.6.1 (page 142) |
 | `usb3.json` | 90 ohm differential, no band for a board | not stated | not stated | - | not stated | - | USB 3.1 Legacy Connector and Cable, revision 1.0, 5.6.1.3.2.1 (page 54) |
-| `ti-am57xx-usb2.json` | 81 to 99 ohm differential | 304.8 mm (12000 mil) | 1.27 mm (50 mil) | 4 a net | solid ground | single-ended 40.5 to 49.5 ohm; 0 stubs | TI SPRAAR7J, Table A-2 (page 16), section 2.4 (page 6) |
-| `ti-am57xx-usb3.json` | 83.7 to 96.3 ohm differential | 88.9 mm (3500 mil) | 0.127 mm (5 mil) | 2 a net | solid ground | 0 stubs | TI SPRAAR7J, Table A-2 (page 16), section 2.4 (page 6) |
+| `ti-am57xx-usb2.json` | 81 to 99 ohm differential | 304.8 mm (12000 mil) | 1.27 mm (50 mil) | 4 a net | solid ground | single-ended 40.5 to 49.5 ohm; 0 stubs; 0 test points; 1.27 mm (50 mil) to a clock; 2.286 mm (90 mil) from the plane's edge; 1.5 W from its voids | TI SPRAAR7J, Table A-2 (page 16), sections 2.4 (pages 6, 8), 3.1 to 3.3 (pages 9, 10) |
+| `ti-am57xx-usb3.json` | 83.7 to 96.3 ohm differential | 88.9 mm (3500 mil) | 0.127 mm (5 mil) | 2 a net | solid ground | 0 stubs; 0 test points; 1.27 mm (50 mil) to a clock; 2.286 mm (90 mil) from the plane's edge; 1.5 W from its voids | TI SPRAAR7J, Table A-2 (page 16), sections 2.4 (pages 6, 8), 3.1 to 3.3 (pages 9, 10) |
 
 `-`: the file has no such limit, and the command prints nothing for it.
+
+The TI files also judge 3 limits of their note the table has no column for: `stitching`, a ground via
+within 5.08 mm (200 mil) of a via that moves the pair to other ground planes (section 2.4, page 8);
+`spacing`, 0.762 mm (30 mil) from the pair to a track of any other signal (Table A-2, page 16); and
+`coupling`, the stretches of a net with no partner beside it, held within 6.35 mm (0.25 in) of the
+pair's pads as break-out (section 3.3, page 10), printed as not judged elsewhere. Under the USB files a
+stretch with no partner is printed as not judged wherever it is.
 
 A mil is 0.0254 mm. `constants.json` holds the impedance of vacuum and the speed of light, CODATA 2022.
 

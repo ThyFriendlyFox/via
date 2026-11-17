@@ -120,25 +120,41 @@ def test_track_lengths():
 
 
 def test_pass_board_holds_every_rule(reports):
-    """10 lines hold: width 2, gap 1, length 2, skew 1, vias 2, plane 2. Table A-2 also sets the
-    single-ended impedance and the stubs, which the command does not judge: 2 lines, not judged."""
+    """14 lines hold: width 2, gap 1, length 2, skew 1, vias 2, plane 2, coupling 2 (the fan-out at the
+    pads is break-out), spacing 2. SPRAAR7J also sets 6 limits the command does not judge: the
+    single-ended impedance, the stubs, the test points, the 50 mil to a clock, the 90 mil from the
+    plane's edge and the 1.5 W from its voids: 6 lines, not judged."""
     report = reports["pass-highspeed"]
     assert report.fails() == []
-    assert sorted(f.rule for f in report.not_judged()) == ["single_ended", "stubs"]
+    assert sorted(f.rule for f in report.not_judged()) == sorted(
+        ["single_ended", "stubs", "test_points", "clock_spacing", "plane_edge", "voids"]
+    )
     held = [f.rule for f in report.findings if f.status == "held"]
     assert sorted(held) == sorted(
-        ["width"] * 2 + ["gap"] + ["length"] * 2 + ["skew"] + ["vias"] * 2 + ["plane"] * 2
+        ["width"] * 2
+        + ["gap"]
+        + ["length"] * 2
+        + ["skew"]
+        + ["vias"] * 2
+        + ["plane"] * 2
+        + ["coupling"] * 2
+        + ["spacing"] * 2
     )
 
 
 @pytest.mark.parametrize(
-    "fixture, rule",
-    [("fail-highspeed-width", "width"), ("fail-highspeed-skew", "skew"), ("fail-highspeed-plane", "plane")],
+    "fixture, rules",
+    [
+        ("fail-highspeed-width", {"width"}),
+        # The skew board's bump runs 1 mm of the pair 1.2 mm apart, not the 0.2 mm interfaces.json gives.
+        ("fail-highspeed-skew", {"skew", "gap"}),
+        ("fail-highspeed-plane", {"plane"}),
+    ],
 )
-def test_each_fault_fails_its_own_rule_alone(reports, fixture, rule):
+def test_each_fault_fails_its_own_rules_alone(reports, fixture, rules):
     fails = reports[fixture].fails()
     assert fails, fixture
-    assert {f.rule for f in fails} == {rule}
+    assert {f.rule for f in fails} == rules
 
 
 def test_width_line(reports):
@@ -152,7 +168,7 @@ def test_width_line(reports):
 
 def test_skew_line(reports):
     """32.1136 - 30.1136 = 2 mm of skew against 1.27 mm (50 mil)."""
-    (fail,) = reports["fail-highspeed-skew"].fails()
+    (fail,) = [f for f in reports["fail-highspeed-skew"].fails() if f.rule == "skew"]
     assert "2 mm" in fail.text and "1.27 mm" in fail.text and "page 16" in fail.text
 
 
@@ -178,13 +194,14 @@ def test_rules_file_holds_the_limits(reports):
 
 
 def test_what_the_spec_does_not_state_is_not_judged():
-    """USB 2.0 itself names no board skew and no plane; USB 3.x names no band for a board's impedance."""
+    """USB 2.0 itself names no board skew and no plane; USB 3.x names no band for a board's impedance.
+    Neither says where a pair may part, so the fan-out at the pads is not judged under either."""
     nets = ["USB_D_P", "USB_D_N"]
     usb2 = run("pass-highspeed", [{"interface": "usb2", "nets": nets, "gap": 0.2}])
-    assert {f.rule for f in usb2.not_judged()} == {"skew", "plane"}
+    assert {f.rule for f in usb2.not_judged()} == {"skew", "plane", "coupling"}
     assert usb2.fails() == []
     usb3 = run("pass-highspeed", [{"interface": "usb3", "nets": nets, "gap": 0.2}])
-    assert {f.rule for f in usb3.not_judged()} == {"width", "length", "skew", "plane"}
+    assert {f.rule for f in usb3.not_judged()} == {"width", "length", "skew", "plane", "coupling"}
 
 
 def test_unknown_interface_and_net_are_refused():
@@ -210,8 +227,8 @@ def test_command_line(tmp_path):
         check=False,
     )
     assert proc.returncode == 1, proc.stdout + proc.stderr
-    lines = [ln for ln in proc.stdout.splitlines() if ln.startswith("FAIL")]
-    assert len(lines) == 1 and lines[0].startswith("FAIL highspeed.skew")
+    lines = sorted(ln.split(":")[0] for ln in proc.stdout.splitlines() if ln.startswith("FAIL"))
+    assert lines == ["FAIL highspeed.gap", "FAIL highspeed.skew"]
     assert (tmp_path / "highspeed" / "highspeed.kicad_dru").is_file()
 
 
@@ -375,3 +392,239 @@ def test_via_count(tmp_path):
     report = judge(tmp_path, add_vias(text_of("pass-highspeed"), vias))
     (fail,) = [f for f in report.fails() if f.rule == "vias"]
     assert "USB_D_P has 5 vias" in fail.text and "limit 4" in fail.text and "page 16" in fail.text
+
+
+# ---- the second review's findings F1 to F7: boards drawn here on the pass board's stack and pads
+
+P, N = "/USB_D_P", "/USB_D_N"
+YP, YN = 107.745, 108.255  # the fixtures' centre lines
+
+
+def tracks(points: list[tuple[float, float]], net: str, width: float = 0.31, layer: str = "F.Cu") -> str:
+    return "".join(
+        f"\t(segment\n\t\t(start {a[0]:.6f} {a[1]:.6f})\n\t\t(end {b[0]:.6f} {b[1]:.6f})\n"
+        f'\t\t(width {width})\n\t\t(layer "{layer}")\n\t\t(net "{net}")\n\t)\n'
+        for a, b in zip(points, points[1:], strict=False)
+    )
+
+
+def rect(x1: float, y1: float, x2: float, y2: float) -> list[tuple[float, float]]:
+    return [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
+
+
+def ground(layer: str, fills: list[list[tuple[float, float]]], net: str = "GND") -> str:
+    """A pour whose fill is the polygons given, 1 filled_polygon each, as KiCad writes a fill."""
+    outline = " ".join(f"(xy {x} {y})" for x, y in rect(100.3, 100.3, 139.7, 115.7))
+    points = [" ".join(f"(xy {x} {y})" for x, y in p) for p in fills]
+    filled = "".join(
+        f'\t\t(filled_polygon\n\t\t\t(layer "{layer}")\n\t\t\t(pts {p})\n\t\t)\n' for p in points
+    )
+    return (
+        f'\t(zone\n\t\t(net "{net}")\n\t\t(layer "{layer}")\n'
+        "\t\t(connect_pads\n\t\t\t(clearance 0.15)\n\t\t)\n"
+        f"\t\t(min_thickness 0.25)\n\t\t(polygon\n\t\t\t(pts {outline})\n\t\t)\n{filled}\t)\n"
+    )
+
+
+def drawn(items: str, base: str = "pass-highspeed") -> str:
+    """The base board with its segments taken out and `items` put in; its pour on In1.Cu stays."""
+    return drop_segments(text_of(base)).replace("\t(zone\n", items + "\t(zone\n", 1)
+
+
+STRAIGHT_P = [(105.0, 107.5), (105.5, YP), (134.5, YP), (135.0, 107.5)]
+NO_GAP = [{k: v for k, v in USB2TI[0].items() if k != "gap"}]
+
+
+def two_sublayers(text: str, er: float = 4.5) -> str:
+    """dielectric 1 (0.2104 mm) as 2 sublayers of 0.1052 mm in the form pcbnew 10.0.8 saves: the first
+    sublayer's last child is followed by the bare word `addsublayer`. The second sublayer's er is `er`."""
+    old = (
+        '(thickness 0.2104)\n\t\t\t\t(material "FR4")\n\t\t\t\t(epsilon_r 4.5)\n\t\t\t\t(loss_tangent 0.02)\n'
+    )
+    new = (
+        '(thickness 0.1052)\n\t\t\t\t(material "FR4")\n\t\t\t\t(epsilon_r 4.5)\n\t\t\t\t(loss_tangent 0.02) '
+        f'addsublayer\n\t\t\t\t(thickness 0.1052)\n\t\t\t\t(material "FR4")\n\t\t\t\t(epsilon_r {er})\n'
+        "\t\t\t\t(loss_tangent 0.02)\n"
+    )
+    assert old in text
+    return text.replace(old, new, 1)
+
+
+def test_a_dielectric_of_2_sublayers_is_read_whole():
+    """F1. Each sublayer is a slab of its own: 0.1052 mm of er 3.8 next to In1.Cu, then 0.1052 mm of er
+    4.5 under F.Cu (the sublayers are listed top down). The strip stands 0.2104 mm over its plane."""
+    board = highspeed.read_board(two_sublayers(text_of("pass-highspeed"), er=3.8))
+    section, refs = highspeed.section_for(board, "F.Cu")
+    assert refs == ["In1.Cu"]
+    assert section["slabs"] == [[0.1052, 3.8], [0.1052, 4.5]] and section["y"] == 0.2104
+
+
+def test_sublayers_of_one_er_are_one_slab(tmp_path):
+    """F1. The width board with dielectric 1 in 2 sublayers of er 4.5: the same 0.2104 mm slab, so the
+    same band at its 0.31 mm gap, 0.2971 to 0.4368 mm, and both 0.2 mm tracks fail."""
+    report = judge(tmp_path, two_sublayers(text_of("fail-highspeed-width")), [{**USB2TI[0], "gap": 0.31}])
+    widths = [f for f in report.findings if f.rule == "width"]
+    assert [f.status for f in widths] == ["fail", "fail"]
+    assert all("0.2971 to 0.4368" in f.text for f in widths)
+
+
+@pytest.mark.parametrize("sublayers", [False, True])
+def test_a_dielectric_with_no_thickness_is_refused(tmp_path, sublayers):
+    """F1. A dielectric (or a sublayer of one) with no thickness: refused, naming it."""
+    text = text_of("pass-highspeed")
+    if sublayers:
+        text = two_sublayers(text).replace("addsublayer\n\t\t\t\t(thickness 0.1052)\n", "addsublayer\n")
+    else:
+        text = text.replace("(thickness 0.2104)\n\t\t\t\t", "", 1)
+    with pytest.raises(ValueError, match="dielectric 1"):
+        judge(tmp_path, text)
+
+
+def test_every_run_at_another_gap_than_the_declared_fails(tmp_path):
+    """F2. USB_D_N runs 14.8 mm at the 0.2 mm gap, then 13 mm 0.6 mm further out: 0.8 mm apart, clear of
+    the 0.15 mm clearance rule. interfaces.json gives 0.2 mm: the 13 mm fail."""
+    yn = YP + 0.31 + 0.8
+    n = [(105.0, 108.5), (105.5, YN), (120.3, YN), (120.9, yn), (133.9, yn), (134.5, YN), (135.0, 108.5)]
+    report = judge(tmp_path, drawn(tracks(STRAIGHT_P, P) + tracks(n, N)))
+    (gap,) = [f for f in report.fails() if f.rule == "gap"]
+    assert "13 mm of the pair runs 0.8 mm apart" in gap.text and "limit 0.2 mm" in gap.text
+
+
+def test_with_no_declared_gap_each_gap_is_solved(tmp_path):
+    """F2. No gap in interfaces.json; USB_D_N comes 0.12 mm nearer for 13.96 mm: 0.08 mm apart, where the
+    solver gives 73.58 ohm at the tracks' 0.31 mm (the review's run), under 81 ohm."""
+    yn = YP + 0.31 + 0.08
+    n = [(105.0, 108.5), (105.5, YN), (120.3, YN), (120.42, yn), (134.38, yn), (134.5, YN), (135.0, 108.5)]
+    report = judge(tmp_path, drawn(tracks(STRAIGHT_P, P) + tracks(n, N)), NO_GAP)
+    (gap,) = [f for f in report.fails() if f.rule == "gap"]
+    assert "13.96 mm of the pair runs 0.08 mm apart" in gap.text
+    assert "73.6 ohm" in gap.text and "81 to 99 ohm" in gap.text
+
+
+def test_a_stretch_with_no_partner_is_counted(tmp_path):
+    """F3. USB_D_N leaves USB_D_P in a V from x = 112 to 128, 3 mm out at x = 120. USB_D_P: 30.1136 mm,
+    13 mm of it beside USB_D_N, 1.1136 mm at its pads (break-out, within 6.35 mm of them, SPRAAR7J 3.3),
+    16 mm from x = 112 to 128 with no partner. USB_D_N: 31.2491 mm, 2 legs of sqrt(8^2 + 3^2) = 8.544 mm
+    with no partner."""
+    w = 0.26
+    yn = YP + w + 0.2
+    n = [
+        (105.0, 108.5),
+        (105.5, yn),
+        (112.0, yn),
+        (120.0, yn + 3.0),
+        (128.0, yn),
+        (134.5, yn),
+        (135.0, 108.5),
+    ]
+    p = tracks(STRAIGHT_P, P, width=w)
+    report = judge(tmp_path, drawn(p + tracks(n, N, width=w)))
+    coupling = {f.text.split(":")[0]: f for f in report.findings if f.rule == "coupling"}
+    assert {k: f.status for k, f in coupling.items()} == {
+        "USB_D_P on F.Cu": "not judged",
+        "USB_D_N on F.Cu": "not judged",
+    }
+    text = coupling["USB_D_P on F.Cu"].text
+    assert (
+        "17.11 mm of its 30.11 mm" in text and "16 mm" in text and "(112, 107.745) to (128, 107.745)" in text
+    )
+    assert "17.09 mm" in coupling["USB_D_N on F.Cu"].text
+
+
+def test_break_out_at_the_pads_holds(reports):
+    """F3. The pass board: each track's 2 ends at its pads, 2 x 0.5568 = 1.1136 mm, are its only
+    stretches with no partner, within 6.35 mm (0.25 in) of its pads: SPRAAR7J section 3.3, page 10."""
+    coupling = [f for f in reports["pass-highspeed"].findings if f.rule == "coupling"]
+    assert [f.status for f in coupling] == ["held", "held"]
+    assert all("1.114 mm" in f.text and "page 10" in f.text for f in coupling)
+
+
+def test_ground_on_the_tracks_own_layer_is_not_judged(tmp_path):
+    """F4. GND poured on F.Cu 0.15 mm from the pair's outer edges, from x = 106 to 134 (clear of the
+    fan-out to the pads): the solver has no coplanar ground, so the width is not judged, with the pour,
+    its layer and its distance named."""
+    top = rect(106.0, 100.3, 134.0, YP - 0.155 - 0.15)
+    bottom = rect(106.0, YN + 0.155 + 0.15, 134.0, 115.7)
+    text = drawn(tracks(STRAIGHT_P, P) + tracks(NORMAL_N, N) + ground("F.Cu", [top, bottom]))
+    report = judge(tmp_path, text)
+    widths = [f for f in report.findings if f.rule == "width"]
+    assert [f.status for f in widths] == ["not judged", "not judged"]
+    assert all("GND" in f.text and "F.Cu" in f.text and "0.15 mm" in f.text for f in widths)
+    # 1 mm out, past 3 x 0.2104 = 0.6312 mm, the pour is no longer near: the width is judged.
+    top = rect(106.0, 100.3, 134.0, YP - 0.155 - 1.0)
+    bottom = rect(106.0, YN + 0.155 + 1.0, 134.0, 115.7)
+    text = drawn(tracks(STRAIGHT_P, P) + tracks(NORMAL_N, N) + ground("F.Cu", [top, bottom]))
+    widths = [f for f in judge(tmp_path, text).findings if f.rule == "width"]
+    assert [f.status for f in widths] == ["held", "held"]
+
+
+NORMAL_N = [(105.0, 108.5), (105.5, YN), (134.5, YN), (135.0, 108.5)]
+
+
+def test_a_half_routed_pair_is_not_judged(tmp_path):
+    """F6. Both nets stop at x = 120; nothing reaches J2. Length, skew and plane are not judged, each
+    naming the pad its net does not reach."""
+    p = tracks([(105.0, 107.5), (105.5, YP), (120.0, YP)], P)
+    n = tracks([(105.0, 108.5), (105.5, YN), (120.0, YN)], N)
+    report = judge(tmp_path, drawn(p + n))
+    rules = ("length", "skew", "plane")
+    assert not [f for f in report.findings if f.rule in rules and f.status != "not judged"]
+    lengths = [f.text for f in report.not_judged() if f.rule == "length"]
+    assert len(lengths) == 2 and all("J2" in t for t in lengths)
+
+
+def test_ti_files_name_every_limit_of_their_note():
+    """F5. SPRAAR7J sets these besides Table A-2's impedance, length, skew, vias and stubs: the plane's
+    edge and its voids (3.2, page 9), the GND reference kept through a via (2.4, page 8), test points and
+    the spacing to other signals (Table A-2, page 16). Each is judged or names why not."""
+    for name in ("ti-am57xx-usb2", "ti-am57xx-usb3"):
+        limits = json.loads((SPECS / f"{name}.json").read_text())["limits"]
+        for key in (
+            "plane_edge",
+            "voids",
+            "stitching",
+            "test_points",
+            "spacing",
+            "clock_spacing",
+            "coupling",
+        ):
+            assert key in limits, (name, key)
+            assert "page" in limits[key]["where"], (name, key)
+
+
+def test_a_via_that_changes_the_plane_needs_a_ground_via(tmp_path):
+    """F5. F.Cu over In1.Cu to a via, then B.Cu over In2.Cu: the reference changes. No GND via within
+    200 mil (5.08 mm) fails; one 1 mm away holds. SPRAAR7J section 2.4, page 8."""
+    p = tracks([(105.0, 107.5), (105.5, YP), (120.0, YP)], P)
+    p += tracks([(120.0, YP), (134.5, YP), (135.0, 107.5)], P, layer="B.Cu")
+    n = tracks([(105.0, 108.5), (105.5, YN), (121.0, YN)], N)
+    n += tracks([(121.0, YN), (134.5, YN), (135.0, 108.5)], N, layer="B.Cu")
+    corners = rect(100.3, 100.3, 139.7, 115.7)
+    text = add_vias(drawn(p + n + ground("In2.Cu", [corners])), [(120.0, YP, P), (121.0, YN, N)])
+    fails = [f for f in judge(tmp_path, text).fails() if f.rule == "stitching"]
+    assert len(fails) == 2 and all("5.08 mm" in f.text and "page 8" in f.text for f in fails)
+    stitched = add_vias(text, [(120.5, 110.0, "GND")])
+    held = [f for f in judge(tmp_path, stitched).findings if f.rule == "stitching"]
+    assert [f.status for f in held] == ["held", "held"]
+
+
+def test_another_signal_near_the_pair_fails(tmp_path):
+    """F5. A track of another net on F.Cu 0.5 mm from USB_D_P's edge: Table A-2 (page 16) sets 30 mil,
+    0.762 mm."""
+    y = YP - 0.155 - 0.5 - 0.1
+    other = tracks([(110.0, y), (130.0, y)], "/OTHER", width=0.2)
+    report = judge(tmp_path, drawn(tracks(STRAIGHT_P, P) + tracks(NORMAL_N, N) + other))
+    (fail,) = [f for f in report.fails() if f.rule == "spacing"]
+    assert "USB_D_P" in fail.text and "OTHER" in fail.text and "0.5 mm" in fail.text and "0.762" in fail.text
+
+
+def test_a_gap_with_no_solution_keeps_the_width_band(tmp_path):
+    """F7. USB_D_N 0.3 mm further out: 0.5 mm apart, where no gap gives 99 ohm at the nominal width. The
+    width band is still judged, and the gap rule is written without the bound that has no solution."""
+    text = text_of("pass-highspeed").replace("108.255", "108.555")
+    report = judge(tmp_path, text, NO_GAP)
+    widths = [f for f in report.findings if f.rule == "width"]
+    assert len(widths) == 2 and all(f.status != "not judged" for f in widths), widths
+    band = report.bands["F.Cu"]
+    assert band["width_min"] < band["width_max"]
+    assert "diff_pair_gap (min" in report.rules

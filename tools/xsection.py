@@ -279,7 +279,8 @@ def main(argv: list[str]) -> int:
 def answer(req: dict) -> dict:
     """Request: {"section": {...Section...}, "target": ohm, "low": ohm, "high": ohm}. Answer: the width
     for the target and for each end of the band (a pair keeps its gap), the gap range at that width for
-    a pair, and the line at the target width."""
+    a pair (a bound with no solution is None and named in "gap_error"), and the line at the target
+    width. With "impedance_only": true, the answer is {"impedance": ohm} of the section as given."""
     s = req["section"]
     sec = Section(
         [tuple(x) for x in s["slabs"]], s["top_plane"], s["y"], s["t"], s["widths"], s.get("gap", 0.0)
@@ -292,6 +293,8 @@ def answer(req: dict) -> dict:
     if not sec.slabs or bad:
         # A size of 0 makes the grid's finest step 0, and the grid then has no end.
         return {"error": f"{'; '.join(bad) or 'no slab'}: every size must be above 0"}
+    if req.get("impedance_only"):
+        return {"impedance": float(impedance(sec))}
     out: dict = {}
     try:
         w = width_for(sec, req["target"])
@@ -301,11 +304,22 @@ def answer(req: dict) -> dict:
         at = replace_widths(sec, w)
         line = solve(at)
         out["line"] = {k: float(v) for k, v in line.__dict__.items() if isinstance(v, (int, float))}
-        if len(sec.widths) == 2:
-            out["gap_min"] = gap_for(at, req["low"]) if req.get("low") else None
-            out["gap_max"] = gap_for(at, req["high"]) if req.get("high") else None
     except ValueError as exc:
         out["error"] = str(exc)
+        return out
+    if len(sec.widths) == 2:
+        # A gap bound with no solution leaves the width band standing: a loose pair may reach no gap
+        # for the band's top at the nominal width (its Z_diff stays under twice a lone track's Z0).
+        errors = []
+        for key, ohm in (("gap_min", req.get("low")), ("gap_max", req.get("high"))):
+            out[key] = None
+            if ohm:
+                try:
+                    out[key] = gap_for(at, ohm)
+                except ValueError as exc:
+                    errors.append(str(exc))
+        if errors:
+            out["gap_error"] = "; ".join(errors)
     return out
 
 
