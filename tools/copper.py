@@ -133,19 +133,25 @@ def _links(shape, links) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return (l1 * ny + iy) * nx + ix, (l2 * ny + iy) * nx + ix, arr[:, 4]
 
 
-def solve_drop(mask, sheet, links, fixed, amps) -> np.ndarray:
+def _share(mask, share) -> np.ndarray:
+    return mask.astype(float) if share is None else np.where(mask, share, 0.0)
+
+
+def solve_drop(mask, sheet, links, fixed, amps, share=None) -> np.ndarray:
     """The voltage of each copper cell, V, NaN off the copper.
 
     mask: [layers, ny, nx] copper of 1 net; sheet: [layers] siemens per square; links: (layer, layer,
     iy, ix, siemens) barrels; fixed: cells held at 0 V; amps: the current into each cell (a pin that
-    draws a current has it below 0). Copper that no held cell reaches stands at NaN, and a current into
-    it is refused."""
+    draws a current has it below 0); share: the part of each cell that is copper, 1 where not given.
+    Copper that no held cell reaches stands at NaN, and a current into it is refused."""
     shape, n = mask.shape, mask.size
     a, b = _faces(shape)
     flat = mask.ravel()
+    part = _share(mask, share).ravel()
     lay = np.repeat(np.asarray(sheet, float), shape[1] * shape[2])
     keep = flat[a] & flat[b]
-    a, b, g = a[keep], b[keep], lay[a[keep]]
+    a, b = a[keep], b[keep]
+    g = lay[a] * _harmonic(part[a], part[b])
     la, lb, lg = _links(shape, links)
     a, b, g = np.concatenate([a, la]), np.concatenate([b, lb]), np.concatenate([g, lg])
     root = _roots(n, a, b)
@@ -161,37 +167,45 @@ def solve_drop(mask, sheet, links, fixed, amps) -> np.ndarray:
     return v.reshape(shape)
 
 
-def side_currents(volts, mask, sheet) -> tuple[np.ndarray, np.ndarray]:
+def side_conductances(mask, sheet, share=None) -> tuple[np.ndarray, np.ndarray]:
+    """The conductance of each cell's right side and lower side, S: the 2 half cells in series, each
+    the sheet times the part of its cell that is copper; 0 where no copper joins."""
+    s = np.asarray(sheet, float)[:, None, None]
+    part = _share(mask, share)
+    gx = s * _harmonic(part[:, :, :-1], part[:, :, 1:]) * (mask[:, :, :-1] & mask[:, :, 1:])
+    gy = s * _harmonic(part[:, :-1, :], part[:, 1:, :]) * (mask[:, :-1, :] & mask[:, 1:, :])
+    return gx, gy
+
+
+def side_currents(volts, mask, sheet, share=None) -> tuple[np.ndarray, np.ndarray]:
     """The current through each cell's right side and lower side, amperes; 0 where no copper joins."""
     v = np.where(mask & np.isfinite(volts), volts, 0.0)
-    s = np.asarray(sheet, float)[:, None, None]
-    ix = s * (mask[:, :, :-1] & mask[:, :, 1:]) * (v[:, :, :-1] - v[:, :, 1:])
-    iy = s * (mask[:, :-1, :] & mask[:, 1:, :]) * (v[:, :-1, :] - v[:, 1:, :])
-    return ix, iy
+    gx, gy = side_conductances(mask, sheet, share)
+    return gx * (v[:, :, :-1] - v[:, :, 1:]), gy * (v[:, :-1, :] - v[:, 1:, :])
 
 
-def density(volts, mask, sheet, thick, pitch) -> np.ndarray:
+def density(volts, mask, sheet, thick, pitch, share=None) -> np.ndarray:
     """A/mm2 in each copper cell: the mean of the currents through its 2 sides along x and along y,
-    over the cell's section, pitch x thickness (mm). NaN off the copper."""
-    ix, iy = side_currents(volts, mask, sheet)
+    over the cell's copper section, pitch x its share x thickness (mm). NaN off the copper."""
+    ix, iy = side_currents(volts, mask, sheet, share)
     jx = np.zeros(mask.shape)
     jy = np.zeros(mask.shape)
     jx[:, :, :-1] += ix
     jx[:, :, 1:] += ix
     jy[:, :-1, :] += iy
     jy[:, 1:, :] += iy
-    j = np.hypot(jx, jy) / 2 / (pitch * np.asarray(thick, float)[:, None, None])
+    section = pitch * np.asarray(thick, float)[:, None, None] * _share(mask, share)
+    j = np.divide(np.hypot(jx, jy) / 2, section, out=np.zeros(mask.shape), where=section > 0)
     return np.where(mask, j, np.nan)
 
 
-def joule(volts, mask, sheet, links) -> np.ndarray:
+def joule(volts, mask, sheet, links, share=None) -> np.ndarray:
     """The I^2 R of each cell, W: each side's half to each of its 2 cells, each barrel's half to each
     end."""
     v = np.where(mask & np.isfinite(volts), volts, 0.0)
-    ix, iy = side_currents(volts, mask, sheet)
-    s = np.asarray(sheet, float)[:, None, None]
-    px = np.divide(ix**2, s, out=np.zeros_like(ix), where=s > 0) / 2
-    py = np.divide(iy**2, s, out=np.zeros_like(iy), where=s > 0) / 2
+    gx, gy = side_conductances(mask, sheet, share)
+    px = gx * (v[:, :, :-1] - v[:, :, 1:]) ** 2 / 2
+    py = gy * (v[:, :-1, :] - v[:, 1:, :]) ** 2 / 2
     out = np.zeros(mask.shape)
     out[:, :, :-1] += px
     out[:, :, 1:] += px
@@ -291,6 +305,13 @@ def read_copper(path: Path, nets: set[str], pads: dict[str, str], materials: dic
     data = ratings._keys(name, ratings._json(path), ("air", "nets"), ("temperature", "grid"))
     air = ratings._keys(f"{name}: air", data["air"], ("ambient", "source"), ("h",))
     ambient = ratings._number(f"{name}: air: ambient", air["ambient"], -273.15)
+    alpha = materials["copper_temperature_coefficient"]
+    coldest = 20.0 - 1.0 / alpha.value  # where rho20 (1 + alpha (T - 20)) reaches 0
+    if ambient <= coldest:
+        raise ratings.Refusal(
+            f"{name}: air: ambient: {ambient:g} C is not above {coldest:.4g} C, where copper's resistivity "
+            f"by the linear coefficient {alpha.value:g} per C ({alpha.source}) reaches 0"
+        )
     words = ratings._text(f"{name}: air: source", air["source"])
     if "h" in air:
         h = Constant(ratings._number(f"{name}: air: h", air["h"], above=0), f"{name}: air: {words}")
@@ -337,6 +358,7 @@ class Shape:
     drill: float = 0.0  # mm, of a plated hole; 0 for none
     ref: str = ""
     pad: str = ""
+    width: float = 0.0  # mm, of a track or an arc
 
 
 @dataclass
@@ -391,6 +413,72 @@ def fill(grid: Grid, polys: list) -> np.ndarray:
     return out
 
 
+SHARE_LEAST = (
+    1e-3  # a cell with less of its area in copper is no copper: the less copper, the higher the drop
+)
+
+
+def _ring_area(grid: Grid, pts: list) -> np.ndarray:
+    """The part of each cell's area inside 1 closed ring of points, exact for straight edges.
+
+    Each edge adds its signed area to the cells of each row it crosses, and a sum along each row gives
+    the area to the right of the edges: the accumulation of R. Levien's font-rs rasteriser."""
+    acc = np.zeros((grid.ny, grid.nx + 2))
+    # x is kept on the grid, so no index runs off a row; the grid holds the board's every point
+    p = [(min(max((x - grid.x0) / grid.pitch, 0.0), grid.nx), (y - grid.y0) / grid.pitch) for x, y in pts]
+    for (xa, ya), (xb, yb) in zip(p, p[1:] + p[:1], strict=True):
+        if ya == yb:
+            continue
+        sign = 1.0
+        if ya > yb:
+            (xa, ya), (xb, yb), sign = (xb, yb), (xa, ya), -1.0
+        dxdy = (xb - xa) / (yb - ya)
+        for row in range(max(0, math.floor(ya)), min(grid.ny, math.ceil(yb))):
+            top, bottom = max(float(row), ya), min(row + 1.0, yb)
+            x = xa + (top - ya) * dxdy
+            xn = x + (bottom - top) * dxdy
+            d = sign * (bottom - top)
+            x0, x1 = min(x, xn), max(x, xn)
+            i0, i1 = math.floor(x0), math.ceil(x1)
+            line = acc[row]
+            if i1 <= i0 + 1:
+                xm = 0.5 * (x + xn) - i0
+                line[i0] += d * (1 - xm)
+                line[i0 + 1] += d * xm
+                continue
+            s = 1.0 / (x1 - x0)
+            f0 = x0 - i0
+            a0 = 0.5 * s * (1 - f0) ** 2
+            f1 = x1 - i1 + 1
+            am = 0.5 * s * f1 * f1
+            line[i0] += d * a0
+            if i1 == i0 + 2:
+                line[i0 + 1] += d * (1 - a0 - am)
+            else:
+                a1 = s * (1.5 - f0)
+                line[i0 + 1] += d * (a1 - a0)
+                line[i0 + 2 : i1 - 1] += d * s
+                a2 = a1 + (i1 - i0 - 3) * s
+                line[i1 - 1] += d * (1 - a2 - am)
+            line[i1] += d * am
+    return np.minimum(np.abs(np.cumsum(acc, axis=1)[:, : grid.nx]), 1.0)
+
+
+def cover(grid: Grid, polys: list) -> np.ndarray:
+    """The part of each cell's area that 1 item's copper covers, 0 to 1: each outline less its holes.
+    2 outlines of 1 item that overlap count their overlap once, by the greater of the 2."""
+    out = np.zeros((grid.ny, grid.nx))
+    for outline, holes in polys:
+        if len(outline) < 3:
+            continue
+        piece = _ring_area(grid, outline)
+        for hole in holes:
+            if len(hole) > 2:
+                piece = piece - _ring_area(grid, hole)
+        np.maximum(out, np.clip(piece, 0.0, 1.0), out=out)
+    return out
+
+
 class BoardCopper:
     """A board's copper and parts as KiCad's pcbnew reads them, in mm."""
 
@@ -428,6 +516,8 @@ class BoardCopper:
                 shape.at = (ib.mm(p.x), ib.mm(p.y))
             if it.kind == "via":
                 shape.drill = ib.mm(it.obj.GetDrillValue())
+            if it.kind in ("track", "arc"):
+                shape.width = ib.mm(it.obj.GetWidth())
             if it.kind == "pad":
                 shape.ref, shape.pad = it.ref, it.obj.GetNumber()
                 if it.hole is not None and len(it.layers) > 1:
@@ -517,22 +607,25 @@ class NetResult:
     density: float  # A/mm2, the greatest
     density_at: tuple[float, float, str]
     files: list[str] = field(default_factory=list)
+    watts: float = 0.0  # the net's own I^2 R, W
+    barrel: dict | None = None  # the barrel of the greatest current density: at, layers, amps, density
 
 
 def _pad_cells(bc: BoardCopper, grid: Grid, net: str) -> tuple[np.ndarray, dict[str, np.ndarray]]:
-    mask = np.zeros((len(bc.layers), grid.ny, grid.nx), dtype=bool)
+    """The part of each cell that is the net's copper, and each pad's cells."""
+    share = np.zeros((len(bc.layers), grid.ny, grid.nx))
     cells: dict[str, np.ndarray] = {}
     for s in bc.shapes:
         if s.net != net:
             continue
         for layer, polys in s.polys.items():
-            m = fill(grid, polys)
+            m = cover(grid, polys)
             li = bc.layers.index(layer)
-            mask[li] |= m
+            np.maximum(share[li], m, out=share[li])
             if s.kind == "pad":
                 key = f"{s.ref}.{s.pad}"
-                cells.setdefault(key, np.zeros_like(mask))[li] |= m
-    return mask, cells
+                cells.setdefault(key, np.zeros(share.shape, dtype=bool))[li] |= m >= SHARE_LEAST
+    return share, cells
 
 
 def barrel_cells(grid: Grid, at: tuple[float, float], drill: float, plating: float):
@@ -552,19 +645,48 @@ def barrel_cells(grid: Grid, at: tuple[float, float], drill: float, plating: flo
     return hole, ring
 
 
+@dataclass
+class Barrel:
+    """The current through 1 plated hole's barrel between 2 neighbouring layers."""
+
+    at: tuple[float, float]
+    layers: tuple[str, str]
+    amps: float
+    area: float  # mm2 of copper: pi ((r + plating)^2 - r^2)
+    density: float  # A/mm2
+    name: str = "the via"
+
+
+@dataclass
+class NetDrop:
+    volts: np.ndarray
+    density: np.ndarray
+    heat: np.ndarray
+    drops: dict[str, float]
+    mask: np.ndarray
+    barrels: list[Barrel]
+
+
 def net_drop(bc: BoardCopper, grid: Grid, net: str, entry: str, draws: dict[str, float], rho: float):
-    """The voltages, densities and I^2 R of 1 net with its entry held and each pin drawing its current."""
-    mask, cells = _pad_cells(bc, grid, net)
+    """The voltages, densities and I^2 R of 1 net with its entry held and each pin drawing its current,
+    and the current through each barrel. A cell's sheet is weighted by the part of it that is copper."""
+    share, cells = _pad_cells(bc, grid, net)
     links = []
+    joins = []  # (the barrel, layer, layer, area, its links' first and last index)
     for s in bc.barrels(net):
         hole, ring = barrel_cells(grid, s.at, s.drill, bc.plating)
         for layer in s.layers:
-            mask[bc.layers.index(layer)][hole] = False
+            share[bc.layers.index(layer)][hole] = 0.0
         for i, j, dz, area in bc.pairs(s):
             g = area * 1e-6 / (rho * dz * 1e-3) / len(ring)
+            first = len(links)
             for iy, ix in ring:
-                mask[i, iy, ix] = mask[j, iy, ix] = True
+                for li in (i, j):
+                    if share[li, iy, ix] < SHARE_LEAST:  # the barrel's own copper stands there
+                        share[li, iy, ix] = 1.0
                 links.append((i, j, iy, ix, g))
+            joins.append((s, i, j, area, first, len(links)))
+    mask = share >= SHARE_LEAST
     for key in cells:
         cells[key] &= mask
     for pin in [entry, *draws]:
@@ -573,16 +695,54 @@ def net_drop(bc: BoardCopper, grid: Grid, net: str, entry: str, draws: dict[str,
     thick = np.array([bc.cu[ly].thickness for ly in bc.layers])
     sheet = thick * 1e-3 / rho
     amps = np.zeros(mask.shape)
-    for pin, current in draws.items():
-        amps[cells[pin]] -= current / cells[pin].sum()
+    for pin, current in draws.items():  # each cell of a pad draws by the part of it that is copper
+        weight = np.where(cells[pin], share, 0.0)
+        amps -= current * weight / weight.sum()
     try:
-        volts = solve_drop(mask, sheet, links, cells[entry], amps)
+        volts = solve_drop(mask, sheet, links, cells[entry], amps, share)
     except CopperError as exc:
-        raise CopperError(f"{net}: {exc}") from None
-    dens = density(volts, mask, sheet, thick, grid.pitch)
-    heat = joule(volts, mask, sheet, links)
+        raise CopperError(f"{net}: {exc} on a grid of {grid.pitch:g} mm") from None
+    dens = density(volts, mask, sheet, thick, grid.pitch, share)
+    heat = joule(volts, mask, sheet, links, share)
     drops = {pin: -float(np.nanmean(volts[cells[pin]])) for pin in draws}
-    return volts, dens, heat, drops, mask
+    v = np.nan_to_num(volts)
+    barrels = []
+    for s, i, j, area, first, last in joins:
+        through = sum(g * (v[i, iy, ix] - v[j, iy, ix]) for _, _, iy, ix, g in links[first:last])
+        layers = (bc.layers[i], bc.layers[j])
+        name = "the via" if s.kind == "via" else f"the plated hole of {s.ref}.{s.pad}"
+        barrels.append(Barrel(s.at, layers, abs(float(through)), area, abs(float(through)) / area, name))
+    return NetDrop(volts, dens, heat, drops, mask, barrels)
+
+
+def barrel_finding(ask: NetAsk, barrel: Barrel, near: str) -> Finding:
+    """The greatest current density in a net's barrels against the net's `amps_per_mm2`."""
+    x, y = barrel.at
+    text = (
+        f"{ask.name} barrel current density {barrel.density:.4g} A/mm2, {barrel.amps:.4g} A in "
+        f"{barrel.name} at ({x:.2f}, {y:.2f}) {barrel.layers[0]} to {barrel.layers[1]}, near {near}"
+    )
+    if ask.density is None:
+        return Finding("not judged", f"{text}: copper.json states no `amps_per_mm2` limit")
+    ok = barrel.density <= ask.density.value
+    return Finding(
+        "hold" if ok else "fail",
+        f"{text}, limit {ask.density.value:g} A/mm2",
+        f"{ask.density.where}: {ask.density.source}",
+    )
+
+
+def check_grid(bc: BoardCopper, nets: list[str], pitch: float) -> None:
+    """A cell of the drop no wider than the narrowest track of a judged net: a coarser cell can let a
+    neck's copper fall between cells, and the run would blame the board for the grid."""
+    for net in nets:
+        widths = [s.width for s in bc.shapes if s.net == net and s.width > 0]
+        if widths and pitch > min(widths) + 1e-9:
+            w = min(widths)
+            raise ratings.Refusal(
+                f"copper.json: grid: drop: {pitch:g} mm is wider than {net}'s narrowest track, {w:g} mm; "
+                f"a cell of at most {w:g} mm is asked"
+            )
 
 
 # ---------------------------------------------------------------- the heat
@@ -593,11 +753,12 @@ def board_heat(bc: BoardCopper, asked: Asked, materials, watts_fine: np.ndarray,
     layers = len(bc.layers)
     ny, nx = fine.ny // f, fine.nx // f
     hp = fine.pitch * f * 1e-3  # m
-    copper = np.zeros((layers, fine.ny, fine.nx), dtype=bool)
+    coarse = Grid(fine.x0, fine.y0, fine.pitch * f, nx, ny)
+    frac = np.zeros((layers, ny, nx))  # the part of each cell that is copper
     for s in bc.shapes:
         for layer, polys in s.polys.items():
-            copper[bc.layers.index(layer)] |= fill(fine, polys)
-    frac = copper.reshape(layers, ny, f, nx, f).mean(axis=(2, 4))
+            li = bc.layers.index(layer)
+            np.maximum(frac[li], cover(coarse, polys), out=frac[li])
     if bc.outline:
         inside = fill(fine, bc.outline).reshape(ny, f, nx, f).mean(axis=(1, 3)) >= 0.5
     else:
@@ -623,7 +784,6 @@ def board_heat(bc: BoardCopper, asked: Asked, materials, watts_fine: np.ndarray,
     air[0] += face * inside
     air[-1] += face * inside
     air[:, ~inside] = 1.0  # a cell off the board stands alone at the air's temperature
-    coarse = Grid(fine.x0, fine.y0, fine.pitch * f, nx, ny)
     links = []
     for s in bc.barrels():
         _, ring = barrel_cells(coarse, s.at, s.drill, bc.plating)
@@ -688,15 +848,21 @@ class Report:
     counted: list[str] = field(default_factory=list)
 
 
-def stated_currents(bc: BoardCopper, project) -> tuple[dict[str, dict[str, float]], list[Finding]]:
-    """net -> {REF.PAD: amps} from ratings.json: a pin's current on its net, a 2-pin part's on both."""
+def stated_currents(bc: BoardCopper, project) -> tuple[dict[str, dict[str, float]], list[Finding], set[str]]:
+    """net -> {REF.PAD: amps} from ratings.json: a pin's current on its net, a 2-pin part's on both;
+    and every REF.PAD ratings.json states a current for, 0 A among them."""
     out: dict[str, dict[str, float]] = {}
     notes = []
+    stated: set[str] = set()
     for key, amps in project.amps.items():
-        if not amps:
-            continue
         ref, _, pin = key.partition(".")
         part = bc.parts[ref]
+        if pin:
+            stated.add(key)
+        elif len(part.pins) == 2:
+            stated.update(f"{ref}.{p}" for p in part.pins)
+        if not amps:
+            continue
         if pin:
             out.setdefault(part.pins[pin], {})[key] = amps
         elif len(part.pins) == 2:
@@ -705,24 +871,52 @@ def stated_currents(bc: BoardCopper, project) -> tuple[dict[str, dict[str, float
         else:
             why = f"ratings.json states {amps:g} A through {ref}, a part of {len(part.pins)} pins"
             notes.append(Finding("not judged", f"{ref}: {why}; name the pin, `{ref}.<pad>`"))
-    return out, notes
+    return out, notes, stated
+
+
+def _resistor_currents(bc: BoardCopper, project) -> dict[str, float]:
+    """REF -> A for each 2-pin resistor ratings.json states a current for, on the part or on a pin; the
+    current through 1 pin of a 2-pin part is the current through the other. The greater, if both."""
+    out: dict[str, float] = {}
+    for key, amps in project.amps.items():
+        ref = key.partition(".")[0]
+        part = bc.parts.get(ref)
+        if part is None or not amps or not ref.startswith("R") or len(part.pins) != 2:
+            continue
+        out[ref] = max(out.get(ref, 0.0), amps)
+    return out
 
 
 def dissipation(bc: BoardCopper, project) -> tuple[dict[str, float], list[str]]:
     """REF -> W: `watts` from ratings.json, or the stated current through a resistor's Value."""
     out = {ref: w for ref, w in project.watts.items() if w}
     how = [f"{ref} {w:g} W (ratings.json: parts: {ref}: watts)" for ref, w in out.items()]
-    for key, amps in project.amps.items():
-        part = bc.parts.get(key)
-        if part is None or key in out or not amps or not key.startswith("R") or len(part.pins) != 2:
-            continue
+    for ref, amps in _resistor_currents(bc, project).items():
+        part = bc.parts[ref]
         ohms = ratings.part_value(part.value)
-        if ohms is not None:
-            out[key] = amps * amps * ohms
-            how.append(
-                f"{key} {out[key]:.4g} W ({amps:g} A from ratings.json through its Value {part.value})"
-            )
+        if ref in out or ohms is None:
+            continue
+        out[ref] = amps * amps * ohms
+        how.append(f"{ref} {out[ref]:.4g} W ({amps:g} A from ratings.json through its Value {part.value})")
     return out, how
+
+
+def dissipation_notes(bc: BoardCopper, project) -> list[Finding]:
+    """A resistor with a stated current, no `watts` and a Value that gives no ohms: its heat is not
+    counted, and the run says so."""
+    notes = []
+    for ref, amps in _resistor_currents(bc, project).items():
+        part = bc.parts[ref]
+        if project.watts.get(ref) or ratings.part_value(part.value) is not None:
+            continue
+        notes.append(
+            Finding(
+                "not judged",
+                f"{ref}: ratings.json states {amps:g} A through it and its Value {part.value} gives no ohms; "
+                "state its `watts`",
+            )
+        )
+    return notes
 
 
 def run(board: Path, out: Path) -> Report:  # noqa: PLR0915
@@ -753,29 +947,43 @@ def run(board: Path, out: Path) -> Report:  # noqa: PLR0915
         f"Heat: copper {k_cu.value:g} W/m K ({k_cu.source}); FR-4 {k_fr4.value:g} W/m K ({k_fr4.source}).",
         "A part's heat enters the board through its pads and leaves by the board's 2 faces; the part's own "
         "body gives none to the air, which puts its pads hotter than they are.",
-        f"Grid: {asked.drop_pitch:g} mm cells for the drop, {asked.heat_pitch:g} mm for the heat; a cell is "
-        "copper when its centre is. A plated hole has no copper inside its drill, and its barrel joins its "
-        "layers through the ring of cells round the drill.",
+        f"Grid: {asked.drop_pitch:g} mm cells for the drop, {asked.heat_pitch:g} mm for the heat; a cell's "
+        "sheet is weighted by the part of its area that is copper. A plated hole has no copper inside its "
+        "drill, and its barrel joins its layers through the ring of cells round the drill.",
     ]
     if not bc.stackup:
         report.assumptions.append(
             "The board has no stackup: every copper layer is taken as 35 um, spread evenly through the board."
         )
-    currents, report.findings = stated_currents(bc, project)
+    check_grid(bc, [n.name for n in asked.nets], asked.drop_pitch)
+    currents, report.findings, stated_pins = stated_currents(bc, project)
+    report.findings += dissipation_notes(bc, project)
     f = max(1, round(asked.heat_pitch / asked.drop_pitch))
     grid = bc.grid(asked.drop_pitch, f)
     heat_fine = np.zeros((len(bc.layers), grid.ny, grid.nx))
     out.mkdir(parents=True, exist_ok=True)
     named = {n.name for n in asked.nets}
-    for net in sorted(currents):
-        if net not in named:
+    for net in sorted(set(currents) | set(project.nets)):
+        if net in named:
+            continue
+        if net in currents:
             amps = ", ".join(f"{pin} {a:g} A" for pin, a in currents[net].items())
+            why = f"ratings.json states {amps}"
+        else:
+            why = "ratings.json names this net"
+        report.findings.append(Finding("not judged", f"{net}: {why} and copper.json names no entry for it"))
+    pads = bc.pads()
+    for ask in asked.nets:
+        silent = sorted(
+            p for p, n in pads.items() if n == ask.name and p != ask.entry and p not in stated_pins
+        )
+        if silent:
             report.findings.append(
                 Finding(
-                    "not judged", f"{net}: ratings.json states {amps} and copper.json names no entry for it"
+                    "not judged",
+                    f"{ask.name}: ratings.json states no current at {', '.join(silent)}; taken as 0 A",
                 )
             )
-    for ask in asked.nets:
         draws = {pin: a for pin, a in currents.get(ask.name, {}).items() if pin != ask.entry}
         if not draws:
             report.findings.append(
@@ -784,7 +992,8 @@ def run(board: Path, out: Path) -> Report:  # noqa: PLR0915
                 )
             )
             continue
-        volts, dens, heat, drops, mask = net_drop(bc, grid, ask.name, ask.entry, draws, rho)
+        solved = net_drop(bc, grid, ask.name, ask.entry, draws, rho)
+        volts, dens, heat, drops, mask = solved.volts, solved.density, solved.heat, solved.drops, solved.mask
         heat_fine += heat
         worst = max(drops, key=drops.get)
         li, iy, ix = np.unravel_index(int(np.nanargmax(dens)), dens.shape)
@@ -797,6 +1006,7 @@ def run(board: Path, out: Path) -> Report:  # noqa: PLR0915
             worst,
             float(dens[li, iy, ix]),
             (x, y, bc.layers[li]),
+            watts=float(heat.sum()),
         )
         report.nets.append(res)
         drop_text = f"{ask.name} drop {res.drop * 1e3:.4g} mV from {ask.entry} to {worst}"
@@ -827,6 +1037,10 @@ def run(board: Path, out: Path) -> Report:  # noqa: PLR0915
                     f"{ask.density.where}: {ask.density.source}",
                 )
             )
+        if solved.barrels:
+            worst_barrel = max(solved.barrels, key=lambda b: b.density)
+            res.barrel = vars(worst_barrel)
+            report.findings.append(barrel_finding(ask, worst_barrel, bc.nearest(*worst_barrel.at)))
         safe = ask.name.strip("/").replace("/", "_") or "net"
         for li, layer in enumerate(bc.layers):
             if not mask[li].any():
@@ -927,13 +1141,22 @@ def markdown(report: Report, strict: bool, name: str) -> str:
     out += ["## Heat counted", ""] + [f"- {c}" for c in counted]
     out += ["- every other part's heat is not counted: ratings.json states none for it", ""]
     if report.nets:
-        out += ["## Nets", "", "| Net | In at | Current | Greatest drop | At | Greatest density | At |"]
-        out += ["|---|---|---|---|---|---|---|"]
+        out += [
+            "## Nets",
+            "",
+            "| Net | In at | Current | Greatest drop | At | Greatest density | At | Greatest in a barrel "
+            "| I^2 R |",
+        ]
+        out += ["|---|---|---|---|---|---|---|---|---|"]
         for r in report.nets:
             x, y, layer = r.density_at
+            barrel = "no barrel"
+            if r.barrel:
+                bx, by = r.barrel["at"]
+                barrel = f"{r.barrel['density']:.4g} A/mm2, {r.barrel['name']} at ({bx:.2f}, {by:.2f})"
             out.append(
                 f"| {r.name} | {r.entry} | {r.amps:g} A | {r.drop * 1e3:.4g} mV | {r.drop_at} | "
-                f"{r.density:.4g} A/mm2 | ({x:.2f}, {y:.2f}) {layer} |"
+                f"{r.density:.4g} A/mm2 | ({x:.2f}, {y:.2f}) {layer} | {barrel} | {r.watts:.4g} W |"
             )
         out.append("")
         for r in report.nets:
