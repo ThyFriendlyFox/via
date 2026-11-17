@@ -43,6 +43,11 @@
         "read": "2026-11-17"
       },
       "amps_max": {"value": 2.0, "where": "section 6.3, Recommended Operating Conditions, IOUT, page 4"},
+      "vout_min": {
+        "value": 0.6,
+        "where": "section 6.3, Recommended Operating Conditions, VOUT from 0.6 V to VIN, page 4"
+      },
+      "vout_set": {"where": "section 8.2.2.2, equation 2, page 9"},
       "ilim_min": {
         "value": 3.0,
         "where": "section 6.5, Electrical Characteristics, ILIM of the DBV package, the column MIN, page 5"
@@ -50,6 +55,14 @@
       "henries": {
         "value": 2.2e-6,
         "where": "section 8.2.2.3, table 4, the cells marked ++ and its note 3 (the standard value), page 9"
+      },
+      "henries_low": {
+        "value": 0.3,
+        "where": "section 8.2.2.3, table 4, note 1: the effective inductance can vary by +20 % and -30 %, page 9"
+      },
+      "saturation_margin": {
+        "value": 0.2,
+        "where": "section 8.2.2.4, page 10: a saturation current about 20 % to 30 % above IL,MAX; the block asks the least, 20 %"
       },
       "r2": {"value": 100000, "where": "section 8.2, figure 5, R2, page 8"},
       "r2_max": {"value": 200000, "where": "section 8.2.2.2, page 9: a maximum of 200 kohm for R2"},
@@ -60,6 +73,14 @@
       "kept_share": {
         "value": 0.5,
         "where": "section 8.2.2.3, table 4, note 2: the effective capacitance can vary by -50 %, page 9"
+      },
+      "output_span": {
+        "value": [10e-6, 47e-6],
+        "where": "section 8.2.2.5, page 10: designed to operate with an output capacitor of 10 uF to 47 uF"
+      },
+      "dielectrics": {
+        "value": ["X5R", "X7R"],
+        "where": "section 8.2.2.5, page 10: X7R or X5R dielectric is recommended; TI SLVA477C, sections 6 and 7, page 5: X5R or better"
       },
       "input_farads": {
         "value": 4.7e-6,

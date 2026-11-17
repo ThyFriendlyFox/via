@@ -12,7 +12,7 @@ that `workcenter ratings` and the SIM gate read.
 
 | Block | Note | Rules | ICs |
 |---|---|---|---|
-| `blocks.buck` | TI SLVA477C, equations 1, 2, 3, 4 and 11, sections 3 and 7 | `rules/blocks/buck.json` | TLV62569DBVR |
+| `blocks.buck` | TI SLVA477C, equations 1, 2, 3, 4 and 11, sections 3, 6 and 7; the datasheet's equation 2, table 4 and sections 6.3, 8.2.2.4 and 8.2.2.5 | `rules/blocks/buck.json` | TLV62569DBVR |
 
 A block holds what its note states and no more. A part the note does not
 cover is your own schematic, and `workcenter ratings` judges it.
@@ -56,15 +56,26 @@ cover is your own schematic, and `workcenter ratings` judges it.
 3. Run `workcenter design design.py`. What it prints:
    - `file: line N: buck U1: ...`: the block refused. The line names the value,
      the limit, the equation and the page. Do as the line asks:
-     - `no stocked inductor holds the peak of X A`: add an inductor of the
-       datasheet's value whose facts saturate above X A to the stock, or lower
-       the load.
+     - `no stocked inductor holds the peak of X A with 20 % of margin, Y A`:
+       add an inductor of the datasheet's value whose facts saturate at Y A or
+       more and carry the load in rms current, or lower the load. The block
+       counts the inductance at its least: the part's tolerance or the
+       datasheet's own derating, the larger.
      - `IMAXOUT = ... under the load`: the IC cannot give the load (equation 3).
        Take another IC.
-     - `the load of X A is over ...` or `the input reaches X V`: the IC's
-       datasheet does not allow it. Take another IC or change the spec.
+     - `the load of X A is over ...`, `a load of 0 A`, `the input reaches X V`,
+       `VOUT of X V is under ...` or `is over the least input`, `D = ... over 1`:
+       the IC's datasheet or the note does not allow the spec. Change the spec
+       or take another IC.
+     - `R1 of ... and R2 of ... set VOUT to X V, A to B ..., and Y V is asked`:
+       the stock has no resistor near the R1 the line names. Add one; the
+       output it sets must hold the asked voltage between the reference's
+       limits and the resistors' tolerances.
      - `no stocked resistor of ...`, `no stocked capacitor ...`: add the part
-       the line names to the stock, with its facts.
+       the line names to the stock, with its facts. A capacitor is taken only
+       when its facts name a dielectric the datasheet names (X5R or X7R for the
+       TLV62569) and, at the output, the value it keeps under voltage. The line
+       says why each stocked capacitor was passed over.
    - `design ... green`: the parts, `ratings.json`, `parts.csv` and
      `sim/buck.cir` are written.
 4. Open `sim/buck.cir`. Its comment lines after `* The sums:` are `block.sums`:
