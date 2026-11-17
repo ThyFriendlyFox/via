@@ -27,6 +27,8 @@ python3 -m http.server 8000 --directory site    # the site at http://localhost:8
 python3 site/examples.py                         # the example pages, from the examples' files
 python3 site/examples.py --check                 # exit 1 when a page is not what the script writes
 python3 site/examples.py --pictures              # also the examples' 3D pictures (numpy, Pillow)
+python3 site/blog.py                             # the blog, from the posts in blog/
+python3 site/blog.py --check                     # exit 1 when a blog page is not what the script writes
 sh site/build.sh out https://example.org         # the files a host serves, in out/
 ```
 
@@ -45,6 +47,9 @@ empty.
 | `examples.html`, `examples/<name>.html` | The list of examples, and 1 page for each. `examples.py` writes them; do not edit them by hand. |
 | `examples/<name>/` | What an example's page shows: `board.svg`, the board drawn from its file for the explorer; `spin.webp`, the turntable's views side by side, where they show the whole of it; `top.png` and `bottom.png`, KiCad's renders with the backdrop taken out, at most 1100 px wide; `card.png`, the picture on its card (the assembly where there is one), 760 px wide; all 3 in 256 colours; `pictures.json`, the render each came from and the turntable's frames. |
 | `examples.py` | Writes the example pages. "The example pages" below says what it reads. |
+| `blog.html`, `blog/<slug>.html`, `blog/feed.xml` | The list of posts at `/blog`, 1 page for each post at `/blog/<slug>`, and the posts' RSS feed. `blog.py` writes them from the Markdown posts in the repository's `blog/`; do not edit them by hand. A post's page carries its share card and a BlogPosting record on the line `build.sh` fills with the site's address, and after the post the way back into the site: the start, the boards, the checks, and the posts before and after it. |
+| `blog.py` | Writes the blog. "A new post" below says how. |
+| `frame.py` | The head, header and footer every page `examples.py` and `blog.py` write shares: the menu (with the blog), the footer, the theme before the first paint and the analytics' 2 script tags. |
 | `404.html` | The page a host serves for an unknown path. |
 | `site.css` | The look: the colour tokens for light and dark, the type scale, every component. `media/hero.html` takes its cards from it. |
 | `site.js` | The theme button, the copy button, and the agents' strip: it drifts sideways, rests under a pointer, a finger or the focus, and a mouse, a swipe or the arrow keys move it. |
@@ -203,6 +208,29 @@ each finished example. To add one when it lands on `main`:
 3. Run `python3 -m pytest tests/test_docs.py`. It checks each picture's
    stated size against the file, each page against what `examples.py`
    writes, and each link of the built pages.
+
+## A new post
+
+A post is a Markdown file in the repository's `blog/`, named
+`YYYY-MM-DD-<slug>.md`; the `blog-post` skill writes one from the devlog.
+Its fields come first, between 2 `---` lines: `title`, `date` (the one in
+its name) and `tags`, and, if it wants them, `description` (else its first
+paragraph) and `image` (a PNG the site serves, as
+`/examples/herald/card.png`, for its share card; else `og.png`). In the
+post, a link that starts with `/` names a page of the site, and a link with
+no scheme names a file in the repository, shown on GitHub. A picture alone
+on its line is a file the site serves:
+`![what it shows](/examples/herald/card.png "its caption")`; a post's own
+picture goes in `site/blog/`, which `build.sh` copies. Then:
+
+```sh
+python3 site/blog.py
+python3 -m pytest tests/test_docs.py
+```
+
+The script stops at a post whose link or picture names nothing. The docs
+tests hold each page to what the script writes, and each built page's
+links to the files `build.sh` copies.
 
 ## The images
 

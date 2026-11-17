@@ -39,6 +39,30 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-17 — A blog, a post on Herald, and `main`'s CI green again
+
+The owner asked for a blog on the site, each post at its own address with links back to the main
+site. `site/blog.py` writes each Markdown post in `blog/` as a page at `/blog/<slug>`, the list of
+posts at `/blog` and an RSS feed, in the frame the example pages use, now `site/frame.py`. A post's
+page carries its share card and a BlogPosting record, and leads back to the start, the boards, the
+checks and the posts around it. The menu and the footer name the blog. The `blog-post` skill now
+writes to `blog/` and runs the script.
+
+Published post: Herald, a fire alarm communicator designed with Via. Each claim in it traces to
+Herald's README, the 2026-11-11 entry here, `MISTAKES.md` (M137, M138) or the roadmap. The devlog
+called M137's pad a diode's; M137 names R43 and R44, so the post says only that the keep-out
+covered pads.
+
+`main`'s CI had failed since PR #62 (Vercel Web Analytics): it added 2 script tags to the pages
+`site/examples.py` writes, not to the script, and the link checks looked for the host's
+`/_vercel/insights/script.js` in the repository. The script now writes the tags, and the link
+checks leave out `/_vercel/` addresses.
+
+Evidence: the docs tests 20 passed, 2 skipped (KiCad); `site/blog.py --check` and
+`site/examples.py --check` exit 0; a build for the site's address serves the post at
+`/blog/herald-fire-alarm-communicator` with its canonical link and share card, and a feed that
+parses as RSS 2.0 with 1 item. In Chromium the post and the list fit a 390 px screen.
+
 ## 2026-11-14 — The redrawn site meets main: Herald, the 6 boards, a page for each
 
 The owner liked the redrawn site on its branch and asked for the boards and the Herald section

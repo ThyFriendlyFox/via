@@ -72,7 +72,20 @@ for folder in "$here"/examples/*/; do
   cp "$folder"* "$out/examples/$name/"
 done
 
-for path in "$here/index.html" "$here/404.html" "$here/examples.html" "$here"/examples/*.html; do
+# The blog's pages, as site/blog.py writes them, and any picture a post names from its folder.
+mkdir -p "$out/blog"
+for file in "$here"/blog/*; do
+  case "$file" in
+    *.html | */feed.xml) ;;
+    *) [ -f "$file" ] && cp "$file" "$out/blog/" ;;
+  esac
+done
+# The feed's addresses are whole, so it is served only from a build for an address.
+if [ -n "$origin" ] && [ -f "$here/blog/feed.xml" ]; then
+  sed "s|%ORIGIN%|$origin|g" "$here/blog/feed.xml" >"$out/blog/feed.xml"
+fi
+
+for path in "$here/index.html" "$here/404.html" "$here/examples.html" "$here"/examples/*.html "$here/blog.html" "$here"/blog/*.html; do
   [ -f "$path" ] || continue
   page=${path#"$here"/}
   if [ -n "$origin" ]; then

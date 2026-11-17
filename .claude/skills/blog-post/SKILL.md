@@ -12,9 +12,10 @@ project.
 ## Install
 
 Copy this folder into the repo's skill directory (`.claude/skills/
-blog-post/` for Claude Code) so `/blog-post` invokes it. Adjust the
-output path below to where the repo keeps posts (`blog/`, `posts/`,
-or the site repo).
+blog-post/` for Claude Code) so `/blog-post` invokes it. In this
+repository posts live in `blog/`, and `site/blog.py` makes each one a
+page of the site at `/blog/<slug>`. In another repo, adjust the output
+path below to where it keeps posts (`blog/`, `posts/`, or the site repo).
 
 ## Inputs
 
@@ -39,10 +40,16 @@ or the site repo).
      Failures stay in. Readers trust a log that admits the broken week.
    - **Close** with what is next: the top of the ROADMAP queue, stated
      as intent, not promise.
-4. Save to `<posts-path>/YYYY-MM-DD-<slug>.md` with frontmatter:
-   `title`, `date`, `tags`.
-5. Add one devlog entry: "Published post: <title>."
-6. Do not publish beyond the repo without the human's go-ahead.
+4. Save to `blog/YYYY-MM-DD-<slug>.md` with frontmatter: `title`,
+   `date`, `tags`, and `description` or `image` where the first
+   paragraph or the site's card does not fit. A link that starts with
+   `/` names a page of the site (`/examples/herald`); a link with no
+   scheme names a file in the repo.
+5. Run `python3 site/blog.py`: it writes the post's page, the list of
+   posts and the feed, and stops at a link that names nothing.
+6. Add one devlog entry: "Published post: <title>."
+7. Do not publish beyond the repo without the human's go-ahead: the
+   post goes live when it reaches `main`.
 
 ## Checks
 

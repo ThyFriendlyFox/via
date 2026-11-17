@@ -406,6 +406,11 @@ def example_pages() -> list[Path]:
     return [SITE / "examples.html", *sorted((SITE / "examples").glob("*.html"))]
 
 
+def blog_pages() -> list[Path]:
+    """The pages site/blog.py writes: the list of posts, and 1 page for each."""
+    return [SITE / "blog.html", *sorted((SITE / "blog").glob("*.html"))]
+
+
 def beside_page(page: Path, link: str) -> bool:
     """Whether a link read from the page's own folder names a file: `agents.svg#cursor` is
     agents.svg, `site.css?v=1` is site.css, and a folder is its index.html."""
@@ -418,7 +423,7 @@ def test_every_link_on_the_site_names_what_exists():
     the merge. A link into the page names an id, and a link beside the page names a file."""
     blob = "https://github.com/ThyFriendlyFox/via/blob/main/"
     missing, to_repo, into_page, beside = [], 0, 0, 0
-    for page in (SITE / "index.html", SITE / "404.html", SITE / "og.html", *example_pages()):
+    for page in (SITE / "index.html", SITE / "404.html", SITE / "og.html", *example_pages(), *blog_pages()):
         text = page.read_text(encoding="utf-8")
         for link in links_of(page):
             if link.startswith(blob):
@@ -461,7 +466,15 @@ def test_the_site_builds_for_an_address_and_without_one(tmp_path):
     assert len(alts) == 2 and alts[0] == alts[1] and "Herald" in alts[0]
     assert '<base href="https://example.org/via/">' in (served / "404.html").read_text(encoding="utf-8")
     assert (served / "og.png").is_file() and (served / "fonts" / "LICENSE").is_file()
-    pages = ["index.html", "404.html", *(str(p.relative_to(SITE)) for p in example_pages())]
+    pages = ["index.html", "404.html", *(str(p.relative_to(SITE)) for p in (*example_pages(), *blog_pages()))]
+    # A post is served at /blog/<slug> with its share card, and the feed with whole addresses.
+    post = next((SITE / "blog").glob("*.html")).stem
+    built_post = (served / "blog" / f"{post}.html").read_text(encoding="utf-8")
+    assert f'<link rel="canonical" href="https://example.org/via/blog/{post}">' in built_post
+    assert f'<meta property="og:url" content="https://example.org/via/blog/{post}">' in built_post
+    assert f"<link>https://example.org/via/blog/{post}</link>" in (served / "blog" / "feed.xml").read_text(
+        encoding="utf-8"
+    )
     example = (served / "examples" / "rosetta.html").read_text(encoding="utf-8")
     assert '<link rel="canonical" href="https://example.org/via/examples/rosetta">' in example
     # A host may keep a stylesheet or a script for hours while it asks again for the page (M157): the
@@ -642,6 +655,43 @@ def test_the_code_a_page_shows_is_a_run_of_lines_of_its_file():
         if page.name == "index.html":
             herald = {"examples/herald/card.png", "showcase/herald-schematic.png", "showcase/herald-top.png"}
             assert herald <= set(stated)
+
+
+def test_the_blog_is_what_site_blog_writes():
+    """A post in blog/ is a page at /blog/<slug>, the list of posts and the feed name it, and the
+    page leads back into the site. A page edited by hand, or a post changed and the blog not written
+    again, differs from what the script writes; a post that links to nothing stops the script."""
+    proc = subprocess.run(
+        [sys.executable, str(SITE / "blog.py"), "--check"], capture_output=True, text=True, check=False
+    )
+    assert proc.returncode == 0, proc.stderr
+    sys.path.insert(0, str(SITE))
+    import blog
+
+    found = blog.posts()
+    assert found and {p.slug for p in found} == {p.stem for p in (SITE / "blog").glob("*.html")}
+    listed = (SITE / "blog.html").read_text(encoding="utf-8")
+    feed = (SITE / "blog" / "feed.xml").read_text(encoding="utf-8")
+    for post in found:
+        page = (SITE / "blog" / f"{post.slug}.html").read_text(encoding="utf-8")
+        assert f'href="blog/{post.slug}.html"' in listed and f"%ORIGIN%/blog/{post.slug}</link>" in feed
+        # Its way back into the site: the home page, the boards, the checks and every post.
+        for back in (
+            'href="../"',
+            'href="../examples.html"',
+            'href="../index.html#gates"',
+            'href="../blog.html"',
+        ):
+            assert back in page, (post.slug, back)
+        # Its share card and its record, on the 1 line build.sh fills with the site's address.
+        (line,) = [line for line in page.splitlines() if "og:title" in line]
+        assert "%ORIGIN%" in line and '"@type":"BlogPosting"' in line and "twitter:card" in line
+    # A link in a post names a page of the site, or a file in the repository, or it stops the script.
+    assert blog.href("/examples/herald", "../") == "../examples/herald.html"
+    assert blog.href("ee-agent-kit/DEVLOG.md", "../").endswith("/blob/main/ee-agent-kit/DEVLOG.md")
+    for nowhere in ("/no-such-page", "no/such/file.md"):
+        with pytest.raises(blog.PostError):
+            blog.href(nowhere, "../")
 
 
 def test_the_example_pages_are_what_site_examples_writes():
