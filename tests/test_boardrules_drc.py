@@ -9,9 +9,14 @@ GND 0 V, 1 A on J1 pin 1 (VIN) and on J1 pin 3 (GND), 0 A on J1 pin 2 (VOUT).
     width   1 A on an outer layer of a 1.6 mm board: 1 / 0.9 = 1.1111 A at 10 / 1.2 = 8.3333 C,
             0.017535 mm2, 0.70140 mm on 25 um as manufactured, 0.75140 mm as designed: printed 0.752 mm
 
-pass-board-ecss draws VIN and GND 0.8 mm. fail-board-ecss leaves 1 VIN segment 0.25 mm, and puts a GND
-stub on B.Cu whose end stands 103.53 + 0.4 = 103.93 mm, 104.15 - 103.93 = 0.22 mm from J1 pin 1's
-1.7 mm pad at x = 105.
+    parallel VIN runs beside GND on F.Cu, 4.28 mm apart at the least (from y = 105 to y = 110.08, less
+            1.4 mm): 13.6.3g holds them as 1 conductor of 2 A, 2 / 0.9 = 2.2222 A in the model, 0.064379
+            mm2 as manufactured; 2 tracks of 1.4 mm give 2 x max(1.4 x 0.8, 1.4 - 0.05) x 0.025 =
+            0.0675 mm2
+
+pass-board-ecss draws VIN and GND 1.4 mm. fail-board-ecss leaves 1 VIN segment 0.25 mm (it runs beside
+no GND track), and puts a GND stub on B.Cu, 0.8 mm wide, whose end stands 103.53 + 0.4 = 103.93 mm,
+104.15 - 103.93 = 0.22 mm from J1 pin 1's 1.7 mm pad at x = 105.
 """
 
 from __future__ import annotations
