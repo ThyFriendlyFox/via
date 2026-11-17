@@ -360,7 +360,7 @@ def test_the_issue_template_has_the_cards_sections(tmp_path):
 
 def test_the_skill_names_the_labels_and_the_stale_run_spares_open_cards():
     skill = SKILL.read_text(encoding="utf-8")
-    labels = ("working", "blocked on owner", "landed")
+    labels = ("enhancement", "documentation", "help wanted", "question")
     assert [x for x in labels if f"`{x}`" not in skill] == []
     stale = (ROOT / ".github" / "workflows" / "stale.yml").read_text(encoding="utf-8")
     exempt = re.search(r"exempt-issue-labels: '([^']*)'", stale).group(1).split(",")
