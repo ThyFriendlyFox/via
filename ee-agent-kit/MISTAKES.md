@@ -1147,3 +1147,21 @@ What happened: On `wip/r4` the first rewrite of a deck capacitor used ngspice's 
 Cost: 1 rewrite of the element writer.
 Root cause: The element was written from the manual's syntax and put in a design deck before it ran in a deck of its own. `test_ngspice_takes_the_rewritten_capacitor_as_its_capacitance_at_the_voltage` now holds it.
 Process: P27
+
+## M190 — 2026-11-17 — A benchmark judged a route on the board an earlier run left
+What happened: On `wip/r5`, `workcenter bench` wrote each run into `<out>/<board>/<router>/` and did not empty it. A route that raised left the earlier run's board in place, and the bench judged that board: a second run into the same folder, with a text file as the jar, was judged on the first run's board. The table of the item's first documents came from 2 runs into 1 folder.
+Cost: A reviewer's verdict "not sound"; a rerun of the benchmark, which covered 4 of 11 boards.
+Root cause: A check read files it had not written in its own run. P11 asks to measure on a clean folder.
+Process: P11
+
+## M191 — 2026-11-17 — A route at 2 threads judged by 1 run
+What happened: ring-mouse v0.4's power board, routed 2 times at FreeRouting's `-mt 2` from 1 design, had 0 DRC errors in 1 run and a short (`/CHG_STAT` to `/PROG`) in the other.
+Cost: A benchmark row that depends on which run it shows.
+Root cause: A route with threads on is not the same twice, and the bench runs each route once. P4 judges a route by its own DRC, every run; P11 step 2 asks a measure before and after on 1 design, more than once when threads are on.
+Process: P11
+
+## M192 — 2026-11-17 — A value text read as a designator
+What happened: On integration of `wip/r12`, EXPORT failed universal-controller v0.1 with `assembly-top.pdf: R1 is drawn; the board places it on the bottom`. The word was SW11's Value, "R1", drawn on F.Fab; the board's R1 sits on the back. `tests/test_docs.py` replays that example's gates, so `make verify` would have been red.
+Cost: 1 false failure, found before the gate; 1 fix with a test.
+Root cause: The read-back took every word a page draws as a designator, and the build's sample pages held no value text equal to another part's reference. P7 step 3 asks a sample of every shape the output takes.
+Process: P7

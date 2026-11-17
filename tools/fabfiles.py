@@ -76,6 +76,29 @@ def _draws_designator_on_fab(fp: list) -> bool:
     return False
 
 
+def _fab_texts(node: list) -> list[tuple[str, str]]:
+    """The texts other than a designator that an item draws on a Fab layer: (side, word) for each word
+    of a Value or another property, an `fp_text` that is no designator, or a board's `gr_text`."""
+    found = []
+    for item in _children(node, "fp_text") + _children(node, "property") + _children(node, "gr_text"):
+        layer = _child(item, "layer")
+        if not layer or not str(layer[1]).endswith(".Fab") or _hidden(item):
+            continue
+        if item[0] == "gr_text":
+            value = item[1] if len(item) > 1 else ""
+        elif item[0] == "fp_text":
+            if len(item) < 3 or item[1] == "reference" or item[2] == "${REFERENCE}":
+                continue
+            value = item[2]
+        else:
+            if len(item) < 3 or item[1] == "Reference":
+                continue
+            value = item[2]
+        side = "bottom" if str(layer[1]).startswith("B.") else "top"
+        found += [(side, word) for word in str(value).split() if not word.startswith("${")]
+    return found
+
+
 def board_facts(text: str) -> dict:
     """What the board file says a fab and an assembler get: each placed part with its side, the parts
     kept out of the placement file and why, each net with the pads on it, the copper layers, how many
@@ -86,12 +109,18 @@ def board_facts(text: str) -> dict:
     nets: dict[str, list[str]] = {}
     count: dict[str, int] = {}
     fab_ref: set[str] = set()
+    # The words each side's Fab layer draws that are no designator: a Value of "R1" is no part R1.
+    fab_text: dict[str, set[str]] = {"top": set(), "bottom": set()}
+    for side, word in _fab_texts(root):
+        fab_text[side].add(word)
     at: dict[str, tuple[float, float, float]] = {}
     for fp in _children(root, "footprint"):
         ref = _reference(fp)
         count[ref] = count.get(ref, 0) + 1
         if _draws_designator_on_fab(fp):
             fab_ref.add(ref)
+        for side, word in _fab_texts(fp):
+            fab_text[side].add(word)
         where = _child(fp, "at")
         if where and len(where) > 2:
             at[ref] = (float(where[1]), float(where[2]), float(where[3]) if len(where) > 3 else 0.0)
@@ -120,6 +149,7 @@ def board_facts(text: str) -> dict:
         "copper": copper,
         "count": count,
         "fab_ref": fab_ref,
+        "fab_text": fab_text,
         "at": at,
         "size": outline(root)[:2],
     }
@@ -349,6 +379,8 @@ def check_assembly(data: bytes, facts: dict, side: str, name: str) -> list[str]:
         return [f"{name}: not a PDF (it starts {data[:16].decode('latin-1')!r})"]
     drawn = set(drawn_words(data))
     fab_ref = facts.get("fab_ref", set())
+    # A word the board draws on this side as a value or another text says nothing of a designator.
+    elsewhere = drawn - facts.get("fab_text", {}).get(side, set())
     lines = [
         f"{name}: {ref} is not drawn; the board places it on the {where}"
         + ("" if ref in fab_ref else ", and its footprint holds no ${REFERENCE} text on a Fab layer")
@@ -358,12 +390,12 @@ def check_assembly(data: bytes, facts: dict, side: str, name: str) -> list[str]:
     lines += [
         f"{name}: {ref} is drawn; the board places it on the {where}"
         for ref, where in facts["placed"].items()
-        if where != side and ref in drawn
+        if where != side and ref in elsewhere
     ]
     lines += [
         f"{name}: {ref} is drawn; the board says {why}"
         for ref, why in facts["not_placed"].items()
-        if why.startswith("not fitted") and ref in drawn
+        if why.startswith("not fitted") and ref in elsewhere
     ]
     return lines
 

@@ -29,6 +29,7 @@ unset variable never causes a failure.
 | `NGSPICE` | command | `ngspice` | The simulation engine. |
 | `JAVA` | command | `java` | Runs the JAR. |
 | `KICAD10_3DMODEL_DIR` | path | `/usr/share/kicad/3dmodels` | Where `render` looks for the library 3D bodies footprints name, to list the parts drawn without one (`KICAD9_` and `KICAD8_3DMODEL_DIR` likewise). |
+| `KIKIT_PYTHON` | command | the venv's Python (`$WORKCENTER_ROOT/venv/bin/python`) | The Python that imports KiKit; EXPORT runs `tools/panel.py` with it for a project that holds `panel.json`. |
 | `KISTACK_DIR` | path | `<checkout>/third_party/kistack` | The kistack copy whose `skills/layout-placement/scripts` `workcenter placement` runs. |
 
 | Flag | Commands | Default | Use |
@@ -84,8 +85,14 @@ unset variable never causes a failure.
 | `--step` | gates, export | off | Also export a STEP model. |
 | `--fab NAME` | gates, drc | none | Also check a fab's limits: a rule set in `rules/` (`sierra-circuits-web`, `jlcpcb-2layer`, `pcbway-standard`, `oshpark-2layer`) or a `.kicad_dru` path, laid over the project's own rules on a copy in `<out>/fab-<name>/`. A design file's `fab` field does the same for good (`rules/README.md`). |
 | `--dsn FILE` | autoroute | `<project>/<name>.dsn`, then `build/route/<name>.dsn` | Specctra DSN exported from KiCad. Absent means the command skips. |
-| `--passes N` | autoroute, design | `20` autoroute, `60` design | FreeRouting optimisation passes. |
-| `--threads N` | autoroute | engine default | FreeRouting thread count. |
+| `--passes N` | autoroute, design, bench | `20` autoroute and bench, `60` design | FreeRouting optimisation passes. bench takes a whole number above 0. |
+| `--threads N` | autoroute, design, bench | engine default; bench `2` | FreeRouting thread count (`-mt`). bench takes a whole number above 0 and also holds the JVM to N processors. |
+| `--order` | design (with `--route`), bench | off | design: route in 4 stages, 1 FreeRouting run each, each on the copper of the stages before it: poured nets and every net with copper drawn by hand, the nets of each part of 0.5 mm pitch or less, pairs (names that end in `_P`/`_N`, `D+`/`D-` or `DP`/`DN`), the rest. Writes `build/route/<name>.<n>-<stage>.dsn`, `.ses`, `.log`. Refuses `--seed`. bench: also run each router as `<router>+order`. |
+| `--router NAME=JAR` | bench | the workcenter's FreeRouting | A FreeRouting jar to run, repeatable; the first is the default router. |
+| `--time-limit S` | bench | `300` | Seconds per route, a whole number above 0; a route past it is stopped and not judged (exit 2). |
+| `--out DIR` | bench (required) | none | The benchmark's folder: `<board>/<router>/` with the board, `route.txt`, `drc.txt` and `run.json`, and `bench.md`. A run empties its own folder first. |
+| `DESIGN` | bench | none: rebuild `bench.md` from `<out>` | The design files to route. |
+| `PROJECT` | measure | none | The project whose plan of measurements to write: `<out>/measure/plan.md` and `plan.json`, from a fresh SIM run. `--out DIR` names the output folder (default `<project>/build`). Exit 1 when a bound is not planned. |
 | `--timeout S` | autoroute, design, mutate | `600` autoroute, `900` design, `600` mutate | Kill the router after S seconds; for mutate, a test run past it counts as caught (the tests did not pass). |
 | `--route` | design | off | Export the DSN, run FreeRouting, merge the session before writing. |
 | `--rounds N` | design | `4` | Route again, up to N rounds, with a via reserved beside each pad a pour lost. |
@@ -151,6 +158,12 @@ part by `mpn` or `mpns` and whose `source.sha256` is a row of
 | `kept` | a capacitor | pairs `[volts, share of the value kept]` | The maker's DC bias curve; the volts rise from pair to pair; each share above 0 and at most 1.5. `workcenter ratings` reads it too. |
 | `kept_celsius` | a capacitor | pairs `[celsius, share against 25 C]` | The maker's temperature curve; each share above 0 and at most 1.5. |
 | `kept` | an inductor | pairs `[amps, share of the value kept]` | The maker's L vs current curve; each share above 0 and at most 1.5. |
+
+## `panel.json` (beside a board, for EXPORT)
+
+| Field | Type | Default | Use |
+|---|---|---|---|
+| the file | KiKit preset, JSON with `//` comments | none: no panel | Asks EXPORT for a panel through KiKit 1.8.1's `doPanelization`, its Gerbers and drill files, and a check of the count of boards against rows x cols and of a closed outline at least their size. Only a `grid` layout is judged. Without KiKit the panel is not judged and EXPORT is SKIPPED, exit 2. `tests/samples/fab/panel.json` holds kistack's starting values with their source. |
 
 ## `board-rules.json` (beside a board, for `workcenter drc` and `gates`)
 

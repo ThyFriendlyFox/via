@@ -39,6 +39,23 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-17 — The files a fab takes, and a routing benchmark with 1 router
+
+Roadmap items 12 and 5 landed in part. kicad-cli 10 writes the placement file, the fab layers as PDF
+and IPC-2581, and EXPORT now reads each back against the board. kicad-cli has no panel, so a panel
+comes from KiKit 1.8.1. Its command line dies on `import wx`, because this image's wxPython is built
+for Python 3.12; its `doPanelization` function needs no wx, so the workcenter calls that. The plan of
+measurements on Last Hit v0.16 placed 5 of 82 bounds: most decks model a part alone or read a
+current, and their nodes are not the board's nets. On integration the read-back failed
+universal-controller v0.1: a switch's Value, "R1", stood on the top page, and the check took it for
+the back's R1. I fixed the check with a test. The benchmark's first version was not sound: it judged
+a route that raised on the board an earlier run left. After the fix, 4 of ring-mouse v0.4's boards
+were rerun, and the other 7 boards wait for a rerun. Only FreeRouting 1.9.0 runs here: FreeRouting 2
+needs Java 25, and KiCadRoutingTools could not be fetched. Ordering a board is the owner's act.
+
+Evidence: `tests/test_fabfiles.py` 34, `test_fabexport.py` 5 (1 skips without KiKit),
+`test_measureplan.py` 21, `test_routebench.py` 39, `test_routeorder.py` 18.
+
 ## 2026-11-17 — Decks run their capacitors and inductors on the makers' data
 
 Roadmap item 4 landed in part. The SIM gate now runs a capacitor at its working voltage and

@@ -247,6 +247,23 @@ def test_a_page_that_draws_a_part_of_the_other_side_fails_on_1_line():
     assert lines == ["assembly-top.pdf: R2 is drawn; the board places it on the bottom"]
 
 
+def test_a_word_another_text_of_the_page_draws_is_not_a_designator_of_the_other_side():
+    """universal-controller v0.1's SW11 sits on the top and its Value, drawn on F.Fab, is "R1", the name
+    of its shoulder button; the board's R1 sits on the back. The top page draws "R1" as SW11's value, and
+    EXPORT read it as R1 drawn on the wrong side. A word the board itself draws on that page as a text
+    other than a designator cannot say a part of the other side is drawn there."""
+    value = '(property "Value" "R2" (at 0 1) (layer "F.Fab"))'
+    board = BOARD.replace(PARTS[0], PARTS[0][:-1] + f" {value})")
+    got = fabfiles.board_facts(board)
+    assert got["fab_text"]["top"] == {"R2"}
+    assert fabfiles.check_assembly(pdf("R1", "R2"), got, "top", "assembly-top.pdf") == []
+    hidden = value.replace('(layer "F.Fab")', '(layer "F.Fab") (hide yes)')
+    plain = fabfiles.board_facts(BOARD.replace(PARTS[0], PARTS[0][:-1] + f" {hidden})"))
+    assert fabfiles.check_assembly(pdf("R1", "R2"), plain, "top", "assembly-top.pdf") == [
+        "assembly-top.pdf: R2 is drawn; the board places it on the bottom"
+    ]
+
+
 def test_a_page_that_draws_a_part_not_fitted_fails_on_1_line():
     lines = fabfiles.check_assembly(pdf("R1", "C9"), facts(), "top", "assembly-top.pdf")
     assert lines == ["assembly-top.pdf: C9 is drawn; the board says not fitted (DNP)"]

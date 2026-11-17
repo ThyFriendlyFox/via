@@ -52,7 +52,8 @@ honestly passes it.
 |---|---|---|---|
 | KiCad | 10.0 | `kicad-cli` | `install.sh` (PPA kicad/kicad-10.0-releases) |
 | ngspice | 42 | `ngspice` | `install.sh` (Ubuntu 24.04 archive) |
-| FreeRouting | 1.9.0 | `workcenter design <design.py> --route [--seed <previous .kicad_pcb>]` (generated boards, headless); `workcenter autoroute <project> [--dsn file]` (hand-drawn boards, DSN from KiCad) | `install.sh` (GitHub release, SHA-256 pinned; 2.1.0 hangs after routing when its GitHub version check cannot succeed) |
+| FreeRouting | 1.9.0 | `workcenter design <design.py> --route [--seed <previous .kicad_pcb>\|--order] [--threads N]` (generated boards, headless); `workcenter bench <design.py>... --out <dir>` (the routing benchmark); `workcenter autoroute <project> [--dsn file]` (hand-drawn boards, DSN from KiCad) | `install.sh` (GitHub release, SHA-256 pinned; 2.1.0 hangs after routing when its GitHub version check cannot succeed) |
+| KiKit | 1.8.1 | `tools/panel.py` under `KIKIT_PYTHON` (EXPORT's panel, for a project with `panel.json`); its `doPanelization`, not the `kikit` command, which imports wxPython | `install.sh` (PyPI, `requirements.txt`) |
 | kicad-python (kipy) | 0.8 | `/opt/workcenters/ee/venv/bin/python` | `install.sh` (PyPI) |
 | librsvg | 2.58 | `rsvg-convert` (SVG to PNG for `workcenter render`) | `install.sh` (Ubuntu 24.04 archive) |
 | FFmpeg | 6.1 | `ffmpeg` (the turning GIF of `workcenter render --views spin`) | `install.sh` (Ubuntu 24.04 archive) |
@@ -87,6 +88,7 @@ file: it needs nothing else.
 | `ratings` | A schematic is to be held to its parts' ratings before layout: each part's facts from its datasheet, with the page of each pin's and each needed part's numbers, the voltages and currents the board cannot say, and `workcenter ratings` until every stress holds. |
 | `board-rules` | A routed board is to be held to a standard: each gap to the voltage between its nets and each track's width to its net's current, from `ratings.json`, with `board-rules.json` naming the pack; or to a fab's published limits. |
 | `references` | A rule cites a standard or a datasheet: get the copy it was written from with `workcenter references fetch`, judge a file a person downloaded with `workcenter references check`, and keep `workcenter references rules` passing. |
+| `fabrication` | The files a fab and an assembler take, each read back against the board, a panel from `panel.json`, and `workcenter measure`: the plan of measurements for the built board, from the project's own sim bounds. |
 | `kistack` | Placing parts, reviewing a schematic, a layout or the Gerbers, choosing a part's derating, a footprint or symbol, or a panel: it names the kistack skill for the step, and where this workcenter's rules win. |
 | `verification` | A human asks for requirements, a review, an inspection, or proof that a design meets its parts' ratings: the verification package of P28, checked by `workcenter verify`. |
 
@@ -97,7 +99,7 @@ file: it needs nothing else.
 | ERC | `workcenter erc <project>` | 0 errors in the ERC report | layout |
 | DRC | `workcenter drc <project>` | 0 errors, 0 unconnected items, 0 parity errors; with the project's fab rules (`<name>.kicad_dru`) when its design names a fab | export |
 | SIM | `workcenter sim <project>` | every `sim/*.cir` runs clean with no analysis aborted, every `*.expect.json` bound holds as written and at every corner of `sim/corners.json`, every overlap `sim/frequency-plan.json` shows is answered, and every library model a deck includes is unchanged since its `sources.csv` row | export |
-| EXPORT | `workcenter export <project>` | gerbers, drill, BOM, schematic PDF produced | hand-off to fabrication |
+| EXPORT | `workcenter export <project>` | gerbers, drill, BOM, schematic PDF, placement file (each part at its place and rotation), an assembly page per side that holds a part (DNP parts hidden; each designator of that side drawn, read from the page's text), IPC-2581 produced, and each of the last 3 read back against the board; with `panel.json`, a KiKit panel of rows x cols boards in a closed outline at least their size, and its Gerbers | hand-off to fabrication |
 | ALL | `workcenter gates <project>` | the 4 gates above in order, none red, none skipped for a missing engine | a board is called done |
 
 `workcenter design` also lists every control input that can float while the
@@ -148,6 +150,23 @@ vias, nets the design lost, and copper that now meets another net's pad or
 copper, a keepout or the board edge are left out first and counted on a
 `seed:` line, with how many seed tracks the new route kept. The seed board is
 only read.
+
+`workcenter design --route --order` routes in 4 stages, 1 FreeRouting run
+each, each on the copper of the stages before it: the poured nets and every
+net with hand copper, the nets of each part of 0.5 mm pitch or less, pairs
+(names that end in `_P`/`_N`, `D+`/`D-` or `DP`/`DN`), then the rest. It is
+not the default: on ring-mouse v0.4's power board it joined 32 of 34
+connections where the plain route joined all 34.
+
+Not a gate: `workcenter bench <design.py>... --out <dir>` routes each
+design with each router it is given (`--router NAME=JAR`, the first the
+default) and runs `workcenter drc` on each result. It records the time, the
+share of connections joined, the DRC's errors, the 2 commands and the bytes
+of their output in `<dir>/<board>/<router>/run.json`, and writes
+`<dir>/bench.md`. Each run empties its own folder first. A route past
+`--time-limit` (default 300 s) is stopped and not judged, exit 2. A router,
+or `--order`, becomes a board's default only when the table shows it joins
+as many connections with no more DRC errors in no more time.
 
 A board made for a particular fab checks that fab's published limits in the
 DRC: `rules/` holds them as KiCad design rules (`sierra-circuits-web` for
@@ -347,6 +366,17 @@ the gate's. It replaces an earlier bundle and refuses a folder of that
 name that holds no `run.sp`. Send the folder, not the deck, to a person
 who runs it elsewhere: the deck alone stops with an error or prints
 another number (M105).
+
+Not a gate: `workcenter measure <project>` runs SIM and writes
+`build/measure/plan.md` and `plan.json`. For each bound of each deck it
+names the pad of the net the deck's node names (a test point first, then a
+connector pin), the reference pad, the instrument, the span the reading
+must fall in, the predicted value as written and over the corners, and the
+`alter` lines in force. `v(a) - v(b)` is probed at a against b. A bound it
+cannot place to a pad is listed as NOT PLANNED with the reason, and the run
+exits 1. Ordering, assembling and measuring the board are the owner's acts;
+the plan's Reading column is theirs to fill. The `fabrication` skill is the
+procedure.
 
 Not a gate: `workcenter next <project>` names the one next step
 (`tools/guide.py`): what to do, the command, why, what to read, and when
@@ -608,7 +638,7 @@ and no analog block. The engines install on request:
 | Install root | `/opt/workcenters/ee` |
 | Engine environment | `/opt/workcenters/ee/env.sh` |
 | Tool cache | the session scratchpad; the engines write nothing outside the output directory |
-| Project output | `<project>/build/` (reports, `fab/`, `sim/`, `route/`, `render/`, `ratings/`) |
+| Project output | `<project>/build/` (reports, `fab/`, `sim/`, `route/`, `render/`, `ratings/`, `board-rules/`, `measure/`) |
 | Chip project output | `<project>/build/gates.json`, the report, and `<project>/build/chip/`: 1 folder for each gate that ran, and `hashes.json` with the hash of each file a gate wrote or judged. `<gate>/passed.json` is there when that gate passed: the hash of each file it read, taken before its engines started and held to the same bytes after, and of each file it hands on. The files of the project in it are those the gate finds by the text and those its engine says it read (Verilator's XML, the list Icarus Verilog writes, the rule Yosys writes): a header is in the record however the RTL names it. A file of the project is named from the project's folder (`rtl/top.v`, and `./chip/notes.v` for one under a folder `chip`) and a file the gates wrote from the output folder (`chip/layout/top.gds`), wherever `--out` points. EXPORT asks each of the 9 gates before it for that record and holds every file to it: the RTL and each header it includes, the benches and their bounds, the constraints, `chip.json`, the mapped netlist the layout was built from, and the layout's own files. A file of the project that came after a gate passed is refused too. `workcenter next` holds the files to the same records before it reads the report. `tapeout/` holds the files EXPORT hands out, `manifest.json` and the judging gates' reports; a gate that is asked to run takes it away, with the record of its own earlier pass. `render/` holds the pictures of `workcenter chip render`. The gates empty the folders under `<out>/chip`, and only in a folder they made: `--out` is refused when that folder is the project's, holds a file of it, or is there with files and without `hashes.json`. A path with white space is refused too. |
 
 ## Project requirements
@@ -623,6 +653,8 @@ and no analog block. The engines install on request:
 - Optional: `ratings.json` beside the schematic, and `library/facts/*.json`
   in the project's folder or a folder above it, for `workcenter ratings`;
   the `ratings` skill has both formats
+- Optional: `panel.json` beside the board, a KiKit preset; it asks EXPORT
+  for a panel
 - Optional: `board-rules.json` beside the board, `{"pack": "<name>"}`, for
   the board rule pack the DRC holds the board to; it needs `ratings.json`
 - Optional, a project kept as version folders (`v0.1/`, `v0.2/`, ... at the

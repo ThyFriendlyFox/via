@@ -400,7 +400,7 @@ PASS   drc        0 errors, 7 warnings (0 unconnected, 0 parity)  [7.18s]
        - warning: silk_edge_clearance: Silkscreen clipped by board edge
        - warning: silk_edge_clearance: Silkscreen clipped by board edge
 PASS   sim        8 decks, 573 corner runs, 0 failures  [1.56s]
-PASS   export     4/4 outputs, 24 gerber files  [1.55s]</span>
+PASS   export     7/7 outputs, 24 gerber files, 3 files read back  [3.94s]</span>
 <span class="verdict">GREEN with 7 warnings: herald  report /home/user/via/examples/fire-alarm-communicator/v0.1/build/gates.json</span></pre>
             </div>
             <figcaption>Via's four checks on Herald, exactly as the terminal printed them. The seven warnings flag silkscreen outlines that meet the board edge, where the terminal blocks and the USB-C connector face outward. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/fire-alarm-communicator/v0.1/README.md">The project README</a> covers the specification, the pin plan, every part and the open items, and <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/fire-alarm-communicator/v0.1/design.py">the design file</a> is the board itself.</figcaption>
@@ -615,7 +615,7 @@ DONE WHEN  the last line starts with GREEN</span></pre>
 <span class="out">PASS   erc        0 errors, 0 warnings  [0.27s]
 PASS   drc        0 errors, 0 warnings (0 unconnected, 0 parity)  [0.59s]
 PASS   sim        1 decks, 46 corner runs, 0 failures  [0.16s]
-PASS   export     4/4 outputs, 22 gerber files  [1.21s]</span>
+PASS   export     7/7 outputs, 22 gerber files, 3 files read back  [1.87s]</span>
 <span class="verdict">GREEN: rc_divider  report tests/boards/pass-rc-divider/build/gates.json</span>
 
 <span class="prompt">$ </span><span class="cmd">workcenter gates tests/boards/fail-drc-clearance</span>
