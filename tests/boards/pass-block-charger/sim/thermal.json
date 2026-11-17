@@ -1,0 +1,10 @@
+{
+  "pack": "ecss-q-st-30-11c-rev2",
+  "parts": {
+    "U1": {
+      "mpn": "BQ21040DBVR",
+      "watts": "charger.p_u1",
+      "source": "the deck's input power less its output power"
+    }
+  }
+}

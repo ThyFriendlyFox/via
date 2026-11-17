@@ -1,0 +1,10 @@
+{
+  "ichg": {
+    "max": 0.5,
+    "source": "the cell's greatest charge current [the fixture's cell, made up for tests/boards: 2.5 V to 4.3 V, 0.5 A in charge, 3 A in discharge]"
+  },
+  "p_u1": {
+    "max": 0.649847,
+    "source": "(125 C - 40 C) / 130.8 C/W: the power that keeps U1's junction at 125 C at the greatest ambient [section 7.3, Recommended Operating Conditions, TJ, MAX, page 4; section 7.4, Thermal Information, RthetaJA of the DBV package, page 4]"
+  }
+}
