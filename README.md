@@ -323,7 +323,7 @@ images are drawn.
 | `Makefile`, `verify/verify.sh` | `make verify`: the repository's health gate, one command. |
 | `tools/workcenter` | The CLI and the gates. Standard library only. |
 | `tools/kicadgen.py` | Design a board in Python from the KiCad libraries; writes the KiCad project and routes it headless. |
-| `tools/simcorners.py`, `tools/freqplan.py` | The corners a deck runs at; the frequency plan. Read by the SIM gate. |
+| `tools/simcorners.py`, `tools/freqplan.py`, `tools/thermal.py` | The corners a deck runs at; the frequency plan; each part's junction temperature at every run. Read by the SIM gate. |
 | `tools/partdata.py` | The makers' data of a deck's capacitors and inductors: picks each curve from the part's facts when its maker's file has its row in `library/sources.csv`, and rewrites the deck's part as ngspice's behavioural element on it. Standard library only; the SIM gate runs it. |
 | `tools/guide.py` | `workcenter next`: the one next step and the fix for each kind of failure. |
 | `tools/ratings.py` | `workcenter ratings`: the voltage span of each net, the facts of each part, and each stress against its limit. Standard library only. |
@@ -344,7 +344,7 @@ images are drawn.
 | `AGENTS.md`, `CLAUDE.md` | Where an agent starts. The same text. |
 | `.claude/skills/` | `attached-repos`, `autoroute`, `blog-post`, `board-design`, `board-gates`, `board-loop`, `board-rules`, `chip-design`, `chip-gates`, `fabrication`, `kistack`, `procurement`, `ratings`, `references`, `simulate`, `verification`. |
 | `templates/` | A first design file, a version's README and gates report, `corners.json`, `frequency-plan.json`, the verification package. |
-| `rules/` | Fabrication houses' limits as KiCad design rules: Sierra Circuits, JLCPCB, PCBWay, OSH Park. `rules/ratings/`: 2 derating standards as packs for `workcenter ratings`, each limit with its table and page. `rules/board/`: ECSS-Q-ST-70-12C Rev.1 as a board rule pack for `workcenter drc`, each limit with its clause, table and page. `rules/references/`: the index of the 11 documents the rules cite (3 standards, 8 datasheets), each with its URL and SHA256; no document itself. |
+| `rules/` | Fabrication houses' limits as KiCad design rules: Sierra Circuits, JLCPCB, PCBWay, OSH Park. `rules/ratings/`: 2 derating standards as packs for `workcenter ratings`, each limit with its table and page. `rules/board/`: ECSS-Q-ST-70-12C Rev.1 as a board rule pack for `workcenter drc`, each limit with its clause, table and page. `rules/references/`: the index of the 12 documents the rules cite (3 standards, 9 datasheets), each with its URL and SHA256; no document itself. |
 | `tests/` | The tests of the tools. `tests/boards/` holds the fixture boards and what each proves. |
 | `examples/` | Example projects made with the workcenter, each in version folders with its own README. |
 | `third_party/kistack/` | The vendored kistack skills. |

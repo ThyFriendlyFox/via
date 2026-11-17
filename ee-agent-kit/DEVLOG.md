@@ -39,6 +39,22 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-17 — A part's junction temperature at every corner
+
+Roadmap item 7 landed in part. Before the change the SIM gate passed `fail-sim-thermal` with
+`--strict`: 10 corner runs, 0 failures. Yet the regulator's junction reached 124.97 C at 85 C ambient,
+against ECSS's 110 C. Now the gate reads `sim/thermal.json` and takes RthetaJA and the greatest
+junction temperature from the part's facts and the derated limit from the pack. It fails that run on
+1 line. JEDEC refused JESD51-2A to the workcenter's name (HTTP 403), so the method is cited from TI
+SPRA953D, section 1.1, equation 1, page 2. A reviewer found 2 false passes. A corners.json `skip` on
+the deck turned SIM GREEN with `--strict` at 64.33 C, and a deck that ran at 25 C and at 85 C was
+judged at 27 C. Now a part whose deck's corners were not run, or whose run's temperature is not
+known, is not judged and never held. SPRA953D calls the sum a misapplication on a system board, and
+every printed junction now says the figure is the test board's.
+
+Evidence: `tests/test_thermal.py` 49 passed; `fail-sim-thermal` 124.97 C over 110 C at 85 C;
+`pass-sim-thermal` 99.87 C at 60 C, GREEN with `--strict`.
+
 ## 2026-11-17 — The files a fab takes, and a routing benchmark with 1 router
 
 Roadmap items 12 and 5 landed in part. kicad-cli 10 writes the placement file, the fab layers as PDF

@@ -63,7 +63,7 @@ honestly passes it.
 | scene | this repo | `tools/scene.py`: assembly scenes a project's script builds, run by `workcenter pictures` | the checkout; KiCad's `pcbnew` and FFmpeg by `install.sh` |
 | kistack | `641ade9` | `.claude/skills/kistack/SKILL.md` routes to `third_party/kistack/skills/`; `workcenter placement <check> <board> [args]` runs its placement checks | the checkout (vendored, `third_party/kistack/VENDORED.md`); shapely, numpy and pygerber by `install.sh` (PyPI) |
 | Board inspection | this repo | `workcenter inspect <view> <board> ...`, the views `map`, `list`, `probe`, `net`, `islands`, `resistance`, `crossed` (KiCad's `pcbnew` and Pillow under the venv); `python3 tools/stretch.py <design.py> --cut X --grow G` | `install.sh` (part of the checkout; Pillow from PyPI) |
-| Corners and frequency plan | this repo | `sim/corners.json` and `sim/frequency-plan.json`, read by `workcenter sim` (`tools/simcorners.py`, `tools/freqplan.py`); `workcenter sim --bundle <dir>` for a deck that runs on any machine | the checkout; ngspice by `install.sh` |
+| Corners, frequency plan and junctions | this repo | `sim/corners.json`, `sim/frequency-plan.json` and `sim/thermal.json`, read by `workcenter sim` (`tools/simcorners.py`, `tools/freqplan.py`, `tools/thermal.py`); `workcenter sim --bundle <dir>` for a deck that runs on any machine | the checkout; ngspice by `install.sh` |
 | Next step | this repo | `workcenter next <project>` (`tools/guide.py`; `tools/chipguide.py` for a chip project) | the checkout |
 | Chip projects | this repo | `workcenter chip init <dir> --top NAME`, `workcenter chip gates <project>` (`tools/chipflow.py`, `tools/chipfront.py`, `tools/chipback.py`, a process table in `pdks/`); all 10 gates run and tests hold each; the acceptance processor (760 cells, a 40 ns clock, the sky130A process) is GREEN with `--strict` | the checkout; the engines in `<root>/chip` (`sudo ./install.sh --chip`) |
 
@@ -98,7 +98,7 @@ file: it needs nothing else.
 |---|---|---|---|
 | ERC | `workcenter erc <project>` | 0 errors in the ERC report | layout |
 | DRC | `workcenter drc <project>` | 0 errors, 0 unconnected items, 0 parity errors; with the project's fab rules (`<name>.kicad_dru`) when its design names a fab | export |
-| SIM | `workcenter sim <project>` | every `sim/*.cir` runs clean with no analysis aborted, every `*.expect.json` bound holds as written and at every corner of `sim/corners.json`, every overlap `sim/frequency-plan.json` shows is answered, and every library model a deck includes is unchanged since its `sources.csv` row | export |
+| SIM | `workcenter sim <project>` | every `sim/*.cir` runs clean with no analysis aborted, every `*.expect.json` bound holds as written and at every corner of `sim/corners.json`, every overlap `sim/frequency-plan.json` shows is answered, every part `sim/thermal.json` names keeps its junction under its pack's derated limit at every run, and every library model a deck includes is unchanged since its `sources.csv` row | export |
 | EXPORT | `workcenter export <project>` | gerbers, drill, BOM, schematic PDF, placement file (each part at its place and rotation), an assembly page per side that holds a part (DNP parts hidden; each designator of that side drawn, read from the page's text), IPC-2581 produced, and each of the last 3 read back against the board; with `panel.json`, a KiKit panel of rows x cols boards in a closed outline at least their size, and its Gerbers | hand-off to fabrication |
 | ALL | `workcenter gates <project>` | the 4 gates above in order, none red, none skipped for a missing engine | a board is called done |
 
@@ -343,6 +343,22 @@ names the parts that miss it alone, and the value with every part ideal:
 the SHA256 not judged, with a warning. A deck that holds a C or L under a
 name that is no board reference, while board parts hold data, gets a
 warning. A bundle carries the rewritten deck.
+
+The SIM gate holds the junction of each part `sim/thermal.json` names
+(`tools/thermal.py`, the `simulate` skill). At every run it judges, the
+deck as written and each corner, TJ = TA + RthetaJA x P, with the run's
+temperature as TA and the power the named deck measure prints (TI SPRA953D,
+section 1.1, equation 1). RthetaJA and the greatest junction temperature
+come from the part's facts (`thermal`), and the derated limit from the
+pack's `junction.temperature` rules. A part past its limit fails on 1 line
+with the part, the ambient, the junction, the limit and the worst run.
+Every printed junction says that RthetaJA is the datasheet's test board's:
+SPRA953D calls the sum a misapplication on a system board, and a 2s2p
+board a best case. A part with no RthetaJA, only a case, board or top
+figure, or no facts is not judged: a warning, a failure with `--strict`.
+So is a part whose deck's corners were not all run (a `skip`,
+`temperature: false`, `--nominal`), and a run whose temperature is not
+known; such a part is never held.
 
 The gate reads what it is given strictly. An expect file with a key it does
 not know, a bound with neither `min` nor `max`, a bound that is no finite
@@ -649,6 +665,7 @@ and no analog block. The engines install on request:
 - Optional: `sim/<deck>.cir` with `sim/<deck>.expect.json` for the SIM gate; `sim/models/` for the project's own fitted models
 - With decks: `sim/corners.json`, the temperature range and the parts' tolerances every bound must hold over (start from `templates/project/corners.json`); the gate warns without it
 - With decks that drive periodic sources: `sim/frequency-plan.json`, the sources and the measured resonances (start from `templates/project/frequency-plan.json`); the gate warns without it
+- With parts that dissipate power: `sim/thermal.json`, the rating pack and, for each part, its number and the deck measure that prints its power; the part's facts give `thermal` (the `simulate` skill, "A part's temperature")
 - Optional: `verification/` for `workcenter verify` (P28)
 - Optional: `ratings.json` beside the schematic, and `library/facts/*.json`
   in the project's folder or a folder above it, for `workcenter ratings`;

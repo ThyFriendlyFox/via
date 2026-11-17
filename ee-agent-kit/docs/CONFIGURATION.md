@@ -159,6 +159,20 @@ part by `mpn` or `mpns` and whose `source.sha256` is a row of
 | `kept_celsius` | a capacitor | pairs `[celsius, share against 25 C]` | The maker's temperature curve; each share above 0 and at most 1.5. |
 | `kept` | an inductor | pairs `[amps, share of the value kept]` | The maker's L vs current curve; each share above 0 and at most 1.5. |
 
+## `sim/thermal.json` (for the SIM gate's junction temperatures)
+
+| Field | Type | Default | Use |
+|---|---|---|---|
+| `pack` | name or path | none (required) | The rating pack whose `junction.temperature` rules give the derated limit: a file of `rules/ratings/` without `.json`, or a path from the project's folder. |
+| `parts` | object | none (required) | `{"U1": {"mpn": ..., "watts": "deck.measure", "source": ...}}`: each part's number and the deck measure that prints its power. No file: no junction is judged. |
+
+A part's facts take `thermal` on an `ic`, a diode or a MOSFET:
+`{"junction_max": C, "page": n or [n, ...]}` and 1 or more of `theta_ja`,
+`theta_jc`, `theta_jb`, `psi_jt`, `psi_jb` in C/W. Only `theta_ja` is
+judged. A pack's rule of stress `junction.temperature` holds `celsius`,
+`share` or `below_rating`, 1 at least; the limit is the least of those it
+names.
+
 ## `panel.json` (beside a board, for EXPORT)
 
 | Field | Type | Default | Use |

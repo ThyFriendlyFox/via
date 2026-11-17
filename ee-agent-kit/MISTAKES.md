@@ -1165,3 +1165,9 @@ What happened: On integration of `wip/r12`, EXPORT failed universal-controller v
 Cost: 1 false failure, found before the gate; 1 fix with a test.
 Root cause: The read-back took every word a page draws as a designator, and the build's sample pages held no value text equal to another part's reference. P7 step 3 asks a sample of every shape the output takes.
 Process: P7
+
+## M193 — 2026-11-17 — A junction held on the runs it had, not on the runs it was asked for
+What happened: On `wip/r7` the thermal check judged a part at the runs it had and called it held. A corners.json `skip` on the deck turned SIM GREEN with `--strict` at 64.33 C, though the hot corner reached 124.97 C. `--nominal` recorded the part as held after 1 run. A deck that ran at 25 C and at 85 C was judged at 27 C. The method's source, TI SPRA953D, was also cited for a claim it does not make.
+Cost: 2 false passes and 1 misquote found by the reviewer; 7 tests.
+Root cause: The check never compared what it was asked to judge with what it judged. I quoted the cited clause from memory, not from the page.
+Process: P14
