@@ -13,6 +13,7 @@ that `workcenter ratings` and the SIM gate read.
 | Block | Note | Rules | ICs |
 |---|---|---|---|
 | `blocks.buck` | TI SLVA477C, equations 1, 2, 3, 4 and 11, sections 3, 6 and 7; the datasheet's equation 2, table 4 and sections 6.3, 8.2.2.4 and 8.2.2.5 | `rules/blocks/buck.json` | TLV62569DBVR |
+| `blocks.mcu` | TI SLAA322D, equations 1, 3 and 5 and table 2; the datasheet SLASE35C, sections 5.3 and 5.13; SLAU278AH figure 2-3; SLAU272D table 1-4 | `rules/blocks/mcu.json` | MSP430FR5720IRGE |
 
 A block holds what its note states and no more. A part the note does not
 cover is your own schematic, and `workcenter ratings` judges it.
@@ -87,6 +88,46 @@ cover is your own schematic, and `workcenter ratings` judges it.
 6. Run `workcenter design design.py --route`, then `workcenter gates . --strict`,
    as the `board-gates` skill says. The SIM gate runs `sim/buck.cir` and holds
    the inductor's peak current to its saturation current.
+
+## The microcontroller block
+
+`blocks.mcu` adds an MSP430 with its 32768 Hz crystal and the crystal's 2
+load capacitors, a bulk capacitor and 1 bypass capacitor on each supply
+pin, VCORE's capacitor, the reset pull-up and capacitor, and the 14-pin
+Spy-Bi-Wire header. `tests/boards/block_mcu.py` is a whole example.
+
+1. Write the facts of each crystal you stock into `library/facts/` with
+   `"kind": "crystal"`: `hertz`, `ohms_esr` (the datasheet's R1 or ESR at
+   the most), `farads_load`, `farads_shunt` (C0) and `watts_drive`.
+2. Measure or estimate the board's capacitance on each crystal pin, in
+   farads: the block's `stray`. Call:
+
+   ```python
+   block = blocks.mcu(d, ic="MSP430FR5720IRGE", vcc=(3.2505, 3.3495), stray=1e-12,
+                      nets=("+3V3", "GND"), stock=STOCK, facts=FACTS,
+                      sch_at=(50.8, 63.5), pcb_at=(105.0, 102.0))
+   ```
+3. Run `workcenter design design.py`. What it prints:
+   - `mcu U1: no stocked crystal starts with a safety factor of 3: ...`:
+     each crystal is named with the reason. `SF = ... under 3`: stock a
+     crystal of lower ESR or of lower C0 (equations 1 and 5). `its shunt
+     capacitance ... is over 1.6 pF`: the datasheet does not allow it. `its
+     load ... is no load OALF is stated at`: stock a crystal of 6 pF or
+     12 pF. `its facts give no shunt capacitance`: add `farads_shunt`.
+   - `CL1 = ... for ...: the pins and the board hold more than its load`:
+     the stray is too large for the crystal's load (equation 3). Shorten
+     the traces or take a crystal of a larger load.
+   - `no stocked capacitor of ...` or `no stocked resistor of ...`: add the
+     part the line names, with its facts.
+   - `the supply reaches ...`: the supply is outside the IC's range.
+   - `the board as built: ...`: the block's own check found a part missing
+     or wrong after it placed them. Report it: it is a fault of the block.
+4. The sums name each passed-over crystal, the ESR and SF of the one
+   taken, the load capacitor and the CLoad it gives, the decoupling and its
+   ratio, the reset network and the header. Copy them into the README.
+   The drive level is printed as not judged: the documents state none.
+5. Run `workcenter ratings . --strict`, then `workcenter design design.py
+   --route` and `workcenter gates . --strict`.
 
 ## Adding an IC to a block
 
