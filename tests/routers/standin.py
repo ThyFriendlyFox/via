@@ -3,8 +3,9 @@
 
     {"ses": "<session text>" or null, "log": "<printed>", "exit": 0, "sleep": 0, "record": "<path>"}
 
-- `record`: a JSON line is appended per call: the arguments, DISPLAY, the folder it ran in and the
-  DSN's text. A test reads what the workcenter handed the router from it.
+- `record`: a JSON line is appended per call: the arguments, DISPLAY, the folder it ran in, the
+  DSN's text and whether a `.rules` file stands beside the DSN. A test reads what the workcenter
+  handed the router from it.
 - `sleep`: seconds to wait before anything else, in a child process, as Java under xvfb-run is.
 - `log` is printed; `ses`, when not null, is written where -do says; then it exits with `exit`.
 
@@ -42,6 +43,8 @@ def main(argv: list[str]) -> int:
             "cwd": os.getcwd(),
             "dsn_path": str(dsn),
             "dsn": dsn.read_text(encoding="utf-8"),
+            # FreeRouting 2.5.0 reads a <board>.rules beside the DSN when none is named.
+            "rules_beside": dsn.with_suffix(".rules").exists(),
         }
         with open(plan["record"], "a", encoding="utf-8") as fh:
             fh.write(json.dumps(entry) + "\n")

@@ -27,9 +27,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 WC_ROOT = Path(os.environ.get("WORKCENTER_ROOT", "/opt/workcenters/ee"))
-# FreeRouting's count of what it left open, when its log has one: "Auto-routing was completed in 4.2
-# seconds (2 unrouted)". FreeRouting 1.9.0 logs no count.
-UNROUTED_RE = re.compile(r"Auto-routing was completed in .*?\((\d+) unrouted\)")
+# FreeRouting 2.5.0's count of what it left open and of its clearance violations, read with `javap -c -p`
+# from the jar install.sh pins: FRLogger.formatScore(float, int, int) writes "<score> (<n> unrouted and
+# <m> violation[s])"; the headless job logs it after "final score: ", the window's worker after "with the
+# score of ". 1 line per stage; the last is the board it writes. FreeRouting 1.9.0 logs no count.
+SCORE_RE = re.compile(r"(?:final score: |with the score of )[^()\n]*\((\d+) unrouted and (\d+) violations?\)")
 JAVA_VERSION_RE = re.compile(r'version "(\d+)(?:\.(\d+))?')
 
 
@@ -132,6 +134,10 @@ class Router:
         if why:
             raise FileNotFoundError(why)
         ses.unlink(missing_ok=True)
+        # FreeRouting 2.5.0 reads a <board>.rules beside the DSN when none is named, and applies its
+        # clearances, net classes and vias over the DSN's (its command_line_arguments.md, `-de`): the DSN
+        # alone carries the rules.
+        dsn.with_suffix(".rules").unlink(missing_ok=True)
         cmd = self.command(dsn, ses, passes, threads, cwd)
         proc = subprocess.Popen(
             cmd,
@@ -160,10 +166,21 @@ class Router:
             raise RuntimeError(f"FreeRouting exited {proc.returncode}; see {log}")
         return text
 
+    def score(self, text: str) -> tuple[int, int] | None:
+        """The router's own count of open connections and of clearance violations, from the last score
+        line of its log, or None when the log has none."""
+        found = SCORE_RE.findall(text)
+        return (int(found[-1][0]), int(found[-1][1])) if found else None
+
     def unrouted(self, text: str) -> int | None:
         """The router's own count of open connections from its log, or None when the log has none."""
-        m = UNROUTED_RE.search(text)
-        return int(m.group(1)) if m else None
+        score = self.score(text)
+        return score[0] if score else None
+
+    def violations(self, text: str) -> int | None:
+        """The router's own count of clearance violations from its log, or None when the log has none."""
+        score = self.score(text)
+        return score[1] if score else None
 
 
 ROUTERS = {
@@ -178,7 +195,9 @@ ROUTERS = {
         display=True,
     ),
     # FreeRouting 2.5.0: its classes are of version 69, which Java 25 reads and Java 21 (65) does not.
-    # `--gui.enabled=false` routes with no window, so it needs no display; `-da` sends no usage data.
+    # `--gui.enabled=false` routes with no window, so it needs no display; `-da` sends no usage data. No
+    # flag stops its version check: each run asks api.github.com for the latest release, under its own
+    # User-Agent "Freerouting-Version-Checker", on a daemon thread that does not hold the route.
     "freerouting2": Router(
         name="freerouting2",
         label="FreeRouting 2.5.0",
