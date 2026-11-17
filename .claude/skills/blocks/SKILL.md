@@ -117,7 +117,14 @@ Spy-Bi-Wire header. `tests/boards/block_mcu.py` is a whole example.
 
 1. Write the facts of each crystal you stock into `library/facts/` with
    `"kind": "crystal"`: `hertz`, `ohms_esr` (the datasheet's R1 or ESR at
-   the most), `farads_load`, `farads_shunt` (C0) and `watts_drive`.
+   the most), `farads_load`, `farads_shunt_max` (C0 at the most) or, when
+   the datasheet states only a typical C0, `farads_shunt`, and
+   `watts_drive`. Add `terminals`: the 2 pins the maker's outline drawing
+   puts the crystal between, and where it says so, as
+   `{"pads": ["1", "4"], "where": "page 2, ..."}`. Read them from the
+   drawing: a 4-pad crystal is often not on pads 1 and 2.
+   Write the facts of each load capacitor with its `dielectric`, `volts`
+   and `tolerance`. The block takes only C0G.
 2. Measure or estimate the board's capacitance on each crystal pin, in
    farads: the block's `stray`. Call:
 
@@ -132,19 +139,32 @@ Spy-Bi-Wire header. `tests/boards/block_mcu.py` is a whole example.
      crystal of lower ESR or of lower C0 (equations 1 and 5). `its shunt
      capacitance ... is over 1.6 pF`: the datasheet does not allow it. `its
      load ... is no load OALF is stated at`: stock a crystal of 6 pF or
-     12 pF. `its facts give no shunt capacitance`: add `farads_shunt`.
+     12 pF. `its facts give no shunt capacitance`: add `farads_shunt_max`
+     or `farads_shunt`. `its facts name no 2 terminal pads`: add
+     `terminals`.
+   - `no stocked capacitor is C0G, rated for ... and within its own
+     tolerance of it`: the line names the 3 nearest capacitors and why
+     each is not taken. Stock a C0G capacitor whose value is within its
+     tolerance of the CL1 the line gives.
    - `CL1 = ... for ...: the pins and the board hold more than its load`:
      the stray is too large for the crystal's load (equation 3). Shorten
      the traces or take a crystal of a larger load.
    - `no stocked capacitor of ...` or `no stocked resistor of ...`: add the
      part the line names, with its facts.
    - `the supply reaches ...`: the supply is outside the IC's range.
-   - `the board as built: ...`: the block's own check found a part missing
-     or wrong after it placed them. Report it: it is a fault of the block.
+   - `vcc = ...`, `stray = ...` or `nets = ...`: an argument is wrong; the
+     line names it and its value.
+   - `the board as built: ...`: the block's own check (check()) found a
+     fault after it placed the parts. It checks the crystal's terminal
+     pads, the load capacitors' value by equation 3, VCORE, the ratio at
+     VCC, the pull-up's value, the reset capacitor and the header. Report
+     it: it is a fault of the block.
 4. The sums name each passed-over crystal, the ESR and SF of the one
-   taken, the load capacitor and the CLoad it gives, the decoupling and its
-   ratio, the reset network and the header. Copy them into the README.
-   The drive level is printed as not judged: the documents state none.
+   taken, the pads XIN and XOUT go to, the load capacitor and the CLoad it
+   gives, the decoupling and its ratio, the reset network and the header.
+   Copy them into the README. The drive level is printed as not judged:
+   the documents state none. A crystal whose datasheet gives only a
+   typical C0 is printed as not judged against the 1.6 pF limit.
 5. Run `workcenter ratings . --strict`, then `workcenter design design.py
    --route` and `workcenter gates . --strict`.
 

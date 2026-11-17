@@ -6,20 +6,26 @@ Each value comes from TI SLAA322D ("MSP430 32-kHz Crystal Oscillators") and the 
 
 - the crystal: the first stocked crystal whose shunt capacitance the datasheet allows, whose load is a
   load the datasheet states the oscillation allowance (OA) at, and whose safety factor, SF = OA / ESR
-  (equation 5), with ESR at its load by equation 1, is the least table 2 calls safe;
+  (equation 5), with ESR at its load by equation 1, is the least table 2 calls safe; its 2 terminals are
+  the pads its maker names (its facts' `terminals`), and the symbol is the KiCad crystal on those pins;
 - the load capacitors: CL1 = 2 x CLoad - CParasitic (equation 3), the pin's capacitance and the board's
-  stray, which the designer states; the stock's nearest value;
+  stray, which the designer states; the stock's nearest C0G capacitor whose value lies within its own
+  tolerance of CL1, or a refusal;
 - the decoupling: the bulk and the bypass capacitors of SLAU278AH figure 2-3, the VCORE capacitor and
   the ratio of VCC to VCORE of the datasheet's section 5.3;
 - the reset: the pull-up and the capacitor of SLAU278AH figure 2-3, the capacitor within its note B;
 - the header: the pins figure 2-3 joins to RST, TEST, VCC and GND.
 
-What neither document states (the crystal's drive level) is a sum that says it is not judged. Before it
-returns, the block reads its parts back from the design and checks them (check()).
+What neither document states (the crystal's drive level, and its shunt capacitance against the 1.6 pF
+when its datasheet states only a typical C0) is a sum that says it is not judged. Before it returns, the
+block reads its parts back from the design and checks them (check()): the crystal on its terminal pads,
+the load capacitors' value by equation 3, VCORE, the ratio at VCC, the pull-up's value, the reset
+capacitor and the header.
 """
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import blocks
@@ -48,11 +54,49 @@ def chip_of(ic: str, rules: Path = RULES) -> dict:
     if chip is None:
         names = ", ".join(c["mpn"] for c in data["ics"])
         raise Refused(f"mcu: {ic} is no IC of {Path(rules).name}; it holds {names}")
-    return {**chip, "_note": data["note"], "_documents": data["documents"]}
+    return {
+        **chip,
+        "_note": data["note"],
+        "_documents": data["documents"],
+        "_load": data["load_dielectric"],
+        "_symbols": data["crystal_symbols"],
+    }
 
 
 def _where(chip: dict, key: str) -> str:
+    """A value's clause, after the IC's datasheet unless the clause names another of the rules' documents."""
+    where = chip[key]["where"]
+    if where.startswith(tuple(doc["number"] for doc in chip["_documents"].values())):
+        return where
     return blocks._where(chip, key)
+
+
+def _load_where(chip: dict) -> str:
+    note = chip["_note"]
+    return f"{_eq3_where(chip)}; {note['short']}, {note['load_match']}; {chip['_load']['where']}"
+
+
+def _match_where(chip: dict) -> str:
+    return f"{_eq3_where(chip)}; {chip['_note']['short']}, {chip['_note']['load_match']}"
+
+
+def _terminals(data: dict) -> list[str] | None:
+    """The 2 pads a crystal's facts name as its terminals, or None when they name no 2."""
+    t = data.get("terminals")
+    pads = t.get("pads") if isinstance(t, dict) else None
+    if not (isinstance(pads, list) and len(pads) == 2 and isinstance(t.get("where"), str)):
+        return None
+    if not all(isinstance(p, str) and p for p in pads) or pads[0] == pads[1]:
+        return None
+    return pads
+
+
+def _pair_key(pads: list[str]) -> str:
+    return " ".join(sorted(pads, key=lambda n: (len(n), n)))
+
+
+def _and(items: list[str]) -> str:
+    return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
 
 
 def _eq(chip: dict, n: str) -> str:
@@ -61,6 +105,8 @@ def _eq(chip: dict, n: str) -> str:
 
 
 def _f(farads: float) -> str:
+    if 0 < abs(farads) < 1e-12 * (1 - EPS):  # ratings.si has no prefix under pico
+        return f"{farads * 1e12:.3g} pF"
     return ratings.si(farads, "F")
 
 
@@ -72,12 +118,13 @@ def _eq3_where(chip: dict) -> str:
     return f"{_eq(chip, '3')}; {_where(chip, 'pin_farads')}"
 
 
-def _crystal(u, chip, crystals, sf_min):
+def _crystal(d, u, chip, crystals, sf_min):  # noqa: PLR0912
     """The first crystal the oscillator starts with a safe factor, and why each one before it was not."""
     rows = chip["allowance"]["rows"]
     loads = ", ".join(_f(r[0]) for r in rows)
     shunt_max = chip["shunt_max"]["value"]
     hertz = chip["crystal_hz"]["value"]
+    symbols = chip["_symbols"]
     missed = []  # (stock, why, where) or, for a factor too low, (stock, why, where, esr sum, sf sum)
     for item, f in crystals:
         data = f.data
@@ -86,16 +133,21 @@ def _crystal(u, chip, crystals, sf_min):
             why = f"its {data['hertz']:g} Hz is not the {hertz:g} Hz of XT1's LF mode"
             missed.append((item, why, _where(chip, "crystal_hz")))
             continue
-        if "farads_shunt" not in data:
+        most, typical = data.get("farads_shunt_max"), data.get("farads_shunt")
+        if most is None and typical is None:
             missed.append(
                 (item, "its facts give no shunt capacitance, which equation 1 needs", _eq(chip, "1"))
             )
             continue
-        shunt = data["farads_shunt"]
-        if shunt > shunt_max * (1 + EPS):
-            why = f"its shunt capacitance, {_f(shunt)}, is over {_f(shunt_max)}"
+        if most is not None and most > shunt_max * (1 + EPS):
+            why = f"its shunt capacitance, {_f(most)} at the most, is over {_f(shunt_max)}"
             missed.append((item, why, _where(chip, "shunt_max")))
             continue
+        if most is None and typical > shunt_max * (1 + EPS):
+            why = f"its typical shunt capacitance, {_f(typical)}, is over {_f(shunt_max)}"
+            missed.append((item, why, _where(chip, "shunt_max")))
+            continue
+        shunt = most if most is not None else typical
         row = next((r for r in rows if abs(r[0] - load) <= r[0] * EPS), None)
         if row is None:
             why = f"its load, {_f(load)}, is no load OALF is stated at ({loads})"
@@ -111,7 +163,25 @@ def _crystal(u, chip, crystals, sf_min):
             where = f"{_eq(chip, '1')}; {_sf_where(chip)}"
             missed.append((item, f"{esr_sum}, {sf_sum}, under {sf_min:g}", where, esr_sum, sf_sum))
             continue
-        return (item, f, load, esr_sum, sf_sum), missed
+        # XIN and XOUT go to the 2 pads its maker names, on the KiCad symbol whose crystal is on them.
+        pads = _terminals(data)
+        if pads is None:
+            why = "its facts name no 2 terminal pads, which XIN and XOUT are wired to"
+            missed.append((item, why, f.source))
+            continue
+        symbol = symbols["pairs"].get(_pair_key(pads))
+        if symbol is None:
+            why = f"its terminals, pads {pads[0]} and {pads[1]}, are the crystal of no symbol the rules hold"
+            missed.append((item, why, symbols["where"]))
+            continue
+        on_footprint = {p.number for p in d.fp(item.footprint).pads}
+        lost = [p for p in pads if p not in on_footprint]
+        if lost:
+            why = f"its footprint {item.footprint} has no pad {_and(lost)}"
+            missed.append((item, why, f"{f.source}, {data['terminals']['where']}"))
+            continue
+        others = sorted(on_footprint - set(pads), key=lambda n: (len(n), n))
+        return (item, f, load, esr_sum, sf_sum, pads, symbol, others), missed
     if not missed:
         raise Refused(f"mcu {u}: no stocked crystal with facts [{_where(chip, 'allowance')}]")
     if all(len(m) == 5 for m in missed):  # each one would start, and none with a safe factor
@@ -130,6 +200,26 @@ def _rated(cf, volts: float) -> bool:
 
 def _value(stock: Stock) -> float:
     return ratings.part_value(stock.value)
+
+
+def _unfit(stock: Stock, cf, cl1: float, volts: float, dielectric: str) -> str | None:
+    """Why a stocked capacitor cannot be a load capacitor of CL1, or None when it can."""
+    data = cf.data
+    if "dielectric" not in data:
+        return f"{stock.value}: its facts give no dielectric, and {dielectric} is asked"
+    if data["dielectric"] != dielectric:
+        return f"{stock.value}: its dielectric is {data['dielectric']}, not {dielectric}"
+    if "volts" not in data:
+        return f"{stock.value}: its facts give no volts"
+    if data["volts"] < volts:
+        return f"{stock.value}: it is rated for {_g(data['volts'])} V, under {_g(volts)} V"
+    if "tolerance" not in data:
+        return f"{stock.value}: its facts give no tolerance"
+    value, tol = _value(stock), data["tolerance"]
+    off = abs(value - cl1)
+    if off > tol * value * (1 + EPS):
+        return f"{stock.value} is {_f(off)} from it, over its {tol * 100:g} % ({_f(tol * value)})"
+    return None
 
 
 def mcu(  # noqa: PLR0913, PLR0915
@@ -158,6 +248,16 @@ def mcu(  # noqa: PLR0913, PLR0915
     pins = {p["name"]: p for p in chip_facts.data["pins"]}
     low, high = pins["DVCC"]["operating"]
     vcc_low, vcc_high = vcc
+    if not all(isinstance(v, (int, float)) and math.isfinite(v) for v in vcc):
+        raise Refused(f"mcu {u}: vcc = {tuple(vcc)!r}: 2 finite volts are asked")
+    if vcc_low > vcc_high:
+        raise Refused(f"mcu {u}: vcc = ({_g(vcc_low)}, {_g(vcc_high)}): its low end is over its high end")
+    if not (isinstance(stray, (int, float)) and math.isfinite(stray)) or stray < 0:
+        raise Refused(
+            f"mcu {u}: stray = {stray!r}: a finite capacitance of 0 F or more is asked [{_eq3_where(chip)}]"
+        )
+    if nets[0] == nets[1]:
+        raise Refused(f"mcu {u}: nets = {tuple(nets)!r}: the supply and the ground are 1 net")
     if vcc_high > high or vcc_low < low:
         reach = vcc_high if vcc_high > high else vcc_low
         raise Refused(
@@ -165,20 +265,23 @@ def mcu(  # noqa: PLR0913, PLR0915
             f"{ratings.si(low, 'V')} to {ratings.si(high, 'V')} "
             f"[{chip_facts.source}, {ratings._p(pins['DVCC']['page'])}]"
         )
-    if stray < 0:
-        raise Refused(
-            f"mcu {u}: a stray capacitance of {_f(stray)}: a board adds capacitance [{_eq3_where(chip)}]"
-        )
     sums: list[str] = []
     sf_min = chip["_note"]["sf_min"]["value"]
     y = refs["crystal"]
 
     crystals = [(s, f) for s in stock if (f := blocks._facts(found, s)) is not None and f.kind == "crystal"]
-    taken, missed = _crystal(u, chip, crystals, sf_min)
+    taken, missed = _crystal(d, u, chip, crystals, sf_min)
     for m in missed:
         sums.append(f"{y}: {m[0].mpn} is passed over: {m[1]} [{m[2]}]")
-    crystal, crystal_facts, load, esr_sum, sf_sum = taken
+    crystal, crystal_facts, load, esr_sum, sf_sum, terminals, x_symbol, open_pads = taken
     sums.append(f"{y}: {esr_sum} [{_eq(chip, '1')}]; {sf_sum}, {sf_min:g} or more [{_sf_where(chip)}]")
+    if "farads_shunt_max" not in crystal_facts.data:
+        shunt_max = chip["shunt_max"]["value"]
+        sums.append(
+            f"{y}: its shunt capacitance is not judged against {_f(shunt_max)}: the facts of {crystal.mpn} "
+            f"give C0 {_f(crystal_facts.data['farads_shunt'])} typical and no maximum, and equation 1 takes "
+            f"the typical [{crystal_facts.source}; {_where(chip, 'shunt_max')}]"
+        )
 
     # The load capacitors by equation 3: each pin holds the IC's own capacitance and the board's stray.
     pin_farads = chip["pin_farads"]["value"]
@@ -195,19 +298,40 @@ def mcu(  # noqa: PLR0913, PLR0915
         for s in stock
         if (cf := blocks._facts(found, s)) is not None and cf.kind.startswith("capacitor")
     ]
-    rated = [(s, cf) for s, cf in caps if _rated(cf, vcc_high)]
-    if not rated:
-        raise Refused(
-            f"mcu {u}: no stocked capacitor rated for {ratings.si(vcc_high, 'V')} [{_eq3_where(chip)}]"
-        )
-    load_cap = min(rated, key=lambda pair: abs(_value(pair[0]) - cl1))
-    c_load = _value(load_cap[0])
-    got = (c_load + parasitic) / 2  # equation 3
+    rated = [(s, cf) for s, cf in caps if _rated(cf, vcc_high)]  # for the reset capacitor
+    # The load capacitor: C0G, and its value within its own tolerance of CL1, so the stock's step moves
+    # CLoad off the crystal's load no more than the part's tolerance does.
+    dielectric = chip["_load"]["value"]
     pair = refs["load"].split()
-    sums.append(
-        f"{', '.join(pair)}: {load_sum}; the stock's nearest is {load_cap[0].value}, and CLoad = "
-        f"({_f(c_load)} + {_f(parasitic)}) / 2 = {_f(got)} [{_eq3_where(chip)}]"
+    judged = sorted(
+        ((s, cf, _unfit(s, cf, cl1, vcc_high, dielectric)) for s, cf in caps),
+        key=lambda one: abs(_value(one[0]) - cl1),
     )
+    fits = [(s, cf) for s, cf, why in judged if why is None]
+    if not fits:
+        why = "; ".join(one[2] for one in judged[:3]) or "the stock holds no capacitor with facts"
+        raise Refused(
+            f"mcu {u}: {load_sum} for {crystal.mpn}, and no stocked capacitor is {dielectric}, rated for "
+            f"{_g(vcc_high)} V and within its own tolerance of it: {why} [{_load_where(chip)}]"
+        )
+    load_cap = fits[0]
+    for s, _, why in judged:
+        if s is load_cap[0]:
+            break
+        sums.append(f"{', '.join(pair)}: passed over: {why} [{_load_where(chip)}]")
+    c_load = _value(load_cap[0])
+    tolerance = load_cap[1].data["tolerance"]
+    got = (c_load + parasitic) / 2  # equation 3
+    sums.append(
+        f"{', '.join(pair)}: {load_sum}; {load_cap[0].value}, {dielectric}, is {_f(abs(c_load - cl1))} from "
+        f"it, within its {tolerance * 100:g} % ({_f(tolerance * c_load)}); CLoad = ({_f(c_load)} + "
+        f"{_f(parasitic)}) / 2 = {_f(got)} [{_load_where(chip)}]"
+    )
+    x_where = f"{crystal_facts.source}, {crystal_facts.data['terminals']['where']}"
+    opened = (
+        f"; {x_symbol} leaves pads {_and(open_pads)} open [{chip['_symbols']['where']}]" if open_pads else ""
+    )
+    sums.append(f"{y}: XIN on pad {terminals[0]}, XOUT on pad {terminals[1]} [{x_where}]{opened}")
     drive = crystal_facts.data.get("watts_drive")
     limit = (
         f"{crystal.mpn} allows {ratings.si(drive, 'W')} [{crystal_facts.source}]"
@@ -308,8 +432,8 @@ def mcu(  # noqa: PLR0913, PLR0915
           pcb_at=(px + 12.0, py + 8.0),
           nets={p["DVCC"]: vnet, p["AVCC"]: vnet, p["DVSS"]: gnd, p["AVSS"]: gnd, p["VCORE"]: core,
                 p["XIN"]: xin, p["XOUT"]: xout, p["TEST"]: test, p["RST"]: rst})  # fmt: skip
-    d.add(y, "Device:Crystal", crystal.value, crystal.footprint, sch_at=(sx + 101.6, sy + 25.4),
-          pcb_at=(px + 12.0, py + 17.0), nets={"1": xin, "2": xout})  # fmt: skip
+    d.add(y, x_symbol, crystal.value, crystal.footprint, sch_at=(sx + 101.6, sy + 25.4),
+          pcb_at=(px + 12.0, py + 17.0), nets={terminals[0]: xin, terminals[1]: xout})  # fmt: skip
     for k, (ref, net) in enumerate(zip(pair, (xin, xout), strict=True)):
         d.add(ref, "Device:C", load_cap[0].value, load_cap[0].footprint,
               sch_at=(sx + 91.44 + 20.32 * k, sy + 38.1), pcb_at=(px + 7.0 + 10.0 * k, py + 21.0),
@@ -342,7 +466,7 @@ def mcu(  # noqa: PLR0913, PLR0915
             f"{chip['source']['document']}, table 4-1, page 13: {pin} is a terminal of {u}'s XT1"
         )
 
-    problems = check(d, u, chip, nets, stray, refs)
+    problems = check(d, u, chip, nets, stray, crystal_facts, tolerance, refs)
     if problems:
         raise Refused(f"mcu {u}: the board as built: {'; '.join(problems)}")
 
@@ -375,13 +499,25 @@ def mcu(  # noqa: PLR0913, PLR0915
     return Block("mcu", sums, entries, rows)
 
 
-def check(d, u: str, chip: dict, nets: tuple[str, str], stray: float, refs: dict | None = None) -> list[str]:  # noqa: ARG001
-    """Read the block's parts back from the design and hold them to the rules: a crystal from XIN to
-    XOUT, 1 capacitor of 1 value from each to ground, VCORE's capacitor, the ratio at VCC, the reset's
-    pull-up and its capacitor, the header's 4 pins. Each problem is 1 line with its source."""
+def check(  # noqa: PLR0913, PLR0912
+    d,
+    u: str,
+    chip: dict,
+    nets: tuple[str, str],
+    stray: float,
+    crystal: ratings.Facts,
+    tolerance: float,
+    refs: dict | None = None,
+) -> list[str]:
+    """Read the block's parts back from the design and hold them to the rules: the crystal's terminal
+    pads (its facts' `terminals`) on XIN and XOUT, 1 capacitor of 1 value from each to ground whose value
+    lies within `tolerance` of CL1 by equation 3, VCORE's capacitor, the ratio at VCC, the reset's
+    pull-up and its value, the reset capacitor, the header's 4 pins. Each problem is 1 line with its
+    source."""
     refs = DEFAULT_REFS | (refs or {})
     vnet, gnd = nets
     xin, xout, rst, test, core = (f"{u}_{n}" for n in ("XIN", "XOUT", "RST", "TEST", "VCORE"))
+    y = refs["crystal"]
 
     def between(a: str, b: str, lib_id: str) -> list:
         return [
@@ -394,8 +530,21 @@ def check(d, u: str, chip: dict, nets: tuple[str, str], stray: float, refs: dict
         return sum(ratings.part_value(c.value) for c in parts)
 
     problems = []
-    if not between(xin, xout, "Device:Crystal"):
-        problems.append(f"no crystal from {xin} to {xout} [{_eq3_where(chip)}]")
+    part = next((p for p in d.parts if p.ref == y and p.footprint is not None), None)
+    pads = _terminals(crystal.data)
+    if part is None:
+        problems.append(f"{y}: no crystal on the board [{_eq3_where(chip)}]")
+    elif pads is None:
+        problems.append(f"{y}: the facts of the crystal name no 2 terminal pads [{crystal.source}]")
+    else:
+        numbers = {p.number for p in part.footprint.pads}
+        carried = [part.nets.get(n) if n in numbers else None for n in pads]
+        if sorted(str(c) for c in carried) != sorted([xin, xout]):
+            problems.append(
+                f"{y}: its terminals, pads {pads[0]} and {pads[1]}, carry {carried[0] or 'none'} and "
+                f"{carried[1] or 'none'}, not {xin} and {xout} "
+                f"[{crystal.source}, {crystal.data['terminals']['where']}]"
+            )
     on = {net: between(net, gnd, "Device:C") for net in (xin, xout)}
     for net, other in ((xin, xout), (xout, xin)):
         if len(on[net]) != 1:
@@ -406,9 +555,20 @@ def check(d, u: str, chip: dict, nets: tuple[str, str], stray: float, refs: dict
             )
             break
     else:
-        if total(on[xin]) != total(on[xout]):
+        c = total(on[xin])
+        parasitic = chip["pin_farads"]["value"] + stray
+        cl1 = 2 * crystal.data["farads_load"] - parasitic
+        if c != total(on[xout]):
             problems.append(
                 f"the 2 load capacitors differ: equation 3 takes 2 equal ones [{_eq3_where(chip)}]"
+            )
+        elif abs(c - cl1) > tolerance * c * (1 + EPS):
+            pair = ", ".join(refs["load"].split())
+            got = (c + parasitic) / 2  # equation 3
+            problems.append(
+                f"{pair}: {_f(c)} is {_f(abs(c - cl1))} from CL1 = {_f(cl1)}, over its {tolerance * 100:g} % "
+                f"({_f(tolerance * c)}): CLoad = ({_f(c)} + {_f(parasitic)}) / 2 = {_f(got)}, "
+                f"not {_f(crystal.data['farads_load'])} [{_match_where(chip)}]"
             )
     asked_core = chip["vcore_farads"]["value"]
     core_total = total(between(core, gnd, "Device:C"))
@@ -422,8 +582,16 @@ def check(d, u: str, chip: dict, nets: tuple[str, str], stray: float, refs: dict
             f"{vnet} holds {_f(at_vcc)}, under {chip['vcc_ratio']['value']:g} x {_f(core_total)} "
             f"[{_where(chip, 'vcc_ratio')}]"
         )
-    if not between(vnet, rst, "Device:R"):
+    pulls = between(vnet, rst, "Device:R")
+    r_asked = chip["reset_ohms"]["value"]
+    off = [r for r in pulls if abs(ratings.part_value(r.value) - r_asked) > r_asked * EPS]
+    if not pulls:
         problems.append(f"no pull-up from {rst} to {vnet} [{_where(chip, 'reset_ohms')}]")
+    elif off:
+        problems.append(
+            f"{rst} is pulled up to {vnet} by {ratings.si(ratings.part_value(off[0].value), 'ohm')}, not "
+            f"{ratings.si(r_asked, 'ohm')} [{_where(chip, 'reset_ohms')}]"
+        )
     lo, hi = chip["reset_farads"]["range"]
     held = total(between(rst, gnd, "Device:C"))
     if not lo * (1 - EPS) <= held <= hi * (1 + EPS):
