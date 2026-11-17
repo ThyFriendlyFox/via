@@ -6,6 +6,7 @@ folders written in tmp_path: no engine runs, and none of the repository's own te
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -224,6 +225,31 @@ def test_a_green_run_removes_its_own_folder_and_a_red_run_keeps_it(tmp_path):
     assert red.returncode == 1, red.stdout
     (kept,) = list((tmp_path / "tr").iterdir())
     assert f"logs kept: {kept}" in red.stdout
+
+
+def shard_log(work: Path, shard: str, records: list[tuple[str, str, float]]) -> None:
+    folder = work / f"shard-{shard}"
+    folder.mkdir(parents=True)
+    lines = [json.dumps({"id": i, "when": w, "outcome": "passed", "seconds": s}) for i, w, s in records]
+    (folder / "log.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def test_the_table_is_written_from_the_logs_of_runs(tmp_path):
+    """Run 1: a's test takes 1.0 + 2.0 + 0.5 = 3.5 s, b's 1.0 s. Run 2: a's takes 4.5 s, b is not run.
+    a: (3.5 + 4.5) / 2 = 4.0 s; b: 1.0 s, its 1 run. `*`: (4.0 + 1.0) / 2 = 2.5 s. a and the `*` row keep
+    their engine and alone columns; b, new to the table, takes the `*` row's engine."""
+    one, two = tmp_path / "w1", tmp_path / "w2"
+    shard_log(one, "1", [("tests/test_a.py::t", "setup", 1.0), ("tests/test_a.py::t", "call", 2.0)])
+    shard_log(one, "2", [("tests/test_a.py::t", "teardown", 0.5), ("tests/test_b.py::u", "call", 1.0)])
+    shard_log(two, "1", [("tests/test_a.py::t", "call", 4.5)])
+    old = table(tmp_path, "file,seconds,engine,alone\n*,30,yes,\ntests/test_a.py,10,no,holds a port\n")
+    rows = testshards.table_rows(testshards.read_table(old), [one, two])
+    assert rows == [
+        "file,seconds,engine,alone",
+        "*,2.5,yes,",
+        "tests/test_a.py,4.0,no,holds a port",
+        "tests/test_b.py,1.0,yes,",
+    ]
 
 
 def test_the_gate_prints_each_shards_time_and_the_slowest_files(tmp_path):
