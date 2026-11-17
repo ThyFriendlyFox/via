@@ -597,6 +597,50 @@
       "url": "https://www.ecfr.gov/api/versioner/v1/full/2026-11-01/title-49.xml?part=173&section=173.185",
       "sha256": "dfa3ff595d24fdcc3af7a0bd9c3e1513d46d7122d048e3ee807e0e39735c84d3",
       "read": "2026-11-17"
+    },
+    {
+      "id": "usb-typec-r2.5",
+      "kind": "standard",
+      "issuer": "USB Implementers Forum (USB 3.0 Promoter Group)",
+      "number": "USB Type-C Cable and Connector Specification",
+      "title": "Universal Serial Bus Type-C Cable and Connector Specification (a zip, with its ECNs)",
+      "revision": "Release 2.5, March 2026",
+      "url": "https://www.usb.org/sites/default/files/USB%20Type-C%202.5%20Release%20202603.zip",
+      "sha256": "603c2cb0ea356d367fea61f8747a21981f0da9abae4d8ec15556e0063edb81b5",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "ti-sllseg9c",
+      "kind": "datasheet",
+      "maker": "Texas Instruments",
+      "number": "SLLSEG9C",
+      "title": "TPD2E2U06 Dual-Channel High-Speed ESD Protection Device",
+      "revision": "June 2013, revised December 2019",
+      "url": "https://www.ti.com/lit/ds/symlink/tpd2e2u06.pdf",
+      "sha256": "a133b86ea3d3c3d34667339b92d3b5e98d541d10e9775d63e7cdfa153794f4ed",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "gct-usb4105",
+      "kind": "datasheet",
+      "maker": "GCT",
+      "number": "USB4105",
+      "title": "USB4105, USB Type C Receptacle for USB 2.0, SMT Type, PCB Top Mount (drawing)",
+      "revision": "revision C, 18/12/23",
+      "url": "https://gct.co/files/drawings/usb4105.pdf",
+      "sha256": "fb331fbabee8392ed2937ed757c1610cb0f174b84625147c0b580a18eea8c0e5",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "samsung-cl10a475ko8nnn",
+      "kind": "datasheet",
+      "maker": "Samsung Electro-Mechanics",
+      "number": "CL10A475KO8NNN",
+      "title": "Samsung Electro-Mechanics component library, MLCC data sheet page of CL10A475KO8NNN",
+      "revision": "the page as fetched on 2026-11-17; it prints no revision",
+      "url": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A475KO8NNN",
+      "sha256": "46ee98a179a5b52081b40e9223c75877c8ca229c608982f0178959b8ac03e41c",
+      "read": "2026-11-17"
     }
   ]
 }
