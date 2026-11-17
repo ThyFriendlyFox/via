@@ -113,6 +113,10 @@
       "rows": [[17, 30], [60, 50], [70, 50], [95, 70]],
       "where": "7.4.2a and b, table 7-3, page 45"
     },
+    "parallel": {
+      "under_mm": 25,
+      "where": "13.6.3g, page 114: tracks in parallel less than 25 mm apart are assessed as parallel conductors, by the equivalent section and the equivalent current (its NOTE), taken here as the sums"
+    },
     "via_where": "13.6.3f, page 114: a via is rated as a track of the same cross-section",
     "via_wall": {
       "um": 25,
