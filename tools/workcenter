@@ -3848,7 +3848,12 @@ def cmd_design(args) -> int:
                 # Each round sifts the seed again: a reserved via can stand on a seed track.
                 seed = design.seed_wiring(copper) if copper else None
                 summary["route"] = kicadgen.route(
-                    design, out_dir / "build" / "route", passes=args.passes, timeout=args.timeout, seed=seed
+                    design,
+                    out_dir / "build" / "route",
+                    passes=args.passes,
+                    timeout=args.timeout,
+                    seed=seed,
+                    threads=args.threads,
                 )
                 if seed:
                     summary["seed"] = {
@@ -4853,6 +4858,14 @@ def references():
     return module
 
 
+def routebench():
+    """tools/routebench.py: `bench`, design files routed by each router and the runs compared."""
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import routebench as module
+
+    return module
+
+
 def render_views(value: str) -> tuple[str, ...]:
     names = RENDER_VIEWS if value == "all" else tuple(v.strip() for v in value.split(",") if v.strip())
     unknown = [v for v in names if v not in RENDER_VIEWS]
@@ -5075,6 +5088,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--route", action="store_true", help="export DSN, run FreeRouting, merge the session")
     p.add_argument("--passes", type=int, default=60)
     p.add_argument("--timeout", type=int, default=900)
+    p.add_argument("--threads", type=int, default=0, help="FreeRouting's threads, -mt (default: its own)")
     p.add_argument(
         "--rounds", type=int, default=4, help="route again with a via reserved beside each pad a pour lost"
     )
@@ -5182,6 +5196,7 @@ def main(argv: list[str] | None = None) -> int:
     chipflow().register(sub, sys.modules[__name__])
     ratings().register(sub, sys.modules[__name__])
     references().register(sub, sys.modules[__name__])
+    routebench().register(sub, sys.modules[__name__])
 
     # `--json` is read on either side of the command: `workcenter --json gates P` and `workcenter
     # gates P --json`. SUPPRESS keeps a command that does not carry the flag from clearing the one
