@@ -12,6 +12,8 @@ the makers' and the issuers' terms forbid a copy.
 | `nasa-eee-inst-002` | standard | EEE-INST-002 (NASA/TP-2003-212242) | May 2003, with Addendum 1 of April 2008 |
 | `ecss-q-st-30-11c-rev2` | standard | ECSS-Q-ST-30-11C Rev.2 | 23 June 2021 |
 | `ecss-q-st-70-12c-rev1` | standard | ECSS-Q-ST-70-12C Rev.1 | 30 April 2025 |
+| `samsung-cl10a106kp8nnn` | datasheet | CL10A106KP8NNN (the maker's page) | the page as fetched on 2026-11-17 |
+| `ti-slva477c` | application note | SLVA477C (buck power stage) | December 2011, revised September 2026 |
 | `ti-slvsdg1` | datasheet | SLVSDG1C (TLV62569) | December 2016, revised October 2017 |
 | `ti-sces579` | datasheet | SCES579J (SN74AUP1G17) | June 2004, revised September 2017 |
 | `ti-sces351` | datasheet | SCES351Y (SN74LVC1G17) | July 2001, revised October 2025 |
@@ -28,10 +30,12 @@ entry were read from the first page of that copy. The same day `ecss-q-st-70-12c
 of the board rule pack, was fetched alone: `1 kept, 0 changed, 0 refused`. Its number, title and
 revision are those of its first page. `ti-sbvs320`, the datasheet of the thermal fixtures' regulator,
 was added the same day from a copy fetched on 2026-10-29 for a project's library; its SHA256 is that
-copy's, and `workcenter references fetch` has not asked for it yet.
+copy's, and `workcenter references fetch` has not asked for it yet. Also that day `ti-slva477c`, the
+note of the buck block (`rules/blocks/buck.json`), was downloaded under the workcenter's name; its
+number, title and revision are those of its first page.
 
 `samsung-cl10a106kp8nnn` is a web page of Samsung's component library, the source of the facts of
-`tests/boards/fail-sim-bias`. Each fetch of it differs in a session token and a time stamp, so `fetch`
+`tests/boards/fail-sim-bias` and of the buck block's capacitor. Each fetch of it differs in a session token and a time stamp, so `fetch`
 names it `changed` on every run. On 2026-11-17 a fetch gave SHA256 `503fa0ce84eed95b...`, not the
 indexed one. Its graph data still held the curves the facts enter: DC bias -71.712 % at 5 V and
 -88.793 % at 10 V, 91 points; temperature +2.280 % at -55 C and -14.725 % at 85 C, 61 points. A page

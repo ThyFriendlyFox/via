@@ -1,0 +1,2 @@
+MPN,Kind,URL,File,Member,Revision,Dated,Subckt,Ngspice,SHA256,Checked,Note
+CL10A106KP8NNN,datasheet,https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A106KP8NNN,,,,,,,e7cb912bac00275e53505aa5870ec3543af75375920ac7fbb31cf92ebea3c182,2026-11-17,"kept outside the workcenter's repository, whose fixtures hold no maker's file; the page's graph data (datasheetData) holds the DC bias and temperature curves, and each fetch differs in its session token and its time stamp"
