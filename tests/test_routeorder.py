@@ -44,6 +44,43 @@ def test_a_parts_pitch_is_the_least_distance_between_its_pad_centres():
     assert kicadgen.pad_pitch(kicadgen.load_footprint(HDR4)) == pytest.approx(2.54)
 
 
+@needs_libs
+def test_a_parts_pitch_leaves_out_its_exposed_pad_thermal_vias_and_paste_only_pads():
+    """HSOP-8 with thermal vias has 18 pads: pins 1 to 8 at 1.27 mm (its name's P1.27mm), the exposed
+    pad's 2 copper pads and 4 vias all numbered 9, and 4 paste-only pads with no number. Its pitch is
+    the pins' 1.27 mm, not the 0.46 mm between a via and a pin. HTSSOP-16 with thermal vias: 0.65 mm,
+    its P0.65mm. QFN-16 3x3 with thermal vias: 0.5 mm, its P0.5mm, so it is still fine pitch."""
+    hsop = "Package_SO:HSOP-8-1EP_3.9x4.9mm_P1.27mm_EP2.3x2.3mm_ThermalVias"
+    htssop = "Package_SO:HTSSOP-16-1EP_4.4x5mm_P0.65mm_EP3.4x5mm_Mask3x3mm_ThermalVias"
+    qfn = "Package_DFN_QFN:QFN-16-1EP_3x3mm_P0.5mm_EP1.7x1.7mm_ThermalVias"
+    assert kicadgen.pad_pitch(kicadgen.load_footprint(hsop)) == pytest.approx(1.27)
+    assert kicadgen.pad_pitch(kicadgen.load_footprint(htssop)) == pytest.approx(0.65)
+    assert kicadgen.pad_pitch(kicadgen.load_footprint(qfn)) == pytest.approx(0.5)
+
+
+@pytest.mark.parametrize(
+    ("net", "other"),
+    [
+        ("/USB_D+", "/USB_D-"),
+        ("/USB_D-", "/USB_D+"),
+        ("/TX_P", "/TX_N"),
+        ("/USB_D_N", "/USB_D_P"),
+        ("/USB_DP", "/USB_DN"),
+        ("/V+", ""),
+        ("BAT-", ""),
+        ("/CAN", ""),
+        ("/EN", ""),
+        ("/VIN", ""),
+        ("/FAULT_N", "/FAULT_P"),
+    ],
+)
+def test_a_pair_is_named_by_a_pair_suffix_and_a_supply_rail_is_none(net, other):
+    """A pair ends in _P and _N, D+ and D-, or DP and DN. A rail V+ and V-, a battery's BAT+ and BAT-,
+    and names that merely end in N or P (CAN, EN, VIN) are none. FAULT_N names a FAULT_P that a design
+    without one does not have, so it pairs with nothing there."""
+    assert kicadgen.pair_of(net) == other
+
+
 def staged_board() -> kicadgen.Design:
     """U1, an MSOP at 0.5 mm, is fine pitch (P4 step 11: 0.5 mm or less); U2, a TSSOP at 0.65 mm, is
     not. GND is poured on B.Cu. Tracks of 0.15 mm at 0.1 mm clearance reach the MSOP's pads."""
@@ -75,6 +112,20 @@ def test_the_stages_are_pours_then_fine_pitch_then_pairs_then_the_rest():
         ("fan-out", ["/A", "/B", "/USB_D+", "/USB_D-"]),
         ("pairs", ["/TX_N", "/TX_P"]),
         ("rest", ["/C"]),
+    ]
+
+
+@needs_libs
+def test_a_net_with_copper_drawn_by_hand_is_routed_and_named_in_the_first_stage():
+    """The router is handed a net's hand-drawn copper only with the net, so the first stage routes
+    every net with hand copper. C gets a track by hand: stage 1 names /C and /GND, and stage 4, the
+    rest, which held only C, is gone."""
+    d = staged_board()
+    d.track("C", [(130.0, 104.0), (132.0, 104.0)])
+    assert d.route_stages() == [
+        ("pours", ["/C", "/GND"]),
+        ("fan-out", ["/A", "/B", "/USB_D+", "/USB_D-"]),
+        ("pairs", ["/TX_N", "/TX_P"]),
     ]
 
 
