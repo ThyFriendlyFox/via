@@ -39,6 +39,25 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-17 — The attack on the ratings check: 30 findings on its verdicts
+
+P14 step 6 asks for an attack by someone who did not write the feature. 2 reviewers got a copy of
+the tree: one hunted wrong verdicts, the other changed the code 1 line at a time to see which
+changes no test catches. The first returned 30 findings, each with a script that shows it. 7 were
+of the worst kind, a run that ends `RATINGS HELD` over a part that is overstressed: `100 nF` read as
+100 F, a part marked DNP counted as fitted, a feedback divider read as a pin on its own output, a
+part's sense pin judged at 0 V on the 9 V its own divider sets, a rail's load that lost every
+resistor to ground when a clamp diode stood on the rail, a part on a negative rail judged from the
+board's 0 V, and an output whose `swing` named its 2 pins in the other order. I had written the
+rule "a pin is never judged against itself" for the whole part, and that hid a part's other pins
+from its own output; the rule now leaves out the judged pin's drive and nothing else. Each fix has
+a test that failed first. 4 readings stay coarser than the circuit, and the skill now names them so
+that such a failure is checked by hand before a design changes.
+
+Evidence: the reviewer's findings are answered 1 by 1 in the commits of 2026-11-17 on the work
+branch; `tests/test_ratings.py`, `tests/test_ratings_cli.py` and `tests/test_guide.py` pass, with
+the counts `STATUS.md` holds. The real board's run did not change: 6 fail, each a real stress.
+
 ## 2026-11-17 — The ratings check meets a real board: 6 real stresses, 7 faults of its own
 
 A second reader went through both packs and the fixtures' facts, and 4 numbers had to change:
