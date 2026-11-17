@@ -56,6 +56,8 @@ needs Java 25, and KiCadRoutingTools could not be fetched. Ordering a board is t
 Evidence: `tests/test_fabfiles.py` 34, `test_fabexport.py` 5 (1 skips without KiKit),
 `test_measureplan.py` 21, `test_routebench.py` 39, `test_routeorder.py` 18.
 
+Later on 2026-11-17 the owner cut the built board from item 12; it is now "The files a fab takes".
+
 ## 2026-11-17 — Decks run their capacitors and inductors on the makers' data
 
 Roadmap item 4 landed in part. The SIM gate now runs a capacitor at its working voltage and

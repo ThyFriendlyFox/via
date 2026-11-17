@@ -28,7 +28,8 @@ Items 1 to 12 are the order the owner confirmed on 2026-11-17: an engine for eac
 an engineer does, every limit from a document a person can open, and 1
 command for each engine. Items 1 to 4 are the schematic, 5 is routing, 6
 and 7 the board's rules, 8 fast signals, 9 the field solver, 10 power and
-heat, 11 safety and emissions, 12 the files a fab takes and a built board.
+heat, 11 safety and emissions, 12 the files a fab takes. On 2026-11-17 the
+owner cut the built board from item 12.
 
 ### 1. A schematic held to its parts' ratings
 - **Promise:** A command reads a project's schematic, the facts of each part and a rule pack. It fails on each fault a reviewing engineer names at a schematic review: a pin above its rated voltage, a capacitor or a resistor past its derating, a rail loaded past its source, and a support part a datasheet asks for that is absent or out of range. Each failure prints the rule, its source document with the clause or the page, and the part. What the command cannot judge it lists as not judged.
@@ -97,7 +98,7 @@ heat, 11 safety and emissions, 12 the files a fab takes and a built board.
 - **Promise:** A command computes the voltage drop and the current density of each power net on the board's real copper, and the temperature of the board from each part's dissipation spread through its copper and vias. It holds each to a limit in the project and draws both as pictures in the report.
 - **Evidence:** Each solver matches a case worked by hand in a textbook, in a test. A fixture board with a neck in its supply track fails on current density at the neck.
 - **Use case:** Validate a board (`docs/USE-CASES.md`).
-- **Scope guard:** The result is a steady state on the board. Air flow and an enclosure are stated as assumptions in the report, and a built board's reading replaces them (item 12).
+- **Scope guard:** The result is a steady state on the board. Air flow and an enclosure are stated as assumptions in the report, and a built board's reading replaces them.
 - **Status:** ready
 
 ### 11. Safety spacing, ESD and emissions rules, and a product's standards
@@ -107,12 +108,12 @@ heat, 11 safety and emissions, 12 the files a fab takes and a built board.
 - **Scope guard:** A list from free documents is not a certificate. The report says which document each rule comes from and which paid standard a test laboratory uses.
 - **Status:** ready
 
-### 12. The files a fab takes, and a board that is built
-- **Promise:** EXPORT adds a placement file, an assembly drawing, IPC-2581 and a panel. 1 example board is ordered, assembled and measured, and each measurement stands beside the value its deck or its solver predicted.
-- **Evidence:** A fab and an assembler take the files unchanged. The measured table is in the board's README, with each reading inside its predicted span or the difference explained.
+### 12. The files a fab takes
+- **Promise:** EXPORT adds a placement file, an assembly drawing, IPC-2581 and a panel, and reads each back against the board.
+- **Evidence:** Tests read each file back against the board, and for each file a copy with 1 planted fault is named by the read-back on 1 line.
 - **Use case:** Export for a fab (`docs/USE-CASES.md`).
-- **Scope guard:** Ordering is the owner's act. The workcenter writes the files and the plan of measurements.
-- **Status:** in progress. On 2026-11-17 the files landed: EXPORT writes a placement file, an assembly page per side and IPC-2581, and reads each back against the board; a project with `panel.json` gets a KiKit panel, read back. `workcenter measure` writes the plan of measurements. A reviewer found 10 faults, each fixed or named in the skill. Blocked on the owner: the order, the assembly and the measuring of 1 board, and the measured table in its README. Left: the panel's size is held only from below (at least rows x cols boards); where on a page a designator stands is not judged; a `trig v(a) ... targ v(b)` measure is planned at its first node only; KiKit is not in the venv until `install.sh` runs again, and `workcenter doctor` has no KiKit row. 5 example versions hold footprints that draw no designator on a Fab layer (`STATUS.md`).
+- **Scope guard:** The workcenter writes the files and reads them back. Ordering a board is the owner's act.
+- **Status:** in progress. On 2026-11-17 the files landed: EXPORT writes a placement file, an assembly page per side and IPC-2581, and reads each back against the board; a project with `panel.json` gets a KiKit panel, read back. A reviewer found 10 faults, each fixed or named in the skill. The owner cut the built board from the item on 2026-11-17. It is not shipped: KiKit 1.8.1 is pinned in `requirements.txt` but is not in the venv until `install.sh` runs again, so EXPORT here skips a panel and the panel test skips. Left also: the panel's exact size is not held, only that it holds rows x cols boards; where on a page a designator is drawn is not judged; `workcenter doctor` has no KiKit row. `workcenter measure`, the plan of measurements, was built with the item and stays as a command.
 
 ### 13. A circuit walked stage by stage
 - **Promise:** A command writes 1 page for a power or signal path from the project's decks and their corner records. Each stage is a chain: given, equation, computed value, the deck's measure with its span over the corners, what follows, and what the stage hands on. The range a stage is given is the range the stage before it hands on, and the command fails a page where the 2 differ. A node table gives each node's value under each condition, and every stage states its margin.
