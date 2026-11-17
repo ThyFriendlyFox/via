@@ -1,0 +1,39 @@
+(version 1)
+# OSH Park, the 2 layer prototype service. Limits from "2 Layer Prototype Service",
+# https://docs.oshpark.com/services/two-layer/, read 2026-11-17 (the page as fetched had SHA256
+# 8b7d0a66be11f8162a9d1209cb0057edb9b5e217cf8bf0377d5fa8bdf7ad15eb). When a design file sets
+# `fab = "oshpark-2layer"`, or for one run with `workcenter drc --fab oshpark-2layer`, the rules with no
+# layer and no condition raise the board's own minimums, and only the others are copied into the
+# project (rules/README.md, M62). rules/README.md lists what OSH Park publishes that this file leaves out.
+
+# "Trace Width 6mil (0.1524mm)"
+(rule "oshpark-2layer: trace width 6 mil"
+	(constraint track_width (min 0.1524mm))
+	(severity error))
+
+# "Trace Spacing 6mil (0.1524mm)"
+(rule "oshpark-2layer: trace spacing 6 mil"
+	(constraint clearance (min 0.1524mm))
+	(severity error))
+
+# "Minimum Drill Size 10mil (0.254mm)"
+(rule "oshpark-2layer: drill 10 mil"
+	(constraint hole_size (min 0.254mm))
+	(severity error))
+
+# "Minimum Annular Ring 5mil (0.127mm)"
+(rule "oshpark-2layer: annular ring 5 mil"
+	(constraint annular_width (min 0.127mm))
+	(severity error))
+
+# "Board Edge Keepout 15mil (0.381) from nominal board edge"
+(rule "oshpark-2layer: copper to edge 15 mil"
+	(constraint edge_clearance (min 0.381mm))
+	(severity error))
+
+# "Silkscreen minimum line width ... 3 mil (0.0762mm) (short lines, text, graphics)". The 5 mil they
+# recommend is not their limit. KiCad checks the stroke of text here.
+(rule "oshpark-2layer: legend text stroke 3 mil"
+	(condition "A.Layer == 'F.Silkscreen' || A.Layer == 'B.Silkscreen'")
+	(constraint text_thickness (min 0.0762mm))
+	(severity error))
