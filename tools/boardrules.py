@@ -41,6 +41,11 @@ class Pack:
     voltage: dict
     spacing: list[dict]
     current: dict
+    plating: dict  # the copper plated on an outer layer, as designed
+
+    def th_um(self, layers: str, cu_um: float) -> float:
+        """The thickness category of a layer of `cu_um` foil: basic plus plated copper on an outer layer."""
+        return cu_um + self.plating["um"] if layers == "outer" else cu_um
 
     def cite(self, *where: str) -> str:
         """A finding's source: the document's number and the places in it."""
@@ -54,15 +59,63 @@ def _where(at: str, value: object) -> str:
     return text
 
 
-def _num(at: str, value: object, least: float = 0) -> float:
-    return ratings._number(at, value, least)
+def _num(
+    at: str, value: object, least: float | None = 0, most: float | None = None, above: float | None = None
+) -> float:
+    return ratings._number(at, value, least, most, above)
+
+
+def _rows(at: str, value: object, pair: str) -> None:
+    """A table of a pack: a list of [number, number] rows, each number above 0."""
+    if not isinstance(value, list) or not value:
+        raise Refusal(f"{at}: rows: a list of rows is asked, each {pair}")
+    for i, row in enumerate(value, start=1):
+        if not isinstance(row, list) or len(row) != 2:
+            raise Refusal(f"{at}: rows {i}: {pair} is asked")
+        for x in row:
+            _num(f"{at}: rows {i}", x, above=0)
+
+
+def _current(name: str, current: dict) -> None:
+    """Each key of `current` that the check reads, as a number in its range."""
+    at = f"{name}: current"
+    _num(f"{at}: rise_c", current["rise_c"], above=0)
+    _num(f"{at}: outer_share", current["outer_share"], most=1, above=0)
+    model = current["model"]
+    for key in ("k0", "m0", "c1", "most_amps", "most_rise_c"):
+        _num(f"{at}: model: {key}", model[key], above=0)
+    for key in ("k1", "m1"):
+        _num(f"{at}: model: {key}", model[key], least=None)
+    valid = ratings._keys(f"{at}: valid", current["valid"], ("board_over_mm", "area_over_mm2", "where"))
+    _num(f"{at}: valid: board_over_mm", valid["board_over_mm"])
+    _num(f"{at}: valid: area_over_mm2", valid["area_over_mm2"])
+    thin = ratings._keys(
+        f"{at}: thin_board", current["thin_board"], ("over_mm", "up_to_mm", "rise_factor", "where")
+    )
+    over = _num(f"{at}: thin_board: over_mm", thin["over_mm"])
+    _num(f"{at}: thin_board: up_to_mm", thin["up_to_mm"], above=over)
+    _num(f"{at}: thin_board: rise_factor", thin["rise_factor"], above=0)
+    copper = ratings._keys(f"{at}: copper", current["copper"], ("rows", "where"))
+    _rows(f"{at}: copper", copper["rows"], "[designed um, as manufactured um]")
+    tol = ratings._keys(f"{at}: tolerance", current["tolerance"], ("share", "rows", "where"))
+    if _num(f"{at}: tolerance: share", tol["share"]) >= 1:
+        raise Refusal(f"{at}: tolerance: share: {tol['share']:g} is not under 1")
+    _rows(f"{at}: tolerance", tol["rows"], "[up to um, most um]")
+    if "via_wall" in current:
+        wall = ratings._keys(f"{at}: via_wall", current["via_wall"], ("um", "where"))
+        _num(f"{at}: via_wall: um", wall["um"], above=0)
 
 
 def read_pack(path: Path) -> Pack:
     """A board rule pack. Every number stands with a `where` that names its page; the document has its
-    URL, SHA256 and the dates it was read."""
+    URL, SHA256 and the dates it was read. A pack may be a project's own file, so every key the check
+    reads later is held here."""
     name = path.name
-    data = ratings._keys(name, ratings._json(path), ("pack", "document", "voltage", "spacing", "current"))
+    keys = ("pack", "document", "voltage", "spacing", "current", "plating")
+    data = ratings._keys(name, ratings._json(path), keys)
+    plating = ratings._keys(f"{name}: plating", data["plating"], ("um", "where"))
+    _num(f"{name}: plating: um", plating["um"])
+    _where(f"{name}: plating", plating["where"])
     document = ratings._keys(f"{name}: document", data["document"], ratings.DOCUMENT_KEYS)
     for key in ratings.DOCUMENT_KEYS:
         ratings._text(f"{name}: document: {key}", document[key])
@@ -88,7 +141,9 @@ def read_pack(path: Path) -> Pack:
         if "above" in row:
             _where(f"{at}: above", row["above"])
         last = 0.0
-        for j, step in enumerate(row["steps"] if isinstance(row["steps"], list) else [None], start=1):
+        if not isinstance(row["steps"], list) or not row["steps"]:
+            raise Refusal(f"{at}: steps: a list of steps is asked, each with its `volts`")
+        for j, step in enumerate(row["steps"], start=1):
             sat = f"{at}: step {j}"
             ratings._keys(sat, step, ("volts",), ("um", "um_per_volt", "plus_um", "at_least_um"))
             volts = _num(f"{sat}: volts", step["volts"])
@@ -106,7 +161,7 @@ def read_pack(path: Path) -> Pack:
     _where(f"{name}: current: rise", current["rise_where"])
     _where(f"{name}: current: outer", current["outer_where"])
     _where(f"{name}: current: via", current["via_where"])
-    model = ratings._keys(
+    ratings._keys(
         f"{name}: current: model",
         current["model"],
         ("k0", "k1", "m0", "m1", "c1", "most_amps", "most_rise_c", "where"),
@@ -122,9 +177,9 @@ def read_pack(path: Path) -> Pack:
         _where(
             f"{name}: current: {key}", current[key].get("where") if isinstance(current[key], dict) else None
         )
-    for key in ("k0", "k1", "m0", "m1", "c1", "most_amps", "most_rise_c"):
-        _num(f"{name}: current: model: {key}", model[key])
-    return Pack(ratings._text(f"{name}: pack", data["pack"]), document, voltage, data["spacing"], current)
+    _current(name, current)
+    pack = ratings._text(f"{name}: pack", data["pack"])
+    return Pack(pack, document, voltage, data["spacing"], current, plating)
 
 
 def find_pack(name: str, project_dir: Path) -> tuple[Path, str]:
@@ -189,22 +244,26 @@ def _rise(pack: Pack, board_mm: float) -> tuple[float, list[str]]:
 
 
 def track_need(pack: Pack, amps: float, outer: bool, cu_um: float, board_mm: float) -> Need:
-    """The least width as designed of a track that carries `amps` on a layer of `cu_um` copper."""
+    """The least width as designed of a track that carries `amps` on a layer of `cu_um` foil. The copper
+    as manufactured is the foil's (table 7-1); the tolerance is that of the foil and, on an outer layer,
+    its plating (table 7-3)."""
     cur, model = pack.current, pack.current["model"]
     rise, places = _rise(pack, board_mm)
     if outer:
         places.insert(1, cur["outer_where"])
     need = amps / cur["outer_share"] if outer else amps
-    where = "; ".join([*places, model["where"], cur["copper"]["where"], cur["tolerance"]["where"]])
+    plated = [pack.plating["where"]] if outer else []
+    where = "; ".join([*places, model["where"], cur["copper"]["where"], cur["tolerance"]["where"], *plated])
     if need > model["most_amps"]:
         return Need(None, why=f"{need:.3g} A in the model is over its {model['most_amps']:g} A (D.2c)")
     made = next((m for d, m in cur["copper"]["rows"] if abs(d - cu_um) < 0.05), None)
     if made is None:
         rows = ", ".join(f"{d:g}" for d, _ in cur["copper"]["rows"])
         return Need(None, why=f"{cu_um:g} um copper is none of {rows} um of {cur['copper']['where']}")
-    width = designed_width(area_for(need, rise, model) / (made / 1000), cu_um, pack)
+    th = pack.th_um("outer" if outer else "inner", cu_um)
+    width = designed_width(area_for(need, rise, model) / (made / 1000), th, pack)
     if width is None:
-        return Need(None, why=f"{cu_um:g} um copper is over every row of {cur['tolerance']['where']}")
+        return Need(None, why=f"{th:g} um copper is over every row of {cur['tolerance']['where']}")
     return Need(width, where)
 
 
@@ -228,13 +287,15 @@ def between(a: tuple[float, float], b: tuple[float, float]) -> float:
 
 
 def spacing_need(pack: Pack, layers: str, cu_um: float, volts: float) -> Need:
-    """The least gap as designed between 2 conductors on an `outer` or `inner` layer of `cu_um` copper
-    with `volts` between them."""
+    """The least gap as designed between 2 conductors on an `outer` or `inner` layer of `cu_um` foil
+    with `volts` between them. An outer layer's row is the one of its foil and its plating."""
     if volts > pack.voltage["most"] + EPS:
         return Need(None, why=f"{volts:g} V is over {pack.voltage['most']:g} V: {pack.voltage['most_where']}")
+    th = pack.th_um(layers, cu_um)
+    plated = [pack.plating["where"]] if layers == "outer" else []
     for row in pack.spacing:
         low, high = row["copper_um"]
-        if row["layers"] != layers or not (low < cu_um <= (math.inf if high is None else high) + EPS):
+        if row["layers"] != layers or not (low < th <= (math.inf if high is None else high) + EPS):
             continue
         for step in row["steps"]:
             if volts <= step["volts"] + EPS:
@@ -242,9 +303,9 @@ def spacing_need(pack: Pack, layers: str, cu_um: float, volts: float) -> Need:
                     um = step["um"]
                 else:
                     um = max(step["um_per_volt"] * volts + step["plus_um"], step["at_least_um"])
-                return Need(um / 1000, row["where"])
+                return Need(um / 1000, "; ".join([row["where"], *plated]))
         return Need(None, why=f"{volts:g} V: {row.get('above') or 'over the last step of ' + row['where']}")
-    return Need(None, why=f"no {layers} row of the pack holds {cu_um:g} um copper")
+    return Need(None, why=f"no {layers} row of the pack holds {th:g} um copper")
 
 
 # ---------------------------------------------------------------- the board
@@ -292,6 +353,7 @@ class Board:
     cu_um: dict[str, float]
     stated_stackup: bool
     area_mm2: float | None
+    area_why: str  # for None: the reason
     tracks: list[Track] = field(default_factory=list)
     vias: list[Via] = field(default_factory=list)
     pads: list[Pad] = field(default_factory=list)
@@ -352,7 +414,7 @@ def read_board(text: str) -> Board:
     stated = all(name in cu_um for name in copper)
     if not stated:
         cu_um = dict.fromkeys(copper, DEFAULT_CU_UM)
-    board = Board(thickness, copper, cu_um, stated, _area(root))
+    board = Board(thickness, copper, cu_um, stated, *_area(root))
 
     def span(names: list[str]) -> list[str]:
         """A via's layers: the 2 it names and every layer between them."""
@@ -412,27 +474,76 @@ def read_board(text: str) -> Board:
     return board
 
 
-def _area(root) -> float | None:
-    """The area inside the board's outline: a rectangle's own, or else its bounding box's."""
-    points: list[tuple[float, float]] = []
-    rects = []
+ARC_STEPS = 64  # chords an arc of the outline is taken as
+
+
+def _shoelace(points: list[tuple[float, float]]) -> float:
+    pairs = zip(points, points[1:] + points[:1], strict=True)
+    return abs(sum(a[0] * b[1] - b[0] * a[1] for a, b in pairs)) / 2
+
+
+def _arc_points(s: tuple, m: tuple, e: tuple) -> list[tuple[float, float]]:
+    """An arc through start, mid and end, as ARC_STEPS chords from start to end."""
+    d = 2 * (s[0] * (m[1] - e[1]) + m[0] * (e[1] - s[1]) + e[0] * (s[1] - m[1]))
+    if abs(d) < EPS:
+        return [s, e]
+    sq = [p[0] ** 2 + p[1] ** 2 for p in (s, m, e)]
+    cx = (sq[0] * (m[1] - e[1]) + sq[1] * (e[1] - s[1]) + sq[2] * (s[1] - m[1])) / d
+    cy = (sq[0] * (e[0] - m[0]) + sq[1] * (s[0] - e[0]) + sq[2] * (m[0] - s[0])) / d
+    r = math.hypot(s[0] - cx, s[1] - cy)
+    a0, am, a1 = (math.atan2(p[1] - cy, p[0] - cx) for p in (s, m, e))
+    sweep, to_mid = (a1 - a0) % math.tau, (am - a0) % math.tau
+    if to_mid > sweep:
+        sweep -= math.tau
+    angles = [a0 + sweep * i / ARC_STEPS for i in range(1, ARC_STEPS)]
+    return [s, *((cx + r * math.cos(a), cy + r * math.sin(a)) for a in angles), e]
+
+
+def _area(root) -> tuple[float | None, str]:
+    """The area inside the board's outline on Edge.Cuts, and for None the reason. Lines and arcs are
+    joined end to end into closed outlines; the greatest is the board and the others its holes."""
+    near = 1e-3
+    areas: list[float] = []
+    edges: list[list[tuple[float, float]]] = []
     for node in root[1:]:
         if not isinstance(node, list) or not node or not str(node[0]).startswith("gr_"):
             continue
         layer = kicadgen.child(node, "layer")
         if layer is None or str(kicadgen.atoms(layer)[0]) != "Edge.Cuts":
             continue
+        at = {
+            k: _xy(kicadgen.child(node, k))
+            for k in ("start", "mid", "end", "center")
+            if kicadgen.child(node, k)
+        }
         if node[0] == "gr_rect":
-            rects.append((_xy(kicadgen.child(node, "start")), _xy(kicadgen.child(node, "end"))))
-        for key in ("start", "mid", "end", "center"):
-            if kicadgen.child(node, key) is not None:
-                points.append(_xy(kicadgen.child(node, key)))
-        pts = kicadgen.child(node, "pts")
-        points += [_xy(p) for p in kicadgen.children(pts, "xy")] if pts else []
-    if not points:
-        return None
-    xs, ys = [p[0] for p in points], [p[1] for p in points]
-    return round((max(xs) - min(xs)) * (max(ys) - min(ys)), 6)
+            (x0, y0), (x1, y1) = at["start"], at["end"]
+            areas.append(abs(x1 - x0) * abs(y1 - y0))
+        elif node[0] == "gr_circle":
+            areas.append(math.pi * math.dist(at["center"], at["end"]) ** 2)
+        elif node[0] == "gr_poly":
+            areas.append(_shoelace([_xy(p) for p in kicadgen.children(kicadgen.child(node, "pts"), "xy")]))
+        elif node[0] == "gr_line":
+            edges.append([at["start"], at["end"]])
+        elif node[0] == "gr_arc":
+            edges.append(_arc_points(at["start"], at["mid"], at["end"]))
+        else:
+            return None, f"the outline on Edge.Cuts holds a {node[0]}, whose area is not taken"
+    while edges:
+        loop = edges.pop(0)
+        while math.dist(loop[0], loop[-1]) > near:
+            nxt = next(
+                (e for e in edges if min(math.dist(loop[-1], e[0]), math.dist(loop[-1], e[-1])) <= near), None
+            )
+            if nxt is None:
+                return None, f"the outline on Edge.Cuts does not close at {_p(loop[-1])}"
+            edges.remove(nxt)
+            loop += (nxt if math.dist(loop[-1], nxt[0]) <= near else nxt[::-1])[1:]
+        areas.append(_shoelace(loop[:-1]))
+    if not areas:
+        return None, "the board has no outline on Edge.Cuts"
+    areas.sort(reverse=True)
+    return round(areas[0] - sum(areas[1:]), 6), ""
 
 
 def netlist(board: Board) -> ratings.Netlist:
@@ -452,14 +563,15 @@ def netlist(board: Board) -> ratings.Netlist:
 
 
 def net_amps(project: ratings.Project, net: ratings.Netlist) -> dict[str, float]:
-    """The current on each net: the greatest that ratings.json states for a pin on it, or for a part of
-    2 pins, whose current runs through both of its nets."""
+    """The current on each net: the sum of the currents ratings.json states for the pins on it, a part
+    of 2 pins counted on both of its nets. A track that feeds 2 loads carries both (Kirchhoff's current
+    law); where a source and its loads are all stated, the sum counts the current 2 times."""
     out: dict[str, float] = {}
     for key, amps in project.amps.items():
         ref, _, pin = key.partition(".")
         pins = net.parts[ref].pins
-        for name in [pins[pin]] if pin else pins.values():
-            out[name] = max(out.get(name, 0.0), amps)
+        for name in [pins[pin]] if pin else dict.fromkeys(pins.values()):
+            out[name] = out.get(name, 0.0) + amps
     return out
 
 
@@ -492,7 +604,7 @@ def _valid(board: Board, pack: Pack) -> str:
     if board.thickness <= valid["board_over_mm"]:
         return f"the board is {board.thickness:g} mm thick"
     if board.area_mm2 is None:
-        return "the board has no outline on Edge.Cuts"
+        return board.area_why
     if board.area_mm2 <= valid["area_over_mm2"]:
         return f"the board's outline holds {board.area_mm2:g} mm2"
     return ""
@@ -626,6 +738,11 @@ def via_findings(board: Board, amps: dict[str, float], pack: Pack) -> list[Findi
     return out
 
 
+# A rule's condition quotes a net name in '...' inside "...": KiCad's expressions have no escape for a
+# quote, the file's strings read a backslash as one, and * and ? in a name match other nets.
+UNHELD = "'\"\\*?"
+
+
 @dataclass
 class Rule:
     nets: tuple[str, str]
@@ -633,6 +750,7 @@ class Rule:
     mm: float
     volts: float
     source: str
+    pack: str
 
 
 def clearance_rules(
@@ -643,9 +761,25 @@ def clearance_rules(
     lines = ["(version 1)"]
     rules: dict[str, Rule] = {}
     missing: list[Finding] = []
-    known = sorted(n for n in board.nets if n in spans)
-    for name in sorted(n for n in board.nets if n not in spans):
-        missing.append(Finding("not judged", f"spacing of {name}: ratings.json states no voltage for it"))
+    known = []
+    folded: dict[str, list[str]] = {}
+    for name in board.nets:
+        folded.setdefault(name.casefold(), []).append(name)
+    for name in sorted(board.nets):
+        bad = sorted(set(name) & set(UNHELD))
+        twins = [n for n in folded[name.casefold()] if n != name]
+        if name not in spans:
+            missing.append(Finding("not judged", f"spacing of {name}: ratings.json states no voltage for it"))
+        elif bad:
+            held = "which a KiCad rule's condition cannot hold"
+            missing.append(
+                Finding("not judged", f"spacing of {name}: its name holds {' '.join(bad)}, {held}")
+            )
+        elif twins:
+            text = f"a KiCad rule's condition takes it for {', '.join(twins)}, as it reads no case"
+            missing.append(Finding("not judged", f"spacing of {name}: {text}"))
+        else:
+            known.append(name)
     for i, a in enumerate(known):
         for b in known[i + 1 :]:
             volts = between(spans[a], spans[b])
@@ -658,7 +792,7 @@ def clearance_rules(
                     missing.append(Finding("not judged", f"spacing {a} to {b} on {layer}: {need.why}"))
                     continue
                 name = f"{pack.name} {len(rules) + 1}"
-                rules[name] = Rule((a, b), layer, need.mm, volts, pack.cite(need.where))
+                rules[name] = Rule((a, b), layer, need.mm, volts, pack.cite(need.where), pack.name)
                 ab, ba = (
                     f"A.NetName == '{a}' && B.NetName == '{b}'",
                     f"A.NetName == '{b}' && B.NetName == '{a}'",
@@ -668,14 +802,36 @@ def clearance_rules(
                     f'(rule "{name}"\n\t(layer "{layer}")\n\t(condition "{both}")\n'
                     f"\t(constraint clearance (min {need.mm:g}mm)))"
                 )
+    for net in sorted({n for r in rules.values() for n in r.nets}):
+        lines.append(
+            f'(rule "{witness(pack.name, net)}"\n\t(condition "A.NetName == \'{net}\'")\n'
+            f"\t(constraint assertion \"A.NetName != '{net}'\"))"
+        )
     return "\n".join(lines) + "\n", rules, missing
 
 
+def witness(pack: str, net: str) -> str:
+    """The rule that fails on every item of `net`: KiCad names it in its report only if it read the
+    net's name in a condition, as each clearance rule of the net quotes it."""
+    return f"{pack} reads {net}"
+
+
+WITNESS_RE = re.compile(r"^Assertion failure \(rule '(.*)'\)$")
 RULE_RE = re.compile(r"\(rule '([^']*)' clearance [\d.]+ mm; actual ([\d.]+) mm\)")
 
 
 def clearance_findings(report: dict, rules: dict[str, Rule]) -> list[Finding]:
-    """The violations of a KiCad report that break a rule of `clearance_rules`, 1 line each."""
+    """The violations of a KiCad report that break a rule of `clearance_rules`, 1 line each. Raises
+    RuntimeError when the report names no violation of a net's witness: KiCad did not read that net's
+    rules, and their silence is no pass."""
+    read = {
+        m.group(1)
+        for v in report.get("violations", [])
+        if (m := WITNESS_RE.search(str(v.get("description"))))
+    }
+    unread = sorted({witness(r.pack, n) for r in rules.values() for n in r.nets} - read)
+    if unread:
+        raise RuntimeError(f"kicad-cli did not read the pack's rules: no violation of {', '.join(unread)}")
     out: list[Finding] = []
     for v in report.get("violations", []):
         found = RULE_RE.search(str(v.get("description", "")))

@@ -15,6 +15,10 @@
     "most": 500,
     "most_where": "13.8.2l, page 119: above 500 V the design is qualified on its own"
   },
+  "plating": {
+    "um": 25,
+    "where": "7.4.2c NOTE 2, page 44: plated copper as designed; table 7-3, page 45, and table 7-4, page 46: the thickness category of an outer layer is basic plus plated copper"
+  },
   "spacing": [
     {
       "layers": "outer",

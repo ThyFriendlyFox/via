@@ -29,6 +29,10 @@ ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
 BOARDS = ROOT / "tests" / "boards"
 DOC = "ECSS-Q-ST-70-12C Rev.1"
+PLATING = (
+    "7.4.2c NOTE 2, page 44: plated copper as designed; table 7-3, page 45, and table 7-4, page 46: the "
+    "thickness category of an outer layer is basic plus plated copper"
+)
 
 pytestmark = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
 
@@ -69,13 +73,14 @@ def test_1_gap_and_1_track_fail_each_with_its_clause_and_nothing_else(tmp_path):
     assert gap.startswith("fail clearance /GND to /VIN on B.Cu at (")
     assert gap.endswith(
         "): 0.22 mm, limit 0.25 mm at 5.25 V [ECSS-Q-ST-70-12C Rev.1: 13.8.2d page 117; table 13-7 (2 of 4), "
-        "X,Y external without conformal coating, standard, normal pitch, Th <= 70 um, as-designed, page 130]"
+        "X,Y external without conformal coating, standard, normal pitch, Th <= 70 um, as-designed, page 130; "
+        f"{PLATING}]"
     )
     assert width == (
         "fail track width /VIN on F.Cu from (109, 105) to (109, 103): 0.25 mm, limit 0.752 mm for 1 A "
         f"[{DOC}: 13.6.2a, page 112; 13.6.4.2a, page 114; 13.6.4.2b, page 115; annex D: D.1.2b page 183, "
         "D.2c and D.2d page 184; 7.1.2j, table 7-1, the column for non-plated inner layers, page 38; "
-        "7.4.2a and b, table 7-3, page 45]"
+        f"7.4.2a and b, table 7-3, page 45; {PLATING}]"
     )
     # KiCad's own rules hold the board: the 2 failures are the pack's alone
     assert "0 errors" in text.splitlines()[0]
@@ -125,6 +130,75 @@ def test_kicad_reads_each_fab_rule_set_and_fails_on_its_own_rules(fab, broken, t
     assert result["status"] == ("fail" if broken else "pass"), text
     found = sorted({v["type"] for v in result["details"]["first"] if f"rule '{fab}: " in v["description"]})
     assert found == broken, text
+
+
+def rename(board: Path, changes: dict[str, list[tuple[str, str]]]) -> None:
+    for name, pairs in changes.items():
+        text = (board / name).read_text(encoding="utf-8")
+        for old, new in pairs:
+            assert old in text, (name, old)
+            text = text.replace(old, new)
+        (board / name).write_text(text, encoding="utf-8")
+
+
+def test_a_net_name_a_kicad_rule_cannot_hold_is_not_judged_and_the_others_still_are(tmp_path):
+    """fail-board-ecss with VIN named VIN'A: its gaps get no rule and are not judged, so --strict fails;
+    GND to VOUT still gets its rules, which KiCad is seen to read; VIN'A's 0.25 mm track still fails."""
+    board = copy("fail-board-ecss", tmp_path)
+    rename(
+        board,
+        {
+            "rc_divider.kicad_sch": [('(label "VIN"', '(label "VIN\'A"')],
+            "rc_divider.kicad_pcb": [('"/VIN"', '"/VIN\'A"')],
+            "ratings.json": [('"VIN":', '"VIN\'A":')],
+        },
+    )
+    code, text = say("drc", board, "--out", tmp_path / "out", "--strict")
+    assert code == 1, text
+    assert "board rules ecss-q-st-70-12c-rev1: 1 fail, 1 not judged" in text, text
+    assert (
+        "- not judged spacing of /VIN'A: its name holds ', which a KiCad rule's condition cannot hold" in text
+    )
+    assert "- fail track width /VIN'A on F.Cu from (109, 105) to (109, 103): 0.25 mm" in text
+    dru = (tmp_path / "out" / "board-rules" / "rc_divider.kicad_dru").read_text(encoding="utf-8")
+    assert "VIN'A" not in dru and '(rule "ecss-q-st-70-12c-rev1 reads /GND"' in dru
+
+
+class Cli:
+    """What boardrules.judge asks of tools/workcenter: kicad-cli's name, a run, and a JSON reader."""
+
+    KICAD_CLI = "kicad-cli"
+
+    @staticmethod
+    def run(cmd, cwd):
+        return subprocess.run([str(c) for c in cmd], cwd=cwd, capture_output=True, text=True, check=False)
+
+    @staticmethod
+    def load_json(path):
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def test_a_rule_file_kicad_does_not_read_stops_the_gate(tmp_path, monkeypatch):
+    """When KiCad reports no violation of a net's witness, it did not read the rules of that net: the
+    gate is red and says so, and the silence of the gap rules is no pass. The rule file here holds no
+    rule at all, as when KiCad cannot read it."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import boardrules
+
+    real = boardrules.clearance_rules
+    monkeypatch.setattr(boardrules, "clearance_rules", lambda *a: ("(version 1)\n", *real(*a)[1:]))
+
+    class Project:
+        dir = BOARDS / "fail-board-ecss"
+        pcb = dir / "rc_divider.kicad_pcb"
+
+    result = boardrules.gate(Project, tmp_path, False, Cli)
+    assert result["red"] and result["summary"] == "board rules: not run", result
+    (line,) = result["failures"]
+    assert line == (
+        "kicad-cli did not read the pack's rules: no violation of ecss-q-st-70-12c-rev1 reads /GND, "
+        "ecss-q-st-70-12c-rev1 reads /VIN, ecss-q-st-70-12c-rev1 reads /VOUT"
+    )
 
 
 def test_a_net_with_no_voltage_is_not_judged_and_strict_fails_on_it(tmp_path):
