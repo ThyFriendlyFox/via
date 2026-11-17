@@ -2613,6 +2613,50 @@ def part_numbers(net: Netlist, rows: list) -> dict[str, str]:
     return out
 
 
+# What `parts` of ratings.json may state, by the kind of the part's facts. judge() reads the current
+# through a resistor, an inductor, a diode and a transistor, the load behind a connector's pin, and the
+# voltage across a capacitor and a resistor. The current through a fuse, a ferrite and a switch and
+# behind an output pin is recorded, as the rating in its facts is, and held to nothing yet.
+CURRENT_KINDS = ("resistor", "inductor", "diode.rectifier", "transistor.mosfet", "fuse", "ferrite", "switch")
+VOLTAGE_KINDS = ("capacitor", "resistor")
+LOAD_ROLES = ("output", "io", "open_drain")
+
+
+def check_stated(project: Project, net: Netlist, mpns: dict[str, str], facts: list[Facts]) -> None:
+    """Refuses a current or a voltage ratings.json states for a part or a pin the command reads none
+    for: it would be taken without a word and held to nothing, and `J2` written for `J2.1` leaves a
+    load out of its rail. A part with no facts is passed over: nothing says yet what it is."""
+
+    def among(kinds: tuple[str, ...], kind: str) -> bool:
+        return any(kind == k or kind.startswith(f"{k}.") for k in kinds)
+
+    for key in project.amps:
+        ref, _, pin = key.partition(".")
+        found = facts_of(facts, net.parts[ref], mpns.get(ref, ""))
+        if found is None:
+            continue
+        kind, where = found.kind, f"ratings.json: parts: {key}: amps"
+        if not pin and kind == "connector":
+            one = f"{ref}.{min(net.parts[ref].pins)}"
+            raise Refusal(f"{where}: {ref} is a connector: its load is stated for 1 pin, as {one}")
+        if not pin and not among(CURRENT_KINDS, kind):
+            raise Refusal(f"{where}: {ref} is of kind {kind}: the command reads no current through one")
+        if pin and kind == "ic":
+            # a pin its facts do not name has no role here: judge() refuses those facts
+            role = next((p["role"] for p in found.data["pins"] if pin in p["numbers"]), None)
+            if role is not None and role not in LOAD_ROLES:
+                raise Refusal(
+                    f"{where}: pin {pin} of {ref} is of role {role}: the command reads no load behind one"
+                )
+        elif pin and kind != "connector":
+            raise Refusal(f"{where}: {ref} is of kind {kind}: the command reads no load behind a pin of one")
+    for ref in project.volts:
+        found = facts_of(facts, net.parts[ref], mpns.get(ref, ""))
+        if found is not None and not among(VOLTAGE_KINDS, found.kind):
+            where = f"ratings.json: parts: {ref}: volts"
+            raise Refusal(f"{where}: {ref} is of kind {found.kind}: the command reads no voltage across one")
+
+
 def skeleton(net: Netlist, ref: str, mpn: str) -> dict:
     """A facts entry for 1 part with its pins from the schematic and every fact left to fill from the
     datasheet. The command refuses the entry until it is filled: an empty kind, role or source."""
@@ -2655,6 +2699,7 @@ def gate_ratings(project, out: Path, parts: list[Path], strict: bool, cli):
         library = find_facts(project.dir)
         facts = read_facts(library) if library else []
         mpns = part_numbers(net, parts_rows(parts, cli))
+        check_stated(asked, net, mpns, facts)
         report = judge(net, mpns, facts, asked, pack)
     except (ValueError, OSError) as exc:
         return refusal(exc, cli)

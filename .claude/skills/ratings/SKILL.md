@@ -131,12 +131,22 @@ parts, each entry read from its datasheet.
   it starts to fall, and the report says so.
 - `parts`: `REF.PIN` with `amps` is the load behind a connector's pin.
   `REF` with `amps` is the current through a part that the board cannot
-  say: a sense resistor's, an inductor's peak, a diode's, a transistor's
-  drain current. State the RMS current for a resistor and a transistor,
-  the average for a diode and the peak for an inductor: each rating is
-  held to that one. `REF` with `volts`
-  is the greatest voltage across a part of 2 pins whose 2 nets move
-  together: a bootstrap capacitor, a capacitor across a cell.
+  say: a sense resistor's, an inductor's peak, a rectifier diode's, a
+  transistor's drain current. State the RMS current for a resistor and a
+  transistor, the average for a diode and the peak for an inductor: each
+  rating is held to that one. `REF` with `volts` is the greatest voltage
+  across a capacitor or a resistor whose 2 nets move together: a
+  bootstrap capacitor, a capacitor across a cell.
+- The command refuses a number in `parts` that it would hold to nothing,
+  once the part has facts. `REF` with `amps` is refused for an IC, a
+  capacitor, a clamp diode, a link, a test point, a mechanical part and
+  a connector named with no pin (`J2` for `J2.1`). `REF.PIN` with `amps`
+  is refused for a pin of any part but a connector and an IC, and for a
+  pin of an IC that is no `output`, `io` or `open_drain` pin. `REF` with
+  `volts` is refused for any part but a capacitor and a resistor. 2
+  currents are taken and held to nothing yet, as their ratings are:
+  through a fuse, a ferrite or a switch, and behind an `output`, `io` or
+  `open_drain` pin of an IC.
 
 ## A part's facts
 
