@@ -590,3 +590,39 @@ def test_facts_prints_an_entry_to_fill_with_the_part_s_number_and_pins(tmp_path)
 def test_each_fixture_s_schematic_is_what_its_design_file_writes(name):
     code, text = say("design", BOARDS / name / "design.py", "--check")
     assert code == 0, text
+
+
+def test_what_is_not_judged_is_a_warning_of_a_run_and_a_failure_of_a_strict_one(tmp_path):
+    """Without the signal's voltage in ratings.json the input it drives is not judged: the run holds
+    and says so, and a strict run fails on the same line."""
+    project = copy("pass-ratings-node", tmp_path / "boards")
+    shutil.copytree(BOARDS / "library", tmp_path / "boards" / "library")
+    stated = json.loads((project / "ratings.json").read_text(encoding="utf-8"))
+    del stated["nets"]["IN"]
+    (project / "ratings.json").write_text(json.dumps(stated), encoding="utf-8")
+    line = (
+        "not judged U3 pin 2 (A) on IN: IN has no span: J3 pin 1 can put a voltage on IN that nothing states"
+    )
+    code, text = say("ratings", project)
+    assert code == 0, text
+    assert f"       - warning: {line}\n" in text and "RATINGS HELD, 1 NOT JUDGED: node" in text
+    code, text = say("ratings", project, "--strict")
+    assert code == 1, text
+    assert f"       - {line}\n" in text and "RATINGS HELD, 1 NOT JUDGED: node" in text
+    assert "FAIL   ratings    0 fail, 0 accepted, " in text and " hold, 1 not judged" in text
+
+
+def test_parts_names_the_file_that_holds_the_part_numbers(tmp_path):
+    """With no parts.csv beside the schematic no part has a number, and the facts that name their
+    parts by number speak of none. `--parts` names the file."""
+    project = copy("pass-ratings-node", tmp_path / "boards")
+    shutil.copytree(BOARDS / "library", tmp_path / "boards" / "library")
+    (project / "parts.csv").rename(tmp_path / "bom.csv")
+    code, text = say("ratings", project)
+    assert code == 1, text
+    assert (
+        "not judged U1 TLV62569: no facts for a part with no part number (Regulator_Switching:TLV62569DBV)"
+        in text
+    )
+    code, text = say("ratings", project, "--parts", tmp_path / "bom.csv", "--strict")
+    assert code == 0 and "RATINGS HELD: node" in text, text
