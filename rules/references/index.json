@@ -6,6 +6,7 @@
     "rules/interfaces/*.json",
     "rules/products/*.json",
     "rules/*.kicad_dru",
+    "rules/blocks/*.json",
     "tests/boards/**/facts/*.json"
   ],
   "code": ["tools/*.py", "tools/workcenter", "tests/*.py", "tests/boards/*.py", "ee-agent-kit/lead/*.py"],

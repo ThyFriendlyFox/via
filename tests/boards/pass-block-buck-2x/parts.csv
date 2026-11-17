@@ -1,0 +1,7 @@
+Value,Footprint,Qty,Manufacturer,MPN,Supplier,SKU,Pack,Breaks
+TLV62569,Package_TO_SOT_SMD:SOT-23-5,1,Texas Instruments,TLV62569DBVR,,,,
+2.2u XAL4020,Inductor_SMD:L_Coilcraft_XAL4020-XXX,1,Coilcraft,XAL4020-222MEC,,,,
+453k,Resistor_SMD:R_0603_1608Metric,1,Vishay,CRCW0603453KFKEA,,,,
+100k,Resistor_SMD:R_0603_1608Metric,1,Vishay,CRCW0603100KFKEA,,,,
+10u 16V,Capacitor_SMD:C_0805_2012Metric,1,made up,FIXTURE-10U-16V,,,,
+10u 10V,Capacitor_SMD:C_0603_1608Metric,2,Samsung,CL10A106KP8NNN,,,,

@@ -1,0 +1,6 @@
+{
+  "ipeak": {
+    "max": 5.6,
+    "source": "L1 XAL4020-222MEC saturates at 5.6 A [Coilcraft XAL40xx datasheet, document 806, revised 02/25/26]"
+  }
+}
