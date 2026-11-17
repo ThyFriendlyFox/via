@@ -1,0 +1,16 @@
+buck: the power stage of U1 (TLV62569) from 5 V to 3.3 V into the 1.1 A load
+* The switch is an ideal source at the regulator's 1.5 MHz (its facts, page 5) and a duty of 3.3 / 5:
+* 440 ns of 666.667 ns. L1 and C2 are the board's parts; the 3 ohm load is 3.3 V / 1.1 A, the load
+* tests/boards/pass-ratings-node/ratings.json states for J2.
+VSW sw 0 PULSE(0 5 0 1n 1n 440n 666.667n)
+L1 sw out 2.2u
+C2 out 0 10u
+RLOAD out 0 3
+.control
+tran 2n 600u uic
+meas tran vmax max v(out) from=590u to=600u
+meas tran vmin min v(out) from=590u to=600u
+let vpp = vmax - vmin
+print vpp
+.endc
+.end
