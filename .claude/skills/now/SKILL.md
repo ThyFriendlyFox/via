@@ -154,6 +154,30 @@ number and `<branch>` your branch.
 - Without GitHub's issues: `git fetch origin status` and read `now/` on
   that branch.
 
+### When the board looks wrong
+
+A card stands in a column its `**Status:**` line does not name, or is
+not on the board. Nobody drags a card, and nobody edits a card only to
+move it. The Board workflow walks every card once a day at 04:17 UTC;
+to put it right now:
+
+11. Run the workflow Board by hand: the repository's Actions tab, Board,
+    Run workflow. From a shell: `gh workflow run board.yml`.
+12. Open the run, the step "Put the card in its column". It prints 1 line
+    per card and a last line `board: N cards: M moved, A added, T already
+    there, X not moved, F failed`.
+    - `#N <column>: moved from <column>`, `added and placed`, `already
+      there`: the card stands right now. Nothing to do.
+    - `#N not moved: <reason>`: the body names no column (no line, 2 lines,
+      another word). Fix the card's line with step 6; its edit moves it.
+    - `#N FAIL: <what>`: that card's write failed; the others were written.
+      Run step 11 again. The same line twice: read what it names
+      (`tests/board/README.md`, "Reading a run of every card").
+    - `board: FAIL: <what>`: no card was judged. A token or a project URL
+      is wrong; `tests/board/README.md` says which line means what.
+    - `board: no secret BOARD_TOKEN is set`: the owner sets it once
+      (`tests/board/README.md`, "Setting it up").
+
 ## Done when
 
 Every branch with work in progress has 1 card, the card's Updated line is
