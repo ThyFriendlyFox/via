@@ -125,6 +125,30 @@ HINTS: list[tuple[str, str, str]] = [
         "smaller load. Never change a fact, a net's voltage or a pack to pass.",
         f'{RATINGS}, "Steps"',
     ),
+    # a refusal names the file first: a parts file's row, the schematic, the output folder, ratings.json
+    (
+        r"^ratings: [^\s:]+\.csv:\d+: ",
+        "Give the row of the parts file every field its header names, an empty one where nothing is "
+        "known. `procure` and `sources` read the same file.",
+        f'{RATINGS}, "Inputs"',
+    ),
+    (
+        r"^ratings: \S+\.kicad_sch: ",
+        "The netlist kicad-cli exports from the schematic holds what the line names. Correct the schematic "
+        "in its design file and regenerate it, then run `workcenter erc` on it.",
+        f'{RATINGS}, "Inputs"',
+    ),
+    (
+        r"^ratings: (--out \S|\S*build: )",
+        "The run cannot make its output folder there: a file stands in its place, or the folder cannot be "
+        "written. Name another folder with `--out`, or move the file.",
+        f'{RATINGS}, "Steps"',
+    ),
+    (
+        r"^ratings: ratings\.json: ",
+        "Correct the file at the place the line names. Each key of ratings.json is in the skill.",
+        f'{RATINGS}, "ratings.json"',
+    ),
     (
         r"^ratings: \S+\.json: ",
         "Correct the file at the place the line names. The skill has every key.",
