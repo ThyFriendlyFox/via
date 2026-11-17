@@ -10,6 +10,10 @@ breaks, and on no other. The numbers in the lines are worked out here and in tes
                   least output; 1.1 A of load and half of it is 1.392 A, over the 1.26 A it saturates at
     bias          10 uF less 20 % keeps 0.50 - 0.12 x 0.440 = 0.447 of its value at 3.440 V: 3.58 uF, and
                   the 2 capacitors with no curve give 0.11 uF each at the most: 3.80 uF, under 5 uF
+
+The second half holds the files and the flags the command does not take: the board with no fault with 1
+file changed, or 1 flag. Each run ends in a line with the file, the place and the fault, and in no
+traceback.
 """
 
 from __future__ import annotations
@@ -518,10 +522,10 @@ def test_a_schematic_with_2_parts_of_1_reference_is_refused_by_the_schematic_s_n
     sch = project / "node.kicad_sch"
     text = sch.read_text(encoding="utf-8")
     assert text.count('"Reference" "R2"') == 1 and text.count('(reference "R2")') == 1
-    twice = text.replace('"Reference" "R2"', '"Reference" "R1"').replace(
+    renamed = text.replace('"Reference" "R2"', '"Reference" "R1"').replace(
         '(reference "R2")', '(reference "R1")'
     )
-    sch.write_text(twice, encoding="utf-8")
+    sch.write_text(renamed, encoding="utf-8")
     for more in ((), ("--facts", "R1")):
         code, text = say("ratings", project, *more)
         assert code == 1 and "Traceback" not in text and text.startswith(REFUSED), text
