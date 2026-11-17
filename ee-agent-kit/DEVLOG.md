@@ -53,12 +53,17 @@ Herald's README, the 2026-11-11 entry here, `MISTAKES.md` (M137, M138) or the ro
 called M137's pad a diode's; M137 names R43 and R44, so the post says only that the keep-out
 covered pads.
 
+The owner read the preview and said the page reads as a model's text. I wrote the post and the blog's
+words in my own voice, not in `TONE.md`'s English (M181). I rewrote both in American Simplified
+Technical English. `TONE.md` now names American spelling and the patterns to leave out, P35 says how
+to write to them, and a docs test counts each post's sentences and words.
+
 `main`'s CI had failed since PR #62 (Vercel Web Analytics): it added 2 script tags to the pages
 `site/examples.py` writes, not to the script, and the link checks looked for the host's
 `/_vercel/insights/script.js` in the repository. The script now writes the tags, and the link
 checks leave out `/_vercel/` addresses.
 
-Evidence: the docs tests 20 passed, 2 skipped (KiCad); `site/blog.py --check` and
+Evidence: the docs tests 21 passed, 2 skipped (KiCad); `site/blog.py --check` and
 `site/examples.py --check` exit 0; a build for the site's address serves the post at
 `/blog/herald-fire-alarm-communicator` with its canonical link and share card, and a feed that
 parses as RSS 2.0 with 1 item. In Chromium the post and the list fit a 390 px screen.

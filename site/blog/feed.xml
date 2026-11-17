@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>The Via blog</title>
+    <title>Via blog</title>
     <link>%ORIGIN%/blog</link>
     <atom:link href="%ORIGIN%/blog/feed.xml" rel="self" type="application/rss+xml"/>
-    <description>What changed in Via, the open-source workcenter that takes an AI agent&#x27;s circuit board from a written brief to fabrication files, and what we learned on the way.</description>
+    <description>Posts about Via and its example boards. Via is an open-source package of tools, skills and checks for AI agents that design circuit boards.</description>
     <language>en</language>
     <lastBuildDate>Tue, 17 Nov 2026 00:00:00 +0000</lastBuildDate>
     <item>
@@ -15,7 +15,7 @@
       <category>examples</category>
       <category>herald</category>
       <category>simulation</category>
-      <description>Via&#x27;s repository now holds a complete fire alarm communicator, Herald, designed by an agent from a written brief.</description>
+      <description>Herald is a fire alarm communicator. An AI agent designed it with Via from a written brief. The design file, the routed board and the results of the checks are in the Via repository.</description>
     </item>
   </channel>
 </rss>

@@ -1274,3 +1274,20 @@ Again before boards that join into a solid are laid out.
 Done when: the form's sentences are in the first message and in the
 version's README, and the project's code refuses a solid whose joints
 miss.
+
+## P35 — Words a reader reads
+
+When: writing a post for the site's blog, the blog's own words, or a
+message to the owner.
+
+1. Write in American Simplified Technical English by `TONE.md`'s rules:
+   1 idea in a sentence, under 20 words, the active voice, American
+   spelling, no contraction.
+2. Leave out the patterns `TONE.md` rule 10 names: personification, an
+   intensifier, a list of 3 for rhythm, an em dash, an opener that judges
+   or announces, a closing offer (M181).
+3. Read the draft once for those patterns before it is shown, then run
+   the docs tests: they hold each post to the limits a machine can count.
+
+Done when: the docs tests pass on every post in `blog/`, and the message
+or page has none of rule 10's patterns.

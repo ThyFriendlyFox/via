@@ -694,6 +694,28 @@ def test_the_blog_is_what_site_blog_writes():
             blog.href(nowhere, "../")
 
 
+def test_each_post_is_in_tone_md_english():
+    """A post is American Simplified Technical English (TONE.md, P35, M181): each sentence under 20
+    words, American spelling, no em dash, no contraction, none of the words TONE.md bans."""
+    banned = re.compile(
+        r"—|\b(colour|centre|grey|behaviour|organis|realis|metre|litre)\w*"
+        r"|\b\w+(n't|'re|'ve|'ll|'d)\b|\b(it|that|there|here|what)'s\b"
+        r"|\b(simply|just|very|really|truly|actually|robust|seamless|real)\b",
+        re.IGNORECASE,
+    )
+    posts = sorted(p for p in (ROOT / "blog").glob("*.md") if p.name != "README.md")
+    assert posts
+    for post in posts:
+        body = post.read_text(encoding="utf-8").split("\n---\n", 1)[1]
+        body = re.sub(r"```.*?```", "", body, flags=re.S)
+        body = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", body)
+        body = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", body)
+        for line in body.splitlines():
+            for sentence in re.split(r"(?<=[.:;?!])\s+(?=[A-Z`\"])", line.strip("-# ").strip()):
+                assert len(sentence.split()) < 20, (post.name, sentence)
+                assert not banned.search(sentence), (post.name, banned.search(sentence).group(0), sentence)
+
+
 def test_the_example_pages_are_what_site_examples_writes():
     """An example's page is written from its README, its versions' TIMELINE.md or "What changed"
     sections, and its board. A page edited by hand, or an example changed and its page not written

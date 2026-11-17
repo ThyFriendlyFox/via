@@ -69,6 +69,8 @@ there.
    claims nothing a run, a file or a test does not show.
 8. Justify a paragraph to its column, with hyphenation on. A part's label
    on the example's board is too narrow for it, and stays ragged.
+9. Write a blog post, and the blog's own words, in American Simplified
+   Technical English, by the rules of `TONE.md`.
 
 The owner's own wording stands as the owner wrote it, and is the only
 exception to these rules:

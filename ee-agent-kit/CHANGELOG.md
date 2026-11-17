@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/) · Versioning: [SemVer](
 
 ## [Unreleased]
 ### Changed
+- `TONE.md` gains 2 rules: American spelling, and none of the patterns that mark text as a model's (personification, intensifiers, lists of 3 for rhythm, em dashes, openers that judge, closing offers). They hold for every message to the owner and every blog post. `docs/STYLE.md` website rule 9 puts the blog under them, P35 says how to write to them (M181), and a docs test holds each post to the limits a machine counts. The first post and the blog's own words are rewritten in American Simplified Technical English.
 - `site/examples.py` writes Vercel Web Analytics' 2 script tags into each page it writes: PR #62 added them to the written pages only, so the pages were no longer what the script writes and `main`'s CI failed. The site's link checks leave out `/_vercel/` addresses, which the host serves.
 - The home page's share card works the same on X and Discord: the image's address carries its checksum (`og.png?v=...`, from `site/build.sh`), since both keep a link's picture by its address and showed the old card; X is given `twitter:image` and `twitter:image:alt` beside the Open Graph tags, and the alt text describes the card as it is, Herald's board, where it still described a terminal run. `tests/test_docs.py` holds the built tags.
 - The line under the website's strip of agents, a small model's run from a brief to a board in 38 tool calls, is gone at the owner's word: the strip ends the hero.

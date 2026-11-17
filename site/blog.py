@@ -48,8 +48,8 @@ from frame import REPO, shell  # noqa: E402
 SCRIPTS = ["vendor/motion-14.6.0.js", "site.js", "effects.js"]
 NAMED = re.compile(r"(\d{4}-\d{2}-\d{2})-([a-z0-9]+(?:-[a-z0-9]+)*)\.md")
 CARD = ("og.png", 1280, 640, "The Via wordmark and the headline Circuit Boards From AI, beside the routed board of Herald")
-BLOG = "The Via blog"
-ABOUT = "What changed in Via, the open-source workcenter that takes an AI agent's circuit board from a written brief to fabrication files, and what we learned on the way."
+BLOG = "Via blog"
+ABOUT = "Posts about Via and its example boards. Via is an open-source package of tools, skills and checks for AI agents that design circuit boards."
 ARROW = '<svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>'
 
 
@@ -346,7 +346,7 @@ def post_page(post: Post, newer: Post | None, older: Post | None) -> str:
     around = []
     if older:
         around.append(f'<a class="older" href="{older.slug}.html"><span>Older post</span>{html.escape(older.title)}</a>')
-    around.append(f'<a class="all" href="{up}blog.html"><span>The blog</span>Every post</a>')
+    around.append(f'<a class="all" href="{up}blog.html"><span>Blog</span>All posts</a>')
     if newer:
         around.append(f'<a class="newer" href="{newer.slug}.html"><span>Newer post</span>{html.escape(newer.title)}</a>')
     body = f"""      <article class="section post" aria-labelledby="post-title">
@@ -366,13 +366,13 @@ def post_page(post: Post, newer: Post | None, older: Post | None) -> str:
         <div class="wrap">
           <div class="head" data-reveal data-stagger>
             <p class="eyebrow">Via</p>
-            <h2 class="title" id="after-title">Design your next board with Via</h2>
-            <p class="lede">Via gives an AI agent the tools, skills and checks to take a circuit board from a written brief to fabrication files. It is free and open source under the MIT license.</p>
+            <h2 class="title" id="after-title">Use Via to design a circuit board</h2>
+            <p class="lede">Via is a package of tools, skills and checks for an AI agent. The agent uses them to design a circuit board, from a written brief to the fabrication files. Via is free and open source under the MIT license.</p>
           </div>
           <div class="actions" data-reveal>
             <a class="btn btn-primary" href="{up}index.html#run">Get started</a>
             <a class="btn btn-quiet" href="{up}examples.html">See the example boards {ARROW}</a>
-            <a class="btn btn-quiet" href="{up}index.html#gates">How the checks work {ARROW}</a>
+            <a class="btn btn-quiet" href="{up}index.html#gates">See the four checks {ARROW}</a>
           </div>
           <nav class="post-nav" aria-label="More posts" data-reveal>{"".join(around)}</nav>
         </div>
@@ -397,18 +397,18 @@ def index_page(found: list[Post]) -> str:
             f"<h2>{html.escape(post.title)}</h2><p>{html.escape(post.description)}</p>"
             f'<ul class="chips" aria-label="Tags">{tags}</ul></a></li>'
         )
-    listed = "\n".join(f"            {item}" for item in items) or '            <li class="none">The first post is on its way.</li>'
+    listed = "\n".join(f"            {item}" for item in items) or '            <li class="none">There are no posts.</li>'
     body = f"""      <section class="section" aria-labelledby="blog-title">
         <div class="wrap">
           <div class="head" data-reveal data-stagger>
             <p class="eyebrow">Blog</p>
-            <h1 class="title" id="blog-title">What changed in Via, and what we learned</h1>
-            <p class="lede">Each post tells one change: what it does for a board, how it was built and what broke on the way. <a class="link" href="{REPO}/blob/main/ee-agent-kit/DEVLOG.md">The devlog</a> in the repository holds every day's record.</p>
+            <h1 class="title" id="blog-title">Posts about Via and its example boards</h1>
+            <p class="lede">Each post is about one change to Via or one example board. <a class="link" href="{REPO}/blob/main/ee-agent-kit/DEVLOG.md">The devlog</a> in the repository has the record of each day.</p>
           </div>
           <ol class="posts" data-reveal data-stagger>
 {listed}
           </ol>
-          <p class="after feed-link"><a class="link" href="%ORIGIN%/blog/feed.xml">Follow the blog's RSS feed</a></p>
+          <p class="after feed-link"><a class="link" href="%ORIGIN%/blog/feed.xml">RSS feed</a></p>
         </div>
       </section>"""
     return shell(BLOG, ABOUT, "blog", "", body, SCRIPTS, share("website", BLOG, ABOUT, "blog", CARD))
