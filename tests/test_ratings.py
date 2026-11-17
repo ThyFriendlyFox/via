@@ -964,6 +964,84 @@ def test_a_pull_up_to_a_higher_rail_lifts_a_net_the_project_states(tmp_path):
     ), [f.line for f in report.findings]
 
 
+def test_an_output_swings_between_its_2_pins_whichever_is_named_first(tmp_path):
+    """`swing` written [supply, ground]: the output still reaches its supply's 5.5 V, and the 4.6 V
+    input beside it fails. Read in the order written, it drove 0 V to 0 V."""
+    for swing in (["GND", "VCC"], ["VCC", "GND"]):
+        driver = entry(
+            "ic",
+            "DRV-1",
+            family="digital",
+            pins=[
+                pin("VCC", ["1"], "supply", abs=[-0.5, 6.5], amps=0.001),
+                pin("GND", ["2"], "ground"),
+                pin("Y", ["3"], "output", abs=[-0.5, 6.5], swing=swing),
+            ],
+        )
+        taker = entry(
+            "ic",
+            "BUF-1",
+            family="digital",
+            pins=[
+                pin("VCC", ["1"], "supply", abs=[-0.5, 6.5], amps=0.001),
+                pin("GND", ["2"], "ground"),
+                pin("A", ["3"], "input", abs=[-0.5, 4.6]),
+            ],
+        )
+        net, mpns = circuit(
+            U1=(
+                "DRV",
+                "DRV-1",
+                {"1": ("V5", "VCC", "power_in"), "2": ("GND", "GND", "power_in"), "3": "SIG"},
+            ),
+            U2=(
+                "BUF",
+                "BUF-1",
+                {"1": ("V33", "VCC", "power_in"), "2": ("GND", "GND", "power_in"), "3": "SIG"},
+            ),
+        )
+        nets = {"V5": (4.5, 5.5), **RAILS}
+        report = ratings.judge(net, mpns, library(tmp_path, driver, taker), project(nets), NASA)
+        assert any(
+            line.startswith("fail U2 pin 3 (A) on SIG: 5.5 V can stand on it, its limit is 4.6 V")
+            for line in found(report, "fail")
+        ), (swing, [f.line for f in report.findings])
+
+
+def test_a_limit_that_is_certainly_passed_is_not_hidden_by_one_that_cannot_be_judged(tmp_path):
+    """A pin takes VCC + 0.5 V and 4.6 V, whichever is less. Its VCC stands on a net no source holds,
+    so the first limit cannot be judged. The pull-up to 12 V passes the second whatever VCC is: the
+    pin fails on 4.6 V, the first limit is listed as not judged, and its least limit is judged too."""
+    chip = entry(
+        "ic",
+        "OD-1",
+        family="digital",
+        pins=[
+            pin("VCC", ["1"], "supply", abs=[-0.5, 6.5], amps=0.001),
+            pin("GND", ["2"], "ground"),
+            pin("Y", ["3"], "open_drain", abs=[-0.5, [{"pin": "VCC", "plus": 0.5}, 4.6]], swing=["GND"]),
+        ],
+    )
+    pins = {
+        "1": ("VSW", "VCC", "power_in"),
+        "2": ("GND", "GND", "power_in"),
+        "3": ("OD", "Y", "open_collector"),
+    }
+    net, mpns = circuit(
+        U1=("OD", "OD-1", pins),
+        R1=("10k", "R-0402", {"1": "V12", "2": "OD"}),
+        J1=("SW", "", {"1": "VSW"}),
+    )
+    report = ratings.judge(net, mpns, library(tmp_path, chip, chip_resistor()), project(V12), NASA)
+    lines = [f.line for f in report.findings if f.part in ("U1", "U1.3")]
+    assert "fail U1 pin 3 (Y) on OD: 12.6 V can stand on it, its limit is 4.6 V [DS-1, rev A, p 4]" in lines
+    assert "hold U1 pin 3 (Y) on OD: 0 V can stand on it, its limit is -0.5 V [DS-1, rev A, p 4]" in lines
+    assert (
+        lines.count("not judged U1 pin 3 (Y) on OD: its limit follows pin VCC on VSW, which no source holds")
+        == 1
+    )
+
+
 def test_a_diode_drawn_forward_between_2_sources_fails(tmp_path):
     """A clamp drawn backwards: its anode on the 5 V rail and its cathode on ground. The rail holds
     its anode at 4.5 V or more above its cathode, and it carries all the rail gives."""

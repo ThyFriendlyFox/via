@@ -464,11 +464,22 @@ def net_spans(
             (name,) = nets_of(ref, (value[0],))
             return span[find(name)][which] + value[1] if find(name) in span else None
 
+        def reach(ref: str, drive: Drive) -> tuple[float | None, float | None]:
+            """The least and the greatest a drive gives. A pin that swings between 2 pins reaches both,
+            whichever of the 2 its facts name first."""
+            lows = [end(ref, value, 0) for value in (drive.low, drive.high)]
+            highs = [end(ref, value, 1) for value in (drive.low, drive.high)]
+            if not (isinstance(drive.low, tuple) and isinstance(drive.high, tuple)):
+                return lows[0], highs[1]
+            if None in lows or None in highs:
+                return None, None
+            return min(lows), max(highs)
+
         changed = True
         while changed:
             changed = False
             for node, ref, _, drive in swings:
-                low, high = end(ref, drive.low, 0), end(ref, drive.high, 1)
+                low, high = reach(ref, drive)
                 if node not in unknown and low is not None and high is not None:
                     changed |= widen(node, low, high)
             for a, b, one_way, _ in edges:
@@ -501,7 +512,7 @@ def net_spans(
     held: dict[str, Span] = {}
     sources = {node: list(spans) for node, spans in held_by.items()}
     for node, ref, _, drive in swings:
-        low, high = end(ref, drive.low, 0), end(ref, drive.high, 1)
+        low, high = reach(ref, drive)
         if node in span and low is not None and high is not None:
             sources.setdefault(node, []).append((low, high))
     for node, spans in sources.items():
@@ -1720,6 +1731,8 @@ def _judge_ic(  # noqa: PLR0913
     if base and spans.stress.get(base_net) == (0.0, 0.0):
         base = None
 
+    told: set[str] = set()  # the `not judged` lines of this part's pins, each said 1 time
+
     def from_ground(value: object) -> object:
         if base is None or isinstance(value, dict):
             return value
@@ -1730,12 +1743,20 @@ def _judge_ic(  # noqa: PLR0913
     def bound(pin: dict, number: str, which: int, key: str = "abs") -> tuple | None:
         """1 end of a pin's absolute limits, or of a signal pin's working range (key `operating`): which
         is 0 for the least and 1 for the greatest. Whether it holds, the voltage and the limit as the
-        line names it; an empty tuple when nothing but the pin puts a voltage on its net. None when the
-        pin could not be judged: its other end would say the same again."""
+        line names it; an empty tuple when nothing but the pin puts a voltage on its net. None when no
+        limit of this end could be judged. Of 2 limits, each is judged on its own: one that cannot be
+        gets its `not judged` line, and never hides one that is certainly passed."""
         name = part.pins[number]
         label = f"{ref} pin {number} ({pin['name']}) on {name}"
         raw = from_ground(pin[key][which])
         worst: tuple[float, float, str] | None = None
+        missed = False
+
+        def miss(text: str) -> None:
+            if text not in told:  # the pin's other end would say the same again
+                told.add(text)
+                out.append(Finding("not judged", ref, "pin.voltage", text))
+
         for one in raw if isinstance(raw, list) else [raw]:
             forced, how = (), ""
             if isinstance(one, dict):
@@ -1743,9 +1764,9 @@ def _judge_ic(  # noqa: PLR0913
                 if rail == name:
                     continue  # the pin is on the rail its limit follows
                 if rail not in spans.held:
-                    text = f"{label}: its limit follows pin {one['pin']} on {rail}, which no source holds"
-                    out.append(Finding("not judged", ref, "pin.voltage", text))
-                    return None
+                    miss(f"{label}: its limit follows pin {one['pin']} on {rail}, which no source holds")
+                    missed = True
+                    continue
                 at = spans.held[rail][1 - which]  # the rail where the limit is tightest
                 forced, limit = ((rail, (at, at)),), at + one["plus"]
                 how = f" (pin {one['pin']} at {at:.3g} V, {one['plus']:+g} V)"
@@ -1756,22 +1777,25 @@ def _judge_ic(  # noqa: PLR0913
                 why = sp.why.get(name, "nothing drives it")
                 if why == "nothing drives it":
                     continue  # nothing but the pin itself puts a voltage on its net
-                out.append(Finding("not judged", ref, "pin.voltage", f"{label}: {name} has no span: {why}"))
-                return None
+                miss(f"{label}: {name} has no span: {why}")
+                missed = True
+                continue
             volts = sp.stress[name][which]
             if forced and not which:
                 # A least limit that follows a pin that is on: with every source off both nets are at
                 # 0 V and no limit between 2 pins is broken, so the pin is taken where its own sources
                 # hold it. The order rails come up in is not judged.
                 if name not in sp.held:
-                    text = f"{label}: its least limit follows pin {one['pin']}, and no source holds {name}"
-                    out.append(Finding("not judged", ref, "pin.voltage", text))
-                    return None
+                    miss(f"{label}: its least limit follows pin {one['pin']}, and no source holds {name}")
+                    missed = True
+                    continue
                 volts = sp.held[name][0]
             over = (volts - limit) if which else (limit - volts)
             if worst is None or over > worst[0]:
                 worst = (over, volts, f"{limit:.3g} V{how}")
-        return () if worst is None else (worst[0] <= EPS, worst[1], worst[2])
+        if worst is None:
+            return None if missed else ()
+        return (worst[0] <= EPS, worst[1], worst[2])
 
     for pin in data["pins"]:
         for number in pin["numbers"]:
@@ -1780,7 +1804,7 @@ def _judge_ic(  # noqa: PLR0913
             if len(nodes) == 1 and (nodes[0].open or name.startswith("unconnected-(")):
                 continue  # a pin left open
             high = bound(pin, number, 1) if "abs" in pin else None
-            low = bound(pin, number, 0) if high is not None else None
+            low = bound(pin, number, 0) if "abs" in pin else None
             if "abs" not in pin and pin["role"] not in ("ground", "nc"):
                 notes.append(
                     f"{ref} pin {number} ({pin['name']}): its facts hold no limits, "
