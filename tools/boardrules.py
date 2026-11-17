@@ -337,6 +337,7 @@ class Pad:
     at: tuple[float, float]
     reach: float  # half the pad's greater side
     layers: list[str]
+    footprint: str = ""  # the footprint's library and name, as `Connector_USB:USB_C_...`
 
 
 @dataclass
@@ -462,7 +463,7 @@ def read_board(text: str) -> Board:
                 reach = max(_xy(size)) / 2 if size else 0.0
                 names = [str(x) for x in kicadgen.atoms(kicadgen.child(pad, "layers") or ["layers"])]
                 on = list(copper) if "*.Cu" in names else [n for n in names if n in copper]
-                board.pads.append(Pad(ref, str(pad[1]), net_of(pad), at, reach, on))
+                board.pads.append(Pad(ref, str(pad[1]), net_of(pad), at, reach, on, str(node[1])))
         elif head == "zone":
             net = net_of(node)
             for filled in kicadgen.children(node, "filled_polygon"):
@@ -857,14 +858,48 @@ NOT_CHECKED = (
 )
 
 
+LAYOUT_KEYS = ("layout", "connectors", "inside", "protectors", "ground", "power")
+
+
+def project_keys(data: object) -> dict:
+    """board-rules.json: a voltage pack (`pack`), layout packs (`layout`, tools/layoutrules.py), or both,
+    with what the layout packs ask the project to state."""
+    data = ratings._keys(PROJECT_FILE, data, (), ("pack", *LAYOUT_KEYS))
+    if "pack" not in data and "layout" not in data:
+        raise Refusal(f"{PROJECT_FILE}: names no pack: give `pack`, `layout` or both")
+    if "layout" in data:
+        ratings._names(f"{PROJECT_FILE}: layout", data["layout"])
+    return data
+
+
 def judge(project, out: Path, cli) -> tuple[str, list[Finding], list[str]]:
-    """The board held to the pack its board-rules.json names: the pack's name for the report, the
+    """The board held to the packs its board-rules.json names: the packs' names for the report, the
     findings, and the notes. Refuses a file it does not take; raises RuntimeError when kicad-cli did
     not measure the gaps."""
-    data = ratings._keys(PROJECT_FILE, ratings._json(project.dir / PROJECT_FILE), ("pack",))
+    data = project_keys(ratings._json(project.dir / PROJECT_FILE))
+    board = read_board(project.pcb.read_text(encoding="utf-8"))
+    labels: list[str] = []
+    findings: list[Finding] = []
+    notes: list[str] = []
+    for name in data.get("layout", []):
+        import layoutrules
+
+        path, label = find_pack(name, project.dir)
+        lpack = layoutrules.read_pack(path)
+        labels.append(label)
+        notes.append(f"board rules: {label}, {lpack.document['number']} ({lpack.document['revision']})")
+        notes += layoutrules.notes(board, lpack)
+        findings += layoutrules.findings(board, lpack, data)
+    if "pack" not in data:
+        return " + ".join(labels), findings, notes
+    label, more, notes_v = judge_voltage(project, out, cli, data, board)
+    return " + ".join([label, *labels]), more + findings, notes_v + notes
+
+
+def judge_voltage(project, out: Path, cli, data: dict, board: Board) -> tuple[str, list[Finding], list[str]]:
+    """The board held to its voltage pack (`pack`): gaps, widths and vias."""
     path, label = find_pack(ratings._text(f"{PROJECT_FILE}: pack", data["pack"]), project.dir)
     pack = read_pack(path)
-    board = read_board(project.pcb.read_text(encoding="utf-8"))
     net = netlist(board)
     stated = project.dir / "ratings.json"
     if not stated.is_file():

@@ -1,0 +1,8 @@
+{
+  "kind": "vaping-device-lithium-cell",
+  "tests": {
+    "fcc-radiated": ["REQ-ENV-06"],
+    "external-short": ["REQ-PRT-03", "REQ-PRT-06"],
+    "esd-at-connector": ["REQ-ESD-01"]
+  }
+}

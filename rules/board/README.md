@@ -41,6 +41,60 @@ be a file of the project's own, named by its path from the project's folder.
 - **Via count.** The vias of a net that join the same pieces of copper share the current. A via is a
   track of its wall's section (13.6.3f). A group holds at least the net's current divided by 1 via's.
 
+## Layout packs
+
+A layout pack (`"kind": "layout"`) holds rules a maker's note states about where parts and copper go.
+A project names them in `board-rules.json` under `layout`, with or without `pack`, and states what the
+board file cannot say:
+
+    {"layout": ["ti-slva680a-esd", "ti-szza009-emi"],
+     "connectors": {"J1": "the USB cable"}, "inside": ["J2"],
+     "protectors": {"D1": "TPD2E2U06"}, "ground": ["GND"], "power": ["VBUS", "GND"]}
+
+A connector is a part whose reference is J or P and digits (IEEE 315's letters), or whose footprint is in
+a KiCad library whose name starts with `Connector` (`Connector_USB`, `Connector_JST`, ...). One not named
+in `connectors` or `inside` is `not judged`. A `connectors` with no part is `not judged` too: the pack
+then judges no line. A connector with another reference and a footprint of another library is found by
+neither: name it in `connectors`. The DRC line names every pack:
+`board rules ti-slva680a-esd + ti-szza009-emi: 0 fail, 0 not judged`.
+
+Both packs read the copper of a net as a graph. Its points lie on the centre lines of the tracks: each
+track's ends, where another track's end lands inside its copper, where 2 tracks cross, and where a via,
+a pad or a pour touches it. A via joins its layers and ends nothing. A pad or a pour is an end. Lengths
+are along the centre lines, from pad centre to pad centre.
+
+### ti-slva680a-esd
+
+TI SLVA680A, "ESD Protection Layout Guide", Rev. A, April 2022, https://www.ti.com/lit/an/slva680/slva680.pdf.
+Read 2026-11-17, with no second reader yet. For each pin of a connector in `connectors` whose net is not
+ground:
+
+| Rule | Where | Judged |
+|---|---|---|
+| `protector` | section 1 and figure 1-2, page 2 | a part in `protectors` stands on the net, and has a pad on a net in `ground` |
+| `nearest` | section 2.1, Summary, page 4 | the shortest copper from the connector's pad to the protector's meets no other part's pad; every other part's pad on the net stands further from the protector's pad than that pad from the connector's, centre to centre, and lies further along the copper too |
+| `no-via` | section 2.1, page 4; section 2.3, page 6 | the connector's pad and the protector's pad lie in 1 piece of copper on 1 layer |
+
+The protector is the nearest part of `protectors` with a pad on ground, centre to centre. A part at the
+same distance as the protector fails: the note asks further. Not judged, and named in the pack: the stub
+between the TVS and the line, whether the TVS's ground pad reaches the ground plane and by what
+inductance, unprotected traces beside the path and its corners (section 2.2, page 6), the ground scheme
+(section 2.4), and how much further the protected part stands ("much further"): the check holds further.
+
+### ti-szza009-emi
+
+TI SZZA009, "PCB Design Guidelines For Reduced EMI", November 1999, https://www.ti.com/lit/an/szza009/szza009.pdf.
+Read 2026-11-17, with no second reader yet.
+
+| Rule | Where | Judged |
+|---|---|---|
+| `power-ratio` | section 2.1.1, page 4; section 2.2.4, page 10 | on a board of 2 copper layers, each trace of a net in `power` or `ground` is at most 3 times as long as its narrowest width |
+
+A trace runs between 2 ends, pads or pours, that the copper joins without passing another end. Its
+length is the shortest way along the tracks, through vias, joins, overlaps and stubs; its width is the
+narrowest track on that way. 2 tracks between the same 2 ends count as 1, the shorter. A pour is no trace
+and is not judged. A board of another count of layers gets a note.
+
 ## ecss-q-st-70-12c-rev1
 
 ECSS-Q-ST-70-12C Rev.1, "Space product assurance - Design rules for printed circuit boards", 30 April
