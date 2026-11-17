@@ -1261,9 +1261,9 @@ LAYOUT_KEYS = ("layout", "connectors", "inside", "protectors", "ground", "power"
 def project_keys(data: object) -> dict:
     """board-rules.json: a voltage pack (`pack`), layout packs (`layout`, tools/layoutrules.py), or both,
     with what the layout packs ask the project to state."""
-    data = ratings._keys(PROJECT_FILE, data, (), ("pack", "via_wall", "hdi", *LAYOUT_KEYS))
-    if "pack" not in data and "layout" not in data:
-        raise Refusal(f"{PROJECT_FILE}: names no pack: give `pack`, `layout` or both")
+    data = ratings._keys(PROJECT_FILE, data, (), ("pack", "via_wall", "hdi", "creepage", *LAYOUT_KEYS))
+    if not any(k in data for k in ("pack", "layout", "creepage")):
+        raise Refusal(f"{PROJECT_FILE}: names no pack: give `pack`, `layout`, `creepage` or more")
     if "layout" in data:
         ratings._names(f"{PROJECT_FILE}: layout", data["layout"])
     stated_wall(data)
@@ -1288,10 +1288,31 @@ def judge(project, out: Path, cli) -> tuple[str, list[Finding], list[str]]:
         notes.append(f"board rules: {label}, {lpack.document['number']} ({lpack.document['revision']})")
         notes += layoutrules.notes(board, lpack)
         findings += layoutrules.findings(board, lpack, data)
+    if "creepage" in data:  # clearance and creepage to each net's working voltage: tools/creepage.py
+        import creepage
+
+        spans = _ratings(project, board).nets
+        label, more, notes_c = creepage.judge(
+            project, data["creepage"], project.pcb.read_text("utf-8"), spans
+        )
+        labels.append(label)
+        findings += more
+        notes += notes_c
     if "pack" not in data:
         return " + ".join(labels), findings, notes
     label, more, notes_v = judge_voltage(project, out, cli, data, board)
     return " + ".join([label, *labels]), more + findings, notes_v + notes
+
+
+def _ratings(project, board: Board) -> ratings.Project:
+    """The project's ratings.json, held to the board's nets."""
+    stated = project.dir / "ratings.json"
+    if not stated.is_file():
+        raise Refusal(
+            f"{PROJECT_FILE}: the voltage of each net and the current on it come from ratings.json, and "
+            f"there is none beside the board: `workcenter ratings {project.dir} --init` writes one"
+        )
+    return ratings.read_project(stated, netlist(board))
 
 
 def judge_voltage(project, out: Path, cli, data: dict, board: Board) -> tuple[str, list[Finding], list[str]]:
@@ -1301,13 +1322,7 @@ def judge_voltage(project, out: Path, cli, data: dict, board: Board) -> tuple[st
     wall, hdi = stated_wall(data)
     pack = read_pack(path)
     net = netlist(board)
-    stated = project.dir / "ratings.json"
-    if not stated.is_file():
-        raise Refusal(
-            f"{PROJECT_FILE}: the voltage of each net and the current on it come from ratings.json, and "
-            f"there is none beside the board: `workcenter ratings {project.dir} --init` writes one"
-        )
-    asked = ratings.read_project(stated, net)
+    asked = _ratings(project, board)
     amps = net_amps(asked, net)
     notes = [f"board rules: {label}, {pack.document['number']} ({pack.document['revision']})", NOT_CHECKED]
     if not board.stated_stackup:
