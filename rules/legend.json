@@ -14,6 +14,6 @@
   },
   "directions_per_side": {
     "value": 2,
-    "why": "The owner's word of 2026-11-17: text in more than 2 directions on 1 side is hard to read. A text at 180 degrees reads in the direction of one at 0, since KiCad keeps it upright."
+    "why": "The owner's word of 2026-11-17: text in more than 2 directions on 1 side is hard to read. A text at 180 degrees is a direction of its own: kicad-cli 10 plots a gr_text \"L\" at 180 upside down, its foot at the top."
   }
 }
