@@ -188,7 +188,7 @@ count as a second reading.
 | `diode.clamp` (zener, TVS) | `diodes`, `volts_standoff` | |
 | `transistor.mosfet` | `transistors`: `[{"gate": "1", "drain": "3", "source": "2"}]`, `volts_drain_source`, `volts_gate_source` | `amps_drain`: a number, or pairs `[celsius, amps]` when the datasheet states it at 2 temperatures; held to the current the project states. `watts` |
 | `connector` | | `pins`: `[{"numbers": ["1"], "outside": "source"}]`, with `source`, `load` or `nothing` |
-| `fuse` | `amps`: the rated current, held to the current the project states for the part | `volts` |
+| `fuse.cartridge`, `fuse.cermet` (metal film on ceramic), `fuse` (any other style) | `amps`: the rated current, held to the current the project states for the part | `volts` |
 | `ferrite`, `switch` | | `amps`: held to the current the project states. `volts` |
 | `link`, `testpoint`, `mechanical` | | |
 | `ic` | `family`: `digital`, `linear`, `regulator.linear` or `regulator.switching`; `pins` | `needs`, `switching` |
@@ -287,9 +287,13 @@ rating.
   current through a fuse, a ferrite and a switch are held to the current
   `ratings.json` states for the part. A rating the datasheet gives at 2
   temperatures is read at the project's ambient. Neither pack holds a
-  rule for a fuse, a ferrite or a switch: each is held to its own rating.
-  A stated current whose part has no current rating in its facts is not
-  judged.
+  rule for a ferrite or a switch: each is held to its own rating. A fuse
+  is held by its style: NASA's pack holds a `fuse.cartridge` to the row of
+  its table 4 that lists its rating, ECSS's pack holds a `fuse.cermet` to
+  its table 6-17, and every other fuse is held to its own rating
+  (`rules/ratings/README.md`, "A fuse"). A cartridge fuse whose rating
+  table 4 does not list, 6.3 A, is not judged. A stated current whose part
+  has no current rating in its facts is not judged.
 - The nets a wire joins are 1 node: a fuse, a ferrite, a link, a 0 ohm
   resistor, an inductor. A part between 2 nets of 1 node has 0 V across
   it, and its line says `2 nets that a wire joins`.
