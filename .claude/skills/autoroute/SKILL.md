@@ -72,6 +72,51 @@ session (`.ses`). There are 2 ways in:
    `.ses` path to the human with that instruction.
 4. `workcenter drc .` again.
 
+## Steps, the routing benchmark
+
+`workcenter bench` routes design files with each router and compares the
+runs. Run it before a router or a route option becomes a board's default.
+It writes only into `--out`.
+
+1. Copy the boards to a scratch folder first. A run writes the board
+   into `--out`, never into the project, but a board that other people
+   change while it runs gives numbers for no one version.
+2. `workcenter bench <copy>/design.py --out <scratch>/bench --time-limit 300 --threads 2 --order`.
+   One line per run:
+   - `bench <board> <router>: 33.2 s, 54/54 (100.0 %) joined, 0 DRC errors, 2 commands, 2015 bytes read`:
+     judged. The share joined is counted on the routed board (each net's
+     pads less 1) against the DRC's unconnected items.
+   - `stopped at the time limit (300 s); not judged`: the route did not
+     end in time. No number of that run is used. Exit code 2.
+   - `not run: no router at <jar>`: the jar is not there. Exit code 2.
+   - `<board> takes <router>: <why>`: the router the board takes. Another
+     router, or `<router>+order`, takes a board only when it joins as
+     large a share with no more DRC errors in no more time.
+3. `--router NAME=JAR` (repeatable) names each FreeRouting jar to run; the
+   first is the default. Without it the workcenter's own jar runs.
+4. `workcenter bench --out <scratch>/bench` with no design file rebuilds
+   `bench.md`, the table of every run in the folder.
+5. Each run's folder `<out>/<board>/<router>/` holds the board, the
+   route's output (`route.txt`), the DRC's (`drc.txt`) and `run.json`.
+   Read `route.txt` for a run that is not judged.
+
+## Steps, a route in a fixed order
+
+`workcenter design design.py --route --order` routes in 4 stages, 1
+FreeRouting run each, each on the copper of the stages before it:
+
+1. `pours`: the nets with a `d.zone`.
+2. `fan-out`: the nets of each part whose pads stand 0.5 mm apart or
+   closer (P4 step 11).
+3. `pairs`: 2 nets whose names differ only in a last `P`/`N` or `+`/`-`.
+4. `rest`: every other net with 2 pads or more.
+
+A `stage <n> <name>: <nets> nets, <segments> segments, <vias> vias` line
+follows the `routed:` line for each stage. `--order` takes no `--seed`.
+It is not the default: on the 3-part board of `tests/test_routeorder.py`
+it took 21.67 s where the plain route took 6.87 s, both with 0 DRC
+errors. Bench it with `--order` before a board takes it.
+
 ## Known behaviour
 
 - FreeRouting writes session coordinates at 10 times the declared
@@ -81,7 +126,12 @@ session (`.ses`). There are 2 ways in:
 - The engine is FreeRouting 1.9.0. Release 2.1.0 checks GitHub for
   updates and, when that fails, sleeps forever after routing without
   saving the session; `install.sh` pins 1.9.0 for that reason. Pass
-  `--passes` to trade time for completion.
+  `--passes` to trade time for completion. Releases 2.2.2, 2.4.1 and
+  2.5.0 hold class files of version 69 (the header of
+  `app/freerouting/Freerouting.class` in each jar); the workcenter's
+  Java 21.0.13 reads up to version 65 (`java -XshowSettings:properties
+  -version` prints `java.class.version = 65.0`). None of them has been
+  benchmarked.
 - Per-net widths and vias come from `d.net_classes`; FreeRouting honours
   them through DSN classes. The DRC checks them through the project's
   net class patterns.
