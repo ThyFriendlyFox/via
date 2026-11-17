@@ -46,7 +46,7 @@ module, the chip tools in their own folder).
 
 | Line | What to do |
 |---|---|
-| `FAILED <id> (shard N)` | A test failed. Run its file alone: `python -m pytest <file> -q`. |
+| `FAILED <id> (shard N) at T s` | A test failed, T seconds after its shard started; the line comes while the other shards run on. Run its file alone: `python -m pytest <file> -q`. |
 | `shard N exited <code>` | pytest in that shard did not pass. Its log is under the `logs:` folder the run printed. |
 | `shard N ended with no summary line` | The shard was killed or crashed. Read the end of its `pytest.log`. |
 | `missing: <id>` | 1 process collects the test, and no shard ran it. |
