@@ -252,7 +252,7 @@ has the procedure from a spec to a GREEN board.
 has every flag.
 
 <details>
-<summary>The 26 commands</summary>
+<summary>The 27 commands</summary>
 
 | Command | What |
 |---|---|
@@ -264,6 +264,7 @@ has every flag.
 | `gates` | The 4 gates in order; the last line is the verdict. |
 | `verify` | Check a verification package against a fresh run; say whether the requirements are met. |
 | `ratings` | Hold a schematic to its parts' ratings: each pin's voltage limits, each part's derating by a named standard, each regulator's output, load and support parts. Every limit names its document, and a pack's rule and a pin's limit their page. |
+| `references` | The index of the standards and datasheets the rules cite, each with its URL and the SHA256 of the copy the rule was written from: `fetch` gets each once under the workcenter's own name into a folder outside the repository, `check` judges a file a person downloaded, `rules` fails a rule whose document the index lacks. |
 | `autoroute` | Write FreeRouting's session file for a hand-drawn board's DSN. The import into KiCad is by hand. |
 | `inspect` | Read a routed board: `map`, `list`, `probe`, `net`, `islands`, `resistance`, `crossed`. |
 | `placement` | Run a kistack placement check on a board. |
@@ -323,6 +324,7 @@ images are drawn.
 | `tools/simcorners.py`, `tools/freqplan.py` | The corners a deck runs at; the frequency plan. Read by the SIM gate. |
 | `tools/guide.py` | `workcenter next`: the one next step and the fix for each kind of failure. |
 | `tools/ratings.py` | `workcenter ratings`: the voltage span of each net, the facts of each part, and each stress against its limit. Standard library only. |
+| `tools/references.py` | `workcenter references`: the index of the documents the rules cite, the fetch that asks each URL once, and the check of a downloaded file and of the rules. Standard library only. |
 | `tools/chipflow.py` | `workcenter chip`: what the chip gates share. It reads `chip.json`, the constraints and a process table, selects the timing corners, starts the engines and drives the gates to a verdict. |
 | `tools/chipfront.py`, `tools/chipback.py`, `tools/chipscripts/` | The chip gates LINT, SIM, SYNTH and GLSIM; the chip gates LAYOUT, STA, DRC, ANTENNA, LVS and EXPORT; the engine scripts the chip gates run. |
 | `tools/chipguide.py` | `workcenter next` for a chip project: the one next step, from `chip.json` to a GREEN layout. |
@@ -333,9 +335,9 @@ images are drawn.
 | `tools/hooks/` | Claude Code hooks: no `cd` in a command, no test written by a script. |
 | `WORKCENTER.md` | The contract a project gets from this workcenter. |
 | `AGENTS.md`, `CLAUDE.md` | Where an agent starts. The same text. |
-| `.claude/skills/` | `attached-repos`, `autoroute`, `blog-post`, `board-design`, `board-gates`, `board-loop`, `chip-design`, `chip-gates`, `kistack`, `procurement`, `ratings`, `simulate`, `verification`. |
+| `.claude/skills/` | `attached-repos`, `autoroute`, `blog-post`, `board-design`, `board-gates`, `board-loop`, `chip-design`, `chip-gates`, `kistack`, `procurement`, `ratings`, `references`, `simulate`, `verification`. |
 | `templates/` | A first design file, a version's README and gates report, `corners.json`, `frequency-plan.json`, the verification package. |
-| `rules/` | A fabrication house's limits as KiCad design rules. One house so far. `rules/ratings/`: 2 derating standards as packs for `workcenter ratings`, each limit with its table and page. |
+| `rules/` | A fabrication house's limits as KiCad design rules. One house so far. `rules/ratings/`: 2 derating standards as packs for `workcenter ratings`, each limit with its table and page. `rules/references/`: the index of the 9 documents the rules cite (2 standards, 7 datasheets), each with its URL and SHA256; no document itself. |
 | `tests/` | The tests of the tools. `tests/boards/` holds the fixture boards and what each proves. |
 | `examples/` | Example projects made with the workcenter, each in version folders with its own README. |
 | `third_party/kistack/` | The vendored kistack skills. |

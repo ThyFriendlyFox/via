@@ -39,6 +39,19 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-17 — The reference library: 9 documents the rules cite, each fetched once
+
+Roadmap item 2 landed. An index names the 9 documents the rules cite: 2 standards and 7 datasheets.
+Its first real run fetched all 9 under the workcenter's own name. Each had the SHA256 its rule names.
+The title and revision of each entry come from that copy's first page. The fetch keeps a ledger
+beside the copies, so no URL is asked 2 times, and a site that refuses is not asked again. A reviewer
+found 6 faults. The worst: a datasheet named by name alone passed the check. All 6 are fixed, with 28
+more tests. The item is not done: `tools/ratings.py` cites a TI application note, SLVA477C, and the
+index has no entry for it.
+
+Evidence: `tests/test_references.py` 43 passed; `workcenter references rules`: 9 documents named in 7
+files, 9 in the index, 0 not; 4 not judged.
+
 ## 2026-11-17 — The attack on the ratings check: 30 findings on its verdicts
 
 P14 step 6 asks for an attack by someone who did not write the feature. 2 reviewers got a copy of

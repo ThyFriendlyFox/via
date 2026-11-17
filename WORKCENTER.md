@@ -85,6 +85,7 @@ file: it needs nothing else.
 | `blog-post` | A human asks for a public write-up of recent work. |
 | `procurement` | A human asks what a board costs, for its parts list, or to order its parts. |
 | `ratings` | A schematic is to be held to its parts' ratings before layout: each part's facts from its datasheet, with the page of each pin's and each needed part's numbers, the voltages and currents the board cannot say, and `workcenter ratings` until every stress holds. |
+| `references` | A rule cites a standard or a datasheet: get the copy it was written from with `workcenter references fetch`, judge a file a person downloaded with `workcenter references check`, and keep `workcenter references rules` passing. |
 | `kistack` | Placing parts, reviewing a schematic, a layout or the Gerbers, choosing a part's derating, a footprint or symbol, or a panel: it names the kistack skill for the step, and where this workcenter's rules win. |
 | `verification` | A human asks for requirements, a review, an inspection, or proof that a design meets its parts' ratings: the verification package of P28, checked by `workcenter verify`. |
 
@@ -405,6 +406,30 @@ an entry of facts to fill for 1 part. It writes `build/ratings/netlist.xml`,
 `report.md` (every line, the holds too) and `report.json`. It judges steady
 voltages and stated currents: no transient, no temperature, nothing of the
 board. The `ratings` skill is the procedure and holds both file formats.
+
+Not a gate: `workcenter references` keeps the index of the documents the
+rules cite, `rules/references/index.json`: each standard and datasheet
+with its maker or issuer, number, title, revision, URL and the SHA256 of
+the copy the rule was written from. The repository holds the index, never
+a document. `workcenter references fetch [ID ...] [--to DIR]` asks each
+URL once under the workcenter's own name. It keeps each answer in DIR
+(default `~/.cache/ee-workcenter/references`, never inside a repository)
+with a `ledger.json`, and a later run asks again for none (`--again ID`
+asks once more). Each document is `kept` (the indexed copy), `changed`
+(another SHA256; the copy is kept for a reader), `refused` (401 or 403;
+never asked under another name), `gone` (404 or 410), `not given` (429 or
+a 5xx: no copy and no verdict) or `not reached` (no answer). `not given`
+and `not reached` are not recorded and are asked again. Exit 1 on a
+`changed`, `refused` or `gone` document, else exit 2 on a `not given` or
+`not reached` one. A ledger of another shape is refused on 1 line.
+`workcenter references check FILE [--id ID] [--keep]` says whether a file
+a person downloaded is the copy an entry names. `workcenter references
+rules [PATH ...]` fails each document a rule file names under `document`
+or `source` that the index lacks, names at another URL, or names without
+both a URL and a SHA256. Only a source whose `document` is `no datasheet:
+<why>` or `no document: <why>` is not judged. `make verify` runs it on
+`rules/ratings/` and `tests/boards/**/facts/` through
+`tests/test_references.py`. The `references` skill is the procedure.
 
 Not a gate: `workcenter verify <project>` checks the project's verification
 package (`PROCESSES.md` P28, the `verification` skill) in

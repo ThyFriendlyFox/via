@@ -1111,3 +1111,15 @@ What happened: While I built `workcenter ratings` I changed repository files by 
 Cost: 3 diffs read back, 18 files compared, 1 entry.
 Root cause: For an hour before the first change I had edited scratch pages by heredoc scripts, where P9 does not apply, and I carried the habit into the repository. With no hook loaded nothing stopped a command, and I did not read a command for a write before I sent it. This is M182's act again, and M182's entry had changed a count in a step and nothing a writer does.
 Process: P9
+
+## M184 — 2026-11-17 — A test file changed by `sed -i`, against the brief
+What happened: In the worktree of `wip/r2` I renamed 1 helper of `tests/test_references.py` (`Maker_url` to `url_of`) and removed 1 comment with `sed -i`. Every change to a repository's file goes through the Edit tool. The result was right: I read it back with Grep. The act is the one of M65, M111, M156, M165, M168, M182 and M183.
+Cost: 1 read-back, 1 entry.
+Root cause: A rename across 3 lines read as 1 shell command, and no hook loads in the session to stop it.
+Process: P9
+
+## M185 — 2026-11-17 — `references rules` passed a datasheet named by name alone
+What happened: On `wip/r2`, a facts source `{"document": "Murata GRM188R71E104KA01 datasheet", ...}` with no URL and no SHA256 was printed as `not judged`, exit 0. That is the verdict of a part made up with no datasheet. The Promise of ROADMAP item 2 says a rule that names a document the index lacks fails `make verify`. A mutation run also found 8 guards of `tools/references.py` that no test held, and 5 bad inputs ended in a traceback.
+Cost: A reviewer's 6 findings; 28 tests, each seen to fail first; a mutation run, 19 of 19 mutants killed.
+Root cause: I read "no URL and no SHA256" as "no document", with no field that says which. I wrote the tests for the Evidence and not for every line of the README. A source with no document now says so as `no datasheet: <why>`; any other fails on 1 line.
+Process: P14
