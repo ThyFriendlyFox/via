@@ -1123,3 +1123,21 @@ What happened: On `wip/r2`, a facts source `{"document": "Murata GRM188R71E104KA
 Cost: A reviewer's 6 findings; 28 tests, each seen to fail first; a mutation run, 19 of 19 mutants killed.
 Root cause: I read "no URL and no SHA256" as "no document", with no field that says which. I wrote the tests for the Evidence and not for every line of the README. A source with no document now says so as `no datasheet: <why>`; any other fails on 1 line.
 Process: P14
+
+## M186 — 2026-11-17 — The greatest pin current called the stricter side
+What happened: The board rule pack took the current on a net as the greatest current `ratings.json` states for 1 pin on it, and its README called that "on the stricter side". A return shared by 2 loads of 0.6 A carries 1.2 A, which asks 1.0375 mm where 0.6 A asks 0.319 mm; the reviewer's board passed with 0.8 mm. The bounding box of the outline stood for its area the same way: an L of 2800 mm2 passed as 6400 mm2, where the model holds only over 5625 mm2.
+Cost: 2 false passes found by the reviewer, 2 fixes with tests.
+Root cause: A simplification was written down as conservative without working 1 case through. The outline reader was written for the fixture's rectangle alone, where P7 step 3 asks a sample of every shape the format allows.
+Process: P7
+
+## M187 — 2026-11-17 — A rule file KiCad dropped in silence read as a pass
+What happened: A net name with an apostrophe broke the generated `.kicad_dru`. kicad-cli 10 dropped the whole file, exit 0, no message, and the reader took the absence of rule violations for a pass.
+Cost: 1 false pass on every gap of every net of such a board.
+Root cause: The reader counted violations of the pack's rules and never saw that KiCad had read them. P7 step 5 asks a sample of each way a tool fails; the build had none for a rule file KiCad does not read.
+Process: P7
+
+## M188 — 2026-11-17 — A test run while a health gate ran
+What happened: While fixing the review, I ran 3 tests of `tests/test_boardrules_drc.py` (3.7 s, kicad-cli) on a scratch copy while `GATE.lock` existed. The command printed `GATE` before it ran and did not stop on it.
+Cost: 3.7 s of 1 processor taken from a health gate.
+Root cause: The check for the lock printed instead of ending the command: `[ -e GATE.lock ] && echo GATE;` goes on to the next command either way.
+Process: P31

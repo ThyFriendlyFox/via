@@ -85,6 +85,7 @@ file: it needs nothing else.
 | `blog-post` | A human asks for a public write-up of recent work. |
 | `procurement` | A human asks what a board costs, for its parts list, or to order its parts. |
 | `ratings` | A schematic is to be held to its parts' ratings before layout: each part's facts from its datasheet, with the page of each pin's and each needed part's numbers, the voltages and currents the board cannot say, and `workcenter ratings` until every stress holds. |
+| `board-rules` | A routed board is to be held to a standard: each gap to the voltage between its nets and each track's width to its net's current, from `ratings.json`, with `board-rules.json` naming the pack; or to a fab's published limits. |
 | `references` | A rule cites a standard or a datasheet: get the copy it was written from with `workcenter references fetch`, judge a file a person downloaded with `workcenter references check`, and keep `workcenter references rules` passing. |
 | `kistack` | Placing parts, reviewing a schematic, a layout or the Gerbers, choosing a part's derating, a footprint or symbol, or a panel: it names the kistack skill for the step, and where this workcenter's rules win. |
 | `verification` | A human asks for requirements, a review, an inspection, or proof that a design meets its parts' ratings: the verification package of P28, checked by `workcenter verify`. |
@@ -151,7 +152,8 @@ only read.
 A board made for a particular fab checks that fab's published limits in the
 DRC: `rules/` holds them as KiCad design rules (`sierra-circuits-web` for
 Sierra Circuits' Web PCB: 4 mil trace and gap, 6 mil hole and ring, 13 mil
-inner drill to copper, 5 mil legend). A design file's `fab = "<name>"`
+inner drill to copper, 5 mil legend; `jlcpcb-2layer`, `pcbway-standard`
+and `oshpark-2layer` for those fabs' services). A design file's `fab = "<name>"`
 writes the set into the project for good, and the router and the generator's
 own via checks keep each layer's hole-to-copper rule (the 13 mil on the inner
 layers, M79); `workcenter drc|gates --fab
@@ -161,6 +163,21 @@ add floors: its board-wide limits raise the board's own minimums, and only
 its layer and condition rules go into the project's `.kicad_dru`, raised to
 the board's own where those are stricter. A board-wide custom rule would
 override every net class's clearance in KiCad's DRC.
+
+A project that holds `board-rules.json` (`{"pack": "<name>"}`) beside its
+board is held to that board rule pack too, after KiCad's own rules:
+`rules/board/<name>.json` (`ecss-q-st-70-12c-rev1`), or a pack of the
+project's own by its path from the project's folder. The voltage of each
+net and the current on it come from `ratings.json`; without that file the
+DRC is red with 1 line. Each gap is held to the voltage between its 2 nets
+and each track's width to its net's current; vias are counted against the
+wall a pack gives, and the shipped pack gives none, so they are not judged.
+KiCad measures the pack's gaps on a copy in `build/board-rules/`, with 1
+witness rule per net that shows KiCad read the rule file; the project's
+files do not change. The DRC line ends `board rules <pack>: N fail, M not
+judged`, and each failure names its document, clause, table and page. A
+net whose name a KiCad rule cannot hold is not judged. With `--strict`, a
+line not judged fails the gate. The `board-rules` skill is the procedure.
 
 Not a gate, but part of every hand-off: `workcenter render <project>` writes
 the schematic, board top and bottom, and 3D images into `build/render/`, and
@@ -586,6 +603,8 @@ and no analog block. The engines install on request:
 - Optional: `ratings.json` beside the schematic, and `library/facts/*.json`
   in the project's folder or a folder above it, for `workcenter ratings`;
   the `ratings` skill has both formats
+- Optional: `board-rules.json` beside the board, `{"pack": "<name>"}`, for
+  the board rule pack the DRC holds the board to; it needs `ratings.json`
 - Optional, a project kept as version folders (`v0.1/`, `v0.2/`, ... at the
   repository's root, a nested board one folder down): `parts/catalog.csv`,
   `parts/version/<id>.csv` and `parts/offboard/<id>.csv` for `workcenter

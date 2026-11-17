@@ -82,7 +82,7 @@ unset variable never causes a failure.
 | `--init` | verify | off | Copy `templates/verification/` into the package and a writeup per `sim/*.cir` into `simulations/<deck>/`, never over a file that exists. `BRIEF.md` and `FACTS.md`, the helpers' brief and facts file, stay out. The new files fail the check until each `<!-- fill ... -->` is written. |
 | `--boards LIST` | procure, costs | `1,10` | Units to price, comma-separated; each gets its cheapest order and totals per supplier; for costs, a column each in the totals table, the largest also judging stock. |
 | `--step` | gates, export | off | Also export a STEP model. |
-| `--fab NAME` | gates, drc | none | Also check a fab's limits: a rule set in `rules/` (`sierra-circuits-web`) or a `.kicad_dru` path, laid over the project's own rules on a copy in `<out>/fab-<name>/`. A design file's `fab` field does the same for good (`rules/README.md`). |
+| `--fab NAME` | gates, drc | none | Also check a fab's limits: a rule set in `rules/` (`sierra-circuits-web`, `jlcpcb-2layer`, `pcbway-standard`, `oshpark-2layer`) or a `.kicad_dru` path, laid over the project's own rules on a copy in `<out>/fab-<name>/`. A design file's `fab` field does the same for good (`rules/README.md`). |
 | `--dsn FILE` | autoroute | `<project>/<name>.dsn`, then `build/route/<name>.dsn` | Specctra DSN exported from KiCad. Absent means the command skips. |
 | `--passes N` | autoroute, design | `20` autoroute, `60` design | FreeRouting optimisation passes. |
 | `--threads N` | autoroute | engine default | FreeRouting thread count. |
@@ -141,6 +141,12 @@ unset variable never causes a failure.
 A part's facts are 1 entry of a file in `library/facts/`, in the project's
 folder or a folder above it; a rule pack is 1 file of `rules/ratings/`. The
 `ratings` skill has every key of both.
+
+## `board-rules.json` (beside a board, for `workcenter drc` and `gates`)
+
+| Field | Type | Default | Use |
+|---|---|---|---|
+| `pack` | name or path | none (required) | The board rule pack the DRC holds the board to: a file of `rules/board/` without `.json` (`ecss-q-st-70-12c-rev1`), or the path of a pack from the project's folder. The volts and amps come from the project's `ratings.json`, which must stand beside the board. No file: no pack. |
 
 ## `pictures.json` (a version's, for `workcenter pictures`)
 

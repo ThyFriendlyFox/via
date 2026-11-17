@@ -535,14 +535,36 @@ def test_rules_fail_a_source_that_names_a_document_it_does_not_pin(tmp_path, sou
 
 
 def test_every_document_a_rule_of_the_repository_names_is_in_the_index():
-    """`make verify` runs this. The packs name 2 standards, the 3 facts files of 1 part 3 datasheets,
-    passives.json 4: 2 + 3 + 4 = 9 named. made-up.json's 4 parts name no document: 4 not judged."""
+    """`make verify` runs this. The rating packs name 2 standards, the board pack 1, the 3 facts files
+    of 1 part 3 datasheets, passives.json 4: 2 + 1 + 3 + 4 = 10 named. made-up.json's 4 parts name no
+    document: 4 not judged."""
     code, out = run("rules")
     assert code == 0, out
-    files = 2 + 5
+    files = 2 + 1 + 5
     assert out.splitlines()[-1] == (
-        f"references rules: 9 documents named in {files} files, 9 in the index, 0 not; 4 not judged"
+        f"references rules: 10 documents named in {files} files, 10 in the index, 0 not; 4 not judged"
     )
+
+
+def names_a_document(data: object) -> bool:
+    if isinstance(data, dict):
+        return any(k in data for k in ("document", "source")) or any(map(names_a_document, data.values()))
+    return isinstance(data, list) and any(map(names_a_document, data))
+
+
+def test_the_index_globs_cover_every_rule_file_under_rules():
+    """A pack in a new folder of rules/ (rules/board/, roadmap item 6) is read by `make verify` only when
+    a glob of the index covers it; a pack outside them named a document the index lacked and passed."""
+    globbed = {
+        p for pattern in json.loads(INDEX.read_text(encoding="utf-8"))["rules"] for p in ROOT.glob(pattern)
+    }
+    naming = [
+        p
+        for p in sorted((ROOT / "rules").rglob("*.json"))
+        if p != INDEX and names_a_document(json.loads(p.read_text(encoding="utf-8")))
+    ]
+    assert naming
+    assert [str(p.relative_to(ROOT)) for p in naming if p not in globbed] == []
 
 
 def test_the_repository_holds_no_document_the_index_names():

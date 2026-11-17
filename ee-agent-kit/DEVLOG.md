@@ -39,6 +39,24 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-17 — Board rules from a free standard, and a rule file KiCad dropped in silence
+
+Roadmap item 6 landed in part. ECSS-Q-ST-70-12C Rev.1 is free from ecss.nl. Its table 13-3 gives
+the gap as manufactured. Table 13-7 (pages 130 and 131) gives the same limits as designed, with the
+tolerance in, and the pack takes that one. The text extraction lost both tables, so each was read off
+a rendered page. Annex D's worked example, 1 A on 925 um by 25 um at 5 C, comes out at 1.0002 A. The
+standard gives a via's wall only for HDI boards, so the shipped pack judges no via. A reviewer found 7
+faults. The worst: a net named `VIN'A` broke the rule file, and kicad-cli 10 dropped the whole file,
+exit 0, with no message. The board passed. Each rule file now holds 1 witness rule per net that fails
+on every item of the net, and the gate is red when KiCad does not report it. The same run showed that
+a condition compares names without case and reads `*` as a wildcard. JLCPCB, PCBWay and OSH Park each
+served their capability page to the workcenter's own client name. On integration the board pack named
+a standard the reference index lacked, and `make verify` did not see it: the index's globs left out
+`rules/board/`. I added the entry and the glob, with a test.
+
+Evidence: `tests/test_boardrules.py` 92 passed, `tests/test_boardrules_drc.py` 11 passed;
+`workcenter references rules`: 10 documents named in 8 files, 10 in the index, 0 not.
+
 ## 2026-11-17 — The reference library: 9 documents the rules cite, each fetched once
 
 Roadmap item 2 landed. An index names the 9 documents the rules cite: 2 standards and 7 datasheets.

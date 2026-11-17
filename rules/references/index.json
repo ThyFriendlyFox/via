@@ -1,5 +1,5 @@
 {
-  "rules": ["rules/ratings/*.json", "tests/boards/**/facts/*.json"],
+  "rules": ["rules/ratings/*.json", "rules/board/*.json", "tests/boards/**/facts/*.json"],
   "documents": [
     {
       "id": "nasa-eee-inst-002",
@@ -21,6 +21,17 @@
       "revision": "23 June 2021",
       "url": "https://ecss.nl/wp-content/uploads/2022/07/ECSS-Q-ST-30-11C-Rev.2(23June2021).pdf",
       "sha256": "10cf7066fad0314918c6a7d38517bbcf7cb00e206480fc10377e9fdb83e7db6e",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "ecss-q-st-70-12c-rev1",
+      "kind": "standard",
+      "issuer": "European Cooperation for Space Standardization (ECSS)",
+      "number": "ECSS-Q-ST-70-12C Rev.1",
+      "title": "Space product assurance - Design rules for printed circuit boards",
+      "revision": "30 April 2025",
+      "url": "https://ecss.nl/wp-content/uploads/2025/05/ECSS-Q-ST-70-12C-Rev.1(30April2025).pdf",
+      "sha256": "c3063bf2145ec866e9d59a7b6580c2dc1a635c7289d0a57c456c21c92c7a2f7d",
       "read": "2026-11-17"
     },
     {

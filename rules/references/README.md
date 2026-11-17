@@ -1,7 +1,8 @@
 # The reference library
 
 `index.json` names each document a rule of the workcenter cites: the standards of the rating packs
-(`rules/ratings/*.json`) and the datasheets of the fixtures' facts (`tests/boards/**/facts/*.json`).
+(`rules/ratings/*.json`) and of the board rule pack (`rules/board/*.json`), and the datasheets of the
+fixtures' facts (`tests/boards/**/facts/*.json`).
 Each entry holds the maker or the issuer, the number, the title, the revision, the URL and the SHA256 of
 the copy the rule was written from. The repository holds the index and the rules, never a document:
 the makers' and the issuers' terms forbid a copy.
@@ -10,6 +11,7 @@ the makers' and the issuers' terms forbid a copy.
 |---|---|---|---|
 | `nasa-eee-inst-002` | standard | EEE-INST-002 (NASA/TP-2003-212242) | May 2003, with Addendum 1 of April 2008 |
 | `ecss-q-st-30-11c-rev2` | standard | ECSS-Q-ST-30-11C Rev.2 | 23 June 2021 |
+| `ecss-q-st-70-12c-rev1` | standard | ECSS-Q-ST-70-12C Rev.1 | 30 April 2025 |
 | `ti-slvsdg1` | datasheet | SLVSDG1C (TLV62569) | December 2016, revised October 2017 |
 | `ti-sces579` | datasheet | SCES579J (SN74AUP1G17) | June 2004, revised September 2017 |
 | `ti-sces351` | datasheet | SCES351Y (SN74LVC1G17) | July 2001, revised October 2025 |
@@ -20,7 +22,9 @@ the makers' and the issuers' terms forbid a copy.
 
 On 2026-11-17 `workcenter references fetch` got all 9 under the workcenter's own name, and each copy
 had the SHA256 its entry names: `9 kept, 0 changed, 0 refused`. The title, number and revision of each
-entry were read from the first page of that copy.
+entry were read from the first page of that copy. The same day `ecss-q-st-70-12c-rev1`, the standard
+of the board rule pack, was fetched alone: `1 kept, 0 changed, 0 refused`. Its number, title and
+revision are those of its first page.
 
 ## The 3 commands
 
