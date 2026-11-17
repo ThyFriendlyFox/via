@@ -395,9 +395,10 @@ def test_the_quick_start_runs_as_written_and_ends_as_its_comments_say(tmp_path):
 
 def links_of(page: Path) -> list[str]:
     """Each address a page names: its links, its pictures and its scripts, and what a `url()` in its
-    markup loads."""
+    markup loads. Not the host's own: Vercel serves `/_vercel/insights/script.js`, its analytics."""
     text = page.read_text(encoding="utf-8")
-    return re.findall(r'(?:href|src)="([^"]+)"', text) + re.findall(r"url\(([^)\s]+)\)", text)
+    found = re.findall(r'(?:href|src)="([^"]+)"', text) + re.findall(r"url\(([^)\s]+)\)", text)
+    return [link for link in found if not link.startswith("/_vercel/")]
 
 
 def example_pages() -> list[Path]:
