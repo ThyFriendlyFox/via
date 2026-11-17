@@ -330,6 +330,18 @@ HINTS: list[tuple[str, str, str]] = [
         f'{SIMULATE}, "Steps"',
     ),
     (
+        r"^sim: thermal: .* junction \S+ C, over ",
+        "The part runs past its derated junction limit at that corner. Take power off it, or choose a "
+        f"package with a lower RthetaJA. Never narrow the corner. {RULE}",
+        f"{SIMULATE}, \"A part's temperature\"",
+    ),
+    (
+        r"^sim: (thermal: |.*thermal\.json: )",
+        "Do what the line asks: write the part's thermal facts, print its power at every run, or correct "
+        "sim/thermal.json.",
+        f"{SIMULATE}, \"A part's temperature\"",
+    ),
+    (
         r"^sim: no sim/frequency-plan\.json",
         "Write sim/frequency-plan.json: every periodic source with its frequency and where that comes "
         "from, every resonance an .ac deck measured. Copy templates/project/frequency-plan.json.",

@@ -1,0 +1,19 @@
+* Thermal fixture: U1, a TLV75533PDBVR (TLV755P datasheet SBVS320D), takes 5 V to 3.3 V for R1, 33 ohm.
+* U1 is drawn as what it does: its output holds 3.3 V, and its input carries its load's current and its
+* greatest ground current, 40 uA (section 5.5, IGND at -40 to 125 C, page 5). R1 is a CRCW2512 33R0 FK:
+* 1 %, 100 ppm/K (Vishay document 20035, pages 1 and 3). The deck takes the end of the TCR that makes
+* the load heavier when hot. p_u1 is U1's input power less its output power: what its junction dissipates.
+.options tnom=25 temp=25
+VIN in 0 DC 5
+BU1 reg 0 V=3.3
+VU1 reg out DC 0
+FU1 in 0 VU1 1
+IU1 in 0 DC 40u
+R1 out 0 33 tc1=-100u
+.control
+op
+let iout = i(vu1)
+let p_u1 = -v(in) * i(vin) - v(out) * i(vu1)
+print iout p_u1
+.endc
+.end

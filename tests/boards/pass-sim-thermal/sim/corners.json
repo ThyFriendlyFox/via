@@ -1,0 +1,4 @@
+{
+  "temperature": { "values": [-20, 60], "source": "the fixture's ambient, -20 to 60 C" },
+  "tolerance": { "R": 0.01, "source": "R1, CRCW2512 33R0 FK: 1 %, Vishay document 20035, page 3" }
+}

@@ -387,6 +387,14 @@ def partdata():
     return module
 
 
+def thermal():
+    """tools/thermal.py: a part's junction temperature at each run of the SIM gate."""
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import thermal as module
+
+    return module
+
+
 def deck_part_data(
     project: Project, folder: Path, sources: Path | None, decks: list[Path]
 ) -> tuple[dict, dict, dict, list, list]:
@@ -585,7 +593,8 @@ def link_siblings(deck: Path, where: Path) -> None:
     the deck reads by a statement the gate does not rewrite (`source print.sp` in `.control`, a
     `file="stim.txt"` of a model) is then found, as it is when the deck runs in place. Files are
     links and folders are real, so a run that writes a new file writes it in its own folder."""
-    skip = {deck.name, simcorners().CORNERS_FILE, freqplan().PLAN_FILE, ".spiceinit", "run"}
+    plans = {simcorners().CORNERS_FILE, freqplan().PLAN_FILE, thermal().PLAN_FILE}
+    skip = {deck.name, *plans, ".spiceinit", "run"}
     for entry in sorted(deck.parent.iterdir()):
         target = where / entry.name
         if entry.name in skip or entry.name.endswith(".expect.json") or target.exists():
@@ -608,6 +617,7 @@ def run_corners(
     both_ways: set[str] = frozenset(),
     sweep: bool = False,
     rewrite=None,
+    sound_runs: list | None = None,
 ) -> tuple[dict, list[str], list[str]]:
     """One deck at its corners (tools/simcorners.py, sim/corners.json): (record, failures, warnings).
 
@@ -619,7 +629,8 @@ def run_corners(
     carry its resonance across its span, and the Monte Carlo draws. A bound holds when it holds at
     every corner; a corner that did not run, or ran at another temperature than its own, fails.
     `both_ways` names measures something else reads the least and the greatest of (a resonance of the
-    frequency plan, a requirement's check): their worst case is looked for on both sides."""
+    frequency plan, a requirement's check): their worst case is looked for on both sides. `sound_runs`,
+    when given, gets each corner that ran clean at its own temperature, with its measures."""
     sc = simcorners()
     if spec.skip:
         return {"skip": spec.skip}, [], []
@@ -737,6 +748,8 @@ def run_corners(
             sound.append((corner, r["measures"]))
             for line in earlier_out(deck.stem, r, cornered, f" at {corner.label}"):
                 early.setdefault(line.split("=", 1)[0], line)
+    if sound_runs is not None:
+        sound_runs.extend(sound)
     said = {line.split("=", 1)[0] for line in earlier_out(deck.stem, written, expect)}
     failures += [line for key, line in early.items() if key not in said]
     held: dict[str, bool] = {}
@@ -844,11 +857,19 @@ def gate_sim(
             read_sources(sources)
         except (OSError, ValueError) as exc:
             return Result("sim", "error", f"{sources}: {exc}")
-    sc, fp = simcorners(), freqplan()
+    sc, fp, th = simcorners(), freqplan(), thermal()
     corners, corner_problems = sc.read_corners(sim_dir, [d.stem for d in every])
     plan, plan_problems = fp.read_plan(sim_dir)
-    for file_name, problems in ((sc.CORNERS_FILE, corner_problems), (fp.PLAN_FILE, plan_problems)):
+    heat, heat_problems = th.read_plan(sim_dir, [d.stem for d in every])
+    for file_name, problems in (
+        (sc.CORNERS_FILE, corner_problems),
+        (fp.PLAN_FILE, plan_problems),
+        (th.PLAN_FILE, heat_problems),
+    ):
         failures += [p if p.startswith(file_name) else f"{file_name}: {p}" for p in problems]
+    # Each deck's runs that ran clean at their own temperature, for the junctions of sim/thermal.json:
+    # (label, ambient C, measures), the deck as written first. A deck that did not run clean has none.
+    heat_runs: dict[str, list | None] = {}
     wanted = set(both_ways)
     for r in plan.resonances if plan else []:
         wanted |= {ref for ref in (r.hz, r.q) if isinstance(ref, str)}
@@ -990,6 +1011,9 @@ def gate_sim(
                 f"env -C {shlex.quote(str(prepared.parent))} {NGSPICE} -b {prepared.name}"
             )
         artifacts.append(str(log))
+        written_at = sc.ran_at(written["text"])
+        heat_runs[deck.stem] = [(th.WRITTEN, written_at, measures)] if ran_clean else None
+        sound: list = []
         # The corners, when the project names any: a deck that did not run as written has none to add.
         if corners and deck.stem in corners and not nominal and ran_clean:
             record, corner_failures, corner_warnings = run_corners(
@@ -1004,7 +1028,9 @@ def gate_sim(
                 {ref.split(".", 1)[1] for ref in wanted if ref.split(".", 1)[0] == deck.stem},
                 sweep=deck.stem in answering,
                 rewrite=(lambda t: pd.apply(t, curves)[0]) if applied else None,
+                sound_runs=sound,
             )
+            heat_runs[deck.stem] += [(c.label, written_at if c.temp is None else c.temp, m) for c, m in sound]
             failures += corner_failures
             warned += corner_warnings
             details[deck.stem]["corners"] = record
@@ -1088,6 +1114,11 @@ def gate_sim(
             judged = fp.check_plan(plan, values, bounded, stimuli)
             failures += [f"frequency plan: {f}" for f in judged.pop("failures")]
             warned += [f"frequency plan: {w}" for w in judged.pop("warnings")]
+    heated = None
+    if heat is not None:
+        heated, heat_failures, heat_unjudged = sim_thermal(project, heat, heat_runs)
+        failures += heat_failures
+        warned += heat_unjudged
     if strict:
         failures += warned
     summary = f"{len(decks)} decks"
@@ -1108,9 +1139,37 @@ def gate_sim(
             "ngspice": tool_version([NGSPICE, "--version"], r"(?<=ngspice-)\d+"),
             "corners": None if corners is None else {"runs": corner_runs, "nominal_only": nominal},
             "frequency_plan": judged,
+            "thermal": heated,
         },
         artifacts,
     )
+
+
+def sim_thermal(project: Project, heat, heat_runs: dict) -> tuple[dict | None, list[str], list[str]]:
+    """The junctions of sim/thermal.json at the runs of the decks (tools/thermal.py): (record, failures,
+    not judged). The facts are the project's library/facts, as `ratings` finds them; the pack is the
+    one the file names. A part whose deck this run left out (`--deck`) is not judged, and says so."""
+    th, rt = thermal(), ratings()
+    try:
+        library = rt.find_facts(project.dir)
+        facts = rt.read_facts(library) if library else []
+        pack = rt.read_pack(
+            rt.find_pack(heat.pack, project.dir, SRC_DIR / "rules" / "ratings"),
+            own="" if (SRC_DIR / "rules" / "ratings" / f"{heat.pack}.json").is_file() else heat.pack,
+        )
+    except rt.Refusal as exc:
+        message = str(exc).replace("ratings.json: pack:", f"{th.PLAN_FILE}: pack:")
+        return None, [message if message.startswith(th.PLAN_FILE) else f"{th.PLAN_FILE}: {message}"], []
+    left = [p for p in heat.parts.values() if p.deck not in heat_runs]
+    ran = th.Plan(heat.pack, {r: p for r, p in heat.parts.items() if p.deck in heat_runs})
+    judged = {"failures": [], "not_judged": [], "parts": {}}
+    if ran.parts:
+        judged = th.judge(ran, heat_runs, facts, pack)
+    unjudged = judged["not_judged"] + [
+        f"thermal: {p.ref} ({p.mpn}) not judged: its deck {p.deck} was not run (--deck)" for p in left
+    ]
+    record = {"pack": pack.name, "parts": judged["parts"], "not_judged": unjudged}
+    return record, judged["failures"], unjudged
 
 
 BUNDLE_RUN = "run.sp"
@@ -1204,7 +1263,7 @@ def write_bundle(
     # The other files of the deck's folder go along: one the deck reads by a statement the gate does
     # not rewrite (`source print.sp`, a model's `file="stim.txt"`) is then beside it, as in the project.
     beside = []
-    held = {simcorners().CORNERS_FILE, freqplan().PLAN_FILE, ".spiceinit"}
+    held = {simcorners().CORNERS_FILE, freqplan().PLAN_FILE, thermal().PLAN_FILE, ".spiceinit"}
     for entry in sorted(deck.parent.iterdir()):
         own = entry.suffix == ".cir" or entry.name.endswith(".expect.json") or entry.name in held
         if entry.is_file() and not own and not (folder / entry.name).exists():
@@ -1342,6 +1401,12 @@ def cmd_sim(args) -> int:
             print(f"rerun {name}: {deck['rerun']}")
         if deck.get("bundle"):
             print(f"bundle {name}: ngspice -b {shlex.quote(str(Path(deck['bundle']) / BUNDLE_RUN))}")
+    for ref, part in ((result.details.get("thermal") or {}).get("parts") or {}).items():
+        w, worst = part["written"], part["worst"]
+        print(
+            f"thermal {ref}: junction {w['junction']:.5g} C as written ({w['ambient']:g} C), "
+            f"{worst['junction']:.5g} C at its worst ({worst['run']}); limit {part['limit']:g} C"
+        )
     return code
 
 
