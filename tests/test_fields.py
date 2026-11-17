@@ -26,6 +26,12 @@ STUB = ROOT / "tests" / "boards" / "fail-fields-stub"
 CLI = ROOT / "tools" / "workcenter"
 
 
+def pour(net, *layers, square=(90, 90, 130, 140)):
+    """A zone of `net` on `layers`, its outline the rectangle x0, y0 to x1, y1 on each."""
+    x0, y0, x1, y1 = square
+    return (net, layers, {ly: [[(x0, y0), (x1, y0), (x1, y1), (x0, y1)]] for ly in layers})
+
+
 def line_model():
     board = fields.read_board(LINE / "line.kicad_pcb")
     spec = fields.read_spec(LINE / "fields.json")
@@ -149,7 +155,7 @@ def test_a_slanted_track_gets_no_cell_under_a_sixth_of_its_width():
             t("S", "F.Cu", (110.0, 134.0), (109.25, 134.05), 0.15),
             t("S", "F.Cu", (110.3172, 134.0), (110.0, 134.0), 0.25),
         ],
-        zones=[("GND", ("B.Cu",))],
+        zones=[pour("GND", "B.Cu")],
     )
     group = {"name": "s", "nets": ["S"], "band_ghz": [0.1, 10]}
     model = fields.build_model(board, group, {"reference": "GND", "settings": dict(fields.SETTINGS)})
@@ -217,7 +223,7 @@ def test_a_corner_of_a_track_is_closed():
         copper_z={"F.Cu": 0.2, "B.Cu": 0.0},
         dielectrics=[(0.0, 0.2, 4.5, 0.02)],
         tracks=[t("S", "F.Cu", (100, 100), (105, 100), 0.36), t("S", "F.Cu", (105, 100), (105, 105), 0.36)],
-        zones=[("GND", ("B.Cu",))],
+        zones=[pour("GND", "B.Cu")],
     )
     group = {"name": "l", "nets": ["S"], "band_ghz": [0.1, 10]}
     spec = {"reference": "GND", "settings": dict(fields.SETTINGS)}
@@ -235,7 +241,7 @@ def test_a_pour_beside_the_tracks_is_no_plane():
         copper_z={"F.Cu": 0.2, "B.Cu": 0.0},
         dielectrics=[(0.0, 0.2, 4.5, 0.02)],
         tracks=[t("S", "F.Cu", (100, 100), (110, 100), 0.36)],
-        zones=[("GND", ("F.Cu", "B.Cu"))],
+        zones=[pour("GND", "F.Cu", "B.Cu")],
     )
     group = {"name": "p", "nets": ["S"], "band_ghz": [0.1, 10]}
     model = fields.build_model(board, group, {"reference": "GND", "settings": dict(fields.SETTINGS)})
@@ -302,11 +308,14 @@ def test_the_worst_frequency_is_the_one_judged():
 
 def test_a_failure_is_one_line_with_value_limit_and_source():
     """55.8326 ohm against a 45 to 55 ohm window fails above its max; the line names the net, the
-    measure, the value, the limit and the source."""
+    measure, the value, the limit and the source. The impedance is a median over the band, and the
+    line says so and over how many frequencies."""
     limits = [{"measure": "impedance_ohm", "net": "X", "min": 45, "max": 55, "source": "Doc rev 1, 3.2, p 7"}]
-    measures = {"X": {"impedance_ohm": {"value": 55.8326, "at_hz": None}}}
+    measures = {"X": {"impedance_ohm": {"value": 55.8326, "at_hz": None, "median_of": 3}}}
     fails, held, unjudged = fields.judge(limits, measures)
-    assert fails == ["X impedance_ohm 55.83 above max 55 (Doc rev 1, 3.2, p 7)"]
+    assert fails == [
+        "X impedance_ohm 55.83 (the median over 3 frequencies) above max 55 (Doc rev 1, 3.2, p 7)"
+    ]
     assert held == [] and unjudged == []
 
 
@@ -396,6 +405,19 @@ def test_model_only_writes_the_model_and_the_engine_file(tmp_path):
     assert "judged nothing" in proc.stdout
 
 
+def test_a_wrong_checksum_of_openems_warns_unless_it_is_required():
+    """ENGINES.md: a failed openEMS step warns, and REQUIRE_OPENEMS=1 makes it fatal. A checksum
+    mismatch went straight to `die` and ended the default install. It goes through `openems_fail`,
+    and the step returns before the file is unpacked."""
+    text = (ROOT / "install.sh").read_text(encoding="utf-8")
+    step = text[text.index("step_openems() {") :]
+    step = step[: step.index("\n}\n")]
+    check = step.index("sha256sum -c -")
+    assert "die" not in step[check : step.index("\n", check)]
+    failed = step.index('openems_fail "checksum mismatch', check)
+    assert check < failed < step.index("return", failed) < step.index("dpkg-deb -x")
+
+
 def test_doctor_names_openems():
     proc = run_cli("--json", "doctor")
     checks = json.loads(proc.stdout)["checks"]
@@ -425,3 +447,318 @@ def test_cmath_is_the_only_math_a_measure_needs():
         "time",
     }
     assert cmath.pi == math.pi
+
+
+# ---------------------------------------------------------------- what the model must refuse
+
+
+def line_board(zones):
+    """The microstrip: S from (100, 100) to (110, 100) on F.Cu, 0.36 mm wide, 0.2 mm over B.Cu."""
+    return fields.Board(
+        path=Path("m.kicad_pcb"),
+        copper_z={"F.Cu": 0.2, "B.Cu": 0.0},
+        dielectrics=[(0.0, 0.2, 4.5, 0.02)],
+        tracks=[fields.Track("S", "F.Cu", (100, 100), (110, 100), 0.36)],
+        zones=zones,
+    )
+
+
+def model_of(board, **group):
+    spec = {"reference": "GND", "settings": dict(fields.SETTINGS), "file": "fields.json"}
+    return fields.build_model(board, {"name": "g", "nets": ["S"], "band_ghz": [0.1, 10], **group}, spec)
+
+
+def test_a_pour_that_is_not_under_the_track_is_refused():
+    """The GND pour on B.Cu is a 1 mm square, x 95 to 96 and y 95 to 96, 4 mm from the track. A plane
+    whole over the box would stand under the track where the board has none: refused, naming the track
+    and its first point with no pour under it, its start (100, 100)."""
+    board = line_board([pour("GND", "B.Cu", square=(95, 95, 96, 96))])
+    with pytest.raises(fields.Refusal) as caught:
+        model_of(board)
+    assert str(caught.value) == (
+        "group g: the track of S from (100, 100) to (110, 100) on F.Cu has no GND pour on B.Cu under "
+        "(100, 100): the model would put a plane where the board has none"
+    )
+
+
+def test_a_pour_under_the_whole_track_is_a_plane():
+    """The pour runs x 99 to 111 and y 99 to 101: the track, x 100 to 110 and y 99.82 to 100.18, lies on
+    it everywhere, and B.Cu is the plane."""
+    board = line_board([pour("GND", "B.Cu", square=(99, 99, 111, 101))])
+    assert [p["layer"] for p in model_of(board)["planes"]] == ["B.Cu"]
+
+
+def test_a_zone_is_read_as_its_fill_where_it_is_filled(tmp_path):
+    """The line fixture's GND zone has the outline x 95 to 115, y 95 to 105 and no fill: the outline is
+    its shape. Given a fill on B.Cu of the square 95 to 96, that fill is its shape, and the track over
+    it is refused."""
+    text = (LINE / "line.kicad_pcb").read_text(encoding="utf-8")
+    board = fields.read_board(LINE / "line.kicad_pcb")
+    ((net, layers, shapes),) = board.zones
+    assert (net, layers) == ("GND", ("B.Cu",))
+    assert shapes == {"B.Cu": [[(95, 95), (115, 95), (115, 105), (95, 105)]]}
+    end = "(xy 95 95) (xy 115 95) (xy 115 105) (xy 95 105)\n\t\t\t)\n\t\t)\n"
+    assert end in text
+    filled = '\t\t(filled_polygon (layer "B.Cu") (pts (xy 95 95) (xy 96 95) (xy 96 96) (xy 95 96)))\n'
+    (tmp_path / "f.kicad_pcb").write_text(text.replace(end, end + filled), encoding="utf-8")
+    board = fields.read_board(tmp_path / "f.kicad_pcb")
+    assert board.zones[0][2] == {"B.Cu": [[(95, 95), (96, 95), (96, 96), (95, 96)]]}
+    spec = fields.read_spec(LINE / "fields.json")
+    with pytest.raises(fields.Refusal, match=r"has no GND pour on B\.Cu under \(100, 100\)"):
+        fields.build_model(board, spec["groups"][0], spec)
+
+
+def test_a_hole_in_a_fill_is_a_hole():
+    """A fill of the square 0 to 10 with a hole 4 to 6 joined to its outline by a slit along y 5, as
+    KiCad writes a fill: (5, 5) is in the hole, (8, 5) and (2, 2) are on copper. A ray from (5, 5) to +x
+    crosses x 6 and x 10, 2 edges: outside; from (8, 5) only x 10: inside."""
+    fill = [
+        (0, 0),
+        (10, 0),
+        (10, 10),
+        (0, 10),
+        (0, 5),
+        (4, 5),
+        (4, 6),
+        (6, 6),
+        (6, 4),
+        (4, 4),
+        (4, 5),
+        (0, 5),
+    ]
+    assert not fields._in_polygon((5, 5), fill)
+    assert fields._in_polygon((8, 5), fill)
+    assert fields._in_polygon((2, 2), fill)
+
+
+def test_a_via_that_crosses_a_plane_is_refused():
+    """4 layers: F.Cu at 1.4, In1.Cu at 1.2, In2.Cu at 0.2, B.Cu at 0 mm. S runs on F.Cu to a via at
+    (105, 100) and on B.Cu from it; GND is poured on In1.Cu and In2.Cu. The via spans z 0 to 1.4 and
+    passes both planes; the model cuts no antipad, so it would short S to GND (the run gave 600 dB and
+    0.6 ohm). Refused at the first plane by height, In2.Cu at 0.2."""
+    t = fields.Track
+    board = fields.Board(
+        path=Path("v.kicad_pcb"),
+        copper_z={"F.Cu": 1.4, "In1.Cu": 1.2, "In2.Cu": 0.2, "B.Cu": 0.0},
+        dielectrics=[(0.0, 0.2, 4.5, 0.02), (0.2, 1.2, 4.5, 0.02), (1.2, 1.4, 4.5, 0.02)],
+        tracks=[t("S", "F.Cu", (100, 100), (105, 100), 0.36), t("S", "B.Cu", (105, 100), (110, 100), 0.36)],
+        vias=[fields.Via("S", (105, 100), 0.3, ("F.Cu", "B.Cu"))],
+        zones=[pour("GND", "In1.Cu", "In2.Cu")],
+    )
+    with pytest.raises(fields.Refusal) as caught:
+        model_of(board)
+    assert str(caught.value) == (
+        "group g: the via of S at (105, 100) crosses the GND plane on In2.Cu: the model cuts no antipad, "
+        "so the via would short the net to the plane"
+    )
+
+
+def test_a_wave_that_never_arrives_is_no_measure():
+    """|S21| is 0 at 1 GHz: -20 log10 of it is the arithmetic's floor (600 dB), not a loss. The
+    insertion loss is not measured, with the reason, and its limit is not judged; it never fails or
+    holds on that number."""
+    m = fields.line_measures([1e9, 2e9, 3e9], [0.1, 0.1, 0.1], [0.0, 0.5, 0.5])
+    assert m["insertion_loss_db"]["value"] is None
+    assert "impedance_ohm" not in m
+    limits = [{"measure": "insertion_loss_db", "net": "X", "max": 3, "source": "d"}]
+    fails, held, unjudged = fields.judge(limits, {"X": m})
+    assert fails == [] and held == []
+    assert unjudged == [
+        "X insertion_loss_db: not judged, |S| is 0 at 1 GHz: no wave reached the port, "
+        "so nothing was measured"
+    ]
+
+
+def stub_spec(**group):
+    spec = fields.read_spec(STUB / "fields.json")
+    spec["groups"][0].update(group)
+    return spec
+
+
+def test_a_pad_carries_its_reach():
+    """The stub fixture's pads are 0.36 x 0.36 mm: half the diagonal is sqrt(0.36^2 + 0.36^2) / 2 =
+    0.50912 / 2 = 0.254558 mm."""
+    board = fields.read_board(STUB / "stub.kicad_pcb")
+    assert board.pads["J1.1"][2:] == ("SIG", pytest.approx(0.254558, abs=1e-6))
+
+
+def test_a_port_on_a_pad_of_another_net_is_refused():
+    """J9.1 stands at (140, 140) on GND. Its port went to the nearest free end of the group, the stub's
+    open end, and the stub passed: refused, naming the pad and its net."""
+    board = fields.read_board(STUB / "stub.kicad_pcb")
+    board.pads["J9.1"] = (140.0, 140.0, "GND", 0.254558)
+    spec = stub_spec(ports=["J1.1", "J9.1"])
+    with pytest.raises(fields.Refusal) as caught:
+        fields.build_model(board, spec["groups"][0], spec)
+    assert str(caught.value) == (
+        "group sig, `ports` of fields.json: pad J9.1 is on net GND, not a net of the group"
+    )
+
+
+def test_a_pad_named_twice_is_refused():
+    board = fields.read_board(STUB / "stub.kicad_pcb")
+    spec = stub_spec(ports=["J1.1", "J1.1"])
+    with pytest.raises(fields.Refusal, match=r"`ports` of fields.json: pad J1.1 is named 2 times$"):
+        fields.build_model(board, spec["groups"][0], spec)
+
+
+def test_a_pad_far_from_every_end_is_refused():
+    """J2.1 moved to (110, 103). The free ends of SIG are (100, 100), (110, 100) and (105, 107): the
+    nearest is (110, 100), 3 mm away, and the pad reaches 0.255 mm."""
+    board = fields.read_board(STUB / "stub.kicad_pcb")
+    board.pads["J2.1"] = (110.0, 103.0, "SIG", 0.254558)
+    spec = fields.read_spec(STUB / "fields.json")
+    with pytest.raises(fields.Refusal) as caught:
+        fields.build_model(board, spec["groups"][0], spec)
+    assert str(caught.value) == (
+        "group sig, `ports` of fields.json: pad J2.1 at (110, 103): the nearest free end of SIG, (110, 100), "
+        "is 3.000 mm away and the pad reaches 0.255 mm"
+    )
+
+
+def test_2_pads_on_1_end_are_refused():
+    """J3.1 at (110, 100.1) lies 0.1 mm from the end (110, 100), J2.1's port already."""
+    board = fields.read_board(STUB / "stub.kicad_pcb")
+    board.pads["J3.1"] = (110.0, 100.1, "SIG", 0.254558)
+    spec = stub_spec(ports=["J1.1", "J2.1", "J3.1"])
+    with pytest.raises(fields.Refusal, match=r"pad J3.1 gives the end at \(110, 100\), a port already$"):
+        fields.build_model(board, spec["groups"][0], spec)
+
+
+def test_an_open_end_is_never_made_a_port():
+    """Without `ports` the stub's net has 3 free ends: (100, 100), (105, 107) and (110, 100). The open
+    end of the stub is part of what is judged; a port there terminates the fault in 50 ohm (the run
+    gave 4.06 dB where the named ports give 29.55). Refused: name the pads."""
+    board = fields.read_board(STUB / "stub.kicad_pcb")
+    spec = fields.read_spec(STUB / "fields.json")
+    del spec["groups"][0]["ports"]
+    with pytest.raises(fields.Refusal) as caught:
+        fields.build_model(board, spec["groups"][0], spec)
+    assert str(caught.value) == (
+        "group sig: net SIG has 3 free track ends ((100, 100), (105, 107), (110, 100)) and fields.json "
+        "names no `ports`: an open end is part of the structure, never a port; name the pads"
+    )
+
+
+def four_ports(by_net):
+    ports, n = [], 0
+    for net, count in by_net:
+        for _ in range(count):
+            n += 1
+            ports.append({"n": n, "net": net})
+    return {
+        "frequencies_hz": [1e9],
+        "settings": {"port_ohm": 50.0},
+        "nets": [net for net, _ in by_net],
+        "ports": ports,
+    }
+
+
+def test_next_is_taken_at_the_other_nets_first_port_and_fext_at_its_last():
+    """Nets A (ports 1, 2) and B (ports 3, 4). Port 1 driven: S31 = 0.2 and S41 = 0.05, so NEXT into B is
+    20 log10 0.2 = -13.979 dB and FEXT 20 log10 0.05 = -26.021 dB. Port 3 driven: S13 = 0.01 and S23 =
+    0.02, so NEXT into A is 20 log10 0.01 = -40 dB and FEXT 20 log10 0.02 = -33.979 dB."""
+    model = four_ports([("A", 2), ("B", 2)])
+    columns = {1: [[0.1], [0.9], [0.2], [0.05]], 3: [[0.01], [0.02], [0.1], [0.9]]}
+    out = fields.group_measures(model, columns)
+    assert out["B"]["next_db from A"]["value"] == pytest.approx(-13.9794, abs=1e-4)
+    assert out["B"]["fext_db from A"]["value"] == pytest.approx(-26.0206, abs=1e-4)
+    assert out["A"]["next_db from B"]["value"] == pytest.approx(-40.0, abs=1e-4)
+    assert out["A"]["fext_db from B"]["value"] == pytest.approx(-33.9794, abs=1e-4)
+
+
+def test_a_net_of_3_ports_has_no_impedance():
+    """The impedance formula is a symmetric 2-port's. A net with 3 ports (a T) gets its return and
+    insertion loss and no impedance: a limit on it is not judged."""
+    model = four_ports([("A", 3)])
+    out = fields.group_measures(model, {1: [[0.1], [0.5], [0.5]]})
+    assert set(out["A"]) == {"return_loss_db", "insertion_loss_db"}
+
+
+@pytest.mark.parametrize(
+    ("settings", "says"),
+    [
+        ([1], "`settings` is an object of names and numbers, not [1]"),
+        ("x", "`settings` is an object of names and numbers, not 'x'"),
+        ({"frequencies": 1}, "setting `frequencies` is 1, not a whole number of 2 or more"),
+        (
+            {"cells_per_dielectric": 0.5},
+            "setting `cells_per_dielectric` is 0.5, not a whole number of 1 or more",
+        ),
+        ({"max_timesteps": 1.5}, "setting `max_timesteps` is 1.5, not a whole number of 1 or more"),
+        ({"end_criteria_db": 3}, "setting `end_criteria_db` is 3, not a number below 0"),
+    ],
+)
+def test_a_wrong_setting_is_refused(tmp_path, settings, says):
+    """Each of these ended in a traceback (no `.items` on a list or a str, a division by 0 for 1
+    frequency or int(0.5) cells)."""
+    path = write_spec(tmp_path, json.dumps({"settings": settings, "groups": []}))
+    with pytest.raises(fields.Refusal) as caught:
+        fields.read_spec(path)
+    assert str(caught.value) == f"fields.json: {says}"
+
+
+def test_the_end_criterion_takes_its_own_sign(tmp_path):
+    """The end criterion is a fall in energy, -40 dB by default: -30 is taken."""
+    path = write_spec(tmp_path, json.dumps({"settings": {"end_criteria_db": -30}, "groups": []}))
+    assert fields.read_spec(path)["settings"]["end_criteria_db"] == -30
+
+
+def test_a_min_above_its_max_is_refused(tmp_path):
+    path = write_spec(
+        tmp_path,
+        '{"groups": [{"name": "a", "nets": ["X"], "band_ghz": [0.1, 1],'
+        ' "limits": [{"measure": "impedance_ohm", "net": "X", "min": 80, "max": 20, "source": "d"}]}]}',
+    )
+    with pytest.raises(fields.Refusal, match=r"group a: impedance_ohm of X: min 80 is above max 20$"):
+        fields.read_spec(path)
+
+
+# ---------------------------------------------------------------- a result that does not hang on the clock
+
+
+def test_the_ports_settle_where_5_samples_lie_40_db_under_the_peak():
+    """Port energy 0, 1, 100, 10, then 0.001, 0.005, 0.001, 0.001, 0.001, 0.001, 0.001, 1. The peak is
+    100 at sample 2; 40 dB under it is 100 x 1e-4 = 0.01. The first sample whose last 5 (itself
+    included) are all under 0.01 is sample 8 (samples 4 to 8). What comes after it does not count; a
+    series that ends before it has not settled."""
+    e = [0, 1, 100, 10, 0.001, 0.005, 0.001, 0.001, 0.001, 0.001, 0.001, 1]
+    assert fields.settled(e, -40.0) == 8
+    assert fields.settled(e[:9], -40.0) == 8
+    assert fields.settled(e[:8], -40.0) is None
+
+
+def write_probe(folder, name, values, dt=1e-11):
+    rows = "".join(f"{k * dt:.6e}\t{v:.9e}\n" for k, v in enumerate(values))
+    (folder / name).write_text(f"% t/s\tvalue\n{rows}", encoding="utf-8")
+
+
+def test_where_openems_stops_does_not_change_the_result(tmp_path):
+    """openEMS checks its end criterion every 4 s of the clock, so 2 runs of 1 file stop at different
+    steps (the stub: 7189 to 8453) and gave 29.55 to 29.99 dB. Both runs here hold the same samples
+    up to where they stop: u1 = 0, 1, 0.5, then 0.001; u2 = 0, 0.5, 0.25, then 0.001; each i = u / 50.
+    The port energy is 2 (u1^2 + u2^2): peak 2 x 1.25 = 2.5 at sample 1, 40 dB under it 2.5e-4. From
+    sample 3 every sample is 2 x 2e-6 = 4e-6, so the ports settle at sample 3 + 4 = 7. Run A goes on
+    with 0.3 to sample 12, run B ends at sample 8: both columns are read from samples 0 to 7 and are
+    the same. Run C ends at sample 5, before the ports settle: a fault, not a result."""
+    tail = [0.001] * 6
+    runs = {"a": tail + [0.3] * 4, "b": tail, "c": tail[:3]}
+    model = {
+        "frequencies_hz": [1e9, 2e9],
+        "settings": {"port_ohm": 50.0, "end_criteria_db": -40.0},
+        "ports": [{"n": 1, "net": "S"}, {"n": 2, "net": "S"}],
+    }
+    cols = {}
+    for name, rest in runs.items():
+        run = tmp_path / name
+        run.mkdir()
+        u1, u2 = [0.0, 1.0, 0.5] + rest, [0.0, 0.5, 0.25] + rest
+        for n, u in ((1, u1), (2, u2)):
+            write_probe(run, f"port_ut{n}", u)
+            write_probe(run, f"port_it{n}", [x / 50 for x in u])
+        if name == "c":
+            with pytest.raises(fields.EngineFault, match="did not settle 40 dB under their peak"):
+                fields.OpenEMS.column(run, model, 1)
+        else:
+            cols[name] = fields.OpenEMS.column(run, model, 1)
+    assert cols["a"] == cols["b"]

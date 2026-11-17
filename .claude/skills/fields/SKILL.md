@@ -48,16 +48,29 @@ as its own program; none of its code is in this repository.
 
 - `nets`: 1 net is a line, 2 or more are lines that couple. `kind:
   "antenna"` is 1 net fed at 1 pad.
-- `ports`: pads, `REF.PAD`. Each port stands at the free track end nearest
-  its pad, from the nearest plane to the track, 50 ohm. Without `ports`,
-  every free end of each net is a port. The first port of each net is
-  driven, 1 run for each net.
+- `ports`: pads, `REF.PAD`. Each port stands at the free track end of the
+  pad's own net nearest the pad, from the nearest plane to the track, 50
+  ohm. The end must lie on the pad: no farther from its centre than half
+  its diagonal. A pad of another net, a pad named 2 times, a pad far from
+  every end and 2 pads on 1 end are refused.
+- Without `ports`, the free ends of each net are its ports. A net with more
+  than 2 free ends is refused: an open end (a stub) is part of what is
+  judged, and a port there would end it in 50 ohm. Name the pads.
+- Order: the first port of each net is driven, 1 run for each net. The
+  other net's first port is its near end: NEXT is read there, FEXT at its
+  last port. Name the pads of each pair in the same order, near end first.
 - `measure`: `impedance_ohm` (min, max), `return_loss_db` (min),
   `insertion_loss_db` (max), `next_db` and `fext_db` (max, with `from`: the
-  driven net). Loss and coupling are the worst over the band.
+  driven net). Loss and coupling are the worst over the band. Impedance is
+  the median over the band of a symmetric 2-port's formula, and only a net
+  of 2 ports has one; its line says `the median over N frequencies`.
 - `settings` (optional): `margin_mm`, `cells_per_wavelength`,
   `cells_across_width`, `cells_per_dielectric`, `port_ohm`, `frequencies`,
   `end_criteria_db`, `absorbing_cells`, `max_timesteps`, `timeout_s`.
+  `settings` is an object. The counts (`cells_across_width`,
+  `cells_per_dielectric`, `absorbing_cells`, `max_timesteps`) are whole
+  numbers of 1 or more, `frequencies` 2 or more, and `end_criteria_db` is
+  below 0.
 
 The worked examples are `tests/boards/pass-fields-microstrip` and
 `tests/boards/fail-fields-stub`. Their limits are made up and say so.
@@ -76,6 +89,10 @@ The worked examples are `tests/boards/pass-fields-microstrip` and
    - `FAIL fields ... a file is not as the command reads it`: the next line
      names the file and what is wrong in it. Fix that file and run this
      step again.
+   - `... has no GND pour on <layer> under (x, y)`: the reference pour does
+     not lie under the whole track. Pour it there, or the model is not the
+     board. `... the via ... crosses the GND plane`: the model cuts no
+     antipad; such a group is not run (see below).
 3. `flock <engine lock> workcenter fields <project>`
    - `PASS fields N held, 0 failed, 0 not judged`: done.
    - `FAIL` with a line `<net> <measure> <value> at <f> GHz above max ...`:
@@ -85,7 +102,8 @@ The worked examples are `tests/boards/pass-fields-microstrip` and
      document.
    - `FAIL` with `openEMS on port N ended without a result`: the line says
      why. `did not fall to the end criterion`: raise `max_timesteps` in
-     `settings`. `a cell is too small`: report it with
+     `settings`. `did not settle 40 dB under their peak`: openEMS stopped
+     before the ports' energy settled; lower `end_criteria_db` (-50). `a cell is too small`: report it with
      `build/fields/<group>/model.json`. `Unused
      primitive`: a piece of copper or a port lies on no mesh line; report it
      with `build/fields/<group>/model.json`.
@@ -105,9 +123,25 @@ The worked examples are `tests/boards/pass-fields-microstrip` and
 
 - Copper is a sheet: no thickness and no conductor loss. Loss is the
   dielectric's alone.
-- A reference plane is whole over the model's box. A cut-out under a track
-  is not seen.
+- A reference plane is whole over the model's box. The pour is checked
+  under each track, at its centre and both edges every half its width
+  along it; a track with no pour under it is refused. A cut-out narrower
+  than half the track's width, or one beside the track, is not seen.
+- No antipad is cut: a group with a via that crosses a reference plane is
+  refused, not run.
 - Pads, parts, solder mask and every net outside the group are left out.
+- A |S| of 0 (no wave reached the port) is no measure: its limit is not
+  judged, with the reason.
+
+## Where the spectra end
+
+openEMS checks its end criterion every 4 s of the clock (its log prints the
+energy at 4 s, 8 s, 12 s), so where it stops hangs on the machine's load:
+4 runs of 1 stub file stopped after 7189 to 8453 steps. The command lets openEMS run until the box's
+energy falls 10 dB past `end_criteria_db`, then reads the ports' samples
+only up to the first sample where the ports' energy has stayed
+`end_criteria_db` under its peak for 5 samples. Every sample up to there is
+the same from run to run, so the same file gives the same numbers.
 
 ## Another solver
 
