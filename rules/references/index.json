@@ -2,6 +2,28 @@
   "rules": ["rules/ratings/*.json", "rules/board/*.json", "rules/blocks/*.json", "tests/boards/**/facts/*.json"],
   "documents": [
     {
+      "id": "ti-slva689a",
+      "kind": "application note",
+      "maker": "Texas Instruments",
+      "number": "SLVA689A",
+      "title": "I2C Bus Pullup Resistor Calculation",
+      "revision": "February 2015, revised October 2026",
+      "url": "https://www.ti.com/lit/an/slva689/slva689.pdf",
+      "sha256": "84da7d3745364e881a72914ca609e93132c356dcc0a0461de483fa27a8669e7b",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "ti-scps197d",
+      "kind": "datasheet",
+      "maker": "Texas Instruments",
+      "number": "SCPS197D",
+      "title": "TCA9534 Low Voltage 8-Bit I2C and SMBUS Low-Power I/O Expander with Interrupt Output and Configuration Registers",
+      "revision": "September 2014, revised October 2017",
+      "url": "https://www.ti.com/lit/ds/symlink/tca9534.pdf",
+      "sha256": "5e1ab781d3051f1af52a9c321f62b09d28b447448d56b962b35f9c8261994c04",
+      "read": "2026-11-17"
+    },
+    {
       "id": "nasa-eee-inst-002",
       "kind": "standard",
       "issuer": "NASA Goddard Space Flight Center",

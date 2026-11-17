@@ -539,13 +539,14 @@ def test_every_document_a_rule_of_the_repository_names_is_in_the_index():
     note and its IC's datasheet), the 5 facts files of 1 part under tests/boards/library 5 datasheets (the
     buck block's Samsung capacitor among them), passives.json 4, fail-sim-bias's parts.json 2 (Samsung's
     page and Coilcraft's 806, which passives.json names too): 2 + 1 + 2 + 5 + 4 + 2 = 16 named, in
-    2 + 1 + 1 + 5 + 1 + 1 + 1 = 12 files (made-up.json the 11th, fail-sim-bias's the 12th). made-up.json's
-    4 parts name no document: 4 not judged."""
+    2 + 1 + 1 + 5 + 1 + 1 + 1 = 12 files (made-up.json the 11th, fail-sim-bias's the 12th). The I2C block
+    names its note (rules/blocks/i2c.json) and its fixtures' TCA9534 its datasheet (ti-tca9534.json):
+    16 + 2 = 18 named in 12 + 2 = 14 files. made-up.json's 4 parts name no document: 4 not judged."""
     code, out = run("rules")
     assert code == 0, out
-    files = 2 + 1 + 1 + 8
+    files = 2 + 1 + 1 + 8 + 2
     assert out.splitlines()[-1] == (
-        f"references rules: 16 documents named in {files} files, 16 in the index, 0 not; 4 not judged"
+        f"references rules: 18 documents named in {files} files, 18 in the index, 0 not; 4 not judged"
     )
 
 

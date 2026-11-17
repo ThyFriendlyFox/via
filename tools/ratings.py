@@ -1049,11 +1049,13 @@ RATED = (
 ROLES = {
     "supply": (("abs",), ("operating", "amps")),
     "ground": ((), ()),
-    "input": (("abs",), ("operating",)),
+    # `farads`: the pin's greatest capacitance; `sink`: the current an open drain sinks at its low voltage,
+    # {"amps", "volts"}. The I2C block (tools/blocks_i2c.py) reads both.
+    "input": (("abs",), ("operating", "farads")),
     "analog": (("abs",), ("operating",)),
     "output": (("abs", "swing"), ("amps", "operating")),
-    "io": (("abs", "swing"), ("amps", "operating")),
-    "open_drain": (("abs", "swing"), ("amps", "operating")),
+    "io": (("abs", "swing"), ("amps", "operating", "farads", "sink")),
+    "open_drain": (("abs", "swing"), ("amps", "operating", "farads", "sink")),
     # a reference's output may stand in no table of limits: `abs` is then left out, and a note says so
     "regulated": ((), ("abs", "volts", "set_by", "amps", "from")),
     "feedback": (("abs", "volts"), ("amps", "from")),
@@ -1202,6 +1204,12 @@ def _pin_facts(where: str, pins: object) -> None:
             _number(f"{here}: amps", pin["amps"], above=0)
         elif "amps" in pin:
             _number(f"{here}: amps", pin["amps"], 0)
+        if "farads" in pin:
+            _number(f"{here}: farads", pin["farads"], above=0)
+        if "sink" in pin:
+            sink = _keys(f"{here}: sink", pin["sink"], ("amps", "volts"))
+            _number(f"{here}: sink: amps", sink["amps"], above=0)
+            _number(f"{here}: sink: volts", sink["volts"], 0)
         if "swing" in pin:
             swing = _names(f"{here}: swing", pin["swing"])
             if len(swing) != SWING[role] or any(s not in names for s in swing):

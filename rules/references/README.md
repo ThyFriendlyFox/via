@@ -22,6 +22,14 @@ the makers' and the issuers' terms forbid a copy.
 | `coilcraft-806` | datasheet | 806 (XAL40xx) | Revised 02/25/26 |
 | `bourns-srn2010ta` | datasheet | SRN2010TA | REV. 06/25 |
 | `ti-sbvs320` | datasheet | SBVS320D (TLV755P) | November 2017, revised September 2024 |
+| `ti-slva689a` | application note | SLVA689A (I2C pull-ups) | February 2015, revised October 2026 |
+| `ti-scps197d` | datasheet | SCPS197D (TCA9534) | September 2014, revised October 2017 |
+
+`ti-slva689a`, the note of the I2C block (`rules/blocks/i2c.json`), and `ti-scps197d`, the datasheet of
+its fixtures' TCA9534, were downloaded on 2026-11-17 under the workcenter's name; the number, title and
+revision of each are those of its first page. NXP's I2C-bus specification UM10204, which the note's
+table 2-1 is taken from, could not be had: www.nxp.com answered the workcenter's name with a page that
+said it is not available.
 
 On 2026-11-17 `workcenter references fetch` got all 9 under the workcenter's own name, and each copy
 had the SHA256 its entry names: `9 kept, 0 changed, 0 refused`. The title, number and revision of each
