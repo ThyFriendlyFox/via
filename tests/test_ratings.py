@@ -705,6 +705,39 @@ def test_a_pull_down_of_10k_holds_its_power_and_its_voltage(tmp_path):
     assert sorted(f.rule for f in report.findings) == ["resistor.power", "resistor.voltage"]
 
 
+def test_the_top_of_a_divider_stands_its_share_and_not_the_whole_rail(tmp_path):
+    """100 ohm over 100 ohm on 5.5 V. The top resistor stands 5.5 x 101 / 200 = 2.78 V at the worst
+    corner of the 2 tolerances, and burns 2.78 V squared over 99 ohm, 77.9 mW: 0.31 of a 250 mW part.
+    Its 2 nets taken apart, 5.5 V and 0 V, would put 306 mW in it."""
+    net, mpns = circuit(
+        R1=("100", "R-BIG", {"1": "V5", "2": "TAP"}), R2=("100", "R-BIG", {"1": "TAP", "2": "GND"})
+    )
+    big = entry("resistor", "R-BIG", tolerance=0.01, watts=0.25, volts=50)
+    report = ratings.judge(net, mpns, library(tmp_path, big), project({"V5": (4.5, 5.5), **GND}), NASA)
+    lines = {(f.part, f.rule): f.line for f in report.findings}
+    for ref, nets in (("R1", "V5 and TAP"), ("R2", "TAP and GND")):
+        assert lines[(ref, "resistor.power")].startswith(
+            f"hold {ref} 100 between {nets}, with 2.78 V across it: 77.9 mW on 250 mW rated is 0.31"
+        ), lines
+    assert lines[("R1", "resistor.voltage")].startswith("hold R1 100 between V5 and TAP: 2.78 V on 50 V")
+
+
+def test_a_series_resistor_before_a_pull_down_stands_its_share(tmp_path):
+    """33 ohm from an output to a gate, and 10k from the gate to ground: the 33 ohm stands 3.3 V x
+    33.33 / 9933.33 = 11.1 mV, and not the 3.3 V between its 2 nets."""
+    net, mpns = circuit(
+        U1=("MCU", "MCU-1", mcu("DRIVE")),
+        R1=("33", "R-0402", {"1": "DRIVE", "2": "GATE"}),
+        R2=("10k", "R-0402", {"1": "GATE", "2": "GND"}),
+    )
+    report = ratings.judge(net, mpns, library(tmp_path, chip_resistor(), MCU_FACTS), project(RAILS), NASA)
+    lines = {(f.part, f.rule): f.line for f in report.findings}
+    assert lines[("R1", "resistor.voltage")].startswith("hold R1 33 between DRIVE and GATE: 11.1 mV on 50 V")
+    assert lines[("R1", "resistor.power")].startswith(
+        "hold R1 33 between DRIVE and GATE, with 11.1 mV across it"
+    )
+
+
 def test_a_series_resistor_into_an_input_carries_no_steady_current(tmp_path):
     """33 ohm between an output and a gate: 3.3 V can stand across it, and no current flows for long.
     Judged by the voltage alone it would burn 330 mW."""

@@ -240,10 +240,12 @@ and an output pin; `watts` of a transistor; a connector's ratings.
   gives at 2 temperatures is read at the project's ambient.
 - A resistor does not move a net a source holds; a released output follows
   its pull-up. A divider's tap is solved at the corners of its tolerances.
-- A resistor is judged with the greatest voltage between its 2 nets. 2
-  kinds are judged with their current: one whose current `ratings.json`
-  states, and one that alone feeds supply pins, which carries what the
-  facts of those pins say they take.
+- A resistor is judged with the greatest voltage between its 2 nets. In a
+  divider or a row of resistors that nothing else loads, that is its
+  share, solved with its nets at the corners of the tolerances. 2 kinds
+  are judged with their current: one whose current `ratings.json` states,
+  and one that alone feeds supply pins, which carries what the facts of
+  those pins say they take.
 - An entry that gives a pin's name to another number than the symbol does
   fails: every line of the part would be judged on the wrong net.
 - A transistor's channel and a switch may conduct: their 2 nets can meet.
@@ -287,9 +289,10 @@ sound. Check such a line by hand before the design changes:
 
 - 2 nets that 1 source moves together are subtracted at their extremes.
   `parts` states the voltage of a part of 2 pins between them.
-- A resistor in a divider, or in a row with another resistor, is judged
-  with the greatest voltage between its 2 nets, which is more than it
-  stands. `parts` states its current.
+- A resistor whose network of resistors holds a part that takes a
+  current, as a supply pin on a divider's tap does, is judged with the
+  greatest voltage between its 2 nets, which may be more than it stands.
+  `parts` states its current.
 - A part that conducts 1 way or in 1 state is read as able to join its 2
   nets at any time: the transistor of a level shifter, a zener that clamps
   its node, an LED behind its resistor.

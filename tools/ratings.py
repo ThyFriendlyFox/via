@@ -167,8 +167,33 @@ def _solve(matrix: list[list[float]], right: list[float]) -> list[float]:
     return out
 
 
+def _group_volts(
+    group: list[str],
+    inside: list[tuple[str, str, float, float]],
+    ohms: list[float],
+    fixed: dict[str, tuple[float, float]],
+    ends: dict[str, int],
+) -> list[float]:
+    """The voltage of each node of 1 group of free nodes, with each resistor at the value given and
+    each held node at the end of its span that `ends` names."""
+    index = {node: i for i, node in enumerate(group)}
+    matrix = [[0.0] * len(group) for _ in group]
+    right = [0.0] * len(group)
+    for (a, b, _, _), r in zip(inside, ohms, strict=True):
+        for near, far in ((a, b), (b, a)):
+            if near in index:
+                matrix[index[near]][index[near]] += 1 / r
+                if far in index:
+                    matrix[index[near]][index[far]] -= 1 / r
+                else:
+                    right[index[near]] += fixed[far][ends[far]] / r
+    return _solve(matrix, right)
+
+
 def resistor_spans(
-    resistors: list[tuple[str, str, float, float]], held: dict[str, tuple[float, float]]
+    resistors: list[tuple[str, str, float, float]],
+    held: dict[str, tuple[float, float]],
+    drops: dict[tuple[str, str], float] | None = None,
 ) -> dict[str, tuple[float, float]]:
     """The voltage span of each node that only resistors tie to nodes held at a span.
 
@@ -177,7 +202,12 @@ def resistor_spans(
     negative, so a node is highest when every held node is highest. Its voltage is monotone in each
     resistance, so over the tolerances the extreme lies at a corner: each group is solved at every
     corner, up to CORNERS of them. A group with more takes the hull of the held nodes it meets, which
-    is coarser and never inside the truth. A node no resistor ties to a held node is left out."""
+    is coarser and never inside the truth. A node no resistor ties to a held node is left out.
+
+    drops, when given, is filled with (node, node) -> the greatest voltage across the resistors
+    between the 2, for each resistor of a solved group: the same solves, with each held node at each
+    end of its span in turn, since a drop is greatest with one side up and the other down. The top of
+    a divider stands its share, not the whole rail."""
     for a, b, least, greatest in resistors:
         if not 0 <= least <= greatest:
             raise ValueError(f"the resistor between {a} and {b} has the values {least} and {greatest}")
@@ -202,6 +232,7 @@ def resistor_spans(
     links = [link for link in links if link[0] != link[1]]
     free = sorted({n for a, b, _, _ in links for n in (a, b)} - set(fixed))
     spans: dict[str, tuple[float, float]] = dict(fixed)
+    across: dict[tuple[str, str], float] = {}  # 2 nodes -> the greatest voltage between them, solved
     group_of: dict[str, int] = {}
     for start in free:
         if start in group_of:
@@ -225,24 +256,26 @@ def resistor_spans(
             continue
         index = {node: i for i, node in enumerate(group)}
         lows, highs = [hull[1]] * len(group), [hull[0]] * len(group)
+        mixed = drops is not None and 2 ** (len(loose) + len(edge)) <= CORNERS
         for corner in itertools.product((2, 3), repeat=len(loose)):
             ohms = [link[2] for link in inside]
             for i, end in zip(loose, corner, strict=True):
                 ohms[i] = inside[i][end]
             for end, best, pick in ((0, lows, min), (1, highs, max)):
-                matrix = [[0.0] * len(group) for _ in group]
-                right = [0.0] * len(group)
-                for (a, b, _, _), r in zip(inside, ohms, strict=True):
-                    for near, far in ((a, b), (b, a)):
-                        if near in index:
-                            matrix[index[near]][index[near]] += 1 / r
-                            if far in index:
-                                matrix[index[near]][index[far]] -= 1 / r
-                            else:
-                                right[index[near]] += fixed[far][end] / r
-                for i, volts in enumerate(_solve(matrix, right)):
+                volts_at = _group_volts(group, inside, ohms, fixed, dict.fromkeys(edge, end))
+                for i, volts in enumerate(volts_at):
                     best[i] = pick(best[i], volts)
+            for picks in itertools.product((0, 1), repeat=len(edge)) if mixed else ():
+                ends = dict(zip(edge, picks, strict=True))
+                at = dict(zip(group, _group_volts(group, inside, ohms, fixed, ends), strict=True))
+                at |= {n: fixed[n][ends[n]] for n in edge}
+                for a, b, _, _ in inside:
+                    across[(a, b)] = max(across.get((a, b), 0.0), abs(at[a] - at[b]))
         spans.update({node: (lows[index[node]], highs[index[node]]) for node in group})
+    for a, b, _, _ in resistors if drops is not None else ():
+        pair = (find(a), find(b))
+        if pair in across or pair[::-1] in across:
+            drops[(a, b)] = across.get(pair, across.get(pair[::-1], 0.0))
     return {node: spans[find(node)] for node in leader if node not in held and find(node) in spans}
 
 
@@ -287,11 +320,14 @@ class Spans:
     """stress: every voltage a net can stand at, with its sources on or off and each output driving
     or released; 0 V is always inside, since any net can be unpowered. A rating is held to it.
     held: what a net's own sources hold it to while they are on. A supply pin's working range is held
-    to it. why: for a net with no span, the reason."""
+    to it. why: for a net with no span, the reason. drops: resistor -> the greatest voltage across it,
+    for a resistor with an end that resistors alone hold: solved with its nets, not taken from the
+    extremes of the 2 apart."""
 
     stress: dict[str, Span]
     held: dict[str, Span]
     why: dict[str, str]
+    drops: dict[str, float] = field(default_factory=dict)
 
 
 def _hull(spans: list[Span]) -> Span:
@@ -521,14 +557,17 @@ def net_spans(
 
     busy = {n for e in edges for n in e[:2]} | set(sources)
     loose = {n for r in resistors for n in r[:2] if n in span and n not in busy}
+    across: dict[tuple[str, str], float] = {}
     solved = resistor_spans(
         [r[:4] for r in resistors if r[0] in loose or r[1] in loose],
         {n: span[n] for r in resistors for n in r[:2] if n in span and n not in loose},
+        across,
     )
     for node in loose & set(solved):
         span[node] = (min(solved[node][0], 0.0), max(solved[node][1], 0.0))
 
     out = Spans({}, {}, {})
+    out.drops = {r[4]: across[(r[0], r[1])] for r in resistors if (r[0], r[1]) in across}
     for name, nodes in net.nets.items():
         node = find(name)
         if node in span:
@@ -1491,8 +1530,9 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
         text = f"{label}: {si(value, unit)} on {si(rated, unit)} rated is {of_it}"
         judged(ref, rule, holds, f"{text}, the limit is {share:.2f}", source)
 
-    def carries(name: str, but: str) -> bool:
-        """Whether a steady current can leave a net by another way than through the part `but`."""
+    def carries(name: str, but: str, resistors: bool = True) -> bool:
+        """Whether a steady current can leave a net by another way than through the part `but`; with
+        resistors False, by another way than through a resistor too."""
         if name in project.nets:
             return True
         for node in net.nets[name]:
@@ -1503,6 +1543,8 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
                     return True
                 continue
             data, kind = of[node.ref].data, of[node.ref].kind
+            if kind == "resistor" and not resistors:
+                continue
             if kind == "ic":
                 role = next(p["role"] for p in data["pins"] if node.pin in p["numbers"])
                 if role not in NO_CURRENT:
@@ -1517,6 +1559,23 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
             elif not kind.startswith("capacitor") and kind not in ("testpoint", "mechanical"):
                 return True
         return False
+
+    def shares(ref: str, a: str, b: str) -> bool:
+        """Whether the solved drop of a resistor is the whole of what it stands: no free net of its
+        network of resistors holds a part that takes a steady current, which the solve cannot know."""
+        seen: set[str] = set()
+        stack = [name for name in (a, b) if name not in spans.held]
+        while stack:
+            name = stack.pop()
+            if name in seen:
+                continue
+            seen.add(name)
+            if carries(name, ref, resistors=False):
+                return False
+            for node in net.nets[name]:
+                if node.ref in of and of[node.ref].kind == "resistor":
+                    stack += [n for n in net.parts[node.ref].pins.values() if n not in spans.held]
+        return True
 
     def fed_through(ref: str, a: str, b: str) -> tuple[float, str] | None:
         """The current through a resistor that alone feeds 1 of its 2 nets, and that net: what the pins
@@ -1581,6 +1640,8 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
             a, b = part.pins.values()
             label = f"{name_of(ref)} between {a} and {b}"
             volts = gap(spans, a, b)
+            if ref in spans.drops and not isinstance(volts, str) and shares(ref, a, b):
+                volts = min(volts, spans.drops[ref])  # solved with its nets: a divider's share
             ohms = value_of(found, part) if kind == "resistor" else None
             said, amps = "", None
             if ref in project.volts:
