@@ -4083,6 +4083,14 @@ def cmd_design(args) -> int:
                 fixed_vias = list(design.vias)
             if summary["route"].get("unrouted"):
                 code = EXIT_FAIL
+            # FreeRouting 1.9.0 logs no count: KiCad's DRC of the written board says what is left open,
+            # the zone fill's own report when there is a pour, else 1 DRC run.
+            pcb = out_dir / f"{design.name}.kicad_pcb"
+            drc = design.filled if design.zones else kicadgen.drc_report(pcb)
+            n, first = kicadgen.open_connections(drc)
+            summary["route"].update(unconnected=n, open=first, board=str(pcb))
+            if n:
+                code = EXIT_FAIL
         except FileNotFoundError as exc:
             summary["route"] = {"skip": f"engine missing: {exc}"}
             code = EXIT_SKIP
@@ -4103,6 +4111,8 @@ def cmd_design(args) -> int:
         red.append(f"{len(summary['sim_problems'])} simulation problem(s)")
     if summary.get("route", {}).get("unrouted"):
         red.append(f"{summary['route']['unrouted']} unrouted")
+    elif summary.get("route", {}).get("unconnected"):
+        red.append(f"{summary['route']['unconnected']} unconnected")
     if code == EXIT_FAIL:
         summary["red"] = red
     if args.json:
@@ -4124,6 +4134,15 @@ def cmd_design(args) -> int:
                     f"  stage {i} {st['stage']}: {len(st['nets'])} nets, {st['segments']} segments, "
                     f"{st['vias']} vias, {left}"
                 )
+            if "unconnected" in r:
+                first = r["open"]
+                if first:
+                    ends = " to ".join(first["ends"])
+                    net = shlex.quote(first["net"])
+                    print(f"  route: {r['unconnected']} unconnected; first {first['net']}: {ends}")
+                    print(f"  inspect: workcenter inspect net {shlex.quote(r['board'])} {net}")
+                else:
+                    print("  route: 0 unconnected")
         s = summary.get("seed")
         if s:
             left = ", ".join(f"{n} {why}" for why, n in sorted(s["left"].items(), key=lambda kv: -kv[1]))

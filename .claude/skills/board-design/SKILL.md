@@ -272,7 +272,13 @@ project and routes it with FreeRouting. No GUI at any step.
    regenerate check fails on it (M85). A route that leaves every
    connection without copper (parts placed off the board, a width that
    enters no pad) prints the count as `unrouted` and exits 1; a board with
-   nothing to route exits 0. On a board copied from a routed
+   nothing to route exits 0. After the route the command reads KiCad's
+   DRC of the board it wrote and prints 1 `route:` line. `route: 0
+   unconnected`: every connection has copper. `route: N unconnected; first
+   <net>: <end> to <end>`: the route left N connections open and exits 1;
+   the next line, `inspect: workcenter inspect net <board> <net>`, is the
+   command that shows the net's pieces. Run it, then fix the first open
+   net as below and route again. On a board copied from a routed
    version, route with `--seed <previous>/<name>.kicad_pcb`: the old
    router copper that still fits stays and only the rest is rerouted, so a
    part placed on a routed path costs its own nets, not the whole board
