@@ -1,6 +1,6 @@
 ---
 name: References
-description: Keeps the index of the standards, makers' application notes and datasheets the workcenter's rules cite - each with its maker or issuer, number, title, revision, URL and SHA256 - fetches each once under the workcenter's own name into a folder outside every repository, checks a file a person downloaded against it, and fails a rule that names a document the index lacks.
+description: Keeps the index of the standards, makers' application notes, datasheets, web pages, papers and books the workcenter's rules and code cite - each held by its SHA256, a web page by the values read from it, a paper or book with no free copy as cited and not held - fetches each once under the workcenter's own name into a folder outside every repository, checks a file a person downloaded against it, and fails a rule, a fab rule file or a tool's citation that names a document the index lacks.
 ---
 
 # References
@@ -53,6 +53,30 @@ name is not asked under another.
    - `not judged <file> <place>: names no document ... (no datasheet:
      <why>)`: a part made up or with no datasheet, as its source says.
      Nothing to do; the line says why it is not judged.
+   - `fail <file>.kicad_dru:<line>: <url> is not the URL of an entry of
+     the index`: a fab rule file cites a page the index lacks. Fetch the
+     page, and add a `web page` entry with each value the file takes from
+     it (`rules/references/README.md`, "An entry").
+   - `fail <file>:<line>: <name>, <place>: the file's CITES does not name
+     <id>; add ...`: tool code or a test cites a document of the index and
+     does not declare it. Add `"<id>": "<where in it>"` to the file's
+     module-level `CITES`, with the place the line names. Add the line
+     `CITES = {...}` after the imports when the file has none.
+   - `fail <file>:<line>: <name>, <place>: the index has no document by
+     that name`: the code cites a document the index lacks. If it has a
+     free copy, fetch it (step 3 with its URL in a new entry), read its
+     first page, add a held entry with `names` [`<name>`], and declare its
+     id in `CITES`. If it is a paper or a book with no free copy, add a
+     `paper` or `book` entry: authors, published, edition, where the
+     cited equations stand (`cited`), and why no copy is held
+     (`no_copy`). Never add a number you did not read.
+   - `fail <file>:<line>: CITES names <id>, which the index lacks`: write
+     the id as the index spells it, or add the entry.
+   - `not judged <file>:<line>: <name> has no section, table, page, clause
+     or equation beside it: a mention, not a citation`: the code names a
+     document and takes no number from it. Nothing to do. If the code does
+     take a number from it, write the place beside the name, then go
+     back to the 2 lines above.
    - The last line counts the documents. Exit 0: done.
 
 2. If a run prints `fail rules/references/index.json documents[N] <id>:
@@ -77,6 +101,18 @@ name is not asked under another.
      when every such rule still holds, or is changed to the new copy's
      numbers with their pages, write the new SHA256 and revision into the
      rules and the index, in 1 commit.
+   - `kept <id>: a web page, held by its values: all <n> read on <date>
+     stand on it; its bytes are not judged`: the page's numbers are those
+     the rules took, whatever its token or time stamp. Read the limits
+     there.
+   - `moved <id>: <url> no longer says "<text>" (<rule>), read on <date>;
+     <k> of <n> values gone`: the page's number moved. Open the copy the
+     line names, find the new number, and change each rule that took the
+     value; then write the page's new text as the value's `says` and the
+     day as the entry's `read`, in 1 commit.
+   - `not held <id>: a paper, cited and not held (...)` (or a book):
+     there is no copy to fetch. Read it in a library at the place the line
+     names.
    - `refused <id>: <url> answered HTTP 403 ...`: the site refused the
      workcenter's name. Do not ask again under another name. Download the
      file by hand in a browser and go to step 4.
@@ -104,6 +140,11 @@ name is not asked under another.
      it is filed beside the fetched copies, and `fetch` asks no more for it.
    - `changed <file>: SHA256 ...`: another revision or another copy. Treat
      it as `changed` in step 3.
+   - `same <file>: <id>, a web page: all <n> values read on <date> stand
+     in it`: a saved web page that still says each value. With `--keep` it
+     is filed as in step 3.
+   - `moved <file>: no longer says "<text>" (<rule>)`: the saved page says
+     another number. Treat it as `moved` in step 3.
    - `unknown <file>: the index names no document with SHA256 ...`: without
      `--id` no entry has that copy.
 
