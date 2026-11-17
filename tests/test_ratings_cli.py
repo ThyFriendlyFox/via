@@ -170,6 +170,23 @@ def test_the_facts_are_found_in_a_library_above_the_project(tmp_path):
     assert code == 0 and "RATINGS HELD: node" in text, text
 
 
+def test_a_capacitor_marked_dnp_meets_no_need(tmp_path):
+    """The board with no fault, with its input capacitor C1 marked do-not-populate in the schematic:
+    the capacitor is not on the board, so the run fails as the fixture with C1 left out does."""
+    project = copy("pass-ratings-node", tmp_path / "boards")
+    shutil.copytree(BOARDS / "library", tmp_path / "boards" / "library")
+    sheet = project / "node.kicad_sch"
+    text = sheet.read_text(encoding="utf-8")
+    start = text.rindex("(symbol", 0, text.index('"Reference" "C1"'))
+    marked = text[:start] + text[start:].replace("(dnp no)", "(dnp yes)", 1)
+    assert marked != text
+    sheet.write_text(marked, encoding="utf-8")
+    code, said = say("ratings", project)
+    assert code == 1 and f"- {FAULTS['fail-ratings-decoupling']}" in said, said
+    page = (project / "build" / "ratings" / "report.md").read_text(encoding="utf-8")
+    assert "- not fitted (DNP), and left out of every line: C1" in page
+
+
 def test_a_file_the_command_does_not_take_fails_the_run_with_its_place(tmp_path):
     project = copy("pass-ratings-node", tmp_path)
     stated = json.loads((project / "ratings.json").read_text(encoding="utf-8"))

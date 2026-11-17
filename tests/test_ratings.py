@@ -92,6 +92,14 @@ NETLIST = """<?xml version="1.0" encoding="UTF-8"?>
         ("10k 1%", 10e3),
         ("2.2u XAL4020-222", 2.2e-6),
         ("100k NCP15WF104", 100e3),
+        ("100 nF", 100e-9),  # a space before the unit: the prefix belongs to the number
+        ("10 k", 10e3),
+        ("2.2 uH", 2.2e-6),
+        ("10 mΩ", 10e-3),
+        ("15 pF", 15e-12),
+        ("4.7 µF 10V", 4.7e-6),
+        ("100 R", 100.0),
+        ("100 1%", 100.0),  # 100 ohm: what follows is a tolerance, no second value
     ],
 )
 def test_a_value_is_read_as_the_number_an_engineer_reads(text, number):
@@ -104,6 +112,13 @@ def test_a_value_is_read_as_the_number_an_engineer_reads(text, number):
 def test_a_value_that_is_no_number_is_none_and_never_a_guess(text):
     """A wrong number is a wrong verdict: `1e3` and `-5k` are forms no schematic here writes, and the
     reader takes neither."""
+    assert ratings.part_value(text) is None
+
+
+@pytest.mark.parametrize("text", ["0402 10k", "1/4W 10k", "0603 100n 16V", "1 2k2", "50 100nF"])
+def test_a_value_of_2_numbers_is_none_when_the_first_is_bare(text):
+    """A case size or a rating before the value: `0402 10k` is not 402 ohm and `1/4W 10k` is not 1
+    ohm. A bare number followed by a second value does not say which of the 2 is the part's."""
     assert ratings.part_value(text) is None
 
 
@@ -134,6 +149,15 @@ def test_a_net_of_the_root_sheet_loses_its_slash_and_keeps_its_pins():
     assert tap[("R1", "2")].name == ""
 
 
+def test_a_net_of_a_sheet_below_the_root_keeps_its_whole_name():
+    """KiCad names a net of the sheet `sub` /sub/FB. Only the root sheet's own nets lose their slash:
+    `sub/FB` is a name no schematic holds."""
+    below = NETLIST.replace('name="/TAP"', 'name="/sub/TAP"')
+    net = ratings.read_netlist(below)
+    assert "/sub/TAP" in net.nets and "sub/TAP" not in net.nets
+    assert net.parts["R1"].pins["2"] == "/sub/TAP"
+
+
 def test_a_local_net_keeps_its_slash_when_a_global_net_has_its_name():
     """KiCad keeps `VIN` (a power symbol) and `/VIN` (a label of the root sheet) apart. Read as 1 net,
     the pins of 2 would be judged as if they met."""
@@ -154,6 +178,30 @@ def test_a_pin_left_open_is_marked_and_its_type_is_the_type_before_the_plus():
     (node,) = net.nets["unconnected-(U1-PA1-Pad2)"]
     assert (node.kind, node.open) == ("bidirectional", True)
     assert net.nets["TAP"][0].open is False
+
+
+def test_a_part_marked_dnp_is_no_part_of_the_circuit():
+    """kicad-cli writes `<property name="dnp"/>` for a part that is not fitted. It meets no need, loads
+    no rail and lifts no net: no pin of it stands on a net, and the netlist names it apart."""
+    fitted = 'description="Unpolarized capacitor"/></comp>'
+    text = NETLIST.replace(fitted, fitted.replace("</comp>", '<property name="dnp"/></comp>'))
+    assert text != NETLIST
+    net = ratings.read_netlist(text)
+    assert "C1" not in net.parts and net.absent == ["C1"]
+    assert all(node.ref != "C1" for nodes in net.nets.values() for node in nodes)
+    assert [node.ref for node in net.nets["TAP"]] == ["R1", "R2", "U1"]
+    assert ratings.read_netlist(NETLIST).absent == []
+
+
+def test_2_parts_with_1_reference_are_refused_by_what_the_schematic_holds():
+    """kicad-cli writes 1 <comp> for 2 symbols annotated R1, and both symbols' pins: pin 1 of R1 then
+    stands on 2 nets. The fault is the schematic's, and the message says which."""
+    text = NETLIST.replace(
+        '<net code="2" name="/VIN" class="Default">',
+        '<net code="2" name="/VIN" class="Default">\n      <node ref="R2" pin="1" pintype="passive"/>',
+    )
+    with pytest.raises(ValueError, match="the schematic holds 2 parts with the reference R2"):
+        ratings.read_netlist(text)
 
 
 def test_a_real_export_of_kicad_cli_is_read_whole():
@@ -995,6 +1043,120 @@ def test_a_rail_loaded_past_its_regulator_fails(tmp_path):
     )
 
 
+def test_a_load_that_is_over_the_limit_before_the_last_pin_is_known_fails(tmp_path):
+    """250 mA of 1 load on a 200 mA regulator is 1.25 already. A second pin whose facts state no
+    current can only add to it: the rail fails, and is not left as not judged."""
+    net, mpns = circuit(U1=("LDO", "LDO-1", LDO), U2=("A", "LOAD-A", TWO_PINS), U3=("B", "LOAD-B", TWO_PINS))
+    facts = library(tmp_path, regulator(), load("LOAD-A", 0.25), load("LOAD-B", None))
+    report = ratings.judge(net, mpns, facts, project(V5), NASA)
+    assert found(report, "fail") == [
+        "fail V33: U1 pin 3 (OUT) gives 200 mA, its loads take at least 250 mA: 1.25, the limit is 0.70 "
+        f"[{NASA_SOURCE}, {LINEAR}]"
+    ]
+    assert not any(f.rule == "rail.load" for f in report.findings if f.status == "not judged")
+
+
+def test_a_load_under_the_limit_with_a_pin_unknown_stays_not_judged(tmp_path):
+    net, mpns = circuit(U1=("LDO", "LDO-1", LDO), U2=("A", "LOAD-A", TWO_PINS), U3=("B", "LOAD-B", TWO_PINS))
+    facts = library(tmp_path, regulator(), load("LOAD-A", 0.05), load("LOAD-B", None))
+    report = ratings.judge(net, mpns, facts, project(V5), NASA)
+    assert found(report, "fail") == []
+    assert found(report, "not judged") == [
+        "not judged V33: U1 pin 3 (OUT) feeds a load nothing states: "
+        "U3 pin 1 (VDD) has no `amps` in its facts"
+    ]
+
+
+def test_a_load_the_project_states_for_a_part_with_no_facts_is_counted(tmp_path):
+    """ratings.json states 190 mA for J1 pin 1. J1 has no facts, and the 190 mA is on the rail all the
+    same: 0.95 of the 200 mA the regulator gives."""
+    net, mpns = circuit(U1=("LDO", "LDO-1", LDO), J1=("OUT", "", {"1": "V33", "2": "GND"}))
+    report = ratings.judge(net, mpns, library(tmp_path, regulator()), project(V5, amps={"J1.1": 0.19}), NASA)
+    assert any(
+        "U1 pin 3 (OUT) gives 200 mA, its loads take 190 mA: 0.95, the limit is 0.70" in line
+        for line in found(report, "fail")
+    )
+
+
+def test_a_rail_s_load_through_a_resistor_is_the_current_the_resistor_is_judged_with(tmp_path):
+    """A 20 mohm shunt from the rail to a load the project states at 100 mA, and a 330 ohm filter in
+    front of a pin that takes 5.5 uA: the rail gives 100.0055 mA, 0.50 of 200 mA. Taken from the
+    extremes of their 2 nets, the 2 resistors alone would take 172 A and 10 mA."""
+    net, mpns = circuit(
+        U1=("LDO", "LDO-1", LDO),
+        R1=("20m", "R-0402", {"1": "V33", "2": "LOAD"}),
+        J1=("OUT", "HDR-1", {"1": "LOAD", "2": "GND"}),
+        R2=("330", "R-0402", {"1": "V33", "2": "VDD"}),
+        U2=("A", "LOAD-A", FILTERED),
+    )
+    facts = library(
+        tmp_path, regulator(), chip_resistor(), entry("connector", "HDR-1"), load("LOAD-A", 5.5e-6)
+    )
+    stated = project(V5, amps={"R1": 0.1, "J1.1": 0.1})
+    report = ratings.judge(net, mpns, facts, stated, NASA)
+    assert any(
+        "U1 pin 3 (OUT) gives 200 mA, its loads take 100 mA: 0.50, the limit is 0.70" in f.text
+        for f in report.findings
+        if f.status == "hold"
+    ), [f.line for f in report.findings]
+
+
+def test_a_regulator_on_a_net_another_source_holds_is_not_held_to_the_rail_s_load(tmp_path):
+    """A charger's output stands on the cell's net, which ratings.json states: the cell feeds the loads
+    there too, and nothing says how the 2 share them. The report notes it and judges no load."""
+    net, mpns = circuit(U1=("LDO", "LDO-1", LDO), U2=("A", "LOAD-A", TWO_PINS))
+    facts = library(tmp_path, regulator(), load("LOAD-A", 0.5))
+    nets = {**V5, "V33": (2.8, 4.2)}
+    report = ratings.judge(net, mpns, facts, project(nets), NASA)
+    assert not any(f.rule.startswith(("rail.load", "output.current")) for f in report.findings)
+    assert (
+        "V33: U1 pin 3 (OUT) stands on a net ratings.json states, V33: another source feeds its loads "
+        "too, and its load is not judged"
+    ) in report.notes
+
+
+def test_a_clamp_from_ground_to_a_rail_takes_no_load_out_of_the_sum(tmp_path):
+    """10 ohm from the 3.3 V rail to ground takes 3.4 V / 9.9 ohm = 343 mA from a 200 mA regulator. A
+    TVS from ground to the rail is reverse biased: it carries nothing, and it does not make ground a
+    part of the rail, which would take every resistor to ground out of the sum."""
+    net, mpns = circuit(
+        U1=("LDO", "LDO-1", LDO),
+        R1=("10", "R-0402", {"1": "V33", "2": "GND"}),
+        D1=("TVS", "TVS-1", {"1": "GND", "2": "V33"}),
+    )
+    clamp = entry("diode.clamp", "TVS-1", diodes=[{"anode": "1", "cathode": "2"}], volts_standoff=5.0)
+    facts = library(
+        tmp_path, regulator(), entry("resistor", "R-0402", tolerance=0.01, watts=2.0, volts=50), clamp
+    )
+    report = ratings.judge(net, mpns, facts, project(V5), NASA)
+    assert any(
+        "U1 pin 3 (OUT) gives 200 mA, its loads take 343 mA: 1.72, the limit is 0.70" in line
+        for line in found(report, "fail")
+    ), [f.line for f in report.findings]
+
+
+def test_a_resistor_with_no_number_on_a_rail_makes_its_load_unknown(tmp_path):
+    """A thermistor valued `NTC` from the rail to ground may conduct, and nothing says how much: it is
+    no wire that joins ground to the rail, and the rail's load is not known."""
+    net, mpns = circuit(U1=("LDO", "LDO-1", LDO), R2=("NTC", "R-0402", {"1": "V33", "2": "GND"}))
+    report = ratings.judge(net, mpns, library(tmp_path, regulator(), chip_resistor()), project(V5), NASA)
+    assert (
+        "not judged V33: U1 pin 3 (OUT) feeds a load nothing states: "
+        "R2 has no number for its Value, and may take a current"
+    ) in found(report, "not judged")
+
+
+def test_a_part_with_no_facts_on_a_rail_makes_its_load_unknown(tmp_path):
+    """A passive pin of a part nothing describes may take a current: the load is not 0 A."""
+    net, mpns = circuit(U1=("LDO", "LDO-1", LDO), M1=("MOTOR", "", {"1": "V33", "2": "GND"}))
+    report = ratings.judge(net, mpns, library(tmp_path, regulator()), project(V5), NASA)
+    assert not any("its loads take 0 A" in f.text for f in report.findings)
+    assert any(
+        line.startswith("not judged V33: U1 pin 3 (OUT) feeds a load nothing states: M1 pin 1 stands on")
+        for line in found(report, "not judged")
+    )
+
+
 def test_a_reference_output_its_datasheet_rates_nowhere_is_noted_and_never_guessed(tmp_path):
     """A comparator's reference output: the datasheet gives its voltage and no limit for the pin. The
     entry leaves `abs` out. The net still stands at the reference, the resistor on it is judged with
@@ -1529,6 +1691,138 @@ def test_a_divider_of_3_resistors_is_not_judged(tmp_path):
     )
 
 
+def test_a_bottom_resistor_on_a_net_a_link_joins_to_ground_is_a_divider_s(tmp_path):
+    """The bottom resistor ends on AGND, which a 0 ohm link joins to GND: AGND is at 0 V. The output is
+    0.8 V x (1 + 100k / 31.6k), 3.25 to 3.42 V, and not the 0.8 V of a pin on its own output."""
+    parts = {**DIVIDER, "R2": ("31.6k", "R-0402", {"1": "FB", "2": "AGND"})}
+    link = {"JP1": ("0R", "LINK-1", {"1": "AGND", "2": "GND"})}
+    net, mpns = circuit(U1=("ADJ", "ADJ-1", ADJ_PINS), **parts, **link)
+    facts = library(tmp_path, ADJUSTABLE, chip_resistor(), entry("link", "LINK-1"))
+    report = ratings.judge(net, mpns, facts, project(V5), NASA)
+    assert (
+        "U1 holds VOUT at 3.25 to 3.42 V: its pin FB at 0.792 to 0.808 V, R1 over R2 "
+        "[TI SLVA477C, equation 11]"
+    ) in report.notes
+
+
+def test_a_tap_with_no_resistor_to_0_volts_is_not_a_pin_on_its_own_output(tmp_path):
+    """The bottom is 2 resistors in a row. The pin's net then has 2 resistors to other nets and none
+    to a net at 0 V: a divider the command does not read, and never an output of 0.8 V."""
+    parts = {
+        **DIVIDER,
+        "R2": ("15.8k", "R-0402", {"1": "FB", "2": "TRIM"}),
+        "R3": ("15.8k", "R-0402", {"1": "TRIM", "2": "GND"}),
+    }
+    net, mpns = circuit(U1=("ADJ", "ADJ-1", ADJ_PINS), **parts)
+    report = ratings.judge(net, mpns, library(tmp_path, ADJUSTABLE, chip_resistor()), project(V5), NASA)
+    assert (
+        "not judged U1 pin 4 (FB) on FB: its divider is 2 resistors to another net and 0 to a net at 0 V, "
+        "not 1 and 1" in found(report, "not judged")
+    )
+    assert not any("fed back whole" in note for note in report.notes)
+
+
+def test_an_output_under_a_negative_reference_is_worked_out_at_its_own_corners(tmp_path):
+    """A reference of -1.2 to -1.16 V under 32.4k over 10k at 5 %: the ratio is 1 + 30780 / 10500 =
+    3.931 to 1 + 34020 / 9500 = 4.581. The least output is the least reference times the greatest
+    ratio, -5.497 V, and the greatest is -1.16 x 3.931 = -4.560 V."""
+    below = json.loads(json.dumps(ADJUSTABLE))
+    below["mpn"], below["pins"][3]["volts"] = "ADJ-N", [-1.2, -1.16]
+    wide = entry("resistor", "R-5PCT", tolerance=0.05, watts=0.0625, volts=50)
+    pins = {**ADJ_PINS, "1": ("VNEG", "IN", "power_in")}
+    net, mpns = circuit(
+        U1=("ADJ", "ADJ-N", pins),
+        R1=("32.4k", "R-5PCT", {"1": "VOUT", "2": "FB"}),
+        R2=("10k", "R-5PCT", {"1": "FB", "2": "GND"}),
+    )
+    nets = {"VNEG": (-12.6, -11.4), **GND}
+    report = ratings.judge(net, mpns, library(tmp_path, below, wide), project(nets), NASA)
+    assert (
+        "U1 holds VOUT at -5.5 to -4.56 V: its pin FB at -1.2 to -1.16 V, R1 over R2 "
+        "[TI SLVA477C, equation 11]"
+    ) in report.notes
+
+
+def test_a_part_s_other_pins_are_held_to_the_output_its_own_divider_sets(tmp_path):
+    """100k over 10k under a 0.8 V reference sets 8.56 to 9.05 V. The part's OUT pin takes 6.5 V, its
+    sense pin on the same net 6 V, and its power-good pin, pulled up to that net, 6 V: all 3 fail. A
+    pin is not judged against its own drive; another pin of its part is another source."""
+    chip = entry(
+        "ic",
+        "ADJ-2",
+        family="regulator.linear",
+        pins=[
+            pin("IN", ["1"], "supply", abs=[-0.3, 20.0], amps=0.0001),
+            pin("GND", ["2"], "ground"),
+            pin("OUT", ["3"], "regulated", abs=[-0.3, 6.5], set_by="FB"),
+            pin("FB", ["4"], "feedback", abs=[-0.3, 6.5], volts=[0.792, 0.808], amps=0.3),
+            pin("PG", ["5"], "open_drain", abs=[-0.3, 6.0], swing=["GND"]),
+            pin("VOS", ["6"], "input", abs=[-0.3, 6.0]),
+        ],
+    )
+    pins = {
+        "1": ("V12", "IN", "power_in"),
+        "2": ("GND", "GND", "power_in"),
+        "3": ("VOUT", "OUT", "power_out"),
+        "4": ("FB", "FB", "input"),
+        "5": ("PG", "PG", "open_collector"),
+        "6": ("VOUT", "VOS", "input"),
+    }
+    net, mpns = circuit(
+        U1=("ADJ", "ADJ-2", pins),
+        R1=("100k", "R-0402", {"1": "VOUT", "2": "FB"}),
+        R2=("10k", "R-0402", {"1": "FB", "2": "GND"}),
+        R3=("100k", "R-0402", {"1": "VOUT", "2": "PG"}),
+    )
+    report = ratings.judge(net, mpns, library(tmp_path, chip, chip_resistor()), project(V12), NASA)
+    fails = found(report, "fail")
+    for said in (
+        "fail U1 pin 3 (OUT) on VOUT: 9.05 V can stand on it, its limit is 6.5 V",
+        "fail U1 pin 5 (PG) on PG: 9.05 V can stand on it, its limit is 6 V",
+        "fail U1 pin 6 (VOS) on VOUT: 9.05 V can stand on it, its limit is 6 V",
+    ):
+        assert any(line.startswith(said) for line in fails), (said, fails)
+
+
+def test_a_pin_pulled_up_to_its_own_part_s_fixed_output_is_held_to_that_output(tmp_path):
+    """A regulator that gives 8.8 to 9.2 V, and its power-good pin, which takes 6 V, pulled up to it."""
+    chip = entry(
+        "ic",
+        "FIX-9",
+        family="regulator.linear",
+        pins=[
+            pin("IN", ["1"], "supply", abs=[-0.3, 20.0], amps=0.0001),
+            pin("GND", ["2"], "ground"),
+            pin("OUT", ["3"], "regulated", abs=[-0.3, 12.0], volts=[8.8, 9.2], amps=0.3),
+            pin("PG", ["5"], "open_drain", abs=[-0.3, 6.0], swing=["GND"]),
+        ],
+    )
+    pins = {
+        "1": ("V12", "IN", "power_in"),
+        "2": ("GND", "GND", "power_in"),
+        "3": ("V9", "OUT", "power_out"),
+        "5": ("PG", "PG", "open_collector"),
+    }
+    net, mpns = circuit(U1=("FIX", "FIX-9", pins), R3=("100k", "R-0402", {"1": "V9", "2": "PG"}))
+    report = ratings.judge(net, mpns, library(tmp_path, chip, chip_resistor()), project(V12), NASA)
+    assert any(
+        line.startswith("fail U1 pin 5 (PG) on PG: 9.2 V can stand on it, its limit is 6 V")
+        for line in found(report, "fail")
+    )
+
+
+def test_a_feedback_pin_left_open_regulates_nothing_the_command_can_name(tmp_path):
+    """Nothing but the pin stands on its net: no divider, and no output the pin is fed back from."""
+    pins = {**ADJ_PINS, "4": ("unconnected-(U1-FB-Pad4)", "FB", "input")}
+    net, mpns = circuit(U1=("ADJ", "ADJ-1", pins))
+    report = ratings.judge(net, mpns, library(tmp_path, ADJUSTABLE), project(V5), NASA)
+    assert (
+        "not judged U1 pin 4 (FB) on unconnected-(U1-FB-Pad4): no other part stands on its net, "
+        "and nothing sets the output" in found(report, "not judged")
+    )
+    assert not any("fed back whole" in note for note in report.notes)
+
+
 def test_an_output_pin_off_the_net_its_divider_regulates_fails(tmp_path):
     pins = {**ADJ_PINS, "3": ("OTHER", "OUT", "power_out")}
     net, mpns = circuit(U1=("ADJ", "ADJ-1", pins), C1=("1u", "C-10V", {"1": "OTHER", "2": "GND"}), **DIVIDER)
@@ -1571,6 +1865,22 @@ def buck_board(**more: tuple) -> tuple[ratings.Netlist, dict[str, str]]:
         **DIVIDER,
         **more,
     )
+
+
+def test_an_inductor_past_its_ratings_before_the_last_load_is_known_fails(tmp_path):
+    """2.5 A of 1 load is over the 1.5 A the inductor is rated for and the 2 A it saturates at, before
+    any ripple and whatever a second pin with no stated current takes."""
+    net, mpns = buck_board(U3=("B", "LOAD-B", ON_VOUT))
+    coil = entry("inductor", "L-1", tolerance=0.2, amps_saturation=2.0, amps_rms=1.5)
+    facts = library(tmp_path, SWITCHER, chip_resistor(), coil, load("LOAD-A", 2.5), load("LOAD-B", None))
+    report = ratings.judge(net, mpns, facts, project(V12), NASA)
+    lines = [f.line for f in report.findings if f.part == "L1"]
+    assert lines == [
+        "fail L1 2.2u: its loads take at least 2.5 A, its rated current is 1.5 A "
+        "[DS-1, rev A: the part's own rating]",
+        "fail L1 2.2u: its loads take at least 2.5 A before any ripple, and it saturates at 2 A "
+        "[DS-1, rev A: the part's own rating]",
+    ]
 
 
 def test_a_buck_s_inductor_is_held_to_its_load_and_half_its_ripple(tmp_path):
