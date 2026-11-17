@@ -15,6 +15,7 @@ breaks, and on no other. The numbers in the lines are worked out here and in tes
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -54,10 +55,14 @@ FAULTS = {
 FIXTURES = ("pass-ratings-node", *FAULTS)
 
 
-def say(*args: object) -> tuple[int, str]:
-    """The command's exit code and what it prints."""
+def say(*args: object, env: dict[str, str] | None = None) -> tuple[int, str]:
+    """The command's exit code and what it prints. `env` adds variables to the environment it runs in."""
     proc = subprocess.run(
-        [sys.executable, str(CLI), *map(str, args)], capture_output=True, text=True, check=False
+        [sys.executable, str(CLI), *map(str, args)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, **env} if env else None,
     )
     return proc.returncode, proc.stdout + proc.stderr
 
@@ -205,6 +210,207 @@ def test_a_file_the_command_does_not_take_fails_the_run_with_its_place(tmp_path)
         "- ratings.json: pack: `mil-hdbk` is no pack; the workcenter holds "
         "ecss-q-st-30-11c-rev2, nasa-eee-inst-002"
     ) in text
+
+
+# ---------------------------------------------------------------- files and flags the command does not take
+#
+# Each case is the board that holds every stress with 1 file changed, as a project would hold it: its
+# facts in a library above it. The command answers with the file, the place and the fault, exits 1 and
+# leaves its record. No case ends in a traceback.
+
+HEAD = "Value,Footprint,Qty,Manufacturer,MPN,Supplier,SKU,Pack,Breaks\n"
+REFUSED = "FAIL   ratings    a file is not as the command reads it"
+
+
+def node(tmp_path: Path) -> Path:
+    """The board that holds every stress, in a folder of its own with the facts' library above it."""
+    project = copy("pass-ratings-node", tmp_path / "boards")
+    shutil.copytree(BOARDS / "library", tmp_path / "boards" / "library")
+    return project
+
+
+def rewrite(path: Path, change) -> None:
+    """A JSON file with 1 change made to what it holds."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    change(data)
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def put(file: str, *keys: object, to: object):
+    """A change to 1 file of the project or of its library: the value at a path of keys is set."""
+
+    def change(project: Path) -> None:
+        def at(data: object) -> None:
+            for key in keys[:-1]:
+                data = data[key]
+            data[keys[-1]] = to
+
+        rewrite(project / file, at)
+
+    return change
+
+
+def own_pack(change):
+    """A change that gives the project a pack of its own, house.json: the NASA pack with 1 change."""
+
+    def write(project: Path) -> None:
+        data = json.loads((ROOT / "rules" / "ratings" / "nasa-eee-inst-002.json").read_text(encoding="utf-8"))
+        change(data)
+        (project / "house.json").write_text(json.dumps(data), encoding="utf-8")
+        rewrite(project / "ratings.json", lambda stated: stated.update(pack="house.json"))
+
+    return write
+
+
+TLV = "../library/facts/ti-tlv62569.json"
+SET_BY_A_LIST = {
+    "numbers": ["3"],
+    "name": "SW",
+    "role": "regulated",
+    "abs": [-0.3, 6],
+    "set_by": ["FB"],
+    "page": 3,
+}
+WRONG = {
+    "nets is a number": (
+        put("ratings.json", "nets", to=5),
+        "ratings.json: nets: an object is asked, with 1 key for each net it states",
+    ),
+    "nets is null": (
+        put("ratings.json", "nets", to=None),
+        "ratings.json: nets: an object is asked, with 1 key for each net it states",
+    ),
+    "parts is a number": (
+        put("ratings.json", "parts", to=7),
+        "ratings.json: parts: an object is asked, with 1 key for each part or pin it states",
+    ),
+    "a kind is a list": (
+        put(TLV, "kind", to=["ic"]),
+        "ti-tlv62569.json: kind: one of resistor, capacitor.ceramic, ",
+    ),
+    "a role is a list": (
+        put(TLV, "pins", 0, "role", to=["input"]),
+        "ti-tlv62569.json: pin 1: role: one of supply, ground, input, ",
+    ),
+    "a pin's name is a list": (
+        put(TLV, "pins", 0, "name", to=["EN"]),
+        "ti-tlv62569.json: pin 1: name: text is asked, and there is none",
+    ),
+    "set_by is a list": (
+        put(TLV, "pins", 2, to=SET_BY_A_LIST),
+        "ti-tlv62569.json: pin SW: set_by: text is asked, and there is none",
+    ),
+    "a capacitor rated 0 V": (
+        put("../library/facts/made-up.json", "parts", 0, "volts", to=0),
+        "made-up.json: part 1: volts: 0 is not above 0",
+    ),
+    "a resistor rated 0 W": (
+        put("../library/facts/passives.json", "parts", 0, "watts", to=0),
+        "passives.json: part 1: watts: 0 is not above 0",
+    ),
+    "a regulator that gives 0 A": (
+        put(TLV, "pins", 4, "amps", to=0),
+        "ti-tlv62569.json: pin FB: amps: 0 is not above 0",
+    ),
+    "a pack's rule id is a list": (
+        own_pack(lambda pack: pack["rules"][0].update(id=["x"])),
+        "house.json: rule 1: id: text is asked, and there is none",
+    ),
+    "a parts row of 3 fields": (
+        lambda project: (project / "parts.csv").write_text(
+            HEAD + "TLV62569,Package_TO_SOT_SMD:SOT-23-5,1\n", encoding="utf-8"
+        ),
+        "parts.csv:2: 3 fields, and the header names 9",
+    ),
+    "a parts file that is no UTF-8": (
+        lambda project: (project / "parts.csv").write_bytes(
+            HEAD.encode() + b"10k\xff,Resistor_SMD:R_0603_1608Metric,1,V,X,,,,\n"
+        ),
+        "parts.csv: not UTF-8: ",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", WRONG)
+def test_a_wrong_file_is_refused_with_its_place_and_leaves_its_record(case, tmp_path):
+    change, line = WRONG[case]
+    project = node(tmp_path)
+    change(project)
+    code, text = say("ratings", project)
+    assert code == 1 and "Traceback" not in text, text
+    assert text.startswith(REFUSED), text
+    assert f"\n       - {line}" in text, text
+    record = json.loads((project / "build" / "ratings" / "report.json").read_text(encoding="utf-8"))
+    assert record["status"] == "fail" and record["details"]["failures"][0].startswith(line)
+
+
+def test_a_parts_file_that_is_not_there_is_refused_by_its_path(tmp_path):
+    project = node(tmp_path)
+    code, text = say("ratings", project, "--parts", tmp_path / "none.csv")
+    assert code == 1 and text.startswith(REFUSED), text
+    assert f"\n       - {tmp_path / 'none.csv'}: No such file or directory\n" in text
+
+
+def test_facts_with_a_parts_file_the_command_does_not_take_is_refused_and_leaves_no_record(tmp_path):
+    """`--facts` judges nothing, so it leaves no record of a run. It answers a wrong file as a run does."""
+    project = node(tmp_path)
+    code, text = say("ratings", project, "--facts", "U1", "--parts", tmp_path / "none.csv")
+    assert code == 1 and "Traceback" not in text and text.startswith(REFUSED), text
+    assert f"\n       - {tmp_path / 'none.csv'}: No such file or directory\n" in text
+    (project / "parts.csv").write_text("Value,Footprint,Qty\n10k,x,1\n", encoding="utf-8")
+    code, text = say("ratings", project, "--facts", "U1")
+    assert code == 1 and "Traceback" not in text and text.startswith(REFUSED), text
+    columns = "Manufacturer, MPN, Supplier, SKU, Pack, Breaks"
+    assert f"\n       - {project / 'parts.csv'}: no column {columns}\n" in text
+    (project / "parts.csv").write_text(HEAD + "TLV62569,Package_TO_SOT_SMD:SOT-23-5,1\n", encoding="utf-8")
+    code, text = say("ratings", project, "--facts", "U1")
+    assert code == 1 and "Traceback" not in text and text.startswith(REFUSED), text
+    assert "\n       - parts.csv:2: 3 fields, and the header names 9\n" in text
+    assert not (project / "build" / "ratings" / "report.json").exists()
+
+
+def test_out_that_names_a_file_is_refused_and_nothing_is_written_over_it(tmp_path):
+    project = node(tmp_path)
+    (tmp_path / "outfile").write_text("x", encoding="utf-8")
+    for more in ((), ("--facts", "U1")):
+        code, text = say("ratings", project, "--out", tmp_path / "outfile", *more)
+        assert code == 1 and "Traceback" not in text and text.startswith(REFUSED), text
+        assert (
+            f"\n       - --out {tmp_path / 'outfile'}: a file stands there, and a folder is asked\n" in text
+        )
+    assert (tmp_path / "outfile").read_text(encoding="utf-8") == "x"
+    # --init judges nothing and writes 1 file beside the schematic: it does not look at --out
+    (project / "ratings.json").unlink()
+    code, text = say("ratings", project, "--init", "--out", tmp_path / "outfile")
+    assert code == 0 and f"wrote {project / 'ratings.json'}" in text, text
+    assert not (project / "build").exists()
+
+
+def test_a_schematic_with_2_parts_of_1_reference_is_refused_by_the_schematic_s_name(tmp_path):
+    """kicad-cli writes 1 part for the 2, with each pin on 2 nets. The netlist's reader refuses it, and
+    the line names the file the fault is in. `--facts` reads the same netlist."""
+    project = node(tmp_path)
+    sch = project / "node.kicad_sch"
+    text = sch.read_text(encoding="utf-8")
+    assert text.count('"Reference" "R2"') == 1 and text.count('(reference "R2")') == 1
+    twice = text.replace('"Reference" "R2"', '"Reference" "R1"').replace(
+        '(reference "R2")', '(reference "R1")'
+    )
+    sch.write_text(twice, encoding="utf-8")
+    for more in ((), ("--facts", "R1")):
+        code, text = say("ratings", project, *more)
+        assert code == 1 and "Traceback" not in text and text.startswith(REFUSED), text
+        assert "\n       - node.kicad_sch: " in text, text
+
+
+def test_an_engine_that_is_missing_is_named_with_and_without_facts(tmp_path):
+    """kicad-cli that is not installed is no file to refuse: the run is skipped, exit 2, with its name."""
+    project = node(tmp_path)
+    absent = str(tmp_path / "no-kicad-cli")
+    for more in ((), ("--facts", "U1")):
+        code, text = say("ratings", project, *more, env={"KICAD_CLI": absent})
+        assert code == 2 and "Traceback" not in text, text
+        assert text.startswith(f"SKIP   ratings    engine missing: {absent}"), text
 
 
 def test_facts_prints_an_entry_to_fill_with_the_part_s_number_and_pins(tmp_path):
