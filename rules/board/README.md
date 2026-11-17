@@ -32,14 +32,31 @@ be a file of the project's own, named by its path from the project's folder.
   annex D at the rise the pack allows, on the copper as manufactured (table 7-1), widened for the
   manufacturing tolerance (table 7-3). An outer layer carries 0.9 of the model (13.6.4.2a). A board of
   1.5 to 1.8 mm rises 1.2 times as much (13.6.4.2b).
-- **The current on a net** is the sum of the currents `ratings.json` states on its pins; a part of 2
-  pins counts on both its nets. A track that feeds 2 loads carries both. Where a source and its loads
-  are all stated, the sum counts the current 2 times.
-- **The board's area** is the area inside its outline on Edge.Cuts: lines and arcs joined end to end,
-  rectangles, polygons and circles. The greatest outline is the board; the others are its holes. An
-  outline that does not close, or holds a curve, has no area, and no width is judged.
+- **The current on a track.** Where every pad of a net has a current in `ratings.json` (a pin, `J1.1`,
+  or a part, `R5`, which counts on each of its nets) and the net's copper is 1 piece, the currents in
+  balance the currents out. Taking a track away splits the net's pads into sides; the track carries at
+  most the lesser of the currents stated on the 2 sides. A track in a loop carries at most half the
+  pins' sum; a stub to no pad carries nothing. The net's vias are held to half the sum. On any other
+  net, every track and via is held to the sum of the currents stated on its pins, which counts a source
+  and its loads 2 times: state every pad's current, 0 included, to be held to less.
+- **Parallel tracks (13.6.3g).** 2 straight tracks of 2 nets with a current, parallel and side by side on 1 layer,
+  less than 25 mm apart edge to edge, are held as 1 conductor: the sum of their currents on the sum of
+  their sections as manufactured (table 7-3's tolerance off the width, table 7-1's copper). The
+  clause's NOTE names an equivalent section and an equivalent current; the pack takes the sums.
+- **The board's area** is the area inside its outline on Edge.Cuts: lines, arcs and curves joined end
+  to end, rectangles, polygons and circles, the board's own and those drawn inside a footprint, placed
+  by the footprint's place and turn. The greatest outline is the board; the others are its holes. An
+  outline that does not close has no area, and no width is judged.
 - **Via count.** The vias of a net that join the same pieces of copper share the current. A via is a
   track of its wall's section (13.6.3f). A group holds at least the net's current divided by 1 via's.
+  The wall is the pack's where it holds for the board, or the one `board-rules.json` states, and the
+  lesser where both do:
+
+      {"pack": "ecss-q-st-70-12c-rev1",
+       "via_wall": {"um": 25.4, "source": "OSH Park, 2 Layer Prototype Service, docs.oshpark.com/services/two-layer, Via Plating Thickness 1mil (0.0254mm), read 2026-11-17"}}
+
+  State the least wall the fab promises. An average, such as JLCPCB's "Average Hole Plating Thickness
+  18μm", is not a least. A microvia is copper filled (table 11-1, page 99) and is not judged.
 
 ## ecss-q-st-70-12c-rev1
 
@@ -59,17 +76,28 @@ ECSS-Q-ST-70-12C Rev.1, "Space product assurance - Design rules for printed circ
 | Copper as manufactured | 7.1.2j, table 7-1, page 38 | 9, 12, 17, 35, 70 um give 6, 9, 11, 25, 56 um |
 | Width tolerance | 7.4.2a and b, table 7-3, page 45 | 20 %, at most 30, 50, 50, 70 um by copper |
 | Plating of an outer layer | 7.4.2c NOTE 2, page 44; table 7-3, page 45; table 7-4, page 46 | 25 um, added to the foil |
+| Parallel tracks | 13.6.3g, page 114 | under 25 mm apart: 1 conductor |
+| A via's wall on an HDI board | table 11-1 (2 of 2), page 100; table 11-2, page 100; 11.6a to d, pages 96 and 97 | core via 30 um (polyimide HDI) and 25 um (high speed HDI); plated through hole 25 um: the lesser, 25 um |
+| HDI | 3.2.40 NOTE 1, page 22 | a board with a microvia |
 
 The annex's own example (D.1.3, page 184): 925 um by 25 um as manufactured carries 1.0002 A at 5 C;
 `tests/test_boardrules.py` holds it, and 975 um as designed for 1 A.
 
 What this pack does not judge, and says so:
 
-- **Vias.** 13.6.3f rates a via as a track of its wall's section. The document gives the copper of a
-  plated hole's wall for HDI boards alone (table 11-2, page 100). Each net with a current and a via is
-  `not judged`, so such a board never passes `--strict` with this pack. A pack of the project's own,
-  a copy of this one, may add `"via_wall": {"um": ..., "where": ...}` to `current` from its fab's own
-  figure.
+- **Vias of a board with no microvia, without a stated wall.** 13.6.3f rates a via as a track of its
+  wall's section, and the document states no wall for such a board. Read for it, and none found: 13.6.3f
+  (page 114); 13.6.4.2c (page 115, a via to a plane, a may); 7.4.2c NOTE 2 (page 44) and table 7-1
+  (page 38), the plating of an outer layer and not of a hole's wall; 7.5.3i (pages 52 and 53), the drill
+  grown for the wall's plating with no thickness; tables 11-1 and 11-2 (page 100), for HDI boards by
+  11.6 (pages 96 and 97). Each net with a current and a via is `not judged` until `board-rules.json`
+  states the fab's wall (`via_wall`, above).
+- **Microvias**, copper filled (table 11-1, page 99): not judged.
+- **13.6.3g beyond 2 straight tracks of 2 nets**: 2 tracks of 1 net, tracks at an angle to each other,
+  arcs, tracks stacked on 2 layers, and 3 or more tracks side by side are each held alone or in pairs.
+  The DRC notes name them as not checked.
+- **13.6.4.2c, d and e**, which let a via to a plane, a short track to a plane, and a track into a
+  connector's footprint carry more: each is a "may", and the pack takes none of them.
 - **Over 30 V on an outer layer.** Table 13-7 does not permit it without coating, except on a
   connector's pads (13.8.4d). The check does not tell a connector's pad.
 - **Copper of a thickness table 7-1 does not name**, such as KiCad's 15.2 um inner layers.
@@ -79,8 +107,9 @@ What this pack does not judge, and says so:
 
 Choices this pack makes, each on the stricter side: copper as manufactured is the column for
 non-plated inner layers on every layer; an outer layer is plated even on a board with no plated hole;
-a board with no stackup has KiCad's own 35 um on each layer, and the DRC notes say so; the current on
-a net is the sum of the currents `ratings.json` states on its pins.
+a board with no stackup has KiCad's own 35 um on each layer, and the DRC notes say so; where not every
+pad's current is stated, the current on a net is the sum of the currents `ratings.json` states on its
+pins; on an HDI board with a stated wall, the lesser of the 2 walls.
 
 A pack of the project's own is read as strictly as this one: every key the check uses must be there,
 a number in its range, or the run is refused with the file and the place.

@@ -1,6 +1,6 @@
 ---
 name: Board Rules
-description: Holds a routed board to a rule pack from a free standard (ECSS-Q-ST-70-12C Rev.1) - each gap to the voltage between its nets, each track's width to the current it carries, and each net's vias when the pack gives a via's wall - with every failure naming its clause, table and page; and to a fab's published limits (JLCPCB, PCBWay, OSH Park, Sierra Circuits). The shipped ECSS pack gives no wall, so a board with a via on a net that carries current needs a pack of the project's own with its fab's via plating.
+description: Holds a routed board to a rule pack from a free standard (ECSS-Q-ST-70-12C Rev.1) - each gap to the voltage between its nets, each track's width to the current it carries (worked out per track from the net's copper, and 2 parallel tracks under 25 mm apart as 1), and each net's via count to its current on the wall of an HDI board or the wall the fab states - with every failure naming its clause, table and page; and to a fab's published limits (JLCPCB, PCBWay, OSH Park, Sierra Circuits).
 ---
 
 # Board Rules
@@ -22,7 +22,7 @@ own rules, and each failure names the clause it breaks.
 
 | File | Holds | Who writes it |
 |---|---|---|
-| `board-rules.json`, beside the board | `{"pack": "ecss-q-st-70-12c-rev1"}`: the pack the board is held to | You |
+| `board-rules.json`, beside the board | `{"pack": "ecss-q-st-70-12c-rev1"}`: the pack the board is held to; and `via_wall`, the least copper of a via's wall your fab promises, with its source (step 7) | You |
 | `ratings.json`, beside the board | `nets`: each net's span of volts. `parts`: the amps on a pin (`J1.1`) or through a part of 2 pins (`R5`). The same file `workcenter ratings` reads: never state a number 2 times | You, each entry with its source |
 | `rules/board/<pack>.json`, in the workcenter | The standard's numbers, each with its clause, table and page | The workcenter. Never edit one to pass |
 | `rules/<fab>.kicad_dru`, in the workcenter | A fab's published limits | The workcenter |
@@ -40,6 +40,10 @@ The worked example is `tests/boards/pass-board-ecss`, and
    says. Give every net on the board a span of volts in `nets`, and every
    pin that brings a current in or out an entry in `parts` with `amps`.
    Each entry gets a `source`: the requirement or the part that sets it.
+   To have each track held to its own current, state every pad of the
+   net, 0 A included; otherwise each track of the net is held to the sum
+   of the currents stated on it, which counts a source and its loads 2
+   times.
 3. Run `workcenter drc <project> --strict`. Read the line `PASS drc` or
    `FAIL drc`. It ends `board rules <pack>: N fail, M not judged`.
 4. For each line `- fail clearance <net> to <net> on <layer> at (x, y): <gap> mm, limit <mm> mm at <V> V [...]`:
@@ -52,8 +56,9 @@ The worked example is `tests/boards/pass-board-ecss`, and
    copper or split the current.
 6. For each line `- fail vias <net> between <layer> and <layer> at (x, y): <n>, limit <m> for <A> A`:
    put `m - n` more vias beside the first, each touching the same tracks.
-   The shipped pack prints no such line: it gives no via's wall, so it
-   prints `not judged vias of <net>` instead (step 7).
+   For each line `- fail parallel tracks <net> and <net> on <layer> from (x, y) and (x, y), <g> mm apart: <s> mm2 as manufactured, limit <l> mm2 for <A> A`:
+   widen the 2 tracks until their sections add up to the limit, or move
+   them 25 mm or more apart (13.6.3g).
 7. For each line `- not judged ...` (`- warning: not judged ...` without
    `--strict`): do what the reason asks.
    - `ratings.json states no voltage for it` or `no current on it`: add
@@ -61,13 +66,17 @@ The worked example is `tests/boards/pass-board-ecss`, and
    - `the board is ... thick` or `the board's outline holds ... mm2`: the
      standard's current model does not hold for this board (13.6.3c). Show
      the width another way, and write in the version's README how.
-   - `the pack gives no copper thickness of a via's wall`: copy the pack
-     into the project, name the copy in `board-rules.json` by its path,
-     and add to its `current` a `via_wall` from the fab's own page, with
-     the page in `where`. OSH Park's two-layer page, for one, states "Via
-     Plating Thickness 1mil (0.0254mm)":
-     `"via_wall": {"um": 25.4, "where": "docs.oshpark.com/services/two-layer, Via Plating Thickness, page 1"}`.
-     Without it, no board with such a via passes `--strict`.
+   - `the pack states no copper of a via's wall for this board`: the
+     standard states a wall for HDI boards alone. Find the least wall your
+     fab promises on its own page, and add it to `board-rules.json` with
+     the Write tool. OSH Park's two-layer page states "Via Plating
+     Thickness 1mil (0.0254mm)":
+     `{"pack": "ecss-q-st-70-12c-rev1", "via_wall": {"um": 25.4, "source": "OSH Park, docs.oshpark.com/services/two-layer, Via Plating Thickness 1mil (0.0254mm), read <date>"}}`.
+     An average is not a least: JLCPCB's page gives "Average Hole Plating
+     Thickness 18μm"; ask the fab for its least, or write in the
+     version's README why the average stands.
+   - `microvias of <net>`: a filled microvia is not rated by the pack.
+     Show its current another way, and write in the version's README how.
    - `its name holds ...` or `takes it for ...`: rename the net in the
      schematic so a KiCad rule can quote it.
    - `over 30 V`, `over 500 V`, `copper ... is none of ...`: the pack
@@ -85,6 +94,6 @@ The worked example is `tests/boards/pass-board-ecss`, and
 ## Done when
 
 `workcenter gates <project> --strict` prints GREEN, and its DRC line names
-the pack with `0 fail, 0 not judged`. With `ecss-q-st-70-12c-rev1` as
-shipped, a board reaches this only if no net with a current has a via;
-otherwise it needs the project's own pack with `via_wall` (step 7).
+the pack with `0 fail, 0 not judged`. A board with no microvia and a via
+on a net with a current reaches this only with `via_wall` in
+`board-rules.json` (step 7).
