@@ -12,12 +12,13 @@ the makers' and the issuers' terms forbid a copy.
 | `nasa-eee-inst-002` | standard | EEE-INST-002 (NASA/TP-2003-212242) | May 2003, with Addendum 1 of April 2008 |
 | `ecss-q-st-30-11c-rev2` | standard | ECSS-Q-ST-30-11C Rev.2 | 23 June 2021 |
 | `ecss-q-st-70-12c-rev1` | standard | ECSS-Q-ST-70-12C Rev.1 | 30 April 2025 |
+| `samsung-cl10a106kp8nnn` | datasheet | CL10A106KP8NNN (the maker's page) | the page as fetched on 2026-11-17 |
+| `ti-slva477c` | application note | SLVA477C (buck power stage) | December 2011, revised September 2026 |
 | `ti-slvsdg1` | datasheet | SLVSDG1C (TLV62569) | December 2016, revised October 2017 |
 | `ti-sces579` | datasheet | SCES579J (SN74AUP1G17) | June 2004, revised September 2017 |
 | `ti-sces351` | datasheet | SCES351Y (SN74LVC1G17) | July 2001, revised October 2025 |
 | `vishay-20035` | datasheet | 20035 (D/CRCW e3) | 14-Apr-2026 |
 | `vishay-45199` | datasheet | 45199 (VJ Commercial Series) | 08-May-2026 |
-| `samsung-cl10a106kp8nnn` | datasheet | CL10A106KP8NNN (a web page) | the page as fetched on 2026-11-17; it prints no revision |
 | `coilcraft-806` | datasheet | 806 (XAL40xx) | Revised 02/25/26 |
 | `bourns-srn2010ta` | datasheet | SRN2010TA | REV. 06/25 |
 | `ti-sbvs320` | datasheet | SBVS320D (TLV755P) | November 2017, revised September 2024 |
@@ -36,6 +37,12 @@ names it `changed` on every run. On 2026-11-17 a fetch gave SHA256 `503fa0ce84ee
 indexed one. Its graph data still held the curves the facts enter: DC bias -71.712 % at 5 V and
 -88.793 % at 10 V, 91 points; temperature +2.280 % at -55 C and -14.725 % at 85 C, 61 points. A page
 like it is judged by its data, not by its SHA256.
+
+Also on 2026-11-17 `ti-slva477c`, the note of the buck block (`rules/blocks/buck.json`), was downloaded
+under the workcenter's name; its number, title and revision are those of its first page.
+`samsung-cl10a106kp8nnn` is the page the facts of `fail-sim-bias` and of the buck block's capacitor were
+read from. Its row in `library/sources.csv` says each fetch differs in its session token and its time
+stamp: `fetch` reports a new copy as changed.
 
 ## The 3 commands
 
