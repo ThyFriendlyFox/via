@@ -76,7 +76,11 @@ copy and on the third; the second was not read for its values.
 - `fetch` judges a held copy by its SHA256 (`kept` or `changed`) and a web page by its values: `kept`
   when every value stands on the page, `moved` when 1 is gone. A value stands when its text, split at
   ` ... `, is found in order in the page's text: tags dropped, entities read, white space collapsed. A
-  page whose token moved is `kept`; a page whose number moved is `moved`. A paper or a book is printed
+  part that starts or ends with a digit stands only at the bounds of the page's number: `0.2` does not
+  stand in `0.25`. ` ... ` skips 200 characters at most, and skips no text where the next part's first
+  word stands: a later row that says the old number does not hold a row whose number moved. On
+  2026-11-17 the 5 split values of the index skipped 9 to 161 characters on the pages fetched that day.
+  A page whose token moved is `kept`; a page whose number moved is `moved`. A paper or a book is printed
   `not held`, with why, and nothing is fetched for it.
 - `fetch` files 3 answers in the ledger: a copy, a refusal (HTTP 401 or 403) and a file gone (HTTP 404
   or 410). It files nothing for an answer that gives no copy and no verdict: HTTP 429 (RFC 6585,
@@ -88,13 +92,17 @@ copy and on the third; the second was not read for its values.
 - `workcenter references rules [PATH ...]` reads each document a rule file names, under a key `document`
   or `source` or in a `documents` object of documents by id, and fails 1 line for each one the index
   lacks or names at another URL, or that has no URL and no SHA256. A source whose URL is a web page's is
-  held by that URL. It reads each URL of a `.kicad_dru` file, and fails 1 the index has no entry for. It
-  reads tool code and tests (next section). With no PATH it reads the files the globs under `rules` and
-  `code` in `index.json` find. `make verify` runs it (`tests/test_references.py`,
+  held by that URL. It reads each URL of a `.kicad_dru` file, to white space or a quote, and fails 1 the
+  index has no entry for. It reads tool code and tests (next section). It reads the text of a
+  `.kicad_dru` file and every other text of a JSON rule file for documents' names as it reads code's,
+  with no `CITES`: a citation of an entry's name is held, a citation of any other name fails, and a name
+  with no place beside it is printed `not judged`. With no PATH it reads the files the globs under
+  `rules` and `code` in `index.json` find. `make verify` runs it (`tests/test_references.py`,
   `tests/test_references_code.py`).
 - A source with no document to pin says so in its `document`: `no datasheet: <why>` or
   `no document: <why>`. Only such a source is printed as `not judged`, with its reason. A source that
-  names a datasheet by name alone fails.
+  names a datasheet by name alone fails, as does a `source` or `document` that is a text other than an
+  index id or an id of the file's own `documents` object.
 
 ## A document cited in code
 
@@ -105,13 +113,21 @@ A tool or a test names the documents it cites in 1 declared way, a module-level 
 CITES = {"ti-slva477c": "section 2, the efficiency; equations 1, 2, 4 and 11"}
 ```
 
-`references rules` reads `CITES` without running the file. It fails an id the index lacks, and a place
-that is not a text. Then it finds each document's name in the file: each entry's `names`, and each
-number of a family under `numbers` in `index.json` (TI's notes, RFCs, ECSS, EEE-INST, JESD, IPC, IEC,
-NBS handbooks). A name with a section, table, page, clause, equation, annex, figure or chapter within
-200 characters after it is a citation: it fails unless it is an entry's name and `CITES` names that
-entry. A name with none of them beside it is a mention, printed as `not judged` with that reason,
-unless `CITES` names it.
+`references rules` reads `CITES` without running the file. It fails an id the index lacks, a place
+that is not a text, and a `CITES` that is no dict of texts. Then it finds each document's name in the
+file: each entry's `names`, and each number of a family under `numbers` in `index.json` (TI's
+literature numbers, RFCs, ECSS, EEE-INST, JESD, J-STD, IPC and its test methods, IEC, MIL, IEEE,
+Analog Devices' notes, NBS handbooks). A family's number names an entry when it is the entry's name
+with spaces and hyphens set aside: `RFC6585` is `RFC 6585`. The text of a URL is no name. A name with a
+section, table, page, clause, equation, annex, figure or chapter within 200 characters after it is a
+citation. The place is read in any case and abbreviated: `Table 6-1`, `Fig. 3`, `p. 12`, `pp. 407`,
+`eq. 4`, `§2.1`. A citation fails unless it is an entry's name and `CITES` names that entry. A name
+with none of them beside it is a mention, printed as `not judged` with that reason, unless `CITES`
+names it.
+
+A revision or an edition written between an entry's name and its place must be the entry's:
+`Rev.1`, `2nd edition` or a version such as `0.6` right after the name. Another one fails, though
+`CITES` names the entry: the index holds 1 copy, and Rev.1 is another document.
 
 ## An entry
 
@@ -144,15 +160,21 @@ A paper or a book has `id`, `kind`, `authors`, `title`, `published`, `edition`, 
 and no `url` or `sha256`.
 
 The command refuses an entry with a field of its sort left out, a SHA256 that is not 64 lower-case hex
-digits, a URL that is not whole, a web page with a SHA256 or with no values, or an id or a SHA256 that
-another entry has. It refuses an index whose `rules` or `code` is not a list of globs from the
+digits, a URL that is not whole, a web page with a SHA256 or with no values, a value with no text but
+` ... `, or an id or a SHA256 that another entry has. It refuses an index whose `rules` or `code` is not a list of globs from the
 repository's root, and a `numbers` pattern that is not a regular expression.
 
 ## What the index does not cover
 
 - A document cited in code by a name that is no entry's `names` and no family's number, such as
-  CODATA 2018 in `tools/fields.py`, is not found.
-- 3 mentions of IPC-2581 (the file format of `workcenter fabfiles`) and 1 of JESD51 in
-  `tools/thermal.py` have no place beside them and are printed `not judged`.
+  CODATA 2018 in `tools/fields.py`, is not found. A family covers the numbers of its pattern only:
+  a TI number written in lower case (`slva477c`) or a maker's note of a family the index does not list
+  is not found either.
+- A revision is read only when it is written between the name and its place, as `Rev.N`, `Nth
+  edition` or a version right after the name. A revision written another way (a date, `revised 2019`)
+  is not judged.
+- 3 mentions of IPC-2581 (the file format of `workcenter fabfiles`), 1 of JESD51 in
+  `tools/thermal.py` and 1 of IPC-6012 (the class of Sierra's order, `rules/sierra-circuits-web.kicad_dru`)
+  have no place beside them and are printed `not judged`.
 - The edition of Incropera is not named where `tests/test_copper.py` cites it, and the 3 cited works
   were not read on 2026-11-17: their places are those the citing files give.

@@ -548,14 +548,14 @@ def test_every_document_a_rule_of_the_repository_names_is_in_the_index():
     rules/copper/materials.json 2 (NBS's copper wire tables and TI's AN-2020), the 4 facts files of 1 part 4
     datasheets, passives.json 4, fail-sim-bias's parts.json 2 (Samsung's page and Coilcraft's 806, which
     passives.json names too): 2 + 1 + 2 + 4 + 4 + 2 = 15 named. The 4 fab rule files name 1 + 1 + 1 + 2 =
-    5 pages. made-up.json's 4 parts name no document: 4 not judged. Files: 2 + 1 + 1 + 7 JSON and 4 fab
-    rule files = 15."""
+    5 pages. made-up.json's 4 parts name no document, and Sierra's fab file names IPC's class standard with
+    no place beside it: 4 + 1 = 5 not judged. Files: 2 + 1 + 1 + 7 JSON and 4 fab rule files = 15."""
     globs = json.loads(INDEX.read_text(encoding="utf-8"))["rules"]
     files = sorted({p for pattern in globs for p in ROOT.glob(pattern)})
     code, out = run("rules", *files)
     assert code == 0, out
     assert out.splitlines()[-1] == (
-        "references rules: 20 documents named in 15 files, 20 in the index, 0 not; 4 not judged"
+        "references rules: 20 documents named in 15 files, 20 in the index, 0 not; 5 not judged"
     )
 
 

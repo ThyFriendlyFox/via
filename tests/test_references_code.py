@@ -100,6 +100,11 @@ def test_a_name_with_no_place_beside_it_is_a_mention_and_not_judged():
         ('CITES = {"acme-an-17b": ""}\n', 'CITES acme-an-17b: where in it is asked, as "equation 1"'),
         ('CITES = {"acme-an-17b": 4}\n', 'CITES acme-an-17b: where in it is asked, as "equation 1"'),
         ("def broken(:\n", "not read as Python (invalid syntax"),
+        # A list as a key: ast.literal_eval raises TypeError (unhashable), not ValueError.
+        (
+            'CITES = {["acme-an-17b"]: "equation 1"}\n',
+            'CITES: a dict of index ids to where in each, as {"ti-slva477c": "equation 1"}',
+        ),
     ],
 )
 def test_a_cites_that_is_not_a_dict_of_places_is_refused(tmp_path, text, fault):
@@ -154,3 +159,148 @@ def test_a_fab_rule_file_whose_pages_are_in_the_index_passes():
     code, lines = rules(FAB / "pass.kicad_dru", index=FAB / "index.json")
     assert code == 0, lines
     assert lines == ["references rules: 1 documents named in 1 files, 1 in the index, 0 not; 0 not judged"]
+
+
+# ------------------------------------------------------------------ the second review's findings
+
+UNKNOWN = (
+    "the index has no document by that name; fetch it and add its entry (rules/references/README.md, "
+    "An entry)"
+)
+IN_CITES = ", then name its id in the file's CITES"
+
+
+def undeclared(doc_id: str) -> str:
+    return f'the file\'s CITES does not name {doc_id}; add "{doc_id}": "<where in it>" to it'
+
+
+def test_a_capitalised_or_abbreviated_place_makes_a_citation():
+    """code/places/tool.py: 6 citations on lines 8 to 13, CITES empty. 2 name documents the index lacks
+    and 4 name entries CITES does not declare: 6 fail lines; 0 + 6 = 6 named, 0 in the index. Before
+    the fix the 6 places (Table, Section, Equation, Fig., p., §) were not read as places: 6 mentions."""
+    path = "tests/boards/references/code/places/tool.py"
+    code, lines = rules(CODE / "places", index=INDEX)
+    assert code == 1
+    assert lines == [
+        f"fail {path}:8: " + "IPC-" + f"2221B, Table 6-1: {UNKNOWN}{IN_CITES}",
+        f"fail {path}:9: " + "JESD" + f"51-7, Section 4: {UNKNOWN}{IN_CITES}",
+        f"fail {path}:10: " + "SLVA" + f"477C, Equation 11: {undeclared('ti-slva477c')}",
+        f"fail {path}:11: " + "SPRA" + f"953D, Fig. 3: {undeclared('ti-spra953d')}",
+        f"fail {path}:12: " + "SNVA" + f"419C, p. 12: {undeclared('ti-snva419c')}",
+        f"fail {path}:13: " + "SBVS" + f"320D, §7.3: {undeclared('ti-sbvs320')}",
+        "references rules: 6 documents named in 1 files, 0 in the index, 6 not; 0 not judged",
+    ]
+
+
+def test_documents_of_the_families_first_missed_are_found_and_fail():
+    """code/families/tool.py: 9 citations on lines 8 to 16 (TI's SLAA, SLVAE and SPRAC numbers, J-STD,
+    IPC-TM, IEC with a hyphen, MIL-STD, Analog Devices' AN and IEEE), none in the index: 9 fail lines,
+    9 named, 0 in the index. Before the fix no family found them: 0 named, exit 0."""
+    path = "tests/boards/references/code/families/tool.py"
+    code, lines = rules(CODE / "families", index=INDEX)
+    cited = [
+        ("SLAA" + "322D", "section 2"),
+        ("SLVA" + "E57", "equation 3"),
+        ("SPRA" + "CN0", "table 2"),
+        ("J-STD-" + "020E", "table 4-1"),
+        ("IPC-" + "TM-650", "section 2.4.8"),
+        ("IEC-" + "61000-4-5", "clause 7"),
+        ("MIL-" + "STD-883", "section 3015"),
+        ("Analog Devices AN-" + "1368", "page 4"),
+        ("IEEE " + "1149.1", "clause 4"),
+    ]
+    assert code == 1
+    assert lines == [
+        *(
+            f"fail {path}:{8 + n}: {name}, {place}: {UNKNOWN}{IN_CITES}"
+            for n, (name, place) in enumerate(cited)
+        ),
+        "references rules: 9 documents named in 1 files, 0 in the index, 9 not; 0 not judged",
+    ]
+
+
+def test_another_revision_or_edition_of_a_declared_document_fails():
+    """code/revision/tool.py declares 4 entries (4 named, 4 in the index) and cites, on lines 14 to 17,
+    Rev.1 of the ECSS standard the index holds as Rev.2, the 2nd edition of the microwave book (the
+    index: 4th), version 0.6 of the XDG specification (the index: 0.8) and the 8th edition of the BIPM's
+    brochure (the index: 9th). Each is 1 more document named and not held: 4 + 4 = 8 named, 4 in the
+    index, 4 not. Before the fix the 4 passed as the entries CITES declares."""
+    path = "tests/boards/references/code/revision/tool.py"
+    code, lines = rules(CODE / "revision", index=INDEX)
+    held = [
+        (14, "ECSS-Q-ST-" + "30-11C", "table 6-1", "Rev.1", "ecss-q-st-30-11c-rev2"),
+        (15, "Poz" + "ar", "equation 3.195", "2nd edition", "pozar-microwave-engineering-4"),
+        (16, "XDG Base Directory " + "Specification", "section 2", "0.6", "freedesktop-basedir-0.8"),
+        (17, "SI " + "Brochure", "table 1", "8th edition", "bipm-si-brochure-9"),
+    ]
+    assert code == 1
+    assert [line.split(" the index holds ")[0] for line in lines[:-1]] == [
+        f"fail {path}:{n}: {name}, {place}: {marker} is named beside it;"
+        for n, name, place, marker, _ in held
+    ]
+    for line, (_, _, _, marker, doc_id) in zip(lines, held, strict=False):
+        assert f" the index holds {doc_id} (" in line and line.endswith(
+            f"): cite that copy, or fetch {marker} and add its entry"
+        )
+    assert lines[-1] == "references rules: 8 documents named in 1 files, 4 in the index, 4 not; 0 not judged"
+
+
+def test_a_number_written_another_way_names_the_same_entry():
+    """code/alias/tool.py declares ietf-rfc6585 and cites it as its number with no space (line 10): held.
+    It cites TI's note with a lower-case revision letter (line 11) and does not declare it: 1 fail. 1 +
+    1 = 2 named, 1 in the index. Before the fix the RFC failed as a name the index lacks, and the note was
+    not found at all."""
+    code, lines = rules(CODE / "alias", index=INDEX)
+    assert code == 1
+    assert lines == [
+        "fail tests/boards/references/code/alias/tool.py:11: "
+        + "SLVA"
+        + f"477c, equation 1: {undeclared('ti-slva477c')}",
+        "references rules: 2 documents named in 1 files, 1 in the index, 1 not; 0 not judged",
+    ]
+
+
+def test_a_fab_rule_file_that_cites_a_standard_by_name_fails():
+    """fab/names.kicad_dru cites a standard the index lacks by number and table, on line 3, with no URL:
+    1 named, 0 in the index. Before the fix only URLs were read: 0 named, exit 0."""
+    code, lines = rules(FAB / "names.kicad_dru", index=INDEX)
+    assert code == 1
+    assert lines == [
+        "fail tests/boards/references/fab/names.kicad_dru:3: " + "IPC-" + f"2221B, table 6-1: {UNKNOWN}",
+        "references rules: 1 documents named in 1 files, 0 in the index, 1 not; 0 not judged",
+    ]
+
+
+def test_a_standard_a_fab_rule_file_of_the_repository_names_is_not_skipped_in_silence():
+    """rules/sierra-circuits-web.kicad_dru names IPC's class on line 2 with no place beside it: a mention,
+    not judged. Its 2 URLs are entries: 2 named, 2 in the index."""
+    code, lines = rules(ROOT / "rules" / "sierra-circuits-web.kicad_dru", index=INDEX)
+    assert code == 0, lines
+    assert lines == [
+        "not judged rules/sierra-circuits-web.kicad_dru:2: " + "IPC-" + "6012 has no section, table, page, "
+        "clause or equation beside it: a mention, not a citation",
+        "references rules: 2 documents named in 1 files, 2 in the index, 0 not; 1 not judged",
+    ]
+
+
+def test_a_url_with_parentheses_in_a_fab_rule_file_is_read_whole():
+    """fab/paren.kicad_dru names the URL of ecss-q-st-30-11c-rev2, which holds '(' and ')': 1 named, 1 in
+    the index. Before the fix the URL was cut at '(' and failed."""
+    code, lines = rules(FAB / "paren.kicad_dru", index=INDEX)
+    assert code == 0, lines
+    assert lines == ["references rules: 1 documents named in 1 files, 1 in the index, 0 not; 0 not judged"]
+
+
+def test_a_json_rule_that_names_a_document_in_a_text_fails():
+    """json-text/rule.json: rules[0].source is a text that names a standard by number and table, and
+    rules[1].note cites a revision of a TI note the index lacks (it holds revision C). 2 named, 0 in the
+    index. Before the fix a source that is a text and a note were not read: 0 named, exit 0."""
+    path = "tests/boards/references/json-text/rule.json"
+    code, lines = rules(ROOT / path, index=INDEX)
+    assert code == 1
+    assert lines == [
+        f"fail {path} rules[0].source: " + "IPC-" + "2221B, table 6-1 names a document by name alone: write "
+        "it as an object with its URL and SHA256, or `no datasheet: <why>`",
+        f"fail {path} rules[1].note: " + "SLVA" + f"477B, equation 1: {UNKNOWN}",
+        "references rules: 2 documents named in 1 files, 0 in the index, 2 not; 0 not judged",
+    ]

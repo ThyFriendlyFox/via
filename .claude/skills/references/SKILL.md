@@ -72,6 +72,16 @@ name is not asked under another.
      (`no_copy`). Never add a number you did not read.
    - `fail <file>:<line>: CITES names <id>, which the index lacks`: write
      the id as the index spells it, or add the entry.
+   - `fail <file>:<line>: <name>, <place>: Rev.1 is named beside it; the
+     index holds <id> (...)`: the line cites another revision or edition
+     than the copy the index holds. If the rule was written from the
+     index's copy, write its revision beside the name. Else fetch the
+     other copy and add its entry.
+   - `fail <file> <pointer>: <text> names a document by name alone`: a
+     JSON rule's `source` or `document` is a text. Write it as an object
+     with the URL and the SHA256 of the copy, or `no datasheet: <why>`.
+   - In a `.kicad_dru` file or a JSON rule's text a name with a place is
+     held when it is an entry's name; no `CITES` is asked there.
    - `not judged <file>:<line>: <name> has no section, table, page, clause
      or equation beside it: a mention, not a citation`: the code names a
      document and takes no number from it. Nothing to do. If the code does

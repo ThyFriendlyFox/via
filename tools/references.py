@@ -19,6 +19,7 @@ import json
 import os
 import re
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -36,13 +37,27 @@ WEB_FIELDS = ("id", "kind", "title", "url", "read")
 CITED_FIELDS = ("id", "kind", "authors", "title", "published", "edition", "cited", "no_copy")
 VALUES_FORM = 'as [{"says": "...", "for": "..."}]'
 CITES_FORM = 'CITES: a dict of index ids to where in each, as {"ti-slva477c": "equation 1"}'
-# A place in a document beside its name makes the name a citation (CITES in tools and tests).
+# A place in a document beside its name makes the name a citation (CITES in tools and tests). The word
+# is read in any case and abbreviated (Table, Fig., p., §); the number after it keeps its case.
 PLACE_RE = re.compile(
-    r"\b(?:sections?|tables?|pages?|pp\.|clauses?|equations?|eqs?\.|annex|figures?|chapters?)"
+    r"(?:(?i:\b(?:sections?|tables?|pages?|pp?\.|clauses?|equations?|eqs?\.|annex(?:es)?|figures?|figs?\.|"
+    r"chapters?|ch\.))|§)"
     r"\s*(?:\([0-9A-Z][0-9A-Za-z.\-]*\)|[0-9A-Z](?:[0-9A-Za-z.\-]*[0-9A-Za-z])?)"
 )
 PLACE_REACH = 200
-URL_IN_TEXT_RE = re.compile(r"https?://[^\s\"'<>()]+")
+# A revision or an edition written right after a document's name, before its place: it must be the one
+# the entry holds (Rev.1 of a standard the index holds as Rev.2 is another document).
+REVISION_RES = (
+    ("rev", re.compile(r"\bRev(?:ision)?\.?\s*([0-9]+|[A-Z])\b")),
+    ("edition", re.compile(r"\b([0-9]+)(?:st|nd|rd|th)\s+ed(?:ition|\.)", re.IGNORECASE)),
+    ("version", re.compile(r"^[\s,]*(?:version\s+|v)?([0-9]+(?:\.[0-9]+)+)\b", re.IGNORECASE)),
+)
+REVISION_REACH = 40
+# A URL runs to white space or a quote; a ")" that closes no "(" of it is the text's, not the URL's.
+URL_IN_TEXT_RE = re.compile(r"https?://[^\s\"'<>]+")
+# The longest text " ... " may skip in a web page value. On 2026-11-17 the 5 split values of the index
+# skipped 9 to 161 characters in the pages fetched that day (JLCPCB's via row is the 161).
+GAP_REACH = 200
 LEDGER = "ledger.json"
 # A site's answer that holds until a person asks again: a refusal is never retried under another name.
 FINAL = {"refused", "gone"}
@@ -115,6 +130,8 @@ def entry_problems(doc: dict, tag: str) -> list[str]:
                     isinstance(value.get(key), str) and value[key].strip() for key in ("says", "for")
                 ):
                     problems.append(f'fail {tag}: values[{k}]: "says" and "for" are asked, each a text')
+                elif not parts_of(value["says"]):
+                    problems.append(f'fail {tag}: values[{k}]: "says" has no text but " ... "')
     names = doc.get("names", [])
     if not isinstance(names, list) or not all(isinstance(x, str) and x.strip() for x in names):
         problems.append(f"fail {tag}: names: a list of the texts code names it by is asked")
@@ -205,17 +222,36 @@ def page_text(body: bytes) -> str:
     return re.sub(r"\s+", " ", html.unescape(text)).strip()
 
 
+def parts_of(says: str) -> list[str]:
+    """The parts of a value split at " ... ", white space collapsed, the empty ones dropped."""
+    return [p.strip() for p in re.sub(r"\s+", " ", says).split("...") if p.strip()]
+
+
+def part_re(part: str) -> re.Pattern:
+    """`part` as written, and where it starts or ends with a digit, at the bound of the page's number:
+    0.2 does not stand in 0.25, nor 4 mil in 14 mil."""
+    before = r"(?<![0-9.])" if part[0].isdigit() else ""
+    after = r"(?!\.?[0-9])" if part[-1].isdigit() else ""
+    return re.compile(before + re.escape(part) + after)
+
+
 def stands(says: str, text: str) -> bool:
-    """`says` stands in `text`: each of its parts split at " ... " is found, in order."""
+    """`says` stands in `text`: each of its parts split at " ... " is found, in order. A part after the
+    first stands within GAP_REACH characters of the one before it, and where its first word first stands
+    after it: a later row that says the old number does not hold a row whose number moved."""
+    parts = parts_of(says)
     at = 0
-    for part in (p.strip() for p in re.sub(r"\s+", " ", says).split("...")):
-        if not part:
-            continue
-        found = text.find(part, at)
-        if found < 0:
+    for k, part in enumerate(parts):
+        found = part_re(part).search(text, at)
+        if found is None:
             return False
-        at = found + len(part)
-    return True
+        if k:
+            head = part.split(" ", 1)[0]
+            skipped = text[at : found.start()]
+            if len(skipped) > GAP_REACH or re.search(rf"(?<!\S){re.escape(head)}(?!\S)", skipped):
+                return False
+        at = found.end()
+    return bool(parts)
 
 
 def values_gone(doc: dict, body: bytes) -> list[dict]:
@@ -582,26 +618,31 @@ def keep_given(args, doc: dict, path: Path, digest: str, lines: list[str]) -> in
 
 
 def cited(data, pointer: str = ""):
-    """Each (pointer, object) a rule file cites a document by: the object under a key `document` or
-    `source`, at any depth, and each object of a `documents` object of documents by id
-    (rules/copper/materials.json)."""
+    """Each (sort, pointer, value) of a rule file. `source`: an object it cites a document by, under a key
+    `document` or `source` at any depth, or an object of a `documents` object of documents by id
+    (rules/copper/materials.json). `named`: a text under such a key. `text`: any other text, which is read
+    for names as code is."""
     if isinstance(data, dict):
         for key, value in data.items():
             here = f"{pointer}.{key}" if pointer else key
             if key in CITING_KEYS and isinstance(value, dict):
-                yield here, value
+                yield "source", here, value
+            elif key in CITING_KEYS and isinstance(value, str):
+                yield "named", here, value
             elif (
                 key == "documents"
                 and isinstance(value, dict)
                 and all(isinstance(v, dict) for v in value.values())
             ):
                 for doc_id, doc in value.items():
-                    yield f"{here}.{doc_id}", doc
+                    yield "source", f"{here}.{doc_id}", doc
             else:
                 yield from cited(value, here)
     elif isinstance(data, list):
         for n, value in enumerate(data):
             yield from cited(value, f"{pointer}[{n}]")
+    elif isinstance(data, str):
+        yield "text", pointer, data
 
 
 def rule_files(paths: list[str], globs: dict) -> list[Path]:
@@ -638,7 +679,8 @@ def read_cites(tree, where: str, ids: set[str]) -> tuple[dict[str, str], list[st
         return {}, [], 0
     try:
         cites = ast.literal_eval(node.value)
-    except ValueError:
+    except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
+        # TypeError: a literal that cannot be built, as a list for a key (unhashable).
         cites = None
     if not isinstance(cites, dict) or not all(isinstance(k, str) for k in cites):
         return {}, [f"fail {where}:{node.lineno}: {CITES_FORM}"], 0
@@ -655,15 +697,19 @@ def name_hits(
     text: str, docs: list[dict], numbers: list[re.Pattern]
 ) -> list[tuple[int, int, str, str | None]]:
     """Each document name in `text`, as (start, end, the name, the id of the entry it names or None): the
-    `names` of the entries, and the numbers of the index's families. Overlapping hits keep the first."""
+    `names` of the entries, and the numbers of the index's families. A number is matched to an entry's
+    name with spaces and hyphens set aside (RFC6585 is RFC 6585). A URL is no name: its text is skipped.
+    Overlapping hits keep the first."""
     by_name = {name: d["id"] for d in docs for name in d.get("names", [])}
+    by_key = {name_key(name): doc_id for name, doc_id in by_name.items()}
+    text = URL_IN_TEXT_RE.sub(lambda m: " " * len(m.group(0)), text)
     hits = []
     for name, doc_id in by_name.items():
         for m in re.finditer(rf"(?<![\w-]){re.escape(name)}(?![\w-])", text):
             hits.append((m.start(), m.end(), name, doc_id))
     for pattern in numbers:
         for m in pattern.finditer(text):
-            hits.append((m.start(), m.end(), m.group(0), by_name.get(m.group(0))))
+            hits.append((m.start(), m.end(), m.group(0), by_key.get(name_key(m.group(0)))))
     kept: list[tuple[int, int, str, str | None]] = []
     for hit in sorted(hits, key=lambda h: (h[0], -h[1])):
         if not kept or hit[0] >= kept[-1][1]:
@@ -671,12 +717,103 @@ def name_hits(
     return kept
 
 
-def place_after(text: str, end: int) -> str:
-    """The first place in a document (section 2, equation (4), pp. 407) within PLACE_REACH characters
-    after a name, comment marks and line breaks read as 1 space; '' when there is none."""
+def name_key(name: str) -> str:
+    return re.sub(r"[\s-]", "", name).upper()
+
+
+def urls_in(line: str) -> list[str]:
+    """Each URL in a line of text: to white space or a quote, less the stops and the ")" that close no
+    "(" of it."""
+    found = []
+    for m in URL_IN_TEXT_RE.finditer(line):
+        url = m.group(0)
+        while url and (url[-1] in ".,;:" or (url[-1] == ")" and url.count(")") > url.count("("))):
+            url = url[:-1]
+        found.append(url)
+    return found
+
+
+def place_after(text: str, end: int) -> tuple[str, str]:
+    """(the first place in a document (section 2, equation (4), pp. 407) within PLACE_REACH characters
+    after a name, the text between the name and it), comment marks and line breaks read as 1 space;
+    ('', '') when there is none."""
     after = re.sub(r"\s*\n\s*(?:#\s*)?", " ", text[end : end + 3 * PLACE_REACH])[:PLACE_REACH]
     m = PLACE_RE.search(after)
-    return m.group(0) if m else ""
+    return (m.group(0), after[: m.start()]) if m else ("", "")
+
+
+def other_revision(between: str, doc: dict) -> str:
+    """The revision or edition written between a name and its place when the entry holds another one,
+    as written ('Rev.1', '2nd edition', '0.6'); '' when none is written or it is the entry's."""
+    between = between[:REVISION_REACH]
+    held = " ".join(str(doc.get(k) or "") for k in ("id", "number", "title", "revision", "edition")).lower()
+    for sort, pattern in REVISION_RES:
+        m = pattern.search(between)
+        if not m:
+            continue
+        mark = re.escape(m.group(1).lower())
+        same = {
+            "rev": rf"\brev(?:ision)?\.?\s*{mark}(?![0-9a-z])",
+            "edition": rf"(?<![0-9]){mark}(?:st|nd|rd|th)\s+edition",
+            "version": rf"(?<![0-9.]){mark}(?!\.?[0-9])",
+        }[sort]
+        if not re.search(same, held):
+            return m.group(0).strip(" ,")
+    return ""
+
+
+def entry_label(doc: dict) -> str:
+    name = doc.get("number") or doc.get("title") or doc["id"]
+    return ", ".join(str(x) for x in (name, doc.get("revision") or doc.get("edition")) if x)
+
+
+def names_in(
+    text: str, docs: list[dict], numbers: list[re.Pattern], declared: dict
+) -> tuple[list[tuple[int, str, str, str | None]], list[tuple[int, str, str, str, dict]], dict[str, int]]:
+    """The documents a text names: (citations as (line, name, place, entry id or None), other revisions
+    as (line, name, place, as written, the entry), mentions as {name: line}). A citation of an entry
+    `declared` names is left out; each name counts once, at its first citation."""
+    by_id = {d["id"]: d for d in docs}
+    cited_at: dict[str, tuple[int, str, str, str | None]] = {}
+    mentioned_at: dict[str, int] = {}
+    others: list[tuple[int, str, str, str, dict]] = []
+    for start, end, name, doc_id in name_hits(text, docs, numbers):
+        line = text.count("\n", 0, start) + 1
+        place, between = place_after(text, end)
+        if place and doc_id is not None:
+            mark = other_revision(between, by_id[doc_id])
+            if mark:
+                others.append((line, name, place, mark, by_id[doc_id]))
+                continue
+        if doc_id is not None and doc_id in declared:
+            continue
+        if place:
+            cited_at.setdefault(name, (line, name, place, doc_id))
+        else:
+            mentioned_at.setdefault(name, line)
+    mentions = {name: line for name, line in mentioned_at.items() if name not in cited_at}
+    return list(cited_at.values()), others, mentions
+
+
+UNKNOWN_NAME = (
+    "the index has no document by that name; fetch it and add its entry "
+    "(rules/references/README.md, An entry)"
+)
+IN_CITES = "the file's CITES"
+
+
+def revision_fail(at: str, name: str, place: str, mark: str, doc: dict) -> str:
+    return (
+        f"fail {at}: {name}, {place}: {mark} is named beside it; the index holds {doc['id']} "
+        f"({entry_label(doc)}): cite that copy, or fetch {mark} and add its entry"
+    )
+
+
+def mention_line(at: str, name: str) -> str:
+    return (
+        f"not judged {at}: {name} has no section, table, page, clause or equation beside it: "
+        "a mention, not a citation"
+    )
 
 
 def check_code(
@@ -691,65 +828,74 @@ def check_code(
         return [f"fail {where}: not read ({exc})"], [], 0, 0
     except SyntaxError as exc:
         return [f"fail {where}: not read as Python ({exc.msg}, line {exc.lineno})"], [], 0, 0
-    ids = {d["id"] for d in docs}
-    cites, fails, held = read_cites(tree, where, ids)
-    named = len(cites)
-    cited_at: dict[str, tuple[int, str]] = {}
-    mentioned_at: dict[str, int] = {}
-    unknown: dict[str, str | None] = {}
-    for start, end, name, doc_id in name_hits(text, docs, numbers):
-        if doc_id is not None and doc_id in cites:
-            continue
-        line = text.count("\n", 0, start) + 1
-        unknown[name] = doc_id
-        place = place_after(text, end)
-        if place:
-            cited_at.setdefault(name, (line, place))
+    cites, fails, held = read_cites(tree, where, {d["id"] for d in docs})
+    citations, others, mentions = names_in(text, docs, numbers, cites)
+    for line, name, place, doc_id in citations:
+        if doc_id is None:
+            fails.append(
+                f"fail {where}:{line}: {name}, {place}: {UNKNOWN_NAME}, then name its id in {IN_CITES}"
+            )
         else:
-            mentioned_at.setdefault(name, line)
-    unjudged = []
-    for name, doc_id in unknown.items():
-        if name in cited_at:
-            line, place = cited_at[name]
+            fails.append(
+                f"fail {where}:{line}: {name}, {place}: the file's CITES does not name {doc_id}; "
+                f'add "{doc_id}": "<where in it>" to it'
+            )
+    fails += [revision_fail(f"{where}:{line}", *rest) for line, *rest in others]
+    unjudged = [mention_line(f"{where}:{line}", name) for name, line in mentions.items()]
+    return fails, unjudged, len(cites) + len(citations) + len(others), held
+
+
+def check_texts(
+    texts: list[tuple[Callable[[int], str], str]], docs: list[dict], numbers: list[re.Pattern]
+) -> tuple[list[str], list[str], int, int]:
+    """(fail lines, not judged lines, documents named, documents held) of the names in texts with no CITES,
+    a fab rule file's or a JSON rule's, each given as (where its line n stands, the text). A citation of
+    an entry is held, and of any other name fails. Each name counts once in all the texts."""
+    fails, mentioned, counted = [], {}, set()
+    named = held = 0
+    for at, text in texts:
+        citations, others, mentions = names_in(text, docs, numbers, {})
+        for line, name, place, doc_id in citations:
+            if name in counted:
+                continue
+            counted.add(name)
             named += 1
             if doc_id is None:
-                fails.append(
-                    f"fail {where}:{line}: {name}, {place}: the index has no document by that name; fetch it "
-                    "and add its entry (rules/references/README.md, An entry), then name its id in the "
-                    "file's CITES"
-                )
+                fails.append(f"fail {at(line)}: {name}, {place}: {UNKNOWN_NAME}")
             else:
-                fails.append(
-                    f"fail {where}:{line}: {name}, {place}: the file's CITES does not name {doc_id}; "
-                    f'add "{doc_id}": "<where in it>" to it'
-                )
-        else:
-            unjudged.append(
-                f"not judged {where}:{mentioned_at[name]}: {name} has no section, table, page, clause or "
-                "equation beside it: a mention, not a citation"
-            )
+                held += 1
+        for line, *rest in others:
+            named += 1
+            fails.append(revision_fail(at(line), *rest))
+        for name, line in mentions.items():
+            mentioned.setdefault(name, at(line))
+    unjudged = [mention_line(at, name) for name, at in mentioned.items() if name not in counted]
     return fails, unjudged, named, held
 
 
-def check_dru(path: Path, docs: list[dict]) -> tuple[list[str], int, int]:
-    """(fail lines, URLs named, URLs held) of a KiCad rule file: each URL in it is an entry's URL."""
+def check_dru(
+    path: Path, docs: list[dict], numbers: list[re.Pattern]
+) -> tuple[list[str], list[str], int, int]:
+    """(fail lines, not judged lines, documents named, documents held) of a KiCad rule file: each URL in it
+    is an entry's URL, and each document it names by number is read as a JSON rule's text is."""
     where = shown(path)
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
+        text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
-        return [f"fail {where}: not read ({exc})"], 0, 0
+        return [f"fail {where}: not read ({exc})"], [], 0, 0
     urls = {d["url"] for d in docs if isinstance(d.get("url"), str)}
     seen: dict[str, int] = {}
-    for n, line in enumerate(lines, 1):
-        for m in URL_IN_TEXT_RE.finditer(line):
-            seen.setdefault(m.group(0).rstrip(".,;:"), n)
+    for n, line in enumerate(text.splitlines(), 1):
+        for url in urls_in(line):
+            seen.setdefault(url, n)
     fails = [
         f"fail {where}:{n}: {url} is not the URL of an entry of the index; add the page as a web page entry "
         "with the values the rules take from it"
         for url, n in seen.items()
         if url not in urls
     ]
-    return fails, len(seen), len(seen) - len(fails)
+    more, unjudged, named, held = check_texts([(lambda line: f"{where}:{line}", text)], docs, numbers)
+    return fails + more, unjudged, len(seen) + named, len(seen) - len(fails) + held
 
 
 def label_of(source: dict) -> str:
@@ -777,15 +923,37 @@ def cmd_rules(args, cli) -> int:
             fails, unjudged, named, held = fails + more, unjudged + not_judged, named + n, held + h
             continue
         if kind_of_file(path) == "dru":
-            more, n, h = check_dru(path, docs)
-            fails, named, held = fails + more, named + n, held + h
+            more, not_judged, n, h = check_dru(path, docs, globs["numbers"])
+            fails, unjudged, named, held = fails + more, unjudged + not_judged, named + n, held + h
             continue
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
             fails.append(f"fail {where}: not read as JSON ({exc})")
             continue
-        for pointer, source in cited(data):
+        found = list(cited(data))
+        local = {m.group(1) for _, p, _ in found if (m := re.search(r"(?:^|\.)documents\.(.+)$", p))}
+        texts, ids_named = [], set()
+        for sort, pointer, value in found:
+            tag = f"{where} {pointer}"
+            if sort == "text":
+                texts.append(((lambda line, tag=tag: tag), value))
+            elif sort == "named" and NONE_RE.fullmatch(value):
+                unjudged.append(f"not judged {tag}: names no document with a URL and a SHA256 ({value})")
+            elif sort == "named" and value in local:
+                continue  # the file's own `documents` object holds it, and is judged there
+            elif sort == "named" and value in {d["id"] for d in docs}:
+                named, held = named + (value not in ids_named), held + (value not in ids_named)
+                ids_named.add(value)
+            elif sort == "named":
+                named += 1
+                fails.append(
+                    f"fail {tag}: {value} names a document by name alone: write it as an object with its URL "
+                    "and SHA256, or `no datasheet: <why>`"
+                )
+        for sort, pointer, source in found:
+            if sort != "source":
+                continue
             url, digest, label = source.get("url"), source.get("sha256"), label_of(source)
             tag = f"{where} {pointer}"
             document = source.get("document")
@@ -818,6 +986,8 @@ def cmd_rules(args, cli) -> int:
                 )
             else:
                 held += 1
+        more, not_judged, n, h = check_texts(texts, docs, globs["numbers"])
+        fails, unjudged, named, held = fails + more, unjudged + not_judged, named + n, held + h
     summary = (
         f"references rules: {named} documents named in {len(files)} files, {held} in the index, "
         f"{named - held} not; {len(unjudged)} not judged"
