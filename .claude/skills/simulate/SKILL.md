@@ -344,6 +344,65 @@ requirement: `{"req": "REQ-USB-05", "max": 30.0, "source": "..."}`.
 `workcenter verify` checks the name exists. A requirement the design fails
 gets no bound: the package's traceability table says FAIL.
 
+## A part's temperature
+
+A part that dissipates power heats its junction above the ambient. The
+gate computes the junction at every run it judged, the deck as written
+and each corner, and holds it to the derated limit of the project's
+rating pack. The method is the one the datasheet's figure is measured by:
+TJ = TA + RthetaJA x power (TI SPRA953D, section 1.1, equation 1, page 2,
+summarised from EIA/JESD51-1 and -2). TA is the run's temperature: the
+deck's own, or the corner's. `tests/boards/fail-sim-thermal` is a worked
+example.
+
+1. Give the part its thermal facts, in the facts file `workcenter
+   ratings` reads (`library/facts/`, the `ratings` skill). Copy the
+   figures from the datasheet's thermal table, in C/W, and the absolute
+   maximum junction temperature, with the pages:
+   ```json
+   "thermal": {"junction_max": 150, "theta_ja": 231.1, "theta_jc": 118.4, "page": [4, 5]}
+   ```
+   The figures are `theta_ja`, `theta_jc`, `theta_jb`, `psi_jt` and
+   `psi_jb`. Take the column of the part's package. `thermal` stands on
+   an `ic`, a diode or a MOSFET.
+2. Print the part's power from a deck, once per run: its input power
+   less its output power.
+   ```
+   let p_u1 = -v(in) * i(vin) - v(out) * i(vu1)
+   print p_u1
+   ```
+3. Name the part in `sim/thermal.json`, with the pack the project holds
+   its parts to (`rules/ratings/`, or a path from the project's folder):
+   ```json
+   {"pack": "ecss-q-st-30-11c-rev2",
+    "parts": {"U1": {"mpn": "TLV75533PDBVR", "watts": "ldo.p_u1",
+                     "source": "the deck's input power less its output power"}}}
+   ```
+4. Run `workcenter sim <project>`. Read each line that starts with
+   `thermal:`:
+
+   | Line | What to do |
+   |---|---|
+   | `thermal: U1 (MPN) at 85 C ambient: junction 124.97 C, over 110 C (...)` | The part runs too hot at that corner. Take power off it (a lower input voltage, a switching regulator, a lighter load), or choose a package with a lower figure. Never widen the corner. |
+   | `thermal: U1 (MPN) not judged: no facts entry names ...` | Write the part's facts from its datasheet (the `ratings` skill). |
+   | `... not judged: its facts give no thermal figure` | Add `thermal` from the datasheet's thermal table. |
+   | `... not judged: its facts give theta_jc ..., and no theta_ja` | The figure needs the case's, the board's or the top's temperature, and no deck gives one. Find RthetaJA in the datasheet. |
+   | `... not judged: its deck ... did not run to its end` | Fix the deck first; its errors are in the same result. |
+   | `thermal: U1: ldo.p_u1 is not printed at ...` | Print the measure in every analysis the corners run. |
+   | `thermal: U1: ldo.p_u1 is -0.17 W ...` | The deck's sum has a sign wrong: a part's dissipation is not under 0. |
+   | `thermal.json: ...` | The file is wrong in the place the line names. |
+
+   A not judged line is a warning, and fails `--strict`.
+5. `--json` holds each part under `details.thermal.parts`: the figure,
+   the limit and its source, the run as written and the worst run, each
+   with its ambient, its power and its junction.
+
+RthetaJA is measured on JEDEC's test board. The board a part stands on
+spreads more heat or less: SPRA953D, section 1.1, calls the sum an
+estimate, and a board's own copper changes it. The judgement is that
+estimate. A part whose datasheet gives RthetaJA for its own board (the
+EVM rows) may take that row, with its page and a note.
+
 ## Checks
 
 - Every bound in an expect file traces to a line in the spec or the
