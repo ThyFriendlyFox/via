@@ -2213,6 +2213,14 @@ def markdown(report: Report, strict: bool = False) -> str:
     return "\n".join(out)
 
 
+def unjudged(summary: str, why: list[str]) -> str:
+    """The page of a run that judged nothing: a file the command does not take, a schematic kicad-cli
+    did not load. It takes the place of an earlier run's page, which holds the verdict of other files."""
+    out = ["# Ratings", "", f"ratings: {summary}", "", "Nothing was judged.", ""]
+    said = [f"- {line.strip()}" for line in why if line.strip()]
+    return "\n".join(out + (said + [""] if said else []))
+
+
 # ---------------------------------------------------------------- the command
 
 FIRST = {"pack": "nasa-eee-inst-002", "nets": {}}  # what --init writes: a pack, and no net stated yet
@@ -2270,10 +2278,12 @@ def parts_rows(paths: list[Path], cli) -> list:
 
 def export_netlist(project, folder: Path, cli) -> tuple[Netlist | None, str]:
     """The schematic's netlist, exported into a folder: the netlist, or None and what kicad-cli said.
-    A netlist its reader does not take is refused with the name of the schematic, the file the fault
+    A run that exports none leaves none: the netlist of an earlier run is of another schematic. A
+    netlist its reader does not take is refused with the name of the schematic, the file the fault
     is in."""
     text, stderr = cli.schematic_netlist(project, folder)
     if text is None:
+        (folder / "netlist.xml").unlink(missing_ok=True)
         return None, stderr
     try:
         return read_netlist(text), ""
@@ -2458,7 +2468,12 @@ def cmd_ratings(args, cli) -> int:
         return 0
     result = cli.timed(gate_ratings)(project, out, parts, args.strict, cli)
     if result.status != "skip":  # a refusal and an error leave their record too: `next` reads it
-        (out / "ratings" / "report.json").write_text(json.dumps(vars(result), indent=2), encoding="utf-8")
+        folder = out / "ratings"
+        if "verdict" not in result.details:  # and their page, in place of an earlier run's verdict
+            why = result.details.get("failures") or result.details.get("stderr", "").splitlines()
+            (folder / "report.md").write_text(unjudged(result.summary, why), encoding="utf-8")
+            result.artifacts.append(str(folder / "report.md"))
+        (folder / "report.json").write_text(json.dumps(vars(result), indent=2), encoding="utf-8")
     code = cli.emit([result], args, None)
     if not args.json and "verdict" in result.details:
         print(f"{result.details['verdict']}: {project.name}  report {result.artifacts[0]}")

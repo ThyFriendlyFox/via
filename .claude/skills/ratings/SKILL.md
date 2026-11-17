@@ -100,6 +100,12 @@ parts, each entry read from its datasheet.
    JUDGED`, `NOTHING JUDGED` or `RATINGS NOT HELD`. Run with `--strict` in
    CI once nothing is left not judged: what is not judged then fails.
 
+A file the command does not take stops the run before any judgement. The
+run prints `a file is not as the command reads it` and 1 line that names
+the file, the place in it and the fault, and exits 1. It prints no
+verdict, and `build/ratings/report.md` says that nothing was judged.
+Correct the file at that place and run again.
+
 ## ratings.json
 
 ```json
