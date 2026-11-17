@@ -1060,8 +1060,16 @@ class EngineFault(RuntimeError):
     """A run whose output is no result: the message says why."""
 
 
+class NotSettled(EngineFault):
+    """openEMS stopped before the ports settled: where it stops hangs on the machine's load."""
+
+
 SETTLE_SAMPLES = 5  # samples in a row the port energy must stay under the end criterion
 ENGINE_MARGIN_DB = 10.0  # how much further than the end criterion openEMS lets the box's energy fall
+# A run that stopped before its ports settled runs again with the box's energy let fall this much
+# further. On 2026-11-17 the Wyvern lane's port 3 stopped at step 13410 with its ports unsettled in 2
+# runs of the tests side by side, and at 13708 to 14602 with them settled in 4 others.
+RERUN_MARGINS_DB = (20.0, 30.0)
 
 
 def settled(energy: list[float], end_db: float, window: int = SETTLE_SAMPLES) -> int | None:
@@ -1111,7 +1119,7 @@ class OpenEMS:
         return found.group(1) if found else None
 
     @staticmethod
-    def xml(model: dict, driven: int) -> str:
+    def xml(model: dict, driven: int, margin_db: float = ENGINE_MARGIN_DB) -> str:
         s, mesh = model["settings"], model["mesh"]
         f_max = model["frequencies_hz"][-1]
         f0 = fc = f_max / 2
@@ -1163,7 +1171,7 @@ class OpenEMS:
         # openEMS stops on the box's energy, the spectra are cut where the ports' settles (`column`):
         # openEMS runs on to 10 dB further, so that the ports have settled before it stops. On the
         # Wyvern lane at -40 dB the ports reached -40 dB 3 samples before openEMS stopped.
-        end = 10 ** ((s["end_criteria_db"] - ENGINE_MARGIN_DB) / 10)
+        end = 10 ** ((s["end_criteria_db"] - margin_db) / 10)
         bc = " ".join(f'{side}="{pml}"' for side in ("xmin", "xmax", "ymin", "ymax", "zmin", "zmax"))
         steps = int(s["max_timesteps"])
         return "\n".join(
@@ -1271,7 +1279,7 @@ class OpenEMS:
         end_db = model["settings"]["end_criteria_db"]
         last = settled(energy, end_db)
         if last is None:
-            raise EngineFault(
+            raise NotSettled(
                 f"the port signals did not settle {-end_db:g} dB under their peak for {SETTLE_SAMPLES} "
                 f"samples after their last sample above it, in the {n} samples openEMS wrote"
             )
@@ -1355,6 +1363,36 @@ def report_md(project: str, engine: str, version: str | None, groups: list[dict]
     return "\n".join(out)
 
 
+def run_port(engine, model: dict, run: Path, n: int) -> tuple[list | None, str | None]:
+    """1 driven port: its column of S, or the line that says why there is none. openEMS checks its end
+    criterion every 4 s of the clock, so on a busy machine it can stop before the ports settle. Such a
+    run runs again with the box's energy let fall further (RERUN_MARGINS_DB): its samples up to the
+    earlier stop are the same, so the column is the one a run that stopped later gives."""
+    margins = [ENGINE_MARGIN_DB, *RERUN_MARGINS_DB]
+    for attempt, margin in enumerate(margins):
+        if attempt:
+            (run / "model.xml").write_text(engine.xml(model, n, margin), encoding="utf-8")
+        try:
+            ok, log = engine.run(run, model["settings"]["timeout_s"])
+        except subprocess.TimeoutExpired:
+            ok, log = False, f"no end within {model['settings']['timeout_s']} s"
+        if not ok:
+            last = (log.strip().splitlines() or ["no output"])[-1]
+            return None, f"{engine.program} on port {n} ended without a result: {last}"
+        try:
+            return engine.column(run, model, n), None
+        except NotSettled as exc:
+            if attempt + 1 < len(margins):
+                continue
+            return None, (
+                f"{engine.program} on port {n} ended without a result: {exc} (run {len(margins)} times, "
+                f"the last to {margin:g} dB under the end criterion)"
+            )
+        except EngineFault as exc:
+            return None, f"{engine.program} on port {n} ended without a result: {exc}"
+    return None, f"{engine.program} on port {n} ended without a result"
+
+
 def cmd_fields(args, cli) -> int:
     project = cli.find_project(args.project)
     gate = "fields"
@@ -1400,18 +1438,11 @@ def cmd_fields(args, cli) -> int:
         driven, folders = runs[model["group"]]
         columns, errors = {}, []
         for n, run in zip(driven, folders, strict=True):
-            try:
-                ok, log = engine.run(run, model["settings"]["timeout_s"])
-            except subprocess.TimeoutExpired:
-                ok, log = False, f"no end within {model['settings']['timeout_s']} s"
-            if not ok:
-                last = (log.strip().splitlines() or ["no output"])[-1]
-                errors.append(f"{engine.program} on port {n} ended without a result: {last}")
-                continue
-            try:
-                columns[n] = engine.column(run, model, n)
-            except EngineFault as exc:
-                errors.append(f"{engine.program} on port {n} ended without a result: {exc}")
+            column, error = run_port(engine, model, run, n)
+            if error:
+                errors.append(error)
+            else:
+                columns[n] = column
         measures = group_measures(model, columns)
         group = next(g for g in spec["groups"] if g["name"] == model["group"])
         fails, held, unjudged = judge(group.get("limits", []), measures)
