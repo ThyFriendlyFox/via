@@ -618,6 +618,7 @@ def run_corners(
     sweep: bool = False,
     rewrite=None,
     sound_runs: list | None = None,
+    heated: bool = False,
 ) -> tuple[dict, list[str], list[str]]:
     """One deck at its corners (tools/simcorners.py, sim/corners.json): (record, failures, warnings).
 
@@ -630,7 +631,9 @@ def run_corners(
     every corner; a corner that did not run, or ran at another temperature than its own, fails.
     `both_ways` names measures something else reads the least and the greatest of (a resonance of the
     frequency plan, a requirement's check): their worst case is looked for on both sides. `sound_runs`,
-    when given, gets each corner that ran clean at its own temperature, with its measures."""
+    when given, gets each corner that ran clean at its own temperature, with its measures. A deck
+    sim/thermal.json names (`heated`) is not warned of when no measure moves with temperature: the
+    temperature is the ambient its junctions are judged at."""
     sc = simcorners()
     if spec.skip:
         return {"skip": spec.skip}, [], []
@@ -764,7 +767,7 @@ def run_corners(
             more = f" (and {count - 1} more corners)" if count > 1 else ""
             failures.append(bound_line(deck.stem, name, value, bounds, f" at {corner.label}{more}"))
     hot_cold = [m for c, m in sound if c.kind == "temperature"]
-    if hot_cold and all(same_measures(m, written["measures"]) for m in hot_cold):
+    if hot_cold and not heated and all(same_measures(m, written["measures"]) for m in hot_cold):
         warnings.append(
             f"{deck.stem}: no measure moves with temperature: nothing in the deck or its models carries one"
         )
@@ -1048,6 +1051,7 @@ def gate_sim(
                 sweep=deck.stem in answering,
                 rewrite=(lambda t: pd.apply(t, curves)[0]) if applied else None,
                 sound_runs=sound,
+                heated=heat is not None and any(p.deck == deck.stem for p in heat.parts.values()),
             )
             heat_runs[deck.stem] += [(c.label, ambient if c.temp is None else c.temp, m) for c, m in sound]
             failures += corner_failures
