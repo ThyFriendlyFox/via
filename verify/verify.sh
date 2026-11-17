@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # verify/verify.sh — one command answers "is this repo healthy".
-# Runs the same steps locally and in CI, in this order:
-#   1 lint  2 doctor (toolchain present)  3 tests on fixture boards
-#   4 kit checks (no placeholders, every skill has frontmatter, manifest copied)
-# A step that cannot run fails loudly; nothing passes silently.
+# Runs the same steps locally and in CI, in this order, the steps with no engine first:
+#   1 lint  2 kit checks (no placeholders, every skill has frontmatter, manifest copied)
+#   3 doctor (toolchain present)  4 tests on fixture boards, in shards side by side
+# A step that cannot run fails loudly; nothing passes silently. The last lines say each step's time.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -18,7 +18,17 @@ PY=python3
 [[ -x "$VENV_PY" ]] && PY="$VENV_PY"
 
 STEP="0/4 start"
-step() { STEP="$*"; printf '\n== %s\n' "$*"; }
+# step "<name>" starts a step and notes the time the one before took; step "" ends the last one.
+current=""
+mark=$SECONDS
+timings=()
+step() {
+  [[ -n "$current" ]] && timings+=("$(printf '%5d s  %s' $((SECONDS - mark)) "$current")")
+  current="$*"
+  mark=$SECONDS
+  [[ -n "$current" ]] && STEP="$current" && printf '\n== %s\n' "$current"
+  return 0
+}
 # For `workcenter now`: the commit the gate tests and whether the tree differs from it, noted before
 # step 1; on exit the trap writes them with the verdict and the step to build/verify.json, ignored by git.
 GATE_HEAD=$(git rev-parse HEAD 2>/dev/null || true)
@@ -29,16 +39,10 @@ trap 'python3 tools/now.py record "$?" "$STEP" --head "$GATE_HEAD" --dirty "$GAT
 
 step "1/4 lint"
 shellcheck install.sh verify/verify.sh environment/setup.sh site/build.sh ee-agent-kit/lead/gate-and-push.sh
-"$PY" -m ruff check tools tests ee-agent-kit/lead
-"$PY" -m ruff format --check tools tests ee-agent-kit/lead
+"$PY" -m ruff check tools tests verify ee-agent-kit/lead
+"$PY" -m ruff format --check tools tests verify ee-agent-kit/lead
 
-step "2/4 doctor"
-python3 tools/workcenter doctor
-
-step "3/4 tests"
-"$PY" -m pytest -q tests
-
-step "4/4 kit checks"
+step "2/4 kit checks"
 # Kit placeholders may remain only in SETUP.md, whose table documents them.
 if grep -rnE '\{\{(PROJECT_NAME|REPO_SLUG|DEFAULT_BRANCH|BUILD_CMD|TEST_CMD|LINT_CMD|VERIFY_CMD|MIN_RUNTIME|SECURITY_EMAIL|PKG_ECOSYSTEM)\}\}' \
      ee-agent-kit docs 2>/dev/null | grep -v '^ee-agent-kit/SETUP.md:'; then
@@ -69,4 +73,16 @@ awk '/^## P[0-9]+ /{if (h != "" && !d) {print h ": no Done when line"; bad = 1};
      END{if (h != "" && !d) {print h ": no Done when line"; bad = 1}; exit bad}' ee-agent-kit/PROCESSES.md || exit 1
 echo "kit checks ok"
 
+step "3/4 doctor"
+python3 tools/workcenter doctor
+
+step "4/4 tests"
+# 1 pytest per processor, files split by verify/shards.csv; red when a shard fails, ends with no
+# summary line, or the ids run differ from the ids 1 process collects.
+"$PY" verify/testshards.py run --table verify/shards.csv --python "$PY"
+
+step ""
+printf '\n== time\n'
+printf '%s\n' "${timings[@]}"
+printf '%5d s  in all\n' "$SECONDS"
 printf '\nVERIFY GREEN\n'
