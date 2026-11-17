@@ -254,6 +254,8 @@ SET_BY_A_LIST = {
     "set_by": ["FB"],
     "page": 3,
 }
+SECOND_EN = {"numbers": ["1"], "name": "EN2", "role": "input", "abs": [-0.3, 9.0], "page": 3}  # pin 1 is EN
+RISES = {"temperature": "ambient", "celsius": 70, "falls_to": 1.0, "at": 112.5}  # the rule's max is 0.50
 WRONG = {
     "nets is a number": (
         put("ratings.json", "nets", to=5),
@@ -310,6 +312,31 @@ WRONG = {
             HEAD.encode() + b"10k\xff,Resistor_SMD:R_0603_1608Metric,1,V,X,,,,\n"
         ),
         "parts.csv: not UTF-8: ",
+    ),
+    # files that were taken without a word, each with a judgement on what it did not say
+    "a pin number in 2 entries": (
+        lambda project: rewrite(project / TLV, lambda facts: facts["pins"].append(SECOND_EN)),
+        "ti-tlv62569.json: pin EN2: numbers: `1` stands in pin EN too",
+    ),
+    "limits the wrong way round": (
+        put("../library/facts/ti-sn74aup1g17.json", "pins", 1, "abs", to=[4.6, -0.5]),
+        "ti-sn74aup1g17.json: pin A: abs: the span's first number, 4.6, is above its second, -0.5",
+    ),
+    "a second reader that is a word": (
+        put("../library/facts/made-up.json", "parts", 0, "source", "second_reader", to="No"),
+        "made-up.json: part 1: source: second_reader: write `no`, or the date as YYYY-MM-DD",
+    ),
+    "a net stated 2 times": (
+        put("ratings.json", "nets", "/GND", to={"volts": [0, 5], "source": "x"}),
+        "ratings.json: nets: /GND: this net stands 2 times, as GND and as /GND",
+    ),
+    "a pack whose share rises with temperature": (
+        own_pack(lambda pack: pack["rules"][3].update(above=RISES)),
+        "house.json: rule 4: above: `falls_to` is above `max`",
+    ),
+    "a pack whose document is a word": (
+        own_pack(lambda pack: pack["document"].update(url="x", sha256="x", read="x", second_reader="x")),
+        "house.json: document: url: a whole URL is asked, as https://example.com/file.pdf",
     ),
 }
 

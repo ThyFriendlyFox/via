@@ -14,6 +14,7 @@ only.
 from __future__ import annotations
 
 import csv
+import datetime
 import fnmatch
 import itertools
 import json
@@ -598,6 +599,36 @@ def _p(page: int | list[int]) -> str:
     return "p " + (", ".join(pages[:-1]) + " and " + pages[-1] if len(pages) > 1 else pages[0])
 
 
+DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+URL_RE = re.compile(r"[a-z][a-z0-9+.-]*://\S+")
+SHA256_RE = re.compile(r"[0-9a-fA-F]{64}")
+
+
+def _date(where: str, value: object, or_no: bool = False) -> None:
+    """A date the calendar has, as YYYY-MM-DD. `no` too where a second reader may not have read yet:
+    any other word there would count as a reading."""
+    if or_no and value == "no":
+        return
+    try:
+        if not isinstance(value, str) or not DATE_RE.fullmatch(value):
+            raise ValueError
+        datetime.date.fromisoformat(value)
+    except ValueError:
+        raise Refusal(f"{where}: write {'`no`, or ' if or_no else ''}the date as YYYY-MM-DD") from None
+
+
+def _source(where: str, source: dict) -> None:
+    """Where a document stands and who read it: a URL from its scheme on, the SHA256 of the file as 64
+    hex digits, the date it was read, and the date a second reader read it or `no`. A source may hold
+    no URL and no SHA256; a word in their place is none."""
+    if "url" in source and not URL_RE.fullmatch(source["url"]):
+        raise Refusal(f"{where}: url: a whole URL is asked, as https://example.com/file.pdf")
+    if "sha256" in source and not SHA256_RE.fullmatch(source["sha256"]):
+        raise Refusal(f"{where}: sha256: 64 hex digits are asked")
+    _date(f"{where}: read", source["read"])
+    _date(f"{where}: second_reader", source["second_reader"], or_no=True)
+
+
 # ---------------------------------------------------------------- a rule pack
 
 # The stresses the command computes. A pack gives each a factor and the place in its document.
@@ -644,6 +675,7 @@ def read_pack(path: Path) -> Pack:
     document = _keys(f"{path.name}: document", data["document"], DOCUMENT_KEYS)
     for key in DOCUMENT_KEYS:
         _text(f"{path.name}: document: {key}", document[key])
+    _source(f"{path.name}: document", document)
     if not isinstance(data["rules"], list) or not data["rules"]:
         raise Refusal(f"{path.name}: rules: a list of rules is asked")
     rules: list[Rule] = []
@@ -655,6 +687,7 @@ def read_pack(path: Path) -> Pack:
             raise Refusal(f"{where}: `{rule['stress']}` is no stress the command computes; they are {known}")
         if _text(f"{where}: id", rule["id"]) in {r.id for r in rules}:
             raise Refusal(f"{where}: the id `{rule['id']}` stands 2 times")
+        most = _number(f"{where}: max", rule["max"], 0, 1)
         above = None
         if "above" in rule:
             term = _keys(f"{where}: above", rule["above"], ("temperature", "celsius", "falls_to", "at"))
@@ -668,12 +701,14 @@ def read_pack(path: Path) -> Pack:
             )
             if above[3] <= above[1]:
                 raise Refusal(f"{where}: above: `at` is not above `celsius`")
+            if above[2] > most:  # a share that rises with the temperature is no derating
+                raise Refusal(f"{where}: above: `falls_to` is above `max`")
         rules.append(
             Rule(
                 _text(f"{where}: id", rule["id"]),
                 rule["stress"],
                 tuple(_names(f"{where}: kinds", rule["kinds"])),
-                _number(f"{where}: max", rule["max"], 0, 1),
+                most,
                 _text(f"{where}: where", rule["where"]),
                 above,
             )
@@ -719,12 +754,16 @@ def read_project(path: Path, net: Netlist) -> Project:
     name = path.name
     data = _keys(name, _json(path), ("pack", "nets"), ("ambient", "parts", "accepted"))
     nets: dict[str, Span] = {}
+    stated: dict[str, str] = {}  # a net of the schematic -> the key that states it
     for key, raw in _object(f"{name}: nets", data["nets"], "net").items():
         entry = _keys(f"{name}: nets: {key}", raw, ("volts", "source"))
         _text(f"{name}: nets: {key}: source", entry["source"])
         found = next((n for n in (key, key.lstrip("/"), f"/{key}") if n in net.nets), None)
         if found is None:
             raise Refusal(f"{name}: nets: {key}: no net of the schematic has this name")
+        if found in stated:  # with and without its sheet's slash: the second span would replace the first
+            raise Refusal(f"{name}: nets: {key}: this net stands 2 times, as {stated[found]} and as {key}")
+        stated[found] = key
         nets[found] = _span(f"{name}: nets: {key}: volts", entry["volts"])
     ambient = None
     if "ambient" in data:
@@ -886,6 +925,20 @@ def _limit(where: str, value: object) -> None:
             _number(where, one)
 
 
+def _ordered(where: str, low: object, high: object) -> None:
+    """The 2 ends of a span of limits stand least first. A number is held to a number, and a limit that
+    follows a pin to one that follows the same pin, by what each adds. A number and a limit that
+    follows a pin cannot be held to each other."""
+    for a in low if isinstance(low, list) else [low]:
+        for b in high if isinstance(high, list) else [high]:
+            if isinstance(a, dict) and isinstance(b, dict):
+                if a["pin"] == b["pin"] and a["plus"] > b["plus"]:
+                    first, second = (f"pin {one['pin']} {one['plus']:+g}" for one in (a, b))
+                    raise Refusal(f"{where}: the span's first limit, {first}, is above its second, {second}")
+            elif not isinstance(a, dict) and not isinstance(b, dict) and a > b:
+                raise Refusal(f"{where}: the span's first number, {a:g}, is above its second, {b:g}")
+
+
 def _pin_facts(where: str, pins: object) -> None:
     if not isinstance(pins, list) or not pins:
         raise Refusal(f"{where}: pins: a list of pins is asked")
@@ -894,6 +947,7 @@ def _pin_facts(where: str, pins: object) -> None:
     names = [p["name"] for p in named]
     role_of = {p["name"]: p.get("role") for p in named}
     supplies = [name for name, role in role_of.items() if role == "supply"]
+    held: dict[str, str] = {}  # a pin number -> the name of the pin that holds it
     for i, raw in enumerate(pins, start=1):
         here = f"{where}: pin {i}"
         role = raw.get("role") if isinstance(raw, dict) else None
@@ -901,8 +955,18 @@ def _pin_facts(where: str, pins: object) -> None:
             raise Refusal(f"{here}: role: one of {', '.join(ROLES)} is asked")
         required, optional = ROLES[role]
         pin = _keys(here, raw, ("numbers", "name", "role") + required, ("page",) + optional)
-        here = f"{where}: pin {_text(f'{here}: name', pin['name'])}"
-        _names(f"{here}: numbers", pin["numbers"])
+        _text(f"{here}: name", pin["name"])
+        # 1 name names 1 entry, and 1 number stands in 1: a limit, a swing and a rail's load find a pin
+        # by its name, and the second entry of a name or of a number would be judged on the first one's
+        first = names.index(pin["name"]) + 1
+        if first != i:
+            raise Refusal(f"{here}: name: `{pin['name']}` is the name of pin {first} too")
+        here = f"{where}: pin {pin['name'].strip()}"
+        for number in _names(f"{here}: numbers", pin["numbers"]):
+            if number in held:
+                other = "2 times" if held[number] == pin["name"] else f"in pin {held[number]} too"
+                raise Refusal(f"{here}: numbers: `{number}` stands {other}")
+            held[number] = pin["name"]
         if role == "regulated" and ("volts" in pin) == ("set_by" in pin):
             raise Refusal(f"{here}: `volts`, or `set_by` with the name of its feedback pin: 1 of the 2")
         if "set_by" in pin:
@@ -935,6 +999,7 @@ def _pin_facts(where: str, pins: object) -> None:
                 for one in end if isinstance(end, list) else [end]:
                     if isinstance(one, dict) and one["pin"] not in names:
                         raise Refusal(f"{here}: {key}: `{one['pin']}` is no pin name of this part")
+            _ordered(f"{here}: {key}", *pin[key])
         for key in ("operating", "volts") if role == "supply" else ("volts",):
             if key in pin:
                 _span(f"{here}: {key}", pin[key])
@@ -948,6 +1013,8 @@ def _pin_facts(where: str, pins: object) -> None:
             if len(swing) != SWING[role] or any(s not in names for s in swing):
                 known = ", ".join(map(str, names))
                 raise Refusal(f"{here}: swing: {SWING[role]} of this part's pin names are asked, of {known}")
+            if len(set(swing)) != len(swing):  # between 1 pin and itself an output drives nothing
+                raise Refusal(f"{here}: swing: `{swing[0]}` stands 2 times: the 2 names are 2 pins")
 
 
 def _needs(where: str, needs: object, names: list[str]) -> None:
@@ -994,6 +1061,7 @@ def _facts(where: str, raw: object) -> Facts:
     source = _keys(f"{where}: source", data["source"], *SOURCE_KEYS)
     for key, value in source.items():
         _text(f"{where}: source: {key}", value)
+    _source(f"{where}: source", source)
     if "ohms" in data:  # 0 ohm is a link
         _number(f"{where}: ohms", data["ohms"], 0)
     for key in RATED:
