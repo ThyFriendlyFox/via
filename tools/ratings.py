@@ -1235,7 +1235,8 @@ def _facts(where: str, raw: object) -> Facts:
             raise Refusal(f"{where}: {key}: 2 or more pairs [{unit}, fraction of the value kept] are asked")
         xs = [_number(f"{where}: {key}: {unit}", p[0], least) for p in kept]
         for pair in kept:
-            _number(f"{where}: {key}: fraction", pair[1], 0, 1.5)
+            # no part keeps 0 % of its value: a share of 0 makes C or L zero in a deck
+            _number(f"{where}: {key}: fraction", pair[1], most=1.5, above=0)
         if xs != sorted(set(xs)):
             raise Refusal(f"{where}: {key}: the {unit} rise from pair to pair")
     for key, ends in (("diodes", ("anode", "cathode")), ("transistors", ("gate", "drain", "source"))):

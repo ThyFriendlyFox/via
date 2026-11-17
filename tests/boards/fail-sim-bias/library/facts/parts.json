@@ -20,7 +20,7 @@
     },
     {
       "kind": "inductor",
-      "match": "XAL4020-222ME*",
+      "mpn": "XAL4020-222MEC",
       "tolerance": 0.20,
       "amps_saturation": 5.6,
       "amps_rms": 4.0,

@@ -379,25 +379,29 @@ def deck_part_data(
     """The curves of the schematic's capacitors and inductors from the library's facts, each from a
     maker's file with its row in sources.csv (tools/partdata.py): (curves, refused, labels, failures,
     warnings). `refused` maps a part to why its data cannot be used, `labels` a part to its facts entry
-    and part number. Nothing when the project's library holds no facts or no schematic names the parts,
-    or when no deck holds a capacitor or an inductor named like a board reference."""
-    rt, pd = ratings(), partdata()
+    and part number. Nothing when the project's library holds no curve or no schematic names the parts,
+    or when no deck holds a capacitor or an inductor. A part with data that no deck element carries by
+    its reference, while a deck holds a capacitor or an inductor under another name, is not judged."""
+    rt, pd, sc = ratings(), partdata(), simcorners()
     library = rt.find_facts(project.dir)
-    named = [
-        name
-        for d in decks
-        for name in simcorners().deck_names(d.read_text(encoding="utf-8", errors="replace").split("\n"))
-        if pd.REF_RE.match(name)
-    ]
-    if library is None or not project.sch or not named:
+    names: set[str] = set()  # each element of the decks and of the files they include, upper case
+    for d in decks:
+        text = d.read_text(encoding="utf-8", errors="replace")
+        names.update(sc.deck_names(text.split("\n")))
+        names.update(n.upper() for body in deck_includes(d, text).values() for n in sc.top_level_parts(body))
+    named = {name for name in names if pd.REF_RE.match(name)}
+    other = sorted(name for name in names if name[0] in "CL" and not pd.REF_RE.match(name))
+    if library is None or not project.sch or not (named or other):
         return {}, {}, {}, [], []
     unmatched = f"{library} holds part data, and no deck part is matched to it"
-    folder.mkdir(parents=True, exist_ok=True)
     try:
+        facts = rt.read_facts(library)
+        if not any("kept" in f.data or "kept_celsius" in f.data for f in facts):
+            return {}, {}, {}, [], []
+        folder.mkdir(parents=True, exist_ok=True)
         net, stderr = rt.export_netlist(project, folder, sys.modules[__name__])
         if net is None:
             return {}, {}, {}, [], [f"{unmatched}: kicad-cli wrote no netlist: {stderr.strip()}"]
-        facts = rt.read_facts(library)
         listed = project.dir / "parts.csv"
         mpns = rt.part_numbers(
             net, rt.parts_rows([listed], sys.modules[__name__]) if listed.is_file() else []
@@ -405,15 +409,40 @@ def deck_part_data(
         entries = {
             ref: (mpns.get(ref, ""), rt.facts_of(facts, p, mpns.get(ref, ""))) for ref, p in net.parts.items()
         }
-        rows = [pd.Row(r.mpn, r.sha256, r.source) for r in read_sources(sources)] if sources else []
+        rows = (
+            [
+                pd.Row(r.mpn, r.sha256, r.source, str(sources.parent / r.file) if r.file else "")
+                for r in read_sources(sources)
+            ]
+            if sources
+            else []
+        )
     except FileNotFoundError as exc:
         return {}, {}, {}, [], [f"{unmatched}: engine missing: {exc.filename}"]
     except (ValueError, OSError) as exc:
         return {}, {}, {}, [f"part data: {exc}"], []
-    curves, refused = pd.choose(entries, rows)
+    curves, refused, unjudged = pd.choose(entries, rows)
     labels = {ref: f"{entries[ref][1].where}, {entries[ref][0]}" for ref in [*curves, *refused]}
     warnings = [line for c in curves.values() if (line := pd.short_of_rating(c))]
+    for ref, why in unjudged.items():  # said for each deck that runs the part on the curve
+        curves[ref].unjudged = why
+    missing = sorted({*curves, *refused} - named, key=lambda r: (r[0], int(r[1:])))
+    if missing and other:
+        warnings.append(
+            f"not judged: {names_and(missing)} hold their makers' data, and no deck element carries their "
+            "reference: a deck runs a board part on it only under the part's reference"
+        )
     return curves, refused, labels, [], warnings
+
+
+def deck_includes(deck: Path, text: str) -> dict[str, str]:
+    """The text of each file a deck includes that is there, by its path as the deck writes it."""
+    out = {}
+    for inc in include_paths(text):
+        path = (deck.parent / inc).resolve()
+        if path.is_file():
+            out[inc] = path.read_text(encoding="utf-8", errors="replace")
+    return out
 
 
 def names_and(names: list[str]) -> str:
@@ -825,13 +854,23 @@ def gate_sim(
     for deck in decks:
         log = sim_out / f"{deck.stem}.log"
         deck_text = deck.read_text(encoding="utf-8", errors="replace")
-        _, applied, ideal = pd.apply(deck_text, curves)
-        held_back = {ref: why for ref, why in refused.items() if ref in sc.deck_names(deck_text.split("\n"))}
+        included = deck_includes(deck, deck_text) if curves or refused else {}
+        _, applied, ideal = pd.apply(deck_text, curves, included)
+        held = set(sc.deck_names(deck_text.split("\n")))
+        held.update(n.upper() for body in included.values() for n in sc.top_level_parts(body))
+        held_back = {ref: why for ref, why in refused.items() if ref in held}
         failures += [
             f"{deck.stem}: {ref} runs as an ideal part while the library holds its maker's data "
             f"({labels[ref]}): {why}"
             for ref, why in sorted({**ideal, **held_back}.items())
         ]
+        for ref in applied:
+            line = (
+                f"{ref} runs on its maker's data, and whether that is its maker's file is not judged: "
+                f"{curves[ref].unjudged}"
+            )
+            if curves[ref].unjudged and line not in warned:
+                warned.append(line)
         models, model_problems, model_warnings, prepared = model_rows(
             deck, sources, sim_out / "run" / deck.stem, always=keep or bool(applied)
         )
