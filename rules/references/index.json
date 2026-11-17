@@ -132,6 +132,17 @@
       "read": "2026-11-17"
     },
     {
+      "id": "ti-slva079",
+      "kind": "application note",
+      "maker": "Texas Instruments",
+      "number": "SLVA079",
+      "title": "Understanding the Terms and Definitions of LDO Voltage Regulators",
+      "revision": "October 1999",
+      "url": "https://www.ti.com/lit/an/slva079/slva079.pdf",
+      "sha256": "c127ca08fbe2a63ff8b236ac67e7fe9ac58f7662450716e4a0d4dbaa2b65e2de",
+      "read": "2026-11-17"
+    },
+    {
       "id": "ti-slvsdg1",
       "kind": "datasheet",
       "maker": "Texas Instruments",
