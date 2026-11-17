@@ -108,6 +108,15 @@ def run(
     )
 
 
+def at_least_1(text: str) -> int:
+    """A flag's value as a whole number of 1 or more, as `Design.route` holds a route's 3 numbers.
+    `--rounds 0` routed nothing and ended in a KeyError, and `--timeout 0` stopped the router before
+    it started."""
+    if not re.fullmatch(r"[0-9]+", text) or int(text) < 1:
+        raise argparse.ArgumentTypeError(f"{text} is not a whole number of 1 or more")
+    return int(text)
+
+
 def tool_version(cmd: list[str], pattern: str = r"\d+(\.\d+)+") -> str | None:
     exe = shutil.which(cmd[0])
     if not exe:
@@ -191,6 +200,143 @@ def first_violations(items: list[dict], limit: int = 10) -> list[dict]:
     return out
 
 
+def kicad_erc(
+    sch: Path, report: Path, timeout: int = 900
+) -> tuple[subprocess.CompletedProcess, list[dict] | None]:
+    """KiCad's ERC of `sch` with every severity listed, written to `report`: the run, and the violations
+    of every sheet, or None when kicad-cli wrote no report. The ERC gate and the check before a route
+    (`unrouted_errors`) both ask for the report here and read it here, so neither reads another list.
+    A kicad-cli that runs past `timeout` seconds is `subprocess.TimeoutExpired`, the caller's to answer."""
+    proc = run(
+        [
+            KICAD_CLI,
+            "sch",
+            "erc",
+            "--output",
+            report,
+            "--format",
+            "json",
+            "--severity-all",
+            "--exit-code-violations",
+            sch,
+        ],
+        cwd=sch.parent,
+        timeout=timeout,
+    )
+    if proc.returncode not in (0, 5) or not report.is_file():
+        return proc, None
+    data = load_json(report)
+    return proc, [v for sheet in data.get("sheets", []) for v in sheet.get("violations", [])]
+
+
+def kicad_drc(
+    board: Path, report: Path, parity: bool, timeout: int = 900
+) -> tuple[subprocess.CompletedProcess, dict[str, list[dict]] | None]:
+    """KiCad's DRC of `board` with every severity listed, written to `report`: the run, and the report's
+    3 lists (`violations`, `unconnected_items`, `schematic_parity`), or None when kicad-cli wrote no
+    report. `parity` also holds the board to its schematic. The DRC gate and the check before a route
+    (`unrouted_errors`) both ask for the report here and read it here."""
+    cmd = [
+        KICAD_CLI,
+        "pcb",
+        "drc",
+        "--output",
+        report,
+        "--format",
+        "json",
+        "--severity-all",
+        "--exit-code-violations",
+    ]
+    if parity:
+        cmd.append("--schematic-parity")
+    cmd.append(board)
+    proc = run(cmd, cwd=board.parent, timeout=timeout)
+    if proc.returncode not in (0, 5) or not report.is_file():
+        return proc, None
+    data = load_json(report)
+    return proc, {k: data.get(k, []) for k in ("violations", "unconnected_items", "schematic_parity")}
+
+
+def mm(value: float) -> str:
+    """A length of a KiCad report as a design file writes it: 110 for 110.0, 107.2, 109.175."""
+    text = f"{float(value):.6f}".rstrip("0").rstrip(".")
+    return "0" if text in ("", "-0") else text
+
+
+def error_lines(violations: list[dict]) -> list[str]:
+    """Each violation of severity error in a KiCad ERC or DRC report as 1 line: the rule's type, its
+    description, and each item it names with its place, in mm as the report gives it. The lines are
+    sorted, and so are the items of a line: KiCad lists 2 errors of 1 rule, and the 2 items of 1
+    error, in an order that changes between 2 runs of 1 board. A description that KiCad writes on
+    several lines is joined into 1."""
+
+    def one_line(text: object) -> str:
+        return " ".join(str(text).split())
+
+    lines = []
+    for v in violations:
+        if str(v.get("severity", "")).lower() != "error":
+            continue
+        items = []
+        for item in v.get("items", []):
+            pos = item.get("pos") or {}
+            at = f" at ({mm(pos['x'])}, {mm(pos['y'])})" if "x" in pos and "y" in pos else ""
+            items.append(one_line(item.get("description")) + at)
+        named = ": " + "; ".join(sorted(items)) if items else ""
+        lines.append(f"{v.get('type')}: {one_line(v.get('description'))}{named}")
+    return sorted(lines)
+
+
+# A model file a schematic names is found from the schematic's own folder. A project that is written
+# into another folder than its design file's (`design --out`) names its models from there, and KiCad
+# finds none: its ERC then reports each as this rule. The design's own check has read each file from
+# the design's folder already (`Design.sim_problems`).
+MOVED_RULES = ("simulation_model_issue",)
+PROBLEMS_SHOWN = 20  # `erc:` and `drc:` lines the design command prints for each; the summary holds all
+
+
+def unrouted_errors(sch: Path, pcb: Path, out: Path, moved: bool = False, limit: int = 900) -> dict:
+    """KiCad's ERC of a generated schematic and its DRC of the unrouted board beside it, each asked for
+    as its gate asks (`kicad_erc`, `kicad_drc`) and written to `out`/erc.json and `out`/drc.json.
+    Returns the errors of each as lines (`error_lines`) under "erc" and "drc". An unconnected item is
+    no error here, since the route joins it, and a warning is none. A parity error is one: no route
+    gives a footprint its symbol. `moved` says the project lies in another folder than its design
+    file, and leaves MOVED_RULES out. When kicad-cli wrote no report, or did not end within `limit`
+    seconds, "error" says so and the 2 lists are absent: nothing can then say that the board has no
+    error."""
+    out.mkdir(parents=True, exist_ok=True)
+
+    def did_not_run(what: str, proc: subprocess.CompletedProcess) -> dict:
+        said = [line.strip() for line in (proc.stderr or "").splitlines() if line.strip()]
+        last = f": {said[-1]}" if said else ""
+        return {"error": f"{what} did not run: kicad-cli exited {proc.returncode}{last}"}
+
+    def did_not_end(what: str) -> dict:
+        return {
+            "error": f"{what} did not end within {limit} s. Run `workcenter doctor`; a board whose checks "
+            "take longer names a longer limit as --timeout or as d.route."
+        }
+
+    try:
+        proc, violations = kicad_erc(sch, out / "erc.json", timeout=limit)
+    except subprocess.TimeoutExpired:
+        return did_not_end("KiCad's ERC of the schematic")
+    if violations is None:
+        return did_not_run("KiCad's ERC of the schematic", proc)
+    if moved:
+        violations = [v for v in violations if v.get("type") not in MOVED_RULES]
+    try:
+        proc, groups = kicad_drc(pcb, out / "drc.json", parity=True, timeout=limit)
+    except subprocess.TimeoutExpired:
+        return did_not_end("KiCad's DRC of the unrouted board")
+    if groups is None:
+        return did_not_run("KiCad's DRC of the unrouted board", proc)
+    return {
+        "erc": error_lines(violations),
+        "drc": error_lines(groups["violations"] + groups["schematic_parity"]),
+    }
+
+
 def timed(fn):
     def wrapper(*args, **kwargs) -> Result:
         t0 = time.monotonic()
@@ -219,25 +365,9 @@ def gate_erc(project: Project, out: Path, strict: bool = False) -> Result:
     if not project.sch:
         return Result("erc", "skip", "no schematic in project")
     report = out / "erc.json"
-    proc = run(
-        [
-            KICAD_CLI,
-            "sch",
-            "erc",
-            "--output",
-            report,
-            "--format",
-            "json",
-            "--severity-all",
-            "--exit-code-violations",
-            project.sch,
-        ],
-        cwd=project.dir,
-    )
-    if proc.returncode not in (0, 5) or not report.is_file():
+    proc, violations = kicad_erc(project.sch, report)
+    if violations is None:
         return Result("erc", "error", f"kicad-cli exited {proc.returncode}", {"stderr": proc.stderr[-2000:]})
-    data = load_json(report)
-    violations = [v for sheet in data.get("sheets", []) for v in sheet.get("violations", [])]
     counts = count_severity(violations)
     red = counts["error"] > 0 or (strict and counts["warning"] > 0)
     return Result(
@@ -294,25 +424,9 @@ def gate_drc(project: Project, out: Path, strict: bool = False, fab: str | None 
             board = fab_copy(project, fab, out)
         except ValueError as exc:
             return Result("drc", "error", str(exc))
-    cmd = [
-        KICAD_CLI,
-        "pcb",
-        "drc",
-        "--output",
-        report,
-        "--format",
-        "json",
-        "--severity-all",
-        "--exit-code-violations",
-    ]
-    if project.sch:
-        cmd.append("--schematic-parity")
-    cmd.append(board)
-    proc = run(cmd, cwd=board.parent)
-    if proc.returncode not in (0, 5) or not report.is_file():
+    proc, groups = kicad_drc(board, report, parity=bool(project.sch))
+    if groups is None:
         return Result("drc", "error", f"kicad-cli exited {proc.returncode}", {"stderr": proc.stderr[-2000:]})
-    data = load_json(report)
-    groups = {k: data.get(k, []) for k in ("violations", "unconnected_items", "schematic_parity")}
     counts = {k: count_severity(v) for k, v in groups.items()}
     errors = sum(c["error"] for c in counts.values())
     warnings = sum(c["warning"] for c in counts.values())
@@ -3593,7 +3707,10 @@ def cmd_curve(args) -> int:
 
 
 def cmd_design(args) -> int:
-    """Build a kicadgen design file into a KiCad project, routing it when asked."""
+    """Build a kicadgen design file into a KiCad project, routing it when asked. With --route the
+    unrouted project is written first and KiCad's ERC and DRC run on it: the router starts only on a
+    design that is not red and has no error of either (`unrouted_errors`). The run's summary stays in
+    build/route/design.json for `workcenter next`."""
     sys.path.insert(0, str(SRC_DIR / "tools"))
     import kicadgen
 
@@ -3652,47 +3769,128 @@ def cmd_design(args) -> int:
         code = EXIT_FAIL
     # A previous board's routed copper, read before anything is written: --out may be the folder that
     # holds it.
-    copper = kicadgen.board_copper(Path(args.seed).resolve()) if args.seed else None
+    seed_board = Path(args.seed).resolve() if args.seed else None
+    copper = kicadgen.board_copper(seed_board) if seed_board else None
+    route_dir = out_dir / "build" / "route"
+    # The route's passes, its limit in seconds and its rounds, each from its flag, else from the design,
+    # else the default for a board of this size (M128, M147).
+    numbers = kicadgen.route_numbers(
+        design, {"passes": args.passes, "timeout": args.timeout, "rounds": args.rounds}
+    )
     if args.route:
+        summary["route_numbers"] = {
+            key: {"value": value, "from": source} for key, (value, source) in numbers.items()
+        }
+        # A seed that is this project's own board is the file the unrouted board replaces below. A
+        # route that is then not started, or leaves no route, would leave no copy of it: keep one.
+        if seed_board and seed_board == out_dir / f"{design.name}.kicad_pcb":
+            kept = route_dir / f"{design.name}.seed.kicad_pcb"
+            summary["seed_copy"] = str(kept)
+            # The same command run again finds the unrouted board of the run before where its seed
+            # was. A board that holds no route is not written over a copy that does: the copy is the
+            # seed then. What a board holds beside its design's own hand copper and the vias that
+            # tie a pour is a route.
+            sifted = design.seed_wiring(copper)
+            routed = sum(sifted["given"]) - sum(
+                sifted["left"].get(why, 0) for why in ("hand copper", "stitching via")
+            )
+            if routed or not kept.is_file():
+                route_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(seed_board, kept)
+            else:
+                summary["seed_unrouted"] = str(seed_board)
+                seed_board, copper = kept, kicadgen.board_copper(kept)
+        # A report of an earlier run's checks says nothing of this run.
+        for name in ("erc.json", "drc.json"):
+            (route_dir / name).unlink(missing_ok=True)
         fixed_segments, fixed_vias = list(design.segments), list(design.vias)  # hand-routed copper
         try:
-            for round_no in range(1, args.rounds + 1):
-                # Each round sifts the seed again: a reserved via can stand on a seed track.
-                seed = design.seed_wiring(copper) if copper else None
-                summary["route"] = kicadgen.route(
-                    design, out_dir / "build" / "route", passes=args.passes, timeout=args.timeout, seed=seed
-                )
-                if seed:
-                    summary["seed"] = {
-                        "board": str(Path(args.seed).resolve()),
-                        "tracks": seed["given"][0],
-                        "vias": seed["given"][1],
-                        "seeded": [len(seed["segments"]), len(seed["vias"])],
-                        "loose": [len(seed["loose"][0]), len(seed["loose"][1])],
-                        "left": seed["left"],
-                        "kept": design.seed_kept(seed),
-                    }
+            if code == EXIT_FAIL:
+                # The router fails near a fault the lines above name, and its failure reads as a
+                # routing problem (M155): it is not started on a design that is red already.
+                summary["route"] = {"refused": "the design was red before the route"}
+            else:
+                # The unrouted project, as a run without --route writes it, then KiCad's own ERC and
+                # DRC of it: P3's "Done when". A route that starts on 2 parts placed on each other, or
+                # on a hand track across another net's pad, is a route lost (M127, M152).
                 summary["files"] = [str(p) for p in design.write(out_dir)]
-                summary["rounds"] = round_no
-                if not design.islands or round_no == args.rounds:
-                    break
-                # Pads walled off from their pour: reserve a via beside each, then route again around it.
-                design.segments = list(fixed_segments)
-                design.vias = list(fixed_vias)
-                if not design.reserve_vias([pad for island in design.islands for pad in island]):
-                    break
-                fixed_vias = list(design.vias)
-            if summary["route"].get("unrouted"):
-                code = EXIT_FAIL
+                found = unrouted_errors(
+                    out_dir / f"{design.name}.kicad_sch",
+                    out_dir / f"{design.name}.kicad_pcb",
+                    route_dir,
+                    moved=out_dir != design_path.parent,
+                    # KiCad's DRC of a large unrouted board takes minutes: each check may run as
+                    # long as the route may, and 900 s at the least.
+                    limit=max(900, numbers["timeout"][0]),
+                )
+                if "error" in found:
+                    summary["route"] = {"error": found["error"]}
+                    code = EXIT_FAIL
+                else:
+                    summary["erc_problems"], summary["drc_problems"] = found["erc"], found["drc"]
+                    if found["erc"] or found["drc"]:
+                        summary["route"] = {
+                            "refused": "no route mends an ERC or a DRC error (PROCESSES.md P3)"
+                        }
+                        code = EXIT_FAIL
+            if "route" not in summary:
+                # That write tied each island of a pour with a via of its own. The route starts from
+                # the hand copper alone, as it did before the unrouted board was written first.
+                design.segments, design.vias = list(fixed_segments), list(fixed_vias)
+                for round_no in range(1, numbers["rounds"][0] + 1):
+                    # Each round sifts the seed again: a reserved via can stand on a seed track.
+                    seed = design.seed_wiring(copper) if copper else None
+                    summary["route"] = kicadgen.route(
+                        design,
+                        route_dir,
+                        passes=numbers["passes"][0],
+                        timeout=numbers["timeout"][0],
+                        seed=seed,
+                    )
+                    if seed:
+                        summary["seed"] = {
+                            "board": str(seed_board),
+                            "tracks": seed["given"][0],
+                            "vias": seed["given"][1],
+                            "seeded": [len(seed["segments"]), len(seed["vias"])],
+                            "loose": [len(seed["loose"][0]), len(seed["loose"][1])],
+                            "left": seed["left"],
+                            "kept": design.seed_kept(seed),
+                        }
+                    summary["files"] = [str(p) for p in design.write(out_dir)]
+                    summary["rounds"] = round_no
+                    if not design.islands or round_no == numbers["rounds"][0]:
+                        break
+                    # Pads walled off from their pour: reserve a via beside each, then route again
+                    # around it.
+                    design.segments = list(fixed_segments)
+                    design.vias = list(fixed_vias)
+                    if not design.reserve_vias([pad for island in design.islands for pad in island]):
+                        break
+                    fixed_vias = list(design.vias)
+                if summary["route"].get("unrouted"):
+                    code = EXIT_FAIL
         except FileNotFoundError as exc:
-            summary["route"] = {"skip": f"engine missing: {exc}"}
+            summary["route"] = {"skip": f"engine missing: {exc.filename or exc}"}
             code = EXIT_SKIP
+        except kicadgen.RouteError as exc:
+            # FreeRouting writes its session only when it ends: a route its limit stops leaves nothing
+            # (M128), and neither does a router that ends with an error. 1 line, not a traceback.
+            advice = (
+                " Route again with fewer passes or a longer limit, in the background (PROCESSES.md P4 "
+                "step 6). Give them as --passes and --timeout, or as d.route in the design file."
+                if exc.stopped
+                else " Read that log before the next route."
+            )
+            summary["route"] = {"error": f"{exc}{advice}", "log": str(exc.log)}
+            code = EXIT_FAIL
     if "files" not in summary:
         summary["files"] = [str(p) for p in design.write(out_dir)]
     summary["islands"] = design.islands
     summary["stitches"] = [{**s, "at": list(s["at"])} for s in design.stitches]
     summary["seconds"] = round(time.monotonic() - t0, 2)
     # The verdict is the exit code even though every file is written (M85): say so on the last line.
+    route = summary.get("route", {})
     red = []
     if summary["via_problems"]:
         red.append(f"{len(summary['via_problems'])} via problem(s)")
@@ -3702,10 +3900,23 @@ def cmd_design(args) -> int:
         red.append(f"{len(summary['pulls'])} floating input(s)")
     if summary["sim_problems"]:
         red.append(f"{len(summary['sim_problems'])} simulation problem(s)")
-    if summary.get("route", {}).get("unrouted"):
-        red.append(f"{summary['route']['unrouted']} unrouted")
+    if summary.get("erc_problems"):
+        red.append(f"{len(summary['erc_problems'])} ERC error(s) on the schematic")
+    if summary.get("drc_problems"):
+        red.append(f"{len(summary['drc_problems'])} DRC error(s) on the unrouted board")
+    if "error" in route and "log" in route:  # a router that was started has a log
+        red.append("the router left no route")
+    elif "error" in route:
+        red.append("the checks before the route did not run")
+    if route.get("unrouted"):
+        red.append(f"{route['unrouted']} unrouted")
     if code == EXIT_FAIL:
         summary["red"] = red
+    if args.route:
+        # The run's summary, kept for `workcenter next`: a route that was not started, or that did not
+        # end, leaves a board with no route, and no gate of that board is the next step.
+        route_dir.mkdir(parents=True, exist_ok=True)
+        (route_dir / "design.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     if args.json:
         print(json.dumps(summary, indent=2))
     else:
@@ -3715,10 +3926,27 @@ def cmd_design(args) -> int:
         r = summary.get("route")
         if r and "skip" in r:
             print(f"  route skipped: {r['skip']}")
-        elif r:
+        elif r and "error" in r:
+            print(f"  route: {r['error']}")
+        elif r and "refused" not in r:
             unrouted = "DRC decides" if r["unrouted"] is None else f"{r['unrouted']} unrouted"
             rounds = f"{summary.get('rounds', 1)} round(s)"
-            print(f"  routed: {r['segments']} segments, {r['vias']} vias, {unrouted}, {rounds}  ({r['log']})")
+            # A route with the numbers of every route before a design could name them prints the line
+            # of before. Any other names each number and where it came from.
+            said = ""
+            if any(numbers[key] != (value, "default") for key, value in kicadgen.ROUTE_DEFAULTS.items()):
+                passes, limit, most = (numbers[key] for key in kicadgen.ROUTE_KEYS)
+                said = (
+                    f", {passes[0]} passes ({passes[1]}), {limit[0]} s limit ({limit[1]}), "
+                    f"{most[0]} rounds at most ({most[1]})"
+                )
+            counts = f"{r['segments']} segments, {r['vias']} vias, {unrouted}, {rounds}"
+            print(f"  routed: {counts}{said}  ({r['log']})")
+        if "seed_unrouted" in summary:
+            print(
+                f"  seed: {summary['seed_unrouted']} holds no route: the route starts from the copy the "
+                f"last run kept, {summary['seed_copy']}"
+            )
         s = summary.get("seed")
         if s:
             left = ", ".join(f"{n} {why}" for why, n in sorted(s["left"].items(), key=lambda kv: -kv[1]))
@@ -3744,12 +3972,28 @@ def cmd_design(args) -> int:
             print(f"  part: {problem}")
         for island in summary["islands"]:
             print(f"  island: {', '.join(island)} cut off from their pour; the DRC will report it")
+        for kind in ("erc", "drc"):
+            problems = summary.get(f"{kind}_problems", [])
+            for problem in problems[:PROBLEMS_SHOWN]:
+                print(f"  {kind}: {problem}")
+            if len(problems) > PROBLEMS_SHOWN:
+                print(f"  {kind}: {len(problems) - PROBLEMS_SHOWN} more in {route_dir / f'{kind}.json'}")
         for f in summary["files"]:
             print(f"  wrote {f}")
         if code == EXIT_FAIL:
+            # A route that was asked for and did not end leaves the board of the last write: say which.
+            no_route = ""
+            if "refused" in route:
+                no_route = f" The router was not started: {route['refused']}."
+            if "refused" in route or "error" in route:
+                done = summary.get("rounds", 0)
+                board = f"the route of round {done}" if done else "the unrouted one"
+                no_route += f" The board on disk is {board}."
+                if "seed_copy" in summary:
+                    no_route += f" The seed was that board: it is kept as {summary['seed_copy']}."
             print(
-                f"design {design.name} red: {', '.join(red)}. The files are written for inspection only; "
-                "a CI regenerate check fails on this exit code (1)."
+                f"design {design.name} red: {', '.join(red)}.{no_route} The files are written for inspection "
+                "only; a CI regenerate check fails on this exit code (1)."
             )
     return code
 
@@ -4868,11 +5112,30 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("design", help="path to a design file exposing build() -> kicadgen.Design")
     p.add_argument("--out", help="output directory (default: the design file's directory)")
-    p.add_argument("--route", action="store_true", help="export DSN, run FreeRouting, merge the session")
-    p.add_argument("--passes", type=int, default=60)
-    p.add_argument("--timeout", type=int, default=900)
     p.add_argument(
-        "--rounds", type=int, default=4, help="route again with a via reserved beside each pad a pour lost"
+        "--route",
+        action="store_true",
+        help="write the unrouted project, run KiCad's ERC and DRC on it, then export the DSN, run "
+        "FreeRouting and merge the session; the router is not started on a design that is red, nor on "
+        "an ERC or a DRC error other than an unconnected item. Writes build/route/ (erc.json, drc.json, "
+        "the DSN, the session, freerouting.log, design.json) beside the project",
+    )
+    p.add_argument(
+        "--passes",
+        type=at_least_1,
+        help="FreeRouting's passes (default: the design's route, else 60, or 12 for more than 50 parts)",
+    )
+    p.add_argument(
+        "--timeout",
+        type=at_least_1,
+        help="seconds the router may run, and each of KiCad's 2 checks before it when that is more "
+        "than 900 (default: the design's route, else 900, or 3600 for more than 50 parts)",
+    )
+    p.add_argument(
+        "--rounds",
+        type=at_least_1,
+        help="route again with a via reserved beside each pad a pour lost (default: the design's route, "
+        "else 4)",
     )
     p.add_argument(
         "--seed",

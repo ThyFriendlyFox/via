@@ -485,6 +485,9 @@ def build() -> kicadgen.Design:
         "power": {"width": 0.4, "clearance": 0.15, "via": 0.6, "via_drill": 0.3, "nets": ["+5V", "SPK_P", "SPK_N"]},
         "rail": {"width": 0.3, "clearance": 0.15, "via": 0.5, "via_drill": 0.3, "nets": ["+2V8", "LDO_IN"]},
     }
+    # The committed route's numbers (README, "Route"; LOOP.md step 1), so the bare command routes with
+    # them. A board of 62 parts would get the workcenter's 12 passes and an hour.
+    d.route = {"passes": 20, "timeout": 900}
     d.check_pulls = True
     d.defined_nets = {
         "EA_N": "U2's inverting input, held by its own feedback: R8 (2.2M) to its output",

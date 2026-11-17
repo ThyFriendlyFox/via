@@ -866,6 +866,9 @@ def build() -> kicadgen.Design:
     for net in ("SOM_UART_RX", "SOM_SPI_SDI", "SOM_GPIO3", "SOM_GPIO4"):
         d.defined_nets[net] = "a pin of the QCS6490 on the header at 1.8 V; Linux sets it"
     d.check_pulls = True
+    # The numbers the committed board was routed with (docs/gates.md, "Routing"), so the README's
+    # command needs no flag for them.
+    d.route = {"passes": 100, "timeout": 3600, "rounds": 2}
     core_rail(d)
     power_stage(d)
     usb_lane(d)

@@ -13,7 +13,8 @@ answer asks no judgement of its caller, so a person or an agent of any size foll
     DONE WHEN  the last line starts with GREEN
 
 The order: the path (a folder, or a KiCad file that names its project), the project's files, the
-toolchain, the design file against the KiCad files it generates, the gates' report (run again when any
+toolchain, the design file against the KiCad files it generates, the last `design --route` when it
+routed nothing (its router was not started, or left no session), the gates' report (run again when any
 input is newer, or when it is from a run without an engine), the first failure of the first red gate,
 the first warning of a GREEN run, the verification package when the project has one. A failure or a
 warning is answered from HINTS: the fix this workcenter's skills give for that kind of line.
@@ -97,6 +98,35 @@ HINTS: list[tuple[str, str, str]] = [
         r"^design: part: ",
         "Move the part out of the area the design keeps parts out of.",
         f'{DESIGN}, "Steps"',
+    ),
+    (
+        r"^design: erc: ",
+        "Correct what the line names in the design file: a net, a pin or a power flag. No route mends an "
+        "error of the schematic.",
+        f'{GATES}, "Common violations"',
+    ),
+    (
+        r"^design: drc: ",
+        "Correct the placement or the hand track that the line names, in the design file. No route mends "
+        "it. `workcenter inspect map <project> --box X0 X1 Y0 Y1` draws the copper round a place.",
+        "ee-agent-kit/PROCESSES.md, P3",
+    ),
+    (
+        r"^design: route: FreeRouting was stopped",
+        "Give the route fewer passes or a longer limit, as `d.route` in the design file. Then route in the "
+        "background.",
+        "ee-agent-kit/PROCESSES.md, P4",
+    ),
+    (
+        r"^design: route: FreeRouting ",
+        "Read the log that the line names, then correct what it reports. A router that ends with an error "
+        "routed nothing.",
+        "ee-agent-kit/docs/ENGINES.md",
+    ),
+    (
+        r"^design: route: ",
+        "Run `workcenter doctor`, then the command again. The line says why KiCad's check did not run.",
+        "ee-agent-kit/docs/ENGINES.md",
     ),
     (
         r"^drc: clearance",
@@ -347,6 +377,62 @@ def hint(gate: str, line: str) -> tuple[str, str]:
     raise AssertionError("the last hint matches every line")
 
 
+# The red last line of a design run names each kind of problem by these words, and a line of a kind
+# starts with the kind's name. `route` is a router that left no session, or a check that did not run.
+RED_KINDS = (
+    ("file", "the design file is refused"),
+    ("sim", "simulation"),
+    ("via", "via"),
+    ("part", "part("),
+    ("pull", "floating"),
+    ("erc", "ERC error"),
+    ("drc", "DRC error"),
+    ("route", "the router left no route"),
+    ("route", "the checks before the route did not run"),
+)
+# The summary `workcenter design --route` leaves of its last run, and the lists of it that are lines.
+ROUTE_RECORD = Path("build") / "route" / "design.json"
+RECORD_LINES = (
+    ("pull", "pulls"),
+    ("sim", "sim_problems"),
+    ("via", "via_problems"),
+    ("part", "part_problems"),
+    ("erc", "erc_problems"),
+    ("drc", "drc_problems"),
+)
+
+
+def first_problem(red: str, said: list[str]) -> str | None:
+    """The line of a red design run to answer: the first of `said` whose kind the red line names. A
+    `pull:` line of a design that does not set check_pulls is listed and is no failure, so the red
+    line decides."""
+    kinds = [kind for kind, word in RED_KINDS if word in red]
+    return next((line for kind in kinds for line in said if line.startswith(f"{kind}: ")), None)
+
+
+def route_without_end(folder: Path) -> tuple[bool, str | None] | None:
+    """The folder's last `design --route`, when it routed nothing: whether its router was not started
+    (`refused` in the record; else it left no session, `error`), and the line of the run to answer,
+    as the command printed it (None when the record holds none). None for a route that ended, a route
+    skipped for an absent engine, and a record that is not there or is no summary."""
+    try:
+        summary = json.loads((folder / ROUTE_RECORD).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    route = summary.get("route") if isinstance(summary, dict) else None
+    if not isinstance(route, dict) or not ("refused" in route or "error" in route):
+        return None
+
+    def texts(key: str) -> list[str]:
+        value = summary.get(key)
+        return [text for text in value if isinstance(text, str)] if isinstance(value, list) else []
+
+    said = [f"route: {route['error']}"] if "error" in route else []
+    for kind, key in RECORD_LINES:
+        said += [f"{kind}: {text}" for text in texts(key)]
+    return "refused" in route, first_problem(", ".join(texts("red")), said)
+
+
 def inputs_of(project) -> list[Path]:
     """The files a gates report is made from: when one is newer than the report, the report is stale."""
     found = [p for p in project.dir.iterdir() if p.suffix in INPUT_SUFFIXES or p.name == "design.py"]
@@ -445,7 +531,8 @@ def next_step(cli, target: str, run_check=True) -> Step:
                 f"{wc} design {quoted}/design.py --route",
                 "the folder holds a design file and no KiCad project",
                 f'{DESIGN}, "Steps"',
-                "the command exits 0 and prints no file:, sim:, pull:, via:, part: or island: line",
+                "the command exits 0 and prints no file:, sim:, pull:, via:, part:, erc:, drc: or island: "
+                "line",
             )
         # 2 ways to start are not 1 command, so this answer has no RUN line.
         return Step(
@@ -480,6 +567,7 @@ def next_step(cli, target: str, run_check=True) -> Step:
             f"`{wc} doctor` prints ok or degraded",
         )
     design = project.dir / "design.py"
+    regenerate = f"{wc} design {shlex.quote(str(design))} --route"
     if design.is_file() and run_check:
         # The check imports the design file. Bytecode beside it would be a file `next` wrote.
         proc = subprocess.run(
@@ -491,23 +579,11 @@ def next_step(cli, target: str, run_check=True) -> Step:
         )
         if proc.returncode != 0:
             said = [ln.strip() for ln in proc.stdout.splitlines() if ln.strip()]
-            regenerate = f"{wc} design {shlex.quote(str(design))} --route"
             # The design step's own refusal comes before any comparison: regenerating a design file
             # that is refused gives the same refusal. Its red line names the kinds; the first printed
             # line of a kind it names is the problem to answer.
             red = next((ln for ln in said if re.match(r"design .+ red: ", ln)), "")
-            kinds = [
-                kind
-                for kind, word in (
-                    ("file", "the design file is refused"),
-                    ("sim", "simulation"),
-                    ("via", "via"),
-                    ("part", "part("),
-                    ("pull", "floating"),
-                )
-                if word in red
-            ]
-            first = next((ln for kind in kinds for ln in said if ln.startswith(f"{kind}: ")), None)
+            first = first_problem(red, said)
             if first:
                 do, read = hint("design", first)
                 return Step(
@@ -524,6 +600,29 @@ def next_step(cli, target: str, run_check=True) -> Step:
                 f'{DESIGN}, "Steps"',
                 f"`{wc} design {shlex.quote(str(design))} --check` exits 0",
             )
+    # The last `design --route` routed nothing: its router was not started, or left no session. The
+    # board on disk has no route, so no gate of it is the next step, and the check above cannot see
+    # it: a schematic does not change with a placement.
+    unrouted = route_without_end(project.dir) if design.is_file() else None
+    if unrouted and unrouted[1]:
+        refused, first = unrouted
+        routed = "the command prints a `routed:` line"
+        if design.stat().st_mtime > (project.dir / ROUTE_RECORD).stat().st_mtime:
+            return Step(
+                "Route the board again: the design file changed after a route that routed nothing.",
+                regenerate,
+                f"{ROUTE_RECORD} is older than {design.name}",
+                f'{DESIGN}, "Steps"',
+                routed,
+            )
+        do, read = hint("design", first)
+        return Step(
+            do.replace("<project>", folder),
+            regenerate,
+            f"{'the router was not started' if refused else 'the last route routed nothing'}: {first}",
+            read,
+            routed,
+        )
     report = project.dir / "build" / "gates.json"
     gates = f"{wc} gates {quoted}"
     if not report.is_file():
@@ -649,8 +748,8 @@ def register(sub, cli) -> None:
     p = sub.add_parser(
         "next",
         help="name the one next step for a project: what to do, the command, why, what to read, and when "
-        "it is done; exit 0 when nothing is left, 1 when a step is. Reads build/gates.json and "
-        "build/verify.json; writes nothing",
+        "it is done; exit 0 when nothing is left, 1 when a step is. Reads build/gates.json, "
+        "build/verify.json and build/route/design.json; writes nothing",
     )
     p.add_argument("project", help="the project directory")
     p.add_argument(

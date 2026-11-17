@@ -123,8 +123,10 @@ Its verdict is its exit code. It writes every file even when it exits 1.
 The causes of exit 1: a hand via its check refuses; a part in a keep-out or
 with every pad outside the outline; a floating input with `check_pulls`; a
 `sim:` problem; an unrouted connection the router counts; a route that left
-every connection without copper. On exit 1 its last line says `red`, names
-each failure, and says the files are for inspection only: a CI regenerate
+every connection without copper; with `--route`, an ERC or a DRC error of
+the unrouted project, and a router that left no route. On exit 1 its last
+line says `red`, names each failure, and says the files are for inspection
+only: a CI regenerate
 check fails on that exit code (M85). The generator refuses some design
 files when it loads them: a namespace that is no UUID, `power_nets` that is
 no dict. That refusal is 1 `file:` line with the file's line number and
@@ -135,6 +137,23 @@ after routing is printed as a `stitch:` line with the net, the island's layer,
 the pads the island holds and the layer the via reaches, so a via that moved
 between two runs can be traced to its pads.
 
+`workcenter design --route` writes the unrouted project first and runs
+KiCad's ERC and DRC on it (`PROCESSES.md` P3). It does not start the router
+on a design that is red already, nor on an error of either check other than
+an unconnected item: no route mends 2 parts placed on each other or a hand
+track across another net's pad. Each error is an `erc:` or a `drc:` line
+with the rule, the items and their places; the last line says that the
+router was not started and that the board on disk is the unrouted one. A
+warning does not stop the route. The route's passes, its limit in seconds
+and its rounds come from the flags, else from the design file's `d.route =
+{"passes": 12, "timeout": 3600, "rounds": 4}`, else from the board: 60
+passes and 900 s up to 50 parts, 12 passes and 3600 s above, 4 rounds.
+FreeRouting writes its session only when it ends, so a route the limit
+stops is 1 `route:` line and exit 1, with nothing routed and the router's
+output in `build/route/freerouting.log`. The run leaves KiCad's 2 reports
+and its own summary (`design.json`) in `build/route/`; `workcenter next`
+reads the summary and answers a route that routed nothing before any gate.
+
 `workcenter design --route --seed <board>` starts the router from a previous
 routed board, usually the version the design was copied from: its router
 tracks and vias go to FreeRouting held (pushed aside if need be, never
@@ -143,8 +162,10 @@ seed copper that hangs from nothing goes in unfixed, for the router to reuse
 or remove. The design's own hand copper, stitching
 vias, nets the design lost, and copper that now meets another net's pad or
 copper, a keepout or the board edge are left out first and counted on a
-`seed:` line, with how many seed tracks the new route kept. The seed board is
-only read.
+`seed:` line, with how many seed tracks the new route kept. A seed board in
+another folder is only read. The project's own board as the seed is read
+first; the unrouted board then replaces it, and the command keeps a copy of
+it as `build/route/<name>.seed.kicad_pcb`.
 
 A board made for a particular fab checks that fab's published limits in the
 DRC: `rules/` holds them as KiCad design rules (`sierra-circuits-web` for

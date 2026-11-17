@@ -558,6 +558,9 @@ def build() -> kicadgen.Design:
         "SIM_CLK": "the BG95 drives USIM_CLK through R10",
     }
     d.check_pulls = True
+    # The numbers the committed board was routed with: the bare command's, when it was. A board of 127
+    # parts would get the workcenter's 12 passes and an hour today.
+    d.route = {"passes": 60, "timeout": 900}
     # No reference designators on the legend: the board's own words name each connector, light and
     # button, and 120 references at this density print over pads and each other. The fabrication
     # layer and the assembly drawing carry them.

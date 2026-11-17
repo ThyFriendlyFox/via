@@ -120,6 +120,36 @@ def verified(verdicts: dict, failures: list[str]) -> dict:
     return record("verify", "fail" if failures else "pass", {**details, "failures": failures})
 
 
+def routed(proj: Path, summary: object) -> None:
+    """Write the summary `workcenter design --route` leaves in build/route/design.json, a moment after
+    the project's files."""
+    folder = proj / "build" / "route"
+    folder.mkdir(parents=True, exist_ok=True)
+    text = summary if isinstance(summary, str) else json.dumps(summary)
+    (folder / "design.json").write_text(text, encoding="utf-8")
+    later = time.time() + 5
+    os.utime(folder / "design.json", (later, later))
+
+
+# Lines of the design command's checks before a route and of a route that did not end, as it printed
+# them on 2026-11-13.
+OVERLAP = "courtyards_overlap: Courtyards overlap: Footprint R1 at (110, 106); Footprint R2 at (110, 107.2)"
+NO_FLAG = (
+    "power_pin_not_driven: Input Power pin not driven by any Output Power pins: "
+    "Symbol #PWR01 Pin 1 [Power input, Line] at (132.08, 81.28)"
+)
+STOPPED = (
+    "FreeRouting was stopped after 900 s, its limit, at 60 passes, and wrote no session: it writes one "
+    'only when it ends. Its last line: "pass 1 of many" (build/route/freerouting.log). Route again with '
+    "fewer passes or a longer limit, in the background (PROCESSES.md P4 step 6). Give them as --passes "
+    "and --timeout, or as d.route in the design file."
+)
+GAVE_UP = (
+    'FreeRouting exited 3 and wrote no session. Its last line: "the router gave up" '
+    "(build/route/freerouting.log). Read that log before the next route."
+)
+
+
 # ------------------------------------------------------------- the hints
 
 # The lines of the gates' newer checks: (gate, line, a phrase of the hint, what the hint points at).
@@ -236,6 +266,15 @@ def test_every_hint_points_at_a_file_and_a_heading_that_exist():
             'file: power_nets is a list, not a dict. Write d.power_nets = {"GND": "GND"}: each power net, '
             "then the symbol of KiCad's power library that draws it.",
             "Correct the design file as the line says",
+        ),
+        ("design", f"drc: {OVERLAP}", "Correct the placement or the hand track that the line names"),
+        ("design", f"erc: {NO_FLAG}", "a net, a pin or a power flag"),
+        ("design", f"route: {STOPPED}", "fewer passes or a longer limit, as `d.route`"),
+        ("design", f"route: {GAVE_UP}", "Read the log that the line names"),
+        (
+            "design",
+            "route: KiCad's ERC of the schematic did not run: kicad-cli exited 3: no such command",
+            "Run `workcenter doctor`",
         ),
         ("drc", "clearance: Clearance violation ( clearance 0.2000 mm; actual 0.0500 mm)", "Move the track"),
         ("drc", "unconnected_items: Missing connection between items", "Route the net"),
@@ -385,6 +424,12 @@ def test_no_sentence_of_a_hint_or_of_a_step_is_over_20_words(tmp_path, monkeypat
         with monkeypatch.context() as patch:
             patch.setattr(guide, "subprocess", says(printed))
             answer(designed)
+    # the last route: its router was not started, then the design file changed after it
+    refused = {"route": {"refused": "no route mends an ERC or a DRC error"}, "drc_problems": [OVERLAP]}
+    routed(designed, {**refused, "red": ["1 DRC error(s) on the unrouted board"]})
+    steps.append(guide.next_step(cli, str(designed), run_check=False))
+    os.utime(designed / "design.py", (later, later))
+    steps.append(guide.next_step(cli, str(designed), run_check=False))
     # the gates' report
     answer(project("fresh"))
     stale = project("stale", passed)
@@ -528,6 +573,10 @@ def test_a_folder_with_nothing_in_it_is_told_the_ways_to_start(tmp_path):
     code, step = ask(tmp_path)
     assert code == 1 and step["next"] == "Generate the KiCad project from its design file."
     assert step["run"] == f"workcenter design {tmp_path}/design.py --route"
+    # the command routes, so its checks before the route are lines of this step too
+    assert step["done_when"] == (
+        "the command exits 0 and prints no file:, sim:, pull:, via:, part:, erc:, drc: or island: line"
+    )
 
 
 def test_a_project_with_nothing_for_a_gate_to_run_is_not_told_to_install_anything(tmp_path):
@@ -819,3 +868,118 @@ def test_a_design_file_that_is_refused_is_answered_with_its_first_problem(tmp_pa
     src.write_text(body.replace("PINS", 'd.no_sim("D1", "left out of this test")'), encoding="utf-8")
     code, step = ask(proj)
     assert code == 1 and step["next"].startswith("Regenerate the KiCad project")
+
+
+PAIR = """
+import sys, uuid
+sys.path.insert(0, {tools!r})
+from kicadgen import Design
+
+def build():
+    d = Design(name="pair", namespace=uuid.UUID("11111111-2222-3333-4444-55555555555c"))
+    r = "Resistor_SMD:R_0603_1608Metric"
+    d.add("R1", "Device:R", "10k", r, sch_at=(50.8, 50.8), pcb_at=(110.0, 106.0), nets={{"1": "A", "2": "B"}})
+    d.add("R2", "Device:R", "10k", r, sch_at=(76.2, 50.8), pcb_at=(110.0, R2_Y), nets={{"1": "A", "2": "B"}})
+    return d
+"""
+
+
+@pytest.mark.skipif(
+    not Path("/usr/share/kicad/symbols/Device.kicad_sym").is_file() or shutil.which("kicad-cli") is None,
+    reason="the KiCad libraries and kicad-cli are not installed",
+)
+def test_a_route_that_was_not_started_is_answered_before_any_gate(tmp_path):
+    """`design --route` does not start the router on 2 parts placed on each other, and leaves the
+    unrouted board. The design file matches its schematic, so the next answer was "Run the gates": a
+    DRC of a board that no route has seen, then the same answer after the placement was corrected."""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    src = proj / "design.py"
+    body = PAIR.format(tools=str(ROOT / "tools"))
+    src.write_text(body.replace("R2_Y", "107.2"), encoding="utf-8")  # R2's courtyard 0.26 mm into R1's
+    made = subprocess.run(
+        [sys.executable, str(CLI), "design", str(src), "--route"], capture_output=True, text=True, check=False
+    )
+    assert made.returncode == 1 and "  drc: courtyards_overlap: " in made.stdout, made.stdout + made.stderr
+    code, step = ask(proj)
+    assert code == 1 and step["next"] == (
+        "Correct the placement or the hand track that the line names, in the design file. No route mends "
+        f"it. `workcenter inspect map {proj} --box X0 X1 Y0 Y1` draws the copper round a place."
+    )
+    assert step["why"] == f"the router was not started: drc: {OVERLAP}"
+    assert step["run"] == f"workcenter design {src} --route"
+    assert step["read"] == "ee-agent-kit/PROCESSES.md, P3"
+    assert step["done_when"] == "the command prints a `routed:` line"
+    # the placement is corrected: the record speaks of a design file that is no longer there
+    src.write_text(body.replace("R2_Y", "110.0"), encoding="utf-8")
+    later = time.time() + 60
+    os.utime(src, (later, later))
+    code, step = ask(proj)
+    assert code == 1 and step["next"] == (
+        "Route the board again: the design file changed after a route that routed nothing."
+    )
+    assert step["why"] == "build/route/design.json is older than design.py"
+    assert step["run"] == f"workcenter design {src} --route" and step["read"].endswith('SKILL.md, "Steps"')
+    assert step["done_when"] == "the command prints a `routed:` line"
+    # a route that ended is no answer: the gates are next
+    routed(proj, {"route": {"segments": 4, "vias": 0, "unrouted": None}})
+    os.utime(proj / "build" / "route" / "design.json", (later + 60, later + 60))
+    code, step = ask(proj)
+    assert code == 1 and step["next"] == "Run the gates."
+
+
+def test_a_route_that_did_not_end_and_a_design_that_was_red_are_answered_from_the_record(tmp_path):
+    """Each answer is for the first line the design command printed. `--trust-design` leaves the check
+    of the design file out, so the record alone answers."""
+    proj = sim_project(tmp_path)
+    (proj / "design.py").write_text("# a design\n", encoding="utf-8")
+    again = f"workcenter design {proj}/design.py --route"
+    routed(proj, {"route": {"error": STOPPED, "log": "x.log"}, "red": ["the router left no route"]})
+    code, step = ask(proj, "--trust-design")
+    assert code == 1 and step["next"] == (
+        "Give the route fewer passes or a longer limit, as `d.route` in the design file. Then route in the "
+        "background."
+    )
+    assert step["why"] == f"the last route routed nothing: route: {STOPPED}"
+    assert (step["run"], step["read"]) == (again, "ee-agent-kit/PROCESSES.md, P4")
+    routed(proj, {"route": {"error": GAVE_UP, "log": "x.log"}, "red": ["the router left no route"]})
+    code, step = ask(proj, "--trust-design")
+    assert code == 1 and step["next"].startswith("Read the log that the line names")
+    assert step["why"] == f"the last route routed nothing: route: {GAVE_UP}"
+    # a design that was red before the route: the line of the kind its red line names
+    part = "R1 (courtyard 108.52..111.48, 105.27..106.73) in keepout 'strip'"
+    red = {"route": {"refused": "the design was red before the route"}, "pulls": ["GATE: Q1.1 floats"]}
+    routed(proj, {**red, "part_problems": [part], "red": ["1 part(s) in a keep-out or off the board"]})
+    code, step = ask(proj, "--trust-design")
+    assert code == 1 and step["next"] == "Move the part out of the area the design keeps parts out of."
+    assert step["why"] == f"the router was not started: part: {part}" and step["run"] == again
+    # a floating input, a simulation problem and a via problem are lines of the record too
+    for key, kind, line, word in (
+        ("pulls", "pull", "GATE: Q1.1 (G, input) floats", "1 floating input(s)"),
+        ("sim_problems", "sim", "U1: the design names no model", "1 simulation problem(s)"),
+        ("via_problems", "via", "via at (110, 106): on a pad of another net", "1 via problem(s)"),
+    ):
+        was_red = {"route": {"refused": "the design was red before the route"}, key: [line], "red": [word]}
+        routed(proj, was_red)
+        code, step = ask(proj, "--trust-design")
+        assert code == 1 and step["why"] == f"the router was not started: {kind}: {line}", key
+    # a check before the route that did not run is the engine's fault, and the doctor is next
+    broke = "KiCad's DRC of the unrouted board did not run: kicad-cli exited 3: boom: the DRC broke"
+    routed(proj, {"route": {"error": broke}, "red": ["the checks before the route did not run"]})
+    code, step = ask(proj, "--trust-design")
+    assert code == 1 and step["why"] == f"the last route routed nothing: route: {broke}"
+    assert step["next"].startswith("Run `workcenter doctor`"), step
+    assert step["read"] == "ee-agent-kit/docs/ENGINES.md"
+    # an ERC error comes before a DRC error, as the command prints them
+    both = {"route": {"refused": "no route mends them"}, "erc_problems": [NO_FLAG], "drc_problems": [OVERLAP]}
+    routed(proj, {**both, "red": ["1 ERC error(s) on the schematic", "1 DRC error(s) on the unrouted board"]})
+    code, step = ask(proj, "--trust-design")
+    assert code == 1 and step["why"] == f"the router was not started: erc: {NO_FLAG}"
+    assert step["next"].startswith("Correct what the line names in the design file")
+    # no answer from a record that is no JSON, from one of a route that ended, or from one of a run
+    # that an absent engine skipped
+    skipped = {"route": {"skip": "engine missing: java"}}
+    for summary in ("{ not json", {"route": {"segments": 4}}, skipped, []):
+        routed(proj, summary)
+        code, step = ask(proj, "--trust-design")
+        assert code == 1 and step["next"] == "Run the gates.", summary
