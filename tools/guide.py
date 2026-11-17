@@ -455,6 +455,53 @@ def ratings_inputs(cli, project) -> list[Path]:
     return found + (sorted(library.glob("*.json")) if library else [])
 
 
+# The board file's text, as `unrouted` reads it: a quoted string (parentheses in it are no block), or a
+# parenthesis. A block's head is the word after its parenthesis; a net is `(net 3 "GND")` in a pad,
+# `(net 3)` or `(net "GND")` in a track, a via or a pour.
+BOARD_TOKEN_RE = re.compile(r'"(?:[^"\\]|\\.)*"|[()]')
+HEAD_RE = re.compile(r"[a-z_]+")
+NET_RE = re.compile(r'\(net\s+(?:(\d+)\s*)?(?:"((?:[^"\\]|\\.)*)"\s*)?\)')
+COPPER_HEADS = ("segment", "arc", "via", "zone")
+
+
+def unrouted(pcb: Path) -> tuple[int, list[str]]:
+    """The nets of 2 pads or more that hold no track, via or pour on the board, and their pads' count.
+    A net with some copper is not named: whether it joins every pad is DRC's to judge."""
+    text = pcb.read_text(encoding="utf-8")
+    names: dict[str, str] = {}
+    pads: dict[str, int] = {}
+    copper: set[str] = set()
+    starts: list[int] = []
+    for m in BOARD_TOKEN_RE.finditer(text):
+        if m.group() == "(":
+            starts.append(m.start())
+        elif m.group() == ")" and starts:
+            start = starts.pop()
+            depth = len(starts)  # 1: a child of the board; 2: a pad of a footprint
+            if depth not in (1, 2):
+                continue
+            head = HEAD_RE.match(text, start + 1)
+            word = head.group() if head else ""
+            if not (word == "net" and depth == 1 or word in COPPER_HEADS and depth == 1 or word == "pad"):
+                continue
+            net = NET_RE.search(text, start, m.end())
+            if not net:
+                continue
+            if word == "net":
+                names[net.group(1) or ""] = net.group(2) or ""
+            elif word == "pad":
+                name = net.group(2) if net.group(2) is not None else names.get(net.group(1), "")
+                pads[name] = pads.get(name, 0) + 1
+            else:
+                copper.add(net.group(2) if net.group(2) is not None else names.get(net.group(1), ""))
+    loose = sorted(
+        n
+        for n, count in pads.items()
+        if count > 1 and n and not n.startswith("unconnected-") and n not in copper
+    )
+    return sum(pads[n] for n in loose), loose
+
+
 def newest(report: Path, inputs: list[Path]) -> Path | None:
     """The first input newer than the report, or None."""
     made = report.stat().st_mtime
@@ -547,19 +594,18 @@ def next_step(cli, target: str, run_check=True) -> Step:
                 f'{DESIGN}, "Steps"',
                 "the command exits 0 and prints no file:, sim:, pull:, via:, part: or island: line",
             )
-        # 2 ways to start are not 1 command, so this answer has no RUN line.
+        # A board is the common start, and its command reads nothing but the template: this answer
+        # runs no engine. A deck or a chip starts otherwise, and the answer says how.
         return Step(
-            "Start the project with a deck, or with a design file for a board. "
-            f"To prove a circuit before any board, write its deck as {quoted}/sim/<name>.cir. "
+            "Start a board project: the RUN line writes design.py from the template, and the files beside "
+            f"it. To prove a circuit before any board, write its deck as {quoted}/sim/<name>.cir instead. "
             f"Write the deck's bounds in {quoted}/sim/<name>.expect.json "
             '(`{"vout": {"min": 2.4, "max": 2.6, "source": "the spec\'s line"}}`). '
-            f"For a board, write {quoted}/design.py: the parts from the KiCad libraries, the nets as "
-            "names. A board's design file can start from a copy of "
-            f"{cli.SRC_DIR / 'templates' / 'project' / 'design.py'}. "
             f"For a chip, `{wc} chip init {quoted} --top <module>` writes the project's first files.",
-            why=why,
-            read=f'{SIMULATE}, "Steps"; {DESIGN}, "Steps"; {chipguide.DESIGN}, "Steps"',
-            done_when=again,
+            f"{wc} new {quoted}",
+            why,
+            f'{DESIGN}, "Steps"; {SIMULATE}, "Steps"; {chipguide.DESIGN}, "Steps"',
+            f"`{wc} next {quoted}` names the design step",
         )
     # A command takes the project as it was named, a KiCad file too. A path inside the project starts
     # at its folder.
@@ -648,6 +694,19 @@ def next_step(cli, target: str, run_check=True) -> Step:
             )
     report = project.dir / "build" / "gates.json"
     gates = f"{wc} gates {quoted}"
+    # A board generated without --route has nets with no copper: the gates would fail on each. The
+    # route comes first, while the gates are still to run.
+    if design.is_file() and project.pcb and (not report.is_file() or newest(report, inputs_of(project))):
+        pads, loose = unrouted(project.pcb)
+        if loose:
+            shown = ", ".join(loose[:3]) + (f" and {len(loose) - 3} more" if len(loose) > 3 else "")
+            return Step(
+                "Route the board before the gates: nets on it have no copper yet.",
+                f"{wc} design {shlex.quote(str(design))} --route",
+                f"{pads} pads on {len(loose)} nets have no track, via or pour: {shown}",
+                f'{DESIGN}, "Steps"',
+                "the command exits 0 and prints no file:, sim:, pull:, via:, part: or island: line",
+            )
     if not report.is_file():
         return Step(
             "Run the gates.",
@@ -787,8 +846,8 @@ def register(sub, cli) -> None:
     p = sub.add_parser(
         "next",
         help="name the one next step for a project: what to do, the command, why, what to read, and when "
-        "it is done; exit 0 when nothing is left, 1 when a step is. Reads build/gates.json and "
-        "build/verify.json; writes nothing",
+        "it is done; exit 0 when nothing is left, 1 when a step is named (no error: do the step). Reads "
+        "build/gates.json and build/verify.json; writes nothing; runs no engine on a folder without a design",
     )
     p.add_argument("project", help="the project directory")
     p.add_argument(

@@ -303,7 +303,7 @@ def test_a_folder_with_a_chip_json_is_a_chip_project_and_its_file_names_it_too(t
     assert ask(folder / "chip.json", env)[1] == step
     # a folder with no chip.json is asked as a board's: the answer names the chip's way to start
     code, step = ask(tmp_path / "tools", env)
-    assert step["next"].startswith("Start the project with a deck, or with a design file for a board.")
+    assert step["next"].startswith("Start a board project: the RUN line writes design.py from the template")
     assert f"`workcenter chip init {tmp_path / 'tools'} --top <module>` writes" in step["next"]
     assert step["read"].endswith(f'; {DESIGN}, "Steps"')
 
