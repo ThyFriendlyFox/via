@@ -305,6 +305,37 @@ row for yet with `workcenter fetch <url> --to library/<maker>/<file> --mpn
 <MPN> --row` (`--member` for a file inside a zip), then fill the row's
 `Revision`, `Dated` and `Ngspice` from the file.
 
+### A part's file and its row
+
+The same steps keep a datasheet or a 3D body. Each step is 1 command.
+
+1. `workcenter fetch <url> --to <project>/library/<maker>/<file> --mpn <MPN> --row`
+   - `fetch: <url> ok, ... wrote ...`: the file is kept and its row written.
+     Fill `Revision` and `Dated` from the `revision?` lines.
+   - `sources: started <path>`: the project had no `library/sources.csv`;
+     this one is new, with the header
+     `MPN,Kind,URL,File,Member,Revision,Dated,Subckt,Ngspice,SHA256,Checked,Note`.
+     Nothing to do.
+   - `fetch: <url> gave an HTML page ...`, `gave an empty file (0 bytes)`,
+     `gave a file that starts ..., not %PDF` or `gave N of the M bytes its
+     Content-Length names`: the site served something that is not the file.
+     Nothing was written. Go to step 2.
+   - `fetch: <url> refused (HTTP 403) ...`: the site refuses the
+     workcenter's name. Never ask again under another name. Go to step 2.
+   - `fetch: <url> gone (HTTP 404) ...`: find the maker's current URL and
+     run step 1 again.
+2. A person downloads the file in a browser, then:
+   `workcenter fetch --file <downloaded file> --url <url> --to <project>/library/<maker>/<file> --mpn <MPN> --row`.
+   The row records `--url` and the note "downloaded by a person from the
+   URL; not fetched by the workcenter".
+   - `fetch: <file> is an HTML page ...`: the browser saved a web page, not
+     the file. Download it again from the maker.
+   - `fetch: <file> (downloaded from <url>), ...`: done.
+3. `workcenter sources <project>`
+   - `<MPN> datasheet: <file> is an HTML page ...` or `is an empty file`:
+     a row written before fetch judged bodies keeps the wrong file. Delete
+     the file and its row, then run step 1 again.
+
 A number the deck needs from a datasheet's curve (a fuse's melting time at
 a current, a MOSFET's safe operating area) is read from the PDF's vectors
 with `workcenter curve <pdf> --page N`: the listing first, for the frame and
