@@ -234,7 +234,8 @@ def test_the_index_refuses_a_value_with_no_text_but_dots(tmp_path, says):
 
 def test_the_index_holds_each_fab_page_and_samsungs_page_as_web_pages():
     """The 2 pages rules/sierra-circuits-web.kicad_dru names, the 3 of the other fab rule files, and
-    Samsung's part page, whose bytes differ on every fetch."""
+    Samsung's part page, whose bytes differ on every fetch; and NIST's 3 pages, 2 CODATA values that
+    rules/interfaces/constants.json takes and DLMF 19.8 that tests/test_xsection.py cites."""
     docs = json.loads((ROOT / "rules" / "references" / "index.json").read_text(encoding="utf-8"))["documents"]
     pages = {d["url"] for d in docs if d["kind"] == "web page"}
     assert pages == {
@@ -244,4 +245,7 @@ def test_the_index_holds_each_fab_page_and_samsungs_page_as_web_pages():
         "https://www.pcbway.com/capabilities.html",
         "https://docs.oshpark.com/services/two-layer/",
         "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A106KP8NNN",
+        "https://physics.nist.gov/cgi-bin/cuu/Value?z0",
+        "https://physics.nist.gov/cgi-bin/cuu/Value?c",
+        "https://dlmf.nist.gov/19.8",
     }
