@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io
 import json
 import os
 import re
@@ -387,6 +388,32 @@ def judge(
     return 0
 
 
+def table_rows(table: Table, works: list[Path]) -> list[str]:
+    """The table again, its seconds from the shards' logs of 1 or more runs: each file's mean over the
+    runs that ran it, and `*` the mean of the files. Engine and alone stay as the table has them; a file
+    new to the table takes the `*` row's engine."""
+    runs: dict[str, list[float]] = {}
+    for work in works:
+        per: dict[str, float] = {}
+        for log in sorted(Path(work).glob("shard-*/log.jsonl")):
+            for rec in read_log(log):
+                if "id" in rec:
+                    f = rec["id"].split("::")[0]
+                    per[f] = per.get(f, 0.0) + float(rec.get("seconds") or 0.0)
+        for f, s in per.items():
+            runs.setdefault(f, []).append(s)
+    means = {f: sum(v) / len(v) for f, v in runs.items()}
+    default = sum(means.values()) / len(means) if means else table.default.seconds
+    out = io.StringIO()
+    w = csv.writer(out, lineterminator="\n")
+    w.writerow(["file", "seconds", "engine", "alone"])
+    w.writerow(["*", f"{default:.1f}", "yes" if table.default.engine else "no", table.default.alone])
+    for f in sorted(means, key=lambda f: (-round(means[f], 1), f)):
+        row = table.rows.get(f, Row(0.0, table.default.engine, ""))
+        w.writerow([f, f"{means[f]:.1f}", "yes" if row.engine else "no", row.alone])
+    return out.getvalue().splitlines()
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="testshards.py", description=(__doc__ or "").splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -397,7 +424,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--jobs", type=int, default=os.cpu_count() or 1, help="parallel shards (processors)")
     p.add_argument("--python", default=sys.executable, help="the Python that has pytest")
     p.add_argument("--work", help="folder for the shards' logs (default: a new temporary folder)")
-    return run(ap.parse_args(argv))
+    t = sub.add_parser("table", help="print the table with the seconds of the runs whose logs are named")
+    t.add_argument("--table", default="verify/shards.csv")
+    t.add_argument("works", nargs="+", help="the --work folders of 1 or more runs")
+    args = ap.parse_args(argv)
+    if args.cmd == "table":
+        print("\n".join(table_rows(read_table(Path(args.table)), [Path(w) for w in args.works])))
+        return 0
+    return run(args)
 
 
 if __name__ == "__main__":
