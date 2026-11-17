@@ -1909,7 +1909,10 @@ def gate_export(project: Project, out: Path, strict: bool = False, step: bool = 
                 fab / f"{project.name}.step",
             )
         )
+    facts = fabfiles().board_facts(project.pcb.read_text(encoding="utf-8"))
+    jobs += assembly_jobs(project, fab, facts)
     details, artifacts, failures = {}, [], []
+    lines: list[str] = []
     for name, cmd, expect in jobs:
         proc = run(cmd, cwd=project.dir)
         produced = expect.is_file() if expect.suffix else any(expect.iterdir())
@@ -1921,17 +1924,127 @@ def gate_export(project: Project, out: Path, strict: bool = False, step: bool = 
         }
         if ok:
             artifacts.append(str(expect))
+            lines += read_back(name, expect, facts)
         else:
             failures.append(name)
+            lines.append(f"{name}: {Path(str(cmd[0])).name} exit {proc.returncode}, wrote no {expect.name}")
     gerber_files = sorted(p.name for p in gerbers.iterdir()) if gerbers.is_dir() else []
     details["gerber_files"] = gerber_files
-    return Result(
-        "export",
-        "fail" if failures else "pass",
-        f"{len(jobs) - len(failures)}/{len(jobs)} outputs, {len(gerber_files)} gerber files",
-        details,
-        artifacts,
+    read = sum(1 for name, _, _ in jobs if name in READ_BACK and name not in failures)
+    summary = f"{len(jobs) - len(failures)}/{len(jobs)} outputs, {len(gerber_files)} gerber files"
+    summary += f", {read} files read back"
+    not_judged = ""
+    if (project.dir / "panel.json").is_file():
+        panel, panel_lines, not_judged = export_panel(project, fab, facts)
+        details["panel"] = panel
+        lines += panel_lines
+        if panel.get("boards") is not None:
+            summary += f", panel {panel['rows']} x {panel['cols']} boards"
+            summary += f", {panel['width']:g} x {panel['height']:g} mm"
+            artifacts.append(panel["file"])
+    details["failures"] = lines
+    status = "fail" if lines else ("skip" if not_judged else "pass")
+    if not_judged:
+        summary += f"; panel not judged: {not_judged}"
+    return Result("export", status, summary, details, artifacts)
+
+
+def fabfiles():
+    """tools/fabfiles.py: EXPORT's files read back against the board."""
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import fabfiles as module
+
+    return module
+
+
+# The files an assembler takes, each read back against the board by tools/fabfiles.py.
+READ_BACK = ("placement", "assembly-top", "assembly-bottom", "ipc2581")
+KIKIT_PYTHON = os.environ.get("KIKIT_PYTHON")
+
+
+def assembly_jobs(project: Project, fab: Path, facts: dict) -> list[tuple[str, list, Path]]:
+    """kicad-cli 10's placement file (DNP parts left out), an assembly page per side that holds a part
+    (the back one mirrored, as the assembler sees it), and IPC-2581."""
+    pcb = project.pcb
+    jobs: list[tuple[str, list, Path]] = [
+        (
+            "placement",
+            [KICAD_CLI, "pcb", "export", "pos", "--format", "csv", "--units", "mm", "--side", "both"]
+            + ["--exclude-dnp", "--output", fab / "placement.csv", pcb],
+            fab / "placement.csv",
+        )
+    ]
+    for side, layer, extra in (("top", "F.Fab", []), ("bottom", "B.Fab", ["--mirror"])):
+        if side in facts["placed"].values():
+            target = fab / f"assembly-{side}.pdf"
+            jobs.append(
+                (
+                    f"assembly-{side}",
+                    [KICAD_CLI, "pcb", "export", "pdf", "--mode-single", "--layers", f"{layer},Edge.Cuts"]
+                    + [
+                        "--sketch-pads-on-fab-layers",
+                        "--include-border-title",
+                        *extra,
+                        "--output",
+                        target,
+                        pcb,
+                    ],
+                    target,
+                )
+            )
+    target = fab / f"{project.name}.ipc2581.xml"
+    jobs.append(("ipc2581", [KICAD_CLI, "pcb", "export", "ipc2581", "--output", target, pcb], target))
+    return jobs
+
+
+def read_back(name: str, path: Path, facts: dict) -> list[str]:
+    ff = fabfiles()
+    if name == "placement":
+        return ff.check_placement(path.read_text(encoding="utf-8"), facts, path.name)
+    if name.startswith("assembly-"):
+        return ff.check_assembly(path.read_bytes(), facts, name.removeprefix("assembly-"), path.name)
+    if name == "ipc2581":
+        return ff.check_ipc2581(path.read_text(encoding="utf-8"), facts, path.name)
+    return []
+
+
+def export_panel(project: Project, fab: Path, facts: dict) -> tuple[dict, list[str], str]:
+    """The project's panel.json, a KiKit preset, made into a panel by tools/panel.py under KiKit's
+    Python, then the panel's Gerbers and drill files by kicad-cli. Returns (details, failure lines,
+    why it was not judged)."""
+    py = KIKIT_PYTHON or venv_python()
+    probe = run([py, "-c", "import kikit.panelize_ui"])
+    if probe.returncode != 0:
+        last = (probe.stderr.strip().splitlines() or ["no output"])[-1]
+        return {"python": py}, [], f"KiKit does not import under {py} ({last}); set KIKIT_PYTHON"
+    folder = fab / "panel"
+    gerbers = folder / "gerbers"
+    gerbers.mkdir(parents=True, exist_ok=True)
+    board = folder / f"{project.name}-panel.kicad_pcb"
+    proc = run(
+        [py, SRC_DIR / "tools" / "panel.py", project.pcb, board, project.dir / "panel.json"], cwd=folder
     )
+    said = proc.stdout.strip().splitlines()
+    if proc.returncode != 0 or not board.is_file() or not said:
+        errors = [ln for ln in proc.stderr.splitlines() if ln.strip() and not KICAD_NOISE.search(ln)]
+        return {"python": py}, [f"panel: KiKit exit {proc.returncode}: {(errors or ['no output'])[-1]}"], ""
+    layout = json.loads(said[-1])
+    if layout["type"] != "grid":
+        return (
+            {"python": py, "layout": layout},
+            [],
+            f"a {layout['type']} layout has no count of boards to hold",
+        )
+    lines, info = fabfiles().check_panel(
+        board.read_text(encoding="utf-8"), facts, layout["rows"], layout["cols"], board.name
+    )
+    for name, sub in (("gerbers", "gerbers"), ("drill", "drill")):
+        made = run([KICAD_CLI, "pcb", "export", sub, "--output", f"{gerbers}/", board], cwd=folder)
+        if made.returncode != 0:
+            lines.append(f"panel {name}: kicad-cli exit {made.returncode}")
+    details = {"python": py, "file": str(board), "rows": layout["rows"], "cols": layout["cols"], **info}
+    details["gerber_files"] = sorted(p.name for p in gerbers.iterdir())
+    return details, lines, ""
 
 
 @timed
@@ -5210,6 +5323,10 @@ def main(argv: list[str] | None = None) -> int:
     ratings().register(sub, sys.modules[__name__])
     references().register(sub, sys.modules[__name__])
     routebench().register(sub, sys.modules[__name__])
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import measureplan
+
+    measureplan.register(sub, sys.modules[__name__])
 
     # `--json` is read on either side of the command: `workcenter --json gates P` and `workcenter
     # gates P --json`. SUPPRESS keeps a command that does not carry the flag from clearing the one

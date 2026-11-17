@@ -14,3 +14,5 @@ pdfminer.six==20260107
 PyYAML==6.0.3
 # The maps of `workcenter inspect map` (tools/inspect_board.py, run under the venv)
 Pillow==12.3.0
+# A panel of a board for `workcenter export` when the project holds panel.json (tools/panel.py)
+kikit==1.8.1
