@@ -13,8 +13,13 @@ PY=python3
 
 STEP="0/4 start"
 step() { STEP="$*"; printf '\n== %s\n' "$*"; }
-# The verdict, the step and the commit, for `workcenter now`: build/verify.json, ignored by git.
-trap 'python3 tools/now.py record "$?" "$STEP" >/dev/null || echo "no gate record written" >&2' EXIT
+# For `workcenter now`: the commit the gate tests and whether the tree differs from it, noted before
+# step 1; on exit the trap writes them with the verdict and the step to build/verify.json, ignored by git.
+GATE_HEAD=$(git rev-parse HEAD 2>/dev/null || true)
+GATE_DIRTY=no
+[[ -z "$(git status --porcelain 2>/dev/null || true)" ]] || GATE_DIRTY=yes
+trap 'python3 tools/now.py record "$?" "$STEP" --head "$GATE_HEAD" --dirty "$GATE_DIRTY" >/dev/null \
+  || echo "no gate record written" >&2' EXIT
 
 step "1/4 lint"
 shellcheck install.sh verify/verify.sh environment/setup.sh site/build.sh
