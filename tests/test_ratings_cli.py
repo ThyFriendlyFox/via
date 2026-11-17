@@ -33,6 +33,13 @@ BOARDS = ROOT / "tests" / "boards"
 
 pytestmark = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
 
+# The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
+CITES = {
+    "nasa-eee-inst-002": "section M4, table 4, page 10 of 10",
+    "ti-slva477c": "equations 1, 2 and 4",
+    "ti-sces579": "the part's own rating",
+    "ti-slvsdg1": "the part's own rating",
+}
 AUP = "SN74AUP1G17 datasheet, SCES579J, June 2004, revised September 2017"
 BUCK = "TLV62569 datasheet, SLVSDG1C, December 2016, revised October 2017"
 FAULTS = {

@@ -1,0 +1,32 @@
+{
+  "rules": [],
+  "code": [],
+  "numbers": [
+    {"pattern": "\\bACME-AN-\\d+[A-Z]?\\b", "family": "Acme's application notes, made up for the tests"}
+  ],
+  "documents": [
+    {
+      "id": "acme-an-17b",
+      "kind": "application note",
+      "maker": "Acme, a maker made up for the tests",
+      "number": "ACME-AN-17B",
+      "names": ["ACME-AN-17B"],
+      "title": "A note made up for the tests",
+      "revision": "Rev. B",
+      "url": "https://acme.example/an-17.pdf",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "zed-yew-1999",
+      "kind": "paper",
+      "authors": "A. Zed and B. Yew",
+      "names": ["Zed and Yew"],
+      "title": "A paper made up for the tests",
+      "published": "Journal of Made-Up Results, 1999",
+      "edition": "the journal's volume of 1999",
+      "cited": "pp. 1-9, equations (1) to (3)",
+      "no_copy": "made up for the tests: no copy exists"
+    }
+  ]
+}

@@ -34,6 +34,14 @@ sys.path.insert(0, str(ROOT / "tools"))
 import ratings  # noqa: E402
 import thermal  # noqa: E402
 
+# The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
+CITES = {
+    "ti-sbvs320": "sections 5.1 and 5.4, pages 4 and 5",
+    "nasa-eee-inst-002": "section M4, table 4, page 10 of 10",
+    "ecss-q-st-30-11c-rev2": "clause 3.2, page 12; clause 6.21.2, table 6-21, page 57",
+    "ti-spra953d": "sections 1.1 to 5, equation 1, pages 2 and 3",
+}
+
 needs_ngspice = pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed")
 
 NASA = ratings.read_pack(PACKS / "nasa-eee-inst-002.json")

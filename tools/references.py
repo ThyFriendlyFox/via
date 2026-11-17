@@ -12,6 +12,7 @@ Standard library only, as the CLI is (AGENTS.md invariant 3).
 
 from __future__ import annotations
 
+import ast
 import datetime
 import hashlib
 import json
@@ -23,8 +24,25 @@ from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 INDEX = ROOT / "rules" / "references" / "index.json"
-KINDS = ("standard", "application note", "datasheet")
+# A held document: its copy is pinned by its SHA256.
+HELD = ("standard", "application note", "datasheet")
+# A web page has no fixed copy: it is held by the values read from it on a date.
+WEB = "web page"
+# A paper or a book with no free copy: cited and not held.
+CITED = ("paper", "book")
+KINDS = (*HELD, WEB, *CITED)
 FIELDS = ("id", "kind", "number", "title", "revision", "url", "sha256", "read")
+WEB_FIELDS = ("id", "kind", "title", "url", "read")
+CITED_FIELDS = ("id", "kind", "authors", "title", "published", "edition", "cited", "no_copy")
+VALUES_FORM = 'as [{"says": "...", "for": "..."}]'
+CITES_FORM = 'CITES: a dict of index ids to where in each, as {"ti-slva477c": "equation 1"}'
+# A place in a document beside its name makes the name a citation (CITES in tools and tests).
+PLACE_RE = re.compile(
+    r"\b(?:sections?|tables?|pages?|pp\.|clauses?|equations?|eqs?\.|annex|figures?|chapters?)"
+    r"\s*(?:\([0-9A-Z][0-9A-Za-z.\-]*\)|[0-9A-Z](?:[0-9A-Za-z.\-]*[0-9A-Za-z])?)"
+)
+PLACE_REACH = 200
+URL_IN_TEXT_RE = re.compile(r"https?://[^\s\"'<>()]+")
 LEDGER = "ledger.json"
 # A site's answer that holds until a person asks again: a refusal is never retried under another name.
 FINAL = {"refused", "gone"}
@@ -39,6 +57,12 @@ CITING_KEYS = ("document", "source")
 NONE_RE = re.compile(r"no (datasheet|document): \S.*")
 GLOBS = 'rules: a list of globs from the repository\'s root is asked, as ["rules/ratings/*.json"]'
 MEND = "mend it or delete it, and run again"
+# The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
+CITES = {
+    "ietf-rfc6585": "section 4, page 3: 429 Too Many Requests",
+    "ietf-rfc9110": "section 15.6: Server Error 5xx",
+    "freedesktop-basedir-0.8": "section 2: a relative path is invalid and ignored",
+}
 
 
 def shown(path: Path) -> str:
@@ -57,24 +81,89 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def load_index(path: Path) -> tuple[list[dict], list[str], list[str]]:
-    """(entries, the globs of the files whose documents it covers, 1 line per fault of the index)."""
+def is_globs(value: object) -> bool:
+    return isinstance(value, list) and all(
+        isinstance(g, str) and g and not g.startswith("/") and ".." not in Path(g).parts for g in value
+    )
+
+
+def entry_problems(doc: dict, tag: str) -> list[str]:
+    """The faults of 1 entry's fields that depend on its kind."""
+    kind = doc.get("kind")
+    fields = WEB_FIELDS if kind == WEB else CITED_FIELDS if kind in CITED else FIELDS
+    problems = [
+        f"fail {tag}: no {field}"
+        for field in fields
+        if not isinstance(doc.get(field), str) or not doc[field].strip()
+    ]
+    if kind in CITED:
+        if "sha256" in doc or "url" in doc:
+            problems.append(f"fail {tag}: a {kind} is cited and not held; drop url and sha256")
+    elif ("maker" in doc) == ("issuer" in doc):
+        problems.append(f"fail {tag}: names neither or both of maker and issuer; it names 1")
+    if kind == WEB:
+        values = doc.get("values")
+        if "sha256" in doc:
+            problems.append(f"fail {tag}: a web page is held by its values, not by a SHA256; drop sha256")
+        if not isinstance(values, list) or not values:
+            problems.append(
+                f"fail {tag}: no values: a web page is held by the values read from it, {VALUES_FORM}"
+            )
+        else:
+            for k, value in enumerate(values):
+                if not isinstance(value, dict) or not all(
+                    isinstance(value.get(key), str) and value[key].strip() for key in ("says", "for")
+                ):
+                    problems.append(f'fail {tag}: values[{k}]: "says" and "for" are asked, each a text')
+    names = doc.get("names", [])
+    if not isinstance(names, list) or not all(isinstance(x, str) and x.strip() for x in names):
+        problems.append(f"fail {tag}: names: a list of the texts code names it by is asked")
+    return problems
+
+
+def load_numbers(data: dict, where: str) -> tuple[list[re.Pattern], list[str]]:
+    """The index's families of document numbers, compiled: (patterns, 1 line per fault)."""
+    numbers = data.get("numbers", [])
+    if not isinstance(numbers, list):
+        return [], [f'fail {where}: numbers: a list is asked, as [{{"pattern": "...", "family": "..."}}]']
+    patterns, problems = [], []
+    for n, item in enumerate(numbers):
+        pattern = item.get("pattern") if isinstance(item, dict) else None
+        if not isinstance(pattern, str) or not isinstance(item.get("family"), str):
+            problems.append(f'fail {where}: numbers[{n}]: "pattern" and "family" are asked, each a text')
+            continue
+        try:
+            patterns.append(re.compile(pattern))
+        except re.error as exc:
+            problems.append(
+                f"fail {where}: numbers[{n}]: pattern {pattern!r} is not a regular expression ({exc})"
+            )
+    return patterns, problems
+
+
+def load_index(path: Path) -> tuple[list[dict], dict, list[str]]:
+    """(entries, {"rules": globs, "code": globs, "numbers": patterns}, 1 line per fault of the index)."""
     where = shown(path)
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return [], [], [f"fail {where}: no index there"]
+        return [], {}, [f"fail {where}: no index there"]
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-        return [], [], [f"fail {where}: not JSON ({exc})"]
+        return [], {}, [f"fail {where}: not JSON ({exc})"]
     docs = data.get("documents") if isinstance(data, dict) else None
     if not isinstance(docs, list):
-        return [], [], [f"fail {where}: no list under documents"]
+        return [], {}, [f"fail {where}: no list under documents"]
     covers = data.get("rules", [])
-    if not isinstance(covers, list) or not all(
-        isinstance(g, str) and g and not g.startswith("/") and ".." not in Path(g).parts for g in covers
-    ):
-        return [], [], [f"fail {where}: {GLOBS}"]
-    problems: list[str] = []
+    if not is_globs(covers):
+        return [], {}, [f"fail {where}: {GLOBS}"]
+    code = data.get("code", [])
+    if not is_globs(code):
+        return (
+            [],
+            {},
+            [f'fail {where}: code: a list of globs from the repository\'s root is asked, as ["tools/*.py"]'],
+        )
+    numbers, problems = load_numbers(data, where)
     ids: dict[str, int] = {}
     shas: dict[str, int] = {}
     for n, doc in enumerate(docs):
@@ -82,11 +171,7 @@ def load_index(path: Path) -> tuple[list[dict], list[str], list[str]]:
             problems.append(f"fail {where} documents[{n}]: not an object")
             continue
         tag = f"{where} documents[{n}] {doc.get('id', '?')}"
-        for field in FIELDS:
-            if not isinstance(doc.get(field), str) or not doc[field].strip():
-                problems.append(f"fail {tag}: no {field}")
-        if ("maker" in doc) == ("issuer" in doc):
-            problems.append(f"fail {tag}: names neither or both of maker and issuer; it names 1")
+        problems += entry_problems(doc, tag)
         checks = (
             ("id", ID_RE, "lower-case letters, digits, dots and hyphens"),
             ("sha256", SHA_RE, "64 lower-case hex digits"),
@@ -105,7 +190,38 @@ def load_index(path: Path) -> tuple[list[dict], list[str], list[str]]:
                 if value in seen:
                     problems.append(f"fail {tag}: {key} {value} is the {key} of documents[{seen[value]}] too")
                 seen.setdefault(value, n)
-    return docs, covers, problems
+    return docs, {"rules": covers, "code": code, "numbers": numbers}, problems
+
+
+# ------------------------------------------------------------------ web pages
+
+
+def page_text(body: bytes) -> str:
+    """A page's text as a reader sees it: tags dropped, entities read, white space collapsed. Scripts are
+    kept: a maker's graph data stands in one."""
+    import html
+
+    text = re.sub(r"<[^>]+>", " ", body.decode("utf-8", "replace"))
+    return re.sub(r"\s+", " ", html.unescape(text)).strip()
+
+
+def stands(says: str, text: str) -> bool:
+    """`says` stands in `text`: each of its parts split at " ... " is found, in order."""
+    at = 0
+    for part in (p.strip() for p in re.sub(r"\s+", " ", says).split("...")):
+        if not part:
+            continue
+        found = text.find(part, at)
+        if found < 0:
+            return False
+        at = found + len(part)
+    return True
+
+
+def values_gone(doc: dict, body: bytes) -> list[dict]:
+    """The values of a web page entry that no longer stand on the page."""
+    text = page_text(body)
+    return [v for v in doc["values"] if not stands(v["says"], text)]
 
 
 # ------------------------------------------------------------------ fetch
@@ -241,10 +357,20 @@ def still_held(to: Path, rec: dict) -> bool:
 
 def judge(doc: dict, rec: dict | None, to: Path) -> dict:
     """1 document's verdict from its ledger record (None: the site was not reached)."""
-    out = {"id": doc["id"], "url": doc["url"], "index_sha256": doc["sha256"], "sha256": None, "file": None}
+    out = {
+        "id": doc["id"],
+        "url": doc["url"],
+        "index_sha256": doc.get("sha256"),
+        "sha256": None,
+        "file": None,
+    }
     if rec is None:
         return out | {"state": "not reached"}
     out |= {"at": rec.get("at"), "detail": rec.get("detail")}
+    if rec["state"] == "copy" and doc["kind"] == WEB:
+        gone = values_gone(doc, (to / rec["file"]).read_bytes())
+        state = "moved" if gone else "kept"
+        return out | {"state": state, "sha256": rec["sha256"], "file": str(to / rec["file"]), "gone": gone}
     if rec["state"] == "copy":
         state = "kept" if rec["sha256"] == doc["sha256"] else "changed"
         return out | {"state": state, "sha256": rec["sha256"], "file": str(to / rec["file"])}
@@ -253,7 +379,20 @@ def judge(doc: dict, rec: dict | None, to: Path) -> dict:
 
 def line_of(doc: dict, result: dict, asked: bool) -> str:
     state, doc_id, url = result["state"], doc["id"], doc["url"]
-    if state == "kept":
+    if state == "kept" and doc["kind"] == WEB:
+        text = (
+            f"kept {doc_id}: a web page, held by its values: all {len(doc['values'])} read on {doc['read']} "
+            f"stand on it; its bytes are not judged [{result['file']}]"
+        )
+    elif state == "moved":
+        first = result["gone"][0]
+        text = (
+            f'moved {doc_id}: {url} no longer says "{first["says"]}" ({first["for"]}), '
+            f"read on {doc['read']}; "
+            f"{len(result['gone'])} of {len(doc['values'])} values gone; the copy is in {result['file']}: "
+            "read the page, change each rule that took the value, then the entry's values"
+        )
+    elif state == "kept":
         text = f"kept {doc_id}: {doc['number']}, {doc['revision']}, SHA256 {result['sha256']} "
         text += f"as the index names [{result['file']}]"
     elif state == "changed":
@@ -302,6 +441,13 @@ def cmd_fetch(args, cli) -> int:
     again = set(args.again or [])
     results, lines, asked = [], [], 0
     for doc in [by_id[i] for i in args.ids] if args.ids else docs:
+        if doc["kind"] in CITED:
+            results.append({"id": doc["id"], "state": "not held", "asked": False})
+            lines.append(
+                f"not held {doc['id']}: a {doc['kind']}, cited and not held ({doc['no_copy']}); "
+                f"{doc['edition']}, {doc['cited']}: nothing to fetch, nothing judged"
+            )
+            continue
         rec = ledger.get(doc["id"])
         ask = doc["id"] in again or rec is None or rec.get("url") != doc["url"] or not still_held(to, rec)
         if ask:
@@ -327,17 +473,24 @@ def cmd_fetch(args, cli) -> int:
             result = judge(doc, rec, to)
         results.append(result | {"asked": ask})
         lines.append(line_of(doc, result, ask))
-    names = ("kept", "changed", "refused", "gone", "not given", "not reached")
+    names = ("kept", "changed", "moved", "refused", "gone", "not given", "not reached", "not held")
     counts = {s: sum(r["state"] == s for r in results) for s in names}
     unjudged = counts["not given"] + counts["not reached"]
-    code = 1 if counts["changed"] + counts["refused"] + counts["gone"] else 2 if unjudged else 0
+    code = (
+        1
+        if counts["changed"] + counts["moved"] + counts["refused"] + counts["gone"]
+        else 2
+        if unjudged
+        else 0
+    )
     if as_json:
         print(json.dumps({"to": str(to), "documents": results, "asked": asked, "counts": counts}, indent=2))
         return code
+    held = f", {counts['not held']} not held" if counts["not held"] else ""
     lines.append(
-        f"references fetch: {counts['kept']} kept, {counts['changed']} changed, {counts['refused']} refused, "
-        f"{counts['gone']} gone, {counts['not given']} not given, {counts['not reached']} not reached; "
-        f"{asked} asked now"
+        f"references fetch: {counts['kept']} kept, {counts['changed']} changed, {counts['moved']} moved, "
+        f"{counts['refused']} refused, {counts['gone']} gone, {counts['not given']} not given, "
+        f"{counts['not reached']} not reached{held}; {asked} asked now"
     )
     print("\n".join(lines))
     return code
@@ -361,6 +514,14 @@ def cmd_check(args, cli) -> int:
         if doc is None:
             print(f"references: {args.id} is not in the index {shown(Path(args.index))}")
             return 1
+        if doc["kind"] in CITED:
+            print(
+                f"references: {args.id} is a {doc['kind']} the index cites and does not hold: "
+                "nothing to check"
+            )
+            return 1
+        if doc["kind"] == WEB:
+            return check_page(args, doc, path, digest)
         if doc["sha256"] != digest:
             print(
                 f"changed {path}: SHA256 {digest}, the index names {doc['sha256']} for {doc['id']} "
@@ -368,7 +529,7 @@ def cmd_check(args, cli) -> int:
             )
             return 1
     else:
-        doc = next((d for d in docs if d["sha256"] == digest), None)
+        doc = next((d for d in docs if d.get("sha256") == digest), None)
         if doc is None:
             print(f"unknown {path}: the index names no document with SHA256 {digest}")
             return 1
@@ -376,6 +537,25 @@ def cmd_check(args, cli) -> int:
         f"same {path}: {doc['id']}, {doc['number']}, {doc['revision']}, SHA256 {digest}, the copy the "
         "index names"
     ]
+    return keep_given(args, doc, path, digest, lines)
+
+
+def check_page(args, doc: dict, path: Path, digest: str) -> int:
+    """A saved web page: the same page when every value read from it stands in it."""
+    gone = values_gone(doc, path.read_bytes())
+    if gone:
+        first = gone[0]
+        print(f'moved {path}: no longer says "{first["says"]}" ({first["for"]}), read on {doc["read"]}')
+        return 1
+    lines = [
+        f"same {path}: {doc['id']}, a web page: all {len(doc['values'])} values read on {doc['read']} "
+        "stand in it"
+    ]
+    return keep_given(args, doc, path, digest, lines)
+
+
+def keep_given(args, doc: dict, path: Path, digest: str, lines: list[str]) -> int:
+    """Print `lines`, and with --keep file the given copy in the folder as `fetch` would have."""
     if args.keep:
         to, refusal = folder_for(args.to)
         if not refusal:
@@ -403,12 +583,20 @@ def cmd_check(args, cli) -> int:
 
 def cited(data, pointer: str = ""):
     """Each (pointer, object) a rule file cites a document by: the object under a key `document` or
-    `source`, at any depth."""
+    `source`, at any depth, and each object of a `documents` object of documents by id
+    (rules/copper/materials.json)."""
     if isinstance(data, dict):
         for key, value in data.items():
             here = f"{pointer}.{key}" if pointer else key
             if key in CITING_KEYS and isinstance(value, dict):
                 yield here, value
+            elif (
+                key == "documents"
+                and isinstance(value, dict)
+                and all(isinstance(v, dict) for v in value.values())
+            ):
+                for doc_id, doc in value.items():
+                    yield f"{here}.{doc_id}", doc
             else:
                 yield from cited(value, here)
     elif isinstance(data, list):
@@ -416,13 +604,152 @@ def cited(data, pointer: str = ""):
             yield from cited(value, f"{pointer}[{n}]")
 
 
-def rule_files(paths: list[str], covers: list[str]) -> list[Path]:
+def rule_files(paths: list[str], globs: dict) -> list[Path]:
+    """The files to read: those named (a folder gives its JSON, fab rule and Python files), else the
+    files the index's `rules` and `code` globs find."""
     if paths:
         found: list[Path] = []
         for p in map(Path, paths):
-            found += sorted(p.rglob("*.json")) if p.is_dir() else [p]
+            if p.is_dir():
+                found += sorted(q for pattern in ("*.json", "*.kicad_dru", "*.py") for q in p.rglob(pattern))
+            else:
+                found.append(p)
         return found
-    return sorted({p for pattern in covers for p in ROOT.glob(pattern) if p.is_file()})
+    patterns = [*globs["rules"], *globs["code"]]
+    return sorted({p for pattern in patterns for p in ROOT.glob(pattern) if p.is_file()})
+
+
+def kind_of_file(path: Path) -> str:
+    if path.suffix == ".json":
+        return "json"
+    if path.suffix == ".kicad_dru":
+        return "dru"
+    return "code"
+
+
+def read_cites(tree, where: str, ids: set[str]) -> tuple[dict[str, str], list[str], int]:
+    """(the file's CITES, its fail lines, the count of its ids in the index)."""
+    for node in tree.body:
+        target = node.targets[0] if isinstance(node, ast.Assign) and len(node.targets) == 1 else None
+        target = node.target if isinstance(node, ast.AnnAssign) else target
+        if isinstance(target, ast.Name) and target.id == "CITES" and node.value is not None:
+            break
+    else:
+        return {}, [], 0
+    try:
+        cites = ast.literal_eval(node.value)
+    except ValueError:
+        cites = None
+    if not isinstance(cites, dict) or not all(isinstance(k, str) for k in cites):
+        return {}, [f"fail {where}:{node.lineno}: {CITES_FORM}"], 0
+    fails = []
+    for doc_id, place in cites.items():
+        if not isinstance(place, str) or not place.strip():
+            fails.append(f'fail {where}:{node.lineno}: CITES {doc_id}: where in it is asked, as "equation 1"')
+        elif doc_id not in ids:
+            fails.append(f"fail {where}:{node.lineno}: CITES names {doc_id}, which the index lacks")
+    return cites, fails, sum(doc_id in ids for doc_id in cites)
+
+
+def name_hits(
+    text: str, docs: list[dict], numbers: list[re.Pattern]
+) -> list[tuple[int, int, str, str | None]]:
+    """Each document name in `text`, as (start, end, the name, the id of the entry it names or None): the
+    `names` of the entries, and the numbers of the index's families. Overlapping hits keep the first."""
+    by_name = {name: d["id"] for d in docs for name in d.get("names", [])}
+    hits = []
+    for name, doc_id in by_name.items():
+        for m in re.finditer(rf"(?<![\w-]){re.escape(name)}(?![\w-])", text):
+            hits.append((m.start(), m.end(), name, doc_id))
+    for pattern in numbers:
+        for m in pattern.finditer(text):
+            hits.append((m.start(), m.end(), m.group(0), by_name.get(m.group(0))))
+    kept: list[tuple[int, int, str, str | None]] = []
+    for hit in sorted(hits, key=lambda h: (h[0], -h[1])):
+        if not kept or hit[0] >= kept[-1][1]:
+            kept.append(hit)
+    return kept
+
+
+def place_after(text: str, end: int) -> str:
+    """The first place in a document (section 2, equation (4), pp. 407) within PLACE_REACH characters
+    after a name, comment marks and line breaks read as 1 space; '' when there is none."""
+    after = re.sub(r"\s*\n\s*(?:#\s*)?", " ", text[end : end + 3 * PLACE_REACH])[:PLACE_REACH]
+    m = PLACE_RE.search(after)
+    return m.group(0) if m else ""
+
+
+def check_code(
+    path: Path, docs: list[dict], numbers: list[re.Pattern]
+) -> tuple[list[str], list[str], int, int]:
+    """(fail lines, not judged lines, documents named, documents held) of 1 file of tool code or tests."""
+    where = shown(path)
+    try:
+        text = path.read_text(encoding="utf-8")
+        tree = ast.parse(text)
+    except (OSError, UnicodeDecodeError) as exc:
+        return [f"fail {where}: not read ({exc})"], [], 0, 0
+    except SyntaxError as exc:
+        return [f"fail {where}: not read as Python ({exc.msg}, line {exc.lineno})"], [], 0, 0
+    ids = {d["id"] for d in docs}
+    cites, fails, held = read_cites(tree, where, ids)
+    named = len(cites)
+    cited_at: dict[str, tuple[int, str]] = {}
+    mentioned_at: dict[str, int] = {}
+    unknown: dict[str, str | None] = {}
+    for start, end, name, doc_id in name_hits(text, docs, numbers):
+        if doc_id is not None and doc_id in cites:
+            continue
+        line = text.count("\n", 0, start) + 1
+        unknown[name] = doc_id
+        place = place_after(text, end)
+        if place:
+            cited_at.setdefault(name, (line, place))
+        else:
+            mentioned_at.setdefault(name, line)
+    unjudged = []
+    for name, doc_id in unknown.items():
+        if name in cited_at:
+            line, place = cited_at[name]
+            named += 1
+            if doc_id is None:
+                fails.append(
+                    f"fail {where}:{line}: {name}, {place}: the index has no document by that name; fetch it "
+                    "and add its entry (rules/references/README.md, An entry), then name its id in the "
+                    "file's CITES"
+                )
+            else:
+                fails.append(
+                    f"fail {where}:{line}: {name}, {place}: the file's CITES does not name {doc_id}; "
+                    f'add "{doc_id}": "<where in it>" to it'
+                )
+        else:
+            unjudged.append(
+                f"not judged {where}:{mentioned_at[name]}: {name} has no section, table, page, clause or "
+                "equation beside it: a mention, not a citation"
+            )
+    return fails, unjudged, named, held
+
+
+def check_dru(path: Path, docs: list[dict]) -> tuple[list[str], int, int]:
+    """(fail lines, URLs named, URLs held) of a KiCad rule file: each URL in it is an entry's URL."""
+    where = shown(path)
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as exc:
+        return [f"fail {where}: not read ({exc})"], 0, 0
+    urls = {d["url"] for d in docs if isinstance(d.get("url"), str)}
+    seen: dict[str, int] = {}
+    for n, line in enumerate(lines, 1):
+        for m in URL_IN_TEXT_RE.finditer(line):
+            seen.setdefault(m.group(0).rstrip(".,;:"), n)
+    fails = [
+        f"fail {where}:{n}: {url} is not the URL of an entry of the index; add the page as a web page entry "
+        "with the values the rules take from it"
+        for url, n in seen.items()
+        if url not in urls
+    ]
+    return fails, len(seen), len(seen) - len(fails)
 
 
 def label_of(source: dict) -> str:
@@ -432,18 +759,27 @@ def label_of(source: dict) -> str:
 
 def cmd_rules(args, cli) -> int:
     index = Path(args.index)
-    docs, covers, problems = load_index(index)
+    docs, globs, problems = load_index(index)
     if problems:
         print("\n".join(problems))
         return 1
-    files = rule_files(args.paths, covers)
+    files = rule_files(args.paths, globs)
     if not files:
         print(f"references: no rule file to read: name 1, or list globs under rules in {shown(index)}")
         return 1
-    by_sha = {d["sha256"]: d for d in docs}
+    by_sha = {d["sha256"]: d for d in docs if "sha256" in d}
+    pages = {d["url"] for d in docs if d["kind"] == WEB}
     fails, unjudged, named, held = [], [], 0, 0
     for path in files:
         where = shown(path)
+        if kind_of_file(path) == "code":
+            more, not_judged, n, h = check_code(path, docs, globs["numbers"])
+            fails, unjudged, named, held = fails + more, unjudged + not_judged, named + n, held + h
+            continue
+        if kind_of_file(path) == "dru":
+            more, n, h = check_dru(path, docs)
+            fails, named, held = fails + more, named + n, held + h
+            continue
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
@@ -459,6 +795,9 @@ def cmd_rules(args, cli) -> int:
             named += 1
             if url is not None and not isinstance(url, str):
                 fails.append(f"fail {tag}: url {url!r} is not a whole URL, https://host/path")
+            elif url in pages:
+                # A web page is held by its values; a SHA256 the source gives names its own copy.
+                held += 1
             elif digest is not None and not (isinstance(digest, str) and RULE_SHA_RE.fullmatch(digest)):
                 fails.append(f"fail {tag}: sha256 {digest!r} is not 64 hex digits")
             elif not url and not digest:

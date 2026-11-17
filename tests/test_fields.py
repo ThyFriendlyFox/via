@@ -21,6 +21,9 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 import fields  # noqa: E402
 
+# The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
+CITES = {"hammerstad-jensen-1980": "pp. 407-409, equations (1) to (4), and the thickness correction"}
+
 LINE = ROOT / "tests" / "boards" / "pass-fields-microstrip"
 STUB = ROOT / "tests" / "boards" / "fail-fields-stub"
 CLI = ROOT / "tools" / "workcenter"

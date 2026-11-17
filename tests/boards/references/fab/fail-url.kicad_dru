@@ -1,0 +1,9 @@
+(version 1)
+# A fab made up for the tests. Limits from https://fab.example/specs/, read 2026-11-17, where it
+# disagrees with an older page the stricter number is used:
+# https://fab.example/specs-old/
+
+# "Minimum trace 4 mil (0.1016 mm)"
+(rule "fab: trace 4 mil"
+	(constraint track_width (min 0.1016mm))
+	(severity error))

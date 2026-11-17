@@ -25,6 +25,12 @@ ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
 FIXTURES = ROOT / "tests" / "boards" / "references"
 INDEX = ROOT / "rules" / "references" / "index.json"
+# The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
+CITES = {
+    "ietf-rfc6585": "section 4, page 3: 429 Too Many Requests",
+    "ietf-rfc9110": "section 15.6: Server Error 5xx",
+    "freedesktop-basedir-0.8": "section 2: a relative path is invalid and ignored",
+}
 
 KEPT = b"%PDF-1.4 Acme AN-17 Layout of a buck converter, Rev. B\n"
 BEFORE = b"%PDF-1.4 Acme AN-18 Input filters, Rev. A\n"
@@ -162,7 +168,8 @@ def test_fetch_prints_1_line_per_document_and_a_count(site):
     assert "not asked again" in lines[2] and "references check FILE --id an-19" in lines[2]
     assert all("(ledger of 20" in line for line in lines[:3])
     assert lines[-1] == (
-        "references fetch: 1 kept, 1 changed, 1 refused, 0 gone, 0 not given, 0 not reached; 0 asked now"
+        "references fetch: 1 kept, 1 changed, 0 moved, 1 refused, 0 gone, 0 not given, 0 not reached; "
+        "0 asked now"
     )
 
 
@@ -457,7 +464,8 @@ OTHER_SHA = "0" * 64
         ),
         (
             [GOOD | {"kind": "note"}],
-            "documents[0] acme-an-17: kind 'note' is none of standard, application note, datasheet",
+            "documents[0] acme-an-17: kind 'note' is none of standard, application note, datasheet, "
+            "web page, paper, book",
         ),
         (
             [GOOD | {"id": "AN-17"}],
@@ -535,15 +543,19 @@ def test_rules_fail_a_source_that_names_a_document_it_does_not_pin(tmp_path, sou
 
 
 def test_every_document_a_rule_of_the_repository_names_is_in_the_index():
-    """`make verify` runs this. The rating packs name 2 standards, the board pack 1, the 4 facts files
-    of 1 part 4 datasheets, passives.json 4, fail-sim-bias's parts.json 2 (Samsung's page and Coilcraft's
-    806, which passives.json names too): 2 + 1 + 4 + 4 + 2 = 13 named. made-up.json's 4 parts name no
-    document: 4 not judged."""
-    code, out = run("rules")
+    """`make verify` runs this on the files the index's `rules` globs find (the code its `code` globs
+    find is tests/test_references_code.py's). The rating packs name 2 standards, the board pack 1,
+    rules/copper/materials.json 2 (NBS's copper wire tables and TI's AN-2020), the 4 facts files of 1 part 4
+    datasheets, passives.json 4, fail-sim-bias's parts.json 2 (Samsung's page and Coilcraft's 806, which
+    passives.json names too): 2 + 1 + 2 + 4 + 4 + 2 = 15 named. The 4 fab rule files name 1 + 1 + 1 + 2 =
+    5 pages. made-up.json's 4 parts name no document: 4 not judged. Files: 2 + 1 + 1 + 7 JSON and 4 fab
+    rule files = 15."""
+    globs = json.loads(INDEX.read_text(encoding="utf-8"))["rules"]
+    files = sorted({p for pattern in globs for p in ROOT.glob(pattern)})
+    code, out = run("rules", *files)
     assert code == 0, out
-    files = 2 + 1 + 7
     assert out.splitlines()[-1] == (
-        f"references rules: 13 documents named in {files} files, 13 in the index, 0 not; 4 not judged"
+        "references rules: 20 documents named in 15 files, 20 in the index, 0 not; 4 not judged"
     )
 
 
@@ -570,7 +582,7 @@ def test_the_index_globs_cover_every_rule_file_under_rules():
 
 def test_the_repository_holds_no_document_the_index_names():
     """The Scope guard: no tracked file has the SHA256 of a document in the index."""
-    names = {d["sha256"] for d in json.loads(INDEX.read_text(encoding="utf-8"))["documents"]}
+    names = {d["sha256"] for d in json.loads(INDEX.read_text(encoding="utf-8"))["documents"] if "sha256" in d}
     tracked = subprocess.run(
         ["git", "-C", str(ROOT), "ls-files", "-z"], capture_output=True, check=True
     ).stdout.split(b"\0")
