@@ -122,6 +122,7 @@ def shell(
           <nav aria-label="Footer">
             <ul>
               <li><a href="{up}blog.html">Blog</a></li>
+              <li><a href="{up}feedback.html">Feedback</a></li>
               <li><a href="{REPO}">GitHub</a></li>
               <li><a href="{REPO}/blob/main/WORKCENTER.md">Contract</a></li>
               <li><a href="{REPO}/blob/main/ee-agent-kit/STATUS.md">Status</a></li>

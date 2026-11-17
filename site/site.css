@@ -2765,3 +2765,115 @@ main .post-card p {
 .feed-link {
   margin-top: 2rem;
 }
+
+/* ----------------------------------------------------------------- forms */
+
+.form {
+  max-width: 34rem;
+}
+
+.head .form,
+.head + .form {
+  margin-top: 1.75rem;
+}
+
+.form label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.form label span {
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+
+.form textarea + label {
+  margin-top: 1.25rem;
+}
+
+.form input,
+.form textarea {
+  display: block;
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.75rem 1rem;
+  border: 0;
+  border-radius: 0.875rem;
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--edge);
+  color: var(--foreground);
+  font: inherit;
+}
+
+.form textarea {
+  min-height: 10rem;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.form input::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form input:focus-visible,
+.form textarea:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.form-row input {
+  flex: 1 1 11rem;
+  width: auto;
+  min-width: 0;
+  height: 3rem;
+  margin-top: 0;
+  padding-inline: 1.25rem;
+  border-radius: 999px;
+}
+
+.form > .btn {
+  margin-top: 1.5rem;
+}
+
+.form .btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* The field only a program fills: off the screen and out of the tab order. */
+.trap {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.form-error {
+  margin-top: 0.75rem;
+  color: var(--status-red);
+  font-size: 0.9375rem;
+}
+
+/* The thank-you line: shown by site.js, or by the address's #id when the browser posted the form. */
+.form-done {
+  display: none;
+  margin-top: 1.75rem;
+  font-size: var(--text-lede);
+}
+
+.form-done:target,
+.form-done[data-shown] {
+  display: block;
+}
+
+.form-done:focus {
+  outline: none;
+}

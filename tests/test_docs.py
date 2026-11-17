@@ -430,7 +430,14 @@ def test_every_link_on_the_site_names_what_exists():
     the merge. A link into the page names an id, and a link beside the page names a file."""
     blob = "https://github.com/ThyFriendlyFox/via/blob/main/"
     missing, to_repo, into_page, beside = [], 0, 0, 0
-    for page in (SITE / "index.html", SITE / "404.html", SITE / "og.html", *example_pages(), *blog_pages()):
+    for page in (
+        SITE / "index.html",
+        SITE / "404.html",
+        SITE / "og.html",
+        SITE / "feedback.html",
+        *example_pages(),
+        *blog_pages(),
+    ):
         text = page.read_text(encoding="utf-8")
         for link in links_of(page):
             if link.startswith(blob):
@@ -473,7 +480,12 @@ def test_the_site_builds_for_an_address_and_without_one(tmp_path):
     assert len(alts) == 2 and alts[0] == alts[1] and "Herald" in alts[0]
     assert '<base href="https://example.org/via/">' in (served / "404.html").read_text(encoding="utf-8")
     assert (served / "og.png").is_file() and (served / "fonts" / "LICENSE").is_file()
-    pages = ["index.html", "404.html", *(str(p.relative_to(SITE)) for p in (*example_pages(), *blog_pages()))]
+    pages = [
+        "index.html",
+        "404.html",
+        "feedback.html",
+        *(str(p.relative_to(SITE)) for p in (*example_pages(), *blog_pages())),
+    ]
     # A post is served at /blog/<slug> with its share card, and the feed with whole addresses.
     post = next((SITE / "blog").glob("*.html")).stem
     built_post = (served / "blog" / f"{post}.html").read_text(encoding="utf-8")
@@ -679,15 +691,19 @@ def test_the_blog_is_what_site_blog_writes():
     assert found and {p.slug for p in found} == {p.stem for p in (SITE / "blog").glob("*.html")}
     listed = (SITE / "blog.html").read_text(encoding="utf-8")
     feed = (SITE / "blog" / "feed.xml").read_text(encoding="utf-8")
+    assert 'suggestions <a class="link" href="feedback.html">here</a>!' in listed
     for post in found:
         page = (SITE / "blog" / f"{post.slug}.html").read_text(encoding="utf-8")
         assert f'href="blog/{post.slug}.html"' in listed and f"%ORIGIN%/blog/{post.slug}</link>" in feed
-        # Its way back into the site: the home page, the boards, the checks and every post.
+        # Its way back into the site: the home page, the boards, the checks and every post. The owner's
+        # message: "here" to the subscribe form under it, and "here" to the feedback page.
         for back in (
             'href="../"',
             'href="../examples.html"',
             'href="../index.html#gates"',
             'href="../blog.html"',
+            'Subscribe <a class="link" href="#subscribe">here</a>',
+            'suggestions <a class="link" href="../feedback.html">here</a>!',
         ):
             assert back in page, (post.slug, back)
         # Its share card and its record, on the 1 line build.sh fills with the site's address.

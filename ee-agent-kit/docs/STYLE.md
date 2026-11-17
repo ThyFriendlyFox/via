@@ -86,5 +86,6 @@ exception to these rules:
 - The blog's message to its reader, of 2026-11-17, at the head of the
   blog and after each post: "We're making Via better every day!", then
   "Subscribe here to keep up to date with our progress. Give us
-  suggestions here!" The first "here" is the blog's RSS feed, the second
-  a new issue on GitHub. The blog does not explain what a blog is.
+  suggestions here!" The first "here" is the subscribe form under the
+  message, which takes the reader's email. The second is the feedback
+  page, `/feedback`. The blog does not explain what a blog is.

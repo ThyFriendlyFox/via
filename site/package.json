@@ -1,0 +1,9 @@
+{
+  "name": "via-site",
+  "private": true,
+  "type": "module",
+  "description": "The functions in api/ that keep what the site's forms send. build.sh builds the pages.",
+  "dependencies": {
+    "@vercel/blob": "2.8.2"
+  }
+}

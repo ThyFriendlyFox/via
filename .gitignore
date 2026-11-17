@@ -14,6 +14,10 @@ __pycache__/
 .ruff_cache/
 *.pyc
 
+# The site's functions (site/package.json) and a linked Vercel project
+node_modules/
+.vercel/
+
 # Local overrides
 .env
 .claude/settings.local.json

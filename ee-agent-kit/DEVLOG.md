@@ -39,6 +39,22 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-17 — The blog's links keep what a reader sends
+
+The owner asked for the 2 links in the blog's message to work: "subscribe" to collect a
+reader's email in Vercel storage, and "suggestions" to open a feedback page. The first link
+went to the RSS feed and the second to a new GitHub issue. I made a private Vercel Blob store,
+`via-forms`, and connected it to the project. 2 functions in `site/api/` keep each form as a
+file in it. The subscribe form is under the message, and the feedback page is at `/feedback`.
+In Chromium the email field first pushed the button onto its own line on a phone, because an
+input does not shrink below its own width. `min-width: 0` keeps them on 1 line. The link to the
+form left the focus on the page, so the link now puts the cursor in the field.
+
+Evidence: `tests/test_forms.py` 9 passed; the docs tests 21 passed, 2 skipped (KiCad);
+`site/forms.py --check` and `site/blog.py --check` exit 0. In Chromium at 390 px and 1280 px,
+with the real `_forms.js` and a stand-in store, both forms sent and showed their thank-you
+line, and a store that failed showed "The form did not send. Try again."
+
 ## 2026-11-17 — A blog, a post on Herald, and `main`'s CI green again
 
 The owner asked for a blog on the site, each post at its own address with links back to the main

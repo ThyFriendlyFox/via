@@ -29,6 +29,8 @@ python3 site/examples.py --check                 # exit 1 when a page is not wha
 python3 site/examples.py --pictures              # also the examples' 3D pictures (numpy, Pillow)
 python3 site/blog.py                             # the blog, from the posts in blog/
 python3 site/blog.py --check                     # exit 1 when a blog page is not what the script writes
+python3 site/forms.py                            # the feedback page
+python3 site/forms.py --check                    # exit 1 when the feedback page is not what the script writes
 sh site/build.sh out https://example.org         # the files a host serves, in out/
 ```
 
@@ -47,12 +49,16 @@ empty.
 | `examples.html`, `examples/<name>.html` | The list of examples, and 1 page for each. `examples.py` writes them; do not edit them by hand. |
 | `examples/<name>/` | What an example's page shows: `board.svg`, the board drawn from its file for the explorer; `spin.webp`, the turntable's views side by side, where they show the whole of it; `top.png` and `bottom.png`, KiCad's renders with the backdrop taken out, at most 1100 px wide; `card.png`, the picture on its card (the assembly where there is one), 760 px wide; all 3 in 256 colours; `pictures.json`, the render each came from and the turntable's frames. |
 | `examples.py` | Writes the example pages. "The example pages" below says what it reads. |
-| `blog.html`, `blog/<slug>.html`, `blog/feed.xml` | The list of posts at `/blog`, 1 page for each post at `/blog/<slug>`, and the posts' RSS feed. `blog.py` writes them from the Markdown posts in the repository's `blog/`; do not edit them by hand. A post's page carries its share card and a BlogPosting record on the line `build.sh` fills with the site's address, and after the post the way back into the site: the start, the boards, the checks, and the posts before and after it. |
+| `blog.html`, `blog/<slug>.html`, `blog/feed.xml` | The list of posts at `/blog`, 1 page for each post at `/blog/<slug>`, and the posts' RSS feed. `blog.py` writes them from the Markdown posts in the repository's `blog/`; do not edit them by hand. A post's page carries its share card and a BlogPosting record on the line `build.sh` fills with the site's address, and after the post the owner's message with the subscribe form, and the way back into the site: the start, the boards, the checks, and the posts before and after it. |
 | `blog.py` | Writes the blog. "A new post" below says how. |
-| `frame.py` | The head, header and footer every page `examples.py` and `blog.py` write shares: the menu (with the blog), the footer, the theme before the first paint and the analytics' 2 script tags. |
+| `feedback.html` | The feedback page at `/feedback`. `forms.py` writes it; do not edit it by hand. |
+| `forms.py` | Writes the feedback page, and gives `blog.py` the subscribe form. "The forms" below says where each form goes. |
+| `api/` | The 2 functions the forms post to, and `_forms.js`, their rules. |
+| `package.json`, `package-lock.json` | The functions' only dependency, `@vercel/blob`, at 1 version. |
+| `frame.py` | The head, header and footer every page `examples.py` and `blog.py` write shares: the menu (with the blog), the footer (with the blog and the feedback page), the theme before the first paint and the analytics' 2 script tags. |
 | `404.html` | The page a host serves for an unknown path. |
 | `site.css` | The look: the colour tokens for light and dark, the type scale, every component. `media/hero.html` takes its cards from it. |
-| `site.js` | The theme button, the copy button, and the agents' strip: it drifts sideways, rests under a pointer, a finger or the focus, and a mouse, a swipe or the arrow keys move it. |
+| `site.js` | The theme button, the copy button, the forms (it sends a form and shows the answer in place), and the agents' strip: it drifts sideways, rests under a pointer, a finger or the focus, and a mouse, a swipe or the arrow keys move it. |
 | `effects.js` | The motion, with Motion: the hero's wordmark is built as a board is (sketched, its corners set, its copper laid, its traces run), the gates' drawings draw themselves, the logo draws itself, sections rise into view, runs type out, the example's copper sweeps in a layer at a time, and the board leans toward the pointer. 4 of its parts are labelled at a time, 2 to a side, while the board is on screen; every 3 seconds the sides take turns, and a side's older label gives way to its next part, a circuit at a time, which takes the label's number. Each label has a leader from its part: a diagonal, then a level run to the label. A side's 2 labels stand in the order of their parts down the board, the other way up where their leaders would cross; the label that stays slides to its place, its leader with it. Beside the board a label stands at most half the board's height: where its room ends, its text keeps the lines that fit and ends in an ellipsis, and the rows under it are left out, so a side's 2 labels fit and the board never moves. Stacked under the board on a narrow screen, each label is whole. A click on a part brings its label in at once. The head's script adds `motion` to `<html>` unless the reader asked for reduced motion or the page is a capture (`?shot=`); without Motion every element sits where it ends, and the labels still come in. It also loads the 3D board: when the renders' section comes within 600 px of the screen, it loads model-viewer and the meshopt decoder, then `showcase/herald.glb`, and shows the model over its picture once it has drawn. Until then, and if any of it fails, the picture stays. |
 | `example.js` | An example page's turntable, which a drag or the arrow keys turn, and its board explorer: layers on and off, zoom and pan, a net followed, a part named. |
 | `agents.svg` | The marks of the 21 agents in the strip, 1 symbol each, drawn in the text colour. "What is not ours" names where each comes from. |
@@ -256,6 +262,36 @@ rsvg-convert -w 148 -h 148 --page-width 180 --page-height 180 --left 16 --top 16
 GitHub shows a repository's social preview from an image its owner uploads:
 Settings, General, Social preview. `og.png` is that image.
 
+## The forms
+
+The blog's message has 2 links. The first "here" goes to the subscribe
+form under the message. The second goes to the feedback page, `/feedback`.
+Each form posts to a function in `api/`:
+
+| Form | Function | Keeps | Fields |
+|---|---|---|---|
+| Subscribe, on `/blog` and after each post | `api/subscribe.js`, `POST /api/subscribe` | `subscribers/<SHA-256 of the address>.json`, 1 file for each address | `email` |
+| Feedback, on `/feedback` | `api/feedback.js`, `POST /api/feedback` | `feedback/<time>-<8 characters>.json`, 1 file for each suggestion | `message`, `email` (optional) |
+
+Each file holds the fields, the page of the form and the time. The files
+are in the project's Blob store, `via-forms`, which is private: only the
+members of the Vercel team can read it. To read the files, open the
+project on Vercel, then Storage, `via-forms`, Browser. The site does not
+send email.
+
+`api/_forms.js` holds the rules of both functions. A form that fills the
+hidden field `website` is dropped, because a person does not see that
+field. A form posted from a page of another site gets 403. `site.js`
+sends a form and shows the answer in place. Without `site.js`, the
+browser posts the form, and the function sends the reader back to the
+page's thank-you line. `forms.py` writes the forms with the field names
+that `_forms.js` reads.
+
+`package.json` pins the functions' only dependency, `@vercel/blob`, and
+`package-lock.json` locks it. Vercel installs it and builds `api/` from
+the project's folder. `build.sh` does not copy `api/`.
+`tests/test_forms.py` runs the rules in Node with a store of its own.
+
 ## Deploys
 
 The Vercel project is `via`, and production is <https://via.computer>. Its Root
@@ -264,7 +300,9 @@ Directory is `site`. `vercel.json` runs `build.sh` with the address
 Vercel's `VERCEL_PROJECT_PRODUCTION_URL` kept the older domain after
 `via.computer` was added (M181). A push to `main` deploys
 production, and a push to any other branch a preview. The project skips
-a push that leaves `site/` unchanged.
+a push that leaves `site/` unchanged. The Blob store `via-forms` is
+connected to the project. It gives the functions 1 variable,
+`BLOB_READ_WRITE_TOKEN`, in production, preview and development.
 
 Each other address sends the reader to `via.computer`. A redirect from
 Cloudflare adds `ref=` with the address it came from, so the analytics
@@ -285,6 +323,8 @@ branch on 2026-11-11.
 
 Any static host can serve the folder `build.sh` writes. For GitHub Pages,
 give it the Pages address: `sh site/build.sh out https://<owner>.github.io/via`.
+The forms need the functions in `api/`, so on another host they do not
+send.
 
 ## What is not ours
 
