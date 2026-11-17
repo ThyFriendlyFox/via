@@ -1,0 +1,187 @@
+(kicad_pcb
+	(version 20241229)
+	(generator "pcbnew")
+	(generator_version "9.0")
+	(general
+		(thickness 1.6)
+		(legacy_teardrops no)
+	)
+	(paper "A4")
+	(layers
+		(0 "F.Cu" signal)
+		(2 "B.Cu" signal)
+		(9 "F.Adhes" user "F.Adhesive")
+		(11 "B.Adhes" user "B.Adhesive")
+		(13 "F.Paste" user)
+		(15 "B.Paste" user)
+		(5 "F.SilkS" user "F.Silkscreen")
+		(7 "B.SilkS" user "B.Silkscreen")
+		(1 "F.Mask" user)
+		(3 "B.Mask" user)
+		(17 "Dwgs.User" user "User.Drawings")
+		(19 "Cmts.User" user "User.Comments")
+		(21 "Eco1.User" user "User.Eco1")
+		(23 "Eco2.User" user "User.Eco2")
+		(25 "Edge.Cuts" user)
+		(27 "Margin" user)
+		(31 "F.CrtYd" user "F.Courtyard")
+		(29 "B.CrtYd" user "B.Courtyard")
+		(35 "F.Fab" user)
+		(33 "B.Fab" user)
+	)
+	(setup
+		(pad_to_mask_clearance 0)
+		(allow_soldermask_bridges_in_footprints no)
+		(tenting front back)
+	)
+	(net 0 "")
+	(footprint "Fixture:U1"
+		(layer "F.Cu")
+		(uuid "6f0c1a52-1b0e-4c43-9d7e-0a1f2b3c4d01")
+		(at 115 113)
+		(property "Reference" "U1"
+			(at 0 0 0)
+			(layer "F.SilkS")
+			(uuid "6f0c1a52-1b0e-4c43-9d7e-0a1f2b3c4d02")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Value" "BODY"
+			(at 0 4 0)
+			(layer "F.Fab")
+			(uuid "6f0c1a52-1b0e-4c43-9d7e-0a1f2b3c4d03")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(attr smd)
+		(fp_rect
+			(start -3 -3)
+			(end 3 3)
+			(stroke
+				(width 0.05)
+				(type solid)
+			)
+			(fill no)
+			(layer "F.CrtYd")
+			(uuid "6f0c1a52-1b0e-4c43-9d7e-0a1f2b3c4d04")
+		)
+		(pad "1" smd rect
+			(at -2.5 0)
+			(size 0.6 0.6)
+			(layers "F.Cu" "F.Mask" "F.Paste")
+			(uuid "6f0c1a52-1b0e-4c43-9d7e-0a1f2b3c4d05")
+		)
+		(pad "2" smd rect
+			(at 2.5 0)
+			(size 0.6 0.6)
+			(layers "F.Cu" "F.Mask" "F.Paste")
+			(uuid "6f0c1a52-1b0e-4c43-9d7e-0a1f2b3c4d06")
+		)
+		(embedded_fonts no)
+	)
+	(footprint "Fixture:R1"
+		(layer "F.Cu")
+		(uuid "6f0c1a52-1b0e-4c43-9d7e-0a1f2b3c4d11")
+		(at 130 113)
+		(property "Reference" "R1"
+			(at 0 -1.5 0)
+			(layer "F.SilkS")
+			(uuid "6f0c1a52-1b0e-4c43-9d7e-0a1f2b3c4d12")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Value" "R"
+			(at 0 1.5 0)
+			(layer "F.Fab")
+			(uuid "6f0c1a52-1b0e-4c43-9d7e-0a1f2b3c4d13")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(attr smd)
+		(fp_rect
+			(start -1.5 -0.75)
+			(end 1.5 0.75)
+			(stroke
+				(width 0.05)
+				(type solid)
+			)
+			(fill no)
+			(layer "F.CrtYd")
+			(uuid "6f0c1a52-1b0e-4c43-9d7e-0a1f2b3c4d14")
+		)
+		(pad "1" smd rect
+			(at -0.8 0)
+			(size 0.8 0.9)
+			(layers "F.Cu" "F.Mask" "F.Paste")
+			(uuid "6f0c1a52-1b0e-4c43-9d7e-0a1f2b3c4d15")
+		)
+		(pad "2" smd rect
+			(at 0.8 0)
+			(size 0.8 0.9)
+			(layers "F.Cu" "F.Mask" "F.Paste")
+			(uuid "6f0c1a52-1b0e-4c43-9d7e-0a1f2b3c4d16")
+		)
+		(embedded_fonts no)
+	)
+	(gr_text "AB"
+		(at 110 105 0)
+		(layer "F.SilkS")
+		(uuid "6f0c1a52-1b0e-4c43-9d7e-0a1f2b3c4d21")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(gr_text "CD"
+		(at 111 105.5 0)
+		(layer "F.SilkS")
+		(uuid "6f0c1a52-1b0e-4c43-9d7e-0a1f2b3c4d22")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(gr_text "EF"
+		(at 130 105 0)
+		(layer "F.SilkS")
+		(uuid "6f0c1a52-1b0e-4c43-9d7e-0a1f2b3c4d23")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.15)
+			)
+		)
+	)
+	(gr_rect
+		(start 100 100)
+		(end 140 120)
+		(stroke
+			(width 0.05)
+			(type default)
+		)
+		(fill no)
+		(layer "Edge.Cuts")
+		(uuid "6f0c1a52-1b0e-4c43-9d7e-0a1f2b3c4d31")
+	)
+	(embedded_fonts no)
+)

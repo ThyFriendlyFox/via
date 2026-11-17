@@ -1143,6 +1143,13 @@ class Design:
     # The fab the board is made for: a rule set in rules/ (or a .kicad_dru path) written into the project
     # as <name>.kicad_dru, its board-wide minimums laid over the board's own (rules/README.md).
     fab: str = ""
+    # The legend (tools/legend.py): True places every designator round its part, the same on every run;
+    # `designators` holds those a design fixes by hand (designator()). Off by default, so boards made
+    # before the placer write the bytes they wrote. `legend_notes` names each designator the placer moved
+    # to the Fab layer.
+    place_designators: bool = False
+    designators: dict[str, tuple[float, float, float]] = field(default_factory=dict)
+    legend_notes: list[str] = field(default_factory=list)
     zones: list[dict] = field(default_factory=list)  # copper pours, see zone()
     keepouts: list[dict] = field(default_factory=list)  # areas no track, via or part enters, see keepout()
     islands: list[list[str]] = field(default_factory=list)  # pads cut off from their pour, set by write()
@@ -1560,6 +1567,11 @@ class Design:
         if any(item[0] in needed for item in (*self.segments, *self.vias)):
             return 0
         return sum(n - 1 for n in needed.values())
+
+    def designator(self, ref: str, x: float, y: float, angle: float = 0.0) -> None:
+        """Fix a part's designator by hand: its centre at (x, y) on the board, at `angle`. The placer
+        (place_designators) leaves it there, and `workcenter drc` still judges it."""
+        self.designators[ref] = (float(x), float(y), float(angle))
 
     def text(
         self,
@@ -3421,6 +3433,10 @@ class Design:
                     ["polygon", ["pts", *[["xy", fmt(px), fmt(py)] for px, py in k["polygon"]]]],
                 ]
             )
+        if self.place_designators or self.designators:
+            import legend  # tools/legend.py reads the board this method builds
+
+            self.legend_notes = legend.lay(pcb, self.fab or None, self.designators, self.place_designators)
         pcb.append(["embedded_fonts", "no"])
         return dumps(pcb) + "\n"
 
