@@ -39,8 +39,27 @@ needs_freerouting2 = pytest.mark.skipif(
     bool(FR2.absent()), reason=f"FreeRouting 2.5.0 (freerouting2) is not installed: {FR2.absent()}"
 )
 
-# The log line of a route that left nothing open, as FreeRouting 2 writes it (UNROUTED_RE).
-DONE = "Auto-routing was completed in 0.10 seconds (0 unrouted)"
+
+def score_line(unrouted: int, violations: int, headless: bool = True) -> str:
+    """A log line with FreeRouting 2.5.0's own count, in its own formats: the jar of install.sh (SHA256
+    f6f51bb0...de3c7) read with `javap -c -p -constants`. `FRLogger.formatScore(float, int, int)` writes
+    "<score> (<n> unrouted and <m> violation[s])", "violation" when m is 1. The headless job thread
+    (`RoutingJobSchedulerActionThread$1`) logs "Auto-routing stage %s started with %d unrouted nets,
+    completed in %.2f seconds, final score: %s, using %.2f total CPU seconds, %.2f GB total allocated, and
+    %.1f MB peak heap usage."; the window's worker (`GuiRoutingJobWorker`) logs "Auto-routing was
+    completed in %.2f seconds with the score of %s."."""
+    score = f"812.34 ({unrouted} unrouted and {violations} violation{'' if violations == 1 else 's'})"
+    if headless:
+        return (
+            f"Auto-routing stage autorouter started with 3 unrouted nets, completed in 0.10 seconds, final "
+            f"score: {score}, using 0.20 total CPU seconds, 0.10 GB total allocated, and 50.0 MB peak heap "
+            "usage."
+        )
+    return f"Auto-routing was completed in 0.10 seconds with the score of {score}."
+
+
+# The log line of a route that left nothing open, as FreeRouting 2.5.0 writes it headless.
+DONE = score_line(0, 0)
 
 
 def board(track: bool = False, zone: bool = False) -> kicadgen.Design:
@@ -163,6 +182,24 @@ def test_the_router_is_handed_the_dsn_of_this_design_not_one_left_in_the_folder(
 
 
 @needs_libs
+@pytest.mark.parametrize("router", ["freerouting", "freerouting2"])
+def test_a_rules_file_beside_the_dsn_is_removed_before_the_router_runs(tmp_path, router):
+    """Rule 1. FreeRouting 2.5.0 reads a `<board>.rules` beside the DSN when none is named, and its
+    rules (clearances, net classes, vias) are applied over the DSN's: its command_line_arguments.md,
+    the `-de` entry. A rows.rules left in build/route is removed before the router starts, for each
+    router, so the DSN alone carries the rules."""
+    env = standin(tmp_path, java_version="25.0.5", ses=session(["A", "B", "C"]))
+    rules = tmp_path / "out" / "build" / "route" / "rows.rules"
+    rules.parent.mkdir(parents=True)
+    rules.write_text("(rules PCB rows (rule (clearance 1)))", encoding="utf-8")
+    code, text = route(tmp_path, env, "--router", router)
+    assert code == 0, text
+    [call] = calls(tmp_path)
+    assert call["rules_beside"] is False
+    assert not rules.exists()
+
+
+@needs_libs
 def test_a_session_an_earlier_run_left_is_never_read(tmp_path):
     """Rule 2. The folder holds a session with all 3 wires; the router exits 0 and writes none. The
     old session is removed before the run, so the route fails: nothing is merged and no board is
@@ -188,6 +225,21 @@ def test_an_absent_router_skips_the_route_and_names_it(tmp_path):
     assert code == 2, text
     assert f"route skipped: engine missing: freerouting: no jar at {tmp_path / 'none.jar'}" in text
     assert calls(tmp_path) == []
+
+
+@needs_libs
+def test_an_absent_router_writes_no_board_over_a_routed_one(tmp_path):
+    """Rule 3. A first route writes A, B and C: 3 segments. The same command with `--router
+    freerouting2` on Java 21 skips the route (exit 2) and writes nothing: the board still holds the
+    3 segments of the first route."""
+    env = standin(tmp_path, java_version="21.0.13", ses=session(["A", "B", "C"]))
+    assert route(tmp_path, env)[0] == 0
+    pcb = tmp_path / "out" / "rows.kicad_pcb"
+    before = pcb.read_bytes()
+    code, text = route(tmp_path, env, "--router", "freerouting2")
+    assert code == 2, text
+    assert pcb.read_bytes() == before
+    assert len(kicadgen.board_copper(pcb)["segments"]) == 3
 
 
 @needs_libs
@@ -339,15 +391,41 @@ def test_a_router_that_fails_is_1_line_and_writes_nothing(tmp_path):
 
 
 @needs_libs
-def test_the_routers_own_count_of_open_connections_is_the_verdict(tmp_path):
-    """Rule 15. The router writes A only and logs "(2 unrouted)": 1 segment, 2 unrouted, exit 1,
-    and the last line says red with the 2."""
-    log = "Auto-routing was completed in 0.10 seconds (2 unrouted)"
-    env = standin(tmp_path, ses=session(["A"]), log=log)
-    code, text = route(tmp_path, env)
+@pytest.mark.parametrize("headless", [True, False], ids=["headless", "window"])
+def test_the_routers_own_count_of_open_connections_is_the_verdict(tmp_path, headless):
+    """Rule 15. The router writes A only and logs its score with "(2 unrouted and 0 violations)", in
+    either of FreeRouting 2.5.0's 2 lines (score_line): 3 connections less the 1 made is 2, which the
+    log says. 1 segment, 2 unrouted, exit 1, and the last line says red with the 2."""
+    env = standin(tmp_path, java_version="25.0.5", ses=session(["A"]), log=score_line(2, 0, headless))
+    code, text = route(tmp_path, env, "--router", "freerouting2")
     assert code == 1, text
     assert routed_line(text).startswith("routed: 1 segments, 0 vias, 2 unrouted")
     assert "red: 2 unrouted" in text.splitlines()[-1]
+
+
+@needs_libs
+def test_the_last_stage_line_is_the_routers_count(tmp_path):
+    """Rule 15. FreeRouting 2.5.0 logs a score line per stage it runs; the board it writes is the last
+    stage's. A first line says 3 unrouted, the last 0: the count is 0 and the run exits 0."""
+    log = f"{score_line(3, 0)}\n{score_line(0, 0)}"
+    env = standin(tmp_path, java_version="25.0.5", ses=session(["A", "B", "C"]), log=log)
+    code, text = route(tmp_path, env, "--router", "freerouting2")
+    assert code == 0, text
+    assert routed_line(text).startswith("routed: 3 segments, 0 vias, 0 unrouted")
+
+
+@needs_libs
+def test_the_routers_count_of_violations_is_printed_as_not_judged(tmp_path):
+    """Rule 15. The log says "(0 unrouted and 1 violation)": the count of open connections is 0 and
+    the run exits 0; the router's 1 violation is printed in 1 line as not judged, since the DRC judges
+    clearances on the written board (rule 18)."""
+    env = standin(tmp_path, java_version="25.0.5", ses=session(["A", "B", "C"]), log=score_line(0, 1))
+    code, text = route(tmp_path, env, "--router", "freerouting2")
+    assert code == 0, text
+    assert (
+        "  router violations: 1, counted by FreeRouting 2.5.0; not judged here: the DRC judges clearances"
+        in text.splitlines()
+    )
 
 
 @needs_libs

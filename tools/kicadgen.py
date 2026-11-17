@@ -4649,7 +4649,6 @@ if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 import routers  # noqa: E402  (tools/routers.py: the routers behind route())
 
-UNROUTED_RE = routers.UNROUTED_RE
 # A fine-pitch part: 0.5 mm pitch or less (PROCESSES.md P4 step 11). Its nets are the route's second stage.
 FINE_PITCH = 0.5
 # 2 nets are a pair when their names differ only in an ending of a pair: `TX_P` and `TX_N`, `USB_D+`
@@ -4775,6 +4774,8 @@ def route(
         "segments": segments,
         "vias": vias,
         "unrouted": unrouted,
+        # The router's own count of clearance violations, not judged here: the DRC judges clearances.
+        "violations": engine.violations(text),
         **({"stages": stages} if stages else {}),
     }
 
