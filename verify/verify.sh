@@ -22,9 +22,9 @@ trap 'python3 tools/now.py record "$?" "$STEP" --head "$GATE_HEAD" --dirty "$GAT
   || echo "no gate record written" >&2' EXIT
 
 step "1/4 lint"
-shellcheck install.sh verify/verify.sh environment/setup.sh site/build.sh
-"$PY" -m ruff check tools tests
-"$PY" -m ruff format --check tools tests
+shellcheck install.sh verify/verify.sh environment/setup.sh site/build.sh ee-agent-kit/lead/gate-and-push.sh
+"$PY" -m ruff check tools tests ee-agent-kit/lead
+"$PY" -m ruff format --check tools tests ee-agent-kit/lead
 
 step "2/4 doctor"
 python3 tools/workcenter doctor
