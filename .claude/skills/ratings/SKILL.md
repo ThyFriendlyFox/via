@@ -1,6 +1,6 @@
 ---
 name: Ratings
-description: Holds a schematic to its parts' ratings - each pin's voltage limits, each capacitor's, resistor's, diode's and transistor's derating by a named standard, each regulator's output, load and support parts - from facts read off the datasheets with the page of every number.
+description: Holds a schematic to its parts' ratings - each pin's voltage limits, each capacitor's, resistor's, diode's and transistor's derating by a named standard, each regulator's output, load and support parts - from facts read off the datasheets, each entry with its document and each pin's numbers with their page.
 ---
 
 # Ratings
@@ -8,8 +8,12 @@ description: Holds a schematic to its parts' ratings - each pin's voltage limits
 An electrical rules check knows a pin's type. It does not know that the pin
 dies above 4.6 V, that a 6.3 V capacitor on a 5 V rail is past its derating,
 or that an inductor saturates below the current its regulator draws.
-`workcenter ratings` judges those before the board is routed, and every
-line it prints names the document and the page its limit comes from.
+`workcenter ratings` judges those before the board is routed. Every line
+that holds a stress to a limit names the document the limit comes from:
+a pack's limit with its table and page, a pin's limit and a needed
+part's with the page of the datasheet. The own rating of a resistor, a
+capacitor, an inductor, a diode or a transistor is named with its
+datasheet and no page: the facts of those kinds hold none.
 
 ## When
 
@@ -25,7 +29,7 @@ line it prints names the document and the page its limit comes from.
 |---|---|---|
 | The schematic | The parts, their Values and their nets. The command exports the netlist with `kicad-cli`. | The design |
 | `ratings.json`, beside the schematic | The rule pack, and what the board cannot say of itself: the voltage of each net a source off the board fixes, a load's current, the ambient temperature, a failure the owner accepts. | You, each entry with its source |
-| `library/facts/*.json`, in the project's folder or a folder above it | What each part's datasheet says: 1 entry for a part or a family of parts. | You, each number with its page |
+| `library/facts/*.json`, in the project's folder or a folder above it | What each part's datasheet says: 1 entry for a part or a family of parts. | You, each entry with its source and each pin's numbers with their page |
 | `parts.csv` | The manufacturer part number of each Value and Footprint, as `procure` and `sources` read it. A part with no number is named by its symbol. | The procurement skill |
 | `rules/ratings/<pack>.json`, in the workcenter | The limits of a derating standard, each with its table and page. | The workcenter. Never edit one to pass |
 
@@ -62,7 +66,9 @@ parts, each entry read from its datasheet.
    stands on, as the tables below say. Rules:
    - A number is the one the datasheet prints, in volts, amps, ohms,
      farads, henries, hertz or watts. `page` is the page it stands on; a
-     list when the numbers of 1 pin stand on 2 pages.
+     list when the numbers of 1 pin stand on 2 pages. A pin, a needed
+     part and `switching` hold a `page`. An entry of another kind holds
+     none: write the page of its numbers in its `note`.
    - The absolute maximum ratings go in `abs`. The recommended operating
      conditions go in `operating`. Never one in place of the other.
    - A number the datasheet does not state is left out. The command then
@@ -95,7 +101,9 @@ parts, each entry read from its datasheet.
    owner's reason, as `"by": "the owner's decision of 2026-11-17"`; the
    part and the rule to name stand under the failure in
    `build/ratings/report.md`. The line then prints as `accepted`. An entry
-   whose failure is gone fails the run until it is taken out.
+   whose failure is gone fails the run until it is taken out. Facts that
+   number the pins differently are no stress and cannot be accepted: the
+   page names no rule under that failure.
 8. The last line is the verdict: `RATINGS HELD`, `RATINGS HELD, N NOT
    JUDGED`, `NOTHING JUDGED` or `RATINGS NOT HELD`. Run with `--strict` in
    CI once nothing is left not judged: what is not judged then fails.
@@ -157,7 +165,10 @@ Each entry names its parts 1 way: `mpn`, `mpns` (a list), `match` (a part
 number with `*` and `?`), or `symbol` (the library symbol, and `footprint`
 to narrow it). The closest wins: the part number, before a pattern, before
 the symbol. Each entry has a `source`: `document`, `revision`, `url`,
-`sha256`, `read` (the date) and `second_reader` (`no`, or the date).
+`sha256`, `read` (the date) and `second_reader` (`no`, or the date). A
+date is written `2026-11-17`, a URL whole and a SHA256 as its 64 hex
+digits. Another word in their place is refused: any word but `no` would
+count as a second reading.
 
 | `kind` | Keys | Keys it may hold |
 |---|---|---|
@@ -182,7 +193,9 @@ package has several pins for it: `"source": ["1", "2", "3"]`. Every pin
 of the part stands in 1 end.
 
 Each pin of an `ic` is 1 entry of `pins`: `numbers`, `name`, `role`,
-`page`, and the keys of its role. Every pin of the symbol is named.
+`page`, and the keys of its role. Every pin of the symbol is named. A
+pin number stands in 1 entry and a name names 1 entry: pins that share a
+name share an entry, as `"numbers": ["2", "5"]`.
 
 | `role` | The pin | Keys | May hold |
 |---|---|---|---|
@@ -198,7 +211,8 @@ Each pin of an `ic` is 1 entry of `pins`: `numbers`, `name`, `role`,
 
 - `abs` is `[least, greatest]`. Each is a number, or
   `{"pin": "VCC", "plus": 0.5}` for a limit that follows another pin, or a
-  list of both when 2 limits apply. A `regulated` pin that stands in no
+  list of both when 2 limits apply. The 2 ends written the other way
+  round are refused. A `regulated` pin that stands in no
   table of limits, as a reference's output may, has no `abs`: a note of
   the report says that nothing holds the pin to a limit.
 - `operating` of a supply pin is its working range, 2 numbers:
@@ -206,8 +220,13 @@ Each pin of an `ic` is 1 entry of `pins`: `numbers`, `name`, `role`,
   conditions give its voltage, in the forms `abs` takes:
   `[0, {"pin": "VCC", "plus": 0}]` for "0 to VCC". A pin that holds its
   limits and stands outside this range fails on it.
+- `swing` names pins of this part by their `name`. Where it names 2, they
+  are 2 pins: 1 pin written 2 times is refused.
 - `volts` of a `regulated` pin is the output's span, `[3.234, 3.366]`. Of
   a `feedback` pin it is the reference's span, `[0.588, 0.612]`.
+- A rating is above 0, and so are `farads`, `henries` and the `amps` of a
+  `regulated` or `feedback` pin: a stress is divided by its rating, and
+  a ripple by its inductance. `ohms` may be 0, for a link.
 - `amps` of a `regulated` or `feedback` pin is what the regulator gives.
   `from` names the supply pin that current comes from, when the part has 2.
 - `needs` lists the parts the datasheet asks for:
@@ -220,8 +239,10 @@ Each pin of an `ic` is 1 entry of `pins`: `numbers`, `name`, `role`,
   `{"topology": "buck", "hertz": [1.5e6, 1.5e6], "page": 5}`, and
   `efficiency` when the datasheet states one.
 
-Recorded and held to nothing yet: `amps` of a fuse, a ferrite, a switch
-and an output pin; `watts` of a transistor; a connector's ratings.
+Recorded and held to nothing yet: `amps` and `volts` of a fuse, a ferrite
+and a switch; `amps` of an `output`, `io` and `open_drain` pin; `watts`
+of a transistor; a capacitor's `dielectric`. A connector's facts take no
+rating.
 
 ## How the command reads a circuit
 

@@ -1784,6 +1784,32 @@ def test_the_lines_put_failures_first_and_stop_at_the_limit(tmp_path):
     assert page.count("\n- ") == 25 and "## Not judged: 1" in page and "## Fail: 24" in page
 
 
+def test_the_page_says_how_to_accept_a_failure_only_where_an_entry_accepts_it(tmp_path):
+    """Under a stress past its limit the page names the part and the rule to write under `accepted`.
+    Facts that number a pin another way than the symbol are no stress: an entry for them accepts
+    nothing, and the page asks for none."""
+    net, mpns = circuit(U1=("MON", "MON-1", MONITOR), C1=("10u", "C-16V", {"1": "VBAT", "2": "GND"}))
+    nets = {"VBAT": (11.4, 12.6), "LOAD": (0.0, 12.6), **GND}
+    facts = library(tmp_path, monitor("1", "3"), ceramic("C-16V", 16))
+    page = ratings.markdown(ratings.judge(net, mpns, facts, project(nets), NASA))
+    assert (
+        "- C1 10u between VBAT and GND: 12.6 V on 16 V rated is 0.79, the limit is 0.60 "
+        f"[{NASA_SOURCE}, section C1, table 4, page 23 of 23]\n"
+        "  - to accept it, the owner names part `C1` and rule `capacitor.ceramic.voltage`\n"
+    ) in page
+    numbered = (
+        "- U1: its facts name pin 1 IOUT, and the symbol names pin 3 Iout: "
+        "the 2 number the pins differently [DS-1, rev A]\n"
+    )
+    assert numbered in page
+    assert numbered + "  - to accept it" not in page and "rule `facts`" not in page
+    # the entry the page asked for before: the failure stays, and nothing is accepted
+    owner = {("U1", "facts"): "x (the owner's decision of 2026-11-17)"}
+    report = ratings.judge(net, mpns, facts, project(nets, accepted=owner), NASA)
+    assert [f.status for f in report.findings if f.rule == "facts"] == ["fail"]
+    assert found(report, "accepted") == []
+
+
 def test_what_is_not_judged_is_in_the_verdict_and_fails_a_strict_run(tmp_path):
     """12.6 V on the 25 V capacitor is 0.50 and holds. The other capacitor has no facts."""
     net, mpns = circuit(

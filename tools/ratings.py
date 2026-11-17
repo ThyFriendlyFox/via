@@ -2196,6 +2196,11 @@ def verdict(report: Report, strict: bool = False) -> tuple[str, int]:
     return "RATINGS HELD", 0
 
 
+# The rules of 2 failures that are no stress past a limit: an entry of `accepted` that nothing fails
+# under, and facts that number a pin another way than the symbol. No entry of `accepted` takes either.
+NO_STRESS = ("accepted", "facts")
+
+
 def markdown(report: Report, strict: bool = False) -> str:
     """The whole report as a page: every finding, the holds too, and what the report says once."""
     out = ["# Ratings", "", lines(report, 0)[0], "", verdict(report, strict)[0], ""]
@@ -2205,7 +2210,7 @@ def markdown(report: Report, strict: bool = False) -> str:
             out += [f"## {status.capitalize()}: {len(found)}", ""]
             for f in found:
                 out.append(f"- {f.text}" + (f" [{f.source}]" if f.source else ""))
-                if status == "fail" and f.rule != "accepted":  # what ratings.json's `accepted` names
+                if status == "fail" and f.rule not in NO_STRESS:  # what ratings.json's `accepted` names
                     out.append(f"  - to accept it, the owner names part `{f.part}` and rule `{f.rule}`")
             out.append("")
     if report.notes:
