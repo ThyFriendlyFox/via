@@ -49,8 +49,10 @@ parts, each entry read from its datasheet.
    |---|---|
    | `no facts for <part number>` | Write the part's facts: step 4. |
    | `<pin> can put a voltage on <net> that nothing states` | A connector's pin. A source stands behind it: state the net in `nets`. A load stands behind it: state its current under `parts`, as `"J2.1": {"amps": 1.1, "source": "..."}`; 0 for a pin that takes none. |
-   | `feeds a load nothing states` | The line names the supply pin. Add `amps` to that pin's facts, from the datasheet's supply current. |
-   | `its divider is ...` or `stands on <net> too` | The command reads 1 resistor to the output and 1 to a net at 0 V. State the output's net in `nets`, with the sum as its source. |
+   | `feeds a load nothing states` | The line names what takes a current nothing states. A supply pin: add `amps` to its facts, from the datasheet's supply current. A part with no facts: write them, or state the pin's current under `parts`. A resistor with no number: state its current under `parts`. |
+   | `stands there and has no facts` | A part stands where a datasheet asks for a capacitor or an inductor. Write its facts: step 4. |
+   | `its divider is ...`, `stands on <net> too` or `nothing sets the output` | The command reads 1 resistor to the output and 1 to a net at 0 V. State the output's net in `nets`, with the sum as its source. |
+   | `accepts a failure of ..., and <part> is not judged now` | Give the part what its own `not judged` line asks for. The acceptance then meets its failure again. |
    | `no source holds <net>` | Nothing the command knows drives the net. State it in `nets`, or correct the facts of the part that drives it. |
    | `has no data on the value it keeps` | Add `kept` to the capacitor's facts from its maker's DC bias curve, or fit a part that has one. |
    | `its facts hold no voltage rating` or `has no tolerance in its facts` | Add `volts` or `tolerance` to the capacitor's facts from its datasheet. With no datasheet in `library/`, get it first. |
@@ -137,7 +139,8 @@ parts, each entry read from its datasheet.
 
 Each entry names its parts 1 way: `mpn`, `mpns` (a list), `match` (a part
 number with `*` and `?`), or `symbol` (the library symbol, and `footprint`
-to narrow it). The closest wins: the part number, before a pattern, before
+to narrow it). A symbol's entry speaks only of a part with no part
+number. The closest wins: the part number, before a pattern, before
 the symbol. Each entry has a `source`: `document`, `revision`, `url`,
 `sha256`, `read` (the date) and `second_reader` (`no`, or the date).
 
@@ -156,7 +159,8 @@ the symbol. Each entry has a `source`: `document`, `revision`, `url`,
 | `ic` | `family`: `digital`, `linear`, `regulator.linear` or `regulator.switching`; `pins` | `needs`, `switching` |
 
 A resistor's, a capacitor's or an inductor's value is read from the
-schematic's Value: `4k7`, `100n`, `2.2u XAL4020`. Without a number there,
+schematic's Value: `4k7`, `100n`, `100 nF`, `2.2u XAL4020`. Without a
+number there, or with a bare number before a second value (`0402 10k`),
 the entry holds `ohms`, `farads` or `henries`.
 
 An end of a diode or a transistor is 1 pin number, or a list when the
@@ -211,13 +215,23 @@ and an output pin; `watts` of a transistor; a connector's ratings.
   its sources on or off: a rating is held to it, and 0 V is always inside.
   The second is what its sources hold it to while on: a supply pin's
   working range is held to that.
-- A pin is judged against what the other parts put on its net, never
-  against itself. A limit that follows a rail is judged with the rail at
-  the end where the limit is tightest. A least limit that follows a pin is
-  judged where the pin's own sources hold it while on: with every source
-  off, no limit between 2 pins is broken. A signal pin inside its limits
-  is then held to the range its datasheet recommends, when its facts
-  state it.
+- A part marked DNP in the schematic is not on the board: it stands in no
+  line, and a note of the report names it.
+- A pin is judged against what every other pin puts on its net, never
+  against its own drive. Another pin of its part is another source: a
+  regulator's sense pin stands the output its own divider sets. A limit
+  that follows a rail is judged with the rail at the end where the limit
+  is tightest. A least limit that follows a pin is judged where the pin's
+  own sources hold it while on: with every source off, no limit between 2
+  pins is broken. Of 2 limits on 1 end, each is judged on its own. A
+  signal pin inside its limits is then held to the range its datasheet
+  recommends, when its facts state it.
+- A datasheet's limits are against the part's ground pin. Where that pin's
+  net is not at the board's 0 V, each limit is taken from that pin: a part
+  on a negative rail, a part that floats on a cell.
+- A net the project states has its source off the board. A resistor to a
+  higher rail lifts it when that source is away: a pull-up to 5 V puts 5 V
+  on a signal stated at 3.3 V. What its source holds it at stays as stated.
 - While its sources are on, a net that 1 resistor alone feeds stands at
   the net behind the resistor, less the drop of what its pins take: a
   supply pin behind its filter resistor is held to its working range.
@@ -235,15 +249,28 @@ and an output pin; `watts` of a transistor; a connector's ratings.
 - A transistor's channel and a switch may conduct: their 2 nets can meet.
   A diode lifts its cathode. A fuse, a ferrite and an inductor are a wire,
   except an inductor behind a `switched` pin: it carries the average,
-  which is the regulator's output.
+  which is the regulator's output. A diode that 2 sources hold forward
+  fails: nothing limits its current.
 - An output a divider sets is the reference times (1 + top / bottom), at
-  the ends of both tolerances. The report's notes hold the sum.
-- A rail's load is the `amps` of each supply pin on it, the connector
-  loads the project states and the current of its resistors. A linear
-  regulator passes its load to its input; a switching one passes its
-  load's power, over its efficiency (0.9 when its facts state none).
+  the 4 corners of the reference and the tolerances. The top resistor ends
+  on the output and the bottom one on a net at 0 V, or on one a link joins
+  to it. Any other divider is not judged. The report's notes hold the sum.
+- A rail is the nets a current reaches without passing a resistor. A diode
+  is passed from its anode to its cathode only. The rail's load is the
+  `amps` of each supply pin on it, each current `ratings.json` states for
+  a pin there, and each resistor's current as the resistor itself is
+  judged. A part with no facts, or a resistor with no number, makes the
+  load unknown: the line then fails only when what is known is over the
+  limit, as `its loads take at least`. A linear regulator passes its load
+  to its input; a switching one passes its load's power, over its
+  efficiency (0.9 when its facts state none). A regulator on a net the
+  project states shares its loads with that source: a note, and no line.
 - A buck's inductor is held to the load plus half the ripple, at the
-  greatest input, the least frequency and the least inductance.
+  greatest input, the least frequency and the least inductance. 2
+  inductors side by side carry half the load each.
+- A support part stands where the datasheet asks when it joins the 2
+  nodes: a fuse, a ferrite, a link or a 0 ohm resistor before it is a
+  wire. A part with no facts there is not judged, and is not absent.
 - The capacitors between 2 nets are shared: each need takes its own, in
   the order of the parts, and the one that finds too little left fails.
 
@@ -251,12 +278,23 @@ and an output pin; `watts` of a transistor; a connector's ratings.
 
 Transients, ripple current, a part's temperature, the current in a pin or
 a track, a regulator's dropout, the order rails come up in, and anything
-of the board: spacing, placement, a capacitor's distance to its pin. A
-part's own pins are not judged against each other: an output wired to an
-input of the same part is held to nothing. 2 nets that 1 source moves
-together are subtracted at their extremes unless `parts` states the
-voltage. A run that holds says the steady voltages and the stated currents
-are inside the ratings the facts hold, and no more.
+of the board: spacing, placement, a capacitor's distance to its pin. A run
+that holds says the steady voltages and the stated currents are inside the
+ratings the facts hold, and no more.
+
+4 readings are coarser than the circuit, and can fail a part that is
+sound. Check such a line by hand before the design changes:
+
+- 2 nets that 1 source moves together are subtracted at their extremes.
+  `parts` states the voltage of a part of 2 pins between them.
+- A resistor in a divider, or in a row with another resistor, is judged
+  with the greatest voltage between its 2 nets, which is more than it
+  stands. `parts` states its current.
+- A part that conducts 1 way or in 1 state is read as able to join its 2
+  nets at any time: the transistor of a level shifter, a zener that clamps
+  its node, an LED behind its resistor.
+- 2 needs on 1 pair of nets take their capacitors in the order of the
+  parts' references, each in its own unit.
 
 ## Done when
 
