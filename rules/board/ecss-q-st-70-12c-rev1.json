@@ -113,6 +113,13 @@
       "rows": [[17, 30], [60, 50], [70, 50], [95, 70]],
       "where": "7.4.2a and b, table 7-3, page 45"
     },
-    "via_where": "13.6.3f, page 114: a via is rated as a track of the same cross-section; this document gives the copper of a plated hole's wall for HDI boards alone (table 11-2, page 100)"
+    "via_where": "13.6.3f, page 114: a via is rated as a track of the same cross-section",
+    "via_wall": {
+      "um": 25,
+      "boards": "hdi",
+      "where": "table 11-1 (2 of 2), copper thickness core via, page 100: 30 um polyimide HDI, 25 um high speed HDI; table 11-2, copper thickness plated through hole, page 100: 25 um; 11.6a to d, pages 96 and 97; the lesser, 25 um, for a board with a microvia (3.2.40 NOTE 1, page 22)"
+    },
+    "via_read": "read for a board with no microvia, and no wall found: 13.6.3f, page 114; 13.6.4.2c, page 115 (a via to a plane, a may); 7.4.2c NOTE 2, page 44, and table 7-1, page 38 (the plating of an outer layer, not of a hole's wall); 7.5.3i, pages 52 and 53 (the drill grown for the wall's plating, no thickness); table 11-1 and table 11-2, page 100, by 11.6, pages 96 and 97 (HDI boards alone); 3.2.40 NOTE 1, page 22 (a board with no microvia is not HDI)",
+    "microvia_where": "table 11-1 (1 of 2), microvias plating, page 99: copper filled, so its section is no wall"
   }
 }

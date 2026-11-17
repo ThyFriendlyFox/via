@@ -102,8 +102,13 @@ def _current(name: str, current: dict) -> None:
         raise Refusal(f"{at}: tolerance: share: {tol['share']:g} is not under 1")
     _rows(f"{at}: tolerance", tol["rows"], "[up to um, most um]")
     if "via_wall" in current:
-        wall = ratings._keys(f"{at}: via_wall", current["via_wall"], ("um", "where"))
+        wall = ratings._keys(f"{at}: via_wall", current["via_wall"], ("um", "where"), ("boards",))
         _num(f"{at}: via_wall: um", wall["um"], above=0)
+        if wall.get("boards", "hdi") != "hdi":
+            raise Refusal(f"{at}: via_wall: boards: `hdi` is the one kind a wall is limited to")
+    for key in ("via_read", "microvia_where"):
+        if key in current:
+            _where(f"{at}: {key}", current[key])
 
 
 def read_pack(path: Path) -> Pack:
@@ -157,7 +162,12 @@ def read_pack(path: Path) -> Pack:
                     _num(f"{sat}: {key}", step[key])
     current = data["current"]
     keys = ("rise_c", "rise_where", "model", "valid", "outer_share", "outer_where", "thin_board", "copper")
-    ratings._keys(f"{name}: current", current, (*keys, "tolerance", "via_where"), ("via_wall",))
+    ratings._keys(
+        f"{name}: current",
+        current,
+        (*keys, "tolerance", "via_where"),
+        ("via_wall", "via_read", "microvia_where"),
+    )
     _where(f"{name}: current: rise", current["rise_where"])
     _where(f"{name}: current: outer", current["outer_where"])
     _where(f"{name}: current: via", current["via_where"])
@@ -180,6 +190,26 @@ def read_pack(path: Path) -> Pack:
     _current(name, current)
     pack = ratings._text(f"{name}: pack", data["pack"])
     return Pack(pack, document, voltage, data["spacing"], current, plating)
+
+
+@dataclass
+class Wall:
+    """The copper of a via's wall, um, as the project states it from its fab's document."""
+
+    um: float
+    source: str
+
+
+def read_project_file(project_dir: Path) -> tuple[str, Wall | None]:
+    """board-rules.json: the pack it names, and the via wall it states, if any."""
+    path = project_dir / PROJECT_FILE
+    data = ratings._keys(PROJECT_FILE, ratings._json(path), ("pack",), ("via_wall",))
+    name = ratings._text(f"{PROJECT_FILE}: pack", data["pack"])
+    if "via_wall" not in data:
+        return name, None
+    raw = ratings._keys(f"{PROJECT_FILE}: via_wall", data["via_wall"], ("um", "source"))
+    um = _num(f"{PROJECT_FILE}: via_wall: um", raw["um"], above=0)
+    return name, Wall(um, ratings._text(f"{PROJECT_FILE}: via_wall: source", raw["source"]))
 
 
 def find_pack(name: str, project_dir: Path) -> tuple[Path, str]:
@@ -267,12 +297,14 @@ def track_need(pack: Pack, amps: float, outer: bool, cu_um: float, board_mm: flo
     return Need(width, where)
 
 
-def via_amps(pack: Pack, drill_mm: float, board_mm: float) -> float | None:
-    """The current 1 via carries: a track of its wall's section (13.6.3f), at the board's rise."""
-    wall = pack.current.get("via_wall")
-    if wall is None:
-        return None
-    t = wall["um"] / 1000
+def via_amps(pack: Pack, drill_mm: float, board_mm: float, wall_um: float | None = None) -> float | None:
+    """The current 1 via carries: a track of its wall's section (13.6.3f), at the board's rise. The wall
+    is `wall_um`, or the pack's."""
+    if wall_um is None:
+        if pack.current.get("via_wall") is None:
+            return None
+        wall_um = pack.current["via_wall"]["um"]
+    t = wall_um / 1000
     area = math.pi / 4 * (drill_mm**2 - max(drill_mm - 2 * t, 0) ** 2)
     rise, _ = _rise(pack, board_mm)
     return amps_for(area, rise, pack.current["model"])
@@ -327,6 +359,7 @@ class Via:
     size: float
     drill: float
     layers: list[str]
+    kind: str = "through"  # or `blind`, `micro`: KiCad's word before the via's place
 
 
 @dataclass
@@ -362,6 +395,12 @@ class Board:
 
     def outer(self, layer: str) -> bool:
         return layer in (self.copper[0], self.copper[-1])
+
+    @property
+    def hdi(self) -> bool:
+        """A board with a microvia: microvias are required for HDI (ECSS-Q-ST-70-12C Rev.1, 3.2.40
+        NOTE 1, page 22)."""
+        return any(v.kind == "micro" for v in self.vias)
 
 
 def _xy(node) -> tuple[float, float]:
@@ -439,6 +478,11 @@ def read_board(text: str) -> Board:
                 board.tracks.append(Track(net, layer, width, start, end))
         elif head == "via":
             names = [str(x) for x in kicadgen.atoms(kicadgen.child(node, "layers"))]
+            typed = kicadgen.child(node, "type")
+            words = [str(x) for x in kicadgen.atoms(node)] + (
+                [str(kicadgen.atoms(typed)[0])] if typed else []
+            )
+            kind = next((w for w in ("micro", "blind") if w in words), "through")
             board.vias.append(
                 Via(
                     net_of(node),
@@ -446,6 +490,7 @@ def read_board(text: str) -> Board:
                     float(kicadgen.atoms(kicadgen.child(node, "size"))[0]),
                     float(kicadgen.atoms(kicadgen.child(node, "drill"))[0]),
                     span(names),
+                    kind,
                 )
             )
         elif head == "footprint":
@@ -691,16 +736,45 @@ def _meets(x: tuple, y: tuple) -> bool:
     return _touch(x[1], x[2], y[1], y[2], x[3] + y[3])
 
 
-def via_findings(board: Board, amps: dict[str, float], pack: Pack) -> list[Finding]:
+def _wall(board: Board, pack: Pack, stated: Wall | None) -> tuple[float, str] | None:
+    """The via wall a board's vias are held to, um, and its source: the pack's where it holds for this
+    board, the project's stated one, and the lesser of the 2 where both are."""
+    walls: list[tuple[float, str]] = []
+    own = pack.current.get("via_wall")
+    if own is not None and (own.get("boards") != "hdi" or board.hdi):
+        walls.append((own["um"], f"{pack.document['number']}: {own['where']}"))
+    if stated is not None:
+        walls.append((stated.um, f"{PROJECT_FILE}: via_wall {stated.um:g} um: {stated.source}"))
+    return min(walls, key=lambda w: w[0]) if walls else None
+
+
+def via_findings(
+    board: Board, amps: dict[str, float], pack: Pack, stated: Wall | None = None
+) -> list[Finding]:
     """The vias of each net with a current, in groups that join the same pieces of copper: a group
-    carries the net's whole current, and holds as many vias as that asks."""
+    carries the net's whole current, and holds as many vias as that asks. A via's wall is the pack's
+    or the one `board-rules.json` states (`_wall`); a microvia is filled, and not judged."""
     out: list[Finding] = []
     via_where = pack.current["via_where"]
+    wall = _wall(board, pack, stated)
     for name in sorted({v.net for v in board.vias if amps.get(v.net, 0.0) > 0}):
-        vias = [v for v in board.vias if v.net == name]
-        if pack.current.get("via_wall") is None:
-            text = f"vias of {name}: the pack gives no copper thickness of a via's wall"
-            out.append(Finding("not judged", text, pack.cite(via_where)))
+        micro = [v for v in board.vias if v.net == name and v.kind == "micro"]
+        if micro:
+            filled = pack.current.get("microvia_where", "the pack rates no microvia")
+            text = (
+                f"microvias of {name}: {len(micro)} at {_p(micro[0].at)}, a filled via, "
+                "whose section the pack rates not"
+            )
+            out.append(Finding("not judged", text, pack.cite(filled)))
+        vias = [v for v in board.vias if v.net == name and v.kind != "micro"]
+        if not vias:
+            continue
+        if wall is None:
+            text = (
+                f"vias of {name}: the pack states no copper of a via's wall for this board; state the fab's "
+                f'in {PROJECT_FILE} as `via_wall`: {{"um": ..., "source": ...}}'
+            )
+            out.append(Finding("not judged", text, pack.cite(via_where, pack.current.get("via_read", ""))))
             continue
         why = _valid(board, pack)
         if why:
@@ -719,7 +793,7 @@ def via_findings(board: Board, amps: dict[str, float], pack: Pack) -> list[Findi
             if len({ly for ly, _ in joined}) >= 2:  # a via that joins copper on 1 layer carries nothing
                 groups.setdefault(frozenset(joined), []).append(via)
         for group in groups.values():
-            each = min(via_amps(pack, v.drill, board.thickness) for v in group)
+            each = min(via_amps(pack, v.drill, board.thickness, wall[0]) for v in group)
             asked = math.ceil(amps[name] / each - 1e-9)
             if len(group) < asked:
                 first = group[0]
@@ -728,13 +802,8 @@ def via_findings(board: Board, amps: dict[str, float], pack: Pack) -> list[Findi
                     f"vias {name} between {first.layers[0]} and {first.layers[-1]} at {_p(first.at)}: "
                     f"{len(group)}, limit {asked} for {amps[name]:g} A ({each:.3g} A each at {rise:.3g} C)"
                 )
-                where = [
-                    via_where,
-                    pack.current["via_wall"]["where"],
-                    *places,
-                    pack.current["model"]["where"],
-                ]
-                out.append(Finding("fail", text, pack.cite(*where)))
+                source = pack.cite(via_where, *places, pack.current["model"]["where"])
+                out.append(Finding("fail", text, f"{source}; {wall[1]}"))
     return out
 
 
@@ -861,8 +930,8 @@ def judge(project, out: Path, cli) -> tuple[str, list[Finding], list[str]]:
     """The board held to the pack its board-rules.json names: the pack's name for the report, the
     findings, and the notes. Refuses a file it does not take; raises RuntimeError when kicad-cli did
     not measure the gaps."""
-    data = ratings._keys(PROJECT_FILE, ratings._json(project.dir / PROJECT_FILE), ("pack",))
-    path, label = find_pack(ratings._text(f"{PROJECT_FILE}: pack", data["pack"]), project.dir)
+    name, stated = read_project_file(project.dir)
+    path, label = find_pack(name, project.dir)
     pack = read_pack(path)
     board = read_board(project.pcb.read_text(encoding="utf-8"))
     net = netlist(board)
@@ -892,7 +961,7 @@ def judge(project, out: Path, cli) -> tuple[str, list[Finding], list[str]]:
         if proc.returncode not in (0, 5) or not report.is_file():
             raise RuntimeError(f"kicad-cli exited {proc.returncode} on the pack's gaps: {proc.stderr[-500:]}")
         findings = clearance_findings(cli.load_json(report), rules) + findings
-    findings += width_findings(board, amps, pack) + via_findings(board, amps, pack)
+    findings += width_findings(board, amps, pack) + via_findings(board, amps, pack, stated)
     return label, findings, notes
 
 
