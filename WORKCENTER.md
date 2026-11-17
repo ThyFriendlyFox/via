@@ -84,7 +84,7 @@ file: it needs nothing else.
 | `simulate` | A circuit must meet a measurable spec before layout; a part switches; a deck must run on another machine. Corners, the frequency plan, bundles. |
 | `blog-post` | A human asks for a public write-up of recent work. |
 | `procurement` | A human asks what a board costs, for its parts list, or to order its parts. |
-| `ratings` | A schematic is to be held to its parts' ratings before layout: each part's facts from its datasheet with the page of every number, the voltages and currents the board cannot say, and `workcenter ratings` until every stress holds. |
+| `ratings` | A schematic is to be held to its parts' ratings before layout: each part's facts from its datasheet, with the page of each pin's and each needed part's numbers, the voltages and currents the board cannot say, and `workcenter ratings` until every stress holds. |
 | `kistack` | Placing parts, reviewing a schematic, a layout or the Gerbers, choosing a part's derating, a footprint or symbol, or a panel: it names the kistack skill for the step, and where this workcenter's rules win. |
 | `verification` | A human asks for requirements, a review, an inspection, or proof that a design meets its parts' ratings: the verification package of P28, checked by `workcenter verify`. |
 
@@ -395,7 +395,9 @@ divider's sum; a buck converter's inductor to its peak current; and the
 capacitors and the inductor a datasheet asks for to what stands in the
 schematic. An entry of facts that gives a pin's name to another number
 than the schematic's symbol does fails too. A line is `fail`, `accepted`,
-`not judged` or `hold`, and names the document and the page of its limit. The last line is `RATINGS HELD`,
+`not judged` or `hold`. A line that holds a stress to a limit names the
+limit's document; a pack's rule, a pin's limit and a needed part name
+the page too. The last line is `RATINGS HELD`,
 `RATINGS HELD, N NOT JUDGED`, `NOTHING JUDGED` or `RATINGS NOT HELD`. Exit
 1 on a failure, on a run that judged nothing, on a file the command does
 not take, and with `--strict` on what was not judged. `--facts REF` prints

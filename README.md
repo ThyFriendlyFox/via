@@ -263,7 +263,7 @@ has every flag.
 | `erc`, `drc`, `sim`, `export` | One gate, alone. |
 | `gates` | The 4 gates in order; the last line is the verdict. |
 | `verify` | Check a verification package against a fresh run; say whether the requirements are met. |
-| `ratings` | Hold a schematic to its parts' ratings: each pin's voltage limits, each part's derating by a named standard, each regulator's output, load and support parts. Every line names its document and page. |
+| `ratings` | Hold a schematic to its parts' ratings: each pin's voltage limits, each part's derating by a named standard, each regulator's output, load and support parts. Every limit names its document, and a pack's rule and a pin's limit their page. |
 | `autoroute` | Write FreeRouting's session file for a hand-drawn board's DSN. The import into KiCad is by hand. |
 | `inspect` | Read a routed board: `map`, `list`, `probe`, `net`, `islands`, `resistance`, `crossed`. |
 | `placement` | Run a kistack placement check on a board. |
