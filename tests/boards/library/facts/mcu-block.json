@@ -8,6 +8,10 @@
       "farads_shunt": 1.35e-12,
       "farads_load": 12e-12,
       "watts_drive": 1e-6,
+      "terminals": {
+        "pads": ["1", "4"],
+        "where": "page 2, outline drawing, Electrode Arrangement: the crystal between pins 1 and 4, pins 2 and 3 not connected to GND (floating)"
+      },
       "source": {
         "document": "Abracon ABS25 datasheet",
         "revision": "REVISED: 09-30-19",
@@ -23,9 +27,13 @@
       "match": "ABS07-32.768KHZ-6*",
       "hertz": 32768,
       "ohms_esr": 70000,
-      "farads_shunt": 2e-12,
+      "farads_shunt_max": 2e-12,
       "farads_load": 6e-12,
       "watts_drive": 0.5e-6,
+      "terminals": {
+        "pads": ["1", "2"],
+        "where": "page 4, Mechanical Dimensions, Connections: the crystal between its 2 terminals, which KiCad's 2-pin footprint numbers 1 and 2"
+      },
       "source": {
         "document": "Abracon ABS07 datasheet",
         "revision": "REVISED: 08-10-22",
@@ -44,6 +52,7 @@
       "farads_shunt": 1.35e-12,
       "farads_load": 12e-12,
       "watts_drive": 1e-6,
+      "terminals": {"pads": ["1", "4"], "where": "ABS25's, on ABS25's footprint"},
       "source": {
         "document": "no datasheet: a part made up for the fixtures of tests/boards",
         "read": "2026-11-17",
