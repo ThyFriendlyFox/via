@@ -2262,6 +2262,32 @@ def test_an_accepted_failure_that_fails_no_more_is_a_failure_of_its_own(tmp_path
     ]
 
 
+def test_an_accepted_failure_of_a_part_that_is_not_judged_now_is_not_called_gone(tmp_path):
+    """C1's facts are away: its failure is not gone, it is not judged. Telling the owner to take the
+    entry out would be wrong, since the failure comes back with the facts."""
+    net, mpns = circuit(C1=("10u", "C-16V", {"1": "V12", "2": "GND"}))
+    owner = {("C1", "capacitor.ceramic.voltage"): "x (the owner's decision of 2026-11-17)"}
+    nets = {"V12": (11.4, 12.6), **GND}
+    report = ratings.judge(
+        net, mpns, library(tmp_path, ceramic("OTHER", 16)), project(nets, accepted=owner), NASA
+    )
+    assert found(report, "fail") == []
+    assert (
+        "not judged C1: ratings.json accepts a failure of capacitor.ceramic.voltage, and C1 is not judged now"
+    ) in found(report, "not judged")
+
+
+def test_a_share_just_past_its_limit_does_not_print_as_the_limit(tmp_path):
+    """9.65 V on a 16 V part is 0.603 of it. Printed to 2 places it reads 0.60 on a limit of 0.60,
+    as if the line that fails held."""
+    net, mpns = circuit(C1=("10u", "C-16V", {"1": "V", "2": "GND"}))
+    report = ratings.judge(
+        net, mpns, library(tmp_path, ceramic("C-16V", 16)), project({"V": (9.0, 9.65), **GND}), NASA
+    )
+    (line,) = found(report, "fail")
+    assert line.startswith("fail C1 10u between V and GND: 9.65 V on 16 V rated is 0.603, the limit is 0.60")
+
+
 def test_the_lines_put_failures_first_and_stop_at_the_limit(tmp_path):
     parts = {f"C{i}": ("10u", "C-16V", {"1": "V12", "2": "GND"}) for i in range(1, 25)}
     parts["C30"] = ("10u", "C-NONE", {"1": "V12", "2": "GND"})

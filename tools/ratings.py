@@ -1484,8 +1484,12 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
             out.append(Finding("not judged", ref, stress, f"{label}: {value}"))
             return
         share, rule, source = limit_of(stress, ref)
-        text = f"{label}: {si(value, unit)} on {si(rated, unit)} rated is {value / rated:.2f}"
-        judged(ref, rule, value <= rated * share + EPS, f"{text}, the limit is {share:.2f}", source)
+        holds = value <= rated * share + EPS
+        of_it = f"{value / rated:.2f}"
+        if not holds and of_it == f"{share:.2f}":  # 0.603 on a limit of 0.60: show which side it is on
+            of_it = f"{value / rated:.3f}"
+        text = f"{label}: {si(value, unit)} on {si(rated, unit)} rated is {of_it}"
+        judged(ref, rule, holds, f"{text}, the limit is {share:.2f}", source)
 
     def carries(name: str, but: str) -> bool:
         """Whether a steady current can leave a net by another way than through the part `but`."""
@@ -1701,8 +1705,17 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
 
     for (ref, rule), _words in project.accepted.items():
         if not any(f.status == "accepted" and (f.part, f.rule) == (ref, rule) for f in out):
-            text = f"{ref}: ratings.json accepts a failure of {rule}, and nothing fails there"
-            out.append(Finding("fail", ref, "accepted", f"{text}: take the entry out"))
+            text = f"{ref}: ratings.json accepts a failure of {rule}"
+            part_ref = ref.partition(".")[0]
+            if any(f.status == "not judged" and f.part.partition(".")[0] == part_ref for f in out):
+                # the failure is not gone: it comes back with what is missing
+                out.append(
+                    Finding("not judged", ref, "accepted", f"{text}, and {part_ref} is not judged now")
+                )
+            else:
+                out.append(
+                    Finding("fail", ref, "accepted", f"{text}, and nothing fails there: take the entry out")
+                )
     judged_parts = {f.part.partition(".")[0] for f in out}
     idle: dict[str, list[str]] = {}  # kind -> the parts with facts that no stress was computed for
     for ref, found in of.items():
