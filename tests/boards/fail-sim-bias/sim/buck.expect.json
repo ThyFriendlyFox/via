@@ -1,0 +1,3 @@
+{
+  "vpp": {"max": 0.005, "source": "the fixture's requirement: 5 mV of ripple at the most on +3V3"}
+}

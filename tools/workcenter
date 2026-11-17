@@ -365,6 +365,61 @@ def freqplan():
     return module
 
 
+def partdata():
+    """tools/partdata.py: the makers' data of a deck's capacitors and inductors."""
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import partdata as module
+
+    return module
+
+
+def deck_part_data(
+    project: Project, folder: Path, sources: Path | None, decks: list[Path]
+) -> tuple[dict, dict, dict, list, list]:
+    """The curves of the schematic's capacitors and inductors from the library's facts, each from a
+    maker's file with its row in sources.csv (tools/partdata.py): (curves, refused, labels, failures,
+    warnings). `refused` maps a part to why its data cannot be used, `labels` a part to its facts entry
+    and part number. Nothing when the project's library holds no facts or no schematic names the parts,
+    or when no deck holds a capacitor or an inductor named like a board reference."""
+    rt, pd = ratings(), partdata()
+    library = rt.find_facts(project.dir)
+    named = [
+        name
+        for d in decks
+        for name in simcorners().deck_names(d.read_text(encoding="utf-8", errors="replace").split("\n"))
+        if pd.REF_RE.match(name)
+    ]
+    if library is None or not project.sch or not named:
+        return {}, {}, {}, [], []
+    unmatched = f"{library} holds part data, and no deck part is matched to it"
+    folder.mkdir(parents=True, exist_ok=True)
+    try:
+        net, stderr = rt.export_netlist(project, folder, sys.modules[__name__])
+        if net is None:
+            return {}, {}, {}, [], [f"{unmatched}: kicad-cli wrote no netlist: {stderr.strip()}"]
+        facts = rt.read_facts(library)
+        listed = project.dir / "parts.csv"
+        mpns = rt.part_numbers(
+            net, rt.parts_rows([listed], sys.modules[__name__]) if listed.is_file() else []
+        )
+        entries = {
+            ref: (mpns.get(ref, ""), rt.facts_of(facts, p, mpns.get(ref, ""))) for ref, p in net.parts.items()
+        }
+        rows = [pd.Row(r.mpn, r.sha256, r.source) for r in read_sources(sources)] if sources else []
+    except FileNotFoundError as exc:
+        return {}, {}, {}, [], [f"{unmatched}: engine missing: {exc.filename}"]
+    except (ValueError, OSError) as exc:
+        return {}, {}, {}, [f"part data: {exc}"], []
+    curves, refused = pd.choose(entries, rows)
+    labels = {ref: f"{entries[ref][1].where}, {entries[ref][0]}" for ref in [*curves, *refused]}
+    warnings = [line for c in curves.values() if (line := pd.short_of_rating(c))]
+    return curves, refused, labels, [], warnings
+
+
+def names_and(names: list[str]) -> str:
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+
+
 def read_expect(path: Path, lower_case: bool = True) -> tuple[dict[str, dict], list[str]]:
     """A deck's expect file: ({measure: bound}, problems). A bound is an object with `min`, `max` or
     both as numbers; it may carry `source`, `warn`, `req` and `"at": "nominal"`. Anything else is a
@@ -509,6 +564,7 @@ def run_corners(
     home: Path,
     both_ways: set[str] = frozenset(),
     sweep: bool = False,
+    rewrite=None,
 ) -> tuple[dict, list[str], list[str]]:
     """One deck at its corners (tools/simcorners.py, sim/corners.json): (record, failures, warnings).
 
@@ -572,7 +628,9 @@ def run_corners(
     def one(corner) -> tuple:
         where = folder / corner.id
         where.mkdir(parents=True)
-        (where / deck.name).write_text(sc.corner_text(text, varied, corner), encoding="utf-8")
+        cornered = sc.corner_text(text, varied, corner)
+        # the makers' data goes on the corner's values: a part's tolerance times its curve's share
+        (where / deck.name).write_text(rewrite(cornered) if rewrite else cornered, encoding="utf-8")
         if init.is_file():
             shutil.copyfile(init, where / ".spiceinit")
         link_siblings(deck, where)
@@ -756,21 +814,40 @@ def gate_sim(
     warned: list[str] = []
     expects: dict[str, dict[str, dict]] = {}
     corner_runs = 0
+    # The makers' data of the schematic's capacitors and inductors: each deck runs with it in place of
+    # the written value, as written and at every corner (tools/partdata.py).
+    pd = partdata()
+    curves, refused, labels, data_failures, data_warnings = deck_part_data(
+        project, sim_out / "parts", sources, decks
+    )
+    failures += data_failures
+    warned += data_warnings
     for deck in decks:
         log = sim_out / f"{deck.stem}.log"
+        deck_text = deck.read_text(encoding="utf-8", errors="replace")
+        _, applied, ideal = pd.apply(deck_text, curves)
+        held_back = {ref: why for ref, why in refused.items() if ref in sc.deck_names(deck_text.split("\n"))}
+        failures += [
+            f"{deck.stem}: {ref} runs as an ideal part while the library holds its maker's data "
+            f"({labels[ref]}): {why}"
+            for ref, why in sorted({**ideal, **held_back}.items())
+        ]
         models, model_problems, model_warnings, prepared = model_rows(
-            deck, sources, sim_out / "run" / deck.stem, always=keep
+            deck, sources, sim_out / "run" / deck.stem, always=keep or bool(applied)
         )
         failures += model_problems
         warned += model_warnings
+        as_written = ""
         if prepared:
             link_siblings(deck, prepared.parent)
+            if applied:
+                as_written = prepared.read_text(encoding="utf-8", errors="replace")
+                prepared.write_text(pd.apply(as_written, curves)[0], encoding="utf-8")
         written = ngspice_run(prepared or deck, log, sim_out)
         measures = written["measures"]
         warned += [f"{deck.stem}: ngspice: {ln}" for ln in written["unsound"]]
         # A value ngspice reads as another number than it looks (`4k7` is 4k) fails the deck: every
         # result that rests on it is of another circuit.
-        deck_text = deck.read_text(encoding="utf-8", errors="replace")
         failures += [f"{deck.stem}: {p}" for p in sc.misread_values(deck_text)]
         # An altermod line with several parameters keeps only its first (ngspice 42): a corner that
         # switches a part to its maximum model runs with the rest as they were (M172).
@@ -812,6 +889,48 @@ def gate_sim(
             "models": models,
             "ran": str(prepared or deck),
         }
+        if applied:
+            details[deck.stem]["parts"] = [
+                {"ref": ref, "facts": labels[ref], "row": curves[ref].row} for ref in applied
+            ]
+            details[deck.stem]["curves"] = [vars(curves[ref]) for ref in applied]
+        missed = [n for n, c in checks.items() if not c["ok"] and not expect[n].get("warn")]
+        if applied and missed and ran_clean:
+            # Name the parts whose data the bound misses on: the deck with every part ideal, and with
+            # each part alone on its data.
+            def variant(label: str, text: str, source: Path = deck, at: Path = prepared) -> dict:
+                where = sim_out / "parts" / source.stem / label
+                if where.exists():
+                    shutil.rmtree(where)
+                where.mkdir(parents=True)
+                (where / at.name).write_text(text, encoding="utf-8")
+                if (at.parent / ".spiceinit").is_file():
+                    shutil.copyfile(at.parent / ".spiceinit", where / ".spiceinit")
+                link_siblings(source, where)
+                return ngspice_run(where / at.name, where / "ngspice.log", sim_out)["measures"]
+
+            plain = variant("ideal", as_written)
+            details[deck.stem]["ideal"] = plain
+            alone = {applied[0]: measures}
+            if len(applied) > 1:
+                alone = {ref: variant(ref, pd.apply(as_written, {ref: curves[ref]})[0]) for ref in applied}
+            for name in missed:
+                line = bound_line(deck.stem, name, measures.get(name), expect[name])
+                said = f": with the makers' data of {names_and(applied)}"
+                if sc.outside(plain.get(name), expect[name]) == 0:
+                    alone_out = [
+                        ref for ref, m in alone.items() if sc.outside(m.get(name), expect[name]) != 0
+                    ]
+                    said += f"; with them ideal it is {plain[name]:.4g}; "
+                    said += (
+                        f"{names_and(alone_out)} alone on its data misses it"
+                        if alone_out
+                        else ("no part alone on its data misses it")
+                    )
+                else:
+                    said += f"; with them ideal it misses it too ({plain.get(name)})"
+                if line in failures:
+                    failures[failures.index(line)] = line + said
         if keep and prepared:
             # ngspice reads .spiceinit from its working directory, so the rerun starts in the run folder.
             details[deck.stem]["rerun"] = (
@@ -831,6 +950,7 @@ def gate_sim(
                 sim_out,
                 {ref.split(".", 1)[1] for ref in wanted if ref.split(".", 1)[0] == deck.stem},
                 sweep=deck.stem in answering,
+                rewrite=(lambda t: pd.apply(t, curves)[0]) if applied else None,
             )
             failures += corner_failures
             warned += corner_warnings
@@ -1005,6 +1125,9 @@ def write_bundle(
             return f"models/{placed[-1] or target.name}"
 
         text = replace_includes(prepared.read_text(encoding="utf-8", errors="replace"), relative)
+    if record.get("curves"):  # the makers' data the gate ran the deck with goes with it
+        pd = partdata()
+        text = pd.apply(text, {c["ref"]: pd.Curve(**c) for c in record["curves"]})[0]
     (folder / deck.name).write_text(text, encoding="utf-8")
     wrapper = [
         f"* {deck.stem}: sim/{deck.name} of {project.name} as the EE Workcenter's SIM gate runs it.",
