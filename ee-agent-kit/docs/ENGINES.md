@@ -68,7 +68,7 @@ vias and wires. A hole's clearance per layer therefore reaches it as grown
 copper on that layer (M79).
 For a hand-drawn `.kicad_pcb` both ends still happen in KiCad. Reading an
 arbitrary board file into the DSN writer is
-ROADMAP item 3, "Headless autoroute for hand-drawn boards".
+ROADMAP item 15, "Headless autoroute for hand-drawn boards".
 
 ## kicadgen
 
@@ -145,7 +145,7 @@ command skips (exit 2) and says so.
 `kicad-python`, the official IPC API client, is installed in the venv
 but no gate uses it yet. It needs a running KiCad, which under Xvfb is
 possible in the cloud environment (`xvfb` is installed). First use:
-session import (ROADMAP item 3, "Headless autoroute for hand-drawn boards").
+session import (ROADMAP item 15, "Headless autoroute for hand-drawn boards").
 
 ## The chip engines
 

@@ -24,35 +24,125 @@ command that says it (`workcenter next`), never in the reader's judgement.
 
 ## Feature Queue — ordered; top unblocked item ships next
 
-### 1. A circuit walked stage by stage
+Items 1 to 12 are the order the owner confirmed on 2026-11-17: an engine for each job
+an engineer does, every limit from a document a person can open, and 1
+command for each engine. Items 1 to 4 are the schematic, 5 is routing, 6
+and 7 the board's rules, 8 fast signals, 9 the field solver, 10 power and
+heat, 11 safety and emissions, 12 the files a fab takes and a built board.
+
+### 1. A schematic held to its parts' ratings
+- **Promise:** A command reads a project's schematic, the facts of each part and a rule pack. It fails on each fault a reviewing engineer names at a schematic review: a pin above its rated voltage, a capacitor or a resistor past its derating, a rail loaded past its source, and a support part a datasheet asks for that is absent or out of range. Each failure prints the rule, its source document with the clause or the page, and the part. What the command cannot judge it lists as not judged.
+- **Evidence:** 5 fixture boards with 1 planted fault each fail, each on its own rule: a 5 V output on a 3.3 V pin, a rail loaded past its regulator, an IC with no capacitor on its supply pin, a buck converter whose inductor saturates below its peak current, and a capacitor that keeps under half its value at its working voltage. The fixture without a fault passes. The command's run on each of the 6 example projects is in `STATUS.md`.
+- **Use case:** Review a schematic before layout (a new use case).
+- **Scope guard:** The command judges and derives no fact. A rating comes from a facts file that names its datasheet page. A limit comes from a rule pack that names its document. No limit is written in the tool's code.
+- **Status:** in progress (week of 2026-11-16)
+
+### 2. The reference library: makers' notes and free standards
+- **Promise:** An index lists each application note and each free standard a rule names: the maker or the issuer, the number, the title, the revision, the URL, and the SHA256 of the copy the rule was written from. A command fetches a document once under the workcenter's own name into a folder outside the repository, or takes a file a person downloaded, and says whether it is the copy the index names. A rule that names a document the index lacks fails `make verify`.
+- **Evidence:** A test serves 3 documents from this machine: 1 the index names, 1 that changed since, 1 the server refuses. The command keeps the first, names the second as changed and the third as refused, and fetches none of them 2 times.
+- **Use case:** Review a schematic before layout (a new use case).
+- **Scope guard:** The repository holds the index and the rules, never a maker's document or a standard's text: their terms forbid a copy. A site that refuses the workcenter's name is not asked under another.
+- **Status:** ready
+
+### 3. Circuit blocks written from the makers' notes
+- **Promise:** A design file adds a buck converter, a linear regulator, a USB-C port, a single-cell charger with its protection, a microcontroller with its crystal and decoupling, or an I2C bus as 1 call with its numbers: the input range, the output voltage, the load current. The block computes each part value by the equations of the note it names, writes its deck with its bounds, and hands its facts to item 1's command.
+- **Evidence:** Each block's fixture generates, routes and passes its gates and item 1's command. A second fixture doubles the block's load current: the block picks another inductor or fails with the equation that no listed part meets.
+- **Use case:** Design a board from a spec (`docs/USE-CASES.md`).
+- **Scope guard:** A block holds what its note states and no more. A part the note does not cover is the designer's own schematic, judged by item 1's command.
+- **Status:** ready
+
+### 4. Part behaviour from the makers' data in the decks
+- **Promise:** A capacitor in a deck takes its capacitance at its working voltage and temperature, and an inductor its inductance at its current, from data its maker publishes and the project's library holds. The SIM gate names each deck part that runs as an ideal part while the library holds its data.
+- **Evidence:** A fixture regulator meets its ripple bound with ideal capacitors and misses it with the makers' data. The gate fails it and names the capacitor.
+- **Use case:** Simulate before layout (`docs/USE-CASES.md`).
+- **Scope guard:** Data comes from the maker's file with its row in `sources.csv`. No curve is fitted by eye, and no part gets another part's data.
+- **Status:** ready
+
+### 5. A routing benchmark and a second router
+- **Promise:** A command routes the 6 example boards with each installed router and records for each run the time, the share of connections routed, the DRC's count, the commands a model gives and the size of the output it reads. FreeRouting 2 and KiCadRoutingTools run behind the same `workcenter design --route`. A route then goes in a fixed order: power as pours, the fan-out of each fine-pitch part, pairs and matched nets, then the rest, and a changed design routes only its changed connections.
+- **Evidence:** The benchmark's table for the 6 boards in `STATUS.md`, with the router each board takes from now on and why. Each board routes with 1 command and no track drawn by hand afterwards.
+- **Use case:** Route a board (`docs/USE-CASES.md`).
+- **Scope guard:** No routing algorithm of our own. A router that is slower or leaves more unrouted on the benchmark does not become the default.
+- **Status:** ready
+
+### 6. Board rules from free standards
+- **Promise:** A design names a rule pack, and the DRC gate holds the board to it: conductor spacing to each net's voltage, and conductor width and via count to each net's current. The first pack is ECSS-Q-ST-70-12C Rev.1 (table 13-3, clause 13.6 and annex D). Each failure names the clause. Fab packs for JLCPCB, PCBWay and OSH Park join Sierra Circuits' in `rules/`.
+- **Evidence:** A fixture board with 1 gap too small for its net's voltage and 1 track too narrow for its net's current fails on both, each with its clause. The annex's own worked example gives 1 A in a test.
+- **Use case:** Validate a board (`docs/USE-CASES.md`).
+- **Scope guard:** A pack holds numbers with their clause and page, never the standard's text. A board is held to the pack it names, and the report says which.
+- **Status:** ready
+
+### 7. Part temperature at every corner
+- **Promise:** Each part that dissipates power has its thermal resistance in its facts, with the datasheet page. The SIM gate computes its junction temperature at every corner from the power the deck measures, and fails a part past its derated limit.
+- **Evidence:** A fixture regulator passes at 25 °C ambient and fails at the hot corner of its `corners.json`, with the part, the corner and both temperatures in the line.
+- **Use case:** Simulate before layout (`docs/USE-CASES.md`).
+- **Scope guard:** The method is the one JESD51 defines for the figure the datasheet gives. A part with no thermal figure is listed as not judged.
+- **Status:** ready
+
+### 8. High-speed rules from the design's interfaces
+- **Promise:** A design names each interface in 1 line: these nets are USB 3, these are a DDR byte lane. The workcenter takes the impedance, the pair gap and the length limits from the interface's free specification, computes the track width for the board's layer stack, writes KiCad's rules for length, skew and pair gap, and fails a fast track that crosses a gap in its reference plane.
+- **Evidence:** 3 fixture boards fail, each on its own rule: a track of the wrong width, a pair with too much skew, a track over a split plane.
+- **Use case:** Validate a board (`docs/USE-CASES.md`).
+- **Scope guard:** The width comes from a cross-section solver with a test against published closed forms, not from a formula typed from memory.
+- **Status:** ready
+
+### 9. openEMS as an engine
+- **Promise:** `install.sh` installs openEMS pinned, and `doctor` reports it. A command simulates each net a design names as critical and each antenna, from the board file with no hand-written mesh, and holds impedance, loss, reflection and coupling to limits in the project, as the SIM gate holds a deck's measures.
+- **Evidence:** Antmicro's open signal-integrity test board, which has published network-analyser measurements, simulates within a margin the item states before the run. The USB 3 lane of the Wyvern example runs through the command.
+- **Use case:** Simulate before layout (`docs/USE-CASES.md`).
+- **Scope guard:** openEMS runs as a separate program: its GPL code enters no file of this repository. The MIT field solver the owner asked a spec for on 2026-11-17 replaces it behind the same command when it matches these results.
+- **Status:** ready
+
+### 10. Voltage drop and a heat map of the board
+- **Promise:** A command computes the voltage drop and the current density of each power net on the board's real copper, and the temperature of the board from each part's dissipation spread through its copper and vias. It holds each to a limit in the project and draws both as pictures in the report.
+- **Evidence:** Each solver matches a case worked by hand in a textbook, in a test. A fixture board with a neck in its supply track fails on current density at the neck.
+- **Use case:** Validate a board (`docs/USE-CASES.md`).
+- **Scope guard:** The result is a steady state on the board. Air flow and an enclosure are stated as assumptions in the report, and a built board's reading replaces them (item 12).
+- **Status:** ready
+
+### 11. Safety spacing, ESD and emissions rules, and a product's standards
+- **Promise:** The DRC gate holds creepage and clearance to each net's working voltage. Rule packs hold ESD protection at each connector and the layout rules for emissions that the makers' notes state. A project names its product kind, and the workcenter lists each requirement of that kind's free documents as held by a gate, held by a named test, or not held.
+- **Evidence:** Each pack has a fixture board that breaks every rule the pack claims. Last Hit's list for a vaping device with a lithium cell names each requirement and what holds it.
+- **Use case:** Verify a board for inspection (`docs/USE-CASES.md`).
+- **Scope guard:** A list from free documents is not a certificate. The report says which document each rule comes from and which paid standard a test laboratory uses.
+- **Status:** ready
+
+### 12. The files a fab takes, and a board that is built
+- **Promise:** EXPORT adds a placement file, an assembly drawing, IPC-2581 and a panel. 1 example board is ordered, assembled and measured, and each measurement stands beside the value its deck or its solver predicted.
+- **Evidence:** A fab and an assembler take the files unchanged. The measured table is in the board's README, with each reading inside its predicted span or the difference explained.
+- **Use case:** Export for a fab (`docs/USE-CASES.md`).
+- **Scope guard:** Ordering is the owner's act. The workcenter writes the files and the plan of measurements.
+- **Status:** blocked on the owner's order of a board
+
+### 13. A circuit walked stage by stage
 - **Promise:** A command writes 1 page for a power or signal path from the project's decks and their corner records. Each stage is a chain: given, equation, computed value, the deck's measure with its span over the corners, what follows, and what the stage hands on. The range a stage is given is the range the stage before it hands on, and the command fails a page where the 2 differ. A node table gives each node's value under each condition, and every stage states its margin.
 - **Evidence:** The page the reviewing engineer wrote by hand for Last Hit v0.16's power path (9 stages and a summary, on the project's branch `community/power-path-breadboard-notes`), written again by the command from the project's files with every number matching a fresh run. The thin margin that page found, a hardware trip at 6.17 A over a firmware limit of 6 A, is named by the command.
 - **Use case:** Review a board before the bench (a new use case).
 - **Scope guard:** The designer writes each equation in a writeup (P28). The command checks the chain and assembles the page. It derives nothing.
 - **Status:** ready
 
-### 2. A bench plan with the readings the decks predict
+### 14. A bench plan with the readings the decks predict
 - **Promise:** A command writes a bench plan for a board, stage by stage: the stand-in for each part a breadboard cannot hold, what the breadboard cannot prove and which deck or board test proves it instead, the stand-ins for the controller's lines, the instruments, and for each test point the reading the decks predict with its span over the corners.
 - **Evidence:** The reviewing engineer's breadboard notes for Last Hit v0.16 (the same branch) written again by the command: the stage-by-stage substitutes, the list of what a breadboard cannot prove, and each expected reading taken from a corner record.
 - **Use case:** Bring a board up on the bench (a new use case).
 - **Scope guard:** A stand-in comes from a table a person fills, each row with its source and what differs from the board's part. The command never invents an equivalence.
 - **Status:** ready
 
-### 3. Headless autoroute for hand-drawn boards
+### 15. Headless autoroute for hand-drawn boards
 - **Promise:** `workcenter autoroute --apply <project>` reads any `.kicad_pcb` (footprints, pads, outline, nets, existing tracks) into the DSN writer that `kicadgen` already has, runs FreeRouting, merges the session into the board file, and the new fixture `route-me` passes DRC with 0 unconnected items afterwards, with no KiCad GUI step.
 - **Evidence:** `tests/test_gates.py::test_autoroute_apply_routes_fixture` green in `make verify`; the fixture's DRC report attached to the PR.
 - **Use case:** Route a board (`docs/USE-CASES.md`).
 - **Scope guard:** No routing heuristics of our own. No GUI automation. The generated-design path already works (`workcenter design --route`); this item is the board-file parser in front of it. Zones and arcs may be out of scope for the first cut and must be reported, not silently dropped.
 - **Status:** ready
 
-### 4. Board gates as a reusable GitHub workflow for board repositories
+### 16. Board gates as a reusable GitHub workflow for board repositories
 - **Promise:** A board repository that adds 1 workflow calling `ThyFriendlyFox/via/.github/workflows/board-gates.yml@main` gets `workcenter gates` run on every PR, with the gates table in the job summary and a red check on a red gate.
 - **Evidence:** A run link from a board repository, plus `tests/boards/pass-rc-divider` run through the workflow in this repository's CI.
 - **Use case:** Review a board PR.
 - **Scope guard:** No comments posted to the PR; the check and the summary are the output.
 - **Status:** ready
 
-### 5. MCP server for hosts that are not Claude Code
+### 17. MCP server for hosts that are not Claude Code
 - **Promise:** `workcenter mcp` serves `doctor`, `gates`, `erc`, `drc`, `sim`, `export`, and `autoroute` as MCP tools over stdio, and the MCP inspector lists all 7 with their schemas.
 - **Evidence:** An inspector screenshot and a test that drives the server with a scripted JSON-RPC session.
 - **Use case:** Build another workcenter from this one.
@@ -212,3 +302,4 @@ table for "Shipped".
 - 2026-11-14 — Herald's section and the 6 boards shipped out of band on the redrawn site's branch, below the agents' strip: the owner liked the redrawn site and asked for the new set of boards and the way the current site shows Herald, below "Works with any agent". `main` merged into the branch for it; each of the 6 examples has a page.
 - 2026-11-12 — the harvest of the projects' findings (`tools/harvest.py`, P35) shipped out of band: the owner asked for a way to bring in the improvements that each project's branch had found, and to rate them. Its first run found 1 branch with tested work that `main` lacked, the open pull request with Last Hit v0.17's mistakes (M171 to M180), and stands on that branch's own commits. The first finding shipped with it: a design file names its mask colour, its legend colour and its finish (5 of the 6 examples had overridden a private method for them). The candidates under Later get their scores next.
 - 2026-11-13 — the candidates under Later are a rated table (P35 steps 7 to 9), out of band: the owner asked for a way to rate the improvements that the projects had found. 61 rows: 37 from what 6 readers found in the 6 example projects, the mistakes log and the projects' own scripts, and 24 from the 29 lines that stood here. Of those 29, the copper pours were built already and 4 were the same gap as another row. 3 more candidates shipped on the way: the library tables, `Design.pad_at`, the `board-loop` skill.
+- 2026-11-17 — 12 items enter at the top. The owner asked for what an engineer does that no gate does: checks and simulation of fast signals, named standards to hold a board to, thermal simulation, and a faster router that costs a model fewer tokens. The owner then asked for the makers' application notes as the reference, a schematic phase before routing, free documents in place of paid standards, and a spec for an MIT field solver, and confirmed the order: "The order is correct." The walked circuit, the bench plan, autoroute, the workflow and the MCP server are now items 13 to 17.
