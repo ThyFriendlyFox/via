@@ -24,19 +24,45 @@ This folder is a whole KiCad 10 project made with the EE Workcenter: `design.py`
 and the `.kicad_*` files beside it are what `workcenter design` writes from it.
 
 <!-- pictures:begin -->
-<img src="docs/board-spin.gif" width="616" alt="Rosetta v0.3 turning: the front with 2 thumbsticks in their LED rings, the OLED under the dip, the D-pad, A/B/X/Y and the knob; the back with the RP2040, the ESP32, the charger and the gauge">
+| Turning, the front up | Turning, the back up |
+|---|---|
+| <img src="docs/board-spin.gif" width="400" alt="Rosetta v0.3 turning with its front up: 2 thumbsticks in their LED rings, the OLED under the dip, the D-pad, A/B/X/Y and the knob"> | <img src="docs/board-spin-bottom.gif" width="400" alt="Rosetta v0.3 turning with its back up: the RP2040, the ESP32, the charger, the gauge, the turbo buttons by the grips"> |
 
 | Front | Back |
 |---|---|
-| <img src="docs/board-3d-top.png" width="400" alt="Rosetta v0.3 from the front"> | <img src="docs/board-3d-bottom.png" width="400" alt="Rosetta v0.3 from the back: the electronics, the turbo buttons by the grips, the battery connector"> |
+| <img src="docs/board-3d-top.png" width="400" alt="Rosetta v0.3 from the front in 3D"> | <img src="docs/board-3d-bottom.png" width="400" alt="Rosetta v0.3 from the back in 3D: the electronics, the turbo buttons by the grips, the battery connector"> |
+| <img src="docs/board-top.png" width="400" alt="Rosetta v0.3's front, flat: its copper, pads and silkscreen"> | <img src="docs/board-bottom.png" width="400" alt="Rosetta v0.3's back, flat: its copper, pads and silkscreen"> |
 
-| Every layer | The schematic, wired, in blocks |
+<img src="docs/board-3d-iso.png" width="616" alt="Rosetta v0.3 from above at an angle">
+
+### The 6 copper layers, from the front down
+
+| | |
 |---|---|
-| <img src="docs/layers.png" width="400" alt="Every layer of Rosetta v0.3 on its own"> | <img src="docs/schematic.png" width="400" alt="Rosetta v0.3's schematic"> |
+| <img src="docs/layers/rosetta-F-Cu.png" width="400" alt="Rosetta v0.3, F.Cu, the front: the sticks' rings, the buttons, the knob's ring, the USB ports' pins"><br>F.Cu | <img src="docs/layers/rosetta-In1-Cu.png" width="400" alt="Rosetta v0.3, In1.Cu, a whole GND plane: only the holes and the vias that pass through it"><br>In1.Cu |
+| <img src="docs/layers/rosetta-In2-Cu.png" width="400" alt="Rosetta v0.3, In2.Cu, signal: the RP2040's buses fanning out, the RP2040's 1.1 V core supply"><br>In2.Cu | <img src="docs/layers/rosetta-In3-Cu.png" width="400" alt="Rosetta v0.3, In3.Cu, signal: the long runs from grip to grip, and the right ring's link under its stick"><br>In3.Cu |
+| <img src="docs/layers/rosetta-In4-Cu.png" width="400" alt="Rosetta v0.3, In4.Cu, signal: runs from the horns down to the tab, across In3's"><br>In4.Cu | <img src="docs/layers/rosetta-B-Cu.png" width="400" alt="Rosetta v0.3, B.Cu, the back: the RP2040, the ESP32, the charger, the gauge, the buck-boost and their power tracks"><br>B.Cu |
 
-From `workcenter render . --strict --views schematic,3d,layers,spin --width 1600 --spin-zoom 1.1`, with
-KiCad's 3D bodies in `KICAD10_3DMODEL_DIR` (the workcenter's `site/media/README.md` says how to
-fetch them) and the 7 bodies in `models/`.
+### The other layers
+
+| | |
+|---|---|
+| <img src="docs/layers/rosetta-F-Silkscreen.png" width="400" alt="Rosetta v0.3, F.Silkscreen: the buttons' names, the modes round the knob"><br>F.Silkscreen | <img src="docs/layers/rosetta-B-Silkscreen.png" width="400" alt="Rosetta v0.3, B.Silkscreen: the back's part outlines"><br>B.Silkscreen |
+| <img src="docs/layers/rosetta-F-Mask.png" width="400" alt="Rosetta v0.3, F.Mask: the openings over the front's pads"><br>F.Mask | <img src="docs/layers/rosetta-B-Mask.png" width="400" alt="Rosetta v0.3, B.Mask: the openings over the back's pads"><br>B.Mask |
+| <img src="docs/layers/rosetta-F-Paste.png" width="400" alt="Rosetta v0.3, F.Paste: the stencil for the front's SMD pads"><br>F.Paste | <img src="docs/layers/rosetta-B-Paste.png" width="400" alt="Rosetta v0.3, B.Paste: the stencil for the back's SMD pads"><br>B.Paste |
+| <img src="docs/layers/rosetta-F-Courtyard.png" width="400" alt="Rosetta v0.3, F.Courtyard: the room each front part keeps"><br>F.Courtyard | <img src="docs/layers/rosetta-B-Courtyard.png" width="400" alt="Rosetta v0.3, B.Courtyard: the room each back part keeps"><br>B.Courtyard |
+| <img src="docs/layers/rosetta-F-Fab.png" width="400" alt="Rosetta v0.3, F.Fab: the front parts' bodies as their makers draw them"><br>F.Fab | <img src="docs/layers/rosetta-B-Fab.png" width="400" alt="Rosetta v0.3, B.Fab: the back parts' bodies"><br>B.Fab |
+| <img src="docs/layers/rosetta-Edge-Cuts.png" width="400" alt="Rosetta v0.3, Edge.Cuts: the outline, its horns, dip, grips and tab"><br>Edge.Cuts | |
+
+| Every layer on 1 sheet | The schematic, wired, in blocks |
+|---|---|
+| <img src="docs/layers.png" width="400" alt="Every layer of Rosetta v0.3 on 1 sheet"> | <img src="docs/schematic.png" width="400" alt="Rosetta v0.3's schematic"> |
+
+From `workcenter pictures v0.3` (from `examples/universal-controller/`), which draws what
+`pictures.json` names: the stills, every layer into `docs/layers/`, and the 2 turning GIFs.
+`workcenter pictures v0.3 --frames 4` checked each GIF's framing first. It needs KiCad's 3D
+bodies in `KICAD10_3DMODEL_DIR` (the workcenter's `site/media/README.md` says how to fetch them)
+and the 7 bodies in `models/`.
 <!-- pictures:end -->
 
 ## What is hard about it, and where each part lives

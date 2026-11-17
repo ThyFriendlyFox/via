@@ -986,3 +986,9 @@ Cost: 1 hour of 2 router slots, and a check that "the board is the same under th
 Root cause: I took the installed command for the checkout's, and read a process step from what I remembered instead of the file.
 Process: P4
 
+## M163 — 2026-11-17 — Rosetta v0.3's pictures were 1 render, not P23's set
+What happened: I drew Rosetta v0.3's pictures with `workcenter render` and kept 6 files: 3 stills, 1 turning GIF, the schematic and the sheet of every layer. The render had drawn each of the 17 layers on its own, and I left them in the scratchpad. P23 names `workcenter pictures`, which writes `pictures.json`, checks each GIF's framing, copies every layer into `docs/layers/`, draws the flat front and back, and turns a board with parts on both faces with its back up too. The owner saw the board's layers only on 1 sheet and asked for each one.
+Cost: 1 request from the owner, and 2 runs of `workcenter pictures` (6 minutes each).
+Root cause: I copied v0.2's picture step, which was itself 1 render, instead of reading P23 when the gates went GREEN. P14's close-out names P23, and I did not open either.
+Process: P23
+
