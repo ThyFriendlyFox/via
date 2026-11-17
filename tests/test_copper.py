@@ -302,7 +302,7 @@ def test_a_resistor_with_a_current_and_no_ohms_is_not_judged():
     bc.parts = {"R1": copper.ratings.Part("R1", "DNP", "", "", True, pins={"1": "+5V", "2": "GND"})}
     watts, how = copper.dissipation(bc, SimpleNamespace(watts={}, amps={"R1": 0.024}))
     assert watts == {}
-    assert how == []
+    assert how == {}
     notes = copper.dissipation_notes(bc, SimpleNamespace(watts={}, amps={"R1": 0.024}))
     assert [n.line for n in notes] == [
         "copper: not judged R1: ratings.json states 0.024 A through it and its Value DNP gives no ohms; "
@@ -393,7 +393,8 @@ def test_joule_heat_of_a_strip_is_its_i_squared_r():
 @needs_pcbnew
 def test_the_board_heat_is_the_parts_and_the_nets(tmp_path, monkeypatch):
     """pass-copper-strip: the heat that goes into the board's network is R1's 0.024^2 x 220 = 0.12672 W
-    and each judged net's own I^2 R, as the report gives it."""
+    and each judged net's own I^2 R, as the report gives it. The drop and the heat are solved in turn
+    (R10-B3), so the heat is solved more than once; its last solve is the report's."""
     given = []
     real = copper.board_heat
 
@@ -405,7 +406,8 @@ def test_the_board_heat_is_the_parts_and_the_nets(tmp_path, monkeypatch):
     report = copper.run(BOARDS / "pass-copper-strip" / "strip.kicad_pcb", tmp_path)
     nets = sum(r.watts for r in report.nets)
     assert nets > 0
-    assert given == [pytest.approx(0.12672 + nets, rel=1e-9)]
+    assert len(given) >= 2
+    assert given[-1] == pytest.approx(0.12672 + nets, rel=1e-9)
 
 
 def copy_strip(tmp_path: Path, change) -> Path:
@@ -483,11 +485,13 @@ def test_strip_holds_every_limit_with_strict(tmp_path):
 
         J1.1's pad edge (103.85) to R1's tap (117.04): 13.19 mm / 1.5 mm = 8.793 squares, 1.024 A: 4.523 mV
         the tap to J2.1's pad edge (146.15): 29.11 mm / 1.5 mm = 19.407 squares, 1 A: 9.748 mV
-        +5V: 14.27 mV, held to 5 % (the pads' own copper and the barrels add a little)
+        +5V: 14.27 mV at 25 C (the pads' own copper and the barrels add a little)
 
     1 A in 1.5 mm x 0.035 mm is 19.05 A/mm2. The heat: R1's 0.024^2 x 220 = 0.1267 W leaves by 2 faces of
     50 x 30 mm at 10 W/m2 K, 0.03 W/K: a mean rise of 4.224 K, so the hottest cell stands above
-    25 + 4.224 = 29.22 C and, by the fixture's limit, under 105 C."""
+    25 + 4.224 = 29.22 C and, by the fixture's limit, under 105 C. The copper is taken at its own
+    temperature (R10-B3), above the air's and at most the hottest cell's, so the drop is held between
+    14.27 mV less 5 % and 14.27 mV x rho(hottest) / rho(25 C) and 5 %."""
     proc = run_cli("copper", str(BOARDS / "pass-copper-strip"), "--out", str(tmp_path), "--strict")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "COPPER HELD: pass-copper-strip" in proc.stdout
@@ -496,14 +500,19 @@ def test_strip_holds_every_limit_with_strict(tmp_path):
     ]
     record = json.loads((tmp_path / "copper" / "report.json").read_text(encoding="utf-8"))
     supply = next(n for n in record["nets"] if n["name"] == "+5V")
-    assert supply["drop"] == pytest.approx(14.27e-3, rel=5e-2)
-    assert supply["drop_at"] == "J2.1"
     hot = record["hottest"][0]
     assert 29.22 < hot < 105
+    warmer = (1 + 0.00393 * (hot - 20)) / (1 + 0.00393 * 5)
+    assert 14.27e-3 * 0.95 <= supply["drop"] <= 14.27e-3 * warmer * 1.05
+    assert supply["drop_at"] == "J2.1"
     page = (tmp_path / "copper" / "report.md").read_text(encoding="utf-8")
     for picture in ("+5V-drop-F-Cu.png", "+5V-density-F-Cu.png", "heat-F-Cu.png", "heat-B-Cu.png"):
         assert f"]({picture})" in page and (tmp_path / "copper" / picture).is_file()
     assert "No enclosure and no air flow" in page
+    # R10-B8: the barrels' plating and where it comes from
+    assert "- Plating: 0.02 mm in each barrel, strip.kicad_pcb's own setting" in page
+    # R10-B4: how a part's heat enters
+    assert "- R1 0.1267 W (0.024 A from ratings.json through its Value 220R), split over its 2 pads" in page
 
 
 @needs_pcbnew
@@ -536,8 +545,9 @@ def test_an_entry_on_another_net_is_refused(tmp_path):
     assert proc.stdout.strip() == "copper: copper.json: nets: +5V: from: J1.2 is on GND, not on +5V"
 
 
-def test_ratings_json_states_a_parts_heat_and_refuses_it_on_a_pin(tmp_path):
-    """`watts` in ratings.json is the heat of a whole part; on 1 pin it is refused."""
+def test_ratings_json_states_a_parts_heat_on_the_part_or_on_a_pad(tmp_path):
+    """`watts` in ratings.json is the heat of a part, or on 1 pin the heat that leaves by that pad
+    (R10-B4); a part that states both is refused, for its heat would count twice."""
     import ratings
 
     net = ratings.Netlist(
@@ -557,5 +567,265 @@ def test_ratings_json_states_a_parts_heat_and_refuses_it_on_a_pin(tmp_path):
         json.dumps({"pack": "p", "nets": {}, "parts": {"U1.1": {"watts": 0.4, "source": "s"}}}),
         encoding="utf-8",
     )
-    with pytest.raises(ratings.Refusal, match=r"U1\.1: watts: the heat of a whole part is asked, `U1`"):
+    assert ratings.read_project(stated, net).watts == {"U1.1": 0.4}
+    stated.write_text(
+        json.dumps(
+            {
+                "pack": "p",
+                "nets": {},
+                "parts": {"U1": {"watts": 0.4, "source": "s"}, "U1.1": {"watts": 0.4, "source": "s"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ratings.Refusal) as caught:
         ratings.read_project(stated, net)
+    assert str(caught.value) == (
+        "ratings.json: parts: U1.1: watts: U1 states the whole part's heat; state it on the part or on its "
+        "pads, not both"
+    )
+
+
+# ---------------------------------------------------------------- the second review
+
+
+def test_copper_json_takes_several_entry_pins():
+    """R10-B1: a supply that comes in on 2 contacts names both in `from`; a pin of another net in the list
+    is refused, as a single one is."""
+    import tempfile
+
+    pads = {"J1.1": "+5V", "J1.2": "+5V", "J1.3": "GND", "J2.1": "+5V"}
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "copper.json"
+        body = {"air": {"ambient": 25, "source": "s"}, "nets": {"+5V": {"from": ["J1.1", "J1.2"]}}}
+        path.write_text(json.dumps(body), encoding="utf-8")
+        (ask,) = copper.read_copper(path, {"+5V", "GND"}, pads, MATERIALS).nets
+        assert ask.entries == ["J1.1", "J1.2"]
+        assert ask.entry == "J1.1, J1.2"
+        body["nets"]["+5V"]["from"] = ["J1.1", "J1.3"]
+        path.write_text(json.dumps(body), encoding="utf-8")
+        with pytest.raises(copper.ratings.Refusal) as caught:
+            copper.read_copper(path, {"+5V", "GND"}, pads, MATERIALS)
+        assert str(caught.value) == "copper.json: nets: +5V: from: J1.3 is on GND, not on +5V"
+
+
+def test_a_pin_of_the_entrys_part_that_is_not_in_from_is_not_judged():
+    """R10-B1: J1.2 is a second contact of J1 on +5V. Not named in `from`, it is modelled as drawing
+    nothing, and its copper as carrying nothing: the run says so, whatever ratings.json states, unless it
+    states a current drawn there."""
+    ask = copper.NetAsk("+5V", "J1.1", None, None, ["J1.1"])
+    pads = {"J1.1": "+5V", "J1.2": "+5V", "J1.3": "GND", "J2.1": "+5V"}
+    assert copper.entry_mates(pads, ask, {"J2.1": 2.0}) == ["J1.2"]
+    assert copper.entry_mates(pads, ask, {"J2.1": 2.0, "J1.2": 0.5}) == []
+    both = copper.NetAsk("+5V", "J1.1, J1.2", None, None, ["J1.1", "J1.2"])
+    assert copper.entry_mates(pads, both, {"J2.1": 2.0}) == []
+    assert copper.mates_finding(ask, ["J1.2"]).line == (
+        "copper: not judged +5V: J1.2 is a pin of J1 on +5V beside the entry J1.1 and was taken as 0 A; "
+        "if it feeds the net, name it in `from`, as a list"
+    )
+
+
+def test_two_entry_pins_share_the_current():
+    """R10-B1: a strip of 1.0 mm from x 105 to 144.95, 35 um, fed at both end columns (J1.1 at the left,
+    J1.2 at the right) and drawn at the middle column (J2.1, 2 A, x 124.95 to 125.0). Each half carries
+    1 A over 19.95 mm between the column centres (105.025 to 124.975 to 144.925): R = rho L / (w t) (the
+    strip test's law) = 1.7241e-8 x 19.95e-3 / (1.0e-3 x 35e-6) = 9.8274 mOhm, so 9.8274 mV, and
+    J = 1 / (1.0 x 0.035) = 28.571 A/mm2 in each half. Fed at the left alone, the 2 A would drop twice
+    as much and the right half carry none."""
+    shapes = [
+        copper.Shape("track", "+5V", ["F.Cu"], {"F.Cu": rect(105.0, 110.0, 144.95, 111.0)}, width=1.0),
+        copper.Shape("pad", "+5V", ["F.Cu"], {"F.Cu": rect(105.0, 110.0, 105.05, 111.0)}, ref="J1", pad="1"),
+        copper.Shape("pad", "+5V", ["F.Cu"], {"F.Cu": rect(144.9, 110.0, 144.95, 111.0)}, ref="J1", pad="2"),
+        copper.Shape("pad", "+5V", ["F.Cu"], {"F.Cu": rect(124.95, 110.0, 125.0, 111.0)}, ref="J2", pad="1"),
+    ]
+    bc = Stub({"F.Cu": 0.0}, shapes)
+    grid = copper.Grid(100.0, 100.0, 0.05, 1000, 300)
+    both = copper.net_drop(bc, grid, "+5V", ["J1.1", "J1.2"], {"J2.1": 2.0}, 1.7241e-8)
+    assert both.drops["J2.1"] == pytest.approx(9.8274e-3, rel=1e-4)
+    assert np.nanmax(both.density[0, 205:215, 300:400]) == pytest.approx(28.571, rel=1e-4)
+    assert np.nanmax(both.density[0, 205:215, 600:700]) == pytest.approx(28.571, rel=1e-4)
+
+
+def test_a_track_whose_cells_are_each_part_copper_reads_its_whole_density():
+    """R10-B7: a 0.3 mm track on a grid of 0.3 mm, from y 109.85 to 110.15: it covers 1/6 of the cells of
+    row 32 (109.6 to 109.9) and 5/6 of row 33 (109.9 to 110.2). Each row carries its share of 1 A in its
+    share of the section, so each reads J = 1 / (0.3 x 0.035) = 95.238 A/mm2. A density over the whole
+    cell's section reads row 33 at 5/6 of it, 79.37 A/mm2."""
+    shapes = [
+        copper.Shape("track", "+5V", ["F.Cu"], {"F.Cu": rect(105.0, 109.85, 135.0, 110.15)}, width=0.3),
+        copper.Shape("pad", "+5V", ["F.Cu"], {"F.Cu": rect(105.0, 109.85, 105.3, 110.15)}, ref="J1", pad="1"),
+        copper.Shape("pad", "+5V", ["F.Cu"], {"F.Cu": rect(134.7, 109.85, 135.0, 110.15)}, ref="J2", pad="1"),
+    ]
+    grid = copper.Grid(100.0, 100.0, 0.3, 140, 70)
+    drop = copper.net_drop(Stub({"F.Cu": 0.0}, shapes), grid, "+5V", "J1.1", {"J2.1": 1.0}, 1.7241e-8)
+    assert drop.density[0, 32, 30:90] == pytest.approx(95.238, rel=1e-4)
+    assert drop.density[0, 33, 30:90] == pytest.approx(95.238, rel=1e-4)
+
+
+def test_net_drop_takes_rho_cell_by_cell():
+    """R10-B3: the 0.152 mm track of 97.062 mV at 20 C, with every cell at 85 C: rho = 1.7241e-8 x (1 +
+    0.00393 x 65) = 2.16453e-8 (NBS Handbook 100, sections 2a and 2b, page 3), so 97.062 x 1.255450 =
+    121.856 mV; the density is the current's and stays 187.97 A/mm2."""
+    shapes = [
+        copper.Shape("track", "+5V", ["F.Cu"], {"F.Cu": rect(105.0, 109.924, 135.0, 110.076)}, width=0.152),
+        copper.Shape(
+            "pad", "+5V", ["F.Cu"], {"F.Cu": rect(105.0, 109.924, 105.05, 110.076)}, ref="J1", pad="1"
+        ),
+        copper.Shape(
+            "pad", "+5V", ["F.Cu"], {"F.Cu": rect(134.95, 109.924, 135.0, 110.076)}, ref="J2", pad="1"
+        ),
+    ]
+    grid = copper.Grid(100.0, 100.0, 0.05, 800, 400)
+    hot = np.full((1, 400, 800), 2.16453e-8)
+    drop = copper.net_drop(Stub({"F.Cu": 0.0}, shapes), grid, "+5V", "J1.1", {"J2.1": 1.0}, 1.7241e-8, hot)
+    assert drop.drops["J2.1"] == pytest.approx(121.856e-3, rel=1e-4)
+    assert np.nanmax(drop.density) == pytest.approx(187.97, rel=1e-4)
+
+
+@needs_pcbnew
+def test_the_drop_is_solved_at_the_coppers_own_temperature(tmp_path):
+    """R10-B3 and R10-B7: pass-copper-strip at an ambient of 85 C. At the air's temperature rho is
+    1.7241e-8 x (1 + 0.00393 x 65) = 2.16453e-8; the board's own heat puts its copper above the air, so
+    the drop is above the drop at the air and at most the drop with all of the copper at the hottest
+    cell's temperature. A run with rho at 20 C reads 1 / 1.25545 of the drop at the air."""
+
+    def change(asked, stated):
+        asked["air"]["ambient"] = 85
+
+    folder = copy_strip(tmp_path, change)
+    report = copper.run(folder / "strip.kicad_pcb", tmp_path / "out")
+    supply = next(r for r in report.nets if r.name == "+5V")
+    bc = copper.BoardCopper(folder / "strip.kicad_pcb")
+    project = copper.ratings.read_project(folder / "ratings.json", bc.netlist())
+    currents, _, _ = copper.stated_currents(bc, project)
+    draws = {p: a for p, a in currents["+5V"].items() if p != "J1.1"}
+    air = copper.net_drop(bc, bc.grid(0.05, 5), "+5V", "J1.1", draws, 2.16453e-8).drops[supply.drop_at]
+    hottest = report.hottest[0]
+    assert hottest > 85.5
+    assert air * (1 + 1e-3) < supply.drop <= air * (1 + 0.00393 * (hottest - 85) / 1.25545) * (1 + 1e-6)
+    assert any("each cell's own temperature" in a for a in report.assumptions), report.assumptions
+
+
+def outline_board(shapes: list) -> Stub:
+    bc = Stub(TWO, shapes)
+    bc.outline = rect(100.0, 100.0, 150.0, 130.0)
+    return bc
+
+
+def pad(ref: str, number: str, x0: float, y0: float, x1: float, y1: float) -> copper.Shape:
+    return copper.Shape("pad", "N", ["F.Cu"], {"F.Cu": rect(x0, y0, x1, y1)}, ref=ref, pad=number)
+
+
+def test_a_parts_heat_off_the_outline_is_not_counted_and_said():
+    """R10-B2: R9's 2 pads lie 6 mm below the outline (100..150 x 100..130): its 2 W reaches no cell of
+    the board, and the run says so in place of counting it. J5's pad hangs half over the right edge
+    (148 to 152 mm): its 0.5 W all enters by the half on the board, and the report says how much hangs
+    over."""
+    bc = outline_board(
+        [pad("R9", "1", 123.0, 135.5, 124.0, 136.5), pad("R9", "2", 126.0, 135.5, 127.0, 136.5)]
+    )
+    bc.shapes.append(pad("J5", "1", 148.0, 110.0, 152.0, 112.0))
+    fine = copper.Grid(100.0, 100.0, 0.05, 1100, 800)
+    heat, notes, how = copper.place_heat(bc, fine, 5, {"R9": 2.0, "J5": 0.5})
+    assert [n.line for n in notes] == [
+        "copper: not judged R9: its 2 W enters by pads that lie off the board's outline; it is not counted"
+    ]
+    assert heat.sum() == pytest.approx(0.5, rel=1e-12)
+    assert heat[0, :, 1000:].sum() == 0.0
+    assert "R9" not in how
+    assert how["J5"] == "over its 1 pad by its copper area; 50 % of that area lies off the board's outline"
+
+
+def test_a_parts_heat_goes_on_a_named_pad_or_split_by_area():
+    """R10-B4: an LDO's 1 W stated on `U1.2` (its tab) enters by that pad alone; stated on `U1` it is
+    split over its 3 pads by area: pad 1 and 3 of 1 mm2 each, pad 2 of 2 mm2, so 0.25, 0.5 and 0.25 W."""
+    shapes = [
+        pad("U1", "1", 110.0, 110.0, 111.0, 111.0),
+        pad("U1", "2", 112.0, 110.0, 113.0, 112.0),
+        pad("U1", "3", 114.0, 110.0, 115.0, 111.0),
+    ]
+    fine = copper.Grid(100.0, 100.0, 0.05, 1000, 600)
+    heat, notes, how = copper.place_heat(outline_board(shapes), fine, 5, {"U1.2": 1.0})
+    assert notes == []
+    assert heat[0, 200:240, 240:260].sum() == pytest.approx(1.0, rel=1e-12)
+    assert how["U1.2"] == "on that pad"
+    heat, notes, how = copper.place_heat(outline_board(shapes), fine, 5, {"U1": 1.0})
+    assert [heat[0, 200:240, x : x + 20].sum() for x in (200, 240, 280)] == pytest.approx([0.25, 0.5, 0.25])
+    assert how["U1"] == "split over its 3 pads by their copper area"
+
+
+def test_a_heat_grid_that_is_no_whole_number_of_drop_cells_is_refused(tmp_path):
+    """R10-B6: 0.12 mm is 2.4 cells of 0.05 mm; the run would take 0.1 mm and name 0.12."""
+    path = tmp_path / "copper.json"
+    body = {"air": {"ambient": 25, "source": "s"}, "grid": {"drop": 0.05, "heat": 0.12}, "nets": {}}
+    path.write_text(json.dumps(body), encoding="utf-8")
+    with pytest.raises(copper.ratings.Refusal) as caught:
+        copper.read_copper(path, set(), {}, MATERIALS)
+    assert str(caught.value) == (
+        "copper.json: grid: heat: 0.12 mm is not a whole number of the drop's 0.05 mm cells"
+    )
+    body["grid"]["heat"] = 0.15
+    path.write_text(json.dumps(body), encoding="utf-8")
+    assert copper.read_copper(path, set(), {}, MATERIALS).heat_pitch == 0.15
+
+
+def test_copper_json_may_state_the_plating(tmp_path):
+    """R10-B8: the barrel's plating is the board's setting unless copper.json states its own, with a
+    source."""
+    path = tmp_path / "copper.json"
+    body = {
+        "air": {"ambient": 25, "source": "s"},
+        "plating": {"mm": 0.025, "source": "the fab's spec"},
+        "nets": {},
+    }
+    path.write_text(json.dumps(body), encoding="utf-8")
+    plating = copper.read_copper(path, set(), {}, MATERIALS).plating
+    assert (plating.value, plating.source) == (0.025, "copper.json: plating: the fab's spec")
+
+
+def slanted_track(width: float, length: float) -> tuple[float, float]:
+    """A track at 45 degrees on 0.05 mm cells, 1 A held across its first end and drawn across its last;
+    the drop over R = rho L / (w t) and the density in its middle third over I / (w t)."""
+    pitch, rho, t = 0.05, 1.7241e-8, 0.035
+    n = 480
+    grid = copper.Grid(100.0, 100.0, pitch, n, n)
+    (ax, ay), d = (104.013, 104.017), length / math.sqrt(2)
+    ux, uy = 1 / math.sqrt(2), 1 / math.sqrt(2)
+    nx_, ny_ = -uy * width / 2, ux * width / 2
+    ring = [
+        (ax + nx_, ay + ny_),
+        (ax - nx_, ay - ny_),
+        (ax + d - nx_, ay + d - ny_),
+        (ax + d + nx_, ay + d + ny_),
+    ]
+    share = copper.cover(grid, [(ring, [])])[None]
+    mask = share >= copper.SHARE_LEAST
+    centre = 100.0 + (np.arange(n) + 0.5) * pitch
+    x, y = np.meshgrid(centre, centre)
+    along = (x - ax) * ux + (y - ay) * uy
+    held = (along < pitch / 2) & mask[0]
+    draw = (along > length - pitch / 2) & mask[0]
+    weight = np.where(draw, share[0], 0.0)
+    amps = np.zeros(mask.shape)
+    amps[0] -= weight / weight.sum()
+    sheet = np.array([t * 1e-3 / rho])
+    v = copper.solve_drop(mask, sheet, [], held[None], amps, share)
+    j = copper.density(v, mask, sheet, np.array([t]), pitch, share)
+    drop = -np.nansum(v[0] * weight) / weight.sum()
+    middle = (abs(along - length / 2) < length / 6) & mask[0] & (share[0] > 0.999)
+    return drop / (rho * length * 1e-3 / (width * 1e-3 * t * 1e-3)) - 1, np.nanmax(
+        j[0][middle]
+    ) * width * t - 1
+
+
+def test_a_track_at_45_degrees_reads_high_and_the_skill_says_by_how_much():
+    """R10-B5: the conductance between cells runs along the grid, so a track at 45 degrees reads more
+    resistance than R = rho L / (w t): a 0.127 mm track 15 mm long, 1 A, reads 22.7 % high on the drop
+    and 20.9 % on the density, on the safe side. The skill states it, and this test holds the number."""
+    drop, dens = slanted_track(0.127, 15.0)
+    assert 0.0 < dens < drop
+    skill = (ROOT / ".claude" / "skills" / "copper" / "SKILL.md").read_text(encoding="utf-8")
+    assert (
+        f"45 degrees, a 0.127 mm track reads {round(drop * 100)} % high on the drop and {round(dens * 100)} %"
+        in (" ".join(skill.split()))
+    )

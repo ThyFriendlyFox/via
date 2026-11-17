@@ -21,8 +21,8 @@ is the project's; each constant names its document (`rules/copper/README.md`).
 | File | Holds | Who writes it |
 |---|---|---|
 | `<name>.kicad_pcb` | The copper: pads, tracks, arcs, vias and filled pours. Fill pours first: `workcenter design` does. | The design |
-| `ratings.json` | Each current: `"J2.1": {"amps": 1}` on a pin, `"R1": {"amps": 0.024}` through a 2-pin part. Each part's heat: `"U1": {"watts": 0.4}`. A resistor with a current, on the part or on a pin, and a Value gives I^2 R itself. Each pin of a judged net states its current, 0 too. | The designer, with a source for each |
-| `copper.json` | The air (`ambient`, an optional `h`, and the words of the assumption), the greatest board temperature, and for each power net its entry pin (`from`) and its greatest drop (`volts`) and density (`amps_per_mm2`), each with a source. | The designer |
+| `ratings.json` | Each current: `"J2.1": {"amps": 1}` on a pin, `"R1": {"amps": 0.024}` through a 2-pin part. Each part's heat: `"U1": {"watts": 0.4}`, split over its pads by their copper area, or `"U1.2": {"watts": 0.4}` on the pad it leaves by (a regulator's tab); not both. A resistor with a current, on the part or on a pin, and a Value gives I^2 R itself. Each pin of a judged net states its current, 0 too. | The designer, with a source for each |
+| `copper.json` | The air (`ambient`, an optional `h`, and the words of the assumption), the greatest board temperature, and for each power net its entry pin (`from`, or a list of pins when the supply comes in on several contacts) and its greatest drop (`volts`) and density (`amps_per_mm2`), each with a source. An optional `plating` (`mm`, `source`) is the barrels' copper; without it, the board's own setting. | The designer |
 
 ```json
 {
@@ -39,7 +39,7 @@ is the project's; each constant names its document (`rules/copper/README.md`).
 ```
 
 `grid` may set the cells: `{"drop": 0.05, "heat": 0.25}` in mm. The heat's cell is a whole number of
-the drop's.
+the drop's; any other is refused.
 
 ## Steps
 
@@ -63,6 +63,11 @@ the drop's.
      same; a supply net of `ratings.json` is judged, or said not to be.
    - `copper: not judged <net>: ratings.json states no current at <pins>; taken as 0 A`: state each pin's
      current in `ratings.json`, `"amps": 0` for a pin that draws none.
+   - `copper: not judged <net>: J1.2 is a pin of J1 on <net> beside the entry J1.1 ...`: a second
+     contact of the supply. If the current comes in there too, name both in `from`,
+     `["J1.1", "J1.2"]`; if it draws a current, state it in `ratings.json`. Then step 1.
+   - `copper: not judged U1: its 1 W enters by pads that lie off the board's outline`: the part's pads
+     are not on the board, so its heat has nowhere to go; place the part on the board. Then step 1.
    - `copper: not judged R1: ... gives no ohms`: state the resistor's `watts`.
    - `copper: not judged ... copper.json states no ... limit`: add the limit, with its source.
    - `copper: not judged ... a part of N pins`: name the pin in `ratings.json` (`U1.5`, not `U1`).
@@ -79,10 +84,22 @@ the drop's.
 - A steady state: a current or a heat that lasts only a moment is judged as if it lasted.
 - The air is the stated assumption, with no enclosure and no air flow. A reading of the built board
   replaces it (ROADMAP item 12).
-- A part's heat enters by its pads; its body gives none to the air, so its pads read hotter than they
-  are.
-- The heat of every part `ratings.json` states nothing for is not counted. The report lists what is.
-- Each cell's sheet is weighted by the part of the cell that is copper, so a straight track of any width
-  reads R = rho L / (w t). The greatest density sits where copper turns a corner, and there it moves a
-  little with the grid. Halve `grid.drop` to see how much. A `grid.drop` wider than the narrowest track
-  of a judged net is refused.
+- A part's heat enters by its pads; its body gives none to the air. Stated on the part, the heat is
+  split over its pads by their copper area: a regulator that sheds its heat through its tab then reads
+  cooler at the tab than it runs. State such a part's heat on the tab's pad, `U1.2`.
+- The heat of every part `ratings.json` states nothing for is not counted. The report lists what is,
+  and how each enters.
+- A supply's current comes in only at the pins `from` names, each held at 0 V. Another source on the
+  net that `from` does not name is modelled as drawing nothing.
+- The copper's resistivity is taken at each cell's own temperature: the drop and the heat are solved
+  in turn until the drops settle. The report gives the passes and the hottest copper's resistivity.
+- Each cell's sheet is weighted by the part of the cell that is copper, so a straight track along x or
+  along y of any width reads R = rho L / (w t). The cells' sides run along the grid, so copper at an
+  angle reads more resistance than it has, on the safe side: at 45 degrees, a 0.127 mm track reads 23 %
+  high on the drop and 21 % on the density, a 0.4 mm track 6.5 % on the drop; at 30 degrees a 0.127 mm
+  track 19 %, and an arc of 8 mm radius 14 %. A fail on slanted copper may be the grid's: halve
+  `grid.drop`, or judge that copper by hand. The greatest density sits where copper turns a corner,
+  and there it moves a little with the grid. Halve `grid.drop` to see how much. A `grid.drop` wider
+  than the narrowest track of a judged net is refused.
+- A barrel's plating is the board's own setting unless `copper.json` states `plating`; the report
+  names the value and where it came from. The fab's specification is the better source.

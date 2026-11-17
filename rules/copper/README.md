@@ -3,6 +3,8 @@
 `materials.json` holds the 5 numbers `workcenter copper` takes from documents, each with the document,
 its revision, the clause or table and the page. No such number stands in `tools/copper.py`. A project
 states its own limits and its air in `copper.json`; it may state its own `h` there, with its source.
+The barrels' plating is not a constant of this file: it is the board's own setting, or `copper.json`'s
+`plating` with its source (the fab's specification), and the report names which.
 
 | Key | Value | Document | Where |
 |---|---|---|---|
