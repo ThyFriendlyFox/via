@@ -1,0 +1,14 @@
+{"type": "launched"}
+{"type": "started", "agentId": "a1", "label": "build:alpha", "phase": "Build"}
+{"type": "started", "agentId": "b1", "label": "build:beta", "phase": "Build"}
+{"type": "started", "agentId": "c1", "label": "build:gamma", "phase": "Build"}
+{"type": "result", "agentId": "a1", "result": {"branch": "wip/alpha", "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "summary": "alpha builds", "evidence": "tests/test_alpha.py holds it", "not_done": [], "tests_last_line": "3 passed in 1.00s"}}
+{"type": "result", "agentId": "b1", "result": {"branch": "wip/beta", "head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "summary": "beta builds", "evidence": "tests/test_beta.py", "not_done": ["the second half"], "tests_last_line": "4 passed in 1.00s"}}
+{"type": "result", "agentId": "c1", "result": {"branch": "wip/gamma", "head": "cccccccccccccccccccccccccccccccccccccccc", "summary": "gamma builds", "evidence": "tests/test_gamma.py", "not_done": [], "tests_last_line": "2 passed in 1.00s"}}
+{"type": "started", "agentId": "a2", "label": "attack:alpha", "phase": "Attack"}
+{"type": "started", "agentId": "b2", "label": "attack:beta", "phase": "Attack"}
+{"type": "result", "agentId": "a2", "result": {"verdict": "sound with findings: 2 edge cases", "findings": [{"id": "F1"}, {"id": "F2"}], "evidence_holds": "yes"}}
+{"type": "result", "agentId": "b2", "result": "{\"verdict\": \"not sound: a false pass\", \"findings\": [{\"id\": \"F1\"}], \"evidence_holds\": \"no\"}"}
+this line is no JSON and is passed over
+{"type": "started", "agentId": "a3", "label": "fix:alpha", "phase": "Fix"}
+{"type": "result", "agentId": "a3", "result": {"head": "dddddddddddddddddddddddddddddddddddddddd", "fixed": ["F1: a test failed first"], "not_fixed": ["F2: refuted"], "tests_last_line": "5 passed in 1.20s"}}
