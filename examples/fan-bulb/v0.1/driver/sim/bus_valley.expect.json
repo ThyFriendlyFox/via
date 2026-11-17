@@ -1,0 +1,22 @@
+{
+  "vbus_min": {
+    "min": 103.3,
+    "source": "the highest string, 77.5 V (light/sim/led_string.cir), over 0.75, the HV9961's highest duty (DS20005588B, Section 3.3): under it the LED current dips in each valley"
+  },
+  "vbus_max": {
+    "max": 320,
+    "source": "C2-C4 and the HV9961's VIN are rated 400 V and 450 V; 80 % of 400 V"
+  },
+  "inrush_a": {
+    "max": 25,
+    "source": "MB10S's IFSM, 35 A for a half cycle (onsemi MB10S rev. 3, p.2), less 30 %; F1's 10 ohm sets it"
+  },
+  "ic2_rms_ma": {
+    "max": 47,
+    "source": "C2's rated ripple, 47 mA rms at 120 Hz and 105 C (Nichicon ULD2G3R3MPD, CAT.8100N); its charging pulse's higher harmonics are held to the 120 Hz rating, which is the strictest"
+  },
+  "ic3_rms_ma": {
+    "max": 47,
+    "source": "C3's rated ripple, 47 mA rms at 120 Hz and 105 C (Nichicon ULD2G3R3MPD, CAT.8100N): L1 leaves it the 120 Hz part"
+  }
+}

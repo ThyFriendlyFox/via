@@ -1,0 +1,13 @@
+* Lark: the MB10S model (models/mb10s.lib) against onsemi's MB10S rev. 3, p.2: VF 1.0 V at 0.5 A
+* per diode, at 25 C. The DC through 1 diode of the bridge, AC1 to +.
+.include "models/mb10s.lib"
+I1 0 ac1 DC 0.5
+XBR ac1 ac2 p 0 MB10S
+VP p 0 DC 0
+RAC2 ac2 0 1Meg
+.control
+op
+let vf = v(ac1)
+print vf
+.endc
+.end

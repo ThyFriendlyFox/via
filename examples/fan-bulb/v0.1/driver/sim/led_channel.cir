@@ -1,0 +1,47 @@
+* Lark: one LED channel at full current, the warm string (U1, Q1, D1, L2, R1, C14).
+* VBUS sits at 165 V, the bus's mean at 120 V rms (sim/bus_valley.cir). U1 is the project's HV9961
+* model (models/hv9961.lib), Q1 Infineon's IPN60R1K5PFD7S (its L0 model, Infineon's level for whole
+* circuits; the L1 level's package inductances stall ngspice at each turn-off), D1 Diodes' US1J, 8 of the
+* project's LED9V (light/sim/models, copied). V(LD) is 1.48 V, the most the brain's DIM_W sets (sim/dim_filter.cir); R_CS 2.74
+* ohm gives 0.185 x 1.48 / 2.74 = 100 mA (DS20005588B, Eq. 3-3). After 4 ms of settling the deck
+* reads the string's mean current, its ripple at the LEDs, the switching period, Q1's drain peak
+* and the duty.
+.include "models/hv9961.lib"
+.include "models/led_2835_9v.lib"
+.include "../../../library/infineon/Simulation_model_CoolMOS_PFD7_MOSFET_600V_Spice.lib"
+.include "../../../library/diodes/US1J.spice.txt"
+.param vbus=165 vld=1.48 rcs=2.74 lch=2.2m co=2.2u
+VBUS vbus 0 DC {vbus}
+XU1 vbus cs 0 gate pwmd vdd ld rt HV9961
+C5 vdd 0 1u
+R2 rt 0 54.9k
+VPWMD pwmd 0 DC 3.3
+VLD ld 0 DC {vld}
+XQ1 sw gate cs IPN60R1K5PFD7S_L0
+R1 cs 0 {rcs}
+D1 sw vbus DI_US1J
+L2 k sw {lch} ic=0.1
+C14 vbus k {co}
+VSTR vbus s0 DC 0
+X1 s0 s1 LED9V
+X2 s1 s2 LED9V
+X3 s2 s3 LED9V
+X4 s3 s4 LED9V
+X5 s4 s5 LED9V
+X6 s5 s6 LED9V
+X7 s6 s7 LED9V
+X8 s7 k LED9V
+.options method=gear reltol=1e-3 vntol=1e-5 abstol=1e-9 chgtol=1e-12 itl4=100
+.control
+tran 20n 5m 0 20n uic
+meas tran i_led avg i(vstr) from=4m to=5m
+meas tran i_min min i(vstr) from=4m to=5m
+meas tran i_max max i(vstr) from=4m to=5m
+let i_ripple = i_max - i_min
+meas tran t10 trig v(xu1.q) val=0.5 td=4m rise=1 targ v(xu1.q) val=0.5 td=4m rise=11
+let f_sw_khz = 10 / t10 / 1000
+meas tran vds_max max v(sw) from=4m to=5m
+meas tran duty avg v(xu1.q) from=4m to=5m
+print i_led i_ripple f_sw_khz vds_max duty
+.endc
+.end

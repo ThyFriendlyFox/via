@@ -1,0 +1,14 @@
+{
+  "temperature": {
+    "values": [0, 85],
+    "source": "the brain in the dome: 0 C in an unheated porch fan, 85 C at its hottest in a closed globe, where the firmware holds the disc (README)"
+  },
+  "tolerance": {
+    "R": 0.01,
+    "C": 0.1,
+    "L": 0.2,
+    "parts": {"R8": 0.001, "r25": 0.01, "bntc": 0.01, "C12": 0.2, "C13": 0.2, "C17": 0.2, "CMOD": 0.2},
+    "source": "Resistors 1 % (R8 0.1 %), ceramics 10 %; the NTC's R25 and B +-1 % (Murata NCP15WF104F03RC); the rail's ceramics +-20 % with their bias; L4 +-20 %"
+  },
+  "monte_carlo": {"runs": 8, "seed": 3}
+}

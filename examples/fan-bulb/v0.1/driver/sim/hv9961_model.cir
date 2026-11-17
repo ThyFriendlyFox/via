@@ -1,0 +1,65 @@
+* Lark: the HV9961 model (models/hv9961.lib) against its datasheet's rows (DS20005588B, p.3-4).
+*   A: VIN 8 V, 500 pF on the gate, RT 226k: VDD, and the off-time with CS held over the
+*      threshold, so each on-time ends at blanking.
+*   B: RT 1 Meg, the same: the off-time's second row.
+*   C, D: a buck of ideal parts at VLD 1.5 V and 1.2 V: the mean switch current through R_CS
+*      while the gate is on, read as a voltage (VCST, and AV(LD) x 1.2 V).
+.include "models/hv9961.lib"
+* -- A and B
+VINA vina 0 DC 8
+XA vina csa 0 gatea pwmd vdda ldhi rta HV9961
+CGA gatea 0 500p
+CDA vdda 0 1u
+RTA rta 0 226k
+VCSA csa 0 DC 1
+XB vina csb 0 gateb pwmd vddb ldhi rtb HV9961
+CGB gateb 0 500p
+CDB vddb 0 1u
+RTB rtb 0 1Meg
+VCSB csb 0 DC 1
+VPWMD pwmd 0 DC 5
+VLDHI ldhi 0 DC 1.5
+VLD12 ld12 0 DC 1.2
+* -- C and D: VIN 100 V, a 45 V load, 2.2 mH, an ideal switch and diode, R_CS 2.74
+.model SWI SW(VT=3.5 VH=0.1 RON=0.05 ROFF=1e9)
+.model DI D(IS=1e-12 N=1 RS=0.01)
+VINC vinc 0 DC 100
+XC vinc csc 0 gatec pwmd vddc ldhi rtc HV9961
+CDC vddc 0 1u
+RTC rtc 0 54.9k
+VLC vinc kc0 DC 45
+RLC kc0 kc 1
+LC kc swc 2.2m
+SC swc csc gatec 0 SWI
+DC1 swc vinc DI
+RCSC csc 0 2.74
+XD vinc csd 0 gated pwmd vddd ld12 rtd HV9961
+CDD vddd 0 1u
+RTD rtd 0 54.9k
+VLD vinc kd0 DC 45
+RLD kd0 kd 1
+LD kd swd 2.2m
+SD swd csd gated 0 SWI
+DD1 swd vinc DI
+RCSD csd 0 2.74
+.options method=gear reltol=1e-3 vntol=1e-5 abstol=1e-9
+.control
+tran 10n 3m 0 10n
+meas tran vdd_v avg v(vdda) from=2m to=3m
+meas tran per_a trig v(xa.q) val=0.5 td=1m rise=1 targ v(xa.q) val=0.5 td=1m rise=2
+meas tran per_b trig v(xb.q) val=0.5 td=1m rise=1 targ v(xb.q) val=0.5 td=1m rise=2
+meas tran on_a avg v(xa.q) from=1m to=3m
+meas tran on_b avg v(xb.q) from=1m to=3m
+let toff_226k = per_a * (1 - on_a)
+let toff_1meg = per_b * (1 - on_b)
+let tblank_ns = per_a * on_a
+meas tran ilc avg i(lc) from=2.5m to=3m
+meas tran ild avg i(ld) from=2.5m to=3m
+let toff_226k_us = toff_226k * 1e6
+let toff_1meg_us = toff_1meg * 1e6
+let tblank_ns = tblank_ns * 1e9
+let vcst_mv = ilc * 2.74 * 1000
+let av_ld = ild * 2.74 / 1.2
+print vdd_v toff_226k_us toff_1meg_us tblank_ns vcst_mv av_ld
+.endc
+.end

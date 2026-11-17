@@ -1,0 +1,22 @@
+* Lark: the LED disc's temperature at the C6's ADC. RT1 on the disc, a 100k NTC (Murata
+* NCP15WF104F03RC: B25/50 4250 K, +-1 %; R25 +-1 %), from NTC to GND; R8 (10k, 0.1 %) up to +3V3; C16
+* (100 n) at the pin. The disc's temperature is VT, swept in the deck: the circuit's own
+* temperature moves nothing here. The firmware starts folding the LED current back at 85 C and
+* holds the disc under 105 C (README, Firmware).
+.param r25=100k bntc=4250
+* VT is the disc's temperature in C, swept; the NTC is a current V(ntc) / R(VT).
+VT tt 0 DC 25
+V3 p3v3 0 DC 3.3
+R8 p3v3 ntc 10k
+BRT1 ntc 0 I = V(ntc) / ({r25}*exp({bntc}*(1/(V(tt)+273.15) - 1/298.15)))
+C16 ntc 0 100n
+.control
+dc VT 0 120 1
+meas dc v_25 find v(ntc) at=25
+meas dc v_84 find v(ntc) at=84
+meas dc v_85 find v(ntc) at=85
+meas dc v_105 find v(ntc) at=105
+let sens_mv = (v_84 - v_85) * 1000
+print v_25 v_85 v_105 sens_mv
+.endc
+.end

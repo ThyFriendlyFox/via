@@ -1,0 +1,6 @@
+{
+  "v_198": {"max": 2.6, "source": "the top of the line's range, 140 V rms, reads inside the ADC's 0 to 2.9 V with 10 % to spare"},
+  "v_165": {"min": 1.8, "max": 2.3, "source": "the line's 120 V rms reads near the middle of the range: the firmware's low-line foldback starts at 1.45 V (VBUS 118 V)"},
+  "v_395": {"max": 5.0, "source": "at the varistor's clamp the pin is driven over 3.6 V through 2 Meg: at most 0.7 uA into the C6's clamp, far under its 1 mA (ESP32-C6 datasheet, absolute ratings)"},
+  "t_fall_us": {"max": 1000, "source": "the firmware sees the line go within 1 ms; C3 and C4 hold the 3.3 V rail for 30 ms or more after it (README, Power)"}
+}

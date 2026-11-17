@@ -1,0 +1,5 @@
+{
+  "temperature": {"values": [0, 85], "source": "the ear under the dome's tip: 0 C to 85 C"},
+  "tolerance": {"R": 0.01, "C": 0.2, "parts": {}, "source": "R2 1 %, C1 X5R +-20 % with its bias"},
+  "monte_carlo": {"runs": 8, "seed": 5}
+}

@@ -1,0 +1,23 @@
+* Lark: the microphones' supply. +3V3 arrives from the brain carrying the LinkSwitch's ripple:
+* taken as 60 mV peak to peak at 66 kHz (the driver's C12, C13 and L4 against U3's 0.45 A pulses),
+* a triangle on 3.3 V. R2 (47 ohm) and C1 (2.2 uF, 1.5 uF at bias) with C3 and C4 (100 n at each
+* microphone) take it down; the 2 SPH0641LU4H-1 draw 0.7 mA each at 2.4 MHz (datasheet rev. B,
+* IDD), here as 2 currents.
+V3 p3v3 0 DC 3.3
+VRIP p3v3 rip PULSE(-30m 30m 0 7.55u 7.55u 1n 15.15u)
+R2 rip mvdd 47
+C1 mvdd c1e 1.5u
+RC1 c1e 0 10m
+C3 mvdd 0 100n
+C4 mvdd 0 100n
+IMK1 mvdd 0 DC 0.7m
+IMK2 mvdd 0 DC 0.7m
+.control
+tran 0.1u 5m
+meas tran v_min min v(mvdd) from=4m to=5m
+meas tran v_max max v(mvdd) from=4m to=5m
+let ripple_mv = (v_max - v_min) * 1000
+meas tran v_dc avg v(mvdd) from=4m to=5m
+print v_dc ripple_mv
+.endc
+.end

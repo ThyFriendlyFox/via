@@ -1,0 +1,11 @@
+* LED9V: Bridgelux SMD 2835 1W 9V (BXEN-27G / BXEN-50G), 3 InGaN dies in series, fitted for Lark
+* to Bridgelux DS207 rev. G: forward voltage 8.8 / 9.2 / 9.6 V at 100 mA, 25 C (Table 1), and
+* 8.7 / 9.1 / 9.5 V at 85 C (Table 2). Bridgelux publishes no SPICE model. Each die: N 3.5, a
+* 1.5 ohm body, IS for 9.2 V at 100 mA and 25 C; EG 3.01 eV, near blue InGaN's gap, for -1.7 mV/C.
+* sim/led_model.cir holds it to the datasheet's rows.
+.subckt LED9V A K
+D1 A n1 DIE
+D2 n1 n2 DIE
+D3 n2 K DIE
+.model DIE D(IS=8.2e-16 N=3.5 RS=1.5 EG=3.01 XTI=3 TNOM=25)
+.ends LED9V

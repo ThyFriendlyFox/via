@@ -1,0 +1,5 @@
+{
+  "vf25": {"min": 8.8, "max": 9.6, "warn": "the model against its datasheet: 8.8 / 9.2 / 9.6 V at 100 mA and 25 C, Bridgelux DS207 rev. G, Table 1"},
+  "vf85": {"min": 8.7, "max": 9.5, "warn": "the model against its datasheet: 8.7 / 9.1 / 9.5 V at 100 mA and 85 C, Table 2"},
+  "tc_mv": {"min": -2.5, "max": -1.0, "warn": "the model against its datasheet: Table 2 less Table 1 is -1.67 mV/C typical; Table 3 prints -1.35 mV/C"}
+}

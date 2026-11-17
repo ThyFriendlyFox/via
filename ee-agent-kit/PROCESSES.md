@@ -183,7 +183,16 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
     row of stages) is a pour on a layer the design gives it, drawn by the
     design, and goes to the router as a plane net: 1 pin, its vias
     obstacles. A motherboard's 4 supply nets as tracks ran 20 minutes
-    without finishing a pass, twice (M150).
+    without finishing a pass, twice (M150). A plane layer in
+    `plane_layers` is not in the router's file at all: its net goes to
+    the router as tracks unless the design's `dsn()` says otherwise (M183).
+13. A net cut to 1 pin leaves its other pads out of every net class: the
+    router keeps only its default clearance from them, and a class-pair
+    rule (`class_class`) that keeps a switch node 0.8 mm from the logic
+    stops reaching the plane net's pads. Where such a rule names the plane
+    net's class, give the router the plane layer as a `power` layer with
+    the net's `plane` on it instead, every through-hole shape on that layer
+    too: its pads keep their class and it has nothing to route (M184).
 
 Done when: the DRC after the route lists 0 errors, or every remaining
 error is named in the next design change.
@@ -432,6 +441,12 @@ reservations, or part spacing in a design to help the router.
    than three pad pitches, list the pads on each side of it whose nets
    must cross it. If one of them cannot cross on the other layer, move a
    part instead of drawing the lane.
+6. A part turned so its pins face their partners: generate, read the
+   turned part's pads with `workcenter inspect list <board> --box` and its
+   partners' pads beside them, and route only when each pin faces where it
+   goes. A pin side worked out from the footprint's rotation in the head
+   was wrong for a SOT-223 and cost a route that left 30 links open
+   against 20 (M185).
 
 Done when: the commit says what was measured and the number went down.
 
@@ -912,7 +927,10 @@ written for the project, or a 3D body comes from a vendor.
    refusal, and `workcenter fetch <url> --to <library>/<maker>/<file> --mpn
    <MPN> --row` does the same for a file the library does not hold yet; a
    file no site will serve is left for the user to download, and its row's
-   note says so and from where.
+   note says so and from where. The part's value on the schematic names
+   the part those rows are for, copied from `sources.csv`, never typed from
+   memory: a 2835 LED named after another maker's family sat on a board
+   whose datasheet and model were Bridgelux's (M187).
 2. Keep each file as the vendor publishes it, its notice intact; a model
    that ngspice reads differently is translated into a copy in `build/`,
    never in the library. The row records what the file itself prints: the
@@ -956,6 +974,12 @@ written for the project, or a 3D body comes from a vendor.
     method=gear` with `reltol`, `vntol` and `chgtol` loosened, its answer
     checked against the other integration method. A deck is left out of
     the corners only with a reason no option fixes (M144).
+11. A deck's load or stimulus is written as a sum in its header from the
+    parts and the firmware constants it names (each string's watts, each
+    efficiency), and a firmware limit the sum depends on exists in the
+    firmware's code with a host test, before the deck's bounds are judged.
+    A bus deck said "both strings at full current" over a load that was 1
+    string's, and no firmware held the 2 strings to it (M186).
 
 Done when: `workcenter sources` passes for every board of the version, each
 model a deck uses has its datasheet rows as `warn` bounds, each loop deck

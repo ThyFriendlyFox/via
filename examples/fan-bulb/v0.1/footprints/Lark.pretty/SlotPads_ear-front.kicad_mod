@@ -1,0 +1,55 @@
+(footprint "SlotPads_ear-front"
+	(version 20241229)
+	(generator "make_footprints")
+	(layer "F.Cu")
+	(descr "Lark joint ear-front: 2 pads beside the slot of the brain's tongue; place at the disc's centre")
+	(tags "joint tongue slot bulb")
+	(property "Reference" "J**"
+		(at 0 -2.55 0)
+		(layer "F.SilkS")
+		(hide yes)
+		(uuid "ac6308e3-9a86-5682-bad7-11797a7c5881")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.1)
+			)
+		)
+	)
+	(property "Value" "SlotPads_ear-front"
+		(at 0 2.55 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "bcdfd147-796b-5e72-9d91-212b8ced4d08")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.1)
+			)
+		)
+	)
+	(attr smd exclude_from_pos_files exclude_from_bom)
+	(fp_rect
+		(start 0.8 -1.7)
+		(end 2.6 1.7)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "2c439f38-0f8f-5b0f-a301-0b7e37b7581b")
+	)
+	(pad "1" smd rect
+		(at 1.7 -1)
+		(size 1.5 1.1)
+		(layers "F.Cu" "F.Mask")
+		(uuid "9615c2c7-8ade-5339-9c18-7d9699e948e4")
+	)
+	(pad "2" smd rect
+		(at 1.7 1)
+		(size 1.5 1.1)
+		(layers "F.Cu" "F.Mask")
+		(uuid "a6e41901-751d-53d9-a3a9-fbdf6975defe")
+	)
+)

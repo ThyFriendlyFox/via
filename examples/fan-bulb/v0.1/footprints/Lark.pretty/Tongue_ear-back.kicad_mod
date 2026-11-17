@@ -1,0 +1,55 @@
+(footprint "Tongue_ear-back"
+	(version 20241229)
+	(generator "make_footprints")
+	(layer "F.Cu")
+	(descr "Lark joint ear-back: 2 pads on the brain's tongue, 1.1 x 1.35 mm, their middle at z 81.825 mm; place at the bulb's axis")
+	(tags "joint tongue slot bulb")
+	(property "Reference" "J**"
+		(at 0 -1.675 0)
+		(layer "F.SilkS")
+		(hide yes)
+		(uuid "bbe0435d-d445-5526-bdbf-c7ba12529bad")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.1)
+			)
+		)
+	)
+	(property "Value" "Tongue_ear-back"
+		(at 0 1.675 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "b78d299f-1e0a-52d1-8667-f2c6406aac55")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.1)
+			)
+		)
+	)
+	(attr smd exclude_from_pos_files exclude_from_bom)
+	(fp_rect
+		(start -1.7 -0.825)
+		(end 1.7 0.825)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "35a343ef-cc40-5b2a-93bb-ffbd9b89bef0")
+	)
+	(pad "1" smd rect
+		(at -1 0)
+		(size 1.1 1.35)
+		(layers "F.Cu" "F.Mask")
+		(uuid "a55be7bb-88e6-5bbf-9be7-ba038da7fc54")
+	)
+	(pad "2" smd rect
+		(at 1 0)
+		(size 1.1 1.35)
+		(layers "F.Cu" "F.Mask")
+		(uuid "c62bb6a1-7695-56f2-8772-172240a2595f")
+	)
+)

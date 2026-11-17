@@ -1,0 +1,25 @@
+* Lark: a string of 8 LEDs at full current, the voltage the driver's buck must stay over.
+* The driver holds each string at 100 mA at most (driver/README: R_CS 2.74 ohm, V(LD) 1.48 V).
+* VSTR is what U1 or U2 drives the string to; it sets the bus voltage the 120 Hz valley must keep
+* (driver/sim/bus_valley.cir) and the HV9961's duty, which it holds under 0.75. The corners run it
+* at 0 and 85 C: the disc runs hot in a closed fan globe. The bin spread of each LED, +-0.4 V at
+* 25 C (Bridgelux DS207, Table 1), is the 0.4 V per LED that VBIN adds: 3.2 V for the string.
+.include "models/led_2835_9v.lib"
+.param vbin=3.2
+I1 0 a DC 100m
+VBIN a s0 DC {vbin}
+X1 s0 s1 LED9V
+X2 s1 s2 LED9V
+X3 s2 s3 LED9V
+X4 s3 s4 LED9V
+X5 s4 s5 LED9V
+X6 s5 s6 LED9V
+X7 s6 s7 LED9V
+X8 s7 0 LED9V
+.control
+op
+let vstr_max = v(a)
+let vstr_typ = v(s0)
+print vstr_max vstr_typ
+.endc
+.end

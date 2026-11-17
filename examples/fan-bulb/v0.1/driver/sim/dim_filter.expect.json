@@ -1,0 +1,6 @@
+{
+  "ld_ripple_mv": {"max": 5, "source": "under 0.4 % of the LD voltage at half duty, so the LED current carries no visible 20 kHz part (0.185 x 5 mV / 2.74 ohm = 0.3 mA)"},
+  "t_settle_ms": {"max": 40, "source": "a brightness step within 99 % in 40 ms: a fade the eye reads as smooth, the firmware's 25 ms steps (README, Firmware)"},
+  "ld_full": {"min": 1.40, "max": 1.52, "source": "full duty reaches 95 mA or more and stays within the LD range (0.2 to 1.5 V, DS20005588B Eq. 3-3; over 1.5 V the 275 mV reference holds it at 100 mA)"},
+  "ld_mean": {"min": 0.70, "max": 0.79, "source": "half duty is half the range: the firmware's brightness table is linear in duty"}
+}

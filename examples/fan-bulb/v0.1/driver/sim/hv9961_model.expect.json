@@ -1,0 +1,8 @@
+{
+  "vdd_v": {"min": 7.25, "max": 7.75, "warn": "the model against its datasheet: VDD 7.25 / 7.5 / 7.75 V at VIN 8 V, DS20005588B p.3"},
+  "toff_226k_us": {"min": 8, "max": 12, "warn": "the model against its datasheet: TOFF 8 / 10 / 12 us at RT 226k, p.4"},
+  "toff_1meg_us": {"min": 32, "max": 48, "warn": "the model against its datasheet: TOFF 32 / 40 / 48 us at RT 1 Meg, p.4"},
+  "tblank_ns": {"min": 150, "max": 400, "warn": "the model against its datasheet: TBLANK 150 to 340 ns, p.4, and the gate's 47 ohm and 10 ns latch after it"},
+  "vcst_mv": {"min": 258, "max": 286, "warn": "the model against its datasheet: VCST 264 / 275 / 286 mV at VLD 1.5 V, p.3; the model's 250 ns of blanking are left out of its mean, about 2 % low"},
+  "av_ld": {"min": 0.174, "max": 0.188, "warn": "the model against its datasheet: AV(LD) 0.178 / 0.185 / 0.188 at VLD 1.2 V, p.3, less the same 2 %"}
+}

@@ -1,0 +1,70 @@
+(footprint "CP_Radial_D8.0mm_L11.5mm_P3.50mm_Lying"
+	(version 20241229)
+	(generator "make_footprints")
+	(layer "F.Cu")
+	(descr "Radial electrolytic 8 x 11.5 mm laid on the board, leads bent into 3.5 mm holes, the can along +y; Lark's bulk capacitors in the bulb's neck")
+	(tags "capacitor electrolytic lying")
+	(property "Reference" "C**"
+		(at 0 -2 0)
+		(layer "F.SilkS")
+		(hide yes)
+		(uuid "f030f53a-884b-5bb1-9534-a4f1b45a0e4b")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.1)
+			)
+		)
+	)
+	(property "Value" "CP_Radial_D8.0mm_L11.5mm_P3.50mm_Lying"
+		(at 0 14 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "3caa1ebd-d6de-5037-8c87-6a3fff5f9f2e")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.1)
+			)
+		)
+	)
+	(attr through_hole)
+	(fp_rect
+		(start -4.25 -1.05)
+		(end 4.25 13.25)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "fc94170b-a1fe-52d4-b020-de36462c07d7")
+	)
+	(fp_rect
+		(start -4 1)
+		(end 4 13)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.Fab")
+		(uuid "c5fda757-cd1d-52e1-8c77-fced2f96e45c")
+	)
+	(pad "1" thru_hole rect
+		(at -1.75 0)
+		(size 1.6 1.6)
+		(drill 0.9)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "1efb790a-2598-5c07-9b05-ba21ad614e3e")
+	)
+	(pad "2" thru_hole circle
+		(at 1.75 0)
+		(size 1.6 1.6)
+		(drill 0.9)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "573c8d97-8a53-5a2b-98a0-7974a0fa9008")
+	)
+)
