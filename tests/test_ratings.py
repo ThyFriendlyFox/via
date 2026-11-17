@@ -3420,6 +3420,16 @@ def test_a_number_stated_for_a_part_the_command_reads_none_for_is_refused(tmp_pa
     assert str(caught.value) == message
 
 
+def test_a_load_stated_for_a_connector_that_has_no_pin_names_no_pin_to_state_it_for(tmp_path):
+    net, mpns = circuit(J9=("LOGO", "HDR-1", {}))
+    facts = library(tmp_path, entry("connector", "HDR-1"))
+    with pytest.raises(ratings.Refusal) as caught:
+        ratings.check_stated(project({}, amps={"J9": 1.0}), net, mpns, facts)
+    assert str(caught.value) == (
+        "ratings.json: parts: J9: amps: J9 is a connector: its load is stated for 1 pin"
+    )
+
+
 def test_facts_that_do_not_fit_the_part_s_symbol_are_refused(tmp_path):
     """A pin the facts leave out, a pin number the symbol lacks, and a resistor's facts on 3 pins."""
     three = {"1": ("V33", "VDD", "power_in"), "2": ("GND", "VSS", "power_in"), "3": ("SIG", "PA0", "output")}
