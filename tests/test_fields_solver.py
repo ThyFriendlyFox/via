@@ -59,6 +59,37 @@ def test_the_line_holds_every_limit_with_strict(line):
     assert report["summary"].startswith("3 held, 0 failed, 0 not judged")
 
 
+def hammerstad_jensen(w: float, h: float, er: float) -> float:
+    """The impedance of a microstrip of zero thickness, w wide over h of er: Hammerstad and Jensen,
+    "Accurate Models for Microstrip Computer-Aided Design", IEEE MTT-S Int. Microwave Symp. Digest 1980,
+    pp. 407-409, equations (1) to (4)."""
+    eta0 = 376.730313668  # ohm, the impedance of free space (CODATA 2018)
+    u = w / h
+    f = 6 + (2 * math.pi - 6) * math.exp(-((30.666 / u) ** 0.7528))
+    z01 = eta0 / (2 * math.pi) * math.log(f / u + math.sqrt(1 + (2 / u) ** 2))
+    a = 1 + math.log((u**4 + (u / 52) ** 2) / (u**4 + 0.432)) / 49 + math.log(1 + (u / 18.1) ** 3) / 18.7
+    b = 0.564 * ((er - 0.9) / (er + 3)) ** 0.053
+    e_eff = (er + 1) / 2 + (er - 1) / 2 * (1 + 10 / u) ** (-a * b)
+    return z01 / math.sqrt(e_eff)
+
+
+def test_the_closed_form_gives_the_published_value():
+    """Hammerstad and Jensen for w/h 1.8 in er 4.5: 51.337 ohm; Pozar (Microwave Engineering, 4th ed.,
+    3.195 and 3.196) gives 51.533 ohm for the same line, 0.4% from it."""
+    assert hammerstad_jensen(0.36, 0.2, 4.5) == pytest.approx(51.337, abs=1e-3)
+
+
+@needs_openems
+def test_the_line_impedance_is_the_closed_form_within_3_percent(line):
+    """The fixture is a plain microstrip: 0.36 mm over 0.2 mm of 4.5, copper a sheet as in the model.
+    Hammerstad and Jensen give 51.337 ohm. With the track's edges on mesh lines the solver's sheet was
+    wider than the board's and the run read 43.14 ohm, 16% low, inside the made-up 30 to 75 window.
+    The mesh puts a track's edges a third of a cell inside its metal: within 3%."""
+    _, report = line
+    got = report["details"]["measures"]["sig"]["SIG"]["impedance_ohm"]["value"]
+    assert got == pytest.approx(hammerstad_jensen(0.36, 0.2, 4.5), rel=0.03)
+
+
 @needs_openems
 def test_a_run_with_no_limit_judges_nothing_and_does_not_pass(tmp_path):
     """The line with its limits taken out: the run measures and writes its report, and says it judged
