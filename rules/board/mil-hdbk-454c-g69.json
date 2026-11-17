@@ -1,0 +1,51 @@
+{
+  "pack": "mil-hdbk-454c-g69",
+  "kind": "creepage",
+  "document": {
+    "issuer": "US Department of Defense, from the Defense Logistics Agency's ASSIST",
+    "number": "MIL-HDBK-454C",
+    "title": "General Guidelines for Electronic Equipment",
+    "revision": "21 September 2021",
+    "url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=115984",
+    "sha256": "7f74559d14cf30f79f43165af8240fe99c9fcf1a47755e491f5f84d554ae448b",
+    "read": "2026-11-17",
+    "second_reader": "no"
+  },
+  "scope": "guideline 69, 4.1, page 69-1: clearance between solder connections or bare conductors, such as on terminal strips, standoffs, or similar connections; a handbook for guidance (cover page)",
+  "conditions": {
+    "condition": {
+      "values": ["A", "B", "C"],
+      "where": "guideline 69, 4.2a to c, page 69-1: A, a short circuit limited to the unit and at most 50 W; B, fused and at most 2000 W; C, fused and over 2000 W"
+    },
+    "enclosure": {
+      "values": ["I", "II"],
+      "where": "guideline 69, 4.2d and e, page 69-1: I, no drop or particle from 0 to 15 degrees off the vertical can enter; II, any enclosure that protects less"
+    }
+  },
+  "voltage": "guideline 69, table 69-I, page 69-2: voltage ac (rms) or dc",
+  "between_rows": "range",
+  "creepage": {
+    "keys": ["condition", "enclosure"],
+    "where": "guideline 69, 4.1 page 69-1; table 69-I, leakage distances, page 69-2",
+    "rows": [
+      {"volts": [0, 150], "mm": {"A I": 1.5, "A II": 1.5, "B I": 3, "B II": 6, "C I": 9.5, "C II": 19}},
+      {"volts": [150, 300], "mm": {"A I": 1.5, "A II": 1.5, "B I": 3, "B II": 6, "C I": 12.5, "C II": 19}},
+      {"volts": [300, 600], "mm": {"A I": 3, "A II": 3, "B I": 6, "B II": 6, "C I": 12.5, "C II": 19}},
+      {"volts": [600, 1000], "mm": {"A I": 9.5, "A II": 12.5, "B I": 19, "B II": 25, "C I": 38, "C II": 50}}
+    ]
+  },
+  "clearance": {
+    "keys": ["condition"],
+    "where": "guideline 69, 4.1 page 69-1; table 69-I, clearance, page 69-2",
+    "rows": [
+      {"volts": [0, 150], "mm": {"A": 1.5, "B": 3, "C": 6}},
+      {"volts": [150, 300], "mm": {"A": 1.5, "B": 3, "C": 6}},
+      {"volts": [300, 600], "mm": {"A": 1.5, "B": 3, "C": 6}},
+      {"volts": [600, 1000], "mm": {"A": 3, "B": 6, "C": 12.5}}
+    ]
+  },
+  "not_judged": [
+    "guideline 69, table 69-I, page 69-2: a voltage over 1000 V",
+    "guideline 69, page 69-1 and 69-2: a slot cut to lengthen a path; the handbook states no least width for one"
+  ]
+}

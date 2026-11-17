@@ -553,13 +553,14 @@ def test_rules_read_a_table_of_documents_by_id(tmp_path):
 def test_every_document_a_rule_of_the_repository_names_is_in_the_index():
     """`make verify` runs this. The rating packs name 2 standards, the board pack 1, the 4 facts files
     of 1 part 4 datasheets, passives.json 4, fail-sim-bias's parts.json 2 (Samsung's page and Coilcraft's
-    806, which passives.json names too), rules/copper/materials.json 2: 2 + 1 + 4 + 4 + 2 + 2 = 15 named.
-    made-up.json's 4 parts name no document: 4 not judged."""
+    806, which passives.json names too), rules/copper/materials.json 2, the 2 layout packs of rules/board/
+    2 (SLVA680A, SZZA009), the 2 creepage packs 2 (MIL-HDBK-454C, SLUP419):
+    2 + 1 + 4 + 4 + 2 + 2 + 2 + 2 = 19 named. made-up.json's 4 parts name no document: 4 not judged."""
     code, out = run("rules")
     assert code == 0, out
-    files = 2 + 1 + 1 + 7
+    files = 2 + 1 + 1 + 7 + 2 + 2
     assert out.splitlines()[-1] == (
-        f"references rules: 15 documents named in {files} files, 15 in the index, 0 not; 4 not judged"
+        f"references rules: 19 documents named in {files} files, 19 in the index, 0 not; 4 not judged"
     )
 
 

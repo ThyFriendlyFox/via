@@ -1,0 +1,48 @@
+{
+  "pack": "ti-slup419-creepage",
+  "kind": "creepage",
+  "document": {
+    "issuer": "Texas Instruments",
+    "number": "SLUP419",
+    "title": "Demystifying Clearance and Creepage Distance for High-Voltage End Equipment",
+    "revision": "March 2024",
+    "url": "https://www.ti.com/lit/ml/slup419/slup419.pdf",
+    "sha256": "87d0fc2c5989664c2c6bb5f0b8eada5b7cbf39ed7c04ab32627554f9dcd4ca2b",
+    "read": "2026-11-17",
+    "second_reader": "no"
+  },
+  "reprints": "table 3, page 7: a subset of IEC 60664-1 table F.4; the note's reference 2, page 11, is IEC 60664-1 of May 26, 2020. A secondary source: the standard itself is paid.",
+  "scope": "table 3, page 7: creepage distances to avoid failure caused by tracking, for basic isolation; reinforced isolation doubles them (page 7), which this pack does not take",
+  "conditions": {
+    "pollution_degree": {
+      "values": ["1", "2"],
+      "where": "pollution degree, page 3 and page 4; table 3, page 7, holds degrees 1 and 2"
+    },
+    "material_group": {
+      "values": ["I", "II", "III"],
+      "where": "table 1, page 3: material groups by CTI; table 3, page 7, holds groups I, II and III; most FR4 is group IIIa (page 3)"
+    }
+  },
+  "voltage": "table 3, page 7: VRMS; table 2 note (1), page 6: the working voltage is the highest rms value of the ac or dc voltage across the insulation",
+  "between_rows": "points",
+  "creepage": {
+    "keys": ["pollution_degree", "material_group"],
+    "where": "table 3, page 7",
+    "rows": [
+      {"volts": 63, "mm": {"1 I": 0.2, "1 II": 0.2, "1 III": 0.2, "2 I": 0.63, "2 II": 0.9, "2 III": 1.25}},
+      {"volts": 400, "mm": {"1 I": 1.0, "1 II": 1.0, "1 III": 1.0, "2 I": 2.0, "2 II": 2.8, "2 III": 4.0}},
+      {"volts": 800, "mm": {"1 I": 2.4, "1 II": 2.4, "1 III": 2.4, "2 I": 4.0, "2 II": 5.6, "2 III": 8.0}},
+      {"volts": 1000, "mm": {"1 I": 3.2, "1 II": 3.2, "1 III": 3.2, "2 I": 5.0, "2 II": 7.1, "2 III": 10.0}}
+    ]
+  },
+  "slot": {
+    "key": "pollution_degree",
+    "least_mm": {"1": 0.25, "2": 1.0, "3": 1.5},
+    "where": "table 7 and figure 9, page 11: the least width of a slot cut into a PCB to increase creepage"
+  },
+  "not_judged": [
+    "page 7 and table 3, page 7: clearance, which this note takes from an impulse voltage (table 4 and table 5, page 8), not from the working voltage",
+    "table 3, page 7: a voltage between 2 of its rows when the gap lies between the 2 rows' distances, and a voltage over 1000 V",
+    "page 7: reinforced isolation"
+  ]
+}

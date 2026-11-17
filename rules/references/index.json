@@ -154,6 +154,50 @@
       "url": "https://www.ti.com/lit/ds/symlink/tlv755p.pdf",
       "sha256": "96e2706d4b13656d2d550fdbb5be9861c56b058822109bb39a906d4ad1beb019",
       "read": "2026-11-17"
+    },
+    {
+      "id": "ti-slva680a",
+      "kind": "application note",
+      "maker": "Texas Instruments",
+      "number": "SLVA680A",
+      "title": "ESD Protection Layout Guide",
+      "revision": "Rev. A, revised April 2022",
+      "url": "https://www.ti.com/lit/an/slva680/slva680.pdf",
+      "sha256": "414236c18903e2489c6564c36718ed3743be9c595f4543098f167259b5ba8635",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "ti-szza009",
+      "kind": "application note",
+      "maker": "Texas Instruments",
+      "number": "SZZA009",
+      "title": "PCB Design Guidelines For Reduced EMI",
+      "revision": "November 1999",
+      "url": "https://www.ti.com/lit/an/szza009/szza009.pdf",
+      "sha256": "317f4cb67ff85ae16c769592cabc0128e69f1eaff6a98747ef77be217564e6d2",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "mil-hdbk-454c",
+      "kind": "standard",
+      "issuer": "US Department of Defense, from the Defense Logistics Agency's ASSIST",
+      "number": "MIL-HDBK-454C",
+      "title": "General Guidelines for Electronic Equipment",
+      "revision": "21 September 2021",
+      "url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=115984",
+      "sha256": "7f74559d14cf30f79f43165af8240fe99c9fcf1a47755e491f5f84d554ae448b",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "ti-slup419",
+      "kind": "application note",
+      "maker": "Texas Instruments",
+      "number": "SLUP419",
+      "title": "Demystifying Clearance and Creepage Distance for High-Voltage End Equipment",
+      "revision": "March 2024",
+      "url": "https://www.ti.com/lit/ml/slup419/slup419.pdf",
+      "sha256": "87d0fc2c5989664c2c6bb5f0b8eada5b7cbf39ed7c04ab32627554f9dcd4ca2b",
+      "read": "2026-11-17"
     }
   ]
 }
