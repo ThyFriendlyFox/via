@@ -111,15 +111,16 @@
     "vbus": "section 3.2.3, table 3-5, note 4, page 77: all VBUS pins connected together at the receptacle",
     "gnd": "section 3.2.3, table 3-5, note 5, page 77: all ground return pins connected together at the receptacle",
     "data": "section 3.2.3, table 3-5, note 2, page 77: Dp1 and Dp2 shorted, and Dn1 and Dn2, as close to the receptacle as possible",
-    "sbu": "section 3.2.3, table 3-5, note 3, page 77: SBU1 and SBU2 shall not be connected unless required for a specified purpose"
+    "sbu": "section 3.2.3, table 3-5, note 3, page 77: SBU1 and SBU2 shall not be connected unless required for a specified purpose",
+    "unused": "section 3.2.3, table 3-5, note 1, page 77: unused contact locations shall be electrically isolated"
   },
   "connectors": [
     {
-      "mpn": "USB4105-GF-A",
+      "mpn": "USB4115-03-C",
       "maker": "GCT",
-      "value": "USB4105",
-      "symbol": "Connector:USB_C_Receptacle_USB2.0_16P",
-      "footprint": "Connector_USB:USB_C_Receptacle_GCT_USB4105-xx-A_16P_TopMnt_Horizontal",
+      "value": "USB4115",
+      "symbol": "Connector:USB_C_Receptacle",
+      "footprint": "Connector_USB:USB_C_Receptacle_GCT_USB4115-03-C",
       "pins": {
         "VBUS": ["A4", "A9", "B4", "B9"],
         "GND": ["A1", "A12", "B1", "B12"],
@@ -128,16 +129,18 @@
         "CC2": ["B5"],
         "D+": ["A6", "B6"],
         "D-": ["A7", "B7"],
-        "SBU": ["A8", "B8"]
+        "SBU": ["A8", "B8"],
+        "UNUSED": ["A2", "A3", "A10", "A11", "B2", "B3", "B10", "B11"]
       },
       "source": {
-        "document": "GCT USB4105 drawing",
-        "revision": "revision C, 18/12/23",
-        "url": "https://gct.co/files/drawings/usb4105.pdf",
-        "sha256": "fb331fbabee8392ed2937ed757c1610cb0f174b84625147c0b580a18eea8c0e5",
+        "document": "GCT USB4115 drawing",
+        "revision": "revision B, 17/12/25",
+        "url": "https://gct.co/files/drawings/usb4115.pdf",
+        "sha256": "8e3448f72b96e77b0952160bfa76d54c034a7c7ce783411cfc70492e8d1b90dc",
         "read": "2026-11-17"
       },
-      "amps_vbus": {"value": 5.0, "where": "Electrical, Current Rating, page 1: 5.00 A collectively for VBUS pins"}
+      "amps_vbus": {"value": 5.0, "where": "Electrical, Current Rating, page 1: 5.00 A collectively for VBUS pins"},
+      "note": "A vertical USB 3.2 receptacle, of which the block wires the USB 2.0 pins of table 3-5. GCT USB4105-GF-A, the horizontal USB 2.0 receptacle, was tried first: KiCad's footprint puts its GND pads 0.19 mm from its pegs' holes, under the board's 0.25 mm hole clearance"
     }
   ],
   "protection": [
