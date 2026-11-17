@@ -1093,3 +1093,21 @@ What happened: Last Hit's board CI ran every version's mutation list in turn in 
 Cost: a red run on `main` and a workflow change after the merge.
 Root cause: A step whose work grows with every version kept 1 fixed limit, and a green run was read for its verdict, not for how much of its limit it used.
 Process: P2
+
+## M181 — 2026-11-17 — A tile drawn over by its own cell
+What happened: Signet's `assembly.py` wrote the cell tile's board body as `cell.wrl` with `scene.board_body`, then the pouch that lies on it with `scene.write`, under the same name. The pouch replaced the board on disk, and both places drew the pouch. v0.2 to v0.4 showed the ring with no cell tile under the pouch. v0.4's end view showed the hole, and I read it as the pouch hiding the tile. I found it in v0.5, when the new ring's iso view showed nothing between the charge and rail tiles.
+Cost: 3 versions' pictures without a tile; 1 assembly drawn again.
+Root cause: `tools/scene.py` gave a body the name it was asked for and wrote over any body of that name without a word, and I looked at a render for what I expected to see.
+Process: P23
+
+## M182 — 2026-11-17 — A narrower tile checked by its courtyards alone
+What happened: For Signet v0.5 I narrowed the radio tile from 15.6 to 12.7 mm, with a column of 0201s on end each side of the module. Every courtyard fitted and the unrouted DRC showed only unconnected items. The route left 18 links open: no 0201 had room beside it for a ground via, and the antenna's keep-out stood 0.1 mm from J1's first pad, whose only path passed through the keep-out. At 13.2 mm, with a filled via in each ground pad and a lane past the keep-out, the router still left the parts' short links to the module for last and could not make them; drawn by hand, the tile routed GREEN.
+Cost: 2 radio routes and 1 full route of 8 tiles, about 40 minutes.
+Root cause: I sized the tile from its courtyards and took the unrouted DRC as the check. Neither sees a pad with no path out, and P3 named keep-outs only for the pads inside them.
+Process: P3
+
+## M183 — 2026-11-17 — A ring's turning picture that never showed the ring
+What happened: Signet's assembly GIF, the picture at the head of its series index and of the root README's section on it, turned with the camera at twice the stills' zoom (0.8 against 0.4). Every frame showed 2 or 3 tiles and the gap between them, never the ring. v0.1 to v0.4 kept it so; I sent it to the owner as "the ring turning" with v0.3 and v0.4. `site/examples.py --pictures` found it when v0.5 reached the site: it left the spin out, "cuts it off at frame 0". At zoom 0.38 all 4 test frames hold the ring whole.
+Cost: 4 versions' turning pictures, and the owner shown a picture that did not show the thing.
+Root cause: P23's framing check ran once, for v0.1, and I did not look at its 4 frames against "whole"; each later version copied the zoom and nothing looked again.
+Process: P23

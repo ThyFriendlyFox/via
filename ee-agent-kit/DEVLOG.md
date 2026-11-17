@@ -39,6 +39,25 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-17 — Signet in 8 sections, and the tile its pictures left out
+
+The owner asked for the ring to have more sections, so that it is smoother. More tiles turn the
+ring less at each corner and leave each tile less room. The radio module sets the widest tile, so 8
+is the most that fits: the 5 small tiles are 6.83 mm, room for 1 regulator or charger between 2
+joints, and 9 tiles would leave them 5.8 mm. The ring now turns 66.9 degrees beside the radio and
+37.7 elsewhere, where it turned up to 75.9. The old power tile became 3 tiles, and the radio's small
+parts became 0201s or moved to the tiles beside it. My first radio, 12.7 mm, fitted every courtyard
+and routed with 18 links open: there was no room for the capacitors' ground vias, and 1 pad sat
+behind the antenna's keep-out. At 13.2 mm, with filled vias in the pads and a few links drawn by
+hand, it routed. The new pictures showed a hole where the cell tile should be: since v0.2 the
+assembly had written the tile and its pouch under 1 file name, and the pouch won. `scene.py` now
+refuses a second body under a name it wrote. The site's page found one more: the ring's turning
+picture had never shown the ring, only 2 or 3 tiles at a time, since v0.1. I had sent it to the
+owner twice. It turns at half the zoom now, checked frame by frame.
+
+Evidence: every tile of `examples/ring-mouse/v0.5` GREEN (the radio with 2 legend warnings); 52
+corner runs on the gauge's deck; `make -C firmware test`; M181 to M183.
+
 ## 2026-11-14 — The redrawn site meets main: Herald, the 6 boards, a page for each
 
 The owner liked the redrawn site on its branch and asked for the boards and the Herald section

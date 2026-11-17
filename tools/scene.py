@@ -90,8 +90,17 @@ class Scene:
                     self.copied.append(rel)
         self.placed = 0
         self.check = bool(os.environ.get("WORKCENTER_PICTURES_CHECK"))
+        self.bodies: dict[str, str] = {}  # each body's file name in `bodies/`, and what wrote it
 
     # -------------------------------------------------------------- bodies
+
+    def _claim(self, name: str, what: str) -> Path:
+        """The path for a new body. A second body under a name the scene has written would replace the
+        first on disk, and every place of the first would draw the second (M181)."""
+        if name in self.bodies:
+            sys.exit(f"scene: {name} already holds {self.bodies[name]}; {what} needs a name of its own")
+        self.bodies[name] = what
+        return self.models / name
 
     def position(self, ref: str) -> tuple[float, float]:
         """A footprint's position on the board, in millimetres."""
@@ -103,7 +112,7 @@ class Scene:
 
     def write(self, name: str, meshes: list, comment: str = "") -> Path:
         """Meshes built with wrlgen's primitives (Mesh, cylinder, box, prism, tube) as one body."""
-        path = self.models / name
+        path = self._claim(name, f"the meshes of {comment or name!r}")
         wrlgen.write_wrl(path, meshes, comment or name)
         return path
 
@@ -132,7 +141,7 @@ class Scene:
 
     def wrlgen(self, preset: str, name: str, *args: str) -> Path:
         """A body from one of wrlgen's presets (cartridge-510, connector-510, pouch-cell, ...)."""
-        path = self.models / name
+        path = self._claim(name, f"wrlgen's {preset}")
         subprocess.run(
             [sys.executable, str(HERE / "wrlgen.py"), preset, str(path), *map(str, args)], check=True
         )
@@ -141,7 +150,7 @@ class Scene:
     def copy(self, path: str | Path) -> Path:
         """A body the project keeps (its models/ folder), copied next to the scene's own."""
         src = (self.base / path).resolve()
-        dest = self.models / src.name
+        dest = self._claim(src.name, f"a copy of {path}")
         shutil.copyfile(src, dest)
         return dest
 
@@ -149,7 +158,7 @@ class Scene:
         """Another board with its parts as one body: kicad-cli's VRML export in KiCad's model unit, with
         `origin` ("XxYmm" in that board's frame) at the body's origin and its mid-plane at z = 0."""
         src = (self.base / pcb).resolve()
-        path = self.models / (name or f"{src.stem}.wrl")
+        path = self._claim(name or f"{src.stem}.wrl", f"the board {pcb}")
         cmd = ["kicad-cli", "pcb", "export", "vrml", "--units", "tenths", "--force", "--output", str(path)]
         cmd += ["--user-origin", origin] if origin else []
         subprocess.run([*cmd, str(src)], check=True, stdout=subprocess.DEVNULL)
