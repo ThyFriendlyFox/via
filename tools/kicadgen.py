@@ -4620,8 +4620,10 @@ def route(
     timeout: int = 900,
     java: str = "java",
     seed: dict | None = None,
+    threads: int = 0,
 ) -> dict:
     """Export the DSN, run FreeRouting, merge the session into the design. Returns a summary.
+    `threads` above 0 is FreeRouting's `-mt`, the most threads it routes with.
     `seed` is a previous route's copper as `Design.seed_wiring()` keeps it. The summary's `unrouted` is
     FreeRouting's own count when its log has one, else `Design.bare_connections()` when the route left
     every connection without copper, else None."""
@@ -4641,6 +4643,8 @@ def route(
     # that asks to confirm the start, and nobody sees a dialog here. It needs a display; xvfb-run
     # provides one headless.
     cmd = [java, "-jar", str(jar), "-de", str(dsn), "-do", str(ses), "-mp", str(passes), "-dct", "0"]
+    if threads > 0:
+        cmd += ["-mt", str(threads)]
     if not os.environ.get("DISPLAY") and shutil.which("xvfb-run"):
         cmd = ["xvfb-run", "-a", *cmd]
     proc = subprocess.run(cmd, cwd=build_dir, capture_output=True, text=True, timeout=timeout, check=False)
