@@ -362,10 +362,12 @@ def net_spans(
         held_by.setdefault(find(name), []).append(span)
     stated = set(held_by)  # nodes the project declares: nothing takes their span away
     pinned = {find(name) for name in forced}  # nodes taken at a span: their parts' drives are left out
+    onboard: set[str] = set()  # nodes a part of the board holds: a regulator, a pin that drives
     for name, regulators in (fed or {}).items():
         for ref, span in regulators:
             if ref != without and find(name) not in pinned:
                 held_by.setdefault(find(name), []).append(span)
+                onboard.add(find(name))
     swings: list[tuple[str, str, str, Drive]] = []  # node, ref, pin, a drive that follows other pins
     unknown: dict[str, str] = {}  # node -> why it has no span
     edges: list[tuple[str, str, bool, str]] = []  # node, node, one_way, the part that joins them
@@ -396,6 +398,7 @@ def net_spans(
                     swings.append((find(name), ref, pin, drive))
                 else:
                     held_by.setdefault(find(name), []).append((drive.low, drive.high))
+                    onboard.add(find(name))
         for pin, name in part.pins.items():
             if model is None:
                 silent = kind_of[(ref, pin)] in QUIET_KINDS
@@ -419,6 +422,9 @@ def net_spans(
     stiff = set(held_by)
     ground = {find(name) for name, span in declared.items() if span == (0.0, 0.0)}
     joins = [(e[0], e[1], e[3], stated) for e in edges] + [(r[0], r[1], r[4], stiff) for r in resistors]
+    # A net the project states and no part of the board holds has its source off the board: with the
+    # cable out or the driver released, a resistor to another rail moves it. Its held span stays.
+    firm = onboard | ground | pinned
 
     def spread(reasons: dict[str, str]) -> None:
         """A net that meets one with no span, through a resistor or a part that may conduct, has none,
@@ -475,9 +481,9 @@ def net_spans(
             for a, b, *_ in resistors:
                 if a in unknown or b in unknown:
                     continue
-                if a in span and b not in stiff:
+                if a in span and b not in firm:
                     changed |= widen(b, *span[a])
-                if b in span and a not in stiff:
+                if b in span and a not in firm:
                     changed |= widen(a, *span[b])
         stuck = {}
         for node, ref, pin, drive in swings:
@@ -844,15 +850,18 @@ class Facts:
 
     def speaks_of(self, mpn: str, symbol: str, footprint: str) -> int:
         """How closely the entry names a part: 3 by its part number, 2 by a pattern of it, 1 by its
-        symbol (and its footprint, when the entry names one), 0 not at all."""
+        symbol (and its footprint, when the entry names one), 0 not at all. A symbol's entry speaks
+        only of a part with no part number: a part that has one is another part until an entry names
+        its number."""
         data = self.data
         if mpn and (data.get("mpn") == mpn or mpn in data.get("mpns", ())):
             return 3
         if mpn and "match" in data and fnmatch.fnmatchcase(mpn, data["match"]):
             return 2
-        if data.get("symbol") == symbol and fnmatch.fnmatchcase(footprint, data.get("footprint", "*")):
-            return 1
-        return 0
+        by_symbol = data.get("symbol") == symbol and fnmatch.fnmatchcase(
+            footprint, data.get("footprint", "*")
+        )
+        return 1 if by_symbol and not mpn else 0
 
     @property
     def name(self) -> str:
@@ -1609,6 +1618,15 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
                 volts = (
                     spans.stress[cathode][1] - spans.stress[anode][0] if both else gap(spans, anode, cathode)
                 )
+                if all(n in spans.held for n in (anode, cathode)):
+                    least, most = spans.held[anode][0], spans.held[cathode][1]
+                    if least > most + EPS:  # held forward whatever its sources do: no limit on its current
+                        text = (
+                            f"{label}: its anode is held at {least:.3g} V or more and its cathode at "
+                            f"{most:.3g} V or less: it stands forward between 2 sources"
+                        )
+                        judged(ref, "diode.forward", False, text, f"{found.source}: the part's own rating")
+                        continue
                 if kind == "diode.rectifier":
                     ratio(ref, "diode.reverse", label, volts, data["volts_reverse"], "V")
                 elif isinstance(volts, str):
@@ -1695,6 +1713,19 @@ def _judge_ic(  # noqa: PLR0913
     what it regulates, and the support parts its datasheet asks for."""
     part, found = net.parts[ref], of[ref]
     data = found.data
+    # A datasheet's limits are against the part's ground pin. Where that pin's net is not at the board's
+    # 0 V (a part on a negative rail, a high-side part), a plain number is a limit that follows the pin.
+    base = next((p for p in data["pins"] if p["role"] == "ground"), None)
+    base_net = part.pins[base["numbers"][0]] if base else ""
+    if base and spans.stress.get(base_net) == (0.0, 0.0):
+        base = None
+
+    def from_ground(value: object) -> object:
+        if base is None or isinstance(value, dict):
+            return value
+        if isinstance(value, list):
+            return [from_ground(one) for one in value]
+        return {"pin": base["name"], "plus": value}
 
     def bound(pin: dict, number: str, which: int, key: str = "abs") -> tuple | None:
         """1 end of a pin's absolute limits, or of a signal pin's working range (key `operating`): which
@@ -1703,7 +1734,7 @@ def _judge_ic(  # noqa: PLR0913
         pin could not be judged: its other end would say the same again."""
         name = part.pins[number]
         label = f"{ref} pin {number} ({pin['name']}) on {name}"
-        raw = pin[key][which]
+        raw = from_ground(pin[key][which])
         worst: tuple[float, float, str] | None = None
         for one in raw if isinstance(raw, list) else [raw]:
             forced, how = (), ""
@@ -1784,10 +1815,17 @@ def _judge_ic(  # noqa: PLR0913
                     out.append(Finding("not judged", ref, "supply.range", f"{label}: no source holds {name}"))
                     continue
                 low, high = spans.held[name]
-                works = pin["operating"]
+                works, where = pin["operating"], f"at {low:.3g} to {high:.3g} V"
+                if base is not None and name != base_net:  # the range is from the part's ground pin
+                    under = f"pin {base['name']} on {base_net}"
+                    if base_net not in spans.held:
+                        text = f"{label}: its range is from {under}, which no source holds"
+                        out.append(Finding("not judged", ref, "supply.range", text))
+                        continue
+                    low, high = low - spans.held[base_net][1], high - spans.held[base_net][0]
+                    where = f"{low:.3g} to {high:.3g} V above {under}"
                 text = (
-                    f"{label}: its sources hold it at {low:.3g} to {high:.3g} V, "
-                    f"the pin works from {works[0]:g} to {works[1]:g} V"
+                    f"{label}: its sources hold it {where}, the pin works from {works[0]:g} to {works[1]:g} V"
                 )
                 holds = low >= works[0] - EPS and high <= works[1] + EPS
                 judged(f"{ref}.{number}", "supply.range", holds, text, f"{found.source}, {_p(pin['page'])}")

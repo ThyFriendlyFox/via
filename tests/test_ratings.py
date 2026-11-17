@@ -916,6 +916,66 @@ MCU_FACTS = entry(
 )
 
 
+def test_a_part_whose_ground_pin_stands_on_a_negative_rail_is_judged_from_that_pin(tmp_path):
+    """A datasheet's limits are against the part's ground pin. VDD at 3.4 V with VSS on a rail at
+    -5.2 V is 8.6 V on a part that takes 4.0 V: the limit is -5.2 + 4.0 = -1.2 V from the board's 0 V.
+    Its supply stands 8.0 to 8.6 V above VSS, and works from 1.7 to 3.6 V."""
+    pins = {"1": ("V33", "VDD", "power_in"), "2": ("VNEG", "VSS", "power_in"), "3": ("SIG", "PA0", "input")}
+    net, mpns = circuit(U1=("MCU", "MCU-1", pins))
+    nets = {"V33": (3.2, 3.4), "VNEG": (-5.2, -4.8), **GND}
+    net.nets["GND"] = []
+    report = ratings.judge(net, mpns, library(tmp_path, MCU_FACTS), project(nets), NASA)
+    fails = found(report, "fail")
+    assert (
+        "fail U1 pin 1 (VDD) on V33: 3.4 V can stand on it, its limit is -1.2 V "
+        "(pin VSS at -5.2 V, +4 V) [DS-1, rev A, p 4]"
+    ) in fails
+    assert (
+        "fail U1 pin 1 (VDD) on V33: its sources hold it 8 to 8.6 V above pin VSS on VNEG, "
+        "the pin works from 1.7 to 3.6 V [DS-1, rev A, p 4]"
+    ) in fails
+
+
+def test_a_pull_up_to_a_higher_rail_lifts_a_net_the_project_states(tmp_path):
+    """SDA comes in on a connector and is stated at 0 to 3.3 V. With the cable out, or its driver
+    released, the 4k7 to the 5 V rail puts 5.5 V on a pin that takes 4.6 V."""
+    chip = entry(
+        "ic",
+        "BUF-1",
+        family="digital",
+        pins=[
+            pin("VCC", ["1"], "supply", abs=[-0.5, 6.5], amps=0.001),
+            pin("GND", ["2"], "ground"),
+            pin("A", ["3"], "input", abs=[-0.5, 4.6]),
+        ],
+    )
+    pins = {"1": ("V33", "VCC", "power_in"), "2": ("GND", "GND", "power_in"), "3": ("SDA", "A", "input")}
+    net, mpns = circuit(
+        U1=("BUF", "BUF-1", pins),
+        R1=("4k7", "R-0402", {"1": "V5", "2": "SDA"}),
+        J1=("IN", "HDR-1", {"1": "SDA", "2": "GND"}),
+    )
+    source = entry("connector", "HDR-1", pins=[{"numbers": ["1"], "outside": "source"}])
+    nets = {"V5": (4.5, 5.5), "SDA": (0.0, 3.3), **RAILS}
+    report = ratings.judge(net, mpns, library(tmp_path, chip, chip_resistor(), source), project(nets), NASA)
+    assert any(
+        line.startswith("fail U1 pin 3 (A) on SDA: 5.5 V can stand on it, its limit is 4.6 V")
+        for line in found(report, "fail")
+    ), [f.line for f in report.findings]
+
+
+def test_a_diode_drawn_forward_between_2_sources_fails(tmp_path):
+    """A clamp drawn backwards: its anode on the 5 V rail and its cathode on ground. The rail holds
+    its anode at 4.5 V or more above its cathode, and it carries all the rail gives."""
+    net, mpns = circuit(D1=("TVS", "TVS-1", {"1": "V5", "2": "GND"}))
+    clamp = entry("diode.clamp", "TVS-1", diodes=[{"anode": "1", "cathode": "2"}], volts_standoff=5.5)
+    report = ratings.judge(net, mpns, library(tmp_path, clamp), project(V5), NASA)
+    assert (
+        "fail D1 TVS from V5 to GND: its anode is held at 4.5 V or more and its cathode at 0 V or less: "
+        "it stands forward between 2 sources [DS-1, rev A: the part's own rating]"
+    ) in found(report, "fail")
+
+
 def test_a_5_volt_pull_up_on_a_3_volt_pin_fails_with_the_datasheet_s_page(tmp_path):
     net, mpns = circuit(U1=("MCU", "MCU-1", mcu()), R1=("4.7k", "R-0402", {"1": "V5", "2": "SIG"}))
     facts = library(tmp_path, MCU_FACTS, chip_resistor())
@@ -2488,9 +2548,19 @@ def test_the_entry_that_names_a_part_most_closely_is_the_one_that_speaks_of_it(t
     assert ratings.facts_of(facts, part, "C-16V").data["volts"] == 16
     assert ratings.facts_of(facts, part, "C-25V").data["volts"] == 10
     assert ratings.facts_of(facts, part, "").data["volts"] == 6.3
-    assert ratings.facts_of(facts, part, "X-1").data["volts"] == 6.3
     part.footprint = "Capacitor_SMD:C_0805_2012Metric"
     assert ratings.facts_of(facts, part, "") is None
+
+
+def test_a_symbol_s_entry_speaks_of_no_part_that_has_a_part_number(tmp_path):
+    """C1 is a 6.3 V part by its number, and no entry names that number. The entry of the symbol
+    Device:C, a 50 V part, is another part's: C1 has no facts, and is not held to 50 V."""
+    by_symbol = {**ceramic("", 50), "symbol": "Device:C"}
+    del by_symbol["mpn"]
+    facts = library(tmp_path, by_symbol)
+    part = ratings.Part("C1", "10u", "Capacitor_SMD:C_0603_1608Metric", "Device:C", True)
+    assert ratings.facts_of(facts, part, "CL10A106MQ8NNNC") is None
+    assert ratings.facts_of(facts, part, "").data["volts"] == 50
 
 
 def test_2_entries_that_name_a_part_equally_closely_are_refused(tmp_path):
