@@ -629,6 +629,13 @@ def _object(where: str, value: object, of: str) -> dict:
     return value
 
 
+# Every number of a file is 0 or lies between these 2 on either side of it. No volt, amp, ohm, farad,
+# hertz or degree of a board is outside, and inside them the square of a number and the product of 2
+# stay numbers: 1e308 V squared is none, and 1e-320 Hz times an inductance is 0, which a ripple is
+# divided by. JSON also writes whole numbers of any length, which no float holds.
+SMALLEST, GREATEST = 1e-18, 1e15
+
+
 def _number(
     where: str,
     value: object,
@@ -636,8 +643,12 @@ def _number(
     most: float | None = None,
     above: float | None = None,
 ) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise Refusal(f"{where}: {value!r} is no number")
+    if isinstance(value, float) and not math.isfinite(value):
+        raise Refusal(f"{where}: {value!r} is no number")
+    if value and not SMALLEST <= abs(value) <= GREATEST:
+        raise Refusal(f"{where}: a number is 0, or from {SMALLEST:g} to {GREATEST:g} either side of 0")
     if least is not None and value < least:
         raise Refusal(f"{where}: {value:g} is under {least:g}")
     if most is not None and value > most:
@@ -772,6 +783,14 @@ def read_pack(path: Path, own: str = "") -> Pack:
             raise Refusal(f"{where}: `{rule['stress']}` is no stress the command computes; they are {known}")
         if _text(f"{where}: id", rule["id"]) in {r.id for r in rules}:
             raise Refusal(f"{where}: the id `{rule['id']}` stands 2 times")
+        # a kind no part has holds nothing: its parts would be held to their own ratings without a word
+        known = [*PASSIVE, *OTHER, *(f"ic.{family}" for family in FAMILIES)]
+        for kind in _names(f"{where}: kinds", rule["kinds"]):
+            if not any(k == kind or k.startswith(f"{kind}.") for k in known):
+                raise Refusal(
+                    f"{where}: kinds: `{kind}` names no kind of part; a rule names a kind of the facts or "
+                    "its start, as capacitor for capacitor.ceramic"
+                )
         most = _number(f"{where}: max", rule["max"], 0, 1)
         above = None
         if "above" in rule:
@@ -1131,9 +1150,9 @@ def _needs(where: str, needs: object, names: list[str]) -> None:
             raise Refusal(f"{here}: `capacitor` or `inductor` is asked")
         need = _keys(here, raw, (what, "page"))
         _page(here, need["page"])
-        if what == "capacitor":
+        if what == "capacitor":  # a need for 0 asks for nothing
             part = _keys(f"{here}: capacitor", need[what], ("from", "to", "farads_min"), ("effective",))
-            _number(f"{here}: capacitor: farads_min", part["farads_min"], 0)
+            _number(f"{here}: capacitor: farads_min", part["farads_min"], above=0)
             if not isinstance(part.get("effective", False), bool):
                 raise Refusal(f"{here}: capacitor: effective: true or false is asked")
         else:
@@ -1141,10 +1160,14 @@ def _needs(where: str, needs: object, names: list[str]) -> None:
             if "henries" in part:
                 _span(f"{here}: inductor: henries", part["henries"])
             if "amps_saturation_min" in part:
-                _number(f"{here}: inductor: amps_saturation_min", part["amps_saturation_min"], 0)
+                _number(f"{here}: inductor: amps_saturation_min", part["amps_saturation_min"], above=0)
         for end in ("from", "to"):
             if part[end] not in names:
                 raise Refusal(f"{here}: {what}: {end}: `{part[end]}` is no pin name of this part")
+        if part["from"] == part["to"]:
+            raise Refusal(
+                f"{here}: {what}: `{part['from']}` stands in `from` and in `to`: a part stands between 2 pins"
+            )
 
 
 def _facts(where: str, raw: object) -> Facts:

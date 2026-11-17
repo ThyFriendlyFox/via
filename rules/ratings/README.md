@@ -34,7 +34,9 @@ of a transistor are judged when the project states the current through the part.
 
 `kinds` are the part kinds of the facts the rule covers: `capacitor` covers `capacitor.ceramic`. For
 `rail.load` the kind is `ic.` and the part's family, so `ic.regulator` covers both kinds of regulator
-and `ic` every part. The first rule of the file that covers a part is the one that holds it.
+and `ic` every part. The first rule of the file that covers a part is the one that holds it. A kind
+that is no kind of the facts and no start of one is refused: its rule would hold nothing, and its parts
+would be held to their own ratings.
 
 `max` is the share of the rating. `above` makes the share fall in a line from `celsius` to `falls_to`
 at `at`; past `at` the share is 0, since the document allows the part no further. The temperature is

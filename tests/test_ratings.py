@@ -2600,6 +2600,20 @@ STATED = {
             changed(STATED, "nets", "/GND", to={"volts": [0, 5], "source": "x"}),
             "ratings.json: nets: /GND: this net stands 2 times, as GND and as /GND",
         ),
+        # a number no board has: its square is past what a number holds, and JSON writes whole
+        # numbers of any length
+        (
+            changed(STATED, "nets", "V5", "volts", to=[4.5, 1e308]),
+            "ratings.json: nets: V5: volts: a number is 0, or from 1e-18 to 1e+15 either side of 0",
+        ),
+        (
+            changed(STATED, "ambient", "max", to=-(10**400)),
+            "ratings.json: ambient: max: a number is 0, or from 1e-18 to 1e+15 either side of 0",
+        ),
+        (
+            changed(STATED, "parts", "R1.1", "amps", to=1e-320),
+            "ratings.json: parts: R1.1: amps: a number is 0, or from 1e-18 to 1e+15 either side of 0",
+        ),
     ],
 )
 def test_a_project_file_that_is_wrong_in_1_place_is_refused_with_the_place(tmp_path, data, message):
@@ -2687,6 +2701,17 @@ CARD = {
             changed(CARD, "rules", 0, "above", "falls_to", to=0.6),
             "pack.json: rule 1: above: `falls_to` is above `max`",
         ),
+        # a kind no part has: the rule would hold nothing, and its parts would be held to their own
+        # ratings without a word
+        (
+            changed(CARD, "rules", 0, "kinds", to=["capacitor.ceramc"]),
+            "pack.json: rule 1: kinds: `capacitor.ceramc` names no kind of part; a rule names a kind of "
+            "the facts or its start, as capacitor for capacitor.ceramic",
+        ),
+        (
+            changed(CARD, "rules", 0, "kinds", to=["capacitor", "cap"]),
+            "pack.json: rule 1: kinds: `cap` names no kind of part; ",
+        ),
         # the document: a word is no URL, no SHA256 and no date, and a word in place of `no` would
         # count the pack as read a second time
         (
@@ -2738,6 +2763,7 @@ def test_a_shipped_pack_loads_and_each_of_its_limits_names_a_table_and_a_page(na
 
 RESISTOR = {"kind": "resistor", "mpn": "R-1", "tolerance": 0.01, "watts": 0.1, "volts": 50, "source": READ}
 SWITCHING = {"topology": "buck", "hertz": [1e6, 2e6], "page": 7}
+REGULATOR_NEEDS = regulator(needs=[OUT_CAP])  # 500 nF from OUT to GND
 
 
 @pytest.mark.parametrize(
@@ -2906,6 +2932,28 @@ SWITCHING = {"topology": "buck", "hertz": [1e6, 2e6], "page": 7}
         (
             changed(RESISTOR, "source", "sha256", to="x"),
             "x.json: source: sha256: 64 hex digits are asked",
+        ),
+        # a frequency so near 0 that its product with an inductance is 0: the ripple is divided by it
+        (
+            changed(SWITCHER, "switching", "hertz", to=[1e-320, 1e6]),
+            "x.json: switching: hertz: a number is 0, or from 1e-18 to 1e+15 either side of 0",
+        ),
+        (
+            changed(RESISTOR, "watts", to=10**400),
+            "x.json: watts: a number is 0, or from 1e-18 to 1e+15 either side of 0",
+        ),
+        # a need: one for 0 asks for nothing, and a part stands between 2 pins
+        (
+            changed(REGULATOR_NEEDS, "needs", 0, "capacitor", "farads_min", to=0),
+            "x.json: needs 1: capacitor: farads_min: 0 is not above 0",
+        ),
+        (
+            changed(REGULATOR_NEEDS, "needs", 0, "capacitor", "to", to="OUT"),
+            "x.json: needs 1: capacitor: `OUT` stands in `from` and in `to`: a part stands between 2 pins",
+        ),
+        (
+            changed(BUCK, "needs", 0, "inductor", "amps_saturation_min", to=0),
+            "x.json: needs 1: inductor: amps_saturation_min: 0 is not above 0",
         ),
     ],
 )

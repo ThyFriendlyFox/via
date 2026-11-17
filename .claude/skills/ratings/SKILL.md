@@ -67,10 +67,12 @@ parts, each entry read from its datasheet.
    `library/` holds (PROCESSES.md P27). Fill each key from the page it
    stands on, as the tables below say. Rules:
    - A number is the one the datasheet prints, in volts, amps, ohms,
-     farads, henries, hertz or watts. `page` is the page it stands on; a
-     list when the numbers of 1 pin stand on 2 pages. A pin, a needed
-     part and `switching` hold a `page`. An entry of another kind holds
-     none: write the page of its numbers in its `note`.
+     farads, henries, hertz or watts: `4.7e-6` for 4.7 uF. The command
+     takes 0 and numbers from 1e-18 to 1e15, either side of 0.
+   - `page` is the page a number stands on; a list when the numbers of 1
+     pin stand on 2 pages. A pin, a needed part and `switching` hold a
+     `page`. An entry of another kind holds none: write the page of its
+     numbers in its `note`.
    - The absolute maximum ratings go in `abs`. The recommended operating
      conditions go in `operating`. Never one in place of the other.
    - A number the datasheet does not state is left out. The command then
@@ -241,7 +243,8 @@ name share an entry, as `"numbers": ["2", "5"]`.
   with `"effective": true` when the datasheet asks for the capacitance
   that is left under voltage, and
   `{"inductor": {"from": "SW", "to": "FB", "henries": [0.7e-6, 2.64e-6]}, "page": 9}`.
-  An end that names a `feedback` pin is the output's net.
+  An end that names a `feedback` pin is the output's net. `from` and
+  `to` are 2 pins, and a need asks for more than 0.
 - `switching`, for a buck converter:
   `{"topology": "buck", "hertz": [1.5e6, 1.5e6], "page": 5}`, and
   `efficiency` when the datasheet states one.
