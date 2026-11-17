@@ -392,6 +392,13 @@ def buck(  # noqa: PLR0913, PLR0915
     return Block("buck", sums, entries, rows, files)
 
 
+def mcu(d, **kwargs) -> Block:
+    """A microcontroller with its crystal and decoupling, by TI SLAA322D: tools/blocks_mcu.py."""
+    import blocks_mcu  # noqa: PLC0415  (it imports this module)
+
+    return blocks_mcu.mcu(d, **kwargs)
+
+
 def _output_where(chip: dict) -> str:
     span, dielectrics = chip["output_span"]["where"], chip["dielectrics"]["where"]
     return f"{_where(chip, 'output_farads')}; note 2; {span}; {dielectrics}"

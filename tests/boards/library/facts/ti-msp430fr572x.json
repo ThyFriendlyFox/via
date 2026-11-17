@@ -1,0 +1,35 @@
+{
+  "kind": "ic",
+  "mpns": ["MSP430FR5720IRGE", "MSP430FR5720IRGER"],
+  "family": "digital",
+  "source": {
+    "document": "MSP430FR572x datasheet, SLASE35C",
+    "revision": "May 2014, revised December 2017",
+    "url": "https://www.ti.com/lit/ds/symlink/msp430fr5720.pdf",
+    "sha256": "e43fd0ed2433cb4edc0217adc948180fc7417dfaa4fb967b1db0ebb81a56fa78",
+    "read": "2026-11-17",
+    "second_reader": "no"
+  },
+  "note": "Pin numbers of the RGE package, table 4-1, pages 10 to 13. Absolute limits, section 5.1, page 14: VCC -0.3 V to 4.1 V, any pin but VCORE -0.3 V to VCC + 0.3 V. Operating range, section 5.3, page 14: VCC 2.0 V to 3.6 V, AVCC = DVCC. VCORE needs 470 nF of 20 % or better, and the capacitance at VCC is 10 times it at the least (section 5.3, page 14): 4.7 uF. VCORE is the core's own supply and takes no load (table 4-1, note 4, page 13); section 5.18 (page 26) gives its voltage as 1.5 V typical, with no limits, and that typical value is entered for both ends. XIN and XOUT are PJ.4 and PJ.5, general-purpose digital I/O as well as the terminals of XT1 (table 4-1, page 13): they are entered as I/O between DVSS and DVCC. The QFN pad has no pin in the symbol",
+  "pins": [
+    {"numbers": ["1", "2", "3", "4", "5", "6", "13", "14", "15", "16", "17"], "name": "P", "role": "io",
+     "abs": [-0.3, {"pin": "DVCC", "plus": 0.3}], "swing": ["DVSS", "DVCC"], "page": 14},
+    {"numbers": ["7", "8", "9", "10"], "name": "PJ", "role": "io",
+     "abs": [-0.3, {"pin": "DVCC", "plus": 0.3}], "swing": ["DVSS", "DVCC"], "page": 14},
+    {"numbers": ["11"], "name": "TEST", "role": "input", "abs": [-0.3, {"pin": "DVCC", "plus": 0.3}], "page": 14},
+    {"numbers": ["12"], "name": "RST", "role": "input", "abs": [-0.3, {"pin": "DVCC", "plus": 0.3}], "page": 14},
+    {"numbers": ["18"], "name": "VCORE", "role": "regulated", "volts": [1.5, 1.5], "from": "DVCC", "page": 26},
+    {"numbers": ["19"], "name": "DVSS", "role": "ground"},
+    {"numbers": ["20"], "name": "DVCC", "role": "supply", "abs": [-0.3, 4.1], "operating": [2.0, 3.6], "page": 14},
+    {"numbers": ["21"], "name": "XIN", "role": "io",
+     "abs": [-0.3, {"pin": "DVCC", "plus": 0.3}], "swing": ["DVSS", "DVCC"], "page": [13, 14]},
+    {"numbers": ["22"], "name": "XOUT", "role": "io",
+     "abs": [-0.3, {"pin": "DVCC", "plus": 0.3}], "swing": ["DVSS", "DVCC"], "page": [13, 14]},
+    {"numbers": ["23"], "name": "AVSS", "role": "ground"},
+    {"numbers": ["24"], "name": "AVCC", "role": "supply", "abs": [-0.3, 4.1], "operating": [2.0, 3.6], "page": 14}
+  ],
+  "needs": [
+    {"capacitor": {"from": "VCORE", "to": "DVSS", "farads_min": 470e-9}, "page": 14},
+    {"capacitor": {"from": "DVCC", "to": "DVSS", "farads_min": 4.7e-6}, "page": 14}
+  ]
+}

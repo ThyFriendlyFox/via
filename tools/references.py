@@ -23,7 +23,7 @@ from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 INDEX = ROOT / "rules" / "references" / "index.json"
-KINDS = ("standard", "application note", "datasheet")
+KINDS = ("standard", "application note", "datasheet", "user's guide")
 FIELDS = ("id", "kind", "number", "title", "revision", "url", "sha256", "read")
 LEDGER = "ledger.json"
 # A site's answer that holds until a person asks again: a refusal is never retried under another name.

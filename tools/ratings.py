@@ -1008,6 +1008,8 @@ PASSIVE = {  # kind -> the keys an entry must hold, and those it may
     "switch": ((), ("amps", "volts")),
     "testpoint": ((), ()),
     "mechanical": ((), ()),
+    # a crystal passes no steady current; tools/blocks_mcu.py reads its figures, nothing here judges them
+    "crystal": (("hertz", "ohms_esr", "farads_load"), ("farads_shunt", "watts_drive")),
 }
 OTHER = {
     "connector": ((), ("pins",)),
@@ -1041,6 +1043,11 @@ RATED = (
     "volts_drain_source",
     "volts_gate_source",
     "amps_forward",
+    "hertz",
+    "ohms_esr",
+    "farads_load",
+    "farads_shunt",
+    "watts_drive",
 )
 # A pin's role -> the keys it must hold beside numbers, name, role and page, and those it may.
 # regulated: the pin its regulator holds at `volts`, or, with `set_by`, at what the divider on its

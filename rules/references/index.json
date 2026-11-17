@@ -143,6 +143,72 @@
       "url": "https://www.ti.com/lit/ds/symlink/tlv755p.pdf",
       "sha256": "96e2706d4b13656d2d550fdbb5be9861c56b058822109bb39a906d4ad1beb019",
       "read": "2026-11-17"
+    },
+    {
+      "id": "ti-slaa322d",
+      "kind": "application note",
+      "maker": "Texas Instruments",
+      "number": "SLAA322D",
+      "title": "MSP430 32-kHz Crystal Oscillators",
+      "revision": "August 2006, revised July 2017",
+      "url": "https://www.ti.com/lit/an/slaa322d/slaa322d.pdf",
+      "sha256": "230fa068293ae9bdd1ec9b6a9544fb81c4a4e504ae615d007438409d1506fcb0",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "ti-slase35",
+      "kind": "datasheet",
+      "maker": "Texas Instruments",
+      "number": "SLASE35C",
+      "title": "MSP430FR572x Mixed-Signal Microcontrollers",
+      "revision": "May 2014, revised December 2017",
+      "url": "https://www.ti.com/lit/ds/symlink/msp430fr5720.pdf",
+      "sha256": "e43fd0ed2433cb4edc0217adc948180fc7417dfaa4fb967b1db0ebb81a56fa78",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "ti-slau278",
+      "kind": "user's guide",
+      "maker": "Texas Instruments",
+      "number": "SLAU278AH",
+      "title": "MSP430 Hardware Tools User's Guide",
+      "revision": "May 2009, revised March 2021",
+      "url": "https://www.ti.com/lit/ug/slau278/slau278.pdf",
+      "sha256": "0d9c72d7aab2982244bd6d3ad456de9f2c95aad33615cac2284849d8e6889162",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "ti-slau272d",
+      "kind": "user's guide",
+      "maker": "Texas Instruments",
+      "number": "SLAU272D",
+      "title": "MSP430FR57xx Family User's Guide",
+      "revision": "May 2011, revised March 2018",
+      "url": "https://www.ti.com/lit/ug/slau272d/slau272d.pdf",
+      "sha256": "fe3fbea973299ff37ec3406b54a34e545c2cc6207c135fcc2157fd4988250363",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "abracon-abs25",
+      "kind": "datasheet",
+      "maker": "Abracon",
+      "number": "ABS25",
+      "title": "ABS25 32.768 kHz Low Frequency SMD Crystal",
+      "revision": "REVISED: 09-30-19",
+      "url": "https://abracon.com/Resonators/ABS25.pdf",
+      "sha256": "e3b65e4965cbbd5d6813fafcc65e38419224ae53cf1af0ea84baae503d4c5f20",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "abracon-abs07",
+      "kind": "datasheet",
+      "maker": "Abracon",
+      "number": "ABS07",
+      "title": "ABS07 32.768kHz SMD Crystal",
+      "revision": "REVISED: 08-10-22",
+      "url": "https://abracon.com/Resonators/ABS07.pdf",
+      "sha256": "5b21d42d9ca704d86cfb8f1b93488f3f3671c55ca90f334aa66f931866277dd1",
+      "read": "2026-11-17"
     }
   ]
 }
