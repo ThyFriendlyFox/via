@@ -542,6 +542,57 @@ def newest(report: Path, inputs: list[Path]) -> Path | None:
     return next((p for p in inputs if p.stat().st_mtime > made), None)
 
 
+@dataclass
+class Ratings:
+    """Whether a project's ratings are held: the 1 definition `gates` and `next` both read."""
+
+    asked: bool  # the project has a ratings.json and a schematic
+    held: bool
+    why: str
+
+    def line(self, project: str) -> str:
+        """The line `gates` prints above its verdict."""
+        if not self.asked:
+            return f"RATINGS not asked for: {self.why}"
+        if self.held:
+            return f"RATINGS held: {self.why}"
+        return f"RATINGS not held: {self.why} (workcenter ratings {project})"
+
+
+def ratings_state(cli, project) -> Ratings:
+    """Held: build/ratings/report.json says exactly RATINGS HELD and no input of that run is newer. A
+    record older than the schematic, ratings.json, parts.csv or a facts file speaks of other files, and
+    is not held."""
+    if not (project.dir / "ratings.json").is_file():
+        return Ratings(False, False, "no ratings.json beside the schematic")
+    if not project.sch:
+        return Ratings(False, False, "no schematic beside ratings.json")
+    record = project.dir / "build" / "ratings" / "report.json"
+    if not record.is_file():
+        return Ratings(True, False, "no build/ratings/report.json yet")
+    newer = newest(record, ratings_inputs(cli, project))
+    if newer:
+        return Ratings(True, False, f"{newer.name} changed after the last run")
+    try:
+        rated = cli.Result(**json.loads(record.read_text(encoding="utf-8")))
+    except (ValueError, TypeError) as exc:
+        return Ratings(True, False, f"build/ratings/report.json is no record of a run: {exc}")
+    said = rated.details.get("verdict")
+    if said == "RATINGS HELD":
+        return Ratings(True, True, "build/ratings/report.json says RATINGS HELD")
+    # The words of the ratings verdict itself (ratings.verdict), never a count made again here.
+    for pattern, why in (
+        (r"RATINGS HELD, (\d+) NOT JUDGED", r"\1 not judged"),
+        (r"RATINGS NOT HELD \((.+)\)", r"\1"),
+        (r"NOTHING JUDGED \((.+)\)", r"nothing judged (\1)"),
+    ):
+        if said and re.fullmatch(pattern, said):
+            return Ratings(True, False, re.sub(pattern, why, said))
+    if said:
+        return Ratings(True, False, f"the last run says {said}")
+    return Ratings(True, False, f"the last run judged nothing: {rated.summary}")
+
+
 def trouble(cli, results: list) -> tuple[str, str, bool] | None:
     """The first thing a gates run asks for: (gate, line, whether it is a failure). A red gate's first
     failure, else the first warning of any gate, else None."""
@@ -790,7 +841,7 @@ def next_step(cli, target: str, run_check=True) -> Step:
             read,
             "the last line is GREEN, with no warning" if not failed else "the last line starts with GREEN",
         )
-    if rated is not None and rated.details.get("verdict") != "RATINGS HELD":
+    if rated is not None and not ratings_state(cli, project).held:
         left = rated.details.get("warnings", []) or [rated.details.get("verdict") or rated.summary]
         do, read = hint("ratings", left[0])
         return Step(

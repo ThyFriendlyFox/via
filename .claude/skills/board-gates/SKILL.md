@@ -6,7 +6,8 @@ description: Runs ERC, DRC, simulation, and fabrication export on a KiCad 10 pro
 # Board Gates
 
 A board is done when `workcenter gates <project> --strict` prints GREEN.
-This skill runs the gates, reads the reports, and fixes the design until
+For a project with a `ratings.json`, that GREEN needs its ratings held:
+the line above the verdict says `RATINGS held`. This skill runs the gates, reads the reports, and fixes the design until
 they pass. The gates are listed in `WORKCENTER.md`; a project may add
 gates, never remove one.
 
@@ -45,7 +46,22 @@ the step is done. Run it whenever the next step is not plain.
    | `GREEN with N warnings` | The gates passed and named N things they did not fail on. Each is printed. Not done. | 0 |
    | `GREEN ... (nothing to run for: erc, drc, export)` | The same, for a project with decks and no board. The line names the gates that had nothing to run. | 0 |
    | `RED` | A gate failed or an engine stopped with an error. | 1 |
+   | `RED (ratings not held)` | `--strict`: every gate passed, and the project's ratings are not held. | 1 |
    | `SKIPPED (SIM: engine missing)` | A gate did not run because its engine is absent. Never GREEN. | 2 |
+
+   The line above the verdict is about the ratings. `gates` does not run
+   `ratings`; it reads `build/ratings/report.json`:
+
+   | Line | What to do |
+   |---|---|
+   | `RATINGS not asked for: no ratings.json beside the schematic` | Nothing here. The verdict is the gates' alone. |
+   | `RATINGS held: ...` | Nothing. The record says `RATINGS HELD` and no input of it changed since. |
+   | `RATINGS not held: <why> (workcenter ratings <project>)` | Run the command in brackets and follow the `ratings` skill until it prints `RATINGS HELD`. Then run the gates again. Without `--strict` the run counts this as 1 warning. |
+
+   `<why>` is `no build/ratings/report.json yet`, `<file> changed after the
+   last run` (a stale record: the schematic, `ratings.json`, `parts.csv` or
+   a facts file is newer), or the last run's count: `N not judged`, `N fail`,
+   `nothing judged (N not judged)`.
 3. For a red gate, read its report before touching the design:
    - ERC: `build/erc.json`, `sheets[].violations[]`.
    - DRC: `build/drc.json`, `violations[]`, `unconnected_items[]`,

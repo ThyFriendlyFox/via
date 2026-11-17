@@ -5219,12 +5219,14 @@ def warning_count(result: Result) -> int:
     return len(result.details.get("warnings", []))
 
 
-def gates_verdict(results: list[Result]) -> tuple[str, int]:
+def gates_verdict(results: list[Result], ratings_open: bool = False, strict: bool = False) -> tuple[str, int]:
     """A run's verdict and its exit code. GREEN says every gate that had something to run passed. It
     names the count of warnings beside the word, never behind it, and the gates that had nothing to
     run: a project with decks and no board is `GREEN (nothing to run for: erc, drc, export)`, which
     nobody takes for a finished board. A gate whose engine is absent did not run: the run is then
-    SKIPPED with exit code 2, never GREEN, however many others passed (M106)."""
+    SKIPPED with exit code 2, never GREEN, however many others passed (M106). `ratings_open`: the
+    project has a ratings.json that its ratings record does not hold (guide.ratings_state). That is 1
+    warning of a GREEN run, and a strict run is `RED (ratings not held)`."""
     statuses = {r.status for r in results}
     absent = [r.gate.upper() for r in results if r.status == "skip" and r.details.get("engine_missing")]
     if statuses & {"fail", "error"}:
@@ -5233,7 +5235,9 @@ def gates_verdict(results: list[Result]) -> tuple[str, int]:
         return f"SKIPPED ({', '.join(absent)}: engine missing)", EXIT_SKIP
     if "pass" not in statuses:
         return "SKIPPED", EXIT_SKIP
-    warnings = sum(warning_count(r) for r in results)
+    if ratings_open and strict:
+        return "RED (ratings not held)", EXIT_FAIL
+    warnings = sum(warning_count(r) for r in results) + int(ratings_open)
     idle = [r.gate for r in results if r.status == "skip"]
     said = "GREEN" + (f" with {warnings} warning{'' if warnings == 1 else 's'}" if warnings else "")
     return said + (f" (nothing to run for: {', '.join(idle)})" if idle else ""), EXIT_PASS
@@ -5298,15 +5302,28 @@ def cmd_gates(args) -> int:
         results.append(result)
         if result.status in ("fail", "error"):
             break
-    code = emit(results, args, out)
+    emit(results, args, out)
+    # Done is 1 definition: the gates GREEN and, for a project with a ratings.json, its ratings held.
+    # The gates do not run `ratings`; they read its record, as `next` does.
+    rated = guide().ratings_state(sys.modules[__name__], project)
+    said, code = gates_verdict(results, rated.asked and not rated.held, args.strict)
+    named = shlex.quote(str(args.project))
     if args.report:
         # The one file a gate run writes outside `out`: named by the user, only between its markers.
-        blocks = doctools().gates_report(Path(args.report).resolve(), project, results, sys.modules[__name__])
+        blocks = doctools().gates_report(
+            Path(args.report).resolve(),
+            project,
+            results,
+            sys.modules[__name__],
+            verdict=said,
+            ratings=rated.line(named),
+        )
         if not args.json:
             print(f"wrote {', '.join(blocks)} into {args.report}")
     # The verdict is the last line, whatever else the run wrote: a reader and a script take it from there.
     if not args.json:
-        print(f"{gates_verdict(results)[0]}: {project.name}  report {out / 'gates.json'}")
+        print(rated.line(named))
+        print(f"{said}: {project.name}  report {out / 'gates.json'}")
     return code
 
 

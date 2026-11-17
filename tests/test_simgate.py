@@ -791,10 +791,12 @@ def test_every_warning_is_printed_and_the_verdict_is_the_last_line(tmp_path):
     # 7 decks with no bound, and no corners.json: 8 things named, each on its own line
     assert code == 0 and sum(ln.startswith("       - warning: ") for ln in lines) == 8
     assert lines[-1].startswith("GREEN with 8 warnings (nothing to run for: erc, drc, export): proj  report ")
-    # with --report the line about the report comes first: a reader takes the verdict from the end
+    # with --report the line about the report comes first, then the ratings' line: a reader takes the
+    # verdict from the end
     code, text = text_of("gates", proj, "--out", tmp_path / "o", "--report", tmp_path / "docs" / "gates.md")
     lines = text.splitlines()
-    assert lines[-2].startswith("wrote ") and lines[-1].startswith("GREEN with 8 warnings")
+    assert lines[-3].startswith("wrote ") and lines[-1].startswith("GREEN with 8 warnings")
+    assert lines[-2] == "RATINGS not asked for: no ratings.json beside the schematic"
     assert "GREEN with 8 warnings (nothing to run for: erc, drc, export) on" in (
         tmp_path / "docs" / "gates.md"
     ).read_text(encoding="utf-8")
