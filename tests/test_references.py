@@ -647,13 +647,17 @@ def test_every_document_a_rule_of_the_repository_names_is_in_the_index():
     judged. The charger block adds rules/blocks/charger.json, 3 (its charger's and its protector's
     datasheets, each also named by a `short` label with no place beside it, 2 not judged, and its FET's
     datasheet in a `where`), and the facts of its 3 parts, 1 each: 47 + 3 + 3 = 53 named in 32 + 4 = 36
-    files, 9 + 2 = 11 not judged."""
+    files, 9 + 2 = 11 not judged. The microcontroller block adds rules/blocks/mcu.json, 8 (its note
+    SLAA322D, its IC's datasheet SLASE35C and the 2 user's guides SLAU278AH and SLAU272D, each named in
+    1 or more places), mcu-block.json 5 (ABS25, ABS07 and Vishay 45199 for 3 entries; its made-up
+    crystal and its header name no document, 2 not judged) and the MSP430's facts 1: 53 + 8 + 5 + 1 = 67
+    named in 36 + 3 = 39 files, 11 + 2 = 13 not judged."""
     globs = json.loads(INDEX.read_text(encoding="utf-8"))["rules"]
     files = sorted({p for pattern in globs for p in ROOT.glob(pattern)})
     code, out = run("rules", *files)
     assert code == 0, out
     assert out.splitlines()[-1] == (
-        "references rules: 53 documents named in 36 files, 53 in the index, 0 not; 11 not judged"
+        "references rules: 67 documents named in 39 files, 67 in the index, 0 not; 13 not judged"
     )
 
 

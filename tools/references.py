@@ -28,8 +28,9 @@ import clock
 ROOT = Path(__file__).resolve().parents[1]
 INDEX = ROOT / "rules" / "references" / "index.json"
 # A held document: its copy is pinned by its SHA256. A report is a held copy that is no standard, note or
-# datasheet: a project's technical papers, a laboratory's report (tests/test_xsection.py cites 2).
-HELD = ("standard", "application note", "datasheet", "report")
+# datasheet: a project's technical papers, a laboratory's report (tests/test_xsection.py cites 2). A
+# user's guide is a maker's family guide, held as a datasheet is (the MCU block's SLAU272D and SLAU278AH).
+HELD = ("standard", "application note", "datasheet", "report", "user's guide")
 # A web page has no fixed copy: it is held by the values read from it on a date.
 WEB = "web page"
 # A paper or a book with no free copy: cited and not held.
