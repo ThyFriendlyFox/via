@@ -13,6 +13,7 @@ that `workcenter ratings` and the SIM gate read.
 | Block | Note | Rules | ICs |
 |---|---|---|---|
 | `blocks.buck` | TI SLVA477C, equations 1, 2, 3, 4 and 11, sections 3, 6 and 7; the datasheet's equation 2, table 4 and sections 6.3, 8.2.2.4 and 8.2.2.5 | `rules/blocks/buck.json` | TLV62569DBVR |
+| `blocks.ldo` | TI SLVA079, equations 1, 8, 10 and 11; the datasheet's equations 6 and 7, table 6-1 and sections 5.3, 5.5 and 7.1.1 | `rules/blocks/ldo.json` | TLV75533PDBVR, TLV75533PDRVR |
 
 A block holds what its note states and no more. A part the note does not
 cover is your own schematic, and `workcenter ratings` judges it.
@@ -87,6 +88,55 @@ cover is your own schematic, and `workcenter ratings` judges it.
 6. Run `workcenter design design.py --route`, then `workcenter gates . --strict`,
    as the `board-gates` skill says. The SIM gate runs `sim/buck.cir` and holds
    the inductor's peak current to its saturation current.
+
+## The linear regulator, `blocks.ldo`
+
+The block takes the first stocked IC of `rules/blocks/ldo.json` that holds 5
+checks, then 1 input and 1 output capacitor. List the ICs in your stock in the
+order you want them tried; a package with a lower RthetaJA after a smaller one
+lets the block move to it when the junction runs hot.
+
+1. In `design.py`, call it after your own parts:
+
+   ```python
+   block = blocks.ldo(d, vin=(4.75, 5.25), vout=3.3, amps=0.1, ambient=(0, 30),
+                      pack="nasa-eee-inst-002", nets=("+5V", "+3V3", "GND"),
+                      stock=STOCK, facts=Path(__file__).parent / "library" / "facts",
+                      sch_at=(76.2, 76.2), pcb_at=(111.0, 108.0))
+   ```
+
+   `ambient` is the least and the greatest air temperature around the board,
+   in C. `pack` is the pack of your `ratings.json`. `tests/boards/block_ldo.py`
+   is a whole example.
+2. Run `workcenter design design.py`. What it prints:
+   - `ldo U1: no stocked IC holds the spec: <MPN>: ...`: each stocked IC and
+     why it missed, with its equation and page. Do as each says:
+     - `gives A V to B V, not X V`: the IC is fixed at another output. Stock
+       the IC of the output you ask.
+     - `the input reaches X V, IN operates from ...`: change the input range
+       or the IC.
+     - `IOUT of X A is over ...`: the IC cannot give the load.
+     - `VDO = ...; VOUT(NOM) + VDO = X V, not under the least input`: the
+       least input is too low for the full load (SLVA079 equation 1). Raise
+       the least input, lower the load, or stock an IC of lower dropout.
+     - `TJ = ... C, over ... C`: the junction at the greatest ambient passes
+       the pack's limit. Stock a package of lower RthetaJA, lower the input,
+       the load or the ambient.
+   - `ldo U1: no stocked capacitor holds C2 at X V: ...`: each stocked
+     capacitor and why it missed: its dielectric, its rating, its value
+     outside the datasheet's span, no curve of the value it keeps, or what it
+     keeps at the pin's voltage less its tolerance not over 0.47 uF. Stock a
+     part that holds, with its facts and its curve.
+   - `ldo U1: a load of 0 A`: give the load you draw.
+3. Read `block.sums` in `sim/ldo.cir` after `* The sums:`. A line
+   `U1: <MPN> passed over: ...` names an IC the block tried first. The line
+   `its CSR is not judged` says the datasheet gives no stable CSR range: the
+   block does not judge the output capacitor's ESR. Copy the sums into the
+   version's README.
+4. Run `workcenter ratings . --strict`, then `workcenter design design.py
+   --route` and `workcenter gates . --strict`. The SIM gate runs `sim/ldo.cir`
+   at each temperature of `sim/corners.json` and holds U1's junction under the
+   pack's limit (`sim/thermal.json`).
 
 ## Adding an IC to a block
 
