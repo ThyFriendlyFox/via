@@ -42,11 +42,31 @@ limit and the document with its clause and page.
    - `FAIL highspeed.width: ...`: a track is outside the band. Change its
      width in the design file to the first number of the `rules` line and
      regenerate.
-   - `FAIL highspeed.gap: ...`: the tracks run at another gap than
-     `interfaces.json` gives. Move the tracks, or correct `gap`.
-   - `NOT JUDGED highspeed.gap: ...`: a part of the pair runs at another
-     gap than the rest (a bump to match lengths, a fan-out). The width is
-     judged at the gap of the most of its length.
+   - `FAIL highspeed.gap: ... mm of the pair runs ... mm apart ...; limit
+     ... the gap interfaces.json gives`: that part of the pair runs at
+     another gap than `interfaces.json` gives (each part is judged, not only
+     the most of the length). Move the tracks, or correct `gap`.
+   - `highspeed.gap: ... Z_diff ... ohm there at its tracks' widths`: with
+     no `gap` given, the width is judged at the gap of the most of the
+     length and each other gap is solved at the tracks' own widths; out of
+     the band, it fails. Bring that part to the main gap.
+   - `NOT JUDGED highspeed.coupling: ... has no parallel track of <net>
+     beside it ...`: a stretch of one net with no partner (the 2 tracks part
+     in a V, a loop, a stub), with its length and where it is. Route the 2
+     together. Under a TI file a stretch within 6.35 mm (0.25 in) of the
+     pair's pads is break-out and holds (SPRAAR7J 3.3, page 10).
+   - `NOT JUDGED highspeed.width: GND is poured on <layer> itself ...`:
+     ground on the track's own layer within 3 times its height over the
+     plane (coplanar ground). The solver puts no ground there, so the width
+     is not judged. Pull the pour back past that distance, or judge the
+     width with a coplanar field solver by hand.
+   - `NOT JUDGED highspeed.length` (and `skew`, `plane`): `... its tracks do
+     not reach J2 pad 1 ...`: the route is not finished. Finish it.
+   - `FAIL highspeed.stitching: ...`: a via of the pair moves it to a layer
+     over other ground planes with no ground via within 5.08 mm (200 mil,
+     SPRAAR7J 2.4, page 8). Add one beside it.
+   - `FAIL highspeed.spacing: ...`: a track of another signal runs nearer
+     the pair than 0.762 mm (30 mil, Table A-2). Move it.
    - `NOT JUDGED highspeed.width: ... has no track on ...` or `... never
      run side by side ...`: the 2 nets do not run together on that layer.
      Route them side by side.
@@ -65,17 +85,20 @@ limit and the document with its clause and page.
      close the gap in the pours. `... is of VBUS, not a ground`: the
      nearest pour is a power net; put a ground pour there.
    - `NOT JUDGED highspeed.<rule>: ...`: the interface's documents set no
-     such limit, or set one the command does not judge
-     (`single_ended`, `stubs`); the line says which. It does not fail the
+     such limit, or set one the command does not judge (`single_ended`,
+     `stubs`, `test_points`, `clock_spacing`, `plane_edge`, `voids`); the
+     line says which. It does not fail the
      run; with `--strict` it does. Do not type a number to fill it: add a
      document that sets it (step 4), or judge it by hand and say so in the
      project's README.
    - `NOT JUDGED highspeed.width: the stackup gives no epsilon_r ...`: set
      the dielectric's er in the board's stackup.
    - `FAIL highspeed: ...` with no rule: the files are wrong (an unknown
-     interface, a net the board does not have, no stackup, a gap that is
-     not a number above 0, an `interfaces.json` of another shape). Correct
-     what it names.
+     interface, a net the board does not have, no stackup, a stackup layer
+     or sublayer with no thickness, a gap that is not a number above 0, an
+     `interfaces.json` of another shape). Correct what it names. A
+     dielectric of several sublayers is read sublayer by sublayer, each with
+     its own er.
 3. Run KiCad's DRC with the rules the command wrote:
    `workcenter drc <project> --fab <project>/build/highspeed/highspeed.kicad_dru`.
    It judges the same width, length and skew. Its `diff_pair_gap` rule
@@ -91,14 +114,24 @@ limit and the document with its clause and page.
 5. Done when `workcenter highspeed <project>` prints `HIGHSPEED HELD`,
    each `NOT JUDGED` line is answered in the project's README, and step 3
    prints no violation. With `--strict` a `NOT JUDGED` line fails the run:
-   the TI files' `single_ended` and `stubs` lines always do.
+   the TI files' `single_ended`, `stubs`, `test_points`, `clock_spacing`,
+   `plane_edge` and `voids` lines always do.
 
 ## What it does not judge
 
 - Via barrels in a length; the line says how many it left out.
-- TI's single-ended impedance and stubs (`NOT JUDGED` lines).
-- A part of a pair at another gap than the most of it (`NOT JUDGED`).
+- TI's single-ended impedance, stubs, test points, the 50 mil to a clock,
+  the 90 mil from the plane's edge and the 1.5 W from its voids
+  (`NOT JUDGED` lines).
+- The impedance of a stretch of one net with no partner beside it
+  (`NOT JUDGED highspeed.coupling`).
+- A width beside ground poured on its own layer within 3 heights
+  (`NOT JUDGED highspeed.width`).
+- The length, skew and plane of a net whose tracks do not reach every pad
+  of it (`NOT JUDGED`).
 - The solder mask over an outer layer: the solver puts air there.
+- A pad, the edge of the board or a pour of a signal net beside a track:
+  only the spacing to another signal's tracks is judged.
 - A ground is a net named GND or VSS, or whose name begins or ends with
   GND; a pour of any other net is not a reference plane.
 - Any interface not in `rules/interfaces/` (DDR is not there: JEDEC's
