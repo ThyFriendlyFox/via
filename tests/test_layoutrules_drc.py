@@ -56,6 +56,16 @@ def test_fail_layout_esd_fails_on_its_3_rules_alone(tmp_path):
     assert all("[SLVA680A: section " in f for f in fails)
 
 
+def test_fail_layout_tee_fails_on_nearest_alone(tmp_path):
+    code, text = say("drc", BOARDS / "fail-layout-tee", "--out", tmp_path, "--strict")
+    assert code == 1, text
+    assert (
+        "0 errors, 0 warnings (0 unconnected, 0 parity), board rules ti-slva680a-esd: 1 fail, 0 not judged"
+        in text
+    )
+    assert "- fail esd J1.1 VBUS: C1.1 stands 2.85 mm from J1.1, and D1.1 stands 4.35 mm from J1.1" in text
+
+
 def test_fail_layout_emi_fails_on_its_rule_alone(tmp_path):
     code, text = say("drc", BOARDS / "fail-layout-emi", "--out", tmp_path, "--strict")
     assert code == 1, text

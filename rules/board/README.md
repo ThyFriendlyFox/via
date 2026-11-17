@@ -79,17 +79,21 @@ board file cannot say:
      "connectors": {"J1": "the USB cable"}, "inside": ["J2"],
      "protectors": {"D1": "TPD2E2U06"}, "ground": ["GND"], "power": ["VBUS", "GND"]}
 
-A connector is a part whose reference is J or P and digits (IEEE 315's letters), or whose footprint is in
-a KiCad library whose name starts with `Connector` (`Connector_USB`, `Connector_JST`, ...). One not named
-in `connectors` or `inside` is `not judged`. A `connectors` with no part is `not judged` too: the pack
-then judges no line. A connector with another reference and a footprint of another library is found by
-neither: name it in `connectors`. The DRC line names every pack:
+A connector is a part whose reference is J or P (IEEE 315's letters) or X and digits, or whose footprint is
+in a KiCad library whose name starts with `Connector` or `TerminalBlock` (`Connector_USB`,
+`TerminalBlock_Phoenix`, ...), or is `Battery`. One not named in `connectors` or `inside` is `not judged`;
+a crystal named X1 goes under `inside`. A `connectors` with no part is `not judged` too: the pack then
+judges no line. A connector with another reference and a footprint of a project's own library (`USB1` on
+`MyProject:USB_C`) is found by neither, and the DRC line does not say so: name it in `connectors`. The
+DRC line names every pack:
 `board rules ti-slva680a-esd + ti-szza009-emi: 0 fail, 0 not judged`.
 
 Both packs read the copper of a net as a graph. Its points lie on the centre lines of the tracks: each
 track's ends, where another track's end lands inside its copper, where 2 tracks cross, and where a via,
-a pad or a pour touches it. A via joins its layers and ends nothing. A pad or a pour is an end. Lengths
-are along the centre lines, from pad centre to pad centre.
+a pad or a pour touches it. A via joins its layers and ends nothing; a via or a pad whose centre lies in
+a pour of its net, on any of its layers, joins that pour. A pad or a pour is an end, and a pour is named
+by the place the trace meets it. Lengths are along the centre lines, from pad centre to pad centre; an
+arc is measured along the arc (its radius times its angle), not as the 2 chords it is drawn with.
 
 ### ti-slva680a-esd
 
@@ -100,7 +104,7 @@ ground:
 | Rule | Where | Judged |
 |---|---|---|
 | `protector` | section 1 and figure 1-2, page 2 | a part in `protectors` stands on the net, and has a pad on a net in `ground` |
-| `nearest` | section 2.1, Summary, page 4 | the shortest copper from the connector's pad to the protector's meets no other part's pad; every other part's pad on the net stands further from the protector's pad than that pad from the connector's, centre to centre, and lies further along the copper too |
+| `nearest` | section 2.1, Summary, page 4; section 2.3, Case 2, page 6 | the shortest copper from the connector's pad to the protector's meets no other part's pad; every other part's pad on the net stands further from the protector's pad than the protector's pad from the connector's, centre to centre, and lies further along the copper too; and every other part's pad stands further from the connector's pad than the protector's pad, centre to centre and along the copper (no branch to the protected part before the TVS) |
 | `no-via` | section 2.1, page 4; section 2.3, page 6 | the connector's pad and the protector's pad lie in 1 piece of copper on 1 layer |
 
 The protector is the nearest part of `protectors` with a pad on ground, centre to centre. A part at the

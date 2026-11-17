@@ -377,6 +377,7 @@ class Track:
     width: float
     start: tuple[float, float]
     end: tuple[float, float]
+    along: float = 0.0  # a chord of an arc: the length of the arc it stands for; 0 for a straight track
 
 
 @dataclass
@@ -502,7 +503,11 @@ def read_board(text: str) -> Board:
             net = net_of(node)
             if head == "arc":  # 2 chords through the middle: the copper the width is judged on
                 mid = _xy(kicadgen.child(node, "mid"))
-                board.tracks += [Track(net, layer, width, start, mid), Track(net, layer, width, mid, end)]
+                first, second = _arc_halves(start, mid, end)
+                board.tracks += [
+                    Track(net, layer, width, start, mid, first),
+                    Track(net, layer, width, mid, end, second),
+                ]
             else:
                 board.tracks.append(Track(net, layer, width, start, end))
         elif head == "via":
@@ -549,6 +554,26 @@ def read_board(text: str) -> Board:
 
 
 ARC_STEPS = 64  # chords an arc of the outline is taken as
+
+
+def _arc_halves(s: tuple, m: tuple, e: tuple) -> tuple[float, float]:
+    """The lengths along the arc through start, mid and end: from start to mid, and from mid to end, each
+    the radius times the angle it turns. 3 points in a line are 2 straight lengths."""
+    d = 2 * (s[0] * (m[1] - e[1]) + m[0] * (e[1] - s[1]) + e[0] * (s[1] - m[1]))
+    if abs(d) < EPS:
+        return math.dist(s, m), math.dist(m, e)
+    sq = [p[0] ** 2 + p[1] ** 2 for p in (s, m, e)]
+    cx = (sq[0] * (m[1] - e[1]) + sq[1] * (e[1] - s[1]) + sq[2] * (s[1] - m[1])) / d
+    cy = (sq[0] * (e[0] - m[0]) + sq[1] * (s[0] - e[0]) + sq[2] * (m[0] - s[0])) / d
+    r = math.hypot(s[0] - cx, s[1] - cy)
+
+    def turn(a: tuple, b: tuple) -> float:
+        """The angle from a to b about the centre, the short way: each half of an arc turns under pi."""
+        da = math.atan2(a[1] - cy, a[0] - cx)
+        db = math.atan2(b[1] - cy, b[0] - cx)
+        return abs((db - da + math.pi) % math.tau - math.pi)
+
+    return r * turn(s, m), r * turn(m, e)
 
 
 def _shoelace(points: list[tuple[float, float]]) -> float:

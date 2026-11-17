@@ -27,16 +27,24 @@ CHECKS = {
     "esd_no_via": ("connectors", "protectors", "ground"),
     "length_to_width": ("power", "ground"),
 }
-CONNECTOR_RE = re.compile(r"^[JP]\d+$")  # IEEE 315's letters for a connector and a plug
-CONNECTOR_LIBRARY = (
-    "Connector"  # KiCad's footprint libraries of connectors: Connector_USB, Connector_JST, ...
-)
+# IEEE 315's letters for a connector and a plug, and X, which many schematics give a connector (a crystal
+# named X1 is then found too, and is stated under `inside`)
+CONNECTOR_RE = re.compile(r"^[JPX]\d+$")
+# KiCad's footprint libraries of parts a cable, a wire or a cell is fixed to: Connector_USB, Connector_JST,
+# ..., TerminalBlock_Phoenix, ..., and Battery (its holders)
+CONNECTOR_LIBRARY = ("Connector", "TerminalBlock")
+CONNECTOR_LIBRARY_NAMES = ("Battery",)
 NEAR = 1e-3
 
 
 def is_connector(pad) -> bool:
-    """A part is a connector by its reference (J or P and digits) or by its footprint's library."""
-    return bool(CONNECTOR_RE.match(pad.ref)) or pad.footprint.split(":")[0].startswith(CONNECTOR_LIBRARY)
+    """A part is a connector by its reference (J, P or X and digits) or by its footprint's library."""
+    library = pad.footprint.split(":")[0]
+    return (
+        bool(CONNECTOR_RE.match(pad.ref))
+        or library.startswith(CONNECTOR_LIBRARY)
+        or library in CONNECTOR_LIBRARY_NAMES
+    )
 
 
 class Pack:
@@ -231,8 +239,20 @@ class Copper:
             for _, xy in sorted(cuts[i], key=lambda c: c[0]):
                 if not points or _key(points[-1]) != _key(xy):
                     points.append(xy)
+            chord = math.dist(s.start, s.end)
+            scale = s.along / chord if s.along and chord > 0 else 1.0  # a chord of an arc: along the arc
             for a, b in zip(points, points[1:], strict=False):
-                edges.append((pt(s.layer, a), pt(s.layer, b), math.dist(a, b), s.width, s.layer))
+                edges.append((pt(s.layer, a), pt(s.layer, b), math.dist(a, b) * scale, s.width, s.layer))
+        # A via or a pad joins each pour of the net on its layers that holds its centre.
+        for kind, items in (("via", vias), ("pad", pads)):
+            for k, item in enumerate(items):
+                for z, zone in enumerate(board.zones):
+                    if (
+                        zone.net == net
+                        and zone.layer in item.layers
+                        and any(kicadgen._inside_polygon(*item.at, q) for q in zone.polygons)
+                    ):
+                        joins.append(((kind, k), ("pour", z)))
         # A pad or a via joins each point within its reach; a pour each point inside it.
         for node in list(self.where):
             layer, xy = node[1], self.where[node]
@@ -270,16 +290,15 @@ class Copper:
             if z.net == net:
                 self.pours.setdefault(find(("pour", k)), z.layer)
         self.node_of = {id(p): find(("pad", k)) for k, p in enumerate(pads)}
-        self.adj: dict[tuple, list[tuple[tuple, float, float, str]]] = {}
+        # A node: the edges from it, each to a node, of a length, a width and a layer, from a place to a
+        # place (the points of the edge before they were joined into nodes).
+        self.adj: dict[tuple, list[tuple]] = {}
         for a, b, length, width, layer in edges:
             ra, rb = find(a), find(b)
             if ra != rb:
-                self.adj.setdefault(ra, []).append((rb, length, width, layer))
-                self.adj.setdefault(rb, []).append((ra, length, width, layer))
-        for a in list(self.where):
-            r = find(a)
-            if r != a and r[0] == "pour":
-                self.where.setdefault(r, self.where[a])
+                xa, xb = self.where[a], self.where[b]
+                self.adj.setdefault(ra, []).append((rb, length, width, layer, xa, xb))
+                self.adj.setdefault(rb, []).append((ra, length, width, layer, xb, xa))
 
     def node(self, pad) -> tuple:
         return self.node_of[id(pad)]
@@ -294,23 +313,24 @@ class Copper:
             d, _, node = heapq.heappop(heap)
             if d > dist[node] or (node in stops and node != start):
                 continue
-            for nxt, length, width, layer in self.adj.get(node, []):
+            for nxt, length, width, layer, xa, xb in self.adj.get(node, []):
                 if d + length < dist.get(nxt, math.inf) - 1e-12:
                     dist[nxt] = d + length
-                    prev[nxt] = (node, width, layer)
+                    prev[nxt] = (node, width, layer, xa, xb)
                     heapq.heappush(heap, (d + length, count, nxt))
                     count += 1
         return dist, prev
 
     @staticmethod
-    def path(prev: dict, end: tuple) -> list[tuple[tuple, float, str]]:
-        """The nodes from the start to `end`, each with the width and layer of the edge that reaches it."""
+    def path(prev: dict, end: tuple) -> list[tuple]:
+        """The nodes from the start to `end`, each with the width and layer of the edge that reaches it,
+        and the places that edge leaves from and arrives at."""
         out = []
         while end in prev:
-            node, width, layer = prev[end]
-            out.append((end, width, layer))
+            node, width, layer, xa, xb = prev[end]
+            out.append((end, width, layer, xa, xb))
             end = node
-        out.append((end, math.inf, ""))
+        out.append((end, math.inf, "", None, None))
         return out[::-1]
 
 
@@ -340,7 +360,7 @@ def _nearest(board: Board, pad, guard, data: dict) -> str:
     start, end = copper.node(pad), copper.node(guard)
     dist, prev = copper.reach(start)
     if end in dist:
-        for node, _, _ in copper.path(prev, end)[1:-1]:
+        for node, *_ in copper.path(prev, end)[1:-1]:
             hit = [p for p in copper.pads.get(node, []) if p in others]
             if hit:
                 return f"the copper from {me} reaches {_name(min(hit, key=_pad_order))} before {name}"
@@ -363,6 +383,27 @@ def _nearest(board: Board, pad, guard, data: dict) -> str:
             d, x = min(near, key=lambda n: (n[0], _pad_order(n[1])))
             return (
                 f"{_name(x)} lies {d:.3g} mm of copper from {name}, "
+                f"and {name} lies {dist[end]:.3g} mm of copper from {me}"
+            )
+    # From the connector's side: no other part stands or lies as near to the connector as the protector
+    # (SLVA680A section 2.3, Case 2, page 6: the ESD current branches to the IC before the TVS).
+    near = [p for p in others if math.dist(p.at, pad.at) <= reach + NEAR]
+    if near:
+        x = min(near, key=lambda p: (math.dist(p.at, pad.at), _pad_order(p)))
+        return (
+            f"{_name(x)} stands {math.dist(x.at, pad.at):.3g} mm from {me}, "
+            f"and {name} stands {reach:.3g} mm from {me}"
+        )
+    if end in dist:
+        near = [
+            (dist[copper.node(p)], p)
+            for p in others
+            if dist.get(copper.node(p), math.inf) <= dist[end] + NEAR
+        ]
+        if near:
+            d, x = min(near, key=lambda n: (n[0], _pad_order(n[1])))
+            return (
+                f"{_name(x)} lies {d:.3g} mm of copper from {me}, "
                 f"and {name} lies {dist[end]:.3g} mm of copper from {me}"
             )
     return ""
@@ -433,15 +474,16 @@ def traces(board: Board, net: str) -> list[tuple[str, str, float, float, list[st
     and a place), its length, its narrowest width, and the layers it runs on in order."""
     copper = Copper(board, net)
 
-    def label(node: tuple, near: tuple) -> tuple:
-        if node in copper.pads:
-            p = min(copper.pads[node], key=_pad_order)
-            return (0, _pad_order(p)), f"{_name(p)} {_p(p.at)}"
-        xy = copper.where.get(near, (0.0, 0.0))
-        return (1, copper.pours[node], _key(xy)), f"the {net} pour on {copper.pours[node]} {_p(xy)}"
+    def label(node: tuple, xy: tuple[float, float] | None) -> tuple:
+        """A pour by the place the trace meets it; a pad by its centre."""
+        if node in copper.pours:
+            xy = xy or (0.0, 0.0)
+            return (1, copper.pours[node], _key(xy)), f"the {net} pour on {copper.pours[node]} {_p(xy)}"
+        p = min(copper.pads[node], key=_pad_order)
+        return (0, _pad_order(p)), f"{_name(p)} {_p(p.at)}"
 
     ends = set(copper.pads) | set(copper.pours)
-    starts = sorted(ends, key=lambda n: label(n, n)[0])
+    starts = sorted(ends, key=lambda n: label(n, None)[0])
     out, seen = [], set()
     for start in starts:
         dist, prev = copper.reach(start, ends)
@@ -450,11 +492,11 @@ def traces(board: Board, net: str) -> list[tuple[str, str, float, float, list[st
                 continue
             seen.add(frozenset((start, end)))
             steps = copper.path(prev, end)
-            widths = [w for _, w, _ in steps[1:]]
+            widths = [s[1] for s in steps[1:]]
             if not widths or dist[end] <= NEAR:
                 continue
-            layers = list(dict.fromkeys(layer for _, _, layer in steps[1:]))
-            a, b = label(start, steps[1][0]), label(end, steps[-2][0])
+            layers = list(dict.fromkeys(s[2] for s in steps[1:]))
+            a, b = label(start, steps[1][3]), label(end, steps[-1][4])
             if a[0] > b[0]:
                 a, b = b, a
                 layers.reverse()

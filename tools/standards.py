@@ -75,18 +75,22 @@ class Row:
     how: str
 
 
-def verdicts(project: Path, cli) -> dict[str, str]:
-    """Each requirement ID of the project's traceability table, and its verdict."""
+def verdicts(project: Path, cli) -> dict[str, list[str]]:
+    """Each requirement ID of the project's traceability table, and the verdict of each row it stands in."""
     path = project / TRACE
     if not path.is_file():
         return {}
-    out: dict[str, str] = {}
-    for table in cli.md_tables(path.read_text(encoding="utf-8")):
+    try:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise Refusal(f"{TRACE.as_posix()}: not UTF-8 (byte {exc.start})") from None
+    out: dict[str, list[str]] = {}
+    for table in cli.md_tables(text):
         if tuple(c.lower() for c in table[0][: len(cli.TRACE_HEADER)]) != cli.TRACE_HEADER:
             continue
         for row in table[1:]:
             row = row + [""] * (len(cli.TRACE_HEADER) - len(row))
-            out[cli.plain_id(row[0])] = cli.plain_id(row[4]).upper()
+            out.setdefault(cli.plain_id(row[0]), []).append(cli.plain_id(row[4]).upper())
     return out
 
 
@@ -105,14 +109,42 @@ def _cli():
     return sys.modules["workcenter_cli"]
 
 
+def boards(project: Path) -> list[Path]:
+    """The folders of the project that hold a board: the project's own and each nested one (a second
+    board, as Last Hit v0.16 holds display/), leaving out hidden folders and build output."""
+    found = {
+        p.parent
+        for p in project.rglob("*.kicad_pcb")
+        if not any(part.startswith(".") or part == "build" for part in p.relative_to(project).parts[:-1])
+    }
+    return sorted(found, key=lambda f: (f != project, f.relative_to(project).as_posix()))
+
+
 def gate(project: Path, name: str) -> tuple[bool, str]:
-    """Whether the layout pack `name` holds on the project's board: board-rules.json names it, and the
-    pack's rules, run on the board as it stands, give 0 fail, 0 not judged and no rule left aside. The
-    reason, either way."""
+    """Whether the layout pack `name` holds on every board of the project, nested ones too: on each,
+    board-rules.json names it, and the pack's rules, run on the board as it stands, give 0 fail, 0 not
+    judged and no rule left aside. The reason, either way; a board that is not held is named by its
+    folder."""
+    folders = boards(project)
+    if not folders:
+        return gate_board(project, project, name)
+    results = [(folder, *gate_board(project, folder, name)) for folder in folders]
+    if len(results) == 1:
+        return results[0][1], results[0][2]
+    short = [f"{folder.relative_to(project).as_posix()}: {why}" for folder, held, why in results if not held]
+    if short:
+        return False, "; ".join(short)
+    pcbs = ", ".join((f / next(f.glob("*.kicad_pcb")).name).relative_to(project).as_posix() for f in folders)
+    return True, f"drc, pack {name}: 0 fail, 0 not judged on each of {len(folders)} boards ({pcbs})"
+
+
+def gate_board(project: Path, folder: Path, name: str) -> tuple[bool, str]:
+    """Whether the layout pack `name` holds on the board in `folder`, and the reason. Refuses a board file
+    that is not a KiCad board."""
     import boardrules
     import layoutrules
 
-    path = project / boardrules.PROJECT_FILE
+    path = folder / boardrules.PROJECT_FILE
     if not path.is_file():
         return False, f"board-rules.json names no {name}"
     try:
@@ -122,12 +154,18 @@ def gate(project: Path, name: str) -> tuple[bool, str]:
     if name not in data.get("layout", []):
         return False, f"board-rules.json names no {name}"
     at = f"drc, pack {name}"
-    pcbs = sorted(project.glob("*.kicad_pcb"))
+    pcbs = sorted(folder.glob("*.kicad_pcb"))
     if len(pcbs) != 1:
         return False, f"{at}: {'no' if not pcbs else len(pcbs)} .kicad_pcb in the project to judge"
+    shown = pcbs[0].relative_to(project).as_posix()
     try:
         board = boardrules.read_board(pcbs[0].read_text(encoding="utf-8"))
-        pack = layoutrules.read_pack(boardrules.find_pack(name, project)[0])
+    except UnicodeDecodeError as exc:
+        raise Refusal(f"{shown}: not UTF-8 (byte {exc.start})") from None
+    except (ValueError, IndexError, TypeError) as exc:
+        raise Refusal(f"{shown}: not a KiCad board ({exc})") from None
+    try:
+        pack = layoutrules.read_pack(boardrules.find_pack(name, folder)[0])
         found = layoutrules.findings(board, pack, data)
     except (Refusal, OSError) as exc:
         return False, f"{at}: {exc}"
@@ -169,10 +207,18 @@ def judge(project: Path, cli=None) -> list[Row]:
             else:
                 why.append(reason)
         if status == "not held" and req["id"] in tests:
-            got = [(rid, found.get(rid)) for rid in tests[req["id"]]]
+            named = tests[req["id"]]
+            twice = [
+                f"{rid} stands in {len(found[rid])} rows ({', '.join(found[rid])})"
+                for rid in named
+                if len(found.get(rid, [])) > 1
+            ]
+            got = [(rid, found[rid][0] if rid in found else None) for rid in named]
             missing = [rid for rid, v in got if v is None]
             short = [f"{rid} is {v}" for rid, v in got if v not in (None, "PASS")]
-            if missing:
+            if twice:  # the package holds 1 row per requirement: which row holds is not known
+                why.append(f"{'; '.join(twice)} of {TRACE.as_posix()}")
+            elif missing:
                 why.append(
                     f"{', '.join(missing)} {'is' if len(missing) == 1 else 'are'} not in {TRACE.as_posix()}"
                 )
