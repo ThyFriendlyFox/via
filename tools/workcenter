@@ -317,17 +317,31 @@ def gate_drc(project: Project, out: Path, strict: bool = False, fab: str | None 
     errors = sum(c["error"] for c in counts.values())
     warnings = sum(c["warning"] for c in counts.values())
     red = errors > 0 or (strict and warnings > 0)
+    # A project that names a board rule pack (board-rules.json) is held to it too: tools/boardrules.py.
+    rules = None
+    if (project.dir / "board-rules.json").is_file():
+        sys.path.insert(0, str(SRC_DIR / "tools"))
+        import boardrules
+
+        rules = boardrules.gate(project, out, strict, sys.modules[__name__])
+        red = red or rules["red"]
     return Result(
         "drc",
         "fail" if red else "pass",
         f"{errors} errors, {warnings} warnings "
         f"({len(groups['unconnected_items'])} unconnected, {len(groups['schematic_parity'])} parity)"
-        + (f", fab rules {Path(fab).stem}" if fab else ""),
+        + (f", fab rules {Path(fab).stem}" if fab else "")
+        + (f", {rules['summary']}" if rules else ""),
         {
             "fab": Path(fab).stem if fab else None,
             "counts": counts,
             "first": first_violations(
                 groups["violations"] + groups["unconnected_items"] + groups["schematic_parity"]
+            ),
+            **(
+                {"board_rules": rules, "failures": rules["failures"], "warnings": rules["warnings"]}
+                if rules
+                else {}
             ),
         },
         [str(report)],
