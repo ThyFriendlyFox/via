@@ -12,6 +12,9 @@ esd:   VBUS reaches D1 from J1 by B.Cu and a via (rule no-via), 4.67 mm of coppe
        of copper from D1.1 (rule nearest); D2 stands at x 108.4, 4.35 mm from J1.2, and R1.1 3.94 mm
        from D2.1 (rule nearest); DB has no TVS (rule protector).
 emi:   C1 stands 0.8 mm further: D1.1 to C1.1 is 3.6875 mm of 1.2 mm track, 3.07 to 1 (rule power-ratio).
+tee:   VBUS branches at J1.1: 107.35 - 103 = 4.35 mm across to D1.1 (D1 at x 108.4), and 104 - 101.1125 =
+       2.8875 mm up to C1.1 (C1 above J1 at (103, 100.2)), both 1.5 mm wide. C1.1 stands further from D1.1
+       than D1.1 from J1.1, but nearer J1.1 than D1.1 (rule nearest, SLVA680A section 2.3, Case 2).
 """
 
 from __future__ import annotations
@@ -31,6 +34,7 @@ NAMESPACE = {
     "pass": "3b0d6c1e-8f2a-4c55-9e1d-7a4b2c6d8e01",
     "esd": "3b0d6c1e-8f2a-4c55-9e1d-7a4b2c6d8e02",
     "emi": "3b0d6c1e-8f2a-4c55-9e1d-7a4b2c6d8e03",
+    "tee": "3b0d6c1e-8f2a-4c55-9e1d-7a4b2c6d8e04",
 }
 ROWS = {"VBUS": 104.0, "DA": 106.54, "DB": 109.08}
 WIDE = 1.2  # VBUS
@@ -56,7 +60,11 @@ def build(variant: str) -> kicadgen.Design:
         pcb_at=(103.0, 104.0),
         nets={"1": "VBUS", "2": "DA", "3": "DB", "4": "GND"},
     )
-    tvs_x = {"VBUS": 106.6, "DA": 108.4 if variant == "esd" else 106.6, "DB": 106.6}
+    tvs_x = {
+        "VBUS": 108.4 if variant == "tee" else 106.6,
+        "DA": 108.4 if variant == "esd" else 106.6,
+        "DB": 106.6,
+    }
     for i, net in enumerate(("VBUS", "DA", "DB"), start=1):
         if variant == "esd" and net == "DB":
             continue
@@ -70,13 +78,14 @@ def build(variant: str) -> kicadgen.Design:
             nets={"1": net, "2": "GND"},
         )
     c1_y = 99.4 if variant == "emi" else 100.2
+    c1_x = 103.0 if variant == "tee" else 105.55
     d.add(
         "C1",
         "Device:C",
         "100n",
         C0805,
         sch_at=(152.4, 50.8),
-        pcb_at=(105.55, c1_y),
+        pcb_at=(c1_x, c1_y),
         pcb_rot=90,
         nets={"1": "VBUS", "2": "GND"},
     )
@@ -96,14 +105,18 @@ def build(variant: str) -> kicadgen.Design:
     d.zone("GND", layers=("F.Cu", "B.Cu"), connect="solid")
     # VBUS: J1.1 to D1.1, D1.1 to C1.1 (C1's pad 1 stands 0.9125 mm below its centre, turned 90 degrees).
     d1 = (tvs_x["VBUS"] - 1.05, ROWS["VBUS"])
-    c1 = (105.55, c1_y + 0.9125)
-    if variant == "esd":
+    c1 = (c1_x, c1_y + 0.9125)
+    if variant == "tee":
+        d.track("VBUS", [(103.0, 104.0), d1], "F.Cu", width=1.5)
+        d.track("VBUS", [(103.0, 104.0), c1], "F.Cu", width=1.5)
+    elif variant == "esd":
         d.track("VBUS", [(103.0, 104.0), (104.5, 102.5)], "B.Cu", width=0.6)
         d.via("VBUS", 104.5, 102.5)
         d.track("VBUS", [(104.5, 102.5), (105.55, 102.5), d1], "F.Cu", width=0.6)
     else:
         d.track("VBUS", [(103.0, 104.0), d1], "F.Cu", width=WIDE)
-    d.track("VBUS", [d1, c1], "F.Cu", width=WIDE)
+    if variant != "tee":
+        d.track("VBUS", [d1, c1], "F.Cu", width=WIDE)
     # DA: F.Cu from J1.2 to D2.1, a via above D2.1, B.Cu, a via above R1.1, F.Cu down to R1.1.
     da = (tvs_x["DA"] - 1.05, ROWS["DA"])
     r1 = (r1_x - 0.9125, ROWS["DA"])

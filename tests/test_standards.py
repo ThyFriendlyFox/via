@@ -121,6 +121,75 @@ def test_a_rule_left_aside_on_the_board_is_not_held(tmp_path):
     assert rows["esd-at-connector"].status == "held by a gate"
 
 
+def nested(tmp_path: Path, inner: str) -> Path:
+    """pass-layout with product.json, and a second board `inner` of tests/boards nested in it as display/,
+    as Last Hit v0.16 holds v0.16/display/."""
+    folder = board_project(tmp_path, "pass-layout")
+    (folder / "display").mkdir()
+    for name in ("layout.kicad_pcb", "board-rules.json"):
+        shutil.copy(BOARDS / inner / name, folder / "display" / name)
+    return folder
+
+
+def test_a_nested_board_that_breaks_the_pack_is_not_held(tmp_path):
+    """display/ is fail-layout-esd, which breaks ti-slva680a-esd on 4 lines and names no ti-szza009-emi:
+    neither requirement is held, and each line names display/."""
+    rows = {r.id: r for r in standards.judge(nested(tmp_path, "fail-layout-esd"))}
+    assert rows["esd-at-connector"].status == "not held"
+    assert rows["esd-at-connector"].how == "display: drc, pack ti-slva680a-esd: 4 fail, 0 not judged"
+    assert rows["power-trace-ratio"].status == "not held"
+    assert rows["power-trace-ratio"].how == "display: board-rules.json names no ti-szza009-emi"
+
+
+def test_a_pack_held_on_every_board_is_held(tmp_path):
+    """display/ is a second copy of pass-layout: both boards hold both packs."""
+    rows = {r.id: r for r in standards.judge(nested(tmp_path, "pass-layout"))}
+    assert rows["esd-at-connector"].status == "held by a gate"
+    assert rows["esd-at-connector"].how == (
+        "drc, pack ti-slva680a-esd: 0 fail, 0 not judged on each of 2 boards (layout.kicad_pcb, "
+        "display/layout.kicad_pcb)"
+    )
+
+
+def test_a_board_that_is_not_kicad_is_refused(tmp_path):
+    """An empty layout.kicad_pcb: the CLI prints 1 refusal line that names the file, exit 1."""
+    folder = board_project(tmp_path, "pass-layout")
+    (folder / "layout.kicad_pcb").write_text("")
+    proc = run(str(folder))
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert proc.stdout == "standards: layout.kicad_pcb: not a KiCad board (unterminated S-expression)\n"
+    assert proc.stderr == ""
+
+
+def test_a_traceability_table_not_in_utf8_is_refused(tmp_path):
+    """A traceability.md with a micro sign in Latin-1 (byte 0xb5): 1 refusal line, exit 1."""
+    (tmp_path / "product.json").write_text(json.dumps({"kind": KIND, "tests": {"external-short": ["REQ-1"]}}))
+    (tmp_path / "verification").mkdir()
+    (tmp_path / "verification" / "traceability.md").write_bytes(
+        b"| ID | Check | Evidence | Measured | Verdict |\n|---|---|---|---|---|\n"
+        b"| REQ-1 | test | x | 5 \xb5A | PASS |\n"
+    )
+    proc = run(str(tmp_path))
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert proc.stdout.startswith("standards: verification/traceability.md: not UTF-8")
+    assert proc.stderr == ""
+
+
+@pytest.mark.parametrize("verdicts", [("FAIL", "PASS"), ("PASS", "FAIL"), ("PASS", "PASS")])
+def test_an_id_in_2_rows_is_not_held(tmp_path, verdicts):
+    """REQ-1 stands in 2 rows: the package holds 1 row per requirement, so the test holds nothing, whatever
+    the rows say and in whichever order."""
+    (tmp_path / "product.json").write_text(json.dumps({"kind": KIND, "tests": {"external-short": ["REQ-1"]}}))
+    (tmp_path / "verification").mkdir()
+    rows = "".join(f"| REQ-1 | test | x | y | {v} |\n" for v in verdicts)
+    (tmp_path / "verification" / "traceability.md").write_text(
+        "| ID | Check | Evidence | Measured | Verdict |\n|---|---|---|---|---|\n" + rows
+    )
+    got = {r.id: r for r in standards.judge(tmp_path)}["external-short"]
+    assert got.status == "not held"
+    assert got.how == f"REQ-1 stands in 2 rows ({', '.join(verdicts)}) of verification/traceability.md"
+
+
 def test_a_named_pack_with_no_board_is_not_held(tmp_path):
     """board-rules.json names both packs and there is no board to judge: nothing is held by a gate."""
     (tmp_path / "product.json").write_text(json.dumps({"kind": KIND}))

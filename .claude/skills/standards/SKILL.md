@@ -42,7 +42,11 @@ vaping device with a lithium cell.
    `STANDARDS <kind>: N held by a gate, M held by a test, K not held`.
 3. For each line `- held by a gate: <id> [...] -- drc, pack <pack>: 0 fail, 0 not judged (board-rules.json, <board>.kicad_pcb)`:
    the command ran the layout pack on the board as it stands, and every
-   rule of it held. Run it again after each change to the board.
+   rule of it held. A project with a nested board (`display/`) is held
+   only when every board holds the pack, each by its own
+   `board-rules.json`: the line then ends `on each of 2 boards (...)`, and
+   a line that is not held starts with the folder of the board that
+   breaks it. Run it again after each change to a board.
 4. For each line `- held by a test: <id> [...] -- <ID> PASS, ...`: the named
    requirements of the verification package hold it. Nothing to do.
 5. For each line `- not held: <id> [...] -- <reason>`, act on the reason:
@@ -66,6 +70,9 @@ vaping device with a lithium cell.
      verdict in `traceability.md`.
    - `<ID> is not in verification/traceability.md`: correct the ID in
      `product.json`, or add the row.
+   - `<ID> stands in 2 rows (...)`: the package holds 1 row per
+     requirement. Merge the rows into 1 with the verdict the evidence
+     gives.
 6. Read the lines under `Paid standards a test laboratory uses`. Write in
    the version's README which laboratory test each `not held` line waits
    for.
