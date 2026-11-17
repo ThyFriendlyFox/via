@@ -69,6 +69,48 @@ be a file of the project's own, named by its path from the project's folder.
   250 um across (3.2.40, page 22), read from the via's layers and drill; KiCad's `micro` or `blind`
   word does not count. It is copper filled (table 11-1, page 99) and is not judged.
 
+## Layout packs
+
+A layout pack (`"kind": "layout"`) holds rules a maker's note states about where parts and copper go.
+A project names them in `board-rules.json` under `layout`, with or without `pack`, and states what the
+board file cannot say:
+
+    {"layout": ["ti-slva680a-esd", "ti-szza009-emi"],
+     "connectors": {"J1": "the USB cable"}, "inside": ["J2"],
+     "protectors": {"D1": "TPD2E2U06"}, "ground": ["GND"], "power": ["VBUS", "GND"]}
+
+A connector is a part whose reference is J or P and digits (IEEE 315's letters). One not named in
+`connectors` or `inside` is `not judged`. The DRC line names every pack:
+`board rules ti-slva680a-esd + ti-szza009-emi: 0 fail, 0 not judged`.
+
+### ti-slva680a-esd
+
+TI SLVA680A, "ESD Protection Layout Guide", Rev. A, April 2022, https://www.ti.com/lit/an/slva680/slva680.pdf.
+Read 2026-11-17, with no second reader yet. For each pin of a connector in `connectors` whose net is not
+ground:
+
+| Rule | Where | Judged |
+|---|---|---|
+| `protector` | section 1 and figure 1-2, page 2 | a part in `protectors` stands on the net |
+| `nearest` | section 2.1, Summary, page 4 | every other part's pad on the net stands further from the nearest protector's pad than that pad stands from the connector's, centre to centre |
+| `no-via` | section 2.1, page 4; section 2.3, page 6 | the connector's pad and the protector's pad lie in 1 piece of copper on 1 layer |
+
+Not judged, and named in the pack: the stub between the TVS and the line, the TVS's path to ground,
+unprotected traces beside the path and its corners (section 2.2, page 6), the ground scheme (section 2.4),
+and how much further the protected part stands ("much further"): the check holds further.
+
+### ti-szza009-emi
+
+TI SZZA009, "PCB Design Guidelines For Reduced EMI", November 1999, https://www.ti.com/lit/an/szza009/szza009.pdf.
+Read 2026-11-17, with no second reader yet.
+
+| Rule | Where | Judged |
+|---|---|---|
+| `power-ratio` | section 2.1.1, page 4; section 2.2.4, page 10 | on a board of 2 copper layers, each run of track of a net in `power` is at most 3 times as long as its narrowest width |
+
+A run is the segments of 1 net on 1 layer joined end to end, up to a pad, a via, or a point where 3
+segments meet. A pour is no trace and is not judged. A board of another count of layers gets a note.
+
 ## ecss-q-st-70-12c-rev1
 
 ECSS-Q-ST-70-12C Rev.1, "Space product assurance - Design rules for printed circuit boards", 30 April
