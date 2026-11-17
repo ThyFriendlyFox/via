@@ -143,6 +143,17 @@ project and routes it with FreeRouting. No GUI at any step.
      otherwise); any other value writes a stackup, on two layers too. A
      daughter board soldered upright on another is often 0.8 mm. Say it in
      the README's fab notes.
+   - `mask_color=`, `silk_color=` and `copper_finish=` on `Design` name the
+     solder mask's colour, the legend's colour and the pads' finish. A
+     colour is `Green`, `Red`, `Blue`, `Purple`, `Black`, `White`, `Yellow`
+     or `"#RRGGBBAA"`; a finish is `ENIG`, `HAL lead-free` or another name
+     of KiCad's list, which `workcenter design` prints when it refuses one.
+     They go into the board's stackup: `workcenter render` draws the board
+     in them, and the fab's job file carries them. Under the named `Black`
+     a copper pour shows brown through the mask in the 3D views;
+     `"#0B0C0EFF"` is an opaque black, and the job file then says
+     `R11G12B14`, so the README's fab notes say "black". Never override
+     `Design._stackup` for them.
    - A part the library lacks gets a project footprint: a `.pretty` folder
      in the project, named in `d.footprint_dirs = {"Name": path}` and used
      as `"Name:Footprint"`. Read it with
@@ -249,6 +260,9 @@ project and routes it with FreeRouting. No GUI at any step.
    parts moved, `workcenter placement placement_audit . --ic U1` and
    `workcenter placement route_check . --ic U1` (kistack's checks; the
    `kistack` skill and its layout-placement guide say what to fix first).
+   Hold the schematic to its parts' ratings before the board is routed:
+   `workcenter ratings .` (the `ratings` skill). A part it fails is a
+   line of `design.py` now, and a board routed again later.
 5. **Route.** `workcenter design design.py --route --passes 60`. The
    command prints what the router did, a `stitch:` line for each via it
    dropped through a pour's island with the pads that island holds, and
@@ -274,9 +288,12 @@ project and routes it with FreeRouting. No GUI at any step.
      around it. Draw the heavy loop first (battery feed, heater return),
      then the taps and gate drives, one net at a time, with
      `workcenter drc .` between rounds: the DRC names the pad or track
-     each slip touches. End tracks on pad centres. A part moved in the
-     same change is regenerated and its pads read before its tracks are
-     written. A long hand route is a wall on its layer: list the pads it
+     each slip touches. End tracks on pad centres, taken from the design:
+     `d.pad_at("J1", "2")` is the pad's centre as the generator places it
+     (mirrored for a part on the back, turned with the part), and
+     `d.pad_box("J1", "2")` its copper. Never type a pad's place or work
+     it out from the footprint. A part moved in the same change then takes
+     its tracks with it. A long hand route is a wall on its layer: list the pads it
      cuts off from their nets first, and move a part rather than draw a
      lane that leaves one with no way in.
    - A ground pad cut off from the pour: the design command already

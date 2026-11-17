@@ -1,0 +1,21 @@
+{
+  "parts": [
+    {
+      "kind": "capacitor.ceramic",
+      "mpns": ["ACME-C1"],
+      "source": {"document": "no datasheet: a part made up for the tests", "read": "2026-11-17", "second_reader": "no"}
+    },
+    {
+      "kind": "capacitor.ceramic",
+      "mpns": ["ACME-C2"],
+      "source": {
+        "document": "Acme AN-17",
+        "revision": "Rev. B",
+        "url": "https://example.com/an-17.pdf",
+        "sha256": "d3d0f188f5b9b632e69a0942046d751e98cb9ef103e8c319a3c72fe046f4a3dd",
+        "read": "2026-11-17",
+        "second_reader": "no"
+      }
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+"""fail-ratings-load: the board of tests/boards/ratings_node.py; its ratings.json states a 1.9 A load."""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.dont_write_bytecode = True  # no __pycache__ beside ratings_node.py: a test lists the folders there
+import ratings_node  # noqa: E402
+
+
+def build():
+    return ratings_node.build("")

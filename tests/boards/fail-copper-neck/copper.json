@@ -1,0 +1,19 @@
+{
+  "air": {
+    "ambient": 25,
+    "source": "still air at 25 C around a board in the open, this fixture's own assumption; h is the workcenter's default"
+  },
+  "temperature": {"max": 105, "source": "the board's greatest temperature, this fixture's own requirement"},
+  "nets": {
+    "+5V": {
+      "from": "J1.1",
+      "volts": {"max": 0.05, "source": "50 mV from J1 to any load, this fixture's own requirement"},
+      "amps_per_mm2": {"max": 50, "source": "50 A/mm2 in any copper of the supply, this fixture's own requirement"}
+    },
+    "GND": {
+      "from": "J1.2",
+      "volts": {"max": 0.05, "source": "50 mV from J1 to any load, this fixture's own requirement"},
+      "amps_per_mm2": {"max": 50, "source": "50 A/mm2 in any copper of the return, this fixture's own requirement"}
+    }
+  }
+}

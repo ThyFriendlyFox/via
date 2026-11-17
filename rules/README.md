@@ -21,9 +21,47 @@ minimum, and raises each rule it keeps to the board's own setting where that is 
 
 `<name>` is a file name here without `.kicad_dru`, or a path to any `.kicad_dru`.
 
+`ratings/` is another kind of rule set: derating standards as packs for `workcenter ratings`
+(`ratings/README.md`). `board/` holds board rule packs from standards: the gap for a net's voltage and
+the width and vias for its current, which `workcenter drc` judges when a project names one
+(`board/README.md`).
+
+Each fab's page was fetched under the workcenter's own client name, `ee-workcenter/1.0`; each file
+names the page's SHA256 as fetched.
+
 | File | Fab and service | Read |
 |---|---|---|
 | `sierra-circuits-web.kicad_dru` | Sierra Circuits (Protoexpress), Web PCB: the online order, "Standard PCBs", IPC-6012 Class 2 | 2026-10-29 |
+| `jlcpcb-2layer.kicad_dru` | JLCPCB, 2-layer FR-4, 1 oz copper | 2026-11-17 |
+| `pcbway-standard.kicad_dru` | PCBWay, standard rigid PCB | 2026-11-17 |
+| `oshpark-2layer.kicad_dru` | OSH Park, 2 layer prototype service | 2026-11-17 |
+
+## JLCPCB, 2-layer
+
+From https://jlcpcb.com/capabilities/pcb-capabilities. Checked: track and spacing 0.10 mm (1 oz), via
+hole 0.15 mm, via ring 0.05 mm ((0.25 - 0.15) / 2 from their 0.15 / 0.25 mm via), plated pad ring
+0.18 mm (their absolute minimum; 0.25 mm recommended), hole to hole 0.2 mm (vias) and 0.45 mm (pad
+holes), copper to a routed edge 0.2 mm, legend text 0.15 mm stroke and 1.0 mm high.
+
+Not checked: the width of legend lines and arcs, pad to silkscreen 0.15 mm, the 2 oz and multilayer
+limits (another file each), and the extra cost of holes under 0.2 mm.
+
+## PCBWay, standard
+
+From https://www.pcbway.com/capabilities.html. Checked: trace and spacing 0.1 mm, drill 0.15 mm (under
+0.2 mm costs extra), annular ring 0.15 mm, legend characters 0.15 mm wide and 0.8 mm high.
+
+Not checked: copper to the board's edge and hole to hole, whose rows in the page's second table stand
+in columns the text does not name; the width of legend lines.
+
+## OSH Park, 2 layer
+
+From https://docs.oshpark.com/services/two-layer/. Checked: trace width and spacing 6 mil (0.1524 mm),
+drill 10 mil (0.254 mm), annular ring 5 mil (0.127 mm), copper 15 mil (0.381 mm) from the edge, legend
+text stroke 3 mil (0.0762 mm), their limit for text; 5 mil is their recommendation.
+
+Not checked: the 5 mil they recommend between holes, the 4 mil soldermask web, the width of legend
+lines.
 
 ## Sierra Circuits, Web PCB
 

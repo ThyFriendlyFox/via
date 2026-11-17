@@ -1,0 +1,111 @@
+{
+  "interface": "ti-am57xx-usb2",
+  "title": "USB 2.0 data pair (DP, DM) of a TI AM57xx or DRA7xx processor",
+  "kind": "pair",
+  "documents": {
+    "spraar7j": {
+      "title": "High-Speed Interface Layout Guidelines, application note",
+      "maker": "Texas Instruments",
+      "number": "SPRAAR7J",
+      "revision": "J, November 2018, revised February 2023",
+      "url": "https://www.ti.com/lit/an/spraar7j/spraar7j.pdf",
+      "sha256": "4a14e9b00afc174f336386cf0097f3a5e7a6a367840331fbb22070053ec36f41",
+      "read": "2026-11-17"
+    }
+  },
+  "limits": {
+    "impedance": {
+      "mode": "differential",
+      "nominal": 90,
+      "min": 81,
+      "max": 99,
+      "unit": "ohm",
+      "doc": "spraar7j",
+      "where": "Table A-2 (AM57xx/DRA7xx), row 'USB2.0 DP or DM pair differential impedance', page 16"
+    },
+    "length": {
+      "max": 304.8,
+      "unit": "mm",
+      "doc": "spraar7j",
+      "where": "Table A-2, row 'USB2.0 Tracelength (Total)', 12000 mil maximum, page 16"
+    },
+    "skew": {
+      "max": 1.27,
+      "unit": "mm",
+      "doc": "spraar7j",
+      "where": "Table A-2, row 'Skew within any USB2.0 differential pair', 50 mil maximum, page 16"
+    },
+    "vias": {
+      "max": 4,
+      "unit": "vias on each net",
+      "doc": "spraar7j",
+      "where": "Table A-2, row 'Number of vias allowed on each USB2.0 differential trace (Total)', 4 maximum, page 16"
+    },
+    "single_ended": {
+      "min": 40.5,
+      "nominal": 45,
+      "max": 49.5,
+      "unit": "ohm",
+      "doc": "spraar7j",
+      "where": "Table A-2, row 'USB2.0 DP or DM pair single-ended impedance', page 16",
+      "not_judged": "the single-ended impedance, 40.5 to 49.5 ohm, is not judged: the note does not say which impedance of a track in a coupled pair it means, and the command does not guess (the odd mode, Z_diff / 2, would repeat the differential row; a lone track's Z0 would not)"
+    },
+    "stubs": {
+      "max": 0,
+      "unit": "stubs",
+      "doc": "spraar7j",
+      "where": "Table A-2, row 'Number of stubs allowed on any differential pair trace (Total)', 0 maximum, page 16; sections 3.5 (page 10) and 3.6 (page 11) name a through pin and a via's barrel past the signal's layer as stubs",
+      "not_judged": "the stubs, 0 allowed, are not judged: the command does not trace a branch, a test point, or the barrel of a via or a through pin past the layer the signal leaves on"
+    },
+    "plane": {
+      "doc": "spraar7j",
+      "where": "section 2.4 'High-Speed Signal Reference Planes', page 6: over a solid reference plane, not across a split or a void"
+    },
+    "stitching": {
+      "max": 5.08,
+      "unit": "mm from a via that changes the ground reference to a ground via, center to center",
+      "doc": "spraar7j",
+      "where": "section 2.4, page 8: 'maintain the same GND reference from origination to termination'; if not, GND stitching vias 'within 200 mils (center-to-center ...) of the signal transition vias'"
+    },
+    "coupling": {
+      "break_out": 6.35,
+      "unit": "mm from the pair's pads",
+      "doc": "spraar7j",
+      "where": "section 3.3 'Symmetry in the Differential Pairs', page 10: the pair routed together, symmetric and parallel; deviations at package escape and connector pins as short as possible, 'package break-out must occur within 0.25 inches of the package'"
+    },
+    "spacing": {
+      "min": 0.762,
+      "unit": "mm, edge to edge, to a track of any other signal on the layer",
+      "doc": "spraar7j",
+      "where": "Table A-2, row 'Differential pair to any other signal trace spacing', 30 mil minimum, page 16; section 3.1, page 9"
+    },
+    "clock_spacing": {
+      "min": 1.27,
+      "unit": "mm, edge to edge, to a clock or periodic signal",
+      "doc": "spraar7j",
+      "where": "Table A-2, row 'Differential pair to clock or high-speed periodic signal trace spacing', 50 mil minimum, page 16; section 3.1, page 9",
+      "not_judged": "the 50 mil (1.27 mm) to a clock or periodic signal is not judged: the board does not say which nets carry a clock (the 30 mil to any other signal is judged)"
+    },
+    "test_points": {
+      "max": 0,
+      "unit": "test points",
+      "doc": "spraar7j",
+      "where": "Table A-2, row 'Number of test points permitted on any differential pair trace (Total)', 0 maximum, page 16; section 3.2, page 9",
+      "not_judged": "the test points, 0 allowed, are not judged: the command does not tell a test point from another pad, via or footprint on the net"
+    },
+    "plane_edge": {
+      "min": 2.286,
+      "unit": "mm from the edge of the reference plane",
+      "doc": "spraar7j",
+      "where": "section 3.2 'High-Speed Differential Signal Rules', page 9: 'routed >= 90 mils from the edge of the reference plane'",
+      "not_judged": "the 90 mil (2.286 mm) from the plane's edge is not judged: KiCad writes a fill as 1 outline whose holes join it by slits, and the command does not tell the plane's edge from a void in it"
+    },
+    "voids": {
+      "min": 1.5,
+      "unit": "trace widths from a void in the reference plane",
+      "doc": "spraar7j",
+      "where": "section 3.2 'High-Speed Differential Signal Rules', page 9: 'at least 1.5 W (calculated trace-width x 1.5) away from voids in the reference plane', except where SMD pads of the pair are voided",
+      "not_judged": "the 1.5 W from voids is not judged: the command does not tell a void from the plane's edge in KiCad's fill outline, nor the pair's own voided pads from another void"
+    }
+  }
+}

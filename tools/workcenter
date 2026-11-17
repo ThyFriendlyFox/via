@@ -317,17 +317,31 @@ def gate_drc(project: Project, out: Path, strict: bool = False, fab: str | None 
     errors = sum(c["error"] for c in counts.values())
     warnings = sum(c["warning"] for c in counts.values())
     red = errors > 0 or (strict and warnings > 0)
+    # A project that names a board rule pack (board-rules.json) is held to it too: tools/boardrules.py.
+    rules = None
+    if (project.dir / "board-rules.json").is_file():
+        sys.path.insert(0, str(SRC_DIR / "tools"))
+        import boardrules
+
+        rules = boardrules.gate(project, out, strict, sys.modules[__name__])
+        red = red or rules["red"]
     return Result(
         "drc",
         "fail" if red else "pass",
         f"{errors} errors, {warnings} warnings "
         f"({len(groups['unconnected_items'])} unconnected, {len(groups['schematic_parity'])} parity)"
-        + (f", fab rules {Path(fab).stem}" if fab else ""),
+        + (f", fab rules {Path(fab).stem}" if fab else "")
+        + (f", {rules['summary']}" if rules else ""),
         {
             "fab": Path(fab).stem if fab else None,
             "counts": counts,
             "first": first_violations(
                 groups["violations"] + groups["unconnected_items"] + groups["schematic_parity"]
+            ),
+            **(
+                {"board_rules": rules, "failures": rules["failures"], "warnings": rules["warnings"]}
+                if rules
+                else {}
             ),
         },
         [str(report)],
@@ -363,6 +377,98 @@ def freqplan():
     import freqplan as module
 
     return module
+
+
+def partdata():
+    """tools/partdata.py: the makers' data of a deck's capacitors and inductors."""
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import partdata as module
+
+    return module
+
+
+def thermal():
+    """tools/thermal.py: a part's junction temperature at each run of the SIM gate."""
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import thermal as module
+
+    return module
+
+
+def deck_part_data(
+    project: Project, folder: Path, sources: Path | None, decks: list[Path]
+) -> tuple[dict, dict, dict, list, list]:
+    """The curves of the schematic's capacitors and inductors from the library's facts, each from a
+    maker's file with its row in sources.csv (tools/partdata.py): (curves, refused, labels, failures,
+    warnings). `refused` maps a part to why its data cannot be used, `labels` a part to its facts entry
+    and part number. Nothing when the project's library holds no curve or no schematic names the parts,
+    or when no deck holds a capacitor or an inductor. A part with data that no deck element carries by
+    its reference, while a deck holds a capacitor or an inductor under another name, is not judged."""
+    rt, pd, sc = ratings(), partdata(), simcorners()
+    library = rt.find_facts(project.dir)
+    names: set[str] = set()  # each element of the decks and of the files they include, upper case
+    for d in decks:
+        text = d.read_text(encoding="utf-8", errors="replace")
+        names.update(sc.deck_names(text.split("\n")))
+        names.update(n.upper() for body in deck_includes(d, text).values() for n in sc.top_level_parts(body))
+    named = {name for name in names if pd.REF_RE.match(name)}
+    other = sorted(name for name in names if name[0] in "CL" and not pd.REF_RE.match(name))
+    if library is None or not project.sch or not (named or other):
+        return {}, {}, {}, [], []
+    unmatched = f"{library} holds part data, and no deck part is matched to it"
+    try:
+        facts = rt.read_facts(library)
+        if not any("kept" in f.data or "kept_celsius" in f.data for f in facts):
+            return {}, {}, {}, [], []
+        folder.mkdir(parents=True, exist_ok=True)
+        net, stderr = rt.export_netlist(project, folder, sys.modules[__name__])
+        if net is None:
+            return {}, {}, {}, [], [f"{unmatched}: kicad-cli wrote no netlist: {stderr.strip()}"]
+        listed = project.dir / "parts.csv"
+        mpns = rt.part_numbers(
+            net, rt.parts_rows([listed], sys.modules[__name__]) if listed.is_file() else []
+        )
+        entries = {
+            ref: (mpns.get(ref, ""), rt.facts_of(facts, p, mpns.get(ref, ""))) for ref, p in net.parts.items()
+        }
+        rows = (
+            [
+                pd.Row(r.mpn, r.sha256, r.source, str(sources.parent / r.file) if r.file else "")
+                for r in read_sources(sources)
+            ]
+            if sources
+            else []
+        )
+    except FileNotFoundError as exc:
+        return {}, {}, {}, [], [f"{unmatched}: engine missing: {exc.filename}"]
+    except (ValueError, OSError) as exc:
+        return {}, {}, {}, [f"part data: {exc}"], []
+    curves, refused, unjudged = pd.choose(entries, rows)
+    labels = {ref: f"{entries[ref][1].where}, {entries[ref][0]}" for ref in [*curves, *refused]}
+    warnings = [line for c in curves.values() if (line := pd.short_of_rating(c))]
+    for ref, why in unjudged.items():  # said for each deck that runs the part on the curve
+        curves[ref].unjudged = why
+    missing = sorted({*curves, *refused} - named, key=lambda r: (r[0], int(r[1:])))
+    if missing and other:
+        warnings.append(
+            f"not judged: {names_and(missing)} hold their makers' data, and no deck element carries their "
+            "reference: a deck runs a board part on it only under the part's reference"
+        )
+    return curves, refused, labels, [], warnings
+
+
+def deck_includes(deck: Path, text: str) -> dict[str, str]:
+    """The text of each file a deck includes that is there, by its path as the deck writes it."""
+    out = {}
+    for inc in include_paths(text):
+        path = (deck.parent / inc).resolve()
+        if path.is_file():
+            out[inc] = path.read_text(encoding="utf-8", errors="replace")
+    return out
+
+
+def names_and(names: list[str]) -> str:
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
 
 
 def read_expect(path: Path, lower_case: bool = True) -> tuple[dict[str, dict], list[str]]:
@@ -487,7 +593,8 @@ def link_siblings(deck: Path, where: Path) -> None:
     the deck reads by a statement the gate does not rewrite (`source print.sp` in `.control`, a
     `file="stim.txt"` of a model) is then found, as it is when the deck runs in place. Files are
     links and folders are real, so a run that writes a new file writes it in its own folder."""
-    skip = {deck.name, simcorners().CORNERS_FILE, freqplan().PLAN_FILE, ".spiceinit", "run"}
+    plans = {simcorners().CORNERS_FILE, freqplan().PLAN_FILE, thermal().PLAN_FILE}
+    skip = {deck.name, *plans, ".spiceinit", "run"}
     for entry in sorted(deck.parent.iterdir()):
         target = where / entry.name
         if entry.name in skip or entry.name.endswith(".expect.json") or target.exists():
@@ -509,6 +616,8 @@ def run_corners(
     home: Path,
     both_ways: set[str] = frozenset(),
     sweep: bool = False,
+    rewrite=None,
+    sound_runs: list | None = None,
 ) -> tuple[dict, list[str], list[str]]:
     """One deck at its corners (tools/simcorners.py, sim/corners.json): (record, failures, warnings).
 
@@ -520,7 +629,8 @@ def run_corners(
     carry its resonance across its span, and the Monte Carlo draws. A bound holds when it holds at
     every corner; a corner that did not run, or ran at another temperature than its own, fails.
     `both_ways` names measures something else reads the least and the greatest of (a resonance of the
-    frequency plan, a requirement's check): their worst case is looked for on both sides."""
+    frequency plan, a requirement's check): their worst case is looked for on both sides. `sound_runs`,
+    when given, gets each corner that ran clean at its own temperature, with its measures."""
     sc = simcorners()
     if spec.skip:
         return {"skip": spec.skip}, [], []
@@ -572,7 +682,9 @@ def run_corners(
     def one(corner) -> tuple:
         where = folder / corner.id
         where.mkdir(parents=True)
-        (where / deck.name).write_text(sc.corner_text(text, varied, corner), encoding="utf-8")
+        cornered = sc.corner_text(text, varied, corner)
+        # the makers' data goes on the corner's values: a part's tolerance times its curve's share
+        (where / deck.name).write_text(rewrite(cornered) if rewrite else cornered, encoding="utf-8")
         if init.is_file():
             shutil.copyfile(init, where / ".spiceinit")
         link_siblings(deck, where)
@@ -636,6 +748,8 @@ def run_corners(
             sound.append((corner, r["measures"]))
             for line in earlier_out(deck.stem, r, cornered, f" at {corner.label}"):
                 early.setdefault(line.split("=", 1)[0], line)
+    if sound_runs is not None:
+        sound_runs.extend(sound)
     said = {line.split("=", 1)[0] for line in earlier_out(deck.stem, written, expect)}
     failures += [line for key, line in early.items() if key not in said]
     held: dict[str, bool] = {}
@@ -743,11 +857,25 @@ def gate_sim(
             read_sources(sources)
         except (OSError, ValueError) as exc:
             return Result("sim", "error", f"{sources}: {exc}")
-    sc, fp = simcorners(), freqplan()
+    sc, fp, th = simcorners(), freqplan(), thermal()
     corners, corner_problems = sc.read_corners(sim_dir, [d.stem for d in every])
     plan, plan_problems = fp.read_plan(sim_dir)
-    for file_name, problems in ((sc.CORNERS_FILE, corner_problems), (fp.PLAN_FILE, plan_problems)):
+    heat, heat_problems = th.read_plan(sim_dir, [d.stem for d in every])
+    for file_name, problems in (
+        (sc.CORNERS_FILE, corner_problems),
+        (fp.PLAN_FILE, plan_problems),
+        (th.PLAN_FILE, heat_problems),
+    ):
         failures += [p if p.startswith(file_name) else f"{file_name}: {p}" for p in problems]
+    # Each deck's runs that ran clean at their own temperature, for the junctions of sim/thermal.json:
+    # (label, ambient C, measures), the deck as written first. A deck that did not run clean has none.
+    heat_runs: dict[str, list | None] = {}
+    # Each deck whose corners of sim/corners.json did not run, with the reason: its parts are not held.
+    heat_unrun: dict[str, str] = {}
+    corner_temps = []  # the file's own temperatures, which a deck's `temperature: false` leaves out
+    if corners:
+        top = json.loads((sim_dir / sc.CORNERS_FILE).read_text(encoding="utf-8")).get("temperature")
+        corner_temps = sc.check_temperature(top, "temperature", []) if top is not None else []
     wanted = set(both_ways)
     for r in plan.resonances if plan else []:
         wanted |= {ref for ref in (r.hz, r.q) if isinstance(ref, str)}
@@ -756,21 +884,50 @@ def gate_sim(
     warned: list[str] = []
     expects: dict[str, dict[str, dict]] = {}
     corner_runs = 0
+    # The makers' data of the schematic's capacitors and inductors: each deck runs with it in place of
+    # the written value, as written and at every corner (tools/partdata.py).
+    pd = partdata()
+    curves, refused, labels, data_failures, data_warnings = deck_part_data(
+        project, sim_out / "parts", sources, decks
+    )
+    failures += data_failures
+    warned += data_warnings
     for deck in decks:
         log = sim_out / f"{deck.stem}.log"
+        deck_text = deck.read_text(encoding="utf-8", errors="replace")
+        included = deck_includes(deck, deck_text) if curves or refused else {}
+        _, applied, ideal = pd.apply(deck_text, curves, included)
+        held = set(sc.deck_names(deck_text.split("\n")))
+        held.update(n.upper() for body in included.values() for n in sc.top_level_parts(body))
+        held_back = {ref: why for ref, why in refused.items() if ref in held}
+        failures += [
+            f"{deck.stem}: {ref} runs as an ideal part while the library holds its maker's data "
+            f"({labels[ref]}): {why}"
+            for ref, why in sorted({**ideal, **held_back}.items())
+        ]
+        for ref in applied:
+            line = (
+                f"{ref} runs on its maker's data, and whether that is its maker's file is not judged: "
+                f"{curves[ref].unjudged}"
+            )
+            if curves[ref].unjudged and line not in warned:
+                warned.append(line)
         models, model_problems, model_warnings, prepared = model_rows(
-            deck, sources, sim_out / "run" / deck.stem, always=keep
+            deck, sources, sim_out / "run" / deck.stem, always=keep or bool(applied)
         )
         failures += model_problems
         warned += model_warnings
+        as_written = ""
         if prepared:
             link_siblings(deck, prepared.parent)
+            if applied:
+                as_written = prepared.read_text(encoding="utf-8", errors="replace")
+                prepared.write_text(pd.apply(as_written, curves)[0], encoding="utf-8")
         written = ngspice_run(prepared or deck, log, sim_out)
         measures = written["measures"]
         warned += [f"{deck.stem}: ngspice: {ln}" for ln in written["unsound"]]
         # A value ngspice reads as another number than it looks (`4k7` is 4k) fails the deck: every
         # result that rests on it is of another circuit.
-        deck_text = deck.read_text(encoding="utf-8", errors="replace")
         failures += [f"{deck.stem}: {p}" for p in sc.misread_values(deck_text)]
         # An altermod line with several parameters keeps only its first (ngspice 42): a corner that
         # switches a part to its maximum model runs with the rest as they were (M172).
@@ -812,12 +969,70 @@ def gate_sim(
             "models": models,
             "ran": str(prepared or deck),
         }
+        if applied:
+            details[deck.stem]["parts"] = [
+                {"ref": ref, "facts": labels[ref], "row": curves[ref].row} for ref in applied
+            ]
+            details[deck.stem]["curves"] = [vars(curves[ref]) for ref in applied]
+        missed = [n for n, c in checks.items() if not c["ok"] and not expect[n].get("warn")]
+        if applied and missed and ran_clean:
+            # Name the parts whose data the bound misses on: the deck with every part ideal, and with
+            # each part alone on its data.
+            def variant(label: str, text: str, source: Path = deck, at: Path = prepared) -> dict:
+                where = sim_out / "parts" / source.stem / label
+                if where.exists():
+                    shutil.rmtree(where)
+                where.mkdir(parents=True)
+                (where / at.name).write_text(text, encoding="utf-8")
+                if (at.parent / ".spiceinit").is_file():
+                    shutil.copyfile(at.parent / ".spiceinit", where / ".spiceinit")
+                link_siblings(source, where)
+                return ngspice_run(where / at.name, where / "ngspice.log", sim_out)["measures"]
+
+            plain = variant("ideal", as_written)
+            details[deck.stem]["ideal"] = plain
+            alone = {applied[0]: measures}
+            if len(applied) > 1:
+                alone = {ref: variant(ref, pd.apply(as_written, {ref: curves[ref]})[0]) for ref in applied}
+            for name in missed:
+                line = bound_line(deck.stem, name, measures.get(name), expect[name])
+                said = f": with the makers' data of {names_and(applied)}"
+                if sc.outside(plain.get(name), expect[name]) == 0:
+                    alone_out = [
+                        ref for ref, m in alone.items() if sc.outside(m.get(name), expect[name]) != 0
+                    ]
+                    said += f"; with them ideal it is {plain[name]:.4g}; "
+                    said += (
+                        f"{names_and(alone_out)} alone on its data misses it"
+                        if alone_out
+                        else ("no part alone on its data misses it")
+                    )
+                else:
+                    said += f"; with them ideal it misses it too ({plain.get(name)})"
+                if line in failures:
+                    failures[failures.index(line)] = line + said
         if keep and prepared:
             # ngspice reads .spiceinit from its working directory, so the rerun starts in the run folder.
             details[deck.stem]["rerun"] = (
                 f"env -C {shlex.quote(str(prepared.parent))} {NGSPICE} -b {prepared.name}"
             )
         artifacts.append(str(log))
+        written_at = sc.ran_at(written["text"])
+        # The ambient of a run at the deck's own temperature: text when ngspice named more than 1.
+        named = sorted({round(float(t), 2) for t in sc.ANALYSIS_TEMP_RE.findall(written["text"])})
+        ambient = written_at if len(named) < 2 else f"the deck ran at {th.celsius(named)}"
+        heat_runs[deck.stem] = [(th.WRITTEN, ambient, measures)] if ran_clean else None
+        own = corners.get(deck.stem) if corners else None
+        if own and own.skip:
+            heat_unrun[deck.stem] = f"the file skips deck {deck.stem}: {own.skip}"
+        elif own and nominal:
+            heat_unrun[deck.stem] = "they were not run (--nominal)"
+        elif own and not own.temperatures and corner_temps:
+            heat_unrun[deck.stem] = (
+                f"the file sets deck {deck.stem}'s temperature to false, so it ran at none of "
+                f"{th.celsius(corner_temps)}"
+            )
+        sound: list = []
         # The corners, when the project names any: a deck that did not run as written has none to add.
         if corners and deck.stem in corners and not nominal and ran_clean:
             record, corner_failures, corner_warnings = run_corners(
@@ -831,7 +1046,10 @@ def gate_sim(
                 sim_out,
                 {ref.split(".", 1)[1] for ref in wanted if ref.split(".", 1)[0] == deck.stem},
                 sweep=deck.stem in answering,
+                rewrite=(lambda t: pd.apply(t, curves)[0]) if applied else None,
+                sound_runs=sound,
             )
+            heat_runs[deck.stem] += [(c.label, ambient if c.temp is None else c.temp, m) for c, m in sound]
             failures += corner_failures
             warned += corner_warnings
             details[deck.stem]["corners"] = record
@@ -915,6 +1133,11 @@ def gate_sim(
             judged = fp.check_plan(plan, values, bounded, stimuli)
             failures += [f"frequency plan: {f}" for f in judged.pop("failures")]
             warned += [f"frequency plan: {w}" for w in judged.pop("warnings")]
+    heated = None
+    if heat is not None:
+        heated, heat_failures, heat_unjudged = sim_thermal(project, heat, heat_runs, heat_unrun)
+        failures += heat_failures
+        warned += heat_unjudged
     if strict:
         failures += warned
     summary = f"{len(decks)} decks"
@@ -935,9 +1158,40 @@ def gate_sim(
             "ngspice": tool_version([NGSPICE, "--version"], r"(?<=ngspice-)\d+"),
             "corners": None if corners is None else {"runs": corner_runs, "nominal_only": nominal},
             "frequency_plan": judged,
+            "thermal": heated,
         },
         artifacts,
     )
+
+
+def sim_thermal(
+    project: Project, heat, heat_runs: dict, unrun: dict | None = None
+) -> tuple[dict | None, list[str], list[str]]:
+    """The junctions of sim/thermal.json at the runs of the decks (tools/thermal.py): (record, failures,
+    not judged). The facts are the project's library/facts, as `ratings` finds them; the pack is the
+    one the file names. A part whose deck this run left out (`--deck`) is not judged, and says so; so
+    is a part whose deck's corners `unrun` names, with the reason, at those corners."""
+    th, rt = thermal(), ratings()
+    try:
+        library = rt.find_facts(project.dir)
+        facts = rt.read_facts(library) if library else []
+        pack = rt.read_pack(
+            rt.find_pack(heat.pack, project.dir, SRC_DIR / "rules" / "ratings"),
+            own="" if (SRC_DIR / "rules" / "ratings" / f"{heat.pack}.json").is_file() else heat.pack,
+        )
+    except rt.Refusal as exc:
+        message = str(exc).replace("ratings.json: pack:", f"{th.PLAN_FILE}: pack:")
+        return None, [message if message.startswith(th.PLAN_FILE) else f"{th.PLAN_FILE}: {message}"], []
+    left = [p for p in heat.parts.values() if p.deck not in heat_runs]
+    ran = th.Plan(heat.pack, {r: p for r, p in heat.parts.items() if p.deck in heat_runs})
+    judged = {"failures": [], "not_judged": [], "parts": {}}
+    if ran.parts:
+        judged = th.judge(ran, heat_runs, facts, pack, unrun)
+    unjudged = judged["not_judged"] + [
+        f"thermal: {p.ref} ({p.mpn}) not judged: its deck {p.deck} was not run (--deck)" for p in left
+    ]
+    record = {"pack": pack.name, "parts": judged["parts"], "not_judged": unjudged}
+    return record, judged["failures"], unjudged
 
 
 BUNDLE_RUN = "run.sp"
@@ -1005,6 +1259,9 @@ def write_bundle(
             return f"models/{placed[-1] or target.name}"
 
         text = replace_includes(prepared.read_text(encoding="utf-8", errors="replace"), relative)
+    if record.get("curves"):  # the makers' data the gate ran the deck with goes with it
+        pd = partdata()
+        text = pd.apply(text, {c["ref"]: pd.Curve(**c) for c in record["curves"]})[0]
     (folder / deck.name).write_text(text, encoding="utf-8")
     wrapper = [
         f"* {deck.stem}: sim/{deck.name} of {project.name} as the EE Workcenter's SIM gate runs it.",
@@ -1028,7 +1285,7 @@ def write_bundle(
     # The other files of the deck's folder go along: one the deck reads by a statement the gate does
     # not rewrite (`source print.sp`, a model's `file="stim.txt"`) is then beside it, as in the project.
     beside = []
-    held = {simcorners().CORNERS_FILE, freqplan().PLAN_FILE, ".spiceinit"}
+    held = {simcorners().CORNERS_FILE, freqplan().PLAN_FILE, thermal().PLAN_FILE, ".spiceinit"}
     for entry in sorted(deck.parent.iterdir()):
         own = entry.suffix == ".cir" or entry.name.endswith(".expect.json") or entry.name in held
         if entry.is_file() and not own and not (folder / entry.name).exists():
@@ -1166,6 +1423,16 @@ def cmd_sim(args) -> int:
             print(f"rerun {name}: {deck['rerun']}")
         if deck.get("bundle"):
             print(f"bundle {name}: ngspice -b {shlex.quote(str(Path(deck['bundle']) / BUNDLE_RUN))}")
+    for ref, part in ((result.details.get("thermal") or {}).get("parts") or {}).items():
+        w, worst = part["written"], part["worst"]
+        print(
+            f"thermal {ref}: junction "
+            + (f"{w['junction']:.5g} C as written ({w['ambient']:g} C), " if w else "not judged as written, ")
+            + f"{worst['junction']:.5g} C at its worst of {part['runs']} "
+            f"run{'s' if part['runs'] > 1 else ''} ({worst['run']}); limit {part['limit']:g} C"
+            + ("; not judged at every run" if part["held"] is None else "")
+            + f"; {part['assumes']}"
+        )
     return code
 
 
@@ -1733,7 +2000,10 @@ def gate_export(project: Project, out: Path, strict: bool = False, step: bool = 
                 fab / f"{project.name}.step",
             )
         )
+    facts = fabfiles().board_facts(project.pcb.read_text(encoding="utf-8"))
+    jobs += assembly_jobs(project, fab, facts)
     details, artifacts, failures = {}, [], []
+    lines: list[str] = []
     for name, cmd, expect in jobs:
         proc = run(cmd, cwd=project.dir)
         produced = expect.is_file() if expect.suffix else any(expect.iterdir())
@@ -1745,17 +2015,128 @@ def gate_export(project: Project, out: Path, strict: bool = False, step: bool = 
         }
         if ok:
             artifacts.append(str(expect))
+            lines += read_back(name, expect, facts)
         else:
             failures.append(name)
+            lines.append(f"{name}: {Path(str(cmd[0])).name} exit {proc.returncode}, wrote no {expect.name}")
     gerber_files = sorted(p.name for p in gerbers.iterdir()) if gerbers.is_dir() else []
     details["gerber_files"] = gerber_files
-    return Result(
-        "export",
-        "fail" if failures else "pass",
-        f"{len(jobs) - len(failures)}/{len(jobs)} outputs, {len(gerber_files)} gerber files",
-        details,
-        artifacts,
+    read = sum(1 for name, _, _ in jobs if name in READ_BACK and name not in failures)
+    summary = f"{len(jobs) - len(failures)}/{len(jobs)} outputs, {len(gerber_files)} gerber files"
+    summary += f", {read} files read back"
+    not_judged = ""
+    if (project.dir / "panel.json").is_file():
+        panel, panel_lines, not_judged = export_panel(project, fab, facts)
+        details["panel"] = panel
+        lines += panel_lines
+        if panel.get("boards") is not None:
+            summary += f", panel {panel['rows']} x {panel['cols']} boards"
+            summary += f", {panel['width']:g} x {panel['height']:g} mm"
+            artifacts.append(panel["file"])
+    details["failures"] = lines
+    status = "fail" if lines else ("skip" if not_judged else "pass")
+    if not_judged:
+        summary += f"; panel not judged: {not_judged}"
+    return Result("export", status, summary, details, artifacts)
+
+
+def fabfiles():
+    """tools/fabfiles.py: EXPORT's files read back against the board."""
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import fabfiles as module
+
+    return module
+
+
+# The files an assembler takes, each read back against the board by tools/fabfiles.py.
+READ_BACK = ("placement", "assembly-top", "assembly-bottom", "ipc2581")
+KIKIT_PYTHON = os.environ.get("KIKIT_PYTHON")
+
+
+def assembly_jobs(project: Project, fab: Path, facts: dict) -> list[tuple[str, list, Path]]:
+    """kicad-cli 10's placement file (DNP parts left out), an assembly page per side that holds a part
+    (DNP parts hidden, the back one mirrored, as the assembler sees it), and IPC-2581."""
+    pcb = project.pcb
+    jobs: list[tuple[str, list, Path]] = [
+        (
+            "placement",
+            [KICAD_CLI, "pcb", "export", "pos", "--format", "csv", "--units", "mm", "--side", "both"]
+            + ["--exclude-dnp", "--output", fab / "placement.csv", pcb],
+            fab / "placement.csv",
+        )
+    ]
+    for side, layer, extra in (("top", "F.Fab", []), ("bottom", "B.Fab", ["--mirror"])):
+        if side in facts["placed"].values():
+            target = fab / f"assembly-{side}.pdf"
+            jobs.append(
+                (
+                    f"assembly-{side}",
+                    [KICAD_CLI, "pcb", "export", "pdf", "--mode-single", "--layers", f"{layer},Edge.Cuts"]
+                    + [
+                        "--sketch-pads-on-fab-layers",
+                        "--hide-DNP-footprints-on-fab-layers",
+                        "--include-border-title",
+                        *extra,
+                        "--output",
+                        target,
+                        pcb,
+                    ],
+                    target,
+                )
+            )
+    target = fab / f"{project.name}.ipc2581.xml"
+    jobs.append(("ipc2581", [KICAD_CLI, "pcb", "export", "ipc2581", "--output", target, pcb], target))
+    return jobs
+
+
+def read_back(name: str, path: Path, facts: dict) -> list[str]:
+    ff = fabfiles()
+    if name == "placement":
+        return ff.check_placement(path.read_text(encoding="utf-8"), facts, path.name)
+    if name.startswith("assembly-"):
+        return ff.check_assembly(path.read_bytes(), facts, name.removeprefix("assembly-"), path.name)
+    if name == "ipc2581":
+        return ff.check_ipc2581(path.read_text(encoding="utf-8"), facts, path.name)
+    return []
+
+
+def export_panel(project: Project, fab: Path, facts: dict) -> tuple[dict, list[str], str]:
+    """The project's panel.json, a KiKit preset, made into a panel by tools/panel.py under KiKit's
+    Python, then the panel's Gerbers and drill files by kicad-cli. Returns (details, failure lines,
+    why it was not judged)."""
+    py = KIKIT_PYTHON or venv_python()
+    probe = run([py, "-c", "import kikit.panelize_ui"])
+    if probe.returncode != 0:
+        last = (probe.stderr.strip().splitlines() or ["no output"])[-1]
+        return {"python": py}, [], f"KiKit does not import under {py} ({last}); set KIKIT_PYTHON"
+    folder = fab / "panel"
+    gerbers = folder / "gerbers"
+    gerbers.mkdir(parents=True, exist_ok=True)
+    board = folder / f"{project.name}-panel.kicad_pcb"
+    proc = run(
+        [py, SRC_DIR / "tools" / "panel.py", project.pcb, board, project.dir / "panel.json"], cwd=folder
     )
+    said = proc.stdout.strip().splitlines()
+    if proc.returncode != 0 or not board.is_file() or not said:
+        errors = [ln for ln in proc.stderr.splitlines() if ln.strip() and not KICAD_NOISE.search(ln)]
+        return {"python": py}, [f"panel: KiKit exit {proc.returncode}: {(errors or ['no output'])[-1]}"], ""
+    layout = json.loads(said[-1])
+    if layout["type"] != "grid":
+        return (
+            {"python": py, "layout": layout},
+            [],
+            f"a {layout['type']} layout has no count of boards to hold",
+        )
+    lines, info = fabfiles().check_panel(
+        board.read_text(encoding="utf-8"), facts, layout["rows"], layout["cols"], board.name
+    )
+    for name, sub in (("gerbers", "gerbers"), ("drill", "drill")):
+        made = run([KICAD_CLI, "pcb", "export", sub, "--output", f"{gerbers}/", board], cwd=folder)
+        if made.returncode != 0:
+            lines.append(f"panel {name}: kicad-cli exit {made.returncode}")
+    details = {"python": py, "file": str(board), "rows": layout["rows"], "cols": layout["cols"], **info}
+    details["gerber_files"] = sorted(p.name for p in gerbers.iterdir())
+    return details, lines, ""
 
 
 @timed
@@ -2251,6 +2632,18 @@ def schematic_bom(project: Project, bom_csv: Path) -> tuple[list[dict] | None, s
         return None, proc.stderr[-800:]
     with bom_csv.open(encoding="utf-8", newline="") as fh:
         return [r for r in csv.DictReader(fh) if not r.get("DNP", "").strip()], ""
+
+
+def schematic_netlist(project: Project, folder: Path) -> tuple[str | None, str]:
+    """The schematic's netlist in KiCad's XML form, written into `folder`: (its text, kicad-cli's
+    stderr). The text is None when kicad-cli wrote none. `ratings` reads each net's pins from it."""
+    target = folder / "netlist.xml"
+    proc = run(
+        [KICAD_CLI, "sch", "export", "netlist", "--format", "kicadxml", "--output", target, project.sch]
+    )
+    if proc.returncode != 0 or not target.is_file():
+        return None, proc.stderr[-800:]
+    return target.read_text(encoding="utf-8"), ""
 
 
 def unit_price(breaks: list[tuple[int, Decimal]], qty: int) -> Decimal:
@@ -3660,7 +4053,13 @@ def cmd_design(args) -> int:
                 # Each round sifts the seed again: a reserved via can stand on a seed track.
                 seed = design.seed_wiring(copper) if copper else None
                 summary["route"] = kicadgen.route(
-                    design, out_dir / "build" / "route", passes=args.passes, timeout=args.timeout, seed=seed
+                    design,
+                    out_dir / "build" / "route",
+                    passes=args.passes,
+                    timeout=args.timeout,
+                    seed=seed,
+                    threads=args.threads,
+                    order=args.order,
                 )
                 if seed:
                     summary["seed"] = {
@@ -3719,6 +4118,12 @@ def cmd_design(args) -> int:
             unrouted = "DRC decides" if r["unrouted"] is None else f"{r['unrouted']} unrouted"
             rounds = f"{summary.get('rounds', 1)} round(s)"
             print(f"  routed: {r['segments']} segments, {r['vias']} vias, {unrouted}, {rounds}  ({r['log']})")
+            for i, st in enumerate(r.get("stages", []), start=1):
+                left = "no count" if st["unrouted"] is None else f"{st['unrouted']} unrouted"
+                print(
+                    f"  stage {i} {st['stage']}: {len(st['nets'])} nets, {st['segments']} segments, "
+                    f"{st['vias']} vias, {left}"
+                )
         s = summary.get("seed")
         if s:
             left = ", ".join(f"{n} {why}" for why, n in sorted(s["left"].items(), key=lambda kv: -kv[1]))
@@ -4204,10 +4609,14 @@ def cmd_mutate(args) -> int:
 
 def check_design(args) -> int:
     """`design --check`: regenerate the design into a scratch folder (or --out) and compare the project and
-    schematic files with the design's own, the way a board repository's CI does. Exit 1 on a difference
-    or on the design step's own failure (M85), whose files CI would compare all the same."""
+    schematic files, and the project's library tables, with the design's own, the way a board
+    repository's CI does. Exit 1 on a difference or on the design step's own failure (M85), whose files
+    CI would compare all the same."""
     if args.route:
         raise SystemExit("design: --check regenerates without routing, as CI does; leave out --route")
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import kicadgen
+
     design_path = Path(args.design).resolve()
     project_dir = design_path.parent
     keep = Path(args.out).resolve() if args.out else None
@@ -4220,14 +4629,22 @@ def check_design(args) -> int:
         with contextlib.redirect_stdout(printed) if args.json else contextlib.nullcontext():
             code = cmd_design(run_args)
         regenerated = sorted(out_dir.glob("*.kicad_pro")) + sorted(out_dir.glob("*.kicad_sch"))
+        # A library table names each project library from the folder the table lies in, so the one
+        # written into the scratch folder is first read as the design's own folder would hold it.
+        tables = {
+            f.name: kicadgen.lib_table_at(f.read_text(encoding="utf-8"), out_dir, project_dir).encode()
+            for f in (out_dir / "fp-lib-table", out_dir / "sym-lib-table")
+            if f.is_file()
+        }
         files = []
-        for f in regenerated:
+        for f in [*regenerated, *(out_dir / name for name in tables)]:
             mine = project_dir / f.name
+            written = tables.get(f.name) or f.read_bytes()
             entry = {"file": f.name, "state": "same"}
             if not mine.is_file():
                 entry["state"] = "missing"
-            elif mine.read_bytes() != f.read_bytes():
-                old, new = mine.read_bytes().splitlines(), f.read_bytes().splitlines()
+            elif mine.read_bytes() != written:
+                old, new = mine.read_bytes().splitlines(), written.splitlines()
                 pairs = enumerate(zip(old, new, strict=False))
                 line = next((i for i, (a, b) in pairs if a != b), min(len(old), len(new)))
                 entry.update(
@@ -4413,6 +4830,33 @@ def cmd_inspect(args) -> int:
     return proc.returncode if proc.returncode in (EXIT_PASS, EXIT_FAIL, EXIT_SKIP) else EXIT_FAIL
 
 
+COPPER_SCRIPT = SRC_DIR / "tools" / "copper.py"
+
+
+def cmd_copper(args) -> int:
+    """The drop, the current density and the temperature of a board: tools/copper.py under the venv's
+    Python, which sees numpy, pcbnew and Pillow; it writes only into <out>/copper/."""
+    project = find_project(args.project)
+    if project.pcb is None:
+        raise SystemExit(f"copper: {project.dir} has no .kicad_pcb")
+    out = (Path(args.out).resolve() if args.out else project.dir / "build") / "copper"
+    spec = {
+        "board": str(project.pcb),
+        "out": str(out),
+        "strict": args.strict,
+        "json": getattr(args, "json", False),
+    }
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    proc = subprocess.run(
+        [venv_python(), "-s", str(COPPER_SCRIPT), json.dumps(spec)], capture_output=True, text=True, env=env
+    )
+    sys.stdout.write(proc.stdout)
+    sys.stderr.write("".join(ln for ln in proc.stderr.splitlines(True) if not KICAD_NOISE.search(ln)))
+    if "No module named 'numpy'" in proc.stderr:
+        return EXIT_SKIP
+    return proc.returncode if proc.returncode in (EXIT_PASS, EXIT_FAIL, EXIT_SKIP) else EXIT_FAIL
+
+
 USER_SETTINGS = Path.home() / ".claude" / "settings.json"
 
 
@@ -4433,6 +4877,7 @@ def cmd_doctor(args) -> int:
     ngspice = tool_version([NGSPICE, "--version"], r"(?<=ngspice-)\d+")
     java = tool_version([JAVA, "-version"], r'(?<=version ")\d+(\.\d+)*')
     py = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    openems = fields().OpenEMS.version()
     checks = {
         "kicad-cli": {"required": True, "ok": bool(kicad and kicad.startswith("10.")), "version": kicad},
         "ngspice": {"required": True, "ok": bool(ngspice), "version": ngspice},
@@ -4447,6 +4892,13 @@ def cmd_doctor(args) -> int:
         "xvfb": {"required": False, "ok": shutil.which("Xvfb") is not None},
         "rsvg-convert": {"required": False, "ok": shutil.which("rsvg-convert") is not None},
         "ffmpeg": {"required": False, "ok": shutil.which("ffmpeg") is not None},
+        # The field solver of `fields`: absent, that command skips and nothing else needs it.
+        "openems": {
+            "required": False,
+            "ok": openems is not None,
+            "version": openems,
+            "path": fields().OpenEMS.binary() or str(WC_ROOT / "openems" / "bin" / "openEMS"),
+        },
         "symbols": {
             "required": False,
             "ok": Path("/usr/share/kicad/symbols/Device.kicad_sym").is_file(),
@@ -4633,6 +5085,46 @@ def chipflow():
     """tools/chipflow.py: `chip`, a chip project from RTL to a GDSII layout."""
     sys.path.insert(0, str(SRC_DIR / "tools"))
     import chipflow as module
+
+    return module
+
+
+def ratings():
+    """tools/ratings.py: `ratings`, a schematic held to its parts' ratings."""
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import ratings as module
+
+    return module
+
+
+def references():
+    """tools/references.py: `references`, the index of the documents the rules name."""
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import references as module
+
+    return module
+
+
+def routebench():
+    """tools/routebench.py: `bench`, design files routed by each router and the runs compared."""
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import routebench as module
+
+    return module
+
+
+def fields():
+    """tools/fields.py: `fields`, the critical nets simulated by a field solver from the board file."""
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import fields as module
+
+    return module
+
+
+def highspeed():
+    """tools/highspeed.py: `highspeed`, the fast nets held to their interfaces' rules."""
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import highspeed as module
 
     return module
 
@@ -4859,6 +5351,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--route", action="store_true", help="export DSN, run FreeRouting, merge the session")
     p.add_argument("--passes", type=int, default=60)
     p.add_argument("--timeout", type=int, default=900)
+    p.add_argument("--threads", type=int, default=0, help="FreeRouting's threads, -mt (default: its own)")
+    p.add_argument(
+        "--order",
+        action="store_true",
+        help="with --route: route in stages, a FreeRouting run each: the poured nets, the nets of each "
+        "fine-pitch part, pairs, the rest; writes build/route/<name>.<n>-<stage>.dsn, .ses and .log",
+    )
     p.add_argument(
         "--rounds", type=int, default=4, help="route again with a via reserved beside each pad a pour lost"
     )
@@ -4871,8 +5370,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--check",
         action="store_true",
-        help="regenerate into a temporary folder (or --out) and compare the .kicad_pro and .kicad_sch with "
-        "the design's own; exit 1 on a difference or a failed design step. Writes nothing in the project",
+        help="regenerate into a temporary folder (or --out) and compare the .kicad_pro, the .kicad_sch and "
+        "the library tables with the design's own; exit 1 on a difference or a failed design step. "
+        "Writes nothing in the project",
     )
     p = sub.add_parser(
         "placement",
@@ -4960,9 +5460,29 @@ def main(argv: list[str] | None = None) -> int:
         "--new", metavar="BOARD", help="the new board: says which of those nets it no longer connects"
     )
 
+    p = add_project_cmd(
+        "copper",
+        "each power net's voltage drop and current density on the board's copper, and the board's "
+        "temperature from its parts' heat, against the limits of copper.json; currents and heat from "
+        "ratings.json; writes report.md, report.json and the pictures into <out>/copper/",
+    )
+    p.set_defaults(run=cmd_copper)
+
     doctools().register(sub, sys.modules[__name__])
     guide().register(sub, sys.modules[__name__])
     chipflow().register(sub, sys.modules[__name__])
+    ratings().register(sub, sys.modules[__name__])
+    references().register(sub, sys.modules[__name__])
+    routebench().register(sub, sys.modules[__name__])
+    fields().register(sub, sys.modules[__name__])
+    highspeed().register(sub, sys.modules[__name__])
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import measureplan
+
+    measureplan.register(sub, sys.modules[__name__])
+    import now
+
+    now.register(sub, sys.modules[__name__])
 
     # `--json` is read on either side of the command: `workcenter --json gates P` and `workcenter
     # gates P --json`. SUPPRESS keeps a command that does not carry the flag from clearing the one
@@ -4984,6 +5504,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "design":
         if args.seed and not args.route:
             parser.error("design --seed needs --route")
+        if args.order and args.seed:
+            parser.error("design --order cannot take --seed: each stage routes on the stages before it")
+        if args.order and not args.route:
+            parser.error("design --order needs --route")
         if args.seed and not Path(args.seed).is_file():
             parser.error(f"design --seed: no board file {args.seed}")
         return check_design(args) if args.check else cmd_design(args)

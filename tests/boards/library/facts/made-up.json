@@ -1,0 +1,48 @@
+{
+  "parts": [
+    {
+      "kind": "capacitor.ceramic",
+      "mpn": "FIXTURE-10U-16V",
+      "tolerance": 0.10,
+      "volts": 16,
+      "dielectric": "X5R",
+      "source": {
+        "document": "no datasheet: a part made up for the fixtures of tests/boards",
+        "read": "2026-11-17",
+        "second_reader": "no"
+      }
+    },
+    {
+      "kind": "capacitor.ceramic",
+      "mpn": "FIXTURE-10U-6V3",
+      "tolerance": 0.20,
+      "volts": 6.3,
+      "dielectric": "X5R",
+      "kept": [[0, 1.0], [1, 0.92], [2, 0.67], [3, 0.50], [4, 0.38], [5, 0.30], [6.3, 0.22]],
+      "source": {
+        "document": "no datasheet: a part made up for the fixtures of tests/boards",
+        "read": "2026-11-17",
+        "second_reader": "no"
+      },
+      "note": "the value it keeps has the shape of a 10 uF 6.3 V X5R 0603 capacitor's curve: half at 3 V"
+    },
+    {
+      "kind": "connector",
+      "symbol": "Connector_Generic:Conn_01x02",
+      "source": {
+        "document": "no datasheet: a pin header, with no rating stated",
+        "read": "2026-11-17",
+        "second_reader": "no"
+      }
+    },
+    {
+      "kind": "connector",
+      "symbol": "Connector_Generic:Conn_01x03",
+      "source": {
+        "document": "no datasheet: a pin header, with no rating stated",
+        "read": "2026-11-17",
+        "second_reader": "no"
+      }
+    }
+  ]
+}

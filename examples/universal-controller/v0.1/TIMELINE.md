@@ -85,6 +85,6 @@ PASS   drc        0 errors, 5 warnings (0 unconnected, 0 parity)  [1.37s]
        - warning: silk_edge_clearance: Silkscreen clipped by board edge
        - warning: silk_edge_clearance: Silkscreen clipped by board edge
 PASS   sim        6 decks, 370 corner runs, 0 failures  [1.32s]
-PASS   export     4/4 outputs, 24 gerber files  [2.07s]
+PASS   export     8/8 outputs, 24 gerber files, 4 files read back  [4.48s]
 GREEN with 5 warnings: rosetta  report examples/universal-controller/v0.1/build/gates.json
 ```

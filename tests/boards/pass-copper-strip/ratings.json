@@ -1,0 +1,12 @@
+{
+  "pack": "nasa-eee-inst-002",
+  "nets": {
+    "GND": {"volts": [0, 0], "source": "the reference: J1 pin 2"},
+    "+5V": {"volts": [4.75, 5.25], "source": "the supply on J1: 5 V within 5 %, this fixture's own requirement"}
+  },
+  "parts": {
+    "J2.1": {"amps": 1, "source": "the load on J2: 1 A at the most, this fixture's own requirement"},
+    "J2.2": {"amps": 1, "source": "the load's return on J2: the same 1 A"},
+    "R1": {"amps": 0.024, "source": "5.25 V over 220 ohms is 0.02386 A; 0.024 A, this fixture's own figure"}
+  }
+}

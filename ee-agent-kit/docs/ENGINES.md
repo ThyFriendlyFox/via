@@ -1,7 +1,7 @@
 # Engines
 
 An engine is the external program a gate runs. EE Workcenter has 3
-engines and 1 planned. Select an engine's binary with its environment
+engines, the openEMS field solver, and 1 planned. Select an engine's binary with its environment
 variable (`docs/CONFIGURATION.md`); the gate that uses it is fixed.
 
 ## kicad-cli
@@ -68,7 +68,7 @@ vias and wires. A hole's clearance per layer therefore reaches it as grown
 copper on that layer (M79).
 For a hand-drawn `.kicad_pcb` both ends still happen in KiCad. Reading an
 arbitrary board file into the DSN writer is
-ROADMAP item 3, "Headless autoroute for hand-drawn boards".
+ROADMAP item 15, "Headless autoroute for hand-drawn boards".
 
 ## kicadgen
 
@@ -140,12 +140,72 @@ runs without `-s`, so it imports the copy pip reports: Ubuntu's
 python3-yaml 6.0.1 in the system packages comes second. Absent, the
 command skips (exit 2) and says so.
 
+## openEMS
+
+The field solver of `workcenter fields`: finite differences in time on a
+rectilinear mesh, lumped ports, S-parameters from each port's voltage and
+current. Version 0.0.35 (`0.0.35+git20190103.6a75e98+dfsg.1-3.2`, Debian 12).
+Ubuntu 24.04 has no package: `install.sh` fetches Debian's `openems`,
+`libopenems0`, `libcsxcad0` and `libnf2ff0` from `deb.debian.org`, checks
+each against the SHA256 in Debian's bookworm index, unpacks them under
+`/opt/workcenters/ee/openems/root` and writes `bin/openEMS`, which sets the
+library path. 5 Ubuntu packages carry the rest (`libfparser4`,
+`libtinyxml2.6.2v5`, `libboost-thread1.74.0`, `libvtk9.1t64`,
+`libhdf5-hl-100t64`). `sudo ./install.sh --openems` runs this step alone. A
+failed step warns, and `fields` skips (exit 2), unless `REQUIRE_OPENEMS=1`.
+
+openEMS is GPL. It runs as its own process on an XML file the command
+writes; none of its code is in this repository.
+
+```sh
+OPENEMS=/opt/workcenters/ee/openems/bin/openEMS   # default; else openEMS on PATH
+```
+
+Traps, each met on the fixtures:
+
+- A sheet that lies on no mesh line is dropped with `Unused primitive` and
+  exit 0; so is a sheet whose every cell another primitive of the same
+  property already fills. `mesh_lines` holds each fixed line to the digit
+  (a sum of cells put the plane at 1.5e-15 and openEMS dropped it), the
+  model leaves out an octagon at a joint the rectangles cover, and the run
+  counts the warning as a fault.
+- With first-order absorbing walls (`MUR`) around a microstrip the energy
+  stayed at -15 dB after 200000 steps. With 8 cells of PML outside the box
+  on every side, the dielectric and the plane running into them, the same
+  line fell to -44.85 dB in 2650 steps (148596 cells, before the mesh grew
+  its cells by 1.5).
+- A slanted track's corners put mesh lines 0.0002 mm apart; the time step
+  fell to 4.4e-16 s, and the Gaussian pulse alone wanted 1309644 steps:
+  openEMS cut it to the step limit (`Cutting to max number of timesteps`)
+  and ran with 0 energy in the box. `mesh_lines` drops a line closer than
+  half a cell across the narrowest track, and the run counts that line as a
+  fault.
+- That merge first kept a corner's line at 109.245011 and dropped 109.25,
+  where a port stood: openEMS dropped the excitation sheet and ran 200000
+  steps with 0 energy. A port's bounds and each layer's height are kept
+  lines, and the run reads the log every 2 s and stops at a stated fault.
+- A run that reaches `NumberOfTimesteps` before its end criterion prints
+  a warning and exits 0. The run counts it as a fault.
+- A sheet's edge on a mesh line is wider to the solver than to the board:
+  the 0.36 mm line over 0.2 mm of 4.5 read 43.14 ohm against Hammerstad
+  and Jensen's 51.34. With lines a third of a cell inside each edge and two
+  thirds outside (openEMS 0.0.35, Tutorials/MSL_NotchFilter.m, lines 36 to
+  39) it reads 50.88.
+- Of 2 primitives of 1 property and 1 priority the later wins a point, and
+  a point on a primitive's own edge is not its own: on Wyvern's USB 3 pair a
+  piece 0.0586 mm long under the octagons at its ends was dropped with
+  `Unused primitive`. The model leaves out a polygon that holds, strictly
+  inside, no mesh node or edge centre a later polygon of its net does not.
+- A line longer than the pulse leaves every port quiet while the wave
+  crosses it. The spectra end 5 quiet samples after the ports' last loud
+  sample, not after the first 5 quiet ones.
+
 ## kipy (planned)
 
 `kicad-python`, the official IPC API client, is installed in the venv
 but no gate uses it yet. It needs a running KiCad, which under Xvfb is
 possible in the cloud environment (`xvfb` is installed). First use:
-session import (ROADMAP item 3, "Headless autoroute for hand-drawn boards").
+session import (ROADMAP item 15, "Headless autoroute for hand-drawn boards").
 
 ## The chip engines
 

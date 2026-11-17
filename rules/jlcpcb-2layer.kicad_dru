@@ -1,0 +1,56 @@
+(version 1)
+# JLCPCB, a 2-layer FR-4 board of 1 oz copper. Limits from "PCB Manufacturing & Assembly Capabilities",
+# https://jlcpcb.com/capabilities/pcb-capabilities, read 2026-11-17 (the page as fetched had SHA256
+# 713e9be20cf00b6fa34465da9c818bc72bd7f6a60b13184c87cfba705241e48a). When a design file sets
+# `fab = "jlcpcb-2layer"`, or for one run with `workcenter drc --fab jlcpcb-2layer`, the rules with no
+# layer and no condition raise the board's own minimums, and only the others are copied into the
+# project (rules/README.md, M62). rules/README.md lists what JLCPCB publishes that this file leaves out.
+
+# "Min. track width and spacing (1 oz) ... 1- and 2-layer: 0.10 / 0.10 mm (4 / 4 mil)"
+(rule "jlcpcb-2layer: track width 0.10 mm"
+	(constraint track_width (min 0.1mm))
+	(severity error))
+
+(rule "jlcpcb-2layer: spacing 0.10 mm"
+	(constraint clearance (min 0.1mm))
+	(severity error))
+
+# "Min. Via hole size/diameter ... 2-layer: 0.15mm hole size / 0.25mm via diameter"
+(rule "jlcpcb-2layer: via hole 0.15 mm"
+	(constraint hole_size (min 0.15mm))
+	(severity error))
+
+# The same line: a 0.25 mm via round a 0.15 mm hole leaves (0.25 - 0.15) / 2 = 0.05 mm of ring.
+(rule "jlcpcb-2layer: via ring 0.05 mm"
+	(constraint annular_width (min 0.05mm))
+	(severity error))
+
+# "PTH annular ring ... 2-layer: 1 oz: Recommended 0.25 mm or above; absolute minimum 0.18 mm"
+(rule "jlcpcb-2layer: plated pad ring 0.18 mm"
+	(condition "A.Type == 'Pad' && A.Pad_Type == 'Through-hole'")
+	(constraint annular_width (min 0.18mm))
+	(severity error))
+
+# "Via Hole-to-Hole Spacing 0.2mm"
+(rule "jlcpcb-2layer: hole to hole 0.2 mm"
+	(constraint hole_to_hole (min 0.2mm))
+	(severity error))
+
+# "Pad Hole-to-Hole Spacing 0.45mm"
+(rule "jlcpcb-2layer: pad hole to pad hole 0.45 mm"
+	(condition "A.Type == 'Pad' && B.Type == 'Pad'")
+	(constraint hole_to_hole (min 0.45mm))
+	(severity error))
+
+# "Copper clearance from routed board edges: ≧0.2 mm"
+(rule "jlcpcb-2layer: copper to routed edge 0.2 mm"
+	(constraint edge_clearance (min 0.2mm))
+	(severity error))
+
+# Legend "Minimum Line Width ≥0.15mm" and "Minimum text height 40 mil (1.0mm)". KiCad checks the stroke
+# and the height of text here; the width of legend lines and arcs has no rule.
+(rule "jlcpcb-2layer: legend text 0.15 mm stroke, 1.0 mm high"
+	(condition "A.Layer == 'F.Silkscreen' || A.Layer == 'B.Silkscreen'")
+	(constraint text_thickness (min 0.15mm))
+	(constraint text_height (min 1.0mm))
+	(severity error))

@@ -1,0 +1,38 @@
+{
+  "kind": "ic",
+  "mpns": ["SN74AUP1G17DBVR", "SN74AUP1G17DBVT"],
+  "family": "digital",
+  "source": {
+    "document": "SN74AUP1G17 datasheet, SCES579J",
+    "revision": "June 2004, revised September 2017",
+    "url": "https://www.ti.com/lit/ds/symlink/sn74aup1g17.pdf",
+    "sha256": "b59bfa5c4d9d6b4cd91efd46edec046b94670ebe894f3a46ce8089801ac3f36a",
+    "read": "2026-11-17",
+    "second_reader": "2026-11-17"
+  },
+  "note": "The supply current is the static one, with no load on the output and the input at a rail. The datasheet asks for a bypass capacitor on VCC and for no value: it names 0.1 uF and 1 uF in parallel as commonly used, and the entry asks for the smaller. The 2 upper limits of Y are those of 2 states, driving and off, and both are held at once",
+  "pins": [
+    {"numbers": ["1"], "name": "NC", "role": "nc"},
+    {"numbers": ["2"], "name": "A", "role": "input", "abs": [-0.5, 4.6], "operating": [0, 3.6], "page": 4},
+    {"numbers": ["3"], "name": "GND", "role": "ground"},
+    {
+      "numbers": ["4"],
+      "name": "Y",
+      "role": "output",
+      "abs": [-0.5, [{"pin": "VCC", "plus": 0.5}, 4.6]],
+      "operating": [0, {"pin": "VCC", "plus": 0}],
+      "swing": ["GND", "VCC"],
+      "page": 4
+    },
+    {
+      "numbers": ["5"],
+      "name": "VCC",
+      "role": "supply",
+      "abs": [-0.5, 4.6],
+      "operating": [0.8, 3.6],
+      "amps": 9e-7,
+      "page": [4, 7]
+    }
+  ],
+  "needs": [{"capacitor": {"from": "VCC", "to": "GND", "farads_min": 1e-7}, "page": 16}]
+}

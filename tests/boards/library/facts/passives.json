@@ -1,0 +1,68 @@
+{
+  "parts": [
+    {
+      "kind": "resistor",
+      "match": "CRCW0603*FKEA",
+      "tolerance": 0.01,
+      "watts": 0.10,
+      "volts": 75,
+      "source": {
+        "document": "Vishay D/CRCW e3 datasheet, document 20035",
+        "revision": "14-Apr-2026",
+        "url": "https://www.vishay.com/docs/20035/dcrcwe3.pdf",
+        "sha256": "a818e89ce6054c61f8047ba8c25328d95871daf37d60aaca16a5b8c25ea967db",
+        "read": "2026-11-17",
+        "second_reader": "2026-11-17"
+      },
+      "note": "The power and the voltage are those of the standard operation mode, page 2; the F of the part number is 1 %, page 3"
+    },
+    {
+      "kind": "capacitor.ceramic",
+      "match": "VJ0603Y104KXJ*",
+      "tolerance": 0.10,
+      "volts": 16,
+      "dielectric": "X7R",
+      "source": {
+        "document": "Vishay VJ Commercial Series datasheet, document 45199",
+        "revision": "08-May-2026",
+        "url": "https://www.vishay.com/docs/45199/vjcommercialseries.pdf",
+        "sha256": "6c9b40c81d312ba6dbe9d0a4e687ae18185efeebf8cb98e6d709020efa550211",
+        "read": "2026-11-17",
+        "second_reader": "2026-11-17"
+      },
+      "note": "The K of the part number is 10 % and the J is 16 V, page 3. The value it keeps under a voltage is not entered: the graph of page 13 is typical and shows parts rated 25 V, 50 V and 100 V, none rated 16 V"
+    },
+    {
+      "kind": "inductor",
+      "match": "XAL4020-222ME*",
+      "tolerance": 0.20,
+      "amps_saturation": 5.6,
+      "amps_rms": 4.0,
+      "source": {
+        "document": "Coilcraft XAL40xx datasheet, document 806",
+        "revision": "revised 02/25/26",
+        "url": "https://www.coilcraft.com/getmedia/6adcb47d-8b55-416c-976e-1e22e0d2848c/xal40xx.pdf",
+        "sha256": "b26cf975bd56a807173b05665bddd49ed49323400330eb8f6fa63e24ff6d7d15",
+        "read": "2026-11-17",
+        "second_reader": "2026-11-17"
+      },
+      "note": "Page 1. It saturates where its inductance has dropped 30 %, a typical figure at 25 C. The rated current is the one of a 20 C rise, which the datasheet gives for reference and not as a maximum"
+    },
+    {
+      "kind": "inductor",
+      "mpn": "SRN2010TA-2R2M",
+      "tolerance": 0.20,
+      "amps_saturation": 1.26,
+      "amps_rms": 1.2,
+      "source": {
+        "document": "Bourns SRN2010TA series datasheet",
+        "revision": "REV. 06/25",
+        "url": "https://www.bourns.com/docs/Product-Datasheets/SRN2010TA.pdf",
+        "sha256": "57d18e7e2c29320a11c3d6f521694c2e4358220284b027b8d3fd911439ba6e32",
+        "read": "2026-11-17",
+        "second_reader": "2026-11-17"
+      },
+      "note": "Page 1. It saturates where its inductance has dropped 30 %; the rated current is the one of a 40 C rise. The datasheet says the series is not recommended for new designs"
+    }
+  ]
+}

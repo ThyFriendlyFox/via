@@ -1,0 +1,136 @@
+{
+  "pack": "ecss-q-st-30-11c-rev2",
+  "document": {
+    "issuer": "European Cooperation for Space Standardization (ECSS)",
+    "number": "ECSS-Q-ST-30-11C Rev.2",
+    "title": "Space product assurance - Derating - EEE components",
+    "revision": "23 June 2021",
+    "url": "https://ecss.nl/wp-content/uploads/2022/07/ECSS-Q-ST-30-11C-Rev.2(23June2021).pdf",
+    "sha256": "10cf7066fad0314918c6a7d38517bbcf7cb00e206480fc10377e9fdb83e7db6e",
+    "read": "2026-11-17",
+    "second_reader": "2026-11-17"
+  },
+  "rules": [
+    {
+      "id": "capacitor.ceramic.voltage",
+      "stress": "capacitor.voltage",
+      "kinds": ["capacitor.ceramic"],
+      "max": 0.60,
+      "above": {"temperature": "case", "celsius": 85, "falls_to": 0.40, "at": 110},
+      "where": "clause 6.2.2, table 6-1, page 25"
+    },
+    {
+      "id": "capacitor.tantalum.voltage",
+      "stress": "capacitor.voltage",
+      "kinds": ["capacitor.tantalum"],
+      "max": 0.60,
+      "above": {"temperature": "case", "celsius": 85, "falls_to": 0.40, "at": 110},
+      "where": "clause 6.3.2, table 6-2, page 27"
+    },
+    {
+      "id": "capacitor.film.voltage",
+      "stress": "capacitor.voltage",
+      "kinds": ["capacitor.film"],
+      "max": 0.60,
+      "above": {"temperature": "case", "celsius": 85, "falls_to": 0.50, "at": 100},
+      "where": "clause 6.5.2, table 6-4, page 31, for a part rated above 100 C"
+    },
+    {
+      "id": "resistor.power",
+      "stress": "resistor.power",
+      "kinds": ["resistor"],
+      "max": 0.50,
+      "above": {"temperature": "case", "celsius": 85, "falls_to": 0.0, "at": 125},
+      "where": "clause 6.26.2.6, table 6-30, page 71"
+    },
+    {
+      "id": "resistor.voltage",
+      "stress": "resistor.voltage",
+      "kinds": ["resistor"],
+      "max": 0.80,
+      "where": "clause 6.26.2.6, table 6-30, page 71"
+    },
+    {
+      "id": "diode.reverse",
+      "stress": "diode.reverse",
+      "kinds": ["diode.rectifier"],
+      "max": 0.75,
+      "where": "clause 6.14.2.1, table 6-13, page 43"
+    },
+    {
+      "id": "diode.forward_current",
+      "stress": "diode.forward_current",
+      "kinds": ["diode.rectifier"],
+      "max": 0.75,
+      "where": "clause 6.14.2.1, table 6-13, page 43"
+    },
+    {
+      "id": "mosfet.drain_source",
+      "stress": "mosfet.drain_source",
+      "kinds": ["transistor.mosfet"],
+      "max": 0.80,
+      "where": "clause 6.29.2, table 6-36, page 76"
+    },
+    {
+      "id": "mosfet.drain_current",
+      "stress": "mosfet.drain_current",
+      "kinds": ["transistor.mosfet"],
+      "max": 0.75,
+      "where": "clause 6.29.2, table 6-36, page 76"
+    },
+    {
+      "id": "mosfet.gate_source",
+      "stress": "mosfet.gate_source",
+      "kinds": ["transistor.mosfet"],
+      "max": 0.75,
+      "where": "clause 6.29.2, table 6-36, page 76"
+    },
+    {
+      "id": "output.current",
+      "stress": "rail.load",
+      "kinds": ["ic"],
+      "max": 0.80,
+      "where": "clause 6.21.2, table 6-21, page 57"
+    },
+    {
+      "id": "junction.ic.linear",
+      "stress": "junction.temperature",
+      "kinds": ["ic.linear", "ic.regulator"],
+      "celsius": 110,
+      "below_rating": 40,
+      "where": "clause 6.21.2, table 6-21, page 57"
+    },
+    {
+      "id": "junction.ic.digital",
+      "stress": "junction.temperature",
+      "kinds": ["ic.digital"],
+      "celsius": 110,
+      "below_rating": 40,
+      "where": "clause 6.19.2, table 6-19, page 52"
+    },
+    {
+      "id": "junction.diode.rectifier",
+      "stress": "junction.temperature",
+      "kinds": ["diode.rectifier"],
+      "celsius": 110,
+      "below_rating": 40,
+      "where": "clause 6.14.2.1, table 6-13, page 43"
+    },
+    {
+      "id": "junction.diode.clamp",
+      "stress": "junction.temperature",
+      "kinds": ["diode.clamp"],
+      "celsius": 110,
+      "below_rating": 40,
+      "where": "clause 6.14.2.2, table 6-14, page 44"
+    },
+    {
+      "id": "junction.mosfet",
+      "stress": "junction.temperature",
+      "kinds": ["transistor.mosfet"],
+      "celsius": 110,
+      "below_rating": 40,
+      "where": "clause 6.29.2, table 6-36, page 76"
+    }
+  ]
+}

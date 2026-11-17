@@ -22,9 +22,11 @@ must clear or land on a pad.
    shield, mounting holes).
 2. Generate the unrouted board and run `workcenter drc .`. The report
    names each pad with its board position. Those positions are the only
-   source for a coordinate; never a position computed in your head. A
-   part moved in the same change is regenerated and its pads read after
-   the move; its tracks are never written in the edit that moves it.
+   source for a coordinate; never a position computed in your head. In a
+   design file `d.pad_at(ref, number)` gives the same position, and a
+   track written with it moves with its part. A part moved in the same
+   change is regenerated and its pads read after the move; tracks typed
+   as numbers are never written in the edit that moves it.
 3. A part on `B.Cu` is mirrored about the X axis: at rotation 0 its pad 1
    is on the left and its pads' y are flipped. Confirm against the DRC
    report, every time.
@@ -349,15 +351,21 @@ Edit tool.
    it edits: read the outline or the coordinates' own extent, and after
    the run count what it moved against what lay in the range (M77).
 5. A change of a few lines goes through the Edit tool after a Read: 1
-   place or 5, in 1 file or in 2. A script is for a change the Edit tool
-   cannot hold: a range, a table, the same change in 20 places (M156,
-   M165, M168).
+   place or 5, in 1 file or in 5. Count the lines that change, not the
+   files they are in. A script is for a change the Edit tool cannot
+   hold: a range, a table, the same change in 20 places (M156, M165,
+   M168, M182). Read each Bash command for a write before it is sent:
+   `>`, `tee`, `sed -i`, `printf` into a file, `write_text`, `open(`
+   with `w`. When the path is in the repository and the text is your
+   own, not a command's of the workcenter, the write is the Edit or the
+   Write tool's, with a hook loaded or without one (M183).
 6. Inside a quoted heredoc (`<<'EOF'`) the shell passes text through as
    written. Write no backslash escapes in it at all: `chr(10)` for a line
    break, real line breaks inside a triple-quoted string.
 7. Tests are written with the Write or Edit tool, not appended by a
    script, and read back before they run: every assertion must be able
-   to fail. The `no_script_test_edits.py` hook refuses a Bash command
+   to fail. A fixture's hand-written files are tests too: its design
+   file, its parts file, its `ratings.json` (M183). The `no_script_test_edits.py` hook refuses a Bash command
    that writes under `tests/` (M43). The hook does not load in a session
    with two repositories; the step holds there all the same (M61). There
    `workcenter doctor` shows the "test hook" line as absent: say so to the
@@ -1217,7 +1225,7 @@ Pages), sending it a first deployment, or changing a file a site serves.
    that keeps it longer than the page then fetches the new one (M157).
 6. The site's address is written in `site/vercel.json`. A new production
    domain changes that file. Vercel's `VERCEL_PROJECT_PRODUCTION_URL` kept
-   the older domain after a new one was added (M181).
+   the older domain after a new one was added (M205).
 
 Done when: the address answers with the page of the commit the document
 names, and the document names the target the host reports.
@@ -1278,7 +1286,129 @@ Done when: the form's sentences are in the first message and in the
 version's README, and the project's code refuses a solid whose joints
 miss.
 
-## P35 — Words a reader reads
+## P35 — Harvesting what the projects found
+
+When: a project's version has landed, a branch is about to be deleted, or
+the owner asks what the projects taught the workcenter.
+
+Every project leaves findings in 4 places: commits on a branch that never
+reached `main`, scripts it wrote because the workcenter had no tool, the
+mistakes log, and its own notes (`LOOP.md`, each version's README). A
+finding is a gap in the workcenter, never a board's own fault.
+
+1. Fetch every branch: `git fetch origin
+   '+refs/heads/*:refs/remotes/origin/*'`. Run `python3 tools/harvest.py
+   branches`. A branch at 100 % has landed, whatever its commits are
+   called on `main`. For a branch under 100 %, read the lines the listing
+   names. Each is on `main` in other words, or is a finding.
+2. Work that `main` lacks belongs to its branch. List the open pull
+   requests, and fetch the branch again right before any change that
+   builds on it: its own session can be at work (M181).
+   - A branch with an open pull request lands by its own commits. Start
+     the harvest's branch on its head, change nothing of it, and say in
+     the report that it waits for its merge.
+   - A branch with no pull request and no commit for a day is copied:
+     `git diff <base> <tip>` applied with `git apply --3way`, its mistakes
+     at the next free numbers first, in its entries and in every added
+     line that cites one. Then read each log the copy touched: a 3-way
+     apply puts an entry where its context matched, which can be the
+     middle of the log. See each of its tests fail on `main`'s code.
+   The work has landed when the listing shows the branch at 100 %.
+3. Run `python3 tools/harvest.py scripts`. A script that 2 or more
+   projects wrote is a tool the workcenter lacks. Read the newest file of
+   each project, and write the finding with the calls they share.
+4. Run `python3 tools/harvest.py mistakes`. An entry that names an
+   earlier entry of its own process is a step that did not hold. A step
+   broken 2 times gets a machine check (P13 step 3): a hook, a test, a
+   tool's refusal. The finding names the check.
+5. Read each project's `LOOP.md` and its versions' READMEs since the last
+   harvest. What the project did by hand, or worked round, is a finding.
+   With helpers (P31), 1 reader takes 1 or 2 projects, 1 the mistakes
+   log, 1 the projects' own scripts, each with a limit of 10 findings.
+   A reader also reports what it left out for the limit: read that list
+   too. 2 of the first harvest's findings stood only there.
+6. Write each finding with its evidence: a path with its line, or an
+   entry's number, and the words as they stand there. Look for the thing
+   in `tools/` and `.claude/skills/` first, and write what the search
+   found. Much has landed already. Hold every quote to its file with a
+   script before anything rests on it. 2 findings of the same gap are 1
+   candidate with the evidence of both: the same gap found by 2 readers
+   from 2 projects is the strongest evidence a harvest gives.
+7. Give each finding 6 whole numbers:
+   - `frequency`: 1 = met once; 2 = met in 2 projects, or 2 times; 3 = 3
+     or more.
+   - `cost`: 1 = minutes; 2 = an hour, or a route, a render or a version
+     done again; 3 = several hours, or a wrong result that reached a
+     committed file, a fabrication output or the owner.
+   - `leverage`: 0 = cosmetic; 1 = saves an expert time; 2 = turns a step
+     done by hand into 1 command; 3 = turns a judgement, or an error
+     nothing reported, into a gate's failure or a tool's refusal.
+   - `generality`: 1 = this board only; 2 = a class of boards; 3 = every
+     project.
+   - `effort`: 1 = half a day with its tests; 2 = 1 or 2 days; 3 = a week,
+     or a new subsystem.
+   - `risk`: 1 = adds beside what is there; 2 = changes what a tool
+     writes; 3 = changes what a gate judges.
+   `value` is the sum of the first 4, `price` the sum of the last 2, and
+   the rating is `value` less `price`.
+8. A reader who did not write a finding tries to refute it before it is
+   rated (P31 for a helper): each quote at its place, the thing missing
+   from the tools, each score against its anchor. A finding the reader
+   cannot stand behind is dropped, and the reader's scores stand where
+   they differ: of the first harvest's best 15, none was dropped and 10
+   changed. What the reader notes about the way to build it goes into
+   the brief of whoever builds it.
+9. Each finding is 1 row of the table under "Later" in ROADMAP.md: its
+   rating, its words under a title in bold, its evidence, the 6 scores,
+   and the day its reader checked it. A row that no second reader has
+   read carries `no`, even when a script held its quotes to their files:
+   22 rows of the first table's draft had a day they had not earned. In a
+   row, a line number stays only with a file under `examples/`; a file of
+   the workcenter's own code is named with its function, since its lines
+   move with every commit. The rows stand in order of rating, the highest
+   first. `python3 tools/harvest.py later` holds each rating to its
+   scores, each score to its anchors, the rows to their order and the
+   evidence to the files; `make verify` runs it. A candidate met during
+   other work enters the same way, with `no`.
+10. The queue's next item comes from the top of the table unless the
+    owner names another. A candidate that ships leaves the table for
+    "Shipped", with its evidence.
+
+Done when: every branch is at 100 % or its row of the listing has an
+answer; `python3 tools/harvest.py later` prints no problem; every finding
+of this harvest has the day its reader checked it.
+
+## P36 — A work card for each piece of work
+
+When: before the first edit of a piece of work on a branch; again at each
+landing, at each block and when `make verify` ends; and when the work
+lands or is dropped.
+
+1. Before the first edit, print the card: `workcenter now . --item <N or
+   1 line> --status Todo --left "<step>"`, or `--status "In progress"
+   --doing "<first step>"` when the work starts at once. Follow
+   `.claude/skills/now/SKILL.md` steps 1 to 4: 1 issue titled with what
+   `--title` prints, the card as its body and the label `enhancement`, or
+   `--write` to a checkout of the `status` branch.
+2. Rewrite the card, never comment on it: after each commit that lands a
+   step, at each block, and after each `make verify`, whose verdict the
+   card reads from `build/verify.json`. Work that waits on someone stays
+   `In progress`, with `--blocked "<who or what>"`; the label `question`
+   when it waits for the owner's decision, `help wanted` when it needs
+   something from outside.
+3. Close it: landed with `--status Done --doing "Landed on main as <short
+   hash>"` and the issue closed as completed; dropped with `--status Done
+   --doing "Dropped: <reason>"` and the issue closed as not planned.
+4. The card names the branch, never an assistant, a model or a session,
+   and repeats nothing else the project board shows.
+
+Done when: every branch with work in progress has 1 card whose Updated
+line is no older than the branch's last commit, and every landed or
+dropped card's issue is closed.
+
+## P37 — Words a reader reads
+
+P35 on main until the merge of 2026-11-17.
 
 When: writing a post for the site's blog, the blog's own words, or a
 message to the owner.
@@ -1288,7 +1418,7 @@ message to the owner.
    spelling, no contraction.
 2. Leave out the patterns `TONE.md` rule 10 names: personification, an
    intensifier, a list of 3 for rhythm, an em dash, an opener that judges
-   or announces, a closing offer (M182).
+   or announces, a closing offer (M206).
 3. Read the draft once for those patterns before it is shown, then run
    the docs tests: they hold each post to the limits a machine can count.
 

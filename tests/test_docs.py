@@ -410,9 +410,12 @@ def blog_pages() -> list[Path]:
     return [SITE / "blog.html", *sorted((SITE / "blog").glob("*.html"))]
 
 
-# Vercel serves Web Analytics' script at this path on each deployment of the project. Neither the
-# tree nor the build holds the file.
-SERVED_BY_HOST = {"/_vercel/insights/script.js"}
+# The 1 address a page names that the host answers and no file of the repository holds: Vercel's Web
+# Analytics script, served by the owner's Vercel project (pull request 62) on each deployment. Neither
+# the tree nor the build holds the file; another static host answers it with a 404, and the page works
+# without it.
+HOSTED = "/_vercel/insights/script.js"
+SERVED_BY_HOST = {HOSTED}
 
 
 def beside_page(page: Path, link: str) -> bool:
@@ -423,6 +426,25 @@ def beside_page(page: Path, link: str) -> bool:
         return True
     target = page.parent / link.split("#")[0].split("?")[0]
     return target.is_file() or (target / "index.html").is_file()
+
+
+def test_every_page_a_reader_opens_loads_the_hosts_analytics_script_once():
+    """The owner turned Vercel's Web Analytics on (pull request 62): each page a reader opens loads
+    the host's script, 1 time, and queues its events until the script is there. The pages that
+    `site/examples.py` and `site/blog.py` write get these lines from `site/frame.py`. A line edited
+    into a written page by hand is gone at the next run of its generator, so the frame holds them."""
+    queue = "window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };"
+    pages = (SITE / "index.html", SITE / "404.html", *example_pages(), *blog_pages())
+    assert len(pages) >= 11
+    for page in pages:
+        text = page.read_text(encoding="utf-8")
+        assert links_of(page).count(HOSTED) == 1, page.name
+        assert text.count(f'<script defer src="{HOSTED}"></script>') == 1, page.name
+        assert text.count(queue) == 1, page.name
+    tag = f'<script defer src="{HOSTED}"></script>'
+    assert (SITE / "frame.py").read_text(encoding="utf-8").count(tag) == 1
+    for generator in ("examples.py", "blog.py"):
+        assert "from frame import" in (SITE / generator).read_text(encoding="utf-8"), generator
 
 
 def test_every_link_on_the_site_names_what_exists():
@@ -702,7 +724,7 @@ def test_the_blog_is_what_site_blog_writes():
 
 
 def test_each_post_is_in_tone_md_english():
-    """A post is American Simplified Technical English (TONE.md, P35, M182): each sentence under 20
+    """A post is American Simplified Technical English (TONE.md, P37, M206): each sentence under 20
     words, American spelling, no em dash, no contraction, none of the words TONE.md bans."""
     banned = re.compile(
         r"—|\b(colour|centre|grey|behaviour|organis|realis|metre|litre)\w*"

@@ -1,0 +1,40 @@
+{
+  "interface": "usb2",
+  "title": "USB 2.0 high-speed data pair (D+, D-), as the USB 2.0 specification sets it",
+  "kind": "pair",
+  "documents": {
+    "usb20": {
+      "title": "Universal Serial Bus Specification",
+      "maker": "USB Implementers Forum",
+      "number": "usb_20.pdf in usb_20_20250603.zip",
+      "revision": "2.0, April 27, 2000, as the zip of 2025-06-03 holds it",
+      "url": "https://www.usb.org/sites/default/files/usb_20_20250603.zip",
+      "sha256": "d39698a33486c399124af92bd02e4f978fd9a836b5cf4e52e6e4633eb1d89f61",
+      "zip_sha256": "5fe9c53c04033818af396e8852b3acbca5c3a76ba92fab549fd81cd0ea7b3692",
+      "read": "2026-11-17"
+    }
+  },
+  "limits": {
+    "impedance": {
+      "mode": "differential",
+      "nominal": 90,
+      "min": 76.5,
+      "max": 103.5,
+      "unit": "ohm",
+      "doc": "usb20",
+      "where": "section 7.1.6.1, page 142: the line between the receptacle and RS, 90 ohm +-15 %; section 7.1.1.3, page 129: the board traces' nominal 90 ohm"
+    },
+    "delay": {
+      "max": 4,
+      "unit": "ns",
+      "doc": "usb20",
+      "where": "section 7.1.1.3, page 129: the traces of the 2 boards together, 4 ns between the transceivers"
+    },
+    "skew": {
+      "not_stated": "USB 2.0 names the skew of a cable (TSKEW, section 7.1.3, page 139), not of a board"
+    },
+    "plane": {
+      "not_stated": "USB 2.0 names no reference plane for the board traces"
+    }
+  }
+}

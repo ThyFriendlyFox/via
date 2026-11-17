@@ -1,0 +1,52 @@
+{
+  "documents": {
+    "nbs-hb100": {
+      "issuer": "U.S. National Bureau of Standards",
+      "number": "NBS Handbook 100",
+      "title": "Copper Wire Tables",
+      "revision": "issued February 21, 1966",
+      "url": "https://nvlpubs.nist.gov/nistpubs/Legacy/hb/nbshandbook100.pdf",
+      "sha256": "3128aaa9fac5688c4e2c4ea9e1b0bb9e20aead7c71039772790859c7fa571af0",
+      "read": "2026-11-17"
+    },
+    "ti-snva419c": {
+      "issuer": "Texas Instruments",
+      "number": "SNVA419C (AN-2020)",
+      "title": "Thermal Design By Insight, Not Hindsight",
+      "revision": "April 2010, revised April 2013",
+      "url": "https://www.ti.com/lit/an/snva419c/snva419c.pdf",
+      "sha256": "abed730cebeffb704f38a1ba1ea9ceb777e8eb4b9af69a43fb26f0a49f0105e7",
+      "read": "2026-11-17"
+    }
+  },
+  "copper_resistivity": {
+    "value": 1.7241e-8,
+    "unit": "ohm m at 20 C",
+    "document": "nbs-hb100",
+    "where": "section 2a, Resistivity of Annealed Copper, page 3: 0.017 241 ohm-mm2/meter at 20 C, the International Annealed Copper Standard"
+  },
+  "copper_temperature_coefficient": {
+    "value": 0.00393,
+    "unit": "per C, from 20 C",
+    "document": "nbs-hb100",
+    "where": "section 2b, Temperature Coefficient of Resistance of Copper, page 3: a20 = 0.003 93"
+  },
+  "copper_thermal_conductivity": {
+    "value": 400,
+    "unit": "W/m K",
+    "document": "ti-snva419c",
+    "where": "table 1, Typical Thermal Resistance Values, page 4, the row theta Cu: 4 W/(cm C)"
+  },
+  "fr4_thermal_conductivity": {
+    "value": 0.23,
+    "unit": "W/m K",
+    "document": "ti-snva419c",
+    "where": "table 1, Typical Thermal Resistance Values, page 4, the row theta FR4: 0.0023 W/(cm C)"
+  },
+  "air_natural_convection": {
+    "value": 10,
+    "unit": "W/m2 K, each face",
+    "document": "ti-snva419c",
+    "where": "table 1, Typical Thermal Resistance Values, page 4, the row theta SA: h = 0.001 W/(cm2 C), a first order approximation for natural convection from a board to the air"
+  }
+}

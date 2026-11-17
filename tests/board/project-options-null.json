@@ -1,0 +1,14 @@
+{
+  "data": {
+    "user": {
+      "projectV2": {
+        "id": "PVT_stand-in-project",
+        "fields": {
+          "nodes": [
+            {"id": "PVTSSF_lADOANN5s84ACbL0zgBZrZg", "name": "Status", "options": null}
+          ]
+        }
+      }
+    }
+  }
+}
