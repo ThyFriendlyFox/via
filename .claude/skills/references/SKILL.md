@@ -44,8 +44,15 @@ name is not asked under another.
    - `fail ... names <url> and no SHA256 ...`: the rule cites a document
      with no copy. Fetch it, and write the SHA256 into the rule and the
      index.
-   - `not judged <file> <place>: names no document ...`: a part made up or
-     with no datasheet. Nothing to do; the line says why it is not judged.
+   - `fail ... names no URL and no SHA256 ...`: the rule names a document
+     by name alone. Fetch its copy and write the URL and the SHA256 into
+     the rule and the index. If the part truly has no datasheet, write
+     `no datasheet: <why>` as the source's `document`.
+   - `fail ... sha256 ... is not 64 hex digits` or `url ... is not a whole
+     URL`: write the field as a string, in that form.
+   - `not judged <file> <place>: names no document ... (no datasheet:
+     <why>)`: a part made up or with no datasheet, as its source says.
+     Nothing to do; the line says why it is not judged.
    - The last line counts the documents. Exit 0: done.
 
 2. If a run prints `fail rules/references/index.json documents[N] <id>:
@@ -75,8 +82,15 @@ name is not asked under another.
      file by hand in a browser and go to step 4.
    - `gone <id>: ... HTTP 404`: the URL moved. Find the maker's new URL,
      change the entry's URL, and run step 3 again.
+   - `not given <id>: <url> answered HTTP 429 ...` or `HTTP 500 ...`: the
+     site answered, but with no copy and no verdict (too many requests, or
+     its own error). Nothing is recorded; run step 3 again later.
    - `not reached <id>: ...`: no answer from the site (network). Nothing is
-     recorded; run step 3 again later. Exit code 2 means only this.
+     recorded; run step 3 again later. Exit code 2 means only `not given`
+     or `not reached`.
+   - `references: <folder>/ledger.json ...: ...; mend it or delete it`: the
+     ledger is not the shape `fetch` writes. Mend the key it names, or
+     delete the ledger and fetch again.
    - A line that ends in `(ledger of <date>)` was answered by an earlier run
      and not asked again. `--again <id>` asks once more.
 
