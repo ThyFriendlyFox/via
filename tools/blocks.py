@@ -392,6 +392,13 @@ def buck(  # noqa: PLR0913, PLR0915
     return Block("buck", sums, entries, rows, files)
 
 
+def usbc(d, **kwargs):
+    """A USB Type-C receptacle as a sink: tools/blocks_usbc.py."""
+    import blocks_usbc  # noqa: PLC0415
+
+    return blocks_usbc.usbc(d, **kwargs)
+
+
 def _output_where(chip: dict) -> str:
     span, dielectrics = chip["output_span"]["where"], chip["dielectrics"]["where"]
     return f"{_where(chip, 'output_farads')}; note 2; {span}; {dielectrics}"

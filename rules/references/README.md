@@ -22,6 +22,11 @@ the makers' and the issuers' terms forbid a copy.
 | `coilcraft-806` | datasheet | 806 (XAL40xx) | Revised 02/25/26 |
 | `bourns-srn2010ta` | datasheet | SRN2010TA | REV. 06/25 |
 | `ti-sbvs320` | datasheet | SBVS320D (TLV755P) | November 2017, revised September 2024 |
+| `usb-typec-r2.5` | standard | USB Type-C Cable and Connector Specification (a zip) | Release 2.5, March 2026 |
+| `usb-2.0` | standard | USB 2.0 Specification (a zip, with its ECNs) | Revision 2.0; the package of 2025-06-03 |
+| `ti-sllseg9c` | datasheet | SLLSEG9C (TPD2E2U06) | June 2013, revised December 2019 |
+| `gct-usb4105` | datasheet | USB4105 (a drawing) | revision C, 18/12/23 |
+| `samsung-cl10a475ko8nnn` | datasheet | CL10A475KO8NNN (the maker's page) | the page as fetched on 2026-11-17 |
 
 On 2026-11-17 `workcenter references fetch` got all 9 under the workcenter's own name, and each copy
 had the SHA256 its entry names: `9 kept, 0 changed, 0 refused`. The title, number and revision of each
@@ -43,6 +48,12 @@ under the workcenter's name; its number, title and revision are those of its fir
 `samsung-cl10a106kp8nnn` is the page the facts of `fail-sim-bias` and of the buck block's capacitor were
 read from. Its row in `library/sources.csv` says each fetch differs in its session token and its time
 stamp: `fetch` reports a new copy as changed.
+
+The 5 entries of the USB-C block (`rules/blocks/usbc.json`) were downloaded on 2026-11-17 under the
+workcenter's name. The 2 USB specifications are zips: the SHA256 is the zip's, and the block's rules name
+each PDF inside with its own SHA256. `samsung-cl10a475ko8nnn` is a page like `samsung-cl10a106kp8nnn`: a
+new fetch differs in its session token and its time stamp. ST's USBLC6-2 datasheet, asked first for the
+clamp, gave no answer to the workcenter's name; TI's TPD2E2U06 was taken instead.
 
 ## The 3 commands
 
