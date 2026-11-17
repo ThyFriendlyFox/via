@@ -1,0 +1,11 @@
+// A KiKit preset: 2 by 2 boards, tabs with mouse bites, rails on top and bottom.
+// The distances are kistack's preferred starting values
+// (third_party/kistack/skills/panelize/SKILL.md, "Preferred starting values"):
+// a 2 mm gap between boards, 3 mm tabs, 0.5 mm mouse-bite drills 0.8 mm apart,
+// a 5 mm frame 2 mm from the array.
+{
+  "layout": { "type": "grid", "rows": 2, "cols": 2, "space": "2mm" },
+  "tabs": { "type": "fixed", "width": "3mm" },
+  "cuts": { "type": "mousebites", "drill": "0.5mm", "spacing": "0.8mm", "offset": "0mm" },
+  "framing": { "type": "railstb", "width": "5mm", "space": "2mm" }
+}
