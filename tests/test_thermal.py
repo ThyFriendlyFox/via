@@ -11,7 +11,8 @@ The numbers are read from these documents:
 - NASA EEE-INST-002, section M4, table 4, page 10 of 10: a plastic linear part's junction at 0.7 of
   its maximum or 85 C, whichever is lesser; note 2: a power device at 110 C or 40 C under its rating.
 - ECSS-Q-ST-30-11C Rev.2, clause 6.21.2, table 6-21, page 57: 110 C or Tjmax - 40 C, the lower.
-- TI SPRA953D, section 1.1, equation 1, page 2: TJ = TA + RthetaJA x power.
+- TI SPRA953D, section 1.1, equation 1, page 2: TJ = TA + RthetaJA x power, which the same section
+  calls a misapplication on a system board; section 1.2, page 3: a 2s2p test board gives a best case.
 """
 
 from __future__ import annotations
@@ -390,6 +391,57 @@ def test_a_part_kind_with_no_junction_rule_is_held_to_its_own_rating(tmp_path):
     assert "junction 163.66 C, over 150 C (as written)" in judged["failures"][0]
 
 
+def test_a_deck_whose_corners_were_not_run_leaves_its_parts_not_judged_there_and_not_held(tmp_path):
+    """As written, 25 C and 0.1702 W: 25 + 231.1 x 0.1702 = 64.333 C, inside 110 C. The corners of the
+    deck were skipped, so the part is not held: it is named as not judged at them, with the reason.
+    At 0.6 W: 25 + 231.1 x 0.6 = 163.66 C, over 110 C: the run it was judged at still fails."""
+    runs = {"ldo": [("as written", 25.0, {"p_u1": 0.1702})]}
+    unrun = {"ldo": "the file skips deck ldo: a model fitted at 25 C"}
+    judged = thermal.judge(plan_of(tmp_path), runs, FACTS_LIST, ECSS, unrun)
+    assert judged["failures"] == []
+    assert judged["not_judged"] == [
+        "thermal: U1 (TLV75533PDBVR) not judged at the corners of sim/corners.json: the file skips deck "
+        "ldo: a model fitted at 25 C"
+    ]
+    part = judged["parts"]["U1"]
+    assert (part["held"], part["runs"]) == (None, 1)
+    assert part["written"]["junction"] == pytest.approx(64.33322)
+    runs = {"ldo": [("as written", 25.0, {"p_u1": 0.6})]}
+    judged = thermal.judge(plan_of(tmp_path), runs, FACTS_LIST, ECSS, unrun)
+    assert "junction 163.66 C, over 110 C (as written)" in judged["failures"][0]
+    assert judged["parts"]["U1"]["held"] is False and len(judged["not_judged"]) == 1
+
+
+def test_a_run_whose_temperature_is_not_known_is_not_judged_and_says_why(tmp_path):
+    """A deck as written that ran at 25 C and at 85 C printed its power from 1 of them: that run's
+    ambient is not known, so it is not judged. The corner at -20 C is: -20 + 231.1 x 0.17 = 19.287 C."""
+    why = "the deck ran at 25 C and 85 C"
+    runs = {"ldo": [("as written", why, {"p_u1": 0.1712262}), ("-20 C", -20.0, {"p_u1": 0.17})]}
+    judged = thermal.judge(plan_of(tmp_path), runs, FACTS_LIST, ECSS)
+    assert judged["failures"] == []
+    assert judged["not_judged"] == [
+        "thermal: U1 (TLV75533PDBVR) not judged as written: the deck ran at 25 C and 85 C, so the "
+        "ambient of the run that printed ldo.p_u1 is not known"
+    ]
+    part = judged["parts"]["U1"]
+    assert (part["written"], part["held"], part["runs"]) == (None, None, 1)
+    assert part["worst"]["junction"] == pytest.approx(19.287)
+    judged = thermal.judge(plan_of(tmp_path), {"ldo": runs["ldo"][:1]}, FACTS_LIST, ECSS)
+    assert judged["parts"] == {} and len(judged["not_judged"]) == 1
+
+
+def test_a_judged_part_names_the_board_its_figure_stands_on(tmp_path):
+    """SPRA953D, section 1.2, page 3: a 2s2p test board gives a best case, a 1s board a typical one;
+    section 1.1, page 2: a board unlike the test board changes RthetaJA."""
+    runs = {"ldo": [("as written", 25.0, {"p_u1": 0.1702})]}
+    part = thermal.judge(plan_of(tmp_path), runs, FACTS_LIST, ECSS)["parts"]["U1"]
+    assert part["assumes"] == (
+        "theta_ja 231.1 C/W is the datasheet's test board's: a JEDEC 2s2p board gives a best case and a "
+        "1s board a typical one (SPRA953D, section 1.2, page 3); a board unlike the test board changes "
+        "it (section 1.1, page 2)"
+    )
+
+
 def test_workcenter_next_sends_a_hot_part_and_an_unjudged_one_to_the_skill_s_section():
     import guide
 
@@ -501,3 +553,93 @@ def test_one_deck_alone_leaves_a_part_of_another_deck_not_judged(tmp_path):
         "thermal: U2 (TLV75533PDBVR) not judged: its deck other was not run (--deck)"
     ]
     assert record["details"]["thermal"]["parts"]["U1"]["held"] is True
+
+
+def failing_copy(tmp_path: Path) -> Path:
+    """fail-sim-thermal beside a copy of the facts library."""
+    shutil.copytree(BOARDS / "library", tmp_path / "boards" / "library")
+    project = tmp_path / "boards" / "thermal"
+    shutil.copytree(BOARDS / "fail-sim-thermal", project, ignore=shutil.ignore_patterns("build"))
+    return project
+
+
+@needs_ngspice
+def test_a_deck_whose_corners_the_file_skips_leaves_the_part_not_judged_and_fails_strict(tmp_path):
+    """The skip hides the 85 C corner, where the junction is 124.97 C (the test above). As written:
+    25 + 231.1 x 0.1702 = 64.333 C. The part is named as not judged at the corners; --strict fails."""
+    project = failing_copy(tmp_path)
+    corners = json.loads((project / "sim" / "corners.json").read_text(encoding="utf-8"))
+    corners["decks"] = {"ldo": {"skip": "the regulator's model is fitted at 25 C only"}}
+    (project / "sim" / "corners.json").write_text(json.dumps(corners), encoding="utf-8")
+    line = (
+        "thermal: U1 (TLV75533PDBVR) not judged at the corners of sim/corners.json: the file skips deck "
+        "ldo: the regulator's model is fitted at 25 C only"
+    )
+    code, record = gate(project, "--out", tmp_path / "out", "--strict")
+    assert code == 1 and line in record["details"]["failures"]
+    part = record["details"]["thermal"]["parts"]["U1"]
+    assert part["held"] is None and part["written"]["junction"] == pytest.approx(64.33322, rel=1e-6)
+
+
+@needs_ngspice
+def test_a_deck_whose_temperature_the_file_sets_to_false_leaves_the_part_not_judged_at_its_ends(tmp_path):
+    """The deck runs its tolerance corners at its own 25 C only, so the file's -20 C and 85 C ends are
+    not judged for the part."""
+    project = failing_copy(tmp_path)
+    corners = json.loads((project / "sim" / "corners.json").read_text(encoding="utf-8"))
+    corners["decks"] = {"ldo": {"temperature": False, "why": "a model fitted at 25 C only"}}
+    (project / "sim" / "corners.json").write_text(json.dumps(corners), encoding="utf-8")
+    code, record = gate(project, "--out", tmp_path / "out", "--strict")
+    assert (
+        code == 1
+        and (
+            "thermal: U1 (TLV75533PDBVR) not judged at the corners of sim/corners.json: the file sets deck "
+            "ldo's temperature to false, so it ran at none of -20 C and 85 C"
+        )
+        in record["details"]["failures"]
+    )
+    assert record["details"]["thermal"]["parts"]["U1"]["held"] is None
+
+
+@needs_ngspice
+def test_nominal_leaves_the_part_not_judged_at_the_corners(tmp_path):
+    code, record = gate(BOARDS / "fail-sim-thermal", "--out", tmp_path, "--nominal")
+    assert code == 0
+    assert (
+        "thermal: U1 (TLV75533PDBVR) not judged at the corners of sim/corners.json: they were not run "
+        "(--nominal)"
+    ) in record["details"]["warnings"]
+    assert record["details"]["thermal"]["parts"]["U1"]["held"] is None
+
+
+@needs_ngspice
+def test_a_deck_that_runs_at_2_temperatures_is_not_judged_at_27_c(tmp_path):
+    """The deck runs `op` at 25 C, then at 85 C, and prints the power of the 85 C run, 0.1712262 W:
+    85 + 231.1 x 0.1712262 = 124.57 C, over 110 C. Taken at 27 C it read 66.57 C and passed. Which run
+    printed the power is not known, so the part is not judged."""
+    project = failing_copy(tmp_path)
+    (project / "sim" / "corners.json").unlink()
+    deck = project / "sim" / "ldo.cir"
+    deck.write_text(
+        deck.read_text(encoding="utf-8").replace(".control\nop\n", ".control\nop\noption temp=85\nop\n"),
+        encoding="utf-8",
+    )
+    code, record = gate(project, "--out", tmp_path / "out")
+    assert record["details"]["thermal"]["parts"] == {}
+    assert (
+        "thermal: U1 (TLV75533PDBVR) not judged as written: the deck ran at 25 C and 85 C, so the ambient "
+        "of the run that printed ldo.p_u1 is not known"
+    ) in record["details"]["warnings"]
+
+
+@needs_ngspice
+def test_the_printed_line_of_a_judged_part_names_the_board_its_figure_stands_on(tmp_path):
+    proc = subprocess.run(
+        [sys.executable, str(CLI), "sim", str(BOARDS / "pass-sim-thermal"), "--out", str(tmp_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert (
+        "limit 110 C; theta_ja 231.1 C/W is the datasheet's test board's: a JEDEC 2s2p board" in proc.stdout
+    )

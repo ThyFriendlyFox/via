@@ -5,7 +5,14 @@ prints that power. The part's facts (the facts `workcenter ratings` reads) give 
 its greatest junction temperature, with their pages; the project's rating pack gives the derated
 limit. For every run the gate judged, the deck as written and each corner ngspice finished at its own
 temperature, the junction is the run's temperature as the ambient plus the figure times the power:
-TJ = TA + RthetaJA x power (TI SPRA953D, section 1.1, equation 1, page 2, from EIA/JESD51-1 and -2).
+TJ = TA + RthetaJA x power (TI SPRA953D, section 1.1, equation 1, page 2).
+
+That sum is an estimate on the datasheet's test board, not on the project's board. SPRA953D calls its
+use for a system board a misapplication with erroneous results (section 1.1, page 2): the test board
+is the heat sink, and RthetaJA changes with it. A JEDEC 2s2p board gives a best case, a 1s board a
+typical one (section 1.2, page 3). EIA/JESD51 defines how RthetaJA is measured, not this estimate.
+So every judged part carries `assumes`, which says the figure is the test board's, and a run or a
+corner the gate could not judge leaves the part not held and named as not judged.
 
 Standard library only, as the CLI is. No engine runs here: `tools/workcenter` runs the decks.
 """
@@ -123,6 +130,12 @@ def _facts_of(facts: list[ratings.Facts], mpn: str) -> tuple[ratings.Facts | Non
     return named[0], ""
 
 
+def celsius(temperatures: list[float]) -> str:
+    """Temperatures as a line names them: `-20 C and 85 C`, `25 C, 60 C and 85 C`."""
+    said = [f"{t:g} C" for t in sorted(temperatures)]
+    return said[0] if len(said) == 1 else f"{', '.join(said[:-1])} and {said[-1]}"
+
+
 def _at(label: str) -> str:
     return label if label == WRITTEN else f"at {label}"
 
@@ -148,17 +161,31 @@ def _unjudged(name: str, entry: ratings.Facts) -> str | None:
     )
 
 
+def assumes(theta: float) -> str:
+    """What a junction from RthetaJA rests on (SPRA953D, sections 1.1 and 1.2, pages 2 and 3)."""
+    return (
+        f"theta_ja {theta:g} C/W is the datasheet's test board's: a JEDEC 2s2p board gives a best case "
+        "and a 1s board a typical one (SPRA953D, section 1.2, page 3); a board unlike the test board "
+        "changes it (section 1.1, page 2)"
+    )
+
+
 def judge(
     plan: Plan,
-    runs: dict[str, list[tuple[str, float, dict[str, float]]] | None],
+    runs: dict[str, list[tuple[str, float | str, dict[str, float]]] | None],
     facts: list[ratings.Facts],
     pack: ratings.Pack,
+    unrun: dict[str, str] | None = None,
 ) -> dict:
     """Each part of the plan at each run of its deck: {"failures", "not_judged", "parts"}.
 
     `runs` maps a deck to its runs, each (label, ambient in C, measures), the run as written first, or
-    to None when the deck did not run to its end. A part past its limit fails on 1 line: the worst run,
-    how many more are past the limit, the sum, and where each number stands."""
+    to None when the deck did not run to its end. An ambient that is text is the reason the run's
+    temperature is not known: that run is not judged. `unrun` maps a deck to the reason its corners
+    of sim/corners.json were not run. A part with a run or corners not judged is never held: it is
+    named as not judged, and fails only on the runs judged. A part past its limit fails on 1 line: the
+    worst run, how many more are past the limit, the sum, and where each number stands."""
+    unrun = unrun or {}
     failures: list[str] = []
     not_judged: list[str] = []
     parts: dict[str, dict] = {}
@@ -206,6 +233,16 @@ def judge(
                 "under 0; read the sign of the deck's sum"
             )
             continue
+        unknown = [(label, ambient) for label, ambient, _ in ran if isinstance(ambient, str)]
+        if unknown:
+            more = len(unknown) - 1
+            not_judged.append(
+                f"{name} not judged {_at(unknown[0][0])}"
+                + (f" (and {more} more run{'s' if more > 1 else ''})" if more else "")
+                + f": {unknown[0][1]}, so the ambient of the run that printed {measure} is not known"
+            )
+        if part.deck in unrun:
+            not_judged.append(f"{name} not judged at the corners of sim/corners.json: {unrun[part.deck]}")
         rows = [
             {
                 "run": label,
@@ -214,7 +251,10 @@ def judge(
                 "junction": ambient + theta * m[part.measure],
             }
             for label, ambient, m in ran
+            if not isinstance(ambient, str)
         ]
+        if not rows:
+            continue
         worst = max(rows, key=lambda r: r["junction"])
         over = [r for r in rows if r["junction"] > most]
         parts[ref] = {
@@ -224,10 +264,12 @@ def judge(
             "junction_max": rated,
             "limit": most,
             "limit_source": said,
-            "written": rows[0],
+            "assumes": assumes(theta),
+            "written": rows[0] if rows[0]["run"] == WRITTEN else None,
             "worst": worst,
             "runs": len(rows),
-            "held": not over,
+            # Held only when every run and every corner was judged; None when some were not.
+            "held": False if over else (None if unknown or part.deck in unrun else True),
         }
         if over:
             more = len(over) - 1

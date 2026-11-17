@@ -349,11 +349,19 @@ gets no bound: the package's traceability table says FAIL.
 A part that dissipates power heats its junction above the ambient. The
 gate computes the junction at every run it judged, the deck as written
 and each corner, and holds it to the derated limit of the project's
-rating pack. The method is the one the datasheet's figure is measured by:
-TJ = TA + RthetaJA x power (TI SPRA953D, section 1.1, equation 1, page 2,
-summarised from EIA/JESD51-1 and -2). TA is the run's temperature: the
-deck's own, or the corner's. `tests/boards/fail-sim-thermal` is a worked
-example.
+rating pack. The sum is TJ = TA + RthetaJA x power (TI SPRA953D, section
+1.1, equation 1, page 2). TA is the run's temperature: the deck's own, or
+the corner's. `tests/boards/fail-sim-thermal` is a worked example.
+
+Read what the sum rests on. EIA/JESD51 defines how RthetaJA is measured,
+on a test board. SPRA953D, section 1.1, page 2, calls equation 1 a
+misapplication on a system board, with erroneous results: the test board
+is the heat sink, and RthetaJA changes with the board. Section 1.2, page
+3: a JEDEC 2s2p board gives a best case, a 1s board a typical one. So a
+part the gate holds is held on the datasheet's board. Every printed
+`thermal` line says so. Where the board is not like the datasheet's,
+take the datasheet's row for a board like it (an EVM row, with its page),
+or keep a margin under the limit and write why in the version's README.
 
 1. Give the part its thermal facts, in the facts file `workcenter
    ratings` reads (`library/facts/`, the `ratings` skill). Copy the
@@ -388,20 +396,20 @@ example.
    | `... not judged: its facts give no thermal figure` | Add `thermal` from the datasheet's thermal table. |
    | `... not judged: its facts give theta_jc ..., and no theta_ja` | The figure needs the case's, the board's or the top's temperature, and no deck gives one. Find RthetaJA in the datasheet. |
    | `... not judged: its deck ... did not run to its end` | Fix the deck first; its errors are in the same result. |
+   | `... not judged at the corners of sim/corners.json: the file skips deck ...` | The deck's `skip`, `--nominal` or `temperature: false` left the corners out. Run the part's power in a deck the corners run. |
+   | `... not judged as written: the deck ran at 25 C and 85 C, ...` | The deck sets more than 1 temperature, so the run that printed the power is not known. Run 1 temperature per deck; put the others in `sim/corners.json`. |
    | `thermal: U1: ldo.p_u1 is not printed at ...` | Print the measure in every analysis the corners run. |
    | `thermal: U1: ldo.p_u1 is -0.17 W ...` | The deck's sum has a sign wrong: a part's dissipation is not under 0. |
    | `thermal.json: ...` | The file is wrong in the place the line names. |
 
-   A not judged line is a warning, and fails `--strict`.
+   A not judged line is a warning, and fails `--strict`. A part with a
+   run or a corner not judged is not held, even when the runs judged are
+   under the limit.
 5. `--json` holds each part under `details.thermal.parts`: the figure,
-   the limit and its source, the run as written and the worst run, each
-   with its ambient, its power and its junction.
-
-RthetaJA is measured on JEDEC's test board. The board a part stands on
-spreads more heat or less: SPRA953D, section 1.1, calls the sum an
-estimate, and a board's own copper changes it. The judgement is that
-estimate. A part whose datasheet gives RthetaJA for its own board (the
-EVM rows) may take that row, with its page and a note.
+   the limit and its source, `assumes` (the board the figure stands on),
+   the run as written and the worst run, each with its ambient, its power
+   and its junction. `held` is true, false, or null when a run or a
+   corner was not judged.
 
 ## Checks
 
