@@ -1,5 +1,5 @@
 {
-  "rules": ["rules/ratings/*.json", "rules/board/*.json", "tests/boards/**/facts/*.json"],
+  "rules": ["rules/ratings/*.json", "rules/board/*.json", "rules/copper/*.json", "tests/boards/**/facts/*.json"],
   "documents": [
     {
       "id": "nasa-eee-inst-002",
@@ -32,6 +32,28 @@
       "revision": "30 April 2025",
       "url": "https://ecss.nl/wp-content/uploads/2025/05/ECSS-Q-ST-70-12C-Rev.1(30April2025).pdf",
       "sha256": "c3063bf2145ec866e9d59a7b6580c2dc1a635c7289d0a57c456c21c92c7a2f7d",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "nbs-hb100",
+      "kind": "standard",
+      "issuer": "U.S. National Bureau of Standards",
+      "number": "NBS Handbook 100",
+      "title": "Copper Wire Tables",
+      "revision": "issued February 21, 1966",
+      "url": "https://nvlpubs.nist.gov/nistpubs/Legacy/hb/nbshandbook100.pdf",
+      "sha256": "3128aaa9fac5688c4e2c4ea9e1b0bb9e20aead7c71039772790859c7fa571af0",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "ti-snva419c",
+      "kind": "application note",
+      "maker": "Texas Instruments",
+      "number": "SNVA419C (AN-2020)",
+      "title": "Thermal Design By Insight, Not Hindsight",
+      "revision": "April 2010, revised April 2013",
+      "url": "https://www.ti.com/lit/an/snva419c/snva419c.pdf",
+      "sha256": "abed730cebeffb704f38a1ba1ea9ceb777e8eb4b9af69a43fb26f0a49f0105e7",
       "read": "2026-11-17"
     },
     {

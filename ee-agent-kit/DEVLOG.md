@@ -39,6 +39,21 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-17 — A voltage drop and a heat map, after 2 reviews that said "not sound"
+
+Roadmap item 10 landed in part. `workcenter copper` solves the board's own copper for each power
+net's drop and current density, and the board's temperature from its parts' heat. The venv has numpy
+and no scipy, so both solvers are conjugate gradients in numpy. A first run took 95 s: numpy's `@` on
+1 vector spread each dot product over 4 busy processors. The solver sums products itself, and the run
+takes 5 s. A first reviewer made the command print COPPER HELD where the copper broke its limit: a
+cell was copper when its centre was, so a track's width rounded to whole cells. Each cell now holds
+its share of copper. A second reviewer found a supply on 2 contacts judged as fed at 1, a part's heat
+off the outline dropped, and the drop solved at the air's temperature. Each is fixed with a test. On
+integration the constants' 2 documents were missing from the reference index, and `references rules`
+did not read their table; I added both, with a test. No third review has been run.
+
+Evidence: `tests/test_copper.py` 36 passed; `fail-copper-neck` fails on density at the neck alone.
+
 ## 2026-11-17 — openEMS as an engine, after 2 reviews that said "not sound"
 
 Roadmap item 9 landed in part. Ubuntu 24.04 has no openEMS package; Debian 12's 0.0.35 runs on

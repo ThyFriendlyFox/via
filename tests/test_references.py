@@ -534,16 +534,32 @@ def test_rules_fail_a_source_that_names_a_document_it_does_not_pin(tmp_path, sou
     assert lines[-1] == "references rules: 1 documents named in 1 files, 0 in the index, 1 not; 0 not judged"
 
 
+def test_rules_read_a_table_of_documents_by_id(tmp_path):
+    """rules/copper/materials.json (roadmap item 10) names its documents in a table, `documents: {id:
+    {...}}`, and each constant points at an id. A document of that table the index lacks fails, as one
+    under `document` or `source` does; before, the table was not read and 0 documents were named."""
+    path = tmp_path / "materials.json"
+    entry = {"number": "AN-99", "url": "https://maker.example/an-99.pdf", "sha256": "ab" * 32}
+    path.write_text(json.dumps({"documents": {"an-99": entry}, "k": {"document": "an-99"}}), encoding="utf-8")
+    code, lines = rules(path)
+    assert code == 1
+    assert [ln for ln in lines if ln.startswith("fail ")] == [
+        f"fail {path} documents.an-99: AN-99, SHA256 {'ab' * 32} is not in the index "
+        f"{(FIXTURES / 'index.json').relative_to(ROOT)}"
+    ]
+    assert lines[-1] == "references rules: 1 documents named in 1 files, 0 in the index, 1 not; 0 not judged"
+
+
 def test_every_document_a_rule_of_the_repository_names_is_in_the_index():
     """`make verify` runs this. The rating packs name 2 standards, the board pack 1, the 4 facts files
     of 1 part 4 datasheets, passives.json 4, fail-sim-bias's parts.json 2 (Samsung's page and Coilcraft's
-    806, which passives.json names too): 2 + 1 + 4 + 4 + 2 = 13 named. made-up.json's 4 parts name no
-    document: 4 not judged."""
+    806, which passives.json names too), rules/copper/materials.json 2: 2 + 1 + 4 + 4 + 2 + 2 = 15 named.
+    made-up.json's 4 parts name no document: 4 not judged."""
     code, out = run("rules")
     assert code == 0, out
-    files = 2 + 1 + 7
+    files = 2 + 1 + 1 + 7
     assert out.splitlines()[-1] == (
-        f"references rules: 13 documents named in {files} files, 13 in the index, 0 not; 4 not judged"
+        f"references rules: 15 documents named in {files} files, 15 in the index, 0 not; 4 not judged"
     )
 
 

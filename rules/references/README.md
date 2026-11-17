@@ -1,8 +1,9 @@
 # The reference library
 
 `index.json` names each document a rule of the workcenter cites: the standards of the rating packs
-(`rules/ratings/*.json`) and of the board rule pack (`rules/board/*.json`), and the datasheets of the
-fixtures' facts (`tests/boards/**/facts/*.json`).
+(`rules/ratings/*.json`) and of the board rule pack (`rules/board/*.json`), the documents of the
+constants of `workcenter copper` (`rules/copper/*.json`, a table `documents: {id: {...}}`), and the
+datasheets of the fixtures' facts (`tests/boards/**/facts/*.json`).
 Each entry holds the maker or the issuer, the number, the title, the revision, the URL and the SHA256 of
 the copy the rule was written from. The repository holds the index and the rules, never a document:
 the makers' and the issuers' terms forbid a copy.
@@ -12,6 +13,8 @@ the makers' and the issuers' terms forbid a copy.
 | `nasa-eee-inst-002` | standard | EEE-INST-002 (NASA/TP-2003-212242) | May 2003, with Addendum 1 of April 2008 |
 | `ecss-q-st-30-11c-rev2` | standard | ECSS-Q-ST-30-11C Rev.2 | 23 June 2021 |
 | `ecss-q-st-70-12c-rev1` | standard | ECSS-Q-ST-70-12C Rev.1 | 30 April 2025 |
+| `nbs-hb100` | standard | NBS Handbook 100 (Copper Wire Tables) | issued February 21, 1966 |
+| `ti-snva419c` | application note | SNVA419C (AN-2020) | April 2010, revised April 2013 |
 | `ti-slvsdg1` | datasheet | SLVSDG1C (TLV62569) | December 2016, revised October 2017 |
 | `ti-sces579` | datasheet | SCES579J (SN74AUP1G17) | June 2004, revised September 2017 |
 | `ti-sces351` | datasheet | SCES351Y (SN74LVC1G17) | July 2001, revised October 2025 |
@@ -28,7 +31,9 @@ entry were read from the first page of that copy. The same day `ecss-q-st-70-12c
 of the board rule pack, was fetched alone: `1 kept, 0 changed, 0 refused`. Its number, title and
 revision are those of its first page. `ti-sbvs320`, the datasheet of the thermal fixtures' regulator,
 was added the same day from a copy fetched on 2026-10-29 for a project's library; its SHA256 is that
-copy's, and `workcenter references fetch` has not asked for it yet.
+copy's, and `workcenter references fetch` has not asked for it yet. `nbs-hb100` and `ti-snva419c`,
+the documents of `rules/copper/materials.json`, were fetched together the same day: `2 kept, 0
+changed, 0 refused`.
 
 `samsung-cl10a106kp8nnn` is a web page of Samsung's component library, the source of the facts of
 `tests/boards/fail-sim-bias`. Each fetch of it differs in a session token and a time stamp, so `fetch`

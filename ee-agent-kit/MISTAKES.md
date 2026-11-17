@@ -1183,3 +1183,21 @@ What happened: On `wip/r9` `workcenter fields` read a microstrip's impedance abo
 Cost: A second review that said "not sound"; 7 fixes with tests.
 Root cause: A number the command reports was never held to a published form on a structure the form covers. `test_the_line_impedance_is_the_closed_form_within_3_percent` now holds it.
 Process: P14
+
+## M196 — 2026-11-17 — A grid model tested only on widths of whole cells
+What happened: On `wip/r10` a cell of `workcenter copper` was copper when its centre was, so a track's width rounded to whole 0.05 mm cells. A 6 mil track read 24 % low on drop and density, and a 0.3501 mm neck held a 45 mV limit at 41.24 mV that the copper breaks at 46.3 mV. Every test used widths of whole cells, so all passed.
+Cost: A review that said "not sound"; 8 fixes with tests.
+Root cause: No test of the model used a size that is no whole number of cells. Each cell now holds its share of copper, and a 0.152 mm track is a test.
+Process: P14
+
+## M197 — 2026-11-17 — 2 solvers that feed each other, solved 1 way
+What happened: On `wip/r10` the heat took the drop's I^2 R, and the drop never took the heat's temperature. A 47 mV limit held at 46.25 mV that the copper at its own temperature breaks at 47.6 mV. A test that held only 1 of the 2 passed.
+Cost: A second review that said "not sound"; the 2 solvers now take turns until the drops settle.
+Root cause: Where 2 solvers feed each other, both directions were not solved, and no test held the result against each 1-way answer.
+Process: P14
+
+## M198 — 2026-11-17 — A table of documents the reference check did not read
+What happened: On integration of `wip/r10`, `rules/copper/materials.json` named 2 documents in a table `documents: {id: {...}}`. `references rules` reads a document under `document` or `source` only, so it named 0 documents in the file, and the index lacked both. `tests/test_references.py` failed only because its globs did not cover `rules/copper/`.
+Cost: 1 change to `tools/references.py`, 1 test, 2 index entries, 2 fetches.
+Root cause: The check knew 2 shapes of a citation, and a new rule file used a third. The coverage test caught the folder, not the shape.
+Process: P7

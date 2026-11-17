@@ -403,12 +403,17 @@ def cmd_check(args, cli) -> int:
 
 def cited(data, pointer: str = ""):
     """Each (pointer, object) a rule file cites a document by: the object under a key `document` or
-    `source`, at any depth."""
+    `source`, at any depth, and each object of a table `documents: {id: {...}}` (rules/copper's
+    materials.json names its documents so, and each constant points at an id)."""
     if isinstance(data, dict):
         for key, value in data.items():
             here = f"{pointer}.{key}" if pointer else key
             if key in CITING_KEYS and isinstance(value, dict):
                 yield here, value
+            elif key == "documents" and isinstance(value, dict):
+                for name, doc in value.items():
+                    if isinstance(doc, dict):
+                        yield f"{here}.{name}", doc
             else:
                 yield from cited(value, here)
     elif isinstance(data, list):

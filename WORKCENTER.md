@@ -89,6 +89,7 @@ file: it needs nothing else.
 | `ratings` | A schematic is to be held to its parts' ratings before layout: each part's facts from its datasheet, with the page of each pin's and each needed part's numbers, the voltages and currents the board cannot say, and `workcenter ratings` until every stress holds. |
 | `board-rules` | A routed board is to be held to a standard: each gap to the voltage between its nets and each track's width to its net's current, from `ratings.json`, with `board-rules.json` naming the pack; or to a fab's published limits. |
 | `references` | A rule cites a standard or a datasheet: get the copy it was written from with `workcenter references fetch`, judge a file a person downloaded with `workcenter references check`, and keep `workcenter references rules` passing. |
+| `copper` | A routed board carries a stated current or a part's stated heat: each power net's drop and current density, in its copper and in each barrel, and the board's temperature, against the limits of `copper.json`, with a picture of each and `workcenter copper` until every limit holds. |
 | `fields` | A fast interface or an antenna on a routed board: a track's impedance, loss or crosstalk, held by `workcenter fields` to the limits `fields.json` states, each with its source. |
 | `fabrication` | The files a fab and an assembler take, each read back against the board, a panel from `panel.json`, and `workcenter measure`: the plan of measurements for the built board, from the project's own sim bounds. |
 | `kistack` | Placing parts, reviewing a schematic, a layout or the Gerbers, choosing a part's derating, a footprint or symbol, or a panel: it names the kistack skill for the step, and where this workcenter's rules win. |
@@ -508,7 +509,55 @@ not take, and with `--strict` on what was not judged. `--facts REF` prints
 an entry of facts to fill for 1 part. It writes `build/ratings/netlist.xml`,
 `report.md` (every line, the holds too) and `report.json`. It judges steady
 voltages and stated currents: no transient, no temperature, nothing of the
+board. `ratings.json` may state a part's heat, `"U1": {"watts": 0.4,
+"source": ...}`, or the heat that leaves by 1 pad, `"U1.2"` (not both);
+`ratings` does not judge it, and `workcenter copper` spreads it through the
 board. The `ratings` skill is the procedure and holds both file formats.
+
+Not a gate: `workcenter copper <project>` solves the board's own copper for
+a project with a `.kicad_pcb`, a `ratings.json` and a `copper.json` beside
+it. It reads the copper with KiCad's `pcbnew` module (pads, tracks, arcs,
+vias, filled pours) onto a grid of square cells, 0.05 mm by default; each
+cell holds the part of its area that is copper, so a straight track along
+x or y of any width reads R = rho L / (w t). Copper at an angle reads high,
+on the safe side: at 45 degrees a 0.127 mm track reads 23 % high on the
+drop, and the skill gives the figures. A `grid.drop` wider than the
+narrowest track of a judged net, and a `grid.heat` that is not a whole
+number of it, are refused. For each power net `copper.json` names, the
+net's entry pins (`from`, 1 pin or a list for a supply on several
+contacts) are held at 0 V and each other pin with a current in
+`ratings.json` draws it. A pin of the net with no stated current is taken
+as 0 A and printed as not judged, and so is a pin of the entry's part that
+`from` does not name. The drop and the heat are solved in turn, each
+cell's copper at its own temperature, until the drops settle. A via or a
+plated hole joins its layers through the ring of cells round its drill.
+The greatest drop of a drawing pin, the greatest current density in the
+copper, and the greatest current density in a barrel, pi ((r + plating)^2
+- r^2), are held to the net's `volts` and `amps_per_mm2`. The plating is
+`copper.json`'s `plating` with its source, or the board's own setting, and
+the report names which. The board's temperature is a steady state on a
+grid of 0.25 mm: each layer's copper and its share of the FR-4, the layers
+joined through the laminate and the barrels, `h` on the 2 faces to air at
+the stated ambient. The heat comes from each part's `watts` in
+`ratings.json` (on the part, split over its pads by copper area, or on 1
+pad), or a stated current through a resistor's Value, entering at its pads
+on the board, and from each net's own I^2 R. A part's heat with no pad on
+the board is not judged. The hottest cell is held to `temperature`. The
+constants are `rules/copper/materials.json`'s, each with its document and
+page; `h` is 10 W/m2 K (TI SNVA419C, table 1, page 4) unless `copper.json`
+states its own. An ambient at or below -234.5 C, where copper's
+resistivity by NBS Handbook 100's linear coefficient reaches 0, is
+refused. A net that carries a stated current, or that `ratings.json`
+names, and is not in `copper.json`, and a limit not stated, are `not
+judged`. The last line is `COPPER HELD`, `COPPER HELD, N NOT JUDGED`,
+`NOTHING JUDGED` or `COPPER NOT HELD`. Exit 1 on a failure, on a run that
+judged nothing, on a file refused, and with `--strict` on what was not
+judged; exit 2 when numpy, pcbnew or Pillow is missing. It writes
+`build/copper/report.md`, `report.json` and a PNG of each net's drop and
+density on each layer it has copper on, and of the temperature on each
+layer. The report states its assumptions: a steady state, no enclosure and
+no air flow, a part's heat leaving by the board alone. The `copper` skill
+is the procedure and holds `copper.json`'s format.
 
 Not a gate: `workcenter references` keeps the index of the documents the
 rules cite, `rules/references/index.json`: each standard and datasheet
@@ -528,10 +577,11 @@ and `not reached` are not recorded and are asked again. Exit 1 on a
 `workcenter references check FILE [--id ID] [--keep]` says whether a file
 a person downloaded is the copy an entry names. `workcenter references
 rules [PATH ...]` fails each document a rule file names under `document`
-or `source` that the index lacks, names at another URL, or names without
-both a URL and a SHA256. Only a source whose `document` is `no datasheet:
-<why>` or `no document: <why>` is not judged. `make verify` runs it on
-`rules/ratings/` and `tests/boards/**/facts/` through
+or `source`, or in a table `documents: {id: {...}}`, that the index lacks,
+names at another URL, or names without both a URL and a SHA256. Only a
+source whose `document` is `no datasheet: <why>` or `no document: <why>`
+is not judged. `make verify` runs it on `rules/ratings/`, `rules/board/`,
+`rules/copper/` and `tests/boards/**/facts/` through
 `tests/test_references.py`. The `references` skill is the procedure.
 
 Not a gate: `workcenter verify <project>` checks the project's verification
@@ -674,7 +724,7 @@ and no analog block. The engines install on request:
 | Install root | `/opt/workcenters/ee` |
 | Engine environment | `/opt/workcenters/ee/env.sh` |
 | Tool cache | the session scratchpad; the engines write nothing outside the output directory |
-| Project output | `<project>/build/` (reports, `fab/`, `sim/`, `route/`, `render/`, `ratings/`, `board-rules/`, `measure/`, `fields/`) |
+| Project output | `<project>/build/` (reports, `fab/`, `sim/`, `route/`, `render/`, `ratings/`, `board-rules/`, `measure/`, `fields/`, `copper/`) |
 | Chip project output | `<project>/build/gates.json`, the report, and `<project>/build/chip/`: 1 folder for each gate that ran, and `hashes.json` with the hash of each file a gate wrote or judged. `<gate>/passed.json` is there when that gate passed: the hash of each file it read, taken before its engines started and held to the same bytes after, and of each file it hands on. The files of the project in it are those the gate finds by the text and those its engine says it read (Verilator's XML, the list Icarus Verilog writes, the rule Yosys writes): a header is in the record however the RTL names it. A file of the project is named from the project's folder (`rtl/top.v`, and `./chip/notes.v` for one under a folder `chip`) and a file the gates wrote from the output folder (`chip/layout/top.gds`), wherever `--out` points. EXPORT asks each of the 9 gates before it for that record and holds every file to it: the RTL and each header it includes, the benches and their bounds, the constraints, `chip.json`, the mapped netlist the layout was built from, and the layout's own files. A file of the project that came after a gate passed is refused too. `workcenter next` holds the files to the same records before it reads the report. `tapeout/` holds the files EXPORT hands out, `manifest.json` and the judging gates' reports; a gate that is asked to run takes it away, with the record of its own earlier pass. `render/` holds the pictures of `workcenter chip render`. The gates empty the folders under `<out>/chip`, and only in a folder they made: `--out` is refused when that folder is the project's, holds a file of it, or is there with files and without `hashes.json`. A path with white space is refused too. |
 
 ## Project requirements
@@ -690,6 +740,8 @@ and no analog block. The engines install on request:
 - Optional: `ratings.json` beside the schematic, and `library/facts/*.json`
   in the project's folder or a folder above it, for `workcenter ratings`;
   the `ratings` skill has both formats
+- Optional: `copper.json` beside the board, each power net's entry and
+  limits for `workcenter copper`; it needs `ratings.json`
 - Optional: `fields.json` beside the board, the critical nets and their
   limits for `workcenter fields`
 - Optional: `panel.json` beside the board, a KiKit preset; it asks EXPORT
