@@ -1,0 +1,5 @@
+Value,Footprint,Qty,Manufacturer,MPN,Supplier,SKU,Pack,Breaks
+USB4115,Connector_USB:USB_C_Receptacle_GCT_USB4115-03-C,1,GCT,USB4115-03-C,,,,
+5.1k,Resistor_SMD:R_0603_1608Metric,2,Vishay,CRCW06035K10FKEA,,,,
+TPD2E2U06,Package_TO_SOT_SMD:SOT-323_SC-70,2,Texas Instruments,TPD2E2U06DCKR,,,,
+4.7u 16V,Capacitor_SMD:C_0603_1608Metric,1,Samsung,CL10A475KO8NNN,,,,

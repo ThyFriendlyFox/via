@@ -15,9 +15,12 @@ with its document, section, table and page:
 | VBUS range | 4.75 to 5.50 V | USB 2.0 ECN VBUS Max Limit, table 7-7, page 4 |
 | Capacitance on VBUS | 1.0 to 10.0 uF, more than 1.0 uF up to 5.25 V | USB 2.0 table 7-7 (CRPB), page 179; Device Capacitance ECN, page 2 |
 | D+ and D- | 0 to 3.6 V | USB 2.0 table 7-7, pages 178 and 179 |
-| Wiring | shell to ground; VBUS pins together; GND pins together; A6 and B6 together, A7 and B7 together; SBU open | USB Type-C R2.5, section 3.2.1 note 11, page 47; table 3-5, notes 2 to 5, page 77 |
+| Wiring | shell to ground; VBUS pins together; GND pins together; A6 and B6 together, A7 and B7 together; SBU and the unused pins open | USB Type-C R2.5, section 3.2.1 note 11, page 47; table 3-5, notes 1 to 5, page 77 |
 
-The receptacle is GCT USB4105-GF-A (5 A on VBUS, its drawing, page 1). The
+The receptacle is GCT USB4115-03-C, vertical (5 A on VBUS, its drawing,
+page 1). GCT USB4105, the horizontal one, is not taken: KiCad's footprint
+puts its GND pads 0.19 mm from its pegs' holes, and the board asks
+0.25 mm. The
 clamp is TI TPD2E2U06DCKR (5.5 V stand-off, SLLSEG9C, page 4).
 
 The block holds what these documents state and no more. USB Power
@@ -43,7 +46,7 @@ designer's own, and `workcenter ratings` judges them.
    block = blocks.usbc(d, amps=1.5, detects="1.5A",
                        nets=("VBUS", "GND", "D+", "D-", "CC1", "CC2"),
                        stock=STOCK, facts=Path(__file__).parent / "library" / "facts",
-                       sch_at=(50.8, 88.9), pcb_at=(120.0, 126.325))
+                       sch_at=(50.8, 88.9), pcb_at=(120.0, 121.0))
    d.files = {
        "ratings.json": blocks.ratings_json("nasa-eee-inst-002", block.ratings, own),
        "parts.csv": blocks.parts_csv(block.rows + my_rows),
@@ -51,8 +54,8 @@ designer's own, and `workcenter ratings` judges them.
    }
    ```
 
-   `pcb_at` is the receptacle's centre: its mouth is 3.675 mm below it, on
-   the board's edge. `farads=(least, most)` adds the capacitance the rest of
+   `pcb_at` is the receptacle's centre; the block puts Rd, the clamps and
+   the capacitor up to 12 mm above it. `farads=(least, most)` adds the capacitance the rest of
    the design puts on VBUS. `tests/boards/block_usbc.py` is a whole example.
 4. Run `workcenter design design.py`. What it prints:
    - `usbc J1: a load of X A is over the Y A that <level> ... allows`: the

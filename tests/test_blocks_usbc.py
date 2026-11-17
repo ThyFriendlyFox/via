@@ -100,7 +100,7 @@ def usbc(amps: float = 1.5, detects: str = "1.5A", stock=STOCK, facts=FACTS, **k
         stock=stock,
         facts=facts,
         sch_at=(50.8, 88.9),
-        pcb_at=(120.0, 126.325),
+        pcb_at=(120.0, 121.0),
         **kwargs,
     )
     return d, block
@@ -130,7 +130,7 @@ def test_1_5_a_with_the_1_5_a_advertisement_builds_the_port_and_its_sums():
     on VBUS, the 10 uF part passed over."""
     d, block = usbc()
     assert {p.ref: p.value for p in d.parts} == {
-        "J1": "USB4105",
+        "J1": "USB4115",
         "R1": "5.1k",
         "R2": "5.1k",
         "U1": "TPD2E2U06",
@@ -156,8 +156,8 @@ def test_1_5_a_with_the_1_5_a_advertisement_builds_the_port_and_its_sums():
         "5.25 V; Samsung Electro-Mechanics component library, MLCC data sheet page of CL10A475KO8NNN, the "
         "page as fetched on 2026-11-17; it prints no revision]",
         "J1: the shell and the 4 GND pins on GND, the 4 VBUS pins on VBUS, A6 and B6 on D+, A7 and B7 on "
-        f"D-, SBU1 and SBU2 not connected [{TC}, section 3.2.1, note 11, page 47; section 3.2.3, table 3-5, "
-        "notes 2 to 5, page 77]",
+        f"D-, SBU1, SBU2 and the unused pins not connected [{TC}, section 3.2.1, note 11, page 47; section "
+        "3.2.3, table 3-5, notes 1 to 5, page 77]",
     ]
 
 
@@ -315,7 +315,7 @@ def test_the_block_hands_the_ports_nets_and_parts_to_ratings():
         "USB 2.0, USB 2.0 ECN VBUS Max Limit, change (c) to section 7.3.2"
     )
     assert [(r.value, r.mpn, r.qty) for r in block.rows] == [
-        ("USB4105", "USB4105-GF-A", 1),
+        ("USB4115", "USB4115-03-C", 1),
         ("5.1k", "CRCW06035K10FKEA", 2),
         ("TPD2E2U06", "TPD2E2U06DCKR", 2),
         ("4.7u 16V", "CL10A475KO8NNN", 1),
@@ -365,6 +365,7 @@ def test_a_design_that_detects_nothing_holds_each_advertisement_to_vrd_connected
             "usbc J1: the clamp U1 of D+ and D- is pin 1 on D+, pin 2 on GND",
         ),
         ("J1", None, "usbc J1: SBU pins A8 on D+ ["),
+        ("J1", "A2", "usbc J1: UNUSED pins A2 on D+ ["),
         ("C1", {"1": "VBUS", "2": "VBUS"}, "usbc J1: C1 is not between VBUS and GND ["),
     ],
 )
@@ -375,6 +376,8 @@ def test_the_check_reads_back_what_was_built_and_names_a_planted_fault(ref, nets
     part = next(p for p in d.parts if p.ref == ref)
     if nets is None:
         part.nets["A8"] = "D+"
+    elif isinstance(nets, str):
+        part.nets[nets] = "D+"
     else:
         part.nets = nets
     lines = blocks_usbc.check(d, block.port)
@@ -398,7 +401,7 @@ def test_the_check_holds_the_load_to_the_receptacles_rating(tmp_path):
     rules["connectors"][0]["amps_vbus"]["value"] = 1.0
     (tmp_path / "usbc.json").write_text(json.dumps(rules), encoding="utf-8")
     assert refused(rules=tmp_path / "usbc.json") == (
-        "usbc J1: 1.5 A on VBUS is over the receptacle's 1 A [GCT USB4105 drawing, Electrical, Current "
+        "usbc J1: 1.5 A on VBUS is over the receptacle's 1 A [GCT USB4115 drawing, Electrical, Current "
         "Rating, page 1: 5.00 A collectively for VBUS pins]"
     )
 
@@ -447,7 +450,8 @@ def test_the_fixture_is_what_its_design_file_writes_and_passes_ratings_strict(tm
         check=False,
     )
     assert run.returncode == 0, run.stdout + run.stderr
-    assert run.stdout.splitlines()[-1] == "RATINGS HELD"
+    assert run.stdout.splitlines()[-1].startswith("RATINGS HELD: node "), run.stdout
+    assert "0 fail, 0 accepted, 9 hold, 0 not judged" in run.stdout
 
 
 @needs_kicad

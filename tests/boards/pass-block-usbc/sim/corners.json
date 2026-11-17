@@ -1,0 +1,12 @@
+{
+  "tolerance": {
+    "parts": {
+      "vpu": 0.073170732,
+      "rd": 0.01,
+      "RP0": 0.2,
+      "RP1": 0.05,
+      "RP2": 0.05
+    },
+    "source": "Rp from USB Type-C R2.5, table 4-27, page 245; the pull-up from the same table; Rd from Vishay D/CRCW e3 datasheet, document 20035, 14-Apr-2026"
+  }
+}
