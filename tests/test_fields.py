@@ -470,6 +470,7 @@ def test_a_wrong_checksum_of_openems_warns_unless_it_is_required():
     assert check < failed < step.index("return", failed) < step.index("dpkg-deb -x")
 
 
+@pytest.mark.engine
 def test_doctor_names_openems():
     proc = run_cli("--json", "doctor")
     checks = json.loads(proc.stdout)["checks"]

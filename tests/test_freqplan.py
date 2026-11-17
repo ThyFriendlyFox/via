@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
@@ -25,7 +26,7 @@ import freqplan  # noqa: E402
 
 CITES = {"nxp-um10204": "Rev. 7.0, table 11, page 44: the SCL clock frequency of the plan's I2C clock"}
 
-needs_ngspice = pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed")
+needs_ngspice = engine(pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed"))
 
 # Every way a deck writes a source: a node called `sin`, a SIN, a PULSE with and without a period, a
 # period written as a parameter, a PULSE without parentheses continued on a second line, and an

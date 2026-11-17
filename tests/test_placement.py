@@ -17,6 +17,8 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 CLI = ROOT / "tools" / "workcenter"
 FIXTURE = ROOT / "third_party" / "kistack" / "tests" / "layout-placement" / "make_fixture.py"
+# Every test reads the board the fixture draws with KiCad's pcbnew.
+pytestmark = pytest.mark.engine
 
 
 def _needs_geometry():

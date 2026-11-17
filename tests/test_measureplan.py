@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
@@ -24,8 +25,11 @@ DECK = (FIXTURE / "sim" / "divider.cir").read_text(encoding="utf-8")
 sys.path.insert(0, str(ROOT / "tools"))
 import measureplan  # noqa: E402
 
-needs_engines = pytest.mark.skipif(
-    shutil.which("kicad-cli") is None or shutil.which("ngspice") is None, reason="kicad-cli or ngspice absent"
+needs_engines = engine(
+    pytest.mark.skipif(
+        shutil.which("kicad-cli") is None or shutil.which("ngspice") is None,
+        reason="kicad-cli or ngspice absent",
+    )
 )
 # The pads of pass-first-design's board, net by net, as its divider.kicad_pcb lists them.
 NETS = {
