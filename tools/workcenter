@@ -329,7 +329,7 @@ def gate_drc(project: Project, out: Path, strict: bool = False, fab: str | None 
     sys.path.insert(0, str(SRC_DIR / "tools"))
     import legend
 
-    text = legend.gate(project, data, strict, Path(fab).stem if fab else None)
+    text = legend.gate(project, data, strict, fab)
     red = red or text["red"]
     return Result(
         "drc",
