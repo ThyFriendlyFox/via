@@ -19,10 +19,25 @@ be a file of the project's own, named by its path from the project's folder.
 - **Gap.** For each pair of nets with a voltage between them, the voltage is the most their 2 spans
   allow (13.8.2b asks the peak). KiCad's DRC measures every gap on a copy of the board with 1 rule for
   each pair and each copper layer, in `build/board-rules/`. Only the violations of those rules count.
+  The file also holds 1 witness rule for each net, which fails on every item of the net. If KiCad's
+  report names no violation of a net's witness, KiCad did not read that net's rules, and the gate is
+  red: `kicad-cli did not read the pack's rules`.
+- **A net name a rule cannot hold.** A rule quotes a net name in `'...'` inside `"..."`. A name with
+  `'`, `"`, `\`, `*` or `?` gets no rule, and its gaps are not judged. So does a name that differs
+  from another only in case: KiCad compares names in a rule without case.
+- **Copper thickness.** An outer layer is its foil plus 25 um of plating (7.4.2c NOTE 2, page 44;
+  tables 7-3 and 7-4, pages 45 and 46). 35 um foil is 60 um: table 13-7's Th <= 70 um column. 70 um foil
+  is 95 um: its Th > 70 um column, and 70 um of width tolerance.
 - **Track width.** For each track of a net with a current, the least width as designed: the model of
   annex D at the rise the pack allows, on the copper as manufactured (table 7-1), widened for the
   manufacturing tolerance (table 7-3). An outer layer carries 0.9 of the model (13.6.4.2a). A board of
   1.5 to 1.8 mm rises 1.2 times as much (13.6.4.2b).
+- **The current on a net** is the sum of the currents `ratings.json` states on its pins; a part of 2
+  pins counts on both its nets. A track that feeds 2 loads carries both. Where a source and its loads
+  are all stated, the sum counts the current 2 times.
+- **The board's area** is the area inside its outline on Edge.Cuts: lines and arcs joined end to end,
+  rectangles, polygons and circles. The greatest outline is the board; the others are its holes. An
+  outline that does not close, or holds a curve, has no area, and no width is judged.
 - **Via count.** The vias of a net that join the same pieces of copper share the current. A via is a
   track of its wall's section (13.6.3f). A group holds at least the net's current divided by 1 via's.
 
@@ -43,6 +58,7 @@ ECSS-Q-ST-70-12C Rev.1, "Space product assurance - Design rules for printed circ
 | The model | annex D: D.1.2b page 183, D.2c and D.2d page 184 | k0 0.0756, k1 0.4375, m0 0.5, m1 0.0301, c1 1550; to 30 A |
 | Copper as manufactured | 7.1.2j, table 7-1, page 38 | 9, 12, 17, 35, 70 um give 6, 9, 11, 25, 56 um |
 | Width tolerance | 7.4.2a and b, table 7-3, page 45 | 20 %, at most 30, 50, 50, 70 um by copper |
+| Plating of an outer layer | 7.4.2c NOTE 2, page 44; table 7-3, page 45; table 7-4, page 46 | 25 um, added to the foil |
 
 The annex's own example (D.1.3, page 184): 925 um by 25 um as manufactured carries 1.0002 A at 5 C;
 `tests/test_boardrules.py` holds it, and 975 um as designed for 1 A.
@@ -51,8 +67,9 @@ What this pack does not judge, and says so:
 
 - **Vias.** 13.6.3f rates a via as a track of its wall's section. The document gives the copper of a
   plated hole's wall for HDI boards alone (table 11-2, page 100). Each net with a current and a via is
-  `not judged`. A pack of the project's own may add `"via_wall": {"um": ..., "where": ...}` from its
-  fab's own figure.
+  `not judged`, so such a board never passes `--strict` with this pack. A pack of the project's own,
+  a copy of this one, may add `"via_wall": {"um": ..., "where": ...}` to `current` from its fab's own
+  figure.
 - **Over 30 V on an outer layer.** Table 13-7 does not permit it without coating, except on a
   connector's pads (13.8.4d). The check does not tell a connector's pad.
 - **Copper of a thickness table 7-1 does not name**, such as KiCad's 15.2 um inner layers.
@@ -61,5 +78,9 @@ What this pack does not judge, and says so:
 - The gap in Z, to a hole's wall, to the edge and between holes; the current through a pad or a pour.
 
 Choices this pack makes, each on the stricter side: copper as manufactured is the column for
-non-plated inner layers on every layer; a board with no stackup has KiCad's own 35 um on each layer, and
-the DRC notes say so; the current on a net is the greatest one `ratings.json` states for a pin on it.
+non-plated inner layers on every layer; an outer layer is plated even on a board with no plated hole;
+a board with no stackup has KiCad's own 35 um on each layer, and the DRC notes say so; the current on
+a net is the sum of the currents `ratings.json` states on its pins.
+
+A pack of the project's own is read as strictly as this one: every key the check uses must be there,
+a number in its range, or the run is refused with the file and the place.

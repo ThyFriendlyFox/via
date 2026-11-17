@@ -310,6 +310,32 @@ def test_a_net_with_no_current_is_not_judged_and_0_a_holds(pack):
 Q_TRACK = '(segment (start 110 120) (end 130 120) (width 0.25) (layer "F.Cu") (net 2))'
 
 
+def witnesses(rules) -> list[dict]:
+    """The violations KiCad reports for each net's witness, as kicad-cli 10 wrote them for an item of
+    /VIN: `{"type": "assertion_failure", "description": "Assertion failure (rule 'p read /VIN')"}`."""
+    names = sorted({boardrules.witness(r.pack, n) for r in rules.values() for n in r.nets})
+    return [{"type": "assertion_failure", "description": f"Assertion failure (rule '{n}')"} for n in names]
+
+
+def test_the_rule_file_holds_a_witness_for_each_net_that_fails_on_its_every_item(pack):
+    board = boardrules.read_board(board_text([(120, 110)], extra=Q_TRACK))
+    text, _, _ = boardrules.clearance_rules(board, {"/P": (0, 5.25), "/Q": (0, 0)}, pack)
+    assert (
+        '(rule "ecss-q-st-70-12c-rev1 reads /P"\n\t(condition "A.NetName == \'/P\'")\n'
+        "\t(constraint assertion \"A.NetName != '/P'\"))"
+    ) in text
+    assert '(rule "ecss-q-st-70-12c-rev1 reads /Q"' in text
+
+
+def test_a_report_without_a_nets_witness_is_no_pass(pack):
+    """KiCad read no rule of /Q: its witness is not in the report, and the run stops."""
+    board = boardrules.read_board(board_text([(120, 110)], extra=Q_TRACK))
+    _, rules, _ = boardrules.clearance_rules(board, {"/P": (0, 5.25), "/Q": (0, 0)}, pack)
+    report = {"violations": witnesses(rules)[:1]}
+    with pytest.raises(RuntimeError, match=r"did not read the pack's rules: no violation of \S+ reads /Q$"):
+        boardrules.clearance_findings(report, rules)
+
+
 def test_the_rules_kicad_checks_are_1_for_each_pair_and_layer(pack):
     """2 nets 5.25 V apart on a 2-layer board of 35 um: 1 rule on F.Cu and 1 on B.Cu, each 0.25 mm."""
     board = boardrules.read_board(board_text([(120, 110)], extra=Q_TRACK))
@@ -336,8 +362,316 @@ def test_a_kicad_violation_of_a_pack_rule_is_1_line_with_its_clause(pack):
                 "items": [{"pos": {"x": 103.93, "y": 105.0}}],
             },
             {"type": "clearance", "description": "Clearance violation (netclass 'Default' clearance 0.2 mm)"},
+            *witnesses(rules),
         ]
     }
     (found,) = boardrules.clearance_findings(report, rules)
     assert found.text == "clearance /P to /Q on B.Cu at (103.93, 105): 0.22 mm, limit 0.25 mm at 5.25 V"
     assert found.source.startswith(f"{DOC}: 13.8.2d page 117; table 13-7 (2 of 4)")
+
+
+# ---------------------------------------------------------------- a net name KiCad's rules cannot hold
+
+
+@pytest.mark.parametrize("name", ["/P'A", '/P"A', "/P\\A", "/P*", "/P?"])
+def test_a_net_name_a_kicad_rule_cannot_hold_is_not_judged(pack, name):
+    """A rule's condition quotes a net name in '...' inside "...": a quote ends it, a backslash escapes,
+    and * and ? match other nets. Such a net gets no rule, and its gaps are not judged."""
+    text = board_text([(120, 110)], extra=Q_TRACK).replace('(net 1 "/P")', f"(net 1 {json.dumps(name)})")
+    board = boardrules.read_board(text)
+    assert name in board.nets
+    rule_text, rules, missing = boardrules.clearance_rules(board, {name: (0, 5.25), "/Q": (0, 0)}, pack)
+    assert rules == {} and "NetName == '/Q'" not in rule_text
+    (found,) = missing
+    assert found.status == "not judged"
+    assert found.text.startswith(f"spacing of {name}: its name holds ")
+
+
+def test_2_net_names_that_differ_in_case_alone_are_not_judged(pack):
+    """KiCad compares net names in a rule without case: a rule for /p would hold /P too."""
+    extra = Q_TRACK + '(segment (start 110 130) (end 130 130) (width 0.25) (layer "F.Cu") (net 3))'
+    text = board_text([(120, 110)], extra=extra).replace('(net 2 "/Q")', '(net 2 "/Q") (net 3 "/p")')
+    board = boardrules.read_board(text)
+    _, rules, missing = boardrules.clearance_rules(board, {"/P": (0, 5), "/p": (0, 0), "/Q": (0, 3)}, pack)
+    assert sorted({r.nets for r in rules.values()}) == []
+    assert sorted(f.text.split(":")[0] for f in missing) == ["spacing of /P", "spacing of /p"]
+
+
+# ---------------------------------------------------------------- the current on a net
+
+
+def test_the_current_on_a_net_is_the_sum_of_the_currents_its_pins_carry(tmp_path):
+    """pass-board-ecss with R2 and C1 each stated 0.6 A, both from VOUT to GND: a track of GND or VOUT
+    that feeds both carries 0.6 + 0.6 = 1.2 A (Kirchhoff's current law), not the greater of the 2."""
+    pcb = (ROOT / "tests" / "boards" / "pass-board-ecss" / "rc_divider.kicad_pcb").read_text(encoding="utf-8")
+    net = boardrules.netlist(boardrules.read_board(pcb))
+    stated = json.loads(
+        (ROOT / "tests" / "boards" / "pass-board-ecss" / "ratings.json").read_text(encoding="utf-8")
+    )
+    stated["parts"] = {
+        "R2": {"amps": 0.6, "source": "a test: R2 from VOUT to GND"},
+        "C1": {"amps": 0.6, "source": "a test: C1 from VOUT to GND"},
+    }
+    (tmp_path / "ratings.json").write_text(json.dumps(stated), encoding="utf-8")
+    project = ratings.read_project(tmp_path / "ratings.json", net)
+    assert boardrules.net_amps(project, net) == pytest.approx({"/VOUT": 1.2, "/GND": 1.2})
+
+
+# ---------------------------------------------------------------- the area of the outline
+
+
+def outline(text: str) -> str:
+    """board_text with its 80 x 80 mm rectangle replaced by `text`, on Edge.Cuts."""
+    return board_text([(120, 110)]).replace(
+        '(gr_rect (start 100 100) (end 180 180) (layer "Edge.Cuts"))', text
+    )
+
+
+def lines(*points: tuple[float, float]) -> str:
+    """A closed outline of gr_line from point to point and back to the first."""
+    pairs = zip(points, points[1:] + points[:1], strict=True)
+    return "".join(
+        f'(gr_line (start {a[0]} {a[1]}) (end {b[0]} {b[1]}) (layer "Edge.Cuts"))' for a, b in pairs
+    )
+
+
+L_POINTS = ((100, 100), (180, 100), (180, 120), (120, 120), (120, 180), (100, 180))
+
+
+def test_an_l_shaped_outline_has_its_own_area_not_its_box(pack):
+    """The L of (100,100) (180,100) (180,120) (120,120) (120,180) (100,180): 80 x 20 + 20 x 60
+    = 1600 + 1200 = 2800 mm2; its box is 80 x 80 = 6400 mm2. 2800 is not over 75 x 75 = 5625 mm2
+    (13.6.3c, page 113), so no width is judged."""
+    pts = "".join(f"(xy {x} {y})" for x, y in L_POINTS)
+    board = boardrules.read_board(outline(f'(gr_poly (pts {pts}) (layer "Edge.Cuts"))'))
+    assert board.area_mm2 == pytest.approx(2800)
+    (found,) = boardrules.width_findings(board, {"/P": 2.0}, pack)
+    assert found.status == "not judged" and "2800 mm2" in found.text
+
+
+def test_an_outline_of_lines_is_joined_into_its_polygon():
+    """The same L drawn as 6 gr_line, in order, then shuffled with 2 of them drawn backwards: 2800 mm2."""
+    assert boardrules.read_board(outline(lines(*L_POINTS))).area_mm2 == pytest.approx(2800)
+    p = L_POINTS
+    edges = [(p[3], p[4]), (p[1], p[0]), (p[5], p[0]), (p[1], p[2]), (p[5], p[4]), (p[2], p[3])]
+    shuffled = "".join(
+        f'(gr_line (start {a[0]} {a[1]}) (end {b[0]} {b[1]}) (layer "Edge.Cuts"))' for a, b in edges
+    )
+    assert boardrules.read_board(outline(shuffled)).area_mm2 == pytest.approx(2800)
+
+
+def test_a_hole_in_the_outline_is_taken_out_of_its_area():
+    """The 80 x 80 mm rectangle less a circle of radius 10 mm: 6400 - pi x 100 = 6085.84 mm2; less a
+    rectangle of 10 x 10 mm in place of the circle: 6300 mm2."""
+    rect = '(gr_rect (start 100 100) (end 180 180) (layer "Edge.Cuts"))'
+    circle = '(gr_circle (center 140 140) (end 150 140) (layer "Edge.Cuts"))'
+    assert boardrules.read_board(outline(rect + circle)).area_mm2 == pytest.approx(6085.84, abs=0.01)
+    small = '(gr_rect (start 130 130) (end 140 140) (layer "Edge.Cuts"))'
+    assert boardrules.read_board(outline(rect + small)).area_mm2 == pytest.approx(6300)
+
+
+def test_a_rounded_corner_is_an_arc_and_not_its_chord():
+    """An 80 x 80 mm square whose corner at (180, 180) is a quarter circle of radius 10 mm: 6400 less
+    the corner's 10 x 10 square plus the quarter circle, pi x 100 / 4 = 78.54: 6400 - 100 + 78.54 =
+    6378.54 mm2. The chord alone would give 6400 - 50 = 6350 mm2."""
+    r = 10 / 2**0.5
+    drawn = (
+        '(gr_line (start 100 100) (end 180 100) (layer "Edge.Cuts"))'
+        '(gr_line (start 180 100) (end 180 170) (layer "Edge.Cuts"))'
+        f'(gr_arc (start 180 170) (mid {170 + r} {170 + r}) (end 170 180) (layer "Edge.Cuts"))'
+        '(gr_line (start 170 180) (end 100 180) (layer "Edge.Cuts"))'
+        '(gr_line (start 100 180) (end 100 100) (layer "Edge.Cuts"))'
+    )
+    assert boardrules.read_board(outline(drawn)).area_mm2 == pytest.approx(6378.54, abs=0.05)
+
+
+def test_an_outline_that_does_not_close_has_no_area(pack):
+    """5 of the L's 6 lines: no closed outline, so no area, and no width is judged."""
+    drawn = lines(*L_POINTS)
+    open_l = drawn[: drawn.rindex("(gr_line")]
+    board = boardrules.read_board(outline(open_l))
+    assert board.area_mm2 is None
+    (found,) = boardrules.width_findings(board, {"/P": 2.0}, pack)
+    assert found.status == "not judged" and "does not close" in found.text
+
+
+# ---------------------------------------------------------------- the plating of an outer layer
+
+
+def test_an_outer_layer_of_70_um_foil_is_95_um_with_its_plating(pack):
+    """7.4.2c NOTE 2, page 44: plated copper as designed is 25 um; table 7-3, page 45, and table 7-4,
+    page 46: an outer layer's thickness category is basic plus plated copper. 70 + 25 = 95 um, so
+    Th > 70 um: table 13-7 (2 of 4), page 130, asks 350 um to 10 V, not 250 um. 35 + 25 = 60 um is
+    Th <= 70 um: 250 um. An inner layer of 70 um is not plated: 70 < Th <= 95 is not it, 60 < Th <= 70
+    asks 200 um (table 13-7 (3 of 4), page 131)."""
+    outer70 = boardrules.spacing_need(pack, "outer", 70, 5)
+    assert outer70.mm == pytest.approx(0.35) and "7.4.2c NOTE 2, page 44" in outer70.where
+    assert boardrules.spacing_need(pack, "outer", 35, 5).mm == pytest.approx(0.25)
+    assert boardrules.spacing_need(pack, "inner", 70, 5).mm == pytest.approx(0.2)
+
+
+def test_a_track_on_70_um_outer_foil_takes_the_tolerance_of_95_um(pack):
+    """1 A on F.Cu of 70 um, a 1.6 mm board. The model as for 35 um: 0.017535 mm2 (test above). Copper
+    as manufactured 56 um (table 7-1, page 38): 0.017535 / 0.056 = 0.31312 mm. Th = 70 + 25 = 95 um:
+    table 7-3, page 45, 20 % or at most 70 um: min(0.31312 / 0.8, 0.31312 + 0.07) = min(0.39140,
+    0.38312) = 0.38312 mm. Without the plating, 50 um: 0.36312 mm."""
+    need = boardrules.track_need(pack, 1.0, outer=True, cu_um=70, board_mm=1.6)
+    assert need.mm == pytest.approx(0.38312, rel=1e-4)
+    assert "7.4.2c NOTE 2, page 44" in need.where
+
+
+# ---------------------------------------------------------------- a project's own pack
+
+
+def broken(tmp_path: Path, change) -> Path:
+    data = json.loads(PACK.read_text(encoding="utf-8"))
+    change(data)
+    path = tmp_path / "own.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return path
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        (
+            lambda d: d["current"]["thin_board"].pop("rise_factor"),
+            r"current: thin_board: `rise_factor` is missing",
+        ),
+        (
+            lambda d: d["current"]["thin_board"].update(rise_factor=0),
+            r"current: thin_board: rise_factor: 0 is",
+        ),
+        (lambda d: d["current"]["tolerance"].pop("rows"), r"current: tolerance: `rows` is missing"),
+        (lambda d: d["current"]["tolerance"].update(rows=[[17]]), r"current: tolerance: rows 1: \[up to"),
+        (lambda d: d["current"]["tolerance"].update(share=1), r"current: tolerance: share: 1 is"),
+        (lambda d: d["current"]["copper"].update(rows=[[35]]), r"current: copper: rows 1: \[designed"),
+        (lambda d: d["current"]["copper"].update(rows=[]), r"current: copper: rows: a list of rows"),
+        (lambda d: d["current"]["valid"].pop("area_over_mm2"), r"current: valid: `area_over_mm2` is missing"),
+        (lambda d: d["current"].update(outer_share=0), r"current: outer_share: 0 is"),
+        (lambda d: d["current"].update(outer_share="0.9"), r"current: outer_share: '0.9' is no number"),
+        (lambda d: d["current"].update(outer_share=1.5), r"current: outer_share: 1.5 is over 1"),
+        (lambda d: d["current"].update(rise_c=-10), r"current: rise_c: -10 is"),
+        (lambda d: d["current"]["model"].update(c1=0), r"current: model: c1: 0 is"),
+        (
+            lambda d: d["current"].update(via_wall={"um": 0, "where": "page 1"}),
+            r"current: via_wall: um: 0 is",
+        ),
+        (lambda d: d["spacing"][0].update(steps=[]), r"spacing 1: steps: a list of steps"),
+        (lambda d: d.pop("plating"), r"`plating` is missing"),
+        (lambda d: d["plating"].update(um=-1), r"plating: um: -1 is under 0"),
+    ],
+)
+def test_a_pack_of_the_projects_own_is_refused_at_the_place_it_is_wrong(tmp_path, change, message):
+    """A pack may be a project's own file: each key the check reads later is held here, so a wrong one
+    is a refusal that names the file and the place, never a traceback."""
+    with pytest.raises(ratings.Refusal, match=r"own\.json: " + message):
+        boardrules.read_pack(broken(tmp_path, change))
+
+
+# ---------------------------------------------------------------- each boundary of the pack
+
+
+def test_a_track_just_under_its_limit_fails_and_one_at_it_holds(pack):
+    """1 A on F.Cu of the 1.6 mm board asks 0.75140 mm (test above): 0.751 mm fails, 0.7515 mm holds."""
+    under = boardrules.read_board(board_text([(120, 110), (120, 111)], f_width=0.751))
+    (found,) = boardrules.width_findings(under, {"/P": 1.0}, pack)
+    assert found.status == "fail" and "0.751 mm, limit 0.752 mm for 1 A" in found.text
+    at = boardrules.read_board(board_text([(120, 110), (120, 111)], f_width=0.7515))
+    assert boardrules.width_findings(at, {"/P": 1.0}, pack) == []
+
+
+@pytest.mark.parametrize(
+    ("layers", "cu_um", "volts", "mm"),
+    [
+        ("outer", 35, 10, 0.25),  # 0 < V <= 10: 250 um (table 13-7 (2 of 4), page 130)
+        ("outer", 35, 10.001, 0.35),  # 10 < V <= 30: 350 um
+        ("outer", 35, 30, 0.35),
+        ("outer", 35, 30.001, None),  # not permitted above 30 V
+        ("inner", 35, 500, 0.55),  # 1 x 500 + 50 = 550 um (table 13-7 (3 of 4), page 131)
+        ("inner", 35, 500.5, None),  # 13.8.2l, page 119: above 500 V
+        ("inner", 17, 5, 0.13),  # Th <= 17: 130 um
+        ("inner", 17.001, 5, 0.15),  # 17 < Th <= 60: 150 um
+        ("inner", 60, 5, 0.15),
+        ("inner", 60.001, 5, 0.2),  # 60 < Th <= 70: 200 um
+        ("inner", 95, 5, 0.3),  # 70 < Th <= 95: 300 um
+        ("inner", 95.001, 5, None),  # over every inner row
+    ],
+)
+def test_table_13_7_on_each_side_of_each_step(pack, layers, cu_um, volts, mm):
+    assert boardrules.spacing_need(pack, layers, cu_um, volts).mm == (
+        None if mm is None else pytest.approx(mm)
+    )
+
+
+def test_just_over_500_v_is_not_judged_for_13_8_2l(pack):
+    """13.8.2l, page 119: 500.5 V is above 500 V, and the reason names that clause."""
+    need = boardrules.spacing_need(pack, "inner", 35, 500.5)
+    assert need.mm is None and need.why.startswith("500.5 V is over 500 V: 13.8.2l, page 119")
+
+
+def test_the_rows_of_a_pack_hold_in_any_order(pack):
+    """The inner rows turned round: 17 um is still Th <= 17 (130 um), and not 17 < Th <= 60."""
+    turned = copy.deepcopy(pack)
+    turned.spacing = list(reversed(turned.spacing))
+    assert boardrules.spacing_need(turned, "inner", 17, 5).mm == pytest.approx(0.13)
+    assert boardrules.spacing_need(turned, "inner", 60, 5).mm == pytest.approx(0.15)
+
+
+@pytest.mark.parametrize(
+    ("cu_um", "drawn"),
+    [
+        (17, 1.03),  # Th <= 17: 20 % or at most 30 um: min(1 / 0.8, 1 + 0.03) = 1.03
+        (17.001, 1.05),  # 17 < Th <= 60: at most 50 um
+        (95, 1.07),  # 70 < Th <= 95: at most 70 um
+        (95.001, None),  # over every row of table 7-3
+    ],
+)
+def test_table_7_3_on_each_side_of_each_row(pack, cu_um, drawn):
+    """1 mm as manufactured, drawn wider by table 7-3, page 45."""
+    got = boardrules.designed_width(1.0, cu_um, pack)
+    assert got == (None if drawn is None else pytest.approx(drawn))
+
+
+@pytest.mark.parametrize(
+    ("end", "thickness", "judged"),
+    [
+        ("(end 175 175)", 1.6, False),  # 75 x 75 = 5625 mm2: not over it (13.6.3c, page 113)
+        ("(end 175.01 175)", 1.6, True),  # 75.01 x 75 = 5625.75 mm2
+        ("(end 180 180)", 1.5, False),  # 1.5 mm: not thicker than it (13.6.3d, page 113)
+        ("(end 180 180)", 1.51, True),
+    ],
+)
+def test_the_model_holds_only_over_its_area_and_its_thickness(pack, end, thickness, judged):
+    text = board_text([(120, 110)], f_width=3).replace("(end 180 180)", end)
+    text = text.replace("(thickness 1.6)", f"(thickness {thickness})")
+    found = boardrules.width_findings(boardrules.read_board(text), {"/P": 1.0}, pack)
+    assert (found == []) is judged, found
+
+
+@pytest.mark.parametrize(("board_mm", "rise"), [(1.5, 10), (1.51, 10 / 1.2), (1.8, 10 / 1.2), (1.81, 10)])
+def test_a_board_of_1_5_to_1_8_mm_rises_1_2_times(pack, board_mm, rise):
+    """13.6.4.2b, page 115: over 1.5 mm and up to 1.8 mm, 10 C / 1.2 = 8.3333 C in the model."""
+    assert boardrules._rise(pack, board_mm)[0] == pytest.approx(rise)
+
+
+def test_a_via_that_joins_copper_on_1_layer_alone_carries_nothing(pack):
+    """2 vias at (120, 110) and (120, 111) carry 2 A (test above). A third at (112, 110) touches the
+    F.Cu track alone: it is in no path, and no group of 1 is asked to carry 2 A."""
+    board = boardrules.read_board(board_text([(120, 110), (120, 111), (112, 110)]))
+    assert boardrules.via_findings(board, {"/P": 2.0}, with_wall(pack)) == []
+
+
+def test_a_kicad_violation_of_a_rule_not_of_the_pack_is_not_its_finding(pack):
+    board = boardrules.read_board(board_text([(120, 110)], extra=Q_TRACK))
+    _, rules, _ = boardrules.clearance_rules(board, {"/P": (0, 5.25), "/Q": (0, 0)}, pack)
+    report = {
+        "violations": [
+            {
+                "type": "clearance",
+                "description": "Clearance violation (rule 'own 1' clearance 0.3 mm; actual 0.1 mm)",
+            }
+        ]
+        + witnesses(rules)
+    }
+    assert boardrules.clearance_findings(report, rules) == []

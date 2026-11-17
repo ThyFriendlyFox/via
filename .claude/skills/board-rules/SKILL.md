@@ -1,6 +1,6 @@
 ---
 name: Board Rules
-description: Holds a routed board to a rule pack from a free standard (ECSS-Q-ST-70-12C Rev.1) - each gap to the voltage between its nets, each track's width and each net's vias to the current it carries - with every failure naming its clause, table and page; and to a fab's published limits (JLCPCB, PCBWay, OSH Park, Sierra Circuits).
+description: Holds a routed board to a rule pack from a free standard (ECSS-Q-ST-70-12C Rev.1) - each gap to the voltage between its nets, each track's width to the current it carries, and each net's vias when the pack gives a via's wall - with every failure naming its clause, table and page; and to a fab's published limits (JLCPCB, PCBWay, OSH Park, Sierra Circuits). The shipped ECSS pack gives no wall, so a board with a via on a net that carries current needs a pack of the project's own with its fab's via plating.
 ---
 
 # Board Rules
@@ -52,6 +52,8 @@ The worked example is `tests/boards/pass-board-ecss`, and
    copper or split the current.
 6. For each line `- fail vias <net> between <layer> and <layer> at (x, y): <n>, limit <m> for <A> A`:
    put `m - n` more vias beside the first, each touching the same tracks.
+   The shipped pack prints no such line: it gives no via's wall, so it
+   prints `not judged vias of <net>` instead (step 7).
 7. For each line `- not judged ...` (`- warning: not judged ...` without
    `--strict`): do what the reason asks.
    - `ratings.json states no voltage for it` or `no current on it`: add
@@ -59,11 +61,23 @@ The worked example is `tests/boards/pass-board-ecss`, and
    - `the board is ... thick` or `the board's outline holds ... mm2`: the
      standard's current model does not hold for this board (13.6.3c). Show
      the width another way, and write in the version's README how.
-   - `over 30 V`, `over 500 V`, `copper ... is none of ...`, `the pack gives
-     no copper thickness of a via's wall`: the pack cannot judge this. Ask
-     the owner, and write the answer in the version's README.
-8. Run step 3 again until it prints `PASS drc` with `0 fail, 0 not judged`.
-9. For a fab, run `workcenter drc <project> --fab <name>` with a name from
+   - `the pack gives no copper thickness of a via's wall`: copy the pack
+     into the project, name the copy in `board-rules.json` by its path,
+     and add to its `current` a `via_wall` from the fab's own page, with
+     the page in `where`. OSH Park's two-layer page, for one, states "Via
+     Plating Thickness 1mil (0.0254mm)":
+     `"via_wall": {"um": 25.4, "where": "docs.oshpark.com/services/two-layer, Via Plating Thickness, page 1"}`.
+     Without it, no board with such a via passes `--strict`.
+   - `its name holds ...` or `takes it for ...`: rename the net in the
+     schematic so a KiCad rule can quote it.
+   - `over 30 V`, `over 500 V`, `copper ... is none of ...`: the pack
+     cannot judge this. Ask the owner, and write the answer in the
+     version's README.
+8. If the run prints `kicad-cli did not read the pack's rules`, KiCad
+   could not read the rule file in `build/board-rules/`. Do not pass the
+   board; report the file and the KiCad version to the workcenter's owner.
+9. Run step 3 again until it prints `PASS drc` with `0 fail, 0 not judged`.
+10. For a fab, run `workcenter drc <project> --fab <name>` with a name from
    `rules/README.md` (`jlcpcb-2layer`, `pcbway-standard`, `oshpark-2layer`,
    `sierra-circuits-web`). Each `- error: ...` line names the fab's rule.
    To keep the fab for good, set `fab = "<name>"` in the design file.
@@ -71,4 +85,6 @@ The worked example is `tests/boards/pass-board-ecss`, and
 ## Done when
 
 `workcenter gates <project> --strict` prints GREEN, and its DRC line names
-the pack with `0 fail, 0 not judged`.
+the pack with `0 fail, 0 not judged`. With `ecss-q-st-70-12c-rev1` as
+shipped, a board reaches this only if no net with a current has a via;
+otherwise it needs the project's own pack with `via_wall` (step 7).
