@@ -325,24 +325,30 @@ def gate_drc(project: Project, out: Path, strict: bool = False, fab: str | None 
 
         rules = boardrules.gate(project, out, strict, sys.modules[__name__])
         red = red or rules["red"]
+    # Every board's printed text, held to its fab's least size and to the legend's rules: tools/legend.py.
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import legend
+
+    text = legend.gate(project, data, strict, Path(fab).stem if fab else None)
+    red = red or text["red"]
     return Result(
         "drc",
         "fail" if red else "pass",
         f"{errors} errors, {warnings} warnings "
         f"({len(groups['unconnected_items'])} unconnected, {len(groups['schematic_parity'])} parity)"
         + (f", fab rules {Path(fab).stem}" if fab else "")
-        + (f", {rules['summary']}" if rules else ""),
+        + (f", {rules['summary']}" if rules else "")
+        + f", {text['summary']}",
         {
             "fab": Path(fab).stem if fab else None,
             "counts": counts,
             "first": first_violations(
                 groups["violations"] + groups["unconnected_items"] + groups["schematic_parity"]
             ),
-            **(
-                {"board_rules": rules, "failures": rules["failures"], "warnings": rules["warnings"]}
-                if rules
-                else {}
-            ),
+            **({"board_rules": rules} if rules else {}),
+            "legend": text,
+            "failures": (rules["failures"] if rules else []) + text["failures"],
+            "warnings": (rules["warnings"] if rules else []) + text["warnings"],
         },
         [str(report)],
     )
@@ -4089,6 +4095,7 @@ def cmd_design(args) -> int:
     if "files" not in summary:
         summary["files"] = [str(p) for p in design.write(out_dir)]
     summary["islands"] = design.islands
+    summary["legend"] = design.legend_notes  # each designator the placer kept on the Fab layer
     summary["stitches"] = [{**s, "at": list(s["at"])} for s in design.stitches]
     summary["seconds"] = round(time.monotonic() - t0, 2)
     # The verdict is the exit code even though every file is written (M85): say so on the last line.
@@ -4149,6 +4156,8 @@ def cmd_design(args) -> int:
             print(f"  part: {problem}")
         for island in summary["islands"]:
             print(f"  island: {', '.join(island)} cut off from their pour; the DRC will report it")
+        for line in summary["legend"]:
+            print(f"  {line}")
         for f in summary["files"]:
             print(f"  wrote {f}")
         if code == EXIT_FAIL:
@@ -5468,7 +5477,10 @@ def main(argv: list[str] | None = None) -> int:
     routebench().register(sub, sys.modules[__name__])
     fields().register(sub, sys.modules[__name__])
     sys.path.insert(0, str(SRC_DIR / "tools"))
+    import legend
     import measureplan
+
+    legend.register(sub, sys.modules[__name__])
 
     measureplan.register(sub, sys.modules[__name__])
 
