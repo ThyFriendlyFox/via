@@ -325,6 +325,23 @@ def test_every_hint_points_at_a_file_and_a_heading_that_exist():
         ),
         (
             "ratings",
+            "not judged U1 pin OUT (V33) needs a capacitor to GND: C1 stands there and has no facts",
+            "Write the facts of the part the line names",
+        ),
+        (
+            "ratings",
+            "not judged C1: ratings.json accepts a failure of capacitor.ceramic.voltage, and C1 is not "
+            "judged now",
+            "The acceptance then meets its failure again",
+        ),
+        (
+            "ratings",
+            "fail D1 TVS from V5 to GND: its anode is held at 4.5 V or more and its cathode at 0 V or "
+            "less: it stands forward between 2 sources",
+            "Turn the diode",
+        ),
+        (
+            "ratings",
             "fail C1: ratings.json accepts a failure of capacitor.ceramic.voltage, and nothing fails there",
             "out of `accepted`",
         ),

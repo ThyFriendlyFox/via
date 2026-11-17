@@ -72,9 +72,26 @@ HINTS: list[tuple[str, str, str]] = [
         f'{RATINGS}, "A part\'s facts"',
     ),
     (
+        r"^ratings: not judged .* and has no facts",
+        "Write the facts of the part the line names. `workcenter ratings <project> --facts <REF>` "
+        "prints the entry to fill.",
+        f'{RATINGS}, "Steps"',
+    ),
+    (
+        r"^ratings: not judged .*accepts a failure of .* is not judged now",
+        "Give that part what its own `not judged` line asks for. The acceptance then meets its "
+        "failure again.",
+        f'{RATINGS}, "Steps"',
+    ),
+    (
         r"^ratings: not judged ",
         "Give the command what the line says is missing: a fact, a net's voltage or a load's current.",
         f'{RATINGS}, "Steps"',
+    ),
+    (
+        r"^ratings: fail .*stands forward between 2 sources",
+        "Turn the diode, or take 1 of the 2 sources off its nets. Nothing limits its current as drawn.",
+        f'{RATINGS}, "How the command reads a circuit"',
     ),
     (
         r"^ratings: fail .*number the pins differently",
