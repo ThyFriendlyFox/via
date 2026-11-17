@@ -38,6 +38,7 @@
       "tolerance": 0.20,
       "amps_saturation": 5.6,
       "amps_rms": 4.0,
+      "ohms_dc": 0.0387,
       "source": {
         "document": "Coilcraft XAL40xx datasheet, document 806",
         "revision": "revised 02/25/26",
@@ -46,7 +47,7 @@
         "read": "2026-11-17",
         "second_reader": "2026-11-17"
       },
-      "note": "Page 1. It saturates where its inductance has dropped 30 %, a typical figure at 25 C. The rated current is the one of a 20 C rise, which the datasheet gives for reference and not as a maximum"
+      "note": "Page 1. It saturates where its inductance has dropped 30 %, a typical figure at 25 C. The rated current is the one of a 20 C rise, which the datasheet gives for reference and not as a maximum. The DC resistance is the column max of DCR, 38.70 mOhm (35.20 typical)"
     },
     {
       "kind": "inductor",
@@ -54,6 +55,7 @@
       "tolerance": 0.20,
       "amps_saturation": 1.26,
       "amps_rms": 1.2,
+      "ohms_dc": 0.174,
       "source": {
         "document": "Bourns SRN2010TA series datasheet",
         "revision": "REV. 06/25",
@@ -62,7 +64,7 @@
         "read": "2026-11-17",
         "second_reader": "2026-11-17"
       },
-      "note": "Page 1. It saturates where its inductance has dropped 30 %; the rated current is the one of a 40 C rise. The datasheet says the series is not recommended for new designs"
+      "note": "Page 1. It saturates where its inductance has dropped 30 %; the rated current is the one of a 40 C rise. The DC resistance is 0.145 ohm +-20 % in the table's DCR column: 0.174 ohm at the most is entered. The datasheet says the series is not recommended for new designs"
     }
   ]
 }

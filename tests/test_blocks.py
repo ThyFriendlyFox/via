@@ -137,6 +137,14 @@ TABLE4 = (
     "(2 x 22, 22 and 10 uF), page 9; note 2; section 8.2.2.5, page 10: designed to operate with an output "
     f"capacitor of 10 uF to 47 uF; {DIELECTRIC}"
 )
+DROPOUT = (
+    "TLV62569 datasheet, SLVSDG1C, section 7.3.2, equation 1, page 6; TLV62569 datasheet, SLVSDG1C, section "
+    "6.5, Electrical Characteristics, RDS(on) of the high-side FET, typical: no MAX is stated, page 5"
+)
+INPUT_WHERE = (
+    "TLV62569 datasheet, SLVSDG1C, section 8.2.2.5, page 10: 4.7 uF of input capacitance is sufficient for "
+    f"most applications; {DIELECTRIC}"
+)
 
 
 @needs_libs
@@ -165,9 +173,12 @@ def test_half_an_amp_takes_the_first_stocked_inductor_that_holds_equation_4():
         "R1: R1 = 100 kohm x (3.3 V / 0.6 V - 1) = 450 kohm; the stock's nearest is 453k, which sets "
         "3.318 V, and 3.2 V to 3.44 V with VFB of 588 mV to 612 mV and the resistors' tolerances "
         f"[{EQ11_EQ2}]",
+        "U1: VIN(MIN) = 3.44 V + 500 mA x (100 mohm + 174 mohm) = 3.58 V, and the least input is 4.75 V "
+        f"[{DROPOUT}; L1's DCR: Bourns SRN2010TA series datasheet, REV. 06/25]",
         "C2, C3: 10 uF of output capacitance for 3.318 V, 5 uF effective; each, X5R, keeps 3.82 uF at "
         f"3.44 V; 2 x 10 uF = 20 uF, within 10 uF to 47 uF [{TABLE4}]",
-        "C1: 10 uF of input capacitance, X5R, 4.7 uF asked [TLV62569 datasheet, SLVSDG1C, section 8.2.2.5, "
+        "C1: 10 uF of input capacitance, X5R, 9 uF less its tolerance; its value under 5.25 V is not judged: "
+        "its facts give none; 4.7 uF asked [TLV62569 datasheet, SLVSDG1C, section 8.2.2.5, "
         f"page 10: 4.7 uF of input capacitance is sufficient for most applications; {DIELECTRIC}]",
     ]
 
@@ -299,6 +310,177 @@ def test_an_input_under_the_ics_operating_range_is_refused():
     assert refused(amps=0.5, vin=(2.4, 5.0)) == (
         "buck U1: the input reaches 2.4 V, VIN of TLV62569DBVR operates from 2.5 V to 5.5 V "
         "[TLV62569 datasheet, SLVSDG1C, December 2016, revised October 2017, p 3 and 4]"
+    )
+
+
+@needs_libs
+def test_a_least_input_under_vin_min_of_equation_1_is_refused():
+    """SLVSDG1C section 7.3.2, equation 1 (page 6): VIN(MIN) = VOUT + IOUT x (RDS(ON) + RL). The output
+    reaches 3.440367 V at the top of its span (the sums above); RDS(on) of the high-side FET is 100 mohm
+    (6.5, page 5) and XAL4020-222ME's DCR is 38.7 mohm at the most (Coilcraft document 806, page 1). At
+    1.2 A: 3.440367 + 1.2 x 0.1387 = 3.606807 V, over the least input, 3.3 V. Before the fix it built."""
+    assert refused(amps=1.2, stock=[XAL, R100, R453, CIN, COUT], vin=(3.3, 5.0)) == (
+        "buck U1: VIN(MIN) = 3.44 V + 1.2 A x (100 mohm + 38.7 mohm) = 3.61 V, over the least input, 3.3 V: "
+        "at 3.3 V the IC cannot hold the output's span "
+        f"[{DROPOUT}; L1's DCR: Coilcraft XAL40xx datasheet, document 806, revised 02/25/26]"
+    )
+
+
+@needs_libs
+def test_an_inductor_with_no_dcr_says_its_dcr_is_not_judged(tmp_path):
+    """The made-up inductor of the tests above has no ohms_dc: VIN(MIN) is 3.440367 + 0.5 x 0.1 =
+    3.490367 V with RDS(on) alone, and the sum says the DCR is not judged."""
+    low = {"kind": "inductor", "mpn": "FIXTURE-2R2-LOWRMS", "tolerance": 0.2, "amps_saturation": 5.0}
+    lowrms = blocks.Stock("made up", "FIXTURE-2R2-LOWRMS", "2.2u LOWRMS", "Inductor_SMD:L_0805_2012Metric")
+    _, block = buck(0.5, stock=[lowrms, *STOCK], facts=facts_with(tmp_path, low))
+    assert (
+        "U1: VIN(MIN) = 3.44 V + 500 mA x 100 mohm = 3.49 V, and the least input is 4.75 V; L1's DCR is not "
+        f"judged: its facts give none [{DROPOUT}]"
+    ) in block.sums
+
+
+def test_an_inductors_dcr_under_0_is_wrong_facts(tmp_path):
+    """ohms_dc is the inductor's DC resistance at the most: a number of 0 or more."""
+    bad = {"kind": "inductor", "mpn": "FIXTURE-BAD-DCR", "tolerance": 0.2, "amps_saturation": 1.0}
+    read = blocks.ratings.read_facts(facts_with(tmp_path / "good", {**bad, "ohms_dc": 0.1}))
+    assert [f.data["ohms_dc"] for f in read if f.data.get("mpn") == "FIXTURE-BAD-DCR"] == [0.1]
+    with pytest.raises(blocks.ratings.Refusal, match="ohms_dc: .*0"):
+        blocks.ratings.read_facts(facts_with(tmp_path / "bad", {**bad, "ohms_dc": -0.1}))
+
+
+@needs_libs
+def test_an_input_range_written_greatest_first_is_refused():
+    """vin=(5.5, 3.7) built before the fix: D at 3.7 V, dIL of 191 mA and 1.25 A with the margin, under
+    SRN2010TA-2R2M's 1.26 A. At the real greatest input, 5.5 V, D = 3.3 / 4.95 = 0.6667 and dIL =
+    2.2 x 0.6667 / (1.35 MHz x 1.54 uH) = 0.7055 A: 0.95 + 0.3527 = 1.303 A, over 1.26 A."""
+    assert refused(amps=0.95, stock=[SRN, XAL, R100, R453, CIN, COUT], vin=(5.5, 3.7)) == (
+        "buck U1: vin=(5.5, 3.7) is written greatest first: vin is (least, greatest), and the block sizes "
+        f"its parts at the greatest [{NOTE}, equation 1, page 2]"
+    )
+
+
+@needs_libs
+@pytest.mark.parametrize(
+    ("spec", "says"),
+    [
+        ({"amps": float("nan")}, "amps=nan"),
+        ({"amps": float("inf")}, "amps=inf"),
+        ({"amps": 0.5, "vout": float("nan")}, "vout=nan"),
+        ({"amps": 0.5, "vin": (float("nan"), 5.25)}, "vin=(nan, 5.25)"),
+        ({"amps": 0.5, "vin": (4.75, float("inf"))}, "vin=(4.75, inf)"),
+    ],
+)
+def test_a_number_of_the_spec_that_is_not_finite_is_refused(spec, says):
+    """A NaN load built before the fix: `amps <= 0` and `amps > amps_max` are both False for NaN, and the
+    deck said `RLOAD out 0 nan`."""
+    assert refused(**spec) == f"buck U1: {says}: each number of the spec must be finite"
+
+
+@needs_libs
+def test_a_divider_that_sets_the_output_outside_the_references_accuracy_is_refused(tmp_path):
+    """A made-up 5 % 430k is the stock's nearest to 450k: 0.6 x 5.3 = 3.18 V, 3.6 % under 3.3 V. The span
+    0.588 x (1 + 430 x 0.95 / 101) = 2.966 V to 0.612 x (1 + 430 x 1.05 / 99) = 3.403 V holds 3.3 V, and
+    the block took it before the fix. It now holds the output set to 2 %, the reference's own accuracy:
+    588 mV to 612 mV around 600 mV (SLVSDG1C 6.5, page 4)."""
+    loose = {"kind": "resistor", "mpn": "LOOSE-430K", "tolerance": 0.05, "watts": 0.1, "volts": 50}
+    r430 = blocks.Stock("made up", "LOOSE-430K", "430k", R_0603)
+    assert refused(amps=0.5, stock=[SRN, R100, r430, CIN, COUT], facts=facts_with(tmp_path, loose)) == (
+        "buck U1: R1 of 430k and R2 of 100k set VOUT to 3.18 V, 3.6 % under the 3.3 V asked; the block holds "
+        "it within 2 %, the reference's own accuracy, VFB of 588 mV to 612 mV [TLV62569 datasheet, SLVSDG1C, "
+        f"December 2016, revised October 2017, p 3 and 4; {EQ11_EQ2}]"
+    )
+
+
+@needs_libs
+def test_an_input_capacitor_is_held_to_the_value_it_keeps_at_the_greatest_input():
+    """With no 16 V capacitor stocked, C1 was CL10A106KP8NNN before the fix, counted at its written 10 uF.
+    Its facts keep 0.26677 of it at 5.25 V (between (5.2344, 0.26773) and (5.35535, 0.26029)):
+    10 uF x 0.9 x 0.26677 = 2.4 uF, under the 4.7 uF of SLVSDG1C 8.2.2.5 (page 10)."""
+    assert refused(amps=0.5, stock=[SRN, R100, R453, COUT]) == (
+        "buck U1: no stocked capacitor gives 4.7 uF of input capacitance at 5.25 V: CL10A106KP8NNN: 10 uF "
+        f"less 10 % keeps 2.4 uF at 5.25 V, under 4.7 uF [{INPUT_WHERE}]"
+    )
+
+
+@needs_libs
+def test_an_input_capacitor_that_keeps_enough_says_so(tmp_path):
+    """A made-up 10 uF capacitor that keeps all its value to 10 V: 10 uF x 0.8 = 8 uF at 5.25 V."""
+    facts = facts_with(tmp_path, {**KEEPS_ALL, "mpn": "FIXTURE-10U-FLAT", "kept": [[0, 1.0], [10, 1.0]]})
+    cap = blocks.Stock("made up", "FIXTURE-10U-FLAT", "10u flat", C_0603)
+    _, block = buck(0.5, stock=[SRN, R100, R453, cap, COUT], facts=facts)
+    assert (
+        f"C1: 10 uF of input capacitance, X5R, keeps 8 uF at 5.25 V less its tolerance; 4.7 uF asked "
+        f"[{INPUT_WHERE}]"
+    ) in block.sums
+
+
+@needs_libs
+def test_a_capacitor_whose_facts_give_no_volts_is_passed_over(tmp_path):
+    """ratings reads a capacitor with no `volts` (tools/ratings.py CAPACITOR requires no key). A made-up
+    100 nF X7R with none, first in the stock, ended in KeyError: volts before the fix."""
+    dec = {"kind": "capacitor.ceramic", "mpn": "DECOUPLE-100N", "tolerance": 0.1, "dielectric": "X7R"}
+    cap = blocks.Stock("made up", "DECOUPLE-100N", "100n", C_0603)
+    d, _ = buck(0.5, stock=[SRN, R100, R453, cap, CIN, COUT], facts=facts_with(tmp_path, dec))
+    parts = {p.ref: p.value for p in d.parts}
+    assert (parts["C1"], parts["C2"]) == ("10u 16V", "10u 10V")
+
+
+@needs_libs
+def test_a_capacitor_whose_facts_give_no_tolerance_is_passed_over_and_named(tmp_path):
+    """A made-up 10 uF X5R with a kept value and no tolerance ended in KeyError: tolerance before the fix."""
+    notol = {"kind": "capacitor.ceramic", "mpn": "NOTOL-10U-10V", "volts": 10, "dielectric": "X5R"}
+    facts = facts_with(tmp_path, {**notol, "kept": [[0, 1.0], [10, 0.5]]})
+    cap = blocks.Stock("made up", "NOTOL-10U-10V", "10u 10V notol", C_0603)
+    assert refused(amps=0.5, stock=[SRN, R100, R453, CIN, cap], facts=facts) == (
+        "buck U1: no stocked capacitor gives 10 uF of output capacitance for 3.318 V: FIXTURE-10U-16V: its "
+        "facts give no value it keeps under voltage; NOTOL-10U-10V: its facts give no tolerance "
+        f"[{TABLE4}]"
+    )
+
+
+@needs_libs
+@pytest.mark.parametrize(
+    ("drop", "says"),
+    [("switching", "switching hertz"), ("FB", "FB volts"), ("VIN", "VIN operating")],
+)
+def test_an_ic_whose_facts_lack_a_number_the_block_reads_is_refused(tmp_path, drop, says):
+    """ratings reads the TLV62569's facts without `switching`, without VIN's `operating`, and with FB an
+    analog pin, which has no `volts`: each ended in a KeyError before the fix."""
+    folder = tmp_path / "facts"
+    shutil.copytree(FACTS, folder)
+    path = folder / "ti-tlv62569.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if drop == "switching":
+        del data["switching"]
+    for pin in data["pins"]:
+        if pin["name"] == drop == "VIN":
+            del pin["operating"]
+        elif pin["name"] == drop == "FB":
+            pin["role"] = "analog"
+            del pin["volts"], pin["amps"]
+    path.write_text(json.dumps(data), encoding="utf-8")
+    assert len(blocks.ratings.read_facts(folder)) == len(blocks.ratings.read_facts(FACTS))
+    assert refused(amps=0.5, facts=folder) == (
+        f"buck U1: the facts of TLV62569DBVR give no {says} [ti-tlv62569.json]"
+    )
+
+
+BLOCK_READS = (
+    "maker value symbol footprint pins source amps_max vout_min vout_set ilim_min henries henries_low "
+    "saturation_margin r2 output_farads kept_share output_span dielectrics input_farads rds_on_high dropout"
+).split()
+
+
+@pytest.mark.parametrize("key", BLOCK_READS)
+def test_an_ic_whose_rules_lack_a_number_is_refused(tmp_path, key):
+    """The blocks skill: a number you cannot find in the datasheet is not entered, and the block then
+    refuses that IC. Before the fix a rules file without ilim_min ended in KeyError: ilim_min."""
+    rules = json.loads((ROOT / "rules" / "blocks" / "buck.json").read_text(encoding="utf-8"))
+    del rules["ics"][0][key]
+    (tmp_path / "buck.json").write_text(json.dumps(rules), encoding="utf-8")
+    assert refused(amps=0.5, rules=tmp_path / "buck.json") == (
+        f"buck U1: buck.json gives TLV62569DBVR no {key}: the block builds no IC whose numbers are not all "
+        "entered"
     )
 
 
