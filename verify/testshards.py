@@ -325,7 +325,14 @@ def run(args: argparse.Namespace) -> int:
             os.killpg(collect.pid, signal.SIGKILL)
         raise
     wall = time.monotonic() - wall
-    return judge(started, collect.returncode, collect_log, collect_out, wall)
+    code = judge(started, collect.returncode, collect_log, collect_out, wall)
+    # The shards' tmp_path folders of 1 whole run took 607 MB. A green run made its own folder and needs
+    # nothing in it; a red run, or a folder the caller named, is kept for its logs.
+    if code == 0 and not args.work:
+        shutil.rmtree(work, ignore_errors=True)
+    else:
+        print(f"logs kept: {work}")
+    return code
 
 
 def judge(
