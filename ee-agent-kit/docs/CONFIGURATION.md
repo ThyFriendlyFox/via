@@ -169,15 +169,16 @@ Every number is millimetres; the file is written in KiCad's VRML unit (0.1 inch)
 ## `tools/harvest.py`
 
 What the projects taught the workcenter, read from the repository itself
-(`PROCESSES.md` P35). Each listing reads git objects and writes nothing.
-`--repo DIR` (default this checkout) and `--json` stand before the
-listing's name.
+(`PROCESSES.md` P35). The first 3 listings read git objects; `later` reads
+the checkout's files. None writes anything. `--repo DIR` (default this
+checkout) and `--json` stand before the listing's name.
 
 | Command | Flags | Use |
 |---|---|---|
 | `branches` | `--main REF` (default `origin/main`), `--refs PREFIX` (default `refs/remotes/origin`) | Every branch under the prefix: its own commits, and the share of the lines they added to the workcenter itself that main holds. A line counts without the number of a mistake, a process or a step. |
 | `scripts` | `--ref REF` (default `HEAD`), `--root DIR` (default `examples`) | The scripts the projects wrote for themselves, by file name: the projects that wrote each, and the functions 2 or more of them define. |
 | `mistakes` | `--ref REF` (default `HEAD`) | The mistakes log by process: its entries, and the entries that name an earlier entry of the same process. |
+| `later` | none | The candidates under "Later" in the checkout's `ee-agent-kit/ROADMAP.md`, as the file stands: each row's rating against its 6 scores, each score against its anchors, the order, and the evidence (an entry of the mistakes log, a file in backticks, a line that the file has). Exit 1 with 1 line for each row that does not hold. |
 
 ## `tools/kicadgen.py`
 

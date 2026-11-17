@@ -36,7 +36,8 @@ prove it and what is out of scope. Mark the item `in progress (week of
 **3. Build.** The loop: implement → `make verify` → commit at each
 boundary with evidence in the message. Scope is the item's promise —
 defects found en route get fixed if they block the promise, otherwise
-queued in ROADMAP.md "Later". No side quests.
+queued in ROADMAP.md "Later" as a row of its table, with its 6 scores and
+`no` under "Checked" (`PROCESSES.md` P35 steps 7 and 9). No side quests.
 
 **4. Prove.** The promise must be demonstrably true: gates green AND the
 item's named evidence produced (screenshot, output, benchmark — attach

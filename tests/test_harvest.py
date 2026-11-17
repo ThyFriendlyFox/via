@@ -303,3 +303,141 @@ def test_a_listing_cut_short_by_its_reader_ends_without_a_traceback():
     tool.stderr.close()
     assert first.startswith("P") and " entries, " in first
     assert (tool.wait(), said) == (0, "")
+
+
+# ------------------------------------------------------------------ the rated candidates
+
+HEAD = (
+    "| Rating | Candidate | Evidence | f | c | l | g | e | r | Checked |\n"
+    "|---|---|---|---|---|---|---|---|---|---|\n"
+)
+ROW_9 = (
+    "| 9 | **Pads checked before a route.** A class wider than its pad. | M1 "
+    "| 3 | 3 | 3 | 3 | 2 | 1 | 2026-11-12 |\n"
+)
+ROW_5 = (
+    "| 5 | **A legend cut at the edge.** One switch. | `tools/a.py` line 2 | 2 | 1 | 2 | 2 | 1 | 1 | no |\n"
+)
+ONE_ENTRY = ROW_5.replace("`tools/a.py` line 2", "M1")
+
+
+def roadmap(rows: str, before: str = "") -> str:
+    head = "# Roadmap\n\n## Later — candidates\n\nWhat a rating is.\n"
+    return f"{head}{before}\n{HEAD}{rows}\n## Shipped\n\n- a thing\n"
+
+
+def test_the_candidates_under_later_are_held_to_their_scores_their_order_and_their_evidence(tmp_path):
+    (tmp_path / "tools").mkdir()
+    (tmp_path / "tools" / "a.py").write_text(A, encoding="utf-8")
+    good = harvest.later(roadmap(ROW_9 + ROW_5), LOG, tmp_path)
+    assert good["problems"] == []
+    assert good["candidates"] == [
+        {
+            "line": 9,
+            "title": "Pads checked before a route",
+            "rating": 9,
+            "scores": {"f": 3, "c": 3, "l": 3, "g": 3, "e": 2, "r": 1},
+            "checked": "2026-11-12",
+        },
+        {
+            "line": 10,
+            "title": "A legend cut at the edge",
+            "rating": 5,
+            "scores": {"f": 2, "c": 1, "l": 2, "g": 2, "e": 1, "r": 1},
+            "checked": "no",
+        },
+    ]
+
+    def problems(rows: str, before: str = "") -> list[str]:
+        return harvest.later(roadmap(rows, before), LOG, tmp_path)["problems"]
+
+    # a rating its scores do not give; the row above it in the order; a score outside its anchors
+    assert problems(ROW_9.replace("| 9 |", "| 10 |", 1)) == [
+        "line 9: Pads checked before a route: rated 10, and its scores give 9"
+    ]
+    assert problems(ROW_5 + ROW_9) == ["line 10: Pads checked before a route: rated 9, under a row rated 5"]
+    assert problems(ROW_9.replace("| 3 | 3 | 3 | 3 | 2 | 1 |", "| 4 | 3 | 3 | 3 | 3 | 1 |")) == [
+        "line 9: Pads checked before a route: f is 4, outside 1 to 3"
+    ]
+    # leverage alone can be 0: a cosmetic change
+    cosmetic = ROW_5.replace("| 5 |", "| 3 |", 1).replace("| 2 | 1 | 2 | 2 |", "| 2 | 1 | 0 | 2 |")
+    assert problems(cosmetic) == []
+    assert problems(ROW_5.replace("| 5 |", "| 2 |", 1).replace("| 2 | 1 | 2 | 2 |", "| 0 | 1 | 1 | 2 |")) == [
+        "line 9: A legend cut at the edge: f is 0, outside 1 to 3"
+    ]
+    # evidence a reader can open: an entry of the log, a file of the tree
+    assert problems(ROW_9.replace("| M1 |", "| M7 |")) == [
+        "line 9: Pads checked before a route: the evidence names M7, and the log has no such entry"
+    ]
+    assert problems(ROW_5.replace("tools/a.py", "tools/gone.py")) == [
+        "line 9: A legend cut at the edge: the evidence names `tools/gone.py`, and no such file is there"
+    ]
+    assert problems(ROW_9.replace("| M1 |", "| three projects met it |")) == [
+        "line 9: Pads checked before a route: the evidence names no mistake (M150) and no file in backticks"
+    ]
+    # a line of a file is a line the file has: `tools/a.py` has 2
+    assert problems(ROW_5.replace("line 2", "line 3")) == [
+        "line 9: A legend cut at the edge: the evidence names line 3 of `tools/a.py`, which has 2 lines"
+    ]
+    assert problems(ROW_5.replace("`tools/a.py` line 2", "`tools/` line 3")) == []
+    # a word in backticks that names no folder of the repository is no file: a function's name
+    assert problems(ROW_5.replace("line 2", "(`first_tool_of_the_workcenter`)")) == []
+    # a candidate that is not a row, a row without its title, a day that is no day
+    assert problems(ROW_9, before="- Copper pours in kicadgen, a zone per power net with a refill\n") == [
+        "line 6: a candidate outside the table: Copper pours in kicadgen, a zone per power net w..."
+    ]
+    assert problems(ROW_9.replace("**Pads checked before a route.**", "Pads checked before a route.")) == [
+        "line 9: the candidate does not start with its title in bold"
+    ]
+    assert problems(ROW_9.replace("2026-11-12", "yes")) == [
+        "line 9: Pads checked before a route: Checked is the day a reader checked it, or `no`"
+    ]
+    short = ROW_9.replace("| 2 | 1 | 2026", "| 2 | 2026")
+    assert problems(short) == ["line 9: 9 cells where the table has 10"]
+    assert problems(ROW_9.replace("| 9 |", "| nine |", 1)) == [
+        "line 9: Pads checked before a route: the rating and the 6 scores are whole numbers"
+    ]
+    assert harvest.later("# Roadmap\n\n## Queue\n", LOG, tmp_path)["problems"] == ['no "## Later" heading']
+    assert harvest.later("# Roadmap\n\n## Later\n\nNothing yet.\n", LOG, tmp_path)["problems"] == [
+        'no table under "## Later"'
+    ]
+    bad_head = roadmap(ROW_9).replace("| Checked |", "| Seen |")
+    assert harvest.later(bad_head, LOG, tmp_path)["problems"][0] == (
+        "line 7: the table's columns are not Rating | Candidate | Evidence | f | c | l | g | e | r | Checked"
+    )
+
+
+def test_the_later_command_fails_on_a_row_that_does_not_hold(tmp_path):
+    kit = tmp_path / "ee-agent-kit"
+    kit.mkdir()
+    (kit / "MISTAKES.md").write_text(LOG, encoding="utf-8")
+    (kit / "ROADMAP.md").write_text(roadmap(ROW_9 + ONE_ENTRY), encoding="utf-8")
+
+    def later() -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [sys.executable, str(TOOL), "--repo", str(tmp_path), "later"], capture_output=True, text=True
+        )
+
+    listed = later()
+    assert (listed.returncode, listed.stderr) == (0, "")
+    assert listed.stdout.splitlines() == [
+        "  9  f3 c3 l3 g3  e2 r1  checked 2026-11-12 Pads checked before a route",
+        "  5  f2 c1 l2 g2  e1 r1  not checked        A legend cut at the edge",
+        "2 candidates; 1 not yet checked by a reader",
+    ]
+    (kit / "ROADMAP.md").write_text(roadmap(ONE_ENTRY + ROW_9), encoding="utf-8")
+    listed = later()
+    assert listed.returncode == 1
+    assert listed.stdout.splitlines()[-1] == (
+        "  line 10: Pads checked before a route: rated 9, under a row rated 5"
+    )
+
+
+def test_the_roadmaps_own_candidates_are_rated_and_in_order():
+    """P35's "Done when", held by `make verify`: every candidate under "Later" is a row with its
+    evidence and its 6 scores, its rating is what they give, and the rows stand highest first."""
+    kit = ROOT / "ee-agent-kit"
+    roadmap_text = (kit / "ROADMAP.md").read_text(encoding="utf-8")
+    rated = harvest.later(roadmap_text, (kit / "MISTAKES.md").read_text(encoding="utf-8"), ROOT)
+    assert rated["problems"] == []
+    assert len(rated["candidates"]) >= 10

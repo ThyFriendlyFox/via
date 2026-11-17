@@ -3,8 +3,9 @@
 
 Every project built with the workcenter leaves findings behind: commits on a branch that never
 reached main, a script the project wrote because the workcenter had no tool, a mistake made again
-under a step that already forbade it. Each of the 3 listings here finds 1 kind, from git objects and
-tracked files alone. No engine runs and nothing is written.
+under a step that already forbade it. Each of the first 3 listings here finds 1 kind, from git
+objects alone. The fourth holds the rated findings in the roadmap to their own numbers. No engine
+runs and nothing is written.
 
     python3 tools/harvest.py branches   every branch: its own commits, and how much of what they
                                         added to the workcenter itself main holds today
@@ -12,6 +13,9 @@ tracked files alone. No engine runs and nothing is written.
                                         the projects that wrote each and the functions they share
     python3 tools/harvest.py mistakes   the mistakes log by process: its entries, and the entries
                                         that name an earlier entry of the same process
+    python3 tools/harvest.py later      the candidates in the checkout's ROADMAP.md: each rating
+                                        against its 6 scores, the order, the evidence; exit 1 on a
+                                        row that does not hold
 
 `--json` prints the listing as data. `ee-agent-kit/PROCESSES.md` P35 says when to run them, how a
 finding is rated and where it goes.
@@ -309,7 +313,129 @@ def mistakes(log: str, processes: str) -> list[dict]:
     return sorted(by.values(), key=lambda row: (-len(row["again"]), -len(row["entries"]), row["process"]))
 
 
+# ------------------------------------------------------------------ the rated candidates
+
+SCORES = ("f", "c", "l", "g", "e", "r")
+LATER_COLUMNS = ("Rating", "Candidate", "Evidence", *SCORES, "Checked")
+# The anchors of P35 step 7: every score is 1, 2 or 3, and leverage alone can be 0 (cosmetic).
+LEAST_SCORE = {"l": 0}
+# A word in backticks that starts with one of these is a file of the repository, and must be there.
+EVIDENCE_FOLDERS = (
+    "tools/",
+    "tests/",
+    "examples/",
+    "ee-agent-kit/",
+    ".claude/",
+    ".github/",
+    "templates/",
+    "site/",
+    "verify/",
+    "environment/",
+    "rules/",
+    "third_party/",
+)
+CELL_RE = re.compile(r"(?<!\\)\|")
+
+
+def later(roadmap: str, log: str, root: Path) -> dict:
+    """The candidates under the roadmap's "Later" heading, and what is wrong with their table.
+
+    A candidate is 1 row: its rating, its words under a title in bold, its evidence, 6 scores and
+    the day a reader who did not write it checked it (`no` until one has). The rating is f + c + l +
+    g less e + r. The rows stand in order of rating, the highest first. The evidence names a mistake
+    the log holds (`M150`) or a file under `root`, in backticks, and "line 12" after a file is a
+    line the file has. A candidate that is not a row, a rating its scores do not give, a score
+    outside its anchors, a row out of order and evidence that is not there are each 1 line of
+    "problems".
+    """
+    lines = roadmap.splitlines()
+    start = next((i for i, line in enumerate(lines) if line.startswith("## Later")), None)
+    if start is None:
+        return {"candidates": [], "problems": ['no "## Later" heading']}
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
+    entries = {int(n) for n in re.findall(r"^## M(\d+) ", log, re.M)}
+    candidates, problems, header = [], [], None
+    for number in range(start + 1, end):
+        line, where = lines[number], f"line {number + 1}"
+        if line.startswith(("- ", "* ")):
+            problems.append(f"{where}: a candidate outside the table: {line[2:50].strip()}...")
+        if not line.startswith("|"):
+            continue
+        cells = [cell.strip() for cell in CELL_RE.split(line.strip().strip("|"))]
+        if header is None:
+            header = cells
+            if tuple(cells) != LATER_COLUMNS:
+                problems.append(f"{where}: the table's columns are not {' | '.join(LATER_COLUMNS)}")
+            continue
+        if all(set(cell) <= set("-: ") for cell in cells):
+            continue
+        if len(cells) != len(LATER_COLUMNS):
+            problems.append(f"{where}: {len(cells)} cells where the table has {len(LATER_COLUMNS)}")
+            continue
+        row = dict(zip(LATER_COLUMNS, cells, strict=True))
+        title = re.match(r"\*\*(.+?)\*\*", row["Candidate"])
+        name = title.group(1).rstrip(".") if title else row["Candidate"][:40]
+        if not title:
+            problems.append(f"{where}: the candidate does not start with its title in bold")
+        numbers = {key: row[key] for key in ("Rating", *SCORES)}
+        if not all(re.fullmatch(r"-?\d+", value) for value in numbers.values()):
+            problems.append(f"{where}: {name}: the rating and the 6 scores are whole numbers")
+            continue
+        scores = {key: int(row[key]) for key in SCORES}
+        for key, value in scores.items():
+            if not LEAST_SCORE.get(key, 1) <= value <= 3:
+                problems.append(f"{where}: {name}: {key} is {value}, outside {LEAST_SCORE.get(key, 1)} to 3")
+        rating = int(row["Rating"])
+        given = sum(scores[key] for key in "fclg") - scores["e"] - scores["r"]
+        if rating != given:
+            problems.append(f"{where}: {name}: rated {rating}, and its scores give {given}")
+        if candidates and rating > candidates[-1]["rating"]:
+            problems.append(f"{where}: {name}: rated {rating}, under a row rated {candidates[-1]['rating']}")
+        cited = [int(n) for n in re.findall(r"\bM(\d{1,3})\b", row["Evidence"])]
+        files = [
+            (word.split(":")[0], int(at) if at else 0)
+            for word, at in re.findall(r"`([^`\s]+)`(?: line (\d+))?", row["Evidence"])
+            if word.startswith(EVIDENCE_FOLDERS)
+        ]
+        if not cited and not files:
+            problems.append(f"{where}: {name}: the evidence names no mistake (M150) and no file in backticks")
+        for entry in cited:
+            if entry not in entries:
+                problems.append(
+                    f"{where}: {name}: the evidence names M{entry}, and the log has no such entry"
+                )
+        for path, at in files:
+            if not (root / path).exists():
+                problems.append(f"{where}: {name}: the evidence names `{path}`, and no such file is there")
+            elif at and (root / path).is_file():
+                has = len((root / path).read_text(encoding="utf-8", errors="replace").splitlines())
+                if at > has:
+                    problems.append(
+                        f"{where}: {name}: the evidence names line {at} of `{path}`, which has {has} lines"
+                    )
+        if row["Checked"] != "no" and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", row["Checked"]):
+            problems.append(f"{where}: {name}: Checked is the day a reader checked it, or `no`")
+        candidates.append(
+            {"line": number + 1, "title": name, "rating": rating, "scores": scores, "checked": row["Checked"]}
+        )
+    if header is None:
+        problems.append('no table under "## Later"')
+    return {"candidates": candidates, "problems": problems}
+
+
 # ------------------------------------------------------------------ the command
+
+
+def print_later(found: dict) -> None:
+    for entry in found["candidates"]:
+        s = entry["scores"]
+        scores = f"f{s['f']} c{s['c']} l{s['l']} g{s['g']}  e{s['e']} r{s['r']}"
+        checked = "not checked" if entry["checked"] == "no" else f"checked {entry['checked']}"
+        print(f"{entry['rating']:3}  {scores}  {checked:18} {entry['title']}")
+    unchecked = sum(entry["checked"] == "no" for entry in found["candidates"])
+    print(f"{len(found['candidates'])} candidates; {unchecked} not yet checked by a reader")
+    for problem in found["problems"]:
+        print(f"  {problem}")
 
 
 def print_branches(found: list[dict]) -> None:
@@ -383,7 +509,20 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--root", default="examples", help="the folder that holds the projects (default examples)")
     p = parts.add_parser("mistakes", help="the mistakes log by process, with the mistakes made again")
     p.add_argument("--ref", default="HEAD", help="the tree to read (default HEAD)")
+    parts.add_parser("later", help="the roadmap's rated candidates, held to their scores and their order")
     args = parser.parse_args(argv)
+    if args.listing == "later":
+        kit = Path(args.repo) / "ee-agent-kit"
+        rated = later(
+            (kit / "ROADMAP.md").read_text(encoding="utf-8"),
+            (kit / "MISTAKES.md").read_text(encoding="utf-8"),
+            Path(args.repo),
+        )
+        if args.json:
+            print(json.dumps(rated, indent=1))
+        else:
+            print_later(rated)
+        return 1 if rated["problems"] else 0
     if args.listing == "branches":
         found, show = branches(args.repo, args.main, args.refs), print_branches
     elif args.listing == "scripts":

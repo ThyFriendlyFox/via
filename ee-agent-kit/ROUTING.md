@@ -20,7 +20,7 @@ already defines.
 | A board is GREEN and is to become compact, correct and good to look at, or "iterate on it" | `../.claude/skills/board-loop/SKILL.md` | 1 prompt run again and again; a reviewer who has not seen the earlier rounds names the 3 worst problems. The project's `LOOP.md` (from `templates/project/LOOP.md`) holds the prompt, the checklist and the log. |
 | A circuit's limit, a part that switches, a deck for another machine | `../.claude/skills/simulate/SKILL.md` | Corners (`sim/corners.json`), the frequency plan (`sim/frequency-plan.json`, `PROCESSES.md` P30), bundles (`sim --bundle`). |
 | About to start a helper on part of a task | `PROCESSES.md` P31 | Budget first, the lead in its own worktree, a brief per helper. |
-| A project's version landed, a branch is about to be deleted, or "what did the projects teach the workcenter?" | `PROCESSES.md` P35 | `python3 tools/harvest.py branches`, `scripts`, `mistakes`; each finding with its evidence and 6 scores into ROADMAP.md under "Later", the highest rating first. |
+| A project's version landed, a branch is about to be deleted, or "what did the projects teach the workcenter?" | `PROCESSES.md` P35 | `python3 tools/harvest.py branches`, `scripts`, `mistakes`; each finding with its evidence and 6 scores as a row of the table under "Later" in ROADMAP.md, the highest rating first; `python3 tools/harvest.py later` holds the table. |
 | Asked "where does this project stand?" | `STATUS.md` | Answer from it; update it when state changes. |
 | The gate fails, or you're adding/changing checks | `VERIFICATION.md` | One command answers "is this repo healthy". |
 | Cutting a release / tagging | `RELEASING.md` | Weekly cycle ends here. |
