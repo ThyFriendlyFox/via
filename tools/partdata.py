@@ -2,8 +2,9 @@
 
 A capacitor's facts may hold `kept`, pairs [volts, share of the value kept] from its maker's DC bias
 curve, and `kept_celsius`, pairs [celsius, share] from its temperature curve. An inductor's facts may
-hold `kept`, pairs [amps, share]. The gate takes a curve only from facts that name a part number and
-whose source's SHA256 is a row of the project's library/sources.csv for that part: the maker's file.
+hold `kept`, pairs [amps, share]. The gate takes a curve only from facts that name the part's number
+(`mpn`, or `mpns`; never a pattern) and whose source's SHA256 is a row of the project's
+library/sources.csv for that part: the maker's file. A row that keeps no file leaves that not judged.
 
 The gate writes each such part of a deck as ngspice's behavioural element: a capacitor's value times
 `pwl()` of the voltage across it and of `temper`, an inductor's value times `pwl()` of the current
@@ -16,6 +17,7 @@ Standard library only, as the CLI is; it runs no engine (AGENTS.md invariant 14)
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass
 
@@ -37,6 +39,7 @@ class Curve:
     facts: str  # the facts entry: its file and its place
     row: str  # the row of sources.csv that names the maker's file
     rating: float | None  # a capacitor's volts, an inductor's saturation current
+    unjudged: str = ""  # why the SHA256 of its maker's file is not judged, when it is not
 
 
 @dataclass
@@ -46,16 +49,31 @@ class Row:
     mpn: str
     sha256: str
     source: str  # file:line
+    file: str = ""  # the path of the file the row keeps, or "" when it keeps none
 
 
-def choose(parts: dict[str, tuple[str, object]], rows: list[Row]) -> tuple[dict[str, Curve], dict[str, str]]:
-    """The curves of a schematic's capacitors and inductors: (curves, refused). `parts` maps a reference
-    to its part number and its facts entry (a ratings.Facts, or None). An entry with a curve is refused,
-    with the reason, when it speaks of a symbol and not a part number, or when no row of sources.csv for
-    the part holds the SHA256 its source names: no part gets another part's data, and none gets data
-    that is not its maker's file."""
+def _sha256(path: str) -> str | None:
+    """The SHA256 of a file, or None when it is not there."""
+    try:
+        with open(path, "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest()
+    except OSError:
+        return None
+
+
+def choose(
+    parts: dict[str, tuple[str, object]], rows: list[Row]
+) -> tuple[dict[str, Curve], dict[str, str], dict[str, str]]:
+    """The curves of a schematic's capacitors and inductors: (curves, refused, unjudged). `parts` maps a
+    reference to its part number and its facts entry (a ratings.Facts, or None). An entry with a curve
+    is refused, with the reason, when it does not name the part's number (a symbol's entry, a pattern's:
+    a series datasheet covers every value of the series), when no row of sources.csv for the part holds
+    the SHA256 its source names, or when the file that row keeps has another SHA256: no part gets another
+    part's data, and none gets data that is not its maker's file. `unjudged` names each curve taken
+    whose row keeps no file: then 2 typed strings agree, and no file holds them."""
     found: dict[str, Curve] = {}
     refused: dict[str, str] = {}
+    unjudged: dict[str, str] = {}
     for ref, (mpn, entry) in sorted(parts.items()):
         m = REF_RE.match(ref)
         if not m or entry is None or not entry.kind.startswith(KIND_OF[m.group(1)]):
@@ -66,6 +84,12 @@ def choose(parts: dict[str, tuple[str, object]], rows: list[Row]) -> tuple[dict[
             continue
         if "symbol" in data:
             refused[ref] = f"its facts speak of the symbol {data['symbol']}, not of a part number"
+            continue
+        if not mpn or (data.get("mpn") != mpn and mpn not in data.get("mpns", ())):
+            refused[ref] = (
+                f"its facts name the parts by the pattern {data.get('match')}, not by its part number "
+                f"{mpn or '(none)'}: a curve is taken from an entry whose mpn or mpns names the part"
+            )
             continue
         sha = str(data["source"].get("sha256", "")).lower()
         row = next(
@@ -78,9 +102,17 @@ def choose(parts: dict[str, tuple[str, object]], rows: list[Row]) -> tuple[dict[
                 else "its facts name no SHA256 of the maker's file"
             )
             continue
+        if not row.file:
+            unjudged[ref] = (
+                f"{row.source} keeps no file, so nothing holds its SHA256 ({sha[:12]}...) against the maker's"
+            )
+        elif _sha256(row.file) != sha:
+            name = row.file.replace("\\", "/").rsplit("/", 1)[-1]
+            refused[ref] = f"the file {row.source} keeps, {name}, is not the one its SHA256 names"
+            continue
         rating = data.get("volts") if kind == "C" else data.get("amps_saturation")
         found[ref] = Curve(ref, kind, kept, celsius, entry.where, row.source, rating)
-    return found, refused
+    return found, refused, unjudged
 
 
 def short_of_rating(curve: Curve) -> str | None:
@@ -106,13 +138,19 @@ def _value(token: str) -> str | None:
     return None
 
 
-def apply(text: str, curves: dict[str, Curve]) -> tuple[str, list[str], dict[str, str]]:
+def apply(
+    text: str, curves: dict[str, Curve], included: dict[str, str] | None = None
+) -> tuple[str, list[str], dict[str, str]]:
     """The deck with each part `curves` names written on its maker's data: (text, applied, ideal).
-    `ideal` names each part of the deck the gate cannot rewrite, with the reason: it stands inside a
-    .subckt (each copy would share 1 rewrite), or its value is no number and no expression."""
+    `ideal` names each part the gate cannot rewrite, with the reason: it stands inside a .subckt (each
+    copy would share 1 rewrite) or outside the deck's own lines, in a file of `included` (the path as
+    the deck writes it, and its text); its value is no number and no expression; it has an ic=, which
+    ngspice 42 drops from a behavioural C or L; or a K element couples it, and K names the inductor
+    the gate replaces."""
     lines = text.split("\n")
     starts = simcorners.netlist_lines(lines)
     within: dict[int, str] = {}
+    coupled: dict[str, str] = {}
     block = ""
     for i in starts:
         word = lines[i].split()[0].lower()
@@ -122,10 +160,21 @@ def apply(text: str, curves: dict[str, Curve]) -> tuple[str, list[str], dict[str
             block = ""
         elif block:
             within[i] = block
+        if word[0] == "k":
+            for other in [t[3].upper() for t in simcorners.logical_tokens(lines, i)[1:3]]:
+                coupled.setdefault(other, lines[i].split()[0])
     edits: dict[int, list[tuple[int, int, str]]] = {}
     after: dict[int, str] = {}
     applied: list[str] = []
     ideal: dict[str, str] = {}
+    own = simcorners.deck_names(lines)
+    for path, body in (included or {}).items():
+        for name in simcorners.top_level_parts(body):
+            if name.upper() in curves and name.upper() not in own:
+                ideal.setdefault(
+                    name.upper(),
+                    f"it stands in {path}, a file the deck includes, which the gate does not rewrite",
+                )
     for i in starts:
         name = lines[i].split()[0].upper()
         curve = curves.get(name)
@@ -134,7 +183,16 @@ def apply(text: str, curves: dict[str, Curve]) -> tuple[str, list[str], dict[str
         if i in within:
             ideal[name] = f"it stands inside .subckt {within[i]}, which the gate does not rewrite"
             continue
+        if name in coupled:
+            ideal[name] = f"it is coupled by {coupled[name]}, which the gate does not rewrite"
+            continue
         tokens = simcorners.logical_tokens(lines, i)
+        if any(a[3].lower() == "ic" and b[3] == "=" for a, b in zip(tokens[3:], tokens[4:], strict=False)):
+            state = "voltage" if curve.kind == "C" else "current"
+            ideal[name] = (
+                f"its ic= sets its starting {state}, which ngspice 42 drops from the element the gate writes"
+            )
+            continue
         place = simcorners.value_place(tokens)
         factor = _value(place[3]) if place else None
         if factor is None:

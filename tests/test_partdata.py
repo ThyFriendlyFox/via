@@ -102,6 +102,37 @@ def test_a_part_the_gate_cannot_rewrite_runs_ideal_and_is_named_with_the_reason(
     }
 
 
+def test_a_part_in_a_file_the_deck_includes_runs_ideal_and_is_named():
+    """C2 stands in output.inc: the gate rewrites the deck's own lines only, so C2 would run ideal."""
+    deck = "t\n.include output.inc\nL1 sw out 2.2u\n.end\n"
+    c2 = curve("C2", [[0, 1.0], [4, 0.5]])
+    text, applied, ideal = partdata.apply(deck, {"C2": c2}, {"output.inc": "* the output\nC2 out 0 10u\n"})
+    assert applied == [] and text == deck
+    assert ideal == {
+        "C2": "it stands in output.inc, a file the deck includes, which the gate does not rewrite"
+    }
+    # a part inside a model's .subckt in an included file is no board part
+    inside = {"m.lib": ".subckt amp a b\nC2 a b 1p\n.ends\n"}
+    assert partdata.apply(deck, {"C2": c2}, inside)[2] == {}
+
+
+def test_a_part_with_an_initial_condition_runs_ideal_and_is_named():
+    """ngspice 42 drops the ic= of a behavioural C or L: the deck would start from another state."""
+    deck = "t\nC2 out 0 10u ic=5\nL1 sw out 2.2u IC = 1\n.end\n"
+    curves = {"C2": curve("C2", [[0, 1.0], [4, 0.5]]), "L1": curve("L1", [[0, 1.0], [2, 0.5]])}
+    text, applied, ideal = partdata.apply(deck, curves)
+    assert applied == [] and text == deck
+    why = "its ic= sets its starting {}, which ngspice 42 drops from the element the gate writes"
+    assert ideal == {"C2": why.format("voltage"), "L1": why.format("current")}
+
+
+def test_an_inductor_a_k_element_couples_runs_ideal_and_is_named():
+    deck = "t\nL1 p 0 2.2u\nL9 s 0 2.2u\nK1 L1 L9 0.99\n.end\n"
+    text, applied, ideal = partdata.apply(deck, {"L1": curve("L1", [[0, 1.0], [2, 0.5]])})
+    assert applied == [] and text == deck
+    assert ideal == {"L1": "it is coupled by K1, which the gate does not rewrite"}
+
+
 def test_a_part_the_deck_does_not_hold_is_not_named():
     text, applied, ideal = partdata.apply("t\nR1 a 0 1k\n.end\n", {"C2": curve("C2", [[0, 1.0], [4, 0.5]])})
     assert (applied, ideal) == ([], {})
@@ -125,12 +156,12 @@ def facts(**keys) -> ratings.Facts:
     return ratings.Facts("parts.json: part 1", data["kind"], data)
 
 
-def row(sha: str = SHA, mpn: str = "CL10A106KP8NNN") -> partdata.Row:
-    return partdata.Row(mpn=mpn, sha256=sha, source="sources.csv:2")
+def row(sha: str = SHA, mpn: str = "CL10A106KP8NNN", file: str = "") -> partdata.Row:
+    return partdata.Row(mpn=mpn, sha256=sha, source="sources.csv:2", file=file)
 
 
 def test_a_curve_is_taken_when_its_maker_s_file_has_its_row():
-    found, refused = partdata.choose(
+    found, refused, _ = partdata.choose(
         {"C2": ("CL10A106KP8NNN", facts(kept=[[0, 1.0], [4, 0.5]], volts=10))}, [row()]
     )
     assert refused == {}
@@ -146,13 +177,13 @@ def test_a_curve_is_taken_when_its_maker_s_file_has_its_row():
 
 def test_a_curve_with_no_row_of_its_maker_s_file_is_refused_and_named():
     other = "0" * 64
-    found, refused = partdata.choose(
+    found, refused, _ = partdata.choose(
         {"C2": ("CL10A106KP8NNN", facts(kept=[[0, 1.0], [4, 0.5]]))}, [row(other)]
     )
     assert found == {}
     why = "no row of library/sources.csv for CL10A106KP8NNN holds the SHA256 its facts name"
     assert refused == {"C2": f"{why} ({SHA[:12]}...)"}
-    found, refused = partdata.choose(
+    found, refused, _ = partdata.choose(
         {"C2": ("CL10A106KP8NNN", facts(kept=[[0, 1.0], [4, 0.5]]))}, [row(mpn="X")]
     )
     assert "C2" in refused and found == {}
@@ -162,12 +193,53 @@ def test_a_curve_entered_for_a_symbol_is_no_part_s_data():
     entry = facts(kept=[[0, 1.0], [4, 0.5]])
     del entry.data["mpn"]
     entry.data["symbol"] = "Device:C"
-    found, refused = partdata.choose({"C2": ("", entry)}, [row()])
+    found, refused, _ = partdata.choose({"C2": ("", entry)}, [row()])
     assert found == {} and refused == {"C2": "its facts speak of the symbol Device:C, not of a part number"}
 
 
+def test_a_curve_entered_for_a_pattern_is_no_part_s_data():
+    """A series datasheet covers every value of the series: a pattern would give a 4.7 uH part the
+    2.2 uH curve. A curve is taken only from an entry that names the board's part number."""
+    entry = facts(kept=[[0, 1.0], [4, 0.5]])
+    del entry.data["mpn"]
+    entry.data["match"] = "XAL4020-*"
+    entry.kind = entry.data["kind"] = "inductor"
+    found, refused, _ = partdata.choose({"L1": ("XAL4020-472MEC", entry)}, [row(mpn="XAL4020-472MEC")])
+    assert found == {}
+    assert refused == {
+        "L1": "its facts name the parts by the pattern XAL4020-*, not by its part number XAL4020-472MEC: "
+        "a curve is taken from an entry whose mpn or mpns names the part"
+    }
+    entry.data["mpns"] = ["XAL4020-222MEC", "XAL4020-472MEC"]
+    del entry.data["match"]
+    found, refused, _ = partdata.choose({"L1": ("XAL4020-472MEC", entry)}, [row(mpn="XAL4020-472MEC")])
+    assert list(found) == ["L1"] and refused == {}
+
+
+def test_a_row_that_keeps_no_file_leaves_the_sha256_not_judged(tmp_path):
+    """Only a file can hold a SHA256: a row with none is 2 typed strings that agree."""
+    entry = facts(kept=[[0, 1.0], [4, 0.5]])
+    found, refused, unjudged = partdata.choose({"C2": ("CL10A106KP8NNN", entry)}, [row()])
+    assert list(found) == ["C2"] and refused == {}
+    assert unjudged == {
+        "C2": f"sources.csv:2 keeps no file, so nothing holds its SHA256 ({SHA[:12]}...) against the maker's"
+    }
+    kept = tmp_path / "c.pdf"
+    kept.write_bytes(b"another file")
+    found, refused, unjudged = partdata.choose({"C2": ("CL10A106KP8NNN", entry)}, [row(file=str(kept))])
+    assert found == {} and unjudged == {}
+    assert refused == {"C2": "the file sources.csv:2 keeps, c.pdf, is not the one its SHA256 names"}
+    kept.write_bytes(b"")
+    empty = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"  # SHA256 of 0 bytes
+    entry.data["source"]["sha256"] = empty
+    found, refused, unjudged = partdata.choose(
+        {"C2": ("CL10A106KP8NNN", entry)}, [row(sha=empty, file=str(kept))]
+    )
+    assert list(found) == ["C2"] and (refused, unjudged) == ({}, {})
+
+
 def test_facts_with_no_curve_and_parts_of_other_letters_are_passed_over():
-    found, refused = partdata.choose(
+    found, refused, _ = partdata.choose(
         {
             "C2": ("CL10A106KP8NNN", facts(volts=10)),
             "R1": ("CL10A106KP8NNN", facts(kept=[[0, 1.0], [4, 0.5]])),
@@ -194,6 +266,17 @@ def test_the_facts_take_an_inductor_s_curve_and_a_capacitor_s_temperature_curve(
     (tmp_path / "a.json").write_text(json.dumps(good), encoding="utf-8")
     with pytest.raises(ratings.Refusal, match="kept_celsius: the celsius rise from pair to pair"):
         ratings.read_facts(tmp_path)
+
+
+def test_the_facts_refuse_a_share_of_0(tmp_path):
+    """No part keeps 0 % of its value: a share of 0 makes C or L zero, and ngspice stops on its step."""
+    source = {"document": "d", "read": "2026-11-17", "second_reader": "no"}
+    entry = {"kind": "inductor", "mpn": "L-1", "tolerance": 0.2, "amps_saturation": 5.6,
+             "kept": [[0, 1.0], [0.5, 0.0], [5.989, 0.0]], "source": source}  # fmt: skip
+    (tmp_path / "a.json").write_text(json.dumps({"parts": [entry]}), encoding="utf-8")
+    with pytest.raises(ratings.Refusal) as refused:
+        ratings.read_facts(tmp_path)
+    assert str(refused.value) == "a.json: part 1: kept: fraction: 0 is not above 0"
 
 
 # ------------------------------------------------------------------ what ngspice does with it
@@ -252,6 +335,14 @@ def test_the_regulator_misses_its_ripple_bound_with_the_makers_data_and_the_gate
     assert deck["ideal"]["vpp"] == pytest.approx(2.83e-3, rel=0.10)
     assert [p["ref"] for p in deck["parts"]] == ["C2", "L1"]
     assert deck["parts"][0]["row"] == "sources.csv:2" and deck["parts"][1]["row"] == "sources.csv:3"
+    # the fixture keeps no maker's file: the 2 SHA256 are typed, and the gate says it did not judge them
+    unjudged = [w for w in result["details"]["warnings"] if "not judged" in w]
+    assert unjudged == [
+        "C2 runs on its maker's data, and whether that is its maker's file is not judged: sources.csv:2 "
+        f"keeps no file, so nothing holds its SHA256 ({SHA[:12]}...) against the maker's",
+        "L1 runs on its maker's data, and whether that is its maker's file is not judged: sources.csv:3 "
+        "keeps no file, so nothing holds its SHA256 (b26cf975bd56...) against the maker's",
+    ]
 
 
 @needs_engines
@@ -276,8 +367,48 @@ def test_a_part_whose_data_has_no_row_runs_ideal_and_the_gate_names_it(tmp_path)
         f"CL10A106KP8NNN): no row of library/sources.csv for CL10A106KP8NNN holds the SHA256 its facts name "
         f"({SHA[:12]}...)"
     ]
-    # L1 alone on its data: 2.97 mV, under the bound
-    assert result["details"]["decks"]["buck"]["measures"]["vpp"] == pytest.approx(2.97e-3, rel=0.10)
+    # L1 alone on its data: 2.97 mV by hand, under the bound. The window of 10 % holds the ideal run's
+    # 3.04 mV too, so the parts the deck ran on are what tells L1 on its data from L1 ideal.
+    deck = result["details"]["decks"]["buck"]
+    assert [p["ref"] for p in deck["parts"]] == ["L1"]
+    assert deck["measures"]["vpp"] == pytest.approx(2.97e-3, rel=0.10)
+
+
+@needs_engines
+def test_a_capacitor_in_a_file_the_deck_includes_runs_ideal_and_the_gate_names_it(tmp_path):
+    """C2 moved into sim/output.inc: the gate rewrites the deck's own lines, so C2 runs ideal (L1 alone
+    on its data, 2.97 mV by hand, under the 5 mV bound); the deck fails on the line that names C2."""
+    project = fixture(tmp_path)
+    deck = project / "sim" / "buck.cir"
+    deck.write_text(
+        deck.read_text(encoding="utf-8").replace("C2 out 0 10u\n", ".include output.inc\n"), encoding="utf-8"
+    )
+    (project / "sim" / "output.inc").write_text("* the output capacitor\nC2 out 0 10u\n", encoding="utf-8")
+    code, result = gate(project)
+    assert code == 1
+    assert result["details"]["failures"] == [
+        "buck: C2 runs as an ideal part while the library holds its maker's data (parts.json: part 1, "
+        "CL10A106KP8NNN): it stands in output.inc, a file the deck includes, which the gate does not rewrite"
+    ]
+    # C2 runs on no curve, so no line says it does
+    assert not [w for w in result["details"]["warnings"] if w.startswith("C2 runs on its maker's data")]
+
+
+@needs_engines
+def test_deck_parts_not_named_by_board_reference_leave_the_makers_data_not_judged(tmp_path):
+    """Lbuck and Cout in place of L1 and C2: the deck runs ideal, 3.04 mV, under the bound, and the gate
+    says that C2 and L1 hold data no deck element carries."""
+    project = fixture(tmp_path)
+    deck = project / "sim" / "buck.cir"
+    text = deck.read_text(encoding="utf-8").replace("L1 sw out", "Lbuck sw out").replace("C2 out", "Cout out")
+    deck.write_text(text, encoding="utf-8")
+    code, result = gate(project)
+    assert code == 0, result["details"]["failures"]
+    assert "parts" not in result["details"]["decks"]["buck"]
+    assert (
+        "not judged: C2 and L1 hold their makers' data, and no deck element carries their reference: "
+        "a deck runs a board part on it only under the part's reference"
+    ) in result["details"]["warnings"]
 
 
 @needs_engines
