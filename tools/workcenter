@@ -3186,9 +3186,37 @@ def ngspice_load_errors(lib: Path, subckt: str, pins: list[str], row: SourceRow,
     return errors
 
 
-def fetch_url(url: str, member: str = "") -> tuple[str, bytes | None, str]:
+BODY_HEAD = 1024  # the bytes of a downloaded body that are read; nothing past them is looked at
+HTML_STARTS = (b"<!doctype html", b"<html")
+
+
+def body_wrong(name: str, head: bytes, size: int, content_type: str = "") -> str:
+    """What a body is, when it is not what the file `name` says, or "": 0 bytes, an HTML page (by its
+    Content-Type or its first bytes), a .pdf that does not start %PDF. Reads `head` (the first bytes)
+    and `size` only: a downloaded body is untrusted, and nothing in it is run or parsed."""
+    suffix = Path(name).suffix.lower()
+    kind = KIND_BY_SUFFIX.get(suffix, "")
+    what = {".pdf": "a PDF", "spice": "a SPICE model", "step": "a STEP file"}.get(
+        suffix if suffix == ".pdf" else kind, "the file its name says"
+    )
+    if size == 0:
+        return "an empty file (0 bytes)"
+    mime = content_type.split(";")[0].strip().lower()
+    if mime in ("text/html", "application/xhtml+xml"):
+        return f"an HTML page (Content-Type {mime}), not {what}"
+    start = head[:BODY_HEAD].removeprefix(b"\xef\xbb\xbf").lstrip()
+    if start[:16].lower().startswith(HTML_STARTS):
+        return f"an HTML page (it starts {start[:16]!r}), not {what}"
+    if suffix == ".pdf" and not head.startswith(b"%PDF"):
+        return f"a file that starts {head[:8]!r}, not %PDF"
+    return ""
+
+
+def fetch_url(url: str, member: str = "", name: str = "") -> tuple[str, bytes | None, str]:
     """GET a URL as FETCH_AGENT: ("ok", bytes, final URL), or ("refused" | "gone" | "unreachable" |
-    "error", None, why). A zip's member is read out when one is named."""
+    "error" | "wrong", None, why). A zip's member is read out when one is named. "wrong": the body is
+    cut short of its Content-Length, or is not what the file `name` says (body_wrong)."""
+    import http.client
     import io
     import urllib.error
     import urllib.request
@@ -3197,7 +3225,12 @@ def fetch_url(url: str, member: str = "") -> tuple[str, bytes | None, str]:
     req = urllib.request.Request(url, headers={"User-Agent": FETCH_AGENT})
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
-            body, final = resp.read(), resp.geturl()
+            ctype = resp.headers.get("Content-Type", "")
+            try:
+                body, final = resp.read(), resp.geturl()
+            except http.client.IncompleteRead as exc:
+                promised = len(exc.partial) + (exc.expected or 0)
+                return "wrong", None, f"{len(exc.partial)} of the {promised} bytes its Content-Length names"
     except urllib.error.HTTPError as exc:
         kind = {401: "refused", 403: "refused", 429: "refused", 404: "gone", 410: "gone"}.get(
             exc.code, "error"
@@ -3211,6 +3244,9 @@ def fetch_url(url: str, member: str = "") -> tuple[str, bytes | None, str]:
                 body = zf.read(member)
         except (zipfile.BadZipFile, KeyError) as exc:
             return "error", None, f"no member {member!r} in the download: {exc}"
+    wrong = body_wrong(name or member or url.split("?")[0], body[:BODY_HEAD], len(body), ctype)
+    if wrong:
+        return "wrong", None, wrong
     return "ok", body, final
 
 
@@ -3242,6 +3278,13 @@ def check_source(row: SourceRow, library: Path, work: Path) -> tuple[dict, list[
         problems.append(
             f"{tag}: {row.file} changed since its row: SHA256 {digest}, the row says {row.sha256}"
         )
+    # A row written before fetch judged its bodies may keep a web page or an empty file: judged from
+    # the first bytes and the size alone, and the row is judged on nothing more.
+    with path.open("rb") as fh:
+        wrong = body_wrong(row.file, fh.read(BODY_HEAD), path.stat().st_size)
+    if wrong:
+        problems.append(f"{tag}: {row.file} is {wrong} ({row.source})")
+        return facts, problems, warnings
     if row.kind == "step":
         head = path.read_text(encoding="utf-8", errors="replace")[:4000]
         if not head.lstrip().startswith("ISO-10303-21"):
@@ -3371,7 +3414,7 @@ def gate_sources(
         for r in srows:
             if r.mpn not in board or not r.url or (not r.file and r.kind != "datasheet"):
                 continue
-            status, body, detail = fetch_url(r.url, r.member)
+            status, body, detail = fetch_url(r.url, r.member, r.file)
             item = {"mpn": r.mpn, "kind": r.kind, "url": r.url, "status": status, "detail": detail}
             if body is not None:
                 name = r.file or f"{r.mpn}-{r.kind}"
@@ -3391,6 +3434,8 @@ def gate_sources(
                         f"{r.mpn} {r.kind}: the supplier's copy differs from {r.file}: read its revision, "
                         f"then replace the file and its row ({dest})"
                     )
+            elif status == "wrong":
+                warnings.append(f"{r.mpn} {r.kind}: {r.url} gave {detail}")
             else:
                 warnings.append(f"{r.mpn} {r.kind}: {r.url} {status} ({detail})")
             fetched.append(item)
@@ -3573,12 +3618,31 @@ def revision_lines(path: Path) -> list[str]:
     return found[:8]
 
 
+def library_folder(start: Path) -> Path | None:
+    """The nearest folder named `library` at or above `start`, below the repository's root: where a
+    project's first sources.csv is started."""
+    for d in (start, *start.parents):
+        if (d / ".git").exists():
+            break
+        if d.name == "library":
+            return d
+    return None
+
+
+DOWNLOADED_NOTE = "downloaded by a person from the URL; not fetched by the workcenter"
+
+
 def cmd_fetch(args) -> int:
-    """GET one URL once as FETCH_AGENT into --to, and print (with --row append) its sources.csv row."""
+    """GET one URL once as FETCH_AGENT into --to, or take a file a person downloaded (--file, --url),
+    and print (with --row append) its sources.csv row, starting the project's library/sources.csv."""
     dest = Path(args.to).resolve()
     sources = Path(args.sources).resolve() if args.sources else library_csv(dest.parent)
+    started = None
+    if sources is None and args.row and library_folder(dest.parent):
+        started = sources = library_folder(dest.parent) / "sources.csv"
     kind = (args.kind or KIND_BY_SUFFIX.get(dest.suffix.lower(), "")).lower()
-    report: dict = {"url": args.url, "file": str(dest), "kind": kind, "mpn": args.mpn or ""}
+    url = args.url or args.from_url or ""
+    report: dict = {"url": url, "file": str(dest), "kind": kind, "mpn": args.mpn or ""}
 
     def fail(why: str) -> int:
         report["error"] = why
@@ -3588,6 +3652,12 @@ def cmd_fetch(args) -> int:
             print(f"fetch: {why}", file=sys.stderr)
         return EXIT_FAIL
 
+    if bool(args.url) == bool(args.file):
+        return fail("name a URL or --file, not both" if args.url else "name a URL or --file")
+    if args.file and not args.from_url:
+        return fail("--file needs --url: where the person downloaded it from")
+    if args.from_url and not args.file:
+        return fail("--url goes with --file; a URL alone is the first argument")
     if kind and kind not in SOURCE_KINDS:
         return fail(f"--kind {kind!r} is not one of {', '.join(SOURCE_KINDS)}")
     library = sources.parent if sources else dest.parent.parent
@@ -3598,24 +3668,44 @@ def cmd_fetch(args) -> int:
     rows_text = sources.read_bytes().decode("utf-8") if sources and sources.is_file() else ""
     if args.row:
         if not sources:
-            return fail(f"no sources.csv in {dest.parent} or above: name one with --sources")
+            return fail(
+                f"no sources.csv in {dest.parent} or above, and it is not under a library/ folder: "
+                "keep the file at <project>/library/<maker>/<file>, or name one with --sources"
+            )
         if not args.mpn or not kind:
             return fail("--row needs --mpn and a --kind (or a file suffix that names one)")
         for n, row in enumerate(csv.DictReader(io.StringIO(rows_text)), start=2):
             if row.get("MPN") == args.mpn and (row.get("Kind") or "").lower() == kind:
                 return fail(f"{sources.name}:{n} already has a {kind} row for {args.mpn}; nothing fetched")
 
-    status, body, detail = fetch_url(args.url, args.member or "")
-    report.update({"status": status, "detail": detail})
-    if body is None:
-        return fail(
-            f"{args.url} {status} ({detail}); nothing written. A refusal is the site's answer: download the "
-            "file by hand, or keep a row with no File and a Note that says where it is"
-        )
+    if args.file:
+        # The person's file, read whole to hash and copy it, and judged from its first bytes only.
+        held = Path(args.file).resolve()
+        if not held.is_file():
+            return fail(f"{held} is not a file")
+        body = held.read_bytes()
+        wrong = body_wrong(dest.name, body[:BODY_HEAD], len(body))
+        report.update({"status": "downloaded", "detail": str(held)})
+        if wrong:
+            report["status"] = "wrong"
+            return fail(f"{held} is {wrong}; nothing written")
+    else:
+        status, body, detail = fetch_url(args.url, args.member or "", dest.name)
+        report.update({"status": status, "detail": detail})
+        if status == "wrong":
+            return fail(
+                f"{args.url} gave {detail}; nothing written. Download it by hand and give it with --file"
+            )
+        if body is None:
+            return fail(
+                f"{args.url} {status} ({detail}); nothing written. A refusal is the site's answer: download "
+                "the file by hand and give it with --file, or keep a row with no File and a Note that says "
+                "where it is"
+            )
+        if detail != args.url:
+            report["final_url"] = detail
     digest = hashlib.sha256(body).hexdigest()
     report.update({"bytes": len(body), "sha256": digest})
-    if detail != args.url:
-        report["final_url"] = detail
     if dest.exists():
         if file_sha256(dest) != digest:
             return fail(
@@ -3636,7 +3726,8 @@ def cmd_fetch(args) -> int:
     values = {
         "MPN": args.mpn or "",
         "Kind": kind,
-        "URL": args.url,
+        "URL": url,
+        "Note": DOWNLOADED_NOTE if args.file else "",
         "File": rel,
         "Member": args.member or "",
         "Subckt": subckt,
@@ -3668,12 +3759,17 @@ def cmd_fetch(args) -> int:
             return fail(f"the row would not read back: {exc}")
         part.replace(sources)
         report["appended"] = str(sources)
+        if started:
+            report["started"] = str(started)
 
     if args.json:
         print(json.dumps(report, indent=2))
         return EXIT_PASS
     where = f"wrote {dest}" if report["state"] == "written" else f"{dest} already holds it"
-    print(f"fetch: {args.url} ok, {len(body)} bytes, SHA256 {digest}; {where}")
+    got = f"{args.file} (downloaded from {url})" if args.file else f"{url} ok"
+    print(f"fetch: {got}, {len(body)} bytes, SHA256 {digest}; {where}")
+    if report.get("started"):
+        print(f"sources: started {started}")
     if report.get("final_url"):
         print(f"  served from {report['final_url']}")
     for ln in report["revision_lines"]:
@@ -5278,10 +5374,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     p = sub.add_parser(
         "fetch",
-        help="GET one datasheet, SPICE model or 3D body once, under the workcenter's own name, into --to; "
-        "print its sources.csv row; --row appends it to the library's sources.csv. Writes those 2 files only",
+        help="GET one datasheet, SPICE model or 3D body once, under the workcenter's own name, into --to "
+        "(or take a file a person downloaded, with --file and --url); refuse a body that is empty, cut "
+        "short, or a web page; print its sources.csv row; --row appends it to the library's sources.csv, "
+        "starting <project>/library/sources.csv when there is none. Writes those 2 files only",
     )
-    p.add_argument("url", help="the maker's URL for the file")
+    p.add_argument("url", nargs="?", help="the maker's URL for the file")
+    p.add_argument("--file", help="a file a person downloaded from --url: copied into --to, not fetched")
+    p.add_argument("--url", dest="from_url", help="with --file: the URL the person downloaded it from")
     p.add_argument("--to", required=True, help="where the library keeps it: <library>/<maker>/<file>")
     p.add_argument("--mpn", help="the manufacturer part number the row names")
     p.add_argument("--kind", help="datasheet, spice or step (default: from the file's suffix)")
