@@ -94,10 +94,12 @@ number and `<branch>` your branch.
      is rewritten".
    - No row: go on to step 3.
 3. Open the issue with the card as its body:
-   `mkdir -p build && workcenter now . <the same options> > build/now.md && gh issue create --title "$(workcenter now . <the same options> --title)" --label enhancement --body-file build/now.md`.
+   `mkdir -p build && workcenter now . <the same options> > build/now.md && gh issue create -t "$(workcenter now . <the same options> --title)" -l enhancement -F build/now.md`.
    The card goes to a file first, and `gh` runs only when the command
    printed one: never pipe `workcenter now` into `gh`, as a refusal then
-   gives the issue an empty body. It prints the issue's URL; its last
+   gives the issue an empty body. The line gives `gh` its short flags
+   (`-t` the title, `-l` the label, `-F` the body's file), so no flag of
+   `gh` stands after `workcenter now` as if it were that command's. It prints the issue's URL; its last
    number is `N`. A host with its own GitHub tool creates the issue with
    the title `--title` prints, the label `enhancement` and the card's
    text as its body instead.
@@ -125,7 +127,7 @@ number and `<branch>` your branch.
    When the work waits on someone, it stays In progress: add
    `--blocked "<who or what>"`.
 6. Rewrite the body, never comment:
-   `mkdir -p build && workcenter now . <options> > build/now.md && gh issue edit N --body-file build/now.md`.
+   `mkdir -p build && workcenter now . <options> > build/now.md && gh issue edit N -F build/now.md`.
    On `now: refused:` gh does not run and the issue keeps its last card:
    fix what the line names and run it again. Or the host's own GitHub
    tool that updates an issue's body (for example the GitHub MCP server's

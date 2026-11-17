@@ -555,11 +555,17 @@ def test_the_skills_gh_lines_give_gh_no_card_when_the_command_refuses(tmp_path):
             run = line.replace("<the same options>", options).replace("<options>", options)
             proc = subprocess.run(["bash", "-c", run], cwd=tree, env=env, capture_output=True, text=True)
             assert (proc.returncode == 0, called.exists()) == (ok, ok), (run, proc.stderr)
+        # gh's short flags (-t, -l, -F): a long flag after `workcenter now` in 1 line reads, to
+        # tests/test_docs.py and to a reader, as a flag of `workcenter now`.
+        given = {
+            f for part in line.split("workcenter now")[1:] for f in re.findall(r"(?<![\w-])--[a-z-]+", part)
+        }
+        assert given <= {"--item", "--status", "--doing", "--blocked", "--left", "--title", "--write"}, line
         args = called.read_text().rstrip("|").split("|")
-        assert args[-2:] == ["--body-file", "build/now.md"]
+        assert args[-2:] == ["-F", "build/now.md"]
         if "create" in line:
-            assert args[args.index("--title") + 1] == TITLE
-            assert args[args.index("--label") + 1] == "enhancement"
+            assert args[args.index("-t") + 1] == TITLE
+            assert args[args.index("-l") + 1] == "enhancement"
         card = (tree / "build" / "now.md").read_text(encoding="utf-8")
         assert card.startswith("**Status:** In progress\n\n## Branch\n")
 
