@@ -3678,6 +3678,7 @@ def cmd_design(args) -> int:
                     timeout=args.timeout,
                     seed=seed,
                     threads=args.threads,
+                    order=args.order,
                 )
                 if seed:
                     summary["seed"] = {
@@ -3736,6 +3737,12 @@ def cmd_design(args) -> int:
             unrouted = "DRC decides" if r["unrouted"] is None else f"{r['unrouted']} unrouted"
             rounds = f"{summary.get('rounds', 1)} round(s)"
             print(f"  routed: {r['segments']} segments, {r['vias']} vias, {unrouted}, {rounds}  ({r['log']})")
+            for i, st in enumerate(r.get("stages", []), start=1):
+                left = "no count" if st["unrouted"] is None else f"{st['unrouted']} unrouted"
+                print(
+                    f"  stage {i} {st['stage']}: {len(st['nets'])} nets, {st['segments']} segments, "
+                    f"{st['vias']} vias, {left}"
+                )
         s = summary.get("seed")
         if s:
             left = ", ".join(f"{n} {why}" for why, n in sorted(s["left"].items(), key=lambda kv: -kv[1]))
@@ -4906,6 +4913,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--timeout", type=int, default=900)
     p.add_argument("--threads", type=int, default=0, help="FreeRouting's threads, -mt (default: its own)")
     p.add_argument(
+        "--order",
+        action="store_true",
+        help="with --route: route in stages, a FreeRouting run each: the poured nets, the nets of each "
+        "fine-pitch part, pairs, the rest; writes build/route/<name>.<n>-<stage>.dsn, .ses and .log",
+    )
+    p.add_argument(
         "--rounds", type=int, default=4, help="route again with a via reserved beside each pad a pour lost"
     )
     p.add_argument(
@@ -5033,6 +5046,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "design":
         if args.seed and not args.route:
             parser.error("design --seed needs --route")
+        if args.order and args.seed:
+            parser.error("design --order cannot take --seed: each stage routes on the stages before it")
+        if args.order and not args.route:
+            parser.error("design --order needs --route")
         if args.seed and not Path(args.seed).is_file():
             parser.error(f"design --seed: no board file {args.seed}")
         return check_design(args) if args.check else cmd_design(args)

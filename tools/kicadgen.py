@@ -3577,11 +3577,43 @@ class Design:
 
     # ---- Specctra
 
-    def dsn(self, seed: dict | None = None) -> str:
+    def route_stages(self) -> list[tuple[str, list[str]]]:
+        """The nets the router gets, in the order `route(order=True)` routes them: the nets with a pour,
+        the nets of each fine-pitch part (pitch at most FINE_PITCH), pairs by name, then the rest. A
+        stage with no net is left out; a net with fewer than 2 pads is in none."""
+        pads: dict[str, int] = {}
+        fine: set[str] = set()
+        for part in self.parts:
+            if not (part.on_board and part.pcb_at and part.footprint):
+                continue
+            small = pad_pitch(part.footprint) <= FINE_PITCH
+            for net in part.nets.values():
+                name = self.pcb_net_name(net)
+                pads[name] = pads.get(name, 0) + 1
+                if small:
+                    fine.add(name)
+        left = {n for n, count in pads.items() if count >= 2}
+        stages = []
+
+        def take(stage: str, nets: set[str]) -> None:
+            nets &= left
+            left.difference_update(nets)
+            if nets:
+                stages.append((stage, sorted(nets)))
+
+        take("pours", {self.pcb_net_name(z["net"]) for z in self.zones})
+        take("fan-out", fine)
+        take("pairs", {n for n in left if pair_of(n) in left})
+        take("rest", set(left))
+        return stages
+
+    def dsn(self, seed: dict | None = None, nets: set[str] | None = None) -> str:
         """Specctra DSN of the placed board, in 0.1 um units with y up (KiCad's own convention).
 
         `seed` (from `seed_wiring()`) is the router's starting wiring: held where it connects, so the
-        router keeps it, and unfixed at its loose ends, which the router reuses or removes."""
+        router keeps it, and unfixed at its loose ends, which the router reuses or removes. `nets`, when
+        given, are the only nets the network lists: the router joins those and treats the other pads as
+        obstacles."""
         U = 10000.0  # mm -> 0.1 um
 
         def c(v: float) -> str:
@@ -3722,7 +3754,7 @@ class Design:
         routable = []
         for name in sorted(net_ids, key=net_ids.get):
             pins = pins_by_net.get(name, [])
-            if len(pins) >= 2:
+            if len(pins) >= 2 and (nets is None or name in nets):
                 nets_out.append(f'    (net "{name}"\n      (pins {" ".join(pins)})\n    )')
                 routable.append(name)
         classed = {self.pcb_net_name(n) for s in self.net_classes.values() for n in s["nets"]}
@@ -4610,6 +4642,23 @@ def board_copper(path: Path) -> dict:
 
 
 UNROUTED_RE = re.compile(r"Auto-routing was completed in .*?\((\d+) unrouted\)")
+# A fine-pitch part: 0.5 mm pitch or less (PROCESSES.md P4 step 11). Its nets are the route's second stage.
+FINE_PITCH = 0.5
+# 2 nets are a pair when their names differ only in a last P and N, or + and -: `USB_D+`, `USB_D-`.
+PAIR_ENDS = {"P": "N", "N": "P", "+": "-", "-": "+"}
+
+
+def pad_pitch(fp: Footprint) -> float:
+    """The least distance between the centres of 2 copper pads of a footprint; inf with fewer than 2."""
+    pts = [(p.x, p.y) for p in fp.pads if p.kind != "np_thru_hole"]
+    gaps = [math.hypot(a[0] - b[0], a[1] - b[1]) for i, a in enumerate(pts) for b in pts[i + 1 :]]
+    return round(min((g for g in gaps if g > 1e-6), default=math.inf), 6)
+
+
+def pair_of(net: str) -> str:
+    """The name of the other net of a pair, by its last character; "" when the name ends in none."""
+    end = PAIR_ENDS.get(net[-1:]) if net else None
+    return net[:-1] + end if end else ""
 
 
 def route(
@@ -4621,9 +4670,12 @@ def route(
     java: str = "java",
     seed: dict | None = None,
     threads: int = 0,
+    order: bool = False,
 ) -> dict:
     """Export the DSN, run FreeRouting, merge the session into the design. Returns a summary.
-    `threads` above 0 is FreeRouting's `-mt`, the most threads it routes with.
+    `threads` above 0 is FreeRouting's `-mt`, the most threads it routes with. `order` routes the
+    stages of `Design.route_stages()` one after the other, a FreeRouting run each, and lists them in
+    the summary's "stages"; it takes no seed.
     `seed` is a previous route's copper as `Design.seed_wiring()` keeps it. The summary's `unrouted` is
     FreeRouting's own count when its log has one, else `Design.bare_connections()` when the route left
     every connection without copper, else None."""
@@ -4637,22 +4689,58 @@ def route(
         build_dir / f"{design.name}.ses",
         build_dir / "freerouting.log",
     )
-    dsn.write_text(design.dsn(seed), encoding="utf-8")
-    ses.unlink(missing_ok=True)
-    # FreeRouting 1.9.0: -de, -do, -mp and -dct. Without `-dct 0` it waits 20 s for a click on a dialog
-    # that asks to confirm the start, and nobody sees a dialog here. It needs a display; xvfb-run
-    # provides one headless.
-    cmd = [java, "-jar", str(jar), "-de", str(dsn), "-do", str(ses), "-mp", str(passes), "-dct", "0"]
-    if threads > 0:
-        cmd += ["-mt", str(threads)]
-    if not os.environ.get("DISPLAY") and shutil.which("xvfb-run"):
-        cmd = ["xvfb-run", "-a", *cmd]
-    proc = subprocess.run(cmd, cwd=build_dir, capture_output=True, text=True, timeout=timeout, check=False)
-    text = (proc.stdout or "") + "\n" + (proc.stderr or "")
-    log.write_text(text, encoding="utf-8")
-    if proc.returncode != 0 or not ses.is_file():
-        raise RuntimeError(f"FreeRouting exited {proc.returncode}; see {log}")
-    segments, vias = design.merge_ses(ses.read_text(encoding="utf-8"))
+
+    def freerouting(dsn: Path, ses: Path, log: Path) -> str:
+        ses.unlink(missing_ok=True)
+        # FreeRouting 1.9.0: -de, -do, -mp and -dct. Without `-dct 0` it waits 20 s for a click on a
+        # dialog that asks to confirm the start, and nobody sees a dialog here. It needs a display;
+        # xvfb-run provides one headless.
+        cmd = [java, "-jar", str(jar), "-de", str(dsn), "-do", str(ses), "-mp", str(passes), "-dct", "0"]
+        if threads > 0:
+            cmd += ["-mt", str(threads)]
+        if not os.environ.get("DISPLAY") and shutil.which("xvfb-run"):
+            cmd = ["xvfb-run", "-a", *cmd]
+        proc = subprocess.run(
+            cmd, cwd=build_dir, capture_output=True, text=True, timeout=timeout, check=False
+        )
+        text = (proc.stdout or "") + "\n" + (proc.stderr or "")
+        log.write_text(text, encoding="utf-8")
+        if proc.returncode != 0 or not ses.is_file():
+            raise RuntimeError(f"FreeRouting exited {proc.returncode}; see {log}")
+        return text
+
+    stages = []
+    if order and seed:
+        raise ValueError("an ordered route takes no seed")
+    if order and design.route_stages():
+        # Each stage routes its nets on the copper of the stages before it, which merge_ses has made
+        # the design's own and dsn() hands the router as fixed wiring. A net the design draws copper
+        # for is listed from the first stage: the router is not handed wiring of a net it lacks.
+        drawn = {item[0] for item in (*design.segments, *design.vias)}
+        done: set[str] = set()
+        for i, (stage, nets) in enumerate(design.route_stages(), start=1):
+            done |= set(nets)
+            files = [build_dir / f"{design.name}.{i}-{stage}{ext}" for ext in (".dsn", ".ses", ".log")]
+            files[0].write_text(design.dsn(nets=done | drawn), encoding="utf-8")
+            text = freerouting(*files)
+            s, v = design.merge_ses(files[1].read_text(encoding="utf-8"))
+            m = UNROUTED_RE.search(text)
+            stages.append(
+                {
+                    "stage": stage,
+                    "nets": nets,
+                    "segments": s,
+                    "vias": v,
+                    "unrouted": int(m.group(1)) if m else None,
+                    "log": str(files[2]),
+                }
+            )
+        dsn, ses, log = files
+        segments, vias = sum(s["segments"] for s in stages), sum(s["vias"] for s in stages)
+    else:
+        dsn.write_text(design.dsn(seed), encoding="utf-8")
+        text = freerouting(dsn, ses, log)
+        segments, vias = design.merge_ses(ses.read_text(encoding="utf-8"))
     m = UNROUTED_RE.search(text)
     # FreeRouting 1.9.0 logs no count, and it ends with exit code 0 on a board where it joined nothing
     # (every part outside the outline, a width that enters no pad). Such a board holds no copper for any
@@ -4665,6 +4753,7 @@ def route(
         "segments": segments,
         "vias": vias,
         "unrouted": unrouted,
+        **({"stages": stages} if stages else {}),
     }
 
 
