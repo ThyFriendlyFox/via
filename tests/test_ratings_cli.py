@@ -338,6 +338,24 @@ WRONG = {
         own_pack(lambda pack: pack["document"].update(url="x", sha256="x", read="x", second_reader="x")),
         "house.json: document: url: a whole URL is asked, as https://example.com/file.pdf",
     ),
+    # a number for a part the command reads none for: U2 is a buffer, J2 a header, U1.3 the switched pin
+    "a current through an IC": (
+        put("ratings.json", "parts", "U2", to={"amps": 9, "source": "x"}),
+        "ratings.json: parts: U2: amps: U2 is of kind ic: the command reads no current through one",
+    ),
+    "a connector's load with no pin": (
+        put("ratings.json", "parts", "J2", to={"amps": 9, "source": "x"}),
+        "ratings.json: parts: J2: amps: J2 is a connector: its load is stated for 1 pin, as J2.1",
+    ),
+    "a load behind a switched pin": (
+        put("ratings.json", "parts", "U1.3", to={"amps": 9, "source": "x"}),
+        "ratings.json: parts: U1.3: amps: pin 3 of U1 is of role switched: "
+        "the command reads no load behind one",
+    ),
+    "a voltage across an inductor": (
+        put("ratings.json", "parts", "L1", to={"volts": 99, "source": "x"}),
+        "ratings.json: parts: L1: volts: L1 is of kind inductor: the command reads no voltage across one",
+    ),
 }
 
 

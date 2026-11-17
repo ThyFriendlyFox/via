@@ -2340,6 +2340,88 @@ def test_a_resistor_of_0_ohm_is_a_link_and_is_taken(tmp_path):
     assert ratings.read_facts(tmp_path)[0].data["ohms"] == 0
 
 
+# 1 part of each kind on 1 rail, and X1, a part with no facts.
+KINDS_BOARD = {
+    "U1": ("MCU", "MCU-1", mcu()),
+    "J1": ("IN", "HDR-1", {"1": "V33", "2": "GND"}),
+    "L1": ("2.2u", "L-1", {"1": "V33", "2": "LX"}),
+    "C1": ("100n", "C-16V", {"1": "V33", "2": "GND"}),
+    "R1": ("10k", "R-0402", {"1": "V33", "2": "SIG"}),
+    "D1": ("SS14", "D-1", {"1": ("LX", "A", "passive"), "2": ("V33", "K", "passive")}),
+    "D2": ("TVS", "TVS-1", {"1": ("GND", "A", "passive"), "2": ("V33", "K", "passive")}),
+    "Q1": ("FET", "FET-2", POWER_FET),
+    "F1": ("2A", "F-1", {"1": "V33", "2": "VF"}),
+    "X1": ("?", "X-NONE", {"1": "V33", "2": "GND"}),
+}
+NO_CURRENT = "the command reads no current through one"
+
+
+@pytest.mark.parametrize(
+    ("stated", "message"),
+    [
+        ({"amps": {"U1": 9.0}}, f"ratings.json: parts: U1: amps: U1 is of kind ic: {NO_CURRENT}"),
+        (
+            {"amps": {"C1": 0.2}},
+            f"ratings.json: parts: C1: amps: C1 is of kind capacitor.ceramic: {NO_CURRENT}",
+        ),
+        ({"amps": {"D2": 0.1}}, f"ratings.json: parts: D2: amps: D2 is of kind diode.clamp: {NO_CURRENT}"),
+        (
+            {"amps": {"J1": 1.1}},
+            "ratings.json: parts: J1: amps: J1 is a connector: its load is stated for 1 pin, as J1.1",
+        ),
+        (
+            {"amps": {"U1.1": 0.05}},
+            "ratings.json: parts: U1.1: amps: pin 1 of U1 is of role supply: "
+            "the command reads no load behind one",
+        ),
+        (
+            {"amps": {"R1.1": 0.01}},
+            "ratings.json: parts: R1.1: amps: R1 is of kind resistor: "
+            "the command reads no load behind a pin of one",
+        ),
+        (
+            {"volts": {"L1": 99.0}},
+            "ratings.json: parts: L1: volts: L1 is of kind inductor: the command reads no voltage across one",
+        ),
+        (
+            {"volts": {"D1": 30.0}},
+            "ratings.json: parts: D1: volts: D1 is of kind diode.rectifier: "
+            "the command reads no voltage across one",
+        ),
+        (
+            {"volts": {"F1": 5.0}},
+            "ratings.json: parts: F1: volts: F1 is of kind fuse: the command reads no voltage across one",
+        ),
+    ],
+)
+def test_a_number_stated_for_a_part_the_command_reads_none_for_is_refused(tmp_path, stated, message):
+    """ratings.json states a current or a voltage for a part. The command reads a current through a
+    resistor, an inductor, a diode and a transistor, the load behind a connector's pin, and the voltage
+    across a capacitor and a resistor. The current of a fuse and behind an output pin is recorded, as
+    its rating is. A number for any other part would be taken and held to nothing: `J1` for `J1.1`."""
+    net, mpns = circuit(**KINDS_BOARD)
+    facts = library(
+        tmp_path,
+        MCU_FACTS,
+        entry("connector", "HDR-1"),
+        COIL,
+        ceramic("C-16V", 16),
+        chip_resistor(),
+        DIODE,
+        CLAMP,
+        power_fet(amps_drain=4.0),
+        FUSE,
+    )
+    read = {"R1": 0.001, "L1": 1.0, "D1": 0.5, "Q1": 2.0, "J1.1": 1.1}
+    recorded = {"F1": 1.0, "U1.3": 0.004}
+    no_facts = {"X1": 1.0, "X1.1": 1.0}
+    taken = project(RAILS, amps={**read, **recorded, **no_facts}, volts={"C1": 3.3, "R1": 3.3, "X1": 3.3})
+    ratings.check_stated(taken, net, mpns, facts)
+    with pytest.raises(ratings.Refusal) as caught:
+        ratings.check_stated(project(RAILS, **stated), net, mpns, facts)
+    assert str(caught.value) == message
+
+
 def test_facts_that_do_not_fit_the_part_s_symbol_are_refused(tmp_path):
     """A pin the facts leave out, a pin number the symbol lacks, and a resistor's facts on 3 pins."""
     three = {"1": ("V33", "VDD", "power_in"), "2": ("GND", "VSS", "power_in"), "3": ("SIG", "PA0", "output")}
