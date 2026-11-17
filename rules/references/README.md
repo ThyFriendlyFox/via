@@ -20,12 +20,15 @@ the makers' and the issuers' terms forbid a copy.
 | `samsung-cl10a106kp8nnn` | datasheet | CL10A106KP8NNN (a web page) | the page as fetched on 2026-11-17; it prints no revision |
 | `coilcraft-806` | datasheet | 806 (XAL40xx) | Revised 02/25/26 |
 | `bourns-srn2010ta` | datasheet | SRN2010TA | REV. 06/25 |
+| `ti-sbvs320` | datasheet | SBVS320D (TLV755P) | November 2017, revised September 2024 |
 
 On 2026-11-17 `workcenter references fetch` got all 9 under the workcenter's own name, and each copy
 had the SHA256 its entry names: `9 kept, 0 changed, 0 refused`. The title, number and revision of each
 entry were read from the first page of that copy. The same day `ecss-q-st-70-12c-rev1`, the standard
 of the board rule pack, was fetched alone: `1 kept, 0 changed, 0 refused`. Its number, title and
-revision are those of its first page.
+revision are those of its first page. `ti-sbvs320`, the datasheet of the thermal fixtures' regulator,
+was added the same day from a copy fetched on 2026-10-29 for a project's library; its SHA256 is that
+copy's, and `workcenter references fetch` has not asked for it yet.
 
 `samsung-cl10a106kp8nnn` is a web page of Samsung's component library, the source of the facts of
 `tests/boards/fail-sim-bias`. Each fetch of it differs in a session token and a time stamp, so `fetch`

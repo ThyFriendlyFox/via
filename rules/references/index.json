@@ -121,6 +121,17 @@
       "url": "https://www.bourns.com/docs/Product-Datasheets/SRN2010TA.pdf",
       "sha256": "57d18e7e2c29320a11c3d6f521694c2e4358220284b027b8d3fd911439ba6e32",
       "read": "2026-11-17"
+    },
+    {
+      "id": "ti-sbvs320",
+      "kind": "datasheet",
+      "maker": "Texas Instruments",
+      "number": "SBVS320D",
+      "title": "TLV755P 500mA, Low-IQ, Small-Size, Low-Dropout Regulator",
+      "revision": "November 2017, revised September 2024",
+      "url": "https://www.ti.com/lit/ds/symlink/tlv755p.pdf",
+      "sha256": "96e2706d4b13656d2d550fdbb5be9861c56b058822109bb39a906d4ad1beb019",
+      "read": "2026-11-17"
     }
   ]
 }

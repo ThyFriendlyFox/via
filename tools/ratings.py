@@ -746,6 +746,22 @@ STRESSES = (
     "rail.load",
 )
 DOCUMENT_KEYS = ("issuer", "number", "title", "revision", "url", "sha256", "read", "second_reader")
+# The stress the SIM gate judges (tools/thermal.py): a junction's temperature, held to a limit in C.
+JUNCTION = "junction.temperature"
+JUNCTION_LIMITS = ("celsius", "share", "below_rating")
+
+
+@dataclass(frozen=True)
+class JunctionRule:
+    """A junction's derated limit: the least of a temperature, a share of the part's greatest junction
+    temperature, and that temperature less a margin, as many of the 3 as the document names."""
+
+    id: str
+    kinds: tuple[str, ...]
+    celsius: float | None
+    share: float | None
+    below: float | None
+    where: str
 
 
 @dataclass(frozen=True)
@@ -763,6 +779,7 @@ class Pack:
     name: str
     document: dict[str, str]
     rules: list[Rule]
+    junction: list[JunctionRule] = field(default_factory=list)
 
     def rule(self, stress: str, kind: str) -> Rule | None:
         """The rule for a stress on a part kind: `capacitor` covers `capacitor.ceramic`."""
@@ -770,6 +787,12 @@ class Pack:
             if rule.stress == stress and any(kind == k or kind.startswith(k + ".") for k in rule.kinds):
                 return rule
         return None
+
+    def junction_rule(self, kind: str) -> JunctionRule | None:
+        """The first junction rule that covers a part kind, `ic.regulator.linear` or `diode.clamp`."""
+        return next(
+            (r for r in self.junction if any(kind == k or kind.startswith(k + ".") for k in r.kinds)), None
+        )
 
 
 def read_pack(path: Path, own: str = "") -> Pack:
@@ -784,13 +807,17 @@ def read_pack(path: Path, own: str = "") -> Pack:
     if not isinstance(data["rules"], list) or not data["rules"]:
         raise Refusal(f"{path.name}: rules: a list of rules is asked")
     rules: list[Rule] = []
+    junction: list[JunctionRule] = []
     for i, raw in enumerate(data["rules"], start=1):
         where = f"{path.name}: rule {i}"
-        rule = _keys(where, raw, ("id", "stress", "kinds", "max", "where"), ("above",))
-        if rule["stress"] not in STRESSES:
-            known = ", ".join(STRESSES)
+        if isinstance(raw, dict) and raw.get("stress") == JUNCTION:
+            rule = _keys(where, raw, ("id", "stress", "kinds", "where"), JUNCTION_LIMITS)
+        else:
+            rule = _keys(where, raw, ("id", "stress", "kinds", "max", "where"), ("above",))
+        if rule["stress"] not in (*STRESSES, JUNCTION):
+            known = ", ".join((*STRESSES, JUNCTION))
             raise Refusal(f"{where}: `{rule['stress']}` is no stress the command computes; they are {known}")
-        if _text(f"{where}: id", rule["id"]) in {r.id for r in rules}:
+        if _text(f"{where}: id", rule["id"]) in {r.id for r in [*rules, *junction]}:
             raise Refusal(f"{where}: the id `{rule['id']}` stands 2 times")
         # a kind no part has holds nothing: its parts would be held to their own ratings without a word
         known = [*PASSIVE, *OTHER, *(f"ic.{family}" for family in FAMILIES)]
@@ -800,6 +827,22 @@ def read_pack(path: Path, own: str = "") -> Pack:
                     f"{where}: kinds: `{kind}` names no kind of part; a rule names a kind of the facts or "
                     "its start, as capacitor for capacitor.ceramic"
                 )
+        if rule["stress"] == JUNCTION:
+            if not any(key in rule for key in JUNCTION_LIMITS):
+                raise Refusal(f"{where}: 1 limit at least is asked, of {', '.join(JUNCTION_LIMITS)}")
+            junction.append(
+                JunctionRule(
+                    rule["id"],
+                    tuple(rule["kinds"]),
+                    _number(f"{where}: celsius", rule["celsius"]) if "celsius" in rule else None,
+                    _number(f"{where}: share", rule["share"], most=1, above=0) if "share" in rule else None,
+                    _number(f"{where}: below_rating", rule["below_rating"], 0)
+                    if "below_rating" in rule
+                    else None,
+                    _text(f"{where}: where", rule["where"]),
+                )
+            )
+            continue
         most = _number(f"{where}: max", rule["max"], 0, 1)
         above = None
         if "above" in rule:
@@ -827,7 +870,7 @@ def read_pack(path: Path, own: str = "") -> Pack:
             )
         )
     name = _text(f"{path.name}: pack", data["pack"])
-    return Pack(f"{own} (the project's own)" if own else name, document, rules)
+    return Pack(f"{own} (the project's own)" if own else name, document, rules, junction)
 
 
 def factor(rule: Rule, ambient: float | None) -> tuple[float, str]:
@@ -957,14 +1000,18 @@ OTHER = {
     "connector": ((), ("pins",)),
     # a rectifier, a switching or a Schottky diode is rated for a reverse voltage; a clamp (a zener, a
     # TVS) stands off its working voltage and conducts above it
-    "diode.rectifier": (("diodes", "volts_reverse"), ("amps_forward",)),
-    "diode.clamp": (("diodes", "volts_standoff"), ()),
+    "diode.rectifier": (("diodes", "volts_reverse"), ("amps_forward", "thermal")),
+    "diode.clamp": (("diodes", "volts_standoff"), ("thermal",)),
     "transistor.mosfet": (
         ("transistors", "volts_drain_source", "volts_gate_source"),
-        ("amps_drain", "watts"),
+        ("amps_drain", "watts", "thermal"),
     ),
-    "ic": (("family", "pins"), ("needs", "switching")),
+    "ic": (("family", "pins"), ("needs", "switching", "thermal")),
 }
+# The figures of a datasheet's thermal table, in C/W, as TI SPRA953D names them: the junction to the
+# ambient, to the case, to the board, and the 2 characterisation parameters to the package's top and the
+# board.
+FIGURES = ("theta_ja", "theta_jc", "theta_jb", "psi_jt", "psi_jb")
 FAMILIES = ("digital", "linear", "regulator.linear", "regulator.switching")
 # The keys that hold a rating, or a value a current is divided by. Each is above 0: a stress is a share
 # of its rating, and 0 V, 0 W, 0 A, 0 F and 0 H are wrong facts and no division. `ohms` may be 0, a link.
@@ -1249,6 +1296,16 @@ def _facts(where: str, raw: object) -> Facts:
                         _names(f"{where}: {key} {i}: {end}", one[end])
                     else:
                         _text(f"{where}: {key} {i}: {end}", one[end])
+    if "thermal" in data:
+        # the greatest junction temperature and the figures, all on the pages `page` names
+        term = _keys(f"{where}: thermal", data["thermal"], ("junction_max", "page"), FIGURES)
+        _number(f"{where}: thermal: junction_max", term["junction_max"], above=0)
+        _page(f"{where}: thermal", term["page"])
+        if not any(key in term for key in FIGURES):
+            raise Refusal(f"{where}: thermal: 1 figure at least is asked, of {', '.join(FIGURES)}")
+        for key in FIGURES:
+            if key in term:
+                _number(f"{where}: thermal: {key}", term[key], above=0)
     if kind == "connector":
         if not isinstance(data.get("pins", []), list):
             raise Refusal(f"{where}: pins: a list of pins is asked")

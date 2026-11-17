@@ -91,6 +91,46 @@
       "kinds": ["ic"],
       "max": 0.80,
       "where": "clause 6.21.2, table 6-21, page 57"
+    },
+    {
+      "id": "junction.ic.linear",
+      "stress": "junction.temperature",
+      "kinds": ["ic.linear", "ic.regulator"],
+      "celsius": 110,
+      "below_rating": 40,
+      "where": "clause 6.21.2, table 6-21, page 57"
+    },
+    {
+      "id": "junction.ic.digital",
+      "stress": "junction.temperature",
+      "kinds": ["ic.digital"],
+      "celsius": 110,
+      "below_rating": 40,
+      "where": "clause 6.19.2, table 6-19, page 52"
+    },
+    {
+      "id": "junction.diode.rectifier",
+      "stress": "junction.temperature",
+      "kinds": ["diode.rectifier"],
+      "celsius": 110,
+      "below_rating": 40,
+      "where": "clause 6.14.2.1, table 6-13, page 43"
+    },
+    {
+      "id": "junction.diode.clamp",
+      "stress": "junction.temperature",
+      "kinds": ["diode.clamp"],
+      "celsius": 110,
+      "below_rating": 40,
+      "where": "clause 6.14.2.2, table 6-14, page 44"
+    },
+    {
+      "id": "junction.mosfet",
+      "stress": "junction.temperature",
+      "kinds": ["transistor.mosfet"],
+      "celsius": 110,
+      "below_rating": 40,
+      "where": "clause 6.29.2, table 6-36, page 76"
     }
   ]
 }
