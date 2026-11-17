@@ -917,7 +917,8 @@ def read_project(path: Path, net: Netlist) -> Project:
         try:
             datetime.date.fromisoformat(day)
         except ValueError:
-            raise Refusal(f"{where}: by: {day} is no date") from None
+            said = f"`{day}` is no date: write `the owner's decision of YYYY-MM-DD`"
+            raise Refusal(f"{where}: by: {said}") from None
         if "line" in entry and not (isinstance(entry["line"], str) and entry["line"].strip()):
             raise Refusal(f"{where}: line: words of the failure's line are asked")
         words = f"{_text(f'{where}: why', entry['why'])} ({entry['by']})"
@@ -1365,6 +1366,8 @@ def model_of(facts: Facts, part: Part) -> Model:
     if kind == "switch":
         return Model(passes=[(*_two_pins(facts, part), False)])
     if kind in PASSIVE:  # a capacitor, a test point, a mounting hole
+        if kind.startswith("capacitor"):
+            _two_pins(facts, part)  # its voltage is taken between 2 nets: a part of 3 pins has no such 2
         return Model()
     if kind == "connector":
         quiet = [n for pin in data.get("pins", []) if pin["outside"] != "source" for n in pin["numbers"]]
@@ -1732,6 +1735,10 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
             out.append(Finding("not judged", ref, stress, f"{label}: {value}"))
             return
         share, rule, source = limit_of(stress, ref)
+        if rated <= 0:  # a rating that falls with the temperature has reached 0 at this ambient
+            text = f"{label}: {si(value, unit)} on {si(rated, unit)} rated: nothing of the rating is left"
+            judged(ref, rule, value <= EPS, text, source)
+            return
         holds = value <= rated * share + EPS
         of_it = f"{value / rated:.2f}"
         if not holds and of_it == f"{share:.2f}":  # 0.603 on a limit of 0.60: show which side it is on
@@ -2070,8 +2077,17 @@ def _judge_ic(  # noqa: PLR0913
         name = part.pins[number]
         label = f"{ref} pin {number} ({pin['name']}) on {name}"
         raw = from_ground(pin[key][which])
-        worst: tuple[float, float, str] | None = None
+        worst: tuple[float, str, str] | None = None
         missed = False
+
+        def shown(volts: float, limit: float, over: float) -> str:
+            """A voltage to 3 digits; past its limit, to as many as tell it from the limit: 4.001 V on
+            a limit of 4 V does not print as `4 V can stand on it, its limit is 4 V`."""
+            for digits in (3, 4, 5, 6):
+                text = f"{volts:.{digits}g}"
+                if over <= EPS or text != f"{limit:.{digits}g}":
+                    break
+            return text
 
         def miss(text: str) -> None:
             if text not in told:  # the pin's other end would say the same again
@@ -2102,7 +2118,7 @@ def _judge_ic(  # noqa: PLR0913
                     )
                     over = (volts - limit) if which else (limit - volts)
                     if worst is None or over > worst[0]:
-                        worst = (over, volts, f"{limit:.3g} V{how}")
+                        worst = (over, shown(volts, limit, over), f"{limit:.3g} V{how}")
                     continue
                 at = spans.held[rail][1 - which]  # the rail where the limit is tightest
                 forced, limit = ((rail, (at, at)),), at + one["plus"]
@@ -2129,7 +2145,7 @@ def _judge_ic(  # noqa: PLR0913
                 volts = sp.held[name][0]
             over = (volts - limit) if which else (limit - volts)
             if worst is None or over > worst[0]:
-                worst = (over, volts, f"{limit:.3g} V{how}")
+                worst = (over, shown(volts, limit, over), f"{limit:.3g} V{how}")
         if worst is None:
             return None if missed else ()
         return (worst[0] <= EPS, worst[1], worst[2])
@@ -2151,14 +2167,13 @@ def _judge_ic(  # noqa: PLR0913
             source = f"{found.source}, {_p(pin['page'])}" if "page" in pin else found.source
             if low and high and low[0] and high[0]:  # both ends hold: 1 line says so
                 text = (
-                    f"{label}: {low[1]:.3g} to {high[1]:.3g} V can stand on it, "
-                    f"its limits are {low[2]} and {high[2]}"
+                    f"{label}: {low[1]} to {high[1]} V can stand on it, its limits are {low[2]} and {high[2]}"
                 )
                 judged(f"{ref}.{number}", "pin.voltage", True, text, source)
             else:
                 for end in (high, low):
                     if end:
-                        text = f"{label}: {end[1]:.3g} V can stand on it, its limit is {end[2]}"
+                        text = f"{label}: {end[1]} V can stand on it, its limit is {end[2]}"
                         judged(f"{ref}.{number}", "pin.voltage", end[0], text, source)
             broke = any(end and not end[0] for end in (high, low))  # past a limit: 1 line says it
             if pin["role"] != "supply" and "operating" in pin and low is not None and not broke:
@@ -2166,7 +2181,7 @@ def _judge_ic(  # noqa: PLR0913
                 most, least = bound(pin, number, 1, "operating"), bound(pin, number, 0, "operating")
                 if most and least:
                     text = (
-                        f"{label}: {least[1]:.3g} to {most[1]:.3g} V can stand on it, "
+                        f"{label}: {least[1]} to {most[1]} V can stand on it, "
                         f"the pin works from {least[2]} to {most[2]}"
                     )
                     judged(f"{ref}.{number}", "pin.range", least[0] and most[0], text, source)
@@ -2366,9 +2381,12 @@ def _judge_rail(  # noqa: PLR0913
             Finding("not judged", ref, "rail.load", f"{label} feeds a load nothing states: {unknown[0]}")
         )
         return
+    of_it = f"{total / pin['amps']:.2f}"
+    if not holds and of_it == f"{share:.2f}":  # 0.701 on a limit of 0.70: show which side it is on
+        of_it = f"{total / pin['amps']:.3f}"
     text = (
         f"{label} gives {si(pin['amps'], 'A')}, its loads take {'at least ' * bool(unknown)}"
-        f"{si(total, 'A')}: {total / pin['amps']:.2f}, the limit is {share:.2f}"
+        f"{si(total, 'A')}: {of_it}, the limit is {share:.2f}"
     )
     judged(ref, rule_id, holds, text, source)
 
@@ -2448,6 +2466,8 @@ def _judge_buck(net, ref, of, spans, project, notes, judged, out, rails, loads) 
                 why = f"the load on {name} is not known: {unknown[0]}"
             elif henries is None:
                 why = "its Value is no number"
+            elif not henries:  # `0u`: a number, and no inductance to divide a ripple by
+                why = "its Value is 0 H"
             elif name not in spans.held or spans.held.get(supply, (0.0, 0.0))[1] <= 0:
                 why = f"no source holds {supply if name in spans.held else name}"
             if why:

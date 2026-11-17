@@ -912,6 +912,19 @@ def test_a_transistor_s_current_is_held_to_the_drain_current_at_the_ambient(tmp_
     assert not any("drain current" in f.text for f in unstated.findings)
 
 
+def test_a_rating_that_falls_to_0_at_the_ambient_fails_and_ends_no_run(tmp_path):
+    """4 A at 25 C and 0 A at 150 C: at an ambient of 150 C nothing of the rating is left, and 1 A
+    through the part fails. The share was the current divided by 0, and the run ended there."""
+    net, mpns = circuit(Q1=("FET", "FET-2", POWER_FET))
+    nets = {"LOAD": (0.0, 12.6), "GATE": (0.0, 3.3), **GND}
+    facts = library(tmp_path, power_fet(amps_drain=[[25, 4.0], [150, 0]]))
+    report = ratings.judge(net, mpns, facts, project(nets, amps={"Q1": 1.0}, ambient=150), NASA)
+    assert [line.split(" [")[0] for line in found(report, "fail")] == [
+        "fail Q1 FET drain current, with the 1 A the project states: 1 A on 0 A rated: "
+        "nothing of the rating is left"
+    ]
+
+
 def test_a_diode_s_current_is_held_to_its_forward_current(tmp_path):
     """600 mA through a 1 A diode is 0.60, and NASA allows 0.50."""
     net, mpns = circuit(D1=("SS14", "D-1", {"1": ("VBUS", "A", "passive"), "2": ("V12", "K", "passive")}))
@@ -1355,6 +1368,25 @@ def test_a_rail_loaded_past_its_regulator_fails(tmp_path):
         "fail V33: U1 pin 3 (OUT) gives 200 mA, its loads take 250 mA: 1.25, the limit is 0.70 "
         f"[{NASA_SOURCE}, {LINEAR}]"
     )
+
+
+def test_a_load_and_a_pin_just_past_their_limit_do_not_print_as_the_limit(tmp_path):
+    """140.2 mA on a 200 mA regulator is 0.701 of it, and 4.001 V on a pin that takes 4 V is over it.
+    Printed as `0.70, the limit is 0.70` and `4 V can stand on it, its limit is 4 V`, each line that
+    fails read as if it held."""
+    net, mpns = circuit(U1=("LDO", "LDO-1", LDO), U2=("A", "LOAD-A", TWO_PINS))
+    facts = library(tmp_path, regulator(), load("LOAD-A", 0.1402))
+    report = ratings.judge(net, mpns, facts, project(V5), NASA)
+    assert found(report, "fail") == [
+        "fail V33: U1 pin 3 (OUT) gives 200 mA, its loads take 140 mA: 0.701, the limit is 0.70 "
+        f"[{NASA_SOURCE}, {LINEAR}]"
+    ]
+    net, mpns = circuit(U1=("MCU", "MCU-1", mcu()))
+    nets = {"V33": (3.0, 4.001), **GND}
+    report = ratings.judge(net, mpns, library(tmp_path, MCU_FACTS), project(nets), NASA)
+    assert (
+        "fail U1 pin 1 (VDD) on V33: 4.001 V can stand on it, its limit is 4 V [DS-1, rev A, p 4]"
+    ) in found(report, "fail")
 
 
 def test_a_load_that_is_over_the_limit_before_the_last_pin_is_known_fails(tmp_path):
@@ -2396,6 +2428,19 @@ def test_2_inductors_side_by_side_share_the_load(tmp_path):
     )
 
 
+def test_an_inductor_whose_value_is_0_is_not_judged_and_ends_no_run(tmp_path):
+    """`0u` in the schematic is a number, and no inductance: the ripple is a voltage divided by it.
+    The run ended in a ZeroDivisionError."""
+    net, mpns = buck_board()
+    net.parts["L1"].value = "0u"
+    coil = entry("inductor", "L-1", tolerance=0.2, amps_saturation=2.0)
+    facts = library(tmp_path, SWITCHER, chip_resistor(), coil, load("LOAD-A", 1.0))
+    report = ratings.judge(net, mpns, facts, project(V12), NASA)
+    assert [f.line for f in report.findings if f.part == "L1"] == [
+        "not judged L1 0u: its peak current is not worked out: its Value is 0 H"
+    ]
+
+
 def test_an_inductor_past_its_ratings_before_the_last_load_is_known_fails(tmp_path):
     """2.5 A of 1 load is over the 1.5 A the inductor is rated for and the 2 A it saturates at, before
     any ripple and whatever a second pin with no stated current takes."""
@@ -2895,7 +2940,8 @@ STATED = {
         (changed(STATED, "accepted", to={}), "ratings.json: accepted: a list is asked"),
         (
             changed(STATED, "accepted", 0, "by", to="the owner's decision of 2026-99-99"),
-            "ratings.json: accepted: entry 1: by: 2026-99-99 is no date",
+            "ratings.json: accepted: entry 1: by: `2026-99-99` is no date: "
+            "write `the owner's decision of YYYY-MM-DD`",
         ),
         (
             changed(STATED, "accepted", to=STATED["accepted"] * 2),
@@ -3443,6 +3489,10 @@ def test_facts_that_do_not_fit_the_part_s_symbol_are_refused(tmp_path):
     net, mpns = circuit(R1=("10k", "R-1", {"1": "V33", "2": "GND", "3": "GND"}))
     with pytest.raises(ratings.Refusal, match=r"R1 is a resistor and has 3 pins, not 2"):
         ratings.judge(net, mpns, library(tmp_path, RESISTOR), project(RAILS), NASA)
+    # a feed-through capacitor of 3 pins ended in `too many values to unpack`, which named no place
+    net, mpns = circuit(C1=("100n", "C-FT", {"1": "V33", "2": "GND", "3": "GND"}))
+    with pytest.raises(ratings.Refusal, match=r"C1 is a capacitor.ceramic and has 3 pins, not 2"):
+        ratings.judge(net, mpns, library(tmp_path, ceramic("C-FT", 16)), project(RAILS), NASA)
 
 
 def test_the_entry_that_names_a_part_most_closely_is_the_one_that_speaks_of_it(tmp_path):

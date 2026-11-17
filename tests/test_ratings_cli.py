@@ -254,6 +254,12 @@ def put(file: str, *keys: object, to: object):
     return change
 
 
+def accepts(why: str, day: str) -> dict:
+    """An entry of `accepted` for the regulator's load, by a decision of a day of 2026."""
+    by = f"the owner's decision of 2026-{day}"
+    return {"part": "U1", "rule": "output.current.linear", "why": why, "by": by}
+
+
 def own_pack(change):
     """A change that gives the project a pack of its own, house.json: the NASA pack with 1 change."""
 
@@ -350,6 +356,21 @@ WRONG = {
     "a net stated 2 times": (
         put("ratings.json", "nets", "/GND", to={"volts": [0, 5], "source": "x"}),
         "ratings.json: nets: /GND: this net stands 2 times, as GND and as /GND",
+    ),
+    # 1 failure is accepted 1 time, by a decision on a day the calendar has: a second entry would take
+    # the place of the first without a word
+    "1 failure accepted 2 times": (
+        put(
+            "ratings.json",
+            "accepted",
+            to=[accepts("first reason", "11-17"), accepts("second reason", "11-18")],
+        ),
+        "ratings.json: accepted: entry 2: entry 1 accepts the same part, rule and line",
+    ),
+    "a decision on a day the calendar lacks": (
+        put("ratings.json", "accepted", to=[accepts("a reason", "99-99")]),
+        "ratings.json: accepted: entry 1: by: `2026-99-99` is no date: "
+        "write `the owner's decision of YYYY-MM-DD`",
     ),
     "a pack whose share rises with temperature": (
         own_pack(lambda pack: pack["rules"][3].update(above=RISES)),
