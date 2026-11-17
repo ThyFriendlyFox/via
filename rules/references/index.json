@@ -143,6 +143,39 @@
       "url": "https://www.ti.com/lit/ds/symlink/tlv755p.pdf",
       "sha256": "96e2706d4b13656d2d550fdbb5be9861c56b058822109bb39a906d4ad1beb019",
       "read": "2026-11-17"
+    },
+    {
+      "id": "ti-slusce2",
+      "kind": "datasheet",
+      "maker": "Texas Instruments",
+      "number": "SLUSCE2D",
+      "title": "bq21040 0.8-A, Single-Input, Single Cell Li-Ion and Li-Pol Battery Charger",
+      "revision": "April 2016, revised January 2019",
+      "url": "https://www.ti.com/lit/ds/symlink/bq21040.pdf",
+      "sha256": "66c454e4978439d20bfa64038ffd8e0b85bb0d9c0cc421c6b7a972cbdbb82f3f",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "ti-slusbu9",
+      "kind": "datasheet",
+      "maker": "Texas Instruments",
+      "number": "SLUSBU9I",
+      "title": "BQ297xx Cost-Effective Voltage and Current Protection Integrated Circuit for Single-Cell Li-Ion and Li-Polymer Batteries",
+      "revision": "March 2014, revised August 2024",
+      "url": "https://www.ti.com/lit/ds/symlink/bq2970.pdf",
+      "sha256": "011527de4b541f4ce5170c7621b383cb5fcc5e2e01fee9caeaaaaa54cc495e56",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "ti-slps260",
+      "kind": "datasheet",
+      "maker": "Texas Instruments",
+      "number": "SLPS260E",
+      "title": "CSD17313Q2 30-V N-Channel NexFET Power MOSFET",
+      "revision": "March 2010, revised September 2015",
+      "url": "https://www.ti.com/lit/ds/symlink/csd17313q2.pdf",
+      "sha256": "a833a4cc6cc5471d2aa2faaed97ab37414a66162131a496d4a33080ae818910f",
+      "read": "2026-11-17"
     }
   ]
 }
