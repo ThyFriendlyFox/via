@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import copy
 import csv
+import dataclasses
 import importlib.util
 import math
 import os
@@ -4644,7 +4645,11 @@ def board_copper(path: Path) -> dict:
     return {"segments": segments, "vias": vias, "arcs": len(children(root, "arc"))}
 
 
-UNROUTED_RE = re.compile(r"Auto-routing was completed in .*?\((\d+) unrouted\)")
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+import routers  # noqa: E402  (tools/routers.py: the routers behind route())
+
+UNROUTED_RE = routers.UNROUTED_RE
 # A fine-pitch part: 0.5 mm pitch or less (PROCESSES.md P4 step 11). Its nets are the route's second stage.
 FINE_PITCH = 0.5
 # 2 nets are a pair when their names differ only in an ending of a pair: `TX_P` and `TX_N`, `USB_D+`
@@ -4689,21 +4694,33 @@ def route(
     jar: Path | None = None,
     passes: int = 60,
     timeout: int = 900,
-    java: str = "java",
+    java: str | None = None,
     seed: dict | None = None,
     threads: int = 0,
     order: bool = False,
+    router: str = routers.DEFAULT,
 ) -> dict:
-    """Export the DSN, run FreeRouting, merge the session into the design. Returns a summary.
-    `threads` above 0 is FreeRouting's `-mt`, the most threads it routes with. `order` routes the
-    stages of `Design.route_stages()` one after the other, a FreeRouting run each, and lists them in
-    the summary's "stages"; it takes no seed.
+    """Export the DSN, run the router, merge the session into the design. Returns a summary.
+    `router` names 1 of `routers.ROUTERS` (FreeRouting 1.9.0 by default); `jar` and `java`, when given,
+    replace its own. `threads` above 0 is the router's `-mt`. `order` routes the stages of
+    `Design.route_stages()` one after the other, a router run each, and lists them in the summary's
+    "stages"; it takes no seed.
     `seed` is a previous route's copper as `Design.seed_wiring()` keeps it. The summary's `unrouted` is
-    FreeRouting's own count when its log has one, else `Design.bare_connections()` when the route left
-    every connection without copper, else None."""
-    jar = jar or Path(os.environ.get("FREEROUTING_JAR", "/opt/workcenters/ee/freerouting/freerouting.jar"))
-    if not jar.is_file():
-        raise FileNotFoundError(str(jar))
+    the router's own count when its log has one, else `Design.bare_connections()` when the route left
+    every connection without copper, else None. Every rule here is the workcenter's: the router only
+    turns the DSN into a session (the autoroute skill's "The rules around a route")."""
+    engine = routers.get(router)
+    if jar is not None or java is not None:
+        engine = dataclasses.replace(
+            engine,
+            jar_env="",
+            jar_default=Path(jar) if jar is not None else engine.jar(),
+            java_env="",
+            java_default=java if java is not None else engine.java(),
+        )
+    why = engine.absent()
+    if why:
+        raise FileNotFoundError(why)
     build_dir = Path(build_dir)
     build_dir.mkdir(parents=True, exist_ok=True)
     dsn, ses, log = (
@@ -4713,23 +4730,7 @@ def route(
     )
 
     def freerouting(dsn: Path, ses: Path, log: Path) -> str:
-        ses.unlink(missing_ok=True)
-        # FreeRouting 1.9.0: -de, -do, -mp and -dct. Without `-dct 0` it waits 20 s for a click on a
-        # dialog that asks to confirm the start, and nobody sees a dialog here. It needs a display;
-        # xvfb-run provides one headless.
-        cmd = [java, "-jar", str(jar), "-de", str(dsn), "-do", str(ses), "-mp", str(passes), "-dct", "0"]
-        if threads > 0:
-            cmd += ["-mt", str(threads)]
-        if not os.environ.get("DISPLAY") and shutil.which("xvfb-run"):
-            cmd = ["xvfb-run", "-a", *cmd]
-        proc = subprocess.run(
-            cmd, cwd=build_dir, capture_output=True, text=True, timeout=timeout, check=False
-        )
-        text = (proc.stdout or "") + "\n" + (proc.stderr or "")
-        log.write_text(text, encoding="utf-8")
-        if proc.returncode != 0 or not ses.is_file():
-            raise RuntimeError(f"FreeRouting exited {proc.returncode}; see {log}")
-        return text
+        return engine.run(dsn, ses, log, passes, threads, timeout, build_dir)
 
     stages = []
     if order and seed:
@@ -4745,14 +4746,13 @@ def route(
             files[0].write_text(design.dsn(nets=done), encoding="utf-8")
             text = freerouting(*files)
             s, v = design.merge_ses(files[1].read_text(encoding="utf-8"))
-            m = UNROUTED_RE.search(text)
             stages.append(
                 {
                     "stage": stage,
                     "nets": nets,
                     "segments": s,
                     "vias": v,
-                    "unrouted": int(m.group(1)) if m else None,
+                    "unrouted": engine.unrouted(text),
                     "log": str(files[2]),
                 }
             )
@@ -4762,12 +4762,13 @@ def route(
         dsn.write_text(design.dsn(seed), encoding="utf-8")
         text = freerouting(dsn, ses, log)
         segments, vias = design.merge_ses(ses.read_text(encoding="utf-8"))
-    m = UNROUTED_RE.search(text)
     # FreeRouting 1.9.0 logs no count, and it ends with exit code 0 on a board where it joined nothing
     # (every part outside the outline, a width that enters no pad). Such a board holds no copper for any
     # net that needs it, and its connections are the count; with copper on one of them the DRC decides.
-    unrouted = int(m.group(1)) if m else design.bare_connections() or None
+    count = engine.unrouted(text)
+    unrouted = count if count is not None else design.bare_connections() or None
     return {
+        "router": engine.name,
         "dsn": str(dsn),
         "ses": str(ses),
         "log": str(log),
