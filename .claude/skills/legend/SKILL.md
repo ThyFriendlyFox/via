@@ -20,18 +20,28 @@ the designators itself.
 
 | Rule | Fails when | Limit and source |
 |---|---|---|
-| `size` | A text's height or stroke is under the least the fab prints. | The fab's rule set in `rules/`, read from its own page; the line names the page. A board that names no fab: the least of the 4 fabs (0.8 mm high, PCBWay; 0.0762 mm stroke, OSH Park). A fab whose page names no height leaves the height not judged. |
-| `overlap` | A text is on another text of its layer, on a pad's opening in the solder mask of its side, on a hole or a via's hole, or over the board's edge. | `rules/legend.json` |
-| `hidden` | A designator is under a part's courtyard or body (its Fab drawing), its own or another's, on its side. | `rules/legend.json` |
+| `size` | A text's height or stroke is under the least the fab prints. | The fab's rule set in `rules/`, read from its own page; the line names the page. A project whose rule set was copied from a file outside `rules/` is held to its own copy. A board that names no fab: the least of the 4 fabs for each size (0.8 mm high, PCBWay; 0.0762 mm stroke, OSH Park). A fab whose page names no height leaves the height not judged. |
+| `overlap` | A text is on another text of its layer, on a pad's opening in the solder mask of its side, on a hole or a via's hole, or off the board: over its edge, outside its outline, in a notch or in a cutout (a footprint's own Edge.Cuts slot included). | `rules/legend.json` |
+| `hidden` | A designator is under a part's courtyard or body (its Fab drawing), its own or another's, on its side. A part is the hull of its courtyard and body, turned with it. | `rules/legend.json` |
 | `nearest` | A designator is nearer another part's courtyard than its own, or further than 2.0 mm from its own. | `rules/legend.json`, `designator_reach_mm` |
-| `direction` | Texts on 1 side read in more than 2 directions (0 and 180 degrees are 1 direction), or a text on the back is not mirrored. | `rules/legend.json`, `directions_per_side` |
+| `direction` | Texts on 1 side read in more than 2 directions (180 degrees is a direction of its own: KiCad prints it upside down), or a text on the back is not mirrored. | `rules/legend.json`, `directions_per_side` |
 
 The DRC gate also takes KiCad's own legend checks (`text_height`, `text_thickness`, `silk_overlap` of 2
-texts, `silk_over_copper` and `silk_edge_clearance` of a text) as failures, whatever their severity.
+texts, `silk_over_copper` and `silk_edge_clearance` of a text) as failures, whatever their severity. The
+mask or the edge clipping a footprint's own silk outline is not a legend line.
 
 A text's box is measured for KiCad's stroke font: 1.34 / 1.27 of the glyph width a character, plus the
-stroke; the glyph height plus the stroke. A turned text is measured by the upright box round it. A text in
-another font (a `face`), or of more than 1 line, is printed `legend not judged:` with the reason.
+stroke; the glyph height plus the stroke. A turned text is measured by the upright box round it. A text
+justified top hangs half its height below its anchor; justified bottom, it stands half its height above.
+A text with no `(thickness)` has KiCad's own stroke, 1/8 of its size. A title block variable
+(`${TITLE}`, `${REVISION}`, `${ISSUE_DATE}`, `${COMPANY}`, `${COMMENTn}`) is measured as its value.
+
+These are printed `legend not judged:` with the reason, and fail with `--strict`: a text in another font
+(a `face`), of more than 1 line, or holding another text variable; a text box; a designator whose part has
+no courtyard, body or pad; the edge of a board with no outline on Edge.Cuts.
+
+A board file the tool cannot read (no file, not a board, an item with no `(at)`, a text of size 0) is
+refused: `legend: refused: <file>: <what>, <where>`, exit code 2. Red is exit code 1.
 
 ## Steps
 
