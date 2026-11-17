@@ -17,16 +17,21 @@ by side, and 1 verdict from all of them.
 | Column | Meaning |
 |---|---|
 | `file` | The test file, from the repository's root. `*` is the row for a file the table does not list. |
-| `seconds` | The file's time in 1 pytest process: setup, call and teardown of each test, summed from the junit XML of a run with `--junitxml`. |
+| `seconds` | The file's time inside a shard of the gate: setup, call and teardown of each test, summed from the shard's `log.jsonl`. |
 | `engine` | `yes` when a test of the file starts an engine (kicad-cli, ngspice, FreeRouting, openEMS, a chip tool); `no` otherwise. A shard runs its `no` files first, so that their failures show early. |
 | `alone` | Empty, or why the file cannot run beside another. Such a file runs in the shard `serial`, after the others. |
 
-The seconds come from the run of 2026-11-17 on 4 processors: 1822 tests,
-1554.4 s summed from the junit XML (pytest's own line: `1821 passed, 1
-skipped, 18 deselected, 1 warning in 1557.70s`). `*` takes 35.3 s, the
-mean of the 44 files of that run (1554.4 / 44). The `engine` column comes
-from a run with a shim in front of each engine on `PATH` that logged the
-test that started it.
+The seconds are the mean of 2 whole runs of the gate in 4 shards on
+2026-11-17, on a machine of 4 processors: 1840 tests, 1989.3 s and
+1991.7 s of test time. A file takes longer in a shard than alone, as 4
+shards share the processors: the same tests took 1554.4 s in 1 process
+(`1821 passed, 1 skipped, 18 deselected, 1 warning in 1557.70s`), and
+`tests/test_chips.py` took 251.9 s there and 326.2 s in a shard. `*` takes
+44.2 s, the mean of the 45 files ((1989.3 + 1991.7) / 2 / 45). The
+`engine` column comes from a run with a shim in front of each engine on
+`PATH` that logged the test that started it, and from reading the files
+that run an engine the shim does not see (openEMS, KiCad's `pcbnew`
+module, the chip tools in their own folder).
 
 ## How the split works
 
@@ -47,13 +52,16 @@ test that started it.
 | `missing: <id>` | 1 process collects the test, and no shard ran it. |
 | `not collected: <id>` | A shard ran a test that 1 process does not collect. |
 | `run 2 times: <id>` | 2 shards ran the same test. |
+| `logs kept: <folder>` | Each shard's `pytest.log`, `log.jsonl` and tmp_path folders are there. A green run deletes its folder. |
 | `not in the table: <file>` | Not red: the file got the `*` seconds. Add its row with the seconds of a run. |
 
 ## Keeping the table true
 
-1. Run the tests in 1 process with a junit XML:
-   `python -m pytest -q tests -p no:cacheprovider --junitxml=/tmp/serial.xml`.
-2. Sum each file's `time` attributes and write them into `seconds`.
+1. Run the tests step and keep its logs:
+   `python verify/testshards.py run --work /tmp/shards-1`.
+2. Sum the `seconds` of each file's records in `/tmp/shards-1/shard-*/log.jsonl`
+   (1 JSON object a line; the file is the part of `id` before `::`) and write
+   them into `seconds`.
 3. A new test file that runs an engine gets `yes`.
 4. A file gets a reason in `alone` only when a run side by side showed it
    fail and the cause cannot be fixed in the test.

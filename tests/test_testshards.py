@@ -197,6 +197,34 @@ def test_each_shard_has_its_own_kicad_configuration_and_temporary_folder(tmp_pat
     assert len(bases) == 2 and all("-p" in a and "no:cacheprovider" in a for a in args)
 
 
+def run_in_temp(root: Path, temp: Path) -> subprocess.CompletedProcess:
+    """The gate with no --work: it makes its own folder under TMPDIR."""
+    temp.mkdir()
+    args = ["run", "--root", str(root), "--table", str(root / "shards.csv"), "--jobs", "2"]
+    return subprocess.run(
+        [sys.executable, str(ROOT / "verify" / "testshards.py"), *args, "--python", sys.executable],
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=False,
+        env={**os.environ, "TMPDIR": str(temp)},
+    )
+
+
+def test_a_green_run_removes_its_own_folder_and_a_red_run_keeps_it(tmp_path):
+    """A whole run of the gate left 607 MB of tmp_path folders (du, 2026-11-17); a green run deletes
+    its folder, a red run keeps it for its logs and names it."""
+    green = run_in_temp(folder(tmp_path / "g", FOUR), tmp_path / "tg")
+    assert green.returncode == 0, green.stdout
+    assert list((tmp_path / "tg").iterdir()) == []
+    files = dict(FOUR)
+    files["test_s.py"] = PASSING + "\n\ndef test_planted():\n    assert 1 == 2\n"
+    red = run_in_temp(folder(tmp_path / "r", files), tmp_path / "tr")
+    assert red.returncode == 1, red.stdout
+    (kept,) = list((tmp_path / "tr").iterdir())
+    assert f"logs kept: {kept}" in red.stdout
+
+
 def test_the_gate_prints_each_shards_time_and_the_slowest_files(tmp_path):
     proc = gate(folder(tmp_path, FOUR))
     assert proc.returncode == 0, proc.stdout + proc.stderr
