@@ -14,6 +14,7 @@ that `workcenter ratings` and the SIM gate read.
 |---|---|---|---|
 | `blocks.buck` | TI SLVA477C, equations 1, 2, 3, 4 and 11, sections 3, 6 and 7; the datasheet's equations 1 (7.3.2) and 2, table 4 and sections 6.3, 6.5, 8.2.2.4 and 8.2.2.5 | `rules/blocks/buck.json` | TLV62569DBVR |
 | `blocks.usbc` | USB Type-C R2.5, tables 4-20, 4-27, 4-28, 4-35, 4-36 and 3-5; USB 2.0 table 7-7 and 2 ECNs. Its steps: `usbc.md` beside this file | `rules/blocks/usbc.json` | GCT USB4115-03-C, TI TPD2E2U06DCKR |
+| `blocks.i2c` | TI SLVA689A, equations 1, 5 and 6, table 2-1, section 3 | `rules/blocks/i2c.json` | any device whose facts give its bus pins (see "The I2C block" below) |
 
 A block holds what its note states and no more. A part the note does not
 cover is your own schematic, and `workcenter ratings` judges it.
@@ -119,3 +120,64 @@ cover is your own schematic, and `workcenter ratings` judges it.
    `workcenter references rules`: it fails a source the index lacks.
 4. Write the IC's facts into `library/facts/` (the `ratings` skill).
 5. Run `python -m pytest tests/test_blocks.py`.
+
+## The I2C block
+
+`blocks.i2c` (`tools/blocks_i2c.py`) adds the 2 pull-ups of an I2C bus, from
+the bus voltage, the speed and the bus capacitance, by TI SLVA689A. It takes
+the first stocked resistor that holds RP(min) and RP(max) at its tolerance.
+NXP's specification UM10204 could not be had; the note's table 2-1 gives the
+specification's tr, Cb and VOL.
+
+1. Add every device on the bus to the design first, with its own parts. A
+   connector stands for what is off the board.
+2. Give each device facts in `library/facts/` (the `ratings` skill). Each pin
+   on SDA or SCL needs its role (`open_drain`, `io` or `input`), `abs`, and
+   `operating`. An `open_drain` or `io` pin needs `"sink": {"amps": A,
+   "volts": V}`: the least current its datasheet says it sinks at that low
+   voltage. Add `"farads"`, the pin's greatest capacitance, where the datasheet
+   gives one. `tests/boards/library/facts/ti-tca9534.json` is an example.
+3. In `design.py`, after the devices:
+
+   ```python
+   block = blocks.i2c(d, volts=(3.135, 3.465), speed="fast",
+                      nets=("SDA", "SCL", "+3V3"), devices={"U1": "TCA9534DWR"},
+                      stock=STOCK, facts=Path(__file__).parent / "library" / "facts",
+                      farads=100e-12, sch_at=(101.6, 63.5), pcb_at=(112.0, 104.0))
+   ```
+
+   `speed` is `standard`, `fast` or `fast-plus`. `farads` is the bus
+   capacitance of each line, stated by you. With no connector on the bus you
+   may give `track=(mm, farads_per_mm, "where the figure comes from")` in its
+   place: the block sums each device's `farads` and the track. Put
+   `block.ratings`, `block.rows` and `block.files` into `d.files` as for the
+   buck block. `tests/boards/block_i2c.py` is a whole example.
+4. Run `workcenter design design.py`. What it prints:
+   - `i2c R1 R2: no stocked resistor lies between RP(min) = X and RP(max) = Y`:
+     the line names each stocked resistor and the bound it misses at its
+     tolerance. Add a resistor whose value less its tolerance is X or more and
+     plus its tolerance is Y or less.
+   - `RP(max) = ... is under RP(min)`: the bounds cross. Lower the bus
+     capacitance (a shorter bus, fewer devices), or take a slower speed.
+   - `Cb of X is over the Y of fast mode`: the same.
+   - `U1 SDA: RP(min) = ..., its sink` in the sums: that device sinks less
+     than table 2-1 asks, and its bound is the one held.
+   - `i2c U1 SDA: the bus reaches X V, over its absolute maximum` or
+     `operating limit`: the device cannot sit on this bus. Take another
+     device or a level shifter.
+   - `its role is output`, `its facts give no sink`, `no facts of`,
+     `devices names no part number`, `a connector on SDA ... state the bus
+     capacitance`, `the stated Cb ... is under ...`: fix what the line names.
+   - `design ... green`: the pull-ups, `ratings.json`, `parts.csv` and
+     `sim/i2c.cir` are written.
+5. Read the sums after `* The sums:` in `sim/i2c.cir`. A line that says
+   `not judged here` names a limit `workcenter ratings` judges in step 6.
+   The line `the devices' greatest clock is not judged` means: read each
+   device's datasheet for its greatest clock against the speed you asked.
+6. Run `workcenter ratings . --strict`, then `workcenter design design.py
+   --route` and `workcenter gates . --strict`. The SIM gate runs
+   `sim/i2c.cir` at the resistor's tolerance and holds SDA's rise to the
+   speed's tr.
+
+The block writes `sim/corners.json` for its own deck. A design with 2 blocks
+that both write it must merge the 2 by hand.
