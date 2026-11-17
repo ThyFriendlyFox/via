@@ -51,8 +51,9 @@ provides them. `python3 tools/workcenter doctor` says what is present.
     skipped for an absent engine is SKIPPED with exit code 2, never
     GREEN. GREEN names the count of warnings beside it. `PASS verify`
     is followed by a line that says whether the requirements are met.
-14. `tools/simcorners.py`, `tools/freqplan.py`, `tools/guide.py` and
-    `tools/references.py` use the standard library only, as the CLI does. They run no engine:
+14. `tools/simcorners.py`, `tools/freqplan.py`, `tools/guide.py`,
+    `tools/references.py` and `tools/partdata.py` use the standard library
+    only, as the CLI does. They run no engine:
     `tools/workcenter` does.
 15. A bound holds at every corner the project names, or it does not hold.
     A corner run is a copy of the deck in its own folder; no corner

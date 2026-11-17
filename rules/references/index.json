@@ -90,6 +90,17 @@
       "read": "2026-11-17"
     },
     {
+      "id": "samsung-cl10a106kp8nnn",
+      "kind": "datasheet",
+      "maker": "Samsung Electro-Mechanics",
+      "number": "CL10A106KP8NNN",
+      "title": "Component library, MLCC data sheet page of CL10A106KP8NNN",
+      "revision": "the page as fetched on 2026-11-17; it prints no revision",
+      "url": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A106KP8NNN",
+      "sha256": "e7cb912bac00275e53505aa5870ec3543af75375920ac7fbb31cf92ebea3c182",
+      "read": "2026-11-17"
+    },
+    {
       "id": "coilcraft-806",
       "kind": "datasheet",
       "maker": "Coilcraft",

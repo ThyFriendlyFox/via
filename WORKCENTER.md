@@ -305,6 +305,26 @@ end shows it. A resonance read from a deck that runs no corner fails the
 plan, as does a measure of the plan that some corner does not print. A
 source whose frequency the deck gives as no number is named in a warning.
 
+The SIM gate runs each deck capacitor and inductor named like a board
+reference on its maker's data (`tools/partdata.py`, the `simulate`
+skill). It does so when the project's `library/facts/` holds a curve for
+the part's number (`kept`, `kept_celsius`) in an entry that names that
+number (`mpn` or `mpns`), and `library/sources.csv` has the row of the
+maker's file with the SHA256 the facts name. A capacitor takes its value
+at its working voltage and at the run's temperature, the 2 curves
+multiplied; an inductor takes its value at its current. The gate needs
+the schematic and `parts.csv` to know each part's number. A part whose
+data the gate cannot apply fails the deck with the reason: no row, an
+entry that names the part by a pattern or a symbol, a place inside a
+`.subckt` or in a file the deck includes, an `ic=`, a K element that
+couples it, or a value that is no number. A bound that fails on the data
+names the parts that miss it alone, and the value with every part ideal:
+`tests/boards/fail-sim-bias` gives 6.755 mV of ripple on its 5 mV bound,
+3.04 mV with ideal parts, and names C2. A row that keeps no file leaves
+the SHA256 not judged, with a warning. A deck that holds a C or L under a
+name that is no board reference, while board parts hold data, gets a
+warning. A bundle carries the rewritten deck.
+
 The gate reads what it is given strictly. An expect file with a key it does
 not know, a bound with neither `min` nor `max`, a bound that is no finite
 number, or text that is not JSON fails the gate with the line that is

@@ -142,6 +142,16 @@ A part's facts are 1 entry of a file in `library/facts/`, in the project's
 folder or a folder above it; a rule pack is 1 file of `rules/ratings/`. The
 `ratings` skill has every key of both.
 
+The SIM gate reads 2 keys of a part's facts, from an entry that names the
+part by `mpn` or `mpns` and whose `source.sha256` is a row of
+`library/sources.csv`:
+
+| Key | Facts of | Type | Use |
+|---|---|---|---|
+| `kept` | a capacitor | pairs `[volts, share of the value kept]` | The maker's DC bias curve; the volts rise from pair to pair; each share above 0 and at most 1.5. `workcenter ratings` reads it too. |
+| `kept_celsius` | a capacitor | pairs `[celsius, share against 25 C]` | The maker's temperature curve; each share above 0 and at most 1.5. |
+| `kept` | an inductor | pairs `[amps, share of the value kept]` | The maker's L vs current curve; each share above 0 and at most 1.5. |
+
 ## `board-rules.json` (beside a board, for `workcenter drc` and `gates`)
 
 | Field | Type | Default | Use |

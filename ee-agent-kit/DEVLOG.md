@@ -39,6 +39,22 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-17 — Decks run their capacitors and inductors on the makers' data
+
+Roadmap item 4 landed in part. The SIM gate now runs a capacitor at its working voltage and
+temperature, and an inductor at its current, from curves in the part's facts. The first rewrite
+wrote the capacitor as `C2 out 0 '<expr>'`. ngspice 42 ran that as another element: a 1 mA charge
+stopped with `Timestep too small` at 9.9 ms. Written `C2 out 0 C='<expr>'`, it charged to 2 V in
+17.37 ms, as the hand sum gives. Samsung's component library page holds its curves as numbers. TDK's
+characteristic sheet answered 403 to the workcenter's name, and Murata's per-part URL answered 404. A
+reviewer found 8 faults. In 1 of them a part in a file the deck includes ran ideal with no line.
+All 8 are fixed, 3 in part. On integration the fixture's facts named Samsung's page, which the
+reference index lacked; I added it. That page differs on every fetch, so the index's SHA256 holds no
+copy. Its graph data still held the facts' curves on 2026-11-17.
+
+Evidence: `tests/test_partdata.py` 25 passed; `fail-sim-bias` 6.755 mV against 3.04 mV with ideal
+parts, on a 5 mV bound.
+
 ## 2026-11-17 — Board rules from a free standard, and a rule file KiCad dropped in silence
 
 Roadmap item 6 landed in part. ECSS-Q-ST-70-12C Rev.1 is free from ecss.nl. Its table 13-3 gives

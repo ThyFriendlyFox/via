@@ -17,6 +17,7 @@ the makers' and the issuers' terms forbid a copy.
 | `ti-sces351` | datasheet | SCES351Y (SN74LVC1G17) | July 2001, revised October 2025 |
 | `vishay-20035` | datasheet | 20035 (D/CRCW e3) | 14-Apr-2026 |
 | `vishay-45199` | datasheet | 45199 (VJ Commercial Series) | 08-May-2026 |
+| `samsung-cl10a106kp8nnn` | datasheet | CL10A106KP8NNN (a web page) | the page as fetched on 2026-11-17; it prints no revision |
 | `coilcraft-806` | datasheet | 806 (XAL40xx) | Revised 02/25/26 |
 | `bourns-srn2010ta` | datasheet | SRN2010TA | REV. 06/25 |
 
@@ -25,6 +26,13 @@ had the SHA256 its entry names: `9 kept, 0 changed, 0 refused`. The title, numbe
 entry were read from the first page of that copy. The same day `ecss-q-st-70-12c-rev1`, the standard
 of the board rule pack, was fetched alone: `1 kept, 0 changed, 0 refused`. Its number, title and
 revision are those of its first page.
+
+`samsung-cl10a106kp8nnn` is a web page of Samsung's component library, the source of the facts of
+`tests/boards/fail-sim-bias`. Each fetch of it differs in a session token and a time stamp, so `fetch`
+names it `changed` on every run. On 2026-11-17 a fetch gave SHA256 `503fa0ce84eed95b...`, not the
+indexed one. Its graph data still held the curves the facts enter: DC bias -71.712 % at 5 V and
+-88.793 % at 10 V, 91 points; temperature +2.280 % at -55 C and -14.725 % at 85 C, 61 points. A page
+like it is judged by its data, not by its SHA256.
 
 ## The 3 commands
 

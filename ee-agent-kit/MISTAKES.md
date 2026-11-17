@@ -1141,3 +1141,9 @@ What happened: While fixing the review, I ran 3 tests of `tests/test_boardrules_
 Cost: 3.7 s of 1 processor taken from a health gate.
 Root cause: The check for the lock printed instead of ending the command: `[ -e GATE.lock ] && echo GATE;` goes on to the next command either way.
 Process: P31
+
+## M189 — 2026-11-17 — A behavioural capacitor written in a form ngspice reads as another element
+What happened: On `wip/r4` the first rewrite of a deck capacitor used ngspice's bare quoted value, `C2 out 0 '<expr>'`. ngspice 42 ran it as another element: a 1 mA charge stopped with `Timestep too small` at 9.9 ms. The named form, `C2 out 0 C='<expr>'`, charged to 2 V in 17.37 ms, as the hand sum gives.
+Cost: 1 rewrite of the element writer.
+Root cause: The element was written from the manual's syntax and put in a design deck before it ran in a deck of its own. `test_ngspice_takes_the_rewritten_capacitor_as_its_capacitance_at_the_voltage` now holds it.
+Process: P27
