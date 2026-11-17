@@ -39,6 +39,22 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-17 — Work cards, and a project board that follows them
+
+The owner asked for a way to follow what each agent is working on, live, and for the project board to
+show the state of the work, not to set it. `workcenter now` prints 1 work card per branch; the card
+lives in 1 issue's body, rewritten at each landing, block and health gate, so watchers are not
+notified at each change. `make verify` had left no record of its verdict; it now writes
+`build/verify.json` on exit, naming the commit it started on. The workflow Board reads each issue's
+`**Status:**` line and puts the card in that column. A reviewer found that a Status line shown as an
+example in a code fence moved the card; the tool now reads the body as CommonMark renders it. The 2
+tools were built on 2 branches: the card first carried 4 state words of its own and 3 invented
+labels. On integration the card took the board's own 3 words and the repository's own labels, at the
+owner's word, and a test now feeds the card into the board's reader. The board has not run against
+GitHub yet.
+
+Evidence: `tests/test_now.py` 20 passed, `tests/test_board.py` 54 passed.
+
 ## 2026-11-17 — High-speed rules from a pair's interface, after 2 reviews that said "not sound"
 
 Roadmap item 8 landed in part. A cross-section solver in numpy gives a pair's width for its

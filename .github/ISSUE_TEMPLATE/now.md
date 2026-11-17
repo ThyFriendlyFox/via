@@ -1,18 +1,14 @@
 ---
-name: Now
+name: Work card
 about: The card of 1 piece of work in progress. Its body is rewritten with `workcenter now`, never commented on.
-title: "now: <branch>"
-labels: working
+title: "Work card: <the roadmap item's number and title, or 1 line for work with none>"
+labels: enhancement
 ---
 
-## Work
-<the roadmap item's number and title, or 1 line for work with none>
+**Status:** Todo
 
 ## Branch
 <`branch` at `short hash` subject of the last commit>
-
-## State
-<working, blocked, landed or dropped>
 
 ## Doing now
 <at most 3 lines>

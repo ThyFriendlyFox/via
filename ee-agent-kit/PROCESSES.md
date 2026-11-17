@@ -1374,3 +1374,31 @@ finding is a gap in the workcenter, never a board's own fault.
 Done when: every branch is at 100 % or its row of the listing has an
 answer; `python3 tools/harvest.py later` prints no problem; every finding
 of this harvest has the day its reader checked it.
+
+## P36 — A work card for each piece of work
+
+When: before the first edit of a piece of work on a branch; again at each
+landing, at each block and when `make verify` ends; and when the work
+lands or is dropped.
+
+1. Before the first edit, print the card: `workcenter now . --item <N or
+   1 line> --status Todo --left "<step>"`, or `--status "In progress"
+   --doing "<first step>"` when the work starts at once. Follow
+   `.claude/skills/now/SKILL.md` steps 1 to 4: 1 issue titled with what
+   `--title` prints, the card as its body and the label `enhancement`, or
+   `--write` to a checkout of the `status` branch.
+2. Rewrite the card, never comment on it: after each commit that lands a
+   step, at each block, and after each `make verify`, whose verdict the
+   card reads from `build/verify.json`. Work that waits on someone stays
+   `In progress`, with `--blocked "<who or what>"`; the label `question`
+   when it waits for the owner's decision, `help wanted` when it needs
+   something from outside.
+3. Close it: landed with `--status Done --doing "Landed on main as <short
+   hash>"` and the issue closed as completed; dropped with `--status Done
+   --doing "Dropped: <reason>"` and the issue closed as not planned.
+4. The card names the branch, never an assistant, a model or a session,
+   and repeats nothing else the project board shows.
+
+Done when: every branch with work in progress has 1 card whose Updated
+line is no older than the branch's last commit, and every landed or
+dropped card's issue is closed.

@@ -5,10 +5,13 @@ a roadmap with a known heading and, where a test needs one, a gate record that `
 `build/verify.json`. The card's text is written out by hand in each test, from those inputs:
 
     branch     wip/item-7, its commit's subject `Add the first file`
-    roadmap    `### 7. A card for each piece of work` -> `Roadmap item 7: A card for each piece of work`
+    roadmap    `### 7. A card for each piece of work` -> the title
+               `Work card: Roadmap item 7: A card for each piece of work`
     record     GREEN at 4/4 kit checks on the tree's HEAD at 2026-11-17T09:41:00Z
                -> GREEN on `<short HEAD>` at 2026-11-17 09:41 UTC
 
+The card's first line is `**Status:**` and 1 of the project board's own 3 words, which tools/board.py
+reads; the card repeats nothing else the board shows: the work is the issue's title, not a section.
 The short hash is git's own (`git rev-parse --short HEAD`): the card prints what git prints.
 """
 
@@ -28,11 +31,18 @@ CLI = ROOT / "tools" / "workcenter"
 NOW_PY = ROOT / "tools" / "now.py"
 TEMPLATE = ROOT / ".github" / "ISSUE_TEMPLATE" / "now.md"
 SKILL = ROOT / ".claude" / "skills" / "now" / "SKILL.md"
+STALE = ROOT / ".github" / "workflows" / "stale.yml"
+sys.path.insert(0, str(ROOT / "tools"))
+import board  # noqa: E402
 
 BRANCH = "wip/item-7"
 SUBJECT = "Add the first file"
+TITLE = "Work card: Roadmap item 7: A card for each piece of work"
 ROADMAP = "# Roadmap\n\n## Feature Queue\n\n### 7. A card for each piece of work\n- **Promise:** x\n"
 GIT = ["git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false"]
+# The repository's own labels, which the skill uses; the 3 a first draft invented are in none of the files.
+LABELS = ("enhancement", "help wanted", "question", "documentation")
+INVENTED = ("working", "blocked on owner", "landed")
 
 
 def git(tree: Path, *args: str) -> str:
@@ -87,21 +97,21 @@ def test_the_card_holds_every_section_from_the_tree_and_the_options(tmp_path):
     put_record(tree)
     short = git(tree, "rev-parse", "--short", "HEAD")
     before = datetime.datetime.now(datetime.UTC).replace(second=0, microsecond=0)
-    proc = now(
+    argv = (
         str(tree),
         "--item", "7",
-        "--state", "working",
+        "--status", "In progress",
         "--doing", "Writing the tests",
         "--doing", "Reading verify.sh",
         "--left", "The skill",
         "--left", "The issue template",
     )  # fmt: skip
+    proc = now(*argv)
     after = datetime.datetime.now(datetime.UTC)
     assert proc.returncode == 0, proc.stderr
     expected = (
-        "## Work\nRoadmap item 7: A card for each piece of work\n\n"
+        "**Status:** In progress\n\n"
         f"## Branch\n`{BRANCH}` at `{short}` {SUBJECT}\n\n"
-        "## State\nworking\n\n"
         "## Doing now\n- Writing the tests\n- Reading verify.sh\n\n"
         f"## Health gate\nGREEN on `{short}` at 2026-11-17 09:41 UTC\n\n"
         "## Blocked on\nnothing\n\n"
@@ -112,23 +122,41 @@ def test_the_card_holds_every_section_from_the_tree_and_the_options(tmp_path):
     assert stamp, proc.stdout
     updated = datetime.datetime.strptime(stamp.group(1), "%Y-%m-%d %H:%M").replace(tzinfo=datetime.UTC)
     assert before <= updated <= after
+    title = now(*argv, "--title")
+    assert (title.returncode, title.stdout) == (0, f"{TITLE}\n")
 
 
-def test_work_with_no_item_no_record_and_a_block(tmp_path):
-    """1 line of work stands as given; no record is `none yet`; nothing doing or left is `nothing`."""
+def test_the_board_reads_the_status_of_the_card_the_command_prints(tmp_path):
+    """tools/board.py's own reader takes the card `workcenter now` prints, and the issue's title the
+    command prints is a work card's title to it: each of the board's 3 words comes back as it went in."""
+    tree = make_tree(tmp_path)
+    for status in ("Todo", "In progress", "Done"):
+        proc = now(str(tree), "--item", "7", "--status", status)
+        assert proc.returncode == 0, proc.stderr
+        assert board.status_of(proc.stdout) == (status, "")
+    title = now(str(tree), "--item", "7", "--status", "Todo", "--title").stdout.rstrip("\n")
+    assert title.startswith(board.PREFIX)
+    lower = now(str(tree), "--item", "7", "--status", "in progress")
+    assert lower.stdout.startswith("**Status:** In progress\n")
+
+
+def test_work_with_no_item_no_record_and_a_wait(tmp_path):
+    """1 line of work is the title as given; no record is `none yet`; nothing doing or left is `nothing`.
+    Work that waits on someone stays In progress and says so in its Blocked on line."""
     tree = make_tree(tmp_path, roadmap=False)
     short = git(tree, "rev-parse", "--short", "HEAD")
-    proc = now(str(tree), "--item", "Fix the stale label", "--state", "blocked", "--blocked", "the owner")
+    argv = (str(tree), "--item", "Fix the stale label", "--status", "In progress", "--blocked", "the owner")
+    proc = now(*argv)
     assert proc.returncode == 0, proc.stderr
     assert without_updated(proc.stdout) == (
-        "## Work\nFix the stale label\n\n"
+        "**Status:** In progress\n\n"
         f"## Branch\n`{BRANCH}` at `{short}` {SUBJECT}\n\n"
-        "## State\nblocked\n\n"
         "## Doing now\nnothing\n\n"
         "## Health gate\nnone yet\n\n"
         "## Blocked on\nthe owner\n\n"
         "## Left\nnothing\n\n"
     )
+    assert now(*argv, "--title").stdout == "Work card: Fix the stale label\n"
 
 
 def test_the_gate_line_says_red_its_step_a_dirty_tree_and_an_older_commit(tmp_path):
@@ -137,7 +165,7 @@ def test_the_gate_line_says_red_its_step_a_dirty_tree_and_an_older_commit(tmp_pa
     first = git(tree, "rev-parse", "HEAD")
     first_short = git(tree, "rev-parse", "--short", "HEAD")
     put_record(tree, verdict="RED", step="3/4 tests", dirty=True)
-    proc = now(str(tree), "--item", "7", "--state", "working")
+    proc = now(str(tree), "--item", "7", "--status", "In progress")
     assert (
         f"## Health gate\nRED at 3/4 tests on `{first_short}` with uncommitted changes "
         "at 2026-11-17 09:41 UTC\n" in proc.stdout
@@ -146,7 +174,7 @@ def test_the_gate_line_says_red_its_step_a_dirty_tree_and_an_older_commit(tmp_pa
     git(tree, "add", "b.txt")
     git(tree, "commit", "-q", "-m", "Add b")
     put_record(tree, commit=first)
-    proc = now(str(tree), "--item", "7", "--state", "working")
+    proc = now(str(tree), "--item", "7", "--status", "In progress")
     assert (
         f"## Health gate\nGREEN on `{first_short}` at 2026-11-17 09:41 UTC, 1 commit before the last\n"
         in proc.stdout
@@ -157,21 +185,21 @@ def test_a_record_of_a_commit_the_branch_no_longer_holds(tmp_path):
     """After a rebase the record's commit is gone from the branch: its first 7 digits, and no count."""
     tree = make_tree(tmp_path)
     put_record(tree, commit="0123456789abcdef0123456789abcdef01234567")
-    proc = now(str(tree), "--item", "7", "--state", "working")
+    proc = now(str(tree), "--item", "7", "--status", "In progress")
     assert proc.returncode == 0, proc.stderr
     assert (
         "## Health gate\nGREEN on `0123456` at 2026-11-17 09:41 UTC, "
         "on a commit this branch no longer holds\n" in proc.stdout
     )
     put_record(tree, verdict="SKIPPED")
-    proc = now(str(tree), "--item", "7", "--state", "working")
+    proc = now(str(tree), "--item", "7", "--status", "In progress")
     assert proc.returncode == 1 and "holds the verdict 'SKIPPED'" in proc.stderr
 
 
 def test_a_record_of_another_branch_is_none_yet(tmp_path):
     tree = make_tree(tmp_path)
     put_record(tree, branch="wip/other")
-    proc = now(str(tree), "--item", "7", "--state", "working")
+    proc = now(str(tree), "--item", "7", "--status", "In progress")
     assert "## Health gate\nnone yet\n" in proc.stdout
 
 
@@ -180,13 +208,14 @@ def test_json_holds_the_same_as_the_card(tmp_path):
     put_record(tree)
     head = git(tree, "rev-parse", "HEAD")
     short = git(tree, "rev-parse", "--short", "HEAD")
-    argv = (str(tree), "--item", "7", "--state", "working", "--doing", "Tests", "--left", "Skill")
+    argv = (str(tree), "--item", "7", "--status", "In progress", "--doing", "Tests", "--left", "Skill")
     data = json.loads(now(*argv, "--json").stdout)
     assert data["work"] == "Roadmap item 7: A card for each piece of work"
+    assert data["title"] == TITLE
     assert data["item"] == "7"
     assert (data["branch"], data["commit"], data["short"], data["subject"]) == (BRANCH, head, short, SUBJECT)
-    assert (data["state"], data["doing"], data["blocked_on"], data["left"]) == (
-        "working",
+    assert (data["status"], data["doing"], data["blocked_on"], data["left"]) == (
+        "In progress",
         ["Tests"],
         "nothing",
         ["Skill"],
@@ -203,42 +232,44 @@ def test_refusals_are_one_line_each(tmp_path):
     detached = make_tree(tmp_path / "d")
     git(detached, "checkout", "-q", "--detach")
     (tmp_path / "nowhere").mkdir()
+    ok = ("--status", "In progress")
     cases = {
-        "no state": ((str(tree), "--item", "7"), "--state is missing"),
-        "unknown state": ((str(tree), "--item", "7", "--state", "paused"), "--state 'paused' is not 1 of"),
+        "no status": ((str(tree), "--item", "7"), "--status is missing"),
+        "unknown status": ((str(tree), "--item", "7", "--status", "paused"), "--status 'paused' is not 1 of"),
+        **{
+            f"the old word {word}": (
+                (str(tree), "--item", "7", "--status", word),
+                f"--status {word!r} is not 1 of Todo, In progress, Done",
+            )
+            for word in ("working", "blocked", "landed", "dropped")
+        },
         "4 doing lines": (
-            (str(tree), "--item", "7", "--state", "working", *("--doing", "a") * 4),
+            (str(tree), "--item", "7", *ok, *("--doing", "a") * 4),
             "4 --doing lines; the card holds at most 3",
         ),
-        "blocked without --blocked": ((str(tree), "--item", "7", "--state", "blocked"), "--blocked"),
-        "no item": ((str(tree), "--state", "working"), "--item is missing"),
+        "no item": ((str(tree), *ok), "--item is missing"),
         "item not in the roadmap": (
-            (str(tree), "--item", "99", "--state", "working"),
+            (str(tree), "--item", "99", *ok),
             "item 99 has no heading '### 99.' in ee-agent-kit/ROADMAP.md",
         ),
-        "a line break": ((str(tree), "--item", "7", "--state", "working", "--doing", "a\nb"), "1 line"),
-        "a line break in --item": (
-            (str(tree), "--item", "a\nb", "--state", "working"),
-            "--item holds a line",
-        ),
-        "a line break in --left": (
-            (str(tree), "--item", "7", "--state", "working", "--left", "a\rb"),
-            "--left holds a line",
-        ),
+        "a line break": ((str(tree), "--item", "7", *ok, "--doing", "a\nb"), "1 line"),
+        "a line break in --item": ((str(tree), "--item", "a\nb", *ok), "--item holds a line"),
+        "a line break in --left": ((str(tree), "--item", "7", *ok, "--left", "a\rb"), "--left holds a line"),
         "a line break in --blocked": (
-            (str(tree), "--item", "7", "--state", "blocked", "--blocked", "a\nb"),
+            (str(tree), "--item", "7", *ok, "--blocked", "a\nb"),
             "--blocked holds a line",
         ),
-        "a heading in --item": (
-            (str(tree), "--item", "## Health gate", "--state", "working"),
-            "--item starts with '#'",
-        ),
+        "a heading in --item": ((str(tree), "--item", "## Health gate", *ok), "--item starts with '#'"),
         "a heading in --blocked": (
-            (str(tree), "--item", "7", "--state", "blocked", "--blocked", " ## Left"),
+            (str(tree), "--item", "7", *ok, "--blocked", " ## Left"),
             "--blocked starts with '#'",
         ),
-        "not a git tree": ((str(tmp_path / "nowhere"), "--item", "x", "--state", "working"), "git"),
-        "detached": ((str(detached), "--item", "x", "--state", "working"), "on no branch"),
+        "a Status line in --doing": (
+            (str(tree), "--item", "7", *ok, "--doing", "**Status:** Done"),
+            "--doing holds a **Status:** line",
+        ),
+        "not a git tree": ((str(tmp_path / "nowhere"), "--item", "x", *ok), "git"),
+        "detached": ((str(detached), "--item", "x", *ok), "on no branch"),
     }
     for name, (argv, words) in cases.items():
         proc = now(*argv)
@@ -253,9 +284,9 @@ def make_status(base: Path) -> Path:
     status = base / "status"
     (status / "now").mkdir(parents=True)
     git(status, "init", "-q", "-b", "status")
-    (status / "now" / "wip-other.md").write_text("## Work\nOther\n\n## Branch\n`wip/other` at `x` y\n")
+    (status / "now" / "wip-other.md").write_text("# Work card: Other\n\n## Branch\n`wip/other` at `x` y\n")
     git(status, "add", "-A")
-    git(status, "commit", "-q", "-m", "now: wip/other working")
+    git(status, "commit", "-q", "-m", "now: wip/other In progress")
     return status
 
 
@@ -268,18 +299,19 @@ def files_of(folder: Path) -> dict[str, bytes]:
 
 
 def test_write_puts_exactly_one_file_in_the_status_checkout_and_runs_no_git(tmp_path):
+    """With no issue there is no title: the file starts with it as its heading, then the card."""
     tree = make_tree(tmp_path)
     status = make_status(tmp_path)
     head_before = git(status, "rev-parse", "HEAD")
     before = files_of(status)
-    argv = (str(tree), "--item", "7", "--state", "landed", "--doing", "Landed on main")
+    argv = (str(tree), "--item", "7", "--status", "Done", "--doing", "Landed on main")
     card = now(*argv).stdout
     proc = now(*argv, "--write", str(status))
     assert proc.returncode == 0, proc.stderr
     after = files_of(status)
     changed = sorted(k for k in after.keys() | before.keys() if after.get(k) != before.get(k))
     assert changed == ["now/wip-item-7.md"]
-    assert without_updated(after["now/wip-item-7.md"].decode()) == without_updated(card)
+    assert without_updated(after["now/wip-item-7.md"].decode()) == without_updated(f"# {TITLE}\n\n{card}")
     # it prints the commands and runs none of them: no new commit, the file not staged
     assert git(status, "rev-parse", "HEAD") == head_before
     assert git(status, "status", "--porcelain", "--untracked-files=all") == "?? now/wip-item-7.md"
@@ -287,7 +319,7 @@ def test_write_puts_exactly_one_file_in_the_status_checkout_and_runs_no_git(tmp_
     assert out[0] == f"wrote {status / 'now' / 'wip-item-7.md'}"
     assert out[1:] == [
         f"git -C {status} add now/wip-item-7.md",
-        f"git -C {status} commit -m 'now: {BRANCH} landed'",
+        f"git -C {status} commit -m 'now: {BRANCH} Done'",
         f"git -C {status} pull --rebase origin status",
         f"git -C {status} push origin status",
     ]
@@ -295,14 +327,14 @@ def test_write_puts_exactly_one_file_in_the_status_checkout_and_runs_no_git(tmp_
 
 def test_write_refuses_a_checkout_that_is_not_the_status_branch_alone(tmp_path):
     tree = make_tree(tmp_path)
-    argv = (str(tree), "--item", "7", "--state", "working")
+    argv = (str(tree), "--item", "7", "--status", "In progress")
     other = make_tree(tmp_path / "o", branch="main")
     status = make_status(tmp_path)
     (status / "README.md").write_text("x\n", encoding="utf-8")
     git(status, "add", "README.md")
     git(status, "commit", "-q", "-m", "readme")
     taken = make_status(tmp_path / "t")
-    (taken / "now" / "wip-item-7.md").write_text("## Work\nX\n\n## Branch\n`wip-item/7` at `x` y\n")
+    (taken / "now" / "wip-item-7.md").write_text("# Work card: X\n\n## Branch\n`wip-item/7` at `x` y\n")
     cases = {
         "another branch": (other, "is on branch main, not status"),
         "a file outside now/": (status, "holds README.md outside now/"),
@@ -340,31 +372,34 @@ def test_the_gate_leaves_a_record_the_card_reads(tmp_path):
     assert ignored.returncode == 0, "build/verify.json is not ignored by git in this repository"
 
 
-def test_the_issue_template_has_the_cards_sections(tmp_path):
+def test_the_issue_template_has_the_cards_status_line_and_sections(tmp_path):
     tree = make_tree(tmp_path)
-    card = now(str(tree), "--item", "7", "--state", "working").stdout
+    card = now(str(tree), "--item", "7", "--status", "Todo").stdout
     template = TEMPLATE.read_text(encoding="utf-8")
     assert headings(template) == headings(card)
-    assert headings(card) == [
-        "Work",
-        "Branch",
-        "State",
-        "Doing now",
-        "Health gate",
-        "Blocked on",
-        "Left",
-        "Updated",
-    ]
-    assert re.search(r"^labels: working$", template, re.M)
+    assert headings(card) == ["Branch", "Doing now", "Health gate", "Blocked on", "Left", "Updated"]
+    body = template.split("\n---\n", 1)[1]
+    assert board.status_of(body) == ("Todo", "")
+    assert re.search(r'^title: "Work card: ', template, re.M)
+    assert re.search(r"^labels: enhancement$", template, re.M)
 
 
-def test_the_skill_names_the_labels_and_the_stale_run_spares_open_cards():
+def test_the_skill_names_the_repositorys_own_labels_and_no_invented_one():
+    """No new labels: a work card is `enhancement`, `help wanted` when it needs something from outside,
+    `question` when it waits for the owner's decision, `documentation` for a document-only follow-up.
+    The 3 labels a first draft invented are in no file, and the stale run spares no card for them."""
     skill = SKILL.read_text(encoding="utf-8")
-    labels = ("working", "blocked on owner", "landed")
-    assert [x for x in labels if f"`{x}`" not in skill] == []
-    stale = (ROOT / ".github" / "workflows" / "stale.yml").read_text(encoding="utf-8")
-    exempt = re.search(r"exempt-issue-labels: '([^']*)'", stale).group(1).split(",")
-    assert {"working", "blocked on owner"} <= set(exempt)
+    assert [x for x in LABELS if f"`{x}`" not in skill] == []
+    for path in (SKILL, TEMPLATE, STALE):
+        text = path.read_text(encoding="utf-8")
+        named = [
+            x
+            for x in INVENTED
+            if re.search(rf"[`'\"]{re.escape(x)}[`'\"]|label[^\n]*[ ,:'\"]{re.escape(x)}\b", text, re.I)
+        ]
+        assert named == [], path
+    exempt = re.search(r"exempt-issue-labels: '([^']*)'", STALE.read_text(encoding="utf-8")).group(1)
+    assert exempt.split(",") == ["blocked", "security", "accepted"]
 
 
 def gate_lines() -> str:
@@ -394,7 +429,7 @@ def test_the_record_names_the_commit_the_gate_started_on(tmp_path):
     assert (record["verdict"], record["step"], record["commit"]) == ("GREEN", "3/4 tests", a)
     assert (record["moved_to"], record["dirty"]) == (b, False)
     put_record(tree, commit=a, moved_to=b)
-    proc = now(str(tree), "--item", "7", "--state", "working")
+    proc = now(str(tree), "--item", "7", "--status", "In progress")
     assert (
         f"## Health gate\nGREEN on `{a_short}` at 2026-11-17 09:41 UTC, the branch moved to `{b_short}` "
         "during the run, 1 commit before the last\n" in proc.stdout
@@ -428,7 +463,7 @@ def test_a_record_two_commits_back_and_three_doing_lines(tmp_path):
     for name in ("b", "c"):
         git(tree, "commit", "-q", "--allow-empty", "-m", f"Add {name}")
     put_record(tree, commit=first)
-    proc = now(str(tree), "--item", "7", "--state", "working", *("--doing", "a") * 3)
+    proc = now(str(tree), "--item", "7", "--status", "In progress", *("--doing", "a") * 3)
     assert proc.returncode == 0, proc.stderr
     assert "## Doing now\n- a\n- a\n- a\n" in proc.stdout
     assert (
@@ -465,7 +500,7 @@ def test_a_record_verify_sh_does_not_write_is_refused_in_one_line(tmp_path):
     (tree / "build").mkdir()
     for name, text in cases.items():
         (tree / "build" / "verify.json").write_text(text, encoding="utf-8")
-        proc = now(str(tree), "--item", "7", "--state", "working")
+        proc = now(str(tree), "--item", "7", "--status", "In progress")
         lines = proc.stderr.splitlines()
         assert proc.returncode == 1 and proc.stdout == "", name
         assert len(lines) == 1 and "is not a gate record verify.sh writes" in lines[0], (name, lines)
@@ -476,17 +511,14 @@ def test_a_card_that_names_an_assistant_a_model_or_a_session_is_refused(tmp_path
     repository publishes). A file's name, `CLAUDE.md`, is no such name."""
     tree = make_tree(tmp_path)
     named = make_tree(tmp_path / "n", branch="claude/fix-gate-01UhK1vD")
-    base = (str(tree), "--item", "7", "--state", "working")
+    base = (str(tree), "--item", "7", "--status", "In progress")
     cases = {
-        "--item": ((str(tree), "--item", "Claude Opus 5.5 work", "--state", "working"), "--item"),
+        "--item": ((str(tree), "--item", "Claude Opus 5.5 work", "--status", "In progress"), "--item"),
         "--doing": ((*base, "--doing", "session https://claude.ai/code/session_01UhK1vD"), "--doing"),
         "a session id": ((*base, "--doing", "Resume session_01UhK1vD"), "--doing"),
         "--left": ((*base, "--left", "Ask Sonnet to review"), "--left"),
-        "--blocked": (
-            (str(tree), "--item", "7", "--state", "blocked", "--blocked", "Anthropic"),
-            "--blocked",
-        ),
-        "the branch": ((str(named), "--item", "x", "--state", "working"), "the branch claude/fix-gate"),
+        "--blocked": ((*base, "--blocked", "Anthropic"), "--blocked"),
+        "the branch": ((str(named), "--item", "x", "--status", "In progress"), "the branch claude/fix-gate"),
     }
     for name, (argv, words) in cases.items():
         proc = now(*argv)
@@ -512,31 +544,35 @@ def test_the_skills_gh_lines_give_gh_no_card_when_the_command_refuses(tmp_path):
     stubs.mkdir()
     called = tmp_path / "gh-called"
     (stubs / "workcenter").write_text(f'#!/bin/sh\nexec {sys.executable} {shlex.quote(str(CLI))} "$@"\n')
-    (stubs / "gh").write_text(f'#!/bin/sh\necho "$@" > {shlex.quote(str(called))}\n')
+    (stubs / "gh").write_text(f'#!/bin/sh\nprintf "%s|" "$@" > {shlex.quote(str(called))}\n')
     for stub in stubs.iterdir():
         stub.chmod(0o755)
     env = {**os.environ, "PATH": f"{stubs}{os.pathsep}{os.environ['PATH']}"}
     for line in lines:
         line = line.replace("<branch>", BRANCH)
-        for options, ok in (("--item 7 --state paused", False), ("--item 7 --state working", True)):
+        for options, ok in (("--item 7 --status paused", False), ("--item 7 --status 'In progress'", True)):
             called.unlink(missing_ok=True)
             run = line.replace("<the same options>", options).replace("<options>", options)
             proc = subprocess.run(["bash", "-c", run], cwd=tree, env=env, capture_output=True, text=True)
             assert (proc.returncode == 0, called.exists()) == (ok, ok), (run, proc.stderr)
-        assert called.read_text().rstrip("\n").endswith("--body-file build/now.md")
+        args = called.read_text().rstrip("|").split("|")
+        assert args[-2:] == ["--body-file", "build/now.md"]
+        if "create" in line:
+            assert args[args.index("--title") + 1] == TITLE
+            assert args[args.index("--label") + 1] == "enhancement"
         card = (tree / "build" / "now.md").read_text(encoding="utf-8")
-        assert card.startswith("## Work\nRoadmap item 7: A card for each piece of work\n")
+        assert card.startswith("**Status:** In progress\n\n## Branch\n")
 
 
 def test_the_printed_git_commands_run_with_a_space_in_the_path_and_a_quote_in_the_branch(tmp_path):
     """A checkout `my status` and a branch `wip/it's`: the add and commit lines run in bash as printed,
-    and the commit holds now/wip-it's.md with the message `now: wip/it's working`."""
+    and the commit holds now/wip-it's.md with the message `now: wip/it's In progress`."""
     tree = make_tree(tmp_path, branch="wip/it's")
     status = tmp_path / "my status"
     status.mkdir()
     git(status, "init", "-q", "-b", "status")
     git(status, "commit", "-q", "--allow-empty", "-m", "init")
-    proc = now(str(tree), "--item", "7", "--state", "working", "--write", str(status))
+    proc = now(str(tree), "--item", "7", "--status", "In progress", "--write", str(status))
     assert proc.returncode == 0, proc.stderr
     out = proc.stdout.splitlines()
     env = {
@@ -550,7 +586,7 @@ def test_the_printed_git_commands_run_with_a_space_in_the_path_and_a_quote_in_th
     for line in out[1:3]:
         run = subprocess.run(["bash", "-c", line], env=env, capture_output=True, text=True, check=False)
         assert run.returncode == 0, (line, run.stderr)
-    assert git(status, "log", "-1", "--format=%s") == "now: wip/it's working"
+    assert git(status, "log", "-1", "--format=%s") == "now: wip/it's In progress"
     assert git(status, "ls-tree", "-r", "--name-only", "HEAD") == "now/wip-it's.md"
     assert [shlex.split(x) for x in out[3:]] == [
         ["git", "-C", str(status), "pull", "--rebase", "origin", "status"],

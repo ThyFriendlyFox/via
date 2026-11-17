@@ -89,6 +89,7 @@ file: it needs nothing else.
 | `ratings` | A schematic is to be held to its parts' ratings before layout: each part's facts from its datasheet, with the page of each pin's and each needed part's numbers, the voltages and currents the board cannot say, and `workcenter ratings` until every stress holds. |
 | `board-rules` | A routed board is to be held to a standard: each gap to the voltage between its nets and each track's width to its net's current, from `ratings.json`, with `board-rules.json` naming the pack; or to a fab's published limits. |
 | `references` | A rule cites a standard or a datasheet: get the copy it was written from with `workcenter references fetch`, judge a file a person downloaded with `workcenter references check`, and keep `workcenter references rules` passing. |
+| `now` | Several agents work at once and a maintainer follows them on the project board: 1 work card per piece of work with `workcenter now`, its `**Status:**` line Todo, In progress or Done, in 1 GitHub issue's body rewritten at each landing, block and health gate, or on the `status` branch with `--write`. |
 | `highspeed` | A board carries a fast interface (USB 2.0, USB 3.x): `interfaces.json` names each pair, and `workcenter highspeed` until every width, gap, length, skew, via count and ground plane holds; then `workcenter drc --fab build/highspeed/highspeed.kicad_dru`. |
 | `copper` | A routed board carries a stated current or a part's stated heat: each power net's drop and current density, in its copper and in each barrel, and the board's temperature, against the limits of `copper.json`, with a picture of each and `workcenter copper` until every limit holds. |
 | `fields` | A fast interface or an antenna on a routed board: a track's impedance, loss or crosstalk, held by `workcenter fields` to the limits `fields.json` states, each with its source. |
@@ -514,6 +515,27 @@ board. `ratings.json` may state a part's heat, `"U1": {"watts": 0.4,
 "source": ...}`, or the heat that leaves by 1 pad, `"U1.2"` (not both);
 `ratings` does not judge it, and `workcenter copper` spreads it through the
 board. The `ratings` skill is the procedure and holds both file formats.
+
+Not a gate: `workcenter now [TREE] --item N --status Todo|"In progress"|Done
+[--doing LINE]... [--blocked WHO] [--left LINE]... [--title] [--write
+CHECKOUT]` prints the work card of 1 piece of work in progress. Its first
+line is `**Status:**` and the project board's own word; then 6 sections:
+Branch, Doing now, Health gate, Blocked on, Left, Updated. Work that waits
+on someone stays In progress and says so in Blocked on. The work is the
+issue's title, `Work card: <the work>`, which `--title` prints; the card
+repeats nothing else the board shows. It reads the branch, the last commit
+and the roadmap item's title from the tree, and the last `make verify`
+verdict from `build/verify.json`, which `verify/verify.sh` writes on exit
+with the commit the gate started on. It refuses, in 1 line, a card with no
+status or another word, more than 3 `--doing` lines, a value with a line
+break or a `**Status:**` line of its own, `--item` or `--blocked` that
+starts with `#`, or a value, branch or commit subject that names an
+assistant, a model or a session. `--write` writes the card under its title
+to `now/<branch>.md` in a checkout of the `status` branch and prints the
+git commands to commit and push it; it runs none. The workflow Board
+(`.github/workflows/board.yml`, `tools/board.py`) puts each issue titled
+`Work card: ...` in the column its `**Status:**` line names, and a closed
+card in Done; it needs the repository secret `BOARD_TOKEN`.
 
 Not a gate: `workcenter highspeed <project> [--strict] [--verbose] [--out
 DIR]` holds the fast pairs `interfaces.json` names to their interface's

@@ -1,14 +1,18 @@
 """`workcenter now`: the card of 1 piece of work in progress, for a maintainer to follow.
 
-A card has 8 sections and no others (`SECTIONS`): the work, the branch and its last commit, the state,
-what is being done now, the last health-gate verdict on the branch, what it is blocked on, what is left,
-and when the card was written. The command reads the branch, the commit and a roadmap item's title from
-the tree, and the gate's verdict from `build/verify.json`, which `verify/verify.sh` leaves on exit
+A card's first line is `**Status:**` and 1 of the project board's own 3 words (`STATUSES`), the line
+tools/board.py reads to put the card in its column. Then 6 sections and no others (`SECTIONS`): the
+branch and its last commit, what is being done now, the last health-gate verdict on the branch, what it
+is blocked on, what is left, and when the card was written. The card repeats nothing else the board
+shows: the work (a roadmap item's title, or 1 line) is the issue's title, `Work card: <the work>`,
+which `--title` prints. Work that waits on someone stays In progress and says so in its Blocked on line.
+The command reads the branch, the commit and a roadmap item's title from the tree, and the gate's
+verdict from `build/verify.json`, which `verify/verify.sh` leaves on exit
 (`python3 tools/now.py record <exit code> <step>`). The agent gives the rest as options.
 
 The card goes into the body of 1 GitHub issue per piece of work, rewritten and never commented on; with
-`--write` it goes into `now/<branch>.md` of a checkout of the branch `status` instead, and the command
-prints the git commands that commit and push it and runs none of them.
+`--write` it goes, under its title as a heading, into `now/<branch>.md` of a checkout of the branch
+`status` instead, and the command prints the git commands that commit and push it and runs none of them.
 
 Standard library only, as the CLI is (AGENTS.md invariant 3).
 """
@@ -24,11 +28,15 @@ import subprocess
 import sys
 from pathlib import Path
 
-SECTIONS = ("Work", "Branch", "State", "Doing now", "Health gate", "Blocked on", "Left", "Updated")
-STATES = ("working", "blocked", "landed", "dropped")
+SECTIONS = ("Branch", "Doing now", "Health gate", "Blocked on", "Left", "Updated")
+# The project board's own 3 words, as tools/board.py takes them (`WORDS`), matched without regard to case.
+STATUSES = ("Todo", "In progress", "Done")
+TITLE = "Work card:"  # tools/board.py takes an issue whose title starts so (`PREFIX`)
 MAX_DOING = 3
-# The labels of a card's issue, named in .claude/skills/now/SKILL.md; the stale run spares the open ones.
-LABELS = ("working", "blocked on owner", "landed")
+# The repository's own labels a card's issue takes, named in .claude/skills/now/SKILL.md: a work card,
+# 1 that needs something from outside, 1 that waits for the owner's decision, a document-only follow-up.
+LABELS = ("enhancement", "help wanted", "question", "documentation")
+STATUS_LINE = re.compile(r"\*\*Status:\*\*", re.I)
 RECORD = Path("build") / "verify.json"
 ROADMAPS = (Path("ee-agent-kit") / "ROADMAP.md", Path("ROADMAP.md"))
 STATUS_BRANCH = "status"
@@ -162,18 +170,20 @@ def build(args: argparse.Namespace) -> dict:
     ):
         one_line(flag, values)
         names_none(flag, values)
+        # The board reads the card's 1 **Status:** line; a second one would leave the card where it stands.
+        if any(STATUS_LINE.search(v) for v in values):
+            raise Refused(f"{flag} holds a **Status:** line; the card has 1, from --status")
     # --item and --blocked are printed bare under their heading; --doing and --left after `- `.
     for flag, value in (("--item", args.item or ""), ("--blocked", args.blocked or "")):
         if value.lstrip().startswith("#"):
-            raise Refused(f"{flag} starts with '#', which would be a heading; the card has 8 and no others")
-    if args.state is None:
-        raise Refused(f"--state is missing; it is 1 of {', '.join(STATES)}")
-    if args.state not in STATES:
-        raise Refused(f"--state {args.state!r} is not 1 of {', '.join(STATES)}")
+            raise Refused(f"{flag} starts with '#', which would be a heading; the card has 6 and no others")
+    if args.status is None:
+        raise Refused(f"--status is missing; it is 1 of {', '.join(STATUSES)}")
+    status = next((s for s in STATUSES if " ".join(args.status.split()).casefold() == s.casefold()), None)
+    if status is None:
+        raise Refused(f"--status {args.status!r} is not 1 of {', '.join(STATUSES)}")
     if len(doing) > MAX_DOING:
         raise Refused(f"{len(doing)} --doing lines; the card holds at most {MAX_DOING}")
-    if args.state == "blocked" and not (args.blocked or "").strip():
-        raise Refused("state blocked needs --blocked: who or what the work waits for")
     tree = Path(args.tree)
     branch = branch_of(tree)
     head = run_git(tree, "rev-parse", "HEAD")
@@ -183,13 +193,14 @@ def build(args: argparse.Namespace) -> dict:
     work = work_of(tree, args.item)
     names_none("the roadmap item's title", [work])
     data = {
+        "title": f"{TITLE} {work}",
         "work": work,
         "item": args.item if args.item.isdigit() else None,
         "branch": branch,
         "commit": head,
         "short": short,
         "subject": subject,
-        "state": args.state,
+        "status": status,
         "doing": doing,
         "gate": gate_of(tree, branch, head),
         "blocked_on": (args.blocked or "").strip() or "nothing",
@@ -205,16 +216,15 @@ def card(data: dict) -> str:
         return "\n".join(f"- {x}" for x in lines) if lines else "nothing"
 
     bodies = (
-        data["work"],
         f"`{data['branch']}` at `{data['short']}` {data['subject']}",
-        data["state"],
         listed(data["doing"]),
         data["gate"]["line"] if data["gate"] else "none yet",
         data["blocked_on"],
         listed(data["left"]),
         data["updated"],
     )
-    return "\n".join(f"## {name}\n{body}\n" for name, body in zip(SECTIONS, bodies, strict=True))
+    sections = "\n".join(f"## {name}\n{body}\n" for name, body in zip(SECTIONS, bodies, strict=True))
+    return f"**Status:** {data['status']}\n\n{sections}"
 
 
 def card_file(branch: str) -> str:
@@ -238,9 +248,10 @@ def write(data: dict, checkout: Path) -> list[str]:
         if found and found.group(1) != data["branch"]:
             raise Refused(f"{rel} is the card of {found.group(1)}, not of {data['branch']}; rename a branch")
     path.parent.mkdir(exist_ok=True)
-    path.write_text(data["card"], encoding="utf-8")
+    # No issue holds the title here, so the file starts with it.
+    path.write_text(f"# {data['title']}\n\n{data['card']}", encoding="utf-8")
     # Quoted for a shell: a checkout's path may hold a space, a branch's name an apostrophe.
-    at, message = shlex.quote(str(checkout)), shlex.quote(f"now: {data['branch']} {data['state']}")
+    at, message = shlex.quote(str(checkout)), shlex.quote(f"now: {data['branch']} {data['status']}")
     return [
         f"wrote {path}",
         f"git -C {at} add {shlex.quote(rel)}",
@@ -259,6 +270,8 @@ def cmd_now(args: argparse.Namespace) -> int:
         return 1
     if getattr(args, "json", False):
         print(json.dumps(data, indent=2))
+    elif args.title:
+        print(data["title"])
     elif lines:
         print("\n".join(lines))
     else:
@@ -297,17 +310,19 @@ def register(sub, cli) -> None:
     """Add `now` to the workcenter's parser."""
     p = sub.add_parser(
         "now",
-        help="print the card of 1 piece of work in progress: the work, its branch and last commit, its "
-        "state, what is done now, the last health gate, what it waits for and what is left; with --write, "
-        "put it in now/<branch>.md of a checkout of the status branch",
+        help="print the card of 1 piece of work in progress: its **Status:** line for the project board, "
+        "its branch and last commit, what is done now, the last health gate, what it waits for and what is "
+        "left; with --title, the issue's title; with --write, put it in now/<branch>.md of a checkout of "
+        "the status branch",
     )
     p.add_argument("tree", nargs="?", default=".", help="the work tree (default .)")
     p.add_argument("--item", help="the roadmap item's number, or 1 line for work with none")
-    p.add_argument("--state", help=f"1 of {', '.join(STATES)}")
+    p.add_argument("--status", help=f"the board's word: 1 of {', '.join(STATUSES)}")
     p.add_argument(
         "--doing", action="append", help=f"what is done now, 1 line (repeatable, {MAX_DOING} at most)"
     )
-    p.add_argument("--blocked", help="who or what the work waits for (needed with --state blocked)")
+    p.add_argument("--blocked", help="who or what the work waits for; it stays In progress")
+    p.add_argument("--title", action="store_true", help="print the issue's title, `Work card: <the work>`")
     p.add_argument("--left", action="append", help="1 thing left to do (repeatable)")
     p.add_argument(
         "--write",

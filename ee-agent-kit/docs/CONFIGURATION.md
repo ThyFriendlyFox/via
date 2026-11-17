@@ -96,6 +96,13 @@ unset variable never causes a failure.
 | `--out DIR` | bench (required) | none | The benchmark's folder: `<board>/<router>/` with the board, `route.txt`, `drc.txt` and `run.json`, and `bench.md`. A run empties its own folder first. |
 | `--strict` (highspeed) | highspeed | off | A limit not judged fails the run: one the documents do not set, and one they set that the command does not judge (TI's single-ended impedance and stubs, among others). |
 | `--verbose` | highspeed | off | Print the rules that held too. |
+| `--item` | now | none (required) | A roadmap item's number, whose title is read from `ee-agent-kit/ROADMAP.md`, or 1 line for work with none. The issue's title is `Work card: <it>`. |
+| `--status` | now | none (required) | The project board's word: `Todo`, `In progress` or `Done`, in any case. Work that waits on someone stays `In progress`. |
+| `--doing` | now | none | 1 line of what is done now; repeatable, 3 at most. |
+| `--blocked` | now | `nothing` | Who or what the work waits for. |
+| `--left` | now | `nothing` | 1 thing left; repeatable. |
+| `--title` | now | off | Print the issue's title, `Work card: <the work>`, and nothing else. |
+| `--write` | now | off | A checkout of the `status` branch: the card goes under its title to its `now/<branch>.md`. |
 | `--spec FILE` | fields | `<project>/fields.json` | The groups of nets, each group's band and its limits, each limit with its `source`. |
 | `--model` | fields | off | Write each group's `model.json` and the engine's input under `<out>/fields/<group>/`; run nothing. |
 | `--strict` (fields) | fields | off | A limit that is not judged fails the run. Without it the run exits 2 when no limit was held (`no limit stated: nothing judged`). |
@@ -172,6 +179,22 @@ part by `mpn` or `mpns` and whose `source.sha256` is a row of
 | Field | Type | Default | Use |
 |---|---|---|---|
 | `interfaces` | list | none (required) | Each entry: `interface`, a file of `rules/interfaces/` without `.json` (`usb2`, `usb3`, `ti-am57xx-usb2`, `ti-am57xx-usb3`); `nets`, the pair's 2 nets; optional `gap` (mm, above 0). The command measures each pair's gap on the board and fails a `gap` the board does not have. An empty list is refused. |
+
+## `build/verify.json` (written by `make verify`)
+
+| Field | Type | Default | Use |
+|---|---|---|---|
+| `--head`, `--dirty`, `--tree` | flags of `python3 tools/now.py record <code> <step>` | `--tree .` | What `verify/verify.sh` runs on exit: the commit the gate started on, whether the tree differed from it then (`yes` or `no`), the repository's root. |
+| the file | object | none until a gate has run | Written by `verify/verify.sh` on exit: gate, verdict (GREEN on exit 0, else RED), last step, the commit it started on, branch, dirty (at the start or the end, untracked files included), moved_to (the commit HEAD moved to during the run, or null), UTC time. Ignored by git. `workcenter now` reads it, and refuses a record that does not have this shape. |
+
+## The workflow Board (`.github/workflows/board.yml`, `tools/board.py`)
+
+| Field | Type | Default | Use |
+|---|---|---|---|
+| `BOARD_TOKEN` | repository secret | none | A classic personal access token with the `project` and `repo` scopes; the board is changed with it. Without it the job prints 1 line and ends green. |
+| `BOARD_URL` | repository variable | `https://github.com/users/ThyFriendlyFox/projects/2` | The project board the work cards stand on (`https://github.com/users/<login>/projects/<n>` or `https://github.com/orgs/<login>/projects/<n>`). |
+| `--event` | flag of `tools/board.py` | required | The issues event's JSON file (`GITHUB_EVENT_PATH`). |
+| `--board` | flag of `tools/board.py` | required | The project's URL. |
 
 ## `copper.json` (beside a board, for `workcenter copper`)
 

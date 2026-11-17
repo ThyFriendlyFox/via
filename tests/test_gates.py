@@ -227,6 +227,8 @@ def test_every_cli_flag_is_in_the_configuration_table():
         "tools/measureplan.py",  # and measure
         "tools/fields.py",  # and fields
         "tools/highspeed.py",  # and highspeed
+        "tools/now.py",  # and now
+        "tools/board.py",
         "tools/harvest.py",
     )
     for tool in tools:

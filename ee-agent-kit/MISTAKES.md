@@ -1213,3 +1213,27 @@ What happened: On `wip/r8` the gap, the coupling and the stackup were each read 
 Cost: A second review that said "not sound"; 7 findings fixed with tests.
 Root cause: When a check read 1 value of several, it did not judge or print the others.
 Process: P14
+
+## M201 — 2026-11-17 — A test run while the health gate held the machine
+What happened: On `wip/now`, `tests/test_now.py` ran once (11 tests, 11 failed in 2.23 s) while `GATE.lock` existed, before the code existed, to see the tests fail. On `wip/board` the first run of `tests/test_board.py` (0.79 s, no engine) started while the lock existed: the command listed the lock and did not wait on it. The brief says no test runs while the lock exists.
+Cost: 2 short runs during a health gate.
+Root cause: The lock was looked at, not waited on. Every later run waited with `until [ ! -e GATE.lock ]; do sleep 30; done` in front of pytest.
+Process: P31
+
+## M202 — 2026-11-17 — A gate record that named the commit at the gate's exit
+What happened: On `wip/now`, `tools/now.py record` read `git rev-parse HEAD` and `git status` in `verify.sh`'s EXIT trap. A commit that landed while the gate ran was recorded as the commit it judged, and untracked files it read were not counted as changes, so the card could say GREEN on a commit the gate never tested. The review found it.
+Cost: A review finding; a fix with a test.
+Root cause: The record was taken at the end of the run. `verify.sh` now notes the commit and the tree's state before step 1 and passes them to `record`.
+Process: P31
+
+## M203 — 2026-11-17 — A card's line read from the raw body, not the rendered one
+What happened: On `wip/board`, `tools/board.py` counted a `**Status:**` line inside a code fence or an HTML comment as the card's, so a card that copied the README's example would have stood in Done. The 33 tests held only plain bodies, and 8 untested branches each survived a 1-line mutant.
+Cost: A review's 4 findings; 21 tests.
+Root cause: The body was read as text, not as CommonMark renders it. The tool now counts only the lines that render as the card's own, and a test holds each branch, each seen to fail on its mutant.
+Process: P18
+
+## M204 — 2026-11-17 — A card built before the board's words were settled
+What happened: On `wip/now` the card carried a `State` section with 4 words of its own (working, blocked, landed, dropped) and 3 labels the repository did not have, and it repeated the work's title the board shows. The owner then decided that the card carries the board's own 3 words, Todo, In progress or Done, uses the repository's own labels, and repeats nothing else the board shows. The State section, the 4 words and the 3 labels were taken out on integration.
+Cost: 1 rewrite of the card, the skill, the template and 18 tests.
+Root cause: 2 tools that share 1 line were built on 2 branches, and neither held the other's reader. A test now feeds the card `workcenter now` prints into `tools/board.py`'s own reader.
+Process: P14
