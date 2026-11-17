@@ -359,16 +359,13 @@ def test_neither_a_capacitance_nor_a_track_is_refused():
 
 
 @needs_libs
-def test_the_block_hands_the_lines_and_its_parts_to_ratings():
-    """SDA and SCL span 0 V to the bus's greatest voltage; R1 and R2 are 1 row of parts.csv."""
+def test_the_block_hands_its_parts_to_ratings_and_states_no_span_for_the_lines():
+    """R1 and R2 are 1 row of parts.csv. The block states no span for SDA and SCL: `workcenter ratings`
+    works them out from the pull-ups and the open drains, with the supply held where each pin's limit is
+    tightest. A stated span of 0 V to 3.465 V would stand apart from VCC's 3.135 V, and fail SDA's
+    limit of VCC, which the pull-up to the same +3V3 never passes."""
     _, block = i2c(farads=100e-12)
-    source = "the I2C block R1 R2: open drains pulled up to +3V3, i2c(volts=(3.135, 3.465))"
-    assert block.ratings == {
-        "nets": {
-            "SDA": {"volts": [0, 3.465], "source": source},
-            "SCL": {"volts": [0, 3.465], "source": source},
-        }
-    }
+    assert block.ratings == {}
     assert [(r.value, r.mpn, r.qty) for r in block.rows] == [("2.2k", "CRCW06032K20FKEA", 2)]
 
 
