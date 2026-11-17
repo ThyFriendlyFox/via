@@ -302,13 +302,12 @@ def i2c(  # noqa: PLR0912, PLR0913, PLR0915
               pcb_at=(px + 3.0 * k, py), nets={"1": a, "2": b})  # fmt: skip
     _read_back(d, chosen, item.value, ohms, t, least, rise, factor, cb)
 
-    source = f"the I2C block {pair}: open drains pulled up to {vdd}, i2c(volts=({_g(bottom)}, {_g(top)}))"
-    entries = {
-        "nets": {sda: {"volts": [0, top], "source": source}, scl: {"volts": [0, top], "source": source}}
-    }
+    # No span is stated for SDA and SCL: `workcenter ratings` works them out from the pull-ups and the open
+    # drains, and holds the supply where each pin's limit is tightest. A stated span would stand apart
+    # from the supply's, and a limit of VCC on a line pulled up to the same VCC would fail.
     rows = rows_of([(item, 2)])
     files = _deck(refs["sda"], sda, item, f, ohms, cb, top, rise, note, speed, sums)
-    return Block("i2c", sums, entries, rows, files)
+    return Block("i2c", sums, {}, rows, files)
 
 
 def _read_back(d, chosen, value, ohms, t, least, rise, factor, cb) -> None:  # noqa: PLR0913
