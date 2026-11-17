@@ -244,7 +244,8 @@ def watch(running: list[Started], said: set[str]) -> None:
             for rec in read_log(r.jsonl):
                 if rec.get("outcome") == "failed" and rec["id"] not in said:
                     said.add(rec["id"])
-                    print(f"FAILED {rec['id']} (shard {r.shard.name})", flush=True)
+                    at = time.monotonic() - r.start
+                    print(f"FAILED {rec['id']} (shard {r.shard.name}) at {at:.0f} s", flush=True)
             if r.code is None and r.proc.poll() is not None:
                 r.code = r.proc.returncode
                 r.seconds = time.monotonic() - r.start

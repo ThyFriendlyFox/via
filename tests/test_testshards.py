@@ -7,6 +7,7 @@ folders written in tmp_path: no engine runs, and none of the repository's own te
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -152,7 +153,7 @@ def test_a_failing_test_in_either_shard_makes_the_gate_red(tmp_path, shard):
     (root / target).write_text(PASSING + "\n\ndef test_planted():\n    assert 1 == 2\n", encoding="utf-8")
     proc = gate(root)
     assert proc.returncode == 1, proc.stdout
-    assert f"FAILED {target}::test_planted (shard {shard})" in proc.stdout
+    assert re.search(rf"^FAILED {target}::test_planted \(shard {shard}\) at \d+ s$", proc.stdout, re.M)
     assert f"shard {shard}: exit 1" in proc.stdout
     assert "TESTS RED" in proc.stdout
 
