@@ -448,6 +448,17 @@ def test_no_sentence_of_a_hint_or_of_a_step_is_over_20_words(tmp_path, monkeypat
         with monkeypatch.context() as patch:
             patch.setattr(guide, "subprocess", says(printed))
             answer(designed)
+    # a board generated without --route: a net with 2 pads and no copper
+    unrouted = tmp_path / "unrouted"
+    unrouted.mkdir()
+    (unrouted / "design.py").write_text("# a design\n", encoding="utf-8")
+    (unrouted / "u.kicad_pcb").write_text(
+        '(kicad_pcb (footprint "R" (pad "1" smd (net "A")) (pad "2" smd (net "A"))))', encoding="utf-8"
+    )
+    with monkeypatch.context() as patch:
+        matches = types.SimpleNamespace(returncode=0, stdout="")
+        patch.setattr(guide, "subprocess", types.SimpleNamespace(run=lambda *args, **kwargs: matches))
+        answer(unrouted)
     # the gates' report
     answer(project("fresh"))
     stale = project("stale", passed)
@@ -580,28 +591,30 @@ def test_a_folder_that_is_not_there_is_created_first(tmp_path):
     assert not new.parent.exists()  # the command writes nothing
     new.mkdir(parents=True)  # what the RUN line does
     code, step = ask(new)
-    assert code == 1 and step["next"].startswith("Start the project with a deck")
+    assert code == 1 and step["next"].startswith("Start a board project")
 
 
 # ------------------------------------------------------------- the steps
 
 
 def test_a_folder_with_nothing_in_it_is_told_the_ways_to_start(tmp_path):
+    """A board is the common start, and its RUN line is `workcenter new` (user round 1, 2026-11-17: the
+    small user found no command that starts a board). A deck and a chip are named as the other ways."""
     code, step = ask(tmp_path)
     assert code == 1 and step["done"] is False
-    assert step["next"].startswith("Start the project with a deck, or with a design file for a board.")
-    assert f"{tmp_path}/sim/<name>.cir" in step["next"] and f"{tmp_path}/design.py" in step["next"]
+    assert step["next"].startswith(
+        "Start a board project: the RUN line writes design.py from the template, and the files beside it."
+    )
+    assert step["run"] == f"workcenter new {tmp_path}"
+    assert f"{tmp_path}/sim/<name>.cir instead" in step["next"]
     assert f"{tmp_path}/sim/<name>.expect.json" in step["next"]
-    assert f"can start from a copy of {ROOT}/templates/project/design.py." in step["next"]
     # a chip starts with its own command, which writes the folder's first files
     assert step["next"].endswith(
         f"For a chip, `workcenter chip init {tmp_path} --top <module>` writes the project's first files."
     )
-    # 3 ways to start are not 1 command: a reader who runs every RUN line is given none
-    assert step["run"] == ""
-    assert step["done_when"] == f"`workcenter next {tmp_path}` names another step"
+    assert step["done_when"] == f"`workcenter next {tmp_path}` names the design step"
     assert step["read"] == (
-        '.claude/skills/simulate/SKILL.md, "Steps"; .claude/skills/board-design/SKILL.md, "Steps"; '
+        '.claude/skills/board-design/SKILL.md, "Steps"; .claude/skills/simulate/SKILL.md, "Steps"; '
         '.claude/skills/chip-design/SKILL.md, "Steps"'
     )
     (tmp_path / "design.py").write_text("# a design\n", encoding="utf-8")
