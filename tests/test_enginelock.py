@@ -389,6 +389,7 @@ def test_a_short_command_returns_while_a_long_one_holds(bench):
     project = sim_project(bench)
     workcenter(bench, "A", "sim", str(project), "--out", str(bench.tmp / "out-a"))
     until("A's engine", lambda: started(bench, "A"))
+    assert len(bench.tickets()) == 1
     env = bench.env()
     nxt = subprocess.run(
         [PY, str(CLI), "next", str(project)], env=env, capture_output=True, text=True, timeout=60
