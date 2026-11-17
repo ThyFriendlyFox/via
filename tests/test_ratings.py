@@ -926,6 +926,149 @@ def test_a_diode_s_current_is_held_to_its_forward_current(tmp_path):
     ]
 
 
+# A fuse, a ferrite and a switch in a row from the 5 V rail to a capacitor.
+IN_A_ROW = {
+    "F1": ("2A", "F-1", {"1": "V5", "2": "VF"}),
+    "FB1": ("600R", "FB-1", {"1": "VF", "2": "VA"}),
+    "SW1": ("SW", "SW-1", {"1": "VA", "2": "VB"}),
+    "C1": ("100n", "C-16V", {"1": "VB", "2": "GND"}),
+}
+
+
+def test_a_stated_current_through_a_fuse_a_ferrite_and_a_switch_is_held_to_the_part_s_rating(tmp_path):
+    """1.5 A through a 2 A fuse is 0.75, 600 mA through a 500 mA ferrite is 1.20 and 20 mA through a
+    50 mA switch is 0.40. Neither pack holds a rule for the 3: each is held to its own rating. The
+    command took the 3 currents before, held them to nothing, and printed RATINGS HELD."""
+    net, mpns = circuit(**IN_A_ROW)
+    facts = library(
+        tmp_path,
+        entry("fuse", "F-1", amps=2.0, volts=32),
+        entry("ferrite", "FB-1", amps=0.5),
+        entry("switch", "SW-1", amps=0.05),
+        ceramic("C-16V", 16),
+    )
+    nets = {"V5": (4.5, 5.5), **GND}
+    stated = project(nets, amps={"F1": 1.5, "FB1": 0.6, "SW1": 0.02})
+    report = ratings.judge(net, mpns, facts, stated, NASA)
+    lines = [f.line for f in report.findings if "current" in f.text]
+    assert [line.split(" [")[0] for line in lines] == [
+        "fail FB1 600R current, with the 600 mA the project states: 600 mA on 500 mA rated is 1.20, "
+        "the limit is 1.00",
+        "hold F1 2A current, with the 1.5 A the project states: 1.5 A on 2 A rated is 0.75, "
+        "the limit is 1.00",
+        "hold SW1 SW current, with the 20 mA the project states: 20 mA on 50 mA rated is 0.40, "
+        "the limit is 1.00",
+    ]
+    assert all(line.endswith("[DS-1, rev A: the part's own rating]") for line in lines)
+    assert [f.rule for f in report.findings if "current" in f.text] == [
+        "ferrite.current",
+        "fuse.current",
+        "switch.current",
+    ]
+    unstated = ratings.judge(net, mpns, facts, project(nets), NASA)
+    assert not any("current" in f.text for f in unstated.findings)
+
+
+def test_a_stated_current_that_the_facts_rate_no_current_for_is_not_judged(tmp_path):
+    """ratings.json states 600 mA through a ferrite, 5 A through a diode and 4 A through a transistor,
+    and the facts of none hold a current rating. A number the owner stated and nothing is held to is
+    no hold: each gets its line, and the run does not print RATINGS HELD over it."""
+    net, mpns = circuit(**IN_A_ROW)
+    facts = library(
+        tmp_path,
+        entry("fuse", "F-1", amps=2.0),
+        entry("ferrite", "FB-1"),
+        entry("switch", "SW-1"),
+        ceramic("C-16V", 16),
+    )
+    nets = {"V5": (4.5, 5.5), **GND}
+    report = ratings.judge(net, mpns, facts, project(nets, amps={"FB1": 0.6, "SW1": 0.02}), NASA)
+    assert found(report, "not judged") == [
+        "not judged FB1 600R: the project states 600 mA through it, and its facts hold no current rating",
+        "not judged SW1 SW: the project states 20 mA through it, and its facts hold no current rating",
+    ]
+    assert ratings.verdict(report) == ("RATINGS HELD, 2 NOT JUDGED", 0)
+
+    net, mpns = circuit(D1=("SS14", "D-1", {"1": ("VBUS", "A", "passive"), "2": ("V12", "K", "passive")}))
+    diode = entry("diode.rectifier", "D-1", diodes=[{"anode": "1", "cathode": "2"}], volts_reverse=30)
+    nets = {"VBUS": (4.4, 5.5), "V12": (11.4, 12.6)}
+    report = ratings.judge(net, mpns, library(tmp_path, diode), project(nets, amps={"D1": 5.0}), NASA)
+    assert found(report, "not judged") == [
+        "not judged D1 SS14: the project states 5 A through it, and its facts hold no current rating"
+    ]
+
+    net, mpns = circuit(Q1=("FET", "FET-2", POWER_FET))
+    nets = {"LOAD": (0.0, 12.6), "GATE": (0.0, 3.3), **GND}
+    report = ratings.judge(net, mpns, library(tmp_path, power_fet()), project(nets, amps={"Q1": 4.0}), NASA)
+    assert found(report, "not judged") == [
+        "not judged Q1 FET: the project states 4 A through it, and its facts hold no current rating"
+    ]
+
+
+def test_a_part_between_2_nets_that_a_wire_joins_has_0_v_across_it(tmp_path):
+    """A ferrite makes V33 and V33A 1 node. The 10 ohm resistor beside it stands between 2 nets that
+    never part: 0 V and 0 W. Taken apart at their extremes the 2 nets gave it the rail's 3.4 V, and
+    1.17 W on a 62.5 mW part. The same holds for a diode that a 0 ohm link bypasses, for the link
+    itself, and for a capacitor with both pins on 1 net."""
+    net, mpns = circuit(
+        U1=("LDO", "LDO-1", LDO),
+        FB1=("600R", "FB-1", {"1": "V33", "2": "V33A"}),
+        R1=("10", "R-0402", {"1": "V33", "2": "V33A"}),
+        C1=("100n", "C-16V", {"1": "V33A", "2": "GND"}),
+        C2=("100n", "C-16V", {"1": "V5", "2": "V5"}),
+    )
+    facts = library(tmp_path, regulator(), entry("ferrite", "FB-1"), chip_resistor(), ceramic("C-16V", 16))
+    report = ratings.judge(net, mpns, facts, project(V5), NASA)
+    assert found(report, "fail") == []
+    assert [f.line.split(" [")[0] for f in report.findings if f.part in ("R1", "C2")] == [
+        "hold R1 10 between V33 and V33A, 2 nets that a wire joins: 0 V on 50 V rated is 0.00, "
+        "the limit is 0.80",
+        "hold R1 10 between V33 and V33A, 2 nets that a wire joins, with 0 V across it: "
+        "0 W on 62.5 mW rated is 0.00, the limit is 0.50",
+        "hold C2 100n between V5 and V5, both pins on 1 net: 0 V on 16 V rated is 0.00, the limit is 0.60",
+    ]
+
+    net, mpns = circuit(
+        D1=("SS14", "D-1", {"1": ("VBUS", "A", "passive"), "2": ("VSYS", "K", "passive")}),
+        R2=("0", "R-0402", {"1": "VBUS", "2": "VSYS"}),
+        Q1=("FET", "FET-1", {"1": ("GATE", "G", "input"), "2": ("VBUS", "S", "passive"), "3": "VSYS"}),
+        C1=("100n", "C-16V", {"1": "VSYS", "2": "GND"}),
+    )
+    diode = entry("diode.rectifier", "D-1", diodes=[{"anode": "1", "cathode": "2"}], volts_reverse=30)
+    fet = entry(
+        "transistor.mosfet",
+        "FET-1",
+        transistors=[{"gate": "1", "drain": "3", "source": "2"}],
+        volts_drain_source=20,
+        volts_gate_source=12,
+    )
+    nets = {"VBUS": (4.4, 5.5), "GATE": (0.0, 5.5), **GND}
+    report = ratings.judge(
+        net, mpns, library(tmp_path, diode, fet, chip_resistor(), ceramic("C-16V", 16)), project(nets), NASA
+    )
+    assert [f.line.split(" [")[0] for f in report.findings if f.part in ("D1", "R2", "Q1")] == [
+        "hold D1 SS14 from VBUS to VSYS, 2 nets that a wire joins: 0 V on 30 V rated is 0.00, "
+        "the limit is 0.70",
+        "hold R2 0 between VBUS and VSYS, 2 nets that a wire joins: 0 V on 50 V rated is 0.00, "
+        "the limit is 0.80",
+        "hold Q1 FET drain VSYS to source VBUS, 2 nets that a wire joins: 0 V on 20 V rated is 0.00, "
+        "the limit is 0.75",
+        "hold Q1 FET gate GATE to source VBUS: 5.5 V on 12 V rated is 0.46, the limit is 0.60",
+    ]
+
+
+def test_a_current_stated_behind_a_pin_of_an_ic_is_named_in_the_notes(tmp_path):
+    """The command judges no pin's current. 4 mA stated behind PA0 is held to nothing, and the report
+    says so once, by the pin: the number stands in no line, and nothing passes for judged."""
+    net, mpns = circuit(U1=("MCU", "MCU-1", mcu()), R1=("10k", "R-0402", {"1": "SIG", "2": "GND"}))
+    facts = library(tmp_path, MCU_FACTS, chip_resistor())
+    report = ratings.judge(net, mpns, facts, project(RAILS, amps={"U1.3": 0.004}, ambient=25), NASA)
+    assert report.notes == [
+        "U1.3: ratings.json states 4 mA behind the pin, and the command holds no pin's current to a limit"
+    ]
+    assert ratings.judge(net, mpns, facts, project(RAILS, ambient=25), NASA).notes == []
+
+
 def pin(name: str, numbers: list[str], role: str, **keys) -> dict:
     return {
         "name": name,
@@ -2468,6 +2611,10 @@ def test_a_rule_s_factor_falls_with_the_ambient_the_project_states(tmp_path):
         (12.6, "V", "12.6 V"),
         (0.0, "W", "0 W"),
         (1e3, "ohm", "1 kohm"),
+        (0.9994, "A", "999 mA"),
+        (0.9997, "A", "1 A"),  # 999.7 mA is 1000 at 3 digits: 1 of the next prefix, never `1e+03 mA`
+        (0.0009997, "F", "1 mF"),
+        (999.7, "V", "1 kV"),
     ],
 )
 def test_a_quantity_is_written_with_its_prefix(value, unit, text):
@@ -2755,7 +2902,11 @@ def test_a_shipped_pack_loads_and_each_of_its_limits_names_a_table_and_a_page(na
     assert pack.name == name
     assert re.fullmatch(r"[0-9a-f]{64}", pack.document["sha256"])
     assert pack.document["url"].startswith("https://")
-    assert {rule.stress for rule in pack.rules} == set(ratings.STRESSES)
+    # 3 currents have no row in either pack and are held to the part's own rating: NASA's table 4 of
+    # section F3 derates a cartridge fuse by its rating and ECSS's table 6-17 a cermet fuse, and a pack's
+    # rule is 1 share for a kind
+    no_row = {"fuse.current", "ferrite.current", "switch.current"}
+    assert {rule.stress for rule in pack.rules} == set(ratings.STRESSES) - no_row
     for rule in pack.rules:
         assert "table" in rule.where and "page" in rule.where, rule.id
         assert 0 < rule.max < 1, rule.id

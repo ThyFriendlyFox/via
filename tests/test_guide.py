@@ -319,6 +319,11 @@ def test_every_hint_points_at_a_file_and_a_heading_that_exist():
         ),
         (
             "ratings",
+            "not judged D3 SS14: the project states 5 A through it, and its facts hold no current rating",
+            "`amps_forward` for a diode",
+        ),
+        (
+            "ratings",
             "fail U4: its facts name pin 1 IOUT, and the symbol names pin 3 Iout: the 2 number the pins "
             "differently",
             "the datasheet's package drawing",

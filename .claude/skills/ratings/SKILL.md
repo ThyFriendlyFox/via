@@ -60,6 +60,7 @@ parts, each entry read from its datasheet.
    | `no source holds <net>` | Nothing the command knows drives the net. State it in `nets`, or correct the facts of the part that drives it. |
    | `has no data on the value it keeps` | Add `kept` to the capacitor's facts from its maker's DC bias curve, or fit a part that has one. |
    | `its facts hold no voltage rating` or `has no tolerance in its facts` | Add `volts` or `tolerance` to the capacitor's facts from its datasheet. With no datasheet in `library/`, get it first. |
+   | `its facts hold no current rating` | `ratings.json` states a current through the part. Add the rating to its facts from its datasheet: `amps_forward` for a diode, `amps_drain` for a transistor, `amps` for a ferrite or a switch. |
 
 4. Write 1 part's facts. `workcenter ratings <project> --facts U1` prints
    the entry to fill, with the part's number and its pins; save it as
@@ -150,8 +151,9 @@ Correct the file at that place and run again.
 - `parts`: `REF.PIN` with `amps` is the load behind a connector's pin.
   `REF` with `amps` is the current through a part that the board cannot
   say: a sense resistor's, an inductor's peak, a rectifier diode's, a
-  transistor's drain current. State the RMS current for a resistor and a
-  transistor, the average for a diode and the peak for an inductor: each
+  transistor's drain current, a fuse's, a ferrite's, a switch's. State
+  the RMS current for a resistor, a transistor, a fuse, a ferrite and a
+  switch, the average for a diode and the peak for an inductor: each
   rating is held to that one. `REF` with `volts` is the greatest voltage
   across a capacitor or a resistor whose 2 nets move together: a
   bootstrap capacitor, a capacitor across a cell.
@@ -161,10 +163,9 @@ Correct the file at that place and run again.
   a connector named with no pin (`J2` for `J2.1`). `REF.PIN` with `amps`
   is refused for a pin of any part but a connector and an IC, and for a
   pin of an IC that is no `output`, `io` or `open_drain` pin. `REF` with
-  `volts` is refused for any part but a capacitor and a resistor. 2
-  currents are taken and held to nothing yet, as their ratings are:
-  through a fuse, a ferrite or a switch, and behind an `output`, `io` or
-  `open_drain` pin of an IC.
+  `volts` is refused for any part but a capacitor and a resistor. 1
+  current is taken and held to nothing yet: the one behind an `output`,
+  `io` or `open_drain` pin of an IC. A note of the report names it.
 
 ## A part's facts
 
@@ -187,8 +188,8 @@ count as a second reading.
 | `diode.clamp` (zener, TVS) | `diodes`, `volts_standoff` | |
 | `transistor.mosfet` | `transistors`: `[{"gate": "1", "drain": "3", "source": "2"}]`, `volts_drain_source`, `volts_gate_source` | `amps_drain`: a number, or pairs `[celsius, amps]` when the datasheet states it at 2 temperatures; held to the current the project states. `watts` |
 | `connector` | | `pins`: `[{"numbers": ["1"], "outside": "source"}]`, with `source`, `load` or `nothing` |
-| `fuse` | `amps` | `volts` |
-| `ferrite`, `switch` | | `amps`, `volts` |
+| `fuse` | `amps`: the rated current, held to the current the project states for the part | `volts` |
+| `ferrite`, `switch` | | `amps`: held to the current the project states. `volts` |
 | `link`, `testpoint`, `mechanical` | | |
 | `ic` | `family`: `digital`, `linear`, `regulator.linear` or `regulator.switching`; `pins` | `needs`, `switching` |
 
@@ -243,15 +244,17 @@ name share an entry, as `"numbers": ["2", "5"]`.
   with `"effective": true` when the datasheet asks for the capacitance
   that is left under voltage, and
   `{"inductor": {"from": "SW", "to": "FB", "henries": [0.7e-6, 2.64e-6]}, "page": 9}`.
+  An inductor's need holds `henries`, the least current it saturates at
+  as `amps_saturation_min`, or both.
   An end that names a `feedback` pin is the output's net. `from` and
   `to` are 2 pins, and a need asks for more than 0.
 - `switching`, for a buck converter:
   `{"topology": "buck", "hertz": [1.5e6, 1.5e6], "page": 5}`, and
   `efficiency` when the datasheet states one.
 
-Recorded and held to nothing yet: `amps` and `volts` of a fuse, a ferrite
-and a switch; `amps` of an `output`, `io` and `open_drain` pin; `watts`
-of a transistor; a capacitor's `dielectric`. A connector's facts take no
+Recorded and held to nothing yet: `volts` of a fuse, a ferrite and a
+switch; `amps` of an `output`, `io` and `open_drain` pin; `watts` of a
+transistor; a capacitor's `dielectric`. A connector's facts take no
 rating.
 
 ## How the command reads a circuit
@@ -280,9 +283,16 @@ rating.
 - While its sources are on, a net that 1 resistor alone feeds stands at
   the net behind the resistor, less the drop of what its pins take: a
   supply pin behind its filter resistor is held to its working range.
-- A transistor's drain current and a diode's forward current are held to
-  the current `ratings.json` states for the part. A rating the datasheet
-  gives at 2 temperatures is read at the project's ambient.
+- A transistor's drain current, a diode's forward current and the
+  current through a fuse, a ferrite and a switch are held to the current
+  `ratings.json` states for the part. A rating the datasheet gives at 2
+  temperatures is read at the project's ambient. Neither pack holds a
+  rule for a fuse, a ferrite or a switch: each is held to its own rating.
+  A stated current whose part has no current rating in its facts is not
+  judged.
+- The nets a wire joins are 1 node: a fuse, a ferrite, a link, a 0 ohm
+  resistor, an inductor. A part between 2 nets of 1 node has 0 V across
+  it, and its line says `2 nets that a wire joins`.
 - A resistor does not move a net a source holds; a released output follows
   its pull-up. A divider's tap is solved at the corners of its tolerances.
 - A resistor is judged with the greatest voltage between its 2 nets. In a

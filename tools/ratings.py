@@ -324,12 +324,14 @@ class Spans:
     held: what a net's own sources hold it to while they are on. A supply pin's working range is held
     to it. why: for a net with no span, the reason. drops: resistor -> the greatest voltage across it,
     for a resistor with an end that resistors alone hold: solved with its nets, not taken from the
-    extremes of the 2 apart."""
+    extremes of the 2 apart. node: net -> its node; the nets a wire joins (a fuse, a ferrite, a link, a
+    0 ohm resistor, an inductor) are 1 node, and no voltage stands between 2 of them."""
 
     stress: dict[str, Span]
     held: dict[str, Span]
     why: dict[str, str]
     drops: dict[str, float] = field(default_factory=dict)
+    node: dict[str, str] = field(default_factory=dict)
 
 
 def _hull(spans: list[Span]) -> Span:
@@ -571,7 +573,7 @@ def net_spans(
     out = Spans({}, {}, {})
     out.drops = {r[4]: across[(r[0], r[1])] for r in resistors if (r[0], r[1]) in across}
     for name, nodes in net.nets.items():
-        node = find(name)
+        node = out.node[name] = find(name)
         if node in span:
             out.stress[name] = span[node]
             if node in held:
@@ -734,6 +736,9 @@ STRESSES = (
     "mosfet.drain_source",
     "mosfet.gate_source",
     "mosfet.drain_current",
+    "fuse.current",
+    "ferrite.current",
+    "switch.current",
     "rail.load",
 )
 DOCUMENT_KEYS = ("issuer", "number", "title", "revision", "url", "sha256", "read", "second_reader")
@@ -1499,7 +1504,9 @@ class Report:
 
 
 def si(value: float, unit: str) -> str:
-    """A quantity as an engineer writes it: 4.7e-6 farads is `4.7 uF`."""
+    """A quantity as an engineer writes it, to 3 digits: 4.7e-6 farads is `4.7 uF`. It is rounded
+    before its prefix is chosen: 0.9997 A is `1 A`, where 999.7 of the prefix below is `1e+03 mA`."""
+    value = float(f"{value:.3g}")
     for scale, prefix in PREFIXES:
         if abs(value) >= scale * (1 - EPS):
             return f"{value / scale:.3g} {prefix}{unit}"
@@ -1639,12 +1646,27 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
             )
         return alone[(ref, number, forced)]
 
+    def wired(a: str, b: str) -> str:
+        """What a line says of 2 nets that are 1 node, where no voltage stands between them."""
+        if spans.node[a] != spans.node[b]:
+            return ""
+        return ", both pins on 1 net" if a == b else ", 2 nets that a wire joins"
+
     def gap(sp: Spans, a: str, b: str) -> float | str:
-        """The greatest voltage between 2 nets, or why it has none."""
+        """The greatest voltage between 2 nets, or why it has none. 2 nets of 1 node never part: taken
+        at their extremes, a resistor beside a ferrite would stand the rail's whole voltage."""
+        if sp.node[a] == sp.node[b]:
+            return 0.0
         for name in (a, b):
             if name not in sp.stress:
                 return f"{name} has no span: {sp.why.get(name, 'nothing drives it')}"
         return max(sp.stress[a][1] - sp.stress[b][0], sp.stress[b][1] - sp.stress[a][0])
+
+    def unrated(ref: str, stress: str) -> None:
+        """A current the project states for a part whose facts rate none: it is held to nothing, and
+        is no hold."""
+        text = f"{name_of(ref)}: the project states {si(project.amps[ref], 'A')} through it"
+        out.append(Finding("not judged", ref, stress, f"{text}, and its facts hold no current rating"))
 
     def limit_of(stress: str, ref: str) -> tuple[float, str, str]:
         """The share of its rating a part may reach, the rule's name, and the source for the line."""
@@ -1794,7 +1816,7 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
         part, data, kind = net.parts[ref], found.data, found.kind
         if kind.startswith("capacitor") or kind == "resistor":
             a, b = part.pins.values()
-            label = f"{name_of(ref)} between {a} and {b}"
+            label = f"{name_of(ref)} between {a} and {b}{wired(a, b)}"
             volts = gap(spans, a, b)
             if ref in spans.drops and not isinstance(volts, str) and shares(ref, a, b):
                 volts = min(volts, spans.drops[ref])  # solved with its nets: a divider's share
@@ -1838,15 +1860,24 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
             judged(
                 ref, "inductor.current", amps <= rated + EPS, text, f"{found.source}: the part's own rating"
             )
+        elif kind in ("fuse", "ferrite", "switch") and ref in project.amps:
+            if "amps" in data:
+                amps = project.amps[ref]
+                label = f"{name_of(ref)} current, with the {si(amps, 'A')} the project states"
+                ratio(ref, f"{kind}.current", label, amps, data["amps"], "A")
+            else:
+                unrated(ref, f"{kind}.current")
         elif kind.startswith("diode"):
             if ref in project.amps and "amps_forward" in data:
                 amps = project.amps[ref]
                 label = f"{name_of(ref)} forward current, with the {si(amps, 'A')} the project states"
                 ratio(ref, "diode.forward_current", label, amps, data["amps_forward"], "A")
+            elif ref in project.amps:
+                unrated(ref, "diode.forward_current")
             for diode in data["diodes"]:
                 anode, cathode = (part.pins[_ends(diode[end])[0]] for end in ("anode", "cathode"))
-                label = f"{name_of(ref)} from {anode} to {cathode}"
-                both = all(n in spans.stress for n in (anode, cathode))
+                label = f"{name_of(ref)} from {anode} to {cathode}{wired(anode, cathode)}"
+                both = all(n in spans.stress for n in (anode, cathode)) and not wired(anode, cathode)
                 volts = (
                     spans.stress[cathode][1] - spans.stress[anode][0] if both else gap(spans, anode, cathode)
                 )
@@ -1883,9 +1914,11 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
                     amps = project.amps[ref]
                     label = f"{name_of(ref)} drain current, with the {si(amps, 'A')} the project states"
                     ratio(ref, "mosfet.drain_current", label, amps, rated, "A")
+            elif ref in project.amps:
+                unrated(ref, "mosfet.drain_current")
             for fet in data["transistors"]:
                 gate, drain, source = (part.pins[_ends(fet[end])[0]] for end in ("gate", "drain", "source"))
-                label = f"{name_of(ref)} drain {drain} to source {source}"
+                label = f"{name_of(ref)} drain {drain} to source {source}{wired(drain, source)}"
                 ratio(
                     ref,
                     "mosfet.drain_source",
@@ -1894,7 +1927,7 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
                     data["volts_drain_source"],
                     "V",
                 )
-                label = f"{name_of(ref)} gate {gate} to source {source}"
+                label = f"{name_of(ref)} gate {gate} to source {source}{wired(gate, source)}"
                 ratio(
                     ref, "mosfet.gate_source", label, gap(spans, gate, source), data["volts_gate_source"], "V"
                 )
@@ -1919,6 +1952,13 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
     for ref, found in of.items():
         if found.kind == "ic" and "switching" in found.data:
             _judge_buck(net, ref, of, spans, project, notes, judged, out, rails, loads)
+    for key, amps in project.amps.items():  # a current behind a pin of an IC stands in no line
+        ref, _, number = key.partition(".")
+        if number and ref in of and of[ref].kind == "ic":
+            notes.append(
+                f"{key}: ratings.json states {si(amps, 'A')} behind the pin, "
+                "and the command holds no pin's current to a limit"
+            )
 
     # An acceptance is the owner's word on 1 failure. One that meets 1 failure accepts it. One that
     # meets 2 accepts neither: the second is a failure the owner has not seen. One that meets none
@@ -2659,9 +2699,9 @@ def part_numbers(net: Netlist, rows: list) -> dict[str, str]:
 
 
 # What `parts` of ratings.json may state, by the kind of the part's facts. judge() reads the current
-# through a resistor, an inductor, a diode and a transistor, the load behind a connector's pin, and the
-# voltage across a capacitor and a resistor. The current through a fuse, a ferrite and a switch and
-# behind an output pin is recorded, as the rating in its facts is, and held to nothing yet.
+# through a resistor, an inductor, a diode, a transistor, a fuse, a ferrite and a switch, the load
+# behind a connector's pin, and the voltage across a capacitor and a resistor. The current behind an
+# output pin of an IC is taken and held to nothing yet: the report's notes name it.
 CURRENT_KINDS = ("resistor", "inductor", "diode.rectifier", "transistor.mosfet", "fuse", "ferrite", "switch")
 VOLTAGE_KINDS = ("capacitor", "resistor")
 LOAD_ROLES = ("output", "io", "open_drain")

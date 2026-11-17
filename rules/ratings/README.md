@@ -27,10 +27,11 @@ a pack of its own. Each pack's `document` holds the URL and the SHA256 of the fi
 }
 ```
 
-`stress` is 1 of the 9 the command computes: `capacitor.voltage`, `resistor.voltage`, `resistor.power`,
+`stress` is 1 of the 12 the command computes: `capacitor.voltage`, `resistor.voltage`, `resistor.power`,
 `diode.reverse`, `diode.forward_current`, `mosfet.drain_source`, `mosfet.gate_source`,
-`mosfet.drain_current` and `rail.load` (a regulator's output current). The 2 currents of a diode and
-of a transistor are judged when the project states the current through the part.
+`mosfet.drain_current`, `fuse.current`, `ferrite.current`, `switch.current` and `rail.load` (a
+regulator's output current). The current of a diode, a transistor, a fuse, a ferrite and a switch is
+judged when the project states the current through the part.
 
 `kinds` are the part kinds of the facts the rule covers: `capacitor` covers `capacitor.ceramic`. For
 `rail.load` the kind is `ic.` and the part's family, so `ic.regulator` covers both kinds of regulator
@@ -73,10 +74,15 @@ operating area, whichever is lower", the pack holds the factor alone.
 
 Limits the 2 documents state and the command does not compute, among others: every junction
 temperature and power dissipation, a diode's surge current, a zener's and a suppressor's power, a
-connector's and a switch's voltage and current, a fuse's current, a tantalum capacitor's surge
-current, reverse voltage and ripple, the insulation voltage of an inductor, and a regulator's input
-less its output. Both documents derate the sum of a capacitor's steady voltage and its ripple; the
-command judges the steady voltage.
+connector's voltage and current, a switch's voltage, a tantalum capacitor's surge current, reverse
+voltage and ripple, the insulation voltage of an inductor, and a regulator's input less its output.
+Both documents derate the sum of a capacitor's steady voltage and its ripple; the command judges
+the steady voltage.
+
+3 stresses the command computes have no rule in either pack: the current through a fuse, a ferrite and
+a switch. Each is held to the part's own rating. NASA's table 4 of section F3 derates a cartridge fuse
+by its rating, from 50 % for 2 A and above to 25 % for 1/8 A, and ECSS's table 6-17 a cermet fuse. A
+rule of a pack is 1 share for a kind of part, and neither table is in a pack yet.
 
 An integrated circuit's supply and input voltage are held another way. Table 4 of NASA's section M3
 derates a hermetic part's to 0.90 (digital) and 0.80 (linear) of the maximum, and its note 1.1 sends

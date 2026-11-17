@@ -72,6 +72,13 @@ HINTS: list[tuple[str, str, str]] = [
         f'{RATINGS}, "A part\'s facts"',
     ),
     (
+        r"^ratings: not judged .*its facts hold no current rating",
+        "`ratings.json` states a current through the part. Add the rating to the part's facts from its "
+        "datasheet. It is `amps_forward` for a diode, `amps_drain` for a transistor and `amps` for a "
+        "ferrite or a switch.",
+        f'{RATINGS}, "A part\'s facts"',
+    ),
+    (
         r"^ratings: not judged .* and has no facts",
         "Write the facts of the part the line names. `workcenter ratings <project> --facts <REF>` "
         "prints the entry to fill.",
