@@ -2375,8 +2375,9 @@ def check_stated(project: Project, net: Netlist, mpns: dict[str, str], facts: li
             continue
         kind, where = found.kind, f"ratings.json: parts: {key}: amps"
         if not pin and kind == "connector":
-            one = f"{ref}.{min(net.parts[ref].pins)}"
-            raise Refusal(f"{where}: {ref} is a connector: its load is stated for 1 pin, as {one}")
+            one = min(net.parts[ref].pins, default="")
+            how = f", as {ref}.{one}" if one else ""
+            raise Refusal(f"{where}: {ref} is a connector: its load is stated for 1 pin{how}")
         if not pin and not among(CURRENT_KINDS, kind):
             raise Refusal(f"{where}: {ref} is of kind {kind}: the command reads no current through one")
         if pin and kind == "ic":
