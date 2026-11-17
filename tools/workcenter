@@ -4945,6 +4945,7 @@ def cmd_doctor(args) -> int:
         "missing_required": missing_required,
         "degraded": degraded,
         "chip_engines": chip_folder.is_dir(),
+        "engine_lock": enginelock().state(),
     }
     if args.json:
         print(json.dumps(payload, indent=2))
@@ -4956,6 +4957,7 @@ def cmd_doctor(args) -> int:
             mark = "ok " if c["ok"] else ("MISSING" if c["required"] else "absent ")
             extra = c.get("version") or c.get("path") or ""
             print(f"  {mark:8} {name:12} {extra}")
+        print(f"  {'':8} engine lock  {enginelock().status_line(payload['engine_lock'])}")
         if not chip_folder.is_dir():
             print(
                 f"  no chip engines in {chip_folder}: `sudo ./install.sh --chip` adds them; "
@@ -5125,6 +5127,14 @@ def highspeed():
     """tools/highspeed.py: `highspeed`, the fast nets held to their interfaces' rules."""
     sys.path.insert(0, str(SRC_DIR / "tools"))
     import highspeed as module
+
+    return module
+
+
+def enginelock():
+    """tools/enginelock.py: the machine's engine lock that long commands take in turn."""
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import enginelock as module
 
     return module
 
@@ -5493,6 +5503,12 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     args = parser.parse_args(argv)
+    # A long command waits its turn on the machine's engine lock and holds it to the end (enginelock.py).
+    with enginelock().for_command(args, sys.argv[1:] if argv is None else list(argv)):
+        return dispatch(parser, args)
+
+
+def dispatch(parser: argparse.ArgumentParser, args) -> int:
     if getattr(args, "run", None):
         return args.run(args)
     if args.command == "doctor":
