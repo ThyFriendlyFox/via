@@ -3128,10 +3128,9 @@ def test_a_shipped_pack_loads_and_each_of_its_limits_names_a_table_and_a_page(na
     assert pack.name == name
     assert re.fullmatch(r"[0-9a-f]{64}", pack.document["sha256"])
     assert pack.document["url"].startswith("https://")
-    # 3 currents have no row in either pack and are held to the part's own rating: NASA's table 4 of
-    # section F3 derates a cartridge fuse by its rating and ECSS's table 6-17 a cermet fuse, and a pack's
-    # rule is 1 share for a kind
-    no_row = {"fuse.current", "ferrite.current", "switch.current"}
+    # 2 currents have no row in either pack and are held to the part's own rating; a fuse's has a row
+    # for 1 style of fuse in each (tests/test_ratings_fuse.py)
+    no_row = {"ferrite.current", "switch.current"}
     assert {rule.stress for rule in pack.rules} == set(ratings.STRESSES) - no_row
     for rule in pack.rules:
         assert "table" in rule.where and "page" in rule.where, rule.id
