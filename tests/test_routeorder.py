@@ -1,4 +1,4 @@
-"""Tests for the fixed order of a route (ROADMAP item 5, "A routing benchmark and a second router"):
+"""Tests for the fixed order of a route (ROADMAP item 6, "A routing benchmark and a second router"):
 `workcenter design --route --order` routes the poured nets first, then the nets of each fine-pitch
 part, then pairs, then the rest, each stage on the copper of the stages before it.
 

@@ -83,7 +83,7 @@ the drop's; any other is refused.
 
 - A steady state: a current or a heat that lasts only a moment is judged as if it lasted.
 - The air is the stated assumption, with no enclosure and no air flow. A reading of the built board
-  replaces it (ROADMAP item 12).
+  replaces it.
 - A part's heat enters by its pads; its body gives none to the air. Stated on the part, the heat is
   split over its pads by their copper area: a regulator that sheds its heat through its tab then reads
   cooler at the tab than it runs. State such a part's heat on the tab's pad, `U1.2`.

@@ -1,6 +1,6 @@
 """`workcenter bench`: route design files with each router named and record, for each run, the time,
 the share of connections joined, the DRC's count, the commands a model gives and the size of the
-output it reads; then name the router each board takes (ROADMAP item 5).
+output it reads; then name the router each board takes (ROADMAP item 6).
 
 A run is `workcenter design <file> --route` into its own folder, then `workcenter drc` on what it
 wrote, both as a model would type them. The share joined is counted on the routed board: each net's

@@ -1,4 +1,4 @@
-"""The makers' data in the decks (ROADMAP item 4): a capacitor at its working voltage and temperature,
+"""The makers' data in the decks (ROADMAP item 5): a capacitor at its working voltage and temperature,
 an inductor at its current, from the curves of a part's facts whose maker's file has its row in
 library/sources.csv. The SIM gate runs each deck with the curves in place of the written values, and
 names each deck part that runs as an ideal part while the library holds its data.
