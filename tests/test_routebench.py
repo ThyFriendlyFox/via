@@ -1,4 +1,4 @@
-"""Tests for `workcenter bench`, the routing benchmark (ROADMAP item 6, "A routing benchmark and a
+"""Tests for `workcenter bench`, the routing benchmark (ROADMAP item 5, "A routing benchmark and a
 second router"): the connections a board asks for, the share a route joined, the DRC's count, the
 router each board takes, the table, and the command's exit codes.
 

@@ -126,7 +126,7 @@ def states(report: dict) -> dict[str, str]:
 
 
 def test_fetch_keeps_1_names_1_changed_and_1_refused_and_asks_each_once_in_2_runs(site):
-    """The Evidence of ROADMAP item 3. Run 1 asks the 3 paths once each: 3 requests. Run 2 finds all 3
+    """The Evidence of ROADMAP item 2. Run 1 asks the 3 paths once each: 3 requests. Run 2 finds all 3
     in the ledger and asks none: 0 requests. The server's count stays 1 + 0 = 1 for each path."""
     index, refs = site
     code, first = run_json("fetch", "--index", index, "--to", refs)
@@ -535,7 +535,7 @@ def test_rules_fail_a_source_that_names_a_document_it_does_not_pin(tmp_path, sou
 
 
 def test_rules_read_a_table_of_documents_by_id(tmp_path):
-    """rules/copper/materials.json (roadmap item 11) names its documents in a table, `documents: {id:
+    """rules/copper/materials.json (roadmap item 10) names its documents in a table, `documents: {id:
     {...}}`, and each constant points at an id. A document of that table the index lacks fails, as one
     under `document` or `source` does; before, the table was not read and 0 documents were named."""
     path = tmp_path / "materials.json"
@@ -551,7 +551,7 @@ def test_rules_read_a_table_of_documents_by_id(tmp_path):
 
 
 def test_a_document_served_in_a_zip_is_held_by_the_zips_sha256(tmp_path):
-    """rules/interfaces/usb2.json (roadmap item 9) names the USB 2.0 specification by the zip usb.org
+    """rules/interfaces/usb2.json (roadmap item 8) names the USB 2.0 specification by the zip usb.org
     serves: `sha256` is the PDF inside it and `zip_sha256` the zip, the copy the URL gives and the 1 a
     fetch can hold. The index holds the zip; a rule with a zip and no `sha256` of its own is judged by
     the zip's, and 1 whose zip the index lacks fails."""
@@ -603,7 +603,7 @@ def names_a_document(data: object) -> bool:
 
 
 def test_the_index_globs_cover_every_rule_file_under_rules():
-    """A pack in a new folder of rules/ (rules/board/, roadmap item 7) is read by `make verify` only when
+    """A pack in a new folder of rules/ (rules/board/, roadmap item 6) is read by `make verify` only when
     a glob of the index covers it; a pack outside them named a document the index lacked and passed."""
     globbed = {
         p for pattern in json.loads(INDEX.read_text(encoding="utf-8"))["rules"] for p in ROOT.glob(pattern)
