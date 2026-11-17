@@ -1811,3 +1811,180 @@ def test_a_fact_read_on_3_pages_names_all_3(tmp_path):
         "fail U1 pin 1 (VDD) on V33: its sources hold it at 3.2 to 3.4 V, the pin works from 3.4 to 3.6 V "
         "[DS-1, rev A, p 4, 5 and 6]"
     ]
+
+
+# ---------------------------------------------------------------- the survivors of the mutation list
+#
+# `make mutate-ratings` runs tests/ratings_mutations.py against this file and tests/test_ratings.py.
+# Each test below fails on the mutation its docstring names, which the 2 files let pass before.
+
+
+def test_a_pin_past_its_limit_gets_1_line_and_no_line_of_its_working_range(tmp_path):
+    """IC13. 0 to 5 V on an input rated to 4.6 V that works to 3.6 V: the limit fails, and that line
+    says it all; a second line on its working range would count 1 fault 2 times."""
+    net, mpns = circuit(U1=("MCU", "MCU-1", mcu()))
+    wide = pin("PA0", ["3"], "input", abs=[-0.5, 4.6], operating=[0, 3.6])
+    facts = library(tmp_path, {**MCU_FACTS, "pins": [*MCU_FACTS["pins"][:2], wide]})
+    report = ratings.judge(net, mpns, facts, project({"SIG": (0.0, 5.0), **RAILS}), NASA)
+    assert [(f.status, f.rule) for f in report.findings if f.part == "U1.3"] == [
+        ("fail", "pin.voltage"),  # its greatest limit, 4.6 V
+        ("hold", "pin.voltage"),  # its least, -0.5 V
+    ]
+
+
+def test_a_pin_whose_least_limit_cannot_be_judged_is_not_held_to_its_working_range(tmp_path):
+    """IC14. The input's least limit follows VDD, and no source holds V33: that end is not judged, and
+    a working range judged beside it would read as a pass of the pin."""
+    net, mpns = circuit(U1=("MCU", "MCU-1", mcu()))
+    follows = pin("PA0", ["3"], "input", abs=[{"pin": "VDD", "plus": -3.9}, 4.6], operating=[0, 3.6])
+    facts = library(tmp_path, {**MCU_FACTS, "pins": [*MCU_FACTS["pins"][:2], follows]})
+    report = ratings.judge(net, mpns, facts, project({"SIG": (0.0, 3.3), **GND}), NASA)
+    assert [f.rule for f in report.findings if f.part == "U1.3"] == ["pin.voltage"]
+
+
+def test_a_part_s_name_alone_leaves_out_the_output_its_divider_sets():
+    """NS02. U1's divider holds VOUT at 3.2 to 3.4 V. With U1 left out by its name, every source of
+    U1 is out, that one too, and nothing drives VOUT."""
+    net = board(
+        U1={"1": ("VIN", "IN", "power_in"), "2": ("VOUT", "OUT", "power_out")}, C1={"1": "VOUT", "2": "GND"}
+    )
+    models = {"U1": ratings.Model(quiet=frozenset({"1", "2"})), "C1": CAP}
+    fed, declared = {"VOUT": [("U1", (3.2, 3.4))]}, {"VIN": (4.5, 5.5), **GND}
+    assert ratings.net_spans(net, models, declared, fed=fed).held["VOUT"] == (3.2, 3.4)
+    alone = ratings.net_spans(net, models, declared, without="U1", fed=fed)
+    assert "VOUT" not in alone.held and alone.why["VOUT"] == "nothing drives it"
+
+
+def test_an_acceptance_that_meets_2_failures_fails_under_the_rule_accepted(tmp_path):
+    """JG49. Its line is no stress of the rule it names: no entry of `accepted` takes it."""
+    in_cap = {"capacitor": {"from": "IN", "to": "GND", "farads_min": 1e-6}, "page": 5}
+    net, mpns = circuit(U1=("LDO", "LDO-1", LDO))
+    facts = library(tmp_path, regulator(needs=[in_cap, OUT_CAP]))
+    stated = project(V5, accepted={("U1", "needs.capacitor"): "the owner's decision of 2026-11-17"})
+    report = ratings.judge(net, mpns, facts, stated, NASA)
+    assert [f.rule for f in report.findings if "name the 1 it means" in f.text] == ["accepted"]
+
+
+def test_an_inductor_at_the_greatest_value_asked_holds(tmp_path):
+    """NE09. 4.7 uH of 0 % tolerance on a need of 1.5 uH to 4.7 uH: 4.7 uH is inside, at its end."""
+    net, mpns = circuit(U1=("BUCK", "BUCK-1", BUCK_PINS), L1=("4.7u", "L-1", {"1": "SW", "2": "V33"}))
+    coil = entry("inductor", "L-1", tolerance=0, amps_saturation=2.0)
+    nets = {"V12": (11.4, 12.6), "V33": (3.2, 3.4), **GND}
+    report = ratings.judge(net, mpns, library(tmp_path, BUCK, coil), project(nets), NASA)
+    assert "hold U1 pin SW (SW) needs 1.5 uH to 4.7 uH, L1 is 4.7 uH to 4.7 uH [DS-1, rev A, p 12]" in [
+        f.line for f in report.findings
+    ]
+
+
+def test_the_gate_s_summary_is_the_line_of_counts_without_the_command_s_name(tmp_path):
+    """GT09. The workcenter prints `FAIL ratings <summary>`: the name stands there once."""
+    result = gate(tmp_path, capacitors("C16"), facts=(WEAK,))
+    assert result.summary.startswith("1 fail, 0 accepted, 0 hold, 0 not judged; pack nasa-eee-inst-002")
+
+
+def test_the_gate_skips_a_project_with_no_ratings_json(tmp_path):
+    """GT14. A project that asks for no judgement is skipped, with the command that starts one."""
+    cli = types.SimpleNamespace(
+        Result=lambda *a, **k: types.SimpleNamespace(gate=a[0], status=a[1], summary=a[2])
+    )
+    board_ = types.SimpleNamespace(sch=tmp_path / "x.kicad_sch", dir=tmp_path)
+    result = ratings.gate_ratings(board_, tmp_path / "build", [], False, cli)
+    assert (result.status, result.summary) == (
+        "skip",
+        f"no ratings.json beside the schematic: `workcenter ratings {tmp_path} --init` writes one",
+    )
+    assert not (tmp_path / "build").exists()
+
+
+# `workcenter ratings` itself: cmd_ratings with the workcenter's 7 parts it calls stood in for.
+
+
+def command(folder: Path, text: str = NETLIST, rows: tuple = (), **flags):
+    """cmd_ratings on a project in `folder` whose schematic exports `text`. Returns its exit code and the
+    paths it read parts files from. emit prints `status summary` for each result, and nothing for --json."""
+    read: list[Path] = []
+
+    def emit(results, args, out):
+        for r in results if not args.json else []:
+            print(f"{r.status} {r.summary}")
+        return 1 if any(r.status in ("fail", "error") for r in results) else 0
+
+    def out_dir_for(project, out):
+        path = Path(out) if out else project.dir / "build"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    cli = types.SimpleNamespace(
+        Result=lambda gate, status, summary, details=None, artifacts=None: types.SimpleNamespace(
+            gate=gate, status=status, summary=summary, details=details or {}, artifacts=artifacts or []
+        ),
+        schematic_netlist=lambda project, out: (text, ""),
+        SRC_DIR=ROOT,
+        read_parts=lambda path: read.append(path) or list(rows),
+        find_project=lambda p: types.SimpleNamespace(dir=folder, sch=folder / "x.kicad_sch", name="x"),
+        out_dir_for=out_dir_for,
+        emit=emit,
+        timed=lambda fn: fn,
+    )
+    args = {"project": str(folder), "out": None, "strict": False, "parts": None, "init": False}
+    args = types.SimpleNamespace(**{**args, "facts": None, "json": False, **flags})
+    return ratings.cmd_ratings(args, cli), read
+
+
+PARTS_HEADER = "Value,Footprint,Qty,Manufacturer,MPN,Supplier,SKU,Pack,Breaks\n"
+
+
+def test_init_writes_ratings_json_once_and_exits_0(tmp_path, capsys):
+    """CM01, CM02. A second --init leaves the file as it is."""
+    assert command(tmp_path, init=True)[0] == 0
+    stated = tmp_path / "ratings.json"
+    assert json.loads(stated.read_text(encoding="utf-8")) == {"pack": "nasa-eee-inst-002", "nets": {}}
+    assert capsys.readouterr().out == f"wrote {stated}: pack nasa-eee-inst-002, no net stated yet\n"
+    stated.write_text("{}", encoding="utf-8")
+    assert command(tmp_path, init=True)[0] == 0
+    assert stated.read_text(encoding="utf-8") == "{}"
+    assert capsys.readouterr().out == f"{stated} is there already: nothing written\n"
+
+
+def test_a_run_reads_the_project_s_parts_csv_or_the_files_parts_names(tmp_path):
+    """CM03, CM12."""
+    (tmp_path / "parts.csv").write_text(PARTS_HEADER, encoding="utf-8")
+    (tmp_path / "other.csv").write_text(PARTS_HEADER, encoding="utf-8")
+    assert command(tmp_path, facts="C1")[1] == [tmp_path / "parts.csv"]
+    assert command(tmp_path, facts="C1", parts=[str(tmp_path / "other.csv")])[1] == [tmp_path / "other.csv"]
+
+
+def test_facts_of_a_part_the_schematic_lacks_is_refused(tmp_path):
+    """CM04."""
+    with pytest.raises(SystemExit) as caught:
+        command(tmp_path, facts="X9")
+    assert str(caught.value) == "X9 is no part of the schematic"
+
+
+def test_facts_of_a_part_name_its_part_number_from_the_parts_file(tmp_path, capsys):
+    """CM05. C1 is 100n in an 0603 footprint, and the parts file's row of that Value and Footprint
+    names GRM188R71C104KA01D."""
+    (tmp_path / "parts.csv").write_text(PARTS_HEADER, encoding="utf-8")
+    row = types.SimpleNamespace(
+        value="100n", footprint="Capacitor_SMD:C_0603_1608Metric", buys=True, mpn="GRM188R71C104KA01D"
+    )
+    assert command(tmp_path, rows=(row,), facts="C1")[0] == 0
+    assert json.loads(capsys.readouterr().out)["mpn"] == "GRM188R71C104KA01D"
+
+
+def test_a_skipped_run_leaves_no_record_and_a_judged_one_leaves_its_own(tmp_path, capsys):
+    """CM06, CM07, CM13, CM08. With no ratings.json the run is skipped and writes nothing. A run that
+    fails leaves report.json with its status, which `workcenter next` reads, and prints its verdict
+    unless --json asks for the JSON alone."""
+    record = tmp_path / "build" / "ratings" / "report.json"
+    assert command(tmp_path)[0] == 0
+    assert capsys.readouterr().out.startswith("skip no ratings.json beside the schematic: ")
+    assert not record.exists()
+    stated = {"VIN": {"volts": [0, 30], "source": "s"}, "GND": {"volts": [0, 0], "source": "s"}}
+    (tmp_path / "ratings.json").write_text(json.dumps({"pack": "nasa-eee-inst-002", "nets": stated}))
+    assert command(tmp_path)[0] == 1
+    saved = json.loads(record.read_text(encoding="utf-8"))
+    assert (saved["gate"], saved["status"]) == ("ratings", "fail")
+    assert capsys.readouterr().out.splitlines()[-1].startswith("NOTHING JUDGED")
+    command(tmp_path, json=True)
+    assert capsys.readouterr().out == ""
