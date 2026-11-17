@@ -769,7 +769,11 @@ def kicad_findings(report: dict) -> list[str]:
 
 def _is_text(item: dict) -> bool:
     d = str(item.get("description", ""))
-    return bool(re.match(r"(Reference field|Value field|Text|Footprint text|Field)", d)) or " field " in d
+    # kicad-cli 10 names a board text "PCB text 'AB' on F.Silkscreen" and a designator "Reference field of C3"
+    return (
+        bool(re.match(r"(PCB text|Reference field|Value field|Text|Footprint text|Field)", d))
+        or " field " in d
+    )
 
 
 def judge_file(pcb: Path, fab: str | None) -> tuple[Limit, list[Finding]]:

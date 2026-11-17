@@ -360,6 +360,64 @@ def test_the_dense_fixture_fails_as_the_library_places_it_and_holds_once_placed(
     assert [f.line for f in placed] == []
 
 
+def test_kicads_own_legend_warnings_become_failures():
+    """The violations as kicad-cli 10 wrote them for fail-legend and the dense fixture on 2026-11-17, each a
+    warning by default: 2 texts in silk_overlap, a designator clipped by a pad's mask, the height. A
+    designator on a footprint's silk line is KiCad's silk_overlap too, and not a text on a text: left out.
+    A footprint's library is no legend matter."""
+    report = {
+        "violations": [
+            {
+                "type": "silk_overlap",
+                "severity": "warning",
+                "description": "Silkscreen clearance",
+                "items": [
+                    {"description": "PCB text 'AB' on F.Silkscreen", "pos": {"x": 110.0, "y": 105.0}},
+                    {"description": "PCB text 'CD' on F.Silkscreen", "pos": {"x": 111.0, "y": 105.5}},
+                ],
+            },
+            {
+                "type": "text_height",
+                "severity": "warning",
+                "description": "Text height out of range (board setup constraints silk text height "
+                "min height 0.8000 mm; actual 0.6000 mm)",
+                "items": [{"description": "PCB text 'EF' on F.Silkscreen", "pos": {"x": 130.0, "y": 105.0}}],
+            },
+            {
+                "type": "silk_over_copper",
+                "severity": "warning",
+                "description": "Silkscreen clipped by solder mask",
+                "items": [
+                    {"description": "Reference field of C3", "pos": {"x": 120.8, "y": 109.07}},
+                    {
+                        "description": "Pad 2 [unconnected-(C2--Pad2)] of C2 on F.Cu",
+                        "pos": {"x": 121.575, "y": 109.0},
+                    },
+                ],
+            },
+            {
+                "type": "silk_overlap",
+                "severity": "warning",
+                "description": "Silkscreen clearance",
+                "items": [
+                    {"description": "Reference field of C3", "pos": {"x": 120.8, "y": 109.07}},
+                    {"description": "Segment of C2 on F.Silkscreen", "pos": {"x": 120.65942, "y": 109.51}},
+                ],
+            },
+            {
+                "type": "lib_footprint_issues",
+                "severity": "warning",
+                "description": "The current configuration does not include the footprint library 'Fixture'",
+                "items": [{"description": "Footprint U1", "pos": {"x": 115.0, "y": 113.0}}],
+            },
+        ]
+    }
+    lines = legend.kicad_findings(report)
+    assert [line.split(":")[0] for line in lines] == ["legend overlap", "legend size", "legend overlap"]
+    assert "KiCad silk_overlap at (110, 105) mm" in lines[0] and "PCB text 'CD'" in lines[0]
+    assert "warning in its report" in lines[1]
+
+
 @pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
 def test_the_drc_gate_fails_the_fixture_on_its_3_rules_and_no_other(tmp_path):
     """`workcenter drc` on fail-legend: red, the 3 lines of the check above, and every legend line, KiCad's
