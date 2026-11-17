@@ -236,6 +236,13 @@ production address and serves `dist/`. A push to `main` deploys
 production, and a push to any other branch a preview. The project skips
 a push that leaves `site/` unchanged.
 
+Vercel's Web Analytics is on. Each page a reader opens queues its events
+in `window.va` and loads `/_vercel/insights/script.js`, an address the
+Vercel project answers and no file here holds. `site/examples.py` writes
+those lines into the pages it writes; `index.html` and `404.html` hold
+them by hand. On any other host the script is a 404 and the page works
+without it.
+
 Vercel makes a new project's first deployment its production deployment,
 whatever branch it comes from. That is how this site went live from a
 branch on 2026-11-11.

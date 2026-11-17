@@ -405,11 +405,36 @@ def example_pages() -> list[Path]:
     return [SITE / "examples.html", *sorted((SITE / "examples").glob("*.html"))]
 
 
+# The 1 address a page names that the host answers and no file of the repository holds: Vercel's Web
+# Analytics script, served by the owner's Vercel project (pull request 62). Another static host
+# answers it with a 404, and the page works without it.
+HOSTED = "/_vercel/insights/script.js"
+
+
 def beside_page(page: Path, link: str) -> bool:
     """Whether a link read from the page's own folder names a file: `agents.svg#cursor` is
-    agents.svg, `site.css?v=1` is site.css, and a folder is its index.html."""
+    agents.svg, `site.css?v=1` is site.css, and a folder is its index.html. The address the host
+    serves (HOSTED) is no file and counts as found."""
+    if link == HOSTED:
+        return True
     target = page.parent / link.split("#")[0].split("?")[0]
     return target.is_file() or (target / "index.html").is_file()
+
+
+def test_every_page_a_reader_opens_loads_the_hosts_analytics_script_once():
+    """The owner turned Vercel's Web Analytics on (pull request 62): each page a reader opens loads
+    the host's script, 1 time, and queues its events until the script is there. Vercel's pull request
+    wrote the lines into the 7 pages that `site/examples.py` writes, and not into the generator: the
+    next run of the generator would have dropped them, and `main` was red for a day."""
+    queue = "window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };"
+    pages = (SITE / "index.html", SITE / "404.html", *example_pages())
+    assert len(pages) >= 9
+    for page in pages:
+        text = page.read_text(encoding="utf-8")
+        assert links_of(page).count(HOSTED) == 1, page.name
+        assert text.count(f'<script defer src="{HOSTED}"></script>') == 1, page.name
+        assert text.count(queue) == 1, page.name
+    assert HOSTED in (SITE / "examples.py").read_text(encoding="utf-8")
 
 
 def test_every_link_on_the_site_names_what_exists():
