@@ -1,0 +1,36 @@
+# A work card (an issue titled `Work card: ...`) stands in the column of the project board that its
+# `**Status:**` line names; a closed card is Done. tools/board.py decides and calls GitHub; see
+# tests/board/README.md. GitHub's own token cannot edit a user's project, so the project is changed
+# with the secret BOARD_TOKEN (a token with the `project` scope); with no secret the job says so and
+# ends green. An issue's title and body are text from anyone: they reach the tool only through the
+# event file, and no `run:` below holds an expression.
+name: Board
+on:
+  issues:
+    types: [opened, edited, closed, reopened]
+permissions: {}
+concurrency:
+  group: board-${{ github.event.issue.number }}
+  cancel-in-progress: false
+jobs:
+  card:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: tools/board.py
+          sparse-checkout-cone-mode: false
+      - name: Put the card in its column
+        env:
+          GH_TOKEN: ${{ secrets.BOARD_TOKEN }}
+          BOARD_URL: ${{ vars.BOARD_URL || 'https://github.com/users/ThyFriendlyFox/projects/2' }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "board: no secret BOARD_TOKEN is set, so the board is not changed"
+            exit 0
+          fi
+          python3 tools/board.py --event "$GITHUB_EVENT_PATH" --board "$BOARD_URL"
