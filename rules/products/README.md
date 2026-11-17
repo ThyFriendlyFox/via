@@ -3,8 +3,9 @@
 A product kind lists the requirements that free documents state for a kind of product, each with its
 document and clause, in our own short words. `workcenter standards <project>` reads the kind that the
 project's `product.json` names and says what holds each requirement: a gate (the layout pack that judges
-it, named in `board-rules.json`), a test (requirements of the project's verification package that read
-PASS), or nothing.
+it, named in `board-rules.json` and run on the project's board with 0 fail and 0 not judged), a test
+(requirements of the project's verification package that read PASS), or nothing. `left_out` names each
+clause of a read document that the kind does not list, with the reason; the report prints them.
 
 A kind holds no text of a document and no number of a paid standard. It names the paid standards a test
 laboratory uses (`laboratory`) and the documents that could not be had (`not_had`), with the reason.
@@ -17,7 +18,7 @@ United States. Read 2026-11-17, with no second reader yet.
 | Document | Revision | Clauses |
 |---|---|---|
 | 47 CFR Part 15, Subpart B (eCFR) | as of 2026-11-01 | 15.101(a), 15.105(b), 15.107(a) and (d), 15.109(a) |
-| 49 CFR 173.185 (eCFR) | as of 2026-11-01 | (a)(1), (a)(3), (a)(4)(ii), (b)(4)(ii) |
+| 49 CFR 173.185 (eCFR) | as of 2026-11-01 | (a)(1), (a)(2), (a)(3), (a)(4)(i) to (iii), (a)(5); (b)(1), (b)(2), (b)(4), (b)(7); (c); (e). Left out, each with its reason in `left_out`: (a)(1)(i) and (ii), (b)(3), (b)(5), (b)(6), (d), (f), (g), (h) |
 | TI SLVA680A | Rev. A, April 2022 | section 1 page 2, section 2.1 page 4, section 2.3 page 6 |
 | TI SZZA009 | November 1999 | section 2.1.1 page 4, section 2.2.4 page 10 |
 

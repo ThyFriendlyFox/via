@@ -36,7 +36,9 @@ def read_kind(name: str) -> dict:
         raise Refusal(f"{PROJECT_FILE}: kind: `{name}` is no product kind; the workcenter holds {known}")
     at = path.name
     data = ratings._keys(
-        at, ratings._json(path), ("kind", "title", "documents", "requirements", "laboratory", "not_had")
+        at,
+        ratings._json(path),
+        ("kind", "title", "documents", "requirements", "left_out", "laboratory", "not_had"),
     )
     for key, doc in data["documents"].items():
         ratings._keys(f"{at}: documents: {key}", doc, ratings.DOCUMENT_KEYS)
@@ -52,6 +54,11 @@ def read_kind(name: str) -> dict:
             raise Refusal(f"{where}: document `{req['document']}` is not under documents")
         if req["held_by"] not in ("gate", "test") or (req["held_by"] == "gate") != ("pack" in req):
             raise Refusal(f"{where}: held_by is `gate` with a `pack`, or `test` without one")
+    for i, gone in enumerate(data["left_out"], start=1):
+        where = f"{at}: left_out {i}"
+        ratings._keys(where, gone, ("document", "clause", "why"))
+        if gone["document"] not in data["documents"]:
+            raise Refusal(f"{where}: document `{gone['document']}` is not under documents")
     for i, lab in enumerate(data["laboratory"], start=1):
         ratings._keys(f"{at}: laboratory {i}", lab, ("standard", "for"))
     for i, gone in enumerate(data["not_had"], start=1):
@@ -98,14 +105,38 @@ def _cli():
     return sys.modules["workcenter_cli"]
 
 
-def packs_named(project: Path) -> set[str]:
-    path = project / "board-rules.json"
+def gate(project: Path, name: str) -> tuple[bool, str]:
+    """Whether the layout pack `name` holds on the project's board: board-rules.json names it, and the
+    pack's rules, run on the board as it stands, give 0 fail, 0 not judged and no rule left aside. The
+    reason, either way."""
+    import boardrules
+    import layoutrules
+
+    path = project / boardrules.PROJECT_FILE
     if not path.is_file():
-        return set()
-    data = ratings._json(path)
-    if not isinstance(data, dict):
-        return set()
-    return set(data.get("layout", [])) | ({data["pack"]} if isinstance(data.get("pack"), str) else set())
+        return False, f"board-rules.json names no {name}"
+    try:
+        data = boardrules.project_keys(ratings._json(path))
+    except Refusal as exc:
+        return False, f"drc, pack {name}: {exc}"
+    if name not in data.get("layout", []):
+        return False, f"board-rules.json names no {name}"
+    at = f"drc, pack {name}"
+    pcbs = sorted(project.glob("*.kicad_pcb"))
+    if len(pcbs) != 1:
+        return False, f"{at}: {'no' if not pcbs else len(pcbs)} .kicad_pcb in the project to judge"
+    try:
+        board = boardrules.read_board(pcbs[0].read_text(encoding="utf-8"))
+        pack = layoutrules.read_pack(boardrules.find_pack(name, project)[0])
+        found = layoutrules.findings(board, pack, data)
+    except (Refusal, OSError) as exc:
+        return False, f"{at}: {exc}"
+    fail = sum(f.status == "fail" for f in found)
+    count = f"{at}: {fail} fail, {len(found) - fail} not judged"
+    aside = layoutrules.notes(board, pack)
+    if found or aside:
+        return False, "; ".join([count, *aside])
+    return True, f"{count} ({boardrules.PROJECT_FILE}, {pcbs[0].name})"
 
 
 def judge(project: Path, cli=None) -> list[Row]:
@@ -124,7 +155,6 @@ def judge(project: Path, cli=None) -> list[Row]:
         if key not in ids:
             raise Refusal(f"{PROJECT_FILE}: tests: `{key}` is no requirement of {kind['kind']}")
         ratings._names(f"{PROJECT_FILE}: tests: {key}", names)
-    named = packs_named(project)
     found = verdicts(project, cli)
     rows: list[Row] = []
     for req in kind["requirements"]:
@@ -133,10 +163,11 @@ def judge(project: Path, cli=None) -> list[Row]:
         why: list[str] = []
         status, how = "not held", ""
         if req["held_by"] == "gate":
-            if req["pack"] in named:
-                status, how = "held by a gate", f"drc, pack {req['pack']} (board-rules.json)"
+            held, reason = gate(project, req["pack"])
+            if held:
+                status, how = "held by a gate", reason
             else:
-                why.append(f"board-rules.json names no {req['pack']}")
+                why.append(reason)
         if status == "not held" and req["id"] in tests:
             got = [(rid, found.get(rid)) for rid in tests[req["id"]]]
             missing = [rid for rid, v in got if v is None]
@@ -170,6 +201,10 @@ def report(project: Path, cli) -> tuple[str, list[str], list[Row]]:
     lines += [
         f"  {d['number']}, {d['title']} ({d['revision']}), {d['url']}, sha256 {d['sha256']}"
         for d in kind["documents"].values()
+    ]
+    lines += [
+        f"left out: {kind['documents'][g['document']]['number']} {g['clause']}: {g['why']}"
+        for g in kind["left_out"]
     ]
     lines += ["Paid standards a test laboratory uses (named only; no number of theirs is held here):"]
     lines += [f"  {lab['standard']}: {lab['for']}" for lab in kind["laboratory"]]

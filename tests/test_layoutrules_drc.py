@@ -43,11 +43,12 @@ def test_fail_layout_esd_fails_on_its_3_rules_alone(tmp_path):
     code, text = say("drc", BOARDS / "fail-layout-esd", "--out", tmp_path, "--strict")
     assert code == 1, text
     assert (
-        "0 errors, 0 warnings (0 unconnected, 0 parity), board rules ti-slva680a-esd: 3 fail, 0 not judged"
+        "0 errors, 0 warnings (0 unconnected, 0 parity), board rules ti-slva680a-esd: 4 fail, 0 not judged"
         in text
     )
     fails = [line.strip() for line in text.splitlines() if line.strip().startswith("- fail")]
     assert [f.split(":")[0] for f in fails] == [
+        "- fail esd J1.1 VBUS",
         "- fail esd J1.1 VBUS",
         "- fail esd J1.2 /DA",
         "- fail esd J1.3 /DB",
@@ -63,7 +64,7 @@ def test_fail_layout_emi_fails_on_its_rule_alone(tmp_path):
         in text
     )
     assert (
-        "- fail length to width VBUS on F.Cu from (105.55, 104) to (105.55, 100.312): 3.69 mm by 1.2 mm"
-        in text
+        "- fail length to width VBUS on F.Cu from C1.1 (105.55, 100.35) to D1.1 (105.55, 104): 3.69 mm by "
+        "1.2 mm" in text
     )
     assert "[SZZA009: section 2.1.1, page 4" in text

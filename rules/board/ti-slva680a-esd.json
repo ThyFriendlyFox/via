@@ -29,7 +29,7 @@
     }
   ],
   "not_judged": [
-    "section 2.1, page 4: the stub between the TVS and the protected line, and the inductance from the TVS to ground",
+    "section 2.1, page 4: the stub between the TVS and the protected line, and the inductance from the TVS to ground; the check holds only that the TVS has a pad on a ground net",
     "section 2.2, page 6: unprotected traces in the area between the ESD source and the TVS, and corners over 45 degrees on that path",
     "section 2.4, pages 7 and 8: the ground scheme",
     "section 2.1, page 4: how much further the protected IC stands; the check holds further, not much further"

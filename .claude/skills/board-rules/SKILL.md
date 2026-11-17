@@ -93,20 +93,30 @@ A layout pack holds rules a maker's note states (`rules/board/README.md`,
     `"connectors": {"J1": "<why it leaves the device>"}` for each connector
     a cable or a user reaches; `"inside": ["J2"]` for each that stays
     inside; `"protectors": {"D1": "<the TVS part and its datasheet>"}`;
-    `"ground": ["GND"]`; `"power": ["VBUS", "GND"]`, every power and
-    ground net. `"pack"` may stay or go: a board can name layout packs
-    alone.
+    `"ground": ["GND"]`, every ground net; `"power": ["VBUS"]`, every
+    power net. The 3:1 rule judges the nets of both. `"pack"` may stay or
+    go: a board can name layout packs alone.
 12. Run `workcenter drc <project> --strict`. Act on each line:
     - `fail esd J1.2 <net>: no protector on the net`: put a TVS from that
       net to ground, at the connector.
+    - `fail esd J1.2 <net>: D2 stands on the net and has no pad on ground (GND)`:
+      connect the TVS's other pin to ground, or add its ground net to `ground`.
     - `fail esd J1.2 <net>: R1.1 stands 1.41 mm from D2.1, and D2.1 stands 4.35 mm from J1.2`:
       move the TVS nearer the connector, or the part further from the TVS.
+    - `fail esd J1.1 <net>: the copper from J1.1 reaches R1.1 before D1.1`:
+      route the line from the connector to the TVS first, then on.
+    - `fail esd J1.1 <net>: C1.1 lies 2.89 mm of copper from D1.1, and D1.1 lies 4.67 mm of copper from J1.1`:
+      shorten the copper from the connector to the TVS, or lengthen it to the part.
     - `fail esd J1.1 <net>: joined to D1.1 through a via`: route the
       connector's pin to the TVS on 1 layer.
     - `fail length to width <net> on <layer> ...: 3.69 mm by 1.2 mm, 3.07 to 1, limit 3 to 1`:
       widen the trace, shorten it, or make the net a pour.
     - `not judged esd J2: board-rules.json does not say whether it leaves the device`:
-      add J2 to `connectors` or to `inside`.
+      add J2 to `connectors` or to `inside`. A connector is found by its
+      reference (J, P) or its footprint's library (`Connector_...`); name
+      any other connector in `connectors` yourself.
+    - `not judged esd: board-rules.json names no part under connectors`:
+      name each connector a cable or a user reaches.
     - `not judged esd ...: no copper joins it to D1.1`: route the net.
 13. A run that names `ti-szza009-emi` on a board of 4 layers prints the
     note `the rule is for a board of 2 copper layers`: the rule is not

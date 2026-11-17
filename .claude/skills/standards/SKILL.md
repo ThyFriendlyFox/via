@@ -40,14 +40,22 @@ vaping device with a lithium cell.
    workcenter names the kinds.
 2. Run `workcenter standards <project>`. The first line counts:
    `STANDARDS <kind>: N held by a gate, M held by a test, K not held`.
-3. For each line `- held by a gate: <id> [...] -- drc, pack <pack> (board-rules.json)`:
-   the DRC gate holds it. It holds only while `workcenter drc <project> --strict`
-   prints PASS with `0 fail, 0 not judged`.
+3. For each line `- held by a gate: <id> [...] -- drc, pack <pack>: 0 fail, 0 not judged (board-rules.json, <board>.kicad_pcb)`:
+   the command ran the layout pack on the board as it stands, and every
+   rule of it held. Run it again after each change to the board.
 4. For each line `- held by a test: <id> [...] -- <ID> PASS, ...`: the named
    requirements of the verification package hold it. Nothing to do.
 5. For each line `- not held: <id> [...] -- <reason>`, act on the reason:
    - `board-rules.json names no <pack>`: add the pack to `layout` in
      `board-rules.json` and follow the board-rules skill until DRC passes.
+   - `drc, pack <pack>: 3 fail, 0 not judged`, or any count that is not
+     0 and 0: run `workcenter drc <project> --strict`, which prints each
+     line, and act on it by the board-rules skill.
+   - `drc, pack <pack>: ...; <pack> <rule>: the rule is for a board of 2 copper layers, and this one has 4`:
+     the rule is not for this board, so nothing holds the requirement.
+     Hold it by a test instead.
+   - `drc, pack <pack>: no .kicad_pcb in the project to judge`: run the
+     command on the folder that holds the board.
    - `product.json names no test for it`: write a requirement for it in
      the verification package, with this line's document and clause as
      its source, then add its ID under `tests` in `product.json`:
@@ -61,9 +69,13 @@ vaping device with a lithium cell.
 6. Read the lines under `Paid standards a test laboratory uses`. Write in
    the version's README which laboratory test each `not held` line waits
    for.
-7. Read the lines `not had: ...`. Those documents could not be fetched;
+7. Read the lines `left out: <document> <clause>: <reason>`. Each is a
+   clause of a document the kind read and does not list, with the reason.
+   If the reason is not true of your product, add the clause to the
+   kind's `requirements`.
+8. Read the lines `not had: ...`. Those documents could not be fetched;
    the list says nothing about them. Name them in the README as open.
-8. Run step 2 again. `workcenter standards <project> --strict` exits 0
+9. Run step 2 again. `workcenter standards <project> --strict` exits 0
    only when no line is `not held`.
 
 ## Done when
