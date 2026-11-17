@@ -60,6 +60,63 @@ def test_the_line_holds_every_limit_with_strict(line):
 
 
 @needs_openems
+def test_a_run_with_no_limit_judges_nothing_and_does_not_pass(tmp_path):
+    """The line with its limits taken out: the run measures and writes its report, and says it judged
+    nothing, exit 2, never PASS."""
+    import shutil
+
+    project = tmp_path / "line"
+    shutil.copytree(ROOT / "tests" / "boards" / "pass-fields-microstrip", project)
+    spec = json.loads((project / "fields.json").read_text(encoding="utf-8"))
+    spec["groups"][0]["limits"] = []
+    (project / "fields.json").write_text(json.dumps(spec), encoding="utf-8")
+    proc = subprocess.run(
+        [sys.executable, str(CLI), "fields", str(project)], capture_output=True, text=True, timeout=3600
+    )
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "SKIP   fields" in proc.stdout and "no limit stated: nothing judged" in proc.stdout
+    assert "impedance_ohm" in (project / "build" / "fields" / "report.md").read_text(encoding="utf-8")
+
+
+WYVERN = ROOT / "examples" / "snapdragon-dev-board" / "v0.2"
+
+
+@needs_openems
+@pytest.mark.skipif(not (WYVERN / "wyvern.kicad_pcb").is_file(), reason="the Wyvern example is not here")
+def test_the_wyvern_usb3_lane_runs_through_the_command(tmp_path):
+    """The USB 3 TX1 pair of the Wyvern example, from J1's A3 and A2 to U2's 17 and 16 on F.Cu over
+    In1.Cu, copied out of the example (the command writes into its project's build folder). 4 ports,
+    2 runs, each ending without a fault: each net gets its impedance, return and insertion loss, and
+    NEXT and FEXT from the other, 10 measures. The README names no limit with its document yet, so the
+    run judges nothing and says so (exit 2)."""
+    import shutil
+
+    project = tmp_path / "wyvern"
+    shutil.copytree(WYVERN, project, ignore=shutil.ignore_patterns("build"))
+    spec = {
+        "groups": [
+            {
+                "name": "usb3-tx1",
+                "nets": ["/SS_TX1_P", "/SS_TX1_N"],
+                "ports": ["J1.A3", "U2.17", "J1.A2", "U2.16"],
+                "band_ghz": [0.1, 10],
+                "limits": [],
+            }
+        ]
+    }
+    (project / "fields.json").write_text(json.dumps(spec), encoding="utf-8")
+    proc = subprocess.run(
+        [sys.executable, str(CLI), "fields", str(project)], capture_output=True, text=True, timeout=3600
+    )
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "no limit stated: nothing judged" in proc.stdout
+    report = json.loads((project / "build" / "fields" / "report.json").read_text(encoding="utf-8"))
+    measures = report["details"]["measures"]["usb3-tx1"]
+    assert sum(len(m) for m in measures.values()) == 10
+    assert report["details"]["failures"] == []
+
+
+@needs_openems
 def test_the_line_is_passive(line, tmp_path):
     """No passive line gives back more power than it gets: |S11|^2 + |S21|^2 <= 1 at every frequency.
     The read-back is held to 1.02, the DFT of a run cut at -40 dB of energy."""

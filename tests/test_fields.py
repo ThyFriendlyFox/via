@@ -118,6 +118,25 @@ def test_lines_closer_than_the_least_cell_are_one_line():
     assert lines == pytest.approx([0, 0.1, 0.25, 0.475, 0.7375, 1.0])
 
 
+def test_a_line_a_port_stands_on_is_never_dropped():
+    """Wyvern's J1.A3 port stands at x 109.25; a slanted track's corner put a line at 109.245011, and
+    the merge kept that one: the port's excitation, a sheet at 109.25, lay on no line, openEMS dropped it
+    (`Unused primitive ... port_excite_1`) and ran with 0 energy. A kept line wins: with a least cell of
+    0.025, 0.995 goes and 1 stays."""
+    lines = fields.mesh_lines([0, 0.995, 2.0], 1.0, min_cell=0.025, keep=[1.0])
+    assert 1.0 in lines and 0.995 not in lines
+
+
+def test_every_port_lies_on_mesh_lines():
+    """Each port's x, y and z bounds are lines of the mesh, to the digit, on the stub fixture."""
+    board = fields.read_board(STUB / "stub.kicad_pcb")
+    spec = fields.read_spec(STUB / "fields.json")
+    model = fields.build_model(board, spec["groups"][0], spec)
+    for port in model["ports"]:
+        for k, axis in enumerate("xyz"):
+            assert port["start"][k] in model["mesh"][axis] and port["stop"][k] in model["mesh"][axis]
+
+
 def test_a_slanted_track_gets_no_cell_under_a_sixth_of_its_width():
     """Wyvern's TX1 pair runs on F.Cu with slanted pieces 0.15 to 0.25 mm wide. The least cell is the
     narrowest width over 2 x 3 cells across it: 0.15 / 6 = 0.025 mm."""
@@ -335,6 +354,20 @@ def test_the_openems_file_holds_the_model():
     assert "port_excite_2" not in text
 
 
+def test_the_faults_openems_states_with_exit_0():
+    """3 lines of openEMS's log, each met on a run, end with exit 0 and a result of another structure:
+    each is a fault; a log without them is none."""
+    fault = fields.OpenEMS.fault
+    assert fault("Warning: Unused primitive (type: Box) detected in property: port_excite_1!") == (
+        "Unused primitive (type: Box) detected in property: port_excite_1!"
+    )
+    cut = "Operator::CalcGaussianPulsExcitation: ... Cutting to max number of timesteps!"
+    assert "a cell is too small" in fault(cut)
+    late = "RunFDTD: Warning: Max. number of timesteps was reached before the end-criteria of -40dB"
+    assert "did not fall to the end criterion" in fault(late)
+    assert fault("Time for 3604 iterations with 55692.00 cells : 8.22 sec") is None
+
+
 def run_cli(*args, env=None):
     return subprocess.run(
         [sys.executable, str(CLI), *args], capture_output=True, text=True, env=env, timeout=600
@@ -376,6 +409,7 @@ def test_cmath_is_the_only_math_a_measure_needs():
     imports = {ln.split()[1].split(".")[0] for ln in text.splitlines() if ln.startswith(("import ", "from "))}
     assert imports <= {
         "__future__",
+        "bisect",
         "cmath",
         "json",
         "math",

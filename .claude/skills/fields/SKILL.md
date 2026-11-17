@@ -85,13 +85,18 @@ The worked examples are `tests/boards/pass-fields-microstrip` and
      document.
    - `FAIL` with `openEMS on port N ended without a result`: the line says
      why. `did not fall to the end criterion`: raise `max_timesteps` in
-     `settings`. `Unused primitive`: a piece of copper lies on no mesh line;
-     report it with `build/fields/<group>/model.json`.
+     `settings`. `a cell is too small`: report it with
+     `build/fields/<group>/model.json`. `Unused
+     primitive`: a piece of copper or a port lies on no mesh line; report it
+     with `build/fields/<group>/model.json`.
    - `warning: ... not judged, the run gave no such measure`: the limit
      names a measure the run did not make (a coupling from a net that has 1
      port, a loss on an antenna). Fix the limit or the ports.
      `--strict` makes these lines fail.
    - `SKIP fields engine missing: openEMS`: go back to step 1.
+   - `SKIP fields no limit stated: nothing judged`: the run measured and
+     wrote its report, and held nothing. Add each limit with its source to
+     `fields.json`, then run this step again. It is not a pass.
 4. Read `build/fields/report.md`: the measures of each net, the limits, and
    what the model leaves out (copper thickness, conductor loss, plane
    cut-outs, pads, the board's edge). Report a result with those lines.

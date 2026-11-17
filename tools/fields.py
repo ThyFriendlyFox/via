@@ -20,6 +20,7 @@ Standard library only: `tools/workcenter` imports this module and runs on a bare
 
 from __future__ import annotations
 
+import bisect
 import cmath
 import json
 import math
@@ -374,18 +375,20 @@ def _grade(length: float, s_a: float, s_b: float, max_cell: float, ratio: float)
 
 
 def mesh_lines(
-    fixed: list[float], max_cell: float, ratio: float = 1.5, min_cell: float = 1e-6
+    fixed: list[float], max_cell: float, ratio: float = 1.5, min_cell: float = 1e-6, keep=()
 ) -> list[float]:
-    """Mesh lines through every fixed line, no cell larger than max_cell. A fixed line closer than
-    min_cell to the one before it is dropped: the solver's time step falls with the least cell. In
-    each gap between fixed lines the cells grow by `ratio` from the smaller gap at each end (`_grade`).
-    Where 2 runs of cells meet, 2 neighbours can differ by up to 2 times. Every fixed line kept is a
-    line of the mesh, to the digit."""
-    lines = sorted(set(round(v, 9) for v in fixed))
-    merged = [lines[0]]
-    for v in lines[1:]:
-        if v - merged[-1] >= min_cell - 1e-12:
-            merged.append(v)
+    """Mesh lines through every fixed line, no cell larger than max_cell. A line in `keep` (a port's
+    bounds) always stays. Another fixed line closer than min_cell to a line already taken is dropped:
+    the solver's time step falls with the least cell. In each gap between fixed lines the cells grow by
+    `ratio` from the smaller gap at each end (`_grade`). Where 2 runs of cells meet, 2 neighbours can
+    differ by up to 2 times. Every fixed line taken is a line of the mesh, to the digit."""
+    kept = sorted(set(round(v, 9) for v in keep))
+    merged = list(kept)
+    for v in sorted(set(round(v, 9) for v in fixed) - set(kept)):
+        k = bisect.bisect_left(merged, v)
+        near = [merged[i] for i in (k - 1, k) if 0 <= i < len(merged)]
+        if all(abs(v - n) >= min_cell - 1e-12 for n in near):
+            merged.insert(k, v)
     gaps = [b - a for a, b in pairwise(merged)]
     local = [min([g for g in gaps[max(0, k - 1) : k + 1]] + [max_cell]) for k in range(len(merged))]
     out = [merged[0]]
@@ -506,6 +509,7 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
         x, y = p
         start = [x, y - h, zp] if along_x else [x - h, y, zp]
         stop = [x, y + h, zt] if along_x else [x + h, y, zt]
+        start, stop = [round(v, 9) for v in start], [round(v, 9) for v in stop]  # as the mesh holds lines
         ports.append({"n": n, "net": t.net, "layer": layer, "start": start, "stop": stop, "r": s["port_ohm"]})
 
     xs = [q[0] for poly in polygons for q in poly["points"]] + [v.at[0] for v in vias]
@@ -555,6 +559,8 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
     least_xy = min(t.width for t in tracks) / (2 * max(1, int(s["cells_across_width"])))
     thin = [d["z"][1] - d["z"][0] for d in dielectrics] or [zhi - zlo or 1.0]
     least_z = min(thin) / (2 * max(1, int(s["cells_per_dielectric"])))
+    # A port's bounds are lines of the mesh: its excitation is a sheet, dropped when it lies on none.
+    port_at = [[p[e][k] for p in ports for e in ("start", "stop")] for k in range(3)]
     n_f = int(s["frequencies"])
     freqs = [f_lo + (f_hi - f_lo) * i / (n_f - 1) for i in range(n_f)]
     return {
@@ -579,9 +585,9 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
         "frequencies_hz": freqs,
         "max_cell_mm": cell,
         "mesh": {
-            "x": mesh_lines(mesh_x, cell, min_cell=least_xy),
-            "y": mesh_lines(mesh_y, cell, min_cell=least_xy),
-            "z": mesh_lines(mesh_z, cell, min_cell=least_z),
+            "x": mesh_lines(mesh_x, cell, min_cell=least_xy, keep=port_at[0]),
+            "y": mesh_lines(mesh_y, cell, min_cell=least_xy, keep=port_at[1]),
+            "z": mesh_lines(mesh_z, cell, min_cell=least_z, keep=port_at[2] + z_used),
         },
         "settings": dict(s),
         "left_out": [
@@ -824,28 +830,46 @@ class OpenEMS:
             out.append(run)
         return out
 
-    @classmethod
-    def run(cls, run: Path, timeout: float) -> tuple[bool, str]:
-        exe = cls.binary()
-        with (run / "openems.log").open("w", encoding="utf-8") as log:
-            proc = subprocess.run(
-                [exe, "model.xml", "--disable-dumps"],
-                cwd=run,
-                stdout=log,
-                stderr=subprocess.STDOUT,
-                timeout=timeout,
-            )
-        text = (run / "openems.log").read_text(encoding="utf-8", errors="replace")
-        # A primitive that lies on no mesh line is dropped with a warning and exit 0: the run then
-        # simulated another structure than the model.
+    @staticmethod
+    def fault(text: str) -> str | None:
+        """What in openEMS's log makes its result another structure's, or a cut one. Each of these
+        comes with exit 0."""
+        # A primitive that lies on no mesh line is dropped: the run simulates another structure.
         unused = re.search(r"Unused primitive.*", text)
         if unused:
-            return False, unused.group(0)
+            return unused.group(0)
+        if "Cutting to max number of timesteps" in text:
+            return "the excitation alone needs more steps than max_timesteps: a cell is too small"
         # A run that stops at its step limit has not let the energy leave the box: its spectra are cut.
         if "Max. number of timesteps was reached" in text:
-            return False, "the energy in the box did not fall to the end criterion within the step limit"
-        if "Cutting to max number of timesteps" in text:
-            return False, "the excitation alone needs more steps than max_timesteps: a cell is too small"
+            return "the energy in the box did not fall to the end criterion within the step limit"
+        return None
+
+    @classmethod
+    def run(cls, run: Path, timeout: float) -> tuple[bool, str]:
+        """openEMS on the run's model.xml. The log is read every 2 s: a fault openEMS states before
+        its time steps (a dropped primitive, a cut excitation) stops the run there."""
+        exe, path = cls.binary(), run / "openems.log"
+        start = time.monotonic()
+        with path.open("w", encoding="utf-8") as log:
+            proc = subprocess.Popen(
+                [exe, "model.xml", "--disable-dumps"], cwd=run, stdout=log, stderr=subprocess.STDOUT
+            )
+            while proc.poll() is None:
+                if time.monotonic() - start > timeout:
+                    proc.kill()
+                    proc.wait()
+                    raise subprocess.TimeoutExpired(exe, timeout)
+                found = cls.fault(path.read_text(encoding="utf-8", errors="replace"))
+                if found:
+                    proc.kill()
+                    proc.wait()
+                    return False, found
+                time.sleep(2)
+        text = path.read_text(encoding="utf-8", errors="replace")
+        found = cls.fault(text)
+        if found:
+            return False, found
         return proc.returncode == 0, text
 
     @staticmethod
@@ -1001,13 +1025,18 @@ def cmd_fields(args, cli) -> int:
         all_held += held
         all_unjudged += [f"{model['group']}: {x}" for x in unjudged]
     failed = all_fails or (args.strict and all_unjudged)
-    verdict = "FIELDS FAIL" if failed else "FIELDS HELD"
+    # A run that held no limit judged nothing: it measured, and says so, and it does not pass.
+    empty = not failed and not all_held
+    verdict = "FIELDS FAIL" if failed else ("FIELDS NOT JUDGED" if empty else "FIELDS HELD")
     report = out / "report.md"
     report.write_text(report_md(project.name, engine.program, version, groups, verdict), encoding="utf-8")
     summary = (
         f"{len(all_held)} held, {len(all_fails)} failed, {len(all_unjudged)} not judged in "
         f"{len(groups)} groups ({engine.program} {version or '?'})"
     )
+    if empty:
+        who = f"{engine.program} {version or '?'}"
+        summary = f"no limit stated: nothing judged; measured {len(groups)} groups ({who})"
     details = {
         "failures": all_fails + (all_unjudged if args.strict else []),
         "warnings": [] if args.strict else all_unjudged,
@@ -1015,7 +1044,8 @@ def cmd_fields(args, cli) -> int:
         "measures": {g["model"]["group"]: g["measures"] for g in groups},
     }
     seconds = round(time.monotonic() - t0, 1)
-    result = cli.Result(gate, "fail" if failed else "pass", summary, details, [str(report)], seconds)
+    status = "fail" if failed else ("skip" if empty else "pass")
+    result = cli.Result(gate, status, summary, details, [str(report)], seconds)
     (out / "report.json").write_text(json.dumps(vars(result), indent=2, default=str), encoding="utf-8")
     code = cli.emit([result], args, None)
     if not args.json:
