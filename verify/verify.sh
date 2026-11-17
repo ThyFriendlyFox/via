@@ -13,26 +13,17 @@ PY=python3
 
 STEP="0/4 start"
 step() { STEP="$*"; printf '\n== %s\n' "$*"; }
-# For `workcenter now`: the commit the gate tests and whether the tree differs from it, noted before
-# step 1; on exit the trap writes them with the verdict and the step to build/verify.json, ignored by git.
-GATE_HEAD=$(git rev-parse HEAD 2>/dev/null || true)
-GATE_DIRTY=no
-[[ -z "$(git status --porcelain 2>/dev/null || true)" ]] || GATE_DIRTY=yes
-trap 'python3 tools/now.py record "$?" "$STEP" --head "$GATE_HEAD" --dirty "$GATE_DIRTY" >/dev/null \
-  || echo "no gate record written" >&2' EXIT
 
-step "1/4 lint"
-shellcheck install.sh verify/verify.sh environment/setup.sh site/build.sh ee-agent-kit/lead/gate-and-push.sh
-"$PY" -m ruff check tools tests ee-agent-kit/lead
-"$PY" -m ruff format --check tools tests ee-agent-kit/lead
+# `verify.sh site` is the fast gate (make verify-site): for a change tools/ci/scope.py calls fast.
+# It starts no engine: the tests marked `engine` are left out, and any other test that starts one
+# is refused (WORKCENTER_NO_ENGINES=1) and fails (tools/ci/engine_marker.py).
+mode=${1:-full}
+case "$mode" in
+  full | site) ;;
+  *) echo "usage: verify/verify.sh [site]"; exit 2 ;;
+esac
 
-step "2/4 doctor"
-python3 tools/workcenter doctor
-
-step "3/4 tests"
-"$PY" -m pytest -q tests
-
-step "4/4 kit checks"
+kit_checks() {
 # Kit placeholders may remain only in SETUP.md, whose table documents them.
 if grep -rnE '\{\{(PROJECT_NAME|REPO_SLUG|DEFAULT_BRANCH|BUILD_CMD|TEST_CMD|LINT_CMD|VERIFY_CMD|MIN_RUNTIME|SECURITY_EMAIL|PKG_ECOSYSTEM)\}\}' \
      ee-agent-kit docs 2>/dev/null | grep -v '^ee-agent-kit/SETUP.md:'; then
@@ -62,5 +53,45 @@ awk '/^## P[0-9]+ /{if (h != "" && !d) {print h ": no Done when line"; bad = 1};
      /^Done when:/{d = 1}
      END{if (h != "" && !d) {print h ": no Done when line"; bad = 1}; exit bad}' ee-agent-kit/PROCESSES.md || exit 1
 echo "kit checks ok"
+}
+
+# The fast gate leaves no gate record: build/verify.json speaks for the whole `make verify` only.
+if [[ "$mode" == site ]]; then
+  step "1/4 shellcheck site/build.sh"
+  shellcheck site/build.sh
+  step "2/4 site build"
+  built=$(mktemp -d)
+  trap 'rm -rf "$built"' EXIT
+  sh site/build.sh "$built/site"
+  echo "site built: $(find "$built/site" -type f | wc -l) files"
+  step "3/4 tests that start no engine"
+  WORKCENTER_NO_ENGINES=1 "$PY" -m pytest -q -p no:cacheprovider -m "not engine" tests
+  step "4/4 kit checks"
+  kit_checks
+  printf '\nVERIFY-SITE GREEN in %ss\n' "$SECONDS"
+  exit 0
+fi
+
+# For `workcenter now`: the commit the gate tests and whether the tree differs from it, noted before
+# step 1; on exit the trap writes them with the verdict and the step to build/verify.json, ignored by git.
+GATE_HEAD=$(git rev-parse HEAD 2>/dev/null || true)
+GATE_DIRTY=no
+[[ -z "$(git status --porcelain 2>/dev/null || true)" ]] || GATE_DIRTY=yes
+trap 'python3 tools/now.py record "$?" "$STEP" --head "$GATE_HEAD" --dirty "$GATE_DIRTY" >/dev/null \
+  || echo "no gate record written" >&2' EXIT
+
+step "1/4 lint"
+shellcheck install.sh verify/verify.sh environment/setup.sh site/build.sh ee-agent-kit/lead/gate-and-push.sh
+"$PY" -m ruff check tools tests ee-agent-kit/lead
+"$PY" -m ruff format --check tools tests ee-agent-kit/lead
+
+step "2/4 doctor"
+python3 tools/workcenter doctor
+
+step "3/4 tests"
+"$PY" -m pytest -q tests
+
+step "4/4 kit checks"
+kit_checks
 
 printf '\nVERIFY GREEN\n'

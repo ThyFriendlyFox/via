@@ -2,7 +2,9 @@
 VENV_PY := /opt/workcenters/ee/venv/bin/python
 PY := $(shell test -x $(VENV_PY) && echo $(VENV_PY) || echo python3)
 
-.PHONY: install doctor lint format test verify image
+SCOPE_BASE ?= origin/main
+
+.PHONY: install doctor lint format test verify image scope verify-site
 
 install:            ## install or update every engine (root)
 	./install.sh
@@ -20,6 +22,12 @@ format:             ## apply ruff formatting
 
 test:               ## gate tests on the fixture boards
 	$(PY) -m pytest -q tests
+
+scope:              ## fast or full: what the change from SCOPE_BASE to the working tree needs
+	$(PY) tools/ci/scope.py --base "$$(git merge-base $(SCOPE_BASE) HEAD)"
+
+verify-site:        ## the fast gate for a change `make scope` calls fast; starts no engine
+	verify/verify.sh site
 
 verify:             ## the full health gate: lint -> doctor -> test -> kit checks
 	verify/verify.sh
