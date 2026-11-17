@@ -252,7 +252,7 @@ has the procedure from a spec to a GREEN board.
 has every flag.
 
 <details>
-<summary>The 29 commands</summary>
+<summary>The 30 commands</summary>
 
 | Command | What |
 |---|---|
@@ -266,6 +266,7 @@ has every flag.
 | `ratings` | Hold a schematic to its parts' ratings: each pin's voltage limits, each part's derating by a named standard, each regulator's output, load and support parts. Every limit names its document, and a pack's rule and a pin's limit their page. |
 | `references` | The index of the standards and datasheets the rules cite, each with its URL and the SHA256 of the copy the rule was written from: `fetch` gets each once under the workcenter's own name into a folder outside the repository, `check` judges a file a person downloaded, `rules` fails a rule whose document the index lacks. |
 | `measure` | Write the plan of measurements for a built board: for each sim bound the pad to probe, the reference pad, the instrument, the span the reading must fall in and the predicted value, as written and over the corners. |
+| `fields` | Simulate the critical nets `fields.json` names with openEMS, from the board file, and hold impedance, loss and coupling to their limits. |
 | `bench` | Route design files with each router and compare: time, share joined, DRC errors, commands, bytes read. |
 | `autoroute` | Write FreeRouting's session file for a hand-drawn board's DSN. The import into KiCad is by hand. |
 | `inspect` | Read a routed board: `map`, `list`, `probe`, `net`, `islands`, `resistance`, `crossed`. |
@@ -329,6 +330,7 @@ images are drawn.
 | `tools/ratings.py` | `workcenter ratings`: the voltage span of each net, the facts of each part, and each stress against its limit. Standard library only. |
 | `tools/fabfiles.py`, `tools/panel.py` | EXPORT's files read back against the board: the placement file, the assembly pages, IPC-2581 and the panel. `panel.py` runs KiKit's panelization under `KIKIT_PYTHON`. |
 | `tools/measureplan.py` | `workcenter measure`: the plan of measurements from the decks' bounds and the board's nets. Standard library only. |
+| `tools/fields.py` | `workcenter fields`: the model of a board's critical nets from its board file, the mesh, the ports, openEMS run as its own program, and the limits held. Standard library only. |
 | `tools/routebench.py` | `workcenter bench`: the routing benchmark and the router each board takes. Standard library only. |
 | `tools/boardrules.py` | `workcenter drc` with a `board-rules.json`: a board held to a standard's rule pack, each gap to its nets' voltage and each track's width to its net's current; vias are counted against a wall the pack gives. Standard library only. |
 | `tools/references.py` | `workcenter references`: the index of the documents the rules cite, the fetch that asks each URL once, and the check of a downloaded file and of the rules. Standard library only. |
@@ -342,7 +344,7 @@ images are drawn.
 | `tools/hooks/` | Claude Code hooks: no `cd` in a command, no test written by a script. |
 | `WORKCENTER.md` | The contract a project gets from this workcenter. |
 | `AGENTS.md`, `CLAUDE.md` | Where an agent starts. The same text. |
-| `.claude/skills/` | `attached-repos`, `autoroute`, `blog-post`, `board-design`, `board-gates`, `board-loop`, `board-rules`, `chip-design`, `chip-gates`, `fabrication`, `kistack`, `procurement`, `ratings`, `references`, `simulate`, `verification`. |
+| `.claude/skills/` | `attached-repos`, `autoroute`, `blog-post`, `board-design`, `board-gates`, `board-loop`, `board-rules`, `chip-design`, `chip-gates`, `fabrication`, `fields`, `kistack`, `procurement`, `ratings`, `references`, `simulate`, `verification`. |
 | `templates/` | A first design file, a version's README and gates report, `corners.json`, `frequency-plan.json`, the verification package. |
 | `rules/` | Fabrication houses' limits as KiCad design rules: Sierra Circuits, JLCPCB, PCBWay, OSH Park. `rules/ratings/`: 2 derating standards as packs for `workcenter ratings`, each limit with its table and page. `rules/board/`: ECSS-Q-ST-70-12C Rev.1 as a board rule pack for `workcenter drc`, each limit with its clause, table and page. `rules/references/`: the index of the 12 documents the rules cite (3 standards, 9 datasheets), each with its URL and SHA256; no document itself. |
 | `tests/` | The tests of the tools. `tests/boards/` holds the fixture boards and what each proves. |

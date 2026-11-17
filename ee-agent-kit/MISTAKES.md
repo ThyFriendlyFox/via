@@ -1171,3 +1171,15 @@ What happened: On `wip/r7` the thermal check judged a part at the runs it had an
 Cost: 2 false passes and 1 misquote found by the reviewer; 7 tests.
 Root cause: The check never compared what it was asked to judge with what it judged. I quoted the cited clause from memory, not from the page.
 Process: P14
+
+## M194 — 2026-11-17 — A field model that asked only whether a part of the board existed
+What happened: On `wip/r9` the model of `workcenter fields` asked only whether a pour existed on a layer, whether a pad's name existed and whether a track end was free. It never asked whether the pour lay under the track, whether the pad was on the net, or whether an end was an open stub. A reviewer made 4 boards pass `--strict` with the numbers of another structure.
+Cost: A review that said "not sound"; 8 fixes with tests.
+Root cause: Each part of a model built from the board was not checked against the board where it stands. What is not checked is now printed under "The model leaves out".
+Process: P14
+
+## M195 — 2026-11-17 — An impedance 15 % low, with no closed form to hold it
+What happened: On `wip/r9` `workcenter fields` read a microstrip's impedance about 15 % under Hammerstad and Jensen, and `--strict` held a line outside its limit inside it. The 2 fixtures' limits were wide and made up, and no test compared a measure with a closed form.
+Cost: A second review that said "not sound"; 7 fixes with tests.
+Root cause: A number the command reports was never held to a published form on a structure the form covers. `test_the_line_impedance_is_the_closed_form_within_3_percent` now holds it.
+Process: P14

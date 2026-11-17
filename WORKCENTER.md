@@ -53,6 +53,7 @@ honestly passes it.
 | KiCad | 10.0 | `kicad-cli` | `install.sh` (PPA kicad/kicad-10.0-releases) |
 | ngspice | 42 | `ngspice` | `install.sh` (Ubuntu 24.04 archive) |
 | FreeRouting | 1.9.0 | `workcenter design <design.py> --route [--seed <previous .kicad_pcb>\|--order] [--threads N]` (generated boards, headless); `workcenter bench <design.py>... --out <dir>` (the routing benchmark); `workcenter autoroute <project> [--dsn file]` (hand-drawn boards, DSN from KiCad) | `install.sh` (GitHub release, SHA-256 pinned; 2.1.0 hangs after routing when its GitHub version check cannot succeed) |
+| openEMS | 0.0.35 (Debian 12's `0.0.35+git20190103.6a75e98+dfsg.1-3.2`) | `workcenter fields <project>`, as its own program on an XML file the command writes; `OPENEMS` overrides the path | `install.sh` and `install.sh --openems` (Debian 12's 4 packages from `deb.debian.org`, each SHA-256 pinned; Ubuntu 24.04 has no package) |
 | KiKit | 1.8.1 | `tools/panel.py` under `KIKIT_PYTHON` (EXPORT's panel, for a project with `panel.json`); its `doPanelization`, not the `kikit` command, which imports wxPython | `install.sh` (PyPI, `requirements.txt`) |
 | kicad-python (kipy) | 0.8 | `/opt/workcenters/ee/venv/bin/python` | `install.sh` (PyPI) |
 | librsvg | 2.58 | `rsvg-convert` (SVG to PNG for `workcenter render`) | `install.sh` (Ubuntu 24.04 archive) |
@@ -88,6 +89,7 @@ file: it needs nothing else.
 | `ratings` | A schematic is to be held to its parts' ratings before layout: each part's facts from its datasheet, with the page of each pin's and each needed part's numbers, the voltages and currents the board cannot say, and `workcenter ratings` until every stress holds. |
 | `board-rules` | A routed board is to be held to a standard: each gap to the voltage between its nets and each track's width to its net's current, from `ratings.json`, with `board-rules.json` naming the pack; or to a fab's published limits. |
 | `references` | A rule cites a standard or a datasheet: get the copy it was written from with `workcenter references fetch`, judge a file a person downloaded with `workcenter references check`, and keep `workcenter references rules` passing. |
+| `fields` | A fast interface or an antenna on a routed board: a track's impedance, loss or crosstalk, held by `workcenter fields` to the limits `fields.json` states, each with its source. |
 | `fabrication` | The files a fab and an assembler take, each read back against the board, a panel from `panel.json`, and `workcenter measure`: the plan of measurements for the built board, from the project's own sim bounds. |
 | `kistack` | Placing parts, reviewing a schematic, a layout or the Gerbers, choosing a part's derating, a footprint or symbol, or a panel: it names the kistack skill for the step, and where this workcenter's rules win. |
 | `verification` | A human asks for requirements, a review, an inspection, or proof that a design meets its parts' ratings: the verification package of P28, checked by `workcenter verify`. |
@@ -383,6 +385,24 @@ name that holds no `run.sp`. Send the folder, not the deck, to a person
 who runs it elsewhere: the deck alone stops with an error or prints
 another number (M105).
 
+Not a gate: `workcenter fields <project> [--strict] [--model] [--spec
+FILE] [--out DIR]` reads `<project>/fields.json` and the `.kicad_pcb`. For
+each group of nets it builds a model from the board file with no
+hand-written mesh: the copper, the reference pour under each track, the
+dielectrics, a 50 ohm port at each end. It runs openEMS as its own
+program and holds impedance, return loss, insertion loss, NEXT and FEXT
+to the limits, each with its source. It writes
+`build/fields/<group>/model.json`, the solver's input under
+`build/fields/<group>/openems/`, and `build/fields/report.md` and
+`report.json`. It refuses a track with no reference pour under it, a pour
+of another net between a track and its plane, a via through a plane, an
+open end as a port and a port on another net's pad. The impedance is
+judged only on a net of 2 ports, 1 width, 1 layer and no branch. The
+model has no conductor loss and no copper thickness. Exit 0 when every
+limit holds, 1 on a failure, a solver fault or a file it does not take, 2
+when openEMS is absent, there is no `fields.json`, or no limit was held.
+The `fields` skill is the procedure.
+
 Not a gate: `workcenter measure <project>` runs SIM and writes
 `build/measure/plan.md` and `plan.json`. For each bound of each deck it
 names the pad of the net the deck's node names (a test point first, then a
@@ -654,7 +674,7 @@ and no analog block. The engines install on request:
 | Install root | `/opt/workcenters/ee` |
 | Engine environment | `/opt/workcenters/ee/env.sh` |
 | Tool cache | the session scratchpad; the engines write nothing outside the output directory |
-| Project output | `<project>/build/` (reports, `fab/`, `sim/`, `route/`, `render/`, `ratings/`, `board-rules/`, `measure/`) |
+| Project output | `<project>/build/` (reports, `fab/`, `sim/`, `route/`, `render/`, `ratings/`, `board-rules/`, `measure/`, `fields/`) |
 | Chip project output | `<project>/build/gates.json`, the report, and `<project>/build/chip/`: 1 folder for each gate that ran, and `hashes.json` with the hash of each file a gate wrote or judged. `<gate>/passed.json` is there when that gate passed: the hash of each file it read, taken before its engines started and held to the same bytes after, and of each file it hands on. The files of the project in it are those the gate finds by the text and those its engine says it read (Verilator's XML, the list Icarus Verilog writes, the rule Yosys writes): a header is in the record however the RTL names it. A file of the project is named from the project's folder (`rtl/top.v`, and `./chip/notes.v` for one under a folder `chip`) and a file the gates wrote from the output folder (`chip/layout/top.gds`), wherever `--out` points. EXPORT asks each of the 9 gates before it for that record and holds every file to it: the RTL and each header it includes, the benches and their bounds, the constraints, `chip.json`, the mapped netlist the layout was built from, and the layout's own files. A file of the project that came after a gate passed is refused too. `workcenter next` holds the files to the same records before it reads the report. `tapeout/` holds the files EXPORT hands out, `manifest.json` and the judging gates' reports; a gate that is asked to run takes it away, with the record of its own earlier pass. `render/` holds the pictures of `workcenter chip render`. The gates empty the folders under `<out>/chip`, and only in a folder they made: `--out` is refused when that folder is the project's, holds a file of it, or is there with files and without `hashes.json`. A path with white space is refused too. |
 
 ## Project requirements
@@ -670,6 +690,8 @@ and no analog block. The engines install on request:
 - Optional: `ratings.json` beside the schematic, and `library/facts/*.json`
   in the project's folder or a folder above it, for `workcenter ratings`;
   the `ratings` skill has both formats
+- Optional: `fields.json` beside the board, the critical nets and their
+  limits for `workcenter fields`
 - Optional: `panel.json` beside the board, a KiKit preset; it asks EXPORT
   for a panel
 - Optional: `board-rules.json` beside the board, `{"pack": "<name>"}`, for

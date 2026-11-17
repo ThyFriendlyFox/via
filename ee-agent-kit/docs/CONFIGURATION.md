@@ -18,6 +18,8 @@ unset variable never causes a failure.
 | `FREEROUTING_URL` | URL | GitHub release asset for the version | Alternate download location. |
 | `REQUIRE_FREEROUTING` | `0`/`1` | `0` | `1` makes a failed JAR download fatal. CI sets `1`. |
 | `SKIP_APT` | `0`/`1` | `0` | `1` skips the apt step entirely. |
+| `REQUIRE_OPENEMS` | `0`/`1` | `0` | `1` makes a failed openEMS step fatal, a wrong checksum among them; else it warns and `workcenter fields` skips. |
+| `OPENEMS_POOL` | URL | `https://deb.debian.org/debian/pool/main/o/openems` | Where Debian 12's 4 openEMS packages are fetched; each is checked against the SHA256 pinned in the script. |
 
 ## `tools/workcenter`
 
@@ -29,13 +31,14 @@ unset variable never causes a failure.
 | `NGSPICE` | command | `ngspice` | The simulation engine. |
 | `JAVA` | command | `java` | Runs the JAR. |
 | `KICAD10_3DMODEL_DIR` | path | `/usr/share/kicad/3dmodels` | Where `render` looks for the library 3D bodies footprints name, to list the parts drawn without one (`KICAD9_` and `KICAD8_3DMODEL_DIR` likewise). |
+| `OPENEMS` | command | `$WORKCENTER_ROOT/openems/bin/openEMS`, else `openEMS` on `PATH` | The field solver `workcenter fields` runs; `doctor` reports it. |
 | `KIKIT_PYTHON` | command | the venv's Python (`$WORKCENTER_ROOT/venv/bin/python`) | The Python that imports KiKit; EXPORT runs `tools/panel.py` with it for a project that holds `panel.json`. |
 | `KISTACK_DIR` | path | `<checkout>/third_party/kistack` | The kistack copy whose `skills/layout-placement/scripts` `workcenter placement` runs. |
 
 | Flag | Commands | Default | Use |
 |---|---|---|---|
 | `--json` | all | off | Machine-readable output. Read before the command or after it. |
-| `--out DIR` | gates, erc, drc, sim, export, autoroute, render, procure, sources, verify, ratings; design; ci | `<project>/build`; design: the design file's folder (with `--check`, a temporary folder); ci: `<repo>/build/ci` | Where reports and artifacts go; for design, where the KiCad project is written; for ci, each step's script, `$GITHUB_ENV` file and log. |
+| `--out DIR` | gates, erc, drc, sim, export, autoroute, render, procure, sources, verify, ratings, fields; design; ci | `<project>/build`; design: the design file's folder (with `--check`, a temporary folder); ci: `<repo>/build/ci` | Where reports and artifacts go; for design, where the KiCad project is written; for ci, each step's script, `$GITHUB_ENV` file and log. |
 | `--strict` | gates, erc, drc, sim, export, render, procure, sources, verify, ratings | off | Warnings fail the gate; for ratings, a stress that was not judged; for verify, a requirement whose verdict is FAIL or OPEN, and decks that ran without corners; for render, a part the 3D views draw without a body fails it; for procure, a line short of stock or a price older than 90 days; for sim, a model outside a `warn` bound (its datasheet), a project with no `sim/corners.json` or with decks that drive periodic sources and no `sim/frequency-plan.json`, a deck with no bound, a deck whose measures do not move with temperature, a part named like a board reference that no tolerance covers, and an operating point ngspice doubts (`singular matrix`); for sources, a datasheet kept as a note only, a file with no SHA256 or revision recorded, a model older than its datasheet, or a load check skipped. |
 | `--parts FILE` | procure, sources, ratings | `<project>/parts.csv` | A parts CSV, repeatable; the first row whose Value and Footprint match a BOM line prices it (procure) or names its MPN (sources, ratings), and every row with no Footprint is an item off the board. Columns in the `procurement` skill. |
 | `--init` | ratings | off | Write `ratings.json` beside the schematic, with the pack `nasa-eee-inst-002` and no net, when there is none; never over a file that exists. Nothing is judged, and no output folder is made. |
@@ -91,6 +94,9 @@ unset variable never causes a failure.
 | `--router NAME=JAR` | bench | the workcenter's FreeRouting | A FreeRouting jar to run, repeatable; the first is the default router. |
 | `--time-limit S` | bench | `300` | Seconds per route, a whole number above 0; a route past it is stopped and not judged (exit 2). |
 | `--out DIR` | bench (required) | none | The benchmark's folder: `<board>/<router>/` with the board, `route.txt`, `drc.txt` and `run.json`, and `bench.md`. A run empties its own folder first. |
+| `--spec FILE` | fields | `<project>/fields.json` | The groups of nets, each group's band and its limits, each limit with its `source`. |
+| `--model` | fields | off | Write each group's `model.json` and the engine's input under `<out>/fields/<group>/`; run nothing. |
+| `--strict` (fields) | fields | off | A limit that is not judged fails the run. Without it the run exits 2 when no limit was held (`no limit stated: nothing judged`). |
 | `DESIGN` | bench | none: rebuild `bench.md` from `<out>` | The design files to route. |
 | `PROJECT` | measure | none | The project whose plan of measurements to write: `<out>/measure/plan.md` and `plan.json`, from a fresh SIM run. `--out DIR` names the output folder (default `<project>/build`). Exit 1 when a bound is not planned. |
 | `--timeout S` | autoroute, design, mutate | `600` autoroute, `900` design, `600` mutate | Kill the router after S seconds; for mutate, a test run past it counts as caught (the tests did not pass). |
@@ -158,6 +164,15 @@ part by `mpn` or `mpns` and whose `source.sha256` is a row of
 | `kept` | a capacitor | pairs `[volts, share of the value kept]` | The maker's DC bias curve; the volts rise from pair to pair; each share above 0 and at most 1.5. `workcenter ratings` reads it too. |
 | `kept_celsius` | a capacitor | pairs `[celsius, share against 25 C]` | The maker's temperature curve; each share above 0 and at most 1.5. |
 | `kept` | an inductor | pairs `[amps, share of the value kept]` | The maker's L vs current curve; each share above 0 and at most 1.5. |
+
+## `fields.json` (beside a board, for `workcenter fields`)
+
+| Field | Type | Default | Use |
+|---|---|---|---|
+| `engine` | name | `openems` | The field solver. |
+| `reference` | net | `GND` | The net whose pours are the reference planes. |
+| `groups` | list | none (required) | Each group: `name`, `nets`, `kind` (`lines`, the default, or `antenna`), `band_ghz` `[low, high]`, optional `ports` (pads that name a net's ends), and `limits`: `{"measure", "net", "min" and/or "max", "source"}`, the measure one of `impedance_ohm`, `return_loss_db`, `insertion_loss_db`, `next_db`, `fext_db`. |
+| `settings` | object | `margin_mm` 3, `cells_per_wavelength` 20, `cells_across_width` 3, `cells_per_dielectric` 4, `port_ohm` 50, `frequencies` 201, `end_criteria_db` -40, `absorbing_cells` 8, `max_timesteps` 200000, `timeout_s` 3600 | The model and the run. `cells_across_width` is the cells across a straight track inside its metal; its edges lie a third of a cell inside the outer 2 lines. `cells_across_width`, `cells_per_dielectric`, `absorbing_cells` and `max_timesteps` are whole numbers of 1 or more, `frequencies` 2 or more, `end_criteria_db` below 0 (openEMS itself runs 10 dB further). |
 
 ## `sim/thermal.json` (for the SIM gate's junction temperatures)
 

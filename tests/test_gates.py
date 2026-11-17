@@ -225,6 +225,7 @@ def test_every_cli_flag_is_in_the_configuration_table():
         "tools/references.py",  # and references
         "tools/routebench.py",  # and bench
         "tools/measureplan.py",  # and measure
+        "tools/fields.py",  # and fields
         "tools/harvest.py",
     )
     for tool in tools:

@@ -39,6 +39,20 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-17 — openEMS as an engine, after 2 reviews that said "not sound"
+
+Roadmap item 9 landed in part. Ubuntu 24.04 has no openEMS package; Debian 12's 0.0.35 runs on
+Ubuntu's libraries and is pinned by its SHA256. The runs taught 5 traps where openEMS exits 0 with a
+wrong result, and the code now holds each (ENGINES.md). A first reviewer made `--strict` pass on 4
+boards the command never modelled: a small GND square became a whole plane, a port went to a stub's
+open end, and a via through 2 planes shorted the net. openEMS also stops on a 4 s clock, so 1 file
+gave 2 results. A second reviewer found the impedance 15 % low: a track's edges on mesh lines are
+wider to the solver than to the board. With lines a third of a cell inside each edge, the line fixture
+reads 50.88 ohm against 51.34 by Hammerstad and Jensen. Antmicro's test board publishes simulations,
+not measurements, so the Evidence's first half does not hold. No third review has been run.
+
+Evidence: `tests/test_fields.py` 68 passed, `tests/test_fields_solver.py` 9 passed with openEMS 0.0.35.
+
 ## 2026-11-17 — A part's junction temperature at every corner
 
 Roadmap item 7 landed in part. Before the change the SIM gate passed `fail-sim-thermal` with
