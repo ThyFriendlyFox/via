@@ -127,6 +127,101 @@ length is the shortest way along the tracks, through vias, joins, overlaps and s
 narrowest track on that way. 2 tracks between the same 2 ends count as 1, the shorter. A pour is no trace
 and is not judged. A board of another count of layers gets a note.
 
+## Creepage packs
+
+A creepage pack (`"kind": "creepage"`) holds a document's tables of clearance and creepage by voltage.
+Clearance is the gap through air. Creepage is the way along the surface of the board. The 2 are
+different quantities, and each table names which it is. A project names 1 creepage pack under
+`creepage` in `board-rules.json`, with the conditions the pack asks:
+
+    {"creepage": {"pack": "mil-hdbk-454c-g69", "condition": "A", "enclosure": "I"}}
+
+The voltage between 2 nets is the most their spans in `ratings.json` allow, as for the gap of the
+voltage pack. `tools/creepage.py` judges every pair of nets with a voltage between them, on each outer
+layer:
+
+- **The copper** is read as polygons: a track with round ends, a pad as its rectangle or circle, a via
+  as a circle, a filled zone as KiCad filled it. A circle is drawn as 16 sides round it. A gap is never
+  read larger than it is: at most 0.25 mm x (1 / cos(pi / 16) - 1) = 0.0049 mm smaller on a 0.5 mm
+  track. A custom pad is taken as a square of its anchor's greater side.
+- **Clearance** is the straight gap between the 2 nets' copper.
+- **Creepage** is the straight gap, unless a slot stands on it. A slot is an inner cut of Edge.Cuts with
+  4 corners, convex. The way then goes round the slot's corners: the shortest way on a graph of the
+  slots' corners and the copper's corners and nearest points. A slot narrower than the pack's least
+  width is crossed as if it were not there. A pack with no least width prints the pair `not judged` when
+  only a slot makes it pass. Any other inner cut near the pair (a circle, an arc, an outline that does
+  not close) makes it `not judged`.
+- **Between rows.** A table of ranges (`"between_rows": "range"`) takes the row whose range holds the
+  voltage; at the boundary of 2 rows, the stricter. A table of points (`"points"`) passes a gap at or over
+  the next row up and fails a gap under the row below; a gap between the 2 is `not judged`. Under the
+  first row, a gap under its distance is `not judged`. Over the last row, every pair is `not judged`.
+  A pack whose column falls as the voltage rises is refused: the rule needs each column to rise.
+- **Inner layers** have no surface: 1 `not judged` line for each inner layer that holds copper of 2 nets
+  with a voltage between them.
+- **Not checked**: the way between the 2 faces, through a hole or round the board's edge; a third
+  conductor between the 2 nets.
+
+The DRC line names the pack: `board rules mil-hdbk-454c-g69: 1 fail, 0 not judged`. A failure is 1 line:
+
+    fail creepage /HV to GND on F.Cu at (110.85, 106.65): 2 mm along the surface at 400 V, at least 3 mm (condition A, enclosure I) [MIL-HDBK-454C: guideline 69, 4.1 page 69-1; table 69-I, leakage distances, page 69-2]
+
+### How to run it
+
+1. State each net's voltage: `workcenter ratings <project> --init`, then fill `nets` in `ratings.json`
+   with each net's span of volts and its source. A net with no span prints
+   `not judged creepage of NET: ratings.json states no voltage for it`: give it a span.
+2. Name the pack and its conditions in `board-rules.json` under `creepage`. A missing or unknown condition
+   stops the run on 1 line that names it and lists the values the pack takes.
+3. Run `workcenter drc <project> --strict`.
+   - `fail clearance A to B on LAYER at (x, y): ...`: move the 2 nets' copper apart by at least the
+     difference of the 2 numbers.
+   - `fail creepage ...`: move them apart, or cut a slot between them at least as wide as the pack's
+     least slot width (`ti-slup419-creepage`: 1.0 mm at pollution degree 2), then run step 3 again.
+   - `not judged creepage ... lies between X mm (V0 V) and Y mm (V1 V)`: the document gives no number
+     at this voltage. Move the copper to Y mm, or find a document with a row at this voltage.
+   - `not judged ... the pack states no least width for a slot`: only a slot makes the way long enough,
+     and the document does not say a slot counts. Move the copper apart.
+   - `not judged creepage on In1.Cu`: no pack here judges copper inside the laminate. Keep the 2 nets on
+     the outer layers, or judge them by another document.
+4. GREEN when the line reads `0 fail, 0 not judged`.
+
+### mil-hdbk-454c-g69
+
+MIL-HDBK-454C, "General Guidelines for Electronic Equipment", 21 September 2021, guideline 69, from
+the Defense Logistics Agency's ASSIST (https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=115984,
+image "Revision C", 158 pages). Free from its issuer. Read 2026-11-17, with no second reader yet. Each
+download carries its own time stamp on every page, so each one has a SHA256 of its own: the index names
+the copy the pack was written from.
+
+| What | Where | Numbers |
+|---|---|---|
+| Clearance and leakage (creepage) | 4.1, page 69-1; table 69-I, page 69-2 | by voltage ac (rms) or dc: up to 150, 150 to 300, 300 to 600, 600 to 1000 V |
+| Condition | 4.2a to c, page 69-1 | A: a short circuit stays in the unit, at most 50 W; B: fused, at most 2000 W; C: fused, over 2000 W |
+| Enclosure | 4.2d and e, page 69-1 | I: drip-proof from 0 to 15 degrees off the vertical; II: anything that protects less |
+| Condition A, enclosure I | table 69-I, page 69-2 | clearance 1.5, 1.5, 1.5, 3 mm; leakage 1.5, 1.5, 3, 9.5 mm |
+
+The handbook is for guidance (its cover page), and guideline 69 speaks of bare conductors such as
+terminal strips and standoffs; the pack applies it to a board's copper. It states no least width for a
+slot and no pollution degree or material: a slot that alone makes a pair pass is `not judged`.
+
+### ti-slup419-creepage
+
+TI SLUP419, "Demystifying Clearance and Creepage Distance for High-Voltage End Equipment", March 2024,
+https://www.ti.com/lit/ml/slup419/slup419.pdf. Read 2026-11-17, with no second reader yet. A maker's
+note, and a secondary source: its table 3 (page 7) reprints part of IEC 60664-1 table F.4, and its
+reference 2 is IEC 60664-1 of May 26, 2020. IEC 60664-1 is paid; the pack holds only what the note
+prints. A free primary document with these rows is still to be found.
+
+| What | Where | Numbers |
+|---|---|---|
+| Creepage, basic isolation | table 3, page 7 | at 63, 400, 800, 1000 V rms; pollution degree 1 (all groups) 0.2, 1.0, 2.4, 3.2 mm; degree 2 group III 1.25, 4.0, 8.0, 10.0 mm |
+| Material group | table 1, page 3 | I: CTI 600 and over; II: 400 to 600; IIIa: 175 to 400; IIIb: 100 to 175; most FR4 is IIIa |
+| Least slot width | table 7, page 11 | 0.25, 1.0, 1.5 mm at pollution degree 1, 2, 3 |
+| Working voltage | table 2 note (1), page 6 | the highest rms value of the ac or dc voltage across the insulation |
+
+Not judged, and named in the pack: clearance (the note takes it from an impulse voltage, tables 4 and 5,
+page 8), reinforced isolation (twice the distance, page 7), pollution degree 3 (table 3 has no column).
+
 ## ecss-q-st-70-12c-rev1
 
 ECSS-Q-ST-70-12C Rev.1, "Space product assurance - Design rules for printed circuit boards", 30 April
