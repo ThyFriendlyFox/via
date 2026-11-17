@@ -3,19 +3,34 @@
 # tests/board/README.md. GitHub's own token cannot edit a user's project, so the project is changed
 # with the secret BOARD_TOKEN (a token with the `project` scope); with no secret the job says so and
 # ends green. An issue's title and body are text from anyone: they reach the tool only through the
-# event file, and no `run:` below holds an expression.
+# event file or GitHub's API, and no `run:` below holds an expression.
+#
+# 3 triggers. An issue event moves that 1 card (`--event`). Once a day, and by hand from the Actions
+# tab (Board, Run workflow), the job walks every card (`--all`) and puts right each one that stands
+# wrong: a card whose own run was missed, or that was on the project before this workflow.
 name: Board
 on:
   issues:
     types: [opened, edited, closed, reopened]
+  workflow_dispatch:
+  schedule:
+    # 04:17 UTC. Not minute 0: GitHub delays scheduled runs at the start of every hour.
+    - cron: "17 4 * * *"
 permissions: {}
+# What holds: every run of this workflow, whatever its trigger, is in the 1 group `board`, and a group
+# runs at most 1 run at a time. So a run of all cards and a run of 1 card never write a card at the
+# same moment, and each run reads the cards after the run before it wrote. The group is a word, never
+# empty. `queue: max` keeps up to 100 runs waiting instead of 1, so an edit's run is not cancelled by
+# the next edit's; it may not be combined with cancel-in-progress (GitHub's "Control the concurrency
+# of workflows and jobs"). A run cancelled all the same is put right by the next `--all`.
 concurrency:
-  group: board-${{ github.event.issue.number }}
+  group: board
   cancel-in-progress: false
+  queue: max
 jobs:
   card:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -33,4 +48,8 @@ jobs:
             echo "board: no secret BOARD_TOKEN is set, so the board is not changed"
             exit 0
           fi
-          python3 tools/board.py --event "$GITHUB_EVENT_PATH" --board "$BOARD_URL"
+          if [ "$GITHUB_EVENT_NAME" = issues ]; then
+            python3 tools/board.py --event "$GITHUB_EVENT_PATH" --board "$BOARD_URL"
+          else
+            python3 tools/board.py --all --repo "$GITHUB_REPOSITORY" --board "$BOARD_URL"
+          fi

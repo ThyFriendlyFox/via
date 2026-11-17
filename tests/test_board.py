@@ -27,6 +27,7 @@ TOOL = ROOT / "tools" / "board.py"
 STAND_IN = ROOT / "tests" / "board" / "gh.py"
 WORKFLOW = ROOT / ".github" / "workflows" / "board.yml"
 BOARD = "https://github.com/users/ThyFriendlyFox/projects/2"
+REPO = "ThyFriendlyFox/via"
 
 PROJECT_ID = "PVT_stand-in-project"
 FIELD_ID = "PVTSSF_lADOANN5s84ACbL0zgBZrZg"
@@ -429,12 +430,13 @@ def test_a_body_that_is_no_text_fails_in_1_line(tmp_path):
     assert lines(proc) == ["board: FAIL: issue #1347's body is 5, neither text nor null"]
 
 
+USAGE = "(board.py --event <file> --board <url>, or board.py --all --repo <owner>/<name> --board <url>)"
+
+
 def test_a_missing_flag_fails_in_1_line_with_exit_1(tmp_path):
     proc, found = run_file(tmp_path, b"{}", "--event", "x.json")
     assert proc.returncode == 1 and found == []
-    assert lines(proc) == [
-        "board: FAIL: the following arguments are required: --board (board.py --event <file> --board <url>)"
-    ]
+    assert lines(proc) == [f"board: FAIL: the following arguments are required: --board {USAGE}"]
 
 
 def test_gh_missing_fails_in_1_line(tmp_path):
@@ -509,8 +511,18 @@ def card_step() -> dict:
     return step
 
 
-def test_the_workflow_runs_on_the_4_issue_events_and_no_other():
-    assert workflow()["on"] == {"issues": {"types": ["opened", "edited", "closed", "reopened"]}}
+def test_the_workflow_has_3_triggers_the_issue_events_by_hand_and_once_a_day():
+    """The 4 issue events as before, a run by hand, and 1 schedule whose minute is not 0: GitHub delays
+    scheduled runs at the start of every hour ("Events that trigger workflows", schedule)."""
+    on = workflow()["on"]
+    assert sorted(on) == ["issues", "schedule", "workflow_dispatch"]
+    assert on["issues"] == {"types": ["opened", "edited", "closed", "reopened"]}
+    assert on["workflow_dispatch"] is None
+    [entry] = on["schedule"]
+    minute, hour, day, month, weekday = entry["cron"].split()
+    assert (day, month, weekday) == ("*", "*", "*")
+    assert minute.isdigit() and 0 < int(minute) < 60
+    assert hour.isdigit() and 0 <= int(hour) < 24
 
 
 def test_the_workflow_asks_for_no_permission_but_to_read_the_code():
@@ -534,12 +546,13 @@ def test_no_run_step_holds_an_expression():
     assert "github.event.issue" not in "".join(s["run"] for s in found)
 
 
-def test_2_runs_for_1_issue_wait_for_each_other():
-    """1 group per issue and no cancelling: 2 quick edits land in the order they were made."""
-    assert workflow()["concurrency"] == {
-        "group": "board-${{ github.event.issue.number }}",
-        "cancel-in-progress": False,
-    }
+def test_every_run_of_the_board_waits_in_1_queue():
+    """1 group for every run, whatever its trigger: a run of all cards and a run of 1 card never write
+    at the same moment. The group is a word, not an expression, so it is never empty. `queue: max`
+    keeps up to 100 runs waiting instead of 1, so no card's run is cancelled by the next one; it may
+    not be combined with cancelling ("Control the concurrency of workflows and jobs")."""
+    assert workflow()["concurrency"] == {"group": "board", "cancel-in-progress": False, "queue": "max"}
+    assert all("concurrency" not in job for job in workflow()["jobs"].values())
 
 
 def test_the_sparse_checkout_holds_the_file_the_step_runs():
@@ -559,10 +572,13 @@ def test_the_token_and_the_board_come_from_the_secret_and_the_variable():
     assert env["BOARD_URL"] == f"${{{{ vars.BOARD_URL || '{BOARD}' }}}}"
 
 
-def run_step(tmp_path: Path, token: str):
+def run_step(tmp_path: Path, token: str, event_name: str = "issues", **extra: str):
     env = stand_in(tmp_path)
+    env.update(extra)
     env["GH_TOKEN"] = token
     env["BOARD_URL"] = BOARD
+    env["GITHUB_EVENT_NAME"] = event_name
+    env["GITHUB_REPOSITORY"] = REPO
     path = tmp_path / "event.json"
     path.write_text(json.dumps(event()), encoding="utf-8")
     env["GITHUB_EVENT_PATH"] = str(path)
@@ -583,3 +599,332 @@ def test_with_the_secret_the_step_runs_the_tool_on_the_event_file(tmp_path):
     assert proc.returncode == 0, proc.stderr
     assert_set(calls(tmp_path), OPTION["Todo"])
     assert lines(proc) == [f"board: card #1347 stands in Todo on {BOARD}"]
+
+
+# A run of every card: `--all`. The canned pages take their shape from GitHub's public GraphQL schema
+# (docs.github.com/public/fpt/schema.docs.graphql, fetched 2026-11-17): `Repository.issues` is an
+# IssueConnection of Issue (number, id, title, body, state OPEN or CLOSED, authorAssociation),
+# `ProjectV2.items` a connection of ProjectV2Item (id, content: DraftIssue | Issue | PullRequest,
+# fieldValues), a single-select value has `name`, `optionId` and `field`, and every page has
+# `pageInfo { hasNextPage endCursor }`. Ids and cursors are stand-ins; a page holds at most 100 nodes
+# ("Using pagination in the GraphQL API": first is between 1 and 100).
+
+PAGE = 100
+
+
+def card(number, body="**Status:** Todo\n", state="OPEN", title=None, association="OWNER"):
+    """An issue as `repository.issues` answers it."""
+    return {
+        "number": number,
+        "id": f"I_stand-in-{number}",
+        "title": f"Work card: item {number}" if title is None else title,
+        "body": body,
+        "state": state,
+        "authorAssociation": association,
+    }
+
+
+def item(number, column=None, kind="Issue"):
+    """A project item for issue `number` (or a pull request), standing in `column` or in none. A field
+    value of another kind matches none of the query's fragments and comes back as {}."""
+    values = [{}]
+    if column:
+        values.append({"name": column, "optionId": OPTION[column], "field": {"id": FIELD_ID}})
+    prefix = "I" if kind == "Issue" else "PR"
+    return {
+        "id": f"PVTI_stand-in-{number}",
+        "content": {"__typename": kind, "id": f"{prefix}_stand-in-{number}"},
+        "fieldValues": {"nodes": values},
+    }
+
+
+def pages(nodes: list, wrap) -> dict:
+    """The answers by cursor: "" for the first page, then `stand-in-cursor-<k>`."""
+    chunks = [nodes[i : i + PAGE] for i in range(0, len(nodes), PAGE)] or [[]]
+    answers = {}
+    for k, chunk in enumerate(chunks):
+        more = k + 1 < len(chunks)
+        info = {"hasNextPage": more, "endCursor": f"stand-in-cursor-{k + 1}" if more or chunk else None}
+        answers["" if k == 0 else f"stand-in-cursor-{k}"] = wrap({"pageInfo": info, "nodes": chunk})
+    return answers
+
+
+def run_all(tmp_path: Path, issues: list, items: list, *flags: str, **extra: str):
+    env = stand_in(tmp_path)
+    issues_file, items_file = tmp_path / "issues.json", tmp_path / "items.json"
+    issues_file.write_text(
+        json.dumps(pages(issues, lambda c: {"data": {"repository": {"issues": c}}})), encoding="utf-8"
+    )
+    items_file.write_text(
+        json.dumps(pages(items, lambda c: {"data": {"node": {"items": c}}})), encoding="utf-8"
+    )
+    env.update(BOARD_GH_ISSUES=str(issues_file), BOARD_GH_ITEMS=str(items_file), BOARD_GH_ADD_ECHO="1")
+    env.update(extra)
+    proc = subprocess.run(
+        [sys.executable, str(TOOL), *(flags or ("--all", "--repo", REPO, "--board", BOARD))],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    return proc, calls(tmp_path)
+
+
+def kind(call: dict) -> str:
+    query = call["query"][1]
+    for name, mark in (
+        ("issues", "issues(first"),
+        ("items", "items(first"),
+        ("add", "addProjectV2ItemById"),
+        ("set", "updateProjectV2ItemFieldValue"),
+        ("find", "projectV2(number"),
+    ):
+        if mark in query:
+            return name
+    raise AssertionError(f"a call of no known kind: {query[:60]}")
+
+
+def writes(found: list[dict]) -> list[tuple]:
+    """The writes in order: ("add", issue id) and ("set", item id, option id)."""
+    out = []
+    for call in found:
+        if kind(call) == "add":
+            assert call["project"] == ("-f", PROJECT_ID)
+            out.append(("add", call["content"][1]))
+        elif kind(call) == "set":
+            assert call["project"] == ("-f", PROJECT_ID) and call["field"] == ("-f", FIELD_ID)
+            out.append(("set", call["item"][1], call["option"][1]))
+    return out
+
+
+def summary(moved=0, added=0, there=0, not_moved=0, failed=0) -> str:
+    cards = moved + added + there + not_moved + failed
+    return (
+        f"board: {cards} cards: {moved} moved, {added} added, {there} already there, "
+        f"{not_moved} not moved, {failed} failed"
+    )
+
+
+def test_all_moves_a_card_that_stands_in_the_wrong_column(tmp_path):
+    """#82 says In progress and stands in Todo: 1 write, the option In Progress (47fc9ee4) on its item.
+    Calls: find 1 + issues 1 page + items 1 page + set 1 = 4."""
+    proc, found = run_all(tmp_path, [card(82, "**Status:** In progress")], [item(82, "Todo")])
+    assert proc.returncode == 0, proc.stderr
+    assert [kind(c) for c in found] == ["find", "issues", "items", "set"]
+    assert found[1]["owner"] == ("-f", "ThyFriendlyFox") and found[1]["name"] == ("-f", "via")
+    assert "cursor" not in found[1] and "cursor" not in found[2]
+    assert found[2]["project"] == ("-f", PROJECT_ID)
+    assert writes(found) == [("set", "PVTI_stand-in-82", OPTION["In Progress"])]
+    assert lines(proc) == ["#82 In Progress: moved from Todo", summary(moved=1)]
+
+
+def test_all_does_not_write_a_card_in_the_right_column(tmp_path):
+    """#64 says In progress and stands in In Progress: 3 reads, 0 writes."""
+    proc, found = run_all(tmp_path, [card(64, "**Status:** In progress")], [item(64, "In Progress")])
+    assert proc.returncode == 0, proc.stderr
+    assert [kind(c) for c in found] == ["find", "issues", "items"]
+    assert lines(proc) == ["#64 In Progress: already there", summary(there=1)]
+
+
+def test_all_adds_and_places_a_card_that_is_not_on_the_project(tmp_path):
+    """#77 says Todo and has no item: add it (the echo answers PVTI_for_I_stand-in-77), then set Todo
+    (f75ad846) on that item. 3 reads + 2 writes = 5 calls."""
+    proc, found = run_all(tmp_path, [card(77)], [])
+    assert proc.returncode == 0, proc.stderr
+    assert len(found) == 5
+    assert writes(found) == [
+        ("add", "I_stand-in-77"),
+        ("set", "PVTI_for_I_stand-in-77", OPTION["Todo"]),
+    ]
+    assert lines(proc) == ["#77 Todo: added and placed", summary(added=1)]
+
+
+def test_all_puts_a_closed_card_in_done(tmp_path):
+    """#70 is closed and its body still says In progress; it stands in In Progress: Done, 98236657."""
+    proc, found = run_all(
+        tmp_path, [card(70, "**Status:** In progress", state="CLOSED")], [item(70, "In Progress")]
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert writes(found) == [("set", "PVTI_stand-in-70", OPTION["Done"])]
+    assert lines(proc) == ["#70 Done: moved from In Progress (the issue is closed)", summary(moved=1)]
+
+
+def test_all_reports_a_card_with_no_status_line_and_moves_the_others(tmp_path):
+    """#90 (no line, in Todo) is reported and not written; #91 (no line, not on the project) is added
+    and left in no column, as the event path does; #82 still moves. Lines in the order of the number."""
+    issues = [
+        card(91, "Route the charger."),
+        card(90, "Route the charger."),
+        card(82, "**Status:** In progress"),
+    ]
+    proc, found = run_all(tmp_path, issues, [item(90, "Todo"), item(82, "Todo")])
+    assert proc.returncode == 0, proc.stderr
+    assert writes(found) == [("set", "PVTI_stand-in-82", OPTION["In Progress"]), ("add", "I_stand-in-91")]
+    no_line = "its body has no **Status:** line (Todo, In progress or Done)"
+    assert lines(proc) == [
+        "#82 In Progress: moved from Todo",
+        f"#90 not moved: {no_line}",
+        f"#91 not moved: {no_line}; added to the board",
+        summary(moved=1, not_moved=2),
+    ]
+
+
+def test_all_leaves_an_issue_that_is_no_card_and_a_pull_request_alone(tmp_path):
+    """#5 is an issue titled as no card, standing in Todo with `**Status:** Done`; #6 is a pull request
+    on the project in Todo. `repository.issues` holds issues only (an IssueConnection), so a pull
+    request is never read as a card. Only #82 is written, and only #82 is printed."""
+    issues = [
+        card(5, "**Status:** Done", title="Routing fails on v0.16"),
+        card(82, "**Status:** In progress"),
+    ]
+    items = [item(5, "Todo"), item(6, "Todo", kind="PullRequest"), item(82, "Todo")]
+    proc, found = run_all(tmp_path, issues, items)
+    assert proc.returncode == 0, proc.stderr
+    assert writes(found) == [("set", "PVTI_stand-in-82", OPTION["In Progress"])]
+    assert lines(proc) == ["#82 In Progress: moved from Todo", summary(moved=1)]
+
+
+def test_all_reads_2_pages_of_issues_and_of_items(tmp_path):
+    """101 cards: 100 on the first page of each, 1 on the second. #101 says Todo and stands in Done;
+    the other 100 stand in Todo. Calls: find 1 + issues 2 + items 2 + set 1 = 6; the second page of
+    each is asked with the first page's endCursor."""
+    issues = [card(n) for n in range(1, 102)]
+    items = [item(n, "Todo") for n in range(1, 101)] + [item(101, "Done")]
+    proc, found = run_all(tmp_path, issues, items)
+    assert proc.returncode == 0, proc.stderr
+    assert [kind(c) for c in found] == ["find", "issues", "issues", "items", "items", "set"]
+    assert found[2]["cursor"] == ("-f", "stand-in-cursor-1")
+    assert found[4]["cursor"] == ("-f", "stand-in-cursor-1")
+    assert writes(found) == [("set", "PVTI_stand-in-101", OPTION["Todo"])]
+    assert lines(proc)[-2:] == ["#101 Todo: moved from Done", summary(moved=1, there=100)]
+    assert len(lines(proc)) == 102
+
+
+def test_all_reports_a_failing_write_writes_the_rest_and_ends_non_zero(tmp_path):
+    """#82 and #83 both stand in Todo and say In progress; the write of #82's item is refused. #83 is
+    still written; the run prints 1 line for the failure and ends with exit 1."""
+    issues = [card(82, "**Status:** In progress"), card(83, "**Status:** In progress")]
+    proc, found = run_all(
+        tmp_path, issues, [item(82, "Todo"), item(83, "Todo")], BOARD_GH_FAIL_ITEM="PVTI_stand-in-82"
+    )
+    assert proc.returncode == 1
+    assert writes(found) == [
+        ("set", "PVTI_stand-in-82", OPTION["In Progress"]),
+        ("set", "PVTI_stand-in-83", OPTION["In Progress"]),
+    ]
+    assert lines(proc) == [
+        "#82 FAIL: gh api graphql (set the Status) exited 1: stand-in gh: this write is refused on purpose",
+        "#83 In Progress: moved from Todo",
+        summary(moved=1, failed=1),
+    ]
+
+
+def test_all_stops_in_1_line_when_a_page_cannot_be_read(tmp_path):
+    """The issues answer says a second page exists, but the stand-in has none for its cursor: no card
+    is judged on half a list, so nothing is written and the run ends with exit 1."""
+    env_issues = {"": pages([card(1)], lambda c: {"data": {"repository": {"issues": c}}})[""]}
+    env_issues[""]["data"]["repository"]["issues"]["pageInfo"]["hasNextPage"] = True
+    path = tmp_path / "broken-issues.json"
+    path.write_text(json.dumps(env_issues), encoding="utf-8")
+    proc, found = run_all(tmp_path, [card(1)], [], BOARD_GH_ISSUES=str(path))
+    assert proc.returncode == 1
+    assert writes(found) == []
+    assert lines(proc) == [
+        "board: FAIL: gh api graphql (list the issues, page 2) exited 1: "
+        "stand-in gh: no page for the cursor 'stand-in-cursor-1'"
+    ]
+
+
+def test_all_stops_when_a_page_says_more_but_names_no_cursor(tmp_path):
+    """hasNextPage true and endCursor null: asking again would read the first page forever."""
+    broken = pages([card(1)], lambda c: {"data": {"repository": {"issues": c}}})
+    broken[""]["data"]["repository"]["issues"]["pageInfo"] = {"hasNextPage": True, "endCursor": None}
+    path = tmp_path / "broken-issues.json"
+    path.write_text(json.dumps(broken), encoding="utf-8")
+    proc, found = run_all(tmp_path, [card(1)], [], BOARD_GH_ISSUES=str(path))
+    assert proc.returncode == 1 and writes(found) == []
+    assert lines(proc) == [
+        "board: FAIL: gh api graphql (list the issues, page 1) says another page follows but names no cursor"
+    ]
+
+
+@pytest.mark.parametrize(
+    "flags, said",
+    [
+        (("--all", "--board", BOARD), f"--all needs --repo <owner>/<name> {USAGE}"),
+        (("--all", "--repo", "via", "--board", BOARD), f'--repo "via" is no <owner>/<name> {USAGE}'),
+        (("--repo", REPO, "--board", BOARD), f"one of the arguments --event --all is required {USAGE}"),
+    ],
+)
+def test_all_with_a_wrong_flag_fails_in_1_line_before_any_call(tmp_path, flags, said):
+    proc, found = run_all(tmp_path, [], [], *flags)
+    assert proc.returncode == 1 and found == []
+    assert lines(proc) == [f"board: FAIL: {said}"]
+
+
+# The event path and `--all` decide with 1 function: for the same card they write the same column.
+# The expected column of each case is the rule worked by hand: closed is Done; else the 1 line's word.
+SAME = [
+    ("Todo", "**Status:** Todo", "open", "OWNER", "Work card: x", "Todo"),
+    ("In progress", "**Status:** In progress", "open", "OWNER", "Work card: x", "In Progress"),
+    ("case and spaces", "**status:**   DONE  ", "open", "MEMBER", "Work card: x", "Done"),
+    ("closed", "**Status:** Todo", "closed", "OWNER", "Work card: x", "Done"),
+    ("closed with no line", "", "closed", "COLLABORATOR", "Work card: x", "Done"),
+    ("no line", "Route the charger.", "open", "OWNER", "Work card: x", None),
+    ("2 lines", "**Status:** Todo\n**Status:** Done", "open", "OWNER", "Work card: x", None),
+    ("another word", "**Status:** Blocked", "open", "OWNER", "Work card: x", None),
+    ("only in a fence", FENCED, "open", "OWNER", "Work card: x", None),
+    ("a stranger's", "**Status:** Todo", "open", "NONE", "Work card: x", None),
+    ("no card", "**Status:** Todo", "open", "OWNER", "Routing fails on v0.16", None),
+]
+
+
+@pytest.mark.parametrize("case, body, state, association, title, column", SAME, ids=[s[0] for s in SAME])
+def test_the_event_path_and_all_write_the_same_column(
+    tmp_path, case, body, state, association, title, column
+):
+    """The card is not on the project in the `--all` run, so both paths write whenever they decide a
+    column: compare the option each sets (or that neither sets one) and whether each adds the card."""
+    ev_dir, all_dir = tmp_path / "event", tmp_path / "all"
+    ev_dir.mkdir()
+    all_dir.mkdir()
+    _, by_event = run(ev_dir, event(body=body, state=state, association=association, title=title))
+    issue = card(1347, body, state=state.upper(), title=title, association=association)
+    issue["id"] = ISSUE_ID
+    _, by_all = run_all(all_dir, [issue], [])
+    ev_writes, all_writes = writes(by_event), writes(by_all)
+    assert [w[0] for w in ev_writes] == [w[0] for w in all_writes]
+    ev_option = [w[2] for w in ev_writes if w[0] == "set"]
+    all_option = [w[2] for w in all_writes if w[0] == "set"]
+    assert ev_option == all_option == ([OPTION[column]] if column else [])
+
+
+def test_on_a_schedule_or_by_hand_the_step_runs_all_cards(tmp_path):
+    """GITHUB_EVENT_NAME schedule and workflow_dispatch run `--all --repo $GITHUB_REPOSITORY`."""
+    for name in ("schedule", "workflow_dispatch"):
+        here = tmp_path / name
+        here.mkdir()
+        issues, items = here / "issues.json", here / "items.json"
+        issues.write_text(
+            json.dumps(
+                pages(
+                    [card(82, "**Status:** In progress")], lambda c: {"data": {"repository": {"issues": c}}}
+                )
+            ),
+            encoding="utf-8",
+        )
+        items.write_text(
+            json.dumps(pages([item(82, "Todo")], lambda c: {"data": {"node": {"items": c}}})),
+            encoding="utf-8",
+        )
+        proc = run_step(here, "stand-in-token", name, BOARD_GH_ISSUES=str(issues), BOARD_GH_ITEMS=str(items))
+        assert proc.returncode == 0, proc.stderr
+        found = calls(here)
+        assert found[1]["owner"] == ("-f", "ThyFriendlyFox") and found[1]["name"] == ("-f", "via")
+        assert lines(proc) == ["#82 In Progress: moved from Todo", summary(moved=1)]
+
+
+def test_on_a_schedule_with_no_secret_the_step_says_so_and_ends_green(tmp_path):
+    proc = run_step(tmp_path, "", "schedule")
+    assert proc.returncode == 0, proc.stderr
+    assert lines(proc) == ["board: no secret BOARD_TOKEN is set, so the board is not changed"]
+    assert calls(tmp_path) == []

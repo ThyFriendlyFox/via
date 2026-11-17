@@ -22,6 +22,17 @@ and its GraphQL reference (Projects, Users), read on 2026-11-17.
 
 Exit 0: the card stands in its column, or nothing was to be done (no card, a stranger's card, no
 Status line). Exit 1: a failure, in 1 line. Standard library only, as the CLI is.
+
+`--all --repo <owner>/<name>` walks every card of the repository instead, open and closed, and puts
+right the ones that stand wrong: a card whose run was missed (a token expired, GitHub was down, the
+card was on the project before the workflow) is corrected by the next such run. It decides each card
+with the same function as the event path (`decide`). It reads the project, then every issue of the
+repository and every item of the project in pages of 100 (`first` is at most 100, GitHub's guide
+"Using pagination in the GraphQL API"), and writes only a card that stands in another column or is
+not on the project: 1 call to move a card, 2 to add and place one, none for a card already right.
+`repository.issues` is an IssueConnection, so a pull request is never read as a card (GitHub's public
+GraphQL schema, read on 2026-11-17). It prints 1 line per card and a last line with the counts; a card
+that fails is 1 line and does not stop the others, and the run then ends with exit 1.
 """
 
 from __future__ import annotations
@@ -42,7 +53,9 @@ STATUS_ANYWHERE = re.compile(r"^[ \t]*\*\*Status:\*\*", re.I)
 FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 COMMENT = re.compile(r"<!--.*?-->", re.S)
 BOARD_URL = re.compile(r"^https://github\.com/(users|orgs)/([A-Za-z0-9-]+)/projects/(\d+)(?:/.*)?$")
+REPO = re.compile(r"^([A-Za-z0-9-]+)/([A-Za-z0-9._-]+)$")
 GH_TIMEOUT_S = 60
+USAGE = "(board.py --event <file> --board <url>, or board.py --all --repo <owner>/<name> --board <url>)"
 
 FIND = """query($login: String!, $number: Int!) {
   %s(login: $login) {
@@ -61,6 +74,34 @@ SET = """mutation($project: ID!, $item: ID!, $field: ID!, $option: String!) {
   updateProjectV2ItemFieldValue(
     input: {projectId: $project, itemId: $item, fieldId: $field, value: {singleSelectOptionId: $option}}
   ) { projectV2Item { id } }
+}"""
+ISSUES = """query($owner: String!, $name: String!, $cursor: String) {
+  repository(owner: $owner, name: $name) {
+    issues(first: 100, after: $cursor, states: [OPEN, CLOSED], orderBy: {field: CREATED_AT, direction: ASC}) {
+      pageInfo { hasNextPage endCursor }
+      nodes { number id title body state authorAssociation }
+    }
+  }
+}"""
+ITEMS = """query($project: ID!, $cursor: String) {
+  node(id: $project) {
+    ... on ProjectV2 {
+      items(first: 100, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id
+          content { __typename ... on Issue { id } }
+          fieldValues(first: 50) {
+            nodes {
+              ... on ProjectV2ItemFieldSingleSelectValue {
+                name optionId field { ... on ProjectV2FieldCommon { id } }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 }"""
 
 
@@ -199,60 +240,203 @@ def read_event(path: str) -> dict:
     return issue
 
 
+NO_CARD, STRANGER, CARD = "no card", "stranger", "card"
+
+
+def decide(title, state, body, association) -> tuple[str, str | None, str]:
+    """The 1 decision both paths make for an issue: (kind, word, why).
+
+    kind NO_CARD: the title does not start with `Work card:`; STRANGER: the author is not the owner, a
+    member or a collaborator. Neither is ever put on the board. kind CARD: word is the board's word the
+    card stands in (Done when the issue is closed, `state` read without regard to case), or None with
+    the reason in why: the card goes on the board and is left where it stands."""
+    if not str(title).startswith(PREFIX):
+        return NO_CARD, None, f'its title does not start with "{PREFIX}"'
+    if association not in TRUSTED:
+        return (
+            STRANGER,
+            None,
+            f"it is not from the owner, a member or a collaborator (author_association {association})",
+        )
+    if str(state).casefold() == "closed":
+        return CARD, "Done", ""
+    word, why = status_of(body)
+    return CARD, word, why
+
+
+def option_for(word: str, options: list[dict], url: str) -> dict:
+    match = [o for o in options if str(o.get("name", "")).casefold() == word.casefold()]
+    if not match:
+        names = ", ".join(str(o.get("name")) for o in options) or "none"
+        raise Failure(f'the project {url} has no Status option "{word}"; its options are {names}')
+    return match[0]
+
+
+def add(project: str, content: str, number: int) -> str:
+    """Put the issue on the project; return its item's id (the existing one if it is there already)."""
+    added = gh("add the issue", ADD, {"project": project, "content": content})
+    item = dig(added, "addProjectV2ItemById", "item", "id")
+    if not isinstance(item, str) or not item:
+        raise Failure(f"gh api graphql (add the issue) returned no item for card #{number}")
+    return item
+
+
+def set_status(project: str, item: str, field: str, option: dict) -> None:
+    gh("set the Status", SET, {"project": project, "item": item, "field": field, "option": option["id"]})
+
+
 def place(event_path: str, url: str) -> str:
     """Do what the event asks of the board and return the 1 line that says what was done."""
     issue = read_event(event_path)
     parse_board(url)
     number = issue["number"]
-    if not str(issue["title"]).startswith(PREFIX):
-        return (
-            f'issue #{number} is no work card (its title does not start with "{PREFIX}"); '
-            "the board is not changed"
-        )
-    if issue["author_association"] not in TRUSTED:
+    kind, word, why = decide(issue["title"], issue["state"], issue.get("body"), issue["author_association"])
+    if kind == NO_CARD:
+        return f"issue #{number} is no work card ({why}); the board is not changed"
+    if kind == STRANGER:
         return (
             f"card #{number} is not from the owner, a member or a collaborator "
             f"(author_association {issue['author_association']}); the board is not changed"
         )
-    closed = issue["state"] == "closed"
-    word, why = ("Done", "") if closed else status_of(issue.get("body"))
     project, field, options = find_project(url)
-    added = gh("add the issue", ADD, {"project": project, "content": issue["node_id"]})
-    item = dig(added, "addProjectV2ItemById", "item", "id")
-    if not isinstance(item, str) or not item:
-        raise Failure(f"gh api graphql (add the issue) returned no item for card #{number}")
+    item = add(project, issue["node_id"], number)
     if word is None:
         return f"card #{number} is on {url} and left where it stands: {why}"
-    match = [o for o in options if str(o.get("name", "")).casefold() == word.casefold()]
-    if not match:
-        names = ", ".join(str(o.get("name")) for o in options) or "none"
-        raise Failure(f'the project {url} has no Status option "{word}"; its options are {names}')
-    gh("set the Status", SET, {"project": project, "item": item, "field": field, "option": match[0]["id"]})
-    return f"card #{number} stands in {match[0]['name']} on {url}" + (
+    option = option_for(word, options, url)
+    set_status(project, item, field, option)
+    closed = str(issue["state"]).casefold() == "closed"
+    return f"card #{number} stands in {option['name']} on {url}" + (
         " (the issue is closed)" if closed else ""
     )
+
+
+def pages(what: str, query: str, strings: dict[str, str], path: tuple[str, ...]) -> list:
+    """Every node of a connection, page after page, each page asked with the last one's endCursor."""
+    nodes, cursor, page = [], None, 0
+    while True:
+        page += 1
+        label = f"{what}, page {page}"
+        data = gh(label, query, {**strings, **({"cursor": cursor} if cursor else {})})
+        conn = dig(data, *path)
+        if not isinstance(conn, dict) or not isinstance(conn.get("nodes"), list):
+            raise Failure(f"gh api graphql ({label}) answered no list of nodes")
+        nodes += [n for n in conn["nodes"] if isinstance(n, dict)]
+        info = conn.get("pageInfo") if isinstance(conn.get("pageInfo"), dict) else {}
+        if not info.get("hasNextPage"):
+            return nodes
+        after = info.get("endCursor")
+        if not isinstance(after, str) or not after or after == cursor:
+            raise Failure(f"gh api graphql ({label}) says another page follows but names no cursor")
+        cursor = after
+
+
+def stands(items: list[dict], field: str, options: list[dict]) -> dict[str, tuple[str, str | None]]:
+    """For each issue on the project (by its node id): its item's id and the column it stands in, by
+    the project's spelling, or None for no column. A pull request or a draft is no issue: left out."""
+    names = {o.get("id"): o.get("name") for o in options}
+    found = {}
+    for node in items:
+        content = node.get("content")
+        if not isinstance(content, dict) or content.get("__typename") != "Issue" or not node.get("id"):
+            continue
+        column = None
+        for value in dig(node, "fieldValues", "nodes") or []:
+            if isinstance(value, dict) and dig(value, "field", "id") == field:
+                column = names.get(value.get("optionId")) or value.get("name")
+        found[content.get("id")] = (node["id"], column)
+    return found
+
+
+def sync_card(issue: dict, on: tuple[str, str | None] | None, ctx: dict) -> tuple[str, str]:
+    """Put 1 card right; return its count's name and its line."""
+    number = issue.get("number")
+    kind, word, why = decide(
+        issue.get("title"), issue.get("state"), issue.get("body"), issue.get("authorAssociation")
+    )
+    if kind == STRANGER:
+        return "not moved", f"#{number} not moved: {why}"
+    if word is None:
+        if on is None:
+            add(ctx["project"], issue["id"], number)
+            return "not moved", f"#{number} not moved: {why}; added to the board"
+        return "not moved", f"#{number} not moved: {why}"
+    option = option_for(word, ctx["options"], ctx["url"])
+    closed = " (the issue is closed)" if str(issue.get("state")).casefold() == "closed" else ""
+    if on is None:
+        item = add(ctx["project"], issue["id"], number)
+        set_status(ctx["project"], item, ctx["field"], option)
+        return "added", f"#{number} {option['name']}: added and placed{closed}"
+    if on[1] == option["name"]:
+        return "already there", f"#{number} {option['name']}: already there{closed}"
+    set_status(ctx["project"], on[0], ctx["field"], option)
+    return "moved", f"#{number} {option['name']}: moved from {on[1] or 'no column'}{closed}"
+
+
+COUNTS = ("moved", "added", "already there", "not moved", "failed")
+
+
+def sync(repo: str, url: str) -> int:
+    """Walk every work card of the repository; print 1 line per card and the counts. 1 if any failed."""
+    match = REPO.match(repo)
+    if not match:
+        raise Failure(f'--repo "{repo}" is no <owner>/<name> {USAGE}')
+    project, field, options = find_project(url)
+    issues = pages(
+        "list the issues",
+        ISSUES,
+        {"owner": match.group(1), "name": match.group(2)},
+        ("repository", "issues"),
+    )
+    items = pages("list the project's items", ITEMS, {"project": project}, ("node", "items"))
+    on_board = stands(items, field, options)
+    ctx = {"project": project, "field": field, "options": options, "url": url}
+    cards = [i for i in issues if str(i.get("title", "")).startswith(PREFIX)]
+    counts = dict.fromkeys(COUNTS, 0)
+    for issue in sorted(cards, key=lambda i: i.get("number") if isinstance(i.get("number"), int) else 0):
+        try:
+            if not isinstance(issue.get("id"), str) or not isinstance(issue.get("body"), (str, type(None))):
+                raise Failure(f"GitHub answered no id or no text body: {issue!r:.80}")
+            name, line = sync_card(issue, on_board.get(issue["id"]), ctx)
+        except Failure as err:
+            name, line = "failed", f"#{issue.get('number')} FAIL: {err}"
+        counts[name] += 1
+        print(line, flush=True)
+    said = ", ".join(f"{counts[k]} {k}" for k in COUNTS)
+    print(f"board: {sum(counts.values())} cards: {said}")
+    return 1 if counts["failed"] else 0
 
 
 class Parser(argparse.ArgumentParser):
     """A wrong or missing flag is a failure like any other: 1 line, exit 1."""
 
     def error(self, message: str):
-        raise Failure(f"{message} (board.py --event <file> --board <url>)")
+        raise Failure(f"{message} {USAGE}")
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = Parser(
         prog="board.py",
         description="Put a work card (an issue titled `Work card: ...`) in the column of the project "
-        "board its `**Status:**` line names; a closed card is Done. Writes nothing on disk; changes "
-        "the project through `gh api graphql` (GH_TOKEN). Exit 0 done or nothing to do, 1 a failure.",
+        "board its `**Status:**` line names; a closed card is Done. With --all, every card of the "
+        "repository, open and closed. Writes nothing on disk; changes the project through "
+        "`gh api graphql` (GH_TOKEN). Exit 0 done or nothing to do, 1 a failure.",
     )
-    parser.add_argument("--event", required=True, help="the issues event's JSON file (GITHUB_EVENT_PATH)")
+    which = parser.add_mutually_exclusive_group(required=True)
+    which.add_argument("--event", help="the issues event's JSON file (GITHUB_EVENT_PATH)")
+    which.add_argument("--all", action="store_true", help="every work card of --repo, open and closed")
+    parser.add_argument("--repo", help="with --all: the repository, <owner>/<name> (GITHUB_REPOSITORY)")
     parser.add_argument(
         "--board", required=True, help="the project's URL, https://github.com/users/<login>/projects/<n>"
     )
     try:
         args = parser.parse_args(argv)
+        if args.all:
+            if not args.repo:
+                raise Failure(f"--all needs --repo <owner>/<name> {USAGE}")
+            parse_board(args.board)
+            return sync(args.repo, args.board)
+        if args.repo:
+            raise Failure(f"--repo goes with --all, not --event {USAGE}")
         print(f"board: {place(args.event, args.board)}")
     except Failure as err:
         print(f"board: FAIL: {err}", file=sys.stderr)
