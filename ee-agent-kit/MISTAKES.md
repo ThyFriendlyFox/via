@@ -1093,3 +1093,9 @@ What happened: Last Hit's board CI ran every version's mutation list in turn in 
 Cost: a red run on `main` and a workflow change after the merge.
 Root cause: A step whose work grows with every version kept 1 fixed limit, and a green run was read for its verdict, not for how much of its limit it used.
 Process: P2
+
+## M181 — 2026-11-17 — A production address left to the host's choice
+What happened: I added `via.computer` to the Vercel project and built production 2 times: once as a redeploy, once from `main` without the cache. Both builds printed `site/build.sh: the site for https://via.reagent-systems.com is in dist`. `VERCEL_PROJECT_PRODUCTION_URL` kept the older domain, so the canonical link did not move. `site/vercel.json` now names `https://via.computer`.
+Cost: 2 production builds that changed nothing.
+Root cause: I expected the host to hand the build the new domain, and I did not read which domain it hands over before the builds.
+Process: P32
