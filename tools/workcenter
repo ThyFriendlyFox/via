@@ -870,6 +870,12 @@ def gate_sim(
     # Each deck's runs that ran clean at their own temperature, for the junctions of sim/thermal.json:
     # (label, ambient C, measures), the deck as written first. A deck that did not run clean has none.
     heat_runs: dict[str, list | None] = {}
+    # Each deck whose corners of sim/corners.json did not run, with the reason: its parts are not held.
+    heat_unrun: dict[str, str] = {}
+    corner_temps = []  # the file's own temperatures, which a deck's `temperature: false` leaves out
+    if corners:
+        top = json.loads((sim_dir / sc.CORNERS_FILE).read_text(encoding="utf-8")).get("temperature")
+        corner_temps = sc.check_temperature(top, "temperature", []) if top is not None else []
     wanted = set(both_ways)
     for r in plan.resonances if plan else []:
         wanted |= {ref for ref in (r.hz, r.q) if isinstance(ref, str)}
@@ -1012,7 +1018,20 @@ def gate_sim(
             )
         artifacts.append(str(log))
         written_at = sc.ran_at(written["text"])
-        heat_runs[deck.stem] = [(th.WRITTEN, written_at, measures)] if ran_clean else None
+        # The ambient of a run at the deck's own temperature: text when ngspice named more than 1.
+        named = sorted({round(float(t), 2) for t in sc.ANALYSIS_TEMP_RE.findall(written["text"])})
+        ambient = written_at if len(named) < 2 else f"the deck ran at {th.celsius(named)}"
+        heat_runs[deck.stem] = [(th.WRITTEN, ambient, measures)] if ran_clean else None
+        own = corners.get(deck.stem) if corners else None
+        if own and own.skip:
+            heat_unrun[deck.stem] = f"the file skips deck {deck.stem}: {own.skip}"
+        elif own and nominal:
+            heat_unrun[deck.stem] = "they were not run (--nominal)"
+        elif own and not own.temperatures and corner_temps:
+            heat_unrun[deck.stem] = (
+                f"the file sets deck {deck.stem}'s temperature to false, so it ran at none of "
+                f"{th.celsius(corner_temps)}"
+            )
         sound: list = []
         # The corners, when the project names any: a deck that did not run as written has none to add.
         if corners and deck.stem in corners and not nominal and ran_clean:
@@ -1030,7 +1049,7 @@ def gate_sim(
                 rewrite=(lambda t: pd.apply(t, curves)[0]) if applied else None,
                 sound_runs=sound,
             )
-            heat_runs[deck.stem] += [(c.label, written_at if c.temp is None else c.temp, m) for c, m in sound]
+            heat_runs[deck.stem] += [(c.label, ambient if c.temp is None else c.temp, m) for c, m in sound]
             failures += corner_failures
             warned += corner_warnings
             details[deck.stem]["corners"] = record
@@ -1116,7 +1135,7 @@ def gate_sim(
             warned += [f"frequency plan: {w}" for w in judged.pop("warnings")]
     heated = None
     if heat is not None:
-        heated, heat_failures, heat_unjudged = sim_thermal(project, heat, heat_runs)
+        heated, heat_failures, heat_unjudged = sim_thermal(project, heat, heat_runs, heat_unrun)
         failures += heat_failures
         warned += heat_unjudged
     if strict:
@@ -1145,10 +1164,13 @@ def gate_sim(
     )
 
 
-def sim_thermal(project: Project, heat, heat_runs: dict) -> tuple[dict | None, list[str], list[str]]:
+def sim_thermal(
+    project: Project, heat, heat_runs: dict, unrun: dict | None = None
+) -> tuple[dict | None, list[str], list[str]]:
     """The junctions of sim/thermal.json at the runs of the decks (tools/thermal.py): (record, failures,
     not judged). The facts are the project's library/facts, as `ratings` finds them; the pack is the
-    one the file names. A part whose deck this run left out (`--deck`) is not judged, and says so."""
+    one the file names. A part whose deck this run left out (`--deck`) is not judged, and says so; so
+    is a part whose deck's corners `unrun` names, with the reason, at those corners."""
     th, rt = thermal(), ratings()
     try:
         library = rt.find_facts(project.dir)
@@ -1164,7 +1186,7 @@ def sim_thermal(project: Project, heat, heat_runs: dict) -> tuple[dict | None, l
     ran = th.Plan(heat.pack, {r: p for r, p in heat.parts.items() if p.deck in heat_runs})
     judged = {"failures": [], "not_judged": [], "parts": {}}
     if ran.parts:
-        judged = th.judge(ran, heat_runs, facts, pack)
+        judged = th.judge(ran, heat_runs, facts, pack, unrun)
     unjudged = judged["not_judged"] + [
         f"thermal: {p.ref} ({p.mpn}) not judged: its deck {p.deck} was not run (--deck)" for p in left
     ]
@@ -1404,8 +1426,12 @@ def cmd_sim(args) -> int:
     for ref, part in ((result.details.get("thermal") or {}).get("parts") or {}).items():
         w, worst = part["written"], part["worst"]
         print(
-            f"thermal {ref}: junction {w['junction']:.5g} C as written ({w['ambient']:g} C), "
-            f"{worst['junction']:.5g} C at its worst ({worst['run']}); limit {part['limit']:g} C"
+            f"thermal {ref}: junction "
+            + (f"{w['junction']:.5g} C as written ({w['ambient']:g} C), " if w else "not judged as written, ")
+            + f"{worst['junction']:.5g} C at its worst of {part['runs']} "
+            f"run{'s' if part['runs'] > 1 else ''} ({worst['run']}); limit {part['limit']:g} C"
+            + ("; not judged at every run" if part["held"] is None else "")
+            + f"; {part['assumes']}"
         )
     return code
 
