@@ -5,12 +5,12 @@ buck: the power stage of the buck block U1 (TLV62569DBVR), written by tools/bloc
 * The bound is L1's saturation current [Coilcraft XAL40xx datasheet, document 806, revised 02/25/26]; TI SLVA477C section 3 asks the inductor to carry the peak.
 * The sums:
 *   U1: D = 3.3 V / (5.25 V x 0.9) = 0.6984 [TI SLVA477C, equation 1, page 2]
-*   L1: dIL = (5.25 V - 3.3 V) x 0.6984 / (1.35 MHz x 1.76 uH) = 573 mA [TI SLVA477C, equation 2, page 2]
-*   U1: IMAXOUT = 3 A - 573 mA / 2 = 2.71 A, the load is 1 A [TI SLVA477C, equation 3, page 3]
-*   L1: ISW(max) = 573 mA / 2 + 1 A = 1.29 A; XAL4020-222MEC saturates at 5.6 A [TI SLVA477C, equation 4, page 3, and section 3, page 3]
-*   R1: R1 = 100 kohm x (3.3 V / 0.6 V - 1) = 450 kohm; the stock's nearest is 453k [TI SLVA477C, equation 11, page 5]
-*   C2, C3: 10 uF of output capacitance, 5 uF effective; each keeps 3.82 uF at 3.44 V [TLV62569 datasheet, SLVSDG1C, section 8.2.2.3, table 4, the cell marked ++ of each row of VOUT (2 x 22, 22 and 10 uF), page 9; note 2]
-*   C1: 10 uF of input capacitance, 4.7 uF asked [TLV62569 datasheet, SLVSDG1C, section 8.2.2.5, page 10: 4.7 uF of input capacitance is sufficient for most applications]
+*   L1: dIL = (5.25 V - 3.3 V) x 0.6984 / (1.35 MHz x 1.54 uH) = 655 mA [TI SLVA477C, equation 2, page 2]; L is 2.2 uH less 30 % [TLV62569 datasheet, SLVSDG1C, section 8.2.2.3, table 4, note 1: the effective inductance can vary by +20 % and -30 %, page 9]
+*   U1: IMAXOUT = 3 A - 655 mA / 2 = 2.67 A, the load is 1 A [TI SLVA477C, equation 3, page 3]
+*   L1: ISW(max) = 655 mA / 2 + 1 A = 1.33 A, 1.59 A with 20 % of margin; XAL4020-222MEC saturates at 5.6 A and is rated 4 A rms [TI SLVA477C, equation 4, page 3, and section 3, page 3; TLV62569 datasheet, SLVSDG1C, section 8.2.2.4, page 10: a saturation current about 20 % to 30 % above IL,MAX; the block asks the least, 20 %]
+*   R1: R1 = 100 kohm x (3.3 V / 0.6 V - 1) = 450 kohm; the stock's nearest is 453k, which sets 3.318 V, and 3.2 V to 3.44 V with VFB of 588 mV to 612 mV and the resistors' tolerances [TI SLVA477C, equation 11, page 5; TLV62569 datasheet, SLVSDG1C, section 8.2.2.2, equation 2, page 9]
+*   C2, C3: 10 uF of output capacitance for 3.318 V, 5 uF effective; each, X5R, keeps 3.82 uF at 3.44 V; 2 x 10 uF = 20 uF, within 10 uF to 47 uF [TLV62569 datasheet, SLVSDG1C, section 8.2.2.3, table 4, the cell marked ++ of each row of VOUT (2 x 22, 22 and 10 uF), page 9; note 2; section 8.2.2.5, page 10: designed to operate with an output capacitor of 10 uF to 47 uF; section 8.2.2.5, page 10: X7R or X5R dielectric is recommended; TI SLVA477C, sections 6 and 7, page 5: X5R or better]
+*   C1: 10 uF of input capacitance, X5R, 4.7 uF asked [TLV62569 datasheet, SLVSDG1C, section 8.2.2.5, page 10: 4.7 uF of input capacitance is sufficient for most applications; section 8.2.2.5, page 10: X7R or X5R dielectric is recommended; TI SLVA477C, sections 6 and 7, page 5: X5R or better]
 VSW sw 0 PULSE(0 5.25 0 1n 1n 465.6n 740.7n)
 L1 sw out 2.2u
 C2 out 0 10u
