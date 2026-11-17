@@ -87,18 +87,24 @@ Make both once:
      `<commit>`. Go on to step 8.
    - 1: `RED: no push`. Read the end of `<scratch>/verify-<label>.log`,
      fix the cause in tree A with a test, and go back to step 4.
+   - 2: a bad call, 1 line on stderr: `GATE_DIR` is not set or is no
+     folder, or an argument is missing. Mend the call; no gate ran.
    - 3: `STOP: ...`: the line says what: HEAD or the branch is not
      `<commit>`, the tree is not clean or changed during the gate, or
      another gate holds the lock. Mend that, and go back to step 6.
    - 4: no quiet in an hour. `<scratch>/gate-<label>.status` lists the
      busy processes: wait for them, or ask their helper to stop, then
      step 7 again.
-   - 5: the push failed 5 times. The remote moved, or the network is
-     down: `git -C <scratch>/wt/gate fetch origin` and compare; never push
-     without a lease.
+   - 5: `PUSH REFUSED: ...`: someone pushed to `<work>` after you read
+     the lease. `git -C <scratch>/wt/gate fetch origin`, bring their work
+     into tree A, and go back to step 4. `PUSH FAILED after 5 tries`: the
+     network is down; step 7 again when it is back. Never push without a
+     lease.
    - 6: the quiet check failed: run it by hand,
      `python3 ee-agent-kit/lead/quiet.py $$ <scratch>`, and mend what it
      prints on stderr.
+   - 129, 130 or 143: the gate was stopped. It ended `make verify` before
+     it removed the lock. Step 7 again.
    If `<scratch>/gate-<label>.foreign` is not empty, a helper ran a test or
    an engine during the gate: name it in your report, and remind it of the
    lock in its next brief.

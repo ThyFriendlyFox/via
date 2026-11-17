@@ -19,8 +19,10 @@
 #   GATE_QUIET_LIMIT     seconds to wait for quiet before it stops (default 3600)
 #   GATE_SAMPLE_SECONDS  seconds between 2 looks for helpers' work during the gate (default 20)
 #
-# Exit: 0 pushed; 1 the gate was red; 2 a bad call; 3 stopped (HEAD, branch, tree or lock);
-# 4 no quiet in time; 5 the push failed 5 times; 6 the quiet check failed.
+# Exit: 0 pushed; 1 the gate was red; 2 a bad call (GATE_DIR unset or no folder); 3 stopped (HEAD,
+# branch, tree or lock); 4 no quiet in time; 5 the push failed: the remote branch is no longer the lease,
+# or 5 tries failed; 6 the quiet check failed; 129, 130 or 143 stopped by a signal, with make ended first.
+# Needs bash, git, setsid (util-linux) and ps.
 
 if [ $# -lt 5 ] || [ $# -gt 6 ]; then
   echo "usage: gate-and-push.sh <tree> <branch> <commit> <lease> <label> [remote branch]" >&2
@@ -28,6 +30,10 @@ if [ $# -lt 5 ] || [ $# -gt 6 ]; then
 fi
 if [ -z "${GATE_DIR:-}" ]; then
   echo "gate-and-push: GATE_DIR is not set: the folder for the lock and the logs" >&2
+  exit 2
+fi
+if [ ! -d "$GATE_DIR" ]; then
+  echo "gate-and-push: GATE_DIR $GATE_DIR is not a folder" >&2
   exit 2
 fi
 HERE=$(dirname "$(readlink -f "$0")")
@@ -66,9 +72,25 @@ if ! (set -C; date -u +%Y-%m-%dT%H:%M:%SZ > "$LOCK") 2>/dev/null; then
   say "STOP: $LOCK exists: another gate runs"
   exit 3
 fi
-# shellcheck disable=SC2317  # run by the trap on EXIT
-finish() { rm -f "$LOCK"; say "lock removed"; }
+# On any exit, a signal's too, the sampler and make's whole process group end first, and the lock goes
+# last: a helper that waits for the lock to go must never start while `make verify` still runs.
+SAMPLER=
+MAKE_PID=
+# shellcheck disable=SC2317  # run by the traps
+finish() {
+  if [ -n "$SAMPLER" ]; then kill "$SAMPLER" 2>/dev/null; wait "$SAMPLER" 2>/dev/null; fi
+  if [ -n "$MAKE_PID" ] && kill -0 "$MAKE_PID" 2>/dev/null; then
+    kill -TERM -- "-$MAKE_PID" 2>/dev/null
+    wait "$MAKE_PID" 2>/dev/null
+    say "make verify was stopped"
+  fi
+  rm -f "$LOCK"
+  say "lock removed"
+}
 trap finish EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 say "lock made; waiting for quiet"
 quiet=0
@@ -87,22 +109,35 @@ done
 say "quiet for $TRIES looks after $waited s; the gate starts"
 
 # While the gate runs, note each engine, test run or script of a helper: the gate must run alone.
+# Its sleep runs in the background, so a kill ends the sampler at once and not after the sleep.
 (
+  nap=
+  # shellcheck disable=SC2317  # run by the trap
+  trap 'if [ -n "$nap" ]; then kill "$nap" 2>/dev/null; fi; exit 0' TERM
   while true; do
     found=$(busy)
     if [ -n "$found" ]; then
       date -u +%H:%M:%S
       echo "$found"
     fi >> "$FOREIGN"
-    sleep "$SAMPLE"
+    sleep "$SAMPLE" &
+    nap=$!
+    wait "$nap"
   done
 ) &
 SAMPLER=$!
 
 START=$(date +%s)
-make -C "$T" verify > "$LOG" 2>&1
+# make runs in its own process group (setsid), so a stop ends it with every test it started; `wait`
+# lets a signal to the gate through at once.
+setsid make -C "$T" verify > "$LOG" 2>&1 &
+MAKE_PID=$!
+wait "$MAKE_PID"
 RC=$?
+MAKE_PID=
 kill "$SAMPLER" 2>/dev/null
+wait "$SAMPLER" 2>/dev/null
+SAMPLER=
 END=$(date +%s)
 say "make verify ended with exit code $RC after $((END - START)) s"
 tail -3 "$LOG" >> "$OUT"
@@ -119,6 +154,12 @@ n=0
 delay=2
 until git -C "$T" push --force-with-lease="$REMOTE:$LEASE" origin "$EXPECT:refs/heads/$REMOTE" >> "$OUT" 2>&1; do
   n=$((n + 1))
+  # A lease that no longer holds will not hold on a second try: someone else pushed. Stop at once.
+  now=$(git -C "$T" ls-remote origin "refs/heads/$REMOTE" 2>/dev/null | cut -f1)
+  if [ -n "$now" ] && [ "$now" != "$LEASE" ]; then
+    say "PUSH REFUSED: $REMOTE on origin is $now, not the lease $LEASE; read it and land again"
+    exit 5
+  fi
   if [ "$n" -ge 5 ]; then say "PUSH FAILED after $n tries"; exit 5; fi
   say "push try $n failed; again in $delay s"
   sleep "$delay"

@@ -32,6 +32,17 @@ the helper's report: an object, the same as JSON text, or `null` when the
 helper ended with none. A host whose helpers keep no such journal writes
 these lines itself, 1 when a helper starts and 1 when it reports.
 
+An agent id names 1 helper in 1 journal; 2 journals may use the same
+ids. 1 id started under 2 labels in 1 journal is refused.
+
+A review counts when its result gives a `verdict` that is not empty and
+a list `findings`; a fix, when it gives a list `fixed` and, if it gives
+`not_fixed`, a list. Any other result waits, named in 1 line. A review
+started again counts every result it got: the findings are added up, and
+it is `not sound` when 1 result says so. A build or a fix with 2 results
+lands on neither: read both, and land the head that is on the branch by
+hand.
+
 ## Running them
 
 ```sh
@@ -41,8 +52,11 @@ python3 ee-agent-kit/lead/quiet.py <pid whose tree is left out> [folder]...
 ```
 
 `landed.py` exits 0 when a piece finished since its last run, 1 when none
-did, 2 on a bad call. `gate-and-push.sh` exits 0 when it pushed, 1 on a
-red gate, 3 when it stopped (HEAD, branch, tree or lock), 4 with no quiet
-in time, 5 when the push failed 5 times, 6 when the quiet check failed.
-Its header names its environment variables. `tests/test_lead.py` holds
-all 3 and the 3 scripts.
+did, 2 on a bad call or a journal it cannot read. `gate-and-push.sh`
+exits 0 when it pushed, 1 on a red gate, 2 on a bad call (no `GATE_DIR`,
+or no such folder), 3 when it stopped (HEAD, branch, tree or lock), 4
+with no quiet in time, 5 when the push failed (the remote branch is no
+longer the lease, or 5 tries failed), 6 when the quiet check failed. A
+gate stopped by a signal ends `make verify` and every process it started
+before it removes the lock. Its header names its environment variables.
+`tests/test_lead.py` holds all 3 and the 3 scripts.
