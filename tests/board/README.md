@@ -19,7 +19,9 @@ the left, Run workflow, Run workflow. From a shell with `gh`: `gh workflow run b
 
 Then open the run, the job `card`, the step "Put the card in its column". It prints 1 line per card
 and a last line with the counts. Read the lines as the table "Reading a run of every card" below
-says. Do not drag a card on the board: the next run of Board would put it back where its body says.
+says. Do not drag a card on the board. A card whose line names a column is put back in that column by
+the next run of Board. A card whose body names no column stays where it was dragged, and each run
+prints it as `not moved`.
 
 ## The card's line
 
@@ -84,6 +86,7 @@ issue whose title does not start with `Work card:` and a pull request get no lin
 | `#90 not moved: its body has no **Status:** line ...`, `... has 2 **Status:** lines`, `... says "Blocked", not ...` | The body names no column. The card stays where it stands; `; added to the board` when it was not on the project. | Fix the card's `**Status:**` line; the edit runs Board again. |
 | `#93 not moved: it is not from the owner, a member or a collaborator ...` | A stranger's issue: never put on the board. | Nothing. |
 | `#82 FAIL: gh api graphql (set the Status) exited 1: ...` | That card's write failed. The others were still written. The run ends red. | Read the rest of the line; run Board again by hand. |
+| `#82 FAIL: GitHub answered no authorAssociation` (or `body`, `state`, `title`, `number`, `id`) | The list of issues lacks a field the decision reads, so the card is not judged. A body that is `null` is no failure: it is read as empty. | A field was dropped from the query `ISSUES` in `tools/board.py`; put it back. |
 | `#82 FAIL: the project ... has no Status option "<word>" ...` | The project lacks the column. | Add the option to the project's Status field. |
 | `board: FAIL: gh api graphql (list the issues, page 2) ...` or `(list the project's items, page 1) ...` | A list could not be read whole, so no card was judged and nothing was written. | Read the rest of the line; run Board again by hand. |
 | `board: FAIL: --all needs --repo ...`, `--repo "..." is no <owner>/<name>` | A run by hand with a wrong flag. | Pass `--all --repo <owner>/<name> --board <url>`. |
@@ -140,6 +143,10 @@ schema.docs.graphql, read on 2026-11-17): `Repository.issues`, `ProjectV2.items`
 `ProjectV2ItemFieldSingleSelectValue` (`name`, `optionId`, `field`) and `PageInfo`; ids and cursors
 are stand-ins. `BOARD_GH_ADD_ECHO` makes an add answer `PVTI_for_<issue id>`, so a test sees which
 card each later write is for; `BOARD_GH_FAIL_ITEM` refuses the write of 1 item.
+
+`gh.py` cuts every answer to the query, as GitHub does: a key the query does not name is dropped,
+and `states: [...]` keeps only the issues in those states. A field dropped from `ISSUES` or `ITEMS`
+in `tools/board.py` is then missing in the tests too, and a test fails. 2 tests hold the cut itself.
 
 `tests/test_board.py` also reads the workflow: its 3 triggers (the 4 issue events, a run by hand, 1
 schedule at a minute that is not 0), its permissions, its 1 concurrency group `board` with

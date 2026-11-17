@@ -14,15 +14,87 @@ with no cursor, is the key "". With BOARD_GH_ADD_ECHO set, `addProjectV2ItemById
 `PVTI_for_<content>`, so a test sees which issue each later write is for. With BOARD_GH_FAIL_ITEM set
 to an item id, the `updateProjectV2ItemFieldValue` call for that item prints a stand-in failure and
 exits 1, and every other call is answered.
+
+Every answer is cut to the query, as GitHub answers: a key under `data` that the query does not name
+is dropped, and the fields of a fragment (`... on X { }`) count at the level the fragment stands at.
+A query of issues with `states: [...]` gets only the issues in those states. So a field dropped from
+a query of the tool is missing in the answer, as it would be from GitHub, and the tests see it.
 """
 
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+
+
+def selection(query: str) -> dict | None:
+    """The fields a query names, as a tree: {name: subtree or None for a leaf}. Arguments are skipped."""
+    flat, depth = [], 0
+    for ch in query:
+        depth += ch == "("
+        if not depth:
+            flat.append(ch)
+        depth -= ch == ")"
+    tokens = re.findall(r"\.\.\.|[A-Za-z_][A-Za-z0-9_]*|[{}]", "".join(flat))
+    pos = tokens.index("{") + 1
+
+    def block() -> dict:
+        nonlocal pos
+        out: dict = {}
+        while tokens[pos] != "}":
+            if tokens[pos] == "...":
+                pos += 4  # `...`, `on`, the type, `{`
+                merge(out, block())
+                continue
+            name, pos = tokens[pos], pos + 1
+            sub = None
+            if pos < len(tokens) and tokens[pos] == "{":
+                pos += 1
+                sub = block()
+            merge(out, {name: sub})
+        pos += 1
+        return out
+
+    return block()
+
+
+def merge(into: dict, more: dict) -> None:
+    for key, sub in more.items():
+        if isinstance(into.get(key), dict) and isinstance(sub, dict):
+            merge(into[key], sub)
+        else:
+            into[key] = sub if sub is not None else into.get(key)
+
+
+def cut(value, tree):
+    """The value with only the keys the tree names."""
+    if tree is None:
+        return value
+    if isinstance(value, list):
+        return [cut(v, tree) for v in value]
+    if isinstance(value, dict):
+        return {k: cut(v, tree[k]) for k, v in value.items() if k in tree}
+    return value
+
+
+def answer_to(query: str, answer: dict) -> dict:
+    """GitHub's answer for the query: `data` cut to its fields, issues filtered by `states`."""
+    if not isinstance(answer, dict) or not isinstance(answer.get("data"), dict):
+        return answer
+    data = answer["data"]
+    states = re.search(r"states:\s*\[([^\]]*)\]", query)
+    issues = data.get("repository", {}).get("issues") if isinstance(data.get("repository"), dict) else None
+    if states and isinstance(issues, dict) and isinstance(issues.get("nodes"), list):
+        wanted = set(re.findall(r"[A-Z]+", states.group(1)))
+        issues["nodes"] = [
+            n for n in issues["nodes"] if not isinstance(n, dict) or n.get("state", "") in wanted | {""}
+        ]
+    return {**answer, "data": cut(data, selection(query))}
+
 
 args = sys.argv[1:]
 with open(os.environ["BOARD_GH_LOG"], "a", encoding="utf-8") as log:
@@ -48,7 +120,7 @@ def page(env: str) -> None:
     if cursor not in pages:
         sys.stderr.write(f"stand-in gh: no page for the cursor {cursor!r}\n")
         sys.exit(1)
-    sys.stdout.write(json.dumps(pages[cursor]))
+    sys.stdout.write(json.dumps(answer_to(query, pages[cursor])))
     sys.exit(0)
 
 
@@ -73,4 +145,9 @@ elif "projectV2(number" in query:
 else:
     sys.stderr.write("stand-in gh: a query of no known kind\n")
     sys.exit(1)
-sys.stdout.write((HERE / answer).read_text(encoding="utf-8"))
+text = (HERE / answer).read_text(encoding="utf-8")
+try:
+    text = json.dumps(answer_to(query, json.loads(text)))
+except json.JSONDecodeError:
+    pass  # a file that is no JSON on purpose is printed as it is
+sys.stdout.write(text)

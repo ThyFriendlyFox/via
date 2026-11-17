@@ -373,6 +373,7 @@ def sync_card(issue: dict, on: tuple[str, str | None] | None, ctx: dict) -> tupl
 
 
 COUNTS = ("moved", "added", "already there", "not moved", "failed")
+NODE_KEYS = ("number", "id", "title", "body", "state", "authorAssociation")
 
 
 def sync(repo: str, url: str) -> int:
@@ -390,10 +391,15 @@ def sync(repo: str, url: str) -> int:
     items = pages("list the project's items", ITEMS, {"project": project}, ("node", "items"))
     on_board = stands(items, field, options)
     ctx = {"project": project, "field": field, "options": options, "url": url}
-    cards = [i for i in issues if str(i.get("title", "")).startswith(PREFIX)]
+    # A node with no title cannot be told from a card, so it is judged as one and fails below.
+    cards = [i for i in issues if "title" not in i or str(i["title"]).startswith(PREFIX)]
     counts = dict.fromkeys(COUNTS, 0)
     for issue in sorted(cards, key=lambda i: i.get("number") if isinstance(i.get("number"), int) else 0):
         try:
+            # A key GitHub did not answer is not judged; a body that is null is an empty one.
+            missing = [k for k in NODE_KEYS if k not in issue]
+            if missing:
+                raise Failure(f"GitHub answered no {', '.join(missing)}")
             if not isinstance(issue.get("id"), str) or not isinstance(issue.get("body"), (str, type(None))):
                 raise Failure(f"GitHub answered no id or no text body: {issue!r:.80}")
             name, line = sync_card(issue, on_board.get(issue["id"]), ctx)

@@ -847,6 +847,111 @@ def test_all_stops_when_a_page_says_more_but_names_no_cursor(tmp_path):
     ]
 
 
+def ask_stand_in(tmp_path: Path, query: str, **extra: str) -> dict:
+    """1 call of the stand-in itself, as the tool makes it; its answer."""
+    env = stand_in(tmp_path)
+    env.update(extra)
+    proc = subprocess.run(
+        [sys.executable, str(STAND_IN), "api", "graphql", "-f", f"query={query}", "-f", "project=P"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert proc.returncode == 0, proc.stderr
+    return json.loads(proc.stdout)
+
+
+def test_the_stand_in_answers_only_the_fields_and_states_an_issues_query_asks_for(tmp_path):
+    """GitHub answers the fields a query names and no other, and `states` filters the issues. The
+    canned page holds #1 (OPEN) and #2 (CLOSED) with all 6 keys and a pageInfo of 2 keys. The query
+    names number and title, hasNextPage, and states [OPEN]: #2 goes, and of #1 2 keys of 6 stay."""
+    path = tmp_path / "issues.json"
+    canned = [card(1), card(2, state="CLOSED")]
+    path.write_text(json.dumps(pages(canned, lambda c: {"data": {"repository": {"issues": c}}})), "utf-8")
+    query = """query($owner: String!, $name: String!, $cursor: String) {
+      repository(owner: $owner, name: $name) {
+        issues(first: 100, after: $cursor, states: [OPEN], orderBy: {field: CREATED_AT, direction: ASC}) {
+          pageInfo { hasNextPage }
+          nodes { number title }
+        }
+      }
+    }"""
+    answer = ask_stand_in(tmp_path, query, BOARD_GH_ISSUES=str(path))
+    assert answer == {
+        "data": {
+            "repository": {
+                "issues": {
+                    "pageInfo": {"hasNextPage": False},
+                    "nodes": [{"number": 1, "title": "Work card: item 1"}],
+                }
+            }
+        }
+    }
+
+
+def test_the_stand_in_answers_only_the_fields_an_items_query_asks_for(tmp_path):
+    """Fragments (`... on X { }`) add their fields to the level they stand at. The query asks for the
+    item's id, its content's id and each value's field id: __typename, name and optionId go."""
+    path = tmp_path / "items.json"
+    path.write_text(
+        json.dumps(pages([item(82, "Todo")], lambda c: {"data": {"node": {"items": c}}})), "utf-8"
+    )
+    query = """query($project: ID!, $cursor: String) {
+      node(id: $project) { ... on ProjectV2 { items(first: 100, after: $cursor) { nodes {
+        id content { ... on Issue { id } }
+        fieldValues(first: 50) { nodes { ... on ProjectV2ItemFieldSingleSelectValue {
+          field { ... on ProjectV2FieldCommon { id } } } } }
+      } } } }
+    }"""
+    answer = ask_stand_in(tmp_path, query, BOARD_GH_ITEMS=str(path))
+    node = {
+        "id": "PVTI_stand-in-82",
+        "content": {"id": "I_stand-in-82"},
+        "fieldValues": {"nodes": [{}, {"field": {"id": FIELD_ID}}]},
+    }
+    assert answer == {"data": {"node": {"items": {"nodes": [node]}}}}
+
+
+@pytest.mark.parametrize("key", ["authorAssociation", "body", "state", "title"])
+def test_all_fails_a_card_whose_node_lacks_a_key_and_moves_the_others(tmp_path, key):
+    """A node without a key the decision reads is not judged: no owner is not a stranger, and no body
+    is not an empty one. #82 lacks the key; #83 says In progress and stands in Todo. Lines: 1 FAIL,
+    1 moved; counts 1 moved + 1 failed = 2 cards; exit 1; only #83's item is written."""
+    broken = card(82, "**Status:** In progress")
+    del broken[key]
+    issues = [broken, card(83, "**Status:** In progress")]
+    proc, found = run_all(tmp_path, issues, [item(82, "Todo"), item(83, "Todo")])
+    assert proc.returncode == 1
+    assert writes(found) == [("set", "PVTI_stand-in-83", OPTION["In Progress"])]
+    assert lines(proc) == [
+        f"#82 FAIL: GitHub answered no {key}",
+        "#83 In Progress: moved from Todo",
+        summary(moved=1, failed=1),
+    ]
+
+
+def test_all_reads_a_null_body_as_an_empty_one(tmp_path):
+    """GitHub answers `body: null` for an issue opened with no text. That body is judged: it has no
+    line, so #84 (in Todo) is not moved, nothing is written, and the run ends with exit 0."""
+    proc, found = run_all(tmp_path, [card(84, None)], [item(84, "Todo")])
+    assert proc.returncode == 0, proc.stderr
+    assert writes(found) == []
+    no_line = "its body has no **Status:** line (Todo, In progress or Done)"
+    assert lines(proc) == [f"#84 not moved: {no_line}", summary(not_moved=1)]
+
+
+def test_all_reads_the_status_field_only_not_another_single_select_value(tmp_path):
+    """#64 says Todo; its item holds Todo in Status (FIELD_ID) and then P1 in a field Priority. The
+    column is Status's value alone: already there, 3 reads, 0 writes, not 'moved from P1'."""
+    standing = item(64, "Todo")
+    priority = {"name": "P1", "optionId": "stand-in-p1", "field": {"id": "PVTSSF_stand-in-priority"}}
+    standing["fieldValues"]["nodes"].append(priority)
+    proc, found = run_all(tmp_path, [card(64)], [standing])
+    assert proc.returncode == 0, proc.stderr
+    assert [kind(c) for c in found] == ["find", "issues", "items"]
+    assert lines(proc) == ["#64 Todo: already there", summary(there=1)]
+
+
 @pytest.mark.parametrize(
     "flags, said",
     [
