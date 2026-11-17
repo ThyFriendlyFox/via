@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
@@ -42,7 +43,7 @@ CITES = {
     "ti-spra953d": "sections 1.1 to 5, equation 1, pages 2 and 3",
 }
 
-needs_ngspice = pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed")
+needs_ngspice = engine(pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed"))
 
 NASA = ratings.read_pack(PACKS / "nasa-eee-inst-002.json")
 ECSS = ratings.read_pack(PACKS / "ecss-q-st-30-11c-rev2.json")

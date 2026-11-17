@@ -41,7 +41,10 @@ PLATING = (
     "thickness category of an outer layer is basic plus plated copper"
 )
 
-pytestmark = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+pytestmark = [
+    pytest.mark.engine,
+    pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed"),
+]
 
 
 def say(*args: object) -> tuple[int, str]:

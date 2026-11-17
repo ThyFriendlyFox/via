@@ -200,12 +200,15 @@ def test_a_count_of_tests_in_the_status_file_is_what_pytest_collects():
     status = (ROOT / "ee-agent-kit" / "STATUS.md").read_text(encoding="utf-8")
     stated = {name: int(count) for name, count in re.findall(r"`tests/(test_\w+\.py)` \((\d+)\b", status)}
     assert len(stated) >= 15
+    # The collection imports the test files, and some ask whether pcbnew imports: the run keeps its own
+    # log of engine starts (tools/ci/engine_marker.py), since collecting is no start of this test's.
     proc = subprocess.run(
         [sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider", "tests"],
         cwd=ROOT,
         capture_output=True,
         text=True,
         check=False,
+        env={k: v for k, v in os.environ.items() if k != "WORKCENTER_ENGINE_LOG"},
     )
     collected: dict[str, int] = {}
     for line in proc.stdout.splitlines():

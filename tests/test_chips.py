@@ -21,6 +21,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 CHIPS = ROOT / "tests" / "chips"
@@ -118,7 +119,7 @@ def absent(names: tuple[str, ...]) -> list[str]:
 
 def needs(names: tuple[str, ...]):
     missing = absent(names)
-    return pytest.mark.skipif(bool(missing), reason=f"not installed: {', '.join(missing)}")
+    return engine(pytest.mark.skipif(bool(missing), reason=f"not installed: {', '.join(missing)}"))
 
 
 def copy_of(name: str, tmp_path: Path) -> Path:
