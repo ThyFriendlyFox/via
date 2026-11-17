@@ -465,7 +465,7 @@ OTHER_SHA = "0" * 64
         (
             [GOOD | {"kind": "note"}],
             "documents[0] acme-an-17: kind 'note' is none of standard, application note, datasheet, "
-            "web page, paper, book",
+            "report, web page, paper, book",
         ),
         (
             [GOOD | {"id": "AN-17"}],
@@ -593,19 +593,19 @@ def test_a_document_served_in_a_zip_is_held_by_the_zips_sha256(tmp_path):
 def test_every_document_a_rule_of_the_repository_names_is_in_the_index():
     """`make verify` runs this on the files the index's `rules` globs find (the code its `code` globs
     find is tests/test_references_code.py's). The rating packs name 2 standards, the board pack 1,
-    rules/copper/materials.json 2 (NBS's copper wire tables and TI's AN-2020), rules/interfaces/ 5
-    (SPRAAR7J in the 2 TI files, the 3 usb.org specifications in usb2.json and usb3.json; constants.json
-    names none), the 4 facts files of 1 part 4 datasheets, passives.json 4, fail-sim-bias's parts.json 2
-    (Samsung's page and Coilcraft's 806, which passives.json names too): 2 + 1 + 2 + 5 + 4 + 4 + 2 = 20
-    named. The 4 fab rule files name 1 + 1 + 1 + 2 = 5 pages: 25 in all. made-up.json's 4 parts name no
-    document, and Sierra's fab file names IPC's class standard with no place beside it: 4 + 1 = 5 not
-    judged. Files: 2 + 1 + 1 + 5 + 7 JSON and 4 fab rule files = 20."""
+    rules/copper/materials.json 2 (NBS's copper wire tables and TI's AN-2020), rules/interfaces/ 7
+    (TI's USB layout note in the 2 TI files, the 3 usb.org specifications in usb2.json and usb3.json,
+    NIST's 2 CODATA pages in constants.json), the 4 facts files of 1 part 4 datasheets, passives.json 4,
+    fail-sim-bias's parts.json 2 (Samsung's page and Coilcraft's 806, which passives.json names too):
+    2 + 1 + 2 + 7 + 4 + 4 + 2 = 22 named. The 4 fab rule files name 1 + 1 + 1 + 2 = 5 pages: 27 in all.
+    made-up.json's 4 parts name no document, and Sierra's fab file names IPC's class standard with no
+    place beside it: 4 + 1 = 5 not judged. Files: 2 + 1 + 1 + 5 + 7 JSON and 4 fab rule files = 20."""
     globs = json.loads(INDEX.read_text(encoding="utf-8"))["rules"]
     files = sorted({p for pattern in globs for p in ROOT.glob(pattern)})
     code, out = run("rules", *files)
     assert code == 0, out
     assert out.splitlines()[-1] == (
-        "references rules: 25 documents named in 20 files, 25 in the index, 0 not; 5 not judged"
+        "references rules: 27 documents named in 20 files, 27 in the index, 0 not; 5 not judged"
     )
 
 

@@ -304,3 +304,44 @@ def test_a_json_rule_that_names_a_document_in_a_text_fails():
         f"fail {path} rules[1].note: " + "SLVA" + f"477B, equation 1: {UNKNOWN}",
         "references rules: 2 documents named in 1 files, 0 in the index, 2 not; 0 not judged",
     ]
+
+
+def test_the_interface_rules_and_their_tests_hold_their_documents():
+    """The high-speed pieces landed beside this check. rules/interfaces/constants.json named NIST's 2
+    CODATA pages in a `source` that was a text, and tests/test_highspeed.py cited TI's USB layout note by
+    table and page with no CITES: 3 fails. The 2 pages are web page entries now, each source an object
+    with its page's URL, and the test's CITES names the note and the 3 USB specifications it speaks of:
+    2 sources and 4 ids, 6 named."""
+    paths = (ROOT / "rules" / "interfaces" / "constants.json", ROOT / "tests" / "test_highspeed.py")
+    code, lines = rules(*paths, index=INDEX)
+    assert code == 0, lines
+    assert lines == ["references rules: 6 documents named in 2 files, 6 in the index, 0 not; 0 not judged"]
+
+
+def test_the_cross_section_solver_and_its_test_declare_the_works_they_are_held_to():
+    """tests/test_xsection.py holds tools/xsection.py to 2 publications, a page of DLMF and NIST's page of
+    the impedance of vacuum; the tool names the 2 works whose equations its test takes. Each is an entry,
+    and each file's CITES names it: 4 ids and 2 ids, 6 named. The 2 publications are held copies that are
+    no standard, note or datasheet: the index holds them as `report`. Before, the index named none of
+    them: 0 named, and the tool's name of the microstrip paper was printed as not judged."""
+    paths = (ROOT / "tests" / "test_xsection.py", ROOT / "tools" / "xsection.py")
+    code, lines = rules(*paths, index=INDEX)
+    assert code == 0, lines
+    assert lines == ["references rules: 6 documents named in 2 files, 6 in the index, 0 not; 0 not judged"]
+    kinds = {d["id"]: d["kind"] for d in json.loads(INDEX.read_text(encoding="utf-8"))["documents"]}
+    assert kinds["qucs-technical-papers"] == kinds["matthaei-ad0402852"] == "report"
+
+
+def test_the_citation_of_the_qucs_papers_without_cites_fails(tmp_path):
+    """The names of the 2 publications find them: tests/test_xsection.py with its CITES renamed fails on
+    the first, at the place its docstring gives beside it."""
+    text = (ROOT / "tests" / "test_xsection.py").read_text(encoding="utf-8")
+    assert "\nCITES = {" in text
+    dropped = tmp_path / "test_xsection.py"
+    dropped.write_text(text.replace("\nCITES = {", "\nNOT_CITES = {"), encoding="utf-8")
+    code, lines = rules(dropped, index=INDEX)
+    assert code == 1
+    said = "Qucs " + "Technical Papers, section 11.1: the file's CITES does not name qucs-technical-papers"
+    assert [line for line in lines if said in line], lines
+    said = "AD" + "0402852, section 5.05: the file's CITES does not name matthaei-ad0402852"
+    assert [line for line in lines if said in line], lines

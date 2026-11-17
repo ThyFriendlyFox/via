@@ -20,6 +20,14 @@ sys.path.insert(0, str(ROOT / "tools"))
 import highspeed  # noqa: E402
 import xsection  # noqa: E402
 
+# The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
+CITES = {
+    "ti-spraar7j": "table A-2, page 16; section 2.4, pages 6 and 8; section 3.2, page 9; 3.3, page 10",
+    "usb-20": "the whole specification: it names no board skew and no plane",
+    "usb-31-legacy-cable": "the whole specification: it names no band for a board's impedance",
+    "usb-32": "the whole specification: it names no band for a board's impedance",
+}
+
 BOARDS = ROOT / "tests" / "boards"
 SPECS = ROOT / "rules" / "interfaces"
 USB2TI = [{"interface": "ti-am57xx-usb2", "nets": ["USB_D_P", "USB_D_N"], "gap": 0.2}]

@@ -12,8 +12,9 @@ holds the index and the rules, never a document: the makers' and the issuers' te
 
 An entry is 1 of 3 sorts:
 
-- **Held** (`standard`, `application note`, `datasheet`): the URL and the SHA256 of the copy the rule
-  was written from.
+- **Held** (`standard`, `application note`, `datasheet`, `report`): the URL and the SHA256 of the copy
+  the rule was written from. A report is a held copy that is no standard, note or datasheet: the Qucs
+  project's technical papers, a laboratory's report.
 - **A web page** (`web page`): a page has no fixed copy. Samsung's part page carries a session token
   and a time stamp, so its bytes differ on every fetch. The entry holds the values read from it on a
   date, each as the text the page says (`says`) and the rule that takes it (`for`).
@@ -54,6 +55,17 @@ An entry is 1 of 3 sorts:
 | `jlcpcb-pcb-capabilities` | web page | JLCPCB, PCB Capabilities | 8 values read on 2026-11-17 |
 | `pcbway-capabilities` | web page | PCBWay, PCB Manufacturing Capabilities | 6 values read on 2026-11-17 |
 | `oshpark-two-layer` | web page | OSH Park, 2 Layer Prototype Service | 6 values read on 2026-11-17 |
+| `nist-codata-2022-z0` | web page | NIST, CODATA Value: characteristic impedance of vacuum | 2 values read on 2026-11-17 |
+| `nist-codata-2022-c` | web page | NIST, CODATA Value: speed of light in vacuum | 2 values read on 2026-11-17 |
+| `nist-dlmf-19.8` | web page | NIST DLMF, section 19.8 | 1 value read on 2026-11-17 |
+| `qucs-technical-papers` | report | Qucs Technical Papers | the PDF of 2014-10-18 |
+| `matthaei-ad0402852` | report | DTIC AD0402852 (Matthaei, Young, Jones, Volume I) | January 1963 |
+
+The last 5 entries joined on 2026-11-17 when the index's check met the high-speed pieces:
+`rules/interfaces/constants.json` takes its 2 constants from NIST's 2 pages, and
+`tests/test_xsection.py` holds the cross-section solver to the 2 reports and to DLMF 19.8.5. Each copy
+was fetched that day under the workcenter's own name. `workcenter references check` called each copy
+`same`: the 2 reports by the SHA256 their citing file gives in part, the 3 pages by their values.
 
 On 2026-11-17 `workcenter references fetch` asked for the 25 held documents and web pages of the index
 as it stood before the documents of `rules/interfaces/` joined it, under the workcenter's own name:

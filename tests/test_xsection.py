@@ -28,6 +28,14 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 import xsection  # noqa: E402
 
+# The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
+CITES = {
+    "qucs-technical-papers": "section 11.1: (11.4) to (11.6), (11.15) to (11.18), (11.24), pages 162 to 165",
+    "matthaei-ad0402852": "section 5.05: (5.05-1) to (5.05-3), page 170; (5.05-4) to (5.05-6), page 172",
+    "nist-dlmf-19.8": "19.8.5: K(k) = pi / (2 M(1, k'))",
+    "nist-codata-2022-z0": "the characteristic impedance of vacuum, 376.730313412 ohm",
+}
+
 TOL = 0.01
 
 

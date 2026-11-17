@@ -64,6 +64,7 @@
       "kind": "application note",
       "maker": "Texas Instruments",
       "number": "SPRAAR7J",
+      "names": ["SPRAAR7J"],
       "title": "High-Speed Interface Layout Guidelines",
       "revision": "J, November 2018, revised February 2023",
       "url": "https://www.ti.com/lit/an/spraar7j/spraar7j.pdf",
@@ -467,6 +468,74 @@
           "for": "oshpark-2layer: legend text stroke 3 mil"
         }
       ]
+    },
+    {
+      "id": "nist-codata-2022-z0",
+      "kind": "web page",
+      "issuer": "National Institute of Standards and Technology",
+      "title": "CODATA Value: characteristic impedance of vacuum",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/Value?z0",
+      "read": "2026-11-17",
+      "values": [
+        {
+          "says": "characteristic impedance of vacuum Numerical value 376.730 313 412",
+          "for": "rules/interfaces/constants.json z_f0_ohm: 376.730313412 ohm"
+        },
+        {"says": "Source: 2022 CODATA recommended values", "for": "rules/interfaces/constants.json z_f0_ohm"}
+      ]
+    },
+    {
+      "id": "nist-codata-2022-c",
+      "kind": "web page",
+      "issuer": "National Institute of Standards and Technology",
+      "title": "CODATA Value: speed of light in vacuum",
+      "url": "https://physics.nist.gov/cgi-bin/cuu/Value?c",
+      "read": "2026-11-17",
+      "values": [
+        {
+          "says": "speed of light in vacuum Numerical value 299 792 458",
+          "for": "rules/interfaces/constants.json c0_m_per_s: 299792458 m/s"
+        },
+        {"says": "Source: 2022 CODATA recommended values", "for": "rules/interfaces/constants.json c0_m_per_s"}
+      ]
+    },
+    {
+      "id": "nist-dlmf-19.8",
+      "kind": "web page",
+      "issuer": "National Institute of Standards and Technology",
+      "title": "NIST Digital Library of Mathematical Functions, section 19.8, Quadratic Transformations",
+      "url": "https://dlmf.nist.gov/19.8",
+      "read": "2026-11-17",
+      "values": [
+        {
+          "says": "The first of these shows that 19.8.5 K",
+          "for": "tests/test_xsection.py: K(k) = pi / (2 M(1, k')), M the arithmetic-geometric mean"
+        }
+      ]
+    },
+    {
+      "id": "qucs-technical-papers",
+      "kind": "report",
+      "issuer": "the Qucs project (S. Jahn, M. Margraf, V. Habchi, R. Jacob)",
+      "number": "Qucs Technical Papers",
+      "names": ["Qucs Technical Papers"],
+      "title": "Qucs, Technical Papers",
+      "revision": "the PDF of 2014-10-18",
+      "url": "https://qucs.sourceforge.net/docs/technical/technical.pdf",
+      "sha256": "4136c97cb3150fc03bc03cc080dc6767181df0b59bbe19b1215c5c2d461cc300",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "matthaei-ad0402852",
+      "kind": "report",
+      "issuer": "Stanford Research Institute (G. L. Matthaei, L. Young, E. M. T. Jones)",
+      "number": "DTIC AD0402852",
+      "names": ["AD0402852"],
+      "title": "Design of Microwave Filters, Impedance-Matching Networks, and Coupling Structures, Volume I",
+      "revision": "January 1963",
+      "url": "https://archive.org/download/DTIC_AD0402852/DTIC_AD0402852.pdf",
+      "sha256": "b6b327558e4bc9dbd58b96832e25ba76ed9fb7529315e35fa0b62781032b3a2c",
+      "read": "2026-11-17"
     }
   ]
 }
