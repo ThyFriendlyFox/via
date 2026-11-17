@@ -662,10 +662,7 @@
 			)
 			(embedded_fonts no)
 		)
-		(symbol "Device:Crystal"
-			(pin_numbers
-				(hide yes)
-			)
+		(symbol "Device:Crystal_GND23"
 			(pin_names
 				(offset 1.016)
 				(hide yes)
@@ -674,19 +671,21 @@
 			(in_bom yes)
 			(on_board yes)
 			(property "Reference" "Y"
-				(at 0 3.81 0)
+				(at 3.175 5.08 0)
 				(effects
 					(font
 						(size 1.27 1.27)
 					)
+					(justify left)
 				)
 			)
-			(property "Value" "Crystal"
-				(at 0 -3.81 0)
+			(property "Value" "Crystal_GND23"
+				(at 3.175 3.175 0)
 				(effects
 					(font
 						(size 1.27 1.27)
 					)
+					(justify left)
 				)
 			)
 			(property "Footprint" ""
@@ -707,8 +706,26 @@
 					)
 				)
 			)
-			(property "Description" "Two pin crystal"
+			(property "Description" "Four pin crystal, GND on pins 2 and 3"
 				(at 0 0 0)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property private "KLC_S3.3" "The rectangle is not a symbol body but a graphical element"
+				(at 0 -12.7 0)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property private "KLC_S4.1" "Some pins are on 50mil grid to make the symbol small"
+				(at 0 -15.24 0)
 				(hide yes)
 				(effects
 					(font
@@ -734,11 +751,13 @@
 					)
 				)
 			)
-			(symbol "Crystal_0_1"
+			(symbol "Crystal_GND23_0_1"
 				(polyline
 					(pts
-						(xy -2.54 0)
-						(xy -1.905 0)
+						(xy -2.54 2.286)
+						(xy -2.54 3.556)
+						(xy 2.54 3.556)
+						(xy 2.54 2.286)
 					)
 					(stroke
 						(width 0)
@@ -750,8 +769,36 @@
 				)
 				(polyline
 					(pts
-						(xy -1.905 -1.27)
-						(xy -1.905 1.27)
+						(xy -2.54 0)
+						(xy -2.032 0)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy -2.54 -2.286)
+						(xy -2.54 -3.556)
+						(xy 2.54 -3.556)
+						(xy 2.54 -2.286)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy -2.032 -1.27)
+						(xy -2.032 1.27)
 					)
 					(stroke
 						(width 0.508)
@@ -774,21 +821,8 @@
 				)
 				(polyline
 					(pts
-						(xy 1.905 -1.27)
-						(xy 1.905 1.27)
-					)
-					(stroke
-						(width 0.508)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts
-						(xy 2.54 0)
-						(xy 1.905 0)
+						(xy 0 -3.81)
+						(xy 0 -3.556)
 					)
 					(stroke
 						(width 0)
@@ -798,8 +832,34 @@
 						(type none)
 					)
 				)
+				(polyline
+					(pts
+						(xy 2.032 0)
+						(xy 2.54 0)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 2.032 -1.27)
+						(xy 2.032 1.27)
+					)
+					(stroke
+						(width 0.508)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
 			)
-			(symbol "Crystal_1_1"
+			(symbol "Crystal_GND23_1_1"
 				(pin passive line
 					(at -3.81 0 0)
 					(length 1.27)
@@ -819,9 +879,9 @@
 					)
 				)
 				(pin passive line
-					(at 3.81 0 180)
+					(at 0 -5.08 90)
 					(length 1.27)
-					(name "2"
+					(name "G"
 						(effects
 							(font
 								(size 1.27 1.27)
@@ -829,6 +889,43 @@
 						)
 					)
 					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 0 -5.08 90)
+					(length 1.27)
+					(hide yes)
+					(name "G"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 3.81 0 180)
+					(length 1.27)
+					(name "4"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "4"
 						(effects
 							(font
 								(size 1.27 1.27)
@@ -2767,7 +2864,7 @@
 		)
 	)
 	(symbol
-		(lib_id "Device:Crystal")
+		(lib_id "Device:Crystal_GND23")
 		(at 152.4 88.9 0)
 		(unit 1)
 		(exclude_from_sim no)
@@ -2826,6 +2923,12 @@
 		(pin "2"
 			(uuid "a20c840e-0a6e-54ed-affd-b62a623c1c3d")
 		)
+		(pin "3"
+			(uuid "6d60e3b0-a592-5d13-83d5-98c976eefbd9")
+		)
+		(pin "4"
+			(uuid "5566cead-4a49-5fbd-945a-b5680192e168")
+		)
 		(instances
 			(project "node"
 				(path "/7ab429f1-903c-5e34-810c-cb76c39466eb"
@@ -2856,6 +2959,10 @@
 		)
 		(uuid "04d071bd-f718-5e11-8dd0-4f36169e4beb")
 	)
+	(no_connect
+		(at 152.4 93.98)
+		(uuid "85e3cba4-4b43-5adb-a689-cf0a64c8298e")
+	)
 	(wire
 		(pts
 			(xy 156.21 88.9)
@@ -2865,7 +2972,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "662073e6-42b4-5ea5-87fe-2718696882e8")
+		(uuid "37be0a89-e339-5f8b-9dcc-8935c3c30e02")
 	)
 	(label "U1_XOUT"
 		(at 158.75 88.9 0)
@@ -2875,7 +2982,7 @@
 			)
 			(justify left bottom)
 		)
-		(uuid "016e1f43-445b-5fd2-b462-c1ee655990fa")
+		(uuid "2c216e9f-196e-5636-b806-b5d26eeda1b4")
 	)
 	(symbol
 		(lib_id "Device:C")
