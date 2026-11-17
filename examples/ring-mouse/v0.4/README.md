@@ -1,6 +1,6 @@
 # Signet — prototype v0.4
 
-> The current version of the [Signet prototype series](../README.md), started as a copy of [`../v0.3/`](../v0.3/). The earlier versions are the sibling folders, [`../v0.1/`](../v0.1/) to [`../v0.3/`](../v0.3/).
+> Archived: v0.4 of the [Signet prototype series](../README.md), as of commit `6b56b1f`. The design and KiCad files are the ones that commit holds. The next version, [`../v0.5/`](../v0.5/), makes the ring 8 sections, smoother, and draws the cell tile it left out.
 
 A mouse you wear as a ring. Six small boards sit on the faces of a hexagonal ring round the index
 finger, each soldered to the next along its edge. Turn the ring's crown toward the thumb: the ring

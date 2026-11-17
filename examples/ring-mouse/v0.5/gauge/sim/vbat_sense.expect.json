@@ -1,0 +1,15 @@
+{
+  "ratio": {
+    "min": 0.495,
+    "max": 0.505,
+    "source": "the radio doubles the reading to get the cell, so the ratio sets the gauge: 1 % of 4.2 V is 42 mV, a twentieth of the cell's 0.9 V useful range"
+  },
+  "drain": {
+    "max": 2.2e-6,
+    "source": "the standby budget: the gauge may take no more than twice the regulator's 1 uA (TPS7A05 SBVS254D, IQ typical) from the cell"
+  },
+  "vsense": {
+    "max": 2.2,
+    "source": "the ADC's input stays below its reference, +3V3, with a margin of 1.1 V while the regulator holds it"
+  }
+}
