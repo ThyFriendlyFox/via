@@ -1,0 +1,70 @@
+{
+  "block": "buck",
+  "note": {
+    "document": {
+      "issuer": "Texas Instruments",
+      "number": "SLVA477C",
+      "title": "Basic Calculation of a Buck Converter's Power Stage",
+      "revision": "December 2011, revised September 2026",
+      "url": "https://www.ti.com/lit/an/slva477c/slva477c.pdf",
+      "sha256": "7997d9374f72a961c337c455b06b3c227d6333732bb13f078783097057f6a969",
+      "read": "2026-11-17"
+    },
+    "short": "TI SLVA477C",
+    "equations": {
+      "1": {"page": 2, "says": "D = VOUT / (VIN(max) x eta), the duty cycle at the greatest input"},
+      "2": {"page": 2, "says": "dIL = (VIN(max) - VOUT) x D / (fS x L), fS the least switching frequency"},
+      "3": {"page": 3, "says": "IMAXOUT = ILIM(min) - dIL / 2, the most the IC can give"},
+      "4": {"page": 3, "says": "ISW(max) = dIL / 2 + IOUT(max), the peak the inductor and the switch carry"},
+      "11": {"page": 5, "says": "R1 = R2 x (VOUT / VFB - 1)"}
+    },
+    "efficiency": {
+      "value": 0.9,
+      "where": "section 2, page 2: an estimated 90 %, when the datasheet gives no efficiency"
+    },
+    "inductor_rule": "section 3, page 3: the inductor must have a higher current rating than the current of equation 4",
+    "inductor_choice": "section 3, page 3: when the datasheet gives a range of inductors, choose 1 from it",
+    "output_choice": "section 7, page 5: an internally compensated converter takes the inductor and capacitor values its datasheet recommends",
+    "not_used": "equations 5 and 6 (an inductor when the datasheet names none), 7 and 8 (a rectifier diode: the ICs below are synchronous, section 1), 9 and 10 (R2 from the feedback bias current, which the datasheets below do not state), 12 to 14 (an externally compensated converter's output capacitor)"
+  },
+  "ics": [
+    {
+      "mpn": "TLV62569DBVR",
+      "maker": "Texas Instruments",
+      "value": "TLV62569",
+      "symbol": "Regulator_Switching:TLV62569DBV",
+      "footprint": "Package_TO_SOT_SMD:SOT-23-5",
+      "pins": {"EN": "1", "GND": "2", "SW": "3", "VIN": "4", "FB": "5"},
+      "source": {
+        "document": "TLV62569 datasheet, SLVSDG1C",
+        "revision": "December 2016, revised October 2017",
+        "url": "https://www.ti.com/lit/ds/symlink/tlv62569.pdf",
+        "sha256": "1ba6f55dfe678d06d563acd6632f1f950a497d812270806021097b55cd81d3c4",
+        "read": "2026-11-17"
+      },
+      "amps_max": {"value": 2.0, "where": "section 6.3, Recommended Operating Conditions, IOUT, page 4"},
+      "ilim_min": {
+        "value": 3.0,
+        "where": "section 6.5, Electrical Characteristics, ILIM of the DBV package, the column MIN, page 5"
+      },
+      "henries": {
+        "value": 2.2e-6,
+        "where": "section 8.2.2.3, table 4, the cells marked ++ and its note 3 (the standard value), page 9"
+      },
+      "r2": {"value": 100000, "where": "section 8.2, figure 5, R2, page 8"},
+      "r2_max": {"value": 200000, "where": "section 8.2.2.2, page 9: a maximum of 200 kohm for R2"},
+      "output_farads": {
+        "rows": [[0.6, 1.2, 44e-6], [1.2, 1.8, 22e-6], [1.8, null, 10e-6]],
+        "where": "section 8.2.2.3, table 4, the cell marked ++ of each row of VOUT (2 x 22, 22 and 10 uF), page 9"
+      },
+      "kept_share": {
+        "value": 0.5,
+        "where": "section 8.2.2.3, table 4, note 2: the effective capacitance can vary by -50 %, page 9"
+      },
+      "input_farads": {
+        "value": 4.7e-6,
+        "where": "section 8.2.2.5, page 10: 4.7 uF of input capacitance is sufficient for most applications"
+      }
+    }
+  ]
+}
