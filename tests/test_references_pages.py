@@ -163,6 +163,75 @@ def test_the_index_refuses_a_web_page_entry_of_the_wrong_form(tmp_path, change, 
     assert out.splitlines() == [f"fail {index} documents[0] fab-x: {fault}"]
 
 
+def check_says(tmp_path: Path, says: str, html: str) -> tuple[int, list[str]]:
+    """`check` a saved page against 1 entry whose only value is `says`."""
+    index = tmp_path / "index.json"
+    entry = page("fab-x", "https://fab.example/x") | {"values": [{"says": says, "for": RULE}]}
+    index.write_text(json.dumps({"documents": [entry]}), encoding="utf-8")
+    saved = tmp_path / "saved.html"
+    saved.write_text(html, encoding="utf-8")
+    code, out = run("check", saved, "--id", "fab-x", "--index", index)
+    return code, out.splitlines()
+
+
+SPLIT = "Min. track width and spacing (1 oz) ... 1- and 2-layer: 0.10 / 0.10 mm (4 / 4 mil)"
+
+
+@pytest.mark.parametrize(
+    ("says", "html", "verdict"),
+    [
+        # The 1 oz row grew to 0.127 mm; the old 0.10 mm stands only in a later row. Before the fix the
+        # second part was found anywhere after the first: same.
+        (
+            SPLIT,
+            "<table><tr><td>Min. track width and spacing (1 oz)</td><td>1- and 2-layer: 0.127 / 0.127 mm "
+            "(5 / 5 mil)</td></tr><tr><td>Min. track width and spacing (inner layer, 0.5 oz)</td><td>1- and "
+            "2-layer: 0.10 / 0.10 mm (4 / 4 mil)</td></tr></table>",
+            "moved",
+        ),
+        (
+            SPLIT,
+            "<table><tr><td>Min. track width and spacing (1 oz)</td><td>1- and 2-layer: 0.10 / 0.10 mm "
+            "(4 / 4 mil)</td></tr></table>",
+            "same",
+        ),
+        # The parts out of order. Before the fix with `text.find(part)` from 0 this read same.
+        ("Minimum trace ... 4 mil (0.1016 mm)", "<p>4 mil (0.1016 mm)</p><p>Minimum trace</p>", "moved"),
+        # Gaps in the page's text: "Minimum trace" + " " + x * k + " " + "4 mil": k + 2 characters, 200 at
+        # most (GAP_REACH). k = 198 gives 200, k = 199 gives 201.
+        (
+            "Minimum trace ... 4 mil (0.1016 mm)",
+            f"<p>Minimum trace</p><p>{'x' * 198}</p><p>4 mil (0.1016 mm)</p>",
+            "same",
+        ),
+        (
+            "Minimum trace ... 4 mil (0.1016 mm)",
+            f"<p>Minimum trace</p><p>{'x' * 199}</p><p>4 mil (0.1016 mm)</p>",
+            "moved",
+        ),
+        # A value that ends in a digit stands only where the page's number ends: 0.2 is not 0.25.
+        ("Minimum drill 0.2", "<p>Minimum drill 0.25 mm</p>", "moved"),
+        ("Minimum drill 0.2", "<p>Minimum drill 0.2 mm</p>", "same"),
+        # ... and one that starts with a digit only where the page's number starts: 4 mil is not 14 mil.
+        ("4 mil minimum trace", "<p>14 mil minimum trace</p>", "moved"),
+    ],
+)
+def test_a_value_stands_only_in_order_near_and_at_the_numbers_bounds(tmp_path, says, html, verdict):
+    code, lines = check_says(tmp_path, says, html)
+    assert (code, lines[0].split(" ")[0]) == ((1, "moved") if verdict == "moved" else (0, "same")), lines
+
+
+@pytest.mark.parametrize("says", ["...", " ... ", "... ..."])
+def test_the_index_refuses_a_value_with_no_text_but_dots(tmp_path, says):
+    """A value of dots alone stands on any page: before the fix a page that said only 'This page has
+    moved.' was the same page."""
+    code, lines = check_says(tmp_path, says, "<p>This page has moved.</p>")
+    assert code == 1
+    assert lines == [
+        f'fail {tmp_path / "index.json"} documents[0] fab-x: values[0]: "says" has no text but " ... "'
+    ]
+
+
 def test_the_index_holds_each_fab_page_and_samsungs_page_as_web_pages():
     """The 2 pages rules/sierra-circuits-web.kicad_dru names, the 3 of the other fab rule files, and
     Samsung's part page, whose bytes differ on every fetch."""

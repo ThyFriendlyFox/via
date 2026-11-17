@@ -1,0 +1,6 @@
+{
+  "rules": [
+    {"id": "clearance", "min_mm": 0.13, "source": "IPC-2221B, table 6-1"},
+    {"id": "efficiency", "value": 0.9, "note": "SLVA477B, equation 1"}
+  ]
+}
