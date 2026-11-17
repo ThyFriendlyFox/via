@@ -21,6 +21,8 @@ behave in a known way.
 | `fail-ratings-decoupling` | `ratings` fails on 1 line, `needs.capacitor` | C1 is left out. The regulator's supply pin has no capacitor, and its datasheet asks for 4.7 uF. |
 | `fail-ratings-inductor` | `ratings` fails on 1 line, `inductor.current` | L1 is a 2.0 x 1.6 mm part that saturates at 1.26 A. At the least output the ripple is (5.25 - 3.199) x 3.199 / (5.25 x 0.9) / (1.35e6 x 1.76e-6) = 0.584 A; the 1.1 A load and half of it is 1.392 A. |
 | `fail-ratings-bias` | `ratings` fails on 1 line, `needs.capacitor` | C3 is left out. C2, 10 uF less 20 %, keeps 0.50 - 0.12 x 0.440 = 0.447 of its value at 3.440 V: 3.58 uF. The 2 bypass capacitors have no curve and give 0.11 uF each at the most: 3.80 uF, under the 5 uF the datasheet asks for. |
+| `pass-copper-strip` | `workcenter copper --strict` prints `COPPER HELD` | The board of `copper_strip.py`: J1 feeds 5 V along a 1.5 mm F.Cu track 44 mm to J2, and GND back on B.Cu; R1 (220R) hangs off the supply. `ratings.json` states 1 A at J2 and 0.024 A through R1; `copper.json` names each net's entry on J1 and the fixture's own limits: 50 mV, 50 A/mm2, 105 C. The run: +5V drops 14.64 mV, 1 A in 1.5 mm is 19.05 A/mm2, R1's 0.1267 W puts the board at 60.07 C. |
+| `fail-copper-neck` | `copper` fails on 1 line, `+5V current density` | The same board with the supply 0.3 mm wide for 4 mm in its middle: 1 A in 0.3 mm x 0.035 mm is 95.24 A/mm2, over the 50 the fixture allows, and 104.3 where the wide track's round end meets the neck. The drop (18.51 mV) and the heat (60.23 C) hold. |
 | `library` | No board: the facts of the ratings fixtures' parts | `library/facts/`, found by `workcenter ratings` as a project's own library is: in a folder above the project. The regulator, the 2 buffers, the resistors, the bypass capacitors and the 2 inductors are real parts, each entry read from its maker's datasheet with the URL, the SHA256 and the pages. The 10 uF capacitors and the headers are made up, and their entries say so. |
 
 Symbols and footprints are embedded in the files, so no library tables are
@@ -35,6 +37,10 @@ from it, and a test compares. To write them again, and no board with them:
 
 and copy the 2 files in. The boards are not routed and not built: `ratings`
 reads the schematic alone.
+
+The 2 copper fixtures are 1 design, `copper_strip.py`, with the neck planted in 1. Their tracks are
+drawn in the design, not routed; `workcenter design tests/boards/<fixture>/design.py` writes all 3
+KiCad files again, and a test compares them.
 
 `kicad-cli` writes a `<name>.kicad_prl` next to the project when it runs.
 It is a KiCad side file with no design content and is ignored by git.
