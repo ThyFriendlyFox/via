@@ -245,6 +245,12 @@ def own_pack(change):
     return write
 
 
+def accepts(why: str, day: str) -> dict:
+    """An entry of `accepted` for the regulator's load, by a decision of a day of 2026."""
+    by = f"the owner's decision of 2026-{day}"
+    return {"part": "U1", "rule": "output.current.linear", "why": why, "by": by}
+
+
 TLV = "../library/facts/ti-tlv62569.json"
 SET_BY_A_LIST = {
     "numbers": ["3"],
@@ -355,6 +361,20 @@ WRONG = {
     "a voltage across an inductor": (
         put("ratings.json", "parts", "L1", to={"volts": 99, "source": "x"}),
         "ratings.json: parts: L1: volts: L1 is of kind inductor: the command reads no voltage across one",
+    ),
+    "1 failure accepted 2 times": (
+        put(
+            "ratings.json",
+            "accepted",
+            to=[accepts("first reason", "11-17"), accepts("second reason", "11-18")],
+        ),
+        "ratings.json: accepted: entry 2: the part U1 and the rule output.current.linear "
+        "stand in entry 1 too",
+    ),
+    "a decision on a day the calendar lacks": (
+        put("ratings.json", "accepted", to=[accepts("a reason", "99-99")]),
+        "ratings.json: accepted: entry 1: by: `2026-99-99` is no date: "
+        "write `the owner's decision of YYYY-MM-DD`",
     ),
 }
 

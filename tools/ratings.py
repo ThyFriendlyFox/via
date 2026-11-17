@@ -817,10 +817,20 @@ def read_project(path: Path, net: Netlist) -> Project:
     for i, raw in enumerate(data.get("accepted", []), start=1):
         where = f"{name}: accepted: entry {i}"
         entry = _keys(where, raw, ("part", "rule", "why", "by"))
-        if not OWNER_RE.fullmatch(_text(f"{where}: by", entry["by"])):
+        by = _text(f"{where}: by", entry["by"])
+        if not OWNER_RE.fullmatch(by):
             raise Refusal(f"{where}: by: write `the owner's decision of YYYY-MM-DD`")
+        try:
+            datetime.date.fromisoformat(by[-10:])
+        except ValueError:
+            how = "write `the owner's decision of YYYY-MM-DD`"
+            raise Refusal(f"{where}: by: `{by[-10:]}` is no date: {how}") from None
         words = f"{_text(f'{where}: why', entry['why'])} ({entry['by']})"
-        accepted[(_text(f"{where}: part", entry["part"]), _text(f"{where}: rule", entry["rule"]))] = words
+        key = (_text(f"{where}: part", entry["part"]), _text(f"{where}: rule", entry["rule"]))
+        if key in accepted:  # the second entry would take the place of the first without a word
+            first = list(accepted).index(key) + 1
+            raise Refusal(f"{where}: the part {key[0]} and the rule {key[1]} stand in entry {first} too")
+        accepted[key] = words
     return Project(_text(f"{name}: pack", data["pack"]), ambient, nets, amps, accepted, volts)
 
 

@@ -103,7 +103,9 @@ parts, each entry read from its datasheet.
    owner's reason, as `"by": "the owner's decision of 2026-11-17"`; the
    part and the rule to name stand under the failure in
    `build/ratings/report.md`. The line then prints as `accepted`. An entry
-   whose failure is gone fails the run until it is taken out. Facts that
+   whose failure is gone fails the run until it is taken out. 2 entries
+   for 1 part and rule are refused, and so is a day the calendar does
+   not have. Facts that
    number the pins differently are no stress and cannot be accepted: the
    page names no rule under that failure.
 8. The last line is the verdict: `RATINGS HELD`, `RATINGS HELD, N NOT

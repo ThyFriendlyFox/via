@@ -2021,6 +2021,17 @@ STATED = {
             changed(STATED, "parts", "R1.1", "amps", to=1e-320),
             "ratings.json: parts: R1.1: amps: a number is 0, or from 1e-18 to 1e+15 either side of 0",
         ),
+        # the owner's decision has a day the calendar has, and 1 failure is accepted 1 time: a second
+        # entry for it would take the place of the first without a word
+        (
+            changed(STATED, "accepted", 0, "by", to="the owner's decision of 2026-99-99"),
+            "ratings.json: accepted: entry 1: by: `2026-99-99` is no date: "
+            "write `the owner's decision of YYYY-MM-DD`",
+        ),
+        (
+            {**STATED, "accepted": [STATED["accepted"][0], {**STATED["accepted"][0], "why": "another"}]},
+            "ratings.json: accepted: entry 2: the part C1 and the rule x stand in entry 1 too",
+        ),
     ],
 )
 def test_a_project_file_that_is_wrong_in_1_place_is_refused_with_the_place(tmp_path, data, message):

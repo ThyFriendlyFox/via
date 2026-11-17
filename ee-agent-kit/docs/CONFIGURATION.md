@@ -130,7 +130,7 @@ unset variable never causes a failure.
 | `nets` | object | none (required) | Each net a source off the board holds: `{"volts": [least, greatest], "source": "..."}` under the net's name, with or without its sheet's slash; 1 net named both ways is refused. `[0, 0]` is the reference. |
 | `ambient` | object | none | `{"max": C, "source": "..."}`: the highest air temperature. A limit that falls with temperature is judged there. |
 | `parts` | object | none | What the board cannot say of a part: `REF.PIN` with `amps` for the load behind a connector's pin, `REF` with `amps` for the current through a part (RMS for a resistor and a transistor, the average for a diode, the peak for an inductor), `REF` with `volts` for the greatest voltage across a capacitor or a resistor whose 2 nets move together; each with a `source`. A number the command would hold to nothing is refused once the part has facts: the `ratings` skill lists them. |
-| `accepted` | list | none | Failures the owner takes on: `{"part", "rule", "why", "by"}`, `by` as `the owner's decision of YYYY-MM-DD`. An entry nothing fails under fails the run. |
+| `accepted` | list | none | Failures the owner takes on: `{"part", "rule", "why", "by"}`, `by` as `the owner's decision of YYYY-MM-DD`, a day the calendar has. 1 entry for a part and rule: a second one is refused. An entry nothing fails under fails the run. |
 
 A part's facts are 1 entry of a file in `library/facts/`, in the project's
 folder or a folder above it; a rule pack is 1 file of `rules/ratings/`. The
