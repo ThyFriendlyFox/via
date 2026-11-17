@@ -2579,8 +2579,12 @@ def read_parts(path: Path) -> list[PartRow]:
         missing = [c for c in PARTS_COLUMNS if c not in (reader.fieldnames or [])]
         if missing:
             raise ValueError(f"{path}: no column {', '.join(missing)}")
-        for n, r in enumerate(reader, start=2):
-            where = f"{path.name}:{n}"
+        for r in reader:
+            where = f"{path.name}:{reader.line_num}"
+            # DictReader gives a short row's missing fields None and a long row's extra ones the key None
+            if None in r or None in r.values():
+                count = len(r) - (None in r) + len(r.get(None) or []) - sum(v is None for v in r.values())
+                raise ValueError(f"{where}: {count} fields, and the header names {len(reader.fieldnames)}")
             try:
                 stock = r.get("Stock", "").replace(",", "").strip()
                 rows.append(
