@@ -1,0 +1,48 @@
+{
+  "block": "i2c",
+  "note": {
+    "document": {
+      "issuer": "Texas Instruments",
+      "number": "SLVA689A",
+      "title": "I2C Bus Pullup Resistor Calculation",
+      "revision": "February 2015, revised October 2026",
+      "url": "https://www.ti.com/lit/an/slva689/slva689.pdf",
+      "sha256": "84da7d3745364e881a72914ca609e93132c356dcc0a0461de483fa27a8669e7b",
+      "read": "2026-11-17"
+    },
+    "short": "TI SLVA689A",
+    "equations": {
+      "1": {"page": 3, "says": "RP(min) = (VCC - VOL(max)) / IOL"},
+      "5": {"page": 3, "says": "tr = t2 - t1 = 0.8473 x Rp x Cb, from VIL = 0.3 x VCC (equation 4) to VIH = 0.7 x VCC (equation 3)"},
+      "6": {"page": 3, "says": "Rp(max) = tr / (0.8473 x Cb)"}
+    },
+    "rise_factor": {"value": 0.8473, "where": "section 2, equations 5 and 6, page 3"},
+    "rise_from": {"value": 0.3, "where": "section 2, equation 4, page 3: VIL = 0.3 x VCC"},
+    "rise_to": {"value": 0.7, "where": "section 2, equation 3, page 3: VIH = 0.7 x VCC"},
+    "choice": "section 3, page 4: any resistor between RP(min) and RP(max); a smaller one is faster, a larger one draws less power",
+    "speeds": {
+      "standard": {"rise_max": 1e-6, "farads_max": 400e-12},
+      "fast": {"rise_max": 300e-9, "farads_max": 400e-12},
+      "fast-plus": {"rise_max": 120e-9, "farads_max": 550e-12}
+    },
+    "speeds_where": "section 2, table 2-1, Parametrics from I2C specifications, the rows tr and Cb, page 3",
+    "low": [
+      {
+        "above_volts": 2,
+        "volts": 0.4,
+        "amps": 0.003,
+        "speeds": ["standard", "fast", "fast-plus"],
+        "where": "section 2, table 2-1, the row VOL at 3 mA current sink, VCC > 2 V: 0.4 V in each mode, page 3"
+      },
+      {
+        "above_volts": null,
+        "share": 0.2,
+        "amps": 0.002,
+        "speeds": ["fast", "fast-plus"],
+        "where": "section 2, table 2-1, the row VOL at 2 mA current sink, VCC <= 2 V: 0.2 x VCC in fast mode and fast mode plus, none in standard mode, page 3"
+      }
+    ],
+    "example": "section 4, equations 7 and 8, page 5: fast mode, Cb = 200 pF, VCC = 3.3 V gives RP(max) 1.77 kohm and RP(min) 966.667 ohm",
+    "not_used": "Figures 2-1 and 2-2, page 4, plot equations 1 and 6. NXP's I2C-bus specification UM10204, which table 2-1 is taken from, could not be had: www.nxp.com answered the workcenter's client name with a page that is not available on 2026-11-17. The 20 mA a fast mode plus device sinks in UM10204 is not in this note, so the block holds fast mode plus to the 3 mA of table 2-1"
+  }
+}

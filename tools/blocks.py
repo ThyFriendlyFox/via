@@ -638,3 +638,7 @@ def buck_deck(  # noqa: PLR0913
         "sim/buck.expect.json": json.dumps(expect, indent=2) + "\n",
         "sim/corners.json": json.dumps(corners, indent=2) + "\n",
     }
+
+
+# The other blocks stand in their own modules, which import this one: each is joined here, at the end.
+from blocks_i2c import i2c  # noqa: E402, F401
