@@ -180,6 +180,10 @@ Traps, each met on the fixtures:
   and ran with 0 energy in the box. `mesh_lines` drops a line closer than
   half a cell across the narrowest track, and the run counts that line as a
   fault.
+- That merge first kept a corner's line at 109.245011 and dropped 109.25,
+  where a port stood: openEMS dropped the excitation sheet and ran 200000
+  steps with 0 energy. A port's bounds and each layer's height are kept
+  lines, and the run reads the log every 2 s and stops at a stated fault.
 - A run that reaches `NumberOfTimesteps` before its end criterion prints
   a warning and exits 0. The run counts it as a fault.
 
