@@ -1,0 +1,140 @@
+{
+  "kind": "vaping-device-lithium-cell",
+  "title": "A vaping device with a rechargeable lithium-ion cell, a digital controller and a USB port, sold in the United States",
+  "documents": {
+    "47-cfr-15-b": {
+      "issuer": "US Federal Communications Commission, in the eCFR",
+      "number": "47 CFR Part 15, Subpart B",
+      "title": "Radio frequency devices: unintentional radiators",
+      "revision": "eCFR as of 2026-11-01",
+      "url": "https://www.ecfr.gov/api/versioner/v1/full/2026-11-01/title-47.xml?part=15&subpart=B",
+      "sha256": "8436af8347ca1068d5da6a86cdb57698a42fccc2f23aab19f23acada7ce4b991",
+      "read": "2026-11-17",
+      "second_reader": "no"
+    },
+    "49-cfr-173-185": {
+      "issuer": "US Pipeline and Hazardous Materials Safety Administration, in the eCFR",
+      "number": "49 CFR 173.185",
+      "title": "Lithium cells and batteries",
+      "revision": "eCFR as of 2026-11-01",
+      "url": "https://www.ecfr.gov/api/versioner/v1/full/2026-11-01/title-49.xml?part=173&section=173.185",
+      "sha256": "dfa3ff595d24fdcc3af7a0bd9c3e1513d46d7122d048e3ee807e0e39735c84d3",
+      "read": "2026-11-17",
+      "second_reader": "no"
+    },
+    "ti-slva680a": {
+      "issuer": "Texas Instruments",
+      "number": "SLVA680A",
+      "title": "ESD Protection Layout Guide",
+      "revision": "Rev. A, revised April 2022",
+      "url": "https://www.ti.com/lit/an/slva680/slva680.pdf",
+      "sha256": "414236c18903e2489c6564c36718ed3743be9c595f4543098f167259b5ba8635",
+      "read": "2026-11-17",
+      "second_reader": "no"
+    },
+    "ti-szza009": {
+      "issuer": "Texas Instruments",
+      "number": "SZZA009",
+      "title": "PCB Design Guidelines For Reduced EMI",
+      "revision": "November 1999",
+      "url": "https://www.ti.com/lit/an/szza009/szza009.pdf",
+      "sha256": "317f4cb67ff85ae16c769592cabc0128e69f1eaff6a98747ef77be217564e6d2",
+      "read": "2026-11-17",
+      "second_reader": "no"
+    }
+  },
+  "requirements": [
+    {
+      "id": "fcc-authorization",
+      "document": "47-cfr-15-b",
+      "clause": "15.101(a), table 1 to paragraph (a)",
+      "says": "An unintentional radiator is authorized before it is marketed; a Class B digital device by Supplier's Declaration of Conformity or certification.",
+      "held_by": "test"
+    },
+    {
+      "id": "fcc-radiated",
+      "document": "47-cfr-15-b",
+      "clause": "15.109(a)",
+      "says": "A Class B digital device keeps its radiated emissions within the limits of the section.",
+      "held_by": "test",
+      "helped_by": ["ti-szza009-emi"]
+    },
+    {
+      "id": "fcc-conducted",
+      "document": "47-cfr-15-b",
+      "clause": "15.107(a) and (d)",
+      "says": "A device that charges from a line through another device is tested to the conducted limits; one that runs on its battery alone is not.",
+      "held_by": "test"
+    },
+    {
+      "id": "fcc-user-statement",
+      "document": "47-cfr-15-b",
+      "clause": "15.105(b)",
+      "says": "The instructions of a Class B digital device carry the statement the paragraph gives, in a prominent place.",
+      "held_by": "test"
+    },
+    {
+      "id": "un38.3-type",
+      "document": "49-cfr-173-185",
+      "clause": "173.185(a)(1)",
+      "says": "The cell is of a type proven to meet sub-section 38.3 of the UN Manual of Tests and Criteria.",
+      "held_by": "test"
+    },
+    {
+      "id": "un38.3-summary",
+      "document": "49-cfr-173-185",
+      "clause": "173.185(a)(3)",
+      "says": "The maker and each distributor of the cell make its test summary available, with the elements the paragraph lists.",
+      "held_by": "test"
+    },
+    {
+      "id": "external-short",
+      "document": "49-cfr-173-185",
+      "clause": "173.185(a)(4)(ii)",
+      "says": "The cell or battery is equipped with a means of preventing external short circuits.",
+      "held_by": "test"
+    },
+    {
+      "id": "accidental-operation",
+      "document": "49-cfr-173-185",
+      "clause": "173.185(b)(4)(ii)",
+      "says": "Equipment that contains the cell is packed so as to prevent accidental operation during transport.",
+      "held_by": "test"
+    },
+    {
+      "id": "esd-at-connector",
+      "document": "ti-slva680a",
+      "clause": "section 1, figure 1-2, page 2; section 2.1, page 4; section 2.3, page 6",
+      "says": "Each line of a connector that leaves the device has a TVS, the TVS nearer the connector than the part it protects, and no via between the connector and the TVS.",
+      "held_by": "gate",
+      "pack": "ti-slva680a-esd"
+    },
+    {
+      "id": "power-trace-ratio",
+      "document": "ti-szza009",
+      "clause": "section 2.1.1, page 4; section 2.2.4, page 10",
+      "says": "On a two-layer board no power or ground trace is longer than 3 times its width.",
+      "held_by": "gate",
+      "pack": "ti-szza009-emi"
+    }
+  ],
+  "laboratory": [
+    {"standard": "UL 8139", "for": "the electrical, heating, battery and charging systems of a vaping device"},
+    {"standard": "IEC 62133-2", "for": "the safety of a portable lithium cell"},
+    {"standard": "ANSI C63.4-2014", "for": "the measurement of an unintentional radiator's emissions, as 47 CFR 15.31(a)(4) names it (eCFR as of 2026-11-01, read 2026-11-17)"},
+    {"standard": "IEC 61000-4-2", "for": "the ESD immunity test"},
+    {"standard": "UN Manual of Tests and Criteria, sub-section 38.3", "for": "the cell's transport tests, done by the cell's maker"}
+  ],
+  "not_had": [
+    {
+      "document": "Directive 2014/40/EU, Article 20 (electronic cigarettes, EU market)",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32014L0040",
+      "why": "eur-lex.europa.eu answered HTTP 202 with no body to the client ee-workcenter/1.0 on 2026-11-17"
+    },
+    {
+      "document": "Directive 2014/30/EU, Annex I (electromagnetic compatibility, EU market)",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32014L0030",
+      "why": "eur-lex.europa.eu answered HTTP 202 with no body to the client ee-workcenter/1.0 on 2026-11-17"
+    }
+  ]
+}
