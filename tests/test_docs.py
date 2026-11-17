@@ -79,11 +79,26 @@ def written_commands(text: str) -> list[tuple[str, set[str]]]:
     found = []
     for span in spans:
         for part in re.split(r"\bworkcenter (?=[a-z])", " ".join(span.split()))[1:]:
+            part = re.split(r" (?:&&|\|\||\||;|>|2>|>>) ", part)[0]
             names = part.split()[0]
             found += [
                 (name, set(re.findall(r"(?<![\w-])--[a-z][a-z0-9-]*", part))) for name in names.split("|")
             ]
     return found
+
+
+def test_a_command_written_ends_where_the_shell_line_goes_on():
+    """The `now` skill chains `workcenter now` with `>` and `&& gh issue edit N --body-file ...`: the
+    flags after a shell operator are gh's, not the workcenter command's."""
+    span = (
+        "`mkdir -p build && workcenter now . --item 7 > build/now.md"
+        " && gh issue edit N --body-file build/now.md`"
+    )
+    assert written_commands(span) == [("now", {"--item"})]
+    assert written_commands("`workcenter gates|sim <project> --json`") == [
+        ("gates", {"--json"}),
+        ("sim", {"--json"}),
+    ]
 
 
 def as_document(path: Path) -> str:
