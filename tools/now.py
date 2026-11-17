@@ -1,6 +1,7 @@
 """`workcenter now`: the card of 1 piece of work in progress, for a maintainer to follow.
 
-A card has 8 sections and no others (`SECTIONS`): the work, the branch and its last commit, the state,
+A card has 8 sections and no others (`SECTIONS`): the work, the branch and its last commit, the status
+line `**Status:** <word>` in the project board's own 3 words (`STATES`, the words tools/board.py reads),
 what is being done now, the last health-gate verdict on the branch, what it is blocked on, what is left,
 and when the card was written. The command reads the branch, the commit and a roadmap item's title from
 the tree, and the gate's verdict from `build/verify.json`, which `verify/verify.sh` leaves on exit
@@ -24,11 +25,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-SECTIONS = ("Work", "Branch", "State", "Doing now", "Health gate", "Blocked on", "Left", "Updated")
-STATES = ("working", "blocked", "landed", "dropped")
+SECTIONS = ("Work", "Branch", "Status", "Doing now", "Health gate", "Blocked on", "Left", "Updated")
+# The board's columns, as tools/board.py names them (WORDS). A block is said under Blocked on and by a
+# label, not by the Status line.
+STATES = ("Todo", "In progress", "Done")
 MAX_DOING = 3
-# The labels of a card's issue, named in .claude/skills/now/SKILL.md; the stale run spares the open ones.
-LABELS = ("working", "blocked on owner", "landed")
+# The labels of a card's issue, named in .claude/skills/now/SKILL.md; the stale run spares the 2 that
+# wait for someone.
+LABELS = ("enhancement", "documentation", "help wanted", "question")
 RECORD = Path("build") / "verify.json"
 ROADMAPS = (Path("ee-agent-kit") / "ROADMAP.md", Path("ROADMAP.md"))
 STATUS_BRANCH = "status"
@@ -172,8 +176,6 @@ def build(args: argparse.Namespace) -> dict:
         raise Refused(f"--state {args.state!r} is not 1 of {', '.join(STATES)}")
     if len(doing) > MAX_DOING:
         raise Refused(f"{len(doing)} --doing lines; the card holds at most {MAX_DOING}")
-    if args.state == "blocked" and not (args.blocked or "").strip():
-        raise Refused("state blocked needs --blocked: who or what the work waits for")
     tree = Path(args.tree)
     branch = branch_of(tree)
     head = run_git(tree, "rev-parse", "HEAD")
@@ -207,7 +209,7 @@ def card(data: dict) -> str:
     bodies = (
         data["work"],
         f"`{data['branch']}` at `{data['short']}` {data['subject']}",
-        data["state"],
+        f"**Status:** {data['state']}",
         listed(data["doing"]),
         data["gate"]["line"] if data["gate"] else "none yet",
         data["blocked_on"],
@@ -298,8 +300,8 @@ def register(sub, cli) -> None:
     p = sub.add_parser(
         "now",
         help="print the card of 1 piece of work in progress: the work, its branch and last commit, its "
-        "state, what is done now, the last health gate, what it waits for and what is left; with --write, "
-        "put it in now/<branch>.md of a checkout of the status branch",
+        "**Status:** line for the project board, what is done now, the last health gate, what it waits "
+        "for and what is left; with --write, put it in now/<branch>.md of a checkout of the status branch",
     )
     p.add_argument("tree", nargs="?", default=".", help="the work tree (default .)")
     p.add_argument("--item", help="the roadmap item's number, or 1 line for work with none")
@@ -307,7 +309,7 @@ def register(sub, cli) -> None:
     p.add_argument(
         "--doing", action="append", help=f"what is done now, 1 line (repeatable, {MAX_DOING} at most)"
     )
-    p.add_argument("--blocked", help="who or what the work waits for (needed with --state blocked)")
+    p.add_argument("--blocked", help="who or what the work waits for; the Status line stays as it is")
     p.add_argument("--left", action="append", help="1 thing left to do (repeatable)")
     p.add_argument(
         "--write",

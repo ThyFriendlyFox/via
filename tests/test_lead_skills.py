@@ -106,6 +106,28 @@ def test_the_card_skill_keeps_the_owners_decision():
         assert name in text, name
 
 
+@pytest.mark.parametrize("name", SKILLS)
+def test_every_state_a_skill_gives_workcenter_now_is_1_it_takes(name, tmp_path):
+    """Each `--state` value a skill writes is run through `workcenter now` on a scratch tree: it prints
+    a card, with the board's word on its **Status:** line. The `now` skill writes all 3 words."""
+    text = (ROOT / ".claude" / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
+    # gh's own `--state open` is gh's; every other `--state` a skill writes is for `workcenter now`.
+    lines = [span for span in code_spans(text) if "--state" in span and not span.startswith("gh ")]
+    states = {a or b for line in lines for a, b in re.findall(r'--state (?:"([^"]+)"|([A-Za-z]+))', line)}
+    if name == "now":
+        assert states == {"Todo", "In progress", "Done"}
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    identity = ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false"]
+    for args in (["init", "-q", "-b", "wip/x"], ["commit", "-q", "--allow-empty", "-m", "Start"]):
+        subprocess.run(["git", "-C", str(tree), *identity, *args], check=True, capture_output=True)
+    for state in sorted(states):
+        argv = [sys.executable, str(CLI), "now", str(tree), "--item", "A card", "--state", state]
+        proc = subprocess.run(argv, capture_output=True, text=True)
+        assert proc.returncode == 0, (name, state, proc.stderr)
+        assert f"\n**Status:** {state}\n" in proc.stdout, (name, state)
+
+
 def test_the_pattern_finds_what_a_skill_names_and_passes_over_placeholders():
     """The reader of the test above, on a made-up skill: 2 paths, 1 command, 1 target; the path with
     `<branch>` and the one under no tracked folder are passed over."""

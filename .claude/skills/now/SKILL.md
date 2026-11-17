@@ -84,9 +84,10 @@ number and `<branch>` your branch.
 
 ### When a card is opened: when the work is decided, or before its first edit
 
-1. Print the card. Work that is decided but not begun is `Todo`; work you
-   begin now is `In progress`:
-   `workcenter now . --item <number or 1 line> --state "In progress" --doing "<what you start with>" --left "<step>" --left "<step>"`
+1. Print the card. Work you begin now is `In progress`:
+   `workcenter now . --item <number or 1 line> --state "In progress" --doing "<what you start with>" --left "<step>" --left "<step>"`.
+   Work that is decided but not begun is `Todo`:
+   `workcenter now . --item <number or 1 line> --state Todo --left "<step>"`.
    - It prints the card: go on to step 2.
    - `now: refused: <reason>`: fix what the line names and run it again.
      `--item is missing`, a state that is not 1 of the 3 words, more than 3

@@ -1,8 +1,8 @@
 ---
-name: Now
-about: The card of 1 piece of work in progress. Its body is rewritten with `workcenter now`, never commented on.
-title: "now: <branch>"
-labels: working
+name: Work card
+about: The card of 1 piece of work. Its body is rewritten with `workcenter now`, never commented on; the project board follows its Status line.
+title: "Work card: <the work in a few words>"
+labels: enhancement
 ---
 
 ## Work
@@ -11,8 +11,8 @@ labels: working
 ## Branch
 <`branch` at `short hash` subject of the last commit>
 
-## State
-<working, blocked, landed or dropped>
+## Status
+**Status:** <Todo, In progress or Done>
 
 ## Doing now
 <at most 3 lines>
