@@ -21,6 +21,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
@@ -32,8 +33,12 @@ KIT = CHIP / "pdk" / "sky130A"
 VERSION = "1.0.470-0-g6d4d117"
 
 needs_kit = pytest.mark.skipif(not KIT.is_dir(), reason="the sky130A process kit is not installed")
-needs_verilator = pytest.mark.skipif(shutil.which("verilator") is None, reason="verilator is not installed")
-needs_iverilog = pytest.mark.skipif(shutil.which("iverilog") is None, reason="iverilog is not installed")
+needs_verilator = engine(
+    pytest.mark.skipif(shutil.which("verilator") is None, reason="verilator is not installed")
+)
+needs_iverilog = engine(
+    pytest.mark.skipif(shutil.which("iverilog") is None, reason="iverilog is not installed")
+)
 
 GOOD = {
     "top": "reg8",
@@ -1210,6 +1215,7 @@ def test_the_board_gates_name_the_chip_command_for_a_chip_folder(tmp_path):
     assert missing.returncode == 1 and "no chip.json: a chip project is a folder with one" in missing.stderr
 
 
+@pytest.mark.engine
 def test_the_doctor_lists_the_chip_engines_only_where_the_chip_step_ran(tmp_path):
     bare = command("--json", "doctor", env={"WORKCENTER_CHIP_TOOLS": str(tmp_path / "none")})
     said = json.loads(bare.stdout)

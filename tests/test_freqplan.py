@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
@@ -23,7 +24,7 @@ BOARDS = ROOT / "tests" / "boards"
 sys.path.insert(0, str(ROOT / "tools"))
 import freqplan  # noqa: E402
 
-needs_ngspice = pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed")
+needs_ngspice = engine(pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed"))
 
 # Every way a deck writes a source: a node called `sin`, a SIN, a PULSE with and without a period, a
 # period written as a parameter, a PULSE without parentheses continued on a second line, and an

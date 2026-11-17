@@ -18,6 +18,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
@@ -26,7 +27,9 @@ PANEL = ROOT / "tests" / "samples" / "fab" / "panel.json"
 sys.path.insert(0, str(ROOT / "tools"))
 import fabfiles  # noqa: E402
 
-needs_kicad = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+needs_kicad = engine(
+    pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+)
 PARTS = {"C1": "top", "J1": "top", "R1": "top", "R2": "top"}
 
 

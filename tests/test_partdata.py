@@ -31,6 +31,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
@@ -40,11 +41,13 @@ sys.path.insert(0, str(ROOT / "tools"))
 import partdata  # noqa: E402
 import ratings  # noqa: E402
 
-needs_engines = pytest.mark.skipif(
-    shutil.which("ngspice") is None or shutil.which("kicad-cli") is None,
-    reason="ngspice or kicad-cli is not installed",
+needs_engines = engine(
+    pytest.mark.skipif(
+        shutil.which("ngspice") is None or shutil.which("kicad-cli") is None,
+        reason="ngspice or kicad-cli is not installed",
+    )
 )
-needs_ngspice = pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed")
+needs_ngspice = engine(pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed"))
 
 SHA = "e7cb912bac00275e53505aa5870ec3543af75375920ac7fbb31cf92ebea3c182"
 

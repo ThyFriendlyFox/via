@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
@@ -19,7 +20,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import fields  # noqa: E402
 
 CLI = ROOT / "tools" / "workcenter"
-needs_openems = pytest.mark.skipif(fields.OpenEMS.binary() is None, reason="not installed: openEMS")
+needs_openems = engine(pytest.mark.skipif(fields.OpenEMS.binary() is None, reason="not installed: openEMS"))
 
 
 def run(fixture: str, out: Path, *flags: str):

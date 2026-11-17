@@ -21,6 +21,7 @@ import zlib
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLES = ROOT / "tests" / "chips" / "samples" / "back"
@@ -36,7 +37,7 @@ OVER = "take a larger die, or cut logic. Do not raise the limit"
 FLOW = ("verilator", "iverilog", "vvp", "yosys", "openroad", "sta", "magic", "netgen", "klayout")
 ABSENT = [name for name in FLOW if chipflow.find_engine(load_cli(), name) is None]
 ABSENT += [] if KIT.is_dir() else ["the sky130A process kit"]
-needs_flow = pytest.mark.skipif(bool(ABSENT), reason=f"not installed: {', '.join(ABSENT)}")
+needs_flow = engine(pytest.mark.skipif(bool(ABSENT), reason=f"not installed: {', '.join(ABSENT)}"))
 
 
 def sample(name: str) -> str:

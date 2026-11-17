@@ -18,13 +18,16 @@ import types
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
 BOARDS = ROOT / "tests" / "boards"
 
-needs_kicad = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
-needs_ngspice = pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed")
+needs_kicad = engine(
+    pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+)
+needs_ngspice = engine(pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed"))
 
 
 def load_cli_module():
@@ -92,6 +95,7 @@ def test_exit_code_fail_beats_skip():
 # ------------------------------------------------------------ doctor
 
 
+@pytest.mark.engine
 def test_doctor_reports_every_engine():
     code, _ = run("doctor")
     proc = subprocess.run(
@@ -103,6 +107,7 @@ def test_doctor_reports_every_engine():
     assert code in (0, 1)
 
 
+@pytest.mark.engine
 def test_doctor_names_what_is_absent_and_an_absent_hook_degrades_nothing(tmp_path):
     """A reader ran `sudo ./install.sh`, then `workcenter doctor`, and read `degraded`: 2 hooks of 1
     agent host were absent, which the install does not write (2026-11-11). A hook's line still says

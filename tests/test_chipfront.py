@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLES = ROOT / "tests" / "chips" / "samples" / "front"
@@ -23,11 +24,17 @@ import chipflow  # noqa: E402
 import chipfront  # noqa: E402
 from test_chipflow import KIT, command, fill  # noqa: E402
 
-needs_verilator = pytest.mark.skipif(shutil.which("verilator") is None, reason="verilator is not installed")
-needs_iverilog = pytest.mark.skipif(shutil.which("iverilog") is None, reason="iverilog is not installed")
-needs_synth = pytest.mark.skipif(
-    shutil.which("yosys") is None or not KIT.is_dir(),
-    reason="yosys or the sky130A process kit is not installed",
+needs_verilator = engine(
+    pytest.mark.skipif(shutil.which("verilator") is None, reason="verilator is not installed")
+)
+needs_iverilog = engine(
+    pytest.mark.skipif(shutil.which("iverilog") is None, reason="iverilog is not installed")
+)
+needs_synth = engine(
+    pytest.mark.skipif(
+        shutil.which("yosys") is None or not KIT.is_dir(),
+        reason="yosys or the sky130A process kit is not installed",
+    )
 )
 NO_RESET = (
     "reset each, or name it in chip.json's answers.flops_without_reset with why and the bench that proves it"
