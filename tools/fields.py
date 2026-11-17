@@ -373,15 +373,18 @@ def _grade(length: float, s_a: float, s_b: float, max_cell: float, ratio: float)
     return left + [middle / n] * n + right[::-1]
 
 
-def mesh_lines(fixed: list[float], max_cell: float, ratio: float = 1.5) -> list[float]:
-    """Mesh lines through every fixed line, no cell larger than max_cell. In each gap between fixed
-    lines the cells grow by `ratio` from the smaller gap at each end (`_grade`). Where 2 runs of cells
-    meet, 2 neighbours can differ by up to 2 times. Every fixed line is a line of the mesh, to the
-    digit."""
+def mesh_lines(
+    fixed: list[float], max_cell: float, ratio: float = 1.5, min_cell: float = 1e-6
+) -> list[float]:
+    """Mesh lines through every fixed line, no cell larger than max_cell. A fixed line closer than
+    min_cell to the one before it is dropped: the solver's time step falls with the least cell. In
+    each gap between fixed lines the cells grow by `ratio` from the smaller gap at each end (`_grade`).
+    Where 2 runs of cells meet, 2 neighbours can differ by up to 2 times. Every fixed line kept is a
+    line of the mesh, to the digit."""
     lines = sorted(set(round(v, 9) for v in fixed))
     merged = [lines[0]]
     for v in lines[1:]:
-        if v - merged[-1] > 1e-6:
+        if v - merged[-1] >= min_cell - 1e-12:
             merged.append(v)
     gaps = [b - a for a, b in pairwise(merged)]
     local = [min([g for g in gaps[max(0, k - 1) : k + 1]] + [max_cell]) for k in range(len(merged))]
@@ -547,6 +550,11 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
     pml = int(s["absorbing_cells"])
     for lines, lo_, hi_ in ((mesh_x, box[0], box[3]), (mesh_y, box[1], box[4]), (mesh_z, box[2], box[5])):
         lines.extend([lo_ - pml * cell, hi_ + pml * cell])
+    # The least cell: half a cell across the narrowest track, and half a cell through the thinnest
+    # dielectric. Lines closer than that (the corners of a slanted track) are 1 line.
+    least_xy = min(t.width for t in tracks) / (2 * max(1, int(s["cells_across_width"])))
+    thin = [d["z"][1] - d["z"][0] for d in dielectrics] or [zhi - zlo or 1.0]
+    least_z = min(thin) / (2 * max(1, int(s["cells_per_dielectric"])))
     n_f = int(s["frequencies"])
     freqs = [f_lo + (f_hi - f_lo) * i / (n_f - 1) for i in range(n_f)]
     return {
@@ -571,9 +579,9 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
         "frequencies_hz": freqs,
         "max_cell_mm": cell,
         "mesh": {
-            "x": mesh_lines(mesh_x, cell),
-            "y": mesh_lines(mesh_y, cell),
-            "z": mesh_lines(mesh_z, cell),
+            "x": mesh_lines(mesh_x, cell, min_cell=least_xy),
+            "y": mesh_lines(mesh_y, cell, min_cell=least_xy),
+            "z": mesh_lines(mesh_z, cell, min_cell=least_z),
         },
         "settings": dict(s),
         "left_out": [
@@ -836,6 +844,8 @@ class OpenEMS:
         # A run that stops at its step limit has not let the energy leave the box: its spectra are cut.
         if "Max. number of timesteps was reached" in text:
             return False, "the energy in the box did not fall to the end criterion within the step limit"
+        if "Cutting to max number of timesteps" in text:
+            return False, "the excitation alone needs more steps than max_timesteps: a cell is too small"
         return proc.returncode == 0, text
 
     @staticmethod
