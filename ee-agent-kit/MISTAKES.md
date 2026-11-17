@@ -1099,3 +1099,9 @@ What happened: The first harvest's listing showed `fix/v017-mistakes`, an open p
 Cost: 16 minutes of a health gate, and the copy's commit. Nothing was pushed. Had the gate ended first, `main` would have held a second copy of the branch's work, placed differently in 2 logs, for its pull request to meet.
 Root cause: I took a branch for finished because its listing said so 20 minutes before, and its pull request for a record, not for a session at work. P35 step 2 said how to copy a branch's work and not when a copy is the wrong way.
 Process: P35
+
+## M182 — 2026-11-13 — 3 one-line changes in 3 files by a script, while the table that rates its hook was written
+What happened: The commit of the roadmap's rated table needed 1 changed line in each of `docs/CONFIGURATION.md`, `docs/ARCHITECTURE.md` and `README.md`. I wrote a Python replace into a file with a heredoc and ran it in the same command. It checked that each old text stood exactly once before it wrote, and the diff read back was right. P9 step 5 sends a change of a few lines through the Edit tool after a Read. M65, M111, M156, M165 and M168 are the same act. The table I was writing names the check that is missing: its row "The hooks refuse what the log repeats".
+Cost: 1 diff read back; no wrong text reached a commit.
+Root cause: 3 files felt like a job for a script, and the step's own example ended at "in 1 file or in 2". Nothing refuses the act: the hook stops a script only when it names a test file, and the row that would end that is rated and not built.
+Process: P9

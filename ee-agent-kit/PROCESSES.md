@@ -351,9 +351,10 @@ Edit tool.
    it edits: read the outline or the coordinates' own extent, and after
    the run count what it moved against what lay in the range (M77).
 5. A change of a few lines goes through the Edit tool after a Read: 1
-   place or 5, in 1 file or in 2. A script is for a change the Edit tool
-   cannot hold: a range, a table, the same change in 20 places (M156,
-   M165, M168).
+   place or 5, in 1 file or in 5. Count the lines that change, not the
+   files they are in. A script is for a change the Edit tool cannot
+   hold: a range, a table, the same change in 20 places (M156, M165,
+   M168, M182).
 6. Inside a quoted heredoc (`<<'EOF'`) the shell passes text through as
    written. Write no backslash escapes in it at all: `chr(10)` for a line
    break, real line breaks inside a triple-quoted string.
@@ -1314,10 +1315,17 @@ finding is a gap in the workcenter, never a board's own fault.
    tool's refusal. The finding names the check.
 5. Read each project's `LOOP.md` and its versions' READMEs since the last
    harvest. What the project did by hand, or worked round, is a finding.
+   With helpers (P31), 1 reader takes 1 or 2 projects, 1 the mistakes
+   log, 1 the projects' own scripts, each with a limit of 10 findings.
+   A reader also reports what it left out for the limit: read that list
+   too. 2 of the first harvest's findings stood only there.
 6. Write each finding with its evidence: a path with its line, or an
    entry's number, and the words as they stand there. Look for the thing
    in `tools/` and `.claude/skills/` first, and write what the search
-   found. Much has landed already.
+   found. Much has landed already. Hold every quote to its file with a
+   script before anything rests on it. 2 findings of the same gap are 1
+   candidate with the evidence of both: the same gap found by 2 readers
+   from 2 projects is the strongest evidence a harvest gives.
 7. Give each finding 6 whole numbers:
    - `frequency`: 1 = met once; 2 = met in 2 projects, or 2 times; 3 = 3
      or more.
@@ -1338,11 +1346,26 @@ finding is a gap in the workcenter, never a board's own fault.
 8. A reader who did not write a finding tries to refute it before it is
    rated (P31 for a helper): each quote at its place, the thing missing
    from the tools, each score against its anchor. A finding the reader
-   cannot stand behind is dropped.
-9. The findings go into ROADMAP.md under "Later", each with its rating,
-   the highest first. The queue's next item comes from the top of that
-   list unless the owner names another.
+   cannot stand behind is dropped, and the reader's scores stand where
+   they differ: of the first harvest's best 15, none was dropped and 10
+   changed. What the reader notes about the way to build it goes into
+   the brief of whoever builds it.
+9. Each finding is 1 row of the table under "Later" in ROADMAP.md: its
+   rating, its words under a title in bold, its evidence, the 6 scores,
+   and the day its reader checked it. A row that no second reader has
+   read carries `no`, even when a script held its quotes to their files:
+   22 rows of the first table's draft had a day they had not earned. In a
+   row, a line number stays only with a file under `examples/`; a file of
+   the workcenter's own code is named with its function, since its lines
+   move with every commit. The rows stand in order of rating, the highest
+   first. `python3 tools/harvest.py later` holds each rating to its
+   scores, each score to its anchors, the rows to their order and the
+   evidence to the files; `make verify` runs it. A candidate met during
+   other work enters the same way, with `no`.
+10. The queue's next item comes from the top of the table unless the
+    owner names another. A candidate that ships leaves the table for
+    "Shipped", with its evidence.
 
 Done when: every branch is at 100 % or its row of the listing has an
-answer; every finding under "Later" has its evidence, its 6 scores and a
-reader who checked it.
+answer; `python3 tools/harvest.py later` prints no problem; every finding
+of this harvest has the day its reader checked it.

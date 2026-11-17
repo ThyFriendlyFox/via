@@ -71,6 +71,43 @@ passed, 1 failed, 307 skipped; the failure, `test_fab` without KiCad's symbols, 
 `main` (461 passed). Basalt's drawing is 2,271 KB, 388 KB compressed. In Chromium, all 127 labels,
 brought in 1 by 1, fit beside the board at 1100 and 1280 px, the stage at 373 and 451 px throughout.
 
+## 2026-11-13 — The projects' findings, rated: 61 candidates in 1 table
+
+The branches held little: 45 of the 59 had nothing of their own. The
+findings were in the projects' files. 6 readers each took 1 or 2 example
+projects, the mistakes log or the projects' own scripts, with a limit of
+10 findings and every claim as a quote with its place. They brought 60
+findings and 376 quotes. A script held 369 of the quotes to their files,
+and I read the other 7 at their places: 6 of them are on a branch.
+
+Each finding got 6 scores against written anchors: how often it was met,
+what it cost, what building it turns into a command or a refusal, how
+many projects it serves, and the effort and the risk of building it. Then
+3 readers who had not written them tried to refute the best 15. None was
+dropped and 10 changed. A check of the counts in commit messages fell
+from 8 to 3: as written it would have refused the right numbers of all 3
+logged cases. 2 more readers rated the 29 lines that stood under "Later".
+The copper pours had been built, and 4 lines were the same gap as another
+row.
+
+The table under "Later" holds 61 rows, and `python3 tools/harvest.py
+later` holds each rating to its scores and each row to its evidence. I
+had given 22 rows a day under "Checked" that no second reader had
+earned; they say `no` until one reads them. A guess of mine was wrong
+too. I took a library table that names the generating machine's path for
+a gate that fails on another machine. KiCad's ERC and DRC read no library
+table: the same report came out with the right table, a wrong one and
+none.
+
+4 candidates shipped from the table: the stackup's 3 fields, a library
+table that names a project library from the project's folder, 1 pad's
+place by 1 call, and the review loop as a skill. While I wrote the table
+I changed 3 lines in 3 files with a script (M182). The table's third row
+names the hook that would have refused it.
+
+Evidence: `python3 tools/harvest.py later` prints 61 candidates and no
+problem; `tests/test_harvest.py`, 10 tests.
+
 ## 2026-11-12 — What the projects found, read from the branches
 
 The owner asked for a way to bring in what each project's branch had
