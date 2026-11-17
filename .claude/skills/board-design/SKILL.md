@@ -30,8 +30,12 @@ project and routes it with FreeRouting. No GUI at any step.
 1. **Pick parts from the libraries.** Check each symbol and footprint
    exists first; several common modules are not in KiCad's libraries.
    Record the choice and the reason in the project README.
-2. **Write `design.py`.** Start from a copy of the workcenter's
-   `templates/project/design.py`, the smallest complete design file: it
+2. **Write `design.py`.** Start with `workcenter new <dir>`. It writes
+   the workcenter's `templates/project/design.py` into the folder, under
+   the folder's name and with a namespace of its own, and `.gitignore`,
+   `parts.csv` and `library/sources.csv` with their headers. It refuses a
+   folder that holds a design. Its last line names the next command.
+   The template is the smallest complete design file: it
    generates, routes and passes `workcenter gates . --strict` as it stands,
    and a comment states the rule on each line a first design gets wrong.
    One `d.add(ref, "Lib:Symbol", value, "Lib:Footprint",
