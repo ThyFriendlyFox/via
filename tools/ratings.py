@@ -13,6 +13,7 @@ only.
 
 from __future__ import annotations
 
+import csv
 import fnmatch
 import itertools
 import json
@@ -538,13 +539,28 @@ def _keys(where: str, data: object, required: tuple[str, ...], optional: tuple[s
     return data
 
 
-def _number(where: str, value: object, least: float | None = None, most: float | None = None) -> float:
+def _object(where: str, value: object, of: str) -> dict:
+    """An object whose keys are the writer's own: the nets, the parts."""
+    if not isinstance(value, dict):
+        raise Refusal(f"{where}: an object is asked, with 1 key for each {of} it states")
+    return value
+
+
+def _number(
+    where: str,
+    value: object,
+    least: float | None = None,
+    most: float | None = None,
+    above: float | None = None,
+) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
         raise Refusal(f"{where}: {value!r} is no number")
     if least is not None and value < least:
         raise Refusal(f"{where}: {value:g} is under {least:g}")
     if most is not None and value > most:
         raise Refusal(f"{where}: {value:g} is over {most:g}")
+    if above is not None and value <= above:
+        raise Refusal(f"{where}: {value:g} is not above {above:g}")
     return float(value)
 
 
@@ -637,7 +653,7 @@ def read_pack(path: Path) -> Pack:
         if rule["stress"] not in STRESSES:
             known = ", ".join(STRESSES)
             raise Refusal(f"{where}: `{rule['stress']}` is no stress the command computes; they are {known}")
-        if rule["id"] in {r.id for r in rules}:
+        if _text(f"{where}: id", rule["id"]) in {r.id for r in rules}:
             raise Refusal(f"{where}: the id `{rule['id']}` stands 2 times")
         above = None
         if "above" in rule:
@@ -703,7 +719,7 @@ def read_project(path: Path, net: Netlist) -> Project:
     name = path.name
     data = _keys(name, _json(path), ("pack", "nets"), ("ambient", "parts", "accepted"))
     nets: dict[str, Span] = {}
-    for key, raw in _keys(f"{name}: nets", data["nets"], (), tuple(data["nets"])).items():
+    for key, raw in _object(f"{name}: nets", data["nets"], "net").items():
         entry = _keys(f"{name}: nets: {key}", raw, ("volts", "source"))
         _text(f"{name}: nets: {key}: source", entry["source"])
         found = next((n for n in (key, key.lstrip("/"), f"/{key}") if n in net.nets), None)
@@ -717,8 +733,7 @@ def read_project(path: Path, net: Netlist) -> Project:
         ambient = _number(f"{name}: ambient: max", entry["max"])
     amps: dict[str, float] = {}
     volts: dict[str, float] = {}
-    parts = data.get("parts", {})
-    for key, raw in _keys(f"{name}: parts", parts, (), tuple(parts)).items():
+    for key, raw in _object(f"{name}: parts", data.get("parts", {}), "part or pin").items():
         entry = _keys(f"{name}: parts: {key}", raw, ("source",), ("amps", "volts"))
         _text(f"{name}: parts: {key}: source", entry["source"])
         ref, _, pin = key.partition(".")
@@ -781,6 +796,22 @@ OTHER = {
     "ic": (("family", "pins"), ("needs", "switching")),
 }
 FAMILIES = ("digital", "linear", "regulator.linear", "regulator.switching")
+# The keys that hold a rating, or a value a current is divided by. Each is above 0: a stress is a share
+# of its rating, and 0 V, 0 W, 0 A, 0 F and 0 H are wrong facts and no division. `ohms` may be 0, a link.
+RATED = (
+    "farads",
+    "henries",
+    "watts",
+    "volts",
+    "amps",
+    "amps_saturation",
+    "amps_rms",
+    "volts_reverse",
+    "volts_standoff",
+    "volts_drain_source",
+    "volts_gate_source",
+    "amps_forward",
+)
 # A pin's role -> the keys it must hold beside numbers, name, role and page, and those it may.
 # regulated: the pin its regulator holds at `volts`, or, with `set_by`, at what the divider on its
 # feedback pin sets. feedback: the pin its regulator holds at `volts` through a divider from its output.
@@ -858,13 +889,15 @@ def _limit(where: str, value: object) -> None:
 def _pin_facts(where: str, pins: object) -> None:
     if not isinstance(pins, list) or not pins:
         raise Refusal(f"{where}: pins: a list of pins is asked")
-    names = [p.get("name") for p in pins if isinstance(p, dict)]
-    role_of = {p.get("name"): p.get("role") for p in pins if isinstance(p, dict)}
+    # a name or a role that is no text is refused at its own pin, below
+    named = [p for p in pins if isinstance(p, dict) and isinstance(p.get("name"), str)]
+    names = [p["name"] for p in named]
+    role_of = {p["name"]: p.get("role") for p in named}
     supplies = [name for name, role in role_of.items() if role == "supply"]
     for i, raw in enumerate(pins, start=1):
         here = f"{where}: pin {i}"
         role = raw.get("role") if isinstance(raw, dict) else None
-        if role not in ROLES:
+        if not isinstance(role, str) or role not in ROLES:
             raise Refusal(f"{here}: role: one of {', '.join(ROLES)} is asked")
         required, optional = ROLES[role]
         pin = _keys(here, raw, ("numbers", "name", "role") + required, ("page",) + optional)
@@ -873,6 +906,7 @@ def _pin_facts(where: str, pins: object) -> None:
         if role == "regulated" and ("volts" in pin) == ("set_by" in pin):
             raise Refusal(f"{here}: `volts`, or `set_by` with the name of its feedback pin: 1 of the 2")
         if "set_by" in pin:
+            _text(f"{here}: set_by", pin["set_by"])
             if role_of.get(pin["set_by"]) != "feedback":
                 raise Refusal(f"{here}: set_by: `{pin['set_by']}` is no pin of role feedback")
             for key in ("amps", "from"):
@@ -904,7 +938,10 @@ def _pin_facts(where: str, pins: object) -> None:
         for key in ("operating", "volts") if role == "supply" else ("volts",):
             if key in pin:
                 _span(f"{here}: {key}", pin[key])
-        if "amps" in pin:
+        if "amps" in pin and role in ("regulated", "feedback"):
+            # what the regulator gives: its load is divided by it
+            _number(f"{here}: amps", pin["amps"], above=0)
+        elif "amps" in pin:
             _number(f"{here}: amps", pin["amps"], 0)
         if "swing" in pin:
             swing = _names(f"{here}: swing", pin["swing"])
@@ -941,7 +978,7 @@ def _needs(where: str, needs: object, names: list[str]) -> None:
 
 def _facts(where: str, raw: object) -> Facts:
     kind = raw.get("kind") if isinstance(raw, dict) else None
-    if kind not in PASSIVE and kind not in OTHER:
+    if not isinstance(kind, str) or (kind not in PASSIVE and kind not in OTHER):
         raise Refusal(f"{where}: kind: one of {', '.join([*PASSIVE, *OTHER])} is asked")
     required, optional = PASSIVE.get(kind) or OTHER[kind]
     data = _keys(where, raw, ("kind", "source") + required, WHICH + ("footprint", "note") + optional)
@@ -957,12 +994,11 @@ def _facts(where: str, raw: object) -> Facts:
     source = _keys(f"{where}: source", data["source"], *SOURCE_KEYS)
     for key, value in source.items():
         _text(f"{where}: source: {key}", value)
-    for key in ("ohms", "farads", "henries", "watts", "volts", "amps", "amps_saturation", "amps_rms"):
+    if "ohms" in data:  # 0 ohm is a link
+        _number(f"{where}: ohms", data["ohms"], 0)
+    for key in RATED:
         if key in data:
-            _number(f"{where}: {key}", data[key], 0)
-    for key in ("volts_reverse", "volts_standoff", "volts_drain_source", "volts_gate_source", "amps_forward"):
-        if key in data:
-            _number(f"{where}: {key}", data[key], 0)
+            _number(f"{where}: {key}", data[key], above=0)
     if isinstance(data.get("amps_drain"), list):  # a rating that falls with temperature: [celsius, amps]
         pairs = data["amps_drain"]
         if len(pairs) < 2 or not all(isinstance(p, list) and len(p) == 2 for p in pairs):
@@ -973,7 +1009,7 @@ def _facts(where: str, raw: object) -> Facts:
         if degrees != sorted(set(degrees)):
             raise Refusal(f"{where}: amps_drain: the celsius rise from pair to pair")
     elif "amps_drain" in data:
-        _number(f"{where}: amps_drain", data["amps_drain"], 0)
+        _number(f"{where}: amps_drain", data["amps_drain"], above=0)
     if "tolerance" in data:
         _number(f"{where}: tolerance", data["tolerance"], 0, 0.99)
     if "kept" in data:
@@ -1000,6 +1036,8 @@ def _facts(where: str, raw: object) -> Facts:
                     else:
                         _text(f"{where}: {key} {i}: {end}", one[end])
     if kind == "connector":
+        if not isinstance(data.get("pins", []), list):
+            raise Refusal(f"{where}: pins: a list of pins is asked")
         for i, pin in enumerate(data.get("pins", []), start=1):
             _keys(f"{where}: pin {i}", pin, ("numbers", "outside"))
             _names(f"{where}: pin {i}: numbers", pin["numbers"])
@@ -2126,6 +2164,53 @@ def find_pack(name: str, project_dir: Path, packs: Path) -> Path:
     raise Refusal(f"ratings.json: pack: `{name}` is no pack; the workcenter holds {known}")
 
 
+def parts_rows(paths: list[Path], cli) -> list:
+    """The rows of the parts files, as `procure` and `sources` read them. A file that is not there, that
+    is no UTF-8, or that holds a row with fewer fields than its header is refused with its name and its
+    line: the workcenter's reader of a row asks every field of it."""
+    rows = []
+    for path in paths:
+        try:
+            with path.open(encoding="utf-8", newline="") as fh:
+                reader = csv.reader(fh)
+                header = next(reader, [])
+                for row in reader:
+                    if row and len(row) < len(header):
+                        fields = f"{len(row)} field{'s' * (len(row) != 1)}"
+                        raise Refusal(
+                            f"{path.name}:{reader.line_num}: {fields}, and the header names {len(header)}"
+                        )
+        except OSError as exc:
+            raise Refusal(f"{path}: {exc.strerror or exc}") from None
+        except UnicodeDecodeError as exc:
+            raise Refusal(f"{path.name}: not UTF-8: {exc}") from None
+        except csv.Error as exc:
+            raise Refusal(f"{path.name}: {exc}") from None
+        try:
+            rows += cli.read_parts(path)
+        except ValueError as exc:  # the workcenter's reader names the file and the line
+            raise Refusal(str(exc)) from None
+    return rows
+
+
+def export_netlist(project, folder: Path, cli) -> tuple[Netlist | None, str]:
+    """The schematic's netlist, exported into a folder: the netlist, or None and what kicad-cli said.
+    A netlist its reader does not take is refused with the name of the schematic, the file the fault
+    is in."""
+    text, stderr = cli.schematic_netlist(project, folder)
+    if text is None:
+        return None, stderr
+    try:
+        return read_netlist(text), ""
+    except ValueError as exc:
+        raise Refusal(f"{project.sch.name}: {exc}") from None
+
+
+def refusal(exc: Exception, cli):
+    """A file or a flag the command does not take, as a Result of the workcenter's kind."""
+    return cli.Result("ratings", "fail", "a file is not as the command reads it", {"failures": [str(exc)]})
+
+
 def part_numbers(net: Netlist, rows: list) -> dict[str, str]:
     """Each part's manufacturer part number from the parts files: the first row with the part's Value
     and Footprint, as `sources` and `procure` match a line."""
@@ -2169,21 +2254,21 @@ def gate_ratings(project, out: Path, parts: list[Path], strict: bool, cli):
         return cli.Result("ratings", "skip", f"no ratings.json beside the schematic: {how}")
     folder = out / "ratings"
     folder.mkdir(parents=True, exist_ok=True)
-    text, stderr = cli.schematic_netlist(project, folder)
-    if text is None:
+    try:  # the reader's refusal alone: kicad-cli that is not installed goes on to `timed`, which names it
+        net, stderr = export_netlist(project, folder, cli)
+    except ValueError as exc:
+        return refusal(exc, cli)
+    if net is None:
         return cli.Result("ratings", "error", "kicad-cli wrote no netlist", {"stderr": stderr})
     try:
-        net = read_netlist(text)
         asked = read_project(stated, net)
         pack = read_pack(find_pack(asked.pack, project.dir, cli.SRC_DIR / "rules" / "ratings"))
         library = find_facts(project.dir)
         facts = read_facts(library) if library else []
-        mpns = part_numbers(net, [r for p in parts for r in cli.read_parts(p)])
+        mpns = part_numbers(net, parts_rows(parts, cli))
         report = judge(net, mpns, facts, asked, pack)
     except (ValueError, OSError) as exc:
-        return cli.Result(
-            "ratings", "fail", "a file is not as the command reads it", {"failures": [str(exc)]}
-        )
+        return refusal(exc, cli)
     said, code = verdict(report, strict)
     page = folder / "report.md"
     page.write_text(markdown(report, strict), encoding="utf-8")
@@ -2207,10 +2292,12 @@ def gate_ratings(project, out: Path, parts: list[Path], strict: bool, cli):
 
 
 def cmd_ratings(args, cli) -> int:
+    """A run, or with --init or --facts 1 thing that judges nothing and leaves no record of a run. A
+    file or a flag the command does not take is answered the same way in all 3: the line of a refusal,
+    and exit code 1."""
     project = cli.find_project(args.project)
-    out = cli.out_dir_for(project, args.out)
     stated = project.dir / "ratings.json"
-    if args.init:
+    if args.init:  # 1 file beside the schematic: no folder of output is asked for, and none is made
         if stated.is_file():
             print(f"{stated} is there already: nothing written")
         else:
@@ -2220,16 +2307,30 @@ def cmd_ratings(args, cli) -> int:
     parts = [Path(p).resolve() for p in args.parts or []]
     if not parts and (project.dir / "parts.csv").is_file():
         parts = [project.dir / "parts.csv"]
+    try:
+        out = cli.out_dir_for(project, args.out)
+    except OSError as exc:
+        folder = Path(args.out).resolve() if args.out else project.dir / "build"
+        why = "a file stands there, and a folder is asked" if folder.is_file() else exc.strerror or exc
+        where = f"--out {folder}" if args.out else folder
+        return cli.emit([refusal(Refusal(f"{where}: {why}"), cli)], args, None)
     if args.facts:
         folder = out / "ratings"
-        folder.mkdir(parents=True, exist_ok=True)
-        text, stderr = cli.schematic_netlist(project, folder) if project.sch else (None, "no schematic")
-        if text is None:
-            raise SystemExit(f"{project.dir}: kicad-cli wrote no netlist: {stderr}")
-        net = read_netlist(text)
-        if args.facts not in net.parts:
-            raise SystemExit(f"{args.facts} is no part of the schematic")
-        mpn = part_numbers(net, [r for p in parts for r in cli.read_parts(p)]).get(args.facts, "")
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            net, stderr = export_netlist(project, folder, cli) if project.sch else (None, "no schematic")
+            if net is None:
+                raise SystemExit(f"{project.dir}: kicad-cli wrote no netlist: {stderr}")
+            if args.facts not in net.parts:
+                raise SystemExit(f"{args.facts} is no part of the schematic")
+            mpn = part_numbers(net, parts_rows(parts, cli)).get(args.facts, "")
+        except FileNotFoundError as exc:  # kicad-cli itself: a file that is not there is a Refusal
+            missing = {"engine_missing": str(exc.filename)}
+            return cli.emit(
+                [cli.Result("ratings", "skip", f"engine missing: {exc.filename}", missing)], args, None
+            )
+        except (ValueError, OSError) as exc:
+            return cli.emit([refusal(exc, cli)], args, None)
         print(json.dumps(skeleton(net, args.facts, mpn), indent=2))
         return 0
     result = cli.timed(gate_ratings)(project, out, parts, args.strict, cli)

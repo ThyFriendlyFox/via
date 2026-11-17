@@ -1959,6 +1959,23 @@ STATED = {
             "ratings.json: accepted: entry 1: by: write `the owner's decision of YYYY-MM-DD`",
         ),
         (changed(STATED, "accepted", to={}), "ratings.json: accepted: a list is asked"),
+        # a value of the wrong type is refused as a wrong word is, with its place
+        (
+            changed(STATED, "nets", to=5),
+            "ratings.json: nets: an object is asked, with 1 key for each net it states",
+        ),
+        (
+            changed(STATED, "nets", to=None),
+            "ratings.json: nets: an object is asked, with 1 key for each net it states",
+        ),
+        (
+            changed(STATED, "nets", to="GND"),
+            "ratings.json: nets: an object is asked, with 1 key for each net it states",
+        ),
+        (
+            changed(STATED, "parts", to=7),
+            "ratings.json: parts: an object is asked, with 1 key for each part or pin it states",
+        ),
     ],
 )
 def test_a_project_file_that_is_wrong_in_1_place_is_refused_with_the_place(tmp_path, data, message):
@@ -2027,6 +2044,10 @@ CARD = {
         (
             {**CARD, "rules": [CARD["rules"][0], CARD["rules"][0]]},
             "pack.json: rule 2: the id `a` stands 2 times",
+        ),
+        (
+            changed(CARD, "rules", 0, "id", to=["a"]),
+            "pack.json: rule 1: id: text is asked, and there is none",
         ),
     ],
 )
@@ -2142,6 +2163,21 @@ SWITCHING = {"topology": "buck", "hertz": [1e6, 2e6], "page": 7}
             changed(ADJUSTABLE, "pins", 1, to=pin("BIAS", ["2"], "supply", abs=[-0.3, 6.5])),
             "x.json: pin FB: `from` is missing: which of IN, BIAS its current comes from",
         ),
+        # a value of the wrong type is refused as a wrong word is, with its place
+        (changed(RESISTOR, "kind", to=["resistor"]), "x.json: kind: one of resistor, capacitor.ceramic,"),
+        (changed(MCU_FACTS, "pins", 0, "role", to=["supply"]), "x.json: pin 1: role: one of supply, ground,"),
+        (
+            changed(MCU_FACTS, "pins", 0, "name", to=["VDD"]),
+            "x.json: pin 1: name: text is asked, and there is none",
+        ),
+        (
+            changed(ADJUSTABLE, "pins", 2, "set_by", to=["FB"]),
+            "x.json: pin OUT: set_by: text is asked, and there is none",
+        ),
+        ({**entry("connector", "HDR-1"), "pins": 5}, "x.json: pins: a list of pins is asked"),
+        # what a regulator gives is a rating too: its load is divided by it
+        (changed(ADJUSTABLE, "pins", 3, "amps", to=0), "x.json: pin FB: amps: 0 is not above 0"),
+        (regulator(amps=0), "x.json: pin OUT: amps: 0 is not above 0"),
     ],
 )
 def test_facts_that_are_wrong_in_1_place_are_refused_with_the_place(tmp_path, data, message):
@@ -2149,6 +2185,49 @@ def test_facts_that_are_wrong_in_1_place_are_refused_with_the_place(tmp_path, da
         (tmp_path / "x.json").write_text(json.dumps(holds), encoding="utf-8")
         assert len(ratings.read_facts(tmp_path)) == 1
     assert refused(lambda p: ratings.read_facts(p.parent), tmp_path / "x.json", data).startswith(message)
+
+
+COIL = entry("inductor", "L-1", tolerance=0.2, amps_saturation=2.0, amps_rms=1.5, henries=2.2e-6)
+FUSE = entry("fuse", "F-1", amps=2.0, volts=32)
+DIODE = entry(
+    "diode.rectifier", "D-1", diodes=[{"anode": "1", "cathode": "2"}], volts_reverse=30, amps_forward=1.0
+)
+CLAMP = entry("diode.clamp", "TVS-1", diodes=[{"anode": "1", "cathode": "2"}], volts_standoff=5.5)
+
+
+@pytest.mark.parametrize(
+    ("holds", "key"),
+    [
+        (RESISTOR, "watts"),
+        (RESISTOR, "volts"),
+        (ceramic("C-1", 16, farads=1e-6), "volts"),
+        (ceramic("C-1", 16, farads=1e-6), "farads"),
+        (COIL, "amps_saturation"),
+        (COIL, "amps_rms"),
+        (COIL, "henries"),
+        (FUSE, "amps"),
+        (FUSE, "volts"),
+        (DIODE, "volts_reverse"),
+        (DIODE, "amps_forward"),
+        (CLAMP, "volts_standoff"),
+        (power_fet(amps_drain=4.0, watts=1.4), "volts_drain_source"),
+        (power_fet(amps_drain=4.0, watts=1.4), "volts_gate_source"),
+        (power_fet(amps_drain=4.0, watts=1.4), "amps_drain"),
+        (power_fet(amps_drain=4.0, watts=1.4), "watts"),
+    ],
+)
+def test_a_rating_of_0_and_a_value_of_0_are_refused(tmp_path, holds, key):
+    """A stress is divided by its rating, and a ripple by its inductance: 0 V, 0 W, 0 A, 0 F and 0 H are
+    wrong facts, and no division. The entry holds, then the 1 key is set to 0."""
+    (tmp_path / "x.json").write_text(json.dumps(holds), encoding="utf-8")
+    assert len(ratings.read_facts(tmp_path)) == 1
+    said = refused(lambda p: ratings.read_facts(p.parent), tmp_path / "x.json", changed(holds, key, to=0))
+    assert said == f"x.json: {key}: 0 is not above 0"
+
+
+def test_a_resistor_of_0_ohm_is_a_link_and_is_taken(tmp_path):
+    (tmp_path / "x.json").write_text(json.dumps({**RESISTOR, "ohms": 0}), encoding="utf-8")
+    assert ratings.read_facts(tmp_path)[0].data["ohms"] == 0
 
 
 def test_facts_that_do_not_fit_the_part_s_symbol_are_refused(tmp_path):
