@@ -1,0 +1,19 @@
+{
+  "about": "The workcenter's own rules for a board's legend (tools/legend.py). The least height and stroke of a text are not here: each comes from the fab's rule set in rules/, read from its own page. The numbers here are the workcenter's choices, from no standard; each says why.",
+  "designator_reach_mm": {
+    "value": 2.0,
+    "why": "A designator further than this from its own part's courtyard is not taken as its part's. The KiCad library puts a 0603's designator 0.125 mm off its courtyard and a header's 0.035 mm off; 2.0 mm leaves room for a placed one and is less than a 0603's length and a half."
+  },
+  "placer_gap_mm": {
+    "value": 0.15,
+    "why": "The gap the placer leaves between a designator's box and its own part's courtyard."
+  },
+  "size_step_mm": {
+    "value": 0.1,
+    "why": "The step the placer makes a designator smaller by, down to the fab's least height."
+  },
+  "directions_per_side": {
+    "value": 2,
+    "why": "The owner's word of 2026-11-17: text in more than 2 directions on 1 side is hard to read. A text at 180 degrees reads in the direction of one at 0, since KiCad keeps it upright."
+  }
+}
