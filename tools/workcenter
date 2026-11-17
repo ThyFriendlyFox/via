@@ -5121,6 +5121,14 @@ def fields():
     return module
 
 
+def highspeed():
+    """tools/highspeed.py: `highspeed`, the fast nets held to their interfaces' rules."""
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import highspeed as module
+
+    return module
+
+
 def render_views(value: str) -> tuple[str, ...]:
     names = RENDER_VIEWS if value == "all" else tuple(v.strip() for v in value.split(",") if v.strip())
     unknown = [v for v in names if v not in RENDER_VIEWS]
@@ -5467,6 +5475,7 @@ def main(argv: list[str] | None = None) -> int:
     references().register(sub, sys.modules[__name__])
     routebench().register(sub, sys.modules[__name__])
     fields().register(sub, sys.modules[__name__])
+    highspeed().register(sub, sys.modules[__name__])
     sys.path.insert(0, str(SRC_DIR / "tools"))
     import measureplan
 

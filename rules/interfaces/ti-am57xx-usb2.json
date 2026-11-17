@@ -1,0 +1,43 @@
+{
+  "interface": "ti-am57xx-usb2",
+  "title": "USB 2.0 data pair (DP, DM) of a TI AM57xx or DRA7xx processor",
+  "kind": "pair",
+  "documents": {
+    "spraar7j": {
+      "title": "High-Speed Interface Layout Guidelines, application note",
+      "maker": "Texas Instruments",
+      "number": "SPRAAR7J",
+      "revision": "J, November 2018, revised February 2023",
+      "url": "https://www.ti.com/lit/an/spraar7j/spraar7j.pdf",
+      "sha256": "4a14e9b00afc174f336386cf0097f3a5e7a6a367840331fbb22070053ec36f41",
+      "read": "2026-11-17"
+    }
+  },
+  "limits": {
+    "impedance": {
+      "mode": "differential",
+      "nominal": 90,
+      "min": 81,
+      "max": 99,
+      "unit": "ohm",
+      "doc": "spraar7j",
+      "where": "Table A-2 (AM57xx/DRA7xx), row 'USB2.0 DP or DM pair differential impedance', page 16"
+    },
+    "length": {
+      "max": 304.8,
+      "unit": "mm",
+      "doc": "spraar7j",
+      "where": "Table A-2, row 'USB2.0 Tracelength (Total)', 12000 mil maximum, page 16"
+    },
+    "skew": {
+      "max": 1.27,
+      "unit": "mm",
+      "doc": "spraar7j",
+      "where": "Table A-2, row 'Skew within any USB2.0 differential pair', 50 mil maximum, page 16"
+    },
+    "plane": {
+      "doc": "spraar7j",
+      "where": "section 2.4 'High-Speed Signal Reference Planes', page 6: over a solid reference plane, not across a split or a void"
+    }
+  }
+}
