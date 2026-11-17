@@ -57,12 +57,15 @@ module, the chip tools in their own folder).
 
 ## Keeping the table true
 
-1. Run the tests step and keep its logs:
-   `python verify/testshards.py run --work /tmp/shards-1`.
-2. Sum the `seconds` of each file's records in `/tmp/shards-1/shard-*/log.jsonl`
-   (1 JSON object a line; the file is the part of `id` before `::`) and write
-   them into `seconds`.
-3. A new test file that runs an engine gets `yes`.
+1. Run the tests step 2 times and keep the logs:
+   `python verify/testshards.py run --work /tmp/shards-1`, then the same
+   with `/tmp/shards-2`. A run that prints `TESTS RED` does not count.
+2. Print the table with the mean seconds of the 2 runs:
+   `python verify/testshards.py table /tmp/shards-1 /tmp/shards-2`.
+   Write what it prints into `shards.csv` with the Write tool. It keeps each
+   file's `engine` and `alone`; a file new to the table gets the `*` row's
+   `engine`.
+3. A new test file that runs no engine gets `no`.
 4. A file gets a reason in `alone` only when a run side by side showed it
    fail and the cause cannot be fixed in the test. 1 file has one:
    `tests/test_fab.py` lists the files of a fixture before and after a DRC
