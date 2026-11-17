@@ -12,9 +12,10 @@ project.
 ## Install
 
 Copy this folder into the repo's skill directory (`.claude/skills/
-blog-post/` for Claude Code) so `/blog-post` invokes it. Adjust the
-output path below to where the repo keeps posts (`blog/`, `posts/`,
-or the site repo).
+blog-post/` for Claude Code) so `/blog-post` invokes it. In this
+repository posts live in `blog/`, and `site/blog.py` makes each one a
+page of the site at `/blog/<slug>`. In another repo, adjust the output
+path below to where it keeps posts (`blog/`, `posts/`, or the site repo).
 
 ## Inputs
 
@@ -31,7 +32,8 @@ or the site repo).
    subject.
 2. Write the title: under 60 characters, names the change, no pun
    unless the human asked for puns.
-3. Write the post in `TONE.md` voice, 300–800 words:
+3. Write the post in `TONE.md` voice (American Simplified Technical
+   English), 300–800 words:
    - **Open** with what changed for the reader, in 2 sentences.
    - **Show** it: one concrete example from a use case — commands,
      screenshots, or output. Real evidence from the shipped item.
@@ -39,16 +41,25 @@ or the site repo).
      Failures stay in. Readers trust a log that admits the broken week.
    - **Close** with what is next: the top of the ROADMAP queue, stated
      as intent, not promise.
-4. Save to `<posts-path>/YYYY-MM-DD-<slug>.md` with frontmatter:
-   `title`, `date`, `tags`.
-5. Add one devlog entry: "Published post: <title>."
-6. Do not publish beyond the repo without the human's go-ahead.
+4. Save to `blog/YYYY-MM-DD-<slug>.md` with frontmatter: `title`,
+   `date`, `tags`, and `description` or `image` where the first
+   paragraph or the site's card does not fit. A link that starts with
+   `/` names a page of the site (`/examples/herald`); a link with no
+   scheme names a file in the repo.
+5. Run `python3 site/blog.py`: it writes the post's page, the list of
+   posts and the feed, and stops at a link that names nothing.
+6. Add one devlog entry: "Published post: <title>."
+7. Do not publish beyond the repo without the human's go-ahead: the
+   post goes live when it reaches `main`.
 
 ## Checks
 
 - Every claim in the post traces to a devlog entry, changelog line, or
   shipped-item evidence. No claim without a source.
 - No marketing words. Run the docs/STYLE.md rules over the draft.
+- American Simplified Technical English, by `TONE.md`'s rules: short
+  active sentences, American spelling, none of the patterns rule 10
+  names.
 - A reader who has never seen the project understands the opening
   2 sentences.
 - The post names version numbers and dates as digits.

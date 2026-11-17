@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Via blog</title>
+    <link>%ORIGIN%/blog</link>
+    <atom:link href="%ORIGIN%/blog/feed.xml" rel="self" type="application/rss+xml"/>
+    <description>We&#x27;re making Via better every day! Subscribe to keep up to date with our progress.</description>
+    <language>en</language>
+    <lastBuildDate>Tue, 17 Nov 2026 00:00:00 +0000</lastBuildDate>
+    <item>
+      <title>Herald, a fire alarm communicator designed with Via</title>
+      <link>%ORIGIN%/blog/herald-fire-alarm-communicator</link>
+      <guid isPermaLink="true">%ORIGIN%/blog/herald-fire-alarm-communicator</guid>
+      <pubDate>Tue, 17 Nov 2026 00:00:00 +0000</pubDate>
+      <category>examples</category>
+      <category>herald</category>
+      <category>simulation</category>
+      <description>Herald is a fire alarm communicator. An AI agent designed it with Via from a written brief. The design file, the routed board and the results of the checks are in the Via repository.</description>
+    </item>
+  </channel>
+</rss>

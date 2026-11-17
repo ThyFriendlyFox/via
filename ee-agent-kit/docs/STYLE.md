@@ -69,6 +69,8 @@ there.
    claims nothing a run, a file or a test does not show.
 8. Justify a paragraph to its column, with hyphenation on. A part's label
    on the example's board is too narrow for it, and stays ragged.
+9. Write a blog post, and the blog's own words, in American Simplified
+   Technical English, by the rules of `TONE.md`.
 
 The owner's own wording stands as the owner wrote it, and is the only
 exception to these rules:
@@ -81,3 +83,8 @@ exception to these rules:
   by EE's in Florida."
 - The design-as-code section's headline, of 2026-11-14, in title case:
   "How a Python File Becomes a Board".
+- The blog's message to its reader, of 2026-11-17, at the head of the
+  blog and after each post: "We're making Via better every day!", then
+  "Subscribe here to keep up to date with our progress. Give us
+  suggestions here!" The first "here" is the blog's RSS feed, the second
+  a new issue on GitHub. The blog does not explain what a blog is.

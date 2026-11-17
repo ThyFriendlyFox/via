@@ -1405,3 +1405,22 @@ lands or is dropped.
 Done when: every branch with work in progress has 1 card whose Updated
 line is no older than the branch's last commit, and every landed or
 dropped card's issue is closed.
+
+## P37 — Words a reader reads
+
+P35 on main until the merge of 2026-11-17.
+
+When: writing a post for the site's blog, the blog's own words, or a
+message to the owner.
+
+1. Write in American Simplified Technical English by `TONE.md`'s rules:
+   1 idea in a sentence, under 20 words, the active voice, American
+   spelling, no contraction.
+2. Leave out the patterns `TONE.md` rule 10 names: personification, an
+   intensifier, a list of 3 for rhythm, an em dash, an opener that judges
+   or announces, a closing offer (M206).
+3. Read the draft once for those patterns before it is shown, then run
+   the docs tests: they hold each post to the limits a machine can count.
+
+Done when: the docs tests pass on every post in `blog/`, and the message
+or page has none of rule 10's patterns.
