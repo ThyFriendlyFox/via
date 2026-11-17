@@ -12,6 +12,7 @@ The project's own id is a stand-in: the guide prints none for a user's project.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
@@ -190,6 +191,99 @@ def test_a_card_with_2_status_lines_is_left_where_it_stands(tmp_path):
     ]
 
 
+def test_spaces_inside_the_word_are_read_as_1(tmp_path):
+    """`In   progress` (3 spaces) is the word `In progress`, so the option is In Progress, 47fc9ee4."""
+    proc, found = run(tmp_path, event(action="edited", body="**Status:** In   progress"))
+    assert proc.returncode == 0, proc.stderr
+    assert_set(found, OPTION["In Progress"])
+
+
+# A line that renders as an example (a code block) or not at all (an HTML comment) is not the card's.
+
+FENCED = "Not started.\n\nWhen finished, change the line to:\n```\n**Status:** Done\n```"
+
+
+def test_a_status_line_inside_a_code_fence_is_not_the_cards(tmp_path):
+    """The reviewer's body: no line of its own, 1 example in a ``` fence. 0 lines count, 1 does not:
+    added and left where it stands, 2 calls."""
+    proc, found = run(tmp_path, event(action="edited", body=FENCED))
+    assert proc.returncode == 0, proc.stderr
+    assert len(found) == 2
+    assert lines(proc) == [
+        f"board: card #1347 is on {BOARD} and left where it stands: its body has no **Status:** line "
+        "outside code and HTML comments (1 inside, which does not count)"
+    ]
+
+
+def test_the_cards_line_beside_an_example_in_a_fence_decides(tmp_path):
+    """`In progress` outside, `Done` inside a fence: 1 line counts, so In Progress, 47fc9ee4."""
+    body = "**Status:** In progress\n\nWhen finished:\n```\n**Status:** Done\n```\n"
+    proc, found = run(tmp_path, event(action="edited", body=body))
+    assert proc.returncode == 0, proc.stderr
+    assert_set(found, OPTION["In Progress"])
+
+
+def test_a_fence_closes_only_on_its_own_mark_at_its_own_length(tmp_path):
+    """A ```` fence (4) holds a ``` line (3) and a ~~~ line: neither closes it (CommonMark 0.31.2,
+    4.5 Fenced code blocks). The Done inside does not count; Todo after the ```` close does."""
+    body = "````\n```\n**Status:** Done\n~~~\n````\n**Status:** Todo"
+    proc, found = run(tmp_path, event(action="edited", body=body))
+    assert proc.returncode == 0, proc.stderr
+    assert_set(found, OPTION["Todo"])
+
+
+def test_an_unclosed_fence_runs_to_the_end_of_the_body(tmp_path):
+    """CommonMark 0.31.2, 4.5: a fence with no close runs to the end. 0 count, 1 inside."""
+    proc, found = run(tmp_path, event(action="edited", body="Notes.\n~~~\n**Status:** Done"))
+    assert proc.returncode == 0, proc.stderr
+    assert len(found) == 2
+    assert "(1 inside, which does not count)" in lines(proc)[0]
+
+
+def test_a_line_indented_4_spaces_is_not_the_cards(tmp_path):
+    """4 spaces start an indented code block (CommonMark 0.31.2, 4.4); 3 are still the line's own."""
+    four, three = tmp_path / "four", tmp_path / "three"
+    four.mkdir()
+    three.mkdir()
+    proc, found = run(four, event(action="edited", body="Notes.\n\n    **Status:** Done\n"))
+    assert len(found) == 2 and "(1 inside, which does not count)" in lines(proc)[0]
+    proc, found = run(three, event(action="edited", body="Notes.\n\n   **Status:** Done\n"))
+    assert_set(found, OPTION["Done"])
+
+
+def test_status_lines_inside_an_html_comment_do_not_count(tmp_path):
+    """The reviewer's second body: 1 line in a fence and 1 in a <!-- --> block, none outside. 2 inside."""
+    body = (
+        "Status: in progress, not done yet.\n\nThe line to write when it is finished:\n```\n"
+        "**Status:** Done\n```\n<!--\n**Status:** Done\n-->"
+    )
+    proc, found = run(tmp_path, event(action="edited", body=body))
+    assert proc.returncode == 0, proc.stderr
+    assert len(found) == 2
+    assert lines(proc) == [
+        f"board: card #1347 is on {BOARD} and left where it stands: its body has no **Status:** line "
+        "outside code and HTML comments (2 inside, which do not count)"
+    ]
+
+
+def test_a_comment_after_the_word_on_the_same_line_is_not_part_of_it(tmp_path):
+    """`**Status:** Todo <!-- was Done -->` renders as `**Status:** Todo`: Todo, f75ad846."""
+    proc, found = run(tmp_path, event(action="edited", body="**Status:** Todo <!-- was Done -->"))
+    assert proc.returncode == 0, proc.stderr
+    assert_set(found, OPTION["Todo"])
+
+
+def test_a_comment_that_does_not_close_is_not_judged(tmp_path):
+    """`<!--` with no `-->`: which lines render is not judged, so the card is left where it stands."""
+    proc, found = run(tmp_path, event(action="edited", body="**Status:** Todo\n<!-- notes\n**Status:** Done"))
+    assert proc.returncode == 0, proc.stderr
+    assert len(found) == 2
+    assert lines(proc) == [
+        f"board: card #1347 is on {BOARD} and left where it stands: its body opens an HTML comment "
+        "(<!--) that does not close, so which lines render is not judged"
+    ]
+
+
 def test_an_issue_that_is_no_card_is_not_touched(tmp_path):
     proc, found = run(tmp_path, event(title="Routing fails on v0.16"))
     assert proc.returncode == 0, proc.stderr
@@ -243,6 +337,103 @@ def test_gh_failing_fails_the_tool_in_1_line_with_no_traceback(tmp_path):
     assert lines(proc) == [
         "board: FAIL: gh api graphql (find the project) exited 4: "
         "To get started with GitHub CLI, please run:  gh auth login"
+    ]
+
+
+def test_a_graphql_errors_key_fails_even_beside_full_data(tmp_path):
+    """gh exits 0 and prints data and errors side by side: 1 call, then the error's message."""
+    proc, found = run(tmp_path, event(), BOARD_GH_PROJECT="project-errors.json")
+    assert proc.returncode == 1
+    assert len(found) == 1
+    assert lines(proc) == [
+        "board: FAIL: gh api graphql (find the project) answered with an error: "
+        "stand-in error beside a full data answer"
+    ]
+
+
+def test_an_error_given_as_text_fails_in_1_line(tmp_path):
+    """`{"errors": ["something went wrong"]}`: the entry is text, not an object with a message."""
+    proc, found = run(tmp_path, event(), BOARD_GH_PROJECT="project-errors-text.json")
+    assert proc.returncode == 1 and len(found) == 1
+    assert lines(proc) == [
+        "board: FAIL: gh api graphql (find the project) answered with an error: something went wrong"
+    ]
+
+
+def test_gh_printing_no_json_fails_in_1_line(tmp_path):
+    proc, found = run(tmp_path, event(), BOARD_GH_PROJECT="not-json.txt")
+    assert proc.returncode == 1 and len(found) == 1
+    assert lines(proc) == [
+        "board: FAIL: gh api graphql (find the project) printed no JSON: '502 Bad Gateway\\n'"
+    ]
+
+
+def test_a_status_field_with_no_options_list_fails_in_1_line(tmp_path):
+    proc, found = run(tmp_path, event(), BOARD_GH_PROJECT="project-options-null.json")
+    assert proc.returncode == 1 and len(found) == 1
+    assert lines(proc) == [f"board: FAIL: the project {BOARD}'s field Status answered options None, no list"]
+
+
+def test_the_status_field_is_found_by_its_name_not_its_place(tmp_path):
+    """Priority (P1, P2) comes before Status: the field taken is Status, so Todo is f75ad846."""
+    proc, found = run(tmp_path, event(), BOARD_GH_PROJECT="project-priority-first.json")
+    assert proc.returncode == 0, proc.stderr
+    assert_set(found, OPTION["Todo"])
+
+
+def test_an_add_that_returns_no_item_fails_in_1_line(tmp_path):
+    """add-no-item.json answers `item: null`: 2 calls, no third."""
+    proc, found = run(tmp_path, event(), BOARD_GH_ADD="add-no-item.json")
+    assert proc.returncode == 1 and len(found) == 2
+    assert lines(proc) == ["board: FAIL: gh api graphql (add the issue) returned no item for card #1347"]
+
+
+def test_gh_that_gives_no_answer_in_time_fails_in_1_line(tmp_path, monkeypatch, capsys):
+    """The tool's limit set to 1 s, the stand-in waits 3 s: the call is cut at 1 s, 1 call logged."""
+    spec = importlib.util.spec_from_file_location("board_tool", TOOL)
+    tool = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tool)
+    monkeypatch.setattr(tool, "GH_TIMEOUT_S", 1)
+    for key, value in stand_in(tmp_path).items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("BOARD_GH_SLEEP", "3")
+    path = tmp_path / "event.json"
+    path.write_text(json.dumps(event()), encoding="utf-8")
+    assert tool.main(["--event", str(path), "--board", BOARD]) == 1
+    assert capsys.readouterr().err == "board: FAIL: gh api graphql (find the project) gave no answer in 1 s\n"
+
+
+def run_file(tmp_path: Path, data: bytes, *flags: str):
+    path = tmp_path / "event.json"
+    path.write_bytes(data)
+    env = stand_in(tmp_path)
+    proc = subprocess.run(
+        [sys.executable, str(TOOL), *(flags or ("--event", str(path), "--board", BOARD))],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    return proc, calls(tmp_path)
+
+
+def test_an_event_file_that_is_no_utf8_fails_in_1_line(tmp_path):
+    proc, found = run_file(tmp_path, b'\xff\xfe{"issue": 1}')
+    assert proc.returncode == 1 and found == []
+    assert len(lines(proc)) == 1 and "Traceback" not in proc.stderr
+    assert lines(proc)[0].startswith(f"board: FAIL: {tmp_path / 'event.json'} could not be read as JSON: ")
+
+
+def test_a_body_that_is_no_text_fails_in_1_line(tmp_path):
+    proc, found = run(tmp_path, event(body=5))
+    assert proc.returncode == 1 and found == []
+    assert lines(proc) == ["board: FAIL: issue #1347's body is 5, neither text nor null"]
+
+
+def test_a_missing_flag_fails_in_1_line_with_exit_1(tmp_path):
+    proc, found = run_file(tmp_path, b"{}", "--event", "x.json")
+    assert proc.returncode == 1 and found == []
+    assert lines(proc) == [
+        "board: FAIL: the following arguments are required: --board (board.py --event <file> --board <url>)"
     ]
 
 
@@ -341,6 +532,25 @@ def test_no_run_step_holds_an_expression():
     assert found
     assert [s.get("name") for s in found if "${{" in s["run"] or "github.event" in s["run"]] == []
     assert "github.event.issue" not in "".join(s["run"] for s in found)
+
+
+def test_2_runs_for_1_issue_wait_for_each_other():
+    """1 group per issue and no cancelling: 2 quick edits land in the order they were made."""
+    assert workflow()["concurrency"] == {
+        "group": "board-${{ github.event.issue.number }}",
+        "cancel-in-progress": False,
+    }
+
+
+def test_the_sparse_checkout_holds_the_file_the_step_runs():
+    """The step runs `python3 tools/board.py`; the checkout takes that path and nothing else, read as a
+    path (cone mode off), and the path is a file of the repository."""
+    [checkout] = [s for s in steps() if s.get("uses", "").startswith("actions/checkout@")]
+    paths = checkout["with"]["sparse-checkout"].split()
+    assert paths == ["tools/board.py"]
+    assert checkout["with"]["sparse-checkout-cone-mode"] is False
+    assert f"python3 {paths[0]} " in card_step()["run"]
+    assert (ROOT / paths[0]).resolve() == TOOL
 
 
 def test_the_token_and_the_board_come_from_the_secret_and_the_variable():

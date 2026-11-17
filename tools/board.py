@@ -4,6 +4,9 @@ A work card is a GitHub issue whose title starts with `Work card:`. Its body car
 `**Status:** Todo`, `**Status:** In progress` or `**Status:** Done`, the board's own 3 words, matched
 without regard to case. A closed issue is Done whatever its body says. A card with no such line, with
 2, or with another word is put on the board and left where it stands, and the run says so in 1 line.
+A line that renders as an example is not the card's: in a fenced code block, indented 4 spaces (an
+indented code block), or inside an HTML comment (CommonMark 0.31.2, 4.4, 4.5, 4.6). A body whose
+`<!--` does not close is not judged: the card is left where it stands, and the line says why.
 
 The tool reads the issue from the event file a workflow gets as GITHUB_EVENT_PATH, never from a shell
 line: a title and a body are text from anyone. A card is touched only when its author is the
@@ -32,7 +35,12 @@ import sys
 PREFIX = "Work card:"
 WORDS = ("Todo", "In progress", "Done")
 TRUSTED = ("OWNER", "MEMBER", "COLLABORATOR")
-STATUS_LINE = re.compile(r"^[ \t]*\*\*Status:\*\*[ \t]*(.*?)[ \t]*\r?$", re.I | re.M)
+# CommonMark 0.31.2: 0 to 3 spaces of indent keep a line its own; 4 make an indented code block (4.4).
+# A fence is 3 or more ` or ~ and closes on the same mark, at least as long (4.5).
+STATUS_LINE = re.compile(r"^ {0,3}\*\*Status:\*\*[ \t]*(.*?)[ \t]*$", re.I)
+STATUS_ANYWHERE = re.compile(r"^[ \t]*\*\*Status:\*\*", re.I)
+FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+COMMENT = re.compile(r"<!--.*?-->", re.S)
 BOARD_URL = re.compile(r"^https://github\.com/(users|orgs)/([A-Za-z0-9-]+)/projects/(\d+)(?:/.*)?$")
 GH_TIMEOUT_S = 60
 
@@ -60,9 +68,47 @@ class Failure(Exception):
     """A failure the run prints as 1 line."""
 
 
+def status_lines(body: str) -> tuple[list[str], int]:
+    """The words of the **Status:** lines that render as the body's own lines, and how many such lines
+    are examples: in a fenced or an indented code block, or in an HTML comment. Raises ValueError for a
+    comment that does not close."""
+    shown = COMMENT.sub("", body)
+    if "<!--" in shown:
+        raise ValueError("its body opens an HTML comment (<!--) that does not close")
+    hidden = sum(1 for ln in body.split("\n") if STATUS_ANYWHERE.match(ln)) - sum(
+        1 for ln in shown.split("\n") if STATUS_ANYWHERE.match(ln)
+    )
+    found, fence = [], ""
+    for line in shown.split("\n"):
+        line = line.rstrip("\r")
+        mark = FENCE.match(line)
+        if fence:
+            if mark and mark.group(1)[0] == fence[0] and len(mark.group(1)) >= len(fence):
+                if not line[mark.end() :].strip():
+                    fence = ""
+                    continue
+            hidden += bool(STATUS_ANYWHERE.match(line))
+        elif mark and not (mark.group(1)[0] == "`" and "`" in line[mark.end() :]):
+            fence = mark.group(1)
+        elif own := STATUS_LINE.match(line):
+            found.append(own.group(1))
+        else:
+            hidden += bool(STATUS_ANYWHERE.match(line))
+    return found, hidden
+
+
 def status_of(body: str | None) -> tuple[str | None, str]:
     """The board's word the body names, or None and the reason it names none."""
-    found = STATUS_LINE.findall(body or "")
+    try:
+        found, hidden = status_lines(body or "")
+    except ValueError as err:
+        return None, f"{err}, so which lines render is not judged"
+    if not found and hidden:
+        does = "does" if hidden == 1 else "do"
+        return None, (
+            "its body has no **Status:** line outside code and HTML comments "
+            f"({hidden} inside, which {does} not count)"
+        )
     if not found:
         return None, "its body has no **Status:** line (Todo, In progress or Done)"
     if len(found) > 1:
@@ -107,35 +153,49 @@ def gh(what: str, query: str, strings: dict[str, str], numbers: dict[str, int] |
         raise Failure(f"gh api graphql ({what}) printed no JSON: {proc.stdout[:80]!r}") from None
     if not isinstance(answer, dict) or answer.get("errors") or not isinstance(answer.get("data"), dict):
         errors = answer.get("errors") if isinstance(answer, dict) else None
-        said = errors[0].get("message", errors[0]) if isinstance(errors, list) and errors else answer
+        said = errors[0] if isinstance(errors, list) and errors else answer
+        said = said.get("message", said) if isinstance(said, dict) else said
         raise Failure(f"gh api graphql ({what}) answered with an error: {said}")
     return answer["data"]
+
+
+def dig(data, *keys):
+    """data[k1][k2]..., or None where a level is no object or lacks the key."""
+    for key in keys:
+        data = data.get(key) if isinstance(data, dict) else None
+    return data
 
 
 def find_project(url: str) -> tuple[str, str, list[dict]]:
     """The project's id, its Status field's id and that field's options."""
     owner, login, number = parse_board(url)
     data = gh("find the project", FIND % owner, {"login": login}, {"number": number})
-    project = (data.get(owner) or {}).get("projectV2")
-    if not project:
+    project = dig(data, owner, "projectV2")
+    if not isinstance(project, dict) or not isinstance(project.get("id"), str):
         raise Failure(f"no project {number} of {login} at {url}")
-    fields = [f for f in (project.get("fields") or {}).get("nodes") or [] if f and "options" in f]
+    nodes = dig(project, "fields", "nodes")
+    fields = [f for f in nodes if isinstance(f, dict) and "options" in f] if isinstance(nodes, list) else []
     status = [f for f in fields if str(f.get("name", "")).casefold() == "status"]
     if not status:
         raise Failure(f"the project {url} has no single-select field Status")
-    return project["id"], status[0]["id"], status[0]["options"]
+    options = status[0]["options"]
+    if not isinstance(options, list) or not isinstance(status[0].get("id"), str):
+        raise Failure(f"the project {url}'s field Status answered options {options!r}, no list")
+    return project["id"], status[0]["id"], [o for o in options if isinstance(o, dict)]
 
 
 def read_event(path: str) -> dict:
     try:
         with open(path, encoding="utf-8") as fh:
             ev = json.load(fh)
-    except (OSError, json.JSONDecodeError) as err:
+    except (OSError, ValueError) as err:
         raise Failure(f"{path} could not be read as JSON: {err}") from None
     issue = ev.get("issue") if isinstance(ev, dict) else None
     keys = ("number", "node_id", "title", "state", "author_association")
     if not isinstance(issue, dict) or any(k not in issue for k in keys):
         raise Failure(f"{path} is no issues event: it has no issue with {', '.join(keys)}")
+    if not isinstance(issue.get("body"), (str, type(None))):
+        raise Failure(f"issue #{issue['number']}'s body is {issue['body']!r}, neither text nor null")
     return issue
 
 
@@ -158,8 +218,8 @@ def place(event_path: str, url: str) -> str:
     word, why = ("Done", "") if closed else status_of(issue.get("body"))
     project, field, options = find_project(url)
     added = gh("add the issue", ADD, {"project": project, "content": issue["node_id"]})
-    item = ((added.get("addProjectV2ItemById") or {}).get("item") or {}).get("id")
-    if not item:
+    item = dig(added, "addProjectV2ItemById", "item", "id")
+    if not isinstance(item, str) or not item:
         raise Failure(f"gh api graphql (add the issue) returned no item for card #{number}")
     if word is None:
         return f"card #{number} is on {url} and left where it stands: {why}"
@@ -173,8 +233,15 @@ def place(event_path: str, url: str) -> str:
     )
 
 
+class Parser(argparse.ArgumentParser):
+    """A wrong or missing flag is a failure like any other: 1 line, exit 1."""
+
+    def error(self, message: str):
+        raise Failure(f"{message} (board.py --event <file> --board <url>)")
+
+
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
+    parser = Parser(
         prog="board.py",
         description="Put a work card (an issue titled `Work card: ...`) in the column of the project "
         "board its `**Status:**` line names; a closed card is Done. Writes nothing on disk; changes "
@@ -184,8 +251,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--board", required=True, help="the project's URL, https://github.com/users/<login>/projects/<n>"
     )
-    args = parser.parse_args(argv)
     try:
+        args = parser.parse_args(argv)
         print(f"board: {place(args.event, args.board)}")
     except Failure as err:
         print(f"board: FAIL: {err}", file=sys.stderr)
