@@ -143,6 +143,21 @@ def test_the_stub_fails_on_insertion_loss_alone(stub):
 
 
 @needs_openems
+def test_the_same_file_gives_the_same_numbers(stub, tmp_path):
+    """openEMS stops on a check made every 4 s of the clock: 4 runs of the stub stopped after 7189 to
+    8453 steps and gave 29.55 to 29.99 dB. The spectra end where the ports' energy has settled, a
+    sample every run reaches the same way: a second run gives every measure to the last digit, while
+    a busy machine slows it."""
+    load = subprocess.Popen([sys.executable, "-c", "while True: pass"])
+    try:
+        _, again = run("fail-fields-stub", tmp_path)
+    finally:
+        load.kill()
+        load.wait()
+    assert again["details"]["measures"] == stub[1]["details"]["measures"]
+
+
+@needs_openems
 def test_the_line_delay_lies_between_air_and_the_dielectric(line):
     """The 10 mm line's delay, from the phase of S21, lies between 10 mm / c = 33.36 ps (all in air)
     and 10 mm x sqrt(4.5) / c = 70.76 ps (all in the dielectric): the field solver has put the line in

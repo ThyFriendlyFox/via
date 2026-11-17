@@ -53,6 +53,14 @@ SETTINGS = {
     "max_timesteps": 200000,
     "timeout_s": 3600,
 }
+# The settings that count something, with the least each takes: a band of 1 frequency has no step.
+COUNTS = {
+    "cells_across_width": 1,
+    "cells_per_dielectric": 1,
+    "frequencies": 2,
+    "absorbing_cells": 1,
+    "max_timesteps": 1,
+}
 
 
 class Refusal(ValueError):
@@ -86,8 +94,11 @@ class Board:
     dielectrics: list[tuple[float, float, float, float]]  # (z0, z1, epsilon_r, loss tangent), bottom up
     tracks: list[Track] = field(default_factory=list)
     vias: list[Via] = field(default_factory=list)
-    zones: list[tuple[str, tuple[str, ...]]] = field(default_factory=list)  # (net, layers)
-    pads: dict[str, tuple[float, float, str]] = field(default_factory=dict)  # REF.PAD: (x, y, net)
+    # (net, layers, {layer: [polygon, ...]}): the zone's fill on each layer where it is filled, else
+    # its outline
+    zones: list[tuple[str, tuple[str, ...], dict]] = field(default_factory=list)
+    # REF.PAD: (x, y, net, reach); reach is half the pad's diagonal, the farthest a point of it lies
+    pads: dict[str, tuple[float, float, str, float]] = field(default_factory=dict)
 
 
 def _child(node: list, head: str) -> list | None:
@@ -134,6 +145,29 @@ def _arc_points(a, m, b, n: int = 8) -> list[tuple[float, float]]:
     ]
     pts[0], pts[-1] = a, b
     return pts
+
+
+def _pts(node: list | None) -> list[tuple[float, float]]:
+    """The corners of a zone's outline or fill: its xy points, an arc as chords."""
+    out: list[tuple[float, float]] = []
+    for c in node[1:] if node is not None else []:
+        if isinstance(c, list) and c and c[0] == "xy":
+            out.append(_xy(c))
+        elif isinstance(c, list) and c and c[0] == "arc":
+            arc = _arc_points(_xy(_child(c, "start")), _xy(_child(c, "mid")), _xy(_child(c, "end")))
+            out.extend(arc if not out or _key(out[-1]) != _key(arc[0]) else arc[1:])
+    return out
+
+
+def _in_polygon(q, poly) -> bool:
+    """Even-odd: whether a point lies inside a polygon. A fill's hole joined to its outline by a slit of
+    2 edges on 1 line is a hole."""
+    x, y = q
+    inside = False
+    for (ax, ay), (bx, by) in zip(poly, poly[1:] + poly[:1], strict=True):
+        if (ay > y) != (by > y) and x < ax + (y - ay) * (bx - ax) / (by - ay):
+            inside = not inside
+    return inside
 
 
 def read_board(path: Path) -> Board:
@@ -205,7 +239,16 @@ def read_board(path: Path) -> Board:
             continue
         one, many = _child(zone, "layer"), _child(zone, "layers")
         names = tuple(str(x) for x in (many[1:] if many is not None else one[1:] if one is not None else []))
-        board.zones.append((net_of(zone), names))
+        shapes: dict[str, list] = {}
+        for filled in _children(zone, "filled_polygon"):
+            ly = _child(filled, "layer")
+            if ly is not None and len(ly) > 1:
+                shapes.setdefault(str(ly[1]), []).append(_pts(_child(filled, "pts")))
+        outline = [_pts(_child(p, "pts")) for p in _children(zone, "polygon")]
+        for ly in names:
+            if ly not in shapes:
+                shapes[ly] = outline
+        board.zones.append((net_of(zone), names, shapes))
     for fp in _children(root, "footprint") + _children(root, "module"):
         at = _child(fp, "at")
         fx, fy = _xy(at)
@@ -217,7 +260,9 @@ def read_board(path: Path) -> Board:
         for pad in _children(fp, "pad"):
             dx, dy = _xy(_child(pad, "at"))
             ox, oy = _rotate(dx, dy, rot)
-            board.pads[f"{ref}.{pad[1]}"] = (fx + ox, fy + oy, net_of(pad))
+            size = _child(pad, "size")
+            reach = math.hypot(*_xy(size)) / 2 if size is not None and len(size) > 2 else 0.0
+            board.pads[f"{ref}.{pad[1]}"] = (fx + ox, fy + oy, net_of(pad), reach)
     return board
 
 
@@ -262,12 +307,25 @@ def read_spec(path: Path) -> dict:
     if engine not in ENGINES:
         raise Refusal(f"{where}: engine `{engine}` is none of {', '.join(ENGINES)}")
     settings = dict(SETTINGS)
-    for key, value in (data.get("settings") or {}).items():
+    given = data.get("settings", {})
+    if not isinstance(given, dict):
+        raise Refusal(f"{where}: `settings` is an object of names and numbers, not {given!r}")
+    for key, value in given.items():
         if key not in SETTINGS:
             raise Refusal(f"{where}: setting `{key}` is none of {', '.join(SETTINGS)}")
-        if not _number(value) or value <= 0:
+        if key in COUNTS:
+            least = COUNTS[key]
+            if not (_number(value) and value == int(value) and value >= least):
+                raise Refusal(f"{where}: setting `{key}` is {value!r}, not a whole number of {least} or more")
+            value = int(value)
+        elif key == "end_criteria_db":
+            if not _number(value) or value >= 0:
+                raise Refusal(f"{where}: setting `{key}` is {value!r}, not a number below 0")
+        elif not _number(value) or value <= 0:
             raise Refusal(f"{where}: setting `{key}` is {value!r}, not a number above 0")
         settings[key] = value
+    if not isinstance(data.get("reference", "GND"), str) or not data.get("reference", "GND"):
+        raise Refusal(f"{where}: `reference` is the name of the reference net, not {data['reference']!r}")
     groups = data.get("groups")
     if not isinstance(groups, list):
         raise Refusal(f"{where}: `groups` is a list of groups")
@@ -322,6 +380,8 @@ def read_spec(path: Path) -> dict:
             for k in ("min", "max"):
                 if k in lim and not _number(lim[k]):
                     raise Refusal(f"{at}: {m} of {net}: {k} is {lim[k]!r}, not a number")
+            if "min" in lim and "max" in lim and lim["min"] > lim["max"]:
+                raise Refusal(f"{at}: {m} of {net}: min {lim['min']} is above max {lim['max']}")
             source = lim.get("source")
             if not isinstance(source, str) or not source.strip():
                 raise Refusal(f"{at}: {m} of {net} has no source: name the document, clause and page")
@@ -425,6 +485,29 @@ def _inside(q, t: Track, tol: float = 1e-6) -> bool:
     return -tol <= along <= length + tol and abs(across) <= t.width / 2 + tol
 
 
+def _pt(p) -> str:
+    return f"({p[0]:g}, {p[1]:g})"
+
+
+def _bare_point(t: Track, polys: list) -> tuple[float, float] | None:
+    """The first point of a track with no polygon of `polys` under it, or None. The points: the track's
+    centre line and its 2 edges (a micrometre inside them), every half its width along it, ends included."""
+    (ax, ay), (bx, by), h = t.a, t.b, t.width / 2
+    length = math.hypot(bx - ax, by - ay)
+    if length < 1e-9:
+        return None
+    ux, uy = (bx - ax) / length, (by - ay) / length
+    n = max(1, math.ceil(length / max(h, 1e-3)))
+    side = max(h - 1e-3, 0.0)
+    for i in range(n + 1):
+        cx, cy = ax + ux * length * i / n, ay + uy * length * i / n
+        for off in (0.0, side, -side):
+            q = (cx - uy * off, cy + ux * off)
+            if not any(_in_polygon(q, p) for p in polys):
+                return q
+    return None
+
+
 def build_model(board: Board, group: dict, spec: dict) -> dict:
     """The engine-neutral model of 1 group, in mm: the box, the dielectrics, the reference planes, the
     copper of the group's nets as polygons, the vias, the ports and the mesh."""
@@ -438,7 +521,7 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
     unknown = [t.layer for t in tracks if t.layer not in board.copper_z]
     if unknown:
         raise Refusal(f"{where}: layer {unknown[0]} is not in the board's stack-up")
-    poured = {ly for net, lys in board.zones if net == reference for ly in lys if ly in board.copper_z}
+    poured = {ly for net, lys, _ in board.zones if net == reference for ly in lys if ly in board.copper_z}
     # A pour on a layer the group's tracks use is copper beside them, not a plane: as a sheet over the
     # box it would short them. The planes are the nearest pour under and over each layer of tracks; the
     # ones beyond those are shielded by them.
@@ -453,7 +536,35 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
     beside = sorted(ly for ly in poured if board.copper_z[ly] in signal_z)
     if not plane_layers:
         raise Refusal(f"{where}: no zone of {reference} on a copper layer: a port has no plane to stand on")
+    # The model makes each plane whole over the box. That holds only where the pour lies under every
+    # track: a track is sampled at its centre and both edges, every half its width along it, and each
+    # point must lie in the pour on each plane next to its layer.
+    shapes = {}
+    for net, _, by_layer in board.zones:
+        if net == reference:
+            for ly, polys in by_layer.items():
+                shapes.setdefault(ly, []).extend(p for p in polys if len(p) > 2)
+    for t in tracks:
+        zt = board.copper_z[t.layer]
+        under = [s for s in sheets if s[0] < zt]
+        over = [s for s in sheets if s[0] > zt]
+        for _, ly in ([under[-1]] if under else []) + ([over[0]] if over else []):
+            bare = _bare_point(t, shapes.get(ly, []))
+            if bare is not None:
+                raise Refusal(
+                    f"{where}: the track of {t.net} from {_pt(t.a)} to {_pt(t.b)} on {t.layer} has no "
+                    f"{reference} pour on {ly} under {_pt(bare)}: the model would put a plane where the "
+                    f"board has none"
+                )
     vias = [v for v in board.vias if v.net in nets]
+    for v in vias:
+        za, zb = sorted(board.copper_z.get(ly, 0.0) for ly in v.layers)
+        crossed = [ly for ly in plane_layers if za + 1e-9 < board.copper_z[ly] < zb - 1e-9]
+        if crossed:
+            raise Refusal(
+                f"{where}: the via of {v.net} at {_pt(v.at)} crosses the {reference} plane on {crossed[0]}: "
+                f"the model cuts no antipad, so the via would short the net to the plane"
+            )
 
     # nodes: track ends per layer; a via joins its layers at its centre
     degree: dict[tuple[str, tuple[float, float]], list[Track]] = {}
@@ -486,17 +597,38 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
     ends = [(layer, p, ts[0]) for (layer, p), ts in degree.items() if len(ts) == 1 and p not in via_at]
     chosen = []
     if group.get("ports"):
+        at = f"{where}, `ports` of {Path(spec.get('file', 'fields.json')).name}"
         for name in group["ports"]:
             if name not in board.pads:
-                raise Refusal(f"{where}: pad {name} is not on {board.path.name}")
-            px, py, _ = board.pads[name]
-            near = [e for e in ends if e[2].net in nets]
+                raise Refusal(f"{at}: pad {name} is not on {board.path.name}")
+            if group["ports"].count(name) > 1:
+                raise Refusal(f"{at}: pad {name} is named {group['ports'].count(name)} times")
+            px, py, pad_net, reach = board.pads[name]
+            if pad_net not in nets:
+                raise Refusal(f"{at}: pad {name} is on net {pad_net or '(none)'}, not a net of the group")
+            near = [e for e in ends if e[2].net == pad_net]
             if not near:
-                raise Refusal(f"{where}: no free track end to put the port of {name} on")
-            chosen.append(min(near, key=lambda e: math.hypot(e[1][0] - px, e[1][1] - py)))
+                raise Refusal(f"{at}: net {pad_net} has no free track end to put the port of {name} on")
+            end = min(near, key=lambda e: math.hypot(e[1][0] - px, e[1][1] - py))
+            gap = math.hypot(end[1][0] - px, end[1][1] - py)
+            if gap > reach + 1e-6:
+                raise Refusal(
+                    f"{at}: pad {name} at {_pt((px, py))}: the nearest free end of {pad_net}, {_pt(end[1])}, "
+                    f"is {gap:.3f} mm away and the pad reaches {reach:.3f} mm"
+                )
+            if end in chosen:
+                raise Refusal(f"{at}: pad {name} gives the end at {_pt(end[1])}, a port already")
+            chosen.append(end)
     else:
         for net in nets:
-            chosen.extend(sorted((e for e in ends if e[2].net == net), key=lambda e: (e[1], e[0])))
+            free = sorted((e for e in ends if e[2].net == net), key=lambda e: (e[1], e[0]))
+            if len(free) > 2:
+                raise Refusal(
+                    f"{where}: net {net} has {len(free)} free track ends "
+                    f"({', '.join(_pt(e[1]) for e in free)}) and fields.json names no `ports`: "
+                    "an open end is part of the structure, never a port; name the pads"
+                )
+            chosen.extend(free)
     ports = []
     for n, (layer, p, t) in enumerate(chosen, 1):
         zt = board.copper_z[layer]
@@ -593,7 +725,9 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
         "left_out": [
             "copper thickness: copper is a sheet at its layer's height",
             "conductor loss: copper is a perfect conductor; loss is the dielectric's alone",
-            f"cut-outs in the {reference} planes: each is whole over the box",
+            f"the {reference} planes' own outlines: each is whole over the box; the pour was checked under "
+            "each track of the group, at its centre and edges every half its width along it",
+            f"antipads: a via of the group that crosses a {reference} plane is refused",
             "pads, parts, solder mask and every net outside the group",
             "the board's edge: the dielectric fills the box",
         ]
@@ -629,8 +763,21 @@ def s_column(ui: list[tuple[complex, complex]], zref: float, driven: int) -> lis
     return [r / inc[driven] for r in ref]
 
 
+FLOOR = 1e-30  # |S| at or under this is 0 to the arithmetic: no wave reached the port
+
+
 def _db(x: complex) -> float:
-    return 20 * math.log10(max(abs(x), 1e-30))
+    return 20 * math.log10(max(abs(x), FLOOR))
+
+
+def _worst(freqs, s, sign: int) -> dict:
+    """The worst of sign x 20 log10 |s| over the band, the larger; a |s| at the floor is no measure."""
+    zero = [f for x, f in zip(s, freqs, strict=True) if abs(x) <= FLOOR]
+    if zero:
+        why = f"|S| is 0 at {zero[0] / 1e9:.3g} GHz: no wave reached the port, so nothing was measured"
+        return {"value": None, "at_hz": zero[0], "why": why}
+    v, f = max((sign * _db(x), f) for x, f in zip(s, freqs, strict=True))
+    return {"value": v, "at_hz": f}
 
 
 def line_measures(freqs, s11, s21=None, zref: float = 50.0) -> dict:
@@ -638,13 +785,14 @@ def line_measures(freqs, s11, s21=None, zref: float = 50.0) -> dict:
     line's impedance as a symmetric 2-port gives it, the median over the frequencies where it is
     defined."""
     out = {}
-    rl = [(-_db(s), f) for s, f in zip(s11, freqs, strict=True)]
-    v, f = min(rl)
-    out["return_loss_db"] = {"value": v, "at_hz": f}
+    rl = _worst(freqs, s11, 1)
+    if rl["value"] is not None:
+        rl["value"] = -rl["value"]
+    out["return_loss_db"] = rl
     if s21 is not None:
-        il = [(-_db(s), f) for s, f in zip(s21, freqs, strict=True)]
-        v, f = max(il)
-        out["insertion_loss_db"] = {"value": v, "at_hz": f}
+        out["insertion_loss_db"] = _worst(freqs, s21, -1)
+        if out["insertion_loss_db"]["value"] is None:
+            return out
         z = []
         for a, b in zip(s11, s21, strict=True):
             a, b = complex(a), complex(b)
@@ -657,13 +805,13 @@ def line_measures(freqs, s11, s21=None, zref: float = 50.0) -> dict:
             out["impedance_ohm"] = {
                 "value": z[mid] if len(z) % 2 else (z[mid - 1] + z[mid]) / 2,
                 "at_hz": None,
+                "median_of": len(z),
             }
     return out
 
 
 def coupling_measure(freqs, s) -> dict:
-    v, f = max((_db(x), f) for x, f in zip(s, freqs, strict=True))
-    return {"value": v, "at_hz": f}
+    return _worst(freqs, s, 1)
 
 
 def _fmt(v: float) -> str:
@@ -682,7 +830,12 @@ def judge(limits: list[dict], measures: dict) -> tuple[list[str], list[str], lis
             unjudged.append(f"{label}: not judged, the run gave no such measure")
             continue
         v = got["value"]
+        if v is None:
+            unjudged.append(f"{label}: not judged, {got['why']}")
+            continue
         at = f" at {got['at_hz'] / 1e9:.3g} GHz" if got.get("at_hz") is not None else ""
+        if got.get("median_of"):
+            at = f" (the median over {got['median_of']} frequencies)"
         if "min" in lim and v < lim["min"]:
             fails.append(f"{label} {v:.2f}{at} below min {_fmt(lim['min'])} ({lim['source']})")
         elif "max" in lim and v > lim["max"]:
@@ -710,6 +863,27 @@ def _box(a, b, prio: int) -> str:
 def _polygon(z: float, points, prio: int = 10) -> str:
     verts = "".join(f'<Vertex X1="{_n(x)}" X2="{_n(y)}"/>' for x, y in points)
     return f'<Polygon Priority="{prio}" Elevation="{_n(z)}" NormDir="2">{verts}</Polygon>'
+
+
+class EngineFault(RuntimeError):
+    """A run whose output is no result: the message says why."""
+
+
+SETTLE_SAMPLES = 5  # samples in a row the port energy must stay under the end criterion
+ENGINE_MARGIN_DB = 10.0  # how much further than the end criterion openEMS lets the box's energy fall
+
+
+def settled(energy: list[float], end_db: float, window: int = SETTLE_SAMPLES) -> int | None:
+    """The first sample whose last `window` samples, itself included, all lie `end_db` under the
+    series' peak so far, or None. It reads no sample after the one it returns: a run that stops later
+    gives the same answer."""
+    peak, run = 0.0, 0
+    for k, e in enumerate(energy):
+        peak = max(peak, e)
+        run = run + 1 if peak > 0 and e <= peak * 10 ** (end_db / 10) else 0
+        if run >= window:
+            return k
+    return None
 
 
 class OpenEMS:
@@ -793,7 +967,10 @@ class OpenEMS:
                 f'<ProbeBox Name="port_it{n}" Type="1" Weight="{direction}" NormDir="2">'
                 f"<Primitives>{_box([a[0], a[1], mz], [b[0], b[1], mz], 5)}</Primitives></ProbeBox>"
             )
-        end = 10 ** (s["end_criteria_db"] / 10)
+        # openEMS stops on the box's energy, the spectra are cut where the ports' settles (`column`):
+        # openEMS runs on to 10 dB further, so that the ports have settled before it stops. On the
+        # Wyvern lane at -40 dB the ports reached -40 dB 3 samples before openEMS stopped.
+        end = 10 ** ((s["end_criteria_db"] - ENGINE_MARGIN_DB) / 10)
         bc = " ".join(f'{side}="{pml}"' for side in ("xmin", "xmax", "ymin", "ymax", "zmin", "zmax"))
         steps = int(s["max_timesteps"])
         return "\n".join(
@@ -885,14 +1062,31 @@ class OpenEMS:
 
     @classmethod
     def column(cls, run: Path, model: dict, driven: int) -> list[list[complex]]:
-        """S[receiver][driven] at each of the model's frequencies, receivers in port order."""
-        freqs = model["frequencies_hz"]
+        """S[receiver][driven] at each of the model's frequencies, receivers in port order.
+
+        openEMS checks its end criterion every 4 s of the clock, so where a run stops hangs on the
+        machine's load. Every sample before the stop is the same from run to run: the spectra are read
+        up to the sample where the ports' energy, the sum of u^2 + (Z i)^2, has settled (`settled`),
+        and not beyond. A run that stopped before that is a fault."""
+        freqs, zref = model["frequencies_hz"], model["settings"]["port_ohm"]
+        probes = [
+            (cls._probe(run / f"port_ut{p['n']}"), cls._probe(run / f"port_it{p['n']}"))
+            for p in model["ports"]
+        ]
+        n = min(len(s[0]) for pair in probes for s in pair)
+        energy = [sum(u[1][k] ** 2 + (zref * i[1][k]) ** 2 for u, i in probes) for k in range(n)]
+        end_db = model["settings"]["end_criteria_db"]
+        last = settled(energy, end_db)
+        if last is None:
+            raise EngineFault(
+                f"the port signals did not settle {-end_db:g} dB under their peak for {SETTLE_SAMPLES} "
+                f"samples in the {n} samples openEMS wrote"
+            )
         ui = []
-        for p in model["ports"]:
-            u = dft(*cls._probe(run / f"port_ut{p['n']}"), freqs)
-            i = dft(*cls._probe(run / f"port_it{p['n']}"), freqs)
+        for (tu, vu), (ti, vi) in probes:
+            u = dft(tu[: last + 1], vu[: last + 1], freqs)
+            i = dft(ti[: last + 1], vi[: last + 1], freqs)
             ui.append(list(zip(u, i, strict=True)))
-        zref = model["settings"]["port_ohm"]
         index = [p["n"] for p in model["ports"]].index(driven)
         per_f = [s_column([col[k] for col in ui], zref, index) for k in range(len(freqs))]
         return [[row[r] for row in per_f] for r in range(len(model["ports"]))]
@@ -906,7 +1100,8 @@ ENGINES = {"openems": OpenEMS}
 
 def group_measures(model: dict, columns: dict[int, list[list[complex]]]) -> dict:
     """The measures of each net: its own when its first port is driven, and the coupling into each other
-    net of the group from each driven net."""
+    net of the group from each driven net. Ports keep the order fields.json names them in: NEXT into
+    another net is taken at its first port, FEXT at its last."""
     freqs, zref = model["frequencies_hz"], model["settings"]["port_ohm"]
     index = {p["n"]: k for k, p in enumerate(model["ports"])}
     by_net = {net: [p["n"] for p in model["ports"] if p["net"] == net] for net in model["nets"]}
@@ -917,6 +1112,8 @@ def group_measures(model: dict, columns: dict[int, list[list[complex]]]) -> dict
         col = columns[ns[0]]
         far = col[index[ns[-1]]] if len(ns) > 1 else None
         out[net].update(line_measures(freqs, col[index[ns[0]]], far, zref))
+        if len(ns) != 2:  # the impedance formula is a symmetric 2-port's: a net of 3 ports is none
+            out[net].pop("impedance_ohm", None)
         for other, os_ in by_net.items():
             if other == net or not os_:
                 continue
@@ -952,7 +1149,8 @@ def report_md(project: str, engine: str, version: str | None, groups: list[dict]
         for net, ms in g.get("measures", {}).items():
             for key, m in sorted(ms.items()):
                 at = f"{m['at_hz'] / 1e9:.3g} GHz" if m.get("at_hz") is not None else "median"
-                out.append(f"| {net} | {key} | {m['value']:.3f} | {at} |")
+                value = f"{m['value']:.3f}" if m["value"] is not None else "not measured"
+                out.append(f"| {net} | {key} | {value} | {at} |")
         out += ["", "Limits:", ""]
         out += [f"- FAIL {x}" for x in g["fails"]] + [f"- held {x}" for x in g["held"]]
         out += [f"- {x}" for x in g["unjudged"]]
@@ -1013,7 +1211,10 @@ def cmd_fields(args, cli) -> int:
                 last = (log.strip().splitlines() or ["no output"])[-1]
                 errors.append(f"{engine.program} on port {n} ended without a result: {last}")
                 continue
-            columns[n] = engine.column(run, model, n)
+            try:
+                columns[n] = engine.column(run, model, n)
+            except EngineFault as exc:
+                errors.append(f"{engine.program} on port {n} ended without a result: {exc}")
         measures = group_measures(model, columns)
         group = next(g for g in spec["groups"] if g["name"] == model["group"])
         fails, held, unjudged = judge(group.get("limits", []), measures)

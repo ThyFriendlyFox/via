@@ -212,7 +212,12 @@ step_openems() {
         openems_fail "download of ${name} failed"
         return
       fi
-      echo "${sum}  ${deb}" | sha256sum -c - >/dev/null || die "openems: checksum mismatch for ${deb}"
+      if ! echo "${sum}  ${deb}" | sha256sum -c - >/dev/null 2>&1; then
+        # A file that is not the pinned one is never unpacked: openEMS stays absent and `fields` skips.
+        rm -rf "${dir}/debs" "${dir}/root"
+        openems_fail "checksum mismatch for ${name}_${OPENEMS_VERSION}_amd64.deb"
+        return
+      fi
       dpkg-deb -x "$deb" "${dir}/root"
     done
     rm -rf "${dir}/debs"
