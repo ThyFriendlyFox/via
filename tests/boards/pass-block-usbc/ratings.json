@@ -1,0 +1,69 @@
+{
+  "pack": "nasa-eee-inst-002",
+  "nets": {
+    "VBUS": {
+      "volts": [
+        4.75,
+        5.5
+      ],
+      "source": "USB 2.0, USB 2.0 ECN VBUS Max Limit, change (c) to section 7.3.2, table 7-7, page 4: a high-power port supplies 4.75 V to 5.50 V; usbc(amps=1.5, detects='1.5A')"
+    },
+    "D+": {
+      "volts": [
+        0,
+        3.6
+      ],
+      "source": "USB 2.0, section 7.3.2, table 7-7, pages 178 and 179: VOH at most 3.6 V and VIHZ at most 3.6 V on D+ and D-; usbc(amps=1.5, detects='1.5A')"
+    },
+    "D-": {
+      "volts": [
+        0,
+        3.6
+      ],
+      "source": "USB 2.0, section 7.3.2, table 7-7, pages 178 and 179: VOH at most 3.6 V and VIHZ at most 3.6 V on D+ and D-; usbc(amps=1.5, detects='1.5A')"
+    },
+    "CC1": {
+      "volts": [
+        0,
+        2.04
+      ],
+      "source": "USB Type-C R2.5, section 4.11.1, table 4-28, page 245: the max voltage on the pin, 2.04 V for Rd +-10 % and 2.18 V for Rd +-20 %; usbc(amps=1.5, detects='1.5A')"
+    },
+    "CC2": {
+      "volts": [
+        0,
+        2.04
+      ],
+      "source": "USB Type-C R2.5, section 4.11.1, table 4-28, page 245: the max voltage on the pin, 2.04 V for Rd +-10 % and 2.18 V for Rd +-20 %; usbc(amps=1.5, detects='1.5A')"
+    },
+    "GND": {
+      "volts": [
+        0,
+        0
+      ],
+      "source": "the reference: J1's GND pins and its shell"
+    }
+  },
+  "parts": {
+    "J2.1": {
+      "amps": 1.5,
+      "source": "the load on J2: 1.5 A at the most, this fixture's own"
+    },
+    "J3.1": {
+      "amps": 0,
+      "source": "the data lines carry no steady current, this fixture's own"
+    },
+    "J3.2": {
+      "amps": 0,
+      "source": "the data lines carry no steady current, this fixture's own"
+    },
+    "J4.1": {
+      "amps": 0,
+      "source": "the part that reads CC takes no steady current, this fixture's own"
+    },
+    "J4.2": {
+      "amps": 0,
+      "source": "the part that reads CC takes no steady current, this fixture's own"
+    }
+  }
+}

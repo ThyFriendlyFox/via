@@ -25,7 +25,7 @@ the makers' and the issuers' terms forbid a copy.
 | `usb-typec-r2.5` | standard | USB Type-C Cable and Connector Specification (a zip) | Release 2.5, March 2026 |
 | `usb-2.0` | standard | USB 2.0 Specification (a zip, with its ECNs) | Revision 2.0; the package of 2025-06-03 |
 | `ti-sllseg9c` | datasheet | SLLSEG9C (TPD2E2U06) | June 2013, revised December 2019 |
-| `gct-usb4105` | datasheet | USB4105 (a drawing) | revision C, 18/12/23 |
+| `gct-usb4115` | datasheet | USB4115 (a drawing) | revision B, 17/12/25 |
 | `samsung-cl10a475ko8nnn` | datasheet | CL10A475KO8NNN (the maker's page) | the page as fetched on 2026-11-17 |
 
 On 2026-11-17 `workcenter references fetch` got all 9 under the workcenter's own name, and each copy

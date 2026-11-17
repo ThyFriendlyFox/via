@@ -1,8 +1,8 @@
 """blocks_usbc — the USB Type-C port block: a receptacle as a sink that takes 5 V, in 1 call.
 
-`usbc(d, amps=..., detects=..., ...)` adds a USB 2.0 Type-C receptacle, the 2 Rd pull-downs on CC1 and
-CC2, 2 ESD clamps on D+, D-, CC1 and CC2, and the capacitor on VBUS, to a kicadgen Design. Its numbers
-stand in `rules/blocks/usbc.json`, each with its document, section, table and page: the USB Type-C
+`usbc(d, amps=..., detects=..., ...)` adds a USB Type-C receptacle wired for USB 2.0, the 2 Rd pull-downs
+on CC1 and CC2, 2 ESD clamps on D+, D-, CC1 and CC2, and the capacitor on VBUS, to a kicadgen Design. Its
+numbers stand in `rules/blocks/usbc.json`, each with its document, section, table and page: the USB Type-C
 Cable and Connector Specification (Rd, the current each Rp advertisement allows, the CC voltages, the
 receptacle's wiring) and the USB 2.0 Specification with its ECNs (the VBUS range and the capacitance a
 device may put on VBUS). A part's own ratings are read from `library/facts/`, as `workcenter ratings`
@@ -76,7 +76,7 @@ def usbc(  # noqa: PLR0913, PLR0915
     sch_at: tuple[float, float],
     pcb_at: tuple[float, float],
     farads: tuple[float, float] = (0.0, 0.0),
-    connector: str = "USB4105-GF-A",
+    connector: str = "USB4115-03-C",
     refs: dict[str, str] | None = None,
     rules: Path = RULES,
 ) -> UsbcBlock:
@@ -282,6 +282,7 @@ def usbc(  # noqa: PLR0913, PLR0915
             "gnd": _wiring(data, "gnd"),
             "data": _wiring(data, "data"),
             "sbu": _wiring(data, "sbu"),
+            "unused": _wiring(data, "unused"),
             "rd": rd_where,
             "cc": cc_where,
             "data_volts": _doc(data, data["data_volts"]),
@@ -294,8 +295,8 @@ def usbc(  # noqa: PLR0913, PLR0915
         raise blocks.Refused("\n".join(faults))
     sums.append(
         f"{j}: the shell and the 4 GND pins on {gnd}, the 4 VBUS pins on {vbus}, A6 and B6 on {dp}, "
-        f"A7 and B7 on {dm}, SBU1 and SBU2 not connected [{typec}, section 3.2.1, note 11, page 47; "
-        "section 3.2.3, table 3-5, notes 2 to 5, page 77]"
+        f"A7 and B7 on {dm}, SBU1, SBU2 and the unused pins not connected [{typec}, section 3.2.1, note 11, "
+        "page 47; section 3.2.3, table 3-5, notes 1 to 5, page 77]"
     )
 
     rows = blocks.rows_of(
@@ -347,9 +348,11 @@ def check(d, port: Port) -> list[str]:  # noqa: PLR0912
     pins_on("D-", port.nets["D-"], "data")
     pins_on("CC1", port.nets["CC1"], "rd")
     pins_on("CC2", port.nets["CC2"], "rd")
-    joined = [n for n in port.pins["SBU"] if n in jn]
-    if joined:
-        out.append(f"usbc {j}: SBU pins {', '.join(f'{n} on {jn[n]}' for n in joined)} [{port.where['sbu']}]")
+    for signal, key in (("SBU", "sbu"), ("UNUSED", "unused")):
+        joined = [n for n in port.pins.get(signal, []) if n in jn]
+        if joined:
+            pins = ", ".join(f"{n} on {jn[n]}" for n in joined)
+            out.append(f"usbc {j}: {signal} pins {pins} [{port.where[key]}]")
     parts = {p.ref: p for p in d.parts}
     for signal, ref in zip(("CC1", "CC2"), port.rd, strict=True):
         p = parts.get(ref)

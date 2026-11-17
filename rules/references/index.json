@@ -178,14 +178,14 @@
       "read": "2026-11-17"
     },
     {
-      "id": "gct-usb4105",
+      "id": "gct-usb4115",
       "kind": "datasheet",
       "maker": "GCT",
-      "number": "USB4105",
-      "title": "USB4105, USB Type C Receptacle for USB 2.0, SMT Type, PCB Top Mount (drawing)",
-      "revision": "revision C, 18/12/23",
-      "url": "https://gct.co/files/drawings/usb4105.pdf",
-      "sha256": "fb331fbabee8392ed2937ed757c1610cb0f174b84625147c0b580a18eea8c0e5",
+      "number": "USB4115",
+      "title": "USB4115, USB3.2 Gen2 Type C Receptacle, Vertical, SMT, H=9.30mm (drawing)",
+      "revision": "revision B, 17/12/25",
+      "url": "https://gct.co/files/drawings/usb4115.pdf",
+      "sha256": "8e3448f72b96e77b0952160bfa76d54c034a7c7ce783411cfc70492e8d1b90dc",
       "read": "2026-11-17"
     },
     {
