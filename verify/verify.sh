@@ -11,7 +11,10 @@ VENV_PY=/opt/workcenters/ee/venv/bin/python
 PY=python3
 [[ -x "$VENV_PY" ]] && PY="$VENV_PY"
 
-step() { printf '\n== %s\n' "$*"; }
+STEP="0/4 start"
+step() { STEP="$*"; printf '\n== %s\n' "$*"; }
+# The verdict, the step and the commit, for `workcenter now`: build/verify.json, ignored by git.
+trap 'python3 tools/now.py record "$?" "$STEP" >/dev/null || echo "no gate record written" >&2' EXIT
 
 step "1/4 lint"
 shellcheck install.sh verify/verify.sh environment/setup.sh site/build.sh
