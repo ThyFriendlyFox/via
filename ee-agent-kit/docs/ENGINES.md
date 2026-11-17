@@ -1,7 +1,7 @@
 # Engines
 
 An engine is the external program a gate runs. EE Workcenter has 3
-engines and 1 planned. Select an engine's binary with its environment
+engines, the openEMS field solver, and 1 planned. Select an engine's binary with its environment
 variable (`docs/CONFIGURATION.md`); the gate that uses it is fixed.
 
 ## kicad-cli
@@ -139,6 +139,42 @@ YAML 1.1 reads the key `on:` as true; the replay never reads it. The venv
 runs without `-s`, so it imports the copy pip reports: Ubuntu's
 python3-yaml 6.0.1 in the system packages comes second. Absent, the
 command skips (exit 2) and says so.
+
+## openEMS
+
+The field solver of `workcenter fields`: finite differences in time on a
+rectilinear mesh, lumped ports, S-parameters from each port's voltage and
+current. Version 0.0.35 (`0.0.35+git20190103.6a75e98+dfsg.1-3.2`, Debian 12).
+Ubuntu 24.04 has no package: `install.sh` fetches Debian's `openems`,
+`libopenems0`, `libcsxcad0` and `libnf2ff0` from `deb.debian.org`, checks
+each against the SHA256 in Debian's bookworm index, unpacks them under
+`/opt/workcenters/ee/openems/root` and writes `bin/openEMS`, which sets the
+library path. 5 Ubuntu packages carry the rest (`libfparser4`,
+`libtinyxml2.6.2v5`, `libboost-thread1.74.0`, `libvtk9.1t64`,
+`libhdf5-hl-100t64`). `sudo ./install.sh --openems` runs this step alone. A
+failed step warns, and `fields` skips (exit 2), unless `REQUIRE_OPENEMS=1`.
+
+openEMS is GPL. It runs as its own process on an XML file the command
+writes; none of its code is in this repository.
+
+```sh
+OPENEMS=/opt/workcenters/ee/openems/bin/openEMS   # default; else openEMS on PATH
+```
+
+Traps, each met on the fixtures:
+
+- A sheet that lies on no mesh line is dropped with `Unused primitive` and
+  exit 0; so is a sheet whose every cell another primitive of the same
+  property already fills. `mesh_lines` holds each fixed line to the digit
+  (a sum of cells put the plane at 1.5e-15 and openEMS dropped it), the
+  model leaves out an octagon at a joint the rectangles cover, and the run
+  counts the warning as a fault.
+- With first-order absorbing walls (`MUR`) around a microstrip the energy
+  stayed at -15 dB after 200000 steps. With 8 cells of PML outside the box
+  on every side, the dielectric and the plane running into them, the same
+  line fell to -44.85 dB in 2650 steps.
+- A run that reaches `NumberOfTimesteps` before its end criterion prints
+  a warning and exits 0. The run counts it as a fault.
 
 ## kipy (planned)
 

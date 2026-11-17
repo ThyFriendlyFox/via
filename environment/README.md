@@ -23,6 +23,7 @@ Add these:
 | `keyserver.ubuntu.com` | `install.sh` fetches the PPA signing key |
 | `api.launchpad.net` | the same key from Launchpad, when the keyserver does not answer |
 | `release-assets.githubusercontent.com` | FreeRouting JAR download |
+| `deb.debian.org` | openEMS: Debian 12's 4 packages, each checked against its SHA256 in `install.sh` |
 
 ## Time budget
 

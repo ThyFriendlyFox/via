@@ -4850,6 +4850,7 @@ def cmd_doctor(args) -> int:
     ngspice = tool_version([NGSPICE, "--version"], r"(?<=ngspice-)\d+")
     java = tool_version([JAVA, "-version"], r'(?<=version ")\d+(\.\d+)*')
     py = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    openems = fields().OpenEMS.version()
     checks = {
         "kicad-cli": {"required": True, "ok": bool(kicad and kicad.startswith("10.")), "version": kicad},
         "ngspice": {"required": True, "ok": bool(ngspice), "version": ngspice},
@@ -4864,6 +4865,13 @@ def cmd_doctor(args) -> int:
         "xvfb": {"required": False, "ok": shutil.which("Xvfb") is not None},
         "rsvg-convert": {"required": False, "ok": shutil.which("rsvg-convert") is not None},
         "ffmpeg": {"required": False, "ok": shutil.which("ffmpeg") is not None},
+        # The field solver of `fields`: absent, that command skips and nothing else needs it.
+        "openems": {
+            "required": False,
+            "ok": openems is not None,
+            "version": openems,
+            "path": fields().OpenEMS.binary() or str(WC_ROOT / "openems" / "bin" / "openEMS"),
+        },
         "symbols": {
             "required": False,
             "ok": Path("/usr/share/kicad/symbols/Device.kicad_sym").is_file(),
@@ -5074,6 +5082,14 @@ def routebench():
     """tools/routebench.py: `bench`, design files routed by each router and the runs compared."""
     sys.path.insert(0, str(SRC_DIR / "tools"))
     import routebench as module
+
+    return module
+
+
+def fields():
+    """tools/fields.py: `fields`, the critical nets simulated by a field solver from the board file."""
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import fields as module
 
     return module
 
@@ -5415,6 +5431,7 @@ def main(argv: list[str] | None = None) -> int:
     ratings().register(sub, sys.modules[__name__])
     references().register(sub, sys.modules[__name__])
     routebench().register(sub, sys.modules[__name__])
+    fields().register(sub, sys.modules[__name__])
     sys.path.insert(0, str(SRC_DIR / "tools"))
     import measureplan
 
