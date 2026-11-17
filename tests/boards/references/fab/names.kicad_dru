@@ -1,0 +1,6 @@
+(version 1)
+# A fab rule file made up for the tests: it cites a standard by number and table, with no URL.
+# A clearance of 0.13 mm from IPC-2221B, table 6-1.
+(rule "clearance"
+	(constraint clearance (min 0.13mm))
+	(severity error))
