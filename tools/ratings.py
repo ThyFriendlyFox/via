@@ -937,14 +937,15 @@ SOURCE_KEYS = (("document", "read", "second_reader"), ("revision", "url", "sha25
 WHICH = ("mpn", "mpns", "match", "symbol")  # how an entry names the parts it speaks of: exactly 1 of these
 # A capacitor's kind alone says it passes no steady current: an entry with no rating keeps its nets
 # judged, and the capacitor's own voltage is then the 1 thing the report cannot judge.
-CAPACITOR = ((), ("tolerance", "volts", "farads", "dielectric", "kept"))
+CAPACITOR = ((), ("tolerance", "volts", "farads", "dielectric", "kept", "kept_celsius"))
 PASSIVE = {  # kind -> the keys an entry must hold, and those it may
     "resistor": (("tolerance", "watts", "volts"), ("ohms",)),
     "capacitor.ceramic": CAPACITOR,
     "capacitor.tantalum": CAPACITOR,
     "capacitor.film": CAPACITOR,
     "capacitor.electrolytic": CAPACITOR,
-    "inductor": (("tolerance", "amps_saturation"), ("henries", "amps_rms")),
+    # an inductor's `kept` is pairs [amps, share of the value kept]: the SIM gate's, not judged here
+    "inductor": (("tolerance", "amps_saturation"), ("henries", "amps_rms", "kept")),
     "ferrite": ((), ("amps", "volts")),
     "fuse": (("amps",), ("volts",)),
     "link": ((), ()),
@@ -1217,19 +1218,27 @@ def _facts(where: str, raw: object) -> Facts:
         _number(f"{where}: amps_drain", data["amps_drain"], above=0)
     if "tolerance" in data:
         _number(f"{where}: tolerance", data["tolerance"], 0, 0.99)
-    if "kept" in data:
-        kept = data["kept"]
+    # the share of its value a part keeps: a capacitor's at a voltage and at a temperature, an inductor's
+    # at a current
+    for key, unit, least in (
+        ("kept", "amps" if kind == "inductor" else "volts", 0),
+        ("kept_celsius", "celsius", None),
+    ):
+        if key not in data:
+            continue
+        kept = data[key]
         if (
             not isinstance(kept, list)
             or len(kept) < 2
             or not all(isinstance(p, list) and len(p) == 2 for p in kept)
         ):
-            raise Refusal(f"{where}: kept: 2 or more pairs [volts, fraction of the value kept] are asked")
-        volts = [_number(f"{where}: kept: volts", p[0], 0) for p in kept]
+            raise Refusal(f"{where}: {key}: 2 or more pairs [{unit}, fraction of the value kept] are asked")
+        xs = [_number(f"{where}: {key}: {unit}", p[0], least) for p in kept]
         for pair in kept:
-            _number(f"{where}: kept: fraction", pair[1], 0, 1.5)
-        if volts != sorted(set(volts)):
-            raise Refusal(f"{where}: kept: the volts rise from pair to pair")
+            # no part keeps 0 % of its value: a share of 0 makes C or L zero in a deck
+            _number(f"{where}: {key}: fraction", pair[1], most=1.5, above=0)
+        if xs != sorted(set(xs)):
+            raise Refusal(f"{where}: {key}: the {unit} rise from pair to pair")
     for key, ends in (("diodes", ("anode", "cathode")), ("transistors", ("gate", "drain", "source"))):
         if key in data:
             if not isinstance(data[key], list) or not data[key]:

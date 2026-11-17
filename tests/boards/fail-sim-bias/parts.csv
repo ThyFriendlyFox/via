@@ -1,0 +1,4 @@
+Value,Footprint,Qty,Manufacturer,MPN,Supplier,SKU,Pack,Breaks
+TLV62569,Package_TO_SOT_SMD:SOT-23-5,1,Texas Instruments,TLV62569DBVR,,,,
+2.2u XAL4020,Inductor_SMD:L_Coilcraft_XAL4020-XXX,1,Coilcraft,XAL4020-222MEC,,,,
+10u 10V,Capacitor_SMD:C_0603_1608Metric,1,Samsung Electro-Mechanics,CL10A106KP8NNN,,,,

@@ -337,6 +337,66 @@ library row; the `verification` skill gives the method. Check the fit as a
 vendor's model is checked: every table row a `warn` bound, the rows the
 fit did not use included.
 
+## A part's value from its maker's data
+
+A 10 uF ceramic capacitor on 3.3 V can keep under half its value, and an
+inductor loses inductance with its current. The gate runs each deck
+capacitor at its working voltage and temperature, and each inductor at its
+current, from the curves in the part's facts (`library/facts/`, the
+`ratings` skill). It takes a curve only from facts that name the part's
+number in `mpn` or `mpns`, never by a `match` pattern (a series datasheet
+covers every value), and whose source's `sha256` is a row of
+`library/sources.csv` for that part. A share is above 0 and at most 1.5.
+The fixture is `tests/boards/fail-sim-bias`.
+
+| Key | Kind | Pairs |
+|---|---|---|
+| `kept` | capacitor | `[volts, share of the value kept]`, from the DC bias curve |
+| `kept_celsius` | capacitor | `[celsius, share against 25 C]`, from the temperature curve with no bias |
+| `kept` | inductor | `[amps, share of the value kept]`, from the L vs current curve |
+
+1. Fetch the maker's file: `workcenter fetch <url> --to library/<maker>/<file>
+   --mpn <MPN> --row`. A maker that publishes the curve as numbers (a data
+   page, a CSV) is read point by point. A curve in a PDF is read with
+   `workcenter curve <pdf> --page N` from its vectors (P27 step 6). Never
+   read a curve by eye.
+2. Enter every point the maker gives, in the part's facts, with the file's
+   SHA256 in `source.sha256`. Write in `note` which graph, its conditions
+   and how each share was worked out.
+3. Write the part in the deck by its board reference, at its nominal value:
+   `C2 out 0 10u`, `L1 sw out 2.2u`. Write it in the deck's own lines: not
+   inside a `.subckt`, not in a file the deck includes. Give it no `ic=`
+   and couple no K element to it: the gate does not rewrite those, and the
+   part runs ideal.
+4. Run `workcenter sim <project>`. The record names each part it ran on its
+   data under `decks.<deck>.parts`, with its facts and its row.
+5. Read each line:
+
+   | The line says | Do |
+   |---|---|
+   | `<deck>:<measure>=... with the makers' data of C2 and L1; with them ideal it is ...; C2 alone on its data misses it` | The part named misses the bound on its own data. Fit a larger or a higher-rated part, or another dielectric, and enter its data. Never remove the data. |
+   | `... with them ideal it misses it too` | The circuit misses the bound with any part. Fix the circuit first. |
+   | `<ref> runs as an ideal part while the library holds its maker's data (...): no row of library/sources.csv ...` | Add the maker's file and its row (step 1), or correct `source.sha256` to the file's. |
+   | `...: its facts speak of the symbol ...` | Enter the curve under the part number, not the symbol. |
+   | `...: its facts name the parts by the pattern ...` | Enter the curve under the part number (`mpn`, or `mpns` for the part numbers of 1 value). |
+   | `...: the file sources.csv:N keeps, ..., is not the one its SHA256 names` | Fetch the file again, or correct `source.sha256` and the row to the file's. |
+   | `...: it stands inside .subckt ...` | Move the part into the deck's top level. |
+   | `...: it stands in <file>, a file the deck includes ...` | Move the part from the included file into the deck. |
+   | `...: its ic= sets its starting ...` | Remove `ic=`; start the deck from its operating point, or set the node with `.ic v(node)=...`. |
+   | `...: it is coupled by K...` | The gate cannot run a coupled inductor on its curve. A coupled part (a transformer, a common-mode choke) has no `kept` of a single inductor: enter its facts without `kept`, and say why in `note`. |
+   | `...: its value ... is no number and no expression` | Write the part's value as a number. |
+   | warning `<ref>'s curve ends at ... under its rating` | Past the last point the deck holds the last share. Enter the maker's points up to the rating if the maker gives them. |
+   | warning `<ref> runs on its maker's data, and whether that is its maker's file is not judged: ... keeps no file` | Keep the maker's file in the library with its row's `File`, when its terms allow. |
+   | warning `not judged: C2 and L1 hold their makers' data, and no deck element carries their reference` | Name the deck's parts by their board references (step 3). |
+
+6. A corner moves the written value by its tolerance, and the curve applies
+   on top. A temperature corner moves `kept_celsius` with it.
+
+What it does not do: the 2 capacitor curves are multiplied. A maker's
+curve at 1 bias and many temperatures shows more value kept than the
+product: CL10A106KP8NNN at 5 V and 85 C keeps 27.6 %, the product 24.1 %.
+ESR and ESL are not added.
+
 ## A bound that serves a requirement
 
 In a project with a verification package (P28), a bound names its
