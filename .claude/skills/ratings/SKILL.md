@@ -57,7 +57,7 @@ parts, each entry read from its datasheet.
    | `stands there and has no facts` | A part stands where a datasheet asks for a capacitor or an inductor. Write its facts: step 4. |
    | `its divider is ...`, `stands on <net> too` or `nothing sets the output` | The command reads 1 resistor to the output and 1 to a net at 0 V. State the output's net in `nets`, with the sum as its source. |
    | `accepts a failure of ..., and <part> is not judged now` | Give the part what its own `not judged` line asks for. The acceptance then meets its failure again. |
-   | `no source holds <net>` | Nothing the command knows drives the net. State it in `nets`, or correct the facts of the part that drives it. |
+   | `no source holds <net>` | Nothing the command knows drives the net. State it in `nets`, or correct the facts of the part that drives it. For the net behind a sense resistor, state the resistor's current under `parts`: the net then follows the resistor's other net. |
    | `has no data on the value it keeps` | Add `kept` to the capacitor's facts from its maker's DC bias curve, or fit a part that has one. |
    | `its facts hold no voltage rating` or `has no tolerance in its facts` | Add `volts` or `tolerance` to the capacitor's facts from its datasheet. With no datasheet in `library/`, get it first. |
    | `its facts hold no current rating` | `ratings.json` states a current through the part. Add the rating to its facts from its datasheet: `amps_forward` for a diode, `amps_drain` for a transistor, `amps` for a ferrite or a switch. |
@@ -293,6 +293,13 @@ rating.
 - The nets a wire joins are 1 node: a fuse, a ferrite, a link, a 0 ohm
   resistor, an inductor. A part between 2 nets of 1 node has 0 V across
   it, and its line says `2 nets that a wire joins`.
+- A resistor whose current or voltage `ratings.json` states holds its 2
+  nets within its drop of each other, whichever way the current runs:
+  3.8 A through 20 mohm of 1 % is 76.8 mV. Where a source holds 1 of the
+  2 nets, the other is held within that drop of it: the pins behind a
+  shunt are judged. A part between the 2 nets stands the drop, and a
+  limit between 2 pins on the 2 nets is judged with it. Such a line
+  names the resistor: `R7 holds the 2 nets within 76.8 mV`.
 - A resistor does not move a net a source holds; a released output follows
   its pull-up. A divider's tap is solved at the corners of its tolerances.
 - A resistor is judged with the greatest voltage between its 2 nets. In a

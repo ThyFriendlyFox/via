@@ -324,6 +324,12 @@ def test_every_hint_points_at_a_file_and_a_heading_that_exist():
         ),
         (
             "ratings",
+            "not judged U4 pin 1 (VSENSE-) on HS_IN: its least limit follows pin IOUT, and no source "
+            "holds HS_IN",
+            "behind a sense resistor",
+        ),
+        (
+            "ratings",
             "fail U4: its facts name pin 1 IOUT, and the symbol names pin 3 Iout: the 2 number the pins "
             "differently",
             "the datasheet's package drawing",

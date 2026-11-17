@@ -91,6 +91,13 @@ HINTS: list[tuple[str, str, str]] = [
         f'{RATINGS}, "Steps"',
     ),
     (
+        r"^ratings: not judged .*no source holds ",
+        "No source the command knows holds the net. State the net in `nets`, or correct the facts of "
+        "the part that drives it. For a net behind a sense resistor, state the resistor's current "
+        "under `parts`.",
+        f'{RATINGS}, "Steps"',
+    ),
+    (
         r"^ratings: not judged ",
         "Give the command what the line says is missing: a fact, a net's voltage or a load's current.",
         f'{RATINGS}, "Steps"',

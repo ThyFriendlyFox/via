@@ -1676,6 +1676,175 @@ def test_a_resistor_beside_another_source_is_judged_by_its_2_nets(tmp_path):
     assert "with 4.2 V across it" in watts and "that VDD takes" not in watts
 
 
+def test_a_resistor_whose_current_the_project_states_holds_its_far_net_within_its_drop(tmp_path):
+    """A 20 mohm shunt of 1 % from the cell to a load, with 3.8 A stated: the net behind it stands
+    within 3.8 A x 20.2 mohm = 76.8 mV of the cell, by Ohm's law, whatever stands on it. No source
+    holds that net, and the 2 pins behind its ferrite were not judged. It is held from
+    2.8 - 0.0768 = 2.72 V. With no other source on it, it cannot stand over the cell's 4.2 V; with a
+    transistor to a 5 V rail its sources hold it up to 4.2 + 0.0768 = 4.28 V, and not at the rail's
+    5.5 V. The capacitor across the shunt stands 76.8 mV, where the 2 nets' extremes gave it 4.2 V on
+    6.3 V."""
+    sense = entry(
+        "ic",
+        "MON-2",
+        family="linear",
+        pins=[
+            pin("SENSE", ["1"], "input", abs=[{"pin": "OUT", "plus": -0.6}, 20]),
+            pin("OUT", ["2"], "analog", abs=[-0.3, 20]),
+        ],
+    )
+    fed = entry(
+        "ic",
+        "LOAD-B",
+        family="digital",
+        pins=[
+            pin("VDD", ["1"], "supply", abs=[-0.3, 6.0], operating=[2.5, 5.5], amps=0.001),
+            pin("VSS", ["2"], "ground"),
+        ],
+    )
+    fet = entry(
+        "transistor.mosfet",
+        "FET-1",
+        transistors=[{"gate": "1", "drain": "3", "source": "2"}],
+        volts_drain_source=20,
+        volts_gate_source=12,
+    )
+    parts = {
+        "U1": ("MON", "MON-2", {"1": ("HS2", "SENSE", "input"), "2": ("VOUT", "OUT", "passive")}),
+        "U2": ("B", "LOAD-B", {"1": ("HS2", "VDD", "power_in"), "2": ("GND", "VSS", "power_in")}),
+        "R1": ("20m", "R-SHUNT", {"1": "VBAT", "2": "HS"}),
+        "C1": ("100n", "C-6V3", {"1": "VBAT", "2": "HS"}),
+        "FB1": ("600R", "FB-1", {"1": "HS", "2": "HS2"}),
+        "J1": ("Conn", "HDR-1", {"1": "HS2"}),
+    }
+    facts = library(
+        tmp_path,
+        sense,
+        fed,
+        fet,
+        entry("resistor", "R-SHUNT", tolerance=0.01, watts=1.0, volts=50),
+        chip_resistor(),
+        ceramic("C-6V3", 6.3),
+        entry("ferrite", "FB-1"),
+        entry("connector", "HDR-1", pins=[{"numbers": ["1"], "outside": "load"}]),
+    )
+    nets = {"VBAT": (2.8, 4.2), "VOUT": (0.0, 1.26), **GND}
+    net, mpns = circuit(**parts)
+    unstated = ratings.judge(net, mpns, facts, project(nets, amps={"J1.1": 3.8}), NASA)
+    assert found(unstated, "not judged") == [
+        "not judged U1 pin 1 (SENSE) on HS2: its least limit follows pin OUT, and no source holds HS2",
+        "not judged U2 pin 1 (VDD) on HS2: no source holds HS2",
+    ]
+    assert "fail C1 100n between VBAT and HS: 4.2 V on 6.3 V rated is 0.67, the limit is 0.60" in [
+        line.split(" [")[0] for line in found(unstated, "fail")
+    ]
+    report = ratings.judge(net, mpns, facts, project(nets, amps={"R1": 3.8, "J1.1": 3.8}), NASA)
+    assert found(report, "not judged") == [] and found(report, "fail") == []
+    holds = [line.split(" [")[0] for line in found(report, "hold")]
+    assert (
+        "hold U1 pin 1 (SENSE) on HS2: 2.72 to 4.2 V can stand on it, its limits are 0.66 V "
+        "(pin OUT at 1.26 V, -0.6 V) and 20 V"
+    ) in holds
+    assert (
+        "hold U2 pin 1 (VDD) on HS2: its sources hold it at 2.72 to 4.2 V, the pin works from 2.5 to 5.5 V"
+    ) in holds
+    assert (
+        "hold C1 100n between VBAT and HS, which R1 holds within 76.8 mV: 76.8 mV on 6.3 V rated is 0.01, "
+        "the limit is 0.60"
+    ) in holds
+    assert (
+        "hold R1 20m between VBAT and HS, with the 3.8 A the project states: 76.8 mV on 50 V rated is 0.00, "
+        "the limit is 0.80"
+    ) in holds
+
+    switch = {"1": ("GATE", "G", "input"), "2": ("HS2", "S", "passive"), "3": ("V5", "D", "passive")}
+    net, mpns = circuit(**parts, Q1=("FET", "FET-1", switch))
+    charged = {**nets, "V5": (4.5, 5.5), "GATE": (0.0, 5.5)}
+    report = ratings.judge(net, mpns, facts, project(charged, amps={"R1": 3.8, "J1.1": 3.8}), NASA)
+    assert found(report, "not judged") == [] and found(report, "fail") == []
+    holds = [line.split(" [")[0] for line in found(report, "hold")]
+    # with the cell away the 5 V rail can stand on the net: a rating is held to that, the range is not
+    assert (
+        "hold U1 pin 1 (SENSE) on HS2: 2.72 to 5.5 V can stand on it, its limits are 0.66 V "
+        "(pin OUT at 1.26 V, -0.6 V) and 20 V"
+    ) in holds
+    assert (
+        "hold U2 pin 1 (VDD) on HS2: its sources hold it at 2.72 to 4.28 V, the pin works from 2.5 to 5.5 V"
+    ) in holds
+
+    # A filter resistor behind the shunt, and first in the schematic: 1 mA through 33.3 ohm takes
+    # 33 mV more, 2.8 - 0.0768 - 0.0333 = 2.69 V. The order of the parts does not decide it.
+    parts = {
+        "R2": ("33", "R-0402", {"1": "HS2", "2": "VDD2"}),
+        **parts,
+        "U2": ("B", "LOAD-B", {"1": ("VDD2", "VDD", "power_in"), "2": ("GND", "VSS", "power_in")}),
+    }
+    net, mpns = circuit(**parts)
+    report = ratings.judge(net, mpns, facts, project(nets, amps={"R1": 3.8, "J1.1": 3.8}), NASA)
+    assert found(report, "not judged") == [] and found(report, "fail") == []
+    assert (
+        "hold U2 pin 1 (VDD) on VDD2: its sources hold it at 2.69 to 4.2 V, the pin works from 2.5 to 5.5 V"
+    ) in [line.split(" [")[0] for line in found(report, "hold")]
+
+
+def test_a_limit_between_2_pins_across_a_shunt_is_judged_with_the_shunt_s_drop(tmp_path):
+    """A current monitor's 2 sense pins stand on the 2 nets of a 20 mohm shunt of 1 %. Its sense pin
+    may stand 0.5 V over or under its supply pin. With no current stated, nothing says how far the net
+    behind the shunt falls under the cell's: the least limit is not judged. With 3.8 A stated the 2
+    pins are 76.8 mV apart at the most, whichever way the current runs and wherever the cell stands:
+    at 4.2 V the pin stands from 4.12 to 4.28 V, between 3.7 and 4.7 V. With 30 A stated they are
+    606 mV apart, and both limits are passed: the greatest one held before, with the net behind the
+    shunt taken at the cell's own voltage."""
+    chip = entry(
+        "ic",
+        "MON-3",
+        family="linear",
+        pins=[
+            pin("VSENSE+", ["2"], "supply", abs=[-0.6, 20], amps=0.00002),
+            pin(
+                "VSENSE-",
+                ["1"],
+                "input",
+                abs=[{"pin": "VSENSE+", "plus": -0.5}, {"pin": "VSENSE+", "plus": 0.5}],
+            ),
+        ],
+    )
+    net, mpns = circuit(
+        U1=("MON", "MON-3", {"1": ("HS", "Vs-", "input"), "2": ("VBAT", "Vs+", "power_in")}),
+        R1=("20m", "R-SHUNT", {"1": "VBAT", "2": "HS"}),
+        J1=("Conn", "HDR-1", {"1": "HS"}),
+    )
+    shunt = entry("resistor", "R-SHUNT", tolerance=0.01, watts=1.0, volts=50)
+    load_pin = entry("connector", "HDR-1", pins=[{"numbers": ["1"], "outside": "load"}])
+    facts = library(tmp_path, chip, shunt, load_pin)
+    nets = {"VBAT": (2.8, 4.2)}
+    unstated = ratings.judge(net, mpns, facts, project(nets), NASA)
+    assert (
+        "hold U1 pin 1 (VSENSE-) on HS: 2.8 V can stand on it, its limit is 3.3 V "
+        "(pin VSENSE+ at 2.8 V, +0.5 V) [DS-1, rev A, p 4]"
+    ) in found(unstated, "hold")
+    assert found(unstated, "not judged") == [
+        "not judged U1 pin 1 (VSENSE-) on HS: its least limit follows pin VSENSE+, and no source holds HS"
+    ]
+    report = ratings.judge(net, mpns, facts, project(nets, amps={"R1": 3.8}), NASA)
+    assert found(report, "fail") == [] and found(report, "not judged") == []
+    assert (
+        "hold U1 pin 1 (VSENSE-) on HS: 4.12 to 4.28 V can stand on it, its limits are 3.7 V "
+        "(pin VSENSE+ at 4.2 V, -0.5 V; R1 holds the 2 nets within 76.8 mV) and 4.7 V "
+        "(pin VSENSE+ at 4.2 V, +0.5 V; R1 holds the 2 nets within 76.8 mV) [DS-1, rev A, p 4]"
+    ) in found(report, "hold")
+    over = ratings.judge(net, mpns, facts, project(nets, amps={"R1": 30.0}), NASA)
+    fails = found(over, "fail")
+    assert (
+        "fail U1 pin 1 (VSENSE-) on HS: 4.81 V can stand on it, its limit is 4.7 V "
+        "(pin VSENSE+ at 4.2 V, +0.5 V; R1 holds the 2 nets within 606 mV) [DS-1, rev A, p 4]"
+    ) in fails
+    assert (
+        "fail U1 pin 1 (VSENSE-) on HS: 3.59 V can stand on it, its limit is 3.7 V "
+        "(pin VSENSE+ at 4.2 V, -0.5 V; R1 holds the 2 nets within 606 mV) [DS-1, rev A, p 4]"
+    ) in fails
+
+
 def test_a_digital_part_s_own_regulator_is_held_to_the_digital_column(tmp_path):
     """A microcontroller's core regulator gives 50 mA on its VCAP pin, and a load there takes 45 mA:
     0.90. NASA allows a plastic digital part 0.80, and a linear one 0.70."""

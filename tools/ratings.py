@@ -1628,15 +1628,31 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
     alone: dict[tuple, Spans] = {}
     loads: dict[tuple[str, str], tuple[float, list[str]]] = {}  # (regulator, net) -> its load, or why not
     taken: dict[frozenset[str], float] = {}  # 2 nets -> the farads the needs judged so far took there
-    behind: list[tuple[str, str, float]] = []  # (a net 1 resistor alone feeds, the net behind it, the drop)
+    # (a net, the net behind 1 resistor, how far the first can stand under the second, and how far over)
+    behind: list[tuple[str, str, float, float]] = []
+    # 2 nets -> the most that can stand between them, and the resistor whose stated current says so
+    ties: dict[frozenset[str], tuple[float, str]] = {}
 
     def follow(sp: Spans) -> Spans:
         """While its sources are on, a net that 1 resistor alone feeds stands at the net behind the
         resistor, less the drop of what its pins take: a supply pin behind its filter resistor is held
-        at what holds the rail."""
-        for lone, rail, drop in behind:
-            if rail in sp.held and lone not in sp.held:
-                sp.held[lone] = (sp.held[rail][0] - drop, sp.held[rail][1])
+        at what holds the rail. A resistor whose current the project states holds its 2 nets within its
+        drop of each other, whichever way the current runs: Ohm's law, with the owner's number. The net
+        stands no higher than its span allows, which is the highest source that reaches it. A net
+        behind 2 resistors in a row follows the first one's net, whichever part comes first; and what
+        holds a net holds every net of its node."""
+        moved = True
+        while moved:
+            moved = False
+            for lone, rail, drop, rise in behind:
+                if rail in sp.held and lone not in sp.held:
+                    top = sp.held[rail][1] + rise
+                    if lone in sp.stress:
+                        top = min(top, sp.stress[lone][1])
+                    for name, node in sp.node.items():
+                        if node == sp.node[lone]:
+                            sp.held[name] = (sp.held[rail][0] - drop, top)
+                    moved = True
         return sp
 
     def seen_by(ref: str, number: str, forced: tuple = ()) -> Spans:
@@ -1650,21 +1666,32 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
             )
         return alone[(ref, number, forced)]
 
-    def wired(a: str, b: str) -> str:
-        """What a line says of 2 nets that are 1 node, where no voltage stands between them."""
+    def tie(a: str, b: str, but: str = "") -> tuple[float, str] | None:
+        """The most that can stand between 2 nets a resistor with a stated current holds together, and
+        that resistor; None for 2 other nets, and for the resistor `but` itself."""
+        found = ties.get(frozenset((spans.node[a], spans.node[b])))
+        return None if found is None or found[1] == but else found
+
+    def wired(a: str, b: str, but: str = "") -> str:
+        """What a line says of 2 nets that are 1 node, where no voltage stands between them, and of 2
+        that a resistor with a stated current holds together."""
         if spans.node[a] != spans.node[b]:
-            return ""
+            held = tie(a, b, but)
+            return f", which {held[1]} holds within {si(held[0], 'V')}" if held else ""
         return ", both pins on 1 net" if a == b else ", 2 nets that a wire joins"
 
     def gap(sp: Spans, a: str, b: str) -> float | str:
         """The greatest voltage between 2 nets, or why it has none. 2 nets of 1 node never part: taken
-        at their extremes, a resistor beside a ferrite would stand the rail's whole voltage."""
+        at their extremes, a resistor beside a ferrite would stand the rail's whole voltage. 2 nets a
+        resistor with a stated current holds together part by its drop at the most."""
         if sp.node[a] == sp.node[b]:
             return 0.0
+        held = tie(a, b)
         for name in (a, b):
             if name not in sp.stress:
-                return f"{name} has no span: {sp.why.get(name, 'nothing drives it')}"
-        return max(sp.stress[a][1] - sp.stress[b][0], sp.stress[b][1] - sp.stress[a][0])
+                return held[0] if held else f"{name} has no span: {sp.why.get(name, 'nothing drives it')}"
+        apart = max(sp.stress[a][1] - sp.stress[b][0], sp.stress[b][1] - sp.stress[a][0])
+        return min(apart, held[0]) if held else apart
 
     def unrated(ref: str, stress: str) -> None:
         """A current the project states for a part whose facts rate none: it is held to nothing, and
@@ -1806,6 +1833,15 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
         ohms = value_of(found, net.parts[ref]) if found.kind == "resistor" else None
         if ref in project.amps and found.kind == "resistor":
             through[ref] = project.amps[ref]
+        if found.kind == "resistor" and (ref in project.volts or (ohms and ref in project.amps)):
+            a, b = net.parts[ref].pins.values()
+            drop = project.volts.get(ref)
+            if drop is None:
+                drop = project.amps[ref] * ohms * (1 + found.data["tolerance"])
+            behind += [(a, b, drop, drop), (b, a, drop, drop)]
+            pair = frozenset((spans.node[a], spans.node[b]))
+            if len(pair) == 2 and (pair not in ties or drop < ties[pair][0]):
+                ties[pair] = (drop, ref)
         if not ohms or ref in project.amps or ref in project.volts:
             continue
         a, b = net.parts[ref].pins.values()
@@ -1813,14 +1849,14 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
         if fed_by is not None:
             amps, lone = fed_by
             through[ref] = amps
-            behind.append((lone, b if lone == a else a, amps * ohms * (1 + found.data["tolerance"])))
+            behind.append((lone, b if lone == a else a, amps * ohms * (1 + found.data["tolerance"]), 0.0))
     follow(spans)
 
     for ref, found in of.items():
         part, data, kind = net.parts[ref], found.data, found.kind
         if kind.startswith("capacitor") or kind == "resistor":
             a, b = part.pins.values()
-            label = f"{name_of(ref)} between {a} and {b}{wired(a, b)}"
+            label = f"{name_of(ref)} between {a} and {b}{wired(a, b, ref)}"
             volts = gap(spans, a, b)
             if ref in spans.drops and not isinstance(volts, str) and shares(ref, a, b):
                 volts = min(volts, spans.drops[ref])  # solved with its nets: a divider's share
@@ -1952,6 +1988,7 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
                 loads,
                 taken,
                 through,
+                tie,
             )
     for ref, found in of.items():
         if found.kind == "ic" and "switching" in found.data:
@@ -2001,10 +2038,11 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
 
 
 def _judge_ic(  # noqa: PLR0913
-    net, ref, of, models, spans, seen_by, project, pack, notes, judged, out, rails, loads, taken, through
+    net, ref, of, models, spans, seen_by, project, pack, notes, judged, out, rails, loads, taken, through, tie
 ) -> None:
     """The pins of 1 IC: each against its limits, its supply against its working range, the load on
-    what it regulates, and the support parts its datasheet asks for."""
+    what it regulates, and the support parts its datasheet asks for. tie(net, net) is the most that can
+    stand between 2 nets a resistor with a stated current holds together, and that resistor."""
     part, found = net.parts[ref], of[ref]
     data = found.data
     # A datasheet's limits are against the part's ground pin. Where that pin's net is not at the board's
@@ -2049,6 +2087,22 @@ def _judge_ic(  # noqa: PLR0913
                 if rail not in spans.held:
                     miss(f"{label}: its limit follows pin {one['pin']} on {rail}, which no source holds")
                     missed = True
+                    continue
+                held = tie(name, rail)
+                if held is not None:
+                    # The 2 pins stand on the 2 nets of a resistor whose current the project states. The
+                    # limit is between the 2 pins, and so is the drop, wherever the rail stands and
+                    # whichever way the current runs: the line gives both with the rail at its greatest.
+                    at = spans.held[rail][1]
+                    volts = at + held[0] if which else at - held[0]
+                    limit = at + one["plus"]
+                    how = (
+                        f" (pin {one['pin']} at {at:.3g} V, {one['plus']:+g} V; "
+                        f"{held[1]} holds the 2 nets within {si(held[0], 'V')})"
+                    )
+                    over = (volts - limit) if which else (limit - volts)
+                    if worst is None or over > worst[0]:
+                        worst = (over, volts, f"{limit:.3g} V{how}")
                     continue
                 at = spans.held[rail][1 - which]  # the rail where the limit is tightest
                 forced, limit = ((rail, (at, at)),), at + one["plus"]
