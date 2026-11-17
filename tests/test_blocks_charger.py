@@ -361,4 +361,50 @@ def test_the_fixture_at_twice_the_current_is_refused_by_design_with_the_line(tmp
     assert made.returncode != 0
     assert "TJ = 40 C + 130.8 C/W x 0.9157 W = 159.8 C, over 125 C" in made.stdout + made.stderr
     assert not (tmp_path / "out" / "node.kicad_sch").exists()
-    assert sorted(p.name for p in (BOARDS / "refuse-block-charger-2x").iterdir()) == ["design.py"]
+    # Python's own __pycache__ of design.py aside, the folder holds the design file alone
+    folder = BOARDS / "refuse-block-charger-2x"
+    assert sorted(p.name for p in folder.iterdir() if p.name != "__pycache__") == ["design.py"]
+
+
+@needs_kicad
+def test_the_fixture_is_routed_and_its_gates_are_green(tmp_path):
+    """ERC, DRC (0 unconnected: the router and the block's 2 tracks under each transistor finished), SIM
+    and EXPORT pass. Over the corners of R1 (1 %) and the ambient (0 C and 40 C), by hand: the charge
+    current runs from 590 / 3636 = 0.162266 A to 590 / 3564 = 0.165544 A, and U1's power from
+    2.75 x 0.162266 + 0.00525 = 0.451482 W to 0.460496 W; its junction at 40 C reaches
+    40 + 130.8 x 0.460496 = 100.233 C."""
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(CLI),
+            "--json",
+            "gates",
+            str(BOARDS / "pass-block-charger"),
+            "--out",
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stdout + run.stderr
+    records = {r["gate"]: r for r in json.loads(run.stdout)}
+    assert [records[g]["status"] for g in ("erc", "drc", "sim", "export")] == ["pass"] * 4
+    assert records["drc"]["summary"] == "0 errors, 0 warnings (0 unconnected, 0 parity)"
+    runs = json.loads((tmp_path / "sim" / "corners" / "charger" / "runs.json").read_text(encoding="utf-8"))
+    amps = [r["measures"]["ichg"] for r in runs]
+    watts = [r["measures"]["p_u1"] for r in runs]
+    assert (min(amps), max(amps)) == pytest.approx((0.162266, 0.165544), rel=1e-4)
+    assert (min(watts), max(watts)) == pytest.approx((0.451482, 0.460496), rel=1e-4)
+    u1 = records["sim"]["details"]["thermal"]["parts"]["U1"]
+    assert (u1["worst"]["run"], u1["worst"]["junction"], u1["limit"], u1["held"]) == (
+        "40 C, R1 -1 %",
+        pytest.approx(100.233, abs=1e-3),
+        110.0,
+        True,
+    )
+    # The 1 warning: the deck holds nothing that moves with temperature; the ambient's corners are there for
+    # the junction, which the thermal check works out at each.
+    assert records["sim"]["details"]["warnings"] == [
+        "charger: no measure moves with temperature: nothing in the deck or its models carries one"
+    ]

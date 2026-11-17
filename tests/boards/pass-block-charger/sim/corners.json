@@ -1,0 +1,13 @@
+{
+  "temperature": {
+    "values": [
+      0.0,
+      40.0
+    ],
+    "source": "the design's ambient, the charger block's `ambient`"
+  },
+  "tolerance": {
+    "R": 0.01,
+    "source": "R1 from Vishay D/CRCW e3 datasheet, document 20035, 14-Apr-2026"
+  }
+}
