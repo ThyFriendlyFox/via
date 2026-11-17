@@ -180,6 +180,19 @@ def test_a_router_whose_jar_is_not_there_is_not_run(tmp_path):
     assert f"bench {tmp_path.parent.name}/{tmp_path.name} fr-x: not run: no router at {missing}" in out
 
 
+def test_order_runs_each_router_a_second_time_in_stages(tmp_path):
+    design = tmp_path / "design.py"
+    design.write_text("", encoding="utf-8")
+    missing = tmp_path / "none.jar"
+    code, out = run_cli(
+        "bench", design, "--out", tmp_path / "bench", "--router", f"fr-x={missing}", "--order"
+    )
+    assert code == 2, out
+    board = f"{tmp_path.parent.name}/{tmp_path.name}"
+    assert f"bench {board} fr-x: not run" in out
+    assert f"bench {board} fr-x+order: not run" in out
+
+
 def bus_design() -> str:
     """Six nets straight across between 2 headers, and R5 beside J3 on the 2 nets E1 and E2."""
     return (

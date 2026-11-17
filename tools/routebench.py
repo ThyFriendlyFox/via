@@ -195,8 +195,9 @@ def timed_run(cmd: list[str], env: dict, limit: float) -> tuple[int | None, byte
         return None, out, time.monotonic() - t0
 
 
-def bench_one(design: Path, router: str, jar: Path, out: Path, args, cli) -> dict:
+def bench_one(design: Path, router: str, jar: Path, out: Path, args, cli, order: bool = False) -> dict:
     board = label_of(design)
+    router = f"{router}+order" if order else router
     folder = out / board.replace("/", "-") / router
     folder.mkdir(parents=True, exist_ok=True)
     run = {
@@ -226,6 +227,7 @@ def bench_one(design: Path, router: str, jar: Path, out: Path, args, cli) -> dic
         str(args.time_limit),
         "--threads",
         str(args.threads),
+        *(["--order"] if order else []),
     ]
     env = dict(os.environ, FREEROUTING_JAR=str(jar))
     # The JVM sizes its own pools by the processors it sees: held to the threads asked for.
@@ -301,10 +303,13 @@ def cmd_bench(args, cli) -> int:
             return cli.EXIT_FAIL
     out.mkdir(parents=True, exist_ok=True)
     unjudged = 0
+    plan = [
+        (name, jar, order) for name, jar in routers for order in ((False, True) if args.order else (False,))
+    ]
     for design in designs:
-        for name, jar in routers:
-            run = bench_one(design, name, jar, out, args, cli)
-            folder = out / run["board"].replace("/", "-") / name
+        for name, jar, order in plan:
+            run = bench_one(design, name, jar, out, args, cli, order)
+            folder = out / run["board"].replace("/", "-") / run["router"]
             (folder / RUN_FILE).write_text(json.dumps(run, indent=2) + "\n", encoding="utf-8")
             unjudged += run["status"] != "judged"
             print(line_of(run))
@@ -335,4 +340,9 @@ def register(sub, cli) -> None:
     p.add_argument("--time-limit", type=int, default=300, help="seconds per route (default 300)")
     p.add_argument("--threads", type=int, default=2, help="router threads (default 2)")
     p.add_argument("--passes", type=int, default=20, help="router passes (default 20)")
+    p.add_argument(
+        "--order",
+        action="store_true",
+        help="also run each router as `design --route --order`, in stages, named <router>+order",
+    )
     p.set_defaults(run=lambda a: cmd_bench(a, cli))
