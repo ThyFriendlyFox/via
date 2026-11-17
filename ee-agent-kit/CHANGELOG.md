@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/) · Versioning: [SemVer](
 
 ## [Unreleased]
 ### Changed
+- The website's address is <https://via.computer>. `site/vercel.json` builds the site with it, so the canonical link and the Open Graph tags name it. `via.reagent-systems.com`, `viapcb.dev`, `circuitboards.dev` and `texttopcb.com` redirect to it, each with a `ref` tag (`site/README.md`, "Deploys").
 - The home page's share card works the same on X and Discord: the image's address carries its checksum (`og.png?v=...`, from `site/build.sh`), since both keep a link's picture by its address and showed the old card; X is given `twitter:image` and `twitter:image:alt` beside the Open Graph tags, and the alt text describes the card as it is, Herald's board, where it still described a terminal run. `tests/test_docs.py` holds the built tags.
 - The line under the website's strip of agents, a small model's run from a brief to a board in 38 tool calls, is gone at the owner's word: the strip ends the hero.
 - The Open Graph image shows Herald's board as the home page draws it, from its file, its copper over the board on the page's own paper, where it showed KiCad's 3D render in a frame on KiCad's lavender. `draw_face.py` writes the drawing into `og.html` too; `showcase/herald.png`, which only `og.html` showed, is gone.
