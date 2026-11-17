@@ -8,7 +8,7 @@
     "url": "https://nepp.nasa.gov/docuploads/FFB52B88-36AE-4378-A05B2C084B5EE2CC/EEE-INST-002_add1.pdf",
     "sha256": "4bd84c11401d51613911a4cdfd4afaacefc113e7b538fd86b2a60f99afa1d3dd",
     "read": "2026-11-17",
-    "second_reader": "no"
+    "second_reader": "2026-11-17"
   },
   "rules": [
     {
@@ -31,15 +31,15 @@
       "kinds": ["capacitor.tantalum"],
       "max": 0.50,
       "above": {"temperature": "ambient", "celsius": 70, "falls_to": 0.30, "at": 110},
-      "where": "section C1, table 4, page 23 of 23, with its note 3"
+      "where": "section C1, table 4, page 23 of 23, the row Tantalum, Solid, with a line between its 2 points as note 3 draws it"
     },
     {
       "id": "resistor.power",
       "stress": "resistor.power",
       "kinds": ["resistor"],
-      "max": 0.60,
-      "above": {"temperature": "ambient", "celsius": 70, "falls_to": 0.0, "at": 118},
-      "where": "section R2, table 4, page 24 of 24, the row of film chip resistors (RM)"
+      "max": 0.50,
+      "above": {"temperature": "ambient", "celsius": 70, "falls_to": 0.0, "at": 112.5},
+      "where": "section R2, table 4, page 24 of 24, the row Others, with its note 4 for a part rated at 70 C that reaches zero power at 155 C"
     },
     {
       "id": "resistor.voltage",
@@ -56,8 +56,22 @@
       "where": "section S1, table 4, page 12 of 13"
     },
     {
+      "id": "diode.forward_current",
+      "stress": "diode.forward_current",
+      "kinds": ["diode.rectifier"],
+      "max": 0.50,
+      "where": "section S1, table 4, page 12 of 13"
+    },
+    {
       "id": "mosfet.drain_source",
       "stress": "mosfet.drain_source",
+      "kinds": ["transistor.mosfet"],
+      "max": 0.75,
+      "where": "section S1, table 4, page 13 of 13"
+    },
+    {
+      "id": "mosfet.drain_current",
+      "stress": "mosfet.drain_current",
       "kinds": ["transistor.mosfet"],
       "max": 0.75,
       "where": "section S1, table 4, page 13 of 13"
@@ -70,11 +84,18 @@
       "where": "section S1, table 4, page 13 of 13"
     },
     {
-      "id": "output.current",
+      "id": "output.current.linear",
+      "stress": "rail.load",
+      "kinds": ["ic.linear", "ic.regulator"],
+      "max": 0.70,
+      "where": "section M4, table 4, page 10 of 10, the column Linear/Mixed Signal"
+    },
+    {
+      "id": "output.current.digital",
       "stress": "rail.load",
       "kinds": ["ic"],
       "max": 0.80,
-      "where": "section M3, table 4, page 15 of 15"
+      "where": "section M4, table 4, page 10 of 10, the column Digital"
     }
   ]
 }

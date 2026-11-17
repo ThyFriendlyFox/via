@@ -300,6 +300,41 @@ def test_every_hint_points_at_a_file_and_a_heading_that_exist():
         ),
         ("verify", "REQ-OUT-02: OPEN", "A requirement is not met"),
         ("verify", "requirements: REQ-OUT-01 has no source", "Correct the verification package"),
+        ("ratings", "not judged C1 100n: no facts for GRM155R71C104KA88D", "Write the part's facts"),
+        (
+            "ratings",
+            "not judged C1 10u between EXT and GND: EXT has no span: J1 pin 1 can put a voltage on EXT "
+            "that nothing states",
+            "A connector's pin",
+        ),
+        (
+            "ratings",
+            "not judged V33: U1 pin 3 (OUT) feeds a load nothing states: U2 pin 1 (VDD) has no `amps`",
+            "what the line says is missing",
+        ),
+        (
+            "ratings",
+            "not judged C12 1n between KA_PUMP and GND: its facts hold no voltage rating",
+            "Add `volts` to the capacitor's facts",
+        ),
+        (
+            "ratings",
+            "fail U4: its facts name pin 1 IOUT, and the symbol names pin 3 Iout: the 2 number the pins "
+            "differently",
+            "the datasheet's package drawing",
+        ),
+        (
+            "ratings",
+            "fail C1: ratings.json accepts a failure of capacitor.ceramic.voltage, and nothing fails there",
+            "out of `accepted`",
+        ),
+        (
+            "ratings",
+            "fail C1 10u between V12 and GND: 12.6 V on 16 V rated is 0.79, the limit is 0.60",
+            "until the stress holds",
+        ),
+        ("ratings", "ratings.json: `speed` is no key here; the keys are pack, nets", "Correct the file"),
+        ("ratings", "kicad-cli wrote no netlist", "Read build/ratings/report.md"),
         ("export", "kicad-cli exited 3", "Read the gate's report"),
         *[row[:3] for row in NEWER],
     ],
@@ -416,6 +451,23 @@ def test_no_sentence_of_a_hint_or_of_a_step_is_over_20_words(tmp_path, monkeypat
     answer(package)
     os.utime(package / "verification" / "README.md", (later, later))
     answer(package)
+    # the ratings: not run, a failure, then the gates GREEN and a part not judged
+    rated = tmp_path / "rated"
+    (rated / "build" / "ratings").mkdir(parents=True)
+    (rated / "r.kicad_sch").write_text("", encoding="utf-8")
+    (rated / "ratings.json").write_text("{}", encoding="utf-8")
+    answer(rated)
+    failed = {"failures": ["fail C1: 6 V on 6.3 V rated"], "verdict": "RATINGS NOT HELD (1 fail)"}
+    report(rated, [record("ratings", "fail", failed)], "ratings/report.json")
+    answer(rated)
+    short = {
+        "failures": [],
+        "warnings": ["not judged C2: no facts for X"],
+        "verdict": "RATINGS HELD, 1 NOT JUDGED",
+    }
+    report(rated, [record("ratings", "pass", short)], "ratings/report.json")
+    report(rated, [record("erc", "pass")])
+    answer(rated)
 
     texts = [do for _, do, _ in guide.HINTS]
     texts += [text for step in steps for text in (step.next, step.why, step.done_when)]
@@ -726,6 +778,8 @@ def test_a_finished_board_is_told_what_proves_it_and_given_no_command(tmp_path):
     assert step["run"] == ""
     assert step["why"] == (
         "a board that leaves the bench has its parts and its requirements proven first. "
+        f"`workcenter ratings {proj} --init` starts holding the schematic to its parts' ratings "
+        "(.claude/skills/ratings/SKILL.md). "
         f"`workcenter sources {proj}` holds each part to its datasheet and its model "
         "(ee-agent-kit/PROCESSES.md, P27). "
         f"`workcenter verify {proj} --init` starts the requirements (ee-agent-kit/PROCESSES.md, P28)"
@@ -738,6 +792,49 @@ def test_a_finished_board_is_told_what_proves_it_and_given_no_command(tmp_path):
         f"`workcenter sources {named}`" in step["why"]
         and f"`workcenter verify {named} --init`" in step["why"]
     )
+
+
+def test_a_project_with_a_ratings_file_is_held_to_it_first_and_whole_before_it_is_done(tmp_path):
+    """A failure of the schematic comes before the board's gates: a part that changes takes its routes
+    with it. What is left not judged comes after them, and the project is not done until it is judged."""
+    proj = tmp_path / "divider"
+    shutil.copytree(BOARDS / "pass-rc-divider", proj, ignore=shutil.ignore_patterns("build"))
+    (proj / "ratings.json").write_text('{"pack": "nasa-eee-inst-002", "nets": {}}', encoding="utf-8")
+    ratings = f"workcenter ratings {proj}"
+    code, step = ask(proj)
+    assert code == 1 and step["next"] == "Hold the schematic to its parts' ratings."
+    assert (step["run"], step["why"]) == (ratings, "no build/ratings/report.json yet")
+    assert step["done_when"] == "the last line starts with RATINGS HELD"
+    (proj / "build" / "ratings").mkdir(parents=True)
+
+    def rated(status: str, verdict: str, failures: list[str], warnings: list[str]) -> None:
+        details = {"failures": failures, "warnings": warnings, "verdict": verdict}
+        report(proj, [record("ratings", status, details)], "ratings/report.json")
+
+    line = "fail C1 100n between VOUT and GND: 6 V on 6.3 V rated is 0.95, the limit is 0.60"
+    rated("fail", "RATINGS NOT HELD (1 fail)", [line], [])
+    code, step = ask(proj)
+    assert code == 1 and step["next"].startswith("Change the design until the stress holds")
+    assert (step["run"], step["why"]) == (ratings, f"RATINGS failed: {line}")
+    left = "not judged R1 10k: no facts for a part with no part number (Device:R)"
+    rated("pass", "RATINGS HELD, 1 NOT JUDGED", [], [left])
+    code, step = ask(proj)
+    assert step["next"] == "Run the gates."
+    gates = ("erc", "drc", "sim", "export")
+    report(proj, [record(gate, "pass", {"failures": [], "warnings": []}) for gate in gates])
+    code, step = ask(proj)
+    assert code == 1 and step["next"].startswith("Write the part's facts from its datasheet")
+    assert (step["run"], step["why"]) == (f"{ratings} --strict", f"RATINGS not judged whole: {left}")
+    assert step["done_when"] == "the last line is RATINGS HELD"
+    rated("pass", "RATINGS HELD", [], [])
+    code, step = ask(proj)
+    assert code == 0 and step["next"] == "Nothing for the bench: the gates are GREEN with no warning."
+    assert "workcenter ratings" not in step["why"]
+    later = time.time() + 60
+    os.utime(proj / "ratings.json", (later, later))
+    code, step = ask(proj)
+    assert step["next"] == "Hold the schematic to its parts' ratings."
+    assert step["why"] == "ratings.json changed after the last run"
 
 
 def test_the_steps_follow_the_command_lines_own_verdict(tmp_path, monkeypatch):

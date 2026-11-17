@@ -41,6 +41,7 @@ GATES = ".claude/skills/board-gates/SKILL.md"
 DESIGN = ".claude/skills/board-design/SKILL.md"
 SIMULATE = ".claude/skills/simulate/SKILL.md"
 VERIFICATION = ".claude/skills/verification/SKILL.md"
+RATINGS = ".claude/skills/ratings/SKILL.md"
 INPUT_SUFFIXES = (".kicad_sch", ".kicad_pcb", ".kicad_pro", ".kicad_dru")
 # A file of these names its project, as `find_project` reads it. Any other file is inside a project.
 PROJECT_FILES = (".kicad_pro", ".kicad_sch", ".kicad_pcb")
@@ -51,6 +52,53 @@ RULE = "A bound, a rule or a requirement is never changed to pass: the design ch
 # A failure or warning line, as `gate: line`, and the fix for its kind: (pattern, what to do, what to
 # read). The first pattern that matches answers; the last one matches everything.
 HINTS: list[tuple[str, str, str]] = [
+    # `workcenter ratings`: its lines begin with their status, and a file it does not take with its name.
+    (
+        r"^ratings: .*no facts for ",
+        "Write the part's facts from its datasheet. `workcenter ratings <project> --facts <REF>` prints "
+        "the entry to fill.",
+        f'{RATINGS}, "Steps"',
+    ),
+    (
+        r"^ratings: .*can put a voltage on ",
+        "A connector's pin. A source behind it: state the net under `nets`. A load: state its `amps` "
+        "under `parts`.",
+        f'{RATINGS}, "Steps"',
+    ),
+    (
+        r"^ratings: not judged .*its facts hold no voltage rating",
+        "Add `volts` to the capacitor's facts from its datasheet. With no datasheet in `library/`, "
+        "get it first.",
+        f'{RATINGS}, "A part\'s facts"',
+    ),
+    (
+        r"^ratings: not judged ",
+        "Give the command what the line says is missing: a fact, a net's voltage or a load's current.",
+        f'{RATINGS}, "Steps"',
+    ),
+    (
+        r"^ratings: fail .*number the pins differently",
+        "Hold the facts and the symbol to the datasheet's package drawing. An entry's pin numbers are "
+        "the symbol's. A symbol that is wrong is a fault of the design.",
+        f'{RATINGS}, "A part\'s facts"',
+    ),
+    (
+        r"^ratings: fail .*accepts a failure of ",
+        "Take that entry out of `accepted` in ratings.json: nothing fails there now.",
+        f'{RATINGS}, "ratings.json"',
+    ),
+    (
+        r"^ratings: fail ",
+        "Change the design until the stress holds: a part with a higher rating, a lower voltage, a "
+        "smaller load. Never change a fact, a net's voltage or a pack to pass.",
+        f'{RATINGS}, "Steps"',
+    ),
+    (
+        r"^ratings: \S+\.json: ",
+        "Correct the file at the place the line names. The skill has every key.",
+        f'{RATINGS}, "A part\'s facts"',
+    ),
+    (r"^ratings: ", "Read build/ratings/report.md and act on its first line.", f"{RATINGS}"),
     (
         r"^erc: pin_not_connected",
         "Wire the pin, or place a no-connect flag on it.",
@@ -355,6 +403,15 @@ def inputs_of(project) -> list[Path]:
     return sorted(found)
 
 
+def ratings_inputs(cli, project) -> list[Path]:
+    """The files a ratings report is made from: the schematic, ratings.json, the project's parts file
+    and the facts of the library the command finds."""
+    named = ("ratings.json", "parts.csv")
+    found = sorted(p for p in project.dir.iterdir() if p.suffix == ".kicad_sch" or p.name in named)
+    library = cli.ratings().find_facts(project.dir)
+    return found + (sorted(library.glob("*.json")) if library else [])
+
+
 def newest(report: Path, inputs: list[Path]) -> Path | None:
     """The first input newer than the report, or None."""
     made = report.stat().st_mtime
@@ -524,6 +581,28 @@ def next_step(cli, target: str, run_check=True) -> Step:
                 f'{DESIGN}, "Steps"',
                 f"`{wc} design {shlex.quote(str(design))} --check` exits 0",
             )
+    # A project with a ratings.json is held to its parts' ratings. A failure there comes before the
+    # board's gates: a part that changes takes its routes with it. What is left not judged comes after.
+    ratings = f"{wc} ratings {quoted}"
+    rated = None  # the record of the last ratings run
+    if (project.dir / "ratings.json").is_file() and project.sch:
+        record = project.dir / "build" / "ratings" / "report.json"
+        newer = newest(record, ratings_inputs(cli, project)) if record.is_file() else None
+        if not record.is_file() or newer:
+            return Step(
+                "Hold the schematic to its parts' ratings.",
+                ratings,
+                f"{newer.name} changed after the last run" if newer else "no build/ratings/report.json yet",
+                f'{RATINGS}, "Steps"',
+                "the last line starts with RATINGS HELD",
+            )
+        rated = cli.Result(**json.loads(record.read_text(encoding="utf-8")))
+        failures = rated.details.get("failures", []) or ([rated.summary] if rated.status == "error" else [])
+        if failures:
+            do, read = hint("ratings", failures[0])
+            return Step(
+                do, ratings, f"RATINGS failed: {failures[0]}", read, "the last line starts with RATINGS HELD"
+            )
     report = project.dir / "build" / "gates.json"
     gates = f"{wc} gates {quoted}"
     if not report.is_file():
@@ -575,6 +654,16 @@ def next_step(cli, target: str, run_check=True) -> Step:
             read,
             "the last line is GREEN, with no warning" if not failed else "the last line starts with GREEN",
         )
+    if rated is not None and rated.details.get("verdict") != "RATINGS HELD":
+        left = rated.details.get("warnings", []) or [rated.details.get("verdict") or rated.summary]
+        do, read = hint("ratings", left[0])
+        return Step(
+            do,
+            f"{ratings} --strict",
+            f"RATINGS not judged whole: {left[0]}",
+            read,
+            "the last line is RATINGS HELD",
+        )
     package = project.dir / "verification"
     if package.is_dir():
         verify = f"{wc} verify {quoted} --strict"
@@ -617,9 +706,15 @@ def next_step(cli, target: str, run_check=True) -> Step:
             f'({DESIGN}, "Steps")',
             done=True,
         )
+    unrated = (
+        f"`{ratings} --init` starts holding the schematic to its parts' ratings ({RATINGS}). "
+        if rated is None
+        else ""
+    )
     return Step(
         "Nothing for the bench: the gates are GREEN with no warning.",
         why="a board that leaves the bench has its parts and its requirements proven first. "
+        f"{unrated}"
         f"`{wc} sources {quoted}` holds each part to its datasheet and its model "
         "(ee-agent-kit/PROCESSES.md, P27). "
         f"`{wc} verify {quoted} --init` starts the requirements (ee-agent-kit/PROCESSES.md, P28)",

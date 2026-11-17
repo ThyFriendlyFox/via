@@ -156,6 +156,38 @@ def test_a_pin_left_open_is_marked_and_its_type_is_the_type_before_the_plus():
     assert net.nets["TAP"][0].open is False
 
 
+def test_a_real_export_of_kicad_cli_is_read_whole():
+    """tests/samples/ratings/pass-ratings-node.xml is what kicad-cli 10.0.8 wrote for the fixture of
+    that name (PROCESSES.md P7): 14 parts on 10 nets, 2 of them the nets of pins left open."""
+    sample = ROOT / "tests" / "samples" / "ratings" / "pass-ratings-node.xml"
+    net = ratings.read_netlist(sample.read_text(encoding="utf-8"))
+    assert len(net.parts) == 14 and len(net.nets) == 10
+    assert sorted(n for n in net.nets if not n.startswith("unconnected-(")) == [
+        "+3V3",
+        "+5V",
+        "FB",
+        "GND",
+        "IN",
+        "OUT",
+        "SIG",
+        "SW",
+    ]
+    u1 = net.parts["U1"]
+    assert (u1.value, u1.symbol) == ("TLV62569", "Regulator_Switching:TLV62569DBV")
+    assert u1.footprint == "Package_TO_SOT_SMD:SOT-23-5"
+    assert u1.pins == {"1": "+5V", "2": "GND", "3": "SW", "4": "+5V", "5": "FB"}
+    named = {n.pin: (n.name, n.kind) for nodes in net.nets.values() for n in nodes if n.ref == "U1"}
+    assert named == {
+        "1": ("EN", "input"),
+        "2": ("GND", "power_in"),
+        "3": ("SW", "power_out"),
+        "4": ("VIN", "power_in"),
+        "5": ("FB", "input"),
+    }
+    (left_open,) = net.nets["unconnected-(U2-NC-Pad1)"]
+    assert (left_open.ref, left_open.pin, left_open.name, left_open.kind) == ("U2", "1", "NC", "no_connect")
+
+
 def test_text_that_is_no_netlist_is_refused_with_what_is_wrong():
     with pytest.raises(ValueError, match="no <components>"):
         ratings.read_netlist("<export version='E'><nets/></export>")
@@ -486,6 +518,7 @@ def test_the_part_left_out_puts_nothing_on_its_nets_not_even_an_unknown():
 READ = {"document": "DS-1", "revision": "rev A", "read": "2026-11-17", "second_reader": "2026-11-17"}
 NASA = ratings.read_pack(PACKS / "nasa-eee-inst-002.json")
 NASA_SOURCE = "EEE-INST-002 (NASA/TP-2003-212242)"
+LINEAR = "section M4, table 4, page 10 of 10, the column Linear/Mixed Signal"  # a regulator's output
 
 
 def circuit(**parts: tuple) -> tuple[ratings.Netlist, dict[str, str]]:
@@ -567,6 +600,31 @@ def test_a_part_with_no_facts_is_not_judged_and_is_named_with_its_part_number(tm
     assert found(report, "not judged") == ["not judged C1 10u: no facts for C-16V"]
 
 
+def test_a_capacitor_whose_rating_nothing_states_is_1_line_and_holds_no_net_back(tmp_path):
+    """A capacitor with no datasheet to be had is entered with its kind alone. The command then knows
+    it passes no steady current: the tap of the divider beside it keeps its span, the 2 resistors are
+    judged, and the capacitor's own voltage is the 1 thing not judged."""
+    net, mpns = circuit(
+        R1=("10k", "R-0402", {"1": "V5", "2": "TAP"}),
+        R2=("10k", "R-0402", {"1": "TAP", "2": "GND"}),
+        C1=("1n", "C-BARE", {"1": "TAP", "2": "GND"}),
+    )
+    facts = library(tmp_path, chip_resistor(), entry("capacitor.ceramic", "C-BARE"))
+    report = ratings.judge(net, mpns, facts, project({"V5": (4.5, 5.5), **GND}), NASA)
+    assert found(report, "not judged") == [
+        "not judged C1 1n between TAP and GND: its facts hold no voltage rating"
+    ]
+    assert sorted(f.part for f in report.findings if f.status == "hold") == ["R1", "R1", "R2", "R2"]
+
+
+def test_a_capacitor_with_a_voltage_and_no_tolerance_is_held_to_the_voltage(tmp_path):
+    net, mpns = circuit(C1=("10u", "C-16V", {"1": "V12", "2": "GND"}))
+    facts = library(tmp_path, entry("capacitor.ceramic", "C-16V", volts=16))
+    report = ratings.judge(net, mpns, facts, project({"V12": (11.4, 12.6), **GND}), NASA)
+    (line,) = found(report, "fail")
+    assert line.startswith("fail C1 10u between V12 and GND: 12.6 V on 16 V rated is 0.79")
+
+
 def test_a_stress_the_pack_has_no_rule_for_is_held_to_the_part_s_own_rating(tmp_path):
     """An electrolytic capacitor is in neither table read so far. 12.6 V on 16 V holds at 1.0, and the
     line says whose limit that is."""
@@ -587,7 +645,7 @@ def test_a_resistor_that_burns_more_than_its_derated_power_fails(tmp_path):
     assert line.startswith(
         "fail R1 100 between V5 and GND, with 5.5 V across it: 306 mW on 62.5 mW rated is 4.89"
     )
-    assert "the limit is 0.60" in line and "section R2, table 4, page 24 of 24" in line
+    assert "the limit is 0.50" in line and "section R2, table 4, page 24 of 24, the row Others" in line
 
 
 def test_a_pull_down_of_10k_holds_its_power_and_its_voltage(tmp_path):
@@ -639,6 +697,34 @@ def test_a_sense_resistor_is_judged_with_the_current_the_project_states(tmp_path
         )
 
 
+def test_a_sense_resistor_s_voltage_is_the_stated_current_times_its_resistance(tmp_path):
+    """The 2 nets of a 20 mohm shunt can stand 4.2 V apart, and the shunt never sees that: a load takes
+    the rest. 3 A through 20.2 mohm (1 % over) is 60.6 mV: 0.61 of a 100 mV part, 0.87 of a 70 mV one,
+    and NASA allows 0.80."""
+    net, mpns = circuit(R1=("20m", "R-SENSE", {"1": "VBAT", "2": "LOAD"}), J1=("Conn", "", {"1": "LOAD"}))
+    nets = {"VBAT": (3.0, 4.2), "LOAD": (0.0, 4.2)}
+    for volts, rated, status, share in ((0.1, "100 mV", "hold", "0.61"), (0.07, "70 mV", "fail", "0.87")):
+        facts = library(tmp_path, entry("resistor", "R-SENSE", tolerance=0.01, watts=1.0, volts=volts))
+        report = ratings.judge(net, mpns, facts, project(nets, amps={"R1": 3.0}), NASA)
+        (line,) = [f.line for f in report.findings if f.rule == "resistor.voltage"]
+        assert line.startswith(
+            f"{status} R1 20m between VBAT and LOAD, with the 3 A the project states: 60.6 mV on "
+            f"{rated} rated is {share}, the limit is 0.80"
+        )
+
+
+def test_a_stated_current_judges_a_resistor_whose_far_net_nothing_states(tmp_path):
+    """A connector's pin stands on the load's net and nothing states it: the net has no span. The
+    current the project states is enough for the resistor's own 2 stresses."""
+    net, mpns = circuit(R1=("20m", "R-SENSE", {"1": "VBAT", "2": "LOAD"}), J1=("Conn", "", {"1": "LOAD"}))
+    facts = library(tmp_path, entry("resistor", "R-SENSE", tolerance=0.01, watts=1.0, volts=0.1))
+    report = ratings.judge(net, mpns, facts, project({"VBAT": (3.0, 4.2)}, amps={"R1": 3.0}), NASA)
+    assert sorted((f.rule, f.status) for f in report.findings if f.part == "R1") == [
+        ("resistor.power", "hold"),
+        ("resistor.voltage", "hold"),
+    ]
+
+
 def test_a_mosfet_is_held_to_its_drain_and_to_its_gate_rating(tmp_path):
     """12.6 V on a 20 V drain is 0.63, under NASA's 0.75. The same 12.6 V on an 8 V gate is over."""
     net, mpns = circuit(
@@ -687,6 +773,76 @@ def test_a_clamp_that_conducts_at_the_rail_s_own_voltage_fails(tmp_path):
         assert line.startswith(
             f"{status} D1 TVS from GND to VBUS: 5.5 V can stand across it, and it stands off {volts:g} V"
         )
+
+
+POWER_FET = {
+    "1": ("GATE", "G", "input"),
+    "2": ("GND", "S", "passive"),
+    "3": ("GND", "S", "passive"),
+    "4": ("LOAD", "D", "passive"),
+    "5": ("LOAD", "D", "passive"),
+}
+
+
+def power_fet(**more) -> dict:
+    """A transistor with 2 source pins and 2 drain pins, as a power package has them."""
+    ends = {"gate": "1", "drain": ["4", "5"], "source": ["2", "3"]}
+    return entry(
+        "transistor.mosfet", "FET-2", transistors=[ends], volts_drain_source=30, volts_gate_source=12, **more
+    )
+
+
+def test_a_transistor_with_2_pins_for_an_end_names_them_all(tmp_path):
+    """The second source pin and the second drain pin are no sources nothing describes."""
+    net, mpns = circuit(Q1=("FET", "FET-2", POWER_FET))
+    nets = {"LOAD": (0.0, 12.6), "GATE": (0.0, 3.6), **GND}
+    report = ratings.judge(net, mpns, library(tmp_path, power_fet()), project(nets), NASA)
+    assert found(report, "not judged") == []
+    assert [f.line.split(" [")[0] for f in report.findings] == [
+        "hold Q1 FET drain LOAD to source GND: 12.6 V on 30 V rated is 0.42, the limit is 0.75",
+        "hold Q1 FET gate GATE to source GND: 3.6 V on 12 V rated is 0.30, the limit is 0.60",
+    ]
+
+
+def test_a_transistor_s_current_is_held_to_the_drain_current_at_the_ambient(tmp_path):
+    """4 A through a part rated 4 A at 25 C and 3.2 A at 70 C: 1.00 with no ambient stated, 1.25 at
+    70 C, and at 47.5 C, half-way, 4 / 3.6 = 1.11. NASA allows 0.75. Past 70 C the data ends."""
+    net, mpns = circuit(Q1=("FET", "FET-2", POWER_FET))
+    nets = {"LOAD": (0.0, 12.6), "GATE": (0.0, 3.3), **GND}
+    facts = library(tmp_path, power_fet(amps_drain=[[25, 4.0], [70, 3.2]]))
+    where = f"[{NASA_SOURCE}, section S1, table 4, page 13 of 13]"
+    for ambient, rated, share in ((None, "4 A", "1.00"), (70, "3.2 A", "1.25"), (47.5, "3.6 A", "1.11")):
+        report = ratings.judge(net, mpns, facts, project(nets, amps={"Q1": 4.0}, ambient=ambient), NASA)
+        assert found(report, "fail") == [
+            f"fail Q1 FET drain current, with the 4 A the project states: 4 A on {rated} rated is {share}, "
+            f"the limit is 0.75 {where}"
+        ]
+    assert "Q1: its drain current is rated as at 25 C, since the project states no ambient" in (
+        ratings.judge(net, mpns, facts, project(nets, amps={"Q1": 4.0}), NASA).notes
+    )
+    hot = ratings.judge(net, mpns, facts, project(nets, amps={"Q1": 4.0}, ambient=85), NASA)
+    assert found(hot, "not judged") == [
+        "not judged Q1 FET drain current: its rating is stated up to 70 C, and the ambient is 85 C"
+    ]
+    one = library(tmp_path, power_fet(amps_drain=6.0))
+    report = ratings.judge(net, mpns, one, project(nets, amps={"Q1": 4.0}), NASA)
+    assert any("4 A on 6 A rated is 0.67, the limit is 0.75" in line for line in found(report, "hold"))
+    unstated = ratings.judge(net, mpns, one, project(nets), NASA)
+    assert not any("drain current" in f.text for f in unstated.findings)
+
+
+def test_a_diode_s_current_is_held_to_its_forward_current(tmp_path):
+    """600 mA through a 1 A diode is 0.60, and NASA allows 0.50."""
+    net, mpns = circuit(D1=("SS14", "D-1", {"1": ("VBUS", "A", "passive"), "2": ("V12", "K", "passive")}))
+    nets = {"VBUS": (4.4, 5.5), "V12": (11.4, 12.6)}
+    diode = entry(
+        "diode.rectifier", "D-1", diodes=[{"anode": "1", "cathode": "2"}], volts_reverse=30, amps_forward=1.0
+    )
+    report = ratings.judge(net, mpns, library(tmp_path, diode), project(nets, amps={"D1": 0.6}), NASA)
+    assert found(report, "fail") == [
+        "fail D1 SS14 forward current, with the 600 mA the project states: 600 mA on 1 A rated is 0.60, "
+        f"the limit is 0.50 [{NASA_SOURCE}, section S1, table 4, page 12 of 13]"
+    ]
 
 
 def pin(name: str, numbers: list[str], role: str, **keys) -> dict:
@@ -769,6 +925,30 @@ def test_a_supply_held_under_the_pin_s_working_range_fails(tmp_path):
     )
 
 
+def test_a_signal_pin_is_held_to_the_range_its_datasheet_recommends(tmp_path):
+    """An input takes 4.6 V at the most and works from 0 to 3.6 V. 4 V on it breaks no limit, and is
+    outside the range the datasheet recommends; 3.3 V is inside both."""
+    net, mpns = circuit(U1=("MCU", "MCU-1", mcu()))
+    wide = pin("PA0", ["3"], "input", abs=[-0.5, 4.6], operating=[0, 3.6])
+    chip = {**MCU_FACTS, "pins": [*MCU_FACTS["pins"][:2], wide]}
+    facts = library(tmp_path, chip)
+    report = ratings.judge(net, mpns, facts, project({"SIG": (0.0, 4.0), **RAILS}), NASA)
+    assert found(report, "fail") == [
+        "fail U1 pin 3 (PA0) on SIG: 0 to 4 V can stand on it, the pin works from 0 V to 3.6 V "
+        "[DS-1, rev A, p 4]"
+    ]
+    assert (
+        "hold U1 pin 3 (PA0) on SIG: 0 to 4 V can stand on it, its limits are -0.5 V and 4.6 V "
+        "[DS-1, rev A, p 4]" in found(report, "hold")
+    )
+    report = ratings.judge(net, mpns, facts, project({"SIG": (0.0, 3.3), **RAILS}), NASA)
+    assert found(report, "fail") == []
+    assert (
+        "hold U1 pin 3 (PA0) on SIG: 0 to 3.3 V can stand on it, the pin works from 0 V to 3.6 V "
+        "[DS-1, rev A, p 4]" in found(report, "hold")
+    )
+
+
 def regulator(amps: float = 0.2, needs: list | None = None) -> dict:
     return entry(
         "ic",
@@ -803,23 +983,248 @@ TWO_PINS = {"1": ("V33", "VDD", "power_in"), "2": ("GND", "VSS", "power_in")}
 
 
 def test_a_rail_loaded_past_its_regulator_fails(tmp_path):
-    """150 mA and 100 mA on a 200 mA regulator is 1.25 of what it gives. NASA allows 0.80."""
+    """150 mA and 100 mA on a 200 mA regulator is 1.25 of what it gives. NASA allows a plastic linear
+    part 0.70."""
     net, mpns = circuit(U1=("LDO", "LDO-1", LDO), U2=("A", "LOAD-A", TWO_PINS), U3=("B", "LOAD-B", TWO_PINS))
     facts = library(tmp_path, regulator(), load("LOAD-A", 0.15), load("LOAD-B", 0.1))
     report = ratings.judge(net, mpns, facts, project(V5), NASA)
     (line,) = found(report, "fail")
     assert line == (
-        "fail V33: U1 pin 3 (OUT) gives 200 mA, its loads take 250 mA: 1.25, the limit is 0.80 "
-        f"[{NASA_SOURCE}, section M3, table 4, page 15 of 15]"
+        "fail V33: U1 pin 3 (OUT) gives 200 mA, its loads take 250 mA: 1.25, the limit is 0.70 "
+        f"[{NASA_SOURCE}, {LINEAR}]"
     )
 
 
+def test_a_reference_output_its_datasheet_rates_nowhere_is_noted_and_never_guessed(tmp_path):
+    """A comparator's reference output: the datasheet gives its voltage and no limit for the pin. The
+    entry leaves `abs` out. The net still stands at the reference, the resistor on it is judged with
+    1.26 V across it, and a note says that nothing holds the reference pin to a limit."""
+    chip = entry(
+        "ic",
+        "CMP-1",
+        family="linear",
+        pins=[
+            pin("V+", ["1"], "supply", abs=[-0.5, 7.0], amps=0.000005),
+            pin("V-", ["2"], "ground"),
+            pin("REF", ["3"], "regulated", volts=[1.223, 1.26], amps=0.0005),
+            pin("IN+", ["4"], "input", abs=[-0.5, 7.0]),
+        ],
+    )
+    pins = {
+        "1": ("V33", "V+", "power_in"),
+        "2": ("GND", "V-", "power_in"),
+        "3": ("VREF", "REF", "output"),
+        "4": ("VREF", "IN+", "input"),
+    }
+    net, mpns = circuit(U1=("CMP", "CMP-1", pins), R1=("100k", "R-0402", {"1": "VREF", "2": "GND"}))
+    facts = library(tmp_path, chip, chip_resistor())
+    report = ratings.judge(net, mpns, facts, project({"V33": (3.0, 3.3), **GND}), NASA)
+    assert "U1 pin 3 (REF): its facts hold no limits, and no voltage on VREF is held to one" in report.notes
+    assert not any(f.part == "U1.3" for f in report.findings)
+    assert any(
+        line.startswith("hold R1 100k between VREF and GND: 1.26 V on 50 V rated is 0.03")
+        for line in found(report, "hold")
+    )
+    assert found(report, "not judged") == []
+
+
 def test_a_rail_inside_its_regulator_holds(tmp_path):
+    """50 mA and 80 mA on a 200 mA regulator is 0.65."""
     net, mpns = circuit(U1=("LDO", "LDO-1", LDO), U2=("A", "LOAD-A", TWO_PINS), U3=("B", "LOAD-B", TWO_PINS))
-    facts = library(tmp_path, regulator(), load("LOAD-A", 0.05), load("LOAD-B", 0.1))
+    facts = library(tmp_path, regulator(), load("LOAD-A", 0.05), load("LOAD-B", 0.08))
     report = ratings.judge(net, mpns, facts, project(V5), NASA)
     assert found(report, "fail") == []
-    assert any("its loads take 150 mA: 0.75, the limit is 0.80" in f.text for f in report.findings)
+    assert any("its loads take 130 mA: 0.65, the limit is 0.70" in f.text for f in report.findings)
+
+
+def monitor(iout: str, minus: str) -> dict:
+    """A current monitor of 3 pins, with its output and its sense input on the 2 numbers given."""
+    return entry(
+        "ic",
+        "MON-1",
+        family="linear",
+        pins=[
+            pin("VSENSE+", ["2"], "supply", abs=[-0.6, 20], amps=0.00002),
+            pin("VSENSE-", [minus], "input", abs=[-0.6, 20]),
+            pin("IOUT", [iout], "open_drain", abs=[-0.6, 20], swing=["VSENSE+"]),
+        ],
+    )
+
+
+MONITOR = {"1": ("LOAD", "Vs-", "input"), "2": ("VBAT", "Vs+", "input"), "3": ("SENSE", "Iout", "output")}
+
+
+def test_facts_that_number_a_pin_another_way_than_the_symbol_fail_and_say_which(tmp_path):
+    """A datasheet draws its SOT-23 with the lone pin as 1, the output; the symbol follows the
+    footprint, where the lone pad is 3. Facts copied from the drawing put IOUT on pin 1, and the
+    symbol has Iout on pin 3: every line of the part would be judged on the wrong net."""
+    net, mpns = circuit(U1=("MON", "MON-1", MONITOR))
+    nets = {"VBAT": (2.8, 4.2), "LOAD": (0.0, 4.2)}
+    report = ratings.judge(net, mpns, library(tmp_path, monitor("1", "3")), project(nets), NASA)
+    assert (
+        "fail U1: its facts name pin 1 IOUT, and the symbol names pin 3 Iout: "
+        "the 2 number the pins differently [DS-1, rev A]"
+    ) in found(report, "fail")
+    report = ratings.judge(net, mpns, library(tmp_path, monitor("3", "1")), project(nets), NASA)
+    assert not any(f.rule == "facts" for f in report.findings)
+
+
+def above_its_output(tmp_path: Path, sense_net: dict) -> ratings.Report:
+    """A part whose sense pin may not fall more than 0.6 V under its output pin. The output's net is
+    stated at up to 1.26 V; the sense pin stands on the net given."""
+    chip = entry(
+        "ic",
+        "MON-2",
+        family="linear",
+        pins=[
+            pin("SENSE", ["1"], "input", abs=[{"pin": "OUT", "plus": -0.6}, 20]),
+            pin("OUT", ["2"], "analog", abs=[-0.3, 20]),
+        ],
+    )
+    pins = {"1": ("VSENSE", "SENSE", "input"), "2": ("VOUT", "OUT", "passive")}
+    net, mpns = circuit(U1=("MON", "MON-2", pins), J1=("Conn", "", {"1": "VSENSE"}))
+    nets = {"VOUT": (0.0, 1.26), **sense_net}
+    return ratings.judge(net, mpns, library(tmp_path, chip), project(nets), NASA)
+
+
+def test_a_least_limit_that_follows_a_pin_is_judged_with_both_nets_on(tmp_path):
+    """The cell holds the sense pin at 2.8 V or more while it is on, over the 0.66 V its output asks
+    for. With every source off both nets are at 0 V, and no limit between 2 pins is broken: the 0 V a
+    net can stand at when off is not held against a limit that follows a pin that is on."""
+    report = above_its_output(tmp_path, {"VSENSE": (2.8, 4.2)})
+    assert (
+        "hold U1 pin 1 (SENSE) on VSENSE: 2.8 to 4.2 V can stand on it, its limits are 0.66 V "
+        "(pin OUT at 1.26 V, -0.6 V) and 20 V [DS-1, rev A, p 4]"
+    ) in found(report, "hold")
+    assert not any(f.part == "U1.1" and f.status == "fail" for f in report.findings)
+
+
+def test_a_least_limit_that_follows_a_pin_fails_when_the_net_is_held_too_low(tmp_path):
+    report = above_its_output(tmp_path, {"VSENSE": (0.3, 4.2)})
+    assert (
+        "fail U1 pin 1 (SENSE) on VSENSE: 0.3 V can stand on it, its limit is 0.66 V "
+        "(pin OUT at 1.26 V, -0.6 V) [DS-1, rev A, p 4]"
+    ) in found(report, "fail")
+
+
+def test_a_name_the_symbol_spells_another_way_is_no_conflict(tmp_path):
+    """`~{CHG}` on the symbol and `CHG` in the facts are 1 name; `V+` and `V-` are 2."""
+    chip = entry(
+        "ic",
+        "CMP-2",
+        family="linear",
+        pins=[
+            pin("V+", ["1"], "supply", abs=[-0.5, 7.0], amps=0.000005),
+            pin("V-", ["2"], "ground"),
+            pin("CHG", ["3"], "open_drain", abs=[-0.5, 7.0], swing=["V-"]),
+        ],
+    )
+    pins = {"1": ("V33", "V+", "power_in"), "2": ("GND", "V-", "power_in"), "3": ("OUT", "~{CHG}", "output")}
+    net, mpns = circuit(U1=("CMP", "CMP-2", pins))
+    report = ratings.judge(net, mpns, library(tmp_path, chip), project({"V33": (3.0, 3.3), **GND}), NASA)
+    assert not any(f.rule == "facts" for f in report.findings)
+
+
+FILTERED = {"1": ("VDD", "VDD", "power_in"), "2": ("GND", "VSS", "power_in")}
+
+
+def filtered(number: str) -> tuple[ratings.Netlist, dict[str, str]]:
+    """330 ohm and a capacitor in front of 1 part's supply pin: nothing but the resistor feeds VDD."""
+    return circuit(
+        R1=("330", "R-0402", {"1": "VBAT", "2": "VDD"}),
+        C1=("100n", "C-16V", {"1": "VDD", "2": "GND"}),
+        U1=("A", number, FILTERED),
+    )
+
+
+def test_a_resistor_that_alone_feeds_a_supply_pin_carries_what_the_pin_takes(tmp_path):
+    """The part takes 5.5 uA through 333.3 ohm (1 % over): 1.83 mV across the resistor and 10.1 nW in
+    it. Judged by its 2 nets it would stand 4.2 V and burn 54 mW, as if the pin were a short."""
+    net, mpns = filtered("LOAD-A")
+    facts = library(tmp_path, chip_resistor(), ceramic("C-16V", 16), load("LOAD-A", 5.5e-6))
+    report = ratings.judge(net, mpns, facts, project({"VBAT": (2.8, 4.2), **GND}), NASA)
+    lines = {f.rule: f.line for f in report.findings if f.part == "R1"}
+    said = "hold R1 330 between VBAT and VDD, with the 5.5 uA that VDD takes: "
+    assert lines["resistor.voltage"].startswith(said + "1.83 mV on 50 V rated is 0.00, the limit is 0.80")
+    assert lines["resistor.power"].startswith(said + "10.1 nW on 62.5 mW rated is 0.00, the limit is 0.50")
+
+
+def test_a_supply_pin_behind_a_filter_resistor_is_held_to_its_working_range(tmp_path):
+    """Nothing but the resistor feeds VDD, so what holds VBAT holds VDD: 2.8 to 4.2 V, against the 1.7
+    to 3.6 V the part works from. Without that, no source held the net and the range was not judged."""
+    net, mpns = filtered("LOAD-F")
+    part = entry(
+        "ic",
+        "LOAD-F",
+        family="digital",
+        pins=[
+            pin("VDD", ["1"], "supply", abs=[-0.3, 6.0], operating=[1.7, 3.6], amps=5.5e-6),
+            pin("VSS", ["2"], "ground"),
+        ],
+    )
+    facts = library(tmp_path, chip_resistor(), ceramic("C-16V", 16), part)
+    report = ratings.judge(net, mpns, facts, project({"VBAT": (2.8, 4.2), **GND}), NASA)
+    assert found(report, "not judged") == []
+    assert found(report, "fail") == [
+        "fail U1 pin 1 (VDD) on VDD: its sources hold it at 2.8 to 4.2 V, the pin works from 1.7 to 3.6 V "
+        "[DS-1, rev A, p 4]"
+    ]
+
+
+def test_a_resistor_that_feeds_a_pin_of_unknown_current_is_judged_at_the_worst(tmp_path):
+    """The supply pin's facts state no current: the whole 4.2 V stays across 326.7 ohm (1 % under),
+    54 mW, 0.86 of the part."""
+    net, mpns = filtered("LOAD-B")
+    facts = library(tmp_path, chip_resistor(), ceramic("C-16V", 16), load("LOAD-B", None))
+    report = ratings.judge(net, mpns, facts, project({"VBAT": (2.8, 4.2), **GND}), NASA)
+    lines = {f.rule: f.line for f in report.findings if f.part == "R1"}
+    assert lines["resistor.voltage"].startswith(
+        "hold R1 330 between VBAT and VDD: 4.2 V on 50 V rated is 0.08"
+    )
+    assert lines["resistor.power"].startswith(
+        "fail R1 330 between VBAT and VDD, with 4.2 V across it: 54 mW on 62.5 mW rated is 0.86"
+    )
+
+
+def test_a_resistor_beside_another_source_is_judged_by_its_2_nets(tmp_path):
+    """An output of a second part stands on the net behind the resistor and can pull it to 0 V: the
+    resistor then stands the whole 4.2 V, whatever the supply pin beside it takes."""
+    net, mpns = circuit(
+        R1=("330", "R-0402", {"1": "VBAT", "2": "VDD"}),
+        U1=("A", "LOAD-A", FILTERED),
+        U2=("MCU", "MCU-1", mcu("VDD")),
+    )
+    facts = library(tmp_path, chip_resistor(), load("LOAD-A", 5.5e-6), MCU_FACTS)
+    report = ratings.judge(net, mpns, facts, project({"VBAT": (2.8, 4.2), **RAILS}), NASA)
+    (watts,) = (f.line for f in report.findings if f.part == "R1" and f.rule == "resistor.power")
+    assert "with 4.2 V across it" in watts and "that VDD takes" not in watts
+
+
+def test_a_digital_part_s_own_regulator_is_held_to_the_digital_column(tmp_path):
+    """A microcontroller's core regulator gives 50 mA on its VCAP pin, and a load there takes 45 mA:
+    0.90. NASA allows a plastic digital part 0.80, and a linear one 0.70."""
+    core = entry(
+        "ic",
+        "MCU-2",
+        family="digital",
+        pins=[
+            pin("VDD", ["1"], "supply", abs=[-0.3, 4.0], amps=0.06),
+            pin("VSS", ["2"], "ground"),
+            pin("VCAP", ["3"], "regulated", abs=[-0.3, 1.5], volts=[1.1, 1.3], amps=0.05),
+        ],
+    )
+    pins = {
+        "1": ("V33", "VDD", "power_in"),
+        "2": ("GND", "VSS", "power_in"),
+        "3": ("V1P2", "VCAP", "power_out"),
+    }
+    far = {"1": ("V1P2", "VDD", "power_in"), "2": ("GND", "VSS", "power_in")}
+    net, mpns = circuit(U1=("MCU", "MCU-2", pins), U2=("A", "LOAD-A", far))
+    report = ratings.judge(net, mpns, library(tmp_path, core, load("LOAD-A", 0.045)), project(RAILS), NASA)
+    assert found(report, "fail") == [
+        "fail V1P2: U1 pin 3 (VCAP) gives 50 mA, its loads take 45 mA: 0.90, the limit is 0.80 "
+        f"[{NASA_SOURCE}, section M4, table 4, page 10 of 10, the column Digital]"
+    ]
 
 
 def test_a_load_with_no_current_in_its_facts_leaves_the_rail_not_judged(tmp_path):
@@ -846,7 +1251,7 @@ def test_a_linear_regulator_passes_the_load_on_its_output_to_its_input(tmp_path)
     report = ratings.judge(
         net, mpns, library(tmp_path, regulator(), low, load("LOAD-B", 0.19)), project(V5), NASA
     )
-    lines = [f.text for f in report.findings if f.rule == "output.current"]
+    lines = [f.text for f in report.findings if f.rule == "output.current.linear"]
     assert any(
         text.startswith("V33: U1 pin 3 (OUT) gives 200 mA, its loads take 190 mA: 0.95") for text in lines
     )
@@ -905,7 +1310,7 @@ def test_a_connector_pin_the_project_states_a_current_for_is_a_load(tmp_path):
     facts = library(tmp_path, regulator(), entry("connector", "HDR-1"))
     report = ratings.judge(net, mpns, facts, project(V5, amps={"J1.1": 0.1}), NASA)
     assert found(report, "not judged") == []
-    assert any("its loads take 100 mA: 0.50, the limit is 0.80" in f.text for f in report.findings)
+    assert any("its loads take 100 mA: 0.50, the limit is 0.70" in f.text for f in report.findings)
     report = ratings.judge(net, mpns, facts, project(V5), NASA)
     assert any("J1 pin 1 can put a voltage on V33" in line for line in found(report, "not judged"))
 
@@ -929,6 +1334,25 @@ def test_an_effective_value_is_not_judged_without_the_maker_s_data(tmp_path):
     assert "not judged U1 pin OUT (V33): C1 has no data on the value it keeps at 3.4 V" in found(
         report, "not judged"
     )
+
+
+def test_an_effective_value_is_not_judged_of_a_capacitor_with_no_tolerance(tmp_path):
+    """What is left of 1 uF under a voltage starts from the value less its tolerance. With no tolerance
+    in its facts the capacitor gives nothing for sure, and nothing bounds what it gives at the most."""
+    net, mpns = circuit(U1=("LDO", "LDO-1", LDO), C1=("1u", "C-BARE", {"1": "V33", "2": "GND"}))
+    bare = entry("capacitor.ceramic", "C-BARE", volts=16, kept=[[0, 1.0], [3.4, 0.7], [16, 0.2]])
+    facts = library(tmp_path, regulator(needs=[EFFECTIVE]), bare)
+    report = ratings.judge(net, mpns, facts, project(V5), NASA)
+    assert "not judged U1 pin OUT (V33): C1 has no tolerance in its facts" in found(report, "not judged")
+    assert not any(f.rule == "needs.capacitor" and f.status != "not judged" for f in report.findings)
+
+
+def test_a_nominal_value_asks_no_tolerance_of_the_capacitor(tmp_path):
+    """A datasheet that names a value names the part's nominal one: 1 uF meets 500 nF as it is."""
+    net, mpns = circuit(U1=("LDO", "LDO-1", LDO), C1=("1u", "C-BARE", {"1": "V33", "2": "GND"}))
+    facts = library(tmp_path, regulator(needs=[OUT_CAP]), entry("capacitor.ceramic", "C-BARE", volts=16))
+    report = ratings.judge(net, mpns, facts, project(V5), NASA)
+    assert any(f.text == "U1 pin OUT (V33) needs 500 nF to GND: C1 gives 1 uF" for f in report.findings)
 
 
 def test_a_capacitor_with_no_data_counts_as_nothing_when_the_others_give_enough(tmp_path):
@@ -1241,12 +1665,12 @@ def test_a_switching_regulator_takes_its_load_s_power_over_its_efficiency(tmp_pa
     500 mA. At the 80 % its facts state it is 1.212 / (0.8 x 3.2) + 0.001 = 0.4744 A: 0.95."""
     report = second_stage(FIXED_BUCK, tmp_path)
     assert (
-        "fail V33: U1 pin 3 (OUT) gives 500 mA, its loads take 422 mA: 0.84, the limit is 0.80 "
-        f"[{NASA_SOURCE}, section M3, table 4, page 15 of 15]" in found(report, "fail")
+        "fail V33: U1 pin 3 (OUT) gives 500 mA, its loads take 422 mA: 0.84, the limit is 0.70 "
+        f"[{NASA_SOURCE}, {LINEAR}]" in found(report, "fail")
     )
     stated = {**FIXED_BUCK, "switching": {**FIXED_BUCK["switching"], "efficiency": 0.8}}
     report = second_stage(stated, tmp_path)
-    assert any("its loads take 474 mA: 0.95, the limit is 0.80" in line for line in found(report, "fail"))
+    assert any("its loads take 474 mA: 0.95, the limit is 0.70" in line for line in found(report, "fail"))
     assert not any("efficiency" in note for note in report.notes)
 
 
@@ -1262,11 +1686,11 @@ def test_a_switching_regulator_with_no_switching_facts_leaves_the_rail_above_it_
 def test_a_supply_pin_with_2_numbers_is_counted_1_time(tmp_path):
     pins = {**TWO_PINS, "3": ("V33", "VDD", "power_in")}
     net, mpns = circuit(U1=("LDO", "LDO-1", LDO), U2=("A", "LOAD-A", pins))
-    wide = load("LOAD-A", 0.15)
+    wide = load("LOAD-A", 0.13)
     wide["pins"][0]["numbers"] = ["1", "3"]
     report = ratings.judge(net, mpns, library(tmp_path, regulator(), wide), project(V5), NASA)
     assert found(report, "fail") == []
-    assert any("its loads take 150 mA: 0.75, the limit is 0.80" in f.text for f in report.findings)
+    assert any("its loads take 130 mA: 0.65, the limit is 0.70" in f.text for f in report.findings)
 
 
 def test_a_regulator_passes_its_load_to_the_supply_pin_its_facts_name(tmp_path):
@@ -1294,7 +1718,7 @@ def test_a_regulator_passes_its_load_to_the_supply_pin_its_facts_name(tmp_path):
     report = ratings.judge(
         net, mpns, library(tmp_path, regulator(), dual, load("LOAD-A", 0.5)), project(V5), NASA
     )
-    texts = [f.text for f in report.findings if f.rule == "output.current"]
+    texts = [f.text for f in report.findings if f.rule == "output.current.linear"]
     assert any(t.startswith("V33: U1 pin 3 (OUT) gives 200 mA, its loads take 1 mA: 0.01") for t in texts)
     assert any(t.startswith("V18: U2 pin 4 (OUT) gives 1 A, its loads take 500 mA: 0.50") for t in texts)
 
@@ -1396,13 +1820,19 @@ def test_a_run_that_judged_nothing_is_no_pass(tmp_path):
 
 
 def test_sources_no_second_reader_has_read_are_counted_in_the_first_line(tmp_path):
-    """The shipped pack counts until a second reader has read it, and each facts entry that is used."""
+    """A pack counts until a second reader has read it, and so does each facts entry that is used."""
     net, mpns = circuit(C1=("10u", "C-25V", {"1": "V12", "2": "GND"}))
+    nets = project({"V12": (11.4, 12.6), **GND})
     once = {**ceramic("C-25V", 25), "source": {**READ, "second_reader": "no"}}
-    report = ratings.judge(net, mpns, library(tmp_path, once), project({"V12": (11.4, 12.6), **GND}), NASA)
-    expected = 1 + (NASA.document["second_reader"] == "no")
-    assert report.unread == expected
-    assert ratings.lines(report)[0].endswith(f"; {expected} sources not read a second time")
+    unread_pack = ratings.Pack(NASA.name, {**NASA.document, "second_reader": "no"}, NASA.rules)
+    read_pack = ratings.Pack(NASA.name, {**NASA.document, "second_reader": "2026-11-17"}, NASA.rules)
+    report = ratings.judge(net, mpns, library(tmp_path, once), nets, unread_pack)
+    assert report.unread == 2
+    assert ratings.lines(report)[0].endswith("; 2 sources not read a second time")
+    report = ratings.judge(net, mpns, library(tmp_path, once), nets, read_pack)
+    assert ratings.lines(report)[0].endswith("; 1 source not read a second time")
+    report = ratings.judge(net, mpns, library(tmp_path, ceramic("C-25V", 25)), nets, read_pack)
+    assert ratings.lines(report)[0].endswith("; pack nasa-eee-inst-002")
 
 
 def test_a_rule_s_factor_falls_with_the_ambient_the_project_states(tmp_path):
@@ -1413,6 +1843,10 @@ def test_a_rule_s_factor_falls_with_the_ambient_the_project_states(tmp_path):
     assert found(ratings.judge(net, mpns, facts, project(nets, ambient=60), NASA), "fail") == []
     hot = ratings.judge(net, mpns, facts, project(nets, ambient=90), NASA)
     assert "4.5 V on 10 V rated is 0.45, the limit is 0.40" in found(hot, "fail")[0]
+    # at the last temperature the table names the share is its last one; past it the part is not allowed
+    for ambient, share in ((110, "0.30"), (110.5, "0.00"), (150, "0.00")):
+        report = ratings.judge(net, mpns, facts, project(nets, ambient=ambient), NASA)
+        assert f"4.5 V on 10 V rated is 0.45, the limit is {share}" in found(report, "fail")[0]
     cold = ratings.judge(net, mpns, facts, project(nets), NASA)
     assert cold.notes == [
         "capacitor.tantalum.voltage: judged as under 70 C, since the project states no ambient"

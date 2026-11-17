@@ -39,6 +39,26 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-17 — The ratings check meets a real board: 6 real stresses, 7 faults of its own
+
+A second reader went through both packs and the fixtures' facts, and 4 numbers had to change:
+NASA's limit for a regulator's output came from the table for hermetic parts, and plastic parts
+have their own. `workcenter next` got its ratings step. Then the command ran on a scratch copy of
+Last Hit v0.16. I wrote the facts of its parts from the datasheets in its own library and stated
+its nets and its currents from its verification package. The first run failed a 20 mΩ shunt for
+4.23 V across it and a 330 Ω filter resistor for 54 mW: both were the check's faults, not the
+board's. A capacitor with no datasheet left every part on its nets not judged. One datasheet
+numbers its SOT-23 with the lone pin as 1, where the footprint has 3: facts copied from its drawing
+would have judged the part on the wrong nets, so the command now fails an entry that names a pin
+another way than the symbol. Each of the 7 faults is fixed with a test that failed first. What
+still fails on that board is real: 3 switches over their current derating, the shunt over its power
+derating, a gate over its derating, and a charger whose input may fall under its working range. 2
+nets that 1 source moves together are still subtracted at their extremes.
+
+Evidence: `tests/test_ratings.py` (213 tests), `tests/test_ratings_cli.py` (19) and
+`tests/test_guide.py` (82) pass. The scratch run prints `6 fail, 0 accepted, 137 hold, 7 not
+judged`. None of that board's facts has been read a second time.
+
 ## 2026-11-17 — A schematic held to its parts' ratings: the command, 2 packs, 6 fixtures
 
 The owner confirmed the roadmap's order: the schematic first. Item 1 is `workcenter ratings`, a

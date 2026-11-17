@@ -590,8 +590,10 @@ STRESSES = (
     "resistor.voltage",
     "resistor.power",
     "diode.reverse",
+    "diode.forward_current",
     "mosfet.drain_source",
     "mosfet.gate_source",
+    "mosfet.drain_current",
     "rail.load",
 )
 DOCUMENT_KEYS = ("issuer", "number", "title", "revision", "url", "sha256", "read", "second_reader")
@@ -673,7 +675,9 @@ def factor(rule: Rule, ambient: float | None) -> tuple[float, str]:
     note = "" if kind == "ambient" else f"{rule.id}: the part's own heating above the ambient is not counted"
     if ambient <= knee:
         return rule.max, note
-    if ambient >= end:
+    if ambient > end:  # past the last temperature the document names, the part is not allowed
+        return 0.0, note
+    if ambient == end:
         return floor, note
     return rule.max + (floor - rule.max) * (ambient - knee) / (end - knee), note
 
@@ -747,7 +751,9 @@ def read_project(path: Path, net: Netlist) -> Project:
 
 SOURCE_KEYS = (("document", "read", "second_reader"), ("revision", "url", "sha256"))
 WHICH = ("mpn", "mpns", "match", "symbol")  # how an entry names the parts it speaks of: exactly 1 of these
-CAPACITOR = (("tolerance", "volts"), ("farads", "dielectric", "kept"))
+# A capacitor's kind alone says it passes no steady current: an entry with no rating keeps its nets
+# judged, and the capacitor's own voltage is then the 1 thing the report cannot judge.
+CAPACITOR = ((), ("tolerance", "volts", "farads", "dielectric", "kept"))
 PASSIVE = {  # kind -> the keys an entry must hold, and those it may
     "resistor": (("tolerance", "watts", "volts"), ("ohms",)),
     "capacitor.ceramic": CAPACITOR,
@@ -782,12 +788,13 @@ FAMILIES = ("digital", "linear", "regulator.linear", "regulator.switching")
 ROLES = {
     "supply": (("abs",), ("operating", "amps")),
     "ground": ((), ()),
-    "input": (("abs",), ()),
-    "analog": (("abs",), ()),
-    "output": (("abs", "swing"), ("amps",)),
-    "io": (("abs", "swing"), ("amps",)),
-    "open_drain": (("abs", "swing"), ("amps",)),
-    "regulated": (("abs",), ("volts", "set_by", "amps", "from")),
+    "input": (("abs",), ("operating",)),
+    "analog": (("abs",), ("operating",)),
+    "output": (("abs", "swing"), ("amps", "operating")),
+    "io": (("abs", "swing"), ("amps", "operating")),
+    "open_drain": (("abs", "swing"), ("amps", "operating")),
+    # a reference's output may stand in no table of limits: `abs` is then left out, and a note says so
+    "regulated": ((), ("abs", "volts", "set_by", "amps", "from")),
     "feedback": (("abs", "volts"), ("amps", "from")),
     "switched": (("abs", "swing"), ()),
     "nc": ((), ()),
@@ -878,20 +885,23 @@ def _pin_facts(where: str, pins: object) -> None:
                 raise Refusal(
                     f"{here}: `from` is missing: which of {', '.join(supplies)} its current comes from"
                 )
-        if required and "page" not in pin:
+        if role not in ("ground", "nc") and "page" not in pin:
             raise Refusal(f"{here}: `page` is missing: the datasheet's page the numbers stand on")
         if "page" in pin:
             _page(here, pin["page"])
-        if "abs" in pin:
-            if not isinstance(pin["abs"], list) or len(pin["abs"]) != 2:
-                raise Refusal(f"{here}: abs: a span of 2 limits is asked, [least, greatest]")
-            _limit(f"{here}: abs", pin["abs"][0])
-            _limit(f"{here}: abs", pin["abs"][1])
-            for end in pin["abs"]:
+        # A supply pin's working range is 2 numbers. A signal pin's, like its absolute limits, may follow
+        # another pin: "0 to VCC".
+        for key in ("abs",) if role == "supply" else ("abs", "operating"):
+            if key not in pin:
+                continue
+            if not isinstance(pin[key], list) or len(pin[key]) != 2:
+                raise Refusal(f"{here}: {key}: a span of 2 limits is asked, [least, greatest]")
+            for end in pin[key]:
+                _limit(f"{here}: {key}", end)
                 for one in end if isinstance(end, list) else [end]:
                     if isinstance(one, dict) and one["pin"] not in names:
-                        raise Refusal(f"{here}: abs: `{one['pin']}` is no pin name of this part")
-        for key in ("operating", "volts"):
+                        raise Refusal(f"{here}: {key}: `{one['pin']}` is no pin name of this part")
+        for key in ("operating", "volts") if role == "supply" else ("volts",):
             if key in pin:
                 _span(f"{here}: {key}", pin[key])
         if "amps" in pin:
@@ -950,16 +960,20 @@ def _facts(where: str, raw: object) -> Facts:
     for key in ("ohms", "farads", "henries", "watts", "volts", "amps", "amps_saturation", "amps_rms"):
         if key in data:
             _number(f"{where}: {key}", data[key], 0)
-    for key in (
-        "volts_reverse",
-        "volts_standoff",
-        "volts_drain_source",
-        "volts_gate_source",
-        "amps_forward",
-        "amps_drain",
-    ):
+    for key in ("volts_reverse", "volts_standoff", "volts_drain_source", "volts_gate_source", "amps_forward"):
         if key in data:
             _number(f"{where}: {key}", data[key], 0)
+    if isinstance(data.get("amps_drain"), list):  # a rating that falls with temperature: [celsius, amps]
+        pairs = data["amps_drain"]
+        if len(pairs) < 2 or not all(isinstance(p, list) and len(p) == 2 for p in pairs):
+            raise Refusal(f"{where}: amps_drain: a number is asked, or 2 or more pairs [celsius, amps]")
+        degrees = [_number(f"{where}: amps_drain: celsius", p[0]) for p in pairs]
+        for pair in pairs:
+            _number(f"{where}: amps_drain: amps", pair[1], 0)
+        if degrees != sorted(set(degrees)):
+            raise Refusal(f"{where}: amps_drain: the celsius rise from pair to pair")
+    elif "amps_drain" in data:
+        _number(f"{where}: amps_drain", data["amps_drain"], 0)
     if "tolerance" in data:
         _number(f"{where}: tolerance", data["tolerance"], 0, 0.99)
     if "kept" in data:
@@ -981,7 +995,10 @@ def _facts(where: str, raw: object) -> Facts:
                 raise Refusal(f"{where}: {key}: a list is asked")
             for i, one in enumerate(data[key], start=1):
                 for end in _keys(f"{where}: {key} {i}", one, ends):
-                    _text(f"{where}: {key} {i}: {end}", one[end])
+                    if isinstance(one[end], list):  # a part with several pins for 1 end
+                        _names(f"{where}: {key} {i}: {end}", one[end])
+                    else:
+                        _text(f"{where}: {key} {i}: {end}", one[end])
     if kind == "connector":
         for i, pin in enumerate(data.get("pins", []), start=1):
             _keys(f"{where}: pin {i}", pin, ("numbers", "outside"))
@@ -1034,6 +1051,32 @@ def facts_of(facts: list[Facts], part: Part, mpn: str) -> Facts | None:
     return found[0] if found else None
 
 
+def _plain(name: str) -> str:
+    """A pin's name as 2 documents may spell it: `~{CHG}` and `CHG` are 1 name, `V+` and `V-` are 2."""
+    return re.sub(r"[^a-z0-9+-]", "", name.lower())
+
+
+def _ends(value: str | list[str]) -> list[str]:
+    """The pins of 1 end of a diode or a transistor: 1 pin number, or the list of them."""
+    return [value] if isinstance(value, str) else list(value)
+
+
+def rated_at(value: float | list[list[float]], ambient: float | None) -> tuple[float | None, str]:
+    """A rating a datasheet states at several temperatures, at the project's ambient: between 2 points
+    by a line, the first point when the project states no ambient (the second answer says so), and
+    None past the last point, where the data ends."""
+    if not isinstance(value, list):
+        return float(value), ""
+    if ambient is None:
+        return value[0][1], f"rated as at {value[0][0]:g} C, since the project states no ambient"
+    if ambient <= value[0][0]:
+        return value[0][1], ""
+    for (t0, a0), (t1, a1) in itertools.pairwise(value):
+        if ambient <= t1:
+            return a0 + (a1 - a0) * (ambient - t0) / (t1 - t0), ""
+    return None, f"its rating is stated up to {value[-1][0]:g} C, and the ambient is {ambient:g} C"
+
+
 def _two_pins(facts: Facts, part: Part) -> tuple[str, str]:
     if len(part.pins) != 2:
         raise Refusal(f"{facts.where}: {part.ref} is a {facts.kind} and has {len(part.pins)} pins, not 2")
@@ -1084,15 +1127,18 @@ def model_of(facts: Facts, part: Part) -> Model:
     if kind == "connector":
         quiet = [n for pin in data.get("pins", []) if pin["outside"] != "source" for n in pin["numbers"]]
         return Model(quiet=frozenset(_held_pins(facts, part, quiet)))
-    if kind.startswith("diode"):
-        pairs = [(d["anode"], d["cathode"]) for d in data["diodes"]]
-        _held_pins(facts, part, [p for pair in pairs for p in pair])
-        return Model(passes=[(a, k, True) for a, k in pairs], quiet=frozenset())
-    if kind == "transistor.mosfet":
-        _held_pins(facts, part, [t[end] for t in data["transistors"] for end in ("gate", "drain", "source")])
+    if kind.startswith("diode") or kind == "transistor.mosfet":
+        # An end with several pins is 1 node inside the part: its pins are linked, and the first one
+        # stands for the end.
+        one_way = kind.startswith("diode")
+        first, second = ("anode", "cathode") if one_way else ("drain", "source")
+        units = data["diodes" if one_way else "transistors"]
+        groups = [_ends(unit[end]) for unit in units for end in unit]
+        _held_pins(facts, part, [p for group in groups for p in group])
         return Model(
-            passes=[(t["drain"], t["source"], False) for t in data["transistors"]],
-            quiet=frozenset(t["gate"] for t in data["transistors"]),
+            links=[(group[0], other) for group in groups for other in group[1:]],
+            passes=[(_ends(unit[first])[0], _ends(unit[second])[0], one_way) for unit in units],
+            quiet=frozenset(p for unit in units for p in _ends(unit.get("gate", []))),
         )
     named = _held_pins(facts, part, [n for pin in data["pins"] for n in pin["numbers"]])
     missing = sorted(set(part.pins) - set(named))
@@ -1296,6 +1342,25 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
         if "note" in found.data:
             refs = ", ".join(ref for ref, f in of.items() if f is found)
             notes.append(f"{refs} ({found.name}): {found.data['note']}")
+    # A datasheet may number a package another way than the footprint the symbol follows. Where the
+    # facts give a name to 1 pin number and the symbol gives the same name to another, 1 of the 2 is
+    # wrong, and every line of the part would be judged on the wrong net.
+    symbol_names = {(n.ref, n.pin): n.name for nodes in net.nets.values() for n in nodes}
+    for ref, found in of.items():
+        if found.kind != "ic":
+            continue
+        theirs = {pin: _plain(name) for (r, pin), name in symbol_names.items() if r == ref}
+        for pin in found.data["pins"]:
+            same = _plain(pin["name"])
+            if not same or any(theirs.get(number) == same for number in pin["numbers"]):
+                continue
+            other = next((n for n, name in sorted(theirs.items()) if name == same), None)
+            if other is not None:
+                text = (
+                    f"{ref}: its facts name pin {pin['numbers'][0]} {pin['name']}, and the symbol names "
+                    f"pin {other} {symbol_names[(ref, other)]}: the 2 number the pins differently"
+                )
+                out.append(Finding("fail", ref, "facts", text, found.source))
     rails, fed = _outputs(net, of, models, project, out, notes)
     for key in project.amps:  # a connector's pin the project states a current for is a load: no source
         ref, _, pin = key.partition(".")
@@ -1305,6 +1370,16 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
     alone: dict[tuple, Spans] = {}
     loads: dict[tuple[str, str], tuple[float, list[str]]] = {}  # (regulator, net) -> its load, or why not
     taken: dict[frozenset[str], float] = {}  # 2 nets -> the farads the needs judged so far took there
+    behind: list[tuple[str, str, float]] = []  # (a net 1 resistor alone feeds, the net behind it, the drop)
+
+    def follow(sp: Spans) -> Spans:
+        """While its sources are on, a net that 1 resistor alone feeds stands at the net behind the
+        resistor, less the drop of what its pins take: a supply pin behind its filter resistor is held
+        at what holds the rail."""
+        for lone, rail, drop in behind:
+            if rail in sp.held and lone not in sp.held:
+                sp.held[lone] = (sp.held[rail][0] - drop, sp.held[rail][1])
+        return sp
 
     def seen_by(ref: str, forced: tuple = ()) -> Spans:
         """The spans a part's own pins are rated against: the others' sources, and a rail put where the
@@ -1312,8 +1387,8 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
         if not forced and not models[ref].drives and ref not in rails:
             return spans
         if (ref, forced) not in alone:
-            alone[(ref, forced)] = net_spans(
-                net, models, project.nets, without=ref, forced=dict(forced), fed=fed
+            alone[(ref, forced)] = follow(
+                net_spans(net, models, project.nets, without=ref, forced=dict(forced), fed=fed)
             )
         return alone[(ref, forced)]
 
@@ -1373,14 +1448,64 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
                 if node.pin not in quiet:
                     return True
             elif kind == "transistor.mosfet":
-                if node.pin not in [t["gate"] for t in data["transistors"]]:
+                if node.pin not in [p for t in data["transistors"] for p in _ends(t["gate"])]:
                     return True
             elif not kind.startswith("capacitor") and kind not in ("testpoint", "mechanical"):
                 return True
         return False
 
+    def fed_through(ref: str, a: str, b: str) -> tuple[float, str] | None:
+        """The current through a resistor that alone feeds 1 of its 2 nets, and that net: what the pins
+        there take, when the facts state every one. None when another source reaches the net, when a
+        pin there takes a current nothing states, or when nothing there takes any."""
+
+        def taken(name: str) -> float | None:
+            """What the pins on 1 net take, or None when one of them could feed the net or takes a
+            current nothing states: only capacitors, gates, inputs and supply pins may stand there."""
+            if name in project.nets:
+                return None
+            total, counted = 0.0, set()
+            for node in net.nets[name]:
+                other = of.get(node.ref)
+                if node.ref == ref:
+                    continue
+                if other is None:
+                    return None
+                data, kind = other.data, other.kind
+                if kind.startswith("capacitor") or kind in ("testpoint", "mechanical"):
+                    continue
+                if kind == "transistor.mosfet":
+                    if node.pin in [p for t in data["transistors"] for p in _ends(t["gate"])]:
+                        continue
+                    return None
+                if kind != "ic":
+                    return None
+                pin = next(p for p in data["pins"] if node.pin in p["numbers"])
+                if pin["role"] in NO_CURRENT:
+                    continue
+                if pin["role"] != "supply" or "amps" not in pin or node.ref in rails:
+                    return None  # an output, or a supply whose current is its regulator's load
+                if (node.ref, pin["name"]) not in counted:
+                    counted.add((node.ref, pin["name"]))
+                    total += pin["amps"]
+            return total
+
+        lone = [(amps, name) for name in (a, b) if (amps := taken(name)) is not None]
+        return lone[0] if len(lone) == 1 else None
+
     def name_of(ref: str) -> str:
         return f"{ref} {net.parts[ref].value}".strip()
+
+    for ref, found in of.items():  # the nets that 1 resistor alone feeds: see follow()
+        ohms = value_of(found, net.parts[ref]) if found.kind == "resistor" else None
+        if not ohms or ref in project.amps or ref in project.volts:
+            continue
+        a, b = net.parts[ref].pins.values()
+        fed_by = fed_through(ref, a, b)
+        if fed_by is not None:
+            amps, lone = fed_by
+            behind.append((lone, b if lone == a else a, amps * ohms * (1 + found.data["tolerance"])))
+    follow(spans)
 
     for ref, found in of.items():
         part, data, kind = net.parts[ref], found.data, found.kind
@@ -1388,19 +1513,34 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
             a, b = part.pins.values()
             label = f"{name_of(ref)} between {a} and {b}"
             volts = gap(spans, a, b)
+            ohms = value_of(found, part) if kind == "resistor" else None
+            said, through = "", None
             if ref in project.volts:
                 volts = project.volts[ref]
                 label += f", with the {si(volts, 'V')} the project states"
+            elif ohms and ref in project.amps:
+                # a stated current sets the voltage across a resistor: its 2 nets' spans say what a
+                # load beside it could see, and a 20 mohm shunt never sees the cell's 4.2 V
+                through = project.amps[ref]
+                said = f", with the {si(through, 'A')} the project states"
+            elif ohms and (lone := fed_through(ref, a, b)) is not None and lone[0] > 0:
+                # the filter resistor of a supply pin: the pin is no short, it takes what its facts say
+                through = lone[0]
+                said = f", with the {si(through, 'A')} that {lone[1]} takes"
+            if through is not None:
+                volts = through * ohms * (1 + data["tolerance"])
             what = "capacitor.voltage" if kind != "resistor" else "resistor.voltage"
-            ratio(ref, what, label, volts, data["volts"], "V")
+            if "volts" in data:
+                ratio(ref, what, label + said, volts, data["volts"], "V")
+            else:
+                out.append(Finding("not judged", ref, what, f"{label}: its facts hold no voltage rating"))
         if kind == "resistor":
-            ohms = value_of(found, part)
             if ohms is None:
                 out.append(Finding("not judged", ref, "resistor.power", f"{label}: its Value is no number"))
             elif ohms > 0 and not isinstance(volts, str):
-                if ref in project.amps:
-                    watts = project.amps[ref] ** 2 * ohms * (1 + data["tolerance"])
-                    how = f"with the {si(project.amps[ref], 'A')} the project states"
+                if through is not None:
+                    watts = through**2 * ohms * (1 + data["tolerance"])
+                    how = said[2:]
                 elif not (carries(a, ref) and carries(b, ref)):
                     watts, how = 0.0, "no steady current: one end meets no source"
                 else:
@@ -1414,8 +1554,12 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
                 ref, "inductor.current", amps <= rated + EPS, text, f"{found.source}: the part's own rating"
             )
         elif kind.startswith("diode"):
+            if ref in project.amps and "amps_forward" in data:
+                amps = project.amps[ref]
+                label = f"{name_of(ref)} forward current, with the {si(amps, 'A')} the project states"
+                ratio(ref, "diode.forward_current", label, amps, data["amps_forward"], "A")
             for diode in data["diodes"]:
-                anode, cathode = part.pins[diode["anode"]], part.pins[diode["cathode"]]
+                anode, cathode = (part.pins[_ends(diode[end])[0]] for end in ("anode", "cathode"))
                 label = f"{name_of(ref)} from {anode} to {cathode}"
                 both = all(n in spans.stress for n in (anode, cathode))
                 volts = (
@@ -1431,8 +1575,22 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
                     holds = volts <= off + EPS
                     judged(ref, "diode.standoff", holds, text, f"{found.source}: the part's own rating")
         elif kind == "transistor.mosfet":
+            if ref in project.amps and "amps_drain" in data:
+                rated, said = rated_at(data["amps_drain"], project.ambient)
+                if rated is None:
+                    out.append(
+                        Finding(
+                            "not judged", ref, "mosfet.drain_current", f"{name_of(ref)} drain current: {said}"
+                        )
+                    )
+                else:
+                    if said and f"{ref}: its drain current is {said}" not in notes:
+                        notes.append(f"{ref}: its drain current is {said}")
+                    amps = project.amps[ref]
+                    label = f"{name_of(ref)} drain current, with the {si(amps, 'A')} the project states"
+                    ratio(ref, "mosfet.drain_current", label, amps, rated, "A")
             for fet in data["transistors"]:
-                gate, drain, source = (part.pins[fet[end]] for end in ("gate", "drain", "source"))
+                gate, drain, source = (part.pins[_ends(fet[end])[0]] for end in ("gate", "drain", "source"))
                 label = f"{name_of(ref)} drain {drain} to source {source}"
                 ratio(
                     ref,
@@ -1480,14 +1638,14 @@ def _judge_ic(  # noqa: PLR0913
     part, found = net.parts[ref], of[ref]
     data = found.data
 
-    def bound(pin: dict, number: str, which: int) -> tuple | None:
-        """1 end of a pin's absolute limits: which is 0 for the least and 1 for the greatest. Whether it
-        holds, the voltage and the limit as the line names it; an empty tuple when nothing but the pin
-        puts a voltage on its net. None when the pin could not be judged: its other end would say the
-        same again."""
+    def bound(pin: dict, number: str, which: int, key: str = "abs") -> tuple | None:
+        """1 end of a pin's absolute limits, or of a signal pin's working range (key `operating`): which
+        is 0 for the least and 1 for the greatest. Whether it holds, the voltage and the limit as the
+        line names it; an empty tuple when nothing but the pin puts a voltage on its net. None when the
+        pin could not be judged: its other end would say the same again."""
         name = part.pins[number]
         label = f"{ref} pin {number} ({pin['name']}) on {name}"
-        raw = pin["abs"][which]
+        raw = pin[key][which]
         worst: tuple[float, float, str] | None = None
         for one in raw if isinstance(raw, list) else [raw]:
             forced, how = (), ""
@@ -1512,6 +1670,15 @@ def _judge_ic(  # noqa: PLR0913
                 out.append(Finding("not judged", ref, "pin.voltage", f"{label}: {name} has no span: {why}"))
                 return None
             volts = sp.stress[name][which]
+            if forced and not which:
+                # A least limit that follows a pin that is on: with every source off both nets are at
+                # 0 V and no limit between 2 pins is broken, so the pin is taken where its own sources
+                # hold it. The order rails come up in is not judged.
+                if name not in sp.held:
+                    text = f"{label}: its least limit follows pin {one['pin']}, and no source holds {name}"
+                    out.append(Finding("not judged", ref, "pin.voltage", text))
+                    return None
+                volts = sp.held[name][0]
             over = (volts - limit) if which else (limit - volts)
             if worst is None or over > worst[0]:
                 worst = (over, volts, f"{limit:.3g} V{how}")
@@ -1525,6 +1692,11 @@ def _judge_ic(  # noqa: PLR0913
                 continue  # a pin left open
             high = bound(pin, number, 1) if "abs" in pin else None
             low = bound(pin, number, 0) if high is not None else None
+            if "abs" not in pin and pin["role"] not in ("ground", "nc"):
+                notes.append(
+                    f"{ref} pin {number} ({pin['name']}): its facts hold no limits, "
+                    f"and no voltage on {name} is held to one"
+                )
             label = f"{ref} pin {number} ({pin['name']}) on {name}"
             source = f"{found.source}, {_p(pin['page'])}" if "page" in pin else found.source
             if low and high and low[0] and high[0]:  # both ends hold: 1 line says so
@@ -1538,6 +1710,16 @@ def _judge_ic(  # noqa: PLR0913
                     if end:
                         text = f"{label}: {end[1]:.3g} V can stand on it, its limit is {end[2]}"
                         judged(f"{ref}.{number}", "pin.voltage", end[0], text, source)
+            broke = any(end and not end[0] for end in (high, low))  # past a limit: 1 line says it
+            if pin["role"] != "supply" and "operating" in pin and low is not None and not broke:
+                # a signal pin's working range, against what the other parts put on its net
+                most, least = bound(pin, number, 1, "operating"), bound(pin, number, 0, "operating")
+                if most and least:
+                    text = (
+                        f"{label}: {least[1]:.3g} to {most[1]:.3g} V can stand on it, "
+                        f"the pin works from {least[2]} to {most[2]}"
+                    )
+                    judged(f"{ref}.{number}", "pin.range", least[0] and most[0], text, source)
             if pin["role"] == "supply" and "operating" in pin:
                 label = f"{ref} pin {number} ({pin['name']}) on {name}"
                 if name not in spans.held:
@@ -1668,7 +1850,8 @@ def _judge_rail(  # noqa: PLR0913
             Finding("not judged", ref, "rail.load", f"{label} feeds a load nothing states: {unknown[0]}")
         )
         return
-    rule = pack.rule("rail.load", found.kind)
+    # a pack may hold a digital part and a linear one to 2 limits: the kind is `ic.` and the family
+    rule = pack.rule("rail.load", f"{found.kind}.{found.data['family']}")
     share, rule_id = 1.0, "rail.load"
     source = f"{found.source}, {_p(pin['page'])}: the part's own rating"
     if rule is not None:
@@ -1835,6 +2018,12 @@ def _judge_need(net, ref, need, of, spans, judged, out, rails, taken) -> None:  
         if farads is None:
             out.append(
                 Finding("not judged", ref, "needs.capacitor", f"{label}: the Value of {r} is no number")
+            )
+            return
+        if asked.get("effective") and "tolerance" not in data:
+            # nothing for sure, and nothing bounds the most it gives: the need cannot be judged
+            out.append(
+                Finding("not judged", ref, "needs.capacitor", f"{label}: {r} has no tolerance in its facts")
             )
             return
         if asked.get("effective"):  # what is left of it: less its tolerance, at this voltage
@@ -2044,7 +2233,7 @@ def cmd_ratings(args, cli) -> int:
         print(json.dumps(skeleton(net, args.facts, mpn), indent=2))
         return 0
     result = cli.timed(gate_ratings)(project, out, parts, args.strict, cli)
-    if "findings" in result.details:
+    if result.status != "skip":  # a refusal and an error leave their record too: `next` reads it
         (out / "ratings" / "report.json").write_text(json.dumps(vars(result), indent=2), encoding="utf-8")
     code = cli.emit([result], args, None)
     if not args.json and "verdict" in result.details:

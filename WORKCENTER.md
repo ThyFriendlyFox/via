@@ -312,10 +312,15 @@ another number (M105).
 
 Not a gate: `workcenter next <project>` names the one next step
 (`tools/guide.py`): what to do, the command, why, what to read, and when
-the step is done. It reads `build/gates.json` and `build/verify.json`,
-asks for a new run when an input is newer than a report, and answers the
-first failure or warning with the fix for its kind; a design file that
-`workcenter design` refuses is answered with its first problem. It exits 0
+the step is done. It reads `build/gates.json`, `build/verify.json` and
+`build/ratings/report.json`, asks for a new run when an input is newer
+than a report, and answers the first failure or warning with the fix for
+its kind; a design file that `workcenter design` refuses is answered with
+its first problem. A project with a `ratings.json` is held to its parts'
+ratings in 2 places: a stress that fails, or a file `ratings` does not
+take, comes before the gates, since a part that changes takes its routes
+with it; what is left not judged comes after them, and the project is not
+done until the last line is `RATINGS HELD`. It exits 0
 when nothing is left and 1 when a step is. A finished project gets no `RUN`
 line. It writes nothing. For a chip project (`tools/chipguide.py`) the
 order is `chip.json`, the engines and the process kit, the RTL, a bench,
@@ -388,8 +393,9 @@ the rating that the rule pack allows (`rules/ratings/nasa-eee-inst-002.json`,
 regulator's load to what it gives; an output a divider sets to that
 divider's sum; a buck converter's inductor to its peak current; and the
 capacitors and the inductor a datasheet asks for to what stands in the
-schematic. A line is `fail`, `accepted`, `not judged` or `hold`, and names
-the document and the page of its limit. The last line is `RATINGS HELD`,
+schematic. An entry of facts that gives a pin's name to another number
+than the schematic's symbol does fails too. A line is `fail`, `accepted`,
+`not judged` or `hold`, and names the document and the page of its limit. The last line is `RATINGS HELD`,
 `RATINGS HELD, N NOT JUDGED`, `NOTHING JUDGED` or `RATINGS NOT HELD`. Exit
 1 on a failure, on a run that judged nothing, on a file the command does
 not take, and with `--strict` on what was not judged. `--facts REF` prints

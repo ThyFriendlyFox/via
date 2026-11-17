@@ -260,6 +260,9 @@ project and routes it with FreeRouting. No GUI at any step.
    parts moved, `workcenter placement placement_audit . --ic U1` and
    `workcenter placement route_check . --ic U1` (kistack's checks; the
    `kistack` skill and its layout-placement guide say what to fix first).
+   Hold the schematic to its parts' ratings before the board is routed:
+   `workcenter ratings .` (the `ratings` skill). A part it fails is a
+   line of `design.py` now, and a board routed again later.
 5. **Route.** `workcenter design design.py --route --passes 60`. The
    command prints what the router did, a `stitch:` line for each via it
    dropped through a pour's island with the pads that island holds, and

@@ -129,7 +129,7 @@ unset variable never causes a failure.
 | `pack` | name or path | none (required) | The rule pack: a file of `rules/ratings/` without `.json` (`nasa-eee-inst-002`, `ecss-q-st-30-11c-rev2`), or the path of a pack from the project's folder. |
 | `nets` | object | none (required) | Each net a source off the board holds: `{"volts": [least, greatest], "source": "..."}` under the net's name, with or without its sheet's slash. `[0, 0]` is the reference. |
 | `ambient` | object | none | `{"max": C, "source": "..."}`: the highest air temperature. A limit that falls with temperature is judged there. |
-| `parts` | object | none | What the board cannot say of a part: `REF.PIN` with `amps` for the load behind a connector's pin, `REF` with `amps` for the current through a part of 2 pins, `REF` with `volts` for the greatest voltage across one; each with a `source`. |
+| `parts` | object | none | What the board cannot say of a part: `REF.PIN` with `amps` for the load behind a connector's pin, `REF` with `amps` for the current through a part (RMS for a resistor and a transistor, the average for a diode, the peak for an inductor), `REF` with `volts` for the greatest voltage across a part of 2 pins whose 2 nets move together; each with a `source`. |
 | `accepted` | list | none | Failures the owner takes on: `{"part", "rule", "why", "by"}`, `by` as `the owner's decision of YYYY-MM-DD`. An entry nothing fails under fails the run. |
 
 A part's facts are 1 entry of a file in `library/facts/`, in the project's

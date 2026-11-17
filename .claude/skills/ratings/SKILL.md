@@ -53,6 +53,7 @@ parts, each entry read from its datasheet.
    | `its divider is ...` or `stands on <net> too` | The command reads 1 resistor to the output and 1 to a net at 0 V. State the output's net in `nets`, with the sum as its source. |
    | `no source holds <net>` | Nothing the command knows drives the net. State it in `nets`, or correct the facts of the part that drives it. |
    | `has no data on the value it keeps` | Add `kept` to the capacitor's facts from its maker's DC bias curve, or fit a part that has one. |
+   | `its facts hold no voltage rating` or `has no tolerance in its facts` | Add `volts` or `tolerance` to the capacitor's facts from its datasheet. With no datasheet in `library/`, get it first. |
 
 4. Write 1 part's facts. `workcenter ratings <project> --facts U1` prints
    the entry to fill, with the part's number and its pins; save it as
@@ -67,6 +68,13 @@ parts, each entry read from its datasheet.
    - A number the datasheet does not state is left out. The command then
      says what it could not judge. Never fill a key from memory or from
      another part's datasheet.
+   - A pin's number is the symbol's, which is the footprint's pad. Find
+     each pin on the datasheet's package drawing by its place, not by its
+     number: a datasheet may number a SOT-23 another way than the
+     footprint does. Where the 2 differ, the `note` says so.
+   - A capacitor whose datasheet cannot be had is entered with its `kind`
+     alone, and its `source` says why. The command then knows it passes no
+     steady current, and reports the capacitor itself as not judged.
    - What the entry leaves out goes in `note`: the report prints it.
 5. Have each entry read a second time, by a reader who did not write it
    and who has the datasheet and the entry and nothing else. The reader
@@ -76,6 +84,13 @@ parts, each entry read from its datasheet.
 6. Run the command again. A `fail` line is a fault of the design: fit a
    part with a higher rating, add the capacitor, lower the load, divide
    the signal. Never change a fact, a net's voltage or a pack to pass.
+   2 kinds of `fail` line are checked before the design is changed:
+   - `the 2 number the pins differently`: hold the facts and the symbol to
+     the datasheet's package drawing, and correct the one that is wrong.
+   - A part between 2 nets that 1 source moves together: the 2 ends of a
+     cell, a bootstrap capacitor. The command subtracts the extremes of
+     the 2 nets, which never meet. State the part's voltage under `parts`,
+     with its source.
 7. A failure the owner takes on is written under `accepted` with the
    owner's reason, as `"by": "the owner's decision of 2026-11-17"`; the
    part and the rule to name stand under the failure in
@@ -110,10 +125,13 @@ parts, each entry read from its datasheet.
   temperature is judged there; without it, as under the temperature where
   it starts to fall, and the report says so.
 - `parts`: `REF.PIN` with `amps` is the load behind a connector's pin.
-  `REF` with `amps` is the current through a part of 2 pins that the board
-  cannot say: a sense resistor's, an inductor's peak. `REF` with `volts`
+  `REF` with `amps` is the current through a part that the board cannot
+  say: a sense resistor's, an inductor's peak, a diode's, a transistor's
+  drain current. State the RMS current for a resistor and a transistor,
+  the average for a diode and the peak for an inductor: each rating is
+  held to that one. `REF` with `volts`
   is the greatest voltage across a part of 2 pins whose 2 nets move
-  together: a bootstrap capacitor.
+  together: a bootstrap capacitor, a capacitor across a cell.
 
 ## A part's facts
 
@@ -126,11 +144,11 @@ the symbol. Each entry has a `source`: `document`, `revision`, `url`,
 | `kind` | Keys | Keys it may hold |
 |---|---|---|
 | `resistor` | `tolerance` (0.01 for 1 %), `watts`, `volts` | `ohms` |
-| `capacitor.ceramic`, `.tantalum`, `.film`, `.electrolytic` | `tolerance`, `volts` | `farads`, `dielectric`, `kept`: pairs `[volts, share of the value kept]` from the DC bias curve |
+| `capacitor.ceramic`, `.tantalum`, `.film`, `.electrolytic` | | `volts`, `tolerance`, `farads`, `dielectric`, `kept`: pairs `[volts, share of the value kept]` from the DC bias curve |
 | `inductor` | `tolerance`, `amps_saturation` | `henries`, `amps_rms` |
-| `diode.rectifier` (rectifier, switching, Schottky) | `diodes`: `[{"anode": "2", "cathode": "1"}]`, `volts_reverse` | `amps_forward` |
+| `diode.rectifier` (rectifier, switching, Schottky) | `diodes`: `[{"anode": "2", "cathode": "1"}]`, `volts_reverse` | `amps_forward`: held to the current the project states for the part |
 | `diode.clamp` (zener, TVS) | `diodes`, `volts_standoff` | |
-| `transistor.mosfet` | `transistors`: `[{"gate": "1", "drain": "3", "source": "2"}]`, `volts_drain_source`, `volts_gate_source` | `amps_drain`, `watts` |
+| `transistor.mosfet` | `transistors`: `[{"gate": "1", "drain": "3", "source": "2"}]`, `volts_drain_source`, `volts_gate_source` | `amps_drain`: a number, or pairs `[celsius, amps]` when the datasheet states it at 2 temperatures; held to the current the project states. `watts` |
 | `connector` | | `pins`: `[{"numbers": ["1"], "outside": "source"}]`, with `source`, `load` or `nothing` |
 | `fuse` | `amps` | `volts` |
 | `ferrite`, `switch` | | `amps`, `volts` |
@@ -141,6 +159,10 @@ A resistor's, a capacitor's or an inductor's value is read from the
 schematic's Value: `4k7`, `100n`, `2.2u XAL4020`. Without a number there,
 the entry holds `ohms`, `farads` or `henries`.
 
+An end of a diode or a transistor is 1 pin number, or a list when the
+package has several pins for it: `"source": ["1", "2", "3"]`. Every pin
+of the part stands in 1 end.
+
 Each pin of an `ic` is 1 entry of `pins`: `numbers`, `name`, `role`,
 `page`, and the keys of its role. Every pin of the symbol is named.
 
@@ -148,17 +170,24 @@ Each pin of an `ic` is 1 entry of `pins`: `numbers`, `name`, `role`,
 |---|---|---|---|
 | `supply` | takes the part's current | `abs` | `operating`, `amps` |
 | `ground` | the part's reference | | |
-| `input`, `analog` | drives nothing | `abs` | |
-| `output`, `io` | swings between 2 of the part's pins | `abs`, `swing`: `["GND", "VCC"]` | `amps` |
-| `open_drain` | pulls down to 1 pin | `abs`, `swing`: `["GND"]` | `amps` |
-| `regulated` | a regulator's output | `abs`, and `volts` or `set_by` (its feedback pin) | `amps`, `from` |
+| `input`, `analog` | drives nothing | `abs` | `operating` |
+| `output`, `io` | swings between 2 of the part's pins | `abs`, `swing`: `["GND", "VCC"]` | `amps`, `operating` |
+| `open_drain` | pulls to 1 pin, or lets go: an open drain to ground, a current output from a supply pin | `abs`, `swing`: `["GND"]` | `amps`, `operating` |
+| `regulated` | a regulator's output, a reference's | `volts`, or `set_by` (its feedback pin) | `abs`, `amps`, `from` |
 | `feedback` | the tap of the divider that sets the output | `abs`, `volts` | `amps`, `from` |
 | `switched` | a converter's switch node | `abs`, `swing` | |
 | `nc` | not connected inside | | |
 
 - `abs` is `[least, greatest]`. Each is a number, or
   `{"pin": "VCC", "plus": 0.5}` for a limit that follows another pin, or a
-  list of both when 2 limits apply.
+  list of both when 2 limits apply. A `regulated` pin that stands in no
+  table of limits, as a reference's output may, has no `abs`: a note of
+  the report says that nothing holds the pin to a limit.
+- `operating` of a supply pin is its working range, 2 numbers:
+  `[2.5, 5.5]`. Of a signal pin it is the range the recommended operating
+  conditions give its voltage, in the forms `abs` takes:
+  `[0, {"pin": "VCC", "plus": 0}]` for "0 to VCC". A pin that holds its
+  limits and stands outside this range fails on it.
 - `volts` of a `regulated` pin is the output's span, `[3.234, 3.366]`. Of
   a `feedback` pin it is the reference's span, `[0.588, 0.612]`.
 - `amps` of a `regulated` or `feedback` pin is what the regulator gives.
@@ -173,9 +202,8 @@ Each pin of an `ic` is 1 entry of `pins`: `numbers`, `name`, `role`,
   `{"topology": "buck", "hertz": [1.5e6, 1.5e6], "page": 5}`, and
   `efficiency` when the datasheet states one.
 
-Recorded and held to nothing yet: `amps` of a fuse, a ferrite, a switch, a
-diode, a transistor and an output pin; `watts` of a transistor; a
-connector's ratings.
+Recorded and held to nothing yet: `amps` of a fuse, a ferrite, a switch
+and an output pin; `watts` of a transistor; a connector's ratings.
 
 ## How the command reads a circuit
 
@@ -185,9 +213,25 @@ connector's ratings.
   working range is held to that.
 - A pin is judged against what the other parts put on its net, never
   against itself. A limit that follows a rail is judged with the rail at
-  the end where the limit is tightest.
+  the end where the limit is tightest. A least limit that follows a pin is
+  judged where the pin's own sources hold it while on: with every source
+  off, no limit between 2 pins is broken. A signal pin inside its limits
+  is then held to the range its datasheet recommends, when its facts
+  state it.
+- While its sources are on, a net that 1 resistor alone feeds stands at
+  the net behind the resistor, less the drop of what its pins take: a
+  supply pin behind its filter resistor is held to its working range.
+- A transistor's drain current and a diode's forward current are held to
+  the current `ratings.json` states for the part. A rating the datasheet
+  gives at 2 temperatures is read at the project's ambient.
 - A resistor does not move a net a source holds; a released output follows
   its pull-up. A divider's tap is solved at the corners of its tolerances.
+- A resistor is judged with the greatest voltage between its 2 nets. 2
+  kinds are judged with their current: one whose current `ratings.json`
+  states, and one that alone feeds supply pins, which carries what the
+  facts of those pins say they take.
+- An entry that gives a pin's name to another number than the symbol does
+  fails: every line of the part would be judged on the wrong net.
 - A transistor's channel and a switch may conduct: their 2 nets can meet.
   A diode lifts its cathode. A fuse, a ferrite and an inductor are a wire,
   except an inductor behind a `switched` pin: it carries the average,
@@ -207,9 +251,12 @@ connector's ratings.
 
 Transients, ripple current, a part's temperature, the current in a pin or
 a track, a regulator's dropout, the order rails come up in, and anything
-of the board: spacing, placement, a capacitor's distance to its pin. A run
-that holds says the steady voltages and the stated currents are inside the
-ratings the facts hold, and no more.
+of the board: spacing, placement, a capacitor's distance to its pin. A
+part's own pins are not judged against each other: an output wired to an
+input of the same part is held to nothing. 2 nets that 1 source moves
+together are subtracted at their extremes unless `parts` states the
+voltage. A run that holds says the steady voltages and the stated currents
+are inside the ratings the facts hold, and no more.
 
 ## Done when
 

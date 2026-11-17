@@ -5,9 +5,9 @@ breaks, and on no other. The numbers in the lines are worked out here and in tes
 
     the output    0.588 x (1 + 448470 / 101000) = 3.199 V to 0.612 x (1 + 457530 / 99000) = 3.440 V
     pin           the 5 V rail's 5.25 V on an input that takes 4.6 V
-    load          1.9 A on a regulator that gives 2 A is 0.95, and the pack allows 0.80
-    inductor      (5.25 - 3.199) x 3.199 / (5.25 x 0.9) / (1.5e6 x 1.76e-6) = 0.526 A of ripple at the
-                  least output; 1.1 A of load and half of it is 1.363 A, over the 1.26 A it saturates at
+    load          1.9 A on a regulator that gives 2 A is 0.95, and the pack allows a linear part 0.70
+    inductor      (5.25 - 3.199) x 3.199 / (5.25 x 0.9) / (1.35e6 x 1.76e-6) = 0.584 A of ripple at the
+                  least output; 1.1 A of load and half of it is 1.392 A, over the 1.26 A it saturates at
     bias          10 uF less 20 % keeps 0.50 - 0.12 x 0.440 = 0.447 of its value at 3.440 V: 3.58 uF, and
                   the 2 capacitors with no curve give 0.11 uF each at the most: 3.80 uF, under 5 uF
 """
@@ -33,15 +33,16 @@ BUCK = "TLV62569 datasheet, SLVSDG1C, December 2016, revised October 2017"
 FAULTS = {
     "fail-ratings-pin": f"fail U2 pin 2 (A) on SIG: 5.25 V can stand on it, its limit is 4.6 V [{AUP}, p 4]",
     "fail-ratings-load": (
-        "fail +3V3: U1 pin 5 (FB) gives 2 A, its loads take 1.9 A: 0.95, the limit is 0.80 "
-        "[EEE-INST-002 (NASA/TP-2003-212242), section M3, table 4, page 15 of 15]"
+        "fail +3V3: U1 pin 5 (FB) gives 2 A, its loads take 1.9 A: 0.95, the limit is 0.70 "
+        "[EEE-INST-002 (NASA/TP-2003-212242), section M4, table 4, page 10 of 10, "
+        "the column Linear/Mixed Signal]"
     ),
     "fail-ratings-decoupling": (
         f"fail U1 pin VIN (+5V) needs a capacitor to GND, and none stands there [{BUCK}, p 10]"
     ),
     "fail-ratings-inductor": (
-        "fail L1 2.2u SRN2010TA: its peak current is 1.36 A: 1.1 A of load and half of 526 mA of ripple "
-        "(5.25 V in, 3.2 V out, 1.76 uH, 1.5 MHz); it saturates at 1.26 A [Bourns SRN2010TA series "
+        "fail L1 2.2u SRN2010TA: its peak current is 1.39 A: 1.1 A of load and half of 584 mA of ripple "
+        "(5.25 V in, 3.2 V out, 1.76 uH, 1.35 MHz); it saturates at 1.26 A [Bourns SRN2010TA series "
         "datasheet, REV. 06/25: the part's own rating; TI SLVA477C, equations 1, 2 and 4]"
     ),
     "fail-ratings-bias": (
@@ -176,6 +177,10 @@ def test_a_file_the_command_does_not_take_fails_the_run_with_its_place(tmp_path)
     code, text = say("ratings", project)
     assert code == 1, text
     assert "- ratings.json: `speed` is no key here; the keys are pack, nets, ambient, parts, accepted" in text
+    # the record holds the refusal too: `workcenter next` reads it there
+    record = json.loads((project / "build" / "ratings" / "report.json").read_text(encoding="utf-8"))
+    assert record["status"] == "fail"
+    assert record["details"]["failures"][0].startswith("ratings.json: `speed` is no key here")
     (project / "ratings.json").write_text(json.dumps({**stated, "pack": "mil-hdbk"}), encoding="utf-8")
     code, text = say("ratings", project)
     assert code == 1, text

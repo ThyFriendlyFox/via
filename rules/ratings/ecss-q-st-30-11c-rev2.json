@@ -5,10 +5,10 @@
     "number": "ECSS-Q-ST-30-11C Rev.2",
     "title": "Space product assurance - Derating - EEE components",
     "revision": "23 June 2021",
-    "url": "https://ecss.nl/standard/ecss-q-st-30-11c-rev-2-derating-eee-components-23-june-2021/",
+    "url": "https://ecss.nl/wp-content/uploads/2022/07/ECSS-Q-ST-30-11C-Rev.2(23June2021).pdf",
     "sha256": "10cf7066fad0314918c6a7d38517bbcf7cb00e206480fc10377e9fdb83e7db6e",
     "read": "2026-11-17",
-    "second_reader": "no"
+    "second_reader": "2026-11-17"
   },
   "rules": [
     {
@@ -26,6 +26,14 @@
       "max": 0.60,
       "above": {"temperature": "case", "celsius": 85, "falls_to": 0.40, "at": 110},
       "where": "clause 6.3.2, table 6-2, page 27"
+    },
+    {
+      "id": "capacitor.film.voltage",
+      "stress": "capacitor.voltage",
+      "kinds": ["capacitor.film"],
+      "max": 0.60,
+      "above": {"temperature": "case", "celsius": 85, "falls_to": 0.50, "at": 100},
+      "where": "clause 6.5.2, table 6-4, page 31, for a part rated above 100 C"
     },
     {
       "id": "resistor.power",
@@ -50,10 +58,24 @@
       "where": "clause 6.14.2.1, table 6-13, page 43"
     },
     {
+      "id": "diode.forward_current",
+      "stress": "diode.forward_current",
+      "kinds": ["diode.rectifier"],
+      "max": 0.75,
+      "where": "clause 6.14.2.1, table 6-13, page 43"
+    },
+    {
       "id": "mosfet.drain_source",
       "stress": "mosfet.drain_source",
       "kinds": ["transistor.mosfet"],
       "max": 0.80,
+      "where": "clause 6.29.2, table 6-36, page 76"
+    },
+    {
+      "id": "mosfet.drain_current",
+      "stress": "mosfet.drain_current",
+      "kinds": ["transistor.mosfet"],
+      "max": 0.75,
       "where": "clause 6.29.2, table 6-36, page 76"
     },
     {

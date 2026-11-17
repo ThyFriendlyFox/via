@@ -8,10 +8,10 @@
     "url": "https://www.ti.com/lit/ds/symlink/tlv62569.pdf",
     "sha256": "1ba6f55dfe678d06d563acd6632f1f950a497d812270806021097b55cd81d3c4",
     "read": "2026-11-17",
-    "second_reader": "no"
+    "second_reader": "2026-11-17"
   },
-  "note": "the output capacitor asked is table 4's for an output of 1.8 V or more; under 1.8 V the table asks for 22 uF or more, which is not judged. The frequency is the typical one: the datasheet states no least",
-  "switching": {"topology": "buck", "hertz": [1.5e6, 1.5e6], "page": 5},
+  "note": "The output capacitor asked is table 4's 10 uF less the 50 % of its footnote 2, for an output of 1.8 V or more; from 1.2 V to under 1.8 V the table asks for 22 uF or more and under 1.2 V for 2 x 22 uF, and it allows 47 uF at the most: none of the 3 is judged. The inductance asked is 1 uH less 30 % to 2.2 uH plus 20 %, footnote 1. The least frequency is read from figure 12 at 5 V in, 3.3 V out and 2 A; the table states the typical 1.5 MHz alone, and near dropout the frequency falls further (figure 13). The reference's span and the supply current are stated at 25 C, the supply current as typical with the part not switching. Not judged: the limit of SW for under 10 ns while switching (-3 V to 9 V), R2 of 200 kohm at the most, an inductor that saturates 20 % to 30 % above the peak. No efficiency is entered: from 5 V to 3.3 V figure 9 stays above the 0.9 the command takes from 10 mA to 2 A; at 2 A into 1.2 V to 2.5 V figures 6 to 8 fall under it",
+  "switching": {"topology": "buck", "hertz": [1.35e6, 1.5e6], "page": [5, 11]},
   "pins": [
     {"numbers": ["1"], "name": "EN", "role": "input", "abs": [-0.3, 6.0], "page": 3},
     {"numbers": ["2"], "name": "GND", "role": "ground"},
