@@ -5,6 +5,7 @@
 # `fab = "jlcpcb-2layer"`, or for one run with `workcenter drc --fab jlcpcb-2layer`, the rules with no
 # layer and no condition raise the board's own minimums, and only the others are copied into the
 # project (rules/README.md, M62). rules/README.md lists what JLCPCB publishes that this file leaves out.
+# second_reader: 2026-11-17, every number compared; the page fetched again had SHA256 1d7569a71a1677525122f60b6548a113b7b9cf9ab5ac2e01931cccc91e4e261c
 
 # "Min. track width and spacing (1 oz) ... 1- and 2-layer: 0.10 / 0.10 mm (4 / 4 mil)"
 (rule "jlcpcb-2layer: track width 0.10 mm"
