@@ -4,7 +4,7 @@
     <title>Via blog</title>
     <link>%ORIGIN%/blog</link>
     <atom:link href="%ORIGIN%/blog/feed.xml" rel="self" type="application/rss+xml"/>
-    <description>Posts about Via and its example boards. Via is an open-source package of tools, skills and checks for AI agents that design circuit boards.</description>
+    <description>We&#x27;re making Via better every day! Subscribe to keep up to date with our progress.</description>
     <language>en</language>
     <lastBuildDate>Tue, 17 Nov 2026 00:00:00 +0000</lastBuildDate>
     <item>

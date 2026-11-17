@@ -456,7 +456,7 @@ html.dark .icon-btn .sun {
 
 /* Paragraphs in a section are justified to their column, and hyphenated so the spaces between words
    stay even. A part's label is too narrow for it: its lines stay ragged. The hero is centred. */
-main .section p:not(.eyebrow):not(.spec):not(.board3d-hint):not(.part-d):not(.fname):not(.meta),
+main .section p:not(.eyebrow):not(.spec):not(.board3d-hint):not(.part-d):not(.fname):not(.meta):not(.message),
 main .section figcaption {
   text-align: justify;
   hyphens: auto;

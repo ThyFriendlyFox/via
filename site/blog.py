@@ -49,7 +49,18 @@ SCRIPTS = ["vendor/motion-14.6.0.js", "site.js", "effects.js"]
 NAMED = re.compile(r"(\d{4}-\d{2}-\d{2})-([a-z0-9]+(?:-[a-z0-9]+)*)\.md")
 CARD = ("og.png", 1280, 640, "The Via wordmark and the headline Circuit Boards From AI, beside the routed board of Herald")
 BLOG = "Via blog"
-ABOUT = "Posts about Via and its example boards. Via is an open-source package of tools, skills and checks for AI agents that design circuit boards."
+ABOUT = "We're making Via better every day! Subscribe to keep up to date with our progress."
+# The owner's words of 2026-11-17 to the reader, at the head of the blog and after each post.
+HEADLINE = "We're making Via better every day!"
+SUGGEST = f"{REPO}/issues/new"
+
+
+def message(feed: str) -> str:
+    """The owner's message under the headline: where to subscribe, and where to send a suggestion."""
+    return (
+        f'Subscribe <a class="link" href="{feed}">here</a> to keep up to date with our progress. '
+        f'Give us suggestions <a class="link" href="{SUGGEST}">here</a>!'
+    )
 ARROW = '<svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>'
 
 
@@ -366,8 +377,8 @@ def post_page(post: Post, newer: Post | None, older: Post | None) -> str:
         <div class="wrap">
           <div class="head" data-reveal data-stagger>
             <p class="eyebrow">Via</p>
-            <h2 class="title" id="after-title">Use Via to design a circuit board</h2>
-            <p class="lede">Via is a package of tools, skills and checks for an AI agent. The agent uses them to design a circuit board, from a written brief to the fabrication files. Via is free and open source under the MIT license.</p>
+            <h2 class="title" id="after-title">{HEADLINE}</h2>
+            <p class="lede message">{message("feed.xml")}</p>
           </div>
           <div class="actions" data-reveal>
             <a class="btn btn-primary" href="{up}index.html#run">Get started</a>
@@ -402,13 +413,12 @@ def index_page(found: list[Post]) -> str:
         <div class="wrap">
           <div class="head" data-reveal data-stagger>
             <p class="eyebrow">Blog</p>
-            <h1 class="title" id="blog-title">Posts about Via and its example boards</h1>
-            <p class="lede">Each post is about one change to Via or one example board. <a class="link" href="{REPO}/blob/main/ee-agent-kit/DEVLOG.md">The devlog</a> in the repository has the record of each day.</p>
+            <h1 class="title" id="blog-title">{HEADLINE}</h1>
+            <p class="lede message">{message("blog/feed.xml")}</p>
           </div>
           <ol class="posts" data-reveal data-stagger>
 {listed}
           </ol>
-          <p class="after feed-link"><a class="link" href="%ORIGIN%/blog/feed.xml">RSS feed</a></p>
         </div>
       </section>"""
     return shell(BLOG, ABOUT, "blog", "", body, SCRIPTS, share("website", BLOG, ABOUT, "blog", CARD))
