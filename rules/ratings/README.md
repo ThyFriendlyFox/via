@@ -92,4 +92,13 @@ resistance, which the command covers by judging the power.
 
 A project may name a file of its own as `pack`, by a path from its folder: a customer's derating
 table, or a company's. It has the same keys, and each rule its `where`. The command refuses a pack with
-an unknown stress, a rule with no `where`, or a document with no URL, SHA256 and date read.
+an unknown stress, a rule with no `where`, a share that rises with the temperature (`falls_to` above
+`max`), or a document with no URL, SHA256 and date read. A URL is written whole, as
+`https://example.com/file.pdf`, a SHA256 as 64 hex digits and a date as `2026-11-17`; `second_reader`
+is `no` or the date.
+
+A run that such a file judged says so. The first line, `report.md` and `report.json` name the pack
+by the path `ratings.json` gives, with `(the project's own)` after it:
+`pack house.json (the project's own)`. The name inside the file is not printed, so a copy of a shipped
+pack with rules taken out does not pass for the shipped pack. A file of `rules/ratings/` is the
+workcenter's pack by whatever path a project names it.
