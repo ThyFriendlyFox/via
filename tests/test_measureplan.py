@@ -38,15 +38,36 @@ NETS = {
 def test_each_measure_of_the_deck_is_read_with_its_analysis_quantity_and_node():
     got = measureplan.measures(DECK)
     assert got == {
-        "vout": {"analysis": "op", "quantity": "voltage", "unit": "V", "nodes": ["out"], "reads": "v(out)"},
-        "f3": {"analysis": "ac", "quantity": "frequency", "unit": "Hz", "nodes": ["out"], "reads": "vm(out)"},
+        "vout": {
+            "analysis": "op",
+            "quantity": "voltage",
+            "unit": "V",
+            "nodes": ["out"],
+            "reads": "v(out)",
+            "conditions": [],
+        },
+        "f3": {
+            "analysis": "ac",
+            "quantity": "frequency",
+            "unit": "Hz",
+            "nodes": ["out"],
+            "reads": "vm(out)",
+            "conditions": [],
+        },
     }
 
 
 def test_a_measure_of_a_current_names_no_node():
     got = measureplan.measures("V1 a 0 DC 5\nR1 a 0 1k\n.control\nop\nlet iin = -i(v1)\n.endc\n")
     assert got == {
-        "iin": {"analysis": "op", "quantity": "current", "unit": "A", "nodes": [], "reads": "i(v1)"}
+        "iin": {
+            "analysis": "op",
+            "quantity": "current",
+            "unit": "A",
+            "nodes": [],
+            "reads": "i(v1)",
+            "conditions": [],
+        }
     }
 
 
@@ -55,7 +76,95 @@ def test_a_let_that_scales_a_measure_reads_what_that_measure_reads_in_no_named_u
     the same crossing, in microseconds, which the plan does not name."""
     deck = ".control\ntran 1u 1m\nmeas tran t_x when v(out)=1.0 fall=1\nlet t_x_us = t_x * 1e6\n.endc\n"
     got = measureplan.measures(deck)["t_x_us"]
-    assert got == {"analysis": "tran", "quantity": "time", "unit": "", "nodes": ["out"], "reads": "t_x * 1e6"}
+    assert got == {
+        "analysis": "tran",
+        "quantity": "time",
+        "unit": "",
+        "nodes": ["out"],
+        "reads": "t_x * 1e6",
+        "conditions": [],
+    }
+
+
+def plan(deck: str, name: str, bound: dict) -> dict:
+    return measureplan.plan_rows("d", measureplan.measures(deck), {name: bound}, {}, NETS)[0]
+
+
+def test_a_difference_of_2_node_voltages_is_probed_at_the_first_against_the_second():
+    """`let vdrop = v(vcc) - v(out)` reads VCC against /OUT, not VCC against ground: on the divider of
+    5 V over 10k and 10k that is 5 - 2.5 = 2.5 V, where a meter to ground would read 5 V. Last Hit
+    v0.16's display_vbat.cir writes `let vgs_off = v(dbatt) - v(vg)`."""
+    row = plan(".control\nop\nlet vdrop = v(vcc) - v(out)\n.endc\n", "vdrop", {"min": 2.4, "max": 2.6})
+    assert (row["planned"], row["probe"], row["reference"], row["unit"]) == (
+        True,
+        "J1 pad 1 (VCC)",
+        "J1 pad 2 (/OUT)",
+        "V",
+    )
+
+
+def test_a_product_of_vectors_is_not_planned_and_says_why():
+    """A power, v times i, is no voltage: a voltmeter at VCC would read 5 V against a bound of 2 mW."""
+    row = plan(".control\nop\nlet p = v(vcc) * -i(v1)\n.endc\n", "p", {"max": 0.002})
+    assert (row["planned"], row["why"]) == (False, "the plan cannot read v(vcc) * -i(v1)")
+
+
+def test_a_square_of_1_vector_is_not_planned_and_says_why():
+    """Last Hit v0.16's heater_pulse.cir:188 writes `let pcoil = v(o4) * v(o4) / 1.2`."""
+    row = plan(".control\nop\nlet pcoil = v(out) * v(out) / 1.2\n.endc\n", "pcoil", {"max": 6})
+    assert (row["planned"], row["why"]) == (False, "the plan cannot read v(out) * v(out) / 1.2")
+
+
+def test_a_function_of_a_vector_is_not_planned_and_says_why():
+    row = plan(".control\nac dec 10 1 1k\nlet g = db(v(out))\n.endc\n", "g", {"min": -3})
+    assert (row["planned"], row["why"]) == (False, "the plan cannot read db(v(out))")
+
+
+def test_a_ratio_of_2_measures_is_not_planned_and_says_why():
+    deck = ".control\nop\nlet vout = v(out)\nlet vin = v(in)\nlet gain = vout / vin\n.endc\n"
+    row = plan(deck, "gain", {"min": 2.0, "max": 2.2})
+    assert (row["planned"], row["why"]) == (False, "the plan cannot read vout / vin")
+
+
+def test_a_measure_divided_by_a_constant_is_planned_in_no_named_unit():
+    row = plan(".control\nop\nlet vout = v(out)\nlet half = vout / 2\n.endc\n", "half", {"max": 1.3})
+    assert (row["planned"], row["probe"], row["unit"]) == (True, "J1 pad 2 (/OUT)", "")
+
+
+def test_a_meas_over_a_let_vector_reads_what_the_let_reads():
+    """Last Hit v0.16's heater_pulse.cir:98 and :103: `let vds = v(hs) - v(out)`, then
+    `meas tran vds_max max vds`. Here VCC against /OUT."""
+    deck = ".control\ntran 1u 1m\nlet vds = v(vcc) - v(out)\nmeas tran vds_max max vds from=50u\n.endc\n"
+    row = plan(deck, "vds_max", {"max": 3})
+    assert (row["planned"], row["probe"], row["reference"], row["instrument"]) == (
+        True,
+        "J1 pad 1 (VCC)",
+        "J1 pad 2 (/OUT)",
+        "oscilloscope",
+    )
+
+
+def test_a_meas_over_a_let_vector_the_plan_cannot_read_says_so():
+    deck = ".control\ntran 1u 1m\nlet pq = v(vcc) * i(v1)\nmeas tran p_avg avg pq from=1u to=1m\n.endc\n"
+    row = plan(deck, "p_avg", {"max": 1})
+    assert row["why"] == "it is a meas over the let vector pq, and the plan cannot read v(vcc) * i(v1)"
+
+
+def test_a_measure_taken_after_an_alter_names_the_alter_lines_in_effect():
+    """Last Hit v0.16's vbus_hotplug.cir measures hp_typical as written, then hp_worst after 4 alter
+    lines; a later alter of the same element replaces the earlier one."""
+    deck = (
+        "VS src 0 PWL(0 0 10n 5.0)\nLC src out 0.75u\n.control\ntran 2n 40u\n"
+        "meas tran hp_typical max v(out)\nalter VS pwl = [ 0 0 10n 5.0 ]\nalter LC 1u\n"
+        "alter VS pwl = [ 0 0 10n 5.5 ]\ntran 2n 40u\n"
+        "meas tran hp_worst max v(out)\n.endc\n"
+    )
+    got = measureplan.measures(deck)
+    assert got["hp_typical"]["conditions"] == []
+    assert got["hp_worst"]["conditions"] == ["alter LC 1u", "alter VS pwl = [ 0 0 10n 5.5 ]"]
+    rows = measureplan.plan_rows("d", got, {"hp_worst": {"max": 7.0}}, {}, NETS)
+    md = measureplan.markdown("p", rows, [], "PASS")
+    assert "| d | hp_worst | `alter LC 1u`; `alter VS pwl = [ 0 0 10n 5.5 ]` | J1 pad 2 (/OUT) |" in md
 
 
 def test_a_crossing_of_a_current_is_not_planned_and_says_why():
@@ -144,6 +253,7 @@ def test_the_plan_of_the_first_design_names_each_bound_s_pad_instrument_span_and
         "max": 2.55,
         "predicted": 2.5,
         "corners": [2.460502, 2.541747],
+        "conditions": [],
         "source": "the fixture's requirement: half of the 5 V supply within 2 %",
     }
     assert (
@@ -156,8 +266,8 @@ def test_the_plan_of_the_first_design_names_each_bound_s_pad_instrument_span_and
     ]
     md = (tmp_path / "out" / "measure" / "plan.md").read_text(encoding="utf-8")
     assert (
-        "| divider | vout | J1 pad 2 (/OUT) | J1 pad 3 (GND) | DC voltmeter | 2.45 to 2.55 V | 2.5 V | "
-        "2.460502 to 2.541747 V |  |  |" in md
+        "| divider | vout | the sources as stated | J1 pad 2 (/OUT) | J1 pad 3 (GND) | DC voltmeter | "
+        "2.45 to 2.55 V | 2.5 V | 2.460502 to 2.541747 V |  |  |" in md
     )
     assert "PLAN   divider vout" in said and "2 bounds planned, 0 not planned" in said
 

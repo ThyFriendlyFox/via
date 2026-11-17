@@ -57,61 +57,136 @@ def _lines(text: str) -> list[str]:
     return out
 
 
-def _vector(text: str) -> tuple[str, str, list[str]] | None:
-    m = VECTOR.search(text)
-    if not m:
-        return None
-    nodes = [n.strip().lower() for n in m.group(2).split(",") if n.strip()]
-    return m.group(1).lower(), m.group(0).lower(), nodes
+def _vector(match: re.Match) -> tuple[str, str, list[str]]:
+    nodes = [n.strip().lower() for n in match.group(2).split(",") if n.strip()]
+    return match.group(1).lower(), match.group(0).lower(), nodes
+
+
+# A number as a deck writes it: 37e-3, 1e6, 100u, .5
+NUMBER = re.compile(r"(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?[a-z]*", re.I)
+TOKEN = re.compile(r"(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?[a-z]*|[A-Za-z_]\w*|\S", re.I)
+
+
+def _shape(expr: str) -> str:
+    """How an expression with its one operand written X depends on X: "plain" (X, -X), "scaled" (X
+    times, plus or minus constants, divided only by a constant) or "" (anything else: a function, a
+    division by X, another name)."""
+    tokens = TOKEN.findall(expr)
+    if tokens.count("X") != 1:
+        return ""
+    for i, t in enumerate(tokens):
+        if t == "X" or t in "+-*()" or NUMBER.fullmatch(t):
+            continue
+        if t == "/" and i + 1 < len(tokens) and NUMBER.fullmatch(tokens[i + 1]):
+            continue
+        return ""
+    bare = [t for t in tokens if t not in "()"]
+    return "plain" if bare in (["X"], ["-", "X"], ["+", "X"]) else "scaled"
+
+
+def _read_let(expr: str, found: dict[str, dict], analysis: str, conditions: list[str]) -> dict:
+    """What a `let` reads: 1 vector, or v(a) - v(b), or 1 measure, each only as _shape allows."""
+    text = expr.strip()
+    vectors = list(VECTOR.finditer(text))
+    names = VECTOR.sub(" ", text).lower()
+    known = [n for n in found if re.search(rf"(?<!\w){re.escape(n)}\b", names)]
+    cannot = {"why": f"the plan cannot read {text}", "reads": text}
+    if len(vectors) == 2 and not known:
+        (ka, va, na), (kb, vb, nb) = (_vector(m) for m in vectors)
+        rest = text[: vectors[0].start()] + " A " + text[vectors[0].end() : vectors[1].start()] + " B "
+        rest += text[vectors[1].end() :]
+        bare = [t for t in TOKEN.findall(rest) if t not in "()"]
+        if ka == kb == "v" and len(na) == len(nb) == 1 and bare == ["A", "-", "B"]:
+            return {
+                "analysis": analysis,
+                "quantity": "voltage",
+                "unit": "V",
+                "nodes": na + nb,
+                "reads": text.lower(),
+                "conditions": conditions,
+            }
+        return cannot
+    if len(vectors) == 1 and not known:
+        kind, reads, nodes = _vector(vectors[0])
+        shape = _shape(text[: vectors[0].start()] + " X " + text[vectors[0].end() :])
+        if not shape:
+            return cannot
+        quantity, unit = QUANTITY[kind]
+        return {
+            "analysis": analysis,
+            "quantity": quantity,
+            "unit": unit if shape == "plain" else "",
+            "nodes": nodes if kind != "i" else [],
+            "reads": reads if shape == "plain" else text.lower(),
+            "conditions": conditions,
+        }
+    if len(known) == 1 and not vectors:
+        base = found[known[0]]
+        if "why" in base:
+            return {**cannot, "why": f"it is worked from {known[0]}, and {base['why']}"}
+        shape = _shape(re.sub(rf"(?<!\w){re.escape(known[0])}\b", " X ", text, flags=re.I))
+        if not shape:
+            return cannot
+        if shape == "plain":
+            return dict(base)
+        # A measure scaled from another (`t_us = t * 1e6`) reads what that one reads, in a unit the
+        # plan cannot name. A current keeps the vector it reads, which is what its line names.
+        return {**base, "unit": "", "reads": text if base["nodes"] else base["reads"]}
+    return cannot
 
 
 def measures(deck: str) -> dict[str, dict]:
     """Each measure a deck computes (`let` after an analysis, or `meas`), with its analysis, the
-    quantity it reads, its unit, the nodes of the vector it reads and that vector as written."""
+    quantity it reads, its unit, the nodes of the vector it reads, that vector as written, and the
+    `alter` lines in effect when its analysis ran. A measure the plan cannot read carries `why`."""
     found: dict[str, dict] = {}
     analysis = ""
+    altered: dict[str, str] = {}
+    conditions: list[str] = []
     for line in _lines(deck):
         words = line.split()
         head = words[0].lower().lstrip(".")
         if head in ANALYSES:
             analysis = head
+            conditions = list(altered.values())
             continue
-        if head == "let" and "=" in line:
+        if head in ("alter", "altermod") and len(words) > 1:
+            # ngspice keeps an alter until the next one of the same element; the analysis after it runs
+            # with it.
+            key = re.split(r"[\s=]", line.split(None, 1)[1], maxsplit=1)[0].lower()
+            altered.pop(key, None)
+            altered[key] = " ".join(words)
+        elif head == "reset":
+            altered.clear()
+        elif head == "let" and "=" in line:
             name, expr = line[3:].split("=", 1)
-            vec = _vector(expr)
-            if vec:
-                quantity, unit = QUANTITY[vec[0]]
-                nodes = vec[2] if vec[0] != "i" else []
-                found[name.strip().lower()] = {
-                    "analysis": analysis,
-                    "quantity": quantity,
-                    "unit": unit,
-                    "nodes": nodes,
-                    "reads": vec[1],
-                }
-            else:
-                # A measure worked from another (`t_us = t * 1e6`) reads what that one reads, in a unit
-                # the plan cannot name.
-                known = [n for n in found if re.search(rf"\b{re.escape(n)}\b", expr.lower())]
-                if known:
-                    base = found[known[0]]
-                    # A current keeps the vector it reads, which is what its line names.
-                    reads = expr.strip() if base["nodes"] else base["reads"]
-                    found[name.strip().lower()] = {**base, "unit": "", "reads": reads}
+            found[name.strip().lower()] = _read_let(expr, found, analysis, conditions)
         elif head in ("meas", "measure") and len(words) > 3:
             kind, name, rest = words[1].lower(), words[2].lower(), " ".join(words[3:])
-            vec = _vector(rest)
-            if not vec:
-                continue
             crossing = words[3].lower() in ("when", "trig")
-            quantity, unit = AXIS.get(kind, ("", "")) if crossing else QUANTITY[vec[0]]
-            found[name] = {
-                "analysis": kind,
-                "quantity": quantity,
-                "unit": unit,
-                "nodes": vec[2] if vec[0] != "i" else [],
-                "reads": vec[1],
-            }
+            match = VECTOR.search(rest)
+            if match:
+                vec = _vector(match)
+                quantity, unit = AXIS.get(kind, ("", "")) if crossing else QUANTITY[vec[0]]
+                found[name] = {
+                    "analysis": kind,
+                    "quantity": quantity,
+                    "unit": unit,
+                    "nodes": vec[2] if vec[0] != "i" else [],
+                    "reads": vec[1],
+                    "conditions": conditions,
+                }
+                continue
+            # A meas over a vector the deck made with `let` reads what that let reads.
+            arg = re.split(r"[\s=]", rest.split(None, 1)[1] if len(rest.split()) > 1 else "")[0].lower()
+            base = found.get(arg)
+            if base is None:
+                found[name] = {"why": f"the plan cannot read meas {kind} {name} {rest}", "reads": rest}
+            elif "why" in base:
+                found[name] = {**base, "why": f"it is a meas over the let vector {arg}, and {base['why']}"}
+            else:
+                quantity, unit = AXIS.get(kind, ("", "")) if crossing else (base["quantity"], base["unit"])
+                found[name] = {**base, "analysis": kind, "quantity": quantity, "unit": unit}
     return found
 
 
@@ -188,6 +263,8 @@ def plan_rows(deck: str, found: dict, bounds: dict, sim: dict, nets: dict[str, l
         why = ""
         if not m:
             why = f"the deck computes no measure called {name}"
+        elif "why" in m:
+            why = m["why"]
         elif not m["nodes"]:
             why = (
                 f"it reads {m['reads']}, a current: an ammeter goes in series, "
@@ -217,6 +294,7 @@ def plan_rows(deck: str, found: dict, bounds: dict, sim: dict, nets: dict[str, l
             instrument=INSTRUMENT[(m["analysis"], m["quantity"])],
             predicted=(sim.get("measures") or {}).get(name),
             corners=corners,
+            conditions=m.get("conditions", []),
             source=bound.get("source", ""),
         )
         rows.append(row)
@@ -240,8 +318,9 @@ def markdown(project: str, rows: list[dict], srcs: list[dict], sim_said: str) ->
         f"# Plan of measurements: {project}",
         "",
         "Written by `workcenter measure`. Each row is 1 bound of a sim deck's expect file. Probe the",
-        "pad against the reference pad, with the board powered as the deck's sources say, and write the",
-        "reading in the last 2 columns: the reading, and whether it falls inside the span.",
+        "pad against the reference pad, with the board powered as the deck's sources say, changed by the",
+        "`alter` lines of the row's Conditions column, and write the reading in the last 2 columns: the",
+        "reading, and whether it falls inside the span.",
         "",
         f"SIM: {sim_said}",
         "",
@@ -255,9 +334,9 @@ def markdown(project: str, rows: list[dict], srcs: list[dict], sim_said: str) ->
         "",
         "## Readings",
         "",
-        "| Deck | Measure | Probe | Reference | Instrument | Span | Predicted | Corners | Reading "
-        "| Inside? |",
-        "|---|---|---|---|---|---|---|---|---|---|",
+        "| Deck | Measure | Conditions | Probe | Reference | Instrument | Span | Predicted | Corners "
+        "| Reading | Inside? |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for r in rows:
         if not r["planned"]:
@@ -267,9 +346,10 @@ def markdown(project: str, rows: list[dict], srcs: list[dict], sim_said: str) ->
         corners = (
             f"{_num(r['corners'][0])} to {_num(r['corners'][1])}{unit}" if r["corners"] else "no corners"
         )
+        conditions = "; ".join(f"`{c}`" for c in r.get("conditions") or []) or "the sources as stated"
         out.append(
-            f"| {r['deck']} | {r['measure']} | {r['probe']} | {r['reference']} | {r['instrument']} | "
-            f"{span(r)} | {pred} | {corners} |  |  |"
+            f"| {r['deck']} | {r['measure']} | {conditions} | {r['probe']} | {r['reference']} | "
+            f"{r['instrument']} | {span(r)} | {pred} | {corners} |  |  |"
         )
     missing = [r for r in rows if not r["planned"]]
     if missing:
