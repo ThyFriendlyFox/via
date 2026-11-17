@@ -186,6 +186,19 @@ Traps, each met on the fixtures:
   lines, and the run reads the log every 2 s and stops at a stated fault.
 - A run that reaches `NumberOfTimesteps` before its end criterion prints
   a warning and exits 0. The run counts it as a fault.
+- A sheet's edge on a mesh line is wider to the solver than to the board:
+  the 0.36 mm line over 0.2 mm of 4.5 read 43.14 ohm against Hammerstad
+  and Jensen's 51.34. With lines a third of a cell inside each edge and two
+  thirds outside (openEMS 0.0.35, Tutorials/MSL_NotchFilter.m, lines 36 to
+  39) it reads 50.88.
+- Of 2 primitives of 1 property and 1 priority the later wins a point, and
+  a point on a primitive's own edge is not its own: on Wyvern's USB 3 pair a
+  piece 0.0586 mm long under the octagons at its ends was dropped with
+  `Unused primitive`. The model leaves out a polygon that holds, strictly
+  inside, no mesh node or edge centre a later polygon of its net does not.
+- A line longer than the pulse leaves every port quiet while the wave
+  crosses it. The spectra end 5 quiet samples after the ports' last loud
+  sample, not after the first 5 quiet ones.
 
 ## kipy (planned)
 

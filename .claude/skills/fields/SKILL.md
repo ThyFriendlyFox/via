@@ -62,8 +62,15 @@ as its own program; none of its code is in this repository.
 - `measure`: `impedance_ohm` (min, max), `return_loss_db` (min),
   `insertion_loss_db` (max), `next_db` and `fext_db` (max, with `from`: the
   driven net). Loss and coupling are the worst over the band. Impedance is
-  the median over the band of a symmetric 2-port's formula, and only a net
-  of 2 ports has one; its line says `the median over N frequencies`.
+  the median over the band of a symmetric 2-port's formula: the image
+  impedance of whatever lies between the 2 ports (sections of 30, 80 and 30
+  ohm read 49.32). It is the track's impedance only on a uniform line, so it
+  is judged only on a net of 2 ports, 1 width, 1 layer and no branch;
+  elsewhere its limit is `not judged` with the reason. Its line says `the
+  median over N frequencies`. On the line fixture (0.36 mm over 0.2 mm of
+  4.5) it reads within 3% of Hammerstad and Jensen's 51.34 ohm, for copper
+  as a sheet; 35 um of copper lowers that line to 48.94 ohm (Hammerstad and
+  Jensen's thickness correction), which the model leaves out.
 - `settings` (optional): `margin_mm`, `cells_per_wavelength`,
   `cells_across_width`, `cells_per_dielectric`, `port_ohm`, `frequencies`,
   `end_criteria_db`, `absorbing_cells`, `max_timesteps`, `timeout_s`.
@@ -91,8 +98,12 @@ The worked examples are `tests/boards/pass-fields-microstrip` and
      step again.
    - `... has no GND pour on <layer> under (x, y)`: the reference pour does
      not lie under the whole track. Pour it there, or the model is not the
-     board. `... the via ... crosses the GND plane`: the model cuts no
-     antipad; such a group is not run (see below).
+     board. A zone's cutout is a hole: a track over it is refused the same
+     way. `... has a <net> pour on <layer> at (x, y), between it and the GND
+     plane`: that pour carries the return current and the model has no
+     other net; make the reference that pour's net, or move the pour. `... the
+     via ... crosses the GND plane`: the model cuts no antipad; such a group
+     is not run (see below).
 3. `flock <engine lock> workcenter fields <project>`
    - `PASS fields N held, 0 failed, 0 not judged`: done.
    - `FAIL` with a line `<net> <measure> <value> at <f> GHz above max ...`:
@@ -103,7 +114,8 @@ The worked examples are `tests/boards/pass-fields-microstrip` and
    - `FAIL` with `openEMS on port N ended without a result`: the line says
      why. `did not fall to the end criterion`: raise `max_timesteps` in
      `settings`. `did not settle 40 dB under their peak`: openEMS stopped
-     before the ports' energy settled; lower `end_criteria_db` (-50). `a cell is too small`: report it with
+     before the ports' energy settled after its last loud sample; lower
+     `end_criteria_db` (-50). `a cell is too small`: report it with
      `build/fields/<group>/model.json`. `Unused
      primitive`: a piece of copper or a port lies on no mesh line; report it
      with `build/fields/<group>/model.json`.
@@ -122,11 +134,16 @@ The worked examples are `tests/boards/pass-fields-microstrip` and
 ## What a run does not judge
 
 - Copper is a sheet: no thickness and no conductor loss. Loss is the
-  dielectric's alone.
-- A reference plane is whole over the model's box. The pour is checked
-  under each track, at its centre and both edges every half its width
-  along it; a track with no pour under it is refused. A cut-out narrower
-  than half the track's width, or one beside the track, is not seen.
+  dielectric's alone. The mesh puts a straight track's edges a third of a
+  cell inside its metal (openEMS 0.0.35, Tutorials/MSL_NotchFilter.m, lines
+  36 to 39); with the edges on mesh lines the line fixture read 43.14 ohm
+  against 51.34. A slanted track has no such lines: its sheet is a stair.
+- A reference plane is whole over the model's box. The pour, its fill or
+  its outline less its cutouts, is checked under each track, at its centre
+  and both edges every half its width along it, a point on the pour's edge
+  counting as on it; a track with no pour under it is refused. A cut-out
+  narrower than half the track's width, or one beside the track, is not
+  seen. A pour of another net between a track and its plane is refused.
 - No antipad is cut: a group with a via that crosses a reference plane is
   refused, not run.
 - Pads, parts, solder mask and every net outside the group are left out.
@@ -139,9 +156,14 @@ openEMS checks its end criterion every 4 s of the clock (its log prints the
 energy at 4 s, 8 s, 12 s), so where it stops hangs on the machine's load:
 4 runs of 1 stub file stopped after 7189 to 8453 steps. The command lets openEMS run until the box's
 energy falls 10 dB past `end_criteria_db`, then reads the ports' samples
-only up to the first sample where the ports' energy has stayed
-`end_criteria_db` under its peak for 5 samples. Every sample up to there is
-the same from run to run, so the same file gives the same numbers.
+only up to the sample where the ports' energy has stayed
+`end_criteria_db` under its peak for 5 samples after its last sample above
+that. Every sample up to there is the same from run to run, and a run that
+stops later adds only quiet samples, so the same file gives the same
+numbers. On a line longer than the pulse every port is quiet while the wave
+crosses: a cut at the first quiet 5 samples missed the far port's wave
+(the probes of a 10 mm run with port 2 delayed by 40 samples gave |S21| of
+-85 to -66 dB; after its last loud sample, -0.2 to -0.1 dB).
 
 ## Another solver
 

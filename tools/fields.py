@@ -109,15 +109,29 @@ def _children(node: list, head: str) -> list[list]:
     return [c for c in node[1:] if isinstance(c, list) and c and c[0] == head]
 
 
+def _float(value, what: str) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        raise Refusal(f"{what} is {str(value)!r}, not a number") from None
+
+
 def _xy(node: list | None) -> tuple[float, float]:
     if node is None or len(node) < 3:
         raise Refusal(f"a {node[0] if node else 'point'} without its 2 numbers")
-    return float(node[1]), float(node[2])
+    return _float(node[1], f"`{node[0]}`"), _float(node[2], f"`{node[0]}`")
 
 
 def _num(node: list, head: str) -> float | None:
     found = _child(node, head)
-    return float(found[1]) if found is not None and len(found) > 1 else None
+    return _float(found[1], f"`{head}`") if found is not None and len(found) > 1 else None
+
+
+def _layer(node: list) -> str:
+    found = _child(node, "layer")
+    if found is None or len(found) < 2:
+        raise Refusal("no `layer`")
+    return str(found[1])
 
 
 def _rotate(dx: float, dy: float, degrees: float) -> tuple[float, float]:
@@ -159,14 +173,35 @@ def _pts(node: list | None) -> list[tuple[float, float]]:
     return out
 
 
-def _in_polygon(q, poly) -> bool:
-    """Even-odd: whether a point lies inside a polygon. A fill's hole joined to its outline by a slit of
-    2 edges on 1 line is a hole."""
+def _rings(poly) -> list[list]:
+    """The closed rings of a polygon: its points, rings split by None (an outline and its holes)."""
+    rings, ring = [], []
+    for p in poly:
+        if p is None:
+            rings.append(ring)
+            ring = []
+        else:
+            ring.append(p)
+    return [r for r in rings + [ring] if r]
+
+
+def _in_polygon(q, poly, tol: float = 1e-7) -> bool:
+    """Even-odd over every ring: whether a point lies inside a polygon. A hole is a ring of its own
+    (after a None) or, as KiCad writes a fill, joined to its outline by a slit of 2 edges on 1 line.
+    A point within `tol` mm of an edge is inside, at every edge alike (KiCad's unit is 1 nm): the
+    crossing count alone took a point on a left edge and left one on a right edge. A negative `tol`
+    takes a point within -tol of an edge as outside: strictly inside."""
     x, y = q
     inside = False
-    for (ax, ay), (bx, by) in zip(poly, poly[1:] + poly[:1], strict=True):
-        if (ay > y) != (by > y) and x < ax + (y - ay) * (bx - ax) / (by - ay):
-            inside = not inside
+    for ring in _rings(poly):
+        for (ax, ay), (bx, by) in zip(ring, ring[1:] + ring[:1], strict=True):
+            dx, dy = bx - ax, by - ay
+            span = dx * dx + dy * dy
+            r = min(1.0, max(0.0, ((x - ax) * dx + (y - ay) * dy) / span)) if span > 0 else 0.0
+            if math.hypot(x - ax - r * dx, y - ay - r * dy) <= abs(tol):
+                return tol >= 0
+            if (ay > y) != (by > y) and x < ax + (y - ay) * dx / dy:
+                inside = not inside
     return inside
 
 
@@ -200,70 +235,105 @@ def read_board(path: Path) -> Board:
     if stack is None:
         raise Refusal(f"{path.name}: the board has no stack-up (Board Setup, Physical Stackup)")
     layers = _children(stack, "layer")
-    total = 0.0
-    for ly in layers:
+
+    def each(kind: str, nodes: list, read) -> None:
+        """read(node) for each item; a refusal names the file and the item, by name or by count."""
+        for i, node in enumerate(nodes, 1):
+            try:
+                read(node)
+            except Refusal as exc:
+                name = f"{kind} {node[1]}" if kind == "stack-up layer" and len(node) > 1 else f"{kind} {i}"
+                raise Refusal(f"{path.name}: {name}: {exc}") from None
+
+    def thickness(ly: list) -> None:
         kind = _child(ly, "type")
-        if kind is not None and kind[1] in ("core", "prepreg"):
-            total += _num(ly, "thickness") or 0.0
-    z, copper_z, diel = total, {}, []
-    for ly in layers:
+        if kind is not None and len(kind) > 1 and kind[1] in ("core", "prepreg"):
+            totals.append(_num(ly, "thickness") or 0.0)
+
+    totals: list[float] = []
+    each("stack-up layer", layers, thickness)
+    copper_z, diel, at_z = {}, [], [sum(totals)]
+
+    def stack_layer(ly: list) -> None:
+        z = at_z[0]
         kind = _child(ly, "type")
-        kind = str(kind[1]) if kind is not None else ""
+        kind = str(kind[1]) if kind is not None and len(kind) > 1 else ""
         if kind == "copper":
             copper_z[str(ly[1])] = z
         elif kind in ("core", "prepreg"):
             t, er, tand = _num(ly, "thickness"), _num(ly, "epsilon_r"), _num(ly, "loss_tangent")
             if t is None or er is None:
-                raise Refusal(f"{path.name}: stack-up layer {ly[1]} has no thickness or no epsilon_r")
+                raise Refusal("no thickness or no epsilon_r")
             diel.append((z - t, z, er, tand or 0.0))
-            z -= t
+            at_z[0] = z - t
+
+    each("stack-up layer", layers, stack_layer)
     shift = min(copper_z.values(), default=0.0)
     copper_z = {k: round(v - shift, 9) for k, v in copper_z.items()}
     diel = sorted((round(a - shift, 9), round(b - shift, 9), er, tand) for a, b, er, tand in diel)
     board = Board(path=path, copper_z=copper_z, dielectrics=diel)
 
-    for seg in _children(root, "segment"):
-        layer, width = str(_child(seg, "layer")[1]), _num(seg, "width") or 0.0
+    def segment(seg: list) -> None:
+        layer, width = _layer(seg), _num(seg, "width") or 0.0
         a, b = _xy(_child(seg, "start")), _xy(_child(seg, "end"))
         board.tracks.append(Track(net_of(seg), layer, a, b, width))
-    for arc in _children(root, "arc"):
-        pts = _arc_points(_xy(_child(arc, "start")), _xy(_child(arc, "mid")), _xy(_child(arc, "end")))
-        layer, width, net = str(_child(arc, "layer")[1]), _num(arc, "width") or 0.0, net_of(arc)
+
+    def arc(node: list) -> None:
+        pts = _arc_points(_xy(_child(node, "start")), _xy(_child(node, "mid")), _xy(_child(node, "end")))
+        layer, width, net = _layer(node), _num(node, "width") or 0.0, net_of(node)
         board.tracks.extend(Track(net, layer, p, q, width) for p, q in pairwise(pts))
-    for via in _children(root, "via"):
-        names = _child(via, "layers")
+
+    def via(node: list) -> None:
+        names = _child(node, "layers")
         pair = (str(names[1]), str(names[2])) if names is not None and len(names) > 2 else ("F.Cu", "B.Cu")
-        board.vias.append(Via(net_of(via), _xy(_child(via, "at")), _num(via, "drill") or 0.0, pair))
-    for zone in _children(root, "zone"):
-        if _child(zone, "keepout") is not None:
-            continue
-        one, many = _child(zone, "layer"), _child(zone, "layers")
-        names = tuple(str(x) for x in (many[1:] if many is not None else one[1:] if one is not None else []))
-        shapes: dict[str, list] = {}
-        for filled in _children(zone, "filled_polygon"):
-            ly = _child(filled, "layer")
-            if ly is not None and len(ly) > 1:
-                shapes.setdefault(str(ly[1]), []).append(_pts(_child(filled, "pts")))
-        outline = [_pts(_child(p, "pts")) for p in _children(zone, "polygon")]
-        for ly in names:
-            if ly not in shapes:
-                shapes[ly] = outline
-        board.zones.append((net_of(zone), names, shapes))
-    for fp in _children(root, "footprint") + _children(root, "module"):
-        at = _child(fp, "at")
-        fx, fy = _xy(at)
-        rot = float(at[3]) if len(at) > 3 else 0.0
-        ref = next((str(p[2]) for p in _children(fp, "property") if len(p) > 2 and p[1] == "Reference"), None)
-        ref = ref or next(
-            (str(t[2]) for t in _children(fp, "fp_text") if len(t) > 2 and t[1] == "reference"), ""
-        )
-        for pad in _children(fp, "pad"):
-            dx, dy = _xy(_child(pad, "at"))
-            ox, oy = _rotate(dx, dy, rot)
-            size = _child(pad, "size")
-            reach = math.hypot(*_xy(size)) / 2 if size is not None and len(size) > 2 else 0.0
-            board.pads[f"{ref}.{pad[1]}"] = (fx + ox, fy + oy, net_of(pad), reach)
+        board.vias.append(Via(net_of(node), _xy(_child(node, "at")), _num(node, "drill") or 0.0, pair))
+
+    each("segment", _children(root, "segment"), segment)
+    each("arc", _children(root, "arc"), arc)
+    each("via", _children(root, "via"), via)
+    each("zone", _children(root, "zone"), lambda zone: _read_zone(zone, board, net_of))
+    each(
+        "footprint",
+        _children(root, "footprint") + _children(root, "module"),
+        lambda fp: _read_pads(fp, board, net_of),
+    )
     return board
+
+
+def _read_zone(zone: list, board: Board, net_of) -> None:
+    """A zone's net, layers and shape on each layer, onto the board; a keepout is no copper."""
+    if _child(zone, "keepout") is not None:
+        return
+    one, many = _child(zone, "layer"), _child(zone, "layers")
+    names = tuple(str(x) for x in (many[1:] if many is not None else one[1:] if one is not None else []))
+    shapes: dict[str, list] = {}
+    for filled in _children(zone, "filled_polygon"):
+        ly = _child(filled, "layer")
+        if ly is not None and len(ly) > 1:
+            shapes.setdefault(str(ly[1]), []).append(_pts(_child(filled, "pts")))
+    # The first `polygon` is the zone's outline, each later one a cutout: a hole of it (KiCad 10 loads
+    # and saves a zone so). A hole follows the outline after a None (`_rings`).
+    rings = [_pts(_child(p, "pts")) for p in _children(zone, "polygon")]
+    outline = [rings[0] + [q for hole in rings[1:] for q in [None, *hole]]] if rings else []
+    for ly in names:
+        if ly not in shapes:
+            shapes[ly] = outline
+    board.zones.append((net_of(zone), names, shapes))
+
+
+def _read_pads(fp: list, board: Board, net_of) -> None:
+    """A footprint's pads onto the board, as REF.PAD: where each stands, its net and its reach."""
+    at = _child(fp, "at")
+    fx, fy = _xy(at)
+    rot = _float(at[3], "`at`'s angle") if len(at) > 3 else 0.0
+    ref = next((str(p[2]) for p in _children(fp, "property") if len(p) > 2 and p[1] == "Reference"), None)
+    ref = ref or next((str(t[2]) for t in _children(fp, "fp_text") if len(t) > 2 and t[1] == "reference"), "")
+    for pad in _children(fp, "pad"):
+        dx, dy = _xy(_child(pad, "at"))
+        ox, oy = _rotate(dx, dy, rot)
+        size = _child(pad, "size")
+        reach = math.hypot(*_xy(size)) / 2 if size is not None and len(size) > 2 else 0.0
+        board.pads[f"{ref}.{pad[1] if len(pad) > 1 else ''}"] = (fx + ox, fy + oy, net_of(pad), reach)
 
 
 # ---------------------------------------------------------------- fields.json
@@ -489,22 +559,85 @@ def _pt(p) -> str:
     return f"({p[0]:g}, {p[1]:g})"
 
 
-def _bare_point(t: Track, polys: list) -> tuple[float, float] | None:
-    """The first point of a track with no polygon of `polys` under it, or None. The points: the track's
-    centre line and its 2 edges (a micrometre inside them), every half its width along it, ends included."""
+def _cell_across(width: float, k: int) -> float:
+    """The cell across a track of `width` cut in `k` cells with its edges a third of a cell inside."""
+    return width / (k + 2 / 3)
+
+
+def _across(centre: float, width: float, k: int) -> list[float]:
+    """The mesh lines across a straight track: k + 1 lines inside its metal, the outer ones a third of a
+    cell d inside each edge, and 1 line two thirds of d outside each edge, so that every cell across
+    the edge is d. A sheet's edge on a mesh line is wider to the solver than to the board; openEMS's
+    own microstrip tutorial puts lines a third of a cell inside the edge and two thirds outside
+    (openEMS 0.0.35, Tutorials/MSL_NotchFilter.m, lines 36 to 39)."""
+    d = _cell_across(width, k)
+    lo, hi = centre - width / 2, centre + width / 2
+    return [lo - 2 * d / 3] + [lo + d / 3 + d * i for i in range(k + 1)] + [hi + 2 * d / 3]
+
+
+def _samples(t: Track) -> list[tuple[float, float]]:
+    """The points a track is checked at: its centre line and its 2 edges (a micrometre inside them),
+    every half its width along it, ends included."""
     (ax, ay), (bx, by), h = t.a, t.b, t.width / 2
     length = math.hypot(bx - ax, by - ay)
     if length < 1e-9:
-        return None
+        return []
     ux, uy = (bx - ax) / length, (by - ay) / length
     n = max(1, math.ceil(length / max(h, 1e-3)))
     side = max(h - 1e-3, 0.0)
+    out = []
     for i in range(n + 1):
         cx, cy = ax + ux * length * i / n, ay + uy * length * i / n
-        for off in (0.0, side, -side):
-            q = (cx - uy * off, cy + ux * off)
-            if not any(_in_polygon(q, p) for p in polys):
-                return q
+        out.extend((cx - uy * off, cy + ux * off) for off in (0.0, side, -side))
+    return out
+
+
+def _bare_point(t: Track, polys: list) -> tuple[float, float] | None:
+    """The first point of a track (`_samples`) with no polygon of `polys` under it, or None."""
+    return next((q for q in _samples(t) if not any(_in_polygon(q, p) for p in polys)), None)
+
+
+def _own_nodes(polygons: list[dict], mesh: dict) -> list[dict]:
+    """The polygons that each hold, strictly inside, a mesh node or edge centre that no later polygon
+    of their net and height holds. openEMS drops a primitive that wins no point of the mesh (`Unused
+    primitive`, a fault to the command): on Wyvern's USB 3 pair a piece of /SS_TX1_N 0.0586 mm long
+    lay under the octagons at its 2 ends but for its corners, and openEMS stopped warning when the
+    piece or either octagon was taken out, the later winning. Leaving such a polygon out changes no
+    point of the structure."""
+    xs_all, ys_all = mesh["x"], mesh["y"]
+    points = [(x, y) for x in xs_all for y in ys_all]
+    points += [((a + b) / 2, y) for a, b in pairwise(xs_all) for y in ys_all]
+    points += [(x, (a + b) / 2) for x in xs_all for a, b in pairwise(ys_all)]
+    kept: list[dict] = []
+    for poly in reversed(polygons):
+        xs, ys = [p[0] for p in poly["points"]], [p[1] for p in poly["points"]]
+        later = [e for e in kept if e["net"] == poly["net"] and e["z"] == poly["z"]]
+        own = (
+            q
+            for q in points
+            if min(xs) - 1e-7 <= q[0] <= max(xs) + 1e-7
+            and min(ys) - 1e-7 <= q[1] <= max(ys) + 1e-7
+            and _in_polygon(q, poly["points"], tol=-1e-7)
+            and not any(_in_polygon(q, e["points"]) for e in later)
+        )
+        if next(own, None) is not None:
+            kept.append(poly)
+    return kept[::-1]
+
+
+def _pour_between(board: Board, t: Track, plane: str, reference: str):
+    """(net, layer, point): the first point of a track (`_samples`) over a pour of a net other than
+    `reference` on a copper layer strictly between the track's and the plane's, or None."""
+    lo, hi = sorted((board.copper_z[t.layer], board.copper_z[plane]))
+    for net, _, by_layer in board.zones:
+        if net == reference:
+            continue
+        for mid, polys in sorted(by_layer.items()):
+            if mid not in board.copper_z or not lo + 1e-9 < board.copper_z[mid] < hi - 1e-9:
+                continue
+            for q in _samples(t):
+                if any(_in_polygon(q, p) for p in polys if len(p) > 2):
+                    return net, mid, q
     return None
 
 
@@ -556,6 +689,17 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
                     f"{reference} pour on {ly} under {_pt(bare)}: the model would put a plane where the "
                     f"board has none"
                 )
+            # A pour of another net between the track and its plane carries the return current; the
+            # model has no other net, so the reference would be the plane, farther away.
+            found = _pour_between(board, t, ly, reference)
+            if found is not None:
+                net, mid, hit = found
+                raise Refusal(
+                    f"{where}: the track of {t.net} from {_pt(t.a)} to {_pt(t.b)} on {t.layer} has a "
+                    f"{net or '(no net)'} pour on {mid} at {_pt(hit)}, between it and the {reference} "
+                    f"plane on {ly}: the model leaves every other net out, so its return path would be "
+                    f"the plane's"
+                )
     vias = [v for v in board.vias if v.net in nets]
     for v in vias:
         za, zb = sorted(board.copper_z.get(ly, 0.0) for ly in v.layers)
@@ -572,7 +716,37 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
         for p in (t.a, t.b):
             degree.setdefault((t.layer, _key(p)), []).append(t)
     via_at = {_key(v.at) for v in vias}
+    # The impedance a 2-port's S-parameters give is the image impedance of whatever lies between its
+    # ports: 30, 80 and 30 ohm sections read 49.32 ohm. It is a track's only on a uniform line: 1 width,
+    # 1 layer, no branch (3 or more ends at 1 point, or an end on another track of the net).
+    no_impedance = {}
+    for net in nets:
+        own = [t for t in tracks if t.net == net]
+        widths = sorted({round(t.width, 6) for t in own})
+        layers = sorted({t.layer for t in own})
+        branch = next(
+            (
+                p
+                for (ly, p), ts in sorted(degree.items())
+                if ts[0].net == net
+                and (
+                    len(ts) > 2
+                    or (len(ts) == 1 and any(_inside(p, o) for o in own if o.layer == ly and o not in ts))
+                )
+            ),
+            None,
+        )
+        if branch is not None:
+            why = f"{net} branches at {_pt(branch)}"
+        elif len(widths) > 1:
+            why = f"{net} has {len(widths)} widths ({', '.join(f'{w:g}' for w in widths)} mm)"
+        elif len(layers) > 1:
+            why = f"{net} is on {len(layers)} layers ({', '.join(layers)})"
+        else:
+            continue
+        no_impedance[net] = f"{why}: the impedance is a uniform line's"
     polygons, mesh_x, mesh_y = [], [], []
+    k = max(1, int(s["cells_across_width"]))
     for t in tracks:
         (ax, ay), (bx, by), h = t.a, t.b, t.width / 2
         length = math.hypot(bx - ax, by - ay)
@@ -581,11 +755,18 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
         nx, ny = -(by - ay) / length * h, (bx - ax) / length * h
         pts = [[ax + nx, ay + ny], [bx + nx, by + ny], [bx - nx, by - ny], [ax - nx, ay - ny]]
         polygons.append({"net": t.net, "z": board.copper_z[t.layer], "points": pts})
-        k = max(1, int(s["cells_across_width"]))
+        # A sheet's edge on a mesh line is wider to the solver than to the board: the line fixture read
+        # 43.14 ohm, Hammerstad and Jensen give 51.34. The edge lies a third of a cell inside the
+        # metal and two thirds outside (`_across`): 50.88 ohm.
         if abs(by - ay) < 1e-9:
-            mesh_y.extend(ay - h + 2 * h * i / k for i in range(k + 1))
+            mesh_y.extend(_across(ay, t.width, k))
+            mesh_x.extend([ax, bx])
         elif abs(bx - ax) < 1e-9:
-            mesh_x.extend(ax - h + 2 * h * i / k for i in range(k + 1))
+            mesh_x.extend(_across(ax, t.width, k))
+            mesh_y.extend([ay, by])
+        else:
+            mesh_x.extend(q[0] for q in pts)
+            mesh_y.extend(q[1] for q in pts)
     for (layer, p), ts in degree.items():
         if len(ts) > 1 or p in via_at:
             octagon = _octagon(p, max(t.width for t in ts) / 2)
@@ -636,7 +817,10 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
         if not others:
             raise Refusal(f"{where}: the end at {p} on {layer} has no {reference} plane on another layer")
         zp = board.copper_z[min(others, key=lambda ly: abs(board.copper_z[ly] - zt))]
-        h = t.width / 2
+        # A straight track: across it from its first mesh line inside the metal to its last
+        # (`_across`). A slanted one has no such lines: from edge to edge, as its corners' lines.
+        straight = abs(t.b[0] - t.a[0]) < 1e-9 or abs(t.b[1] - t.a[1]) < 1e-9
+        h = t.width / 2 - (_cell_across(t.width, k) / 3 if straight else 0.0)
         along_x = abs(t.b[0] - t.a[0]) >= abs(t.b[1] - t.a[1])
         x, y = p
         start = [x, y - h, zp] if along_x else [x - h, y, zp]
@@ -672,12 +856,8 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
     f_lo, f_hi = (g * 1e9 for g in group["band_ghz"])
     er_max = max([d["er"] for d in dielectrics] or [1.0])
     cell = max_cell_mm(f_hi, er_max, s["cells_per_wavelength"])
-    mesh_x += [box[0], box[3]] + [
-        q[0] for poly in polygons if len(poly["points"]) == 4 for q in poly["points"]
-    ]
-    mesh_y += [box[1], box[4]] + [
-        q[1] for poly in polygons if len(poly["points"]) == 4 for q in poly["points"]
-    ]
+    mesh_x += [box[0], box[3]]
+    mesh_y += [box[1], box[4]]
     mesh_z = [box[2], box[5]] + [z for z in z_used]
     for d in dielectrics:
         k = int(s["cells_per_dielectric"])
@@ -688,13 +868,19 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
         lines.extend([lo_ - pml * cell, hi_ + pml * cell])
     # The least cell: half a cell across the narrowest track, and half a cell through the thinnest
     # dielectric. Lines closer than that (the corners of a slanted track) are 1 line.
-    least_xy = min(t.width for t in tracks) / (2 * max(1, int(s["cells_across_width"])))
+    least_xy = _cell_across(min(t.width for t in tracks), k) / 2
     thin = [d["z"][1] - d["z"][0] for d in dielectrics] or [zhi - zlo or 1.0]
     least_z = min(thin) / (2 * max(1, int(s["cells_per_dielectric"])))
     # A port's bounds are lines of the mesh: its excitation is a sheet, dropped when it lies on none.
     port_at = [[p[e][k] for p in ports for e in ("start", "stop")] for k in range(3)]
     n_f = int(s["frequencies"])
     freqs = [f_lo + (f_hi - f_lo) * i / (n_f - 1) for i in range(n_f)]
+    mesh = {
+        "x": mesh_lines(mesh_x, cell, min_cell=least_xy, keep=port_at[0]),
+        "y": mesh_lines(mesh_y, cell, min_cell=least_xy, keep=port_at[1]),
+        "z": mesh_lines(mesh_z, cell, min_cell=least_z, keep=port_at[2] + z_used),
+    }
+    polygons = _own_nodes(polygons, mesh)
     return {
         "unit_m": 1e-3,
         "group": group["name"],
@@ -714,19 +900,18 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
             for net in nets
         ],
         "ports": ports,
+        "no_impedance": no_impedance,
         "frequencies_hz": freqs,
         "max_cell_mm": cell,
-        "mesh": {
-            "x": mesh_lines(mesh_x, cell, min_cell=least_xy, keep=port_at[0]),
-            "y": mesh_lines(mesh_y, cell, min_cell=least_xy, keep=port_at[1]),
-            "z": mesh_lines(mesh_z, cell, min_cell=least_z, keep=port_at[2] + z_used),
-        },
+        "mesh": mesh,
         "settings": dict(s),
         "left_out": [
-            "copper thickness: copper is a sheet at its layer's height",
+            "copper thickness: copper is a sheet at its layer's height; 35 um lowers a 0.36 mm line over "
+            "0.2 mm of 4.5 from 51.34 to 48.94 ohm (Hammerstad and Jensen 1980, thickness correction)",
             "conductor loss: copper is a perfect conductor; loss is the dielectric's alone",
-            f"the {reference} planes' own outlines: each is whole over the box; the pour was checked under "
-            "each track of the group, at its centre and edges every half its width along it",
+            f"the {reference} planes' own outlines: each is whole over the box; the pour, less its cutouts, "
+            "was checked under each track of the group, at its centre and edges every half its width along "
+            "it, and no pour of another net lies between a track and its plane",
             f"antipads: a via of the group that crosses a {reference} plane is refused",
             "pads, parts, solder mask and every net outside the group",
             "the board's edge: the dielectric fills the box",
@@ -874,16 +1059,18 @@ ENGINE_MARGIN_DB = 10.0  # how much further than the end criterion openEMS lets 
 
 
 def settled(energy: list[float], end_db: float, window: int = SETTLE_SAMPLES) -> int | None:
-    """The first sample whose last `window` samples, itself included, all lie `end_db` under the
-    series' peak so far, or None. It reads no sample after the one it returns: a run that stops later
-    gives the same answer."""
-    peak, run = 0.0, 0
-    for k, e in enumerate(energy):
-        peak = max(peak, e)
-        run = run + 1 if peak > 0 and e <= peak * 10 ** (end_db / 10) else 0
-        if run >= window:
-            return k
-    return None
+    """The sample that ends the first `window` samples in a row lying `end_db` under the series' peak
+    after the last sample that does not, or None when the series ends before. On a line longer than
+    the pulse every port is quiet while the wave crosses: a cut there missed the far port's wave (the
+    z57 run's probes with port 2 delayed by 40 samples gave |S21| of -85 to -66 dB). A run that stops
+    later adds only quiet samples, since openEMS stops 10 dB under the end criterion
+    (ENGINE_MARGIN_DB), so it gives the same answer."""
+    peak = max(energy, default=0.0)
+    if peak <= 0:
+        return None
+    floor = peak * 10 ** (end_db / 10)
+    loud = max(k for k, e in enumerate(energy) if e > floor)
+    return loud + window if loud + window < len(energy) else None
 
 
 class OpenEMS:
@@ -1066,8 +1253,8 @@ class OpenEMS:
 
         openEMS checks its end criterion every 4 s of the clock, so where a run stops hangs on the
         machine's load. Every sample before the stop is the same from run to run: the spectra are read
-        up to the sample where the ports' energy, the sum of u^2 + (Z i)^2, has settled (`settled`),
-        and not beyond. A run that stopped before that is a fault."""
+        up to the sample where the ports' energy, the sum of u^2 + (Z i)^2, has settled after its last
+        loud sample (`settled`), and not beyond. A run that stopped before that is a fault."""
         freqs, zref = model["frequencies_hz"], model["settings"]["port_ohm"]
         probes = [
             (cls._probe(run / f"port_ut{p['n']}"), cls._probe(run / f"port_it{p['n']}"))
@@ -1080,7 +1267,7 @@ class OpenEMS:
         if last is None:
             raise EngineFault(
                 f"the port signals did not settle {-end_db:g} dB under their peak for {SETTLE_SAMPLES} "
-                f"samples in the {n} samples openEMS wrote"
+                f"samples after their last sample above it, in the {n} samples openEMS wrote"
             )
         ui = []
         for (tu, vu), (ti, vi) in probes:
@@ -1114,6 +1301,8 @@ def group_measures(model: dict, columns: dict[int, list[list[complex]]]) -> dict
         out[net].update(line_measures(freqs, col[index[ns[0]]], far, zref))
         if len(ns) != 2:  # the impedance formula is a symmetric 2-port's: a net of 3 ports is none
             out[net].pop("impedance_ohm", None)
+        elif net in model.get("no_impedance", {}):
+            out[net]["impedance_ohm"] = {"value": None, "at_hz": None, "why": model["no_impedance"][net]}
         for other, os_ in by_net.items():
             if other == net or not os_:
                 continue
@@ -1150,6 +1339,8 @@ def report_md(project: str, engine: str, version: str | None, groups: list[dict]
             for key, m in sorted(ms.items()):
                 at = f"{m['at_hz'] / 1e9:.3g} GHz" if m.get("at_hz") is not None else "median"
                 value = f"{m['value']:.3f}" if m["value"] is not None else "not measured"
+                if m["value"] is None and m.get("at_hz") is None:
+                    at = m.get("why", "")
                 out.append(f"| {net} | {key} | {value} | {at} |")
         out += ["", "Limits:", ""]
         out += [f"- FAIL {x}" for x in g["fails"]] + [f"- held {x}" for x in g["held"]]

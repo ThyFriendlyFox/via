@@ -60,15 +60,16 @@ def test_a_track_is_a_rectangle_of_its_width():
 
 def test_a_port_stands_at_each_end_from_the_plane_to_the_track():
     """The 2 ends of the track are (100, 100) and (110, 100). The plane under it is the GND zone on B.Cu
-    at z 0, so each port runs from z 0 to z 0.2, across the track's width (y 99.82 to 100.18), at the
-    end's x, with 50 ohm."""
+    at z 0, so each port runs from z 0 to z 0.2, at the end's x, with 50 ohm, across the track between
+    its first and last mesh line inside the metal: the cell across is 0.36 / (3 + 2/3) = 0.0981818, and
+    those lines are a third of it, 0.0327273, inside the edges: y 99.8527273 to 100.1472727."""
     ports = line_model()["ports"]
     assert [p["n"] for p in ports] == [1, 2]
     for port, x in zip(ports, (100, 110), strict=True):
         assert port["net"] == "SIG"
         assert port["r"] == 50
-        assert port["start"] == pytest.approx([x, 99.82, 0.0])
-        assert port["stop"] == pytest.approx([x, 100.18, 0.2])
+        assert port["start"] == pytest.approx([x, 99.8527273, 0.0])
+        assert port["stop"] == pytest.approx([x, 100.1472727, 0.2])
 
 
 def test_the_plane_and_the_dielectric_fill_the_box():
@@ -143,9 +144,9 @@ def test_every_port_lies_on_mesh_lines():
             assert port["start"][k] in model["mesh"][axis] and port["stop"][k] in model["mesh"][axis]
 
 
-def test_a_slanted_track_gets_no_cell_under_a_sixth_of_its_width():
-    """Wyvern's TX1 pair runs on F.Cu with slanted pieces 0.15 to 0.25 mm wide. The least cell is the
-    narrowest width over 2 x 3 cells across it: 0.15 / 6 = 0.025 mm."""
+def test_a_slanted_track_gets_no_cell_under_half_a_cell_across_its_width():
+    """Wyvern's TX1 pair runs on F.Cu with slanted pieces 0.15 to 0.25 mm wide. The least cell is half
+    the cell across the narrowest track: 0.15 / (3 + 2/3) / 2 = 0.0204545 mm."""
     t = fields.Track
     board = fields.Board(
         path=Path("s.kicad_pcb"),
@@ -161,7 +162,7 @@ def test_a_slanted_track_gets_no_cell_under_a_sixth_of_its_width():
     model = fields.build_model(board, group, {"reference": "GND", "settings": dict(fields.SETTINGS)})
     for axis in "xy":
         lines = model["mesh"][axis]
-        assert min(b - a for a, b in pairwise(lines)) >= 0.025 - 1e-9, axis
+        assert min(b - a for a, b in pairwise(lines)) >= 0.0204545 - 1e-7, axis
 
 
 def test_a_fixed_line_is_a_line_to_the_digit():
@@ -172,20 +173,25 @@ def test_a_fixed_line_is_a_line_to_the_digit():
 
 
 def test_the_mesh_holds_every_edge_and_its_own_bounds():
-    """The mesh is written from the geometry: x holds the box (97, 113) and the ports (100, 110); y holds
-    the box (96.82, 103.18), the track's edges (99.82, 100.18) and 2 lines inside its width at its
-    thirds: 99.82 + 0.12 = 99.94 and 99.82 + 0.24 = 100.06; z holds the air (-3, 3.2), the plane (0)
-    and the track (0.2). No cell is larger than 0.706618 mm (10 GHz in 4.5) and no 2 neighbours differ
-    by more than 2 times (`mesh_lines`: 1.5 within a run, 2 where 2 runs meet)."""
+    """The mesh is written from the geometry: x holds the box (97, 113) and the ports (100, 110); z holds
+    the air (-3, 3.2), the plane (0) and the track (0.2). y holds the box (96.82, 103.18) and, across
+    the track, the thirds rule: the cell d is 0.36 / (3 + 2/3) = 0.0981818; 4 lines inside the metal
+    from 99.82 + d/3 = 99.8527273 in steps of d, and 1 line 2d/3 = 0.0654545 outside each edge,
+    99.7545455 and 100.2454545. The edges 99.82 and 100.18 are no lines: a sheet's edge on a line
+    made the line fixture read 43.14 ohm against Hammerstad and Jensen's 51.34. No cell is larger than
+    0.706618 mm (10 GHz in 4.5) and no 2 neighbours differ by more than 2 times (`mesh_lines`: 1.5
+    within a run, 2 where 2 runs meet)."""
     mesh = line_model()["mesh"]
     for axis, must in (
         ("x", [97, 100, 110, 113]),
-        ("y", [96.82, 99.82, 99.94, 100.06, 100.18, 103.18]),
+        ("y", [96.82, 99.7545455, 99.8527273, 99.9509091, 100.0490909, 100.1472727, 100.2454545, 103.18]),
         ("z", [-3, 0, 0.2, 3.2]),
     ):
         lines = mesh[axis]
         for value in must:
-            assert min(abs(v - value) for v in lines) < 1e-9, (axis, value)
+            assert min(abs(v - value) for v in lines) < 1e-7, (axis, value)
+        if axis == "y":
+            assert min(abs(v - e) for v in lines for e in (99.82, 100.18)) > 0.03
         cells = [b - a for a, b in pairwise(lines)]
         assert max(cells) <= 0.706618 + 1e-6
         assert all(max(a, b) / min(a, b) <= 2 + 1e-9 for a, b in pairwise(cells))
@@ -211,6 +217,49 @@ def test_a_joint_the_rectangles_cover_gets_no_octagon():
     spec = fields.read_spec(STUB / "fields.json")
     polys = fields.build_model(board, spec["groups"][0], spec)["metals"][0]["polygons"]
     assert sorted(len(p["points"]) for p in polys) == [4, 4, 4]
+
+
+WYVERN = ROOT / "examples" / "snapdragon-dev-board" / "v0.2"
+
+
+@pytest.mark.skipif(not (WYVERN / "wyvern.kicad_pcb").is_file(), reason="the Wyvern example is not here")
+def test_every_polygon_holds_a_mesh_node_no_later_one_holds():
+    """openEMS drops a primitive that wins no point of the mesh (`Unused primitive`), a fault to the
+    command. With a track's edges a third of a cell inside, the run of Wyvern's USB 3 TX1 pair dropped
+    a polygon of /SS_TX1_N: a piece 0.0586 mm long, x 113.8414 to 113.9, under the octagons at its 2
+    ends but for its corners. Taking out that piece, or either octagon, stopped the warning: the later
+    of 2 of 1 priority wins, and a point on the piece's own edge is not its own. Every polygon of the
+    model holds, strictly inside, a node or edge centre no later polygon of its net holds."""
+    board = fields.read_board(WYVERN / "wyvern.kicad_pcb")
+    group = {
+        "name": "usb3-tx1",
+        "nets": ["/SS_TX1_P", "/SS_TX1_N"],
+        "ports": ["J1.A3", "U2.17", "J1.A2", "U2.16"],
+        "band_ghz": [0.1, 10],
+    }
+    spec = {"reference": "GND", "settings": dict(fields.SETTINGS), "file": "fields.json"}
+    model = fields.build_model(board, group, spec)
+    mx, my = model["mesh"]["x"], model["mesh"]["y"]
+    points = [(x, y) for x in mx for y in my]
+    points += [((a + b) / 2, y) for a, b in pairwise(mx) for y in my]
+    points += [(x, (a + b) / 2) for x in mx for a, b in pairwise(my)]
+    for metal in model["metals"]:
+        polys = metal["polygons"]
+        for k, poly in enumerate(polys):
+            xs, ys = [p[0] for p in poly["points"]], [p[1] for p in poly["points"]]
+            nodes = [
+                q
+                for q in points
+                if min(xs) <= q[0] <= max(xs)
+                and min(ys) <= q[1] <= max(ys)
+                and fields._in_polygon(q, poly["points"], tol=-1e-7)
+            ]
+            own = [
+                q
+                for q in nodes
+                if not any(e["z"] == poly["z"] and fields._in_polygon(q, e["points"]) for e in polys[k + 1 :])
+            ]
+            assert own, (metal["net"], poly["points"])
 
 
 def test_a_corner_of_a_track_is_closed():
@@ -488,6 +537,19 @@ def test_a_pour_under_the_whole_track_is_a_plane():
     assert [p["layer"] for p in model_of(board)["planes"]] == ["B.Cu"]
 
 
+def test_a_pour_flush_with_both_ends_is_under_the_track():
+    """The pour runs x 100 to 110, y 95 to 105: flush with the track's 2 ends. The even-odd test counted
+    a point on the left edge as inside and one on the right edge as outside, so the track was taken
+    with the pour flush at its start and refused with it flush at its end. A point on any edge of a
+    pour is on copper; 1 nm outside it is not."""
+    square = [(0, 0), (10, 0), (10, 10), (0, 10)]
+    for q in ((0, 5), (10, 5), (5, 0), (5, 10), (10, 10), (0, 0)):
+        assert fields._in_polygon(q, square), q
+    assert not fields._in_polygon((10 + 1e-6, 5), square)
+    board = line_board([pour("GND", "B.Cu", square=(100, 95, 110, 105))])
+    assert [p["layer"] for p in model_of(board)["planes"]] == ["B.Cu"]
+
+
 def test_a_zone_is_read_as_its_fill_where_it_is_filled(tmp_path):
     """The line fixture's GND zone has the outline x 95 to 115, y 95 to 105 and no fill: the outline is
     its shape. Given a fill on B.Cu of the square 95 to 96, that fill is its shape, and the track over
@@ -506,6 +568,50 @@ def test_a_zone_is_read_as_its_fill_where_it_is_filled(tmp_path):
     spec = fields.read_spec(LINE / "fields.json")
     with pytest.raises(fields.Refusal, match=r"has no GND pour on B\.Cu under \(100, 100\)"):
         fields.build_model(board, spec["groups"][0], spec)
+
+
+def test_a_cutout_of_a_zone_is_a_hole(tmp_path):
+    """KiCad writes a zone's cutout as its second `polygon`: the first is the outline, each later one a
+    hole of it (KiCad 10.0.8's pcbnew loads such a zone as 1 outline with 1 hole, and saves a zone of 1
+    outline and 1 hole the same way). The line fixture's GND zone, x 95 to 115 and y 95 to 105, gets the
+    cutout x 104.5 to 105.5, y 97 to 103, under the track: (105, 100) has no copper, and the track is
+    refused at its first point over the cutout. The track is sampled every 10 / ceil(10 / 0.18) =
+    0.178571 mm: the first sample past 104.5 is 100 + 26 x 0.178571 = 104.643. Read as 2 outlines, the
+    slot was solid copper."""
+    text = (LINE / "line.kicad_pcb").read_text(encoding="utf-8")
+    end = "(xy 95 95) (xy 115 95) (xy 115 105) (xy 95 105)\n\t\t\t)\n\t\t)\n"
+    cut = "\t\t(polygon (pts (xy 104.5 97) (xy 105.5 97) (xy 105.5 103) (xy 104.5 103)))\n"
+    (tmp_path / "c.kicad_pcb").write_text(text.replace(end, end + cut), encoding="utf-8")
+    board = fields.read_board(tmp_path / "c.kicad_pcb")
+    (poly,) = board.zones[0][2]["B.Cu"]
+    assert not fields._in_polygon((105, 100), poly)
+    assert fields._in_polygon((102, 100), poly)
+    spec = fields.read_spec(LINE / "fields.json")
+    with pytest.raises(fields.Refusal, match=r"has no GND pour on B\.Cu under \(104\.643, 100\)"):
+        fields.build_model(board, spec["groups"][0], spec)
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "says"),
+    [
+        ('\t\t(layer "F.Cu")\n\t\t(net "SIG")', '\t\t(net "SIG")', "segment 1: no `layer`"),
+        (
+            "(epsilon_r 4.5)",
+            "(epsilon_r FR4)",
+            "stack-up layer dielectric 1: `epsilon_r` is 'FR4', not a number",
+        ),
+        ("(width 0.36)", "(width wide)", "segment 1: `width` is 'wide', not a number"),
+    ],
+)
+def test_a_mistake_in_the_board_file_is_refused_with_its_place(tmp_path, old, new, says):
+    """A segment with no layer ended in a TypeError, a word for a number in a ValueError: each a
+    traceback, exit 1. Each is a refusal naming the file and the item."""
+    text = (LINE / "line.kicad_pcb").read_text(encoding="utf-8")
+    assert text.count(old) == 1
+    (tmp_path / "x.kicad_pcb").write_text(text.replace(old, new), encoding="utf-8")
+    with pytest.raises(fields.Refusal) as caught:
+        fields.read_board(tmp_path / "x.kicad_pcb")
+    assert str(caught.value) == f"x.kicad_pcb: {says}"
 
 
 def test_a_hole_in_a_fill_is_a_hole():
@@ -529,6 +635,29 @@ def test_a_hole_in_a_fill_is_a_hole():
     assert not fields._in_polygon((5, 5), fill)
     assert fields._in_polygon((8, 5), fill)
     assert fields._in_polygon((2, 2), fill)
+
+
+def test_a_pour_of_another_net_between_a_track_and_its_plane_is_refused():
+    """4 layers: B.Cu at 0, In2.Cu at 0.1, In1.Cu at 1.1, F.Cu at 1.2 mm. S runs on B.Cu; 3V3 is poured
+    on In2.Cu, 0.1 mm over it, and GND on In1.Cu, 1.1 mm over it. The 3V3 pour carries the return
+    current; the model left it out and put the reference 11 times farther away (Hammerstad and Jensen:
+    134.68 ohm for 0.18 mm over 1.1 mm against 51.34 ohm over 0.1 mm). Refused, naming the pour and the
+    plane."""
+    t = fields.Track
+    board = fields.Board(
+        path=Path("p.kicad_pcb"),
+        copper_z={"F.Cu": 1.2, "In1.Cu": 1.1, "In2.Cu": 0.1, "B.Cu": 0.0},
+        dielectrics=[(0.0, 0.1, 4.5, 0.02), (0.1, 1.1, 4.5, 0.02), (1.1, 1.2, 4.5, 0.02)],
+        tracks=[t("S", "B.Cu", (100, 100), (110, 100), 0.18)],
+        zones=[pour("GND", "In1.Cu"), pour("3V3", "In2.Cu")],
+    )
+    with pytest.raises(fields.Refusal) as caught:
+        model_of(board)
+    assert str(caught.value) == (
+        "group g: the track of S from (100, 100) to (110, 100) on B.Cu has a 3V3 pour on In2.Cu at "
+        "(100, 100), between it and the GND plane on In1.Cu: the model leaves every other net out, so "
+        "its return path would be the plane's"
+    )
 
 
 def test_a_via_that_crosses_a_plane_is_refused():
@@ -675,6 +804,49 @@ def test_a_net_of_3_ports_has_no_impedance():
     assert set(out["A"]) == {"return_loss_db", "insertion_loss_db"}
 
 
+def test_the_impedance_is_judged_on_a_uniform_line_alone():
+    """The formula gives the image impedance of whatever 2-port it is handed: 2.5 mm of 30 ohm, 5 mm of
+    80 ohm and 2.5 mm of 30 ohm read 49.32 ohm, inside 45 to 55. It is a track's impedance only on a
+    net of 1 width, on 1 layer, with no branch. The stub fixture's SIG branches at (105, 100), where 3
+    track ends meet; a net of a 0.3 mm and a 0.5 mm piece has 2 widths; the line fixture is uniform.
+    A limit on a net that is not is not judged, with the reason."""
+    stub_board = fields.read_board(STUB / "stub.kicad_pcb")
+    spec = fields.read_spec(STUB / "fields.json")
+    stub = fields.build_model(stub_board, spec["groups"][0], spec)
+    assert stub["no_impedance"] == {"SIG": "SIG branches at (105, 100): the impedance is a uniform line's"}
+    assert line_model()["no_impedance"] == {}
+    t = fields.Track
+    board = line_board([pour("GND", "B.Cu")])
+    board.tracks = [t("S", "F.Cu", (100, 100), (105, 100), 0.3), t("S", "F.Cu", (105, 100), (110, 100), 0.5)]
+    model = model_of(board)
+    assert model["no_impedance"] == {"S": "S has 2 widths (0.3, 0.5 mm): the impedance is a uniform line's"}
+    model["frequencies_hz"] = [1e9, 2e9, 3e9]
+    out = fields.group_measures(model, {1: [[0.1 + 0j] * 3, [-0.9j] * 3]})
+    limits = [{"measure": "impedance_ohm", "net": "S", "min": 45, "max": 55, "source": "d"}]
+    fails, held, unjudged = fields.judge(limits, out)
+    assert fails == [] and held == []
+    assert unjudged == [
+        "S impedance_ohm: not judged, S has 2 widths (0.3, 0.5 mm): the impedance is a uniform line's"
+    ]
+
+
+def test_a_net_on_2_layers_has_no_impedance():
+    """S runs on F.Cu to a blind via at (105, 100), then on In1.Cu, both over a GND plane on B.Cu."""
+    t = fields.Track
+    board = fields.Board(
+        path=Path("v.kicad_pcb"),
+        copper_z={"F.Cu": 0.4, "In1.Cu": 0.2, "B.Cu": 0.0},
+        dielectrics=[(0.0, 0.2, 4.5, 0.02), (0.2, 0.4, 4.5, 0.02)],
+        tracks=[t("S", "F.Cu", (100, 100), (105, 100), 0.36), t("S", "In1.Cu", (105, 100), (110, 100), 0.36)],
+        vias=[fields.Via("S", (105, 100), 0.3, ("F.Cu", "In1.Cu"))],
+        zones=[pour("GND", "B.Cu")],
+    )
+    model = model_of(board)
+    assert model["no_impedance"] == {
+        "S": "S is on 2 layers (F.Cu, In1.Cu): the impedance is a uniform line's"
+    }
+
+
 @pytest.mark.parametrize(
     ("settings", "says"),
     [
@@ -719,13 +891,15 @@ def test_a_min_above_its_max_is_refused(tmp_path):
 
 def test_the_ports_settle_where_5_samples_lie_40_db_under_the_peak():
     """Port energy 0, 1, 100, 10, then 0.001, 0.005, 0.001, 0.001, 0.001, 0.001, 0.001, 1. The peak is
-    100 at sample 2; 40 dB under it is 100 x 1e-4 = 0.01. The first sample whose last 5 (itself
-    included) are all under 0.01 is sample 8 (samples 4 to 8). What comes after it does not count; a
-    series that ends before it has not settled."""
+    100 at sample 2; 40 dB under it is 100 x 1e-4 = 0.01. Up to sample 8 the last sample above 0.01 is
+    10, sample 3, and samples 4 to 8 lie under it: settled at 8. A series that ends before has not
+    settled. Sample 11, 1, is a wave that came late, a far port's on a long line: the cut waits for 5
+    quiet samples after it, 16, and a series that ends before that has not settled."""
     e = [0, 1, 100, 10, 0.001, 0.005, 0.001, 0.001, 0.001, 0.001, 0.001, 1]
-    assert fields.settled(e, -40.0) == 8
     assert fields.settled(e[:9], -40.0) == 8
     assert fields.settled(e[:8], -40.0) is None
+    assert fields.settled(e, -40.0) is None
+    assert fields.settled(e + [0.001] * 5, -40.0) == 16
 
 
 def write_probe(folder, name, values, dt=1e-11):
@@ -738,11 +912,12 @@ def test_where_openems_stops_does_not_change_the_result(tmp_path):
     steps (the stub: 7189 to 8453) and gave 29.55 to 29.99 dB. Both runs here hold the same samples
     up to where they stop: u1 = 0, 1, 0.5, then 0.001; u2 = 0, 0.5, 0.25, then 0.001; each i = u / 50.
     The port energy is 2 (u1^2 + u2^2): peak 2 x 1.25 = 2.5 at sample 1, 40 dB under it 2.5e-4. From
-    sample 3 every sample is 2 x 2e-6 = 4e-6, so the ports settle at sample 3 + 4 = 7. Run A goes on
-    with 0.3 to sample 12, run B ends at sample 8: both columns are read from samples 0 to 7 and are
-    the same. Run C ends at sample 5, before the ports settle: a fault, not a result."""
+    sample 3 every sample is 2 x 2e-6 = 4e-6, so the ports settle at sample 2 + 5 = 7. Run A goes on
+    with 0.005 to sample 12 (2 x 2.5e-5 = 5e-5, quiet: openEMS stops 10 dB under the criterion), run
+    B ends at sample 8: both columns are read from samples 0 to 7 and are the same. Run C ends at
+    sample 5, before the ports settle: a fault, not a result."""
     tail = [0.001] * 6
-    runs = {"a": tail + [0.3] * 4, "b": tail, "c": tail[:3]}
+    runs = {"a": tail + [0.005] * 4, "b": tail, "c": tail[:3]}
     model = {
         "frequencies_hz": [1e9, 2e9],
         "settings": {"port_ohm": 50.0, "end_criteria_db": -40.0},
@@ -762,3 +937,32 @@ def test_where_openems_stops_does_not_change_the_result(tmp_path):
         else:
             cols[name] = fields.OpenEMS.column(run, model, 1)
     assert cols["a"] == cols["b"]
+
+
+def test_the_cut_waits_for_the_wave_to_cross_and_come_back(tmp_path):
+    """A line longer than the pulse: between the driven pulse and its arrival at the far port, every
+    port is quiet. Port 1 carries 0, 1, 0.5, then 0; port 2 carries the same wave 0.9 times as large
+    19 samples later, at samples 20 and 21; i1 = u1 / 50 (a wave in) and i2 = -u2 / 50 (a wave out).
+    The energy's peak is 2 x 1.25 = 2.5 at sample 1, and 40 dB under it is 2.5e-4; samples 3 to 7 are 0:
+    the cut fell at sample 7, before port 2 heard anything, and |S21| was 0 (on the z57 run's probes
+    delayed by 40 samples, -85 to -66 dB). The last sample above 2.5e-4 is 21 (2 x 0.45^2 = 0.405):
+    the cut falls 5 quiet samples later, at 26, and |S21| = 0.9, |S11| = 0."""
+    u1 = [0.0, 1.0, 0.5] + [0.0] * 40
+    u2 = [0.0] * 20 + [0.9, 0.45] + [0.0] * 21
+    for name, values in (
+        ("ut1", u1),
+        ("it1", [u / 50 for u in u1]),
+        ("ut2", u2),
+        ("it2", [-u / 50 for u in u2]),
+    ):
+        write_probe(tmp_path, f"port_{name}", values)
+    model = {
+        "frequencies_hz": [1e9, 2e9],
+        "settings": {"port_ohm": 50.0, "end_criteria_db": -40.0},
+        "ports": [{"n": 1, "net": "S"}, {"n": 2, "net": "S"}],
+    }
+    s11, s21 = fields.OpenEMS.column(tmp_path, model, 1)
+    assert [abs(x) for x in s21] == pytest.approx([0.9, 0.9])
+    assert [abs(x) for x in s11] == pytest.approx([0.0, 0.0], abs=1e-12)
+    energy = [2 * (a * a + b * b) for a, b in zip(u1, u2, strict=True)]
+    assert fields.settled(energy, -40.0) == 26
