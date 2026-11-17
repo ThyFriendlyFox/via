@@ -85,6 +85,14 @@
       "input_farads": {
         "value": 4.7e-6,
         "where": "section 8.2.2.5, page 10: 4.7 uF of input capacitance is sufficient for most applications"
+      },
+      "rds_on_high": {
+        "value": 0.1,
+        "where": "section 6.5, Electrical Characteristics, RDS(on) of the high-side FET, typical: no MAX is stated, page 5"
+      },
+      "dropout": {
+        "where": "section 7.3.2, equation 1, page 6",
+        "says": "VIN(MIN) = VOUT + IOUT x (RDS(ON) + RL): the least input that holds the output at 100 % duty cycle, RL the inductor's DCR"
       }
     }
   ]
