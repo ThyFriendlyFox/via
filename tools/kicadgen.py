@@ -3580,7 +3580,9 @@ class Design:
     def route_stages(self) -> list[tuple[str, list[str]]]:
         """The nets the router gets, in the order `route(order=True)` routes them: the nets with a pour,
         the nets of each fine-pitch part (pitch at most FINE_PITCH), pairs by name, then the rest. A
-        stage with no net is left out; a net with fewer than 2 pads is in none."""
+        net with copper drawn by hand (`track`, `via`) is in the first stage with the pours: the router
+        is handed a net's copper only with the net, and the first stage's router must see it. A stage
+        with no net is left out; a net with fewer than 2 pads is in none."""
         pads: dict[str, int] = {}
         fine: set[str] = set()
         for part in self.parts:
@@ -3601,7 +3603,8 @@ class Design:
             if nets:
                 stages.append((stage, sorted(nets)))
 
-        take("pours", {self.pcb_net_name(z["net"]) for z in self.zones})
+        drawn = {item[0] for item in (*self.segments, *self.vias)}
+        take("pours", {self.pcb_net_name(z["net"]) for z in self.zones} | drawn)
         take("fan-out", fine)
         take("pairs", {n for n in left if pair_of(n) in left})
         take("rest", set(left))
@@ -4644,21 +4647,40 @@ def board_copper(path: Path) -> dict:
 UNROUTED_RE = re.compile(r"Auto-routing was completed in .*?\((\d+) unrouted\)")
 # A fine-pitch part: 0.5 mm pitch or less (PROCESSES.md P4 step 11). Its nets are the route's second stage.
 FINE_PITCH = 0.5
-# 2 nets are a pair when their names differ only in a last P and N, or + and -: `USB_D+`, `USB_D-`.
-PAIR_ENDS = {"P": "N", "N": "P", "+": "-", "-": "+"}
+# 2 nets are a pair when their names differ only in an ending of a pair: `TX_P` and `TX_N`, `USB_D+`
+# and `USB_D-`, `USB_DP` and `USB_DN`. A bare + and - (a rail V+ and V-, BAT+ and BAT-) or a last N or P
+# alone (CAN, EN, VIN) names no pair.
+PAIR_ENDS = {"_P": "_N", "_N": "_P", "D+": "D-", "D-": "D+", "DP": "DN", "DN": "DP"}
 
 
 def pad_pitch(fp: Footprint) -> float:
-    """The least distance between the centres of 2 copper pads of a footprint; inf with fewer than 2."""
-    pts = [(p.x, p.y) for p in fp.pads if p.kind != "np_thru_hole"]
-    gaps = [math.hypot(a[0] - b[0], a[1] - b[1]) for i, a in enumerate(pts) for b in pts[i + 1 :]]
+    """The pin pitch of a footprint: the least distance between the centres of 2 pads of 2 different
+    pins, inf with fewer than 2 pins. A pin is the copper pads of 1 number: pads of 1 number (a pin
+    drawn as 2 shapes, an exposed pad in pieces) are never measured against each other. Left out: pads
+    with no copper or no number (paste-only), and on a part whose pins are all surface pads, a number
+    with a plated hole among its pads (an exposed pad's thermal vias)."""
+    copper = [
+        p
+        for p in fp.pads
+        if p.number and p.kind != "np_thru_hole" and any(lay.endswith(".Cu") for lay in p.layers)
+    ]
+    holed = {p.number for p in copper if p.kind == "thru_hole"}
+    others = [p for p in copper if p.number not in holed]
+    if others and all(p.kind == "smd" for p in others):
+        copper = others
+    gaps = [
+        math.hypot(a.x - b.x, a.y - b.y)
+        for i, a in enumerate(copper)
+        for b in copper[i + 1 :]
+        if a.number != b.number
+    ]
     return round(min((g for g in gaps if g > 1e-6), default=math.inf), 6)
 
 
 def pair_of(net: str) -> str:
-    """The name of the other net of a pair, by its last character; "" when the name ends in none."""
-    end = PAIR_ENDS.get(net[-1:]) if net else None
-    return net[:-1] + end if end else ""
+    """The name of the other net of a pair, by its last 2 characters; "" when they end no pair."""
+    end = PAIR_ENDS.get(net[-2:])
+    return net[:-2] + end if end else ""
 
 
 def route(
@@ -4715,13 +4737,12 @@ def route(
     if order and design.route_stages():
         # Each stage routes its nets on the copper of the stages before it, which merge_ses has made
         # the design's own and dsn() hands the router as fixed wiring. A net the design draws copper
-        # for is listed from the first stage: the router is not handed wiring of a net it lacks.
-        drawn = {item[0] for item in (*design.segments, *design.vias)}
+        # for is in the first stage (route_stages): the router is not handed wiring of a net it lacks.
         done: set[str] = set()
         for i, (stage, nets) in enumerate(design.route_stages(), start=1):
             done |= set(nets)
             files = [build_dir / f"{design.name}.{i}-{stage}{ext}" for ext in (".dsn", ".ses", ".log")]
-            files[0].write_text(design.dsn(nets=done | drawn), encoding="utf-8")
+            files[0].write_text(design.dsn(nets=done), encoding="utf-8")
             text = freerouting(*files)
             s, v = design.merge_ses(files[1].read_text(encoding="utf-8"))
             m = UNROUTED_RE.search(text)
