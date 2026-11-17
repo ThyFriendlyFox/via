@@ -2036,6 +2036,25 @@ def _judge_rail(  # noqa: PLR0913
     judged(ref, rule_id, holds, text, source)
 
 
+def _joined(net: Netlist, of: dict[str, Facts]) -> dict[str, str]:
+    """Each net's node: the nets that a fuse, a ferrite, a link or a 0 ohm resistor joins are 1 node."""
+    leader = {name: name for name in net.nets}
+
+    def find(name: str) -> str:
+        while leader[name] != name:
+            leader[name] = leader[leader[name]]
+            name = leader[name]
+        return name
+
+    for ref, found in of.items():
+        pins = list(net.parts[ref].pins.values())
+        wire = found.kind in ("fuse", "ferrite", "link")
+        wire = wire or (found.kind == "resistor" and value_of(found, net.parts[ref]) == 0)
+        if wire and len(pins) == 2:
+            leader[find(pins[0])] = find(pins[1])
+    return {name: find(name) for name in net.nets}
+
+
 def _judge_buck(net, ref, of, spans, project, notes, judged, out, rails, loads) -> None:  # noqa: PLR0913
     """The inductor of 1 buck regulator. Against its saturation: the load on the output and half the
     ripple, at the greatest input, the least frequency and the least inductance (BUCK_NOTE). Against its
@@ -2049,12 +2068,14 @@ def _judge_buck(net, ref, of, spans, project, notes, judged, out, rails, loads) 
             continue
         node = part.pins[pin["numbers"][0]]
         supply = part.pins[pin_number(found, part, pin["swing"][-1])]
+        joined = _joined(net, of)  # a ferrite or a link after the inductor: still the output's node
+        reached = {joined[name]: name for name in outputs}
         coils = [
-            (n.ref, far)
+            (n.ref, reached[joined[far]])
             for n in net.nets[node]
             if n.ref in of and of[n.ref].kind == "inductor"
             for far in net.parts[n.ref].pins.values()
-            if far in outputs
+            if joined[far] in reached
         ]
         if not coils and outputs and not asked:
             text = (
@@ -2066,6 +2087,8 @@ def _judge_buck(net, ref, of, spans, project, notes, judged, out, rails, loads) 
             data, label = of[coil].data, f"{coil} {net.parts[coil].value}".strip()
             source = f"{of[coil].source}: the part's own rating"
             total, unknown = loads.get((ref, name), (0.0, ["it was not worked out"]))
+            beside = sum(1 for _, other in coils if other == name)  # inductors side by side share the load
+            total, shared = total / beside, f", 1 of {beside} inductors side by side," if beside > 1 else ""
             henries = value_of(of[coil], net.parts[coil])
             why = ""
             if unknown and total > 0:
@@ -2110,7 +2133,7 @@ def _judge_buck(net, ref, of, spans, project, notes, judged, out, rails, loads) 
             volts = max([low, high] + ([vin / 2] if low < vin / 2 < high else []), key=ripple)
             peak = total + ripple(volts) / 2
             text = (
-                f"{label}: its peak current is {si(peak, 'A')}: {si(total, 'A')} of load and half of "
+                f"{label}: its peak current is {si(peak, 'A')}: {si(total, 'A')} of load{shared} and half of "
                 f"{si(ripple(volts), 'A')} of ripple ({vin:.3g} V in, {volts:.3g} V out, {si(least, 'H')}, "
                 f"{si(hertz, 'Hz')}); it saturates at {si(data['amps_saturation'], 'A')}"
             )
@@ -2143,15 +2166,21 @@ def _judge_need(net, ref, need, of, spans, judged, out, rails, taken) -> None:  
         ends.append(name)
     label = f"{ref} pin {asked['from']} ({ends[0]})"
     source = f"{found.source}, {_p(need['page'])}"
-    there = [
-        r
-        for r, f in of.items()
-        if f.kind.startswith(what)
-        and len(net.parts[r].pins) == 2
-        and set(net.parts[r].pins.values()) == set(ends)
-    ]
+    joined = _joined(net, of)  # a part behind a fuse or a link stands on the pin's node
+    spot = {joined[name] for name in ends}
+
+    def between(r: str) -> bool:
+        pins = net.parts[r].pins
+        return len(pins) == 2 and {joined[name] for name in pins.values()} == spot
+
+    there = [r for r, f in of.items() if f.kind.startswith(what) and between(r)]
     if not there:
         one = "a capacitor" if what == "capacitor" else "an inductor"
+        blank = [r for r in net.parts if r not in of and between(r)]
+        if blank:  # a part stands there, and nothing says what it is or what it gives
+            text = f"{label} needs {one} to {ends[1]}: {blank[0]} stands there and has no facts"
+            out.append(Finding("not judged", ref, f"needs.{what}", text))
+            return
         judged(
             ref, f"needs.{what}", False, f"{label} needs {one} to {ends[1]}, and none stands there", source
         )

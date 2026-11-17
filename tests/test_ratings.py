@@ -1564,6 +1564,37 @@ OUT_CAP = {"capacitor": {"from": "OUT", "to": "GND", "farads_min": 0.5e-6}, "pag
 EFFECTIVE = {"capacitor": {"from": "OUT", "to": "GND", "farads_min": 0.5e-6, "effective": True}, "page": 5}
 
 
+def test_a_capacitor_with_no_facts_where_one_is_asked_is_not_judged_and_is_not_absent(tmp_path):
+    """C1 stands from the output to ground and no entry names its part number. A capacitor is there;
+    what it gives is not known."""
+    net, mpns = circuit(U1=("LDO", "LDO-1", LDO), C1=("1u", "C-NOFACTS", {"1": "V33", "2": "GND"}))
+    report = ratings.judge(net, mpns, library(tmp_path, regulator(needs=[OUT_CAP])), project(V5), NASA)
+    assert not any("none stands there" in f.text for f in report.findings)
+    assert "not judged U1 pin OUT (V33) needs a capacitor to GND: C1 stands there and has no facts" in found(
+        report, "not judged"
+    )
+
+
+def test_a_capacitor_behind_a_fuse_stands_on_the_pin_s_node(tmp_path):
+    """The input pin stands on V5F, behind a fuse from V5, and the capacitor from V5 to ground. A fuse
+    is a wire: the 2 nets are 1 node, and the capacitor is the one the datasheet asks for."""
+    need = {"capacitor": {"from": "IN", "to": "GND", "farads_min": 0.5e-6}, "page": 5}
+    pins = {**LDO, "1": ("V5F", "IN", "power_in")}
+    net, mpns = circuit(
+        U1=("LDO", "LDO-1", pins),
+        F1=("1A", "FUSE-1", {"1": "V5", "2": "V5F"}),
+        C1=("1u", "C-16V", {"1": "V5", "2": "GND"}),
+    )
+    facts = library(
+        tmp_path, regulator(needs=[need]), ceramic("C-16V", 16), entry("fuse", "FUSE-1", amps=1.0)
+    )
+    report = ratings.judge(net, mpns, facts, project(V5), NASA)
+    assert any(f.text == "U1 pin IN (V5F) needs 500 nF to GND: C1 gives 1 uF" for f in report.findings), [
+        f.line for f in report.findings
+    ]
+    assert found(report, "fail") == []
+
+
 def test_a_regulator_with_no_capacitor_on_its_output_fails(tmp_path):
     net, mpns = circuit(U1=("LDO", "LDO-1", LDO))
     report = ratings.judge(net, mpns, library(tmp_path, regulator(needs=[OUT_CAP])), project(V5), NASA)
@@ -2002,6 +2033,21 @@ def buck_board(**more: tuple) -> tuple[ratings.Netlist, dict[str, str]]:
         U2=("A", "LOAD-A", ON_VOUT),
         **DIVIDER,
         **more,
+    )
+
+
+def test_2_inductors_side_by_side_share_the_load(tmp_path):
+    """2 equal inductors from the switch node to the output carry 0.5 A each of the 1 A load, and each
+    its own ripple: 0.5 A and half of 786 mA is 0.893 A, under the 1.2 A each saturates at. Judged as
+    if each carried the whole load, 1.39 A, both would fail."""
+    net, mpns = buck_board(L2=("2.2u", "L-1", {"1": "SW", "2": "VOUT"}))
+    coil = entry("inductor", "L-1", tolerance=0.2, amps_saturation=1.2)
+    facts = library(tmp_path, SWITCHER, chip_resistor(), coil, load("LOAD-A", 1.0))
+    report = ratings.judge(net, mpns, facts, project(V12), NASA)
+    lines = [f.line for f in report.findings if f.part in ("L1", "L2") and f.rule == "inductor.current"]
+    assert len(lines) == 2 and all(line.startswith("hold L") for line in lines), lines
+    assert (
+        "its peak current is 893 mA: 500 mA of load, 1 of 2 inductors side by side, and half of" in lines[0]
     )
 
 
