@@ -1,0 +1,32 @@
+charger: the charger block U1 (BQ21040DBVR), written by tools/blocks_charger.py
+* IN is the greatest input, 5.25 V; the cell is a source at 2.5 V, the least it
+* charges from at the full current. U1 gives KISET's greatest, 590 AΩ, over R1
+* [TI SLUSCE2D, equation 1, page 13; section 7.5, Electrical Characteristics, KISET, its 3 rows of current (60 mA to 1000 mA, 25 mA to 60 mA, 10 mA to 25 mA), MIN, TYP and MAX, page 5]:
+* VSET puts 1 V on R1 and BU1 gives 590 times its
+* current; the 1 V is the deck's own, not the IC's. IU1 is the supply's own current [section 7.5, ICC, MAX, page 5].
+* p_u1 is what IN gives less what OUT gives [TI SLUSCE2D, equation 8, page 23].
+* The sums:
+*   R1: RISET = 540 AΩ / 150 mA = 3.6 kohm; the stock's nearest is 3.6k, which sets 150 mA, and 135 mA to 166 mA with KISET of 490 to 590 AΩ and 1 % of resistor [TI SLUSCE2D, equation 1, page 13; bq21040 datasheet, SLUSCE2D, section 7.5, Electrical Characteristics, KISET, its 3 rows of current (60 mA to 1000 mA, 25 mA to 60 mA, 10 mA to 25 mA), MIN, TYP and MAX, page 5]
+*   U1: the charge current reaches 166 mA, the cell takes 500 mA [the fixture's cell, made up for tests/boards: 2.5 V to 4.3 V, 0.5 A in charge, 3 A in discharge]
+*   U1: P = (5.25 V - 2.5 V) x 166 mA + 5.25 V x 1 mA = 0.4605 W at 2.5 V, the cell's least; TJ = 40 C + 130.8 C/W x 0.4605 W = 100.2 C, under 125 C [TI SLUSCE2D, equation 8, page 23; bq21040 datasheet, SLUSCE2D, section 7.5, VLOWV, MIN and MAX, page 5; section 8.1, page 8: under VLOWV the charger gives 20 % of the fast charge current; bq21040 datasheet, SLUSCE2D, section 7.5, ICC, MAX, page 5; bq21040 datasheet, SLUSCE2D, section 7.4, Thermal Information, RthetaJA of the DBV package, page 4; bq21040 datasheet, SLUSCE2D, section 7.3, Recommended Operating Conditions, TJ, MAX, page 4; TJ = TA + RthetaJA x P, TI SPRA953D, section 1.1, equation 1, page 2]
+*   C1: 10u 10V, X5R, keeps 2.4 uF at 5.25 V less 10 %, within 1 uF to 10 uF [bq21040 datasheet, SLUSCE2D, section 6, Pin Functions, OUT and VIN: bypass capacitors of 1 uF to 10 uF, page 3; section 9.2, figure 10, 1 uF on IN and on OUT, page 17; section 9.2.2.2, the values of the application diagram are recommended, page 18]
+*   C2: 10u 10V, X5R, keeps 3.03 uF at 4.3 V less 10 %, within 1 uF to 10 uF [bq21040 datasheet, SLUSCE2D, section 6, Pin Functions, OUT and VIN: bypass capacitors of 1 uF to 10 uF, page 3; section 9.2, figure 10, 1 uF on IN and on OUT, page 17; section 9.2.2.2, the values of the application diagram are recommended, page 18]
+*   U2: the overcharge threshold is 4.255 V to 4.295 V: over the charger's 4.23 V and within the cell's 4.3 V [bq21040 datasheet, SLUSCE2D, section 7.5, VOUT(REG), MIN and MAX, page 5; BQ297xx datasheet, SLUSBU9I, section 4, Device Comparison Table, BQ29700, OVP, page 3; BQ297xx datasheet, SLUSBU9I, section 6.6, VOVP, TA = 0 C to 60 C, -20 mV to 20 mV, page 6; the fixture's cell, made up for tests/boards: 2.5 V to 4.3 V, 0.5 A in charge, 3 A in discharge]
+*   U2: the overdischarge threshold is 2.75 V at the least, over the cell's 2.5 V; its tolerance is the one at 25 C, the 1 the datasheet gives [BQ297xx datasheet, SLUSBU9I, section 4, Device Comparison Table, BQ29700, UVP, page 3; BQ297xx datasheet, SLUSBU9I, section 6.6, VUVP, TA = 25 C, -50 mV to 50 mV, page 6; the fixture's cell, made up for tests/boards: 2.5 V to 4.3 V, 0.5 A in charge, 3 A in discharge]
+*   Q1, Q2: CSD17313Q2, 2 x 42 mohm = 84 mohm; the load gives 84 mV, under VOCD's least, 85 mV; the charge gives 13.9 mV, under OCC's least, 85 mV [TI SLUSBU9I, section 9.2.2, page 19: the total on-resistance of the 2 FETs times the greatest discharge current stays under VOCD; TI SLUSBU9I, section 9.2.2, page 20: the total on-resistance times the greatest charge current stays under the OCC threshold; BQ297xx datasheet, SLUSBU9I, section 6.6, VOCD, TA = -40 C to 85 C, -15 mV to 15 mV, page 6; BQ297xx datasheet, SLUSBU9I, section 6.6, VOCC, TA = -40 C to 85 C, -15 mV to 15 mV, page 6; CSD17313Q2 datasheet, SLPS260E, section 5.1, RDS(on) at VGS = 3 V, TYP and MAX, at 25 C, page 3]
+*   Q1, Q2: at the typical 31 mohm the discharge trips at 115 mV / 62 mohm = 1.85 A, the cell gives 3 A; not judged: the trip with a transistor under its typical on-resistance, which the datasheet does not bound, and the on-resistance with a gate under the 3.4 V the protector gives at a cell of 3.8 V [TI SLUSBU9I, section 9.2.2, page 19: the total on-resistance of the 2 FETs times the greatest discharge current stays under VOCD; TI SLUSBU9I, section 9.2.2, page 20: the total on-resistance times the greatest charge current stays under the OCC threshold; BQ297xx datasheet, SLUSBU9I, section 6.6, VOCD, TA = -40 C to 85 C, -15 mV to 15 mV, page 6; BQ297xx datasheet, SLUSBU9I, section 6.6, VOCC, TA = -40 C to 85 C, -15 mV to 15 mV, page 6; CSD17313Q2 datasheet, SLPS260E, section 5.1, RDS(on) at VGS = 3 V, TYP and MAX, at 25 C, page 3; BQ297xx datasheet, SLUSBU9I, section 6.5, VOH of COUT and DOUT at BAT = 3.8 V, MIN, page 5; the fixture's cell, made up for tests/boards: 2.5 V to 4.3 V, 0.5 A in charge, 3 A in discharge]
+*   C3: 100n 16V on BAT, rated 16 V; the value it keeps is not judged: the datasheet asks 100 nF and no effective value [BQ297xx datasheet, SLUSBU9I, section 5.1.1, a 0.1 uF input capacitor on BAT, page 4; figure 9-1, page 19]
+.options tnom=25 temp=25
+VIN in 0 DC 5.25
+VSET iset 0 DC 1
+R1 iset 0 3600
+BU1 in out I=-590*i(vset)
+IU1 in 0 DC 1m
+VBAT out 0 DC 2.5
+.control
+op
+let ichg = i(vbat)
+let p_u1 = -v(in) * i(vin) - v(out) * i(vbat)
+print ichg p_u1
+.endc
+.end

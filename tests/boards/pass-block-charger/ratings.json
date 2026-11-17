@@ -1,0 +1,53 @@
+{
+  "pack": "ecss-q-st-30-11c-rev2",
+  "nets": {
+    "+5V": {
+      "volts": [
+        4.75,
+        5.25
+      ],
+      "source": "the input range of the charger block U1: charger(vin=(4.75, 5.25), cell=Cell(volts=(2.5, 4.3)))"
+    },
+    "+BATT": {
+      "volts": [
+        2.5,
+        4.3
+      ],
+      "source": "the cell of the charger block U1: charger(vin=(4.75, 5.25), cell=Cell(volts=(2.5, 4.3))); the fixture's cell, made up for tests/boards: 2.5 V to 4.3 V, 0.5 A in charge, 3 A in discharge"
+    },
+    "-BATT": {
+      "volts": [
+        -0.115,
+        0.115
+      ],
+      "source": "the cell's negative, 2 transistors from GND: under 115 mV, or U2 opens them [BQ297xx datasheet, SLUSBU9I, section 6.6, VOCD, TA = -40 C to 85 C, -15 mV to 15 mV, page 6]"
+    },
+    "U2_FETS": {
+      "volts": [
+        -0.115,
+        0.115
+      ],
+      "source": "between the 2 transistors, GND and -BATT: under 115 mV, or U2 opens them [BQ297xx datasheet, SLUSBU9I, section 6.6, VOCD, TA = -40 C to 85 C, -15 mV to 15 mV, page 6]"
+    },
+    "GND": {
+      "volts": [
+        0,
+        0
+      ],
+      "source": "the reference: J1 pin 2"
+    },
+    "CHG": {
+      "volts": [
+        0,
+        5.25
+      ],
+      "source": "the host's pull-up on J1 pin 3, to the input at the most"
+    }
+  },
+  "parts": {
+    "J3.1": {
+      "amps": 1.0,
+      "source": "the system's load on J3: 1 A at the most, this fixture's own"
+    }
+  }
+}
