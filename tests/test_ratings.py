@@ -2529,6 +2529,11 @@ STATED = {
             changed(STATED, "parts", to=7),
             "ratings.json: parts: an object is asked, with 1 key for each part or pin it states",
         ),
+        # GND and /GND are 1 net of the schematic: the second span would take the place of the first
+        (
+            changed(STATED, "nets", "/GND", to={"volts": [0, 5], "source": "x"}),
+            "ratings.json: nets: /GND: this net stands 2 times, as GND and as /GND",
+        ),
     ],
 )
 def test_a_project_file_that_is_wrong_in_1_place_is_refused_with_the_place(tmp_path, data, message):
@@ -2557,7 +2562,16 @@ def test_a_declared_net_is_found_with_or_without_the_slash_of_its_sheet(tmp_path
 
 CARD = {
     "pack": "t",
-    "document": dict.fromkeys(ratings.DOCUMENT_KEYS, "x"),
+    "document": {
+        "issuer": "x",
+        "number": "x",
+        "title": "x",
+        "revision": "x",
+        "url": "https://example.com/t.pdf",
+        "sha256": "0123456789abcdef" * 4,
+        "read": "2026-11-17",
+        "second_reader": "no",
+    },
     "rules": [
         {
             "id": "a",
@@ -2602,12 +2616,45 @@ CARD = {
             changed(CARD, "rules", 0, "id", to=["a"]),
             "pack.json: rule 1: id: text is asked, and there is none",
         ),
+        # a share that rises with the temperature is no derating
+        (
+            changed(CARD, "rules", 0, "above", "falls_to", to=0.6),
+            "pack.json: rule 1: above: `falls_to` is above `max`",
+        ),
+        # the document: a word is no URL, no SHA256 and no date, and a word in place of `no` would
+        # count the pack as read a second time
+        (
+            changed(CARD, "document", "url", to="x"),
+            "pack.json: document: url: a whole URL is asked, as https://example.com/file.pdf",
+        ),
+        (
+            changed(CARD, "document", "sha256", to="0123456789abcdef"),
+            "pack.json: document: sha256: 64 hex digits are asked",
+        ),
+        (
+            changed(CARD, "document", "read", to="x"),
+            "pack.json: document: read: write the date as YYYY-MM-DD",
+        ),
+        (
+            changed(CARD, "document", "read", to="2026-02-30"),
+            "pack.json: document: read: write the date as YYYY-MM-DD",
+        ),
+        (
+            changed(CARD, "document", "second_reader", to="x"),
+            "pack.json: document: second_reader: write `no`, or the date as YYYY-MM-DD",
+        ),
+        (
+            changed(CARD, "document", "second_reader", to="No"),
+            "pack.json: document: second_reader: write `no`, or the date as YYYY-MM-DD",
+        ),
     ],
 )
 def test_a_pack_that_is_wrong_in_1_place_is_refused_with_the_place(tmp_path, data, message):
     path = tmp_path / "pack.json"
     path.write_text(json.dumps(CARD), encoding="utf-8")
     assert ratings.read_pack(path).rule("capacitor.voltage", "capacitor.ceramic").max == 0.5
+    path.write_text(json.dumps(changed(CARD, "document", "second_reader", to="2026-11-18")), encoding="utf-8")
+    assert ratings.read_pack(path).document["second_reader"] == "2026-11-18"
     assert refused(ratings.read_pack, path, data).startswith(message)
 
 
@@ -2731,6 +2778,69 @@ SWITCHING = {"topology": "buck", "hertz": [1e6, 2e6], "page": 7}
         # what a regulator gives is a rating too: its load is divided by it
         (changed(ADJUSTABLE, "pins", 3, "amps", to=0), "x.json: pin FB: amps: 0 is not above 0"),
         (regulator(amps=0), "x.json: pin OUT: amps: 0 is not above 0"),
+        # 1 pin number stands in 1 entry, and 1 name names 1 entry: a second one would be judged on
+        # the first one's limits, or not at all
+        (
+            changed(MCU_FACTS, "pins", 2, "numbers", to=["1"]),
+            "x.json: pin PA0: numbers: `1` stands in pin VDD too",
+        ),
+        (
+            changed(MCU_FACTS, "pins", 2, "numbers", to=["3", "3"]),
+            "x.json: pin PA0: numbers: `3` stands 2 times",
+        ),
+        (
+            changed(MCU_FACTS, "pins", 2, "name", to="VDD"),
+            "x.json: pin 3: name: `VDD` is the name of pin 1 too",
+        ),
+        # a span of limits stands least first, as a span of numbers does
+        (
+            changed(MCU_FACTS, "pins", 0, "abs", to=[4.0, -0.3]),
+            "x.json: pin VDD: abs: the span's first number, 4, is above its second, -0.3",
+        ),
+        (
+            changed(MCU_FACTS, "pins", 2, "abs", to=[[{"pin": "VDD", "plus": 0.3}, 4.6], -0.5]),
+            "x.json: pin PA0: abs: the span's first number, 4.6, is above its second, -0.5",
+        ),
+        (
+            changed(
+                MCU_FACTS, "pins", 2, "abs", to=[{"pin": "VDD", "plus": 0.3}, {"pin": "VDD", "plus": -0.3}]
+            ),
+            "x.json: pin PA0: abs: the span's first limit, pin VDD +0.3, is above its second, pin VDD -0.3",
+        ),
+        (
+            changed(MCU_FACTS, "pins", 2, to=pin("PA0", ["3"], "input", abs=[-0.5, 4.6], operating=[3.6, 0])),
+            "x.json: pin PA0: operating: the span's first number, 3.6, is above its second, 0",
+        ),
+        # an output swings between 2 pins: 1 pin named 2 times drives nothing
+        (
+            changed(MCU_FACTS, "pins", 2, "swing", to=["VSS", "VSS"]),
+            "x.json: pin PA0: swing: `VSS` stands 2 times: the 2 names are 2 pins",
+        ),
+        # a source: a word in place of `no` would count the entry as read a second time
+        (
+            changed(RESISTOR, "source", "second_reader", to="No"),
+            "x.json: source: second_reader: write `no`, or the date as YYYY-MM-DD",
+        ),
+        (
+            changed(RESISTOR, "source", "second_reader", to="not yet"),
+            "x.json: source: second_reader: write `no`, or the date as YYYY-MM-DD",
+        ),
+        (
+            changed(RESISTOR, "source", "read", to="never"),
+            "x.json: source: read: write the date as YYYY-MM-DD",
+        ),
+        (
+            changed(RESISTOR, "source", "read", to="2026-99-99"),
+            "x.json: source: read: write the date as YYYY-MM-DD",
+        ),
+        (
+            changed(RESISTOR, "source", "url", to="www.example.com/r.pdf"),
+            "x.json: source: url: a whole URL is asked, as https://example.com/file.pdf",
+        ),
+        (
+            changed(RESISTOR, "source", "sha256", to="x"),
+            "x.json: source: sha256: 64 hex digits are asked",
+        ),
     ],
 )
 def test_facts_that_are_wrong_in_1_place_are_refused_with_the_place(tmp_path, data, message):
