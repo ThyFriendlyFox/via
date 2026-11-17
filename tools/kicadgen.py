@@ -4255,9 +4255,14 @@ class Design:
                 + f"\n\n# Copied by the workcenter from {src.name} (Design.fab); edit the source, not this file.\n"
             )
         files.update(self.lib_tables(out_dir))
-        for rel, text in self.files.items():
+        for rel in self.files:  # all are judged before any is written
             if Path(rel).is_absolute() or ".." in Path(rel).parts:
                 raise ValueError(f"Design.files: {rel} is no path under the project")
+            if not Path(rel).parts:
+                raise ValueError(f"Design.files: {rel} names no file under the project")
+            if out_dir / rel in files:
+                raise ValueError(f"Design.files: {rel} is a file write() makes itself")
+        for rel, text in self.files.items():
             (out_dir / rel).parent.mkdir(parents=True, exist_ok=True)
             files[out_dir / rel] = text
         for p, text in files.items():

@@ -167,20 +167,40 @@ def buck(  # noqa: PLR0913, PLR0915
             f"buck {u}: the input reaches {ratings.si(reach, 'V')}, VIN of {ic} operates from "
             f"{ratings.si(low, 'V')} to {ratings.si(high, 'V')} [{source}]"
         )
+    if amps <= 0:
+        raise Refused(
+            f"buck {u}: a load of {ratings.si(amps, 'A')}: the block sizes its parts and its deck's load, "
+            f"VOUT / IOUT, for a load over 0 A [{_where(chip, 'amps_max')}]"
+        )
     if amps > chip["amps_max"]["value"]:
         raise Refused(
             f"buck {u}: the load of {ratings.si(amps, 'A')} is over {ic}'s "
             f"{ratings.si(chip['amps_max']['value'], 'A')} [{_where(chip, 'amps_max')}]"
+        )
+    if vout < chip["vout_min"]["value"]:
+        raise Refused(
+            f"buck {u}: VOUT of {ratings.si(vout, 'V')} is under "
+            f"{ratings.si(chip['vout_min']['value'], 'V')} [{_where(chip, 'vout_min')}]"
+        )
+    if vout > vin_low:
+        raise Refused(
+            f"buck {u}: VOUT of {ratings.si(vout, 'V')} is over the least input, {ratings.si(vin_low, 'V')} "
+            f"[{_where(chip, 'vout_min')}]"
         )
     term = chip_facts.data["switching"]
     hertz = term["hertz"][0]
     eta = term.get("efficiency", note["efficiency"]["value"])
     sums = []
     duty = vout / (vin_high * eta)  # equation 1
-    sums.append(f"{u}: D = {_g(vout)} V / ({_g(vin_high)} V x {_g(eta)}) = {duty:.4f} [{eq('1')}]")
+    line = f"D = {_g(vout)} V / ({_g(vin_high)} V x {_g(eta)}) = {duty:.4f}"
+    if duty > 1:
+        raise Refused(
+            f"buck {u}: {line}, over 1: the switch would be on for more than its period [{eq('1')}]"
+        )
+    sums.append(f"{u}: {line} [{eq('1')}]")
 
     # The inductor: the value the datasheet recommends (section 3), then the first in the stock whose
-    # facts hold the peak of equation 4.
+    # facts hold the peak of equation 4 with the datasheet's margin, and carry the load.
     henries = chip["henries"]["value"]
     coils = []
     for item in stock:
@@ -192,32 +212,46 @@ def buck(  # noqa: PLR0913, PLR0915
             f"buck {u}: no stocked inductor of {ratings.si(henries, 'H')} with facts in {facts} "
             f"[{_where(chip, 'henries')}; {short}, {note['inductor_choice']}]"
         )
+    margin = chip["saturation_margin"]["value"]
+    pct = f"{margin * 100:g} %"
+    peak_where = f"{eq('4')}, and {note['inductor_rule'].split(':')[0]}; {_where(chip, 'saturation_margin')}"
+
+    def ripple_of(f: ratings.Facts) -> tuple[float, float, str]:
+        """dIL of equation 2 at the least inductance: the part's tolerance or table 4's note 1, the larger."""
+        low = max(f.data["tolerance"], chip["henries_low"]["value"])
+        where = _where(chip, "henries_low") if low > f.data["tolerance"] else f.source
+        least = henries * (1 - low)
+        return least, (vin_high - vout) * duty / (hertz * least), f"less {low * 100:g} % [{where}]"
+
     taken = None
     missed = []
     for item, f in coils:
-        least = henries * (1 - f.data["tolerance"])
-        ripple = (vin_high - vout) * duty / (hertz * least)  # equation 2
+        least, ripple, low = ripple_of(f)
         peak = ripple / 2 + amps  # equation 4
         saturation = f.data["amps_saturation"]
-        if peak < saturation and amps <= f.data.get("amps_rms", math.inf):
-            taken = (item, f, least, ripple, peak)
+        rms = f.data.get("amps_rms")
+        if peak * (1 + margin) > saturation:
+            missed.append(f"{item.mpn} saturates at {ratings.si(saturation, 'A')}")
+        elif rms is not None and amps > rms:
+            missed.append(f"{item.mpn} is rated {ratings.si(rms, 'A')} rms")
+        else:
+            taken = (item, f, least, ripple, peak, low)
             break
-        missed.append(f"{item.mpn} saturates at {ratings.si(saturation, 'A')}")
     imax = chip["ilim_min"]["value"]
     if taken is None:
-        item, f = coils[0]
-        least = henries * (1 - f.data["tolerance"])
-        ripple = (vin_high - vout) * duty / (hertz * least)
+        _, ripple, _ = ripple_of(coils[0][1])
+        peak = ripple / 2 + amps
         raise Refused(
-            f"buck {u}: no stocked inductor holds the peak of {ratings.si(ripple / 2 + amps, 'A')} "
-            f"({ratings.si(amps, 'A')} of load and half of {ratings.si(ripple, 'A')} of ripple): "
-            f"{', '.join(missed)} [{eq('4')}, and {note['inductor_rule'].split(':')[0]}]"
+            f"buck {u}: no stocked inductor holds the peak of {ratings.si(peak, 'A')} with {pct} of margin, "
+            f"{ratings.si(peak * (1 + margin), 'A')} ({ratings.si(amps, 'A')} of load and half of "
+            f"{ratings.si(ripple, 'A')} of ripple): {', '.join(missed)} [{peak_where}]"
         )
-    item, f, least, ripple, peak = taken
+    item, f, least, ripple, peak, low = taken
     coil = refs["inductor"]
     sums.append(
         f"{coil}: dIL = ({_g(vin_high)} V - {_g(vout)} V) x {duty:.4f} / ({ratings.si(hertz, 'Hz')} x "
-        f"{ratings.si(least, 'H')}) = {ratings.si(ripple, 'A')} [{eq('2')}]"
+        f"{ratings.si(least, 'H')}) = {ratings.si(ripple, 'A')} [{eq('2')}]; "
+        f"L is {ratings.si(henries, 'H')} {low}"
     )
     most = imax - ripple / 2  # equation 3
     if most < amps:
@@ -230,14 +264,22 @@ def buck(  # noqa: PLR0913, PLR0915
         f"{u}: IMAXOUT = {ratings.si(imax, 'A')} - {ratings.si(ripple, 'A')} / 2 = {ratings.si(most, 'A')}, "
         f"the load is {ratings.si(amps, 'A')} [{eq('3')}]"
     )
+    rms = f.data.get("amps_rms")
+    carries = (
+        f" and is rated {ratings.si(rms, 'A')} rms"
+        if rms is not None
+        else "; its rms current is not judged: its facts give none"
+    )
     sums.append(
         f"{coil}: ISW(max) = {ratings.si(ripple, 'A')} / 2 + {ratings.si(amps, 'A')} = "
-        f"{ratings.si(peak, 'A')}; {item.mpn} saturates at {ratings.si(f.data['amps_saturation'], 'A')} "
-        f"[{eq('4')}, and {note['inductor_rule'].split(':')[0]}]"
+        f"{ratings.si(peak, 'A')}, {ratings.si(peak * (1 + margin), 'A')} with {pct} of margin; {item.mpn} "
+        f"saturates at {ratings.si(f.data['amps_saturation'], 'A')}{carries} [{peak_where}]"
     )
     inductor = item
 
     # The divider: R2 as the datasheet gives it, R1 by equation 11 from the reference's typical value.
+    # The output it sets is held to the output asked: the asked must lie in the span the reference's
+    # limits and the resistors' tolerances give (the datasheet's equation 2).
     vfb = pins["FB"]["volts"]
     reference = (vfb[0] + vfb[1]) / 2
     r2 = chip["r2"]["value"]
@@ -247,60 +289,67 @@ def buck(  # noqa: PLR0913, PLR0915
         raise Refused(f"buck {u}: no stocked resistor of {ratings.si(r2, 'ohm')} [{_where(chip, 'r2')}]")
     r1 = r2 * (vout / reference - 1)  # equation 11
     top = min(resistors, key=lambda pair: abs(ratings.part_value(pair[0].value) - r1))
+    r_top, t_top, t_bottom = (
+        ratings.part_value(top[0].value),
+        top[1].data["tolerance"],
+        bottom[1].data["tolerance"],
+    )
+    vset = reference * (1 + r_top / r2)  # the datasheet's equation 2
+    out_low = vfb[0] * (1 + r_top * (1 - t_top) / (r2 * (1 + t_bottom)))
+    out_high = vfb[1] * (1 + r_top * (1 + t_top) / (r2 * (1 - t_bottom)))
+    divider_where = f"{eq('11')}; {_where(chip, 'vout_set')}"
+    span = (
+        f"{ratings.si(out_low, 'V')} to {ratings.si(out_high, 'V')} with VFB of {ratings.si(vfb[0], 'V')} to "
+        f"{ratings.si(vfb[1], 'V')} and the resistors' tolerances"
+    )
+    if not out_low <= vout <= out_high:
+        raise Refused(
+            f"buck {u}: R1 of {top[0].value} and R2 of {bottom[0].value} set VOUT to {_g(vset)} V, {span}, "
+            f"and {_g(vout)} V is asked: no stocked resistor is near {ratings.si(r1, 'ohm')} "
+            f"[{divider_where}]"
+        )
     sums.append(
         f"{refs['top']}: R1 = {ratings.si(r2, 'ohm')} x ({_g(vout)} V / {_g(reference)} V - 1) = "
-        f"{ratings.si(r1, 'ohm')}; the stock's nearest is {top[0].value} [{eq('11')}]"
+        f"{ratings.si(r1, 'ohm')}; the stock's nearest is {top[0].value}, which sets {_g(vset)} V, "
+        f"and {span} [{divider_where}]"
     )
-    over = ratings.part_value(top[0].value) * (1 + top[1].data["tolerance"])
-    under = r2 * (1 - bottom[1].data["tolerance"])
-    out_high = vfb[1] * (1 + over / under)
 
-    # The output capacitors: table 4's value, of which its note keeps a share, counted on each
-    # capacitor's kept value at the output's highest voltage.
-    table = chip["output_farads"]["rows"]
-    asked = next(c for lo, hi, c in table if vout >= lo and (hi is None or vout < hi))
-    needed = asked * chip["kept_share"]["value"]
     caps = [
         (s, cf) for s in stock if (cf := _facts(found, s)) is not None and cf.kind.startswith("capacitor")
     ]
-    out_cap = next(((s, cf) for s, cf in caps if "kept" in cf.data and cf.data["volts"] > out_high), None)
-    if out_cap is None:
-        raise Refused(
-            f"buck {u}: no stocked capacitor with facts on the value it keeps, rated over "
-            f"{ratings.si(out_high, 'V')} [{_where(chip, 'output_farads')}]"
-        )
-    share = ratings.kept_at(out_cap[1].data["kept"], out_high)
-    each = ratings.part_value(out_cap[0].value) * (1 - out_cap[1].data["tolerance"]) * share
-    count = math.ceil(needed / each)
     names = refs["output"].split()
-    if count > len(names):
-        raise Refused(
-            f"buck {u}: {count} output capacitors are asked and refs['output'] names {len(names)}: "
-            f"{' '.join(names)}"
-        )
+    out_cap, count, asked, needed, each = _output_caps(u, chip, caps, vset, out_high, names)
     outs = names[:count]
+    lo, hi = chip["output_span"]["value"]
+    farads = ratings.part_value(out_cap[0].value)
     sums.append(
-        f"{', '.join(outs)}: {ratings.si(asked, 'F')} of output capacitance, {ratings.si(needed, 'F')} "
-        f"effective; each keeps {ratings.si(each, 'F')} at {ratings.si(out_high, 'V')} "
-        f"[{_where(chip, 'output_farads')}; note 2]"
+        f"{', '.join(outs)}: {ratings.si(asked, 'F')} of output capacitance for {_g(vset)} V, "
+        f"{ratings.si(needed, 'F')} effective; each, {out_cap[1].data['dielectric']}, keeps "
+        f"{ratings.si(each, 'F')} at {ratings.si(out_high, 'V')}; {count} x {ratings.si(farads, 'F')} = "
+        f"{ratings.si(count * farads, 'F')}, within {ratings.si(lo, 'F')} to {ratings.si(hi, 'F')} "
+        f"[{_output_where(chip)}]"
     )
     least_in = chip["input_farads"]["value"]
+    good = chip["dielectrics"]["value"]
     in_cap = next(
         (
             (s, cf)
             for s, cf in caps
-            if cf.data["volts"] >= vin_high and ratings.part_value(s.value) >= least_in
+            if cf.data["volts"] >= vin_high
+            and ratings.part_value(s.value) >= least_in
+            and cf.data.get("dielectric") in good
         ),
         None,
     )
+    in_where = f"{_where(chip, 'input_farads')}; {chip['dielectrics']['where']}"
     if in_cap is None:
         raise Refused(
-            f"buck {u}: no stocked capacitor of {ratings.si(least_in, 'F')} or more rated for "
-            f"{ratings.si(vin_high, 'V')} [{_where(chip, 'input_farads')}]"
+            f"buck {u}: no stocked capacitor of {ratings.si(least_in, 'F')} or more, {' or '.join(good)}, "
+            f"rated for {ratings.si(vin_high, 'V')} [{in_where}]"
         )
     sums.append(
         f"{refs['input']}: {ratings.si(ratings.part_value(in_cap[0].value), 'F')} of input capacitance, "
-        f"{ratings.si(least_in, 'F')} asked [{_where(chip, 'input_farads')}]"
+        f"{in_cap[1].data['dielectric']}, {ratings.si(least_in, 'F')} asked [{in_where}]"
     )
 
     # The parts, placed from the block's corner on the sheet and on the board.
@@ -341,6 +390,55 @@ def buck(  # noqa: PLR0913, PLR0915
         u, ic, vin_high, vout, amps, hertz, inductor, coil, f, outs, *out_cap, chip_facts, short, sums
     )
     return Block("buck", sums, entries, rows, files)
+
+
+def _output_where(chip: dict) -> str:
+    span, dielectrics = chip["output_span"]["where"], chip["dielectrics"]["where"]
+    return f"{_where(chip, 'output_farads')}; note 2; {span}; {dielectrics}"
+
+
+def _output_caps(u, chip, caps, vset, out_high, names):  # noqa: PLR0913
+    """The output capacitors: table 4's value for the output the divider sets, of which its note keeps a
+    share, counted on each capacitor's kept value at the output's highest voltage. The first stocked
+    capacitor that is rated over that voltage, of a dielectric the datasheet names, and whose count fits
+    the refs and the datasheet's span of output capacitance is taken."""
+    table = chip["output_farads"]["rows"]
+    asked = next((c for lo, hi, c in table if vset >= lo and (hi is None or vset < hi)), None)
+    if asked is None:
+        raise Refused(f"buck {u}: table 4 has no row for {_g(vset)} V [{_where(chip, 'output_farads')}]")
+    needed = asked * chip["kept_share"]["value"]
+    lo, hi = chip["output_span"]["value"]
+    good = chip["dielectrics"]["value"]
+    missed = []
+    for s, cf in caps:
+        farads = ratings.part_value(s.value)
+        share = ratings.kept_at(cf.data["kept"], out_high) if "kept" in cf.data else None
+        if "kept" not in cf.data:
+            missed.append(f"{s.mpn}: its facts give no value it keeps under voltage")
+        elif cf.data["volts"] <= out_high:
+            missed.append(
+                f"{s.mpn}: rated {ratings.si(cf.data['volts'], 'V')}, not over {ratings.si(out_high, 'V')}"
+            )
+        elif cf.data.get("dielectric") not in good:
+            missed.append(f"{s.mpn}: {cf.data.get('dielectric', 'no dielectric')}, not {' or '.join(good)}")
+        elif share is None:
+            missed.append(f"{s.mpn}: its kept value ends under {ratings.si(out_high, 'V')}")
+        else:
+            each = farads * (1 - cf.data["tolerance"]) * share
+            count = math.ceil(needed / each)
+            total = f"{count} x {ratings.si(farads, 'F')} = {ratings.si(count * farads, 'F')}"
+            if count > len(names):
+                missed.append(f"{s.mpn}: {count} are asked and refs['output'] names {len(names)}")
+            elif count * farads > hi * (1 + ratings.EPS):  # part_value("10u") is 9.999999999999999e-06
+                missed.append(f"{s.mpn}: {total}, over {ratings.si(hi, 'F')}")
+            elif count * farads < lo * (1 - ratings.EPS):
+                missed.append(f"{s.mpn}: {total}, under {ratings.si(lo, 'F')}")
+            else:
+                return (s, cf), count, asked, needed, each
+    raise Refused(
+        f"buck {u}: no stocked capacitor gives {ratings.si(asked, 'F')} of output capacitance for "
+        f"{_g(vset)} V: {'; '.join(missed)} [{_output_where(chip)}]"
+    )
 
 
 def buck_deck(  # noqa: PLR0913
