@@ -1,0 +1,17 @@
+{
+  "kind": "transistor.mosfet",
+  "mpn": "CSD17313Q2",
+  "transistors": [{"gate": "3", "drain": ["1", "2", "5", "6", "8"], "source": ["4", "7"]}],
+  "volts_drain_source": 30,
+  "volts_gate_source": 8,
+  "amps_drain": 5,
+  "source": {
+    "document": "CSD17313Q2 datasheet, SLPS260E",
+    "revision": "March 2010, revised September 2015",
+    "url": "https://www.ti.com/lit/ds/symlink/csd17313q2.pdf",
+    "sha256": "a833a4cc6cc5471d2aa2faaed97ab37414a66162131a496d4a33080ae818910f",
+    "read": "2026-11-17",
+    "second_reader": "no"
+  },
+  "note": "Absolute Maximum Ratings, page 1: VDS 30 V, VGS +10 V and -8 V (the entry holds the lesser, 8 V), ID 5 A package limited. The pins are KiCad's Package_SON:Texas_DQK: drain 1, 2, 5, 6 and 8, gate 3, source 4 and 7, as the top view of page 1 draws them. RDS(on) at VGS = 3 V is 31 mohm typical and 42 mohm at the most, at 25 C (section 5.1, page 3); the facts hold no key for it, and rules/blocks/charger.json holds it. No thermal entry is held: RthetaJA, 67 C/W at the most, is the 1 inch2 copper pad's of section 5.2, page 3"
+}

@@ -38,6 +38,9 @@ An entry is 1 of 3 sorts:
 | `samsung-cl10a106kp8nnn` | web page | CL10A106KP8NNN | 5 values read on 2026-11-17 |
 | `coilcraft-806` | datasheet | 806 (XAL40xx) | Revised 02/25/26 |
 | `bourns-srn2010ta` | datasheet | SRN2010TA | REV. 06/25 |
+| `ti-slusce2` | datasheet | SLUSCE2D (bq21040, the charger block's charger) | April 2016, revised January 2019 |
+| `ti-slusbu9` | datasheet | SLUSBU9I (BQ297xx, the charger block's protector) | March 2014, revised August 2024 |
+| `ti-slps260` | datasheet | SLPS260E (CSD17313Q2, the charger block's transistors) | March 2010, revised September 2015 |
 | `ti-sbvs320` | datasheet | SBVS320D (TLV755P) | November 2017, revised September 2024 |
 | `ti-slva477c` | application note | SLVA477C | December 2011, revised September 2026 |
 | `ti-spra953d` | application note | SPRA953D | December 2003, revised March 2024 |
@@ -91,6 +94,11 @@ at 10 V; temperature +2.279548422744333 % at -55 C and -14.72482795860936 % at 8
 `tests/boards/fail-sim-bias` take each as 1 + its value / 100. On 2026-11-17, 3 fetches each of
 Samsung's, JLCPCB's and OSH Park's pages gave 3 SHA256s for each page. Every value stood on the first
 copy and on the third; the second was not read for its values.
+
+`ti-slusce2`, `ti-slusbu9` and `ti-slps260`, the datasheets of the charger block
+(`rules/blocks/charger.json`) and of its parts' facts, were downloaded on 2026-11-17 under the
+workcenter's name. Their number, title and revision are those of their first page; the SHA256 is that
+of each copy, and `workcenter references fetch` has not asked for them yet.
 
 ## The 3 commands
 

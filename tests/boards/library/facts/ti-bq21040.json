@@ -1,0 +1,27 @@
+{
+  "kind": "ic",
+  "mpn": "BQ21040DBVR",
+  "family": "linear",
+  "source": {
+    "document": "bq21040 datasheet, SLUSCE2D",
+    "revision": "April 2016, revised January 2019",
+    "url": "https://www.ti.com/lit/ds/symlink/bq21040.pdf",
+    "sha256": "66c454e4978439d20bfa64038ffd8e0b85bb0d9c0cc421c6b7a972cbdbb82f3f",
+    "read": "2026-11-17",
+    "second_reader": "no"
+  },
+  "note": "The DBV package, SOT-23-6, pins of section 6 on page 3. The absolute limits are section 7.1, page 3: IN -0.3 V to 30 V, OUT and the other pins -0.3 V to 7 V, CHG sinks 15 mA at the most. VIN's operating range is section 7.3's range restricted by VDPM and VOVP, 4.45 V to 6.45 V, page 4. OUT gives 0.8 A at the most (section 7.3, IOUT, page 4) and regulates the cell at 4.16 V to 4.23 V (section 7.5, VOUT(REG), page 5): the entry holds OUT as a regulated pin at that span, which is what it drives; under it the cell holds OUT. The supply's current is section 7.5's ICC MAX, 1000 uA, page 5. CHG's low is VOL 0.4 V at 5 mA, page 6. The 2 capacitors are the 1 uF of figure 10 on IN and on OUT, page 17, which section 9.2.2.2 recommends on page 18; the pin table gives 1 uF to 10 uF, page 3. The figures are section 7.4's DBV column, page 4; junction_max is the absolute maximum, 150 C, page 3, and section 7.3 recommends 125 C at the most, page 4",
+  "thermal": {"junction_max": 150, "theta_ja": 130.8, "theta_jc": 75.2, "theta_jb": 45.5, "psi_jt": 31.8, "psi_jb": 45.5, "page": [3, 4]},
+  "needs": [
+    {"capacitor": {"from": "VIN", "to": "GND", "farads_min": 1e-6, "effective": true}, "page": [3, 17, 18]},
+    {"capacitor": {"from": "OUT", "to": "GND", "farads_min": 1e-6, "effective": true}, "page": [3, 17, 18]}
+  ],
+  "pins": [
+    {"numbers": ["1"], "name": "TS", "role": "input", "abs": [-0.3, 7], "page": [3]},
+    {"numbers": ["2"], "name": "OUT", "role": "regulated", "abs": [-0.3, 7], "volts": [4.16, 4.23], "amps": 0.8, "page": [3, 4, 5]},
+    {"numbers": ["3"], "name": "CHG", "role": "open_drain", "abs": [-0.3, 7], "swing": ["GND"], "amps": 0.015, "page": [3, 6]},
+    {"numbers": ["4"], "name": "ISET", "role": "analog", "abs": [-0.3, 7], "page": [3]},
+    {"numbers": ["5"], "name": "GND", "role": "ground"},
+    {"numbers": ["6"], "name": "VIN", "role": "supply", "abs": [-0.3, 30], "operating": [4.45, 6.45], "amps": 0.001, "page": [3, 4, 5]}
+  ]
+}

@@ -644,13 +644,16 @@ def test_every_document_a_rule_of_the_repository_names_is_in_the_index():
     place beside it and so is also 1 not judged), and the facts of its fixtures' TCA9534, its
     datasheet: 44 + 2 + 1 = 47 named in 29 + 2 = 31 files, 7 + 1 = 8 not judged. Its fixtures'
     made-up-i2c.json, the 32nd file, holds 1 made-up header that names no document: 8 + 1 = 9 not
-    judged."""
+    judged. The charger block adds rules/blocks/charger.json, 3 (its charger's and its protector's
+    datasheets, each also named by a `short` label with no place beside it, 2 not judged, and its FET's
+    datasheet in a `where`), and the facts of its 3 parts, 1 each: 47 + 3 + 3 = 53 named in 32 + 4 = 36
+    files, 9 + 2 = 11 not judged."""
     globs = json.loads(INDEX.read_text(encoding="utf-8"))["rules"]
     files = sorted({p for pattern in globs for p in ROOT.glob(pattern)})
     code, out = run("rules", *files)
     assert code == 0, out
     assert out.splitlines()[-1] == (
-        "references rules: 47 documents named in 32 files, 47 in the index, 0 not; 9 not judged"
+        "references rules: 53 documents named in 36 files, 53 in the index, 0 not; 11 not judged"
     )
 
 
