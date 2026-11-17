@@ -20,7 +20,7 @@
     {
       "id": "nearest",
       "check": "esd_nearest",
-      "where": "section 2.1, Summary, page 4: place the TVS as near to the connector as design rules allow, and the protected IC much further from the TVS than the TVS is to the connector"
+      "where": "section 2.1, Summary, page 4: place the TVS as near to the connector as design rules allow, and the protected IC much further from the TVS than the TVS is to the connector, and route directly from the ESD Source to the TVS; section 2.3, page 6: Case 2, where the ESD current branches to the Protected IC before the TVS, is to be avoided"
     },
     {
       "id": "no-via",

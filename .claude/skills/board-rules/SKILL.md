@@ -107,14 +107,19 @@ A layout pack holds rules a maker's note states (`rules/board/README.md`,
       route the line from the connector to the TVS first, then on.
     - `fail esd J1.1 <net>: C1.1 lies 2.89 mm of copper from D1.1, and D1.1 lies 4.67 mm of copper from J1.1`:
       shorten the copper from the connector to the TVS, or lengthen it to the part.
+    - `fail esd J1.1 <net>: C1.1 stands 2.85 mm from J1.1, and D1.1 stands 4.35 mm from J1.1`,
+      or `C1.1 lies ... mm of copper from J1.1`: the line branches to the
+      part before the TVS. Move the TVS nearer the connector than any
+      other part, and route the connector to the TVS, then on.
     - `fail esd J1.1 <net>: joined to D1.1 through a via`: route the
       connector's pin to the TVS on 1 layer.
     - `fail length to width <net> on <layer> ...: 3.69 mm by 1.2 mm, 3.07 to 1, limit 3 to 1`:
       widen the trace, shorten it, or make the net a pour.
     - `not judged esd J2: board-rules.json does not say whether it leaves the device`:
       add J2 to `connectors` or to `inside`. A connector is found by its
-      reference (J, P) or its footprint's library (`Connector_...`); name
-      any other connector in `connectors` yourself.
+      reference (J, P, X) or its footprint's library (`Connector_...`,
+      `TerminalBlock_...`, `Battery`); name any other connector in
+      `connectors` yourself, since nothing reports it.
     - `not judged esd: board-rules.json names no part under connectors`:
       name each connector a cable or a user reaches.
     - `not judged esd ...: no copper joins it to D1.1`: route the net.

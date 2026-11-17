@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 import boardrules  # noqa: E402
 import layoutrules  # noqa: E402
-from boardrules import Board, Pad, Track, Via  # noqa: E402
+from boardrules import Board, Pad, Track, Via, Zone  # noqa: E402
 from ratings import Refusal  # noqa: E402
 
 ESD = layoutrules.read_pack(ROOT / "rules" / "board" / "ti-slva680a-esd.json")
@@ -170,6 +170,54 @@ def test_esd_protected_part_nearer_along_the_copper():
     ]
 
 
+def tee_board(tracks: list[Track], u1_at: tuple[float, float]) -> Board:
+    """J1.1 at (0, 0), D1.1 at (3, 0) with D1.2 on GND at (4.5, 0), U1.1 (the part D1 protects) at
+    `u1_at`, all on net A, joined by `tracks`."""
+    b = board()
+    b.pads += [
+        Pad("J1", "1", "A", (0.0, 0.0), 0.85, BOTH),
+        Pad("J1", "2", "GND", (0.0, 2.54), 0.85, BOTH),
+        Pad("D1", "1", "A", (3.0, 0.0), 0.3, ["F.Cu"]),
+        Pad("D1", "2", "GND", (4.5, 0.0), 0.3, ["F.Cu"]),
+        Pad("U1", "1", "A", u1_at, 0.3, ["F.Cu"]),
+        Pad("U1", "4", "GND", (5.0, -5.0), 0.3, ["F.Cu"]),
+    ]
+    b.tracks += tracks
+    b.nets = {"A", "GND"}
+    return b
+
+
+def test_esd_protected_part_nearer_the_connector_than_the_protector():
+    """A T at J1.1: D1.1 3 mm across, U1.1 2.5 mm down. From the protector's side all holds: U1.1 stands
+    sqrt(3^2 + 2.5^2) = 3.91 mm from D1.1 (> 3), and lies 3 + 2.5 = 5.5 mm of copper from it (> 3). But U1.1
+    stands 2.5 mm from J1.1, nearer than D1.1 at 3 mm (SLVA680A section 2.3, Case 2, page 6)."""
+    b = tee_board(
+        [Track("A", "F.Cu", 0.25, (0.0, 0.0), (3.0, 0.0)), Track("A", "F.Cu", 0.25, (0.0, 0.0), (0.0, -2.5))],
+        (0.0, -2.5),
+    )
+    assert [line.split(" [")[0] for line in lines(layoutrules.findings(b, ESD, STATED))] == [
+        "fail esd J1.1 A: U1.1 stands 2.5 mm from J1.1, and D1.1 stands 3 mm from J1.1"
+    ]
+
+
+def test_esd_protected_part_nearer_the_connector_along_the_copper():
+    """D1.1 at (3, 0) is reached round (0, 4) and (3, 4): 4 + 3 + 4 = 11 mm of copper. U1.1 at (-4, 0) is
+    4 mm of copper from J1.1, straight, and stands 4 mm from it (> 3), 7 mm from D1.1 (> 3), and 11 + 4 =
+    15 mm of copper from D1.1 (> 11). Along the copper the connector reaches U1.1 first: 4 <= 11."""
+    b = tee_board(
+        [
+            Track("A", "F.Cu", 0.25, (0.0, 0.0), (0.0, 4.0)),
+            Track("A", "F.Cu", 0.25, (0.0, 4.0), (3.0, 4.0)),
+            Track("A", "F.Cu", 0.25, (3.0, 4.0), (3.0, 0.0)),
+            Track("A", "F.Cu", 0.25, (0.0, 0.0), (-4.0, 0.0)),
+        ],
+        (-4.0, 0.0),
+    )
+    assert [line.split(" [")[0] for line in lines(layoutrules.findings(b, ESD, STATED))] == [
+        "fail esd J1.1 A: U1.1 lies 4 mm of copper from J1.1, and D1.1 lies 11 mm of copper from J1.1"
+    ]
+
+
 def test_esd_part_at_the_same_distance_fails():
     """R1.1 at (2, 2) stands sqrt(0 + 4) = 2 mm from D1.1, the same as D1.1 from J1.1: not further."""
     out = lines(layoutrules.findings(esd_board((2.0, 2.0)), ESD, STATED))
@@ -191,6 +239,27 @@ def test_esd_connector_found_by_its_footprint():
     b.pads.append(Pad("CN1", "1", "A", (20.0, 0.0), 0.85, BOTH, "Connector_USB:USB_C_Receptacle_GCT_USB4105"))
     assert lines(layoutrules.findings(b, ESD, STATED)) == [
         "not judged esd CN1: board-rules.json does not say whether it leaves the device "
+        "(`connectors` or `inside`)"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("ref", "footprint"),
+    [
+        ("X1", "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal"),
+        ("TB1", "TerminalBlock:TerminalBlock_MaiXu_MX126-5.0-02P_1x02_P5.00mm"),
+        ("BT1", "Battery:BatteryHolder_Keystone_3034_1x20mm"),
+        ("X2", "MyProject:USB_C"),
+    ],
+)
+def test_esd_connector_found_by_terminal_block_battery_library_or_letter_x(ref, footprint):
+    """KiCad's TerminalBlock libraries and its Battery library hold parts a cable or a cell is fixed to, and
+    X is a letter schematics give a connector: each is a connector, and one not stated is not judged. A
+    crystal named X1 is then not judged too, until board-rules.json names it under `inside`."""
+    b = esd_board()
+    b.pads.append(Pad(ref, "1", "A", (20.0, 0.0), 0.85, BOTH, footprint))
+    assert lines(layoutrules.findings(b, ESD, STATED)) == [
+        f"not judged esd {ref}: board-rules.json does not say whether it leaves the device "
         "(`connectors` or `inside`)"
     ]
 
@@ -326,6 +395,82 @@ def test_power_ratio_judges_ground_nets():
     ]
 
 
+SQUARE = [(4.0, -3.0), (10.0, -3.0), (10.0, 3.0), (4.0, 3.0)]
+
+
+def pour_board(pour_layer: str, via: bool, pad_in_pour: bool = False) -> Board:
+    """U1.2 on GND at (0, 0) on F.Cu, a 0.25 mm F.Cu track to (6, 0), and a GND pour on `pour_layer` over x 4
+    to 10, y -3 to 3; with `via`, a via at (6, 0); with `pad_in_pour`, C1.2 on B.Cu at (8, 0)."""
+    b = board()
+    b.pads += [
+        Pad("U1", "2", "GND", (0.0, 0.0), 0.2, ["F.Cu"]),
+        Pad("U1", "1", "VBUS", (0.0, -1.0), 0.2, ["F.Cu"]),
+    ]
+    if pad_in_pour:
+        b.pads.append(Pad("C1", "2", "GND", (8.0, 0.0), 0.3, ["B.Cu"]))
+    b.tracks.append(Track("GND", "F.Cu", 0.25, (0.0, 0.0), (6.0, 0.0)))
+    if via:
+        b.vias.append(Via("GND", (6.0, 0.0), 0.6, 0.3, BOTH))
+    b.zones.append(Zone("GND", pour_layer, [SQUARE]))
+    b.nets = {"VBUS", "GND"}
+    return b
+
+
+def test_power_ratio_through_a_via_into_the_pour_of_the_other_face():
+    """6 mm of 0.25 mm track from U1.2 to a via at (6, 0) that drops into the B.Cu pour: 6 / 0.25 = 24 to 1,
+    the pour met at the via. A pad of the pour (C1.2 at (8, 0) on B.Cu) changes nothing."""
+    want = [
+        "fail length to width GND on F.Cu from U1.2 (0, 0) to the GND pour on B.Cu (6, 0): 6 mm by 0.25 mm, "
+        "24 to 1, limit 3 to 1"
+    ]
+    for pad_in_pour in (False, True):
+        b = pour_board("B.Cu", via=True, pad_in_pour=pad_in_pour)
+        assert [line.split(" [")[0] for line in lines(layoutrules.findings(b, EMI, POWER))] == want
+
+
+def test_power_ratio_names_where_the_trace_meets_the_pour():
+    """The track ends at (6, 0) inside the F.Cu pour over x 4 to 10: the line names (6, 0), not U1.2's
+    (0, 0) at the other end."""
+    b = pour_board("F.Cu", via=False)
+    assert [line.split(" [")[0] for line in lines(layoutrules.findings(b, EMI, POWER))] == [
+        "fail length to width GND on F.Cu from U1.2 (0, 0) to the GND pour on F.Cu (6, 0): 6 mm by 0.25 mm, "
+        "24 to 1, limit 3 to 1"
+    ]
+
+
+ARC_PCB = """(kicad_pcb (version 20240108) (generator "pcbnew")
+ (general (thickness 1.6))
+ (layers (0 "F.Cu" signal) (31 "B.Cu" signal) (44 "Edge.Cuts" user))
+ (net 0 "") (net 1 "VBUS") (net 2 "GND")
+ (footprint "Capacitor_SMD:C_0402_1005Metric" (layer "F.Cu") (at 9 9)
+  (property "Reference" "C9") (pad "2" smd rect (at 0 0) (size 0.2 0.2) (layers "F.Cu") (net 2 "GND")))
+ (footprint "Capacitor_SMD:C_0402_1005Metric" (layer "F.Cu") (at START)
+  (property "Reference" "U1") (pad "1" smd rect (at 0 0) (size 0.2 0.2) (layers "F.Cu") (net 1 "VBUS")))
+ (footprint "Capacitor_SMD:C_0402_1005Metric" (layer "F.Cu") (at END)
+  (property "Reference" "C1") (pad "1" smd rect (at 0 0) (size 0.2 0.2) (layers "F.Cu") (net 1 "VBUS")))
+ (arc (start START) (mid MID) (end END) (width WIDTH) (layer "F.Cu") (net 1))
+)"""
+
+
+@pytest.mark.parametrize(
+    ("start", "mid", "end", "width", "want"),
+    [
+        # A half circle of radius 1 from (0, 0) through (1, -1) to (2, 0): pi x 1 = 3.14 mm by 1 mm. Its 2
+        # chords would be 2 x sqrt(2) = 2.83 mm, under 3 to 1.
+        ("0 0", "1 -1", "2 0", "1", "3.14 mm by 1 mm, 3.14 to 1"),
+        # 270 degrees of radius 1 about (0, 0), from (1, 0) through (-0.70711, 0.70711) to (0, -1):
+        # 3 x pi / 2 = 4.71 mm by 1.4 mm, 3.37 to 1. The chords: 2 x 1.848 = 3.70 mm, 2.64 to 1.
+        ("1 0", "-0.70711 0.70711", "0 -1", "1.4", "4.71 mm by 1.4 mm, 3.37 to 1"),
+    ],
+)
+def test_power_ratio_measures_an_arc_along_the_arc(start, mid, end, width, want):
+    text = ARC_PCB.replace("START", start).replace("MID", mid).replace("END", end).replace("WIDTH", width)
+    out = [
+        line.split(" [")[0] for line in lines(layoutrules.findings(boardrules.read_board(text), EMI, POWER))
+    ]
+    assert len(out) == 1 and out[0].endswith(f": {want}, limit 3 to 1"), out
+
+
 def test_power_ratio_only_on_two_layers():
     """The rule speaks of a two-layer board: a 4-layer board is outside it, and the note says so."""
     four = ["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"]
@@ -411,6 +556,16 @@ def test_fixture_fail_layout_esd_breaks_each_rule():
         "fail esd J1.1 VBUS: joined to D1.1 through a via",
         "fail esd J1.2 /DA: R1.1 stands 3.94 mm from D2.1, and D2.1 stands 4.35 mm from J1.2",
         "fail esd J1.3 /DB: no protector on the net",
+    ]
+
+
+def test_fixture_fail_layout_tee_branches_before_the_tvs():
+    """VBUS branches at J1.1 (103, 104): D1.1 at 108.4 - 1.05 = 107.35, 4.35 mm across; the track up ends at
+    100.2 + 0.9125 = 101.1125, 2.8875 mm, inside C1.1, whose centre the footprint puts at 100.2 + 0.95 =
+    101.15. From D1.1, C1.1 stands sqrt(4.35^2 + 2.85^2) = 5.20 mm and lies 4.35 + 2.8875 = 7.24 mm of
+    copper away, both more than 4.35; but it stands 104 - 101.15 = 2.85 mm from J1.1, nearer than D1.1."""
+    assert [line.split(" [")[0] for line in fixture_findings("fail-layout-tee")] == [
+        "fail esd J1.1 VBUS: C1.1 stands 2.85 mm from J1.1, and D1.1 stands 4.35 mm from J1.1"
     ]
 
 
