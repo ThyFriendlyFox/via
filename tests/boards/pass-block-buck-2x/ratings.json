@@ -1,0 +1,25 @@
+{
+  "pack": "nasa-eee-inst-002",
+  "nets": {
+    "+5V": {
+      "volts": [
+        4.75,
+        5.25
+      ],
+      "source": "the input range of the buck block U1: buck(vin=(4.75, 5.25))"
+    },
+    "GND": {
+      "volts": [
+        0,
+        0
+      ],
+      "source": "the reference: J1 pin 2"
+    }
+  },
+  "parts": {
+    "J2.1": {
+      "amps": 1.0,
+      "source": "the load on J2: 1 A at the most, this fixture's own"
+    }
+  }
+}
