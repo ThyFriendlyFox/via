@@ -496,3 +496,6 @@ def buck_deck(  # noqa: PLR0913
         "sim/buck.expect.json": json.dumps(expect, indent=2) + "\n",
         "sim/corners.json": json.dumps(corners, indent=2) + "\n",
     }
+
+
+from blocks_ldo import ldo  # noqa: E402, F401  the linear regulator block, tools/blocks_ldo.py

@@ -539,12 +539,14 @@ def test_every_document_a_rule_of_the_repository_names_is_in_the_index():
     note and its IC's datasheet), the 4 facts files of 1 part under tests/boards/library 4 datasheets,
     passives.json 4, fail-sim-bias's parts.json 2 (Samsung's page and Coilcraft's 806, which
     passives.json names too), ti-tlv755p.json 1 (SBVS320): 2 + 1 + 2 + 4 + 4 + 2 + 1 = 16 named, in
-    2 + 1 + 1 + 8 files. made-up.json's 4 parts name no document: 4 not judged."""
+    2 + 1 + 1 + 8 files. The ldo block names SLVA079 and, for each of its 2 ICs, SBVS320: 3; and
+    ti-tlv755p-drv.json SBVS320: 1; 16 + 3 + 1 = 20, in 2 more files. made-up.json's 4 parts name no
+    document: 4 not judged."""
     code, out = run("rules")
     assert code == 0, out
-    files = 2 + 1 + 1 + 8
+    files = 2 + 1 + 2 + 9
     assert out.splitlines()[-1] == (
-        f"references rules: 16 documents named in {files} files, 16 in the index, 0 not; 4 not judged"
+        f"references rules: 20 documents named in {files} files, 20 in the index, 0 not; 4 not judged"
     )
 
 
