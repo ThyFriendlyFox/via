@@ -1,0 +1,2083 @@
+#!/usr/bin/env python3
+"""ratings — a schematic held to its parts' ratings.
+
+An electrical rules check knows a pin's type. It does not know that the pin dies above 3.6 V, that a
+16 V capacitor on a 12 V rail is past its derating, or that a regulator gives 200 mA. This module judges
+those from 4 things a project holds: its netlist, the facts of each part, the voltage of each net that
+nothing on the board fixes, and a rule pack whose every limit names its document.
+
+This module holds the parts that need no engine: reading the netlist kicad-cli writes, reading a part's
+Value, and working out the voltage span of each net. `tools/workcenter` runs kicad-cli. Standard library
+only.
+"""
+
+from __future__ import annotations
+
+import fnmatch
+import itertools
+import json
+import math
+import re
+import xml.etree.ElementTree as ET
+from dataclasses import dataclass, field
+from pathlib import Path
+
+# ---------------------------------------------------------------- the Value of a passive part
+
+# A schematic's Value as its writer meant it: m is milli and M is mega (ngspice reads both as milli, and
+# KiCad's own netlist writes 1M as 1Meg). Digits after the multiplier are the decimals: 4k7, 4R7.
+MULTIPLIER = {
+    "p": 1e-12, "n": 1e-9, "u": 1e-6, "µ": 1e-6, "μ": 1e-6, "m": 1e-3, "R": 1.0,
+    "k": 1e3, "K": 1e3, "M": 1e6, "Meg": 1e6, "meg": 1e6, "MEG": 1e6, "G": 1e9,
+}  # fmt: skip
+VALUE_RE = re.compile(r"(\d+)(?:\.(\d+))?(Meg|meg|MEG|[pnuµμmRkKMG])?(\d+)?(?:F|H|Ω|ohm|Ohm|ohms)?")
+
+
+def part_value(text: str) -> float | None:
+    """The number a Value holds for a resistor, a capacitor or an inductor, in ohms, farads or henries:
+    `4k7` is 4700, `100n` is 1e-7, `20m` is 0.02, `1M` is 1e6. What follows the first word (`2.2u
+    XAL4020-222`) or a slash (`100nF/50V`) is the part's name or its rating and is not read. None when
+    the Value is no number written one of these ways: a wrong number is a wrong verdict."""
+    words = text.split()
+    if not words:
+        return None
+    found = VALUE_RE.fullmatch(words[0].split("/")[0])
+    if not found:
+        return None
+    whole, decimals, multiplier, after = found.groups()
+    if decimals and after:  # 4.7k7
+        return None
+    if after and not multiplier:
+        return None
+    return float(f"{whole}.{decimals or after or 0}") * MULTIPLIER.get(multiplier or "R", 1.0)
+
+
+# ---------------------------------------------------------------- the netlist
+
+
+@dataclass(frozen=True)
+class Node:
+    """One pin on a net, as `kicad-cli sch export netlist --format kicadxml` writes it."""
+
+    ref: str
+    pin: str  # the pin's number
+    name: str  # the pin's name on its symbol; "" for a pin with none (a resistor's)
+    kind: str  # KiCad's electrical type: passive, input, output, bidirectional, power_in, power_out, ...
+    open: bool  # marked as left open on the sheet (KiCad writes `+no_connect` after the type)
+
+
+@dataclass
+class Part:
+    ref: str
+    value: str
+    footprint: str
+    symbol: str  # library:name, as the schematic took it
+    in_bom: bool
+    fields: dict[str, str] = field(default_factory=dict)
+    pins: dict[str, str] = field(default_factory=dict)  # pin number -> net
+
+
+@dataclass
+class Netlist:
+    parts: dict[str, Part]
+    nets: dict[str, list[Node]]
+
+
+def read_netlist(text: str) -> Netlist:
+    """The parts and nets of a netlist in KiCad's XML form. A net of the root sheet is written `/NAME`
+    and is NAME here, unless another net has that name already. Refuses what it cannot read whole."""
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError as exc:
+        raise ValueError(f"the netlist is not XML: {exc}") from None
+    components, nets = root.find("components"), root.find("nets")
+    if components is None or nets is None:
+        raise ValueError(f"the netlist has no <{'components' if components is None else 'nets'}>")
+    parts = {}
+    for comp in components.findall("comp"):
+        source = comp.find("libsource")
+        parts[comp.get("ref", "")] = Part(
+            ref=comp.get("ref", ""),
+            value=comp.findtext("value") or "",
+            footprint=comp.findtext("footprint") or "",
+            symbol=f"{source.get('lib', '')}:{source.get('part', '')}" if source is not None else "",
+            in_bom=all(p.get("name") != "exclude_from_bom" for p in comp.findall("property")),
+            fields={f.get("name", ""): f.text or "" for f in comp.findall("fields/field")},
+        )
+    written = [net.get("name", "") for net in nets.findall("net")]
+    out: dict[str, list[Node]] = {}
+    for net, raw in zip(nets.findall("net"), written, strict=True):
+        name = raw[1:] if raw.startswith("/") and raw[1:] not in written else raw
+        out[name] = []
+        for node in net.findall("node"):
+            ref, pin = node.get("ref", ""), node.get("pin", "")
+            kind, _, flag = (node.get("pintype") or "").partition("+")
+            # kicad-cli 10 writes a pin's name, an underscore and its number: `VDD_3` for pin 3, VDD
+            called = (node.get("pinfunction") or "").removesuffix(f"_{pin}")
+            out[name].append(Node(ref, pin, called, kind, flag == "no_connect"))
+            if ref not in parts:
+                raise ValueError(f"net {name} names {ref}, which is no part of the netlist")
+            if pin in parts[ref].pins:
+                raise ValueError(f"{ref} pin {pin} is on {parts[ref].pins[pin]} and on {name}")
+            parts[ref].pins[pin] = name
+    return Netlist(parts, out)
+
+
+# ---------------------------------------------------------------- resistors between held nets
+
+CORNERS = 4096  # the most corners of resistor tolerances one group is solved at
+
+
+def _solve(matrix: list[list[float]], right: list[float]) -> list[float]:
+    """Gaussian elimination with partial pivoting, for the few nodes of one group."""
+    n = len(right)
+    rows = [row[:] + [right[i]] for i, row in enumerate(matrix)]
+    for col in range(n):
+        pivot = max(range(col, n), key=lambda r: abs(rows[r][col]))
+        rows[col], rows[pivot] = rows[pivot], rows[col]
+        for r in range(col + 1, n):
+            factor = rows[r][col] / rows[col][col]
+            for c in range(col, n + 1):
+                rows[r][c] -= factor * rows[col][c]
+    out = [0.0] * n
+    for r in range(n - 1, -1, -1):
+        out[r] = (rows[r][n] - sum(rows[r][c] * out[c] for c in range(r + 1, n))) / rows[r][r]
+    return out
+
+
+def resistor_spans(
+    resistors: list[tuple[str, str, float, float]], held: dict[str, tuple[float, float]]
+) -> dict[str, tuple[float, float]]:
+    """The voltage span of each node that only resistors tie to nodes held at a span.
+
+    resistors: (node, node, least ohms, greatest ohms). held: node -> (least volts, greatest volts).
+    A network of resistors puts each free node at a mean of its held nodes with weights that are never
+    negative, so a node is highest when every held node is highest. Its voltage is monotone in each
+    resistance, so over the tolerances the extreme lies at a corner: each group is solved at every
+    corner, up to CORNERS of them. A group with more takes the hull of the held nodes it meets, which
+    is coarser and never inside the truth. A node no resistor ties to a held node is left out."""
+    for a, b, least, greatest in resistors:
+        if not 0 <= least <= greatest:
+            raise ValueError(f"the resistor between {a} and {b} has the values {least} and {greatest}")
+    leader: dict[str, str] = {}
+
+    def find(node: str) -> str:
+        leader.setdefault(node, node)
+        while leader[node] != node:
+            leader[node] = leader[leader[node]]
+            node = leader[node]
+        return node
+
+    for a, b, _, greatest in resistors:
+        find(a), find(b)
+        if greatest == 0:  # a link: its 2 nodes are 1
+            leader[find(a)] = find(b)
+    fixed: dict[str, tuple[float, float]] = {}
+    for node, (low, high) in held.items():
+        seen = fixed.get(find(node))
+        fixed[find(node)] = (low, high) if seen is None else (min(low, seen[0]), max(high, seen[1]))
+    links = [(find(a), find(b), least, greatest) for a, b, least, greatest in resistors if greatest > 0]
+    links = [link for link in links if link[0] != link[1]]
+    free = sorted({n for a, b, _, _ in links for n in (a, b)} - set(fixed))
+    spans: dict[str, tuple[float, float]] = dict(fixed)
+    group_of: dict[str, int] = {}
+    for start in free:
+        if start in group_of:
+            continue
+        group, stack = [], [start]
+        while stack:
+            node = stack.pop()
+            if node in group_of:
+                continue
+            group_of[node] = len(group_of)
+            group.append(node)
+            stack += [o for a, b, _, _ in links for n, o in ((a, b), (b, a)) if n == node and o not in fixed]
+        inside = [link for link in links if link[0] in group or link[1] in group]
+        edge = sorted({n for a, b, _, _ in inside for n in (a, b) if n in fixed})
+        if not edge:
+            continue
+        hull = (min(fixed[n][0] for n in edge), max(fixed[n][1] for n in edge))
+        loose = [i for i, link in enumerate(inside) if link[2] != link[3]]
+        if 2 ** len(loose) > CORNERS or any(link[2] == 0 for link in inside):
+            spans.update(dict.fromkeys(group, hull))
+            continue
+        index = {node: i for i, node in enumerate(group)}
+        lows, highs = [hull[1]] * len(group), [hull[0]] * len(group)
+        for corner in itertools.product((2, 3), repeat=len(loose)):
+            ohms = [link[2] for link in inside]
+            for i, end in zip(loose, corner, strict=True):
+                ohms[i] = inside[i][end]
+            for end, best, pick in ((0, lows, min), (1, highs, max)):
+                matrix = [[0.0] * len(group) for _ in group]
+                right = [0.0] * len(group)
+                for (a, b, _, _), r in zip(inside, ohms, strict=True):
+                    for near, far in ((a, b), (b, a)):
+                        if near in index:
+                            matrix[index[near]][index[near]] += 1 / r
+                            if far in index:
+                                matrix[index[near]][index[far]] -= 1 / r
+                            else:
+                                right[index[near]] += fixed[far][end] / r
+                for i, volts in enumerate(_solve(matrix, right)):
+                    best[i] = pick(best[i], volts)
+        spans.update({node: (lows[index[node]], highs[index[node]]) for node in group})
+    return {node: spans[find(node)] for node in leader if node not in held and find(node) in spans}
+
+
+# ---------------------------------------------------------------- the span of each net
+
+Span = tuple[float, float]
+# KiCad's pin types that put nothing on a net. Of a part with no facts, every other pin may.
+QUIET_KINDS = frozenset({"input", "power_in", "no_connect"})
+
+
+@dataclass(frozen=True)
+class Drive:
+    """What a pin puts on its net while it drives, from `low` to `high` volts. An end is a number, or
+    (pin, plus): the voltage of that pin's net plus `plus`. An output swings from its part's ground
+    pin to its supply pin; a regulator's output is 2 numbers."""
+
+    low: float | tuple[str, float]
+    high: float | tuple[str, float]
+
+
+@dataclass
+class Model:
+    """What 1 part does to the nets it sits on, as far as their voltages go.
+
+    ohms: a resistor between the part's 2 pins, least and greatest. (0, 0) joins them.
+    links: pairs of pins that are 1 node: a fuse, a ferrite, a jumper.
+    passes: (pin, pin, one_way). The 2 pins conduct or not, and nothing says which: a transistor's
+        channel, a switch, an inductor. one_way is a diode from the first pin to the second.
+    drives: pin -> what it puts on its net.
+    quiet: the pins that put nothing on their net. None: every pin not named above is quiet (a
+        capacitor). A set: a pin in none of these is a source nothing describes."""
+
+    ohms: Span | None = None
+    links: list[tuple[str, str]] = field(default_factory=list)
+    passes: list[tuple[str, str, bool]] = field(default_factory=list)
+    drives: dict[str, Drive] = field(default_factory=dict)
+    quiet: frozenset[str] | None = None
+
+
+@dataclass
+class Spans:
+    """stress: every voltage a net can stand at, with its sources on or off and each output driving
+    or released; 0 V is always inside, since any net can be unpowered. A rating is held to it.
+    held: what a net's own sources hold it to while they are on. A supply pin's working range is held
+    to it. why: for a net with no span, the reason."""
+
+    stress: dict[str, Span]
+    held: dict[str, Span]
+    why: dict[str, str]
+
+
+def _hull(spans: list[Span]) -> Span:
+    return (min(s[0] for s in spans), max(s[1] for s in spans))
+
+
+def net_spans(
+    net: Netlist,
+    models: dict[str, Model],
+    declared: dict[str, Span],
+    without: str = "",
+    forced: dict[str, Span] | None = None,
+    fed: dict[str, list[tuple[str, Span]]] | None = None,
+) -> Spans:
+    """The spans of every net, from the nets the project declares and what each part's model says.
+
+    A net takes the hull of all that can reach it: its own sources, every net it meets through a part
+    that may conduct, and, unless a declaration or a regulator holds it, every net it meets through a
+    resistor: a released output follows its pull-up. A group of nets that resistors alone tie to
+    others, with no source of its own, is solved (resistor_spans): a divider's tap is not its top
+    rail. A net that a source nothing describes can reach has no span, unless the project declares it.
+    Not modelled: a resistor from a higher rail that lifts a regulator's output while it is off.
+
+    without: a part whose own sources are left out. A pin is rated against what the others put on
+    its net, never against itself.
+    forced: nets taken at a span whatever their sources give: a rail at its least, to judge a pin
+    whose limit follows that rail.
+    fed: net -> (the regulator, the span it holds the net at) for an output no pin's model gives: one
+    a divider sets (divider_output)."""
+    forced = forced or {}
+    declared = {**declared, **forced}
+    for name in declared:
+        if name not in net.nets:
+            raise ValueError(f"the declared net {name} is no net of the schematic")
+    leader = {name: name for name in net.nets}
+
+    def find(name: str) -> str:
+        while leader[name] != name:
+            leader[name] = leader[leader[name]]
+            name = leader[name]
+        return name
+
+    def nets_of(ref: str, pins: tuple[str, ...]) -> list[str]:
+        missing = [p for p in pins if p not in net.parts[ref].pins]
+        if missing:
+            raise ValueError(f"the facts of {ref} name pin {missing[0]}, which its symbol does not have")
+        return [net.parts[ref].pins[p] for p in pins]
+
+    kind_of = {(n.ref, n.pin): n.kind for nodes in net.nets.values() for n in nodes}
+    for ref, part in net.parts.items():
+        model = models.get(ref)
+        if model is None:
+            continue
+        pairs = list(model.links)
+        if model.ohms is not None:
+            if len(part.pins) != 2:
+                raise ValueError(f"{ref} is given a resistance and has {len(part.pins)} pins, not 2")
+            if model.ohms[1] == 0:
+                pairs.append(tuple(part.pins))
+        for pair in pairs:
+            a, b = nets_of(ref, pair)
+            leader[find(a)] = find(b)
+
+    held_by: dict[str, list[Span]] = {}  # node -> the spans its own sources give
+    for name, span in declared.items():
+        held_by.setdefault(find(name), []).append(span)
+    stated = set(held_by)  # nodes the project declares: nothing takes their span away
+    pinned = {find(name) for name in forced}  # nodes taken at a span: their parts' drives are left out
+    for name, regulators in (fed or {}).items():
+        for ref, span in regulators:
+            if ref != without and find(name) not in pinned:
+                held_by.setdefault(find(name), []).append(span)
+    swings: list[tuple[str, str, str, Drive]] = []  # node, ref, pin, a drive that follows other pins
+    unknown: dict[str, str] = {}  # node -> why it has no span
+    edges: list[tuple[str, str, bool, str]] = []  # node, node, one_way, the part that joins them
+    resistors: list[tuple[str, str, float, float, str]] = []
+    for ref, part in net.parts.items():
+        model = models.get(ref)
+        if model is not None and model.ohms is not None and model.ohms[1] > 0:
+            a, b = (find(n) for n in part.pins.values())
+            if a != b:
+                resistors.append((a, b, *model.ohms, ref))
+        for a_pin, b_pin, one_way in model.passes if model is not None else ():
+            a, b = (find(n) for n in nets_of(ref, (a_pin, b_pin)))
+            if a != b:
+                edges.append((a, b, one_way, ref))
+        if ref == without:
+            continue
+        named = set()
+        if model is not None:
+            named = {p for pair in model.links for p in pair} | {
+                p for a, b, _ in model.passes for p in (a, b)
+            }
+            for pin, drive in model.drives.items():
+                (name,) = nets_of(ref, (pin,))
+                if find(name) in pinned:
+                    continue
+                if isinstance(drive.low, tuple) or isinstance(drive.high, tuple):
+                    swings.append((find(name), ref, pin, drive))
+                else:
+                    held_by.setdefault(find(name), []).append((drive.low, drive.high))
+        for pin, name in part.pins.items():
+            if model is None:
+                silent = kind_of[(ref, pin)] in QUIET_KINDS
+            else:
+                silent = (
+                    model.ohms is not None
+                    or pin in named
+                    or pin in model.drives
+                    or model.quiet is None
+                    or pin in model.quiet
+                )
+            if not silent and find(name) not in stated:
+                unknown.setdefault(
+                    find(name), f"{ref} pin {pin} can put a voltage on {name} that nothing states"
+                )
+
+    # A resistor does not move a net that a declaration or a regulator holds; a released output it does.
+    # A part that may conduct joins 2 such nets all the same: a closed switch between 2 sources. Nothing
+    # moves a net the project declares at 0 V, the reference every other voltage is counted from.
+    stiff = set(held_by)
+    ground = {find(name) for name, span in declared.items() if span == (0.0, 0.0)}
+    joins = [(e[0], e[1], e[3], stated) for e in edges] + [(r[0], r[1], r[4], stiff) for r in resistors]
+
+    def spread(reasons: dict[str, str]) -> None:
+        """A net that meets one with no span, through a resistor or a part that may conduct, has none,
+        unless it is one that such a part cannot move."""
+        stack = list(reasons)
+        while stack:
+            node = stack.pop()
+            for a, b, ref, firm in joins:
+                for near, far in ((a, b), (b, a)):
+                    if near == node and far not in firm and far not in reasons:
+                        root = reasons[node].split("; ")[0]
+                        reasons[far] = f"{root}; {ref} joins the 2 nets"
+                        stack.append(far)
+
+    spread(unknown)
+    while True:
+        span: dict[str, Span] = {}
+        for node, spans in held_by.items():
+            if node not in unknown:
+                span[node] = _hull([*spans, (0.0, 0.0)])
+
+        def widen(node: str, low: float, high: float, span: dict[str, Span] = span) -> bool:
+            before = span.get(node)
+            after = (
+                (min(low, 0.0), max(high, 0.0))
+                if before is None
+                else (min(before[0], low), max(before[1], high))
+            )
+            span[node] = after
+            return after != before
+
+        def end(
+            ref: str, value: float | tuple[str, float], which: int, span: dict[str, Span] = span
+        ) -> float | None:
+            if not isinstance(value, tuple):
+                return value
+            (name,) = nets_of(ref, (value[0],))
+            return span[find(name)][which] + value[1] if find(name) in span else None
+
+        changed = True
+        while changed:
+            changed = False
+            for node, ref, _, drive in swings:
+                low, high = end(ref, drive.low, 0), end(ref, drive.high, 1)
+                if node not in unknown and low is not None and high is not None:
+                    changed |= widen(node, low, high)
+            for a, b, one_way, _ in edges:
+                if a in unknown or b in unknown:
+                    continue
+                if a in span and b not in ground:  # the first pin lifts the second
+                    changed |= widen(b, 0.0 if one_way else span[a][0], span[a][1])
+                if b in span and a not in ground:  # the second pin pulls the first down
+                    changed |= widen(a, span[b][0], 0.0 if one_way else span[b][1])
+            for a, b, *_ in resistors:
+                if a in unknown or b in unknown:
+                    continue
+                if a in span and b not in stiff:
+                    changed |= widen(b, *span[a])
+                if b in span and a not in stiff:
+                    changed |= widen(a, *span[b])
+        stuck = {}
+        for node, ref, pin, drive in swings:
+            for value, which in ((drive.low, 0), (drive.high, 1)):
+                if node not in unknown and node not in stated and end(ref, value, which) is None:
+                    (other,) = nets_of(ref, (value[0],))
+                    stuck[node] = (
+                        f"{ref} pin {pin} swings with its pin {value[0]} on {other}, which has no span"
+                    )
+        if not stuck:
+            break
+        unknown.update(stuck)
+        spread(unknown)
+
+    held: dict[str, Span] = {}
+    sources = {node: list(spans) for node, spans in held_by.items()}
+    for node, ref, _, drive in swings:
+        low, high = end(ref, drive.low, 0), end(ref, drive.high, 1)
+        if node in span and low is not None and high is not None:
+            sources.setdefault(node, []).append((low, high))
+    for node, spans in sources.items():
+        if node in span:
+            held[node] = _hull(spans)
+
+    busy = {n for e in edges for n in e[:2]} | set(sources)
+    loose = {n for r in resistors for n in r[:2] if n in span and n not in busy}
+    solved = resistor_spans(
+        [r[:4] for r in resistors if r[0] in loose or r[1] in loose],
+        {n: span[n] for r in resistors for n in r[:2] if n in span and n not in loose},
+    )
+    for node in loose & set(solved):
+        span[node] = (min(solved[node][0], 0.0), max(solved[node][1], 0.0))
+
+    out = Spans({}, {}, {})
+    for name, nodes in net.nets.items():
+        node = find(name)
+        if node in span:
+            out.stress[name] = span[node]
+            if node in held:
+                out.held[name] = held[node]
+        elif len(nodes) > 1 or node != name:
+            out.why[name] = unknown.get(node, "nothing drives it")
+    return out
+
+
+# ---------------------------------------------------------------- the files a project holds
+
+
+class Refusal(ValueError):
+    """A file the command does not take. The message names the file, the place in it and what is wrong."""
+
+
+def _json(path: Path) -> object:
+    def once(pairs: list[tuple[str, object]]) -> dict:
+        """An object whose every key stands 1 time: JSON's own reader keeps the last and says nothing."""
+        seen: dict[str, object] = {}
+        for key, value in pairs:
+            if key in seen:
+                raise Refusal(f"{path.name}: `{key}` stands 2 times")
+            seen[key] = value
+        return seen
+
+    try:
+        return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=once)
+    except OSError as exc:
+        raise Refusal(f"{path.name}: {exc.strerror}") from None
+    except Refusal:
+        raise
+    except ValueError as exc:
+        raise Refusal(f"{path.name}: not JSON: {exc}") from None
+
+
+def _keys(where: str, data: object, required: tuple[str, ...], optional: tuple[str, ...] = ()) -> dict:
+    """An object with every required key and no key outside the 2 lists."""
+    known = required + optional
+    if not isinstance(data, dict):
+        raise Refusal(f"{where}: an object is asked, with the keys {', '.join(known)}")
+    for key in data:
+        if key not in known:
+            raise Refusal(f"{where}: `{key}` is no key here; the keys are {', '.join(known)}")
+    for key in required:
+        if key not in data:
+            raise Refusal(f"{where}: `{key}` is missing")
+    return data
+
+
+def _number(where: str, value: object, least: float | None = None, most: float | None = None) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise Refusal(f"{where}: {value!r} is no number")
+    if least is not None and value < least:
+        raise Refusal(f"{where}: {value:g} is under {least:g}")
+    if most is not None and value > most:
+        raise Refusal(f"{where}: {value:g} is over {most:g}")
+    return float(value)
+
+
+def _span(where: str, value: object) -> Span:
+    if not isinstance(value, list) or len(value) != 2:
+        raise Refusal(f"{where}: a span is asked, [least, greatest]")
+    low, high = _number(where, value[0]), _number(where, value[1])
+    if low > high:
+        raise Refusal(f"{where}: the span's first number, {low:g}, is above its second, {high:g}")
+    return (low, high)
+
+
+def _text(where: str, value: object) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise Refusal(f"{where}: text is asked, and there is none")
+    return value.strip()
+
+
+def _names(where: str, value: object) -> list[str]:
+    if not isinstance(value, list) or not value or not all(isinstance(v, str) and v for v in value):
+        raise Refusal(f"{where}: a list of names is asked")
+    return value
+
+
+def _page(where: str, value: object) -> None:
+    """A page of the source: a number from 1, or a list of them for facts read on more than 1 page."""
+    pages = value if isinstance(value, list) and value else [value]
+    if not all(isinstance(p, int) and not isinstance(p, bool) and p > 0 for p in pages):
+        raise Refusal(f"{where}: page: a page number is asked, or a list of them")
+
+
+def _p(page: int | list[int]) -> str:
+    """A page as a finding's source names it: `p 4`, `p 4 and 5`."""
+    pages = [str(p) for p in (page if isinstance(page, list) else [page])]
+    return "p " + (", ".join(pages[:-1]) + " and " + pages[-1] if len(pages) > 1 else pages[0])
+
+
+# ---------------------------------------------------------------- a rule pack
+
+# The stresses the command computes. A pack gives each a factor and the place in its document.
+STRESSES = (
+    "capacitor.voltage",
+    "resistor.voltage",
+    "resistor.power",
+    "diode.reverse",
+    "mosfet.drain_source",
+    "mosfet.gate_source",
+    "rail.load",
+)
+DOCUMENT_KEYS = ("issuer", "number", "title", "revision", "url", "sha256", "read", "second_reader")
+
+
+@dataclass(frozen=True)
+class Rule:
+    id: str
+    stress: str
+    kinds: tuple[str, ...]
+    max: float  # the share of the part's rating the stress may reach
+    where: str  # the clause, the table and the page of the pack's document
+    above: tuple[str, float, float, float] | None  # ambient or case, from this C, falls to, at this C
+
+
+@dataclass
+class Pack:
+    name: str
+    document: dict[str, str]
+    rules: list[Rule]
+
+    def rule(self, stress: str, kind: str) -> Rule | None:
+        """The rule for a stress on a part kind: `capacitor` covers `capacitor.ceramic`."""
+        for rule in self.rules:
+            if rule.stress == stress and any(kind == k or kind.startswith(k + ".") for k in rule.kinds):
+                return rule
+        return None
+
+
+def read_pack(path: Path) -> Pack:
+    data = _keys(path.name, _json(path), ("pack", "document", "rules"))
+    document = _keys(f"{path.name}: document", data["document"], DOCUMENT_KEYS)
+    for key in DOCUMENT_KEYS:
+        _text(f"{path.name}: document: {key}", document[key])
+    if not isinstance(data["rules"], list) or not data["rules"]:
+        raise Refusal(f"{path.name}: rules: a list of rules is asked")
+    rules: list[Rule] = []
+    for i, raw in enumerate(data["rules"], start=1):
+        where = f"{path.name}: rule {i}"
+        rule = _keys(where, raw, ("id", "stress", "kinds", "max", "where"), ("above",))
+        if rule["stress"] not in STRESSES:
+            known = ", ".join(STRESSES)
+            raise Refusal(f"{where}: `{rule['stress']}` is no stress the command computes; they are {known}")
+        if rule["id"] in {r.id for r in rules}:
+            raise Refusal(f"{where}: the id `{rule['id']}` stands 2 times")
+        above = None
+        if "above" in rule:
+            term = _keys(f"{where}: above", rule["above"], ("temperature", "celsius", "falls_to", "at"))
+            if term["temperature"] not in ("ambient", "case"):
+                raise Refusal(f"{where}: above: temperature is `ambient` or `case`")
+            above = (
+                term["temperature"],
+                _number(f"{where}: above: celsius", term["celsius"]),
+                _number(f"{where}: above: falls_to", term["falls_to"], 0, 1),
+                _number(f"{where}: above: at", term["at"]),
+            )
+            if above[3] <= above[1]:
+                raise Refusal(f"{where}: above: `at` is not above `celsius`")
+        rules.append(
+            Rule(
+                _text(f"{where}: id", rule["id"]),
+                rule["stress"],
+                tuple(_names(f"{where}: kinds", rule["kinds"])),
+                _number(f"{where}: max", rule["max"], 0, 1),
+                _text(f"{where}: where", rule["where"]),
+                above,
+            )
+        )
+    return Pack(_text(f"{path.name}: pack", data["pack"]), document, rules)
+
+
+def factor(rule: Rule, ambient: float | None) -> tuple[float, str]:
+    """The share a rule allows at the project's ambient temperature, and what the report says of it."""
+    if rule.above is None:
+        return rule.max, ""
+    kind, knee, floor, end = rule.above
+    if ambient is None:
+        return rule.max, f"{rule.id}: judged as under {knee:g} C, since the project states no ambient"
+    note = "" if kind == "ambient" else f"{rule.id}: the part's own heating above the ambient is not counted"
+    if ambient <= knee:
+        return rule.max, note
+    if ambient >= end:
+        return floor, note
+    return rule.max + (floor - rule.max) * (ambient - knee) / (end - knee), note
+
+
+# ---------------------------------------------------------------- a project's ratings.json
+
+OWNER_RE = re.compile(r"the owner's decision of \d{4}-\d{2}-\d{2}")
+
+
+@dataclass
+class Project:
+    pack: str
+    ambient: float | None
+    nets: dict[str, Span]  # the nets nothing on the board fixes, by the netlist's own names
+    amps: dict[str, float]  # `R5`, or `J6.1` for 1 pin: a current nothing on the board gives
+    accepted: dict[tuple[str, str], str]  # (part, rule) -> the owner's words for the report
+    # `C7`: the greatest voltage across a part of 2 pins, where the spans of its 2 nets cannot give it
+    volts: dict[str, float] = field(default_factory=dict)
+
+
+def read_project(path: Path, net: Netlist) -> Project:
+    """A project's ratings.json, held to the netlist: a net or a part it names is one of the schematic."""
+    name = path.name
+    data = _keys(name, _json(path), ("pack", "nets"), ("ambient", "parts", "accepted"))
+    nets: dict[str, Span] = {}
+    for key, raw in _keys(f"{name}: nets", data["nets"], (), tuple(data["nets"])).items():
+        entry = _keys(f"{name}: nets: {key}", raw, ("volts", "source"))
+        _text(f"{name}: nets: {key}: source", entry["source"])
+        found = next((n for n in (key, key.lstrip("/"), f"/{key}") if n in net.nets), None)
+        if found is None:
+            raise Refusal(f"{name}: nets: {key}: no net of the schematic has this name")
+        nets[found] = _span(f"{name}: nets: {key}: volts", entry["volts"])
+    ambient = None
+    if "ambient" in data:
+        entry = _keys(f"{name}: ambient", data["ambient"], ("max", "source"))
+        _text(f"{name}: ambient: source", entry["source"])
+        ambient = _number(f"{name}: ambient: max", entry["max"])
+    amps: dict[str, float] = {}
+    volts: dict[str, float] = {}
+    parts = data.get("parts", {})
+    for key, raw in _keys(f"{name}: parts", parts, (), tuple(parts)).items():
+        entry = _keys(f"{name}: parts: {key}", raw, ("source",), ("amps", "volts"))
+        _text(f"{name}: parts: {key}: source", entry["source"])
+        ref, _, pin = key.partition(".")
+        if ref not in net.parts or (pin and pin not in net.parts[ref].pins):
+            raise Refusal(
+                f"{name}: parts: {key}: the schematic has no such part" + (" and pin" if pin else "")
+            )
+        if "amps" not in entry and "volts" not in entry:
+            raise Refusal(f"{name}: parts: {key}: `amps` or `volts` is asked")
+        if "amps" in entry:
+            amps[key] = _number(f"{name}: parts: {key}: amps", entry["amps"], 0)
+        if "volts" in entry:
+            if pin or len(net.parts[ref].pins) != 2:
+                raise Refusal(f"{name}: parts: {key}: volts: the voltage across a part of 2 pins is asked")
+            volts[key] = _number(f"{name}: parts: {key}: volts", entry["volts"], 0)
+    accepted: dict[tuple[str, str], str] = {}
+    if not isinstance(data.get("accepted", []), list):
+        raise Refusal(f"{name}: accepted: a list is asked")
+    for i, raw in enumerate(data.get("accepted", []), start=1):
+        where = f"{name}: accepted: entry {i}"
+        entry = _keys(where, raw, ("part", "rule", "why", "by"))
+        if not OWNER_RE.fullmatch(_text(f"{where}: by", entry["by"])):
+            raise Refusal(f"{where}: by: write `the owner's decision of YYYY-MM-DD`")
+        words = f"{_text(f'{where}: why', entry['why'])} ({entry['by']})"
+        accepted[(_text(f"{where}: part", entry["part"]), _text(f"{where}: rule", entry["rule"]))] = words
+    return Project(_text(f"{name}: pack", data["pack"]), ambient, nets, amps, accepted, volts)
+
+
+# ---------------------------------------------------------------- the facts of a part
+
+SOURCE_KEYS = (("document", "read", "second_reader"), ("revision", "url", "sha256"))
+WHICH = ("mpn", "mpns", "match", "symbol")  # how an entry names the parts it speaks of: exactly 1 of these
+CAPACITOR = (("tolerance", "volts"), ("farads", "dielectric", "kept"))
+PASSIVE = {  # kind -> the keys an entry must hold, and those it may
+    "resistor": (("tolerance", "watts", "volts"), ("ohms",)),
+    "capacitor.ceramic": CAPACITOR,
+    "capacitor.tantalum": CAPACITOR,
+    "capacitor.film": CAPACITOR,
+    "capacitor.electrolytic": CAPACITOR,
+    "inductor": (("tolerance", "amps_saturation"), ("henries", "amps_rms")),
+    "ferrite": ((), ("amps", "volts")),
+    "fuse": (("amps",), ("volts",)),
+    "link": ((), ()),
+    "switch": ((), ("amps", "volts")),
+    "testpoint": ((), ()),
+    "mechanical": ((), ()),
+}
+OTHER = {
+    "connector": ((), ("pins",)),
+    # a rectifier, a switching or a Schottky diode is rated for a reverse voltage; a clamp (a zener, a
+    # TVS) stands off its working voltage and conducts above it
+    "diode.rectifier": (("diodes", "volts_reverse"), ("amps_forward",)),
+    "diode.clamp": (("diodes", "volts_standoff"), ()),
+    "transistor.mosfet": (
+        ("transistors", "volts_drain_source", "volts_gate_source"),
+        ("amps_drain", "watts"),
+    ),
+    "ic": (("family", "pins"), ("needs", "switching")),
+}
+FAMILIES = ("digital", "linear", "regulator.linear", "regulator.switching")
+# A pin's role -> the keys it must hold beside numbers, name, role and page, and those it may.
+# regulated: the pin its regulator holds at `volts`, or, with `set_by`, at what the divider on its
+# feedback pin sets. feedback: the pin its regulator holds at `volts` through a divider from its output.
+# `amps` of the 2 is what the regulator gives; `from` names the supply pin that current comes from.
+ROLES = {
+    "supply": (("abs",), ("operating", "amps")),
+    "ground": ((), ()),
+    "input": (("abs",), ()),
+    "analog": (("abs",), ()),
+    "output": (("abs", "swing"), ("amps",)),
+    "io": (("abs", "swing"), ("amps",)),
+    "open_drain": (("abs", "swing"), ("amps",)),
+    "regulated": (("abs",), ("volts", "set_by", "amps", "from")),
+    "feedback": (("abs", "volts"), ("amps", "from")),
+    "switched": (("abs", "swing"), ()),
+    "nc": ((), ()),
+}
+SWING = {"output": 2, "io": 2, "switched": 2, "open_drain": 1}  # how many pins a role's swing names
+OUTSIDE = ("source", "load", "nothing")  # what stands behind a connector's pin
+# TI SLVA477C, "Basic Calculation of a Buck Converter's Power Stage" (revised September 2026): the
+# efficiency its section 2 names for a duty cycle when a datasheet gives none, and where its sums stand.
+BUCK_EFFICIENCY = 0.9
+BUCK_NOTE = "TI SLVA477C, equations 1, 2 and 4"
+DIVIDER_NOTE = "TI SLVA477C, equation 11"
+
+
+@dataclass
+class Facts:
+    """What a datasheet says of 1 part, or of every part a pattern names."""
+
+    where: str  # the file, and the entry's place in it
+    kind: str
+    data: dict
+
+    def speaks_of(self, mpn: str, symbol: str, footprint: str) -> int:
+        """How closely the entry names a part: 3 by its part number, 2 by a pattern of it, 1 by its
+        symbol (and its footprint, when the entry names one), 0 not at all."""
+        data = self.data
+        if mpn and (data.get("mpn") == mpn or mpn in data.get("mpns", ())):
+            return 3
+        if mpn and "match" in data and fnmatch.fnmatchcase(mpn, data["match"]):
+            return 2
+        if data.get("symbol") == symbol and fnmatch.fnmatchcase(footprint, data.get("footprint", "*")):
+            return 1
+        return 0
+
+    @property
+    def name(self) -> str:
+        """The part number, the pattern or the symbol the entry names its parts by."""
+        data = self.data
+        return data.get("mpn") or data.get("match") or data.get("symbol") or data["mpns"][0]
+
+    @property
+    def source(self) -> str:
+        source = self.data["source"]
+        return ", ".join(v for v in (source["document"], source.get("revision", "")) if v)
+
+    @property
+    def read_twice(self) -> bool:
+        return self.data["source"]["second_reader"] != "no"
+
+
+def _limit(where: str, value: object) -> None:
+    """A limit: a number, {"pin": NAME, "plus": X} for another pin's voltage plus X, or a list of such."""
+    for one in value if isinstance(value, list) and value else [value]:
+        if isinstance(one, dict):
+            _keys(where, one, ("pin", "plus"))
+            _text(f"{where}: pin", one["pin"])
+            _number(f"{where}: plus", one["plus"])
+        else:
+            _number(where, one)
+
+
+def _pin_facts(where: str, pins: object) -> None:
+    if not isinstance(pins, list) or not pins:
+        raise Refusal(f"{where}: pins: a list of pins is asked")
+    names = [p.get("name") for p in pins if isinstance(p, dict)]
+    role_of = {p.get("name"): p.get("role") for p in pins if isinstance(p, dict)}
+    supplies = [name for name, role in role_of.items() if role == "supply"]
+    for i, raw in enumerate(pins, start=1):
+        here = f"{where}: pin {i}"
+        role = raw.get("role") if isinstance(raw, dict) else None
+        if role not in ROLES:
+            raise Refusal(f"{here}: role: one of {', '.join(ROLES)} is asked")
+        required, optional = ROLES[role]
+        pin = _keys(here, raw, ("numbers", "name", "role") + required, ("page",) + optional)
+        here = f"{where}: pin {_text(f'{here}: name', pin['name'])}"
+        _names(f"{here}: numbers", pin["numbers"])
+        if role == "regulated" and ("volts" in pin) == ("set_by" in pin):
+            raise Refusal(f"{here}: `volts`, or `set_by` with the name of its feedback pin: 1 of the 2")
+        if "set_by" in pin:
+            if role_of.get(pin["set_by"]) != "feedback":
+                raise Refusal(f"{here}: set_by: `{pin['set_by']}` is no pin of role feedback")
+            for key in ("amps", "from"):
+                if key in pin:
+                    raise Refusal(f"{here}: `{key}` stands on the feedback pin {pin['set_by']}")
+        elif role in ("regulated", "feedback"):
+            if "from" in pin and pin["from"] not in supplies:
+                raise Refusal(f"{here}: from: `{pin['from']}` is no pin of role supply")
+            if "from" not in pin and len(supplies) > 1:
+                raise Refusal(
+                    f"{here}: `from` is missing: which of {', '.join(supplies)} its current comes from"
+                )
+        if required and "page" not in pin:
+            raise Refusal(f"{here}: `page` is missing: the datasheet's page the numbers stand on")
+        if "page" in pin:
+            _page(here, pin["page"])
+        if "abs" in pin:
+            if not isinstance(pin["abs"], list) or len(pin["abs"]) != 2:
+                raise Refusal(f"{here}: abs: a span of 2 limits is asked, [least, greatest]")
+            _limit(f"{here}: abs", pin["abs"][0])
+            _limit(f"{here}: abs", pin["abs"][1])
+            for end in pin["abs"]:
+                for one in end if isinstance(end, list) else [end]:
+                    if isinstance(one, dict) and one["pin"] not in names:
+                        raise Refusal(f"{here}: abs: `{one['pin']}` is no pin name of this part")
+        for key in ("operating", "volts"):
+            if key in pin:
+                _span(f"{here}: {key}", pin[key])
+        if "amps" in pin:
+            _number(f"{here}: amps", pin["amps"], 0)
+        if "swing" in pin:
+            swing = _names(f"{here}: swing", pin["swing"])
+            if len(swing) != SWING[role] or any(s not in names for s in swing):
+                known = ", ".join(map(str, names))
+                raise Refusal(f"{here}: swing: {SWING[role]} of this part's pin names are asked, of {known}")
+
+
+def _needs(where: str, needs: object, names: list[str]) -> None:
+    if not isinstance(needs, list):
+        raise Refusal(f"{where}: needs: a list is asked")
+    for i, raw in enumerate(needs, start=1):
+        here = f"{where}: needs {i}"
+        what = next((k for k in ("capacitor", "inductor") if isinstance(raw, dict) and k in raw), None)
+        if what is None:
+            raise Refusal(f"{here}: `capacitor` or `inductor` is asked")
+        need = _keys(here, raw, (what, "page"))
+        _page(here, need["page"])
+        if what == "capacitor":
+            part = _keys(f"{here}: capacitor", need[what], ("from", "to", "farads_min"), ("effective",))
+            _number(f"{here}: capacitor: farads_min", part["farads_min"], 0)
+            if not isinstance(part.get("effective", False), bool):
+                raise Refusal(f"{here}: capacitor: effective: true or false is asked")
+        else:
+            part = _keys(f"{here}: inductor", need[what], ("from", "to"), ("henries", "amps_saturation_min"))
+            if "henries" in part:
+                _span(f"{here}: inductor: henries", part["henries"])
+            if "amps_saturation_min" in part:
+                _number(f"{here}: inductor: amps_saturation_min", part["amps_saturation_min"], 0)
+        for end in ("from", "to"):
+            if part[end] not in names:
+                raise Refusal(f"{here}: {what}: {end}: `{part[end]}` is no pin name of this part")
+
+
+def _facts(where: str, raw: object) -> Facts:
+    kind = raw.get("kind") if isinstance(raw, dict) else None
+    if kind not in PASSIVE and kind not in OTHER:
+        raise Refusal(f"{where}: kind: one of {', '.join([*PASSIVE, *OTHER])} is asked")
+    required, optional = PASSIVE.get(kind) or OTHER[kind]
+    data = _keys(where, raw, ("kind", "source") + required, WHICH + ("footprint", "note") + optional)
+    if sum(key in data for key in WHICH) != 1:
+        raise Refusal(f"{where}: exactly 1 of {', '.join(WHICH)} says which parts the entry speaks of")
+    if "footprint" in data and "symbol" not in data:
+        raise Refusal(f"{where}: `footprint` narrows a `symbol`, and the entry names none")
+    for key in ("mpn", "match", "symbol", "footprint", "note", "dielectric"):
+        if key in data:
+            _text(f"{where}: {key}", data[key])
+    if "mpns" in data:
+        _names(f"{where}: mpns", data["mpns"])
+    source = _keys(f"{where}: source", data["source"], *SOURCE_KEYS)
+    for key, value in source.items():
+        _text(f"{where}: source: {key}", value)
+    for key in ("ohms", "farads", "henries", "watts", "volts", "amps", "amps_saturation", "amps_rms"):
+        if key in data:
+            _number(f"{where}: {key}", data[key], 0)
+    for key in (
+        "volts_reverse",
+        "volts_standoff",
+        "volts_drain_source",
+        "volts_gate_source",
+        "amps_forward",
+        "amps_drain",
+    ):
+        if key in data:
+            _number(f"{where}: {key}", data[key], 0)
+    if "tolerance" in data:
+        _number(f"{where}: tolerance", data["tolerance"], 0, 0.99)
+    if "kept" in data:
+        kept = data["kept"]
+        if (
+            not isinstance(kept, list)
+            or len(kept) < 2
+            or not all(isinstance(p, list) and len(p) == 2 for p in kept)
+        ):
+            raise Refusal(f"{where}: kept: 2 or more pairs [volts, fraction of the value kept] are asked")
+        volts = [_number(f"{where}: kept: volts", p[0], 0) for p in kept]
+        for pair in kept:
+            _number(f"{where}: kept: fraction", pair[1], 0, 1.5)
+        if volts != sorted(set(volts)):
+            raise Refusal(f"{where}: kept: the volts rise from pair to pair")
+    for key, ends in (("diodes", ("anode", "cathode")), ("transistors", ("gate", "drain", "source"))):
+        if key in data:
+            if not isinstance(data[key], list) or not data[key]:
+                raise Refusal(f"{where}: {key}: a list is asked")
+            for i, one in enumerate(data[key], start=1):
+                for end in _keys(f"{where}: {key} {i}", one, ends):
+                    _text(f"{where}: {key} {i}: {end}", one[end])
+    if kind == "connector":
+        for i, pin in enumerate(data.get("pins", []), start=1):
+            _keys(f"{where}: pin {i}", pin, ("numbers", "outside"))
+            _names(f"{where}: pin {i}: numbers", pin["numbers"])
+            if pin["outside"] not in OUTSIDE:
+                raise Refusal(f"{where}: pin {i}: outside: one of {', '.join(OUTSIDE)} is asked")
+    if kind == "ic":
+        if data["family"] not in FAMILIES:
+            raise Refusal(f"{where}: family: one of {', '.join(FAMILIES)} is asked")
+        _pin_facts(where, data["pins"])
+        _needs(where, data.get("needs", []), [p["name"] for p in data["pins"]])
+        if "switching" in data:
+            here = f"{where}: switching"
+            if data["family"] != "regulator.switching":
+                raise Refusal(f"{here}: the family is {data['family']}, not regulator.switching")
+            term = _keys(here, data["switching"], ("topology", "hertz", "page"), ("efficiency",))
+            _page(here, term["page"])
+            if term["topology"] != "buck":
+                raise Refusal(f"{here}: topology: `buck` is the 1 topology the command computes")
+            if _span(f"{here}: hertz", term["hertz"])[0] <= 0:
+                raise Refusal(f"{here}: hertz: the least frequency is above 0")
+            if "efficiency" in term and _number(f"{here}: efficiency", term["efficiency"], 0, 1) == 0:
+                raise Refusal(f"{here}: efficiency: a share above 0 is asked")
+    return Facts(where, kind, data)
+
+
+def read_facts(folder: Path) -> list[Facts]:
+    """Every entry of every *.json in a facts folder. A file holds 1 part, or {"parts": [...]}."""
+    out = []
+    for path in sorted(folder.glob("*.json")):
+        data = _json(path)
+        if isinstance(data, dict) and set(data) == {"parts"}:
+            if not isinstance(data["parts"], list) or not data["parts"]:
+                raise Refusal(f"{path.name}: parts: a list of parts is asked")
+            out += [_facts(f"{path.name}: part {i}", raw) for i, raw in enumerate(data["parts"], start=1)]
+        else:
+            out.append(_facts(path.name, data))
+    return out
+
+
+def facts_of(facts: list[Facts], part: Part, mpn: str) -> Facts | None:
+    """The entry that names a part most closely: its part number before a pattern, a pattern before its
+    symbol. None when none names it. 2 entries that name it equally closely are refused."""
+    close = [f.speaks_of(mpn, part.symbol, part.footprint) for f in facts]
+    best = max(close, default=0)
+    found = [f for f, level in zip(facts, close, strict=True) if best and level == best]
+    if len(found) > 1:
+        name = mpn or part.symbol
+        raise Refusal(f"{found[0].where} and {found[1].where} both speak of {part.ref} ({name})")
+    return found[0] if found else None
+
+
+def _two_pins(facts: Facts, part: Part) -> tuple[str, str]:
+    if len(part.pins) != 2:
+        raise Refusal(f"{facts.where}: {part.ref} is a {facts.kind} and has {len(part.pins)} pins, not 2")
+    first, second = part.pins
+    return first, second
+
+
+def _held_pins(facts: Facts, part: Part, pins: list[str]) -> list[str]:
+    for pin in pins:
+        if pin not in part.pins:
+            raise Refusal(f"{facts.where}: pin {pin} is no pin of {part.ref} ({part.symbol})")
+    return pins
+
+
+def value_of(facts: Facts, part: Part) -> float | None:
+    """A passive part's value in ohms, farads or henries: the facts' own, or the schematic's Value. None
+    when that is no number."""
+    key = {"resistor": "ohms", "inductor": "henries"}.get(facts.kind, "farads")
+    return facts.data[key] if key in facts.data else part_value(part.value)
+
+
+def pin_number(facts: Facts, part: Part, name: str) -> str:
+    """The first pin of the part that the facts give this name."""
+    for pin in facts.data["pins"]:
+        if pin["name"] == name:
+            return next(n for n in pin["numbers"] if n in part.pins)
+    raise Refusal(f"{facts.where}: `{name}` is no pin name of this part")
+
+
+def model_of(facts: Facts, part: Part) -> Model:
+    """How a part acts on the voltages of its nets, from its facts. Refuses facts that do not fit the
+    part's symbol: a pin number it lacks, a pin of an IC the facts do not name."""
+    data, kind = facts.data, facts.kind
+    if kind == "resistor":
+        _two_pins(facts, part)
+        ohms = value_of(facts, part)
+        if ohms is None:  # it may conduct, and nothing says how much
+            return Model(passes=[(*part.pins, False)])
+        return Model(ohms=(ohms * (1 - data["tolerance"]), ohms * (1 + data["tolerance"])))
+    if kind in ("ferrite", "fuse", "link", "inductor"):
+        # An inductor is a wire to a steady voltage. One behind a switched pin is another matter: it
+        # carries the average of the swing, and judge() takes its link away.
+        return Model(links=[_two_pins(facts, part)])
+    if kind == "switch":
+        return Model(passes=[(*_two_pins(facts, part), False)])
+    if kind in PASSIVE:  # a capacitor, a test point, a mounting hole
+        return Model()
+    if kind == "connector":
+        quiet = [n for pin in data.get("pins", []) if pin["outside"] != "source" for n in pin["numbers"]]
+        return Model(quiet=frozenset(_held_pins(facts, part, quiet)))
+    if kind.startswith("diode"):
+        pairs = [(d["anode"], d["cathode"]) for d in data["diodes"]]
+        _held_pins(facts, part, [p for pair in pairs for p in pair])
+        return Model(passes=[(a, k, True) for a, k in pairs], quiet=frozenset())
+    if kind == "transistor.mosfet":
+        _held_pins(facts, part, [t[end] for t in data["transistors"] for end in ("gate", "drain", "source")])
+        return Model(
+            passes=[(t["drain"], t["source"], False) for t in data["transistors"]],
+            quiet=frozenset(t["gate"] for t in data["transistors"]),
+        )
+    named = _held_pins(facts, part, [n for pin in data["pins"] for n in pin["numbers"]])
+    missing = sorted(set(part.pins) - set(named))
+    if missing:
+        raise Refusal(
+            f"{facts.where}: {part.ref} ({part.symbol}) has pin {missing[0]}, and the facts name no such pin"
+        )
+    drives: dict[str, Drive] = {}
+    quiet: set[str] = set()
+    for pin in data["pins"]:
+        role = pin["role"]
+        if role == "regulated" and "volts" in pin:
+            drive = Drive(*pin["volts"])
+        elif role in SWING:
+            ends = [pin_number(facts, part, name) for name in pin["swing"]]
+            drive = Drive((ends[0], 0.0), (ends[-1], 0.0))
+        else:
+            quiet.update(pin["numbers"])
+            continue
+        drives.update(dict.fromkeys(pin["numbers"], drive))
+    return Model(drives=drives, quiet=frozenset(quiet))
+
+
+def divider_output(
+    net: Netlist, models: dict[str, Model], ref: str, number: str, volts: Span, zero: set[str]
+) -> tuple[str, Span, str] | str:
+    """The net a feedback pin regulates, its span, and the resistors that set it: the pin's own voltage
+    times (1 + top / bottom), where the top resistor stands between the output and the pin and the
+    bottom one between the pin and a net at 0 V (DIVIDER_NOTE), each at the end of its tolerance that
+    moves the output furthest. With no resistor from the pin's net to a net at 0 V the output is fed
+    back whole: the pin's net is the output, and what else stands on it is its load. A reason in place
+    of the 3 when a divider's tap holds anything else that can move it."""
+    tap = net.parts[ref].pins[number]
+    top: list[tuple[str, str, Span]] = []
+    bottom: list[tuple[str, str, Span]] = []
+    others: list[str] = []
+    for node in net.nets[tap]:
+        if node.ref == ref:
+            continue
+        model = models.get(node.ref)
+        if model is not None and model.ohms is not None and model.ohms[0] > 0:
+            far = next((n for p, n in net.parts[node.ref].pins.items() if p != node.pin), tap)
+            if far != tap:
+                (bottom if far in zero else top).append((node.ref, far, model.ohms))
+            continue
+        if model is None:
+            still = node.kind in QUIET_KINDS
+        else:
+            named = {p for pair in model.links for p in pair} | {
+                p for a, b, _ in model.passes for p in (a, b)
+            }
+            still = (
+                model.ohms is None
+                and node.pin not in named
+                and node.pin not in model.drives
+                and (model.quiet is None or node.pin in model.quiet)
+            )
+        if not still:
+            others.append(f"{node.ref} pin {node.pin}")
+    if not bottom:
+        return tap, volts, "fed back whole"
+    if others:
+        return f"{others[0]} stands on {tap} too, and is no resistor of a divider"
+    if len(top) != 1 or len(bottom) != 1:
+        return (
+            f"its divider is {len(top)} resistor{'s' * (len(top) != 1)} to another net and "
+            f"{len(bottom)} to a net at 0 V, not 1 and 1"
+        )
+    (over, out, above), (under, _, below) = top[0], bottom[0]
+    span = (volts[0] * (1 + above[0] / below[1]), volts[1] * (1 + above[1] / below[0]))
+    return out, span, f"{over} over {under} [{DIVIDER_NOTE}]"
+
+
+def _efficiency(ref: str, term: dict, notes: list[str]) -> float:
+    """A switching regulator's efficiency: its facts' own, or the one BUCK_NOTE's document names when
+    a datasheet gives none, which the report then says."""
+    if "efficiency" in term:
+        return term["efficiency"]
+    note = f"{ref}: its facts state no efficiency, and {BUCK_EFFICIENCY:g} is taken [TI SLVA477C, section 2]"
+    if note not in notes:
+        notes.append(note)
+    return BUCK_EFFICIENCY
+
+
+# ---------------------------------------------------------------- the judgement
+
+STATUSES = ("fail", "accepted", "not judged", "hold")
+EPS = 1e-9  # a stress that equals its limit holds, whatever the last bit of a division says
+PREFIXES = (
+    (1e9, "G"),
+    (1e6, "M"),
+    (1e3, "k"),
+    (1.0, ""),
+    (1e-3, "m"),
+    (1e-6, "u"),
+    (1e-9, "n"),
+    (1e-12, "p"),
+)
+# The roles of an IC's pin through which no steady current flows.
+NO_CURRENT = frozenset({"input", "analog", "nc"})
+
+
+@dataclass
+class Finding:
+    status: str  # one of STATUSES
+    part: str
+    rule: str  # the pack's rule, or the stress when the limit is the part's own rating
+    text: str
+    source: str = ""
+
+    @property
+    def line(self) -> str:
+        return f"{self.status} {self.text}" + (f" [{self.source}]" if self.source else "")
+
+
+@dataclass
+class Report:
+    pack: str
+    findings: list[Finding]
+    unread: int  # the facts and the pack that were used and that no second reader has read
+    notes: list[str]  # what the report says once
+
+
+def si(value: float, unit: str) -> str:
+    """A quantity as an engineer writes it: 4.7e-6 farads is `4.7 uF`."""
+    for scale, prefix in PREFIXES:
+        if abs(value) >= scale * (1 - EPS):
+            return f"{value / scale:.3g} {prefix}{unit}"
+    return f"0 {unit}"
+
+
+def kept_at(kept: list[list[float]], volts: float) -> float | None:
+    """The fraction of its value a capacitor keeps at a voltage, between the maker's points. None above
+    the last point: the data ends there."""
+    if volts <= kept[0][0]:
+        return kept[0][1]
+    for (v0, f0), (v1, f1) in itertools.pairwise(kept):
+        if volts <= v1:
+            return f0 + (f1 - f0) * (volts - v0) / (v1 - v0)
+    return None
+
+
+def _outputs(net, of, models, project, out, notes) -> tuple[dict, dict]:  # noqa: PLR0913
+    """What each regulator regulates. rails: part -> (the pin that states the output, the output's net).
+    fed: net -> (the regulator, the span) for each output a divider sets, as net_spans takes it; the
+    sum goes into the notes. An inductor behind a switched pin loses its link here: it carries the
+    average of the swing, and that is the output its regulator's facts state."""
+    ics = {ref: found for ref, found in of.items() if found.kind == "ic"}
+    switched = {
+        net.parts[ref].pins[number]
+        for ref, found in ics.items()
+        for pin in found.data["pins"]
+        if pin["role"] == "switched"
+        for number in pin["numbers"]
+    }
+    for ref, found in of.items():
+        if found.kind == "inductor" and switched & set(net.parts[ref].pins.values()):
+            models[ref] = Model()
+    zero = {name for name, span in project.nets.items() if span == (0.0, 0.0)}
+    rails: dict[str, list[tuple[dict, str]]] = {}
+    fed: dict[str, list[tuple[str, Span]]] = {}
+    for ref, found in ics.items():
+        part = net.parts[ref]
+        for pin in found.data["pins"]:
+            number = pin["numbers"][0]
+            if pin["role"] == "regulated" and "volts" in pin:
+                rails.setdefault(ref, []).append((pin, part.pins[number]))
+            if pin["role"] != "feedback":
+                continue
+            got = divider_output(net, models, ref, number, (pin["volts"][0], pin["volts"][1]), zero)
+            if isinstance(got, str):
+                label = f"{ref} pin {number} ({pin['name']}) on {part.pins[number]}"
+                out.append(Finding("not judged", ref, "regulator.feedback", f"{label}: {got}"))
+                continue
+            name, span, how = got
+            rails.setdefault(ref, []).append((pin, name))
+            fed.setdefault(name, []).append((ref, span))
+            notes.append(
+                f"{ref} holds {name} at {span[0]:.3g} to {span[1]:.3g} V: its pin {pin['name']} at "
+                f"{pin['volts'][0]:g} to {pin['volts'][1]:g} V, {how}"
+            )
+    return rails, fed
+
+
+def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Project, pack: Pack) -> Report:
+    """Every stress of every part against its limit. A part with no facts, a net with no span and a
+    number nothing gives are findings of their own: not judged, with the reason."""
+    out: list[Finding] = []
+    notes: list[str] = []
+    of: dict[str, Facts] = {}
+    models: dict[str, Model] = {}
+    for ref, part in net.parts.items():
+        found = facts_of(facts, part, mpns.get(ref, ""))
+        if found is None:
+            name = mpns.get(ref) or f"a part with no part number ({part.symbol})"
+            out.append(Finding("not judged", ref, "facts", f"{ref} {part.value}: no facts for {name}"))
+            continue
+        of[ref] = found
+        models[ref] = model_of(found, part)
+    for found in {id(f): f for f in of.values()}.values():  # what an entry says its facts leave out
+        if "note" in found.data:
+            refs = ", ".join(ref for ref, f in of.items() if f is found)
+            notes.append(f"{refs} ({found.name}): {found.data['note']}")
+    rails, fed = _outputs(net, of, models, project, out, notes)
+    for key in project.amps:  # a connector's pin the project states a current for is a load: no source
+        ref, _, pin = key.partition(".")
+        if pin and ref in of and of[ref].kind == "connector":
+            models[ref].quiet = (models[ref].quiet or frozenset()) | {pin}
+    spans = net_spans(net, models, project.nets, fed=fed)
+    alone: dict[tuple, Spans] = {}
+    loads: dict[tuple[str, str], tuple[float, list[str]]] = {}  # (regulator, net) -> its load, or why not
+    taken: dict[frozenset[str], float] = {}  # 2 nets -> the farads the needs judged so far took there
+
+    def seen_by(ref: str, forced: tuple = ()) -> Spans:
+        """The spans a part's own pins are rated against: the others' sources, and a rail put where the
+        limit is tightest."""
+        if not forced and not models[ref].drives and ref not in rails:
+            return spans
+        if (ref, forced) not in alone:
+            alone[(ref, forced)] = net_spans(
+                net, models, project.nets, without=ref, forced=dict(forced), fed=fed
+            )
+        return alone[(ref, forced)]
+
+    def gap(sp: Spans, a: str, b: str) -> float | str:
+        """The greatest voltage between 2 nets, or why it has none."""
+        for name in (a, b):
+            if name not in sp.stress:
+                return f"{name} has no span: {sp.why.get(name, 'nothing drives it')}"
+        return max(sp.stress[a][1] - sp.stress[b][0], sp.stress[b][1] - sp.stress[a][0])
+
+    def limit_of(stress: str, ref: str) -> tuple[float, str, str]:
+        """The share of its rating a part may reach, the rule's name, and the source for the line."""
+        rule = pack.rule(stress, of[ref].kind)
+        if rule is None:
+            return 1.0, stress, f"{of[ref].source}: the part's own rating"
+        share, note = factor(rule, project.ambient)
+        if note and note not in notes:
+            notes.append(note)
+        return share, rule.id, f"{pack.document['number']}, {rule.where}"
+
+    def judged(ref: str, rule: str, holds: bool, text: str, source: str) -> None:
+        if holds:
+            out.append(Finding("hold", ref, rule, text, source))
+        elif (ref, rule) in project.accepted:
+            words = project.accepted[(ref, rule)]
+            out.append(Finding("accepted", ref, rule, f"{text}; accepted: {words}", source))
+        else:
+            out.append(Finding("fail", ref, rule, text, source))
+
+    def ratio(ref: str, stress: str, label: str, value: float | str, rated: float, unit: str) -> None:
+        """One stress against one rating: a voltage across a part, a power in it."""
+        if isinstance(value, str):
+            out.append(Finding("not judged", ref, stress, f"{label}: {value}"))
+            return
+        share, rule, source = limit_of(stress, ref)
+        text = f"{label}: {si(value, unit)} on {si(rated, unit)} rated is {value / rated:.2f}"
+        judged(ref, rule, value <= rated * share + EPS, f"{text}, the limit is {share:.2f}", source)
+
+    def carries(name: str, but: str) -> bool:
+        """Whether a steady current can leave a net by another way than through the part `but`."""
+        if name in project.nets:
+            return True
+        for node in net.nets[name]:
+            if node.ref == but:
+                continue
+            if node.ref not in of:
+                if node.kind not in QUIET_KINDS or node.kind == "power_in":
+                    return True
+                continue
+            data, kind = of[node.ref].data, of[node.ref].kind
+            if kind == "ic":
+                role = next(p["role"] for p in data["pins"] if node.pin in p["numbers"])
+                if role not in NO_CURRENT:
+                    return True
+            elif kind == "connector":
+                quiet = [n for p in data.get("pins", []) if p["outside"] == "nothing" for n in p["numbers"]]
+                if node.pin not in quiet:
+                    return True
+            elif kind == "transistor.mosfet":
+                if node.pin not in [t["gate"] for t in data["transistors"]]:
+                    return True
+            elif not kind.startswith("capacitor") and kind not in ("testpoint", "mechanical"):
+                return True
+        return False
+
+    def name_of(ref: str) -> str:
+        return f"{ref} {net.parts[ref].value}".strip()
+
+    for ref, found in of.items():
+        part, data, kind = net.parts[ref], found.data, found.kind
+        if kind.startswith("capacitor") or kind == "resistor":
+            a, b = part.pins.values()
+            label = f"{name_of(ref)} between {a} and {b}"
+            volts = gap(spans, a, b)
+            if ref in project.volts:
+                volts = project.volts[ref]
+                label += f", with the {si(volts, 'V')} the project states"
+            what = "capacitor.voltage" if kind != "resistor" else "resistor.voltage"
+            ratio(ref, what, label, volts, data["volts"], "V")
+        if kind == "resistor":
+            ohms = value_of(found, part)
+            if ohms is None:
+                out.append(Finding("not judged", ref, "resistor.power", f"{label}: its Value is no number"))
+            elif ohms > 0 and not isinstance(volts, str):
+                if ref in project.amps:
+                    watts = project.amps[ref] ** 2 * ohms * (1 + data["tolerance"])
+                    how = f"with the {si(project.amps[ref], 'A')} the project states"
+                elif not (carries(a, ref) and carries(b, ref)):
+                    watts, how = 0.0, "no steady current: one end meets no source"
+                else:
+                    watts = volts**2 / (ohms * (1 - data["tolerance"]))
+                    how = f"with {si(volts, 'V')} across it"
+                ratio(ref, "resistor.power", f"{label}, {how}", watts, data["watts"], "W")
+        elif kind == "inductor" and ref in project.amps:
+            amps, rated = project.amps[ref], data["amps_saturation"]
+            text = f"{name_of(ref)}: the project states {si(amps, 'A')}, and it saturates at {si(rated, 'A')}"
+            judged(
+                ref, "inductor.current", amps <= rated + EPS, text, f"{found.source}: the part's own rating"
+            )
+        elif kind.startswith("diode"):
+            for diode in data["diodes"]:
+                anode, cathode = part.pins[diode["anode"]], part.pins[diode["cathode"]]
+                label = f"{name_of(ref)} from {anode} to {cathode}"
+                both = all(n in spans.stress for n in (anode, cathode))
+                volts = (
+                    spans.stress[cathode][1] - spans.stress[anode][0] if both else gap(spans, anode, cathode)
+                )
+                if kind == "diode.rectifier":
+                    ratio(ref, "diode.reverse", label, volts, data["volts_reverse"], "V")
+                elif isinstance(volts, str):
+                    out.append(Finding("not judged", ref, "diode.standoff", f"{label}: {volts}"))
+                else:
+                    off = data["volts_standoff"]
+                    text = f"{label}: {si(volts, 'V')} can stand across it, and it stands off {off:g} V"
+                    holds = volts <= off + EPS
+                    judged(ref, "diode.standoff", holds, text, f"{found.source}: the part's own rating")
+        elif kind == "transistor.mosfet":
+            for fet in data["transistors"]:
+                gate, drain, source = (part.pins[fet[end]] for end in ("gate", "drain", "source"))
+                label = f"{name_of(ref)} drain {drain} to source {source}"
+                ratio(
+                    ref,
+                    "mosfet.drain_source",
+                    label,
+                    gap(spans, drain, source),
+                    data["volts_drain_source"],
+                    "V",
+                )
+                label = f"{name_of(ref)} gate {gate} to source {source}"
+                ratio(
+                    ref, "mosfet.gate_source", label, gap(spans, gate, source), data["volts_gate_source"], "V"
+                )
+        elif kind == "ic":
+            _judge_ic(
+                net, ref, of, models, spans, seen_by, project, pack, notes, judged, out, rails, loads, taken
+            )
+    for ref, found in of.items():
+        if found.kind == "ic" and "switching" in found.data:
+            _judge_buck(net, ref, of, spans, project, notes, judged, out, rails, loads)
+
+    for (ref, rule), _words in project.accepted.items():
+        if not any(f.status == "accepted" and (f.part, f.rule) == (ref, rule) for f in out):
+            text = f"{ref}: ratings.json accepts a failure of {rule}, and nothing fails there"
+            out.append(Finding("fail", ref, "accepted", f"{text}: take the entry out"))
+    judged_parts = {f.part.partition(".")[0] for f in out}
+    idle: dict[str, list[str]] = {}  # kind -> the parts with facts that no stress was computed for
+    for ref, found in of.items():
+        if ref not in judged_parts:
+            idle.setdefault(found.kind, []).append(ref)
+    if idle:
+        named = ", ".join(f"{', '.join(refs)} ({kind})" for kind, refs in sorted(idle.items()))
+        notes.append(f"no stress is judged of {named}")
+    used = {id(f): f for f in of.values()}
+    unread = sum(not f.read_twice for f in used.values()) + (pack.document["second_reader"] == "no")
+    out.sort(key=lambda f: STATUSES.index(f.status))
+    return Report(pack.name, out, unread, notes)
+
+
+def _judge_ic(  # noqa: PLR0913
+    net, ref, of, models, spans, seen_by, project, pack, notes, judged, out, rails, loads, taken
+) -> None:
+    """The pins of 1 IC: each against its limits, its supply against its working range, the load on
+    what it regulates, and the support parts its datasheet asks for."""
+    part, found = net.parts[ref], of[ref]
+    data = found.data
+
+    def bound(pin: dict, number: str, which: int) -> tuple | None:
+        """1 end of a pin's absolute limits: which is 0 for the least and 1 for the greatest. Whether it
+        holds, the voltage and the limit as the line names it; an empty tuple when nothing but the pin
+        puts a voltage on its net. None when the pin could not be judged: its other end would say the
+        same again."""
+        name = part.pins[number]
+        label = f"{ref} pin {number} ({pin['name']}) on {name}"
+        raw = pin["abs"][which]
+        worst: tuple[float, float, str] | None = None
+        for one in raw if isinstance(raw, list) else [raw]:
+            forced, how = (), ""
+            if isinstance(one, dict):
+                rail = part.pins[pin_number(found, part, one["pin"])]
+                if rail == name:
+                    continue  # the pin is on the rail its limit follows
+                if rail not in spans.held:
+                    text = f"{label}: its limit follows pin {one['pin']} on {rail}, which no source holds"
+                    out.append(Finding("not judged", ref, "pin.voltage", text))
+                    return None
+                at = spans.held[rail][1 - which]  # the rail where the limit is tightest
+                forced, limit = ((rail, (at, at)),), at + one["plus"]
+                how = f" (pin {one['pin']} at {at:.3g} V, {one['plus']:+g} V)"
+            else:
+                limit = one
+            sp = seen_by(ref, forced)
+            if name not in sp.stress:
+                why = sp.why.get(name, "nothing drives it")
+                if why == "nothing drives it":
+                    continue  # nothing but the pin itself puts a voltage on its net
+                out.append(Finding("not judged", ref, "pin.voltage", f"{label}: {name} has no span: {why}"))
+                return None
+            volts = sp.stress[name][which]
+            over = (volts - limit) if which else (limit - volts)
+            if worst is None or over > worst[0]:
+                worst = (over, volts, f"{limit:.3g} V{how}")
+        return () if worst is None else (worst[0] <= EPS, worst[1], worst[2])
+
+    for pin in data["pins"]:
+        for number in pin["numbers"]:
+            name = part.pins[number]
+            nodes = net.nets[name]
+            if len(nodes) == 1 and (nodes[0].open or name.startswith("unconnected-(")):
+                continue  # a pin left open
+            high = bound(pin, number, 1) if "abs" in pin else None
+            low = bound(pin, number, 0) if high is not None else None
+            label = f"{ref} pin {number} ({pin['name']}) on {name}"
+            source = f"{found.source}, {_p(pin['page'])}" if "page" in pin else found.source
+            if low and high and low[0] and high[0]:  # both ends hold: 1 line says so
+                text = (
+                    f"{label}: {low[1]:.3g} to {high[1]:.3g} V can stand on it, "
+                    f"its limits are {low[2]} and {high[2]}"
+                )
+                judged(f"{ref}.{number}", "pin.voltage", True, text, source)
+            else:
+                for end in (high, low):
+                    if end:
+                        text = f"{label}: {end[1]:.3g} V can stand on it, its limit is {end[2]}"
+                        judged(f"{ref}.{number}", "pin.voltage", end[0], text, source)
+            if pin["role"] == "supply" and "operating" in pin:
+                label = f"{ref} pin {number} ({pin['name']}) on {name}"
+                if name not in spans.held:
+                    out.append(Finding("not judged", ref, "supply.range", f"{label}: no source holds {name}"))
+                    continue
+                low, high = spans.held[name]
+                works = pin["operating"]
+                text = (
+                    f"{label}: its sources hold it at {low:.3g} to {high:.3g} V, "
+                    f"the pin works from {works[0]:g} to {works[1]:g} V"
+                )
+                holds = low >= works[0] - EPS and high <= works[1] + EPS
+                judged(f"{ref}.{number}", "supply.range", holds, text, f"{found.source}, {_p(pin['page'])}")
+        if "set_by" in pin:  # the output pin of a regulator a divider sets: is it on the divider's net
+            there = part.pins[pin["numbers"][0]]
+            set_to = next((name for p, name in rails.get(ref, []) if p["name"] == pin["set_by"]), None)
+            if set_to is not None:
+                text = (
+                    f"{ref} pin {pin['numbers'][0]} ({pin['name']}) is on {there}, and the divider on its "
+                    f"pin {pin['set_by']} regulates {set_to}"
+                )
+                source = f"{found.source}, {_p(pin['page'])}"
+                judged(ref, "regulator.feedback", there == set_to, text, source)
+    for pin, name in rails.get(ref, []):
+        _judge_rail(net, ref, pin, name, of, models, spans, project, pack, notes, judged, out, rails, loads)
+    for need in data.get("needs", []):
+        _judge_need(net, ref, need, of, spans, judged, out, rails, taken)
+
+
+def _rail(net: Netlist, models: dict[str, Model], start: str) -> set[str]:
+    """The nets a current from 1 net reaches without passing a resistor: through a fuse, a ferrite, a
+    switch, a transistor, a diode or an inductor."""
+    rail, stack = set(), [start]
+    while stack:
+        name = stack.pop()
+        if name in rail:
+            continue
+        rail.add(name)
+        for node in net.nets[name]:
+            model = models.get(node.ref)
+            for pair in [*model.links, *model.passes] if model else []:
+                if node.pin in pair[:2]:
+                    stack += [net.parts[node.ref].pins[p] for p in pair[:2]]
+    return rail
+
+
+def _judge_rail(  # noqa: PLR0913
+    net, ref, pin, name, of, models, spans, project, pack, notes, judged, out, rails, loads
+) -> None:
+    """The load on the net 1 pin regulates: the supply pins on its rail, each regulator among them
+    passing its own load on (a linear one its current, a switching one its power over its efficiency),
+    the pins of connectors the project gives a current for, and the resistors. The load is kept in
+    `loads` for the regulator's inductor; it is judged when the pin's facts say what it gives."""
+    found = of[ref]
+    label = f"{name}: {ref} pin {pin['numbers'][0]} ({pin['name']})"
+    seen: set[tuple[str, str]] = set()  # the supply pins counted: one of 2 numbers is counted 1 time
+
+    def load(start: str, came: frozenset[str]) -> tuple[float, list[str]]:
+        total, unknown = 0.0, []
+        for rail in sorted(_rail(net, models, start)):
+            for node in net.nets[rail]:
+                if node.ref in came:
+                    continue
+                other = of.get(node.ref)
+                where = f"{node.ref} pin {node.pin}"
+                if other is None:
+                    if node.kind == "power_in":
+                        unknown.append(f"{where} takes current from {rail} and has no facts")
+                elif other.kind == "ic":
+                    theirs = next(p for p in other.data["pins"] if node.pin in p["numbers"])
+                    if theirs["role"] != "supply" or (node.ref, theirs["name"]) in seen:
+                        continue
+                    seen.add((node.ref, theirs["name"]))
+                    if "amps" not in theirs:
+                        unknown.append(f"{where} ({theirs['name']}) has no `amps` in its facts")
+                        continue
+                    total += theirs["amps"]
+                    first = next(p["name"] for p in other.data["pins"] if p["role"] == "supply")
+                    for out_pin, below in rails.get(node.ref, []):
+                        if out_pin.get("from", first) != theirs["name"]:
+                            continue
+                        more, more_unknown = load(below, came | {node.ref})
+                        unknown += more_unknown
+                        term = other.data.get("switching")
+                        if other.data["family"] != "regulator.switching":
+                            total += more
+                        elif term is None:
+                            unknown.append(
+                                f"{node.ref} is a switching regulator, and its facts state no `switching`"
+                            )
+                        elif rail not in spans.held or below not in spans.held or spans.held[rail][0] <= 0:
+                            unknown.append(
+                                f"{node.ref} takes its load's power from {rail}, and no source holds "
+                                f"{rail} and {below} above 0 V"
+                            )
+                        else:  # its load's power, over its efficiency, at its least input
+                            share = _efficiency(node.ref, term, notes)
+                            total += more * spans.held[below][1] / (share * spans.held[rail][0])
+                elif other.kind == "connector":
+                    outside = next(
+                        (p["outside"] for p in other.data.get("pins", []) if node.pin in p["numbers"]), ""
+                    )
+                    key = f"{node.ref}.{node.pin}"
+                    if outside == "load" and key not in project.amps:
+                        unknown.append(f"{where} feeds a load, and ratings.json states no amps for {key}")
+                    total += project.amps.get(key, 0.0)
+                elif other.kind == "resistor":
+                    ohms = value_of(other, net.parts[node.ref])
+                    far = next(n for p, n in net.parts[node.ref].pins.items() if p != node.pin)
+                    if (
+                        ohms
+                        and far not in _rail(net, models, start)
+                        and all(n in spans.stress for n in (rail, far))
+                    ):
+                        volts = max(
+                            spans.stress[rail][1] - spans.stress[far][0],
+                            spans.stress[far][1] - spans.stress[rail][0],
+                        )
+                        total += volts / (ohms * (1 - other.data["tolerance"]))
+        return total, unknown
+
+    total, unknown = load(name, frozenset({ref}))
+    loads[(ref, name)] = (total, unknown)
+    if "amps" not in pin:
+        return
+    if unknown:
+        out.append(
+            Finding("not judged", ref, "rail.load", f"{label} feeds a load nothing states: {unknown[0]}")
+        )
+        return
+    rule = pack.rule("rail.load", found.kind)
+    share, rule_id = 1.0, "rail.load"
+    source = f"{found.source}, {_p(pin['page'])}: the part's own rating"
+    if rule is not None:
+        share, note = factor(rule, project.ambient)
+        rule_id, source = rule.id, f"{pack.document['number']}, {rule.where}"
+        if note and note not in notes:
+            notes.append(note)
+    text = (
+        f"{label} gives {si(pin['amps'], 'A')}, its loads take {si(total, 'A')}: "
+        f"{total / pin['amps']:.2f}, the limit is {share:.2f}"
+    )
+    judged(ref, rule_id, total <= pin["amps"] * share + EPS, text, source)
+
+
+def _judge_buck(net, ref, of, spans, project, notes, judged, out, rails, loads) -> None:  # noqa: PLR0913
+    """The inductor of 1 buck regulator. Against its saturation: the load on the output and half the
+    ripple, at the greatest input, the least frequency and the least inductance (BUCK_NOTE). Against its
+    rated current: the load."""
+    found, part = of[ref], net.parts[ref]
+    term = found.data["switching"]
+    outputs = {name for _, name in rails.get(ref, [])}
+    asked = any("inductor" in need for need in found.data.get("needs", []))
+    for pin in found.data["pins"]:
+        if pin["role"] != "switched":
+            continue
+        node = part.pins[pin["numbers"][0]]
+        supply = part.pins[pin_number(found, part, pin["swing"][-1])]
+        coils = [
+            (n.ref, far)
+            for n in net.nets[node]
+            if n.ref in of and of[n.ref].kind == "inductor"
+            for far in net.parts[n.ref].pins.values()
+            if far in outputs
+        ]
+        if not coils and outputs and not asked:
+            text = (
+                f"{ref} pin {pin['numbers'][0]} ({pin['name']}) on {node}: a buck needs an inductor to "
+                f"{', '.join(sorted(outputs))}, and none stands there"
+            )
+            judged(ref, "needs.inductor", False, text, f"{found.source}, {_p(term['page'])}")
+        for coil, name in coils:
+            data, label = of[coil].data, f"{coil} {net.parts[coil].value}".strip()
+            source = f"{of[coil].source}: the part's own rating"
+            total, unknown = loads.get((ref, name), (0.0, ["it was not worked out"]))
+            henries = value_of(of[coil], net.parts[coil])
+            why = ""
+            if unknown:
+                why = f"the load on {name} is not known: {unknown[0]}"
+            elif henries is None:
+                why = "its Value is no number"
+            elif name not in spans.held or spans.held.get(supply, (0.0, 0.0))[1] <= 0:
+                why = f"no source holds {supply if name in spans.held else name}"
+            if why:
+                text = f"{label}: its peak current is not worked out: {why}"
+                out.append(Finding("not judged", coil, "inductor.current", text))
+                continue
+            if "amps_rms" in data:
+                rated = si(data["amps_rms"], "A")
+                text = f"{label}: its loads take {si(total, 'A')}, its rated current is {rated}"
+                judged(coil, "inductor.heating", total <= data["amps_rms"] + EPS, text, source)
+            if coil in project.amps:
+                continue  # the project states its current, and that is what is judged
+            least, hertz = henries * (1 - data["tolerance"]), term["hertz"][0]
+            vin, share = spans.held[supply][1], _efficiency(ref, term, notes)
+
+            def ripple(volts: float, vin=vin, share=share, least=least, hertz=hertz) -> float:
+                return max(0.0, vin - volts) * min(1.0, volts / (vin * share)) / (hertz * least)
+
+            low, high = spans.held[name]
+            volts = max([low, high] + ([vin / 2] if low < vin / 2 < high else []), key=ripple)
+            peak = total + ripple(volts) / 2
+            text = (
+                f"{label}: its peak current is {si(peak, 'A')}: {si(total, 'A')} of load and half of "
+                f"{si(ripple(volts), 'A')} of ripple ({vin:.3g} V in, {volts:.3g} V out, {si(least, 'H')}, "
+                f"{si(hertz, 'Hz')}); it saturates at {si(data['amps_saturation'], 'A')}"
+            )
+            judged(
+                coil,
+                "inductor.current",
+                peak <= data["amps_saturation"] + EPS,
+                text,
+                f"{source}; {BUCK_NOTE}",
+            )
+
+
+def _judge_need(net, ref, need, of, spans, judged, out, rails, taken) -> None:  # noqa: PLR0913
+    """1 support part a datasheet asks for: there, in range, and enough of it at its working voltage.
+    An end that names a feedback pin is the net that pin's divider regulates. A value a datasheet names
+    is a part's nominal value; an effective one is what the part keeps of it. taken: what the needs
+    judged before this one took of the capacitors between each 2 nets."""
+    found, part = of[ref], net.parts[ref]
+    what = "capacitor" if "capacitor" in need else "inductor"
+    asked = need[what]
+    ends = []
+    for end in ("from", "to"):
+        pin = next(p for p in found.data["pins"] if p["name"] == asked[end])
+        if pin["role"] != "feedback":
+            ends.append(part.pins[pin_number(found, part, asked[end])])
+            continue
+        name = next((n for p, n in rails.get(ref, []) if p is pin), None)
+        if name is None:
+            return  # the divider was not read, and its own line says so
+        ends.append(name)
+    label = f"{ref} pin {asked['from']} ({ends[0]})"
+    source = f"{found.source}, {_p(need['page'])}"
+    there = [
+        r
+        for r, f in of.items()
+        if f.kind.startswith(what)
+        and len(net.parts[r].pins) == 2
+        and set(net.parts[r].pins.values()) == set(ends)
+    ]
+    if not there:
+        one = "a capacitor" if what == "capacitor" else "an inductor"
+        judged(
+            ref, f"needs.{what}", False, f"{label} needs {one} to {ends[1]}, and none stands there", source
+        )
+        return
+    if what == "inductor":
+        for r in there:
+            henries, data = value_of(of[r], net.parts[r]), of[r].data
+            if henries is None:
+                out.append(
+                    Finding("not judged", ref, "needs.inductor", f"{label}: the Value of {r} is no number")
+                )
+                continue
+            low, high = henries * (1 - data["tolerance"]), henries * (1 + data["tolerance"])
+            if "henries" in asked:
+                text = (
+                    f"{label} needs {si(asked['henries'][0], 'H')} to {si(asked['henries'][1], 'H')}, "
+                    f"{r} is {si(low, 'H')} to {si(high, 'H')}"
+                )
+                holds = low >= asked["henries"][0] * (1 - EPS) and high <= asked["henries"][1] * (1 + EPS)
+                judged(ref, "needs.inductor", holds, text, source)
+            if "amps_saturation_min" in asked:
+                least = si(asked["amps_saturation_min"], "A")
+                text = (
+                    f"{label} needs an inductor that saturates above {least}, "
+                    f"{r} saturates at {si(data['amps_saturation'], 'A')}"
+                )
+                judged(
+                    ref,
+                    "needs.inductor",
+                    data["amps_saturation"] >= asked["amps_saturation_min"] - EPS,
+                    text,
+                    source,
+                )
+        return
+    held = all(n in spans.held for n in ends)
+    if held:
+        volts = max(
+            spans.held[ends[0]][1] - spans.held[ends[1]][0], spans.held[ends[1]][1] - spans.held[ends[0]][0]
+        )
+    elif all(n in spans.stress for n in ends):
+        volts = max(
+            spans.stress[ends[0]][1] - spans.stress[ends[1]][0],
+            spans.stress[ends[1]][1] - spans.stress[ends[0]][0],
+        )
+    else:
+        volts = None
+    total, most, parts, missing = 0.0, 0.0, [], ""
+    for r in there:
+        farads, data = value_of(of[r], net.parts[r]), of[r].data
+        if farads is None:
+            out.append(
+                Finding("not judged", ref, "needs.capacitor", f"{label}: the Value of {r} is no number")
+            )
+            return
+        if asked.get("effective"):  # what is left of it: less its tolerance, at this voltage
+            share = kept_at(data["kept"], volts) if "kept" in data and volts is not None else None
+            if share is None:  # it gives its whole value at the most, and nothing for sure
+                at = "its working voltage" if volts is None else si(volts, "V")
+                why = "no data on the value it keeps"
+                if "kept" in data:
+                    why = f"its data on the value it keeps ends below {at}"
+                missing = missing or (f"{r}: {why}" if "kept" in data else f"{r} has {why} at {at}")
+                most += farads * (1 + data["tolerance"])
+                parts.append(f"{r} gives {si(farads * (1 + data['tolerance']), 'F')} at most ({why})")
+                continue
+            farads *= (1 - data["tolerance"]) * share
+        total += farads
+        parts.append(f"{r} gives {si(farads, 'F')}")
+    # The needs on 2 nets share the capacitors between them: each takes its own, in the order of the
+    # parts, and the one that finds too little left is the one that fails.
+    before = taken.get(frozenset(ends), 0.0)
+    taken[frozenset(ends)] = before + asked["farads_min"]
+    enough = total - before >= asked["farads_min"] * (1 - EPS)
+    if not enough and total + most - before >= asked["farads_min"] * (1 - EPS):
+        # short for sure, enough at the most: the data that is missing decides
+        out.append(Finding("not judged", ref, "needs.capacitor", f"{label}: {missing}"))
+        return
+    kind = "effective " if asked.get("effective") else ""
+    text = f"{label} needs {si(asked['farads_min'], 'F')} {kind}to {ends[1]}: {', '.join(parts)}"
+    if before:
+        text += f", and the needs before it take {si(before, 'F')}"
+    judged(ref, "needs.capacitor", enough, text, source)
+
+
+def lines(report: Report, limit: int = 20) -> list[str]:
+    """What the command prints: 1 line of counts, then the findings that are no hold, failures first."""
+    count = {s: sum(f.status == s for f in report.findings) for s in STATUSES}
+    head = (
+        f"ratings: {count['fail']} fail, {count['accepted']} accepted, {count['hold']} hold, "
+        f"{count['not judged']} not judged; pack {report.pack}"
+    )
+    if report.unread:
+        head += f"; {report.unread} source{'s' * (report.unread != 1)} not read a second time"
+    shown = [f for f in report.findings if f.status != "hold"]
+    out = [head] + [f.line for f in shown[:limit]]
+    if len(shown) > limit:
+        out.append(f"... {len(shown) - limit} more in the report")
+    return out
+
+
+def verdict(report: Report, strict: bool = False) -> tuple[str, int]:
+    """The last line and the exit code. A verdict is never stronger than its run: what was not judged is
+    in the line, and fails the run when strict."""
+    fail = sum(f.status == "fail" for f in report.findings)
+    left = sum(f.status == "not judged" for f in report.findings)
+    if fail:
+        return f"RATINGS NOT HELD ({fail} fail{f', {left} not judged' if left else ''})", 1
+    if fail + left == len(report.findings):  # no stress was held to a limit: that is no pass
+        return f"NOTHING JUDGED ({left} not judged)", 1
+    if left:
+        return f"RATINGS HELD, {left} NOT JUDGED", 1 if strict else 0
+    return "RATINGS HELD", 0
+
+
+def markdown(report: Report, strict: bool = False) -> str:
+    """The whole report as a page: every finding, the holds too, and what the report says once."""
+    out = ["# Ratings", "", lines(report, 0)[0], "", verdict(report, strict)[0], ""]
+    for status in STATUSES:
+        found = [f for f in report.findings if f.status == status]
+        if found:
+            out += [f"## {status.capitalize()}: {len(found)}", ""]
+            for f in found:
+                out.append(f"- {f.text}" + (f" [{f.source}]" if f.source else ""))
+                if status == "fail" and f.rule != "accepted":  # what ratings.json's `accepted` names
+                    out.append(f"  - to accept it, the owner names part `{f.part}` and rule `{f.rule}`")
+            out.append("")
+    if report.notes:
+        out += ["## Notes", ""] + [f"- {note}" for note in report.notes] + [""]
+    return "\n".join(out)
+
+
+# ---------------------------------------------------------------- the command
+
+FIRST = {"pack": "nasa-eee-inst-002", "nets": {}}  # what --init writes: a pack, and no net stated yet
+SHOWN = 20  # the most finding lines the command prints; the report file holds them all
+
+
+def find_facts(start: Path) -> Path | None:
+    """The nearest library/facts at or above a folder."""
+    for folder in (start, *start.parents):
+        if (folder / "library" / "facts").is_dir():
+            return folder / "library" / "facts"
+    return None
+
+
+def find_pack(name: str, project_dir: Path, packs: Path) -> Path:
+    """A pack by its name among the workcenter's, or by a path from the project's folder."""
+    for path in (packs / f"{name}.json", project_dir / name):
+        if path.is_file():
+            return path
+    known = ", ".join(sorted(p.stem for p in packs.glob("*.json")))
+    raise Refusal(f"ratings.json: pack: `{name}` is no pack; the workcenter holds {known}")
+
+
+def part_numbers(net: Netlist, rows: list) -> dict[str, str]:
+    """Each part's manufacturer part number from the parts files: the first row with the part's Value
+    and Footprint, as `sources` and `procure` match a line."""
+    out = {}
+    for ref, part in net.parts.items():
+        row = next(
+            (r for r in rows if r.footprint and (r.value, r.footprint) == (part.value, part.footprint)), None
+        )
+        if row is not None and row.buys and row.mpn:
+            out[ref] = row.mpn
+    return out
+
+
+def skeleton(net: Netlist, ref: str, mpn: str) -> dict:
+    """A facts entry for 1 part with its pins from the schematic and every fact left to fill from the
+    datasheet. The command refuses the entry until it is filled: an empty kind, role or source."""
+    part = net.parts[ref]
+    pins: dict[str, list[str]] = {}
+    for nodes in net.nets.values():
+        for node in nodes:
+            if node.ref == ref:
+                pins.setdefault(node.name or node.pin, []).append(node.pin)
+    source = {"document": "", "revision": "", "url": "", "sha256": "", "read": "", "second_reader": "no"}
+    entry = {"kind": "", **({"mpn": mpn} if mpn else {"symbol": part.symbol}), "source": source}
+    if len(part.pins) > 2:
+        entry["pins"] = [
+            {"numbers": sorted(n), "name": name, "role": "", "page": 0} for name, n in pins.items()
+        ]
+    return entry
+
+
+def gate_ratings(project, out: Path, parts: list[Path], strict: bool, cli):
+    """The command's run as a Result of the workcenter's kind: skip when the project asks for no
+    judgement or holds no schematic, fail on a file that is not strict, on a failure, and with
+    --strict on what was not judged."""
+    if not project.sch:
+        return cli.Result("ratings", "skip", "no schematic in project")
+    stated = project.dir / "ratings.json"
+    if not stated.is_file():
+        how = f"`workcenter ratings {project.dir} --init` writes one"
+        return cli.Result("ratings", "skip", f"no ratings.json beside the schematic: {how}")
+    folder = out / "ratings"
+    folder.mkdir(parents=True, exist_ok=True)
+    text, stderr = cli.schematic_netlist(project, folder)
+    if text is None:
+        return cli.Result("ratings", "error", "kicad-cli wrote no netlist", {"stderr": stderr})
+    try:
+        net = read_netlist(text)
+        asked = read_project(stated, net)
+        pack = read_pack(find_pack(asked.pack, project.dir, cli.SRC_DIR / "rules" / "ratings"))
+        library = find_facts(project.dir)
+        facts = read_facts(library) if library else []
+        mpns = part_numbers(net, [r for p in parts for r in cli.read_parts(p)])
+        report = judge(net, mpns, facts, asked, pack)
+    except (ValueError, OSError) as exc:
+        return cli.Result(
+            "ratings", "fail", "a file is not as the command reads it", {"failures": [str(exc)]}
+        )
+    said, code = verdict(report, strict)
+    page = folder / "report.md"
+    page.write_text(markdown(report, strict), encoding="utf-8")
+    red = ("fail", "not judged") if strict else ("fail",)
+    failures = [f.line for f in report.findings if f.status in red]
+    warnings = [f.line for f in report.findings if f.status not in (*red, "hold")]
+    more = len(failures) + len(warnings) - SHOWN
+    failures, warnings = failures[:SHOWN], warnings[: max(0, SHOWN - len(failures))]
+    if more > 0:
+        (failures if not warnings else warnings).append(f"... {more} more in {page}")
+    details = {
+        "failures": failures,
+        "warnings": warnings,
+        "verdict": said,
+        "pack": report.pack,
+        "notes": report.notes,
+        "findings": [vars(f) for f in report.findings],
+    }
+    summary = lines(report, 0)[0].removeprefix("ratings: ")
+    return cli.Result("ratings", "fail" if code else "pass", summary, details, [str(page)])
+
+
+def cmd_ratings(args, cli) -> int:
+    project = cli.find_project(args.project)
+    out = cli.out_dir_for(project, args.out)
+    stated = project.dir / "ratings.json"
+    if args.init:
+        if stated.is_file():
+            print(f"{stated} is there already: nothing written")
+        else:
+            stated.write_text(json.dumps(FIRST, indent=2) + "\n", encoding="utf-8")
+            print(f"wrote {stated}: pack {FIRST['pack']}, no net stated yet")
+        return 0
+    parts = [Path(p).resolve() for p in args.parts or []]
+    if not parts and (project.dir / "parts.csv").is_file():
+        parts = [project.dir / "parts.csv"]
+    if args.facts:
+        folder = out / "ratings"
+        folder.mkdir(parents=True, exist_ok=True)
+        text, stderr = cli.schematic_netlist(project, folder) if project.sch else (None, "no schematic")
+        if text is None:
+            raise SystemExit(f"{project.dir}: kicad-cli wrote no netlist: {stderr}")
+        net = read_netlist(text)
+        if args.facts not in net.parts:
+            raise SystemExit(f"{args.facts} is no part of the schematic")
+        mpn = part_numbers(net, [r for p in parts for r in cli.read_parts(p)]).get(args.facts, "")
+        print(json.dumps(skeleton(net, args.facts, mpn), indent=2))
+        return 0
+    result = cli.timed(gate_ratings)(project, out, parts, args.strict, cli)
+    if "findings" in result.details:
+        (out / "ratings" / "report.json").write_text(json.dumps(vars(result), indent=2), encoding="utf-8")
+    code = cli.emit([result], args, None)
+    if not args.json and "verdict" in result.details:
+        print(f"{result.details['verdict']}: {project.name}  report {result.artifacts[0]}")
+    return code
+
+
+def register(sub, cli) -> None:
+    """Add `ratings` to the workcenter's parser; it sets `run` to its handler."""
+    p = sub.add_parser(
+        "ratings",
+        help="hold the schematic to its parts' ratings: each pin's voltage limits, each capacitor's, "
+        "resistor's, diode's and transistor's derating by the rule pack ratings.json names, each "
+        "regulator's load and the support parts its datasheet asks for; writes netlist.xml, report.md "
+        "and report.json into <out>/ratings/, and lists what it could not judge",
+    )
+    p.add_argument("project", help="project directory or a .kicad_pro/.kicad_sch/.kicad_pcb file")
+    p.add_argument("--out", help="output directory (default <project>/build)")
+    p.add_argument("--strict", action="store_true", help="what is not judged fails the run")
+    p.add_argument(
+        "--parts",
+        action="append",
+        metavar="FILE",
+        help="a parts CSV naming each line's MPN (repeatable); default <project>/parts.csv",
+    )
+    p.add_argument(
+        "--init",
+        action="store_true",
+        help="write ratings.json beside the schematic when there is none, and judge nothing",
+    )
+    p.add_argument(
+        "--facts",
+        metavar="REF",
+        help="print an empty facts entry for one part, with its pins, to fill from its datasheet",
+    )
+    p.set_defaults(run=lambda a: cmd_ratings(a, cli))

@@ -221,6 +221,7 @@ def test_every_cli_flag_is_in_the_configuration_table():
         "tools/stretch.py",
         "tools/doctools.py",  # doctools adds its commands to the workcenter's parser
         "tools/guide.py",  # so does guide
+        "tools/ratings.py",  # and ratings
         "tools/harvest.py",
     )
     for tool in tools:

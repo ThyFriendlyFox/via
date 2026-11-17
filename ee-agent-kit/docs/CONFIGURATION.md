@@ -35,8 +35,10 @@ unset variable never causes a failure.
 |---|---|---|---|
 | `--json` | all | off | Machine-readable output. Read before the command or after it. |
 | `--out DIR` | gates, erc, drc, sim, export, autoroute, render, procure, sources, verify; design; ci | `<project>/build`; design: the design file's folder (with `--check`, a temporary folder); ci: `<repo>/build/ci` | Where reports and artifacts go; for design, where the KiCad project is written; for ci, each step's script, `$GITHUB_ENV` file and log. |
-| `--strict` | gates, erc, drc, sim, export, render, procure, sources, verify | off | Warnings fail the gate; for verify, a requirement whose verdict is FAIL or OPEN, and decks that ran without corners; for render, a part the 3D views draw without a body fails it; for procure, a line short of stock or a price older than 90 days; for sim, a model outside a `warn` bound (its datasheet), a project with no `sim/corners.json` or with decks that drive periodic sources and no `sim/frequency-plan.json`, a deck with no bound, a deck whose measures do not move with temperature, a part named like a board reference that no tolerance covers, and an operating point ngspice doubts (`singular matrix`); for sources, a datasheet kept as a note only, a file with no SHA256 or revision recorded, a model older than its datasheet, or a load check skipped. |
-| `--parts FILE` | procure, sources | `<project>/parts.csv` | A parts CSV, repeatable; the first row whose Value and Footprint match a BOM line prices it (procure) or names its MPN (sources), and every row with no Footprint is an item off the board. Columns in the `procurement` skill. |
+| `--strict` | gates, erc, drc, sim, export, render, procure, sources, verify, ratings | off | Warnings fail the gate; for ratings, a stress that was not judged; for verify, a requirement whose verdict is FAIL or OPEN, and decks that ran without corners; for render, a part the 3D views draw without a body fails it; for procure, a line short of stock or a price older than 90 days; for sim, a model outside a `warn` bound (its datasheet), a project with no `sim/corners.json` or with decks that drive periodic sources and no `sim/frequency-plan.json`, a deck with no bound, a deck whose measures do not move with temperature, a part named like a board reference that no tolerance covers, and an operating point ngspice doubts (`singular matrix`); for sources, a datasheet kept as a note only, a file with no SHA256 or revision recorded, a model older than its datasheet, or a load check skipped. |
+| `--parts FILE` | procure, sources, ratings | `<project>/parts.csv` | A parts CSV, repeatable; the first row whose Value and Footprint match a BOM line prices it (procure) or names its MPN (sources, ratings), and every row with no Footprint is an item off the board. Columns in the `procurement` skill. |
+| `--init` | ratings | off | Write `ratings.json` beside the schematic, with the pack `nasa-eee-inst-002` and no net, when there is none; never over a file that exists. Nothing is judged. |
+| `--facts REF` | ratings | none | Print an entry of facts to fill for 1 part of the schematic: its part number or its symbol, its pins, an empty source. Nothing is written. |
 | `--sources FILE` | sources, fetch | sources: the nearest `library/sources.csv` at or above the project; fetch: the nearest `sources.csv` at or above `--to` | The library's manifest: one row per datasheet, SPICE model or STEP file, the files beside it (`WORKCENTER.md`, "Project requirements"). The SIM gate finds it the same way. For fetch, a file not there yet is started with the header. |
 | `--deck NAME` | sim | every deck | Run only `sim/NAME.cir` (with or without `.cir`), the gate's way: the model rows' translation and mode, the expect bounds, the deck's corners. Prints every value the deck printed, with its bound and its least and greatest value over the corners. The frequency plan is not judged: it needs every deck. An unknown name is an error that lists the decks. |
 | `--keep` | sim | off | Run each deck from `<out>/sim/run/<deck>/`, a deck the gate runs in place too (with the deck folder's own `.spiceinit`), leave the folder, and print the one command that reruns it by hand: `env -C <run folder> ngspice -b <deck>.cir` (M94). |
@@ -119,6 +121,20 @@ unset variable never causes a failure.
 | `--from VERSION` | version new | the latest version folder | The folder the new version copies. |
 | `--out FILE` | diagram | required | The SVG to write. |
 | `--png` | diagram | off | Also write `<out>.png` with `rsvg-convert`, at the drawing's width. |
+
+## `ratings.json` (beside a schematic, for `workcenter ratings`)
+
+| Field | Type | Default | Use |
+|---|---|---|---|
+| `pack` | name or path | none (required) | The rule pack: a file of `rules/ratings/` without `.json` (`nasa-eee-inst-002`, `ecss-q-st-30-11c-rev2`), or the path of a pack from the project's folder. |
+| `nets` | object | none (required) | Each net a source off the board holds: `{"volts": [least, greatest], "source": "..."}` under the net's name, with or without its sheet's slash. `[0, 0]` is the reference. |
+| `ambient` | object | none | `{"max": C, "source": "..."}`: the highest air temperature. A limit that falls with temperature is judged there. |
+| `parts` | object | none | What the board cannot say of a part: `REF.PIN` with `amps` for the load behind a connector's pin, `REF` with `amps` for the current through a part of 2 pins, `REF` with `volts` for the greatest voltage across one; each with a `source`. |
+| `accepted` | list | none | Failures the owner takes on: `{"part", "rule", "why", "by"}`, `by` as `the owner's decision of YYYY-MM-DD`. An entry nothing fails under fails the run. |
+
+A part's facts are 1 entry of a file in `library/facts/`, in the project's
+folder or a folder above it; a rule pack is 1 file of `rules/ratings/`. The
+`ratings` skill has every key of both.
 
 ## `pictures.json` (a version's, for `workcenter pictures`)
 

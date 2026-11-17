@@ -15,8 +15,26 @@ behave in a known way.
 | `inspect-four-layer` | `workcenter inspect` answers as `tests/test_inspect.py` expects; DRC fails with 1 unconnected item, the pour island it keeps on purpose | Generated from its own `design.py` (regenerate with `workcenter design`; a test compares). Four layers, VIN's 10 mm run on In2.Cu between two vias, a T-junction, a copper keep-out over the island, a parts keep-out, Sierra's rule file. |
 | `fail-fab-sierra` | GREEN on `workcenter gates --strict`, DRC fail with `--fab sierra-circuits-web` (`annular_width`, `text_thickness`) | The divider with a 0.6/0.3 mm via (0.15 mm ring, under Sierra's 6 mil) on a bottom-face return of VOUT, and a legend label stroked 0.10 mm (under 5 mil). |
 
+| `pass-ratings-node` | `workcenter ratings --strict` prints `RATINGS HELD` | The board of `ratings_node.py`, schematic only: a TLV62569 buck regulator from 5 V to 3.3 V, 2 logic buffers in a row and a 1.1 A load on a header. 453k over 100k under the regulator's 0.588 to 0.612 V puts the output at 3.199 to 3.440 V. Its `ratings.json` states the 5 V rail, the signal and the load; `parts.csv` names each part's number. |
+| `fail-ratings-pin` | `ratings` fails on 1 line, `pin.voltage` | U3 and its capacitor stand on +5V. Its output puts the rail's 5.25 V on U2's input, which takes 4.6 V. |
+| `fail-ratings-load` | `ratings` fails on 1 line, `output.current` | The schematic of `pass-ratings-node`. Its `ratings.json` states 1.9 A for the load: 0.95 of the 2 A the regulator gives, and the pack allows 0.80. |
+| `fail-ratings-decoupling` | `ratings` fails on 1 line, `needs.capacitor` | C1 is left out. The regulator's supply pin has no capacitor, and its datasheet asks for 4.7 uF. |
+| `fail-ratings-inductor` | `ratings` fails on 1 line, `inductor.current` | L1 is a 2.0 x 1.6 mm part that saturates at 1.26 A. At the least output the ripple is (5.25 - 3.199) x 3.199 / (5.25 x 0.9) / (1.5e6 x 1.76e-6) = 0.526 A; the 1.1 A load and half of it is 1.363 A. |
+| `fail-ratings-bias` | `ratings` fails on 1 line, `needs.capacitor` | C3 is left out. C2, 10 uF less 20 %, keeps 0.50 - 0.12 x 0.440 = 0.447 of its value at 3.440 V: 3.58 uF. The 2 bypass capacitors have no curve and give 0.11 uF each at the most: 3.80 uF, under the 5 uF the datasheet asks for. |
+| `library` | No board: the facts of the ratings fixtures' parts | `library/facts/`, found by `workcenter ratings` as a project's own library is: in a folder above the project. The regulator, the 2 buffers, the resistors, the bypass capacitors and the 2 inductors are real parts, each entry read from its maker's datasheet with the URL, the SHA256 and the pages. The 10 uF capacitors and the headers are made up, and their entries say so. |
+
 Symbols and footprints are embedded in the files, so no library tables are
 needed to run them. `build/` output is ignored by git.
+
+The 6 ratings fixtures are 1 design, `ratings_node.py`, with 1 fault
+planted in each of 5. A fixture's `design.py` names its fault; its
+`node.kicad_sch` and `node.kicad_pro` are what `workcenter design` writes
+from it, and a test compares. To write them again, and no board with them:
+
+    workcenter design tests/boards/<fixture>/design.py --out <a scratch folder>
+
+and copy the 2 files in. The boards are not routed and not built: `ratings`
+reads the schematic alone.
 
 `kicad-cli` writes a `<name>.kicad_prl` next to the project when it runs.
 It is a KiCad side file with no design content and is ignored by git.

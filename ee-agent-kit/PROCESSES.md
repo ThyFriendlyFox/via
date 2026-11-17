@@ -354,13 +354,18 @@ Edit tool.
    place or 5, in 1 file or in 5. Count the lines that change, not the
    files they are in. A script is for a change the Edit tool cannot
    hold: a range, a table, the same change in 20 places (M156, M165,
-   M168, M182).
+   M168, M182). Read each Bash command for a write before it is sent:
+   `>`, `tee`, `sed -i`, `printf` into a file, `write_text`, `open(`
+   with `w`. When the path is in the repository and the text is your
+   own, not a command's of the workcenter, the write is the Edit or the
+   Write tool's, with a hook loaded or without one (M183).
 6. Inside a quoted heredoc (`<<'EOF'`) the shell passes text through as
    written. Write no backslash escapes in it at all: `chr(10)` for a line
    break, real line breaks inside a triple-quoted string.
 7. Tests are written with the Write or Edit tool, not appended by a
    script, and read back before they run: every assertion must be able
-   to fail. The `no_script_test_edits.py` hook refuses a Bash command
+   to fail. A fixture's hand-written files are tests too: its design
+   file, its parts file, its `ratings.json` (M183). The `no_script_test_edits.py` hook refuses a Bash command
    that writes under `tests/` (M43). The hook does not load in a session
    with two repositories; the step holds there all the same (M61). There
    `workcenter doctor` shows the "test hook" line as absent: say so to the

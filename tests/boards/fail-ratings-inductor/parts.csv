@@ -1,0 +1,11 @@
+Value,Footprint,Qty,Manufacturer,MPN,Supplier,SKU,Pack,Breaks
+TLV62569,Package_TO_SOT_SMD:SOT-23-5,1,Texas Instruments,TLV62569DBVR,,,,
+SN74AUP1G17,Package_TO_SOT_SMD:SOT-23-5,1,Texas Instruments,SN74AUP1G17DBVR,,,,
+SN74LVC1G17,Package_TO_SOT_SMD:SOT-23-5,1,Texas Instruments,SN74LVC1G17DBVR,,,,
+2.2u XAL4020,Inductor_SMD:L_Coilcraft_XAL4020-XXX,1,Coilcraft,XAL4020-222MEC,,,,
+2.2u SRN2010TA,Inductor_SMD:L_0805_2012Metric,1,Bourns,SRN2010TA-2R2M,,,,
+453k,Resistor_SMD:R_0603_1608Metric,1,Vishay,CRCW0603453KFKEA,,,,
+100k,Resistor_SMD:R_0603_1608Metric,1,Vishay,CRCW0603100KFKEA,,,,
+100n,Capacitor_SMD:C_0603_1608Metric,2,Vishay,VJ0603Y104KXJAC,,,,
+10u 16V,Capacitor_SMD:C_0805_2012Metric,1,made up,FIXTURE-10U-16V,,,,
+10u 6.3V,Capacitor_SMD:C_0603_1608Metric,2,made up,FIXTURE-10U-6V3,,,,

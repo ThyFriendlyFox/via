@@ -1,0 +1,80 @@
+{
+  "pack": "nasa-eee-inst-002",
+  "document": {
+    "issuer": "NASA Goddard Space Flight Center",
+    "number": "EEE-INST-002 (NASA/TP-2003-212242)",
+    "title": "Instructions for EEE Parts Selection, Screening, Qualification, and Derating",
+    "revision": "May 2003, with Addendum 1 of April 2008",
+    "url": "https://nepp.nasa.gov/docuploads/FFB52B88-36AE-4378-A05B2C084B5EE2CC/EEE-INST-002_add1.pdf",
+    "sha256": "4bd84c11401d51613911a4cdfd4afaacefc113e7b538fd86b2a60f99afa1d3dd",
+    "read": "2026-11-17",
+    "second_reader": "no"
+  },
+  "rules": [
+    {
+      "id": "capacitor.ceramic.voltage",
+      "stress": "capacitor.voltage",
+      "kinds": ["capacitor.ceramic"],
+      "max": 0.60,
+      "where": "section C1, table 4, page 23 of 23"
+    },
+    {
+      "id": "capacitor.film.voltage",
+      "stress": "capacitor.voltage",
+      "kinds": ["capacitor.film"],
+      "max": 0.60,
+      "where": "section C1, table 4, page 23 of 23"
+    },
+    {
+      "id": "capacitor.tantalum.voltage",
+      "stress": "capacitor.voltage",
+      "kinds": ["capacitor.tantalum"],
+      "max": 0.50,
+      "above": {"temperature": "ambient", "celsius": 70, "falls_to": 0.30, "at": 110},
+      "where": "section C1, table 4, page 23 of 23, with its note 3"
+    },
+    {
+      "id": "resistor.power",
+      "stress": "resistor.power",
+      "kinds": ["resistor"],
+      "max": 0.60,
+      "above": {"temperature": "ambient", "celsius": 70, "falls_to": 0.0, "at": 118},
+      "where": "section R2, table 4, page 24 of 24, the row of film chip resistors (RM)"
+    },
+    {
+      "id": "resistor.voltage",
+      "stress": "resistor.voltage",
+      "kinds": ["resistor"],
+      "max": 0.80,
+      "where": "section R2, table 4, page 24 of 24, with its note 2"
+    },
+    {
+      "id": "diode.reverse",
+      "stress": "diode.reverse",
+      "kinds": ["diode.rectifier"],
+      "max": 0.70,
+      "where": "section S1, table 4, page 12 of 13"
+    },
+    {
+      "id": "mosfet.drain_source",
+      "stress": "mosfet.drain_source",
+      "kinds": ["transistor.mosfet"],
+      "max": 0.75,
+      "where": "section S1, table 4, page 13 of 13"
+    },
+    {
+      "id": "mosfet.gate_source",
+      "stress": "mosfet.gate_source",
+      "kinds": ["transistor.mosfet"],
+      "max": 0.60,
+      "where": "section S1, table 4, page 13 of 13"
+    },
+    {
+      "id": "output.current",
+      "stress": "rail.load",
+      "kinds": ["ic"],
+      "max": 0.80,
+      "where": "section M3, table 4, page 15 of 15"
+    }
+  ]
+}

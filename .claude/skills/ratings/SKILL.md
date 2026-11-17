@@ -1,0 +1,218 @@
+---
+name: Ratings
+description: Holds a schematic to its parts' ratings - each pin's voltage limits, each capacitor's, resistor's, diode's and transistor's derating by a named standard, each regulator's output, load and support parts - from facts read off the datasheets with the page of every number.
+---
+
+# Ratings
+
+An electrical rules check knows a pin's type. It does not know that the pin
+dies above 4.6 V, that a 6.3 V capacitor on a 5 V rail is past its derating,
+or that an inductor saturates below the current its regulator draws.
+`workcenter ratings` judges those before the board is routed, and every
+line it prints names the document and the page its limit comes from.
+
+## When
+
+- A schematic exists and the board is not routed yet: a part that fails is
+  a line to change now, and a respin later.
+- A part, a value, a rail's voltage or a load changed.
+- A human asks whether the parts are inside their ratings, or for a
+  derating review.
+
+## Inputs
+
+| File | Holds | Who writes it |
+|---|---|---|
+| The schematic | The parts, their Values and their nets. The command exports the netlist with `kicad-cli`. | The design |
+| `ratings.json`, beside the schematic | The rule pack, and what the board cannot say of itself: the voltage of each net a source off the board fixes, a load's current, the ambient temperature, a failure the owner accepts. | You, each entry with its source |
+| `library/facts/*.json`, in the project's folder or a folder above it | What each part's datasheet says: 1 entry for a part or a family of parts. | You, each number with its page |
+| `parts.csv` | The manufacturer part number of each Value and Footprint, as `procure` and `sources` read it. A part with no number is named by its symbol. | The procurement skill |
+| `rules/ratings/<pack>.json`, in the workcenter | The limits of a derating standard, each with its table and page. | The workcenter. Never edit one to pass |
+
+The worked example is `tests/boards/pass-ratings-node` with the facts in
+`tests/boards/library/facts/`: a buck regulator, 2 logic buffers and their
+parts, each entry read from its datasheet.
+
+## Steps
+
+1. Run `workcenter ratings <project> --init`. It writes `ratings.json` with
+   the pack `nasa-eee-inst-002` and no net.
+2. State each net a source off the board holds, under `nets`: the net's
+   name as the schematic has it, `volts` as `[least, greatest]`, and
+   `source`, the document or the requirement the 2 numbers come from.
+   Ground is `[0, 0]`. A regulator's output is not stated: the command
+   works it out.
+3. Run `workcenter ratings <project>`. Take the `not judged` lines first,
+   top to bottom. Each has 1 cause:
+
+   | The line says | Do |
+   |---|---|
+   | `no facts for <part number>` | Write the part's facts: step 4. |
+   | `<pin> can put a voltage on <net> that nothing states` | A connector's pin. A source stands behind it: state the net in `nets`. A load stands behind it: state its current under `parts`, as `"J2.1": {"amps": 1.1, "source": "..."}`; 0 for a pin that takes none. |
+   | `feeds a load nothing states` | The line names the supply pin. Add `amps` to that pin's facts, from the datasheet's supply current. |
+   | `its divider is ...` or `stands on <net> too` | The command reads 1 resistor to the output and 1 to a net at 0 V. State the output's net in `nets`, with the sum as its source. |
+   | `no source holds <net>` | Nothing the command knows drives the net. State it in `nets`, or correct the facts of the part that drives it. |
+   | `has no data on the value it keeps` | Add `kept` to the capacitor's facts from its maker's DC bias curve, or fit a part that has one. |
+
+4. Write 1 part's facts. `workcenter ratings <project> --facts U1` prints
+   the entry to fill, with the part's number and its pins; save it as
+   `library/facts/<maker>-<part>.json`. Open the datasheet the project's
+   `library/` holds (PROCESSES.md P27). Fill each key from the page it
+   stands on, as the tables below say. Rules:
+   - A number is the one the datasheet prints, in volts, amps, ohms,
+     farads, henries, hertz or watts. `page` is the page it stands on; a
+     list when the numbers of 1 pin stand on 2 pages.
+   - The absolute maximum ratings go in `abs`. The recommended operating
+     conditions go in `operating`. Never one in place of the other.
+   - A number the datasheet does not state is left out. The command then
+     says what it could not judge. Never fill a key from memory or from
+     another part's datasheet.
+   - What the entry leaves out goes in `note`: the report prints it.
+5. Have each entry read a second time, by a reader who did not write it
+   and who has the datasheet and the entry and nothing else. The reader
+   checks every number against its page and sets `second_reader` to the
+   date. Until then the first line of every run counts the entry among the
+   `sources not read a second time`.
+6. Run the command again. A `fail` line is a fault of the design: fit a
+   part with a higher rating, add the capacitor, lower the load, divide
+   the signal. Never change a fact, a net's voltage or a pack to pass.
+7. A failure the owner takes on is written under `accepted` with the
+   owner's reason, as `"by": "the owner's decision of 2026-11-17"`; the
+   part and the rule to name stand under the failure in
+   `build/ratings/report.md`. The line then prints as `accepted`. An entry
+   whose failure is gone fails the run until it is taken out.
+8. The last line is the verdict: `RATINGS HELD`, `RATINGS HELD, N NOT
+   JUDGED`, `NOTHING JUDGED` or `RATINGS NOT HELD`. Run with `--strict` in
+   CI once nothing is left not judged: what is not judged then fails.
+
+## ratings.json
+
+```json
+{
+  "pack": "nasa-eee-inst-002",
+  "ambient": {"max": 60, "source": "the enclosure's limit, requirement R4"},
+  "nets": {
+    "GND": {"volts": [0, 0], "source": "the reference: J1 pin 2"},
+    "+5V": {"volts": [4.75, 5.25], "source": "USB 2.0, table 7-7"}
+  },
+  "parts": {
+    "J2.1": {"amps": 1.1, "source": "the load's datasheet, page 3"},
+    "R7": {"amps": 2.0, "source": "the heater at 4.2 V, sim/heater.cir"},
+    "C9": {"volts": 5.5, "source": "the regulator's datasheet, page 4: BOOT to SW"}
+  },
+  "accepted": []
+}
+```
+
+- `pack`: `nasa-eee-inst-002` or `ecss-q-st-30-11c-rev2`, or the path of
+  a pack of your own from the project's folder.
+- `ambient`: the highest air temperature. A limit that falls with
+  temperature is judged there; without it, as under the temperature where
+  it starts to fall, and the report says so.
+- `parts`: `REF.PIN` with `amps` is the load behind a connector's pin.
+  `REF` with `amps` is the current through a part of 2 pins that the board
+  cannot say: a sense resistor's, an inductor's peak. `REF` with `volts`
+  is the greatest voltage across a part of 2 pins whose 2 nets move
+  together: a bootstrap capacitor.
+
+## A part's facts
+
+Each entry names its parts 1 way: `mpn`, `mpns` (a list), `match` (a part
+number with `*` and `?`), or `symbol` (the library symbol, and `footprint`
+to narrow it). The closest wins: the part number, before a pattern, before
+the symbol. Each entry has a `source`: `document`, `revision`, `url`,
+`sha256`, `read` (the date) and `second_reader` (`no`, or the date).
+
+| `kind` | Keys | Keys it may hold |
+|---|---|---|
+| `resistor` | `tolerance` (0.01 for 1 %), `watts`, `volts` | `ohms` |
+| `capacitor.ceramic`, `.tantalum`, `.film`, `.electrolytic` | `tolerance`, `volts` | `farads`, `dielectric`, `kept`: pairs `[volts, share of the value kept]` from the DC bias curve |
+| `inductor` | `tolerance`, `amps_saturation` | `henries`, `amps_rms` |
+| `diode.rectifier` (rectifier, switching, Schottky) | `diodes`: `[{"anode": "2", "cathode": "1"}]`, `volts_reverse` | `amps_forward` |
+| `diode.clamp` (zener, TVS) | `diodes`, `volts_standoff` | |
+| `transistor.mosfet` | `transistors`: `[{"gate": "1", "drain": "3", "source": "2"}]`, `volts_drain_source`, `volts_gate_source` | `amps_drain`, `watts` |
+| `connector` | | `pins`: `[{"numbers": ["1"], "outside": "source"}]`, with `source`, `load` or `nothing` |
+| `fuse` | `amps` | `volts` |
+| `ferrite`, `switch` | | `amps`, `volts` |
+| `link`, `testpoint`, `mechanical` | | |
+| `ic` | `family`: `digital`, `linear`, `regulator.linear` or `regulator.switching`; `pins` | `needs`, `switching` |
+
+A resistor's, a capacitor's or an inductor's value is read from the
+schematic's Value: `4k7`, `100n`, `2.2u XAL4020`. Without a number there,
+the entry holds `ohms`, `farads` or `henries`.
+
+Each pin of an `ic` is 1 entry of `pins`: `numbers`, `name`, `role`,
+`page`, and the keys of its role. Every pin of the symbol is named.
+
+| `role` | The pin | Keys | May hold |
+|---|---|---|---|
+| `supply` | takes the part's current | `abs` | `operating`, `amps` |
+| `ground` | the part's reference | | |
+| `input`, `analog` | drives nothing | `abs` | |
+| `output`, `io` | swings between 2 of the part's pins | `abs`, `swing`: `["GND", "VCC"]` | `amps` |
+| `open_drain` | pulls down to 1 pin | `abs`, `swing`: `["GND"]` | `amps` |
+| `regulated` | a regulator's output | `abs`, and `volts` or `set_by` (its feedback pin) | `amps`, `from` |
+| `feedback` | the tap of the divider that sets the output | `abs`, `volts` | `amps`, `from` |
+| `switched` | a converter's switch node | `abs`, `swing` | |
+| `nc` | not connected inside | | |
+
+- `abs` is `[least, greatest]`. Each is a number, or
+  `{"pin": "VCC", "plus": 0.5}` for a limit that follows another pin, or a
+  list of both when 2 limits apply.
+- `volts` of a `regulated` pin is the output's span, `[3.234, 3.366]`. Of
+  a `feedback` pin it is the reference's span, `[0.588, 0.612]`.
+- `amps` of a `regulated` or `feedback` pin is what the regulator gives.
+  `from` names the supply pin that current comes from, when the part has 2.
+- `needs` lists the parts the datasheet asks for:
+  `{"capacitor": {"from": "VIN", "to": "GND", "farads_min": 4.7e-6}, "page": 10}`,
+  with `"effective": true` when the datasheet asks for the capacitance
+  that is left under voltage, and
+  `{"inductor": {"from": "SW", "to": "FB", "henries": [0.7e-6, 2.64e-6]}, "page": 9}`.
+  An end that names a `feedback` pin is the output's net.
+- `switching`, for a buck converter:
+  `{"topology": "buck", "hertz": [1.5e6, 1.5e6], "page": 5}`, and
+  `efficiency` when the datasheet states one.
+
+Recorded and held to nothing yet: `amps` of a fuse, a ferrite, a switch, a
+diode, a transistor and an output pin; `watts` of a transistor; a
+connector's ratings.
+
+## How the command reads a circuit
+
+- Each net has 2 spans. The first is every voltage it can stand at, with
+  its sources on or off: a rating is held to it, and 0 V is always inside.
+  The second is what its sources hold it to while on: a supply pin's
+  working range is held to that.
+- A pin is judged against what the other parts put on its net, never
+  against itself. A limit that follows a rail is judged with the rail at
+  the end where the limit is tightest.
+- A resistor does not move a net a source holds; a released output follows
+  its pull-up. A divider's tap is solved at the corners of its tolerances.
+- A transistor's channel and a switch may conduct: their 2 nets can meet.
+  A diode lifts its cathode. A fuse, a ferrite and an inductor are a wire,
+  except an inductor behind a `switched` pin: it carries the average,
+  which is the regulator's output.
+- An output a divider sets is the reference times (1 + top / bottom), at
+  the ends of both tolerances. The report's notes hold the sum.
+- A rail's load is the `amps` of each supply pin on it, the connector
+  loads the project states and the current of its resistors. A linear
+  regulator passes its load to its input; a switching one passes its
+  load's power, over its efficiency (0.9 when its facts state none).
+- A buck's inductor is held to the load plus half the ripple, at the
+  greatest input, the least frequency and the least inductance.
+- The capacitors between 2 nets are shared: each need takes its own, in
+  the order of the parts, and the one that finds too little left fails.
+
+## What it does not judge
+
+Transients, ripple current, a part's temperature, the current in a pin or
+a track, a regulator's dropout, the order rails come up in, and anything
+of the board: spacing, placement, a capacitor's distance to its pin. A run
+that holds says the steady voltages and the stated currents are inside the
+ratings the facts hold, and no more.
+
+## Done when
+
+`workcenter ratings <project> --strict` exits 0 and prints `RATINGS HELD`,
+every entry of `library/facts/` that the run used has a `second_reader`
+date, and each `accepted` entry is the owner's.

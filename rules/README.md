@@ -21,6 +21,9 @@ minimum, and raises each rule it keeps to the board's own setting where that is 
 
 `<name>` is a file name here without `.kicad_dru`, or a path to any `.kicad_dru`.
 
+`ratings/` is another kind of rule set: derating standards as packs for `workcenter ratings`
+(`ratings/README.md`).
+
 | File | Fab and service | Read |
 |---|---|---|
 | `sierra-circuits-web.kicad_dru` | Sierra Circuits (Protoexpress), Web PCB: the online order, "Standard PCBs", IPC-6012 Class 2 | 2026-10-29 |

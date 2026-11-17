@@ -39,6 +39,7 @@ already defines.
 | The session holds more than 1 repository, or a repository was added mid-session | `skills/attached-repos/SKILL.md` | Assign roles before the first edit. The board is the project; this repo is the workcenter and read-only. |
 | Changing what a project gets from this workcenter (a tool, gate, path, requirement) | `../WORKCENTER.md` | The contract. Same commit as the change. `WORKCENTER.template.md` is the blank for new workcenters. |
 | Placing parts, reviewing a schematic, layout or Gerbers, a part's derating, a footprint, a symbol, a panel | `../.claude/skills/kistack/SKILL.md` | Names the vendored kistack skill for the step (`third_party/kistack/`) and where this kit's rules win over it. |
+| A schematic's parts against their ratings before layout: a pin's voltage limits, a part's derating, a regulator's load, the parts a datasheet asks for | `../.claude/skills/ratings/SKILL.md` | `workcenter ratings`: each part's facts from its datasheet with the page of every number, the nets the board cannot say, a rule pack that names its standard. |
 | Requirements, a design review, an inspection (MIL-STD, DO-160), proof that a board meets its parts' ratings | `../.claude/skills/verification/SKILL.md` and `PROCESSES.md` P28 | The verification package: conditions, sourced requirements, cited nodal analysis per deck, traceability; `workcenter verify` checks it against a fresh run. |
 
 ## Precedence

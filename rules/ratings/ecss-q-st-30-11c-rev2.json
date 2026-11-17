@@ -1,0 +1,74 @@
+{
+  "pack": "ecss-q-st-30-11c-rev2",
+  "document": {
+    "issuer": "European Cooperation for Space Standardization (ECSS)",
+    "number": "ECSS-Q-ST-30-11C Rev.2",
+    "title": "Space product assurance - Derating - EEE components",
+    "revision": "23 June 2021",
+    "url": "https://ecss.nl/standard/ecss-q-st-30-11c-rev-2-derating-eee-components-23-june-2021/",
+    "sha256": "10cf7066fad0314918c6a7d38517bbcf7cb00e206480fc10377e9fdb83e7db6e",
+    "read": "2026-11-17",
+    "second_reader": "no"
+  },
+  "rules": [
+    {
+      "id": "capacitor.ceramic.voltage",
+      "stress": "capacitor.voltage",
+      "kinds": ["capacitor.ceramic"],
+      "max": 0.60,
+      "above": {"temperature": "case", "celsius": 85, "falls_to": 0.40, "at": 110},
+      "where": "clause 6.2.2, table 6-1, page 25"
+    },
+    {
+      "id": "capacitor.tantalum.voltage",
+      "stress": "capacitor.voltage",
+      "kinds": ["capacitor.tantalum"],
+      "max": 0.60,
+      "above": {"temperature": "case", "celsius": 85, "falls_to": 0.40, "at": 110},
+      "where": "clause 6.3.2, table 6-2, page 27"
+    },
+    {
+      "id": "resistor.power",
+      "stress": "resistor.power",
+      "kinds": ["resistor"],
+      "max": 0.50,
+      "above": {"temperature": "case", "celsius": 85, "falls_to": 0.0, "at": 125},
+      "where": "clause 6.26.2.6, table 6-30, page 71"
+    },
+    {
+      "id": "resistor.voltage",
+      "stress": "resistor.voltage",
+      "kinds": ["resistor"],
+      "max": 0.80,
+      "where": "clause 6.26.2.6, table 6-30, page 71"
+    },
+    {
+      "id": "diode.reverse",
+      "stress": "diode.reverse",
+      "kinds": ["diode.rectifier"],
+      "max": 0.75,
+      "where": "clause 6.14.2.1, table 6-13, page 43"
+    },
+    {
+      "id": "mosfet.drain_source",
+      "stress": "mosfet.drain_source",
+      "kinds": ["transistor.mosfet"],
+      "max": 0.80,
+      "where": "clause 6.29.2, table 6-36, page 76"
+    },
+    {
+      "id": "mosfet.gate_source",
+      "stress": "mosfet.gate_source",
+      "kinds": ["transistor.mosfet"],
+      "max": 0.75,
+      "where": "clause 6.29.2, table 6-36, page 76"
+    },
+    {
+      "id": "output.current",
+      "stress": "rail.load",
+      "kinds": ["ic"],
+      "max": 0.80,
+      "where": "clause 6.21.2, table 6-21, page 57"
+    }
+  ]
+}

@@ -2253,6 +2253,18 @@ def schematic_bom(project: Project, bom_csv: Path) -> tuple[list[dict] | None, s
         return [r for r in csv.DictReader(fh) if not r.get("DNP", "").strip()], ""
 
 
+def schematic_netlist(project: Project, folder: Path) -> tuple[str | None, str]:
+    """The schematic's netlist in KiCad's XML form, written into `folder`: (its text, kicad-cli's
+    stderr). The text is None when kicad-cli wrote none. `ratings` reads each net's pins from it."""
+    target = folder / "netlist.xml"
+    proc = run(
+        [KICAD_CLI, "sch", "export", "netlist", "--format", "kicadxml", "--output", target, project.sch]
+    )
+    if proc.returncode != 0 or not target.is_file():
+        return None, proc.stderr[-800:]
+    return target.read_text(encoding="utf-8"), ""
+
+
 def unit_price(breaks: list[tuple[int, Decimal]], qty: int) -> Decimal:
     """The price of the largest break at or below qty (the first break when qty is below it)."""
     price = breaks[0][1]
@@ -4649,6 +4661,14 @@ def chipflow():
     return module
 
 
+def ratings():
+    """tools/ratings.py: `ratings`, a schematic held to its parts' ratings."""
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import ratings as module
+
+    return module
+
+
 def render_views(value: str) -> tuple[str, ...]:
     names = RENDER_VIEWS if value == "all" else tuple(v.strip() for v in value.split(",") if v.strip())
     unknown = [v for v in names if v not in RENDER_VIEWS]
@@ -4976,6 +4996,7 @@ def main(argv: list[str] | None = None) -> int:
     doctools().register(sub, sys.modules[__name__])
     guide().register(sub, sys.modules[__name__])
     chipflow().register(sub, sys.modules[__name__])
+    ratings().register(sub, sys.modules[__name__])
 
     # `--json` is read on either side of the command: `workcenter --json gates P` and `workcenter
     # gates P --json`. SUPPRESS keeps a command that does not carry the flag from clearing the one

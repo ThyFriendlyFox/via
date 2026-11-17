@@ -39,6 +39,25 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-17 — A schematic held to its parts' ratings: the command, 2 packs, 6 fixtures
+
+The owner confirmed the roadmap's order: the schematic first. Item 1 is `workcenter ratings`, a
+command that judges what an electrical rules check cannot. It gives every net 2 voltage spans and
+holds each stress to a limit that names its document and its page. The first model spread every
+voltage through every resistor, and a failing test showed a divider's tap taken as its top rail: a
+held net now stands against a resistor, and a free tap is solved at the corners of its tolerances.
+The first buck converter showed a second flaw. An inductor passed the switch node's swing to the
+output, so every load on the rail failed against the input voltage. An inductor behind a switched
+pin now carries the average, which is the output its regulator's facts state. The fixture's
+regulator sets its output by a divider, so the command works that sum out. The fixture's parts are
+real where a maker's site serves its datasheet to a script (TI, Vishay, Coilcraft, Bourns). No
+capacitor maker's sheet with a DC bias curve could be read here, so 2 capacitors are made up and
+their facts say so. I changed files by a script 3 times while building it (M183).
+
+Evidence: `tests/test_ratings.py` (192 tests) and `tests/test_ratings_cli.py` (19 tests) pass.
+`pass-ratings-node` holds 27 stresses with `--strict`, and each of the 5 fault fixtures fails on 1
+line. On scratch copies of the 6 examples every run ends `NOTHING JUDGED`: no part has facts yet.
+
 ## 2026-11-14 — The redrawn site meets main: Herald, the 6 boards, a page for each
 
 The owner liked the redrawn site on its branch and asked for the boards and the Herald section

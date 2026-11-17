@@ -84,6 +84,7 @@ file: it needs nothing else.
 | `simulate` | A circuit must meet a measurable spec before layout; a part switches; a deck must run on another machine. Corners, the frequency plan, bundles. |
 | `blog-post` | A human asks for a public write-up of recent work. |
 | `procurement` | A human asks what a board costs, for its parts list, or to order its parts. |
+| `ratings` | A schematic is to be held to its parts' ratings before layout: each part's facts from its datasheet with the page of every number, the voltages and currents the board cannot say, and `workcenter ratings` until every stress holds. |
 | `kistack` | Placing parts, reviewing a schematic, a layout or the Gerbers, choosing a part's derating, a footprint or symbol, or a panel: it names the kistack skill for the step, and where this workcenter's rules win. |
 | `verification` | A human asks for requirements, a review, an inspection, or proof that a design meets its parts' ratings: the verification package of P28, checked by `workcenter verify`. |
 
@@ -371,6 +372,32 @@ before anything runs, and the tests must pass unmutated. A mutation that
 survives, or that a compiler stops, fails the run. The project's tree is
 never written.
 
+Not a gate: `workcenter ratings <project>` holds the schematic to its parts'
+ratings, for a project with a `ratings.json` beside its schematic (`--init`
+writes the first one; without the file the command skips, exit 2). It
+exports the netlist with `kicad-cli`, takes each part's manufacturer part
+number from the parts files (`--parts`, default `<project>/parts.csv`) and
+each part's facts from `library/facts/*.json` in the project's folder or a
+folder above it, and works out the voltage span of every net from the nets
+`ratings.json` states and from what each part's facts say the part does.
+Then it holds every stress to a limit: a pin's voltage to its absolute
+maximum; a supply pin to its working range; a capacitor's, a resistor's, a
+diode's and a transistor's voltage and a resistor's power to the share of
+the rating that the rule pack allows (`rules/ratings/nasa-eee-inst-002.json`,
+`ecss-q-st-30-11c-rev2.json`, or a pack of the project's own); a
+regulator's load to what it gives; an output a divider sets to that
+divider's sum; a buck converter's inductor to its peak current; and the
+capacitors and the inductor a datasheet asks for to what stands in the
+schematic. A line is `fail`, `accepted`, `not judged` or `hold`, and names
+the document and the page of its limit. The last line is `RATINGS HELD`,
+`RATINGS HELD, N NOT JUDGED`, `NOTHING JUDGED` or `RATINGS NOT HELD`. Exit
+1 on a failure, on a run that judged nothing, on a file the command does
+not take, and with `--strict` on what was not judged. `--facts REF` prints
+an entry of facts to fill for 1 part. It writes `build/ratings/netlist.xml`,
+`report.md` (every line, the holds too) and `report.json`. It judges steady
+voltages and stated currents: no transient, no temperature, nothing of the
+board. The `ratings` skill is the procedure and holds both file formats.
+
 Not a gate: `workcenter verify <project>` checks the project's verification
 package (`PROCESSES.md` P28, the `verification` skill) in
 `<project>/verification/`: the files it must hold, a requirements table
@@ -511,7 +538,7 @@ and no analog block. The engines install on request:
 | Install root | `/opt/workcenters/ee` |
 | Engine environment | `/opt/workcenters/ee/env.sh` |
 | Tool cache | the session scratchpad; the engines write nothing outside the output directory |
-| Project output | `<project>/build/` (reports, `fab/`, `sim/`, `route/`, `render/`) |
+| Project output | `<project>/build/` (reports, `fab/`, `sim/`, `route/`, `render/`, `ratings/`) |
 | Chip project output | `<project>/build/gates.json`, the report, and `<project>/build/chip/`: 1 folder for each gate that ran, and `hashes.json` with the hash of each file a gate wrote or judged. `<gate>/passed.json` is there when that gate passed: the hash of each file it read, taken before its engines started and held to the same bytes after, and of each file it hands on. The files of the project in it are those the gate finds by the text and those its engine says it read (Verilator's XML, the list Icarus Verilog writes, the rule Yosys writes): a header is in the record however the RTL names it. A file of the project is named from the project's folder (`rtl/top.v`, and `./chip/notes.v` for one under a folder `chip`) and a file the gates wrote from the output folder (`chip/layout/top.gds`), wherever `--out` points. EXPORT asks each of the 9 gates before it for that record and holds every file to it: the RTL and each header it includes, the benches and their bounds, the constraints, `chip.json`, the mapped netlist the layout was built from, and the layout's own files. A file of the project that came after a gate passed is refused too. `workcenter next` holds the files to the same records before it reads the report. `tapeout/` holds the files EXPORT hands out, `manifest.json` and the judging gates' reports; a gate that is asked to run takes it away, with the record of its own earlier pass. `render/` holds the pictures of `workcenter chip render`. The gates empty the folders under `<out>/chip`, and only in a folder they made: `--out` is refused when that folder is the project's, holds a file of it, or is there with files and without `hashes.json`. A path with white space is refused too. |
 
 ## Project requirements
@@ -523,6 +550,9 @@ and no analog block. The engines install on request:
 - With decks: `sim/corners.json`, the temperature range and the parts' tolerances every bound must hold over (start from `templates/project/corners.json`); the gate warns without it
 - With decks that drive periodic sources: `sim/frequency-plan.json`, the sources and the measured resonances (start from `templates/project/frequency-plan.json`); the gate warns without it
 - Optional: `verification/` for `workcenter verify` (P28)
+- Optional: `ratings.json` beside the schematic, and `library/facts/*.json`
+  in the project's folder or a folder above it, for `workcenter ratings`;
+  the `ratings` skill has both formats
 - Optional, a project kept as version folders (`v0.1/`, `v0.2/`, ... at the
   repository's root, a nested board one folder down): `parts/catalog.csv`,
   `parts/version/<id>.csv` and `parts/offboard/<id>.csv` for `workcenter
