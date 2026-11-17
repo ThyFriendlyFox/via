@@ -2787,8 +2787,10 @@ def gate_ratings(project, out: Path, parts: list[Path], strict: bool, cli):
         library = find_facts(project.dir)
         facts = read_facts(library) if library else []
         mpns = part_numbers(net, parts_rows(parts, cli))
-        check_stated(asked, net, mpns, facts)
         report = judge(net, mpns, facts, asked, pack)
+        # after the judgement, which refuses facts that do not fit their part: those are the fault
+        # then, and not the number ratings.json states for the part
+        check_stated(asked, net, mpns, facts)
     except (ValueError, OSError) as exc:
         return refusal(exc, cli)
     said, code = verdict(report, strict)

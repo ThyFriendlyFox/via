@@ -452,6 +452,23 @@ def test_a_run_that_judged_nothing_leaves_its_own_page_and_none_of_an_earlier_ru
     assert sorted(p.name for p in folder.iterdir()) == ["report.json", "report.md"]
 
 
+def test_facts_that_do_not_fit_a_part_are_refused_before_a_number_stated_for_the_part(tmp_path):
+    """J3 is a header of 3 pins, and ratings.json states the load behind its pin 2. An entry that calls
+    J3 a resistor is the fault. The line names that entry: the number stated for the pin is right."""
+    project = node(tmp_path)
+    source = {"document": "d", "read": "2026-11-17", "second_reader": "no"}
+    wrong = {"kind": "resistor", "symbol": "Connector_Generic:Conn_01x03", "source": source}
+    put(
+        "../library/facts/made-up.json",
+        "parts",
+        3,
+        to={**wrong, "tolerance": 0.01, "watts": 0.1, "volts": 50},
+    )(project)
+    code, text = say("ratings", project)
+    assert code == 1 and text.startswith(REFUSED), text
+    assert "\n       - made-up.json: part 4: J3 " in text and "ratings.json: parts: J3.2" not in text, text
+
+
 def test_a_parts_file_that_is_not_there_is_refused_by_its_path(tmp_path):
     project = node(tmp_path)
     code, text = say("ratings", project, "--parts", tmp_path / "none.csv")
