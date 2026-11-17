@@ -550,16 +550,49 @@ def test_rules_read_a_table_of_documents_by_id(tmp_path):
     assert lines[-1] == "references rules: 1 documents named in 1 files, 0 in the index, 1 not; 0 not judged"
 
 
+def test_a_document_served_in_a_zip_is_held_by_the_zips_sha256(tmp_path):
+    """rules/interfaces/usb2.json (roadmap item 8) names the USB 2.0 specification by the zip usb.org
+    serves: `sha256` is the PDF inside it and `zip_sha256` the zip, the copy the URL gives and the 1 a
+    fetch can hold. The index holds the zip; a rule with a zip and no `sha256` of its own is judged by
+    the zip's, and 1 whose zip the index lacks fails."""
+    url = "https://maker.example/spec.zip"
+    index = tmp_path / "index.json"
+    entry = {
+        "id": "spec",
+        "kind": "standard",
+        "issuer": "A forum",
+        "number": "SPEC",
+        "title": "A specification",
+        "revision": "1.0",
+        "url": url,
+        "sha256": "cd" * 32,
+        "read": "2026-11-17",
+    }
+    index.write_text(json.dumps({"rules": ["rules/x/*.json"], "documents": [entry]}), encoding="utf-8")
+    rule = tmp_path / "usb.json"
+    held = {"number": "SPEC", "url": url, "sha256": "ab" * 32, "zip_sha256": "cd" * 32}
+    zip_alone = {"number": "SPEC", "url": url, "zip_sha256": "cd" * 32}
+    rule.write_text(json.dumps({"documents": {"a": held, "b": zip_alone}}), encoding="utf-8")
+    code, lines = rules(rule, index=index)
+    assert code == 0, lines
+    assert lines[-1] == "references rules: 2 documents named in 1 files, 2 in the index, 0 not; 0 not judged"
+    rule.write_text(json.dumps({"documents": {"a": held | {"zip_sha256": "ef" * 32}}}), encoding="utf-8")
+    code, lines = rules(rule, index=index)
+    assert code == 1
+    assert lines[-1] == "references rules: 1 documents named in 1 files, 0 in the index, 1 not; 0 not judged"
+
+
 def test_every_document_a_rule_of_the_repository_names_is_in_the_index():
     """`make verify` runs this. The rating packs name 2 standards, the board pack 1, the 4 facts files
     of 1 part 4 datasheets, passives.json 4, fail-sim-bias's parts.json 2 (Samsung's page and Coilcraft's
-    806, which passives.json names too), rules/copper/materials.json 2: 2 + 1 + 4 + 4 + 2 + 2 = 15 named.
-    made-up.json's 4 parts name no document: 4 not judged."""
+    806, which passives.json names too), rules/copper/materials.json 2, rules/interfaces/ 5 (SPRAAR7J in
+    the 2 TI files, the 3 usb.org specifications in usb2.json and usb3.json; constants.json names none):
+    2 + 1 + 4 + 4 + 2 + 2 + 5 = 20 named. made-up.json's 4 parts name no document: 4 not judged."""
     code, out = run("rules")
     assert code == 0, out
-    files = 2 + 1 + 1 + 7
+    files = 2 + 1 + 1 + 5 + 7
     assert out.splitlines()[-1] == (
-        f"references rules: 15 documents named in {files} files, 15 in the index, 0 not; 4 not judged"
+        f"references rules: 20 documents named in {files} files, 20 in the index, 0 not; 4 not judged"
     )
 
 

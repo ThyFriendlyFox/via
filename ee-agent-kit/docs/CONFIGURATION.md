@@ -38,7 +38,7 @@ unset variable never causes a failure.
 | Flag | Commands | Default | Use |
 |---|---|---|---|
 | `--json` | all | off | Machine-readable output. Read before the command or after it. |
-| `--out DIR` | gates, erc, drc, sim, export, autoroute, render, procure, sources, verify, ratings, copper, fields; design; ci | `<project>/build`; design: the design file's folder (with `--check`, a temporary folder); ci: `<repo>/build/ci` | Where reports and artifacts go; for design, where the KiCad project is written; for ci, each step's script, `$GITHUB_ENV` file and log. |
+| `--out DIR` | gates, erc, drc, sim, export, autoroute, render, procure, sources, verify, ratings, copper, fields, highspeed; design; ci | `<project>/build`; design: the design file's folder (with `--check`, a temporary folder); ci: `<repo>/build/ci` | Where reports and artifacts go; for design, where the KiCad project is written; for ci, each step's script, `$GITHUB_ENV` file and log. |
 | `--strict` | gates, erc, drc, sim, export, render, procure, sources, verify, ratings, copper | off | Warnings fail the gate; for ratings, a stress that was not judged; for copper, a net with a stated current, or named in `ratings.json`, that `copper.json` does not name, a pin of a judged net with no stated current, a pin of the entry's part that `from` does not name, a part's heat with no pad on the board, or a limit it does not state; for verify, a requirement whose verdict is FAIL or OPEN, and decks that ran without corners; for render, a part the 3D views draw without a body fails it; for procure, a line short of stock or a price older than 90 days; for sim, a model outside a `warn` bound (its datasheet), a project with no `sim/corners.json` or with decks that drive periodic sources and no `sim/frequency-plan.json`, a deck with no bound, a deck whose measures do not move with temperature, a part named like a board reference that no tolerance covers, and an operating point ngspice doubts (`singular matrix`); for sources, a datasheet kept as a note only, a file with no SHA256 or revision recorded, a model older than its datasheet, or a load check skipped. |
 | `--parts FILE` | procure, sources, ratings | `<project>/parts.csv` | A parts CSV, repeatable; the first row whose Value and Footprint match a BOM line prices it (procure) or names its MPN (sources, ratings), and every row with no Footprint is an item off the board. Columns in the `procurement` skill. |
 | `--init` | ratings | off | Write `ratings.json` beside the schematic, with the pack `nasa-eee-inst-002` and no net, when there is none; never over a file that exists. Nothing is judged, and no output folder is made. |
@@ -94,6 +94,8 @@ unset variable never causes a failure.
 | `--router NAME=JAR` | bench | the workcenter's FreeRouting | A FreeRouting jar to run, repeatable; the first is the default router. |
 | `--time-limit S` | bench | `300` | Seconds per route, a whole number above 0; a route past it is stopped and not judged (exit 2). |
 | `--out DIR` | bench (required) | none | The benchmark's folder: `<board>/<router>/` with the board, `route.txt`, `drc.txt` and `run.json`, and `bench.md`. A run empties its own folder first. |
+| `--strict` (highspeed) | highspeed | off | A limit not judged fails the run: one the documents do not set, and one they set that the command does not judge (TI's single-ended impedance and stubs, among others). |
+| `--verbose` | highspeed | off | Print the rules that held too. |
 | `--spec FILE` | fields | `<project>/fields.json` | The groups of nets, each group's band and its limits, each limit with its `source`. |
 | `--model` | fields | off | Write each group's `model.json` and the engine's input under `<out>/fields/<group>/`; run nothing. |
 | `--strict` (fields) | fields | off | A limit that is not judged fails the run. Without it the run exits 2 when no limit was held (`no limit stated: nothing judged`). |
@@ -164,6 +166,12 @@ part by `mpn` or `mpns` and whose `source.sha256` is a row of
 | `kept` | a capacitor | pairs `[volts, share of the value kept]` | The maker's DC bias curve; the volts rise from pair to pair; each share above 0 and at most 1.5. `workcenter ratings` reads it too. |
 | `kept_celsius` | a capacitor | pairs `[celsius, share against 25 C]` | The maker's temperature curve; each share above 0 and at most 1.5. |
 | `kept` | an inductor | pairs `[amps, share of the value kept]` | The maker's L vs current curve; each share above 0 and at most 1.5. |
+
+## `interfaces.json` (beside a board, for `workcenter highspeed`)
+
+| Field | Type | Default | Use |
+|---|---|---|---|
+| `interfaces` | list | none (required) | Each entry: `interface`, a file of `rules/interfaces/` without `.json` (`usb2`, `usb3`, `ti-am57xx-usb2`, `ti-am57xx-usb3`); `nets`, the pair's 2 nets; optional `gap` (mm, above 0). The command measures each pair's gap on the board and fails a `gap` the board does not have. An empty list is refused. |
 
 ## `copper.json` (beside a board, for `workcenter copper`)
 

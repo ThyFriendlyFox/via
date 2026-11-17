@@ -39,6 +39,21 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-17 — High-speed rules from a pair's interface, after 2 reviews that said "not sound"
+
+Roadmap item 8 landed in part. A cross-section solver in numpy gives a pair's width for its
+interface's impedance on the board's own stackup. With a grid 16 times finer at the strip edges it
+sits within 0.6 % of the closed forms in 0.3 s a case. The USB 3.2 specification sets no board
+impedance and no skew, so TI's SPRAAR7J supplies them for 1 processor family. A first reviewer found
+the width judged at a gap the user typed and never measured, and KiCad's gap rule silent on pairs named
+DP/DM. The command now measures the gap on the board. A second reviewer found a dielectric of 2
+sublayers read as its first, and a half-routed pair judged as finished. Each is fixed with a test. The
+reviewer's hand sums held the solver within 0.51 % and 0.48 %. On integration the interface files'
+4 documents were missing from the reference index, and usb.org serves its specifications in zips; the
+index now holds each zip by its SHA256. No third review has been run.
+
+Evidence: `tests/test_highspeed.py`, `tests/test_highspeed_drc.py` and `tests/test_xsection.py` pass.
+
 ## 2026-11-17 — A voltage drop and a heat map, after 2 reviews that said "not sound"
 
 Roadmap item 10 landed in part. `workcenter copper` solves the board's own copper for each power

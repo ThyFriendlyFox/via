@@ -2,8 +2,11 @@
 
 `index.json` names each document a rule of the workcenter cites: the standards of the rating packs
 (`rules/ratings/*.json`) and of the board rule pack (`rules/board/*.json`), the documents of the
-constants of `workcenter copper` (`rules/copper/*.json`, a table `documents: {id: {...}}`), and the
-datasheets of the fixtures' facts (`tests/boards/**/facts/*.json`).
+constants of `workcenter copper` (`rules/copper/*.json`, a table `documents: {id: {...}}`), the
+documents of the fast interfaces (`rules/interfaces/*.json`, the same table), and the datasheets of
+the fixtures' facts (`tests/boards/**/facts/*.json`). A document served in a zip (usb.org's
+specifications) is held by the zip's SHA256: the rule names it as `zip_sha256`, beside the `sha256` of
+the file inside.
 Each entry holds the maker or the issuer, the number, the title, the revision, the URL and the SHA256 of
 the copy the rule was written from. The repository holds the index and the rules, never a document:
 the makers' and the issuers' terms forbid a copy.
@@ -15,6 +18,10 @@ the makers' and the issuers' terms forbid a copy.
 | `ecss-q-st-70-12c-rev1` | standard | ECSS-Q-ST-70-12C Rev.1 | 30 April 2025 |
 | `nbs-hb100` | standard | NBS Handbook 100 (Copper Wire Tables) | issued February 21, 1966 |
 | `ti-snva419c` | application note | SNVA419C (AN-2020) | April 2010, revised April 2013 |
+| `ti-spraar7j` | application note | SPRAAR7J | J, November 2018, revised February 2023 |
+| `usb-20` | standard | usb_20.pdf in usb_20_20250603.zip | 2.0, April 27, 2000, as the zip of 2025-06-03 holds it |
+| `usb-31-legacy-cable` | standard | USB 3.1 Legacy Cable and Connector Revision 1.0.pdf | 1.0, September 22, 2017 |
+| `usb-32` | standard | USB 3.2 Revision 1.1.pdf in usb_32_202206_1.zip | 1.1, June 2022 |
 | `ti-slvsdg1` | datasheet | SLVSDG1C (TLV62569) | December 2016, revised October 2017 |
 | `ti-sces579` | datasheet | SCES579J (SN74AUP1G17) | June 2004, revised September 2017 |
 | `ti-sces351` | datasheet | SCES351Y (SN74LVC1G17) | July 2001, revised October 2025 |
@@ -33,7 +40,9 @@ revision are those of its first page. `ti-sbvs320`, the datasheet of the thermal
 was added the same day from a copy fetched on 2026-10-29 for a project's library; its SHA256 is that
 copy's, and `workcenter references fetch` has not asked for it yet. `nbs-hb100` and `ti-snva419c`,
 the documents of `rules/copper/materials.json`, were fetched together the same day: `2 kept, 0
-changed, 0 refused`.
+changed, 0 refused`. `ti-spraar7j`, `usb-20`, `usb-31-legacy-cable` and `usb-32`, the documents of
+`rules/interfaces/`, were fetched together the same day: `4 kept, 0 changed, 0 refused`; usb.org gave
+each specification as the zip the index names.
 
 `samsung-cl10a106kp8nnn` is a web page of Samsung's component library, the source of the facts of
 `tests/boards/fail-sim-bias`. Each fetch of it differs in a session token and a time stamp, so `fetch`

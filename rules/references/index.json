@@ -1,5 +1,11 @@
 {
-  "rules": ["rules/ratings/*.json", "rules/board/*.json", "rules/copper/*.json", "tests/boards/**/facts/*.json"],
+  "rules": [
+    "rules/ratings/*.json",
+    "rules/board/*.json",
+    "rules/copper/*.json",
+    "rules/interfaces/*.json",
+    "tests/boards/**/facts/*.json"
+  ],
   "documents": [
     {
       "id": "nasa-eee-inst-002",
@@ -54,6 +60,50 @@
       "revision": "April 2010, revised April 2013",
       "url": "https://www.ti.com/lit/an/snva419c/snva419c.pdf",
       "sha256": "abed730cebeffb704f38a1ba1ea9ceb777e8eb4b9af69a43fb26f0a49f0105e7",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "ti-spraar7j",
+      "kind": "application note",
+      "maker": "Texas Instruments",
+      "number": "SPRAAR7J",
+      "title": "High-Speed Interface Layout Guidelines",
+      "revision": "J, November 2018, revised February 2023",
+      "url": "https://www.ti.com/lit/an/spraar7j/spraar7j.pdf",
+      "sha256": "4a14e9b00afc174f336386cf0097f3a5e7a6a367840331fbb22070053ec36f41",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "usb-20",
+      "kind": "standard",
+      "issuer": "USB Implementers Forum",
+      "number": "usb_20.pdf in usb_20_20250603.zip",
+      "title": "Universal Serial Bus Specification",
+      "revision": "2.0, April 27, 2000, as the zip of 2025-06-03 holds it",
+      "url": "https://www.usb.org/sites/default/files/usb_20_20250603.zip",
+      "sha256": "5fe9c53c04033818af396e8852b3acbca5c3a76ba92fab549fd81cd0ea7b3692",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "usb-31-legacy-cable",
+      "kind": "standard",
+      "issuer": "USB 3.0 Promoter Group",
+      "number": "USB 3.1 Legacy Cable and Connector Revision 1.0.pdf",
+      "title": "USB 3.1 Legacy Connector and Cable Specification",
+      "revision": "1.0, September 22, 2017",
+      "url": "https://www.usb.org/sites/default/files/USB%203.1%20Legacy%20Cable%20and%20Connector%20Revision%201.0.zip",
+      "sha256": "7988165f315c7f5ac67ba5e0b0867a937fb8923ed76f06b8e522a34f619e85cb",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "usb-32",
+      "kind": "standard",
+      "issuer": "USB 3.0 Promoter Group",
+      "number": "USB 3.2 Revision 1.1.pdf in usb_32_202206_1.zip",
+      "title": "Universal Serial Bus 3.2 Specification",
+      "revision": "1.1, June 2022",
+      "url": "https://usb.org/sites/default/files/usb_32_202206_1.zip",
+      "sha256": "a0bd7833e466f8be4e7b2466efa8d051fc6934e4651d588efb72d98144755ddd",
       "read": "2026-11-17"
     },
     {

@@ -1201,3 +1201,15 @@ What happened: On integration of `wip/r10`, `rules/copper/materials.json` named 
 Cost: 1 change to `tools/references.py`, 1 test, 2 index entries, 2 fetches.
 Root cause: The check knew 2 shapes of a citation, and a new rule file used a third. The coverage test caught the folder, not the shape.
 Process: P7
+
+## M199 — 2026-11-17 — A high-speed check that trusted what it never measured
+What happened: On `wip/r8` the high-speed check judged the width at a gap typed into `interfaces.json`, and called KiCad's gap rule a second check without running it on a pair named `USB_DP`/`USB_DM`. An unrouted pair and an empty `interfaces.json` printed HELD.
+Cost: A review that said "not sound"; 11 findings fixed with tests.
+Root cause: Each check was written for the 4 fixtures and never run on a board that broke what it trusted. A value a check trusts is now measured on the board or printed as not judged.
+Process: P14
+
+## M200 — 2026-11-17 — The first of several read as the whole
+What happened: On `wip/r8` the gap, the coupling and the stackup were each read as the first or the largest of several: the first sublayer of a dielectric, the gap over the most length, the pieces with a partner. The rest was dropped without a line.
+Cost: A second review that said "not sound"; 7 findings fixed with tests.
+Root cause: When a check read 1 value of several, it did not judge or print the others.
+Process: P14
