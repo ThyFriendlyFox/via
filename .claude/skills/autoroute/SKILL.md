@@ -1,6 +1,6 @@
 ---
 name: Autoroute
-description: Routes a board with FreeRouting headless; generated designs round-trip through Specctra DSN and SES automatically, hand-drawn boards supply the DSN.
+description: Routes a board with FreeRouting headless (1.9.0 by default, 2.5.0 with --router freerouting2); generated designs round-trip through Specctra DSN and SES automatically, hand-drawn boards supply the DSN; lists the rules the workcenter keeps around every router.
 ---
 
 # Autoroute
@@ -135,6 +135,97 @@ nets. `--order` takes no `--seed`.
 It is not the default: on the 3-part board of `tests/test_routeorder.py`
 it took 21.67 s where the plain route took 6.87 s, both with 0 DRC
 errors. Bench it with `--order` before a board takes it.
+
+## Steps, a second router
+
+The routers live in `tools/routers.py`, each with a name, how its
+presence and version are found, how it is run on the workcenter's DSN,
+and how its log's count is read. `freerouting` (FreeRouting 1.9.0) is
+the default. `freerouting2` (FreeRouting 2.5.0) is the second; it is not
+the default, because no benchmark of it exists yet (the scope guard of
+ROADMAP item 5).
+
+1. `workcenter doctor`. The `freerouting2` row says `ok` when the jar
+   and its Java 25 are there. `absent` with no folder: run
+   `sudo ./install.sh --freerouting2` (or `INSTALL_FREEROUTING2=1` with
+   the full install). It fetches the Temurin 25 JRE and the 2.5.0 jar,
+   each checked by its SHA256.
+2. `workcenter design design.py --route --router freerouting2 --out <scratch>`.
+   Read the lines as for the default router. `route skipped: engine
+   missing: freerouting2: ...` names what is missing (the jar, the Java,
+   or a Java older than 25): exit 2, nothing routed.
+3. `workcenter bench <copy>/design.py --out <scratch>/bench --router freerouting --router freerouting2`.
+   The first router named is the default the others are held against.
+   A board takes `freerouting2` only on the bench's rule.
+4. KiCadRoutingTools is not behind the interface: it reads and writes a
+   `.kicad_pcb`, not a DSN, so the DSN rules below would not reach it.
+
+## The rules around a route
+
+These are the workcenter's, not the router's. A second router runs inside
+all of them; `tests/test_routers.py` holds each with a stand-in router
+(a program that writes a known session), so none of them needs a real
+router. The number is the test's rule number.
+
+Before the route:
+1. The DSN is written from the design in the same command, over any DSN
+   left in `build/route` (P4 step 1).
+2. A session left by an earlier run is removed before the router starts;
+   a router that writes none has failed.
+3. An absent router skips the route as an absent engine (exit 2) and
+   names what is missing.
+4. `--order` with `--seed` is refused before the router runs (exit 2).
+   Also before the route, and not the router's: via sizes against the
+   board's rules and hand vias' places (M46, M40, M41), parts in a
+   keep-out or off the board, floating inputs, simulation problems; each
+   makes the run red.
+
+What the router is handed (the DSN):
+5. A poured net (`d.zone`) is a plane: the router routes no track for it
+   (P4 step 12).
+6. Hand copper (`d.track`, `d.via`) is fixed wiring, `(type fix)`.
+7. The router's echo of hand copper is dropped on the way back, and a T
+   onto a hand track is split into 2 proper ends.
+8. A seed (`--seed`) goes in held as `(type shove_fixed)`; its loose ends
+   unfixed; what is left out is counted (M89, M147).
+9. `--order` runs the router once per stage (pours, fan-out, pairs,
+   rest), each DSN listing its nets and the ones before.
+   Also in the DSN, held by `test_routing.py`: each via's and drilled
+   pad's copper grown by the layer's hole clearance (M79), the net
+   classes' widths and vias, and the vias reserved beside island pads.
+
+The run:
+10. Passes (`--passes`, `-mp`, default 60), threads (`--threads`, `-mt`
+    only above 0) and `-dct 0` (no 20 s dialog wait) are the workcenter's.
+11. The time limit (`--timeout`, default 900 s) stops the router and every
+    process it started; nothing is read, since a session is written only
+    at the end (M128). 1 line, exit 1, no board written.
+12. FreeRouting 1.9.0 runs under `xvfb-run` where there is no display.
+    FreeRouting 2.5.0 runs with `--gui.enabled=false` and needs none.
+13. The router's output is kept in `build/route/freerouting.log` (a stage's
+    in `<name>.<n>-<stage>.log`), and the `routed:` line names it.
+14. A router that fails (exit code not 0) is 1 line, `route failed: ...`,
+    exit 1; nothing is merged and no board is written.
+
+What is read back:
+15. The router's own count, `(N unrouted)` in its log, is the verdict:
+    above 0, exit 1 and a red last line.
+16. No count and no copper on any net that needs it: every connection is
+    counted open (each net's pads less 1).
+17. No count and some copper: `DRC decides`, exit 0.
+18. The DRC decides what stayed open: `workcenter drc` counts the
+    unconnected items on the written board (P4 "Done when").
+    Also after the route, held by `test_routing.py` with the real router:
+    pours filled, a via dropped through each island, and the route run
+    again with vias reserved, up to `--rounds` (default 4); it stops
+    early when no island is left or no via can be reserved.
+
+The second router:
+19. `--router freerouting2` adds `-da`, `--gui.enabled=false` and its
+    settings folder in `build/route/freerouting2`; every other rule is the
+    same code.
+20. On a Java older than 25 it is an absent engine: its classes are of
+    version 69, which Java 21 (65) cannot read.
 
 ## Known behaviour
 
