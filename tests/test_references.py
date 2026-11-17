@@ -38,13 +38,14 @@ def sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def run(*args: object, cwd: Path = ROOT) -> tuple[int, str]:
+def run(*args: object, cwd: Path = ROOT, env: dict | None = None) -> tuple[int, str]:
     proc = subprocess.run(
         [sys.executable, str(CLI), "references", *map(str, args)],
         capture_output=True,
         text=True,
         check=False,
         cwd=cwd,
+        env=env,
     )
     return proc.returncode, proc.stdout + proc.stderr
 
@@ -55,7 +56,8 @@ def run_json(*args: object) -> tuple[int, dict]:
 
 
 class Maker(http.server.BaseHTTPRequestHandler):
-    """Serves `files` by path; a path under /refused answers 403, as a bot wall does."""
+    """Serves `files` by path; a path under /refused answers 403, as a bot wall does, under /busy 429
+    (too many requests) and under /err 500 (the server erred). Any other path it lacks answers 404."""
 
     files: dict[str, bytes] = {}
     asked: dict[str, int] = {}
@@ -65,8 +67,11 @@ class Maker(http.server.BaseHTTPRequestHandler):
         Maker.asked[self.path] = Maker.asked.get(self.path, 0) + 1
         Maker.agents.append(self.headers.get("User-Agent", ""))
         body = Maker.files.get(self.path)
-        if self.path.startswith("/refused"):
-            self.send_response(403)
+        walls = {"/refused": 403, "/busy": 429, "/err": 500}
+        wall = next((code for prefix, code in walls.items() if self.path.startswith(prefix)), None)
+        if wall is not None:
+            self.send_response(wall)
+            self.send_header("Content-Length", "0")
             self.end_headers()
         elif body is not None:
             self.send_response(200)
@@ -156,7 +161,9 @@ def test_fetch_prints_1_line_per_document_and_a_count(site):
     assert lines[2].startswith(f"refused an-19: {url_of(index, 'an-19')} answered HTTP 403")
     assert "not asked again" in lines[2] and "references check FILE --id an-19" in lines[2]
     assert all("(ledger of 20" in line for line in lines[:3])
-    assert lines[-1] == "references fetch: 1 kept, 1 changed, 1 refused, 0 gone, 0 not reached; 0 asked now"
+    assert lines[-1] == (
+        "references fetch: 1 kept, 1 changed, 1 refused, 0 gone, 0 not given, 0 not reached; 0 asked now"
+    )
 
 
 def url_of(index: Path, doc_id: str) -> str:
@@ -289,6 +296,242 @@ def test_rules_refuse_an_index_entry_with_a_field_left_out():
     assert lines[0] == (
         "fail tests/boards/references/fail-index/index.json documents[0] acme-an-17: no revision"
     )
+
+
+# ------------------------------------------------------------------ the guards a mutation run found untested
+
+
+def base_of(index: Path) -> str:
+    return url_of(index, "an-17").rsplit("/", 1)[0]
+
+
+def add_entry(index: Path, doc: dict) -> None:
+    data = json.loads(index.read_text(encoding="utf-8"))
+    data["documents"].append(doc)
+    index.write_text(json.dumps(data), encoding="utf-8")
+
+
+def test_fetch_files_a_404_as_gone_and_does_not_ask_it_again(site):
+    """/an-21.pdf is no file of the server: 404. Run 1 asks it once and files `gone`; run 2 answers from
+    the ledger: 1 + 0 = 1 request."""
+    index, refs = site
+    add_entry(index, entry("an-21", f"{base_of(index)}/an-21.pdf", sha(KEPT + b"21")))
+    for n in (1, 2):
+        code, report = run_json("fetch", "an-21", "--index", index, "--to", refs)
+        assert code == 1 and states(report) == {"an-21": "gone"} and report["asked"] == 2 - n
+    assert Maker.asked == {"/an-21.pdf": 1}
+
+
+def test_fetch_asks_again_for_a_copy_deleted_from_the_folder(site):
+    """Run 1 keeps an-17. Its copy is deleted; run 2 asks /an-17.pdf again: 1 + 1 = 2 requests."""
+    index, refs = site
+    _, first = run_json("fetch", "an-17", "--index", index, "--to", refs)
+    Path(first["documents"][0]["file"]).unlink()
+    code, second = run_json("fetch", "an-17", "--index", index, "--to", refs)
+    assert code == 0 and states(second) == {"an-17": "kept"} and second["asked"] == 1
+    assert Maker.asked == {"/an-17.pdf": 2}
+
+
+def test_fetch_asks_again_when_the_index_moves_a_url(site):
+    """Run 1 keeps an-17 at /an-17.pdf. The index then names /moved/an-17.pdf; run 2 asks the new URL
+    once: 1 request for each path."""
+    index, refs = site
+    run("fetch", "an-17", "--index", index, "--to", refs)
+    data = json.loads(index.read_text(encoding="utf-8"))
+    data["documents"][0]["url"] = f"{base_of(index)}/moved/an-17.pdf"
+    index.write_text(json.dumps(data), encoding="utf-8")
+    Maker.files["/moved/an-17.pdf"] = KEPT
+    code, report = run_json("fetch", "an-17", "--index", index, "--to", refs)
+    assert code == 0 and report["asked"] == 1
+    assert Maker.asked == {"/an-17.pdf": 1, "/moved/an-17.pdf": 1}
+
+
+@pytest.mark.parametrize(("path", "status"), [("/busy/an-22.pdf", 429), ("/err/an-23.pdf", 500)])
+def test_fetch_records_nothing_for_an_answer_that_gives_no_copy_and_asks_it_again(site, path, status):
+    """429 limits the rate (RFC 6585, section 4, p 3) and 500 says the server erred (RFC 9110, section
+    15.6): neither refuses the workcenter's name nor says the file is gone. Each of 2 runs asks once:
+    2 requests, exit 2 (not judged) both times."""
+    index, refs = site
+    doc_id = path.rsplit("/", 1)[1].removesuffix(".pdf")
+    url = f"{base_of(index)}{path}"
+    add_entry(index, entry(doc_id, url, sha(KEPT + path.encode())))
+    for _ in range(2):
+        code, out = run("fetch", doc_id, "--index", index, "--to", refs)
+        assert code == 2
+        assert out.splitlines()[0] == (
+            f"not given {doc_id}: {url} answered HTTP {status}, which gives no copy and no verdict; "
+            "nothing recorded, asked again on the next run"
+        )
+    assert Maker.asked == {path: 2}
+
+
+def test_fetch_ignores_a_relative_xdg_cache_home(site, tmp_path):
+    """XDG Base Directory Specification 0.8, section 2: a relative path in these variables is invalid
+    and is ignored. Run from repo/sub with XDG_CACHE_HOME=cache, the copy goes to $HOME/.cache, and the
+    repository gains no file."""
+    import os
+
+    index, _ = site
+    repo, home = tmp_path / "repo", tmp_path / "home"
+    (repo / ".git").mkdir(parents=True)
+    (repo / "sub").mkdir()
+    home.mkdir()
+    env = dict(os.environ, XDG_CACHE_HOME="cache", HOME=str(home))
+    code, out = run("fetch", "an-17", "--index", index, cwd=repo / "sub", env=env)
+    assert code == 0, out
+    assert [p for p in repo.rglob("*") if p.is_file()] == []
+    assert (home / ".cache" / "ee-workcenter" / "references" / "ledger.json").is_file()
+
+
+@pytest.mark.parametrize(
+    ("ledger", "fault"),
+    [
+        ({"documents": []}, "documents: an object of records by id is asked"),
+        ({"documents": {"an-17": {"url": "https://example.com/an-17.pdf"}}}, "documents.an-17: state: "),
+        ("{not json", "not JSON"),
+    ],
+)
+def test_fetch_refuses_a_ledger_of_the_wrong_shape_on_1_line_and_asks_nothing(site, ledger, fault):
+    index, refs = site
+    refs.mkdir()
+    text = ledger if isinstance(ledger, str) else json.dumps(ledger)
+    (refs / "ledger.json").write_text(text, encoding="utf-8")
+    code, out = run("fetch", "--index", index, "--to", refs)
+    assert code == 1
+    assert len(out.splitlines()) == 1 and out.startswith(f"references: {refs / 'ledger.json'}")
+    assert fault in out and "mend it or delete it" in out
+    assert Maker.asked == {}
+
+
+def test_fetch_refuses_a_to_that_is_a_file(site, tmp_path):
+    index, _ = site
+    afile = tmp_path / "afile"
+    afile.write_text("x", encoding="utf-8")
+    code, out = run("fetch", "--index", index, "--to", afile)
+    assert code == 1 and out == f"references: {afile} is a file; --to names a folder\n"
+    assert Maker.asked == {}
+
+
+def test_check_keep_refuses_a_folder_inside_a_repository(site, tmp_path):
+    index, _ = site
+    (tmp_path / "repo" / ".git").mkdir(parents=True)
+    given = tmp_path / "an-17.pdf"
+    given.write_bytes(KEPT)
+    code, out = run("check", given, "--index", index, "--keep", "--to", tmp_path / "repo" / "refs")
+    assert code == 1 and "is inside the repository" in out
+    assert not (tmp_path / "repo" / "refs").exists()
+
+
+GOOD = {
+    "id": "acme-an-17",
+    "kind": "application note",
+    "maker": "Acme, a maker made up for the tests",
+    "number": "AN-17",
+    "title": "Layout of a buck converter",
+    "revision": "Rev. B",
+    "url": "https://example.com/an-17.pdf",
+    "sha256": "d3d0f188f5b9b632e69a0942046d751e98cb9ef103e8c319a3c72fe046f4a3dd",
+    "read": "2026-11-17",
+}
+OTHER_SHA = "0" * 64
+
+
+@pytest.mark.parametrize(
+    ("docs", "fault"),
+    [
+        (
+            [GOOD, GOOD | {"sha256": OTHER_SHA}],
+            "documents[1] acme-an-17: id acme-an-17 is the id of documents[0] too",
+        ),
+        (
+            [GOOD, GOOD | {"id": "acme-an-18"}],
+            f"documents[1] acme-an-18: sha256 {GOOD['sha256']} is the sha256 of documents[0] too",
+        ),
+        (
+            [GOOD | {"issuer": "Acme"}],
+            "documents[0] acme-an-17: names neither or both of maker and issuer; it names 1",
+        ),
+        (
+            [{k: v for k, v in GOOD.items() if k != "maker"}],
+            "documents[0] acme-an-17: names neither or both of maker and issuer; it names 1",
+        ),
+        (
+            [GOOD | {"kind": "note"}],
+            "documents[0] acme-an-17: kind 'note' is none of standard, application note, datasheet",
+        ),
+        (
+            [GOOD | {"id": "AN-17"}],
+            "documents[0] AN-17: id 'AN-17' is not lower-case letters, digits, dots and hyphens",
+        ),
+        ([GOOD | {"sha256": "ABC"}], "documents[0] acme-an-17: sha256 'ABC' is not 64 lower-case hex digits"),
+        (
+            [GOOD | {"url": "example.com/an-17.pdf"}],
+            "documents[0] acme-an-17: url 'example.com/an-17.pdf' is not a whole URL, https://host/path",
+        ),
+        (
+            [GOOD | {"read": "17 Nov 2026"}],
+            "documents[0] acme-an-17: read '17 Nov 2026' is not a date, 2026-11-17",
+        ),
+    ],
+)
+def test_rules_refuse_an_index_entry_of_the_wrong_form(tmp_path, docs, fault):
+    """Each case plants 1 fault the README says the command refuses; the 1 line names the entry."""
+    index = tmp_path / "index.json"
+    index.write_text(json.dumps({"documents": docs}), encoding="utf-8")
+    code, lines = rules(FIXTURES / "pass", index=index)
+    assert code == 1 and lines == [f"fail {index} {fault}"]
+
+
+@pytest.mark.parametrize("globs", ["rules/ratings/*.json", ["/rules/ratings/*.json"], [""], [3]])
+def test_rules_refuse_an_index_whose_rules_are_no_list_of_globs(tmp_path, globs):
+    index = tmp_path / "index.json"
+    index.write_text(json.dumps({"rules": globs, "documents": [GOOD]}), encoding="utf-8")
+    code, lines = rules(index=index)
+    assert code == 1
+    assert lines == [
+        f"fail {index}: rules: a list of globs from the repository's root is asked, "
+        'as ["rules/ratings/*.json"]'
+    ]
+
+
+def facts_with(tmp_path: Path, source: dict) -> Path:
+    path = tmp_path / "facts.json"
+    path.write_text(
+        json.dumps({"parts": [{"kind": "capacitor.ceramic", "source": source}]}), encoding="utf-8"
+    )
+    return path
+
+
+@pytest.mark.parametrize(
+    ("source", "fault"),
+    [
+        (
+            {"document": "Murata GRM188R71E104KA01 datasheet", "read": "2026-11-17", "second_reader": "no"},
+            "Murata GRM188R71E104KA01 datasheet names no URL and no SHA256: write both from the copy it was "
+            "read from, or `no datasheet: <why>` as its document",
+        ),
+        (
+            {"document": "Acme AN-17", "revision": "Rev. B", "sha256": GOOD["sha256"]},
+            f"Acme AN-17, Rev. B has SHA256 {GOOD['sha256']} and no URL to fetch it from",
+        ),
+        (
+            {"document": "Acme AN-17", "url": GOOD["url"], "sha256": ["d3d0"]},
+            "sha256 ['d3d0'] is not 64 hex digits",
+        ),
+        (
+            {"document": "Acme AN-17", "url": 17, "sha256": GOOD["sha256"]},
+            "url 17 is not a whole URL, https://host/path",
+        ),
+    ],
+)
+def test_rules_fail_a_source_that_names_a_document_it_does_not_pin(tmp_path, source, fault):
+    """A source with no URL and no SHA256 is not judged only when its document says `no datasheet: why`
+    or `no document: why`; a real datasheet named by name alone fails, as does a hash of the wrong type."""
+    path = facts_with(tmp_path, source)
+    code, lines = rules(path)
+    assert code == 1
+    assert [ln for ln in lines if ln.startswith("fail ")] == [f"fail {path} parts[0].source: {fault}"]
+    assert lines[-1] == "references rules: 1 documents named in 1 files, 0 in the index, 1 not; 0 not judged"
 
 
 def test_every_document_a_rule_of_the_repository_names_is_in_the_index():

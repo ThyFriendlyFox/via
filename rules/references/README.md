@@ -25,14 +25,24 @@ entry were read from the first page of that copy.
 ## The 3 commands
 
 - `workcenter references fetch [ID ...] [--to DIR]` asks each URL once and keeps what it gets in DIR,
-  by default `~/.cache/ee-workcenter/references`. DIR may not lie inside a repository. `DIR/ledger.json`
-  holds each answer, and a later run reads it and asks again for none. `--again ID` asks once more.
+  by default `$XDG_CACHE_HOME/ee-workcenter/references` or `~/.cache/ee-workcenter/references`. A
+  relative `XDG_CACHE_HOME` is ignored (XDG Base Directory Specification 0.8, section 2). DIR may not
+  lie inside a repository, and may not be a file. `DIR/ledger.json` holds each answer, and a later run
+  reads it and asks again for none. `--again ID` asks once more. A ledger of another shape is refused on
+  1 line that names the file and the key.
+- `fetch` files 3 answers in the ledger: a copy, a refusal (HTTP 401 or 403) and a file gone (HTTP 404
+  or 410). It files nothing for an answer that gives no copy and no verdict: HTTP 429 (RFC 6585,
+  section 4, p 3: too many requests) or a 5xx (RFC 9110, section 15.6: the server erred) is `not given`,
+  and no answer at all is `not reached`. Both are asked again on the next run, and exit with 2.
 - `workcenter references check FILE [--id ID] [--keep]` says whether a file a person downloaded is the
-  copy an entry names. `--keep` files it in DIR, as `fetch` would have.
+  copy an entry names. `--keep` files it in DIR, as `fetch` would have, with the same refusals of DIR.
 - `workcenter references rules [PATH ...]` reads each document a rule file names, under a key `document`
-  or `source`, and fails 1 line for each one the index lacks or names at another URL. With no PATH it
-  reads the files the globs under `rules` in `index.json` find. `make verify` runs it
-  (`tests/test_references.py`).
+  or `source`, and fails 1 line for each one the index lacks or names at another URL, or that has no
+  URL and no SHA256. With no PATH it reads the files the globs under `rules` in `index.json` find.
+  `make verify` runs it (`tests/test_references.py`).
+- A source with no document to pin says so in its `document`: `no datasheet: <why>` or
+  `no document: <why>`. Only such a source is printed as `not judged`, with its reason. A source that
+  names a datasheet by name alone fails.
 
 ## An entry
 
@@ -53,7 +63,8 @@ entry were read from the first page of that copy.
 `kind` is `standard`, `application note` or `datasheet`. A standard names its `issuer`, a note or a
 datasheet its `maker`. `read` is the date the copy was read. The command refuses an entry with a field
 left out, a SHA256 that is not 64 lower-case hex digits, a URL that is not whole, or an id or a SHA256
-that another entry has.
+that another entry has. It refuses an index whose `rules` is not a list of globs from the repository's
+root.
 
 ## What the index does not cover
 

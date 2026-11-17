@@ -29,10 +29,16 @@ LEDGER = "ledger.json"
 # A site's answer that holds until a person asks again: a refusal is never retried under another name.
 FINAL = {"refused", "gone"}
 SHA_RE = re.compile(r"[0-9a-f]{64}")
+# A rule's own hash may be written in either case, as tools/ratings.py takes it.
+RULE_SHA_RE = re.compile(r"[0-9a-fA-F]{64}")
 ID_RE = re.compile(r"[a-z0-9][a-z0-9.-]*")
 DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 URL_RE = re.compile(r"https?://[^\s/]+/\S*")
 CITING_KEYS = ("document", "source")
+# The words by which a source says it has no document to pin: `no datasheet: <why>`.
+NONE_RE = re.compile(r"no (datasheet|document): \S.*")
+GLOBS = 'rules: a list of globs from the repository\'s root is asked, as ["rules/ratings/*.json"]'
+MEND = "mend it or delete it, and run again"
 
 
 def shown(path: Path) -> str:
@@ -64,6 +70,10 @@ def load_index(path: Path) -> tuple[list[dict], list[str], list[str]]:
     if not isinstance(docs, list):
         return [], [], [f"fail {where}: no list under documents"]
     covers = data.get("rules", [])
+    if not isinstance(covers, list) or not all(
+        isinstance(g, str) and g and not g.startswith("/") and ".." not in Path(g).parts for g in covers
+    ):
+        return [], [], [f"fail {where}: {GLOBS}"]
     problems: list[str] = []
     ids: dict[str, int] = {}
     shas: dict[str, int] = {}
@@ -102,8 +112,12 @@ def load_index(path: Path) -> tuple[list[dict], list[str], list[str]]:
 
 
 def default_folder() -> Path:
-    cache = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
-    return Path(cache) / "ee-workcenter" / "references"
+    """$XDG_CACHE_HOME/ee-workcenter/references, else ~/.cache/... A relative XDG_CACHE_HOME is ignored:
+    XDG Base Directory Specification 0.8, section 2 calls such a path invalid. A relative one would also
+    put the folder under the working folder, which may lie in a repository."""
+    cache = os.environ.get("XDG_CACHE_HOME", "")
+    base = Path(cache) if cache and Path(cache).is_absolute() else Path.home() / ".cache"
+    return (base / "ee-workcenter" / "references").resolve()
 
 
 def repository_of(path: Path) -> Path | None:
@@ -125,12 +139,56 @@ def outside_repositories(to: Path) -> str:
     )
 
 
-def read_ledger(to: Path) -> dict:
+def folder_for(given: str | None) -> tuple[Path, str]:
+    """(the folder for the copies, '' or the 1 line that refuses it). The folder is made when it may be."""
+    to = Path(given).expanduser().resolve() if given else default_folder()
+    refusal = outside_repositories(to)
+    if refusal:
+        return to, refusal
+    if to.exists() and not to.is_dir():
+        return to, f"references: {to} is a file; --to names a folder"
     try:
-        data = json.loads((to / LEDGER).read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError, UnicodeDecodeError):
-        return {}
-    return data.get("documents", {}) if isinstance(data, dict) else {}
+        to.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return to, f"references: {to}: the folder could not be made ({exc.strerror or exc})"
+    return to, ""
+
+
+def record_fault(rec: object) -> str:
+    """'' when a ledger record has the shape `fetch` writes, else what is wrong with it."""
+    if not isinstance(rec, dict):
+        return "an object is asked"
+    if not isinstance(rec.get("url"), str):
+        return "url: a URL is asked"
+    if rec.get("state") not in ("copy", *sorted(FINAL)):
+        return f"state: one of copy, {', '.join(sorted(FINAL))} is asked"
+    if rec["state"] != "copy":
+        return ""
+    if not isinstance(rec.get("sha256"), str) or not SHA_RE.fullmatch(rec["sha256"]):
+        return "sha256: 64 lower-case hex digits are asked"
+    file = rec.get("file")
+    if not isinstance(file, str) or not file or Path(file).is_absolute() or ".." in Path(file).parts:
+        return "file: a path inside the folder is asked"
+    return ""
+
+
+def read_ledger(to: Path) -> tuple[dict, str]:
+    """(the records by id, '' or the 1 line that refuses the ledger). No ledger is an empty one."""
+    path = to / LEDGER
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}, ""
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        return {}, f"references: {path}: not JSON ({exc}); {MEND}"
+    docs = data.get("documents") if isinstance(data, dict) else None
+    if not isinstance(docs, dict):
+        return {}, f"references: {path}: documents: an object of records by id is asked; {MEND}"
+    for doc_id, rec in docs.items():
+        fault = record_fault(rec)
+        if fault:
+            return {}, f"references: {path} documents.{doc_id}: {fault}; {MEND}"
+    return docs, ""
 
 
 def write_ledger(to: Path, ledger: dict) -> None:
@@ -159,6 +217,18 @@ def keep(to: Path, doc_id: str, body: bytes, name: str) -> tuple[str, str]:
 
 def now() -> str:
     return datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%MZ")
+
+
+def answered(status: str, detail: str) -> str:
+    """The state of a fetch that gave no copy. 401 and 403 refuse the workcenter's name and 404 and 410
+    say the file is gone: both are filed. 429 limits the rate (RFC 6585, section 4, p 3) and a 5xx says
+    the server erred (RFC 9110, section 15.6): `not given`, filed nowhere and asked again. No answer at
+    all is `not reached`."""
+    if status == "refused" and detail != "HTTP 429":
+        return "refused"
+    if status == "gone":
+        return "gone"
+    return "not given" if status in ("refused", "error") else "not reached"
 
 
 def still_held(to: Path, rec: dict) -> bool:
@@ -202,10 +272,13 @@ def line_of(doc: dict, result: dict, asked: bool) -> str:
             f"gone {doc_id}: {url} answered {result['detail']}; not asked again: find where the maker moved "
             "it and change the URL of its entry in the index"
         )
-    else:
+    elif state == "not given":
         return (
-            f"not reached {doc_id}: {url}: {result.get('detail') or 'no answer'}; asked again on the next run"
+            f"not given {doc_id}: {url} answered {result['detail']}, which gives no copy and no verdict; "
+            "nothing recorded, asked again on the next run"
         )
+    else:
+        return f"not reached {doc_id}: {url}: no answer ({result.get('detail')}); asked again on the next run"
     return text if asked else f"{text} (ledger of {result['at']})"
 
 
@@ -220,13 +293,12 @@ def cmd_fetch(args, cli) -> int:
     if unknown:
         print(f"references: {', '.join(unknown)} is not in the index {shown(Path(args.index))}")
         return 1
-    to = Path(args.to).expanduser().resolve() if args.to else default_folder()
-    refusal = outside_repositories(to)
+    to, refusal = folder_for(args.to)
+    if not refusal:
+        ledger, refusal = read_ledger(to)
     if refusal:
         print(refusal)
         return 1
-    to.mkdir(parents=True, exist_ok=True)
-    ledger = read_ledger(to)
     again = set(args.again or [])
     results, lines, asked = [], [], 0
     for doc in [by_id[i] for i in args.ids] if args.ids else docs:
@@ -235,12 +307,13 @@ def cmd_fetch(args, cli) -> int:
         if ask:
             asked += 1
             status, body, detail = cli.fetch_url(doc["url"])
+            state = "copy" if body is not None else answered(status, detail)
             if body is not None:
                 digest, rel = keep(to, doc["id"], body, doc["url"])
                 rec = {"url": doc["url"], "state": "copy", "sha256": digest, "file": rel, "at": now()}
                 rec["detail"] = detail
-            elif status in FINAL:
-                rec = {"url": doc["url"], "state": status, "detail": detail, "at": now()}
+            elif state in FINAL:
+                rec = {"url": doc["url"], "state": state, "detail": detail, "at": now()}
             else:
                 rec = None
                 ledger.pop(doc["id"], None)
@@ -249,20 +322,22 @@ def cmd_fetch(args, cli) -> int:
             write_ledger(to, ledger)
             result = judge(doc, rec, to)
             if rec is None:
-                result["detail"] = f"{status}, {detail}"
+                result |= {"state": state, "detail": detail}
         else:
             result = judge(doc, rec, to)
         results.append(result | {"asked": ask})
         lines.append(line_of(doc, result, ask))
-    counts = {s: sum(r["state"] == s for r in results) for s in ("kept", "changed", "refused", "gone")}
-    counts["not reached"] = sum(r["state"] == "not reached" for r in results)
-    code = 1 if counts["changed"] + counts["refused"] + counts["gone"] else 2 if counts["not reached"] else 0
+    names = ("kept", "changed", "refused", "gone", "not given", "not reached")
+    counts = {s: sum(r["state"] == s for r in results) for s in names}
+    unjudged = counts["not given"] + counts["not reached"]
+    code = 1 if counts["changed"] + counts["refused"] + counts["gone"] else 2 if unjudged else 0
     if as_json:
         print(json.dumps({"to": str(to), "documents": results, "asked": asked, "counts": counts}, indent=2))
         return code
     lines.append(
         f"references fetch: {counts['kept']} kept, {counts['changed']} changed, {counts['refused']} refused, "
-        f"{counts['gone']} gone, {counts['not reached']} not reached; {asked} asked now"
+        f"{counts['gone']} gone, {counts['not given']} not given, {counts['not reached']} not reached; "
+        f"{asked} asked now"
     )
     print("\n".join(lines))
     return code
@@ -302,13 +377,12 @@ def cmd_check(args, cli) -> int:
         "index names"
     ]
     if args.keep:
-        to = Path(args.to).expanduser().resolve() if args.to else default_folder()
-        refusal = outside_repositories(to)
+        to, refusal = folder_for(args.to)
+        if not refusal:
+            ledger, refusal = read_ledger(to)
         if refusal:
             print(refusal)
             return 1
-        to.mkdir(parents=True, exist_ok=True)
-        ledger = read_ledger(to)
         _, rel = keep(to, doc["id"], path.read_bytes(), path.name)
         ledger[doc["id"]] = {
             "url": doc["url"],
@@ -378,20 +452,28 @@ def cmd_rules(args, cli) -> int:
         for pointer, source in cited(data):
             url, digest, label = source.get("url"), source.get("sha256"), label_of(source)
             tag = f"{where} {pointer}"
-            if not url and not digest:
-                unjudged.append(
-                    f"not judged {tag}: names no document with a URL and a SHA256 ({source.get('document')})"
-                )
+            document = source.get("document")
+            if not url and not digest and isinstance(document, str) and NONE_RE.fullmatch(document):
+                unjudged.append(f"not judged {tag}: names no document with a URL and a SHA256 ({document})")
                 continue
             named += 1
-            if not digest:
+            if url is not None and not isinstance(url, str):
+                fails.append(f"fail {tag}: url {url!r} is not a whole URL, https://host/path")
+            elif digest is not None and not (isinstance(digest, str) and RULE_SHA_RE.fullmatch(digest)):
+                fails.append(f"fail {tag}: sha256 {digest!r} is not 64 hex digits")
+            elif not url and not digest:
+                fails.append(
+                    f"fail {tag}: {label} names no URL and no SHA256: write both from the copy it was read "
+                    "from, or `no datasheet: <why>` as its document"
+                )
+            elif not digest:
                 fails.append(f"fail {tag}: {label} names {url} and no SHA256 of the copy it was written from")
             elif not url:
                 fails.append(f"fail {tag}: {label} has SHA256 {digest} and no URL to fetch it from")
-            elif digest not in by_sha:
+            elif digest.lower() not in by_sha:
                 fails.append(f"fail {tag}: {label}, SHA256 {digest} is not in the index {shown(index)}")
-            elif by_sha[digest]["url"] != url:
-                entry = by_sha[digest]
+            elif by_sha[digest.lower()]["url"] != url:
+                entry = by_sha[digest.lower()]
                 fails.append(
                     f"fail {tag}: {label} is at {url}, the index names {entry['id']} at {entry['url']}"
                 )
