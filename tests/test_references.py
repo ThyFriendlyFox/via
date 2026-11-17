@@ -535,14 +535,15 @@ def test_rules_fail_a_source_that_names_a_document_it_does_not_pin(tmp_path, sou
 
 
 def test_every_document_a_rule_of_the_repository_names_is_in_the_index():
-    """`make verify` runs this. The rating packs name 2 standards, the board pack 1, the 3 facts files
-    of 1 part 3 datasheets, passives.json 4: 2 + 1 + 3 + 4 = 10 named. made-up.json's 4 parts name no
-    document: 4 not judged."""
+    """`make verify` runs this. The rating packs name 2 standards, the board pack 1, the buck block 2 (its
+    note and its IC's datasheet), the 4 facts files of 1 part under tests/boards/library 4 datasheets,
+    passives.json 4, fail-sim-bias's parts.json 2: 2 + 1 + 2 + 4 + 4 + 2 = 15 named. made-up.json's 4
+    parts name no document: 4 not judged."""
     code, out = run("rules")
     assert code == 0, out
-    files = 2 + 1 + 5
+    files = 2 + 1 + 1 + 6 + 1
     assert out.splitlines()[-1] == (
-        f"references rules: 10 documents named in {files} files, 10 in the index, 0 not; 4 not judged"
+        f"references rules: 15 documents named in {files} files, 15 in the index, 0 not; 4 not judged"
     )
 
 

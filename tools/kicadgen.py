@@ -1160,6 +1160,9 @@ class Design:
     # Each via write() adds through a pour's island after routing, with the island it ties, so a via
     # that moves between two runs can be traced to the pads it serves (stitch_zones()).
     stitches: list[dict] = field(default_factory=list)
+    # Text files write() puts beside the project, by their path under it: a block's deck, ratings.json and
+    # parts.csv (tools/blocks.py). A design that names none writes what it wrote before.
+    files: dict[str, str] = field(default_factory=dict)
     _holes_cache: tuple | None = field(default=None, repr=False)
     _symcache: dict[str, Symbol] = field(default_factory=dict, repr=False)
     _fpcache: dict[str, Footprint] = field(default_factory=dict, repr=False)
@@ -4252,6 +4255,11 @@ class Design:
                 + f"\n\n# Copied by the workcenter from {src.name} (Design.fab); edit the source, not this file.\n"
             )
         files.update(self.lib_tables(out_dir))
+        for rel, text in self.files.items():
+            if Path(rel).is_absolute() or ".." in Path(rel).parts:
+                raise ValueError(f"Design.files: {rel} is no path under the project")
+            (out_dir / rel).parent.mkdir(parents=True, exist_ok=True)
+            files[out_dir / rel] = text
         for p, text in files.items():
             p.write_text(text, encoding="utf-8")
         self.stitches = []
