@@ -682,6 +682,7 @@ def test_kicads_own_legend_warnings_become_failures():
     assert "warning in its report" in lines[1]
 
 
+@pytest.mark.engine
 @pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
 def test_the_drc_gate_fails_the_fixture_on_its_3_rules_and_no_other(tmp_path):
     """`workcenter drc` on fail-legend: red, the 3 lines of the check above, and every legend line, KiCad's

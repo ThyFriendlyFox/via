@@ -174,6 +174,12 @@ FOR_ANOTHER_COMMAND = {
     "fail-copper-neck": "`copper` reads the amps at J2 and through R1",
     "pass-board-ecss": "the ECSS pack's DRC reads the volts of VIN and the amps of J1",
     "fail-board-ecss": "the ECSS pack's DRC reads the volts of VIN and the amps of J1",
+    "pass-creepage": "the creepage pack's DRC reads the volts of HV and GND",
+    "fail-creepage": "the creepage pack's DRC reads the volts of HV and GND",
+    "fail-creepage-clearance": "the creepage pack's DRC reads the volts of HV and GND",
+    "pass-creepage-slot": "the creepage pack's DRC reads the volts of HV and GND",
+    "fail-creepage-slot": "the creepage pack's DRC reads the volts of HV and GND",
+    "pass-sim-bus": "the SIM gate reads the load stated on J2.1 to ask U1 for a load-step deck",
 }
 
 
@@ -464,17 +470,27 @@ def run(*args: object) -> subprocess.CompletedProcess:
 
 @needs_kicad
 def test_the_real_gates_follow_the_real_ratings(tmp_path):
-    """`pass-ratings-node` is held whole (`ratings --strict` prints RATINGS HELD), so `gates --strict`
-    keeps its verdict and says the ratings are held. With the 453k resistor's row taken out of
-    parts.csv the ratings run again leaves something not judged, and `gates --strict` is not GREEN."""
+    """`pass-ratings-node` is held whole (`ratings --strict` prints RATINGS HELD), so the gates say the
+    ratings are held, and a plain run is GREEN with 1 warning: its U1, a `Regulator_Switching` part with
+    a load stated in ratings.json, has no load-step deck (User round 1, G), the SIM gate's own line, which
+    a strict run fails on. The 2 lines print together, the ratings line last before the verdict. With the
+    453k resistor's row taken out of parts.csv the ratings run again leaves something not judged: a
+    strict run says so, and a plain run counts it as a second warning."""
     proj = node(tmp_path / "a")
     shutil.copytree(BOARDS / "library", tmp_path / "a" / "library")  # the facts, above the project
     held = run("ratings", proj, "--strict")
     assert held.stdout.splitlines()[-1].startswith("RATINGS HELD: node"), held.stdout
-    green = run("gates", proj, "--strict")
+    deckless = "no deck says `* deck: load-step U1`"
+    green = run("gates", proj)
     lines = green.stdout.splitlines()
     assert lines[-2] == "RATINGS held: build/ratings/report.json says RATINGS HELD", green.stdout
-    assert green.returncode == 0 and lines[-1].startswith("GREEN"), green.stdout
+    assert green.returncode == 0 and lines[-1].startswith("GREEN with 1 warning "), green.stdout
+    assert deckless in green.stdout
+    strict = run("gates", proj, "--strict")
+    lines = strict.stdout.splitlines()
+    assert lines[-2] == "RATINGS held: build/ratings/report.json says RATINGS HELD", strict.stdout
+    assert strict.returncode == 1 and lines[-1].startswith("RED: node"), strict.stdout
+    assert deckless in strict.stdout
     rows = (proj / "parts.csv").read_text(encoding="utf-8").splitlines(keepends=True)
     (proj / "parts.csv").write_text("".join(r for r in rows if not r.startswith("453k,")), "utf-8")
     stale = run("gates", proj, "--strict")
@@ -487,7 +503,11 @@ def test_the_real_gates_follow_the_real_ratings(tmp_path):
     assert said["details"]["verdict"] != "RATINGS HELD", said["details"]
     red = run("gates", proj, "--strict")
     lines = red.stdout.splitlines()
-    assert red.returncode == 1 and lines[-1].startswith("RED (ratings not held): node"), red.stdout
+    assert red.returncode == 1 and lines[-1].startswith("RED: node"), red.stdout
+    assert lines[-2].startswith("RATINGS not held: ") and lines[-2].endswith(f"(workcenter ratings {proj})")
+    plain = run("gates", proj)
+    lines = plain.stdout.splitlines()
+    assert plain.returncode == 0 and lines[-1].startswith("GREEN with 2 warnings "), plain.stdout
     assert lines[-2].startswith("RATINGS not held: ") and lines[-2].endswith(f"(workcenter ratings {proj})")
 
 
@@ -495,7 +515,8 @@ def test_the_real_gates_follow_the_real_ratings(tmp_path):
 def test_the_real_record_names_the_files_its_run_read(tmp_path):
     """F1 and F2 of the review on real runs. `ratings --strict --parts ../parts/catalog.csv` holds the
     fixture; its record names the catalog and the facts. The catalog without its 453k row, then the
-    catalog put back as it was, then passives.json taken away: RED, GREEN, RED."""
+    catalog put back as it was, then passives.json taken away: RED, GREEN (a plain run, with U1's missing
+    load-step deck its 1 warning), RED."""
     proj = node(tmp_path / "a")
     shutil.copytree(BOARDS / "library", tmp_path / "a" / "library")
     (tmp_path / "a" / "parts").mkdir()
@@ -521,8 +542,10 @@ def test_the_real_record_names_the_files_its_run_read(tmp_path):
         f"RATINGS not held: ../parts/catalog.csv changed after the last run (workcenter ratings {proj})"
     )
     catalog.write_bytes(kept)
-    green = run("gates", proj, "--strict")
+    # A plain run: U1's missing load-step deck (User round 1, G) is its 1 warning, which --strict fails on.
+    green = run("gates", proj)
     assert green.returncode == 0 and green.stdout.splitlines()[-2].startswith("RATINGS held:"), green.stdout
+    assert green.stdout.splitlines()[-1].startswith("GREEN with 1 warning "), green.stdout
     (tmp_path / "a" / "library" / "facts" / "passives.json").unlink()
     gone = run("gates", proj, "--strict")
     assert gone.returncode == 1, gone.stdout

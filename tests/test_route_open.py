@@ -212,6 +212,7 @@ def test_without_kicad_cli_the_count_is_not_judged_and_the_route_stands(tmp_path
         timeout=60,
         threads=0,
         order=False,
+        router="freerouting",
         json=False,
     )
     code = cli.cmd_design(args)
