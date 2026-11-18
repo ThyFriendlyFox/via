@@ -418,21 +418,35 @@ on a test board. SPRA953D, section 1.1, page 2, calls equation 1 a
 misapplication on a system board, with erroneous results: the test board
 is the heat sink, and RthetaJA changes with the board. Section 1.2, page
 3: a JEDEC 2s2p board gives a best case, a 1s board a typical one. So a
-part the gate holds is held on the datasheet's board. Every printed
-`thermal` line says so. Where the board is not like the datasheet's,
-take the datasheet's row for a board like it (an EVM row, with its page),
-or keep a margin under the limit and write why in the version's README.
+part the gate holds is held on the datasheet's board, and the facts name
+that board for each figure. The 2 boards are `1s0p` (the low-k board of
+JESD 51-3) and `2s2p` (the high-k board of JESD 51-7), as SPRA953D names
+them (table 3-1, note 11, page 9). A figure whose board the facts do not
+name holds no part. Every printed `thermal` line names the board. JESD51
+itself was not read: JEDEC refused the workcenter's client name.
+
+Where the project knows the case, the board or the package top's
+temperature (measured, or computed by `workcenter copper`), the gate takes
+the junction from it: TJ = T(PCB) + psi_jb x power (SPRA953D, section
+5.1, equation 9, page 11), TJ = TC + psi_jt x power (section 3, equation
+8, page 8). theta_jc and theta_jb put all of the power through 1 path, so
+the junction they give is above the real one (section 2.2, equation 4,
+page 7; section 5.1, page 11). Prefer psi_jb or psi_jt.
 
 1. Give the part its thermal facts, in the facts file `workcenter
    ratings` reads (`library/facts/`, the `ratings` skill). Copy the
-   figures from the datasheet's thermal table, in C/W, and the absolute
-   maximum junction temperature, with the pages:
+   figures from the datasheet's thermal table, in C/W, the absolute
+   maximum junction temperature, and the JEDEC board of each figure
+   (the table's footnote), with the pages:
    ```json
-   "thermal": {"junction_max": 150, "theta_ja": 231.1, "theta_jc": 118.4, "page": [4, 5]}
+   "thermal": {"junction_max": 150, "theta_ja": 231.1, "psi_jb": 63.8, "page": [4, 5],
+               "boards": {"theta_ja": "2s2p", "psi_jb": "2s2p", "page": 5}}
    ```
    The figures are `theta_ja`, `theta_jc`, `theta_jb`, `psi_jt` and
-   `psi_jb`. Take the column of the part's package. `thermal` stands on
-   an `ic`, a diode or a MOSFET.
+   `psi_jb`. Take the column of the part's package. A row measured on a
+   maker's own board (an EVM row) is no JEDEC board: leave it out.
+   `thermal` stands on an `ic`, a diode or a MOSFET. A second reader
+   compares every number with the datasheet and sets `second_reader`.
 2. Print the part's power from a deck, once per run: its input power
    less its output power.
    ```
@@ -446,17 +460,32 @@ or keep a margin under the limit and write why in the version's README.
     "parts": {"U1": {"mpn": "TLV75533PDBVR", "watts": "ldo.p_u1",
                      "source": "the deck's input power less its output power"}}}
    ```
+   When the board's, the case's or the top's temperature is known at an
+   ambient, add `from` to the part: the figure, the temperature at each
+   ambient of a run (the deck as written or a corner), and its source:
+   ```json
+   "from": {"figure": "psi_jb", "celsius": {"85": 101.5},
+            "source": "workcenter copper, build/copper/report.json, hottest near U1, air 85 C"}
+   ```
+   A run at an ambient `from` names is judged from that temperature; the
+   other runs from theta_ja.
 4. Run `workcenter sim <project>`. Read each line that starts with
-   `thermal:`:
+   `thermal:`, and each line that starts with `corners.json: decks.`:
 
    | Line | What to do |
    |---|---|
    | `thermal: U1 (MPN) at 85 C ambient: junction 124.97 C, over 110 C (...)` | The part runs too hot at that corner. Take power off it (a lower input voltage, a switching regulator, a lighter load), or choose a package with a lower figure. Never widen the corner. |
    | `thermal: U1 (MPN) not judged: no facts entry names ...` | Write the part's facts from its datasheet (the `ratings` skill). |
    | `... not judged: its facts give no thermal figure` | Add `thermal` from the datasheet's thermal table. |
-   | `... not judged: its facts give theta_jc ..., and no theta_ja` | The figure needs the case's, the board's or the top's temperature, and no deck gives one. Find RthetaJA in the datasheet. |
+   | `thermal: U1 (MPN) at 60 C ambient: junction 111.01 C, over 110 C (...): board 100 C at 60 C ambient (source) + ...` | The stated temperature puts the part too hot. Take power off it, or cool the board where the part stands. |
+   | `... not judged: its facts give theta_jc ..., and no theta_ja` | The figure needs the case's, the board's or the top's temperature. State it in `from` with its source, or find RthetaJA in the datasheet. |
+   | `... not judged: sim/thermal.json names psi_jb in from, and its facts ... give no psi_jb` | Name a figure the facts give, or add the figure from the datasheet. |
+   | `... not judged as written: sim/thermal.json states its board temperature at 85 C ambient only, ...` | State the temperature at that run's ambient too, or add theta_ja to the facts. |
+   | `thermal: U1 (MPN): sim/thermal.json states its board temperature at 70 C ambient, where no run of ldo stands` | The ambient matches no run: write the run's temperature (the deck's own or a corner's). |
+   | `thermal: U1 (MPN) not held: its facts (...) name no JEDEC board for theta_ja` | Write `boards` from the thermal table's footnote. A figure on no JEDEC board holds no part. |
+   | `corners.json: decks.ldo.temperature runs -20 C and 60 C, so 85 C of the file's -20 C and 85 C is not run for ldo` | The deck's own block leaves out an end of the file's range. Widen the deck's block, or take it out so the deck runs the file's. |
    | `... not judged: its deck ... did not run to its end` | Fix the deck first; its errors are in the same result. |
-   | `... not judged at the corners of sim/corners.json: the file skips deck ...` | The deck's `skip`, `--nominal` or `temperature: false` left the corners out. Run the part's power in a deck the corners run. |
+   | `... not judged at the corners of sim/corners.json: the file skips deck ...` | The deck's `skip`, `--nominal`, `temperature: false` or a narrower `temperature` block left the corners out. Run the part's power in a deck the corners run. |
    | `... not judged as written: the deck ran at 25 C and 85 C, ...` | The deck sets more than 1 temperature, so the run that printed the power is not known. Run 1 temperature per deck; put the others in `sim/corners.json`. |
    | `thermal: U1: ldo.p_u1 is not printed at ...` | Print the measure in every analysis the corners run. |
    | `thermal: U1: ldo.p_u1 is -0.17 W ...` | The deck's sum has a sign wrong: a part's dissipation is not under 0. |
@@ -465,11 +494,13 @@ or keep a margin under the limit and write why in the version's README.
    A not judged line is a warning, and fails `--strict`. A part with a
    run or a corner not judged is not held, even when the runs judged are
    under the limit.
-5. `--json` holds each part under `details.thermal.parts`: the figure,
-   the limit and its source, `assumes` (the board the figure stands on),
-   the run as written and the worst run, each with its ambient, its power
-   and its junction. `held` is true, false, or null when a run or a
-   corner was not judged.
+5. `--json` holds each part under `details.thermal.parts`: the figures
+   used and their boards, the limit and its source, `assumes` (the board
+   and the method of each figure), `read_once` (the facts or the rule no
+   second reader compared), the run as written and the worst run, each
+   with its ambient, its power, its figure, the stated temperature when
+   there is one (`from`) and its junction. `held` is true, false, or null
+   when a run or a corner was not judged or a figure has no board.
 
 ## Checks
 
