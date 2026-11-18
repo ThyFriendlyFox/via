@@ -787,6 +787,12 @@ stale (`tools/doctools.py`):
   groups, a legend of the styles used. `templates/verification/system/
   block-diagram.json` is the starter `verify --init` copies.
 
+`SOURCE_DATE_EPOCH`, when set, is the day and the time every command
+writes into a file (the gates report's day among them), in UTC: a build
+that pins it gets the same report from the same files on any day. It
+never sets the day a price's age is judged on, the `Checked` day `fetch`
+writes, or the engine lock's times: those are the machine's clock.
+
 A project may add gates. It may not remove these.
 
 ### Chip gates

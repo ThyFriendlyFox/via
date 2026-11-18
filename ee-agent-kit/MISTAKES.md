@@ -1424,3 +1424,9 @@ What happened: A fix for roadmap item 1's review (L1-06) added a hint to `tools/
 Cost: 1 landing commit; the piece would have failed `make verify`.
 Root cause: The test files run were the ones of the findings, not the ones of the files changed. Every test file of a tool a change touches is run, not only the file the change's own tests sit in.
 Process: P14
+
+## M233 — 2026-11-18 — A test that kept the day it was loaded
+What happened: The CI run of `main` for merge commit e471028 started at 23:53 UTC and failed at 00:14 UTC with 1 test: `tests/test_doctools.py::test_gates_report_writes_its_blocks_and_keeps_the_prose`, `assert 'GREEN on 2026-11-17: ...' in <the report>`. The file read the day once when pytest loaded it (`TODAY = datetime.date.today()`), and `gates_report` wrote its own reading after midnight. The re-run passed. 2 commands read the clock more than once in 1 run as well: `workcenter costs` once per board, and `references fetch` once per document.
+Cost: A red run of `main` with no fault in the code, and a helper's time on a fault that was not there. A health gate takes 20 to 30 minutes, so every gate that started in a day's last half hour could fail the same way.
+Root cause: Each tool and each test read the clock where it needed a day, and nothing named 1 reading per run. `tools/clock.py` now holds the 1 reading a command takes at its start, SOURCE_DATE_EPOCH pins it, `tests/test_clock.py` holds every tool to reading the clock through it, and `tests/test_docs.py` holds every test file to reading no clock at load.
+Process: P10

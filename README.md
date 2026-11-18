@@ -340,6 +340,7 @@ images are drawn.
 | `tools/guide.py` | `workcenter next`: the one next step and the fix for each kind of failure. |
 | `tools/newboard.py` | `workcenter new`: a board project from `templates/project/`, with the headers of the parts file and of `library/sources.csv`. Standard library only. |
 | `tools/enginelock.py` | The engine lock: long `workcenter` commands take turns on 1 machine in the order they came, and `make verify` holds it for the whole gate; `hold`, `held` and `state` on its own command line. Standard library only. |
+| `tools/clock.py` | The day and the time a command runs at: 1 reading at its start, pinned by `SOURCE_DATE_EPOCH`; the machine's day for a price's age and the machine's clock for the engine lock; and the reader of a file's calls of the clock that 2 tests hold the tools and the test files to. Standard library only. |
 | `tools/ratings.py` | `workcenter ratings`: the voltage span of each net, the facts of each part, and each stress against its limit. Standard library only. |
 | `tools/fabfiles.py`, `tools/panel.py` | EXPORT's files read back against the board: the placement file, the assembly pages, IPC-2581 and the panel. `panel.py` runs KiKit's panelization under `KIKIT_PYTHON`. |
 | `tools/measureplan.py` | `workcenter measure`: the plan of measurements from the decks' bounds and the board's nets. Standard library only. |

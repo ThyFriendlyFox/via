@@ -454,6 +454,17 @@ When: touching `tools/workcenter` or `tools/kicadgen.py`'s command line.
    `tests/test_docs.py` holds each flag a document gives a command to
    that command's own `--help` (M114). A rule that tells the reader to
    reorder a command is not a fix.
+6. A command reads the day and the time through `tools/clock.py`, never
+   through `date.today`, `datetime.now` or `time.time`: `clock.today()`
+   or `clock.moment()` for what it writes, `clock.wall_today()` for a
+   judgement of age, `clock.stamp()` for a time other processes compare.
+   `tools/workcenter`'s `main` takes the 1 reading of the run, so a run
+   that crosses midnight writes 1 day; `tests/test_clock.py` fails on
+   any other reader (M233).
+7. A test that needs the day pins it for the command with
+   `SOURCE_DATE_EPOCH`, or reads the day from what the command wrote. No
+   test file reads the clock when it is loaded: `tests/test_docs.py`
+   holds it (M233).
 
 Done when: `make verify` is green, the configuration table names the
 flag, and every document that writes the command writes one the parser
