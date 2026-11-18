@@ -21,6 +21,7 @@ import subprocess
 import sys
 import threading
 import types
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -36,16 +37,37 @@ PDF = b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n1 0 obj\n<< >>\nendobj\ntrailer\n<< >>\n%%E
 HTML = b'\xef\xbb\xbf<html lang="ko">\r\n<head>\r\n<title>Error</title></head><body>no file</body></html>\r\n'
 GIF = b"GIF89a\x01\x00\x01\x00\x00\x00\x00;"
 MODEL = b"* Acme divider\n.SUBCKT RDIV IN OUT GND\nR1 IN OUT 100\nR2 OUT GND 100\n.ENDS\n"
+# Error pages that do not start with <html or <!doctype html (the review of 2026-11-18, finding F1).
+HTML_HEAD = b"<head><title>404 Not Found</title></head>\n<body><h1>Not Found</h1></body>\n"
+HTML_COMMENT = b"<!-- served by the CDN -->\n<html><body>Access denied</body></html>\n"
+XHTML = (
+    b'<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0//EN">\n<html/>\n'
+)
+UTF16 = b"\xff\xfe" + "<!DOCTYPE html><html><body>error</body></html>".encode("utf-16-le")  # the BOM FF FE
+SPACED = b"\r\n\r\n  <html><body>gone</body></html>\r\n"
 
 # path: (Content-Type, body, Content-Length sent, bytes sent)
 PAGES: dict[str, tuple[str, bytes, int | None]] = {
     "/good.pdf": ("application/pdf", PDF, None),
     "/typed.pdf": ("text/html; charset=utf-8", PDF, None),  # a true PDF's bytes, served as a web page
+    "/xtyped.pdf": ("application/xhtml+xml", PDF, None),
     "/page.pdf": ("application/pdf", HTML, None),  # a web page's bytes, served as a PDF
     "/gif.pdf": ("application/pdf", GIF, None),
     "/empty.pdf": ("application/pdf", b"", None),
     "/cut.pdf": ("application/pdf", PDF[:16], 2048),  # 16 bytes sent of the 2048 promised
     "/page.lib": ("text/plain", HTML, None),
+    "/head.lib": ("text/plain", HTML_HEAD, None),
+    "/comment.lib": ("application/octet-stream", HTML_COMMENT, None),
+    "/xhtml.step": ("application/octet-stream", XHTML, None),
+    "/utf16.lib": ("application/octet-stream", UTF16, None),
+    "/spaced.lib": ("text/plain", SPACED, None),
+}
+# path: the whole response, written as it stands, then the connection closes
+RAW: dict[str, bytes] = {
+    # 1 chunk of 0x800 bytes named, 16 sent; no Content-Length
+    "/chunked.pdf": b"HTTP/1.1 200 OK\r\nContent-Type: application/pdf\r\nTransfer-Encoding: chunked\r\n\r\n"
+    b"800\r\n" + PDF[:16],
+    "/badstatus.pdf": b"HTTP/1.1 OK-ish\r\n\r\n",
 }
 
 
@@ -82,6 +104,10 @@ class Maker(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):  # noqa: N802 (the handler's name is http.server's)
         Maker.agents.append(self.headers.get("User-Agent", ""))
+        if self.path in RAW:
+            self.wfile.write(RAW[self.path])
+            self.close_connection = True
+            return
         if self.path not in PAGES:
             self.send_response(404)
             self.end_headers()
@@ -187,6 +213,33 @@ def test_a_downloaded_file_needs_its_url_and_only_one_source(site, tmp_path):
     assert Maker.agents == [] and not dest.exists()
 
 
+def test_a_downloaded_zip_keeps_its_member_not_the_archive(site, tmp_path):
+    """--file with --member reads the member out, as a fetched zip's is: the kept bytes and the row's
+    SHA256 are the member's, so a later `sources --fetch` compares like with like."""
+    _, project = site
+    download = tmp_path / "Downloads" / "models.zip"
+    download.parent.mkdir()
+    with zipfile.ZipFile(download, "w") as zf:
+        zf.writestr("m.lib", MODEL)
+    dest = project / "library" / "acme" / "m.lib"
+    where = "https://maker.example/models.zip"
+    code, report = fetch(
+        "--file", download, "--url", where, "--member", "m.lib", "--to", dest, "--mpn", "M1", "--row"
+    )
+    assert code == 0, report
+    assert dest.read_bytes() == MODEL
+    row = next(csv.DictReader((project / "library" / "sources.csv").open(encoding="utf-8")))
+    assert row["Member"] == "m.lib" and row["SHA256"] == sha(MODEL) and row["URL"] == where
+    # a member the archive does not hold: refused, nothing written
+    other = project / "library" / "acme" / "n.lib"
+    code, report = fetch(
+        "--file", download, "--url", where, "--member", "n.lib", "--to", other, "--mpn", "N1", "--row"
+    )
+    assert code == 1 and report["error"].startswith(f"no member 'n.lib' in {download}"), report
+    assert not other.exists()
+    assert Maker.agents == []
+
+
 def test_a_downloaded_web_page_is_refused_like_a_fetched_one(site, tmp_path):
     _, project = site
     download = tmp_path / "saved.pdf"
@@ -212,6 +265,17 @@ def test_a_downloaded_web_page_is_refused_like_a_fetched_one(site, tmp_path):
         ("/empty.pdf", "an empty file (0 bytes)"),
         ("/cut.pdf", "16 of the 2048 bytes its Content-Length names"),  # PDF[:16] sent, 2048 promised
         ("/page.lib", "an HTML page (it starts b'<html lang=\"ko\">'), not a SPICE model"),
+        ("/xtyped.pdf", "an HTML page (Content-Type application/xhtml+xml), not a PDF"),
+        # the first 16 bytes after the byte order mark and the white space: '<head>' 6 + '<title>' 7 + '404' 3
+        ("/head.lib", "an HTML page (it starts b'<head><title>404'), not a SPICE model"),
+        ("/comment.lib", "an HTML page (it starts b'<!-- served by t'), not a SPICE model"),
+        ("/xhtml.step", "an HTML page (it starts b'<?xml version=\"1'), not a STEP file"),
+        # UTF-16 LE read as text: '<!DOCTYPE html>' 15 characters + '<' 1
+        ("/utf16.lib", "an HTML page (it starts b'<!DOCTYPE html><'), not a SPICE model"),
+        # 2 CR LF and 2 spaces stripped, then '<html>' 6 + '<body>' 6 + 'gone' 4
+        ("/spaced.lib", "an HTML page (it starts b'<html><body>gone'), not a SPICE model"),
+        # PDF[:16] sent of the 0x800 = 2048 named by the chunk; the response names no Content-Length
+        ("/chunked.pdf", "16 bytes, cut short inside a chunk (Transfer-Encoding chunked, no Content-Length)"),
     ],
 )
 def test_a_body_that_is_not_what_its_name_says_is_refused(site, path, says):
@@ -235,6 +299,32 @@ def test_a_true_pdf_still_lands(site):
     code, report = fetch(f"{url}/good.pdf", "--to", dest, "--mpn", "ACME-1")
     assert code == 0 and report["sha256"] == sha(PDF) and report["bytes"] == len(PDF), report
     assert dest.read_bytes() == PDF
+
+
+def test_a_response_that_is_not_http_is_1_line_not_a_traceback(site):
+    """A status line with no number: http.client raises BadStatusLine from urlopen."""
+    url, project = site
+    dest = project / "library" / "acme" / "x.pdf"
+    code, out = fetch(f"{url}/badstatus.pdf", "--to", dest, "--mpn", "ACME-1", "--row", json_out=False)
+    assert code == 1 and "Traceback" not in out, out
+    assert out.count("\n") == 1, out
+    assert out.startswith(
+        f"fetch: {url}/badstatus.pdf error (BadStatusLine: HTTP/1.1 OK-ish); nothing written"
+    )
+    assert not dest.exists() and not (project / "library").exists()
+
+
+def test_a_utf16_big_endian_page_is_an_html_page():
+    """The byte order mark FE FF, then UTF-16 BE: read as text, its first 16 characters are
+    '<html><head><tit' ('<html>' 6 + '<head>' 6 + '<tit' 4)."""
+    page = b"\xfe\xff" + "<html><head><title>x</title></head></html>".encode("utf-16-be")
+    assert load_cli().body_wrong("m.mod", page, len(page)) == (
+        "an HTML page (it starts b'<html><head><tit'), not a SPICE model"
+    )
+    # a SPICE model and a STEP file pass: neither starts with '<'
+    assert load_cli().body_wrong("m.lib", MODEL, len(MODEL)) == ""
+    step = b"ISO-10303-21;\nHEADER;\n"
+    assert load_cli().body_wrong("m.step", step, len(step)) == ""
 
 
 # ------------------------------------------------------------ the sources check finds the old rows
@@ -286,6 +376,54 @@ def test_the_sources_check_fails_a_kept_web_page_or_empty_file(tmp_path):
         "not the file its name says (sources.csv:5)"
     ]
     assert found["acme/good.pdf"] == [] and found["acme/ds.txt"] == []
+
+
+def test_the_sources_check_fails_a_kept_page_that_does_not_start_with_html(tmp_path):
+    """The 4 error pages of finding F1, kept as models and a body: each is 1 problem."""
+    cli = load_cli()
+    rows = library_with(
+        tmp_path, {"head.lib": HTML_HEAD, "comment.lib": HTML_COMMENT, "utf16.lib": UTF16, "x.step": XHTML}
+    )
+    found = {}
+    for row in rows:
+        _, problems, _ = cli.check_source(row, tmp_path / "library", tmp_path / "work")
+        found[row.file] = problems
+    model = "not a SPICE model"
+    assert found == {
+        "acme/head.lib": [
+            f"P0 datasheet: acme/head.lib is an HTML page (it starts b'<head><title>404'), "
+            f"{model} (sources.csv:2)"
+        ],
+        "acme/comment.lib": [
+            f"P1 datasheet: acme/comment.lib is an HTML page (it starts b'<!-- served by t'), "
+            f"{model} (sources.csv:3)"
+        ],
+        "acme/utf16.lib": [
+            f"P2 datasheet: acme/utf16.lib is an HTML page (it starts b'<!DOCTYPE html><'), "
+            f"{model} (sources.csv:4)"
+        ],
+        "acme/x.step": [
+            "P3 datasheet: acme/x.step is an HTML page (it starts b'<?xml version=\"1'), "
+            "not a STEP file (sources.csv:5)"
+        ],
+    }
+
+
+def test_a_kept_web_page_is_1_problem_whatever_else_its_row_says(tmp_path):
+    """A row whose SHA256 is not its file's, with a Revision and a Subckt the page cannot hold: the web
+    page is the 1 problem, and the SHA256, the revision and the subckt are not judged on it."""
+    lib = tmp_path / "library"
+    (lib / "acme").mkdir(parents=True)
+    (lib / "acme" / "page.lib").write_bytes(HTML_HEAD)
+    row = f"X1,spice,https://maker.example/page.lib,acme/page.lib,,Rev C,,RDIV,,{'0' * 64},2026-11-17,"
+    (lib / "sources.csv").write_text(f"{HEADER}\n{row}\n", encoding="utf-8")
+    cli = load_cli()
+    (row,) = cli.read_sources(lib / "sources.csv")
+    _, problems, _ = cli.check_source(row, lib, tmp_path / "work")
+    assert problems == [
+        "X1 spice: acme/page.lib is an HTML page (it starts b'<head><title>404'), not a SPICE model "
+        "(sources.csv:2)"
+    ]
 
 
 @pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
