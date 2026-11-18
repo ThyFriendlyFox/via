@@ -10,6 +10,10 @@ that an agent steps into to do one kind of work well. This one does
 electronics: it turns a KiCad 10 project into fabrication outputs that
 passed every gate.
 
+A new board starts with 2 commands. `workcenter new <dir>` writes the
+project: a design file to edit, from the template. `workcenter next <dir>`
+then names each step, 1 at a time, until the board is GREEN.
+
 <a href="https://via.computer">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="site/media/hero-dark.png">
@@ -231,12 +235,11 @@ workcenter sim tests/boards/fail-freq-overlap       # red on the frequency plan
 Output goes to `<project>/build/`: `erc.json`, `drc.json`, `sim/`,
 `fab/` (gerbers, drill, BOM, schematic PDF), `gates.json`.
 
-A first board starts from a copy of the template's design file, in a
-folder of its own outside this checkout:
+A first board starts in a folder of its own outside this checkout:
 
 ```sh
-mkdir ~/divider
-cp templates/project/design.py ~/divider/
+workcenter new ~/divider                         # design.py from the template, .gitignore, parts.csv, library/sources.csv
+workcenter next ~/divider                        # the one next step: here, the design
 workcenter design ~/divider/design.py --route    # the KiCad project, routed
 workcenter gates ~/divider --strict              # GREEN, and SIM has no deck to run yet
 ```
@@ -252,12 +255,13 @@ has the procedure from a spec to a GREEN board.
 has every flag.
 
 <details>
-<summary>The 34 commands</summary>
+<summary>The 35 commands</summary>
 
 | Command | What |
 |---|---|
 | `doctor` | Report each engine's status. |
 | `next` | Name the one next step for a project. |
+| `new` | Start a board project in a folder: the template's design file under the folder's name, `.gitignore`, `parts.csv` and `library/sources.csv` with their headers. Refuses a folder that holds a design. |
 | `chip` | A chip project, from RTL to a GDSII layout: `chip init`, `chip gates`, 1 command for each of its 10 gates, and `chip render` for a picture of the layout. Tests hold all 10 gates. The acceptance design, an 8-bit processor of 760 cells on the sky130A process, is GREEN with `--strict` in under 4 minutes. |
 | `design` | Build a design file into a KiCad project; `--route` routes it; `--check` compares. |
 | `erc`, `drc`, `sim`, `export` | One gate, alone. |
@@ -331,6 +335,7 @@ images are drawn.
 | `tools/simcorners.py`, `tools/freqplan.py`, `tools/thermal.py` | The corners a deck runs at; the frequency plan; each part's junction temperature at every run. Read by the SIM gate. |
 | `tools/partdata.py` | The makers' data of a deck's capacitors and inductors: picks each curve from the part's facts when its maker's file has its row in `library/sources.csv`, and rewrites the deck's part as ngspice's behavioural element on it. Standard library only; the SIM gate runs it. |
 | `tools/guide.py` | `workcenter next`: the one next step and the fix for each kind of failure. |
+| `tools/newboard.py` | `workcenter new`: a board project from `templates/project/`, with the headers of the parts file and of `library/sources.csv`. Standard library only. |
 | `tools/ratings.py` | `workcenter ratings`: the voltage span of each net, the facts of each part, and each stress against its limit. Standard library only. |
 | `tools/fabfiles.py`, `tools/panel.py` | EXPORT's files read back against the board: the placement file, the assembly pages, IPC-2581 and the panel. `panel.py` runs KiKit's panelization under `KIKIT_PYTHON`. |
 | `tools/measureplan.py` | `workcenter measure`: the plan of measurements from the decks' bounds and the board's nets. Standard library only. |

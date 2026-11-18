@@ -39,6 +39,16 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-18 — A new user starts a board with 1 command
+
+User round 1 sent 3 users of different sizes through 1 board spec. The small one found no command
+that starts a board, and 2 of them were told to run the gates on a board with no copper. Now
+`workcenter new <dir>` writes a project to edit, and `workcenter next` names it on an empty folder in
+about 0.2 s with no engine. On a board generated without `--route`, `next` names the route first and
+counts the pads with no copper. 1 review found 7 faults, among them 2 tracebacks in `new`, 1 after it
+had written 3 files. All 7 are fixed, each with a test; `tests/test_new.py` has 26 tests. Left: the
+lock the small user waited on.
+
 ## 2026-11-18 — Roadmap item 11 landed (in part): ESD and emissions rules from 2 TI notes, and a product's standards
 
 Roadmap item 11 landed (in part). On 2026-11-17 the builder read TI SLVA680A and SZZA009, and the eCFR's 47 CFR Part 15 Subpart B and 49 CFR 173.185, under the client name `ee-workcenter/1.0`. EUR-Lex answered HTTP 202 with no body to that name, so the 2 EU directives are listed as not had. No free document with creepage numbers was read, so the DRC gate does not hold creepage yet.

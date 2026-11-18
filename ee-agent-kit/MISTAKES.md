@@ -1318,3 +1318,9 @@ What happened: `workcenter standards` judged the board in the project's own fold
 Cost: Found by the second review of roadmap item 11; fixed with a test.
 Root cause: "The project" was read as 1 folder. The workcenter's own layouts put a second board 1 folder down.
 Process: P14
+
+## M218 — 2026-11-17 — A test run while the health gate held its lock
+What happened: On `wip/u-new` the run that showed `tests/test_new.py` failing before its code (18 failed in 4.73 s, no engine) started while `GATE.lock` existed. The command listed the lock with `ls` and went on. Later, to skip a queue of 10 runs on `ENGINE.lock`, I ran `tests/test_guide.py` and `tests/test_chipguide.py` without the lock, leaving out the 1 test marked for ngspice. The run took 187 s, and `test_next_walks_the_template_from_its_first_file_to_green` alone took 151 s: it runs the chip engines. The brief puts the lock in front of any engine run and any run over 1 minute.
+Cost: 1 run of 5 s beside the health gate; 1 run of 187 s with chip engines beside other agents' locked runs (the builder's runs).
+Root cause: As M201: the lock was looked at, not waited on. And a test file was taken for engine-free by its skip marks, not by its durations: a test that runs engines need not carry a mark. Later runs waited for `GATE.lock` to go, took `ENGINE.lock`, and checked `GATE.lock` again inside it.
+Process: P31

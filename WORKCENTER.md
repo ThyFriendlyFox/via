@@ -430,6 +430,19 @@ exits 1. Ordering, assembling and measuring the board are the owner's acts;
 the plan's Reading column is theirs to fill. The `fabrication` skill is the
 procedure.
 
+Not a gate: `workcenter new <dir>` starts a board project
+(`tools/newboard.py`). It writes `design.py` from
+`templates/project/design.py` under the folder's name with a namespace of
+its own, `.gitignore`, `parts.csv` with the header `procure` reads, and
+`library/sources.csv` with the header `fetch --row` appends to; a
+`library/sources.csv` above, found as `fetch --row` finds it (it stops
+at the project's own `.git`), serves instead. A file that is there is
+kept. A folder that holds `design.py`, `chip.json` or a KiCad project
+file is refused in 1 line, and so are an empty name and a path that
+cannot be written; every path is judged before the first write, so
+nothing is written. It runs no engine. `workcenter next` names it on a
+folder with no design.
+
 Not a gate: `workcenter next <project>` names the one next step
 (`tools/guide.py`): what to do, the command, why, what to read, and when
 the step is done. It reads `build/gates.json`, `build/verify.json` and
@@ -440,8 +453,11 @@ its first problem. A project with a `ratings.json` is held to its parts'
 ratings in 2 places: a stress that fails, or a file `ratings` does not
 take, comes before the gates, since a part that changes takes its routes
 with it; what is left not judged comes after them, and the project is not
-done until the last line is `RATINGS HELD`. It exits 0
-when nothing is left and 1 when a step is. A finished project gets no `RUN`
+done until the last line is `RATINGS HELD`. A board generated without
+`--route` is told to route before the gates: the answer counts the pads
+on nets with no track, via or pour. It exits 0 when nothing is left and 1
+when a step is named; exit 1 is no error, it means do the step. A finished
+project gets no `RUN`
 line. It writes nothing. For a chip project (`tools/chipguide.py`) the
 order is `chip.json`, the engines and the process kit, the RTL, a bench,
 a file that is still the example `chip init` wrote, the chip gates'

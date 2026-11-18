@@ -7,7 +7,7 @@ or skill. **Done** is the observable result that ends the case.
 ## Design a board from a spec
 
 **Open.** A spec: what the board does, the body it fits, the connectors. An empty project repository.
-**Run.** The `board-design` skill: pick parts from the libraries, write `design.py`, `workcenter design design.py --route`, then `workcenter gates .`.
+**Run.** The `board-design` skill: `workcenter new <dir>`, pick parts from the libraries, write `design.py`, `workcenter design design.py --route`, then `workcenter gates .`.
 **Done.** GREEN, `design.py` and the generated `.kicad_*` files committed together, images in `docs/`, the README naming each part choice.
 
 ## Validate a board

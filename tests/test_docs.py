@@ -355,8 +355,8 @@ QUICK_START = {
         "^FAIL   sim        2 decks, 32 corner runs, 2 failures, 1 warnings",
     ),
     "workcenter sim tests/boards/fail-freq-overlap": (1, "       - frequency plan: load's harmonic 3 "),
-    "mkdir ~/divider": (0, ""),
-    "cp templates/project/design.py ~/divider/": (0, ""),
+    "workcenter new ~/divider": (0, "new: 4 files written, 0 kept. Next: edit "),
+    "workcenter next ~/divider": (1, "^NEXT       Generate the KiCad project from its design file."),
     "workcenter design ~/divider/design.py --route": (0, "  routed: "),
     "workcenter gates ~/divider --strict": (0, "GREEN (nothing to run for: sim): divider  report "),
 }
