@@ -205,11 +205,20 @@ class Text:
         return ""
 
     @property
+    def drawn(self) -> float:
+        """The angle KiCad draws it at. A text kept upright whose angle is in (90, 270] is drawn turned back
+        by 180, with its justification as written: kicad-cli 10.0.8 plotted a designator at 180 justified
+        left running right of its anchor (the second review's h5-upright-justify)."""
+        if self.upright and 90 < self.angle % 360 <= 270:
+            return self.angle - 180
+        return self.angle
+
+    @property
     def box(self) -> Box:
         return text_box(
             self.x,
             self.y,
-            self.angle,
+            self.drawn,
             len(self.text),
             self.h,
             self.w,
