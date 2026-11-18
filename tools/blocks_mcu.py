@@ -32,6 +32,11 @@ import blocks
 import ratings
 from blocks import Block, Refused, Stock, _g
 
+CITES = {
+    "ti-slaa322d": "equations 1, 3 and 5; the drive level it does not state",
+    "ti-slase35": "sections 5.3 and 5.13; the drive level it does not state",
+    "ti-slau278": "figure 2-3 and its note B: the decoupling and the reset network",
+}
 RULES = blocks.RULES / "mcu.json"
 DEFAULT_REFS = {
     "ic": "U1",

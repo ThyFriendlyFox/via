@@ -197,11 +197,13 @@ def test_a_capitalised_or_abbreviated_place_makes_a_citation():
 def test_documents_of_the_families_first_missed_are_found_and_fail():
     """code/families/tool.py: 9 citations on lines 8 to 16 (TI's SLAA, SLVAE and SPRAC numbers, J-STD,
     IPC-TM, IEC with a hyphen, MIL-STD, Analog Devices' AN and IEEE), none in the index: 9 fail lines,
-    9 named, 0 in the index. Before the fix no family found them: 0 named, exit 0."""
+    9 named, 0 in the index. Before the fix no family found them: 0 named, exit 0. The SLAA number is
+    390B, which the index lacks; the number it had first is the MCU block's note, which joined the index
+    on 2026-11-18."""
     path = "tests/boards/references/code/families/tool.py"
     code, lines = rules(CODE / "families", index=INDEX)
     cited = [
-        ("SLAA" + "322D", "section 2"),
+        ("SLAA" + "390B", "section 2"),
         ("SLVA" + "E57", "equation 3"),
         ("SPRA" + "CN0", "table 2"),
         ("J-STD-" + "020E", "table 4-1"),
