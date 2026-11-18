@@ -5,9 +5,13 @@
 shard side by side, then the files that must run alone, and joins the results. The gate is red when a
 shard exits non-zero, when a shard's log ends with no summary line, or when the ids the shards ran are
 not exactly the ids 1 pytest process collects. It prints each shard's time and the 10 slowest files.
+For a failed test, an error at setup or teardown, or a file that could not be collected, it prints what
+pytest reported (a `why:` line, then the report under `  | `), bounded; for a shard that ended with no
+report to show, the test it started last and the end of its output.
 
 Loaded into pytest with `-p testshards`, the same module writes each collected id and each test report
-to the file `TESTSHARDS_LOG` names, 1 JSON object to a line. Standard library only.
+to the file `TESTSHARDS_LOG` names, 1 JSON object to a line, with a failure's report bounded. Standard
+library only.
 """
 
 from __future__ import annotations
@@ -38,8 +42,41 @@ SUMMARY_RE = re.compile(
 )
 OUTCOMES = ("passed", "failed", "skipped", "xfailed", "xpassed")
 
+# Why a test failed, in the gate's own output: after a CI run, and inside the image, the shards' logs are
+# gone. The bounds keep 300 failures from printing 300 pages; each cut says what it cut and where the whole
+# report is. A report keeps its first HEAD lines (the test's own frame) and its last TAIL (the line that
+# raised and the exception); each captured output keeps its last SECTION lines; a line keeps WIDTH
+# characters. The gate prints the reports of the first REASONS failures. Of a shard with no report to show
+# it prints the last TAIL lines of output, or a crash's stack: its first HEAD and last TAIL lines.
+HEAD, TAIL, SECTION, WIDTH, REASONS = 10, 30, 10, 300, 10
+
 
 # -- the pytest side: loaded with `-p testshards` ---------------------------------------------------
+
+
+def bounded(lines: list[str], head: int, tail: int) -> list[str]:
+    """The first `head` and the last `tail` lines, with 1 line that says how many were cut between; each
+    line cut to WIDTH characters, with what it cut."""
+    out = []
+    for line in lines:
+        line = line.rstrip()
+        if len(line) > WIDTH:
+            line = f"{line[:WIDTH]} [... {len(line) - WIDTH} characters cut]"
+        out.append(line)
+    if len(out) > head + tail:
+        out = [*out[:head], f"[... {len(out) - head - tail} lines cut here]", *out[len(out) - tail :]]
+    return out
+
+
+def why(report) -> list[str]:
+    """What pytest reports for a failed phase or a failed collection, as its failure's section of the
+    report has it: the traceback with the line that raised and the exception, then each captured output."""
+    out = bounded(str(report.longreprtext).splitlines(), HEAD, TAIL)
+    for title, content in getattr(report, "sections", []):
+        if title.startswith("Captured"):
+            out.append(f"----- {title} -----")
+            out += bounded(content.splitlines(), 0, SECTION)
+    return out
 
 
 def _log(records: list[dict]) -> None:
@@ -75,7 +112,15 @@ def pytest_runtest_logreport(report) -> None:
         record["xfail"] = True
     if report.skipped and isinstance(report.longrepr, tuple) and len(report.longrepr) == 3:
         record["reason"] = str(report.longrepr[2]).removeprefix("Skipped: ")
+    if report.failed:
+        record["why"] = why(report)
     _log([record])
+
+
+def pytest_collectreport(report) -> None:
+    """A file or a class that could not be collected: its record, with what pytest reports."""
+    if report.failed:
+        _log([{"collect_error": report.nodeid or ".", "why": why(report)}])
 
 
 def pytest_sessionfinish(session, exitstatus) -> None:
@@ -317,26 +362,108 @@ def start(shard: Shard, root: Path, work: Path, python: str, base: dict, procs: 
     return Started(shard, proc, log, Path(env["TESTSHARDS_LOG"]), time.monotonic())
 
 
-def watch(running: list[Started], said: set[str]) -> None:
-    """Wait for every shard; print each failure as it is logged and each shard as it ends."""
+@dataclass
+class Told:
+    """What the gate has printed: the ids of its FAILED lines, and each reason by its shard, id and phase.
+    The reasons past REASONS are counted in `cut`, not printed. `collected` holds the files whose error at
+    collection a shard told, so that the collection in 1 process does not tell it again."""
+
+    ids: set[str] = field(default_factory=set)
+    reasons: set[tuple[str, str, str]] = field(default_factory=set)
+    collected: set[str] = field(default_factory=set)
+    shown: int = 0
+    cut: int = 0
+
+
+PHASES = {"setup": "an error at setup", "call": "failed at call", "teardown": "an error at teardown"}
+
+
+def tell(told: Told, key: tuple[str, str, str], header: str, lines: list[str]) -> None:
+    """Print 1 reason, its header and then its lines under `  | `, unless it was told or REASONS were."""
+    if key in told.reasons:
+        return
+    told.reasons.add(key)
+    if told.shown >= REASONS:
+        told.cut += 1
+        return
+    told.shown += 1
+    print("\n".join([header, *(f"  | {line}" for line in lines)]), flush=True)
+
+
+def ending(r: Started, log: list[dict]) -> str:
+    """The reason block of a shard that has no failure's report to show: it ended before pytest's end of
+    session (killed, crashed, cut off), or exited non-zero with no failed test. The test it started last
+    and did not end, and the last TAIL lines of its output, where a crash writes its stack."""
+    killed = r.code is not None and r.code < 0
+    code = f"exit {r.code}, killed by signal {-r.code}" if killed else f"exit {r.code}"
+    if ended(log):
+        what = f"exited {r.code} and no test failed"
+    else:
+        what = f"ended with no report from pytest ({code})"
+    started = [rec["id"] for rec in log if rec.get("when") == "setup"]
+    done = [rec["id"] for rec in log if rec.get("when") == "teardown"]
+    ends = set(done)
+    left = [i for i in started if i not in ends]
+    if left:
+        where = f"the test it started last and did not end: {left[-1]}"
+    elif done:
+        where = f"the last test it ended: {done[-1]}"
+    else:
+        where = "it ended no test"
+    text = r.log.read_text(encoding="utf-8", errors="replace").splitlines()
+    # A crash's stack, as pytest's faulthandler writes it, starts at its `Fatal Python error` and puts the
+    # test's own frame first: from there, its first HEAD and last TAIL lines.
+    crash = [n for n, line in enumerate(text) if "Fatal Python error" in line]
+    if crash:
+        text = text[crash[-1] :]
+        text[0] = text[0][text[0].index("Fatal Python error") :]
+    lines = [f"  | {line}" for line in bounded(text, HEAD if crash else 0, TAIL)]
+    header = f"why: shard {r.shard.name} {what}; {where}; the last lines of its output, {r.log}:"
+    return "\n".join([header, *lines])
+
+
+def scan(r: Started, told: Told) -> list[dict]:
+    """Print what the shard's log holds that was not printed yet: each failed id's FAILED line, and each
+    failure's or collection error's reason. Returns the log."""
+    log = read_log(r.jsonl)
+    for rec in log:
+        if rec.get("outcome") == "failed" and rec["id"] not in told.ids:
+            told.ids.add(rec["id"])
+            at = time.monotonic() - r.start
+            print(f"FAILED {rec['id']} (shard {r.shard.name}) at {at:.0f} s", flush=True)
+        if rec.get("outcome") == "failed" and "why" in rec:
+            when = rec.get("when", "")
+            phase = PHASES.get(when, f"failed at {when}")
+            header = f"why: {rec['id']}, {phase} (shard {r.shard.name}):"
+            tell(told, (r.shard.name, rec["id"], when), header, rec["why"])
+        if "collect_error" in rec:
+            told.collected.add(rec["collect_error"])
+            header = f"why: {rec['collect_error']} could not be collected (shard {r.shard.name}):"
+            tell(told, (r.shard.name, rec["collect_error"], "collect"), header, rec.get("why", []))
+    return log
+
+
+def watch(running: list[Started], told: Told) -> None:
+    """Wait for every shard; print each failure as it is logged, with what pytest reported for it, and each
+    shard as it ends, with the end of its output when it has no failure's report to show."""
     while True:
         for r in running:
-            for rec in read_log(r.jsonl):
-                if rec.get("outcome") == "failed" and rec["id"] not in said:
-                    said.add(rec["id"])
-                    at = time.monotonic() - r.start
-                    print(f"FAILED {rec['id']} (shard {r.shard.name}) at {at:.0f} s", flush=True)
+            scan(r, told)
             if r.code is None and r.proc.poll() is not None:
                 r.code = r.proc.returncode
                 r.seconds = time.monotonic() - r.start
+                # Read again: the records the shard wrote between the scan and its exit.
+                log = scan(r, told)
                 last = summary_line(r.log.read_text(encoding="utf-8", errors="replace"))
                 code = f"{r.code} (killed by signal {-r.code})" if r.code < 0 else str(r.code)
-                ran = sum(1 for rec in read_log(r.jsonl) if rec.get("when") == "setup")
+                ran = sum(1 for rec in log if rec.get("when") == "setup")
                 print(
                     f"shard {r.shard.name}: exit {code}, {ran} tests, {r.seconds:.0f} s: "
                     f"{last or 'no summary line'}",
                     flush=True,
                 )
+                if not ended(log) or (r.code != 0 and not any("why" in rec for rec in log)):
+                    print(ending(r, log), flush=True)
         if all(r.code is not None for r in running):
             return
         time.sleep(0.5)
@@ -396,7 +523,7 @@ def run(args: argparse.Namespace) -> int:
     collect_cmd = [args.python, "-m", "pytest", "--collect-only", "-q", "-p", "testshards"]
     collect_cmd += ["-p", "no:cacheprovider", args.tests]
     started: list[Started] = []
-    said: set[str] = set()
+    told = Told()
     procs: list[subprocess.Popen] = []
     handlers = {s: signal.signal(s, _stop) for s in (signal.SIGTERM, signal.SIGHUP)}
     try:
@@ -415,12 +542,12 @@ def run(args: argparse.Namespace) -> int:
             if not s.serial:
                 parallel.append(start(s, root, work, args.python, base, procs))
         started += parallel
-        watch(parallel, said)
+        watch(parallel, told)
         for s in shards:
             if s.serial:
                 alone = start(s, root, work, args.python, base, procs)
                 started.append(alone)
-                watch([alone], said)
+                watch([alone], told)
         collect.wait()
     except BaseException as exc:
         end_all(procs)
@@ -434,7 +561,7 @@ def run(args: argparse.Namespace) -> int:
         for s, h in handlers.items():
             signal.signal(s, h)
     wall = time.monotonic() - wall
-    code = judge(started, collect.returncode, collect_log, collect_out, wall)
+    code = judge(started, collect.returncode, collect_log, collect_out, wall, told=told, work=work)
     # The shards' tmp_path folders of 1 whole run took 607 MB. A green run made its own folder and needs
     # nothing in it; a red run, or a folder the caller named, is kept for its logs.
     if code == 0 and not args.work:
@@ -445,8 +572,15 @@ def run(args: argparse.Namespace) -> int:
 
 
 def judge(
-    started: list[Started], collect_code: int, collect_log: Path, collect_out: Path, wall: float
+    started: list[Started],
+    collect_code: int,
+    collect_log: Path,
+    collect_out: Path,
+    wall: float,
+    told: Told | None = None,
+    work: Path | None = None,
 ) -> int:
+    told = told if told is not None else Told()
     red: list[str] = []
     logs = {r.shard.name: read_log(r.jsonl) for r in started}
     for r in started:
@@ -459,6 +593,10 @@ def judge(
     if collect_code != 0:
         tail = collect_out.read_text(encoding="utf-8", errors="replace").splitlines()[-5:]
         red.append(f"the collection in 1 process exited {collect_code}: " + " | ".join(tail))
+    for rec in collect_records:
+        if "collect_error" in rec and rec["collect_error"] not in told.collected:
+            header = f"why: {rec['collect_error']} could not be collected (the collection in 1 process):"
+            tell(told, ("1 process", rec["collect_error"], "collect"), header, rec.get("why", []))
     ran = {name: [rec["id"] for rec in log if rec.get("when") == "setup"] for name, log in logs.items()}
     missing, extra, twice = compare(collected, ran)
     total = sum(len(v) for v in ran.values())
@@ -526,6 +664,12 @@ def judge(
     for r in started:
         print(f"shard {r.shard.name}: {r.seconds:.0f} s for {len(r.shard.files)} files")
     print(f"tests: {wall:.0f} s on the wall clock, {sum(per_file.values()):.0f} s of test time")
+    if told.cut:
+        where = f" under {work}" if work is not None else ""
+        print(
+            f"why: {told.cut} more failed tests' reports are not printed here (the gate prints the first "
+            f"{REASONS}); each shard's whole report is its pytest.log{where}"
+        )
     if red:
         print("TESTS RED: " + "; ".join(red))
         return 1
