@@ -1,6 +1,6 @@
 ---
 name: Board Rules
-description: Holds a routed board to a rule pack from a free standard (ECSS-Q-ST-70-12C Rev.1) - each gap to the voltage between its nets, each track's width to the current it carries (worked out per track from the net's copper, and 2 parallel tracks under 25 mm apart as 1), and each net's via count to its current on the wall of an HDI board or the wall the fab states - with every failure naming its clause, table and page; and to a fab's published limits (JLCPCB, PCBWay, OSH Park, Sierra Circuits).
+description: Holds a routed board to a rule pack from a free standard (ECSS-Q-ST-70-12C Rev.1) - each gap to the voltage between its nets, each track's width to the current it carries (worked out per track from the net's copper, and 2 parallel tracks under 25 mm apart as 1), and each net's via count to its current on the wall of a board the project states is HDI or the wall the fab states - with every failure naming its clause, table and page; and to a fab's published limits (JLCPCB, PCBWay, OSH Park, Sierra Circuits).
 ---
 
 # Board Rules
@@ -74,8 +74,20 @@ The worked example is `tests/boards/pass-board-ecss`, and
      `{"pack": "ecss-q-st-70-12c-rev1", "via_wall": {"um": 25.4, "source": "OSH Park, docs.oshpark.com/services/two-layer, Via Plating Thickness 1mil (0.0254mm), read <date>"}}`.
      An average is not a least: JLCPCB's page gives "Average Hole Plating
      Thickness 18μm"; ask the fab for its least, or write in the
-     version's README why the average stands.
-   - `microvias of <net>`: a filled microvia is not rated by the pack.
+     version's README why the average stands. The wall must be under half
+     the least drill of a via with a current, or the run is refused. If
+     the fab builds the board as HDI under ECSS-Q-ST-70-12C Rev.1 11.6,
+     add `"hdi": {"source": "<the fab's order or document>"}` instead,
+     and the pack's 25 um holds. A via flagged `micro` in KiCad does not
+     make a board HDI.
+   - `parallel tracks ... at <d> degrees, <g1> to <g2> mm apart`: the 2
+     tracks fail as 1 conductor and are not quite parallel. Draw them
+     parallel and widen them as in step 6, widen them until they hold as
+     1 conductor, or move them 25 mm or more apart.
+   - `... um of wall fills the hole of the via at ...`: the pack's wall is
+     half the drill or more. Use a larger drill.
+   - `microvias of <net>`: a blind via under 250 um (3.2.40), filled, is
+     not rated by the pack.
      Show its current another way, and write in the version's README how.
    - `its name holds ...` or `takes it for ...`: rename the net in the
      schematic so a KiCad rule can quote it.
@@ -94,6 +106,6 @@ The worked example is `tests/boards/pass-board-ecss`, and
 ## Done when
 
 `workcenter gates <project> --strict` prints GREEN, and its DRC line names
-the pack with `0 fail, 0 not judged`. A board with no microvia and a via
-on a net with a current reaches this only with `via_wall` in
-`board-rules.json` (step 7).
+the pack with `0 fail, 0 not judged`. A board with a via on a net with a
+current reaches this only with `via_wall` or `hdi` in `board-rules.json`
+(step 7).
