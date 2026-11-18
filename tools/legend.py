@@ -1016,6 +1016,8 @@ def place(root: list, limit: Limit, pack: dict[str, float], fixed: set[str] = fr
             return False
         if any(layer == t.layer and overlap(box, b) for layer, b in placed):
             return False
+        if any(u.box is not None and u.layer == t.layer and overlap(box, u.box) for u in board.unread):
+            return False
         if any(s == t.side and overlap(box, b) for s, b, _ in board.openings):
             return False
         if any(overlap(box, b) for b, _ in board.holes):
