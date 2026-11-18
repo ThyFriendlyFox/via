@@ -1,8 +1,10 @@
 # tools/ci: what a change needs, fast or full
 
-A change that touches only what no engine reads is checked in about a
-minute. Any other change gets the full health gate. CI and a developer's
-machine ask the same script.
+A change that touches only what no engine reads gets the fast gate: no
+toolchain, no engine. Any other change gets the full health gate. CI and a
+developer's machine ask the same script. The fast gate's time on this
+workcenter's shared machine is in `ee-agent-kit/STATUS.md`; it is not yet
+the minute the roadmap asks for.
 
 | File | What it does |
 |---|---|
