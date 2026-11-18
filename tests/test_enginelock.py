@@ -595,6 +595,8 @@ def test_a_lock_folder_that_is_a_file_is_refused_in_1_line(bench):
     assert not started(bench, "S")
 
 
+# doctor asks every engine for its version: the 2 doctor tests start them (tools/ci/engine_marker.py).
+@pytest.mark.engine
 def test_doctor_with_a_lock_folder_that_is_a_file_says_not_judged(bench):
     """doctor is the diagnostic command: with `WORKCENTER_LOCK_DIR` naming a file it prints its tool
     table, the lock as not judged with the reason, and no traceback; `--json` carries the reason."""
@@ -626,6 +628,7 @@ def test_the_lock_folder_does_not_follow_tmpdir(bench):
     assert seen == {f"/tmp/workcenter-lock-{os.getuid()}"}
 
 
+@pytest.mark.engine
 def test_doctor_prints_the_state_of_the_lock(bench):
     """Free, `workcenter doctor` says so with the folder. With A holding and B waiting it names A,
     since when, and 1 waiting; `--json` carries the same."""
