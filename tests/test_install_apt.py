@@ -177,6 +177,13 @@ exec @REAL@ "$@"
 GUARDED = ["awk", "sed", "find"]
 READERS = ["basename", "cat", "dirname", "grep", "head", "readlink", "seq", "tail"]
 
+# The stand-in python3 on the key's pipe reads all its input before it ends, as the real one does
+# (json.load reads to the end first). One that ends unread races the stand-in curl: when python3 ends
+# first, curl's write dies of SIGPIPE, pipefail fails the pipeline, and a test's answer rests on which
+# process ended first (M269: IA82 survived 1 run in 3). Any other call of python3 reads nothing: its
+# input is the test's, which may be a terminal.
+DRAINS = 'case "$*" in *json.load*) cat > /dev/null ;; esac; '
+
 DEFAULTS = {
     # The real program after the bound: the test sees each bound as the step passes it.
     "timeout": 'shift; exec "$@"',
@@ -201,7 +208,7 @@ esac""",
 fi
 [[ "$*" == *--list-keys* ]] && echo "fpr:::::::::FDA854F61C4D0D9572BB95E5245D5502FAD7A805:"
 exit 0""",
-    "python3": "exit 7",
+    "python3": f"{DRAINS}exit 7",
 }
 
 # The programs the apt step may call. A call of any other program fails the test.
@@ -229,6 +236,8 @@ def folder(tmp_path: Path, answers: dict | None = None) -> dict:
     runs the script while the scans see a write that passes no fence: a redirection runs before any
     test could fail on it."""
     assert unfenced_in_the_script() == ()
+    # No stand-in python3 may end before it has read the key's pipe (M269).
+    assert {**DEFAULTS, **(answers or {})}["python3"].startswith(DRAINS)
     bin_dir, tools = tmp_path / "bin", tmp_path / "tools"
     bin_dir.mkdir()
     tools.mkdir()
@@ -382,12 +391,15 @@ esac"""
 def test_an_answer_that_holds_no_key_is_said_so(tmp_path, python3):
     """The keyserver answers nothing, and api.launchpad.net answers what is no JSON string (the stand-in
     python3 ends with 7) or an empty one (it prints nothing and ends with 0, so only the empty file
-    tells): curl said nothing, and the stop says the answer held no key."""
+    tells): curl said nothing, and the stop says the answer held no key. python3 reads curl's answer
+    before it ends (DRAINS), so curl ends with 0 and, for the empty string, every process of the
+    pipeline does: only the empty file can send the script to the stop, whichever process ends first."""
     curl = 'case "$*" in *keyserver.ubuntu.com*) exit 0 ;; *) echo "<html>"; exit 0 ;; esac'
     gpg = 'while (( $# )); do [[ "$1" == -o ]] && { cat > "$2"; exit 0; }; shift; done; exit 0'
-    answers = {"curl": curl, "gpg": gpg, "python3": python3}
+    answers = {"curl": curl, "gpg": gpg, "python3": DRAINS + python3}
     code, out, err, calls = run(tmp_path, answers, body="step_apt; echo NEXT STEP")
     assert code == 1, err
+    assert len(of(calls, "python3")) == 1
     nothing = "nothing; the answer held no key"
     assert err.splitlines()[-2:] == [key_stop(nothing, nothing), KEY_NOT_THERE]
 
@@ -1553,7 +1565,7 @@ def test_main_runs_every_step_in_order_and_hands_over_to_the_doctor(tmp_path):
     steps = ["step_boot", "step_apt", "step_freerouting", "step_openems", "step_python", "step_link"]
     others = ["step_java25", "step_freerouting2", "step_chip"]
     body = "\n".join(f'{s}() {{ log "ran {s}"; }}' for s in steps + others) + "\nmain"
-    env = folder(tmp_path, {"python3": "exit 5"})
+    env = folder(tmp_path, {"python3": f"{DRAINS}exit 5"})
     proc = subprocess.run(
         [BASH, "-c", script(copy, body)],
         capture_output=True,
