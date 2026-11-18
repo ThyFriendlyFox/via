@@ -227,6 +227,120 @@ def test_the_reader_of_calls_finds_each_spelling_and_tells_load_from_call():
     assert clock.clock_calls(source, at_load=True) == [4, 5, 6, 7, 10, 13]
 
 
+@pytest.mark.parametrize(
+    "source, at_load, lines",
+    [
+        ("import time as t\nSTAMP = t.time()\n", False, [2]),
+        ("import datetime as dt\ndef f():\n    return dt.date.today()\n", False, [3]),
+        ("from datetime import datetime as dt\ndef f():\n    return dt.now()\n", False, [3]),
+        ("from datetime import date as D\nTODAY = D.today()\n", True, [2]),
+        ("import clock as c\nTODAY = c.today()\n", True, [2]),
+        ("from clock import today as day\nTODAY = day()\n", True, [2]),
+        ("import datetime\nnow = datetime.datetime.now\nTODAY = now().date()\n", True, [3]),
+        ("import subprocess\ndef f():\n    return subprocess.run(['date', '+%F']).stdout\n", False, [3]),
+        ("import os\nos.system('/bin/date -u')\n", True, [2]),
+        ("import datetime as dt\nWEEK = dt.timedelta(days=7)\nN = dt.date(2026, 11, 18)\n", True, []),
+        ("import subprocess\nsubprocess.run(['git', 'log', '--date', 'iso'])\n", True, []),
+    ],
+)
+def test_the_reader_resolves_every_name_a_reader_is_imported_or_bound_under(source, at_load, lines):
+    """A module or a class imported under another name, a reader bound to a name, and the shell's
+    `date` are readings; a timedelta, a fixed date and git's `--date` are not."""
+    assert clock.clock_calls(source, at_load=at_load) == lines
+
+
+def test_a_call_at_load_into_a_function_of_the_same_file_that_reads_the_clock_is_a_reading():
+    """The fault of 2026-11-18 moved 1 function away: `TODAY = day()` reads at load what `day` reads.
+    `later` reads through `day`, 2 calls deep; `name` reads nothing, so `NAME = name()` is no reading.
+    Inside a function the call is no reading at load: line 11 runs only when `test_x` is called."""
+    source = (
+        "import datetime\n"
+        "def day():\n"
+        "    return datetime.date.today().isoformat()\n"
+        "def later():\n"
+        "    return day()\n"
+        "def name():\n"
+        "    return 'x'\n"
+        "TODAY = day()\n"  # 8
+        "LATER = later()\n"  # 9
+        "NAME = name()\n"  # 10
+        "def test_x():\n"
+        "    assert day() == TODAY\n"
+    )
+    assert clock.clock_calls(source, at_load=True) == [8, 9]
+    assert clock.clock_calls(source) == [3]
+
+
+@pytest.mark.parametrize("value", ["99999999999999999", "-99999999999999", "253402300800", "-62135596801"])
+def test_a_whole_number_past_the_years_a_date_holds_is_refused_as_such(monkeypatch, value):
+    """Python's dates hold years 1 to 9999 (datetime.MINYEAR, datetime.MAXYEAR). Leap years up to year
+    Y number Y//4 - Y//100 + Y//400: 477 to 1969, 2424 to 9999. Years 1 to 1969 are 1969 x 365 + 477 =
+    719162 days, x 86400 = 62135596800 s, so -62135596801 s is 1 s before 0001-01-01 00:00 UTC. Years
+    1970 to 9999 are 8030 x 365 + (2424 - 477) = 2932897 days, x 86400 = 253402300800 s: 10000-01-01."""
+    monkeypatch.setenv("SOURCE_DATE_EPOCH", value)
+    with pytest.raises(clock.Malformed) as caught:
+        clock.today()
+    assert str(caught.value) == (
+        f"SOURCE_DATE_EPOCH is {value!r}, a moment outside the years 1 to 9999 a date holds "
+        "(Python datetime.MINYEAR, datetime.MAXYEAR)"
+    )
+
+
+def stub_procure(monkeypatch, tmp_path: Path, checked: str):
+    """gate_procure in-process on the pass-rc-divider fixture's 3 BOM lines, kicad-cli's BOM stubbed,
+    every price checked on `checked`. Returns the gate's result."""
+    cli = clock_cli()
+    bom = [
+        {"Refs": "C1", "Qty": "1", "Value": "100n", "Footprint": "Capacitor_SMD:C_0603_1608Metric"},
+        {
+            "Refs": "J1",
+            "Qty": "1",
+            "Value": "Conn_01x03",
+            "Footprint": "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical",
+        },
+        {"Refs": "R1 R2", "Qty": "2", "Value": "10k", "Footprint": "Resistor_SMD:R_0603_1608Metric"},
+    ]
+    monkeypatch.setattr(cli, "schematic_bom", lambda project, bom_csv: (bom, ""))
+    head = "Value,Footprint,Qty,Manufacturer,MPN,Supplier,SKU,Pack,Breaks,Stock,Checked,URL,Note"
+    rows = [
+        "100n,Capacitor_SMD:C_0603_1608Metric,,Samsung,CL10B104KB8NNNC,Digi-Key,1276-1000-1-ND,,1:0.10,100",
+        "Conn_01x03,Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical,,Sullins,PREC003SAAN-RC,"
+        "Digi-Key,35-PREC003SAAN-RC-ND,,1:0.10,100",
+        "10k,Resistor_SMD:R_0603_1608Metric,,Yageo,RC0603FR-0710KL,Digi-Key,311-10.0KHRCT-ND,,1:0.10,100",
+    ]
+    parts = tmp_path / "parts.csv"
+    parts.write_text("\n".join([head, *(f"{row},{checked},," for row in rows)]) + "\n", encoding="utf-8")
+    project = type("Project", (), {"sch": tmp_path / "x.kicad_sch", "dir": tmp_path, "name": "x"})()
+    with clock.run():
+        return cli.gate_procure(project, tmp_path / "out", [parts])
+
+
+def test_procure_judges_a_prices_age_on_the_machines_day_not_on_a_pinned_one(monkeypatch, tmp_path):
+    """SOURCE_DATE_EPOCH pins the days a command writes, as the specification asks of embedded
+    timestamps; a price's age is a judgement of now. The machine's clock reads 2026-11-18 00:01 UTC
+    (TZ=UTC); 315532800 s is 1980-01-01 00:00 UTC (1970 to 1980 is 10 x 365 + 2 leap days = 3652 days,
+    x 86400). Prices checked 2025-01-02 are 685 days old on 2026-11-18 (365 to 2026-01-02, then 29 + 28
+    + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 18 = 320), past STALE_DAYS (90): all 3 to check again."""
+    monkeypatch.setenv("TZ", "UTC")
+    monkeypatch.setattr(clock, "_wall", lambda: datetime.datetime.fromisoformat(AFTER))
+    monkeypatch.setenv("SOURCE_DATE_EPOCH", "315532800")
+    result = stub_procure(monkeypatch, tmp_path, "2025-01-02")
+    assert result.details["stale"] == [f"{refs}: price checked 2025-01-02" for refs in ("C1", "J1", "R1 R2")]
+
+
+def test_procure_sends_a_price_checked_after_today_to_be_checked_again(monkeypatch, tmp_path):
+    """A Checked day after the day of the run is a typing slip or a clock that was wrong: its age is not
+    known, so it is checked again. 2026-12-18 is 30 days after 2026-11-18."""
+    monkeypatch.setenv("TZ", "UTC")
+    monkeypatch.setattr(clock, "_wall", lambda: datetime.datetime.fromisoformat(AFTER))
+    monkeypatch.delenv("SOURCE_DATE_EPOCH", raising=False)
+    result = stub_procure(monkeypatch, tmp_path, "2026-12-18")
+    assert result.details["stale"] == [
+        f"{refs}: price checked 2026-12-18, after the day of the run, 2026-11-18"
+        for refs in ("C1", "J1", "R1 R2")
+    ]
+
+
 # ------------------------------------------------------------ the fault of 2026-11-18
 
 

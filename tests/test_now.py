@@ -79,8 +79,11 @@ def put_record(tree: Path, **fields) -> None:
 
 
 def now(*argv: str) -> subprocess.CompletedProcess:
+    """`workcenter now` on the clock: a SOURCE_DATE_EPOCH the shell exports for another build is dropped,
+    as the tests here compare the card's minute with the clock."""
+    env = {k: v for k, v in os.environ.items() if k != "SOURCE_DATE_EPOCH"}
     return subprocess.run(
-        [sys.executable, str(CLI), "now", *argv], capture_output=True, text=True, check=False
+        [sys.executable, str(CLI), "now", *argv], capture_output=True, text=True, check=False, env=env
     )
 
 
@@ -382,6 +385,15 @@ def test_the_gate_leaves_a_record_the_card_reads(tmp_path):
     assert git(tree, "status", "--porcelain") == ""
     ignored = subprocess.run(["git", "-C", str(ROOT), "check-ignore", "-q", "build/verify.json"], check=False)
     assert ignored.returncode == 0, "build/verify.json is not ignored by git in this repository"
+
+
+def test_the_tests_run_the_card_on_the_clock_whatever_the_shell_pins(tmp_path, monkeypatch):
+    """A shell that exports SOURCE_DATE_EPOCH for other builds does not pin `now()`: the tests that
+    compare the card's minute with the clock read the clock. 315532800 s is 1980-01-01 00:00 UTC."""
+    monkeypatch.setenv("SOURCE_DATE_EPOCH", "315532800")
+    proc = now(str(make_tree(tmp_path)), "--item", "7", "--status", "Todo")
+    assert proc.returncode == 0, proc.stderr
+    assert not proc.stdout.endswith("## Updated\n1980-01-01 00:00 UTC\n")
 
 
 def test_source_date_epoch_pins_the_cards_time_and_the_records(tmp_path):
