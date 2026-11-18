@@ -57,6 +57,14 @@ ABOUT = "We're making Via better every day! Subscribe to keep up to date with ou
 HEADLINE = "We're making Via better every day!"
 # The news bar runs the newest posts along the bottom of each page that loads site.js.
 NEWS = 6
+# The owner's lines of 2026-11-18, each in quotes after a post on the news bar, a link where it has one.
+QUIPS = (
+    ("Only Cool Kids Allowed!", None),
+    ("Building Tomorrow Today!", None),
+    ("We have a dog", None),
+    ("Check out our community!", "https://discord.reagent-systems.com"),
+    ("Free inference found here!", None),
+)
 
 
 def message(up: str) -> str:
@@ -465,8 +473,16 @@ def feed(found: list[Post]) -> str:
 
 
 def news(found: list[Post]) -> str:
-    """The newest posts as the news bar reads them: each its words and its address on the site."""
-    items = [{"text": f"New post: {post.title}", "href": f"/blog/{post.slug}"} for post in found[:NEWS]]
+    """The newest posts as the news bar reads them, each its words and its address on the site, with
+    the owner's lines in quotes between them. Lines left over after the last post follow it."""
+    items = []
+    posts_shown = found[:NEWS]
+    for i in range(max(len(posts_shown), len(QUIPS))):
+        if i < len(posts_shown):
+            items.append({"text": f"New post: {posts_shown[i].title}", "href": f"/blog/{posts_shown[i].slug}"})
+        if i < len(QUIPS):
+            words, link = QUIPS[i]
+            items.append({"text": f"\u201c{words}\u201d", **({"href": link} if link else {})})
     return json.dumps({"items": items}, ensure_ascii=False, indent=1) + "\n"
 
 

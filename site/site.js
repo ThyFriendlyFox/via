@@ -93,15 +93,16 @@
         list.className = "ticker-items";
         const add = (repeat) => {
           for (const item of items) {
+            // A post is a link; one of the owner's lines is a link only where it names one.
             const li = document.createElement("li");
-            const a = document.createElement("a");
-            a.href = item.href;
-            a.textContent = item.text;
+            const words = document.createElement(item.href ? "a" : "span");
+            if (item.href) words.href = item.href;
+            words.textContent = item.text;
             if (repeat) {
               li.setAttribute("aria-hidden", "true");
-              a.tabIndex = -1;
+              if (item.href) words.tabIndex = -1;
             }
-            li.append(a);
+            li.append(words);
             list.append(li);
           }
         };
