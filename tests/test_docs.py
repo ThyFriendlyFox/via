@@ -222,6 +222,21 @@ def test_a_count_of_tests_in_the_status_file_is_what_pytest_collects():
     assert f"`MISTAKES.md` M1 to M{last['M']}, `PROCESSES.md` P1 to P{last['P']};" in status
 
 
+def test_no_test_file_reads_the_clock_when_it_is_loaded():
+    """tests/test_doctools.py kept `TODAY = datetime.date.today()` from its load, and a CI run that
+    crossed midnight failed on a report the command wrote the next day (2026-11-18). A test that needs
+    the day pins it for the command with SOURCE_DATE_EPOCH, or reads what the command wrote."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import clock
+
+    found = [
+        f"{path.relative_to(ROOT)}:{line}"
+        for path in sorted((ROOT / "tests").rglob("*.py"))
+        for line in clock.clock_calls(path.read_text(encoding="utf-8"), at_load=True)
+    ]
+    assert found == []
+
+
 def test_a_pointer_to_a_roadmap_item_gives_its_number_and_its_title():
     """The queue is renumbered when an item ships. STATUS.md pointed at `ROADMAP item 2` for the
     autoroute work after that item had become item 4 (M160). A pointer carries the item's title, and
