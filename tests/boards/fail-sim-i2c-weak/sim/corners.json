@@ -1,0 +1,8 @@
+{
+  "tolerance": {
+    "R": 0.01,
+    "C": 0.1,
+    "parts": { "CBUS": 0.2 },
+    "source": "the fixture's parts: 1 % resistors, 10 % capacitors, and its bus capacitance budget within 20 %"
+  }
+}

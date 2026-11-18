@@ -1,0 +1,24 @@
+* deck: i2c-rise SDA SCL
+* The deck of pass-sim-bus with a pull-up too weak for its bus: R1 is 10k on the same 50 pF.
+* UM10204 Rev. 7.0, section 7.1, page 50: tr = 0.8473 x 10k x 50p = 423.65 ns, over the 300 ns of
+* Fast-mode (Table 11, page 44). The line sinks 3.3 / (10000 + 133.3) = 0.326 mA when held low.
+VDD vdd 0 DC 3.3
+R1 vdd sda 10k
+CBUS sda 0 50p
+SOD sda 0 ctl 0 SWOD
+.model SWOD SW(Ron=133.3 Roff=1G Vt=0.5 Vh=0.1)
+VCTL ctl 0 PWL(0 1 1u 1 1.001u 0 20u 0 20.001u 1)
+.tran 1n 24u
+.control
+run
+let vtop = vecmax(v(vdd))
+let v30 = 0.3 * vtop
+let v70 = 0.7 * vtop
+meas tran t30 when v(sda)=$&v30 rise=1
+meas tran t70 when v(sda)=$&v70 rise=1
+let tr = t70 - t30
+meas tran ilow find i(vdd) at=23u
+let isink = abs(ilow)
+print tr isink
+.endc
+.end

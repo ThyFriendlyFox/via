@@ -1,0 +1,8 @@
+* FIXREG: the fixture's own regulator, made up for the tests; no maker's part. It holds 3.3 V behind
+* the output impedance of a closed loop: 0.1 ohm at DC, rising as 2 uH. Pins: in, gnd, out.
+.subckt FIXREG in gnd out
+RQ in gnd 100k
+VREF ref gnd DC 3.3
+RO ref mid 0.1
+LO mid out 2u
+.ends FIXREG
