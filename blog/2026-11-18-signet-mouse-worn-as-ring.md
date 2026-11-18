@@ -21,7 +21,7 @@ Signet's tiles touch a 20.0 mm cylinder, which leaves room for a 19.4 mm finger 
 
 ## Turning a hand into cursor motion
 
-Signet's motion tile carries an LSM6DSL, an accelerometer and a gyroscope in one chip, and the cursor code only reads the gyroscope's turn rate. A gyroscope chip holds a tiny mass on springs that vibrates back and forth. When the chip turns, the Coriolis effect pushes the mass sideways in proportion to the turn rate, and electrodes read that as a change in capacitance. Navid Yazdi, Farrokh Ayazi and Khalil Najafi reviewed sensors like this in "Micromachined Inertial Sensors," a 1998 paper in Proceedings of the IEEE.
+Signet's motion tile carries an LSM6DSL, an accelerometer and a gyroscope in one chip, and the cursor code only reads the gyroscope's turn rate. Inside a gyroscope chip, a tiny mass on springs vibrates back and forth. When the chip turns, the Coriolis effect pushes the mass sideways in proportion to the turn rate, and electrodes read that as a change in capacitance. Navid Yazdi, Farrokh Ayazi and Khalil Najafi reviewed sensors like this in "Micromachined Inertial Sensors," a 1998 paper in Proceedings of the IEEE.
 
 The motion tile sits 66.85 degrees around the ring from the radio tile, so the firmware rotates each reading back by that angle. After that, turning your hand left or right moves the cursor across the screen. Pointing it up or down moves the cursor up or down, and a roll doesn't move it.
 

@@ -13,7 +13,7 @@ We're Team Reagent, the engineers who make Via. We wrote the brief and read all 
 
 ## How one knob becomes one number
 
-The knob is a rotary switch with five stops that taps a plain voltage divider. Six 1 kΩ resistors run in a chain from 3.3 V to ground. Each stop touches one of the joints between them, at 5/6, 4/6, 3/6, 2/6 or 1/6 of the supply. Horowitz and Hill cover the divider in chapter 1 of *The Art of Electronics*, 3rd edition, published by Cambridge University Press in 2015.
+The knob is a five-stop rotary switch that taps a plain voltage divider. Six 1 kΩ resistors run in a chain from 3.3 V to ground. Each stop touches one of the joints between them, at 5/6, 4/6, 3/6, 2/6 or 1/6 of the supply. Horowitz and Hill cover the divider in chapter 1 of *The Art of Electronics*, 3rd edition, published by Cambridge University Press in 2015.
 
 An MCP3208, a 12-bit converter, reads that joint's voltage as one of 4096 steps. The neat part is that it uses the same 3.3 V as its reference, so the reading is a ratio and any error in the supply cancels out. Between stops, a 100 kΩ resistor pulls the reading close to zero, and the firmware takes that to mean no console.
 
@@ -39,11 +39,11 @@ Rosetta's stick footprint takes ALPS's RKJXV122400R, the potentiometer stick in 
 
 The BQ25895 charges the cell the usual lithium-ion way, at constant current and then at constant voltage near full, about 4.2 V for most cells. TI's datasheet for the charger, SLUSC88, describes both phases.
 
-On Rosetta it charges at up to 2.5 A, and a 120 Ω resistor caps what it draws from a 5 V USB-C charger at 2.96 A. The firmware turns off the charger's 9 V and 12 V modes, because the same 5 V also feeds the donor controller. With a flat cell, the charger runs Rosetta straight from the cable as a wired controller.
+On Rosetta the BQ25895 charges at up to 2.5 A, and a 120 Ω resistor caps what it draws from a 5 V USB-C charger at 2.96 A. The firmware turns off the charger's 9 V and 12 V modes, because the same 5 V also feeds the donor controller. With a flat cell, the charger runs Rosetta straight from the cable as a wired controller.
 
 The linear regulator on v0.1 needed about 3.66 V in to give 3.3 V out at 1 A, and the cell spends the last part of its charge below that. Version 0.3 uses a TPS63001 buck-boost converter instead, which holds 3.3 V with the cell down to 2.5 V. Erickson and Maksimović cover buck-boost converters in *Fundamentals of Power Electronics*, and the 2nd edition came out from Kluwer Academic in 2001.
 
-The BQ27441 gauge tracks the cell's charge by coulomb counting. It adds up, over time, the voltage across a 10 mΩ resistor in the cell's negative lead, and at 2.5 A that resistor drops 25 mV.
+The cell is meant to be 3000 mAh or more, and the BQ27441 gauge tracks its charge by coulomb counting. It adds up, over time, the voltage across a 10 mΩ resistor in the cell's negative lead, and at 2.5 A that resistor drops 25 mV.
 
 ![Rosetta v0.3 from the back: the ESP32 module at the top edge, the RP2040, the shift registers, and the power parts beside the white battery connector](/examples/rosetta/bottom.png "The back of Rosetta v0.3, where the electronics sit")
 
