@@ -8,8 +8,9 @@ in `board-rules.json` under `creepage`. The voltage between 2 nets is the most t
 `ratings.json` allow. The copper of each outer layer is read as polygons drawn round it, so a gap is
 never read larger than it is. A slot (an inner cut of Edge.Cuts with 4 corners) between 2 nets
 lengthens the way along the face: the way goes round its corners. Copper with no net shortens it: the
-way crosses it. Between the 2 faces the way round the board's edge or through a hole is not measured;
-a pair is held only by the least length that way can have. Standard library only.
+way crosses it. Between the 2 faces the way round the board's edge, through a hole or through a plated
+barrel with no net is not measured; a pair is held only by the least length that way can have. Copper
+of 2 nets on 2 layers, parted by the laminate, is `not judged`. Standard library only.
 """
 
 from __future__ import annotations
@@ -248,6 +249,7 @@ def is_creepage(path: Path) -> bool:
 class Cut:
     polygon: Polygon | None  # a convex cut of 4 corners, or None: a cut this module does not measure
     what: str  # for None: what it is and where
+    box: tuple[float, float, float, float] | None = None  # for None: a box round all of it, if known
 
 
 @dataclass
@@ -261,6 +263,9 @@ class Copper:
     walls_unread: str = ""  # a shape of Edge.Cuts this module does not read, and where
     floating: dict[str, list[tuple[str, Polygon]]] = field(default_factory=dict)  # layer -> copper, no net
     unread: dict[str, list[str]] = field(default_factory=dict)  # layer -> copper shapes not read
+    # Each plated hole and via from F.Cu to B.Cu: (its net, what it is and where, polygons round its ring
+    # and its hole). Its barrel is a conductor between the 2 faces.
+    barrels: list[tuple[str, str, list[Polygon]]] = field(default_factory=list)
     _by: dict = field(default_factory=dict, repr=False, compare=False)
 
     def polys(self, layer: str, net: str) -> list[Polygon]:
@@ -379,11 +384,44 @@ def _pad_shape(at: Point, shape: str, w: float, h: float, deg: float) -> Polygon
     return box(at, w, h, deg)  # rect, roundrect, chamfered rect; a trapezoid comes widened by its delta
 
 
-def _cuts(root) -> list[tuple[Polygon | None, str, float]]:
+def _shape_box(node, place=None) -> Box | None:
+    """A box round all of a shape drawn on Edge.Cuts (`gr_...` or a footprint's `fp_...`): its points,
+    and the whole circle of an arc or a circle. `place` turns a footprint's point onto the board."""
+
+    def put(p: Point) -> Point:
+        return place(p) if place is not None else p
+
+    raw = {
+        k: boardrules._xy(found)
+        for k in ("start", "mid", "end", "center")
+        if (found := kicadgen.child(node, k)) is not None
+    }
+    head = str(node[0])[3:]
+    if head == "circle" and {"center", "end"} <= raw.keys():
+        (cx, cy), (ex, ey) = put(raw["center"]), raw["end"]
+        r = math.hypot(ex - raw["center"][0], ey - raw["center"][1])
+        return (cx - r, cy - r, cx + r, cy + r)
+    if head == "arc" and {"start", "mid", "end"} <= raw.keys():
+        got = _circle_of(*(put(raw[k]) for k in ("start", "mid", "end")))
+        if got is not None:
+            (cx, cy), r = got
+            return (cx - r, cy - r, cx + r, cy + r)
+    pts = list(raw.values())
+    if head == "rect" and {"start", "end"} <= raw.keys():
+        (x1, y1), (x2, y2) = raw["start"], raw["end"]
+        pts = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
+    found = kicadgen.child(node, "pts")
+    pts += [boardrules._xy(p) for p in (kicadgen.children(found, "xy") if found is not None else [])]
+    if not pts:
+        return None
+    return _union([(*put(p), *put(p)) for p in pts])
+
+
+def _cuts(root) -> list[tuple[Polygon | None, str, float, Box | None]]:
     """Each closed outline on Edge.Cuts: (polygon, or None for one with a curve or one that does not
-    close; what it is and where; its area, an arc taken as its chord)."""
-    out: list[tuple[Polygon | None, str, float]] = []
-    lines: list[tuple[Point, Point, bool]] = []  # start, end, whether it is an arc
+    close; what it is and where; its area, an arc taken as its chord; a box round it)."""
+    out: list[tuple[Polygon | None, str, float, Box | None]] = []
+    lines: list[tuple[Point, Point, bool, Box | None]] = []  # start, end, whether it is an arc, its box
     for node in root[1:]:
         if not isinstance(node, list) or not node or not str(node[0]).startswith("gr_"):
             continue
@@ -391,43 +429,46 @@ def _cuts(root) -> list[tuple[Polygon | None, str, float]]:
         if layer is None or str(kicadgen.atoms(layer)[0]) != "Edge.Cuts":
             continue
         head = node[0]
+        box = _shape_box(node)
         if head == "gr_rect":
             x1, y1 = boardrules._xy(kicadgen.child(node, "start"))
             x2, y2 = boardrules._xy(kicadgen.child(node, "end"))
             poly = [(min(x1, x2), min(y1, y2)), (max(x1, x2), min(y1, y2)), (max(x1, x2), max(y1, y2))]
             poly.append((min(x1, x2), max(y1, y2)))
-            out.append((poly, f"a rectangle on Edge.Cuts at {boardrules._p(poly[0])}", abs(_area(poly))))
+            out.append((poly, f"a rectangle on Edge.Cuts at {boardrules._p(poly[0])}", abs(_area(poly)), box))
         elif head == "gr_poly":
             pts = [boardrules._xy(p) for p in kicadgen.children(kicadgen.child(node, "pts"), "xy")]
-            out.append((pts, f"a polygon on Edge.Cuts at {boardrules._p(pts[0])}", abs(_area(pts))))
+            out.append((pts, f"a polygon on Edge.Cuts at {boardrules._p(pts[0])}", abs(_area(pts)), box))
         elif head in ("gr_line", "gr_arc"):
             start = boardrules._xy(kicadgen.child(node, "start"))
-            lines.append((start, boardrules._xy(kicadgen.child(node, "end")), head == "gr_arc"))
+            lines.append((start, boardrules._xy(kicadgen.child(node, "end")), head == "gr_arc", box))
         elif head == "gr_circle":
             c = boardrules._xy(kicadgen.child(node, "center"))
             e = boardrules._xy(kicadgen.child(node, "end"))
             r = math.hypot(e[0] - c[0], e[1] - c[1])
-            out.append((None, f"a circle on Edge.Cuts at {boardrules._p(c)}", math.pi * r * r))
+            out.append((None, f"a circle on Edge.Cuts at {boardrules._p(c)}", math.pi * r * r, box))
         elif head in ("gr_curve", "gr_bbox"):
-            out.append((None, f"a {head[3:]} on Edge.Cuts", 0.0))
+            out.append((None, f"a {head[3:]} on Edge.Cuts", 0.0, box))
     # Lines and arcs joined end to end into loops.
     while lines:
-        a, b, curved = lines.pop()
-        loop = [a, b]
+        a, b, curved, box = lines.pop()
+        loop, boxes = [a, b], [box]
         while not _same(loop[0], loop[-1]):
-            for i, (p, q, arc) in enumerate(lines):
+            for i, (p, q, arc, pbox) in enumerate(lines):
                 if _same(p, loop[-1]) or _same(q, loop[-1]):
                     loop.append(q if _same(p, loop[-1]) else p)
                     curved = curved or arc
+                    boxes.append(pbox)
                     lines.pop(i)
                     break
             else:
                 break
         what = f"lines on Edge.Cuts from {boardrules._p(loop[0])}"
+        box = _union(boxes) if None not in boxes else None
         if _same(loop[0], loop[-1]) and len(loop) >= 4:
-            out.append((None if curved else loop[:-1], what, abs(_area(loop[:-1]))))
+            out.append((None if curved else loop[:-1], what, abs(_area(loop[:-1])), box))
         else:
-            out.append((None, what + " that do not close", 0.0))
+            out.append((None, what + " that do not close", 0.0, box))
     return out
 
 
@@ -489,23 +530,40 @@ def read_copper(text: str) -> Copper:
             put(_net(node, ids), layer, polys, f"a track with no net at {_p(start)}")
         elif head.startswith("gr_") and _layer(node) in unread:
             unread[_layer(node)].append(f"a {head} at {_p(_first(node))}")
+    faces = {board.copper[0], board.copper[-1]} if len(board.copper) >= 2 else set()
+    barrels: list[tuple[str, str, list[Polygon]]] = []
+
+    def barrel(net: str, kind: str, at: Point, polys: list[Polygon], on: list[str]) -> None:
+        if faces and faces <= set(on):
+            barrels.append((net, f"{kind} {'of ' + net if net else 'with no net'} at {_p(at)}", polys))
+
     for v in board.vias:
         for layer in v.layers:
             put(v.net, layer, [circle(v.at, v.size / 2)], f"a via with no net at {_p(v.at)}")
+        barrel(v.net, "a via", v.at, [circle(v.at, max(v.size, v.drill) / 2)], v.layers)
     for z in board.zones:
         polys = [p for p in z.polygons if len(p) >= 3]
         if polys:
             put(z.net, z.layer, polys, f"a zone with no net at {_p(polys[0][0])}")
-    fp_edges: list[str] = []
+    fp_edges: list[tuple[str, Box | None]] = []
     for fp in kicadgen.children(root, "footprint"):
         fx, fy, *rot = (float(v) for v in kicadgen.atoms(kicadgen.child(fp, "at")))
         frot = rot[0] if rot else 0.0
         ref = next((str(p[2]) for p in kicadgen.children(fp, "property") if str(p[1]) == "Reference"), "")
         name = ref or str(fp[1])
+        fr = math.radians(frot)
+
+        def place(p: Point, fx=fx, fy=fy, fr=fr) -> Point:
+            return (
+                fx + p[0] * math.cos(fr) + p[1] * math.sin(fr),
+                fy - p[0] * math.sin(fr) + p[1] * math.cos(fr),
+            )
+
         for item in fp[1:]:
             if isinstance(item, list) and item and str(item[0]).startswith("fp_"):
                 if _layer(item) == "Edge.Cuts":
-                    fp_edges.append(f"a {item[0]} of {name} on Edge.Cuts at {_p((fx, fy))}")
+                    what = f"a {item[0]} of {name} on Edge.Cuts at {_p((fx, fy))}"
+                    fp_edges.append((what, _shape_box(item, place)))
                 elif _layer(item) in unread:
                     unread[_layer(item)].append(f"a {item[0]} of {name} at {_p((fx, fy))}")
         for pad in kicadgen.children(fp, "pad"):
@@ -546,20 +604,32 @@ def read_copper(text: str) -> Copper:
                 shape = "rect" if shape != "circle" else shape
             for layer in on:
                 put(net, layer, [_pad_shape(at, shape, w, h, deg)], f"a pad with no net at {_p(at)}")
+            if len(pad) > 2 and str(pad[2]) == "thru_hole" and hole > 0:
+                ring = [_pad_shape(at, shape, w, h, deg), circle(at, hole)]
+                barrel(net, "a plated hole", at, ring, list(board.copper))
     loops = _cuts(root)
     outline = max(range(len(loops)), key=lambda i: loops[i][2]) if loops else None
     cuts = []
-    for i, (poly, what, _) in enumerate(loops):
+    for i, (poly, what, _, box) in enumerate(loops):
         if i == outline:
             continue
         if poly is not None and len(poly) == 4 and _convex(poly):
             cuts.append(Cut(poly if _area(poly) > 0 else poly[::-1], what))
         else:
-            cuts.append(Cut(None, what))
-    cuts += [Cut(None, what) for what in fp_edges]
-    walls_unread = walls_unread or (fp_edges[0] if fp_edges else "")
+            cuts.append(Cut(None, what, box))
+    cuts += [Cut(None, what, box) for what, box in fp_edges]
+    walls_unread = walls_unread or (fp_edges[0][0] if fp_edges else "")
     return Copper(
-        list(board.copper), shapes, cuts, board.thickness, walls, slack, walls_unread, floating, unread
+        list(board.copper),
+        shapes,
+        cuts,
+        board.thickness,
+        walls,
+        slack,
+        walls_unread,
+        floating,
+        unread,
+        barrels,
     )
 
 
@@ -810,7 +880,8 @@ def gap(pa: list[Polygon], pb: list[Polygon], cutoff: float = math.inf) -> tuple
             if apart > lim:
                 continue
             if apart == 0 and (_inside(a[0], b) or _inside(b[0], a)):
-                take(0.0, a[0], a[0])
+                inner = a[0] if _inside(a[0], b) else b[0]  # a point of the one inside the other
+                take(0.0, inner, inner)
                 continue
             for a1, a2 in xa.near(xb.box, lim):
                 lim = min(best[0] + EPS, cutoff)
@@ -941,10 +1012,14 @@ def measure_sets(
 
 def _near(cut: Cut, pa: list[Polygon], pb: list[Polygon], reach: float) -> bool:
     """A cut that can stand on a way under `reach` between the 2 nets: within reach of both. A cut this
-    module does not read counts as near."""
-    if cut.polygon is None:
-        return True
-    return gap([cut.polygon], pa, reach)[0] < reach and gap([cut.polygon], pb, reach)[0] < reach
+    module does not read is held by a box round it, and counts as near when it has none."""
+    poly = cut.polygon
+    if poly is None:
+        if cut.box is None:
+            return True
+        x0, y0, x1, y1 = cut.box
+        poly = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+    return gap([poly], pa, reach)[0] < reach and gap([poly], pb, reach)[0] < reach
 
 
 def _across_floating(
@@ -1041,8 +1116,62 @@ def findings(
                 flagged.add((a, b))
             if any(f.status == "fail" for f in got):
                 failed.add((a, b))
+    out += _laminate(cu, spans, pack, cond)
     if len(cu.layers) >= 2:
         out += _faces(cu, spans, pack, cond, least_slot, failed, flagged)
+    return out
+
+
+def _reach(pack: Pack, volts: float, cond: dict[str, str]) -> float:
+    """The greatest distance the pack asks at `volts`; over its last row, its greatest at all."""
+    creep = pack.limit("creepage", volts, cond)
+    clear = pack.limit("clearance", volts, cond) if "clearance" in pack.tables else None
+    got = [x for x in (creep.at_least, creep.fails_under, clear.at_least if clear else None) if x is not None]
+    return max(got) if creep.at_least is not None else pack.most
+
+
+def _laminate(cu: Copper, spans, pack: Pack, cond) -> list[Finding]:
+    """Each 2 layers, other than F.Cu and B.Cu, that hold copper of 2 nets with a voltage between them
+    within the pack's distance of each other side by side: the way between them runs through the
+    laminate, solid insulation that neither table judges. 1 `not judged` line for the 2 layers, with the
+    count of pairs and the first."""
+    out: list[Finding] = []
+    outer = {cu.layers[0], cu.layers[-1]} if cu.layers else set()
+    boxes: dict[tuple[str, str], Box] = {}
+
+    def box(layer: str, net: str) -> Box:
+        if (layer, net) not in boxes:
+            boxes[(layer, net)] = _union([_index(p).box for p in cu.polys(layer, net)])
+        return boxes[(layer, net)]
+
+    on = {layer: sorted({n for n, _ in cu.shapes.get(layer, []) if n in spans}) for layer in cu.layers}
+    for la, lb in itertools.combinations(cu.layers, 2):
+        if {la, lb} == outer and la != lb:
+            continue  # the 2 faces: held round the edge and through the holes
+        found: list[tuple[str, str, str, str, Point]] = []
+        for a, b in itertools.product(on[la], on[lb]):
+            volts = boardrules.between(spans[a], spans[b]) if a != b else 0
+            if volts <= 0:
+                continue
+            reach = _reach(pack, volts, cond)
+            if _box_gap(box(la, a), box(lb, b)) >= reach:
+                continue
+            d, at, _ = gap(cu.polys(la, a), cu.polys(lb, b), reach)
+            if d < reach:
+                # The net of the higher voltage first.
+                first = (a, la, b, lb) if (-spans[a][1], a) <= (-spans[b][1], b) else (b, lb, a, la)
+                found.append((*first, at))
+        if found:
+            a, xa, b, xb, at = min(found, key=lambda f: (-spans[f[0]][1], f[0], f[2]))
+            count = f"{len(found)} pair{'s' if len(found) > 1 else ''} of nets"
+            out.append(
+                Finding(
+                    "not judged",
+                    f"creepage between {la} and {lb}: {count} with a voltage between them within the pack's "
+                    "distance of each other through the laminate, solid insulation that no table here judges "
+                    f"({a} on {xa} to {b} on {xb} at {_p(at)})",
+                )
+            )
     return out
 
 
@@ -1053,8 +1182,10 @@ def _faces(cu: Copper, spans, pack: Pack, cond, least_slot, failed: set, flagged
     judged` otherwise. The least length along the faces: the 2 nets' gaps to the nearest wall and the
     board's thickness, and no less than the way along 1 face between the 2 nets' outlines. Through air:
     sqrt((the 2 gaps to a wall)^2 + thickness^2), and no less than the straight gap in 3 dimensions.
-    Each gap may cross copper with no net, whose own width counts nothing. A pair that already fails on
-    1 face gets no more lines."""
+    Each gap may cross copper with no net, whose own width counts nothing. A plated barrel from F.Cu to
+    B.Cu with no net (or of a net with no voltage) changes face for nothing: a way through barrels alone
+    is at least the gap to a barrel on 1 face plus the gap from one on the other, with no thickness. A
+    pair that already fails on 1 face gets no more lines."""
     out: list[Finding] = []
     top, bot = cu.layers[0], cu.layers[-1]
     cap = pack.most + 1
@@ -1073,6 +1204,25 @@ def _faces(cu: Copper, spans, pack: Pack, cond, least_slot, failed: set, flagged
                     d = across[0]
                 to_wall[(net, layer)] = (max(0.0, min(d, cap) - cu.walls_slack), p if d < cap else None)
         return to_wall[(net, layer)]
+
+    # A plated barrel with no net, or of a net with no voltage, joins the 2 faces: a way through it
+    # costs only its gaps on each face.
+    joints = [(what, polys) for n, what, polys in cu.barrels if n == "" or n not in spans]
+    to_joint: dict[tuple[str, str], tuple[float, Point | None, str]] = {}
+
+    def joint(net: str, layer: str) -> tuple[float, Point | None, str]:
+        if (net, layer) not in to_joint:
+            best: tuple[float, Point | None, str] = (math.inf, None, "")
+            polys = cu.polys(layer, net)
+            for what, ring in joints:
+                d, p, _ = gap(polys, ring, min(best[0], cap))
+                across = _across_floating(cu.floating.get(layer, []), polys, ring, min(d, best[0], cap))
+                if across is not None:
+                    d = across[0]
+                if d < best[0] and d < cap:
+                    best = (d, p, what)
+            to_joint[(net, layer)] = best
+        return to_joint[(net, layer)]
 
     on = {layer: {n for n, _ in cu.shapes.get(layer, []) if n in spans} for layer in (top, bot)}
     nets = sorted(on[top] | on[bot], key=lambda n: (-spans[n][1], n))
@@ -1094,8 +1244,14 @@ def _faces(cu: Copper, spans, pack: Pack, cond, least_slot, failed: set, flagged
             pa, pb = cu.polys(la, a), cu.polys(lb, b)
             da, at = wall(a, la)
             db, _ = wall(b, lb)
-            low = da + cu.thickness + db
-            low_c = math.hypot(da + db, cu.thickness)
+            ja, j_at, j_what = joint(a, la)
+            jb = joint(b, lb)[0]
+            # The first and the last change of face: round a wall (the thickness on the way) or through
+            # a barrel (nothing). A way with a wall on it, and a way through barrels alone.
+            ea, eb = min(da, ja), min(db, jb)
+            wall_low, wall_c = ea + cu.thickness + eb, math.hypot(ea + eb, cu.thickness)
+            joint_low = ja + jb
+            low, low_c = min(wall_low, joint_low), min(wall_c, joint_low)
             need_c = clear.at_least if clear is not None else None
             if low >= creep.at_least - EPS and (need_c is None or low_c >= need_c - EPS):
                 continue
@@ -1106,7 +1262,11 @@ def _faces(cu: Copper, spans, pack: Pack, cond, least_slot, failed: set, flagged
             if across is not None:
                 plan, straight = min(plan, across[0]), min(straight, across[0])
             low = max(low, plan)
-            low_c = max(low_c, math.hypot(straight, cu.thickness))
+            low_c = min(max(wall_c, math.hypot(straight, cu.thickness)), max(joint_low, straight))
+            if joint_low < max(wall_low, plan) and j_at is not None:  # the way through a barrel
+                way, at = f"through {j_what}", j_at
+            else:
+                way = "round the board's edge or through a hole"
             where = (
                 f" at {_p(at if at is not None else m.at)}"
                 if at is not None or math.isfinite(m.clearance)
@@ -1116,9 +1276,9 @@ def _faces(cu: Copper, spans, pack: Pack, cond, least_slot, failed: set, flagged
                 out.append(
                     Finding(
                         "not judged",
-                        f"clearance {head}{where}: at least {_mm(low_c)} mm through air round the board's "
-                        f"edge or through a hole, {_mm(need_c)} mm asked at {volts:g} V: this check does not "
-                        "measure a way between the 2 faces",
+                        f"clearance {head}{where}: at least {_mm(low_c)} mm through air {way}, "
+                        f"{_mm(need_c)} mm asked at {volts:g} V: this check does not measure a way between "
+                        "the 2 faces",
                         pack.cite(clear.where),
                     )
                 )
@@ -1126,9 +1286,8 @@ def _faces(cu: Copper, spans, pack: Pack, cond, least_slot, failed: set, flagged
                 out.append(
                     Finding(
                         "not judged",
-                        f"creepage {head}{where}: at least {_mm(low)} mm round the board's edge or through a "
-                        f"hole, {_mm(creep.at_least)} mm asked at {volts:g} V: this check does not measure a "
-                        "way between the 2 faces",
+                        f"creepage {head}{where}: at least {_mm(low)} mm {way}, {_mm(creep.at_least)} mm "
+                        f"asked at {volts:g} V: this check does not measure a way between the 2 faces",
                         pack.cite(creep.where),
                     )
                 )
