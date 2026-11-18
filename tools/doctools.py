@@ -19,7 +19,6 @@ from __future__ import annotations
 import argparse
 import ast
 import csv
-import datetime
 import json
 import math
 import os
@@ -32,6 +31,8 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from xml.sax.saxutils import escape
+
+import clock
 
 VERSION_RE = re.compile(r"^v\d+(?:\.\d+)*$")
 # A version named in prose: `v0.16`, `v0.16/`, `v0.16.` at a sentence's end; never part of v0.161.
@@ -675,7 +676,7 @@ def gates_report(report: Path, project, results: list, cli) -> list[str]:
         )
     rows += [
         "",
-        f"{verdict} on {datetime.date.today().isoformat()}: "
+        f"{verdict} on {clock.today().isoformat()}: "
         f"`workcenter gates` with KiCad {kicad}, ngspice {ngspice}.",
     ]
     blocks = {f"gates {project.name}": "\n".join(rows)}

@@ -2715,7 +2715,7 @@ def gate_procure(
         for refs, _, m, value, _ in lines
         if m and m.buys and not m.breaks
     ]
-    today = datetime.date.today()
+    today = clock().today()
     short, stale = [], []
     suppliers: list[str] = []
     totals = {n: {} for n in boards}
@@ -3770,7 +3770,7 @@ def cmd_fetch(args) -> int:
         "Member": args.member or "",
         "Subckt": subckt,
         "SHA256": digest,
-        "Checked": datetime.date.today().isoformat(),
+        "Checked": clock().today().isoformat(),
     }
     header = SOURCES_HEADER
     if rows_text:
@@ -5303,6 +5303,14 @@ def enginelock():
     return module
 
 
+def clock():
+    """tools/clock.py: the day and the time a command runs at, read once at its start."""
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import clock as module
+
+    return module
+
+
 def render_views(value: str) -> tuple[str, ...]:
     names = RENDER_VIEWS if value == "all" else tuple(v.strip() for v in value.split(",") if v.strip())
     unknown = [v for v in names if v not in RENDER_VIEWS]
@@ -5312,6 +5320,12 @@ def render_views(value: str) -> tuple[str, ...]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # The command's 1 reading of the clock: every day it writes in this run is this one, after midnight too.
+    with clock().run():
+        return command(argv)
+
+
+def command(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="workcenter", description=__doc__.splitlines()[0])
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     sub = parser.add_subparsers(dest="command", required=True)
