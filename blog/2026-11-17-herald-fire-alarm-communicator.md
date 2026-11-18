@@ -19,7 +19,7 @@ Herald takes the exchange's place. Two transistors feed the line from the panel'
 
 Herald then plays dial tone: 350 and 440 Hz together. After the dialer dials, Herald answers with a handshake: 1400 then 2300 Hz, 100 ms each. The dialer sends its message as touch-tone digits. Herald confirms a good message with a "kissoff" tone, 1400 Hz for 800 ms.
 
-The message follows Contact ID, the alarm maker Ademco's format, now the standard SIA DC-05. Its 16 digits hold an account, a zone and an event code, where 110 means fire alarm. The last digit makes the sum of all 16 a multiple of 15, with each 0 counted as 10. A wrong digit breaks the sum, so Herald sends no kissoff, and the dialer sends the message again. The agent took these values from open-source receivers and manuals, not the DC-05 text.
+The message follows Contact ID, the alarm maker Ademco's format, now the standard SIA DC-05. Its 16 digits hold an account, a zone and an event code, where 110 means fire alarm. The last digit makes the sum of all 16 a multiple of 15, with each 0 counted as 10. A wrong digit breaks the sum, so Herald sends no kissoff, and the dialer sends the message again. The agent took these values from open-source receivers and makers' documents, not the DC-05 text.
 
 ## Eight tones for 16 keys
 
@@ -43,13 +43,15 @@ Tests on a computer play all 16 keys through the decoder, plus tones it must ref
 
 Other panels report by closing a relay contact, a switch. If a bare switch's wire breaks, the circuit looks like an open switch, the quiet state. Fire systems add an end-of-line resistor across the switch, at its far end.
 
-Each of Herald's three inputs has a 4.7 kilohm pull-up to 3.3 V. The end-of-line resistor matches it, so a whole loop reads about half. A closed switch pulls the reading near zero. A cut wire leaves only the pull-up, and the reading rises to 3.3 V. A relay, held on while Herald is healthy, opens on a lost supply or a reset, warning the panel.
+Each of Herald's three inputs has a 4.7 kilohm pull-up to 3.3 V. The end-of-line resistor matches it, so a whole loop reads about half. A closed switch pulls the reading near zero. A cut wire leaves only the pull-up, and the reading rises to 3.3 V.
 
 Four simulations test the cases at 0 and 50 °C and at each part's tolerance limits. The worst readings are 0.151 V closed, 1.555 to 1.798 V whole and 3.186 V cut. Each stays 0.2 V or more from the firmware's thresholds.
 
+A relay, held on while Herald is healthy, opens on a lost supply or a reset, warning the panel.
+
 ## How the design went
 
-The agent writes the whole board as one Python file, [`design.py`](examples/fire-alarm-communicator/v0.1/design.py). Via makes it a KiCad project, routes it, then checks electrical rules, design rules, simulation and fabrication files:
+The agent wrote the whole board as one Python file, [`design.py`](examples/fire-alarm-communicator/v0.1/design.py). Via makes it a KiCad project, routes it, then checks electrical rules, design rules, simulation and fabrication files:
 
 ```sh
 workcenter design design.py --route
