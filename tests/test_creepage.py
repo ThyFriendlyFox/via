@@ -388,6 +388,20 @@ def test_copper_over_copper_on_2_inner_layers_is_not_judged():
     assert creepage.findings(cu, SPANS, creepage.read_pack(MIL), MIL_AI) == []
 
 
+def test_a_pair_of_nets_crossed_twice_through_the_laminate_counts_once():
+    """HV over GND at x 110 to 120 and GND over HV at x 130 to 140, on In1.Cu and In2.Cu: 1 pair of nets,
+    met twice. Each inner layer also holds both nets (20 mm apart): its own line."""
+    left, right = rect(110, 110, 120, 120), rect(130, 110, 140, 120)
+    cu = creepage.Copper(
+        layers=["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"],
+        shapes={"In1.Cu": [("HV", left), ("GND", right)], "In2.Cu": [("GND", left), ("HV", right)]},
+        cuts=[],
+    )
+    found = [f.text for f in creepage.findings(cu, SPANS, creepage.read_pack(MIL), MIL_AI)]
+    laminate = [t for t in found if t.startswith("creepage between")]
+    assert len(laminate) == 1 and ": 1 pair of nets with a voltage" in laminate[0], found
+
+
 # ---------------------------------------------------------------- the board file
 
 

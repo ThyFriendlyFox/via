@@ -1224,7 +1224,8 @@ def _laminate(cu: Copper, spans, pack: Pack, cond) -> list[Finding]:
                 found.append((*first, at))
         if found:
             a, xa, b, xb, at = min(found, key=lambda f: (-spans[f[0]][1], f[0], f[2]))
-            count = f"{len(found)} pair{'s' if len(found) > 1 else ''} of nets"
+            pairs = len({frozenset((f[0], f[2])) for f in found})  # a pair of nets met twice counts once
+            count = f"{pairs} pair{'s' if pairs > 1 else ''} of nets"
             out.append(
                 Finding(
                     "not judged",
