@@ -316,7 +316,7 @@ the repository's health.
 
 **A Docker image.** With Docker instead of installing (amd64 or arm64; no openEMS on arm64):
 `docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work ghcr.io/thyfriendlyfox/ee-workcenter:main workcenter gates .`.
-The files the gates write belong to you. The image holds the toolchain install.sh installs and the workcenter, without the example boards and the site; `.github/workflows/image.yml` builds it on Ubuntu 24.04 and publishes it from `main`, a release's tag, each Monday and by hand. Pin a toolchain by its digest from the `Image` workflow's summary. Not built yet: the first build is the pull request's.
+The files the gates write belong to you. The image holds the toolchain install.sh installs and the workcenter, without the example boards and the site; `.github/workflows/image.yml` builds it on Ubuntu 24.04 and publishes it from `main`, a release's tag, each Monday and by hand. Pin a toolchain by its digest from the `Image` workflow's summary. The first image was built and pushed from `main` on 2026-11-18; the package is still private, so it cannot be pulled from outside the repository yet.
 
 ## The website
 
@@ -410,7 +410,8 @@ says how to report a vulnerability.
 [`ee-agent-kit/STATUS.md`](ee-agent-kit/STATUS.md) has each area's state
 with its evidence. In short: the gates, the corners, the frequency plan and `workcenter next`
 run on the fixture boards in `make verify`. Via has no release yet. The
-cloud setup script and the Docker build have not run yet.
+cloud setup script has not run yet. The Docker image is built on GitHub,
+and the package is still private.
 
 ## License
 
