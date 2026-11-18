@@ -26,7 +26,9 @@ the minute the roadmap asks for.
    `scope.quick_start`, the same functions.
 5. No base, or a base git cannot read: full.
 6. A list of paths (`--paths`) carries no text: a document that shows a
-   run is full.
+   run is full, and so is a document that is absent from the working tree.
+7. A path whose name is not UTF-8 is judged by its rules; its line shows
+   each such byte as `\xe9`.
 
 ## Before a push
 
@@ -52,10 +54,24 @@ engine (`tools/chipflow.py` `ENGINES`) or imports `pcbnew` carries
    (`-m "not engine"`) and sets `WORKCENTER_NO_ENGINES=1`: an engine start
    raises `FileNotFoundError`, which the commands read as an absent engine.
 
+The plugin holds a test's setup, call and teardown. It does not hold a
+module's collection: a probe there (`import pcbnew` in a try,
+`importlib.util.find_spec("pcbnew")`) decides skip marks, and the fast run
+refuses it, so it costs no engine there; in the full run it runs unheld.
+The watch sees `subprocess`,
+`os.system`, `os.posix_spawn`, `os.posix_spawnp`, `os.execv` and
+`os.execve` (and `os.execvp`, `os.execl*` and `os.spawn*`, which call
+them). Behind a wrapper it skips the options and their values
+(`timeout -s KILL 60`, `env -u FOO`) and reads `flock -c` and `env -S`
+lines. In a shell line only a command's first word is a program:
+`echo magic` starts nothing.
+
 What the watch does not see: a process started with `python -I`, a child
-whose environment drops PYTHONPATH, and an engine started by a shell script
-file (not a `-c` line). A program under the temporary folder is a test's
-stand-in, not an engine.
+whose environment drops PYTHONPATH, an engine started by a shell script
+file (not a `-c` line) or by a program that is not Python, a start from
+`os.fork` followed by a C library call, and a start in `tests/conftest.py`
+itself, which runs before the plugin is configured. A
+program under the temporary folder is a test's stand-in, not an engine.
 
 ## The workflow
 
