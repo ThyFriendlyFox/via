@@ -504,10 +504,13 @@ passes_made() {
 # nothing here. Any other end of a pass stops at once. Each pass asks apt again: apt, not the
 # script, knows which files are there. APT_DOWNLOAD_TIMEOUT, when set, is the bound of all passes and
 # waits together: each pass gets what is left of it, a pass's time and the wait after it are taken from
-# what is left, and a wait starts only when at least 1 s is left after it. The shell counts whole
-# seconds, so a pass of 1.9 s can count as 1 s: the passes can overrun the bound by less than 1 s each.
+# what is left, and a wait starts only when at least 1 s is left after it. When it is not, the stop says
+# so and keeps the advice for apt's line: the bound has not ended and the line need not be slow. The
+# shell counts whole seconds, so a pass of 1.9 s can count as 1 s: the passes can overrun the bound by
+# less than 1 s each.
 apt_download() {
   local pass left="$APT_DOWNLOAD_TIMEOUT" rc files began
+  local later="A package source did not serve a file this time: run the script again later. ${KEPT}"
   for ((pass = 1; ; pass++)); do
     rc=0
     began=$SECONDS
@@ -523,12 +526,13 @@ apt_download() {
     fi
     if ((rc != 100 || APT_FETCH_COUNT == 0 || pass >= APT_DOWNLOAD_TRIES)); then
       stop "apt: the download ended with apt-get's exit code ${rc} after $(passes_made "$pass")${APT_DOWNLOAD_TIMEOUT:+, within its bound of ${APT_DOWNLOAD_TIMEOUT} s}; apt said: ${APT_SAID:-nothing}" \
-        "No package was installed. $(apt_advice "$APT_SAID" "A package source did not serve a file this time: run the script again later. ${KEPT}")"
+        "No package was installed. $(apt_advice "$APT_SAID" "$later")"
     fi
     if [[ -n "$APT_DOWNLOAD_TIMEOUT" ]]; then
       left=$((left - (SECONDS - began)))
       if ((left <= APT_DOWNLOAD_WAIT)); then
-        download_cut "$pass"
+        stop "apt: the download stopped after $(passes_made "$pass"): the next wait of ${APT_DOWNLOAD_WAIT} s would leave no time for another pass within APT_DOWNLOAD_TIMEOUT=${APT_DOWNLOAD_TIMEOUT} s; apt said: ${APT_SAID:-nothing}" \
+          "No package was installed. $(apt_advice "$APT_SAID" "$later")"
       fi
       left=$((left - APT_DOWNLOAD_WAIT))
     fi
@@ -539,8 +543,7 @@ apt_download() {
   done
 }
 
-# The stop when APT_DOWNLOAD_TIMEOUT has ended, or leaves no time for another pass after the wait, after
-# $1 passes.
+# The stop when `timeout` cut pass $1 at what was left of APT_DOWNLOAD_TIMEOUT (code 124).
 download_cut() {
   stop "apt: the download did not end within ${APT_DOWNLOAD_TIMEOUT} s (APT_DOWNLOAD_TIMEOUT), the bound of all its passes and waits, after $(passes_made "$1"); apt said: ${APT_SAID:-nothing}" \
     "No package was installed. Run the script again. ${KEPT} On a slow line, give it more seconds: sudo env APT_DOWNLOAD_TIMEOUT=<seconds> ./install.sh (sudo drops a variable set before it)."
@@ -607,6 +610,8 @@ step_apt() {
 # step installs nothing.
 BOOT_PACKAGES=(curl gnupg ca-certificates git make gcc libc6-dev)
 step_boot() {
+  # main runs this step first: a typo in the apt step's numbers stops here, before apt installs anything.
+  apt_bounds_check
   if [[ "$SKIP_APT" == "1" ]]; then
     return
   fi

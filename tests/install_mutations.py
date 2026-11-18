@@ -131,7 +131,7 @@ MUTATIONS = [
     ("IA45 bounded: a bound set and not applied", "install.sh",
      '  if [[ -n "$secs" ]]; then\n    timeout', "  if false; then\n    timeout"),
     ("IA46 a wrong bound not checked", "install.sh",
-     "  apt_bounds_check\n", "  true\n"),
+     "step_apt() {\n  apt_bounds_check\n", "step_apt() {\n  true\n"),
     ("IA47 a bound of 0 taken", "install.sh",
      '"$value" =~ ^[1-9][0-9]*$', '"$value" =~ ^[0-9]+$'),
     ("IA48 the update's bound not checked", "install.sh",
@@ -294,8 +294,27 @@ MUTATIONS = [
      "  if (($1 == 1)); then printf '1 pass of", "  if false; then printf '1 pass of"),
     ("IA112 1 file said as 1 files", "install.sh",
      '    if ((APT_FETCH_COUNT == 1)); then files="file"; fi\n', ""),
-    ("IA113 the bound before the wait read as a failure", "install.sh",
-     "      if ((left <= APT_DOWNLOAD_WAIT)); then\n        download_cut",
-     "      if ((left <= APT_DOWNLOAD_WAIT)); then\n        stop x y"),
+    ("IA113 B1 a wait longer than the time left said as a cut by the bound", "install.sh",
+     "      if ((left <= APT_DOWNLOAD_WAIT)); then\n        stop ",
+     "      if ((left <= APT_DOWNLOAD_WAIT)); then\n        download_cut \"$pass\"\n        stop "),
+    # The review of the passes (T1, T2, T3): 3 changes that passed every test.
+    ("IA114 T1 the wait not waited for", "install.sh",
+     '    sleep "$APT_DOWNLOAD_WAIT"\n', '    sleep "$APT_DOWNLOAD_WAIT" &\n'),
+    ("IA115 T2 a wait refused while 2 waits are left", "install.sh",
+     "if ((left <= APT_DOWNLOAD_WAIT)); then", "if ((left <= 2 * APT_DOWNLOAD_WAIT)); then"),
+    ("IA116 T3 1 s lost per pass", "install.sh",
+     "left=$((left - (SECONDS - began)))", "left=$((left - (SECONDS - began) - 1))"),
+    # The review of the passes (B1, B2).
+    ("IA117 B1 no time left: the advice for a 503 whatever apt said", "install.sh",
+     "${APT_DOWNLOAD_TIMEOUT} s; apt said: ${APT_SAID:-nothing}\" \\\n"
+     "          \"No package was installed. $(apt_advice \"$APT_SAID\" \"$later\")\"",
+     "${APT_DOWNLOAD_TIMEOUT} s; apt said: ${APT_SAID:-nothing}\" \\\n"
+     "          \"No package was installed. ${later}\""),
+    ("IA118 B1 no time left: the passes not counted", "install.sh",
+     '"apt: the download stopped after $(passes_made "$pass"): the next wait',
+     '"apt: the download stopped: the next wait'),
+    ("IA119 B2 a bad value refused only after the first step installed", "install.sh",
+     "  apt_bounds_check\n  if [[ \"$SKIP_APT\" == \"1\" ]]; then\n    return\n  fi\n  local missing=()",
+     "  if [[ \"$SKIP_APT\" == \"1\" ]]; then\n    return\n  fi\n  local missing=()"),
 ]
 # fmt: on
