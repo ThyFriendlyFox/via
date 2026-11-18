@@ -328,8 +328,14 @@ def mcu(  # noqa: PLR0913, PLR0915
         f"{_f(parasitic)}) / 2 = {_f(got)} [{_load_where(chip)}]"
     )
     x_where = f"{crystal_facts.source}, {crystal_facts.data['terminals']['where']}"
+    # The symbol's other pins stand at 1 point, so the schematic joins them: 1 net of their own, or the
+    # board's pads would differ from the schematic and DRC would find them unconnected.
+    floating = f"{y}_G"
     opened = (
-        f"; {x_symbol} leaves pads {_and(open_pads)} open [{chip['_symbols']['where']}]" if open_pads else ""
+        f"; {x_symbol} joins pads {_and(open_pads)} on {floating}, and nothing else is on it "
+        f"[{chip['_symbols']['where']}]"
+        if open_pads
+        else ""
     )
     sums.append(f"{y}: XIN on pad {terminals[0]}, XOUT on pad {terminals[1]} [{x_where}]{opened}")
     drive = crystal_facts.data.get("watts_drive")
@@ -432,11 +438,14 @@ def mcu(  # noqa: PLR0913, PLR0915
           pcb_at=(px + 12.0, py + 8.0),
           nets={p["DVCC"]: vnet, p["AVCC"]: vnet, p["DVSS"]: gnd, p["AVSS"]: gnd, p["VCORE"]: core,
                 p["XIN"]: xin, p["XOUT"]: xout, p["TEST"]: test, p["RST"]: rst})  # fmt: skip
+    # XIN (pin 21) is right of XOUT (pin 22) on U1's top edge, and the crystal sits below U1: turned 180
+    # degrees, its pad 1 (XIN) is on the right and XIN's load capacitor with it, so the 2 traces do not cross.
     d.add(y, x_symbol, crystal.value, crystal.footprint, sch_at=(sx + 101.6, sy + 25.4),
-          pcb_at=(px + 12.0, py + 17.0), nets={terminals[0]: xin, terminals[1]: xout})  # fmt: skip
+          pcb_at=(px + 12.0, py + 17.0), pcb_rot=180.0,
+          nets={terminals[0]: xin, terminals[1]: xout} | dict.fromkeys(open_pads, floating))  # fmt: skip
     for k, (ref, net) in enumerate(zip(pair, (xin, xout), strict=True)):
         d.add(ref, "Device:C", load_cap[0].value, load_cap[0].footprint,
-              sch_at=(sx + 91.44 + 20.32 * k, sy + 38.1), pcb_at=(px + 7.0 + 10.0 * k, py + 21.0),
+              sch_at=(sx + 91.44 + 20.32 * k, sy + 38.1), pcb_at=(px + 17.0 - 10.0 * k, py + 21.0),
               nets={"1": net, "2": gnd})  # fmt: skip
     d.add(b_refs[0], "Device:C", bulk[0].value, bulk[0].footprint, sch_at=(sx, sy + 7.62),
           pcb_at=(px + 2.0, py + 2.0), nets={"1": vnet, "2": gnd})  # fmt: skip
