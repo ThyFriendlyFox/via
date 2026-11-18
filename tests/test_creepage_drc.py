@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
@@ -34,7 +35,10 @@ CITES = {
     "ti-slup419": "page 7; table 3, page 7; table 7 and figure 9, page 11",
 }
 
-pytestmark = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+# The 5 tests that run `workcenter drc` start kicad-cli; the slot fixture's test reads the board file alone.
+needs_kicad = engine(
+    pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+)
 
 
 def say(*args: object) -> tuple[int, str]:
@@ -48,12 +52,14 @@ def say(*args: object) -> tuple[int, str]:
     return proc.returncode, proc.stdout + proc.stderr
 
 
+@needs_kicad
 def test_pass_creepage_passes_strict(tmp_path):
     code, text = say("drc", BOARDS / "pass-creepage", "--out", tmp_path, "--strict")
     assert code == 0, text
     assert "board rules mil-hdbk-454c-g69: 0 fail, 0 not judged" in text
 
 
+@needs_kicad
 def test_fail_creepage_fails_on_creepage_alone(tmp_path):
     code, text = say("drc", BOARDS / "fail-creepage", "--out", tmp_path, "--strict")
     assert code == 1, text
@@ -68,6 +74,7 @@ def test_fail_creepage_fails_on_creepage_alone(tmp_path):
     ]
 
 
+@needs_kicad
 def test_pass_creepage_slot_holds_its_creepage_round_its_slot(tmp_path):
     """The creepage holds round the slot; SLUP419 gives no clearance by working voltage (page 7), so each
     face's pair is `not judged` for clearance: the default gate passes with 2 warnings, --strict fails."""
@@ -96,6 +103,7 @@ def fails(text: str) -> list[str]:
     return [line.strip()[2:] for line in text.splitlines() if line.strip().startswith("- fail")]
 
 
+@needs_kicad
 def test_fail_creepage_clearance_breaks_both_rules_of_the_mil_pack(tmp_path):
     """Centres 3 mm apart: 3 - 1.7 = 1.3 mm, under the 1.5 mm of clearance and the 3 mm of leakage of
     table 69-I, page 69-2 (300 to 600 V, condition A, enclosure I). 2 lines on each face."""
@@ -115,6 +123,7 @@ def test_fail_creepage_clearance_breaks_both_rules_of_the_mil_pack(tmp_path):
     ]
 
 
+@needs_kicad
 def test_fail_creepage_slot_breaks_both_rules_of_the_ti_pack(tmp_path):
     """3.3 mm straight and a slot 0.8 mm wide between: table 7, page 11, counts a slot from 1.0 mm at
     pollution degree 2, so the way crosses it, 3.3 mm, under the 4.0 mm of table 3, page 7, at 400 V.
