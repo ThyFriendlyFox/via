@@ -430,18 +430,21 @@ def beside_page(page: Path, link: str) -> bool:
 
 def test_every_page_a_reader_opens_loads_the_hosts_analytics_script_once():
     """The owner turned Vercel's Web Analytics on (pull request 62): each page a reader opens loads
-    the host's script, 1 time, and queues its events until the script is there. Vercel's pull request
-    wrote the lines into the 7 pages that `site/examples.py` writes, and not into the generator: the
-    next run of the generator would have dropped them, and `main` was red for a day."""
+    the host's script, 1 time, and queues its events until the script is there. The pages that
+    `site/examples.py` and `site/blog.py` write get these lines from `site/frame.py`. A line edited
+    into a written page by hand is gone at the next run of its generator, so the frame holds them."""
     queue = "window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };"
-    pages = (SITE / "index.html", SITE / "404.html", *example_pages())
-    assert len(pages) >= 9
+    pages = (SITE / "index.html", SITE / "404.html", *example_pages(), *blog_pages())
+    assert len(pages) >= 11
     for page in pages:
         text = page.read_text(encoding="utf-8")
         assert links_of(page).count(HOSTED) == 1, page.name
         assert text.count(f'<script defer src="{HOSTED}"></script>') == 1, page.name
         assert text.count(queue) == 1, page.name
-    assert HOSTED in (SITE / "examples.py").read_text(encoding="utf-8")
+    tag = f'<script defer src="{HOSTED}"></script>'
+    assert (SITE / "frame.py").read_text(encoding="utf-8").count(tag) == 1
+    for generator in ("examples.py", "blog.py"):
+        assert "from frame import" in (SITE / generator).read_text(encoding="utf-8"), generator
 
 
 def test_every_link_on_the_site_names_what_exists():
