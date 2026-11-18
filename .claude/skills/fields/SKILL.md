@@ -130,7 +130,11 @@ re-driver's. So a USB 3 pair's `fields.json` holds:
  "unstated": "USB 3.2 Specification Revision 1.1 (June 2022) states no differential impedance ..."}
 ```
 
-with `band_ghz` [0.1, 5]. The whole text of each entry is in
+with `band_ghz` [0.1, 10]: the budget names no frequency, so it is held
+at every frequency up to twice Gen 2's Nyquist, the strict side. A band
+that ended at 5 GHz gave no result on the Wyvern lane: openEMS samples its
+probes for the band's top and wrote 45 samples, too few for the ports to
+settle (`did not settle 40 dB under their peak`). The whole text of each entry is in
 `tests/test_fields_solver.py` (`USB32_TX1`). A silicon maker's layout
 guideline with an impedance is a limit of its own: cite it.
 
