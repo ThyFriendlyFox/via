@@ -11,7 +11,8 @@ The sums of the fixture's block, by hand. The stock holds 2 crystals, in this or
                           of OALF (SLASE35C 5.13, page 22): 300 kohm at 12 pF with XT1DRIVE 3.
     terminals             ABS25 page 2, Electrode Arrangement: the crystal is between pins 1 and 4,
                           pins 2 and 3 float. XIN goes to pad 1, XOUT to pad 4, and the symbol is
-                          KiCad's Crystal_GND23 (crystal on pins 1 and 4), its pins 2 and 3 open.
+                          KiCad's Crystal_GND23 (crystal on pins 1 and 4); its pins 2 and 3 stand at
+                          1 point, so they share 1 net, Y1_G, and nothing else is on it.
     equation 1            ESR = 50 kohm x (1 + 1.35 / 12)^2 = 50 x 1.1125^2 = 50 x 1.23765625
                           = 61.8828 kohm
     equation 5            SF = 300 / 61.8828 = 4.8478, 3 or more: safe by table 2 (page 11)
@@ -384,10 +385,18 @@ def test_a_ratio_of_vcc_to_vcore_under_the_rules_is_refused(tmp_path):
 @needs_libs
 def test_the_crystal_is_wired_to_the_terminals_its_maker_names():
     """ABS25 page 2: the crystal is between pins 1 and 4. Y1 is KiCad's Crystal_GND23 with XIN on pin 1
-    and XOUT on pin 4; pins 2 and 3 are left open, as Abracon's floating pins."""
+    and XOUT on pin 4. The symbol puts pins 2 and 3 at 1 point, so the schematic joins them: the block
+    names that net Y1_G, and joins nothing else to it (Abracon: pins 2 and 3 float)."""
     d, _ = mcu()
     y1 = next(p for p in d.parts if p.ref == "Y1")
-    assert (y1.symbol.lib_id, y1.nets) == ("Device:Crystal_GND23", {"1": "U1_XIN", "4": "U1_XOUT"})
+    assert (y1.symbol.lib_id, y1.nets) == (
+        "Device:Crystal_GND23",
+        {"1": "U1_XIN", "4": "U1_XOUT", "2": "Y1_G", "3": "Y1_G"},
+    )
+    assert [(p.ref, n) for p in d.parts for n, net in p.nets.items() if net == "Y1_G"] == [
+        ("Y1", "2"),
+        ("Y1", "3"),
+    ]
 
 
 @needs_libs
@@ -493,7 +502,7 @@ def test_each_value_is_cited_to_its_own_document():
 
 def test_the_committed_fixture_wires_y1_to_pads_1_and_4():
     """node.kicad_pcb of pass-block-mcu: Y1's pad 1 is on /U1_XIN, pad 4 on /U1_XOUT, pads 2 and 3 on
-    no net of the oscillator (ABS25 page 2)."""
+    1 net, /Y1_G, as the schematic joins them, and on no net of the oscillator (ABS25 page 2)."""
     text = (BOARDS / "pass-block-mcu" / "node.kicad_pcb").read_text(encoding="utf-8")
     at = text.find('(property "Reference" "Y1"')
     block = text[text.rfind("(footprint ", 0, at) : text.find("\n\t(footprint ", at)]
@@ -502,7 +511,7 @@ def test_the_committed_fixture_wires_y1_to_pads_1_and_4():
         net = re.search(r'\(net (?:\d+ )?"([^"]*)"\)', m.group(0))
         pads[m.group(1)] = net.group(1) if net else None
     assert (pads["1"], pads["4"]) == ("/U1_XIN", "/U1_XOUT")
-    assert not {pads["2"], pads["3"]} & {"/U1_XIN", "/U1_XOUT"}
+    assert (pads["2"], pads["3"]) == ("/Y1_G", "/Y1_G")
 
 
 @needs_libs
