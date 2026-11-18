@@ -36,6 +36,10 @@ import blocks  # noqa: E402
 import kicadgen  # noqa: E402
 import ratings  # noqa: E402
 
+CITES = {
+    "ti-slva689a": "section 2, equations 1, 5 and 6 and table 2-1, page 3; section 3, page 4",
+    "ti-scps197d": "pages 5, 6 and 7: the pins' ratings and the SDA sink",
+}
 CLI = ROOT / "tools" / "workcenter"
 BOARDS = ROOT / "tests" / "boards"
 FACTS = BOARDS / "library" / "facts"
