@@ -47,6 +47,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -68,7 +69,9 @@ needs_libs = pytest.mark.skipif(
     not (kicadgen.SYMBOL_DIR / "Device.kicad_sym").is_file(),
     reason="KiCad symbol libraries are not installed",
 )
-needs_kicad = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+needs_kicad = engine(
+    pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+)
 
 C_0603 = "Capacitor_SMD:C_0603_1608Metric"
 C_0805 = "Capacitor_SMD:C_0805_2012Metric"
@@ -717,21 +720,73 @@ def test_each_fixture_is_what_its_design_file_writes_and_passes_ratings_strict(n
 JUNCTIONS = {"pass-block-ldo": 76.256976, "pass-block-ldo-2x": 70.091022}
 
 
+def rated_copy(name: str, tmp_path: Path) -> Path:
+    """A copy of the fixture beside the fixtures' shared library, and its `ratings` run. `gates --strict`
+    reads that record: a project with a ratings.json is GREEN under --strict only when it is held."""
+    boards = tmp_path / "boards"
+    boards.mkdir()
+    (boards / "library").symlink_to(BOARDS / "library")
+    proj = boards / name
+    shutil.copytree(BOARDS / name, proj, ignore=shutil.ignore_patterns("build", "__pycache__"))
+    rated = subprocess.run(
+        [sys.executable, str(CLI), "ratings", str(proj)], capture_output=True, text=True, check=False
+    )
+    assert rated.returncode == 0, rated.stdout + rated.stderr
+    return proj
+
+
+# What the SIM gate cannot judge on the block's deck (tools/simneeds.py, tools/partdata.py): the deck draws
+# U1 at its least output and steps no load, and it runs no capacitor on its maker's data.
+NOT_JUDGED = (
+    "not judged: U1 (Regulator_Linear:{symbol}) feeds the loads ratings.json states (J2.1 {amps}) and no "
+    "deck says `* deck: load-step U1`: its output under a load step is held to nothing (its datasheet's "
+    "load transient); copy templates/project/sim/load_step.cir",
+    "not judged: C1 and C2 hold their makers' data, and no deck holds a capacitor or an inductor: a deck "
+    "runs a board part on it only under the part's reference",
+)
+SHOWN = {"pass-block-ldo": ("TLV75533PDBV", "0.1 A"), "pass-block-ldo-2x": ("TLV75533PDRV", "0.2 A")}
+
+
 @needs_kicad
 @pytest.mark.parametrize("name", FIXTURES)
-def test_each_fixture_is_routed_and_its_gates_are_green_strict(name, tmp_path):
-    """ERC, DRC (0 unconnected: the router finished), SIM and EXPORT pass with --strict: no warning. The
-    SIM gate holds U1's junction at 0 C and 30 C under the pack's 85 C."""
+def test_each_fixture_is_routed_and_its_gates_are_green_with_the_2_not_judged_named(name, tmp_path):
+    """ERC, DRC (0 unconnected: the router finished, and its legend held), SIM and EXPORT pass once a
+    `ratings` run holds the fixture's ratings, with 2 warnings: no deck steps U1's load, and no deck runs
+    C1 and C2 on their makers' data. A strict run fails on those 2 lines and on nothing else. The SIM
+    gate holds U1's junction at 0 C and 30 C under the pack's 85 C."""
+    proj = rated_copy(name, tmp_path)
     run = subprocess.run(
-        [sys.executable, str(CLI), "--json", "gates", str(BOARDS / name), "--out", str(tmp_path), "--strict"],
+        [sys.executable, str(CLI), "--json", "gates", str(proj), "--out", str(tmp_path / "plain")],
         capture_output=True,
         text=True,
         check=False,
     )
     assert run.returncode == 0, run.stdout + run.stderr
+    assert "RATINGS held: build/ratings/report.json says RATINGS HELD" in run.stderr.splitlines(), run.stderr
     records = {r["gate"]: r for r in json.loads(run.stdout)}
     assert [records[g]["status"] for g in ("erc", "drc", "sim", "export")] == ["pass"] * 4
-    assert records["drc"]["summary"] == "0 errors, 0 warnings (0 unconnected, 0 parity)"
+    assert records["drc"]["summary"] == (
+        "0 errors, 0 warnings (0 unconnected, 0 parity), legend (no fab named: held to the least of the 4 "
+        "fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer)): 0 fail, 0 not judged"
+    )
+    assert records["sim"]["summary"] == "1 decks, 2 corner runs, 0 failures, 2 warnings"
+    symbol, amps = SHOWN[name]
+    said = [line.format(symbol=symbol, amps=amps) for line in NOT_JUDGED]
+    text = json.dumps(records["sim"])
+    assert all(json.dumps(line)[1:-1] in text for line in said), text
+    strict = subprocess.run(
+        [sys.executable, str(CLI), "gates", str(proj), "--out", str(tmp_path / "strict"), "--strict"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert strict.returncode != 0
+    printed = strict.stdout + strict.stderr
+    assert "FAIL   sim        1 decks, 2 corner runs, 2 failures" in printed, printed
+    assert [ln.strip()[2:] for ln in printed.splitlines() if ln.strip().startswith("- ")] == said, printed
+    assert [ln for ln in printed.splitlines() if ln.startswith("FAIL")] == [
+        ln for ln in printed.splitlines() if ln.startswith("FAIL   sim")
+    ], printed
     u1 = records["sim"]["details"]["thermal"]["parts"]["U1"]
     assert (u1["mpn"], u1["limit"], u1["held"]) == (FIXTURES[name], 85, True)
     assert u1["worst"]["ambient"] == 30
