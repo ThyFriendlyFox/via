@@ -30,6 +30,12 @@ meas tran t70 when v(sda)=$&v70 rise=1
 let tr = t70 - t30
 meas tran ilow find i(vdd) at=23u
 let isink = abs(ilow)
-print tr isink
+* The least current a device sinks (Table 10, page 43): 3 mA for VDD over 2 V, 2 mA at 2 V or below.
+let iol = 0.003
+if vtop le 2
+  let iol = 0.002
+end
+let isink_share = isink / iol
+print tr isink isink_share
 .endc
 .end

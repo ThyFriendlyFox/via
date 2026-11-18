@@ -395,18 +395,20 @@ def thermal():
     return module
 
 
-def deck_needs(project: Project, out: Path, decks: list[Path]) -> list[str]:
+def deck_needs(project: Project, out: Path, decks: list[Path]) -> tuple[list[str], list[str]]:
     """The circuits of the schematic that no deck answers (tools/simneeds.py): an I2C line with its
-    pull-up, a regulator with a stated load. 1 `not judged:` line each. The netlist is exported only
-    from a schematic whose text names SDA, SCL or a regulator's library."""
+    pull-up, a regulator with a stated load; as (failures, not judged lines). A failure is a deck that
+    says it answers a circuit and does not run the board's part. The netlist is exported only from a
+    schematic whose sheets (the root and every sheet it names) name SDA, SCL or a regulator's library,
+    or that names a sheet the gate cannot read."""
     sys.path.insert(0, str(SRC_DIR / "tools"))
     import simneeds
 
-    sheets = sorted(project.dir.glob("*.kicad_sch")) if project.sch else []
-    if not simneeds.worth_reading([s.read_text(encoding="utf-8", errors="replace") for s in sheets]):
-        return []
+    texts, unread = simneeds.schematic_texts(project.sch) if project.sch else ([], [])
+    if not unread and not simneeds.worth_reading(texts):
+        return [], []
     if not shutil.which(KICAD_CLI):
-        return [
+        return [], [
             f"not judged: the decks the schematic asks for: {KICAD_CLI} is not on PATH to read its netlist"
         ]
     out.mkdir(parents=True, exist_ok=True)
@@ -416,10 +418,11 @@ def deck_needs(project: Project, out: Path, decks: list[Path]) -> list[str]:
     except ValueError as exc:
         net, err = None, str(exc)
     if net is None:
-        return [f"not judged: the decks the schematic asks for: no netlist ({err.strip()[-200:]})"]
+        return [], [f"not judged: the decks the schematic asks for: no netlist ({err.strip()[-200:]})"]
     loads = simneeds.stated_loads(project.dir / "ratings.json")
     texts = {d.stem: d.read_text(encoding="utf-8", errors="replace") for d in decks}
-    return [n.line for n in simneeds.needs(net, loads, texts)]
+    found = simneeds.needs(net, loads, texts)
+    return [n.line for n in found if n.failed], [n.line for n in found if not n.failed]
 
 
 def deck_part_data(
@@ -892,7 +895,8 @@ def gate_sim(
     every = sorted(sim_dir.glob("*.cir")) if sim_dir.is_dir() else []
     decks = every
     # A circuit the schematic holds and no deck answers is not judged: a warning, a failure with --strict.
-    asked = deck_needs(project, out / "sim", every) if only is None else []
+    # A deck that says it answers one and does not run the board's part is a failure.
+    wrong, asked = deck_needs(project, out / "sim", every) if only is None else ([], [])
     if not decks:
         if asked:
             return Result(
@@ -915,7 +919,7 @@ def gate_sim(
     sim_out = out / "sim"
     sim_out.mkdir(parents=True, exist_ok=True)
     jobs = jobs or min(8, os.cpu_count() or 1)
-    details, artifacts, failures = {}, [], []
+    details, artifacts, failures = {}, [], list(wrong)
     # A vendor model a deck includes from a library is checked against its sources.csv row: a file
     # changed since its row fails the deck, one with no row is a warning (a failure with --strict).
     # A deck that includes a listed model runs from build/sim/run/<deck>/, with every include made

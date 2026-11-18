@@ -77,15 +77,29 @@ netlist and asks for 2 kinds of deck:
 
 | Kind | The schematic holds | Template |
 |---|---|---|
-| `i2c-rise` | A net named SDA or SCL (a word of the net's name or of a pin's name on it: `I2C1_SDA`, `PB1/SDA`, `SCL2`) with a resistor to a rail. A rail is a net with a power pin on it, or a name like `+3V3`, `VCC`, `VDD_IO`, `3V3`. | `templates/project/sim/i2c_rise.cir` |
+| `i2c-rise` | A net named SDA or SCL (a word of the net's name or of a pin's name on it: `I2C1_SDA`, `PB1/SDA`, `SCL2`) with a 2-pin resistor to a rail. A resistor is a `Device:R` symbol (`R_Small`, `R_US`, ...) or a reference `R<n>`. A rail is a net with a power pin on it that is no ground pin, or a name like `+3V3`, `VCC`, `VDD_IO`, `3V3`. A net named GND, VSS, VEE, 0V or COM, or one whose power pins are all ground pins, is ground: a resistor to it pulls down. | `templates/project/sim/i2c_rise.cir` |
 | `load-step` | A part of KiCad's `Regulator_Linear` or `Regulator_Switching` library, on a board whose `ratings.json` states a load: a part or pin under `parts` with `amps` above 0. | `templates/project/sim/load_step.cir` |
+
+The gate reads the root sheet and every sheet it names, in a subfolder or
+not.
 
 Not recognized: a line with no pull-up on this board, a bus by another
 name, a regulator drawn with a symbol of another library, a load stated
-anywhere but `ratings.json`. SPI and UART are not asked for.
+anywhere but `ratings.json`. SPI and UART are not asked for. A resistor
+array or network (`Device:R_Pack04`, `RN1`) on an I2C line is not read:
+the gate prints `not judged: the I2C line SDA meets RN1 ...`, and no deck
+answers it. Draw the pull-ups as 2-pin resistors to have them judged.
 
 A deck answers a need by a line of its own: `* deck: i2c-rise SDA SCL`
-names the nets it stands for, `* deck: load-step U1` the regulator.
+names the nets it stands for, `* deck: load-step U1` the regulator. The
+gate holds the line to the schematic:
+
+- An I2C deck runs each pull-up of the nets it names by its reference, at
+  the schematic's value (`R1 vdd sda 4.7k` for R1 4.7k), or runs another
+  pull-up of the same value that stands for it. Otherwise it fails:
+  `i2c_rise.cir: R1 is 4.7k in the deck and 47k in the schematic, on SDA`.
+  A value the gate reads no number from (`{rp}`) is not judged.
+- A load-step deck runs the regulator it names: an element `XU1` for U1.
 
 1. Run `workcenter gates <project>`. A line `not judged: the I2C lines ...
    copy templates/project/sim/i2c_rise.cir` or `not judged: U1 (...) feeds
@@ -106,7 +120,10 @@ names the nets it stands for, `* deck: load-step U1` the regulator.
 4. Check each bound in the copied expect file.
    - I2C: `tr` is Fast-mode's, 20 to 300 ns (UM10204 Rev. 7.0, Table 11,
      page 44). For a 100 kHz bus write Standard-mode's row: `max` 1.0e-6
-     and no `min`. `isink` is 3 mA at most (Table 10, page 43).
+     and no `min`. `isink_share` is 1 at most: the deck divides the current
+     the pull-up asks for by the least a device sinks, 3 mA for VDD over
+     2 V, 2 mA at 2 V or below (Table 10, page 43). For VDD at 2 V or below
+     also set Ron to 0.2 x VDD / 0.002, as the deck's comment says.
    - Load step: each source says `fill:` until it names the regulator's
      datasheet: its load-transient row or figure, revision and page. The
      gate refuses a bound whose source still says `fill:`.
@@ -117,7 +134,9 @@ names the nets it stands for, `* deck: load-step U1` the regulator.
    | `<deck>.cir:<n>: still says fill: ...` | Write the value line `n` names, then delete line `n`. |
    | `<deck>.expect.json: <measure>: its source still says fill: ...` | Write the datasheet's document, table or figure and page as the source. |
    | `i2c_rise:tr=4.23654e-07 not in [2e-08, 3e-07] (UM10204 ...)` | The pull-up is too weak for the bus: a smaller resistor, or less capacitance. Never widen the bound. |
-   | `i2c_rise:isink=... not in [None, 0.003] ...` | The pull-up is too strong: a larger resistor. |
+   | `i2c_rise:isink_share=... not in [None, 1.0] ...` | The pull-up is too strong: a larger resistor. |
+   | `<deck>.cir: R1 is ... in the deck and ... in the schematic ...` or `... has no line in the deck ...` | The deck does not run the board's pull-up. Write each pull-up as the schematic names it, with its value. |
+   | `<deck>.cir: says ... load-step U1 and no line runs U1 ...` | Name the regulator's element `XU1`. |
    | `load_step:undershoot=... not in ...` | The regulator dips past its datasheet's load transient: more output capacitance, or another regulator. |
    | `not judged: the I2C lines ...` again | The `* deck:` line does not name the nets the line lists. Write them as the line spells them. |
    | `not judged: the decks the schematic asks for: ...` | kicad-cli wrote no netlist. Run `workcenter erc <project>` and fix what it says. |
