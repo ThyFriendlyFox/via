@@ -143,6 +143,37 @@ def test_a_route_that_joins_every_net_says_0_and_exits_0(tmp_path):
     assert json.loads(summary.stdout)["route"]["unconnected"] == 0
 
 
+@pytest.mark.skipif(
+    not LIBS.is_file() or shutil.which("kicad-cli") is None,
+    reason="the KiCad libraries and kicad-cli are needed",
+)
+def test_next_counts_an_unrouted_board_as_design_route_does(tmp_path):
+    """`next` names the route step on a board generated without --route, and `design --route` prints
+    KiCad's count of unconnected items: both say `N unconnected`, and for 1 board N is 1 number. A net of
+    k pads and no copper is k - 1 connections to KiCad's DRC. The walled board without the wall and
+    without a route: A (R1.1, R3.1) and B (R1.2, R2.2) are 4 pads on 2 nets, 2 unconnected; C and D hold
+    1 pad each. The step is done when the route prints `route: 0 unconnected`."""
+    folder = tmp_path / "bare"
+    folder.mkdir()
+    (folder / "design.py").write_text(walled(False), encoding="utf-8")
+    made = subprocess.run(
+        [sys.executable, str(CLI), "design", str(folder / "design.py")],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert made.returncode == 0, made.stdout + made.stderr
+    count, _ = kicadgen.open_connections(kicadgen.drc_report(folder / "walled.kicad_pcb"))
+    asked = subprocess.run(
+        [sys.executable, str(CLI), "--json", "next", str(folder)], capture_output=True, text=True, check=False
+    )
+    step = json.loads(asked.stdout)
+    assert step["next"] == "Route the board before the gates: nets on it have no copper yet.", step
+    assert count == 2
+    assert step["why"].startswith(f"4 pads on 2 nets have no track, via or pour, {count} unconnected: "), step
+    assert "prints `route: 0 unconnected`" in step["done_when"], step
+
+
 @pytest.mark.skipif(not LIBS.is_file(), reason="the KiCad symbol libraries are not installed")
 def test_without_kicad_cli_the_count_is_not_judged_and_the_route_stands(tmp_path, monkeypatch, capsys):
     """No kicad-cli: the route's open connections are printed as not counted, never as 0, and the exit

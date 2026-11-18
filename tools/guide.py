@@ -553,6 +553,12 @@ class Ratings:
 
 RECORD = "build/ratings/report.json"
 
+# When a `design --route` step is done: its exit code, its count of open connections, no problem line.
+ROUTED = (
+    "the command exits 0, prints `route: 0 unconnected` "
+    "and no file:, sim:, pull:, via:, part: or island: line"
+)
+
 
 def ratings_record(cli, project):
     """The record of the last ratings run, or the 1 line that refuses it: a file that is no record of a
@@ -721,7 +727,7 @@ def next_step(cli, target: str, run_check=True) -> Step:
                 f"{wc} design {quoted}/design.py --route",
                 "the folder holds a design file and no KiCad project",
                 f'{DESIGN}, "Steps"',
-                "the command exits 0 and prints no file:, sim:, pull:, via:, part: or island: line",
+                ROUTED,
             )
         # A board is the common start, and its command reads nothing but the template: this answer
         # runs no engine. A deck or a chip starts otherwise, and the answer says how.
@@ -831,9 +837,12 @@ def next_step(cli, target: str, run_check=True) -> Step:
             return Step(
                 "Route the board before the gates: nets on it have no copper yet.",
                 f"{wc} design {shlex.quote(str(design))} --route",
-                f"{pads} pads on {len(loose)} nets have no track, via or pour: {shown}",
+                # A net of k pads and no copper is k - 1 connections: KiCad DRC's count, which
+                # `design --route` prints on its `route: N unconnected` line.
+                f"{pads} pads on {len(loose)} nets have no track, via or pour, "
+                f"{pads - len(loose)} unconnected: {shown}",
                 f'{DESIGN}, "Steps"',
-                "the command exits 0 and prints no file:, sim:, pull:, via:, part: or island: line",
+                ROUTED,
             )
     if not report.is_file():
         return Step(
