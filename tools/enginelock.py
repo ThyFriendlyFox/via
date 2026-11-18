@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import datetime
 import fcntl
 import json
 import os
@@ -38,6 +39,8 @@ import sys
 import threading
 import time
 from pathlib import Path
+
+import clock
 
 ENV_DIR = "WORKCENTER_LOCK_DIR"
 ENV_SWITCH = "WORKCENTER_LOCK"
@@ -319,7 +322,7 @@ def inside(folder: Path | None = None) -> dict | None:
 
 
 def _clock(t: float) -> str:
-    return time.strftime("%H:%M:%S", time.localtime(t))
+    return datetime.datetime.fromtimestamp(t).strftime("%H:%M:%S")
 
 
 def _span(seconds: float) -> str:
@@ -336,7 +339,7 @@ def _runs(n: int) -> str:
 
 
 def holder_text(holder: dict, now: float | None = None) -> str:
-    now = time.time() if now is None else now
+    now = clock.stamp() if now is None else now
     what = holder.get("what") or "an unnamed run"
     since = holder.get("since")
     when = f"since {_clock(since)}, {_span(now - since)} ago" if since else "taking it now"
@@ -360,7 +363,7 @@ class Ticket:
     def __init__(self, what: str, folder: Path | None = None):
         self.folder = folder or lock_dir()
         self.what = what
-        self.came = time.time()
+        self.came = clock.stamp()
         self.fd: int | None = None
         self.path: Path | None = None
         self.seq = 0
@@ -422,7 +425,7 @@ class Ticket:
             print(f"workcenter: took the engine lock after {_span(self.waited)}", file=stream, flush=True)
         held = self.path.with_suffix(".held")
         tmp = self.folder / f".held-{os.getpid()}-{self.seq}"
-        tmp.write_text(repr(time.time()), encoding="utf-8")
+        tmp.write_text(repr(clock.stamp()), encoding="utf-8")
         os.rename(tmp, held)
 
     def release(self, unlink: bool = True) -> None:
