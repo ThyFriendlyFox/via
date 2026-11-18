@@ -196,3 +196,91 @@ def test_the_templates_run_and_fail_until_they_are_written(tmp_path):
         f"load_step.expect.json: {n}: its source still says fill: write the document, the table and the page"
         for n in ("undershoot", "overshoot", "v_low")
     ]
+
+
+def test_a_deck_that_runs_another_pull_up_than_the_schematics_fails(tmp_path):
+    """The schematic's R1 and R2 made 47k, the deck left at 4.7k: the board's tr is 0.8473 x 47k x 50p
+    = 1991 ns, the deck's 199.1 ns. The deck's `* deck:` line no longer answers: R1 differs, and R2 has
+    no line and no pull-up the deck runs at its 47k stands for it. 2 failures, plain run or --strict."""
+    project = board(tmp_path)
+    sch = project / "bus.kicad_sch"
+    sch.write_text(sch.read_text().replace('(property "Value" "4.7k"', '(property "Value" "47k"'))
+    r = sim(project, "--nominal")
+    assert r["status"] == "fail"
+    assert [f for f in r["details"]["failures"] if f.startswith("i2c_rise.cir:")] == [
+        "i2c_rise.cir: R1 is 4.7k in the deck and 47k in the schematic, on SDA: the deck does not run the "
+        "board's pull-up; write the schematic's value",
+        "i2c_rise.cir: R2 (47k) on SCL has no line in the deck, and no pull-up the deck runs has its value: "
+        "name it as the schematic does, with its value",
+    ]
+
+
+ROOT_SHEET = """(kicad_sch
+\t(version 20250114)
+\t(generator "eeschema")
+\t(generator_version "9.0")
+\t(uuid "99999999-8888-4777-8666-555555555555")
+\t(paper "A4")
+\t(lib_symbols)
+\t(sheet
+\t\t(at 50.8 50.8)
+\t\t(size 25.4 12.7)
+\t\t(stroke (width 0.1524) (type solid))
+\t\t(fill (color 0 0 0 0.0000))
+\t\t(uuid "11111111-2222-4333-8444-555555555555")
+\t\t(property "Sheetname" "bus" (at 50.8 50.0 0) (effects (font (size 1.27 1.27)) (justify left bottom)))
+\t\t(property "Sheetfile" "sheets/bus.kicad_sch" (at 50.8 64.0 0)
+\t\t\t(effects (font (size 1.27 1.27)) (justify left top)))
+\t\t(instances (project "bus" (path "/99999999-8888-4777-8666-555555555555" (page "2"))))
+\t)
+\t(sheet_instances (path "/" (page "1")))
+\t(embedded_fonts no)
+)
+"""
+
+
+def test_a_bus_on_a_sheet_in_a_subfolder_is_asked_for(tmp_path):
+    """The board's schematic moved to sheets/bus.kicad_sch under a root sheet that holds only its sheet
+    symbol, and no deck: SIM --strict fails on both circuits, as on the flat board. The sub-sheet's
+    lines keep their whole names, /bus/SCL and /bus/SDA; +3V3 is a power symbol's, global."""
+    project = board(tmp_path, "i2c_rise", "load_step")
+    sch = project / "bus.kicad_sch"
+    text = sch.read_text().replace(
+        '(path "/673f28b1-c979-5912-a8ab-2e8190040689"',
+        '(path "/99999999-8888-4777-8666-555555555555/11111111-2222-4333-8444-555555555555"',
+    )
+    (project / "sheets").mkdir()
+    (project / "sheets" / "bus.kicad_sch").write_text(text)
+    sch.write_text(ROOT_SHEET)
+    strict = sim(project, "--strict")
+    assert (strict["status"], strict["details"]["failures"]) == (
+        "fail",
+        [
+            "not judged: the I2C lines /bus/SCL, /bus/SDA are pulled up by R2 (4.7k), R1 (4.7k) and no deck "
+            "says `* deck: i2c-rise /bus/SCL /bus/SDA`: their rise time is held to nothing (UM10204 "
+            "Rev. 7.0, Table 11, page 44); copy templates/project/sim/i2c_rise.cir",
+            LDO_LINE,
+        ],
+    )
+
+
+def test_the_i2c_template_holds_a_low_voltage_bus_to_2_ma(tmp_path):
+    """The I2C template filled for a 1.8 V bus as its comments say: VDD 1.8, Ron 0.2 x 1.8 / 0.002 = 180
+    ohm, a 560 ohm pull-up. Held low it sinks 1.8 / (560 + 180) = 2.432 mA. UM10204 Rev. 7.0, Table 10,
+    page 43: for VDD at 2 V or below a device sinks 2 mA at VOL2 (0.2 VDD), not 3 mA, so the share of
+    that current the pull-up asks for is 2.432 / 2 = 1.216, over 1: a failure. The template as shipped,
+    3.3 V and 4.7k, asks 3.3 / (4700 + 133.3) / 0.003 = 0.2276 of 3 mA."""
+    project = tmp_path / "low"
+    shutil.copytree(TEMPLATES, project / "sim")
+    (project / "sim" / "load_step.cir").unlink()
+    (project / "sim" / "load_step.expect.json").unlink()
+    shipped = sim(project, "--nominal")["details"]["decks"]["i2c_rise"]["measures"]
+    assert shipped["isink_share"] == pytest.approx(0.2276, rel=1e-3)
+    deck = project / "sim" / "i2c_rise.cir"
+    lines = [ln for ln in deck.read_text().splitlines() if not ln.startswith("* fill:")]
+    text = "\n".join(lines) + "\n"
+    text = text.replace("VDD vdd 0 DC 3.3", "VDD vdd 0 DC 1.8").replace("R1 vdd sda 4.7k", "R1 vdd sda 560")
+    deck.write_text(text.replace("Ron=133.3", "Ron=180"))
+    r = sim(project, "--nominal")
+    assert r["details"]["decks"]["i2c_rise"]["measures"]["isink_share"] == pytest.approx(1.216, rel=1e-3)
+    assert [f for f in r["details"]["failures"] if f.startswith("i2c_rise:isink_share")], r["details"]
