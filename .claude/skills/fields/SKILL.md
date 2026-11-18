@@ -46,8 +46,12 @@ as its own program; none of its code is in this repository.
 }
 ```
 
-- `nets`: 1 net is a line, 2 or more are lines that couple. `kind:
-  "antenna"` is 1 net fed at 1 pad.
+- `nets`: 1 net is a line, 2 or more are lines that couple, 2 nets of 2
+  ports each are also a differential pair. `kind: "antenna"` is 1 net fed
+  at 1 pad.
+- A zone of a group's net is copper of the group: a patch, a pour of the
+  pair's own net. It must be 1 ring with no hole, and the reference pour
+  must lie under its corners and an 11 x 11 grid over it.
 - `ports`: pads, `REF.PAD`. Each port stands at the free track end of the
   pad's own net nearest the pad, from the nearest plane to the track, 50
   ohm. The end must lie on the pad: no farther from its centre than half
@@ -61,7 +65,21 @@ as its own program; none of its code is in this repository.
   last port. Name the pads of each pair in the same order, near end first.
 - `measure`: `impedance_ohm` (min, max), `return_loss_db` (min),
   `insertion_loss_db` (max), `next_db` and `fext_db` (max, with `from`: the
-  driven net). Loss and coupling are the worst over the band. Impedance is
+  driven net). Loss and coupling are the worst over the band.
+- A pair's measures, with `net` (P) and `pair` (N): `diff_insertion_loss_db`
+  (max), `diff_return_loss_db` (min), `diff_impedance_ohm` (min, max). They
+  come from Sdd21 = (S21 - S23 - S41 + S43) / 2 and Sdd11 = (S11 - S13 -
+  S31 + S33) / 2, ports in the order P near, P far, N near, N far: name the
+  pads so. The differential impedance is the symmetric 2-port's formula on
+  Sdd11 and Sdd21 with a reference of 2 x `port_ohm`, judged only when both
+  nets are uniform.
+- An antenna's measure: `resonance_ghz` (min, max), the frequency where
+  |S11| is least over the band, and `return_loss_db`.
+- `unstated` in place of min, max and source: the document gives no bound
+  for this measure. Write the document, revision, clause and page and why.
+  The run prints the measure and `not judged, <your text>`. A measure the
+  run made and no limit names prints `not judged, fields.json states no
+  limit for it`. `--strict` fails both kinds. Impedance is
   the median over the band of a symmetric 2-port's formula: the image
   impedance of whatever lies between the 2 ports (sections of 30, 80 and 30
   ohm read 49.32). It is the track's impedance only on a uniform line, so it
@@ -70,17 +88,51 @@ as its own program; none of its code is in this repository.
   median over N frequencies`. On the line fixture (0.36 mm over 0.2 mm of
   4.5) it reads within 3% of Hammerstad and Jensen's 51.34 ohm, for copper
   as a sheet; 35 um of copper lowers that line to 48.94 ohm (Hammerstad and
-  Jensen's thickness correction), which the model leaves out.
-- `settings` (optional): `margin_mm`, `cells_per_wavelength`,
-  `cells_across_width`, `cells_per_dielectric`, `port_ohm`, `frequencies`,
-  `end_criteria_db`, `absorbing_cells`, `max_timesteps`, `timeout_s`.
-  `settings` is an object. The counts (`cells_across_width`,
-  `cells_per_dielectric`, `absorbing_cells`, `max_timesteps`) are whole
-  numbers of 1 or more, `frequencies` 2 or more, and `end_criteria_db` is
-  below 0.
+  Jensen's thickness correction), which `"copper": "thick"` models.
+- `settings` (optional): `copper`, `conductivity_s_m`, `margin_mm`,
+  `cells_per_wavelength`, `cells_across_width`, `cells_per_dielectric`,
+  `port_ohm`, `frequencies`, `end_criteria_db`, `absorbing_cells`,
+  `max_timesteps`, `timeout_s`. `settings` is an object. The counts
+  (`cells_across_width`, `cells_per_dielectric`, `absorbing_cells`,
+  `max_timesteps`) are whole numbers of 1 or more, `frequencies` 2 or more,
+  and `end_criteria_db` is below 0.
+- `copper`: `sheet` (the default: a perfect conductor of no thickness),
+  `thick` (a perfect conductor of its layer's stack-up thickness, grown
+  away from the dielectric; outer layers only, an inner layer is refused) or
+  `lossy` (the group's copper and the planes are openEMS conducting sheets
+  of `conductivity_s_m` and their layer's thickness: the loss of the copper,
+  not its thickness to the field). `conductivity_s_m` is 58e6 S/m unless
+  set: the International Annealed Copper Standard, 58 m/(ohm mm2) at 20 C
+  (NIST Handbook 100, 1966, 1.2a, p. 2). A run is 1 kind: thick and lossy
+  are not both modelled.
 
-The worked examples are `tests/boards/pass-fields-microstrip` and
-`tests/boards/fail-fields-stub`. Their limits are made up and say so.
+The worked examples are `tests/boards/pass-fields-microstrip`,
+`tests/boards/fail-fields-stub` and `tests/boards/pass-fields-patch`. Their
+limits are made up and say so, but for the patch's resonance, worked out by
+hand.
+
+## USB 3: what the specification gives a board
+
+The USB 3.2 Specification, Revision 1.1 (June 2022, free at usb.org),
+states 1 number for a host's or a device's own board: an informative
+insertion-loss budget of 8.5 dB for the host/device, in Gen 2 (Appendix E,
+E.6.4.8, p. 536). That sentence names no frequency; E.6.4.3, p. 532 names
+5 GHz as Gen 2's Nyquist frequency. It states no differential impedance and
+no return loss for a board: 6.2.1, p. 55 leaves the compliance channels to
+white papers outside the specification and the layout to the silicon
+maker's guidelines; the 85 ohm and the -17 dB of E.6.4.5, p. 534 are a
+re-driver's. So a USB 3 pair's `fields.json` holds:
+
+```json
+{"measure": "diff_insertion_loss_db", "net": "/SS_TX1_P", "pair": "/SS_TX1_N", "max": 8.5,
+ "source": "USB 3.2 Specification Revision 1.1 (June 2022), Appendix E, E.6.4.8, p. 536 ..."},
+{"measure": "diff_impedance_ohm", "net": "/SS_TX1_P", "pair": "/SS_TX1_N",
+ "unstated": "USB 3.2 Specification Revision 1.1 (June 2022) states no differential impedance ..."}
+```
+
+with `band_ghz` [0.1, 5]. The whole text of each entry is in
+`tests/test_fields_solver.py` (`USB32_TX1`). A silicon maker's layout
+guideline with an impedance is a limit of its own: cite it.
 
 ## Steps
 
@@ -121,20 +173,34 @@ The worked examples are `tests/boards/pass-fields-microstrip` and
      with `build/fields/<group>/model.json`.
    - `warning: ... not judged, the run gave no such measure`: the limit
      names a measure the run did not make (a coupling from a net that has 1
-     port, a loss on an antenna). Fix the limit or the ports.
-     `--strict` makes these lines fail.
+     port, a loss on an antenna, a pair's measure on nets without 2 ports
+     each). Fix the limit or the ports.
+   - `warning: ... not judged, fields.json states no limit for it`: the run
+     made this measure and no limit names it. Find the limit in the
+     interface's document and add it with its source, or add an `unstated`
+     entry that names the clause saying there is none.
+   - `warning: ... not judged, <text>`: an `unstated` entry. Leave it; report
+     it as not judged.
+   - `--strict` makes every `not judged` line fail.
    - `SKIP fields engine missing: openEMS`: go back to step 1.
    - `SKIP fields no limit stated: nothing judged`: the run measured and
      wrote its report, and held nothing. Add each limit with its source to
      `fields.json`, then run this step again. It is not a pass.
 4. Read `build/fields/report.md`: the measures of each net, the limits, and
-   what the model leaves out (copper thickness, conductor loss, plane
+   what the model leaves out (copper thickness or conductor loss, plane
    cut-outs, pads, the board's edge). Report a result with those lines.
+5. For a fast pair whose loss matters, run step 3 again with `"copper":
+   "lossy"` in `settings`, and for one whose impedance matters, with
+   `"copper": "thick"`. Report each run's numbers with its kind.
 
 ## What a run does not judge
 
-- Copper is a sheet: no thickness and no conductor loss. Loss is the
-  dielectric's alone. The mesh puts a straight track's edges a third of a
+- `sheet` copper has no thickness and no conductor loss; `thick` copper has
+  no conductor loss; `lossy` copper has its loss and no thickness to the
+  field. On the line fixture `thick` and `lossy` are held to Qucs Technical
+  Papers (2014): eq. 11.22 to 11.24, p. 165 (thickness) and eq. 11.80 to
+  11.83, p. 171 (conductor loss), in `tests/test_fields_solver.py`. No
+  surface roughness is modelled. The mesh puts a straight track's edges a third of a
   cell inside its metal (openEMS 0.0.35, Tutorials/MSL_NotchFilter.m, lines
   36 to 39); with the edges on mesh lines the line fixture read 43.14 ohm
   against 51.34. A slanted track has no such lines: its sheet is a stair.
@@ -146,6 +212,12 @@ The worked examples are `tests/boards/pass-fields-microstrip` and
   seen. A pour of another net between a track and its plane is refused.
 - No antipad is cut: a group with a via that crosses a reference plane is
   refused, not run.
+- An antenna is modelled over a reference plane whole over the box: a
+  patch over its ground. A printed monopole or an inverted F, whose copper
+  lies off the ground, is refused by the pour check: the model would put a
+  plane under it. The air above the board is `margin_mm` deep, then the
+  absorbing layers; the patch fixture uses 8 mm. No far field, gain or
+  efficiency is computed.
 - Pads, parts, solder mask and every net outside the group are left out.
 - A |S| of 0 (no wave reached the port) is no measure: its limit is not
   judged, with the reason.

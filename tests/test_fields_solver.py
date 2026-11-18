@@ -119,39 +119,72 @@ def test_a_run_with_no_limit_judges_nothing_and_does_not_pass(tmp_path):
 WYVERN = ROOT / "examples" / "snapdragon-dev-board" / "v0.2"
 
 
+# What USB 3.2 states for a host's or a device's own board, read from the USB 3.2 Specification
+# Revision 1.1 (June 2022, usb.org usb_32_202206_1.zip, the PDF's SHA256 26e025a56ce0352f...). It
+# states 1 number for the board's share: an informative insertion-loss budget for the host/device.
+# It states no differential impedance and no return loss for a board.
+USB32_TX1 = {
+    "name": "usb3-tx1",
+    "nets": ["/SS_TX1_P", "/SS_TX1_N"],
+    "ports": ["J1.A3", "U2.17", "J1.A2", "U2.16"],
+    "band_ghz": [0.1, 5],
+    "limits": [
+        {
+            "measure": "diff_insertion_loss_db",
+            "net": "/SS_TX1_P",
+            "pair": "/SS_TX1_N",
+            "max": 8.5,
+            "source": "USB 3.2 Specification Revision 1.1 (June 2022), Appendix E, E.6.4.8, p. 536: an "
+            "informative insertion-loss budget of 8.5 dB for the host/device, in Gen 2; the sentence names "
+            "no frequency, and E.6.4.3, p. 532 names 5 GHz as Gen 2's Nyquist frequency, the top of this "
+            "band",
+        },
+        {
+            "measure": "diff_impedance_ohm",
+            "net": "/SS_TX1_P",
+            "pair": "/SS_TX1_N",
+            "unstated": "USB 3.2 Specification Revision 1.1 (June 2022) states no differential impedance "
+            "for a host's or a device's board: 6.2.1, p. 55 leaves the compliance channels to white papers "
+            "outside the specification and the layout to the silicon maker's guidelines; the 85 ohm of "
+            "E.6.4.5, p. 534 is the reference of a re-driver's return loss",
+        },
+        {
+            "measure": "diff_return_loss_db",
+            "net": "/SS_TX1_P",
+            "pair": "/SS_TX1_N",
+            "unstated": "USB 3.2 Specification Revision 1.1 (June 2022) states no return loss for a host's "
+            "or a device's board: the -17 dB of E.6.4.5, p. 534 is a re-driver's integrated return loss "
+            "on its evaluation board",
+        },
+    ],
+}
+
+
 @needs_openems
 @pytest.mark.skipif(not (WYVERN / "wyvern.kicad_pcb").is_file(), reason="the Wyvern example is not here")
-def test_the_wyvern_usb3_lane_runs_through_the_command(tmp_path):
+def test_the_wyvern_usb3_lane_is_held_to_what_usb_3_2_states(tmp_path):
     """The USB 3 TX1 pair of the Wyvern example, from J1's A3 and A2 to U2's 17 and 16 on F.Cu over
     In1.Cu, copied out of the example (the command writes into its project's build folder). 4 ports,
-    2 runs, each ending without a fault: each net gets its impedance, return and insertion loss, and
-    NEXT and FEXT from the other, 10 measures. The README names no limit with its document yet, so the
-    run judges nothing and says so (exit 2)."""
+    2 runs. The pair's differential insertion loss is held to the 8.5 dB USB 3.2 gives the host/device
+    up to 5 GHz: a few cm of FR-4 lose about 15 dB/m at 5 GHz (Qucs eq. 11.79 for the line fixture's
+    stack), under 1 dB. The differential impedance and return loss are printed not judged, with the
+    clause that says why; so are the 10 single-ended measures no limit names."""
     import shutil
 
     project = tmp_path / "wyvern"
     shutil.copytree(WYVERN, project, ignore=shutil.ignore_patterns("build"))
-    spec = {
-        "groups": [
-            {
-                "name": "usb3-tx1",
-                "nets": ["/SS_TX1_P", "/SS_TX1_N"],
-                "ports": ["J1.A3", "U2.17", "J1.A2", "U2.16"],
-                "band_ghz": [0.1, 10],
-                "limits": [],
-            }
-        ]
-    }
-    (project / "fields.json").write_text(json.dumps(spec), encoding="utf-8")
+    (project / "fields.json").write_text(json.dumps({"groups": [USB32_TX1]}), encoding="utf-8")
     proc = subprocess.run(
         [sys.executable, str(CLI), "fields", str(project)], capture_output=True, text=True, timeout=3600
     )
-    assert proc.returncode == 2, proc.stdout + proc.stderr
-    assert "no limit stated: nothing judged" in proc.stdout
+    assert proc.returncode == 0, proc.stdout + proc.stderr
     report = json.loads((project / "build" / "fields" / "report.json").read_text(encoding="utf-8"))
+    assert report["summary"].startswith("1 held, 0 failed, 12 not judged"), report["summary"]
+    warnings = report["details"]["warnings"]
+    assert any("diff_impedance_ohm with /SS_TX1_N" in w and "6.2.1, p. 55" in w for w in warnings)
+    assert any("diff_return_loss_db with /SS_TX1_N" in w and "E.6.4.5, p. 534" in w for w in warnings)
     measures = report["details"]["measures"]["usb3-tx1"]
-    assert sum(len(m) for m in measures.values()) == 10
-    assert report["details"]["failures"] == []
+    assert measures["/SS_TX1_P"]["diff_insertion_loss_db with /SS_TX1_N"]["value"] < 8.5
 
 
 @needs_openems
@@ -211,3 +244,90 @@ def test_the_line_delay_lies_between_air_and_the_dielectric(line):
     step = (step + math.pi) % (2 * math.pi) - math.pi
     delay = -step / (2 * math.pi * (freqs[k + 1] - freqs[k - 1]))
     assert 33.36e-12 <= delay <= 70.76e-12
+
+
+def line_copy(tmp_path: Path, name: str, settings: dict, length_mm: float = 10.0) -> Path:
+    """The line fixture copied, with `settings` in its fields.json and its track `length_mm` long (the
+    GND pour 5 mm longer than the track, as in the fixture)."""
+    import shutil
+
+    project = tmp_path / name
+    shutil.copytree(ROOT / "tests" / "boards" / "pass-fields-microstrip", project)
+    pcb = project / "line.kicad_pcb"
+    end = 100 + length_mm
+    text = pcb.read_text(encoding="utf-8")
+    text = text.replace("(end 110 100)", f"(end {end:g} 100)")
+    text = text.replace("(xy 115 95) (xy 115 105)", f"(xy {end + 5:g} 95) (xy {end + 5:g} 105)")
+    pcb.write_text(text, encoding="utf-8")
+    spec = json.loads((project / "fields.json").read_text(encoding="utf-8"))
+    spec["settings"] = settings
+    (project / "fields.json").write_text(json.dumps(spec), encoding="utf-8")
+    return project
+
+
+def run_project(project: Path, *flags: str):
+    proc = subprocess.run(
+        [sys.executable, str(CLI), "fields", str(project), *flags],
+        capture_output=True,
+        text=True,
+        timeout=3600,
+    )
+    report = json.loads((project / "build" / "fields" / "report.json").read_text(encoding="utf-8"))
+    return proc, report
+
+
+@needs_openems
+def test_thick_copper_reads_the_closed_form_with_thickness(tmp_path):
+    """The line with `copper` thick: 0.36 mm over 0.2 mm of 4.5, 0.035 mm of copper. Hammerstad and
+    Jensen with their thickness correction (Qucs Technical Papers, 2014, eq. 11.22 to 11.24, p. 165):
+    u = 1.8, t/h = 0.175, du1 = 0.175 / pi x ln(1 + 4e / (0.175 coth^2 sqrt(6.517 x 1.8))) = 0.23067,
+    dur = du1 / 2 x (1 + sech sqrt(3.5)) = 0.15004, Z = Z01(1.95004) / sqrt(eeff(1.95004)) = 48.9407 ohm.
+    The margin, 3 %, was written before the run: 47.47 to 50.41 ohm."""
+    proc, report = run_project(line_copy(tmp_path, "thick", {"copper": "thick"}), "--strict")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    got = report["details"]["measures"]["sig"]["SIG"]["impedance_ohm"]["value"]
+    assert 47.47 <= got <= 50.41
+
+
+def attenuation_per_m(project: Path, length_m: float, lo: float, hi: float) -> float:
+    """The median over lo to hi Hz of the line's attenuation in Np/m, from its S11 and S21."""
+    out = project / "build" / "fields" / "sig"
+    model = json.loads((out / "model.json").read_text(encoding="utf-8"))
+    col = fields.OpenEMS.column(out / "openems" / "port1", model, 1)
+    alpha = fields.attenuation_np(col[0], col[1])
+    picked = sorted(a for a, f in zip(alpha, model["frequencies_hz"], strict=True) if lo <= f <= hi)
+    return picked[len(picked) // 2] / length_m
+
+
+@needs_openems
+def test_lossy_copper_adds_the_closed_form_conductor_loss(tmp_path):
+    """The line made 40 mm long, run with copper as a perfect sheet and as a conducting sheet of 58e6
+    S/m and 0.035 mm (NIST Handbook 100, 1966, 1.2a, p. 2). The difference of their attenuations, read
+    from S11 and S21 so that the mismatch is no part of it, is the conductor's. Hammerstad and Jensen
+    (Qucs Technical Papers, 2014, eq. 11.80 to 11.83, p. 171) at 5 GHz with no roughness (Kr = 1):
+    R = sqrt(rho pi f mu0) = sqrt(1.7241e-8 x pi x 5e9 x 4 pi e-7) = 0.018448 ohm,
+    Ki = exp(-1.2 (51.337 / 376.73)^0.7) = 0.74279, alpha_c = 0.018448 / (51.337 x 0.36e-3) x 0.74279
+    = 0.74145 Np/m. The margin, 30 %, was written before the run: 0.519 to 0.964 Np/m, the median over
+    4.5 to 5.5 GHz."""
+    sheet = line_copy(tmp_path, "sheet40", {}, length_mm=40)
+    lossy = line_copy(tmp_path, "lossy40", {"copper": "lossy"}, length_mm=40)
+    for project in (sheet, lossy):
+        proc, _ = run_project(project)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+    a_sheet = attenuation_per_m(sheet, 0.04, 4.5e9, 5.5e9)
+    a_lossy = attenuation_per_m(lossy, 0.04, 4.5e9, 5.5e9)
+    assert 0.519 <= a_lossy - a_sheet <= 0.964, (a_sheet, a_lossy)
+
+
+@needs_openems
+def test_the_patch_resonates_where_its_length_says(tmp_path):
+    """tests/boards/pass-fields-patch: a patch 12 mm by 12 mm over 0.8 mm of 4.5, fed at the middle of
+    1 edge. eeff (Hammerstad and Jensen, u = 15) = 4.06762; each open end adds 0.42208 mm (Kirschning,
+    Jansen and Koster, Qucs Technical Papers 2014, eq. 11.185 to 11.190, p. 181); half a wavelength in
+    12.84416 mm: c / (2 x 12.84416 mm x sqrt(4.06762)) = 5.7865 GHz. The margin, 7 %, was written in
+    fields.json before the run: 5.381 to 6.192 GHz. With --strict the fixture holds both its limits."""
+    proc, report = run("pass-fields-patch", tmp_path, "--strict")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert report["summary"].startswith("2 held, 0 failed, 0 not judged")
+    got = report["details"]["measures"]["patch"]["ANT"]["resonance_ghz"]["value"]
+    assert 5.381 <= got <= 6.192
