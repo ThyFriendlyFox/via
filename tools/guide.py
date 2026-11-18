@@ -446,15 +446,6 @@ def inputs_of(project) -> list[Path]:
     return sorted(found)
 
 
-def ratings_inputs(cli, project) -> list[Path]:
-    """The files a ratings report is made from: the schematic, ratings.json, the project's parts file
-    and the facts of the library the command finds."""
-    named = ("ratings.json", "parts.csv")
-    found = sorted(p for p in project.dir.iterdir() if p.suffix == ".kicad_sch" or p.name in named)
-    library = cli.ratings().find_facts(project.dir)
-    return found + (sorted(library.glob("*.json")) if library else [])
-
-
 def newest(report: Path, inputs: list[Path]) -> Path | None:
     """The first input newer than the report, or None."""
     made = report.stat().st_mtime
@@ -468,6 +459,7 @@ class Ratings:
     asked: bool  # the project has a ratings.json and a schematic
     held: bool
     why: str
+    rerun: bool = False  # no record of a run on the files there now: a fresh `ratings` run is the step
 
     def line(self, project: str) -> str:
         """The line `gates` prints above its verdict."""
@@ -478,25 +470,77 @@ class Ratings:
         return f"RATINGS not held: {self.why} (workcenter ratings {project})"
 
 
+RECORD = "build/ratings/report.json"
+
+
+def ratings_record(cli, project):
+    """The record of the last ratings run, or the 1 line that refuses it: a file that is no record of a
+    run, named with the key that is wrong."""
+    try:
+        rated = cli.Result(**json.loads((project.dir / RECORD).read_text(encoding="utf-8")))
+    except (ValueError, TypeError) as exc:
+        return f"{RECORD} is no record of a run: {exc}"
+    details = rated.details
+    if not isinstance(details, dict):
+        return f"{RECORD}: details is no object"
+    if "verdict" in details and not isinstance(details["verdict"], str):
+        return f"{RECORD}: details.verdict is no text"
+    for key in ("failures", "warnings"):
+        if not isinstance(details.get(key, []), list):
+            return f"{RECORD}: details.{key} is no list"
+    inputs = details.get("inputs", {"parts": [], "files": {}})
+    if not (
+        isinstance(inputs, dict)
+        and isinstance(inputs.get("parts"), list)
+        and all(isinstance(p, str) for p in inputs["parts"])
+        and isinstance(inputs.get("files"), dict)
+        and all(isinstance(v, str) for v in inputs["files"].values())
+    ):
+        return f"{RECORD}: details.inputs is no object of parts and files"
+    return rated
+
+
+def ratings_stale(cli, project, inputs: dict) -> str:
+    """The first file a run read that is not there now as it was read, or that the run did not read and
+    a run now would: '' when the record speaks of the files there now. Each file is held by its SHA256,
+    so a file touched and not changed is the same file, and one put back with an old time is not."""
+    ratings = cli.ratings()
+    given = [project.dir / p for p in inputs["parts"]]
+    if not given and (project.dir / "parts.csv").is_file():
+        given = [project.dir / "parts.csv"]  # what `ratings` reads when it is given no --parts
+    now = ratings.read_by_run(project, given, cli)
+    for rel, digest in inputs["files"].items():
+        path = now.get(rel)
+        if path is None or not path.is_file():
+            return f"{rel} is gone since the last run"
+        try:
+            if ratings.sha256(path) != digest:
+                return f"{rel} changed after the last run"
+        except OSError as exc:
+            return f"{rel} cannot be read: {exc.strerror}"
+    return next((f"{rel} is new since the last run" for rel in now if rel not in inputs["files"]), "")
+
+
 def ratings_state(cli, project) -> Ratings:
-    """Held: build/ratings/report.json says exactly RATINGS HELD and no input of that run is newer. A
-    record older than the schematic, ratings.json, parts.csv or a facts file speaks of other files, and
-    is not held."""
+    """Held: build/ratings/report.json says exactly RATINGS HELD and the files that run read are the
+    files there now (ratings_stale). A record of other files, a record that names no file it read, and
+    a file that is no record of a run are not held."""
     if not (project.dir / "ratings.json").is_file():
         return Ratings(False, False, "no ratings.json beside the schematic")
     if not project.sch:
         return Ratings(False, False, "no schematic beside ratings.json")
-    record = project.dir / "build" / "ratings" / "report.json"
-    if not record.is_file():
-        return Ratings(True, False, "no build/ratings/report.json yet")
-    newer = newest(record, ratings_inputs(cli, project))
-    if newer:
-        return Ratings(True, False, f"{newer.name} changed after the last run")
-    try:
-        rated = cli.Result(**json.loads(record.read_text(encoding="utf-8")))
-    except (ValueError, TypeError) as exc:
-        return Ratings(True, False, f"build/ratings/report.json is no record of a run: {exc}")
+    if not (project.dir / RECORD).is_file():
+        return Ratings(True, False, f"no {RECORD} yet", rerun=True)
+    rated = ratings_record(cli, project)
+    if isinstance(rated, str):
+        return Ratings(True, False, rated, rerun=True)
+    inputs = rated.details.get("inputs")
+    stale = ratings_stale(cli, project, inputs) if inputs else ""
+    if stale:
+        return Ratings(True, False, stale, rerun=True)
     said = rated.details.get("verdict")
+    if said == "RATINGS HELD" and not inputs:
+        return Ratings(True, False, f"{RECORD} names no file its run read", rerun=True)
     if said == "RATINGS HELD":
         return Ratings(True, True, "build/ratings/report.json says RATINGS HELD")
     # The words of the ratings verdict itself (ratings.verdict), never a count made again here.
@@ -679,18 +723,17 @@ def next_step(cli, target: str, run_check=True) -> Step:
     # board's gates: a part that changes takes its routes with it. What is left not judged comes after.
     ratings = f"{wc} ratings {quoted}"
     rated = None  # the record of the last ratings run
-    if (project.dir / "ratings.json").is_file() and project.sch:
-        record = project.dir / "build" / "ratings" / "report.json"
-        newer = newest(record, ratings_inputs(cli, project)) if record.is_file() else None
-        if not record.is_file() or newer:
+    state = ratings_state(cli, project)
+    if state.asked:
+        if state.rerun:
             return Step(
                 "Hold the schematic to its parts' ratings.",
                 ratings,
-                f"{newer.name} changed after the last run" if newer else "no build/ratings/report.json yet",
+                state.why,
                 f'{RATINGS}, "Steps"',
                 "the last line starts with RATINGS HELD",
             )
-        rated = cli.Result(**json.loads(record.read_text(encoding="utf-8")))
+        rated = ratings_record(cli, project)
         failures = rated.details.get("failures", []) or ([rated.summary] if rated.status == "error" else [])
         if failures:
             do, read = hint("ratings", failures[0])
@@ -748,7 +791,7 @@ def next_step(cli, target: str, run_check=True) -> Step:
             read,
             "the last line is GREEN, with no warning" if not failed else "the last line starts with GREEN",
         )
-    if rated is not None and not ratings_state(cli, project).held:
+    if rated is not None and not state.held:
         left = rated.details.get("warnings", []) or [rated.details.get("verdict") or rated.summary]
         do, read = hint("ratings", left[0])
         return Step(

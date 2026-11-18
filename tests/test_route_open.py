@@ -6,9 +6,9 @@ only a gates run, 20 to 30 minutes later, named the net. The command now reads K
 it wrote (the zone fill's report, or 1 DRC run for a board with no pour): with an unconnected item it
 prints the count, the first open net with its 2 ends and the `inspect net` command, and exits 1.
 
-The parser is held to a KiCad 10 report's unconnected item (a user's board of round 1). 2 boards are
-routed and skip without FreeRouting: a wall of copper keepout that no net crosses, and the same board
-without the wall.
+The parser is held to a KiCad 10 report's unconnected item (a user's board of round 1). 3 boards are
+routed and skip without FreeRouting: a wall of copper keepout that no net crosses, the same board with a
+pour (the count then comes from the fill's report), and the board without the wall.
 """
 
 from __future__ import annotations
@@ -66,10 +66,11 @@ def test_the_first_open_net_and_its_two_ends_are_read_from_the_report():
 R0603 = "Resistor_SMD:R_0603_1608Metric"
 
 
-def walled(wall: bool) -> str:
+def walled(wall: bool, pour: bool = False) -> str:
     """R1 and R3 on the left joined by A; R1 and R2 across the board joined by B. With the wall, a copper
     keepout on both faces from the top edge to the bottom between them, B cannot be routed: 1 open
-    connection, R1 pad 2 to R2 pad 2. A is 2 pads on the left: routed."""
+    connection, R1 pad 2 to R2 pad 2. A is 2 pads on the left: routed. `pour`: a pour of net C on B.Cu,
+    so the count is read from the zone fill's report and not from a DRC run of its own."""
     keepout = (
         "    d.keepout([(114.0, 99.0), (116.0, 99.0), (116.0, 121.0), (114.0, 121.0)],\n"
         "              layers=('F.Cu', 'B.Cu'), name='wall')\n"
@@ -89,14 +90,13 @@ def walled(wall: bool) -> str:
         "          nets={'1': 'A', '2': 'C'})\n"
         f"    d.add('R2', 'Device:R', '1k', {R0603!r}, sch_at=(90, 30), pcb_at=(125.0, 110.0),\n"
         "          nets={'1': 'D', '2': 'B'})\n"
-        f"{keepout}"
-        "    return d\n"
+        f"{keepout}" + ("    d.zone('C', layers=('B.Cu',))\n" if pour else "") + "    return d\n"
     )
 
 
-def design(folder: Path, wall: bool) -> subprocess.CompletedProcess:
+def design(folder: Path, wall: bool, pour: bool = False) -> subprocess.CompletedProcess:
     folder.mkdir()
-    (folder / "design.py").write_text(walled(wall), encoding="utf-8")
+    (folder / "design.py").write_text(walled(wall, pour), encoding="utf-8")
     return subprocess.run(
         [sys.executable, str(CLI), "design", str(folder / "design.py"), "--route", "--passes", "10"],
         capture_output=True,
@@ -116,6 +116,17 @@ def test_a_route_that_leaves_a_net_open_says_so_and_exits_1(tmp_path):
     pcb = tmp_path / "wall" / "walled.kicad_pcb"
     assert f"  inspect: workcenter inspect net {pcb} B" in lines, proc.stdout
     assert lines[-1].startswith("design walled red: 1 unconnected."), lines[-1]
+
+
+@needs_engines
+def test_a_board_with_a_pour_counts_from_the_fill_report(tmp_path):
+    """The walled board with a pour of C on B.Cu: `design --route` reads the fill's DRC report
+    (design.filled). The pour joins nothing across the wall, so B stays open: 1, as on the bare board."""
+    proc = design(tmp_path / "poured", wall=True, pour=True)
+    assert proc.returncode == 1, proc.stdout
+    (said,) = [ln for ln in proc.stdout.splitlines() if ln.startswith("  route: ")]
+    assert said.startswith("  route: 1 unconnected; first B: "), said
+    assert "Pad 2 [/B] of R1" in said and "Pad 2 [/B] of R2" in said, said
 
 
 @needs_engines
