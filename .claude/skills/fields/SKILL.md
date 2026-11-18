@@ -285,7 +285,9 @@ sample. Every sample is the same from run to run, whatever the load or
 openEMS's threads (the lane's 46 samples on 4 threads and on 1: alike to the
 digit), and a run that ends later adds only quiet samples, so the same file
 gives the same numbers. A run that never settles ends at `max_timesteps`, a
-fault. On a line longer than the pulse every port is quiet while the wave
+fault. A run whose ports read as not settled all the same runs again with
+the box let fall 20, then 30 dB further (`RERUN_MARGINS_DB`), and fails
+after the third. On a line longer than the pulse every port is quiet while the wave
 crosses: a cut at the first quiet 5 samples missed the far port's wave
 (the probes of a 10 mm run with port 2 delayed by 40 samples gave |S21| of
 -85 to -66 dB; after its last loud sample, -0.2 to -0.1 dB).

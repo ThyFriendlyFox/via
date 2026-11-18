@@ -504,15 +504,20 @@ FILE] [--out DIR]` reads `<project>/fields.json` and the `.kicad_pcb`. For
 each group of nets it builds a model from the board file with no
 hand-written mesh: the copper, the reference pour under each track, the
 dielectrics, a 50 ohm port at each end. It runs openEMS as its own
-program and holds impedance, return loss, insertion loss, NEXT and FEXT
-to the limits, each with its source. It writes
+program and holds impedance, return loss, insertion loss, NEXT and FEXT,
+a pair's differential impedance, return loss and insertion loss, and an
+antenna's resonance to the limits, each with its source; a limit marked
+`unstated` and a measure no limit names are printed not judged. It writes
 `build/fields/<group>/model.json`, the solver's input under
 `build/fields/<group>/openems/`, and `build/fields/report.md` and
 `report.json`. It refuses a track with no reference pour under it, a pour
 of another net between a track and its plane, a via through a plane, an
 open end as a port and a port on another net's pad. The impedance is
-judged only on a net of 2 ports, 1 width, 1 layer and no branch. The
-model has no conductor loss and no copper thickness. Exit 0 when every
+judged only on a net of 2 ports, 1 width, 1 layer and no branch. Copper
+is a sheet by default; `settings` makes it `thick` (its stack-up
+thickness) or `lossy` (its conductor loss), not both. A dielectric's loss
+tangent is held over the band by Debye terms. The command ends a run once
+its ports have settled, not by openEMS's clock. Exit 0 when every
 limit holds, 1 on a failure, a solver fault or a file it does not take, 2
 when openEMS is absent, there is no `fields.json`, or no limit was held.
 The `fields` skill is the procedure.

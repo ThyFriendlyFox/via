@@ -39,6 +39,12 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-18 — Item 9's left-overs: the Wyvern lane judged, pairs, antennas, and a run ended by its ports
+
+USB 3.2 r1.1 was read for a board's own limits. It has 1: an informative 8.5 dB insertion-loss budget for the host or device, in an appendix about re-drivers (E.6.4.8, p. 536), and no impedance or return loss for a board. The Wyvern lane is held to that, and the rest is printed not judged with its clause. A band ending at 5 GHz gave the lane no result: openEMS samples its probes for the band's top. A first review was cut off by a restart of the machine and left no verdict. The second found the dielectric loss right only at mid-band: openEMS's conductivity is right at 1 frequency. A Debye material held it over the band, read 1.05 to 1.10 times Qucs eq. 11.79 on the default mesh, and doubled the run time. openEMS's conducting sheet gave 65 % of the closed-form conductor loss; the margin written before the run was 30 %, so it stands as a strict xfail. The patch resonated at 5.80 GHz, 0.2 % over the transmission-line model with Kirschning's open end. The lane test then failed now and then: openEMS checks its end criterion every 4 s of the clock, and a check that fell at step 13410 stopped the lane 1 sample before its ports settled. The command now turns that criterion off and ends the run itself once the ports have settled. Landing it met the trunk's own fix of the same fault (a run that did not settle runs again deeper): both are kept, the rerun now asking `ended` for the deeper box.
+
+Evidence: `tests/test_fields_solver.py` (15 tests, 382.03 s), `tests/test_fields_measures.py` (39 tests), `tests/test_fields.py` (73 tests), `tests/test_fields_rerun.py` (2 tests); landing branch `wip/land-l9`.
+
 ## 2026-11-18 — Part temperature: 4 reviews of 1 kind, then a model
 
 What was left of roadmap item 7 is built: each thermal figure names its JEDEC board, a junction can start from a stated case, board or top temperature, a heat sink is stated with its 2 resistances, and a deck block narrower than the file's is flagged. JEDEC answered 403 to the workcenter's client name again, so the method stays cited from TI SPRA953D. A second reader compared the 10 junction rules with ECSS-Q-ST-30-11C Rev.2 and NASA EEE-INST-002, and the TLV755P facts with SBVS320D, number by number: every number matched.
