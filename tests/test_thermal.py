@@ -180,9 +180,11 @@ def test_the_regulator_s_derated_limit_in_each_pack():
     assert thermal.limit(thermal.rule_for(ECSS, "diode.rectifier"), 125)[0] == 85
 
 
-# The ECSS pack's 11 rating rules: a junction rule added after them is rule 12.
+# The ECSS pack's rating rules without its junction rules: a junction rule added after them is rule
+# NEXT. The pack held 11 such rules, and 13 since its fuse rules (rules/ratings/), so NEXT is counted.
 CARD = json.loads((PACKS / "ecss-q-st-30-11c-rev2.json").read_text(encoding="utf-8"))
 CARD["rules"] = [r for r in CARD["rules"] if r["stress"] != "junction.temperature"]
+NEXT = len(CARD["rules"]) + 1
 JUNCTION_RULE = {
     "id": "j",
     "stress": "junction.temperature",
@@ -197,16 +199,19 @@ JUNCTION_RULE = {
     [
         (
             {k: v for k, v in JUNCTION_RULE.items() if k != "celsius"},
-            "pack.json: rule 12: 1 limit at least is asked",
+            f"pack.json: rule {NEXT}: 1 limit at least is asked",
         ),
-        ({**JUNCTION_RULE, "share": 1.5}, "pack.json: rule 12: share: 1.5 is over 1"),
-        ({**JUNCTION_RULE, "below_rating": -5}, "pack.json: rule 12: below_rating: -5 is under 0"),
-        ({**JUNCTION_RULE, "max": 0.8}, "pack.json: rule 12: `max` is no key here"),
-        ({**JUNCTION_RULE, "kinds": ["chip"]}, "pack.json: rule 12: kinds: `chip` names no kind of part"),
-        ({**JUNCTION_RULE, "where": " "}, "pack.json: rule 12: where: text is asked"),
+        ({**JUNCTION_RULE, "share": 1.5}, f"pack.json: rule {NEXT}: share: 1.5 is over 1"),
+        ({**JUNCTION_RULE, "below_rating": -5}, f"pack.json: rule {NEXT}: below_rating: -5 is under 0"),
+        ({**JUNCTION_RULE, "max": 0.8}, f"pack.json: rule {NEXT}: `max` is no key here"),
+        (
+            {**JUNCTION_RULE, "kinds": ["chip"]},
+            f"pack.json: rule {NEXT}: kinds: `chip` names no kind of part",
+        ),
+        ({**JUNCTION_RULE, "where": " "}, f"pack.json: rule {NEXT}: where: text is asked"),
         (
             {**JUNCTION_RULE, "id": "output.current"},
-            "pack.json: rule 12: the id `output.current` stands 2 times",
+            f"pack.json: rule {NEXT}: the id `output.current` stands 2 times",
         ),
     ],
 )
