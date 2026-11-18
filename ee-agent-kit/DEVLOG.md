@@ -39,6 +39,14 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-17 — The lead's ways of working, written down
+
+The owner asked for the ways the lead worked today to be skills in the kit: the project board, all of it. They lived in 3 workflow scripts and 3 scratch files. They are now 4 skills and 6 files under `ee-agent-kit/lead/`, with every path of the session taken out. Writing them down found 2 faults in the scratch tools. `gate-and-push.sh` wrote its lock over one that was there, and its exit trap then removed the other gate's lock; it now makes the lock only if none is there and leaves another's alone. `landed.py` read a review that ended with no result as a review with 0 findings, so a piece with no review could read as finished; it now names it as waiting.
+
+A reviewer who did not write the tools found 10 faults, and the same root cause came back in a new form. `landed.py` no longer took a null review as passed, but it still landed a piece whose review was a sentence of text or `{}`. A review now counts only with a verdict and a list of findings, and a fix only with a list `fixed`. A review started twice kept only the result reported last; both now count. 2 journals that used the same agent ids mixed their pieces. The gate, stopped by a signal, removed its lock while `make verify` ran on; it now ends make's process group first. `quiet.py` missed a test run started as `pytest`. The skills were written beside the card's own change of the same day; on landing, the `now` skill takes the command's `--status` and the card's form as the trunk holds them.
+
+Evidence: branch `wip/land-kit-skills`; `tests/test_lead.py`, `tests/test_lead_skills.py`, `tests/test_now.py`.
+
 ## 2026-11-17 — Work cards, and a project board that follows them
 
 The owner asked for a way to follow what each agent is working on, live, and for the project board to

@@ -1251,3 +1251,10 @@ What happened: The owner asked for a blog. I wrote the first post and the blog's
 Cost: a rewrite of the post and of the blog's words, and a preview the owner could not use.
 Root cause: `TONE.md` held my own words and `docs/STYLE.md` the site's, and neither named the blog, so I wrote the post to the website's rules and not to STE's limits. Neither named American spelling or the patterns that mark text as a model's. Nothing counted a post's sentences.
 Process: P37
+
+## M207 — 2026-11-17 — A lock written over, and a review with no result read as 0 findings
+What happened: The scratch `gate-and-push.sh` wrote `GATE.lock` whether or not a lock was there, and its EXIT trap, set before its first check, removed the lock on every exit. A second gate, or a gate that stopped at its HEAD check, removed the lock of a gate still running, and helpers then started tests during it. The scratch `landed.py` turned a review whose result was null into an empty object: no findings, so no fix asked, and the piece read as landed with no review.
+The first fix took null alone as "no result"; a review of plain text or `{}` still read as 0 findings and landed, and a gate stopped by a signal still removed its lock while `make verify` ran on.
+Cost: Found when the tools were brought into the kit, and the rest by the item's review; `tests/test_lead.py` holds each (a taken lock stops the gate and is left as it was; a null review, a review with no verdict and a fix with no list `fixed` wait; a stopped gate ends make before the lock goes).
+Root cause: A lock that is not made atomically is no lock, and a missing result was given a default that means "passed". The fix named the 1 missing value seen (null) and not the rule: a result counts only when it holds what a judgement holds.
+Process: P31

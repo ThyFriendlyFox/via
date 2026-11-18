@@ -352,7 +352,7 @@ images are drawn.
 | `tools/hooks/` | Claude Code hooks: no `cd` in a command, no test written by a script. |
 | `WORKCENTER.md` | The contract a project gets from this workcenter. |
 | `AGENTS.md`, `CLAUDE.md` | Where an agent starts. The same text. |
-| `.claude/skills/` | `attached-repos`, `autoroute`, `blog-post`, `board-design`, `board-gates`, `board-loop`, `board-rules`, `chip-design`, `chip-gates`, `copper`, `fabrication`, `fields`, `highspeed`, `kistack`, `now`, `procurement`, `ratings`, `references`, `simulate`, `verification`. |
+| `.claude/skills/` | `attached-repos`, `autoroute`, `blog-post`, `board-design`, `board-gates`, `board-loop`, `board-rules`, `chip-design`, `chip-gates`, `copper`, `fabrication`, `fields`, `highspeed`, `kistack`, `land`, `lead`, `now`, `procurement`, `ratings`, `references`, `simulate`, `user-round`, `verification`. |
 | `templates/` | A first design file, a version's README and gates report, `corners.json`, `frequency-plan.json`, the verification package. |
 | `rules/` | Fabrication houses' limits as KiCad design rules: Sierra Circuits, JLCPCB, PCBWay, OSH Park. `rules/ratings/`: 2 derating standards as packs for `workcenter ratings`, each limit with its table and page. `rules/board/`: ECSS-Q-ST-70-12C Rev.1 as a board rule pack for `workcenter drc`, each limit with its clause, table and page. `rules/copper/`: the 5 constants of `workcenter copper`, each with its document and page. `rules/interfaces/`: the fast interfaces `workcenter highspeed` holds a pair to, each limit with its document, clause and page. `rules/references/`: the index of the 18 documents the rules cite (7 standards, 2 application notes, 9 datasheets), each with its URL and SHA256; no document itself. |
 | `tests/` | The tests of the tools. `tests/boards/` holds the fixture boards and what each proves. |
@@ -362,7 +362,7 @@ images are drawn.
 | `Dockerfile`, `.github/workflows/` | The image. CI on each pull request and push to `main`, a nightly run, the release, stale issues, and Board: each `Work card: ...` issue in the column of the project board its `**Status:**` line names. |
 | `requirements.txt`, `pyproject.toml` | The venv's packages for tests and lint; the settings of ruff and pytest. |
 | `site/` | The website: 1 static page, its stylesheet, the Open Graph image. `site/media/` holds this file's pictures. |
-| `ee-agent-kit/` | How work on this repository is run. Start at `ee-agent-kit/ROUTING.md`. |
+| `ee-agent-kit/` | How work on this repository is run. Start at `ee-agent-kit/ROUTING.md`. `ee-agent-kit/lead/` holds the lead's tools: `landed.py`, `gate-and-push.sh`, `quiet.py` and 3 example workflow scripts (`ee-agent-kit/lead/README.md`). |
 
 </details>
 
