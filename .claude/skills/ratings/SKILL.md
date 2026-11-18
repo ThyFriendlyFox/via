@@ -290,11 +290,12 @@ rating.
   rule for a ferrite or a switch: each is held to its own rating. A fuse
   is held by its style: NASA's pack holds a `fuse.cartridge` to the row of
   its table 4 that lists its rating, ECSS's pack holds a `fuse.cermet` to
-  its table 6-17, and every other fuse is held to its own rating
-  (`rules/ratings/README.md`, "A fuse"). A cartridge fuse whose rating
-  table 4 does not list (6.3 A) fails over its own rating; under it, its
-  derating is not judged. A stated current whose part has no current
-  rating in its facts is not judged.
+  its table 6-17 and grants every other fuse no share (clause 6.17.1a),
+  and NASA's pack holds every other fuse to its own rating
+  (`rules/ratings/README.md`, "A fuse"). A fuse the pack grants no share,
+  as a cartridge fuse whose rating table 4 does not list (6.3 A), fails
+  over its own rating; under it, its derating is not judged. A stated
+  current whose part has no current rating in its facts is not judged.
 - The nets a wire joins are 1 node: a fuse, a ferrite, a link, a 0 ohm
   resistor, an inductor. A part between 2 nets of 1 node has 0 V across
   it, and its line says `2 nets that a wire joins`.
