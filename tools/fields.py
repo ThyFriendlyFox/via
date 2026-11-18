@@ -1379,11 +1379,15 @@ class NotSettled(EngineFault):
 
 
 SETTLE_SAMPLES = 5  # samples in a row the port energy must stay under the end criterion
-ENGINE_MARGIN_DB = 10.0  # how much further than the end criterion openEMS lets the box's energy fall
-# A run that stopped before its ports settled runs again with the box's energy let fall this much
-# further. On 2026-11-17 the Wyvern lane's port 3 stopped at step 13410 with its ports unsettled in 2
-# runs of the tests side by side, and at 13708 to 14602 with them settled in 4 others.
+ENGINE_MARGIN_DB = 10.0  # how much further than the end criterion the box's energy must fall
+# A run whose ports did not settle all the same runs again with the box's energy let fall this much
+# further before it is ended. On 2026-11-17 the Wyvern lane's port 3 stopped at step 13410 with its
+# ports unsettled in 2 runs of the tests side by side, and at 13708 to 14602 with them settled in 4
+# others; that stop was openEMS's own clock-timed check, which `run` no longer uses.
 RERUN_MARGINS_DB = (20.0, 30.0)
+# How often a run's log and probes are read: openEMS 0.0.35 stopped 0.14 s after its ABORT file was
+# made (the line fixture, 2026-11-18), so a run ends within about this much of when it may.
+POLL_S = 0.5
 
 
 def settled(energy: list[float], end_db: float, window: int = SETTLE_SAMPLES) -> int | None:
@@ -1391,14 +1395,31 @@ def settled(energy: list[float], end_db: float, window: int = SETTLE_SAMPLES) ->
     after the last sample that does not, or None when the series ends before. On a line longer than
     the pulse every port is quiet while the wave crosses: a cut there missed the far port's wave (the
     z57 run's probes with port 2 delayed by 40 samples gave |S21| of -85 to -66 dB). A run that stops
-    later adds only quiet samples, since openEMS stops 10 dB under the end criterion
-    (ENGINE_MARGIN_DB), so it gives the same answer."""
+    later adds only quiet samples, since it runs on until the box's energy is 10 dB under the end
+    criterion (ENGINE_MARGIN_DB, `ended`), so it gives the same answer."""
     peak = max(energy, default=0.0)
     if peak <= 0:
         return None
     floor = peak * 10 ** (end_db / 10)
     loud = max(k for k, e in enumerate(energy) if e > floor)
     return loud + window if loud + window < len(energy) else None
+
+
+def box_db(log: str) -> float | None:
+    """The box's energy openEMS printed last, in dB under the most it printed (`(-51.43dB)`), or None."""
+    found = re.findall(r"Energy: ~\S+ \(-\s*([0-9.]+)dB\)", log)
+    return -float(found[-1]) if found else None
+
+
+def ended(energy: list[float], log: str, end_db: float, margin_db: float = ENGINE_MARGIN_DB) -> bool:
+    """Whether a run may stop: the ports have settled (`settled`) and the box's energy openEMS printed
+    last lies `margin_db` (ENGINE_MARGIN_DB, or a rerun's RERUN_MARGINS_DB) under `end_db`. openEMS's
+    own end criterion stopped the Wyvern lane where
+    the box's energy first printed under it, which was at a check every 4 s of the clock: at 13708
+    steps in 3 runs (47 samples, settled) and at 13410 in 1 (-50.33 dB, 46 samples, the ports' last
+    loud sample 41 and 5 more needed), so the same file failed or passed by the machine's load."""
+    box = box_db(log)
+    return settled(energy, end_db) is not None and box is not None and box <= end_db - margin_db
 
 
 class OpenEMS:
@@ -1433,7 +1454,7 @@ class OpenEMS:
         return found.group(1) if found else None
 
     @staticmethod
-    def xml(model: dict, driven: int, margin_db: float = ENGINE_MARGIN_DB) -> str:
+    def xml(model: dict, driven: int) -> str:
         s, mesh = model["settings"], model["mesh"]
         f_max = model["frequencies_hz"][-1]
         f0 = fc = f_max / 2
@@ -1519,17 +1540,17 @@ class OpenEMS:
                 f'<ProbeBox Name="port_it{n}" Type="1" Weight="{direction}" NormDir="2">'
                 f"<Primitives>{_box([a[0], a[1], mz], [b[0], b[1], mz], 5)}</Primitives></ProbeBox>"
             )
-        # openEMS stops on the box's energy, the spectra are cut where the ports' settles (`column`):
-        # openEMS runs on to 10 dB further, so that the ports have settled before it stops. On the
-        # Wyvern lane at -40 dB the ports reached -40 dB 3 samples before openEMS stopped.
-        end = 10 ** ((s["end_criteria_db"] - margin_db) / 10)
+        # openEMS's own end criterion is off (0: the energy never falls to it): it is checked every
+        # 4 s of the clock, so where it stopped hung on the machine's load. `run` ends the run by
+        # openEMS's ABORT file once the ports have settled and the box's energy has fallen (`ended`);
+        # the step limit still ends a run that never does, a fault.
         bc = " ".join(f'{side}="{pml}"' for side in ("xmin", "xmax", "ymin", "ymax", "zmin", "zmax"))
         steps = int(s["max_timesteps"])
         return "\n".join(
             [
                 '<?xml version="1.0" encoding="UTF-8"?>',
                 "<openEMS>",
-                f'<FDTD NumberOfTimesteps="{steps}" endCriteria="{_n(end)}" f_max="{_n(f0 + fc)}">',
+                f'<FDTD NumberOfTimesteps="{steps}" endCriteria="0" f_max="{_n(f0 + fc)}">',
                 f'<Excitation Type="0" f0="{_n(f0)}" fc="{_n(fc)}"/>',
                 f"<BoundaryCond {bc}/>",
                 "</FDTD>",
@@ -1570,15 +1591,25 @@ class OpenEMS:
         if "Cutting to max number of timesteps" in text:
             return "the excitation alone needs more steps than max_timesteps: a cell is too small"
         # A run that stops at its step limit has not let the energy leave the box: its spectra are cut.
-        if "Max. number of timesteps was reached" in text:
+        # openEMS ended by its ABORT file (`run`) prints the same warning after the abort: no fault.
+        aborted = 'Found file "ABORT"' in text
+        if "Max. number of timesteps was reached" in text and not aborted:
             return "the energy in the box did not fall to the end criterion within the step limit"
         return None
 
     @classmethod
-    def run(cls, run: Path, timeout: float) -> tuple[bool, str]:
-        """openEMS on the run's model.xml. The log is read every 2 s: a fault openEMS states before
-        its time steps (a dropped primitive, a cut excitation) stops the run there."""
-        exe, path = cls.binary(), run / "openems.log"
+    def run(
+        cls, run: Path, timeout: float, model: dict, margin_db: float = ENGINE_MARGIN_DB
+    ) -> tuple[bool, str]:
+        """openEMS on the run's model.xml. The log and the ports' probes are read every POLL_S: a
+        fault openEMS states before its time steps (a dropped primitive, a cut excitation) stops the
+        run there, and the run is ended by openEMS's ABORT file once `ended` holds on the samples
+        written so far. The samples are the same from run to run whatever the load or openEMS's
+        threads (the Wyvern lane on 4 threads and on 1: the first 46 samples of every probe alike to
+        the digit), so where the run ends no longer decides whether it settled."""
+        exe, path, abort = cls.binary(), run / "openems.log", run / "ABORT"
+        abort.unlink(missing_ok=True)
+        end_db = model["settings"]["end_criteria_db"]
         start = time.monotonic()
         with path.open("w", encoding="utf-8") as log:
             proc = subprocess.Popen(
@@ -1589,12 +1620,17 @@ class OpenEMS:
                     proc.kill()
                     proc.wait()
                     raise subprocess.TimeoutExpired(exe, timeout)
-                found = cls.fault(path.read_text(encoding="utf-8", errors="replace"))
+                text = path.read_text(encoding="utf-8", errors="replace")
+                found = cls.fault(text)
                 if found:
                     proc.kill()
                     proc.wait()
                     return False, found
-                time.sleep(2)
+                energy = cls.energy(run, model, written=True)
+                if not abort.exists() and ended(energy, text, end_db, margin_db):
+                    abort.write_text("the ports have settled and the box's energy has fallen\n")
+                time.sleep(POLL_S)
+        abort.unlink(missing_ok=True)
         text = path.read_text(encoding="utf-8", errors="replace")
         found = cls.fault(text)
         if found:
@@ -1602,9 +1638,18 @@ class OpenEMS:
         return proc.returncode == 0, text
 
     @staticmethod
-    def _probe(path: Path) -> tuple[list[float], list[float]]:
+    def _probe(path: Path, written: bool = False) -> tuple[list[float], list[float]]:
+        """A probe's times and values. `written`: of a probe openEMS is still writing, the whole lines
+        so far (none before the file is made)."""
+        if written:
+            if not path.is_file():
+                return [], []
+            text = path.read_text(encoding="utf-8", errors="replace")
+            text = text[: text.rfind("\n") + 1]
+        else:
+            text = path.read_text(encoding="utf-8")
         t, v = [], []
-        for line in path.read_text(encoding="utf-8").splitlines():
+        for line in text.splitlines():
             if line.startswith("%") or not line.strip():
                 continue
             a, b = line.split()[:2]
@@ -1613,20 +1658,32 @@ class OpenEMS:
         return t, v
 
     @classmethod
+    def _probes(cls, run: Path, model: dict, written: bool = False) -> list:
+        return [
+            (cls._probe(run / f"port_ut{p['n']}", written), cls._probe(run / f"port_it{p['n']}", written))
+            for p in model["ports"]
+        ]
+
+    @classmethod
+    def energy(cls, run: Path, model: dict, written: bool = False, probes=None) -> list[float]:
+        """The ports' energy at each sample all their probes hold: the sum of u^2 + (Z i)^2."""
+        zref = model["settings"]["port_ohm"]
+        probes = probes if probes is not None else cls._probes(run, model, written)
+        n = min((len(s[0]) for pair in probes for s in pair), default=0)
+        return [sum(u[1][k] ** 2 + (zref * i[1][k]) ** 2 for u, i in probes) for k in range(n)]
+
+    @classmethod
     def column(cls, run: Path, model: dict, driven: int) -> list[list[complex]]:
         """S[receiver][driven] at each of the model's frequencies, receivers in port order.
 
-        openEMS checks its end criterion every 4 s of the clock, so where a run stops hangs on the
-        machine's load. Every sample before the stop is the same from run to run: the spectra are read
-        up to the sample where the ports' energy, the sum of u^2 + (Z i)^2, has settled after its last
-        loud sample (`settled`), and not beyond. A run that stopped before that is a fault."""
+        Where a run is ended hangs on when its probes are read (`run`), but every sample before the end
+        is the same from run to run: the spectra are read up to the sample where the ports' energy,
+        the sum of u^2 + (Z i)^2, has settled after its last loud sample (`settled`), and not beyond.
+        A run that stopped before that is a fault."""
         freqs, zref = model["frequencies_hz"], model["settings"]["port_ohm"]
-        probes = [
-            (cls._probe(run / f"port_ut{p['n']}"), cls._probe(run / f"port_it{p['n']}"))
-            for p in model["ports"]
-        ]
-        n = min(len(s[0]) for pair in probes for s in pair)
-        energy = [sum(u[1][k] ** 2 + (zref * i[1][k]) ** 2 for u, i in probes) for k in range(n)]
+        probes = cls._probes(run, model)
+        energy = cls.energy(run, model, probes=probes)
+        n = len(energy)
         end_db = model["settings"]["end_criteria_db"]
         last = settled(energy, end_db)
         if last is None:
@@ -1745,16 +1802,14 @@ def report_md(project: str, engine: str, version: str | None, groups: list[dict]
 
 
 def run_port(engine, model: dict, run: Path, n: int) -> tuple[list | None, str | None]:
-    """1 driven port: its column of S, or the line that says why there is none. openEMS checks its end
-    criterion every 4 s of the clock, so on a busy machine it can stop before the ports settle. Such a
-    run runs again with the box's energy let fall further (RERUN_MARGINS_DB): its samples up to the
-    earlier stop are the same, so the column is the one a run that stopped later gives."""
+    """1 driven port: its column of S, or the line that says why there is none. `run` ends a run once
+    the ports have settled (`ended`); should the column read none settled all the same, the run runs
+    again with the box's energy let fall further (RERUN_MARGINS_DB): its samples up to the earlier
+    end are the same, so the column is the one a run that ended later gives."""
     margins = [ENGINE_MARGIN_DB, *RERUN_MARGINS_DB]
-    for attempt, margin in enumerate(margins):
-        if attempt:
-            (run / "model.xml").write_text(engine.xml(model, n, margin), encoding="utf-8")
+    for margin in margins:
         try:
-            ok, log = engine.run(run, model["settings"]["timeout_s"])
+            ok, log = engine.run(run, model["settings"]["timeout_s"], model, margin)
         except subprocess.TimeoutExpired:
             ok, log = False, f"no end within {model['settings']['timeout_s']} s"
         if not ok:
@@ -1763,7 +1818,7 @@ def run_port(engine, model: dict, run: Path, n: int) -> tuple[list | None, str |
         try:
             return engine.column(run, model, n), None
         except NotSettled as exc:
-            if attempt + 1 < len(margins):
+            if margin != margins[-1]:
                 continue
             return None, (
                 f"{engine.program} on port {n} ended without a result: {exc} (run {len(margins)} times, "

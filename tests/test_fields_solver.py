@@ -97,14 +97,14 @@ def test_the_line_impedance_is_the_closed_form_within_3_percent(line):
     assert got == pytest.approx(hammerstad_jensen(0.36, 0.2, 4.5), rel=0.03)
 
 
-@needs_openems
-def test_a_run_with_no_limit_judges_nothing_and_does_not_pass(tmp_path):
-    """The line with its limits taken out: the run measures and writes its report, and says it judged
-    nothing, exit 2, never PASS. The dielectric is made lossless: a plain material runs in half the
-    time of the Debye one (the 40 mm line: 18 s against 36 s), and the loss is no part of this test."""
+@pytest.fixture(scope="module")
+def bare(tmp_path_factory):
+    """The line with its limits taken out and its dielectric lossless, run once: a plain material runs
+    in half the time of the Debye one (the 40 mm line: 18 s against 36 s), and neither test that reads
+    it is about the loss."""
     import shutil
 
-    project = tmp_path / "line"
+    project = tmp_path_factory.mktemp("bare") / "line"
     shutil.copytree(ROOT / "tests" / "boards" / "pass-fields-microstrip", project)
     pcb = project / "line.kicad_pcb"
     text = pcb.read_text(encoding="utf-8")
@@ -113,9 +113,14 @@ def test_a_run_with_no_limit_judges_nothing_and_does_not_pass(tmp_path):
     spec = json.loads((project / "fields.json").read_text(encoding="utf-8"))
     spec["groups"][0]["limits"] = []
     (project / "fields.json").write_text(json.dumps(spec), encoding="utf-8")
-    proc = subprocess.run(
-        [sys.executable, str(CLI), "fields", str(project)], capture_output=True, text=True, timeout=3600
-    )
+    return project, run_project(project)
+
+
+@needs_openems
+def test_a_run_with_no_limit_judges_nothing_and_does_not_pass(bare):
+    """The line with its limits taken out: the run measures and writes its report, and says it judged
+    nothing, exit 2, never PASS."""
+    project, (proc, _) = bare
     assert proc.returncode == 2, proc.stdout + proc.stderr
     assert "SKIP   fields" in proc.stdout and "no limit stated: nothing judged" in proc.stdout
     assert "impedance_ohm" in (project / "build" / "fields" / "report.md").read_text(encoding="utf-8")
@@ -222,18 +227,26 @@ def test_the_stub_fails_on_insertion_loss_alone(stub):
 
 
 @needs_openems
-def test_the_same_file_gives_the_same_numbers(stub, tmp_path):
-    """openEMS stops on a check made every 4 s of the clock: 4 runs of the stub stopped after 7189 to
-    8453 steps and gave 29.55 to 29.99 dB. The spectra end where the ports' energy has settled, a
-    sample every run reaches the same way: a second run gives every measure to the last digit, while
-    a busy machine slows it."""
+def test_the_same_file_gives_the_same_numbers(bare, tmp_path):
+    """openEMS stopped on a check made every 4 s of the clock: 4 runs of the stub stopped after 7189 to
+    8453 steps and gave 29.55 to 29.99 dB, and the Wyvern lane settled in 1 run and not in another.
+    The run is ended once the ports' energy has settled and the box's has fallen, and the spectra end
+    at the sample where the ports' energy settled, a sample every run reaches the same way: a second
+    run of the bare line's files (the `bare` fixture, 10 s against the stub's 48 s) gives every
+    measure to the last digit, while a busy machine slows it."""
+    import shutil
+
+    project, (_, first) = bare
+    again = tmp_path / "line"
+    shutil.copytree(project, again, ignore=shutil.ignore_patterns("build"))
     load = subprocess.Popen([sys.executable, "-c", "while True: pass"])
     try:
-        _, again = run("fail-fields-stub", tmp_path)
+        _, second = run_project(again)
     finally:
         load.kill()
         load.wait()
-    assert again["details"]["measures"] == stub[1]["details"]["measures"]
+    assert second["details"]["measures"] == first["details"]["measures"]
+    assert second["details"]["measures"]["sig"]["SIG"]["impedance_ohm"]["value"] is not None
 
 
 @needs_openems

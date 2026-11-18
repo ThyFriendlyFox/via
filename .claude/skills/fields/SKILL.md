@@ -193,9 +193,10 @@ guideline with an impedance is a limit of its own: cite it.
      document.
    - `FAIL` with `openEMS on port N ended without a result`: the line says
      why. `did not fall to the end criterion`: raise `max_timesteps` in
-     `settings`. `did not settle 40 dB under their peak`: openEMS stopped
-     before the ports' energy settled after its last loud sample; lower
-     `end_criteria_db` (-50). `a cell is too small`: report it with
+     `settings`. `did not settle 40 dB under their peak`: the run ended
+     before the ports' energy settled after its last loud sample; report
+     it with `build/fields/<group>/` (the run is ended only once they have
+     settled). `a cell is too small`: report it with
      `build/fields/<group>/model.json`. `Unused
      primitive`: a piece of copper or a port lies on no mesh line; report it
      with `build/fields/<group>/model.json`.
@@ -271,15 +272,20 @@ guideline with an impedance is a limit of its own: cite it.
 
 ## Where the spectra end
 
-openEMS checks its end criterion every 4 s of the clock (its log prints the
-energy at 4 s, 8 s, 12 s), so where it stops hangs on the machine's load:
-4 runs of 1 stub file stopped after 7189 to 8453 steps. The command lets openEMS run until the box's
-energy falls 10 dB past `end_criteria_db`, then reads the ports' samples
-only up to the sample where the ports' energy has stayed
-`end_criteria_db` under its peak for 5 samples after its last sample above
-that. Every sample up to there is the same from run to run, and a run that
-stops later adds only quiet samples, so the same file gives the same
-numbers. On a line longer than the pulse every port is quiet while the wave
+openEMS checks its own end criterion every 4 s of the clock (its log prints
+the energy at 4 s, 8 s, 12 s), so where it stopped hung on the machine's
+load: 4 runs of 1 stub file stopped after 7189 to 8453 steps, and the Wyvern
+lane stopped at 13410 steps in 1 run (46 samples, the ports not settled) and
+at 13708 in 3 (47 samples, settled). The command turns that criterion off
+and ends the run itself, by openEMS's `ABORT` file, once the ports' energy
+has stayed `end_criteria_db` under its peak for 5 samples after its last
+sample above that and the box's energy has printed 10 dB past
+`end_criteria_db`; then it reads the ports' samples only up to that settle
+sample. Every sample is the same from run to run, whatever the load or
+openEMS's threads (the lane's 46 samples on 4 threads and on 1: alike to the
+digit), and a run that ends later adds only quiet samples, so the same file
+gives the same numbers. A run that never settles ends at `max_timesteps`, a
+fault. On a line longer than the pulse every port is quiet while the wave
 crosses: a cut at the first quiet 5 samples missed the far port's wave
 (the probes of a 10 mm run with port 2 delayed by 40 samples gave |S21| of
 -85 to -66 dB; after its last loud sample, -0.2 to -0.1 dB).
