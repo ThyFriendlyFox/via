@@ -41,7 +41,7 @@ The cable's inductance and the board's input capacitors form a resonant circuit.
 
 Wyvern meets the rule with a damper across the input: C42, 22 uF, in series with R45, 0.33 ohm. The resistor absorbs energy at the resonance, and the capacitor keeps DC out of it. [The simulation](examples/snapdragon-dev-board/v0.2/sim/vbus_pdn.cir) puts the peak at 0.26 ohm at 37 kHz, and 0.51 ohm at the worst corner. Both sit under the 1.33 ohm. The first version had no damper and kept only 0.13 ohm of margin.
 
-A converter's switching puts energy at its own frequency and at whole multiples, its harmonics. Via's frequency plan holds a band of 12.8 to 122 kHz around the cable's resonance. None of the first 10 harmonics of the three clocks in the plan lands in it. The converter runs in forced PWM, switching at a fixed 746 kHz at any load. In power-save mode its rate would fall with the load and sweep through the band.
+A converter's switching puts energy at its own frequency and at whole multiples, its harmonics. Via's frequency plan holds a band of 12.8 to 122 kHz around the cable's resonance. None of the first 10 harmonics of the three clocks in the plan lands in it. The converter runs in forced PWM, switching at a fixed 746 kHz at any load. Power-save mode would sweep its rate through the band as the load changes.
 
 ## How the design went
 
@@ -49,7 +49,7 @@ We asked for Wyvern on 2026-11-11: a compact board like a Teensy, with a Snapdra
 
 On 2026-11-12 we looked at v0.1 and saw loose ends in power, data and routing. It looked like two boards slapped together. We asked for one flat board with a QCS6490 module soldered straight on.
 
-In v0.2 the agent read the module's pin tables with a script. The script lost three of the 17 power pads. The agent then read each of the 64 pads the board uses off the datasheet's pages. The [list of mistakes](ee-agent-kit/MISTAKES.md) records it as M163.
+In v0.2 the agent read the module's pin tables with a script. The script lost three of the 17 power pads. The agent then read the 64 pads the board uses off the datasheet's pages. The [list of mistakes](ee-agent-kit/MISTAKES.md) records it as M163.
 
 Routing took seven tries. The first two left the 5 V plane under the module in three pieces. A copper spine along the module's middle pad line held it together.
 
