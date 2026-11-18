@@ -766,7 +766,10 @@ def test_each_fixture_is_routed_and_its_gates_are_green_with_the_4_warnings_name
     assert run.returncode == 0, run.stdout + run.stderr
     records = {r["gate"]: r for r in json.loads(run.stdout)}
     assert [records[g]["status"] for g in ("erc", "drc", "sim", "export")] == ["pass"] * 4
-    assert records["drc"]["summary"] == "0 errors, 0 warnings (0 unconnected, 0 parity)"
+    assert records["drc"]["summary"] == (
+        "0 errors, 0 warnings (0 unconnected, 0 parity), legend (no fab named: held to the least of the 4 "
+        "fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer)): 0 fail, 0 not judged"
+    )
     assert records["sim"]["summary"] == "1 decks, 20 corner runs, 0 failures, 4 warnings"
     text = json.dumps(records["sim"])
     assert all(w in text for w in WARNINGS)

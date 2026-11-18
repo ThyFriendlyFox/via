@@ -717,7 +717,10 @@ def test_each_fixture_is_routed_and_its_gates_are_green(name, tmp_path):
     assert "RATINGS held: build/ratings/report.json says RATINGS HELD" in run.stderr.splitlines(), run.stderr
     records = {r["gate"]: r for r in json.loads(run.stdout)}
     assert [records[g]["status"] for g in ("erc", "drc", "sim", "export")] == ["pass"] * 4
-    assert records["drc"]["summary"] == "0 errors, 0 warnings (0 unconnected, 0 parity)"
+    assert records["drc"]["summary"] == (
+        "0 errors, 0 warnings (0 unconnected, 0 parity), legend (no fab named: held to the least of the 4 "
+        "fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer)): 0 fail, 0 not judged"
+    )
     runs = json.loads((tmp_path / "sim" / "corners" / "i2c" / "runs.json").read_text(encoding="utf-8"))
     rises = [r["measures"]["tr"] for r in runs]
     assert (min(rises), max(rises)) == pytest.approx(RISES[name], rel=1e-2)

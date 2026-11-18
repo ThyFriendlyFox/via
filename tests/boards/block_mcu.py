@@ -54,6 +54,8 @@ def build(crystals: list[blocks.Stock]) -> kicadgen.Design:
         namespace=uuid.UUID("8f4c2a61-3d7e-4b19-a5c0-6e2d9b7f1a34"),
         outline=(100.0, 100.0, 140.0, 130.0),
         sheet="A4",
+        # The library put U1's designator on a via the route drops, which the DRC gate's legend fails.
+        place_designators=True,
     )
     d.power_nets = {"+3V3": "+3V3", "GND": "GND"}
     # +3V3 and GND arrive on J1: no power-output pin drives them.

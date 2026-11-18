@@ -116,7 +116,7 @@
 		(tags "Through hole pin header THT 1x02 2.54mm single row")
 		(property "Reference" "J1"
 			(uuid "107926aa-bb57-5019-8904-2b3d19cbd4a6")
-			(at 0 -2.38 0)
+			(at 0 -2.495 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -337,7 +337,7 @@
 		(tags "Texas VQFN NoLead")
 		(property "Reference" "U1"
 			(uuid "375daad2-d24e-5a4f-996b-2c643c54fbc4")
-			(at 0 -3.33 0)
+			(at 3.910118 0 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -979,7 +979,7 @@
 		(tags "SMD SMT crystal")
 		(property "Reference" "Y1"
 			(uuid "12cccc40-a456-5bff-8276-20598dff20fa")
-			(at 0 -5.08 180)
+			(at 0 5.225 0)
 			(layer "F.SilkS")
 			(uuid "caf08427-d8d6-4b18-b601-762874096fbc")
 			(effects
@@ -1307,7 +1307,7 @@
 		(tags "capacitor")
 		(property "Reference" "C1"
 			(uuid "5322ddc6-34c2-5de2-ad20-ede62577bd7a")
-			(at 0 -1.43 0)
+			(at 0 -1.455 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -1447,7 +1447,7 @@
 		(tags "capacitor")
 		(property "Reference" "C2"
 			(uuid "a5abd072-a9a3-53e0-a520-24213c9f9b0c")
-			(at 0 -1.43 0)
+			(at 0 -1.455 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -1587,7 +1587,7 @@
 		(tags "capacitor")
 		(property "Reference" "C3"
 			(uuid "7bd6897f-a3eb-5c38-bb18-d07b5eca04fd")
-			(at 0 -1.68 0)
+			(at 0 -1.705 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -1727,7 +1727,7 @@
 		(tags "capacitor")
 		(property "Reference" "C4"
 			(uuid "3dc848d3-1f23-54cd-95e6-dd27a6a0c653")
-			(at 0 -1.43 0)
+			(at 0 -1.455 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -1867,7 +1867,7 @@
 		(tags "capacitor")
 		(property "Reference" "C5"
 			(uuid "17ff9aea-429a-5015-bada-7517aa6bfec9")
-			(at 0 -1.43 0)
+			(at 0 -1.455 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -2007,7 +2007,7 @@
 		(tags "capacitor")
 		(property "Reference" "C6"
 			(uuid "6cc73935-d113-5472-90d0-2ade720ebe67")
-			(at 0 -1.68 0)
+			(at 0 -1.705 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -2147,7 +2147,7 @@
 		(tags "resistor")
 		(property "Reference" "R1"
 			(uuid "e74bc73d-57ad-5ac9-b8aa-86c9080106f0")
-			(at 0 -1.43 0)
+			(at 0 -1.455 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -2287,7 +2287,7 @@
 		(tags "capacitor")
 		(property "Reference" "C7"
 			(uuid "14b44e43-8f15-5e67-a1e7-e94fa3f1b7b6")
-			(at 0 -1.43 0)
+			(at 0 -1.455 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -2427,7 +2427,7 @@
 		(tags "Through hole pin header THT 2x07 2.54mm double row")
 		(property "Reference" "J2"
 			(uuid "23cb59bd-913f-50c8-8d89-0d79a826f300")
-			(at 1.27 -2.38 0)
+			(at 1.275 -2.505 0)
 			(layer "F.SilkS")
 			(effects
 				(font

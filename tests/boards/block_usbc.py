@@ -34,6 +34,8 @@ def build(amps: float) -> kicadgen.Design:
         namespace=uuid.UUID("0b8f3c51-7a2e-4d96-b1c4-6e2a9f5d8c13"),
         outline=(100.0, 100.0, 140.0, 130.0),
         sheet="A4",
+        # The library put J1's designator under its own courtyard, which the DRC gate's legend fails.
+        place_designators=True,
     )
     d.power_nets = {"VBUS": "VBUS", "GND": "GND"}
     # VBUS and GND arrive on J1: no power-output pin drives them.

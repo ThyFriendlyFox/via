@@ -649,7 +649,10 @@ def test_the_fixture_is_routed_and_its_gates_are_green(tmp_path):
     assert said[-1].startswith("GREEN with "), run.stderr
     records = {r["gate"]: r for r in json.loads(run.stdout)}
     assert [records[g]["status"] for g in ("erc", "drc", "sim", "export")] == ["pass"] * 4
-    assert records["drc"]["summary"] == "0 errors, 0 warnings (0 unconnected, 0 parity)"
+    assert records["drc"]["summary"] == (
+        "0 errors, 0 warnings (0 unconnected, 0 parity), legend (no fab named: held to the least of the 4 "
+        "fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer)): 0 fail, 0 not judged"
+    )
     runs = json.loads((tmp_path / "sim" / "corners" / "charger" / "runs.json").read_text(encoding="utf-8"))
     amps = [r["measures"]["ichg"] for r in runs]
     watts = [r["measures"]["p_u1"] for r in runs]
@@ -662,8 +665,11 @@ def test_the_fixture_is_routed_and_its_gates_are_green(tmp_path):
         110.0,
         True,
     )
-    # The 1 warning: the deck holds nothing that moves with temperature; the ambient's corners are there for
-    # the junction, which the thermal check works out at each.
+    # The 2 warnings: C1 and C2 hold their makers' data and the deck runs no capacitor, so no deck runs them
+    # on it (roadmap item 4's line); and the deck holds nothing that moves with temperature, the ambient's
+    # corners being there for the junction, which the thermal check works out at each.
     assert records["sim"]["details"]["warnings"] == [
-        "charger: no measure moves with temperature: nothing in the deck or its models carries one"
+        "not judged: C1 and C2 hold their makers' data, and no deck holds a capacitor or an inductor: a deck "
+        "runs a board part on it only under the part's reference",
+        "charger: no measure moves with temperature: nothing in the deck or its models carries one",
     ]
