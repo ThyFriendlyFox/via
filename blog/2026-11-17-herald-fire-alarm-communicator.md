@@ -5,7 +5,7 @@ tags: [examples, herald, dtmf, signal processing, fire alarms]
 image: /examples/herald/card.png
 ---
 
-Herald is a board designed to sit beside a fire alarm panel and pass on its reports. Many panels report by dialing a monitoring station on a phone line, and Herald stands in for that line. The reports then leave over LTE-M, a low-power form of the 4G cell network, or Wi-Fi. We made it as an example for Via, our toolkit for circuit boards designed by AI.
+Herald is a board designed to sit beside a fire alarm panel and pass on its reports. Many panels report by dialing a monitoring station on a phone line, and Herald stands in for that line. Reports then leave over LTE-M, a low-power form of the 4G cell network, or Wi-Fi. We made it as an example for Via, our toolkit for circuit boards designed by AI.
 
 ![Herald's routed board in 3D: a red board with the LTE-M modem, a nano SIM holder, the ESP32-S3 module, a relay, five status lights and black screw terminals along its front edge](/examples/herald/card.png "Herald v0.1, rendered by KiCad")
 
@@ -19,11 +19,11 @@ Herald takes the exchange's place. Two transistors feed the line from the panel'
 
 Herald's design then plays dial tone: 350 and 440 Hz together. After the dialer dials, Herald answers with a handshake: 1400 then 2300 Hz, 100 ms each. The dialer sends its message as touch-tone digits. Herald confirms a good message with a "kissoff" tone, 1400 Hz for 800 ms.
 
-The message follows Contact ID, the alarm maker Ademco's format, now standard SIA DC-05. Its 16 digits hold an account, a zone and an event code, where 110 means fire alarm. The last digit makes the sum of all 16 a multiple of 15, with each 0 counted as 10. A wrong digit breaks the sum, so Herald sends no kissoff, and the dialer sends the message again. The agent took these values from open-source receivers and makers' documents, not the DC-05 text.
+The message follows Contact ID, the alarm maker Ademco's format, now the standard SIA DC-05. Its 16 digits hold an account, a zone and an event code, where 110 means fire alarm. The last digit makes the sum of all 16 a multiple of 15, with each 0 counted as 10. A wrong digit breaks the sum, so Herald sends no kissoff, and the dialer sends the message again. The agent took these values from open-source receivers and makers' documents, not the DC-05 text.
 
 ## Eight tones for 16 keys
 
-Each key on a touch-tone phone sounds two tones at once. That scheme is DTMF, for dual-tone multi-frequency. The rows use 697, 770, 852 and 941 Hz; the columns use 1209, 1336, 1477 and 1633 Hz. ITU-T Recommendation [Q.23](https://www.itu.int/rec/T-REC-Q.23/en) (1988) fixes these frequencies. Its companion, [Q.24](https://www.itu.int/rec/T-REC-Q.24/en), says what a receiver must accept and refuse.
+Each key on a touch-tone phone sounds two tones at once. That is DTMF, dual-tone multi-frequency. The rows use 697, 770, 852 and 941 Hz; the columns use 1209, 1336, 1477 and 1633 Hz. ITU-T Recommendation [Q.23](https://www.itu.int/rec/T-REC-Q.23/en) (1988) fixes these frequencies. Its companion, [Q.24](https://www.itu.int/rec/T-REC-Q.24/en), says what a receiver must accept and refuse.
 
 Herald's limits come from Table A-1 of Q.24. A dBm is a power level against one milliwatt. The decoder must take tones from 0 down to -25 dBm, a span of about 300 to 1. A tone 1.5 % off frequency must pass, and one 3.5 % off must not. A 40 ms digit must count, and a 23 ms burst must not.
 
@@ -37,7 +37,7 @@ Herald has no DTMF chip; its decoder, [`dtmf.c`](examples/fire-alarm-communicato
 
 The usual tool, the fast Fourier transform or FFT, measures every frequency in a window. Herald needs eight. Goertzel costs one multiply per sample per tone: 205 times eight is 1640. A 256-point FFT takes 1024 steps, each with a complex multiply worth four ordinary ones. Its answers also fall on a 31.25 Hz grid that misses every DTMF tone. Goertzel tunes to each tone exactly.
 
-Host tests play all 16 keys through the decoder, plus tones it must refuse.
+Tests on a computer play all 16 keys through the decoder, plus tones it must refuse. They pass.
 
 ## Telling an alarm from a cut wire
 
@@ -51,11 +51,11 @@ Four simulations test the cases at 0 and 50 °C and at each part's tolerance lim
 
 The agent writes the whole board as one Python file, [`design.py`](examples/fire-alarm-communicator/v0.1/design.py). Via makes it a KiCad project, routes it, then checks electrical rules, design rules, simulation and fabrication files. Simulation covers eight circuit files, called decks, in 573 runs across temperature and part tolerance. On the last run, all four checks passed, with seven warnings for white printing at the edge.
 
-In six of the eight rounds, a reviewer new to the board read its pictures against one fixed prompt. The reviewer's list became the next round's work. The board shrank from 96 to 84.4 mm wide, and the terminals turned black.
+In six of eight design rounds, a reviewer new to the board read its pictures against one fixed prompt. The reviewer's list became the next round's work. The board shrank from 96 to 84.4 mm wide, and the terminals turned black.
 
 The ESP32 makes tones as fast pulses, and two resistor-capacitor filters smooth them into a sine wave. The first filter used 10 kilohm resistors and 10 nF capacitors. The simulation showed 28 mV on the line, where the deck asks for 62 mV, about -25 dBm. Behind 10 kilohms, the line's 600 ohm load kept little of the tone. The agent changed the filter to 1 kilohm and 68 nF. The deck now reads 191 to 204 mV peak at 350 Hz, at every corner.
 
-FreeRouting, the open-source router, connected all but three nets, and the agent wrote those tracks into `design.py`. Two mistakes with keep-outs, areas where no copper may run, cost extra routes. In M137, a keep-out drawn after placement covered a surge diode's pad, and the route left one net open. In M138, keep-outs banned vias, plated holes through every layer, but the agent checked only the back for pads. Our [list of mistakes](ee-agent-kit/MISTAKES.md) records both, with the process step each one broke.
+FreeRouting, the open-source router, connected all but three nets, and the agent wrote those tracks into `design.py`. Two mistakes with keep-outs, areas where no copper may run, cost extra routes. In M137, a keep-out drawn after placement covered a surge diode's pad, and the route left one net open. In M138, keep-outs banned vias, plated holes through every layer, but the agent checked only the back for pads. Our [list of mistakes](ee-agent-kit/MISTAKES.md) records both, with the process step each broke.
 
 ## What is open
 

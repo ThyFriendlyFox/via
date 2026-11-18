@@ -9,7 +9,7 @@ Lark is a ceiling-fan light bulb designed for voice control, with the speech rec
 
 ![Lark v0.1 as it hangs base-up: the E26 base at the top, the driver board standing in a clear neck, the light disc across it, and a narrow board down the dome to a small disc at the tip](/examples/lark/card.png "Lark v0.1: four boards in an A19 bulb, drawn from the design files")
 
-We wrote the brief and read the agent's work, its check results and its mistakes. No Lark has been built, and its voice firmware is not written.
+We wrote the brief and read the agent's work, its check results and its mistakes. No Lark has been built, and its voice and radio firmware is not written.
 
 ## Why an LED needs a set current
 
@@ -17,7 +17,7 @@ Above a certain voltage, a small rise in an LED's voltage makes a large rise in 
 
 The driver board rectifies the mains into a bus near 165 V. Each of its two LED strings, warm and cool white, needs about 73 V. A buck converter steps the voltage down with a switch, a diode and a choke, which is a coil. With the switch on, current through the LEDs and the choke climbs. With it off, the choke drives the current on through the diode, and it falls. The output is the input times the duty cycle, the share of time the switch is on. Erickson and Maksimović derive this in *Fundamentals of Power Electronics* (2nd edition, Kluwer, 2001).
 
-Each string has a Microchip HV9961 controller. It senses the current in a 2.74 ohm resistor, then holds the switch off for 2.5 µs. [Its datasheet](examples/fan-bulb/library/microchip/HV9961-DS20005588B.pdf) says it regulates the average current, where the older HV9910B stops at the peak. The current is 0.185 times the LD pin's voltage over the sense resistor: 100 mA at 1.48 V. A third buck makes 3.3 V from the same bus. Its Power Integrations LinkSwitch-TN2 chip holds a 725 V switch and its controller.
+Each string has a Microchip HV9961 controller. It senses the current in a 2.74 ohm resistor, then holds the switch off for 2.5 µs. [Its datasheet](examples/fan-bulb/library/microchip/HV9961-DS20005588B.pdf) says it regulates the average current, where the older HV9910B stops at the peak. The current is 0.185 times the LD pin's voltage over the sense resistor: 100 mA at 1.48 V. A third buck makes 3.3 V from the same bus. Its Power Integrations [LinkSwitch-TN2](examples/fan-bulb/library/power-integrations/linkswitch-tn2_family_datasheet.pdf) chip holds a 725 V switch and its controller.
 
 ## Steady light under turning blades
 
@@ -37,15 +37,15 @@ We asked for a DIP switch on the side to choose Alexa or Apple Home. Its contact
 
 ## Where the microphones go
 
-Lark hangs base-up, so the dome's tip faces the room. Warm air rises, so the tip is also the coolest place. The agent put the two microphones there, on a 15 mm disc called the ear. Air in a shell with a small opening rings like a bottle, a Helmholtz resonator. The air in the opening is the mass, and the air in the shell is the spring. The ear's design file puts the dome's resonance near 400 Hz, which would weaken the higher tones of speech. So each microphone's port opens through the ear to its own hole in the dome.
+Lark hangs base-up, so the dome's tip faces the room. Warm air rises, so the tip is also the coolest place. The agent put the two microphones there, on a 15 mm disc called the ear. Air in a shell with a small opening rings like a bottle, a Helmholtz resonator. The air in the opening is the mass, and the air in the shell is the spring. The ear's design file puts the dome's resonance near 400 Hz, which would weaken the higher tones of speech. So each port opens through the ear to its own hole in the dome.
 
-The microphones sit 10.4 mm apart and feed an ESP32-S3 meant to run Espressif's ESP-SR speech models. A two-microphone beamformer favors one direction from the delay between the microphones. Sound crosses 10.4 mm in about 30 µs, under half of one 62.5 µs sample at ESP-SR's 16 kHz. ESP-SR's two-microphone front end is tuned for 4 to 6.5 cm, so its beamforming gains little here.
+The microphones sit 10.4 mm apart and feed an ESP32-S3 meant to run Espressif's ESP-SR speech models. A two-microphone beamformer favors one direction from the delay between them. Sound crosses 10.4 mm in about 30 µs, under half of one 62.5 µs sample at ESP-SR's 16 kHz. ESP-SR's two-microphone front end is tuned for 4 to 6.5 cm, so its beamforming gains little here.
 
 ## How the design went
 
-The agent tried an A15 bulb first, 47.6 mm across. Each of the driver's 56 parts fit alone, but not together. We answered: "expand the design as well if it cannot fit, or use multiple dimensions of stacked boards". The housing grew to an A19, 60 mm across and 108 mm long. Its inside is a cone, a sphere and a 20 mm tube. So Lark is four boards in two directions. The driver stands in the neck, and the aluminum light disc lies across its top. The brain board stands in the dome at 90 degrees to the driver, up to the ear. Tongues on the standing boards pass through slots in the lying boards and are soldered there.
+The agent tried an A15 bulb first, 47.6 mm across. Each of the driver's 56 parts fit alone, but not together. We answered: "expand the design as well if it cannot fit, or use multiple dimensions of stacked boards". The housing grew to an A19, 60 mm across and 108 mm long. Its inside is a cone, a sphere and a 20 mm tube. So Lark is four boards in two directions. The driver stands in the neck, and the aluminum light disc lies across its top. The brain board stands in the dome at 90 degrees to the driver, up to the ear. Tongues on the standing boards pass through slots in the lying boards, and solder fillets join them.
 
-The driver took the most routing work. On two layers, the FreeRouting autorouter left 26 connections open. On four layers, the router's file left out the new ground plane, and 37 stayed open. Our [list of mistakes](ee-agent-kit/MISTAKES.md) records that and the next fix's spacing errors as M207 and M208. The agent drew the links the router left open in code: 94 track segments and 23 vias. FreeRouting routed the rest.
+The driver took the most routing work. On two layers, the FreeRouting autorouter left 26 connections open. On four layers, the router's file left out the new ground plane, and 37 stayed open. Our [list of mistakes](ee-agent-kit/MISTAKES.md) records that and the next fix's spacing errors as M207 and M208. The agent coded the links the router left open: 94 track segments and 23 vias. FreeRouting routed the rest.
 
 The simulation check also failed once. The bus deck's 9.1 W load, meant as both strings at full current, was one string's worth. At the corners, one bulk capacitor carried more alternating current than its 47 mA rating. The agent added a firmware rule: warm and cool together draw at most 90 percent of one string. Now the deck's load is 8.3 W, and the worst corner carries 44.7 mA (M210).
 
