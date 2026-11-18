@@ -135,7 +135,7 @@ HINTS: list[tuple[str, str, str]] = [
     ),
     (
         r"^ratings: [^:]+\.csv: ",
-        "The parts file cannot be read, for the reason the line gives: it is not there, it is not UTF-8, "
+        "The parts file cannot be read, for the reason the line gives. It is not there, it is not UTF-8, "
         "or its CSV is broken. Name the file with `--parts`, or save it as UTF-8 CSV.",
         f'{RATINGS}, "Inputs"',
     ),
