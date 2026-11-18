@@ -66,7 +66,13 @@ Each row names the ratings it covers in `rated`, each above 0, in the stress's u
 has its own. A rating stands in 1 row; 2 ratings within 1e-9 of each other are 1 rating. A part whose
 rating no row names is held to its own rating, 1.00: over it, the line fails; under it, the derating
 is not judged, and the line says the pack names no share for that rating. A table that lists ratings
-says nothing of the ratings between them. A rule holds `max` or `by_rating`, never both.
+says nothing of the ratings between them.
+
+A document that grants a kind no share, and asks the user to justify one, is a rule with
+`"no_share": true` and no `above`. A part of that kind fails over its own rating; under it, the line
+says the document grants no share for the kind, and is not judged.
+
+A rule holds 1 of `max`, `by_rating` and `no_share`.
 
 ## How each pack reads its document
 
@@ -156,18 +162,20 @@ switch. Each is held to the part's own rating.
 
 ## A fuse
 
-A fuse's facts name its style by its kind. Each pack holds the fuses its document covers, and every
-other fuse is held to its own rating:
+A fuse's facts name its style by its kind. Each pack holds the fuses its document covers:
 
 | Kind | NASA | ECSS |
 |---|---|---|
-| `fuse.cartridge` | section F3, table 4, page 6 of 7: its rating's row | its own rating: clause 6.17.1a covers cermet fuses only |
+| `fuse.cartridge` | section F3, table 4, page 6 of 7: its rating's row | no share: clause 6.17.1a, page 48 |
 | `fuse.cermet` (metal film on ceramic) | its own rating: table 4 is for the cartridge style | clause 6.17.2, table 6-17, page 49 |
-| `fuse` (a chip fuse, a polymer fuse, a style not named) | its own rating | its own rating |
+| `fuse` (a chip fuse, a polymer fuse, a style not named) | its own rating | no share: clause 6.17.1a, page 48 |
 
 - NASA's table 4 has 6 rows: 50 % for 2, 2-1/2, 3, 4, 5, 7, 10 and 15 A; 45 % for 1 and 1-1/2 A;
   40 % for 3/4 and 1/2 A; 35 % for 3/8 A; 30 % for 1/4 A; 25 % for 1/8 A. A rating the table does not
   list, 6.3 A or 0.6 A, is held to its own rating, and its derating is not judged.
+- ECSS's clause 6.17.1a, page 48, says the deratings of 6.17.2 apply to cermet fuses only, and that
+  those of other fuse technologies shall be justified. The pack's rule `fuse.other.current` grants
+  them no share: such a fuse fails over its own rating, and under it its derating is not judged.
 - Its column Temperature Derating Factor adds "0.2%/C for an increase in the temperature of fuse body
   above 25 C". The pack reads it as 0.2 % of the rated current taken off the share for each C: the
   share falls in a line from its value at 25 C to 0 at 25 C + share / 0.002, so 0.50 reaches 0 at

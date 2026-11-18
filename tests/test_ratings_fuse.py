@@ -4,8 +4,9 @@ NASA EEE-INST-002, section F3, table 4, page 6 of 7 (May 2003), derates a cartri
 50 % for 2, 2-1/2, 3, 4, 5, 7, 10 and 15 A; 45 % for 1 and 1-1/2 A; 40 % for 3/4 and 1/2 A; 35 % for
 3/8 A; 30 % for 1/4 A; 25 % for 1/8 A; and 0.2 %/C more for the fuse body above 25 C. ECSS-Q-ST-30-11C
 Rev.2, clause 6.17.2, table 6-17, page 49, derates a cermet fuse to 65 % up to 85 C of its case, falling
-in a line to 50 % at 110 C; clause 6.17.1a says the table covers cermet fuses only. A fuse of another
-style is held to its own rating.
+in a line to 50 % at 110 C; clause 6.17.1a, page 48, says the table covers cermet fuses only, and that
+the derating of another fuse technology shall be justified: ECSS grants it no share. A fuse no table
+covers is held to its own rating, 1.00; where the pack grants it no share, its derating is not judged.
 """
 
 from __future__ import annotations
@@ -121,19 +122,45 @@ def test_a_rating_table_4_does_not_name_is_still_held_to_the_part_s_own(tmp_path
     assert ratings.verdict(report) == ("RATINGS NOT HELD (1 fail)", 1)
 
 
-def test_a_rating_at_0_that_the_rule_names_no_share_for_fails_and_ends_no_run(tmp_path):
+@pytest.mark.parametrize("share", [{"by_rating": [{"rated": [4], "max": 0.5}]}, {"no_share": True}])
+def test_a_rating_at_0_that_the_rule_names_no_share_for_fails_and_ends_no_run(tmp_path, share):
     """4 A at 25 C and 0 A at 150 C: at 150 C nothing of the rating is left. A pack whose rule names no
-    share for that rating sent the part to its own rating, 1 A / 0 A, and the run ended in a
-    ZeroDivisionError."""
+    share for that rating, or grants none, sent the part to its own rating, 1 A / 0 A, and the run ended
+    in a ZeroDivisionError."""
     net, mpns = circuit(Q1=("FET", "FET-2", POWER_FET))
     nets = {"LOAD": (0.0, 12.6), "GATE": (0.0, 3.3), **GND}
     facts = library(tmp_path, power_fet(amps_drain=[[25, 4.0], [150, 0]]))
     rule = {"id": "q", "stress": "mosfet.drain_current", "kinds": ["transistor"], "where": "table 1, page 1"}
-    pack = pack_of(tmp_path, {**rule, "by_rating": [{"rated": [4], "max": 0.5}]})
+    pack = pack_of(tmp_path, {**rule, **share})
     report = ratings.judge(net, mpns, facts, project(nets, amps={"Q1": 1.0}, ambient=150), pack)
     assert [line.split(" [")[0] for line in found(report, "fail")] == [
         "fail Q1 FET drain current, with the 1 A the project states: 1 A on 0 A rated: "
         "nothing of the rating is left"
+    ]
+
+
+ECSS_OTHER = (
+    f"{ECSS_SOURCE}, clause 6.17.1a, page 48: the deratings of 6.17.2 cover cermet fuses only, and those "
+    "of other fuse technologies shall be justified"
+)
+
+
+@pytest.mark.parametrize("kind", ["fuse", "fuse.cartridge"])
+def test_ecss_grants_no_share_to_a_fuse_that_is_not_cermet(tmp_path, kind):
+    """Clause 6.17.1a, page 48: the derating of another fuse technology is to be justified, so ECSS
+    grants it none. 1.2 A / 2 A = 0.60 is under the part's own 1.00: the derating is not judged. 2.4 A /
+    2 A = 1.20 is over the part's own rating: a fail, whatever the derating."""
+    under = fused(tmp_path, kind, 2.0, 1.2, ECSS)
+    assert fuse_lines(under) == [
+        "not judged F1 F current, with the 1.2 A the project states: 1.2 A on 2 A rated: the pack's "
+        f"document grants no share for this kind of part [{ECSS_OTHER}]"
+    ]
+    assert ratings.verdict(under) == ("RATINGS HELD, 1 NOT JUDGED", 0)
+    over = fused(tmp_path, kind, 2.0, 2.4, ECSS)
+    assert fuse_lines(over) == [
+        "fail F1 F current, with the 2.4 A the project states: 2.4 A on 2 A rated is 1.20, the limit is "
+        "1.00, the part's own rating: the pack's document grants no share for this kind of part [DS-1, rev "
+        "A: the part's own rating]"
     ]
 
 
@@ -169,9 +196,7 @@ def test_a_cermet_fuse_is_held_to_ecss_table_6_17(tmp_path):
     ("kind", "pack"),
     [
         ("fuse", NASA),  # a fuse of no named style
-        ("fuse", ECSS),
         ("fuse.cermet", NASA),  # table 4 of NASA covers the cartridge style
-        ("fuse.cartridge", ECSS),  # clause 6.17.1a: table 6-17 covers cermet fuses only
     ],
 )
 def test_a_fuse_neither_table_covers_is_held_to_its_own_rating(tmp_path, kind, pack):
@@ -235,10 +260,10 @@ def test_a_row_with_no_above_of_its_own_takes_the_rule_s(tmp_path):
 @pytest.mark.parametrize(
     ("rule", "message"),
     [
-        ({**RULE}, "x.json: rule 1: `max` or `by_rating` is asked"),
+        ({**RULE}, "x.json: rule 1: `max`, `by_rating` or `no_share` is asked"),
         (
             {**RULE, "max": 0.5, "by_rating": [{"rated": [1], "max": 0.5}]},
-            "x.json: rule 1: `max` and `by_rating` stand together; a rule holds 1 of them",
+            "x.json: rule 1: `max`, `by_rating` and `no_share`: a rule holds 1 of them",
         ),
         ({**RULE, "by_rating": []}, "x.json: rule 1: by_rating: a list of shares is asked"),
         ({**RULE, "by_rating": [{"rated": [], "max": 0.5}]}, "x.json: rule 1: by_rating 1: rated: a list"),
@@ -271,6 +296,15 @@ def test_a_row_with_no_above_of_its_own_takes_the_rule_s(tmp_path):
         (  # 1 and 1.0000000001 differ by 1e-10 of 1, under the 1e-9 Rule.at() matches a rating by
             {**RULE, "by_rating": [{"rated": [1], "max": 0.5}, {"rated": [1.0000000001], "max": 0.2}]},
             "x.json: rule 1: by_rating 2: rated: 1 stands in by_rating 1 too",
+        ),
+        ({**RULE, "no_share": False}, "x.json: rule 1: no_share: true is asked"),
+        (
+            {**RULE, "no_share": True, "above": CASE_25},
+            "x.json: rule 1: above: a rule that grants no share has none to lower",
+        ),
+        (
+            {**RULE, "no_share": True, "max": 0.5},
+            "x.json: rule 1: `max`, `by_rating` and `no_share`: a rule holds 1 of them",
         ),
     ],
 )

@@ -8,7 +8,8 @@ verify`: an edit of the engine that moves an anchor fixes the anchor in the same
 A name is the reviewer's id of 2026-11-17 and the part of the engine it changes. The reviewer's 431
 changes were written against an older engine; each is anchored here to the text it changes now.
 EQUIVALENT names the changes no test can catch, each with the reason; GONE the ones whose code was
-rewritten since. FU01 to FU15 and FU21 change the rule by rating that a fuse's current is held to.
+rewritten since. FU01 to FU21 change the rule by rating that a fuse's current is held to, and the
+rule that grants a kind no share.
 """
 
 TEST = (
@@ -142,13 +143,18 @@ MUTATIONS = [
     ('FU06 _joined', 'tools/ratings.py', 'wire = found.kind.partition(".")[0] in ("fuse", "ferrite", "link")', 'wire = found.kind in ("fuse", "ferrite", "link")'),
     ('FU07 model_of', 'tools/ratings.py', 'if kind.partition(".")[0] in ("ferrite", "fuse", "link", "inductor"):', 'if kind in ("ferrite", "fuse", "link", "inductor"):'),
     ('FU08 Rule.at', 'tools/ratings.py', 'math.isclose(rated, r, rel_tol=EPS)', 'rated == r'),
-    ('FU09 read_pack', 'tools/ratings.py', 'raise Refusal(f"{where}: `max` and `by_rating` stand together; a rule holds 1 of them")', 'pass'),
+    ('FU09 read_pack', 'tools/ratings.py', 'raise Refusal(f"{where}: `max`, `by_rating` and `no_share`: a rule holds 1 of them")', 'pass'),
     ('FU10 _bands', 'tools/ratings.py', 'share = _number(f"{here}: max", row["max"], 0, 1)', 'share = _number(f"{here}: max", row["max"])'),
     ('FU11 _bands', 'tools/ratings.py', 'term = row.get("above", above)', 'term = row.get("above")'),
     ('FU12 _bands', 'tools/ratings.py', 'r, above=0) for r in row["rated"]', 'r) for r in row["rated"]'),
     ('FU13 _bands', 'tools/ratings.py', '        _above(where, above, 1)', '        pass'),
     ('FU14 _bands', 'tools/ratings.py', 'math.isclose(r, s, rel_tol=EPS)', 'r == s'),
     ('FU15 judge.ratio', 'tools/ratings.py', 'if value > rated + EPS:', 'if False:'),
+    ('FU16 judge.ratio', 'tools/ratings.py', 'if pack.rule(stress, of[ref].kind).grants:', 'if True:'),
+    ('FU17 Rule.at', 'tools/ratings.py', 'if not self.grants:\n            return None', 'if False:\n            return None'),
+    ('FU18 read_pack', 'tools/ratings.py', 'rule["no_share"] is not True', 'False'),
+    ('FU19 read_pack', 'tools/ratings.py', 'if "no_share" in rule and "above" in rule:', 'if False:'),
+    ('FU20 read_pack', 'tools/ratings.py', 'raise Refusal(f"{where}: `max`, `by_rating` or `no_share` is asked")', 'pass'),
     ('FU21 judge.ratio', 'tools/ratings.py', 'over = value / rated', 'over = rated / value'),
     ('GT02 gate_ratings.strict', 'tools/ratings.py', 'if strict else ("fail",)', 'if not strict else ("fail",)'),
     ('GT03 gate_ratings.details', 'tools/ratings.py', 'not in (*red, "hold")', 'not in (*red,)'),

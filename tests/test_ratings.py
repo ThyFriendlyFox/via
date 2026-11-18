@@ -956,7 +956,7 @@ IN_A_ROW = {
 
 def test_a_stated_current_through_a_fuse_a_ferrite_and_a_switch_is_held_to_the_part_s_rating(tmp_path):
     """1.5 A through a 2 A fuse is 0.75, 600 mA through a 500 mA ferrite is 1.20 and 20 mA through a
-    50 mA switch is 0.40. Neither pack holds a rule for the 3: each is held to its own rating. The
+    50 mA switch is 0.40. NASA's pack holds no rule for the 3: each is held to its own rating. The
     command took the 3 currents before, held them to nothing, and printed RATINGS HELD."""
     net, mpns = circuit(**IN_A_ROW)
     facts = library(
@@ -3139,8 +3139,13 @@ def test_a_shipped_pack_loads_and_each_of_its_limits_names_a_table_and_a_page(na
     no_row = {"ferrite.current", "switch.current"}
     assert {rule.stress for rule in pack.rules} == set(ratings.STRESSES) - no_row
     for rule in pack.rules:
+        if not rule.grants:  # a clause that grants no share and asks for a justification: no table
+            assert rule.where.startswith("clause ") and "page" in rule.where, rule.id
+            assert rule.max == 0 and rule.at(1.0) is None, rule.id
+            continue
         assert "table" in rule.where and "page" in rule.where, rule.id
         assert 0 < rule.max < 1, rule.id
+    assert [r.id for r in pack.rules if not r.grants] == (["fuse.other.current"] if "ecss" in name else [])
 
 
 RESISTOR = {"kind": "resistor", "mpn": "R-1", "tolerance": 0.01, "watts": 0.1, "volts": 50, "source": READ}

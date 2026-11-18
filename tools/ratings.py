@@ -774,10 +774,13 @@ class Rule:
     above: tuple[str, float, float, float] | None  # ambient or case, from this C, falls to, at this C
     # a share that depends on the part's own rating: (the ratings a row names, its share, its `above`)
     bands: tuple[tuple[tuple[float, ...], float, tuple[str, float, float, float] | None], ...] = ()
+    grants: bool = True  # False: the document grants the kind no share, and asks the user to justify one
 
     def at(self, rated: float) -> Rule | None:
-        """The rule for a part of this rating: the row that names the rating, or None when no row does.
-        A rule of 1 share is the same for every rating."""
+        """The rule for a part of this rating: the row that names the rating, or None when no row does
+        or the rule grants no share. A rule of 1 share is the same for every rating."""
+        if not self.grants:
+            return None
         if not self.bands:
             return self
         for ratings, share, above in self.bands:
@@ -825,11 +828,17 @@ def read_pack(path: Path, own: str = "") -> Pack:
         if isinstance(raw, dict) and raw.get("stress") == JUNCTION:
             rule = _keys(where, raw, ("id", "stress", "kinds", "where"), JUNCTION_LIMITS)
         else:
-            rule = _keys(where, raw, ("id", "stress", "kinds", "where"), ("max", "by_rating", "above"))
-            if "max" in rule and "by_rating" in rule:
-                raise Refusal(f"{where}: `max` and `by_rating` stand together; a rule holds 1 of them")
-            if "max" not in rule and "by_rating" not in rule:
-                raise Refusal(f"{where}: `max` or `by_rating` is asked")
+            shares = ("max", "by_rating", "no_share")
+            rule = _keys(where, raw, ("id", "stress", "kinds", "where"), (*shares, "above"))
+            held = [key for key in shares if key in rule]
+            if len(held) > 1:
+                raise Refusal(f"{where}: `max`, `by_rating` and `no_share`: a rule holds 1 of them")
+            if not held:
+                raise Refusal(f"{where}: `max`, `by_rating` or `no_share` is asked")
+            if "no_share" in rule and rule["no_share"] is not True:
+                raise Refusal(f"{where}: no_share: true is asked")
+            if "no_share" in rule and "above" in rule:
+                raise Refusal(f"{where}: above: a rule that grants no share has none to lower")
         if rule["stress"] not in (*STRESSES, JUNCTION):
             known = ", ".join((*STRESSES, JUNCTION))
             raise Refusal(f"{where}: `{rule['stress']}` is no stress the command computes; they are {known}")
@@ -860,7 +869,14 @@ def read_pack(path: Path, own: str = "") -> Pack:
             )
             continue
         bands = _bands(where, rule["by_rating"], rule.get("above")) if "by_rating" in rule else ()
-        most = max(b[1] for b in bands) if bands else _number(f"{where}: max", rule["max"], 0, 1)
+        grants = "no_share" not in rule
+        most = (
+            max(b[1] for b in bands)
+            if bands
+            else _number(f"{where}: max", rule["max"], 0, 1)
+            if grants
+            else 0
+        )
         rules.append(
             Rule(
                 _text(f"{where}: id", rule["id"]),
@@ -870,6 +886,7 @@ def read_pack(path: Path, own: str = "") -> Pack:
                 _text(f"{where}: where", rule["where"]),
                 None if bands or "above" not in rule else _above(where, rule["above"], most),
                 bands,
+                grants,
             )
         )
     name = _text(f"{path.name}: pack", data["pack"])
@@ -1836,7 +1853,7 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
 
     def limit_of(stress: str, ref: str, rated: float) -> tuple[float | None, str, str]:
         """The share of its rating a part may reach, the rule's name, and the source for the line. The
-        share is None when the rule goes by the rating and names none for this one."""
+        share is None when the rule grants none for this part, by its kind or its rating."""
         rule = pack.rule(stress, of[ref].kind)
         if rule is None:
             return 1.0, stress, f"{of[ref].source}: the part's own rating"
@@ -1876,7 +1893,10 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
             judged(ref, rule, value <= EPS, text, source)
             return
         if share is None:  # no derated share: the part's own rating, 1.00, holds all the same
-            why = f"the pack names no share for a rating of {si(rated, unit)}"
+            if pack.rule(stress, of[ref].kind).grants:
+                why = f"the pack names no share for a rating of {si(rated, unit)}"
+            else:
+                why = "the pack's document grants no share for this kind of part"
             if value > rated + EPS:
                 over = value / rated
                 text = f"{label}: {si(value, unit)} on {si(rated, unit)} rated is {over:.2f}"
