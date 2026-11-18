@@ -193,7 +193,9 @@ part by `mpn` or `mpns` and whose `source.sha256` is a row of
 |---|---|---|---|
 | `BOARD_TOKEN` | repository secret | none | A classic personal access token with the `project` and `repo` scopes; the board is changed with it. Without it the job prints 1 line and ends green. |
 | `BOARD_URL` | repository variable | `https://github.com/users/ThyFriendlyFox/projects/2` | The project board the work cards stand on (`https://github.com/users/<login>/projects/<n>` or `https://github.com/orgs/<login>/projects/<n>`). |
-| `--event` | flag of `tools/board.py` | required | The issues event's JSON file (`GITHUB_EVENT_PATH`). |
+| `--event` | flag of `tools/board.py` | 1 of `--event` and `--all` is required | The issues event's JSON file (`GITHUB_EVENT_PATH`): that 1 card. |
+| `--all` | flag of `tools/board.py` | off | Every work card of `--repo`, open and closed; the workflow passes it on its schedule and when run by hand. |
+| `--repo` | flag of `tools/board.py` | required with `--all` | The repository, `<owner>/<name>` (`GITHUB_REPOSITORY`). |
 | `--board` | flag of `tools/board.py` | required | The project's URL. |
 
 ## `copper.json` (beside a board, for `workcenter copper`)
