@@ -228,6 +228,7 @@ def test_every_cli_flag_is_in_the_configuration_table():
         "tools/fields.py",  # and fields
         "tools/highspeed.py",  # and highspeed
         "tools/now.py",  # and now
+        "tools/standards.py",  # and standards
         "tools/board.py",
         "tools/harvest.py",
     )
