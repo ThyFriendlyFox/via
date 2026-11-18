@@ -18,6 +18,8 @@ import ratings  # noqa: E402
 import simneeds  # noqa: E402
 
 SAMPLE = ROOT / "tests" / "samples" / "ratings" / "pass-ratings-node.xml"
+# The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
+CITES = {"nxp-um10204": "Rev. 7.0, table 11, page 44 and section 7.1, page 50"}
 
 
 def netlist(parts: list[tuple[str, str, str]], nets: dict[str, list[tuple[str, str, str, str]]]):
