@@ -1095,3 +1095,41 @@ def test_the_lanes_samples_settle_whatever_step_openems_would_stop_at(tmp_path):
     log = (project / "build" / "fields" / "sig" / "openems" / "port1" / "openems.log").read_text()
     assert 'Found file "ABORT"' in log
     assert not (project / "build" / "fields" / "sig" / "openems" / "port1" / "ABORT").exists()
+
+
+def test_a_run_whose_ports_never_settle_ends_at_the_step_limit_and_is_refused(tmp_path, monkeypatch):
+    """The stand-in openEMS of the lane test, run through `OpenEMS.run` itself: its ports stay at their
+    peak and the box's energy at 0 dB for all 60 samples, so `ended` never holds and no ABORT file is
+    made. An ABORT file an earlier run left in the folder is taken away before the stand-in starts
+    (else it would stop at its first sample, and an abort is no fault). The stand-in stops at its step
+    limit with openEMS's warning and exit 0. The run ends on its own, well inside its timeout; it is
+    refused with the reason (the energy did not fall within the step limit), all 61 samples written,
+    and no ABORT file is left in the run's folder."""
+    import time
+
+    port_db = [None] + [0.0] * 60
+    box_db = [0.0] * len(port_db)
+    fake = tmp_path / "fake_openems.py"
+    fake.write_text(FAKE_OPENEMS, encoding="utf-8")
+    fake.with_suffix(".json").write_text(json.dumps([port_db, box_db]), encoding="utf-8")
+    exe = tmp_path / "stand-in"
+    exe.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{fake}" "$@"\n', encoding="utf-8")
+    exe.chmod(0o755)
+    monkeypatch.setenv("OPENEMS", str(exe))
+    run = tmp_path / "port1"
+    run.mkdir()
+    probes = "".join(f'<ProbeBox Name="port_{k}t{n}"/>' for n in (1, 2) for k in "ui")
+    (run / "model.xml").write_text(f'<FDTD endCriteria="0"/>{probes}', encoding="utf-8")
+    (run / "ABORT").write_text("left by an earlier run\n", encoding="utf-8")
+    model = {
+        "settings": {"port_ohm": 50.0, "end_criteria_db": -40.0},
+        "ports": [{"n": 1, "net": "S"}, {"n": 2, "net": "S"}],
+    }
+    start = time.monotonic()
+    ok, why = fields.OpenEMS.run(run, 60.0, model)
+    assert time.monotonic() - start < 30
+    assert not ok
+    assert why == "the energy in the box did not fall to the end criterion within the step limit"
+    assert "Max. number of timesteps was reached" in (run / "openems.log").read_text(encoding="utf-8")
+    assert len((run / "port_ut1").read_text(encoding="utf-8").splitlines()) == 61
+    assert not (run / "ABORT").exists()
