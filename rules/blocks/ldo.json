@@ -27,6 +27,8 @@
       "symbol": "Regulator_Linear:TLV75533PDBV",
       "footprint": "Package_TO_SOT_SMD:SOT-23-5",
       "pins": {"IN": "1", "GND": "2", "EN": "3", "OUT": "5"},
+      "vout_nominal": {"value": 3.3, "where": "table 8-1, Device Nomenclature, page 23: xx in TLV755xxP is the nominal output, 33 = 3.3 V"},
+      "accuracy": {"value": 0.015, "where": "section 5.5, Output accuracy, VOUT >= 1 V, -1.5 % to 1.5 %, page 5"},
       "source": {
         "document": "TLV755P datasheet, SBVS320D",
         "revision": "November 2017, revised September 2024",
@@ -62,6 +64,8 @@
       "symbol": "Regulator_Linear:TLV75533PDRV",
       "footprint": "Package_SON:WSON-6-1EP_2x2mm_P0.65mm_EP1x1.6mm",
       "pins": {"IN": "6", "GND": "3", "PAD": "7", "EN": "4", "OUT": "1"},
+      "vout_nominal": {"value": 3.3, "where": "table 8-1, Device Nomenclature, page 23: xx in TLV755xxP is the nominal output, 33 = 3.3 V"},
+      "accuracy": {"value": 0.015, "where": "section 5.5, Output accuracy, VOUT >= 1 V, -1.5 % to 1.5 %, page 5"},
       "source": {
         "document": "TLV755P datasheet, SBVS320D",
         "revision": "November 2017, revised September 2024",

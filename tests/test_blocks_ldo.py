@@ -3,10 +3,16 @@
 from library/facts as `workcenter ratings` reads them.
 
 The sums of the 5 V to 3.3 V block, by hand. The input is 4.75 V to 5.25 V, the ambient 0 C to 30 C, the
-pack nasa-eee-inst-002. The facts of both ICs give the output 3.2505 V to 3.3495 V (1.5 %, page 5), the
-input 1.45 V to 5.5 V and the ground current 40 uA; the SOT-23-5 (DBV) has RthetaJA 231.1 C/W, the WSON-6
-(DRV) 100.2 C/W (section 5.4, page 5), both a junction of 150 C at the most (page 4). The pack's rule
-junction.ic.regulator allows the least of 85 C, 0.7 x 150 = 105 C and 150 - 40 = 110 C: 85 C.
+pack nasa-eee-inst-002.
+
+    VOUT       both ICs are TLV75533P: xx = 33 is the nominal output, 3.3 V (SBVS320D table 8-1, page 23),
+               held to the 3.3 V asked; with the accuracy of 1.5 % (section 5.5, VOUT >= 1 V, page 5),
+               3.3 x 0.985 = 3.2505 V to 3.3 x 1.015 = 3.3495 V, the span the deck holds v(out) to
+
+The facts of both ICs give the input 1.45 V to 5.5 V and the ground current 40 uA; the SOT-23-5 (DBV)
+has RthetaJA 231.1 C/W, the WSON-6 (DRV) 100.2 C/W (section 5.4, page 5), both a junction of 150 C at
+the most (page 4). The pack's rule junction.ic.regulator allows the least of 85 C, 0.7 x 150 = 105 C
+and 150 - 40 = 110 C: 85 C.
 
     dropout    VDO = IOUT x 238 mV / 500 mA (SLVA079 equation 1, page 2; SBVS320D 5.5, page 6, and 7.1.2):
                at 0.1 A 47.6 mV, 3.3 + 0.0476 = 3.3476 V under 4.75 V; at 0.2 A 95.2 mV, 3.3952 V
@@ -84,6 +90,18 @@ OUT_WHERE = (
     "greater than 0.47 uF; section 5.3, Recommended Operating Conditions, COUT, page 4; section 7.1.1, "
     "page 15: X5R- and X7R-type ceramic capacitors"
 )
+NOMINAL = f"{DS}, table 8-1, Device Nomenclature, page 23: xx in TLV755xxP is the nominal output, 33 = 3.3 V"
+ACCURACY = "section 5.5, Output accuracy, VOUT >= 1 V, -1.5 % to 1.5 %, page 5"
+
+
+def regulates(mpn: str) -> str:
+    """The first sum of an IC taken: 3.3 V x (1 - 0.015) = 3.2505 V, x (1 + 0.015) = 3.3495 V."""
+    return (
+        f"U1: {mpn} regulates to VOUT(NOM) = 3.3 V, the 3.3 V asked; with its accuracy, "
+        f"3.3 V x (1 +- 0.015) = 3.25 V to 3.35 V [{NOMINAL}; {ACCURACY}]"
+    )
+
+
 IN_WHERE = (
     f"{DS}, table 4-1, note 1, page 3: the effective capacitance at the pin greater than 0.47 uF; "
     "section 5.3, Recommended Operating Conditions, CIN, page 4; section 7.1.1, page 15: X5R- and X7R-type "
@@ -155,7 +173,7 @@ def test_a_tenth_of_an_amp_takes_the_first_stocked_ic_and_checks_what_it_built()
         "C2": ("10u 10V", C_0603),
     }
     assert block.sums == [
-        f"U1: TLV75533PDBVR gives 3.25 V to 3.35 V, and 3.3 V is asked [{FACTS_SRC}, p 3, 4 and 5]",
+        regulates("TLV75533PDBVR"),
         f"U1: the input, 4.75 V to 5.25 V, is within IN's 1.45 V to 5.5 V [{FACTS_SRC}, p 3, 4 and 5]",
         f"U1: IOUT of 100 mA, under 500 mA [{DS}, section 5.3, Recommended Operating Conditions, IOUT, "
         "page 4]",
@@ -183,9 +201,7 @@ def test_twice_the_load_takes_the_other_package_since_the_first_junction_passes_
         f"U1: TLV75533PDBVR passed over: TJ = 30 C + 231.1 C/W x 390 mW = 120.1 C at the most ambient, over "
         f"{LIMIT} [{TJ_WHERE}]"
     )
-    assert block.sums[1] == (
-        f"U1: TLV75533PDRVR gives 3.25 V to 3.35 V, and 3.3 V is asked [{FACTS_SRC}, p 3, 4 and 5]"
-    )
+    assert block.sums[1] == regulates("TLV75533PDRVR")
     assert (
         f"U1: TJ = 30 C + 100.2 C/W x 390 mW = 69.09 C at the most ambient, under {LIMIT}; PD(max) = "
         f"(85 C - 30 C) / 100.2 C/W = 549 mW [{TJ_WHERE}]"
@@ -217,10 +233,20 @@ def test_the_dropout_at_the_least_input_and_the_full_load_is_checked():
 
 @needs_libs
 def test_an_output_the_ic_does_not_give_is_refused():
-    """3.0 V is outside 3.2505 V to 3.3495 V, the output both ICs' facts give."""
-    miss = f"gives 3.25 V to 3.35 V, not 3 V [{FACTS_SRC}, p 3, 4 and 5]"
+    """Both ICs regulate to 3.3 V (table 8-1, page 23), not 3.0 V."""
+    miss = f"regulates to VOUT(NOM) = 3.3 V, not the 3 V asked [{NOMINAL}]"
     assert refused(amps=0.1, vout=3.0) == (
         f"ldo U1: no stocked IC holds the spec: TLV75533PDBVR {miss}; TLV75533PDRVR {miss}"
+    )
+
+
+@needs_libs
+def test_an_output_inside_the_ics_accuracy_but_not_its_nominal_is_refused():
+    """3.26 V lies inside 3.2505 V to 3.3495 V, the span the IC's accuracy gives, but the IC regulates to
+    3.3 V: it builds 3.3 V, not the 3.26 V asked, and is refused."""
+    assert refused(amps=0.1, vout=3.26, stock=[DBV, CIN, SAMSUNG]) == (
+        f"ldo U1: no stocked IC holds the spec: TLV75533PDBVR regulates to VOUT(NOM) = 3.3 V, not the 3.26 V "
+        f"asked [{NOMINAL}]"
     )
 
 
@@ -347,7 +373,8 @@ def test_the_block_hands_its_input_its_ambient_and_its_parts_to_ratings():
 
 @needs_libs
 def test_the_deck_dissipates_what_the_sums_say_and_names_its_junction_for_the_sim_gate():
-    """sim/ldo.cir holds U1 at the greatest input, 5.25 V, into 0.1 A, with its 40 uA of ground current;
+    """sim/ldo.cir holds U1 at the greatest input, 5.25 V, into 0.1 A, with its 40 uA of ground current,
+    and its output at the 3.3 V of table 8-1, held to 3.2505 V to 3.3495 V (the sums above);
     sim/thermal.json names U1's power to the SIM gate under the same pack; sim/corners.json runs it at
     0 C and 30 C, the ambient's ends."""
     _, block = ldo(0.1)
@@ -364,8 +391,9 @@ def test_the_deck_dissipates_what_the_sums_say_and_names_its_junction_for_the_si
         ".control",
         "op",
         "let iout = i(vu1)",
+        "let vout = v(out)",
         "let p_u1 = -v(in) * i(vin) - v(out) * i(vu1)",
-        "print iout p_u1",
+        "print iout vout p_u1",
         ".endc",
         ".end",
     ]
@@ -388,8 +416,36 @@ def test_the_deck_dissipates_what_the_sums_say_and_names_its_junction_for_the_si
             "max": 0.5,
             "source": f"U1 TLV75533PDBVR gives 500 mA at the most [{DS}, section 5.3, Recommended Operating "
             "Conditions, IOUT, page 4]",
-        }
+        },
+        "vout": {
+            "min": 3.2505,
+            "max": 3.3495,
+            "source": f"U1 TLV75533PDBVR regulates to 3.3 V x (1 +- 0.015), the 3.3 V asked "
+            f"[{NOMINAL}; {ACCURACY}]",
+        },
     }
+
+
+@needs_libs
+def test_an_ic_whose_rules_lack_a_number_is_passed_over_on_1_line(tmp_path):
+    """The SOT-23-5's entry with no vout_nominal and an accuracy with no `where` is passed over, naming
+    both; the WSON-6 is then taken."""
+    rules = json.loads((ROOT / "rules" / "blocks" / "ldo.json").read_text(encoding="utf-8"))
+    del rules["ics"][0]["vout_nominal"]
+    del rules["ics"][0]["accuracy"]["where"]
+    path = tmp_path / "ldo.json"
+    path.write_text(json.dumps(rules), encoding="utf-8")
+    d = design()
+    block = blocks.ldo(
+        d, vin=(4.75, 5.25), vout=3.3, amps=0.1, ambient=(0, 30), pack="nasa-eee-inst-002",
+        nets=("+5V", "+3V3", "GND"), stock=STOCK, facts=FACTS, sch_at=(76.2, 76.2), pcb_at=(111.0, 108.0),
+        rules=path,
+    )  # fmt: skip
+    assert block.sums[0] == (
+        "U1: TLV75533PDBVR passed over: ldo.json gives it no vout_nominal, accuracy: the block builds no IC "
+        "whose numbers are not all entered"
+    )
+    assert next(p for p in d.parts if p.ref == "U1").footprint.lib_id == WSON
 
 
 def test_every_number_of_the_rules_names_where_it_stands():

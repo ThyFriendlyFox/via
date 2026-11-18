@@ -37,22 +37,52 @@ def _g(x: float) -> str:
     return f"{x:.4g}"
 
 
+# What ldo reads of an IC's entry in its rules: its own names, each number with its `where`, and the
+# entries that hold only a `where`.
+LDO_NAMES = ("mpn", "maker", "value", "symbol", "footprint", "pins", "source")
+LDO_NUMBERS = (
+    "vout_nominal", "accuracy", "amps_max", "dropout", "output_effective", "output_span", "input_effective",
+    "input_least", "dielectrics",
+)  # fmt: skip
+LDO_WHERES = ("normal", "csr", "dissipation")
+
+
+def _unentered(chip: dict) -> list[str]:
+    """The keys ldo reads that the IC's entry lacks, or holds with no number or no `where`."""
+    out = [key for key in LDO_NAMES if key not in chip]
+    for key in LDO_NUMBERS + LDO_WHERES:
+        entry = chip.get(key)
+        if not (isinstance(entry, dict) and "where" in entry and (key in LDO_WHERES or "value" in entry)):
+            out.append(key)
+    return out
+
+
+def built(chip) -> tuple[float, float]:
+    """The output an IC builds: its nominal less and plus its accuracy, the datasheet's span."""
+    nom, acc = chip["vout_nominal"]["value"], chip["accuracy"]["value"]
+    return round(nom * (1 - acc), 9), round(nom * (1 + acc), 9)
+
+
 def _check_ic(chip, f, vin, vout, amps, ambient_max, pack, note, eq):  # noqa: PLR0913
     """The sums of 1 IC, or the line that says why it misses: (sums, None) or (None, miss)."""
     mpn = chip["mpn"]
     ds = chip["source"]["document"]
-    pins = {p["name"]: p for p in f.data["pins"]}
-    out, supply = pins["OUT"], pins["IN"]
-    lo, hi = out["volts"]
-    if not lo <= vout <= hi:
-        return None, (
-            f"{mpn} gives {si(lo, 'V')} to {si(hi, 'V')}, not {_g(vout)} V "
-            f"[{f.source}, {ratings._p(out['page'])}]"
+    supply = next(p for p in f.data["pins"] if p["name"] == "IN")
+    # The output it builds: its nominal, held to the output asked, and its accuracy's span.
+    nom, acc = chip["vout_nominal"]["value"], chip["accuracy"]["value"]
+    nom_where = f"{ds}, {chip['vout_nominal']['where']}"
+    if abs(nom - vout) > ratings.EPS * max(abs(vout), 1.0):
+        return (
+            None,
+            f"{mpn} regulates to VOUT(NOM) = {si(nom, 'V')}, not the {_g(vout)} V asked [{nom_where}]",
         )
+    lo, hi = built(chip)
     sums = [
-        f"U: {mpn} gives {si(lo, 'V')} to {si(hi, 'V')}, and {_g(vout)} V is asked "
-        f"[{f.source}, {ratings._p(out['page'])}]"
+        f"U: {mpn} regulates to VOUT(NOM) = {si(nom, 'V')}, the {_g(vout)} V asked; with its accuracy, "
+        f"{si(nom, 'V')} x (1 +- {acc:g}) = {si(lo, 'V')} to {si(hi, 'V')} "
+        f"[{nom_where}; {chip['accuracy']['where']}]"
     ]
+    vout = nom
     vin_low, vin_high = vin
     op_lo, op_hi = supply["operating"]
     in_where = f"{f.source}, {ratings._p(supply['page'])}"
@@ -214,6 +244,14 @@ def ldo(  # noqa: PLR0913
         chip = held.get(item.mpn)
         if chip is None:
             continue
+        if lacking := _unentered(chip):
+            miss = (
+                f"{item.mpn}: {Path(rules).name} gives it no {', '.join(lacking)}: the block builds no IC "
+                "whose numbers are not all entered"
+            )
+            misses.append(miss)
+            sums.append(f"{u}: {item.mpn} passed over: {miss[len(item.mpn) + 2 :]}")
+            continue
         f = blocks._facts(found, item, chip["symbol"])
         if f is None:
             misses.append(f"{item.mpn}: {facts} holds no facts of it")
@@ -232,7 +270,7 @@ def ldo(  # noqa: PLR0913
             raise blocks.Refused(f"ldo {u}: no stocked IC is one of {Path(rules).name}; it holds {names}")
         raise blocks.Refused(f"ldo {u}: no stocked IC holds the spec: {'; '.join(misses)}")
     item, chip, f = taken
-    out_hi = next(p["volts"][1] for p in f.data["pins"] if p["name"] == "OUT")
+    out_hi = built(chip)[1]
     caps = [
         (s, cf)
         for s in stock
@@ -282,10 +320,12 @@ def _deck(u, mpn, chip, f, vin, vout, amps, ambient, pack, call, sums):  # noqa:
     greatest input into the load, its power for the SIM gate to hold its junction by (item 7)."""
     ground = next(p for p in f.data["pins"] if p["name"] == "IN").get("amps", 0.0)
     most = chip["amps_max"]
+    nom, (lo, hi) = chip["vout_nominal"]["value"], built(chip)
     lines = [
         f"ldo: the linear regulator block {u} ({mpn}), written by tools/blocks_ldo.py",
-        f"* {u} is drawn as what it does: its output holds {_g(vout)} V, and its input carries the load's",
-        f"* current and its greatest ground current, {si(ground, 'A')} [{f.source}].",
+        f"* {u} is drawn as what it does: its output holds its nominal, {_g(nom)} V, and its input",
+        f"* carries the load's current and its greatest ground current, {si(ground, 'A')} [{f.source}].",
+        f"* vout is held to the span its accuracy gives, {si(lo, 'V')} to {si(hi, 'V')}.",
         f"* The input is the greatest, {_g(vin)} V; the load is {si(amps, 'A')}, a current source.",
         f"* p_{u.lower()} is {u}'s input power less its output power: what its junction dissipates.",
         "* sim/thermal.json names it, and the SIM gate holds the junction at each temperature of",
@@ -293,7 +333,7 @@ def _deck(u, mpn, chip, f, vin, vout, amps, ambient, pack, call, sums):  # noqa:
         "* The sums:",
         *[f"*   {line}" for line in sums],
         f"VIN in 0 DC {_g(vin)}",
-        f"B{u} reg 0 V={_g(vout)}",
+        f"B{u} reg 0 V={_g(nom)}",
         f"V{u} reg out DC 0",
         f"F{u} in 0 V{u} 1",
         f"I{u} in 0 DC {_g(ground * 1e6)}u",
@@ -301,8 +341,9 @@ def _deck(u, mpn, chip, f, vin, vout, amps, ambient, pack, call, sums):  # noqa:
         ".control",
         "op",
         f"let iout = i(v{u.lower()})",
+        "let vout = v(out)",
         f"let p_{u.lower()} = -v(in) * i(vin) - v(out) * i(v{u.lower()})",
-        f"print iout p_{u.lower()}",
+        f"print iout vout p_{u.lower()}",
         ".endc",
         ".end",
     ]
@@ -311,7 +352,14 @@ def _deck(u, mpn, chip, f, vin, vout, amps, ambient, pack, call, sums):  # noqa:
             "max": most["value"],
             "source": f"{u} {mpn} gives {si(most['value'], 'A')} at the most "
             f"[{chip['source']['document']}, {most['where']}]",
-        }
+        },
+        "vout": {
+            "min": lo,
+            "max": hi,
+            "source": f"{u} {mpn} regulates to {si(nom, 'V')} x (1 +- {chip['accuracy']['value']:g}), the "
+            f"{_g(vout)} V asked [{chip['source']['document']}, {chip['vout_nominal']['where']}; "
+            f"{chip['accuracy']['where']}]",
+        },
     }
     corners = {
         "temperature": {

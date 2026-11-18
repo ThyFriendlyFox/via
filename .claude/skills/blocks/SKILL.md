@@ -13,7 +13,7 @@ that `workcenter ratings` and the SIM gate read.
 | Block | Note | Rules | ICs |
 |---|---|---|---|
 | `blocks.buck` | TI SLVA477C, equations 1, 2, 3, 4 and 11, sections 3, 6 and 7; the datasheet's equations 1 (7.3.2) and 2, table 4 and sections 6.3, 6.5, 8.2.2.4 and 8.2.2.5 | `rules/blocks/buck.json` | TLV62569DBVR |
-| `blocks.ldo` | TI SLVA079, equations 1, 8, 10 and 11; the datasheet's equations 6 and 7, table 6-1 and sections 5.3, 5.5 and 7.1.1 | `rules/blocks/ldo.json` | TLV75533PDBVR, TLV75533PDRVR |
+| `blocks.ldo` | TI SLVA079, equations 1, 8, 10 and 11; the datasheet's equations 6 and 7, tables 6-1 and 8-1 and sections 5.3, 5.5 and 7.1.1 | `rules/blocks/ldo.json` | TLV75533PDBVR, TLV75533PDRVR |
 
 A block holds what its note states and no more. A part the note does not
 cover is your own schematic, and `workcenter ratings` judges it.
@@ -128,8 +128,12 @@ lets the block move to it when the junction runs hot.
 2. Run `workcenter design design.py`. What it prints:
    - `ldo U1: no stocked IC holds the spec: <MPN>: ...`: each stocked IC and
      why it missed, with its equation and page. Do as each says:
-     - `gives A V to B V, not X V`: the IC is fixed at another output. Stock
-       the IC of the output you ask.
+     - `regulates to VOUT(NOM) = A V, not the X V asked`: the IC is fixed at
+       another output (table 8-1 of its datasheet). Stock the IC of the output
+       you ask.
+     - `ldo.json gives it no <keys>`: the IC's entry lacks those numbers or
+       their `where`. Enter them from the datasheet (see "Adding an IC to a
+       block" below).
      - `the input reaches X V, IN operates from ...`: change the input range
        or the IC.
      - `IOUT of X A is over ...`: the IC cannot give the load.
@@ -152,7 +156,8 @@ lets the block move to it when the junction runs hot.
    version's README.
 4. Run `workcenter ratings . --strict`, then `workcenter design design.py
    --route` and `workcenter gates . --strict`. The SIM gate runs `sim/ldo.cir`
-   at each temperature of `sim/corners.json` and holds U1's junction under the
+   at each temperature of `sim/corners.json`, holds `vout` to the span the
+   IC's accuracy gives (`sim/ldo.expect.json`) and U1's junction under the
    pack's limit (`sim/thermal.json`).
 
 ## Adding an IC to a block
@@ -163,7 +168,8 @@ lets the block move to it when the junction runs hot.
    its `where`: section, table and page. A number you cannot find in the
    datasheet is not entered; the block then refuses that IC on 1 line that
    names the missing key (`blocks.BUCK_NAMES` and `blocks.BUCK_NUMBERS` list
-   what `buck` reads).
+   what `buck` reads; `blocks_ldo.LDO_NAMES`, `LDO_NUMBERS` and `LDO_WHERES`
+   what `ldo` reads).
 3. Add the datasheet to `rules/references/index.json`, and run
    `workcenter references rules`: it fails a source the index lacks.
 4. Write the IC's facts into `library/facts/` (the `ratings` skill).
