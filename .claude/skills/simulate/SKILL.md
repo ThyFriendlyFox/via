@@ -584,8 +584,8 @@ the junction from it: TJ = T(PCB) + psi_jb x power (SPRA953D, section
 8, page 8). theta_jc puts all of the power through the case, so the
 junction it gives is above the real one (section 2.2, equation 4, page 7).
 SPRA953D calls theta_jb useful for a first-pass estimation only, and gives
-no bound on the junction it gives (section 4, page 10). Prefer psi_jb or
-psi_jt.
+no bound on the junction it gives (section 4, page 10), so a junction from
+theta_jb holds no part. Prefer psi_jb or psi_jt.
 
 1. Give the part its thermal facts, in the facts file `workcenter
    ratings` reads (`library/facts/`, the `ratings` skill). Copy the
@@ -622,11 +622,15 @@ psi_jt.
             "source": "workcenter copper, build/copper/report.json, hottest near U1, air 85 C"}
    ```
    A run within 0.01 C of an ambient `from` names is judged from that
-   temperature; the other runs from theta_ja. A temperature under its own
-   ambient is set aside, and the part is not held: the part's heat flows
-   from its junction through its case and board to the air (SPRA953D,
-   section 4, figure 4-1, page 10). 2 keys within 0.01 C of each other are
-   refused.
+   temperature; the other runs from theta_ja. A temperature at or under its
+   own ambient is set aside, and the part is not held: the part's heat
+   flows from its junction through its case and board to the air
+   (SPRA953D, section 4, figure 4-1, page 10). So is a `from` whose figure
+   the facts do not give: theta_ja judges every run. A junction from a
+   stated temperature under the one theta_ja gives on a 2s2p board, which
+   SPRA953D calls a best case (section 1.2, page 3), holds no part. 2 keys
+   within 0.01 C of each other are refused. The part's `thermal` line names
+   the stated temperature and its source when its worst run used it.
 4. Run `workcenter sim <project>`. Read each line that starts with
    `thermal:`, and each line that starts with `corners.json: decks.`:
 

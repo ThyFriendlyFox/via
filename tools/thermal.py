@@ -17,8 +17,10 @@ whose board the facts do not name holds no part.
 
 Where the project states the case, the board or the package top's temperature at a run's ambient
 (`from`: measured, or computed as `workcenter copper` computes a board), the junction there is that
-temperature plus the figure the project names times the power (SPRA953D, equations 4, 8 and 9), and
-the line names the stated temperature's source. A run or a corner the gate could not judge leaves
+temperature plus the figure the project names times the power (SPRA953D, equations 4, 8 and 9); the
+part's record (`stated`) and its line name the stated temperature and its source. A stated temperature
+not above its ambient, or a figure the facts lack, is set aside; a junction from theta_jb, or under the
+one theta_ja gives on the 2s2p board, holds no part. A run or a corner the gate could not judge leaves
 the part not held and named as not judged.
 
 Standard library only, as the CLI is. No engine runs here: `tools/workcenter` runs the decks.
@@ -28,7 +30,7 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import ratings
@@ -236,7 +238,7 @@ def _unjudged(name: str, entry: ratings.Facts, part: Part) -> str | None:
         )
     if part.stated:
         figure = part.stated.figure
-        if figure not in term:
+        if figure not in term and "theta_ja" not in term:
             return (
                 f"{name} not judged: sim/thermal.json names {figure} in `from`, and its facts "
                 f"({entry.where}) give no {figure}"
@@ -288,11 +290,11 @@ def assumes(figure: str, term: dict) -> str:
 
 def _how(part: Part, term: dict, ambient: float) -> tuple[str, float] | None:
     """The figure a run's junction comes from and the temperature it starts from: the project's stated
-    one at that ambient, else RthetaJA from the ambient, else None. A stated temperature under its
+    one at that ambient, else RthetaJA from the ambient, else None. A stated temperature not above its
     ambient is set aside (`_under`)."""
     if part.stated:
         for at, temp in part.stated.celsius.items():
-            if abs(at - ambient) <= TEMP_MATCH and temp >= at:
+            if abs(at - ambient) <= TEMP_MATCH and temp > at:
                 return part.stated.figure, temp
     if "theta_ja" in term:
         return "theta_ja", ambient
@@ -300,12 +302,12 @@ def _how(part: Part, term: dict, ambient: float) -> tuple[str, float] | None:
 
 
 def _under(part: Part) -> dict[float, float]:
-    """The stated temperatures under their own ambient, by ambient. Heat flows from the junction through
-    the case and the board to the air (SPRA953D, section 4, figure 4-1, page 10), so a part that
-    dissipates does not hold its case or board under the air: such a statement is set aside."""
+    """The stated temperatures not above their own ambient, by ambient. Heat flows from the junction
+    through the case and the board to the air (SPRA953D, section 4, figure 4-1, page 10), so a part that
+    dissipates holds its case and board above the air: a statement at or under it is set aside."""
     if not part.stated:
         return {}
-    return {at: temp for at, temp in part.stated.celsius.items() if temp < at}
+    return {at: temp for at, temp in part.stated.celsius.items() if temp <= at}
 
 
 def _more(count: int) -> str:
@@ -346,6 +348,15 @@ def judge(
             not_judged.append(f"{name} not judged: its deck {part.deck} did not run to its end")
             continue
         term = entry.data["thermal"]
+        lacking = part.stated is not None and part.stated.figure not in term
+        if lacking:
+            figure = part.stated.figure
+            not_judged.append(
+                f"{name} not judged from its stated {STATED[figure]} temperature: sim/thermal.json names "
+                f"{figure} in `from`, and its facts ({entry.where}) give no {figure}; theta_ja judges its "
+                "runs"
+            )
+            part = replace(part, stated=None)
         rated = term["junction_max"]
         kind = kind_of(entry)
         rule = rule_for(pack, kind)
@@ -410,9 +421,9 @@ def judge(
             said_under = " and ".join(f"{temp:g} C at {at:g} C ambient" for at, temp in under.items())
             not_judged.append(
                 f"{name} not judged from its stated {STATED[part.stated.figure]} temperature: "
-                f"sim/thermal.json states {said_under}, under the air; a part's heat flows from its junction "
-                "through its case and board to the air (SPRA953D, section 4, figure 4-1, page 10), so it is "
-                "set aside"
+                f"sim/thermal.json states {said_under}, not above the air; a part's heat flows from its "
+                "junction through its case and board to the air (SPRA953D, section 4, figure 4-1, page 10), "
+                "so it is set aside"
             )
         if part.stated:
             idle = [
@@ -435,6 +446,31 @@ def judge(
             "`thermal` from the datasheet's thermal table"
             for f in unboarded
         ]
+        # A junction from a stated temperature under the one theta_ja gives on the 2s2p board, which
+        # SPRA953D calls a best case (section 1.2, page 3), holds no part.
+        best = []
+        if "theta_ja" in term and term.get("boards", {}).get("theta_ja") == "2s2p":
+            for r in rows:
+                ja = r["ambient"] + term["theta_ja"] * r["watts"]
+                if r.get("from") is not None and r["junction"] < ja:
+                    best.append((r, ja))
+        if best:
+            r, ja = best[0]
+            not_judged.append(
+                f"{name} not held {_at(r['run'])}{_more(len(best) - 1)}: its stated "
+                f"{STATED[r['figure']]} {r['from']:g} C gives a junction of {r['junction']:.5g} C, under the "
+                f"{ja:.5g} C theta_ja gives on {ratings.BOARDS['2s2p']}, which SPRA953D calls a best case "
+                "(section 1.2, page 3)"
+            )
+        # SPRA953D gives theta_jb as a first-pass estimation only, with no bound (section 4, page 10).
+        rough = [r for r in rows if r["figure"] == "theta_jb"]
+        if rough:
+            not_judged.append(
+                f"{name} not held {_at(rough[0]['run'])}{_more(len(rough) - 1)}: its junction there comes "
+                "from theta_jb, which SPRA953D calls useful for a first-pass estimation only and gives no "
+                "bound on (section 4, page 10); psi_jb gives the junction from the board's temperature "
+                "(section 5.1, equation 9, page 11)"
+            )
         read_once = [f"the facts {entry.where}"] if not entry.read_twice else []
         if rule is not None and rule.second_reader == "no":
             read_once.append(f"{pack.name} rule {rule.id}")
@@ -455,11 +491,22 @@ def judge(
             "worst": worst,
             "runs": len(rows),
             # Held only when every run and every corner was judged, each on a figure whose board the
-            # facts name, and no stated temperature was set aside; None when some were not.
+            # facts name and that SPRA953D bounds, no stated temperature was set aside, and none gives a
+            # junction under the 2s2p best case; None when some were not.
             "held": False
             if over
-            else (None if unknown or part.deck in unrun or unstated or unboarded or under else True),
+            else (
+                None
+                if unknown or part.deck in unrun or unstated or unboarded or under or lacking or best or rough
+                else True
+            ),
         }
+        if any(r.get("from") is not None for r in rows):
+            parts[ref]["stated"] = {
+                "figure": part.stated.figure,
+                "temperature": STATED[part.stated.figure],
+                "source": part.stated.source,
+            }
         if over:
             figure = worst["figure"]
             start = (
