@@ -220,8 +220,11 @@ What is read back:
     judges clearances. FreeRouting 1.9.0 writes no count: rules 16 and 17.
 16. No count and no copper on any net that needs it: every connection is
     counted open (each net's pads less 1).
-17. No count and some copper: `DRC decides`, exit 0.
-18. The DRC decides what stayed open: `workcenter drc` counts the
+17. No count and some copper: the routed line says `DRC decides`, and the
+    command claims no count of its own.
+18. The DRC decides what stayed open: `workcenter design --route` reads
+    KiCad's DRC of the board it wrote and prints `route: N unconnected`,
+    exit 1 above 0 (User round 1, C); `workcenter drc` counts the same
     unconnected items on the written board (P4 "Done when").
     Also after the route, held by `test_routing.py` with the real router:
     pours filled, a via dropped through each island, and the route run

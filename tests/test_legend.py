@@ -545,6 +545,8 @@ def test_the_placer_makes_a_designator_smaller_before_it_gives_up():
 
 def dense(placed: bool):
     sys.path.insert(0, str(ROOT / "tests" / "boards"))
+    # No __pycache__ beside legend_dense.py: tests/test_docs.py holds every folder of tests/boards to a row.
+    sys.dont_write_bytecode = True
     import legend_dense
 
     return legend_dense.build(place=placed)
