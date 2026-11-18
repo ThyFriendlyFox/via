@@ -229,6 +229,7 @@ def test_every_cli_flag_is_in_the_configuration_table():
         "tools/highspeed.py",  # and highspeed
         "tools/now.py",  # and now
         "tools/standards.py",  # and standards
+        "tools/enginelock.py",  # the engine lock's own command line: hold --what, state --json
         "tools/board.py",
         "tools/harvest.py",
     )
