@@ -1,7 +1,8 @@
 """partdata — the makers' data of a deck's capacitors and inductors, as the SIM gate runs them.
 
 A capacitor's facts may hold `kept`, pairs [volts, share of the value kept] from its maker's DC bias
-curve, and `kept_celsius`, pairs [celsius, share] from its temperature curve. An inductor's facts may
+curve, and `kept_celsius`, pairs [celsius, share] from its temperature curve; `kept_celsius_at`, its
+maker's temperature curve at 1 bias; and `esr` and `esl`, which go in series. An inductor's facts may
 hold `kept`, pairs [amps, share]. The gate takes a curve only from facts that name the part's number
 (`mpn`, or `mpns`; never a pattern) and whose source's SHA256 is a row of the project's
 library/sources.csv for that part: the maker's file. A row that keeps no file leaves that not judged.
