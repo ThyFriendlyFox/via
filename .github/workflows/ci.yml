@@ -52,18 +52,67 @@ jobs:
       - name: Verify the site, the documents and the kit
         run: make verify-site
 
-  # Any other change: the toolchain and the full health gate, as before the split.
+  # Any other change: the toolchain and the full health gate. The toolchain is the image of this commit's
+  # toolchain files (tools/image.py) when the registry gives it, else install.sh as before: a change to
+  # those files, the first run before any image, a registry that does not answer or will not give it.
+  # Both paths end in the same `make verify`; the last step fails unless the decided path ran and passed.
   full:
     needs: scope
     if: needs.scope.outputs.scope == 'full'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Decide where the gate runs (the image of this toolchain, or install.sh) and say why
+        id: where
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          ENABLED: ${{ vars.CI_FULL_IN_IMAGE }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          base=""
+          case "$EVENT" in
+            pull_request) base=$(git rev-parse HEAD^1) ;;
+            push) git fetch --no-tags --depth=1 origin "$BEFORE" || true; base="$BEFORE" ;;
+          esac
+          printf '%s' "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin \
+            || echo "no login to ghcr.io: only a public image can be pulled"
+          python3 tools/image.py decide --base "$base" --owner "$GITHUB_REPOSITORY_OWNER" \
+            --enabled "$ENABLED" --github-output
       - name: Install the workcenter toolchain (same script as the cloud environment)
+        if: steps.where.outputs.where == 'install'
         run: sudo env REQUIRE_FREEROUTING=1 ./install.sh
       - name: Verify
+        id: verify
+        if: steps.where.outputs.where == 'install'
         run: make verify
+      - name: Verify inside the image, as the runner's user
+        id: inside
+        if: steps.where.outputs.where == 'image'
+        env:
+          IMAGE: ${{ steps.where.outputs.image }}
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" -e CI -e GITHUB_ACTIONS -e IMAGE \
+            -v "$GITHUB_WORKSPACE":"$GITHUB_WORKSPACE" -w "$GITHUB_WORKSPACE" "$IMAGE" \
+            bash -e -c 'echo "image: $IMAGE"; python3 tools/image.py show; python3 tools/image.py check; make verify'
+      - name: The decided path ran and passed
+        env:
+          WHERE: ${{ steps.where.outputs.where }}
+          INSTALLED: ${{ steps.verify.outcome }}
+          IMAGED: ${{ steps.inside.outcome }}
+        run: |
+          echo "where: ${WHERE:-none}; install path: $INSTALLED; image path: $IMAGED"
+          case "$WHERE" in
+            install) test "$INSTALLED" = success ;;
+            image) test "$IMAGED" = success ;;
+            *) echo "no path was decided"; exit 1 ;;
+          esac
 
   # Always runs, so a required check always resolves: green only when the job the scope asked for
   # passed. A skipped job is not a pass, and a failed scope job leaves no answer.

@@ -1,20 +1,34 @@
-# EE Workcenter image: KiCad 10 (official image) + ngspice + FreeRouting + this repo.
-# Build:  docker build -t ee-workcenter .
-# Run:    docker run --rm -v "$PWD/board:/work" ee-workcenter workcenter gates /work
+# The EE Workcenter's image: the toolchain install.sh defines, and the workcenter at the commit it was
+# built from. The image workflow (.github/workflows/image.yml) builds it, checks it and publishes it;
+# tools/image.py works out its tag from this file, install.sh and requirements.txt.
 #
-# Not built in the cloud session that authored it (no Docker daemon there);
-# release.yml builds and smoke-tests it on every tag. See ee-agent-kit/CI.md.
-FROM kicad/kicad:10.0
+#   docker build -t ee-workcenter .
+#   docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work ee-workcenter workcenter gates .
+#
+# No window: kicad-cli and the other engines run headless; KiCad's editors are not for a container.
+FROM ubuntu:24.04
 
-USER root
 ENV DEBIAN_FRONTEND=noninteractive
-COPY . /opt/workcenters/ee/src
 WORKDIR /opt/workcenters/ee/src
-# The image ships kicad-cli 10, so install.sh skips the PPA and adds the rest.
-RUN REQUIRE_FREEROUTING=1 ./install.sh \
- && apt-get clean && rm -rf /var/lib/apt/lists/*
+COPY . .
 
-USER kicad
+# The 1 definition of the toolchain: the script CI and the cloud environment run, as CI runs it. The
+# apt lists and the caches it made are removed in the layer that made them.
+RUN REQUIRE_FREEROUTING=1 ./install.sh \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/* /root/.cache
+
+# The build's own doctor, then the record of the tag and the tools' versions; a doctor that does not
+# pass fails the build, so no such image is published. Then the home any user id may write (KiCad
+# stops with `Environment variable HOME is empty`; the CLI needs a home) and the folder a project is
+# mounted on. The doctor runs with root's home, so the shared home starts empty.
+ARG TOOLCHAIN_TAG=
+ARG WORKCENTER_REVISION=
+RUN HOME=/root workcenter doctor \
+ && HOME=/root python3 tools/image.py record --expect-tag "$TOOLCHAIN_TAG" --revision "$WORKCENTER_REVISION" \
+ && rm -rf /root/.cache /root/.config /root/.local \
+ && install -d -m 1777 /home/workcenter /work
+
+ENV HOME=/home/workcenter
 WORKDIR /work
-ENTRYPOINT []
 CMD ["workcenter", "doctor"]

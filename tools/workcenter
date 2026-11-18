@@ -5880,6 +5880,9 @@ def command(argv: list[str] | None = None) -> int:
     import newboard
 
     newboard.register(sub, sys.modules[__name__])
+    import image
+
+    image.register(sub, sys.modules[__name__])
 
     # `--json` is read on either side of the command: `workcenter --json gates P` and `workcenter
     # gates P --json`. SUPPRESS keeps a command that does not carry the flag from clearing the one
