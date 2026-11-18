@@ -622,8 +622,21 @@ When: a change is about to be called done.
    origin/<branch>:refs/heads/main`. A switch stopped half-way leaves a
    tree on neither branch (M177).
 
+8. When 2 reviews in a row of a check that prints a passing verdict each
+   find a new input of the same kind that passes, the next review stops
+   writing cases by hand. It writes a reference model of the rule from
+   the document, each rule with its section and page, never from the
+   check's code; generates cases over the whole input space with a fixed
+   seed, the inputs the check refuses included; runs each through the
+   check's own entry point and through the model; and explains every
+   disagreement. The model and a generator stay in the repository as a
+   test that runs in under 20 s and prints the smallest disagreeing case
+   (`tests/test_thermal_model.py`, M263).
+
 Done when: the remote has the commit, its CI run is green, and the report
-has been sent. For a gate's method: the attack's cases are tests.
+has been sent. For a gate's method: the attack's cases are tests; after 2
+reviews in a row found the same kind of hole, a reference model of the
+rule runs generated cases through the check's entry point as a test.
 
 ## P15 — A question that reveals a mismatch
 

@@ -39,6 +39,16 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-18 — Part temperature: 4 reviews of 1 kind, then a model
+
+What was left of roadmap item 7 is built: each thermal figure names its JEDEC board, a junction can start from a stated case, board or top temperature, a heat sink is stated with its 2 resistances, and a deck block narrower than the file's is flagged. JEDEC answered 403 to the workcenter's client name again, so the method stays cited from TI SPRA953D. A second reader compared the 10 junction rules with ECSS-Q-ST-30-11C Rev.2 and NASA EEE-INST-002, and the TLV755P facts with SBVS320D, number by number: every number matched.
+
+4 reviews in a row each found a part over its limit that `--strict` passed, each through a new input of the same kind: a statement the gate took in place of a figure. A board stated under the air, then at the air, then 0.001 C above it with theta_ja on the 1s0p board, then a case on a heat sink named by any text. The rebase onto the trunk also left the linear regulator block calling the old 1-argument `thermal.assumes`, and 32 of its tests failed. The fourth review stopped writing cases by hand: it wrote the rule down from SPRA953D as a model and ran 60000 generated cases through the gate's own function. A fifth run of 66000 found 1 class left, a part on a heat sink judged by equation 5 only where its case was stated. It is fixed, and the model is now a test that runs 14000 cases. A last run of 66000 on the fixed head agreed on every case.
+
+Landing it found 1 more: the charger block's BQ21040 has no board in its datasheet, so its test, which held the part, now takes it as judged and not held.
+
+Evidence: `tests/test_thermal_boards.py` (79 tests), `tests/test_thermal_model.py`; landing branch `wip/land-l7`.
+
 ## 2026-11-18 — The install script when KiCad 10's package source does not answer
 
 On 2026-11-18 Launchpad's host answered 503 on and off. In 1 CI run the index of KiCad 10's source did not arrive, `apt-get update` ended with 0, and apt installed Ubuntu's KiCad 7. In another, a package file did not arrive and a pipe's `|| true` hid apt's exit code. Both ended with "kicad-cli 10.x not found after install". The apt step now tries the index 3 times, checks every KiCad candidate before it downloads anything, and stops with apt's own line and what to do. The first run of the new tests sourced the script on this machine, which runs as root, before it had its guard; main() ran and changed 5 things outside the test (M261). The tests then got a fence for every program that can write and a scan of the script's code, and 3 reviews found the fence open 2 times. The lead decided that a person's computer gets no total bound; CI, the nightly run and the image build set 120 s and 570 s. At landing, the container image's first step (step_boot) met the harness: its certificates' path was a literal, so every test refused to run, and its apt calls let a failure through; both fixed. The key fetch's stop now says the key did not arrive, where it said nothing.

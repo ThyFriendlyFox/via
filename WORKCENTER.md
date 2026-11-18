@@ -447,17 +447,34 @@ The SIM gate holds the junction of each part `sim/thermal.json` names
 (`tools/thermal.py`, the `simulate` skill). At every run it judges, the
 deck as written and each corner, TJ = TA + RthetaJA x P, with the run's
 temperature as TA and the power the named deck measure prints (TI SPRA953D,
-section 1.1, equation 1). RthetaJA and the greatest junction temperature
-come from the part's facts (`thermal`), and the derated limit from the
-pack's `junction.temperature` rules. A part past its limit fails on 1 line
-with the part, the ambient, the junction, the limit and the worst run.
-Every printed junction says that RthetaJA is the datasheet's test board's:
-SPRA953D calls the sum a misapplication on a system board, and a 2s2p
-board a best case. A part with no RthetaJA, only a case, board or top
-figure, or no facts is not judged: a warning, a failure with `--strict`.
-So is a part whose deck's corners were not all run (a `skip`,
-`temperature: false`, `--nominal`), and a run whose temperature is not
-known; such a part is never held.
+section 1.1, equation 1). Where the file states the part's case, board or
+package top's temperature at a run's ambient (`from`, measured or
+computed; a project copies `workcenter copper`'s number in with its
+source), TJ there is that temperature + theta_jc, theta_jb, psi_jt or
+psi_jb x P (SPRA953D, equations 4, 8 and 9), and the line names the
+temperature's source. Only theta_ja on the 2s2p board bounds a stated
+temperature, and SPRA953D calls that board a best case, not a bound
+(section 1.2, page 3): a stated temperature at or under its run's ambient,
+or one nothing bounds, holds no part. A case on a heat sink is stated with
+the sink's Rtheta(CS) and Rtheta(SA); at every run the greater of equation
+4 from the case and equation 5 from the ambient judges (section 2.2,
+page 7). The figures, the JEDEC board each was measured on (`1s0p` or
+`2s2p`) and the greatest junction temperature come from the part's facts
+(`thermal`), and the derated limit from the pack's `junction.temperature`
+rules. A part past its limit fails on 1 line with the part, the ambient,
+the junction, the sum, the board of the figure, the limit and the worst
+run. Every printed junction names the JEDEC board of its figure, and a
+part held on theta_ja on the 2s2p board says it is held with no margin. A
+figure whose board the facts do not name holds no part. A part with no
+figure the gate can use, or no facts, is not judged: a warning, a failure
+with `--strict`. So is a part whose deck's corners were not all run (a
+`skip`, `temperature: false`, a deck block that leaves out a temperature of
+the file, `--nominal`), and a run whose temperature is not known; such a
+part is never held. A deck block that leaves out a temperature of the file
+is itself a warning. With decks and no `sim/thermal.json`, SIM prints that
+no junction is judged; that line is no warning. `workcenter gates` prints
+each part's thermal line, and its `--report` writes them under the deck
+table.
 
 The gate reads what it is given strictly. An expect file with a key it does
 not know, a bound with neither `min` nor `max`, a bound that is no finite

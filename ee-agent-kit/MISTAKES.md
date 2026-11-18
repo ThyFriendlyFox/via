@@ -1605,3 +1605,9 @@ What happened: On 2026-11-18 a helper that was part of a scripted run asked the 
 Cost: About 3 minutes of 2 writers in 1 tree, and the time to find which files each had written.
 Root cause: P31 step 8 says to send no message to a helper that a workflow runs, but a question from the helper read as an invitation to answer, and nothing in the step says what to do when the helper asks first.
 Process: P31
+
+## M263 — 2026-11-18 — 4 reviews found 4 false passes of 1 kind in the junction gate
+What happened: Each review of item 7's left-overs found a part over its limit that `--strict` passed on a stated temperature: a board under the air, then a board at the air, then 0.001 C above it with theta_ja on the 1s0p board, then a case on a heat sink named by text. Each fix closed that input alone. A rebase also changed `thermal.assumes`'s signature, and the trunk's caller in `tools/blocks_ldo.py` broke: only the branch's own test files had run. A reference model written from SPRA953D, and 66000 generated cases through `sim_thermal`, ended it: 1 class was left and is fixed, and the model is now `tests/test_thermal_model.py`.
+Cost: 4 reviews and 4 fix rounds; a fifth class (a part on a heat sink judged by equation 5 only where its case was stated) was still open after them; 32 tests of the linear regulator block failed until the fourth review ran them.
+Root cause: Cases were written by hand from the last hole, so each review found the next input of the same kind; nothing checked the rule over the whole input space. A switch that turned off a check (`heat_sink` as text) asked for no numbers in its place. After the rebase, no one looked for every caller of a function whose signature changed (`grep` on the trunk) and ran its test files.
+Process: P14
