@@ -42,7 +42,12 @@ be a file of the project's own, named by its path from the project's folder.
 - **Parallel tracks (13.6.3g).** 2 straight tracks of 2 nets with a current, parallel and side by side on 1 layer,
   less than 25 mm apart edge to edge, are held as 1 conductor: the sum of their currents on the sum of
   their sections as manufactured (table 7-3's tolerance off the width, table 7-1's copper). The
-  clause's NOTE names an equivalent section and an equivalent current; the pack takes the sums.
+  clause's NOTE names an equivalent section and an equivalent current; the pack takes the sums. 2
+  tracks are parallel when their gap changes over their overlap by no more than the file's rounding
+  can make: a .kicad_pcb holds a coordinate to 6 decimals of a mm, so 4 ends each off by half of 1 nm
+  in x and y, 2.83 nm in all. 2 tracks at a greater angle that fail as 1 conductor are `not judged`,
+  each pair by name with its angle and its least and greatest gap: the clause names no angle. 2 that
+  hold as 1 conductor hold either way.
 - **The board's area** is the area inside its outline on Edge.Cuts: lines, arcs and curves joined end
   to end, rectangles, polygons and circles, the board's own and those drawn inside a footprint, placed
   by the footprint's place and turn. The greatest outline is the board; the others are its holes. An
@@ -56,7 +61,13 @@ be a file of the project's own, named by its path from the project's folder.
        "via_wall": {"um": 25.4, "source": "OSH Park, 2 Layer Prototype Service, docs.oshpark.com/services/two-layer, Via Plating Thickness 1mil (0.0254mm), read 2026-11-17"}}
 
   State the least wall the fab promises. An average, such as JLCPCB's "Average Hole Plating Thickness
-  18μm", is not a least. A microvia is copper filled (table 11-1, page 99) and is not judged.
+  18μm", is not a least. A wall of half a judged via's drill or more fills the hole and is refused.
+  The pack's 25 um wall holds for an HDI board alone, and HDI is how a board is built (3.2.31, page
+  20; clause 11), so `board-rules.json` states it with the fab's order or document:
+  `"hdi": {"source": "..."}`. A via does not make a board HDI.
+- **Microvias.** A microvia is a blind via, exposed on 1 side of the board (3.2.13, page 18), under
+  250 um across (3.2.40, page 22), read from the via's layers and drill; KiCad's `micro` or `blind`
+  word does not count. It is copper filled (table 11-1, page 99) and is not judged.
 
 ## ecss-q-st-70-12c-rev1
 
@@ -77,24 +88,24 @@ ECSS-Q-ST-70-12C Rev.1, "Space product assurance - Design rules for printed circ
 | Width tolerance | 7.4.2a and b, table 7-3, page 45 | 20 %, at most 30, 50, 50, 70 um by copper |
 | Plating of an outer layer | 7.4.2c NOTE 2, page 44; table 7-3, page 45; table 7-4, page 46 | 25 um, added to the foil |
 | Parallel tracks | 13.6.3g, page 114 | under 25 mm apart: 1 conductor |
-| A via's wall on an HDI board | table 11-1 (2 of 2), page 100; table 11-2, page 100; 11.6a to d, pages 96 and 97 | core via 30 um (polyimide HDI) and 25 um (high speed HDI); plated through hole 25 um: the lesser, 25 um |
-| HDI | 3.2.40 NOTE 1, page 22 | a board with a microvia |
+| A via's wall on an HDI board | table 11-1 (2 of 2), page 100; table 11-2, page 100; 11.6a and c, page 96 (shall: table 11-1); 11.6b, page 96, and 11.6d, page 97 (should: table 11-2) | core via 30 um (polyimide HDI) and 25 um (high speed HDI); plated through hole 25 um: the lesser, 25 um |
+| HDI | 3.2.31, page 20; clause 11 | how a board is built: `board-rules.json` states it (`hdi`) |
+| Microvia | 3.2.40, page 22; 3.2.13, page 18 | a blind via (exposed on 1 side) under 250 um |
 
 The annex's own example (D.1.3, page 184): 925 um by 25 um as manufactured carries 1.0002 A at 5 C;
 `tests/test_boardrules.py` holds it, and 975 um as designed for 1 A.
 
 What this pack does not judge, and says so:
 
-- **Vias of a board with no microvia, without a stated wall.** 13.6.3f rates a via as a track of its
+- **Vias of a board not stated HDI, without a stated wall.** 13.6.3f rates a via as a track of its
   wall's section, and the document states no wall for such a board. Read for it, and none found: 13.6.3f
   (page 114); 13.6.4.2c (page 115, a via to a plane, a may); 7.4.2c NOTE 2 (page 44) and table 7-1
   (page 38), the plating of an outer layer and not of a hole's wall; 7.5.3i (pages 52 and 53), the drill
   grown for the wall's plating with no thickness; tables 11-1 and 11-2 (page 100), for HDI boards by
   11.6 (pages 96 and 97). Each net with a current and a via is `not judged` until `board-rules.json`
-  states the fab's wall (`via_wall`, above).
+  states the fab's wall (`via_wall`) or that the board is built as HDI (`hdi`, above).
 - **Microvias**, copper filled (table 11-1, page 99): not judged.
-- **13.6.3g beyond 2 straight tracks of 2 nets**: 2 tracks of 1 net, tracks at an angle to each other,
-  arcs, tracks stacked on 2 layers, and 3 or more tracks side by side are each held alone or in pairs.
+- **13.6.3g beyond 2 straight tracks of 2 nets**: 2 tracks of 1 net, arcs, tracks stacked on 2 layers, and 3 or more tracks side by side are each held alone or in pairs.
   The DRC notes name them as not checked.
 - **13.6.4.2c, d and e**, which let a via to a plane, a short track to a plane, and a track into a
   connector's footprint carry more: each is a "may", and the pack takes none of them.
@@ -109,7 +120,8 @@ Choices this pack makes, each on the stricter side: copper as manufactured is th
 non-plated inner layers on every layer; an outer layer is plated even on a board with no plated hole;
 a board with no stackup has KiCad's own 35 um on each layer, and the DRC notes say so; where not every
 pad's current is stated, the current on a net is the sum of the currents `ratings.json` states on its
-pins; on an HDI board with a stated wall, the lesser of the 2 walls.
+pins; on a board stated HDI with a stated wall, the lesser of the 2 walls; the pack takes table 11-2's
+"should" (11.6b and d) as a least for a board its project states is HDI.
 
 A pack of the project's own is read as strictly as this one: every key the check uses must be there,
 a number in its range, or the run is refused with the file and the place.

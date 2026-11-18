@@ -121,9 +121,12 @@
     "via_wall": {
       "um": 25,
       "boards": "hdi",
-      "where": "table 11-1 (2 of 2), copper thickness core via, page 100: 30 um polyimide HDI, 25 um high speed HDI; table 11-2, copper thickness plated through hole, page 100: 25 um; 11.6a to d, pages 96 and 97; the lesser, 25 um, for a board with a microvia (3.2.40 NOTE 1, page 22)"
+      "where": "table 11-1 (2 of 2), copper thickness core via, page 100: 30 um polyimide HDI, 25 um high speed HDI; table 11-2, copper thickness plated through hole, page 100: 25 um; 11.6a and c, page 96 (polyimide and epoxy HDI shall take table 11-1); 11.6b, page 96 (polyimide HDI should take table 11-2), 11.6d, page 97 (high speed HDI should take both); the lesser, 25 um, for a board its project states is built as HDI under 11.6"
     },
-    "via_read": "read for a board with no microvia, and no wall found: 13.6.3f, page 114; 13.6.4.2c, page 115 (a via to a plane, a may); 7.4.2c NOTE 2, page 44, and table 7-1, page 38 (the plating of an outer layer, not of a hole's wall); 7.5.3i, pages 52 and 53 (the drill grown for the wall's plating, no thickness); table 11-1 and table 11-2, page 100, by 11.6, pages 96 and 97 (HDI boards alone); 3.2.40 NOTE 1, page 22 (a board with no microvia is not HDI)",
-    "microvia_where": "table 11-1 (1 of 2), microvias plating, page 99: copper filled, so its section is no wall"
+    "via_read": "read for a board not stated HDI, and no wall found: 13.6.3f, page 114; 13.6.4.2c, page 115 (a via to a plane, a may); 7.4.2c NOTE 2, page 44, and table 7-1, page 38 (the plating of an outer layer, not of a hole's wall); 7.5.3i, pages 52 and 53 (the drill grown for the wall's plating, no thickness); table 11-1 and table 11-2, page 100, by 11.6, pages 96 and 97 (HDI boards alone); 3.2.31, page 20, and clause 11 (HDI is how a board is built); 3.2.40 NOTE 1, page 22 (HDI needs microvias; a microvia does not make a board HDI)",
+    "microvia": {
+      "under_mm": 0.25,
+      "where": "3.2.40, page 22: a blind via under 250 um across; 3.2.13, page 18: a blind via is exposed on 1 side of the board; table 11-1 (1 of 2), microvias plating, page 99: copper filled, so its section is no wall"
+    }
   }
 }
