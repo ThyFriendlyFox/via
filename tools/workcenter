@@ -4222,8 +4222,11 @@ def cmd_design(args) -> int:
             # FreeRouting 1.9.0 logs no count: KiCad's DRC of the written board says what is left open,
             # the zone fill's own report when there is a pour, else 1 DRC run.
             pcb = out_dir / f"{design.name}.kicad_pcb"
-            drc = design.filled if design.zones else kicadgen.drc_report(pcb)
-            n, first = kicadgen.open_connections(drc)
+            try:
+                drc = design.filled if design.zones else kicadgen.drc_report(pcb)
+            except FileNotFoundError:  # no kicad-cli: the route stands, its open connections are not counted
+                drc = None
+            n, first = kicadgen.open_connections(drc) if drc is not None else (None, None)
             summary["route"].update(unconnected=n, open=first, board=str(pcb))
             if n:
                 code = EXIT_FAIL
@@ -4272,7 +4275,9 @@ def cmd_design(args) -> int:
                 )
             if "unconnected" in r:
                 first = r["open"]
-                if first:
+                if r["unconnected"] is None:
+                    print("  route: unconnected not counted: kicad-cli is not installed")
+                elif first:
                     ends = " to ".join(first["ends"])
                     net = shlex.quote(first["net"])
                     print(f"  route: {r['unconnected']} unconnected; first {first['net']}: {ends}")

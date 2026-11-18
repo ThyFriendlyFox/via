@@ -130,3 +130,42 @@ def test_a_route_that_joins_every_net_says_0_and_exits_0(tmp_path):
         check=False,
     )
     assert json.loads(summary.stdout)["route"]["unconnected"] == 0
+
+
+@pytest.mark.skipif(not LIBS.is_file(), reason="the KiCad symbol libraries are not installed")
+def test_without_kicad_cli_the_count_is_not_judged_and_the_route_stands(tmp_path, monkeypatch, capsys):
+    """No kicad-cli: the route's open connections are printed as not counted, never as 0, and the exit
+    code is the route's own. The router is replaced by a summary of 1 segment and no count."""
+    import argparse
+    import importlib.machinery
+    import types
+
+    loader = importlib.machinery.SourceFileLoader("workcenter_cli_route_open", str(CLI))
+    cli = types.ModuleType(loader.name)
+    cli.__file__ = str(CLI)
+    sys.modules[cli.__name__] = cli
+    loader.exec_module(cli)
+    routed = {"dsn": "d", "ses": "s", "log": "l", "segments": 1, "vias": 0, "unrouted": None}
+    monkeypatch.setattr(kicadgen, "route", lambda *_a, **_k: dict(routed))
+
+    def absent(*_a, **_k):
+        raise FileNotFoundError("kicad-cli")
+
+    monkeypatch.setattr(kicadgen, "drc_report", absent)
+    (tmp_path / "design.py").write_text(walled(False), encoding="utf-8")
+    args = argparse.Namespace(
+        design=str(tmp_path / "design.py"),
+        out=None,
+        route=True,
+        seed=None,
+        rounds=1,
+        passes=10,
+        timeout=60,
+        threads=0,
+        order=False,
+        json=False,
+    )
+    code = cli.cmd_design(args)
+    lines = capsys.readouterr().out.splitlines()
+    assert code == 0, lines
+    assert "  route: unconnected not counted: kicad-cli is not installed" in lines, lines
