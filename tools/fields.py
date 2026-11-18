@@ -39,9 +39,19 @@ C0 = 299792458.0  # m/s, exact by the definition of the metre (SI Brochure, 9th 
 MU0 = 4e-7 * math.pi  # H/m; CODATA 2018 gives 1.00000000055 times this
 EPS0 = 1.0 / (MU0 * C0 * C0)
 
-MEASURES = ("fext_db", "impedance_ohm", "insertion_loss_db", "next_db", "return_loss_db")
+DIFFERENTIAL = ("diff_impedance_ohm", "diff_insertion_loss_db", "diff_return_loss_db")
+MEASURES = ("fext_db", "impedance_ohm", "insertion_loss_db", "next_db", "resonance_ghz", "return_loss_db")
+MEASURES += DIFFERENTIAL
 COUPLING = ("fext_db", "next_db")
+# sheet: copper a perfect conductor of no thickness; thick: a perfect conductor of its layer's thickness;
+# lossy: an openEMS conducting sheet of `conductivity_s_m` and its layer's thickness, no thickness to
+# the mesh.
+COPPER = ("sheet", "thick", "lossy")
 SETTINGS = {
+    "copper": "sheet",
+    # S/m: the International Annealed Copper Standard, 58 m/(ohm mm2) at 20 C (NIST Handbook 100,
+    # Copper Wire Tables, 1966, 1.2a, p. 2)
+    "conductivity_s_m": 58e6,
     "margin_mm": 3.0,  # copper to the box's side, and air above the top copper and below the bottom
     "cells_per_wavelength": 20,  # the largest cell is the shortest wavelength in the stack over this
     "cells_across_width": 3,  # cells across a straight track's width
@@ -92,6 +102,7 @@ class Board:
     path: Path
     copper_z: dict[str, float]  # mm above the bottom copper; copper is a sheet
     dielectrics: list[tuple[float, float, float, float]]  # (z0, z1, epsilon_r, loss tangent), bottom up
+    copper_t: dict[str, float] = field(default_factory=dict)  # mm, each copper layer's stack-up thickness
     tracks: list[Track] = field(default_factory=list)
     vias: list[Via] = field(default_factory=list)
     # (net, layers, {layer: [polygon, ...]}): the zone's fill on each layer where it is filled, else
@@ -252,7 +263,7 @@ def read_board(path: Path) -> Board:
 
     totals: list[float] = []
     each("stack-up layer", layers, thickness)
-    copper_z, diel, at_z = {}, [], [sum(totals)]
+    copper_z, copper_t, diel, at_z = {}, {}, [], [sum(totals)]
 
     def stack_layer(ly: list) -> None:
         z = at_z[0]
@@ -260,6 +271,7 @@ def read_board(path: Path) -> Board:
         kind = str(kind[1]) if kind is not None and len(kind) > 1 else ""
         if kind == "copper":
             copper_z[str(ly[1])] = z
+            copper_t[str(ly[1])] = _num(ly, "thickness") or 0.0
         elif kind in ("core", "prepreg"):
             t, er, tand = _num(ly, "thickness"), _num(ly, "epsilon_r"), _num(ly, "loss_tangent")
             if t is None or er is None:
@@ -271,7 +283,7 @@ def read_board(path: Path) -> Board:
     shift = min(copper_z.values(), default=0.0)
     copper_z = {k: round(v - shift, 9) for k, v in copper_z.items()}
     diel = sorted((round(a - shift, 9), round(b - shift, 9), er, tand) for a, b, er, tand in diel)
-    board = Board(path=path, copper_z=copper_z, dielectrics=diel)
+    board = Board(path=path, copper_z=copper_z, dielectrics=diel, copper_t=copper_t)
 
     def segment(seg: list) -> None:
         layer, width = _layer(seg), _num(seg, "width") or 0.0
@@ -383,7 +395,10 @@ def read_spec(path: Path) -> dict:
     for key, value in given.items():
         if key not in SETTINGS:
             raise Refusal(f"{where}: setting `{key}` is none of {', '.join(SETTINGS)}")
-        if key in COUNTS:
+        if key == "copper":
+            if value not in COPPER:
+                raise Refusal(f"{where}: setting `copper` is {value!r}, none of {', '.join(COPPER)}")
+        elif key in COUNTS:
             least = COUNTS[key]
             if not (_number(value) and value == int(value) and value >= least):
                 raise Refusal(f"{where}: setting `{key}` is {value!r}, not a whole number of {least} or more")
@@ -435,16 +450,27 @@ def read_spec(path: Path) -> dict:
             net = lim.get("net")
             if net not in nets:
                 raise Refusal(f"{at}: {m}: net `{net}` is not one of the group's nets")
-            extra = set(lim) - {"measure", "net", "from", "min", "max", "source"}
+            extra = set(lim) - {"measure", "net", "from", "pair", "min", "max", "source", "unstated"}
             if extra:
                 raise Refusal(f"{at}: {m} of {net}: `{sorted(extra)[0]}` is not a key a limit takes")
             if m in COUPLING and (lim.get("from") not in nets or lim.get("from") == net):
                 raise Refusal(f"{at}: {m} of {net} names `from`, another net of the group")
             if m not in COUPLING and "from" in lim:
                 raise Refusal(f"{at}: {m} of {net} takes no `from`")
-            if m in COUPLING or m == "insertion_loss_db":
+            if m in DIFFERENTIAL and (lim.get("pair") not in nets or lim.get("pair") == net):
+                raise Refusal(f"{at}: {m} of {net} names `pair`, the other net of the group")
+            if m not in DIFFERENTIAL and "pair" in lim:
+                raise Refusal(f"{at}: {m} of {net} takes no `pair`")
+            if m in COUPLING or m in DIFFERENTIAL or m == "insertion_loss_db":
                 if kind == "antenna":
                     raise Refusal(f"{at}: an antenna has 1 port: {m} is not measured")
+            if "unstated" in lim:
+                # The document gives no bound for this measure: the reason is printed, never a pass.
+                if not isinstance(lim["unstated"], str) or not lim["unstated"].strip():
+                    raise Refusal(f"{at}: {m} of {net}: `unstated` names the document, clause and page")
+                if {"min", "max", "source"} & set(lim):
+                    raise Refusal(f"{at}: {m} of {net}: `unstated` takes no min, max or source")
+                continue
             if "min" not in lim and "max" not in lim:
                 raise Refusal(f"{at}: {m} of {net} has neither min nor max")
             for k in ("min", "max"):
@@ -641,6 +667,24 @@ def _pour_between(board: Board, t: Track, plane: str, reference: str):
     return None
 
 
+COPPER_LEFT_OUT = {
+    "sheet": [
+        "copper thickness: copper is a sheet at its layer's height (setting `copper`: thick); 35 um lowers "
+        "a 0.36 mm line over 0.2 mm of 4.5 from 51.34 to 48.94 ohm (Qucs Technical Papers, eq. 11.22 to "
+        "11.24, p. 165)",
+        "conductor loss: copper is a perfect conductor (setting `copper`: lossy); loss is the dielectric's",
+    ],
+    "thick": [
+        "conductor loss: the copper's body is a perfect conductor; loss is the dielectric's",
+        "the thickness of the planes: each is a sheet",
+    ],
+    "lossy": [
+        "copper thickness to the field: each conducting sheet has its layer's thickness in its loss alone",
+        "surface roughness",
+    ],
+}
+
+
 def build_model(board: Board, group: dict, spec: dict) -> dict:
     """The engine-neutral model of 1 group, in mm: the box, the dielectrics, the reference planes, the
     copper of the group's nets as polygons, the vias, the ports and the mesh."""
@@ -654,11 +698,38 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
     unknown = [t.layer for t in tracks if t.layer not in board.copper_z]
     if unknown:
         raise Refusal(f"{where}: layer {unknown[0]} is not in the board's stack-up")
+    copper = s.get("copper", "sheet")
+    # A zone of a net of the group is its copper (a patch): 1 ring on each copper layer it fills.
+    own_zones = []
+    for net, _, by_layer in board.zones:
+        if net not in nets:
+            continue
+        for ly, polys in sorted(by_layer.items()):
+            if ly not in board.copper_z:
+                continue
+            for poly in polys:
+                rings = _rings(poly)
+                if len(rings) > 1 or any(p is None for p in poly):
+                    raise Refusal(f"{where}: a zone of {net} on {ly} has a hole: the model takes 1 ring")
+                if len(rings) == 1 and len(rings[0]) > 2:
+                    own_zones.append((net, ly, rings[0]))
+    # thick: the copper grows away from the dielectric, up on the top layer and down on the bottom one.
+    top, bottom = max(board.copper_z.values()), min(board.copper_z.values())
+    grow = {}
+    for ly in sorted({t.layer for t in tracks} | {z[1] for z in own_zones}):
+        zl = board.copper_z[ly]
+        if copper == "thick" and bottom + 1e-9 < zl < top - 1e-9:
+            raise Refusal(
+                f"{where}: thick copper is modelled on an outer layer only: {ly} lies inside the stack-up, "
+                "where the stack-up does not say which side of the layer the copper takes"
+            )
+        t_cu = board.copper_t.get(ly, 0.0)
+        grow[ly] = (t_cu if zl >= top - 1e-9 else -t_cu) if copper == "thick" else 0.0
     poured = {ly for net, lys, _ in board.zones if net == reference for ly in lys if ly in board.copper_z}
     # A pour on a layer the group's tracks use is copper beside them, not a plane: as a sheet over the
     # box it would short them. The planes are the nearest pour under and over each layer of tracks; the
     # ones beyond those are shielded by them.
-    signal_z = sorted({board.copper_z[t.layer] for t in tracks})
+    signal_z = sorted({board.copper_z[t.layer] for t in tracks} | {board.copper_z[z[1]] for z in own_zones})
     sheets = sorted((board.copper_z[ly], ly) for ly in poured if board.copper_z[ly] not in signal_z)
     chosen_planes = set()
     for zt in signal_z:
@@ -699,6 +770,27 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
                     f"{net or '(no net)'} pour on {mid} at {_pt(hit)}, between it and the {reference} "
                     f"plane on {ly}: the model leaves every other net out, so its return path would be "
                     f"the plane's"
+                )
+    for net, ly, ring in own_zones:
+        zl = board.copper_z[ly]
+        under = [s for s in sheets if s[0] < zl]
+        over = [s for s in sheets if s[0] > zl]
+        # its corners, then a grid of 11 x 11 points over its bounds that lie in it
+        xs_, ys_ = [q[0] for q in ring], [q[1] for q in ring]
+        grid = [
+            (min(xs_) + (max(xs_) - min(xs_)) * i / 10, min(ys_) + (max(ys_) - min(ys_)) * j / 10)
+            for i in range(11)
+            for j in range(11)
+        ]
+        points = list(ring) + [q for q in grid if _in_polygon(q, ring)]
+        for _, plane in ([under[-1]] if under else []) + ([over[0]] if over else []):
+            bare = next(
+                (q for q in points if not any(_in_polygon(q, p) for p in shapes.get(plane, []))), None
+            )
+            if bare is not None:
+                raise Refusal(
+                    f"{where}: the zone of {net} on {ly} has no {reference} pour on {plane} under "
+                    f"{_pt(bare)}: the model would put a plane where the board has none"
                 )
     vias = [v for v in board.vias if v.net in nets]
     for v in vias:
@@ -754,7 +846,7 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
             continue
         nx, ny = -(by - ay) / length * h, (bx - ax) / length * h
         pts = [[ax + nx, ay + ny], [bx + nx, by + ny], [bx - nx, by - ny], [ax - nx, ay - ny]]
-        polygons.append({"net": t.net, "z": board.copper_z[t.layer], "points": pts})
+        polygons.append({"net": t.net, "z": board.copper_z[t.layer], "points": pts, "layer": t.layer})
         # A sheet's edge on a mesh line is wider to the solver than to the board: the line fixture read
         # 43.14 ohm, Hammerstad and Jensen give 51.34. The edge lies a third of a cell inside the
         # metal and two thirds outside (`_across`): 50.88 ohm.
@@ -773,7 +865,11 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
             # A joint the tracks' own rectangles cover (a straight run, a T) needs none: openEMS warns of
             # a primitive that fills no cell, and the run counts that warning as a fault.
             if not all(any(_inside(q, t) for t in ts) for q in octagon):
-                polygons.append({"net": ts[0].net, "z": board.copper_z[layer], "points": octagon})
+                polygons.append(
+                    {"net": ts[0].net, "z": board.copper_z[layer], "points": octagon, "layer": layer}
+                )
+    for net, ly, ring in own_zones:
+        polygons.append({"net": net, "z": board.copper_z[ly], "points": [list(q) for q in ring], "layer": ly})
 
     ends = [(layer, p, ts[0]) for (layer, p), ts in degree.items() if len(ts) == 1 and p not in via_at]
     chosen = []
@@ -832,12 +928,14 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
     ys = [q[1] for poly in polygons for q in poly["points"]] + [v.at[1] for v in vias]
     m = s["margin_mm"]
     z_used = [board.copper_z[t.layer] for t in tracks] + [board.copper_z[ly] for ly in plane_layers]
+    z_used += [board.copper_z[ly] for _, ly, _ in own_zones]
+    z_used += [round(board.copper_z[ly] + g, 9) for ly, g in grow.items() if g]  # the face of thick copper
     for v in vias:
         z_used.extend(board.copper_z.get(ly, 0.0) for ly in v.layers)
     zlo, zhi = min(z_used), max(z_used)
     box = [min(xs) - m, min(ys) - m, zlo - m, max(xs) + m, max(ys) + m, zhi + m]
     planes = [
-        {"layer": ly, "net": reference, "z": board.copper_z[ly]}
+        {"layer": ly, "net": reference, "z": board.copper_z[ly], "t_cu": board.copper_t.get(ly, 0.0)}
         for ly in plane_layers
         if zlo - 1e-9 <= board.copper_z[ly] <= zhi + 1e-9
     ]
@@ -858,6 +956,21 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
     cell = max_cell_mm(f_hi, er_max, s["cells_per_wavelength"])
     mesh_x += [box[0], box[3]]
     mesh_y += [box[1], box[4]]
+    # A zone's edge along x or y lies a third of a cell d inside the metal and two thirds outside, as a
+    # straight track's (`_across`), d a third of the largest cell; a slanted edge has its corners' lines.
+    d = cell / 3
+    for _, _, ring in own_zones:
+        for a, b in zip(ring, ring[1:] + ring[:1], strict=True):
+            mid = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+            if abs(a[1] - b[1]) < 1e-9:
+                sign = 1 if _in_polygon((mid[0], mid[1] + 1e-4), ring, tol=-1e-9) else -1
+                mesh_y.extend([a[1] + sign * d / 3, a[1] - sign * 2 * d / 3])
+            elif abs(a[0] - b[0]) < 1e-9:
+                sign = 1 if _in_polygon((mid[0] + 1e-4, mid[1]), ring, tol=-1e-9) else -1
+                mesh_x.extend([a[0] + sign * d / 3, a[0] - sign * 2 * d / 3])
+            else:
+                mesh_x.extend([a[0], b[0]])
+                mesh_y.extend([a[1], b[1]])
     mesh_z = [box[2], box[5]] + [z for z in z_used]
     for d in dielectrics:
         k = int(s["cells_per_dielectric"])
@@ -894,7 +1007,16 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
         "metals": [
             {
                 "net": net,
-                "polygons": [{"z": p["z"], "points": p["points"]} for p in polygons if p["net"] == net],
+                "polygons": [
+                    {
+                        "z": p["z"],
+                        "points": p["points"],
+                        "t": grow.get(p["layer"], 0.0),
+                        "t_cu": board.copper_t.get(p["layer"], 0.0),
+                    }
+                    for p in polygons
+                    if p["net"] == net
+                ],
                 "vias": [c for c in cylinders if c["net"] == net],
             }
             for net in nets
@@ -905,10 +1027,10 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
         "max_cell_mm": cell,
         "mesh": mesh,
         "settings": dict(s),
-        "left_out": [
-            "copper thickness: copper is a sheet at its layer's height; 35 um lowers a 0.36 mm line over "
-            "0.2 mm of 4.5 from 51.34 to 48.94 ohm (Hammerstad and Jensen 1980, thickness correction)",
-            "conductor loss: copper is a perfect conductor; loss is the dielectric's alone",
+        "copper": {"kind": copper}
+        | ({"conductivity_s_m": s.get("conductivity_s_m", 58e6)} if copper == "lossy" else {}),
+        "left_out": COPPER_LEFT_OUT[copper]
+        + [
             f"the {reference} planes' own outlines: each is whole over the box; the pour, less its cutouts, "
             "was checked under each track of the group, at its centre and edges every half its width along "
             "it, and no pour of another net lies between a track and its plane",
@@ -995,6 +1117,17 @@ def line_measures(freqs, s11, s21=None, zref: float = 50.0) -> dict:
     return out
 
 
+def attenuation_np(s11, s21) -> list[float]:
+    """The attenuation of a uniform line in nepers, Re(gamma l), from its S11 and S21 at each frequency:
+    cosh(gamma l) = (1 - S11^2 + S21^2) / (2 S21), which holds for a symmetric line between equal ports
+    whatever its impedance, so the mismatch at its ends is no part of it."""
+    out = []
+    for a, b in zip(s11, s21, strict=True):
+        a, b = complex(a), complex(b)
+        out.append(abs(cmath.acosh((1 - a * a + b * b) / (2 * b)).real))
+    return out
+
+
 def coupling_measure(freqs, s) -> dict:
     return _worst(freqs, s, 1)
 
@@ -1004,13 +1137,22 @@ def _fmt(v: float) -> str:
 
 
 def judge(limits: list[dict], measures: dict) -> tuple[list[str], list[str], list[str]]:
-    """Each limit against its measure: the lines that failed, held and were not judged."""
+    """Each limit against its measure: the lines that failed, held and were not judged. A limit that
+    says why the document gives none (`unstated`), and a measure no limit names, are lines not judged."""
     fails, held, unjudged = [], [], []
+    named = set()
     for lim in limits:
         m, net = lim["measure"], lim["net"]
-        key = f"{m} from {lim['from']}" if "from" in lim else m
+        key = (
+            f"{m} from {lim['from']}" if "from" in lim else f"{m} with {lim['pair']}" if "pair" in lim else m
+        )
+        named.add((net, key))
         label = f"{net} {key}"
         got = measures.get(net, {}).get(key)
+        if "unstated" in lim:
+            shown = f" {got['value']:.2f}{_at(got)}" if got is not None and got["value"] is not None else ""
+            unjudged.append(f"{label}{shown}: not judged, {lim['unstated']}")
+            continue
         if got is None:
             unjudged.append(f"{label}: not judged, the run gave no such measure")
             continue
@@ -1018,9 +1160,7 @@ def judge(limits: list[dict], measures: dict) -> tuple[list[str], list[str], lis
         if v is None:
             unjudged.append(f"{label}: not judged, {got['why']}")
             continue
-        at = f" at {got['at_hz'] / 1e9:.3g} GHz" if got.get("at_hz") is not None else ""
-        if got.get("median_of"):
-            at = f" (the median over {got['median_of']} frequencies)"
+        at = _at(got)
         if "min" in lim and v < lim["min"]:
             fails.append(f"{label} {v:.2f}{at} below min {_fmt(lim['min'])} ({lim['source']})")
         elif "max" in lim and v > lim["max"]:
@@ -1028,7 +1168,19 @@ def judge(limits: list[dict], measures: dict) -> tuple[list[str], list[str], lis
         else:
             span = f"{_fmt(lim['min']) if 'min' in lim else ''}..{_fmt(lim['max']) if 'max' in lim else ''}"
             held.append(f"{label} {v:.2f}{at} within {span} ({lim['source']})")
+    for net, ms in measures.items():
+        for key, got in sorted(ms.items()):
+            if (net, key) not in named:
+                shown = f" {got['value']:.2f}{_at(got)}" if got["value"] is not None else ""
+                unjudged.append(f"{net} {key}{shown}: not judged, fields.json states no limit for it")
     return fails, held, unjudged
+
+
+def _at(got: dict) -> str:
+    """Where a measure was read: its frequency, or the median and over how many frequencies."""
+    if got.get("median_of"):
+        return f" (the median over {got['median_of']} frequencies)"
+    return f" at {got['at_hz'] / 1e9:.3g} GHz" if got.get("at_hz") is not None else ""
 
 
 # ---------------------------------------------------------------- engines
@@ -1048,6 +1200,14 @@ def _box(a, b, prio: int) -> str:
 def _polygon(z: float, points, prio: int = 10) -> str:
     verts = "".join(f'<Vertex X1="{_n(x)}" X2="{_n(y)}"/>' for x, y in points)
     return f'<Polygon Priority="{prio}" Elevation="{_n(z)}" NormDir="2">{verts}</Polygon>'
+
+
+def _linpoly(z: float, length: float, points, prio: int = 10) -> str:
+    """A polygon in x and y from z up by length: thick copper (CSXCAD's LinPoly)."""
+    verts = "".join(f'<Vertex X1="{_n(x)}" X2="{_n(y)}"/>' for x, y in points)
+    return (
+        f'<LinPoly Priority="{prio}" Elevation="{_n(z)}" NormDir="2" Length="{_n(length)}">{verts}</LinPoly>'
+    )
 
 
 class EngineFault(RuntimeError):
@@ -1121,18 +1281,43 @@ class OpenEMS:
                 f"<Primitives>{fill}</Primitives></Material>"
             )
         corners = [[lo[0], lo[1]], [hi[0], lo[1]], [hi[0], hi[1]], [lo[0], hi[1]]]
+        copper = model.get("copper", {"kind": "sheet"})
+        lossy = copper["kind"] == "lossy"
+
+        def metal(name: str, t_cu_mm: float, prims: str) -> str:
+            """A perfect conductor, or with `lossy` an openEMS conducting sheet of the copper's
+            conductivity and the layer's thickness in metres."""
+            if lossy and t_cu_mm > 0:
+                sigma, t = _n(copper["conductivity_s_m"]), _n(t_cu_mm * 1e-3)
+                return (
+                    f'<ConductingSheet Name="{name}" Conductivity="{sigma}" Thickness="{t}">'
+                    f"<Primitives>{prims}</Primitives></ConductingSheet>"
+                )
+            return f'<Metal Name="{name}"><Primitives>{prims}</Primitives></Metal>'
+
         for p in model["planes"]:
-            sheet = _polygon(p["z"], corners)
-            props.append(f'<Metal Name="plane_{p["layer"]}"><Primitives>{sheet}</Primitives></Metal>')
-        for k, metal in enumerate(model["metals"], 1):
-            prims = "".join(_polygon(p["z"], p["points"]) for p in metal["polygons"])
-            for c in metal["vias"]:
+            props.append(metal(f"plane_{p['layer']}", p.get("t_cu", 0.0), _polygon(p["z"], corners)))
+        for k, net in enumerate(model["metals"], 1):
+            by_t: dict[float, str] = {}
+            for p in net["polygons"]:
+                t = p.get("t", 0.0)
+                body = (
+                    _linpoly(min(p["z"], p["z"] + t), abs(t), p["points"])
+                    if t
+                    else _polygon(p["z"], p["points"])
+                )
+                by_t[p.get("t_cu", 0.0)] = by_t.get(p.get("t_cu", 0.0), "") + body
+            for i, (t_cu, prims) in enumerate(sorted(by_t.items())):
+                props.append(metal(f"net_{k}" + (f"_{i + 1}" if i else ""), t_cu, prims))
+            barrels = ""
+            for c in net["vias"]:
                 x, y = _n(c["at"][0]), _n(c["at"][1])
-                prims += (
+                barrels += (
                     f'<Cylinder Priority="10" Radius="{_n(c["r"])}"><P1 X="{x}" Y="{y}" Z="{_n(c["z"][0])}"/>'
                     f'<P2 X="{x}" Y="{y}" Z="{_n(c["z"][1])}"/></Cylinder>'
                 )
-            props.append(f'<Metal Name="net_{k}"><Primitives>{prims}</Primitives></Metal>')
+            if barrels:  # a via is a body: a perfect conductor in every copper kind
+                props.append(f'<Metal Name="net_{k}_vias"><Primitives>{barrels}</Primitives></Metal>')
         for p in model["ports"]:
             n, a, b = p["n"], p["start"], p["stop"]
             direction = 1 if b[2] > a[2] else -1
@@ -1299,6 +1484,11 @@ def group_measures(model: dict, columns: dict[int, list[list[complex]]]) -> dict
         col = columns[ns[0]]
         far = col[index[ns[-1]]] if len(ns) > 1 else None
         out[net].update(line_measures(freqs, col[index[ns[0]]], far, zref))
+        if model.get("kind") == "antenna":
+            # The resonance: where the least of the wave comes back, |S11| least over the band.
+            mags = [abs(complex(x)) for x in col[index[ns[0]]]]
+            k = min(range(len(mags)), key=mags.__getitem__)
+            out[net]["resonance_ghz"] = {"value": freqs[k] / 1e9, "at_hz": freqs[k]}
         if len(ns) != 2:  # the impedance formula is a symmetric 2-port's: a net of 3 ports is none
             out[net].pop("impedance_ohm", None)
         elif net in model.get("no_impedance", {}):
@@ -1309,7 +1499,34 @@ def group_measures(model: dict, columns: dict[int, list[list[complex]]]) -> dict
             out[other][f"next_db from {net}"] = coupling_measure(freqs, col[index[os_[0]]])
             if len(os_) > 1:
                 out[other][f"fext_db from {net}"] = coupling_measure(freqs, col[index[os_[-1]]])
+    # A pair: 2 nets of 2 ports each, both driven. The differential measures go under the first net.
+    pair = [ns for ns in by_net.values()]
+    if len(pair) == 2 and all(len(ns) == 2 and ns[0] in columns for ns in pair):
+        (p, n), order = model["nets"], [index[k] for ns in pair for k in ns]
+        cols = [[columns[ns[0]][r] for r in order] for ns in pair]
+        sdd11, sdd21 = mixed_mode(*cols)
+        m = line_measures(freqs, sdd11, sdd21, 2 * zref)
+        out[p][f"diff_return_loss_db with {n}"] = m["return_loss_db"]
+        out[p][f"diff_insertion_loss_db with {n}"] = m["insertion_loss_db"]
+        bent = [model.get("no_impedance", {}).get(x) for x in (p, n)]
+        if any(bent):
+            why = next(w for w in bent if w)
+            out[p][f"diff_impedance_ohm with {n}"] = {"value": None, "at_hz": None, "why": why}
+        elif "impedance_ohm" in m:
+            out[p][f"diff_impedance_ohm with {n}"] = m["impedance_ohm"]
     return out
+
+
+def mixed_mode(col_p: list, col_n: list) -> tuple[list[complex], list[complex]]:
+    """Sdd11 and Sdd21 of a pair from 2 columns of its 4-port, each over the frequencies with its
+    receivers in the order P near, P far, N near, N far: col_p is P's near end driven (S11, S21, S31,
+    S41), col_n N's near end driven (S13, S23, S33, S43). The differential wave at an end is (wave on P
+    - wave on N) / sqrt 2: driving +1 on P and -1 on N, each over sqrt 2, gives Sdd11 = (S11 - S13 -
+    S31 + S33) / 2 and Sdd21 = (S21 - S23 - S41 + S43) / 2."""
+    (s11, s21, s31, s41), (s13, s23, s33, s43) = col_p, col_n
+    sdd11 = [(a - b - c + d) / 2 for a, b, c, d in zip(s11, s13, s31, s33, strict=True)]
+    sdd21 = [(a - b - c + d) / 2 for a, b, c, d in zip(s21, s23, s41, s43, strict=True)]
+    return sdd11, sdd21
 
 
 def report_md(project: str, engine: str, version: str | None, groups: list[dict], verdict: str) -> str:

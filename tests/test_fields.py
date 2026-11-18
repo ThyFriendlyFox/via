@@ -78,7 +78,8 @@ def test_the_plane_and_the_dielectric_fill_the_box():
     z -3 to 3.2. The GND plane is a sheet at z 0 over the box; the dielectric fills z 0 to 0.2."""
     model = line_model()
     assert model["box"] == pytest.approx([97, 96.82, -3.0, 113, 103.18, 3.2])
-    assert model["planes"] == [{"layer": "B.Cu", "net": "GND", "z": 0.0}]
+    # t_cu: B.Cu's 0.035 mm of the stack-up, used by `copper` lossy alone
+    assert model["planes"] == [{"layer": "B.Cu", "net": "GND", "z": 0.0, "t_cu": 0.035}]
     (diel,) = model["dielectrics"]
     assert diel["z"] == pytest.approx([0.0, 0.2])
     assert (diel["er"], diel["tand"]) == (4.5, 0.02)
@@ -692,10 +693,12 @@ def test_a_wave_that_never_arrives_is_no_measure():
     limits = [{"measure": "insertion_loss_db", "net": "X", "max": 3, "source": "d"}]
     fails, held, unjudged = fields.judge(limits, {"X": m})
     assert fails == [] and held == []
-    assert unjudged == [
+    assert unjudged[0] == (
         "X insertion_loss_db: not judged, |S| is 0 at 1 GHz: no wave reached the port, "
         "so nothing was measured"
-    ]
+    )
+    # the return loss the run made and no limit names (tests/test_fields_measures.py)
+    assert all(x.endswith("fields.json states no limit for it") for x in unjudged[1:])
 
 
 def stub_spec(**group):
@@ -825,9 +828,10 @@ def test_the_impedance_is_judged_on_a_uniform_line_alone():
     limits = [{"measure": "impedance_ohm", "net": "S", "min": 45, "max": 55, "source": "d"}]
     fails, held, unjudged = fields.judge(limits, out)
     assert fails == [] and held == []
-    assert unjudged == [
+    assert unjudged[0] == (
         "S impedance_ohm: not judged, S has 2 widths (0.3, 0.5 mm): the impedance is a uniform line's"
-    ]
+    )
+    assert all(x.endswith("fields.json states no limit for it") for x in unjudged[1:])
 
 
 def test_a_net_on_2_layers_has_no_impedance():
