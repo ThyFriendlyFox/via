@@ -58,6 +58,7 @@ jobs:
         run: |
           docker build --progress plain \
             --build-arg TOOLCHAIN_TAG="$TAG" --build-arg WORKCENTER_REVISION="$GITHUB_SHA" \
+            --build-arg APT_UPDATE_TIMEOUT=120 --build-arg APT_DOWNLOAD_TIMEOUT=570 \
             --label org.opencontainers.image.source="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
             --label org.opencontainers.image.revision="$GITHUB_SHA" \
             --label org.opencontainers.image.description="EE Workcenter: KiCad 10, ngspice, FreeRouting, openEMS" \

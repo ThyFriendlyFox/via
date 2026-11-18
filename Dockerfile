@@ -15,8 +15,12 @@ WORKDIR /opt/workcenters/ee/src
 COPY . .
 
 # The 1 definition of the toolchain: the script CI and the cloud environment run, as CI runs it. The
-# apt lists and the caches it made are removed in the layer that made them.
-RUN REQUIRE_FREEROUTING=1 ./install.sh \
+# apt lists and the caches it made are removed in the layer that made them. The image workflow passes
+# CI's 2 bounds of the apt step (APT_UPDATE_TIMEOUT=120, APT_DOWNLOAD_TIMEOUT=570); a build that passes
+# none, as `docker build .` does, has no bound, as on a person's computer.
+ARG APT_UPDATE_TIMEOUT=
+ARG APT_DOWNLOAD_TIMEOUT=
+RUN REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT="$APT_UPDATE_TIMEOUT" APT_DOWNLOAD_TIMEOUT="$APT_DOWNLOAD_TIMEOUT" ./install.sh \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/* /root/.cache
 

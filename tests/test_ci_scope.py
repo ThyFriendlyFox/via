@@ -378,7 +378,12 @@ def test_the_nightly_run_stays_the_full_gate():
     yaml = pytest.importorskip("yaml")
     nightly = yaml.safe_load((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))
     assert "schedule" in nightly[True]
-    assert "make verify" in run_lines(nightly["jobs"]["verify"]).split("\n")
+    lines = run_lines(nightly["jobs"]["verify"]).split("\n")
+    assert "make verify" in lines
+    # The nightly run installs as CI's full job does, with CI's 2 bounds.
+    assert (
+        "sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh" in lines
+    )
 
 
 def test_the_makefile_asks_the_same_script_and_names_no_path_of_its_own():
