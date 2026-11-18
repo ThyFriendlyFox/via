@@ -655,7 +655,9 @@ def test_the_printed_line_of_a_judged_part_names_the_board_its_figure_stands_on(
         check=False,
     )
     assert (
-        "limit 110 C; theta_ja 231.1 C/W was measured on the high-k 2s2p board of JESD 51-7 (p 5)"
-        in proc.stdout
+        "limit 110 C; held on theta_ja on the high-k 2s2p board of JESD 51-7 with no margin: SPRA953D calls "
+        "that board a best case, not a bound, and gives as much as a 50 % RthetaJA variation between the 1s "
+        "and 2s2p boards (section 1.2, page 3); theta_ja 231.1 C/W was measured on the high-k 2s2p board of "
+        "JESD 51-7 (p 5)" in proc.stdout
     )
     assert "read once" not in proc.stdout

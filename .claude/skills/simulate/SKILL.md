@@ -569,9 +569,12 @@ Read what the sum rests on. EIA/JESD51 defines how RthetaJA is measured,
 on a test board. SPRA953D, section 1.1, page 2, calls equation 1 a
 misapplication on a system board, with erroneous results: the test board
 is the heat sink, and RthetaJA changes with the board. Section 1.2, page
-3: a JEDEC 2s2p board gives a best case, a 1s board a typical one. So a
+3: a JEDEC 2s2p board gives a best case, a 1s board a typical one, and
+as much as a 50 % RthetaJA variation comes of that choice alone. So a
 part the gate holds is held on the datasheet's board, and the facts name
-that board for each figure. The 2 boards are `1s0p` (the low-k board of
+that board for each figure. The 2s2p figure is SPRA953D's best-case
+estimate, not a bound: a part held on it is held with no margin, and its
+`thermal` line says so. The 2 boards are `1s0p` (the low-k board of
 JESD 51-3) and `2s2p` (the high-k board of JESD 51-7), as SPRA953D names
 them (table 3-1, note 11, page 9). A figure whose board the facts do not
 name holds no part. Every printed `thermal` line names the board. JESD51
@@ -628,22 +631,34 @@ theta_jb holds no part. Prefer psi_jb or psi_jt.
    (SPRA953D, section 4, figure 4-1, page 10). So is a `from` whose figure
    the facts do not give: theta_ja judges every run. A junction from a
    stated temperature under the one theta_ja gives on a 2s2p board, which
-   SPRA953D calls a best case (section 1.2, page 3), holds no part. Only
-   that bound checks a stated temperature: when the facts give theta_ja on
-   the 1s0p board, on no board, or no theta_ja, the stated temperature is
-   checked against no board, and the part is not held (a warning, a
-   failure with `--strict`). A case on a heat sink is what theta_jc was
-   devised for (SPRA953D, section 2, page 6; section 2.2, equation 5, page
-   7): with theta_jc, name what holds the case in `heat_sink`, and the
-   2s2p bound does not apply; the statement and its source stand on their
-   own. `heat_sink` is refused with any other figure (psi_jt is not used
-   with a heat sink, section 3.2, page 10). 2 keys within 0.01 C of each
+   SPRA953D calls a best case (section 1.2, page 3), holds no part. That
+   best case is no bound, but it is the only floor the gate holds a stated
+   temperature to: when the facts give theta_ja on the 1s0p board, on no
+   board, or no theta_ja, the stated temperature is checked against no
+   board, and the part is not held (a warning, a failure with `--strict`).
+   A case on a heat sink is what theta_jc was devised for (SPRA953D,
+   section 2, page 6): with theta_jc, name the sink in `heat_sink` with
+   the interface's Rtheta(CS) and the sink's Rtheta(SA), in C/W, and
+   their source:
+   ```json
+   "heat_sink": {"name": "the sink on U1", "theta_cs": 0.5, "theta_sa": 20,
+                 "source": "the sink's datasheet, page 2; the pad's datasheet, page 1"}
+   ```
+   The junction is then the greater of equation 4 from the stated case
+   and equation 5 from the ambient, TA + (RthetaJC + Rtheta(CS) +
+   Rtheta(SA)) x power (section 2.2, page 7), in place of the 2s2p floor.
+   Equation 5 gives a junction no lower than equation 6, which SPRA953D
+   calls more accurate for any combination; the line says so with the
+   part's RthetaJC / RthetaJA. `heat_sink` is refused with any other
+   figure (psi_jt is not used with a heat sink, section 3.2, page 10), and
+   as text alone. 2 keys within 0.01 C of each
    other are refused. The part's `thermal` line names the stated
    temperature and its source when its worst run used it, and, when the
    facts give theta_ja, the junction theta_ja gives at those runs and its
    board, so the owner sees how far the statement moves the verdict.
    Without `sim/thermal.json` the gate judges no junction and prints 1
-   line that says so.
+   line that says so. `workcenter gates` prints the same `thermal` lines,
+   and `--report` writes them under the deck table.
 4. Run `workcenter sim <project>`. Read each line that starts with
    `thermal:`, and each line that starts with `corners.json: decks.`:
 
@@ -658,7 +673,8 @@ theta_jb holds no part. Prefer psi_jb or psi_jt.
    | `... not judged as written: sim/thermal.json states its board temperature at 85 C ambient only, ...` | State the temperature at that run's ambient too, or add theta_ja to the facts. |
    | `thermal: U1 (MPN): sim/thermal.json states its board temperature at 70 C ambient, where no run of ldo stands` | The ambient matches no run: write the run's temperature (the deck's own or a corner's). |
    | `thermal: U1 (MPN) not held: its facts (...) name no JEDEC board for theta_ja` | Write `boards` from the thermal table's footnote. A figure on no JEDEC board holds no part. |
-   | `... not held at 85 C: its stated board 85.001 C, which gives a junction of 96.035 C, was checked against no board: ...` | Nothing bounds the stated temperature. Judge the part on theta_ja (take `from` out), or, for a case on a heat sink, state theta_jc with `heat_sink`. |
+   | `... not held at 85 C: its stated board 85.001 C, which gives a junction of 96.035 C, was checked against no board: ...` | No 2s2p floor checks the stated temperature. Judge the part on theta_ja (take `from` out), or, for a case on a heat sink, state theta_jc with `heat_sink` and its 2 resistances. |
+   | `thermal U1: junction ... at its worst of 11 runs (...), from case ..., the case on a heat sink, ..., equation 5 judging` | Equation 5 from the ambient gave more than the stated case: the sink, not the case, sets the junction. A hotter part needs a better sink (a lower Rtheta(SA)) or less power. |
    | `thermal: no part's junction is judged: sim/thermal.json is not there, ...` | Name each part that dissipates power in `sim/thermal.json` (step 3). |
    | `corners.json: decks.ldo.temperature runs -20 C and 60 C, so 85 C of the file's -20 C and 85 C is not run for ldo` | The deck's own block leaves out a temperature of the file, an end or an inner one. Add it to the deck's block, or take the block out so the deck runs the file's. |
    | `... not judged: its deck ... did not run to its end` | Fix the deck first; its errors are in the same result. |
