@@ -24,10 +24,71 @@ import chipflow  # noqa: E402
 import engine_watch  # noqa: E402
 
 CASES = """
-import subprocess, sys
+import os, subprocess, sys
 import pytest
 
 CHILD = "import subprocess\\ntry:\\n    subprocess.run(['ngspice', '-v'])\\nexcept OSError:\\n    pass\\n"
+EXEC = "import os\\ntry:\\n    os.execvp('ngspice', ['ngspice', '-v'])\\nexcept OSError:\\n    pass\\n"
+
+
+def start(args):
+    try:
+        subprocess.run(args, capture_output=True)
+    except OSError:
+        pass
+
+
+@pytest.fixture
+def ngspice_in_setup():
+    start(["ngspice", "-v"])
+
+
+@pytest.fixture
+def ngspice_in_teardown():
+    yield
+    start(["ngspice", "-v"])
+
+
+def test_a_fixture_starts_ngspice_in_setup(ngspice_in_setup):
+    pass
+
+
+def test_a_fixture_starts_ngspice_in_teardown(ngspice_in_teardown):
+    pass
+
+
+def test_os_system_starts_ngspice():
+    try:
+        os.system("ngspice -v > /dev/null 2>&1")
+    except OSError:
+        pass
+
+
+def test_posix_spawn_starts_ngspice():
+    try:
+        os.waitpid(os.posix_spawnp("ngspice", ["ngspice", "-v"], os.environ), 0)
+    except OSError:
+        pass
+
+
+def test_a_child_execs_ngspice():
+    subprocess.run([sys.executable, "-c", EXEC], capture_output=True)
+
+
+def test_timeout_with_a_signal_option_starts_ngspice():
+    start(["timeout", "-s", "KILL", "60", "ngspice", "-v"])
+
+
+def test_env_with_an_unset_option_starts_ngspice():
+    start(["env", "-u", "FOO", "ngspice", "-v"])
+
+
+def test_flock_with_a_command_line_starts_ngspice(tmp_path):
+    start(["flock", str(tmp_path / "lock"), "-c", "ngspice -v"])
+
+
+def test_a_shell_line_that_only_says_an_engine_name():
+    assert subprocess.run(["sh", "-c", "echo magic"], capture_output=True, text=True).stdout == "magic\\n"
 
 
 def test_starts_kicad_cli_without_the_marker():
@@ -65,11 +126,13 @@ def test_starts_git_and_python_only():
 """
 
 
-def run_cases(tmp_path: Path, *args: str) -> tuple[int, str]:
-    """pytest on the cases above, beside a copy of this repository's conftest, with engines refused."""
+def run_cases(tmp_path: Path, *args: str, files: dict[str, str] | None = None) -> tuple[int, str]:
+    """pytest on the cases above (or on `files`), beside a copy of this repository's conftest, with
+    engines refused."""
     folder = tmp_path / "cases"
     folder.mkdir()
-    (folder / "test_cases.py").write_text(CASES, encoding="utf-8")
+    for name, text in (files or {"test_cases.py": CASES}).items():
+        (folder / name).write_text(text, encoding="utf-8")
     # The repository's conftest, with the folder of the plugin named from this checkout.
     conftest = (ROOT / "tests" / "conftest.py").read_text(encoding="utf-8")
     plugin = 'Path(__file__).resolve().parents[1] / "tools" / "ci"'
@@ -90,27 +153,68 @@ def run_cases(tmp_path: Path, *args: str) -> tuple[int, str]:
 
 
 def test_a_test_without_the_marker_that_starts_an_engine_fails(tmp_path):
-    """4 of the 7 cases start an engine without the marker: kicad-cli from the test, ngspice from a
-    child Python, pcbnew imported in a child, yosys from a shell. The marked case, the stand-in under
-    the test's own folder and the case that starts git pass: 3 passed, 4 failed."""
-    code, text = run_cases(tmp_path, "-rf")
+    """16 cases. 10 start an engine in their call without the marker: kicad-cli from the test, ngspice
+    from a child Python, pcbnew imported in a child, yosys from a shell line, ngspice by os.system, by
+    os.posix_spawnp, by a child's os.execvp, behind `timeout -s KILL 60`, behind `env -u FOO`, and in
+    flock's -c line: 10 failed. 2 start it from a fixture: in setup (the test does not run) and in
+    teardown (the call passes, the teardown errs): 2 errors. The marked case, the stand-in, the case
+    that starts git, the teardown case's call and `echo magic` (a word, no program) pass: 5 passed."""
+    code, text = run_cases(tmp_path, "-rfE")
     assert code == 1, text
-    assert "4 failed, 3 passed" in text, text
+    assert "10 failed, 5 passed, 2 errors" in text, text
     for name, engine in (
         ("test_starts_kicad_cli_without_the_marker", "kicad-cli"),
         ("test_a_child_process_starts_ngspice_without_the_marker", "ngspice"),
         ("test_a_child_imports_pcbnew_without_the_marker", "pcbnew"),
         ("test_a_shell_starts_yosys_without_the_marker", "yosys"),
+        ("test_a_fixture_starts_ngspice_in_setup", "ngspice"),
+        ("test_a_fixture_starts_ngspice_in_teardown", "ngspice"),
+        ("test_os_system_starts_ngspice", "ngspice"),
+        ("test_posix_spawn_starts_ngspice", "ngspice"),
+        ("test_a_child_execs_ngspice", "ngspice"),
+        ("test_timeout_with_a_signal_option_starts_ngspice", "ngspice"),
+        ("test_env_with_an_unset_option_starts_ngspice", "ngspice"),
+        ("test_flock_with_a_command_line_starts_ngspice", "ngspice"),
     ):
         line = f"test_cases.py::{name} started {engine} and has no engine marker (tools/ci/engine_marker.py)"
         assert line in text, text
+    assert "test_a_shell_line_that_only_says_an_engine_name started" not in text, text
 
 
 def test_the_fast_run_deselects_the_marked_tests(tmp_path):
-    """-m "not engine" leaves the 6 cases without the marker: 4 fail, 2 pass, 1 deselected."""
+    """-m "not engine" leaves the 15 cases without the marker: 10 fail, 4 pass, 2 err, 1 deselected."""
     code, text = run_cases(tmp_path, "-m", "not engine")
     assert code == 1
-    assert "4 failed, 2 passed, 1 deselected" in text, text
+    assert "10 failed, 4 passed, 1 deselected, 2 errors" in text, text
+
+
+COLLECTED = """
+import subprocess
+
+try:  # probes when the module is imported, as a skip mark's
+    subprocess.run(["ngspice", "-v"], capture_output=True)
+    NGSPICE_REFUSED = False
+except OSError:
+    NGSPICE_REFUSED = True
+try:
+    import pcbnew  # noqa: F401
+
+    PCBNEW_REFUSED = False
+except ImportError:
+    PCBNEW_REFUSED = True
+
+
+def test_the_probes_at_collection_were_refused():
+    assert NGSPICE_REFUSED and PCBNEW_REFUSED
+"""
+
+
+def test_a_probe_at_collection_is_refused_in_the_fast_run_and_not_held(tmp_path):
+    """A module's probe runs while it is collected, before any test: the fast run refuses it (the probe
+    finds no engine), and no test is failed for it. 1 case, 1 passed."""
+    code, text = run_cases(tmp_path, files={"test_probe.py": COLLECTED})
+    assert code == 0, text
+    assert "1 passed" in text, text
 
 
 FULL_RUN_CASE = """
@@ -170,3 +274,34 @@ def test_an_engine_is_found_behind_a_wrapper_and_in_a_shell_line():
     assert found(["git", "status"]) is None
     assert found([sys.executable, "tools/workcenter", "gates", "x"]) is None
     assert found(["bash", "-c", "echo ngspice-not-installed"]) is None
+
+
+def test_a_wrapper_option_that_takes_a_value_is_skipped_with_its_value():
+    """The options with a value, as each wrapper's --help on this machine lists them (coreutils timeout,
+    env, nice, stdbuf; util-linux flock; xvfb-run). flock -c and env -S give a shell line."""
+    found = engine_watch.engine_of
+    assert found(["timeout", "-s", "KILL", "60", "ngspice", "-b", "x.cir"]) == "ngspice"
+    assert found(["timeout", "-k", "5", "60", "ngspice"]) == "ngspice"
+    assert found(["env", "-u", "FOO", "-C", "/tmp", "kicad-cli", "version"]) == "kicad-cli"
+    assert found(["env", "-S", "ngspice -b x.cir"]) == "ngspice"
+    assert found(["nice", "-n", "5", "yosys", "-V"]) == "yosys"
+    assert found(["stdbuf", "-o", "L", "ngspice"]) == "ngspice"
+    assert found(["flock", "/tmp/l", "-c", "ngspice -v"]) == "ngspice"
+    assert found(["flock", "-w", "10", "/tmp/l", "ngspice"]) == "ngspice"
+    assert found(["xvfb-run", "-s", "-screen 0 1x1x24", "kicad-cli", "pcb", "render"]) == "kicad-cli"
+    assert found(["timeout", "60", "echo", "ngspice"]) is None
+
+
+def test_only_a_word_in_command_position_of_a_shell_line_is_a_program():
+    """A program is the first word of a command: at the start, after ; && || | & or a newline, after
+    a reserved word (then, do) or `exec`, and after assignments. Any other word is an argument."""
+    found = engine_watch.engine_of
+    assert found(["sh", "-c", "echo magic"]) is None
+    assert found("grep sta log.txt | wc -l") is None
+    assert found("printf '%s' java") is None
+    assert found("cd x; FOO=1 ngspice -b x.cir") == "ngspice"
+    assert found("true && vvp a.out") == "vvp"
+    assert found("make || exec magic -dnull") == "magic"
+    assert found("if true; then yosys -V; fi") == "yosys"
+    assert found("echo x\nsta flow.tcl") == "sta"
+    assert found("echo x | timeout -s KILL 5 ngspice") == "ngspice"
