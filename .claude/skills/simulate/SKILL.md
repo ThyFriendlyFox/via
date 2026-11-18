@@ -69,6 +69,62 @@ names. A circuit meets its spec when every bound holds at every corner.
 7. Run `workcenter next <project>` when a line of the result is not
    clear. It names the fix for the first failure or warning.
 
+## Decks a board asks for
+
+A board can pass every gate with no deck while its schematic holds a
+circuit an engineer would simulate. The SIM gate reads the schematic's
+netlist and asks for 2 kinds of deck:
+
+| Kind | The schematic holds | Template |
+|---|---|---|
+| `i2c-rise` | A net named SDA or SCL (a word of the net's name or of a pin's name on it: `I2C1_SDA`, `PB1/SDA`, `SCL2`) with a resistor to a rail. A rail is a net with a power pin on it, or a name like `+3V3`, `VCC`, `VDD_IO`, `3V3`. | `templates/project/sim/i2c_rise.cir` |
+| `load-step` | A part of KiCad's `Regulator_Linear` or `Regulator_Switching` library, on a board whose `ratings.json` states a load: a part or pin under `parts` with `amps` above 0. | `templates/project/sim/load_step.cir` |
+
+Not recognized: a line with no pull-up on this board, a bus by another
+name, a regulator drawn with a symbol of another library, a load stated
+anywhere but `ratings.json`. SPI and UART are not asked for.
+
+A deck answers a need by a line of its own: `* deck: i2c-rise SDA SCL`
+names the nets it stands for, `* deck: load-step U1` the regulator.
+
+1. Run `workcenter gates <project>`. A line `not judged: the I2C lines ...
+   copy templates/project/sim/i2c_rise.cir` or `not judged: U1 (...) feeds
+   the loads ratings.json states ...` is a deck the board asks for. It is a
+   warning, and a failure with `--strict`.
+2. Run `workcenter next <project>`. Its RUN line copies the template's deck
+   and its expect file into `sim/`, under a name no file there has. Run it.
+3. Open the copy. Each `* fill:` line names 1 value: write the board's value
+   on the line under it, then delete the `* fill:` line. The gate fails a
+   deck that still holds 1: `i2c_rise.cir:9: still says fill: ...`.
+   - I2C: the nets on the `* deck:` line, VDD, the pull-up by its reference
+     and value, CBUS. CBUS is each device pin's capacitance (10 pF at most,
+     UM10204 Rev. 7.0, Table 10, page 43), plus the traces, the connector
+     and what plugs in: 400 pF at most (Table 11, page 44).
+   - Load step: the regulator's maker's model (`.include`, "A vendor's
+     model" below), its pins on `XU1`, the input voltage, the capacitors by
+     their references, the light load and the stated load.
+4. Check each bound in the copied expect file.
+   - I2C: `tr` is Fast-mode's, 20 to 300 ns (UM10204 Rev. 7.0, Table 11,
+     page 44). For a 100 kHz bus write Standard-mode's row: `max` 1.0e-6
+     and no `min`. `isink` is 3 mA at most (Table 10, page 43).
+   - Load step: each source says `fill:` until it names the regulator's
+     datasheet: its load-transient row or figure, revision and page. The
+     gate refuses a bound whose source still says `fill:`.
+5. Run `workcenter gates <project> --strict`. Read each line:
+
+   | Line | Do |
+   |---|---|
+   | `<deck>.cir:<n>: still says fill: ...` | Write the value line `n` names, then delete line `n`. |
+   | `<deck>.expect.json: <measure>: its source still says fill: ...` | Write the datasheet's document, table or figure and page as the source. |
+   | `i2c_rise:tr=4.23654e-07 not in [2e-08, 3e-07] (UM10204 ...)` | The pull-up is too weak for the bus: a smaller resistor, or less capacitance. Never widen the bound. |
+   | `i2c_rise:isink=... not in [None, 0.003] ...` | The pull-up is too strong: a larger resistor. |
+   | `load_step:undershoot=... not in ...` | The regulator dips past its datasheet's load transient: more output capacitance, or another regulator. |
+   | `not judged: the I2C lines ...` again | The `* deck:` line does not name the nets the line lists. Write them as the line spells them. |
+   | `not judged: the decks the schematic asks for: ...` | kicad-cli wrote no netlist. Run `workcenter erc <project>` and fix what it says. |
+
+`tests/boards/pass-sim-bus` holds both decks with a board's values;
+`tests/boards/fail-sim-i2c-weak` is a 10k pull-up on 50 pF: 423.65 ns.
+
 ## Corners
 
 A deck is written at 1 condition: 27 C, every part at its written value.
