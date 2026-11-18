@@ -532,7 +532,11 @@ When: a change is about to be called done.
    act only together, 2 values written from 1 parameter. Each case that
    the gate passes is a defect, and each case becomes a test. The
    author's own cases show only what the method was built to find
-   (M116).
+   (M116). For a rule from a document, 1 case is written from the
+   requirement's own sentence, not from the code's restatement of it; for
+   a check over copper, 1 case for each kind of copper item reaching each
+   other kind (track, arc, via, pad, pour); for a check of a project, 1
+   case with a nested board (M213 to M217).
 
 7. A branch put on `main` without a pull request (a board repository's
    version, on the owner's word) goes by a fast-forward push, never by

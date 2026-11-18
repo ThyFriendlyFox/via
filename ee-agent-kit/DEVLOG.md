@@ -39,6 +39,16 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-18 — Roadmap item 11 landed (in part): ESD and emissions rules from 2 TI notes, and a product's standards
+
+Roadmap item 11 landed (in part). On 2026-11-17 the builder read TI SLVA680A and SZZA009, and the eCFR's 47 CFR Part 15 Subpart B and 49 CFR 173.185, under the client name `ee-workcenter/1.0`. EUR-Lex answered HTTP 202 with no body to that name, so the 2 EU directives are listed as not had. No free document with creepage numbers was read, so the DRC gate does not hold creepage yet.
+
+The work was reviewed twice, and both reviews said "not sound". The first found boards that broke both packs and still passed a strict DRC, and a requirement reported as held when it was not. The second found a part nearer the connector than the protector that passed, a track through a via into a pour that was never judged, arcs measured as chords and a second board of the product that was not looked at. Each finding was fixed with a test.
+
+On landing, `workcenter references rules` found that the index lacked the 2 TI notes, and that it did not read `rules/products/` at all. The index now holds the 4 documents and reads the folder. On the trunk, where item 2's check of the code had landed first, the notes needed their names in the index, the layout tool and its tests a `CITES` table, and the kind's 2 documents not had a `title` in place of a `document`. The rule files now name 33 documents in 23 files, 33 in the index, 0 not.
+
+Last Hit v0.16's list, from its fixture: 17 requirements, 1 held by a test, 16 not held.
+
 ## 2026-11-18 — A via held to its net's current, and a CAD tool's word taken for the standard's
 
 Roadmap item 6 landed (in part). ECSS-Q-ST-70-12C Rev.1 rates a via as a track of its section

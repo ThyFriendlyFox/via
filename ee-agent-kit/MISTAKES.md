@@ -1288,3 +1288,33 @@ What happened: 3 TI notes, 2 RFCs, the XDG specification, NBS Handbook 100, the 
 Cost: a first run of the new check failed 24 citations in 12 files (the piece's own run); on the trunk it failed 3 more and missed 6 documents, 1 of them cited by the wrong table. On the trunk of 2026-11-18 it failed 1 more: the board rules' test of item 6, which landed beside it.
 Root cause: the check was built for rule packs, and code was not a place a rule could stand. P28 step 3 asked a code comment to cite from the document's text, and nothing held the document to the index.
 Process: P28
+
+## M213 — 2026-11-17 — A requirement held because a file named the gate
+What happened: `workcenter standards` said a requirement was held by a gate when `board-rules.json` named the layout pack. It never ran the pack on the board. A board that broke the pack was reported as holding it.
+Cost: Found by the first review of roadmap item 11; fixed with a test.
+Root cause: A status of held came from a configuration file, not from the gate's own result on the board.
+Process: P14
+
+## M214 — 2026-11-17 — A rule measured between joints of drawn segments, not along the copper
+What happened: The 3:1 rule of SZZA009 measured each drawn segment between its ends. A copy of a segment laid over half of a 3.07 to 1 track split it into pieces under 3 to 1, and the strict DRC passed.
+Cost: Found by the first review of roadmap item 11; fixed with a test.
+Root cause: A length was taken from how the file draws the copper, not from the copper's path between 2 pads.
+Process: P14
+
+## M215 — 2026-11-17 — "Nearest" checked from the protector's side only
+What happened: The `nearest` rule checked 2 distances measured from the TVS. A line that branched at the connector, with a capacitor 2.89 mm from it and the TVS 4.35 mm from it, passed, and `standards` said the ESD requirement was held.
+Cost: Found by the second review of roadmap item 11; fixed with the fixture `fail-layout-tee`.
+Root cause: The test was written from the code's restatement of the rule, not from the requirement's own sentence: "the TVS nearer the connector than the part it protects".
+Process: P14
+
+## M216 — 2026-11-17 — A copper graph that joined pours only to track points
+What happened: The 3:1 rule joined a pour to the points of tracks, never to vias or pads. A trace from a pad through a via into the pour of the other face gave no trace to judge and 0 findings (the reviewer's run: 6 mm by 0.25 mm, 24 to 1).
+Cost: Found by the second review of roadmap item 11; fixed with a test.
+Root cause: Each kind of copper item was not tested for reaching each other kind.
+Process: P14
+
+## M217 — 2026-11-17 — A project check that read only the top folder
+What happened: `workcenter standards` judged the board in the project's own folder. A product laid out like Last Hit v0.16, with a second board in `display/`, was reported as holding the ESD pack while `display/` failed it 4 times.
+Cost: Found by the second review of roadmap item 11; fixed with a test.
+Root cause: "The project" was read as 1 folder. The workcenter's own layouts put a second board 1 folder down.
+Process: P14

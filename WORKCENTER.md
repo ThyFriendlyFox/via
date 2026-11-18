@@ -88,6 +88,7 @@ file: it needs nothing else.
 | `procurement` | A human asks what a board costs, for its parts list, or to order its parts. |
 | `ratings` | A schematic is to be held to its parts' ratings before layout: each part's facts from its datasheet, with the page of each pin's and each needed part's numbers, the voltages and currents the board cannot say, and `workcenter ratings` until every stress holds. |
 | `board-rules` | A routed board is to be held to a standard: each gap to the voltage between its nets and each track's width to its net's current, from `ratings.json`, with `board-rules.json` naming the pack; or to a fab's published limits. |
+| `standards` | A board is near release and someone asks what its product must meet: `product.json` names the kind, and `workcenter standards` lists each requirement of the kind's free documents as held by a gate, held by a named test, or not held. |
 | `references` | A rule cites a standard or a datasheet: get the copy it was written from with `workcenter references fetch`, judge a file a person downloaded with `workcenter references check`, and keep `workcenter references rules` passing. |
 | `now` | Several agents work at once and a maintainer follows them on the project board: 1 work card per piece of work with `workcenter now`, its `**Status:**` line Todo, In progress or Done, in 1 GitHub issue's body rewritten at each landing, block and health gate, or on the `status` branch with `--write`. |
 | `lead` | Roadmap work is to be done by helpers: a worktree and a brief per piece, a build, an attack and a fix, a second attack for a piece called not sound, and `ee-agent-kit/lead/landed.py` to see which pieces have finished. |
@@ -197,14 +198,23 @@ board is held to that board rule pack too, after KiCad's own rules:
 project's own by its path from the project's folder. The voltage of each
 net and the current on it come from `ratings.json`; without that file the
 DRC is red with 1 line. Each gap is held to the voltage between its 2 nets
-and each track's width to its net's current; vias are counted against the
-wall a pack gives, and the shipped pack gives none, so they are not judged.
+and each track's width to its net's current. Each net's vias are held to
+its current against the wall `board-rules.json` states: `via_wall` from the
+fab, or `hdi` for a board built as HDI (25 um); with neither, the vias are
+not judged.
 KiCad measures the pack's gaps on a copy in `build/board-rules/`, with 1
 witness rule per net that shows KiCad read the rule file; the project's
 files do not change. The DRC line ends `board rules <pack>: N fail, M not
 judged`, and each failure names its document, clause, table and page. A
 net whose name a KiCad rule cannot hold is not judged. With `--strict`, a
 line not judged fails the gate. The `board-rules` skill is the procedure.
+
+`board-rules.json` also takes `layout`, a list of layout packs, with or
+without `pack` (`rules/board/README.md`, "Layout packs"):
+`ti-slva680a-esd` (TI SLVA680A: a TVS at each line of a connector that
+leaves the device) and `ti-szza009-emi` (TI SZZA009: power and ground
+traces at most 3:1 on a 2-layer board). The project states what the board
+file cannot: `connectors`, `inside`, `protectors`, `ground`, `power`.
 
 Not a gate, but part of every hand-off: `workcenter render <project>` writes
 the schematic, board top and bottom, and 3D images into `build/render/`, and
@@ -641,6 +651,15 @@ it, not by a SHA256: `fetch` says `kept` when each stands on the page,
 through `tests/test_references.py` and `tests/test_references_code.py`.
 The `references` skill is the procedure.
 
+Not a gate: `workcenter standards <project> [--strict]` reads
+`product.json` (`kind`, `tests`), `verification/traceability.md` and
+`board-rules.json`, and prints 1 line for each requirement of the kind in
+`rules/products/`: `held by a gate`, `held by a test` or `not held`, with
+the document and clause. A gate holds a requirement only when every board
+of the project, nested ones too, runs its layout pack with 0 fail and 0
+not judged. Exit 1 with `--strict` when any is not held. It writes
+nothing. The `standards` skill is the procedure.
+
 Not a gate: `workcenter verify <project>` checks the project's verification
 package (`PROCESSES.md` P28, the `verification` skill) in
 `<project>/verification/`: the files it must hold, a requirements table
@@ -807,8 +826,11 @@ and no analog block. The engines install on request:
   limits for `workcenter fields`
 - Optional: `panel.json` beside the board, a KiKit preset; it asks EXPORT
   for a panel
-- Optional: `board-rules.json` beside the board, `{"pack": "<name>"}`, for
-  the board rule pack the DRC holds the board to; it needs `ratings.json`
+- Optional: `board-rules.json` beside the board, `{"pack": "<name>"}` or
+  `{"layout": [...]}`, for the board rule pack the DRC holds the board to; a
+  `pack` needs `ratings.json`
+- Optional: `product.json` beside the board, `{"kind": "<kind>"}`, for
+  `workcenter standards`
 - Optional, a project kept as version folders (`v0.1/`, `v0.2/`, ... at the
   repository's root, a nested board one folder down): `parts/catalog.csv`,
   `parts/version/<id>.csv` and `parts/offboard/<id>.csv` for `workcenter
