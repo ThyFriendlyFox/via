@@ -3187,7 +3187,19 @@ def ngspice_load_errors(lib: Path, subckt: str, pins: list[str], row: SourceRow,
 
 
 BODY_HEAD = 1024  # the bytes of a downloaded body that are read; nothing past them is looked at
-HTML_STARTS = (b"<!doctype html", b"<html")
+# A body that starts with '<' and names one of these in its first BODY_HEAD bytes is an HTML page: an
+# error page can open with <head>, a comment or an <?xml prolog. No datasheet, SPICE model or STEP file
+# starts with '<'.
+HTML_MARKS = (b"<!doctype html", b"<html", b"<head", b"<body", b"<title")
+
+
+def body_start(head: bytes) -> bytes:
+    """The first bytes of a body as text would show them: a UTF-16 body (by its byte order mark) read as
+    UTF-16, a UTF-8 byte order mark dropped, leading white space stripped."""
+    for bom, codec in ((b"\xff\xfe", "utf-16-le"), (b"\xfe\xff", "utf-16-be")):
+        if head.startswith(bom):
+            return head[2:].decode(codec, errors="replace").encode("utf-8", errors="replace").lstrip()
+    return head.removeprefix(b"\xef\xbb\xbf").lstrip()
 
 
 def body_wrong(name: str, head: bytes, size: int, content_type: str = "") -> str:
@@ -3204,8 +3216,8 @@ def body_wrong(name: str, head: bytes, size: int, content_type: str = "") -> str
     mime = content_type.split(";")[0].strip().lower()
     if mime in ("text/html", "application/xhtml+xml"):
         return f"an HTML page (Content-Type {mime}), not {what}"
-    start = head[:BODY_HEAD].removeprefix(b"\xef\xbb\xbf").lstrip()
-    if start[:16].lower().startswith(HTML_STARTS):
+    start = body_start(head[:BODY_HEAD])
+    if start.startswith(b"<") and any(mark in start.lower() for mark in HTML_MARKS):
         return f"an HTML page (it starts {start[:16]!r}), not {what}"
     if suffix == ".pdf" and not head.startswith(b"%PDF"):
         return f"a file that starts {head[:8]!r}, not %PDF"
@@ -3229,6 +3241,15 @@ def fetch_url(url: str, member: str = "", name: str = "") -> tuple[str, bytes | 
             try:
                 body, final = resp.read(), resp.geturl()
             except http.client.IncompleteRead as exc:
+                if getattr(resp, "chunked", False):
+                    # exc.partial holds the whole chunks; the chunk cut short is the IncompleteRead it
+                    # was raised from. Their counts are not the body's length: there is no Content-Length.
+                    cut = exc.__cause__
+                    got = len(exc.partial) + (
+                        len(cut.partial) if isinstance(cut, http.client.IncompleteRead) else 0
+                    )
+                    why = "cut short inside a chunk (Transfer-Encoding chunked, no Content-Length)"
+                    return "wrong", None, f"{got} bytes, {why}"
                 promised = len(exc.partial) + (exc.expected or 0)
                 return "wrong", None, f"{len(exc.partial)} of the {promised} bytes its Content-Length names"
     except urllib.error.HTTPError as exc:
@@ -3238,6 +3259,8 @@ def fetch_url(url: str, member: str = "", name: str = "") -> tuple[str, bytes | 
         return kind, None, f"HTTP {exc.code}"
     except (urllib.error.URLError, OSError) as exc:
         return "unreachable", None, str(getattr(exc, "reason", exc))
+    except http.client.HTTPException as exc:  # a status line or headers http.client cannot read
+        return "error", None, f"{type(exc).__name__}: {' '.join(str(exc).split())}"
     if member:
         try:
             with zipfile.ZipFile(io.BytesIO(body)) as zf:
@@ -3272,19 +3295,19 @@ def check_source(row: SourceRow, library: Path, work: Path) -> tuple[dict, list[
         return facts, problems, warnings
     digest = file_sha256(path)
     facts["sha256"] = digest
+    # A row written before fetch judged its bodies may keep a web page or an empty file: judged from
+    # the first bytes and the size alone, and the row is judged on nothing more (not its SHA256).
+    with path.open("rb") as fh:
+        wrong = body_wrong(row.file, fh.read(BODY_HEAD), path.stat().st_size)
+    if wrong:
+        problems.append(f"{tag}: {row.file} is {wrong} ({row.source})")
+        return facts, problems, warnings
     if not row.sha256:
         warnings.append(f"{tag}: no SHA256 recorded for {row.file}; it is {digest}")
     elif digest != row.sha256:
         problems.append(
             f"{tag}: {row.file} changed since its row: SHA256 {digest}, the row says {row.sha256}"
         )
-    # A row written before fetch judged its bodies may keep a web page or an empty file: judged from
-    # the first bytes and the size alone, and the row is judged on nothing more.
-    with path.open("rb") as fh:
-        wrong = body_wrong(row.file, fh.read(BODY_HEAD), path.stat().st_size)
-    if wrong:
-        problems.append(f"{tag}: {row.file} is {wrong} ({row.source})")
-        return facts, problems, warnings
     if row.kind == "step":
         head = path.read_text(encoding="utf-8", errors="replace")[:4000]
         if not head.lstrip().startswith("ISO-10303-21"):
@@ -3684,6 +3707,14 @@ def cmd_fetch(args) -> int:
         if not held.is_file():
             return fail(f"{held} is not a file")
         body = held.read_bytes()
+        if args.member:  # read out of the archive, as fetch_url reads a fetched zip's member
+            import zipfile
+
+            try:
+                with zipfile.ZipFile(io.BytesIO(body)) as zf:
+                    body = zf.read(args.member)
+            except (zipfile.BadZipFile, KeyError) as exc:
+                return fail(f"no member {args.member!r} in {held}: {exc}; nothing written")
         wrong = body_wrong(dest.name, body[:BODY_HEAD], len(body))
         report.update({"status": "downloaded", "detail": str(held)})
         if wrong:
