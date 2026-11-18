@@ -139,7 +139,11 @@ def test_the_template_generates_routes_and_passes_erc_and_drc(tmp_path):
     assert built.returncode == 0, built.stdout + built.stderr
     records = {record["gate"]: record for record in json.loads(built.stdout)}
     assert [records[gate]["status"] for gate in ("erc", "drc", "sim", "export")] == ["pass"] * 4
-    assert records["drc"]["summary"] == "0 errors, 0 warnings (0 unconnected, 0 parity)"
+    # The DRC gate holds the board's printed text too (tools/legend.py): the template names no fab.
+    assert records["drc"]["summary"] == (
+        "0 errors, 0 warnings (0 unconnected, 0 parity), legend (no fab named: held to the least of the 4 "
+        "fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer)): 0 fail, 0 not judged"
+    )
     assert records["sim"]["summary"] == "1 decks, 46 corner runs, 0 failures"
     # The 2 bounds are the fixture's premise, and its row in tests/boards/README.md gives the span the
     # 46 runs reach. A bound opened wide still reads "0 failures": it fails here, and so does a row
