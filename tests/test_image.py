@@ -748,7 +748,9 @@ def test_the_full_job_decides_its_path_then_runs_the_same_make_verify_on_either(
     assert where["env"]["ENABLED"] == "${{ vars.CI_FULL_IN_IMAGE }}"
     install = [s for s in steps if s.get("if") == "steps.where.outputs.where == 'install'"]
     inside = [s for s in steps if s.get("if") == "steps.where.outputs.where == 'image'"]
-    assert [s["run"] for s in install] == ["sudo env REQUIRE_FREEROUTING=1 ./install.sh", "make verify"]
+    # The install path's line carries CI's 2 bounds (the install script's piece; its tests read them).
+    bounded = "sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh"
+    assert [s["run"] for s in install] == [bounded, "make verify"]
     (run,) = inside
     assert '--user "$(id -u):$(id -g)"' in run["run"] and "tools/image.py check" in run["run"]
     assert run["run"].rstrip().endswith("make verify'")
