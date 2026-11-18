@@ -12,8 +12,8 @@ The machine that runs these tests may run as root, and the script's steps write 
 ran and relinked /usr/local/bin/workcenter. So each test stays inside its own folder in 4 ways:
 1. Every path the script writes or reads outside its folder is set in the environment before the
    script is sourced: WORKCENTER_ROOT, KICAD_KEYRING, KICAD_SOURCES, WORKCENTER_LINK, OS_RELEASE,
-   JVM_DIR, HOME and TMPDIR all point into the test's folder, and the folder is the working directory.
-   A lost guard runs main() there.
+   JVM_DIR, CA_BUNDLE, HOME and TMPDIR all point into the test's folder, and the folder is the
+   working directory. A lost guard runs main() there.
 2. PATH holds only 2 folders the test makes. `bin/` holds the stand-ins: `apt-get`, `apt-cache`,
    `timeout`, `sleep`, `kicad-cli`, `curl`, `gpg`, `python3`, each writing its call to a calls file and
    answering from a bash snippet the test gives it; and the writers `chmod`, `install`, `mkdir`, `mv`,
@@ -227,6 +227,7 @@ def folder(tmp_path: Path, answers: dict | None = None) -> dict:
     for name in READERS:
         (tools / name).symlink_to(real(name))
     (tmp_path / "os-release").write_text("VERSION_CODENAME=noble\n", encoding="utf-8")
+    (tmp_path / "ca-certificates.crt").write_text("a bundle\n", encoding="utf-8")
     jvm = tmp_path / "jvm" / "lib"
     jvm.mkdir(parents=True)
     (jvm / "libawt_xawt.so").write_text("", encoding="utf-8")
@@ -245,6 +246,7 @@ def folder(tmp_path: Path, answers: dict | None = None) -> dict:
         "WORKCENTER_LINK": str(tmp_path / "workcenter"),
         "OS_RELEASE": str(tmp_path / "os-release"),
         "JVM_DIR": str(tmp_path / "jvm"),
+        "CA_BUNDLE": str(tmp_path / "ca-certificates.crt"),
     }
 
 
@@ -964,6 +966,59 @@ def test_skip_apt_runs_nothing(tmp_path):
     assert calls == []
 
 
+# The first step (step_boot, from the container image's piece) looks for these 5 tools and the
+# certificates file. curl and gpg are stand-ins of every test; git, make and cc are stood in here.
+BOOT_TOOLS = {"git": "exit 0", "make": "exit 0", "cc": "exit 0"}
+BOOT_INSTALL = "curl gnupg ca-certificates git make gcc libc6-dev"
+
+
+def test_the_first_step_installs_nothing_when_every_tool_is_there(tmp_path):
+    """GitHub's runner and the cloud environment have every tool and the certificates: no apt runs."""
+    code, out, err, calls = run(tmp_path, BOOT_TOOLS, body="step_boot; echo NEXT STEP")
+    assert (code, out, err, calls) == (0, "NEXT STEP\n", "", [])
+
+
+def test_the_first_step_installs_the_boot_packages_where_1_is_missing(tmp_path):
+    """No certificates file: 1 update, then 1 install of the 7 packages; the run goes on."""
+    env = {"CA_BUNDLE": str(tmp_path / "no-bundle.crt")}
+    code, out, err, calls = run(tmp_path, BOOT_TOOLS, env=env, body="step_boot; echo NEXT STEP")
+    assert code == 0, err
+    assert out.splitlines()[0] == f"[install] boot: ca-certificates missing; apt install {BOOT_INSTALL}"
+    assert out.splitlines()[-1] == "NEXT STEP"
+    apt = of(calls, "apt-get")
+    assert apt[0] == "apt-get update -qq"
+    assert apt[1].startswith("apt-get install -y --no-install-recommends ")
+    assert apt[1].endswith(f" {BOOT_INSTALL}")
+    assert len(apt) == 2
+
+
+@pytest.mark.parametrize(
+    ("answer", "said"),
+    [
+        (
+            update_says(E_LOCK, code=100),
+            f"[install] ERROR: boot: `apt-get update` ended with exit code 100; apt said: {E_LOCK}",
+        ),
+        (
+            f"""case "$*" in *install*) echo {shlex.quote(E_SOME)} >&2; exit 100 ;; esac""",
+            "[install] ERROR: boot: the install of "
+            f"{BOOT_INSTALL} ended with apt-get's exit code 100; apt said: {E_SOME}",
+        ),
+    ],
+    ids=["update", "install"],
+)
+def test_a_failing_apt_in_the_first_step_stops_with_apts_own_line(tmp_path, answer, said):
+    """The image's bare Ubuntu: apt's exit code stops the script, with 1 line that quotes apt's E: line,
+    where a pipe's `|| true` let a failed install through to the tools' check."""
+    env = {"CA_BUNDLE": str(tmp_path / "no-bundle.crt")}
+    code, out, err, calls = run(
+        tmp_path, {**BOOT_TOOLS, "apt-get": answer}, env=env, body="step_boot; echo NEXT STEP"
+    )
+    assert code == 1
+    assert "NEXT STEP" not in out
+    assert err.splitlines()[-1] == said
+
+
 def test_sourcing_the_script_runs_no_step(tmp_path):
     code, out, err, calls = run(tmp_path, body="true")
     assert (code, out, err, calls) == (0, "", "", [])
@@ -1085,14 +1140,15 @@ def test_sourcing_the_script_leaves_the_callers_shell_options(tmp_path):
 
 def test_main_runs_every_step_in_order_and_hands_over_to_the_doctor(tmp_path):
     """main() as it runs: each step replaced by 1 that logs its name, the root check by `true` in a copy.
-    The 5 steps run in their order, and the run ends with `workcenter doctor` and its exit code."""
+    The 6 steps run in their order, the first step (step_boot, a bare Ubuntu's tools) before the apt
+    step, and the run ends with `workcenter doctor` and its exit code."""
     text = INSTALL.read_text(encoding="utf-8")
     root_check = '[[ "$EUID" -eq 0 ]] || die "run as root (sudo ./install.sh)"'
     assert text.count(root_check) == 1
     copy = tmp_path / "src" / "install.sh"
     copy.parent.mkdir()
     copy.write_text(text.replace(root_check, "true"), encoding="utf-8")
-    steps = ["step_apt", "step_freerouting", "step_openems", "step_python", "step_link"]
+    steps = ["step_boot", "step_apt", "step_freerouting", "step_openems", "step_python", "step_link"]
     others = ["step_java25", "step_freerouting2", "step_chip"]
     body = "\n".join(f'{s}() {{ log "ran {s}"; }}' for s in steps + others) + "\nmain"
     env = folder(tmp_path, {"python3": "exit 5"})
@@ -1141,7 +1197,8 @@ def test_the_fence_refuses_a_write_outside_the_folder(tmp_path, body):
     assert [c for c in calls if c.startswith("REFUSED")]
 
 
-# The paths the script may name in its code: the 6 defaults on their own lines, and 2 it only reads.
+# The paths the script may name in its code: the 7 defaults on their own lines (CA_BUNDLE, the first
+# step's certificates, since the container image's piece), and 2 it only reads.
 DEFAULT_LINES = [
     'WC_ROOT="${WORKCENTER_ROOT:-/opt/workcenters/${WC_NAME}}"',
     'KICAD_KEYRING="${KICAD_KEYRING:-/etc/apt/keyrings/kicad-10.0-releases.gpg}"',
@@ -1149,6 +1206,7 @@ DEFAULT_LINES = [
     'WORKCENTER_LINK="${WORKCENTER_LINK:-/usr/local/bin/workcenter}"',
     'OS_RELEASE="${OS_RELEASE:-/etc/os-release}"',
     'JVM_DIR="${JVM_DIR:-/usr/lib/jvm}"',
+    'CA_BUNDLE="${CA_BUNDLE:-/etc/ssl/certs/ca-certificates.crt}"',
 ]
 READ_ONLY = {"/dev/null", "/var/lib/dpkg/status"}
 PATH_IN_CODE = re.compile(r"(?<![\w:/.$}~\]])/[A-Za-z0-9_.][A-Za-z0-9_.+-]*(?:/[A-Za-z0-9_.+-]+)*/?")

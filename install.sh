@@ -34,7 +34,7 @@
 #   APT_DOWNLOAD_TIMEOUT  seconds the download of the packages may take (default empty: no bound;
 #                         CI sets 570). Under sudo, pass it with env: sudo drops a variable set
 #                         before it (`sudo env APT_DOWNLOAD_TIMEOUT=900 ./install.sh`)
-#   KICAD_KEYRING, KICAD_SOURCES, WORKCENTER_LINK, OS_RELEASE, JVM_DIR
+#   KICAD_KEYRING, KICAD_SOURCES, WORKCENTER_LINK, OS_RELEASE, JVM_DIR, CA_BUNDLE
 #                         the paths outside WORKCENTER_ROOT the script writes or reads (defaults
 #                         below); the tests point them into a folder of their own
 #   INSTALL_CHIP          1 also installs the chip engines and the sky130A
@@ -76,6 +76,8 @@ BASE_PACKAGES=(ngspice openjdk-21-jre-headless xvfb shellcheck librsvg2-bin ffmp
 # Paths the apt step reads; a test points them into its own folder.
 OS_RELEASE="${OS_RELEASE:-/etc/os-release}"
 JVM_DIR="${JVM_DIR:-/usr/lib/jvm}"
+# The certificates the first step looks for; a test points it into its own folder.
+CA_BUNDLE="${CA_BUNDLE:-/etc/ssl/certs/ca-certificates.crt}"
 
 # The bounds of the apt step.
 # The index: every computer tries it KICAD_INDEX_TRIES times, KICAD_INDEX_WAIT s apart. Launchpad's
@@ -529,14 +531,20 @@ step_boot() {
   for tool in curl gpg git make cc; do
     command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
   done
-  [[ -s /etc/ssl/certs/ca-certificates.crt ]] || missing+=(ca-certificates)
+  [[ -s "$CA_BUNDLE" ]] || missing+=(ca-certificates)
   if [[ ${#missing[@]} -eq 0 ]]; then
     return
   fi
   log "boot: ${missing[*]} missing; apt install ${BOOT_PACKAGES[*]}"
-  apt-get update -qq
-  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends -o Acquire::Retries=3 \
-    "${BOOT_PACKAGES[@]}" | grep --line-buffered -E '^(Setting up) ' | sed -u 's/^/[apt] /' || true
+  # As in the apt step: apt in the C locale, its progress shown, and its exit code stops the script with
+  # its own E: line (a pipe's `|| true` let a failed install through to the check below).
+  local -x LC_ALL=C DEBIAN_FRONTEND=noninteractive
+  local rc=0
+  apt_shown apt-get update -qq || rc=$?
+  ((rc == 0)) || die "boot: \`apt-get update\` ended with exit code ${rc}; apt said: ${APT_SAID:-nothing}"
+  apt_shown apt-get install -y --no-install-recommends -o Acquire::Retries="$APT_FILE_RETRIES" \
+    "${BOOT_PACKAGES[@]}" || rc=$?
+  ((rc == 0)) || die "boot: the install of ${BOOT_PACKAGES[*]} ended with apt-get's exit code ${rc}; apt said: ${APT_SAID:-nothing}"
   for tool in curl gpg git make cc; do
     command -v "$tool" >/dev/null 2>&1 || die "boot: ${tool} is not on PATH after the apt step"
   done

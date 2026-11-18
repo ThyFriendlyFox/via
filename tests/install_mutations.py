@@ -204,5 +204,15 @@ MUTATIONS = [
     ("IA76 S2-9 the cut's advice without sudo env", "install.sh",
      "give it more seconds: sudo env APT_DOWNLOAD_TIMEOUT=<seconds> ./install.sh",
      "set APT_DOWNLOAD_TIMEOUT to more seconds"),
+    ("IA77 boot: a failed update goes on", "install.sh",
+     '((rc == 0)) || die "boot: \\`apt-get update\\` ended', 'true || die "boot: \\`apt-get update\\` ended'),
+    ("IA78 boot: a failed install goes on", "install.sh",
+     '    "${BOOT_PACKAGES[@]}" || rc=$?', '    "${BOOT_PACKAGES[@]}" || true'),
+    ("IA79 boot: installs when nothing is missing", "install.sh",
+     "  if [[ ${#missing[@]} -eq 0 ]]; then\n    return", "  if false; then\n    return"),
+    ("IA80 boot: the certificates' path a literal again", "install.sh",
+     '[[ -s "$CA_BUNDLE" ]]', "[[ -s /etc/ssl/certs/ca-certificates.crt ]]"),
+    ("IA81 main without the first step", "install.sh",
+     "  step_boot\n  step_apt\n", "  step_apt\n"),
 ]
 # fmt: on
