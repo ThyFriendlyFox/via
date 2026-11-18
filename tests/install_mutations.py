@@ -3,13 +3,18 @@
 `workcenter mutate . --mutations tests/install_mutations.py --jobs 4` runs each change below in its
 own copy of the paths COPY names, and each must fail TEST. The command reads the 3 names as literals
 and runs nothing of this file. `tests/test_install_apt.py` checks that each old text is in install.sh
-exactly 1 time, so an edit of the step that moves an anchor fixes the anchor in the same commit.
+exactly 1 time, so an edit of the step that moves an anchor fixes the anchor in the same commit. TEST
+deselects that 1 check: in a mutant's copy the old text is gone, so the check fails on every mutant and
+would count each as caught whatever the other tests do.
 
 The tests point the install root into their own folder, so a change that drops the source guard
 stops inside that folder (IA12).
 """
 
-TEST = "${PYTHON:-python3} -m pytest tests/test_install_apt.py -x -q -p no:cacheprovider"
+TEST = (
+    "${PYTHON:-python3} -m pytest tests/test_install_apt.py -x -q -p no:cacheprovider"
+    " --deselect tests/test_install_apt.py::test_each_mutation_of_the_list_changes_1_place_of_the_script"
+)
 COPY = ["install.sh", "pyproject.toml", "tests", "tools"]
 
 # fmt: off
@@ -21,9 +26,9 @@ MUTATIONS = [
     ("IA03 kicad_index: a wait after the last try", "install.sh",
      "if ((try < KICAD_INDEX_TRIES)); then", "if true; then"),
     ("IA04 candidates: any archive", "install.sh",
-     'elif [[ "$cand" != 10.* || "$from" != "$src"* ]]; then', 'elif [[ "$cand" != 10.* ]]; then'),
+     'elif [[ "$cand" == 10.* && "$from" == "$src"* ]]; then', 'elif [[ "$cand" == 10.* ]]; then'),
     ("IA05 candidates: any version", "install.sh",
-     'elif [[ "$cand" != 10.* || "$from" != "$src"* ]]; then', 'elif [[ "$from" != "$src"* ]]; then'),
+     'elif [[ "$cand" == 10.* && "$from" == "$src"* ]]; then', 'elif [[ "$from" == "$src"* ]]; then'),
     ("IA06 candidates: no package missing", "install.sh",
      'if [[ -z "$cand" || "$cand" == "(none)" ]]; then', 'if false; then'),
     ("IA07 candidates: the check not called", "install.sh",
@@ -41,15 +46,69 @@ MUTATIONS = [
     ("IA13 progress: grep buffers", "install.sh",
      '"$@" 2> "$errors" | grep --line-buffered -E', '"$@" 2> "$errors" | grep -E'),
     ("IA14 progress: sed buffers", "install.sh",
-     "sed -u 's/^/[apt] /'\n  codes=", "sed 's/^/[apt] /'\n  codes="),
+     "sed -u 's/^/[apt] /' | tee", "sed 's/^/[apt] /' | tee"),
     ("IA15 the backstop", "install.sh",
      "  if ! kicad10_present; then\n    seen=", "  if false; then\n    seen="),
     ("IA16 kicad_index: another source's line", "install.sh",
-     'grep -F "$KICAD_PPA_URL" <<< "$out"', 'grep -F "Failed" <<< "$out"'),
+     'grep -F "${KICAD_PPA_URL%/}" <<< "$out"', 'grep -F "Failed" <<< "$out"'),
     ("IA17 download: no bound", "install.sh",
      'apt_shown timeout "$APT_DOWNLOAD_TIMEOUT" apt-get', "apt_shown apt-get"),
     ("IA18 the link's path a literal again", "install.sh",
      'ln -sfn "${SRC_DIR}/tools/workcenter" "$WORKCENTER_LINK"',
      'ln -sfn "${SRC_DIR}/tools/workcenter" /usr/local/bin/workcenter'),
+    ("IA19 candidates: the archive of any version", "install.sh",
+     "      if (ver != cand) next\n", "      if (0) next\n"),
+    ("IA20 KiCad present: the update bounded", "install.sh",
+     "    apt-get update -qq || die", '    timeout "$APT_UPDATE_TIMEOUT" apt-get update -qq || die'),
+    ("IA21 KiCad present: a failed update ignored", "install.sh",
+     '|| die "apt: apt-get update ended', '|| true "apt: apt-get update ended'),
+    ("IA22 download: only 100 stops", "install.sh",
+     "  elif ((rc != 0)); then\n    stop \"apt: the download ended",
+     "  elif ((rc == 100)); then\n    stop \"apt: the download ended"),
+    ("IA23 1 silent file outlasts the download's bound", "install.sh",
+     'APT_FILE_TIMEOUT="60"', 'APT_FILE_TIMEOUT="600"'),
+    ("IA24 main returns after step_apt", "install.sh",
+     "  step_apt\n  step_freerouting\n",
+     '  step_apt\n  [[ -n "$WC_NAME" ]] && return 0\n  step_freerouting\n'),
+    ("IA25 progress: Err: lines hidden", "install.sh",
+     "APT_PROGRESS='^((Get|Err|Ign):[0-9]+", "APT_PROGRESS='^((Get|Ign):[0-9]+"),
+    ("IA26 apt_shown: a cut names no file", "install.sh",
+     "  if [[ -z \"$APT_SAID\" ]]; then\n    APT_SAID=\"$(grep -E '^\\[apt\\] Err:'",
+     "  if false; then\n    APT_SAID=\"$(grep -E '^\\[apt\\] Err:'"),
+    ("IA27 candidates: a failing apt-cache ends the script silently", "install.sh",
+     'rows="$(kicad_candidates 2> "$errors")" || rc=$?', 'rows="$(kicad_candidates 2> "$errors")"'),
+    ("IA28 kicad_index: the address with its slash", "install.sh",
+     'grep -F "${KICAD_PPA_URL%/}" <<< "$out"', 'grep -F "$KICAD_PPA_URL" <<< "$out"'),
+    ("IA29 kicad_index: apt's last line, not its last E: line", "install.sh",
+     "APT_SAID=\"$(grep -E '^E:' <<< \"$out\" | tail -n 1 || true)\"", 'APT_SAID=""'),
+    ("IA30 apt in the user's language", "install.sh",
+     "  local -x LC_ALL=C\n", "  local LC_ALL=C\n"),
+    ("IA31 the C locale left on for the later steps", "install.sh",
+     "  local -x LC_ALL=C\n", "  export LC_ALL=C\n"),
+    ("IA32 kicad_index: a lasting cause tried again", "install.sh",
+     '    if kicad_lasting "$APT_SAID"; then return 1; fi', "    if false; then return 1; fi"),
+    ("IA33 no release: the sources file kept", "install.sh",
+     "      rm -f \"$KICAD_SOURCES\"\n      stop \"$first\" \"KiCad 10's package source serves",
+     "      stop \"$first\" \"KiCad 10's package source serves"),
+    ("IA34 second key: the sources file kept", "install.sh",
+     "      rm -f \"$KICAD_SOURCES\"\n      stop \"$first\" \"Another file",
+     "      stop \"$first\" \"Another file"),
+    ("IA35 second key: the script's own file named as the other", "install.sh",
+     '"$file" != "$KICAD_SOURCES"', '"$file" != "x"'),
+    ("IA36 a held lock read as an outage", "install.sh",
+     '*"Could not get lock"* | *"Unable to lock"* |', '*"no such line"* |'),
+    ("IA37 every cause read as an outage", "install.sh",
+     "    *)\n      printf 'Fix what apt said, then run the script again.' ;;",
+     "    *)\n      printf '%s' \"$2\" ;;"),
+    ("IA38 candidates: a pin read as an outage", "install.sh",
+     "      outranked=1\n      bad+=", "      bad+="),
+    ("IA39 the computer's KiCad not named", "install.sh",
+     "  if [[ -n \"$seen\" ]]; then\n    printf 'This run installed no KiCad; the KiCad",
+     "  if false; then\n    printf 'This run installed no KiCad; the KiCad"),
+    ("IA40 standard input: no line", "install.sh",
+     'if [[ -z "${BASH_SOURCE[0]:-}" ]]; then', "if false; then"),
+    ("IA41 another source's missing release blamed on KiCad's", "install.sh",
+     '| *"${KICAD_PPA_URL%/} "*"does not have a Release file"*) return 0 ;;',
+     '| *"does not have a Release file"*) return 0 ;;'),
 ]
 # fmt: on
