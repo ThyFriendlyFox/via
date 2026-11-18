@@ -456,6 +456,10 @@ def cmd_rules(args, cli) -> int:
             continue
         for pointer, source in cited(data):
             url, digest, label = source.get("url"), source.get("sha256"), label_of(source)
+            # A document served in a zip (usb.org's): the zip is the copy the URL gives, and the index
+            # holds it; `sha256` is then the file inside.
+            if source.get("zip_sha256") is not None:
+                digest = source["zip_sha256"]
             tag = f"{where} {pointer}"
             document = source.get("document")
             if not url and not digest and isinstance(document, str) and NONE_RE.fullmatch(document):

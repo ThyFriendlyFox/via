@@ -21,6 +21,15 @@ The base is Simplified Technical English:
    "just", "very", "robust", "seamless", "should probably".
 7. Write numbers as digits. Name exact commands, files, and versions.
 8. State the thing; do not reassure about it.
+9. Use American spelling: "color", "center", "gray", "behavior".
+10. Do not write the patterns that mark text as a model's: no
+    personification ("the router did not finish alone"), no
+    intensifier ("a real fault"), no list of 3 for rhythm, no em dash,
+    no opener that judges or announces ("Good call", "Here is"), and
+    no closing offer ("Want me to ...?"). Ask a question plainly.
+
+These rules hold for every message to the owner, and for every post
+on the site's blog.
 
 ## Claims
 

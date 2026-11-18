@@ -89,6 +89,11 @@ file: it needs nothing else.
 | `ratings` | A schematic is to be held to its parts' ratings before layout: each part's facts from its datasheet, with the page of each pin's and each needed part's numbers, the voltages and currents the board cannot say, and `workcenter ratings` until every stress holds. |
 | `board-rules` | A routed board is to be held to a standard: each gap to the voltage between its nets and each track's width to its net's current, from `ratings.json`, with `board-rules.json` naming the pack; or to a fab's published limits. |
 | `references` | A rule cites a standard or a datasheet: get the copy it was written from with `workcenter references fetch`, judge a file a person downloaded with `workcenter references check`, and keep `workcenter references rules` passing. |
+| `now` | Several agents work at once and a maintainer follows them on the project board: 1 work card per piece of work with `workcenter now`, its `**Status:**` line Todo, In progress or Done, in 1 GitHub issue's body rewritten at each landing, block and health gate, or on the `status` branch with `--write`. |
+| `lead` | Roadmap work is to be done by helpers: a worktree and a brief per piece, a build, an attack and a fix, a second attack for a piece called not sound, and `ee-agent-kit/lead/landed.py` to see which pieces have finished. |
+| `land` | Finished pieces are to go onto the work branch, and later onto the default branch: commits in a straight line, docs files applied, the health gate alone with the push behind VERIFY GREEN (`ee-agent-kit/lead/gate-and-push.sh`), a merge commit only at the owner's word. |
+| `user-round` | The roadmap is to be checked against the goal: 3 users of different sizes, 1 board spec, their logs checked and ranked into roadmap candidates, each with what the small user does after the change. |
+| `highspeed` | A board carries a fast interface (USB 2.0, USB 3.x): `interfaces.json` names each pair, and `workcenter highspeed` until every width, gap, length, skew, via count and ground plane holds; then `workcenter drc --fab build/highspeed/highspeed.kicad_dru`. |
 | `copper` | A routed board carries a stated current or a part's stated heat: each power net's drop and current density, in its copper and in each barrel, and the board's temperature, against the limits of `copper.json`, with a picture of each and `workcenter copper` until every limit holds. |
 | `fields` | A fast interface or an antenna on a routed board: a track's impedance, loss or crosstalk, held by `workcenter fields` to the limits `fields.json` states, each with its source. |
 | `fabrication` | The files a fab and an assembler take, each read back against the board, a panel from `panel.json`, and `workcenter measure`: the plan of measurements for the built board, from the project's own sim bounds. |
@@ -514,6 +519,47 @@ board. `ratings.json` may state a part's heat, `"U1": {"watts": 0.4,
 `ratings` does not judge it, and `workcenter copper` spreads it through the
 board. The `ratings` skill is the procedure and holds both file formats.
 
+Not a gate: `workcenter now [TREE] --item N --status Todo|"In progress"|Done
+[--doing LINE]... [--blocked WHO] [--left LINE]... [--title] [--write
+CHECKOUT]` prints the work card of 1 piece of work in progress. Its first
+line is `**Status:**` and the project board's own word; then 6 sections:
+Branch, Doing now, Health gate, Blocked on, Left, Updated. Work that waits
+on someone stays In progress and says so in Blocked on. The work is the
+issue's title, `Work card: <the work>`, which `--title` prints; the card
+repeats nothing else the board shows. It reads the branch, the last commit
+and the roadmap item's title from the tree, and the last `make verify`
+verdict from `build/verify.json`, which `verify/verify.sh` writes on exit
+with the commit the gate started on. It refuses, in 1 line, a card with no
+status or another word, more than 3 `--doing` lines, a value with a line
+break or a `**Status:**` line of its own, `--item` or `--blocked` that
+starts with `#`, or a value, branch or commit subject that names an
+assistant, a model or a session. `--write` writes the card under its title
+to `now/<branch>.md` in a checkout of the `status` branch and prints the
+git commands to commit and push it; it runs none. The workflow Board
+(`.github/workflows/board.yml`, `tools/board.py`) puts each issue titled
+`Work card: ...` in the column its `**Status:**` line names, and a closed
+card in Done; it needs the repository secret `BOARD_TOKEN`.
+
+Not a gate: `workcenter highspeed <project> [--strict] [--verbose] [--out
+DIR]` holds the fast pairs `interfaces.json` names to their interface's
+file in `rules/interfaces/`, each limit with its document, clause and page.
+It reads the stackup from the `.kicad_pcb`, sublayer by sublayer, and
+measures each pair's gap on the board. A 2-D cross-section solver
+(`tools/xsection.py`, under the venv) gives the width band for the
+interface's impedance at that gap. It judges each segment's width, every
+run's gap, the stretches with no partner, the length (or delay), the skew
+within the pair, the vias, and every point over the ground pour that
+bounds the track above and below; under the TI files also the 30 mil to
+other signals' tracks and a ground via beside a via that changes the
+planes. A width beside ground on the track's own layer, a half-routed
+net's length, skew and plane, and a limit the documents set that the
+command does not judge are printed as not judged; with `--strict` they
+fail. It writes KiCad's rules (`track_width`, `diff_pair_gap`, `length`,
+`skew`) into `build/highspeed/highspeed.kicad_dru`, which `workcenter drc
+--fab` reads; KiCad's `diff_pair_gap` reads only nets named `_P`/`_N` or
+`+`/`-`. The last line is `HIGHSPEED HELD: N held, M not judged` or
+`HIGHSPEED FAIL: ...`. The `highspeed` skill is the procedure.
+
 Not a gate: `workcenter copper <project>` solves the board's own copper for
 a project with a `.kicad_pcb`, a `ratings.json` and a `copper.json` beside
 it. It reads the copper with KiCad's `pcbnew` module (pads, tracks, arcs,
@@ -580,9 +626,10 @@ rules [PATH ...]` fails each document a rule file names under `document`
 or `source`, or in a table `documents: {id: {...}}`, that the index lacks,
 names at another URL, or names without both a URL and a SHA256. Only a
 source whose `document` is `no datasheet: <why>` or `no document: <why>`
-is not judged. `make verify` runs it on `rules/ratings/`, `rules/board/`,
-`rules/copper/` and `tests/boards/**/facts/` through
-`tests/test_references.py`. The `references` skill is the procedure.
+is not judged. A document served in a zip names the zip's SHA256 as
+`zip_sha256`, and the index holds the zip. `make verify` runs it on
+`rules/ratings/`, `rules/board/`, `rules/copper/`, `rules/interfaces/` and
+`tests/boards/**/facts/` through `tests/test_references.py`. The `references` skill is the procedure.
 
 Not a gate: `workcenter verify <project>` checks the project's verification
 package (`PROCESSES.md` P28, the `verification` skill) in
@@ -724,7 +771,7 @@ and no analog block. The engines install on request:
 | Install root | `/opt/workcenters/ee` |
 | Engine environment | `/opt/workcenters/ee/env.sh` |
 | Tool cache | the session scratchpad; the engines write nothing outside the output directory |
-| Project output | `<project>/build/` (reports, `fab/`, `sim/`, `route/`, `render/`, `ratings/`, `board-rules/`, `measure/`, `fields/`, `copper/`) |
+| Project output | `<project>/build/` (reports, `fab/`, `sim/`, `route/`, `render/`, `ratings/`, `board-rules/`, `measure/`, `fields/`, `copper/`, `highspeed/`) |
 | Chip project output | `<project>/build/gates.json`, the report, and `<project>/build/chip/`: 1 folder for each gate that ran, and `hashes.json` with the hash of each file a gate wrote or judged. `<gate>/passed.json` is there when that gate passed: the hash of each file it read, taken before its engines started and held to the same bytes after, and of each file it hands on. The files of the project in it are those the gate finds by the text and those its engine says it read (Verilator's XML, the list Icarus Verilog writes, the rule Yosys writes): a header is in the record however the RTL names it. A file of the project is named from the project's folder (`rtl/top.v`, and `./chip/notes.v` for one under a folder `chip`) and a file the gates wrote from the output folder (`chip/layout/top.gds`), wherever `--out` points. EXPORT asks each of the 9 gates before it for that record and holds every file to it: the RTL and each header it includes, the benches and their bounds, the constraints, `chip.json`, the mapped netlist the layout was built from, and the layout's own files. A file of the project that came after a gate passed is refused too. `workcenter next` holds the files to the same records before it reads the report. `tapeout/` holds the files EXPORT hands out, `manifest.json` and the judging gates' reports; a gate that is asked to run takes it away, with the record of its own earlier pass. `render/` holds the pictures of `workcenter chip render`. The gates empty the folders under `<out>/chip`, and only in a folder they made: `--out` is refused when that folder is the project's, holds a file of it, or is there with files and without `hashes.json`. A path with white space is refused too. |
 
 ## Project requirements
@@ -740,6 +787,10 @@ and no analog block. The engines install on request:
 - Optional: `ratings.json` beside the schematic, and `library/facts/*.json`
   in the project's folder or a folder above it, for `workcenter ratings`;
   the `ratings` skill has both formats
+- Optional: `interfaces.json` beside the board, `{"interfaces":
+  [{"interface": "<file in rules/interfaces/>", "nets": ["<P>", "<N>"],
+  "gap": <mm>}]}`, for `workcenter highspeed`; `gap` is optional and is
+  held to the gap the tracks have
 - Optional: `copper.json` beside the board, each power net's entry and
   limits for `workcenter copper`; it needs `ratings.json`
 - Optional: `fields.json` beside the board, the critical nets and their

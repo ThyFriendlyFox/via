@@ -1201,3 +1201,60 @@ What happened: On integration of `wip/r10`, `rules/copper/materials.json` named 
 Cost: 1 change to `tools/references.py`, 1 test, 2 index entries, 2 fetches.
 Root cause: The check knew 2 shapes of a citation, and a new rule file used a third. The coverage test caught the folder, not the shape.
 Process: P7
+
+## M199 — 2026-11-17 — A high-speed check that trusted what it never measured
+What happened: On `wip/r8` the high-speed check judged the width at a gap typed into `interfaces.json`, and called KiCad's gap rule a second check without running it on a pair named `USB_DP`/`USB_DM`. An unrouted pair and an empty `interfaces.json` printed HELD.
+Cost: A review that said "not sound"; 11 findings fixed with tests.
+Root cause: Each check was written for the 4 fixtures and never run on a board that broke what it trusted. A value a check trusts is now measured on the board or printed as not judged.
+Process: P14
+
+## M200 — 2026-11-17 — The first of several read as the whole
+What happened: On `wip/r8` the gap, the coupling and the stackup were each read as the first or the largest of several: the first sublayer of a dielectric, the gap over the most length, the pieces with a partner. The rest was dropped without a line.
+Cost: A second review that said "not sound"; 7 findings fixed with tests.
+Root cause: When a check read 1 value of several, it did not judge or print the others.
+Process: P14
+
+## M201 — 2026-11-17 — A test run while the health gate held the machine
+What happened: On `wip/now`, `tests/test_now.py` ran once (11 tests, 11 failed in 2.23 s) while `GATE.lock` existed, before the code existed, to see the tests fail. On `wip/board` the first run of `tests/test_board.py` (0.79 s, no engine) started while the lock existed: the command listed the lock and did not wait on it. The brief says no test runs while the lock exists.
+Cost: 2 short runs during a health gate.
+Root cause: The lock was looked at, not waited on. Every later run waited with `until [ ! -e GATE.lock ]; do sleep 30; done` in front of pytest.
+Process: P31
+
+## M202 — 2026-11-17 — A gate record that named the commit at the gate's exit
+What happened: On `wip/now`, `tools/now.py record` read `git rev-parse HEAD` and `git status` in `verify.sh`'s EXIT trap. A commit that landed while the gate ran was recorded as the commit it judged, and untracked files it read were not counted as changes, so the card could say GREEN on a commit the gate never tested. The review found it.
+Cost: A review finding; a fix with a test.
+Root cause: The record was taken at the end of the run. `verify.sh` now notes the commit and the tree's state before step 1 and passes them to `record`.
+Process: P31
+
+## M203 — 2026-11-17 — A card's line read from the raw body, not the rendered one
+What happened: On `wip/board`, `tools/board.py` counted a `**Status:**` line inside a code fence or an HTML comment as the card's, so a card that copied the README's example would have stood in Done. The 33 tests held only plain bodies, and 8 untested branches each survived a 1-line mutant.
+Cost: A review's 4 findings; 21 tests.
+Root cause: The body was read as text, not as CommonMark renders it. The tool now counts only the lines that render as the card's own, and a test holds each branch, each seen to fail on its mutant.
+Process: P18
+
+## M204 — 2026-11-17 — A card built before the board's words were settled
+What happened: On `wip/now` the card carried a `State` section with 4 words of its own (working, blocked, landed, dropped) and 3 labels the repository did not have, and it repeated the work's title the board shows. The owner then decided that the card carries the board's own 3 words, Todo, In progress or Done, uses the repository's own labels, and repeats nothing else the board shows. The State section, the 4 words and the 3 labels were taken out on integration.
+Cost: 1 rewrite of the card, the skill, the template and 18 tests.
+Root cause: 2 tools that share 1 line were built on 2 branches, and neither held the other's reader. A test now feeds the card `workcenter now` prints into `tools/board.py`'s own reader.
+Process: P14
+
+## M205 — 2026-11-17 — A production address left to the host's choice
+M181 on main until the merge of 2026-11-17.
+What happened: I added `via.computer` to the Vercel project and built production 2 times: once as a redeploy, once from `main` without the cache. Both builds printed `site/build.sh: the site for https://via.reagent-systems.com is in dist`. `VERCEL_PROJECT_PRODUCTION_URL` kept the older domain, so the canonical link did not move. `site/vercel.json` now names `https://via.computer`.
+Cost: 2 production builds that changed nothing.
+Root cause: I expected the host to hand the build the new domain, and I did not read which domain it hands over before the builds.
+Process: P32
+
+## M206 — 2026-11-17 — A blog post in my own voice, not TONE.md's English
+M182 on main until the merge of 2026-11-17.
+What happened: The owner asked for a blog. I wrote the first post and the blog's own words in a voice of my own: personification ("the router did not finish alone"), an intensifier ("a real fault"), lists of 3 for rhythm, and headlines such as "What changed in Via, and what we learned". The owner read the preview and said it reads as a model's text, and that every message is to be in American Simplified Technical English, with none of those patterns.
+Cost: a rewrite of the post and of the blog's words, and a preview the owner could not use.
+Root cause: `TONE.md` held my own words and `docs/STYLE.md` the site's, and neither named the blog, so I wrote the post to the website's rules and not to STE's limits. Neither named American spelling or the patterns that mark text as a model's. Nothing counted a post's sentences.
+Process: P37
+
+## M207 — 2026-11-17 — A lock written over, and a review with no result read as 0 findings
+What happened: The scratch `gate-and-push.sh` wrote `GATE.lock` whether or not a lock was there, and its EXIT trap, set before its first check, removed the lock on every exit. A second gate, or a gate that stopped at its HEAD check, removed the lock of a gate still running, and helpers then started tests during it. The scratch `landed.py` turned a review whose result was null into an empty object: no findings, so no fix asked, and the piece read as landed with no review.
+The first fix took null alone as "no result"; a review of plain text or `{}` still read as 0 findings and landed, and a gate stopped by a signal still removed its lock while `make verify` ran on.
+Cost: Found when the tools were brought into the kit, and the rest by the item's review; `tests/test_lead.py` holds each (a taken lock stops the gate and is left as it was; a null review, a review with no verdict and a fix with no list `fixed` wait; a stopped gate ends make before the lock goes).
+Root cause: A lock that is not made atomically is no lock, and a missing result was given a default that means "passed". The fix named the 1 missing value seen (null) and not the rule: a result counts only when it holds what a judgement holds.
+Process: P31

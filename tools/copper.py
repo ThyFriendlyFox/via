@@ -1160,7 +1160,7 @@ def run(board: Path, out: Path) -> Report:  # noqa: PLR0915
         "until nothing changes.",
         f"The air stands at {asked.ambient:g} C and takes h = {asked.h.value:g} W/m2 K from each face "
         f"({asked.h.source}). The project's words for the air: {asked.air}. No enclosure and no air flow "
-        "are modelled; a reading of the built board replaces this (ROADMAP item 12).",
+        "are modelled; a reading of the built board replaces this.",
         f"Copper: {rho20.value:g} Ohm m at 20 C ({rho20.source}), {alpha.value:g} per C ({alpha.source}): "
         f"{rho_words}.",
         f"Heat: copper {k_cu.value:g} W/m K ({k_cu.source}); FR-4 {k_fr4.value:g} W/m K ({k_fr4.source}).",

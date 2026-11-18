@@ -1223,6 +1223,9 @@ Pages), sending it a first deployment, or changing a file a site serves.
 5. A stylesheet or a script the page names gets a new address when its
    content changes: `site/build.sh` names each with its checksum. A cache
    that keeps it longer than the page then fetches the new one (M157).
+6. The site's address is written in `site/vercel.json`. A new production
+   domain changes that file. Vercel's `VERCEL_PROJECT_PRODUCTION_URL` kept
+   the older domain after a new one was added (M205).
 
 Done when: the address answers with the page of the commit the document
 names, and the document names the target the host reports.
@@ -1374,3 +1377,50 @@ finding is a gap in the workcenter, never a board's own fault.
 Done when: every branch is at 100 % or its row of the listing has an
 answer; `python3 tools/harvest.py later` prints no problem; every finding
 of this harvest has the day its reader checked it.
+
+## P36 — A work card for each piece of work
+
+When: before the first edit of a piece of work on a branch; again at each
+landing, at each block and when `make verify` ends; and when the work
+lands or is dropped.
+
+1. Before the first edit, print the card: `workcenter now . --item <N or
+   1 line> --status Todo --left "<step>"`, or `--status "In progress"
+   --doing "<first step>"` when the work starts at once. Follow
+   `.claude/skills/now/SKILL.md` steps 1 to 4: 1 issue titled with what
+   `--title` prints, the card as its body and the label `enhancement`, or
+   `--write` to a checkout of the `status` branch.
+2. Rewrite the card, never comment on it: after each commit that lands a
+   step, at each block, and after each `make verify`, whose verdict the
+   card reads from `build/verify.json`. Work that waits on someone stays
+   `In progress`, with `--blocked "<who or what>"`; the label `question`
+   when it waits for the owner's decision, `help wanted` when it needs
+   something from outside.
+3. Close it: landed with `--status Done --doing "Landed on main as <short
+   hash>"` and the issue closed as completed; dropped with `--status Done
+   --doing "Dropped: <reason>"` and the issue closed as not planned.
+4. The card names the branch, never an assistant, a model or a session,
+   and repeats nothing else the project board shows.
+
+Done when: every branch with work in progress has 1 card whose Updated
+line is no older than the branch's last commit, and every landed or
+dropped card's issue is closed.
+
+## P37 — Words a reader reads
+
+P35 on main until the merge of 2026-11-17.
+
+When: writing a post for the site's blog, the blog's own words, or a
+message to the owner.
+
+1. Write in American Simplified Technical English by `TONE.md`'s rules:
+   1 idea in a sentence, under 20 words, the active voice, American
+   spelling, no contraction.
+2. Leave out the patterns `TONE.md` rule 10 names: personification, an
+   intensifier, a list of 3 for rhythm, an em dash, an opener that judges
+   or announces, a closing offer (M206).
+3. Read the draft once for those patterns before it is shown, then run
+   the docs tests: they hold each post to the limits a machine can count.
+
+Done when: the docs tests pass on every post in `blog/`, and the message
+or page has none of rule 10's patterns.

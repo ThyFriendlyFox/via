@@ -11,6 +11,8 @@ VENV_PY=/opt/workcenters/ee/venv/bin/python
 PY=python3
 [[ -x "$VENV_PY" ]] && PY="$VENV_PY"
 
+STEP="0/4 start"
+# step "<name>" starts a step and notes the time the one before took; step "" ends the last one.
 current=""
 mark=$SECONDS
 timings=()
@@ -18,14 +20,21 @@ step() {
   [[ -n "$current" ]] && timings+=("$(printf '%5d s  %s' $((SECONDS - mark)) "$current")")
   current="$*"
   mark=$SECONDS
-  [[ -n "$current" ]] && printf '\n== %s\n' "$current"
+  [[ -n "$current" ]] && STEP="$current" && printf '\n== %s\n' "$current"
   return 0
 }
+# For `workcenter now`: the commit the gate tests and whether the tree differs from it, noted before
+# step 1; on exit the trap writes them with the verdict and the step to build/verify.json, ignored by git.
+GATE_HEAD=$(git rev-parse HEAD 2>/dev/null || true)
+GATE_DIRTY=no
+[[ -z "$(git status --porcelain 2>/dev/null || true)" ]] || GATE_DIRTY=yes
+trap 'python3 tools/now.py record "$?" "$STEP" --head "$GATE_HEAD" --dirty "$GATE_DIRTY" >/dev/null \
+  || echo "no gate record written" >&2' EXIT
 
 step "1/4 lint"
-shellcheck install.sh verify/verify.sh environment/setup.sh site/build.sh
-"$PY" -m ruff check tools tests verify
-"$PY" -m ruff format --check tools tests verify
+shellcheck install.sh verify/verify.sh environment/setup.sh site/build.sh ee-agent-kit/lead/gate-and-push.sh
+"$PY" -m ruff check tools tests verify ee-agent-kit/lead
+"$PY" -m ruff format --check tools tests verify ee-agent-kit/lead
 
 step "2/4 kit checks"
 # Kit placeholders may remain only in SETUP.md, whose table documents them.

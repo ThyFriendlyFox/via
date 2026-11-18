@@ -39,6 +39,45 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-17 — The lead's ways of working, written down
+
+The owner asked for the ways the lead worked today to be skills in the kit: the project board, all of it. They lived in 3 workflow scripts and 3 scratch files. They are now 4 skills and 6 files under `ee-agent-kit/lead/`, with every path of the session taken out. Writing them down found 2 faults in the scratch tools. `gate-and-push.sh` wrote its lock over one that was there, and its exit trap then removed the other gate's lock; it now makes the lock only if none is there and leaves another's alone. `landed.py` read a review that ended with no result as a review with 0 findings, so a piece with no review could read as finished; it now names it as waiting.
+
+A reviewer who did not write the tools found 10 faults, and the same root cause came back in a new form. `landed.py` no longer took a null review as passed, but it still landed a piece whose review was a sentence of text or `{}`. A review now counts only with a verdict and a list of findings, and a fix only with a list `fixed`. A review started twice kept only the result reported last; both now count. 2 journals that used the same agent ids mixed their pieces. The gate, stopped by a signal, removed its lock while `make verify` ran on; it now ends make's process group first. `quiet.py` missed a test run started as `pytest`. The skills were written beside the card's own change of the same day; on landing, the `now` skill takes the command's `--status` and the card's form as the trunk holds them.
+
+Evidence: branch `wip/land-kit-skills`; `tests/test_lead.py`, `tests/test_lead_skills.py`, `tests/test_now.py`.
+
+## 2026-11-17 — Work cards, and a project board that follows them
+
+The owner asked for a way to follow what each agent is working on, live, and for the project board to
+show the state of the work, not to set it. `workcenter now` prints 1 work card per branch; the card
+lives in 1 issue's body, rewritten at each landing, block and health gate, so watchers are not
+notified at each change. `make verify` had left no record of its verdict; it now writes
+`build/verify.json` on exit, naming the commit it started on. The workflow Board reads each issue's
+`**Status:**` line and puts the card in that column. A reviewer found that a Status line shown as an
+example in a code fence moved the card; the tool now reads the body as CommonMark renders it. The 2
+tools were built on 2 branches: the card first carried 4 state words of its own and 3 invented
+labels. On integration the card took the board's own 3 words and the repository's own labels, at the
+owner's word, and a test now feeds the card into the board's reader. The board has not run against
+GitHub yet.
+
+Evidence: `tests/test_now.py` 20 passed, `tests/test_board.py` 54 passed.
+
+## 2026-11-17 — High-speed rules from a pair's interface, after 2 reviews that said "not sound"
+
+Roadmap item 8 landed in part. A cross-section solver in numpy gives a pair's width for its
+interface's impedance on the board's own stackup. With a grid 16 times finer at the strip edges it
+sits within 0.6 % of the closed forms in 0.3 s a case. The USB 3.2 specification sets no board
+impedance and no skew, so TI's SPRAAR7J supplies them for 1 processor family. A first reviewer found
+the width judged at a gap the user typed and never measured, and KiCad's gap rule silent on pairs named
+DP/DM. The command now measures the gap on the board. A second reviewer found a dielectric of 2
+sublayers read as its first, and a half-routed pair judged as finished. Each is fixed with a test. The
+reviewer's hand sums held the solver within 0.51 % and 0.48 %. On integration the interface files'
+4 documents were missing from the reference index, and usb.org serves its specifications in zips; the
+index now holds each zip by its SHA256. No third review has been run.
+
+Evidence: `tests/test_highspeed.py`, `tests/test_highspeed_drc.py` and `tests/test_xsection.py` pass.
+
 ## 2026-11-17 — A voltage drop and a heat map, after 2 reviews that said "not sound"
 
 Roadmap item 10 landed in part. `workcenter copper` solves the board's own copper for each power
@@ -207,6 +246,40 @@ their facts say so. I changed files by a script 3 times while building it (M183)
 Evidence: `tests/test_ratings.py` (192 tests) and `tests/test_ratings_cli.py` (19 tests) pass.
 `pass-ratings-node` holds 27 stresses with `--strict`, and each of the 5 fault fixtures fails on 1
 line. On scratch copies of the 6 examples every run ends `NOTHING JUDGED`: no part has facts yet.
+
+## 2026-11-17 — A blog, a post on Herald, and `main`'s CI green again
+
+The owner asked for a blog on the site, each post at its own address with links back to the main
+site. `site/blog.py` writes each Markdown post in `blog/` as a page at `/blog/<slug>`, the list of
+posts at `/blog` and an RSS feed, in the frame the example pages use, now `site/frame.py`. A post's
+page carries its share card and a BlogPosting record, and leads back to the start, the boards, the
+checks and the posts around it. The menu and the footer name the blog. The `blog-post` skill now
+writes to `blog/` and runs the script.
+
+Published post: Herald, a fire alarm communicator designed with Via. Each claim in it traces to
+Herald's README, the 2026-11-11 entry here, `MISTAKES.md` (M137, M138) or the roadmap. The devlog
+called M137's pad a diode's; M137 names R43 and R44, so the post says only that the keep-out
+covered pads.
+
+The owner read the preview and said the page reads as a model's text. I wrote the post and the blog's
+words in my own voice, not in `TONE.md`'s English (M206). I rewrote both in American Simplified
+Technical English. `TONE.md` now names American spelling and the patterns to leave out, P37 says how
+to write to them, and a docs test counts each post's sentences and words.
+
+`main`'s CI had failed since PR #62 (Vercel Web Analytics): it added 2 script tags to the pages
+`site/examples.py` writes, not to the script, and the link checks looked for the host's
+`/_vercel/insights/script.js` in the repository. The script now writes the tags, and the link
+checks leave out `/_vercel/` addresses. PR #79 on `main` fixed the same failure with a set of
+paths the host serves; the merge keeps that set and drops my skip. My mistake is M206 (M182 on
+`main` until the merge), since `main` took M181 for the domain.
+
+Evidence: the docs tests 21 passed, 2 skipped (KiCad); `site/blog.py --check` and
+`site/examples.py --check` exit 0; a build for the site's address serves the post at
+`/blog/herald-fire-alarm-communicator` with its canonical link and share card, and a feed that
+parses as RSS 2.0 with 1 item. In Chromium the post and the list fit a 390 px screen.
+
+On the merge into `wip/next` the mistake above is M206 and its process P37: M182 and P35 were taken
+there.
 
 ## 2026-11-14 — The redrawn site meets main: Herald, the 6 boards, a page for each
 

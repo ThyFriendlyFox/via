@@ -79,11 +79,26 @@ def written_commands(text: str) -> list[tuple[str, set[str]]]:
     found = []
     for span in spans:
         for part in re.split(r"\bworkcenter (?=[a-z])", " ".join(span.split()))[1:]:
+            part = re.split(r" (?:&&|\|\||\||;|>|2>|>>) ", part)[0]
             names = part.split()[0]
             found += [
                 (name, set(re.findall(r"(?<![\w-])--[a-z][a-z0-9-]*", part))) for name in names.split("|")
             ]
     return found
+
+
+def test_a_command_written_ends_where_the_shell_line_goes_on():
+    """The `now` skill chains `workcenter now` with `>` and `&& gh issue edit N --body-file ...`: the
+    flags after a shell operator are gh's, not the workcenter command's."""
+    span = (
+        "`mkdir -p build && workcenter now . --item 7 > build/now.md"
+        " && gh issue edit N --body-file build/now.md`"
+    )
+    assert written_commands(span) == [("now", {"--item"})]
+    assert written_commands("`workcenter gates|sim <project> --json`") == [
+        ("gates", {"--json"}),
+        ("sim", {"--json"}),
+    ]
 
 
 def as_document(path: Path) -> str:
@@ -405,17 +420,24 @@ def example_pages() -> list[Path]:
     return [SITE / "examples.html", *sorted((SITE / "examples").glob("*.html"))]
 
 
+def blog_pages() -> list[Path]:
+    """The pages site/blog.py writes: the list of posts, and 1 page for each."""
+    return [SITE / "blog.html", *sorted((SITE / "blog").glob("*.html"))]
+
+
 # The 1 address a page names that the host answers and no file of the repository holds: Vercel's Web
-# Analytics script, served by the owner's Vercel project (pull request 62). Another static host
-# answers it with a 404, and the page works without it.
+# Analytics script, served by the owner's Vercel project (pull request 62) on each deployment. Neither
+# the tree nor the build holds the file; another static host answers it with a 404, and the page works
+# without it.
 HOSTED = "/_vercel/insights/script.js"
+SERVED_BY_HOST = {HOSTED}
 
 
 def beside_page(page: Path, link: str) -> bool:
     """Whether a link read from the page's own folder names a file: `agents.svg#cursor` is
-    agents.svg, `site.css?v=1` is site.css, and a folder is its index.html. The address the host
-    serves (HOSTED) is no file and counts as found."""
-    if link == HOSTED:
+    agents.svg, `site.css?v=1` is site.css, and a folder is its index.html. A path the host serves
+    (`SERVED_BY_HOST`) names a file too."""
+    if link in SERVED_BY_HOST:
         return True
     target = page.parent / link.split("#")[0].split("?")[0]
     return target.is_file() or (target / "index.html").is_file()
@@ -423,18 +445,21 @@ def beside_page(page: Path, link: str) -> bool:
 
 def test_every_page_a_reader_opens_loads_the_hosts_analytics_script_once():
     """The owner turned Vercel's Web Analytics on (pull request 62): each page a reader opens loads
-    the host's script, 1 time, and queues its events until the script is there. Vercel's pull request
-    wrote the lines into the 7 pages that `site/examples.py` writes, and not into the generator: the
-    next run of the generator would have dropped them, and `main` was red for a day."""
+    the host's script, 1 time, and queues its events until the script is there. The pages that
+    `site/examples.py` and `site/blog.py` write get these lines from `site/frame.py`. A line edited
+    into a written page by hand is gone at the next run of its generator, so the frame holds them."""
     queue = "window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };"
-    pages = (SITE / "index.html", SITE / "404.html", *example_pages())
-    assert len(pages) >= 9
+    pages = (SITE / "index.html", SITE / "404.html", *example_pages(), *blog_pages())
+    assert len(pages) >= 11
     for page in pages:
         text = page.read_text(encoding="utf-8")
         assert links_of(page).count(HOSTED) == 1, page.name
         assert text.count(f'<script defer src="{HOSTED}"></script>') == 1, page.name
         assert text.count(queue) == 1, page.name
-    assert HOSTED in (SITE / "examples.py").read_text(encoding="utf-8")
+    tag = f'<script defer src="{HOSTED}"></script>'
+    assert (SITE / "frame.py").read_text(encoding="utf-8").count(tag) == 1
+    for generator in ("examples.py", "blog.py"):
+        assert "from frame import" in (SITE / generator).read_text(encoding="utf-8"), generator
 
 
 def test_every_link_on_the_site_names_what_exists():
@@ -442,7 +467,7 @@ def test_every_link_on_the_site_names_what_exists():
     the merge. A link into the page names an id, and a link beside the page names a file."""
     blob = "https://github.com/ThyFriendlyFox/via/blob/main/"
     missing, to_repo, into_page, beside = [], 0, 0, 0
-    for page in (SITE / "index.html", SITE / "404.html", SITE / "og.html", *example_pages()):
+    for page in (SITE / "index.html", SITE / "404.html", SITE / "og.html", *example_pages(), *blog_pages()):
         text = page.read_text(encoding="utf-8")
         for link in links_of(page):
             if link.startswith(blob):
@@ -485,7 +510,15 @@ def test_the_site_builds_for_an_address_and_without_one(tmp_path):
     assert len(alts) == 2 and alts[0] == alts[1] and "Herald" in alts[0]
     assert '<base href="https://example.org/via/">' in (served / "404.html").read_text(encoding="utf-8")
     assert (served / "og.png").is_file() and (served / "fonts" / "LICENSE").is_file()
-    pages = ["index.html", "404.html", *(str(p.relative_to(SITE)) for p in example_pages())]
+    pages = ["index.html", "404.html", *(str(p.relative_to(SITE)) for p in (*example_pages(), *blog_pages()))]
+    # A post is served at /blog/<slug> with its share card, and the feed with whole addresses.
+    post = next((SITE / "blog").glob("*.html")).stem
+    built_post = (served / "blog" / f"{post}.html").read_text(encoding="utf-8")
+    assert f'<link rel="canonical" href="https://example.org/via/blog/{post}">' in built_post
+    assert f'<meta property="og:url" content="https://example.org/via/blog/{post}">' in built_post
+    assert f"<link>https://example.org/via/blog/{post}</link>" in (served / "blog" / "feed.xml").read_text(
+        encoding="utf-8"
+    )
     example = (served / "examples" / "rosetta.html").read_text(encoding="utf-8")
     assert '<link rel="canonical" href="https://example.org/via/examples/rosetta">' in example
     # A host may keep a stylesheet or a script for hours while it asks again for the page (M157): the
@@ -666,6 +699,65 @@ def test_the_code_a_page_shows_is_a_run_of_lines_of_its_file():
         if page.name == "index.html":
             herald = {"examples/herald/card.png", "showcase/herald-schematic.png", "showcase/herald-top.png"}
             assert herald <= set(stated)
+
+
+def test_the_blog_is_what_site_blog_writes():
+    """A post in blog/ is a page at /blog/<slug>, the list of posts and the feed name it, and the
+    page leads back into the site. A page edited by hand, or a post changed and the blog not written
+    again, differs from what the script writes; a post that links to nothing stops the script."""
+    proc = subprocess.run(
+        [sys.executable, str(SITE / "blog.py"), "--check"], capture_output=True, text=True, check=False
+    )
+    assert proc.returncode == 0, proc.stderr
+    sys.path.insert(0, str(SITE))
+    import blog
+
+    found = blog.posts()
+    assert found and {p.slug for p in found} == {p.stem for p in (SITE / "blog").glob("*.html")}
+    listed = (SITE / "blog.html").read_text(encoding="utf-8")
+    feed = (SITE / "blog" / "feed.xml").read_text(encoding="utf-8")
+    for post in found:
+        page = (SITE / "blog" / f"{post.slug}.html").read_text(encoding="utf-8")
+        assert f'href="blog/{post.slug}.html"' in listed and f"%ORIGIN%/blog/{post.slug}</link>" in feed
+        # Its way back into the site: the home page, the boards, the checks and every post.
+        for back in (
+            'href="../"',
+            'href="../examples.html"',
+            'href="../index.html#gates"',
+            'href="../blog.html"',
+        ):
+            assert back in page, (post.slug, back)
+        # Its share card and its record, on the 1 line build.sh fills with the site's address.
+        (line,) = [line for line in page.splitlines() if "og:title" in line]
+        assert "%ORIGIN%" in line and '"@type":"BlogPosting"' in line and "twitter:card" in line
+    # A link in a post names a page of the site, or a file in the repository, or it stops the script.
+    assert blog.href("/examples/herald", "../") == "../examples/herald.html"
+    assert blog.href("ee-agent-kit/DEVLOG.md", "../").endswith("/blob/main/ee-agent-kit/DEVLOG.md")
+    for nowhere in ("/no-such-page", "no/such/file.md"):
+        with pytest.raises(blog.PostError):
+            blog.href(nowhere, "../")
+
+
+def test_each_post_is_in_tone_md_english():
+    """A post is American Simplified Technical English (TONE.md, P37, M206): each sentence under 20
+    words, American spelling, no em dash, no contraction, none of the words TONE.md bans."""
+    banned = re.compile(
+        r"—|\b(colour|centre|grey|behaviour|organis|realis|metre|litre)\w*"
+        r"|\b\w+(n't|'re|'ve|'ll|'d)\b|\b(it|that|there|here|what)'s\b"
+        r"|\b(simply|just|very|really|truly|actually|robust|seamless|real)\b",
+        re.IGNORECASE,
+    )
+    posts = sorted(p for p in (ROOT / "blog").glob("*.md") if p.name != "README.md")
+    assert posts
+    for post in posts:
+        body = post.read_text(encoding="utf-8").split("\n---\n", 1)[1]
+        body = re.sub(r"```.*?```", "", body, flags=re.S)
+        body = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", body)
+        body = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", body)
+        for line in body.splitlines():
+            for sentence in re.split(r"(?<=[.:;?!])\s+(?=[A-Z`\"])", line.strip("-# ").strip()):
+                assert len(sentence.split()) < 20, (post.name, sentence)
+                assert not banned.search(sentence), (post.name, banned.search(sentence).group(0), sentence)
 
 
 def test_the_example_pages_are_what_site_examples_writes():
