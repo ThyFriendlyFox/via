@@ -58,10 +58,18 @@ the step is done. Run it whenever the next step is not plain.
    | `RATINGS held: ...` | Nothing. The record says `RATINGS HELD` and no input of it changed since. |
    | `RATINGS not held: <why> (workcenter ratings <project>)` | Run the command in brackets and follow the `ratings` skill until it prints `RATINGS HELD`. Then run the gates again. Without `--strict` the run counts this as 1 warning. |
 
-   `<why>` is `no build/ratings/report.json yet`, `<file> changed after the
-   last run` (a stale record: the schematic, `ratings.json`, `parts.csv` or
-   a facts file is newer), or the last run's count: `N not judged`, `N fail`,
-   `nothing judged (N not judged)`.
+   `<why>` is `no build/ratings/report.json yet`, a stale record, a record
+   that is no record of a run (`build/ratings/report.json: details is no
+   object`), or the last run's count: `N not judged`, `N fail`, `nothing
+   judged (N not judged)`. The record names each file its run read with its
+   SHA256: the schematic, `ratings.json`, the parts files it was given
+   (`--parts`, else `parts.csv`), the pack and every facts file. It is stale
+   when one of them is `changed after the last run`, `is gone since the last
+   run`, or a file the next run would read `is new since the last run`. A
+   file touched and not changed is the same file.
+
+   With `--json`, stdout holds the gates' records alone, and these 2 lines go
+   to stderr.
 3. For a red gate, read its report before touching the design:
    - ERC: `build/erc.json`, `sheets[].violations[]`.
    - DRC: `build/drc.json`, `violations[]`, `unconnected_items[]`,
