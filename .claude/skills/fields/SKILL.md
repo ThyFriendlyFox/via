@@ -203,8 +203,11 @@ guideline with an impedance is a limit of its own: cite it.
   no conductor loss; `lossy` copper has its loss and no thickness to the
   field. On the line fixture `thick` and `lossy` are held to Qucs Technical
   Papers (2014): eq. 11.22 to 11.24, p. 165 (thickness) and eq. 11.80 to
-  11.83, p. 171 (conductor loss), in `tests/test_fields_solver.py`. No
-  surface roughness is modelled. The mesh puts a straight track's edges a third of a
+  11.83, p. 171 (conductor loss), in `tests/test_fields_solver.py`. Thick
+  copper read 49.60 ohm against 48.94 (1.3 % over, margin 3 %). Lossy
+  copper added 0.481 Np/m at 4.5 to 5.5 GHz against 0.741: 35 % under, out
+  of its 30 % margin, so the test stands as a strict xfail and a lossy run's
+  conductor loss is low by about a third. No surface roughness is modelled. The mesh puts a straight track's edges a third of a
   cell inside its metal (openEMS 0.0.35, Tutorials/MSL_NotchFilter.m, lines
   36 to 39); with the edges on mesh lines the line fixture read 43.14 ohm
   against 51.34. A slanted track has no such lines: its sheet is a stair.
