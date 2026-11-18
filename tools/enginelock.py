@@ -97,6 +97,7 @@ SHORT = (
     "now",
     "standards",
     "new",
+    "image",  # reads 3 files at a commit with git and starts no engine: 0.22 s on 2026-11-18
 )
 
 

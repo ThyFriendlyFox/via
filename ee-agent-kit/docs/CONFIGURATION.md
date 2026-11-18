@@ -220,6 +220,7 @@ exited 1 on the board's own findings.
 | `references` | no | 0.22 s (`check`) | tests/boards/references/pass/pack.json |
 | `docs` | no | 0.21 s | Last Hit v0.16 |
 | `diagram` | no | 0.21 s | Last Hit v0.16 |
+| `image` | no | 0.22 s | this tree, at HEAD |
 | `next` | no | 0.18 s | pass-rc-divider |
 | `new` | no | 0.17 s | an empty folder |
 | `fetch`, `curve`, `version` | no | not measured | |
