@@ -402,13 +402,13 @@ def test_s_parameters_from_port_voltages_and_currents():
 
 
 def test_the_openems_file_holds_the_model():
-    """The file openEMS reads: the track as a polygon at elevation 0.2, the dielectric as a box with
-    epsilon 4.5, port 1 as a 50 ohm lumped element along z (direction 2). Its start z 0 is under its stop
-    z 0.2, so the excitation points down, 0,0,-1, the voltage probe weighs -1 and the current probe 1
-    with its normal along z."""
+    """The file openEMS reads: the track as a polygon at elevation 0.2, the dielectric as a box of a
+    Debye material (its epsilon 4.5 at 5 GHz: tests/test_fields_measures.py), port 1 as a 50 ohm lumped
+    element along z (direction 2). Its start z 0 is under its stop z 0.2, so the excitation points down,
+    0,0,-1, the voltage probe weighs -1 and the current probe 1 with its normal along z."""
     text = fields.OpenEMS.xml(line_model(), driven=1)
     assert '<Polygon Priority="10" Elevation="0.2" NormDir="2">' in text
-    assert '<Property Epsilon="4.5"' in text
+    assert '<DebyeMaterial Name="dielectric_1"><Property Epsilon="' in text
     assert '<LumpedElement Name="port_resist_1" Direction="2" Caps="1" R="50">' in text
     assert '<Excitation Name="port_excite_1" Type="0" Excite="0,0,-1">' in text
     assert '<ProbeBox Name="port_ut1" Type="0" Weight="-1">' in text
@@ -606,6 +606,14 @@ def test_a_cutout_of_a_zone_is_a_hole(tmp_path):
             "stack-up layer dielectric 1: `epsilon_r` is 'FR4', not a number",
         ),
         ("(width 0.36)", "(width wide)", "segment 1: `width` is 'wide', not a number"),
+        # A dielectric with no loss tangent was modelled lossless, with no word in left_out, and an
+        # insertion-loss limit was held against it.
+        (
+            "(loss_tangent 0.02)",
+            "",
+            "stack-up layer dielectric 1: no `loss_tangent`: the model would make it lossless; state it "
+            "(0 for a lossless one)",
+        ),
     ],
 )
 def test_a_mistake_in_the_board_file_is_refused_with_its_place(tmp_path, old, new, says):

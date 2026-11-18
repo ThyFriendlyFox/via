@@ -143,6 +143,102 @@ def test_a_differential_limit_names_its_pair(tmp_path):
     assert fails == [] and held == ["P diff_insertion_loss_db with N 1.41 at 1 GHz within ..8.5 (d)"]
 
 
+def test_a_differential_limit_is_on_the_groups_first_net(tmp_path):
+    """The nets listed N, P and a limit on P with pair N: the measures go under the first net, N, so
+    the limit was never judged and the pair's loss was printed as no limit's. Refused, with the order
+    to write."""
+    lim = {"measure": "diff_insertion_loss_db", "net": "P", "pair": "N", "max": 8.5, "source": "d"}
+    with pytest.raises(
+        fields.Refusal,
+        match=r"diff_insertion_loss_db of P: `net` is the group's first net, N, and `pair` its second",
+    ):
+        fields.read_spec(write_spec(tmp_path, group([lim], ("N", "P"))))
+
+
+def test_a_differential_limit_is_of_a_group_of_2_nets(tmp_path):
+    """A pair's measures are made for a group of 2 nets alone: on 3 nets the limit could never be
+    judged."""
+    lim = {"measure": "diff_return_loss_db", "net": "P", "pair": "N", "min": 10, "source": "d"}
+    with pytest.raises(
+        fields.Refusal, match=r"diff_return_loss_db of P: a pair's measure is of a group of 2 nets"
+    ):
+        fields.read_spec(write_spec(tmp_path, group([lim], ("P", "N", "Q"))))
+
+
+def pair_board(n_from, n_to) -> "fields.Board":
+    """P straight from (100, 90) to (100, 100), N from n_from to n_to, both 0.2 mm on F.Cu over a GND
+    pour on B.Cu, 0.2 mm of 4.5 between."""
+    gnd = [(90, 80), (110, 80), (110, 110), (90, 110)]
+    return fields.Board(
+        path=Path("pair.kicad_pcb"),
+        copper_z={"F.Cu": 0.2, "B.Cu": 0.0},
+        dielectrics=[(0.0, 0.2, 4.5, 0.02)],
+        copper_t={"F.Cu": 0.035, "B.Cu": 0.035},
+        tracks=[
+            fields.Track("P", "F.Cu", (100, 90), (100, 100), 0.2),
+            fields.Track("N", "F.Cu", n_from, n_to, 0.2),
+        ],
+        zones=[("GND", ("B.Cu",), {"B.Cu": [gnd]})],
+    )
+
+
+def pair_spec(ports=None):
+    g = {"name": "pair", "nets": ["P", "N"], "band_ghz": [0.1, 10], "kind": "lines", "limits": []}
+    if ports:
+        g["ports"] = ports
+    return g, {"reference": "GND", "settings": dict(fields.SETTINGS), "groups": [g]}
+
+
+def test_a_pairs_near_ends_sit_together_when_no_ports_are_named():
+    """N slants from (100.5, 90) to (100.4, 100): its free ends sort by x, (100.4, 100) first, so N's
+    near end was the one by P's far end, (100, 100): Sdd21, NEXT and FEXT came from the wrong ports.
+    N's ports go in the order that puts each by its P partner: 0.5 + 0.4 mm, against 10.0 + 10.0."""
+    g, spec = pair_spec()
+    model = fields.build_model(pair_board((100.5, 90), (100.4, 100)), g, spec)
+    ys = [(p["net"], p["start"][1]) for p in model["ports"]]
+    assert ys == [("P", 90), ("P", 100), ("N", 90), ("N", 100)]
+
+
+def test_a_pairs_named_ports_must_put_near_ends_together():
+    """Ports named P near, P far, N far, N near: refused, with the 4 ends and the order to name."""
+    board = pair_board((100.5, 90), (100.5, 100))
+    board.pads = {
+        "J1.1": (100, 90, "P", 0.1),
+        "J2.1": (100, 100, "P", 0.1),
+        "J1.2": (100.5, 90, "N", 0.1),
+        "J2.2": (100.5, 100, "N", 0.1),
+    }
+    g, spec = pair_spec(["J1.1", "J2.1", "J2.2", "J1.2"])
+    with pytest.raises(fields.Refusal, match=r"N's ports are named far end first: J2\.2 lies by J2\.1"):
+        fields.build_model(board, g, spec)
+    g, spec = pair_spec(["J1.1", "J2.1", "J1.2", "J2.2"])
+    assert [p["start"][1] for p in fields.build_model(board, g, spec)["ports"]] == [90, 100, 90, 100]
+
+
+WYVERN = ROOT / "examples" / "snapdragon-dev-board" / "v0.2"
+
+
+@pytest.mark.skipif(not (WYVERN / "wyvern.kicad_pcb").is_file(), reason="the Wyvern example is not here")
+def test_the_wyvern_pair_with_n_named_far_end_first_is_refused():
+    """The Wyvern USB 3 TX1 pair with ports J1.A3, U2.17, U2.16, J1.A2: the command took it and gave
+    0.265 dB of differential insertion loss and the NEXT and FEXT of each other (a review's run; the
+    right order gave 0.113 dB). Refused."""
+    board = fields.read_board(WYVERN / "wyvern.kicad_pcb")
+    g = {
+        "name": "usb3-tx1",
+        "nets": ["/SS_TX1_P", "/SS_TX1_N"],
+        "ports": ["J1.A3", "U2.17", "U2.16", "J1.A2"],
+        "band_ghz": [0.1, 10],
+        "kind": "lines",
+        "limits": [],
+    }
+    spec = {"reference": "GND", "settings": dict(fields.SETTINGS), "groups": [g]}
+    with pytest.raises(
+        fields.Refusal, match=r"/SS_TX1_N's ports are named far end first: U2\.16 lies by U2\.17"
+    ):
+        fields.build_model(board, g, spec)
+
+
 # ---------------------------------------------------------------- the loss of a line
 
 
@@ -227,6 +323,76 @@ def test_lossy_copper_is_a_conducting_sheet_of_copper():
     assert "<Metal" not in text
 
 
+@pytest.mark.parametrize("kind", ["lossy", "thick"])
+def test_copper_with_no_thickness_in_the_stackup_is_refused(kind):
+    """A stack-up with no thickness on F.Cu: lossy copper wrote a perfect metal there and thick copper
+    a sheet, while model.json said lossy or thick. Refused, with the layer."""
+    board = fields.read_board(LINE / "line.kicad_pcb")
+    board.copper_t["F.Cu"] = 0.0
+    spec = fields.read_spec(LINE / "fields.json")
+    spec["settings"]["copper"] = kind
+    with pytest.raises(fields.Refusal, match=rf"copper {kind} takes each copper layer's thickness: F\.Cu"):
+        fields.build_model(board, spec["groups"][0], spec)
+
+
+def test_lossy_copper_takes_the_planes_thickness_too():
+    """The plane on B.Cu is a conducting sheet with lossy copper: no thickness there is refused too."""
+    board = fields.read_board(LINE / "line.kicad_pcb")
+    del board.copper_t["B.Cu"]
+    spec = fields.read_spec(LINE / "fields.json")
+    spec["settings"]["copper"] = "lossy"
+    with pytest.raises(fields.Refusal, match=r"copper lossy takes each copper layer's thickness: B\.Cu"):
+        fields.build_model(board, spec["groups"][0], spec)
+    spec["settings"]["copper"] = "thick"  # thick grows the track alone; the plane stays a sheet
+    assert fields.build_model(board, spec["groups"][0], spec)["copper"] == {"kind": "thick"}
+
+
+# ---------------------------------------------------------------- the loss tangent over the band
+
+
+def eps(terms: dict, f: float) -> complex:
+    """eps(f) = eps_inf + sum(delta / (1 + j 2 pi f tau)); its imaginary part, negated, is eps''."""
+    w = 2 * math.pi * f
+    return terms["eps_inf"] + sum(d / (1 + 1j * w * tau) for d, tau in terms["poles"])
+
+
+def test_the_loss_tangent_holds_over_the_band():
+    """A fixed conductivity Kappa = 2 pi f0 eps0 er tand is right at f0 alone: the 40 mm line read
+    1.74 Np/m at 1 GHz and 1.64 at 10 GHz, where Qucs eq. 11.79 (p. 170) gives 0.3458 and 3.4898. The
+    Debye terms hold eps'' to er tand = 4.5 x 0.02 = 0.09 within 1 % over 0.1 to 10 GHz, every weight
+    above 0, and eps' at f0 = 5 GHz is er, 4.5."""
+    terms = fields.debye_terms(4.5, 0.02, 0.1e9, 10e9, 5e9)
+    assert all(d > 0 and tau > 0 for d, tau in terms["poles"])
+    for i in range(101):
+        f = 0.1e9 * 100 ** (i / 100)
+        assert -eps(terms, f).imag == pytest.approx(0.09, rel=0.01), f
+    assert eps(terms, 5e9).real == pytest.approx(4.5, abs=1e-9)
+    assert terms["eps_inf"] >= 1
+
+
+def test_the_dielectric_is_a_debye_material():
+    """openEMS gets the line's dielectric as a DebyeMaterial: Epsilon is eps_inf, no conductivity, and
+    each term's EpsilonDelta_k and EpsilonRelaxTime_k in seconds."""
+    model = line_model()
+    text = fields.OpenEMS.xml(model, driven=1)
+    terms = fields.debye_terms(4.5, 0.02, 0.1e9, 10e9, 5e9)
+    assert '<DebyeMaterial Name="dielectric_1">' in text
+    assert f'Epsilon="{fields._n(terms["eps_inf"])}" Kappa="0"' in text
+    k = len(terms["poles"])
+    d, tau = terms["poles"][-1]
+    assert f'EpsilonDelta_{k}="{fields._n(d)}" EpsilonRelaxTime_{k}="{fields._n(tau)}"' in text
+    assert 'Kappa="0.02' not in text
+
+
+def test_a_lossless_dielectric_is_a_plain_material():
+    """A loss tangent of 0 stated in the stack-up: a plain material of er, no Debye term."""
+    model = line_model()
+    model["dielectrics"][0]["tand"] = 0.0
+    text = fields.OpenEMS.xml(model, driven=1)
+    assert '<Material Name="dielectric_1"><Property Epsilon="4.5" Kappa="0"/>' in text
+    assert "DebyeMaterial" not in text
+
+
 @pytest.mark.parametrize(
     "settings, says",
     [
@@ -298,7 +464,8 @@ def test_a_zone_of_the_group_off_the_pour_is_refused():
 
 
 def test_an_antennas_resonance_is_where_its_return_loss_is_most():
-    """|S11| 0.9, 0.3 and 0.8 at 5, 6 and 7 GHz: the resonance is 6 GHz, where the least is."""
+    """|S11| 0.9, 0.3 and 0.8 at 5, 6 and 7 GHz: the resonance is 6 GHz, where the least is, 20 log10
+    (0.8 / 0.3) = 8.5 dB under the most on its right."""
     model = {
         "frequencies_hz": [5e9, 6e9, 7e9],
         "settings": {"port_ohm": 50.0},
@@ -308,6 +475,35 @@ def test_an_antennas_resonance_is_where_its_return_loss_is_most():
     }
     out = fields.group_measures(model, {1: [[0.9, 0.3j, -0.8]]})
     assert out["ANT"]["resonance_ghz"] == {"value": 6.0, "at_hz": 6e9}
+
+
+def antenna(freqs_ghz):
+    return {
+        "frequencies_hz": [f * 1e9 for f in freqs_ghz],
+        "settings": {"port_ohm": 50.0},
+        "nets": ["ANT"],
+        "kind": "antenna",
+        "ports": [{"n": 1, "net": "ANT"}],
+    }
+
+
+@pytest.mark.parametrize("s11", [[0.3, 0.5, 0.8, 0.9], [0.9, 0.8, 0.5, 0.3]])
+def test_a_least_at_the_bands_edge_is_no_resonance(s11):
+    """The patch fixture run over 6 to 8 GHz read its resonance as 6.00 GHz, the band's first
+    frequency, and held a limit of 6.0 to 6.5 GHz; the patch resonates at 5.74 GHz (its own run over
+    4 to 8 GHz). The least |S11| on the first or the last frequency is no resonance."""
+    got = fields.group_measures(antenna([6, 6.5, 7, 7.5]), {1: [s11]})["ANT"]["resonance_ghz"]
+    assert got["value"] is None
+    assert "the least |S11| is at the band's edge" in got["why"]
+    assert "the resonance is not in the band" in got["why"]
+
+
+def test_a_shallow_dip_is_no_resonance():
+    """|S11| 0.9, 0.8, 0.75, 0.85: the least, 0.75, lies 20 log10(0.85 / 0.75) = 1.09 dB under the most
+    on its right, under the 3 dB (half the power) a resonance takes."""
+    got = fields.group_measures(antenna([5, 6, 7, 8]), {1: [[0.9, 0.8, 0.75, 0.85]]})["ANT"]
+    assert got["resonance_ghz"]["value"] is None
+    assert "1.09 dB" in got["resonance_ghz"]["why"]
 
 
 def test_a_line_has_no_resonance():

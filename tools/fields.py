@@ -282,7 +282,12 @@ def read_board(path: Path) -> Board:
             t, er, tand = _num(ly, "thickness"), _num(ly, "epsilon_r"), _num(ly, "loss_tangent")
             if t is None or er is None:
                 raise Refusal("no thickness or no epsilon_r")
-            diel.append((z - t, z, er, tand or 0.0))
+            # A layer that states no loss was modelled lossless, and a loss limit held against it.
+            if tand is None:
+                raise Refusal(
+                    "no `loss_tangent`: the model would make it lossless; state it (0 for a lossless one)"
+                )
+            diel.append((z - t, z, er, tand))
             at_z[0] = z - t
 
     each("stack-up layer", layers, stack_layer)
@@ -467,6 +472,17 @@ def read_spec(path: Path) -> dict:
                 raise Refusal(f"{at}: {m} of {net} names `pair`, the other net of the group")
             if m not in DIFFERENTIAL and "pair" in lim:
                 raise Refusal(f"{at}: {m} of {net} takes no `pair`")
+            # The pair's measures are made for a group of 2 nets and filed under its first: a limit
+            # written another way would never be judged.
+            if m in DIFFERENTIAL and len(nets) != 2:
+                raise Refusal(
+                    f"{at}: {m} of {net}: a pair's measure is of a group of 2 nets, not {len(nets)}"
+                )
+            if m in DIFFERENTIAL and net != nets[0]:
+                raise Refusal(
+                    f"{at}: {m} of {net}: `net` is the group's first net, {nets[0]}, and `pair` its second, "
+                    f"{nets[1]}"
+                )
             if m in COUPLING or m in DIFFERENTIAL or m == "insertion_loss_db":
                 if kind == "antenna":
                     raise Refusal(f"{at}: an antenna has 1 port: {m} is not measured")
@@ -691,6 +707,67 @@ COPPER_LEFT_OUT = {
 }
 
 
+def _pair_ends(chosen: list, nets: list, pad_of: dict, where: str) -> list:
+    """A pair's 4 ends in the order its measures take them, P near, P far, N near, N far, where N's near
+    end is the one by P's near end: dist(Pn, Nn) + dist(Pf, Nf) < dist(Pn, Nf) + dist(Pf, Nn). Unnamed
+    ends sort by x and y, so N's are put in that order; named ones are refused out of it. On a pair
+    named N far end first the Wyvern lane read 0.265 dB of Sdd21 against 0.113, and NEXT for FEXT."""
+    if len(nets) != 2:
+        return chosen
+    by_net = [[e for e in chosen if e[2].net == net] for net in nets]
+    if any(len(ends) != 2 for ends in by_net):
+        return chosen
+    (pn, pf), (nn, nf) = by_net
+
+    def dist(a, b) -> float:
+        return math.hypot(a[1][0] - b[1][0], a[1][1] - b[1][1])
+
+    straight, crossed = dist(pn, nn) + dist(pf, nf), dist(pn, nf) + dist(pf, nn)
+    if straight < crossed - 1e-9:
+        return chosen
+    if abs(straight - crossed) <= 1e-9:
+        raise Refusal(
+            f"{where}: the ends of {nets[1]} lie as near {nets[0]}'s far end as its near end ({straight:.3f} "
+            "mm both ways): which end of the pair is near is not known"
+        )
+    if pad_of:
+        name = pad_of.get
+        raise Refusal(
+            f"{where}, `ports`: {nets[1]}'s ports are named far end first: {name(id(nn))} lies by "
+            f"{name(id(pf))} and {name(id(nf))} by {name(id(pn))} ({crossed:.3f} mm against {straight:.3f}); "
+            f"name {nets[0]}'s near end, its far end, then {nets[1]}'s by the near end and by the far end"
+        )
+    swap = {id(nn): nf, id(nf): nn}
+    return [swap.get(id(e), e) for e in chosen]
+
+
+# The loss tangent over the band: Debye terms of 1 weight, DEBYE_PER_DECADE to a decade, from
+# DEBYE_REACH decades under the band to as many over it. A fixed conductivity is right at 1 frequency
+# alone: the 40 mm line read 1.74 Np/m at 1 GHz and 1.64 at 10 GHz, Qucs eq. 11.79 gives 0.35 and 3.49.
+DEBYE_PER_DECADE = 2
+DEBYE_REACH = 1.5
+
+
+def debye_terms(er: float, tand: float, f_lo: float, f_hi: float, f_pin: float) -> dict:
+    """eps(f) = eps_inf + sum(delta / (1 + j 2 pi f tau)): the terms' eps'' is er tand at the band's
+    geometric middle and within 1 % of it over the band (test_the_loss_tangent_holds_over_the_band);
+    eps' is er at f_pin. The relaxation times are in seconds."""
+    n = DEBYE_PER_DECADE
+    lo = math.floor(math.log10(f_lo) * n) / n - DEBYE_REACH
+    hi = math.ceil(math.log10(f_hi) * n) / n + DEBYE_REACH
+    taus = [1 / (2 * math.pi * 10 ** (lo + k / n)) for k in range(round((hi - lo) * n) + 1)]
+    w_mid = 2 * math.pi * math.sqrt(f_lo * f_hi)
+    weight = er * tand / sum(w_mid * t / (1 + (w_mid * t) ** 2) for t in taus)
+    w_pin = 2 * math.pi * f_pin
+    eps_inf = er - sum(weight / (1 + (w_pin * t) ** 2) for t in taus)
+    return {"eps_inf": eps_inf, "poles": [(weight, t) for t in taus]}
+
+
+def _eps_real(terms: dict, f: float) -> float:
+    w = 2 * math.pi * f
+    return terms["eps_inf"] + sum(d / (1 + (w * t) ** 2) for d, t in terms["poles"])
+
+
 def build_model(board: Board, group: dict, spec: dict) -> dict:
     """The engine-neutral model of 1 group, in mm: the box, the dielectrics, the reference planes, the
     copper of the group's nets as polygons, the vias, the ports and the mesh."""
@@ -746,6 +823,18 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
     beside = sorted(ly for ly in poured if board.copper_z[ly] in signal_z)
     if not plane_layers:
         raise Refusal(f"{where}: no zone of {reference} on a copper layer: a port has no plane to stand on")
+    # thick and lossy take each layer's thickness from the stack-up: with none, thick copper was a sheet
+    # and lossy copper a perfect metal, while model.json said thick or lossy. thick grows the group's
+    # own copper; lossy makes the planes conducting sheets too.
+    if copper in ("thick", "lossy"):
+        used = {t.layer for t in tracks} | {z[1] for z in own_zones}
+        used |= set(plane_layers) if copper == "lossy" else set()
+        bare = sorted(ly for ly in used if not board.copper_t.get(ly, 0.0) > 0)
+        if bare:
+            raise Refusal(
+                f"{where}: copper {copper} takes each copper layer's thickness: {', '.join(bare)} "
+                f"{'state' if len(bare) > 1 else 'states'} none in the stack-up"
+            )
     # The model makes each plane whole over the box. That holds only where the pour lies under every
     # track: a track is sampled at its centre and both edges, every half its width along it, and each
     # point must lie in the pour on each plane next to its layer.
@@ -878,7 +967,7 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
         polygons.append({"net": net, "z": board.copper_z[ly], "points": [list(q) for q in ring], "layer": ly})
 
     ends = [(layer, p, ts[0]) for (layer, p), ts in degree.items() if len(ts) == 1 and p not in via_at]
-    chosen = []
+    chosen, pad_of = [], {}
     if group.get("ports"):
         at = f"{where}, `ports` of {Path(spec.get('file', 'fields.json')).name}"
         for name in group["ports"]:
@@ -902,6 +991,7 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
             if end in chosen:
                 raise Refusal(f"{at}: pad {name} gives the end at {_pt(end[1])}, a port already")
             chosen.append(end)
+            pad_of[id(end)] = name
     else:
         for net in nets:
             free = sorted((e for e in ends if e[2].net == net), key=lambda e: (e[1], e[0]))
@@ -912,6 +1002,7 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
                     "an open end is part of the structure, never a port; name the pads"
                 )
             chosen.extend(free)
+    chosen = _pair_ends(chosen, nets, pad_of, where)
     ports = []
     for n, (layer, p, t) in enumerate(chosen, 1):
         zt = board.copper_z[layer]
@@ -958,6 +1049,25 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
         mesh_y.extend([v.at[1] - v.drill / 2, v.at[1] + v.drill / 2])
 
     f_lo, f_hi = (g * 1e9 for g in group["band_ghz"])
+    # Each lossy dielectric is a Debye material (OpenEMS.xml): its eps' then follows its loss over the
+    # band, er at f0 = f_hi / 2, as the excitation's middle.
+    dispersion = []
+    for d in dielectrics:
+        if d["tand"] > 0:
+            terms = debye_terms(d["er"], d["tand"], f_lo, f_hi, f_hi / 2)
+            if terms["eps_inf"] < 1:
+                raise Refusal(
+                    f"{where}: the dielectric from {d['z'][0]:g} to {d['z'][1]:g} mm, er {d['er']:g} and "
+                    f"loss tangent {d['tand']:g}: its Debye terms leave eps_inf "
+                    f"{terms['eps_inf']:.3f}, under 1"
+                )
+            dispersion.append(
+                f"a constant eps' in the dielectric from {d['z'][0]:g} to {d['z'][1]:g} mm: its loss "
+                f"tangent {d['tand']:g} is held over the band by {len(terms['poles'])} Debye terms, and eps' "
+                f"is {d['er']:g} at "
+                f"{f_hi / 2e9:g} GHz, {_eps_real(terms, f_lo):.3f} at {f_lo / 1e9:g} GHz and "
+                f"{_eps_real(terms, f_hi):.3f} at {f_hi / 1e9:g} GHz"
+            )
     er_max = max([d["er"] for d in dielectrics] or [1.0])
     cell = max_cell_mm(f_hi, er_max, s["cells_per_wavelength"])
     mesh_x += [box[0], box[3]]
@@ -1044,7 +1154,8 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
             "pads, parts, solder mask and every net outside the group",
             "the board's edge: the dielectric fills the box",
         ]
-        + [f"the {reference} pour on {ly}, the layer of the group's own tracks" for ly in beside],
+        + [f"the {reference} pour on {ly}, the layer of the group's own tracks" for ly in beside]
+        + dispersion,
     }
 
 
@@ -1132,6 +1243,31 @@ def attenuation_np(s11, s21) -> list[float]:
         a, b = complex(a), complex(b)
         out.append(abs(cmath.acosh((1 - a * a + b * b) / (2 * b)).real))
     return out
+
+
+RESONANCE_DIP_DB = 3.0  # half the power: a dip shallower than this under each side is no resonance
+
+
+def resonance(freqs, mags) -> dict:
+    """Where the least of the wave comes back, |S11| least over the band, when that least is a dip: not
+    on the band's first or last frequency (the patch fixture over 6 to 8 GHz read 6.00 GHz there, and
+    resonates at 5.74), and RESONANCE_DIP_DB or more under the most |S11| on each side of it."""
+    k = min(range(len(mags)), key=mags.__getitem__)
+    if k in (0, len(mags) - 1):
+        why = (
+            f"the least |S11| is at the band's edge, {freqs[k] / 1e9:.3g} GHz: the resonance is not in the "
+            "band"
+        )
+        return {"value": None, "at_hz": freqs[k], "why": why}
+    left, right = _db(max(mags[:k])) - _db(mags[k]), _db(max(mags[k + 1 :])) - _db(mags[k])
+    if min(left, right) < RESONANCE_DIP_DB:
+        side = "below" if left < right else "above"
+        why = (
+            f"the least |S11|, at {freqs[k] / 1e9:.3g} GHz, lies {min(left, right):.2f} dB under the most "
+            f"{side} it in the band: a resonance is a dip of {RESONANCE_DIP_DB:g} dB (half the power) or more"
+        )
+        return {"value": None, "at_hz": freqs[k], "why": why}
+    return {"value": freqs[k] / 1e9, "at_hz": freqs[k]}
 
 
 def coupling_measure(freqs, s) -> dict:
@@ -1288,11 +1424,23 @@ class OpenEMS:
         pml = f"PML_{int(s['absorbing_cells'])}"
         props = []
         for i, d in enumerate(model["dielectrics"], 1):
-            kappa = 2 * math.pi * f0 * EPS0 * d["er"] * d["tand"]
             fill = _box([lo[0], lo[1], d["z"][0]], [hi[0], hi[1], d["z"][1]], 1)
+            if not d["tand"]:
+                props.append(
+                    f'<Material Name="dielectric_{i}"><Property Epsilon="{_n(d["er"])}" Kappa="0"/>'
+                    f"<Primitives>{fill}</Primitives></Material>"
+                )
+                continue
+            # A conductivity, 2 pi f0 eps0 er tand, is the loss tangent at f0 alone and falls as f0 / f
+            # above it: Debye terms hold it over the band (debye_terms).
+            terms = debye_terms(d["er"], d["tand"], model["frequencies_hz"][0], f_max, f0)
+            poles = " ".join(
+                f'EpsilonDelta_{k}="{_n(delta)}" EpsilonRelaxTime_{k}="{_n(tau)}"'
+                for k, (delta, tau) in enumerate(terms["poles"], 1)
+            )
             props.append(
-                f'<Material Name="dielectric_{i}"><Property Epsilon="{_n(d["er"])}" Kappa="{_n(kappa)}"/>'
-                f"<Primitives>{fill}</Primitives></Material>"
+                f'<DebyeMaterial Name="dielectric_{i}"><Property Epsilon="{_n(terms["eps_inf"])}" Kappa="0" '
+                f"{poles}/><Primitives>{fill}</Primitives></DebyeMaterial>"
             )
         corners = [[lo[0], lo[1]], [hi[0], lo[1]], [hi[0], hi[1]], [lo[0], hi[1]]]
         copper = model.get("copper", {"kind": "sheet"})
@@ -1487,7 +1635,8 @@ ENGINES = {"openems": OpenEMS}
 def group_measures(model: dict, columns: dict[int, list[list[complex]]]) -> dict:
     """The measures of each net: its own when its first port is driven, and the coupling into each other
     net of the group from each driven net. Ports keep the order fields.json names them in: NEXT into
-    another net is taken at its first port, FEXT at its last."""
+    another net is taken at its first port, FEXT at its last. A pair's ends were put so that each net's
+    first port lies by the other's (`_pair_ends`)."""
     freqs, zref = model["frequencies_hz"], model["settings"]["port_ohm"]
     index = {p["n"]: k for k, p in enumerate(model["ports"])}
     by_net = {net: [p["n"] for p in model["ports"] if p["net"] == net] for net in model["nets"]}
@@ -1499,10 +1648,7 @@ def group_measures(model: dict, columns: dict[int, list[list[complex]]]) -> dict
         far = col[index[ns[-1]]] if len(ns) > 1 else None
         out[net].update(line_measures(freqs, col[index[ns[0]]], far, zref))
         if model.get("kind") == "antenna":
-            # The resonance: where the least of the wave comes back, |S11| least over the band.
-            mags = [abs(complex(x)) for x in col[index[ns[0]]]]
-            k = min(range(len(mags)), key=mags.__getitem__)
-            out[net]["resonance_ghz"] = {"value": freqs[k] / 1e9, "at_hz": freqs[k]}
+            out[net]["resonance_ghz"] = resonance(freqs, [abs(complex(x)) for x in col[index[ns[0]]]])
         if len(ns) != 2:  # the impedance formula is a symmetric 2-port's: a net of 3 ports is none
             out[net].pop("impedance_ohm", None)
         elif net in model.get("no_impedance", {}):

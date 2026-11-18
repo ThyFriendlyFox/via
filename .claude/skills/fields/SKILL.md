@@ -63,10 +63,15 @@ as its own program; none of its code is in this repository.
 - Order: the first port of each net is driven, 1 run for each net. The
   other net's first port is its near end: NEXT is read there, FEXT at its
   last port. Name the pads of each pair in the same order, near end first.
+  On 2 nets of 2 ports each, N's near end must lie by P's near end:
+  dist(P near, N near) + dist(P far, N far) is less than the sum the other
+  way round. Named pads out of that order are refused (`N's ports are named
+  far end first`); unnamed free ends are put in it.
 - `measure`: `impedance_ohm` (min, max), `return_loss_db` (min),
   `insertion_loss_db` (max), `next_db` and `fext_db` (max, with `from`: the
   driven net). Loss and coupling are the worst over the band.
-- A pair's measures, with `net` (P) and `pair` (N): `diff_insertion_loss_db`
+- A pair's measures, with `net` (P, the group's first net) and `pair` (N,
+  its second), on a group of 2 nets; another order is refused: `diff_insertion_loss_db`
   (max), `diff_return_loss_db` (min), `diff_impedance_ohm` (min, max). They
   come from Sdd21 = (S21 - S23 - S41 + S43) / 2 and Sdd11 = (S11 - S13 -
   S31 + S33) / 2, ports in the order P near, P far, N near, N far: name the
@@ -74,7 +79,10 @@ as its own program; none of its code is in this repository.
   Sdd11 and Sdd21 with a reference of 2 x `port_ohm`, judged only when both
   nets are uniform.
 - An antenna's measure: `resonance_ghz` (min, max), the frequency where
-  |S11| is least over the band, and `return_loss_db`.
+  |S11| is least over the band, and `return_loss_db`. The least is no
+  resonance on the band's first or last frequency (`the resonance is not in
+  the band`: widen the band), nor where it lies less than 3 dB under the most
+  |S11| on either side of it.
 - `unstated` in place of min, max and source: the document gives no bound
   for this measure. Write the document, revision, clause and page and why.
   The run prints the measure and `not judged, <your text>`. A measure the
@@ -104,7 +112,14 @@ as its own program; none of its code is in this repository.
   not its thickness to the field). `conductivity_s_m` is 58e6 S/m unless
   set: the International Annealed Copper Standard, 58 m/(ohm mm2) at 20 C
   (NIST Handbook 100, 1966, 1.2a, p. 2). A run is 1 kind: thick and lossy
-  are not both modelled.
+  are not both modelled. `thick` and `lossy` take each copper layer's
+  thickness from the stack-up; a layer they use with none is refused.
+- Each dielectric's `loss_tangent` must be in the stack-up (0 for a
+  lossless one); a layer with none is refused. A lossy dielectric is an
+  openEMS Debye material: 2 terms to a decade from 1.5 decades under the
+  band to 1.5 over it hold eps'' within 1 % of er tan d over the band, and
+  eps' is er at half the band's top, following the loss elsewhere
+  (`left_out` gives it at both ends of the band).
 
 The worked examples are `tests/boards/pass-fields-microstrip`,
 `tests/boards/fail-fields-stub` and `tests/boards/pass-fields-patch`. Their
@@ -205,12 +220,21 @@ guideline with an impedance is a limit of its own: cite it.
   Papers (2014): eq. 11.22 to 11.24, p. 165 (thickness) and eq. 11.80 to
   11.83, p. 171 (conductor loss), in `tests/test_fields_solver.py`. Thick
   copper read 49.60 ohm against 48.94 (1.3 % over, margin 3 %). Lossy
-  copper added 0.481 Np/m at 4.5 to 5.5 GHz against 0.741: 35 % under, out
+  copper added 0.480 Np/m at 4.5 to 5.5 GHz against 0.741: 35 % under, out
   of its 30 % margin, so the test stands as a strict xfail and a lossy run's
   conductor loss is low by about a third. No surface roughness is modelled. The mesh puts a straight track's edges a third of a
   cell inside its metal (openEMS 0.0.35, Tutorials/MSL_NotchFilter.m, lines
   36 to 39); with the edges on mesh lines the line fixture read 43.14 ohm
   against 51.34. A slanted track has no such lines: its sheet is a stair.
+- The dielectric's loss over the band: on the line fixture made 40 mm long
+  (copper a sheet, 0.1 to 10 GHz) the run reads 1.05 to 1.10 times Qucs
+  Technical Papers (2014) eq. 11.79, p. 170: 3.668 Np/m at 10 GHz against
+  3.490, 1.926 at 5 GHz against 1.745 (`tests/test_fields_solver.py`; the
+  5 GHz margin of 10 % is missed, a strict xfail). With
+  `cells_per_dielectric` 8 it read 1.01 to 1.06 times. The loss is on the
+  high side: a loss limit's pass stands, a near fail is worth a finer
+  run. The Debye terms can double a run's time (the 40 mm line: 18 s
+  before them, 36 s with them).
 - A reference plane is whole over the model's box. The pour, its fill or
   its outline less its cutouts, is checked under each track, at its centre
   and both edges every half its width along it, a point on the pour's edge

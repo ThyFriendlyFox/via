@@ -307,9 +307,10 @@ def attenuation_per_m(project: Path, length_m: float, lo: float, hi: float) -> f
     strict=True,
     reason="not within its margin: the run of 2026-11-18 gave 1.7615 Np/m for the sheet and 2.2423 Np/m "
     "for the conducting sheet, a conductor loss of 0.4808 Np/m, 35 % under the closed form's 0.74145 "
-    "against a margin of 30 % written before the run. The margin is not widened after the run.",
+    "against a margin of 30 % written before the run; with the dielectric a Debye material, 1.9263 and "
+    "2.4063 Np/m, 0.4800 Np/m, 35 % under. The margin is not widened after the run.",
 )
-def test_lossy_copper_adds_the_closed_form_conductor_loss(tmp_path):
+def test_lossy_copper_adds_the_closed_form_conductor_loss(tmp_path, sheet40):
     """The line made 40 mm long, run with copper as a perfect sheet and as a conducting sheet of 58e6
     S/m and 0.035 mm (NIST Handbook 100, 1966, 1.2a, p. 2). The difference of their attenuations, read
     from S11 and S21 so that the mismatch is no part of it, is the conductor's. Hammerstad and Jensen
@@ -318,14 +319,63 @@ def test_lossy_copper_adds_the_closed_form_conductor_loss(tmp_path):
     Ki = exp(-1.2 (51.337 / 376.73)^0.7) = 0.74279, alpha_c = 0.018448 / (51.337 x 0.36e-3) x 0.74279
     = 0.74145 Np/m. The margin, 30 %, was written before the run: 0.519 to 0.964 Np/m, the median over
     4.5 to 5.5 GHz."""
-    sheet = line_copy(tmp_path, "sheet40", {}, length_mm=40)
     lossy = line_copy(tmp_path, "lossy40", {"copper": "lossy"}, length_mm=40)
-    for project in (sheet, lossy):
-        proc, _ = run_project(project)
-        assert proc.returncode == 0, proc.stdout + proc.stderr
-    a_sheet = attenuation_per_m(sheet, 0.04, 4.5e9, 5.5e9)
+    proc, _ = run_project(lossy)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    a_sheet = attenuation_per_m(sheet40, 0.04, 4.5e9, 5.5e9)
     a_lossy = attenuation_per_m(lossy, 0.04, 4.5e9, 5.5e9)
     assert 0.519 <= a_lossy - a_sheet <= 0.964, (a_sheet, a_lossy)
+
+
+@pytest.fixture(scope="module")
+def sheet40(tmp_path_factory):
+    """The line made 40 mm long, copper a sheet, run once for the tests that read its loss."""
+    project = line_copy(tmp_path_factory.mktemp("sheet40"), "sheet40", {}, length_mm=40)
+    proc, _ = run_project(project)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    return project
+
+
+def attenuation_at(project: Path, length_m: float, f: float) -> float:
+    """The line's attenuation in Np/m at the frequency of the run nearest f, from its S11 and S21."""
+    out = project / "build" / "fields" / "sig"
+    model = json.loads((out / "model.json").read_text(encoding="utf-8"))
+    col = fields.OpenEMS.column(out / "openems" / "port1", model, 1)
+    alpha = fields.attenuation_np(col[0], col[1])
+    freqs = model["frequencies_hz"]
+    return alpha[min(range(len(freqs)), key=lambda i: abs(freqs[i] - f))] / length_m
+
+
+# Qucs Technical Papers (2014) eq. 11.79, printed p. 170, with eeff 3.38151 (Hammerstad and Jensen,
+# u = 1.8, er 4.5) and tan d 0.02: alpha_d = pi f / c x er / sqrt(eeff) x (eeff - 1) / (er - 1) x tan d.
+QUCS_ALPHA_D = {5e9: 1.7451, 10e9: 3.4898}  # Np/m
+
+
+@needs_openems
+def test_the_dielectric_loss_grows_with_the_frequency(sheet40):
+    """The 40 mm sheet line: all its loss is the dielectric's (and what radiates). Qucs eq. 11.79 gives
+    3.4898 Np/m at 10 GHz, twice its 1.7451 at 5 GHz. A fixed conductivity, right at f0 = 5 GHz alone,
+    read 1.7752 and 1.6408 Np/m (a run of 2026-11-18): the loss flat over the band, half at its top.
+    The margins, 10 %, were written before the run of the fix: 3.141 to 3.839 Np/m at 10 GHz, the
+    ratio 1.8 to 2.2."""
+    a5, a10 = attenuation_at(sheet40, 0.04, 5e9), attenuation_at(sheet40, 0.04, 10e9)
+    assert 3.141 <= a10 <= 3.839, (a5, a10)
+    assert 1.8 <= a10 / a5 <= 2.2, (a5, a10)
+
+
+@needs_openems
+@pytest.mark.xfail(
+    strict=True,
+    reason="not within its margin: the run of 2026-11-18 gave 1.9263 Np/m at 5 GHz against 1.7451, 10.4 % "
+    "over against a margin of 10 % written before the run (3.6683 at 10 GHz, 5.1 % over). The run reads "
+    "1.05 to 1.10 times eq. 11.79 over the band; with cells_per_dielectric 8 it read 1.01 to 1.06 (1.8507 "
+    "at 5 GHz), so the excess falls with the cells at the dielectric's faces. The margin is not widened.",
+)
+def test_the_dielectric_loss_at_f0_is_the_closed_form(sheet40):
+    """At 5 GHz, f0, the fixed conductivity read 1.7752 Np/m, 1.7 % over eq. 11.79's 1.7451. The margin
+    written before the run of the fix, 10 %: 1.571 to 1.920 Np/m."""
+    a5 = attenuation_at(sheet40, 0.04, 5e9)
+    assert 1.571 <= a5 <= 1.920, a5
 
 
 @needs_openems
@@ -334,9 +384,33 @@ def test_the_patch_resonates_where_its_length_says(tmp_path):
     1 edge. eeff (Hammerstad and Jensen, u = 15) = 4.06762; each open end adds 0.42208 mm (Kirschning,
     Jansen and Koster, Qucs Technical Papers 2014, eq. 11.185 to 11.190, p. 181); half a wavelength in
     12.84416 mm: c / (2 x 12.84416 mm x sqrt(4.06762)) = 5.7865 GHz. The margin, 7 %, was written in
-    fields.json before the run: 5.381 to 6.192 GHz. With --strict the fixture holds both its limits."""
-    proc, report = run("pass-fields-patch", tmp_path, "--strict")
+    fields.json before the run: 5.381 to 6.192 GHz. The least return loss over the band is printed not
+    judged with its reason: the bound of 0 dB it had was met by any passive port, and counted as held."""
+    proc, report = run("pass-fields-patch", tmp_path)
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert report["summary"].startswith("2 held, 0 failed, 0 not judged")
+    assert report["summary"].startswith("1 held, 0 failed, 1 not judged"), report["summary"]
+    (warning,) = report["details"]["warnings"]
+    assert warning.startswith("patch: ANT return_loss_db ") and "not judged, no document" in warning
     got = report["details"]["measures"]["patch"]["ANT"]["resonance_ghz"]["value"]
     assert 5.381 <= got <= 6.192
+
+
+@needs_openems
+def test_a_patch_resonating_under_the_band_gives_no_resonance(tmp_path):
+    """The patch fixture with its band made 6 to 8 GHz: it resonates at 5.74 GHz (its own run over 4
+    to 8 GHz), under the band. The least |S11| fell on 6 GHz, the band's first frequency, and a limit
+    of 6.0 to 6.5 GHz held with --strict. Now there is no value, and the line says why."""
+    import shutil
+
+    project = tmp_path / "patch"
+    shutil.copytree(ROOT / "tests" / "boards" / "pass-fields-patch", project)
+    spec = json.loads((project / "fields.json").read_text(encoding="utf-8"))
+    spec["groups"][0]["band_ghz"] = [6, 8]
+    (project / "fields.json").write_text(json.dumps(spec), encoding="utf-8")
+    proc, report = run_project(project, "--strict")
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    got = report["details"]["measures"]["patch"]["ANT"]["resonance_ghz"]
+    assert got["value"] is None and "the least |S11| is at the band's edge" in got["why"]
+    failures = report["details"]["failures"]
+    assert any("ANT resonance_ghz: not judged, the least |S11| is at the band's edge" in f for f in failures)
+    assert report["summary"].startswith("0 held"), report["summary"]
