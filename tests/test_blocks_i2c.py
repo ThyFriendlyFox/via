@@ -571,6 +571,37 @@ def test_the_deck_holds_the_rise_to_table_2_1():
     assert corners["tolerance"]["R"] == 0.01
 
 
+def netlist_of(d: kicadgen.Design) -> ratings.Netlist:
+    """The design's parts and nets as the SIM gate reads them from kicad-cli's netlist, without KiCad."""
+    comps = "".join(
+        f'<comp ref="{p.ref}"><value>{p.value}</value>'
+        f'<libsource lib="{p.symbol.lib}" part="{p.symbol.name}"/></comp>'
+        for p in d.parts
+    )
+    nets: dict[str, list[str]] = {}
+    for p in d.parts:
+        for pin, net in p.nets.items():
+            nets.setdefault(net, []).append(f'<node ref="{p.ref}" pin="{pin}" pintype="passive"/>')
+    body = "".join(f'<net name="/{name}">{"".join(nodes)}</net>' for name, nodes in nets.items())
+    return ratings.read_netlist(f"<export><components>{comps}</components><nets>{body}</nets></export>")
+
+
+@needs_libs
+@pytest.mark.parametrize("farads", [100e-12, 200e-12])
+def test_the_deck_answers_the_rise_time_the_sim_gate_asks_of_the_bus(farads):
+    """The SIM gate asks each I2C line with a pull-up for a deck (tools/simneeds.py). The block's deck
+    says `* deck: i2c-rise SDA SCL` and runs R1 at the schematic's value; R2 has that value too, so R1
+    stands for it. Without the line, the block's fixtures failed `gates --strict`."""
+    import simneeds
+
+    d, block = i2c(farads=farads)
+    deck = block.files["sim/i2c.cir"]
+    assert "* deck: i2c-rise SDA SCL" in deck.splitlines()
+    assert simneeds.needs(netlist_of(d), [], {"i2c": deck}) == []
+    asked = simneeds.needs(netlist_of(d), [], {})
+    assert [n.names for n in asked] == [("SCL", "SDA")]
+
+
 @needs_libs
 def test_a_ref_the_design_holds_already_is_refused():
     """R1 is the design's own 10k: the block names its pull-ups with other refs or not at all."""
