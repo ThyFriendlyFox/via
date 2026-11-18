@@ -21,18 +21,20 @@ by side, and 1 verdict from all of them.
 | `engine` | `yes` when a test of the file starts an engine (kicad-cli, ngspice, FreeRouting, openEMS, a chip tool); `no` otherwise. A shard runs its `no` files first, so that their failures show early. |
 | `alone` | Empty, or why the file cannot run beside another. Such a file runs in the shard `serial`, after the others. |
 
-The seconds come from 1 run of the tests step in 4 shards on 2026-11-18,
-on a machine of 4 processors: 2034 tests, 2553 s of test time
+The seconds come from 1 whole run of `verify.sh` in 4 shards on
+2026-11-18, on a machine of 4 processors: 2873 tests, 2852 s of test time
 (`testshards.py table` on that run's logs). A file takes longer in a shard
 than alone, as 4 shards share the processors: on 2026-11-17, 1840 tests
 took 1554.4 s in 1 process
 (`1821 passed, 1 skipped, 18 deselected, 1 warning in 1557.70s`), and
 `tests/test_chips.py` took 251.9 s there and 326.2 s in a shard. `*` takes
-48.2 s, the mean of the 53 files (2553 / 53). The
-`engine` column comes from a run with a shim in front of each engine on
-`PATH` that logged the test that started it, and from reading the files
-that run an engine the shim does not see (openEMS, KiCad's `pcbnew`
-module, the chip tools in their own folder).
+41.9 s, the mean of the 68 files. The `engine` column comes from a run
+with a shim in front of each engine on `PATH` that logged the test that
+started it, and from reading the files that run an engine the shim does
+not see (openEMS, KiCad's `pcbnew` module, the chip tools in their own
+folder). The 15 files new to the table on 2026-11-18 were marked by
+reading them: `yes` where a test runs kicad-cli or ngspice, or the engine
+lock's own commands.
 
 ## How the split works
 
@@ -63,11 +65,12 @@ module, the chip tools in their own folder).
 
 ## Keeping the table true
 
-1. Run the tests step 2 times and keep the logs:
+1. Run the tests step 1 or more times and keep the logs:
    `python verify/testshards.py run --work /tmp/shards-1`, then the same
-   with `/tmp/shards-2`. Both folders must be empty or new. A run that
-   prints `TESTS RED` does not count.
-2. Print the table with the mean seconds of the 2 runs:
+   with `/tmp/shards-2`. Each folder must be empty or new. A red run
+   keeps its own folder, and its seconds count: a failed test still took
+   its time.
+2. Print the table with the mean seconds of the runs:
    `python verify/testshards.py table /tmp/shards-1 /tmp/shards-2`.
    Write what it prints into `shards.csv` with the Write tool. It keeps each
    file's `engine` and `alone`; a file new to the table gets the `*` row's
