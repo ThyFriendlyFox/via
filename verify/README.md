@@ -49,10 +49,15 @@ module, the chip tools in their own folder).
 |---|---|
 | `FAILED <id> (shard N) at T s` | A test failed, T seconds after its shard started; the line comes while the other shards run on. Run its file alone: `python -m pytest <file> -q`. |
 | `shard N exited <code>` | pytest in that shard did not pass. Its log is under the `logs:` folder the run printed. |
-| `shard N ended with no summary line` | The shard was killed or crashed. Read the end of its `pytest.log`. |
+| `shard N ended before pytest's end of session` | The shard was killed, crashed, or a test ended the process (even with exit 0). Read the end of its `pytest.log`. |
+| `the collection in 1 process exited <code>` | `pytest --collect-only` failed in 1 process. Its last 5 lines follow. |
 | `missing: <id>` | 1 process collects the test, and no shard ran it. |
 | `not collected: <id>` | A shard ran a test that 1 process does not collect. |
 | `run 2 times: <id>` | 2 shards ran the same test. |
+| `marks differ: <id>: ...` | The test's skip or xfail marks say one thing in its shard and another in 1 process: the shard's environment changed the verdict. |
+| `not judged: <id>: skipped inside the test` | Not red: the test called `pytest.skip` in its shard. Whether 1 process skips it too is not known without running it there. |
+| `stopped by signal N` | The run got SIGTERM or SIGHUP. It killed every shard's process group before it exited 128 + N. |
+| `--work <folder> holds the logs of an earlier run` | Exit 2. The logs are appended to: name an empty folder, or remove that one. |
 | `logs kept: <folder>` | Each shard's `pytest.log`, `log.jsonl` and tmp_path folders are there. A green run deletes its folder. |
 | `not in the table: <file>` | Not red: the file got the `*` seconds. Add its row with the seconds of a run. |
 
@@ -60,7 +65,8 @@ module, the chip tools in their own folder).
 
 1. Run the tests step 2 times and keep the logs:
    `python verify/testshards.py run --work /tmp/shards-1`, then the same
-   with `/tmp/shards-2`. A run that prints `TESTS RED` does not count.
+   with `/tmp/shards-2`. Both folders must be empty or new. A run that
+   prints `TESTS RED` does not count.
 2. Print the table with the mean seconds of the 2 runs:
    `python verify/testshards.py table /tmp/shards-1 /tmp/shards-2`.
    Write what it prints into `shards.csv` with the Write tool. It keeps each

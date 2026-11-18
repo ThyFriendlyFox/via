@@ -9,8 +9,10 @@ from __future__ import annotations
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -259,3 +261,219 @@ def test_the_gate_prints_each_shards_time_and_the_slowest_files(tmp_path):
         assert f"shard {name}: exit 0," in proc.stdout
     assert "slowest files:" in proc.stdout
     assert os.path.join("tests", "test_p.py") in proc.stdout
+
+
+def red_line(stdout: str) -> str:
+    (line,) = [line for line in stdout.splitlines() if line.startswith("TESTS RED: ")]
+    return line
+
+
+# -- each red condition of the join, end to end: removing the condition turns its test green -------------
+
+
+def test_a_shard_that_exits_0_before_the_end_of_its_session_makes_the_gate_red(tmp_path):
+    """The last test of test_s.py ends its pytest with os._exit(0): the shard exits 0, every id has its
+    setup record, and only the missing end of session says that the shard was cut short."""
+    files = dict(FOUR)
+    files["test_s.py"] = PASSING + "\n\nimport os\n\n\ndef test_zz_ends_the_process():\n    os._exit(0)\n"
+    proc = gate(folder(tmp_path, files))
+    assert proc.returncode == 1, proc.stdout
+    assert re.search(r"^shard \d: exit 0, ", proc.stdout, re.M)
+    assert re.search(r"shard \d ended before pytest's end of session", red_line(proc.stdout))
+
+
+def test_an_id_a_shard_runs_and_1_process_does_not_collect_makes_the_gate_red(tmp_path):
+    """test_s.py defines a third test only inside a shard: 4 x 2 = 8 ids collected, 8 + 1 = 9 run, 1 not
+    collected."""
+    files = dict(FOUR)
+    files["test_s.py"] = PASSING + (
+        "\n\nimport os\n\nif os.environ.get('TESTSHARDS_SHARD'):\n\n"
+        "    def test_only_in_a_shard():\n        pass\n"
+    )
+    proc = gate(folder(tmp_path, files))
+    assert proc.returncode == 1, proc.stdout
+    assert "ids: 8 collected in 1 process, 9 run in 2 shards; 0 missing, 1 not collected" in proc.stdout
+    assert "not collected: tests/test_s.py::test_only_in_a_shard" in proc.stdout
+    assert "the shards' ids are not the ids 1 process collects" in red_line(proc.stdout)
+
+
+def test_an_id_run_2_times_makes_the_gate_red(tmp_path):
+    """A test of test_s.py writes a second setup record for tests/test_p.py::test_one into its shard's
+    log: 3 files of 2 tests and test_s.py with 3 give 6 + 3 = 9 ids collected, 9 + 1 = 10 records of a
+    run, 1 id run 2 times."""
+    files = dict(FOUR)
+    files["test_s.py"] = PASSING + (
+        "\n\nimport json\nimport os\n\n\ndef test_writes_a_second_record():\n"
+        "    with open(os.environ['TESTSHARDS_LOG'], 'a', encoding='utf-8') as fh:\n"
+        "        rec = {'id': 'tests/test_p.py::test_one', 'when': 'setup', 'outcome': 'passed',\n"
+        "               'seconds': 0}\n"
+        "        fh.write(json.dumps(rec) + '\\n')\n"
+    )
+    proc = gate(folder(tmp_path, files))
+    assert proc.returncode == 1, proc.stdout
+    assert "ids: 9 collected in 1 process, 10 run in 2 shards; 0 missing, 0 not collected, 1 run 2 times" in (
+        proc.stdout
+    )
+    assert "run 2 times: tests/test_p.py::test_one" in proc.stdout
+    assert "the shards' ids are not the ids 1 process collects" in red_line(proc.stdout)
+
+
+def test_a_collection_that_fails_in_1_process_makes_the_gate_red(tmp_path):
+    """test_s.py raises as it is imported outside a shard: pytest --collect-only exits 2 (an error in
+    collection), whatever the shards do."""
+    files = dict(FOUR)
+    files["test_s.py"] = (
+        "import os\n\nif not os.environ.get('TESTSHARDS_SHARD'):\n    raise RuntimeError('no')\n\n"
+    )
+    files["test_s.py"] += PASSING
+    proc = gate(folder(tmp_path, files))
+    assert proc.returncode == 1, proc.stdout
+    assert "the collection in 1 process exited 2" in red_line(proc.stdout)
+
+
+# -- the same verdict: a skip or an xfail that only a shard's environment gives -----------------------------
+
+
+def test_a_test_skipped_by_its_mark_only_in_a_shard_makes_the_gate_red(tmp_path):
+    """The skipif condition holds in a shard (TESTSHARDS_SHARD is set there) and not in 1 process, where
+    the test fails. 3 files of 2 passing tests and test_s.py with 2 passing and the skipped one: 9 ids,
+    8 passed and 1 skipped."""
+    files = dict(FOUR)
+    files["test_s.py"] = PASSING + (
+        "\n\nimport os\n\nimport pytest\n\n\n"
+        "@pytest.mark.skipif('TESTSHARDS_SHARD' in os.environ, reason='in a shard')\n"
+        "def test_fails_in_1_process():\n    assert 1 == 2\n"
+    )
+    proc = gate(folder(tmp_path, files))
+    assert proc.returncode == 1, proc.stdout
+    assert "outcomes: 8 passed, 0 failed, 1 skipped, 0 xfailed, 0 xpassed" in proc.stdout
+    assert re.search(
+        r"^  marks differ: tests/test_s\.py::test_fails_in_1_process: skip 'in a shard' in shard \d, "
+        r"none in 1 process$",
+        proc.stdout,
+        re.M,
+    )
+    assert "1 test whose skip or xfail marks differ between a shard and 1 process" in red_line(proc.stdout)
+
+
+def test_a_test_that_skips_itself_is_named_not_judged(tmp_path):
+    """pytest.skip() inside the test: what 1 process would do there is not known without running it. The
+    gate stays green on the 8 tests it judged and names the 1 it did not."""
+    files = dict(FOUR)
+    files["test_s.py"] = PASSING + (
+        "\n\nimport pytest\n\n\ndef test_skips_itself():\n    pytest.skip('no board here')\n"
+    )
+    proc = gate(folder(tmp_path, files))
+    assert proc.returncode == 0, proc.stdout
+    assert re.search(
+        r"^  not judged: tests/test_s\.py::test_skips_itself: skipped inside the test in shard \d "
+        r"\('no board here'\); 1 process did not run it$",
+        proc.stdout,
+        re.M,
+    )
+    assert "TESTS GREEN: 9 tests in 2 shards; 1 not judged (skipped inside the test)" in proc.stdout
+
+
+# -- a stop by signal ends every shard ---------------------------------------------------------------------
+
+WAITS = (
+    "import os\nimport time\nfrom pathlib import Path\n\n\ndef test_waits():\n"
+    "    Path(os.environ['SHARD_PIDS'], str(os.getpid())).touch()\n    time.sleep(60)\n"
+)
+
+
+def running(pid: int) -> bool:
+    """A process that exists and is not a zombie (its state in /proc/<pid>/stat, after the name)."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return False
+    return stat.rsplit(")", 1)[1].split()[0] != "Z"
+
+
+@pytest.mark.parametrize("sig", [signal.SIGTERM, signal.SIGHUP], ids=["TERM", "HUP"])
+def test_a_stop_by_signal_ends_every_shard(tmp_path, sig):
+    """2 files of 1 test that waits 60 s, in 2 shards. The signal goes to the runner's process group, as
+    `lead/gate-and-push.sh` stops make: the runner exits 128 + the signal (143 for TERM, 129 for HUP) and
+    no shard's pytest is left."""
+    root = folder(tmp_path, {"test_x.py": WAITS, "test_y.py": WAITS})
+    pids = tmp_path / "pids"
+    pids.mkdir()
+    args = ["run", "--root", str(root), "--table", str(root / "shards.csv"), "--jobs", "2"]
+    args += ["--python", sys.executable, "--work", str(tmp_path / "work")]
+    proc = subprocess.Popen(
+        [sys.executable, str(ROOT / "verify" / "testshards.py"), *args],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        env={**os.environ, "SHARD_PIDS": str(pids)},
+        start_new_session=True,
+    )
+    try:
+        deadline = time.monotonic() + 60
+        while len(list(pids.iterdir())) < 2:
+            assert time.monotonic() < deadline and proc.poll() is None, "the 2 shards did not start"
+            time.sleep(0.1)
+        os.killpg(proc.pid, sig)
+        out, _ = proc.communicate(timeout=30)
+        left = [int(p.name) for p in pids.iterdir() if running(int(p.name))]
+        assert left == [], out
+        assert proc.returncode == 128 + sig, out
+        assert f"stopped by signal {int(sig)}: 3 pytest processes started, none left running" in out
+    finally:
+        for p in pids.iterdir():
+            try:
+                os.kill(int(p.name), signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        if proc.poll() is None:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
+
+
+# -- the work folder and the table ----------------------------------------------------------------------
+
+
+def test_a_work_folder_with_the_logs_of_an_earlier_run_is_refused(tmp_path):
+    """The first run is green; the second, into the same folder, would join the first run's ids with
+    its own (8 ids twice): it is refused with exit 2 and the folder is named."""
+    root = folder(tmp_path, FOUR)
+    assert gate(root).returncode == 0
+    again = gate(root)
+    assert again.returncode == 2, again.stdout
+    work = root.parent / "work"
+    assert f"--work {work} holds the logs of an earlier run" in again.stderr
+    assert "Traceback" not in again.stderr
+
+
+@pytest.mark.parametrize(
+    ("text", "where", "message"),
+    [
+        ("file,seconds,engine,alone\n*,1,no,\ntests/test_a.py,abc,no,\n", 3, "seconds is 'abc'"),
+        ("file,seconds,engine,alone\n*,1,no,\ntests/test_a.py,-500,no,\n", 3, "seconds is '-500'"),
+        ("file,seconds,engine,alone\n*,nan,no,\n", 2, "seconds is 'nan'"),
+        ("file,engine,alone\n*,no,\n", 1, "no column seconds"),
+        ("name,seconds,engine,alone\n*,1,no,\n", 1, "no column file"),
+        ("", 1, "no header"),
+    ],
+    ids=["words", "negative", "nan", "no-seconds", "no-file", "empty"],
+)
+def test_a_wrong_table_is_refused_with_its_line_and_no_traceback(tmp_path, capsys, text, where, message):
+    path = table(tmp_path, text)
+    (tmp_path / "w").mkdir()
+    assert testshards.main(["table", "--table", str(path), str(tmp_path / "w")]) == 2
+    err = capsys.readouterr().err
+    assert err.startswith(f"{path}:{where}: {message}"), err
+
+
+def test_output_after_the_summary_line_leaves_a_green_shard_green(tmp_path):
+    """A passing test registers a line that the interpreter prints to stderr as it ends, after pytest's
+    summary. 1 process is green on it (exit 0); so are the shards."""
+    files = dict(FOUR)
+    files["test_s.py"] = PASSING + (
+        "\n\nimport atexit\nimport sys\n\n\ndef test_says_goodbye():\n"
+        "    atexit.register(lambda: print('closing the engine pool', file=sys.stderr))\n"
+    )
+    proc = gate(folder(tmp_path, files))
+    assert proc.returncode == 0, proc.stdout
+    assert "TESTS GREEN: 9 tests in 2 shards" in proc.stdout
