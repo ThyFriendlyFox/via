@@ -5,7 +5,7 @@ Read with the repository's index (rules/references/index.json), which holds none
 
 CITES = {}
 
-# A clamp current from TI SLAA322D, section 2.
+# A clamp current from TI SLAA390B, section 2.
 # An efficiency from TI SLVAE57, equation 3.
 # A settling time from TI SPRACN0, table 2.
 # A reflow profile from J-STD-020E, table 4-1.

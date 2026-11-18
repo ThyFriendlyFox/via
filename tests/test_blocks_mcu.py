@@ -5,10 +5,10 @@ the MSP430FR572x datasheet SLASE35C, SLAU278AH and SLAU272D (rules/blocks/mcu.js
 The sums of the fixture's block, by hand. The stock holds 2 crystals, in this order:
 
     ABS07-32.768KHZ-6-T   its shunt C0 is 2.0 pF at the most (ABS07 datasheet, page 1), over the
-                          1.6 pF SLASE35C 5.13 note 9 allows (page 22): passed over
+                          1.6 pF SLASE35C section 5.13 note 9 allows (page 22): passed over
     ABS25-32.768KHZ-12-T  C0 1.35 pF typical (page 1); the datasheet states no maximum, so the 1.6 pF
                           is not judged, and equation 1 takes the typical. Its load, 12 pF, is a row
-                          of OALF (SLASE35C 5.13, page 22): 300 kohm at 12 pF with XT1DRIVE 3.
+                          of OALF (SLASE35C section 5.13, page 22): 300 kohm at 12 pF with XT1DRIVE 3.
     terminals             ABS25 page 2, Electrode Arrangement: the crystal is between pins 1 and 4,
                           pins 2 and 3 float. XIN goes to pad 1, XOUT to pad 4, and the symbol is
                           KiCad's Crystal_GND23 (crystal on pins 1 and 4); its pins 2 and 3 stand at
@@ -48,6 +48,12 @@ import blocks_mcu  # noqa: E402
 import kicadgen  # noqa: E402
 import ratings  # noqa: E402
 
+CITES = {
+    "ti-slaa322d": "equations 1, 3 and 5, table 2, page 11",
+    "ti-slase35": "sections 5.3 (page 14) and 5.13 with its note 9 (page 22)",
+    "ti-slau278": "section 2.1, figure 2-3 and its note B, pages 20 and 23",
+    "ti-slau272d": "table 1-4: the reset pin's pull-up",
+}
 CLI = ROOT / "tools" / "workcenter"
 BOARDS = ROOT / "tests" / "boards"
 FACTS = BOARDS / "library" / "facts"
@@ -223,7 +229,7 @@ def test_twice_the_esr_first_in_the_stock_takes_the_next_crystal():
 
 @needs_libs
 def test_a_crystal_whose_load_has_no_allowance_in_the_datasheet_is_passed_over(tmp_path):
-    """A made-up crystal of 9 pF: OALF is stated at 6 pF and 12 pF only (SLASE35C 5.13, page 22)."""
+    """A made-up crystal of 9 pF: OALF is stated at 6 pF and 12 pF only (SLASE35C section 5.13, page 22)."""
     nine = {"kind": "crystal", "mpn": "FIXTURE-32K-9P", "hertz": 32768, "ohms_esr": 30000}
     facts = facts_with(tmp_path, {**nine, "farads_load": 9e-12, "farads_shunt": 1e-12})
     stock = [blocks.Stock("made up", "FIXTURE-32K-9P", "32.768k 9p", X_ABS25), ABS25, *STOCK[2:]]
@@ -325,7 +331,7 @@ def test_a_reset_capacitor_over_2_2_nf_is_passed_over(tmp_path):
 
 @needs_libs
 def test_a_vcore_capacitor_looser_than_20_percent_is_refused(tmp_path):
-    """SLASE35C 5.3 note 2 asks 20 % or better: a made-up 470 nF of 30 % is not taken."""
+    """SLASE35C section 5.3 note 2 asks 20 % or better: a made-up 470 nF of 30 % is not taken."""
     loose = {"kind": "capacitor.ceramic", "mpn": "FIXTURE-470N-30", "tolerance": 0.3, "volts": 16}
     facts = facts_with(tmp_path, {**loose, "dielectric": "Y5V"})
     stock = [s for s in STOCK if s.value != "470n"] + [
@@ -340,7 +346,7 @@ def test_a_vcore_capacitor_looser_than_20_percent_is_refused(tmp_path):
 
 @needs_libs
 def test_a_supply_outside_the_ics_range_is_refused():
-    """3.7 V is over the 3.6 V of SLASE35C 5.3 (page 14), which the IC's facts hold."""
+    """3.7 V is over the 3.6 V of SLASE35C section 5.3 (page 14), which the IC's facts hold."""
     assert refused(vcc=(3.3, 3.7)) == (
         "mcu U1: the supply reaches 3.7 V, DVCC of MSP430FR5720IRGE operates from 2 V to 3.6 V "
         f"[{DS}, May 2014, revised December 2017, p 14]"
@@ -349,7 +355,7 @@ def test_a_supply_outside_the_ics_range_is_refused():
 
 @needs_libs
 def test_a_supply_under_the_ics_range_is_refused():
-    """1.9 V is under the 2.0 V of SLASE35C 5.3 (page 14), which the IC's facts hold."""
+    """1.9 V is under the 2.0 V of SLASE35C section 5.3 (page 14), which the IC's facts hold."""
     assert refused(vcc=(1.9, 3.3)) == (
         "mcu U1: the supply reaches 1.9 V, DVCC of MSP430FR5720IRGE operates from 2 V to 3.6 V "
         f"[{DS}, May 2014, revised December 2017, p 14]"
@@ -517,8 +523,8 @@ def test_the_committed_fixture_wires_y1_to_pads_1_and_4():
 @needs_libs
 def test_the_block_hands_its_supply_and_its_parts_to_ratings():
     """The supply range is the net's span in ratings.json; RST and TEST, which the programming tool drives
-    at the board's own supply (SLAU278AH 2.1, page 20), span 0 V to the supply's 3.465 V; each part is a
-    row of parts.csv."""
+    at the board's own supply (SLAU278AH section 2.1, page 20), span 0 V to the supply's 3.465 V; each part
+    is a row of parts.csv."""
     _, block = mcu()
     tool = (
         "J2: SLAU278AH, section 2.1, page 20: the tool senses the board's own VCC on pin 4 and adjusts its "
