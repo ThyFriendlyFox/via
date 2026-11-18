@@ -65,8 +65,9 @@ as its own program; none of its code is in this repository.
   last port. Name the pads of each pair in the same order, near end first.
   On 2 nets of 2 ports each, N's near end must lie by P's near end:
   dist(P near, N near) + dist(P far, N far) is less than the sum the other
-  way round. Named pads out of that order are refused (`N's ports are named
-  far end first`); unnamed free ends are put in it.
+  way round. Named pads out of that order are refused (`P and N are named
+  in opposite orders`: the names do not say which of the 2 nets was named
+  far end first); unnamed free ends are put in it.
 - `measure`: `impedance_ohm` (min, max), `return_loss_db` (min),
   `insertion_loss_db` (max), `next_db` and `fext_db` (max, with `from`: the
   driven net). Loss and coupling are the worst over the band.
@@ -82,7 +83,12 @@ as its own program; none of its code is in this repository.
   |S11| is least over the band, and `return_loss_db`. The least is no
   resonance on the band's first or last frequency (`the resonance is not in
   the band`: widen the band), nor where it lies less than 3 dB under the most
-  |S11| on either side of it.
+  |S11| on either side of it. A dip of 3 dB takes an antenna matched well
+  enough or lossy enough: the patch fixture on a lossless substrate
+  (`loss_tangent` 0) dips 2.10 dB at 5.74 GHz and gets no resonance (`not
+  judged`), where tan d 0.02 gives 5.80 GHz. A low-loss patch fed at its
+  edge may show no 3 dB dip; state the substrate's real loss tangent, or
+  feed it nearer its match.
 - `unstated` in place of min, max and source: the document gives no bound
   for this measure. Write the document, revision, clause and page and why.
   The run prints the measure and `not judged, <your text>`. A measure the
@@ -115,7 +121,10 @@ as its own program; none of its code is in this repository.
   are not both modelled. `thick` and `lossy` take each copper layer's
   thickness from the stack-up; a layer they use with none is refused.
 - Each dielectric's `loss_tangent` must be in the stack-up (0 for a
-  lossless one); a layer with none is refused. A lossy dielectric is an
+  lossless one); a layer with none, or with one under 0 (a gain medium), is
+  refused. One so large that the Debye terms leave eps_inf under 1 is
+  refused with the largest that models (0.258 for er 4.5 over 0.1 to 10
+  GHz). A lossy dielectric is an
   openEMS Debye material: 2 terms to a decade from 1.5 decades under the
   band to 1.5 over it hold eps'' within 1 % of er tan d over the band, and
   eps' is er at half the band's top, following the loss elsewhere
@@ -227,14 +236,21 @@ guideline with an impedance is a limit of its own: cite it.
   36 to 39); with the edges on mesh lines the line fixture read 43.14 ohm
   against 51.34. A slanted track has no such lines: its sheet is a stair.
 - The dielectric's loss over the band: on the line fixture made 40 mm long
-  (copper a sheet, 0.1 to 10 GHz) the run reads 1.05 to 1.10 times Qucs
-  Technical Papers (2014) eq. 11.79, p. 170: 3.668 Np/m at 10 GHz against
-  3.490, 1.926 at 5 GHz against 1.745 (`tests/test_fields_solver.py`; the
-  5 GHz margin of 10 % is missed, a strict xfail). With
-  `cells_per_dielectric` 8 it read 1.01 to 1.06 times. The loss is on the
-  high side: a loss limit's pass stands, a near fail is worth a finer
-  run. The Debye terms can double a run's time (the 40 mm line: 18 s
-  before them, 36 s with them).
+  (copper a sheet) the run reads 1.05 to 1.10 times Qucs Technical Papers
+  (2014) eq. 11.79, p. 170, from 2 GHz up, on a band of 0.1 to 10 GHz and
+  on one of 0.1 to 20 GHz alike: 3.668 Np/m at 10 GHz against 3.490, 1.926
+  at 5 GHz against 1.745 (`tests/test_fields_solver.py`; the 5 GHz margin
+  of 10 % is missed, a strict xfail). Under 2 GHz, where the line loses
+  little, it scattered from 0.95 to 2.1 times. With `cells_per_dielectric`
+  8 it read 1.01 to 1.06 times (0.1 to 10 GHz). The report's `left_out`
+  line says so. The loss is on the high side from 2 GHz up: a loss limit's
+  pass stands there, a near fail is worth a finer run. The Debye cells
+  also move eeff more than their eps' does: the 40 mm line's eeff at 5.05
+  GHz, where eps' is er, read 3.3954 against 3.3742 with a plain material
+  (+0.6 %), and the patch fixture resonates at 5.80 GHz with tan d 0.02 (a
+  Debye material) against 5.74 GHz with `loss_tangent` 0 (a plain one).
+  The Debye terms can double a run's time (the 40 mm line: 18 s before
+  them, 36 s with them).
 - A reference plane is whole over the model's box. The pour, its fill or
   its outline less its cutouts, is checked under each track, at its centre
   and both edges every half its width along it, a point on the pour's edge

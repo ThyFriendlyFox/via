@@ -287,6 +287,10 @@ def read_board(path: Path) -> Board:
                 raise Refusal(
                     "no `loss_tangent`: the model would make it lossless; state it (0 for a lossless one)"
                 )
+            # Under 0 the Debye terms took a negative weight, a gain medium: the 40 mm line read 0.043 dB
+            # of insertion loss at -0.02 where 0.02 reads 1.280, and printed FIELDS HELD.
+            if tand < 0:
+                raise Refusal(f"loss_tangent {tand:g} is under 0: a dielectric takes power, it gives none")
             diel.append((z - t, z, er, tand))
             at_z[0] = z - t
 
@@ -733,8 +737,9 @@ def _pair_ends(chosen: list, nets: list, pad_of: dict, where: str) -> list:
     if pad_of:
         name = pad_of.get
         raise Refusal(
-            f"{where}, `ports`: {nets[1]}'s ports are named far end first: {name(id(nn))} lies by "
-            f"{name(id(pf))} and {name(id(nf))} by {name(id(pn))} ({crossed:.3f} mm against {straight:.3f}); "
+            f"{where}, `ports`: {nets[0]} and {nets[1]} are named in opposite orders: {nets[1]}'s first "
+            f"port, {name(id(nn))}, lies by {nets[0]}'s second, {name(id(pf))}, and {name(id(nf))} by "
+            f"{name(id(pn))} ({crossed:.3f} mm against {straight:.3f}); "
             f"name {nets[0]}'s near end, its far end, then {nets[1]}'s by the near end and by the far end"
         )
     swap = {id(nn): nf, id(nf): nn}
@@ -746,6 +751,15 @@ def _pair_ends(chosen: list, nets: list, pad_of: dict, where: str) -> list:
 # alone: the 40 mm line read 1.74 Np/m at 1 GHz and 1.64 at 10 GHz, Qucs eq. 11.79 gives 0.35 and 3.49.
 DEBYE_PER_DECADE = 2
 DEBYE_REACH = 1.5
+# What the Debye cells did to the fixtures on the default mesh (runs of 2026-11-18, the 40 mm line over
+# 0.1 to 10 and 0.1 to 20 GHz, the plain material against the Debye one, and the patch over 4 to 8 GHz).
+DEBYE_KNOWN_ERROR = (
+    "the run reads the dielectric's loss high: on the 40 mm line fixture (0.36 mm over 0.2 mm of 4.5, "
+    "tan d 0.02) 1.05 to 1.10 times Qucs Technical Papers (2014) eq. 11.79 from 2 to 20 GHz, 0.95 to "
+    "2.1 times under 2 GHz; the Debye cells at the dielectric's faces "
+    "also put that line's eeff 0.6 % over the plain material's at 5.05 GHz, where eps' is er, and the "
+    "patch fixture's resonance at 5.80 GHz against 5.74, more than eps' alone moves them"
+)
 
 
 def debye_terms(er: float, tand: float, f_lo: float, f_hi: float, f_pin: float) -> dict:
@@ -1056,17 +1070,21 @@ def build_model(board: Board, group: dict, spec: dict) -> dict:
         if d["tand"] > 0:
             terms = debye_terms(d["er"], d["tand"], f_lo, f_hi, f_hi / 2)
             if terms["eps_inf"] < 1:
+                # eps_inf falls in proportion to tan d, and a narrower band barely lifts it (tan d 0.3 on
+                # er 4.5: 0.436 over 0.1 to 10 GHz, 0.39 over 5 to 10), so the remedy is tan d itself.
+                largest = (d["er"] - 1) / (d["er"] - terms["eps_inf"]) * d["tand"]
                 raise Refusal(
                     f"{where}: the dielectric from {d['z'][0]:g} to {d['z'][1]:g} mm, er {d['er']:g} and "
                     f"loss tangent {d['tand']:g}: its Debye terms leave eps_inf "
-                    f"{terms['eps_inf']:.3f}, under 1"
+                    f"{terms['eps_inf']:.3f}, under 1: the loss tangent is too large to model over "
+                    f"{f_lo / 1e9:g} to {f_hi / 1e9:g} GHz: {largest:.3f} at most; check the stack-up's value"
                 )
             dispersion.append(
                 f"a constant eps' in the dielectric from {d['z'][0]:g} to {d['z'][1]:g} mm: its loss "
                 f"tangent {d['tand']:g} is held over the band by {len(terms['poles'])} Debye terms, and eps' "
                 f"is {d['er']:g} at "
                 f"{f_hi / 2e9:g} GHz, {_eps_real(terms, f_lo):.3f} at {f_lo / 1e9:g} GHz and "
-                f"{_eps_real(terms, f_hi):.3f} at {f_hi / 1e9:g} GHz"
+                f"{_eps_real(terms, f_hi):.3f} at {f_hi / 1e9:g} GHz; " + DEBYE_KNOWN_ERROR
             )
     er_max = max([d["er"] for d in dielectrics] or [1.0])
     cell = max_cell_mm(f_hi, er_max, s["cells_per_wavelength"])

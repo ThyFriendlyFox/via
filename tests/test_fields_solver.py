@@ -100,11 +100,16 @@ def test_the_line_impedance_is_the_closed_form_within_3_percent(line):
 @needs_openems
 def test_a_run_with_no_limit_judges_nothing_and_does_not_pass(tmp_path):
     """The line with its limits taken out: the run measures and writes its report, and says it judged
-    nothing, exit 2, never PASS."""
+    nothing, exit 2, never PASS. The dielectric is made lossless: a plain material runs in half the
+    time of the Debye one (the 40 mm line: 18 s against 36 s), and the loss is no part of this test."""
     import shutil
 
     project = tmp_path / "line"
     shutil.copytree(ROOT / "tests" / "boards" / "pass-fields-microstrip", project)
+    pcb = project / "line.kicad_pcb"
+    text = pcb.read_text(encoding="utf-8")
+    assert text.count("(loss_tangent 0.02)") == 1
+    pcb.write_text(text.replace("(loss_tangent 0.02)", "(loss_tangent 0)"), encoding="utf-8")
     spec = json.loads((project / "fields.json").read_text(encoding="utf-8"))
     spec["groups"][0]["limits"] = []
     (project / "fields.json").write_text(json.dumps(spec), encoding="utf-8")
@@ -378,15 +383,20 @@ def test_the_dielectric_loss_at_f0_is_the_closed_form(sheet40):
     assert 1.571 <= a5 <= 1.920, a5
 
 
+@pytest.fixture(scope="module")
+def patch(tmp_path_factory):
+    return run("pass-fields-patch", tmp_path_factory.mktemp("patch"))
+
+
 @needs_openems
-def test_the_patch_resonates_where_its_length_says(tmp_path):
+def test_the_patch_resonates_where_its_length_says(patch):
     """tests/boards/pass-fields-patch: a patch 12 mm by 12 mm over 0.8 mm of 4.5, fed at the middle of
     1 edge. eeff (Hammerstad and Jensen, u = 15) = 4.06762; each open end adds 0.42208 mm (Kirschning,
     Jansen and Koster, Qucs Technical Papers 2014, eq. 11.185 to 11.190, p. 181); half a wavelength in
     12.84416 mm: c / (2 x 12.84416 mm x sqrt(4.06762)) = 5.7865 GHz. The margin, 7 %, was written in
     fields.json before the run: 5.381 to 6.192 GHz. The least return loss over the band is printed not
     judged with its reason: the bound of 0 dB it had was met by any passive port, and counted as held."""
-    proc, report = run("pass-fields-patch", tmp_path)
+    proc, report = patch
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert report["summary"].startswith("1 held, 0 failed, 1 not judged"), report["summary"]
     (warning,) = report["details"]["warnings"]
@@ -396,21 +406,19 @@ def test_the_patch_resonates_where_its_length_says(tmp_path):
 
 
 @needs_openems
-def test_a_patch_resonating_under_the_band_gives_no_resonance(tmp_path):
-    """The patch fixture with its band made 6 to 8 GHz: it resonates at 5.74 GHz (its own run over 4
+def test_a_patch_resonating_under_the_band_gives_no_resonance(patch):
+    """The patch fixture with its band made 6 to 8 GHz: it resonates at 5.80 GHz (its own run over 4
     to 8 GHz), under the band. The least |S11| fell on 6 GHz, the band's first frequency, and a limit
-    of 6.0 to 6.5 GHz held with --strict. Now there is no value, and the line says why."""
-    import shutil
-
-    project = tmp_path / "patch"
-    shutil.copytree(ROOT / "tests" / "boards" / "pass-fields-patch", project)
-    spec = json.loads((project / "fields.json").read_text(encoding="utf-8"))
-    spec["groups"][0]["band_ghz"] = [6, 8]
-    (project / "fields.json").write_text(json.dumps(spec), encoding="utf-8")
-    proc, report = run_project(project, "--strict")
-    assert proc.returncode == 1, proc.stdout + proc.stderr
-    got = report["details"]["measures"]["patch"]["ANT"]["resonance_ghz"]
-    assert got["value"] is None and "the least |S11| is at the band's edge" in got["why"]
-    failures = report["details"]["failures"]
-    assert any("ANT resonance_ghz: not judged, the least |S11| is at the band's edge" in f for f in failures)
-    assert report["summary"].startswith("0 held"), report["summary"]
+    of 6.0 to 6.5 GHz held with --strict. Now there is no value, and the line says why. Judged on the
+    6 to 8 GHz slice of the fixture's own run, not a run of its own (26 s to 30 s saved)."""
+    out = Path(patch[1]["artifacts"][0]).parent / "patch"
+    model = json.loads((out / "model.json").read_text(encoding="utf-8"))
+    col = fields.OpenEMS.column(out / "openems" / "port1", model, 1)
+    freqs = model["frequencies_hz"]
+    picked = [(f, abs(s)) for f, s in zip(freqs, col[0], strict=True) if 6e9 - 1e3 <= f <= 8e9 + 1e3]
+    assert picked[0][0] == pytest.approx(6e9) and picked[-1][0] == pytest.approx(8e9)
+    got = fields.resonance([f for f, _ in picked], [m for _, m in picked])
+    assert got["value"] is None and "the least |S11| is at the band's edge, 6 GHz" in got["why"]
+    limit = {"measure": "resonance_ghz", "net": "ANT", "min": 6.0, "max": 6.5, "source": "made up"}
+    fails, held, unjudged = fields.judge([limit], {"ANT": {"resonance_ghz": got}})
+    assert (fails, held) == ([], []) and unjudged[0].startswith("ANT resonance_ghz: not judged, the least")

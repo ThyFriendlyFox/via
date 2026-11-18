@@ -200,7 +200,9 @@ def test_a_pairs_near_ends_sit_together_when_no_ports_are_named():
 
 
 def test_a_pairs_named_ports_must_put_near_ends_together():
-    """Ports named P near, P far, N far, N near: refused, with the 4 ends and the order to name."""
+    """Ports named P near, P far, N far, N near, or P far, P near, N near, N far: refused, with the 4
+    ends and the order to name. Names alone do not say which end is near, so the refusal says the 2 nets
+    are named in opposite orders; it blamed N when P was the one named far end first (a review's run)."""
     board = pair_board((100.5, 90), (100.5, 100))
     board.pads = {
         "J1.1": (100, 90, "P", 0.1),
@@ -208,9 +210,18 @@ def test_a_pairs_named_ports_must_put_near_ends_together():
         "J1.2": (100.5, 90, "N", 0.1),
         "J2.2": (100.5, 100, "N", 0.1),
     }
-    g, spec = pair_spec(["J1.1", "J2.1", "J2.2", "J1.2"])
-    with pytest.raises(fields.Refusal, match=r"N's ports are named far end first: J2\.2 lies by J2\.1"):
-        fields.build_model(board, g, spec)
+    for ports, first in (
+        (["J1.1", "J2.1", "J2.2", "J1.2"], "J2.2"),
+        (["J2.1", "J1.1", "J1.2", "J2.2"], "J1.2"),
+    ):
+        g, spec = pair_spec(ports)
+        with pytest.raises(fields.Refusal) as caught:
+            fields.build_model(board, g, spec)
+        said = str(caught.value)
+        assert "P and N are named in opposite orders: " in said
+        assert f"N's first port, {first}, lies by P's second" in said
+        assert "far end first" not in said
+        assert "name P's near end, its far end, then N's by the near end and by the far end" in said
     g, spec = pair_spec(["J1.1", "J2.1", "J1.2", "J2.2"])
     assert [p["start"][1] for p in fields.build_model(board, g, spec)["ports"]] == [90, 100, 90, 100]
 
@@ -234,7 +245,9 @@ def test_the_wyvern_pair_with_n_named_far_end_first_is_refused():
     }
     spec = {"reference": "GND", "settings": dict(fields.SETTINGS), "groups": [g]}
     with pytest.raises(
-        fields.Refusal, match=r"/SS_TX1_N's ports are named far end first: U2\.16 lies by U2\.17"
+        fields.Refusal,
+        match=r"/SS_TX1_P and /SS_TX1_N are named in opposite orders: /SS_TX1_N's first port, "
+        r"U2\.16, lies by /SS_TX1_P's second, U2\.17",
     ):
         fields.build_model(board, g, spec)
 
@@ -370,6 +383,24 @@ def test_the_loss_tangent_holds_over_the_band():
     assert terms["eps_inf"] >= 1
 
 
+def test_a_loss_tangent_too_large_for_the_terms_is_refused_with_the_largest_that_models():
+    """tan d 0.3 on er 4.5 over 0.1 to 10 GHz leaves eps_inf 0.436, under the vacuum's 1 (a review's
+    run): refused, with what to change. eps_inf falls in proportion to tan d, so the largest that
+    models is (er - 1) / (er - eps_inf) x tan d."""
+    board = fields.read_board(LINE / "line.kicad_pcb")
+    board.dielectrics[:] = [(a, b, er, 0.3) for a, b, er, _ in board.dielectrics]
+    spec = fields.read_spec(LINE / "fields.json")
+    eps_inf = fields.debye_terms(4.5, 0.3, 0.1e9, 10e9, 5e9)["eps_inf"]
+    largest = 3.5 / (4.5 - eps_inf) * 0.3
+    with pytest.raises(fields.Refusal) as caught:
+        fields.build_model(board, spec["groups"][0], spec)
+    said = str(caught.value)
+    assert f"leave eps_inf {eps_inf:.3f}, under 1" in said
+    assert f"the loss tangent is too large to model over 0.1 to 10 GHz: {largest:.3f} at most" in said
+    board.dielectrics[:] = [(a, b, er, round(largest, 3) - 0.001) for a, b, er, _ in board.dielectrics]
+    fields.build_model(board, spec["groups"][0], spec)
+
+
 def test_the_dielectric_is_a_debye_material():
     """openEMS gets the line's dielectric as a DebyeMaterial: Epsilon is eps_inf, no conductivity, and
     each term's EpsilonDelta_k and EpsilonRelaxTime_k in seconds."""
@@ -382,6 +413,19 @@ def test_the_dielectric_is_a_debye_material():
     d, tau = terms["poles"][-1]
     assert f'EpsilonDelta_{k}="{fields._n(d)}" EpsilonRelaxTime_{k}="{fields._n(tau)}"' in text
     assert 'Kappa="0.02' not in text
+
+
+def test_left_out_gives_the_known_error_of_a_debye_dielectric():
+    """The report's left_out line on a lossy dielectric gave eps' and the Debye terms, and no word that
+    the loss reads high or that the terms move eeff (a review): the 40 mm line read 1.05 to 1.10 times
+    Qucs eq. 11.79 from 2 to 20 GHz and 0.95 to 2.1 times under 2 GHz, eeff 3.3954 against 3.3742 with
+    the plain material at 5.05 GHz, and the patch fixture 5.80 GHz against 5.74."""
+    (line,) = [x for x in line_model()["left_out"] if "Debye terms" in x]
+    assert "the run reads the dielectric's loss high" in line
+    assert "1.05 to 1.10 times Qucs Technical Papers (2014) eq. 11.79 from 2 to 20 GHz" in line
+    assert "0.95 to 2.1 times under 2 GHz" in line
+    assert "eeff 0.6 % over the plain material's at 5.05 GHz" in line
+    assert "5.80 GHz against 5.74" in line
 
 
 def test_a_lossless_dielectric_is_a_plain_material():

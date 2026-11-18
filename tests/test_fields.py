@@ -614,6 +614,14 @@ def test_a_cutout_of_a_zone_is_a_hole(tmp_path):
             "stack-up layer dielectric 1: no `loss_tangent`: the model would make it lossless; state it "
             "(0 for a lossless one)",
         ),
+        # A negative loss tangent became Debye terms of negative weight, a gain medium: the 40 mm line
+        # read 0.043 dB of insertion loss where 0.02 reads 1.280, and printed FIELDS HELD.
+        (
+            "(loss_tangent 0.02)",
+            "(loss_tangent -0.02)",
+            "stack-up layer dielectric 1: loss_tangent -0.02 is under 0: a dielectric takes power, it "
+            "gives none",
+        ),
     ],
 )
 def test_a_mistake_in_the_board_file_is_refused_with_its_place(tmp_path, old, new, says):
