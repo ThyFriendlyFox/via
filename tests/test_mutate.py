@@ -193,6 +193,33 @@ def test_a_list_s_copy_holds_only_the_paths_it_names(tmp_path):
     assert code == 1 and "COPY is not a list of paths" in text, text
 
 
+def test_a_mutation_of_a_file_no_copy_holds_is_refused_by_its_name(tmp_path):
+    """The copy would hold no clamp.c to change: the run ended in a FileNotFoundError traceback."""
+    fw = firmware(tmp_path)
+    listed = tmp_path / "mutate.py"
+    listed.write_text(
+        f"COPY = ['Makefile']\nMUTATIONS = [{tuple(MUTATIONS[0].values())!r}]\n", encoding="utf-8"
+    )
+    code, _, text = mutate(fw, listed, "--work", tmp_path / "work", json_out=False)
+    assert code == 1 and "Traceback" not in text, text
+    assert "mutate: mutate.py: mutation 1 (below not clamped): clamp.c is under no COPY path" in text, text
+    assert not (tmp_path / "work").exists()  # nothing ran
+
+
+@pytest.mark.parametrize("path", ["../outside.txt", "notes/../../outside.txt", "/etc/hostname"])
+def test_a_copy_path_outside_the_tree_is_refused(tmp_path, path):
+    """`work / '../x'` lands beside the copy, where its removal does not reach."""
+    fw = firmware(tmp_path)
+    (tmp_path / "outside.txt").write_text("not the firmware's\n", encoding="utf-8")
+    listed = tmp_path / "mutate.py"
+    listed.write_text(
+        f"COPY = ['clamp.c', {path!r}]\nMUTATIONS = [{tuple(MUTATIONS[0].values())!r}]\n", encoding="utf-8"
+    )
+    code, _, text = mutate(fw, listed, "--work", tmp_path / "work", json_out=False)
+    assert code == 1 and f"mutate: mutate.py: COPY: {path} is not a path inside the tree" in text, text
+    assert not (tmp_path / "work").exists()
+
+
 def test_anchors_are_checked_before_anything_runs(tmp_path):
     fw = firmware(tmp_path)
     listed = tmp_path / "mutations.json"
