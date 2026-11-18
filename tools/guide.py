@@ -126,20 +126,27 @@ HINTS: list[tuple[str, str, str]] = [
         f'{RATINGS}, "Steps"',
     ),
     # a refusal names the file first: a parts file's row, the schematic, the output folder, ratings.json
+    # a name may hold a space ("My Board"), never a colon
     (
-        r"^ratings: [^\s:]+\.csv:\d+: ",
+        r"^ratings: [^:]+\.csv:\d+: ",
         "Give the row of the parts file every field its header names, an empty one where nothing is "
         "known. `procure` and `sources` read the same file.",
         f'{RATINGS}, "Inputs"',
     ),
     (
-        r"^ratings: \S+\.kicad_sch: ",
+        r"^ratings: [^:]+\.csv: ",
+        "The parts file cannot be read, for the reason the line gives: it is not there, it is not UTF-8, "
+        "or its CSV is broken. Name the file with `--parts`, or save it as UTF-8 CSV.",
+        f'{RATINGS}, "Inputs"',
+    ),
+    (
+        r"^ratings: [^:]+\.kicad_sch: ",
         "The netlist kicad-cli exports from the schematic holds what the line names. Correct the schematic "
         "in its design file and regenerate it, then run `workcenter erc` on it.",
         f'{RATINGS}, "Inputs"',
     ),
     (
-        r"^ratings: (--out \S|\S*build: )",
+        r"^ratings: (--out \S|(/[^:]*)?build: )",
         "The run cannot make its output folder there: a file stands in its place, or the folder cannot be "
         "written. Name another folder with `--out`, or move the file.",
         f'{RATINGS}, "Steps"',
