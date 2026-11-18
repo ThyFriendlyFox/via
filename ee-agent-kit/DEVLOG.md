@@ -39,6 +39,12 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-18 — Roadmap item 4 further: makers' data in every deck form
+
+The SIM gate said nothing in 2 cases that the second sentence of item 4's Promise covers: a part 2 includes deep, and decks with no C or L. Both now get a line, as do a project with no schematic and a machine with no kicad-cli. A capacitor's starting voltage now runs on its data; a coupled inductor is named instead of failing the deck. Samsung's page, fetched again, gave C2's temperature curve at 5 V and its ESR. A review found 7 faults: 2 deck forms that ngspice accepts started from the wrong voltage, and a curve entered against the wrong reference undid the DC bias loss with the gate green. All 7 are fixed with tests, 2 in part. The temperature share between 0 V and the bias is still the gate's straight line, which no maker publishes, so item 4 stays in progress.
+
+Evidence: `tests/test_partdata.py` (47 tests); landing head of `wip/land-l4`.
+
 ## 2026-11-18 — The health gate in shards
 
 Out of band. The health gate ran its tests in 1 process: 1557.70 s on 2026-11-17 for 1840 tests, and 1934 s on 2026-11-18 for 2233. It now runs them in 4 shards side by side, joined by `verify/testshards.py`. Side by side, 2 tests failed that pass alone: openEMS stopped the Wyvern lane's port 3 before its ports settled, because it checks its end criterion on the clock, and `workcenter fields` now runs such a port again deeper; and kicad-cli wrote a lock file into a fixture another test listed, so that file runs alone. A planted failure in each shard and a shard killed half-way each turned the gate red. A review found that a stop by signal left the shards running and that a skip only a shard gave turned the gate green; both were fixed with tests. At landing, the 1 whole run on the landing head took 763 s for 2873 tests and was red on 1 test of the trunk that counted a pack's rules by hand. The trunk had fixed that test in its own way; its fix was kept.

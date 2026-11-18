@@ -353,18 +353,25 @@ the part's number (`kept`, `kept_celsius`) in an entry that names that
 number (`mpn` or `mpns`), and `library/sources.csv` has the row of the
 maker's file with the SHA256 the facts name. A capacitor takes its value
 at its working voltage and at the run's temperature, the 2 curves
-multiplied; an inductor takes its value at its current. The gate needs
+multiplied, or at its bias on the maker's curve at that bias
+(`kept_celsius_at`); an inductor takes its value at its current. The gate needs
 the schematic and `parts.csv` to know each part's number. A part whose
 data the gate cannot apply fails the deck with the reason: no row, an
 entry that names the part by a pattern or a symbol, a place inside a
-`.subckt` or in a file the deck includes, an `ic=`, a K element that
-couples it, or a value that is no number. A bound that fails on the data
+`.subckt` or in a file the deck includes, at any depth, an inductor's `ic=` under
+`uic`, a capacitor's `ic=` under `uic` with `m=` or `tc1=` on its line,
+or a value that is no number. A capacitor's `ic=` under `uic` runs on
+its data through a 1 F capacitor; without `uic` it is taken off. A K
+element that couples an inductor leaves it ideal with a `not judged`
+warning. A bound that fails on the data
 names the parts that miss it alone, and the value with every part ideal:
-`tests/boards/fail-sim-bias` gives 6.755 mV of ripple on its 5 mV bound,
+`tests/boards/fail-sim-bias` gives 6.851 mV of ripple on its 5 mV bound,
 3.04 mV with ideal parts, and names C2. A row that keeps no file leaves
 the SHA256 not judged, with a warning. A deck that holds a C or L under a
 name that is no board reference, while board parts hold data, gets a
-warning. A bundle carries the rewritten deck.
+warning. So do decks with no C or L while parts hold data, a project with no
+schematic, and a machine with no kicad-cli. `esr` and `esl` go in series
+with the capacitor. A bundle carries the rewritten deck.
 
 The SIM gate holds the junction of each part `sim/thermal.json` names
 (`tools/thermal.py`, the `simulate` skill). At every run it judges, the

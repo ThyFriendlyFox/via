@@ -265,7 +265,7 @@ folder or a folder above it; a rule pack is 1 file of `rules/ratings/`. The
 
 An inductor's facts may give `ohms_dc`, its DC resistance at the most, in ohms (0 or more); `blocks.buck` reads it in its dropout sum. A pin of role `input`, `io` or `open_drain` may give `farads`, its greatest capacitance, and a pin of role `io` or `open_drain` `sink`, `{"amps", "volts"}`, the current it sinks at that low voltage; `blocks.i2c` reads both. A part of kind `crystal` gives `hertz`, `ohms_esr` and `farads_load`, and may give `farads_shunt` (C0 typical), `farads_shunt_max` (C0 at the most), `watts_drive` and `terminals` (the 2 pads of the crystal and where its datasheet says so); `blocks.mcu` reads them, and `workcenter ratings` judges none of them.
 
-The SIM gate reads 2 keys of a part's facts, from an entry that names the
+The SIM gate reads these keys of a part's facts, from an entry that names the
 part by `mpn` or `mpns` and whose `source.sha256` is a row of
 `library/sources.csv`:
 
@@ -273,6 +273,9 @@ part by `mpn` or `mpns` and whose `source.sha256` is a row of
 |---|---|---|---|
 | `kept` | a capacitor | pairs `[volts, share of the value kept]` | The maker's DC bias curve; the volts rise from pair to pair; each share above 0 and at most 1.5. `workcenter ratings` reads it too. |
 | `kept_celsius` | a capacitor | pairs `[celsius, share against 25 C]` | The maker's temperature curve; each share above 0 and at most 1.5. |
+| `kept_celsius_at` | a capacitor | `{"volts": V, "kept": [[celsius, share against 0 V and 25 C], ...]}` | The maker's temperature curve at 1 bias; at that bias the share is the maker's. Refused when its 25 C share is nearer 1 than the share `kept` gives at its bias, when it does not reach 25 C, or when the part has no `kept`. |
+| `esr` | a capacitor | `{"ohms": R, "hz": f}` | Series resistance at the frequency it was read at; the SIM gate writes it in series. |
+| `esl` | a capacitor | `{"henries": L, "hz": f}` | Series inductance from a figure the maker gives; the SIM gate writes it in series. |
 | `kept` | an inductor | pairs `[amps, share of the value kept]` | The maker's L vs current curve; each share above 0 and at most 1.5. |
 
 ## `interfaces.json` (beside a board, for `workcenter highspeed`)

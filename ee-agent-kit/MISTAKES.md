@@ -1526,3 +1526,9 @@ What happened: While landing the health gate in shards, a helper waited for `GAT
 Cost: about 7 minutes of tests beside a health gate, on a machine of 4 processors.
 Root cause: As M188 and M201: the lock was looked at once, not before each run. Each later run went through 1 script that waits for `GATE.lock`, takes the engine locks, and checks `GATE.lock` again inside them (M248).
 Process: P31
+
+## M250 — 2026-11-18 — A `-k` word chose engine tests that ran without the lock
+What happened: On `wip/l4`, `pytest -k initial` on `tests/test_partdata.py` was meant for 2 text tests. It also chose the 2 ngspice runs of `test_the_initial_condition_on_the_part_and_on_the_node_give_the_same_run`, and they ran without `flock` on the engine lock.
+Cost: 2 short ngspice runs outside the lock's queue.
+Root cause: A `-k` word matches every test whose name holds it.
+Process: P8
