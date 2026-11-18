@@ -717,7 +717,8 @@ def test_the_gates_step_fails_unless_every_file_written_is_the_runners_user(tmp_
     judged, not this machine's user list: GNU `id -un` for a user id with no passwd line prints the number
     and ends with 1 (coreutils v9.4 src/id.c, print_user), and the suite ran inside the image as such a
     user (CI run 44409635104). Promise 3: 1 owner, the runner's user, passes; another owner beside it
-    fails; another owner alone fails; and an `id -un` that fails fails the step, even when the number it
+    fails, whether sort puts it before the runner's name or after (a step that keeps 1 owner fails 1
+    of the 2); another owner alone fails; and an `id -un` that fails fails the step, even when the number it
     prints is the owner find prints."""
     step = step_named(flow(IMAGE_FLOW)["jobs"]["build"], "The gates on a fixture")
     bin_ = tmp_path / "bin"
@@ -727,6 +728,7 @@ def test_the_gates_step_fails_unless_every_file_written_is_the_runners_user(tmp_
     cases = {
         ("runner", "runner", 0): 0,
         ("runner\\nnobody-else", "runner", 0): 1,
+        ("runner\\nzz-other", "runner", 0): 1,
         ("nobody-else", "runner", 0): 1,
         ("1001", "1001", 1): 1,
     }
