@@ -46,7 +46,9 @@ the gate could not judge leaves the part not held and named as not judged.
 The gate asks for the parts itself (`asked`): every part of the board whose facts carry `thermal`, a
 junction_max and 1 figure at least, can get hot, and a part of them that sim/thermal.json does not name
 is not judged, on 1 line that names its figures and the row to write. No power is guessed: a part is
-asked for because its facts carry a thermal figure.
+asked for because its facts carry a thermal figure. A row whose part number is not the board part's
+fails, as judge() reads the facts by the row's number; a part with no number and no facts entry whose
+pins are those of an entry with a figure may be that part, and is not judged.
 
 Standard library only, as the CLI is. No engine runs here: `tools/workcenter` runs the decks.
 """
@@ -469,16 +471,79 @@ def _by_ref(ref: str) -> tuple:
     return (m.group(1), int(m.group(2)) if m.group(2) else -1, m.group(3))
 
 
-def asked(entries: dict[str, tuple[str, ratings.Facts | None]], named: set[str] | None) -> dict:
+def could_be(part: ratings.Part, hot: list[ratings.Facts]) -> list[ratings.Facts]:
+    """The entries with a thermal figure that a part with no part number and no facts entry could be:
+    those whose every pin number is a pin of the part. A part of 2 pins is no regulator of 5."""
+    return [f for f in hot if {n for p in f.data.get("pins", []) for n in p["numbers"]} <= set(part.pins)]
+
+
+def _names_its_part(row_mpn: str, mpn: str, entry: ratings.Facts | None, maybe: list) -> bool:
+    """Whether a row's part number is the board part's: its number from the parts file; with none, a
+    number its facts entry names; with no entry, a number an entry it could be names."""
+    if mpn:
+        return row_mpn == mpn
+    if entry is not None:
+        return entry.speaks_of(row_mpn, "", "") >= 2
+    return any(f.speaks_of(row_mpn, "", "") >= 2 for f in maybe)
+
+
+def asked(
+    entries: dict[str, tuple[str, ratings.Facts | None]],
+    named: dict[str, str] | None,
+    maybe: dict[str, list[ratings.Facts]] | None = None,
+    parts: str | None = "parts.csv",
+) -> dict:
     """The parts of the board that can get hot, and those sim/thermal.json leaves out: {"line", "asked",
-    "unplanned", "not_judged"}. `entries` maps each part of the board to its part number and the facts
-    entry that names it (None: no entry); `named` is the plan's parts (None: no plan). A part is asked for
-    because its facts carry `thermal`, a junction_max and 1 figure at least: no power is guessed."""
-    named = named or set()
+    "unplanned", "not_judged", "failures", "mismatched"}. `entries` maps each part of the board to its
+    part number and the facts entry that names it (None: no entry); `named` maps the plan's parts to the
+    part numbers of their rows (None: no plan). A part is asked for because its facts carry `thermal`, a
+    junction_max and 1 figure at least: no power is guessed. `maybe` maps a part with no number and no
+    entry to the entries with a figure it could be (`could_be`): it is not judged, as the gate cannot
+    tell. `parts` names the parts file the numbers came from, None when the project has none. A row whose
+    part number is not the board part's names facts that are not its own: it fails, and does not count
+    as naming the part (judge() reads the facts by the row's number)."""
+    named, maybe = named or {}, {ref: m for ref, m in (maybe or {}).items() if m}
+    failures, mismatched = [], []
+    for ref in sorted(set(named) & set(entries), key=_by_ref):
+        mpn, entry = entries[ref]
+        if _names_its_part(named[ref], mpn, entry, maybe.get(ref, [])):
+            continue
+        if mpn:
+            why = f"{parts} gives {mpn}"
+        elif entry is not None:
+            why = f"the facts entry of the board's part ({entry.where}) does not name it"
+        else:
+            why = (
+                "the board's part has no part number and no facts entry, and no entry whose pins it has "
+                "names it"
+            )
+        mismatched.append(ref)
+        failures.append(
+            f"thermal: {ref} ({mpn or (entry.name if entry else 'no part number')}) is judged on facts that "
+            f"are not its own: its row in sim/thermal.json names {named[ref]}, and {why}: write the board's "
+            "part number in its row (the simulate skill, A part's temperature, step 3)"
+        )
+    held = {ref for ref in named if ref not in mismatched}
     hot = sorted(
         (ref for ref, (_, f) in entries.items() if f is not None and "thermal" in f.data), key=_by_ref
     )
-    left = [ref for ref in hot if ref not in named]
+    unsure = sorted((ref for ref in maybe if ref in entries and ref not in held), key=_by_ref)
+    left = [ref for ref in hot if ref not in held and ref not in mismatched]
+    not_judged = []
+    for ref in [r for r in unsure if r not in mismatched]:
+        could = maybe[ref]
+        listed = ", ".join(f"{f.name} ({f.where})" for f in could)
+        why = (
+            f"no row of {parts} names its Value and Footprint"
+            if parts
+            else "the project has no parts.csv to give its part number"
+        )
+        not_judged.append(
+            f"thermal: {ref} not judged: {why} and no facts entry names it by its symbol, and it has the "
+            f"pins of {listed}, whose facts carry a thermal figure: give its part number in parts.csv beside "
+            "the schematic, the file the gate reads it from"
+        )
+    unplanned = sorted({*left, *(r for r in unsure if r not in mismatched)}, key=_by_ref)
     if not hot:
         bare = sum(1 for _, f in entries.values() if f is None)
         count = f"{len(entries)} part{'s' if len(entries) != 1 else ''}"
@@ -487,8 +552,20 @@ def asked(entries: dict[str, tuple[str, ratings.Facts | None]], named: set[str] 
             "thermal: no part of the board carries a thermal figure in its facts, so no junction is asked "
             f"for ({said})"
         )
-        return {"line": line, "asked": [], "unplanned": [], "not_judged": []}
-    not_judged = []
+        if unsure:
+            line = (
+                "thermal: no part of the board is known to carry a thermal figure in its facts; "
+                f"{len(unsure)} part{'s' if len(unsure) != 1 else ''} with no part number may: "
+                f"{', '.join(unsure)}"
+            )
+        return {
+            "line": line,
+            "asked": [],
+            "unplanned": unplanned,
+            "not_judged": not_judged,
+            "failures": failures,
+            "mismatched": mismatched,
+        }
     for ref in left:
         mpn, entry = entries[ref]
         term = entry.data["thermal"]
@@ -504,9 +581,18 @@ def asked(entries: dict[str, tuple[str, ratings.Facts | None]], named: set[str] 
     line = (
         f"thermal: {len(hot)} part{'s' if len(hot) != 1 else ''} of the board "
         f"carr{'ies' if len(hot) == 1 else 'y'} a thermal figure in {'its' if len(hot) == 1 else 'their'} "
-        f"facts: {', '.join(hot)}; sim/thermal.json names {len(hot) - len(left)} of them"
+        f"facts: {', '.join(hot)}; sim/thermal.json names {len([r for r in hot if r in held])} of them"
     )
-    return {"line": line, "asked": hot, "unplanned": left, "not_judged": not_judged}
+    if unsure:
+        line += f"; {len(unsure)} more with no part number may: {', '.join(unsure)}"
+    return {
+        "line": line,
+        "asked": hot,
+        "unplanned": unplanned,
+        "not_judged": not_judged,
+        "failures": failures,
+        "mismatched": mismatched,
+    }
 
 
 def _more(count: int) -> str:
