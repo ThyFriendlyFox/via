@@ -6,7 +6,10 @@ a lower number is left. A ticket is a file `<number>.ticket` whose process holds
 it for as long as it lives; the kernel drops that flock when the process ends by any signal, SIGKILL
 too. So a ticket is live while its flock is held, and nothing else is trusted: not a pid, which a
 restart or a new process may reuse, and not the file being there. A dead ticket is removed by the next
-process that looks.
+process that looks, unless a process its run started (an engine) still runs: such a process carries
+`WORKCENTER_LOCK_TICKET` naming the ticket in its environment (/proc/<pid>/environ), and the ticket counts
+until the last of them ends. A run stopped by SIGTERM or SIGHUP passes the signal to the processes it
+started before it frees its place.
 
 Numbers come from `.seq` under its own flock, so 2 runs that come in the same millisecond get 2 numbers.
 The kernel's flock on 1 file would serve waiters in no fixed order; the numbers keep the order they came.
@@ -29,9 +32,9 @@ import json
 import os
 import shlex
 import signal
+import stat
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 from pathlib import Path
@@ -64,6 +67,8 @@ LONG = {
     "verify": "without --init",
     "chip": "except chip init",
     "inspect": "inspect map only",
+    # `measure` runs the project's whole sim, every deck and corner, as `sim` does (tools/measureplan.py).
+    "measure": "always",
 }
 
 
@@ -81,10 +86,39 @@ def is_long(args: argparse.Namespace) -> bool:
     return LONG.get(cmd) == "always"
 
 
+class Refused(Exception):
+    """The lock folder cannot be used; the message is the 1-line refusal."""
+
+
 def lock_dir() -> Path:
-    """`WORKCENTER_LOCK_DIR`, else 1 folder per machine and user in the system's temporary folder."""
+    """`WORKCENTER_LOCK_DIR`, else 1 folder per machine and user: /tmp/workcenter-lock-<uid>. Not the
+    system's temporary folder, which follows TMPDIR: 2 runs whose TMPDIR differ would take 2 locks."""
     named = os.environ.get(ENV_DIR)
-    return Path(named) if named else Path(tempfile.gettempdir()) / f"workcenter-lock-{os.getuid()}"
+    return Path(named) if named else Path("/tmp") / f"workcenter-lock-{os.getuid()}"
+
+
+def check(folder: Path) -> None:
+    """Refuse a lock folder that cannot hold the lock, in 1 line that names the setting, the path and why.
+    A folder that is not there yet is fine: the first ticket makes it."""
+    named = os.environ.get(ENV_DIR)
+    who = f"{ENV_DIR}={named}" if named else f"the lock folder {folder}"
+    if named and not folder.is_absolute():
+        raise Refused(f"engine lock: {who}: not an absolute path, so 2 runs in 2 folders would take 2 locks")
+    try:
+        st = folder.lstat()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise Refused(f"engine lock: {who}: {folder} cannot be read ({exc.strerror})") from None
+    if not stat.S_ISDIR(st.st_mode):
+        kind = "a link" if stat.S_ISLNK(st.st_mode) else "a file"
+        raise Refused(
+            f"engine lock: {who}: {folder} is not a folder (it is {kind}); name a folder or unset it"
+        )
+    if not named and st.st_uid != os.getuid():
+        raise Refused(f"engine lock: {who} belongs to user {st.st_uid}, not to you ({os.getuid()})")
+    if not os.access(folder, os.R_OK | os.W_OK | os.X_OK):
+        raise Refused(f"engine lock: {who}: {folder} is not writable by you")
 
 
 def enabled() -> bool:
@@ -132,24 +166,75 @@ def _read(path: Path) -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def _pids() -> list[int]:
+    try:
+        return [int(n) for n in os.listdir("/proc") if n.isdigit()]
+    except OSError:
+        return []
+
+
+def carriers(path: Path, skip: set[int]) -> list[int]:
+    """The processes, other than those in `skip`, that carry `WORKCENTER_LOCK_TICKET=<path>` in their
+    environment: those a run started while it held the ticket. A process of another user, or a zombie,
+    shows no environment and is not counted."""
+    key = f"{ENV_TICKET}={path}".encode()
+    found = []
+    for pid in _pids():
+        if pid in skip:
+            continue
+        try:
+            env = Path(f"/proc/{pid}/environ").read_bytes()
+        except OSError:
+            continue
+        if key in env.split(b"\0"):
+            found.append(pid)
+    return found
+
+
+def descendants(pid: int | None = None) -> list[int]:
+    """The process's children, their children and so on, from /proc; [] where /proc cannot be read."""
+    root = os.getpid() if pid is None else pid
+    kids: dict[int, list[int]] = {}
+    for p in _pids():
+        try:
+            ppid = int(Path(f"/proc/{p}/stat").read_text(encoding="utf-8").rsplit(")", 1)[1].split()[1])
+        except (OSError, ValueError, IndexError):
+            continue
+        kids.setdefault(ppid, []).append(p)
+    found, todo = [], [root]
+    while todo:
+        for child in kids.get(todo.pop(), []):
+            found.append(child)
+            todo.append(child)
+    return found
+
+
 def survey(folder: Path | None = None) -> list[dict]:
     """The live tickets in the order they came, each with its number, path, pid, command and the time
-    it came and took the lock (`since`, absent while it waits). Dead tickets are removed on the way."""
+    it came and took the lock (`since`, absent while it waits). A ticket whose process ended still counts
+    while a process it started runs (`left`, their pids). Dead tickets are removed on the way."""
     folder = folder or lock_dir()
+    check(folder)
     try:
         names = os.listdir(folder)
     except FileNotFoundError:
         return []
+    except OSError as exc:
+        raise Refused(f"engine lock: the lock folder {folder} cannot be read ({exc.strerror})") from None
+    tickets = [(name, folder / name) for name in sorted(n for n in names if _seq(n) is not None)]
+    flocked = {name: _alive(path) for name, path in tickets}
+    skip = {os.getpid()} | {_read(p).get("pid") for n, p in tickets if flocked[n]}
     live = []
-    for name in sorted(n for n in names if _seq(n) is not None):
-        path = folder / name
-        if not _alive(path):
+    for name, path in tickets:
+        left = [] if flocked[name] else carriers(path, skip)
+        if not flocked[name] and not left:
             _remove(path)
             continue
         info = _read(path)
-        held = path.with_suffix(".held")
+        if left:
+            info["left"] = left
         with contextlib.suppress(OSError, ValueError):
-            info["since"] = float(held.read_text(encoding="utf-8"))
+            info["since"] = float(path.with_suffix(".held").read_text(encoding="utf-8"))
         info.update(seq=_seq(name), path=str(path))
         live.append(info)
     names = set(os.listdir(folder)) if folder.is_dir() else set()
@@ -163,7 +248,11 @@ def survey(folder: Path | None = None) -> list[dict]:
 def state(folder: Path | None = None) -> dict:
     """The lock as `doctor` prints it: the folder, whether it is on, the holder and how many wait."""
     folder = folder or lock_dir()
-    live = survey(folder)
+    try:
+        live = survey(folder)
+    except Refused as exc:
+        why = str(exc).removeprefix("engine lock: ")
+        return {"dir": str(folder), "enabled": enabled(), "holder": None, "waiting": 0, "not_judged": why}
     return {
         "dir": str(folder),
         "enabled": enabled(),
@@ -198,11 +287,12 @@ def inside(folder: Path | None = None) -> dict | None:
     holder = live[0]
     if holder.get("since") is None:
         return None
-    pid = holder.get("pid")
+    # A holder that ended counts through the processes it started: a run under one of them is inside.
+    pids = {holder.get("pid"), *holder.get("left", [])}
     chain = ancestors()
     if chain is None:
         return holder if os.environ.get(ENV_TICKET) == holder["path"] else None
-    return holder if pid == os.getpid() or pid in chain else None
+    return holder if os.getpid() in pids or pids & set(chain) else None
 
 
 def _clock(t: float) -> str:
@@ -227,7 +317,17 @@ def holder_text(holder: dict, now: float | None = None) -> str:
     what = holder.get("what") or "an unnamed run"
     since = holder.get("since")
     when = f"since {_clock(since)}, {_span(now - since)} ago" if since else "taking it now"
-    return f"held by `{what}` (pid {holder.get('pid')}) {when}"
+    text = f"held by `{what}` (pid {holder.get('pid')}) {when}"
+    left = holder.get("left")
+    if left:
+        pids = ", ".join(str(p) for p in left)
+        if len(left) == 1:
+            text += f", which ended; 1 process it started still runs (pid {pids})"
+            text += " and keeps the lock until it ends"
+        else:
+            text += f", which ended; {len(left)} processes it started still run (pid {pids})"
+            text += " and keep the lock until they end"
+    return text
 
 
 class Ticket:
@@ -246,8 +346,14 @@ class Ticket:
         self._take()
 
     def _take(self) -> None:
-        self.folder.mkdir(parents=True, exist_ok=True, mode=0o700)
-        seq_fd = os.open(self.folder / ".seq", os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o600)
+        check(self.folder)
+        try:
+            self.folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+            seq_fd = os.open(self.folder / ".seq", os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o600)
+        except OSError as exc:
+            raise Refused(
+                f"engine lock: the lock folder {self.folder} cannot be written ({exc.strerror})"
+            ) from None
         try:
             fcntl.flock(seq_fd, fcntl.LOCK_EX)
             raw = os.pread(seq_fd, 32, 0).strip()
@@ -296,10 +402,13 @@ class Ticket:
         tmp.write_text(repr(time.time()), encoding="utf-8")
         os.rename(tmp, held)
 
-    def release(self) -> None:
+    def release(self, unlink: bool = True) -> None:
+        """Free the place. `unlink=False` leaves the file for the next survey, which keeps it while a
+        process this run started still runs."""
         if self.fd is None:
             return
-        _remove(self.path)
+        if unlink:
+            _remove(self.path)
         os.close(self.fd)
         self.fd = None
 
@@ -309,8 +418,10 @@ _STOPS = (signal.SIGTERM, signal.SIGHUP)
 
 @contextlib.contextmanager
 def _told_on_stop(ticket: Ticket, stream):
-    """A run stopped by SIGTERM or SIGHUP (a host's time limit) prints 1 line that says so, frees its
-    ticket, and dies of the same signal. Only the main thread may set handlers."""
+    """A run stopped by SIGTERM or SIGHUP (a host's time limit) passes the signal to the processes it
+    started, prints 1 line that says so, frees its ticket, and dies of the same signal. Where it started
+    any, the ticket file stays: it counts until the last of them has ended (`survey`). Only the main
+    thread may set handlers."""
     if threading.current_thread() is not threading.main_thread():
         yield
         return
@@ -322,10 +433,18 @@ def _told_on_stop(ticket: Ticket, stream):
             doing = f"after waiting {_span(ticket.waited)} on the engine lock, {_runs(ticket.ahead)}"
         else:
             doing = f"after holding the engine lock for {_span(time.monotonic() - phase['held'])}"
+        sent = 0
+        for pid in descendants():
+            with contextlib.suppress(ProcessLookupError, PermissionError):
+                os.kill(pid, signum)
+                sent += 1
+        passed = f"; passed it to {sent} process{'' if sent == 1 else 'es'} it started" if sent else ""
         print(
-            f"workcenter: stopped by signal {signum} ({name}) {doing}: {ticket.what}", file=stream, flush=True
+            f"workcenter: stopped by signal {signum} ({name}) {doing}: {ticket.what}{passed}",
+            file=stream,
+            flush=True,
         )
-        ticket.release()
+        ticket.release(unlink=not sent)
         signal.signal(signum, signal.SIG_DFL)
         os.kill(os.getpid(), signum)
 
@@ -370,6 +489,8 @@ def for_command(args: argparse.Namespace, argv: list[str]):
 
 
 def status_line(st: dict) -> str:
+    if st.get("not_judged"):
+        return f"not judged: {st['not_judged']}"
     if not st["enabled"]:
         return f"off ({ENV_SWITCH}={os.environ.get(ENV_SWITCH)}); folder {st['dir']}"
     if st["holder"] is None:
@@ -387,10 +508,20 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("state", help="who holds the lock, since when, and how many wait")
     p.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
+    try:
+        return _act(parser, args)
+    except Refused as exc:
+        print(f"enginelock.py: {exc}", file=sys.stderr)
+        return 2
+
+
+def _act(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     if args.action == "held":
         return 0 if not enabled() or inside() is not None else 1
     if args.action == "state":
         st = state()
+        if st.get("not_judged"):
+            raise Refused(f"engine lock: {st['not_judged']}")
         print(json.dumps(st, indent=2) if args.json else f"engine lock: {status_line(st)}")
         return 0
     cmd = args.cmd[1:] if args.cmd[:1] == ["--"] else args.cmd

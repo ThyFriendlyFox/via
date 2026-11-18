@@ -10,8 +10,9 @@ The counts the tests expect are worked out by hand:
     3 runs, A holding, B and C waiting: C has 2 runs ahead (A and B), B has 1 (A); doctor counts 2
     waiting (B and C) and names A as the holder
     A holding, waiters B, C, D in the order they came: B, C, D start in that order, 1 after the other
-    a run killed with SIGKILL: its ticket stays on disk with no process holding its flock; the next
-    survey removes it, so the run behind it starts within 1 poll (0.1 s) of the kill
+    a run killed with SIGKILL: its ticket stays on disk with no process holding its flock; while a
+    process it started (its engine) runs, the ticket still counts; when the last one ends the next survey
+    removes it, so the run behind it starts within 1 poll (0.1 s) of that end
     the waiting line every 0.25 s (`WORKCENTER_LOCK_EVERY`): in 0.8 s at least 1 + 2 = 3 lines
 """
 
@@ -24,6 +25,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -55,6 +57,8 @@ NGSPICE = """\
 import os, sys, time
 from pathlib import Path
 tag, folder = os.environ["ENGINE_TAG"], Path(os.environ["ENGINE_DIR"])
+with (folder / f"pids-{tag}").open("a") as f:
+    f.write(f"{os.getpid()}\\n")
 with (folder / "log").open("a") as f:
     f.write(f"start {tag}\\n")
 end = time.monotonic() + 20
@@ -121,7 +125,7 @@ class Bench:
         return sorted(p.name for p in self.dir.glob("*.ticket")) if self.dir.is_dir() else []
 
     def stop(self) -> None:
-        for tag in "ABCDEFGHPQ":
+        for tag in "ABCDEFGHMPQ":
             self.release(tag)
         for proc in self.procs:
             if proc.poll() is None:
@@ -202,14 +206,86 @@ def test_two_commands_wait_for_a_gate_and_the_first_starts_within_a_second_of_it
     assert bench.log() == ["start G", "end G", "start B", "end B", "start C"]
 
 
-def test_a_holder_killed_with_sigkill_frees_the_lock(bench):
-    """A's lock process dies by SIGKILL; B, waiting behind it, starts, and A's ticket is gone."""
-    a = bench.hold("A")
+def test_a_gate_that_comes_while_runs_wait_starts_within_a_second_of_the_last_ones_end(bench):
+    """ROADMAP's Evidence, its 2nd half: A runs and B waits; then a gate comes (`hold --what "make
+    verify"`, engine G). It takes its turn after A and B, and starts within 1 s of B's end: 1 poll of
+    0.1 s plus the start of G's engine process (about 0.1 s here), 0.2 s, under the 1 s bar."""
+    bench.hold("A")
     until("A to start", lambda: started(bench, "A"))
     bench.hold("B")
     until("B's ticket", lambda: len(bench.tickets()) == 2)
-    a.send_signal(signal.SIGKILL)
+    gate = [PY, str(LOCK), "hold", "--what", "make verify", "--", PY, str(bench.engine), "G", str(bench.tmp)]
+    bench.start(gate, "G")
+    until("the gate's ticket", lambda: len(bench.tickets()) == 3)
+    until("the gate's waiting line", lambda: "2 runs ahead" in bench.err("G"))
+    bench.release("A")
     until("B to start", lambda: started(bench, "B"))
+    time.sleep(0.3)
+    assert not started(bench, "G")
+    bench.release("B")
+    until("B to end", lambda: "end B" in bench.log())
+    ended = time.monotonic()
+    until("the gate to start", lambda: started(bench, "G"))
+    assert time.monotonic() - ended < 1.0
+    assert bench.log() == ["start A", "end A", "start B", "end B", "start G"]
+
+
+def test_tickets_taken_at_the_same_moment_get_distinct_numbers(tmp_path, monkeypatch):
+    """8 threads take a ticket in 1 folder at the same moment (a barrier). The read of `.seq` is slowed by
+    0.05 s, so without the `.seq` flock each thread reads the counter (empty) and the folder (no ticket)
+    before any other writes, and all 8 would take number 0 + 1 = 1. Under the flock they read in turn:
+    numbers 1 to 8, 8 ticket files, no error."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import enginelock
+
+    real = os.pread
+
+    def slow(*a):
+        value = real(*a)
+        time.sleep(0.05)
+        return value
+
+    monkeypatch.setattr(enginelock.os, "pread", slow)
+    folder = tmp_path / "lock"
+    barrier = threading.Barrier(8)
+    tickets, errors = [], []
+
+    def take():
+        barrier.wait()
+        try:
+            tickets.append(enginelock.Ticket("t", folder))
+        except Exception as exc:  # noqa: BLE001 - every failure is the finding
+            errors.append(repr(exc))
+
+    threads = [threading.Thread(target=take) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(10)
+    try:
+        assert errors == []
+        assert sorted(t.seq for t in tickets) == list(range(1, 9))
+        assert len(list(folder.glob("*.ticket"))) == 8
+    finally:
+        for t in tickets:
+            t.release()
+
+
+def test_a_holder_killed_with_sigkill_frees_the_lock_when_its_engine_ends(bench):
+    """A's lock process dies by SIGKILL; its engine, A's child, runs on. B, waiting behind it, does not
+    start beside that engine, and its line (every 0.25 s) says the holder ended and its engine still runs.
+    A's engine ends; B starts, and A's ticket is gone: start A, end A, start B."""
+    a = bench.hold("A")
+    until("A to start", lambda: started(bench, "A"))
+    bench.hold("B", WORKCENTER_LOCK_EVERY="0.25")
+    until("B's ticket", lambda: len(bench.tickets()) == 2)
+    a.send_signal(signal.SIGKILL)
+    a.wait(5)
+    until("B's line about A's engine", lambda: "still run" in bench.err("B"))
+    assert bench.log() == ["start A"]
+    bench.release("A")
+    until("B to start", lambda: started(bench, "B"))
+    assert bench.log() == ["start A", "end A", "start B"]
     assert len(bench.tickets()) == 1
 
 
@@ -452,6 +528,104 @@ def test_a_child_of_a_holder_runs_the_workcenter_at_once(bench):
     assert "waiting" not in bench.err("H")
 
 
+def test_measure_waits_behind_a_sim(bench):
+    """`workcenter measure` runs the project's sim, every deck and corner, as `sim` does: it waits while
+    `workcenter sim` holds the lock, names it, and starts its engine only after the holder's ended."""
+    project = sim_project(bench)
+    workcenter(bench, "A", "sim", str(project), "--out", str(bench.tmp / "out-a"))
+    until("A's engine", lambda: started(bench, "A"))
+    workcenter(bench, "M", "measure", str(project), "--out", str(bench.tmp / "out-m"))
+    until("measure's waiting line", lambda: "waiting on the engine lock" in bench.err("M"))
+    assert "held by `workcenter sim" in bench.err("M")
+    assert not started(bench, "M")
+    bench.release("A")
+    until("measure's engine", lambda: started(bench, "M"), timeout=20)
+    log = bench.log()
+    assert all(line != "start A" for line in log[log.index("start M") :])
+
+
+def alive(pid: int) -> bool:
+    """True while the process runs; a zombie (state Z) has ended."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return stat.rsplit(")", 1)[1].split()[0] != "Z"
+
+
+def test_a_holder_stopped_by_sigterm_stops_its_engine_before_the_next_run_starts(bench):
+    """A host's time limit sends SIGTERM to a holding `workcenter sim`. It passes the signal to the
+    engine it started, says so in its last line, and B's engine starts only when no engine of A's runs."""
+    project = sim_project(bench)
+    a = workcenter(bench, "A", "sim", str(project), "--out", str(bench.tmp / "out-a"))
+    until("A's engine", lambda: started(bench, "A"))
+    workcenter(bench, "B", "sim", str(project), "--out", str(bench.tmp / "out-b"))
+    until("B's waiting line", lambda: "waiting" in bench.err("B"))
+    a.send_signal(signal.SIGTERM)
+    assert a.wait(5) == -signal.SIGTERM
+    until("B's engine", lambda: started(bench, "B"), timeout=10)
+    pids = [int(p) for p in (bench.tmp / "pids-A").read_text(encoding="utf-8").split()]
+    assert pids and not any(alive(p) for p in pids), pids
+    last = bench.err("A").splitlines()[-1]
+    assert "stopped by signal 15 (SIGTERM) after holding the engine lock" in last, last
+    assert "passed it to 1 process it started" in last, last
+
+
+def test_a_lock_folder_that_is_a_file_is_refused_in_1_line(bench):
+    """`WORKCENTER_LOCK_DIR` names a file: `hold`, `held`, `state` and `workcenter sim` each refuse in 1
+    line that names the variable, the path and why, exit 2, and print no traceback; the sim's engine never
+    starts."""
+    afile = bench.tmp / "afile"
+    afile.write_text("", encoding="utf-8")
+    env = {"WORKCENTER_LOCK_DIR": str(afile)}
+    project = sim_project(bench)
+    runs = {
+        "hold": [PY, str(LOCK), "hold", "--", "true"],
+        "held": [PY, str(LOCK), "held"],
+        "state": [PY, str(LOCK), "state"],
+        "sim": [PY, str(CLI), "sim", str(project), "--out", str(bench.tmp / "out-s")],
+    }
+    for name, argv in runs.items():
+        extra = {"NGSPICE": str(bench.ngspice), "ENGINE_TAG": "S", "ENGINE_DIR": str(bench.tmp), **env}
+        done = subprocess.run(argv, env=bench.env(**extra), capture_output=True, text=True, timeout=60)
+        lines = done.stderr.splitlines()
+        assert done.returncode == 2, (name, done.returncode, done.stderr)
+        assert len(lines) == 1 and "Traceback" not in done.stderr, (name, done.stderr)
+        assert f"WORKCENTER_LOCK_DIR={afile}" in lines[0] and "is not a folder" in lines[0], lines[0]
+    assert not started(bench, "S")
+
+
+def test_doctor_with_a_lock_folder_that_is_a_file_says_not_judged(bench):
+    """doctor is the diagnostic command: with `WORKCENTER_LOCK_DIR` naming a file it prints its tool
+    table, the lock as not judged with the reason, and no traceback; `--json` carries the reason."""
+    afile = bench.tmp / "afile"
+    afile.write_text("", encoding="utf-8")
+    env = bench.env(WORKCENTER_LOCK_DIR=str(afile))
+    done = subprocess.run([PY, str(CLI), "doctor"], env=env, capture_output=True, text=True, timeout=120)
+    assert "Traceback" not in done.stderr, done.stderr
+    assert "ngspice" in done.stdout, done.stdout
+    line = next(ln for ln in done.stdout.splitlines() if "engine lock" in ln)
+    assert "not judged" in line and "is not a folder" in line, line
+    data = json.loads(
+        subprocess.run([PY, str(CLI), "--json", "doctor"], env=env, capture_output=True, text=True).stdout
+    )
+    assert "is not a folder" in data["engine_lock"]["not_judged"]
+
+
+def test_the_lock_folder_does_not_follow_tmpdir(bench):
+    """2 runs of 1 user whose TMPDIR differ share 1 lock: with no `WORKCENTER_LOCK_DIR`, the folder is
+    /tmp/workcenter-lock-<uid> whatever TMPDIR says."""
+    tools = str(ROOT / "tools")
+    code = f"import sys; sys.path.insert(0, {tools!r}); import enginelock; print(enginelock.lock_dir())"
+    env = {k: v for k, v in bench.env().items() if k != "WORKCENTER_LOCK_DIR"}
+    seen = set()
+    for tmp in ("tA", "tB"):
+        (bench.tmp / tmp).mkdir()
+        env["TMPDIR"] = str(bench.tmp / tmp)
+        seen.add(subprocess.run([PY, "-c", code], env=env, capture_output=True, text=True).stdout.strip())
+    assert seen == {f"/tmp/workcenter-lock-{os.getuid()}"}
+
+
 def test_doctor_prints_the_state_of_the_lock(bench):
     """Free, `workcenter doctor` says so with the folder. With A holding and B waiting it names A,
     since when, and 1 waiting; `--json` carries the same."""
@@ -492,6 +666,8 @@ def test_the_long_commands_are_the_measured_ones():
 
     long_ = ["gates", "sim", "mutate", "bench", "fields", "autoroute", "render", "pictures", "chip", "ci"]
     long_ += ["copper", "highspeed", "export"]
+    # `measure` runs the project's whole sim, every deck and corner (tools/measureplan.py, gate_sim).
+    long_ += ["measure"]
     for name in long_:
         assert enginelock.is_long(ns(name)), name
     assert enginelock.is_long(ns("design", route=True))
@@ -501,7 +677,7 @@ def test_the_long_commands_are_the_measured_ones():
     # `inspect map` drew Last Hit v0.16 in 7.00 s; `inspect list` read it in 0.47 s.
     assert enginelock.is_long(ns("inspect", view="map"))
     assert not enginelock.is_long(ns("inspect", view="list"))
-    short = ["next", "ratings", "fetch", "doctor", "now", "references", "curve", "procure", "measure"]
+    short = ["next", "ratings", "fetch", "doctor", "now", "references", "curve", "procure"]
     short += ["erc", "drc", "placement", "inspect", "sources", "docs", "costs", "version", "diagram"]
     for name in short:
         assert not enginelock.is_long(ns(name)), name
