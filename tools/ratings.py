@@ -1000,8 +1000,9 @@ PASSIVE = {  # kind -> the keys an entry must hold, and those it may
     "capacitor.tantalum": CAPACITOR,
     "capacitor.film": CAPACITOR,
     "capacitor.electrolytic": CAPACITOR,
-    # an inductor's `kept` is pairs [amps, share of the value kept]: the SIM gate's, not judged here
-    "inductor": (("tolerance", "amps_saturation"), ("henries", "amps_rms", "kept")),
+    # an inductor's `kept` is pairs [amps, share of the value kept]: the SIM gate's, not judged here.
+    # `ohms_dc` is its DC resistance at the most, which a buck block's dropout sum reads
+    "inductor": (("tolerance", "amps_saturation"), ("henries", "amps_rms", "kept", "ohms_dc")),
     "ferrite": ((), ("amps", "volts")),
     "fuse": (("amps",), ("volts",)),
     "link": ((), ()),
@@ -1260,8 +1261,9 @@ def _facts(where: str, raw: object) -> Facts:
     for key, value in source.items():
         _text(f"{where}: source: {key}", value)
     _source(f"{where}: source", source)
-    if "ohms" in data:  # 0 ohm is a link
-        _number(f"{where}: ohms", data["ohms"], 0)
+    for key in ("ohms", "ohms_dc"):  # 0 ohm is a link
+        if key in data:
+            _number(f"{where}: {key}", data[key], 0)
     for key in RATED:
         if key in data:
             _number(f"{where}: {key}", data[key], above=0)

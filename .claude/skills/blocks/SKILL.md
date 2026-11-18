@@ -12,7 +12,7 @@ that `workcenter ratings` and the SIM gate read.
 
 | Block | Note | Rules | ICs |
 |---|---|---|---|
-| `blocks.buck` | TI SLVA477C, equations 1, 2, 3, 4 and 11, sections 3, 6 and 7; the datasheet's equation 2, table 4 and sections 6.3, 8.2.2.4 and 8.2.2.5 | `rules/blocks/buck.json` | TLV62569DBVR |
+| `blocks.buck` | TI SLVA477C, equations 1, 2, 3, 4 and 11, sections 3, 6 and 7; the datasheet's equations 1 (7.3.2) and 2, table 4 and sections 6.3, 6.5, 8.2.2.4 and 8.2.2.5 | `rules/blocks/buck.json` | TLV62569DBVR |
 | `blocks.ldo` | TI SLVA079, equations 1, 8, 10 and 11; the datasheet's equations 6 and 7, table 6-1 and sections 5.3, 5.5 and 7.1.1 | `rules/blocks/ldo.json` | TLV75533PDBVR, TLV75533PDRVR |
 
 A block holds what its note states and no more. A part the note does not
@@ -25,9 +25,14 @@ cover is your own schematic, and `workcenter ratings` judges it.
   inductor, R2, the output capacitance), each with its section, table and page.
 - `library/facts/`: each part's own ratings, the same entries `workcenter ratings`
   reads. The IC's reference, operating input range and least switching
-  frequency; each inductor's saturation current and tolerance; each
-  capacitor's rating and the value it keeps under voltage. A stocked part with
-  no facts is not taken.
+  frequency; each inductor's saturation current, tolerance and DC resistance
+  at the most (`ohms_dc`); each capacitor's rating, tolerance and the value it
+  keeps under voltage. A stocked part with no facts is not taken; a capacitor
+  whose facts give no `volts` or no `tolerance` is passed over and named. An
+  inductor with no `ohms_dc` is taken, and its dropout sum says its DCR is not
+  judged.
+- The spec: `vin=(least, greatest)`, `vout` and `amps`, each a finite number.
+  An input range written greatest first is refused.
 - Your stock: a list of `blocks.Stock(maker, mpn, value, footprint)` in the
   order you want them tried. The Value is what the schematic shows.
 
@@ -68,15 +73,27 @@ cover is your own schematic, and `workcenter ratings` judges it.
        `VOUT of X V is under ...` or `is over the least input`, `D = ... over 1`:
        the IC's datasheet or the note does not allow the spec. Change the spec
        or take another IC.
-     - `R1 of ... and R2 of ... set VOUT to X V, A to B ..., and Y V is asked`:
-       the stock has no resistor near the R1 the line names. Add one; the
-       output it sets must hold the asked voltage between the reference's
-       limits and the resistors' tolerances.
+     - `R1 of ... and R2 of ... set VOUT to X V, A to B ..., and Y V is asked`,
+       or `... set VOUT to X V, N % under the Y V asked`: the stock has no
+       resistor near the R1 the line names. Add one; the output it sets must
+       hold the asked voltage between the reference's limits and the
+       resistors' tolerances, and lie within the reference's own accuracy of
+       it (2 % for the TLV62569: VFB of 588 mV to 612 mV).
+     - `VIN(MIN) = ... over the least input`: at the least input the IC runs at
+       100 % duty cycle and cannot hold the top of the output's span (the
+       datasheet's equation 1, section 7.3.2). Raise the least input, lower the
+       load, or stock an inductor of lower DCR.
+     - `the facts of ... give no ...` or `... gives ... no ...`: the IC's facts
+       or its rules entry lack a number the block reads. Add it from the
+       datasheet with its page.
      - `no stocked resistor of ...`, `no stocked capacitor ...`: add the part
        the line names to the stock, with its facts. A capacitor is taken only
        when its facts name a dielectric the datasheet names (X5R or X7R for the
-       TLV62569) and, at the output, the value it keeps under voltage. The line
-       says why each stocked capacitor was passed over.
+       TLV62569) and the value it keeps under voltage, less its tolerance, at
+       the output's highest voltage; at the input, at the greatest input, or
+       its written value less its tolerance when its facts give no kept value,
+       which its sum says is not judged. The line says why each stocked
+       capacitor was passed over.
    - `design ... green`: the parts, `ratings.json`, `parts.csv` and
      `sim/buck.cir` are written.
 4. Open `sim/buck.cir`. Its comment lines after `* The sums:` are `block.sums`:
@@ -144,7 +161,9 @@ lets the block move to it when the junction runs hot.
    outside every repository, and its SHA256 with `sha256sum`.
 2. Add an entry to `ics` in `rules/blocks/<block>.json` with each number and
    its `where`: section, table and page. A number you cannot find in the
-   datasheet is not entered; the block then refuses that IC.
+   datasheet is not entered; the block then refuses that IC on 1 line that
+   names the missing key (`blocks.BUCK_NAMES` and `blocks.BUCK_NUMBERS` list
+   what `buck` reads).
 3. Add the datasheet to `rules/references/index.json`, and run
    `workcenter references rules`: it fails a source the index lacks.
 4. Write the IC's facts into `library/facts/` (the `ratings` skill).
