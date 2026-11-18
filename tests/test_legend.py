@@ -247,6 +247,29 @@ def test_three_directions_on_one_side_fail_direction():
     assert fails(judge(same)) == []
 
 
+def test_a_footprint_text_at_180_is_drawn_upright():
+    """pcbnew 10 read a footprint's designator written at 180 degrees (footprints at 0 and at 180) as keep
+    upright, drawn at 0 (scratch probe, 2026-11-17). So U1's designator at 180, with texts at 0 and 90,
+    makes 2 directions, not 3. U1's courtyard 112..118 by 110..116, its designator at local (0, -3.725):
+    0.15 mm above it, as the placer would put it."""
+    art = (txt("A", 130, 105), txt("B", 135, 105, angle=90))
+    b = board(fp("U1", 115, 113, (-3, -3, 3, 3), ref_at=(0, -3.725, 180)), *art)
+    assert fails(judge(b)) == []
+
+
+def test_a_footprint_text_kicad_does_not_keep_upright_reads_at_180():
+    """pcbnew 10 saved a designator whose keep upright it had turned off as (unlocked yes), and read it back
+    drawn at 180 (scratch probe, 2026-11-18). So U1's designator at 180 with (unlocked yes), with texts at 0
+    and 90, makes 3 directions: 0, 90 and 180, over the 2 of rules/legend.json."""
+    art = (txt("A", 130, 105), txt("B", 135, 105, angle=90))
+    upright = fp("U1", 115, 113, (-3, -3, 3, 3), ref_at=(0, -3.725, 180))
+    unlocked = upright.replace("(at 0 -3.725 180)", "(at 0 -3.725 180) (unlocked yes)")
+    assert unlocked != upright
+    found = judge(board(unlocked, *art))
+    assert fails(found) == [("direction", "F.SilkS")]
+    assert "180 degrees: 1" in found[0].line
+
+
 def test_back_text_that_is_not_mirrored_fails_direction():
     good = board(txt("A", 110, 110, layer="B.SilkS", mirror=True))
     bad = board(txt("A", 110, 110, layer="B.SilkS"))
@@ -667,6 +690,29 @@ def test_a_text_with_no_thickness_is_stroked_as_kicad_strokes_it():
     found = judge(board(txt("AB", 120, 110, thick=None)), "jlcpcb-2layer")
     assert fails(found) == [("size", 'text "AB"')]
     assert "stroke 0.125 mm" in found[0].line and "least 0.15 mm" in found[0].line
+
+
+def test_the_default_stroke_follows_the_glyph_width():
+    """KiCad writes (size height width). pcbnew 10 read the stroke of texts with no (thickness) as 1/8 of the
+    width: (size 1 2) 0.25 mm, (size 2 1) 0.125 mm, (size 2 2) 0.25 mm (scratch probe, 2026-11-17). So 1 mm
+    high and 2 mm wide is stroked 0.25 mm, over JLCPCB's 0.15 mm; 2 mm high and 1 mm wide, 0.125 mm, under."""
+    wide = '(gr_text "AB" (at 120 110 0) (layer "F.SilkS") (effects (font (size 1 2))))'
+    tall = '(gr_text "AB" (at 120 110 0) (layer "F.SilkS") (effects (font (size 2 1))))'
+    assert fails(judge(board(wide), "jlcpcb-2layer")) == []
+    found = judge(board(tall), "jlcpcb-2layer")
+    assert fails(found) == [("size", 'text "AB"')] and "stroke 0.125 mm" in found[0].line
+
+
+def test_a_pad_written_with_no_angle_is_upright_on_the_board():
+    """pcbnew 10 read a pad written (at 0 0) with no angle, in a footprint turned 90 degrees at (135, 105),
+    as at 0 degrees: its box 134..136 by 104.75..105.25 for a pad 2 x 0.5 (scratch probe, 2026-11-17).
+    KiCad writes the pad's angle on the board, so no angle is 0. Here J1 at (120, 110) turned 90: the pad
+    119..121 by 109.75..110.25; "X" at (121, 110), 120.397441..121.602559, is on it."""
+    pad = '(pad "1" smd rect (at 0 0) (size 2 0.5) (layers "F.Cu" "F.Mask"))'
+    j1 = fp("J1", 120, 110, (-1.1, -1.1, 1.1, 1.1), rot=90, ref_at=(0, -2.5, 0), extra=pad)
+    found = judge(board(j1, txt("X", 121, 110)))
+    assert fails(found) == [("overlap", 'text "X"')]
+    assert "opening of J1 pad 1 by 0.603 x 0.5 mm" in found[0].line
 
 
 # ---------------------------------------------------------------- what the check cannot read is said

@@ -24,7 +24,7 @@ the designators itself.
 | `overlap` | A text is on another text of its layer, on a pad's opening in the solder mask of its side, on a hole or a via's hole, or off the board: over its edge, outside its outline, in a notch or in a cutout (a footprint's own Edge.Cuts slot included). | `rules/legend.json` |
 | `hidden` | A designator is under a part's courtyard or body (its Fab drawing), its own or another's, on its side. A part is the hull of its courtyard and body, turned with it. | `rules/legend.json` |
 | `nearest` | A designator is nearer another part's courtyard than its own, or further than 2.0 mm from its own. | `rules/legend.json`, `designator_reach_mm` |
-| `direction` | Texts on 1 side read in more than 2 directions (180 degrees is a direction of its own: KiCad prints it upside down), or a text on the back is not mirrored. | `rules/legend.json`, `directions_per_side` |
+| `direction` | Texts on 1 side read in more than 2 directions (180 degrees is a direction of its own: KiCad prints a board text at 180 upside down; a footprint's text it keeps upright, at 0, unless the text is written `(unlocked yes)`), or a text on the back is not mirrored. | `rules/legend.json`, `directions_per_side` |
 
 The DRC gate also takes KiCad's own legend checks (`text_height`, `text_thickness`, `silk_overlap` of 2
 texts, `silk_over_copper` and `silk_edge_clearance` of a text) as failures, whatever their severity. The
@@ -33,7 +33,7 @@ mask or the edge clipping a footprint's own silk outline is not a legend line.
 A text's box is measured for KiCad's stroke font: 1.34 / 1.27 of the glyph width a character, plus the
 stroke; the glyph height plus the stroke. A turned text is measured by the upright box round it. A text
 justified top hangs half its height below its anchor; justified bottom, it stands half its height above.
-A text with no `(thickness)` has KiCad's own stroke, 1/8 of its size. A title block variable
+A text with no `(thickness)` has KiCad's own stroke, 1/8 of its glyph width (the second number of `(size h w)`). A title block variable
 (`${TITLE}`, `${REVISION}`, `${ISSUE_DATE}`, `${COMPANY}`, `${COMMENTn}`) is measured as its value.
 
 These are printed `legend not judged:` with the reason, and fail with `--strict`: a text in another font
