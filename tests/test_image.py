@@ -9,6 +9,7 @@ by the tool's name where `docker info` fails. The real build is the `image` work
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import os
 import re
@@ -152,6 +153,57 @@ def test_install_sh_first_installs_what_a_bare_ubuntu_lacks_and_only_where_it_is
 def test_the_build_context_leaves_out_git_and_build_outputs():
     ignored = (ROOT / ".dockerignore").read_text(encoding="utf-8").split()
     assert ".git" in ignored and "**/build" in ignored and "**/__pycache__" in ignored
+
+
+# A path under examples/ or site/ in code: `"examples/..."`, `ROOT / "site"`, `Path("examples")`.
+UNDER_LEFT_OUT = re.compile(
+    r"""(?<![\w.-])(examples|site)/|/\s*["'](examples|site)["']|Path\(\s*["'](examples|site)["']"""
+)
+LOCAL_IMPORT = re.compile(r"^\s*(?:import|from)\s+(\w+)", re.M)
+
+
+def called_by_the_runs() -> list[Path]:
+    """The files the Dockerfile's RUN lines run: install.sh, the CLI (`workcenter doctor`), tools/image.py,
+    and every module of tools/ they import, followed through their own imports."""
+    joined = " ".join(runs())
+    assert "./install.sh" in joined and "workcenter doctor" in joined and "tools/image.py record" in joined
+    todo, seen = [ROOT / "tools" / "workcenter", ROOT / "tools" / "image.py"], set()
+    while todo:
+        file = todo.pop()
+        if file in seen:
+            continue
+        seen.add(file)
+        for name in LOCAL_IMPORT.findall(file.read_text(encoding="utf-8")):
+            module = ROOT / "tools" / f"{name}.py"
+            if module.is_file():
+                todo.append(module)
+    return [ROOT / "install.sh", *sorted(seen)]
+
+
+def test_the_image_holds_no_example_board_and_no_site_and_nothing_it_runs_reads_them():
+    """examples/ (376 MB of the working tree) and site/ (18 MB) are not in the build context, so the
+    image holds the workcenter without the example boards and the site. Nothing the RUN lines run reads
+    a path under them: not install.sh, not the CLI's doctor, not the record. image.py's NODE_PATHS
+    names site/api/ for CI's choice of path on the checkout, outside the image, and the record, the
+    check and the doctor's run do not read it."""
+    ignored = (ROOT / ".dockerignore").read_text(encoding="utf-8").split()
+    assert "examples" in ignored and "site" in ignored
+    assert UNDER_LEFT_OUT.search('ROOT / "examples"') and UNDER_LEFT_OUT.search('"site/api/"')
+    assert not UNDER_LEFT_OUT.search("--system-site-packages") and not UNDER_LEFT_OUT.search('"site",')
+    allowed = {f'"{p}"' for p in image.NODE_PATHS}
+    found = []
+    for file in called_by_the_runs():
+        for number, line in enumerate(file.read_text(encoding="utf-8").splitlines(), 1):
+            code = line.strip()
+            if code.startswith("#"):
+                continue
+            for word in allowed:
+                code = code.replace(word, "")
+            if UNDER_LEFT_OUT.search(code):
+                found.append(f"{file.relative_to(ROOT)}:{number}: {line.strip()}")
+    assert found == []
+    for function in (image.record, image.check, image.doctor_payload, image.judge_doctor):
+        assert "NODE_PATHS" not in inspect.getsource(function)
 
 
 # ---------------------------------------------------------------- the content tag
