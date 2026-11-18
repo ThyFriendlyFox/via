@@ -896,10 +896,12 @@ def _above(where: str, raw: object, most: float) -> tuple[str, float, float, flo
 
 def _bands(where: str, raw: object, above: object) -> tuple:
     """The rows of a rule by rating: each names the ratings it covers, its share, and its own `above`
-    or the rule's. A rating stands in 1 row."""
+    or the rule's. A rating stands in 1 row: 2 that Rule.at() would take for 1 are refused."""
+    if above is not None:  # held to its form whether or not a row takes it
+        _above(where, above, 1)
     if not isinstance(raw, list) or not raw:
         raise Refusal(f"{where}: by_rating: a list of shares is asked")
-    bands, seen = [], {}
+    bands, seen = [], []
     for i, row in enumerate(raw, start=1):
         here = f"{where}: by_rating {i}"
         row = _keys(here, row, ("rated", "max"), ("above",))
@@ -907,9 +909,10 @@ def _bands(where: str, raw: object, above: object) -> tuple:
             raise Refusal(f"{here}: rated: a list of ratings is asked")
         rated = tuple(_number(f"{here}: rated", r, above=0) for r in row["rated"])
         for r in rated:
-            if r in seen:
-                raise Refusal(f"{here}: rated: {r:g} stands in by_rating {seen[r]} too")
-            seen[r] = i
+            first = next((j for s, j in seen if math.isclose(r, s, rel_tol=EPS)), None)
+            if first is not None:
+                raise Refusal(f"{here}: rated: {r:g} stands in by_rating {first} too")
+            seen.append((r, i))
         share = _number(f"{here}: max", row["max"], 0, 1)
         term = row.get("above", above)
         bands.append((rated, share, None if term is None else _above(here, term, share)))

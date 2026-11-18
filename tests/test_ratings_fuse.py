@@ -167,6 +167,29 @@ def test_a_styled_fuse_is_a_wire_as_a_fuse_is(tmp_path):
 
 
 RULE = {"id": "f", "stress": "fuse.current", "kinds": ["fuse"], "where": "table 1, page 1"}
+CASE_25 = {"temperature": "case", "celsius": 25, "falls_to": 0.0, "at": 275}
+
+
+def pack_of(tmp_path, rule: dict):
+    """The NASA pack's document with 1 rule, read as a pack."""
+    data = json.loads((PACKS / "nasa-eee-inst-002.json").read_text(encoding="utf-8"))
+    data["rules"] = [rule]
+    path = tmp_path / "x.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return ratings.read_pack(path)
+
+
+def test_a_row_with_no_above_of_its_own_takes_the_rule_s(tmp_path):
+    """The rule's `above` falls from the row's 0.50 at 25 C to 0 at 275 C. At 75 C:
+    0.50 + (0 - 0.50) x (75 - 25) / (275 - 25) = 0.50 - 0.10 = 0.40. The row of its own `above` keeps it:
+    0.45 at 25 C to 0 at 250 C gives 0.45 - 0.45 x 50 / 225 = 0.35 at 75 C."""
+    own = {"temperature": "case", "celsius": 25, "falls_to": 0.0, "at": 250}
+    rows = [{"rated": [2], "max": 0.5}, {"rated": [1], "max": 0.45, "above": own}]
+    pack = pack_of(tmp_path, {**RULE, "above": CASE_25, "by_rating": rows})
+    share, _ = ratings.factor(pack.rules[0].at(2.0), 75)
+    assert share == pytest.approx(0.40)
+    share, _ = ratings.factor(pack.rules[0].at(1.0), 75)
+    assert share == pytest.approx(0.35)
 
 
 @pytest.mark.parametrize(
@@ -189,13 +212,29 @@ RULE = {"id": "f", "stress": "fuse.current", "kinds": ["fuse"], "where": "table 
             {**RULE, "by_rating": [{"rated": [1], "max": 0.5, "above": {"temperature": "air"}}]},
             "x.json: rule 1: by_rating 1: above: `celsius` is missing",
         ),
+        (
+            {**RULE, "by_rating": [{"rated": [0], "max": 0.5}]},
+            "x.json: rule 1: by_rating 1: rated: 0 is not above 0",
+        ),
+        (
+            {**RULE, "by_rating": [{"rated": [1, -2], "max": 0.5}]},
+            "x.json: rule 1: by_rating 1: rated: -2 is not above 0",
+        ),
+        (  # a rule's `above` is held to its form though every row has its own
+            {
+                **RULE,
+                "above": {"temperature": "air", "bogus": 1},
+                "by_rating": [{"rated": [1], "max": 0.5, "above": CASE_25}],
+            },
+            "x.json: rule 1: above: `bogus` is no key here; the keys are temperature, celsius, falls_to, at",
+        ),
+        (  # 1 and 1.0000000001 differ by 1e-10 of 1, under the 1e-9 Rule.at() matches a rating by
+            {**RULE, "by_rating": [{"rated": [1], "max": 0.5}, {"rated": [1.0000000001], "max": 0.2}]},
+            "x.json: rule 1: by_rating 2: rated: 1 stands in by_rating 1 too",
+        ),
     ],
 )
 def test_a_rule_by_rating_that_is_wrong_in_1_place_is_refused_with_the_place(tmp_path, rule, message):
-    data = json.loads((PACKS / "nasa-eee-inst-002.json").read_text(encoding="utf-8"))
-    data["rules"] = [rule]
-    path = tmp_path / "x.json"
-    path.write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(ratings.Refusal) as caught:
-        ratings.read_pack(path)
+        pack_of(tmp_path, rule)
     assert str(caught.value).startswith(message), caught.value
