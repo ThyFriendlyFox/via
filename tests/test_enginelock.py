@@ -498,6 +498,9 @@ def test_the_long_commands_are_the_measured_ones():
     assert not enginelock.is_long(ns("design", route=False))
     assert enginelock.is_long(ns("verify", init=False))
     assert not enginelock.is_long(ns("verify", init=True))
+    # `inspect map` drew Last Hit v0.16 in 7.00 s; `inspect list` read it in 0.47 s.
+    assert enginelock.is_long(ns("inspect", view="map"))
+    assert not enginelock.is_long(ns("inspect", view="list"))
     short = ["next", "ratings", "fetch", "doctor", "now", "references", "curve", "procure", "measure"]
     short += ["erc", "drc", "placement", "inspect", "sources", "docs", "costs", "version", "diagram"]
     for name in short:
