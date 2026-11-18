@@ -115,7 +115,7 @@ layer:
   pad's angle is the one in its own `(at x y angle)`, the board's: KiCad leaves it out at 0 degrees,
   whatever the footprint's angle. A pad whose copper stands off its hole (`(drill ... (offset x y))`)
   is read as a square round its hole, widened by the offset on each side. A trapezoid pad is read as
-  its rectangle. A custom pad is taken as a square of its anchor's greater side, and one with
+  its rectangle widened by both of its `rect_delta` values on each side. A custom pad is taken as a square of its anchor's greater side, and one with
   primitives is named `not judged`, as is a pad with a padstack and any shape drawn on an outer copper
   layer:
   `not judged creepage on F.Cu: 1 shape drawn on the copper is not read (a gr_line at (112.5, 105))`.
