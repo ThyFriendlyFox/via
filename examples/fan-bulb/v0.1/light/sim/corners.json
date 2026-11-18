@@ -1,0 +1,24 @@
+{
+  "temperature": {
+    "values": [
+      0,
+      85
+    ],
+    "source": "the light disc in use: 0 C in an unheated porch fan, 85 C at its solder points in a closed fan globe (the brain's NTC folds the current back over 85 C, brain/README)"
+  },
+  "tolerance": {
+    "R": 0.01,
+    "C": 0.1,
+    "parts": {},
+    "source": "the LEDs' bin spread is carried in the deck by VBIN at its full 0.4 V per LED, not as a tolerance; the model's own temperature coefficient moves it with the corner"
+  },
+  "monte_carlo": {
+    "runs": 8,
+    "seed": 1
+  },
+  "decks": {
+    "led_model": {
+      "skip": "the model against its datasheet's rows, which are stated at 25 C and 85 C and swept in the deck"
+    }
+  }
+}

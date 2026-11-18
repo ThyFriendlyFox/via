@@ -1251,3 +1251,33 @@ What happened: The owner asked for a blog. I wrote the first post and the blog's
 Cost: a rewrite of the post and of the blog's words, and a preview the owner could not use.
 Root cause: `TONE.md` held my own words and `docs/STYLE.md` the site's, and neither named the blog, so I wrote the post to the website's rules and not to STE's limits. Neither named American spelling or the patterns that mark text as a model's. Nothing counted a post's sentences.
 Process: P37
+
+## M207 — 2026-11-17 — A ground plane the router never saw, again
+What happened: Lark's driver went to 4 layers with In1 a ground plane in `plane_layers`. kicadgen leaves a plane layer out of the router's file, so FreeRouting got GND as an ordinary net and joined every GND pad and via with tracks on In2: 37 links stayed open, more than the 26 of the 2-layer board. P4 step 12 (M150) says a plane net goes to the router as 1 pin; I had not applied it to a net the design itself makes a plane.
+Cost: 3 routes of 4 to 6 minutes, the first of them read as a spacing problem.
+Root cause: A step written for supply nets was read as not covering ground, and the router's file was not read before the route.
+Process: P4
+
+## M208 — 2026-11-17 — A plane net cut to 1 pin slipped out of its clearance rule
+What happened: Following P4 step 12, Lark's driver cut GND to 1 pin in the router's file. The router then kept only its default 0.2 mm from the other GND pads, and the class-pair rule that keeps the LinkSwitch's switch node 0.8 mm from the logic no longer reached them: the route put LNK_SW tracks 0.2 mm from 2 GND pads, 4 DRC errors. Giving the router In1 as a power layer holding the GND plane kept every GND pad in GND's class and left it nothing to route: 0 spacing errors.
+Cost: 1 route.
+Root cause: Cutting a net to 1 pin also cuts its pads out of every net class rule; the step that said to cut it did not say so.
+Process: P4
+
+## M209 — 2026-11-17 — A part turned by a pin side worked out in the head
+What happened: To shorten Lark's gate and sense links I turned the HV9961s and the MOSFETs from a pin side worked out in my head: a SOT-223's pins along its y axis. At rotation 0 they lie along x. One turn put each controller's VIN, CS and GATE on the cone's narrow edge, and the turn back the other way left 30 links open against 20. The pads read from `workcenter inspect list` showed each side at once.
+Cost: 2 routes and the reverts.
+Root cause: A turn judged from the footprint's rotation in the head, not from the turned part's pads on the generated board.
+Process: P11
+
+## M210 — 2026-11-17 — A deck's load that the firmware did not hold
+What happened: Lark's bus deck said "both LED channels at full current" over a 9.1 W load, 1 string's worth of LEDs. At the corners a bulk capacitor at +20 % beside 2 at -20 % carried 48.4 mA against its 47 mA rating. Both strings at full would draw more still, and nothing in the firmware held the 2 strings to 1 string's worth. The firmware now holds warm and cool together to 90 % of one string (`LARK_BUDGET`, with host tests), the deck's load is that sum, 8.3 W, and the worst corner carries 44.7 mA.
+Cost: a failed SIM gate, a deck rewrite and a firmware rule.
+Root cause: A deck's load written from intent, not as a sum from its parts and from a firmware limit that existed.
+Process: P27
+
+## M211 — 2026-11-17 — An LED named after another maker's part
+What happened: Lark's light disc named its 16 LEDs "LM281B+ 9V", another maker's 2835 family, while the library, the datasheet and the fitted model were Bridgelux's BXEN-27G and BXEN-50G. Writing the bill of materials from the boards showed it before the commit; the value now names the Bridgelux parts.
+Cost: 1 regeneration of the disc.
+Root cause: A part's value typed from memory, not copied from the row in `sources.csv` its datasheet and model hang on.
+Process: P27

@@ -1,0 +1,18 @@
+{
+  "temperature": {
+    "values": [0, 85],
+    "source": "the driver in use: 0 C in an unheated porch fan, 85 C inside the neck of a bulb in a closed fan globe (README, What it must do)"
+  },
+  "tolerance": {
+    "R": 0.01,
+    "C": 0.1,
+    "L": 0.2,
+    "parts": {"C2": 0.2, "C3": 0.2, "C4": 0.2, "L1": 0.1, "L2": 0.1, "pload": 0.1, "vld": 0.02},
+    "source": "Resistors 1 % thick film, ceramics 10 %; C2-C4 ULD +-20 % (Nichicon CAT.8100N); L1 +-10 % (Bourns SDR0604-471KL); L2 +-10 % (Fastron 07HVP-222K: K); pload, the bus's load, +-10 % over the strings' bins; vld, LD's voltage, +-2 % (the brain's 3.3 V and R5, R6)"
+  },
+  "monte_carlo": {"runs": 6, "seed": 7},
+  "decks": {
+    "hv9961_model": {"skip": "the model against its datasheet's rows, stated at 25 C"},
+    "mb10s_model": {"skip": "the model against its datasheet's row, stated at 25 C"}
+  }
+}

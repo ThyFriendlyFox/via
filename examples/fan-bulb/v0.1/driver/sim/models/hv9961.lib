@@ -1,0 +1,52 @@
+* HV9961: a behavioural model of Microchip's average-current buck LED controller, written for Lark
+* from its datasheet (DS20005588B). Microchip publishes only a SIMetrix/SIMPLIS model
+* (library/sources.csv). sim/hv9961_model.cir holds it to the datasheet's rows.
+*
+*   VDD   7.5 V from VIN (p.3).
+*   RT    sits at 1 V; its current sets the off-time, TOFF = RT/25k * 1 us + 0.3 us (Eq. 3-1).
+*   LD    the reference is min(0.185 * V(LD), 0.275 V) (Eq. 3-2, 3-3); the gate stops under 0.15 V
+*         and starts over 0.20 V (p.4): here 0.175 V.
+*   PWMD  over 2.2 V runs, under 0.8 V stops (p.3): here 1.5 V.
+*   CS    average-current control: after the leading-edge blanking (250 ns, p.4) an integrator E
+*         gathers V(ref) - V(CS) while the gate is on, and the gate turns off when CS reaches
+*         V(ref) + E. E settles where CS's mean over the on-time is V(ref): the inductor's mean current
+*         in continuous conduction, whatever its ripple (Section 3.3). The blanking's 250 ns are left
+*         out of that mean: about 2 % low at 2.2 mH and 165 V (sim/hv9961_model.cir).
+* Not modelled: the duty limit of 0.75, the hiccup at 0.44 V, UVLO hysteresis.
+.subckt HV9961 VIN CS GND GATE PWMD VDD LD RT
+.param tblank=250n
+BVDD vdi GND V = min(7.5, max(V(VIN,GND) - 0.4, 0))
+RVDD vdi VDD 5
+VRTM RT rtv 0
+BRT rtv GND V = 1
+BREF vref GND V = min(V(LD,GND)*0.185, 0.275)
+BEN en GND V = ((V(PWMD,GND) > 1.5) && (V(LD,GND) > 0.175) && (V(VDD,GND) > 6.5)) ? 1 : 0
+* the off timer: 0 to 1 V across TOFF while the gate is off, emptied in 1 ns while it is on
+BTOFF GND ct I = (V(q) < 0.5) ? 1p/(abs(1/(I(VRTM) - 1e-12))*4e-11 + 3e-7) : -V(ct)*1m
+CT ct GND 1p
+RLKCT ct GND 1G
+* the blanking timer
+BBL GND cb I = (V(q) > 0.5) ? 1p/tblank : -V(cb)*1m
+CB cb GND 1p
+RLKCB cb GND 1G
+* the CS pin through 10 ns of filter, as the chip's own input sees it
+RCSF CS csf 1k
+CCSF csf GND 10p
+* the on-time's highest current after blanking, held until the gate is off: the reset cannot let
+* go while the gate falls and the current with it
+BPK GND pk I = ((V(q) > 0.5) && (V(cb) > 1)) ? ((V(csf) > V(pk)) ? (V(csf) - V(pk))*1m : 0) : -V(pk)*1m
+CPK pk GND 1p
+RLKPK pk GND 1G
+* the average-current integrator, held between on-times
+BE GND e I = ((V(q) > 0.5) && (V(cb) > 1)) ? (V(vref) - V(csf))*50u : 0
+CE e GND 1n
+RE e GND 1G
+BSET sx GND V = ((V(ct) > 1) && (V(en) > 0.5)) ? 1 : 0
+BRST rx GND V = ((V(en) < 0.5) || ((V(cb) > 1) && (V(pk) >= V(vref) + max(0, min(V(e), 0.5))))) ? 1 : 0
+BQ qx GND V = (V(rx) > 0.5) ? 0 : ((V(sx) > 0.5) ? 1 : ((V(q) > 0.5) ? 1 : 0))
+RQ qx q 1k
+CQ q GND 10p
+RLKQ q GND 1G
+BG gd GND V = (V(q) > 0.5) ? V(VDD,GND) : 0
+RG gd GATE 47
+.ends HV9961

@@ -1,0 +1,14 @@
+{
+  "sources": [
+    {"name": "U3, the driver's LinkSwitch-TN2, on +3V3", "hz": [62000, 70000], "source": "LinkSwitch-TN2 datasheet rev. Q, fOSC 62 / 66 / 70 kHz"},
+    {"name": "U1's LEDC, DIM_W and DIM_C", "hz": [19980, 20020], "source": "the firmware's 20 kHz LEDC from the C6's 80 MHz clock (README, Firmware)"},
+    {"name": "U2's PDM clock to the ear", "hz": [2047000, 2049000], "source": "128 x ESP-SR's 16 kHz (ear/README): the S3's I2S0 in PDM receive mode"},
+    {"name": "ESP-SR's audio frames", "hz": [31.2, 31.3], "source": "the AFE takes 32 ms frames (ESP-SR docs, Audio Front-end): U2's load steps with each"}
+  ],
+  "resonances": [
+    {"name": "+3V3: L4 with the driver's and the brain's capacitors", "hz": "rail_3v3.f_peak", "q": 1.0, "source": "sim/rail_3v3.cir measures where; Q = sqrt(L/C)/R = sqrt(150 uH / 95 uF) / (1.1 + 0.2 ohm) = 0.97, taken as 1.0"}
+  ],
+  "harmonics": 10,
+  "guard": 0.1,
+  "overlaps": []
+}

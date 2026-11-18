@@ -1,0 +1,34 @@
+* Lark: +3V3's impedance where the brain draws it (PROCESSES.md P30). L4 (150 uH, DCR 1.10 ohm,
+* Bourns SDR0604-151KL) from U3's switch node, held at AC ground by D3 and U3 in turn; C12 and C13
+* (47 uF each, X5R 1206, 25 uF each at 3.3 V of bias) at the driver; the disc's 2 traces (0.2 ohm,
+* 30 nH) to the brain's C17 (47 uF, 25 uF at bias) and the modules' own 20 uF. A 1 A AC current at
+* the brain reads the impedance in ohms; the peak is looked for above 300 Hz.
+RL4 0 l4e 1.1
+L4 l4e p3v3 150u
+C12 p3v3 c12e 25u
+RC12 c12e 0 5m
+C13 p3v3 c13e 25u
+RC13 c13e 0 5m
+RTR p3v3 tr 0.2
+LTR tr brain 30n
+C17 brain c17e 25u
+RC17 c17e 0 5m
+CMOD brain cme 20u
+RCM cme 0 10m
+ITEST 0 brain DC 0 AC 1
+.control
+ac dec 200 300 1Meg
+let zv = vm(brain)
+let fv = real(frequency)
+let z_peak = vecmax(zv)
+let f_peak = fv[0]
+let k = 0
+while k < length(zv)
+  if zv[k] >= z_peak
+    let f_peak = fv[k]
+  end
+  let k = k + 1
+end
+print z_peak f_peak
+.endc
+.end

@@ -1,0 +1,8 @@
+Number,Name,Type,Side
+4,D,power_in,top
+1,BP/M,passive,left
+2,FB,input,left
+5,S,power_in,bottom
+6,S,power_in,bottom
+7,S,power_in,bottom
+8,S,power_in,bottom

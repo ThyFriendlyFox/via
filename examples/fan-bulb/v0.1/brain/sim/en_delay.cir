@@ -1,0 +1,22 @@
+* Lark: the 2 chips' enables at power-up. The driver's LinkSwitch brings +3V3 up; it is taken here as
+* a 2 ms ramp, the slowest the brain's 50 uF of decoupling allows at its 175 mA (U3's MDCM output,
+* LinkSwitch-TN2 Table 1). U1's EN: R1 10k up, C3 1 uF. U2's CHIP_PU: R3 10k up, C13 1 uF; U1's IO7
+* holds it low later, and is open in reset. Each must rise past 0.75 x VDD (the ESP32-S3 and -C6
+* datasheets, VIH) only after VDD has stood at 3.0 V or more for 50 us (tSTBL in each chip's
+* power-up timing).
+V3 p3v3 0 PWL(0 0 2m 3.3)
+R1 p3v3 c6en 10k
+C3 c6en 0 1u
+R3 p3v3 s3en 10k
+C13 s3en 0 1u
+.control
+tran 10u 60m
+meas tran t_vdd when v(p3v3)=3.0 rise=1
+meas tran t_c6 when v(c6en)=2.475 rise=1
+meas tran t_s3 when v(s3en)=2.475 rise=1
+let c6_after_ms = (t_c6 - t_vdd) * 1000
+let s3_after_ms = (t_s3 - t_vdd) * 1000
+let c6_up_ms = t_c6 * 1000
+print c6_after_ms s3_after_ms c6_up_ms
+.endc
+.end

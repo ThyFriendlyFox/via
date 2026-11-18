@@ -1,0 +1,6 @@
+{
+  "v_25": {"min": 2.9, "max": 3.1, "source": "a cold disc reads near the top of the ADC's range: no foldback"},
+  "v_85": {"min": 1.53, "max": 1.63, "source": "the firmware's foldback threshold, 1.58 V for 85 C: the NTC's +-1 % in R25 and B and R8's 0.1 % move it under 2 C"},
+  "v_105": {"min": 1.02, "max": 1.15, "source": "the firmware's limit, 1.085 V for 105 C, under the LEDs' 105 C solder point (Bridgelux DS207, p.4) and the module's 105 C (ESP32-C6-MINI-1-H4)"},
+  "sens_mv": {"min": 15, "source": "15 mV per C or more near 85 C: 18 counts of the C6's 12-bit ADC (0.8 mV), a reading to 0.1 C"}
+}

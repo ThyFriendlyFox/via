@@ -1,0 +1,7 @@
+{
+  "i_led": {"min": 0.090, "max": 0.108, "source": "100 mA per string, the most the hardware sets (the firmware's power budget holds the 2 strings together to 90 mA: README, Firmware): 0.185 x 1.48 V / 2.74 ohm, DS20005588B Eq. 3-3, whose VCST is +-4 % (p.3); the model reads about 2 % low (models/hv9961.lib). Bridgelux rates the LED to 120 mA (DS207, Table 4)"},
+  "i_ripple": {"max": 0.005, "source": "no visible ripple under a fan's blades: 5 % of 100 mA peak to peak at the LEDs, at the switching frequency (C14 across the string)"},
+  "f_sw_khz": {"min": 150, "max": 300, "source": "the frequency plan's source (sim/frequency-plan.json): TOFF 2.5 us (R2 54.9k, Eq. 3-1) at a duty of 0.43 to 0.47"},
+  "vds_max": {"max": 480, "source": "Q1's 600 V less 20 %: the IPN60R1K5PFD7S's V(BR)DSS (datasheet, Table 2)"},
+  "duty": {"max": 0.75, "source": "the HV9961 regulates up to a duty of 0.75 (DS20005588B, Section 3.3)"}
+}

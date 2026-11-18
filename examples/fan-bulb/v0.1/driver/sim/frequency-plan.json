@@ -1,0 +1,54 @@
+{
+  "sources": [
+    {
+      "name": "U1 and U2, the LED channels' bucks",
+      "hz": [
+        150000,
+        300000
+      ],
+      "source": "TOFF 2.5 us (R2, R4 54.9k; DS20005588B Eq. 3-1, 8 to 12 us at 226k, so +-20 %) at a duty of 0.35 to 0.55 over the line and the strings: 1/(TOFF/(1-D)); sim/led_channel.cir reads 220 kHz"
+    },
+    {
+      "name": "U3, the LinkSwitch-TN2",
+      "hz": [
+        62000,
+        70000
+      ],
+      "source": "LinkSwitch-TN2 datasheet rev. Q, fOSC 62 / 66 / 70 kHz"
+    },
+    {
+      "name": "the mains, rectified",
+      "hz": [
+        119.4,
+        120.6
+      ],
+      "source": "twice the US grid's 60 Hz, +-0.5 %"
+    },
+    {
+      "name": "the mains",
+      "hz": [
+        59.7,
+        60.3
+      ],
+      "source": "the US grid's 60 Hz, +-0.5 %; sim/bus_valley.cir drives it"
+    },
+    {
+      "name": "the brain's DIM_W and DIM_C (U1's LEDC)",
+      "hz": [
+        19980,
+        20020
+      ],
+      "source": "the firmware's LEDC at 20 kHz from the C6's 80 MHz clock (README, Firmware); sim/dim_filter.cir drives it"
+    }
+  ],
+  "resonances": [
+    {
+      "name": "VBUS: the pi filter (C2, L1, C3, C4)",
+      "hz": "rail_vbus.f_peak",
+      "source": "sim/rail_vbus.cir: no peak from 1 to 50 kHz, the capacitors' ESR damps it flat; the highest impedance is at the sweep's top, 50 kHz, whose band (45 to 55 kHz) holds no source's harmonic"
+    }
+  ],
+  "harmonics": 10,
+  "guard": 0.1,
+  "overlaps": []
+}

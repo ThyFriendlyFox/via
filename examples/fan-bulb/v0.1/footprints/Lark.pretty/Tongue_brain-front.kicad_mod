@@ -1,0 +1,91 @@
+(footprint "Tongue_brain-front"
+	(version 20241229)
+	(generator "make_footprints")
+	(layer "F.Cu")
+	(descr "Lark joint brain-front: 8 pads on the brain's tongue, 1.1 x 1.35 mm, their middle at z 51.275 mm; place at the bulb's axis")
+	(tags "joint tongue slot bulb")
+	(property "Reference" "J**"
+		(at 0 -1.675 0)
+		(layer "F.SilkS")
+		(hide yes)
+		(uuid "93f0f942-9618-599a-b234-d6f6d0013df1")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.1)
+			)
+		)
+	)
+	(property "Value" "Tongue_brain-front"
+		(at 0 1.675 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "e2508c9b-9a86-5ba7-8c95-6703a3945509")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.1)
+			)
+		)
+	)
+	(attr smd exclude_from_pos_files exclude_from_bom)
+	(fp_rect
+		(start -6.3 -0.825)
+		(end 6.3 0.825)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "d9c08886-7fe9-582f-93f6-88ff97070296")
+	)
+	(pad "1" smd rect
+		(at -5.6 0)
+		(size 1.1 1.35)
+		(layers "F.Cu" "F.Mask")
+		(uuid "92c7ea46-c459-5703-9d8b-864d7c0c6928")
+	)
+	(pad "2" smd rect
+		(at -4 0)
+		(size 1.1 1.35)
+		(layers "F.Cu" "F.Mask")
+		(uuid "b2184ef9-fc35-5b48-81b5-aa028ef2d75a")
+	)
+	(pad "3" smd rect
+		(at -2.4 0)
+		(size 1.1 1.35)
+		(layers "F.Cu" "F.Mask")
+		(uuid "5c222d1d-b14c-5d9e-a740-c9dc8b535710")
+	)
+	(pad "4" smd rect
+		(at -0.8 0)
+		(size 1.1 1.35)
+		(layers "F.Cu" "F.Mask")
+		(uuid "c42be0ac-355c-56b7-a5cc-d0ca855e28d0")
+	)
+	(pad "5" smd rect
+		(at 0.8 0)
+		(size 1.1 1.35)
+		(layers "F.Cu" "F.Mask")
+		(uuid "add56386-7920-5022-959b-7af02ffaa642")
+	)
+	(pad "6" smd rect
+		(at 2.4 0)
+		(size 1.1 1.35)
+		(layers "F.Cu" "F.Mask")
+		(uuid "9f11337f-3dc4-5b41-bfaf-5eba709eb241")
+	)
+	(pad "7" smd rect
+		(at 4 0)
+		(size 1.1 1.35)
+		(layers "F.Cu" "F.Mask")
+		(uuid "a4948765-6576-5c64-b545-4dcd93f6f5e7")
+	)
+	(pad "8" smd rect
+		(at 5.6 0)
+		(size 1.1 1.35)
+		(layers "F.Cu" "F.Mask")
+		(uuid "364b41b3-7bd1-5b74-be21-c4fc0c04e11f")
+	)
+)

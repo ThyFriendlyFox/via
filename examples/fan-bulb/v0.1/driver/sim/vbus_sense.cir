@@ -1,0 +1,27 @@
+* Lark: VBUS to the brain's ADC through R13, R14 (1 Meg each, 1206: 200 V each) and R15 (24.9k),
+* filtered by C16 (10 n). The C6's ADC reads 0 to 2.9 V at its 12 dB attenuation (ESP-IDF, ADC
+* oneshot); its pin takes 3.3 V + 0.3 V at most. A: VBUS from 0 to 400 V (the varistor's clamp is
+* 395 V): the reading at the top of the line's range, 198 V (140 V rms). B: a step from 165 V to 0
+* (the line switched off by a wall switch or a pull chain): how soon the reading falls past the
+* firmware's 1.0 V, so it saves its state while C3 and C4 still hold the 3.3 V rail up.
+VBA vba 0 DC 0
+R13A vba s1a 1Meg
+R14A s1a sa 1Meg
+R15A sa 0 24.9k
+VBB vbb 0 PWL(0 165 1m 165 1.001m 0)
+R13B vbb s1b 1Meg
+R14B s1b sb 1Meg
+R15B sb 0 24.9k
+C16B sb 0 10n
+.control
+dc VBA 0 400 2
+meas dc v_198 find v(sa) at=198
+meas dc v_165 find v(sa) at=165
+meas dc v_395 find v(sa) at=395
+print v_198 v_165 v_395
+tran 1u 3m
+meas tran t_fall when v(sb)=1.0 fall=1
+let t_fall_us = (t_fall - 1m) * 1e6
+print t_fall_us
+.endc
+.end
