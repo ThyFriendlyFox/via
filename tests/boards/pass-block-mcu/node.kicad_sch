@@ -2959,9 +2959,26 @@
 		)
 		(uuid "04d071bd-f718-5e11-8dd0-4f36169e4beb")
 	)
-	(no_connect
-		(at 152.4 93.98)
-		(uuid "85e3cba4-4b43-5adb-a689-cf0a64c8298e")
+	(wire
+		(pts
+			(xy 152.4 93.98)
+			(xy 152.4 96.52)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "662073e6-42b4-5ea5-87fe-2718696882e8")
+	)
+	(label "Y1_G"
+		(at 152.4 96.52 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "016e1f43-445b-5fd2-b462-c1ee655990fa")
 	)
 	(wire
 		(pts
