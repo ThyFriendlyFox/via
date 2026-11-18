@@ -681,3 +681,19 @@ def test_the_long_commands_are_the_measured_ones():
     short += ["erc", "drc", "placement", "inspect", "sources", "docs", "costs", "version", "diagram"]
     for name in short:
         assert not enginelock.is_long(ns(name)), name
+
+
+def test_every_command_of_the_cli_is_named_long_or_short():
+    """A command added to `tools/workcenter` after the lock was built (`new` and `standards` came so)
+    would be short by default and never measured. Each command `workcenter --help` lists is a key of
+    `LONG` or a name in `SHORT`, never both. `new` wrote a project in 0.17 s and `standards` judged
+    pass-layout in 0.24 s on 2026-11-18, with the lock off."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import enginelock
+
+    usage = subprocess.run([PY, str(CLI), "--help"], capture_output=True, text=True, timeout=60).stdout
+    commands = set(usage[usage.index("{") + 1 : usage.index("}")].split(","))
+    short = set(getattr(enginelock, "SHORT", ()))
+    assert not set(enginelock.LONG) & short, set(enginelock.LONG) & short
+    assert commands - set(enginelock.LONG) - short == set(), "not named long or short"
+    assert set(enginelock.LONG) | short <= commands, "named but not a command"

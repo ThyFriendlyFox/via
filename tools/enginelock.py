@@ -71,6 +71,29 @@ LONG = {
     "measure": "always",
 }
 
+# The commands that never take the lock, each named so that a command added later is classed on purpose
+# (tests/test_enginelock.py holds that every command of `workcenter --help` is in LONG or here).
+SHORT = (
+    "doctor",
+    "erc",
+    "drc",
+    "procure",
+    "sources",
+    "fetch",
+    "curve",
+    "placement",
+    "docs",
+    "costs",
+    "version",
+    "diagram",
+    "next",
+    "ratings",
+    "references",
+    "now",
+    "standards",
+    "new",
+)
+
 
 def is_long(args: argparse.Namespace) -> bool:
     """True when this parsed command line takes the lock."""
