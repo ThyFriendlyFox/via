@@ -7,7 +7,7 @@
     "rules/*.kicad_dru",
     "tests/boards/**/facts/*.json"
   ],
-  "code": ["tools/*.py", "tools/workcenter", "tests/*.py", "tests/boards/*.py"],
+  "code": ["tools/*.py", "tools/workcenter", "tests/*.py", "tests/boards/*.py", "ee-agent-kit/lead/*.py"],
   "numbers": [
     {"pattern": "\\bS[A-Z]{3}(?=[0-9A-Z]{0,2}[0-9])[0-9A-Z]{3}[A-Za-z]?\\b", "family": "Texas Instruments' literature numbers: S, 3 letters, 3 letters or digits with 1 digit at least, a revision letter in either case (SLVA477C, SLVAE57, SPRACN0, SBVS320D)"},
     {"pattern": "\\bRFC ?\\d{3,5}\\b", "family": "the IETF's RFCs"},
@@ -20,7 +20,8 @@
     {"pattern": "\\bMIL-(?:STD|PRF|HDBK|DTL)-\\d+[A-Z]?\\b", "family": "U.S. military standards, specifications and handbooks"},
     {"pattern": "\\bIEEE (?:Std\\.? )?\\d{3,4}(?:\\.\\d+)*\\b", "family": "IEEE standards"},
     {"pattern": "\\bAnalog Devices(?:'s?)? AN-\\d{3,4}\\b", "family": "Analog Devices' application notes"},
-    {"pattern": "\\bNBS Handbook \\d+\\b", "family": "the U.S. National Bureau of Standards' handbooks"}
+    {"pattern": "\\bNBS Handbook \\d+\\b", "family": "the U.S. National Bureau of Standards' handbooks"},
+    {"pattern": "\\b(?:UM|AN)1\\d{4}\\b", "family": "NXP's user manuals and application notes (UM10204, AN10441)"}
   ],
   "documents": [
     {
@@ -536,6 +537,18 @@
       "url": "https://archive.org/download/DTIC_AD0402852/DTIC_AD0402852.pdf",
       "sha256": "b6b327558e4bc9dbd58b96832e25ba76ed9fb7529315e35fa0b62781032b3a2c",
       "read": "2026-11-17"
+    },
+    {
+      "id": "nxp-um10204",
+      "kind": "standard",
+      "issuer": "NXP Semiconductors",
+      "number": "UM10204",
+      "names": ["UM10204"],
+      "title": "I2C-bus specification and user manual",
+      "revision": "Rev. 7.0, 1 October 2021",
+      "url": "https://www.nxp.com/docs/en/user-guide/UM10204.pdf",
+      "sha256": "dc91f00f65584e06ef36e26c93bf9d91a95fb3c8a1830a9223e53caf678b36af",
+      "read": "2026-11-18"
     }
   ]
 }

@@ -9,7 +9,7 @@ a deck that drives it and bounds the result:
     {
       "sources": [
         {"name": "heater PWM", "hz": 1000, "tolerance": 0.01, "source": "config.h LH_PWM_HZ; HSI 1 %"},
-        {"name": "I2C clock", "hz": [100000, 400000], "source": "UM10204 Table 10"}
+        {"name": "I2C clock", "hz": [100000, 400000], "source": "UM10204 Table 11"}
       ],
       "resonances": [
         {"name": "cell strips with C5", "hz": "pdn.f_peak", "q": "pdn.q_peak", "source": "sim/pdn.cir"}
@@ -50,6 +50,7 @@ from pathlib import Path
 
 from simcorners import netlist_lines, spice_number, stated
 
+CITES = {"nxp-um10204": "Rev. 7.0, table 11, page 44: the SCL clock frequency, the docstring's example"}
 PLAN_FILE = "frequency-plan.json"
 DEFAULT_HARMONICS = 10
 DEFAULT_GUARD = 0.1
