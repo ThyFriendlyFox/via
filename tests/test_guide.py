@@ -473,6 +473,9 @@ def test_no_sentence_of_a_hint_or_of_a_step_is_over_20_words(tmp_path, monkeypat
     answer(nothing)
     answer(project("red", record("sim", "fail", {"failures": ["d:vout=3.0 not in [2.45, 2.55]"]})))
     answer(project("warned", record("sim", "pass", {"failures": [], "warnings": ["w"]})))
+    for stem in ("i2c_rise", "load_step"):  # a deck the schematic asks for (tools/simneeds.py)
+        asked = {"failures": [], "warnings": [f"not judged: U1; copy templates/project/sim/{stem}.cir"]}
+        answer(project(f"asked-{stem}", record("sim", "pass", asked)))
     answer(project("decks", passed))
     board = tmp_path / "board"
     board.mkdir()
