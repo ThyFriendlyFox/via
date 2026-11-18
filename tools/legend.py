@@ -180,6 +180,7 @@ class Text:
     vjust: int = 0  # 1 top, 0 centre, -1 bottom
     variable: str = ""  # a text variable the tool does not resolve
     upright: bool = False  # KiCad keeps it upright: drawn at its angle turned into -90..90
+    name: str = ""  # a part's own field: its name
 
     @property
     def reads(self) -> float:
@@ -192,6 +193,8 @@ class Text:
             return f"designator {self.owner}"
         if self.kind == "value":
             return f'value of {self.owner} "{self.text}"'
+        if self.kind == "field":
+            return f'field {self.name} of {self.owner} "{self.text}"'
         return f'text "{self.text}"'
 
     @property
@@ -283,8 +286,20 @@ class Board:
     openings: list[tuple[str, Box, str]] = field(default_factory=list)  # side (F, B), box, what
     holes: list[tuple[Box, str]] = field(default_factory=list)
     edges: list[tuple[Point, Point]] = field(default_factory=list)
-    unread: list[tuple[str, str]] = field(default_factory=list)  # what is printed and not read: where, why
+    unread: list[Unread] = field(default_factory=list)  # what is printed and not measured
     unplaced: dict[str, str] = field(default_factory=dict)  # a footprint with no outline: ref -> side
+
+
+@dataclass
+class Unread:
+    """An item printed on the silkscreen that the tool does not measure: a text box, a dimension, a table, a
+    barcode. Its box, where the tool can bound it, keeps other texts and the placer off it."""
+
+    rule: str
+    where: str
+    why: str
+    layer: str
+    box: Box | None
 
 
 def _f(node, i: int = 0, default: float = 0.0) -> float:
@@ -518,6 +533,8 @@ def read_board(root: list) -> Board:
             board.texts.append(_text(node, "text", "", str(node[1]), values=values))
         elif head == "gr_text_box" and _layer(node) in SILK and not _hidden(node):
             _unread_box(board, node, None)
+        elif head in DRAWN and _layer(node) in SILK and not _hidden(node):
+            _unread_drawn(board, node, None, "")
         elif head.startswith("gr_") and _layer(node) == "Edge.Cuts":
             path = _path(node)
             board.edges += list(zip(path, path[1:], strict=False))
@@ -532,13 +549,65 @@ def read_board(root: list) -> Board:
     return board
 
 
+def _bounds(points: list[Point], grow: float = 0.0) -> Box | None:
+    if not points:
+        return None
+    xs, ys = [p[0] for p in points], [p[1] for p in points]
+    return (min(xs) - grow, min(ys) - grow, max(xs) + grow, max(ys) + grow)
+
+
 def _unread_box(board: Board, node: list, origin) -> None:
-    """A text box: its text is wrapped to its box by KiCad, which the tool does not do."""
-    x, y = _xy(child(node, "start")) if child(node, "start") else (0.0, 0.0)
+    """A text box: its text is wrapped to its box by KiCad, which the tool does not do. Its rectangle
+    (start and end, or the 4 corners of a turned one) is its box."""
+    corners = [_xy(p) for p in children(child(node, "pts") or ["pts"], "xy")]
+    corners += [_xy(child(node, h)) for h in ("start", "end") if child(node, h)]
     if origin:
-        x, y = to_board(*origin, x, y)
+        corners = [to_board(*origin, *p) for p in corners]
+    x, y = corners[0] if corners else (0.0, 0.0)
     where = f'text box "{node[1]}" at ({_mm(x)}, {_mm(y)}) mm on {_layer(node)}'
-    board.unread.append((where, "KiCad wraps its text to the box, which the tool does not measure"))
+    why = "KiCad wraps its text to the box, which the tool does not measure"
+    board.unread.append(Unread("text box", where, why, _layer(node), _bounds(corners)))
+
+
+# What KiCad draws on a layer from an item the tool does not measure: a dimension's number and arrows, a
+# table's cells, a barcode's bars.
+DRAWN = ("dimension", "table", "barcode")
+
+
+def _unread_drawn(board: Board, node: list, origin, ref: str) -> None:
+    """A dimension, a table or a barcode on the silkscreen: printed as not judged, by name and place. Its
+    box bounds its points, its text's box, its cells or (a barcode, whose anchor KiCad may put at its centre
+    or its corner) its size either way round its anchor."""
+    head = str(node[0])
+    label = child(node, "gr_text")
+    cells = children(child(node, "cells") or ["cells"], "table_cell")
+    said = child(node, "text")
+    if label is not None and len(label) > 1:
+        shown = str(label[1])
+    elif cells and len(cells[0]) > 1:
+        shown = str(cells[0][1])
+    elif said is not None and atoms(said):
+        shown = str(atoms(said)[0])
+    else:
+        shown = ""
+    points = [_xy(p) for p in children(child(node, "pts") or ["pts"], "xy")]
+    for cell in cells:
+        points += [_xy(child(cell, h)) for h in ("start", "end") if child(cell, h)]
+    if child(node, "at") is not None:
+        ax, ay = _xy(child(node, "at"))
+        sw, sh = _xy(child(node, "size")) if child(node, "size") else (0.0, 0.0)
+        points = [(ax, ay)] + [(ax + dx, ay + dy) for dx in (-sw, sw) for dy in (-sh, sh)] + points
+    if origin:
+        points = [to_board(*origin, *p) for p in points]
+    if label is not None and child(label, "at") is not None:
+        t = _text(label, "text", ref, shown, origin, what=f'{head} "{shown}"')
+        points += [(t.box[0], t.box[1]), (t.box[2], t.box[3])]
+    x, y = points[0] if points else (0.0, 0.0)
+    of = f" of {ref}" if ref else ""
+    name = f'{head} "{shown}"' if shown else head
+    where = f"{name}{of} at ({_mm(x)}, {_mm(y)}) mm on {_layer(node)}"
+    why = "the tool does not measure what KiCad draws for it"
+    board.unread.append(Unread(head, where, why, _layer(node), _bounds(points)))
 
 
 def _footprint(board: Board, node: list, margin: float, values: dict[str, str]) -> None:
@@ -556,9 +625,20 @@ def _footprint(board: Board, node: list, margin: float, values: dict[str, str]) 
         if str(prop[1]) == "Value":
             own["VALUE"] = str(prop[2])
     for prop in children(node, "property"):
-        if str(prop[1]) in ("Reference", "Value") and _layer(prop) in SILK and not _hidden(prop):
-            kind = "designator" if str(prop[1]) == "Reference" else "value"
+        if _layer(prop) not in SILK or _hidden(prop):
+            continue
+        name = str(prop[1])
+        if name in ("Reference", "Value"):
+            kind = "designator" if name == "Reference" else "value"
             board.texts.append(_text(prop, kind, ref, str(prop[2]), origin, what=f"{kind} of {ref}"))
+        else:
+            # A part's own field shown on the silkscreen (an MPN, a rating) is printed like any text.
+            shown = _text(prop, "field", ref, str(prop[2]), origin, own, f"field {name} of {ref}")
+            shown.name = name
+            board.texts.append(shown)
+    for item in node[1:]:
+        if isinstance(item, list) and item and item[0] in DRAWN and _layer(item) in SILK and not _hidden(item):
+            _unread_drawn(board, item, origin, ref)
     for item in children(node, "fp_text"):
         if _layer(item) in SILK and not _hidden(item):
             raw = str(item[2])
@@ -593,6 +673,17 @@ def _footprint(board: Board, node: list, margin: float, values: dict[str, str]) 
         names = [str(a) for a in atoms(child(pad, "layers") or ["layers"])]
         own = _f(child(pad, "solder_mask_margin")) if child(pad, "solder_mask_margin") else margin
         box = _pad_box(cx, cy, w + 2 * own, h + 2 * own, angle)
+        # A custom pad's copper is its anchor and its primitives, each in the pad's own frame, turned with
+        # it; a primitive's line width widens it by half.
+        shape: list[Point] = []
+        for prim in (child(pad, "primitives") or ["primitives"])[1:]:
+            if not isinstance(prim, list):
+                continue
+            pts = [to_board(cx, cy, angle, *p) for p in _path(prim)]
+            stroke = child(prim, "width") or child(child(prim, "stroke") or ["stroke"], "width")
+            if (b := _bounds(pts, own + _f(stroke) / 2)) is not None:
+                box = (min(box[0], b[0]), min(box[1], b[1]), max(box[2], b[2]), max(box[3], b[3]))
+                shape += pts
         what = f"the solder mask opening of {ref} pad {pad[1]}"
         for s in ("F", "B"):
             if f"{s}.Mask" in names or "*.Mask" in names:
@@ -603,7 +694,7 @@ def _footprint(board: Board, node: list, margin: float, values: dict[str, str]) 
             if vals and vals[0] > 0:
                 dw, dh = vals[0], vals[1] if len(vals) > 1 else vals[0]
                 board.holes.append((_pad_box(cx, cy, dw, dh, angle), f"the hole of {ref} pad {pad[1]}"))
-        pad_pts += _pad_corners(cx, cy, w, h, angle)
+        pad_pts += _pad_corners(cx, cy, w, h, angle) + shape
     pts = court + body or pad_pts
     if ref and pts:
         board.parts.append(Part(ref, side, fx, fy, rot, _hull(pts), node))
@@ -771,8 +862,8 @@ def judge(board: Board, limit: Limit, pack: dict[str, float]) -> list[Finding]:
             out.append(Finding(rule, t.what, "not judged", f"legend not judged: {where(t)}: {t.unmeasured}"))
         else:
             measured.append(t)
-    for what, why in board.unread:
-        out.append(Finding("text box", what, "not judged", f"legend not judged: {what}: {why}"))
+    for u in board.unread:
+        out.append(Finding(u.rule, u.where, "not judged", f"legend not judged: {u.where}: {u.why}"))
     if not board.edges and measured:
         out.append(
             Finding(
@@ -818,6 +909,9 @@ def judge(board: Board, limit: Limit, pack: dict[str, float]) -> list[Finding]:
                     f"on {b.what} at ({_mm(b.x)}, {_mm(b.y)}) mm by {_mm(o[0])} x {_mm(o[1])} mm",
                     own,
                 )
+        for u in board.unread:
+            if u.box is not None and u.layer == a.layer and (o := overlap(a.box, u.box)):
+                fail("overlap", a, f"on the area of {u.where} by {_mm(o[0])} x {_mm(o[1])} mm", own)
         for s, box, what in board.openings:
             if s == a.side and (o := overlap(a.box, box)):
                 fail("overlap", a, f"on {what} by {_mm(o[0])} x {_mm(o[1])} mm", own)
@@ -1080,6 +1174,39 @@ def kicad_findings(report: dict) -> list[str]:
     return out
 
 
+def kicad_unnamed(report: dict, board: Board) -> tuple[list[str], list[str]]:
+    """KiCad's silk_over_copper that names only pads: kicad-cli 10.0.8 named only "Pad 1 [<no net>] of R1
+    on F.Cu", at the pad, for a field of R1 printed on it (the second review's h1-field), so the silkscreen
+    item it clips is not named. A failure where a text of the board is on that pad's opening; else not
+    judged. Returns (failures, not judged)."""
+    fails, unjudged = [], []
+    for v in report.get("violations", []):
+        items = v.get("items", [])
+        if v.get("type") != "silk_over_copper" or not items:
+            continue
+        if not all(str(it.get("description", "")).startswith("Pad ") for it in items):
+            continue
+        pos = next((it["pos"] for it in items if "pos" in it), None)
+        said = "; ".join(str(it.get("description", "")) for it in items)
+        at = f" at ({_mm(pos['x'])}, {_mm(pos['y'])}) mm" if pos else ""
+        head = f"KiCad silk_over_copper{at}: {v.get('description')}: {said}"
+        tail = f"(KiCad's own check, {v.get('severity')} in its report)"
+        pads = [
+            (s, box)
+            for s, box, _ in board.openings
+            if pos and box[0] - EPS <= pos["x"] <= box[2] + EPS and box[1] - EPS <= pos["y"] <= box[3] + EPS
+        ]
+        on = [t.what for t in board.texts if any(s == t.side and overlap(t.box, box) for s, box in pads)]
+        if on:
+            fails.append(f"legend overlap: {head}; on it: {', '.join(on)} {tail}")
+        else:
+            unjudged.append(
+                f"legend not judged: {head}: KiCad names no silkscreen item and no text the tool reads is on "
+                f"it {tail}"
+            )
+    return fails, unjudged
+
+
 def _is_text(item: dict) -> bool:
     d = str(item.get("description", ""))
     # kicad-cli 10 names a board text "PCB text 'AB' on F.Silkscreen" and a designator "Reference field of C3"
@@ -1108,17 +1235,14 @@ def read_board_file(pcb: Path, root: list | None = None) -> Board:
         raise exc if str(exc).startswith(f"{pcb}: ") else Refusal(f"{pcb}: {exc}") from exc
 
 
-def judge_file(pcb: Path, fab: str | None) -> tuple[Limit, list[Finding]]:
-    limit = limits(fab)
-    return limit, judge(read_board_file(pcb), limit, read_pack())
-
-
 def gate(project, report: dict, strict: bool, fab: str | None) -> dict:
     """The DRC gate's part: red on a failure of this module or of KiCad's own legend checks, and with
     --strict on what was not judged."""
     try:
         fab = fab or fab_named(project.dir, project.name)
-        limit, found = judge_file(project.pcb, fab)
+        limit = limits(fab)
+        board = read_board_file(project.pcb)
+        found = judge(board, limit, read_pack())
     except (ValueError, OSError) as exc:
         return {
             "red": True,
@@ -1126,8 +1250,9 @@ def gate(project, report: dict, strict: bool, fab: str | None) -> dict:
             "failures": [f"legend: not run: {exc}"],
             "warnings": [],
         }
-    fails = [f.line for f in found if f.status == "fail"] + kicad_findings(report)
-    unjudged = [f.line for f in found if f.status != "fail"]
+    pad_fails, pad_unjudged = kicad_unnamed(report, board)
+    fails = [f.line for f in found if f.status == "fail"] + kicad_findings(report) + pad_fails
+    unjudged = [f.line for f in found if f.status != "fail"] + pad_unjudged
     return {
         "red": bool(fails) or (strict and bool(unjudged)),
         "summary": f"legend ({limit.label}): {len(fails)} fail, {len(unjudged)} not judged",
