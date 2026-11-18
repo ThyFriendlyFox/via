@@ -350,6 +350,7 @@ images are drawn.
 | `tools/blocks_i2c.py` | `blocks.i2c`: the 2 pull-ups of an I2C bus by TI SLVA689A, each device on the bus held to its facts. |
 | `tools/blocks_charger.py` | `blocks.charger`: a BQ21040 charger for 1 lithium cell with a BQ29700 protector, by their datasheets. |
 | `tools/blocks_mcu.py` | `blocks.mcu`: an MSP430FR5720 with its crystal and decoupling, by TI SLAA322D. |
+| `tools/blocks_ldo.py` | `blocks.ldo`: a fixed-output linear regulator and its 2 capacitors, by TI SLVA079 and the TLV755P datasheet. |
 | `tools/fabfiles.py`, `tools/panel.py` | EXPORT's files read back against the board: the placement file, the assembly pages, IPC-2581 and the panel. `panel.py` runs KiKit's panelization under `KIKIT_PYTHON`. |
 | `tools/measureplan.py` | `workcenter measure`: the plan of measurements from the decks' bounds and the board's nets. Standard library only. |
 | `tools/now.py` | `workcenter now`: the work card of 1 piece of work, and `record`, which `verify/verify.sh` runs on exit to leave the gate's verdict in `build/verify.json`. Standard library only. |

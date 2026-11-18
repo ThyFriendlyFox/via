@@ -669,3 +669,4 @@ def buck_deck(  # noqa: PLR0913
 
 # The other blocks stand in their own modules, which import this one: each is joined here, at the end.
 from blocks_i2c import i2c  # noqa: E402, F401
+from blocks_ldo import ldo  # noqa: E402, F401  the linear regulator block, tools/blocks_ldo.py

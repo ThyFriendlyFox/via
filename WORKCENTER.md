@@ -114,7 +114,7 @@ file: it needs nothing else.
 | `blog-post` | A human asks for a public write-up of recent work. |
 | `procurement` | A human asks what a board costs, for its parts list, or to order its parts. |
 | `ratings` | A schematic is to be held to its parts' ratings before layout: each part's facts from its datasheet, with the page of each pin's and each needed part's numbers, the voltages and currents the board cannot say, and `workcenter ratings` until every stress holds. |
-| `blocks` | A design needs a buck regulator, a USB-C sink port, an I2C bus's pull-ups or a microcontroller's crystal and decoupling: `blocks.buck`, `blocks.usbc`, `blocks.i2c` or `blocks.mcu` in the design file works out each value by its maker's note, takes each part from your stock, and writes its `ratings.json` entries, its `parts.csv` rows and its deck. |
+| `blocks` | A design needs a buck regulator, a linear regulator, a USB-C sink port, an I2C bus's pull-ups or a microcontroller's crystal and decoupling: `blocks.buck`, `blocks.ldo`, `blocks.usbc`, `blocks.i2c` or `blocks.mcu` in the design file works out each value by its maker's note, takes each part from your stock, and writes its `ratings.json` entries, its `parts.csv` rows and its deck. |
 | `charger-block` | A board charges 1 lithium cell from a 5 V input: the cell's limits from its datasheet, the charge current, the load and the ambient, and `blocks.charger` until the design writes; then `workcenter ratings`, whose `not judged` lines go into the version's README, and the gates. |
 | `board-rules` | A routed board is to be held to a standard: each gap to the voltage between its nets and each track's width to its net's current, from `ratings.json`, with `board-rules.json` naming the pack; or to a fab's published limits. |
 | `standards` | A board is near release and someone asks what its product must meet: `product.json` names the kind, and `workcenter standards` lists each requirement of the kind's free documents as held by a gate, held by a named test, or not held. |
@@ -379,7 +379,9 @@ every corner; a failure names the worst corner and how many more miss:
 2.55]`, from `tests/boards/fail-sim-corner`. A bound with `"warn"` or `"at": "nominal"` is judged as
 written only; the second needs a `source` that says why. A project with
 decks and no `sim/corners.json` gets a warning, as does a deck whose
-measures do not move with temperature and a part named like a board
+measures do not move with temperature (not one that `sim/thermal.json`
+names: its corners' temperature is the ambient its junctions are judged
+at) and a part named like a board
 reference that no tolerance covers. `--nominal` leaves the corners out and
 says so.
 

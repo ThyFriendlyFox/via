@@ -1,0 +1,6 @@
+{
+  "iout": {
+    "max": 0.5,
+    "source": "U1 TLV75533PDBVR gives 500 mA at the most [TLV755P datasheet, SBVS320D, section 5.3, Recommended Operating Conditions, IOUT, page 4]"
+  }
+}

@@ -665,11 +665,11 @@ def test_the_fixture_is_routed_and_its_gates_are_green(tmp_path):
         110.0,
         True,
     )
-    # The 2 warnings: C1 and C2 hold their makers' data and the deck runs no capacitor, so no deck runs them
-    # on it (roadmap item 4's line); and the deck holds nothing that moves with temperature, the ambient's
-    # corners being there for the junction, which the thermal check works out at each.
+    # The 1 warning: C1 and C2 hold their makers' data and the deck runs no capacitor, so no deck runs them
+    # on it (roadmap item 4's line). The deck holds nothing that moves with temperature, and is not warned
+    # of it: sim/thermal.json names it, so the ambient's corners are there for the junction, which the
+    # thermal check works out at each (the SIM gate's `heated`, from the linear regulator block).
     assert records["sim"]["details"]["warnings"] == [
         "not judged: C1 and C2 hold their makers' data, and no deck holds a capacitor or an inductor: a deck "
         "runs a board part on it only under the part's reference",
-        "charger: no measure moves with temperature: nothing in the deck or its models carries one",
     ]

@@ -654,13 +654,17 @@ def test_every_document_a_rule_of_the_repository_names_is_in_the_index():
     named in 36 + 3 = 39 files, 11 + 2 = 13 not judged. The 2 creepage packs of item 11's safety spacing
     (rules/board/) add 1 document each, the US handbook's guideline 69 and TI's creepage note, and TI's
     pack names the paid IEC standard its note reprints, with no place, 1 not judged: 67 + 2 = 69 named
-    in 39 + 2 = 41 files, 13 + 1 = 14 not judged."""
+    in 39 + 2 = 41 files, 13 + 1 = 14 not judged. The linear regulator block adds rules/blocks/ldo.json,
+    3 (its note TI SLVA079, and the TLV755P datasheet SBVS320D for each of its 2 ICs; its `short` label
+    names the note with no place beside it, 1 not judged), and the facts of its second IC,
+    ti-tlv755p-drv.json, 1 (SBVS320D): 69 + 3 + 1 = 73 named in 41 + 2 = 43 files, 14 + 1 = 15 not
+    judged."""
     globs = json.loads(INDEX.read_text(encoding="utf-8"))["rules"]
     files = sorted({p for pattern in globs for p in ROOT.glob(pattern)})
     code, out = run("rules", *files)
     assert code == 0, out
     assert out.splitlines()[-1] == (
-        "references rules: 69 documents named in 41 files, 69 in the index, 0 not; 14 not judged"
+        "references rules: 73 documents named in 43 files, 73 in the index, 0 not; 15 not judged"
     )
 
 

@@ -1,6 +1,6 @@
 ---
 name: Blocks
-description: Adds a circuit block to a design file in 1 call - today a buck regulator by TI SLVA477C - from the input range, the output voltage and the load current; the block works out each part's value by the note's equations, takes each part from the designer's stock, writes its ratings.json entries, its parts.csv rows and its deck, and fails on 1 line that names the equation no stocked part meets.
+description: Adds a circuit block to a design file in 1 call - a buck regulator (blocks.buck), a linear regulator (blocks.ldo), a USB-C sink port (blocks.usbc), an I2C bus's pull-ups (blocks.i2c), a single-cell charger with its protection (blocks.charger, step by step in the charger-block skill) or a microcontroller with its crystal and decoupling (blocks.mcu) - from its numbers (the input range, the output voltage, the load current); the block works out each part's value by its maker's note, takes each part from the designer's stock, writes its ratings.json entries, its parts.csv rows and, for all but the microcontroller, its deck, and fails on 1 line that names the equation or the clause no stocked part meets.
 ---
 
 # Blocks
@@ -16,6 +16,7 @@ that `workcenter ratings` and the SIM gate read.
 | `blocks.usbc` | USB Type-C R2.5, tables 4-20, 4-27, 4-28, 4-35, 4-36 and 3-5; USB 2.0 table 7-7 and 2 ECNs. Its steps: `usbc.md` beside this file | `rules/blocks/usbc.json` | GCT USB4115-03-C, TI TPD2E2U06DCKR |
 | `blocks.i2c` | TI SLVA689A, equations 1, 5 and 6, table 2-1, section 3 | `rules/blocks/i2c.json` | any device whose facts give its bus pins (see "The I2C block" below) |
 | `blocks.mcu` | TI SLAA322D, equations 1, 3 and 5 and table 2; the datasheet SLASE35C, sections 5.3 and 5.13; SLAU278AH figure 2-3; SLAU272D table 1-4 | `rules/blocks/mcu.json` | MSP430FR5720IRGE |
+| `blocks.ldo` | TI SLVA079, equations 1, 8, 10 and 11; the datasheet's equations 6 and 7, tables 6-1 and 8-1 and sections 5.3, 5.5 and 7.1.1 | `rules/blocks/ldo.json` | TLV75533PDBVR, TLV75533PDRVR |
 
 A block holds what its note states and no more. A part the note does not
 cover is your own schematic, and `workcenter ratings` judges it.
@@ -168,6 +169,89 @@ Spy-Bi-Wire header. `tests/boards/block_mcu.py` is a whole example.
 5. Run `workcenter ratings . --strict`, then `workcenter design design.py
    --route` and `workcenter gates . --strict`.
 
+## The linear regulator, `blocks.ldo`
+
+The block takes the first stocked IC of `rules/blocks/ldo.json` that holds 6
+checks, then 1 input and 1 output capacitor. List the ICs in your stock in the
+order you want them tried; a package with a lower RthetaJA after a smaller one
+lets the block move to it when the junction runs hot.
+
+1. In `design.py`, call it after your own parts:
+
+   ```python
+   block = blocks.ldo(d, vin=(4.75, 5.25), vout=3.3, amps=0.1, ambient=(0, 30),
+                      pack="nasa-eee-inst-002", nets=("+5V", "+3V3", "GND"),
+                      stock=STOCK, facts=Path(__file__).parent / "library" / "facts",
+                      sch_at=(76.2, 76.2), pcb_at=(111.0, 108.0))
+   ```
+
+   `vin` is (least, greatest) in V and `ambient` is the least and the greatest
+   air temperature around the board, in C, each a finite number. `pack` is the
+   pack of your `ratings.json`. `tests/boards/block_ldo.py` is a whole example.
+2. Run `workcenter design design.py`. What it prints:
+   - `ldo U1: vin=(A, B) is written greatest first` or `ambient=(A, B) is
+     written greatest first`: write the range least first.
+   - `ldo U1: <name>=...: each number of the spec must be finite`: give a
+     number, not NaN or infinity.
+   - `ldo U1: ldo.json: its note gives no page of equation N`: the rules file
+     is damaged. Enter the page from TI SLVA079.
+   - `ldo U1: no stocked IC holds the spec: <MPN>: ...`: each stocked IC and
+     why it missed, with its equation and page. Do as each says:
+     - `regulates to VOUT(NOM) = A V, not the X V asked`: the IC is fixed at
+       another output (table 8-1 of its datasheet). Stock the IC of the output
+       you ask.
+     - `ldo.json gives it no <keys>` or `ldo.json holds <key> as <value>,
+       not <shape>`: the IC's entry lacks those numbers or their `where`, or
+       holds one the block cannot read. Enter them from the datasheet (see
+       "Adding an IC to a block" below).
+     - `<file> gives no <keys>: the block judges no IC whose facts lack it`:
+       the IC's facts lack its RthetaJA (`thermal theta_ja`), its input's range
+       (`IN operating`) or its ground current (`IN amps`). Enter them from the
+       datasheet (the `ratings` skill).
+     - `the input reaches X V, IN operates from ...`: change the input range
+       or the IC.
+     - `IOUT of X A is over ...`: the IC cannot give the load.
+     - `VDO = ...; VOUT(NOM) + VDO = X V, not under the least input`: the
+       least input is too low for the full load (SLVA079 equation 1). Raise
+       the least input, lower the load, or stock an IC of lower dropout.
+     - `TJ = ... C, over ... C`: the junction at the greatest ambient passes
+       the pack's limit. The dissipation is taken at the greatest input and
+       the least output the IC's accuracy gives. Stock a package of lower
+       RthetaJA, lower the input, the load or the ambient.
+     - `TJ from the least ambient, A C, to B C, not within TJ's ...`: the
+       ambient is colder, or the junction hotter, than the datasheet's
+       recommended junction span. Change the ambient or the IC.
+   - `ldo U1: no stocked capacitor holds C2 at X V: ...`: each stocked
+     capacitor and why it missed: its dielectric, its rating, its value
+     outside the datasheet's span, no curve of the value it keeps, a curve
+     over temperature (`kept_celsius`) that does not cover the ambient, or
+     what it keeps at the pin's voltage and the worst ambient less its
+     tolerance not over 0.47 uF. Stock a part that holds, with its facts and
+     its curves.
+   - `ldo U1: a load of 0 A`: give the load you draw.
+3. Read `block.sums` in `sim/ldo.cir` after `* The sums:`. A line
+   `U1: <MPN> passed over: ...` names an IC the block tried first. The line
+   `its CSR is not judged` says the datasheet gives no stable CSR range: the
+   block does not judge the output capacitor's ESR. A capacitor line that
+   says `its value over temperature is not judged` names a part whose facts
+   give no `kept_celsius`: add its maker's curve. The junction line ends with
+   what RthetaJA rests on: the datasheet's JEDEC test board. A board unlike
+   it changes RthetaJA (SPRA953D, section 1.1, page 2): say in the README how
+   yours differs. Copy the sums into the version's README.
+4. Run `workcenter ratings . --strict`, then `workcenter design design.py
+   --route` and `workcenter gates . --strict`. The SIM gate runs `sim/ldo.cir`
+   at each temperature of `sim/corners.json` and holds U1's junction under the
+   pack's limit (`sim/thermal.json`), and the load to the IC's IOUT
+   (`sim/ldo.expect.json`). The deck draws U1's output at the least its
+   accuracy gives, where it dissipates the most; it does not model the IC's
+   regulation, so no bound holds `vout`. `workcenter gates .` prints 2
+   `not judged:` warnings, and `gates . --strict` is RED on those 2 alone: no
+   deck says `* deck: load-step U1` (the block's deck draws U1 and steps no
+   load), and C1 and C2 hold their makers' data while no deck holds a
+   capacitor or an inductor. Copy `templates/project/sim/load_step.cir` with
+   a model of U1 to judge the first (the library holds none of the TLV755P);
+   say both in the version's README until then.
+
 ## Adding an IC to a block
 
 1. Download the IC's datasheet under the workcenter's name into a folder
@@ -176,7 +260,8 @@ Spy-Bi-Wire header. `tests/boards/block_mcu.py` is a whole example.
    its `where`: section, table and page. A number you cannot find in the
    datasheet is not entered; the block then refuses that IC on 1 line that
    names the missing key (`blocks.BUCK_NAMES` and `blocks.BUCK_NUMBERS` list
-   what `buck` reads).
+   what `buck` reads; `blocks_ldo.LDO_NAMES`, `LDO_NUMBERS` and `LDO_WHERES`
+   what `ldo` reads).
 3. Add the datasheet to `rules/references/index.json`, and run
    `workcenter references rules`: it fails a source the index lacks.
 4. Write the IC's facts into `library/facts/` (the `ratings` skill).

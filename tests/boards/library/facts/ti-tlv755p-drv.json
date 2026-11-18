@@ -1,0 +1,30 @@
+{
+  "kind": "ic",
+  "mpn": "TLV75533PDRVR",
+  "family": "regulator.linear",
+  "source": {
+    "document": "TLV755P datasheet, SBVS320D",
+    "revision": "November 2017, revised September 2024",
+    "url": "https://www.ti.com/lit/ds/symlink/tlv755p.pdf",
+    "sha256": "96e2706d4b13656d2d550fdbb5be9861c56b058822109bb39a906d4ad1beb019",
+    "read": "2026-11-17",
+    "second_reader": "no"
+  },
+  "note": "The DRV package, WSON-6 with a thermal pad, pins of table 4-1 on page 3: the pad is GND, pin 7 of the footprint. The rest is the DBV entry's (ti-tlv755p.json), read from the same pages: the output's span is section 5.5's accuracy for an output of 1 V or more, -1.5 % to 1.5 %, page 5; the ground current is 40 uA, -40 to 125 C with no load, page 5. The 6 figures are the JEDEC rows of section 5.4 for the DRV column, page 5: RthetaJA 100.2, RthetaJC(top) 108.5, RthetaJB 64.3, psiJT 10.4, psiJB 64.8 C/W; RthetaJC(bot) 34.7 C/W is not entered, as the DBV entry has none. junction_max is the operating junction temperature of the absolute maximum ratings, page 4. The SHA256 is the copy of 2026-10-29; a copy fetched on 2026-11-17 has another SHA256 and the same text on every page before the packaging addendum",
+  "thermal": {"junction_max": 150, "theta_ja": 100.2, "theta_jc": 108.5, "theta_jb": 64.3, "psi_jt": 10.4, "psi_jb": 64.8, "page": [4, 5]},
+  "pins": [
+    {"numbers": ["6"], "name": "IN", "role": "supply", "abs": [-0.3, 6.0], "operating": [1.45, 5.5], "amps": 0.00004, "page": [3, 4, 5]},
+    {"numbers": ["3", "7"], "name": "GND", "role": "ground"},
+    {"numbers": ["4"], "name": "EN", "role": "input", "abs": [-0.3, 6.0], "operating": [0, 5.5], "page": [3, 4]},
+    {"numbers": ["2", "5"], "name": "NC", "role": "nc"},
+    {
+      "numbers": ["1"],
+      "name": "OUT",
+      "role": "regulated",
+      "abs": [-0.3, {"pin": "IN", "plus": 0.3}],
+      "volts": [3.2505, 3.3495],
+      "amps": 0.5,
+      "page": [3, 4, 5]
+    }
+  ]
+}

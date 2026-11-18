@@ -1,0 +1,29 @@
+{
+  "pack": "nasa-eee-inst-002",
+  "nets": {
+    "+5V": {
+      "volts": [
+        4.75,
+        5.25
+      ],
+      "source": "the input range of the ldo block U1: ldo(vin=(4.75, 5.25))"
+    },
+    "GND": {
+      "volts": [
+        0,
+        0
+      ],
+      "source": "the reference: J1 pin 2"
+    }
+  },
+  "ambient": {
+    "max": 30,
+    "source": "the ambient of the ldo block U1: ldo(ambient=(0, 30))"
+  },
+  "parts": {
+    "J2.1": {
+      "amps": 0.1,
+      "source": "the load on J2: 0.1 A at the most, this fixture's own"
+    }
+  }
+}
