@@ -257,10 +257,13 @@ How to use it:
 | `ambient` | object | none | `{"max": C, "source": "..."}`: the highest air temperature. A limit that falls with temperature is judged there. |
 | `parts` | object | none | What the board cannot say of a part: `REF.PIN` with `amps` for the load behind a connector's pin, `REF` with `amps` for the current through a part (RMS for a resistor, a transistor, a fuse, a ferrite and a switch, the average for a diode, the peak for an inductor), `REF` with `volts` for the greatest voltage across a capacitor or a resistor whose 2 nets move together; each with a `source`. A number the command would hold to nothing is refused once the part has facts: the `ratings` skill lists them. `REF` or `REF.PIN` with `watts`: the heat a part gives off, W, split over its pads by copper area, or on 1 pad (`U1.2`), the heat that leaves by that pad; not both for 1 part. `workcenter copper` reads it; `ratings` does not judge it. A 2-pin resistor with `amps` (on the part or on a pin) and a numeric Value gives I^2 R itself. |
 | `accepted` | list | none | Failures the owner takes on: `{"part", "rule", "why", "by"}`, `by` as `the owner's decision of YYYY-MM-DD`. An entry accepts 1 failure: where 2 of 1 part stand under 1 rule, `line` holds words of the line the entry means. An entry nothing fails under fails the run. |
+| `not_judged` | object | none | Items a block or the designer could not judge: under each item's name, `{"parts": [...], "why": "...", "source": "..."}`, `parts` a list of parts of the schematic. Each is printed as `not judged <name>: <why>`; `--strict` fails on it. The charger block writes it. |
 
 A part's facts are 1 entry of a file in `library/facts/`, in the project's
 folder or a folder above it; a rule pack is 1 file of `rules/ratings/`. The
 `ratings` skill has every key of both.
+
+An inductor's facts may give `ohms_dc`, its DC resistance at the most, in ohms (0 or more); `blocks.buck` reads it in its dropout sum. A pin of role `input`, `io` or `open_drain` may give `farads`, its greatest capacitance, and a pin of role `io` or `open_drain` `sink`, `{"amps", "volts"}`, the current it sinks at that low voltage; `blocks.i2c` reads both. A part of kind `crystal` gives `hertz`, `ohms_esr` and `farads_load`, and may give `farads_shunt` (C0 typical), `farads_shunt_max` (C0 at the most), `watts_drive` and `terminals` (the 2 pads of the crystal and where its datasheet says so); `blocks.mcu` reads them, and `workcenter ratings` judges none of them.
 
 The SIM gate reads 2 keys of a part's facts, from an entry that names the
 part by `mpn` or `mpns` and whose `source.sha256` is a row of
@@ -373,7 +376,7 @@ names.
 | `rules` | list of globs from the repository's root | none | The rule files `references rules` reads with no PATH: JSON rules, facts and `.kicad_dru` files. |
 | `code` | list of globs from the repository's root | none | The tool code and tests `references rules` reads for citations: `["tools/*.py", "tools/workcenter", "tests/*.py", "tests/boards/*.py", "ee-agent-kit/lead/*.py"]`. |
 | `numbers` | list of `{"pattern", "family"}` | none | The families of document numbers looked for in code, fab rule files and JSON rules' texts. A pattern that is not a regular expression is refused. |
-| an entry's `kind` | `standard`, `application note`, `datasheet`, `report`, `web page`, `paper` or `book` | none | The first 4 are held by `sha256`; a web page by its `values`; a paper or a book is cited and not held. |
+| an entry's `kind` | `standard`, `application note`, `datasheet`, `report`, `user's guide`, `web page`, `paper` or `book` | none | The first 5 are held by `sha256`; a web page by its `values`; a paper or a book is cited and not held. |
 | an entry's `names` | list of texts | `[]` | The texts code names the document by, e.g. `["SLVA477C"]`. |
 | a web page entry's `values` | list of `{"says", "for"}` | none | Each value the rules take from the page: the page's own text and the rule that takes it. |
 | a tool's or a test's `CITES` | `{"<index id>": "<where in it>"}` at module level | none | The documents the file cites. |
@@ -445,6 +448,7 @@ checkout) and `--json` stand before the listing's name.
 | `KICAD_SYMBOL_DIR` | path | `/usr/share/kicad/symbols` | Symbol libraries to read. |
 | `KICAD_FOOTPRINT_DIR` | path | `/usr/share/kicad/footprints` | Footprint libraries to read. |
 | `FREEROUTING_JAR` | path | `/opt/workcenters/ee/freerouting/freerouting.jar` | Used by `route()`. |
+| `Design.files` | dict | `{}` | Text files `workcenter design` writes beside the project, by path under it: a block's deck, `ratings.json`, `parts.csv`. A path that is absolute, climbs out with `..`, names the project folder, or names a file `write()` makes itself is refused before anything is written. |
 
 ## `tools/stretch.py`
 

@@ -588,7 +588,10 @@ When: a change is about to be called done.
    requirement's own sentence, not from the code's restatement of it; for
    a check over copper, 1 case for each kind of copper item reaching each
    other kind (track, arc, via, pad, pour); for a check of a project, 1
-   case with a nested board (M224 to M228).
+   case with a nested board (M224 to M228). For a circuit block: each
+   value a chosen part gives is held to the spec, each spec limit to the
+   datasheet's own equation for it, and each item the block cannot judge
+   goes where a command prints it (M238 to M243, M245 to M247).
 
 7. A branch put on `main` without a pull request (a board repository's
    version, on the owner's word) goes by a fast-forward push, never by
