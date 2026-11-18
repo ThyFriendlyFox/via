@@ -628,9 +628,22 @@ theta_jb holds no part. Prefer psi_jb or psi_jt.
    (SPRA953D, section 4, figure 4-1, page 10). So is a `from` whose figure
    the facts do not give: theta_ja judges every run. A junction from a
    stated temperature under the one theta_ja gives on a 2s2p board, which
-   SPRA953D calls a best case (section 1.2, page 3), holds no part. 2 keys
-   within 0.01 C of each other are refused. The part's `thermal` line names
-   the stated temperature and its source when its worst run used it.
+   SPRA953D calls a best case (section 1.2, page 3), holds no part. Only
+   that bound checks a stated temperature: when the facts give theta_ja on
+   the 1s0p board, on no board, or no theta_ja, the stated temperature is
+   checked against no board, and the part is not held (a warning, a
+   failure with `--strict`). A case on a heat sink is what theta_jc was
+   devised for (SPRA953D, section 2, page 6; section 2.2, equation 5, page
+   7): with theta_jc, name what holds the case in `heat_sink`, and the
+   2s2p bound does not apply; the statement and its source stand on their
+   own. `heat_sink` is refused with any other figure (psi_jt is not used
+   with a heat sink, section 3.2, page 10). 2 keys within 0.01 C of each
+   other are refused. The part's `thermal` line names the stated
+   temperature and its source when its worst run used it, and, when the
+   facts give theta_ja, the junction theta_ja gives at those runs and its
+   board, so the owner sees how far the statement moves the verdict.
+   Without `sim/thermal.json` the gate judges no junction and prints 1
+   line that says so.
 4. Run `workcenter sim <project>`. Read each line that starts with
    `thermal:`, and each line that starts with `corners.json: decks.`:
 
@@ -645,6 +658,8 @@ theta_jb holds no part. Prefer psi_jb or psi_jt.
    | `... not judged as written: sim/thermal.json states its board temperature at 85 C ambient only, ...` | State the temperature at that run's ambient too, or add theta_ja to the facts. |
    | `thermal: U1 (MPN): sim/thermal.json states its board temperature at 70 C ambient, where no run of ldo stands` | The ambient matches no run: write the run's temperature (the deck's own or a corner's). |
    | `thermal: U1 (MPN) not held: its facts (...) name no JEDEC board for theta_ja` | Write `boards` from the thermal table's footnote. A figure on no JEDEC board holds no part. |
+   | `... not held at 85 C: its stated board 85.001 C, which gives a junction of 96.035 C, was checked against no board: ...` | Nothing bounds the stated temperature. Judge the part on theta_ja (take `from` out), or, for a case on a heat sink, state theta_jc with `heat_sink`. |
+   | `thermal: no part's junction is judged: sim/thermal.json is not there, ...` | Name each part that dissipates power in `sim/thermal.json` (step 3). |
    | `corners.json: decks.ldo.temperature runs -20 C and 60 C, so 85 C of the file's -20 C and 85 C is not run for ldo` | The deck's own block leaves out a temperature of the file, an end or an inner one. Add it to the deck's block, or take the block out so the deck runs the file's. |
    | `... not judged: its deck ... did not run to its end` | Fix the deck first; its errors are in the same result. |
    | `... not judged at the corners of sim/corners.json: the file skips deck ...` | The deck's `skip`, `--nominal`, `temperature: false` or a narrower `temperature` block left the corners out. Run the part's power in a deck the corners run. |

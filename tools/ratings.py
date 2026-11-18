@@ -26,6 +26,8 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import clock
+
 # ---------------------------------------------------------------- the Value of a passive part
 
 # A schematic's Value as its writer meant it: m is milli and M is mega (ngspice reads both as milli, and
@@ -707,8 +709,10 @@ SHA256_RE = re.compile(r"[0-9a-fA-F]{64}")
 
 def _date(where: str, value: object, or_no: bool = False) -> None:
     """A date the calendar has, as YYYY-MM-DD. `no` too where a second reader may not have read yet:
-    any other word there would count as a reading. A day after today, by this machine's clock, has
-    seen no reading yet."""
+    any other word there would count as a reading. A day still to come has seen no reading yet: a
+    reader writes the day of their own zone, at most 1 day ahead of UTC (UTC+14), so a date after the
+    machine's day in UTC plus 1 is refused (`clock.wall_utc_today()`, the run's 1 reading of the
+    machine's clock, whatever SOURCE_DATE_EPOCH pins)."""
     if or_no and value == "no":
         return
     try:
@@ -717,7 +721,7 @@ def _date(where: str, value: object, or_no: bool = False) -> None:
         day = datetime.date.fromisoformat(value)
     except ValueError:
         raise Refusal(f"{where}: write {'`no`, or ' if or_no else ''}the date as YYYY-MM-DD") from None
-    if day > datetime.date.today():
+    if day > clock.wall_utc_today() + datetime.timedelta(days=1):
         raise Refusal(f"{where}: {value} is after today: write the date the document was read")
 
 

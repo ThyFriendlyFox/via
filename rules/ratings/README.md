@@ -213,7 +213,10 @@ table, or a company's. It has the same keys, and each rule its `where`. The comm
 an unknown stress, a rule with no `where`, a share that rises with the temperature (`falls_to` above
 `max`), or a document with no URL, SHA256 and date read. A URL is written whole, as
 `https://example.com/file.pdf`, a SHA256 as 64 hex digits and a date as `2026-11-17`; `second_reader`
-is `no` or the date. A date after today, by the machine's clock, is refused: no one has read on it yet.
+is `no` or the date. A date still to come is refused: no one has read on it yet. A reader writes the day
+of their own zone, which is at most 1 day ahead of UTC (UTC+14), so the date is compared in UTC: it is
+refused when it is after the machine's day in UTC plus 1 (`tools/clock.py`, `wall_utc_today`, the run's
+1 reading of the machine's clock, whatever `SOURCE_DATE_EPOCH` pins).
 
 A run that such a file judged says so. The first line, `report.md` and `report.json` name the pack
 by the path `ratings.json` gives, with `(the project's own)` after it:
