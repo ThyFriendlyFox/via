@@ -108,10 +108,31 @@ The voltage between 2 nets is the most their spans in `ratings.json` allow, as f
 voltage pack. `tools/creepage.py` judges every pair of nets with a voltage between them, on each outer
 layer:
 
-- **The copper** is read as polygons: a track with round ends, a pad as its rectangle or circle, a via
-  as a circle, a filled zone as KiCad filled it. A circle is drawn as 16 sides round it. A gap is never
-  read larger than it is: at most 0.25 mm x (1 / cos(pi / 16) - 1) = 0.0049 mm smaller on a 0.5 mm
-  track. A custom pad is taken as a square of its anchor's greater side.
+- **The copper** is read as polygons: a track with round ends, an arc track as a band round its curve
+  in 64 steps with its 2 round ends, a pad as its rectangle or circle, a via as a circle, a filled zone
+  as KiCad filled it. A circle is drawn as 16 sides round it. A gap is never read larger than it is: at
+  most r x (1 / cos(pi / 16) - 1) smaller at a round end of radius r, 0.0049 mm on a 0.5 mm track. A
+  pad's angle is the one in its own `(at x y angle)`, the board's: KiCad leaves it out at 0 degrees,
+  whatever the footprint's angle. A pad whose copper stands off its hole (`(drill ... (offset x y))`)
+  is read as a square round its hole, widened by the offset on each side. A trapezoid pad is read as
+  its rectangle. A custom pad is taken as a square of its anchor's greater side, and one with
+  primitives is named `not judged`, as is a pad with a padstack and any shape drawn on an outer copper
+  layer:
+  `not judged creepage on F.Cu: 1 shape drawn on the copper is not read (a gr_line at (112.5, 105))`.
+- **Copper with no net** (a pad, a track, a via or a zone) is a conductor the 2 nets' way can cross.
+  The shortest way from 1 net to the other across 1 or more such conductors is the sum of the gaps;
+  their own width counts nothing. A pair that holds on its straight gap but has such a way under the
+  pack's distance is `not judged`: `... 1.6 mm across copper with no net (a pad with no net at
+  (112.5, 107.5)), under the 3 mm asked at 400 V`.
+- **Between the 2 faces.** A pair with 1 net on F.Cu and the other on B.Cu has a way round the board's
+  edge or through a hole. It is not measured. The pair holds only when the least length such a way can
+  have reaches the pack's distance: the 2 nets' gaps to the nearest side of Edge.Cuts or of a hole
+  with no plating, plus the board's thickness; and never less than the way along 1 face between the 2
+  outlines. Through air: sqrt((the 2 gaps)^2 + thickness^2), and never less than the straight gap in 3
+  dimensions. Otherwise `not judged`: `creepage HV on F.Cu to GND on B.Cu at (109, 100.3): at least
+  2.2 mm round the board's edge or through a hole, 3 mm asked at 400 V`. Copper with no net within the
+  pack's distance of either net makes the pair `not judged` too. A shape on Edge.Cuts that is not read
+  (a curve, a footprint's line) leaves only the thickness.
 - **Clearance** is the straight gap between the 2 nets' copper.
 - **Creepage** is the straight gap, unless a slot stands on it. A slot is an inner cut of Edge.Cuts with
   4 corners, convex. The way then goes round the slot's corners: the shortest way on a graph of the
@@ -124,10 +145,16 @@ layer:
   the next row up and fails a gap under the row below; a gap between the 2 is `not judged`. Under the
   first row, a gap under its distance is `not judged`. Over the last row, every pair is `not judged`.
   A pack whose column falls as the voltage rises is refused: the rule needs each column to rise.
+- **A slot too narrow.** When a pair fails and a slot narrower than the pack's least width stands on
+  its straight gap, the slot fails on its own line: `fail slot /HV to GND on F.Cu at (112.1, 105): 0.8
+  mm wide, at least 1 mm to lengthen the way (pollution degree 2)`.
 - **Inner layers** have no surface: 1 `not judged` line for each inner layer that holds copper of 2 nets
   with a voltage between them.
-- **Not checked**: the way between the 2 faces, through a hole or round the board's edge; a third
-  conductor between the 2 nets.
+- **A pack of a project's own** is refused, with its file and place, when a table of ranges does not
+  start at 0 V, a condition's value holds a space, `slot.least_mm` is not an object, or a pack with no
+  clearance table has no first `not_judged` line to say why.
+- **Speed.** Each polygon keeps its box and its edges in a grid, and only a gap under the pack's
+  distance is looked for. A board of 150 nets and a zone of 4000 corners is judged in seconds.
 
 The DRC line names the pack: `board rules mil-hdbk-454c-g69: 1 fail, 0 not judged`. A failure is 1 line:
 
@@ -151,6 +178,11 @@ The DRC line names the pack: `board rules mil-hdbk-454c-g69: 1 fail, 0 not judge
      and the document does not say a slot counts. Move the copper apart.
    - `not judged creepage on In1.Cu`: no pack here judges copper inside the laminate. Keep the 2 nets on
      the outer layers, or judge them by another document.
+   - `not judged creepage A on F.Cu to B on B.Cu ... round the board's edge or through a hole`: move
+     the copper of either net away from the edge or the hole until the sum of the 2 gaps and the
+     thickness reaches the distance.
+   - `not judged ... across copper with no net`: give the copper a net, or move it out of the way.
+   - `fail slot ...`: widen the slot to the pack's least width.
 4. GREEN when the line reads `0 fail, 0 not judged`.
 
 ### mil-hdbk-454c-g69
@@ -159,7 +191,10 @@ MIL-HDBK-454C, "General Guidelines for Electronic Equipment", 21 September 2021,
 the Defense Logistics Agency's ASSIST (https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=115984,
 image "Revision C", 158 pages). Free from its issuer. Read 2026-11-17, with no second reader yet. Each
 download carries its own time stamp on every page, so each one has a SHA256 of its own: the index names
-the copy the pack was written from.
+the copy the pack was written from. The pack's `text` holds what a second reader can match: the SHA256
+of the text of PDF pages 129 and 130 (69-1 and 69-2), from `pdftotext -f 129 -l 130 -layout` (poppler
+24.02.0), with each line that holds `Source: https://assist.dla.mil -- Downloaded: ` removed. 2
+downloads of 2026-11-17 gave the same, b2547e85...
 
 | What | Where | Numbers |
 |---|---|---|

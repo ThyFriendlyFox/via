@@ -8,6 +8,8 @@ with `workcenter design tests/boards/<fixture>/design.py`.
 pass:  J2 at x 115: 3.3 mm.
 fail:  J2 at x 113.7: 2 mm.
 slot:  J2 at x 115, and a slot cut through the board from (112, 105) to (113, 110): 1 mm wide, 5 mm long.
+clear: J2 at x 113: 1.3 mm.
+narrow: J2 at x 115, and a slot from (112.1, 105) to (112.9, 110): 0.8 mm wide.
 """
 
 from __future__ import annotations
@@ -24,8 +26,11 @@ NAMESPACE = {
     "pass": "5c1e7a2d-4b6f-4e0a-9d3c-2f8b1a6e7c01",
     "fail": "5c1e7a2d-4b6f-4e0a-9d3c-2f8b1a6e7c02",
     "slot": "5c1e7a2d-4b6f-4e0a-9d3c-2f8b1a6e7c03",
+    "clear": "5c1e7a2d-4b6f-4e0a-9d3c-2f8b1a6e7c04",
+    "narrow": "5c1e7a2d-4b6f-4e0a-9d3c-2f8b1a6e7c05",
 }
-J2_X = {"pass": 115.0, "fail": 113.7, "slot": 115.0}
+J2_X = {"pass": 115.0, "fail": 113.7, "slot": 115.0, "clear": 113.0, "narrow": 115.0}
+CUTOUTS = {"slot": [(112.0, 105.0, 113.0, 110.0)], "narrow": [(112.1, 105.0, 112.9, 110.0)]}
 
 
 def build(variant: str) -> kicadgen.Design:
@@ -55,6 +60,6 @@ def build(variant: str) -> kicadgen.Design:
         pcb_at=(J2_X[variant], 107.5),
         nets={"1": "GND"},
     )
-    if variant == "slot":
-        d.cutouts = [(112.0, 105.0, 113.0, 110.0)]
+    if variant in CUTOUTS:
+        d.cutouts = CUTOUTS[variant]
     return d

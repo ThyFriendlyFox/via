@@ -68,6 +68,56 @@ def test_pass_creepage_slot_passes_strict_round_its_slot(tmp_path):
     assert "board rules ti-slup419-creepage: 0 fail, 0 not judged" in text
 
 
+MIL_CREEP = "[MIL-HDBK-454C: guideline 69, 4.1 page 69-1; table 69-I, leakage distances, page 69-2]"
+MIL_CLEAR = "[MIL-HDBK-454C: guideline 69, 4.1 page 69-1; table 69-I, clearance, page 69-2]"
+TI_CREEP = "[SLUP419: table 3, page 7]"
+TI_SLOT = (
+    "[SLUP419: table 7 and figure 9, page 11: the least width of a slot cut into a PCB to increase creepage]"
+)
+
+
+def fails(text: str) -> list[str]:
+    return [line.strip()[2:] for line in text.splitlines() if line.strip().startswith("- fail")]
+
+
+def test_fail_creepage_clearance_breaks_both_rules_of_the_mil_pack(tmp_path):
+    """Centres 3 mm apart: 3 - 1.7 = 1.3 mm, under the 1.5 mm of clearance and the 3 mm of leakage of
+    table 69-I, page 69-2 (300 to 600 V, condition A, enclosure I). 2 lines on each face."""
+    code, text = say("drc", BOARDS / "fail-creepage-clearance", "--out", tmp_path, "--strict")
+    assert code == 1, text
+    assert "board rules mil-hdbk-454c-g69: 4 fail, 0 not judged" in text
+    at = "/HV to GND on {} at (110.85, 106.65)"
+    assert fails(text) == [
+        line
+        for layer in ("F.Cu", "B.Cu")
+        for line in (
+            f"fail clearance {at.format(layer)}: 1.3 mm through air at 400 V, at least 1.5 mm (condition A) "
+            + MIL_CLEAR,
+            f"fail creepage {at.format(layer)}: 1.3 mm along the surface at 400 V, at least 3 mm (condition "
+            "A, enclosure I) " + MIL_CREEP,
+        )
+    ]
+
+
+def test_fail_creepage_slot_breaks_both_rules_of_the_ti_pack(tmp_path):
+    """3.3 mm straight and a slot 0.8 mm wide between: table 7, page 11, counts a slot from 1.0 mm at
+    pollution degree 2, so the way crosses it, 3.3 mm, under the 4.0 mm of table 3, page 7, at 400 V.
+    The creepage and the slot fail on each face."""
+    code, text = say("drc", BOARDS / "fail-creepage-slot", "--out", tmp_path, "--strict")
+    assert code == 1, text
+    assert "board rules ti-slup419-creepage: 4 fail, 0 not judged" in text
+    assert fails(text) == [
+        line
+        for layer in ("F.Cu", "B.Cu")
+        for line in (
+            f"fail creepage /HV to GND on {layer} at (110.85, 106.65): 3.3 mm along the surface at 400 V, at "
+            "least 4 mm (pollution degree 2, material group III) " + TI_CREEP,
+            f"fail slot /HV to GND on {layer} at (112.1, 105): 0.8 mm wide, at least 1 mm to lengthen the "
+            "way (pollution degree 2) " + TI_SLOT,
+        )
+    ]
+
+
 def test_the_slot_fixture_holds_its_slot_and_measures_5_022_mm():
     board = next((BOARDS / "pass-creepage-slot").glob("*.kicad_pcb"))
     cu = creepage.read_copper(board.read_text(encoding="utf-8"))
