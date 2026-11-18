@@ -39,6 +39,12 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-18 — The container image
+
+Launchpad's package host answered 503 on and off for more than an hour, and CI's runs failed or waited in their install step. The owner asked for the container image. It is built from the same install.sh as CI, on Ubuntu 24.04, for amd64 and arm64 (the KiCad 10 PPA serves both; GitHub gives public repositories arm64 runners); its tag is the sha256 of the toolchain's 3 files. CI's full job runs inside it when the registry has the image of its own files and installs as before when not. A user id with no home stops kicad-cli (`Environment variable HOME is empty`), so the image gives every user id a home. The image leaves out the example boards and the site (394 MB of the working tree): no tool it runs reads them. What the image saves first is the dependence on a third party's host, not time. Not built yet: the first build is the pull request's.
+
+Evidence: `tests/test_image.py` (44 tests); landing branch `wip/land-image`.
+
 ## 2026-11-18 — The linear regulator, the sixth circuit block
 
 The linear regulator block was built after the buck and took its first review's lesson: a block checks the output it builds, not the output it was asked for. A fixed-output LDO builds its nominal, so the block reads it from the datasheet's device nomenclature (table 8-1) and refuses an IC whose nominal is not the output asked; an asked 3.26 V used to pass because it lay inside the 3.3 V part's 1.5 % accuracy. The second fixture doubles the load to 0.2 A: the SOT-23-5's junction would reach 122.44 C against the NASA pack's 85 C, so the block takes the WSON-6 (100.2 C/W, 70.078 C).

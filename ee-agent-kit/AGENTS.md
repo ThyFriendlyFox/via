@@ -149,6 +149,7 @@ provides them. `python3 tools/workcenter doctor` says what is present.
 | A delay OpenSTA does not count | `check_setup` lists a port with no delay. It does not list a port whose delay has `-min` alone, or no `-clock`: no setup path through the pin is judged, and nothing says so. A `set_clock_uncertainty` under 0 and a `set_timing_derate -late` under 1 are taken as written, by the layout build too, which then repairs nothing. Tcl takes the last of an option written 2 times. `read_sdc` in `tools/chipflow.py` fails each. |
 | A path with a space | Yosys reads its script word by word and takes no quoting: a project under `my chips/` fails SYNTH with `Can't open input file`. `chip` refuses a project, an output folder or a source file whose path holds white space, before any gate. |
 | A run that crosses midnight | A health gate takes 20 to 30 minutes. A test that keeps the day of its load, or a command that reads the clock 2 times, sees 2 days in 1 run and fails for no fault of the code (M233). `tools/clock.py` is the 1 reader; a test pins the day with `SOURCE_DATE_EPOCH`. |
+| Docker's `--user` | A user id with no passwd line has no usable home: kicad-cli stops with `Environment variable HOME is empty` and the CLI's `Path.home()` raises. The image sets `HOME=/home/workcenter` (mode 1777) after its build's doctor, which runs with `HOME=/root`, so the shared home starts empty. |
 
 ## House style
 

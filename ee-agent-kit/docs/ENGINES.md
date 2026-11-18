@@ -8,8 +8,7 @@ variable (`docs/CONFIGURATION.md`); the gate that uses it is fixed.
 
 KiCad 10's command line. Powers the ERC, DRC, and EXPORT gates and the
 DSN export step of autoroute. Headless; needs no display. Installed from
-the KiCad PPA by `install.sh`, or present in the official
-`kicad/kicad:10.0` image.
+the KiCad PPA by `install.sh`, in a machine or in the container image.
 
 ```sh
 KICAD_CLI=kicad-cli   # default

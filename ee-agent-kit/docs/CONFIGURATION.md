@@ -312,6 +312,20 @@ part by `mpn` or `mpns` and whose `source.sha256` is a row of
 | `--work` | flag of `verify/testshards.py run` | a new folder under `$TMPDIR` | Where the shards' logs go. A folder named here is kept, and must be empty or new; a folder of its own is deleted when green and kept when red. |
 | `--table` | flag of `verify/testshards.py run` and `table` | `verify/shards.csv` | The table the files are split by, or written from. |
 
+## The container image (`Dockerfile`, `.github/workflows/image.yml`, `tools/image.py`)
+
+| Field | Type | Default | Use |
+|---|---|---|---|
+| `CI_FULL_IN_IMAGE` | repository variable (Settings, Secrets and variables, Actions, Variables) | unset | `0` sends CI's `full` job to install.sh on every run; anything else lets it run in the image of its own toolchain when the registry gives it. |
+| `TOOLCHAIN_TAG` | `docker build --build-arg` | empty | The content tag the workflow worked out; `image.py record` refuses the build when the files it copied make another. Empty: not compared. |
+| `WORKCENTER_REVISION` | `docker build --build-arg` | empty | The commit the image is built from, written into `/opt/workcenters/ee/image.json`. |
+| `HOME` | the image's environment | `/home/workcenter` (mode 1777) | KiCad and the CLI need a home they can write, for any `--user`. |
+| `--rev REV` | `workcenter image`, `image.py tag` | `HEAD` | The commit whose `Dockerfile`, `install.sh` and `requirements.txt` make the content tag. |
+| `--repo DIR`, `--owner OWNER`, `--json`, `--github-output` | `image.py tag` | repo: the workcenter's checkout | `--owner` also prints the image's name under that owner, in lower case; `--github-output` appends `tag=` (and `image=`) to `$GITHUB_OUTPUT`. |
+| `--base REV`, `--head REV`, `--enabled VALUE` | `image.py decide`, with `--repo DIR`, `--owner OWNER` (required) and `--github-output` | base: required (empty: none); head: `HEAD`; repo: the working folder | Where CI's `full` job runs: `where=image` and the image by digest, or `where=install`, with the reason. `--enabled` is the value of `CI_FULL_IN_IMAGE`. |
+| `--out FILE`, `--src DIR`, `--expect-tag TAG`, `--revision REV` | `image.py record` (the Dockerfile's last RUN) | out: `/opt/workcenters/ee/image.json`; src: the workcenter's checkout | Writes the image's record; exit 1 and nothing written on a doctor that does not pass or on another tag than `--expect-tag`. |
+| `--src DIR`, `--record FILE` | `image.py check` (CI, inside the image) | src: the working folder; record: `/opt/workcenters/ee/image.json` | Exit 1 when a toolchain file of the checkout is not the one the image was built from. |
+
 ## The workflow Board (`.github/workflows/board.yml`, `tools/board.py`)
 
 | Field | Type | Default | Use |
