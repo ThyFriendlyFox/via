@@ -18,6 +18,7 @@ The numbers are read from these documents:
 
 from __future__ import annotations
 
+import datetime
 import json
 import shutil
 import subprocess
@@ -25,6 +26,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
@@ -32,6 +34,7 @@ BOARDS = ROOT / "tests" / "boards"
 PACKS = ROOT / "rules" / "ratings"
 FACTS = BOARDS / "library" / "facts"
 sys.path.insert(0, str(ROOT / "tools"))
+import clock  # noqa: E402
 import ratings  # noqa: E402
 import simcorners  # noqa: E402
 import thermal  # noqa: E402
@@ -44,7 +47,7 @@ CITES = {
     "nasa-eee-inst-002": "section M4, table 4, page 10 of 10; section S1, pages 12 and 13 of 13",
 }
 
-needs_ngspice = pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed")
+needs_ngspice = engine(pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed"))
 
 ECSS = ratings.read_pack(PACKS / "ecss-q-st-30-11c-rev2.json")
 NASA = ratings.read_pack(PACKS / "nasa-eee-inst-002.json")
@@ -109,6 +112,20 @@ def test_the_regulator_s_facts_name_the_jedec_board_of_its_5_figures_and_were_re
         "page": 5,
     }
     assert entry.data["source"]["second_reader"] == "2026-11-18" and entry.read_twice
+
+
+def test_the_drv_regulator_s_facts_name_the_2s2p_board_of_its_5_figures():
+    """SBVS320D, section 5.4, footnote 2, page 5: the JEDEC rows, the DRV column's among them, apply to
+    the JEDEC standard 2s2p board. pass-block-ldo-2x's U1 is held on them."""
+    entry = {f.name: f for f in FACTS_LIST}["TLV75533PDRVR"]
+    assert entry.data["thermal"]["boards"] == {
+        "theta_ja": "2s2p",
+        "theta_jc": "2s2p",
+        "theta_jb": "2s2p",
+        "psi_jt": "2s2p",
+        "psi_jb": "2s2p",
+        "page": 5,
+    }
 
 
 def test_the_2_boards_are_those_spra953d_names_after_jesd51():
@@ -407,6 +424,116 @@ def test_a_stated_junction_under_the_one_theta_ja_gives_on_the_2s2p_board_holds_
     assert part["held"] is None and part["worst"]["junction"] == pytest.approx(96.035848)
 
 
+# theta_ja 231.1 on the low-k 1s0p board, psi_jb 63.8 and psi_jt 28.4 on the 2s2p board: the TLV755P's
+# figures (SBVS320D, section 5.4, page 5) with theta_ja's board changed, as in the reviewer's variants.
+ONE_S = {
+    "junction_max": 150,
+    "theta_ja": 231.1,
+    "psi_jb": 63.8,
+    "psi_jt": 28.4,
+    "page": 5,
+    "boards": {"theta_ja": "1s0p", "psi_jb": "2s2p", "psi_jt": "2s2p", "page": 5},
+}
+NO_JA = {
+    **{k: v for k, v in ONE_S.items() if k != "theta_ja"},
+    "boards": {"psi_jb": "2s2p", "psi_jt": "2s2p", "page": 5},
+}
+JA_NO_BOARD = {**ONE_S, "boards": {"psi_jb": "2s2p", "psi_jt": "2s2p", "page": 5}}
+EPSILON = {"figure": "psi_jb", "celsius": {"-20": -19.999, "25": 25.001, "85": 85.001}, "source": "measured"}
+EPS_RUNS = (("as written", 25.0, 0.1702), ("-20 C", -20.0, 0.17), ("85 C", 85.0, 0.17295))
+UNCHECKED = (
+    "thermal: Q1 (Q-1) not held as written (and 2 more runs): its stated board 25.001 C, which gives a "
+    "junction of 35.86 C, was checked against no board: {why}, and only theta_ja on the high-k 2s2p board "
+    "of JESD 51-7, which SPRA953D calls a best case (section 1.2, page 3), bounds a stated temperature"
+)
+
+
+@pytest.mark.parametrize(
+    ("term", "why"),
+    [
+        (
+            ONE_S,
+            "its facts give theta_ja on the low-k 1s0p board of JESD 51-3, which SPRA953D calls a typical "
+            "case",
+        ),
+        (NO_JA, "its facts give no theta_ja"),
+        (JA_NO_BOARD, "its facts name no JEDEC board for theta_ja"),
+    ],
+)
+def test_a_stated_temperature_no_2s2p_theta_ja_bounds_holds_no_part(tmp_path, term, why):
+    """A board 0.001 C above the air at each ambient. At 85 C and 0.17295 W, psi_jb gives 85.001 + 63.8
+    x 0.17295 = 96.035 C, inside 110 C, where theta_ja gives 85 + 231.1 x 0.17295 = 124.97 C, over it.
+    Only theta_ja on the 2s2p board, a best case (SPRA953D, section 1.2, page 3), bounds the statement;
+    with none the stated board is judged by nothing, and the part is not held. As written: 25.001 + 63.8
+    x 0.1702 = 35.86 C."""
+    plan = plan_of(tmp_path, {"Q1": {"mpn": "Q-1", "watts": "ldo.p_u1", "source": "s", "from": EPSILON}})
+    judged = thermal.judge(plan, runs_at(*EPS_RUNS), facts_with(term), ECSS)
+    assert judged["failures"] == []
+    assert judged["not_judged"] == [UNCHECKED.format(why=why)]
+    part = judged["parts"]["Q1"]
+    assert part["held"] is None and part["worst"]["junction"] == pytest.approx(96.03521)
+
+
+def test_a_stated_temperature_names_the_junction_theta_ja_gives_there_and_its_board(tmp_path):
+    """Where a stated board judged every run, theta_ja's junction is still on the record: at 85 C and
+    0.17295 W, 85 + 231.1 x 0.17295 = 124.97 C on the 1s0p board, over the 110 C the board's 96.035 C is
+    under. With no theta_ja in the facts there is none."""
+    plan = plan_of(tmp_path, {"Q1": {"mpn": "Q-1", "watts": "ldo.p_u1", "source": "s", "from": EPSILON}})
+    part = thermal.judge(plan, runs_at(*EPS_RUNS), facts_with(ONE_S), ECSS)["parts"]["Q1"]
+    assert part["theta_ja_gives"] == {
+        "run": "85 C",
+        "ambient": 85.0,
+        "junction": pytest.approx(124.968745),
+        "theta_ja": 231.1,
+        "board": "1s0p",
+    }
+    part = thermal.judge(plan, runs_at(*EPS_RUNS), facts_with(NO_JA), ECSS)["parts"]["Q1"]
+    assert "theta_ja_gives" not in part
+
+
+HEAT_SINK = "an aluminium heat sink on the case, made up for the test"
+SUNK = {"figure": "theta_jc", "celsius": {"25": 27, "85": 87}, "source": "a thermocouple through the sink"}
+
+
+def test_a_case_stated_on_a_heat_sink_is_not_bound_by_the_2s2p_board(tmp_path):
+    """RthetaJC was devised for a case on a heat sink (SPRA953D, section 2, page 6; section 2.2, equation
+    5, page 7). theta_jc 118.4 C/W: as written 27 + 118.4 x 0.1702 = 47.152 C, under the 25 + 231.1 x
+    0.1702 = 64.333 C theta_ja gives on the 2s2p board; at 85 C 87 + 118.4 x 0.17295 = 107.48 C, inside
+    110 C. Stated on a heat sink, the part is held; without it, the best case holds it not."""
+    plan = plan_of(tmp_path, {"U1": {**U1, "from": {**SUNK, "heat_sink": HEAT_SINK}}})
+    runs = runs_at(("as written", 25.0, 0.1702), ("85 C", 85.0, 0.17295))
+    judged = thermal.judge(plan, runs, FACTS_LIST, ECSS)
+    assert judged["failures"] == [] and judged["not_judged"] == []
+    part = judged["parts"]["U1"]
+    assert part["held"] is True and part["worst"]["junction"] == pytest.approx(107.47728)
+    assert part["stated"]["heat_sink"] == HEAT_SINK
+    plan = plan_of(tmp_path, {"U1": {**U1, "from": SUNK}})
+    judged = thermal.judge(plan, runs, FACTS_LIST, ECSS)
+    assert judged["parts"]["U1"]["held"] is None
+    assert judged["not_judged"][0].startswith(
+        "thermal: U1 (TLV75533PDBVR) not held as written (and 1 more run): its stated case 27 C gives a "
+        "junction of 47.152 C, under the 64.333 C theta_ja gives"
+    )
+
+
+@pytest.mark.parametrize("figure", ["psi_jb", "psi_jt", "theta_jb"])
+def test_a_heat_sink_is_stated_with_theta_jc_only(tmp_path, figure):
+    """SPRA953D, section 3.2, page 10: psi_jt should not be used when a heat sink is applied."""
+    (tmp_path / "thermal.json").write_text(
+        json.dumps(
+            {"pack": "p", "parts": {"U1": {**U1, "from": {**SUNK, "figure": figure, "heat_sink": HEAT_SINK}}}}
+        ),
+        encoding="utf-8",
+    )
+    plan, problems = thermal.read_plan(tmp_path, ["ldo"])
+    assert plan is None
+    assert problems == [
+        "thermal.json: parts: U1: from: heat_sink: a heat sink is stated with theta_jc only: RthetaJC was "
+        "devised for a case on a heat sink (SPRA953D, section 2, page 6; section 2.2, equation 5, page 7), "
+        f"and psi_jt should not be used with one (section 3.2, page 10); `from` names {figure}"
+    ]
+
+
 def test_a_junction_from_theta_jb_holds_no_part(tmp_path):
     """SPRA953D, section 4, page 10: RthetaJB is useful for a first-pass estimation, and no bound is
     given. A board at 90 C at 60 C ambient, 0.1 W: 90 + 64.4 x 0.1 = 96.44 C, inside 110 C and above the
@@ -477,7 +604,10 @@ def test_a_part_with_no_theta_ja_is_judged_only_where_its_temperature_is_stated(
     assert judged["failures"] == []
     assert judged["not_judged"] == [
         "thermal: Q1 (Q-1) not judged as written: sim/thermal.json states its board temperature at 85 C "
-        "ambient only, and its facts give no theta_ja"
+        "ambient only, and its facts give no theta_ja",
+        "thermal: Q1 (Q-1) not held at 85 C: its stated board 90 C, which gives a junction of 92.5 C, was "
+        "checked against no board: its facts give no theta_ja, and only theta_ja on the high-k 2s2p board of "
+        "JESD 51-7, which SPRA953D calls a best case (section 1.2, page 3), bounds a stated temperature",
     ]
     part = judged["parts"]["Q1"]
     assert (part["runs"], part["held"], part["worst"]["junction"]) == (1, None, 92.5)
@@ -556,7 +686,10 @@ def test_a_junction_rule_takes_its_own_reading_or_its_document_s(tmp_path):
     path.write_text(json.dumps(card), encoding="utf-8")
     with pytest.raises(ratings.Refusal) as caught:
         ratings.read_pack(path)
-    assert str(caught.value).startswith("pack.json: rule 12: second_reader: write `no`, or the date")
+    # The junction rule is the pack's last: its number is the count of the pack's rules.
+    assert str(caught.value).startswith(
+        f"pack.json: rule {len(card['rules'])}: second_reader: write `no`, or the date"
+    )
 
 
 def test_a_reading_dated_after_today_is_refused(tmp_path):
@@ -574,6 +707,39 @@ def test_a_reading_dated_after_today_is_refused(tmp_path):
         with pytest.raises(ratings.Refusal) as caught:
             ratings._facts("part.json", {**MOSFET, "source": {**SOURCE, key: "2099-01-01"}})
         assert f"{key}: 2099-01-01 is after today" in str(caught.value)
+
+
+def at_wall(monkeypatch, moment: str) -> None:
+    """Pin the machine's clock, the 1 place a tool reads it (tools/clock.py `_wall`), to an aware moment."""
+    monkeypatch.setattr(clock, "_wall", lambda: datetime.datetime.fromisoformat(moment))
+
+
+def test_a_reading_is_judged_on_the_clock_module_s_day_and_a_day_ahead_for_time_zones(monkeypatch, tmp_path):
+    """A reader writes the day of their own zone, up to 1 day ahead of UTC (UTC+14), so a date is
+    refused only after the machine's day in UTC plus 1. 2027-03-01 20:00 at UTC-8 is 2027-03-02 04:00
+    UTC: 2027-03-03 is accepted, 2027-03-04 refused."""
+    card = json.loads((PACKS / "ecss-q-st-30-11c-rev2.json").read_text(encoding="utf-8"))
+    junction = next(r for r in card["rules"] if r["stress"] == "junction.temperature")
+    path = tmp_path / "pack.json"
+    at_wall(monkeypatch, "2027-03-01T20:00:00-08:00")
+    junction["second_reader"] = "2027-03-03"
+    path.write_text(json.dumps(card), encoding="utf-8")
+    ratings.read_pack(path)
+    junction["second_reader"] = "2027-03-04"
+    path.write_text(json.dumps(card), encoding="utf-8")
+    with pytest.raises(ratings.Refusal) as caught:
+        ratings.read_pack(path)
+    assert "second_reader: 2027-03-04 is after today" in str(caught.value)
+
+
+def test_the_shipped_readings_stand_on_a_machine_still_on_the_day_before(monkeypatch):
+    """The 2 packs' junction rules and the TLV755P facts carry 2026-11-18. A machine at UTC-8 whose day
+    is still 2026-11-17 reads them, and so does one at UTC whose day is 2026-11-17."""
+    for moment in ("2026-11-17T20:00:00-08:00", "2026-11-17T01:00:00+00:00"):
+        at_wall(monkeypatch, moment)
+        for name in ("ecss-q-st-30-11c-rev2.json", "nasa-eee-inst-002.json"):
+            ratings.read_pack(PACKS / name)
+        ratings.read_facts(FACTS)
 
 
 def test_a_part_names_what_rests_on_1_reading(tmp_path):
@@ -684,3 +850,55 @@ def test_a_passing_line_names_the_stated_temperature_and_its_source(tmp_path):
     assert (
         "(60 C, R1 -1 %), from board 90 C at 60 C ambient (a board temperature made up for the test);" in line
     )
+
+
+def sim_text(project: Path, out: Path, *flags: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, str(CLI), "sim", str(project), "--out", str(out), *flags],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+@needs_ngspice
+def test_a_stated_board_a_hair_above_the_air_on_a_1s0p_theta_ja_fails_strict(tmp_path):
+    """The reviewer's eps_1s0p_psi_jb: the TLV755P's facts with theta_ja on the 1s0p board, a board
+    stated 0.001 C above the air at -20, 25 and 85 C. psi_jb gives 85.001 + 63.8 x 0.17295 = 96.035 C at
+    85 C, R1 1 % low; theta_ja there gives 85 + 231.1 x 0.17295 = 124.97 C, over 110 C. Nothing bounds
+    the stated board, so the part is not held and --strict fails; the line names theta_ja's junction."""
+    project = copy_of(tmp_path, "fail-sim-thermal")
+    facts_file = tmp_path / "boards" / "library" / "facts" / "ti-tlv755p.json"
+    facts = json.loads(facts_file.read_text(encoding="utf-8"))
+    facts["thermal"]["boards"]["theta_ja"] = "1s0p"
+    facts_file.write_text(json.dumps(facts), encoding="utf-8")
+    plan = json.loads((project / "sim" / "thermal.json").read_text(encoding="utf-8"))
+    plan["parts"]["U1"]["from"] = EPSILON
+    (project / "sim" / "thermal.json").write_text(json.dumps(plan), encoding="utf-8")
+    proc = sim_text(project, tmp_path / "out", "--strict")
+    assert proc.returncode == 1, proc.stdout
+    assert (
+        "thermal: U1 (TLV75533PDBVR) not held as written (and 10 more runs): its stated board 25.001 C, "
+        "which gives a junction of 35.86 C, was checked against no board: its facts give theta_ja on the "
+        "low-k 1s0p board of JESD 51-3, which SPRA953D calls a typical case" in proc.stdout
+    )
+    line = next(x for x in proc.stdout.splitlines() if x.startswith("thermal U1:"))
+    assert "96.035 C at its worst of 11 runs (85 C, R1 -1 %), from board 85.001 C at 85 C ambient" in line
+    assert (
+        "; where a stated temperature judged, theta_ja 231.1 C/W on the low-k 1s0p board of JESD 51-3 gives "
+        "124.97 C at its worst (85 C, R1 -1 %)" in line
+    )
+
+
+@needs_ngspice
+def test_a_project_with_decks_and_no_thermal_file_is_told_no_junction_is_judged(tmp_path):
+    """fail-sim-thermal with no sim/thermal.json: U1 reaches 124.97 C at 85 C on theta_ja, and the gate,
+    which judges only the parts the file names, says that it judged no junction."""
+    project = copy_of(tmp_path, "fail-sim-thermal")
+    (project / "sim" / "thermal.json").unlink()
+    proc = sim_text(project, tmp_path / "out")
+    said = (
+        "thermal: no part's junction is judged: sim/thermal.json is not there, and the gate judges only the "
+        "parts it names (the simulate skill, A part's temperature)"
+    )
+    assert said in proc.stdout.splitlines(), proc.stdout
