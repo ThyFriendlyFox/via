@@ -1023,7 +1023,7 @@ def gate_sim(
         ambient = written_at if len(named) < 2 else f"the deck ran at {th.celsius(named)}"
         heat_runs[deck.stem] = [(th.WRITTEN, ambient, measures)] if ran_clean else None
         own = corners.get(deck.stem) if corners else None
-        # A deck's own temperature block that leaves out an end of the file's span: those corners never run.
+        # A deck's own temperature block that leaves out a temperature of the file: that corner never runs.
         left = sc.left_out(own.temperatures, corner_temps) if own and not own.skip else []
         narrower = ""
         if left:

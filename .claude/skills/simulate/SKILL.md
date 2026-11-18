@@ -429,9 +429,11 @@ Where the project knows the case, the board or the package top's
 temperature (measured, or computed by `workcenter copper`), the gate takes
 the junction from it: TJ = T(PCB) + psi_jb x power (SPRA953D, section
 5.1, equation 9, page 11), TJ = TC + psi_jt x power (section 3, equation
-8, page 8). theta_jc and theta_jb put all of the power through 1 path, so
-the junction they give is above the real one (section 2.2, equation 4,
-page 7; section 5.1, page 11). Prefer psi_jb or psi_jt.
+8, page 8). theta_jc puts all of the power through the case, so the
+junction it gives is above the real one (section 2.2, equation 4, page 7).
+SPRA953D calls theta_jb useful for a first-pass estimation only, and gives
+no bound on the junction it gives (section 4, page 10). Prefer psi_jb or
+psi_jt.
 
 1. Give the part its thermal facts, in the facts file `workcenter
    ratings` reads (`library/facts/`, the `ratings` skill). Copy the
@@ -467,8 +469,12 @@ page 7; section 5.1, page 11). Prefer psi_jb or psi_jt.
    "from": {"figure": "psi_jb", "celsius": {"85": 101.5},
             "source": "workcenter copper, build/copper/report.json, hottest near U1, air 85 C"}
    ```
-   A run at an ambient `from` names is judged from that temperature; the
-   other runs from theta_ja.
+   A run within 0.01 C of an ambient `from` names is judged from that
+   temperature; the other runs from theta_ja. A temperature under its own
+   ambient is set aside, and the part is not held: the part's heat flows
+   from its junction through its case and board to the air (SPRA953D,
+   section 4, figure 4-1, page 10). 2 keys within 0.01 C of each other are
+   refused.
 4. Run `workcenter sim <project>`. Read each line that starts with
    `thermal:`, and each line that starts with `corners.json: decks.`:
 
@@ -483,7 +489,7 @@ page 7; section 5.1, page 11). Prefer psi_jb or psi_jt.
    | `... not judged as written: sim/thermal.json states its board temperature at 85 C ambient only, ...` | State the temperature at that run's ambient too, or add theta_ja to the facts. |
    | `thermal: U1 (MPN): sim/thermal.json states its board temperature at 70 C ambient, where no run of ldo stands` | The ambient matches no run: write the run's temperature (the deck's own or a corner's). |
    | `thermal: U1 (MPN) not held: its facts (...) name no JEDEC board for theta_ja` | Write `boards` from the thermal table's footnote. A figure on no JEDEC board holds no part. |
-   | `corners.json: decks.ldo.temperature runs -20 C and 60 C, so 85 C of the file's -20 C and 85 C is not run for ldo` | The deck's own block leaves out an end of the file's range. Widen the deck's block, or take it out so the deck runs the file's. |
+   | `corners.json: decks.ldo.temperature runs -20 C and 60 C, so 85 C of the file's -20 C and 85 C is not run for ldo` | The deck's own block leaves out a temperature of the file, an end or an inner one. Add it to the deck's block, or take the block out so the deck runs the file's. |
    | `... not judged: its deck ... did not run to its end` | Fix the deck first; its errors are in the same result. |
    | `... not judged at the corners of sim/corners.json: the file skips deck ...` | The deck's `skip`, `--nominal`, `temperature: false` or a narrower `temperature` block left the corners out. Run the part's power in a deck the corners run. |
    | `... not judged as written: the deck ran at 25 C and 85 C, ...` | The deck sets more than 1 temperature, so the run that printed the power is not known. Run 1 temperature per deck; put the others in `sim/corners.json`. |
