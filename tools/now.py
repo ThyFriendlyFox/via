@@ -28,6 +28,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import clock
+
 SECTIONS = ("Branch", "Doing now", "Health gate", "Blocked on", "Left", "Updated")
 # The project board's own 3 words, as tools/board.py takes them (`WORDS`), matched without regard to case.
 STATUSES = ("Todo", "In progress", "Done")
@@ -205,7 +207,7 @@ def build(args: argparse.Namespace) -> dict:
         "gate": gate_of(tree, branch, head),
         "blocked_on": (args.blocked or "").strip() or "nothing",
         "left": left,
-        "updated": utc_minute(datetime.datetime.now(datetime.UTC)),
+        "updated": utc_minute(clock.moment()),
     }
     data["card"] = card(data)
     return data
@@ -298,7 +300,7 @@ def record(code: int, step: str, tree: Path, head: str, dirty_at_start: bool) ->
         "branch": git_out("rev-parse", "--abbrev-ref", "HEAD"),
         "dirty": dirty_at_start or bool(changed),
         "moved_to": at_end if at_end != head else None,
-        "time": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "time": clock.moment().astimezone(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     path = tree / RECORD
     path.parent.mkdir(exist_ok=True)
@@ -345,8 +347,9 @@ def main(argv: list[str] | None = None) -> int:
     q.add_argument(
         "--dirty", required=True, choices=("yes", "no"), help="whether the tree differed from it then"
     )
-    args = parser.parse_args(argv)
-    path = record(args.code, args.step, Path(args.tree), args.head, args.dirty == "yes")
+    with clock.run():
+        args = parser.parse_args(argv)
+        path = record(args.code, args.step, Path(args.tree), args.head, args.dirty == "yes")
     print(f"gate record {path}")
     return 0
 

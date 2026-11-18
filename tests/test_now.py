@@ -384,6 +384,23 @@ def test_the_gate_leaves_a_record_the_card_reads(tmp_path):
     assert ignored.returncode == 0, "build/verify.json is not ignored by git in this repository"
 
 
+def test_source_date_epoch_pins_the_cards_time_and_the_records(tmp_path):
+    """SOURCE_DATE_EPOCH=1794960060 is 2026-11-18 00:01:00 UTC (the sum in tests/test_clock.py): the
+    card's Updated line and the gate record's time are that moment, not the clock's."""
+    tree = make_tree(tmp_path)
+    head = git(tree, "rev-parse", "HEAD")
+    env = {**os.environ, "SOURCE_DATE_EPOCH": "1794960060"}
+    argv = [sys.executable, str(NOW_PY), "record", "0", "4/4 kit checks", "--tree", str(tree), "--head", head]
+    proc = subprocess.run([*argv, "--dirty", "no"], capture_output=True, text=True, check=False, env=env)
+    assert proc.returncode == 0, proc.stderr
+    assert json.loads((tree / "build" / "verify.json").read_text())["time"] == "2026-11-18T00:01:00Z"
+    argv = [sys.executable, str(CLI), "now", str(tree), "--item", "7", "--status", "Todo"]
+    proc = subprocess.run(argv, capture_output=True, text=True, check=False, env=env)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.endswith("## Updated\n2026-11-18 00:01 UTC\n")
+    assert "## Health gate\nGREEN on `" in proc.stdout and "` at 2026-11-18 00:01 UTC\n" in proc.stdout
+
+
 def test_the_issue_template_has_the_cards_status_line_and_sections(tmp_path):
     tree = make_tree(tmp_path)
     card = now(str(tree), "--item", "7", "--status", "Todo").stdout
@@ -426,8 +443,13 @@ def test_the_record_names_the_commit_the_gate_started_on(tmp_path):
     to `B` during the run, 1 commit before the last (`git rev-list --count A..B` is 1)."""
     tree = make_tree(tmp_path)
     (tree / "tools").mkdir()
-    (tree / "tools" / "now.py").write_text(NOW_PY.read_text(encoding="utf-8"), encoding="utf-8")
-    git(tree, "add", "tools/now.py")
+    for name in ("now.py", "clock.py"):  # now.py reads the time through clock.py
+        (tree / "tools" / name).write_text(
+            (ROOT / "tools" / name).read_text(encoding="utf-8"), encoding="utf-8"
+        )
+    # Importing clock.py leaves tools/__pycache__/, which the repository's own .gitignore names.
+    (tree / ".gitignore").write_text("build/\n__pycache__/\n", encoding="utf-8")
+    git(tree, "add", ".gitignore", "tools/now.py", "tools/clock.py")
     git(tree, "commit", "-q", "-m", "A")
     a, a_short = git(tree, "rev-parse", "HEAD"), git(tree, "rev-parse", "--short", "HEAD")
     gate = (
