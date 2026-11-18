@@ -414,7 +414,7 @@ MUTATIONS = [
     ('PJ11 read_project', 'tools/ratings.py', 'OWNER_RE.fullmatch(', 'OWNER_RE.match('),
     ('PJ12 read_project', 'tools/ratings.py', 'key = (_text(f"{where}: part", entry["part"]), _text(f"{where}: rule", entry["rule"]))', 'key = (_text(f"{where}: rule", entry["rule"]), _text(f"{where}: part", entry["part"]))'),
     ('PJ13 read_project', 'tools/ratings.py', "({entry['by']})", "({entry['why']})"),
-    ('PJ14 read_project', 'tools/ratings.py', 'ambient, nets, amps, accepted, volts, watts)', 'ambient, nets, volts, accepted, amps, watts)'),
+    ('PJ14 read_project', 'tools/ratings.py', 'ambient, nets, amps, accepted, volts, watts, unjudged)', 'ambient, nets, volts, accepted, amps, watts, unjudged)'),
     ('PJ16 read_project', 'tools/ratings.py', 'if not isinstance(data.get("accepted", []), list):', 'if False:'),
     ('PJ17 read_project', 'tools/ratings.py', '_text(f"{name}: nets: {key}: source", entry["source"])', 'pass'),
     ('PJ18 read_project', 'tools/ratings.py', '_text(f"{name}: ambient: source", entry["source"])', 'pass'),
