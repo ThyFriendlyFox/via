@@ -1,0 +1,10 @@
+{
+  "kind": "connector",
+  "mpn": "FIXTURE-HEADER-I2C",
+  "pins": [{"numbers": ["1", "2"], "outside": "load"}],
+  "source": {
+    "document": "no datasheet: a 2-pin header made up for the I2C block's fixtures; the open drains of a controller off the board stand behind its 2 pins",
+    "read": "2026-11-17",
+    "second_reader": "no"
+  }
+}

@@ -541,12 +541,13 @@ def test_every_document_a_rule_of_the_repository_names_is_in_the_index():
     page and Coilcraft's 806, which passives.json names too): 2 + 1 + 2 + 5 + 4 + 2 = 16 named, in
     2 + 1 + 1 + 5 + 1 + 1 + 1 = 12 files (made-up.json the 11th, fail-sim-bias's the 12th). The I2C block
     names its note (rules/blocks/i2c.json) and its fixtures' TCA9534 its datasheet (ti-tca9534.json):
-    16 + 2 = 18 named in 12 + 2 = 14 files. made-up.json's 4 parts name no document: 4 not judged."""
+    16 + 2 = 18 named in 12 + 2 = 14 files. made-up.json's 4 parts and made-up-i2c.json's 1 header, the
+    15th file, name no document: 4 + 1 = 5 not judged."""
     code, out = run("rules")
     assert code == 0, out
-    files = 2 + 1 + 1 + 8 + 2
+    files = 2 + 1 + 1 + 8 + 2 + 1
     assert out.splitlines()[-1] == (
-        f"references rules: 18 documents named in {files} files, 18 in the index, 0 not; 4 not judged"
+        f"references rules: 18 documents named in {files} files, 18 in the index, 0 not; 5 not judged"
     )
 
 
