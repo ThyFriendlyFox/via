@@ -468,6 +468,9 @@ When: touching `tools/workcenter` or `tools/kicadgen.py`'s command line.
    `SOURCE_DATE_EPOCH`, or reads the day from what the command wrote. No
    test file reads the clock when it is loaded: `tests/test_docs.py`
    holds it (M233).
+8. A verdict that 2 commands print is 1 function they both call:
+   `guide.ratings_state` is read by `gates` and `next`, and
+   `tests/test_done.py` holds every kind of record to it (M251).
 
 Done when: `make verify` is green, the configuration table names the
 flag, and every document that writes the command writes one the parser

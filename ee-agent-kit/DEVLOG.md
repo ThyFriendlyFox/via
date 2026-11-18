@@ -39,6 +39,12 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-18 — Done is 1 definition
+
+User round 1, C landed. In user round 1 the medium user's board printed GREEN under `gates --strict` while `workcenter ratings` left 3 parts not judged, and WORKCENTER.md said done in 2 ways. Now `gates` prints 1 line above its verdict that says whether the ratings are held, and `--strict` ends `RED (ratings not held)` while they are not. `next` reads the same function. The review found that a record could read as held after a facts file was deleted, so a ratings run now records each file it read with its SHA256. `design --route` now counts the connections it left open from KiCad's DRC and exits 1 on any. Landing found that `next`'s route step counted 9 pads where `design --route` would print 6 unconnected for the same board; the step now says both. 4 fixtures keep a `ratings.json` for `copper` and the ECSS DRC and judge nothing; their gates under `--strict` are RED, and a test names them. On the trunk the circuit blocks' fixtures hold a `ratings.json` as well; their tests now run `ratings` before `gates --strict`.
+
+Evidence: `tests/test_done.py` (26 tests), `tests/test_route_open.py` (6 tests); landing head 25b67ff.
+
 ## 2026-11-18 — Roadmap item 4 further: makers' data in every deck form
 
 The SIM gate said nothing in 2 cases that the second sentence of item 4's Promise covers: a part 2 includes deep, and decks with no C or L. Both now get a line, as do a project with no schematic and a machine with no kicad-cli. A capacitor's starting voltage now runs on its data; a coupled inductor is named instead of failing the deck. Samsung's page, fetched again, gave C2's temperature curve at 5 V and its ESR. A review found 7 faults: 2 deck forms that ngspice accepts started from the wrong voltage, and a curve entered against the wrong reference undid the DC bias loss with the gate green. All 7 are fixed with tests, 2 in part. The temperature share between 0 V and the bias is still the gate's straight line, which no maker publishes, so item 4 stays in progress.

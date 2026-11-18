@@ -6,7 +6,12 @@
      repository attached still finds it. -->
 
 The EE Workcenter turns a KiCad 10 project into fabrication outputs that
-passed every gate. "Done" means `workcenter gates <project>` prints GREEN.
+passed every gate. "Done" means `workcenter gates <project> --strict`
+prints GREEN. For a project with a `ratings.json` beside its schematic,
+that GREEN needs its ratings held: `build/ratings/report.json` says
+`RATINGS HELD`, and the files that run read are the files there now.
+`gates` reads that record and does not run `ratings`.
+`workcenter next <project>` says nothing is left only then.
 `workcenter next <project>` names the one step that is left at any point.
 
 It also turns a chip project (RTL, benches, timing constraints and
@@ -23,11 +28,31 @@ above it, each on its own line.
 | Last line | Meaning | Exit code |
 |---|---|---|
 | `GREEN` | Every gate that had something to run passed, with no warning. | 0 |
-| `GREEN with N warnings` | Every gate passed, and N things were named and not failed on. Each is printed. The project's gates report names each one it keeps, and why. `--strict` fails on all of them. | 0 |
+| `GREEN with N warnings` | Every gate passed, and N things were named and not failed on. Each is printed. Ratings that are not held are 1 of them. The project's gates report names each one it keeps, and why. `--strict` fails on all of them. | 0 |
 | `GREEN ... (nothing to run for: erc, drc, export)` | As above, for a project that gives some gates nothing to run: decks and no board. The line names those gates. | 0 |
 | `RED` | A gate failed, or an engine stopped with an error. | 1 |
+| `RED (ratings not held)` | `--strict`: every gate passed, and the project's `ratings.json` is not held by its ratings record. | 1 |
 | `SKIPPED (GATE: engine missing)` | A gate did not run because its engine is absent. A run with an absent engine is never GREEN. | 2 |
 | `SKIPPED` | No gate had anything to run. | 2 |
+
+The line above the verdict says the ratings:
+`RATINGS held: build/ratings/report.json says RATINGS HELD`,
+`RATINGS not held: <why> (workcenter ratings <project>)`, or
+`RATINGS not asked for: no ratings.json beside the schematic`. `<why>` is
+`no build/ratings/report.json yet`, `<file> changed after the last run`,
+`<file> is gone since the last run`, `<file> is new since the last run`,
+or the last run's own count (`N not judged`, `N fail`,
+`nothing judged (N not judged)`). `<file>` is its path from the project's
+folder (`../parts/catalog.csv`). The ratings record names each file its run
+read with its SHA256: the schematic, `ratings.json`, the parts files it was
+given (`--parts`, else `parts.csv`), the pack `ratings.json` names, and
+every facts file. A file touched and not changed is the same file. A
+`RATINGS HELD` record that names no file is not held. A file that is no
+record of a run is refused in 1 line naming the key
+(`build/ratings/report.json: details is no object`). `--report` writes the
+same line and verdict into the report. With `--json`, stdout holds the
+gates' records alone, as before; the ratings line and the verdict line go
+to stderr.
 
 `workcenter doctor` reports each engine as ok, absent or MISSING. A gate
 whose engine is absent is skipped with the engine's name. Its first line
@@ -141,7 +166,8 @@ Its verdict is its exit code. It writes every file even when it exits 1.
 The causes of exit 1: a hand via its check refuses; a part in a keep-out or
 with every pad outside the outline; a floating input with `check_pulls`; a
 `sim:` problem; an unrouted connection the router counts; a route that left
-every connection without copper. On exit 1 its last line says `red`, names
+every connection without copper; an unconnected item in KiCad's DRC of
+the board the route wrote. On exit 1 its last line says `red`, names
 each failure, and says the files are for inspection only: a CI regenerate
 check fails on that exit code (M85). The generator refuses some design
 files when it loads them: a namespace that is no UUID, `power_nets` that is
@@ -152,6 +178,15 @@ generates, routes and passes ERC and DRC as it stands. Each via it drops through
 after routing is printed as a `stitch:` line with the net, the island's layer,
 the pads the island holds and the layer the via reaches, so a via that moved
 between two runs can be traced to its pads.
+
+After a route, `workcenter design --route` reads KiCad's DRC of the board
+it wrote (the zone fill's report when the board has a pour, else 1 DRC run)
+and prints `route: N unconnected; first <net>: <end> to <end>` and
+`inspect: workcenter inspect net <board> <net>`, and exits 1; with none it
+prints `route: 0 unconnected`. The `--json` summary's `route` holds
+`unconnected`, `open` and `board`. Without kicad-cli the route stands, its
+exit code is its own, and the line reads
+`route: unconnected not counted: kicad-cli is not installed`.
 
 `workcenter design --route --seed <board>` starts the router from a previous
 routed board, usually the version the design was copied from: its router
@@ -464,9 +499,12 @@ its first problem. A project with a `ratings.json` is held to its parts'
 ratings in 2 places: a stress that fails, or a file `ratings` does not
 take, comes before the gates, since a part that changes takes its routes
 with it; what is left not judged comes after them, and the project is not
-done until the last line is `RATINGS HELD`. A board generated without
+done until its ratings are held, as `gates` says it. A board generated without
 `--route` is told to route before the gates: the answer counts the pads
-on nets with no track, via or pour. It exits 0 when nothing is left and 1
+on nets with no track, via or pour, and their connections as
+`design --route` counts them
+(`9 pads on 3 nets have no track, via or pour, 6 unconnected`); the step
+is done when the route prints `route: 0 unconnected`. It exits 0 when nothing is left and 1
 when a step is named; exit 1 is no error, it means do the step. A finished
 project gets no `RUN`
 line. It writes nothing. For a chip project (`tools/chipguide.py`) the
@@ -559,7 +597,9 @@ than the schematic's symbol does fails too. A line is `fail`, `accepted`,
 `not judged` or `hold`. A line that holds a stress to a limit names the
 limit's document; a pack's rule, a pin's limit and a needed part name
 the page too. The last line is `RATINGS HELD`,
-`RATINGS HELD, N NOT JUDGED`, `NOTHING JUDGED` or `RATINGS NOT HELD`. Exit
+`RATINGS HELD, N NOT JUDGED`, `NOTHING JUDGED` or `RATINGS NOT HELD`.
+`workcenter gates` reads this record (see the Verdicts); a record of other
+files than the ones there now is not held. Exit
 1 on a failure, on a run that judged nothing, on a file the command does
 not take, and with `--strict` on what was not judged. `--facts REF` prints
 an entry of facts to fill for 1 part. It writes `build/ratings/netlist.xml`,

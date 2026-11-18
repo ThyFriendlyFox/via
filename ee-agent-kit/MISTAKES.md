@@ -1532,3 +1532,9 @@ What happened: On `wip/l4`, `pytest -k initial` on `tests/test_partdata.py` was 
 Cost: 2 short ngspice runs outside the lock's queue.
 Root cause: A `-k` word matches every test whose name holds it.
 Process: P8
+
+## M251 — 2026-11-18 — A verdict that read as done when it was not
+What happened: In user round 1 (2026-11-17), `gates --strict` printed `GREEN (nothing to run for: sim)` on the medium user's board while its `ratings` run ended `RATINGS HELD, 3 NOT JUDGED`, and `next` asked for facts. WORKCENTER.md line 9 said done is GREEN; its `next` paragraph said a project with `ratings.json` is not done until `RATINGS HELD`.
+Cost: A user read GREEN as done on a board whose parts were not all held to their ratings; another read 100 lines of WORKCENTER.md to learn which of the 2 held.
+Root cause: 2 commands judged done, each in its own code: `gates` from the gates alone, `next` from the gates and the ratings record. Nothing held them to 1 answer.
+Process: P10

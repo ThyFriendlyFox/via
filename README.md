@@ -201,7 +201,7 @@ the 9 fixture chips.
 | Part | In short |
 |---|---|
 | **Engines** | KiCad 10 (`kicad-cli`), ngspice, FreeRouting. |
-| **Gates** | ERC, DRC, SIM, EXPORT, in that order. A board is done when `workcenter gates <project>` prints GREEN. |
+| **Gates** | ERC, DRC, SIM, EXPORT, in that order. A board is done when `workcenter gates <project> --strict` prints GREEN; with a `ratings.json`, that needs its ratings held, and the line above the verdict says whether they are. |
 | **Design as code** | `workcenter design design.py --route` builds a schematic and a routed board from a Python file that names parts from the KiCad libraries. No GUI at any step. |
 | **A schematic that simulates** | The design file says how each part simulates (`d.sim`, `d.no_sim`), and the schematic KiCad opens exports a netlist ngspice runs. A pin map KiCad would complete by position is refused first. |
 | **Decks** | The SIM gate runs the decks under `sim/` and holds each measured value to its bound. A deck is a file of its own. Nothing holds a deck typed by hand to the schematic's parts yet: the roadmap names that gap. |
