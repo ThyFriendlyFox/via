@@ -35,6 +35,7 @@ PASS   erc        0 errors, 0 warnings  [0.25s]
 PASS   drc        0 errors, 0 warnings (0 unconnected, 0 parity), legend (no fab named: held to the least of the 4 fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer)): 0 fail, 0 not judged  [0.8s]
 PASS   sim        1 decks, 46 corner runs, 0 failures  [0.16s]
 PASS   export     7/7 outputs, 22 gerber files, 3 files read back  [2.09s]
+thermal: no part's junction is judged: sim/thermal.json is not there, and the gate judges only the parts it names (the simulate skill, A part's temperature)
 RATINGS not asked for: no ratings.json beside the schematic
 GREEN: divider  report /home/user/via/tests/boards/pass-first-design/build/gates.json
 
