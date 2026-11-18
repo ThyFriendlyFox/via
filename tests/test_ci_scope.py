@@ -392,9 +392,8 @@ def test_the_makefile_asks_the_same_script_and_names_no_path_of_its_own():
     lines = ran.stdout.splitlines()
     assert any("tools/ci/scope.py --base" in line for line in lines)
     assert lines[-2:] == ["verify/verify.sh site", "verify/verify.sh"]
-    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
-    # The scope's folders and kinds are in scope.py alone.
-    assert (
-        "*.md" not in makefile
-        and [d for d in ("tests/", "examples/", "templates/", ".claude/") if d in makefile] == []
-    )
+    # The scope's folders and kinds are in scope.py alone: the 2 targets' lines name none. Other
+    # targets may name a test file (`mutate-ratings` names tests/ratings_mutations.py).
+    ours = "\n".join(line for line in lines if "scope.py" in line or "verify.sh" in line)
+    assert "*.md" not in (ROOT / "Makefile").read_text(encoding="utf-8")
+    assert [d for d in ("tests/", "examples/", "templates/", ".claude/") if d in ours] == []
