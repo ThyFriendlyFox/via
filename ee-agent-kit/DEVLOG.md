@@ -39,6 +39,12 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-18 — The DRC gate holds clearance and creepage to the voltage between nets
+
+A board can now name a creepage pack. The gate then measures each pair of nets on the outer layers, through air and along the surface, and holds it to the voltage between them. The numbers come from a free US handbook and from a TI note that reprints part of a paid IEC standard. 2 reviewers built boards that read clean while high voltage and ground sat too close: an arc read as 2 straight pieces, copper on the 2 faces near the edge, a via with no net between them. Each such board is now a test. What the check cannot measure, it names on a line: the way between the 2 faces beyond a bound, copper through the laminate, inner layers. The TI pack has no clearance table, so a board on it never passes the strict gate. A full mutation run left 272 of 777 mutants caught by no test; 11 got tests, and the other 261 were read in groups, not tested one by one.
+
+Evidence: `wip/land-creepage`; `tests/test_creepage.py` (101 tests) and `tests/test_creepage_drc.py` (6 tests).
+
 ## 2026-11-18 — Done is 1 definition
 
 User round 1, C landed. In user round 1 the medium user's board printed GREEN under `gates --strict` while `workcenter ratings` left 3 parts not judged, and WORKCENTER.md said done in 2 ways. Now `gates` prints 1 line above its verdict that says whether the ratings are held, and `--strict` ends `RED (ratings not held)` while they are not. `next` reads the same function. The review found that a record could read as held after a facts file was deleted, so a ratings run now records each file it read with its SHA256. `design --route` now counts the connections it left open from KiCad's DRC and exits 1 on any. Landing found that `next`'s route step counted 9 pads where `design --route` would print 6 unconnected for the same board; the step now says both. 4 fixtures keep a `ratings.json` for `copper` and the ECSS DRC and judge nothing; their gates under `--strict` are RED, and a test names them. On the trunk the circuit blocks' fixtures hold a `ratings.json` as well; their tests now run `ratings` before `gates --strict`.

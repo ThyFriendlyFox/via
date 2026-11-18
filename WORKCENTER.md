@@ -255,6 +255,17 @@ leaves the device) and `ti-szza009-emi` (TI SZZA009: power and ground
 traces at most 3:1 on a 2-layer board). The project states what the board
 file cannot: `connectors`, `inside`, `protectors`, `ground`, `power`.
 
+`board-rules.json` also takes `creepage`, 1 creepage pack and its conditions
+(`rules/board/README.md`, "Creepage packs"): `mil-hdbk-454c-g69`
+(MIL-HDBK-454C table 69-I: clearance and creepage) or
+`ti-slup419-creepage` (TI SLUP419: creepage by pollution degree and
+material group, and the least width of a slot). The DRC gate holds each
+pair of nets with a voltage between them on F.Cu and on B.Cu, between
+bare copper. A slot between 2 nets lengthens the way. A plated hole or
+via with no net joins the 2 faces. Between the 2 faces, through the
+laminate and on inner layers the check prints `not judged`, and so does
+a pack with no clearance table.
+
 Not a gate, but part of every hand-off: `workcenter render <project>` writes
 the schematic, board top and bottom, and 3D images into `build/render/`, and
 every layer that has something on it into `build/render/layers/` (one PNG per

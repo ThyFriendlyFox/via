@@ -1538,3 +1538,39 @@ What happened: In user round 1 (2026-11-17), `gates --strict` printed `GREEN (no
 Cost: A user read GREEN as done on a board whose parts were not all held to their ratings; another read 100 lines of WORKCENTER.md to learn which of the 2 held.
 Root cause: 2 commands judged done, each in its own code: `gates` from the gates alone, `next` from the gates and the ratings record. Nothing held them to 1 answer.
 Process: P10
+
+## M252 — 2026-11-17 — A board reader that read a gap larger than it is
+What happened: On `wip/creepage` the creepage check read an arc track as the 2 chords `boardrules.read_board` gives, so a gap read up to R(1 - cos 45) = 0.879 mm larger than it is at R = 3 mm, and it turned a pad with no angle in the file by its footprint's angle. A reviewer's board read `0 fail, 0 not judged` with 2.5 mm where 3 mm is asked.
+Cost: 1 review round.
+Root cause: The reader took the shapes another reader gave, and no test held each shape KiCad writes.
+Process: P7
+
+## M253 — 2026-11-17 — What a check cannot judge said only in a note
+What happened: On `wip/creepage` the check listed "between the 2 faces" and "a third conductor" as not checked in a README and a note, but printed no `not judged` line for the pairs concerned, so the board read clean.
+Cost: 1 review round.
+Root cause: A limit of the check was written for a person and not printed for the pair.
+Process: P14
+
+## M254 — 2026-11-18 — A bound tested only with the walls it names
+What happened: On `wip/creepage` the bound between F.Cu and B.Cu took the edge and unplated holes as the only ways, and looked at copper with no net only after the bound had let the pair go. A via with no net between HV and GND (1.3 mm where 3 mm is asked) read `0 fail, 0 not judged`. A cut the check could not read counted as near at any distance, so a hole far off turned a fail into `not judged` and the default gate printed PASS.
+Cost: 1 review round; the critical finding of the second review.
+Root cause: The bound and the unknown were tested with the shapes they name, not with every conductor and every distance that can stand on the way.
+Process: P7
+
+## M255 — 2026-11-18 — A script that edits a file in place, stopped by SIGTERM
+What happened: On `wip/creepage` the first full mutation run was ended by a SIGTERM when GATE.lock was taken, and left a mutant in the scratch copy's `creepage.py`; the script had no handler, so `finally` did not run. The copy was put back by hand.
+Cost: 1 mutation run of 150 mutants lost its last result.
+Root cause: Only an exception restored the file, not a signal.
+Process: P9
+
+## M256 — 2026-11-18 — Commands started while GATE.lock existed
+What happened: On `wip/creepage` `workcenter design` of 2 fixtures (under 1 s each, no engine), and later 1 run of 8 unit tests (0.17 s), started while GATE.lock existed; the second printed `GATE` and went on.
+Cost: None measured.
+Root cause: The lock was looked at once per batch, or printed and not waited on.
+Process: P31
+
+## M257 — 2026-11-18 — A piece built before 2 trunk checks landed with neither
+What happened: `wip/creepage` was built before the `CITES` check of the references and before the engine marker. On the landing head `workcenter references rules` failed on 5 lines (2 test files with no `CITES`; the TI pack cited a table of the paid IEC 60664-1, which the index cannot hold), the test of the board rules' tool took the creepage packs for voltage packs, and the 5 DRC tests failed with `started kicad-cli and has no engine marker` when engines were refused.
+Cost: 2 commits on the landing branch.
+Root cause: A branch is checked against the trunk's checks when it lands, not while it is built.
+Process: P14

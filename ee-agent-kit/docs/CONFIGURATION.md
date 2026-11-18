@@ -364,10 +364,11 @@ names.
 
 | Field | Type | Default | Use |
 |---|---|---|---|
-| `pack` | name or path | none; required when there is no `layout` | The board rule pack the DRC holds the board to: a file of `rules/board/` without `.json` (`ecss-q-st-70-12c-rev1`), or the path of a pack from the project's folder. The volts and amps come from the project's `ratings.json`, which must stand beside the board. No file: no pack. |
+| `pack` | name or path | none; required when there is no `layout` and no `creepage` | The board rule pack the DRC holds the board to: a file of `rules/board/` without `.json` (`ecss-q-st-70-12c-rev1`), or the path of a pack from the project's folder. The volts and amps come from the project's `ratings.json`, which must stand beside the board. No file: no pack. |
 | `via_wall` | `{"um": number, "source": text}` | none: no stated wall | The least copper of a via's wall the fab promises, um, with the fab's document, the place and the date read. Under half the least drill of a judged via, or the file is refused. With `hdi` the lesser of it and the pack's 25 um is taken. |
 | `hdi` | `{"source": text}` | none: not HDI | The order or document by which the board is built as HDI under ECSS-Q-ST-70-12C Rev.1, 11.6. The pack's 25 um wall then holds its vias (tables 11-1 and 11-2, page 100). A via's KiCad flag never makes a board HDI. |
 | `layout` | list of layout pack names | none | The layout packs the DRC gate holds the board to (`rules/board/`, `"kind": "layout"`): `ti-slva680a-esd`, `ti-szza009-emi`. With or without `pack`. |
+| `creepage` | `{"pack": name or path, ...conditions}` | none | The creepage pack the DRC holds every pair of nets to (`rules/board/`, `"kind": "creepage"`), with the conditions it asks. `mil-hdbk-454c-g69` asks `condition` (A, B or C) and `enclosure` (I or II); `ti-slup419-creepage` asks `pollution_degree` ("1" or "2") and `material_group` (I, II or III). With or without `pack` and `layout`. The voltages come from `ratings.json` beside the board. |
 | `connectors` | object, reference: why | none | The connectors that leave the device; asked by `ti-slva680a-esd`. A part with a reference J, P or X and digits, or a footprint in a `Connector...` or `TerminalBlock...` library or the `Battery` library, must be named here or under `inside`. |
 | `inside` | list of references | none | Connectors that stay inside the device; not judged for ESD. |
 | `protectors` | object, reference: what | none | The parts that protect against ESD; each needs a pad on a `ground` net. |

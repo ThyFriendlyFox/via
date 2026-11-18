@@ -148,6 +148,15 @@ A layout pack holds rules a maker's note states (`rules/board/README.md`,
     note `the rule is for a board of 2 copper layers`: the rule is not
     for this board, and nothing is judged.
 
+## Creepage packs: clearance and creepage to each net's voltage
+
+14. Give every net a span in `ratings.json`: a net with none prints
+    `not judged creepage of NET: ratings.json states no voltage for it`.
+15. Add `"creepage": {"pack": "mil-hdbk-454c-g69", "condition": "A", "enclosure": "I"}`
+    to `board-rules.json` (the conditions: `rules/board/README.md`, "Creepage packs").
+16. Run `workcenter drc <project> --strict` and act on each line as
+    `rules/board/README.md`, "How to run it", says.
+
 ## Done when
 
 `workcenter gates <project> --strict` prints GREEN, and its DRC line names
