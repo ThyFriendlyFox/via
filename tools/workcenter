@@ -402,15 +402,17 @@ def deck_part_data(
     maker's file with its row in sources.csv (tools/partdata.py): (curves, refused, labels, failures,
     warnings). `refused` maps a part to why its data cannot be used, `labels` a part to its facts entry
     and part number. Nothing when the project's library holds no curve. When the library holds one and
-    the decks hold C or L elements named like board references, a project with no schematic, or a
+    the decks hold C or L elements, by a board reference or another name, a project with no schematic, or a
     machine whose kicad-cli does not read it, leaves them not judged. A part with data that no deck
     element carries by its reference is not judged when a deck holds a capacitor or an inductor under
     another name, or when no deck element carries any part with data (no C or L at all included)."""
     rt, pd, sc = ratings(), partdata(), simcorners()
     library = rt.find_facts(project.dir)
     names: set[str] = set()  # each element of the decks and of the files they include, upper case
+    spelled: dict[str, str] = {}  # a deck element's name as the deck writes it
     for d in decks:
         text = d.read_text(encoding="utf-8", errors="replace")
+        spelled = {**sc.deck_names(text.split("\n")), **spelled}
         names.update(sc.deck_names(text.split("\n")))
         names.update(n.upper() for body in deck_includes(d, text).values() for n in sc.top_level_parts(body))
     named = {name for name in names if pd.REF_RE.match(name)}
@@ -420,9 +422,13 @@ def deck_part_data(
     by_ref = lambda r: (r[0], int(r[1:]))  # noqa: E731
 
     def unread(why: str) -> tuple[dict, dict, dict, list, list]:
-        parts = names_and(sorted(named, key=by_ref)) if named else ""
-        line = f"not judged: whether {parts} run on their makers' data: the library's facts hold curves"
-        return {}, {}, {}, [], [f"{line}, and {why}"] if named else []
+        # a C or an L under another name may be a part with data too
+        listed = [*sorted(named, key=by_ref), *(spelled.get(n, n) for n in other)]
+        if not listed:
+            return {}, {}, {}, [], []
+        run = "runs on its maker's" if len(listed) == 1 else "run on their makers'"
+        line = f"not judged: whether {names_and(listed)} {run} data: the library's facts hold curves"
+        return {}, {}, {}, [], [f"{line}, and {why}"]
 
     try:
         facts = rt.read_facts(library)
@@ -940,6 +946,8 @@ def gate_sim(
                 f"{curves[ref].unjudged}"
             )
             if curves[ref].unjudged and line not in warned:
+                warned.append(line)
+            if (line := pd.between(curves[ref])) and line not in warned:
                 warned.append(line)
         models, model_problems, model_warnings, prepared = model_rows(
             deck, sources, sim_out / "run" / deck.stem, always=keep or bool(applied)
