@@ -763,6 +763,78 @@ def test_a_hidden_property_on_copper_is_no_copper():
         assert judged(FLOATING.replace(smd("FLOAT", "112.5 107.5", "1.7 1.7", ""), item)) == []
 
 
+# ---------------------------------------------------------------- a board file KiCad would not write
+
+GOOD = smd("GNDPAD", "120 107.5", "1.7 1.7", "GND")
+FP_A = '  (footprint "x:A" (layer "F.Cu") (at 110 107.5)\n'
+
+
+@pytest.mark.parametrize(
+    ("item", "message"),
+    [
+        (
+            FP_A + '    (pad "1" smd rect (at 0 0) (layers "F.Cu")))\n',
+            r"b.kicad_pcb: pad 1 of x:A at \(110, 107.5\): `\(size \.\.\.\)` is missing",
+        ),
+        (
+            FP_A + '    (pad "1" smd rect (size 1 1) (layers "F.Cu")))\n',
+            r"b.kicad_pcb: pad 1 of x:A at \(110, 107.5\): `\(at \.\.\.\)` is missing",
+        ),
+        (
+            '  (segment (start 110 107.5) (end 112 107.5) (layer "F.Cu") (net "HV"))\n',
+            r"b.kicad_pcb: segment at \(110, 107.5\): `\(width \.\.\.\)` is missing",
+        ),
+        (
+            '  (arc (start 110 107.5) (end 112 107.5) (width 0.2) (layer "F.Cu") (net "HV"))\n',
+            r"b.kicad_pcb: arc at \(110, 107.5\): `\(mid \.\.\.\)` is missing",
+        ),
+        (
+            '  (footprint "x:A" (layer "F.Cu")\n'
+            '    (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu")))\n',
+            r"b.kicad_pcb: footprint x:A, number 1 in the file: `\(at \.\.\.\)` is missing",
+        ),
+        (
+            '  (gr_rect (start 112 110) (layer "Edge.Cuts"))\n',
+            r"b.kicad_pcb: gr_rect at \(112, 110\): `\(end \.\.\.\)` is missing",
+        ),
+        (
+            '  (via (at 112 110) (size a) (drill 0.4) (layers "F.Cu" "B.Cu"))\n',
+            r"b.kicad_pcb: via at \(112, 110\): `\(size a\)` is no number",
+        ),
+    ],
+)
+def test_a_node_that_lacks_a_part_kicad_writes_is_refused_with_its_place(tmp_path, item, message):
+    """The second review's crash2.py: each board ended in a TypeError or a KeyError inside
+    boardrules.read_board, which the DRC gate does not catch. Each is refused, with the file and the
+    node, on the gate's own way (boardrules.judge)."""
+    import boardrules
+
+    (tmp_path / "board-rules.json").write_text(
+        json.dumps({"creepage": {"pack": "mil-hdbk-454c-g69", **MIL_AI}})
+    )
+    pcb = tmp_path / "b.kicad_pcb"
+    pcb.write_text(HEAD + item + GOOD + ")\n", encoding="utf-8")
+    project = type("Project", (), {"dir": tmp_path, "pcb": pcb})()
+    with pytest.raises(Refusal, match=message):
+        boardrules.judge(project, tmp_path / "out", None)
+
+
+def test_a_board_with_no_copper_layer_is_refused(tmp_path):
+    """A board whose `(layers ...)` names no copper layer read `0 fail, 0 not judged`."""
+    import boardrules
+
+    (tmp_path / "board-rules.json").write_text(
+        json.dumps({"creepage": {"pack": "mil-hdbk-454c-g69", **MIL_AI}})
+    )
+    pcb = tmp_path / "b.kicad_pcb"
+    pcb.write_text("(kicad_pcb (version 20241229) (general (thickness 1.6)))\n", encoding="utf-8")
+    project = type("Project", (), {"dir": tmp_path, "pcb": pcb})()
+    with pytest.raises(Refusal, match=r"b.kicad_pcb: `\(layers \.\.\.\)` names no copper layer"):
+        boardrules.judge(project, tmp_path / "out", None)
+    with pytest.raises(Refusal, match=r"b.kicad_pcb: `\(layers \.\.\.\)` names no copper layer"):
+        creepage.judge(project, {"pack": "mil-hdbk-454c-g69", **MIL_AI}, pcb.read_text(encoding="utf-8"), {})
+
+
 # ---------------------------------------------------------------- a project's own pack
 
 

@@ -446,6 +446,86 @@ def _copper_order(name: str) -> tuple[int, int]:
     return (1, int(re.sub(r"\D", "", name) or 0))
 
 
+# The parts KiCad writes in each node the board's readers take, and how many atoms each holds; a point
+# holds 2 numbers. `None`: a list of points, `(pts (xy x y) ...)`.
+NODE_PARTS: dict[str, dict[str, int | None]] = {
+    "segment": {"start": 2, "end": 2, "width": 1, "layer": 1},
+    "arc": {"start": 2, "mid": 2, "end": 2, "width": 1, "layer": 1},
+    "via": {"at": 2, "size": 1, "drill": 1, "layers": 1},
+    "footprint": {"at": 2},
+    "pad": {"at": 2, "size": 2},
+    "filled_polygon": {"layer": 1, "pts": None},
+    "gr_rect": {"start": 2, "end": 2},
+    "gr_line": {"start": 2, "end": 2},
+    "gr_arc": {"start": 2, "mid": 2, "end": 2},
+    "gr_circle": {"center": 2, "end": 2},
+    "gr_poly": {"pts": None},
+}
+NUMBERS = {"start", "mid", "end", "center", "at", "size", "width", "drill"}  # read as numbers
+
+
+def check_board(text: str, name: str) -> None:
+    """Refuses a board file that lacks a part KiCad writes in a node the readers take (a pad with no
+    size, a track with no width, a footprint with no place), or that holds no copper layer: with the
+    file and the node, never a traceback."""
+    root = kicadgen.parse(text)
+    layers = kicadgen.child(root, "layers")
+    if not any(
+        isinstance(ly, list) and len(ly) > 1 and str(ly[1]).endswith(".Cu") for ly in (layers or [])[1:]
+    ):
+        raise Refusal(f"{name}: `(layers ...)` names no copper layer")
+    counts: dict[str, int] = {}
+
+    def where(node, head: str, inside: str) -> str:
+        at = kicadgen.child(node, "at") or kicadgen.child(node, "start") or kicadgen.child(node, "center")
+        try:
+            place = f" at {_p(_xy(at))}" if at is not None else ""
+        except (ValueError, IndexError):
+            place = ""
+        if head == "pad":  # placed by its footprint
+            return f"pad {node[1] if len(node) > 1 else ''} of {inside}"
+        label = f"{head} {node[1]}" if head == "footprint" and len(node) > 1 else head
+        return f"{label}{place}" if place else f"{label}, number {counts[head]} in the file"
+
+    def check(node, inside: str = "") -> None:
+        head = str(node[0])
+        counts[head] = counts.get(head, 0) + 1
+        for part, need in NODE_PARTS[head].items():
+            found = kicadgen.child(node, part)
+            if found is None or (need is not None and len(kicadgen.atoms(found)) < need):
+                raise Refusal(f"{name}: {where(node, head, inside)}: `({part} ...)` is missing")
+            if part in NUMBERS:
+                for x in kicadgen.atoms(found)[:need]:
+                    try:
+                        float(x)
+                    except ValueError:
+                        bad = " ".join(str(a) for a in kicadgen.atoms(found))
+                        raise Refusal(
+                            f"{name}: {where(node, head, inside)}: `({part} {bad})` is no number"
+                        ) from None
+            if need is None:
+                for xy in kicadgen.children(found, "xy"):
+                    if len(kicadgen.atoms(xy)) < 2:
+                        raise Refusal(
+                            f"{name}: {where(node, head, inside)}: a point of `(pts ...)` is no x y"
+                        )
+
+    for node in root[1:]:
+        if not isinstance(node, list) or not node or str(node[0]) not in NODE_PARTS:
+            continue
+        check(node)
+        head = str(node[0])
+        if head == "footprint":
+            fp_place = (
+                f"{node[1] if len(node) > 1 else 'a footprint'} at {_p(_xy(kicadgen.child(node, 'at')))}"
+            )
+            for pad in kicadgen.children(node, "pad"):
+                check(pad, fp_place)
+    for zone in kicadgen.children(root, "zone"):
+        for filled in kicadgen.children(zone, "filled_polygon"):
+            check(filled)
+
+
 def read_board(text: str) -> Board:
     """The copper of a .kicad_pcb: its layers and their thickness, its outline's area, and the tracks,
     arcs (as chords), vias, pads and filled zones of each net."""
@@ -1275,6 +1355,7 @@ def judge(project, out: Path, cli) -> tuple[str, list[Finding], list[str]]:
     findings, and the notes. Refuses a file it does not take; raises RuntimeError when kicad-cli did
     not measure the gaps."""
     data = project_keys(ratings._json(project.dir / PROJECT_FILE))
+    check_board(project.pcb.read_text(encoding="utf-8"), project.pcb.name)
     board = read_board(project.pcb.read_text(encoding="utf-8"))
     labels: list[str] = []
     findings: list[Finding] = []
