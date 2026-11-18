@@ -13,14 +13,17 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 INSTALL = ROOT / "install.sh"
 LOCKS = ROOT / "environment" / "chip"
 CHIP = Path(os.environ.get("WORKCENTER_CHIP_TOOLS") or "/opt/workcenters/ee/chip")
 
-needs_chip = pytest.mark.skipif(
-    not (CHIP / "bin" / "openroad").exists(), reason="the chip engines are not installed (INSTALL_CHIP=1)"
+needs_chip = engine(
+    pytest.mark.skipif(
+        not (CHIP / "bin" / "openroad").exists(), reason="the chip engines are not installed (INSTALL_CHIP=1)"
+    )
 )
 
 

@@ -19,6 +19,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -32,9 +33,13 @@ JAR = Path("/opt/workcenters/ee/freerouting/freerouting.jar")
 STAMP = "%Y-%m-%d %H:%M:%S.%f"
 
 needs_libs = pytest.mark.skipif(not LIBS.is_file(), reason="KiCad symbol libraries are not installed")
-needs_kicad = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
-needs_router = pytest.mark.skipif(
-    not JAR.is_file() or shutil.which("java") is None, reason="FreeRouting is not installed"
+needs_kicad = engine(
+    pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+)
+needs_router = engine(
+    pytest.mark.skipif(
+        not JAR.is_file() or shutil.which("java") is None, reason="FreeRouting is not installed"
+    )
 )
 
 
@@ -447,6 +452,7 @@ def test_hook_refuses_a_scripted_edit_to_a_test_file(command, blocked):
     assert proc.returncode == (2 if blocked else 0), (command, proc.stderr)
 
 
+@pytest.mark.engine
 def test_hook_installer_merges_once_into_user_settings(tmp_path):
     """The installer puts both hooks in the user settings (M35, M119): the one that refuses `cd` and the
     one that refuses a test edited by a script. Kept settings, each added once, then a no-op."""

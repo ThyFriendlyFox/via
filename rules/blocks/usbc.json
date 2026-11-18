@@ -1,0 +1,191 @@
+{
+  "block": "usbc",
+  "documents": {
+    "typec": {
+      "document": {
+        "issuer": "USB Implementers Forum (USB 3.0 Promoter Group)",
+        "number": "USB Type-C Cable and Connector Specification",
+        "title": "Universal Serial Bus Type-C Cable and Connector Specification",
+        "revision": "Release 2.5, March 2026",
+        "url": "https://www.usb.org/sites/default/files/USB%20Type-C%202.5%20Release%20202603.zip",
+        "sha256": "603c2cb0ea356d367fea61f8747a21981f0da9abae4d8ec15556e0063edb81b5",
+        "read": "2026-11-17"
+      },
+      "member": "USB Type-C Spec R2.5 - March 2026.pdf, SHA256 6636cd61387a2f78b0fa96c8ea86ccc0f39ec59f98821cdb57b206d31445a328",
+      "short": "USB Type-C R2.5"
+    },
+    "usb2": {
+      "document": {
+        "issuer": "USB Implementers Forum",
+        "number": "USB 2.0 Specification",
+        "title": "Universal Serial Bus Specification Revision 2.0, with its ECNs",
+        "revision": "Revision 2.0, April 27, 2000; the package of 2025-06-03",
+        "url": "https://www.usb.org/sites/default/files/usb_20_20250603.zip",
+        "sha256": "5fe9c53c04033818af396e8852b3acbca5c3a76ba92fab549fd81cd0ea7b3692",
+        "read": "2026-11-17"
+      },
+      "member": "usb_20.pdf, SHA256 d39698a33486c399124af92bd02e4f978fd9a836b5cf4e52e6e4633eb1d89f61; USB 2.0 ECN VBUS Max Limit.pdf, SHA256 9ea1f49b46f295e71e175d950ffaebd9edfd82f831787c40e74c2486d7773767; Device Capacitance ECN.pdf, SHA256 a6a8213b57001e3397e9376a287c09c882d9870ac1ef465465104321385a24d1",
+      "short": "USB 2.0"
+    }
+  },
+  "rd": {
+    "ohms": 5100,
+    "tolerance": {"detects": 0.10, "default": 0.20},
+    "doc": "typec",
+    "where": "section 4.11.1, table 4-28, page 245: Rd is 5.1 kohm to GND; +-10 % can detect the power capability, +-20 % cannot; note 2: the total resistance into the CC pin"
+  },
+  "cc_max": {
+    "volts": {"detects": 2.04, "default": 2.18},
+    "doc": "typec",
+    "where": "section 4.11.1, table 4-28, page 245: the max voltage on the pin, 2.04 V for Rd +-10 % and 2.18 V for Rd +-20 %"
+  },
+  "advertisements": [
+    {
+      "name": "default",
+      "amps": 0.5,
+      "rp": {"ohms": 56000, "tolerance": 0.20},
+      "cc": [0.277, 0.612],
+      "doc": "typec",
+      "where": "section 4.6.2.1, page 226: Default is the as-configured high-power current of the USB specification, 500 mA for USB 2.0 ports; table 4-20, page 227",
+      "cc_where": "section 4.11.3.2.2, table 4-36, page 254: vRd-USB",
+      "rp_where": "section 4.11.1, table 4-27, page 245: Default USB Power, a resistor of 56 kohm +-20 % pulled up to 4.75 to 5.5 V"
+    },
+    {
+      "name": "1.5A",
+      "amps": 1.5,
+      "rp": {"ohms": 22000, "tolerance": 0.05},
+      "cc": [0.746, 1.164],
+      "doc": "typec",
+      "where": "section 4.6.2.1, table 4-20, page 227: USB Type-C Current 1.5 A",
+      "cc_where": "section 4.11.3.2.2, table 4-36, page 254: vRd-1.5",
+      "threshold": [0.613, 0.745],
+      "threshold_where": "section 4.11.3.2.2, table 4-36, page 254: the threshold between vRd-USB and vRd-1.5",
+      "rp_where": "section 4.11.1, table 4-27, page 245: 1.5 A @ 5 V, a resistor of 22 kohm +-5 % pulled up to 4.75 to 5.5 V"
+    },
+    {
+      "name": "3.0A",
+      "amps": 3.0,
+      "rp": {"ohms": 10000, "tolerance": 0.05},
+      "cc": [1.369, 2.042],
+      "doc": "typec",
+      "where": "section 4.6.2.1, table 4-20, page 227: USB Type-C Current 3.0 A",
+      "cc_where": "section 4.11.3.2.2, table 4-36, page 254: vRd-3.0",
+      "threshold": [1.165, 1.368],
+      "threshold_where": "section 4.11.3.2.2, table 4-36, page 254: the threshold between vRd-1.5 and vRd-3.0",
+      "rp_where": "section 4.11.1, table 4-27, page 245: 3.0 A @ 5 V, a resistor of 10 kohm +-5 % pulled up to 4.75 to 5.5 V"
+    }
+  ],
+  "connected": {
+    "cc": [0.249, 2.181],
+    "doc": "typec",
+    "where": "section 4.11.3.2.1, table 4-35, page 254: vRd-connected, for Rd +-20 %"
+  },
+  "adjust": {
+    "doc": "typec",
+    "where": "section 4.6.2.1, page 227: a Sink that takes the additional current shall monitor the CC pins and adjust its current consumption within tSinkAdj to remain within the value advertised"
+  },
+  "unit_load": {
+    "value": 0.1,
+    "doc": "usb2",
+    "where": "section 7.2.1, page 171: a unit load is 100 mA; a device draws at most 1 unit load until it is configured",
+    "psd": "section 4.6.2.1, page 226: a Power Sinking Device, which may draw 500 mA, shall not have a USB communications function"
+  },
+  "rp_not_modelled": {
+    "doc": "typec",
+    "where": "section 4.11.1, table 4-27, page 245: a current source to 1.7 to 5.5 V of 80 uA +-20 %, 180 uA +-8 % or 330 uA +-8 %, and a resistor pull-up to 3.3 V +-5 % of 36 kohm +-20 %, 12 kohm +-5 % or 4.7 kohm +-5 %"
+  },
+  "short": {
+    "value_mm": 3.5,
+    "doc": "typec",
+    "where": "section 3.2.3, table 3-5, note 2, page 77: the maximum shorting trace length should not exceed 3.5 mm"
+  },
+  "signals": {
+    "doc": "typec",
+    "where": "section 3.2.3, table 3-5, page 77: GND, VBUS, CC1, CC2, Dp and Dn are each a signal of its own"
+  },
+  "beyond": {
+    "doc": "typec",
+    "where": "section 4.6, table 4-19, page 225: over 3.0 A at 5 V is USB PD only, which this block does not build"
+  },
+  "pullup_volts": {
+    "value": [4.75, 5.5],
+    "doc": "typec",
+    "where": "section 4.11.1, table 4-27, page 245: a resistor pull-up to 4.75 to 5.5 V"
+  },
+  "vbus_volts": {
+    "value": [4.75, 5.5],
+    "doc": "usb2",
+    "where": "USB 2.0 ECN VBUS Max Limit, change (c) to section 7.3.2, table 7-7, page 4: a high-power port supplies 4.75 V to 5.50 V"
+  },
+  "vbus_farads": {
+    "value": [1.0e-6, 10.0e-6],
+    "doc": "usb2",
+    "where": "section 7.3.2, table 7-7, CRPB, page 179, and section 7.2.4.1, page 177: 1.0 uF to 10.0 uF on VBUS; Device Capacitance ECN, page 2: more than 1.0 uF from 0 V to 5.25 V"
+  },
+  "vbus_bias": {
+    "value": 5.25,
+    "doc": "usb2",
+    "where": "Device Capacitance ECN, page 2: CRPB across the whole VBUS voltage range, 0 V to 5.25 V"
+  },
+  "data_volts": {
+    "value": [0, 3.6],
+    "doc": "usb2",
+    "where": "section 7.3.2, table 7-7, pages 178 and 179: VOH at most 3.6 V and VIHZ at most 3.6 V on D+ and D-"
+  },
+  "wiring": {
+    "doc": "typec",
+    "shell": "section 3.2.1, the notes of figure 3-1, note 11, page 47: the receptacle shell shall be connected to the PCB ground plane",
+    "vbus": "section 3.2.3, table 3-5, note 4, page 77: all VBUS pins connected together at the receptacle",
+    "gnd": "section 3.2.3, table 3-5, note 5, page 77: all ground return pins connected together at the receptacle",
+    "data": "section 3.2.3, table 3-5, note 2, page 77: Dp1 and Dp2 shorted, and Dn1 and Dn2, as close to the receptacle as possible",
+    "sbu": "section 3.2.3, table 3-5, note 3, page 77: SBU1 and SBU2 shall not be connected unless required for a specified purpose",
+    "unused": "section 3.2.3, table 3-5, note 1, page 77: unused contact locations shall be electrically isolated"
+  },
+  "connectors": [
+    {
+      "mpn": "USB4115-03-C",
+      "maker": "GCT",
+      "value": "USB4115",
+      "symbol": "Connector:USB_C_Receptacle",
+      "footprint": "Connector_USB:USB_C_Receptacle_GCT_USB4115-03-C",
+      "pins": {
+        "VBUS": ["A4", "A9", "B4", "B9"],
+        "GND": ["A1", "A12", "B1", "B12"],
+        "SHIELD": ["SH"],
+        "CC1": ["A5"],
+        "CC2": ["B5"],
+        "D+": ["A6", "B6"],
+        "D-": ["A7", "B7"],
+        "SBU": ["A8", "B8"],
+        "UNUSED": ["A2", "A3", "A10", "A11", "B2", "B3", "B10", "B11"]
+      },
+      "source": {
+        "document": "GCT USB4115 drawing",
+        "revision": "revision B, 17/12/25",
+        "url": "https://gct.co/files/drawings/usb4115.pdf",
+        "sha256": "8e3448f72b96e77b0952160bfa76d54c034a7c7ce783411cfc70492e8d1b90dc",
+        "read": "2026-11-17"
+      },
+      "amps_vbus": {"value": 5.0, "where": "Electrical, Current Rating, page 1: 5.00 A collectively for VBUS pins"},
+      "note": "A vertical USB 3.2 receptacle, of which the block wires the USB 2.0 pins of table 3-5. GCT USB4105-GF-A, the horizontal USB 2.0 receptacle, was tried first: KiCad's footprint puts its GND pads 0.19 mm from its pegs' holes, under the board's 0.25 mm hole clearance"
+    }
+  ],
+  "protection": [
+    {
+      "mpn": "TPD2E2U06DCKR",
+      "maker": "Texas Instruments",
+      "value": "TPD2E2U06",
+      "symbol": "Power_Protection:TPD2E2U06DCK",
+      "footprint": "Package_TO_SOT_SMD:SOT-323_SC-70",
+      "pins": {"IO1": "1", "IO2": "2", "GND": "3"},
+      "source": {
+        "document": "TPD2E2U06 datasheet, SLLSEG9C",
+        "revision": "June 2013, revised December 2019",
+        "url": "https://www.ti.com/lit/ds/symlink/tpd2e2u06.pdf",
+        "sha256": "a133b86ea3d3c3d34667339b92d3b5e98d541d10e9775d63e7cdfa153794f4ed",
+        "read": "2026-11-17"
+      },
+      "placement": {"where": "section 5, Pin Functions, page 3: connect IO1 and IO2 to the data line as close to the connector as possible"}
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "kind": "diode.clamp",
+  "mpn": "TPD2E2U06DCKR",
+  "diodes": [{"anode": "3", "cathode": "1"}, {"anode": "3", "cathode": "2"}],
+  "volts_standoff": 5.5,
+  "source": {
+    "document": "TPD2E2U06 datasheet, SLLSEG9C",
+    "revision": "June 2013, revised December 2019",
+    "url": "https://www.ti.com/lit/ds/symlink/tpd2e2u06.pdf",
+    "sha256": "a133b86ea3d3c3d34667339b92d3b5e98d541d10e9775d63e7cdfa153794f4ed",
+    "read": "2026-11-17",
+    "second_reader": "no"
+  },
+  "note": "The USB-C block's ESD part (rules/blocks/usbc.json). The DCK package: IO1 is pin 1, IO2 pin 2, GND pin 3 (section 5, Pin Functions, page 3), as the KiCad symbol TPD2E2U06DCK numbers them. Each IO clamps to GND (section 7.2, Functional Block Diagram, page 8). VRWM is 5.5 V at most with IIO under 10 uA (section 6.5, page 4); VIO runs 0 to 5.5 V (section 6.3, page 4). The line capacitance, 1.5 pF typical and 1.9 pF at most (section 6.5, page 4), is not a key of the facts and is not judged"
+}

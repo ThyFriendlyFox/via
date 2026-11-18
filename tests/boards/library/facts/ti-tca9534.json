@@ -1,0 +1,59 @@
+{
+  "kind": "ic",
+  "mpns": ["TCA9534DWR", "TCA9534PWR"],
+  "family": "digital",
+  "source": {
+    "document": "TCA9534 datasheet, SCPS197D",
+    "revision": "September 2014, revised October 2017",
+    "url": "https://www.ti.com/lit/ds/symlink/tca9534.pdf",
+    "sha256": "5e1ab781d3051f1af52a9c321f62b09d28b447448d56b962b35f9c8261994c04",
+    "read": "2026-11-17",
+    "second_reader": "no"
+  },
+  "note": "Page 5: absolute maximum VI and VO -0.5 V to 6 V; recommended VCC 1.65 V to 5.5 V; VIH of SCL and SDA up to VCC, and its footnote 1: SCL and SDA shall not be at a higher potential than VCC. Page 6: IOL of SDA at VOL = 0.4 V is 3 mA at the least, for VCC 1.65 V to 5.5 V. Page 7: Ci of SCL 8 pF and of SDA 9.5 pF at the most; the text layout puts the SDA row between Ci and Cio, and both rows give 9.5 pF for a pin of it. ICC is the operating mode's 40 uA at 5.5 V and 400 kHz, the most the table gives. Not entered: the IOL of SDA under Tj <= 105 C in the recommended conditions (3 mA) and Tj <= 85 C (6 mA), the 12 mA SDA must be limited to (footnote 3, page 6), the P ports' currents. The I2C clock is 400 kHz at the most (page 7): fast mode",
+  "pins": [
+    {"numbers": ["1"], "name": "A0", "role": "input", "abs": [-0.5, 6], "operating": [-0.5, 5.5], "page": 5},
+    {"numbers": ["2"], "name": "A1", "role": "input", "abs": [-0.5, 6], "operating": [-0.5, 5.5], "page": 5},
+    {"numbers": ["3"], "name": "A2", "role": "input", "abs": [-0.5, 6], "operating": [-0.5, 5.5], "page": 5},
+    {
+      "numbers": ["4", "5", "6", "7", "9", "10", "11", "12"],
+      "name": "P",
+      "role": "io",
+      "abs": [-0.5, 6],
+      "operating": [-0.5, 5.5],
+      "swing": ["GND", "VCC"],
+      "page": 5
+    },
+    {"numbers": ["8"], "name": "GND", "role": "ground"},
+    {"numbers": ["13"], "name": "INT", "role": "open_drain", "abs": [-0.5, 6], "swing": ["GND"], "page": 5},
+    {
+      "numbers": ["14"],
+      "name": "SCL",
+      "role": "input",
+      "abs": [-0.5, 6],
+      "operating": [-0.5, {"pin": "VCC", "plus": 0}],
+      "farads": 8e-12,
+      "page": [5, 7]
+    },
+    {
+      "numbers": ["15"],
+      "name": "SDA",
+      "role": "open_drain",
+      "abs": [-0.5, 6],
+      "operating": [-0.5, {"pin": "VCC", "plus": 0}],
+      "swing": ["GND"],
+      "farads": 9.5e-12,
+      "sink": {"amps": 0.003, "volts": 0.4},
+      "page": [5, 6, 7]
+    },
+    {
+      "numbers": ["16"],
+      "name": "VCC",
+      "role": "supply",
+      "abs": [-0.5, 6],
+      "operating": [1.65, 5.5],
+      "amps": 4e-5,
+      "page": [5, 7]
+    }
+  ]
+}

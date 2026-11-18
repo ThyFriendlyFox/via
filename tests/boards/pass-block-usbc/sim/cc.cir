@@ -1,0 +1,32 @@
+cc: the CC pin of the USB-C block J1 under each advertisement, written by tools/blocks_usbc.py
+* Rp pulls up to 4.75 V to 5.5 V, the .param vpu at 5.125 V +-7.3171 % [USB Type-C R2.5, section 4.11.1, table 4-27, page 245: a resistor pull-up to 4.75 to 5.5 V].
+* Rd is J1's 5.1k, CRCW06035K10FKEA, the .param rd at 1 % [Vishay D/CRCW e3 datasheet, document 20035, 14-Apr-2026].
+* Not judged: Rp as the 2 other columns of USB Type-C R2.5, section 4.11.1, table 4-27, page 245: a current source to 1.7 to 5.5 V of 80 uA +-20 %, 180 uA +-8 % or 330 uA +-8 %, and a resistor pull-up to 3.3 V +-5 % of 36 kohm +-20 %, 12 kohm +-5 % or 4.7 kohm +-5 %; the deck models the resistor pull-up to 4.75 V to 5.5 V alone.
+* The sums:
+*   J1: a load of 1.5 A needs the 1.5A advertisement, which allows 1.5 A; the design detects up to 1.5A [USB Type-C R2.5, section 4.6.2.1, table 4-20, page 227: USB Type-C Current 1.5 A]
+*   CC1, CC2: draw over 500 mA only while CC1 or CC2 is over the threshold, which the part that reads CC sets within 0.613 V to 0.745 V [USB Type-C R2.5, section 4.11.3.2.2, table 4-36, page 254: the threshold between vRd-USB and vRd-1.5; USB Type-C R2.5, section 4.6.2.1, page 227: a Sink that takes the additional current shall monitor the CC pins and adjust its current consumption within tSinkAdj to remain within the value advertised]
+*   R1, R2: Rd of 5.1 kohm +-10 %, 4.59 kohm to 5.61 kohm; CRCW06035K10FKEA, 5.1k 1 %, is 5.05 kohm to 5.15 kohm [USB Type-C R2.5, section 4.11.1, table 4-28, page 245: Rd is 5.1 kohm to GND; +-10 % can detect the power capability, +-20 % cannot; note 2: the total resistance into the CC pin]
+*   U1, U2: TPD2E2U06DCKR stands off 5.5 V [TPD2E2U06 datasheet, SLLSEG9C, June 2013, revised December 2019]; D+ and D- reach 3.6 V [USB 2.0, section 7.3.2, table 7-7, pages 178 and 179: VOH at most 3.6 V and VIHZ at most 3.6 V on D+ and D-], CC1 and CC2 2.04 V [USB Type-C R2.5, section 4.11.1, table 4-28, page 245: the max voltage on the pin, 2.04 V for Rd +-10 % and 2.18 V for Rd +-20 %]; each is placed 10.6 mm from J1's centre, and the length of copper from J1 to each after routing is not judged: the block runs before the router [TPD2E2U06 datasheet, SLLSEG9C, section 5, Pin Functions, page 3: connect IO1 and IO2 to the data line as close to the connector as possible]
+*   C1: CL10A475KO8NNN on VBUS: 4.7 uF x 0.9 x 0.4792 = 2.03 uF at 5.25 V to 4.7 uF x 1.1 = 5.17 uF, with the design's own 0 F to 0 F: 2.03 uF to 5.17 uF, within 1 uF to 10 uF [USB 2.0, section 7.3.2, table 7-7, CRPB, page 179, and section 7.2.4.1, page 177: 1.0 uF to 10.0 uF on VBUS; Device Capacitance ECN, page 2: more than 1.0 uF from 0 V to 5.25 V; USB 2.0, Device Capacitance ECN, page 2: CRPB across the whole VBUS voltage range, 0 V to 5.25 V; Samsung Electro-Mechanics component library, MLCC data sheet page of CL10A475KO8NNN, the page as fetched on 2026-11-17; it prints no revision]
+*   J1: the shell and the 4 GND pins on GND, the 4 VBUS pins on VBUS, A6 and B6 on D+, A7 and B7 on D-, SBU1, SBU2 and the unused pins not connected [USB Type-C R2.5, section 3.2.1, note 11, page 47; section 3.2.3, table 3-5, notes 1 to 5, page 77]; the length of the A6 to B6 and A7 to B7 shorts, at most 3.5 mm, is not judged: the block runs before the router [USB Type-C R2.5, section 3.2.3, table 3-5, note 2, page 77: the maximum shorting trace length should not exceed 3.5 mm]
+.param vpu=5.125
+.param rd=5100
+VPU0 pu0 0 {vpu}
+RP0 pu0 cc0 56000
+RD0 cc0 0 {rd}
+VPU1 pu1 0 {vpu}
+RP1 pu1 cc1 22000
+RD1 cc1 0 {rd}
+VPU2 pu2 0 {vpu}
+RP2 pu2 cc2 10000
+RD2 cc2 0 {rd}
+.control
+op
+let vrd_usb = v(cc0)
+print vrd_usb
+let vrd_15 = v(cc1)
+print vrd_15
+let vrd_30 = v(cc2)
+print vrd_30
+.endc
+.end

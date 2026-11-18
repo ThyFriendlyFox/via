@@ -1,0 +1,6 @@
+{
+  "tr": {
+    "max": 3e-07,
+    "source": "fast mode's tr, 300 ns [TI SLVA689A, section 2, table 2-1, Parametrics from I2C specifications, the rows tr and Cb, page 3]"
+  }
+}

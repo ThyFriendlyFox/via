@@ -162,6 +162,7 @@ provides them. `python3 tools/workcenter doctor` says what is present.
 - Branch from `main`; never commit to it directly.
 - `make verify` green before every push. Flaky gate → fix or
   quarantine in the same PR; never route around it.
+- A change that `make scope` (`tools/ci/scope.py`) calls `fast` may be pushed on `make verify-site`.
 - After adding/removing/renaming source files, run the stack's
   regeneration step (project gen, lockfile, tidy) and commit the result.
 - Commit at boundaries; message says what changed and cites evidence.

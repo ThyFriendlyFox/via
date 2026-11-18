@@ -21,13 +21,16 @@ import types
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
 BOARDS = ROOT / "tests" / "boards"
 
-needs_ngspice = pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed")
-needs_kicad = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+needs_ngspice = engine(pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed"))
+needs_kicad = engine(
+    pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+)
 
 DIVIDER = """* a divider: 5 V through 10k into 10k
 V1 in 0 DC 5

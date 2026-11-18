@@ -450,7 +450,11 @@ def test_verify_takes_the_lock_for_the_whole_gate():
     text = (ROOT / "verify" / "verify.sh").read_text(encoding="utf-8")
     head = text[: text.index('step "1/4 lint"')]
     assert "python3 tools/enginelock.py held" in head
-    assert 'exec python3 tools/enginelock.py hold --what "make verify" -- bash verify/verify.sh "$@"' in head
+    # `make verify-site` (verify.sh site) is named by its mode (tests/test_ci_scope.py).
+    assert (
+        'exec python3 tools/enginelock.py hold --what "make verify${1:+-$1}" -- bash verify/verify.sh "$@"'
+        in head
+    )
 
 
 # --- the workcenter's own commands -------------------------------------------------------------------
@@ -595,6 +599,8 @@ def test_a_lock_folder_that_is_a_file_is_refused_in_1_line(bench):
     assert not started(bench, "S")
 
 
+# doctor asks every engine for its version: the 2 doctor tests start them (tools/ci/engine_marker.py).
+@pytest.mark.engine
 def test_doctor_with_a_lock_folder_that_is_a_file_says_not_judged(bench):
     """doctor is the diagnostic command: with `WORKCENTER_LOCK_DIR` naming a file it prints its tool
     table, the lock as not judged with the reason, and no traceback; `--json` carries the reason."""
@@ -626,6 +632,7 @@ def test_the_lock_folder_does_not_follow_tmpdir(bench):
     assert seen == {f"/tmp/workcenter-lock-{os.getuid()}"}
 
 
+@pytest.mark.engine
 def test_doctor_prints_the_state_of_the_lock(bench):
     """Free, `workcenter doctor` says so with the folder. With A holding and B waiting it names A,
     since when, and 1 waiting; `--json` carries the same."""

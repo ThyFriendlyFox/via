@@ -1,0 +1,121 @@
+{
+  "parts": [
+    {
+      "kind": "crystal",
+      "match": "ABS25-32.768KHZ-12*",
+      "hertz": 32768,
+      "ohms_esr": 50000,
+      "farads_shunt": 1.35e-12,
+      "farads_load": 12e-12,
+      "watts_drive": 1e-6,
+      "terminals": {
+        "pads": ["1", "4"],
+        "where": "page 2, outline drawing, Electrode Arrangement: the crystal between pins 1 and 4, pins 2 and 3 not connected to GND (floating)"
+      },
+      "source": {
+        "document": "Abracon ABS25 datasheet",
+        "revision": "REVISED: 09-30-19",
+        "url": "https://abracon.com/Resonators/ABS25.pdf",
+        "sha256": "e3b65e4965cbbd5d6813fafcc65e38419224ae53cf1af0ea84baae503d4c5f20",
+        "read": "2026-11-17",
+        "second_reader": "no"
+      },
+      "note": "Page 1: R1 50 kohm at the most; C0 1.35 pF typical at 32.768 kHz, with no maximum stated; the drive level 1 uW at the most. The load capacitance is 12.5 pF as standard, and the part number names another: the 12 of this part number asks 12 pF"
+    },
+    {
+      "kind": "crystal",
+      "match": "ABS07-32.768KHZ-6*",
+      "hertz": 32768,
+      "ohms_esr": 70000,
+      "farads_shunt_max": 2e-12,
+      "farads_load": 6e-12,
+      "watts_drive": 0.5e-6,
+      "terminals": {
+        "pads": ["1", "2"],
+        "where": "page 4, Mechanical Dimensions, Connections: the crystal between its 2 terminals, which KiCad's 2-pin footprint numbers 1 and 2"
+      },
+      "source": {
+        "document": "Abracon ABS07 datasheet",
+        "revision": "REVISED: 08-10-22",
+        "url": "https://abracon.com/Resonators/ABS07.pdf",
+        "sha256": "5b21d42d9ca704d86cfb8f1b93488f3f3671c55ca90f334aa66f931866277dd1",
+        "read": "2026-11-17",
+        "second_reader": "no"
+      },
+      "note": "Page 1: R1 70 kohm at the most from -40 C to +85 C; C0 0.9 pF to 1.2 pF typical and 2.0 pF at the most; the drive level 0.5 uW at the most. Page 2: the 6 of the part number is a load of 6 pF"
+    },
+    {
+      "kind": "crystal",
+      "mpn": "FIXTURE-32K768-100K",
+      "hertz": 32768,
+      "ohms_esr": 100000,
+      "farads_shunt": 1.35e-12,
+      "farads_load": 12e-12,
+      "watts_drive": 1e-6,
+      "terminals": {"pads": ["1", "4"], "where": "ABS25's, on ABS25's footprint"},
+      "source": {
+        "document": "no datasheet: a part made up for the fixtures of tests/boards",
+        "read": "2026-11-17",
+        "second_reader": "no"
+      },
+      "note": "ABS25-32.768KHZ-12's figures with twice its R1: 100 kohm"
+    },
+    {
+      "kind": "capacitor.ceramic",
+      "match": "VJ0603A*JXA*",
+      "tolerance": 0.05,
+      "volts": 50,
+      "dielectric": "C0G",
+      "source": {
+        "document": "Vishay VJ Commercial Series datasheet, document 45199",
+        "revision": "08-May-2026",
+        "url": "https://www.vishay.com/docs/45199/vjcommercialseries.pdf",
+        "sha256": "6c9b40c81d312ba6dbe9d0a4e687ae18185efeebf8cb98e6d709020efa550211",
+        "read": "2026-11-17",
+        "second_reader": "no"
+      },
+      "note": "Page 3: the A after the case is C0G (NP0), the J of the tolerance 5 %, the A of the voltage 50 V. Page 5: 0603 C0G at 50 V runs from 1.0 pF to 220 pF"
+    },
+    {
+      "kind": "capacitor.ceramic",
+      "match": "VJ0603Y102KXJ*",
+      "tolerance": 0.10,
+      "volts": 16,
+      "dielectric": "X7R",
+      "source": {
+        "document": "Vishay VJ Commercial Series datasheet, document 45199",
+        "revision": "08-May-2026",
+        "url": "https://www.vishay.com/docs/45199/vjcommercialseries.pdf",
+        "sha256": "6c9b40c81d312ba6dbe9d0a4e687ae18185efeebf8cb98e6d709020efa550211",
+        "read": "2026-11-17",
+        "second_reader": "no"
+      },
+      "note": "Page 3: Y is X7R, K 10 %, J 16 V. Page 8: 1.0 nF in 0603 at 16 V"
+    },
+    {
+      "kind": "capacitor.ceramic",
+      "match": "VJ0805Y474KXJ*",
+      "tolerance": 0.10,
+      "volts": 16,
+      "dielectric": "X7R",
+      "source": {
+        "document": "Vishay VJ Commercial Series datasheet, document 45199",
+        "revision": "08-May-2026",
+        "url": "https://www.vishay.com/docs/45199/vjcommercialseries.pdf",
+        "sha256": "6c9b40c81d312ba6dbe9d0a4e687ae18185efeebf8cb98e6d709020efa550211",
+        "read": "2026-11-17",
+        "second_reader": "no"
+      },
+      "note": "Page 3: Y is X7R, K 10 %, J 16 V. Page 8: 470 nF in 0805 at 16 V. The value it keeps under a voltage is not entered"
+    },
+    {
+      "kind": "connector",
+      "symbol": "Connector_Generic:Conn_02x07_Odd_Even",
+      "source": {
+        "document": "no datasheet: a pin header, with no rating stated",
+        "read": "2026-11-17",
+        "second_reader": "no"
+      }
+    }
+  ]
+}

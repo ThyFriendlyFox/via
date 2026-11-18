@@ -18,6 +18,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
@@ -25,8 +26,10 @@ BOARDS = ROOT / "tests" / "boards"
 sys.path.insert(0, str(ROOT / "tools"))
 import doctools  # noqa: E402
 
-needs_kicad = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
-needs_ngspice = pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed")
+needs_kicad = engine(
+    pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+)
+needs_ngspice = engine(pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed"))
 needs_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg is not installed")
 needs_rsvg = pytest.mark.skipif(shutil.which("rsvg-convert") is None, reason="rsvg-convert is not installed")
 # The day every command here runs on, pinned: no test reads the clock, so a run that crosses midnight

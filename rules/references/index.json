@@ -6,6 +6,7 @@
     "rules/interfaces/*.json",
     "rules/products/*.json",
     "rules/*.kicad_dru",
+    "rules/blocks/*.json",
     "tests/boards/**/facts/*.json"
   ],
   "code": ["tools/*.py", "tools/workcenter", "tests/*.py", "tests/boards/*.py", "ee-agent-kit/lead/*.py"],
@@ -25,6 +26,30 @@
     {"pattern": "\\b(?:UM|AN)1\\d{4}\\b", "family": "NXP's user manuals and application notes (UM10204, AN10441)"}
   ],
   "documents": [
+    {
+      "id": "ti-slva689a",
+      "kind": "application note",
+      "maker": "Texas Instruments",
+      "number": "SLVA689A",
+      "names": ["SLVA689A"],
+      "title": "I2C Bus Pullup Resistor Calculation",
+      "revision": "February 2015, revised October 2026",
+      "url": "https://www.ti.com/lit/an/slva689/slva689.pdf",
+      "sha256": "84da7d3745364e881a72914ca609e93132c356dcc0a0461de483fa27a8669e7b",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "ti-scps197d",
+      "kind": "datasheet",
+      "maker": "Texas Instruments",
+      "number": "SCPS197D",
+      "names": ["SCPS197D"],
+      "title": "TCA9534 Low Voltage 8-Bit I2C and SMBUS Low-Power I/O Expander with Interrupt Output and Configuration Registers",
+      "revision": "September 2014, revised October 2017",
+      "url": "https://www.ti.com/lit/ds/symlink/tca9534.pdf",
+      "sha256": "5e1ab781d3051f1af52a9c321f62b09d28b447448d56b962b35f9c8261994c04",
+      "read": "2026-11-17"
+    },
     {
       "id": "nasa-eee-inst-002",
       "kind": "standard",
@@ -595,6 +620,157 @@
       "revision": "eCFR as of 2026-11-01",
       "url": "https://www.ecfr.gov/api/versioner/v1/full/2026-11-01/title-49.xml?part=173&section=173.185",
       "sha256": "dfa3ff595d24fdcc3af7a0bd9c3e1513d46d7122d048e3ee807e0e39735c84d3",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "usb-typec-r2.5",
+      "kind": "standard",
+      "issuer": "USB Implementers Forum (USB 3.0 Promoter Group)",
+      "number": "USB Type-C Cable and Connector Specification",
+      "title": "Universal Serial Bus Type-C Cable and Connector Specification (a zip, with its ECNs)",
+      "revision": "Release 2.5, March 2026",
+      "url": "https://www.usb.org/sites/default/files/USB%20Type-C%202.5%20Release%20202603.zip",
+      "sha256": "603c2cb0ea356d367fea61f8747a21981f0da9abae4d8ec15556e0063edb81b5",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "ti-sllseg9c",
+      "kind": "datasheet",
+      "maker": "Texas Instruments",
+      "number": "SLLSEG9C",
+      "names": ["SLLSEG9C"],
+      "title": "TPD2E2U06 Dual-Channel High-Speed ESD Protection Device",
+      "revision": "June 2013, revised December 2019",
+      "url": "https://www.ti.com/lit/ds/symlink/tpd2e2u06.pdf",
+      "sha256": "a133b86ea3d3c3d34667339b92d3b5e98d541d10e9775d63e7cdfa153794f4ed",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "gct-usb4115",
+      "kind": "datasheet",
+      "maker": "GCT",
+      "number": "USB4115",
+      "title": "USB4115, USB3.2 Gen2 Type C Receptacle, Vertical, SMT, H=9.30mm (drawing)",
+      "revision": "revision B, 17/12/25",
+      "url": "https://gct.co/files/drawings/usb4115.pdf",
+      "sha256": "8e3448f72b96e77b0952160bfa76d54c034a7c7ce783411cfc70492e8d1b90dc",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "samsung-cl10a475ko8nnn",
+      "kind": "datasheet",
+      "maker": "Samsung Electro-Mechanics",
+      "number": "CL10A475KO8NNN",
+      "title": "Samsung Electro-Mechanics component library, MLCC data sheet page of CL10A475KO8NNN",
+      "revision": "the page as fetched on 2026-11-17; it prints no revision",
+      "url": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL10A475KO8NNN",
+      "sha256": "46ee98a179a5b52081b40e9223c75877c8ca229c608982f0178959b8ac03e41c",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "ti-slusce2",
+      "kind": "datasheet",
+      "maker": "Texas Instruments",
+      "number": "SLUSCE2D",
+      "names": ["SLUSCE2D"],
+      "title": "bq21040 0.8-A, Single-Input, Single Cell Li-Ion and Li-Pol Battery Charger",
+      "revision": "April 2016, revised January 2019",
+      "url": "https://www.ti.com/lit/ds/symlink/bq21040.pdf",
+      "sha256": "66c454e4978439d20bfa64038ffd8e0b85bb0d9c0cc421c6b7a972cbdbb82f3f",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "ti-slusbu9",
+      "kind": "datasheet",
+      "maker": "Texas Instruments",
+      "number": "SLUSBU9I",
+      "names": ["SLUSBU9I"],
+      "title": "BQ297xx Cost-Effective Voltage and Current Protection Integrated Circuit for Single-Cell Li-Ion and Li-Polymer Batteries",
+      "revision": "March 2014, revised August 2024",
+      "url": "https://www.ti.com/lit/ds/symlink/bq2970.pdf",
+      "sha256": "011527de4b541f4ce5170c7621b383cb5fcc5e2e01fee9caeaaaaa54cc495e56",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "ti-slps260",
+      "kind": "datasheet",
+      "maker": "Texas Instruments",
+      "number": "SLPS260E",
+      "names": ["SLPS260E"],
+      "title": "CSD17313Q2 30-V N-Channel NexFET Power MOSFET",
+      "revision": "March 2010, revised September 2015",
+      "url": "https://www.ti.com/lit/ds/symlink/csd17313q2.pdf",
+      "sha256": "a833a4cc6cc5471d2aa2faaed97ab37414a66162131a496d4a33080ae818910f",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "ti-slaa322d",
+      "kind": "application note",
+      "maker": "Texas Instruments",
+      "number": "SLAA322D",
+      "names": ["SLAA322D"],
+      "title": "MSP430 32-kHz Crystal Oscillators",
+      "revision": "August 2006, revised July 2017",
+      "url": "https://www.ti.com/lit/an/slaa322d/slaa322d.pdf",
+      "sha256": "230fa068293ae9bdd1ec9b6a9544fb81c4a4e504ae615d007438409d1506fcb0",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "ti-slase35",
+      "kind": "datasheet",
+      "maker": "Texas Instruments",
+      "number": "SLASE35C",
+      "names": ["SLASE35C"],
+      "title": "MSP430FR572x Mixed-Signal Microcontrollers",
+      "revision": "May 2014, revised December 2017",
+      "url": "https://www.ti.com/lit/ds/symlink/msp430fr5720.pdf",
+      "sha256": "e43fd0ed2433cb4edc0217adc948180fc7417dfaa4fb967b1db0ebb81a56fa78",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "ti-slau278",
+      "kind": "user's guide",
+      "maker": "Texas Instruments",
+      "number": "SLAU278AH",
+      "names": ["SLAU278AH"],
+      "title": "MSP430 Hardware Tools User's Guide",
+      "revision": "May 2009, revised March 2021",
+      "url": "https://www.ti.com/lit/ug/slau278/slau278.pdf",
+      "sha256": "0d9c72d7aab2982244bd6d3ad456de9f2c95aad33615cac2284849d8e6889162",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "ti-slau272d",
+      "kind": "user's guide",
+      "maker": "Texas Instruments",
+      "number": "SLAU272D",
+      "names": ["SLAU272D"],
+      "title": "MSP430FR57xx Family User's Guide",
+      "revision": "May 2011, revised March 2018",
+      "url": "https://www.ti.com/lit/ug/slau272d/slau272d.pdf",
+      "sha256": "fe3fbea973299ff37ec3406b54a34e545c2cc6207c135fcc2157fd4988250363",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "abracon-abs25",
+      "kind": "datasheet",
+      "maker": "Abracon",
+      "number": "ABS25",
+      "title": "ABS25 32.768 kHz Low Frequency SMD Crystal",
+      "revision": "REVISED: 09-30-19",
+      "url": "https://abracon.com/Resonators/ABS25.pdf",
+      "sha256": "e3b65e4965cbbd5d6813fafcc65e38419224ae53cf1af0ea84baae503d4c5f20",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "abracon-abs07",
+      "kind": "datasheet",
+      "maker": "Abracon",
+      "number": "ABS07",
+      "title": "ABS07 32.768kHz SMD Crystal",
+      "revision": "REVISED: 08-10-22",
+      "url": "https://abracon.com/Resonators/ABS07.pdf",
+      "sha256": "5b21d42d9ca704d86cfb8f1b93488f3f3671c55ca90f334aa66f931866277dd1",
       "read": "2026-11-17"
     }
   ]

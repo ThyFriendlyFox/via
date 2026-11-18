@@ -10,7 +10,52 @@ concurrency:
 permissions:
   contents: read
 jobs:
-  verify:
+  # The 1 job that decides what the change needs: tools/ci/scope.py prints each path's answer and
+  # fast or full. A run with no base (workflow_dispatch) or a base it cannot read is full.
+  scope:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      scope: ${{ steps.scope.outputs.scope }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Decide the scope of the change
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          base=""
+          case "$EVENT" in
+            pull_request) base=$(git rev-parse HEAD^1) ;;
+            push) git fetch --no-tags --depth=1 origin "$BEFORE" || true; base="$BEFORE" ;;
+          esac
+          python3 tools/ci/scope.py --base "$base" --head HEAD --github-output
+
+  # A change no engine reads: no toolchain; shellcheck, the site's build, the tests that start no
+  # engine, and the kit's checks (make verify-site).
+  fast:
+    needs: scope
+    if: needs.scope.outputs.scope == 'fast'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install the Python packages the tests read (no engine)
+        run: python -m pip install --progress-bar off -r requirements.txt
+      - name: Verify the site, the documents and the kit
+        run: make verify-site
+
+  # Any other change: the toolchain and the full health gate, as before the split.
+  full:
+    needs: scope
+    if: needs.scope.outputs.scope == 'full'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -19,3 +64,24 @@ jobs:
         run: sudo env REQUIRE_FREEROUTING=1 ./install.sh
       - name: Verify
         run: make verify
+
+  # Always runs, so a required check always resolves: green only when the job the scope asked for
+  # passed. A skipped job is not a pass, and a failed scope job leaves no answer.
+  verdict:
+    needs: [scope, fast, full]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: The asked job passed
+        env:
+          SCOPE: ${{ needs.scope.outputs.scope }}
+          FAST: ${{ needs.fast.result }}
+          FULL: ${{ needs.full.result }}
+        run: |
+          echo "scope: ${SCOPE:-none}; fast: $FAST; full: $FULL"
+          case "$SCOPE" in
+            fast) test "$FAST" = success ;;
+            full) test "$FULL" = success ;;
+            *) echo "the scope job gave no answer"; exit 1 ;;
+          esac

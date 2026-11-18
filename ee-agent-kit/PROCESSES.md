@@ -203,6 +203,9 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
     names the checkout as its source. A container image holds the copy of
     the tools it was built from. Read step 6 as the file says it now, not
     as an earlier session remembered it (M215).
+15. A parser of a tool's output is tested on a line in the tool's own
+    format, quoted with its source (a class or a document) and the tool's
+    version, never on a line the test's author wrote (M234).
 
 Done when: the DRC after the route lists 0 errors, or every remaining
 error is named in the next design change.
@@ -516,6 +519,10 @@ that may be absent.
    the engines' own folder set to one that is not there. A test that
    names the engine as present carries no mark, and fails only there
    (M170).
+7. A test that starts an engine carries `@pytest.mark.engine` (or a file's
+   `needs_*` mark built with `engine(...)` from `tests/conftest.py`). A
+   test without it that starts one fails in every run
+   (`tools/ci/engine_marker.py`); `make verify-site` finds such a test.
 
 Done when: the summary shows no unexpected skips, the engine test is
 green on the runner, and a run with an engine taken away is not GREEN.
@@ -581,7 +588,10 @@ When: a change is about to be called done.
    requirement's own sentence, not from the code's restatement of it; for
    a check over copper, 1 case for each kind of copper item reaching each
    other kind (track, arc, via, pad, pour); for a check of a project, 1
-   case with a nested board (M224 to M228).
+   case with a nested board (M224 to M228). For a circuit block: each
+   value a chosen part gives is held to the spec, each spec limit to the
+   datasheet's own equation for it, and each item the block cannot judge
+   goes where a command prints it (M238 to M243, M245 to M247).
 
 7. A branch put on `main` without a pull request (a board repository's
    version, on the owner's word) goes by a fast-forward push, never by

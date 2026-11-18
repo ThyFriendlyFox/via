@@ -87,6 +87,7 @@ def copy(name: str, to: Path) -> Path:
     return target
 
 
+@pytest.mark.engine
 def test_the_board_with_no_fault_holds_every_stress_and_a_strict_run_passes(tmp_path):
     code, text = say("ratings", BOARDS / "pass-ratings-node", "--out", tmp_path, "--strict")
     assert code == 0, text
@@ -97,6 +98,7 @@ def test_the_board_with_no_fault_holds_every_stress_and_a_strict_run_passes(tmp_
     assert text.rstrip().endswith(f"RATINGS HELD: node  report {tmp_path / 'ratings' / 'report.md'}")
 
 
+@pytest.mark.engine
 @pytest.mark.parametrize("name", FAULTS)
 def test_each_planted_fault_fails_on_its_own_rule_and_on_no_other(name, tmp_path):
     code, text = say("ratings", BOARDS / name, "--out", tmp_path)
@@ -106,6 +108,7 @@ def test_each_planted_fault_fails_on_its_own_rule_and_on_no_other(name, tmp_path
     assert f"RATINGS NOT HELD (1 fail): node  report {tmp_path / 'ratings' / 'report.md'}" in text
 
 
+@pytest.mark.engine
 def test_a_run_writes_the_netlist_the_page_and_the_record(tmp_path):
     say("ratings", BOARDS / "fail-ratings-pin", "--out", tmp_path)
     folder = tmp_path / "ratings"
@@ -126,6 +129,7 @@ def test_a_run_writes_the_netlist_the_page_and_the_record(tmp_path):
     assert [(f["part"], f["rule"]) for f in failed] == [("U2.2", "pin.voltage")]
 
 
+@pytest.mark.engine
 def test_json_output_is_the_record_and_no_other_line(tmp_path):
     proc = subprocess.run(
         [
@@ -154,6 +158,7 @@ def test_a_project_with_no_ratings_file_is_skipped_and_told_how_to_start(tmp_pat
     assert not (tmp_path / "ratings").exists()
 
 
+@pytest.mark.engine
 def test_init_writes_the_file_once_and_a_run_with_no_facts_judges_nothing(tmp_path):
     project = copy("pass-rc-divider", tmp_path)
     code, text = say("ratings", project, "--init")
@@ -176,6 +181,7 @@ def test_init_writes_the_file_once_and_a_run_with_no_facts_judges_nothing(tmp_pa
     assert "NOTHING JUDGED (4 not judged): rc_divider  report " in text
 
 
+@pytest.mark.engine
 def test_the_facts_are_found_in_a_library_above_the_project(tmp_path):
     """The fixture alone has no facts and judges nothing; with tests/boards/library beside it, it holds."""
     project = copy("pass-ratings-node", tmp_path / "boards")
@@ -186,6 +192,7 @@ def test_the_facts_are_found_in_a_library_above_the_project(tmp_path):
     assert code == 0 and "RATINGS HELD: node" in text, text
 
 
+@pytest.mark.engine
 def test_a_capacitor_marked_dnp_meets_no_need(tmp_path):
     """The board with no fault, with its input capacitor C1 marked do-not-populate in the schematic:
     the capacitor is not on the board, so the run fails as the fixture with C1 left out does."""
@@ -203,13 +210,15 @@ def test_a_capacitor_marked_dnp_meets_no_need(tmp_path):
     assert "- not fitted (DNP), and left out of every line: C1" in page
 
 
+@pytest.mark.engine
 def test_a_file_the_command_does_not_take_fails_the_run_with_its_place(tmp_path):
     project = copy("pass-ratings-node", tmp_path)
     stated = json.loads((project / "ratings.json").read_text(encoding="utf-8"))
     (project / "ratings.json").write_text(json.dumps({**stated, "speed": 1}), encoding="utf-8")
     code, text = say("ratings", project)
     assert code == 1, text
-    assert "- ratings.json: `speed` is no key here; the keys are pack, nets, ambient, parts, accepted" in text
+    keys = "pack, nets, ambient, parts, accepted, not_judged"
+    assert f"- ratings.json: `speed` is no key here; the keys are {keys}" in text
     # the record holds the refusal too: `workcenter next` reads it there
     record = json.loads((project / "build" / "ratings" / "report.json").read_text(encoding="utf-8"))
     assert record["status"] == "fail"
@@ -408,6 +417,7 @@ WRONG = {
 }
 
 
+@pytest.mark.engine
 @pytest.mark.parametrize("case", WRONG)
 def test_a_wrong_file_is_refused_with_its_place_and_leaves_its_record(case, tmp_path):
     change, line = WRONG[case]
@@ -421,6 +431,7 @@ def test_a_wrong_file_is_refused_with_its_place_and_leaves_its_record(case, tmp_
     assert record["status"] == "fail" and record["details"]["failures"][0].startswith(line)
 
 
+@pytest.mark.engine
 def test_a_pack_of_the_project_s_own_is_named_by_its_file_and_as_the_project_s_own(tmp_path):
     """house.json is the NASA pack cut down to its 2 rules of a rail's load, with NASA's name left
     inside. It holds what NASA's pack holds on this board, and it would hold a capacitor NASA's fails.
@@ -451,6 +462,7 @@ def test_a_pack_of_the_project_s_own_is_named_by_its_file_and_as_the_project_s_o
     assert "the project's own" not in first
 
 
+@pytest.mark.engine
 def test_a_run_that_judged_nothing_leaves_its_own_page_and_none_of_an_earlier_run(tmp_path):
     """A run that holds writes `RATINGS HELD` into its page. The next run refuses a file, and the one
     after exports no netlist: each leaves a page that says nothing was judged, and why, beside its
@@ -463,7 +475,8 @@ def test_a_run_that_judged_nothing_leaves_its_own_page_and_none_of_an_earlier_ru
     rewrite(project / "ratings.json", lambda stated: stated.update(speed=1))
     code, text = say("ratings", project)
     assert code == 1 and text.startswith(REFUSED), text
-    line = "ratings.json: `speed` is no key here; the keys are pack, nets, ambient, parts, accepted"
+    keys = "pack, nets, ambient, parts, accepted, not_judged"
+    line = f"ratings.json: `speed` is no key here; the keys are {keys}"
     assert (folder / "report.md").read_text(encoding="utf-8") == (
         f"# Ratings\n\nratings: a file is not as the command reads it\n\nNothing was judged.\n\n- {line}\n"
     )
@@ -484,6 +497,7 @@ def test_a_run_that_judged_nothing_leaves_its_own_page_and_none_of_an_earlier_ru
     assert sorted(p.name for p in folder.iterdir()) == ["report.json", "report.md"]
 
 
+@pytest.mark.engine
 def test_facts_that_do_not_fit_a_part_are_refused_before_a_number_stated_for_the_part(tmp_path):
     """J3 is a header of 3 pins, and ratings.json states the load behind its pin 2. An entry that calls
     J3 a resistor is the fault. The line names that entry: the number stated for the pin is right."""
@@ -501,6 +515,7 @@ def test_facts_that_do_not_fit_a_part_are_refused_before_a_number_stated_for_the
     assert "\n       - made-up.json: part 4: J3 " in text and "ratings.json: parts: J3.2" not in text, text
 
 
+@pytest.mark.engine
 def test_a_parts_file_that_is_not_there_is_refused_by_its_path(tmp_path):
     project = node(tmp_path)
     code, text = say("ratings", project, "--parts", tmp_path / "none.csv")
@@ -508,6 +523,7 @@ def test_a_parts_file_that_is_not_there_is_refused_by_its_path(tmp_path):
     assert f"\n       - {tmp_path / 'none.csv'}: No such file or directory\n" in text
 
 
+@pytest.mark.engine
 def test_facts_with_a_parts_file_the_command_does_not_take_is_refused_and_leaves_no_record(tmp_path):
     """`--facts` judges nothing, so it leaves no record of a run. It answers a wrong file as a run does."""
     project = node(tmp_path)
@@ -543,6 +559,7 @@ def test_out_that_names_a_file_is_refused_and_nothing_is_written_over_it(tmp_pat
     assert not (project / "build").exists()
 
 
+@pytest.mark.engine
 def test_a_schematic_with_2_parts_of_1_reference_is_refused_by_the_schematic_s_name(tmp_path):
     """kicad-cli writes 1 part for the 2, with each pin on 2 nets. The netlist's reader refuses it, and
     the line names the file the fault is in. `--facts` reads the same netlist."""
@@ -581,6 +598,7 @@ def test_a_project_with_no_schematic_is_told_so_with_and_without_facts(tmp_path)
     assert "kicad-cli" not in text and not (project / "build" / "ratings").exists()
 
 
+@pytest.mark.engine
 def test_facts_prints_an_entry_to_fill_with_the_part_s_number_and_pins(tmp_path):
     code, text = say("ratings", BOARDS / "pass-ratings-node", "--out", tmp_path, "--facts", "U1")
     assert code == 0, text
@@ -599,6 +617,7 @@ def test_each_fixture_s_schematic_is_what_its_design_file_writes(name):
     assert code == 0, text
 
 
+@pytest.mark.engine
 def test_what_is_not_judged_is_a_warning_of_a_run_and_a_failure_of_a_strict_one(tmp_path):
     """Without the signal's voltage in ratings.json the input it drives is not judged: the run holds
     and says so, and a strict run fails on the same line."""
@@ -619,6 +638,7 @@ def test_what_is_not_judged_is_a_warning_of_a_run_and_a_failure_of_a_strict_one(
     assert "FAIL   ratings    0 fail, 0 accepted, " in text and " hold, 1 not judged" in text
 
 
+@pytest.mark.engine
 def test_parts_names_the_file_that_holds_the_part_numbers(tmp_path):
     """With no parts.csv beside the schematic no part has a number, and the facts that name their
     parts by number speak of none. `--parts` names the file."""

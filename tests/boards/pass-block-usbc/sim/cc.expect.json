@@ -1,0 +1,17 @@
+{
+  "vrd_usb": {
+    "min": 0.277,
+    "max": 0.612,
+    "source": "Rp of default [USB Type-C R2.5, section 4.11.1, table 4-27, page 245: Default USB Power, a resistor of 56 kohm +-20 % pulled up to 4.75 to 5.5 V] into Rd: USB Type-C R2.5, section 4.11.3.2.2, table 4-36, page 254: vRd-USB"
+  },
+  "vrd_15": {
+    "min": 0.746,
+    "max": 1.164,
+    "source": "Rp of 1.5A [USB Type-C R2.5, section 4.11.1, table 4-27, page 245: 1.5 A @ 5 V, a resistor of 22 kohm +-5 % pulled up to 4.75 to 5.5 V] into Rd: USB Type-C R2.5, section 4.11.3.2.2, table 4-36, page 254: vRd-1.5"
+  },
+  "vrd_30": {
+    "min": 1.369,
+    "max": 2.042,
+    "source": "Rp of 3.0A [USB Type-C R2.5, section 4.11.1, table 4-27, page 245: 3.0 A @ 5 V, a resistor of 10 kohm +-5 % pulled up to 4.75 to 5.5 V] into Rd: USB Type-C R2.5, section 4.11.3.2.2, table 4-36, page 254: vRd-3.0"
+  }
+}

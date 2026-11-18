@@ -1430,3 +1430,87 @@ What happened: The CI run of `main` for merge commit e471028 started at 23:53 UT
 Cost: A red run of `main` with no fault in the code, and a helper's time on a fault that was not there. A health gate takes 20 to 30 minutes, so every gate that started in a day's last half hour could fail the same way.
 Root cause: Each tool and each test read the clock where it needed a day, and nothing named 1 reading per run. `tools/clock.py` now holds the 1 reading a command takes at its start, SOURCE_DATE_EPOCH pins it, `tests/test_clock.py` holds every tool to reading the clock through it, and `tests/test_docs.py` holds every test file to reading no clock at load.
 Process: P10
+
+## M234 — 2026-11-17 — A parser tested on a line no router writes
+What happened: The router's count of open connections was read with a pattern, `(N unrouted)` after `Auto-routing was completed in ...`, that no router writes. Its test fed it a log line in that same invented shape, so the test passed and the rule held for no real router. FreeRouting 1.9.0 logs no count. FreeRouting 2.5.0 writes `(N unrouted and M violations)`, as the builder read from the pinned jar's `FRLogger.formatScore` with `javap -c -p`. A route that left connections open could end as `DRC decides`.
+Cost: Found by the item's review; the 3 rule 15 tests of `tests/test_routers.py` hold the jar's own formats.
+Root cause: The test's author wrote the tool's output from memory, and the test then agreed with the parser it was meant to check.
+Process: P4
+
+## M235 — 2026-11-17 — A test file run while a health gate held GATE.lock
+What happened: On `wip/ci` the 2 new test files were run once (0.10 s, a collection error) while `scratchpad/GATE.lock` existed; the brief says to run no test while it does. On 2026-11-18 the landing of the same piece chained a test run behind `ls GATE.lock` in 1 command; the lock had come 14 s after the last look, the run waited on the engine lock behind the gate, and was stopped before pytest started.
+Cost: None measured; the first run was 0.10 s. It could have slowed the gate's timing.
+Root cause: The lock was checked in the same command as the run, and its answer was read after.
+Process: P31
+
+## M236 — 2026-11-17 — A `cd` in a shell command
+What happened: On `wip/ci` a command held `( cd / ; true )`, a leftover with no effect. P8 forbids `cd` in any command.
+Cost: None; it ran in a child shell.
+Root cause: A command was assembled by hand without reading it whole before it ran.
+Process: P8
+
+## M237 — 2026-11-17 — A background job stopped by the terminal
+What happened: `make verify-site` started in the background under `flock` stopped at once ("Stopped"), twice, and wrote nothing; `setsid -w` ran it.
+Cost: 2 places in the engine lock's queue, about 20 minutes.
+Root cause: A job in the background of an interactive shell is stopped when a child touches the terminal; `< /dev/null` alone did not prevent it.
+Process: P8
+
+## M238 — 2026-11-17 — A block took the stock's nearest resistor and never checked the output it set
+What happened: The first build of `blocks.buck` chose R1 as the stock's nearest value to equation 11's result and did not work out the output that R1 sets. With only 100k in stock, a 3.3 V spec built a board at 1.2 V. `workcenter ratings --strict` and the gates passed it.
+Cost: Found by the first review of roadmap item 3; the block now works out the output by the datasheet's equation 2 and refuses it outside its span or 2 % off the output asked (`tests/test_blocks.py`).
+Root cause: Every later check judged the parts against what the block wrote, not against the spec. A block holds what each chosen part gives to what was asked, with the stated accuracy, and refuses on 1 line when it misses. Each check of a block has a test that fails when the check is removed.
+Process: P14
+
+## M239 — 2026-11-17 — A block held the least input to the output, not to the IC's dropout equation
+What happened: `blocks.buck` held the least input to the output asked, not to what the IC needs to hold its output: the top of the output's span plus the load's drop across the high-side FET and the inductor (SLVSDG1C section 7.3.2, equation 1). A 3.3 V output from 3.3 V at 1.2 A built and went GREEN.
+Cost: Found by the second review of roadmap item 3; the block now refuses it (`tests/test_blocks.py`).
+Root cause: A spec limit was held to a simpler rule than the datasheet's own equation for it. A block holds each spec limit to the datasheet's equation for it, at the worst end of every span it worked out.
+Process: P14
+
+## M240 — 2026-11-17 — A block's read-back check never asked that its nets differ
+What happened: `blocks.usbc` took 6 nets and checked each pin against its net, but never that the 6 nets were different. CC1 and CC2 on 1 net put the 2 Rd in parallel, 2.55 kohm, outside table 4-28; the port passed the check, `workcenter ratings --strict` and the SIM gate.
+Cost: Found by the review of the USB-C block (F1); the block now refuses 2 signals on 1 net, before it builds and in its check (`tests/test_blocks_usbc.py`).
+Root cause: A block that takes several nets checked each one alone. It refuses them when 2 are the same, unless its rules name the pair as allowed.
+Process: P14
+
+## M241 — 2026-11-17 — A comparator's threshold taken from the end of a range
+What happened: `blocks.usbc` handed the designer 0.746 V, the least of the vRd-1.5 range, as the CC threshold. Table 4-36 states the threshold as a band, 0.613 V to 0.745 V; a comparator set at 0.746 V misses compliant sources.
+Cost: Found by the review of the USB-C block (F4); the sums now give the band (`tests/test_blocks_usbc.py`).
+Root cause: A range end was read as a threshold. A requirement on a comparator cites the table's threshold row, never a range end.
+Process: P14
+
+## M242 — 2026-11-17 — A footprint from KiCad's library failed the board's own DRC
+What happened: The USB-C block first named GCT USB4105-GF-A. KiCad's footprint puts its GND pads 0.1944 mm from its pegs' holes, under the board's 0.25 mm, and the fixture failed DRC on 4 `hole_clearance` errors.
+Cost: A receptacle chosen and dropped; the block now names GCT USB4115-03-C, whose fixture is GREEN.
+Root cause: A footprint was taken on its name. Before a block names a footprint, generate and gate a board that holds it; the block's pass fixture does this.
+Process: P14
+
+## M243 — 2026-11-18 — A bus block checked each device pin's limits but not its net
+What happened: `blocks.i2c` checked the limits of each device pin it found on the lines, but not which net it sat on. Pull-ups to GND, SDA and SCL crossed at a device, and `nets=(SDA, SDA, VCC)` each passed the block and `workcenter ratings --strict`.
+Cost: Found by the review of the I2C block (I1 to I3); each is now refused, each with a test (`tests/test_blocks_i2c.py`).
+Root cause: The block judged the pins it found, not every pin its facts name. A block reads every pin its parts' facts name and refuses one on the wrong net.
+Process: P14
+
+## M244 — 2026-11-18 — A test run started while the health gate ran
+What happened: While `GATE.lock` existed, 1 run of `pytest tests/test_blocks_i2c.py` (1.3 s, no engine) was started before the lock was checked. On landing the blocks, a run under `ENGINE2.lock` was started in the same way, stopped before any test ran, and later a 15 s run of `tests/test_ratings_mutations.py` ran while a new gate held the lock.
+Cost: Time taken from a health gate on a machine of 4 processors.
+Root cause: The lock was read in 1 command and the run started in another. Check the lock in the same command as the run, and start nothing when it exists: `[ -e $S/GATE.lock ] || <the run>`.
+Process: P31
+
+## M245 — 2026-11-18 — A block printed "not judged" only in a comment of its deck
+What happened: The charger block's transistors passed SLUSBU9I section 9.2.2's check by 1 mV at their 25 C MAX and VGS = 3 V, where the note asks the on-resistance derated for heat and gate drive and the datasheet gives no number for either. It said "not judged" in a comment of its deck only, and `workcenter ratings --strict` passed with 0 not judged.
+Cost: Found by the review of the charger block (C1); its not-judged items now go into `ratings.json`'s `not_judged`, and `workcenter ratings` prints them.
+Root cause: A check passed on what it did not judge. A block's not-judged items go where a command prints them.
+Process: P14
+
+## M246 — 2026-11-18 — A block held a junction to the datasheet's limit, not to the pack's
+What happened: The charger block held the BQ21040's junction to SLUSCE2D's 125 C, while the SIM gate holds it to the rating pack's 110 C. The block named about 234 mA as the most, a current the gates refuse.
+Cost: Found by the review of the charger block (C6); the limit is now the least of the 2.
+Root cause: A block's limit is the least of the datasheet's and the rating pack's: the one the gates apply.
+Process: P14
+
+## M247 — 2026-11-17 — A crystal wired to a floating pad on a GREEN board
+What happened: `blocks.mcu` mapped the crystal symbol's pins 1 to 1 onto the footprint's pads. The fixture's ABS25 sat on pads 1 and 2; pad 2 floats and pad 4 was left open. ERC, DRC and EXPORT passed and the gates were GREEN.
+Cost: Found by the review of the microcontroller block (M1); the crystal's facts now give its `terminals`, and the block's check() reads the pads back from the footprint.
+Root cause: No gate knows which pads of a crystal hold the crystal. Read the pin arrangement from the maker's outline drawing into the part's facts, and have the block's own check read the pads back.
+Process: P14

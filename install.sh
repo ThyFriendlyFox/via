@@ -6,6 +6,8 @@
 #   ./install.sh --check         report engine status; install nothing
 #   sudo ./install.sh --chip     install or update the chip engines only
 #   sudo ./install.sh --openems  install or update the field solver (openEMS) only
+#   sudo ./install.sh --freerouting2  install or update the second router (FreeRouting 2.5.0
+#                                     and the Java 25 it needs) only
 #
 # Every step skips work that is already done, so the script is safe to
 # run again. A required step that fails exits non-zero, so a cloud
@@ -20,6 +22,10 @@
 #   REQUIRE_FREEROUTING   1 makes a failed JAR download fatal (default 0: warn)
 #   REQUIRE_OPENEMS       1 makes a failed openEMS step fatal (default 0: warn)
 #   OPENEMS_POOL          where the 4 Debian packages of openEMS are fetched (default deb.debian.org)
+#   INSTALL_FREEROUTING2  1 also installs the second router, FreeRouting 2.5.0 with its own
+#                         Java 25, 125 MB under WORKCENTER_ROOT (default 0: the default
+#                         router is FreeRouting 1.9.0)
+#   REQUIRE_FREEROUTING2  1 makes a failed second-router step fatal (default 0: warn)
 #   SKIP_APT              1 skips the apt step (for images that ship KiCad 10)
 #   INSTALL_CHIP          1 also installs the chip engines and the sky130A
 #                         process kit, 1.9 GB under WORKCENTER_ROOT/chip
@@ -47,6 +53,20 @@ FREEROUTING_SHA256="${FREEROUTING_SHA256:-9084a4888937a7f31f857ecc12aa7a37407f51
 FREEROUTING_URL="${FREEROUTING_URL:-https://github.com/freerouting/freerouting/releases/download/v${FREEROUTING_VERSION}/freerouting-${FREEROUTING_VERSION}.jar}"
 REQUIRE_FREEROUTING="${REQUIRE_FREEROUTING:-0}"
 SKIP_APT="${SKIP_APT:-0}"
+
+# The second router, `workcenter design --route --router freerouting2`, opt-in. FreeRouting 2.5.0's
+# classes are of version 69 (the header of app/freerouting/Freerouting.class in the jar); the apt Java
+# 21 reads up to 65, so it runs on its own Eclipse Temurin 25 JRE under WC_ROOT/java25. The SHA256 of
+# the jar is of the file the release URL served on 2026-11-17 (64599107 bytes); the JRE's is the
+# checksum api.adoptium.net publishes for that package.
+INSTALL_FREEROUTING2="${INSTALL_FREEROUTING2:-0}"
+REQUIRE_FREEROUTING2="${REQUIRE_FREEROUTING2:-0}"
+FREEROUTING2_VERSION="2.5.0"
+FREEROUTING2_SHA256="f6f51bb02245e8e717f9359bd260cc9c5c0b1bc0acc8b7cb2cd5b8ffeb5de3c7"
+FREEROUTING2_URL="https://github.com/freerouting/freerouting/releases/download/v${FREEROUTING2_VERSION}/freerouting-${FREEROUTING2_VERSION}.jar"
+JAVA25_VERSION="25.0.5+8"
+JAVA25_SHA256="6fac98f0c8202efc3135a9e9e42aa61963ec42d1c5cbb40caf231e7b14a24ef6"
+JAVA25_URL="https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25.0.5%2B8/OpenJDK25U-jre_x64_linux_hotspot_25.0.5_8.tar.gz"
 
 # openEMS, the field solver of `workcenter fields`. Ubuntu 24.04 has no openems package; Debian 12's
 # build runs on Ubuntu 24.04's libraries. Its 4 packages are unpacked under WC_ROOT/openems, each
@@ -238,6 +258,67 @@ EOF
   fi
 }
 
+freerouting2_fail() {
+  if [[ "$REQUIRE_FREEROUTING2" == "1" ]]; then
+    die "freerouting2: $* and REQUIRE_FREEROUTING2=1"
+  fi
+  warn "freerouting2: $*; \`--router freerouting2\` skips until \`sudo ./install.sh --freerouting2\` succeeds"
+}
+
+step_java25() {
+  local dir="${WC_ROOT}/java25" tgz="${WC_ROOT}/java25.tar.gz.tmp"
+  if [[ -x "${dir}/bin/java" && "$(cat "${dir}/.sha256" 2>/dev/null)" == "$JAVA25_SHA256" ]]; then
+    log "java25: Temurin ${JAVA25_VERSION} present at ${dir}/bin/java"
+    return 0
+  fi
+  rm -rf "$dir" "$tgz"
+  mkdir -p "$dir"
+  log "java25: downloading Temurin JRE ${JAVA25_VERSION} from ${JAVA25_URL}"
+  if ! curl -fsSL --retry 3 --connect-timeout 20 --max-time 900 -o "$tgz" "$JAVA25_URL"; then
+    rm -f "$tgz"
+    freerouting2_fail "download of Temurin ${JAVA25_VERSION} failed"
+    return 1
+  fi
+  if ! echo "${JAVA25_SHA256}  ${tgz}" | sha256sum -c - >/dev/null 2>&1; then
+    # A file that is not the pinned one is never unpacked: the second router stays absent.
+    rm -f "$tgz"
+    freerouting2_fail "checksum mismatch for Temurin ${JAVA25_VERSION}"
+    return 1
+  fi
+  log "java25: checksum ok"
+  tar -xzf "$tgz" -C "$dir" --strip-components=1
+  rm -f "$tgz"
+  echo "$JAVA25_SHA256" > "${dir}/.sha256"
+  log "java25: $("${dir}/bin/java" -version 2>&1 | grep -m1 ' version ') at ${dir}/bin/java"
+}
+
+step_freerouting2() {
+  local dir="${WC_ROOT}/freerouting2"
+  local jar="${dir}/freerouting-${FREEROUTING2_VERSION}.jar"
+  mkdir -p "$dir"
+  if [[ ! -s "$jar" ]]; then
+    log "freerouting2: downloading ${FREEROUTING2_URL}"
+    if ! curl -fsSL --retry 3 --connect-timeout 20 --max-time 900 -o "${jar}.tmp" "$FREEROUTING2_URL"; then
+      rm -f "${jar}.tmp"
+      freerouting2_fail "download failed"
+      return 1
+    fi
+    if ! echo "${FREEROUTING2_SHA256}  ${jar}.tmp" | sha256sum -c - >/dev/null 2>&1; then
+      rm -f "${jar}.tmp"
+      freerouting2_fail "checksum mismatch for freerouting-${FREEROUTING2_VERSION}.jar"
+      return 1
+    fi
+    mv "${jar}.tmp" "$jar"
+  fi
+  if ! echo "${FREEROUTING2_SHA256}  ${jar}" | sha256sum -c - >/dev/null 2>&1; then
+    freerouting2_fail "checksum mismatch for ${jar}"
+    return 1
+  fi
+  log "freerouting2: checksum ok"
+  ln -sfn "$jar" "${dir}/freerouting.jar"
+  log "freerouting2: ${jar}, run by ${WC_ROOT}/java25/bin/java"
+}
+
 step_python() {
   local venv="${WC_ROOT}/venv"
   if [[ ! -x "${venv}/bin/python" ]] || ! grep -q '^include-system-site-packages = true' "${venv}/pyvenv.cfg"; then
@@ -361,11 +442,19 @@ main() {
     log "done in $((SECONDS - t0))s"
     return
   fi
+  if [[ "${1:-}" == "--freerouting2" ]]; then
+    if step_java25; then step_freerouting2 || true; fi
+    log "done in $((SECONDS - t0))s"
+    return
+  fi
   step_apt
   step_freerouting
   step_openems
   step_python
   step_link
+  if [[ "$INSTALL_FREEROUTING2" == "1" ]]; then
+    if step_java25; then step_freerouting2 || true; fi
+  fi
   if [[ "$INSTALL_CHIP" == "1" ]]; then
     step_chip
   fi

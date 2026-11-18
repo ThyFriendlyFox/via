@@ -1,0 +1,85 @@
+{
+  "pack": "ecss-q-st-30-11c-rev2",
+  "nets": {
+    "+5V": {
+      "volts": [
+        4.75,
+        5.25
+      ],
+      "source": "the input range of the charger block U1: charger(vin=(4.75, 5.25), cell=Cell(volts=(2.5, 4.3)))"
+    },
+    "+BATT": {
+      "volts": [
+        2.5,
+        4.3
+      ],
+      "source": "the cell of the charger block U1: charger(vin=(4.75, 5.25), cell=Cell(volts=(2.5, 4.3))); the fixture's cell, made up for tests/boards: 2.5 V to 4.3 V, 0.5 A in charge, 3 A in discharge"
+    },
+    "-BATT": {
+      "volts": [
+        -0.115,
+        0.115
+      ],
+      "source": "the cell's negative, 2 transistors from GND: under 115 mV, or U2 opens them [BQ297xx datasheet, SLUSBU9I, section 6.6, VOCD, TA = -40 C to 85 C, -15 mV to 15 mV, page 6]"
+    },
+    "U2_FETS": {
+      "volts": [
+        -0.115,
+        0.115
+      ],
+      "source": "between the 2 transistors, GND and -BATT: under 115 mV, or U2 opens them [BQ297xx datasheet, SLUSBU9I, section 6.6, VOCD, TA = -40 C to 85 C, -15 mV to 15 mV, page 6]"
+    },
+    "GND": {
+      "volts": [
+        0,
+        0
+      ],
+      "source": "the reference: J1 pin 2"
+    },
+    "CHG": {
+      "volts": [
+        0,
+        5.25
+      ],
+      "source": "the host's pull-up on J1 pin 3, to the input at the most"
+    }
+  },
+  "not_judged": {
+    "U2: the overdischarge threshold's tolerance": {
+      "parts": [
+        "U2"
+      ],
+      "why": "VUVP's tolerance, 50 mV, is stated at TA = 25 C, and the ambient runs 0 C to 40 C",
+      "source": "BQ297xx datasheet, SLUSBU9I, section 4, Device Comparison Table, BQ29700, UVP, page 3; BQ297xx datasheet, SLUSBU9I, section 6.6, VUVP, TA = 25 C, -50 mV to 50 mV, page 6"
+    },
+    "Q1, Q2: the on-resistance at heat and at a low gate": {
+      "parts": [
+        "Q1",
+        "Q2"
+      ],
+      "why": "the load's 84 mV and the charge's 13.9 mV are worked out at RDS(on) MAX at 25 C and VGS = 3 V; CSD17313Q2's datasheet gives no MAX above 25 C or under VGS = 3 V, and BQ29700DSER drives the gate to 3.4 V at the least only at a cell of 3.8 V, while the cell runs down to 2.75 V",
+      "source": "TI SLUSBU9I, section 9.2.2, page 20: the total on-resistance takes the worst case of the FETs' on-resistance, its derating for temperature and the gate drive; CSD17313Q2 datasheet, SLPS260E, section 5.1, RDS(on) at VGS = 3 V, TYP and MAX, at 25 C, page 3; BQ297xx datasheet, SLUSBU9I, section 6.5, VOH of COUT and DOUT at BAT = 3.8 V, MIN, page 5; BQ297xx datasheet, SLUSBU9I, section 4, Device Comparison Table, BQ29700, UVP, page 3; BQ297xx datasheet, SLUSBU9I, section 6.6, VUVP, TA = 25 C, -50 mV to 50 mV, page 6"
+    },
+    "Q1, Q2: the discharge trip": {
+      "parts": [
+        "Q1",
+        "Q2"
+      ],
+      "why": "under the typical 31 mohm, which CSD17313Q2's datasheet does not bound from below, the discharge trips over 1.85 A",
+      "source": "TI SLUSBU9I, section 9.2.2, page 19: the total on-resistance of the 2 FETs times the greatest discharge current stays under VOCD; TI SLUSBU9I, section 9.2.2, page 20: the total on-resistance times the greatest charge current stays under the OCC threshold; BQ297xx datasheet, SLUSBU9I, section 6.6, VOCD, TA = -40 C to 85 C, -15 mV to 15 mV, page 6; BQ297xx datasheet, SLUSBU9I, section 6.6, VOCC, TA = -40 C to 85 C, -15 mV to 15 mV, page 6; CSD17313Q2 datasheet, SLPS260E, section 5.1, RDS(on) at VGS = 3 V, TYP and MAX, at 25 C, page 3; the fixture's cell, made up for tests/boards: 2.5 V to 4.3 V, 0.5 A in charge, 3 A in discharge"
+    },
+    "C3: the value it keeps": {
+      "parts": [
+        "C3"
+      ],
+      "why": "BQ29700DSER asks 100 nF on BAT and states no value it must keep at the cell's voltage",
+      "source": "BQ297xx datasheet, SLUSBU9I, section 5.1.1, a 0.1 uF input capacitor on BAT, page 4; figure 9-1, page 19"
+    }
+  },
+  "parts": {
+    "J3.1": {
+      "amps": 1.0,
+      "source": "the system's load on J3: 1 A at the most, this fixture's own"
+    }
+  }
+}

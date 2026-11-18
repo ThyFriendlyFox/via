@@ -19,6 +19,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -29,8 +30,10 @@ needs_libs = pytest.mark.skipif(
     not (kicadgen.SYMBOL_DIR / "Device.kicad_sym").is_file(),
     reason="KiCad symbol libraries are not installed",
 )
-needs_kicad = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
-needs_ngspice = pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed")
+needs_kicad = engine(
+    pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+)
+needs_ngspice = engine(pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed"))
 
 # A mixer (out = k_in * in + 0.1 * en) whose 4 nodes are in another order than the symbol's 5 pins, a
 # diode and a 3-terminal MOSFET. `k_in` comes from a directive on the schematic.

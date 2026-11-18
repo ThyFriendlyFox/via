@@ -342,6 +342,11 @@ images are drawn.
 | `tools/enginelock.py` | The engine lock: long `workcenter` commands take turns on 1 machine in the order they came, and `make verify` holds it for the whole gate; `hold`, `held` and `state` on its own command line. Standard library only. |
 | `tools/clock.py` | The day and the time a command runs at: 1 reading at its start, pinned by `SOURCE_DATE_EPOCH`; the machine's day for a price's age and the machine's clock for the engine lock; and the reader of a file's calls of the clock that 2 tests hold the tools and the test files to. Standard library only. |
 | `tools/ratings.py` | `workcenter ratings`: the voltage span of each net, the facts of each part, and each stress against its limit. Standard library only. |
+| `tools/blocks.py` | Circuit blocks a design file adds in 1 call, each written from its maker's note: `blocks.buck`, a buck regulator by TI SLVA477C, and the entry points of the other blocks; their numbers in `rules/blocks/`. |
+| `tools/blocks_usbc.py` | `blocks.usbc`: a USB Type-C receptacle as a sink, by USB Type-C R2.5 and USB 2.0. |
+| `tools/blocks_i2c.py` | `blocks.i2c`: the 2 pull-ups of an I2C bus by TI SLVA689A, each device on the bus held to its facts. |
+| `tools/blocks_charger.py` | `blocks.charger`: a BQ21040 charger for 1 lithium cell with a BQ29700 protector, by their datasheets. |
+| `tools/blocks_mcu.py` | `blocks.mcu`: an MSP430FR5720 with its crystal and decoupling, by TI SLAA322D. |
 | `tools/fabfiles.py`, `tools/panel.py` | EXPORT's files read back against the board: the placement file, the assembly pages, IPC-2581 and the panel. `panel.py` runs KiKit's panelization under `KIKIT_PYTHON`. |
 | `tools/measureplan.py` | `workcenter measure`: the plan of measurements from the decks' bounds and the board's nets. Standard library only. |
 | `tools/now.py` | `workcenter now`: the work card of 1 piece of work, and `record`, which `verify/verify.sh` runs on exit to leave the gate's verdict in `build/verify.json`. Standard library only. |
@@ -351,6 +356,7 @@ images are drawn.
 | `tools/copper.py` | `workcenter copper`: the board's copper on a grid, each cell weighted by its copper, the drop and the heat by conjugate gradients, the pictures and the report. Runs under the venv's Python (numpy, pcbnew, Pillow). |
 | `tools/fields.py` | `workcenter fields`: the model of a board's critical nets from its board file, the mesh, the ports, openEMS run as its own program, and the limits held. Standard library only. |
 | `tools/routebench.py` | `workcenter bench`: the routing benchmark and the router each board takes. Standard library only. |
+| `tools/routers.py` | The routers behind `workcenter design --route` and `bench`: FreeRouting 1.9.0 (the default) and 2.5.0, each with its presence, version and command line. Standard library only. |
 | `tools/boardrules.py` | `workcenter drc` with a `board-rules.json`: a board held to a standard's rule pack, each gap to its nets' voltage and each track's width to its net's current; each net's vias to its current, against the wall `board-rules.json` states (`via_wall` or `hdi`). Standard library only. |
 | `tools/layoutrules.py` | `workcenter drc` with layout packs under `layout` in `board-rules.json`: ESD at each connector that leaves the device (TI SLVA680A) and power and ground traces at most 3:1 on a 2-layer board (TI SZZA009), measured along the copper. Standard library only. |
 | `tools/standards.py` | `workcenter standards`: each requirement of the product kind `product.json` names, from `rules/products/`, as held by a gate, held by a named test, or not held. Standard library only. |
@@ -363,9 +369,10 @@ images are drawn.
 | `tools/pdfcurve.py`, `tools/kistack_board.py` | A PDF page's vector paths; the board reader kistack's checks run on. |
 | `tools/harvest.py` | What the projects taught the workcenter, read from the repository: each branch's work that main lacks, the scripts projects wrote for themselves, the mistakes made again; and the roadmap's rated candidates held to their scores. |
 | `tools/hooks/` | Claude Code hooks: no `cd` in a command, no test written by a script. |
+| `tools/ci/` | `scope.py`: what a change needs, `fast` or `full`; the `engine` marker's plugin and its guard. `make scope`, `make verify-site`. |
 | `WORKCENTER.md` | The contract a project gets from this workcenter. |
 | `AGENTS.md`, `CLAUDE.md` | Where an agent starts. The same text. |
-| `.claude/skills/` | `attached-repos`, `autoroute`, `blog-post`, `board-design`, `board-gates`, `board-loop`, `board-rules`, `chip-design`, `chip-gates`, `copper`, `fabrication`, `fields`, `highspeed`, `kistack`, `land`, `lead`, `now`, `procurement`, `ratings`, `references`, `simulate`, `standards`, `user-round`, `verification`. |
+| `.claude/skills/` | `attached-repos`, `autoroute`, `blocks`, `blog-post`, `board-design`, `board-gates`, `board-loop`, `board-rules`, `charger-block`, `chip-design`, `chip-gates`, `copper`, `fabrication`, `fields`, `highspeed`, `kistack`, `land`, `lead`, `now`, `procurement`, `ratings`, `references`, `simulate`, `standards`, `user-round`, `verification`. |
 | `templates/` | A first design file, a version's README and gates report, `corners.json`, `frequency-plan.json`, the verification package. |
 | `rules/` | Fabrication houses' limits as KiCad design rules: Sierra Circuits, JLCPCB, PCBWay, OSH Park. `rules/ratings/`: 2 derating standards as packs for `workcenter ratings`, each limit with its table and page. `rules/board/`: ECSS-Q-ST-70-12C Rev.1 as a board rule pack for `workcenter drc`, each limit with its clause, table and page. `rules/copper/`: the 5 constants of `workcenter copper`, each with its document and page. `rules/interfaces/`: the fast interfaces `workcenter highspeed` holds a pair to, each limit with its document, clause and page. `rules/references/`: the index of the 18 documents the rules cite (7 standards, 2 application notes, 9 datasheets), each with its URL and SHA256; no document itself. |
 | `tests/` | The tests of the tools. `tests/boards/` holds the fixture boards and what each proves. |
@@ -381,7 +388,7 @@ images are drawn.
 
 ## Working on this repository
 
-`make verify` must be green before any push.
+`make verify` must be green before any push; a change `make scope` calls `fast` may be pushed on `make verify-site`.
 [`ee-agent-kit/AGENTS.md`](ee-agent-kit/AGENTS.md) is binding;
 [`ee-agent-kit/ROADMAP.md`](ee-agent-kit/ROADMAP.md) decides what gets built.
 [`ee-agent-kit/CONTRIBUTING.md`](ee-agent-kit/CONTRIBUTING.md) has the rules
