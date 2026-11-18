@@ -727,8 +727,9 @@ def test_each_fixture_is_what_its_design_file_writes_and_passes_ratings_strict(n
 
 
 # The span of the deck's `ipeak` over its 20 corner runs on 2026-11-17, and the bound each is held to: the
-# inductor's saturation current from its facts. SLVA477C's equation 4 gave 0.787 A and 1.29 A: higher
-# than the runs, since equation 1 takes 90 % efficiency and the deck's lossless stage has a shorter duty.
+# inductor's saturation current from its facts. SLVA477C's equation 4 gives 0.828 A and 1.33 A (the decks'
+# sums): higher than the runs, since equation 1 takes 90 % efficiency, the deck's lossless stage has a
+# shorter duty, and the block works the ripple at 2.2 uH less table 4's 30 % while the deck runs 2.2 uH.
 PEAKS = {"pass-block-buck": (0.6718417, 0.7626507, 1.26), "pass-block-buck-2x": (1.173663, 1.259503, 5.6)}
 WARNINGS = [
     "C2 runs on its maker's data, and whether that is its maker's file is not judged",
