@@ -6,7 +6,7 @@ constants of `workcenter copper` (`rules/copper/*.json`, a table `documents: {id
 documents of the fast interfaces (`rules/interfaces/*.json`, the same table), the fab pages of the fab
 rule files (`rules/*.kicad_dru`), the datasheets of the fixtures' facts (`tests/boards/**/facts/*.json`),
 and each document the tools and the tests cite in their code (`tools/*.py`, `tools/workcenter`,
-`tests/*.py`, `tests/boards/*.py`). A document served in a zip (usb.org's specifications) is held by the
+`tests/*.py`, `tests/boards/*.py`, the lead's tools `ee-agent-kit/lead/*.py`). A document served in a zip (usb.org's specifications) is held by the
 zip's SHA256: the rule names it as `zip_sha256`, beside the `sha256` of the file inside. The repository
 holds the index and the rules, never a document: the makers' and the issuers' terms forbid a copy.
 
@@ -60,12 +60,18 @@ An entry is 1 of 3 sorts:
 | `nist-dlmf-19.8` | web page | NIST DLMF, section 19.8 | 1 value read on 2026-11-17 |
 | `qucs-technical-papers` | report | Qucs Technical Papers | the PDF of 2014-10-18 |
 | `matthaei-ad0402852` | report | DTIC AD0402852 (Matthaei, Young, Jones, Volume I) | January 1963 |
+| `nxp-um10204` | standard | UM10204 | Rev. 7.0, 1 October 2021 |
 
 The last 5 entries joined on 2026-11-17 when the index's check met the high-speed pieces:
 `rules/interfaces/constants.json` takes its 2 constants from NIST's 2 pages, and
 `tests/test_xsection.py` holds the cross-section solver to the 2 reports and to DLMF 19.8.5. Each copy
 was fetched that day under the workcenter's own name. `workcenter references check` called each copy
 `same`: the 2 reports by the SHA256 their citing file gives in part, the 3 pages by their values.
+
+The last entry joined on 2026-11-18: `tools/freqplan.py` and `tests/test_freqplan.py` give NXP's I2C-bus
+specification as the source of an I2C clock, and no family read NXP's numbers. Its copy was fetched that
+day, and `workcenter references check` called it `same`. Rev. 7.0 gives the SCL clock frequency in
+table 11, page 44; the 2 files said table 10, the I/O stages, and now say table 11.
 
 On 2026-11-17 `workcenter references fetch` asked for the 25 held documents and web pages of the index
 as it stood before the documents of `rules/interfaces/` joined it, under the workcenter's own name:
@@ -138,7 +144,7 @@ CITES = {"ti-slva477c": "section 2, the efficiency; equations 1, 2, 4 and 11"}
 that is not a text, and a `CITES` that is no dict of texts. Then it finds each document's name in the
 file: each entry's `names`, and each number of a family under `numbers` in `index.json` (TI's
 literature numbers, RFCs, ECSS, EEE-INST, JESD, J-STD, IPC and its test methods, IEC, MIL, IEEE,
-Analog Devices' notes, NBS handbooks). A family's number names an entry when it is the entry's name
+Analog Devices' notes, NBS handbooks, NXP's user manuals and notes). A family's number names an entry when it is the entry's name
 with spaces and hyphens set aside: `RFC6585` is `RFC 6585`. The text of a URL is no name. A name with a
 section, table, page, clause, equation, annex, figure or chapter within 200 characters after it is a
 citation. The place is read in any case and abbreviated: `Table 6-1`, `Fig. 3`, `p. 12`, `pp. 407`,

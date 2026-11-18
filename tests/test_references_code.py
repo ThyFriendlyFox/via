@@ -139,8 +139,10 @@ def test_every_citation_in_the_tools_and_tests_is_in_the_index():
 
 
 def test_the_index_globs_read_the_tools_and_the_tests():
+    """The lead's tools in ee-agent-kit/lead/ landed after the check: before, no glob read them."""
     data = json.loads(INDEX.read_text(encoding="utf-8"))
-    assert {"tools/*.py", "tools/workcenter", "tests/*.py", "tests/boards/*.py"} <= set(data["code"])
+    globs = {"tools/*.py", "tools/workcenter", "tests/*.py", "tests/boards/*.py", "ee-agent-kit/lead/*.py"}
+    assert globs <= set(data["code"])
 
 
 def test_a_fab_rule_file_that_names_a_page_the_index_lacks_fails():
@@ -345,3 +347,54 @@ def test_the_citation_of_the_qucs_papers_without_cites_fails(tmp_path):
     assert [line for line in lines if said in line], lines
     said = "AD" + "0402852, section 5.05: the file's CITES does not name matthaei-ad0402852"
     assert [line for line in lines if said in line], lines
+
+
+def test_the_frequency_plan_and_its_test_hold_the_i2c_specification():
+    """tools/freqplan.py and tests/test_freqplan.py give NXP's I2C-bus specification as the source of the
+    I2C clock in their example plan, by table. No family read NXP's numbers and the index had no entry,
+    so the check passed both files in silence: 0 named. Rev. 7.0 gives the SCL clock in table 11, page
+    44; the files said table 10, the I/O stages. Each file's CITES names the entry now: 2 named."""
+    paths = (ROOT / "tools" / "freqplan.py", ROOT / "tests" / "test_freqplan.py")
+    code, lines = rules(*paths, index=INDEX)
+    assert code == 0, lines
+    assert lines == ["references rules: 2 documents named in 2 files, 2 in the index, 0 not; 0 not judged"]
+
+
+def test_the_frequency_plan_without_cites_fails(tmp_path):
+    """The entry's name finds the citation: tools/freqplan.py with its CITES renamed fails on it."""
+    text = (ROOT / "tools" / "freqplan.py").read_text(encoding="utf-8")
+    assert "\nCITES = {" in text
+    dropped = tmp_path / "freqplan.py"
+    dropped.write_text(text.replace("\nCITES = {", "\nNOT_CITES = {"), encoding="utf-8")
+    code, lines = rules(dropped, index=INDEX)
+    assert code == 1
+    said = "UM" + "10204, Table 11: the file's CITES does not name nxp-um10204"
+    assert [line for line in lines if said in line], lines
+
+
+def test_an_nxp_number_the_index_lacks_is_found_by_its_family(tmp_path):
+    """A user manual or an application note of NXP is a family of `numbers`: a citation of 1 the index
+    lacks fails. Before the family it was not named: 0 named, exit 0."""
+    tool = tmp_path / "tool.py"
+    tool.write_text('"""The bus waits for its clock (' + "AN" + '10441, section 3)."""\n', encoding="utf-8")
+    code, lines = rules(tool, index=INDEX)
+    assert code == 1
+    assert lines == [
+        f"fail {tool}:1: " + "AN" + f"10441, section 3: {UNKNOWN}{IN_CITES}",
+        "references rules: 1 documents named in 1 files, 0 in the index, 1 not; 0 not judged",
+    ]
+
+
+def test_the_board_rules_tool_declares_the_pack_whose_tables_it_reads():
+    """tools/boardrules.py reads tables 7-1 and 7-3 of the board pack's standard by number alone, with no
+    name beside them, so no check can find them: its CITES names the standard of every pack in
+    rules/board. Before, it had none: 0 named."""
+    code, lines = rules(ROOT / "tools" / "boardrules.py", index=INDEX)
+    assert code == 0, lines
+    assert lines == ["references rules: 1 documents named in 1 files, 1 in the index, 0 not; 0 not judged"]
+    sys.path.insert(0, str(ROOT / "tools"))
+    import boardrules
+
+    files = (ROOT / "rules" / "board").glob("*.json")
+    packs = {json.loads(p.read_text(encoding="utf-8"))["pack"] for p in files}
+    assert packs and packs <= set(boardrules.CITES)

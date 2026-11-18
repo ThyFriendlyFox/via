@@ -25,6 +25,11 @@ import kicadgen
 import ratings
 from ratings import Refusal
 
+# The tables the docstrings name by number alone are the pack's standard's.
+CITES = {
+    "ecss-q-st-70-12c-rev1": "7.1.2j, table 7-1, page 38; 7.4.2a and b, table 7-3, page 45; "
+    "table 13-7, page 130"
+}
 PACKS = Path(__file__).resolve().parent.parent / "rules" / "board"
 PROJECT_FILE = "board-rules.json"
 DEFAULT_CU_UM = 35.0  # KiCad's own copper on a board whose file holds no stackup
