@@ -19,7 +19,7 @@ CI's `full` job takes the toolchain from the image of its tag when the
 registry has it, else installs with `sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh`
 (tools/ci/README.md, "Where `full` runs").
 
-The 2 bounds end a stalled index or download with apt's own line within the `full` job's 30 minutes: 88 s for the key + 3 x 120 + 2 x 20 + 570 = 1058 s of the 1066 s the newest passing run left (job 134941364976). The nightly run (45 minutes) and the image build (60 minutes) set the same 2; `test_the_worst_case_of_the_apt_step_fits_the_jobs_limit` reads each workflow's own limit. A person's computer has no total bound.
+The 2 bounds end a stalled index or download with apt's own line within the `full` job's 30 minutes: 88 s for the key + 3 x 120 + 2 x 20 + 570 = 1058 s of the 1066 s the newest passing run left (job 134941364976). The nightly run (45 minutes) and the image build (60 minutes) set the same 2; `test_the_worst_case_of_the_apt_step_fits_the_jobs_limit` reads each workflow's own limit. A person's computer has no total bound. The download's 570 s cover all its passes and the waits between them (APT_DOWNLOAD_TRIES, default 5; APT_DOWNLOAD_WAIT, default 20 s), so the sum stays 1058 s. CI and the image build set neither variable and run on the script's defaults; `test_ci_and_the_image_build_leave_the_passes_and_the_wait_to_the_script` holds the 3 workflows and the Dockerfile to that.
 
 The runner is `ubuntu-24.04`, so the PPA step, the Java package, and ngspice
 match the cloud environment. `REQUIRE_FREEROUTING=1` makes a blocked JAR
