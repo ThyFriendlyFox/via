@@ -104,7 +104,8 @@
       "share": 0.70,
       "celsius": 85,
       "below_rating": 40,
-      "where": "section M4, table 4, page 10 of 10, the column Linear/Mixed Signal and note 2"
+      "where": "section M4, table 4, page 10 of 10, the column Linear/Mixed Signal and note 2",
+      "second_reader": "2026-11-18"
     },
     {
       "id": "junction.ic.linear",
@@ -112,7 +113,8 @@
       "kinds": ["ic.linear"],
       "share": 0.70,
       "celsius": 85,
-      "where": "section M4, table 4, page 10 of 10, the column Linear/Mixed Signal"
+      "where": "section M4, table 4, page 10 of 10, the column Linear/Mixed Signal",
+      "second_reader": "2026-11-18"
     },
     {
       "id": "junction.ic.digital",
@@ -120,7 +122,8 @@
       "kinds": ["ic.digital"],
       "share": 0.80,
       "celsius": 95,
-      "where": "section M4, table 4, page 10 of 10, the column Digital"
+      "where": "section M4, table 4, page 10 of 10, the column Digital",
+      "second_reader": "2026-11-18"
     },
     {
       "id": "junction.diode",
@@ -129,7 +132,8 @@
       "share": 0.80,
       "celsius": 125,
       "below_rating": 40,
-      "where": "section S1, table 4 of diodes and its note 1, page 12 of 13"
+      "where": "section S1, table 4 of diodes and its note 1, page 12 of 13",
+      "second_reader": "2026-11-18"
     },
     {
       "id": "junction.mosfet",
@@ -138,7 +142,8 @@
       "share": 0.80,
       "celsius": 125,
       "below_rating": 40,
-      "where": "section S1, table 4 of transistors and its note 2, page 13 of 13"
+      "where": "section S1, table 4 of transistors and its note 2, page 13 of 13",
+      "second_reader": "2026-11-18"
     }
   ]
 }

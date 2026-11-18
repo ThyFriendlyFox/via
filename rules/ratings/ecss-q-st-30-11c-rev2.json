@@ -98,7 +98,8 @@
       "kinds": ["ic.linear", "ic.regulator"],
       "celsius": 110,
       "below_rating": 40,
-      "where": "clause 6.21.2, table 6-21, page 57"
+      "where": "clause 6.21.2, table 6-21, page 57",
+      "second_reader": "2026-11-18"
     },
     {
       "id": "junction.ic.digital",
@@ -106,7 +107,8 @@
       "kinds": ["ic.digital"],
       "celsius": 110,
       "below_rating": 40,
-      "where": "clause 6.19.2, table 6-19, page 52"
+      "where": "clause 6.19.2, table 6-19, page 52",
+      "second_reader": "2026-11-18"
     },
     {
       "id": "junction.diode.rectifier",
@@ -114,7 +116,8 @@
       "kinds": ["diode.rectifier"],
       "celsius": 110,
       "below_rating": 40,
-      "where": "clause 6.14.2.1, table 6-13, page 43"
+      "where": "clause 6.14.2.1, table 6-13, page 43",
+      "second_reader": "2026-11-18"
     },
     {
       "id": "junction.diode.clamp",
@@ -122,7 +125,8 @@
       "kinds": ["diode.clamp"],
       "celsius": 110,
       "below_rating": 40,
-      "where": "clause 6.14.2.2, table 6-14, page 44"
+      "where": "clause 6.14.2.2, table 6-14, page 44",
+      "second_reader": "2026-11-18"
     },
     {
       "id": "junction.mosfet",
@@ -130,7 +134,8 @@
       "kinds": ["transistor.mosfet"],
       "celsius": 110,
       "below_rating": 40,
-      "where": "clause 6.29.2, table 6-36, page 76"
+      "where": "clause 6.29.2, table 6-36, page 76",
+      "second_reader": "2026-11-18"
     }
   ]
 }
