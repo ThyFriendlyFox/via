@@ -1,0 +1,12 @@
+{
+  "pack": "nasa-eee-inst-002",
+  "nets": {
+    "GND": {"volts": [0, 0], "source": "the reference: J1 pin 2"},
+    "+5V": {"volts": [4.75, 5.25], "source": "the supply on J1: 5 V within 5 %, this fixture's own requirement"},
+    "IN": {"volts": [0, 3.6], "source": "the signal on J3 pin 1: a 3.3 V logic level, this fixture's own requirement"}
+  },
+  "parts": {
+    "J2.1": {"amps": 1.1, "source": "the load on J2: 1.1 A at the most, this fixture's own requirement"},
+    "J3.2": {"amps": 0, "source": "J3 pin 2 goes to a logic input: it takes no steady current"}
+  }
+}

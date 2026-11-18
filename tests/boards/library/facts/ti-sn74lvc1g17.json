@@ -1,0 +1,38 @@
+{
+  "kind": "ic",
+  "mpns": ["SN74LVC1G17DBVR", "SN74LVC1G17DBVT"],
+  "family": "digital",
+  "source": {
+    "document": "SN74LVC1G17 datasheet, SCES351Y",
+    "revision": "July 2001, revised October 2025",
+    "url": "https://www.ti.com/lit/ds/symlink/sn74lvc1g17.pdf",
+    "sha256": "74ff979da5dcaf2b3695cf9a500b46962bb8489033db989b5537ec5cef88c61d",
+    "read": "2026-11-17",
+    "second_reader": "2026-11-17"
+  },
+  "note": "The supply current is the static one, with no load on the output and the input at a rail. The 2 upper limits of Y are those of 2 states, driving and off, and both are held at once",
+  "pins": [
+    {"numbers": ["1"], "name": "NC", "role": "nc"},
+    {"numbers": ["2"], "name": "A", "role": "input", "abs": [-0.5, 6.5], "operating": [0, 5.5], "page": [4, 5]},
+    {"numbers": ["3"], "name": "GND", "role": "ground"},
+    {
+      "numbers": ["4"],
+      "name": "Y",
+      "role": "output",
+      "abs": [-0.5, [{"pin": "VCC", "plus": 0.5}, 6.5]],
+      "operating": [0, {"pin": "VCC", "plus": 0}],
+      "swing": ["GND", "VCC"],
+      "page": [4, 5]
+    },
+    {
+      "numbers": ["5"],
+      "name": "VCC",
+      "role": "supply",
+      "abs": [-0.5, 6.5],
+      "operating": [1.65, 5.5],
+      "amps": 1e-5,
+      "page": [4, 5, 6]
+    }
+  ],
+  "needs": [{"capacitor": {"from": "VCC", "to": "GND", "farads_min": 1e-7}, "page": 12}]
+}

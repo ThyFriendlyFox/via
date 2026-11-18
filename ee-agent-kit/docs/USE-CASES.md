@@ -34,6 +34,12 @@ or skill. **Done** is the observable result that ends the case.
 **Run.** The `procurement` skill: fill `parts.csv` from the suppliers' pages (P25), then `workcenter procure <project> --parts parts.csv --boards 1,10`.
 **Done.** `build/procure/parts.md` lists an orderable part for every line with its supplier number, price and stock, the totals per supplier for each unit count, and nothing under "Not in the parts files".
 
+## Review a schematic before layout
+
+**Open.** A schematic, each part's datasheet, and a question: is every part inside its ratings?
+**Run.** The `ratings` skill: `workcenter ratings <project> --init`, state the nets a source off the board holds, write each part's facts from its datasheet with the page of every number, then `workcenter ratings <project>`.
+**Done.** The last line is `RATINGS HELD` with `--strict`: every stress holds or is the owner's accepted exception, and `build/ratings/report.md` names the document and the page of each limit.
+
 ## Simulate before layout
 
 **Open.** A schematic with a measurable spec and a `sim/<deck>.cir` with `sim/<deck>.expect.json`.
@@ -50,7 +56,7 @@ or skill. **Done** is the observable result that ends the case.
 
 **Open.** A board with footprints placed and nets unrouted.
 **Run.** `workcenter autoroute <project>`, then the session import, then `workcenter drc`.
-**Done.** DRC reports 0 unconnected items. Today the import step is manual in KiCad; ROADMAP item 3, "Headless autoroute for hand-drawn boards", makes it part of the command.
+**Done.** DRC reports 0 unconnected items. Today the import step is manual in KiCad; ROADMAP item 15, "Headless autoroute for hand-drawn boards", makes it part of the command.
 
 ## Review a board PR
 

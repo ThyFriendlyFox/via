@@ -1,0 +1,118 @@
+{
+  "pack": "ecss-q-st-70-12c-rev1",
+  "document": {
+    "issuer": "European Cooperation for Space Standardization (ECSS)",
+    "number": "ECSS-Q-ST-70-12C Rev.1",
+    "title": "Space product assurance - Design rules for printed circuit boards",
+    "revision": "30 April 2025",
+    "url": "https://ecss.nl/wp-content/uploads/2025/05/ECSS-Q-ST-70-12C-Rev.1(30April2025).pdf",
+    "sha256": "c3063bf2145ec866e9d59a7b6580c2dc1a635c7289d0a57c456c21c92c7a2f7d",
+    "read": "2026-11-17",
+    "second_reader": "no"
+  },
+  "voltage": {
+    "where": "13.8.2b, page 117: the worst-case peak transient voltage",
+    "most": 500,
+    "most_where": "13.8.2l, page 119: above 500 V the design is qualified on its own"
+  },
+  "plating": {
+    "um": 25,
+    "where": "7.4.2c NOTE 2, page 44: plated copper as designed; table 7-3, page 45, and table 7-4, page 46: the thickness category of an outer layer is basic plus plated copper"
+  },
+  "spacing": [
+    {
+      "layers": "outer",
+      "copper_um": [0, 70],
+      "steps": [{"volts": 10, "um": 250}, {"volts": 30, "um": 350}],
+      "where": "13.8.2d page 117; table 13-7 (2 of 4), X,Y external without conformal coating, standard, normal pitch, Th <= 70 um, as-designed, page 130",
+      "above": "table 13-7 (2 of 4), page 130: not permitted above 30 V, except connector pads (13.8.4d)"
+    },
+    {
+      "layers": "outer",
+      "copper_um": [70, null],
+      "steps": [{"volts": 10, "um": 350}, {"volts": 30, "um": 450}],
+      "where": "13.8.2d page 117; table 13-7 (2 of 4), X,Y external without conformal coating, standard, normal pitch, Th > 70 um, as-designed, page 130",
+      "above": "table 13-7 (2 of 4), page 130: not permitted above 30 V, except connector pads (13.8.4d)"
+    },
+    {
+      "layers": "inner",
+      "copper_um": [0, 17],
+      "steps": [
+        {"volts": 10, "um": 130},
+        {"volts": 30, "um": 130},
+        {"volts": 50, "um": 180},
+        {"volts": 100, "um": 180},
+        {"volts": 500, "um_per_volt": 1, "plus_um": 30, "at_least_um": 180}
+      ],
+      "where": "13.8.2d page 117; table 13-7 (3 of 4), X,Y internal conductor to conductor, standard, normal pitch, Th <= 17 um, as-designed, page 131"
+    },
+    {
+      "layers": "inner",
+      "copper_um": [17, 60],
+      "steps": [
+        {"volts": 10, "um": 150},
+        {"volts": 30, "um": 150},
+        {"volts": 50, "um": 188},
+        {"volts": 100, "um": 188},
+        {"volts": 500, "um_per_volt": 1, "plus_um": 50, "at_least_um": 188}
+      ],
+      "where": "13.8.2d page 117; table 13-7 (3 of 4), X,Y internal conductor to conductor, standard, 17 < Th <= 60 um, as-designed, page 131"
+    },
+    {
+      "layers": "inner",
+      "copper_um": [60, 70],
+      "steps": [
+        {"volts": 10, "um": 200},
+        {"volts": 30, "um": 200},
+        {"volts": 50, "um": 200},
+        {"volts": 100, "um": 200},
+        {"volts": 500, "um_per_volt": 1, "plus_um": 50, "at_least_um": 200}
+      ],
+      "where": "13.8.2d page 117; table 13-7 (3 of 4), X,Y internal conductor to conductor, standard, 60 < Th <= 70 um, as-designed, page 131"
+    },
+    {
+      "layers": "inner",
+      "copper_um": [70, 95],
+      "steps": [
+        {"volts": 10, "um": 300},
+        {"volts": 30, "um": 300},
+        {"volts": 50, "um": 300},
+        {"volts": 100, "um": 300},
+        {"volts": 500, "um_per_volt": 1, "plus_um": 70, "at_least_um": 290}
+      ],
+      "where": "13.8.2d page 117; table 13-7 (3 of 4), X,Y internal conductor to conductor, standard, 70 < Th <= 95 um, as-designed, page 131"
+    }
+  ],
+  "current": {
+    "rise_c": 10,
+    "rise_where": "13.6.2a, page 112",
+    "model": {
+      "k0": 0.0756,
+      "k1": 0.4375,
+      "m0": 0.5,
+      "m1": 0.0301,
+      "c1": 1550,
+      "most_amps": 30,
+      "most_rise_c": 100,
+      "where": "annex D: D.1.2b page 183, D.2c and D.2d page 184"
+    },
+    "valid": {
+      "board_over_mm": 1.5,
+      "area_over_mm2": 5625,
+      "where": "13.6.3c and d, page 113: thicker than 1,5 mm and more than 75x75 mm"
+    },
+    "outer_share": 0.9,
+    "outer_where": "13.6.4.2a, page 114",
+    "thin_board": {"over_mm": 1.5, "up_to_mm": 1.8, "rise_factor": 1.2, "where": "13.6.4.2b, page 115"},
+    "copper": {
+      "rows": [[9, 6], [12, 9], [17, 11], [35, 25], [70, 56]],
+      "where": "7.1.2j, table 7-1, the column for non-plated inner layers, page 38"
+    },
+    "tolerance": {
+      "share": 0.2,
+      "rows": [[17, 30], [60, 50], [70, 50], [95, 70]],
+      "where": "7.4.2a and b, table 7-3, page 45"
+    },
+    "via_where": "13.6.3f, page 114: a via is rated as a track of the same cross-section; this document gives the copper of a plated hole's wall for HDI boards alone (table 11-2, page 100)"
+  }
+}

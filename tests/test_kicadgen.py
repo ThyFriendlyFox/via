@@ -770,6 +770,147 @@ def test_thickness_writes_a_two_layer_stackup_and_the_default_does_not():
         d.board()  # thinner than its own copper
 
 
+@needs_libs
+def test_one_pads_place_comes_from_the_design_not_from_a_scan_or_a_sum():
+    """3 projects wrote `next(b for b in d.pad_boxes() if ...)` before each hand track, 15 times in 7
+    files, and 1 redid the generator's rotation from a table. P1 step 2: a coordinate is never
+    worked out by hand."""
+    d = divider()
+    assert d.pad_at("R1", "1") == (107.675, 102.5) and d.pad_at("R1", "2") == (109.325, 102.5)
+    box = d.pad_box("R1", "1")
+    assert (box.layer, box.net) == ("F.Cu", "VIN")
+    assert (round(box.x2 - box.x1, 4), round(box.y2 - box.y1, 4)) == (0.8, 0.95)
+    # a through-hole pad is on every copper layer; a number as an int is taken as its text
+    assert d.pad_at("J1", "2") == d.pad_at("J1", "2", layer="B.Cu") == d.pad_at("J1", 2) == (103.0, 105.04)
+    # a part on the back, turned: what pad_boxes() gives, mirrored and turned by the generator
+    r2 = next(p for p in d.parts if p.ref == "R2")
+    r2.pcb_layer, r2.pcb_rot = "B.Cu", 90
+    assert d.pad_at("R2", "1") == (108.5, 107.325) and d.pad_at("R2", "2") == (108.5, 105.675)
+    assert d.pad_box("R2", "1").layer == "B.Cu"
+    every = {(b.ref, b.number, b.layer): b for b in d.pad_boxes()}
+    assert d.pad_box("R2", "1") == every[("R2", "1", "B.Cu")]
+    # a miss says what is there
+    for call, said in (
+        (lambda: d.pad_at("R9", "1"), "pad_box: no part 'R9' in the design"),
+        (lambda: d.pad_at("R1", "3"), "pad_box: R1 has no pad '3'; its pads are 1, 2"),
+        (lambda: d.pad_at("R1", "1", layer="B.Cu"), "pad_box: R1 pad 1 has no copper on B.Cu; it is on F.Cu"),
+        (lambda: d.pad_at("R1", "1", which=1), "pad_box: R1 has 1 pad numbered 1 on F.Cu; which=1"),
+    ):
+        with pytest.raises(ValueError) as refused:
+            call()
+        assert str(refused.value) == said
+
+
+def stackup_of(board: Path) -> tuple[kicadgen.Node, str]:
+    """A board file's stackup and its thickness, cut out of the file's head: a board can be 45 MB."""
+    with board.open(encoding="utf-8") as handle:
+        head = handle.read(20000)
+    start = head.index("(stackup")
+    depth = 0
+    for end in range(start, len(head)):
+        depth += {"(": 1, ")": -1}.get(head[end], 0)
+        if depth == 0:
+            break
+    return kicadgen.parse(head[start : end + 1]), re.search(r"\(thickness ([\d.]+)\)", head).group(1)
+
+
+def look_of(stack: kicadgen.Node) -> dict[str, str]:
+    """Each colour a stackup names, by layer, and its finish."""
+    found = {"finish": kicadgen.atoms(kicadgen.child(stack, "copper_finish"))[0]}
+    for layer in kicadgen.children(stack, "layer"):
+        if kicadgen.child(layer, "color") is not None:
+            found[kicadgen.atoms(layer)[0]] = kicadgen.atoms(kicadgen.child(layer, "color"))[0]
+    return found
+
+
+@needs_libs
+def test_a_design_names_its_mask_colour_its_legend_colour_and_its_finish():
+    """5 of the 6 example projects wrote these 3 values by overriding the private `_stackup`."""
+    d = divider()
+    d.mask_color, d.silk_color, d.copper_finish = "#0B0C0EFF", "White", "Immersion silver"
+    text = d.board()
+    # A two-layer board at 1.6 mm has no stackup of its own; a colour or a finish writes one.
+    stack = kicadgen.child(kicadgen.child(kicadgen.parse(text), "setup"), "stackup")
+    assert look_of(stack) == {
+        "finish": "Immersion silver",
+        "F.SilkS": "White",
+        "F.Mask": "#0B0C0EFF",
+        "B.Mask": "#0B0C0EFF",
+        "B.SilkS": "White",
+    }
+    # KiCad writes a layer's colour after its type and before its thickness.
+    mask = next(ly for ly in kicadgen.children(stack, "layer") if kicadgen.atoms(ly)[0] == "F.Mask")
+    assert [c[0] for c in mask[2:]] == ["type", "color", "thickness"]
+    assert '(color "#0B0C0EFF")' in text and '(copper_finish "Immersion silver")' in text
+    # 1 of the 3 alone writes the stackup too, and leaves the other 2 as they were.
+    d = divider()
+    d.copper_finish = "ENIG"
+    stack = kicadgen.child(kicadgen.child(kicadgen.parse(d.board()), "setup"), "stackup")
+    assert look_of(stack) == {"finish": "ENIG"}
+    d = divider()
+    d.mask_color = "Red"
+    stack = kicadgen.child(kicadgen.child(kicadgen.parse(d.board()), "setup"), "stackup")
+    assert look_of(stack) == {"finish": "None", "F.Mask": "Red", "B.Mask": "Red"}
+    # A design that names none writes the stackup it wrote before.
+    stack = kicadgen.child(kicadgen.child(kicadgen.parse(four_layer_divider().board()), "setup"), "stackup")
+    assert look_of(stack) == {"finish": "None"}
+
+
+@pytest.mark.parametrize(
+    "name, value, said",
+    [
+        (
+            "mask_color",
+            "black",
+            "mask_color is 'black'. KiCad names Green, Red, Blue, Purple, Black, White, Yellow.",
+        ),
+        ("silk_color", "#FFF", 'Any other colour is "#RRGGBBAA"'),
+        (
+            "copper_finish",
+            "HASL",
+            "copper_finish is 'HASL'. KiCad names None, ENIG, ENEPIG, HAL SnPb, HAL lead-free,",
+        ),
+    ],
+)
+@needs_libs
+def test_a_colour_or_a_finish_kicad_does_not_name_is_refused(name, value, said):
+    d = divider()
+    setattr(d, name, value)
+    with pytest.raises(ValueError) as refused:
+        d.board()
+    assert said in str(refused.value)
+
+
+EXAMPLE_BOARDS = (
+    "anc-speaker/v0.1/hush.kicad_pcb",
+    "fire-alarm-communicator/v0.1/herald.kicad_pcb",
+    "ring-mouse/v0.4/power/signet_power.kicad_pcb",
+    "snapdragon-dev-board/v0.2/wyvern.kicad_pcb",
+    "threadripper-matx/v0.3/basalt.kicad_pcb",
+)
+
+
+@pytest.mark.parametrize("board", EXAMPLE_BOARDS)
+def test_the_3_fields_write_the_stackup_an_example_board_carries(board):
+    """Each of these boards got its colours from an override of `_stackup` in its design file. The 3
+    fields, set to the values the committed board names, write the same stackup byte for byte."""
+    kept, thickness = stackup_of(ROOT / "examples" / board)
+    look = look_of(kept)
+    assert look["F.Mask"] == look["B.Mask"] and look["F.SilkS"] == look["B.SilkS"]
+    copper = [ly for ly in kicadgen.children(kept, "layer") if kicadgen.atoms(ly)[0].endswith(".Cu")]
+    d = kicadgen.Design(
+        name="look",
+        namespace=uuid.UUID(int=41),
+        copper_layers=len(copper),
+        thickness=float(thickness),
+        mask_color=look["F.Mask"],
+        silk_color=look["F.SilkS"],
+        copper_finish=look["finish"],
+    )
+    written = kicadgen.child(kicadgen.child(kicadgen.parse(d.board()), "setup"), "stackup")
+    assert kicadgen.dumps(written) == kicadgen.dumps(kept)
+
+
 def test_wrlgen_510_presets_have_an_internal_thread_and_glass(tmp_path):
     collar = wrlgen.connector_510()[0]
     bore = [math.hypot(x, y) for x, y, z in collar.vertices if 0.7 < z < 3.9 and math.hypot(x, y) < 4.0]
@@ -1560,6 +1701,77 @@ def test_design_check_compares_what_the_design_writes_with_the_project(tmp_path)
     assert code == 1 and (tmp_path / "regen" / "gen_divider.kicad_sch").is_file()
     code, report = check(design, "--route")
     assert code == 1 and "leave out --route" in report["stderr"]
+
+
+SHARED_LIB_PY = DIVIDER_PY.replace(
+    "    return d\n",
+    "    from pathlib import Path\n"
+    "    d.footprint_dirs = {'Mine': Path(__file__).resolve().parents[1] / 'footprints' / 'Mine.pretty'}\n"
+    "    d.add('TP1', 'Connector:TestPoint', 'W', 'Mine:Wire_Pad', sch_at=(50.8, 76.2),\n"
+    "          pcb_at=(110.5, 108.5), nets={'1': 'GND'})\n"
+    "    return d\n",
+)
+
+
+@needs_libs
+def test_a_library_table_names_a_project_library_from_the_project_not_from_the_machine(tmp_path):
+    """51 of the 61 library tables under examples/ held a path that began /home/user/via: a library
+    outside the output folder (a footprint library that 6 boards of 1 version share, a board
+    generated into a scratch folder) was written by its absolute path. 4 tables of Signet v0.4 named
+    v0.3's libraries that way, copied with the version's folder, and no check said so: the DRC reads
+    the footprints the board embeds, with or without a table."""
+    assert SHARED_LIB_PY != DIVIDER_PY
+    lib = tmp_path / "footprints" / "Mine.pretty"
+    lib.mkdir(parents=True)
+    src = kicadgen.FOOTPRINT_DIR / "TestPoint.pretty" / "TestPoint_THTPad_D1.5mm_Drill0.7mm.kicad_mod"
+    name = "TestPoint_THTPad_D1.5mm_Drill0.7mm"
+    (lib / "Wire_Pad.kicad_mod").write_text(src.read_text().replace(f'"{name}"', '"Wire_Pad"', 1))
+    board = tmp_path / "board"
+    board.mkdir()
+    design = board / "design.py"
+    design.write_text(SHARED_LIB_PY, encoding="utf-8")
+    code, _ = run_cli("design", design)
+    assert code == 0
+    table = (board / "fp-lib-table").read_text(encoding="utf-8")
+    uri = '(uri "${KIPRJMOD}/../footprints/Mine.pretty")'
+    assert table.splitlines()[2] == f'  (lib (name "Mine")(type "KiCad"){uri}(options "")(descr ""))'
+    assert str(tmp_path) not in table
+    # `design --check` regenerates into a scratch folder, where the same library has another way
+    # from the table; it holds the project's table to what the design writes in the project
+    code, report = check(design)
+    assert code == 0, report
+    assert [f["file"] for f in report["files"]][-1] == "fp-lib-table"
+    assert all(f["state"] == "same" for f in report["files"]), report["files"]
+    # a table copied in from a board generated elsewhere names the library from that other folder
+    code, _ = run_cli("design", design, "--out", tmp_path / "elsewhere" / "deep")
+    assert code == 0
+    shutil.copy(tmp_path / "elsewhere" / "deep" / "fp-lib-table", board / "fp-lib-table")
+    code, report = check(design)
+    assert code == 1
+    stale = next(f for f in report["files"] if f["file"] == "fp-lib-table")
+    assert stale["state"] == "differs" and stale["line"] == 3
+    assert '(uri "${KIPRJMOD}/../../footprints/Mine.pretty")' in stale["project"]
+    assert '(uri "${KIPRJMOD}/../footprints/Mine.pretty")' in stale["design"]
+
+
+def test_no_committed_library_table_names_the_machine_that_wrote_it():
+    """Every `fp-lib-table` and `sym-lib-table` in the repository names each library from its own
+    folder, and the library is there."""
+    tables = [
+        path
+        for folder in ("examples", "tests", "templates")
+        for name in ("fp-lib-table", "sym-lib-table")
+        for path in (ROOT / folder).rglob(name)
+        if "build" not in path.parts
+    ]
+    assert len(tables) >= 61
+    wrong = []
+    for table in tables:
+        for uri in kicadgen.URI_RE.findall(table.read_text(encoding="utf-8")):
+            lib = table.parent / uri.removeprefix(kicadgen.KIPRJMOD)
+            if not (uri.startswith(kicadgen.KIPRJMOD) and lib.exists()):
+                wrong.append(f"{table.relative_to(ROOT)}: {uri}")
+    assert wrong == []
 
 
 @needs_libs

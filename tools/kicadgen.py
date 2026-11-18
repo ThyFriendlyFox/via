@@ -173,6 +173,37 @@ def uid(ns: uuid.UUID, key: str) -> Q:
     return Q(str(uuid.uuid5(ns, key)))
 
 
+URI_RE = re.compile(r'\(uri "([^"]*)"\)')
+KIPRJMOD = "${KIPRJMOD}/"
+
+
+def lib_uri(lib: Path, project: Path) -> str:
+    """A project library as a library table of the project in `project` names it: from the project's
+    own folder, `${KIPRJMOD}/footprints/Mine.pretty` or, for a library a level up that several boards
+    share, `${KIPRJMOD}/../footprints/Mine.pretty`. The table then reads the same wherever the
+    repository is cloned. The library's absolute path named the machine that wrote the table; it is
+    written only where no relative path exists, a library on another drive under Windows."""
+    lib = Path(lib).resolve()
+    try:
+        return KIPRJMOD + Path(os.path.relpath(lib, Path(project).resolve())).as_posix()
+    except ValueError:
+        return lib.as_posix()
+
+
+def lib_table_at(text: str, written_in: Path, project: Path) -> str:
+    """A library table that was written into `written_in`, as the same design writes it into `project`:
+    each library named from the folder the table lies in. `design --check` regenerates into a scratch
+    folder, and holds the project's own tables to this."""
+
+    def moved(found: re.Match) -> str:
+        uri = found.group(1)
+        if not uri.startswith(KIPRJMOD):
+            return found.group(0)
+        return f'(uri "{lib_uri(Path(written_in) / uri[len(KIPRJMOD) :], project)}")'
+
+    return URI_RE.sub(moved, text)
+
+
 # ------------------------------------------------------------- libraries
 
 _LIB_CACHE: dict[Path, Node] = {}
@@ -489,6 +520,24 @@ SHEETS = {
     "A1": (841.0, 594.0),
     "A0": (1189.0, 841.0),
 }
+# What KiCad 10's board setup names for a solder mask or a legend, and for the pads' finish. Any other
+# colour is "#RRGGBBAA": red, green, blue and opacity, 2 hexadecimal digits each.
+COLOURS = ("Green", "Red", "Blue", "Purple", "Black", "White", "Yellow")
+FINISHES = (
+    "None",
+    "ENIG",
+    "ENEPIG",
+    "HAL SnPb",
+    "HAL lead-free",
+    "Hard gold",
+    "Immersion tin",
+    "Immersion nickel",
+    "Immersion silver",
+    "Immersion gold",
+    "HT_OSP",
+    "OSP",
+)
+HEX_COLOUR_RE = re.compile(r"#[0-9A-Fa-f]{8}")
 STEPS = ((1, 0), (0, 1), (-1, 0), (0, -1))  # east, south, west, north on the sheet (y down)
 Cell = tuple[int, int]
 
@@ -1054,6 +1103,13 @@ class Design:
     # or four, (top-left, top-right, bottom-right, bottom-left), to round one end and square the other.
     corner_radius: float | tuple[float, float, float, float] = 0.0
     thickness: float = 1.6  # the finished board, mm; any other value writes a stackup on two layers too
+    # The solder mask's colour, the legend's colour and the pads' finish: a colour is one of COLOURS or
+    # "#RRGGBBAA", a finish one of FINISHES. Each goes into the board's stackup, where the 3D renders
+    # and the fab's job file read it, and any of the 3 writes a stackup on two layers too. A design
+    # that names none writes the board it wrote before.
+    mask_color: str = ""
+    silk_color: str = ""
+    copper_finish: str = ""
     footprint_dirs: dict[str, Path] = field(
         default_factory=dict
     )  # project footprint libraries: name -> .pretty
@@ -1533,11 +1589,42 @@ class Design:
             )
         )
 
-    def pad_boxes(self) -> list[PadBox]:
-        """Every pad as placed on the board; a through-hole pad appears once per copper layer."""
+    def pad_box(self, ref: str, number: str, layer: str | None = None, which: int = 0) -> PadBox:
+        """1 placed pad's copper, as `pad_boxes()` gives it: on the part's own face, or on `layer` for a
+        through-hole pad, which is on every copper layer. `which` picks among pads that share a number
+        (a shield's tabs), in the footprint's order. A hand track or a via takes its place from here,
+        never from a position worked out by hand (P1 step 2)."""
+        part = next((p for p in self.parts if p.ref == ref), None)
+        if part is None:
+            raise ValueError(f"pad_box: no part {ref!r} in the design")
+        if not (part.on_board and part.footprint and part.pcb_at):
+            raise ValueError(f"pad_box: {ref} is not placed on the board")
+        boxes = self.pad_boxes(only=part)
+        found = [b for b in boxes if b.number == str(number)]
+        if not found:
+            numbers = sorted({b.number for b in boxes}, key=lambda n: (len(n), n))
+            raise ValueError(f"pad_box: {ref} has no pad {number!r}; its pads are {', '.join(numbers)}")
+        face = layer or part.pcb_layer
+        there = [b for b in found if b.layer == face]
+        if not there:
+            layers = ", ".join(sorted({b.layer for b in found}))
+            raise ValueError(f"pad_box: {ref} pad {number} has no copper on {face}; it is on {layers}")
+        if not 0 <= which < len(there):
+            count = f"{len(there)} pad{'' if len(there) == 1 else 's'}"
+            raise ValueError(f"pad_box: {ref} has {count} numbered {number} on {face}; which={which}")
+        return there[which]
+
+    def pad_at(self, ref: str, number: str, layer: str | None = None, which: int = 0) -> tuple[float, float]:
+        """1 placed pad's centre in board coordinates, mm (see `pad_box`)."""
+        box = self.pad_box(ref, number, layer, which)
+        return (round((box.x1 + box.x2) / 2, 4), round((box.y1 + box.y2) / 2, 4))
+
+    def pad_boxes(self, only: Part | None = None) -> list[PadBox]:
+        """Every pad as placed on the board; a through-hole pad appears once per copper layer. `only`
+        gives the pads of that 1 part."""
         boxes: list[PadBox] = []
         open_nets = self.unconnected_nets()
-        for part in self.parts:
+        for part in self.parts if only is None else [only]:
             if not (part.on_board and part.footprint and part.pcb_at):
                 continue
             px, py = part.pcb_at
@@ -3073,6 +3160,36 @@ class Design:
         ]
         return out
 
+    def check_look(self) -> None:
+        """Refuse a mask colour, a legend colour or a finish that KiCad's board setup does not name."""
+        for name in ("mask_color", "silk_color"):
+            value = getattr(self, name)
+            if value and value not in COLOURS and not HEX_COLOUR_RE.fullmatch(value):
+                raise ValueError(
+                    f"{name} is {value!r}. KiCad names {', '.join(COLOURS)}. Any other colour is "
+                    '"#RRGGBBAA": red, green, blue and opacity, 2 hexadecimal digits each.'
+                )
+        if self.copper_finish and self.copper_finish not in FINISHES:
+            raise ValueError(f"copper_finish is {self.copper_finish!r}. KiCad names {', '.join(FINISHES)}.")
+
+    def _look(self, stack: Node) -> Node:
+        """A stackup with the design's mask colour, legend colour and finish, each where KiCad writes
+        it: a layer's colour after its type, the finish in `copper_finish`."""
+        self.check_look()
+        colours = {
+            "F.Mask": self.mask_color,
+            "B.Mask": self.mask_color,
+            "F.SilkS": self.silk_color,
+            "B.SilkS": self.silk_color,
+        }
+        for item in stack[1:]:
+            if item[0] == "layer" and colours.get(str(item[1])):
+                item[:] = [c for c in item if not (isinstance(c, list) and c[0] == "color")]
+                item.insert(3, ["color", Q(colours[str(item[1])])])
+            elif item[0] == "copper_finish" and self.copper_finish:
+                item[1] = Q(self.copper_finish)
+        return stack
+
     def board(self) -> str:
         ns = self.namespace
         net_ids = self.net_ids()
@@ -3154,10 +3271,15 @@ class Design:
             ["layers", *layers],
             [
                 "setup",
-                # A two-layer board at the default thickness keeps KiCad's own stackup, as it always has.
+                # A two-layer board at the default thickness keeps KiCad's own stackup, as it always has,
+                # unless the design names a colour or a finish: the stackup is where KiCad keeps them.
                 *(
-                    [self._stackup(copper, self.thickness)]
-                    if len(copper) > 2 or abs(self.thickness - 1.6) > 1e-9
+                    [self._look(self._stackup(copper, self.thickness))]
+                    if len(copper) > 2
+                    or abs(self.thickness - 1.6) > 1e-9
+                    or self.mask_color
+                    or self.silk_color
+                    or self.copper_finish
                     else []
                 ),
                 ["pad_to_mask_clearance", "0"],
@@ -3455,11 +3577,46 @@ class Design:
 
     # ---- Specctra
 
-    def dsn(self, seed: dict | None = None) -> str:
+    def route_stages(self) -> list[tuple[str, list[str]]]:
+        """The nets the router gets, in the order `route(order=True)` routes them: the nets with a pour,
+        the nets of each fine-pitch part (pitch at most FINE_PITCH), pairs by name, then the rest. A
+        net with copper drawn by hand (`track`, `via`) is in the first stage with the pours: the router
+        is handed a net's copper only with the net, and the first stage's router must see it. A stage
+        with no net is left out; a net with fewer than 2 pads is in none."""
+        pads: dict[str, int] = {}
+        fine: set[str] = set()
+        for part in self.parts:
+            if not (part.on_board and part.pcb_at and part.footprint):
+                continue
+            small = pad_pitch(part.footprint) <= FINE_PITCH
+            for net in part.nets.values():
+                name = self.pcb_net_name(net)
+                pads[name] = pads.get(name, 0) + 1
+                if small:
+                    fine.add(name)
+        left = {n for n, count in pads.items() if count >= 2}
+        stages = []
+
+        def take(stage: str, nets: set[str]) -> None:
+            nets &= left
+            left.difference_update(nets)
+            if nets:
+                stages.append((stage, sorted(nets)))
+
+        drawn = {item[0] for item in (*self.segments, *self.vias)}
+        take("pours", {self.pcb_net_name(z["net"]) for z in self.zones} | drawn)
+        take("fan-out", fine)
+        take("pairs", {n for n in left if pair_of(n) in left})
+        take("rest", set(left))
+        return stages
+
+    def dsn(self, seed: dict | None = None, nets: set[str] | None = None) -> str:
         """Specctra DSN of the placed board, in 0.1 um units with y up (KiCad's own convention).
 
         `seed` (from `seed_wiring()`) is the router's starting wiring: held where it connects, so the
-        router keeps it, and unfixed at its loose ends, which the router reuses or removes."""
+        router keeps it, and unfixed at its loose ends, which the router reuses or removes. `nets`, when
+        given, are the only nets the network lists: the router joins those and treats the other pads as
+        obstacles."""
         U = 10000.0  # mm -> 0.1 um
 
         def c(v: float) -> str:
@@ -3600,7 +3757,7 @@ class Design:
         routable = []
         for name in sorted(net_ids, key=net_ids.get):
             pins = pins_by_net.get(name, [])
-            if len(pins) >= 2:
+            if len(pins) >= 2 and (nets is None or name in nets):
                 nets_out.append(f'    (net "{name}"\n      (pins {" ".join(pins)})\n    )')
                 routable.append(name)
         classed = {self.pcb_net_name(n) for s in self.net_classes.values() for n in s["nets"]}
@@ -4094,6 +4251,25 @@ class Design:
 
     # ---- files
 
+    def lib_tables(self, out_dir: Path) -> dict[Path, str]:
+        """The project's library tables as files of `out_dir`: `fp-lib-table` for its own footprints
+        and `sym-lib-table` for its own symbols, so KiCad finds them when the project is opened. Both
+        are embedded in the board and the schematic as well. A library is named from the project's
+        folder (`lib_uri`), so a table reads the same on every machine."""
+        tables = {}
+        for libs, name, head in (
+            (self.footprint_dirs, "fp-lib-table", "fp_lib_table"),
+            (self.symbol_dirs, "sym-lib-table", "sym_lib_table"),
+        ):
+            if not libs:
+                continue
+            rows = [
+                f'  (lib (name "{lib}")(type "KiCad")(uri "{lib_uri(d, out_dir)}")(options "")(descr ""))'
+                for lib, d in sorted(libs.items())
+            ]
+            tables[out_dir / name] = f"({head}\n  (version 7)\n" + "\n".join(rows) + "\n)\n"
+        return tables
+
     def write(self, out_dir: Path) -> list[Path]:
         out_dir.mkdir(parents=True, exist_ok=True)
         files = {
@@ -4110,27 +4286,9 @@ class Design:
                 fab_project_rules(src.read_text(encoding="utf-8"), self.board_rules()).rstrip("\n")
                 + f"\n\n# Copied by the workcenter from {src.name} (Design.fab); edit the source, not this file.\n"
             )
+        files.update(self.lib_tables(out_dir))
         for p, text in files.items():
             p.write_text(text, encoding="utf-8")
-        # So KiCad finds the project's own footprints and symbols when the files are opened; both are
-        # embedded in the board and the schematic as well.
-        for libs, name, head in (
-            (self.footprint_dirs, "fp-lib-table", "fp_lib_table"),
-            (self.symbol_dirs, "sym-lib-table", "sym_lib_table"),
-        ):
-            if not libs:
-                continue
-            rows = []
-            for lib, d in sorted(libs.items()):
-                d = Path(d).resolve()
-                try:
-                    uri = "${KIPRJMOD}/" + d.relative_to(out_dir.resolve()).as_posix()
-                except ValueError:
-                    uri = d.as_posix()
-                rows.append(f'  (lib (name "{lib}")(type "KiCad")(uri "{uri}")(options "")(descr ""))')
-            table = out_dir / name
-            table.write_text(f"({head}\n  (version 7)\n" + "\n".join(rows) + "\n)\n", encoding="utf-8")
-            files[table] = table.read_text(encoding="utf-8")
         self.stitches = []
         if self.zones:
             pcb = out_dir / f"{self.name}.kicad_pcb"
@@ -4449,6 +4607,7 @@ def load_design(path: Path) -> Design:
     if not isinstance(design, Design):
         raise TypeError(f"{path}: build() returned {type(design).__name__}, not Design")
     design.check_power_nets()  # here, before a caller checks, routes or writes anything
+    design.check_look()
     return design
 
 
@@ -4486,6 +4645,42 @@ def board_copper(path: Path) -> dict:
 
 
 UNROUTED_RE = re.compile(r"Auto-routing was completed in .*?\((\d+) unrouted\)")
+# A fine-pitch part: 0.5 mm pitch or less (PROCESSES.md P4 step 11). Its nets are the route's second stage.
+FINE_PITCH = 0.5
+# 2 nets are a pair when their names differ only in an ending of a pair: `TX_P` and `TX_N`, `USB_D+`
+# and `USB_D-`, `USB_DP` and `USB_DN`. A bare + and - (a rail V+ and V-, BAT+ and BAT-) or a last N or P
+# alone (CAN, EN, VIN) names no pair.
+PAIR_ENDS = {"_P": "_N", "_N": "_P", "D+": "D-", "D-": "D+", "DP": "DN", "DN": "DP"}
+
+
+def pad_pitch(fp: Footprint) -> float:
+    """The pin pitch of a footprint: the least distance between the centres of 2 pads of 2 different
+    pins, inf with fewer than 2 pins. A pin is the copper pads of 1 number: pads of 1 number (a pin
+    drawn as 2 shapes, an exposed pad in pieces) are never measured against each other. Left out: pads
+    with no copper or no number (paste-only), and on a part whose pins are all surface pads, a number
+    with a plated hole among its pads (an exposed pad's thermal vias)."""
+    copper = [
+        p
+        for p in fp.pads
+        if p.number and p.kind != "np_thru_hole" and any(lay.endswith(".Cu") for lay in p.layers)
+    ]
+    holed = {p.number for p in copper if p.kind == "thru_hole"}
+    others = [p for p in copper if p.number not in holed]
+    if others and all(p.kind == "smd" for p in others):
+        copper = others
+    gaps = [
+        math.hypot(a.x - b.x, a.y - b.y)
+        for i, a in enumerate(copper)
+        for b in copper[i + 1 :]
+        if a.number != b.number
+    ]
+    return round(min((g for g in gaps if g > 1e-6), default=math.inf), 6)
+
+
+def pair_of(net: str) -> str:
+    """The name of the other net of a pair, by its last 2 characters; "" when they end no pair."""
+    end = PAIR_ENDS.get(net[-2:])
+    return net[:-2] + end if end else ""
 
 
 def route(
@@ -4496,8 +4691,13 @@ def route(
     timeout: int = 900,
     java: str = "java",
     seed: dict | None = None,
+    threads: int = 0,
+    order: bool = False,
 ) -> dict:
     """Export the DSN, run FreeRouting, merge the session into the design. Returns a summary.
+    `threads` above 0 is FreeRouting's `-mt`, the most threads it routes with. `order` routes the
+    stages of `Design.route_stages()` one after the other, a FreeRouting run each, and lists them in
+    the summary's "stages"; it takes no seed.
     `seed` is a previous route's copper as `Design.seed_wiring()` keeps it. The summary's `unrouted` is
     FreeRouting's own count when its log has one, else `Design.bare_connections()` when the route left
     every connection without copper, else None."""
@@ -4511,20 +4711,57 @@ def route(
         build_dir / f"{design.name}.ses",
         build_dir / "freerouting.log",
     )
-    dsn.write_text(design.dsn(seed), encoding="utf-8")
-    ses.unlink(missing_ok=True)
-    # FreeRouting 1.9.0: -de, -do, -mp and -dct. Without `-dct 0` it waits 20 s for a click on a dialog
-    # that asks to confirm the start, and nobody sees a dialog here. It needs a display; xvfb-run
-    # provides one headless.
-    cmd = [java, "-jar", str(jar), "-de", str(dsn), "-do", str(ses), "-mp", str(passes), "-dct", "0"]
-    if not os.environ.get("DISPLAY") and shutil.which("xvfb-run"):
-        cmd = ["xvfb-run", "-a", *cmd]
-    proc = subprocess.run(cmd, cwd=build_dir, capture_output=True, text=True, timeout=timeout, check=False)
-    text = (proc.stdout or "") + "\n" + (proc.stderr or "")
-    log.write_text(text, encoding="utf-8")
-    if proc.returncode != 0 or not ses.is_file():
-        raise RuntimeError(f"FreeRouting exited {proc.returncode}; see {log}")
-    segments, vias = design.merge_ses(ses.read_text(encoding="utf-8"))
+
+    def freerouting(dsn: Path, ses: Path, log: Path) -> str:
+        ses.unlink(missing_ok=True)
+        # FreeRouting 1.9.0: -de, -do, -mp and -dct. Without `-dct 0` it waits 20 s for a click on a
+        # dialog that asks to confirm the start, and nobody sees a dialog here. It needs a display;
+        # xvfb-run provides one headless.
+        cmd = [java, "-jar", str(jar), "-de", str(dsn), "-do", str(ses), "-mp", str(passes), "-dct", "0"]
+        if threads > 0:
+            cmd += ["-mt", str(threads)]
+        if not os.environ.get("DISPLAY") and shutil.which("xvfb-run"):
+            cmd = ["xvfb-run", "-a", *cmd]
+        proc = subprocess.run(
+            cmd, cwd=build_dir, capture_output=True, text=True, timeout=timeout, check=False
+        )
+        text = (proc.stdout or "") + "\n" + (proc.stderr or "")
+        log.write_text(text, encoding="utf-8")
+        if proc.returncode != 0 or not ses.is_file():
+            raise RuntimeError(f"FreeRouting exited {proc.returncode}; see {log}")
+        return text
+
+    stages = []
+    if order and seed:
+        raise ValueError("an ordered route takes no seed")
+    if order and design.route_stages():
+        # Each stage routes its nets on the copper of the stages before it, which merge_ses has made
+        # the design's own and dsn() hands the router as fixed wiring. A net the design draws copper
+        # for is in the first stage (route_stages): the router is not handed wiring of a net it lacks.
+        done: set[str] = set()
+        for i, (stage, nets) in enumerate(design.route_stages(), start=1):
+            done |= set(nets)
+            files = [build_dir / f"{design.name}.{i}-{stage}{ext}" for ext in (".dsn", ".ses", ".log")]
+            files[0].write_text(design.dsn(nets=done), encoding="utf-8")
+            text = freerouting(*files)
+            s, v = design.merge_ses(files[1].read_text(encoding="utf-8"))
+            m = UNROUTED_RE.search(text)
+            stages.append(
+                {
+                    "stage": stage,
+                    "nets": nets,
+                    "segments": s,
+                    "vias": v,
+                    "unrouted": int(m.group(1)) if m else None,
+                    "log": str(files[2]),
+                }
+            )
+        dsn, ses, log = files
+        segments, vias = sum(s["segments"] for s in stages), sum(s["vias"] for s in stages)
+    else:
+        dsn.write_text(design.dsn(seed), encoding="utf-8")
+        text = freerouting(dsn, ses, log)
+        segments, vias = design.merge_ses(ses.read_text(encoding="utf-8"))
     m = UNROUTED_RE.search(text)
     # FreeRouting 1.9.0 logs no count, and it ends with exit code 0 on a board where it joined nothing
     # (every part outside the outline, a width that enters no pad). Such a board holds no copper for any
@@ -4537,6 +4774,7 @@ def route(
         "segments": segments,
         "vias": vias,
         "unrouted": unrouted,
+        **({"stages": stages} if stages else {}),
     }
 
 

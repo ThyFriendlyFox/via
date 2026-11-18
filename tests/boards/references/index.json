@@ -1,0 +1,15 @@
+{
+  "documents": [
+    {
+      "id": "acme-an-17",
+      "kind": "application note",
+      "maker": "Acme, a maker made up for the tests",
+      "number": "AN-17",
+      "title": "Layout of a buck converter",
+      "revision": "Rev. B",
+      "url": "https://example.com/an-17.pdf",
+      "sha256": "d3d0f188f5b9b632e69a0942046d751e98cb9ef103e8c319a3c72fe046f4a3dd",
+      "read": "2026-11-17"
+    }
+  ]
+}

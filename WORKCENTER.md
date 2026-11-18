@@ -52,7 +52,9 @@ honestly passes it.
 |---|---|---|---|
 | KiCad | 10.0 | `kicad-cli` | `install.sh` (PPA kicad/kicad-10.0-releases) |
 | ngspice | 42 | `ngspice` | `install.sh` (Ubuntu 24.04 archive) |
-| FreeRouting | 1.9.0 | `workcenter design <design.py> --route [--seed <previous .kicad_pcb>]` (generated boards, headless); `workcenter autoroute <project> [--dsn file]` (hand-drawn boards, DSN from KiCad) | `install.sh` (GitHub release, SHA-256 pinned; 2.1.0 hangs after routing when its GitHub version check cannot succeed) |
+| FreeRouting | 1.9.0 | `workcenter design <design.py> --route [--seed <previous .kicad_pcb>\|--order] [--threads N]` (generated boards, headless); `workcenter bench <design.py>... --out <dir>` (the routing benchmark); `workcenter autoroute <project> [--dsn file]` (hand-drawn boards, DSN from KiCad) | `install.sh` (GitHub release, SHA-256 pinned; 2.1.0 hangs after routing when its GitHub version check cannot succeed) |
+| openEMS | 0.0.35 (Debian 12's `0.0.35+git20190103.6a75e98+dfsg.1-3.2`) | `workcenter fields <project>`, as its own program on an XML file the command writes; `OPENEMS` overrides the path | `install.sh` and `install.sh --openems` (Debian 12's 4 packages from `deb.debian.org`, each SHA-256 pinned; Ubuntu 24.04 has no package) |
+| KiKit | 1.8.1 | `tools/panel.py` under `KIKIT_PYTHON` (EXPORT's panel, for a project with `panel.json`); its `doPanelization`, not the `kikit` command, which imports wxPython | `install.sh` (PyPI, `requirements.txt`) |
 | kicad-python (kipy) | 0.8 | `/opt/workcenters/ee/venv/bin/python` | `install.sh` (PyPI) |
 | librsvg | 2.58 | `rsvg-convert` (SVG to PNG for `workcenter render`) | `install.sh` (Ubuntu 24.04 archive) |
 | FFmpeg | 6.1 | `ffmpeg` (the turning GIF of `workcenter render --views spin`) | `install.sh` (Ubuntu 24.04 archive) |
@@ -62,7 +64,7 @@ honestly passes it.
 | scene | this repo | `tools/scene.py`: assembly scenes a project's script builds, run by `workcenter pictures` | the checkout; KiCad's `pcbnew` and FFmpeg by `install.sh` |
 | kistack | `641ade9` | `.claude/skills/kistack/SKILL.md` routes to `third_party/kistack/skills/`; `workcenter placement <check> <board> [args]` runs its placement checks | the checkout (vendored, `third_party/kistack/VENDORED.md`); shapely, numpy and pygerber by `install.sh` (PyPI) |
 | Board inspection | this repo | `workcenter inspect <view> <board> ...`, the views `map`, `list`, `probe`, `net`, `islands`, `resistance`, `crossed` (KiCad's `pcbnew` and Pillow under the venv); `python3 tools/stretch.py <design.py> --cut X --grow G` | `install.sh` (part of the checkout; Pillow from PyPI) |
-| Corners and frequency plan | this repo | `sim/corners.json` and `sim/frequency-plan.json`, read by `workcenter sim` (`tools/simcorners.py`, `tools/freqplan.py`); `workcenter sim --bundle <dir>` for a deck that runs on any machine | the checkout; ngspice by `install.sh` |
+| Corners, frequency plan and junctions | this repo | `sim/corners.json`, `sim/frequency-plan.json` and `sim/thermal.json`, read by `workcenter sim` (`tools/simcorners.py`, `tools/freqplan.py`, `tools/thermal.py`); `workcenter sim --bundle <dir>` for a deck that runs on any machine | the checkout; ngspice by `install.sh` |
 | Next step | this repo | `workcenter next <project>` (`tools/guide.py`; `tools/chipguide.py` for a chip project) | the checkout |
 | Chip projects | this repo | `workcenter chip init <dir> --top NAME`, `workcenter chip gates <project>` (`tools/chipflow.py`, `tools/chipfront.py`, `tools/chipback.py`, a process table in `pdks/`); all 10 gates run and tests hold each; the acceptance processor (760 cells, a 40 ns clock, the sky130A process) is GREEN with `--strict` | the checkout; the engines in `<root>/chip` (`sudo ./install.sh --chip`) |
 
@@ -77,12 +79,21 @@ file: it needs nothing else.
 | `attached-repos` | The session holds more than 1 repository. Run first. |
 | `board-design` | A board is designed from a spec, as a Python design file built from the KiCad libraries. |
 | `board-gates` | A board must pass ERC, DRC, simulation, and export. The fix loop. |
+| `board-loop` | A board that passes its gates is to become compact, correct and good to look at: 1 prompt run again and again, with a reviewer who has not seen the earlier rounds. The project's `LOOP.md` holds the prompt, the checklist and the log. |
 | `chip-design` | A chip is designed from a spec: `chip.json`, the RTL, the benches, the constraints, the list of changes the benches must catch. |
 | `chip-gates` | A chip must pass the 10 chip gates to its GDSII layout. The fix loop, gate by gate. |
 | `autoroute` | A board has unrouted nets and FreeRouting should route them. Headless for generated designs. |
 | `simulate` | A circuit must meet a measurable spec before layout; a part switches; a deck must run on another machine. Corners, the frequency plan, bundles. |
 | `blog-post` | A human asks for a public write-up of recent work. |
 | `procurement` | A human asks what a board costs, for its parts list, or to order its parts. |
+| `ratings` | A schematic is to be held to its parts' ratings before layout: each part's facts from its datasheet, with the page of each pin's and each needed part's numbers, the voltages and currents the board cannot say, and `workcenter ratings` until every stress holds. |
+| `board-rules` | A routed board is to be held to a standard: each gap to the voltage between its nets and each track's width to its net's current, from `ratings.json`, with `board-rules.json` naming the pack; or to a fab's published limits. |
+| `references` | A rule cites a standard or a datasheet: get the copy it was written from with `workcenter references fetch`, judge a file a person downloaded with `workcenter references check`, and keep `workcenter references rules` passing. |
+| `now` | Several agents work at once and a maintainer follows them on the project board: 1 work card per piece of work with `workcenter now`, its `**Status:**` line Todo, In progress or Done, in 1 GitHub issue's body rewritten at each landing, block and health gate, or on the `status` branch with `--write`. |
+| `highspeed` | A board carries a fast interface (USB 2.0, USB 3.x): `interfaces.json` names each pair, and `workcenter highspeed` until every width, gap, length, skew, via count and ground plane holds; then `workcenter drc --fab build/highspeed/highspeed.kicad_dru`. |
+| `copper` | A routed board carries a stated current or a part's stated heat: each power net's drop and current density, in its copper and in each barrel, and the board's temperature, against the limits of `copper.json`, with a picture of each and `workcenter copper` until every limit holds. |
+| `fields` | A fast interface or an antenna on a routed board: a track's impedance, loss or crosstalk, held by `workcenter fields` to the limits `fields.json` states, each with its source. |
+| `fabrication` | The files a fab and an assembler take, each read back against the board, a panel from `panel.json`, and `workcenter measure`: the plan of measurements for the built board, from the project's own sim bounds. |
 | `kistack` | Placing parts, reviewing a schematic, a layout or the Gerbers, choosing a part's derating, a footprint or symbol, or a panel: it names the kistack skill for the step, and where this workcenter's rules win. |
 | `verification` | A human asks for requirements, a review, an inspection, or proof that a design meets its parts' ratings: the verification package of P28, checked by `workcenter verify`. |
 
@@ -92,8 +103,8 @@ file: it needs nothing else.
 |---|---|---|---|
 | ERC | `workcenter erc <project>` | 0 errors in the ERC report | layout |
 | DRC | `workcenter drc <project>` | 0 errors, 0 unconnected items, 0 parity errors; with the project's fab rules (`<name>.kicad_dru`) when its design names a fab | export |
-| SIM | `workcenter sim <project>` | every `sim/*.cir` runs clean with no analysis aborted, every `*.expect.json` bound holds as written and at every corner of `sim/corners.json`, every overlap `sim/frequency-plan.json` shows is answered, and every library model a deck includes is unchanged since its `sources.csv` row | export |
-| EXPORT | `workcenter export <project>` | gerbers, drill, BOM, schematic PDF produced | hand-off to fabrication |
+| SIM | `workcenter sim <project>` | every `sim/*.cir` runs clean with no analysis aborted, every `*.expect.json` bound holds as written and at every corner of `sim/corners.json`, every overlap `sim/frequency-plan.json` shows is answered, every part `sim/thermal.json` names keeps its junction under its pack's derated limit at every run, and every library model a deck includes is unchanged since its `sources.csv` row | export |
+| EXPORT | `workcenter export <project>` | gerbers, drill, BOM, schematic PDF, placement file (each part at its place and rotation), an assembly page per side that holds a part (DNP parts hidden; each designator of that side drawn, read from the page's text), IPC-2581 produced, and each of the last 3 read back against the board; with `panel.json`, a KiKit panel of rows x cols boards in a closed outline at least their size, and its Gerbers | hand-off to fabrication |
 | ALL | `workcenter gates <project>` | the 4 gates above in order, none red, none skipped for a missing engine | a board is called done |
 
 `workcenter design` also lists every control input that can float while the
@@ -145,10 +156,28 @@ copper, a keepout or the board edge are left out first and counted on a
 `seed:` line, with how many seed tracks the new route kept. The seed board is
 only read.
 
+`workcenter design --route --order` routes in 4 stages, 1 FreeRouting run
+each, each on the copper of the stages before it: the poured nets and every
+net with hand copper, the nets of each part of 0.5 mm pitch or less, pairs
+(names that end in `_P`/`_N`, `D+`/`D-` or `DP`/`DN`), then the rest. It is
+not the default: on ring-mouse v0.4's power board it joined 32 of 34
+connections where the plain route joined all 34.
+
+Not a gate: `workcenter bench <design.py>... --out <dir>` routes each
+design with each router it is given (`--router NAME=JAR`, the first the
+default) and runs `workcenter drc` on each result. It records the time, the
+share of connections joined, the DRC's errors, the 2 commands and the bytes
+of their output in `<dir>/<board>/<router>/run.json`, and writes
+`<dir>/bench.md`. Each run empties its own folder first. A route past
+`--time-limit` (default 300 s) is stopped and not judged, exit 2. A router,
+or `--order`, becomes a board's default only when the table shows it joins
+as many connections with no more DRC errors in no more time.
+
 A board made for a particular fab checks that fab's published limits in the
 DRC: `rules/` holds them as KiCad design rules (`sierra-circuits-web` for
 Sierra Circuits' Web PCB: 4 mil trace and gap, 6 mil hole and ring, 13 mil
-inner drill to copper, 5 mil legend). A design file's `fab = "<name>"`
+inner drill to copper, 5 mil legend; `jlcpcb-2layer`, `pcbway-standard`
+and `oshpark-2layer` for those fabs' services). A design file's `fab = "<name>"`
 writes the set into the project for good, and the router and the generator's
 own via checks keep each layer's hole-to-copper rule (the 13 mil on the inner
 layers, M79); `workcenter drc|gates --fab
@@ -158,6 +187,21 @@ add floors: its board-wide limits raise the board's own minimums, and only
 its layer and condition rules go into the project's `.kicad_dru`, raised to
 the board's own where those are stricter. A board-wide custom rule would
 override every net class's clearance in KiCad's DRC.
+
+A project that holds `board-rules.json` (`{"pack": "<name>"}`) beside its
+board is held to that board rule pack too, after KiCad's own rules:
+`rules/board/<name>.json` (`ecss-q-st-70-12c-rev1`), or a pack of the
+project's own by its path from the project's folder. The voltage of each
+net and the current on it come from `ratings.json`; without that file the
+DRC is red with 1 line. Each gap is held to the voltage between its 2 nets
+and each track's width to its net's current; vias are counted against the
+wall a pack gives, and the shipped pack gives none, so they are not judged.
+KiCad measures the pack's gaps on a copy in `build/board-rules/`, with 1
+witness rule per net that shows KiCad read the rule file; the project's
+files do not change. The DRC line ends `board rules <pack>: N fail, M not
+judged`, and each failure names its document, clause, table and page. A
+net whose name a KiCad rule cannot hold is not judged. With `--strict`, a
+line not judged fails the gate. The `board-rules` skill is the procedure.
 
 Not a gate, but part of every hand-off: `workcenter render <project>` writes
 the schematic, board top and bottom, and 3D images into `build/render/`, and
@@ -285,6 +329,42 @@ end shows it. A resonance read from a deck that runs no corner fails the
 plan, as does a measure of the plan that some corner does not print. A
 source whose frequency the deck gives as no number is named in a warning.
 
+The SIM gate runs each deck capacitor and inductor named like a board
+reference on its maker's data (`tools/partdata.py`, the `simulate`
+skill). It does so when the project's `library/facts/` holds a curve for
+the part's number (`kept`, `kept_celsius`) in an entry that names that
+number (`mpn` or `mpns`), and `library/sources.csv` has the row of the
+maker's file with the SHA256 the facts name. A capacitor takes its value
+at its working voltage and at the run's temperature, the 2 curves
+multiplied; an inductor takes its value at its current. The gate needs
+the schematic and `parts.csv` to know each part's number. A part whose
+data the gate cannot apply fails the deck with the reason: no row, an
+entry that names the part by a pattern or a symbol, a place inside a
+`.subckt` or in a file the deck includes, an `ic=`, a K element that
+couples it, or a value that is no number. A bound that fails on the data
+names the parts that miss it alone, and the value with every part ideal:
+`tests/boards/fail-sim-bias` gives 6.755 mV of ripple on its 5 mV bound,
+3.04 mV with ideal parts, and names C2. A row that keeps no file leaves
+the SHA256 not judged, with a warning. A deck that holds a C or L under a
+name that is no board reference, while board parts hold data, gets a
+warning. A bundle carries the rewritten deck.
+
+The SIM gate holds the junction of each part `sim/thermal.json` names
+(`tools/thermal.py`, the `simulate` skill). At every run it judges, the
+deck as written and each corner, TJ = TA + RthetaJA x P, with the run's
+temperature as TA and the power the named deck measure prints (TI SPRA953D,
+section 1.1, equation 1). RthetaJA and the greatest junction temperature
+come from the part's facts (`thermal`), and the derated limit from the
+pack's `junction.temperature` rules. A part past its limit fails on 1 line
+with the part, the ambient, the junction, the limit and the worst run.
+Every printed junction says that RthetaJA is the datasheet's test board's:
+SPRA953D calls the sum a misapplication on a system board, and a 2s2p
+board a best case. A part with no RthetaJA, only a case, board or top
+figure, or no facts is not judged: a warning, a failure with `--strict`.
+So is a part whose deck's corners were not all run (a `skip`,
+`temperature: false`, `--nominal`), and a run whose temperature is not
+known; such a part is never held.
+
 The gate reads what it is given strictly. An expect file with a key it does
 not know, a bound with neither `min` nor `max`, a bound that is no finite
 number, or text that is not JSON fails the gate with the line that is
@@ -308,12 +388,46 @@ name that holds no `run.sp`. Send the folder, not the deck, to a person
 who runs it elsewhere: the deck alone stops with an error or prints
 another number (M105).
 
+Not a gate: `workcenter fields <project> [--strict] [--model] [--spec
+FILE] [--out DIR]` reads `<project>/fields.json` and the `.kicad_pcb`. For
+each group of nets it builds a model from the board file with no
+hand-written mesh: the copper, the reference pour under each track, the
+dielectrics, a 50 ohm port at each end. It runs openEMS as its own
+program and holds impedance, return loss, insertion loss, NEXT and FEXT
+to the limits, each with its source. It writes
+`build/fields/<group>/model.json`, the solver's input under
+`build/fields/<group>/openems/`, and `build/fields/report.md` and
+`report.json`. It refuses a track with no reference pour under it, a pour
+of another net between a track and its plane, a via through a plane, an
+open end as a port and a port on another net's pad. The impedance is
+judged only on a net of 2 ports, 1 width, 1 layer and no branch. The
+model has no conductor loss and no copper thickness. Exit 0 when every
+limit holds, 1 on a failure, a solver fault or a file it does not take, 2
+when openEMS is absent, there is no `fields.json`, or no limit was held.
+The `fields` skill is the procedure.
+
+Not a gate: `workcenter measure <project>` runs SIM and writes
+`build/measure/plan.md` and `plan.json`. For each bound of each deck it
+names the pad of the net the deck's node names (a test point first, then a
+connector pin), the reference pad, the instrument, the span the reading
+must fall in, the predicted value as written and over the corners, and the
+`alter` lines in force. `v(a) - v(b)` is probed at a against b. A bound it
+cannot place to a pad is listed as NOT PLANNED with the reason, and the run
+exits 1. Ordering, assembling and measuring the board are the owner's acts;
+the plan's Reading column is theirs to fill. The `fabrication` skill is the
+procedure.
+
 Not a gate: `workcenter next <project>` names the one next step
 (`tools/guide.py`): what to do, the command, why, what to read, and when
-the step is done. It reads `build/gates.json` and `build/verify.json`,
-asks for a new run when an input is newer than a report, and answers the
-first failure or warning with the fix for its kind; a design file that
-`workcenter design` refuses is answered with its first problem. It exits 0
+the step is done. It reads `build/gates.json`, `build/verify.json` and
+`build/ratings/report.json`, asks for a new run when an input is newer
+than a report, and answers the first failure or warning with the fix for
+its kind; a design file that `workcenter design` refuses is answered with
+its first problem. A project with a `ratings.json` is held to its parts'
+ratings in 2 places: a stress that fails, or a file `ratings` does not
+take, comes before the gates, since a part that changes takes its routes
+with it; what is left not judged comes after them, and the project is not
+done until the last line is `RATINGS HELD`. It exits 0
 when nothing is left and 1 when a step is. A finished project gets no `RUN`
 line. It writes nothing. For a chip project (`tools/chipguide.py`) the
 order is `chip.json`, the engines and the process kit, the RTL, a bench,
@@ -344,9 +458,11 @@ operating area), instead of reading the picture by eye.
 
 Not a gate: `workcenter design <design.py> --check` regenerates the design
 into a temporary folder and compares the `.kicad_pro` and `.kicad_sch` with
-the design's own, the step a board repository's CI runs. It exits 1 on a
-difference, and on the design step's own exit 1 even when every file is
-the same (M85).
+the design's own, the step a board repository's CI runs. It holds the
+project's library tables (`fp-lib-table`, `sym-lib-table`) to what the
+design writes in its own folder: each project library named from that
+folder, never by an absolute path. It exits 1 on a difference, and on the
+design step's own exit 1 even when every file is the same (M85).
 
 Not a gate: `workcenter ci [repo]` replays a repository's GitHub workflow
 here: every `run` step in order under `bash -e`, from the repository root,
@@ -367,6 +483,150 @@ fail on it. Every mutation's text must be in its file exactly once, checked
 before anything runs, and the tests must pass unmutated. A mutation that
 survives, or that a compiler stops, fails the run. The project's tree is
 never written.
+
+Not a gate: `workcenter ratings <project>` holds the schematic to its parts'
+ratings, for a project with a `ratings.json` beside its schematic (`--init`
+writes the first one; without the file the command skips, exit 2). It
+exports the netlist with `kicad-cli`, takes each part's manufacturer part
+number from the parts files (`--parts`, default `<project>/parts.csv`) and
+each part's facts from `library/facts/*.json` in the project's folder or a
+folder above it, and works out the voltage span of every net from the nets
+`ratings.json` states and from what each part's facts say the part does.
+Then it holds every stress to a limit: a pin's voltage to its absolute
+maximum; a supply pin to its working range; a capacitor's, a resistor's, a
+diode's and a transistor's voltage and a resistor's power to the share of
+the rating that the rule pack allows (`rules/ratings/nasa-eee-inst-002.json`,
+`ecss-q-st-30-11c-rev2.json`, or a pack of the project's own); a
+regulator's load to what it gives; an output a divider sets to that
+divider's sum; a buck converter's inductor to its peak current; and the
+capacitors and the inductor a datasheet asks for to what stands in the
+schematic. An entry of facts that gives a pin's name to another number
+than the schematic's symbol does fails too. A line is `fail`, `accepted`,
+`not judged` or `hold`. A line that holds a stress to a limit names the
+limit's document; a pack's rule, a pin's limit and a needed part name
+the page too. The last line is `RATINGS HELD`,
+`RATINGS HELD, N NOT JUDGED`, `NOTHING JUDGED` or `RATINGS NOT HELD`. Exit
+1 on a failure, on a run that judged nothing, on a file the command does
+not take, and with `--strict` on what was not judged. `--facts REF` prints
+an entry of facts to fill for 1 part. It writes `build/ratings/netlist.xml`,
+`report.md` (every line, the holds too) and `report.json`. It judges steady
+voltages and stated currents: no transient, no temperature, nothing of the
+board. `ratings.json` may state a part's heat, `"U1": {"watts": 0.4,
+"source": ...}`, or the heat that leaves by 1 pad, `"U1.2"` (not both);
+`ratings` does not judge it, and `workcenter copper` spreads it through the
+board. The `ratings` skill is the procedure and holds both file formats.
+
+Not a gate: `workcenter now [TREE] --item N --status Todo|"In progress"|Done
+[--doing LINE]... [--blocked WHO] [--left LINE]... [--title] [--write
+CHECKOUT]` prints the work card of 1 piece of work in progress. Its first
+line is `**Status:**` and the project board's own word; then 6 sections:
+Branch, Doing now, Health gate, Blocked on, Left, Updated. Work that waits
+on someone stays In progress and says so in Blocked on. The work is the
+issue's title, `Work card: <the work>`, which `--title` prints; the card
+repeats nothing else the board shows. It reads the branch, the last commit
+and the roadmap item's title from the tree, and the last `make verify`
+verdict from `build/verify.json`, which `verify/verify.sh` writes on exit
+with the commit the gate started on. It refuses, in 1 line, a card with no
+status or another word, more than 3 `--doing` lines, a value with a line
+break or a `**Status:**` line of its own, `--item` or `--blocked` that
+starts with `#`, or a value, branch or commit subject that names an
+assistant, a model or a session. `--write` writes the card under its title
+to `now/<branch>.md` in a checkout of the `status` branch and prints the
+git commands to commit and push it; it runs none. The workflow Board
+(`.github/workflows/board.yml`, `tools/board.py`) puts each issue titled
+`Work card: ...` in the column its `**Status:**` line names, and a closed
+card in Done; it needs the repository secret `BOARD_TOKEN`.
+
+Not a gate: `workcenter highspeed <project> [--strict] [--verbose] [--out
+DIR]` holds the fast pairs `interfaces.json` names to their interface's
+file in `rules/interfaces/`, each limit with its document, clause and page.
+It reads the stackup from the `.kicad_pcb`, sublayer by sublayer, and
+measures each pair's gap on the board. A 2-D cross-section solver
+(`tools/xsection.py`, under the venv) gives the width band for the
+interface's impedance at that gap. It judges each segment's width, every
+run's gap, the stretches with no partner, the length (or delay), the skew
+within the pair, the vias, and every point over the ground pour that
+bounds the track above and below; under the TI files also the 30 mil to
+other signals' tracks and a ground via beside a via that changes the
+planes. A width beside ground on the track's own layer, a half-routed
+net's length, skew and plane, and a limit the documents set that the
+command does not judge are printed as not judged; with `--strict` they
+fail. It writes KiCad's rules (`track_width`, `diff_pair_gap`, `length`,
+`skew`) into `build/highspeed/highspeed.kicad_dru`, which `workcenter drc
+--fab` reads; KiCad's `diff_pair_gap` reads only nets named `_P`/`_N` or
+`+`/`-`. The last line is `HIGHSPEED HELD: N held, M not judged` or
+`HIGHSPEED FAIL: ...`. The `highspeed` skill is the procedure.
+
+Not a gate: `workcenter copper <project>` solves the board's own copper for
+a project with a `.kicad_pcb`, a `ratings.json` and a `copper.json` beside
+it. It reads the copper with KiCad's `pcbnew` module (pads, tracks, arcs,
+vias, filled pours) onto a grid of square cells, 0.05 mm by default; each
+cell holds the part of its area that is copper, so a straight track along
+x or y of any width reads R = rho L / (w t). Copper at an angle reads high,
+on the safe side: at 45 degrees a 0.127 mm track reads 23 % high on the
+drop, and the skill gives the figures. A `grid.drop` wider than the
+narrowest track of a judged net, and a `grid.heat` that is not a whole
+number of it, are refused. For each power net `copper.json` names, the
+net's entry pins (`from`, 1 pin or a list for a supply on several
+contacts) are held at 0 V and each other pin with a current in
+`ratings.json` draws it. A pin of the net with no stated current is taken
+as 0 A and printed as not judged, and so is a pin of the entry's part that
+`from` does not name. The drop and the heat are solved in turn, each
+cell's copper at its own temperature, until the drops settle. A via or a
+plated hole joins its layers through the ring of cells round its drill.
+The greatest drop of a drawing pin, the greatest current density in the
+copper, and the greatest current density in a barrel, pi ((r + plating)^2
+- r^2), are held to the net's `volts` and `amps_per_mm2`. The plating is
+`copper.json`'s `plating` with its source, or the board's own setting, and
+the report names which. The board's temperature is a steady state on a
+grid of 0.25 mm: each layer's copper and its share of the FR-4, the layers
+joined through the laminate and the barrels, `h` on the 2 faces to air at
+the stated ambient. The heat comes from each part's `watts` in
+`ratings.json` (on the part, split over its pads by copper area, or on 1
+pad), or a stated current through a resistor's Value, entering at its pads
+on the board, and from each net's own I^2 R. A part's heat with no pad on
+the board is not judged. The hottest cell is held to `temperature`. The
+constants are `rules/copper/materials.json`'s, each with its document and
+page; `h` is 10 W/m2 K (TI SNVA419C, table 1, page 4) unless `copper.json`
+states its own. An ambient at or below -234.5 C, where copper's
+resistivity by NBS Handbook 100's linear coefficient reaches 0, is
+refused. A net that carries a stated current, or that `ratings.json`
+names, and is not in `copper.json`, and a limit not stated, are `not
+judged`. The last line is `COPPER HELD`, `COPPER HELD, N NOT JUDGED`,
+`NOTHING JUDGED` or `COPPER NOT HELD`. Exit 1 on a failure, on a run that
+judged nothing, on a file refused, and with `--strict` on what was not
+judged; exit 2 when numpy, pcbnew or Pillow is missing. It writes
+`build/copper/report.md`, `report.json` and a PNG of each net's drop and
+density on each layer it has copper on, and of the temperature on each
+layer. The report states its assumptions: a steady state, no enclosure and
+no air flow, a part's heat leaving by the board alone. The `copper` skill
+is the procedure and holds `copper.json`'s format.
+
+Not a gate: `workcenter references` keeps the index of the documents the
+rules cite, `rules/references/index.json`: each standard and datasheet
+with its maker or issuer, number, title, revision, URL and the SHA256 of
+the copy the rule was written from. The repository holds the index, never
+a document. `workcenter references fetch [ID ...] [--to DIR]` asks each
+URL once under the workcenter's own name. It keeps each answer in DIR
+(default `~/.cache/ee-workcenter/references`, never inside a repository)
+with a `ledger.json`, and a later run asks again for none (`--again ID`
+asks once more). Each document is `kept` (the indexed copy), `changed`
+(another SHA256; the copy is kept for a reader), `refused` (401 or 403;
+never asked under another name), `gone` (404 or 410), `not given` (429 or
+a 5xx: no copy and no verdict) or `not reached` (no answer). `not given`
+and `not reached` are not recorded and are asked again. Exit 1 on a
+`changed`, `refused` or `gone` document, else exit 2 on a `not given` or
+`not reached` one. A ledger of another shape is refused on 1 line.
+`workcenter references check FILE [--id ID] [--keep]` says whether a file
+a person downloaded is the copy an entry names. `workcenter references
+rules [PATH ...]` fails each document a rule file names under `document`
+or `source`, or in a table `documents: {id: {...}}`, that the index lacks,
+names at another URL, or names without both a URL and a SHA256. Only a
+source whose `document` is `no datasheet: <why>` or `no document: <why>`
+is not judged. A document served in a zip names the zip's SHA256 as
+`zip_sha256`, and the index holds the zip. `make verify` runs it on
+`rules/ratings/`, `rules/board/`, `rules/copper/`, `rules/interfaces/` and
+`tests/boards/**/facts/` through `tests/test_references.py`. The `references` skill is the procedure.
 
 Not a gate: `workcenter verify <project>` checks the project's verification
 package (`PROCESSES.md` P28, the `verification` skill) in
@@ -399,7 +659,10 @@ facts file for helpers who write parts of one package at the same time
 A project kept as version folders (`PROCESSES.md` P22) lays out each
 version's README as `templates/project/README-version.md` and its gates
 report, `docs/gates.md`, as `templates/project/gates.md`, whose marker
-comments `workcenter gates <project> --report` fills.
+comments `workcenter gates <project> --report` fills. A project that is
+improved in a review loop keeps the loop's prompt, its checklist and its
+log in `LOOP.md` beside the version folders, from
+`templates/project/LOOP.md` (the `board-loop` skill).
 
 A model under the deck's own folder (`sim/models/`) is the project's own,
 fitted to a datasheet when the maker publishes none: the SIM gate needs no
@@ -505,7 +768,7 @@ and no analog block. The engines install on request:
 | Install root | `/opt/workcenters/ee` |
 | Engine environment | `/opt/workcenters/ee/env.sh` |
 | Tool cache | the session scratchpad; the engines write nothing outside the output directory |
-| Project output | `<project>/build/` (reports, `fab/`, `sim/`, `route/`, `render/`) |
+| Project output | `<project>/build/` (reports, `fab/`, `sim/`, `route/`, `render/`, `ratings/`, `board-rules/`, `measure/`, `fields/`, `copper/`, `highspeed/`) |
 | Chip project output | `<project>/build/gates.json`, the report, and `<project>/build/chip/`: 1 folder for each gate that ran, and `hashes.json` with the hash of each file a gate wrote or judged. `<gate>/passed.json` is there when that gate passed: the hash of each file it read, taken before its engines started and held to the same bytes after, and of each file it hands on. The files of the project in it are those the gate finds by the text and those its engine says it read (Verilator's XML, the list Icarus Verilog writes, the rule Yosys writes): a header is in the record however the RTL names it. A file of the project is named from the project's folder (`rtl/top.v`, and `./chip/notes.v` for one under a folder `chip`) and a file the gates wrote from the output folder (`chip/layout/top.gds`), wherever `--out` points. EXPORT asks each of the 9 gates before it for that record and holds every file to it: the RTL and each header it includes, the benches and their bounds, the constraints, `chip.json`, the mapped netlist the layout was built from, and the layout's own files. A file of the project that came after a gate passed is refused too. `workcenter next` holds the files to the same records before it reads the report. `tapeout/` holds the files EXPORT hands out, `manifest.json` and the judging gates' reports; a gate that is asked to run takes it away, with the record of its own earlier pass. `render/` holds the pictures of `workcenter chip render`. The gates empty the folders under `<out>/chip`, and only in a folder they made: `--out` is refused when that folder is the project's, holds a file of it, or is there with files and without `hashes.json`. A path with white space is refused too. |
 
 ## Project requirements
@@ -516,7 +779,23 @@ and no analog block. The engines install on request:
 - Optional: `sim/<deck>.cir` with `sim/<deck>.expect.json` for the SIM gate; `sim/models/` for the project's own fitted models
 - With decks: `sim/corners.json`, the temperature range and the parts' tolerances every bound must hold over (start from `templates/project/corners.json`); the gate warns without it
 - With decks that drive periodic sources: `sim/frequency-plan.json`, the sources and the measured resonances (start from `templates/project/frequency-plan.json`); the gate warns without it
+- With parts that dissipate power: `sim/thermal.json`, the rating pack and, for each part, its number and the deck measure that prints its power; the part's facts give `thermal` (the `simulate` skill, "A part's temperature")
 - Optional: `verification/` for `workcenter verify` (P28)
+- Optional: `ratings.json` beside the schematic, and `library/facts/*.json`
+  in the project's folder or a folder above it, for `workcenter ratings`;
+  the `ratings` skill has both formats
+- Optional: `interfaces.json` beside the board, `{"interfaces":
+  [{"interface": "<file in rules/interfaces/>", "nets": ["<P>", "<N>"],
+  "gap": <mm>}]}`, for `workcenter highspeed`; `gap` is optional and is
+  held to the gap the tracks have
+- Optional: `copper.json` beside the board, each power net's entry and
+  limits for `workcenter copper`; it needs `ratings.json`
+- Optional: `fields.json` beside the board, the critical nets and their
+  limits for `workcenter fields`
+- Optional: `panel.json` beside the board, a KiKit preset; it asks EXPORT
+  for a panel
+- Optional: `board-rules.json` beside the board, `{"pack": "<name>"}`, for
+  the board rule pack the DRC holds the board to; it needs `ratings.json`
 - Optional, a project kept as version folders (`v0.1/`, `v0.2/`, ... at the
   repository's root, a nested board one folder down): `parts/catalog.csv`,
   `parts/version/<id>.csv` and `parts/offboard/<id>.csv` for `workcenter

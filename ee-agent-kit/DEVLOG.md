@@ -55,6 +55,206 @@ Evidence: `tests/test_forms.py` 9 passed; the docs tests 21 passed, 2 skipped (K
 with the real `_forms.js` and a stand-in store, both forms sent and showed their thank-you
 line, and a store that failed showed "The form did not send. Try again."
 
+## 2026-11-17 — Work cards, and a project board that follows them
+
+The owner asked for a way to follow what each agent is working on, live, and for the project board to
+show the state of the work, not to set it. `workcenter now` prints 1 work card per branch; the card
+lives in 1 issue's body, rewritten at each landing, block and health gate, so watchers are not
+notified at each change. `make verify` had left no record of its verdict; it now writes
+`build/verify.json` on exit, naming the commit it started on. The workflow Board reads each issue's
+`**Status:**` line and puts the card in that column. A reviewer found that a Status line shown as an
+example in a code fence moved the card; the tool now reads the body as CommonMark renders it. The 2
+tools were built on 2 branches: the card first carried 4 state words of its own and 3 invented
+labels. On integration the card took the board's own 3 words and the repository's own labels, at the
+owner's word, and a test now feeds the card into the board's reader. The board has not run against
+GitHub yet.
+
+Evidence: `tests/test_now.py` 20 passed, `tests/test_board.py` 54 passed.
+
+## 2026-11-17 — High-speed rules from a pair's interface, after 2 reviews that said "not sound"
+
+Roadmap item 8 landed in part. A cross-section solver in numpy gives a pair's width for its
+interface's impedance on the board's own stackup. With a grid 16 times finer at the strip edges it
+sits within 0.6 % of the closed forms in 0.3 s a case. The USB 3.2 specification sets no board
+impedance and no skew, so TI's SPRAAR7J supplies them for 1 processor family. A first reviewer found
+the width judged at a gap the user typed and never measured, and KiCad's gap rule silent on pairs named
+DP/DM. The command now measures the gap on the board. A second reviewer found a dielectric of 2
+sublayers read as its first, and a half-routed pair judged as finished. Each is fixed with a test. The
+reviewer's hand sums held the solver within 0.51 % and 0.48 %. On integration the interface files'
+4 documents were missing from the reference index, and usb.org serves its specifications in zips; the
+index now holds each zip by its SHA256. No third review has been run.
+
+Evidence: `tests/test_highspeed.py`, `tests/test_highspeed_drc.py` and `tests/test_xsection.py` pass.
+
+## 2026-11-17 — A voltage drop and a heat map, after 2 reviews that said "not sound"
+
+Roadmap item 10 landed in part. `workcenter copper` solves the board's own copper for each power
+net's drop and current density, and the board's temperature from its parts' heat. The venv has numpy
+and no scipy, so both solvers are conjugate gradients in numpy. A first run took 95 s: numpy's `@` on
+1 vector spread each dot product over 4 busy processors. The solver sums products itself, and the run
+takes 5 s. A first reviewer made the command print COPPER HELD where the copper broke its limit: a
+cell was copper when its centre was, so a track's width rounded to whole cells. Each cell now holds
+its share of copper. A second reviewer found a supply on 2 contacts judged as fed at 1, a part's heat
+off the outline dropped, and the drop solved at the air's temperature. Each is fixed with a test. On
+integration the constants' 2 documents were missing from the reference index, and `references rules`
+did not read their table; I added both, with a test. No third review has been run.
+
+Evidence: `tests/test_copper.py` 36 passed; `fail-copper-neck` fails on density at the neck alone.
+
+## 2026-11-17 — openEMS as an engine, after 2 reviews that said "not sound"
+
+Roadmap item 9 landed in part. Ubuntu 24.04 has no openEMS package; Debian 12's 0.0.35 runs on
+Ubuntu's libraries and is pinned by its SHA256. The runs taught 5 traps where openEMS exits 0 with a
+wrong result, and the code now holds each (ENGINES.md). A first reviewer made `--strict` pass on 4
+boards the command never modelled: a small GND square became a whole plane, a port went to a stub's
+open end, and a via through 2 planes shorted the net. openEMS also stops on a 4 s clock, so 1 file
+gave 2 results. A second reviewer found the impedance 15 % low: a track's edges on mesh lines are
+wider to the solver than to the board. With lines a third of a cell inside each edge, the line fixture
+reads 50.88 ohm against 51.34 by Hammerstad and Jensen. Antmicro's test board publishes simulations,
+not measurements, so the Evidence's first half does not hold. No third review has been run.
+
+Evidence: `tests/test_fields.py` 68 passed, `tests/test_fields_solver.py` 9 passed with openEMS 0.0.35.
+
+## 2026-11-17 — A part's junction temperature at every corner
+
+Roadmap item 7 landed in part. Before the change the SIM gate passed `fail-sim-thermal` with
+`--strict`: 10 corner runs, 0 failures. Yet the regulator's junction reached 124.97 C at 85 C ambient,
+against ECSS's 110 C. Now the gate reads `sim/thermal.json` and takes RthetaJA and the greatest
+junction temperature from the part's facts and the derated limit from the pack. It fails that run on
+1 line. JEDEC refused JESD51-2A to the workcenter's name (HTTP 403), so the method is cited from TI
+SPRA953D, section 1.1, equation 1, page 2. A reviewer found 2 false passes. A corners.json `skip` on
+the deck turned SIM GREEN with `--strict` at 64.33 C, and a deck that ran at 25 C and at 85 C was
+judged at 27 C. Now a part whose deck's corners were not run, or whose run's temperature is not
+known, is not judged and never held. SPRA953D calls the sum a misapplication on a system board, and
+every printed junction now says the figure is the test board's.
+
+Evidence: `tests/test_thermal.py` 49 passed; `fail-sim-thermal` 124.97 C over 110 C at 85 C;
+`pass-sim-thermal` 99.87 C at 60 C, GREEN with `--strict`.
+
+## 2026-11-17 — The files a fab takes, and a routing benchmark with 1 router
+
+Roadmap items 12 and 5 landed in part. kicad-cli 10 writes the placement file, the fab layers as PDF
+and IPC-2581, and EXPORT now reads each back against the board. kicad-cli has no panel, so a panel
+comes from KiKit 1.8.1. Its command line dies on `import wx`, because this image's wxPython is built
+for Python 3.12; its `doPanelization` function needs no wx, so the workcenter calls that. The plan of
+measurements on Last Hit v0.16 placed 5 of 82 bounds: most decks model a part alone or read a
+current, and their nodes are not the board's nets. On integration the read-back failed
+universal-controller v0.1: a switch's Value, "R1", stood on the top page, and the check took it for
+the back's R1. I fixed the check with a test. The benchmark's first version was not sound: it judged
+a route that raised on the board an earlier run left. After the fix, 4 of ring-mouse v0.4's boards
+were rerun, and the other 7 boards wait for a rerun. Only FreeRouting 1.9.0 runs here: FreeRouting 2
+needs Java 25, and KiCadRoutingTools could not be fetched. Ordering a board is the owner's act.
+
+Evidence: `tests/test_fabfiles.py` 34, `test_fabexport.py` 5 (1 skips without KiKit),
+`test_measureplan.py` 21, `test_routebench.py` 39, `test_routeorder.py` 18.
+
+Later on 2026-11-17 the owner cut the built board from item 12; it is now "The files a fab takes".
+
+## 2026-11-17 — Decks run their capacitors and inductors on the makers' data
+
+Roadmap item 4 landed in part. The SIM gate now runs a capacitor at its working voltage and
+temperature, and an inductor at its current, from curves in the part's facts. The first rewrite
+wrote the capacitor as `C2 out 0 '<expr>'`. ngspice 42 ran that as another element: a 1 mA charge
+stopped with `Timestep too small` at 9.9 ms. Written `C2 out 0 C='<expr>'`, it charged to 2 V in
+17.37 ms, as the hand sum gives. Samsung's component library page holds its curves as numbers. TDK's
+characteristic sheet answered 403 to the workcenter's name, and Murata's per-part URL answered 404. A
+reviewer found 8 faults. In 1 of them a part in a file the deck includes ran ideal with no line.
+All 8 are fixed, 3 in part. On integration the fixture's facts named Samsung's page, which the
+reference index lacked; I added it. That page differs on every fetch, so the index's SHA256 holds no
+copy. Its graph data still held the facts' curves on 2026-11-17.
+
+Evidence: `tests/test_partdata.py` 25 passed; `fail-sim-bias` 6.755 mV against 3.04 mV with ideal
+parts, on a 5 mV bound.
+
+## 2026-11-17 — Board rules from a free standard, and a rule file KiCad dropped in silence
+
+Roadmap item 6 landed in part. ECSS-Q-ST-70-12C Rev.1 is free from ecss.nl. Its table 13-3 gives
+the gap as manufactured. Table 13-7 (pages 130 and 131) gives the same limits as designed, with the
+tolerance in, and the pack takes that one. The text extraction lost both tables, so each was read off
+a rendered page. Annex D's worked example, 1 A on 925 um by 25 um at 5 C, comes out at 1.0002 A. The
+standard gives a via's wall only for HDI boards, so the shipped pack judges no via. A reviewer found 7
+faults. The worst: a net named `VIN'A` broke the rule file, and kicad-cli 10 dropped the whole file,
+exit 0, with no message. The board passed. Each rule file now holds 1 witness rule per net that fails
+on every item of the net, and the gate is red when KiCad does not report it. The same run showed that
+a condition compares names without case and reads `*` as a wildcard. JLCPCB, PCBWay and OSH Park each
+served their capability page to the workcenter's own client name. On integration the board pack named
+a standard the reference index lacked, and `make verify` did not see it: the index's globs left out
+`rules/board/`. I added the entry and the glob, with a test.
+
+Evidence: `tests/test_boardrules.py` 92 passed, `tests/test_boardrules_drc.py` 11 passed;
+`workcenter references rules`: 10 documents named in 8 files, 10 in the index, 0 not.
+
+## 2026-11-17 — The reference library: 9 documents the rules cite, each fetched once
+
+Roadmap item 2 landed. An index names the 9 documents the rules cite: 2 standards and 7 datasheets.
+Its first real run fetched all 9 under the workcenter's own name. Each had the SHA256 its rule names.
+The title and revision of each entry come from that copy's first page. The fetch keeps a ledger
+beside the copies, so no URL is asked 2 times, and a site that refuses is not asked again. A reviewer
+found 6 faults. The worst: a datasheet named by name alone passed the check. All 6 are fixed, with 28
+more tests. The item is not done: `tools/ratings.py` cites a TI application note, SLVA477C, and the
+index has no entry for it.
+
+Evidence: `tests/test_references.py` 43 passed; `workcenter references rules`: 9 documents named in 7
+files, 9 in the index, 0 not; 4 not judged.
+
+## 2026-11-17 — The attack on the ratings check: 30 findings on its verdicts
+
+P14 step 6 asks for an attack by someone who did not write the feature. 2 reviewers got a copy of
+the tree: one hunted wrong verdicts, the other changed the code 1 line at a time to see which
+changes no test catches. The first returned 30 findings, each with a script that shows it. 7 were
+of the worst kind, a run that ends `RATINGS HELD` over a part that is overstressed: `100 nF` read as
+100 F, a part marked DNP counted as fitted, a feedback divider read as a pin on its own output, a
+part's sense pin judged at 0 V on the 9 V its own divider sets, a rail's load that lost every
+resistor to ground when a clamp diode stood on the rail, a part on a negative rail judged from the
+board's 0 V, and an output whose `swing` named its 2 pins in the other order. I had written the
+rule "a pin is never judged against itself" for the whole part, and that hid a part's other pins
+from its own output; the rule now leaves out the judged pin's drive and nothing else. Each fix has
+a test that failed first. 4 readings stay coarser than the circuit, and the skill now names them so
+that such a failure is checked by hand before a design changes.
+
+Evidence: the reviewer's findings are answered 1 by 1 in the commits of 2026-11-17 on the work
+branch; `tests/test_ratings.py`, `tests/test_ratings_cli.py` and `tests/test_guide.py` pass, with
+the counts `STATUS.md` holds. The real board's run did not change: 6 fail, each a real stress.
+
+## 2026-11-17 — The ratings check meets a real board: 6 real stresses, 7 faults of its own
+
+A second reader went through both packs and the fixtures' facts, and 4 numbers had to change:
+NASA's limit for a regulator's output came from the table for hermetic parts, and plastic parts
+have their own. `workcenter next` got its ratings step. Then the command ran on a scratch copy of
+Last Hit v0.16. I wrote the facts of its parts from the datasheets in its own library and stated
+its nets and its currents from its verification package. The first run failed a 20 mΩ shunt for
+4.23 V across it and a 330 Ω filter resistor for 54 mW: both were the check's faults, not the
+board's. A capacitor with no datasheet left every part on its nets not judged. One datasheet
+numbers its SOT-23 with the lone pin as 1, where the footprint has 3: facts copied from its drawing
+would have judged the part on the wrong nets, so the command now fails an entry that names a pin
+another way than the symbol. Each of the 7 faults is fixed with a test that failed first. What
+still fails on that board is real: 3 switches over their current derating, the shunt over its power
+derating, a gate over its derating, and a charger whose input may fall under its working range. 2
+nets that 1 source moves together are still subtracted at their extremes.
+
+Evidence: `tests/test_ratings.py` (213 tests), `tests/test_ratings_cli.py` (19) and
+`tests/test_guide.py` (82) pass. The scratch run prints `6 fail, 0 accepted, 137 hold, 7 not
+judged`. None of that board's facts has been read a second time.
+
+## 2026-11-17 — A schematic held to its parts' ratings: the command, 2 packs, 6 fixtures
+
+The owner confirmed the roadmap's order: the schematic first. Item 1 is `workcenter ratings`, a
+command that judges what an electrical rules check cannot. It gives every net 2 voltage spans and
+holds each stress to a limit that names its document and its page. The first model spread every
+voltage through every resistor, and a failing test showed a divider's tap taken as its top rail: a
+held net now stands against a resistor, and a free tap is solved at the corners of its tolerances.
+The first buck converter showed a second flaw. An inductor passed the switch node's swing to the
+output, so every load on the rail failed against the input voltage. An inductor behind a switched
+pin now carries the average, which is the output its regulator's facts state. The fixture's
+regulator sets its output by a divider, so the command works that sum out. The fixture's parts are
+real where a maker's site serves its datasheet to a script (TI, Vishay, Coilcraft, Bourns). No
+capacitor maker's sheet with a DC bias curve could be read here, so 2 capacitors are made up and
+their facts say so. I changed files by a script 3 times while building it (M183).
+
+Evidence: `tests/test_ratings.py` (192 tests) and `tests/test_ratings_cli.py` (19 tests) pass.
+`pass-ratings-node` holds 27 stresses with `--strict`, and each of the 5 fault fixtures fails on 1
+line. On scratch copies of the 6 examples every run ends `NOTHING JUDGED`: no part has facts yet.
+
 ## 2026-11-17 — A blog, a post on Herald, and `main`'s CI green again
 
 The owner asked for a blog on the site, each post at its own address with links back to the main
@@ -70,21 +270,24 @@ called M137's pad a diode's; M137 names R43 and R44, so the post says only that 
 covered pads.
 
 The owner read the preview and said the page reads as a model's text. I wrote the post and the blog's
-words in my own voice, not in `TONE.md`'s English (M182). I rewrote both in American Simplified
-Technical English. `TONE.md` now names American spelling and the patterns to leave out, P35 says how
+words in my own voice, not in `TONE.md`'s English (M206). I rewrote both in American Simplified
+Technical English. `TONE.md` now names American spelling and the patterns to leave out, P37 says how
 to write to them, and a docs test counts each post's sentences and words.
 
 `main`'s CI had failed since PR #62 (Vercel Web Analytics): it added 2 script tags to the pages
 `site/examples.py` writes, not to the script, and the link checks looked for the host's
 `/_vercel/insights/script.js` in the repository. The script now writes the tags, and the link
 checks leave out `/_vercel/` addresses. PR #79 on `main` fixed the same failure with a set of
-paths the host serves; the merge keeps that set and drops my skip. My mistake is M182, since
-`main` took M181 for the domain.
+paths the host serves; the merge keeps that set and drops my skip. My mistake is M206 (M182 on
+`main` until the merge), since `main` took M181 for the domain.
 
 Evidence: the docs tests 21 passed, 2 skipped (KiCad); `site/blog.py --check` and
 `site/examples.py --check` exit 0; a build for the site's address serves the post at
 `/blog/herald-fire-alarm-communicator` with its canonical link and share card, and a feed that
 parses as RSS 2.0 with 1 item. In Chromium the post and the list fit a 390 px screen.
+
+On the merge into `wip/next` the mistake above is M206 and its process P37: M182 and P35 were taken
+there.
 
 ## 2026-11-14 — The redrawn site meets main: Herald, the 6 boards, a page for each
 
@@ -117,6 +320,80 @@ Evidence: `tests/test_docs.py` 19 passed, 2 skipped (KiCad and the chip engines)
 passed, 1 failed, 307 skipped; the failure, `test_fab` without KiCad's symbols, fails the same on
 `main` (461 passed). Basalt's drawing is 2,271 KB, 388 KB compressed. In Chromium, all 127 labels,
 brought in 1 by 1, fit beside the board at 1100 and 1280 px, the stage at 373 and 451 px throughout.
+
+## 2026-11-13 — The projects' findings, rated: 61 candidates in 1 table
+
+The branches held little: 45 of the 59 had nothing of their own. The
+findings were in the projects' files. 6 readers each took 1 or 2 example
+projects, the mistakes log or the projects' own scripts, with a limit of
+10 findings and every claim as a quote with its place. They brought 60
+findings and 376 quotes. A script held 369 of the quotes to their files,
+and I read the other 7 at their places: 6 of them are on a branch.
+
+Each finding got 6 scores against written anchors: how often it was met,
+what it cost, what building it turns into a command or a refusal, how
+many projects it serves, and the effort and the risk of building it. Then
+3 readers who had not written them tried to refute the best 15. None was
+dropped and 10 changed. A check of the counts in commit messages fell
+from 8 to 3: as written it would have refused the right numbers of all 3
+logged cases. 2 more readers rated the 29 lines that stood under "Later".
+The copper pours had been built, and 4 lines were the same gap as another
+row.
+
+The table under "Later" holds 61 rows, and `python3 tools/harvest.py
+later` holds each rating to its scores and each row to its evidence. I
+had given 22 rows a day under "Checked" that no second reader had
+earned; they say `no` until one reads them. A guess of mine was wrong
+too. I took a library table that names the generating machine's path for
+a gate that fails on another machine. KiCad's ERC and DRC read no library
+table: the same report came out with the right table, a wrong one and
+none.
+
+4 candidates shipped from the table: the stackup's 3 fields, a library
+table that names a project library from the project's folder, 1 pad's
+place by 1 call, and the review loop as a skill. While I wrote the table
+I changed 3 lines in 3 files with a script (M182). The table's third row
+names the hook that would have refused it.
+
+Evidence: `python3 tools/harvest.py later` prints 61 candidates and no
+problem; `tests/test_harvest.py`, 10 tests.
+
+## 2026-11-12 — What the projects found, read from the branches
+
+The owner asked for a way to bring in what each project's branch had
+found, and to rate it. A project leaves its findings in 4 places: commits
+that never reached `main`, scripts it wrote because the workcenter had no
+tool, the mistakes log, and its own notes.
+
+Git cannot say what a branch still holds: the history was rewritten on
+2026-11-11 (P33), and a branch from before shares no commit with `main`.
+`tools/harvest.py` compares lines. A branch's base is the newest of its
+commits whose files `main` once had, and a line it added has landed when
+`main` holds it. The first listing was wrong 2 times. It called a step
+missing that `main` holds under another number, and it could not see a
+version pin, a line too short to count. Both are tests now.
+
+Of the remote's 59 branches, 45 hold nothing of their own. 1 held tested
+work that `main` lacked: an open pull request with Last Hit v0.17's 10
+mistakes and 2 fixes. I copied that work onto `main` myself and gave its
+entries the next numbers. 20 minutes later the branch's own session gave
+them the same numbers, and I started the health gate on my copy without
+fetching the branch again. The copy had also put the branch's devlog
+entry in the middle of the log. I stopped the gate after 16 minutes and
+threw the copy away: this change stands on the branch's own commits
+(M181). The procedure is P35. The projects' notes are read and rated
+next.
+
+The first finding shipped with it. 5 of the 6 example projects had
+overridden a private method of the generator to give their board a black
+or a red mask, a white legend and a finish. A design file now names the
+3 in 3 fields, and the fields write the stackup those 5 boards carry,
+byte for byte. A render showed what 3 of the projects had noted: under
+KiCad's named Black a pour shows brown through the mask.
+
+Evidence: `tests/test_harvest.py`, 7 tests, and each of 12 lines of the
+tool, broken alone, fails at least 1 of them; `python3 tools/harvest.py
+branches` on the remote's branches, 2026-11-12.
 
 ## 2026-11-12 — Last Hit v0.17's mistakes, and 2 checks they asked for
 

@@ -298,11 +298,18 @@ The Vercel project is `via`, and production is <https://via.computer>. Its Root
 Directory is `site`. `vercel.json` runs `build.sh` with the address
 `https://via.computer` and serves `dist/`. It names the address itself:
 Vercel's `VERCEL_PROJECT_PRODUCTION_URL` kept the older domain after
-`via.computer` was added (M181). A push to `main` deploys
+`via.computer` was added (M205). A push to `main` deploys
 production, and a push to any other branch a preview. The project skips
 a push that leaves `site/` unchanged. The Blob store `via-forms` is
 connected to the project. It gives the functions 1 variable,
 `BLOB_READ_WRITE_TOKEN`, in production, preview and development.
+
+Vercel's Web Analytics is on. Each page a reader opens queues its events
+in `window.va` and loads `/_vercel/insights/script.js`, an address the
+Vercel project answers and no file here holds. `site/examples.py` writes
+those lines into the pages it writes; `index.html` and `404.html` hold
+them by hand. On any other host the script is a 404 and the page works
+without it.
 
 Each other address sends the reader to `via.computer`. A redirect from
 Cloudflare adds `ref=` with the address it came from, so the analytics

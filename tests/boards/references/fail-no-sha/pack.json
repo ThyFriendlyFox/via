@@ -1,0 +1,13 @@
+{
+  "pack": "acme-layout",
+  "document": {
+    "issuer": "Acme, a maker made up for the tests",
+    "number": "AN-17",
+    "title": "Layout of a buck converter",
+    "revision": "Rev. B",
+    "url": "https://example.com/an-17.pdf",
+    "read": "2026-11-17",
+    "second_reader": "no"
+  },
+  "rules": []
+}

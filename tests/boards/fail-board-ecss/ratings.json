@@ -1,0 +1,13 @@
+{
+  "pack": "nasa-eee-inst-002",
+  "nets": {
+    "GND": {"volts": [0, 0], "source": "the reference: J1 pin 3"},
+    "VOUT": {"volts": [0, 2.625], "source": "half of VIN through the 2 equal resistors: 5.25 / 2"},
+    "VIN": {"volts": [0, 5.25], "source": "the supply on J1 pin 1: 5 V within 5 %, this fixture's own requirement"}
+  },
+  "parts": {
+    "J1.1": {"amps": 1, "source": "1 A into J1 pin 1, this fixture's own requirement for the track width"},
+    "J1.2": {"amps": 0, "source": "J1 pin 2 goes to a high-impedance input: no steady current"},
+    "J1.3": {"amps": 1, "source": "the 1 A of J1 pin 1 back out of J1 pin 3"}
+  }
+}

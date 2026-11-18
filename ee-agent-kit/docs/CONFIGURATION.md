@@ -18,6 +18,8 @@ unset variable never causes a failure.
 | `FREEROUTING_URL` | URL | GitHub release asset for the version | Alternate download location. |
 | `REQUIRE_FREEROUTING` | `0`/`1` | `0` | `1` makes a failed JAR download fatal. CI sets `1`. |
 | `SKIP_APT` | `0`/`1` | `0` | `1` skips the apt step entirely. |
+| `REQUIRE_OPENEMS` | `0`/`1` | `0` | `1` makes a failed openEMS step fatal, a wrong checksum among them; else it warns and `workcenter fields` skips. |
+| `OPENEMS_POOL` | URL | `https://deb.debian.org/debian/pool/main/o/openems` | Where Debian 12's 4 openEMS packages are fetched; each is checked against the SHA256 pinned in the script. |
 
 ## `tools/workcenter`
 
@@ -29,14 +31,24 @@ unset variable never causes a failure.
 | `NGSPICE` | command | `ngspice` | The simulation engine. |
 | `JAVA` | command | `java` | Runs the JAR. |
 | `KICAD10_3DMODEL_DIR` | path | `/usr/share/kicad/3dmodels` | Where `render` looks for the library 3D bodies footprints name, to list the parts drawn without one (`KICAD9_` and `KICAD8_3DMODEL_DIR` likewise). |
+| `OPENEMS` | command | `$WORKCENTER_ROOT/openems/bin/openEMS`, else `openEMS` on `PATH` | The field solver `workcenter fields` runs; `doctor` reports it. |
+| `KIKIT_PYTHON` | command | the venv's Python (`$WORKCENTER_ROOT/venv/bin/python`) | The Python that imports KiKit; EXPORT runs `tools/panel.py` with it for a project that holds `panel.json`. |
 | `KISTACK_DIR` | path | `<checkout>/third_party/kistack` | The kistack copy whose `skills/layout-placement/scripts` `workcenter placement` runs. |
 
 | Flag | Commands | Default | Use |
 |---|---|---|---|
 | `--json` | all | off | Machine-readable output. Read before the command or after it. |
-| `--out DIR` | gates, erc, drc, sim, export, autoroute, render, procure, sources, verify; design; ci | `<project>/build`; design: the design file's folder (with `--check`, a temporary folder); ci: `<repo>/build/ci` | Where reports and artifacts go; for design, where the KiCad project is written; for ci, each step's script, `$GITHUB_ENV` file and log. |
-| `--strict` | gates, erc, drc, sim, export, render, procure, sources, verify | off | Warnings fail the gate; for verify, a requirement whose verdict is FAIL or OPEN, and decks that ran without corners; for render, a part the 3D views draw without a body fails it; for procure, a line short of stock or a price older than 90 days; for sim, a model outside a `warn` bound (its datasheet), a project with no `sim/corners.json` or with decks that drive periodic sources and no `sim/frequency-plan.json`, a deck with no bound, a deck whose measures do not move with temperature, a part named like a board reference that no tolerance covers, and an operating point ngspice doubts (`singular matrix`); for sources, a datasheet kept as a note only, a file with no SHA256 or revision recorded, a model older than its datasheet, or a load check skipped. |
-| `--parts FILE` | procure, sources | `<project>/parts.csv` | A parts CSV, repeatable; the first row whose Value and Footprint match a BOM line prices it (procure) or names its MPN (sources), and every row with no Footprint is an item off the board. Columns in the `procurement` skill. |
+| `--out DIR` | gates, erc, drc, sim, export, autoroute, render, procure, sources, verify, ratings, copper, fields, highspeed; design; ci | `<project>/build`; design: the design file's folder (with `--check`, a temporary folder); ci: `<repo>/build/ci` | Where reports and artifacts go; for design, where the KiCad project is written; for ci, each step's script, `$GITHUB_ENV` file and log. |
+| `--strict` | gates, erc, drc, sim, export, render, procure, sources, verify, ratings, copper | off | Warnings fail the gate; for ratings, a stress that was not judged; for copper, a net with a stated current, or named in `ratings.json`, that `copper.json` does not name, a pin of a judged net with no stated current, a pin of the entry's part that `from` does not name, a part's heat with no pad on the board, or a limit it does not state; for verify, a requirement whose verdict is FAIL or OPEN, and decks that ran without corners; for render, a part the 3D views draw without a body fails it; for procure, a line short of stock or a price older than 90 days; for sim, a model outside a `warn` bound (its datasheet), a project with no `sim/corners.json` or with decks that drive periodic sources and no `sim/frequency-plan.json`, a deck with no bound, a deck whose measures do not move with temperature, a part named like a board reference that no tolerance covers, and an operating point ngspice doubts (`singular matrix`); for sources, a datasheet kept as a note only, a file with no SHA256 or revision recorded, a model older than its datasheet, or a load check skipped. |
+| `--parts FILE` | procure, sources, ratings | `<project>/parts.csv` | A parts CSV, repeatable; the first row whose Value and Footprint match a BOM line prices it (procure) or names its MPN (sources, ratings), and every row with no Footprint is an item off the board. Columns in the `procurement` skill. |
+| `--init` | ratings | off | Write `ratings.json` beside the schematic, with the pack `nasa-eee-inst-002` and no net, when there is none; never over a file that exists. Nothing is judged, and no output folder is made. |
+| `--facts REF` | ratings | none | Print an entry of facts to fill for 1 part of the schematic: its part number or its symbol, its pins, an empty source. Nothing is judged: the netlist it reads is left in `<out>/ratings/`, with no record and no page of a run. |
+| `--index FILE` | references | `rules/references/index.json` | The index of the documents the rules cite. |
+| `--to DIR` | references fetch, references check | `$XDG_CACHE_HOME/ee-workcenter/references` when that variable is an absolute path (a relative one is ignored: XDG Base Directory Specification 0.8, section 2), else `~/.cache/ee-workcenter/references` | The folder the copies and `ledger.json` go to. Refused when it lies inside a repository (a `.git` in it or above it) or is a file. |
+| `--again ID` | references fetch | none | Ask once more for a document the ledger already holds an answer for; repeatable. |
+| `--id ID` | references check | found by the file's SHA256 | The entry the downloaded file should be. |
+| `--keep` | references check | off | File a downloaded copy that is the indexed one in `--to`, as `fetch` would have. |
+| `ID`, `PATH`, `FILE` | references fetch, references rules, references check | fetch: every id of the index; rules: the globs the index lists under `rules` | fetch: the ids to ask for; rules: the rule files or folders to read; check: the downloaded file. |
 | `--sources FILE` | sources, fetch | sources: the nearest `library/sources.csv` at or above the project; fetch: the nearest `sources.csv` at or above `--to` | The library's manifest: one row per datasheet, SPICE model or STEP file, the files beside it (`WORKCENTER.md`, "Project requirements"). The SIM gate finds it the same way. For fetch, a file not there yet is started with the header. |
 | `--deck NAME` | sim | every deck | Run only `sim/NAME.cir` (with or without `.cir`), the gate's way: the model rows' translation and mode, the expect bounds, the deck's corners. Prints every value the deck printed, with its bound and its least and greatest value over the corners. The frequency plan is not judged: it needs every deck. An unknown name is an error that lists the decks. |
 | `--keep` | sim | off | Run each deck from `<out>/sim/run/<deck>/`, a deck the gate runs in place too (with the deck folder's own `.spiceinit`), leave the folder, and print the one command that reruns it by hand: `env -C <run folder> ngspice -b <deck>.cir` (M94). |
@@ -58,7 +70,7 @@ unset variable never causes a failure.
 | `--paths IDS` | curve | every path of 4 points or more inside the frame | The path ids (`#N` in the listing) to map, comma-separated. |
 | `--at X,...` | curve | none | Print each curve's y at these x values, interpolated in decades on a log axis. |
 | `--at-y Y,...` | curve | none | Print each curve's x at these y values. |
-| `--check` | design | off | Regenerate into a temporary folder (or `--out`) and compare the `.kicad_pro` and `.kicad_sch` with the design's own, as a board repository's CI does. Exit 1 on a difference or on the design step's own exit 1 (M85). Writes nothing in the project. Refuses `--route`. |
+| `--check` | design | off | Regenerate into a temporary folder (or `--out`) and compare the `.kicad_pro` and `.kicad_sch` with the design's own, as a board repository's CI does, and the project's `fp-lib-table` and `sym-lib-table` with what the design writes in its own folder. Exit 1 on a difference or on the design step's own exit 1 (M85). Writes nothing in the project. Refuses `--route`. |
 | `REPO` | ci | `.` | The repository whose `.github/workflows/*.yml` the replay runs, from its root, as the runner's checkout. |
 | `--job ID` | ci | every job, each after the jobs it `needs` | Replay only this job (repeatable). |
 | `--workflow FILE` | ci | every workflow | One workflow: a file name in `.github/workflows/` or a path. |
@@ -74,10 +86,28 @@ unset variable never causes a failure.
 | `--init` | verify | off | Copy `templates/verification/` into the package and a writeup per `sim/*.cir` into `simulations/<deck>/`, never over a file that exists. `BRIEF.md` and `FACTS.md`, the helpers' brief and facts file, stay out. The new files fail the check until each `<!-- fill ... -->` is written. |
 | `--boards LIST` | procure, costs | `1,10` | Units to price, comma-separated; each gets its cheapest order and totals per supplier; for costs, a column each in the totals table, the largest also judging stock. |
 | `--step` | gates, export | off | Also export a STEP model. |
-| `--fab NAME` | gates, drc | none | Also check a fab's limits: a rule set in `rules/` (`sierra-circuits-web`) or a `.kicad_dru` path, laid over the project's own rules on a copy in `<out>/fab-<name>/`. A design file's `fab` field does the same for good (`rules/README.md`). |
+| `--fab NAME` | gates, drc | none | Also check a fab's limits: a rule set in `rules/` (`sierra-circuits-web`, `jlcpcb-2layer`, `pcbway-standard`, `oshpark-2layer`) or a `.kicad_dru` path, laid over the project's own rules on a copy in `<out>/fab-<name>/`. A design file's `fab` field does the same for good (`rules/README.md`). |
 | `--dsn FILE` | autoroute | `<project>/<name>.dsn`, then `build/route/<name>.dsn` | Specctra DSN exported from KiCad. Absent means the command skips. |
-| `--passes N` | autoroute, design | `20` autoroute, `60` design | FreeRouting optimisation passes. |
-| `--threads N` | autoroute | engine default | FreeRouting thread count. |
+| `--passes N` | autoroute, design, bench | `20` autoroute and bench, `60` design | FreeRouting optimisation passes. bench takes a whole number above 0. |
+| `--threads N` | autoroute, design, bench | engine default; bench `2` | FreeRouting thread count (`-mt`). bench takes a whole number above 0 and also holds the JVM to N processors. |
+| `--order` | design (with `--route`), bench | off | design: route in 4 stages, 1 FreeRouting run each, each on the copper of the stages before it: poured nets and every net with copper drawn by hand, the nets of each part of 0.5 mm pitch or less, pairs (names that end in `_P`/`_N`, `D+`/`D-` or `DP`/`DN`), the rest. Writes `build/route/<name>.<n>-<stage>.dsn`, `.ses`, `.log`. Refuses `--seed`. bench: also run each router as `<router>+order`. |
+| `--router NAME=JAR` | bench | the workcenter's FreeRouting | A FreeRouting jar to run, repeatable; the first is the default router. |
+| `--time-limit S` | bench | `300` | Seconds per route, a whole number above 0; a route past it is stopped and not judged (exit 2). |
+| `--out DIR` | bench (required) | none | The benchmark's folder: `<board>/<router>/` with the board, `route.txt`, `drc.txt` and `run.json`, and `bench.md`. A run empties its own folder first. |
+| `--strict` (highspeed) | highspeed | off | A limit not judged fails the run: one the documents do not set, and one they set that the command does not judge (TI's single-ended impedance and stubs, among others). |
+| `--verbose` | highspeed | off | Print the rules that held too. |
+| `--item` | now | none (required) | A roadmap item's number, whose title is read from `ee-agent-kit/ROADMAP.md`, or 1 line for work with none. The issue's title is `Work card: <it>`. |
+| `--status` | now | none (required) | The project board's word: `Todo`, `In progress` or `Done`, in any case. Work that waits on someone stays `In progress`. |
+| `--doing` | now | none | 1 line of what is done now; repeatable, 3 at most. |
+| `--blocked` | now | `nothing` | Who or what the work waits for. |
+| `--left` | now | `nothing` | 1 thing left; repeatable. |
+| `--title` | now | off | Print the issue's title, `Work card: <the work>`, and nothing else. |
+| `--write` | now | off | A checkout of the `status` branch: the card goes under its title to its `now/<branch>.md`. |
+| `--spec FILE` | fields | `<project>/fields.json` | The groups of nets, each group's band and its limits, each limit with its `source`. |
+| `--model` | fields | off | Write each group's `model.json` and the engine's input under `<out>/fields/<group>/`; run nothing. |
+| `--strict` (fields) | fields | off | A limit that is not judged fails the run. Without it the run exits 2 when no limit was held (`no limit stated: nothing judged`). |
+| `DESIGN` | bench | none: rebuild `bench.md` from `<out>` | The design files to route. |
+| `PROJECT` | measure | none | The project whose plan of measurements to write: `<out>/measure/plan.md` and `plan.json`, from a fresh SIM run. `--out DIR` names the output folder (default `<project>/build`). Exit 1 when a bound is not planned. |
 | `--timeout S` | autoroute, design, mutate | `600` autoroute, `900` design, `600` mutate | Kill the router after S seconds; for mutate, a test run past it counts as caught (the tests did not pass). |
 | `--route` | design | off | Export the DSN, run FreeRouting, merge the session before writing. |
 | `--rounds N` | design | `4` | Route again, up to N rounds, with a via reserved beside each pad a pour lost. |
@@ -119,6 +149,98 @@ unset variable never causes a failure.
 | `--from VERSION` | version new | the latest version folder | The folder the new version copies. |
 | `--out FILE` | diagram | required | The SVG to write. |
 | `--png` | diagram | off | Also write `<out>.png` with `rsvg-convert`, at the drawing's width. |
+
+## `ratings.json` (beside a schematic, for `workcenter ratings`)
+
+| Field | Type | Default | Use |
+|---|---|---|---|
+| `pack` | name or path | none (required) | The rule pack: a file of `rules/ratings/` without `.json` (`nasa-eee-inst-002`, `ecss-q-st-30-11c-rev2`), or the path of a pack from the project's folder. |
+| `nets` | object | none (required) | Each net a source off the board holds: `{"volts": [least, greatest], "source": "..."}` under the net's name, with or without its sheet's slash; 1 net named both ways is refused. `[0, 0]` is the reference. |
+| `ambient` | object | none | `{"max": C, "source": "..."}`: the highest air temperature. A limit that falls with temperature is judged there. |
+| `parts` | object | none | What the board cannot say of a part: `REF.PIN` with `amps` for the load behind a connector's pin, `REF` with `amps` for the current through a part (RMS for a resistor, a transistor, a fuse, a ferrite and a switch, the average for a diode, the peak for an inductor), `REF` with `volts` for the greatest voltage across a capacitor or a resistor whose 2 nets move together; each with a `source`. A number the command would hold to nothing is refused once the part has facts: the `ratings` skill lists them. `REF` or `REF.PIN` with `watts`: the heat a part gives off, W, split over its pads by copper area, or on 1 pad (`U1.2`), the heat that leaves by that pad; not both for 1 part. `workcenter copper` reads it; `ratings` does not judge it. A 2-pin resistor with `amps` (on the part or on a pin) and a numeric Value gives I^2 R itself. |
+| `accepted` | list | none | Failures the owner takes on: `{"part", "rule", "why", "by"}`, `by` as `the owner's decision of YYYY-MM-DD`. An entry accepts 1 failure: where 2 of 1 part stand under 1 rule, `line` holds words of the line the entry means. An entry nothing fails under fails the run. |
+
+A part's facts are 1 entry of a file in `library/facts/`, in the project's
+folder or a folder above it; a rule pack is 1 file of `rules/ratings/`. The
+`ratings` skill has every key of both.
+
+The SIM gate reads 2 keys of a part's facts, from an entry that names the
+part by `mpn` or `mpns` and whose `source.sha256` is a row of
+`library/sources.csv`:
+
+| Key | Facts of | Type | Use |
+|---|---|---|---|
+| `kept` | a capacitor | pairs `[volts, share of the value kept]` | The maker's DC bias curve; the volts rise from pair to pair; each share above 0 and at most 1.5. `workcenter ratings` reads it too. |
+| `kept_celsius` | a capacitor | pairs `[celsius, share against 25 C]` | The maker's temperature curve; each share above 0 and at most 1.5. |
+| `kept` | an inductor | pairs `[amps, share of the value kept]` | The maker's L vs current curve; each share above 0 and at most 1.5. |
+
+## `interfaces.json` (beside a board, for `workcenter highspeed`)
+
+| Field | Type | Default | Use |
+|---|---|---|---|
+| `interfaces` | list | none (required) | Each entry: `interface`, a file of `rules/interfaces/` without `.json` (`usb2`, `usb3`, `ti-am57xx-usb2`, `ti-am57xx-usb3`); `nets`, the pair's 2 nets; optional `gap` (mm, above 0). The command measures each pair's gap on the board and fails a `gap` the board does not have. An empty list is refused. |
+
+## `build/verify.json` (written by `make verify`)
+
+| Field | Type | Default | Use |
+|---|---|---|---|
+| `--head`, `--dirty`, `--tree` | flags of `python3 tools/now.py record <code> <step>` | `--tree .` | What `verify/verify.sh` runs on exit: the commit the gate started on, whether the tree differed from it then (`yes` or `no`), the repository's root. |
+| the file | object | none until a gate has run | Written by `verify/verify.sh` on exit: gate, verdict (GREEN on exit 0, else RED), last step, the commit it started on, branch, dirty (at the start or the end, untracked files included), moved_to (the commit HEAD moved to during the run, or null), UTC time. Ignored by git. `workcenter now` reads it, and refuses a record that does not have this shape. |
+
+## The workflow Board (`.github/workflows/board.yml`, `tools/board.py`)
+
+| Field | Type | Default | Use |
+|---|---|---|---|
+| `BOARD_TOKEN` | repository secret | none | A classic personal access token with the `project` and `repo` scopes; the board is changed with it. Without it the job prints 1 line and ends green. |
+| `BOARD_URL` | repository variable | `https://github.com/users/ThyFriendlyFox/projects/2` | The project board the work cards stand on (`https://github.com/users/<login>/projects/<n>` or `https://github.com/orgs/<login>/projects/<n>`). |
+| `--event` | flag of `tools/board.py` | required | The issues event's JSON file (`GITHUB_EVENT_PATH`). |
+| `--board` | flag of `tools/board.py` | required | The project's URL. |
+
+## `copper.json` (beside a board, for `workcenter copper`)
+
+| Field | Type | Default | Use |
+|---|---|---|---|
+| the file | object | none: the command stops with `no copper.json beside <board>` | The limits of `workcenter copper`. The currents and the heat come from `ratings.json`. |
+| `air` | object | none (required) | `ambient` C, above -234.5; optional `h` W/m2 K (10, TI SNVA419C table 1, page 4); `source`. A stated assumption. |
+| `temperature` | object | none: not judged | `max` C and `source`: the greatest board temperature. |
+| `grid` | object | `drop` 0.05, `heat` 0.25 (mm) | `drop` no wider than the narrowest track of a judged net; `heat` a whole number of `drop`. |
+| `plating` | object | the board's own setting | `mm` and `source`: the copper in each barrel. |
+| `nets` | object | none (required) | For each power net: `from` (`REF.PAD`, the entry, or a list of them), optional `volts` and `amps_per_mm2` (`max`, `source`; `amps_per_mm2` holds the copper and each barrel). |
+
+## `fields.json` (beside a board, for `workcenter fields`)
+
+| Field | Type | Default | Use |
+|---|---|---|---|
+| `engine` | name | `openems` | The field solver. |
+| `reference` | net | `GND` | The net whose pours are the reference planes. |
+| `groups` | list | none (required) | Each group: `name`, `nets`, `kind` (`lines`, the default, or `antenna`), `band_ghz` `[low, high]`, optional `ports` (pads that name a net's ends), and `limits`: `{"measure", "net", "min" and/or "max", "source"}`, the measure one of `impedance_ohm`, `return_loss_db`, `insertion_loss_db`, `next_db`, `fext_db`. |
+| `settings` | object | `margin_mm` 3, `cells_per_wavelength` 20, `cells_across_width` 3, `cells_per_dielectric` 4, `port_ohm` 50, `frequencies` 201, `end_criteria_db` -40, `absorbing_cells` 8, `max_timesteps` 200000, `timeout_s` 3600 | The model and the run. `cells_across_width` is the cells across a straight track inside its metal; its edges lie a third of a cell inside the outer 2 lines. `cells_across_width`, `cells_per_dielectric`, `absorbing_cells` and `max_timesteps` are whole numbers of 1 or more, `frequencies` 2 or more, `end_criteria_db` below 0 (openEMS itself runs 10 dB further). |
+
+## `sim/thermal.json` (for the SIM gate's junction temperatures)
+
+| Field | Type | Default | Use |
+|---|---|---|---|
+| `pack` | name or path | none (required) | The rating pack whose `junction.temperature` rules give the derated limit: a file of `rules/ratings/` without `.json`, or a path from the project's folder. |
+| `parts` | object | none (required) | `{"U1": {"mpn": ..., "watts": "deck.measure", "source": ...}}`: each part's number and the deck measure that prints its power. No file: no junction is judged. |
+
+A part's facts take `thermal` on an `ic`, a diode or a MOSFET:
+`{"junction_max": C, "page": n or [n, ...]}` and 1 or more of `theta_ja`,
+`theta_jc`, `theta_jb`, `psi_jt`, `psi_jb` in C/W. Only `theta_ja` is
+judged. A pack's rule of stress `junction.temperature` holds `celsius`,
+`share` or `below_rating`, 1 at least; the limit is the least of those it
+names.
+
+## `panel.json` (beside a board, for EXPORT)
+
+| Field | Type | Default | Use |
+|---|---|---|---|
+| the file | KiKit preset, JSON with `//` comments | none: no panel | Asks EXPORT for a panel through KiKit 1.8.1's `doPanelization`, its Gerbers and drill files, and a check of the count of boards against rows x cols and of a closed outline at least their size. Only a `grid` layout is judged. Without KiKit the panel is not judged and EXPORT is SKIPPED, exit 2. `tests/samples/fab/panel.json` holds kistack's starting values with their source. |
+
+## `board-rules.json` (beside a board, for `workcenter drc` and `gates`)
+
+| Field | Type | Default | Use |
+|---|---|---|---|
+| `pack` | name or path | none (required) | The board rule pack the DRC holds the board to: a file of `rules/board/` without `.json` (`ecss-q-st-70-12c-rev1`), or the path of a pack from the project's folder. The volts and amps come from the project's `ratings.json`, which must stand beside the board. No file: no pack. |
 
 ## `pictures.json` (a version's, for `workcenter pictures`)
 
@@ -165,6 +287,20 @@ Every number is millimetres; the file is written in KiCad's VRML unit (0.1 inch)
 | `pins LIB:SYMBOL...` | | Pin numbers, names, types and positions of library symbols. |
 | `footprint LIB:FOOTPRINT...` | `--lib NAME=DIR` (repeatable) | Pads, layers, drills and courtyard; `--lib` reads a project `.pretty` folder. |
 | `symbol-add LIB.kicad_sym` | `--from PINS.csv` (required), `--name NAME` (default the CSV's stem), `--reference R` (default `U`), `--footprint LIB:FP`, `--datasheet URL`, `--description TEXT` | A one-unit symbol from a datasheet's pin table, a CSV of `Number,Name,Type,Side` (KiCad's electrical types; `left`, `right`, `top`, `bottom`; an empty name is `~`): each pin on its side in the table's order, 2.54 mm apart, every pin end on the 1.27 mm grid, the body sized round the names. Appended as text before the library's closing parenthesis, so the symbols there keep their bytes; a new library is started. Refuses a name already in the library, an unknown type or side, a pin number twice. Writes only `LIB`. |
+
+## `tools/harvest.py`
+
+What the projects taught the workcenter, read from the repository itself
+(`PROCESSES.md` P35). The first 3 listings read git objects; `later` reads
+the checkout's files. None writes anything. `--repo DIR` (default this
+checkout) and `--json` stand before the listing's name.
+
+| Command | Flags | Use |
+|---|---|---|
+| `branches` | `--main REF` (default `origin/main`), `--refs PREFIX` (default `refs/remotes/origin`) | Every branch under the prefix: its own commits, and the share of the lines they added to the workcenter itself that main holds. A line counts without the number of a mistake, a process or a step. |
+| `scripts` | `--ref REF` (default `HEAD`), `--root DIR` (default `examples`) | The scripts the projects wrote for themselves, by file name: the projects that wrote each, and the functions 2 or more of them define. |
+| `mistakes` | `--ref REF` (default `HEAD`) | The mistakes log by process: its entries, and the entries that name an earlier entry of the same process. |
+| `later` | none | The candidates under "Later" in the checkout's `ee-agent-kit/ROADMAP.md`, as the file stands: each row's rating against its 6 scores, each score against its anchors, the order, and the evidence (an entry of the mistakes log, a file in backticks, a line that the file has). Exit 1 with 1 line for each row that does not hold. |
 
 ## `tools/kicadgen.py`
 

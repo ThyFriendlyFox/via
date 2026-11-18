@@ -1,0 +1,19 @@
+{
+  "engine": "openems",
+  "reference": "GND",
+  "groups": [
+    {
+      "name": "sig",
+      "nets": ["SIG"],
+      "band_ghz": [0.1, 10],
+      "limits": [
+        {"measure": "impedance_ohm", "net": "SIG", "min": 30, "max": 75,
+         "source": "made up for this fixture: wide bounds, no document"},
+        {"measure": "return_loss_db", "net": "SIG", "min": 6,
+         "source": "made up for this fixture: wide bounds, no document"},
+        {"measure": "insertion_loss_db", "net": "SIG", "max": 3,
+         "source": "made up for this fixture: wide bounds, no document"}
+      ]
+    }
+  ]
+}
