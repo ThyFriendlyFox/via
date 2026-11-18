@@ -6,6 +6,12 @@ The sums of the fixtures' port, by hand:
 
     current     1.5 A asks the 1.5A advertisement (Type-C 4.6.2.1, table 4-20, page 227); the design
                 detects up to 1.5A, so it is taken. 3.0 A asks 3.0A, over what 1.5A allows: refused.
+    thresholds  table 4-36 (page 254) sets the threshold between vRd-USB and vRd-1.5 within 0.613 to
+                0.745 V and the one between vRd-1.5 and vRd-3.0 within 1.165 to 1.368 V; 0.746 and 1.369 V
+                are the ranges' minimums, outside both bands.
+    default     D+ and D- are wired, so the sink is a USB 2.0 device: 1 unit load, 100 mA, until it is
+                configured (USB 2.0 7.2.1, page 171); a Power Sinking Device has no USB function (Type-C
+                4.6.2.1, page 226).
     Rd          table 4-28 (page 245) asks 5.1 kohm +-10 % for a sink that detects the advertisement:
                 5100 x 0.9 = 4590 to 5100 x 1.1 = 5610 ohm. CRCW06035K10FKEA, 1 %, is 5100 x 0.99 = 5049 to
                 5100 x 1.01 = 5151 ohm: inside. A sink that detects none may take +-20 %: 4080 to 6120 ohm.
@@ -29,6 +35,7 @@ The sums of the fixtures' port, by hand:
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import re
 import shutil
@@ -69,12 +76,34 @@ TC = "USB Type-C R2.5"
 T420_15 = f"{TC}, section 4.6.2.1, table 4-20, page 227: USB Type-C Current 1.5 A"
 T420_30 = f"{TC}, section 4.6.2.1, table 4-20, page 227: USB Type-C Current 3.0 A"
 DEFAULT = (
-    f"{TC}, section 4.6.2.1, page 226: Default is 500 mA for USB 2.0 ports, and a Power Sinking Device may "
-    "draw up to 500 mA; table 4-20, page 227"
+    f"{TC}, section 4.6.2.1, page 226: Default is the as-configured high-power current of the USB "
+    "specification, 500 mA for USB 2.0 ports; table 4-20, page 227"
 )
+UNIT = (
+    "USB 2.0, section 7.2.1, page 171: a unit load is 100 mA; a device draws at most 1 unit load until it is "
+    f"configured; {TC}, section 4.6.2.1, page 226: a Power Sinking Device, which may draw 500 mA, shall not "
+    "have a USB communications function"
+)
+ADJUST = (
+    f"{TC}, section 4.6.2.1, page 227: a Sink that takes the additional current shall monitor the CC pins "
+    "and adjust its current consumption within tSinkAdj to remain within the value advertised"
+)
+T436_15 = f"{TC}, section 4.11.3.2.2, table 4-36, page 254: the threshold between vRd-USB and vRd-1.5"
+T436_30 = f"{TC}, section 4.11.3.2.2, table 4-36, page 254: the threshold between vRd-1.5 and vRd-3.0"
 T428 = (
     f"{TC}, section 4.11.1, table 4-28, page 245: Rd is 5.1 kohm to GND; +-10 % can detect the power "
     "capability, +-20 % cannot; note 2: the total resistance into the CC pin"
+)
+T428_MAX = (
+    f"{TC}, section 4.11.1, table 4-28, page 245: the max voltage on the pin, 2.04 V for Rd +-10 % and "
+    "2.18 V for Rd +-20 %"
+)
+DATA = (
+    "USB 2.0, section 7.3.2, table 7-7, pages 178 and 179: VOH at most 3.6 V and VIHZ at most 3.6 V on D+ "
+    "and D-"
+)
+SIGNALS = (
+    f"{TC}, section 3.2.3, table 3-5, page 77: GND, VBUS, CC1, CC2, Dp and Dn are each a signal of its own"
 )
 CRPB = (
     "USB 2.0, section 7.3.2, table 7-7, CRPB, page 179, and section 7.2.4.1, page 177: 1.0 uF to 10.0 uF on "
@@ -90,13 +119,13 @@ def design() -> kicadgen.Design:
     return d
 
 
-def usbc(amps: float = 1.5, detects: str = "1.5A", stock=STOCK, facts=FACTS, **kwargs):
+def usbc(amps: float = 1.5, detects: str = "1.5A", stock=STOCK, facts=FACTS, nets=NETS, **kwargs):
     d = design()
     block = blocks.usbc(
         d,
         amps=amps,
         detects=detects,
-        nets=NETS,
+        nets=nets,
         stock=stock,
         facts=facts,
         sch_at=(50.8, 88.9),
@@ -140,16 +169,17 @@ def test_1_5_a_with_the_1_5_a_advertisement_builds_the_port_and_its_sums():
     assert block.sums == [
         "J1: a load of 1.5 A needs the 1.5A advertisement, which allows 1.5 A; the design detects up to "
         f"1.5A [{T420_15}]",
-        f"CC1, CC2: draw over 500 mA only while CC1 or CC2 reads 746 mV or more [{TC}, section 4.11.3.2.2, "
-        "table 4-36, page 254: vRd-1.5]",
+        "CC1, CC2: draw over 500 mA only while CC1 or CC2 is over the threshold, which the part that reads "
+        f"CC sets within 0.613 V to 0.745 V [{T436_15}; {ADJUST}]",
         "R1, R2: Rd of 5.1 kohm +-10 %, 4.59 kohm to 5.61 kohm; CRCW06035K10FKEA, 5.1k 1 %, is 5.05 kohm to "
         f"5.15 kohm [{T428}]",
         "U1, U2: TPD2E2U06DCKR stands off 5.5 V [TPD2E2U06 datasheet, SLLSEG9C, June 2013, revised "
         "December 2019]; D+ and D- reach 3.6 V [USB 2.0, section 7.3.2, table 7-7, pages 178 and 179: VOH at "
         f"most 3.6 V and VIHZ at most 3.6 V on D+ and D-], CC1 and CC2 2.04 V [{TC}, section 4.11.1, "
         "table 4-28, page 245: the max voltage on the pin, 2.04 V for Rd +-10 % and 2.18 V for Rd +-20 %]; "
-        "each is placed beside J1 [TPD2E2U06 datasheet, SLLSEG9C, section 5, Pin Functions, page 3: connect "
-        "IO1 and IO2 to the data line as close to the connector as possible]",
+        "each is placed 10.6 mm from J1's centre, and the length of copper from J1 to each after routing is "
+        "not judged: the block runs before the router [TPD2E2U06 datasheet, SLLSEG9C, section 5, Pin "
+        "Functions, page 3: connect IO1 and IO2 to the data line as close to the connector as possible]",
         "C1: CL10A475KO8NNN on VBUS: 4.7 uF x 0.9 x 0.4792 = 2.03 uF at 5.25 V to 4.7 uF x 1.1 = 5.17 uF, "
         "with the design's own 0 F to 0 F: 2.03 uF to 5.17 uF, within 1 uF to 10 uF "
         f"[{CRPB}; USB 2.0, Device Capacitance ECN, page 2: CRPB across the whole VBUS voltage range, 0 V to "
@@ -157,7 +187,9 @@ def test_1_5_a_with_the_1_5_a_advertisement_builds_the_port_and_its_sums():
         "page as fetched on 2026-11-17; it prints no revision]",
         "J1: the shell and the 4 GND pins on GND, the 4 VBUS pins on VBUS, A6 and B6 on D+, A7 and B7 on "
         f"D-, SBU1, SBU2 and the unused pins not connected [{TC}, section 3.2.1, note 11, page 47; section "
-        "3.2.3, table 3-5, notes 1 to 5, page 77]",
+        "3.2.3, table 3-5, notes 1 to 5, page 77]; the length of the A6 to B6 and A7 to B7 shorts, at most "
+        f"3.5 mm, is not judged: the block runs before the router [{TC}, section 3.2.3, table 3-5, note 2, "
+        "page 77: the maximum shorting trace length should not exceed 3.5 mm]",
     ]
 
 
@@ -172,13 +204,20 @@ def test_twice_the_current_is_refused_with_the_clause_of_the_advertisement():
 
 @needs_libs
 def test_3_a_is_taken_by_a_design_that_detects_3_a():
-    """3.0 A is what 3.0A allows, at the limit; its sum asks CC at 1.369 V or more (vRd-3.0)."""
+    """3.0 A is what 3.0A allows, at the limit. Its sums ask 2 thresholds of table 4-36 (page 254), each
+    inside its band and not at a range's end: over 500 mA only over the one set within 0.613 to 0.745 V,
+    over 1.5 A only over the one set within 1.165 to 1.368 V."""
     _, block = usbc(amps=3.0, detects="3.0A")
     assert block.sums[0] == (
         f"J1: a load of 3 A needs the 3.0A advertisement, which allows 3 A; the design detects up to 3.0A "
         f"[{T420_30}]"
     )
-    assert "reads 1.37 V or more [" in block.sums[1]
+    assert block.sums[1:3] == [
+        "CC1, CC2: draw over 500 mA only while CC1 or CC2 is over the threshold, which the part that reads "
+        f"CC sets within 0.613 V to 0.745 V [{T436_15}; {ADJUST}]",
+        "CC1, CC2: draw over 1.5 A only while CC1 or CC2 is over the threshold, which the part that reads "
+        f"CC sets within 1.165 V to 1.368 V [{T436_30}; {ADJUST}]",
+    ]
 
 
 @needs_libs
@@ -204,6 +243,23 @@ def test_500_ma_at_default_asks_no_cc_reading():
     """0.5 A is the Default; no line asks the design to read CC."""
     _, block = usbc(amps=0.5, detects="default")
     assert not any(line.startswith("CC1, CC2:") for line in block.sums)
+
+
+@needs_libs
+def test_over_1_unit_load_at_default_says_the_wait_for_configuration_is_not_judged():
+    """D+ and D- are wired, so the sink is a USB 2.0 device and no Power Sinking Device (Type-C 4.6.2.1,
+    page 226). 0.5 A is over 1 unit load, 100 mA (USB 2.0 7.2.1, page 171): the sum says the wait for
+    configuration is not judged. 0.1 A is 1 unit load, not over it: no such line."""
+    _, block = usbc(amps=0.5, detects="default")
+    assert block.sums[:2] == [
+        "J1: a load of 500 mA needs the default advertisement, which allows 500 mA; the design detects up "
+        f"to default [{DEFAULT}]",
+        "J1: D+ and D- are wired, so the sink connects as a USB 2.0 device and draws at most 100 mA until it "
+        "is configured; whether the design waits for its configuration is not judged: the block cannot see "
+        f"the firmware [{UNIT}]",
+    ]
+    _, block = usbc(amps=0.1, detects="default")
+    assert not any("not judged: the block cannot see the firmware" in line for line in block.sums)
 
 
 @needs_libs
@@ -237,7 +293,7 @@ def test_a_20_percent_rd_is_taken_by_a_design_that_detects_nothing(tmp_path):
     _, block = usbc(
         amps=0.5, detects="default", stock=[ROUGH_STOCK, *STOCK], facts=facts_with(tmp_path, ROUGH)
     )
-    assert block.sums[1] == (
+    assert block.sums[2] == (
         "R1, R2: Rd of 5.1 kohm +-20 %, 4.08 kohm to 6.12 kohm; FIXTURE-5K1-20, 5.1k 20 %, is 4.08 kohm to "
         f"6.12 kohm [{T428}]"
     )
@@ -406,6 +462,194 @@ def test_the_check_holds_the_load_to_the_receptacles_rating(tmp_path):
     )
 
 
+@needs_libs
+@pytest.mark.parametrize(
+    ("nets", "says"),
+    [
+        (
+            ("VBUS", "GND", "D+", "D-", "CC", "CC"),
+            "usbc J1: CC1 and CC2 are on 1 net, CC; each signal of the port asks a net of its own "
+            f"[{SIGNALS}; {T428}]",
+        ),
+        (
+            ("VBUS", "GND", "D", "D", "CC1", "CC2"),
+            f"usbc J1: D+ and D- are on 1 net, D; each signal of the port asks a net of its own [{SIGNALS}]",
+        ),
+        (
+            ("VBUS", "GND", "D+", "D-", "GND", "CC2"),
+            "usbc J1: GND and CC1 are on 1 net, GND; each signal of the port asks a net of its own "
+            f"[{SIGNALS}; {T428}]",
+        ),
+        (
+            ("N",) * 6,
+            "usbc J1: VBUS, GND, D+, D-, CC1 and CC2 are on 1 net, N; each signal of the port asks a net "
+            f"of its own [{SIGNALS}; {T428}]",
+        ),
+    ],
+)
+def test_signals_on_1_net_are_refused(nets, says):
+    """CC1 and CC2 on 1 net put the 2 Rd in parallel: 5151 / 2 = 2575.5 ohm at most, under 4590 (table 4-28,
+    note 2, page 245: Rd is the total resistance into each CC pin). Any 2 signals on 1 net are a short."""
+    assert refused(nets=nets) == says
+
+
+@needs_libs
+def test_the_check_reads_signals_on_1_net_back():
+    """The port as built, then its CC2 read back as on CC1's net: the check names it."""
+    d, block = usbc()
+    port = dataclasses.replace(block.port, nets={**block.port.nets, "CC2": "CC1"})
+    assert blocks_usbc.check(d, port) == [
+        f"usbc J1: CC1 and CC2 are on 1 net, CC1; each signal of the port asks a net of its own [{SIGNALS}; "
+        f"{T428}]"
+    ]
+
+
+@needs_libs
+@pytest.mark.parametrize(
+    ("nets", "shown"),
+    [
+        (("VBUS", "GND", "D+", "D-", "CC1"), "('VBUS', 'GND', 'D+', 'D-', 'CC1')"),
+        (("VBUS", "GND", "D+", "D-", "CC1", 6), "('VBUS', 'GND', 'D+', 'D-', 'CC1', 6)"),
+        (("VBUS", "GND", "D+", "D-", "CC1", ""), "('VBUS', 'GND', 'D+', 'D-', 'CC1', '')"),
+    ],
+)
+def test_nets_not_6_names_are_refused(nets, shown):
+    assert refused(nets=nets) == (
+        f"usbc J1: nets={shown}: 6 net names are asked, for VBUS, GND, D+, D-, CC1 and CC2"
+    )
+
+
+@needs_libs
+@pytest.mark.parametrize(
+    ("amps", "shown"), [("1.5", "'1.5'"), (float("nan"), "nan"), (float("inf"), "inf"), (True, "True")]
+)
+def test_a_load_that_is_no_number_is_refused_as_such(amps, shown):
+    """NaN is no load of 0 A: it is no number."""
+    assert refused(amps=amps) == f"usbc J1: amps={shown}: a number of amperes is asked"
+
+
+@needs_libs
+@pytest.mark.parametrize(
+    ("farads", "shown"),
+    [((9e-6, 1e-6), "(9e-06, 1e-06)"), ((-5e-6, 0.0), "(-5e-06, 0.0)"), ((1e-6,), "(1e-06,)")],
+)
+def test_the_designs_own_capacitance_not_least_then_most_is_refused(farads, shown):
+    """(9 uF, 1 uF) would let 9 uF + 5.17 uF = 14.17 uF through, over 10 uF; a negative capacitance is
+    no part; 1 number is no span."""
+    assert refused(farads=farads) == (
+        f"usbc J1: farads={shown}: (least, most) is asked, in farads, each 0 or more, the least first"
+    )
+
+
+@needs_libs
+def test_a_value_that_names_no_number_is_passed_over_and_said():
+    """A resistor whose Value is 'Rd' and a capacitor whose Value is 'bulk' name no number to judge."""
+    rd = blocks.Stock("Vishay", "CRCW06035K10FKEA", "Rd", R_0603)
+    assert refused(stock=[rd, C47]) == (
+        "usbc J1: no stocked resistor with facts is Rd of 5.1 kohm +-10 %, 4.59 kohm to 5.61 kohm: "
+        f"CRCW06035K10FKEA: its Value 'Rd' names no resistance [{T428}]"
+    )
+    bulk = blocks.Stock("Samsung", "CL10A475KO8NNN", "bulk", C_0603)
+    assert refused(stock=[RD, bulk]) == (
+        "usbc J1: no stocked capacitor keeps VBUS within 1 uF to 10 uF with the design's own 0 F to 0 F: "
+        f"CL10A475KO8NNN: its Value 'bulk' names no capacitance [{CRPB}]"
+    )
+
+
+@needs_libs
+@pytest.mark.parametrize(
+    ("standoff", "says"),
+    [
+        (
+            3.0,
+            [
+                f"usbc J1: D+ reaches 3.6 V, over the 3 V U1 stands off [{DATA}]",
+                f"usbc J1: D- reaches 3.6 V, over the 3 V U1 stands off [{DATA}]",
+            ],
+        ),
+        (
+            2.0,
+            [
+                f"usbc J1: D+ reaches 3.6 V, over the 2 V U1 stands off [{DATA}]",
+                f"usbc J1: D- reaches 3.6 V, over the 2 V U1 stands off [{DATA}]",
+                f"usbc J1: CC1 reaches 2.04 V, over the 2 V U2 stands off [{T428_MAX}]",
+                f"usbc J1: CC2 reaches 2.04 V, over the 2 V U2 stands off [{T428_MAX}]",
+            ],
+        ),
+    ],
+)
+def test_the_check_holds_each_line_to_the_clamps_standoff(standoff, says):
+    """A clamp of 3 V: D+ and D- reach 3.6 V, over it; CC 2.04 V is not. A clamp of 2 V: all 4 are over."""
+    d, block = usbc()
+    assert blocks_usbc.check(d, dataclasses.replace(block.port, standoff=standoff)) == says
+
+
+@needs_libs
+@pytest.mark.parametrize(
+    ("pin", "net", "says"),
+    [
+        ("A9", "GND", "usbc J1: VBUS pins A9 on GND, not VBUS ["),
+        ("SH", "VBUS", "usbc J1: SHIELD pins SH on VBUS, not GND ["),
+        ("B7", "D+", "usbc J1: D- pins B7 on D+, not D- ["),
+        ("A5", "CC2", "usbc J1: CC1 pins A5 on CC2, not CC1 ["),
+    ],
+)
+def test_the_check_reads_each_receptacle_pin_back(pin, net, says):
+    """Each pin of table 3-5 moved to another net after the build is 1 line."""
+    d, block = usbc()
+    next(p for p in d.parts if p.ref == "J1").nets[pin] = net
+    lines = blocks_usbc.check(d, block.port)
+    assert len(lines) == 1 and lines[0].startswith(says), lines
+
+
+CAP_KEPT = [[0.0, 1.0], [10.0, 0.5]]
+
+
+@needs_libs
+def test_a_capacitor_that_keeps_under_1_uf_at_5_25_v_is_passed_over(tmp_path):
+    """A made-up 1 uF +-10 % part that keeps 1 - 0.5 x 5.25 / 10 = 0.7375 at 5.25 V:
+    1 x 0.9 x 0.7375 = 0.66375 uF, under the 1 uF of CRPB."""
+    small = {"kind": "capacitor.ceramic", "mpn": "FIXTURE-1U", "tolerance": 0.1, "volts": 16,
+             "dielectric": "X5R", "kept": CAP_KEPT}  # fmt: skip
+    cap = blocks.Stock("made up", "FIXTURE-1U", "1u", C_0603)
+    assert refused(stock=[RD, cap], facts=facts_with(tmp_path, small)) == (
+        "usbc J1: no stocked capacitor keeps VBUS within 1 uF to 10 uF with the design's own 0 F to 0 F: "
+        f"FIXTURE-1U: 664 nF at 5.25 V, under 1 uF [{CRPB}]"
+    )
+
+
+@needs_libs
+def test_a_capacitor_rated_under_the_vbus_maximum_is_passed_over(tmp_path):
+    """A made-up 2.2 uF part rated 4 V: VBUS reaches 5.5 V (VBUS Max Limit ECN, page 4)."""
+    low = {"kind": "capacitor.ceramic", "mpn": "FIXTURE-4V", "tolerance": 0.1, "volts": 4,
+           "dielectric": "X5R", "kept": CAP_KEPT}  # fmt: skip
+    cap = blocks.Stock("made up", "FIXTURE-4V", "2.2u", C_0603)
+    assert refused(stock=[RD, cap], facts=facts_with(tmp_path, low)) == (
+        "usbc J1: no stocked capacitor keeps VBUS within 1 uF to 10 uF with the design's own 0 F to 0 F: "
+        f"FIXTURE-4V: rated 4 V, under 5.5 V [{CRPB}]"
+    )
+
+
+@needs_libs
+def test_a_design_that_detects_nothing_hands_cc_up_to_2_18_v():
+    """Rd +-20 %: the max voltage on the pin is 2.18 V (table 4-28, page 245), not the 2.04 V of +-10 %."""
+    _, block = usbc(amps=0.5, detects="default")
+    assert [block.ratings["nets"][n]["volts"] for n in ("CC1", "CC2")] == [[0, 2.18], [0, 2.18]]
+
+
+@needs_libs
+def test_the_deck_says_the_2_other_columns_of_table_4_27_are_not_judged():
+    """Table 4-27 (page 245) allows Rp as a current source and as a pull-up to 3.3 V; the deck models the
+    pull-up to 4.75 to 5.5 V alone, and says so."""
+    _, block = usbc()
+    assert (
+        f"* Not judged: Rp as the 2 other columns of {TC}, section 4.11.1, table 4-27, page 245: a current "
+        "source to 1.7 to 5.5 V of 80 uA +-20 %, 180 uA +-8 % or 330 uA +-8 %, and a resistor pull-up to "
+        "3.3 V +-5 % of 36 kohm +-20 %, 12 kohm +-5 % or 4.7 kohm +-5 %; the deck models the resistor "
+        "pull-up to 4.75 V to 5.5 V alone."
+    ) in block.files["sim/cc.cir"].splitlines()
+
+
 def test_every_number_of_the_rules_names_where_it_stands():
     """No number of rules/blocks/usbc.json stands without its clause and page."""
     rules = json.loads(RULES.read_text(encoding="utf-8"))
@@ -422,6 +666,10 @@ def test_every_number_of_the_rules_names_where_it_stands():
         assert re.search(r"pages? \d", rules[key]["where"]), key
     for ad in rules["advertisements"]:
         assert all("page " in ad[k] for k in ("where", "cc_where", "rp_where")), ad["name"]
+        if ad["name"] != "default":
+            assert "page " in ad["threshold_where"], ad["name"]
+    for key in ("unit_load", "adjust", "short", "signals", "rp_not_modelled"):
+        assert "page " in rules[key]["where"], key
     assert all("page " in text for key, text in rules["wiring"].items() if key != "doc")
     assert "page " in rules["connectors"][0]["amps_vbus"]["where"]
 

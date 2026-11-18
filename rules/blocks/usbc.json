@@ -46,7 +46,7 @@
       "rp": {"ohms": 56000, "tolerance": 0.20},
       "cc": [0.277, 0.612],
       "doc": "typec",
-      "where": "section 4.6.2.1, page 226: Default is 500 mA for USB 2.0 ports, and a Power Sinking Device may draw up to 500 mA; table 4-20, page 227",
+      "where": "section 4.6.2.1, page 226: Default is the as-configured high-power current of the USB specification, 500 mA for USB 2.0 ports; table 4-20, page 227",
       "cc_where": "section 4.11.3.2.2, table 4-36, page 254: vRd-USB",
       "rp_where": "section 4.11.1, table 4-27, page 245: Default USB Power, a resistor of 56 kohm +-20 % pulled up to 4.75 to 5.5 V"
     },
@@ -58,6 +58,8 @@
       "doc": "typec",
       "where": "section 4.6.2.1, table 4-20, page 227: USB Type-C Current 1.5 A",
       "cc_where": "section 4.11.3.2.2, table 4-36, page 254: vRd-1.5",
+      "threshold": [0.613, 0.745],
+      "threshold_where": "section 4.11.3.2.2, table 4-36, page 254: the threshold between vRd-USB and vRd-1.5",
       "rp_where": "section 4.11.1, table 4-27, page 245: 1.5 A @ 5 V, a resistor of 22 kohm +-5 % pulled up to 4.75 to 5.5 V"
     },
     {
@@ -68,6 +70,8 @@
       "doc": "typec",
       "where": "section 4.6.2.1, table 4-20, page 227: USB Type-C Current 3.0 A",
       "cc_where": "section 4.11.3.2.2, table 4-36, page 254: vRd-3.0",
+      "threshold": [1.165, 1.368],
+      "threshold_where": "section 4.11.3.2.2, table 4-36, page 254: the threshold between vRd-1.5 and vRd-3.0",
       "rp_where": "section 4.11.1, table 4-27, page 245: 3.0 A @ 5 V, a resistor of 10 kohm +-5 % pulled up to 4.75 to 5.5 V"
     }
   ],
@@ -75,6 +79,29 @@
     "cc": [0.249, 2.181],
     "doc": "typec",
     "where": "section 4.11.3.2.1, table 4-35, page 254: vRd-connected, for Rd +-20 %"
+  },
+  "adjust": {
+    "doc": "typec",
+    "where": "section 4.6.2.1, page 227: a Sink that takes the additional current shall monitor the CC pins and adjust its current consumption within tSinkAdj to remain within the value advertised"
+  },
+  "unit_load": {
+    "value": 0.1,
+    "doc": "usb2",
+    "where": "section 7.2.1, page 171: a unit load is 100 mA; a device draws at most 1 unit load until it is configured",
+    "psd": "section 4.6.2.1, page 226: a Power Sinking Device, which may draw 500 mA, shall not have a USB communications function"
+  },
+  "rp_not_modelled": {
+    "doc": "typec",
+    "where": "section 4.11.1, table 4-27, page 245: a current source to 1.7 to 5.5 V of 80 uA +-20 %, 180 uA +-8 % or 330 uA +-8 %, and a resistor pull-up to 3.3 V +-5 % of 36 kohm +-20 %, 12 kohm +-5 % or 4.7 kohm +-5 %"
+  },
+  "short": {
+    "value_mm": 3.5,
+    "doc": "typec",
+    "where": "section 3.2.3, table 3-5, note 2, page 77: the maximum shorting trace length should not exceed 3.5 mm"
+  },
+  "signals": {
+    "doc": "typec",
+    "where": "section 3.2.3, table 3-5, page 77: GND, VBUS, CC1, CC2, Dp and Dn are each a signal of its own"
   },
   "beyond": {
     "doc": "typec",
