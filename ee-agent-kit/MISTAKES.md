@@ -1282,3 +1282,9 @@ What happened: 13.6.3g holds 2 parallel tracks under 25 mm apart as 1 conductor.
 Cost: Found by the review of roadmap item 6's left-overs; a pair that fails as 1 conductor passed.
 Root cause: A geometric test used no tolerance where the file rounds, and a case the check could not judge got no line of its own.
 Process: P7
+
+## M212 — 2026-11-17 — Documents cited in code that no index held
+What happened: 3 TI notes, 2 RFCs, the XDG specification, NBS Handbook 100, the SI Brochure and 3 textbooks were cited in tool code and tests with their sections and pages, and the index held none of them. `references rules` read only JSON rule files. The high-speed work that landed the same day cited 2 reports, NIST's CODATA pages and DLMF in its code and test, and wrote a source as a text. The frequency plan cited NXP's UM10204 by a table that does not hold the value.
+Cost: a first run of the new check failed 24 citations in 12 files (the piece's own run); on the trunk it failed 3 more and missed 6 documents, 1 of them cited by the wrong table. On the trunk of 2026-11-18 it failed 1 more: the board rules' test of item 6, which landed beside it.
+Root cause: the check was built for rule packs, and code was not a place a rule could stand. P28 step 3 asked a code comment to cite from the document's text, and nothing held the document to the index.
+Process: P28

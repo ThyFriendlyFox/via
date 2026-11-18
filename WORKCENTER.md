@@ -629,9 +629,17 @@ or `source`, or in a table `documents: {id: {...}}`, that the index lacks,
 names at another URL, or names without both a URL and a SHA256. Only a
 source whose `document` is `no datasheet: <why>` or `no document: <why>`
 is not judged. A document served in a zip names the zip's SHA256 as
-`zip_sha256`, and the index holds the zip. `make verify` runs it on
-`rules/ratings/`, `rules/board/`, `rules/copper/`, `rules/interfaces/` and
-`tests/boards/**/facts/` through `tests/test_references.py`. The `references` skill is the procedure.
+`zip_sha256`, and the index holds the zip. It reads the names in a
+`.kicad_dru` file and in a JSON rule's texts, and each URL of a
+`.kicad_dru` file. It reads tool code and tests: a file declares each
+document it cites in a module-level `CITES = {"<id>": "<where>"}`, and a
+name with a section, table, page, clause or equation beside it fails when
+the index or `CITES` lacks it. A web page is held by the values read from
+it, not by a SHA256: `fetch` says `kept` when each stands on the page,
+`moved` when 1 is gone. A paper or a book is cited and not held.
+`make verify` runs it on the globs the index lists under `rules` and `code`
+through `tests/test_references.py` and `tests/test_references_code.py`.
+The `references` skill is the procedure.
 
 Not a gate: `workcenter verify <project>` checks the project's verification
 package (`PROCESSES.md` P28, the `verification` skill) in

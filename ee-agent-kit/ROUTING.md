@@ -50,7 +50,7 @@ already defines.
 | A fast interface or an antenna on a routed board: a track's impedance, loss or crosstalk | `../.claude/skills/fields/SKILL.md` | `workcenter fields`: openEMS on the nets `fields.json` names, each limit with its source. |
 | Comparing routers, or the order a board routes in | `../.claude/skills/autoroute/SKILL.md` | `workcenter bench` and `design --route --order`; a router becomes a board's default only by the benchmark. |
 | A routed board's gaps, track widths or vias against a standard (ECSS-Q-ST-70-12C), or against a fab's limits | `../.claude/skills/board-rules/SKILL.md` | `board-rules.json` names the pack; volts and amps from `ratings.json`; every failure names its clause and page. |
-| A rule cites a standard or a datasheet; a document's revision changed; `make verify` fails in `tests/test_references.py` | `../.claude/skills/references/SKILL.md` | `workcenter references`: the index of the documents the rules cite, each fetched once under the workcenter's name and held by its SHA256. |
+| A rule cites a standard or a datasheet; a document's revision changed; a tool or a test cites a document; `make verify` fails in `tests/test_references.py` or `tests/test_references_code.py` | `../.claude/skills/references/SKILL.md` | `workcenter references`: the index of the documents the rules cite, each fetched once under the workcenter's name and held by its SHA256. |
 | Requirements, a design review, an inspection (MIL-STD, DO-160), proof that a board meets its parts' ratings | `../.claude/skills/verification/SKILL.md` and `PROCESSES.md` P28 | The verification package: conditions, sourced requirements, cited nodal analysis per deck, traceability; `workcenter verify` checks it against a fresh run. |
 
 ## Precedence

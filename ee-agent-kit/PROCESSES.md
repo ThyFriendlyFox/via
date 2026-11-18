@@ -999,7 +999,11 @@ circuits it touches. The `verification` skill is the how-to.
    constant), its method, and the clause it would be inspected under.
    Read every section, table and figure number from the document's text,
    never from memory (M72), in the package and in any code comment that
-   cites a standard or datasheet (M84). A limit computed from parts'
+   cites a standard or datasheet (M84). A tool or a test that cites a
+   document declares it in a module-level
+   `CITES = {"<index id>": "<where in it>"}`, and the document has an entry in
+   `rules/references/index.json`; `workcenter references rules` fails the
+   citation otherwise (M212). A limit computed from parts'
    values carries the tolerances its source names (M82). A requirement the
    owner restates or adds names "the owner's decision of <date>" in its
    Source; one the owner withdraws moves to the requirements' Withdrawn

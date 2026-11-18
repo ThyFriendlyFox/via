@@ -175,7 +175,7 @@ the rail's average stays inside its bound (`tests/boards/fail-freq-overlap`).
 {
   "sources": [
     { "name": "heater PWM", "hz": 1000, "tolerance": 0.01, "source": "config.h LH_PWM_HZ; HSI 1 %" },
-    { "name": "I2C clock", "hz": [100000, 400000], "source": "UM10204 Table 10" }
+    { "name": "I2C clock", "hz": [100000, 400000], "source": "UM10204 Table 11" }
   ],
   "resonances": [
     { "name": "cell strips with C5", "hz": "pdn.f_peak", "q": "pdn.q_peak", "source": "sim/pdn.cir" }

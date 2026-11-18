@@ -246,6 +246,18 @@ names.
 | `via_wall` | `{"um": number, "source": text}` | none: no stated wall | The least copper of a via's wall the fab promises, um, with the fab's document, the place and the date read. Under half the least drill of a judged via, or the file is refused. With `hdi` the lesser of it and the pack's 25 um is taken. |
 | `hdi` | `{"source": text}` | none: not HDI | The order or document by which the board is built as HDI under ECSS-Q-ST-70-12C Rev.1, 11.6. The pack's 25 um wall then holds its vias (tables 11-1 and 11-2, page 100). A via's KiCad flag never makes a board HDI. |
 
+## `rules/references/index.json` (for `workcenter references`)
+
+| Key | Type | Default | Use |
+|---|---|---|---|
+| `rules` | list of globs from the repository's root | none | The rule files `references rules` reads with no PATH: JSON rules, facts and `.kicad_dru` files. |
+| `code` | list of globs from the repository's root | none | The tool code and tests `references rules` reads for citations: `["tools/*.py", "tools/workcenter", "tests/*.py", "tests/boards/*.py", "ee-agent-kit/lead/*.py"]`. |
+| `numbers` | list of `{"pattern", "family"}` | none | The families of document numbers looked for in code, fab rule files and JSON rules' texts. A pattern that is not a regular expression is refused. |
+| an entry's `kind` | `standard`, `application note`, `datasheet`, `report`, `web page`, `paper` or `book` | none | The first 4 are held by `sha256`; a web page by its `values`; a paper or a book is cited and not held. |
+| an entry's `names` | list of texts | `[]` | The texts code names the document by, e.g. `["SLVA477C"]`. |
+| a web page entry's `values` | list of `{"says", "for"}` | none | Each value the rules take from the page: the page's own text and the rule that takes it. |
+| a tool's or a test's `CITES` | `{"<index id>": "<where in it>"}` at module level | none | The documents the file cites. |
+
 ## `pictures.json` (a version's, for `workcenter pictures`)
 
 | Key | Type | Default | Use |
