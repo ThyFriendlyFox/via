@@ -100,3 +100,8 @@ exception to these rules:
   "Made by Team Reagent for Builders", a link to `reagent-systems.com`.
   The menu's and the footer's "Community" is the team's Discord server,
   `discord.reagent-systems.com`.
+- The lines on the news bar, of 2026-11-18, each after a post, with no
+  quote marks:
+  "Only Cool Kids Allowed!", "Building Tomorrow Today!", "We have a
+  dog", "Check out our community!" (a link to the Discord server) and
+  "Free inference found here!". They live in `QUIPS` in `site/blog.py`.

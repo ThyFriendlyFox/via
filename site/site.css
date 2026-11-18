@@ -2889,3 +2889,107 @@ main .post-card p {
 .form-done:focus {
   outline: none;
 }
+
+/* -------------------------------------------------------------- news bar */
+
+/* site.js builds it from blog/news.json: the newest posts run along the bottom of the screen, and the
+   button to the community stays at the right. */
+.ticker {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  height: 3.25rem;
+  padding-right: 0.5rem;
+  background: var(--card);
+  box-shadow:
+    0 -1px 0 var(--edge),
+    0 -12px 32px -16px oklch(0.2 0.01 60 / 22%);
+  font-size: 0.875rem;
+}
+
+.ticker-view {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  mask-image: linear-gradient(to right, transparent, #000 1.5rem, #000 calc(100% - 2.5rem), transparent);
+}
+
+.ticker-track {
+  display: flex;
+  width: max-content;
+  height: 100%;
+  animation: ticker var(--ticker-time, 40s) linear infinite;
+}
+
+.ticker:hover .ticker-track,
+.ticker:focus-within .ticker-track {
+  animation-play-state: paused;
+}
+
+.ticker-items {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding-left: 1.5rem;
+}
+
+.ticker-items li {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.ticker-items li::after {
+  content: "";
+  width: 4px;
+  height: 4px;
+  margin-inline: 1.5rem;
+  border-radius: 999px;
+  background: var(--muted-foreground);
+}
+
+.ticker-items a {
+  color: var(--foreground);
+  transition: color 150ms var(--ease);
+}
+
+.ticker-items a:hover {
+  color: var(--primary);
+}
+
+.ticker .btn {
+  flex-shrink: 0;
+  height: 2.25rem;
+  padding-inline: 1rem;
+  font-size: 0.8125rem;
+}
+
+@keyframes ticker {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticker-track {
+    animation: none;
+  }
+  .ticker-view {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+}
+
+html.has-ticker body {
+  padding-bottom: 3.25rem;
+}
+
+html[data-shot] .ticker {
+  display: none;
+}
