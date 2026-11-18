@@ -210,11 +210,13 @@ def main() -> int:
     x1, y1, x2, y2 = d.outline
     pad = 3.0
     out.append(
-        f'<svg class="face-svg" viewBox="{f(x1 - pad)} {f(y1 - pad)} {f(x2 - x1 + 2 * pad)} {f(y2 - y1 + 2 * pad)}" '
+        f'<svg class="face-svg" viewBox="{f(x1 - pad)} {f(y1 - pad)} '
+        f'{f(x2 - x1 + 2 * pad)} {f(y2 - y1 + 2 * pad)}" '
         'role="img" aria-labelledby="face-title">'
     )
     out.append(
-        f'<title id="face-title">Herald v0.1 from the front: its outline, its copper on 3 signal layers and the '
+        '<title id="face-title">Herald v0.1 from the front: its outline, its copper on 3 signal layers '
+        "and the "
         f"{len(parts)} parts on it, each labelled in turn</title>"
     )
     out.append(f'<path class="pcb" d="{path_of(d.outline_polygon(0.0, 10))}"/>')
@@ -285,7 +287,8 @@ def main() -> int:
             bx = (px - 1.0, py - 1.0, px + 1.0, py + 1.0)
         a, b_, c, e = bx
         out.append(
-            f'<rect class="body" data-ref="{ref}" x="{f(a)}" y="{f(b_)}" width="{f(c - a)}" height="{f(e - b_)}" rx="0.4">'
+            f'<rect class="body" data-ref="{ref}" x="{f(a)}" y="{f(b_)}" '
+            f'width="{f(c - a)}" height="{f(e - b_)}" rx="0.4">'
             f"<title>{ref} {html.escape(part.value)}</title></rect>"
         )
     out.append("</svg>")
@@ -347,7 +350,8 @@ def main() -> int:
     print(
         f"site/index.html: the face drawn, {len(drawing) // 1024} KB, {len(copper['segments'])} tracks, "
         f"{len(copper['vias'])} vias, {len(data)} parts in {len(payload['groups'])} groups; with a datasheet "
-        f"{counted['ds']} ({counted['dp']} with its first page), a problem {counted['r']}, a reason {counted['w']}, "
+        f"{counted['ds']} ({counted['dp']} with its first page), a problem {counted['r']}, "
+        f"a reason {counted['w']}, "
         f"pins {counted['c']}, a deck {counted['s']}"
     )
     return 0
