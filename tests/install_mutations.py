@@ -177,7 +177,8 @@ MUTATIONS = [
      "    *\"\\`apt-get update\\` of every package source did not end within\"*)",
      "    *\"no such line\"*)"),
     ("IA65 S2-5 the key fetch with no retry window", "install.sh",
-     'if ! curl -fsSL --retry 3 --retry-max-time "$KICAD_KEY_TIMEOUT" ', "if ! curl -fsSL --retry 3 "),
+     '\n    if ! curl -fsSL --retry 3 --retry-max-time "$KICAD_KEY_TIMEOUT" ',
+     "\n    if ! curl -fsSL --retry 3 "),
     ("IA66 S2-5 the key's bound as before", "install.sh",
      'KICAD_KEY_TIMEOUT="20"', 'KICAD_KEY_TIMEOUT="120"'),
     ("IA67 S2-6 the other key not named", "install.sh",
@@ -214,5 +215,9 @@ MUTATIONS = [
      '[[ -s "$CA_BUNDLE" ]]', "[[ -s /etc/ssl/certs/ca-certificates.crt ]]"),
     ("IA81 main without the first step", "install.sh",
      "  step_boot\n  step_apt\n", "  step_apt\n"),
+    ("IA82 key: an empty answer goes on to the fingerprint check", "install.sh",
+     '|| [[ ! -s "${KICAD_KEYRING}.tmp" ]]; then\n        launchpad=', "; then\n        launchpad="),
+    ("IA83 key: curl's line of the first address lost", "install.sh",
+     'keyserver="$(tail -n 1 "$errors")"', 'keyserver=""'),
 ]
 # fmt: on

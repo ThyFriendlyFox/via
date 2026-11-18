@@ -190,6 +190,8 @@ exit 0""",
 # The programs the apt step may call. A call of any other program fails the test.
 STEP = {"apt-get", "apt-cache", "timeout", "sleep", "kicad-cli", "curl", "gpg"}
 STEP |= {"install", "mv", "chmod", "rm", "touch", "mktemp", "tee"}
+# The key's second address answers JSON, which python3 reads (a stand-in here).
+STEP |= {"python3"}
 
 
 def real(name: str) -> str:
@@ -324,6 +326,60 @@ def test_index_on_the_first_try_then_the_download_then_the_install(tmp_path):
     assert "[apt] Get:172 https://ppa.launchpadcontent.net/" in out
     assert "[apt] Setting up kicad (10.0.8~ubuntu24.04.1) ..." in out
     assert out.splitlines()[-1] == "[install] apt: done; kicad-cli 10.0.8"
+
+
+KEYSERVER_SAID = "curl: (28) Connection timed out after 20002 milliseconds"
+LAUNCHPAD_SAID = "curl: (6) Could not resolve host: api.launchpad.net"
+KEY_NOT_THERE = (
+    f"{NONE} Check that this computer reaches keyserver.ubuntu.com or api.launchpad.net, "
+    "then run the script again."
+)
+
+
+def key_stop(keyserver: str, launchpad: str) -> str:
+    return (
+        "[install] ERROR: apt: the PPA signing key did not arrive from keyserver.ubuntu.com "
+        f"(curl said: {keyserver}) or from api.launchpad.net (curl said: {launchpad}); "
+        "each try of each address had at most 20 s (KICAD_KEY_TIMEOUT)"
+    )
+
+
+def test_a_key_from_neither_address_stops_with_what_curl_said_and_not_a_mismatch(tmp_path):
+    """Both addresses fail: the stop names both, the bound and curl's own error line of each, where it
+    said "fingerprint mismatch" (or ended with the pipeline's code and no line). Nothing is written."""
+    curl = f"""case "$*" in
+  *keyserver.ubuntu.com*) echo {shlex.quote(KEYSERVER_SAID)} >&2; exit 28 ;;
+  *) echo {shlex.quote(LAUNCHPAD_SAID)} >&2; exit 6 ;;
+esac"""
+    code, out, err, calls = run(tmp_path, {"curl": curl}, body="step_apt; echo NEXT STEP")
+    assert code == 1, err
+    assert "NEXT STEP" not in out
+    assert "fingerprint" not in err
+    assert err.splitlines()[-2:] == [key_stop(KEYSERVER_SAID, LAUNCHPAD_SAID), KEY_NOT_THERE]
+    assert len(of(calls, "curl")) == 2 and updates(calls) == []
+    assert sorted(p.name for p in (tmp_path / "keyrings").iterdir()) == []
+    assert not (tmp_path / "sources.list.d" / "kicad-10.0-releases.sources").exists()
+
+
+def test_an_answer_that_holds_no_key_is_said_so(tmp_path):
+    """The keyserver answers nothing and api.launchpad.net answers what is no JSON string (the stand-in
+    python3 ends with 7): curl said nothing, and the stop says the answer held no key."""
+    curl = 'case "$*" in *keyserver.ubuntu.com*) exit 0 ;; *) echo "<html>"; exit 0 ;; esac'
+    gpg = 'while (( $# )); do [[ "$1" == -o ]] && { cat > "$2"; exit 0; }; shift; done; exit 0'
+    code, out, err, calls = run(tmp_path, {"curl": curl, "gpg": gpg}, body="step_apt; echo NEXT STEP")
+    assert code == 1, err
+    nothing = "nothing; the answer held no key"
+    assert err.splitlines()[-2:] == [key_stop(nothing, nothing), KEY_NOT_THERE]
+
+
+def test_a_key_with_another_fingerprint_is_a_mismatch(tmp_path):
+    """A key that arrived with another fingerprint keeps its old stop, and is not trusted."""
+    gpg = DEFAULTS["gpg"].replace("FDA854F61C4D0D9572BB95E5245D5502FAD7A805", "0" * 40)
+    code, out, err, calls = run(tmp_path, {"gpg": gpg}, body="step_apt; echo NEXT STEP")
+    assert code == 1
+    assert err.splitlines()[-1] == "[install] ERROR: apt: PPA key fingerprint mismatch; refusing to trust it"
+    assert not (tmp_path / "keyrings" / "kicad-10.0-releases.gpg").exists()
+    assert updates(calls) == []
 
 
 def test_the_bounds_ci_sets_run_the_update_and_the_download_under_timeout(tmp_path):
