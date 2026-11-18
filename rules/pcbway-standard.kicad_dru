@@ -1,5 +1,5 @@
 (version 1)
-# PCBWay, a standard rigid board. Limits from "PCB Manufacturing Capabilities",
+# PCBWay, a standard rigid board. Limits from "PCB Capabilities" (the page's title),
 # https://www.pcbway.com/capabilities.html, read 2026-11-17 (the page as fetched had SHA256
 # d6623fcf6223e137831cd6b9855d16d7e1e18faa6c9d8fb44fe77ffafe6b6a88). When a design file sets
 # `fab = "pcbway-standard"`, or for one run with `workcenter drc --fab pcbway-standard`, the rules with no
@@ -17,7 +17,7 @@
 	(constraint clearance (min 0.1mm))
 	(severity error))
 
-# "Drill Sizes (CNC) 0.15-6.0mm. Min drill size is 0.15mm"
+# "Drill Sizes (CNC) 0.15-6.0mm Min drill size is 0.15mm"
 (rule "pcbway-standard: drill 0.15 mm"
 	(constraint hole_size (min 0.15mm))
 	(severity error))

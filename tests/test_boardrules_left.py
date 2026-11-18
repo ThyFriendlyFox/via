@@ -51,7 +51,22 @@ def board_text(vias: list[tuple[float, float]], extra: str = "", via_kind: str =
     return "\n".join(out) + extra + ")"
 
 
-MICRO_Q = '(via micro (at 150 150) (size 0.3) (drill 0.1) (layers "F.Cu" "B.Cu") (net 2))'
+MICRO_Q = '(via micro (at 150 150) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 2))'
+HDI = "the fab's order: HDI to ECSS-Q-ST-70-12C Rev.1, 11.6, a test"
+
+
+def blind(drill: float, kind: str = "blind") -> str:
+    """A 4-layer board: /P on F.Cu from (110, 110) to (120, 110), a via of `drill` mm from F.Cu to
+    In1.Cu at (120, 110), and /P on In1.Cu from (120, 110) to (130, 110), each track 3 mm."""
+    return (
+        "(kicad_pcb (version 20241229) (general (thickness 1.6))"
+        '(layers (0 "F.Cu" signal) (4 "In1.Cu" signal) (2 "B.Cu" signal) (25 "Edge.Cuts" user))'
+        '(net 0 "") (net 1 "/P")'
+        '(gr_rect (start 100 100) (end 180 180) (layer "Edge.Cuts"))'
+        '(segment (start 110 110) (end 120 110) (width 3) (layer "F.Cu") (net 1))'
+        '(segment (start 120 110) (end 130 110) (width 3) (layer "In1.Cu") (net 1))'
+        f'(via {kind} (at 120 110) (size 0.6) (drill {drill}) (layers "F.Cu" "In1.Cu") (net 1)))'
+    )
 
 
 # ---------------------------------------------------------------- vias
@@ -65,39 +80,81 @@ def test_the_pack_gives_a_wall_for_hdi_boards_alone(pack):
     assert "table 11-1" in wall["where"] and "page 100" in wall["where"]
 
 
-def test_a_board_with_no_microvia_has_its_vias_not_judged_with_the_clauses_read(pack):
-    """No microvia: not HDI (3.2.40 NOTE 1, page 22). The standard states no wall for it, so the line
-    names each clause read: 13.6.3f, 7.4.2c, table 7-1, 7.5.3i, tables 11-1 and 11-2, 11.6."""
+def test_a_board_not_stated_hdi_has_its_vias_not_judged_with_the_clauses_read(pack):
+    """HDI is how a board is built (3.2.31, page 20; clause 11), and a microvia does not make a board
+    HDI (3.2.40 NOTE 1, page 22, says only that HDI needs them). With no `hdi` and no `via_wall` in
+    board-rules.json the standard states no wall, so the line names each clause read: 13.6.3f, 7.4.2c,
+    table 7-1, 7.5.3i, tables 11-1 and 11-2, 11.6, 3.2.31, 3.2.40."""
     board = boardrules.read_board(board_text([(120, 110)]))
-    assert not board.hdi
     (found,) = boardrules.via_findings(board, {"/P": 2.0}, pack)
     assert found.status == "not judged"
-    assert "board-rules.json" in found.text and "via_wall" in found.text
-    for clause in ("13.6.3f, page 114", "7.4.2c NOTE 2", "table 7-1", "7.5.3i", "table 11-2", "3.2.40"):
+    assert "board-rules.json" in found.text and "via_wall" in found.text and "`hdi`" in found.text
+    for clause in (
+        "13.6.3f, page 114",
+        "7.4.2c NOTE 2",
+        "table 7-1",
+        "7.5.3i",
+        "table 11-2",
+        "3.2.31",
+        "3.2.40",
+    ):
         assert clause in found.line, clause
 
 
-def test_a_board_with_a_microvia_is_hdi_and_its_vias_take_25_um(pack):
+def test_a_kicad_micro_flag_on_another_net_does_not_make_the_board_hdi(pack):
+    """L6-A2: a via KiCad flags `micro`, 0.3 mm drill, on /Q with no current. It is no microvia: 3.2.40
+    (page 22) asks a blind via (3.2.13, page 18: exposed on 1 side) under 250 um; this one goes from
+    F.Cu to B.Cu and is 300 um. /P's vias stay not judged, as on a board with no such flag."""
+    board = boardrules.read_board(board_text([(120, 110), (120, 111)], extra=MICRO_Q))
+    (found,) = boardrules.via_findings(board, {"/P": 2.0}, pack)
+    assert found.status == "not judged" and found.text.startswith("vias of /P: the pack states no copper")
+
+
+def test_a_board_its_project_states_hdi_takes_25_um(pack):
     """A 0.3 mm drill with a 25 um wall: pi / 4 x (0.3^2 - 0.25^2) = 0.0215984 mm2 (13.6.3f, page 114);
     1550 x 0.0215984 = 33.4776 mils2; 33.4776^0.532950 = 6.4956; 0.191153 x 6.4956 = 1.2416 A a via.
-    2 A / 1.2416 = 1.61: 2 vias. 1 via fails, 2 hold. /Q's microvia carries no current: no line."""
-    one = boardrules.read_board(board_text([(120, 110)], extra=MICRO_Q))
-    assert one.hdi
-    (found,) = boardrules.via_findings(one, {"/P": 2.0}, pack)
+    2 A / 1.2416 = 1.61: 2 vias. 1 via fails, 2 hold. The source names the project's statement."""
+    one = boardrules.read_board(board_text([(120, 110)]))
+    (found,) = boardrules.via_findings(one, {"/P": 2.0}, pack, hdi=HDI)
     assert found.status == "fail"
     assert found.text.startswith("vias /P between F.Cu and B.Cu at (120, 110): 1, limit 2 for 2 A (1.24 A")
     assert f"[{DOC}: 13.6.3f, page 114" in found.line and "table 11-1" in found.line
-    two = boardrules.read_board(board_text([(120, 110), (120, 111)], extra=MICRO_Q))
-    assert boardrules.via_findings(two, {"/P": 2.0}, pack) == []
+    assert found.source.endswith(f"board-rules.json: hdi: {HDI}")
+    two = boardrules.read_board(board_text([(120, 110), (120, 111)]))
+    assert boardrules.via_findings(two, {"/P": 2.0}, pack, hdi=HDI) == []
 
 
 def test_a_microvia_with_a_current_is_not_judged(pack):
-    """A microvia is copper filled (table 11-1, page 99): its section is no wall, and the pack rates it
-    not. /P's own vias are microvias here."""
-    board = boardrules.read_board(board_text([(120, 110)], via_kind="micro"))
-    (found,) = boardrules.via_findings(board, {"/P": 2.0}, pack)
-    assert found.status == "not judged" and "microvia" in found.text
-    assert "table 11-1 (1 of 2), microvias plating, page 99" in found.line
+    """A microvia is a blind via under 250 um (3.2.40, page 22), copper filled (table 11-1, page 99):
+    its section is no wall, and the pack rates it not. /P's via goes from F.Cu to In1.Cu, exposed on 1
+    side (3.2.13, page 18), 0.1 mm: a microvia, whatever KiCad calls it."""
+    for kind in ("blind", "micro"):
+        board = boardrules.read_board(blind(0.1, kind))
+        (found,) = boardrules.via_findings(board, {"/P": 2.0}, pack, hdi=HDI)
+        assert found.status == "not judged" and "microvia" in found.text
+        assert "table 11-1 (1 of 2), microvias plating, page 99" in found.line and "3.2.40" in found.line
+
+
+def test_a_blind_via_of_250_um_is_no_microvia_and_is_held_to_the_wall(pack):
+    """3.2.40 asks under 250 um: a blind via of 0.25 mm drill is held to the wall. On 25 um:
+    pi / 4 x (0.25^2 - 0.2^2) = 0.0176715 mm2; 1550 x 0.0176715 = 27.3908 mils2; 27.3908^0.532950 =
+    exp(0.532950 x 3.31022) = 5.8369; 0.191153 x 5.8369 = 1.1157 A. 2 A / 1.1157 = 1.79: 2 vias, and
+    there is 1."""
+    (found,) = boardrules.via_findings(
+        boardrules.read_board(blind(0.25, "micro")), {"/P": 2.0}, pack, hdi=HDI
+    )
+    assert found.text.startswith("vias /P between F.Cu and In1.Cu at (120, 110): 1, limit 2 for 2 A (1.12 A")
+
+
+def test_a_through_via_under_250_um_is_no_microvia_and_is_held_to_the_wall(pack):
+    """A microvia is blind (3.2.40, page 22), exposed on 1 side (3.2.13, page 18). A via of 0.1 mm drill
+    from F.Cu to B.Cu, flagged `micro`, is exposed on 2 and is held to the wall. On 25 um:
+    pi / 4 x (0.1^2 - 0.05^2) = 0.00589049 mm2; 1550 x 0.00589049 = 9.13026 mils2; 9.13026^0.532950 =
+    exp(0.532950 x 2.21159) = 3.24996; 0.191153 x 3.24996 = 0.62124 A. 2 A / 0.62124 = 3.22: 4 vias,
+    and there is 1."""
+    text = board_text([(120, 110)], via_kind="micro").replace("(drill 0.3)", "(drill 0.1)")
+    (found,) = boardrules.via_findings(boardrules.read_board(text), {"/P": 2.0}, pack, hdi=HDI)
+    assert found.text.startswith("vias /P between F.Cu and B.Cu at (120, 110): 1, limit 4 for 2 A (0.621 A")
 
 
 def test_the_projects_stated_wall_judges_a_board_with_no_microvia(pack):
@@ -117,8 +174,8 @@ def test_the_projects_stated_wall_judges_a_board_with_no_microvia(pack):
 
 def test_on_an_hdi_board_the_lesser_of_the_2_walls_is_taken(pack):
     """A stated 30 um wall and the pack's 25 um on an HDI board: 25 um, 1.2416 A a via (above)."""
-    board = boardrules.read_board(board_text([(120, 110)], extra=MICRO_Q))
-    (found,) = boardrules.via_findings(board, {"/P": 2.0}, pack, boardrules.Wall(30, "a test"))
+    board = boardrules.read_board(board_text([(120, 110)]))
+    (found,) = boardrules.via_findings(board, {"/P": 2.0}, pack, boardrules.Wall(30, "a test"), hdi=HDI)
     assert "(1.24 A each" in found.text
 
 
@@ -128,12 +185,37 @@ def test_on_an_hdi_board_the_lesser_of_the_2_walls_is_taken(pack):
         ({"pack": "ecss-q-st-70-12c-rev1", "via_wall": {"um": 0, "source": "x"}}, r"via_wall: um: 0 is"),
         ({"pack": "ecss-q-st-70-12c-rev1", "via_wall": {"um": 20}}, r"via_wall: `source` is missing"),
         ({"pack": "ecss-q-st-70-12c-rev1", "via_wall": {"um": 20, "source": ""}}, r"via_wall: source"),
+        ({"pack": "ecss-q-st-70-12c-rev1", "hdi": {}}, r"hdi: `source` is missing"),
+        ({"pack": "ecss-q-st-70-12c-rev1", "hdi": {"source": " "}}, r"hdi: source"),
+        ({"pack": "ecss-q-st-70-12c-rev1", "hdi": "yes"}, r"hdi: an object is asked"),
     ],
 )
-def test_a_stated_wall_with_no_source_or_no_copper_is_refused(tmp_path, data, message):
+def test_a_stated_wall_or_hdi_with_no_source_or_no_copper_is_refused(tmp_path, data, message):
     (tmp_path / "board-rules.json").write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(ratings.Refusal, match=r"board-rules.json: " + message):
         boardrules.read_project_file(tmp_path)
+
+
+def test_the_project_file_gives_the_pack_the_wall_and_hdi(tmp_path):
+    data = {"pack": "p", "via_wall": {"um": 20, "source": "w"}, "hdi": {"source": "h"}}
+    (tmp_path / "board-rules.json").write_text(json.dumps(data), encoding="utf-8")
+    assert boardrules.read_project_file(tmp_path) == ("p", boardrules.Wall(20, "w"), "h")
+
+
+def test_a_stated_wall_of_half_the_drill_or_more_is_refused(pack):
+    """L6-A3: a 0.3 mm drill is 300 um across; a wall of 300 / 2 = 150 um fills it, and 1 via of 150 um
+    and 1 of 1e6 um carried the same 2.3357 A. 150 um is refused with the via; 149 um is taken:
+    pi / 4 x (0.3^2 - 0.002^2) = 0.0706827 mm2; 1550 x 0.0706827 = 109.558 mils2; 109.558^0.532950 =
+    exp(0.532950 x 4.69648) = 12.219; 0.191153 x 12.219 = 2.3357 A, over 2 A: 1 via holds."""
+    board = boardrules.read_board(board_text([(120, 110)]))
+    for um in (150, 1e6):
+        match = (
+            r"board-rules.json: via_wall: .* um fills the hole of the via of /P at \(120, 110\), drill 0.3"
+        )
+        with pytest.raises(ratings.Refusal, match=match):
+            boardrules.via_findings(board, {"/P": 2.0}, pack, boardrules.Wall(um, "a test"))
+        assert boardrules.via_amps(pack, 0.3, 1.6, um) is None
+    assert boardrules.via_findings(board, {"/P": 2.0}, pack, boardrules.Wall(149, "a test")) == []
 
 
 # ---------------------------------------------------------------- the current of each stretch
@@ -191,6 +273,15 @@ def test_a_source_and_its_loads_on_1_net_are_counted_once_on_each_stretch(pack):
 def test_a_net_with_a_pin_of_no_stated_current_keeps_the_sum(pack):
     """C1 states nothing: Kirchhoff does not close on /V, so each track is held to the sum, 1.6 A."""
     _, (per_track, most) = stretches(chain(0.8, 0.2), {"J1.1": 1.0, "R1": 0.6})
+    assert per_track == {} and most == {}
+
+
+def test_a_net_in_2_pieces_keeps_the_sum_though_every_pad_is_stated(pack):
+    """L6-A4: the track from R1 to C1 starts at (135, 110), 5 mm from R1's pad (reach 0.5 + 0.1 mm):
+    /V is 2 pieces, J1 and R1 on one, C1 on the other. Kirchhoff closes on neither alone, so the sum
+    stays."""
+    text = chain(0.8, 0.2).replace("(start 130 110) (end 150 110)", "(start 135 110) (end 150 110)")
+    _, (per_track, most) = stretches(text, STATED)
     assert per_track == {} and most == {}
 
 
@@ -298,6 +389,50 @@ def test_tracks_25_mm_apart_or_not_parallel_are_held_each_alone(pack):
     assert boardrules.parallel_findings(boardrules.read_board(pair(1.0, 115, (110, 135))), amps, pack) == []
 
 
+def test_tracks_parallel_to_within_the_files_grain_are_held_as_1_conductor(pack):
+    """L6-A1: /Q ends at y = 115.000001, 1 nm off: a .kicad_pcb holds a coordinate to 6 decimals of a
+    mm, so the 2 are parallel. The gap is the least over the overlap, 5 - 0.5 - 0.5 = 4 mm, and the
+    line is the one of the test above. Turned 45 degrees, from (110, 110) to (130, 130) and from
+    (110, 115) to (130, 135.000001): 5 / sqrt(2) - 1 = 2.53553 mm apart, the same sections and limit."""
+    amps = {"/P": 1.0, "/Q": 1.0}
+    (found,) = boardrules.parallel_findings(
+        boardrules.read_board(pair(1.0, 115, (130, 115.000001))), amps, pack
+    )
+    assert found.status == "fail" and found.text == (
+        "parallel tracks /P and /Q on F.Cu from (110, 110) and (110, 115), 4 mm apart: 0.0475 mm2 as "
+        "manufactured, limit 0.06438 mm2 for 2 A"
+    )
+    diagonal = pair(1.0, 115, (130, 135.000001)).replace("(end 130 110)", "(end 130 130)")
+    (found,) = boardrules.parallel_findings(boardrules.read_board(diagonal), amps, pack)
+    assert found.status == "fail" and found.text.startswith(
+        "parallel tracks /P and /Q on F.Cu from (110, 110) and (110, 115), 2.53553 mm apart: 0.0475 mm2"
+    )
+
+
+def test_tracks_nearly_parallel_that_fail_as_1_conductor_are_not_judged_by_name(pack):
+    """L6-A1: /Q ends at y = 115.0001 or 115.01: at an angle of atan(0.0001 / 20) = 0.000286 or
+    atan(0.01 / 20) = 0.0286 degrees to /P, 4 to 4.0001 or 4.01 mm apart. 13.6.3g (page 114) names no
+    angle within which tracks are in parallel. As 1 conductor they fail (0.0475 mm2 against 0.06438
+    mm2, above), each alone they hold: the pair is not judged, and its line names it."""
+    amps = {"/P": 1.0, "/Q": 1.0}
+    for end, deg, most in ((115.0001, "0.000286", "4.0001"), (115.01, "0.0286", "4.01")):
+        (found,) = boardrules.parallel_findings(boardrules.read_board(pair(1.0, 115, (130, end))), amps, pack)
+        assert found.status == "not judged"
+        assert found.text == (
+            f"parallel tracks /P and /Q on F.Cu from (110, 110) and (110, 115), at {deg} degrees, 4 to "
+            f"{most} mm apart: as 1 conductor 0.0475 mm2 as manufactured, limit 0.06438 mm2 for 2 A; "
+            "13.6.3g names no angle within which 2 tracks are in parallel"
+        )
+        assert found.source.startswith(f"{DOC}: 13.6.3g, page 114")
+
+
+def test_tracks_nearly_parallel_that_hold_as_1_conductor_need_no_line(pack):
+    """1.5 mm tracks: 0.0725 mm2 as 1 conductor, over 0.06438 mm2 (above), and each alone holds: the
+    pair holds whether or not it is in parallel."""
+    board = boardrules.read_board(pair(1.5, 115, (130, 115.01)))
+    assert boardrules.parallel_findings(board, {"/P": 1.0, "/Q": 1.0}, pack) == []
+
+
 # ---------------------------------------------------------------- the fab files' second reading
 
 
@@ -317,6 +452,15 @@ def test_each_fab_file_names_its_second_reading(fab, sha):
     assert (
         f"# second_reader: 2026-11-17, every number compared; the page fetched again had SHA256 {sha}" in text
     )
+
+
+def test_the_pcbway_files_quotations_are_the_pages_words():
+    """L6-A5: the page of SHA256 d6623fcf... holds "Drill Sizes (CNC) 0.15-6.0mm Min drill size is
+    0.15mm" with no period, and its title is "PCB Capabilities - Custom PCB Prototype the Easy Way -
+    PCBWay"; "PCB Manufacturing Capabilities" is not on it."""
+    text = (ROOT / "rules" / "pcbway-standard.kicad_dru").read_text(encoding="utf-8")
+    assert '# "Drill Sizes (CNC) 0.15-6.0mm Min drill size is 0.15mm"' in text
+    assert 'Limits from "PCB Capabilities"' in text and "PCB Manufacturing Capabilities" not in text
 
 
 # ---------------------------------------------------------------- the outline
@@ -366,5 +510,21 @@ def test_a_curve_on_edge_cuts_is_followed():
     sides = "".join(
         f'(gr_line (start {a}) (end {b}) (layer "Edge.Cuts"))'
         for a, b in (("180 100", "180 180"), ("180 180", "100 180"), ("100 180", "100 100"))
+    )
+    assert boardrules.read_board(edge_board(curve + sides)).area_mm2 == pytest.approx(6820, abs=0.5)
+
+
+def test_a_curve_inside_a_moved_and_turned_footprint_is_placed():
+    """L6-A4: the same curve as the left side, drawn in a footprint at (100, 180) turned 90 degrees. KiCad
+    places a point (x, y) of it at (100 + y, 180 - x): (0, 0), (20, -10), (60, -10), (80, 0) go to
+    (100, 180), (90, 160), (90, 120), (100, 100), a bulge of the same shape out of the left side:
+    6400 + 420 = 6820 mm2. Unplaced, the curve meets no side and the outline does not close."""
+    curve = (
+        '(footprint "edge" (at 100 180 90) (property "Reference" "B1")'
+        '(fp_curve (pts (xy 0 0) (xy 20 -10) (xy 60 -10) (xy 80 0)) (layer "Edge.Cuts")))'
+    )
+    sides = "".join(
+        f'(gr_line (start {a}) (end {b}) (layer "Edge.Cuts"))'
+        for a, b in (("100 100", "180 100"), ("180 100", "180 180"), ("180 180", "100 180"))
     )
     assert boardrules.read_board(edge_board(curve + sides)).area_mm2 == pytest.approx(6820, abs=0.5)
