@@ -37,7 +37,7 @@ Lark has no isolation. Every node sits at mains potential, the 3.3 V logic inclu
 
 IPC-2221B, the *Generic Standard on Printed Board Design*, gives copper gaps by voltage in Table 6-1. For 151 to 250 V, it sets 0.8 mm on an outer layer beside a part's lead. On an inner layer, in solid glass-epoxy, it allows 0.2 mm. The agent wrote both into the [rule file](examples/fan-bulb/v0.1/rules/lark.kicad_dru), and the design rule check holds every gap to them.
 
-We asked for a DIP switch on the side to choose between Alexa and Apple Home. Its contacts would sit at mains potential under a finger. The agent chose a magnet in a slider outside the sealed housing instead, sitting over two Hall switches inside. That was the agent's idea, and we think it's a better one than ours.
+We asked for a DIP switch on the side to choose between Alexa and Apple Home. Its contacts would sit at mains potential under a finger. The agent chose a magnet in a slider outside the sealed housing instead, sitting over two Hall switches inside. That was the agent's idea, and it means nothing a finger touches is at mains potential.
 
 ## Where the microphones go
 
@@ -45,7 +45,7 @@ Lark hangs base-up, so the dome's tip faces the room. Since warm air rises, the 
 
 Air in a shell with a small opening is a Helmholtz resonator, with the air in the opening as the mass and the air in the shell as the spring. The ear's design file puts the dome's resonance near 400 Hz, which would weaken the higher tones of speech. So each microphone's port opens through the ear to its own hole in the dome.
 
-The spacing is the part we're least sure of. The microphones are 10.4 mm apart, and they feed an ESP32-S3 that's meant to run Espressif's ESP-SR speech models. A two-microphone beamformer uses the delay between the microphones to favor one direction, and sound crosses 10.4 mm in about 30 µs. One sample at ESP-SR's 16 kHz is 62.5 µs, so the delay is under half a sample. ESP-SR's beamforming gains little here, since its two-microphone front end is tuned for spacings of 4 to 6.5 cm.
+The microphones' spacing is the part we're least sure of. They're 10.4 mm apart, and they feed an ESP32-S3 that's meant to run Espressif's ESP-SR speech models. A two-microphone beamformer uses the delay between the microphones to favor one direction, and sound crosses 10.4 mm in about 30 µs. One sample at ESP-SR's 16 kHz is 62.5 µs, so the delay is under half a sample. ESP-SR's beamforming gains little here, since its two-microphone front end is tuned for spacings of 4 to 6.5 cm.
 
 ## How the design went
 
