@@ -375,6 +375,38 @@ HINTS: list[tuple[str, str, str]] = [
         f'{SIMULATE}, "A part\'s temperature"',
     ),
     (
+        r"^sim: thermal: .*which no row of sim/thermal\.json can name",
+        "Give the part a number in parts.csv beside the schematic and a facts entry that names that number "
+        "(the ratings skill): a row of sim/thermal.json names a part by its number, never by its symbol. "
+        "Then write the part's row (step 3).",
+        f'{SIMULATE}, "A part\'s temperature"',
+    ),
+    (
+        r"^sim: thermal: \S+ not judged: .* give its part number in parts\.csv beside the schematic",
+        "Give the part its number in parts.csv beside the schematic, the file the gate reads it from: a "
+        "parts list kept elsewhere is not read. Then run the gate again; it asks for the part's row if its "
+        "facts carry a thermal figure.",
+        f'{SIMULATE}, "A part\'s temperature"',
+    ),
+    (
+        r"^sim: thermal: .* is judged on facts that are not its own",
+        "Write the board part's own number in its row of sim/thermal.json: the number parts.csv gives it, "
+        "or its facts entry names. Never the number of another package or another part.",
+        f'{SIMULATE}, "A part\'s temperature"',
+    ),
+    (
+        r"^sim: thermal: \S+ of sim/thermal\.json is no fitted part of the board",
+        "Write the row under the reference the board gives the part, or take the row out if the part is not "
+        "fitted.",
+        f'{SIMULATE}, "A part\'s temperature"',
+    ),
+    (
+        r"^sim: thermal: which parts of the board carry a thermal figure is not judged: \S+ is not on PATH",
+        "Install the toolchain: kicad-cli reads the schematic's parts (`sudo install.sh` at the "
+        "workcenter's root; `workcenter doctor` prints ok). Then run the gate again.",
+        "ee-agent-kit/docs/ENGINES.md",
+    ),
+    (
         r"^sim: thermal: .* not judged: its facts .* sim/thermal\.json names no row for it",
         "Write the part's row in sim/thermal.json, as the line gives it (step 3). Name the deck's measure "
         "that prints its power at every run, and where that power comes from. Print the power in a deck "
