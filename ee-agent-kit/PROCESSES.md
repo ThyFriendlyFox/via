@@ -203,6 +203,9 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
     names the checkout as its source. A container image holds the copy of
     the tools it was built from. Read step 6 as the file says it now, not
     as an earlier session remembered it (M215).
+15. A parser of a tool's output is tested on a line in the tool's own
+    format, quoted with its source (a class or a document) and the tool's
+    version, never on a line the test's author wrote (M234).
 
 Done when: the DRC after the route lists 0 errors, or every remaining
 error is named in the next design change.

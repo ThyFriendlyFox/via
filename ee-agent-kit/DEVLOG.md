@@ -119,6 +119,12 @@ Evidence: the docs tests 31 passed, 2 skipped (KiCad), with the forms tests; `si
 --check`, `site/examples.py --check` and `site/forms.py --check` exit 0; each post passes the
 blog's sentence and word rules.
 
+## 2026-11-17 — Roadmap item 5 landed (in part): a second router behind 1 interface
+
+The route got a router interface. FreeRouting 1.9.0 moved behind it with its command line unchanged; FreeRouting 2.5.0 is the second router. The rules the workcenter keeps around a route are 20, listed in the autoroute skill, each held by a test with a stand-in router that writes a known session. On the way, the time limit was found to stop xvfb-run and not Java under it; the route now stops the whole process group. A reviewer found that the router's count of open connections was read with a pattern no router writes, so a route that left connections open could end as `DRC decides`; the count is now read from FreeRouting 2.5.0's own score line (M234). Nothing was installed on this machine: FreeRouting 2.5.0 needs Java 25, and this machine has Java 21. The default router stays FreeRouting 1.9.0 until a benchmark names another.
+
+Evidence: branch `wip/land-router2`; `tests/test_routers.py`.
+
 ## 2026-11-17 — Roadmap item 1 landed (in part): a fuse's rule, and the engine's mutation list
 
 Roadmap item 1 landed (in part). A fuse's current now has a rule in both packs. NASA holds a cartridge fuse by its rating, from table 4 of section F3. ECSS holds a cermet fuse to table 6-17, and grants any other fuse no share. The engine got its mutation list: 433 single changes, run with `make mutate-ratings`. A reviewer found 9 faults. The worst let a cartridge fuse of a rating the table does not list pass at 3 times its rating. All 9 are fixed, each with a test that failed first. `procure` now refuses a parts row with too few or too many fields, where it crashed. On landing, 1 hint was a sentence of 25 words, which `tests/test_guide.py` refuses; the fix pass had not run that file.

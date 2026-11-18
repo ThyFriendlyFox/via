@@ -53,6 +53,7 @@ honestly passes it.
 | KiCad | 10.0 | `kicad-cli` | `install.sh` (PPA kicad/kicad-10.0-releases) |
 | ngspice | 42 | `ngspice` | `install.sh` (Ubuntu 24.04 archive) |
 | FreeRouting | 1.9.0 | `workcenter design <design.py> --route [--seed <previous .kicad_pcb>\|--order] [--threads N]` (generated boards, headless); `workcenter bench <design.py>... --out <dir>` (the routing benchmark); `workcenter autoroute <project> [--dsn file]` (hand-drawn boards, DSN from KiCad) | `install.sh` (GitHub release, SHA-256 pinned; 2.1.0 hangs after routing when its GitHub version check cannot succeed) |
+| FreeRouting 2 | 2.5.0 | `workcenter design <design.py> --route --router freerouting2`; `workcenter bench <design.py>... --out <dir> --router freerouting2` | `install.sh --freerouting2` (GitHub release, SHA-256 pinned, with a Temurin 25.0.5+8 JRE, SHA-256 pinned); opt-in. The default router stays FreeRouting 1.9.0. |
 | openEMS | 0.0.35 (Debian 12's `0.0.35+git20190103.6a75e98+dfsg.1-3.2`) | `workcenter fields <project>`, as its own program on an XML file the command writes; `OPENEMS` overrides the path | `install.sh` and `install.sh --openems` (Debian 12's 4 packages from `deb.debian.org`, each SHA-256 pinned; Ubuntu 24.04 has no package) |
 | KiKit | 1.8.1 | `tools/panel.py` under `KIKIT_PYTHON` (EXPORT's panel, for a project with `panel.json`); its `doPanelization`, not the `kikit` command, which imports wxPython | `install.sh` (PyPI, `requirements.txt`) |
 | kicad-python (kipy) | 0.8 | `/opt/workcenters/ee/venv/bin/python` | `install.sh` (PyPI) |

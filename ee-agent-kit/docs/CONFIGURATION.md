@@ -17,6 +17,8 @@ unset variable never causes a failure.
 | `FREEROUTING_SHA256` | hex | pinned in the script | Expected JAR checksum. Empty skips the check with a warning. |
 | `FREEROUTING_URL` | URL | GitHub release asset for the version | Alternate download location. |
 | `REQUIRE_FREEROUTING` | `0`/`1` | `0` | `1` makes a failed JAR download fatal. CI sets `1`. |
+| `INSTALL_FREEROUTING2` | `0`/`1` | `0` | `1` also installs FreeRouting 2.5.0 and its Java 25 (as `--freerouting2`). |
+| `REQUIRE_FREEROUTING2` | `0`/`1` | `0` | `1` makes a failed second-router step fatal. |
 | `SKIP_APT` | `0`/`1` | `0` | `1` skips the apt step entirely. |
 | `REQUIRE_OPENEMS` | `0`/`1` | `0` | `1` makes a failed openEMS step fatal, a wrong checksum among them; else it warns and `workcenter fields` skips. |
 | `OPENEMS_POOL` | URL | `https://deb.debian.org/debian/pool/main/o/openems` | Where Debian 12's 4 openEMS packages are fetched; each is checked against the SHA256 pinned in the script. |
@@ -27,9 +29,11 @@ unset variable never causes a failure.
 |---|---|---|---|
 | `WORKCENTER_ROOT` | path | `/opt/workcenters/ee` | Locates the venv and the JAR. |
 | `FREEROUTING_JAR` | path | `$WORKCENTER_ROOT/freerouting/freerouting.jar` | The autoroute engine. |
+| `FREEROUTING2_JAR` | path | `$WORKCENTER_ROOT/freerouting2/freerouting.jar` | The jar of `--router freerouting2`, FreeRouting 2.5.0. |
+| `FREEROUTING2_JAVA` | command | `$WORKCENTER_ROOT/java25/bin/java` | The Java that runs it; Java 25 or newer, else the router is absent. |
 | `KICAD_CLI` | command | `kicad-cli` | The KiCad engine. |
 | `NGSPICE` | command | `ngspice` | The simulation engine. |
-| `JAVA` | command | `java` | Runs the JAR. |
+| `JAVA` | command | `java` | Runs the FreeRouting 1.9.0 JAR, for `autoroute` and for `design --route`. |
 | `KICAD10_3DMODEL_DIR` | path | `/usr/share/kicad/3dmodels` | Where `render` looks for the library 3D bodies footprints name, to list the parts drawn without one (`KICAD9_` and `KICAD8_3DMODEL_DIR` likewise). |
 | `OPENEMS` | command | `$WORKCENTER_ROOT/openems/bin/openEMS`, else `openEMS` on `PATH` | The field solver `workcenter fields` runs; `doctor` reports it. |
 | `KIKIT_PYTHON` | command | the venv's Python (`$WORKCENTER_ROOT/venv/bin/python`) | The Python that imports KiKit; EXPORT runs `tools/panel.py` with it for a project that holds `panel.json`. |
@@ -98,7 +102,7 @@ unset variable never causes a failure.
 | `--passes N` | autoroute, design, bench | `20` autoroute and bench, `60` design | FreeRouting optimisation passes. bench takes a whole number above 0. |
 | `--threads N` | autoroute, design, bench | engine default; bench `2` | FreeRouting thread count (`-mt`). bench takes a whole number above 0 and also holds the JVM to N processors. |
 | `--order` | design (with `--route`), bench | off | design: route in 4 stages, 1 FreeRouting run each, each on the copper of the stages before it: poured nets and every net with copper drawn by hand, the nets of each part of 0.5 mm pitch or less, pairs (names that end in `_P`/`_N`, `D+`/`D-` or `DP`/`DN`), the rest. Writes `build/route/<name>.<n>-<stage>.dsn`, `.ses`, `.log`. Refuses `--seed`. bench: also run each router as `<router>+order`. |
-| `--router NAME=JAR` | bench | the workcenter's FreeRouting | A FreeRouting jar to run, repeatable; the first is the default router. |
+| `--router NAME` | design (with `--route`), bench | design: `freerouting`; bench: the workcenter's FreeRouting | design: the router, `freerouting` (FreeRouting 1.9.0) or `freerouting2` (FreeRouting 2.5.0). bench: a router by name, or `NAME=JAR` for a FreeRouting 1.9.0 jar, repeatable; the first is the default router. |
 | `--time-limit S` | bench | `300` | Seconds per route, a whole number above 0; a route past it is stopped and not judged (exit 2). |
 | `--out DIR` | bench (required) | none | The benchmark's folder: `<board>/<router>/` with the board, `route.txt`, `drc.txt` and `run.json`, and `bench.md`. A run empties its own folder first. |
 | `--strict` (highspeed) | highspeed | off | A limit not judged fails the run: one the documents do not set, and one they set that the command does not judge (TI's single-ended impedance and stubs, among others). |
