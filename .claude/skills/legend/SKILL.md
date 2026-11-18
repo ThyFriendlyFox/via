@@ -31,17 +31,26 @@ texts, `silk_over_copper` and `silk_edge_clearance` of a text) as failures, what
 mask or the edge clipping a footprint's own silk outline is not a legend line.
 
 A text's box is measured for KiCad's stroke font: 1.34 / 1.27 of the glyph width a character, plus the
-stroke; the glyph height plus the stroke. A turned text is measured by the upright box round it. A text
+stroke; the glyph height plus the stroke. That is the font's average advance, not each glyph's ink: wide
+glyphs print wider than the box. kicad-cli 10.0.8 plotted "WWWWWW" (1 mm, 0.15 mm stroke) 6.722 mm wide
+against a box of 6.481 mm, 0.121 mm out on each side (the second review's p1-probe), so
+`workcenter legend` alone can miss an overlap of up to about 0.12 mm a side; the DRC gate's KiCad
+`silk_overlap` and `silk_over_copper` measure the ink. A turned text is measured by the upright box round it. A text
 justified top hangs half its height below its anchor; justified bottom, it stands half its height above.
 A text with no `(thickness)` has KiCad's own stroke, 1/8 of its glyph width (the second number of `(size h w)`). A title block variable
 (`${TITLE}`, `${REVISION}`, `${ISSUE_DATE}`, `${COMPANY}`, `${COMMENTn}`) is measured as its value.
 
 These are printed `legend not judged:` with the reason, and fail with `--strict`: a text in another font
-(a `face`), of more than 1 line, or holding another text variable; a text box; a designator whose part has
-no courtyard, body or pad; the edge of a board with no outline on Edge.Cuts.
+(a `face`), of more than 1 line, or holding another text variable; a knocked-out text (KiCad fills an
+area round it larger than the box); a text box; a dimension, a table or a barcode on the silkscreen; a
+designator whose part has no courtyard, body or pad, or is on the other side; the height or the stroke
+where the fab names no least for it; the edge of a board with no outline on Edge.Cuts. A part's own field
+shown on the silkscreen (an MPN) is judged as a text.
 
 A board file the tool cannot read (no file, not a board, an item with no `(at)`, a text of size 0) is
-refused: `legend: refused: <file>: <what>, <where>`, exit code 2. Red is exit code 1.
+refused: `legend: refused: <file>: <what>`, exit code 2; `<what>` names the item, and its place on the
+board where it has one (`gr_text "AB" has no (at)`, `gr_text "AB" at (120, 110): its size 0 x 0 mm is not
+a size`). A fault of the tool itself is refused the same way. Red is exit code 1.
 
 ## Steps
 
@@ -93,3 +102,7 @@ hid back on the silkscreen, places them all, and judges the copy. The project is
   moved or measured.
 - Text inside a footprint on a layer that is not the silkscreen.
 - The legend's lines and arcs: a fab's least line width is in `rules/README.md`, not here.
+- A glyph's width, or its width against its height: a text squashed to 0.2 mm wide is judged on its
+  height and stroke only. No fab in `rules/` names a least glyph width (PCBWay's "Minimum Character
+  Width (Legend) 0.15mm" is the stroke, `text_thickness`).
+- Each glyph's ink: see the box above.

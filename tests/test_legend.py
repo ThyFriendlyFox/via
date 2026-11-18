@@ -364,8 +364,8 @@ def test_a_dimension_table_or_barcode_on_the_silkscreen_is_not_judged_by_name():
         "draws for it",
         'legend not judged: barcode "SN1" at (130, 105) mm on F.SilkS: the tool does not measure what KiCad '
         "draws for it",
-        'legend not judged: dimension "10.00 mm" of U1 at (110, 123) mm on F.SilkS: the tool does not measure '
-        "what KiCad draws for it",
+        'legend not judged: dimension "10.00 mm" of U1 at (110, 123) mm on F.SilkS: the tool does not '
+        "measure what KiCad draws for it",
     ]
     assert judge(board(DIMENSION.format(layer="Dwgs.User"))) == []
 
@@ -375,8 +375,8 @@ def test_a_text_on_a_custom_pads_shape_fails_overlap():
     118..122 by 109.5..110.5. "A" at (121.5, 110), 0.8 mm high: 1.055118 x 0.8 + 0.15 = 0.994094 wide,
     121.002953..121.997047 by 109.525..110.475, off the anchor and wholly on the polygon."""
     q1 = (
-        '(footprint "X:Q1" (layer "F.Cu") (at 120 110) (property "Reference" "Q1" (at 0 -3 0) (layer "F.Fab") '
-        "(effects (font (size 1 1) (thickness 0.15)))) "
+        '(footprint "X:Q1" (layer "F.Cu") (at 120 110) (property "Reference" "Q1" (at 0 -3 0) '
+        '(layer "F.Fab") (effects (font (size 1 1) (thickness 0.15)))) '
         '(fp_rect (start -2.5 -1) (end 2.5 1) (layer "F.CrtYd")) '
         '(pad "3" smd custom (at 0 0) (size 0.5 0.5) (layers "F.Cu" "F.Mask") '
         "(options (clearance outline) (anchor rect)) "
@@ -404,11 +404,13 @@ def test_kicads_mask_clip_naming_only_a_pad_is_kept_where_a_text_is_on_it(tmp_pa
         ]
     }
     assert legend.kicad_findings(report) == []
-    on = legend.read_board(kicadgen.parse(board(fp("R1", 120, 110, (-1.5, -0.8, 1.5, 0.8), R_PADS), txt("A", 119.2, 110))))
+    on = legend.read_board(
+        kicadgen.parse(board(fp("R1", 120, 110, (-1.5, -0.8, 1.5, 0.8), R_PADS), txt("A", 119.2, 110)))
+    )
     off = legend.read_board(kicadgen.parse(board(fp("R1", 120, 110, (-1.5, -0.8, 1.5, 0.8), R_PADS))))
     said = (
-        "KiCad silk_over_copper at (119.2, 110) mm: Silkscreen clipped by solder mask: Pad 1 [<no net>] of R1 "
-        "on F.Cu"
+        "KiCad silk_over_copper at (119.2, 110) mm: Silkscreen clipped by solder mask: Pad 1 [<no net>] of "
+        "R1 on F.Cu"
     )
     assert legend.kicad_unnamed(report, on) == (
         [f'legend overlap: {said}; on it: text "A" (KiCad\'s own check, warning in its report)'],
@@ -490,7 +492,7 @@ def test_the_placer_keeps_a_designator_off_a_text_box_and_off_its_parts_own_fiel
 
 
 def test_a_text_on_a_text_box_fails_overlap():
-    """"AB" at (115, 109): 113.869882..116.130118 by 108.425..109.575, on the text box 113..117 by
+    """ "AB" at (115, 109): 113.869882..116.130118 by 108.425..109.575, on the text box 113..117 by
     108..109.5 by 2.260236 x 1.075 mm."""
     note = (
         '(gr_text_box "NOTE" (start 113 108) (end 117 109.5) (margins 0 0 0 0) (layer "F.SilkS") '
@@ -973,6 +975,45 @@ def test_the_placer_does_not_put_a_designator_nearer_another_part():
     assert kicadgen.atoms(kicadgen.child(ref, "at")) == ["4.280118", "0", "0"]
 
 
+def _u1_at(root) -> list[str]:
+    u1 = next(f for f in kicadgen.children(root, "footprint") if "U1" in f[1])
+    return kicadgen.atoms(kicadgen.child(kicadgen.children(u1, "property")[0], "at"))
+
+
+def test_the_placer_keeps_a_designator_off_a_design_text_of_its_layer_only():
+    """ "XY" at (115, 109.275) on F.SilkS is on the place above U1 (113.869882..116.130118 by 108.7..109.85):
+    the next place, right, (4.280118, 0). The same text on B.SilkS is on the other layer: above it goes."""
+    u1 = fp("U1", 115, 113, (-3, -3, 3, 3), ref_at=(0, 0, 0))
+    root, _ = place(board(u1, txt("XY", 115, 109.275)))
+    assert _u1_at(root) == ["4.280118", "0", "0"]
+    root, _ = place(board(u1, txt("XY", 115, 109.275, layer="B.SilkS", mirror=True)))
+    assert _u1_at(root) == ["0", "-3.725", "0"]
+
+
+def test_the_placer_keeps_a_designator_off_one_it_has_placed():
+    """The board's top edge at y = 107.5. U1 (36 mm2) is placed first, above itself: 113.869882..116.130118
+    by 108.7..109.85. U2 at (110.85, 109.2), courtyard 110.2..111.5 by 108.5..109.9, left of that place
+    and clear of U1's courtyard (112..118 by 110..116). Above U2, y 107.2..108.35, is over the edge. Right,
+    x = 111.5 + 0.15 + 1.130118 = 112.780118, box 111.649882..113.910236 by 108.625..109.775, is on U1's
+    designator by 0.040354 mm. Below, 109.719882..111.980118 by 110.05..111.2, is 0.019882 mm from U1,
+    nearer than 0.15 mm from U2. Left, x = 110.2 - 0.15 - 1.130118 = 108.919882, is clear: local
+    (-1.930118, 0)."""
+    u2 = fp("U2", 110.85, 109.2, (-0.65, -0.7, 0.65, 0.7), ref_at=(0, 0, 0))
+    u1 = fp("U1", 115, 113, (-3, -3, 3, 3), ref_at=(0, 0, 0))
+    root, lines = place(board(u1, u2, outline=(100, 107.5, 140, 120)))
+    assert lines == []
+    assert _ref_at(root, "U1") == ["0", "-3.725", "0"]
+    assert _ref_at(root, "U2") == ["-1.930118", "0", "0"]
+
+
+def test_the_placer_keeps_a_designator_from_under_another_part():
+    """U2's courtyard 113..117 by 108..109.99 (its designator fixed) covers the place above U1 (113.869882..
+    116.130118 by 108.7..109.85): the next place, right, (4.280118, 0)."""
+    u2 = fp("U2", 115, 109, (-2, -1, 2, 0.99), ref_at=(0, -3, 0))
+    root, _ = place(board(fp("U1", 115, 113, (-3, -3, 3, 3), ref_at=(0, 0, 0)), u2), fixed={"U2"})
+    assert _u1_at(root) == ["4.280118", "0", "0"]
+
+
 def test_the_placer_keeps_to_the_reach():
     """With a reach of 0.1 mm, under the placer's own gap of 0.15 mm, no place is near enough."""
     pack = dict(PACK, designator_reach_mm=0.1)
@@ -1015,6 +1056,18 @@ def test_a_pads_own_mask_margin_widens_its_opening():
     )
     assert ("overlap", 'text "X"') in fails(found)
     assert any("solder mask opening of R1 pad 1 by 1.205 x 0.075 mm" in f.line for f in found)
+
+
+def test_a_pads_mask_margin_widens_its_opening_on_each_side_by_the_margin():
+    """The same pad and margin: the opening reaches x = 120 + 0.5 + 0.3 = 120.8. "X" at (121.3, 110),
+    120.697441..121.902559 by 109.425..110.575, is on it by 120.8 - 120.697441 = 0.102559 x 1.15 mm."""
+    pad = '(pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu" "F.Mask") (solder_mask_margin 0.3))'
+    found = judge(
+        board(fp("R1", 120, 110, (-3, -1, 3, 1), ref_at=(0, 1.6, 0), extra=pad), txt("X", 121.3, 110))
+    )
+    assert [f.line.split(": ", 2)[2].split(" (")[0] for f in found] == [
+        "on the solder mask opening of R1 pad 1 by 0.103 x 1.15 mm"
+    ]
 
 
 # ---------------------------------------------------------------- KiCad's own checks, the gate, the fab
@@ -1146,9 +1199,7 @@ def test_the_placer_leaves_a_designator_on_the_other_side_from_its_part(tmp_path
         '(layer "B.SilkS")', '(layer "F.SilkS")', 1
     )
     root, lines = place(text)
-    assert lines == [
-        "legend: R9 is on B.Cu and its designator on F.SilkS; the placer leaves it where it is"
-    ]
+    assert lines == ["legend: R9 is on B.Cu and its designator on F.SilkS; the placer leaves it where it is"]
     assert kicadgen.dumps(root) == kicadgen.dumps(kicadgen.parse(text))
     pcb = tmp_path / "back.kicad_pcb"
     pcb.write_text(text, encoding="utf-8")
@@ -1178,3 +1229,142 @@ def test_place_into_a_folder_is_refused(tmp_path, capsys):
     (tmp_path / "out").mkdir()
     assert legend.main([str(pcb), "--place", str(tmp_path / "out")]) == 2
     assert "legend: refused: " in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------- the command's verdict and what it reads
+
+
+def test_the_command_exits_1_on_a_failure_and_on_not_judged_only_with_strict(tmp_path, capsys):
+    """ "AB" 0.6 mm high is under the least 0.8 mm: red, exit code 1. "AB" in Arial is not judged: held,
+    0, and red, 1, with --strict. "AB" 1 mm high at (120, 110) keeps every rule: 0."""
+    for name, text, strict, rc, said in (
+        ("small", txt("AB", 120, 110, size=0.6), False, 1, "LEGEND RED: 1 fail (size 1, overlap 0,"),
+        ("font", txt("AB", 120, 110, face="Arial"), False, 0, "LEGEND HELD: 0 fail"),
+        ("font", txt("AB", 120, 110, face="Arial"), True, 1, "LEGEND RED: 0 fail"),
+        ("fine", txt("AB", 120, 110), False, 0, "LEGEND HELD: 0 fail"),
+    ):
+        pcb = tmp_path / f"{name}.kicad_pcb"
+        pcb.write_text(board(text), encoding="utf-8")
+        assert legend.main([str(pcb)] + (["--strict"] if strict else [])) == rc, name
+        assert said in capsys.readouterr().out
+
+
+def test_the_command_reads_the_projects_fab(tmp_path, capsys):
+    """A project whose rule set was copied from rules/jlcpcb-2layer is held to its 1.0 mm: 0.9 mm text is
+    red. With no rule set, the least of the fabs, 0.8 mm, holds it."""
+    pcb = tmp_path / "x.kicad_pcb"
+    pcb.write_text(board(txt("AB", 120, 110, size=0.9)), encoding="utf-8")
+    assert legend.main([str(tmp_path)]) == 0
+    capsys.readouterr()
+    dru = "(version 1)\n# Copied by the workcenter from jlcpcb-2layer.kicad_dru (Design.fab)\n"
+    (tmp_path / "x.kicad_dru").write_text(dru, encoding="utf-8")
+    assert legend.main([str(tmp_path)]) == 1
+    assert "under the least 1 mm of fab jlcpcb-2layer" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "hidden",
+    [
+        '(layer "F.SilkS") (hide yes) (effects',
+        '(layer "F.SilkS") hide (effects',
+        "(thickness 0.15)) (hide yes))",
+        "(thickness 0.15)) hide)",
+    ],
+)
+def test_a_hidden_text_on_the_silkscreen_is_not_printed_and_not_judged(hidden):
+    """KiCad 10 writes (hide yes) on the item or in its effects; older files write a bare hide. Each form
+    hides "AB" 0.5 mm high, which shown would fail size; (hide no) shows it."""
+    shown = '(gr_text "AB" (at 120 110 0) (layer "F.SilkS") (effects (font (size 0.5 0.5) (thickness 0.15))))'
+    assert fails(judge(board(shown))) == [("size", 'text "AB"')]
+    old = '(layer "F.SilkS") (effects' if "layer" in hidden else "(thickness 0.15)))"
+    assert judge(board(shown.replace(old, hidden))) == []
+    assert fails(judge(board(shown.replace("(thickness 0.15)))", "(thickness 0.15)) (hide no))")))) == [
+        ("size", 'text "AB"')
+    ]
+
+
+def test_a_hidden_designator_on_the_silkscreen_is_not_judged():
+    """U1's designator at its centre is under its courtyard; hidden by (hide yes), it is not printed."""
+    u1 = fp("U1", 115, 113, (-3, -3, 3, 3), ref_at=(0, 0, 0))
+    assert fails(judge(board(u1))) == [("hidden", "designator U1")]
+    assert judge(board(u1.replace('(layer "F.SilkS")', '(layer "F.SilkS") (hide yes)', 1))) == []
+
+
+def test_a_footprints_own_text_on_the_silkscreen_is_judged():
+    """U1's fp_text "X" 0.5 mm high is under the least 0.8 mm; an fp_text "${REFERENCE}" is U1's
+    designator, at U1's centre under its courtyard. U1's own designator is above it, as placed in the first
+    placer test: (0, -3.725), clear."""
+    small = '(fp_text user "X" (at 0 0 0) (layer "F.SilkS") (effects (font (size 0.5 0.5) (thickness 0.15))))'
+    u1 = fp("U1", 115, 113, (-3, -3, 3, 3), ref_at=(0, -3.725, 0), extra=small)
+    assert fails(judge(board(u1))) == [("size", 'text "X"')]
+    ref = (
+        '(fp_text user "${REFERENCE}" (at 0 0 0) (layer "F.SilkS") '
+        "(effects (font (size 1 1) (thickness 0.15))))"
+    )
+    u1 = fp("U1", 115, 113, (-3, -3, 3, 3), ref_at=(0, -3.725, 0), extra=ref)
+    assert fails(judge(board(u1))) == [("hidden", "designator U1")]
+
+
+@pytest.mark.parametrize(
+    "just, layer, box",
+    [
+        # 2 x 1.055118 + 0.15 = 2.260236 mm wide, 1.15 mm high round (120, 110).
+        ("right", "F.SilkS", (117.739764, 109.425, 120.0, 110.575)),
+        ("left", "F.SilkS", (120.0, 109.425, 122.260236, 110.575)),
+        ("left", "B.SilkS", (117.739764, 109.425, 120.0, 110.575)),
+        ("right", "B.SilkS", (120.0, 109.425, 122.260236, 110.575)),
+        ("", "B.SilkS", (118.869882, 109.425, 121.130118, 110.575)),
+    ],
+)
+def test_a_justified_box_by_its_sum(just, layer, box):
+    """Justified right a text ends at its anchor; left it starts there; mirrored on the back, the other
+    way round."""
+    (t,) = legend.read_board(kicadgen.parse(board(txt("AB", 120, 110, layer=layer, mirror=layer[0] == "B",
+                                                         just=just)))).texts  # fmt: skip
+    assert tuple(round(v, 6) for v in t.box) == box
+
+
+def _ref_at(root, ref: str) -> list[str]:
+    for f in kicadgen.children(root, "footprint"):
+        for p in kicadgen.children(f, "property"):
+            if str(p[1]) == "Reference" and str(p[2]) == ref:
+                return kicadgen.atoms(kicadgen.child(p, "at"))
+    raise AssertionError(ref)
+
+
+def test_a_designator_fixed_in_the_design_is_written_where_it_says():
+    """The dense fixture's U1 at (115, 110), not turned: its designator fixed at (115, 104) is at
+    (0, -6) in its frame, with the placer off. A part the design does not have is refused."""
+    d = dense(False)
+    d.designator("U1", 115, 104, 0)
+    assert _ref_at(kicadgen.parse(d.board()), "U1") == ["0", "-6", "0"]
+    d = dense(False)
+    d.designator("U9", 115, 104, 0)
+    with pytest.raises(ValueError, match=r"designator\('U9'\): no part 'U9'"):
+        d.board()
+
+
+def test_a_fab_that_names_no_stroke_leaves_the_stroke_not_judged(tmp_path):
+    """A fab's rule set with a least height of 1.0 mm and no stroke: a 0.01 mm stroke is not judged, and
+    says so, as a fab with no height does for the height (the first review's A10)."""
+    dru = tmp_path / "noline.kicad_dru"
+    dru.write_text(
+        "(version 1)\n"
+        '(rule "Silkscreen text"\n'
+        "\t(condition \"A.Layer == 'F.Silkscreen' || A.Layer == 'B.Silkscreen'\")\n"
+        "\t(constraint text_height (min 1.0mm)))\n",
+        encoding="utf-8",
+    )
+    found = judge(board(txt("AB", 120, 110, thick=0.01)), str(dru))
+    assert fails(found) == []
+    (line,) = [f.line for f in found if f.status == "not judged"]
+    assert line.startswith("legend not judged: text stroke on 1 texts: fab noline names no least stroke")
+
+
+def test_a_knocked_out_text_is_not_judged():
+    """kicad-cli 10.0.8 plotted a knocked-out "AB" (1 mm, 0.15 mm) with its filled area from 103.269 to
+    104.641 in y, 0.156 mm above and 0.066 mm below the box the tool measures, 103.425..104.575 (the second
+    review's p1-probe, read from its F.SilkS Gerber). The tool does not measure that area: not judged."""
+    found = judge(board(txt("AB", 120, 110).replace('(layer "F.SilkS")', '(layer "F.SilkS" knockout)')))
+    assert [(f.rule, f.status) for f in found] == [("font", "not judged")]
+    assert "knocked out" in found[0].line
