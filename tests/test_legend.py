@@ -11,7 +11,7 @@ high, and 1 more character adds 1.055118 mm. A footprint's courtyard and pads ar
 frame; at a rotation of 0 a point (px, py) of a footprint at (fx, fy) is (fx + px, fy + py) on the board.
 
 The board names no fab unless a test says so: it is held to the least of the fabs in rules/ for each
-size, PCBWay's 0.8 mm high (rules/pcbway-standard.kicad_dru: "Minimum Character Height (Legend) 0.8mm")
+size, PCBWay's 0.8 mm high (rules/pcbway-standard.kicad_dru: "Minimum Character Height (Legend) - 0.8mm")
 and OSH Park's 0.0762 mm stroke (rules/oshpark-2layer.kicad_dru: "Silkscreen minimum line width ... 3 mil
 (0.0762mm) (short lines, text, graphics)").
 """
@@ -28,6 +28,11 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
+
+CITES = {
+    "pcbway-capabilities": "Minimum Character Height (Legend), as rules/pcbway-standard.kicad_dru quotes it",
+    "oshpark-two-layer": "Silkscreen minimum line width, as rules/oshpark-2layer.kicad_dru quotes it",
+}
 
 import kicadgen  # noqa: E402
 import legend  # noqa: E402
@@ -1368,3 +1373,52 @@ def test_a_knocked_out_text_is_not_judged():
     found = judge(board(txt("AB", 120, 110).replace('(layer "F.SilkS")', '(layer "F.SilkS" knockout)')))
     assert [(f.rule, f.status) for f in found] == [("font", "not judged")]
     assert "knocked out" in found[0].line
+
+
+@pytest.mark.parametrize("rule", ["size", "overlap", "hidden", "nearest", "direction", "not judged"])
+def test_next_answers_a_legend_line_of_the_drc_gate_with_the_placer_and_the_legend_skill(rule):
+    """`workcenter next` names the DRC gate's first failure and what to do about it (tools/guide.py). A
+    legend line got the catch-all answer, which names neither the placer nor the legend skill."""
+    import guide
+
+    line = f"legend {rule}: designator R1 at (120, 110) mm on F.SilkS: the reason (rules/legend.json)"
+    gates = [
+        type("R", (), {"gate": "drc", "status": "fail", "summary": "", "details": {"failures": [line]}})()
+    ]
+    assert guide.trouble(None, gates) == ("drc", line, True)
+    do, read = guide.hint("drc", line)
+    assert "`d.place_designators = True`" in do
+    assert read == '.claude/skills/legend/SKILL.md, "Steps"'
+    assert "\n## Steps\n" in (ROOT / ".claude/skills/legend/SKILL.md").read_text(encoding="utf-8")
+
+
+def test_the_engine_lock_names_legend_a_long_command():
+    """A command is long when it ran over 3 s on the largest input measured (docs/CONFIGURATION.md).
+    `workcenter legend` starts no engine, but it took 6.14 s on a copy of basalt v0.3 (179 parts) and
+    14.95 s with `--show --place`, with the lock off (2026-11-18); 0.26 s on pass-legend-dense.
+    tests/test_enginelock.py holds every command named long or short."""
+    import enginelock
+
+    assert enginelock.LONG.get("legend") == "always" and "legend" not in enginelock.SHORT
+
+
+def test_each_fab_page_this_file_quotes_is_quoted_as_its_rule_file_holds_it():
+    """The module's docstring quotes PCBWay's and OSH Park's pages as rules/ holds them; the second
+    reading of the fab files changed PCBWay's quote to "(Legend) - 0.8mm". The numbers the check reads
+    from each file stand: JLCPCB 1.0 mm high and 0.15 mm stroke, PCBWay 0.8 and 0.15, OSH Park and Sierra
+    a stroke alone (0.0762 and 0.127 mm)."""
+    import re
+
+    for name, quote in re.findall(r"\((rules/[\w-]+\.kicad_dru): \"([^\"]+)\"", " ".join(__doc__.split())):
+        assert quote in " ".join((ROOT / name).read_text(encoding="utf-8").split()), (name, quote)
+    read = {
+        p.stem: (f["height"], f["stroke"])
+        for p in sorted((ROOT / "rules").glob("*.kicad_dru"))
+        for f in [legend.read_fab(p)]
+    }
+    assert read == {
+        "jlcpcb-2layer": (1.0, 0.15),
+        "oshpark-2layer": (None, 0.0762),
+        "pcbway-standard": (0.8, 0.15),
+        "sierra-circuits-web": (None, 0.127),
+    }
