@@ -47,7 +47,7 @@ unset variable never causes a failure.
 |---|---|---|---|
 | `--json` | all | off | Machine-readable output. Read before the command or after it. `gates --json`: stdout holds the gates' records alone; the ratings line and the verdict line go to stderr. |
 | `--out DIR` | gates, erc, drc, sim, export, autoroute, render, procure, sources, verify, ratings, copper, fields, highspeed; design; ci | `<project>/build`; design: the design file's folder (with `--check`, a temporary folder); ci: `<repo>/build/ci` | Where reports and artifacts go; for design, where the KiCad project is written; for ci, each step's script, `$GITHUB_ENV` file and log. |
-| `--strict` | gates, erc, drc, sim, export, render, procure, sources, verify, ratings, copper, standards | off | Warnings fail the gate; for gates, ratings that are not held (`RED (ratings not held)`), for a project with a `ratings.json`; for ratings, a stress that was not judged; for copper, a net with a stated current, or named in `ratings.json`, that `copper.json` does not name, a pin of a judged net with no stated current, a pin of the entry's part that `from` does not name, a part's heat with no pad on the board, or a limit it does not state; for verify, a requirement whose verdict is FAIL or OPEN, and decks that ran without corners; for render, a part the 3D views draw without a body fails it; for procure, a line short of stock or a price older than 90 days; for sim, a model outside a `warn` bound (its datasheet), a project with no `sim/corners.json` or with decks that drive periodic sources and no `sim/frequency-plan.json`, a deck with no bound, a deck whose measures do not move with temperature, a part named like a board reference that no tolerance covers, and an operating point ngspice doubts (`singular matrix`), and a circuit the schematic implies that no deck answers (an I2C line with a pull-up, a regulator with a load stated in ratings.json; tools/simneeds.py); for sources, a datasheet kept as a note only, a file with no SHA256 or revision recorded, a model older than its datasheet, or a load check skipped; for standards, a requirement not held. |
+| `--strict` | gates, erc, drc, sim, export, render, procure, sources, verify, ratings, copper, standards, legend | off | Warnings fail the gate; for gates, ratings that are not held (`RED (ratings not held)`), for a project with a `ratings.json`; for ratings, a stress that was not judged; for copper, a net with a stated current, or named in `ratings.json`, that `copper.json` does not name, a pin of a judged net with no stated current, a pin of the entry's part that `from` does not name, a part's heat with no pad on the board, or a limit it does not state; for verify, a requirement whose verdict is FAIL or OPEN, and decks that ran without corners; for render, a part the 3D views draw without a body fails it; for procure, a line short of stock or a price older than 90 days; for sim, a model outside a `warn` bound (its datasheet), a project with no `sim/corners.json` or with decks that drive periodic sources and no `sim/frequency-plan.json`, a deck with no bound, a deck whose measures do not move with temperature, a part named like a board reference that no tolerance covers, and an operating point ngspice doubts (`singular matrix`), and a circuit the schematic implies that no deck answers (an I2C line with a pull-up, a regulator with a load stated in ratings.json; tools/simneeds.py); for sources, a datasheet kept as a note only, a file with no SHA256 or revision recorded, a model older than its datasheet, or a load check skipped; for standards, a requirement not held. |
 | `--parts FILE` | procure, sources, ratings | `<project>/parts.csv` | A parts CSV, repeatable; the first row whose Value and Footprint match a BOM line prices it (procure) or names its MPN (sources, ratings), and every row with no Footprint is an item off the board. Columns in the `procurement` skill. |
 | `--init` | ratings | off | Write `ratings.json` beside the schematic, with the pack `nasa-eee-inst-002` and no net, when there is none; never over a file that exists. Nothing is judged, and no output folder is made. |
 | `--facts REF` | ratings | none | Print an entry of facts to fill for 1 part of the schematic: its part number or its symbol, its pins, an empty source. Nothing is judged: the netlist it reads is left in `<out>/ratings/`, with no record and no page of a run. |
@@ -97,7 +97,9 @@ unset variable never causes a failure.
 | `--init` | verify | off | Copy `templates/verification/` into the package and a writeup per `sim/*.cir` into `simulations/<deck>/`, never over a file that exists. `BRIEF.md` and `FACTS.md`, the helpers' brief and facts file, stay out. The new files fail the check until each `<!-- fill ... -->` is written. |
 | `--boards LIST` | procure, costs | `1,10` | Units to price, comma-separated; each gets its cheapest order and totals per supplier; for costs, a column each in the totals table, the largest also judging stock. |
 | `--step` | gates, export | off | Also export a STEP model. |
-| `--fab NAME` | gates, drc | none | Also check a fab's limits: a rule set in `rules/` (`sierra-circuits-web`, `jlcpcb-2layer`, `pcbway-standard`, `oshpark-2layer`) or a `.kicad_dru` path, laid over the project's own rules on a copy in `<out>/fab-<name>/`. A design file's `fab` field does the same for good (`rules/README.md`). |
+| `--fab NAME` | gates, drc, legend | none | Also check a fab's limits: a rule set in `rules/` (`sierra-circuits-web`, `jlcpcb-2layer`, `pcbway-standard`, `oshpark-2layer`) or a `.kicad_dru` path, laid over the project's own rules on a copy in `<out>/fab-<name>/`. A design file's `fab` field does the same for good (`rules/README.md`). |
+| `--place OUT` | legend | none | Write a copy of the board to OUT (`.kicad_pcb`), every designator placed round its part; the project is not changed. |
+| `--show` | legend | off | Put every hidden designator back on the silkscreen first, where its footprint has it. |
 | `--dsn FILE` | autoroute | `<project>/<name>.dsn`, then `build/route/<name>.dsn` | Specctra DSN exported from KiCad. Absent means the command skips. |
 | `--passes N` | autoroute, design, bench | `20` autoroute and bench, `60` design | FreeRouting optimisation passes. bench takes a whole number above 0. |
 | `--threads N` | autoroute, design, bench | engine default; bench `2` | FreeRouting thread count (`-mt`). bench takes a whole number above 0 and also holds the JVM to N processors. |
@@ -189,6 +191,7 @@ exited 1 on the board's own findings.
 | `gates` | yes | 4.01 s; 14.39 s | pass-rc-divider; Last Hit v0.16 |
 | `sim` | yes: its length is the decks' and the corners' | 0.43 s; 11.15 s | pass-rc-divider; Last Hit v0.16 (12 decks) |
 | `measure` | yes: it runs the project's sim, every deck and corner, as `sim` does | 0.38 s; 11.47 s | pass-rc-divider; Last Hit v0.16 (12 decks) |
+| `legend` | yes: it starts no engine, but judges every text against every other | 6.14 s; 14.95 s (`--show --place`); 0.26 s | a copy of basalt v0.3 (179 parts); the same; pass-legend-dense |
 | `export` | yes | 2.52 s; 4.98 s | pass-rc-divider; Last Hit v0.16 |
 | `render` | yes | 38.93 s | pass-rc-divider |
 | `pictures` | yes: it runs `render` for each board | not measured | |
@@ -382,6 +385,17 @@ names.
 | `kind` | a file of `rules/products/` without `.json` | none (required) | The product kind whose requirements `workcenter standards` lists (`vaping-device-lithium-cell`). |
 | `tests` | object, requirement: [IDs] | none | The IDs of the verification package whose PASS in `verification/traceability.md` holds a requirement. |
 
+## `rules/legend.json` (for `workcenter legend` and the DRC gate)
+
+The workcenter's own numbers for the legend; none is from a standard. The least height and stroke come from the fab's rule set in `rules/`.
+
+| Key | Type | Default | Use |
+|---|---|---|---|
+| `designator_reach_mm` | mm | 2.0 | A designator further than this from its own part's courtyard fails `nearest`. |
+| `placer_gap_mm` | mm | 0.15 | The gap the placer leaves between a designator and its part's courtyard. |
+| `size_step_mm` | mm | 0.1 | The placer's step down in text height, to the fab's least. |
+| `directions_per_side` | count | 2 | More directions on 1 side fail `direction`. |
+
 ## `rules/references/index.json` (for `workcenter references`)
 
 | Key | Type | Default | Use |
@@ -462,6 +476,8 @@ checkout) and `--json` stand before the listing's name.
 | `KICAD_FOOTPRINT_DIR` | path | `/usr/share/kicad/footprints` | Footprint libraries to read. |
 | `FREEROUTING_JAR` | path | `/opt/workcenters/ee/freerouting/freerouting.jar` | Used by `route()`. |
 | `Design.files` | dict | `{}` | Text files `workcenter design` writes beside the project, by path under it: a block's deck, `ratings.json`, `parts.csv`. A path that is absolute, climbs out with `..`, names the project folder, or names a file `write()` makes itself is refused before anything is written. |
+| `place_designators` | bool | `False` | `True`: the board is written with every designator placed round its part (tools/legend.py), the same on every run. |
+| `designator(ref, x, y, angle)` | method | none | Fixes 1 designator by hand; the placer leaves it, the DRC gate judges it. |
 
 ## `tools/stretch.py`
 

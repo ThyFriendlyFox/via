@@ -1580,3 +1580,9 @@ What happened: `tests/test_simneeds_cli.py` was written before the CI split land
 Cost: Found when the piece was landed on the trunk; the 3 files carry the marker now.
 Root cause: A branch made before a rule lands does not meet the rule until it is landed. Before landing, run the piece's engine test files once on the trunk's head.
 Process: P12
+
+## M259 — 2026-11-17 — A shell command that began with `cd`
+What happened: A shell command of the legend's builder began with `cd /` (a DRC run of the fixtures in the background), against the rule "Absolute paths, and no `cd`".
+Cost: None: it ran kicad-cli on scratch copies. A command run in the wrong folder would have run quietly there.
+Root cause: The habit of a terminal, where a folder stays chosen; here parallel commands share 1 shell. `env -C <tree>` or absolute paths are the fix, as every other command of the piece used.
+Process: P8

@@ -91,8 +91,10 @@ classes.
 
 1. Set `d.rules`, `d.net_classes`, `track_width`, `clearance`,
    `edge_clearance`, via sizes first, with the fab's limits in the README.
-2. Silkscreen text below 0.8 mm needs `min_text_height` and
-   `min_text_thickness` in `d.rules` or the DRC flags every label.
+2. Silkscreen text is at least the fab's least height and stroke (0.8 mm
+   and 0.0762 mm when the design names no fab): the DRC gate fails a
+   smaller one whatever `d.rules` says. Set `d.place_designators = True`
+   so the generator places each designator (the `legend` skill).
 3. Generate and run `workcenter erc .` and `workcenter drc .` on the
    unrouted board. Every error except unconnected items is a placement or
    rule mistake; fix it here, not after routing.

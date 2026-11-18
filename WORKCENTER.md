@@ -119,6 +119,7 @@ file: it needs nothing else.
 | `board-rules` | A routed board is to be held to a standard: each gap to the voltage between its nets and each track's width to its net's current, from `ratings.json`, with `board-rules.json` naming the pack; or to a fab's published limits. |
 | `standards` | A board is near release and someone asks what its product must meet: `product.json` names the kind, and `workcenter standards` lists each requirement of the kind's free documents as held by a gate, held by a named test, or not held. |
 | `references` | A rule cites a standard or a datasheet: get the copy it was written from with `workcenter references fetch`, judge a file a person downloaded with `workcenter references check`, and keep `workcenter references rules` passing. |
+| `legend` | A board's labels must be legible and not overlap: each designator placed by the generator, every text held by the DRC gate to the fab's least size and the legend's rules. |
 | `now` | Several agents work at once and a maintainer follows them on the project board: 1 work card per piece of work with `workcenter now`, its `**Status:**` line Todo, In progress or Done, in 1 GitHub issue's body rewritten at each landing, block and health gate, or on the `status` branch with `--write`. |
 | `lead` | Roadmap work is to be done by helpers: a worktree and a brief per piece, a build, an attack and a fix, a second attack for a piece called not sound, and `ee-agent-kit/lead/landed.py` to see which pieces have finished. |
 | `land` | Finished pieces are to go onto the work branch, and later onto the default branch: commits in a straight line, docs files applied, the health gate alone with the push behind VERIFY GREEN (`ee-agent-kit/lead/gate-and-push.sh`), a merge commit only at the owner's word. |
@@ -135,7 +136,7 @@ file: it needs nothing else.
 | Gate | Command | Pass condition | Runs before |
 |---|---|---|---|
 | ERC | `workcenter erc <project>` | 0 errors in the ERC report | layout |
-| DRC | `workcenter drc <project>` | 0 errors, 0 unconnected items, 0 parity errors; with the project's fab rules (`<name>.kicad_dru`) when its design names a fab | export |
+| DRC | `workcenter drc <project>` | 0 errors, 0 unconnected items, 0 parity errors, 0 legend failures; with the project's fab rules (`<name>.kicad_dru`) when its design names a fab | export |
 | SIM | `workcenter sim <project>` | every `sim/*.cir` runs clean with no analysis aborted, every `*.expect.json` bound holds as written and at every corner of `sim/corners.json`, every overlap `sim/frequency-plan.json` shows is answered, every part `sim/thermal.json` names keeps its junction under its pack's derated limit at every run, and every library model a deck includes is unchanged since its `sources.csv` row, and every I2C line with a pull-up and every regulator with a load stated in ratings.json has a deck that names it (a warning; a failure with --strict) | export |
 | EXPORT | `workcenter export <project>` | gerbers, drill, BOM, schematic PDF, placement file (each part at its place and rotation), an assembly page per side that holds a part (DNP parts hidden; each designator of that side drawn, read from the page's text), IPC-2581 produced, and each of the last 3 read back against the board; with `panel.json`, a KiKit panel of rows x cols boards in a closed outline at least their size, and its Gerbers | hand-off to fabrication |
 | ALL | `workcenter gates <project>` | the 4 gates above in order, none red, none skipped for a missing engine | a board is called done |
@@ -247,6 +248,10 @@ files do not change. The DRC line ends `board rules <pack>: N fail, M not
 judged`, and each failure names its document, clause, table and page. A
 net whose name a KiCad rule cannot hold is not judged. With `--strict`, a
 line not judged fails the gate. The `board-rules` skill is the procedure.
+
+Every board's legend is judged with the DRC (`tools/legend.py`): a text under the fab's least height or stroke, one on another text, a pad's mask opening, a hole or the edge, a designator under a part or by the wrong part, more than 2 directions a side. KiCad's own legend checks are failures whatever their severity. The least height and stroke are the fab's, from its rule set in `rules/`; a board that names no fab is held to the least of them (0.8 mm high, 0.0762 mm stroke). The summary ends `legend (<fab>): N fail, M not judged`; with `--strict`, a line not judged fails the gate. The `legend` skill is the procedure.
+
+Not a gate: `workcenter legend <project> [--fab NAME] [--place OUT] [--show] [--strict]` runs the same check from the board file, without KiCad. `--place OUT` writes a copy with every designator placed; the project is not changed. A design sets `place_designators = True` for `workcenter design` to place them on every write.
 
 `board-rules.json` also takes `layout`, a list of layout packs, with or
 without `pack` (`rules/board/README.md`, "Layout packs"):

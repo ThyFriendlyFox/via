@@ -394,18 +394,35 @@
           <figure class="proof" data-reveal>
             <div class="run">
 <pre data-run="example"><span class="prompt">$ </span><span class="cmd">workcenter gates examples/fire-alarm-communicator/v0.1</span>
-<span class="out">PASS   erc        0 errors, 0 warnings  [5.52s]
-PASS   drc        0 errors, 7 warnings (0 unconnected, 0 parity)  [7.18s]
+<span class="out">PASS   erc        0 errors, 0 warnings  [0.4s]
+FAIL   drc        0 errors, 7 warnings (0 unconnected, 0 parity), legend (no fab named: held to the least of the 4 fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer)): 18 fail, 0 not judged  [1.5s]
        - warning: silk_edge_clearance: Silkscreen clipped by board edge
        - warning: silk_edge_clearance: Silkscreen clipped by board edge
        - warning: silk_edge_clearance: Silkscreen clipped by board edge
        - warning: silk_edge_clearance: Silkscreen clipped by board edge
        - warning: silk_edge_clearance: Silkscreen clipped by board edge
-PASS   sim        8 decks, 573 corner runs, 0 failures  [1.56s]
-PASS   export     7/7 outputs, 24 gerber files, 3 files read back  [3.94s]</span>
-<span class="verdict">GREEN with 7 warnings: herald  report /home/user/via/examples/fire-alarm-communicator/v0.1/build/gates.json</span></pre>
+       - legend size: text "FIRE ALARM COMMUNICATOR" at (153.9, 128) mm on F.SilkS: height 0.75 mm, under the least 0.8 mm of no fab named: held to the least of the 4 fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer) (pcbway-standard: https://www.pcbway.com/capabilities.html, read 2026-11-17 (rules/pcbway-standard.kicad_dru))
+       - legend size: text "LTE-M + WI-FI   v0.1" at (153.9, 129.7) mm on F.SilkS: height 0.75 mm, under the least 0.8 mm of no fab named: held to the least of the 4 fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer) (pcbway-standard: https://www.pcbway.com/capabilities.html, read 2026-11-17 (rules/pcbway-standard.kicad_dru))
+       - legend size: text "AUX 18-28 V" at (111.75, 156.2) mm on B.SilkS: height 0.7 mm, under the least 0.8 mm of no fab named: held to the least of the 4 fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer) (pcbway-standard: https://www.pcbway.com/capabilities.html, read 2026-11-17 (rules/pcbway-standard.kicad_dru))
+       - legend size: text "DACT LINE" at (124.35, 156.2) mm on B.SilkS: height 0.7 mm, under the least 0.8 mm of no fab named: held to the least of the 4 fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer) (pcbway-standard: https://www.pcbway.com/capabilities.html, read 2026-11-17 (rules/pcbway-standard.kicad_dru))
+       - legend size: text "CLOSED = SHUT" at (136.95, 156.2) mm on B.SilkS: height 0.7 mm, under the least 0.8 mm of no fab named: held to the least of the 4 fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer) (pcbway-standard: https://www.pcbway.com/capabilities.html, read 2026-11-17 (rules/pcbway-standard.kicad_dru))
+       - legend size: text "4.7k EOL AT CONTACT" at (153.05, 156.2) mm on B.SilkS: height 0.7 mm, under the least 0.8 mm of no fab named: held to the least of the 4 fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer) (pcbway-standard: https://www.pcbway.com/capabilities.html, read 2026-11-17 (rules/pcbway-standard.kicad_dru))
+       - legend size: text "C-NO CLOSED = OK" at (170.9, 156.2) mm on B.SilkS: height 0.7 mm, under the least 0.8 mm of no fab named: held to the least of the 4 fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer) (pcbway-standard: https://www.pcbway.com/capabilities.html, read 2026-11-17 (rules/pcbway-standard.kicad_dru))
+       - legend overlap: text "TIP" at (122.6, 154.2) mm on F.SilkS: on text "RING" at (126.1, 154.2) mm by 0.343 x 1.15 mm (rules/legend.json)
+       - legend overlap: text "MADE WITH VIA: DESIGN.PY TO KICAD 10, ERC, DRC, SIM, EXPORT" at (142.2, 150.6) mm on B.SilkS: on via at (142.849, 150.432) by 0.3 x 0.3 mm (rules/legend.json)
+       - legend overlap: text "THE PANEL REPORTS AN EARTH FAULT. THE HOLES ARE BARE." at (142.2, 135.35) mm on B.SilkS: on via at (143.261, 134.74) by 0.3 x 0.065 mm (rules/legend.json)
+       - legend overlap: text "THE PANEL REPORTS AN EARTH FAULT. THE HOLES ARE BARE." at (142.2, 135.35) mm on B.SilkS: on via at (139.938, 135.271) by 0.3 x 0.3 mm (rules/legend.json)
+       - legend overlap: text "LTE ANTENNA ON THE U.FL BESIDE THE MODEM;" at (142.2, 138.85) mm on B.SilkS: on via at (157.339, 138.387) by 0.3 x 0.212 mm (rules/legend.json)
+       - legend overlap: text "WI-FI ANTENNA ON THE ESP32 MODULE'S OWN U.FL." at (142.2, 140.6) mm on B.SilkS: on via at (157.74, 140.508) by 0.3 x 0.3 mm (rules/legend.json)
+       - legend overlap: text "WI-FI ANTENNA ON THE ESP32 MODULE'S OWN U.FL." at (142.2, 140.6) mm on B.SilkS: on via at (141.013, 140.602) by 0.3 x 0.3 mm (rules/legend.json)
+       - legend overlap: text "WI-FI ANTENNA ON THE ESP32 MODULE'S OWN U.FL." at (142.2, 140.6) mm on B.SilkS: on via at (148.962, 140.513) by 0.3 x 0.3 mm (rules/legend.json)
+       - legend overlap: text "WI-FI ANTENNA ON THE ESP32 MODULE'S OWN U.FL." at (142.2, 140.6) mm on B.SilkS: on via at (154.602, 140.432) by 0.3 x 0.3 mm (rules/legend.json)
+       - legend overlap: text "HERALD" at (142.2, 117.2) mm on B.SilkS: on via at (151.331, 118.082) by 0.3 x 0.3 mm (rules/legend.json)
+       - legend overlap: text "HERALD" at (142.2, 117.2) mm on B.SilkS: on via at (151.594, 115.448) by 0.3 x 0.148 mm (rules/legend.json)
+RATINGS not asked for: no ratings.json beside the schematic</span>
+<span class="verdict">RED: herald  report /home/user/via/examples/fire-alarm-communicator/v0.1/build/gates.json</span></pre>
             </div>
-            <figcaption>Via's four checks on Herald, exactly as the terminal printed them. The seven warnings flag silkscreen outlines that meet the board edge, where the terminal blocks and the USB-C connector face outward. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/fire-alarm-communicator/v0.1/README.md">The project README</a> covers the specification, the pin plan, every part and the open items, and <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/fire-alarm-communicator/v0.1/design.py">the design file</a> is the board itself.</figcaption>
+            <figcaption>Via's checks on Herald, exactly as the terminal printed them. The DRC check now fails Herald on its own printed text: 7 notes are under the 0.8 mm least height, and 11 sit on another text or on a via. Herald's own agents fix the text and run the checks again. The seven warnings flag silkscreen outlines that meet the board edge, where the terminal blocks and the USB-C connector face outward. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/fire-alarm-communicator/v0.1/README.md">The project README</a> covers the specification, the pin plan, every part and the open items, and <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/fire-alarm-communicator/v0.1/design.py">the design file</a> is the board itself.</figcaption>
           </figure>
         </div>
       </section>
@@ -618,17 +635,19 @@ DONE WHEN  the last line starts with GREEN</span></pre>
             <figure data-reveal>
               <div class="run">
 <pre data-run="gates"><span class="prompt">$ </span><span class="cmd">workcenter gates tests/boards/pass-rc-divider</span>
-<span class="out">PASS   erc        0 errors, 0 warnings  [0.27s]
-PASS   drc        0 errors, 0 warnings (0 unconnected, 0 parity)  [0.59s]
+<span class="out">PASS   erc        0 errors, 0 warnings  [0.3s]
+PASS   drc        0 errors, 0 warnings (0 unconnected, 0 parity), legend (no fab named: held to the least of the 4 fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer)): 0 fail, 0 not judged  [0.68s]
 PASS   sim        1 decks, 46 corner runs, 0 failures  [0.16s]
-PASS   export     7/7 outputs, 22 gerber files, 3 files read back  [1.87s]</span>
+PASS   export     7/7 outputs, 22 gerber files, 3 files read back  [2.18s]
+RATINGS not asked for: no ratings.json beside the schematic</span>
 <span class="verdict">GREEN: rc_divider  report tests/boards/pass-rc-divider/build/gates.json</span>
 
 <span class="prompt">$ </span><span class="cmd">workcenter gates tests/boards/fail-drc-clearance</span>
-<span class="out">PASS   erc        0 errors, 0 warnings  [0.27s]
-FAIL   drc        1 errors, 1 warnings (0 unconnected, 0 parity)  [0.63s]
+<span class="out">PASS   erc        0 errors, 0 warnings  [0.3s]
+FAIL   drc        1 errors, 1 warnings (0 unconnected, 0 parity), legend (no fab named: held to the least of the 4 fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer)): 0 fail, 0 not judged  [0.83s]
        - error: clearance: Clearance violation ( clearance 0.2000 mm; actual 0.0500 mm)
-       - warning: track_dangling: Track has unconnected end</span>
+       - warning: track_dangling: Track has unconnected end
+RATINGS not asked for: no ratings.json beside the schematic</span>
 <span class="verdict">RED: rc_divider  report tests/boards/fail-drc-clearance/build/gates.json</span></pre>
               </div>
               <figcaption>Two test circuits from this repository, as the terminal printed them. The second has a clearance error on purpose.</figcaption>

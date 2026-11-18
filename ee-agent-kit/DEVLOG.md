@@ -39,6 +39,12 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-18 — A board's printed text that can be read
+
+The owner asked on 2026-11-17 how to make the labels printed on the boards legible and not overlap. The DRC gate now judges every silkscreen text from the board file, and the generator places designators itself when a design asks. 2 reviews called it not sound; their 19 findings are fixed with tests. The owner decided that a label fault fails the gate at once. On scratch copies of the 17 example boards of the latest versions, 11 now fail on their own text, which the placer does not move: notes on vias, letters set close, text under 0.8 mm. Every example hides its designators; put back and placed, 831 went round their parts or to the Fab layer (186), with no failure of their own.
+
+Evidence: `tests/test_legend.py` (110 tests); landing branch `wip/land-legend`.
+
 ## 2026-11-18 — A board asks for the decks its schematic implies
 
 The medium user's 400 kHz I2C board was GREEN under `--strict` with no deck. Now the SIM gate reads the schematic's netlist and asks each I2C line with a pull-up, and each regulator with a load in `ratings.json`, for a deck; `next` names the template to copy. The review found the first cut judged a deck by its `* deck:` line alone: a deck that ran 4.7k passed a board at 47k. The gate now holds the deck's pull-ups to the schematic's by reference and value. On the trunk the check met the circuit blocks: the I2C block's deck now says which lines it answers, and the buck block's fixtures carry a 4th warning, since no deck steps its load. 11 example boards and Last Hit's display are asked for an I2C deck.
