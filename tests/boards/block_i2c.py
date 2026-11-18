@@ -15,6 +15,7 @@ from pathlib import Path
 import blocks
 import kicadgen
 
+CITES = {"ti-scps197d": "section 8.6.1, table 2, page 19: the address pins"}
 HERE = Path(__file__).resolve().parent
 HEADER_2 = "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical"
 R_0603 = "Resistor_SMD:R_0603_1608Metric"
