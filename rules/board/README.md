@@ -130,16 +130,21 @@ layer:
   with no plating, plus the board's thickness; and never less than the way along 1 face between the 2
   outlines. Through air: sqrt((the 2 gaps)^2 + thickness^2), and never less than the straight gap in 3
   dimensions. Otherwise `not judged`: `creepage HV on F.Cu to GND on B.Cu at (109, 100.3): at least
-  2.2 mm round the board's edge or through a hole, 3 mm asked at 400 V`. Copper with no net within the
-  pack's distance of either net makes the pair `not judged` too. A shape on Edge.Cuts that is not read
-  (a curve, a footprint's line) leaves only the thickness.
+  2.2 mm round the board's edge or through a hole, 3 mm asked at 400 V`. Each gap may cross copper with
+  no net. A plated hole or a via from F.Cu to B.Cu with no net, or of a net with no voltage, joins the 2
+  faces: its barrel is a conductor, so a way through it is the gap to its ring on 1 face plus the gap
+  from its ring on the other, and the thickness counts nothing: `creepage HV on F.Cu to GND on B.Cu at
+  (110.85, 107.5): at least 1.261 mm through a via with no net at (112.5, 107.5), 3 mm asked at 400
+  V`. A shape on Edge.Cuts that is not read (a curve, a footprint's line) leaves only the thickness.
 - **Clearance** is the straight gap between the 2 nets' copper.
 - **Creepage** is the straight gap, unless a slot stands on it. A slot is an inner cut of Edge.Cuts with
   4 corners, convex. The way then goes round the slot's corners: the shortest way on a graph of the
   slots' corners and the copper's corners and nearest points. A slot narrower than the pack's least
   width is crossed as if it were not there. A pack with no least width prints the pair `not judged` when
-  only a slot makes it pass. Any other inner cut near the pair (a circle, an arc, an outline that does
-  not close) makes it `not judged`.
+  only a slot makes it pass. Any other inner cut (a circle, an arc, an outline that does not close, a
+  footprint's shape on Edge.Cuts) is held by a box round all of it, a circle or an arc by its whole
+  circle; it makes the pair `not judged` only when its box lies within the pack's distance + 1 mm of
+  both nets, since a cut lengthens only a way it stands on. Farther off, the straight gap stands.
 - **Between rows.** A table of ranges (`"between_rows": "range"`) takes the row whose range holds the
   voltage; at the boundary of 2 rows, the stricter. A table of points (`"points"`) passes a gap at or over
   the next row up and fails a gap under the row below; a gap between the 2 is `not judged`. Under the
@@ -150,6 +155,14 @@ layer:
   mm wide, at least 1 mm to lengthen the way (pollution degree 2)`.
 - **Inner layers** have no surface: 1 `not judged` line for each inner layer that holds copper of 2 nets
   with a voltage between them.
+- **Through the laminate.** 2 nets with a voltage between them on 2 different layers (other than F.Cu
+  and B.Cu, which are held round the edge and through the holes), whose copper lies within the pack's
+  distance of each other side by side, overlapping included, are parted by solid insulation, which
+  neither pack judges: 1 `not judged` line for the 2 layers, with the count of pairs and the first:
+  `creepage between F.Cu and In1.Cu: 1 pair of nets with a voltage between them within the pack's
+  distance of each other through the laminate, solid insulation that no table here judges (HV on In1.Cu
+  to GND on F.Cu at (114.15, 106.65))`. A board with a plane under nets of another voltage has this
+  line for each 2 layers concerned.
 - **A pack of a project's own** is refused, with its file and place, when a table of ranges does not
   start at 0 V, a condition's value holds a space, `slot.least_mm` is not an object, or a pack with no
   clearance table has no first `not_judged` line to say why.
@@ -176,8 +189,11 @@ The DRC line names the pack: `board rules mil-hdbk-454c-g69: 1 fail, 0 not judge
      at this voltage. Move the copper to Y mm, or find a document with a row at this voltage.
    - `not judged ... the pack states no least width for a slot`: only a slot makes the way long enough,
      and the document does not say a slot counts. Move the copper apart.
-   - `not judged creepage on In1.Cu`: no pack here judges copper inside the laminate. Keep the 2 nets on
-     the outer layers, or judge them by another document.
+   - `not judged creepage on In1.Cu` or `creepage between F.Cu and In1.Cu`: no pack here judges copper
+     inside the laminate or the insulation between 2 layers. Keep the 2 nets apart, or judge them by
+     another document.
+   - `not judged creepage ... through a via with no net` (or a plated hole): give the barrel a net, or
+     move it from the 2 nets' copper until the 2 gaps reach the distance.
    - `not judged creepage A on F.Cu to B on B.Cu ... round the board's edge or through a hole`: move
      the copper of either net away from the edge or the hole until the sum of the 2 gaps and the
      thickness reaches the distance.

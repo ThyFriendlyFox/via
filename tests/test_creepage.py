@@ -155,6 +155,51 @@ def test_a_round_cut_near_the_pair_is_not_judged():
     assert "a circle on Edge.Cuts at (112.5, 107.5)" in got.why
 
 
+def test_a_round_cut_far_from_a_failing_pair_leaves_the_fail():
+    """The second review's board M1: 2 mm between HV and GND (centres 3.7 mm apart), 3 mm asked at 400
+    V, and a 3.2 mm round hole on Edge.Cuts at (122, 112), 10.2 mm and more from both pads. A cut only
+    lengthens a way it stands on, and a way under 3 mm + 1 mm stays within 4 mm of both nets: the
+    straight 2 mm stands, and fails."""
+    text = (
+        HEAD
+        + smd("HVPAD", "110 107.5", "1.7 1.7", "HV")
+        + smd("GNDPAD", "113.7 107.5", "1.7 1.7", "GND")
+        + '  (gr_circle (center 122 112) (end 123.6 112) (layer "Edge.Cuts"))\n'
+        + ")\n"
+    )
+    cu = creepage.read_copper(text)
+    assert [c.what for c in cu.cuts] == ["a circle on Edge.Cuts at (122, 112)"]
+    assert [f.line.split(":")[0] for f in judged(text)] == [
+        "fail creepage HV to GND on F.Cu at (110.85, 106.65)"
+    ]
+    near = text.replace("(center 122 112) (end 123.6 112)", "(center 111.85 111) (end 113.45 111)")
+    assert [f.status for f in judged(near)] == ["not judged"]
+    # The same hole drawn in a footprint turned 90 degrees, as a mounting hole's footprint draws it.
+    hole = (
+        '  (footprint "x:MH" (layer "F.Cu") (at 122 112 90)\n'
+        '    (fp_circle (center 0 0) (end 1.6 0) (layer "Edge.Cuts")))\n'
+    )
+    in_fp = text.replace('  (gr_circle (center 122 112) (end 123.6 112) (layer "Edge.Cuts"))\n', hole)
+    cut = creepage.read_copper(in_fp).cuts[0]
+    assert cut.polygon is None and cut.box == pytest.approx((120.4, 110.4, 123.6, 113.6), abs=1e-9)
+    assert [f.status for f in judged(in_fp)] == ["fail"]
+
+
+def test_an_unread_cut_with_a_box_counts_only_near_both_nets():
+    """A cut this module does not measure, with a box round it: near only when the box is within reach of
+    both nets. Far (box from x 130): the 2 mm straight gap stands. Within reach (box over the gap): not
+    judged. With no box: near, as before."""
+    far = creepage.Cut(None, "a curve on Edge.Cuts", (130.0, 100.0, 131.0, 101.0))
+    over = creepage.Cut(None, "a curve on Edge.Cuts", (111.0, 109.0, 113.0, 110.0))
+    cu = copper(3.7)
+    cu.cuts = [far]
+    assert creepage.measure(cu, "F.Cu", "HV", "GND", 4.0, None).creepage == pytest.approx(2.0, abs=1e-9)
+    for cut in (over, creepage.Cut(None, "a circle on Edge.Cuts")):
+        cu.cuts = [cut]
+        got = creepage.measure(cu, "F.Cu", "HV", "GND", 4.0, None)
+        assert got.creepage is None and cut.what in got.why
+
+
 def test_a_track_is_drawn_outside_its_copper():
     """A track 0.5 mm wide from (100, 100) to (104, 100) and a pad 2 mm right of its end: the round end
     is drawn as a polygon round the circle, never inside it, so the gap read is at most the true 2 mm
@@ -265,6 +310,49 @@ def test_an_inner_layer_with_2_nets_is_not_judged():
         "not judged creepage on In1.Cu: 1 pair of nets with a voltage between them inside the laminate, "
         "where there is no surface"
     ]
+
+
+LAMINATE = (
+    "not judged creepage between {} and {}: 1 pair of nets with a voltage between them within the pack's "
+    "distance of each other through the laminate, solid insulation that no table here judges ({})"
+)
+
+
+def test_copper_over_copper_on_2_layers_is_not_judged():
+    """The second review's case 2: on 4 layers, an HV zone on In1.Cu from (110, 100) to (120, 115) lies
+    right under GND's pad on F.Cu at (115, 107.5); HV comes out by a via 0.8 mm across at (135, 125). The
+    way between them runs through the laminate, which neither pack judges: 1 line for the 2 layers.
+    HV's via and GND's pad on F.Cu stand 18 mm and more apart: no line."""
+    cu = creepage.Copper(
+        layers=["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"],
+        shapes={
+            "F.Cu": [("GND", square(115, 107.5)), ("HV", creepage.circle((135, 125), 0.4))],
+            "In1.Cu": [("HV", rect(110, 100, 120, 115))],
+        },
+        cuts=[],
+    )
+    found = creepage.findings(cu, SPANS, creepage.read_pack(MIL), MIL_AI)
+    assert [f.line for f in found] == [
+        LAMINATE.format("F.Cu", "In1.Cu", "HV on In1.Cu to GND on F.Cu at (114.15, 106.65)")
+    ]
+
+
+def test_copper_over_copper_on_2_inner_layers_is_not_judged():
+    """The second review's case Z1: an HV zone on In1.Cu over a GND zone on In2.Cu, the same square. 1
+    line for In1.Cu and In2.Cu. A GND zone on In2.Cu 10 mm aside (from x 130) is out of reach: no line."""
+    zone = rect(110, 110, 120, 120)
+    cu = creepage.Copper(
+        layers=["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"],
+        shapes={"In1.Cu": [("HV", zone)], "In2.Cu": [("GND", zone)]},
+        cuts=[],
+    )
+    found = creepage.findings(cu, SPANS, creepage.read_pack(MIL), MIL_AI)
+    assert [f.line for f in found] == [
+        LAMINATE.format("In1.Cu", "In2.Cu", "HV on In1.Cu to GND on In2.Cu at (110, 110)")
+    ]
+    cu.shapes["In2.Cu"] = [("GND", rect(130, 110, 140, 120))]
+    cu._by.clear()
+    assert creepage.findings(cu, SPANS, creepage.read_pack(MIL), MIL_AI) == []
 
 
 # ---------------------------------------------------------------- the board file
@@ -406,6 +494,69 @@ def test_copper_with_no_net_shortens_the_way_to_the_edge():
         "edge or through a hole, 3 mm asked at 400 V: this check does not measure a way between the 2 "
         "faces [MIL-HDBK-454C: guideline 69, 4.1 page 69-1; table 69-I, leakage distances, page 69-2]"
     ]
+
+
+def _faces_lines(text: str) -> list[str]:
+    return [f.line for f in judged(text) if " on F.Cu to GND on B.Cu" in f.text]
+
+
+BARREL = (
+    HEAD
+    + smd("HVPAD", "110 107.5", "1.7 1.7", "HV")
+    + smd("GNDPAD", "115 107.5", "1.7 1.7", "GND", "B.Cu")
+    + "{}"
+    + ")\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("joint", "what"),
+    [
+        ('  (via (at 112.5 107.5) (size 2) (drill 1) (layers "F.Cu" "B.Cu"))\n', "a via with no net"),
+        (
+            '  (footprint "x:TP" (layer "F.Cu") (at 112.5 107.5)\n'
+            '    (pad "" thru_hole circle (at 0 0) (size 2 2) (drill 1) (layers "*.Cu" "*.Mask")))\n',
+            "a plated hole with no net",
+        ),
+    ],
+)
+def test_a_plated_hole_with_no_net_joins_the_2_faces(joint, what):
+    """The second review's board F1: HV's pad on F.Cu to x 110.85, GND's on B.Cu from x 114.15, and a
+    plated barrel with no net, 2 mm across at x 112.5 (111.5 to 113.5), between them. Along the
+    surface: 111.5 - 110.85 = 0.65 mm on F.Cu, the barrel (a conductor), 114.15 - 113.5 = 0.65 mm on
+    B.Cu: 1.3 mm, under the 3 mm of leakage; through air 1.3 mm too, under the 1.5 mm of clearance
+    (table 69-I, page 69-2). The ring (radius 1) is drawn outside its circle on each face, so the
+    bound read lies from 1.3 - 2 x 1 x (1 / cos(pi / 16) - 1) = 1.2608 to 1.3 mm. Both lines are `not
+    judged`, never nothing."""
+    lines = _faces_lines(BARREL.format(joint))
+    assert [line.split(" HV")[0] for line in lines] == ["not judged clearance", "not judged creepage"], lines
+    for line in lines:
+        assert f"through {what} at (112.5, 107.5)" in line, line
+        read = float(line.split("at least ")[1].split(" mm")[0])
+        assert 1.2608 - 0.001 <= read <= 1.3, line
+
+
+def test_a_plated_mounting_hole_with_no_net_joins_the_2_faces():
+    """The common form: HV's pad on F.Cu to x 106.85, an M3 mounting hole with no net (pad 6.4, drill
+    3.2) at x 112 (ring from 108.8 to 115.2) and a GND pour on B.Cu that keeps 0.5 mm from the ring
+    (from x 115.7). 108.8 - 106.85 = 1.95 mm + 0.5 mm = 2.45 mm along the surface, under 3 mm: `not
+    judged`. Through air 2.45 mm, over the 1.5 mm of clearance: no line."""
+    ring = [(108.3, 107.5), (108.3, 111.2), (115.7, 111.2), (115.7, 103.8), (108.3, 103.8), (108.3, 107.5)]
+    pour = [(101, 101), (124, 101), (124, 114), (101, 114), (101, 107.5), *ring, (101, 107.5)]
+    pts = " ".join(f"(xy {x} {y})" for x, y in pour)
+    text = (
+        HEAD
+        + smd("HVPAD", "106 107.5", "1.7 1.7", "HV")
+        + '  (footprint "x:MH" (layer "F.Cu") (at 112 107.5)\n'
+        + '    (pad "1" thru_hole circle (at 0 0) (size 6.4 6.4) (drill 3.2) (layers "*.Cu" "*.Mask")))\n'
+        + f'  (zone (net "GND") (layer "B.Cu") (filled_polygon (layer "B.Cu") (pts {pts})))\n'
+        + ")\n"
+    )
+    lines = _faces_lines(text)
+    assert len(lines) == 1 and lines[0].startswith("not judged creepage HV on F.Cu to GND on B.Cu"), lines
+    assert "through a plated hole with no net at (112, 107.5)" in lines[0]
+    read = float(lines[0].split("at least ")[1].split(" mm")[0])
+    assert 2.45 - 2 * 3.2 * (1 / math.cos(math.pi / 16) - 1) - 0.001 <= read <= 2.45
 
 
 FLOATING = (
