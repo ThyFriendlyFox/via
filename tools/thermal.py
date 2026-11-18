@@ -64,9 +64,10 @@ METHOD = {
         "ECSS-Q-ST-30-11C Rev.2, clause 3.2, page 12)"
     ),
     "theta_jb": (
-        "TJ = TB + theta_jb x power puts all of the power through the board, which takes 75 % to 95 % of "
-        "it, so the junction it gives is above the real one (SPRA953D, section 4, figure 4-1, page 10; "
-        "section 5.1, page 11)"
+        "TJ = TB + theta_jb x power; SPRA953D calls theta_jb useful for a first-pass estimation only, as "
+        "it takes the board under the part as 1 uniform temperature, which is erroneous, and gives no "
+        "bound on the junction it gives (section 4, page 10); psi_jb gives the junction from the board's "
+        "temperature (section 5.1, equation 9, page 11)"
     ),
     "psi_jt": (
         "TJ = TC + psi_jt x power, TC the package top's temperature (SPRA953D, section 3, equation 8, page 8)"
@@ -157,6 +158,7 @@ def _stated(where: str, raw: object) -> Stated:
             "temperature at that ambient, in C"
         )
     celsius: dict[float, float] = {}
+    keys: dict[float, str] = {}
     for at, value in temps.items():
         try:
             ambient = float(at)
@@ -164,6 +166,12 @@ def _stated(where: str, raw: object) -> Stated:
             ambient = math.nan
         if not math.isfinite(ambient):
             raise ratings.Refusal(f"{where}: celsius: `{at}` is no ambient in C")
+        same = [k for a, k in keys.items() if abs(a - ambient) <= TEMP_MATCH]
+        if same:
+            raise ratings.Refusal(
+                f"{where}: celsius: `{same[0]}` and `{at}` are the same ambient: state it once"
+            )
+        keys[ambient] = at
         celsius[ambient] = ratings._number(f"{where}: celsius: {at}", value, -273.15)
     return Stated(figure, celsius, ratings._text(f"{where}: source", data["source"]))
 
@@ -280,14 +288,24 @@ def assumes(figure: str, term: dict) -> str:
 
 def _how(part: Part, term: dict, ambient: float) -> tuple[str, float] | None:
     """The figure a run's junction comes from and the temperature it starts from: the project's stated
-    one at that ambient, else RthetaJA from the ambient, else None."""
+    one at that ambient, else RthetaJA from the ambient, else None. A stated temperature under its
+    ambient is set aside (`_under`)."""
     if part.stated:
         for at, temp in part.stated.celsius.items():
-            if abs(at - ambient) <= TEMP_MATCH:
+            if abs(at - ambient) <= TEMP_MATCH and temp >= at:
                 return part.stated.figure, temp
     if "theta_ja" in term:
         return "theta_ja", ambient
     return None
+
+
+def _under(part: Part) -> dict[float, float]:
+    """The stated temperatures under their own ambient, by ambient. Heat flows from the junction through
+    the case and the board to the air (SPRA953D, section 4, figure 4-1, page 10), so a part that
+    dissipates does not hold its case or board under the air: such a statement is set aside."""
+    if not part.stated:
+        return {}
+    return {at: temp for at, temp in part.stated.celsius.items() if temp < at}
 
 
 def _more(count: int) -> str:
@@ -387,11 +405,21 @@ def judge(
                 f"its {STATED[part.stated.figure]} temperature at {celsius(list(part.stated.celsius))} "
                 "ambient only, and its facts give no theta_ja"
             )
+        under = _under(part)
+        if under:
+            said_under = " and ".join(f"{temp:g} C at {at:g} C ambient" for at, temp in under.items())
+            not_judged.append(
+                f"{name} not judged from its stated {STATED[part.stated.figure]} temperature: "
+                f"sim/thermal.json states {said_under}, under the air; a part's heat flows from its junction "
+                "through its case and board to the air (SPRA953D, section 4, figure 4-1, page 10), so it is "
+                "set aside"
+            )
         if part.stated:
             idle = [
                 t
                 for t in part.stated.celsius
-                if not any(r.get("from") is not None and abs(r["ambient"] - t) <= TEMP_MATCH for r in rows)
+                if t not in under
+                and not any(r.get("from") is not None and abs(r["ambient"] - t) <= TEMP_MATCH for r in rows)
             ]
             if idle:
                 not_judged.append(
@@ -427,10 +455,10 @@ def judge(
             "worst": worst,
             "runs": len(rows),
             # Held only when every run and every corner was judged, each on a figure whose board the
-            # facts name; None when some were not.
+            # facts name, and no stated temperature was set aside; None when some were not.
             "held": False
             if over
-            else (None if unknown or part.deck in unrun or unstated or unboarded else True),
+            else (None if unknown or part.deck in unrun or unstated or unboarded or under else True),
         }
         if over:
             figure = worst["figure"]

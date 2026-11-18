@@ -139,6 +139,14 @@ BASE = {"junction_max": 150, "theta_ja": 100, "page": 2}
         ),
         ({"theta_ja": "2s2p", "page": 0}, "part.json: thermal: boards: page: a page number is asked"),
         ({"rja": "2s2p", "page": 3}, "part.json: thermal: boards: `rja` is no key here"),
+        (
+            {"theta_ja": ["2s2p"], "page": 3},
+            "part.json: thermal: boards: theta_ja: `['2s2p']` is no JEDEC board the workcenter knows",
+        ),
+        (
+            {"theta_ja": {"a": 1}, "page": 3},
+            "part.json: thermal: boards: theta_ja: `{'a': 1}` is no JEDEC board the workcenter knows",
+        ),
     ],
 )
 def test_a_boards_key_wrong_in_1_place_is_refused_with_the_place(boards, message):
@@ -232,6 +240,14 @@ def test_a_plan_s_stated_temperature_is_read(tmp_path):
             "thermal.json: parts: U1: from: celsius: 60: '100' is no number",
         ),
         ("psi_jb", "thermal.json: parts: U1: from: an object is asked"),
+        (
+            {"figure": "psi_jb", "celsius": {"85": 90, "85.0": 20}, "source": "s"},
+            "thermal.json: parts: U1: from: celsius: `85` and `85.0` are the same ambient: state it once",
+        ),
+        (
+            {"figure": "psi_jb", "celsius": {"85": 90, "85.005": 20}, "source": "s"},
+            "thermal.json: parts: U1: from: celsius: `85` and `85.005` are the same ambient: state it once",
+        ),
     ],
 )
 def test_a_stated_temperature_wrong_in_1_place_is_refused_with_the_place(tmp_path, stated, problem):
@@ -291,6 +307,82 @@ def test_a_stated_temperature_at_an_ambient_no_run_stands_at_is_named(tmp_path):
         "no run of ldo stands"
     ]
     assert judged["parts"]["U1"]["worst"]["junction"] == pytest.approx(99.869, abs=0.001)
+
+
+def test_a_stated_temperature_is_taken_only_within_0_01_c_of_the_run_s_ambient(tmp_path):
+    """simcorners.TEMP_MATCH is 0.01 C. A run at 60.5 C does not stand at the stated 60 C: theta_ja
+    judges it, 60.5 + 231.1 x 0.17252 = 60.5 + 39.869 = 100.369 C, inside 110 C, and the stated board
+    is named as used nowhere. A run at 60.005 C does: 100 + 63.8 x 0.17252 = 111.007 C, over 110 C."""
+    plan = plan_of(tmp_path, {"U1": {**U1, "from": BOARD_AT_60}})
+    judged = thermal.judge(plan, runs_at(("60.5 C", 60.5, 0.17252)), FACTS_LIST, ECSS)
+    assert judged["failures"] == []
+    assert judged["not_judged"] == [
+        "thermal: U1 (TLV75533PDBVR): sim/thermal.json states its board temperature at 60 C ambient, where "
+        "no run of ldo stands"
+    ]
+    worst = judged["parts"]["U1"]["worst"]
+    assert worst["figure"] == "theta_ja" and worst["junction"] == pytest.approx(100.369372)
+    judged = thermal.judge(plan, runs_at(("60 C", 60.005, 0.17252)), FACTS_LIST, ECSS)
+    worst = judged["parts"]["U1"]["worst"]
+    assert worst["figure"] == "psi_jb" and worst["junction"] == pytest.approx(111.006776)
+    assert judged["not_judged"] == [] and len(judged["failures"]) == 1
+
+
+BELOW = (
+    "a part's heat flows from its junction through its case and board to the air (SPRA953D, section 4, "
+    "figure 4-1, page 10), so it is set aside"
+)
+
+
+def test_a_stated_board_under_its_run_s_ambient_is_set_aside_and_theta_ja_judges_the_run(tmp_path):
+    """fail-sim-thermal with a board stated at 20 C at 85 C ambient: 20 + 63.8 x 0.17296 = 31.03 C
+    would hold the part. The board is set aside, and theta_ja gives 85 + 231.1 x 0.17296 = 124.97 C,
+    over 110 C, as with nothing stated."""
+    cold = {"figure": "psi_jb", "celsius": {"85": 20}, "source": "a board under the air"}
+    plan = plan_of(tmp_path, {"U1": {**U1, "from": cold}})
+    judged = thermal.judge(
+        plan, runs_at(("as written", 25.0, 0.1702), ("85 C", 85.0, 0.17296)), FACTS_LIST, ECSS
+    )
+    assert judged["failures"] == [
+        "thermal: U1 (TLV75533PDBVR) at 85 C ambient: junction 124.97 C, over 110 C (85 C): 85 C + 231.1 C/W "
+        f"x 0.17296 W of ldo.p_u1, theta_ja and junction_max of {TLV755}, p 4 and 5, theta_ja on the high-k "
+        f"2s2p board of JESD 51-7 (p 5); {LIMIT}"
+    ]
+    assert judged["not_judged"] == [
+        "thermal: U1 (TLV75533PDBVR) not judged from its stated board temperature: sim/thermal.json states "
+        f"20 C at 85 C ambient, under the air; {BELOW}"
+    ]
+    assert judged["parts"]["U1"]["held"] is False
+
+
+def test_a_part_with_a_stated_temperature_set_aside_is_never_held(tmp_path):
+    """A board stated at 50 C at 60 C ambient is set aside; theta_ja gives 60 + 231.1 x 0.1 = 83.11 C,
+    inside 110 C, and the part is still not held."""
+    cold = {"figure": "psi_jb", "celsius": {"60": 50}, "source": "s"}
+    plan = plan_of(tmp_path, {"U1": {**U1, "from": cold}})
+    judged = thermal.judge(plan, runs_at(("60 C", 60.0, 0.1)), FACTS_LIST, ECSS)
+    assert judged["failures"] == []
+    assert judged["not_judged"] == [
+        "thermal: U1 (TLV75533PDBVR) not judged from its stated board temperature: sim/thermal.json states "
+        f"50 C at 60 C ambient, under the air; {BELOW}"
+    ]
+    part = judged["parts"]["U1"]
+    assert part["held"] is None and part["worst"]["figure"] == "theta_ja"
+    assert part["worst"]["junction"] == pytest.approx(83.11)
+
+
+def test_theta_jb_claims_no_bound_spra953d_does_not_give():
+    """SPRA953D, section 4, page 10: RthetaJB is 'useful for a first-pass estimation', from a board
+    taken as 1 uniform node, 'which is erroneous'; no bound is given. SBVS320D, section 5.4, page 5:
+    RthetaJB 64.4 C/W on the 2s2p board."""
+    term = {f.name: f for f in FACTS_LIST}["TLV75533PDBVR"].data["thermal"]
+    assert thermal.assumes("theta_jb", term) == (
+        "theta_jb 64.4 C/W was measured on the high-k 2s2p board of JESD 51-7 (p 5): TJ = TB + theta_jb x "
+        "power; SPRA953D calls theta_jb useful for a first-pass estimation only, as it takes the board "
+        "under the part as 1 uniform temperature, which is erroneous, and gives no bound on the junction "
+        "it gives (section 4, page 10); psi_jb gives the junction from the board's temperature (section "
+        "5.1, equation 9, page 11)"
+    )
 
 
 def test_a_stated_case_temperature_says_its_junction_is_high(tmp_path):
@@ -395,11 +487,21 @@ def test_a_part_names_what_rests_on_1_reading(tmp_path):
 
 
 @pytest.mark.parametrize(
-    ("own", "left"),
-    [([-20, 60], [85]), ([-40, 85], []), ([25], [-20, 85]), ([-20, 40, 85], []), ([], [])],
+    ("own", "file", "left"),
+    [
+        ([-20, 60], [-20, 85], [85]),
+        ([-40, 85], [-20, 85], [-20]),
+        ([25], [-20, 85], [-20, 85]),
+        ([-20, 40, 85], [-20, 85], []),
+        ([], [-20, 85], []),
+        # an inner corner of the file the block does not name never runs either
+        ([-20, 60], [-20, 40, 60], [40]),
+        # within 0.01 C (simcorners.TEMP_MATCH) a temperature is the same corner
+        ([-20, 60], [-20.005, 60.005], []),
+    ],
 )
-def test_the_temperatures_a_deck_s_own_block_leaves_out(own, left):
-    assert simcorners.left_out(own, [-20, 85]) == left
+def test_the_temperatures_a_deck_s_own_block_leaves_out(own, file, left):
+    assert simcorners.left_out(own, file) == left
 
 
 def gate(*args: object) -> tuple[int, dict, str]:

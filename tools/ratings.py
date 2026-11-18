@@ -1462,7 +1462,7 @@ def _facts(where: str, raw: object) -> Facts:
             if len(boards) == 1:
                 raise Refusal(f"{said}: 1 figure at least is asked, of {', '.join(FIGURES)}")
             for key in (k for k in FIGURES if k in boards):
-                if boards[key] not in BOARDS:
+                if not isinstance(boards[key], str) or boards[key] not in BOARDS:
                     raise Refusal(
                         f"{said}: {key}: `{boards[key]}` is no JEDEC board the workcenter knows; they are "
                         f"{', '.join(BOARDS)}"

@@ -809,11 +809,12 @@ def other_temperatures(temperatures: list[float], written_at: float) -> list[flo
 
 
 def left_out(own: list[float], file: list[float]) -> list[float]:
-    """The file's temperatures outside the span of a deck's own block: the corners the deck's answer
-    does not run. A deck whose block is `false` has no span, and says why elsewhere."""
+    """The file's temperatures a deck's own block does not name, within TEMP_MATCH: the corners the
+    deck's answer does not run, an inner one as much as an end. A deck whose block is `false` names
+    none, and says why elsewhere."""
     if not own:
         return []
-    return [t for t in sorted(set(file)) if t < min(own) - TEMP_MATCH or t > max(own) + TEMP_MATCH]
+    return [t for t in sorted(set(file)) if not any(abs(t - o) <= TEMP_MATCH for o in own)]
 
 
 def end_label(v: Varied, factor: float) -> str:
