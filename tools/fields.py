@@ -1379,7 +1379,7 @@ class NotSettled(EngineFault):
 
 
 SETTLE_SAMPLES = 5  # samples in a row the port energy must stay under the end criterion
-ENGINE_MARGIN_DB = 10.0  # how much further than the end criterion the box's energy must fall
+ENGINE_MARGIN_DB = 0.0  # how much further than the end criterion the box's energy must fall (`ended`)
 # A run whose ports did not settle all the same runs again with the box's energy let fall this much
 # further before it is ended. On 2026-11-17 the Wyvern lane's port 3 stopped at step 13410 with its
 # ports unsettled in 2 runs of the tests side by side, and at 13708 to 14602 with them settled in 4
@@ -1395,8 +1395,8 @@ def settled(energy: list[float], end_db: float, window: int = SETTLE_SAMPLES) ->
     after the last sample that does not, or None when the series ends before. On a line longer than
     the pulse every port is quiet while the wave crosses: a cut there missed the far port's wave (the
     z57 run's probes with port 2 delayed by 40 samples gave |S21| of -85 to -66 dB). A run that stops
-    later adds only quiet samples, since it runs on until the box's energy is 10 dB under the end
-    criterion (ENGINE_MARGIN_DB, `ended`), so it gives the same answer."""
+    later adds only quiet samples, since it runs on until the box's energy too is under the end
+    criterion (`ended`), so it gives the same answer."""
     peak = max(energy, default=0.0)
     if peak <= 0:
         return None
@@ -1413,11 +1413,14 @@ def box_db(log: str) -> float | None:
 
 def ended(energy: list[float], log: str, end_db: float, margin_db: float = ENGINE_MARGIN_DB) -> bool:
     """Whether a run may stop: the ports have settled (`settled`) and the box's energy openEMS printed
-    last lies `margin_db` (ENGINE_MARGIN_DB, or a rerun's RERUN_MARGINS_DB) under `end_db`. openEMS's
-    own end criterion stopped the Wyvern lane where
-    the box's energy first printed under it, which was at a check every 4 s of the clock: at 13708
-    steps in 3 runs (47 samples, settled) and at 13410 in 1 (-50.33 dB, 46 samples, the ports' last
-    loud sample 41 and 5 more needed), so the same file failed or passed by the machine's load."""
+    last lies `end_db` under its peak, so that no wave is still crossing the box; a rerun asks it
+    `margin_db` further (RERUN_MARGINS_DB, `run_port`). openEMS's own end
+    criterion, 10 dB further, stopped the Wyvern lane where the box's energy first printed under it,
+    which was at a check every 4 s of the clock: at 13708 steps in 3 runs (47 samples, settled) and at
+    13410 in 1 (-50.33 dB, 46 samples, the ports' last loud sample 41 and 5 more needed), so the same
+    file failed or passed by the machine's load. The 10 dB were there only so that openEMS's stop came
+    after the ports settled; ending at -40 dB cut the same sample on the patch, the stub, the thick
+    line and the lane (124, 78, 49 and 46) as ending at -50 dB."""
     box = box_db(log)
     return settled(energy, end_db) is not None and box is not None and box <= end_db - margin_db
 

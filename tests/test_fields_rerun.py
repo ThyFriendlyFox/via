@@ -39,8 +39,8 @@ class StopsEarly:
 
 
 def test_a_run_that_stopped_before_the_ports_settled_runs_again_deeper(tmp_path):
-    """The first run ends 10 dB under the criterion (ENGINE_MARGIN_DB) and has not settled: it runs again
-    to 20 dB under it, settles, and gives its column, with no fault. Margins: 10, then 20."""
+    """The first run ends at the criterion (ENGINE_MARGIN_DB, 0 dB further) and has not settled: it runs
+    again to 20 dB under it, settles, and gives its column, with no fault. Margins: 0, then 20."""
     engine = StopsEarly(settles_at=20.0)
     model = {"settings": {"timeout_s": 60}}
     column, error = fields.run_port(engine, model, tmp_path, 1)

@@ -279,8 +279,8 @@ lane stopped at 13410 steps in 1 run (46 samples, the ports not settled) and
 at 13708 in 3 (47 samples, settled). The command turns that criterion off
 and ends the run itself, by openEMS's `ABORT` file, once the ports' energy
 has stayed `end_criteria_db` under its peak for 5 samples after its last
-sample above that and the box's energy has printed 10 dB past
-`end_criteria_db`; then it reads the ports' samples only up to that settle
+sample above that and the box's energy has printed under
+`end_criteria_db` too; then it reads the ports' samples only up to that settle
 sample. Every sample is the same from run to run, whatever the load or
 openEMS's threads (the lane's 46 samples on 4 threads and on 1: alike to the
 digit), and a run that ends later adds only quiet samples, so the same file

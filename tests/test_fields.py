@@ -941,7 +941,7 @@ def test_where_openems_stops_does_not_change_the_result(tmp_path):
     up to where they stop: u1 = 0, 1, 0.5, then 0.001; u2 = 0, 0.5, 0.25, then 0.001; each i = u / 50.
     The port energy is 2 (u1^2 + u2^2): peak 2 x 1.25 = 2.5 at sample 1, 40 dB under it 2.5e-4. From
     sample 3 every sample is 2 x 2e-6 = 4e-6, so the ports settle at sample 2 + 5 = 7. Run A goes on
-    with 0.005 to sample 12 (2 x 2.5e-5 = 5e-5, quiet: openEMS stops 10 dB under the criterion), run
+    with 0.005 to sample 12 (2 x 2.5e-5 = 5e-5, quiet: a run ends once the box's energy too is under it), run
     B ends at sample 8: both columns are read from samples 0 to 7 and are the same. Run C ends at
     sample 5, before the ports settle: a fault, not a result."""
     tail = [0.001] * 6
@@ -1003,9 +1003,9 @@ LANE_PORT_DB = [-76.14, -75.23, -80.92, -62.44, -52.03, -44.63, -39.08, -35.13, 
 LANE_PORT_DB += [-26.32, -18.85, -13.83, -10.51, -8.61, -8.04, -8.68, -9.37, -7.51, -4.35, -1.93, -0.53]
 LANE_PORT_DB += [0.0, -0.21, -1.12, -2.74, -5.06, -7.48, -8.59, -8.4, -8.46, -9.48, -11.63, -14.97, -19.6]
 LANE_PORT_DB += [-25.4, -30.78, -33.12, -34.77, -37.51, -41.44, -46.39, -52.13, -58.31, -64.54]
-# The box's energy openEMS printed at a check, in dB, by sample (a sample every 298 steps): 12516,
-# 13112, 13410 and 13708 steps in the logs of the same runs.
-LANE_BOX_DB = {42: -41.95, 44: -48.58, 45: -50.33, 46: -51.43}
+# The box's energy openEMS printed at a check, in dB, by sample (a sample every 298 steps): 9238,
+# 12516, 13112, 13410 and 13708 steps in the logs of the same runs.
+LANE_BOX_DB = {31: -8.52, 42: -41.95, 44: -48.58, 45: -50.33, 46: -51.43}
 
 
 def lane_log(sample: int) -> str:
@@ -1018,14 +1018,18 @@ def test_a_run_ends_only_when_the_lanes_ports_have_settled():
     its own, every 4 s of the clock: 1 run printed -50.33 dB at 13410 steps, sample 45, and stopped
     with 46 samples, and the ports had not settled: their last sample above -40 dB is 41 (-37.51 dB),
     and 5 quiet samples after it end at 46. The other runs' checks fell at 13112 (-48.58 dB, on) and
-    13708 (-51.43 dB): 47 samples, settled at 46. The run is ended when both hold, not before."""
+    13708 (-51.43 dB): 47 samples, settled at 46. The run is ended once the ports have settled and the
+    box's energy has printed under the end criterion, -40 dB (-41.95 at 12516 steps), not before: the
+    10 dB more openEMS was given only so that its own stop came after the ports settled. While the box
+    holds a wave (-8.52 dB at 9238 steps) the run goes on, whatever the ports."""
     energy = [0.0] + [10 ** (d / 10) for d in LANE_PORT_DB]
     assert fields.box_db(lane_log(45)) == -50.33
     assert fields.settled(energy[:46], -40.0) is None
     assert not fields.ended(energy[:46], lane_log(45), -40.0)
     assert fields.settled(energy, -40.0) == 46
-    assert not fields.ended(energy, lane_log(44), -40.0)
+    assert fields.ended(energy, lane_log(42), -40.0)
     assert fields.ended(energy, lane_log(46), -40.0)
+    assert not fields.ended(energy, lane_log(31), -40.0)
     assert not fields.ended(energy, "no energy printed yet", -40.0)
 
 
