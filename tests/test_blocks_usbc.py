@@ -45,6 +45,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -63,7 +64,9 @@ needs_libs = pytest.mark.skipif(
     not (kicadgen.SYMBOL_DIR / "Device.kicad_sym").is_file(),
     reason="KiCad symbol libraries are not installed",
 )
-needs_kicad = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+needs_kicad = engine(
+    pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+)
 
 R_0603 = "Resistor_SMD:R_0603_1608Metric"
 C_0603 = "Capacitor_SMD:C_0603_1608Metric"
