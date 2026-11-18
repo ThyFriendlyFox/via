@@ -993,7 +993,11 @@ SOURCE_KEYS = (("document", "read", "second_reader"), ("revision", "url", "sha25
 WHICH = ("mpn", "mpns", "match", "symbol")  # how an entry names the parts it speaks of: exactly 1 of these
 # A capacitor's kind alone says it passes no steady current: an entry with no rating keeps its nets
 # judged, and the capacitor's own voltage is then the 1 thing the report cannot judge.
-CAPACITOR = ((), ("tolerance", "volts", "farads", "dielectric", "kept", "kept_celsius"))
+# `kept_celsius_at`, `esr` and `esl` are the SIM gate's (tools/partdata.py), not judged here.
+CAPACITOR = (
+    (),
+    ("tolerance", "volts", "farads", "dielectric", "kept", "kept_celsius", "kept_celsius_at", "esr", "esl"),
+)
 PASSIVE = {  # kind -> the keys an entry must hold, and those it may
     "resistor": (("tolerance", "watts", "volts"), ("ohms",)),
     "capacitor.ceramic": CAPACITOR,
@@ -1280,13 +1284,23 @@ def _facts(where: str, raw: object) -> Facts:
         _number(f"{where}: tolerance", data["tolerance"], 0, 0.99)
     # the share of its value a part keeps: a capacitor's at a voltage and at a temperature, an inductor's
     # at a current
-    for key, unit, least in (
-        ("kept", "amps" if kind == "inductor" else "volts", 0),
-        ("kept_celsius", "celsius", None),
+    # `kept_celsius_at`: the maker's temperature curve at 1 bias, {"volts": V, "kept": [celsius, share]}
+    if "kept_celsius_at" in data:
+        at = _keys(f"{where}: kept_celsius_at", data["kept_celsius_at"], ("volts", "kept"))
+        _number(f"{where}: kept_celsius_at: volts", at["volts"], above=0)
+    # `esr` and `esl`: a capacitor's series resistance and inductance at the frequency it was read at
+    for key, unit in (("esr", "ohms"), ("esl", "henries")):
+        if key in data:
+            part = _keys(f"{where}: {key}", data[key], (unit, "hz"))
+            _number(f"{where}: {key}: {unit}", part[unit], above=0)
+            _number(f"{where}: {key}: hz", part["hz"], above=0)
+    for key, unit, least, kept in (
+        ("kept", "amps" if kind == "inductor" else "volts", 0, data.get("kept")),
+        ("kept_celsius", "celsius", None, data.get("kept_celsius")),
+        ("kept_celsius_at: kept", "celsius", None, data.get("kept_celsius_at", {}).get("kept")),
     ):
-        if key not in data:
+        if kept is None:
             continue
-        kept = data[key]
         if (
             not isinstance(kept, list)
             or len(kept) < 2
