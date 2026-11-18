@@ -20,6 +20,9 @@ owner wrote for the site, and the profile below comes from them alone:
 - "We're making Via better every day!" "Subscribe here to keep up to date with our
   progress. Give us suggestions here!"
 - "Made by Team Reagent for Builders"
+- "Here's a board made with Via!" The owner wrote it over "Here's a board an agent
+  made with Via" and said "thats what it should sound like": short, glad, and said
+  straight to the reader.
 - "Only Cool Kids Allowed!" "Building Tomorrow Today!" "We have a dog" "Check out our
   community!" "Free inference found here!"
 
