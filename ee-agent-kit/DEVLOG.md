@@ -39,6 +39,21 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-18 — A datasheet that was a web page
+
+User round 1, D landed. In user round 1 the large user's project kept 2 Samsung datasheets that were
+error pages: each file was named `.pdf` and started `<html lang="ko">`. `workcenter fetch` had written
+them, and `workcenter sources` passed them. `fetch` now judges a body by its first 1024 bytes, its
+length and its Content-Type, and refuses an empty body, a cut one, a web page, and a `.pdf` that does not
+start `%PDF`. `sources` fails such a file already kept. The round's other gap was a new project: `fetch
+--row` refused to run with no `library/sources.csv`. It now starts the file with its header. A file no
+site will serve is downloaded by a person and kept with `--file`. A review found 7 faults; the worst let
+an error page that opens with `<head>` land as a SPICE model. All 7 are fixed. On the trunk the new
+judgement refused every web page that `workcenter references` holds by its values; that call no longer
+judges the body.
+
+Evidence: `tests/test_fetch_checks.py` (27 tests); landing head 326f81d, on the trunk ecf27ae.
+
 ## 2026-11-18 — A new user starts a board with 1 command
 
 User round 1 sent 3 users of different sizes through 1 board spec. The small one found no command

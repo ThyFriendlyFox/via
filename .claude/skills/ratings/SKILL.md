@@ -59,7 +59,7 @@ parts, each entry read from its datasheet.
    | `accepts a failure of ..., and <part> is not judged now` | Give the part what its own `not judged` line asks for. The acceptance then meets its failure again. |
    | `no source holds <net>` | Nothing the command knows drives the net. State it in `nets`, or correct the facts of the part that drives it. For the net behind a sense resistor, state the resistor's current under `parts`: the net then follows the resistor's other net. |
    | `has no data on the value it keeps` | Add `kept` to the capacitor's facts from its maker's DC bias curve, or fit a part that has one. |
-   | `its facts hold no voltage rating` or `has no tolerance in its facts` | Add `volts` or `tolerance` to the capacitor's facts from its datasheet. With no datasheet in `library/`, get it first. |
+   | `its facts hold no voltage rating` or `has no tolerance in its facts` | Add `volts` or `tolerance` to the capacitor's facts from its datasheet. With no datasheet in `library/`, get it first (the `simulate` skill, "A part's file and its row"). |
    | `its facts hold no current rating` | `ratings.json` states a current through the part. Add the rating to its facts from its datasheet: `amps_forward` for a diode, `amps_drain` for a transistor, `amps` for a ferrite or a switch. |
 
 4. Write 1 part's facts. `workcenter ratings <project> --facts U1` prints

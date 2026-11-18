@@ -470,9 +470,18 @@ refusal is reported, never retried), keeps it, and prints its
 `sources.csv` row: the URL, the file, its SHA256, today as `Checked`, a
 model's `.SUBCKT`, and lines of the file that may carry its revision.
 `Revision` and `Dated` are left for the reader to fill from the file.
-`--row` with `--mpn` appends the row and refuses a second row of one kind
-for one part. For a part before any board names it; `workcenter sources`
-then checks the row like any other (`PROCESSES.md` P27).
+A body that is empty, cut short, served as `text/html`, starting as an
+HTML page, or a `.pdf` that does not start `%PDF` is refused in 1 line
+and nothing is written.
+`--file <path> --url <url>` keeps a file a person downloaded instead: it is
+judged the same way, copied, hashed, and its row's Note says the workcenter
+did not fetch it. `--row` with `--mpn` appends the row and refuses a second
+row of one kind for one part. With no `sources.csv` at or above `--to`,
+and `--to` under a folder named `library`, it starts that folder's
+`sources.csv` with its header and prints `sources: started <path>`. For a
+part before any board names it; `workcenter sources` then checks the row
+like any other, and fails a kept file that is empty, an HTML page, or a
+`.pdf` without `%PDF` (`PROCESSES.md` P27).
 
 Not a gate: `workcenter curve <pdf> --page N` lists the page's vector
 paths grouped by kind, stroke width, paint and colour, with the stroked
@@ -856,7 +865,7 @@ and no analog block. The engines install on request:
   names beside it, for `workcenter sources` and the vendor models a deck
   includes. Columns: `MPN,Kind,URL,File,Member,Revision,Dated,Subckt,Ngspice,SHA256,Checked,Note`;
   `Kind` is `datasheet`, `spice` or `step`; a row with no `File` needs a `Note`;
-  `workcenter fetch --row` adds one
+  `workcenter fetch --row` adds one, and starts the file with this header when the project has none
 - Optional: a firmware mutation list (JSON, or a Python file with `MUTATIONS`)
   kept with the firmware, for `workcenter mutate`
 - A chip project (`workcenter chip init <dir> --top <module>` writes its

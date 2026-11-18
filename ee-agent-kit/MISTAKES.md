@@ -1324,3 +1324,10 @@ What happened: On `wip/u-new` the run that showed `tests/test_new.py` failing be
 Cost: 1 run of 5 s beside the health gate; 1 run of 187 s with chip engines beside other agents' locked runs (the builder's runs).
 Root cause: As M201: the lock was looked at, not waited on. And a test file was taken for engine-free by its skip marks, not by its durations: a test that runs engines need not carry a mark. Later runs waited for `GATE.lock` to go, took `ENGINE.lock`, and checked `GATE.lock` again inside it.
 Process: P31
+
+## M219 — 2026-11-18 — A shared fetch function judged a body for one caller's needs
+What happened: `fetch_url` in `tools/workcenter` gained a judgement of each body: an HTML page is refused, since a datasheet that is a web page is an error page. `workcenter references fetch` calls the same function, and its web page entries are HTML pages by design. Every one came back "not reached".
+Cost: On the landing head, 2 tests of `tests/test_references_pages.py` failed; the piece's own tests passed.
+Root cause: The piece was built before the web page entries landed, and it changed a function with 2 callers while testing 1.
+Fix: `fetch_url(..., judge=False)` from `tools/references.py`, which judges a copy by its SHA256 or its values; `test_references_fetch_still_keeps_a_web_page_entry_served_as_text_html`.
+Process: P27

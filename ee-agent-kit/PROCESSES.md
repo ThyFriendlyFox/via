@@ -926,12 +926,17 @@ written for the project, or a 3D body comes from a vendor.
 1. Every part on the schematic gets rows in the project's
    `library/sources.csv`: a datasheet for each, a spice row for each U, Q
    and D (a model file, or a note saying why there is none), a step row
-   where the vendor publishes a body. Fetch the sanctioned way (P25 step 1):
-   `workcenter sources --fetch` asks once under its own name and records a
-   refusal, and `workcenter fetch <url> --to <library>/<maker>/<file> --mpn
-   <MPN> --row` does the same for a file the library does not hold yet; a
-   file no site will serve is left for the user to download, and its row's
-   note says so and from where.
+   where the vendor publishes a body. Its header is
+   `MPN,Kind,URL,File,Member,Revision,Dated,Subckt,Ngspice,SHA256,Checked,Note`;
+   the first `workcenter fetch ... --row` in a project with none writes it.
+   Fetch the sanctioned way (P25 step 1): `workcenter sources --fetch` asks
+   once under its own name and records a refusal, and `workcenter fetch
+   <url> --to <project>/library/<maker>/<file> --mpn <MPN> --row` does the
+   same for a file the library does not hold yet. A body that is empty, cut
+   short, a web page, or a `.pdf` that does not start `%PDF` is refused and
+   nothing is written. A file no site will serve is downloaded by a person
+   and kept with `workcenter fetch --file <file> --url <url> --to ... --mpn
+   <MPN> --row`; its row says the workcenter did not fetch it.
 2. Keep each file as the vendor publishes it, its notice intact; a model
    that ngspice reads differently is translated into a copy in `build/`,
    never in the library. The row records what the file itself prints: the

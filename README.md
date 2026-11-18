@@ -281,7 +281,7 @@ has every flag.
 | `placement` | Run a kistack placement check on a board. |
 | `render`, `pictures` | Images of the schematic, the board, every layer; turning GIFs; assembly scenes. |
 | `procure`, `costs` | Price a board's parts; price every board of every version. |
-| `sources`, `fetch`, `curve` | Check each part's datasheet and model; fetch one; read a curve from a PDF. |
+| `sources`, `fetch`, `curve` | Check each part's datasheet and model; fetch one, or keep one a person downloaded, and refuse a web page saved as a PDF; read a curve from a PDF. |
 | `mutate` | Prove a firmware's host tests can fail. |
 | `ci` | Replay a repository's GitHub workflow here. |
 | `docs`, `version`, `diagram` | A version's contents page and datasheets; a new version folder; a block diagram. |
