@@ -270,6 +270,28 @@ def test_a_footprint_text_kicad_does_not_keep_upright_reads_at_180():
     assert "180 degrees: 1" in found[0].line
 
 
+def test_an_upright_text_justified_left_at_180_runs_right_of_its_anchor():
+    """KiCad keeps a footprint's text upright: written at 180 and justified left, it is drawn at 0, justified
+    left, so it runs right of its anchor (kicad-cli 10.0.8 Gerber of F.SilkS, the second review's
+    h5-upright-justify: U1's designator anchored at (130, 109.2) inked 130.262..131.983 by 108.58..109.73).
+    U1 at (130, 113) turned 180, its designator at local (0, 3.8, 180): (130, 109.2) on the board; its box
+    130..132.260236 by 108.625..109.775. U2's courtyard 131..135 by 105..109: the box is on it by
+    132.260236 - 131 = 1.260236 by 109 - 108.625 = 0.375 mm."""
+    u1 = fp("U1", 130, 113, (-3, -3, 3, 3), ref_at=(0, 3.8, 180), rot=180, just="left")
+    u2 = fp("U2", 133, 107, (-2, -2, 2, 2), ref_at=(0, -2.8, 0))
+    found = judge(board(u1, u2))
+    hidden = [f.line for f in found if f.rule == "hidden"]
+    assert hidden == [
+        "legend hidden: designator U1 at (130, 109.2) mm on F.SilkS: under the courtyard of U2 by 1.26 x "
+        "0.375 mm: hidden once assembled (rules/legend.json)"
+    ]
+    t = legend.read_board(kicadgen.parse(board(u1))).texts[0]
+    assert t.box == pytest.approx((130, 108.625, 132.260236, 109.775))
+    unlocked = u1.replace("(at 0 3.8 180)", "(at 0 3.8 180) (unlocked yes)")
+    t = legend.read_board(kicadgen.parse(board(unlocked))).texts[0]
+    assert t.box == pytest.approx((127.739764, 108.625, 130, 109.775))
+
+
 def test_back_text_that_is_not_mirrored_fails_direction():
     good = board(txt("A", 110, 110, layer="B.SilkS", mirror=True))
     bad = board(txt("A", 110, 110, layer="B.SilkS"))
