@@ -17,7 +17,7 @@ We like that Hush is still a speaker. Music from a phone plays through it, and t
 
 ## Cancelling a 150 Hz hum
 
-The 150 Hz hum in Hush's simulation swings the air pressure by 0.2 Pa. That's about two parts in a million of the roughly 101,000 Pa at sea level. To cancel it, the speaker has to lower the pressure at the microphone by the same amount the hum raises it, so the two add to zero.
+The 150 Hz hum in Hush's simulation swings the air pressure by 0.2 Pa. To cancel it, the speaker has to pull the pressure at the microphone down by as much as the hum pushes it up, so the two add to zero.
 
 Paul Lueg patented the idea in 1936. The patent is US 2,043,416, "Process of silencing sound oscillations." In it, a microphone picks up the sound, and an amplifier and loudspeaker play it back in opposite phase.
 
@@ -29,15 +29,13 @@ The opposite wave has to arrive in step with the noise, and a fixed delay puts i
 
 Wavelength matters too, since the quiet zone around the microphone spans only a fraction of one. A wavelength is 2.3 m at 150 Hz and 23 cm at 1.5 kHz.
 
-In the simulation, the loop cancels noise from 50 to 500 Hz, and its loop gain falls to one near 1.5 kHz.
-
-That's where the choice we like best on this board comes from. A digital processor would add tens of microseconds for its converters and arithmetic, and each microsecond of delay costs about half a degree of phase at 1.5 kHz. So the agent built the loop from analog parts.
+In the simulation, the loop cancels noise from 50 to 500 Hz, and its loop gain falls to one near 1.5 kHz. Our favorite decision on the board comes out of those numbers. A digital processor would add tens of microseconds for its converters and arithmetic, and each microsecond of delay costs about half a degree of phase at 1.5 kHz. So the agent built the loop from analog parts.
 
 ## Feedback, after Olson and May
 
 A feedforward system has a reference microphone that hears the noise early, and an error microphone at the quiet spot that hears what's left. Feedback uses just the one microphone at the quiet spot, and the circuit plays its signal back inverted.
 
-Sen Kuo and Dennis Morgan surveyed both kinds in "[Active noise control: a tutorial review](https://doi.org/10.1109/5.763310)," which came out in the Proceedings of the IEEE in 1999. The systems in it run adaptive filters on a DSP. Their basic method is filtered-x least mean squares, or FxLMS, which adjusts the filter at each sample to shrink the error signal. The agent chose feedback over a DSP's adaptive feedforward, which needs a second microphone and firmware, and we agree with it.
+Sen Kuo and Dennis Morgan surveyed both kinds in "[Active noise control: a tutorial review](https://doi.org/10.1109/5.763310)," which came out in the Proceedings of the IEEE in 1999. The systems in it run adaptive filters on a DSP. Their basic method is filtered-x least mean squares, or FxLMS, which adjusts the filter at each sample to shrink the error signal. The agent chose feedback over a DSP's adaptive feedforward, which needs a second microphone and firmware.
 
 Harry Olson and Everett May described the feedback kind in 1953. Their paper, "[Electronic sound absorber](https://doi.org/10.1121/1.1907249)," appeared in the Journal of the Acoustical Society of America. The absorber in it is a microphone, an amplifier and a loudspeaker in a feedback loop, the same loop Hush uses. The paper's abstract reports 10 to 25 dB less sound near the microphone, over three octaves of low notes.
 
@@ -51,7 +49,7 @@ In simulation the rise is 2.6 dB at most. At the worst corner of temperature and
 
 ## How the design went
 
-The agent logged seven mistakes while it made Hush, M139 to M145 in [the list of mistakes](ee-agent-kit/MISTAKES.md). Four of them were in the simulation, where each test is a deck for the simulator ngspice, and those four are the ones we find most interesting.
+The agent logged seven mistakes while it made Hush, M139 to M145 in [the list of mistakes](ee-agent-kit/MISTAKES.md). Four of them were in the simulation, where each test is a deck for the simulator ngspice.
 
 Diodes Incorporated publishes no simulation model for the PAM8302A amplifier, so the agent wrote one, and that model gave half the datasheet's gain. In M139, the agent ran the loop decks on it before the model's own test deck, and then it redid one round of tuning.
 

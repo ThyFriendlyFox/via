@@ -5,7 +5,7 @@ tags: [examples, herald, dtmf, signal processing, fire alarms]
 image: /examples/herald/card.png
 ---
 
-Herald is a board that sits beside a fire alarm panel and passes its reports on. Many panels report by dialing a monitoring station over a phone line. Herald stands in for that line and sends the reports on over LTE-M, a low-power form of 4G cellular, with Wi-Fi as backup. We made it as an example for Via, our toolkit for circuit boards designed by AI.
+Herald is a board that sits beside a fire alarm panel and passes its reports on. Many panels report by dialing a monitoring station over a phone line. Herald stands in for that line and sends them over LTE-M, a low-power form of 4G cellular, with Wi-Fi as backup. We made it as an example for Via, our toolkit for circuit boards designed by AI.
 
 ![Herald's routed board in 3D: a red board with the LTE-M modem, a nano SIM holder, the ESP32-S3 module, a relay, five status lights and black screw terminals along its front edge](/examples/herald/card.png "Herald v0.1, rendered by KiCad")
 
@@ -33,7 +33,7 @@ The tone detector is the part of Herald we like best. It uses a method Gerald Go
 
 The filter keeps two running numbers. Each new sample updates them with one multiply, by a constant set from the target frequency, so the filter can sit exactly on a DTMF tone. The numbers stay small unless the signal holds that frequency. When it does, each sample adds in step with the last one, and they grow. At the end, one formula turns the two numbers into the power at that frequency.
 
-That's enough for Herald to do without a DTMF chip. Its decoder, [`dtmf.c`](examples/fire-alarm-communicator/v0.1/firmware/src/dtmf.c), runs eight of these filters, one for each tone. Each window is 205 samples at 8 kHz, or 25.6 ms. A window that long separates tones about 39 Hz apart, and the two closest DTMF tones are 73 Hz apart.
+So Herald gets by without a DTMF chip. Its decoder, [`dtmf.c`](examples/fire-alarm-communicator/v0.1/firmware/src/dtmf.c), runs eight of these filters, one for each tone. Each window is 205 samples at 8 kHz, or 25.6 ms. A window that long separates tones about 39 Hz apart, and the two closest DTMF tones are 73 Hz apart.
 
 An FFT is the usual tool, but it measures every frequency in the window, and Herald only needs eight. Goertzel costs one multiply per sample per tone, so 205 samples times eight tones is 1640 multiplies. A 256-point FFT takes 1024 steps, each with a complex multiply worth four ordinary ones. Its answers also fall on a 31.25 Hz grid that misses every DTMF tone.
 
@@ -47,7 +47,7 @@ Each of Herald's three inputs has a 4.7 kilohm pull-up to 3.3 V. The end-of-line
 
 Four simulations try these cases at 0 and 50 °C and at each part's tolerance limits. The worst readings are 0.151 V closed, 1.555 to 1.798 V whole and 3.186 V cut. Each one stays at least 0.2 V from the firmware's thresholds.
 
-The supervision runs the other way too. Herald holds a relay on while it's healthy, so if the supply is lost or the board resets, the relay opens and warns the panel.
+Supervision runs the other way too. Herald holds a relay on while it's healthy, so if the supply is lost or the board resets, the relay opens and warns the panel.
 
 ## How the design went
 
