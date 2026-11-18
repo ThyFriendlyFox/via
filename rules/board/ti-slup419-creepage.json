@@ -12,7 +12,7 @@
     "second_reader": "no"
   },
   "reprints": "table 3, page 7: a subset of IEC 60664-1 table F.4; the note's reference 2, page 11, is IEC 60664-1 of May 26, 2020. A secondary source: the standard itself is paid.",
-  "scope": "table 3, page 7: creepage distances to avoid failure caused by tracking, for basic isolation; reinforced isolation doubles them (page 7), which this pack does not take",
+  "scope": "table 3, page 7: creepage distances to avoid failure caused by tracking, for basic isolation; reinforced isolation doubles them (page 7), which this pack does not take. The distances are held between bare copper: solder mask is not counted, and the note says nothing of it. Page 3 counts a board under conformal coating as pollution degree 1; a project that states degree 1 for that reason states it on its own word, and this pack does not check the coating.",
   "conditions": {
     "pollution_degree": {
       "values": ["1", "2"],

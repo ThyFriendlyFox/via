@@ -147,10 +147,15 @@ layer:
   pad's angle is the one in its own `(at x y angle)`, the board's: KiCad leaves it out at 0 degrees,
   whatever the footprint's angle. A pad whose copper stands off its hole (`(drill ... (offset x y))`)
   is read as a square round its hole, widened by the offset on each side. A trapezoid pad is read as
-  its rectangle widened by both of its `rect_delta` values on each side. A custom pad is taken as a square of its anchor's greater side, and one with
-  primitives is named `not judged`, as is a pad with a padstack and any shape drawn on an outer copper
-  layer:
+  its rectangle widened by both of its `rect_delta` values on each side. A custom pad is taken as a
+  square of its anchor's greater side, and one with primitives is named `not judged`, as is a pad with
+  a padstack and every other node on an outer copper layer, whatever its head: a shape, a text, a
+  dimension, an image, a footprint's shape, text or zone, and a footprint's property that is not hidden:
   `not judged creepage on F.Cu: 1 shape drawn on the copper is not read (a gr_line at (112.5, 105))`.
+- **Bare copper.** Every distance is held between bare copper: solder mask and coating are not counted.
+  MIL-HDBK-454C guideline 69, 4.1, page 69-1, speaks of bare conductors and says nothing of either.
+  SLUP419 page 3 counts a board under conformal coating as pollution degree 1: a project that states
+  degree 1 for that reason states it on its own word; the pack does not check the coating.
 - **Copper with no net** (a pad, a track, a via or a zone) is a conductor the 2 nets' way can cross.
   The shortest way from 1 net to the other across 1 or more such conductors is the sum of the gaps;
   their own width counts nothing. A pair that holds on its straight gap but has such a way under the
@@ -168,7 +173,12 @@ layer:
   from its ring on the other, and the thickness counts nothing: `creepage HV on F.Cu to GND on B.Cu at
   (110.85, 107.5): at least 1.261 mm through a via with no net at (112.5, 107.5), 3 mm asked at 400
   V`. A shape on Edge.Cuts that is not read (a curve, a footprint's line) leaves only the thickness.
-- **Clearance** is the straight gap between the 2 nets' copper.
+- **Clearance** is the straight gap between the 2 nets' copper. A pack with no clearance table
+  (`ti-slup419-creepage`: SLUP419 takes clearance from an impulse voltage, page 7) prints 1 `not judged
+  clearance` line for the pairs of nets with a voltage between them on each outer layer, and 1 for the
+  pairs with 1 net on each face alone: `not judged clearance on F.Cu: 1 pair of nets with a voltage
+  between them, and ti-slup419-creepage holds no clearance table`. Such a board passes the default gate
+  with these warnings, never `--strict`.
 - **Creepage** is the straight gap, unless a slot stands on it. A slot is an inner cut of Edge.Cuts with
   4 corners, convex. The way then goes round the slot's corners: the shortest way on a graph of the
   slots' corners and the copper's corners and nearest points. A slot narrower than the pack's least
@@ -231,6 +241,8 @@ The DRC line names the pack: `board rules mil-hdbk-454c-g69: 1 fail, 0 not judge
      thickness reaches the distance.
    - `not judged ... across copper with no net`: give the copper a net, or move it out of the way.
    - `fail slot ...`: widen the slot to the pack's least width.
+   - `not judged clearance on F.Cu: ... holds no clearance table`: judge the gaps through air by
+     another document (SLUP419 points to its tables 4 and 5, page 8, by impulse voltage).
 4. GREEN when the line reads `0 fail, 0 not judged`.
 
 ### mil-hdbk-454c-g69

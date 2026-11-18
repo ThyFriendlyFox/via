@@ -528,8 +528,10 @@ def read_copper(text: str) -> Copper:
             else:
                 polys = [capsule(start, end, width)]
             put(_net(node, ids), layer, polys, f"a track with no net at {_p(start)}")
-        elif head.startswith("gr_") and _layer(node) in unread:
-            unread[_layer(node)].append(f"a {head} at {_p(_first(node))}")
+        elif head not in ("footprint", "zone", "via", "generated") and _layer(node) in unread:
+            # Any other node on a copper layer (a shape, a text, a dimension, an image): copper not read.
+            # A tuning pattern (`generated`) only groups tracks read above.
+            unread[_layer(node)].append(f"{_a(head)} {head} at {_p(_first(node))}")
     faces = {board.copper[0], board.copper[-1]} if len(board.copper) >= 2 else set()
     barrels: list[tuple[str, str, list[Polygon]]] = []
 
@@ -560,12 +562,14 @@ def read_copper(text: str) -> Copper:
             )
 
         for item in fp[1:]:
-            if isinstance(item, list) and item and str(item[0]).startswith("fp_"):
-                if _layer(item) == "Edge.Cuts":
-                    what = f"a {item[0]} of {name} on Edge.Cuts at {_p((fx, fy))}"
-                    fp_edges.append((what, _shape_box(item, place)))
-                elif _layer(item) in unread:
-                    unread[_layer(item)].append(f"a {item[0]} of {name} at {_p((fx, fy))}")
+            if not isinstance(item, list) or not item or str(item[0]) in ("pad", "model"):
+                continue
+            if str(item[0]).startswith("fp_") and _layer(item) == "Edge.Cuts":
+                what = f"a {item[0]} of {name} on Edge.Cuts at {_p((fx, fy))}"
+                fp_edges.append((what, _shape_box(item, place)))
+            elif _layer(item) in unread and not _hidden(item):
+                # A shape, a text, a property, a zone or a dimension of the footprint on copper.
+                unread[_layer(item)].append(f"{_a(item[0])} {item[0]} of {name} at {_p((fx, fy))}")
         for pad in kicadgen.children(fp, "pad"):
             net = _net(pad, ids)
             px, py, *prot = (float(v) for v in kicadgen.atoms(kicadgen.child(pad, "at")))
@@ -635,6 +639,24 @@ def read_copper(text: str) -> Copper:
 
 def _p(xy: Point) -> str:
     return boardrules._p((round(xy[0], 3), round(xy[1], 3)))
+
+
+def _a(word: object) -> str:
+    return "an" if str(word)[:1] in "aeiou" else "a"
+
+
+def _hidden(node) -> bool:
+    """A text KiCad does not draw: `(hide yes)`, or `hide` among its atoms or its effects' (older files)."""
+    effects = kicadgen.child(node, "effects")
+    for where in (node, effects):
+        if where is None:
+            continue
+        if "hide" in [str(x) for x in kicadgen.atoms(where)]:
+            return True
+        found = kicadgen.child(where, "hide")
+        if found is not None and [str(x) for x in kicadgen.atoms(found)] != ["no"]:
+            return True
+    return False
 
 
 def _layer(node) -> str:
@@ -1119,6 +1141,45 @@ def findings(
     out += _laminate(cu, spans, pack, cond)
     if len(cu.layers) >= 2:
         out += _faces(cu, spans, pack, cond, least_slot, failed, flagged)
+    if "clearance" not in pack.tables:
+        out += _no_clearance(cu, spans, pack)
+    return out
+
+
+def _no_clearance(cu: Copper, spans, pack: Pack) -> list[Finding]:
+    """A pack with no clearance table judges no gap through air: 1 `not judged` line for the pairs of
+    nets with a voltage between them on each outer layer, and 1 for the pairs with 1 net on each face
+    alone, with the pack's reason."""
+    outer = list(dict.fromkeys([cu.layers[0], cu.layers[-1]])) if cu.layers else []
+    on = {layer: {n for n, _ in cu.shapes.get(layer, []) if n in spans} for layer in outer}
+
+    def volts(a: str, b: str) -> bool:
+        return a != b and boardrules.between(spans[a], spans[b]) > 0
+
+    groups = [
+        (layer, {frozenset(p) for p in itertools.combinations(on[layer], 2) if volts(*p)}) for layer in outer
+    ]
+    if len(outer) == 2:
+        top, bot = outer
+        apart = {
+            frozenset((a, b))
+            for a in on[top]
+            for b in on[bot]
+            if volts(a, b) and not ({a, b} <= on[top] or {a, b} <= on[bot])
+        }
+        groups.append((f"{top} and {bot}", apart))
+    out = []
+    for where, pairs in groups:
+        if pairs:
+            count = f"{len(pairs)} pair{'s' if len(pairs) > 1 else ''} of nets"
+            out.append(
+                Finding(
+                    "not judged",
+                    f"clearance on {where}: {count} with a voltage between them, and {pack.name} holds no "
+                    "clearance table",
+                    pack.cite(pack.not_judged[0]),
+                )
+            )
     return out
 
 

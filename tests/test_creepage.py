@@ -191,9 +191,13 @@ def test_an_unread_cut_with_a_box_counts_only_near_both_nets():
     judged. With no box: near, as before."""
     far = creepage.Cut(None, "a curve on Edge.Cuts", (130.0, 100.0, 131.0, 101.0))
     over = creepage.Cut(None, "a curve on Edge.Cuts", (111.0, 109.0, 113.0, 110.0))
+    # Within reach of HV alone: from HV's left side at x 109.15, 109.15 - 106 = 3.15 mm; from GND's at
+    # x 112.85, 6.85 mm. A way under 4 mm cannot reach it.
+    one = creepage.Cut(None, "a curve on Edge.Cuts", (105.5, 107.0, 106.0, 108.0))
     cu = copper(3.7)
-    cu.cuts = [far]
-    assert creepage.measure(cu, "F.Cu", "HV", "GND", 4.0, None).creepage == pytest.approx(2.0, abs=1e-9)
+    for cut in (far, one):
+        cu.cuts = [cut]
+        assert creepage.measure(cu, "F.Cu", "HV", "GND", 4.0, None).creepage == pytest.approx(2.0, abs=1e-9)
     for cut in (over, creepage.Cut(None, "a circle on Edge.Cuts")):
         cu.cuts = [cut]
         got = creepage.measure(cu, "F.Cu", "HV", "GND", 4.0, None)
@@ -255,26 +259,57 @@ def test_mil_prints_not_judged_when_only_a_slot_makes_the_way_long():
     assert "the pack states no least width for a slot" in found[0].text
 
 
+def ti(cu: creepage.Copper, spans: dict = SPANS) -> list:
+    """The findings of the TI pack, pollution degree 2, group III, but its `not judged clearance` lines
+    (the pack holds no clearance table: test_a_pack_with_no_clearance_table_prints_clearance_not_judged)."""
+    found = creepage.findings(
+        cu, spans, creepage.read_pack(TI), {"pollution_degree": "2", "material_group": "III"}
+    )
+    assert [f.text.startswith("clearance on ") for f in found].count(True) <= 2
+    return [f for f in found if not f.text.startswith("clearance on ")]
+
+
 def test_ti_passes_the_slot_and_fails_without_it():
     """Pollution degree 2, group III, 400 V: 4.0 mm. 3.3 mm straight fails; round the 1 mm slot 5.022 mm
     passes."""
-    pack = creepage.read_pack(TI)
-    cond = {"pollution_degree": "2", "material_group": "III"}
-    bare = creepage.findings(copper(5.0), SPANS, pack, cond)
-    assert [f.line for f in bare] == [
+    assert [f.line for f in ti(copper(5.0))] == [
         "fail creepage HV to GND on F.Cu at (110.85, 106.65): 3.3 mm along the surface at 400 V, at least "
         "4 mm (pollution degree 2, material group III) [SLUP419: table 3, page 7]"
     ]
-    assert creepage.findings(copper(5.0, [rect(112, 105, 113, 110)]), SPANS, pack, cond) == []
+    assert ti(copper(5.0, [rect(112, 105, 113, 110)])) == []
+
+
+TI_NO_CLEARANCE = (
+    "not judged clearance on {}: {} with a voltage between them, and ti-slup419-creepage holds no "
+    "clearance table [SLUP419: page 7 and table 3, page 7: clearance, which this note takes from an "
+    "impulse voltage (table 4 and table 5, page 8), not from the working voltage]"
+)
+
+
+def test_a_pack_with_no_clearance_table_prints_clearance_not_judged():
+    """The second review's case S2: TI, a 1.01 mm slot, 3.3 mm straight, 5.027 mm round the slot. The
+    creepage holds, but SLUP419 gives no clearance by working voltage (page 7): a line says so for the
+    pairs on each layer, never only a note. HV on F.Cu alone and GND on B.Cu alone: 1 line for the 2
+    faces."""
+    pack = creepage.read_pack(TI)
+    cond = {"pollution_degree": "2", "material_group": "III"}
+    found = creepage.findings(copper(5.0, [rect(112, 105, 113.01, 110)]), SPANS, pack, cond)
+    assert [f.line for f in found] == [TI_NO_CLEARANCE.format("F.Cu", "1 pair of nets")]
+    faces = creepage.Copper(
+        layers=["F.Cu", "B.Cu"],
+        shapes={"F.Cu": [("HV", square(110, 107.5))], "B.Cu": [("GND", square(118, 107.5))]},
+        cuts=[],
+    )
+    assert [f.line for f in creepage.findings(faces, SPANS, pack, cond)] == [
+        TI_NO_CLEARANCE.format("F.Cu and B.Cu", "1 pair of nets")
+    ]
 
 
 def test_ti_fails_a_slot_narrower_than_table_7_asks():
     """A slot 0.8 mm wide (x 112.1 to 112.9) on the straight way: SLUP419 table 7, page 11, counts a slot
     from 1.0 mm at pollution degree 2, so the way is crossed, 3.3 mm, under 4.0 mm (table 3, page 7):
     the creepage fails, and so does the slot, on 1 line each."""
-    pack = creepage.read_pack(TI)
-    cond = {"pollution_degree": "2", "material_group": "III"}
-    found = creepage.findings(copper(5.0, [rect(112.1, 105, 112.9, 110)]), SPANS, pack, cond)
+    found = ti(copper(5.0, [rect(112.1, 105, 112.9, 110)]))
     assert [f.line for f in found] == [
         "fail creepage HV to GND on F.Cu at (110.85, 106.65): 3.3 mm along the surface at 400 V, at least "
         "4 mm (pollution degree 2, material group III) [SLUP419: table 3, page 7]",
@@ -286,9 +321,7 @@ def test_ti_fails_a_slot_narrower_than_table_7_asks():
 
 def test_ti_between_rows_is_not_judged():
     """200 V between the 63 and 400 V rows: 3.3 mm lies between 1.25 and 4.0 mm."""
-    pack = creepage.read_pack(TI)
-    spans = {"HV": (0.0, 200.0), "GND": (0.0, 0.0)}
-    found = creepage.findings(copper(5.0), spans, pack, {"pollution_degree": "2", "material_group": "III"})
+    found = ti(copper(5.0), {"HV": (0.0, 200.0), "GND": (0.0, 0.0)})
     assert [f.status for f in found] == ["not judged"]
     assert "3.3 mm at 200 V lies between 1.25 mm (63 V) and 4 mm (400 V)" in found[0].text
 
@@ -695,6 +728,41 @@ def test_copper_drawn_as_a_shape_is_not_judged():
     ]
 
 
+@pytest.mark.parametrize(
+    ("item", "what"),
+    [
+        (
+            '  (dimension (type aligned) (layer "F.Cu") (pts (xy 111 107.5) (xy 114 107.5)) (height 0))\n',
+            "a dimension at (111, 107.5)",
+        ),
+        ('  (image (at 112.5 107.5) (layer "F.Cu") (scale 1))\n', "an image at (112.5, 107.5)"),
+        (
+            '  (footprint "x:T" (layer "F.Cu") (at 112.5 107.5)\n'
+            '    (property "Value" "BIG" (at 0 0) (layer "F.Cu")\n'
+            "      (effects (font (size 3 3) (thickness 0.6)))))\n",
+            "a property of x:T at (112.5, 107.5)",
+        ),
+    ],
+)
+def test_every_other_node_on_copper_is_not_judged(item, what):
+    """The second review's cases 5b and 5d: a footprint's property text on F.Cu, a dimension on F.Cu; and
+    an image on F.Cu. Each is copper this module does not read: 1 line for the layer."""
+    text = FLOATING.replace(smd("FLOAT", "112.5 107.5", "1.7 1.7", ""), item)
+    assert [f.line for f in judged(text)] == [
+        f"not judged creepage on F.Cu: 1 shape drawn on the copper is not read ({what})"
+    ]
+
+
+def test_a_hidden_property_on_copper_is_no_copper():
+    """A property with `(hide yes)`, or `hide` in its effects as older files write it, is not drawn."""
+    for hide in ("(hide yes) (effects (font (size 3 3)))", "(effects (font (size 3 3)) hide)"):
+        item = (
+            '  (footprint "x:T" (layer "F.Cu") (at 112.5 107.5)\n'
+            f'    (property "Value" "BIG" (at 0 0) (layer "F.Cu") {hide}))\n'
+        )
+        assert judged(FLOATING.replace(smd("FLOAT", "112.5 107.5", "1.7 1.7", ""), item)) == []
+
+
 # ---------------------------------------------------------------- a project's own pack
 
 
@@ -730,6 +798,17 @@ def _bad(tmp_path, base: Path, change) -> Path:
 def test_a_project_pack_with_a_fault_is_refused_with_its_place(tmp_path, base, change, message):
     with pytest.raises(Refusal, match=message):
         creepage.read_pack(_bad(tmp_path, base, change))
+
+
+def test_each_pack_says_what_it_takes_of_solder_mask_and_coating():
+    """MIL-HDBK-454C guideline 69, 4.1, page 69-1, speaks of bare conductors; SLUP419 page 3 counts a
+    board under conformal coating as pollution degree 1. Each pack's scope says the distances are held
+    between bare copper, and the TI pack that degree 1 for a coated board is the project's word."""
+    for path in (MIL, TI):
+        scope = json.loads(path.read_text(encoding="utf-8"))["scope"]
+        assert "between bare copper: solder mask" in scope and "not counted" in scope, path.name
+    ti_scope = json.loads(TI.read_text(encoding="utf-8"))["scope"]
+    assert "Page 3 counts a board under conformal coating as pollution degree 1" in ti_scope
 
 
 def test_the_mil_pack_holds_a_hash_of_its_table_s_text():
@@ -774,3 +853,168 @@ def test_a_board_of_150_nets_and_a_zone_is_judged_in_seconds():
         signal.alarm(0)
         signal.signal(signal.SIGALRM, old)
     assert found == []
+
+
+# ---------------------------------------------------------------- each limit, at the limit
+
+EPS = creepage.EPS
+
+
+def apart(gap: float) -> creepage.Copper:
+    """HV's copper to x 0 and GND's from x `gap`, each 1 mm square, on F.Cu: the gap read is `gap` to
+    the last bit (a distance along x from 0)."""
+    return creepage.Copper(
+        layers=["F.Cu", "B.Cu"],
+        shapes={"F.Cu": [("HV", rect(-1, 0, 0, 1)), ("GND", rect(gap, 0, gap + 1, 1))]},
+        cuts=[],
+    )
+
+
+def test_a_gap_at_the_clearance_less_eps_holds_it():
+    """MIL table 69-I, page 69-2, 300 to 600 V, condition A: clearance 1.5 mm. A gap of 1.5 mm less EPS
+    holds it: 1 line, the creepage's (3 mm leakage)."""
+    found = creepage.findings(apart(1.5 - EPS), SPANS, creepage.read_pack(MIL), MIL_AI)
+    assert [f.line.split(" HV")[0] for f in found] == ["fail creepage"]
+
+
+def test_a_gap_at_the_leakage_less_eps_holds_it():
+    """3 mm less EPS holds the 3 mm of leakage: no line."""
+    assert creepage.findings(apart(3 - EPS), SPANS, creepage.read_pack(MIL), MIL_AI) == []
+
+
+def test_a_gap_at_the_lower_row_less_eps_is_between_rows():
+    """SLUP419 table 3, page 7, pollution degree 2, group III: 63 V 1.25 mm, 400 V 4.0 mm. At 200 V a
+    gap of 1.25 mm less EPS holds the lower row: `not judged` between the rows, not `fail`."""
+    spans = {"HV": (0.0, 200.0), "GND": (0.0, 0.0)}
+    found = ti(apart(1.25 - EPS), spans)
+    assert [f.status for f in found] == ["not judged"] and "lies between" in found[0].text
+
+
+def test_a_slot_at_the_least_width_less_eps_counts():
+    """SLUP419 table 7, page 11: a slot counts from 1.0 mm at pollution degree 2. HV's pad from x -3.35
+    to -1.65, GND's from 1.65 to 3.35, both y -0.85 to 0.85: 3.3 mm straight. A slot from x 0 to 1 mm
+    less EPS, y -1 to 1, counts: the way runs round its end, sqrt(1.65^2 + 0.15^2) + 1 +
+    sqrt(0.65^2 + 0.15^2) = 1.656804 + 1 + 0.667083 = 3.323887 mm, under the 4.0 mm of table 3, page 7,
+    at 400 V: 1 line at 3.324 mm, and the slot does not fail."""
+    w = 1 - EPS
+    slot = rect(0, -1, w, 1)
+    assert creepage._width(slot) == w
+    cu = creepage.Copper(
+        layers=["F.Cu", "B.Cu"],
+        shapes={"F.Cu": [("HV", square(-2.5, 0)), ("GND", square(2.5, 0))]},
+        cuts=[creepage.Cut(slot, "")],
+    )
+    found = ti(cu)
+    assert [f.text.split(": ")[1].split(" along")[0] for f in found] == ["3.324 mm"], [f.line for f in found]
+
+
+def test_a_voltage_over_the_last_row_on_1_layer_is_not_judged():
+    """1200 V, over the 1000 V of table 69-I's last row (page 69-2): both tables say nothing."""
+    spans = {"HV": (0.0, 1200.0), "GND": (0.0, 0.0)}
+    found = creepage.findings(copper(5.0), spans, creepage.read_pack(MIL), MIL_AI)
+    assert [f.line.split(" [")[0] for f in found] == [
+        "not judged clearance HV to GND on F.Cu: 1200 V is over 1000 V, the table's last row",
+        "not judged creepage HV to GND on F.Cu: 1200 V is over 1000 V, the table's last row",
+    ]
+
+
+def test_a_pair_that_fails_its_clearance_gets_no_line_for_copper_with_no_net(tmp_path):
+    """A pack of a project's own: MIL's tables with a least slot width of 1 mm. HV and GND 1.3 mm apart
+    (centres 3 mm) fail the 1.5 mm of clearance; a slot 1 mm wide from y 104 to 111 lengthens the way to
+    2 x sqrt(0.15^2 + 2.65^2) + 1 = 6.309 mm, over the 3 mm of leakage. A speck with no net in the gap:
+    the pair already fails, so it gets no `not judged` line for it."""
+    data = json.loads(MIL.read_text(encoding="utf-8"))
+    data["slot"] = {"key": "condition", "least_mm": {"A": 1, "B": 1, "C": 1}, "where": "a test, page 1"}
+    path = tmp_path / "slotted.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    cu = copper(3.0, [rect(111.0, 104, 112.0, 111)])
+    cu.floating = {"F.Cu": [("a pad with no net at (111.5, 107.5)", square(111.5, 107.5, 0.1))]}
+    found = creepage.findings(cu, SPANS, creepage.read_pack(path), MIL_AI)
+    assert [f.line.split(":")[0] for f in found] == ["fail clearance HV to GND on F.Cu at (110.85, 106.65)"]
+
+
+TWO_FACES = """(kicad_pcb (version 20241229) (generator "test")
+  (general (thickness {thick}))
+  (layers (0 "F.Cu" signal) (2 "B.Cu" signal) (25 "Edge.Cuts" user))
+  (gr_rect (start 100 100) (end 125 115) (layer "Edge.Cuts"))
+{items})
+"""
+
+
+def pin(name: str, at: str, net: str) -> str:
+    return (
+        f'  (footprint "x:{name}" (layer "F.Cu") (at {at})\n'
+        f'    (pad "1" thru_hole rect (at 0 0) (size 1.7 1.7) (drill 1) (layers "*.Cu") (net "{net}")))\n'
+    )
+
+
+def test_a_pair_that_fails_on_a_face_gets_no_line_between_the_faces():
+    """2 pins 2 mm apart (centres 3.7 mm), 0.3 mm from the board's edge (y 100.3), on both faces: each
+    face fails the 3 mm of leakage. Between the faces the way round the edge is at least 0.3 + 1.6 + 0.3
+    = 2.2 mm, but the pair already fails: 2 lines, no more."""
+    text = TWO_FACES.format(thick=1.6, items=pin("J1", "110 101.15", "HV") + pin("J2", "113.7 101.15", "GND"))
+    assert [f.line.split(" at ")[0] for f in judged(text)] == [
+        "fail creepage HV to GND on F.Cu",
+        "fail creepage HV to GND on B.Cu",
+    ]
+
+
+def test_2_nets_with_no_voltage_between_them_get_no_line_between_the_faces():
+    """GND on F.Cu and GND2 on B.Cu, both 0 V, 1 over the other 0.1 mm from the edge of a 0.4 mm board:
+    the way round the edge is 0.6 mm, but no voltage stands between them: no line."""
+    items = smd("A", "110 100.95", "1.7 1.7", "GND") + smd("B", "110 100.95", "1.7 1.7", "GND2", "B.Cu")
+    spans = {"GND": (0.0, 0.0), "GND2": (0.0, 0.0)}
+    assert judged(TWO_FACES.format(thick=0.4, items=items), spans) == []
+
+
+NPTH = (
+    '  (footprint "x:H" (layer "F.Cu") (at 112.5 107.5)\n'
+    '    (pad "" np_thru_hole circle (at 0 0) (size 2 2) (drill 2) (layers "*.Cu")))\n'
+)
+
+
+def test_a_hole_with_no_plating_is_a_wall_between_the_faces():
+    """HV's pad on F.Cu and GND's right under it on B.Cu, both to x 110.85, and a hole with no plating,
+    2 mm across at x 112.5 (from x 111.5): the way through it is at least 0.65 + 1.6 + 0.65 = 2.9 mm,
+    under 3 mm. The hole is drawn as 16 sides round it, so the bound read lies from 2.9 - 2 x
+    (1 / cos(pi / 16) - 1) = 2.8608 to 2.9 mm. A hole with no plating is no copper: on 1 face it does
+    not cross the gap."""
+    text = BARREL.format(NPTH).replace(
+        '"x:GNDPAD" (layer "B.Cu") (at 115 107.5)', '"x:GNDPAD" (layer "B.Cu") (at 110 107.5)'
+    )
+    assert '"x:GNDPAD" (layer "B.Cu") (at 110 107.5)' in text
+    lines = _faces_lines(text)
+    assert len(lines) == 1 and "round the board's edge or through a hole" in lines[0], lines
+    read = float(lines[0].split("at least ")[1].split(" mm")[0])
+    assert 2.8608 - 0.001 <= read <= 2.9
+    one_face = FLOATING.replace(smd("FLOAT", "112.5 107.5", "1.7 1.7", ""), NPTH)
+    assert judged(one_face) == []
+
+
+def test_an_arc_on_a_line_is_read_as_a_straight_track():
+    """An arc whose middle stands on the line from its start to its end is a straight track: 1 polygon,
+    the track's capsule."""
+    polys = creepage.arc_track((100, 100), (102, 100), (104, 100), 0.5)
+    assert polys == [creepage.capsule((100, 100), (104, 100), 0.5)]
+
+
+def test_an_arc_narrower_than_its_width_is_read_as_a_disc():
+    """An arc of radius 0.1 mm and width 0.4 mm: its copper fills a disc of 0.1 + 0.2 = 0.3 mm round its
+    centre, and the polygons hold every point of it."""
+    polys = creepage.arc_track((100.1, 100), (100, 100.1), (99.9, 100), 0.4)
+    for k in range(72):
+        for r in (0.0, 0.1, 0.2, 0.29):
+            t = math.radians(5 * k)
+            assert creepage.nearest(polys, (100 + r * math.cos(t), 100 + r * math.sin(t)))[0] <= 1e-9
+
+
+def test_a_round_oval_pad_is_read_as_a_circle():
+    """An oval pad of equal sides is a circle: 1.7 mm at x 110 reaches x 110 - 0.85 / cos(pi / 16), not
+    the 110 - 0.85 of a square."""
+    text = FLOATING.replace(
+        smd("FLOAT", "112.5 107.5", "1.7 1.7", ""),
+        '  (footprint "x:O" (layer "F.Cu") (at 120 107.5)\n'
+        '    (pad "1" smd oval (at 0 0) (size 1.7 1.7) (layers "F.Cu") (net "HV")))\n',
+    )
+    oval = [p for n, p in creepage.read_copper(text).shapes["F.Cu"] if n == "HV"][1]
+    assert min(x for x, _ in oval) == pytest.approx(120 - 0.85 / math.cos(math.pi / 16), abs=1e-9)

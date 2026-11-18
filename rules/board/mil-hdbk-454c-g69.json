@@ -16,7 +16,7 @@
     "how": "pdftotext 24.02.0 -f 129 -l 130 -layout, each line holding 'Source: https://assist.dla.mil -- Downloaded: ' removed; the same from 2 downloads of 2026-11-17 whose files' SHA256 differ",
     "sha256": "b2547e850a43bac8d44067a19a5e2804cc91c5e2f3682a0ad0dc585b13ce8a73"
   },
-  "scope": "guideline 69, 4.1, page 69-1: clearance between solder connections or bare conductors, such as on terminal strips, standoffs, or similar connections; a handbook for guidance (cover page)",
+  "scope": "guideline 69, 4.1, page 69-1: clearance between solder connections or bare conductors, such as on terminal strips, standoffs, or similar connections; a handbook for guidance (cover page). The distances are held between bare copper: solder mask and coating are not counted, and guideline 69 (pages 69-1 and 69-2) says nothing of either.",
   "conditions": {
     "condition": {
       "values": ["A", "B", "C"],
