@@ -667,11 +667,17 @@ theta_jb holds no part. Prefer psi_jb or psi_jt.
    board, so the owner sees how far the statement moves the verdict.
    The gate finds the parts that can get hot by itself: every part of
    the board whose facts carry `thermal`. It reads the schematic's parts
-   with kicad-cli and each part's number from `parts.csv`, as `workcenter
-   ratings` does. A part of them that the file does not name is not
-   judged, on 1 line that gives the row to write (a warning, a failure
-   with `--strict`). No power decides it: a part is asked for because its
-   facts carry a thermal figure. A board with no such part says so in 1
+   with kicad-cli and each part's number from `parts.csv` beside the
+   schematic. It reads no other parts file: `workcenter ratings --parts`
+   does, `sim` and `gates` do not. A part of them that the file does not
+   name is not judged, on 1 line that gives the row to write (a warning, a
+   failure with `--strict`). A row whose `mpn` is not the board part's
+   number fails: the gate would judge the part on another part's facts. A
+   part with no number and no facts entry, whose pins are the pins of an
+   entry with a thermal figure, may be that part: it is not judged. A
+   project with no deck is asked for its parts all the same. No power
+   decides it: a part is asked for because its facts carry a thermal
+   figure. A board with no such part says so in 1
    line and passes. A project with no schematic names no part of a board:
    only the file's parts are judged, and 1 line says so. Without
    `sim/thermal.json` the gate judges no junction and prints 1 line that
@@ -695,6 +701,8 @@ theta_jb holds no part. Prefer psi_jb or psi_jt.
    | `thermal U1: junction ... at its worst of 11 runs (...), the case on a heat sink, ..., the worst junction by SPRA953D, section 2.2, equation 5, page 7` | Equation 5 from the ambient gave more than the stated case or theta_ja: the sink, not the case, sets the junction. A hotter part needs a better sink (a lower Rtheta(SA)) or less power. |
    | `thermal: no part's junction is judged: sim/thermal.json is not there ...` | Name each part that dissipates power in `sim/thermal.json` (step 3). The lines below it name the parts whose facts carry a thermal figure. |
    | `thermal: U1 (MPN) not judged: its facts (...) carry junction_max ... and sim/thermal.json names no row for it: write its row ...` | Write the row the line gives under `parts` in `sim/thermal.json`: the deck's measure that prints the part's power (step 2), and where that power comes from. Never take `thermal` out of the facts to quiet the line. |
+   | `thermal: U1 (MPN) is judged on facts that are not its own: its row in sim/thermal.json names ...` | Write the board part's number in the row, as `parts.csv` gives it. If the board should carry the other part, change the schematic and `parts.csv`, never the row alone. |
+   | `thermal: U1 not judged: the project has no parts.csv to give its part number ...` | Put `parts.csv` beside the schematic with the part's row (Value, Footprint, MPN), so the gate reads its number. |
    | `thermal: which parts of the board carry a thermal figure is not judged: ...` | Do what the reason asks: install kicad-cli, correct the schematic, the facts or `parts.csv`. |
    | `thermal: U1 not judged: ... both speak of U1 ...` | 2 facts entries name the part as closely. Keep 1 (the `ratings` skill). |
    | `thermal: 2 parts of the board carry a thermal figure in their facts: U1, U2; sim/thermal.json names 2 of them` | Nothing: every part that can get hot is named. |

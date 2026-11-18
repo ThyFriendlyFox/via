@@ -67,7 +67,7 @@ def test_a_part_whose_facts_carry_a_thermal_figure_and_no_row_is_not_judged_and_
     line that names the part, every figure its facts carry with their pages, and the row to write. C1's
     facts carry no `thermal`: it is not asked for."""
     entries = {"U1": ("TLV75533PDBVR", TLV), "C1": ("CL10A106KP8NNN", CAP), "R1": ("", None)}
-    board = thermal.asked(entries, {"U9"})
+    board = thermal.asked(entries, {"U9": "TLV75533PDBVR"})
     assert board["not_judged"] == [U1_LINE]
     assert board["asked"] == ["U1"] and board["unplanned"] == ["U1"]
     assert board["line"] == (
@@ -79,11 +79,75 @@ def test_a_part_whose_facts_carry_a_thermal_figure_and_no_row_is_not_judged_and_
 def test_the_same_part_named_in_the_plan_is_asked_for_and_not_named_again():
     """The same board with U1's row: nothing is left unjudged by the board's parts."""
     entries = {"U1": ("TLV75533PDBVR", TLV), "C1": ("CL10A106KP8NNN", CAP)}
-    board = thermal.asked(entries, {"U1"})
-    assert board["not_judged"] == [] and board["unplanned"] == []
+    board = thermal.asked(entries, {"U1": "TLV75533PDBVR"})
+    assert board["not_judged"] == [] and board["unplanned"] == [] and board["failures"] == []
     assert board["line"] == (
         "thermal: 1 part of the board carries a thermal figure in its facts: U1; sim/thermal.json names 1 "
         "of them"
+    )
+
+
+DRV = next(f for f in FACTS_LIST if f.data.get("mpn") == "TLV75533PDRVR")
+
+
+def test_a_row_that_names_another_part_number_does_not_name_the_board_s_part_and_fails():
+    """Finding L7B-1. parts.csv gives U1 the DBV part, TLV75533PDBVR (RthetaJA 231.1 C/W, SBVS320D
+    section 5.4, page 5); the row names the WSON part, TLV75533PDRVR (RthetaJA 100.2 C/W, the DRV column
+    of the same table). judge() would hold U1 on the DRV facts: the row does not name the board's part,
+    so it fails, and the plan names 0 of the 1 part that carries a figure."""
+    entries = {"U1": ("TLV75533PDBVR", TLV)}
+    board = thermal.asked(entries, {"U1": "TLV75533PDRVR"}, parts="parts.csv")
+    assert board["failures"] == [
+        "thermal: U1 (TLV75533PDBVR) is judged on facts that are not its own: its row in sim/thermal.json "
+        "names TLV75533PDRVR, and parts.csv gives TLV75533PDBVR: write the board's part number in its row "
+        "(the simulate skill, A part's temperature, step 3)"
+    ]
+    assert board["mismatched"] == ["U1"] and board["not_judged"] == []
+    assert board["line"].endswith("sim/thermal.json names 0 of them")
+
+
+def test_a_row_for_a_part_with_no_number_must_name_the_facts_entry_of_the_board_s_part():
+    """U1 has no part number and is matched by its facts entry (the DBV entry): a row naming the DRV
+    part's number names facts that are not U1's entry, and fails."""
+    board = thermal.asked({"U1": ("", TLV)}, {"U1": "TLV75533PDRVR"})
+    assert board["failures"] == [
+        "thermal: U1 (TLV75533PDBVR) is judged on facts that are not its own: its row in sim/thermal.json "
+        "names TLV75533PDRVR, and the facts entry of the board's part (ti-tlv755p.json) does not name it: "
+        "write the board's part number in its row (the simulate skill, A part's temperature, step 3)"
+    ]
+    assert thermal.asked({"U1": ("", TLV)}, {"U1": "TLV75533PDBVR"})["failures"] == []
+
+
+def part(ref: str, pins: int) -> ratings.Part:
+    return ratings.Part(ref, "x", "x:x", "x:x", True, pins={str(n): f"N{n}" for n in range(1, pins + 1)})
+
+
+def test_a_part_could_be_an_entry_with_a_thermal_figure_only_when_it_has_every_pin_the_entry_names():
+    """Finding L7B-2. The DBV entry names pins 1 to 5 (SBVS320D table 4-1, page 3); the DRV entry names
+    pins 1 to 7, the pad 7 among them; BQ21040DBVR names 1 to 6. A part of 5 pins could be the DBV part
+    alone, a part of 2 pins none of them, and a part of 7 pins any of the 3."""
+    hot = [f for f in FACTS_LIST if "thermal" in f.data]
+    assert [f.name for f in thermal.could_be(part("U1", 5), hot)] == ["TLV75533PDBVR"]
+    assert thermal.could_be(part("R1", 2), hot) == []
+    assert len(thermal.could_be(part("U2", 7), hot)) == 3
+
+
+def test_a_part_with_no_number_that_could_carry_a_thermal_figure_is_not_judged_and_not_said_to_carry_none():
+    """Finding L7B-2. The project has no parts.csv, so U1 has no part number and no facts entry; its
+    pins are those of the DBV entry. The gate cannot say that no part carries a thermal figure: U1 is not
+    judged, on 1 line that says why. R1 could be no entry with a figure: it is not named."""
+    entries = {"U1": ("", None), "R1": ("", None)}
+    board = thermal.asked(entries, None, maybe={"U1": [TLV]}, parts=None)
+    assert board["not_judged"] == [
+        "thermal: U1 not judged: the project has no parts.csv to give its part number and no facts entry "
+        "names it by its symbol, and it has the pins of TLV75533PDBVR (ti-tlv755p.json), whose facts carry "
+        "a thermal figure: give its part number in parts.csv beside the schematic, the file the gate reads "
+        "it from"
+    ]
+    assert board["unplanned"] == ["U1"]
+    assert board["line"] == (
+        "thermal: no part of the board is known to carry a thermal figure in its facts; 1 part with no "
+        "part number may: U1"
     )
 
 
@@ -166,7 +230,7 @@ def test_a_project_with_no_schematic_names_no_part_of_a_board(tmp_path):
     (tmp_path / "library" / "facts").mkdir(parents=True)
     (tmp_path / "library" / "facts" / "u.json").write_text(json.dumps(TLV.data), encoding="utf-8")
     project = project_at(cli, tmp_path / "board", sch=False)
-    record, unjudged = cli.thermal_board(project, tmp_path / "out", {"U1"})
+    record, unjudged = cli.thermal_board(project, tmp_path / "out", {"U1": "TLV75533PDBVR"})
     assert unjudged == []
     assert record["line"] == (
         "thermal: the project has no schematic, so it names no part of a board: only the parts "
@@ -188,6 +252,32 @@ def test_a_schematic_kicad_cli_cannot_read_leaves_the_board_s_parts_not_judged(t
         "thermal: which parts of the board carry a thermal figure is not judged: no-such-kicad-cli is not "
         "on PATH to read the schematic's parts"
     ]
+
+
+def test_a_project_with_no_deck_still_asks_for_the_parts_that_carry_a_thermal_figure(tmp_path, monkeypatch):
+    """Finding L7B-3. A project with no sim/*.cir: the board's parts are asked for all the same, as no
+    deck gives their power. A part not judged is a warning, and fails --strict; with nothing asked for
+    the gate skips as before, with the board's line in the record."""
+    cli = load_cli()
+    project = project_at(cli, tmp_path / "board", sch=True)
+    monkeypatch.setattr(cli, "deck_needs", lambda *a: ([], []))
+    seen = []
+
+    def board(project, folder, named):
+        seen.append(named)
+        return {"line": "thermal: x", "unplanned": ["U1"]}, ["thermal: U1 (BQ21040DBVR) not judged: y"]
+
+    monkeypatch.setattr(cli, "thermal_board", board)
+    strict = cli.gate_sim(project, tmp_path / "out", strict=True)
+    assert strict.status == "fail" and seen == [None]
+    assert strict.details["failures"] == ["thermal: U1 (BQ21040DBVR) not judged: y"]
+    assert strict.details["thermal"]["board"] == {"line": "thermal: x", "unplanned": ["U1"]}
+    loose = cli.gate_sim(project, tmp_path / "out", strict=False)
+    assert loose.status == "skip" and loose.details["warnings"] == ["thermal: U1 (BQ21040DBVR) not judged: y"]
+    monkeypatch.setattr(cli, "thermal_board", lambda *a: ({"line": "thermal: none"}, []))
+    quiet = cli.gate_sim(project, tmp_path / "out", strict=True)
+    assert quiet.status == "skip" and quiet.summary == "no sim/*.cir in project"
+    assert quiet.details["thermal"]["board"] == {"line": "thermal: none"}
 
 
 def test_the_record_carries_the_board_s_line_and_the_gate_prints_it():
