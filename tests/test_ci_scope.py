@@ -265,6 +265,34 @@ def test_a_rename_is_judged_at_both_of_its_paths(repo):
     ]
 
 
+def test_a_path_whose_name_is_not_utf_8_is_judged_and_shown_with_its_byte_escaped(repo):
+    """A commit adds docs/caf<0xE9>.md, a name in Latin-1. git gives the bytes as they are; the script
+    judges the path by its rule (a document, fast) and shows the byte that is not UTF-8 as `\\xe9`."""
+    base = git(repo, "rev-parse", "HEAD")
+    name = os.fsdecode(b"caf\xe9.md")
+    (repo / "docs").mkdir()
+    (repo / "docs" / name).write_text("# Notes\n", encoding="utf-8")
+    head = commit(repo, {}, "a Latin-1 name")
+    code, lines = scope("--repo", repo, "--base", base, "--head", head)
+    assert code == 0, lines
+    assert lines == [f"fast  docs/caf\\xe9.md: {SAME}", "fast"]
+
+
+def test_a_listed_document_that_is_absent_is_full(repo):
+    """A list carries no text, and a document that is not in the working tree cannot show that it held
+    no run: README.md held 1 run before it was deleted. A site page that is absent is the same."""
+    (repo / "README.md").unlink()
+    (repo / "site" / "index.html").unlink()
+    absent = "absent from the working tree, so a list of paths cannot show whether it showed a run"
+    _, lines = scope("--repo", repo, "--paths", "README.md", "docs/gone.md", "site/index.html")
+    assert lines == [
+        f"full  README.md: {absent}",
+        f"full  docs/gone.md: {absent}",
+        f"full  site/index.html: {absent}",
+        "full",
+    ]
+
+
 def test_no_change_is_fast_and_the_answer_goes_to_the_github_output(repo, tmp_path):
     base = git(repo, "rev-parse", "HEAD")
     out = tmp_path / "github_output"
