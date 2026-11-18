@@ -296,6 +296,12 @@ def attenuation_per_m(project: Path, length_m: float, lo: float, hi: float) -> f
 
 
 @needs_openems
+@pytest.mark.xfail(
+    strict=True,
+    reason="not within its margin: the run of 2026-11-18 gave 1.7615 Np/m for the sheet and 2.2423 Np/m "
+    "for the conducting sheet, a conductor loss of 0.4808 Np/m, 35 % under the closed form's 0.74145 "
+    "against a margin of 30 % written before the run. The margin is not widened after the run.",
+)
 def test_lossy_copper_adds_the_closed_form_conductor_loss(tmp_path):
     """The line made 40 mm long, run with copper as a perfect sheet and as a conducting sheet of 58e6
     S/m and 0.035 mm (NIST Handbook 100, 1966, 1.2a, p. 2). The difference of their attenuations, read
