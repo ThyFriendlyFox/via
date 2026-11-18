@@ -8,9 +8,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # The gate runs alone: it waits its turn on the machine's engine lock and holds it to its end. The
-# commands its tests start are its children and do not wait for it (tools/enginelock.py).
+# commands its tests start are its children and do not wait for it (tools/enginelock.py). The fast
+# gate (`verify.sh site`) takes it too, as `make verify-site`: it starts no engine, but its tests
+# fill the machine's processors for minutes.
 if ! python3 tools/enginelock.py held; then
-  exec python3 tools/enginelock.py hold --what "make verify" -- bash verify/verify.sh "$@"
+  exec python3 tools/enginelock.py hold --what "make verify${1:+-$1}" -- bash verify/verify.sh "$@"
 fi
 
 VENV_PY=/opt/workcenters/ee/venv/bin/python

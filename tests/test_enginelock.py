@@ -450,7 +450,11 @@ def test_verify_takes_the_lock_for_the_whole_gate():
     text = (ROOT / "verify" / "verify.sh").read_text(encoding="utf-8")
     head = text[: text.index('step "1/4 lint"')]
     assert "python3 tools/enginelock.py held" in head
-    assert 'exec python3 tools/enginelock.py hold --what "make verify" -- bash verify/verify.sh "$@"' in head
+    # `make verify-site` (verify.sh site) is named by its mode (tests/test_ci_scope.py).
+    assert (
+        'exec python3 tools/enginelock.py hold --what "make verify${1:+-$1}" -- bash verify/verify.sh "$@"'
+        in head
+    )
 
 
 # --- the workcenter's own commands -------------------------------------------------------------------
