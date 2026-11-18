@@ -127,7 +127,7 @@ USB32_TX1 = {
     "name": "usb3-tx1",
     "nets": ["/SS_TX1_P", "/SS_TX1_N"],
     "ports": ["J1.A3", "U2.17", "J1.A2", "U2.16"],
-    "band_ghz": [0.1, 5],
+    "band_ghz": [0.1, 10],
     "limits": [
         {
             "measure": "diff_insertion_loss_db",
@@ -136,8 +136,8 @@ USB32_TX1 = {
             "max": 8.5,
             "source": "USB 3.2 Specification Revision 1.1 (June 2022), Appendix E, E.6.4.8, p. 536: an "
             "informative insertion-loss budget of 8.5 dB for the host/device, in Gen 2; the sentence names "
-            "no frequency, and E.6.4.3, p. 532 names 5 GHz as Gen 2's Nyquist frequency, the top of this "
-            "band",
+            "no frequency, so it is held up to 10 GHz, twice the 5 GHz E.6.4.3, p. 532 names as Gen 2's "
+            "Nyquist frequency",
         },
         {
             "measure": "diff_impedance_ohm",
@@ -165,10 +165,13 @@ USB32_TX1 = {
 def test_the_wyvern_usb3_lane_is_held_to_what_usb_3_2_states(tmp_path):
     """The USB 3 TX1 pair of the Wyvern example, from J1's A3 and A2 to U2's 17 and 16 on F.Cu over
     In1.Cu, copied out of the example (the command writes into its project's build folder). 4 ports,
-    2 runs. The pair's differential insertion loss is held to the 8.5 dB USB 3.2 gives the host/device
-    up to 5 GHz: a few cm of FR-4 lose about 15 dB/m at 5 GHz (Qucs eq. 11.79 for the line fixture's
-    stack), under 1 dB. The differential impedance and return loss are printed not judged, with the
-    clause that says why; so are the 10 single-ended measures no limit names."""
+    2 runs. The pair's differential insertion loss is held to the 8.5 dB USB 3.2 gives the host/device,
+    at every frequency up to 10 GHz, twice Gen 2's Nyquist frequency: the strict side, since the
+    sentence names no frequency. A band that ended at 5 GHz gave no result: openEMS samples its probes
+    for the band's top, and wrote 45 samples, too few for the ports to settle (a run of 2026-11-18). A
+    few cm of FR-4 lose about 15 dB/m at 5 GHz (Qucs eq. 11.79 for the line fixture's stack), so the
+    loss stays well under 8.5 dB. The differential impedance and return loss are printed not judged,
+    with the clause that says why; so are the 10 single-ended measures no limit names."""
     import shutil
 
     project = tmp_path / "wyvern"
