@@ -1871,13 +1871,20 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
             out.append(Finding("not judged", ref, stress, f"{label}: {value}"))
             return
         share, rule, source = limit_of(stress, ref, rated)
-        if share is None:
-            text = f"{label}: {si(value, unit)} on {si(rated, unit)} rated: the pack names no share for a "
-            out.append(Finding("not judged", ref, rule, f"{text}rating of {si(rated, unit)}", source))
-            return
         if rated <= 0:  # a rating that falls with the temperature has reached 0 at this ambient
             text = f"{label}: {si(value, unit)} on {si(rated, unit)} rated: nothing of the rating is left"
             judged(ref, rule, value <= EPS, text, source)
+            return
+        if share is None:  # no derated share: the part's own rating, 1.00, holds all the same
+            why = f"the pack names no share for a rating of {si(rated, unit)}"
+            if value > rated + EPS:
+                over = value / rated
+                text = f"{label}: {si(value, unit)} on {si(rated, unit)} rated is {over:.2f}"
+                own = f"{of[ref].source}: the part's own rating"
+                judged(ref, rule, False, f"{text}, the limit is 1.00, the part's own rating: {why}", own)
+                return
+            text = f"{label}: {si(value, unit)} on {si(rated, unit)} rated: {why}"
+            out.append(Finding("not judged", ref, rule, text, source))
             return
         holds = value <= rated * share + EPS
         of_it = f"{value / rated:.2f}"

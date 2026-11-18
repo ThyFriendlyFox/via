@@ -8,7 +8,7 @@ verify`: an edit of the engine that moves an anchor fixes the anchor in the same
 A name is the reviewer's id of 2026-11-17 and the part of the engine it changes. The reviewer's 431
 changes were written against an older engine; each is anchored here to the text it changes now.
 EQUIVALENT names the changes no test can catch, each with the reason; GONE the ones whose code was
-rewritten since. FU01 to FU14 change the rule by rating that a fuse's current is held to.
+rewritten since. FU01 to FU15 and FU21 change the rule by rating that a fuse's current is held to.
 """
 
 TEST = (
@@ -148,6 +148,8 @@ MUTATIONS = [
     ('FU12 _bands', 'tools/ratings.py', 'r, above=0) for r in row["rated"]', 'r) for r in row["rated"]'),
     ('FU13 _bands', 'tools/ratings.py', '        _above(where, above, 1)', '        pass'),
     ('FU14 _bands', 'tools/ratings.py', 'math.isclose(r, s, rel_tol=EPS)', 'r == s'),
+    ('FU15 judge.ratio', 'tools/ratings.py', 'if value > rated + EPS:', 'if False:'),
+    ('FU21 judge.ratio', 'tools/ratings.py', 'over = value / rated', 'over = rated / value'),
     ('GT02 gate_ratings.strict', 'tools/ratings.py', 'if strict else ("fail",)', 'if not strict else ("fail",)'),
     ('GT03 gate_ratings.details', 'tools/ratings.py', 'not in (*red, "hold")', 'not in (*red,)'),
     ('GT04 gate_ratings.cut', 'tools/ratings.py', 'SHOWN = 20', 'SHOWN = 10'),
