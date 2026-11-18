@@ -256,7 +256,7 @@ def _check_ic(chip, f, vin, vout, amps, ambient, pack, note, eq):  # noqa: PLR09
         return None, f"{mpn}: {tj}, over {said} [{tj_where}]"
     sums.append(
         f"U: {tj}, under {said}; PD(max) = ({limit:g} C - {ambient_max:g} C) / {theta:g} C/W = "
-        f"{si((limit - ambient_max) / theta, 'W')}; {thermal.assumes(theta)} [{tj_where}]"
+        f"{si((limit - ambient_max) / theta, 'W')}; {thermal.assumes('theta_ja', term)} [{tj_where}]"
     )
     # The junction from the least ambient, where it starts at no load, to the most: the recommended span.
     tj_lo, tj_hi = chip["junction_span"]["value"]
