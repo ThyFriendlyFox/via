@@ -375,6 +375,13 @@ HINTS: list[tuple[str, str, str]] = [
         f'{SIMULATE}, "A part\'s temperature"',
     ),
     (
+        r"^sim: thermal: .* not judged: its facts .* sim/thermal\.json names no row for it",
+        "Write the part's row in sim/thermal.json, as the line gives it (step 3). Name the deck's measure "
+        "that prints its power at every run, and where that power comes from. Print the power in a deck "
+        "first if none does.",
+        f'{SIMULATE}, "A part\'s temperature"',
+    ),
+    (
         r"^sim: (thermal: |.*thermal\.json: )",
         "Do what the line asks: write the part's thermal facts, print its power at every run, or correct "
         "sim/thermal.json.",
