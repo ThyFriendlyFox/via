@@ -138,14 +138,14 @@ def test_a_suggestion_keeps_its_words_and_an_email_only_when_given():
 @needs_node
 def test_a_form_that_is_not_whole_keeps_nothing_and_says_why():
     for form, fields, error in (
-        ("subscribe", {"email": "nope"}, "Enter an email address."),
-        ("subscribe", {"email": "a@" + "b" * 250 + ".com"}, "Enter an email address."),
-        ("feedback", {"message": "  "}, "Write a suggestion."),
-        ("feedback", {"message": "x" * 5001}, "Keep the suggestion under 5,000 characters."),
+        ("subscribe", {"email": "nope"}, "That doesn't look like an email address."),
+        ("subscribe", {"email": "a@" + "b" * 250 + ".com"}, "That doesn't look like an email address."),
+        ("feedback", {"message": "  "}, "The suggestion box is empty."),
+        ("feedback", {"message": "x" * 5001}, "That's longer than our 5,000-character limit."),
         (
             "feedback",
             {"message": "Hi", "email": "nope"},
-            "Enter an email address, or leave that field empty.",
+            "That email address doesn't look right. It's fine to leave it empty.",
         ),
     ):
         answer = send(form, fields)
@@ -164,7 +164,7 @@ def test_a_browser_without_the_script_goes_back_to_the_thank_you_line():
     answer = send("feedback", {"message": "Hi", "from": "/feedback"}, script=False)
     assert (answer["status"], answer["location"]) == (303, "/feedback#sent")
     refused = send("subscribe", {"email": "nope"}, script=False)
-    assert (refused["status"], refused["body"]) == (400, "Enter an email address.\n")
+    assert (refused["status"], refused["body"]) == (400, "That doesn't look like an email address.\n")
 
 
 @needs_node
@@ -181,5 +181,5 @@ def test_a_store_that_fails_tells_the_reader_to_try_again():
     answer = send("subscribe", {"email": "a@example.com"}, fail=True)
     assert (answer["status"], answer["json"]) == (
         500,
-        {"ok": False, "error": "That didn't send. Try again."},
+        {"ok": False, "error": "That didn't go through. Could you try again?"},
     )

@@ -63,7 +63,7 @@
         done.focus();
         return;
       }
-      error.textContent = answer?.error || "That didn't send. Try again.";
+      error.textContent = answer?.error || "That didn't go through. Could you try again?";
       error.hidden = false;
     });
   }

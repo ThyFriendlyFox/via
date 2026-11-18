@@ -42,7 +42,7 @@ def subscribe(page: str, indent: str) -> str:
         f'  <input type="hidden" name="from" value="{page}">',
         '  <p class="form-error" data-form-error role="alert" hidden></p>',
         "</form>",
-        '<p class="form-done" id="subscribed" tabindex="-1">Thanks, you\'re subscribed.</p>',
+        '<p class="form-done" id="subscribed" tabindex="-1">Thanks, you\'re on the list!</p>',
     ]
     return "\n".join(indent + line for line in lines)
 
@@ -64,7 +64,7 @@ def feedback_page() -> str:
             <p class="form-error" data-form-error role="alert" hidden></p>
             <button class="btn btn-primary" type="submit">Send</button>
           </form>
-          <p class="form-done" id="sent" tabindex="-1">Thanks, we got your suggestion.</p>
+          <p class="form-done" id="sent" tabindex="-1">Thanks! Your suggestion\'s on its way to us.</p>
         </div>
       </section>"""
     return shell("Feedback · Via", "Give us suggestions for Via.", "feedback", "", body, SCRIPTS)

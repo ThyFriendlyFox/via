@@ -725,7 +725,7 @@ def example_page(ex: Example, board: Board | None, pictures: set[str]) -> str:
         parts.append(f"""      <section class="section band" id="board" aria-labelledby="board-title">
         <div class="wrap">
           <div class="head" data-reveal data-stagger>
-            <p class="eyebrow">Explore the board</p>
+            <p class="eyebrow">The board, track by track</p>
             <h2 class="title" id="board-title">Every track and part of the routed board, drawn from its file</h2>
             <p class="lede">The board as <code>{html.escape(board_rel(ex))}</code> holds it: {words(board.layers)} copper layers, {board.segments:,} track segments, {words(board.vias)} vias and {words(board.nets)} nets. Point at a pad to see its part, and click a track, a via or a pad to follow its connection across the board.</p>
           </div>
@@ -742,7 +742,7 @@ def example_page(ex: Example, board: Board | None, pictures: set[str]) -> str:
               </div>
             </div>
             <div class="ex-view" data-view></div>
-            <p class="ex-info" data-info aria-live="polite">Drag to move. Pinch, or hold Ctrl and scroll, to zoom.</p>
+            <p class="ex-info" data-info aria-live="polite">You can drag to move around, and pinch or hold Ctrl and scroll to zoom.</p>
           </div>
         </div>
       </section>""")
@@ -885,7 +885,7 @@ def index_page(found: list[tuple[Example, Board | None]]) -> str:
           <div class="head" data-reveal data-stagger>
             <p class="eyebrow">Examples</p>
             <h1 class="title" id="examples-title">Boards designed with Via</h1>
-            <p class="lede">Each example is a complete KiCad project in this repository, designed with Via from a Python design file. Open one to turn it in 3D, explore every track on the board, and read how it was built.</p>
+            <p class="lede">Each example is a complete KiCad project in this repository, designed with Via from a Python design file. Each page lets you turn the board in 3D, follow every track and read how it came together.</p>
           </div>
           <div class="built" data-reveal data-stagger>
             {"".join(cards)}

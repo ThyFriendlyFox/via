@@ -27,6 +27,23 @@ The team speaks as "we". Contractions ("It's", "We're"). Short sentences. Plain
 words a builder uses (PCBs, EE's). Exclamation marks when talking straight to the
 reader. A joke now and then, said flat.
 
+## The owner's notes on the voice, 2026-11-18
+
+After the first pass to these rules the owner wrote: "it still sounds bad. add some
+soul, the website is talking to a person, so it doesnt think them an idiot. things
+are written like commands, and i dont like that". What follows from it:
+
+- Talk with the reader, not at them. "You can turn it around" and "When you change a
+  line, Via rebuilds the board" describe what happens; "Drag to turn it" and "Change a
+  line" order the reader about. Buttons can stay short ("Get the code").
+- The reader is smart. Don't stop to define what a technical reader already knows
+  (a via, a dBm, a phone line). Explain the ideas that are particular to the board.
+- Soul comes from the team being present: what we asked for and why, what we find
+  neat about the design, what was hard, what we don't know yet. It doesn't come from
+  flourish, and it never comes from a story or a feeling nobody had.
+- A form's message talks like a person at a counter: "That doesn't look like an email
+  address", not "Enter an email address".
+
 ---
 
 WRITING RULES FOR CLAUDE: HOW TO NOT SOUND LIKE AI

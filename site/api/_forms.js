@@ -4,7 +4,7 @@
 // whose name starts with "_".
 
 export const MOST = { email: 254, message: 5000 };
-export const NOT_SENT = "That didn't send. Try again.";
+export const NOT_SENT = "That didn't go through. Could you try again?";
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const text = (form, name) => {
@@ -29,7 +29,7 @@ async function sha256(value) {
 // 1 file for each address, named by its hash: the same address twice is 1 file.
 export async function subscription(form, now) {
   const email = text(form, "email");
-  if (!isEmail(email)) return { error: "Enter an email address." };
+  if (!isEmail(email)) return { error: "That doesn't look like an email address." };
   return {
     pathname: `subscribers/${await sha256(email.toLowerCase())}.json`,
     record: { email, page: from(form), at: now.toISOString() },
@@ -40,9 +40,9 @@ export async function subscription(form, now) {
 export async function suggestion(form, now) {
   const message = text(form, "message");
   const email = text(form, "email");
-  if (!message) return { error: "Write a suggestion." };
-  if (message.length > MOST.message) return { error: `Keep the suggestion under ${MOST.message.toLocaleString("en-US")} characters.` };
-  if (email && !isEmail(email)) return { error: "Enter an email address, or leave that field empty." };
+  if (!message) return { error: "The suggestion box is empty." };
+  if (message.length > MOST.message) return { error: `That's longer than our ${MOST.message.toLocaleString("en-US")}-character limit.` };
+  if (email && !isEmail(email)) return { error: "That email address doesn't look right. It's fine to leave it empty." };
   return {
     pathname: `feedback/${now.toISOString().replace(/[:.]/g, "-")}-${crypto.randomUUID().slice(0, 8)}.json`,
     record: { message, email: email || null, page: from(form), at: now.toISOString() },
@@ -73,7 +73,7 @@ export async function receive(request, read, keep, done) {
     script
       ? Response.json({ ok: false, error }, { status })
       : new Response(`${error}\n`, { status, headers: { "content-type": "text/plain; charset=utf-8" } });
-  if (!ours(request)) return refuse(403, "Send the form from the site.");
+  if (!ours(request)) return refuse(403, "This form only works from the site itself.");
   let form;
   try {
     form = await request.formData();
