@@ -70,8 +70,9 @@ CHOICE = (
 TCA = "TCA9534 datasheet, SCPS197D, September 2014, revised October 2017, p 5, 6 and 7"
 
 
-def design(vcc: str = "+3V3", connector: bool = True) -> kicadgen.Design:
-    """J1 brings the bus's supply, J2 the 2 lines from a controller off the board; U1 is a TCA9534."""
+def design(vcc: str = "+3V3", connector: bool = True, u1: dict | None = None) -> kicadgen.Design:
+    """J1 brings the bus's supply, J2 the 2 lines from a controller off the board; U1 is a TCA9534. `u1`
+    replaces U1's nets."""
     d = kicadgen.Design(
         name="t", namespace=uuid.UUID(int=5), outline=(100.0, 100.0, 140.0, 125.0), sheet="A4"
     )
@@ -81,19 +82,32 @@ def design(vcc: str = "+3V3", connector: bool = True) -> kicadgen.Design:
     if connector:
         d.add("J2", "Connector_Generic:Conn_01x02", "I2C", HEADER_2, sch_at=(50.8, 101.6),
               pcb_at=(104.0, 118.0), nets={"1": "SDA", "2": "SCL"})  # fmt: skip
+    nets = {"1": "GND", "2": "GND", "3": "GND", "8": "GND", "14": "SCL", "15": "SDA", "16": vcc}
     d.add("U1", "Interface_Expansion:TCA9534", "TCA9534", SOIC16, sch_at=(127.0, 88.9), pcb_at=(124.0, 112.0),
-          nets={"1": "GND", "2": "GND", "3": "GND", "8": "GND", "14": "SCL", "15": "SDA",
-                "16": vcc})  # fmt: skip
+          nets=nets if u1 is None else u1)  # fmt: skip
     return d
 
 
-def i2c(d=None, *, stock=STOCK, volts=(3.135, 3.465), speed="fast", facts=FACTS, devices=None, **kwargs):
+U1_NETS = {"1": "GND", "2": "GND", "3": "GND", "8": "GND", "14": "SCL", "15": "SDA", "16": "+3V3"}
+
+
+def i2c(
+    d=None,
+    *,
+    stock=STOCK,
+    volts=(3.135, 3.465),
+    speed="fast",
+    facts=FACTS,
+    devices=None,
+    nets=("SDA", "SCL", "+3V3"),
+    **kwargs,
+):
     d = d or design()
     block = blocks.i2c(
         d,
         volts=volts,
         speed=speed,
-        nets=("SDA", "SCL", "+3V3"),
+        nets=nets,
         devices={"U1": "TCA9534DWR"} if devices is None else devices,
         stock=stock,
         facts=facts,
@@ -363,10 +377,176 @@ def test_the_block_hands_its_parts_to_ratings_and_states_no_span_for_the_lines()
     """R1 and R2 are 1 row of parts.csv. The block states no span for SDA and SCL: `workcenter ratings`
     works them out from the pull-ups and the open drains, with the supply held where each pin's limit is
     tightest. A stated span of 0 V to 3.465 V would stand apart from VCC's 3.135 V, and fail SDA's
-    limit of VCC, which the pull-up to the same +3V3 never passes."""
+    limit of VCC, which the pull-up to the same +3V3 never passes. It states the span of the supply it pulls
+    up to: `volts`, which its sums and its deck use."""
     _, block = i2c(farads=100e-12)
-    assert block.ratings == {}
+    assert block.ratings == {
+        "nets": {
+            "+3V3": {
+                "volts": [3.135, 3.465],
+                "source": "the bus voltage of the I2C block R1 R2: i2c(volts=(3.135, 3.465))",
+            }
+        }
+    }
     assert [(r.value, r.mpn, r.qty) for r in block.rows] == [("2.2k", "CRCW06032K20FKEA", 2)]
+
+
+# What a review found the block let through (findings I1 to I8).
+
+
+@needs_libs
+def test_a_pull_up_to_a_net_that_holds_a_devices_ground_is_refused():
+    """I1: nets=(SDA, SCL, GND). R1 and R2 would hold both lines at 0 V; U1's GND, pin 8, is on GND."""
+    assert refused(farads=100e-12, nets=("SDA", "SCL", "GND")) == (
+        "i2c R1 R2: the pull-ups go to GND, and U1 GND, pin 8, a ground, is on it: the bus is pulled up to "
+        "its supply, not to a ground [TCA9534 datasheet, SCPS197D, September 2014, revised October 2017]"
+    )
+
+
+@needs_libs
+def test_ratings_json_refuses_a_net_the_block_and_the_design_state_with_2_spans():
+    """I1: the block says +3V3 spans 3.135 V to 3.465 V; a design that says 0 V to 0 V for the same net
+    has 2 spans for 1 net, and ratings would judge only the last."""
+    _, block = i2c(farads=100e-12)
+    own = {"nets": {"+3V3": {"volts": [0, 0], "source": "the reference"}}}
+    with pytest.raises(blocks.Refused) as exc:
+        blocks.ratings_json("nasa-eee-inst-002", block.ratings, own)
+    assert str(exc.value) == (
+        "ratings.json +3V3: 3.135 V to 3.465 V by the bus voltage of the I2C block R1 R2: i2c(volts=(3.135, "
+        "3.465)), and 0 V to 0 V by the reference: 1 net holds 1 span"
+    )
+
+
+def test_ratings_json_takes_the_same_span_stated_twice():
+    """The fixtures' own +3V3 is the block's 3.135 V to 3.465 V again: no refusal, the last source stands."""
+    a = {"nets": {"+3V3": {"volts": [3.135, 3.465], "source": "a"}}}
+    b = {"nets": {"+3V3": {"volts": [3.135, 3.465], "source": "b"}}}
+    assert json.loads(blocks.ratings_json("p", a, b))["nets"]["+3V3"]["source"] == "b"
+
+
+SCL = TCA.replace("p 5, 6 and 7", "p 5 and 7")  # the pages of SCL's facts
+MADE = "no datasheet: a part made up for tests/test_blocks_i2c.py, p 1"
+
+
+@needs_libs
+def test_a_device_whose_sda_and_scl_are_crossed_is_refused():
+    """I2: U1's SCL, pin 14, on the net SDA and its SDA, pin 15, on SCL. SCL comes first in its facts."""
+    d = design(u1={**U1_NETS, "14": "SDA", "15": "SCL"})
+    assert (
+        refused(d, farads=100e-12)
+        == f"i2c U1 SCL: pin 14 is on SDA, not on SCL, the bus's clock line [{SCL}]"
+    )
+
+
+@needs_libs
+def test_a_device_whose_scl_is_left_open_is_refused():
+    """I3: U1's SDA is on the bus and its SCL, pin 14, on no net: the device is not judged on SCL."""
+    nets = {k: v for k, v in U1_NETS.items() if k != "14"}
+    assert refused(design(u1=nets), farads=100e-12) == (
+        f"i2c U1 SCL: pin 14 is on no net, not on SCL, the bus's clock line [{SCL}]"
+    )
+
+
+@needs_libs
+@pytest.mark.parametrize("nets", [("SDA", "SDA", "+3V3"), ("SDA", "SCL", "SCL")])
+def test_sda_scl_and_the_supply_are_3_nets(nets):
+    """I3: nets=(SDA, SDA, +3V3) put both pull-ups on SDA and left SCL with none."""
+    assert refused(farads=100e-12, nets=nets) == (
+        f"i2c R1 R2: nets={nets!r}: SDA, SCL and the supply they pull up to are 3 different nets"
+    )
+
+
+ON_SDA = {**SDA, "sink": {"amps": 0.003, "volts": 0.4}}
+
+
+@needs_libs
+def test_in_track_mode_a_pin_with_no_capacitance_is_refused(tmp_path):
+    """I4: a made-up part whose SDA gives no farads: the track's sum would count it as 0 pF."""
+    facts = facts_with(tmp_path, tca_like(ON_SDA))
+    assert refused(design(connector=False), track=(50, 0.1e-12, "made up"), facts=facts,
+                   devices={"U1": "FIXTURE-I2C"}) == (
+        "i2c U1 SDA: its facts give no capacitance: Cb cannot be summed; state the bus capacitance, farads= "
+        "[no datasheet: a part made up for tests/test_blocks_i2c.py, p 1]"
+    )  # fmt: skip
+
+
+@needs_libs
+def test_with_a_stated_capacitance_a_pin_with_none_is_said_not_judged(tmp_path):
+    """I4: with farads= the pin's own capacitance is in the stated Cb; the sums say it was not summed."""
+    facts = facts_with(tmp_path, tca_like(ON_SDA))
+    _, block = i2c(farads=100e-12, facts=facts, devices={"U1": "FIXTURE-I2C"})
+    assert (
+        "U1 SDA: its facts give no capacitance: not in the devices' sum on SDA; not judged against the "
+        "stated Cb [no datasheet: a part made up for tests/test_blocks_i2c.py, p 1]"
+    ) in block.sums
+
+
+@needs_libs
+@pytest.mark.parametrize(
+    ("kwargs", "says"),
+    [
+        ({"farads": 0.0}, "farads=0.0: the bus capacitance is a finite number over 0"),
+        ({"farads": -1e-12}, "farads=-1e-12: the bus capacitance is a finite number over 0"),
+        ({"farads": float("nan")}, "farads=nan: the bus capacitance is a finite number over 0"),
+        (
+            {"track": (-3000, 0.1e-12, "made up")},
+            "track=(-3000, 1e-13, 'made up'): mm and farads per mm are each a finite number over 0",
+        ),
+        (
+            {"track": (50, 0.0, "made up")},
+            "track=(50, 0.0, 'made up'): mm and farads per mm are each a finite number over 0",
+        ),
+        ({"farads": 1e-10, "volts": (0.0, 3.465)}, "volts=(0.0, 3.465): each a finite number over 0"),
+        (
+            {"farads": 1e-10, "volts": (3.135, float("inf"))},
+            "volts=(3.135, inf): each a finite number over 0",
+        ),
+    ],
+)
+def test_each_number_of_the_spec_is_finite_and_over_0(kwargs, says):
+    """I5: farads=0 ended in a division by 0 in equation 6; a negative track gave Cb of 0 the same way."""
+    d = design(connector="track" not in kwargs)
+    assert refused(d, **kwargs) == f"i2c R1 R2: {says}"
+
+
+@needs_libs
+def test_a_part_named_in_devices_whose_facts_hold_no_pins_is_refused():
+    """I6: a designer's 10k on SDA named as a device: its facts are a resistor's, with no pins to judge."""
+    d = design()
+    d.add("R3", "Device:R", "10k", R_0603, sch_at=(60.0, 60.0), pcb_at=(110.0, 110.0),
+          nets={"1": "+3V3", "2": "SDA"})  # fmt: skip
+    assert refused(d, farads=100e-12, devices={"U1": "TCA9534DWR", "R3": "CRCW060310K0FKEA"}) == (
+        "i2c R3: the facts of CRCW060310K0FKEA give no pins (a resistor): the block judges a device on the "
+        "bus by its pins [Vishay D/CRCW e3 datasheet, document 20035, 14-Apr-2026]"
+    )
+
+
+@needs_libs
+def test_volts_written_greatest_first_is_refused():
+    """I7: volts=(5.5, 3.135) judged the sink and the pins at 3.135 V; (6.5, 3.135) let 6.5 V past the
+    TCA9534's 6 V."""
+    assert refused(farads=100e-12, volts=(5.5, 3.135)) == (
+        "i2c R1 R2: volts=(5.5, 3.135) is written greatest first: volts is (least, greatest), and the block "
+        "judges the pins and the sinks at the greatest"
+    )
+
+
+@needs_libs
+def test_a_bus_over_a_pins_numeric_operating_limit_is_refused(tmp_path):
+    """I8: a made-up SDA that works to 3.3 V and stands 6 V: the bus's 3.465 V is over 3.3 V."""
+    facts = facts_with(tmp_path, tca_like({**ON_SDA, "operating": [-0.5, 3.3]}))
+    assert refused(farads=100e-12, facts=facts, devices={"U1": "FIXTURE-I2C"}) == (
+        f"i2c U1 SDA: the bus reaches 3.46 V, over its operating limit, 3.3 V [{MADE}]"
+    )
+
+
+@needs_libs
+def test_a_pin_whose_least_limit_is_over_0_v_is_refused(tmp_path):
+    """I8: a made-up SDA that stands 0.5 V to 6 V: an open drain pulls the line to 0 V, under 0.5 V."""
+    facts = facts_with(tmp_path, tca_like({**ON_SDA, "abs": [0.5, 6]}))
+    assert refused(farads=100e-12, facts=facts, devices={"U1": "FIXTURE-I2C"}) == (
+        f"i2c U1 SDA: the bus falls to 0 V, under its absolute least, 500 mV [{MADE}]"
+    )
 
 
 @needs_libs

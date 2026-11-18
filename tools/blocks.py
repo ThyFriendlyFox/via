@@ -108,11 +108,22 @@ def parts_csv(rows: list[Row]) -> str:
 
 
 def ratings_json(pack: str, *entries: dict) -> str:
-    """ratings.json from a pack and the entries of each block and of the design's own."""
+    """ratings.json from a pack and the entries of each block and of the design's own. A net 2 entries
+    state with 2 spans is refused: ratings would judge only the last."""
     merged: dict = {"pack": pack}
     for entry in entries:
         for key, value in entry.items():
-            merged.setdefault(key, {}).update(value)
+            held = merged.setdefault(key, {})
+            for net, new in value.items() if key == "nets" else ():
+                old = held.get(net, {})
+                if "volts" in old and "volts" in new and list(old["volts"]) != list(new["volts"]):
+                    a, b = old["volts"], new["volts"]
+                    by_a, by_b = old.get("source", "no source"), new.get("source", "no source")
+                    raise Refused(
+                        f"ratings.json {net}: {_g(a[0])} V to {_g(a[1])} V by {by_a}, "
+                        f"and {_g(b[0])} V to {_g(b[1])} V by {by_b}: 1 net holds 1 span"
+                    )
+            held.update(value)
     return json.dumps(merged, indent=2) + "\n"
 
 

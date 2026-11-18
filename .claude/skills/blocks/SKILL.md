@@ -145,12 +145,17 @@ specification's tr, Cb and VOL.
                       farads=100e-12, sch_at=(101.6, 63.5), pcb_at=(112.0, 104.0))
    ```
 
-   `speed` is `standard`, `fast` or `fast-plus`. `farads` is the bus
+   `speed` is `standard`, `fast` or `fast-plus`. `nets` is (SDA, SCL, the
+   supply the pull-ups go to): 3 different nets. `volts` is the supply's
+   span, least first. `farads` is the bus
    capacitance of each line, stated by you. With no connector on the bus you
    may give `track=(mm, farads_per_mm, "where the figure comes from")` in its
-   place: the block sums each device's `farads` and the track. Put
-   `block.ratings`, `block.rows` and `block.files` into `d.files` as for the
-   buck block. `tests/boards/block_i2c.py` is a whole example.
+   place: the block sums each device's `farads` and the track, and refuses a
+   device pin whose facts give no `farads`. Each number is finite and over 0.
+   Put `block.ratings`, `block.rows` and `block.files` into `d.files` as for the
+   buck block. `block.ratings` states the supply's span, `volts`;
+   `blocks.ratings_json` refuses a design that states another span for the
+   same net. `tests/boards/block_i2c.py` is a whole example.
 4. Run `workcenter design design.py`. What it prints:
    - `i2c R1 R2: no stocked resistor lies between RP(min) = X and RP(max) = Y`:
      the line names each stocked resistor and the bound it misses at its
@@ -164,9 +169,20 @@ specification's tr, Cb and VOL.
    - `i2c U1 SDA: the bus reaches X V, over its absolute maximum` or
      `operating limit`: the device cannot sit on this bus. Take another
      device or a level shifter.
+   - `i2c U1 SCL: pin 14 is on SDA, not on SCL`: a device's pin named SDA
+     or SCL is on the other line or on no net. Fix the wiring.
+   - `the pull-ups go to GND, and U1 GND ... is on it`: `nets` names a ground
+     as the supply. Name the supply.
+   - `ratings.json +3V3: ... 1 net holds 1 span`: the design states a span
+     for the supply that is not `volts`. Make them agree.
    - `its role is output`, `its facts give no sink`, `no facts of`,
-     `devices names no part number`, `a connector on SDA ... state the bus
-     capacitance`, `the stated Cb ... is under ...`: fix what the line names.
+     `give no pins`, `devices names no part number`, `a connector on SDA ...
+     state the bus capacitance`, `its facts give no capacitance`, `the stated
+     Cb ... is under ...`, `written greatest first`, `a finite number over 0`:
+     fix what the line names.
+   - `its facts give no capacitance: not in the devices' sum` in the sums:
+     with `farads=`, that pin's capacitance is not judged; your stated Cb
+     must hold it.
    - `design ... green`: the pull-ups, `ratings.json`, `parts.csv` and
      `sim/i2c.cir` are written.
 5. Read the sums after `* The sums:` in `sim/i2c.cir`. A line that says
