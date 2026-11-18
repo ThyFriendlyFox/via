@@ -62,10 +62,20 @@ def test_fail_creepage_fails_on_creepage_alone(tmp_path):
     ]
 
 
-def test_pass_creepage_slot_passes_strict_round_its_slot(tmp_path):
-    code, text = say("drc", BOARDS / "pass-creepage-slot", "--out", tmp_path, "--strict")
+def test_pass_creepage_slot_holds_its_creepage_round_its_slot(tmp_path):
+    """The creepage holds round the slot; SLUP419 gives no clearance by working voltage (page 7), so each
+    face's pair is `not judged` for clearance: the default gate passes with 2 warnings, --strict fails."""
+    code, text = say("drc", BOARDS / "pass-creepage-slot", "--out", tmp_path)
     assert code == 0, text
-    assert "board rules ti-slup419-creepage: 0 fail, 0 not judged" in text
+    assert "board rules ti-slup419-creepage: 0 fail, 2 not judged" in text
+    assert [line.strip() for line in text.splitlines() if "not judged clearance" in line] == [
+        f"- warning: not judged clearance on {layer}: 1 pair of nets with a voltage between them, and "
+        "ti-slup419-creepage holds no clearance table [SLUP419: page 7 and table 3, page 7: clearance, "
+        "which this note takes from an impulse voltage (table 4 and table 5, page 8), not from the working "
+        "voltage]"
+        for layer in ("F.Cu", "B.Cu")
+    ]
+    assert say("drc", BOARDS / "pass-creepage-slot", "--out", tmp_path, "--strict")[0] == 1
 
 
 MIL_CREEP = "[MIL-HDBK-454C: guideline 69, 4.1 page 69-1; table 69-I, leakage distances, page 69-2]"
@@ -105,7 +115,7 @@ def test_fail_creepage_slot_breaks_both_rules_of_the_ti_pack(tmp_path):
     The creepage and the slot fail on each face."""
     code, text = say("drc", BOARDS / "fail-creepage-slot", "--out", tmp_path, "--strict")
     assert code == 1, text
-    assert "board rules ti-slup419-creepage: 4 fail, 0 not judged" in text
+    assert "board rules ti-slup419-creepage: 4 fail, 2 not judged" in text  # 2: no clearance table
     assert fails(text) == [
         line
         for layer in ("F.Cu", "B.Cu")
