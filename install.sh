@@ -176,6 +176,32 @@ step_apt() {
   log "apt: done; kicad-cli $(kicad-cli version)"
 }
 
+# A bare Ubuntu 24.04 (the container image's base) has no curl, gpg or certificates, which the PPA step
+# fetches the key with, no git or make, which `make verify` runs, and no C compiler, which `workcenter
+# mutate` builds a firmware with. GitHub's runner and the cloud environment have them: there this
+# step installs nothing.
+BOOT_PACKAGES=(curl gnupg ca-certificates git make gcc libc6-dev)
+step_boot() {
+  if [[ "$SKIP_APT" == "1" ]]; then
+    return
+  fi
+  local missing=() tool
+  for tool in curl gpg git make cc; do
+    command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
+  done
+  [[ -s /etc/ssl/certs/ca-certificates.crt ]] || missing+=(ca-certificates)
+  if [[ ${#missing[@]} -eq 0 ]]; then
+    return
+  fi
+  log "boot: ${missing[*]} missing; apt install ${BOOT_PACKAGES[*]}"
+  apt-get update -qq
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends -o Acquire::Retries=3 \
+    "${BOOT_PACKAGES[@]}" | grep --line-buffered -E '^(Setting up) ' | sed -u 's/^/[apt] /' || true
+  for tool in curl gpg git make cc; do
+    command -v "$tool" >/dev/null 2>&1 || die "boot: ${tool} is not on PATH after the apt step"
+  done
+}
+
 step_freerouting() {
   local dir="${WC_ROOT}/freerouting"
   local jar="${dir}/freerouting-${FREEROUTING_VERSION}.jar"
@@ -447,6 +473,7 @@ main() {
     log "done in $((SECONDS - t0))s"
     return
   fi
+  step_boot
   step_apt
   step_freerouting
   step_openems
