@@ -26,6 +26,9 @@ import simcorners
 REF_RE = re.compile(r"^([CL])\d+$")  # a board reference whose whole letter prefix is C or L (P27 step 5)
 KIND_OF = {"C": "capacitor", "L": "inductor"}
 UNIT = {"C": "V", "L": "A"}
+CAPACITOR_ONLY = ("kept_celsius_at", "esr", "esl")
+UIC_RE = re.compile(r"^\s*\.?tran\b.*\buic\b", re.IGNORECASE | re.MULTILINE)  # a transient from the ICs
+HOLDS = ("kept", "kept_celsius", *CAPACITOR_ONLY)  # the facts keys the gate runs a part on
 
 
 @dataclass
@@ -40,6 +43,9 @@ class Curve:
     row: str  # the row of sources.csv that names the maker's file
     rating: float | None  # a capacitor's volts, an inductor's saturation current
     unjudged: str = ""  # why the SHA256 of its maker's file is not judged, when it is not
+    bias: dict | None = None  # a capacitor's temperature curve at 1 bias: {"volts", "kept": [celsius, share]}
+    esr: dict | None = None  # a capacitor's series resistance: {"ohms", "hz"}
+    esl: dict | None = None  # a capacitor's series inductance: {"henries", "hz"}
 
 
 @dataclass
@@ -80,7 +86,8 @@ def choose(
             continue
         kind, data = m.group(1), entry.data
         kept, celsius = data.get("kept"), data.get("kept_celsius") if kind == "C" else None
-        if kept is None and celsius is None:
+        bias, esr, esl = (data.get(k) for k in CAPACITOR_ONLY) if kind == "C" else (None, None, None)
+        if all(x is None for x in (kept, celsius, bias, esr, esl)):
             continue
         if "symbol" in data:
             refused[ref] = f"its facts speak of the symbol {data['symbol']}, not of a part number"
@@ -111,7 +118,7 @@ def choose(
             refused[ref] = f"the file {row.source} keeps, {name}, is not the one its SHA256 names"
             continue
         rating = data.get("volts") if kind == "C" else data.get("amps_saturation")
-        found[ref] = Curve(ref, kind, kept, celsius, entry.where, row.source, rating)
+        found[ref] = Curve(ref, kind, kept, celsius, entry.where, row.source, rating, "", bias, esr, esl)
     return found, refused, unjudged
 
 
@@ -128,6 +135,17 @@ def _pairs(pairs: list) -> str:
     return ",".join(f"{x:.10g},{y:.10g}" for x, y in pairs)
 
 
+def _at(pairs: list, x: float) -> float:
+    """A curve's share at x, as ngspice's pwl() reads it: in a straight line between 2 points, the
+    end's share past an end."""
+    if x <= pairs[0][0]:
+        return pairs[0][1]
+    for (x0, y0), (x1, y1) in zip(pairs, pairs[1:], strict=False):
+        if x <= x1:
+            return y0 + (x - x0) / (x1 - x0) * (y1 - y0)
+    return pairs[-1][1]
+
+
 def _value(token: str) -> str | None:
     """A value token as a factor of an expression: a number as written, an expression in braces or
     quotes, each in parentheses. None for anything else: a model's name, a parameter's bare name."""
@@ -138,19 +156,43 @@ def _value(token: str) -> str | None:
     return None
 
 
+def _coupled(lines: list[str]) -> dict[str, str]:
+    """Each inductor a K element couples, upper case, and the first K that names it."""
+    coupled: dict[str, str] = {}
+    for i in simcorners.netlist_lines(lines):
+        if lines[i].split()[0][0].lower() == "k":
+            for other in [t[3].upper() for t in simcorners.logical_tokens(lines, i)[1:3]]:
+                coupled.setdefault(other, lines[i].split()[0])
+    return coupled
+
+
+def not_modelled(text: str, curves: dict[str, Curve]) -> dict[str, str]:
+    """Each inductor of `curves` that a K element of the deck couples, with the reason: K names the
+    inductor the gate would replace, and a coupled inductor's curve is of its core, which both
+    windings share. It runs as written; the gate names it and does not fail the deck for it."""
+    return {
+        name: f"it is coupled by {k}, and the gate models no coupled inductor's curve"
+        for name, k in sorted(_coupled(text.split("\n")).items())
+        if name in curves and curves[name].kind == "L" and name in simcorners.deck_names(text.split("\n"))
+    }
+
+
 def apply(
     text: str, curves: dict[str, Curve], included: dict[str, str] | None = None
 ) -> tuple[str, list[str], dict[str, str]]:
     """The deck with each part `curves` names written on its maker's data: (text, applied, ideal).
     `ideal` names each part the gate cannot rewrite, with the reason: it stands inside a .subckt (each
     copy would share 1 rewrite) or outside the deck's own lines, in a file of `included` (the path as
-    the deck writes it, and its text); its value is no number and no expression; it has an ic=, which
-    ngspice 42 drops from a behavioural C or L; or a K element couples it, and K names the inductor
-    the gate replaces."""
+    the deck writes it, and its text); its value is no number and no expression; or, in a deck whose
+    transient starts from the initial conditions (`uic`), it has an ic= that is no capacitor's to
+    ground with a number. ngspice 42 drops an ic= from a behavioural C or L: a capacitor's to ground
+    moves to its node's `.ic`, and without `uic`, where ngspice uses no ic=, an ic= is taken off. An
+    inductor a K element couples is left as written and is in neither list: `not_modelled` names it.
+    A capacitor's ESR and ESL go in series with it, toward its second node."""
     lines = text.split("\n")
     starts = simcorners.netlist_lines(lines)
     within: dict[int, str] = {}
-    coupled: dict[str, str] = {}
+    coupled = _coupled(lines)
     block = ""
     for i in starts:
         word = lines[i].split()[0].lower()
@@ -160,11 +202,10 @@ def apply(
             block = ""
         elif block:
             within[i] = block
-        if word[0] == "k":
-            for other in [t[3].upper() for t in simcorners.logical_tokens(lines, i)[1:3]]:
-                coupled.setdefault(other, lines[i].split()[0])
     edits: dict[int, list[tuple[int, int, str]]] = {}
-    after: dict[int, str] = {}
+    after: dict[int, list[str]] = {}
+    uic = bool(UIC_RE.search(text))
+    hidden: set[int] = set()  # the lines of an element the gate writes again in another form
     applied: list[str] = []
     ideal: dict[str, str] = {}
     own = simcorners.deck_names(lines)
@@ -180,19 +221,14 @@ def apply(
         curve = curves.get(name)
         if curve is None or name[0] != curve.kind:
             continue
+        if name in coupled:
+            continue
         if i in within:
             ideal[name] = f"it stands inside .subckt {within[i]}, which the gate does not rewrite"
             continue
-        if name in coupled:
-            ideal[name] = f"it is coupled by {coupled[name]}, which the gate does not rewrite"
-            continue
         tokens = simcorners.logical_tokens(lines, i)
-        if any(a[3].lower() == "ic" and b[3] == "=" for a, b in zip(tokens[3:], tokens[4:], strict=False)):
-            state = "voltage" if curve.kind == "C" else "current"
-            ideal[name] = (
-                f"its ic= sets its starting {state}, which ngspice 42 drops from the element the gate writes"
-            )
-            continue
+        n1, n2 = tokens[1], tokens[2]
+        last = simcorners.statement_lines(lines, i)[-1][0]
         place = simcorners.value_place(tokens)
         factor = _value(place[3]) if place else None
         if factor is None:
@@ -200,30 +236,93 @@ def apply(
                 f"its value {place[3] if place else 'that is missing'} is no number and no expression"
             )
             continue
-        n1, n2 = tokens[1], tokens[2]
+        ic = next(
+            (
+                k
+                for k in range(3, len(tokens) - 2)
+                if tokens[k][3].lower() == "ic" and tokens[k + 1][3] == "="
+            ),
+            None,
+        )
+        begin = None  # a capacitor's starting voltage, which the gate writes on a unit capacitor
+        if ic is not None:
+            # ngspice 42 drops ic= from the element the gate writes, and its own behavioural capacitor
+            # starts from 0 V under a node's .ic too (a run of tests/test_partdata.py). It uses an
+            # element's ic= only with uic: without it the gate takes the ic= off; with it a capacitor
+            # is written as a current source of C(v) times the current of a 1 F capacitor that carries
+            # the ic=, and the test runs both forms to the same numbers.
+            told = tokens[ic + 2][3]
+            begin = simcorners.spice_number(told) if uic else None
+            if uic and (curve.kind == "L" or begin is None):
+                ideal[name] = (
+                    "its ic= sets its starting current, which ngspice 42 drops from the element the gate "
+                    "writes"
+                    if curve.kind == "L"
+                    else f"its ic={told} is no number, and the gate writes a starting voltage only as a "
+                    "number"
+                )
+                continue
+            if not uic:
+                for t in tokens[ic : ic + 3]:
+                    edits.setdefault(t[0], []).append((t[1], t[2], ""))
         j, start, end, _ = place
+        low = name.lower()
         if curve.kind == "C":
-            terms = [f"pwl(abs(v({n1[3]},{n2[3]})),{_pairs(curve.kept)})"] if curve.kept else []
-            terms += [f"pwl(temper,{_pairs(curve.celsius)})"] if curve.celsius else []
+            series = [
+                (f"r{low}_esr", f"{low}_esr", curve.esr["ohms"]) if curve.esr else None,
+                (f"l{low}_esl", f"{low}_esl", curve.esl["henries"]) if curve.esl else None,
+            ]
+            series = [s for s in series if s]
+            inner = series[0][1] if series else n2[3]  # the capacitance's own second node
+            for k, (element, node, value) in enumerate(series):
+                to = series[k + 1][1] if k + 1 < len(series) else n2[3]
+                after.setdefault(last, []).append(f"{element} {node} {to} {value:.10g}")
+            if series and begin is None:
+                edits.setdefault(n2[0], []).append((n2[1], n2[2], inner))
+            v = f"abs(v({n1[3]},{inner}))"
+            terms = [f"pwl({v},{_pairs(curve.kept)})"] if curve.kept else []
+            t0 = f"pwl(temper,{_pairs(curve.celsius)})" if curve.celsius else ""
+            if curve.bias:
+                # the maker's curve at 1 bias, over the share the DC bias curve keeps there: the
+                # temperature factor at that bias, reached in proportion to the volts from 0 V's
+                volts = curve.bias["volts"]
+                there = _at(curve.kept, volts) if curve.kept else 1.0
+                tb = f"pwl(temper,{_pairs([[c, s / there] for c, s in curve.bias['kept']])})"
+                t0 = t0 or "1"
+                terms.append(f"({t0}+({tb}-{t0})*min({v}/{volts:.10g},1))")
+            elif t0:
+                terms.append(t0)
         else:
-            node, sense = f"{name.lower()}_kept", f"v{name.lower()}_kept"
+            node, sense = f"{low}_kept", f"v{low}_kept"
             terms = [f"pwl(abs(i({sense})),{_pairs(curve.kept)})"]
             edits.setdefault(n2[0], []).append((n2[1], n2[2], node))
-            last = simcorners.statement_lines(lines, i)[-1][0]
-            after[last] = f"{sense} {node} {n2[3]} 0"
+            after.setdefault(last, []).append(f"{sense} {node} {n2[3]} 0")
+        expression = "*".join([factor, *terms])
+        applied.append(name)
+        if begin is not None:
+            # the written element stays as a comment; the unit capacitor's current is dv/dt
+            hidden.update(j2 for j2, _, _ in simcorners.statement_lines(lines, i))
+            inner = series[0][1] if series else n2[3]
+            after.setdefault(last, []).extend(
+                [
+                    f"b{low}_ic {n1[3]} {inner} I=i(v{low}_ic)*{expression}",
+                    f"e{low}_ic {low}_ic_e 0 {n1[3]} {inner} 1",
+                    f"v{low}_ic {low}_ic_e {low}_ic 0",
+                    f"c{low}_ic {low}_ic 0 1 ic={begin:.10g}",
+                ]
+            )
+            continue
         # `C='...'`: ngspice 42 takes the bare quoted form for another element, which stopped a run
         # on `Timestep too small` where the named form ran (tests/test_partdata.py)
         named = "" if tokens[tokens.index(place) - 1][3] == "=" else f"{curve.kind}="
-        edits.setdefault(j, []).append((start, end, named + "'" + "*".join([factor, *terms]) + "'"))
-        applied.append(name)
+        edits.setdefault(j, []).append((start, end, named + "'" + expression + "'"))
     for j, group in edits.items():
         line = lines[j]
         for start, end, new in sorted(group, reverse=True):
             line = line[:start] + new + line[end:]
-        lines[j] = line
+        lines[j] = " ".join(line.split())  # an ic= taken off leaves its spaces
     out: list[str] = []
     for j, line in enumerate(lines):
-        out.append(line)
-        if j in after:
-            out.append(after[j])
+        out.append(f"* {line}" if j in hidden else line)
+        out += after.get(j, [])
     return "\n".join(out), sorted(applied), ideal
