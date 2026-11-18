@@ -104,5 +104,5 @@ hid back on the silkscreen, places them all, and judges the copy. The project is
 - The legend's lines and arcs: a fab's least line width is in `rules/README.md`, not here.
 - A glyph's width, or its width against its height: a text squashed to 0.2 mm wide is judged on its
   height and stroke only. No fab in `rules/` names a least glyph width (PCBWay's "Minimum Character
-  Width (Legend) 0.15mm" is the stroke, `text_thickness`).
+  Width(Legend) 0.15mm" is the stroke, `text_thickness`).
 - Each glyph's ink: see the box above.

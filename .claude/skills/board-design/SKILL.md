@@ -229,8 +229,14 @@ project and routes it with FreeRouting. No GUI at any step.
      board's outer face and a `board_body` has its origin at its mid-plane:
      a body at -T/2 lies flush with a board T thick (M131, P23 step 7).
    - `d.text(label, x, y, "F.SilkS", size, thickness)` for contact labels.
-     Below 0.8 mm text, set `d.rules = {"min_text_height": ..,
-     "min_text_thickness": ..}` or the DRC flags every label.
+     The DRC gate holds every text to the fab's least height and stroke
+     (0.8 mm high and 0.0762 mm stroke when the design names no fab), and
+     `d.rules` does not lower it: write each label at least that size.
+   - `d.place_designators = True` places every designator round its part
+     when the board is written, the same on every run; one with no room
+     goes to the Fab layer with a line. `d.designator("U1", x, y, angle)`
+     fixes one by hand. `workcenter legend .` judges every text without
+     KiCad (the `legend` skill).
    - `d.zone("GND", layers=("F.Cu", "B.Cu"), connect="solid")` for a
      ground pour on both faces. The router treats it as a plane and routes
      no ground track; KiCad fills it when the design is written. Prefer

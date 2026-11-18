@@ -43,6 +43,7 @@ DESIGN = ".claude/skills/board-design/SKILL.md"
 SIMULATE = ".claude/skills/simulate/SKILL.md"
 VERIFICATION = ".claude/skills/verification/SKILL.md"
 RATINGS = ".claude/skills/ratings/SKILL.md"
+LEGEND = ".claude/skills/legend/SKILL.md"
 INPUT_SUFFIXES = (".kicad_sch", ".kicad_pcb", ".kicad_pro", ".kicad_dru")
 # A file of these names its project, as `find_project` reads it. Any other file is inside a project.
 PROJECT_FILES = (".kicad_pro", ".kicad_sch", ".kicad_pcb")
@@ -227,6 +228,12 @@ HINTS: list[tuple[str, str, str]] = [
     ),
     (r"^drc: courtyards_overlap", "Move the footprint.", f'{GATES}, "Common violations"'),
     (r"^drc: silk", "Move the silkscreen text off the copper or the edge.", f'{GATES}, "Common violations"'),
+    (
+        r"^drc: legend (size|overlap|hidden|nearest|direction|not judged): ",
+        "Move or enlarge the text the line names in the design file. "
+        "For a designator, set `d.place_designators = True` and write the board again.",
+        f'{LEGEND}, "Steps"',
+    ),
     (
         r"^sim: no sim/corners\.json",
         "Write sim/corners.json: the temperature range from the requirement it comes from and each part's "
