@@ -286,6 +286,13 @@ axis it defines (a 3D model's rotation or offset, an export's origin).
    refuses what it cannot follow. A flag that changes what a command is
    for (`-min`, `-max`, a missing `-clock`) is a spelling too: read each
    flag the tool takes on that command before the command counts (M169).
+10. A term a standard defines is judged by the definition, never by the
+    word a tool's file uses for it (KiCad's `micro` is no microvia). A
+    property of how a board is built (HDI) is stated by the project with
+    a source, never read from 1 item of the file. A geometric test takes
+    the file's grain as its tolerance (1 nm in a `.kicad_pcb`), and a
+    case outside it that the check cannot judge gets its own not-judged
+    line (M210, M211).
 
 Done when: a test parses a real sample of each shape, failures among them,
 and the parser's assumptions are written next to it.

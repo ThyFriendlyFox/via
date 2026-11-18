@@ -39,6 +39,21 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-18 — A via held to its net's current, and a CAD tool's word taken for the standard's
+
+Roadmap item 6 landed (in part). ECSS-Q-ST-70-12C Rev.1 rates a via as a track of its section
+(13.6.3f, page 114), but it states the copper of a via's wall only for boards built as HDI (tables
+11-1 and 11-2, page 100). A project now states its board's wall in `board-rules.json`, from its fab
+and with a source, or states with a source that the board is built as HDI, and its vias are held to
+that wall. With neither, the vias are not judged, and the line names every clause read. Each track is
+now held to the current its side of the net carries, where every pad's current is stated. 2 parallel
+tracks under 25 mm apart are held as 1 conductor (13.6.3g). The 3 fab files were read a second time.
+A reviewer found 5 faults. The worst: the build read KiCad's `micro` flag on any via as a microvia, and
+a microvia as proof that the whole board is HDI. A 0.3 mm through via with the flag gave every via of
+the board a 25 um wall. The standard defines a microvia by its shape (3.2.40, page 22), and HDI is how
+a board is built. HDI is now what the project states. Another fault: 2 tracks that a file rounds 1 nm
+apart were not parallel, and the rule was skipped with no line. All 5 are fixed with tests.
+
 ## 2026-11-17 — The board puts right a card whose own run was missed
 
 The owner saw every work card in Todo with `**Status:** In progress` in its body. Board moved a card only on that card's own event, and the cards were older than the workflow on the default branch. `tools/board.py --all` walks every card; the schedule and Run workflow call it. The concurrency group became 1 word for every run: a group keyed on the issue number is empty on a schedule, and 2 groups would let a run of all cards and a run of 1 card write the same card at once. GitHub's `queue: max` keeps the runs waiting instead of cancelling all but 1. A review found that the stand-in for GitHub answered a canned page whatever the query asked, so a query that lost a field still passed; the stand-in now cuts each answer to the query. Board ran against GitHub first at 23:54 UTC on issue events, 22 runs, all green; `--all` has not run there yet.

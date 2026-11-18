@@ -1270,3 +1270,15 @@ What happened: The stand-in `tests/board/gh.py` answered a canned page whatever 
 Cost: Found by the review of `--all`; 2 tests now hold the cut, and a dropped field fails tests.
 Root cause: A stand-in for an API answers only what the request asks for, as the API does.
 Process: P7
+
+## M210 — 2026-11-17 — A CAD tool's word taken for the standard's term
+What happened: The board-rules check took a via that KiCad flags `micro` for a microvia, and any microvia on a board for proof that the board is HDI. A 0.3 mm through via with the flag gave every via of the board the 25 um wall the standard gives HDI boards alone.
+Cost: Found by the review of roadmap item 6's left-overs; vias of a board not built as HDI held to a wall no document promised it.
+Root cause: The standard defines a microvia by its shape (a blind via under 250 um, 3.2.40, page 22; blind, 3.2.13, page 18), and HDI is how a board is built (3.2.31, page 20; clause 11). The check read a word of the tool instead of the definition, and a property of the whole board from 1 part of it.
+Process: P7
+
+## M211 — 2026-11-17 — "Parallel" tested by exact equality on rounded coordinates
+What happened: 13.6.3g holds 2 parallel tracks under 25 mm apart as 1 conductor. The check took 2 tracks as parallel only when their gap was the same to the last digit. A `.kicad_pcb` holds a coordinate to 6 decimals of a mm, so 2 tracks drawn parallel could be 1 nm off, and the rule was skipped with no line.
+Cost: Found by the review of roadmap item 6's left-overs; a pair that fails as 1 conductor passed.
+Root cause: A geometric test used no tolerance where the file rounds, and a case the check could not judge got no line of its own.
+Process: P7
