@@ -1192,3 +1192,54 @@ def test_a_plated_hole_of_a_net_with_a_voltage_is_no_way_between_the_faces():
         "clearance MID to GND on B.Cu",
         "creepage MID to GND on B.Cu",
     }
+
+
+# ---------------------------------------------------------------- the mutants of the third rerun
+
+# HV's pad and GND's, 1.7 mm squares 3.7 mm apart on F.Cu: a gap of 2 mm, under the 3 mm of leakage and
+# over the 1.5 mm of clearance (table 69-I, page 69-2, 300 to 600 V, condition A, enclosure I), and a
+# rectangle 1.1 x 8 mm across the gap, from x 111.3 to 112.4.
+ACROSS = (
+    HEAD
+    + smd("HVPAD", "110 107.5", "1.7 1.7", "HV")
+    + smd("GNDPAD", "113.7 107.5", "1.7 1.7", "GND")
+    + '  (gr_rect (start 111.3 103.5) (end 112.4 111.5) (layer "{}"))\n'
+    + ")\n"
+)
+
+
+@pytest.mark.parametrize("layer", ["F.SilkS", "Dwgs.User", "F.Fab"])
+def test_a_shape_on_a_layer_other_than_edge_cuts_is_no_cut(layer):
+    """The rectangle on a drawing layer is ink, not a slot: the 2 mm gap fails on creepage, 1 line."""
+    found = judged(ACROSS.format(layer))
+    assert [f.text.split(" at ")[0] for f in found] == ["creepage HV to GND on F.Cu"]
+    assert all(f.status == "fail" for f in found)
+
+
+def test_the_same_rectangle_on_edge_cuts_is_a_slot():
+    """The control: on Edge.Cuts the rectangle is a slot across the straight way, which this pack does
+    not hold by a least width, so the 2 mm pair no longer fails."""
+    found = judged(ACROSS.format("Edge.Cuts"))
+    assert not [f for f in found if f.status == "fail"]
+    assert found
+
+
+# The pads of test_copper_on_the_2_faces_far_enough_from_the_edge_holds (HV on F.Cu, GND on B.Cu, 2 x 1
+# mm at (110, 101.5), from y 101 to 102: 1 mm from the edge, 3.6 mm round it), and a line at y 100.8,
+# 0.2 mm from both pads: as a wall it would bound the way at 0.2 + 1.6 + 0.2 = 2 mm, under 3 mm.
+FACES_LINE = (
+    FACES.replace("110 100.8", "110 101.5").removesuffix(")\n")
+    + '  (gr_line (start 105 100.8) (end 115 100.8) (layer "{}") (width 0.1))\n)\n'
+)
+
+
+@pytest.mark.parametrize("layer", ["F.SilkS", "B.SilkS", "Dwgs.User"])
+def test_a_line_on_a_layer_other_than_edge_cuts_is_no_wall_between_the_faces(layer):
+    """The line is ink: the pads stay 3.6 mm round the edge, and no line is printed."""
+    assert judged(FACES_LINE.format(layer)) == []
+
+
+def test_the_same_line_on_edge_cuts_is_a_wall_between_the_faces():
+    """The control: on Edge.Cuts the line is a wall 0.2 mm from both pads, and the pair is not judged."""
+    found = judged(FACES_LINE.format("Edge.Cuts"))
+    assert [f.status for f in found if "HV on F.Cu to GND on B.Cu" in f.text] == ["not judged"]
