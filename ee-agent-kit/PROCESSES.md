@@ -1401,6 +1401,10 @@ lands or is dropped.
    --doing "Dropped: <reason>"` and the issue closed as not planned.
 4. The card names the branch, never an assistant, a model or a session,
    and repeats nothing else the project board shows.
+5. When the board shows a card in a column its `**Status:**` line does not
+   name, or not at all, run the workflow Board by hand (`gh workflow run
+   board.yml`) and read its lines (the `now` skill, steps 15 and 16). Never
+   drag a card.
 
 Done when: every branch with work in progress has 1 card whose Updated
 line is no older than the branch's last commit, and every landed or

@@ -538,7 +538,9 @@ to `now/<branch>.md` in a checkout of the `status` branch and prints the
 git commands to commit and push it; it runs none. The workflow Board
 (`.github/workflows/board.yml`, `tools/board.py`) puts each issue titled
 `Work card: ...` in the column its `**Status:**` line names, and a closed
-card in Done; it needs the repository secret `BOARD_TOKEN`.
+card in Done: on the card's own event, and once a day and by hand for every
+card (`--all`), so a missed run is put right; it needs the repository secret
+`BOARD_TOKEN`.
 
 Not a gate: `workcenter highspeed <project> [--strict] [--verbose] [--out
 DIR]` holds the fast pairs `interfaces.json` names to their interface's

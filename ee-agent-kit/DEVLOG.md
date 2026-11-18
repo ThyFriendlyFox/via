@@ -39,6 +39,12 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-17 — The board puts right a card whose own run was missed
+
+The owner saw every work card in Todo with `**Status:** In progress` in its body. Board moved a card only on that card's own event, and the cards were older than the workflow on the default branch. `tools/board.py --all` walks every card; the schedule and Run workflow call it. The concurrency group became 1 word for every run: a group keyed on the issue number is empty on a schedule, and 2 groups would let a run of all cards and a run of 1 card write the same card at once. GitHub's `queue: max` keeps the runs waiting instead of cancelling all but 1. A review found that the stand-in for GitHub answered a canned page whatever the query asked, so a query that lost a field still passed; the stand-in now cuts each answer to the query. Board ran against GitHub first at 23:54 UTC on issue events, 22 runs, all green; `--all` has not run there yet.
+
+Evidence: `tests/test_board.py` 88 passed on the landing head.
+
 ## 2026-11-17 — The lead's ways of working, written down
 
 The owner asked for the ways the lead worked today to be skills in the kit: the project board, all of it. They lived in 3 workflow scripts and 3 scratch files. They are now 4 skills and 6 files under `ee-agent-kit/lead/`, with every path of the session taken out. Writing them down found 2 faults in the scratch tools. `gate-and-push.sh` wrote its lock over one that was there, and its exit trap then removed the other gate's lock; it now makes the lock only if none is there and leaves another's alone. `landed.py` read a review that ended with no result as a review with 0 findings, so a piece with no review could read as finished; it now names it as waiting.

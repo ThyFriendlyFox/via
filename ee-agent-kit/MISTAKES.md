@@ -1258,3 +1258,15 @@ The first fix took null alone as "no result"; a review of plain text or `{}` sti
 Cost: Found when the tools were brought into the kit, and the rest by the item's review; `tests/test_lead.py` holds each (a taken lock stops the gate and is left as it was; a null review, a review with no verdict and a fix with no list `fixed` wait; a stopped gate ends make before the lock goes).
 Root cause: A lock that is not made atomically is no lock, and a missing result was given a default that means "passed". The fix named the 1 missing value seen (null) and not the rule: a result counts only when it holds what a judgement holds.
 Process: P31
+
+## M208 — 2026-11-17 — A board that follows events only
+What happened: Every work card stood in Todo while its body said In progress. The cards were on the project before the workflow Board reached the default branch, and Board moved a card only on that card's own event, so no event ever moved them.
+Cost: The owner saw a wrong board; found by the owner, not by a test.
+Root cause: A workflow that mirrors state from events is as right as the last event that reached it. It also needs a run that reads the whole state, by hand and on a schedule.
+Process: P36
+
+## M209 — 2026-11-17 — A stand-in that answers whatever the query asks
+What happened: The stand-in `tests/board/gh.py` answered a canned page whatever the query asked. A field dropped from the query `ISSUES` or `ITEMS` in `tools/board.py` was still in the answer, and the tests stayed green.
+Cost: Found by the review of `--all`; 2 tests now hold the cut, and a dropped field fails tests.
+Root cause: A stand-in for an API answers only what the request asks for, as the API does.
+Process: P7
