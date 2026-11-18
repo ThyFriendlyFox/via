@@ -10,11 +10,15 @@ with their pages; each part's ratings are read from `library/facts/`, as `workce
 The block tries the stocked ICs that the rules hold, in the stock's order, and takes the first that holds
 every check: the output it gives holds the output asked, the input stays in its operating range, the load
 in its recommended current, the input at its least stays over the output and the dropout at the full
-load, and the junction at the project's greatest ambient stays under the pack's derated limit (the sum of
-tools/thermal.py, roadmap item 7). Then each capacitor: the first stocked one of a dielectric the
-datasheet names, rated over its pin's greatest voltage, whose value less its tolerance, kept at that
-voltage on its maker's curve (roadmap item 4), stays over the effective capacitance the datasheet asks,
-and whose value lies in the datasheet's span. What no stocked part meets is refused on 1 line.
+load, the junction at the project's greatest ambient, dissipating at the least output its accuracy gives,
+stays under the pack's derated limit (the sum of tools/thermal.py, roadmap item 7), and the junction from
+the least ambient to that one stays in the datasheet's recommended span. Then each capacitor: the first
+stocked one of a dielectric the datasheet names, rated over its pin's greatest voltage, whose value less
+its tolerance, kept at that voltage on its maker's curve (roadmap item 4) and at the ambient's worst on
+its curve over temperature, stays over the effective capacitance the datasheet asks, and whose value lies
+in the datasheet's span. What no stocked part meets is refused on 1 line. A spec range written greatest
+first, a number that is not finite, or an entry of the rules or the facts that the block cannot read is
+refused or passed over on 1 line, before any sum.
 
 Standard library only, as kicadgen is.
 """
@@ -22,6 +26,7 @@ Standard library only, as kicadgen is.
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import blocks
@@ -42,19 +47,116 @@ def _g(x: float) -> str:
 LDO_NAMES = ("mpn", "maker", "value", "symbol", "footprint", "pins", "source")
 LDO_NUMBERS = (
     "vout_nominal", "accuracy", "amps_max", "dropout", "output_effective", "output_span", "input_effective",
-    "input_least", "dielectrics",
+    "input_least", "dielectrics", "junction_span",
 )  # fmt: skip
 LDO_WHERES = ("normal", "csr", "dissipation")
+LDO_PINS = ("IN", "GND", "EN", "OUT")
+NOT_HOT = "its value over temperature is not judged: its facts give no kept_celsius"
+# The equations of the note the sums cite, each with its page.
+LDO_EQUATIONS = ("1", "8", "10", "11")
 
 
-def _unentered(chip: dict) -> list[str]:
-    """The keys ldo reads that the IC's entry lacks, or holds with no number or no `where`."""
-    out = [key for key in LDO_NAMES if key not in chip]
+def _finite(x) -> bool:
+    return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+
+
+def _pair(v, least=-math.inf) -> bool:
+    return isinstance(v, list) and len(v) == 2 and all(_finite(x) and x > least for x in v) and v[0] <= v[1]
+
+
+# The shape of each number ldo reads, and the words that name it.
+SHAPES = {
+    "vout_nominal": (lambda v: _finite(v) and v > 0, "a number over 0"),
+    "accuracy": (lambda v: _finite(v) and 0 <= v < 1, "a share from 0 to under 1"),
+    "amps_max": (lambda v: _finite(v) and v > 0, "a number over 0"),
+    "dropout": (lambda v: _finite(v) and v >= 0, "a number of 0 or more"),
+    "output_effective": (lambda v: _finite(v) and v > 0, "a number over 0"),
+    "output_span": (lambda v: _pair(v, 0), "2 numbers over 0, the least first"),
+    "input_effective": (lambda v: _finite(v) and v > 0, "a number over 0"),
+    "input_least": (lambda v: _finite(v) and v > 0, "a number over 0"),
+    "dielectrics": (
+        lambda v: isinstance(v, list) and bool(v) and all(isinstance(x, str) for x in v),
+        "a list of names",
+    ),
+    "junction_span": (lambda v: _pair(v) and v[0] < v[1], "2 numbers, the least first"),
+}
+
+
+def _unentered(chip: dict) -> str | None:
+    """What of the IC's entry ldo cannot read: None, or the words that name each key it lacks (or holds
+    with no number or no `where`) and each value not of the shape ldo reads."""
+    lacks: list[str] = []
+    wrong: list[str] = []
+    for key in LDO_NAMES:
+        if key not in chip:
+            lacks.append(key)
+        elif key == "pins":
+            if not isinstance(chip["pins"], dict):
+                wrong.append(f"pins as {chip['pins']!r}, not a map of pin names to numbers")
+            else:
+                lacks += [f"pins {p}" for p in LDO_PINS if not isinstance(chip["pins"].get(p), str)]
+        elif key == "source":
+            if not (isinstance(chip["source"], dict) and isinstance(chip["source"].get("document"), str)):
+                lacks.append("source document")
+        elif not isinstance(chip[key], str) or not chip[key]:
+            wrong.append(f"{key} as {chip[key]!r}, not a name")
     for key in LDO_NUMBERS + LDO_WHERES:
         entry = chip.get(key)
-        if not (isinstance(entry, dict) and "where" in entry and (key in LDO_WHERES or "value" in entry)):
-            out.append(key)
+        if not (
+            isinstance(entry, dict)
+            and isinstance(entry.get("where"), str)
+            and (key in LDO_WHERES or "value" in entry)
+        ):
+            lacks.append(key)
+            continue
+        if key in LDO_WHERES:
+            continue
+        holds, what = SHAPES[key]
+        if not holds(entry["value"]):
+            wrong.append(f"{key} as {entry['value']!r}, not {what}")
+        if key == "dropout":
+            if "amps" not in entry:
+                lacks.append("dropout amps")
+            elif not (_finite(entry["amps"]) and entry["amps"] > 0):
+                wrong.append(f"dropout amps as {entry['amps']!r}, not a number over 0")
+    said = ([f"gives it no {', '.join(lacks)}"] if lacks else []) + [f"holds {w}" for w in wrong]
+    return "; ".join(said) or None
+
+
+def _note_lacks(note) -> list[str]:
+    """What of the note's entry the sums cite and the rules do not give: its short name, an equation's
+    page."""
+    if not isinstance(note, dict):
+        return ["entry"]
+    out = [] if isinstance(note.get("short"), str) else ["short name"]
+    equations = note.get("equations") if isinstance(note.get("equations"), dict) else {}
+    for n in LDO_EQUATIONS:
+        entry = equations.get(n)
+        if not (isinstance(entry, dict) and isinstance(entry.get("page"), int)):
+            out.append(f"page of equation {n}")
     return out
+
+
+def _facts_lack(f) -> list[str]:
+    """What of the IC's facts the sums read and the facts do not give."""
+    supply = next((p for p in f.data.get("pins", []) if p.get("name") == "IN"), None)
+    out = []
+    if supply is None:
+        out.append("pin IN")
+    else:
+        out += [f"IN {key}" for key in ("operating", "amps") if key not in supply]
+    if "theta_ja" not in f.data.get("thermal", {}):
+        out.append("thermal theta_ja")
+    return out
+
+
+def _least_kept(curve: list[list[float]], low: float, high: float) -> float | None:
+    """The least share of its value a capacitor keeps from `low` to `high` C on its maker's curve over
+    temperature: at the 2 ends and at each point between. None when the curve does not cover the span."""
+    if low < curve[0][0] or high > curve[-1][0]:
+        return None
+    shares = [ratings.kept_at(curve, low), ratings.kept_at(curve, high)]
+    return min(shares + [share for celsius, share in curve if low < celsius < high])
 
 
 def built(chip) -> tuple[float, float]:
@@ -63,11 +165,17 @@ def built(chip) -> tuple[float, float]:
     return round(nom * (1 - acc), 9), round(nom * (1 + acc), 9)
 
 
-def _check_ic(chip, f, vin, vout, amps, ambient_max, pack, note, eq):  # noqa: PLR0913
+def _check_ic(chip, f, vin, vout, amps, ambient, pack, note, eq):  # noqa: PLR0913
     """The sums of 1 IC, or the line that says why it misses: (sums, None) or (None, miss)."""
     mpn = chip["mpn"]
     ds = chip["source"]["document"]
-    supply = next(p for p in f.data["pins"] if p["name"] == "IN")
+    if lacking := _facts_lack(f):
+        return None, (
+            f"{mpn}: {f.where} gives no {', '.join(lacking)}: the block judges no IC whose facts lack "
+            f"{'it' if len(lacking) == 1 else 'them'}"
+        )
+    supply = next(p for p in f.data["pins"] if p.get("name") == "IN")
+    ambient_min, ambient_max = ambient
     # The output it builds: its nominal, held to the output asked, and its accuracy's span.
     nom, acc = chip["vout_nominal"]["value"], chip["accuracy"]["value"]
     nom_where = f"{ds}, {chip['vout_nominal']['where']}"
@@ -116,12 +224,13 @@ def _check_ic(chip, f, vin, vout, amps, ambient_max, pack, note, eq):  # noqa: P
     sums.append(f"U: {line}, under the least input, {_g(vin_low)} V [{drop_where}]")
 
     # The dissipation and the junction: the datasheet's equations 6 and 7, SLVA079's 10 and 11, item 7's
-    # limit from the pack.
-    ground = supply.get("amps", 0.0)
-    watts = (ground + amps) * (vin_high - vout)
+    # limit from the pack. The IC dissipates the most at the greatest input and the least output its
+    # accuracy allows.
+    ground = supply["amps"]
+    watts = (ground + amps) * (vin_high - lo)
     pd_where = f"{eq('11')}; {ds}, {chip['dissipation']['where']}"
     sums.append(
-        f"U: PD = ({si(ground, 'A')} + {si(amps, 'A')}) x ({_g(vin_high)} V - {_g(vout)} V) = "
+        f"U: PD = ({si(ground, 'A')} + {si(amps, 'A')}) x ({vin_high:g} V - {lo:g} V, the least output) = "
         f"{si(watts, 'W')} [{pd_where}]"
     )
     term = f.data["thermal"]
@@ -141,17 +250,27 @@ def _check_ic(chip, f, vin, vout, amps, ambient_max, pack, note, eq):  # noqa: P
         f"{note['short']}, equation 10, page {note['equations']['10']['page']}; {pd_where}; "
         f"theta_ja and junction_max of {f.source}, {ratings._p(term['page'])}"
     )
-    tj = f"TJ = {ambient_max:g} C + {theta:g} C/W x {si(watts, 'W')} = {junction:.4g} C at the most ambient"
-    if junction > limit:
+    tj = f"TJ = {ambient_max:g} C + {theta:g} C/W x {si(watts, 'W')} = {junction:.5g} C at the most ambient"
+    if not junction <= limit:
         return None, f"{mpn}: {tj}, over {said} [{tj_where}]"
     sums.append(
         f"U: {tj}, under {said}; PD(max) = ({limit:g} C - {ambient_max:g} C) / {theta:g} C/W = "
-        f"{si((limit - ambient_max) / theta, 'W')} [{tj_where}]"
+        f"{si((limit - ambient_max) / theta, 'W')}; {thermal.assumes(theta)} [{tj_where}]"
     )
+    # The junction from the least ambient, where it starts at no load, to the most: the recommended span.
+    tj_lo, tj_hi = chip["junction_span"]["value"]
+    held = tj_lo <= ambient_min <= junction <= tj_hi
+    span = (
+        f"TJ from the least ambient, {ambient_min:g} C, to {junction:.5g} C, {'' if held else 'not '}within "
+        f"TJ's {tj_lo:g} C to {tj_hi:g} C [{ds}, {chip['junction_span']['where']}]"
+    )
+    if not held:
+        return None, f"{mpn}: {span}"
+    sums.append(f"U: {span}")
     return sums, None
 
 
-def _capacitor(chip, caps, volts, ref, which):
+def _capacitor(chip, caps, volts, ref, which, ambient):  # noqa: PLR0913
     """The first stocked capacitor that holds the pin at `volts`: (stock, facts, sum), or Refused."""
     ds = chip["source"]["document"]
     good = chip["dielectrics"]["value"]
@@ -179,21 +298,34 @@ def _capacitor(chip, caps, volts, ref, which):
             missed.append(f"{s.mpn}: its facts give no value it keeps under voltage")
         elif (share := ratings.kept_at(cf.data["kept"], volts)) is None:
             missed.append(f"{s.mpn}: its kept value ends under {si(volts, 'V')}")
+        elif "kept_celsius" in cf.data and (hot := _least_kept(cf.data["kept_celsius"], *ambient)) is None:
+            curve = cf.data["kept_celsius"]
+            missed.append(
+                f"{s.mpn}: its kept_celsius covers {curve[0][0]:g} C to {curve[-1][0]:g} C, not the "
+                f"ambient's {ambient[0]:g} C to {ambient[1]:g} C"
+            )
         else:
+            # Over temperature: the least share on its maker's curve from the least ambient to the most,
+            # or, with no curve, not judged and said so.
+            hot = _least_kept(cf.data["kept_celsius"], *ambient) if "kept_celsius" in cf.data else None
             low = 1 - cf.data["tolerance"]
-            each = farads * low * share
+            each = farads * low * share * (1.0 if hot is None else hot)
             sum_ = (
-                f"{si(farads, 'F')} x {low:g} x {share:.3g} = {si(each, 'F')}, "
-                f"{'over' if each > least else 'not over'} {si(least, 'F')}"
+                f"{si(farads, 'F')} x {low:g} x {share:.3g}{'' if hot is None else f' x {hot:.3g}'} = "
+                f"{si(each, 'F')}, {'over' if each > least else 'not over'} {si(least, 'F')}"
             )
             if each <= least:
                 missed.append(f"{s.mpn}: {sum_}")
                 continue
             span = f"is within {si(lo, 'F')} to {si(hi, 'F')}" if hi else f"is {si(lo, 'F')} or more"
+            kept = f"keeps {share:.3g} of {si(farads, 'F')} at {si(volts, 'V')}"
+            if hot is None:
+                span += f"; {NOT_HOT}"
+            else:
+                kept += f" and {hot:.3g} of it at {ambient[0]:g} C to {ambient[1]:g} C"
             line = (
-                f"{ref}: {s.mpn}, {dielectric}, rated {si(cf.data['volts'], 'V')}, keeps {share:.3g} "
-                f"of {si(farads, 'F')} at {si(volts, 'V')}: {sum_}; {si(farads, 'F')} "
-                f"{span} [{where}]"
+                f"{ref}: {s.mpn}, {dielectric}, rated {si(cf.data['volts'], 'V')}, {kept}: {sum_}; "
+                f"{si(farads, 'F')} {span} [{where}]"
             )
             return s, line
     raise blocks.Refused(
@@ -223,11 +355,33 @@ def ldo(  # noqa: PLR0913
     refs = {"ic": "U1", "input": "C1", "output": "C2"} | (refs or {})
     u = refs["ic"]
     data = blocks.load_rules(rules)
-    note = data["note"]
+    note = data.get("note")
+    if lacking := _note_lacks(note):
+        raise blocks.Refused(
+            f"ldo {u}: {Path(rules).name}: its note gives no {', '.join(lacking)}: the block cites each "
+            "equation it uses with its page"
+        )
 
     def eq(n: str) -> str:
         return f"{note['short']}, equation {n}, page {note['equations'][n]['page']}"
 
+    # The spec: each number finite, each range (least, greatest). NaN is under no limit and over none.
+    for name, given, pair in (("vin", vin, True), ("vout", vout, False), ("amps", amps, False),
+                              ("ambient", ambient, True)):  # fmt: skip
+        numbers = tuple(given) if pair and isinstance(given, (tuple, list)) else (given,)
+        if not (all(_finite(x) for x in numbers) and len(numbers) == (2 if pair else 1)):
+            raise blocks.Refused(f"ldo {u}: {name}={given!r}: each number of the spec must be finite")
+    if vin[0] > vin[1]:
+        raise blocks.Refused(
+            f"ldo {u}: vin=({vin[0]:g}, {vin[1]:g}) is written greatest first: vin is (least, greatest), and "
+            f"the block takes the dropout at the least and the dissipation at the greatest [{eq('1')}; "
+            f"{eq('11')}]"
+        )
+    if ambient[0] > ambient[1]:
+        raise blocks.Refused(
+            f"ldo {u}: ambient=({ambient[0]:g}, {ambient[1]:g}) is written greatest first: ambient is "
+            f"(least, greatest) in C, and the block takes the junction at the greatest [{eq('10')}]"
+        )
     if amps <= 0:
         raise blocks.Refused(
             f"ldo {u}: a load of {si(amps, 'A')}: the block sizes the dropout and the dissipation for "
@@ -246,8 +400,8 @@ def ldo(  # noqa: PLR0913
             continue
         if lacking := _unentered(chip):
             miss = (
-                f"{item.mpn}: {Path(rules).name} gives it no {', '.join(lacking)}: the block builds no IC "
-                "whose numbers are not all entered"
+                f"{item.mpn}: {Path(rules).name} {lacking}: the block builds no IC whose numbers are not all "
+                "entered"
             )
             misses.append(miss)
             sums.append(f"{u}: {item.mpn} passed over: {miss[len(item.mpn) + 2 :]}")
@@ -256,7 +410,7 @@ def ldo(  # noqa: PLR0913
         if f is None:
             misses.append(f"{item.mpn}: {facts} holds no facts of it")
             continue
-        got, miss = _check_ic(chip, f, vin, vout, amps, ambient[1], the_pack, note, eq)
+        got, miss = _check_ic(chip, f, vin, vout, amps, ambient, the_pack, note, eq)
         if miss:
             misses.append(miss)
             sums.append(f"{u}: {item.mpn} passed over: {miss[len(item.mpn) :].lstrip(': ')}")
@@ -277,9 +431,9 @@ def ldo(  # noqa: PLR0913
         if (cf := blocks._facts(found, s)) is not None and cf.kind.startswith("capacitor")
     ]
     try:
-        out_cap, out_line = _capacitor(chip, caps, out_hi, refs["output"], "output")
+        out_cap, out_line = _capacitor(chip, caps, out_hi, refs["output"], "output", ambient)
         sums.append(f"{out_line}; its CSR is not judged: {chip['csr']['where']} [{eq('8')}]")
-        in_cap, in_line = _capacitor(chip, caps, vin[1], refs["input"], "input")
+        in_cap, in_line = _capacitor(chip, caps, vin[1], refs["input"], "input", ambient)
         sums.append(in_line)
     except blocks.Refused as exc:
         raise blocks.Refused(f"ldo {u}: {exc}") from None
@@ -317,15 +471,17 @@ def ldo(  # noqa: PLR0913
 
 def _deck(u, mpn, chip, f, vin, vout, amps, ambient, pack, call, sums):  # noqa: PLR0913
     """sim/ldo.cir, its bound, its corners and its thermal plan: the IC drawn as what it does at the
-    greatest input into the load, its power for the SIM gate to hold its junction by (item 7)."""
-    ground = next(p for p in f.data["pins"] if p["name"] == "IN").get("amps", 0.0)
+    greatest input into the load, its power for the SIM gate to hold its junction by (item 7). Its output
+    is drawn, at the least its accuracy gives, where it dissipates the most: no bound holds it."""
+    ground = next(p for p in f.data["pins"] if p.get("name") == "IN")["amps"]
     most = chip["amps_max"]
     nom, (lo, hi) = chip["vout_nominal"]["value"], built(chip)
     lines = [
         f"ldo: the linear regulator block {u} ({mpn}), written by tools/blocks_ldo.py",
-        f"* {u} is drawn as what it does: its output holds its nominal, {_g(nom)} V, and its input",
-        f"* carries the load's current and its greatest ground current, {si(ground, 'A')} [{f.source}].",
-        f"* vout is held to the span its accuracy gives, {si(lo, 'V')} to {si(hi, 'V')}.",
+        f"* {u} is drawn as what it does: its output holds {lo:g} V, the least of its nominal, {_g(nom)} V,",
+        f"* with its accuracy, {lo:g} V to {hi:g} V, where it dissipates the most; its input carries the",
+        f"* load's current and its greatest ground current, {si(ground, 'A')} [{f.source}].",
+        f"* vout is drawn, not judged: no bound holds it, since the deck does not model {u}'s regulation.",
         f"* The input is the greatest, {_g(vin)} V; the load is {si(amps, 'A')}, a current source.",
         f"* p_{u.lower()} is {u}'s input power less its output power: what its junction dissipates.",
         "* sim/thermal.json names it, and the SIM gate holds the junction at each temperature of",
@@ -333,7 +489,7 @@ def _deck(u, mpn, chip, f, vin, vout, amps, ambient, pack, call, sums):  # noqa:
         "* The sums:",
         *[f"*   {line}" for line in sums],
         f"VIN in 0 DC {_g(vin)}",
-        f"B{u} reg 0 V={_g(nom)}",
+        f"B{u} reg 0 V={lo:g}",
         f"V{u} reg out DC 0",
         f"F{u} in 0 V{u} 1",
         f"I{u} in 0 DC {_g(ground * 1e6)}u",
@@ -352,13 +508,6 @@ def _deck(u, mpn, chip, f, vin, vout, amps, ambient, pack, call, sums):  # noqa:
             "max": most["value"],
             "source": f"{u} {mpn} gives {si(most['value'], 'A')} at the most "
             f"[{chip['source']['document']}, {most['where']}]",
-        },
-        "vout": {
-            "min": lo,
-            "max": hi,
-            "source": f"{u} {mpn} regulates to {si(nom, 'V')} x (1 +- {chip['accuracy']['value']:g}), the "
-            f"{_g(vout)} V asked [{chip['source']['document']}, {chip['vout_nominal']['where']}; "
-            f"{chip['accuracy']['where']}]",
         },
     }
     corners = {

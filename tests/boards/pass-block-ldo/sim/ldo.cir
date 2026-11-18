@@ -1,7 +1,8 @@
 ldo: the linear regulator block U1 (TLV75533PDBVR), written by tools/blocks_ldo.py
-* U1 is drawn as what it does: its output holds its nominal, 3.3 V, and its input
-* carries the load's current and its greatest ground current, 40 uA [TLV755P datasheet, SBVS320D, November 2017, revised September 2024].
-* vout is held to the span its accuracy gives, 3.25 V to 3.35 V.
+* U1 is drawn as what it does: its output holds 3.2505 V, the least of its nominal, 3.3 V,
+* with its accuracy, 3.2505 V to 3.3495 V, where it dissipates the most; its input carries the
+* load's current and its greatest ground current, 40 uA [TLV755P datasheet, SBVS320D, November 2017, revised September 2024].
+* vout is drawn, not judged: no bound holds it, since the deck does not model U1's regulation.
 * The input is the greatest, 5.25 V; the load is 100 mA, a current source.
 * p_u1 is U1's input power less its output power: what its junction dissipates.
 * sim/thermal.json names it, and the SIM gate holds the junction at each temperature of
@@ -11,12 +12,13 @@ ldo: the linear regulator block U1 (TLV75533PDBVR), written by tools/blocks_ldo.
 *   U1: the input, 4.75 V to 5.25 V, is within IN's 1.45 V to 5.5 V [TLV755P datasheet, SBVS320D, November 2017, revised September 2024, p 3, 4 and 5]
 *   U1: IOUT of 100 mA, under 500 mA [TLV755P datasheet, SBVS320D, section 5.3, Recommended Operating Conditions, IOUT, page 4]
 *   U1: VDO = 100 mA x 238 mV / 500 mA = 47.6 mV; VOUT(NOM) + VDO = 3.3 V + 47.6 mV = 3.348 V, under the least input, 4.75 V [TI SLVA079, equation 1, page 2; TLV755P datasheet, SBVS320D, section 5.5, VDO at IOUT = 500 mA and -40 C to 125 C, the row 3.3 V <= VOUT < 5.0 V, the column MAX, page 6; section 7.1.2, page 15: VDO scales linearly with the output current; table 6-1 and section 6.4.1, page 14: VIN > VOUT(NOM) + VDO]
-*   U1: PD = (40 uA + 100 mA) x (5.25 V - 3.3 V) = 195 mW [TI SLVA079, equation 11, page 11; TLV755P datasheet, SBVS320D, section 7.2.2.2, equations 6 and 7, page 20]
-*   U1: TJ = 30 C + 231.1 C/W x 195 mW = 75.08 C at the most ambient, under 85 C, the least of 85 C, 0.7 x 150 C and 150 C - 40 C (nasa-eee-inst-002, section M4, table 4, page 10 of 10, the column Linear/Mixed Signal and note 2); PD(max) = (85 C - 30 C) / 231.1 C/W = 238 mW [TI SLVA079, equation 10, page 11; TI SLVA079, equation 11, page 11; TLV755P datasheet, SBVS320D, section 7.2.2.2, equations 6 and 7, page 20; theta_ja and junction_max of TLV755P datasheet, SBVS320D, November 2017, revised September 2024, p 4 and 5]
-*   C2: CL10A106KP8NNN, X5R, rated 10 V, keeps 0.436 of 10 uF at 3.35 V: 10 uF x 0.9 x 0.436 = 3.92 uF, over 470 nF; 10 uF is within 1 uF to 200 uF [TLV755P datasheet, SBVS320D, section 7.1.1, page 15, and table 4-1, note 1, page 3: the effective capacitance at the pin greater than 0.47 uF; section 5.3, Recommended Operating Conditions, COUT, page 4; section 7.1.1, page 15: X5R- and X7R-type ceramic capacitors]; its CSR is not judged: the datasheet gives no graph of a stable CSR; section 7.1.1, page 15, names X5R and X7R ceramics for their small change of ESR [TI SLVA079, equation 8, page 9]
-*   C1: CL10A106KP8NNN, X5R, rated 10 V, keeps 0.267 of 10 uF at 5.25 V: 10 uF x 0.9 x 0.267 = 2.4 uF, over 470 nF; 10 uF is 1 uF or more [TLV755P datasheet, SBVS320D, table 4-1, note 1, page 3: the effective capacitance at the pin greater than 0.47 uF; section 5.3, Recommended Operating Conditions, CIN, page 4; section 7.1.1, page 15: X5R- and X7R-type ceramic capacitors]
+*   U1: PD = (40 uA + 100 mA) x (5.25 V - 3.2505 V, the least output) = 200 mW [TI SLVA079, equation 11, page 11; TLV755P datasheet, SBVS320D, section 7.2.2.2, equations 6 and 7, page 20]
+*   U1: TJ = 30 C + 231.1 C/W x 200 mW = 76.227 C at the most ambient, under 85 C, the least of 85 C, 0.7 x 150 C and 150 C - 40 C (nasa-eee-inst-002, section M4, table 4, page 10 of 10, the column Linear/Mixed Signal and note 2); PD(max) = (85 C - 30 C) / 231.1 C/W = 238 mW; theta_ja 231.1 C/W is the datasheet's test board's: a JEDEC 2s2p board gives a best case and a 1s board a typical one (SPRA953D, section 1.2, page 3); a board unlike the test board changes it (section 1.1, page 2) [TI SLVA079, equation 10, page 11; TI SLVA079, equation 11, page 11; TLV755P datasheet, SBVS320D, section 7.2.2.2, equations 6 and 7, page 20; theta_ja and junction_max of TLV755P datasheet, SBVS320D, November 2017, revised September 2024, p 4 and 5]
+*   U1: TJ from the least ambient, 0 C, to 76.227 C, within TJ's -40 C to 125 C [TLV755P datasheet, SBVS320D, section 5.3, Recommended Operating Conditions, TJ, page 4]
+*   C2: CL10A106KP8NNN, X5R, rated 10 V, keeps 0.436 of 10 uF at 3.35 V and 0.993 of it at 0 C to 30 C: 10 uF x 0.9 x 0.436 x 0.993 = 3.9 uF, over 470 nF; 10 uF is within 1 uF to 200 uF [TLV755P datasheet, SBVS320D, section 7.1.1, page 15, and table 4-1, note 1, page 3: the effective capacitance at the pin greater than 0.47 uF; section 5.3, Recommended Operating Conditions, COUT, page 4; section 7.1.1, page 15: X5R- and X7R-type ceramic capacitors]; its CSR is not judged: the datasheet gives no graph of a stable CSR; section 7.1.1, page 15, names X5R and X7R ceramics for their small change of ESR [TI SLVA079, equation 8, page 9]
+*   C1: CL10A106KP8NNN, X5R, rated 10 V, keeps 0.267 of 10 uF at 5.25 V and 0.993 of it at 0 C to 30 C: 10 uF x 0.9 x 0.267 x 0.993 = 2.38 uF, over 470 nF; 10 uF is 1 uF or more [TLV755P datasheet, SBVS320D, table 4-1, note 1, page 3: the effective capacitance at the pin greater than 0.47 uF; section 5.3, Recommended Operating Conditions, CIN, page 4; section 7.1.1, page 15: X5R- and X7R-type ceramic capacitors]
 VIN in 0 DC 5.25
-BU1 reg 0 V=3.3
+BU1 reg 0 V=3.2505
 VU1 reg out DC 0
 FU1 in 0 VU1 1
 IU1 in 0 DC 40u

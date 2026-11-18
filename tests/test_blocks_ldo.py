@@ -16,24 +16,30 @@ and 150 - 40 = 110 C: 85 C.
 
     dropout    VDO = IOUT x 238 mV / 500 mA (SLVA079 equation 1, page 2; SBVS320D 5.5, page 6, and 7.1.2):
                at 0.1 A 47.6 mV, 3.3 + 0.0476 = 3.3476 V under 4.75 V; at 0.2 A 95.2 mV, 3.3952 V
-    PD         (40e-6 + IOUT) x (5.25 - 3.3) (SBVS320D equation 6, page 20; SLVA079 equation 11, page 11):
-               at 0.1 A 0.10004 x 1.95 = 0.195078 W; at 0.2 A 0.20004 x 1.95 = 0.390078 W
+    PD         (40e-6 + IOUT) x (5.25 - 3.2505), at the least output the accuracy gives (SBVS320D
+               equation 6, page 20; SLVA079 equation 11, page 11): at 0.1 A 0.10004 x 1.9995 = 0.20008 -
+               0.00005002 = 0.20002998 W; at 0.2 A 0.20004 x 1.9995 = 0.40008 - 0.00010002 = 0.39997998 W
     TJ         30 + RthetaJA x PD (SBVS320D equation 7; item 7's sum):
-               DBV at 0.1 A 30 + 231.1 x 0.195078 = 30 + 45.0825 = 75.0825 C, under 85 C
-               DBV at 0.2 A 30 + 231.1 x 0.390078 = 30 + 90.1470 = 120.1470 C, over 85 C
-               DRV at 0.2 A 30 + 100.2 x 0.390078 = 30 + 39.0858 = 69.0858 C, under 85 C
+               DBV at 0.1 A 30 + 231.1 x 0.20002998 = 30 + 46.226928 = 76.226928 C, under 85 C
+               DBV at 0.2 A 30 + 231.1 x 0.39997998 = 30 + 92.435373 = 122.435373 C, over 85 C
+               DRV at 0.1 A 30 + 100.2 x 0.20002998 = 30 + 20.043004 = 50.043004 C
+               DRV at 0.2 A 30 + 100.2 x 0.39997998 = 30 + 40.077994 = 70.077994 C, under 85 C
+               and each from the least ambient, 0 C, within TJ's -40 C to 125 C (5.3, page 4)
     PD(max)    (85 - 30) / 231.1 = 0.237992 W; (85 - 30) / 100.2 = 0.548902 W (SLVA079 equation 10)
     C2         CL10A106KP8NNN keeps, between its points (3.3368, 0.43771) and (3.422325, 0.4264),
-               0.43771 - 0.01131 x 0.0127 / 0.085525 = 0.436031 at 3.3495 V: 10 uF x 0.9 x 0.436031
-               = 3.924 uF, over 0.47 uF (7.1.1, page 15); 10 uF within 1 uF to 200 uF (5.3, page 4)
+               0.43771 - 0.01131 x 0.0127 / 0.085525 = 0.436031 at 3.3495 V; its kept_celsius falls from
+               0 C to 30 C, least at 30 C, between (29.58074, 0.9938) and (31.809999, 0.99032):
+               0.9938 - 0.00348 x 0.41926 / 2.229259 = 0.993146. 10 uF x 0.9 x 0.436031 x 0.993146 =
+               3.897 uF, over 0.47 uF (7.1.1, page 15); 10 uF within 1 uF to 200 uF (5.3, page 4)
     C1         it keeps, between (5.2344, 0.26773) and (5.35535, 0.26029), 0.26773 - 0.00744 x 0.0156 /
-               0.12095 = 0.266770 at 5.25 V: 10 uF x 0.9 x 0.266770 = 2.401 uF, over 0.47 uF; 10 uF is
-               over the 1 uF of CIN (5.3, page 4)
+               0.12095 = 0.266770 at 5.25 V: 10 uF x 0.9 x 0.266770 x 0.993146 = 2.384 uF, over 0.47 uF;
+               10 uF is over the 1 uF of CIN (5.3, page 4)
 """
 
 from __future__ import annotations
 
 import json
+import math
 import shutil
 import subprocess
 import sys
@@ -92,6 +98,17 @@ OUT_WHERE = (
 )
 NOMINAL = f"{DS}, table 8-1, Device Nomenclature, page 23: xx in TLV755xxP is the nominal output, 33 = 3.3 V"
 ACCURACY = "section 5.5, Output accuracy, VOUT >= 1 V, -1.5 % to 1.5 %, page 5"
+TJ_SPAN = f"{DS}, section 5.3, Recommended Operating Conditions, TJ, page 4"
+NOT_HOT = "its value over temperature is not judged: its facts give no kept_celsius"
+
+
+def assumes(theta: str) -> str:
+    """What a junction from RthetaJA rests on, as tools/thermal.py says it (SPRA953D)."""
+    return (
+        f"theta_ja {theta} C/W is the datasheet's test board's: a JEDEC 2s2p board gives a best case and a "
+        "1s board a typical one (SPRA953D, section 1.2, page 3); a board unlike the test board changes it "
+        "(section 1.1, page 2)"
+    )
 
 
 def regulates(mpn: str) -> str:
@@ -143,6 +160,19 @@ def ldo(  # noqa: PLR0913
     return d, block
 
 
+def ldo_with(tmp_path: Path, rules: dict, facts=FACTS) -> tuple[kicadgen.Design, object]:
+    """The block at 0.1 A on the full stock, with its rules written to a file of the test's own."""
+    path = tmp_path / "ldo.json"
+    path.write_text(json.dumps(rules), encoding="utf-8")
+    d = design()
+    block = blocks.ldo(
+        d, vin=(4.75, 5.25), vout=3.3, amps=0.1, ambient=(0, 30), pack="nasa-eee-inst-002",
+        nets=("+5V", "+3V3", "GND"), stock=STOCK, facts=facts, sch_at=(76.2, 76.2), pcb_at=(111.0, 108.0),
+        rules=path,
+    )  # fmt: skip
+    return d, block
+
+
 def refused(**kwargs) -> str:
     with pytest.raises(blocks.Refused) as exc:
         ldo(**kwargs)
@@ -179,42 +209,107 @@ def test_a_tenth_of_an_amp_takes_the_first_stocked_ic_and_checks_what_it_built()
         "page 4]",
         "U1: VDO = 100 mA x 238 mV / 500 mA = 47.6 mV; VOUT(NOM) + VDO = 3.3 V + 47.6 mV = 3.348 V, under "
         f"the least input, 4.75 V [{DROPOUT}]",
-        f"U1: PD = (40 uA + 100 mA) x (5.25 V - 3.3 V) = 195 mW [{PD}]",
-        f"U1: TJ = 30 C + 231.1 C/W x 195 mW = 75.08 C at the most ambient, under {LIMIT}; PD(max) = "
-        f"(85 C - 30 C) / 231.1 C/W = 238 mW [{TJ_WHERE}]",
-        "C2: CL10A106KP8NNN, X5R, rated 10 V, keeps 0.436 of 10 uF at 3.35 V: 10 uF x 0.9 x 0.436 = 3.92 uF, "
-        f"over 470 nF; 10 uF is within 1 uF to 200 uF [{OUT_WHERE}]; {CSR}",
-        "C1: CL10A106KP8NNN, X5R, rated 10 V, keeps 0.267 of 10 uF at 5.25 V: 10 uF x 0.9 x 0.267 = 2.4 uF, "
-        f"over 470 nF; 10 uF is 1 uF or more [{IN_WHERE}]",
+        f"U1: PD = (40 uA + 100 mA) x (5.25 V - 3.2505 V, the least output) = 200 mW [{PD}]",
+        f"U1: TJ = 30 C + 231.1 C/W x 200 mW = 76.227 C at the most ambient, under {LIMIT}; PD(max) = "
+        f"(85 C - 30 C) / 231.1 C/W = 238 mW; {assumes('231.1')} [{TJ_WHERE}]",
+        f"U1: TJ from the least ambient, 0 C, to 76.227 C, within TJ's -40 C to 125 C [{TJ_SPAN}]",
+        "C2: CL10A106KP8NNN, X5R, rated 10 V, keeps 0.436 of 10 uF at 3.35 V and 0.993 of it at 0 C to 30 C: "
+        "10 uF x 0.9 x 0.436 x 0.993 = 3.9 uF, over 470 nF; 10 uF is within 1 uF to 200 uF "
+        f"[{OUT_WHERE}]; {CSR}",
+        "C1: CL10A106KP8NNN, X5R, rated 10 V, keeps 0.267 of 10 uF at 5.25 V and 0.993 of it at 0 C to 30 C: "
+        f"10 uF x 0.9 x 0.267 x 0.993 = 2.38 uF, over 470 nF; 10 uF is 1 uF or more [{IN_WHERE}]",
     ]
 
 
 @needs_libs
 def test_twice_the_load_takes_the_other_package_since_the_first_junction_passes_its_limit():
-    """At 0.2 A the SOT-23-5 reaches 120.1470 C, over 85 C; the WSON-6 reaches 69.0858 C and is taken.
+    """At 0.2 A the SOT-23-5 reaches 122.435373 C, over 85 C; the WSON-6 reaches 70.077994 C and is taken.
     Its GND pad, pin 7, is on GND with pin 3."""
     d, block = ldo(0.2)
     u1 = next(p for p in d.parts if p.ref == "U1")
     assert u1.footprint.lib_id == WSON
     assert u1.nets == {"6": "+5V", "4": "+5V", "3": "GND", "7": "GND", "1": "+3V3"}
     assert block.sums[0] == (
-        f"U1: TLV75533PDBVR passed over: TJ = 30 C + 231.1 C/W x 390 mW = 120.1 C at the most ambient, over "
+        f"U1: TLV75533PDBVR passed over: TJ = 30 C + 231.1 C/W x 400 mW = 122.44 C at the most ambient, over "
         f"{LIMIT} [{TJ_WHERE}]"
     )
     assert block.sums[1] == regulates("TLV75533PDRVR")
     assert (
-        f"U1: TJ = 30 C + 100.2 C/W x 390 mW = 69.09 C at the most ambient, under {LIMIT}; PD(max) = "
-        f"(85 C - 30 C) / 100.2 C/W = 549 mW [{TJ_WHERE}]"
+        f"U1: TJ = 30 C + 100.2 C/W x 400 mW = 70.078 C at the most ambient, under {LIMIT}; PD(max) = "
+        f"(85 C - 30 C) / 100.2 C/W = 549 mW; {assumes('100.2')} [{TJ_WHERE}]"
     ) in block.sums
 
 
 @needs_libs
 def test_no_stocked_ic_that_holds_the_junction_is_1_line_with_its_sum():
-    """With the SOT-23-5 alone in the stock, 0.2 A puts its junction at 120.1470 C, over 85 C."""
+    """With the SOT-23-5 alone in the stock, 0.2 A puts its junction at 122.435373 C, over 85 C."""
     assert refused(amps=0.2, stock=[DBV, CIN, SAMSUNG]) == (
-        "ldo U1: no stocked IC holds the spec: TLV75533PDBVR: TJ = 30 C + 231.1 C/W x 390 mW = 120.1 C at "
+        "ldo U1: no stocked IC holds the spec: TLV75533PDBVR: TJ = 30 C + 231.1 C/W x 400 mW = 122.44 C at "
         f"the most ambient, over {LIMIT} [{TJ_WHERE}]"
     )
+
+
+@needs_libs
+def test_the_dissipation_is_taken_at_the_least_output_the_accuracy_gives():
+    """At 0.122 A, at 3.3 V: (40e-6 + 0.122) x 1.95 = 0.237978 W and 30 + 231.1 x 0.237978 = 84.997 C,
+    under 85 C. At 3.2505 V, the least output of 1.5 %: 0.12204 x 1.9995 = 0.24408 - 0.00006102 =
+    0.24401898 W, and 30 + 231.1 x 0.24401898 = 30 + 56.392786 = 86.392786 C, over 85 C."""
+    assert refused(amps=0.122, stock=[DBV, CIN, SAMSUNG]) == (
+        "ldo U1: no stocked IC holds the spec: TLV75533PDBVR: TJ = 30 C + 231.1 C/W x 244 mW = 86.393 C at "
+        f"the most ambient, over {LIMIT} [{TJ_WHERE}]"
+    )
+
+
+@needs_libs
+@pytest.mark.parametrize(
+    ("spec", "said"),
+    [
+        (
+            {"vin": (5.25, 3.6)},
+            "vin=(5.25, 3.6) is written greatest first: vin is (least, greatest), and the block takes the "
+            f"dropout at the least and the dissipation at the greatest [{NOTE}, equation 1, page 2; {NOTE}, "
+            "equation 11, page 11]",
+        ),
+        (
+            {"ambient": (30, 0)},
+            "ambient=(30, 0) is written greatest first: ambient is (least, greatest) in C, and the block "
+            f"takes the junction at the greatest [{NOTE}, equation 10, page 11]",
+        ),
+        ({"ambient": (0, math.nan)}, "ambient=(0, nan): each number of the spec must be finite"),
+        ({"vin": (4.75, math.nan)}, "vin=(4.75, nan): each number of the spec must be finite"),
+        ({"amps": math.inf}, "amps=inf: each number of the spec must be finite"),
+        ({"vout": math.nan}, "vout=nan: each number of the spec must be finite"),
+    ],
+)
+def test_a_spec_written_greatest_first_or_not_finite_is_refused(spec, said):
+    """A range is (least, greatest): the dropout is held at the least input, the dissipation taken at the
+    greatest input and the junction at the greatest ambient. A number that is not finite is judged by
+    nothing: NaN is under no limit."""
+    assert refused(**({"amps": 0.18} | spec)) == f"ldo U1: {said}"
+
+
+@needs_libs
+def test_an_ambient_under_the_ics_least_junction_is_refused():
+    """At no load the junction is the ambient: -60 C is under the -40 C of SBVS320D 5.3, page 4. At 0.1 A
+    the junction at 30 C is 76.227 C, under 85 C (the sums above)."""
+    assert refused(amps=0.1, ambient=(-60, 30), stock=[DBV, CIN, SAMSUNG]) == (
+        "ldo U1: no stocked IC holds the spec: TLV75533PDBVR: TJ from the least ambient, -60 C, to 76.227 C, "
+        f"not within TJ's -40 C to 125 C [{TJ_SPAN}]"
+    )
+
+
+@needs_libs
+def test_a_junction_over_the_ics_recommended_most_is_passed_over(tmp_path):
+    """With the SOT-23-5's TJ span made -40 C to 70 C, its 76.227 C at 0.1 A is over it; the WSON-6's
+    50.043004 C is within it, and it is taken."""
+    rules = json.loads((ROOT / "rules" / "blocks" / "ldo.json").read_text(encoding="utf-8"))
+    rules["ics"][0]["junction_span"]["value"] = [-40, 70]
+    d, block = ldo_with(tmp_path, rules)
+    assert block.sums[0] == (
+        "U1: TLV75533PDBVR passed over: TJ from the least ambient, 0 C, to 76.227 C, not within TJ's -40 C "
+        f"to 70 C [{TJ_SPAN}]"
+    )
+    assert next(p for p in d.parts if p.ref == "U1").footprint.lib_id == WSON
 
 
 @needs_libs
@@ -280,8 +375,8 @@ def test_a_load_of_0_or_less_is_refused(amps, shown):
 
 @needs_libs
 def test_a_hotter_ambient_takes_the_package_whose_junction_holds():
-    """At 0.1 A and 60 C at the most: 60 + 231.1 x 0.195078 = 105.0825 C, over 85 C, and
-    60 + 100.2 x 0.195078 = 79.5468 C, under it: the WSON-6 is taken."""
+    """At 0.1 A and 60 C at the most: 60 + 231.1 x 0.20002998 = 106.226928 C, over 85 C, and
+    60 + 100.2 x 0.20002998 = 80.043004 C, under it: the WSON-6 is taken."""
     d, _ = ldo(0.1, ambient=(0, 60))
     assert next(p for p in d.parts if p.ref == "U1").footprint.lib_id == WSON
 
@@ -303,10 +398,45 @@ WEAK_CAP = blocks.Stock("made up", "FIXTURE-1U-WEAK", "1u weak", C_0603)
 def test_a_capacitor_that_keeps_over_047_uf_is_taken(tmp_path):
     """A made-up 1 uF capacitor, first in the stock, keeps 1 - 0.6 x 3.3495 / 10 = 0.79903 of its value at
     3.3495 V: 1 uF x 0.8 x 0.79903 = 0.6392 uF, over 0.47 uF, and at 5.25 V 1 - 0.6 x 0.525 = 0.685:
-    0.548 uF, over it too. It is taken at both pins."""
-    d, _ = ldo(0.1, stock=[DBV, SMALL_CAP, SAMSUNG], facts=facts_with(tmp_path, SMALL))
+    0.548 uF, over it too. It is taken at both pins. Its facts give no curve over temperature: each line
+    says the value over temperature is not judged."""
+    d, block = ldo(0.1, stock=[DBV, SMALL_CAP, SAMSUNG], facts=facts_with(tmp_path, SMALL))
     parts = {p.ref: p.value for p in d.parts}
     assert (parts["C1"], parts["C2"]) == ("1u small", "1u small")
+    lines = [s for s in block.sums if s.startswith(("C1:", "C2:"))]
+    assert len(lines) == 2
+    assert all(NOT_HOT in s for s in lines)
+
+
+COLD = {
+    **SMALL,
+    "mpn": "FIXTURE-1U-COLD",
+    "kept": [[0, 1.0], [10, 1.0]],
+    "kept_celsius": [[-55, 1.0], [25, 1.0]],
+}
+COLD_CAP = blocks.Stock("made up", "FIXTURE-1U-COLD", "1u cold", C_0603)
+
+
+@needs_libs
+def test_a_capacitor_whose_curve_over_temperature_ends_inside_the_ambient_is_passed_over(tmp_path):
+    """A made-up 1 uF that keeps all its value from 0 V to 10 V, 1 uF x 0.8 = 0.8 uF, over 0.47 uF: but its
+    curve over temperature ends at 25 C, under the 30 C of the ambient. Its value there is not known: it is
+    passed over, and CL10A106KP8NNN is taken."""
+    d, _ = ldo(0.1, stock=[DBV, COLD_CAP, SAMSUNG], facts=facts_with(tmp_path, COLD))
+    parts = {p.ref: p.value for p in d.parts}
+    assert (parts["C1"], parts["C2"]) == ("10u 10V", "10u 10V")
+
+
+@needs_libs
+def test_at_100_c_the_x5r_whose_curve_ends_at_85_c_is_refused():
+    """Under the ECSS pack (junction 110 C at the most), 10 mA at 0 C to 100 C: PD = (40e-6 + 0.01) x
+    1.9995 = 0.020075 W, TJ = 100 + 231.1 x 0.020075 = 104.639 C, under 110 C and 125 C: the IC holds.
+    CL10A106KP8NNN's kept_celsius covers -55 C to 85 C, not 100 C: no capacitor holds C2."""
+    assert refused(amps=0.01, ambient=(0, 100), pack="ecss-q-st-30-11c-rev2") == (
+        "ldo U1: no stocked capacitor holds C2 at 3.35 V: FIXTURE-10U-16V: its facts give no value it keeps "
+        "under voltage; CL10A106KP8NNN: its kept_celsius covers -55 C to 85 C, not the ambient's 0 C to "
+        f"100 C [{OUT_WHERE}]"
+    )
 
 
 @needs_libs
@@ -374,16 +504,20 @@ def test_the_block_hands_its_input_its_ambient_and_its_parts_to_ratings():
 @needs_libs
 def test_the_deck_dissipates_what_the_sums_say_and_names_its_junction_for_the_sim_gate():
     """sim/ldo.cir holds U1 at the greatest input, 5.25 V, into 0.1 A, with its 40 uA of ground current,
-    and its output at the 3.3 V of table 8-1, held to 3.2505 V to 3.3495 V (the sums above);
-    sim/thermal.json names U1's power to the SIM gate under the same pack; sim/corners.json runs it at
-    0 C and 30 C, the ambient's ends."""
+    and its output drawn at 3.2505 V, the least of 3.3 V x (1 - 0.015), where it dissipates the most (the
+    sums above). vout is drawn, so no bound holds it: the deck says so. sim/thermal.json names U1's power
+    to the SIM gate under the same pack; sim/corners.json runs it at 0 C and 30 C, the ambient's ends."""
     _, block = ldo(0.1)
     deck = block.files["sim/ldo.cir"].splitlines()
     assert deck[0] == "ldo: the linear regulator block U1 (TLV75533PDBVR), written by tools/blocks_ldo.py"
+    assert (
+        "* vout is drawn, not judged: no bound holds it, since the deck does not model U1's regulation."
+        in deck
+    )
     body = [line for line in deck if not line.startswith("*")][1:]
     assert body == [
         "VIN in 0 DC 5.25",
-        "BU1 reg 0 V=3.3",
+        "BU1 reg 0 V=3.2505",
         "VU1 reg out DC 0",
         "FU1 in 0 VU1 1",
         "IU1 in 0 DC 40u",
@@ -417,13 +551,59 @@ def test_the_deck_dissipates_what_the_sums_say_and_names_its_junction_for_the_si
             "source": f"U1 TLV75533PDBVR gives 500 mA at the most [{DS}, section 5.3, Recommended Operating "
             "Conditions, IOUT, page 4]",
         },
-        "vout": {
-            "min": 3.2505,
-            "max": 3.3495,
-            "source": f"U1 TLV75533PDBVR regulates to 3.3 V x (1 +- 0.015), the 3.3 V asked "
-            f"[{NOMINAL}; {ACCURACY}]",
-        },
     }
+
+
+def _pop(*keys):
+    def change(ic):
+        entry = ic
+        for key in keys[:-1]:
+            entry = entry[key]
+        del entry[keys[-1]]
+
+    return change
+
+
+def _set(key, value, field="value"):
+    def change(ic):
+        ic[key][field] = value
+
+    return change
+
+
+@needs_libs
+@pytest.mark.parametrize(
+    ("change", "said"),
+    [
+        (_pop("csr"), "gives it no csr"),
+        (_pop("dissipation", "where"), "gives it no dissipation"),
+        (_pop("dropout", "amps"), "gives it no dropout amps"),
+        (_pop("pins", "EN"), "gives it no pins EN"),
+        (_pop("source", "document"), "gives it no source document"),
+        (_pop("junction_span"), "gives it no junction_span"),
+        (_set("dropout", 0, "amps"), "holds dropout amps as 0, not a number over 0"),
+        (_set("accuracy", "1.5 %"), "holds accuracy as '1.5 %', not a share from 0 to under 1"),
+        (_set("accuracy", -0.015), "holds accuracy as -0.015, not a share from 0 to under 1"),
+        (_set("output_span", 1e-6), "holds output_span as 1e-06, not 2 numbers over 0, the least first"),
+        (_set("amps_max", [0.5]), "holds amps_max as [0.5], not a number over 0"),
+        (_set("dielectrics", "X5R"), "holds dielectrics as 'X5R', not a list of names"),
+        (
+            _set("junction_span", [125, -40]),
+            "holds junction_span as [125, -40], not 2 numbers, the least first",
+        ),
+    ],
+)
+def test_an_ic_whose_rules_hold_a_number_ldo_cannot_read_is_passed_over_on_1_line(tmp_path, change, said):
+    """A key missing, a key inside an entry missing, or a value not of its shape: the SOT-23-5 is passed
+    over on 1 line that names it, and the WSON-6 is taken. No entry reaches a sum unread."""
+    rules = json.loads((ROOT / "rules" / "blocks" / "ldo.json").read_text(encoding="utf-8"))
+    change(rules["ics"][0])
+    d, block = ldo_with(tmp_path, rules)
+    assert block.sums[0] == (
+        f"U1: TLV75533PDBVR passed over: ldo.json {said}: the block builds no IC whose numbers are not all "
+        "entered"
+    )
+    assert next(p for p in d.parts if p.ref == "U1").footprint.lib_id == WSON
 
 
 @needs_libs
@@ -433,17 +613,50 @@ def test_an_ic_whose_rules_lack_a_number_is_passed_over_on_1_line(tmp_path):
     rules = json.loads((ROOT / "rules" / "blocks" / "ldo.json").read_text(encoding="utf-8"))
     del rules["ics"][0]["vout_nominal"]
     del rules["ics"][0]["accuracy"]["where"]
-    path = tmp_path / "ldo.json"
-    path.write_text(json.dumps(rules), encoding="utf-8")
-    d = design()
-    block = blocks.ldo(
-        d, vin=(4.75, 5.25), vout=3.3, amps=0.1, ambient=(0, 30), pack="nasa-eee-inst-002",
-        nets=("+5V", "+3V3", "GND"), stock=STOCK, facts=FACTS, sch_at=(76.2, 76.2), pcb_at=(111.0, 108.0),
-        rules=path,
-    )  # fmt: skip
+    d, block = ldo_with(tmp_path, rules)
     assert block.sums[0] == (
         "U1: TLV75533PDBVR passed over: ldo.json gives it no vout_nominal, accuracy: the block builds no IC "
         "whose numbers are not all entered"
+    )
+    assert next(p for p in d.parts if p.ref == "U1").footprint.lib_id == WSON
+
+
+@needs_libs
+def test_a_note_that_lacks_an_equations_page_is_refused_on_1_line(tmp_path):
+    """Every sum cites its equation with its page: a note without equation 10 builds nothing."""
+    rules = json.loads((ROOT / "rules" / "blocks" / "ldo.json").read_text(encoding="utf-8"))
+    del rules["note"]["equations"]["10"]
+    with pytest.raises(blocks.Refused) as exc:
+        ldo_with(tmp_path, rules)
+    assert str(exc.value) == (
+        "ldo U1: ldo.json: its note gives no page of equation 10: the block cites each equation it uses with "
+        "its page"
+    )
+
+
+@needs_libs
+@pytest.mark.parametrize(
+    ("change", "said"),
+    [
+        (lambda data: data.pop("thermal"), "thermal theta_ja"),
+        (lambda data: data["pins"][0].pop("operating"), "IN operating"),
+        (lambda data: data["pins"][0].pop("amps"), "IN amps"),
+    ],
+)
+def test_an_ic_whose_facts_lack_what_ldo_reads_is_passed_over_on_1_line(tmp_path, change, said):
+    """The SOT-23-5's facts with no RthetaJA, no operating range of IN or no ground current: it is passed
+    over on 1 line that names the file and the key, and the WSON-6 (its own facts file) is taken."""
+    folder = tmp_path / "facts"
+    shutil.copytree(FACTS, folder)
+    path = folder / "ti-tlv755p.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    change(data)
+    path.write_text(json.dumps(data), encoding="utf-8")
+    rules = json.loads((ROOT / "rules" / "blocks" / "ldo.json").read_text(encoding="utf-8"))
+    d, block = ldo_with(tmp_path, rules, facts=folder)
+    assert block.sums[0] == (
+        f"U1: TLV75533PDBVR passed over: ti-tlv755p.json gives no {said}: the block judges no IC whose facts "
+        "lack it"
     )
     assert next(p for p in d.parts if p.ref == "U1").footprint.lib_id == WSON
 
@@ -490,11 +703,12 @@ def test_each_fixture_is_what_its_design_file_writes_and_passes_ratings_strict(n
 
 
 # The junction the SIM gate gives U1 at its worst run, 30 C: 30 + RthetaJA x p_u1, with p_u1 the deck's
-# input power less its output power, 5.25 x (IOUT + 40e-6) - 3.3 x IOUT. At 0.1 A p_u1 = 0.52521 - 0.33 =
-# 0.19521 W and 30 + 231.1 x 0.19521 = 75.1130 C; at 0.2 A p_u1 = 1.05021 - 0.66 = 0.39021 W and
-# 30 + 100.2 x 0.39021 = 69.0990 C. The deck counts the ground current at the whole input, equation 6 at
-# the drop only: 5.25 x 40e-6 - 1.95 x 40e-6 = 0.132 mW more.
-JUNCTIONS = {"pass-block-ldo": 75.1130, "pass-block-ldo-2x": 69.0990}
+# input power less its output power, 5.25 x (IOUT + 40e-6) - 3.2505 x IOUT, its output drawn at the least
+# its accuracy gives. At 0.1 A p_u1 = 0.52521 - 0.32505 = 0.20016 W and 30 + 231.1 x 0.20016 = 30 +
+# 46.256976 = 76.256976 C; at 0.2 A p_u1 = 1.05021 - 0.6501 = 0.40011 W and 30 + 100.2 x 0.40011 = 30 +
+# 40.091022 = 70.091022 C. The deck counts the ground current at the whole input, equation 6 at the drop
+# only: 5.25 x 40e-6 - 1.9995 x 40e-6 = 0.13002 mW more.
+JUNCTIONS = {"pass-block-ldo": 76.256976, "pass-block-ldo-2x": 70.091022}
 
 
 @needs_kicad
