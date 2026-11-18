@@ -136,7 +136,7 @@ file: it needs nothing else.
 |---|---|---|---|
 | ERC | `workcenter erc <project>` | 0 errors in the ERC report | layout |
 | DRC | `workcenter drc <project>` | 0 errors, 0 unconnected items, 0 parity errors; with the project's fab rules (`<name>.kicad_dru`) when its design names a fab | export |
-| SIM | `workcenter sim <project>` | every `sim/*.cir` runs clean with no analysis aborted, every `*.expect.json` bound holds as written and at every corner of `sim/corners.json`, every overlap `sim/frequency-plan.json` shows is answered, every part `sim/thermal.json` names keeps its junction under its pack's derated limit at every run, and every library model a deck includes is unchanged since its `sources.csv` row | export |
+| SIM | `workcenter sim <project>` | every `sim/*.cir` runs clean with no analysis aborted, every `*.expect.json` bound holds as written and at every corner of `sim/corners.json`, every overlap `sim/frequency-plan.json` shows is answered, every part `sim/thermal.json` names keeps its junction under its pack's derated limit at every run, and every library model a deck includes is unchanged since its `sources.csv` row, and every I2C line with a pull-up and every regulator with a load stated in ratings.json has a deck that names it (a warning; a failure with --strict) | export |
 | EXPORT | `workcenter export <project>` | gerbers, drill, BOM, schematic PDF, placement file (each part at its place and rotation), an assembly page per side that holds a part (DNP parts hidden; each designator of that side drawn, read from the page's text), IPC-2581 produced, and each of the last 3 read back against the board; with `panel.json`, a KiKit panel of rows x cols boards in a closed outline at least their size, and its Gerbers | hand-off to fabrication |
 | ALL | `workcenter gates <project>` | the 4 gates above in order, none red, none skipped for a missing engine | a board is called done |
 
@@ -391,6 +391,20 @@ against C between their ends: a resonance meets its source there, where no
 end shows it. A resonance read from a deck that runs no corner fails the
 plan, as does a measure of the plan that some corner does not print. A
 source whose frequency the deck gives as no number is named in a warning.
+
+The SIM gate asks for the decks a schematic implies (`tools/simneeds.py`, the
+`simulate` skill, "Decks a board asks for"). It exports the netlist of a
+schematic whose sheets name SDA, SCL or a regulator library, and prints 1
+`not judged:` line for each I2C line with a resistor to a rail, and each
+part of `Regulator_Linear` or `Regulator_Switching` on a board whose
+`ratings.json` states a load, that no deck answers with a
+`* deck: i2c-rise <nets>` or `* deck: load-step <ref>` line. The line is a
+warning, and a failure with `--strict`. A deck that says it answers is held
+to the schematic: an I2C deck runs each pull-up by its reference at the
+schematic's value, or one of the same value; a load-step deck runs the
+regulator. `templates/project/sim/` holds both decks; the gate fails a deck
+that still holds a `* fill:` line and refuses a bound whose source starts
+with `fill:`.
 
 The SIM gate runs each deck capacitor and inductor named like a board
 reference on its maker's data (`tools/partdata.py`, the `simulate`
@@ -906,7 +920,7 @@ and no analog block. The engines install on request:
 - `.gitignore` entries: `build/`, `*.kicad_prl`
 - Files: one `<name>.kicad_pro` with `<name>.kicad_sch` and `<name>.kicad_pcb` beside it
 - Optional: `design.py` exposing `build() -> kicadgen.Design`, the source the KiCad files are generated from
-- Optional: `sim/<deck>.cir` with `sim/<deck>.expect.json` for the SIM gate; `sim/models/` for the project's own fitted models
+- Optional: `sim/<deck>.cir` with `sim/<deck>.expect.json` for the SIM gate; `sim/models/` for the project's own fitted models; a deck that answers a circuit the schematic implies says so on a line of its own, `* deck: i2c-rise <nets>` or `* deck: load-step <ref>`
 - With decks: `sim/corners.json`, the temperature range and the parts' tolerances every bound must hold over (start from `templates/project/corners.json`); the gate warns without it
 - With decks that drive periodic sources: `sim/frequency-plan.json`, the sources and the measured resonances (start from `templates/project/frequency-plan.json`); the gate warns without it
 - With parts that dissipate power: `sim/thermal.json`, the rating pack and, for each part, its number and the deck measure that prints its power; the part's facts give `thermal` (the `simulate` skill, "A part's temperature")

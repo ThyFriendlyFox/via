@@ -1574,3 +1574,9 @@ What happened: `wip/creepage` was built before the `CITES` check of the referenc
 Cost: 2 commits on the landing branch.
 Root cause: A branch is checked against the trunk's checks when it lands, not while it is built.
 Process: P14
+
+## M258 — 2026-11-18 — A new test file started ngspice without the engine marker
+What happened: `tests/test_simneeds_cli.py` was written before the CI split landed and carried only a skip mark. Each of its 12 tests starts kicad-cli or ngspice; the fast run (`-m "not engine"`) took all 12, and the guard fails such a test in every run. The I2C and buck block tests had the same gap.
+Cost: Found when the piece was landed on the trunk; the 3 files carry the marker now.
+Root cause: A branch made before a rule lands does not meet the rule until it is landed. Before landing, run the piece's engine test files once on the trunk's head.
+Process: P12

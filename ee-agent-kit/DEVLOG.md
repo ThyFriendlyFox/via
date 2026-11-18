@@ -39,6 +39,12 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-18 — A board asks for the decks its schematic implies
+
+The medium user's 400 kHz I2C board was GREEN under `--strict` with no deck. Now the SIM gate reads the schematic's netlist and asks each I2C line with a pull-up, and each regulator with a load in `ratings.json`, for a deck; `next` names the template to copy. The review found the first cut judged a deck by its `* deck:` line alone: a deck that ran 4.7k passed a board at 47k. The gate now holds the deck's pull-ups to the schematic's by reference and value. On the trunk the check met the circuit blocks: the I2C block's deck now says which lines it answers, and the buck block's fixtures carry a 4th warning, since no deck steps its load. 11 example boards and Last Hit's display are asked for an I2C deck.
+
+Evidence: branch `wip/land-u-sim`; `tests/test_simneeds.py` (20 tests), `tests/test_simneeds_cli.py` (12 tests), `tests/test_blocks_i2c.py`, `tests/test_blocks.py`.
+
 ## 2026-11-18 — The DRC gate holds clearance and creepage to the voltage between nets
 
 A board can now name a creepage pack. The gate then measures each pair of nets on the outer layers, through air and along the surface, and holds it to the voltage between them. The numbers come from a free US handbook and from a TI note that reprints part of a paid IEC standard. 2 reviewers built boards that read clean while high voltage and ground sat too close: an arc read as 2 straight pieces, copper on the 2 faces near the edge, a via with no net between them. Each such board is now a test. What the check cannot measure, it names on a line: the way between the 2 faces beyond a bound, copper through the laminate, inner layers. The TI pack has no clearance table, so a board on it never passes the strict gate. A full mutation run left 272 of 777 mutants caught by no test; 11 got tests, and the other 261 were read in groups, not tested one by one.
