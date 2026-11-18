@@ -198,6 +198,11 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
     net's class, give the router the plane layer as a `power` layer with
     the net's `plane` on it instead, every through-hole shape on that layer
     too: its pads keep their class and it has nothing to route (M208).
+14. Run the checkout's own tools: `python3 tools/workcenter` from the
+    repository, or the installed `workcenter` only after `workcenter doctor`
+    names the checkout as its source. A container image holds the copy of
+    the tools it was built from. Read step 6 as the file says it now, not
+    as an earlier session remembered it (M215).
 
 Done when: the DRC after the route lists 0 errors, or every remaining
 error is named in the next design change.

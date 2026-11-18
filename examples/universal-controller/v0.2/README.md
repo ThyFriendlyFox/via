@@ -1,5 +1,8 @@
 # Rosetta v0.2: a universal game controller, as a controller's own main board
 
+Archived: [v0.3](../v0.3/README.md) is current. It adds a screen, a ring of LEDs round each stick,
+turbo from 2 back buttons, and a cell charged fast over USB-C.
+
 One controller for a PS4, a PS5, an Xbox, a Switch, or anything over Bluetooth. A 5-position
 knob where an Xbox 360 pad has its guide button picks the console. The controller drops off the
 bus while the knob turns and comes back as the chosen console's own controller.

@@ -1,0 +1,7 @@
+{
+  "ratio": {
+    "min": 0.0,
+    "max": 0.0417,
+    "source": "between detents: under half the 0.0833 threshold of position 5, so the firmware reads no position"
+  }
+}

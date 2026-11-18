@@ -71,15 +71,18 @@ every corner, and a fail-safe relay tells the panel when Herald itself fails.
 
 ## An example: Rosetta, a universal controller
 
-<a href="examples/universal-controller/v0.2/README.md"><img alt="Rosetta v0.2 in 3D: an Xbox 360-style controller board with 2 thumbsticks, a D-pad, face buttons, a 5-position knob with a ring of LEDs and 2 USB-C ports" src="site/showcase/rosetta-iso.png"></a>
+<a href="examples/universal-controller/v0.3/README.md"><img alt="Rosetta v0.3 in 3D: an Xbox 360-style controller board with 2 thumbsticks in rings of LEDs, an OLED screen under the dip, a D-pad, face buttons, a 5-position knob with a ring of LEDs and 2 USB-C ports" src="site/showcase/rosetta-iso.png"></a>
 
-[`examples/universal-controller/v0.2`](examples/universal-controller/v0.2/README.md) is a game
+[`examples/universal-controller/v0.3`](examples/universal-controller/v0.3/README.md) is a wireless game
 controller made with the workcenter: a 5-position knob picks a PS4, a PS5, an Xbox, a Switch or
 Bluetooth. Its board is laid out like an Xbox 360 controller's, 148 x 82 mm, 6 layers, routed
-and GREEN: thumbsticks soldered on (the footprint written from ALPS's drawing), Hall-effect
-triggers on the shoulder horns, an RP2040 that runs a second USB port in software to relay a
-console's signature to a licensed donor, an ESP32 whose antenna hangs past the dip between the
-horns, and a knob read as 1 number whose 5 positions 6 decks prove never meet.
+and GREEN: thumbsticks soldered on (the footprint written from ALPS's drawing), each in a ring of 8
+RGB LEDs; Hall-effect triggers on the shoulder horns; an OLED screen under the dip; 2 back buttons
+that set any button to rapid, staggered, burst or pulsed turbo; a cell charged at up to 2.5 A from
+USB-C, with a fuel gauge, a buck-boost to 3.3 V, and a power path that runs it as a wired controller
+when the cell is flat. An RP2040 runs a second USB port in software to relay a console's signature
+to a licensed donor, an ESP32's antenna hangs past the dip between the horns, and 6 decks prove the
+knob's 5 positions never meet.
 
 ## An example: Signet, a mouse worn as a ring
 

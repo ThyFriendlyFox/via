@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "Rosetta")(type "KiCad")(uri "${KIPRJMOD}/footprints/Rosetta.pretty")(options "")(descr ""))
+)
