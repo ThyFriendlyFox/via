@@ -982,6 +982,40 @@ def test_a_missing_board_is_refused(tmp_path, capsys):
     assert capsys.readouterr().out.startswith("legend: refused: ")
 
 
+def test_the_placer_leaves_a_designator_on_the_other_side_from_its_part(tmp_path, capsys):
+    """The second review's h3-backref: R9 on B.Cu with its designator on F.SilkS. The placer has no side to
+    place it on: it leaves it, says so, and the check prints it as not judged; exit code 0, not a
+    traceback."""
+    text = board(fp("R9", 120, 110, (-1.5, -0.8, 1.5, 0.8), side="B")).replace(
+        '(layer "B.SilkS")', '(layer "F.SilkS")', 1
+    )
+    root, lines = place(text)
+    assert lines == [
+        "legend: R9 is on B.Cu and its designator on F.SilkS; the placer leaves it where it is"
+    ]
+    assert kicadgen.dumps(root) == kicadgen.dumps(kicadgen.parse(text))
+    pcb = tmp_path / "back.kicad_pcb"
+    pcb.write_text(text, encoding="utf-8")
+    assert legend.main([str(pcb), "--place", str(tmp_path / "placed.kicad_pcb")]) == 0
+    out = capsys.readouterr().out
+    assert "its part is on the other side" in out and "LEGEND HELD: 0 fail" in out
+
+
+def test_a_fault_of_the_tool_is_a_refusal_not_red(tmp_path, capsys, monkeypatch):
+    """Exit code 1 is a red board; a fault of the tool on a file it read must not look like one."""
+    pcb = tmp_path / "x.kicad_pcb"
+    pcb.write_text(board(txt("AB", 120, 110)), encoding="utf-8")
+
+    def broken(*_args):
+        raise RuntimeError("a fault")
+
+    monkeypatch.setattr(legend, "judge", broken)
+    assert legend.main([str(pcb)]) == 2
+    assert capsys.readouterr().out == (
+        f"legend: refused: {pcb}: the tool failed on it (RuntimeError: a fault)\n"
+    )
+
+
 def test_place_into_a_folder_is_refused(tmp_path, capsys):
     pcb = tmp_path / "x.kicad_pcb"
     pcb.write_text(board(txt("AB", 120, 110)), encoding="utf-8")

@@ -929,7 +929,7 @@ def place(root: list, limit: Limit, pack: dict[str, float], fixed: set[str] = fr
         same = [p for p in board.parts if p.side == t.side]
         if any(under(box, p) for p in same):
             return False
-        mine = next(p for p in same if p.ref == t.owner)
+        mine = next(p for p in same if p.ref == t.owner)  # place() moves only a designator on its part's side
         d_own = part_gap(box, mine)
         if d_own > pack["designator_reach_mm"] + EPS:
             return False
@@ -945,6 +945,14 @@ def place(root: list, limit: Limit, pack: dict[str, float], fixed: set[str] = fr
 
     for part in parts:
         t = moving[part.ref]
+        if part.side != t.side:
+            # A designator on the other side from its part has no side to be placed on; the check prints
+            # it as not judged.
+            lines.append(
+                f"legend: {part.ref} is on {part.side}.Cu and its designator on {t.layer}; the placer "
+                "leaves it where it is"
+            )
+            continue
         h0 = max(t.h, limit.height or t.h)
         floor = limit.height if limit.height is not None else h0
         sizes = [h0]
@@ -1190,6 +1198,9 @@ def run(args) -> int:
         found = judge(read_board_file(path, root), limit, read_pack())
     except (Refusal, OSError, ValueError) as exc:
         print(f"legend: refused: {exc}")
+        return 2
+    except Exception as exc:  # a fault of the tool is no verdict on the board: never exit code 1
+        print(f"legend: refused: {path}: the tool failed on it ({type(exc).__name__}: {exc})")
         return 2
     for f in found:
         print(f.line)
