@@ -361,12 +361,15 @@ esac"""
     assert not (tmp_path / "sources.list.d" / "kicad-10.0-releases.sources").exists()
 
 
-def test_an_answer_that_holds_no_key_is_said_so(tmp_path):
-    """The keyserver answers nothing and api.launchpad.net answers what is no JSON string (the stand-in
-    python3 ends with 7): curl said nothing, and the stop says the answer held no key."""
+@pytest.mark.parametrize("python3", ["exit 7", "exit 0"], ids=["no JSON", "an empty string"])
+def test_an_answer_that_holds_no_key_is_said_so(tmp_path, python3):
+    """The keyserver answers nothing, and api.launchpad.net answers what is no JSON string (the stand-in
+    python3 ends with 7) or an empty one (it prints nothing and ends with 0, so only the empty file
+    tells): curl said nothing, and the stop says the answer held no key."""
     curl = 'case "$*" in *keyserver.ubuntu.com*) exit 0 ;; *) echo "<html>"; exit 0 ;; esac'
     gpg = 'while (( $# )); do [[ "$1" == -o ]] && { cat > "$2"; exit 0; }; shift; done; exit 0'
-    code, out, err, calls = run(tmp_path, {"curl": curl, "gpg": gpg}, body="step_apt; echo NEXT STEP")
+    answers = {"curl": curl, "gpg": gpg, "python3": python3}
+    code, out, err, calls = run(tmp_path, answers, body="step_apt; echo NEXT STEP")
     assert code == 1, err
     nothing = "nothing; the answer held no key"
     assert err.splitlines()[-2:] == [key_stop(nothing, nothing), KEY_NOT_THERE]
