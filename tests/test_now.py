@@ -450,8 +450,8 @@ def gate_lines() -> str:
 
 
 def test_the_record_names_the_commit_the_gate_started_on(tmp_path):
-    """The gate starts on commit A; during step 3/4 commit B lands; it exits 0. The record holds A, not
-    B, and that the branch moved to B. The card: GREEN on `A` at 2026-11-17 09:41 UTC, the branch moved
+    """The gate starts on commit A; during step 4/4 (the tests) commit B lands; it exits 0. The record
+    holds A, not B, and that the branch moved to B. The card: GREEN on `A` at 2026-11-17 09:41 UTC, the branch moved
     to `B` during the run, 1 commit before the last (`git rev-list --count A..B` is 1)."""
     tree = make_tree(tmp_path)
     (tree / "tools").mkdir()
@@ -466,13 +466,13 @@ def test_the_record_names_the_commit_the_gate_started_on(tmp_path):
     a, a_short = git(tree, "rev-parse", "HEAD"), git(tree, "rev-parse", "--short", "HEAD")
     gate = (
         f"set -euo pipefail\ncd {shlex.quote(str(tree))}\n{gate_lines()}"
-        f'step "3/4 tests"\n{shlex.join(GIT)} commit -q --allow-empty -m B\n'
+        f'step "4/4 tests"\n{shlex.join(GIT)} commit -q --allow-empty -m B\n'
     )
     proc = subprocess.run(["bash", "-c", gate], capture_output=True, text=True, check=False)
     assert proc.returncode == 0, proc.stderr
     b, b_short = git(tree, "rev-parse", "HEAD"), git(tree, "rev-parse", "--short", "HEAD")
     record = json.loads((tree / "build" / "verify.json").read_text(encoding="utf-8"))
-    assert (record["verdict"], record["step"], record["commit"]) == ("GREEN", "3/4 tests", a)
+    assert (record["verdict"], record["step"], record["commit"]) == ("GREEN", "4/4 tests", a)
     assert (record["moved_to"], record["dirty"]) == (b, False)
     put_record(tree, commit=a, moved_to=b)
     proc = now(str(tree), "--item", "7", "--status", "In progress")
