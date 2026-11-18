@@ -1,4 +1,6 @@
-"""Tests for the routers behind `workcenter design --route` (ROADMAP item 5, "a second router").
+"""Tests for the routers behind `workcenter design --route`.
+
+ROADMAP item 5, "A routing benchmark and a second router".
 
 Every rule around a route is the workcenter's, not the router's. Each test here runs the whole
 `workcenter design --route` with a stand-in router (tests/routers/standin.py, called as Java is) that
@@ -338,6 +340,52 @@ def test_the_passes_threads_and_dialog_wait_are_the_workcenters(tmp_path):
     assert "-mt" not in second
 
 
+def old_command(java: str, jar: Path, dsn: Path, ses: Path, passes: int, threads: int, display: bool) -> list:
+    """FreeRouting 1.9.0's command line as `kicadgen.route` built it before tools/routers.py (trunk
+    2c34a15, its inner `freerouting()`), copied line for line."""
+    cmd = [java, "-jar", str(jar), "-de", str(dsn), "-do", str(ses), "-mp", str(passes), "-dct", "0"]
+    if threads > 0:
+        cmd += ["-mt", str(threads)]
+    if not display:
+        cmd = ["xvfb-run", "-a", *cmd]
+    return cmd
+
+
+@pytest.mark.parametrize("threads", [0, 3])
+@pytest.mark.parametrize("display", [True, False])
+def test_the_default_routers_command_line_is_the_one_before_the_interface(
+    tmp_path, monkeypatch, threads, display
+):
+    """The default router keeps its command line: FreeRouting 1.9.0 gets, word for word, what it got
+    before the interface, with and without threads, with a display and under xvfb-run. Only the Java
+    is now the one `JAVA` names (the CLI's `autoroute` reads it too)."""
+    jar = tmp_path / "freerouting.jar"
+    dsn, ses = tmp_path / "rows.dsn", tmp_path / "rows.ses"
+    monkeypatch.setenv("FREEROUTING_JAR", str(jar))
+    monkeypatch.delenv("JAVA", raising=False)
+    if display:
+        monkeypatch.setenv("DISPLAY", ":0")
+    else:
+        monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.setattr(routers.shutil, "which", lambda name: f"/usr/bin/{name}")
+    got = routers.get(routers.DEFAULT).command(dsn, ses, 60, threads, tmp_path)
+    assert routers.DEFAULT == "freerouting"
+    assert got == old_command("java", jar, dsn, ses, 60, threads, display)
+
+
+@needs_libs
+def test_the_default_route_hands_the_router_the_command_line_of_before(tmp_path):
+    """The same through `workcenter design --route` with no --router: the stand-in records, after
+    `java`, exactly -jar, -de, -do, -mp 60 and -dct 0, the DSN and the session in build/route."""
+    env = standin(tmp_path, ses=session(["A", "B", "C"]))
+    assert route(tmp_path, env)[0] == 0
+    [call] = calls(tmp_path)
+    folder = tmp_path / "out" / "build" / "route"
+    jar = Path(env["FREEROUTING_JAR"])
+    old = old_command(env["JAVA"], jar, folder / "rows.dsn", folder / "rows.ses", 60, 0, True)
+    assert call["argv"] == old[1:]
+
+
 @needs_libs
 def test_a_router_past_the_time_limit_is_stopped_with_its_children_and_nothing_is_read(tmp_path):
     """Rule 11. The router (and a child of it, as Java under xvfb-run) would run 60 s; the limit is
@@ -496,6 +544,19 @@ def test_freerouting2_on_a_java_older_than_25_is_an_absent_engine(tmp_path):
     assert code == 2, text
     assert f"engine missing: freerouting2: needs Java 25; {env['FREEROUTING2_JAVA']} is Java 21" in text
     assert calls(tmp_path) == []
+
+
+def test_the_routers_files_point_at_item_5_by_its_roadmap_title():
+    """A pointer carries the item's title as the roadmap's heading gives it (M160): the router's files
+    named item 5 "a second router", which is no heading."""
+    roadmap = (ROOT / "ee-agent-kit" / "ROADMAP.md").read_text(encoding="utf-8")
+    items = dict(re.findall(r"^### (\d+)\. (.+)$", roadmap, re.M))
+    pointers = []
+    for path in (ROOT / "tools" / "routers.py", Path(__file__)):
+        text = path.read_text(encoding="utf-8")
+        pointers += [(path.name, n, t) for n, t in re.findall(r'ROADMAP item (\d+), "([^"]+)"', text)]
+    assert len(pointers) >= 2
+    assert [p for p in pointers if items.get(p[1]) != p[2]] == []
 
 
 def test_a_router_the_workcenter_does_not_know_is_refused(tmp_path):
