@@ -120,7 +120,7 @@ def folder(tmp_path: Path, files: dict[str, str]) -> Path:
     return root
 
 
-def gate(root: Path, jobs: int = 2) -> subprocess.CompletedProcess:
+def gate(root: Path, jobs: int = 2, env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
     args = ["run", "--root", str(root), "--table", str(root / "shards.csv"), "--jobs", str(jobs)]
     args += ["--python", sys.executable, "--work", str(root.parent / "work")]
     return subprocess.run(
@@ -129,6 +129,7 @@ def gate(root: Path, jobs: int = 2) -> subprocess.CompletedProcess:
         text=True,
         timeout=300,
         check=False,
+        env=env,
     )
 
 
@@ -420,6 +421,10 @@ def test_a_stop_by_signal_ends_every_shard(tmp_path, sig):
         assert left == [], out
         assert proc.returncode == 128 + sig, out
         assert f"stopped by signal {int(sig)}: 3 pytest processes started, none left running" in out
+        # A stop is often a CI time limit on a test that hangs: each shard names the test it was running.
+        for name in ("test_x.py", "test_y.py"):
+            shard = shard_of(root, name)
+            assert f"why: shard {shard} was running tests/{name}::test_waits when stopped" in out, out
     finally:
         for p in pids.iterdir():
             try:
@@ -746,6 +751,25 @@ def test_a_long_report_is_cut_to_its_first_and_last_lines_and_a_long_line_to_its
     assert "tests/test_s.py:3: ValueError" in block, block
     (long,) = [line for line in block if "xxxxxxxxxx" in line]
     assert re.fullmatch(rf".{{{testshards.WIDTH}}} \[\.\.\. \d+ characters cut\]", long), long
+
+
+def test_a_report_that_holds_a_lone_surrogate_leaves_the_verdict_under_a_strict_stdout(tmp_path):
+    """A string decoded with surrogateescape: pytest's diff prints its lone surrogate as it is. The gate's
+    stdout is strict UTF-8, as Python's is under a full UTF-8 locale such as en_US.UTF-8. The reason is
+    printed with the surrogate escaped, and the verdict follows."""
+    files = dict(FOUR)
+    files["test_s.py"] = PASSING + (
+        "\n\ndef test_surrogate():\n"
+        "    s = b'\\xff'.decode('utf-8', 'surrogateescape')\n    assert s == 'x'\n"
+    )
+    root = folder(tmp_path, files)
+    shard = shard_of(root, "test_s.py")
+    proc = gate(root, env={**os.environ, "PYTHONIOENCODING": "utf-8:strict"})
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    block = reason(proc.stdout, f"why: tests/test_s.py::test_surrogate, failed at call (shard {shard}):")
+    assert "E         + \\udcff" in block, proc.stdout
+    assert "Traceback" not in proc.stderr, proc.stderr
+    assert proc.stdout.splitlines()[-2].startswith("TESTS RED: "), proc.stdout
 
 
 def test_a_green_run_prints_no_reason(tmp_path):

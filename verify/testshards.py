@@ -54,12 +54,19 @@ HEAD, TAIL, SECTION, WIDTH, REASONS = 10, 30, 10, 300, 10
 # -- the pytest side: loaded with `-p testshards` ---------------------------------------------------
 
 
+def printable(text: str) -> str:
+    """The text with each character UTF-8 cannot write escaped, as `\\udcff`: a test's output decoded with
+    surrogateescape holds lone surrogates, and a strict stdout (a full UTF-8 locale) refuses them. A
+    reason's text must never stop the gate before its verdict."""
+    return text.encode("utf-8", "backslashreplace").decode("utf-8")
+
+
 def bounded(lines: list[str], head: int, tail: int) -> list[str]:
     """The first `head` and the last `tail` lines, with 1 line that says how many were cut between; each
-    line cut to WIDTH characters, with what it cut."""
+    line cut to WIDTH characters, with what it cut, and made printable."""
     out = []
     for line in lines:
-        line = line.rstrip()
+        line = printable(line.rstrip())
         if len(line) > WIDTH:
             line = f"{line[:WIDTH]} [... {len(line) - WIDTH} characters cut]"
         out.append(line)
@@ -387,7 +394,14 @@ def tell(told: Told, key: tuple[str, str, str], header: str, lines: list[str]) -
         told.cut += 1
         return
     told.shown += 1
-    print("\n".join([header, *(f"  | {line}" for line in lines)]), flush=True)
+    print(printable("\n".join([header, *(f"  | {line}" for line in lines)])), flush=True)
+
+
+def open_test(log: list[dict]) -> str | None:
+    """The test the shard started last and did not end (a setup record with no teardown), or None."""
+    ends = {rec["id"] for rec in log if rec.get("when") == "teardown"}
+    left = [rec["id"] for rec in log if rec.get("when") == "setup" and rec["id"] not in ends]
+    return left[-1] if left else None
 
 
 def ending(r: Started, log: list[dict]) -> str:
@@ -400,12 +414,9 @@ def ending(r: Started, log: list[dict]) -> str:
         what = f"exited {r.code} and no test failed"
     else:
         what = f"ended with no report from pytest ({code})"
-    started = [rec["id"] for rec in log if rec.get("when") == "setup"]
-    done = [rec["id"] for rec in log if rec.get("when") == "teardown"]
-    ends = set(done)
-    left = [i for i in started if i not in ends]
+    left, done = open_test(log), [rec["id"] for rec in log if rec.get("when") == "teardown"]
     if left:
-        where = f"the test it started last and did not end: {left[-1]}"
+        where = f"the test it started last and did not end: {left}"
     elif done:
         where = f"the last test it ended: {done[-1]}"
     else:
@@ -430,7 +441,7 @@ def scan(r: Started, told: Told) -> list[dict]:
         if rec.get("outcome") == "failed" and rec["id"] not in told.ids:
             told.ids.add(rec["id"])
             at = time.monotonic() - r.start
-            print(f"FAILED {rec['id']} (shard {r.shard.name}) at {at:.0f} s", flush=True)
+            print(printable(f"FAILED {rec['id']} (shard {r.shard.name}) at {at:.0f} s"), flush=True)
         if rec.get("outcome") == "failed" and "why" in rec:
             when = rec.get("when", "")
             phase = PHASES.get(when, f"failed at {when}")
@@ -552,6 +563,12 @@ def run(args: argparse.Namespace) -> int:
     except BaseException as exc:
         end_all(procs)
         if isinstance(exc, Stopped):
+            # A stop is often a CI time limit on a test that hangs: name the test each shard was running.
+            for r in started:
+                if r.code is None:
+                    test = open_test(read_log(r.jsonl))
+                    doing = f"was running {test}" if test else "was between tests"
+                    print(printable(f"why: shard {r.shard.name} {doing} when stopped"), flush=True)
             print(
                 f"stopped by signal {exc.signum}: {len(procs)} pytest processes started, none left running",
                 flush=True,
