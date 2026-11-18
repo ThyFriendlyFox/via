@@ -181,6 +181,7 @@ class Text:
     variable: str = ""  # a text variable the tool does not resolve
     upright: bool = False  # KiCad keeps it upright: drawn at its angle turned into -90..90
     name: str = ""  # a part's own field: its name
+    knockout: bool = False  # written (layer "F.SilkS" knockout): KiCad prints the area round it
 
     @property
     def reads(self) -> float:
@@ -205,6 +206,10 @@ class Text:
             return "it has more than 1 line; the tool measures 1"
         if self.variable:
             return f"it holds {self.variable}, a text variable the tool does not resolve"
+        if self.knockout:
+            # kicad-cli 10.0.8 plotted a knocked-out "AB" (1 mm, 0.15 mm) filled from 0.156 mm above to
+            # 0.066 mm below the box this tool measures (the second review's p1-probe, its F.SilkS Gerber).
+            return "it is knocked out: KiCad fills an area round it larger than the box the tool measures"
         return ""
 
     @property
@@ -402,6 +407,7 @@ def _text(node, kind: str, owner: str, text: str, origin=None, values=None, what
         1 if "top" in just else -1 if "bottom" in just else 0,
         variable,
         _upright(node, origin is not None),
+        knockout="knockout" in atoms(child(node, "layer") or ["layer"]),
     )
 
 
@@ -637,7 +643,13 @@ def _footprint(board: Board, node: list, margin: float, values: dict[str, str]) 
             shown.name = name
             board.texts.append(shown)
     for item in node[1:]:
-        if isinstance(item, list) and item and item[0] in DRAWN and _layer(item) in SILK and not _hidden(item):
+        if (
+            isinstance(item, list)
+            and item
+            and item[0] in DRAWN
+            and _layer(item) in SILK
+            and not _hidden(item)
+        ):
             _unread_drawn(board, item, origin, ref)
     for item in children(node, "fp_text"):
         if _layer(item) in SILK and not _hidden(item):
@@ -882,6 +894,16 @@ def judge(board: Board, limit: Limit, pack: dict[str, float]) -> list[Finding]:
                 "not judged",
                 f"legend not judged: text height on {len(measured)} texts: {limit.label} names no least "
                 f"height ({limit.stroke_source})",
+            )
+        )
+    if limit.stroke is None and measured:
+        out.append(
+            Finding(
+                "size",
+                "the board",
+                "not judged",
+                f"legend not judged: text stroke on {len(measured)} texts: {limit.label} names no least "
+                f"stroke ({limit.height_source})",
             )
         )
     for t in measured:
