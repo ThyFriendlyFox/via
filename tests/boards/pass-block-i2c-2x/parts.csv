@@ -1,0 +1,5 @@
+Value,Footprint,Qty,Manufacturer,MPN,Supplier,SKU,Pack,Breaks
+1.5k,Resistor_SMD:R_0603_1608Metric,2,Vishay,CRCW06031K50FKEA,,,,
+I2C,Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical,1,made up,FIXTURE-HEADER-I2C,,,,
+TCA9534,Package_SO:SOIC-16W_7.5x10.3mm_P1.27mm,1,Texas Instruments,TCA9534DWR,,,,
+100n,Capacitor_SMD:C_0603_1608Metric,1,Vishay,VJ0603Y104KXJCW1BC,,,,
