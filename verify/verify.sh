@@ -110,8 +110,9 @@ step "3/4 doctor"
 python3 tools/workcenter doctor
 
 step "4/4 tests"
-# 1 pytest per processor, files split by verify/shards.csv; red when a shard fails, ends with no
-# summary line, or the ids run differ from the ids 1 process collects.
+# 1 pytest per processor, files split by verify/shards.csv; red when a shard fails, ends before
+# pytest's end of session, the ids run differ from the ids 1 process collects, or a test's skip or
+# xfail marks differ between its shard and 1 process.
 "$PY" verify/testshards.py run --table verify/shards.csv --python "$PY"
 
 step ""
