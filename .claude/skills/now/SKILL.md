@@ -49,7 +49,7 @@ run:
 
 ```
 GREEN on `abc1234` at 2026-11-17 09:41 UTC
-RED at 3/4 tests on `abc1234` at 2026-11-17 09:41 UTC
+RED at 4/4 tests on `abc1234` at 2026-11-17 09:41 UTC
 ```
 
 The commit is the one the gate started on. The line adds `with uncommitted

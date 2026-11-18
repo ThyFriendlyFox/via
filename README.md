@@ -332,7 +332,7 @@ images are drawn.
 | Path | What |
 |---|---|
 | `install.sh` | The only source of the toolchain. |
-| `Makefile`, `verify/verify.sh` | `make verify`: the repository's health gate, one command. |
+| `Makefile`, `verify/` | `make verify`: the repository's health gate, one command; `verify/testshards.py` runs its tests in shards side by side by `verify/shards.csv` (`verify/README.md`). |
 | `tools/workcenter` | The CLI and the gates. Standard library only. |
 | `tools/kicadgen.py` | Design a board in Python from the KiCad libraries; writes the KiCad project and routes it headless. |
 | `tools/simcorners.py`, `tools/freqplan.py`, `tools/thermal.py` | The corners a deck runs at; the frequency plan; each part's junction temperature at every run. Read by the SIM gate. |

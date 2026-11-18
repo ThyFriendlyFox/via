@@ -297,6 +297,15 @@ part by `mpn` or `mpns` and whose `source.sha256` is a row of
 | `WORKCENTER_ENGINE_LOG` | path | a temp file per pytest run | Where each engine start of a test run is written; the `engine` marker is held against it. |
 | `--repo`, `--base`, `--head`, `--paths`, `--github-output` | `tools/ci/scope.py` flags | repo: here; head: the working tree | The change to judge; an empty `--base` is full; `--github-output` appends `scope=<answer>` to `$GITHUB_OUTPUT`. |
 
+## `verify/testshards.py` and `verify/shards.csv` (the tests step of `make verify`)
+
+| Field | Type | Default | Use |
+|---|---|---|---|
+| `verify/shards.csv` | CSV: `file`, `seconds`, `engine`, `alone` | 68 rows and `*` | Each test file's seconds in a shard, whether it starts an engine (its `no` files run first in a shard), and why it must run alone (it runs in the shard `serial`, after the others). `*` is the row for a file not listed (41.9 s). `verify/README.md` says how to keep it true. |
+| `--jobs` | flag of `verify/testshards.py run` | the processors (`os.cpu_count()`) | How many shards run side by side. |
+| `--work` | flag of `verify/testshards.py run` | a new folder under `$TMPDIR` | Where the shards' logs go. A folder named here is kept, and must be empty or new; a folder of its own is deleted when green and kept when red. |
+| `--table` | flag of `verify/testshards.py run` and `table` | `verify/shards.csv` | The table the files are split by, or written from. |
+
 ## The workflow Board (`.github/workflows/board.yml`, `tools/board.py`)
 
 | Field | Type | Default | Use |

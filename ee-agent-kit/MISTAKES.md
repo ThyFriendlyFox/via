@@ -1514,3 +1514,15 @@ What happened: `blocks.mcu` mapped the crystal symbol's pins 1 to 1 onto the foo
 Cost: Found by the review of the microcontroller block (M1); the crystal's facts now give its `terminals`, and the block's check() reads the pads back from the footprint.
 Root cause: No gate knows which pads of a crystal hold the crystal. Read the pin arrangement from the maker's outline drawing into the part's facts, and have the block's own check read the pads back.
 Process: P14
+
+## M248 — 2026-11-17 — A helper held the engine lock while it waited for the gate lock
+What happened: A helper's script took `ENGINE.lock` for 2 runs of the health gate, then waited for `GATE.lock` to go before its next run, still holding `ENGINE.lock`. The lead's gate had made `GATE.lock` and waited for `ENGINE.lock`. Neither went on from the end of the helper's run at 23:14 UTC until its script was stopped at 23:22. Earlier the same helper checked `GATE.lock` only before it took `ENGINE.lock`, and 2 of its runs ran beside the lead's gate.
+Cost: 8 minutes of a stopped machine, and 2 measurements taken beside a gate that do not count.
+Root cause: The brief says to wait for `GATE.lock` before a run and to run behind `ENGINE.lock`, and the 2 orders were mixed. Wait for `GATE.lock` to go, then take `ENGINE.lock`; check `GATE.lock` again inside it, and if it is there, let `ENGINE.lock` go and wait again. Never wait for `GATE.lock` inside it.
+Process: P31
+
+## M249 — 2026-11-18 — A landing ran tests for 10 minutes after a gate began
+What happened: While landing the health gate in shards, a helper waited for `GATE.lock` to go (04:55:52 UTC), then ran short test files in a row for about 10 minutes: `tests/test_testshards.py` 17 times, 2 mutant copies, and `tests/test_fields_rerun.py`, `tests/test_clock.py`, `tests/test_now.py`. A new gate made `GATE.lock` at 04:58:30, and the runs went on beside it. The helper saw the lock only at 05:23, when it listed the engine lock's queue.
+Cost: about 7 minutes of tests beside a health gate, on a machine of 4 processors.
+Root cause: As M188 and M201: the lock was looked at once, not before each run. Each later run went through 1 script that waits for `GATE.lock`, takes the engine locks, and checks `GATE.lock` again inside them (M248).
+Process: P31
