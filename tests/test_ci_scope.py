@@ -397,3 +397,19 @@ def test_the_makefile_asks_the_same_script_and_names_no_path_of_its_own():
     ours = "\n".join(line for line in lines if "scope.py" in line or "verify.sh" in line)
     assert "*.md" not in (ROOT / "Makefile").read_text(encoding="utf-8")
     assert [d for d in ("tests/", "examples/", "templates/", ".claude/") if d in ours] == []
+
+
+def test_each_gate_takes_the_engine_lock_under_its_own_name():
+    """verify.sh takes the engine lock before it reads its mode (tools/enginelock.py); a waiting run
+    names the holder by `--what`, so the fast gate is named `make verify-site`, not `make verify`."""
+    text = (ROOT / "verify" / "verify.sh").read_text(encoding="utf-8")
+    line = next(x for x in text.splitlines() if "enginelock.py hold --what" in x)
+    what = line.split("--what ", 1)[1].split(" -- ", 1)[0]
+    named = {}
+    for argv in ([], ["site"]):
+        ran = subprocess.run(
+            ["bash", "-c", f"set -u; printf %s {what}", "verify.sh", *argv], capture_output=True, text=True
+        )
+        assert ran.returncode == 0, ran.stderr
+        named[" ".join(argv)] = ran.stdout
+    assert named == {"": "make verify", "site": "make verify-site"}
