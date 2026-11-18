@@ -496,6 +496,23 @@ def test_a_pad_whose_shape_is_offset_from_its_hole_is_read_round_both():
     assert len(fails) == 1 and ": 2 mm along the surface at 400 V" in fails[0], fails
 
 
+def test_a_trapezoid_pad_is_read_round_its_widened_side():
+    """A trapezoid pad 1 x 1 mm with `(rect_delta 0 1)` at (110, 107.5): its delta widens 1 side past
+    the 1 mm rectangle. The pad is read as a box of 1 + 0 + 1 = 2 mm a side, which holds the trapezoid
+    whichever side the delta widens: to x 111. GND's 1 mm pad at x 114 starts at 113.5: 2.5 mm, under
+    the 3 mm of table 69-I. Read as its 1 mm rectangle it is 3 mm, and passes."""
+    text = (
+        HEAD
+        + """  (footprint "x:HVPAD" (layer "F.Cu") (at 110 107.5)
+    (pad "1" smd trapezoid (at 0 0) (size 1 1) (rect_delta 0 1) (layers "F.Cu") (net "HV")))
+"""
+        + smd("GNDPAD", "114 107.5", "1 1", "GND")
+        + ")\n"
+    )
+    fails = [f.text for f in judged(text) if f.status == "fail"]
+    assert len(fails) == 1 and ": 2.5 mm along the surface at 400 V" in fails[0], fails
+
+
 def test_a_pad_with_a_padstack_is_not_judged():
     """KiCad 10 can give a pad another size on another layer, in `(padstack ...)`: the size read is the
     first layer's only, so the pad is named as copper not read."""

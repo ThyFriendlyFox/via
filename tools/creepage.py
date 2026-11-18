@@ -376,7 +376,7 @@ def _pad_shape(at: Point, shape: str, w: float, h: float, deg: float) -> Polygon
         )
     if shape == "oval":
         return circle(at, w / 2)
-    return box(at, w, h, deg)  # rect, roundrect, chamfered rect, trapezoid: the rectangle holds them
+    return box(at, w, h, deg)  # rect, roundrect, chamfered rect; a trapezoid comes widened by its delta
 
 
 def _cuts(root) -> list[tuple[Polygon | None, str, float]]:
@@ -536,6 +536,10 @@ def read_copper(text: str) -> Copper:
             if kicadgen.child(pad, "padstack") is not None:  # another size on another layer: not read
                 for layer in on:
                     unread[layer].append(f"a pad with a padstack of {name} at {_p(at)}")
+            delta = kicadgen.child(pad, "rect_delta")
+            if shape == "trapezoid" and delta is not None:  # 1 side widened past the rectangle
+                dx, dy = (abs(float(v)) for v in kicadgen.atoms(delta)[:2])
+                w, h = w + dx + dy, h + dx + dy  # a box that holds it whichever side is widened
             moved = _offset(pad)
             if moved:  # the copper stands off its hole, at an angle: a square round both holds it
                 w = h = max(w, h) + 2 * moved
