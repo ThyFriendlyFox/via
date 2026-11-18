@@ -1243,3 +1243,38 @@ def test_the_same_line_on_edge_cuts_is_a_wall_between_the_faces():
     """The control: on Edge.Cuts the line is a wall 0.2 mm from both pads, and the pair is not judged."""
     found = judged(FACES_LINE.format("Edge.Cuts"))
     assert [f.status for f in found if "HV on F.Cu to GND on B.Cu" in f.text] == ["not judged"]
+
+
+ONE_VOLT = {"HV": (0.0, 1.0), "GND": (0.0, 0.0)}
+
+
+def test_1_v_between_2_nets_is_a_voltage_on_every_way():
+    """1 V is a voltage: table 69-I's first row (0 to 50 V, condition A, enclosure I, page 69-2) asks
+    1.5 mm of each. HV on F.Cu over GND on B.Cu, 0.8 mm apart side by side, with no wall read: not judged
+    between the faces. The copper of test_copper_over_copper_on_2_layers_is_not_judged: not judged
+    through the laminate. TI at 1 V (no clearance table): the clearance line for the pair."""
+    mil = creepage.read_pack(MIL)
+    faces = creepage.Copper(
+        layers=["F.Cu", "B.Cu"],
+        shapes={"F.Cu": [("HV", square(110, 107.5))], "B.Cu": [("GND", square(112.5, 107.5))]},
+        cuts=[],
+    )
+    found = creepage.findings(faces, ONE_VOLT, mil, MIL_AI)
+    assert [f.status for f in found if f.text.startswith("creepage HV on F.Cu to GND on B.Cu")] == [
+        "not judged"
+    ]
+    laminate = creepage.Copper(
+        layers=["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"],
+        shapes={
+            "F.Cu": [("GND", square(115, 107.5)), ("HV", creepage.circle((135, 125), 0.4))],
+            "In1.Cu": [("HV", rect(110, 100, 120, 115))],
+        },
+        cuts=[],
+    )
+    assert [f.line for f in creepage.findings(laminate, ONE_VOLT, mil, MIL_AI)] == [
+        LAMINATE.format("F.Cu", "In1.Cu", "HV on In1.Cu to GND on F.Cu at (114.15, 106.65)")
+    ]
+    ti_found = creepage.findings(
+        copper(5.0), ONE_VOLT, creepage.read_pack(TI), {"pollution_degree": "2", "material_group": "III"}
+    )
+    assert TI_NO_CLEARANCE.format("F.Cu", "1 pair of nets") in [f.line for f in ti_found]
