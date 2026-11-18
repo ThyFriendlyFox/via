@@ -28,6 +28,12 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 import creepage  # noqa: E402
 
+# The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
+CITES = {
+    "mil-hdbk-454c": "guideline 69, 4.1, page 69-1; table 69-I, page 69-2",
+    "ti-slup419": "page 7; table 3, page 7; table 7 and figure 9, page 11",
+}
+
 pytestmark = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
 
 

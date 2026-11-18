@@ -27,6 +27,12 @@ import ratings
 from boardrules import Finding
 from ratings import Refusal
 
+# The documents of the creepage packs whose tables this file reads, by their ids in
+# rules/references/index.json (`workcenter references rules`).
+CITES = {
+    "mil-hdbk-454c": "guideline 69, 4.1, page 69-1; table 69-I, page 69-2",
+    "ti-slup419": "table 3, page 7; table 7, page 11",
+}
 EPS = 1e-9
 ROUND = 16  # sides of the polygon drawn round a circle: its corners stand at r / cos(pi / 16)
 Point = tuple[float, float]
