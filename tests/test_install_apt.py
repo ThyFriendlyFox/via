@@ -34,6 +34,7 @@ No test needs root, the network, real apt or a real wait.
 from __future__ import annotations
 
 import ast
+import functools
 import re
 import shlex
 import shutil
@@ -49,7 +50,7 @@ SAMPLES = ROOT / "tests" / "samples" / "install"
 BASH = "/bin/bash"
 # A person's computer has no total bound; CI sets these 2 in its install step (the workflow file, held to
 # them by test_the_worst_case_of_the_apt_step_fits_the_jobs_limit).
-CI = {"APT_UPDATE_TIMEOUT": "120", "APT_DOWNLOAD_TIMEOUT": "600"}
+CI = {"APT_UPDATE_TIMEOUT": "120", "APT_DOWNLOAD_TIMEOUT": "570"}
 
 URL = "https://ppa.launchpadcontent.net/kicad/kicad-10.0-releases/ubuntu"
 SOURCE = f"{URL} noble"
@@ -107,7 +108,8 @@ LATER = (
 )
 CUT = (
     "[install] No package was installed. Run the script again now: apt keeps the files it has downloaded "
-    "and goes on from them. On a slow line, set APT_DOWNLOAD_TIMEOUT to more seconds."
+    "and goes on from them. On a slow line, give it more seconds: sudo env APT_DOWNLOAD_TIMEOUT=<seconds> "
+    "./install.sh (sudo drops a variable set before it)."
 )
 
 STUB = """#!/bin/bash
@@ -156,7 +158,7 @@ done
 exec @REAL@ "$@"
 """
 GUARDED = ["awk", "sed", "find"]
-READERS = ["basename", "cat", "dirname", "grep", "head", "seq", "tail"]
+READERS = ["basename", "cat", "dirname", "grep", "head", "readlink", "seq", "tail"]
 
 DEFAULTS = {
     # The real program after the bound: the test sees each bound as the step passes it.
@@ -196,8 +198,18 @@ def real(name: str) -> str:
     return found
 
 
+@functools.cache
+def unfenced_in_the_script() -> tuple:
+    """What the scans below find in install.sh: read once, before any test runs the script."""
+    text = INSTALL.read_text(encoding="utf-8")
+    return tuple(literal_paths(text)) + tuple(unfenced_writes(text))
+
+
 def folder(tmp_path: Path, answers: dict | None = None) -> dict:
-    """Make the stand-ins, the readers and the folder's files; return the environment of a run."""
+    """Make the stand-ins, the readers and the folder's files; return the environment of a run. No test
+    runs the script while the scans see a write that passes no fence: a redirection runs before any
+    test could fail on it."""
+    assert unfenced_in_the_script() == ()
     bin_dir, tools = tmp_path / "bin", tmp_path / "tools"
     bin_dir.mkdir()
     tools.mkdir()
@@ -299,7 +311,10 @@ def test_index_on_the_first_try_then_the_download_then_the_install(tmp_path):
     assert download.startswith("apt-get install ") and "-o Acquire::http::Timeout=60" in download
     assert "-o APT::Get::Download=false" in install
     assert of(calls, "timeout") == []
-    # the key was fetched and checked, and the sources file names the source
+    # the key was fetched within its bound (the second review's S2-5) and checked
+    (fetch,) = of(calls, "curl")
+    assert fetch.startswith("curl -fsSL --retry 3 --retry-max-time 20 --connect-timeout 20 --max-time 20 ")
+    # the sources file names the source
     assert (tmp_path / "keyrings" / "kicad-10.0-releases.gpg").read_text(encoding="utf-8") == "a key\n"
     sources = tmp_path / "sources.list.d" / "kicad-10.0-releases.sources"
     assert "Suites: noble" in sources.read_text(encoding="utf-8")
@@ -310,13 +325,13 @@ def test_index_on_the_first_try_then_the_download_then_the_install(tmp_path):
 
 
 def test_the_bounds_ci_sets_run_the_update_and_the_download_under_timeout(tmp_path):
-    """APT_UPDATE_TIMEOUT=120 and APT_DOWNLOAD_TIMEOUT=600, as CI's install step sets them: the update
+    """APT_UPDATE_TIMEOUT=120 and APT_DOWNLOAD_TIMEOUT=570, as CI's install step sets them: the update
     and the download run under `timeout`; the install from the downloaded files does not."""
     code, out, err, calls = run(tmp_path, env=CI)
     assert code == 0, err
     bounded = of(calls, "timeout")
     assert bounded[0] == "timeout 120 apt-get update -qq"
-    assert bounded[1].startswith("timeout 600 apt-get install -y --no-install-recommends --download-only ")
+    assert bounded[1].startswith("timeout 570 apt-get install -y --no-install-recommends --download-only ")
     assert len(bounded) == 2
     assert out.splitlines()[-1] == "[install] apt: done; kicad-cli 10.0.8"
 
@@ -420,7 +435,9 @@ esac"""
 
 
 def test_an_update_that_does_not_end_is_a_failed_try(tmp_path):
-    """With CI's bound of 120 s on 1 update, `timeout` ends with 124 when it is reached."""
+    """With CI's bound of 120 s on 1 update, `timeout` ends with 124 when it is reached. `apt-get update`
+    fetches every source's index, and -qq names none: the stop blames no source (job 134906707485's
+    slow minutes were an Ubuntu mirror's)."""
     answer = '[[ "$*" == *update* ]] && exit 124; shift; exec "$@"'
     code, _, err, calls = run(tmp_path, {"timeout": answer}, env=CI)
     assert code == 1
@@ -428,9 +445,15 @@ def test_an_update_that_does_not_end_is_a_failed_try(tmp_path):
     assert len(of(calls, "timeout")) == 3
     stop = (
         "[install] ERROR: apt: the index of KiCad 10's package source did not arrive in 3 tries: "
-        f"{SOURCE}; apt said: nothing: apt-get update did not end within 120 s (APT_UPDATE_TIMEOUT)"
+        f"{SOURCE}; apt said: nothing: `apt-get update` of every package source did not end within 120 s "
+        "(APT_UPDATE_TIMEOUT)"
     )
-    assert err.splitlines()[-2:] == [stop, AGAIN]
+    advice = (
+        f"{NONE} `apt-get update` fetches the index of every package source on this computer, and they did "
+        "not all arrive within APT_UPDATE_TIMEOUT this time: run the script again later."
+    )
+    assert err.splitlines()[-2:] == [stop, advice]
+    assert "Launchpad" not in err
     assert installs(calls) == []
 
 
@@ -443,6 +466,8 @@ def test_another_sources_warning_is_not_kicads(tmp_path):
     code, _, err, calls = run(tmp_path, {"apt-get": update_says(other)})
     assert code == 0, err
     assert len(updates(calls)) == 1
+    # apt's own lines reach the terminal (the second review's X3)
+    assert other in err.splitlines()
 
 
 def test_a_gpg_warning_on_the_source_is_a_failed_try(tmp_path):
@@ -465,6 +490,10 @@ def test_a_release_the_source_does_not_serve_stops_at_once_and_removes_the_sourc
     that would break every later `apt update` is removed."""
     bookworm = tmp_path / "os-release-bookworm"
     bookworm.write_text("VERSION_CODENAME=bookworm\n", encoding="utf-8")
+    # a file of the system's beside the script's stays (the second review's X4)
+    debian = tmp_path / "sources.list.d" / "debian.sources"
+    debian.parent.mkdir()
+    debian.write_text("Types: deb\n", encoding="utf-8")
     code, _, err, calls = run(
         tmp_path,
         {"apt-get": update_says(E_RELEASE, N_SECURE, N_MANPAGE, code=100)},
@@ -474,48 +503,146 @@ def test_a_release_the_source_does_not_serve_stops_at_once_and_removes_the_sourc
     assert len(updates(calls)) == 1 and of(calls, "sleep") == []
     sources = tmp_path / "sources.list.d" / "kicad-10.0-releases.sources"
     assert not sources.exists()
+    assert debian.read_text(encoding="utf-8") == "Types: deb\n"
     assert err.splitlines()[-2:] == [
         "[install] ERROR: apt: the index of KiCad 10's package source did not arrive in 1 try: "
         f"{URL} bookworm; apt said: {E_RELEASE}",
         f"[install] KiCad 10's package source serves no release for bookworm ({bookworm}); install.sh is for "
-        f"Ubuntu 24.04 (noble). {sources} was removed, so apt works as before. This run installed no KiCad.",
+        f"Ubuntu 24.04 (noble). install.sh's own {sources} was removed. This run installed no KiCad.",
     ]
 
 
-def test_another_sources_missing_release_is_quoted_and_not_blamed_on_kicads(tmp_path):
-    """apt ends with 100 because another source has no Release file; no line names KiCad's source. The
-    stop quotes apt's last E: line (not its last line, an N: line), tries again as for any cause it
-    does not know, and leaves KiCad's sources file, which is not at fault."""
-    e_other = "E: The repository 'http://dl.example.org/tool noble Release' does not have a Release file."
-    code, _, err, calls = run(tmp_path, {"apt-get": update_says(e_other, N_SECURE, N_MANPAGE, code=100)})
+def test_a_missing_release_file_on_noble_is_a_failed_try_and_keeps_the_sources_file(tmp_path):
+    """On noble, the source serves its release: apt's 'does not have a Release file' then means that the
+    source, or a proxy on the way, answered 404 for InRelease and Release. That is tried again like any
+    failed try, the sources file stays, and the stop says what to check (the second review's S2-3)."""
+    e_noble = f"E: The repository '{URL} noble Release' does not have a Release file."
+    code, _, err, calls = run(tmp_path, {"apt-get": update_says(e_noble, N_SECURE, N_MANPAGE, code=100)})
     assert code == 1
     assert len(updates(calls)) == 3
     assert (tmp_path / "sources.list.d" / "kicad-10.0-releases.sources").exists()
     assert err.splitlines()[-2:] == [
         "[install] ERROR: apt: the index of KiCad 10's package source did not arrive in 3 tries: "
-        f"{SOURCE}; apt said: exit code 100: {e_other}",
+        f"{SOURCE}; apt said: {e_noble}",
+        f"{NONE} KiCad 10's package source, or a proxy on the way to it, served no Release file for noble: "
+        "check that this computer reaches ppa.launchpadcontent.net, then run the script again.",
+    ]
+
+
+@pytest.mark.parametrize("codename", ["noble", "bookworm"])
+def test_another_sources_missing_release_is_quoted_and_not_blamed_on_kicads(tmp_path, codename):
+    """apt ends with 100 because another source has no Release file; no line names KiCad's source. The
+    stop quotes apt's last E: line (not its last line, an N: line), tries again as for any cause it
+    does not know, and leaves KiCad's sources file, which is not at fault; on a release KiCad's source
+    does not serve too."""
+    release = tmp_path / "os-release-x"
+    release.write_text(f"VERSION_CODENAME={codename}\n", encoding="utf-8")
+    e_other = (
+        f"E: The repository 'http://dl.example.org/tool {codename} Release' does not have a Release file."
+    )
+    code, _, err, calls = run(
+        tmp_path,
+        {"apt-get": update_says(e_other, N_SECURE, N_MANPAGE, code=100)},
+        env={"OS_RELEASE": str(release)},
+    )
+    assert code == 1
+    assert len(updates(calls)) == 3
+    assert (tmp_path / "sources.list.d" / "kicad-10.0-releases.sources").exists()
+    assert err.splitlines()[-2:] == [
+        "[install] ERROR: apt: the index of KiCad 10's package source did not arrive in 3 tries: "
+        f"{URL} {codename}; apt said: exit code 100: {e_other}",
         f"{NONE} Fix what apt said, then run the script again.",
     ]
 
 
-def test_a_second_key_for_the_source_stops_at_once_and_names_the_other_file(tmp_path):
-    """Another .sources file names the source with another key (add-apt-repository's): apt ends with
-    100 and E: Conflicting values. 1 try; the other file is named, the script's own is removed."""
-    other = tmp_path / "sources.list.d" / "kicad-ubuntu-kicad-10_0-releases-noble.sources"
-    other.parent.mkdir()
+def test_a_second_key_for_the_source_stops_at_once_and_names_the_other_entries(tmp_path):
+    """Another .sources file and a line of sources.list name the source with another key
+    (add-apt-repository's): apt ends with 100 and E: Conflicting values. 1 try; the key apt named after
+    '!=' and the enabled entries are named, not a commented line or a .save file that apt does not read
+    (the second review's S2-6); the script's own file is removed, the others stay."""
+    parts = tmp_path / "sources.list.d"
+    parts.mkdir()
+    other = parts / "kicad-ubuntu-kicad-10_0-releases-noble.sources"
     other.write_text(f"Types: deb\nURIs: {URL}/\nSuites: noble\n", encoding="utf-8")
-    code, _, err, calls = run(tmp_path, {"apt-get": update_says(E_SIGNED, E_LIST, code=100)})
+    (parts / "kicad.list.save").write_text(f"deb {URL}/ noble main\n", encoding="utf-8")
+    (parts / "old.list").write_text(f"# deb {URL}/ noble main\n", encoding="utf-8")
+    listed = tmp_path / "sources.list"
+    listed.write_text(
+        f"deb http://archive.ubuntu.com/ubuntu noble main\ndeb {URL}/ noble main\n", encoding="utf-8"
+    )
+    trusted = "/etc/apt/trusted.gpg.d/kicad-ubuntu-kicad-10_0-releases.gpg"
+    keyring = tmp_path / "keyrings" / "kicad-10.0-releases.gpg"
+    # apt's line as E_SIGNED, with the test's keyring as the script's key
+    e_signed = E_SIGNED.replace("/etc/apt/keyrings/kicad-10.0-releases.gpg", str(keyring))
+    code, _, err, calls = run(tmp_path, {"apt-get": update_says(e_signed, E_LIST, code=100)})
     assert code == 1
     assert len(updates(calls)) == 1 and of(calls, "sleep") == []
-    ours = tmp_path / "sources.list.d" / "kicad-10.0-releases.sources"
-    assert not ours.exists() and other.exists()
+    ours = parts / "kicad-10.0-releases.sources"
+    assert not ours.exists() and other.exists() and listed.exists()
     assert err.splitlines()[-2:] == [
         "[install] ERROR: apt: the index of KiCad 10's package source did not arrive in 1 try: "
-        f"{SOURCE}; apt said: {E_SIGNED}",
-        f"[install] Another file names KiCad 10's package source with another key: {other}. {ours} was "
-        "removed, so apt works as before. Remove the other file, then run the script again. "
+        f"{SOURCE}; apt said: {e_signed}",
+        f"[install] Another entry names KiCad 10's package source with another key ({trusted}): {listed}, "
+        f"{other}. install.sh's own {ours} was removed. Remove that entry, then run the script again. "
         "This run installed no KiCad.",
     ]
+
+
+def test_a_second_key_with_no_entry_found_says_where_it_looked(tmp_path):
+    """apt's line names 2 keys, neither the script's (another keyring setting), and no enabled entry
+    names the source: both keys are quoted, and the stop says where it looked."""
+    code, _, err, _ = run(tmp_path, {"apt-get": update_says(E_SIGNED, E_LIST, code=100)})
+    assert code == 1
+    parts = tmp_path / "sources.list.d"
+    keys = (
+        "/etc/apt/keyrings/kicad-10.0-releases.gpg != "
+        "/etc/apt/trusted.gpg.d/kicad-ubuntu-kicad-10_0-releases.gpg"
+    )
+    assert err.splitlines()[-1] == (
+        f"[install] Another entry names KiCad 10's package source with another key ({keys}): none found in "
+        f"{tmp_path / 'sources.list'} or {parts}/*.list, *.sources. install.sh's own "
+        f"{parts / 'kicad-10.0-releases.sources'} was removed. Remove that entry, then run the script again. "
+        "This run installed no KiCad."
+    )
+
+
+def test_a_file_of_the_users_under_the_scripts_name_is_left_alone(tmp_path):
+    """The user keeps their own entry at the script's path (here with Suites: noble on another key): the
+    script does not overwrite it, does not remove it, fetches nothing, and names it (the second review's
+    S2-7). The file next to it stays too."""
+    parts = tmp_path / "sources.list.d"
+    parts.mkdir()
+    mine = (
+        f"# mine\nTypes: deb\nURIs: {URL}/\nSuites: noble\nComponents: main\nSigned-By: {tmp_path}/mine.gpg\n"
+    )
+    ours = parts / "kicad-10.0-releases.sources"
+    ours.write_text(mine, encoding="utf-8")
+    (parts / "ubuntu.sources").write_text("Types: deb\n", encoding="utf-8")
+    code, out, err, calls = run(tmp_path)
+    assert code == 1
+    assert ours.read_text(encoding="utf-8") == mine
+    assert sorted(p.name for p in parts.iterdir()) == ["kicad-10.0-releases.sources", "ubuntu.sources"]
+    assert updates(calls) == [] and of(calls, "curl") == [] and installs(calls) == []
+    assert err.splitlines()[-2:] == [
+        f"[install] ERROR: apt: {ours} is not the file install.sh writes for noble; "
+        "install.sh leaves it as it is.",
+        f"{NONE} Move that file out of {parts}, or remove it, then run the script again: install.sh writes "
+        "its own there.",
+    ]
+
+
+def test_the_file_an_earlier_run_wrote_is_used_again(tmp_path):
+    """A second run finds the sources file the first one wrote, byte for byte: it goes on."""
+    code, _, err, _ = run(tmp_path)
+    assert code == 0, err
+    ours = tmp_path / "sources.list.d" / "kicad-10.0-releases.sources"
+    first = ours.read_text(encoding="utf-8")
+    (tmp_path / "installed").unlink()
+    for name in ("bin", "tools", "jvm", "tmp"):
+        shutil.rmtree(tmp_path / name)
+    code, _, err, _ = run(tmp_path)
+    assert code == 0, err
+    assert ours.read_text(encoding="utf-8") == first
 
 
 def test_a_held_apt_lock_is_named_and_not_blamed_on_the_source(tmp_path):
@@ -602,6 +729,8 @@ def test_a_package_with_no_candidate_at_all_stops(tmp_path):
     assert installs(calls) == []
     none = "candidate is 10.x from KiCad 10's package source: kicad-templates (apt has none): "
     assert none in err.splitlines()[-2]
+    # the source has no 10.x of it either: no pin is blamed (the second review's X2)
+    assert err.splitlines()[-1] == NOT_10
 
 
 def test_a_failing_apt_cache_stops_with_a_line(tmp_path):
@@ -614,7 +743,9 @@ def test_a_failing_apt_cache_stops_with_a_line(tmp_path):
     assert code == 1
     assert installs(calls) == []
     assert "NEXT STEP" not in out
-    assert err.splitlines()[-2:] == [
+    # apt-cache's own line is shown as apt printed it, then the stop (the second review's X7)
+    assert err.splitlines()[-3:] == [
+        e_lists,
         "[install] ERROR: apt: `apt-cache policy kicad kicad-symbols kicad-footprints kicad-templates` ended "
         f"with exit code 100; apt said: {e_lists}",
         f"{NONE} Fix what apt said, then run the script again.",
@@ -658,13 +789,29 @@ esac
     assert [c for c in installs(calls) if "--download-only" not in c] == []
     assert E_FETCH in err.splitlines()
     assert "[apt] Get:172 https://ppa.launchpadcontent.net/x [48.0 MB]" in out
-    within = ", within its bound of 600 s" if bounds else ""
+    within = ", within its bound of 570 s" if bounds else ""
     stop = (
         f"[install] ERROR: apt: the download ended with apt-get's exit code 100{within}; apt said: {E_FETCH}"
     )
     assert err.splitlines()[-2:] == [stop, LATER]
     assert "NEXT STEP" not in out
     assert of(calls, "kicad-cli") == ["kicad-cli version"]
+
+
+def test_a_download_404_says_to_fix_what_apt_said(tmp_path):
+    """A 404 does not pass by itself (a file gone from the source, a stale index): 'again later' is said
+    only for a 5xx (the second review's X6)."""
+    e_404 = E_FETCH.replace("503  Service Unavailable", "404  Not Found")
+    answer = f"""case "$*" in
+  *--download-only*) echo '{e_404}' >&2; echo '{E_SOME}' >&2; exit 100 ;;
+esac
+{DEFAULTS["apt-get"]}"""
+    code, _, err, calls = run(tmp_path, {"apt-get": answer})
+    assert code == 1
+    assert err.splitlines()[-2:] == [
+        f"[install] ERROR: apt: the download ended with apt-get's exit code 100; apt said: {e_404}",
+        "[install] No package was installed. Fix what apt said, then run the script again.",
+    ]
 
 
 @pytest.mark.parametrize("rc", [1, 127])
@@ -712,7 +859,7 @@ esac
     assert code == 1
     assert f"[apt] {err_line}" in out
     assert err.splitlines()[-2:] == [
-        "[install] ERROR: apt: the download did not end within 600 s (APT_DOWNLOAD_TIMEOUT); "
+        "[install] ERROR: apt: the download did not end within 570 s (APT_DOWNLOAD_TIMEOUT); "
         f"apt said: {err_line}",
         CUT,
     ]
@@ -884,6 +1031,58 @@ def test_the_script_read_from_standard_input_stops_with_a_line(tmp_path):
     assert calls_of(tmp_path, expect=set()) == []
 
 
+def test_the_script_read_through_a_process_substitution_stops_with_a_line(tmp_path):
+    """`bash <(curl ...)` gives the script a path under /dev/fd, which is no folder of the checkout: it
+    says how to run it, and runs no step (the second review's S2-8). Run through the harness, so a lost
+    stop stays in the folder."""
+    env = folder(tmp_path)
+    proc = subprocess.run(
+        [BASH, "-c", f"{BASH} <(cat {INSTALL})"],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=tmp_path,
+        timeout=60,
+        check=False,
+    )
+    assert (proc.returncode, proc.stdout) == (1, "")
+    said = "[install] ERROR: install.sh runs as a file, not from standard input: sudo ./install.sh\n"
+    assert proc.stderr == said
+    calls_of(tmp_path, expect=set())
+
+
+def test_a_link_in_another_folder_finds_the_checkout(tmp_path):
+    """`bash <folder>/install.sh --check`, where the file is a link to the checkout's script: SRC_DIR is
+    the checkout, not the link's folder."""
+    env = folder(tmp_path)
+    link = tmp_path / "elsewhere" / "install.sh"
+    link.parent.mkdir()
+    link.symlink_to(INSTALL)
+    proc = subprocess.run(
+        [BASH, str(link), "--check"], capture_output=True, text=True, env=env, cwd=tmp_path, timeout=60
+    )
+    assert proc.returncode == 7, proc.stderr
+    assert calls_of(tmp_path, expect={"python3"}) == [f"python3 {ROOT}/tools/workcenter doctor"]
+
+
+def test_sourcing_the_script_leaves_the_callers_shell_options(tmp_path):
+    """`set -euo pipefail` is the script's own when it runs as a file; a shell that sources it keeps its
+    options."""
+    env = folder(tmp_path)
+    proc = subprocess.run(
+        [BASH, "-c", f'source {INSTALL}; echo "$-"; shopt -qo pipefail && echo pipefail || echo none'],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=tmp_path,
+        timeout=60,
+        check=False,
+    )
+    flags, pipefail = proc.stdout.splitlines()
+    assert ("e" in flags, "u" in flags, pipefail) == (False, False, "none")
+    calls_of(tmp_path, expect=set())
+
+
 def test_main_runs_every_step_in_order_and_hands_over_to_the_doctor(tmp_path):
     """main() as it runs: each step replaced by 1 that logs its name, the root check by `true` in a copy.
     The 5 steps run in their order, and the run ends with `workcenter doctor` and its exit code."""
@@ -965,6 +1164,199 @@ def literal_paths(text: str) -> list[tuple[str, str]]:
     return found
 
 
+# The variables a test points into its folder, and the locals the script builds from one of them (or from
+# `mktemp`, under TMPDIR). A shell redirection writes with no program, so passes no fence: its target
+# must start with 1 of these, or be /dev/null. A program called by a path (not by its name on the closed
+# PATH) passes no fence either: its path must start with 1 of these too. Each assignment of a local of
+# BUILT is held to the same rule, so that the name cannot carry another path.
+MOVED = {"WC_ROOT", "KICAD_KEYRING", "KICAD_SOURCES", "WORKCENTER_LINK"}
+BUILT = {"dir", "root", "venv", "env", "stamp", "deb", "jar", "tgz", "kit", "errors", "shown", "py"}
+INSIDE = re.compile(r'^"?\$\{?(' + "|".join(sorted(MOVED | BUILT)) + r")\b")
+# What a local of BUILT may be set to besides a path under INSIDE: a name on the closed PATH, a temp file.
+BUILT_ALSO = {'"python3"', '"$(mktemp)"'}
+# Words after which the next word is a command.
+STARTS = {"then", "do", "else", "elif", "if", "while", "until", "!", "exec", "time", "{", "}"}
+
+
+def _skip_heredocs(text: str) -> list[str]:
+    """The code's lines without the bodies of its here-documents, which are data, and without comments."""
+    lines, kept, end = text.splitlines(), [], None
+    for line in lines:
+        if end is not None:
+            if line.strip() == end:
+                end = None
+            continue
+        if line.lstrip().startswith("#"):
+            continue
+        kept.append(line)
+        found = re.search(r"(?<!<)<<-?\s*['\"]?(\w+)['\"]?(?!<)", line)
+        if found and "<<<" not in line:
+            end = found.group(1)
+    return kept
+
+
+def _closing(code: str, i: int, opening: str, closing: str) -> int:
+    """The index just after the `closing` that matches the `opening` at code[i]."""
+    depth, j = 0, i
+    while j < len(code):
+        if code.startswith(opening, j):
+            depth += 1
+            j += len(opening)
+            continue
+        if code.startswith(closing, j):
+            depth -= 1
+            j += len(closing)
+            if depth == 0:
+                return j
+            continue
+        j += 1
+    return j
+
+
+def unfenced_writes(text: str) -> list[str]:
+    """Each place in the script's code that could write outside a test's folder without a fenced program:
+    a redirection whose target is not under INSIDE (relative, `..`, the checkout, a path built from
+    pieces), a program called by a path that is not under INSIDE, and an assignment of a local of BUILT
+    that is not. A lexical scan: what it cannot see is listed in the docs' Left."""
+    found: list[str] = []
+    _scan("\n".join(_skip_heredocs(text)), found)
+    return found
+
+
+def _scan(code: str, found: list[str]) -> None:
+    i, word, command, in_test, verb = 0, "", True, False, ""
+
+    def end_word():
+        """Judge the word just read: an assignment, a command word, or a word of `for` or `read`."""
+        nonlocal word, command, in_test, verb
+        w, word = word, ""
+        if not w:
+            return
+        if in_test:
+            in_test = w != "]]"
+            return
+        name = re.match(r"^(\w+)\+?=", w)
+        if name:
+            # `local a=... b=...` and `VAR=... program`: the next word may still be the command
+            value = w[name.end() :]
+            if name.group(1) in BUILT and not (INSIDE.match(value) or value in BUILT_ALSO):
+                found.append(f"assignment {w}")
+            return
+        if verb in ("for", "read") and w in BUILT:
+            found.append(f"assignment by {verb} of {w}")
+        if not command:
+            return
+        if w == "[[":
+            in_test, command = True, False
+        elif w in STARTS or w in ("local", "export", "declare"):
+            verb = w
+        else:
+            bare = w.lstrip('"')
+            if w not in (".", '"$@"') and bare.startswith(("/", ".", "~", "$")) and not INSIDE.match(w):
+                found.append(f"program {w}")
+            verb, command = w, False
+
+    while i < len(code):
+        c = code[i]
+        if code.startswith("\\\n", i):
+            i += 2
+            continue
+        if c == "\\":
+            word += code[i : i + 2]
+            i += 2
+            continue
+        if c == "'":
+            j = code.index("'", i + 1) + 1
+            word += code[i:j]
+            i = j
+            continue
+        if c == '"':
+            j = i + 1
+            while code[j] != '"':
+                if code[j] == "\\":
+                    j += 2
+                elif code.startswith("$((", j):
+                    j = _closing(code, j + 1, "((", "))")
+                elif code.startswith("$(", j):
+                    k = _closing(code, j + 1, "(", ")")
+                    _scan(code[j + 2 : k - 1], found)
+                    j = k
+                elif code.startswith("${", j):
+                    j = _closing(code, j + 1, "{", "}")
+                else:
+                    j += 1
+            word += code[i : j + 1]
+            i = j + 1
+            continue
+        if code.startswith("$((", i) or (not word and code.startswith("((", i)):
+            j = _closing(code, i + (1 if c == "$" else 0), "((", "))")
+            word += code[i:j]
+            i = j
+            continue
+        if code.startswith("$(", i) or code.startswith("<(", i) or code.startswith(">(", i):
+            j = _closing(code, i + 1, "(", ")")
+            if c == ">":
+                found.append(f"redirection {code[i:j]}")
+            _scan(code[i + 2 : j - 1], found)
+            word += code[i:j]
+            i = j
+            continue
+        if code.startswith("${", i):
+            j = _closing(code, i + 1, "{", "}")
+            word += code[i:j]
+            i = j
+            continue
+        if c == "(" and word.endswith("="):
+            j = _closing(code, i, "(", ")")
+            word += code[i:j]
+            i = j
+            continue
+        if c == "#" and not word:
+            i = code.find("\n", i) if "\n" in code[i:] else len(code)
+            continue
+        if c == ">" and not in_test:
+            # `>`, `>>`, `>|`, `&>`, `N>`: a write; `>&N` duplicates a descriptor
+            if word.isdigit() or word == "&":
+                word = ""
+            else:
+                end_word()
+            j = i + 1
+            while j < len(code) and code[j] in ">|":
+                j += 1
+            while j < len(code) and code[j] in " \t":
+                j += 1
+            if code.startswith(">(", j - 1) or code.startswith("(", j):
+                found.append(f"redirection {code[i : j + 1]}")
+            k = j
+            while k < len(code) and code[k] not in " \t\n;|&)<>":
+                if code[k] in "\"'":
+                    k = code.index(code[k], k + 1)
+                k += 1
+            target = code[j:k]
+            if code.startswith("&", j) and re.fullmatch(r"&[0-9-]", code[j : j + 2]):
+                k = j + 2
+            elif target != "/dev/null" and not INSIDE.match(target):
+                found.append(f"redirection > {target}")
+            i = k
+            continue
+        if c in " \t":
+            end_word()
+            i += 1
+            continue
+        if c in "\n;|&(){}" and not in_test:
+            end_word()
+            command, verb = True, ""
+            i += 1
+            continue
+        if c in "\n;|&(){}":
+            end_word()
+            i += 1
+            continue
+        word += c
+        i += 1
+    end_word()
+
+
 def test_the_path_scan_sees_a_write_the_fence_cannot():
     """A redirection, or a program off the closed PATH, passes no fence: the scan must see its path,
     on a line with a default's `:-/` too."""
@@ -979,6 +1371,37 @@ def test_the_path_scan_sees_a_write_the_fence_cannot():
     assert literal_paths("  echo x 2>/dev/null; awk '$0 != \"/var/lib/dpkg/status\"'") == []
 
 
+def test_the_write_scan_sees_a_redirection_or_a_program_outside_the_moved_paths():
+    """A redirection to a path that is not under a moved variable (relative, `..`, the checkout, a path
+    built from pieces: the 3 lines of the second review's S2-1 wrote outside the folder with every test
+    passing), a program called by such a path, and a local of BUILT given another path."""
+    for line, seen in [
+        ("  printf 'x\\n' >> ../escape-rel.txt", "redirection > ../escape-rel.txt"),
+        (
+            "  printf x >> ../../../../../../etc/apt/apt.conf.d/99wc",
+            "redirection > ../../../../../../etc/apt/apt.conf.d/99wc",
+        ),
+        ("  printf 'x\\n' >> \"${SRC_DIR}/escape-src.txt\"", 'redirection > "${SRC_DIR}/escape-src.txt"'),
+        ('  printf x >> "/""etc/apt/apt.conf.d/99wc"', 'redirection > "/""etc/apt/apt.conf.d/99wc"'),
+        ("  printf x >> ~/.bashrc", "redirection > ~/.bashrc"),
+        ('  out="$(printf x 2> ../y)"', "redirection > ../y"),
+        ('  "${SRC_DIR}/tools/workcenter" doctor', 'program "${SRC_DIR}/tools/workcenter"'),
+        ('  local dir="$SRC_DIR"', 'assignment dir="$SRC_DIR"'),
+        ("  for dir in /etc; do :; done", "assignment by for of dir"),
+    ]:
+        assert unfenced_writes(line) == [seen], line
+    for line in [
+        '  cat "$errors" >&2; echo x 2>/dev/null',
+        '  echo "$want" > "${dir}/.sha256"',
+        '  rows="$(kicad_candidates 2> "$errors")" || rc=$?',
+        '  HOME="${root}/home" "${root}/mm/bin/micromamba" create < /dev/null > /dev/null 2>&1',
+        '  log "link: ${WORKCENTER_LINK} -> ${SRC_DIR}/tools/workcenter"',
+        "  if ((try < KICAD_INDEX_TRIES)); then [[ a > b ]]; fi",
+        '  cat > "$KICAD_SOURCES" <<EOF\nx > /etc/y\nEOF',
+    ]:
+        assert unfenced_writes(line) == [], line
+
+
 def test_no_literal_path_outside_the_folder_is_in_the_scripts_code():
     """The paths a lost guard would reach are read from the environment, each with its real default on
     its own line; any other absolute path in the code is /dev/null or /var/lib/dpkg/status."""
@@ -987,6 +1410,7 @@ def test_no_literal_path_outside_the_folder_is_in_the_scripts_code():
     for line in DEFAULT_LINES:
         assert lines.count(line) == 1, line
     assert literal_paths(text) == []
+    assert unfenced_writes(text) == []
 
 
 def assigned(name: str, env: bool = True) -> int:
@@ -1017,13 +1441,18 @@ def test_the_worst_case_of_the_apt_step_fits_the_jobs_limit():
     lines 2, 169, 352, 710, 823, 843 and 933) used 9 s before install.sh (16:10:05.85 to 16:10:14.58),
     27 s to unpack and set up (16:12:18.72 to 16:12:45.28), 28 s for the steps after apt (to 16:13:13.37)
     and 670 s for `make verify` (16:13:13.86 to 16:24:23.84): of the job's 1800 s (timeout-minutes: 30),
-    1800 - 9 - 27 - 28 - 670 = 1066 s are left for the updates, the waits and the download.
-    3 x 120 + 2 x 20 + 600 = 1000 s."""
+    1800 - 9 - 27 - 28 - 670 = 1066 s are left for the key, the updates, the waits and the download.
+    The key fetch runs on every fresh runner (the second review's S2-5): each of its 2 addresses is tried
+    while curl's retry timer is below KICAD_KEY_TIMEOUT (--retry-max-time), each try lasts at most
+    KICAD_KEY_TIMEOUT (--max-time), and with --retry 3 curl waits 1, 2, then 4 s (curl 8.5.0's manual,
+    --retry and --retry-max-time): at most 20 + 4 + 20 = 44 s an address, 88 s for both.
+    88 + 3 x 120 + 2 x 20 + 570 = 1058 s."""
     bounds, limit = ci_bounds()
     assert bounds == CI
     tries, wait = assigned("KICAD_INDEX_TRIES"), assigned("KICAD_INDEX_WAIT")
     update, download = int(bounds["APT_UPDATE_TIMEOUT"]), int(bounds["APT_DOWNLOAD_TIMEOUT"])
-    assert tries * update + (tries - 1) * wait + download <= limit - 9 - 27 - 28 - 670
+    key = 2 * (2 * assigned("KICAD_KEY_TIMEOUT", env=False) + 4)
+    assert key + tries * update + (tries - 1) * wait + download <= limit - 9 - 27 - 28 - 670
 
 
 def test_one_silent_file_fits_the_download_bound():
@@ -1034,12 +1463,13 @@ def test_one_silent_file_fits_the_download_bound():
 
 
 def test_the_step_holds_no_bare_bound():
-    """Every wait and bound of the apt step is a named variable. curl's own bounds on the key
-    (`--connect-timeout 20`) belong to the key fetch, which this change leaves as it was."""
+    """Every wait and bound of the apt step is a named variable, the key fetch's included (it counts in
+    the worst case above). Its `--retry 3` and `--connect-timeout 20` are curl's own, as before."""
     text = INSTALL.read_text(encoding="utf-8")
     step = text[text.index("\nkicad10_present() {") : text.index("\nstep_freerouting() {")]
     assert re.findall(r"(?<![-\w])(?:sleep|timeout) [0-9]", step) == []
     assert re.findall(r"(?:Retries|Timeout)=[0-9]", step) == []
+    assert re.findall(r"--(?:retry-)?max-time [0-9]", step) == []
 
 
 def test_the_script_parses_and_shellcheck_is_clean():
