@@ -63,9 +63,10 @@ A share that depends on the part's own rating stands in `by_rating`, in place of
 
 Each row names the ratings it covers in `rated`, each above 0, in the stress's unit, its share in
 `max`, and its own `above`, or the rule's. The rule's `above` is held to its form even when every row
-has its own. A rating stands in 1 row; 2 ratings within 1e-9 of each other are 1 rating. A part whose rating no row names is not judged, and
-its line says the pack names no share for that rating: a table that lists ratings says nothing of the
-ratings between them. A rule holds `max` or `by_rating`, never both.
+has its own. A rating stands in 1 row; 2 ratings within 1e-9 of each other are 1 rating. A part whose
+rating no row names is held to its own rating, 1.00: over it, the line fails; under it, the derating
+is not judged, and the line says the pack names no share for that rating. A table that lists ratings
+says nothing of the ratings between them. A rule holds `max` or `by_rating`, never both.
 
 ## How each pack reads its document
 
@@ -166,7 +167,7 @@ other fuse is held to its own rating:
 
 - NASA's table 4 has 6 rows: 50 % for 2, 2-1/2, 3, 4, 5, 7, 10 and 15 A; 45 % for 1 and 1-1/2 A;
   40 % for 3/4 and 1/2 A; 35 % for 3/8 A; 30 % for 1/4 A; 25 % for 1/8 A. A rating the table does not
-  list, 6.3 A or 0.6 A, is not judged.
+  list, 6.3 A or 0.6 A, is held to its own rating, and its derating is not judged.
 - Its column Temperature Derating Factor adds "0.2%/C for an increase in the temperature of fuse body
   above 25 C". The pack reads it as 0.2 % of the rated current taken off the share for each C: the
   share falls in a line from its value at 25 C to 0 at 25 C + share / 0.002, so 0.50 reaches 0 at
