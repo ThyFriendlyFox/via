@@ -20,8 +20,8 @@ The sums of the fixtures' port, by hand:
                 CL10A475KO8NNN, 4.7 uF +-10 %, is up to 4.7 x 1.1 = 5.17 uF; at 5.25 V it keeps, between
                 its points (5.2344, 0.48048) and (5.35535, 0.47057), 0.48048 - 0.00991 x 0.0156 / 0.12095
                 = 0.479202, and 4.7 x 0.9 x 0.479202 = 2.027 uF: within 1 to 10 uF.
-    clamps      TPD2E2U06 stands off 5.5 V (SLLSEG9C 6.5, page 4); D+ and D- reach 3.6 V (USB 2.0 table 7-7,
-                VOH and VIHZ), CC1 and CC2 2.04 V (Type-C table 4-28 for Rd +-10 %).
+    clamps      TPD2E2U06 stands off 5.5 V (SLLSEG9C section 6.5, page 4); D+ and D- reach 3.6 V
+                (USB 2.0 table 7-7, VOH and VIHZ), CC1 and CC2 2.04 V (Type-C table 4-28 for Rd +-10 %).
     CC deck     Rp to 4.75 to 5.5 V (table 4-27, page 245) into Rd 5049 to 5151 ohm:
                 default, 56k +-20 %: 4.75 x 5049 / (5049 + 67200) = 0.33195 V to
                                      5.5 x 5151 / (5151 + 44800) = 0.56717 V, in vRd-USB 0.277 to 0.612 V
@@ -53,6 +53,7 @@ import blocks  # noqa: E402
 import blocks_usbc  # noqa: E402
 import kicadgen  # noqa: E402
 
+CITES = {"ti-sllseg9c": "section 6.5, page 4: the clamp's stand-off voltage"}
 CLI = ROOT / "tools" / "workcenter"
 BOARDS = ROOT / "tests" / "boards"
 FACTS = BOARDS / "library" / "facts"
