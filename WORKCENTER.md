@@ -521,7 +521,8 @@ command (`make -k test` unless the list or `--test` names another) must
 fail on it. Every mutation's text must be in its file exactly once, checked
 before anything runs, and the tests must pass unmutated. A mutation that
 survives, or that a compiler stops, fails the run. The project's tree is
-never written.
+never written. A list may name `COPY`, the paths each copy holds.
+`make mutate-ratings` runs the ratings engine's list.
 
 Not a gate: `workcenter ratings <project>` holds the schematic to its parts'
 ratings, for a project with a `ratings.json` beside its schematic (`--init`
@@ -539,7 +540,11 @@ the rating that the rule pack allows (`rules/ratings/nasa-eee-inst-002.json`,
 regulator's load to what it gives; an output a divider sets to that
 divider's sum; a buck converter's inductor to its peak current; and the
 capacitors and the inductor a datasheet asks for to what stands in the
-schematic. An entry of facts that gives a pin's name to another number
+schematic. A fuse's facts name its style: `fuse.cartridge` (NASA
+EEE-INST-002 F3 table 4), `fuse.cermet` (ECSS table 6-17), or `fuse`. A
+fuse no row covers, or that ECSS grants no share (clause 6.17.1a), fails
+over its own rating, and at or under it its derating is not judged. An
+entry of facts that gives a pin's name to another number
 than the schematic's symbol does fails too. A line is `fail`, `accepted`,
 `not judged` or `hold`. A line that holds a stress to a limit names the
 limit's document; a pack's rule, a pin's limit and a needed part name

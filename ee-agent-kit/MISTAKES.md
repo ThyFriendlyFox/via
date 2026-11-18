@@ -1337,3 +1337,9 @@ What happened: Several agents on 1 machine ran routes, gates and simulations. A 
 Cost: about 2 hours of 1 user and a run each of 2 others; no verdict for 1 board.
 Root cause: The lock was a convention of a lead's brief, taken by hand around any command, fair to nobody, and silent.
 Process: P8
+
+## M221 — 2026-11-17 — A fix pass that ran only the tests of its own findings
+What happened: A fix for roadmap item 1's review (L1-06) added a hint to `tools/guide.py` with a sentence of 25 words. Its helper ran the ratings test files, `tests/test_guide_ratings.py` and `tests/test_mutate.py` (1064 passed), and not `tests/test_guide.py`, which refuses any hint sentence over 20 words. The landing run found it.
+Cost: 1 landing commit; the piece would have failed `make verify`.
+Root cause: The test files run were the ones of the findings, not the ones of the files changed. Every test file of a tool a change touches is run, not only the file the change's own tests sit in.
+Process: P14
