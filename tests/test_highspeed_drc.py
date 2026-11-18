@@ -22,7 +22,10 @@ ROOT = Path(__file__).resolve().parents[1]
 BOARDS = ROOT / "tests" / "boards"
 CLI = ROOT / "tools" / "workcenter"
 
-pytestmark = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+pytestmark = [
+    pytest.mark.engine,
+    pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed"),
+]
 
 
 def drc(fixture: str, tmp: Path) -> list[dict]:
