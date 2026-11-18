@@ -116,6 +116,26 @@ def ratings_json(pack: str, *entries: dict) -> str:
     return json.dumps(merged, indent=2) + "\n"
 
 
+# What buck reads of an IC's entry in its rules: its own names, and each number with its `where`. `vout_set`
+# and `dropout` name an equation and hold no number.
+BUCK_NAMES = ("maker", "value", "symbol", "footprint", "pins", "source")
+BUCK_NUMBERS = (
+    "amps_max", "vout_min", "vout_set", "ilim_min", "henries", "henries_low", "saturation_margin", "r2",
+    "output_farads", "kept_share", "output_span", "dielectrics", "input_farads", "rds_on_high", "dropout",
+)  # fmt: skip
+
+
+def _unentered(chip: dict) -> list[str]:
+    """The keys buck reads that the IC's entry lacks, or holds with no number or no `where`."""
+    out = [key for key in BUCK_NAMES if key not in chip]
+    for key in BUCK_NUMBERS:
+        entry = chip.get(key)
+        held = isinstance(entry, dict) and "where" in entry
+        if not held or (key not in ("vout_set", "dropout") and "value" not in entry and "rows" not in entry):
+            out.append(key)
+    return out
+
+
 def buck(  # noqa: PLR0913, PLR0915
     d,
     *,
@@ -142,6 +162,11 @@ def buck(  # noqa: PLR0913, PLR0915
         "output": "C2 C3 C4",
     } | (refs or {})
     u = refs["ic"]
+    for name, given in (("vin", vin), ("vout", vout), ("amps", amps)):
+        if not all(
+            isinstance(x, (int, float)) and math.isfinite(x) for x in (given if name == "vin" else (given,))
+        ):
+            raise Refused(f"buck {u}: {name}={given!r}: each number of the spec must be finite")
     data = load_rules(rules)
     note = data["note"]
     short = note["short"]
@@ -149,16 +174,33 @@ def buck(  # noqa: PLR0913, PLR0915
     def eq(n: str) -> str:
         return f"{short}, equation {n}, page {note['equations'][n]['page']}"
 
+    vin_low, vin_high = vin
+    if vin_low > vin_high:
+        raise Refused(
+            f"buck {u}: vin=({_g(vin_low)}, {_g(vin_high)}) is written greatest first: "
+            f"vin is (least, greatest), and the block sizes its parts at the greatest [{eq('1')}]"
+        )
     chip = next((c for c in data["ics"] if c["mpn"] == ic), None)
     if chip is None:
         names = ", ".join(c["mpn"] for c in data["ics"])
         raise Refused(f"buck {u}: {ic} is no IC of {Path(rules).name}; it holds {names}")
+    if missing := _unentered(chip):
+        raise Refused(
+            f"buck {u}: {Path(rules).name} gives {ic} no {', '.join(missing)}: the block builds no IC whose "
+            "numbers are not all entered"
+        )
     found = ratings.read_facts(Path(facts))
     chip_facts = _facts(found, Stock("", ic, "", chip["footprint"]), chip["symbol"])
     if chip_facts is None:
         raise Refused(f"buck {u}: {facts} holds no facts of {ic}")
     pins = {p["name"]: p for p in chip_facts.data["pins"]}
-    vin_low, vin_high = vin
+    for what, held in (
+        ("switching hertz", chip_facts.data.get("switching", {}).get("hertz")),
+        ("FB volts", pins.get("FB", {}).get("volts")),
+        ("VIN operating", pins.get("VIN", {}).get("operating")),
+    ):
+        if held is None:
+            raise Refused(f"buck {u}: the facts of {ic} give no {what} [{chip_facts.where}]")
     source = f"{chip_facts.source}, {ratings._p(pins['VIN']['page'])}"
     low, high = pins["VIN"]["operating"]
     if vin_high > high or vin_low < low:
@@ -308,11 +350,51 @@ def buck(  # noqa: PLR0913, PLR0915
             f"and {_g(vout)} V is asked: no stocked resistor is near {ratings.si(r1, 'ohm')} "
             f"[{divider_where}]"
         )
+    # The output the divider sets is held to the output asked within the reference's own accuracy: a
+    # looser resistor widens the span above and would let a farther value pass.
+    accuracy = (vfb[1] - vfb[0]) / (vfb[1] + vfb[0])
+    off = (vset - vout) / vout
+    if abs(off) > accuracy * (1 + ratings.EPS):
+        side = "under" if off < 0 else "over"
+        fb_where = f"{chip_facts.source}, {ratings._p(pins['FB']['page'])}"
+        raise Refused(
+            f"buck {u}: R1 of {top[0].value} and R2 of {bottom[0].value} set VOUT to {_g(vset)} V, "
+            f"{abs(off) * 100:.2g} % {side} the {_g(vout)} V asked; the block holds it within "
+            f"{accuracy * 100:.3g} %, the reference's own accuracy, VFB of {ratings.si(vfb[0], 'V')} to "
+            f"{ratings.si(vfb[1], 'V')} [{fb_where}; {divider_where}]"
+        )
     sums.append(
         f"{refs['top']}: R1 = {ratings.si(r2, 'ohm')} x ({_g(vout)} V / {_g(reference)} V - 1) = "
         f"{ratings.si(r1, 'ohm')}; the stock's nearest is {top[0].value}, which sets {_g(vset)} V, "
         f"and {span} [{divider_where}]"
     )
+
+    # The least input that holds the output: the datasheet's equation 1 of 100 % duty cycle, at the top of
+    # the output's span, with the high-side FET's resistance and the inductor's DCR.
+    rds = chip["rds_on_high"]["value"]
+    dcr = f.data.get("ohms_dc")
+    dropout_where = f"{_where(chip, 'dropout')}; {_where(chip, 'rds_on_high')}"
+    if dcr is None:
+        vin_min = out_high + amps * rds
+        line = f"VIN(MIN) = {ratings.si(out_high, 'V')} + {ratings.si(amps, 'A')} x "
+        line += ratings.si(rds, "ohm")
+        unjudged = f"; {coil}'s DCR is not judged: its facts give none"
+    else:
+        vin_min = out_high + amps * (rds + dcr)
+        line = (
+            f"VIN(MIN) = {ratings.si(out_high, 'V')} + {ratings.si(amps, 'A')} x ({ratings.si(rds, 'ohm')} + "
+            f"{ratings.si(dcr, 'ohm')})"
+        )
+        unjudged = ""
+        dropout_where += f"; {coil}'s DCR: {f.source}"
+    line += f" = {ratings.si(vin_min, 'V')}"
+    least = ratings.si(vin_low, "V")
+    if vin_low < vin_min:
+        raise Refused(
+            f"buck {u}: {line}, over the least input, {least}: at {least} the IC cannot hold the output's "
+            f"span [{dropout_where}]"
+        )
+    sums.append(f"{u}: {line}, and the least input is {least}{unjudged} [{dropout_where}]")
 
     caps = [
         (s, cf) for s in stock if (cf := _facts(found, s)) is not None and cf.kind.startswith("capacitor")
@@ -329,27 +411,12 @@ def buck(  # noqa: PLR0913, PLR0915
         f"{ratings.si(count * farads, 'F')}, within {ratings.si(lo, 'F')} to {ratings.si(hi, 'F')} "
         f"[{_output_where(chip)}]"
     )
-    least_in = chip["input_farads"]["value"]
-    good = chip["dielectrics"]["value"]
-    in_cap = next(
-        (
-            (s, cf)
-            for s, cf in caps
-            if cf.data["volts"] >= vin_high
-            and ratings.part_value(s.value) >= least_in
-            and cf.data.get("dielectric") in good
-        ),
-        None,
-    )
-    in_where = f"{_where(chip, 'input_farads')}; {chip['dielectrics']['where']}"
-    if in_cap is None:
-        raise Refused(
-            f"buck {u}: no stocked capacitor of {ratings.si(least_in, 'F')} or more, {' or '.join(good)}, "
-            f"rated for {ratings.si(vin_high, 'V')} [{in_where}]"
-        )
+    in_cap, kept_in = _input_cap(u, chip, caps, vin_high)
+    in_where = _input_where(chip)
     sums.append(
         f"{refs['input']}: {ratings.si(ratings.part_value(in_cap[0].value), 'F')} of input capacitance, "
-        f"{in_cap[1].data['dielectric']}, {ratings.si(least_in, 'F')} asked [{in_where}]"
+        f"{in_cap[1].data['dielectric']}, {kept_in}; {ratings.si(chip['input_farads']['value'], 'F')} asked "
+        f"[{in_where}]"
     )
 
     # The parts, placed from the block's corner on the sheet and on the board.
@@ -392,6 +459,67 @@ def buck(  # noqa: PLR0913, PLR0915
     return Block("buck", sums, entries, rows, files)
 
 
+def _lacks(s: Stock, cf: ratings.Facts) -> str | None:
+    """What a capacitor's facts lack that a block counts it by: its rating and its tolerance."""
+    lack = [key for key in ("volts", "tolerance") if key not in cf.data]
+    return f"{s.mpn}: its facts give no {' and no '.join(lack)}" if lack else None
+
+
+def _input_where(chip: dict) -> str:
+    return f"{_where(chip, 'input_farads')}; {chip['dielectrics']['where']}"
+
+
+def _input_cap(u, chip, caps, vin_high):
+    """The input capacitor: the first stocked capacitor rated for the greatest input, of a dielectric the
+    datasheet names, that holds the datasheet's input capacitance less its tolerance and, when its facts
+    give it, at the value it keeps at the greatest input (TI SLVA477C section 6, page 5: the input
+    capacitor loses much of its capacitance to DC bias). Returns it and the words of its sum."""
+    least = chip["input_farads"]["value"]
+    good = chip["dielectrics"]["value"]
+    missed = []
+    for s, cf in caps:
+        data = cf.data
+        if lacks := _lacks(s, cf):
+            missed.append(lacks)
+            continue
+        if data["volts"] < vin_high:
+            missed.append(
+                f"{s.mpn}: rated {ratings.si(data['volts'], 'V')}, under {ratings.si(vin_high, 'V')}"
+            )
+            continue
+        if data.get("dielectric") not in good:
+            missed.append(f"{s.mpn}: {data.get('dielectric', 'no dielectric')}, not {' or '.join(good)}")
+            continue
+        farads = ratings.part_value(s.value)
+        written = farads * (1 - data["tolerance"])
+        less = f"{ratings.si(farads, 'F')} less {data['tolerance'] * 100:g} %"
+        if "kept" in data:
+            share = ratings.kept_at(data["kept"], vin_high)
+            if share is None:
+                missed.append(f"{s.mpn}: its kept value ends under {ratings.si(vin_high, 'V')}")
+                continue
+            each = written * share
+            if each < least * (1 - ratings.EPS):
+                missed.append(
+                    f"{s.mpn}: {less} keeps {ratings.si(each, 'F')} at {ratings.si(vin_high, 'V')}, under "
+                    f"{ratings.si(least, 'F')}"
+                )
+                continue
+            return (s, cf), f"keeps {ratings.si(each, 'F')} at {ratings.si(vin_high, 'V')} less its tolerance"
+        if written < least * (1 - ratings.EPS):
+            missed.append(f"{s.mpn}: {less} is {ratings.si(written, 'F')}, under {ratings.si(least, 'F')}")
+            continue
+        return (s, cf), (
+            f"{ratings.si(written, 'F')} less its tolerance; its value under {ratings.si(vin_high, 'V')} "
+            "is not judged: its facts give none"
+        )
+    raise Refused(
+        f"buck {u}: no stocked capacitor gives {ratings.si(least, 'F')} of input capacitance at "
+        f"{ratings.si(vin_high, 'V')}: {'; '.join(missed) or 'the stock holds none with facts'} "
+        f"[{_input_where(chip)}]"
+    )
+
+
 def _output_where(chip: dict) -> str:
     span, dielectrics = chip["output_span"]["where"], chip["dielectrics"]["where"]
     return f"{_where(chip, 'output_farads')}; note 2; {span}; {dielectrics}"
@@ -412,6 +540,9 @@ def _output_caps(u, chip, caps, vset, out_high, names):  # noqa: PLR0913
     missed = []
     for s, cf in caps:
         farads = ratings.part_value(s.value)
+        if lacks := _lacks(s, cf):
+            missed.append(lacks)
+            continue
         share = ratings.kept_at(cf.data["kept"], out_high) if "kept" in cf.data else None
         if "kept" not in cf.data:
             missed.append(f"{s.mpn}: its facts give no value it keeps under voltage")

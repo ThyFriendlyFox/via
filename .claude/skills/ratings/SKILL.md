@@ -183,7 +183,7 @@ count as a second reading.
 |---|---|---|
 | `resistor` | `tolerance` (0.01 for 1 %), `watts`, `volts` | `ohms` |
 | `capacitor.ceramic`, `.tantalum`, `.film`, `.electrolytic` | | `volts`, `tolerance`, `farads`, `dielectric`, `kept`: pairs `[volts, share of the value kept]` from the DC bias curve; `kept_celsius`: pairs `[celsius, share against 25 C]`, which the SIM gate alone reads |
-| `inductor` | `tolerance`, `amps_saturation` | `henries`, `amps_rms`, `kept`: pairs `[amps, share of the value kept]`, which the SIM gate alone reads |
+| `inductor` | `tolerance`, `amps_saturation` | `henries`, `amps_rms`, `kept`: pairs `[amps, share of the value kept]`, which the SIM gate alone reads; `ohms_dc`: the DC resistance at the most, which a buck block's dropout sum reads |
 | `diode.rectifier` (rectifier, switching, Schottky) | `diodes`: `[{"anode": "2", "cathode": "1"}]`, `volts_reverse` | `amps_forward`: held to the current the project states for the part |
 | `diode.clamp` (zener, TVS) | `diodes`, `volts_standoff` | |
 | `transistor.mosfet` | `transistors`: `[{"gate": "1", "drain": "3", "source": "2"}]`, `volts_drain_source`, `volts_gate_source` | `amps_drain`: a number, or pairs `[celsius, amps]` when the datasheet states it at 2 temperatures; held to the current the project states. `watts` |
