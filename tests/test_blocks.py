@@ -743,15 +743,20 @@ WARNINGS = [
     "C2 runs on its maker's data, and whether that is its maker's file is not judged",
     "C3 runs on its maker's data, and whether that is its maker's file is not judged",
     "no sim/frequency-plan.json: 1 decks drive periodic sources: buck (VSW)",
+    # The SIM gate asks a regulator with a load stated in ratings.json for a load-step deck
+    # (tools/simneeds.py). The block's deck runs an ideal switch for the inductor's peak: no load step.
+    "not judged: U1 (Regulator_Switching:TLV62569DBV) feeds the loads ratings.json states",
 ]
 
 
 @needs_kicad
 @pytest.mark.parametrize("name", FIXTURES)
-def test_each_fixture_is_routed_and_its_gates_are_green_with_the_3_warnings_named(name, tmp_path):
-    """ERC, DRC (0 unconnected: the router finished), SIM and EXPORT pass. The 3 warnings are what the
-    gates cannot judge: the capacitors' maker's page is kept outside the repository, and the block writes
-    no frequency plan. A strict run fails on them and on nothing else."""
+def test_each_fixture_is_routed_and_its_gates_are_green_with_the_4_warnings_named(name, tmp_path):
+    """ERC, DRC (0 unconnected: the router finished), SIM and EXPORT pass. The 4 warnings are what the
+    gates cannot judge: the capacitors' maker's page is kept outside the repository, the block writes
+    no frequency plan, and no deck steps U1's load. A strict run fails on them, and on the ratings until
+    a `ratings` run holds them (the fixture holds a ratings.json; `gates` reads its record), and on
+    nothing else."""
     run = subprocess.run(
         [sys.executable, str(CLI), "--json", "gates", str(BOARDS / name), "--out", str(tmp_path)],
         capture_output=True,
@@ -761,8 +766,11 @@ def test_each_fixture_is_routed_and_its_gates_are_green_with_the_3_warnings_name
     assert run.returncode == 0, run.stdout + run.stderr
     records = {r["gate"]: r for r in json.loads(run.stdout)}
     assert [records[g]["status"] for g in ("erc", "drc", "sim", "export")] == ["pass"] * 4
-    assert records["drc"]["summary"] == "0 errors, 0 warnings (0 unconnected, 0 parity)"
-    assert records["sim"]["summary"] == "1 decks, 20 corner runs, 0 failures, 3 warnings"
+    assert records["drc"]["summary"] == (
+        "0 errors, 0 warnings (0 unconnected, 0 parity), legend (no fab named: held to the least of the 4 "
+        "fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer)): 0 fail, 0 not judged"
+    )
+    assert records["sim"]["summary"] == "1 decks, 20 corner runs, 0 failures, 4 warnings"
     text = json.dumps(records["sim"])
     assert all(w in text for w in WARNINGS)
     low, high, bound = PEAKS[name]

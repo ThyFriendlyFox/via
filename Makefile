@@ -14,11 +14,11 @@ doctor:             ## report engine status; the "build" of this repo is a worki
 
 lint:               ## shellcheck + ruff, read-only
 	shellcheck install.sh verify/verify.sh environment/setup.sh site/build.sh ee-agent-kit/lead/gate-and-push.sh
-	$(PY) -m ruff check tools tests ee-agent-kit/lead
-	$(PY) -m ruff format --check tools tests ee-agent-kit/lead
+	$(PY) -m ruff check tools tests verify ee-agent-kit/lead
+	$(PY) -m ruff format --check tools tests verify ee-agent-kit/lead
 
 format:             ## apply ruff formatting
-	$(PY) -m ruff format tools tests
+	$(PY) -m ruff format tools tests verify
 
 test:               ## gate tests on the fixture boards
 	$(PY) -m pytest -q tests
@@ -29,7 +29,7 @@ scope:              ## fast or full: what the change from SCOPE_BASE to the work
 verify-site:        ## the fast gate for a change `make scope` calls fast; starts no engine
 	verify/verify.sh site
 
-verify:             ## the full health gate: lint -> doctor -> test -> kit checks
+verify:             ## the full health gate: lint -> kit checks -> doctor -> tests in shards
 	verify/verify.sh
 
 mutate-ratings:     ## every change of tests/ratings_mutations.py must fail the ratings tests (minutes; not in verify)

@@ -10,6 +10,7 @@ holds every sentence of an answer to its count of words.
 from __future__ import annotations
 
 import ast
+import hashlib
 import importlib.machinery
 import inspect
 import json
@@ -472,6 +473,9 @@ def test_no_sentence_of_a_hint_or_of_a_step_is_over_20_words(tmp_path, monkeypat
     answer(nothing)
     answer(project("red", record("sim", "fail", {"failures": ["d:vout=3.0 not in [2.45, 2.55]"]})))
     answer(project("warned", record("sim", "pass", {"failures": [], "warnings": ["w"]})))
+    for stem in ("i2c_rise", "load_step"):  # a deck the schematic asks for (tools/simneeds.py)
+        asked = {"failures": [], "warnings": [f"not judged: U1; copy templates/project/sim/{stem}.cir"]}
+        answer(project(f"asked-{stem}", record("sim", "pass", asked)))
     answer(project("decks", passed))
     board = tmp_path / "board"
     board.mkdir()
@@ -852,9 +856,19 @@ def test_a_project_with_a_ratings_file_is_held_to_it_first_and_whole_before_it_i
     assert (step["run"], step["why"]) == (ratings, "no build/ratings/report.json yet")
     assert step["done_when"] == "the last line starts with RATINGS HELD"
     (proj / "build" / "ratings").mkdir(parents=True)
+    pack = ROOT / "rules" / "ratings" / "nasa-eee-inst-002.json"
 
     def rated(status: str, verdict: str, failures: list[str], warnings: list[str]) -> None:
-        details = {"failures": failures, "warnings": warnings, "verdict": verdict}
+        """A record as a run leaves it: it names each file it read with its SHA256 (no parts file and
+        no facts here)."""
+        read = [proj / "rc_divider.kicad_sch", proj / "ratings.json", pack]
+        files = {os.path.relpath(f, proj): hashlib.sha256(f.read_bytes()).hexdigest() for f in read}
+        details = {
+            "failures": failures,
+            "warnings": warnings,
+            "verdict": verdict,
+            "inputs": {"parts": [], "files": files},
+        }
         report(proj, [record("ratings", status, details)], "ratings/report.json")
 
     line = "fail C1 100n between VOUT and GND: 6 V on 6.3 V rated is 0.95, the limit is 0.60"
@@ -877,7 +891,10 @@ def test_a_project_with_a_ratings_file_is_held_to_it_first_and_whole_before_it_i
     assert code == 0 and step["next"] == "Nothing for the bench: the gates are GREEN with no warning."
     assert "workcenter ratings" not in step["why"]
     later = time.time() + 60
-    os.utime(proj / "ratings.json", (later, later))
+    os.utime(proj / "ratings.json", (later, later))  # touched, not changed: the file the run read
+    code, step = ask(proj)
+    assert code == 0, step
+    (proj / "ratings.json").write_text('{"pack": "nasa-eee-inst-002", "nets": {}}\n', encoding="utf-8")
     code, step = ask(proj)
     assert step["next"] == "Hold the schematic to its parts' ratings."
     assert step["why"] == "ratings.json changed after the last run"

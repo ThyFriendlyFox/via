@@ -69,6 +69,81 @@ names. A circuit meets its spec when every bound holds at every corner.
 7. Run `workcenter next <project>` when a line of the result is not
    clear. It names the fix for the first failure or warning.
 
+## Decks a board asks for
+
+A board can pass every gate with no deck while its schematic holds a
+circuit an engineer would simulate. The SIM gate reads the schematic's
+netlist and asks for 2 kinds of deck:
+
+| Kind | The schematic holds | Template |
+|---|---|---|
+| `i2c-rise` | A net named SDA or SCL (a word of the net's name or of a pin's name on it: `I2C1_SDA`, `PB1/SDA`, `SCL2`) with a 2-pin resistor to a rail. A resistor is a `Device:R` symbol (`R_Small`, `R_US`, ...) or a reference `R<n>`. A rail is a net with a power pin on it that is no ground pin, or a name like `+3V3`, `VCC`, `VDD_IO`, `3V3`. A net named GND, VSS, VEE, 0V or COM, or one whose power pins are all ground pins, is ground: a resistor to it pulls down. | `templates/project/sim/i2c_rise.cir` |
+| `load-step` | A part of KiCad's `Regulator_Linear` or `Regulator_Switching` library, on a board whose `ratings.json` states a load: a part or pin under `parts` with `amps` above 0. | `templates/project/sim/load_step.cir` |
+
+The gate reads the root sheet and every sheet it names, in a subfolder or
+not.
+
+Not recognized: a line with no pull-up on this board, a bus by another
+name, a regulator drawn with a symbol of another library, a load stated
+anywhere but `ratings.json`. SPI and UART are not asked for. A resistor
+array or network (`Device:R_Pack04`, `RN1`) on an I2C line is not read:
+the gate prints `not judged: the I2C line SDA meets RN1 ...`, and no deck
+answers it. Draw the pull-ups as 2-pin resistors to have them judged.
+
+A deck answers a need by a line of its own: `* deck: i2c-rise SDA SCL`
+names the nets it stands for, `* deck: load-step U1` the regulator. The
+gate holds the line to the schematic:
+
+- An I2C deck runs each pull-up of the nets it names by its reference, at
+  the schematic's value (`R1 vdd sda 4.7k` for R1 4.7k), or runs another
+  pull-up of the same value that stands for it. Otherwise it fails:
+  `i2c_rise.cir: R1 is 4.7k in the deck and 47k in the schematic, on SDA`.
+  A value the gate reads no number from (`{rp}`) is not judged.
+- A load-step deck runs the regulator it names: an element `XU1` for U1.
+
+1. Run `workcenter gates <project>`. A line `not judged: the I2C lines ...
+   copy templates/project/sim/i2c_rise.cir` or `not judged: U1 (...) feeds
+   the loads ratings.json states ...` is a deck the board asks for. It is a
+   warning, and a failure with `--strict`.
+2. Run `workcenter next <project>`. Its RUN line copies the template's deck
+   and its expect file into `sim/`, under a name no file there has. Run it.
+3. Open the copy. Each `* fill:` line names 1 value: write the board's value
+   on the line under it, then delete the `* fill:` line. The gate fails a
+   deck that still holds 1: `i2c_rise.cir:9: still says fill: ...`.
+   - I2C: the nets on the `* deck:` line, VDD, the pull-up by its reference
+     and value, CBUS. CBUS is each device pin's capacitance (10 pF at most,
+     UM10204 Rev. 7.0, Table 10, page 43), plus the traces, the connector
+     and what plugs in: 400 pF at most (Table 11, page 44).
+   - Load step: the regulator's maker's model (`.include`, "A vendor's
+     model" below), its pins on `XU1`, the input voltage, the capacitors by
+     their references, the light load and the stated load.
+4. Check each bound in the copied expect file.
+   - I2C: `tr` is Fast-mode's, 20 to 300 ns (UM10204 Rev. 7.0, Table 11,
+     page 44). For a 100 kHz bus write Standard-mode's row: `max` 1.0e-6
+     and no `min`. `isink_share` is 1 at most: the deck divides the current
+     the pull-up asks for by the least a device sinks, 3 mA for VDD over
+     2 V, 2 mA at 2 V or below (Table 10, page 43). For VDD at 2 V or below
+     also set Ron to 0.2 x VDD / 0.002, as the deck's comment says.
+   - Load step: each source says `fill:` until it names the regulator's
+     datasheet: its load-transient row or figure, revision and page. The
+     gate refuses a bound whose source still says `fill:`.
+5. Run `workcenter gates <project> --strict`. Read each line:
+
+   | Line | Do |
+   |---|---|
+   | `<deck>.cir:<n>: still says fill: ...` | Write the value line `n` names, then delete line `n`. |
+   | `<deck>.expect.json: <measure>: its source still says fill: ...` | Write the datasheet's document, table or figure and page as the source. |
+   | `i2c_rise:tr=4.23654e-07 not in [2e-08, 3e-07] (UM10204 ...)` | The pull-up is too weak for the bus: a smaller resistor, or less capacitance. Never widen the bound. |
+   | `i2c_rise:isink_share=... not in [None, 1.0] ...` | The pull-up is too strong: a larger resistor. |
+   | `<deck>.cir: R1 is ... in the deck and ... in the schematic ...` or `... has no line in the deck ...` | The deck does not run the board's pull-up. Write each pull-up as the schematic names it, with its value. |
+   | `<deck>.cir: says ... load-step U1 and no line runs U1 ...` | Name the regulator's element `XU1`. |
+   | `load_step:undershoot=... not in ...` | The regulator dips past its datasheet's load transient: more output capacitance, or another regulator. |
+   | `not judged: the I2C lines ...` again | The `* deck:` line does not name the nets the line lists. Write them as the line spells them. |
+   | `not judged: the decks the schematic asks for: ...` | kicad-cli wrote no netlist. Run `workcenter erc <project>` and fix what it says. |
+
+`tests/boards/pass-sim-bus` holds both decks with a board's values;
+`tests/boards/fail-sim-i2c-weak` is a 10k pull-up on 50 pF: 423.65 ns.
+
 ## Corners
 
 A deck is written at 1 condition: 27 C, every part at its written value.
@@ -400,7 +475,24 @@ The fixture is `tests/boards/fail-sim-bias`.
 |---|---|---|
 | `kept` | capacitor | `[volts, share of the value kept]`, from the DC bias curve |
 | `kept_celsius` | capacitor | `[celsius, share against 25 C]`, from the temperature curve with no bias |
+| `kept_celsius_at` | capacitor | `{"volts": V, "kept": [celsius, share against 0 V and 25 C]}`, the maker's temperature curve at 1 bias (Samsung's BiasTCC) |
+| `esr` | capacitor | `{"ohms": R, "hz": f}`, the series resistance at the frequency it was read at |
+| `esl` | capacitor | `{"henries": L, "hz": f}`, the series inductance, where the maker gives a figure |
 | `kept` | inductor | `[amps, share of the value kept]`, from the L vs current curve |
+
+With `kept_celsius_at`, the share at its bias is the maker's combined
+figure. Its shares are against the value at 0 V and 25 C, so at 25 C it
+keeps about what `kept` keeps at that bias. The gate refuses a curve whose
+25 C share is nearer 1 than that, a curve that does not reach 25 C, and
+one with no `kept`. Between 0 V and that bias the temperature factor goes
+from the 0 V curve's to the bias curve's in a straight line in volts.
+That line is the gate's, not the maker's: the run says `not judged` for
+it. Past the bias the factor stays the bias curve's. `esr` and `esl` go in series with the
+capacitance in the run's copy; the curve reads the voltage across the
+capacitance alone. Read `esr` at the deck's switching frequency, and say
+in `note` between which points of the maker's graph. Never work out an
+ESL from an impedance curve: enter `esl` only from a figure the maker
+gives.
 
 1. Fetch the maker's file: `workcenter fetch <url> --to library/<maker>/<file>
    --mpn <MPN> --row`. A maker that publishes the curve as numbers (a data
@@ -412,9 +504,15 @@ The fixture is `tests/boards/fail-sim-bias`.
    and how each share was worked out.
 3. Write the part in the deck by its board reference, at its nominal value:
    `C2 out 0 10u`, `L1 sw out 2.2u`. Write it in the deck's own lines: not
-   inside a `.subckt`, not in a file the deck includes. Give it no `ic=`
-   and couple no K element to it: the gate does not rewrite those, and the
-   part runs ideal.
+   inside a `.subckt`, not in a file the deck includes, at any depth: the
+   gate does not rewrite those, and the part runs ideal. An inductor that a
+   K element of the deck's top level couples runs ideal too (a warning, not
+   a failure); a K inside a `.subckt` couples only that block's parts. With
+   `uic` (on the `.tran` line or a `+` line after it), a capacitor's `ic=`
+   goes to a 1 F capacitor whose current drives the part (`bc2_ic`,
+   `cc2_ic` in the run's copy); that form carries no `m=`, `tc1=` or other
+   parameter of the line, so such a part runs ideal. Without `uic` ngspice
+   uses no `ic=`, and the gate takes it off; `m=` and the others stay.
 4. Run `workcenter sim <project>`. The record names each part it ran on its
    data under `decks.<deck>.parts`, with its facts and its row.
 5. Read each line:
@@ -428,21 +526,26 @@ The fixture is `tests/boards/fail-sim-bias`.
    | `...: its facts name the parts by the pattern ...` | Enter the curve under the part number (`mpn`, or `mpns` for the part numbers of 1 value). |
    | `...: the file sources.csv:N keeps, ..., is not the one its SHA256 names` | Fetch the file again, or correct `source.sha256` and the row to the file's. |
    | `...: it stands inside .subckt ...` | Move the part into the deck's top level. |
-   | `...: it stands in <file>, a file the deck includes ...` | Move the part from the included file into the deck. |
-   | `...: its ic= sets its starting ...` | Remove `ic=`; start the deck from its operating point, or set the node with `.ic v(node)=...`. |
-   | `...: it is coupled by K...` | The gate cannot run a coupled inductor on its curve. A coupled part (a transformer, a common-mode choke) has no `kept` of a single inductor: enter its facts without `kept`, and say why in `note`. |
+   | `...: it stands in <file>, a file the deck includes ...` | Move the part from the included file into the deck. `<file> (from <other>)` is a file that `<other>` includes. |
+   | `...: its ic= sets its starting current ...` or `...: its ic=... is no number ...` | The gate moves only a capacitor's `ic=` that is a number. Write the number, or take the `ic=` off and start the deck from its operating point (no `uic`). |
+   | `...: its line also holds m=2, which the form the gate writes for an ic= under uic does not carry` | Write the part's whole value (`20u` for `10u m=2`), or start the deck from its operating point (no `uic`). |
+   | `...: its kept_celsius_at keeps ... at 25 C, nearer 1 than ...` | Enter the curve's shares against the value at 0 V and 25 C, as the maker's data gives them. |
+   | warning `not judged: C2's share at a temperature between 0 V and 5 V: ...` | The maker gives no curve between 0 V and the bias. If the working voltage is far from both, enter the maker's curve at a bias near it, where the maker gives one. |
+   | warning `not judged: <deck>: <ref> runs as an ideal part ...: it is coupled by K..., and the gate models no coupled inductor's curve` | The deck runs the part at its written value. Check by hand that the core does not saturate at the deck's current: the coupled part's facts give its saturation current. |
    | `...: its value ... is no number and no expression` | Write the part's value as a number. |
    | warning `<ref>'s curve ends at ... under its rating` | Past the last point the deck holds the last share. Enter the maker's points up to the rating if the maker gives them. |
    | warning `<ref> runs on its maker's data, and whether that is its maker's file is not judged: ... keeps no file` | Keep the maker's file in the library with its row's `File`, when its terms allow. |
    | warning `not judged: C2 and L1 hold their makers' data, and no deck element carries their reference` | Name the deck's parts by their board references (step 3). |
+   | warning `not judged: C2 and L1 hold their makers' data, and no deck holds a capacitor or an inductor` | The decks run no capacitor and no inductor. If a deck models one in another way (a subcircuit, a B source), write it as the part, by its reference. |
+   | warning `not judged: whether C2 and L1 run on their makers' data: ... the project has no schematic ...` | The schematic gives each part its number. Draw it, or run the decks of a project that has one. |
+   | warning `not judged: whether ... : ... kicad-cli ...` | Install KiCad (`sudo ./install.sh`) and run again. |
 
 6. A corner moves the written value by its tolerance, and the curve applies
-   on top. A temperature corner moves `kept_celsius` with it.
+   on top. A temperature corner moves `kept_celsius` and `kept_celsius_at`
+   with it.
 
-What it does not do: the 2 capacitor curves are multiplied. A maker's
-curve at 1 bias and many temperatures shows more value kept than the
-product: CL10A106KP8NNN at 5 V and 85 C keeps 27.6 %, the product 24.1 %.
-ESR and ESL are not added.
+What it does not do: an inductor's temperature, its DC resistance and a
+coupled inductor's curve; a capacitor's ESR at more than 1 frequency.
 
 ## A bound that serves a requirement
 

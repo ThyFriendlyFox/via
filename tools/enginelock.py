@@ -72,6 +72,8 @@ LONG = {
     "inspect": "inspect map only",
     # `measure` runs the project's whole sim, every deck and corner, as `sim` does (tools/measureplan.py).
     "measure": "always",
+    # `legend` starts no engine, but judges every text against every other: 6.14 s on basalt v0.3.
+    "legend": "always",
 }
 
 # The commands that never take the lock, each named so that a command added later is classed on purpose

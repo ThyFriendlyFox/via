@@ -57,6 +57,8 @@ def build(amps: float) -> kicadgen.Design:
         namespace=uuid.UUID("8b3f6c21-4d7e-4a90-b5c2-7e19d04f3a66"),
         outline=(100.0, 100.0, 140.0, 125.0),
         sheet="A4",
+        # The library put R2's designator on a via the route drops, which the DRC gate's legend fails.
+        place_designators=True,
     )
     d.power_nets = {"+5V": "+5V", "+BATT": "+BATT", "-BATT": "-BATT", "GND": "GND"}
     # +5V and GND arrive on J1, and -BATT, the cell's negative, on J2: no power-output pin drives them.

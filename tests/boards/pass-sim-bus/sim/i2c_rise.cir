@@ -1,0 +1,25 @@
+* deck: i2c-rise SDA SCL
+* templates/project/sim/i2c_rise.cir with its values set for the fixture board of
+* tests/boards/sim_bus.py: R1 (and R2, the same) is 4.7k to +3V3, and the bus capacitance is the
+* fixture's own budget, 50 pF. UM10204 Rev. 7.0, section 7.1, page 50: tr = 0.8473 x 4.7k x 50p
+* = 199.1 ns. The line sinks 3.3 / (4700 + 133.3) = 0.683 mA when held low.
+VDD vdd 0 DC 3.3
+R1 vdd sda 4.7k
+CBUS sda 0 50p
+SOD sda 0 ctl 0 SWOD
+.model SWOD SW(Ron=133.3 Roff=1G Vt=0.5 Vh=0.1)
+VCTL ctl 0 PWL(0 1 1u 1 1.001u 0 20u 0 20.001u 1)
+.tran 1n 24u
+.control
+run
+let vtop = vecmax(v(vdd))
+let v30 = 0.3 * vtop
+let v70 = 0.7 * vtop
+meas tran t30 when v(sda)=$&v30 rise=1
+meas tran t70 when v(sda)=$&v70 rise=1
+let tr = t70 - t30
+meas tran ilow find i(vdd) at=23u
+let isink = abs(ilow)
+print tr isink
+.endc
+.end

@@ -39,6 +39,42 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-18 — A board's printed text that can be read
+
+The owner asked on 2026-11-17 how to make the labels printed on the boards legible and not overlap. The DRC gate now judges every silkscreen text from the board file, and the generator places designators itself when a design asks. 2 reviews called it not sound; their 19 findings are fixed with tests. The owner decided that a label fault fails the gate at once. On scratch copies of the 17 example boards of the latest versions, 11 now fail on their own text, which the placer does not move: notes on vias, letters set close, text under 0.8 mm. Every example hides its designators; put back and placed, 831 went round their parts or to the Fab layer (186), with no failure of their own.
+
+Evidence: `tests/test_legend.py` (110 tests); landing branch `wip/land-legend`.
+
+## 2026-11-18 — A board asks for the decks its schematic implies
+
+The medium user's 400 kHz I2C board was GREEN under `--strict` with no deck. Now the SIM gate reads the schematic's netlist and asks each I2C line with a pull-up, and each regulator with a load in `ratings.json`, for a deck; `next` names the template to copy. The review found the first cut judged a deck by its `* deck:` line alone: a deck that ran 4.7k passed a board at 47k. The gate now holds the deck's pull-ups to the schematic's by reference and value. On the trunk the check met the circuit blocks: the I2C block's deck now says which lines it answers, and the buck block's fixtures carry a 4th warning, since no deck steps its load. 11 example boards and Last Hit's display are asked for an I2C deck.
+
+Evidence: branch `wip/land-u-sim`; `tests/test_simneeds.py` (20 tests), `tests/test_simneeds_cli.py` (12 tests), `tests/test_blocks_i2c.py`, `tests/test_blocks.py`.
+
+## 2026-11-18 — The DRC gate holds clearance and creepage to the voltage between nets
+
+A board can now name a creepage pack. The gate then measures each pair of nets on the outer layers, through air and along the surface, and holds it to the voltage between them. The numbers come from a free US handbook and from a TI note that reprints part of a paid IEC standard. 2 reviewers built boards that read clean while high voltage and ground sat too close: an arc read as 2 straight pieces, copper on the 2 faces near the edge, a via with no net between them. Each such board is now a test. What the check cannot measure, it names on a line: the way between the 2 faces beyond a bound, copper through the laminate, inner layers. The TI pack has no clearance table, so a board on it never passes the strict gate. A full mutation run left 272 of 777 mutants caught by no test; 11 got tests, and the other 261 were read in groups, not tested one by one.
+
+Evidence: `wip/land-creepage`; `tests/test_creepage.py` (101 tests) and `tests/test_creepage_drc.py` (6 tests).
+
+## 2026-11-18 — Done is 1 definition
+
+User round 1, C landed. In user round 1 the medium user's board printed GREEN under `gates --strict` while `workcenter ratings` left 3 parts not judged, and WORKCENTER.md said done in 2 ways. Now `gates` prints 1 line above its verdict that says whether the ratings are held, and `--strict` ends `RED (ratings not held)` while they are not. `next` reads the same function. The review found that a record could read as held after a facts file was deleted, so a ratings run now records each file it read with its SHA256. `design --route` now counts the connections it left open from KiCad's DRC and exits 1 on any. Landing found that `next`'s route step counted 9 pads where `design --route` would print 6 unconnected for the same board; the step now says both. 4 fixtures keep a `ratings.json` for `copper` and the ECSS DRC and judge nothing; their gates under `--strict` are RED, and a test names them. On the trunk the circuit blocks' fixtures hold a `ratings.json` as well; their tests now run `ratings` before `gates --strict`.
+
+Evidence: `tests/test_done.py` (26 tests), `tests/test_route_open.py` (6 tests); landing head 25b67ff.
+
+## 2026-11-18 — Roadmap item 4 further: makers' data in every deck form
+
+The SIM gate said nothing in 2 cases that the second sentence of item 4's Promise covers: a part 2 includes deep, and decks with no C or L. Both now get a line, as do a project with no schematic and a machine with no kicad-cli. A capacitor's starting voltage now runs on its data; a coupled inductor is named instead of failing the deck. Samsung's page, fetched again, gave C2's temperature curve at 5 V and its ESR. A review found 7 faults: 2 deck forms that ngspice accepts started from the wrong voltage, and a curve entered against the wrong reference undid the DC bias loss with the gate green. All 7 are fixed with tests, 2 in part. The temperature share between 0 V and the bias is still the gate's straight line, which no maker publishes, so item 4 stays in progress.
+
+Evidence: `tests/test_partdata.py` (47 tests); landing head of `wip/land-l4`.
+
+## 2026-11-18 — The health gate in shards
+
+Out of band. The health gate ran its tests in 1 process: 1557.70 s on 2026-11-17 for 1840 tests, and 1934 s on 2026-11-18 for 2233. It now runs them in 4 shards side by side, joined by `verify/testshards.py`. Side by side, 2 tests failed that pass alone: openEMS stopped the Wyvern lane's port 3 before its ports settled, because it checks its end criterion on the clock, and `workcenter fields` now runs such a port again deeper; and kicad-cli wrote a lock file into a fixture another test listed, so that file runs alone. A planted failure in each shard and a shard killed half-way each turned the gate red. A review found that a stop by signal left the shards running and that a skip only a shard gave turned the gate green; both were fixed with tests. At landing, the 1 whole run on the landing head took 763 s for 2873 tests and was red on 1 test of the trunk that counted a pack's rules by hand. The trunk had fixed that test in its own way; its fix was kept.
+
+Evidence: `tests/test_testshards.py` (38 tests), `tests/test_fields_rerun.py` (2 tests); landing head fa86215.
+
 ## 2026-11-18 — 5 circuit blocks from their makers' notes, after 6 reviews
 
 Roadmap item 3 landed in part: 5 blocks of 6. Each block takes the spec and the designer's stock, works out each value by its note, and refuses on 1 line that names the equation when no stocked part meets it. The buck builds a TLV62569 from 5 V to 3.3 V by TI SLVA477C. R2 is the datasheet's own 100 kohm, and R1 is equation 11's 450 kohm, 453k from the stock: 3.318 V. At 0.5 A the peak is 828 mA and the block takes SRN2010TA-2R2M (1.26 A); at 1.0 A it is 1.33 A and it takes XAL4020-222MEC. Its 2 reviews both said "not sound": the block never checked the output its divider set, and it held the least input to the output, not to the datasheet's dropout equation. The USB-C port came from the USB-IF's own zips; a 10 uF capacitor on VBUS fails the 10 uF limit at its +10 %, so the block takes a 4.7 uF part that keeps 2.03 uF at 5.25 V. Its review found that 2 signals on 1 net passed the block's own check. The I2C bus follows TI SLVA689A: 100 pF takes 2.2k and 200 pF takes 1.5k. Its review built 3 broken buses that passed. The charger's equation 8 at 130.8 C/W allows about 193 mA from 5.25 V into a 2.5 V cell at 40 C under the rating pack's 110 C; the block first held the junction to the datasheet's 125 C and named a current the gates refuse. The microcontroller's review found its crystal on a floating pad, on a board the gates called GREEN: no gate knows which pads of a crystal hold the crystal. The block now reads them from the crystal's facts. On landing, 4 of the blocks cited their documents with no `CITES`, which the reference check of item 2 asks; they now do. The trunk's ESD layout pack, turned on for a scratch copy of the USB-C fixture, failed its routed copper on 11 lines; the fixture is left as it is, for a later piece.

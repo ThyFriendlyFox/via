@@ -1,0 +1,41 @@
+* deck: i2c-rise SDA SCL
+* fill: write the I2C nets on the line above as the schematic names them, then delete this line.
+* The rise time of 1 I2C line. The last device lets the line go at 1 us; its pull-up then charges the
+* bus capacitance. 1 line stands for the bus when every line has the same pull-up and capacitance.
+* UM10204 Rev. 7.0 (NXP, 1 October 2021):
+*   Table 11, page 44: tr is measured from 0.3 VDD to 0.7 VDD; Fast-mode 20 to 300 ns.
+*   Section 7.1, page 50: this circuit gives tr = 0.8473 x Rp x Cb.
+*   Table 10, page 43: a device sinks 3 mA at VOL 0.4 V at the least (VDD over 2 V).
+* fill: set VDD to the rail the pull-ups go to, then delete this line.
+VDD vdd 0 DC 3.3
+* fill: name R1 as the schematic names the pull-up, with its value, then delete this line.
+R1 vdd sda 4.7k
+* fill: set CBUS: each device pin, 10 pF at most (Table 10, page 43), plus traces, connector and cable.
+* Cb is 400 pF at most in Standard- and Fast-mode (Table 11, page 44).
+CBUS sda 0 100p
+* SOD is the device that pulls the line low, at its limit: 0.4 V at 3 mA is 0.4 / 0.003 = 133.3 ohm.
+* For VDD at 2 V or under, Table 10 gives VOL2 0.2 VDD at 2 mA: set Ron to 0.2 x VDD / 0.002.
+SOD sda 0 ctl 0 SWOD
+.model SWOD SW(Ron=133.3 Roff=1G Vt=0.5 Vh=0.1)
+* Low until 1 us, released until 20 us, then low again.
+VCTL ctl 0 PWL(0 1 1u 1 1.001u 0 20u 0 20.001u 1)
+.tran 1n 24u
+.control
+run
+let vtop = vecmax(v(vdd))
+let v30 = 0.3 * vtop
+let v70 = 0.7 * vtop
+meas tran t30 when v(sda)=$&v30 rise=1
+meas tran t70 when v(sda)=$&v70 rise=1
+let tr = t70 - t30
+meas tran ilow find i(vdd) at=23u
+let isink = abs(ilow)
+* The least current a device sinks (Table 10, page 43): 3 mA for VDD over 2 V, 2 mA at 2 V or below.
+let iol = 0.003
+if vtop le 2
+  let iol = 0.002
+end
+let isink_share = isink / iol
+print tr isink isink_share
+.endc
+.end

@@ -1,0 +1,7 @@
+{
+  "pack": "nasa-eee-inst-002",
+  "nets": {
+    "HV": {"volts": [0, 400], "source": "400 V dc on J1, this fixture's own requirement for the creepage tables"},
+    "GND": {"volts": [0, 0], "source": "the return: J2"}
+  }
+}

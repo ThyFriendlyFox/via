@@ -6,7 +6,12 @@
      repository attached still finds it. -->
 
 The EE Workcenter turns a KiCad 10 project into fabrication outputs that
-passed every gate. "Done" means `workcenter gates <project>` prints GREEN.
+passed every gate. "Done" means `workcenter gates <project> --strict`
+prints GREEN. For a project with a `ratings.json` beside its schematic,
+that GREEN needs its ratings held: `build/ratings/report.json` says
+`RATINGS HELD`, and the files that run read are the files there now.
+`gates` reads that record and does not run `ratings`.
+`workcenter next <project>` says nothing is left only then.
 `workcenter next <project>` names the one step that is left at any point.
 
 It also turns a chip project (RTL, benches, timing constraints and
@@ -23,11 +28,31 @@ above it, each on its own line.
 | Last line | Meaning | Exit code |
 |---|---|---|
 | `GREEN` | Every gate that had something to run passed, with no warning. | 0 |
-| `GREEN with N warnings` | Every gate passed, and N things were named and not failed on. Each is printed. The project's gates report names each one it keeps, and why. `--strict` fails on all of them. | 0 |
+| `GREEN with N warnings` | Every gate passed, and N things were named and not failed on. Each is printed. Ratings that are not held are 1 of them. The project's gates report names each one it keeps, and why. `--strict` fails on all of them. | 0 |
 | `GREEN ... (nothing to run for: erc, drc, export)` | As above, for a project that gives some gates nothing to run: decks and no board. The line names those gates. | 0 |
 | `RED` | A gate failed, or an engine stopped with an error. | 1 |
+| `RED (ratings not held)` | `--strict`: every gate passed, and the project's `ratings.json` is not held by its ratings record. | 1 |
 | `SKIPPED (GATE: engine missing)` | A gate did not run because its engine is absent. A run with an absent engine is never GREEN. | 2 |
 | `SKIPPED` | No gate had anything to run. | 2 |
+
+The line above the verdict says the ratings:
+`RATINGS held: build/ratings/report.json says RATINGS HELD`,
+`RATINGS not held: <why> (workcenter ratings <project>)`, or
+`RATINGS not asked for: no ratings.json beside the schematic`. `<why>` is
+`no build/ratings/report.json yet`, `<file> changed after the last run`,
+`<file> is gone since the last run`, `<file> is new since the last run`,
+or the last run's own count (`N not judged`, `N fail`,
+`nothing judged (N not judged)`). `<file>` is its path from the project's
+folder (`../parts/catalog.csv`). The ratings record names each file its run
+read with its SHA256: the schematic, `ratings.json`, the parts files it was
+given (`--parts`, else `parts.csv`), the pack `ratings.json` names, and
+every facts file. A file touched and not changed is the same file. A
+`RATINGS HELD` record that names no file is not held. A file that is no
+record of a run is refused in 1 line naming the key
+(`build/ratings/report.json: details is no object`). `--report` writes the
+same line and verdict into the report. With `--json`, stdout holds the
+gates' records alone, as before; the ratings line and the verdict line go
+to stderr.
 
 `workcenter doctor` reports each engine as ok, absent or MISSING. A gate
 whose engine is absent is skipped with the engine's name. Its first line
@@ -94,6 +119,7 @@ file: it needs nothing else.
 | `board-rules` | A routed board is to be held to a standard: each gap to the voltage between its nets and each track's width to its net's current, from `ratings.json`, with `board-rules.json` naming the pack; or to a fab's published limits. |
 | `standards` | A board is near release and someone asks what its product must meet: `product.json` names the kind, and `workcenter standards` lists each requirement of the kind's free documents as held by a gate, held by a named test, or not held. |
 | `references` | A rule cites a standard or a datasheet: get the copy it was written from with `workcenter references fetch`, judge a file a person downloaded with `workcenter references check`, and keep `workcenter references rules` passing. |
+| `legend` | A board's labels must be legible and not overlap: each designator placed by the generator, every text held by the DRC gate to the fab's least size and the legend's rules. |
 | `now` | Several agents work at once and a maintainer follows them on the project board: 1 work card per piece of work with `workcenter now`, its `**Status:**` line Todo, In progress or Done, in 1 GitHub issue's body rewritten at each landing, block and health gate, or on the `status` branch with `--write`. |
 | `lead` | Roadmap work is to be done by helpers: a worktree and a brief per piece, a build, an attack and a fix, a second attack for a piece called not sound, and `ee-agent-kit/lead/landed.py` to see which pieces have finished. |
 | `land` | Finished pieces are to go onto the work branch, and later onto the default branch: commits in a straight line, docs files applied, the health gate alone with the push behind VERIFY GREEN (`ee-agent-kit/lead/gate-and-push.sh`), a merge commit only at the owner's word. |
@@ -110,8 +136,8 @@ file: it needs nothing else.
 | Gate | Command | Pass condition | Runs before |
 |---|---|---|---|
 | ERC | `workcenter erc <project>` | 0 errors in the ERC report | layout |
-| DRC | `workcenter drc <project>` | 0 errors, 0 unconnected items, 0 parity errors; with the project's fab rules (`<name>.kicad_dru`) when its design names a fab | export |
-| SIM | `workcenter sim <project>` | every `sim/*.cir` runs clean with no analysis aborted, every `*.expect.json` bound holds as written and at every corner of `sim/corners.json`, every overlap `sim/frequency-plan.json` shows is answered, every part `sim/thermal.json` names keeps its junction under its pack's derated limit at every run, and every library model a deck includes is unchanged since its `sources.csv` row | export |
+| DRC | `workcenter drc <project>` | 0 errors, 0 unconnected items, 0 parity errors, 0 legend failures; with the project's fab rules (`<name>.kicad_dru`) when its design names a fab | export |
+| SIM | `workcenter sim <project>` | every `sim/*.cir` runs clean with no analysis aborted, every `*.expect.json` bound holds as written and at every corner of `sim/corners.json`, every overlap `sim/frequency-plan.json` shows is answered, every part `sim/thermal.json` names keeps its junction under its pack's derated limit at every run, and every library model a deck includes is unchanged since its `sources.csv` row, and every I2C line with a pull-up and every regulator with a load stated in ratings.json has a deck that names it (a warning; a failure with --strict) | export |
 | EXPORT | `workcenter export <project>` | gerbers, drill, BOM, schematic PDF, placement file (each part at its place and rotation), an assembly page per side that holds a part (DNP parts hidden; each designator of that side drawn, read from the page's text), IPC-2581 produced, and each of the last 3 read back against the board; with `panel.json`, a KiKit panel of rows x cols boards in a closed outline at least their size, and its Gerbers | hand-off to fabrication |
 | ALL | `workcenter gates <project>` | the 4 gates above in order, none red, none skipped for a missing engine | a board is called done |
 
@@ -141,7 +167,8 @@ Its verdict is its exit code. It writes every file even when it exits 1.
 The causes of exit 1: a hand via its check refuses; a part in a keep-out or
 with every pad outside the outline; a floating input with `check_pulls`; a
 `sim:` problem; an unrouted connection the router counts; a route that left
-every connection without copper. On exit 1 its last line says `red`, names
+every connection without copper; an unconnected item in KiCad's DRC of
+the board the route wrote. On exit 1 its last line says `red`, names
 each failure, and says the files are for inspection only: a CI regenerate
 check fails on that exit code (M85). The generator refuses some design
 files when it loads them: a namespace that is no UUID, `power_nets` that is
@@ -152,6 +179,15 @@ generates, routes and passes ERC and DRC as it stands. Each via it drops through
 after routing is printed as a `stitch:` line with the net, the island's layer,
 the pads the island holds and the layer the via reaches, so a via that moved
 between two runs can be traced to its pads.
+
+After a route, `workcenter design --route` reads KiCad's DRC of the board
+it wrote (the zone fill's report when the board has a pour, else 1 DRC run)
+and prints `route: N unconnected; first <net>: <end> to <end>` and
+`inspect: workcenter inspect net <board> <net>`, and exits 1; with none it
+prints `route: 0 unconnected`. The `--json` summary's `route` holds
+`unconnected`, `open` and `board`. Without kicad-cli the route stands, its
+exit code is its own, and the line reads
+`route: unconnected not counted: kicad-cli is not installed`.
 
 `workcenter design --route --seed <board>` starts the router from a previous
 routed board, usually the version the design was copied from: its router
@@ -213,12 +249,27 @@ judged`, and each failure names its document, clause, table and page. A
 net whose name a KiCad rule cannot hold is not judged. With `--strict`, a
 line not judged fails the gate. The `board-rules` skill is the procedure.
 
+Every board's legend is judged with the DRC (`tools/legend.py`): a text under the fab's least height or stroke, one on another text, a pad's mask opening, a hole or the edge, a designator under a part or by the wrong part, more than 2 directions a side. KiCad's own legend checks are failures whatever their severity. The least height and stroke are the fab's, from its rule set in `rules/`; a board that names no fab is held to the least of them (0.8 mm high, 0.0762 mm stroke). The summary ends `legend (<fab>): N fail, M not judged`; with `--strict`, a line not judged fails the gate. The `legend` skill is the procedure.
+
+Not a gate: `workcenter legend <project> [--fab NAME] [--place OUT] [--show] [--strict]` runs the same check from the board file, without KiCad. `--place OUT` writes a copy with every designator placed; the project is not changed. A design sets `place_designators = True` for `workcenter design` to place them on every write.
+
 `board-rules.json` also takes `layout`, a list of layout packs, with or
 without `pack` (`rules/board/README.md`, "Layout packs"):
 `ti-slva680a-esd` (TI SLVA680A: a TVS at each line of a connector that
 leaves the device) and `ti-szza009-emi` (TI SZZA009: power and ground
 traces at most 3:1 on a 2-layer board). The project states what the board
 file cannot: `connectors`, `inside`, `protectors`, `ground`, `power`.
+
+`board-rules.json` also takes `creepage`, 1 creepage pack and its conditions
+(`rules/board/README.md`, "Creepage packs"): `mil-hdbk-454c-g69`
+(MIL-HDBK-454C table 69-I: clearance and creepage) or
+`ti-slup419-creepage` (TI SLUP419: creepage by pollution degree and
+material group, and the least width of a slot). The DRC gate holds each
+pair of nets with a voltage between them on F.Cu and on B.Cu, between
+bare copper. A slot between 2 nets lengthens the way. A plated hole or
+via with no net joins the 2 faces. Between the 2 faces, through the
+laminate and on inner layers the check prints `not judged`, and so does
+a pack with no clearance table.
 
 Not a gate, but part of every hand-off: `workcenter render <project>` writes
 the schematic, board top and bottom, and 3D images into `build/render/`, and
@@ -346,6 +397,20 @@ end shows it. A resonance read from a deck that runs no corner fails the
 plan, as does a measure of the plan that some corner does not print. A
 source whose frequency the deck gives as no number is named in a warning.
 
+The SIM gate asks for the decks a schematic implies (`tools/simneeds.py`, the
+`simulate` skill, "Decks a board asks for"). It exports the netlist of a
+schematic whose sheets name SDA, SCL or a regulator library, and prints 1
+`not judged:` line for each I2C line with a resistor to a rail, and each
+part of `Regulator_Linear` or `Regulator_Switching` on a board whose
+`ratings.json` states a load, that no deck answers with a
+`* deck: i2c-rise <nets>` or `* deck: load-step <ref>` line. The line is a
+warning, and a failure with `--strict`. A deck that says it answers is held
+to the schematic: an I2C deck runs each pull-up by its reference at the
+schematic's value, or one of the same value; a load-step deck runs the
+regulator. `templates/project/sim/` holds both decks; the gate fails a deck
+that still holds a `* fill:` line and refuses a bound whose source starts
+with `fill:`.
+
 The SIM gate runs each deck capacitor and inductor named like a board
 reference on its maker's data (`tools/partdata.py`, the `simulate`
 skill). It does so when the project's `library/facts/` holds a curve for
@@ -353,18 +418,25 @@ the part's number (`kept`, `kept_celsius`) in an entry that names that
 number (`mpn` or `mpns`), and `library/sources.csv` has the row of the
 maker's file with the SHA256 the facts name. A capacitor takes its value
 at its working voltage and at the run's temperature, the 2 curves
-multiplied; an inductor takes its value at its current. The gate needs
+multiplied, or at its bias on the maker's curve at that bias
+(`kept_celsius_at`); an inductor takes its value at its current. The gate needs
 the schematic and `parts.csv` to know each part's number. A part whose
 data the gate cannot apply fails the deck with the reason: no row, an
 entry that names the part by a pattern or a symbol, a place inside a
-`.subckt` or in a file the deck includes, an `ic=`, a K element that
-couples it, or a value that is no number. A bound that fails on the data
+`.subckt` or in a file the deck includes, at any depth, an inductor's `ic=` under
+`uic`, a capacitor's `ic=` under `uic` with `m=` or `tc1=` on its line,
+or a value that is no number. A capacitor's `ic=` under `uic` runs on
+its data through a 1 F capacitor; without `uic` it is taken off. A K
+element that couples an inductor leaves it ideal with a `not judged`
+warning. A bound that fails on the data
 names the parts that miss it alone, and the value with every part ideal:
-`tests/boards/fail-sim-bias` gives 6.755 mV of ripple on its 5 mV bound,
+`tests/boards/fail-sim-bias` gives 6.851 mV of ripple on its 5 mV bound,
 3.04 mV with ideal parts, and names C2. A row that keeps no file leaves
 the SHA256 not judged, with a warning. A deck that holds a C or L under a
 name that is no board reference, while board parts hold data, gets a
-warning. A bundle carries the rewritten deck.
+warning. So do decks with no C or L while parts hold data, a project with no
+schematic, and a machine with no kicad-cli. `esr` and `esl` go in series
+with the capacitor. A bundle carries the rewritten deck.
 
 The SIM gate holds the junction of each part `sim/thermal.json` names
 (`tools/thermal.py`, the `simulate` skill). At every run it judges, the
@@ -457,9 +529,12 @@ its first problem. A project with a `ratings.json` is held to its parts'
 ratings in 2 places: a stress that fails, or a file `ratings` does not
 take, comes before the gates, since a part that changes takes its routes
 with it; what is left not judged comes after them, and the project is not
-done until the last line is `RATINGS HELD`. A board generated without
+done until its ratings are held, as `gates` says it. A board generated without
 `--route` is told to route before the gates: the answer counts the pads
-on nets with no track, via or pour. It exits 0 when nothing is left and 1
+on nets with no track, via or pour, and their connections as
+`design --route` counts them
+(`9 pads on 3 nets have no track, via or pour, 6 unconnected`); the step
+is done when the route prints `route: 0 unconnected`. It exits 0 when nothing is left and 1
 when a step is named; exit 1 is no error, it means do the step. A finished
 project gets no `RUN`
 line. It writes nothing. For a chip project (`tools/chipguide.py`) the
@@ -552,7 +627,9 @@ than the schematic's symbol does fails too. A line is `fail`, `accepted`,
 `not judged` or `hold`. A line that holds a stress to a limit names the
 limit's document; a pack's rule, a pin's limit and a needed part name
 the page too. The last line is `RATINGS HELD`,
-`RATINGS HELD, N NOT JUDGED`, `NOTHING JUDGED` or `RATINGS NOT HELD`. Exit
+`RATINGS HELD, N NOT JUDGED`, `NOTHING JUDGED` or `RATINGS NOT HELD`.
+`workcenter gates` reads this record (see the Verdicts); a record of other
+files than the ones there now is not held. Exit
 1 on a failure, on a run that judged nothing, on a file the command does
 not take, and with `--strict` on what was not judged. `--facts REF` prints
 an entry of facts to fill for 1 part. It writes `build/ratings/netlist.xml`,
@@ -848,7 +925,7 @@ and no analog block. The engines install on request:
 - `.gitignore` entries: `build/`, `*.kicad_prl`
 - Files: one `<name>.kicad_pro` with `<name>.kicad_sch` and `<name>.kicad_pcb` beside it
 - Optional: `design.py` exposing `build() -> kicadgen.Design`, the source the KiCad files are generated from
-- Optional: `sim/<deck>.cir` with `sim/<deck>.expect.json` for the SIM gate; `sim/models/` for the project's own fitted models
+- Optional: `sim/<deck>.cir` with `sim/<deck>.expect.json` for the SIM gate; `sim/models/` for the project's own fitted models; a deck that answers a circuit the schematic implies says so on a line of its own, `* deck: i2c-rise <nets>` or `* deck: load-step <ref>`
 - With decks: `sim/corners.json`, the temperature range and the parts' tolerances every bound must hold over (start from `templates/project/corners.json`); the gate warns without it
 - With decks that drive periodic sources: `sim/frequency-plan.json`, the sources and the measured resonances (start from `templates/project/frequency-plan.json`); the gate warns without it
 - With parts that dissipate power: `sim/thermal.json`, the rating pack and, for each part, its number and the deck measure that prints its power; the part's facts give `thermal` (the `simulate` skill, "A part's temperature")

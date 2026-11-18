@@ -391,7 +391,7 @@ def i2c(  # noqa: PLR0912, PLR0913, PLR0915
         }
     }
     rows = rows_of([(item, 2)])
-    files = _deck(refs["sda"], sda, item, f, ohms, cb, top, rise, note, speed, sums)
+    files = _deck(refs["sda"], (sda, scl), item, f, ohms, cb, top, rise, note, speed, sums)
     return Block("i2c", sums, entries, rows, files)
 
 
@@ -416,13 +416,17 @@ def _read_back(d, chosen, value, ohms, t, least, rise, factor, cb) -> None:  # n
             raise Refused(f"i2c {ref}: {part.value} does not hold the bounds the block worked out")
 
 
-def _deck(ref, line, item, f, ohms, cb, top, rise, note, speed, sums) -> dict[str, str]:  # noqa: PLR0913
+def _deck(ref, lines_of, item, f, ohms, cb, top, rise, note, speed, sums) -> dict[str, str]:  # noqa: PLR0913
     """sim/i2c.cir: SDA let go from 0 V, charged through its pull-up into the bus capacitance; the rise
-    from 0.3 to 0.7 of the supply (equations 3 and 4) is held to the speed's tr of table 2-1."""
+    from 0.3 to 0.7 of the supply (equations 3 and 4) is held to the speed's tr of table 2-1. Its
+    `* deck: i2c-rise SDA SCL` line answers the SIM gate's question for both lines (tools/simneeds.py):
+    the 2 pull-ups are 1 value, so the one the deck runs stands for the other."""
+    line, scl = lines_of
     lo, hi = note["rise_from"]["value"] * top, note["rise_to"]["value"] * top
     tau = ohms * cb
     lines = [
         f"i2c: the {line} line of the I2C block {ref}, written by tools/blocks_i2c.py",
+        f"* deck: i2c-rise {line} {scl}",
         f"* {ref} {item.mpn} pulls {line} up to {_g(top)} V, the bus's greatest voltage; CBUS is the bus "
         "capacitance. The open drain lets go at 0 s.",
         f"* tr runs from {note['rise_from']['value']:g} to {note['rise_to']['value']:g} of the supply "

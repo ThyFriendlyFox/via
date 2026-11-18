@@ -43,6 +43,7 @@ DESIGN = ".claude/skills/board-design/SKILL.md"
 SIMULATE = ".claude/skills/simulate/SKILL.md"
 VERIFICATION = ".claude/skills/verification/SKILL.md"
 RATINGS = ".claude/skills/ratings/SKILL.md"
+LEGEND = ".claude/skills/legend/SKILL.md"
 INPUT_SUFFIXES = (".kicad_sch", ".kicad_pcb", ".kicad_pro", ".kicad_dru")
 # A file of these names its project, as `find_project` reads it. Any other file is inside a project.
 PROJECT_FILES = (".kicad_pro", ".kicad_sch", ".kicad_pcb")
@@ -227,6 +228,12 @@ HINTS: list[tuple[str, str, str]] = [
     ),
     (r"^drc: courtyards_overlap", "Move the footprint.", f'{GATES}, "Common violations"'),
     (r"^drc: silk", "Move the silkscreen text off the copper or the edge.", f'{GATES}, "Common violations"'),
+    (
+        r"^drc: legend (size|overlap|hidden|nearest|direction|not judged): ",
+        "Move or enlarge the text the line names in the design file. "
+        "For a designator, set `d.place_designators = True` and write the board again.",
+        f'{LEGEND}, "Steps"',
+    ),
     (
         r"^sim: no sim/corners\.json",
         "Write sim/corners.json: the temperature range from the requirement it comes from and each part's "
@@ -478,15 +485,6 @@ def inputs_of(project) -> list[Path]:
     return sorted(found)
 
 
-def ratings_inputs(cli, project) -> list[Path]:
-    """The files a ratings report is made from: the schematic, ratings.json, the project's parts file
-    and the facts of the library the command finds."""
-    named = ("ratings.json", "parts.csv")
-    found = sorted(p for p in project.dir.iterdir() if p.suffix == ".kicad_sch" or p.name in named)
-    library = cli.ratings().find_facts(project.dir)
-    return found + (sorted(library.glob("*.json")) if library else [])
-
-
 # The board file's text, as `unrouted` reads it: a quoted string (parentheses in it are no block), or a
 # parenthesis. A block's head is the word after its parenthesis; a net is `(net 3 "GND")` in a pad,
 # `(net 3)` or `(net "GND")` in a track, a via or a pour.
@@ -542,6 +540,116 @@ def newest(report: Path, inputs: list[Path]) -> Path | None:
     return next((p for p in inputs if p.stat().st_mtime > made), None)
 
 
+@dataclass
+class Ratings:
+    """Whether a project's ratings are held: the 1 definition `gates` and `next` both read."""
+
+    asked: bool  # the project has a ratings.json and a schematic
+    held: bool
+    why: str
+    rerun: bool = False  # no record of a run on the files there now: a fresh `ratings` run is the step
+
+    def line(self, project: str) -> str:
+        """The line `gates` prints above its verdict."""
+        if not self.asked:
+            return f"RATINGS not asked for: {self.why}"
+        if self.held:
+            return f"RATINGS held: {self.why}"
+        return f"RATINGS not held: {self.why} (workcenter ratings {project})"
+
+
+RECORD = "build/ratings/report.json"
+
+# When a `design --route` step is done: its exit code, its count of open connections, no problem line.
+ROUTED = (
+    "the command exits 0, prints `route: 0 unconnected` "
+    "and no file:, sim:, pull:, via:, part: or island: line"
+)
+
+
+def ratings_record(cli, project):
+    """The record of the last ratings run, or the 1 line that refuses it: a file that is no record of a
+    run, named with the key that is wrong."""
+    try:
+        rated = cli.Result(**json.loads((project.dir / RECORD).read_text(encoding="utf-8")))
+    except (ValueError, TypeError) as exc:
+        return f"{RECORD} is no record of a run: {exc}"
+    details = rated.details
+    if not isinstance(details, dict):
+        return f"{RECORD}: details is no object"
+    if "verdict" in details and not isinstance(details["verdict"], str):
+        return f"{RECORD}: details.verdict is no text"
+    for key in ("failures", "warnings"):
+        if not isinstance(details.get(key, []), list):
+            return f"{RECORD}: details.{key} is no list"
+    inputs = details.get("inputs", {"parts": [], "files": {}})
+    if not (
+        isinstance(inputs, dict)
+        and isinstance(inputs.get("parts"), list)
+        and all(isinstance(p, str) for p in inputs["parts"])
+        and isinstance(inputs.get("files"), dict)
+        and all(isinstance(v, str) for v in inputs["files"].values())
+    ):
+        return f"{RECORD}: details.inputs is no object of parts and files"
+    return rated
+
+
+def ratings_stale(cli, project, inputs: dict) -> str:
+    """The first file a run read that is not there now as it was read, or that the run did not read and
+    a run now would: '' when the record speaks of the files there now. Each file is held by its SHA256,
+    so a file touched and not changed is the same file, and one put back with an old time is not."""
+    ratings = cli.ratings()
+    given = [project.dir / p for p in inputs["parts"]]
+    if not given and (project.dir / "parts.csv").is_file():
+        given = [project.dir / "parts.csv"]  # what `ratings` reads when it is given no --parts
+    now = ratings.read_by_run(project, given, cli)
+    for rel, digest in inputs["files"].items():
+        path = now.get(rel)
+        if path is None or not path.is_file():
+            return f"{rel} is gone since the last run"
+        try:
+            if ratings.sha256(path) != digest:
+                return f"{rel} changed after the last run"
+        except OSError as exc:
+            return f"{rel} cannot be read: {exc.strerror}"
+    return next((f"{rel} is new since the last run" for rel in now if rel not in inputs["files"]), "")
+
+
+def ratings_state(cli, project) -> Ratings:
+    """Held: build/ratings/report.json says exactly RATINGS HELD and the files that run read are the
+    files there now (ratings_stale). A record of other files, a record that names no file it read, and
+    a file that is no record of a run are not held."""
+    if not (project.dir / "ratings.json").is_file():
+        return Ratings(False, False, "no ratings.json beside the schematic")
+    if not project.sch:
+        return Ratings(False, False, "no schematic beside ratings.json")
+    if not (project.dir / RECORD).is_file():
+        return Ratings(True, False, f"no {RECORD} yet", rerun=True)
+    rated = ratings_record(cli, project)
+    if isinstance(rated, str):
+        return Ratings(True, False, rated, rerun=True)
+    inputs = rated.details.get("inputs")
+    stale = ratings_stale(cli, project, inputs) if inputs else ""
+    if stale:
+        return Ratings(True, False, stale, rerun=True)
+    said = rated.details.get("verdict")
+    if said == "RATINGS HELD" and not inputs:
+        return Ratings(True, False, f"{RECORD} names no file its run read", rerun=True)
+    if said == "RATINGS HELD":
+        return Ratings(True, True, "build/ratings/report.json says RATINGS HELD")
+    # The words of the ratings verdict itself (ratings.verdict), never a count made again here.
+    for pattern, why in (
+        (r"RATINGS HELD, (\d+) NOT JUDGED", r"\1 not judged"),
+        (r"RATINGS NOT HELD \((.+)\)", r"\1"),
+        (r"NOTHING JUDGED \((.+)\)", r"nothing judged (\1)"),
+    ):
+        if said and re.fullmatch(pattern, said):
+            return Ratings(True, False, re.sub(pattern, why, said))
+    if said:
+        return Ratings(True, False, f"the last run says {said}")
+    return Ratings(True, False, f"the last run judged nothing: {rated.summary}")
+
+
 def trouble(cli, results: list) -> tuple[str, str, bool] | None:
     """The first thing a gates run asks for: (gate, line, whether it is a failure). A red gate's first
     failure, else the first warning of any gate, else None."""
@@ -564,6 +672,35 @@ def trouble(cli, results: list) -> tuple[str, str, bool] | None:
         if said:
             return r.gate, said[0], False
     return None
+
+
+DECK_STEPS = {  # a template of templates/project/sim/ -> what to do once it is copied
+    "i2c_rise": "Copy the I2C rise-time deck into sim/. Set each value its `* fill:` lines name, then "
+    "delete those lines.",
+    "load_step": "Copy the load-step deck into sim/. Include the regulator's model and set each value its "
+    "`* fill:` lines name. Write each bound's source from the datasheet, then delete those lines.",
+}
+
+
+def copy_deck(cli, project, quoted: str, stem: str, line: str, gates: str) -> Step:
+    """The step for a circuit the SIM gate found no deck for: copy the template's deck and its bounds
+    under a name sim/ does not hold yet (tools/simneeds.py), then write the board's values into them."""
+    import simneeds
+
+    name = simneeds.free_name(project.dir / "sim", stem)
+    src = cli.SRC_DIR / "templates" / "project" / "sim"
+    copies = " && ".join(
+        f"cp {shlex.quote(str(src / f'{stem}{ext}'))} {quoted}/sim/{name}{ext}"
+        for ext in (".cir", ".expect.json")
+    )
+    return Step(
+        DECK_STEPS[stem],
+        f"mkdir -p {quoted}/sim && {copies}",
+        f"SIM: {line}",
+        f'{SIMULATE}, "Decks a board asks for"',
+        f"sim/{name}.cir holds no `* fill:` line, and `{gates} --strict` runs it and asks for no deck "
+        "it answers",
+    )
 
 
 def next_step(cli, target: str, run_check=True) -> Step:
@@ -626,7 +763,7 @@ def next_step(cli, target: str, run_check=True) -> Step:
                 f"{wc} design {quoted}/design.py --route",
                 "the folder holds a design file and no KiCad project",
                 f'{DESIGN}, "Steps"',
-                "the command exits 0 and prints no file:, sim:, pull:, via:, part: or island: line",
+                ROUTED,
             )
         # A board is the common start, and its command reads nothing but the template: this answer
         # runs no engine. A deck or a chip starts otherwise, and the answer says how.
@@ -708,18 +845,17 @@ def next_step(cli, target: str, run_check=True) -> Step:
     # board's gates: a part that changes takes its routes with it. What is left not judged comes after.
     ratings = f"{wc} ratings {quoted}"
     rated = None  # the record of the last ratings run
-    if (project.dir / "ratings.json").is_file() and project.sch:
-        record = project.dir / "build" / "ratings" / "report.json"
-        newer = newest(record, ratings_inputs(cli, project)) if record.is_file() else None
-        if not record.is_file() or newer:
+    state = ratings_state(cli, project)
+    if state.asked:
+        if state.rerun:
             return Step(
                 "Hold the schematic to its parts' ratings.",
                 ratings,
-                f"{newer.name} changed after the last run" if newer else "no build/ratings/report.json yet",
+                state.why,
                 f'{RATINGS}, "Steps"',
                 "the last line starts with RATINGS HELD",
             )
-        rated = cli.Result(**json.loads(record.read_text(encoding="utf-8")))
+        rated = ratings_record(cli, project)
         failures = rated.details.get("failures", []) or ([rated.summary] if rated.status == "error" else [])
         if failures:
             do, read = hint("ratings", failures[0])
@@ -737,9 +873,12 @@ def next_step(cli, target: str, run_check=True) -> Step:
             return Step(
                 "Route the board before the gates: nets on it have no copper yet.",
                 f"{wc} design {shlex.quote(str(design))} --route",
-                f"{pads} pads on {len(loose)} nets have no track, via or pour: {shown}",
+                # A net of k pads and no copper is k - 1 connections: KiCad DRC's count, which
+                # `design --route` prints on its `route: N unconnected` line.
+                f"{pads} pads on {len(loose)} nets have no track, via or pour, "
+                f"{pads - len(loose)} unconnected: {shown}",
                 f'{DESIGN}, "Steps"',
-                "the command exits 0 and prints no file:, sim:, pull:, via:, part: or island: line",
+                ROUTED,
             )
     if not report.is_file():
         return Step(
@@ -782,6 +921,9 @@ def next_step(cli, target: str, run_check=True) -> Step:
     found = trouble(cli, results)
     if found:
         gate, line, failed = found
+        asked = re.search(r"copy templates/project/sim/(\w+)\.cir$", line) if gate == "sim" else None
+        if asked:
+            return copy_deck(cli, project, quoted, asked.group(1), line, gates)
         do, read = hint(gate, line)
         return Step(
             do,
@@ -790,7 +932,7 @@ def next_step(cli, target: str, run_check=True) -> Step:
             read,
             "the last line is GREEN, with no warning" if not failed else "the last line starts with GREEN",
         )
-    if rated is not None and rated.details.get("verdict") != "RATINGS HELD":
+    if rated is not None and not state.held:
         left = rated.details.get("warnings", []) or [rated.details.get("verdict") or rated.summary]
         do, read = hint("ratings", left[0])
         return Step(

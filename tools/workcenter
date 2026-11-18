@@ -325,24 +325,30 @@ def gate_drc(project: Project, out: Path, strict: bool = False, fab: str | None 
 
         rules = boardrules.gate(project, out, strict, sys.modules[__name__])
         red = red or rules["red"]
+    # Every board's printed text, held to its fab's least size and to the legend's rules: tools/legend.py.
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import legend
+
+    text = legend.gate(project, data, strict, fab)
+    red = red or text["red"]
     return Result(
         "drc",
         "fail" if red else "pass",
         f"{errors} errors, {warnings} warnings "
         f"({len(groups['unconnected_items'])} unconnected, {len(groups['schematic_parity'])} parity)"
         + (f", fab rules {Path(fab).stem}" if fab else "")
-        + (f", {rules['summary']}" if rules else ""),
+        + (f", {rules['summary']}" if rules else "")
+        + f", {text['summary']}",
         {
             "fab": Path(fab).stem if fab else None,
             "counts": counts,
             "first": first_violations(
                 groups["violations"] + groups["unconnected_items"] + groups["schematic_parity"]
             ),
-            **(
-                {"board_rules": rules, "failures": rules["failures"], "warnings": rules["warnings"]}
-                if rules
-                else {}
-            ),
+            **({"board_rules": rules} if rules else {}),
+            "legend": text,
+            "failures": (rules["failures"] if rules else []) + text["failures"],
+            "warnings": (rules["warnings"] if rules else []) + text["warnings"],
         },
         [str(report)],
     )
@@ -395,35 +401,81 @@ def thermal():
     return module
 
 
+def deck_needs(project: Project, out: Path, decks: list[Path]) -> tuple[list[str], list[str]]:
+    """The circuits of the schematic that no deck answers (tools/simneeds.py): an I2C line with its
+    pull-up, a regulator with a stated load; as (failures, not judged lines). A failure is a deck that
+    says it answers a circuit and does not run the board's part. The netlist is exported only from a
+    schematic whose sheets (the root and every sheet it names) name SDA, SCL or a regulator's library,
+    or that names a sheet the gate cannot read."""
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import simneeds
+
+    texts, unread = simneeds.schematic_texts(project.sch) if project.sch else ([], [])
+    if not unread and not simneeds.worth_reading(texts):
+        return [], []
+    if not shutil.which(KICAD_CLI):
+        return [], [
+            f"not judged: the decks the schematic asks for: {KICAD_CLI} is not on PATH to read its netlist"
+        ]
+    out.mkdir(parents=True, exist_ok=True)
+    text, err = schematic_netlist(project, out)
+    try:
+        net = ratings().read_netlist(text) if text is not None else None
+    except ValueError as exc:
+        net, err = None, str(exc)
+    if net is None:
+        return [], [f"not judged: the decks the schematic asks for: no netlist ({err.strip()[-200:]})"]
+    loads = simneeds.stated_loads(project.dir / "ratings.json")
+    texts = {d.stem: d.read_text(encoding="utf-8", errors="replace") for d in decks}
+    found = simneeds.needs(net, loads, texts)
+    return [n.line for n in found if n.failed], [n.line for n in found if not n.failed]
+
+
 def deck_part_data(
     project: Project, folder: Path, sources: Path | None, decks: list[Path]
 ) -> tuple[dict, dict, dict, list, list]:
     """The curves of the schematic's capacitors and inductors from the library's facts, each from a
     maker's file with its row in sources.csv (tools/partdata.py): (curves, refused, labels, failures,
     warnings). `refused` maps a part to why its data cannot be used, `labels` a part to its facts entry
-    and part number. Nothing when the project's library holds no curve or no schematic names the parts,
-    or when no deck holds a capacitor or an inductor. A part with data that no deck element carries by
-    its reference, while a deck holds a capacitor or an inductor under another name, is not judged."""
+    and part number. Nothing when the project's library holds no curve. When the library holds one and
+    the decks hold C or L elements, by a board reference or another name, a project with no schematic, or a
+    machine whose kicad-cli does not read it, leaves them not judged. A part with data that no deck
+    element carries by its reference is not judged when a deck holds a capacitor or an inductor under
+    another name, or when no deck element carries any part with data (no C or L at all included)."""
     rt, pd, sc = ratings(), partdata(), simcorners()
     library = rt.find_facts(project.dir)
     names: set[str] = set()  # each element of the decks and of the files they include, upper case
+    spelled: dict[str, str] = {}  # a deck element's name as the deck writes it
     for d in decks:
         text = d.read_text(encoding="utf-8", errors="replace")
+        spelled = {**sc.deck_names(text.split("\n")), **spelled}
         names.update(sc.deck_names(text.split("\n")))
         names.update(n.upper() for body in deck_includes(d, text).values() for n in sc.top_level_parts(body))
     named = {name for name in names if pd.REF_RE.match(name)}
     other = sorted(name for name in names if name[0] in "CL" and not pd.REF_RE.match(name))
-    if library is None or not project.sch or not (named or other):
+    if library is None:
         return {}, {}, {}, [], []
-    unmatched = f"{library} holds part data, and no deck part is matched to it"
+    by_ref = lambda r: (r[0], int(r[1:]))  # noqa: E731
+
+    def unread(why: str) -> tuple[dict, dict, dict, list, list]:
+        # a C or an L under another name may be a part with data too
+        listed = [*sorted(named, key=by_ref), *(spelled.get(n, n) for n in other)]
+        if not listed:
+            return {}, {}, {}, [], []
+        run = "runs on its maker's" if len(listed) == 1 else "run on their makers'"
+        line = f"not judged: whether {names_and(listed)} {run} data: the library's facts hold curves"
+        return {}, {}, {}, [], [f"{line}, and {why}"]
+
     try:
         facts = rt.read_facts(library)
-        if not any("kept" in f.data or "kept_celsius" in f.data for f in facts):
+        if not any(key in f.data for f in facts for key in pd.HOLDS):
             return {}, {}, {}, [], []
+        if not project.sch:
+            return unread("the project has no schematic to give the parts' numbers")
         folder.mkdir(parents=True, exist_ok=True)
         net, stderr = rt.export_netlist(project, folder, sys.modules[__name__])
         if net is None:
-            return {}, {}, {}, [], [f"{unmatched}: kicad-cli wrote no netlist: {stderr.strip()}"]
+            return unread(f"kicad-cli wrote no netlist of the schematic: {stderr.strip()}")
         listed = project.dir / "parts.csv"
         mpns = rt.part_numbers(
             net, rt.parts_rows([listed], sys.modules[__name__]) if listed.is_file() else []
@@ -440,7 +492,7 @@ def deck_part_data(
             else []
         )
     except FileNotFoundError as exc:
-        return {}, {}, {}, [], [f"{unmatched}: engine missing: {exc.filename}"]
+        return unread(f"kicad-cli, which reads the schematic, is not there: {exc.filename}")
     except (ValueError, OSError) as exc:
         return {}, {}, {}, [f"part data: {exc}"], []
     curves, refused, unjudged = pd.choose(entries, rows)
@@ -448,22 +500,36 @@ def deck_part_data(
     warnings = [line for c in curves.values() if (line := pd.short_of_rating(c))]
     for ref, why in unjudged.items():  # said for each deck that runs the part on the curve
         curves[ref].unjudged = why
-    missing = sorted({*curves, *refused} - named, key=lambda r: (r[0], int(r[1:])))
-    if missing and other:
+    held = {*curves, *refused}
+    missing = sorted(held - named, key=by_ref)
+    if missing and (other or not held & named):
+        where = "no deck element carries their reference"
+        if not named and not other:
+            where = "no deck holds a capacitor or an inductor"
         warnings.append(
-            f"not judged: {names_and(missing)} hold their makers' data, and no deck element carries their "
-            "reference: a deck runs a board part on it only under the part's reference"
+            f"not judged: {names_and(missing)} hold their makers' data, and {where}: a deck runs a board "
+            "part on it only under the part's reference"
         )
     return curves, refused, labels, [], warnings
 
 
 def deck_includes(deck: Path, text: str) -> dict[str, str]:
-    """The text of each file a deck includes that is there, by its path as the deck writes it."""
-    out = {}
-    for inc in include_paths(text):
-        path = (deck.parent / inc).resolve()
-        if path.is_file():
-            out[inc] = path.read_text(encoding="utf-8", errors="replace")
+    """The text of each file a deck includes that is there, and of each file those include, to any
+    depth and each file once: by its path as the deck writes it, or for a file another included file
+    names, that path and `(from <the file that names it>)`. ngspice reads an include against the
+    folder of the file that writes it."""
+    out: dict[str, str] = {}
+    seen = {deck.resolve()}
+    todo = [(deck.parent, inc, "") for inc in include_paths(text)]
+    while todo:
+        folder, inc, parent = todo.pop(0)
+        path = (folder / inc).resolve()
+        if path in seen or not path.is_file():
+            continue
+        seen.add(path)
+        body = path.read_text(encoding="utf-8", errors="replace")
+        out[f"{inc} (from {parent})" if parent else inc] = body
+        todo += [(path.parent, more, inc) for more in include_paths(body)]
     return out
 
 
@@ -516,6 +582,9 @@ def read_expect(path: Path, lower_case: bool = True) -> tuple[dict[str, dict], l
             for key in ("source", "warn", "req")
             if not isinstance(entry.get(key, ""), str)
         ]
+        if str(entry.get("source", "")).strip().lower().startswith("fill:"):
+            # A copied template's bound: its number is a placeholder until its source is written.
+            bad.append(f"{name}: its source still says fill: write the document, the table and the page")
         problems += bad
         if not bad:
             bounds[name] = entry
@@ -831,7 +900,17 @@ def gate_sim(
     sim_dir = project.dir / "sim"
     every = sorted(sim_dir.glob("*.cir")) if sim_dir.is_dir() else []
     decks = every
+    # A circuit the schematic holds and no deck answers is not judged: a warning, a failure with --strict.
+    # A deck that says it answers one and does not run the board's part is a failure.
+    wrong, asked = deck_needs(project, out / "sim", every) if only is None else ([], [])
     if not decks:
+        if asked:
+            return Result(
+                "sim",
+                "fail" if strict else "skip",
+                f"no sim/*.cir in project, and the schematic asks for {len(asked)} decks",
+                {"failures": asked} if strict else {"warnings": asked},
+            )
         return Result("sim", "skip", "no sim/*.cir in project")
     if only is not None:
         name = only.removesuffix(".cir")
@@ -846,7 +925,7 @@ def gate_sim(
     sim_out = out / "sim"
     sim_out.mkdir(parents=True, exist_ok=True)
     jobs = jobs or min(8, os.cpu_count() or 1)
-    details, artifacts, failures = {}, [], []
+    details, artifacts, failures = {}, [], list(wrong)
     # A vendor model a deck includes from a library is checked against its sources.csv row: a file
     # changed since its row fails the deck, one with no row is a warning (a failure with --strict).
     # A deck that includes a listed model runs from build/sim/run/<deck>/, with every include made
@@ -881,7 +960,7 @@ def gate_sim(
         wanted |= {ref for ref in (r.hz, r.q) if isinstance(ref, str)}
     # The decks that answer an overlap: their corners carry the resonance across its span.
     answering = {o.evidence.split(".", 1)[0] for o in plan.overlaps} if plan else set()
-    warned: list[str] = []
+    warned: list[str] = list(asked)
     expects: dict[str, dict[str, dict]] = {}
     corner_runs = 0
     # The makers' data of the schematic's capacitors and inductors: each deck runs with it in place of
@@ -905,12 +984,19 @@ def gate_sim(
             f"({labels[ref]}): {why}"
             for ref, why in sorted({**ideal, **held_back}.items())
         ]
+        warned += [
+            f"not judged: {deck.stem}: {ref} runs as an ideal part while the library holds its maker's data "
+            f"({labels[ref]}): {why}"
+            for ref, why in pd.not_modelled(deck_text, curves).items()
+        ]
         for ref in applied:
             line = (
                 f"{ref} runs on its maker's data, and whether that is its maker's file is not judged: "
                 f"{curves[ref].unjudged}"
             )
             if curves[ref].unjudged and line not in warned:
+                warned.append(line)
+            if (line := pd.between(curves[ref])) and line not in warned:
                 warned.append(line)
         models, model_problems, model_warnings, prepared = model_rows(
             deck, sources, sim_out / "run" / deck.stem, always=keep or bool(applied)
@@ -932,6 +1018,12 @@ def gate_sim(
         # An altermod line with several parameters keeps only its first (ngspice 42): a corner that
         # switches a part to its maximum model runs with the rest as they were (M172).
         failures += [f"{deck.stem}: {p}" for p in sc.crowded_altermods(deck_text)]
+        # A copied template's `* fill:` line names a value not yet set: the deck is still the template's.
+        failures += [
+            f"{deck.name}:{i}: still says fill: set what it names, then delete the line"
+            for i, ln in enumerate(deck_text.splitlines(), start=1)
+            if re.match(r"\*\s*fill:", ln.strip(), re.IGNORECASE)
+        ]
         expect, expect_problems = read_expect(sim_dir / f"{deck.stem}.expect.json")
         failures += [f"{deck.stem}.expect.json: {p}" for p in expect_problems]
         expects[deck.stem] = expect
@@ -4220,6 +4312,17 @@ def cmd_design(args) -> int:
                 fixed_vias = list(design.vias)
             if summary["route"].get("unrouted"):
                 code = EXIT_FAIL
+            # FreeRouting 1.9.0 logs no count: KiCad's DRC of the written board says what is left open,
+            # the zone fill's own report when there is a pour, else 1 DRC run.
+            pcb = out_dir / f"{design.name}.kicad_pcb"
+            try:
+                drc = design.filled if design.zones else kicadgen.drc_report(pcb)
+            except FileNotFoundError:  # no kicad-cli: the route stands, its open connections are not counted
+                drc = None
+            n, first = kicadgen.open_connections(drc) if drc is not None else (None, None)
+            summary["route"].update(unconnected=n, open=first, board=str(pcb))
+            if n:
+                code = EXIT_FAIL
         except FileNotFoundError as exc:
             # The router is absent: nothing is routed, and no unrouted board is written over the routed
             # one the project has. 1 line, exit 2.
@@ -4235,6 +4338,7 @@ def cmd_design(args) -> int:
     if "files" not in summary:
         summary["files"] = [str(p) for p in design.write(out_dir)]
     summary["islands"] = design.islands
+    summary["legend"] = design.legend_notes  # each designator the placer kept on the Fab layer
     summary["stitches"] = [{**s, "at": list(s["at"])} for s in design.stitches]
     summary["seconds"] = round(time.monotonic() - t0, 2)
     # The verdict is the exit code even though every file is written (M85): say so on the last line.
@@ -4249,6 +4353,8 @@ def cmd_design(args) -> int:
         red.append(f"{len(summary['sim_problems'])} simulation problem(s)")
     if summary.get("route", {}).get("unrouted"):
         red.append(f"{summary['route']['unrouted']} unrouted")
+    elif summary.get("route", {}).get("unconnected"):
+        red.append(f"{summary['route']['unconnected']} unconnected")
     if summary.get("route", {}).get("failed"):
         red.append("the route failed")
     if code == EXIT_FAIL:
@@ -4280,6 +4386,17 @@ def cmd_design(args) -> int:
                     f"  stage {i} {st['stage']}: {len(st['nets'])} nets, {st['segments']} segments, "
                     f"{st['vias']} vias, {left}"
                 )
+            if "unconnected" in r:
+                first = r["open"]
+                if r["unconnected"] is None:
+                    print("  route: unconnected not counted: kicad-cli is not installed")
+                elif first:
+                    ends = " to ".join(first["ends"])
+                    net = shlex.quote(first["net"])
+                    print(f"  route: {r['unconnected']} unconnected; first {first['net']}: {ends}")
+                    print(f"  inspect: workcenter inspect net {shlex.quote(r['board'])} {net}")
+                else:
+                    print("  route: 0 unconnected")
         s = summary.get("seed")
         if s:
             left = ", ".join(f"{n} {why}" for why, n in sorted(s["left"].items(), key=lambda kv: -kv[1]))
@@ -4305,6 +4422,8 @@ def cmd_design(args) -> int:
             print(f"  part: {problem}")
         for island in summary["islands"]:
             print(f"  island: {', '.join(island)} cut off from their pour; the DRC will report it")
+        for line in summary["legend"]:
+            print(f"  {line}")
         for f in summary["files"]:
             print(f"  wrote {f}")
         if code == EXIT_FAIL and not summary["files"]:
@@ -5182,12 +5301,14 @@ def warning_count(result: Result) -> int:
     return len(result.details.get("warnings", []))
 
 
-def gates_verdict(results: list[Result]) -> tuple[str, int]:
+def gates_verdict(results: list[Result], ratings_open: bool = False, strict: bool = False) -> tuple[str, int]:
     """A run's verdict and its exit code. GREEN says every gate that had something to run passed. It
     names the count of warnings beside the word, never behind it, and the gates that had nothing to
     run: a project with decks and no board is `GREEN (nothing to run for: erc, drc, export)`, which
     nobody takes for a finished board. A gate whose engine is absent did not run: the run is then
-    SKIPPED with exit code 2, never GREEN, however many others passed (M106)."""
+    SKIPPED with exit code 2, never GREEN, however many others passed (M106). `ratings_open`: the
+    project has a ratings.json that its ratings record does not hold (guide.ratings_state). That is 1
+    warning of a GREEN run, and a strict run is `RED (ratings not held)`."""
     statuses = {r.status for r in results}
     absent = [r.gate.upper() for r in results if r.status == "skip" and r.details.get("engine_missing")]
     if statuses & {"fail", "error"}:
@@ -5196,7 +5317,9 @@ def gates_verdict(results: list[Result]) -> tuple[str, int]:
         return f"SKIPPED ({', '.join(absent)}: engine missing)", EXIT_SKIP
     if "pass" not in statuses:
         return "SKIPPED", EXIT_SKIP
-    warnings = sum(warning_count(r) for r in results)
+    if ratings_open and strict:
+        return "RED (ratings not held)", EXIT_FAIL
+    warnings = sum(warning_count(r) for r in results) + int(ratings_open)
     idle = [r.gate for r in results if r.status == "skip"]
     said = "GREEN" + (f" with {warnings} warning{'' if warnings == 1 else 's'}" if warnings else "")
     return said + (f" (nothing to run for: {', '.join(idle)})" if idle else ""), EXIT_PASS
@@ -5261,15 +5384,28 @@ def cmd_gates(args) -> int:
         results.append(result)
         if result.status in ("fail", "error"):
             break
-    code = emit(results, args, out)
+    # Done is 1 definition: the gates GREEN and, for a project with a ratings.json, its ratings held.
+    # The gates do not run `ratings`; they read its record, as `next` does.
+    rated = guide().ratings_state(sys.modules[__name__], project)
+    said, code = gates_verdict(results, rated.asked and not rated.held, args.strict)
+    named = shlex.quote(str(args.project))
+    emit(results, args, out)
     if args.report:
         # The one file a gate run writes outside `out`: named by the user, only between its markers.
-        blocks = doctools().gates_report(Path(args.report).resolve(), project, results, sys.modules[__name__])
+        blocks = doctools().gates_report(
+            Path(args.report).resolve(),
+            project,
+            results,
+            sys.modules[__name__],
+            verdict=said,
+            ratings=rated.line(named),
+        )
         if not args.json:
             print(f"wrote {', '.join(blocks)} into {args.report}")
     # The verdict is the last line, whatever else the run wrote: a reader and a script take it from there.
-    if not args.json:
-        print(f"{gates_verdict(results)[0]}: {project.name}  report {out / 'gates.json'}")
+    # With --json, stdout holds the gates' records alone, and the 2 lines go to stderr.
+    for line in (rated.line(named), f"{said}: {project.name}  report {out / 'gates.json'}"):
+        print(line, file=sys.stderr if args.json else sys.stdout)
     return code
 
 
@@ -5725,7 +5861,10 @@ def command(argv: list[str] | None = None) -> int:
     fields().register(sub, sys.modules[__name__])
     highspeed().register(sub, sys.modules[__name__])
     sys.path.insert(0, str(SRC_DIR / "tools"))
+    import legend
     import measureplan
+
+    legend.register(sub, sys.modules[__name__])
 
     measureplan.register(sub, sys.modules[__name__])
     import now

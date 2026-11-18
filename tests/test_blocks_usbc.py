@@ -736,19 +736,42 @@ SPANS = {
 
 @needs_kicad
 def test_the_fixture_is_routed_and_its_gates_are_green(tmp_path):
-    """ERC, DRC (0 unconnected: the router finished), SIM and EXPORT pass with --strict. The CC deck's
-    worst corners are the hand sums."""
+    """ERC, DRC (0 unconnected: the router finished), SIM and EXPORT pass, and a `ratings` run holds the
+    fixture's ratings: the gates read that record. The fixture is copied beside the fixtures' shared
+    library, and the record is written into the copy. The CC deck's worst corners are the hand sums.
+
+    1 warning, which fails a strict run: C1 holds its maker's data (it is held to its rating by its DC
+    bias curve in `ratings`), and the CC deck runs no capacitor, so no deck runs C1 on that data
+    (roadmap item 4's `not judged` line)."""
+    boards = tmp_path / "boards"
+    boards.mkdir()
+    (boards / "library").symlink_to(BOARDS / "library")
+    proj = boards / "pass-block-usbc"
+    shutil.copytree(BOARDS / "pass-block-usbc", proj, ignore=shutil.ignore_patterns("build"))
+    rated = subprocess.run(
+        [sys.executable, str(CLI), "ratings", str(proj)], capture_output=True, text=True, check=False
+    )
+    assert rated.returncode == 0, rated.stdout + rated.stderr
     run = subprocess.run(
-        [sys.executable, str(CLI), "--json", "gates", str(BOARDS / "pass-block-usbc"), "--out", str(tmp_path),
-         "--strict"],
+        [sys.executable, str(CLI), "--json", "gates", str(proj), "--out", str(tmp_path)],
         capture_output=True,
         text=True,
         check=False,
-    )  # fmt: skip
+    )
     assert run.returncode == 0, run.stdout + run.stderr
+    said = run.stderr.splitlines()
+    assert said[-2] == "RATINGS held: build/ratings/report.json says RATINGS HELD", run.stderr
+    assert said[-1].startswith("GREEN with 1 warning"), run.stderr
     records = {r["gate"]: r for r in json.loads(run.stdout)}
     assert [records[g]["status"] for g in ("erc", "drc", "sim", "export")] == ["pass"] * 4
-    assert records["drc"]["summary"] == "0 errors, 0 warnings (0 unconnected, 0 parity)"
+    assert records["sim"]["details"]["warnings"] == [
+        "not judged: C1 hold their makers' data, and no deck holds a capacitor or an inductor: a deck runs "
+        "a board part on it only under the part's reference"
+    ]
+    assert records["drc"]["summary"] == (
+        "0 errors, 0 warnings (0 unconnected, 0 parity), legend (no fab named: held to the least of the 4 "
+        "fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer)): 0 fail, 0 not judged"
+    )
     runs = json.loads((tmp_path / "sim" / "corners" / "cc" / "runs.json").read_text(encoding="utf-8"))
     for name, (low, high) in SPANS.items():
         values = [r["measures"][name] for r in runs]

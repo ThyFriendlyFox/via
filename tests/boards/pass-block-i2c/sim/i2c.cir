@@ -1,4 +1,5 @@
 i2c: the SDA line of the I2C block R1, written by tools/blocks_i2c.py
+* deck: i2c-rise SDA SCL
 * R1 CRCW06032K20FKEA pulls SDA up to 3.465 V, the bus's greatest voltage; CBUS is the bus capacitance. The open drain lets go at 0 s.
 * tr runs from 0.3 to 0.7 of the supply [TI SLVA689A, section 2, equation 4, page 3: VIL = 0.3 x VCC; section 2, equation 3, page 3: VIH = 0.7 x VCC].
 * The bound is fast mode's tr [TI SLVA689A, section 2, table 2-1, Parametrics from I2C specifications, the rows tr and Cb, page 3].

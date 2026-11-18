@@ -16,9 +16,11 @@ from __future__ import annotations
 import csv
 import datetime
 import fnmatch
+import hashlib
 import itertools
 import json
 import math
+import os
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -1072,7 +1074,11 @@ SOURCE_KEYS = (("document", "read", "second_reader"), ("revision", "url", "sha25
 WHICH = ("mpn", "mpns", "match", "symbol")  # how an entry names the parts it speaks of: exactly 1 of these
 # A capacitor's kind alone says it passes no steady current: an entry with no rating keeps its nets
 # judged, and the capacitor's own voltage is then the 1 thing the report cannot judge.
-CAPACITOR = ((), ("tolerance", "volts", "farads", "dielectric", "kept", "kept_celsius"))
+# `kept_celsius_at`, `esr` and `esl` are the SIM gate's (tools/partdata.py), not judged here.
+CAPACITOR = (
+    (),
+    ("tolerance", "volts", "farads", "dielectric", "kept", "kept_celsius", "kept_celsius_at", "esr", "esl"),
+)
 PASSIVE = {  # kind -> the keys an entry must hold, and those it may
     "resistor": (("tolerance", "watts", "volts"), ("ohms",)),
     "capacitor.ceramic": CAPACITOR,
@@ -1390,13 +1396,23 @@ def _facts(where: str, raw: object) -> Facts:
         _number(f"{where}: tolerance", data["tolerance"], 0, 0.99)
     # the share of its value a part keeps: a capacitor's at a voltage and at a temperature, an inductor's
     # at a current
-    for key, unit, least in (
-        ("kept", "amps" if kind == "inductor" else "volts", 0),
-        ("kept_celsius", "celsius", None),
+    # `kept_celsius_at`: the maker's temperature curve at 1 bias, {"volts": V, "kept": [celsius, share]}
+    if "kept_celsius_at" in data:
+        at = _keys(f"{where}: kept_celsius_at", data["kept_celsius_at"], ("volts", "kept"))
+        _number(f"{where}: kept_celsius_at: volts", at["volts"], above=0)
+    # `esr` and `esl`: a capacitor's series resistance and inductance at the frequency it was read at
+    for key, unit in (("esr", "ohms"), ("esl", "henries")):
+        if key in data:
+            part = _keys(f"{where}: {key}", data[key], (unit, "hz"))
+            _number(f"{where}: {key}: {unit}", part[unit], above=0)
+            _number(f"{where}: {key}: hz", part["hz"], above=0)
+    for key, unit, least, kept in (
+        ("kept", "amps" if kind == "inductor" else "volts", 0, data.get("kept")),
+        ("kept_celsius", "celsius", None, data.get("kept_celsius")),
+        ("kept_celsius_at: kept", "celsius", None, data.get("kept_celsius_at", {}).get("kept")),
     ):
-        if key not in data:
+        if kept is None:
             continue
-        kept = data[key]
         if (
             not isinstance(kept, list)
             or len(kept) < 2
@@ -2924,6 +2940,27 @@ def find_pack(name: str, project_dir: Path, packs: Path) -> Path:
     raise Refusal(f"ratings.json: pack: `{name}` is no pack; the workcenter holds {known}")
 
 
+def read_by_run(project, parts: list[Path], cli) -> dict[str, Path]:
+    """The files a run of `project` with these parts files reads, each by its path from the project's
+    folder: the schematics, ratings.json, the parts files, the pack ratings.json names and every facts
+    file. A pack that cannot be found is left out: the run refuses ratings.json then."""
+    stated = project.dir / "ratings.json"
+    files = sorted(project.dir.glob("*.kicad_sch")) + [stated, *parts]
+    try:
+        name = json.loads(stated.read_text(encoding="utf-8")).get("pack")
+        packs = cli.SRC_DIR / "rules" / "ratings"
+        files.append(find_pack(name, project.dir, packs) if isinstance(name, str) else None)
+    except (OSError, ValueError, AttributeError):
+        pass
+    library = find_facts(project.dir)
+    files += sorted(library.glob("*.json")) if library else []
+    return {os.path.relpath(f, project.dir): f for f in files if f is not None}
+
+
+def sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def parts_rows(paths: list[Path], cli) -> list:
     """The rows of the parts files, as `procure` and `sources` read them. A file that is not there, that
     is no UTF-8, or that holds a row with fewer fields than its header is refused with its name and its
@@ -3092,10 +3129,16 @@ def gate_ratings(project, out: Path, parts: list[Path], strict: bool, cli):
     failures, warnings = failures[:SHOWN], warnings[: max(0, SHOWN - len(failures))]
     if more > 0:
         (failures if not warnings else warnings).append(f"... {more} more in {page}")
+    # what this run read, so that `gates` and `next` can tell a record of other files (guide.ratings_state)
+    inputs = {
+        "parts": [os.path.relpath(p, project.dir) for p in parts],
+        "files": {rel: sha256(path) for rel, path in read_by_run(project, parts, cli).items()},
+    }
     details = {
         "failures": failures,
         "warnings": warnings,
         "verdict": said,
+        "inputs": inputs,
         "pack": report.pack,
         "notes": report.notes,
         "findings": [vars(f) for f in report.findings],

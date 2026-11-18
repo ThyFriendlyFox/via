@@ -1514,3 +1514,75 @@ What happened: `blocks.mcu` mapped the crystal symbol's pins 1 to 1 onto the foo
 Cost: Found by the review of the microcontroller block (M1); the crystal's facts now give its `terminals`, and the block's check() reads the pads back from the footprint.
 Root cause: No gate knows which pads of a crystal hold the crystal. Read the pin arrangement from the maker's outline drawing into the part's facts, and have the block's own check read the pads back.
 Process: P14
+
+## M248 — 2026-11-17 — A helper held the engine lock while it waited for the gate lock
+What happened: A helper's script took `ENGINE.lock` for 2 runs of the health gate, then waited for `GATE.lock` to go before its next run, still holding `ENGINE.lock`. The lead's gate had made `GATE.lock` and waited for `ENGINE.lock`. Neither went on from the end of the helper's run at 23:14 UTC until its script was stopped at 23:22. Earlier the same helper checked `GATE.lock` only before it took `ENGINE.lock`, and 2 of its runs ran beside the lead's gate.
+Cost: 8 minutes of a stopped machine, and 2 measurements taken beside a gate that do not count.
+Root cause: The brief says to wait for `GATE.lock` before a run and to run behind `ENGINE.lock`, and the 2 orders were mixed. Wait for `GATE.lock` to go, then take `ENGINE.lock`; check `GATE.lock` again inside it, and if it is there, let `ENGINE.lock` go and wait again. Never wait for `GATE.lock` inside it.
+Process: P31
+
+## M249 — 2026-11-18 — A landing ran tests for 10 minutes after a gate began
+What happened: While landing the health gate in shards, a helper waited for `GATE.lock` to go (04:55:52 UTC), then ran short test files in a row for about 10 minutes: `tests/test_testshards.py` 17 times, 2 mutant copies, and `tests/test_fields_rerun.py`, `tests/test_clock.py`, `tests/test_now.py`. A new gate made `GATE.lock` at 04:58:30, and the runs went on beside it. The helper saw the lock only at 05:23, when it listed the engine lock's queue.
+Cost: about 7 minutes of tests beside a health gate, on a machine of 4 processors.
+Root cause: As M188 and M201: the lock was looked at once, not before each run. Each later run went through 1 script that waits for `GATE.lock`, takes the engine locks, and checks `GATE.lock` again inside them (M248).
+Process: P31
+
+## M250 — 2026-11-18 — A `-k` word chose engine tests that ran without the lock
+What happened: On `wip/l4`, `pytest -k initial` on `tests/test_partdata.py` was meant for 2 text tests. It also chose the 2 ngspice runs of `test_the_initial_condition_on_the_part_and_on_the_node_give_the_same_run`, and they ran without `flock` on the engine lock.
+Cost: 2 short ngspice runs outside the lock's queue.
+Root cause: A `-k` word matches every test whose name holds it.
+Process: P8
+
+## M251 — 2026-11-18 — A verdict that read as done when it was not
+What happened: In user round 1 (2026-11-17), `gates --strict` printed `GREEN (nothing to run for: sim)` on the medium user's board while its `ratings` run ended `RATINGS HELD, 3 NOT JUDGED`, and `next` asked for facts. WORKCENTER.md line 9 said done is GREEN; its `next` paragraph said a project with `ratings.json` is not done until `RATINGS HELD`.
+Cost: A user read GREEN as done on a board whose parts were not all held to their ratings; another read 100 lines of WORKCENTER.md to learn which of the 2 held.
+Root cause: 2 commands judged done, each in its own code: `gates` from the gates alone, `next` from the gates and the ratings record. Nothing held them to 1 answer.
+Process: P10
+
+## M252 — 2026-11-17 — A board reader that read a gap larger than it is
+What happened: On `wip/creepage` the creepage check read an arc track as the 2 chords `boardrules.read_board` gives, so a gap read up to R(1 - cos 45) = 0.879 mm larger than it is at R = 3 mm, and it turned a pad with no angle in the file by its footprint's angle. A reviewer's board read `0 fail, 0 not judged` with 2.5 mm where 3 mm is asked.
+Cost: 1 review round.
+Root cause: The reader took the shapes another reader gave, and no test held each shape KiCad writes.
+Process: P7
+
+## M253 — 2026-11-17 — What a check cannot judge said only in a note
+What happened: On `wip/creepage` the check listed "between the 2 faces" and "a third conductor" as not checked in a README and a note, but printed no `not judged` line for the pairs concerned, so the board read clean.
+Cost: 1 review round.
+Root cause: A limit of the check was written for a person and not printed for the pair.
+Process: P14
+
+## M254 — 2026-11-18 — A bound tested only with the walls it names
+What happened: On `wip/creepage` the bound between F.Cu and B.Cu took the edge and unplated holes as the only ways, and looked at copper with no net only after the bound had let the pair go. A via with no net between HV and GND (1.3 mm where 3 mm is asked) read `0 fail, 0 not judged`. A cut the check could not read counted as near at any distance, so a hole far off turned a fail into `not judged` and the default gate printed PASS.
+Cost: 1 review round; the critical finding of the second review.
+Root cause: The bound and the unknown were tested with the shapes they name, not with every conductor and every distance that can stand on the way.
+Process: P7
+
+## M255 — 2026-11-18 — A script that edits a file in place, stopped by SIGTERM
+What happened: On `wip/creepage` the first full mutation run was ended by a SIGTERM when GATE.lock was taken, and left a mutant in the scratch copy's `creepage.py`; the script had no handler, so `finally` did not run. The copy was put back by hand.
+Cost: 1 mutation run of 150 mutants lost its last result.
+Root cause: Only an exception restored the file, not a signal.
+Process: P9
+
+## M256 — 2026-11-18 — Commands started while GATE.lock existed
+What happened: On `wip/creepage` `workcenter design` of 2 fixtures (under 1 s each, no engine), and later 1 run of 8 unit tests (0.17 s), started while GATE.lock existed; the second printed `GATE` and went on.
+Cost: None measured.
+Root cause: The lock was looked at once per batch, or printed and not waited on.
+Process: P31
+
+## M257 — 2026-11-18 — A piece built before 2 trunk checks landed with neither
+What happened: `wip/creepage` was built before the `CITES` check of the references and before the engine marker. On the landing head `workcenter references rules` failed on 5 lines (2 test files with no `CITES`; the TI pack cited a table of the paid IEC 60664-1, which the index cannot hold), the test of the board rules' tool took the creepage packs for voltage packs, and the 5 DRC tests failed with `started kicad-cli and has no engine marker` when engines were refused.
+Cost: 2 commits on the landing branch.
+Root cause: A branch is checked against the trunk's checks when it lands, not while it is built.
+Process: P14
+
+## M258 — 2026-11-18 — A new test file started ngspice without the engine marker
+What happened: `tests/test_simneeds_cli.py` was written before the CI split landed and carried only a skip mark. Each of its 12 tests starts kicad-cli or ngspice; the fast run (`-m "not engine"`) took all 12, and the guard fails such a test in every run. The I2C and buck block tests had the same gap.
+Cost: Found when the piece was landed on the trunk; the 3 files carry the marker now.
+Root cause: A branch made before a rule lands does not meet the rule until it is landed. Before landing, run the piece's engine test files once on the trunk's head.
+Process: P12
+
+## M259 — 2026-11-17 — A shell command that began with `cd`
+What happened: A shell command of the legend's builder began with `cd /` (a DRC run of the fixtures in the background), against the rule "Absolute paths, and no `cd`".
+Cost: None: it ran kicad-cli on scratch copies. A command run in the wrong folder would have run quietly there.
+Root cause: The habit of a terminal, where a folder stays chosen; here parallel commands share 1 shell. `env -C <tree>` or absolute paths are the fix, as every other command of the piece used.
+Process: P8

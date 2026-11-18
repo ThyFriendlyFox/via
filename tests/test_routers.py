@@ -36,6 +36,9 @@ LIBS = kicadgen.SYMBOL_DIR / "Device.kicad_sym"
 R0603 = "Resistor_SMD:R_0603_1608Metric"
 
 needs_libs = pytest.mark.skipif(not LIBS.is_file(), reason="KiCad symbol libraries are not installed")
+# A test whose route writes a board starts kicad-cli: `design --route` reads KiCad's DRC of the board it
+# wrote to count what stayed open (User round 1, C).
+routes = engine(needs_libs)
 needs_kicad = engine(
     pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
 )
@@ -170,7 +173,7 @@ def routed_line(text: str) -> str:
 # ------------------------------------------------------------------ before the route
 
 
-@needs_libs
+@routes
 def test_the_router_is_handed_the_dsn_of_this_design_not_one_left_in_the_folder(tmp_path):
     """Rule 1. A DSN an earlier run left in build/route is written over: the router reads, byte for
     byte, the DSN of the design as this command built it. Every rule of the DSN (planes, fixed wiring,
@@ -186,7 +189,7 @@ def test_the_router_is_handed_the_dsn_of_this_design_not_one_left_in_the_folder(
     assert call["dsn"] == board().dsn()
 
 
-@needs_libs
+@routes
 @pytest.mark.parametrize("router", ["freerouting", "freerouting2"])
 def test_a_rules_file_beside_the_dsn_is_removed_before_the_router_runs(tmp_path, router):
     """Rule 1. FreeRouting 2.5.0 reads a `<board>.rules` beside the DSN when none is named, and its
@@ -232,7 +235,7 @@ def test_an_absent_router_skips_the_route_and_names_it(tmp_path):
     assert calls(tmp_path) == []
 
 
-@needs_libs
+@routes
 def test_an_absent_router_writes_no_board_over_a_routed_one(tmp_path):
     """Rule 3. A first route writes A, B and C: 3 segments. The same command with `--router
     freerouting2` on Java 21 skips the route (exit 2) and writes nothing: the board still holds the
@@ -274,7 +277,7 @@ def test_a_poured_net_goes_to_the_router_as_a_plane_and_not_as_a_net_to_route(tm
     assert routed_line(text).startswith("routed: 2 segments, 0 vias, 0 unrouted")
 
 
-@needs_libs
+@routes
 def test_hand_copper_goes_to_the_router_as_fixed_wiring(tmp_path):
     """Rule 6. A is drawn by hand: its track reaches the router typed `fix`, which the router may not
     move or remove."""
@@ -286,7 +289,7 @@ def test_hand_copper_goes_to_the_router_as_fixed_wiring(tmp_path):
     assert len(fixed) == 1 and '(net "/A")' in fixed[0], fixed
 
 
-@needs_libs
+@routes
 def test_the_routers_echo_of_hand_copper_is_dropped(tmp_path):
     """Rule 7. The session echoes A's hand track and adds B and C: the merge keeps 2 segments, not 3,
     and the board holds A's track once (1 hand + 2 routed = 3 segments)."""
@@ -298,7 +301,7 @@ def test_the_routers_echo_of_hand_copper_is_dropped(tmp_path):
     assert sorted(s[0] for s in copper["segments"]) == ["/A", "/B", "/C"]
 
 
-@needs_libs
+@routes
 def test_a_seed_goes_to_the_router_held_as_shove_fixed(tmp_path):
     """Rule 8. A first route writes A, B and C; a second route seeded from that board hands the router
     the 3 tracks typed `shove_fixed`: pushed aside, never ripped up."""
@@ -318,10 +321,11 @@ def test_a_seed_goes_to_the_router_held_as_shove_fixed(tmp_path):
 def test_an_ordered_route_runs_the_router_once_per_stage_with_the_nets_so_far(tmp_path):
     """Rule 9. With C poured, stage 1 (pours) is C; no part is fine pitch and no net ends in a pair's
     ending, so stage 2 is the rest: A and B. 2 router runs, each on its own DSN; the second DSN lists
-    A, B and C's plane, the first does not list A or B."""
+    A, B and C's plane, the first does not list A or B. The stand-in joins nothing, so the DRC of the
+    written board finds A and B open and the run exits 1 (rule 18)."""
     env = standin(tmp_path, ses='(session "rows" (routes (resolution um 10) (network_out)))\n')
     code, text = route(tmp_path, env, "--order", design=design_file(tmp_path, zone=True))
-    assert code == 0, text
+    assert code == 1 and "  route: 2 unconnected; first " in text, text
     runs = calls(tmp_path)
     assert [Path(c["dsn_path"]).name for c in runs] == ["rows.1-pours.dsn", "rows.2-rest.dsn"]
     assert '(net "/A"' not in runs[0]["dsn"] and '(net "/A"' in runs[1]["dsn"]
@@ -331,7 +335,7 @@ def test_an_ordered_route_runs_the_router_once_per_stage_with_the_nets_so_far(tm
 # ------------------------------------------------------------------ the run
 
 
-@needs_libs
+@routes
 def test_the_passes_threads_and_dialog_wait_are_the_workcenters(tmp_path):
     """Rule 10. `--passes 7 --threads 3`: the router gets -mp 7, -mt 3 and -dct 0 (no 20 s wait on a
     dialog). Without --threads it gets no -mt and picks its own."""
@@ -377,7 +381,7 @@ def test_the_default_routers_command_line_is_the_one_before_the_interface(
     assert got == old_command("java", jar, dsn, ses, 60, threads, display)
 
 
-@needs_libs
+@routes
 def test_the_default_route_hands_the_router_the_command_line_of_before(tmp_path):
     """The same through `workcenter design --route` with no --router: the stand-in records, after
     `java`, exactly -jar, -de, -do, -mp 60 and -dct 0, the DSN and the session in build/route."""
@@ -404,7 +408,7 @@ def test_a_router_past_the_time_limit_is_stopped_with_its_children_and_nothing_i
     assert not (tmp_path / "out" / "rows.kicad_pcb").exists()
 
 
-@needs_libs
+@routes
 @pytest.mark.skipif(shutil.which("xvfb-run") is None, reason="xvfb-run is not installed")
 def test_freerouting_1_9_runs_under_xvfb_without_a_display(tmp_path):
     """Rule 12. FreeRouting 1.9.0 draws a window even when it routes alone: with no DISPLAY the
@@ -415,7 +419,7 @@ def test_freerouting_1_9_runs_under_xvfb_without_a_display(tmp_path):
     assert calls(tmp_path)[0]["display"]
 
 
-@needs_libs
+@routes
 def test_the_routers_output_is_kept_in_the_route_log(tmp_path):
     """Rule 13. What the router prints is in build/route/freerouting.log, and the routed line names it."""
     env = standin(tmp_path, ses=session(["A", "B", "C"]), log=f"standin says hello\n{DONE}")
@@ -442,7 +446,7 @@ def test_a_router_that_fails_is_1_line_and_writes_nothing(tmp_path):
 # ------------------------------------------------------------------ what is read back
 
 
-@needs_libs
+@routes
 @pytest.mark.parametrize("headless", [True, False], ids=["headless", "window"])
 def test_the_routers_own_count_of_open_connections_is_the_verdict(tmp_path, headless):
     """Rule 15. The router writes A only and logs its score with "(2 unrouted and 0 violations)", in
@@ -455,7 +459,7 @@ def test_the_routers_own_count_of_open_connections_is_the_verdict(tmp_path, head
     assert "red: 2 unrouted" in text.splitlines()[-1]
 
 
-@needs_libs
+@routes
 def test_the_last_stage_line_is_the_routers_count(tmp_path):
     """Rule 15. FreeRouting 2.5.0 logs a score line per stage it runs; the board it writes is the last
     stage's. A first line says 3 unrouted, the last 0: the count is 0 and the run exits 0."""
@@ -466,7 +470,7 @@ def test_the_last_stage_line_is_the_routers_count(tmp_path):
     assert routed_line(text).startswith("routed: 3 segments, 0 vias, 0 unrouted")
 
 
-@needs_libs
+@routes
 def test_the_routers_count_of_violations_is_printed_as_not_judged(tmp_path):
     """Rule 15. The log says "(0 unrouted and 1 violation)": the count of open connections is 0 and
     the run exits 0; the router's 1 violation is printed in 1 line as not judged, since the DRC judges
@@ -480,7 +484,7 @@ def test_the_routers_count_of_violations_is_printed_as_not_judged(tmp_path):
     )
 
 
-@needs_libs
+@routes
 def test_a_route_that_joined_nothing_counts_every_connection(tmp_path):
     """Rule 16. No count in the log and no wire in the session: A, B and C have 2 pads each, so
     3 connections are open (2 - 1 each), exit 1."""
@@ -490,13 +494,13 @@ def test_a_route_that_joined_nothing_counts_every_connection(tmp_path):
     assert routed_line(text).startswith("routed: 0 segments, 0 vias, 3 unrouted")
 
 
-@needs_libs
+@routes
 def test_with_copper_and_no_count_the_drc_decides(tmp_path):
-    """Rule 17. No count in the log, A routed: the command claims no count ("DRC decides") and exits
-    0; the DRC is the judge of what is open."""
+    """Rule 17. No count in the log, A routed: the routed line claims no count ("DRC decides"); the DRC
+    of the written board is the judge of what is open, and B and C are (rule 18), so the run exits 1."""
     env = standin(tmp_path, ses=session(["A"]), log="")
     code, text = route(tmp_path, env)
-    assert code == 0, text
+    assert code == 1, text
     assert routed_line(text).startswith("routed: 1 segments, 0 vias, DRC decides")
 
 
@@ -504,9 +508,11 @@ def test_with_copper_and_no_count_the_drc_decides(tmp_path):
 @needs_kicad
 def test_the_drc_decides_what_stayed_open(tmp_path):
     """Rule 18. On the board the stand-in left with A only, KiCad's DRC finds B and C open: 2
-    unconnected items (3 connections less the 1 made)."""
+    unconnected items (3 connections less the 1 made). `design --route` prints that count from the
+    DRC of the board it wrote and exits 1; `workcenter drc` counts the same 2."""
     env = standin(tmp_path, ses=session(["A"]), log="")
-    assert route(tmp_path, env)[0] == 0
+    code, text = route(tmp_path, env)
+    assert code == 1 and "  route: 2 unconnected; first " in text, text
     proc = subprocess.run(
         [sys.executable, str(CLI), "--json", "drc", str(tmp_path / "out")],
         capture_output=True,
@@ -520,7 +526,7 @@ def test_the_drc_decides_what_stayed_open(tmp_path):
 # ------------------------------------------------------------------ the second router
 
 
-@needs_libs
+@routes
 def test_freerouting2_runs_headless_with_its_settings_in_the_route_folder(tmp_path):
     """Rule 19. `--router freerouting2` runs the jar of FREEROUTING2_JAR on the Java of
     FREEROUTING2_JAVA (here Java 25.0.5) with the same -de, -do, -mp and -dct, plus `-da` (no usage

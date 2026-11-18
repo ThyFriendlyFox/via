@@ -651,13 +651,16 @@ def test_every_document_a_rule_of_the_repository_names_is_in_the_index():
     SLAA322D, its IC's datasheet SLASE35C and the 2 user's guides SLAU278AH and SLAU272D, each named in
     1 or more places), mcu-block.json 5 (ABS25, ABS07 and Vishay 45199 for 3 entries; its made-up
     crystal and its header name no document, 2 not judged) and the MSP430's facts 1: 53 + 8 + 5 + 1 = 67
-    named in 36 + 3 = 39 files, 11 + 2 = 13 not judged."""
+    named in 36 + 3 = 39 files, 11 + 2 = 13 not judged. The 2 creepage packs of item 11's safety spacing
+    (rules/board/) add 1 document each, the US handbook's guideline 69 and TI's creepage note, and TI's
+    pack names the paid IEC standard its note reprints, with no place, 1 not judged: 67 + 2 = 69 named
+    in 39 + 2 = 41 files, 13 + 1 = 14 not judged."""
     globs = json.loads(INDEX.read_text(encoding="utf-8"))["rules"]
     files = sorted({p for pattern in globs for p in ROOT.glob(pattern)})
     code, out = run("rules", *files)
     assert code == 0, out
     assert out.splitlines()[-1] == (
-        "references rules: 67 documents named in 39 files, 67 in the index, 0 not; 13 not judged"
+        "references rules: 69 documents named in 41 files, 69 in the index, 0 not; 14 not judged"
     )
 
 

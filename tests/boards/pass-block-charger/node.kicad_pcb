@@ -96,7 +96,7 @@
 		(tags "Through hole pin header THT 1x03 2.54mm single row")
 		(property "Reference" "J1"
 			(uuid "f401f0d7-9a38-53bc-b314-29db08361855")
-			(at 0 -2.38 0)
+			(at 0 -2.495 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -327,7 +327,7 @@
 		(tags "Through hole pin header THT 1x02 2.54mm single row")
 		(property "Reference" "J2"
 			(uuid "91ee0725-c144-50c8-a4a8-2b713e7c1a3f")
-			(at 0 -2.38 0)
+			(at 0 -2.495 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -548,7 +548,7 @@
 		(tags "Through hole pin header THT 1x02 2.54mm single row")
 		(property "Reference" "J3"
 			(uuid "0d70d170-298b-5bec-80c4-307e114bd447")
-			(at 0 -2.38 0)
+			(at 0 -2.495 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -769,7 +769,7 @@
 		(tags "SOT TO_SOT_SMD")
 		(property "Reference" "U1"
 			(uuid "2d11fb02-58ed-53d0-8533-22dd4930ead6")
-			(at 0 -2.4 0)
+			(at 0 -2.425 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -1113,7 +1113,7 @@
 		(tags "resistor")
 		(property "Reference" "R1"
 			(uuid "96772de9-7476-5273-816b-b9373843ef47")
-			(at 0 -1.43 0)
+			(at 0 -1.455 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -1253,7 +1253,7 @@
 		(tags "resistor")
 		(property "Reference" "R2"
 			(uuid "2b7693ae-423f-531c-ba8d-fcb0abb12b79")
-			(at 0 -1.43 0)
+			(at 2.760118 0 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -1393,7 +1393,7 @@
 		(tags "capacitor")
 		(property "Reference" "C1"
 			(uuid "42daec5b-0a40-5d28-ac16-1040719dfc13")
-			(at 0 -1.43 0)
+			(at 0 -1.455 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -1533,7 +1533,7 @@
 		(tags "capacitor")
 		(property "Reference" "C2"
 			(uuid "8eeb24e3-f412-5a22-9e2b-defafd07a9bf")
-			(at 0 -1.43 0)
+			(at 0 -1.455 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -1673,7 +1673,7 @@
 		(tags "WSON6_1.5x1.5mm_P0.5mm")
 		(property "Reference" "U2"
 			(uuid "aad5032d-12fe-5643-84b2-2e781b76973f")
-			(at 0 -2 0)
+			(at 0 -1.745 0)
 			(layer "F.SilkS")
 			(uuid "9a9b0bce-9121-4d23-a06c-8ce40af0a8c5")
 			(effects
@@ -1953,7 +1953,7 @@
 		(tags "resistor")
 		(property "Reference" "R3"
 			(uuid "a618d0be-aa06-5501-b1af-447395e3b17e")
-			(at 0 -1.43 0)
+			(at 0 -1.455 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -2093,7 +2093,7 @@
 		(tags "capacitor")
 		(property "Reference" "C3"
 			(uuid "178be185-07df-5036-866f-17117cfdfdf5")
-			(at 0 -1.43 0)
+			(at 0 -1.455 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -2233,7 +2233,7 @@
 		(tags "resistor")
 		(property "Reference" "R4"
 			(uuid "69d83fcf-6cf3-5047-bb95-7bd870e5f9ee")
-			(at 0 -1.43 0)
+			(at 0 -1.455 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -2373,7 +2373,7 @@
 		(tags "Texas WSON6 2x2mm")
 		(property "Reference" "Q1"
 			(uuid "63c5edd5-a1b1-5b5d-aa99-a6496a35d6b7")
-			(at 0 -1.9 0)
+			(at 0 -1.975 0)
 			(layer "F.SilkS")
 			(uuid "0fb59536-4706-4443-9e12-ede9b77f9269")
 			(effects
@@ -2711,7 +2711,7 @@
 		(tags "Texas WSON6 2x2mm")
 		(property "Reference" "Q2"
 			(uuid "1d28443e-46fa-5a62-ae96-64bec0c87db3")
-			(at 0 -1.9 0)
+			(at 0 -1.975 0)
 			(layer "F.SilkS")
 			(uuid "0fb59536-4706-4443-9e12-ede9b77f9269")
 			(effects

@@ -31,6 +31,7 @@ import copy
 import csv
 import dataclasses
 import importlib.util
+import json
 import math
 import os
 import re
@@ -1103,6 +1104,9 @@ class Design:
     # Rounded board corners: one radius for all four (0 a rectangle, half the short side a stadium),
     # or four, (top-left, top-right, bottom-right, bottom-left), to round one end and square the other.
     corner_radius: float | tuple[float, float, float, float] = 0.0
+    # Rectangles cut through the board, (x1, y1, x2, y2): a slot that lengthens the way along the face
+    # between 2 nets (tools/creepage.py). The router does not see them: place no track across one.
+    cutouts: list[tuple[float, float, float, float]] = field(default_factory=list)
     thickness: float = 1.6  # the finished board, mm; any other value writes a stackup on two layers too
     # The solder mask's colour, the legend's colour and the pads' finish: a colour is one of COLOURS or
     # "#RRGGBBAA", a finish one of FINISHES. Each goes into the board's stackup, where the 3D renders
@@ -1139,9 +1143,17 @@ class Design:
     # The fab the board is made for: a rule set in rules/ (or a .kicad_dru path) written into the project
     # as <name>.kicad_dru, its board-wide minimums laid over the board's own (rules/README.md).
     fab: str = ""
+    # The legend (tools/legend.py): True places every designator round its part, the same on every run;
+    # `designators` holds those a design fixes by hand (designator()). Off by default, so boards made
+    # before the placer write the bytes they wrote. `legend_notes` names each designator the placer moved
+    # to the Fab layer.
+    place_designators: bool = False
+    designators: dict[str, tuple[float, float, float]] = field(default_factory=dict)
+    legend_notes: list[str] = field(default_factory=list)
     zones: list[dict] = field(default_factory=list)  # copper pours, see zone()
     keepouts: list[dict] = field(default_factory=list)  # areas no track, via or part enters, see keepout()
     islands: list[list[str]] = field(default_factory=list)  # pads cut off from their pour, set by write()
+    filled: dict = field(default_factory=dict)  # the DRC report of the last zone fill write() ran
     # Nets taken as held at a level though nothing on this board holds them, each with the reason: an
     # internal pull in a datasheet, a pull on the other board of a joint (undefined_inputs()).
     defined_nets: dict[str, str] = field(default_factory=dict)
@@ -1555,6 +1567,11 @@ class Design:
         if any(item[0] in needed for item in (*self.segments, *self.vias)):
             return 0
         return sum(n - 1 for n in needed.values())
+
+    def designator(self, ref: str, x: float, y: float, angle: float = 0.0) -> None:
+        """Fix a part's designator by hand: its centre at (x, y) on the board, at `angle`. The placer
+        (place_designators) leaves it there, and `workcenter drc` still judges it."""
+        self.designators[ref] = (float(x), float(y), float(angle))
 
     def text(
         self,
@@ -3299,6 +3316,18 @@ class Design:
             if part.on_board and part.pcb_at:
                 pcb.append(self._footprint_instance(part, net_ids))
         pcb.extend(self._edge_cuts(ns))
+        for i, (cx1, cy1, cx2, cy2) in enumerate(self.cutouts):
+            pcb.append(
+                [
+                    "gr_rect",
+                    ["start", fmt(cx1), fmt(cy1)],
+                    ["end", fmt(cx2), fmt(cy2)],
+                    ["stroke", ["width", "0.1"], ["type", "default"]],
+                    ["fill", "no"],
+                    ["layer", Q("Edge.Cuts")],
+                    ["uuid", uid(ns, f"edge/cutout/{i}")],
+                ]
+            )
         if self.title:
             pcb.append(
                 [
@@ -3404,6 +3433,10 @@ class Design:
                     ["polygon", ["pts", *[["xy", fmt(px), fmt(py)] for px, py in k["polygon"]]]],
                 ]
             )
+        if self.place_designators or self.designators:
+            import legend  # tools/legend.py reads the board this method builds
+
+            self.legend_notes = legend.lay(pcb, self.fab or None, self.designators, self.place_designators)
         pcb.append(["embedded_fonts", "no"])
         return dumps(pcb) + "\n"
 
@@ -4304,14 +4337,15 @@ class Design:
         for p, text in files.items():
             p.write_text(text, encoding="utf-8")
         self.stitches = []
+        self.filled = {}
         if self.zones:
             pcb = out_dir / f"{self.name}.kicad_pcb"
-            fill_zones(pcb)
+            self.filled = fill_zones(pcb)
             if self.segments:  # a routed board: tracks cut the pours, stitch the pieces back together
                 added, self.islands = stitch_zones(self, pcb)
                 if added:
                     pcb.write_text(self.board(), encoding="utf-8")
-                    fill_zones(pcb)
+                    self.filled = fill_zones(pcb)
         return list(files)
 
 
@@ -4573,33 +4607,51 @@ def _via_spot(
     return None
 
 
-def fill_zones(pcb: Path, kicad_cli: str = "kicad-cli") -> None:
-    """Fill the board's zones in place with KiCad (headless) and save it in KiCad's own format."""
+def fill_zones(pcb: Path, kicad_cli: str = "kicad-cli") -> dict:
+    """Fill the board's zones in place with KiCad (headless) and save it in KiCad's own format. Returns
+    the DRC report of the filled board."""
+    return drc_report(pcb, kicad_cli, fill=True)
+
+
+def drc_report(pcb: Path, kicad_cli: str = "kicad-cli", fill: bool = False) -> dict:
+    """KiCad's DRC of a board as its JSON report; with `fill`, after it fills the zones and saves the
+    board."""
     exe = shutil.which(kicad_cli)
     if exe is None:
-        raise FileNotFoundError("kicad-cli is needed to fill zones")
+        raise FileNotFoundError("kicad-cli is needed to fill zones" if fill else "kicad-cli")
     with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "drc.json"
+        refill = ["--refill-zones", "--save-board"] if fill else []
         proc = subprocess.run(
-            [
-                exe,
-                "pcb",
-                "drc",
-                "--refill-zones",
-                "--save-board",
-                "--format",
-                "json",
-                "--output",
-                str(Path(tmp) / "fill.json"),
-                str(pcb),
-            ],
+            [exe, "pcb", "drc", *refill, "--format", "json", "--output", str(out), str(pcb)],
             capture_output=True,
             text=True,
             check=False,
         )
+        report = json.loads(out.read_text(encoding="utf-8")) if out.is_file() else {}
     if proc.returncode not in (0, 5):  # 5: violations found, the gates report those
-        raise RuntimeError(
-            f"kicad-cli could not fill the zones of {pcb}: {proc.stderr.strip() or proc.stdout.strip()}"
-        )
+        doing = "fill the zones of" if fill else "check"
+        raise RuntimeError(f"kicad-cli could not {doing} {pcb}: {proc.stderr.strip() or proc.stdout.strip()}")
+    return report
+
+
+NET_IN_ITEM_RE = re.compile(r"\[([^\]]+)\]")
+
+
+def open_connections(report: dict) -> tuple[int, dict | None]:
+    """The count of a DRC report's unconnected items, and the first: its net as the design names it
+    (KiCad writes a local net /NAME) and its 2 ends, each as KiCad describes it with its place."""
+    items = report.get("unconnected_items", [])
+    if not items:
+        return 0, None
+    ends = items[0].get("items", [])
+    m = next((NET_IN_ITEM_RE.search(e.get("description", "")) for e in ends), None)
+    net = m.group(1).removeprefix("/") if m else "?"
+    said = [
+        f"{e.get('description', '')} at ({e.get('pos', {}).get('x', 0):g}, {e.get('pos', {}).get('y', 0):g})"
+        for e in ends
+    ]
+    return len(items), {"net": net, "ends": said}
 
 
 # ------------------------------------------------------- design files, routing

@@ -45,9 +45,9 @@ unset variable never causes a failure.
 
 | Flag | Commands | Default | Use |
 |---|---|---|---|
-| `--json` | all | off | Machine-readable output. Read before the command or after it. |
+| `--json` | all | off | Machine-readable output. Read before the command or after it. `gates --json`: stdout holds the gates' records alone; the ratings line and the verdict line go to stderr. |
 | `--out DIR` | gates, erc, drc, sim, export, autoroute, render, procure, sources, verify, ratings, copper, fields, highspeed; design; ci | `<project>/build`; design: the design file's folder (with `--check`, a temporary folder); ci: `<repo>/build/ci` | Where reports and artifacts go; for design, where the KiCad project is written; for ci, each step's script, `$GITHUB_ENV` file and log. |
-| `--strict` | gates, erc, drc, sim, export, render, procure, sources, verify, ratings, copper, standards | off | Warnings fail the gate; for ratings, a stress that was not judged; for copper, a net with a stated current, or named in `ratings.json`, that `copper.json` does not name, a pin of a judged net with no stated current, a pin of the entry's part that `from` does not name, a part's heat with no pad on the board, or a limit it does not state; for verify, a requirement whose verdict is FAIL or OPEN, and decks that ran without corners; for render, a part the 3D views draw without a body fails it; for procure, a line short of stock or a price older than 90 days; for sim, a model outside a `warn` bound (its datasheet), a project with no `sim/corners.json` or with decks that drive periodic sources and no `sim/frequency-plan.json`, a deck with no bound, a deck whose measures do not move with temperature, a part named like a board reference that no tolerance covers, and an operating point ngspice doubts (`singular matrix`); for sources, a datasheet kept as a note only, a file with no SHA256 or revision recorded, a model older than its datasheet, or a load check skipped; for standards, a requirement not held. |
+| `--strict` | gates, erc, drc, sim, export, render, procure, sources, verify, ratings, copper, standards, legend | off | Warnings fail the gate; for gates, ratings that are not held (`RED (ratings not held)`), for a project with a `ratings.json`; for ratings, a stress that was not judged; for copper, a net with a stated current, or named in `ratings.json`, that `copper.json` does not name, a pin of a judged net with no stated current, a pin of the entry's part that `from` does not name, a part's heat with no pad on the board, or a limit it does not state; for verify, a requirement whose verdict is FAIL or OPEN, and decks that ran without corners; for render, a part the 3D views draw without a body fails it; for procure, a line short of stock or a price older than 90 days; for sim, a model outside a `warn` bound (its datasheet), a project with no `sim/corners.json` or with decks that drive periodic sources and no `sim/frequency-plan.json`, a deck with no bound, a deck whose measures do not move with temperature, a part named like a board reference that no tolerance covers, and an operating point ngspice doubts (`singular matrix`), and a circuit the schematic implies that no deck answers (an I2C line with a pull-up, a regulator with a load stated in ratings.json; tools/simneeds.py); for sources, a datasheet kept as a note only, a file with no SHA256 or revision recorded, a model older than its datasheet, or a load check skipped; for standards, a requirement not held. |
 | `--parts FILE` | procure, sources, ratings | `<project>/parts.csv` | A parts CSV, repeatable; the first row whose Value and Footprint match a BOM line prices it (procure) or names its MPN (sources, ratings), and every row with no Footprint is an item off the board. Columns in the `procurement` skill. |
 | `--init` | ratings | off | Write `ratings.json` beside the schematic, with the pack `nasa-eee-inst-002` and no net, when there is none; never over a file that exists. Nothing is judged, and no output folder is made. |
 | `--facts REF` | ratings | none | Print an entry of facts to fill for 1 part of the schematic: its part number or its symbol, its pins, an empty source. Nothing is judged: the netlist it reads is left in `<out>/ratings/`, with no record and no page of a run. |
@@ -97,7 +97,9 @@ unset variable never causes a failure.
 | `--init` | verify | off | Copy `templates/verification/` into the package and a writeup per `sim/*.cir` into `simulations/<deck>/`, never over a file that exists. `BRIEF.md` and `FACTS.md`, the helpers' brief and facts file, stay out. The new files fail the check until each `<!-- fill ... -->` is written. |
 | `--boards LIST` | procure, costs | `1,10` | Units to price, comma-separated; each gets its cheapest order and totals per supplier; for costs, a column each in the totals table, the largest also judging stock. |
 | `--step` | gates, export | off | Also export a STEP model. |
-| `--fab NAME` | gates, drc | none | Also check a fab's limits: a rule set in `rules/` (`sierra-circuits-web`, `jlcpcb-2layer`, `pcbway-standard`, `oshpark-2layer`) or a `.kicad_dru` path, laid over the project's own rules on a copy in `<out>/fab-<name>/`. A design file's `fab` field does the same for good (`rules/README.md`). |
+| `--fab NAME` | gates, drc, legend | none | Also check a fab's limits: a rule set in `rules/` (`sierra-circuits-web`, `jlcpcb-2layer`, `pcbway-standard`, `oshpark-2layer`) or a `.kicad_dru` path, laid over the project's own rules on a copy in `<out>/fab-<name>/`. A design file's `fab` field does the same for good (`rules/README.md`). |
+| `--place OUT` | legend | none | Write a copy of the board to OUT (`.kicad_pcb`), every designator placed round its part; the project is not changed. |
+| `--show` | legend | off | Put every hidden designator back on the silkscreen first, where its footprint has it. |
 | `--dsn FILE` | autoroute | `<project>/<name>.dsn`, then `build/route/<name>.dsn` | Specctra DSN exported from KiCad. Absent means the command skips. |
 | `--passes N` | autoroute, design, bench | `20` autoroute and bench, `60` design | FreeRouting optimisation passes. bench takes a whole number above 0. |
 | `--threads N` | autoroute, design, bench | engine default; bench `2` | FreeRouting thread count (`-mt`). bench takes a whole number above 0 and also holds the JVM to N processors. |
@@ -189,6 +191,7 @@ exited 1 on the board's own findings.
 | `gates` | yes | 4.01 s; 14.39 s | pass-rc-divider; Last Hit v0.16 |
 | `sim` | yes: its length is the decks' and the corners' | 0.43 s; 11.15 s | pass-rc-divider; Last Hit v0.16 (12 decks) |
 | `measure` | yes: it runs the project's sim, every deck and corner, as `sim` does | 0.38 s; 11.47 s | pass-rc-divider; Last Hit v0.16 (12 decks) |
+| `legend` | yes: it starts no engine, but judges every text against every other | 6.14 s; 14.95 s (`--show --place`); 0.26 s | a copy of basalt v0.3 (179 parts); the same; pass-legend-dense |
 | `export` | yes | 2.52 s; 4.98 s | pass-rc-divider; Last Hit v0.16 |
 | `render` | yes | 38.93 s | pass-rc-divider |
 | `pictures` | yes: it runs `render` for each board | not measured | |
@@ -265,7 +268,7 @@ folder or a folder above it; a rule pack is 1 file of `rules/ratings/`. The
 
 An inductor's facts may give `ohms_dc`, its DC resistance at the most, in ohms (0 or more); `blocks.buck` reads it in its dropout sum. A pin of role `input`, `io` or `open_drain` may give `farads`, its greatest capacitance, and a pin of role `io` or `open_drain` `sink`, `{"amps", "volts"}`, the current it sinks at that low voltage; `blocks.i2c` reads both. A part of kind `crystal` gives `hertz`, `ohms_esr` and `farads_load`, and may give `farads_shunt` (C0 typical), `farads_shunt_max` (C0 at the most), `watts_drive` and `terminals` (the 2 pads of the crystal and where its datasheet says so); `blocks.mcu` reads them, and `workcenter ratings` judges none of them.
 
-The SIM gate reads 2 keys of a part's facts, from an entry that names the
+The SIM gate reads these keys of a part's facts, from an entry that names the
 part by `mpn` or `mpns` and whose `source.sha256` is a row of
 `library/sources.csv`:
 
@@ -273,6 +276,9 @@ part by `mpn` or `mpns` and whose `source.sha256` is a row of
 |---|---|---|---|
 | `kept` | a capacitor | pairs `[volts, share of the value kept]` | The maker's DC bias curve; the volts rise from pair to pair; each share above 0 and at most 1.5. `workcenter ratings` reads it too. |
 | `kept_celsius` | a capacitor | pairs `[celsius, share against 25 C]` | The maker's temperature curve; each share above 0 and at most 1.5. |
+| `kept_celsius_at` | a capacitor | `{"volts": V, "kept": [[celsius, share against 0 V and 25 C], ...]}` | The maker's temperature curve at 1 bias; at that bias the share is the maker's. Refused when its 25 C share is nearer 1 than the share `kept` gives at its bias, when it does not reach 25 C, or when the part has no `kept`. |
+| `esr` | a capacitor | `{"ohms": R, "hz": f}` | Series resistance at the frequency it was read at; the SIM gate writes it in series. |
+| `esl` | a capacitor | `{"henries": L, "hz": f}` | Series inductance from a figure the maker gives; the SIM gate writes it in series. |
 | `kept` | an inductor | pairs `[amps, share of the value kept]` | The maker's L vs current curve; each share above 0 and at most 1.5. |
 
 ## `interfaces.json` (beside a board, for `workcenter highspeed`)
@@ -296,6 +302,15 @@ part by `mpn` or `mpns` and whose `source.sha256` is a row of
 | `WORKCENTER_NO_ENGINES` | `1` or unset | unset | `1` refuses every engine start in a test run (`make verify-site` sets it): the start raises FileNotFoundError, read as an absent engine. |
 | `WORKCENTER_ENGINE_LOG` | path | a temp file per pytest run | Where each engine start of a test run is written; the `engine` marker is held against it. |
 | `--repo`, `--base`, `--head`, `--paths`, `--github-output` | `tools/ci/scope.py` flags | repo: here; head: the working tree | The change to judge; an empty `--base` is full; `--github-output` appends `scope=<answer>` to `$GITHUB_OUTPUT`. |
+
+## `verify/testshards.py` and `verify/shards.csv` (the tests step of `make verify`)
+
+| Field | Type | Default | Use |
+|---|---|---|---|
+| `verify/shards.csv` | CSV: `file`, `seconds`, `engine`, `alone` | 68 rows and `*` | Each test file's seconds in a shard, whether it starts an engine (its `no` files run first in a shard), and why it must run alone (it runs in the shard `serial`, after the others). `*` is the row for a file not listed (41.9 s). `verify/README.md` says how to keep it true. |
+| `--jobs` | flag of `verify/testshards.py run` | the processors (`os.cpu_count()`) | How many shards run side by side. |
+| `--work` | flag of `verify/testshards.py run` | a new folder under `$TMPDIR` | Where the shards' logs go. A folder named here is kept, and must be empty or new; a folder of its own is deleted when green and kept when red. |
+| `--table` | flag of `verify/testshards.py run` and `table` | `verify/shards.csv` | The table the files are split by, or written from. |
 
 ## The workflow Board (`.github/workflows/board.yml`, `tools/board.py`)
 
@@ -352,10 +367,11 @@ names.
 
 | Field | Type | Default | Use |
 |---|---|---|---|
-| `pack` | name or path | none; required when there is no `layout` | The board rule pack the DRC holds the board to: a file of `rules/board/` without `.json` (`ecss-q-st-70-12c-rev1`), or the path of a pack from the project's folder. The volts and amps come from the project's `ratings.json`, which must stand beside the board. No file: no pack. |
+| `pack` | name or path | none; required when there is no `layout` and no `creepage` | The board rule pack the DRC holds the board to: a file of `rules/board/` without `.json` (`ecss-q-st-70-12c-rev1`), or the path of a pack from the project's folder. The volts and amps come from the project's `ratings.json`, which must stand beside the board. No file: no pack. |
 | `via_wall` | `{"um": number, "source": text}` | none: no stated wall | The least copper of a via's wall the fab promises, um, with the fab's document, the place and the date read. Under half the least drill of a judged via, or the file is refused. With `hdi` the lesser of it and the pack's 25 um is taken. |
 | `hdi` | `{"source": text}` | none: not HDI | The order or document by which the board is built as HDI under ECSS-Q-ST-70-12C Rev.1, 11.6. The pack's 25 um wall then holds its vias (tables 11-1 and 11-2, page 100). A via's KiCad flag never makes a board HDI. |
 | `layout` | list of layout pack names | none | The layout packs the DRC gate holds the board to (`rules/board/`, `"kind": "layout"`): `ti-slva680a-esd`, `ti-szza009-emi`. With or without `pack`. |
+| `creepage` | `{"pack": name or path, ...conditions}` | none | The creepage pack the DRC holds every pair of nets to (`rules/board/`, `"kind": "creepage"`), with the conditions it asks. `mil-hdbk-454c-g69` asks `condition` (A, B or C) and `enclosure` (I or II); `ti-slup419-creepage` asks `pollution_degree` ("1" or "2") and `material_group` (I, II or III). With or without `pack` and `layout`. The voltages come from `ratings.json` beside the board. |
 | `connectors` | object, reference: why | none | The connectors that leave the device; asked by `ti-slva680a-esd`. A part with a reference J, P or X and digits, or a footprint in a `Connector...` or `TerminalBlock...` library or the `Battery` library, must be named here or under `inside`. |
 | `inside` | list of references | none | Connectors that stay inside the device; not judged for ESD. |
 | `protectors` | object, reference: what | none | The parts that protect against ESD; each needs a pad on a `ground` net. |
@@ -368,6 +384,17 @@ names.
 |---|---|---|---|
 | `kind` | a file of `rules/products/` without `.json` | none (required) | The product kind whose requirements `workcenter standards` lists (`vaping-device-lithium-cell`). |
 | `tests` | object, requirement: [IDs] | none | The IDs of the verification package whose PASS in `verification/traceability.md` holds a requirement. |
+
+## `rules/legend.json` (for `workcenter legend` and the DRC gate)
+
+The workcenter's own numbers for the legend; none is from a standard. The least height and stroke come from the fab's rule set in `rules/`.
+
+| Key | Type | Default | Use |
+|---|---|---|---|
+| `designator_reach_mm` | mm | 2.0 | A designator further than this from its own part's courtyard fails `nearest`. |
+| `placer_gap_mm` | mm | 0.15 | The gap the placer leaves between a designator and its part's courtyard. |
+| `size_step_mm` | mm | 0.1 | The placer's step down in text height, to the fab's least. |
+| `directions_per_side` | count | 2 | More directions on 1 side fail `direction`. |
 
 ## `rules/references/index.json` (for `workcenter references`)
 
@@ -449,6 +476,8 @@ checkout) and `--json` stand before the listing's name.
 | `KICAD_FOOTPRINT_DIR` | path | `/usr/share/kicad/footprints` | Footprint libraries to read. |
 | `FREEROUTING_JAR` | path | `/opt/workcenters/ee/freerouting/freerouting.jar` | Used by `route()`. |
 | `Design.files` | dict | `{}` | Text files `workcenter design` writes beside the project, by path under it: a block's deck, `ratings.json`, `parts.csv`. A path that is absolute, climbs out with `..`, names the project folder, or names a file `write()` makes itself is refused before anything is written. |
+| `place_designators` | bool | `False` | `True`: the board is written with every designator placed round its part (tools/legend.py), the same on every run. |
+| `designator(ref, x, y, angle)` | method | none | Fixes 1 designator by hand; the placer leaves it, the DRC gate judges it. |
 
 ## `tools/stretch.py`
 

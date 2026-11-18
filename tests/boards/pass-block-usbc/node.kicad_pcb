@@ -99,7 +99,7 @@
 		(tags "Through hole pin header THT 1x02 2.54mm single row")
 		(property "Reference" "J2"
 			(uuid "86a4192c-79af-531c-9a75-5edaba9756af")
-			(at 0 -2.38 0)
+			(at 0 -2.495 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -320,7 +320,7 @@
 		(tags "Through hole pin header THT 1x03 2.54mm single row")
 		(property "Reference" "J3"
 			(uuid "25ccc22a-c135-562e-9250-2190be075c2c")
-			(at 0 -2.38 0)
+			(at 0 -2.495 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -551,7 +551,7 @@
 		(tags "Through hole pin header THT 1x02 2.54mm single row")
 		(property "Reference" "J4"
 			(uuid "4f20ebe3-b441-5551-8b11-376d0e00680b")
-			(at 0 -2.38 0)
+			(at 0 -2.495 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -772,7 +772,7 @@
 		(tags "USB C Type-C Receptacle SMD")
 		(property "Reference" "J1"
 			(uuid "683644d8-5ccb-5755-b17c-7cddbea63a2e")
-			(at 0 -3.2 0)
+			(at 0 -3.925 0)
 			(layer "F.SilkS")
 			(uuid "f4afb7ff-b070-4f3a-bcf2-ef64726526c0")
 			(effects
@@ -1688,7 +1688,7 @@
 		(tags "resistor")
 		(property "Reference" "R1"
 			(uuid "bfb035f9-a6b7-5de1-98fa-b41d5f66c39f")
-			(at 0 -1.43 90)
+			(at 0 2.010118 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -1828,7 +1828,7 @@
 		(tags "resistor")
 		(property "Reference" "R2"
 			(uuid "05ee0996-1ec7-5b1d-9595-a3fed52340a6")
-			(at 0 -1.43 90)
+			(at -2.205 0 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -1968,7 +1968,7 @@
 		(tags "SOT TO_SOT_SMD SC-70 SOT-323")
 		(property "Reference" "U1"
 			(uuid "4a261aa4-a2ce-5f85-8ea3-8195893dcced")
-			(at 0 -1.8 0)
+			(at 0 -1.825 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -2315,7 +2315,7 @@
 		(tags "SOT TO_SOT_SMD SC-70 SOT-323")
 		(property "Reference" "U2"
 			(uuid "a339c4e6-c178-5291-8c74-5e591846e33a")
-			(at 0 -1.8 0)
+			(at 0 -1.825 0)
 			(layer "F.SilkS")
 			(effects
 				(font
@@ -2662,7 +2662,7 @@
 		(tags "capacitor")
 		(property "Reference" "C1"
 			(uuid "c65b86bf-d485-518c-98e4-eb655fb72b3d")
-			(at 0 -1.43 90)
+			(at 2.205 0 0)
 			(layer "F.SilkS")
 			(effects
 				(font
