@@ -388,13 +388,20 @@ def test_an_nxp_number_the_index_lacks_is_found_by_its_family(tmp_path):
 def test_the_board_rules_tool_declares_the_pack_whose_tables_it_reads():
     """tools/boardrules.py reads tables 7-1 and 7-3 of the board pack's standard by number alone, with no
     name beside them, so no check can find them: its CITES names the standard of every pack in
-    rules/board. Before, it had none: 0 named."""
+    rules/board. Before, it had none: 0 named. The layout packs of roadmap item 11 (`"kind": "layout"`)
+    are read by tools/layoutrules.py, whose CITES names each one's document by its index id."""
     code, lines = rules(ROOT / "tools" / "boardrules.py", index=INDEX)
     assert code == 0, lines
     assert lines == ["references rules: 1 documents named in 1 files, 1 in the index, 0 not; 0 not judged"]
     sys.path.insert(0, str(ROOT / "tools"))
     import boardrules
+    import layoutrules
 
-    files = (ROOT / "rules" / "board").glob("*.json")
-    packs = {json.loads(p.read_text(encoding="utf-8"))["pack"] for p in files}
+    data = [json.loads(p.read_text(encoding="utf-8")) for p in (ROOT / "rules" / "board").glob("*.json")]
+    packs = {d["pack"] for d in data if d.get("kind") != "layout"}
     assert packs and packs <= set(boardrules.CITES)
+    entries = json.loads(INDEX.read_text(encoding="utf-8"))["documents"]
+    by_number = {e["number"]: e["id"] for e in entries if "number" in e}
+    layout = {by_number[d["document"]["number"]] for d in data if d.get("kind") == "layout"}
+    assert layout == {"ti-slva680a", "ti-szza009"}
+    assert layout <= set(layoutrules.CITES)

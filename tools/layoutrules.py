@@ -21,6 +21,12 @@ import ratings
 from boardrules import Board, Finding, _p
 from ratings import Refusal
 
+# The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
+CITES = {
+    "ti-slva680a": "section 1 and figure 1-2, page 2; section 2.1, page 4; section 2.3, page 6",
+    "ti-szza009": "section 2.1.1, page 4; section 2.2.4, page 10",
+}
+
 CHECKS = {
     "esd_protector": ("connectors", "protectors", "ground"),
     "esd_nearest": ("connectors", "protectors", "ground"),

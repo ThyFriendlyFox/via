@@ -62,7 +62,9 @@ def read_kind(name: str) -> dict:
     for i, lab in enumerate(data["laboratory"], start=1):
         ratings._keys(f"{at}: laboratory {i}", lab, ("standard", "for"))
     for i, gone in enumerate(data["not_had"], start=1):
-        ratings._keys(f"{at}: not_had {i}", gone, ("document", "url", "why"))
+        # `title`, not `document`: a document not had names no copy, and `workcenter references rules`
+        # fails a `document` that names one by name alone.
+        ratings._keys(f"{at}: not_had {i}", gone, ("title", "url", "why"))
     return data
 
 
@@ -254,7 +256,7 @@ def report(project: Path, cli) -> tuple[str, list[str], list[Row]]:
     ]
     lines += ["Paid standards a test laboratory uses (named only; no number of theirs is held here):"]
     lines += [f"  {lab['standard']}: {lab['for']}" for lab in kind["laboratory"]]
-    lines += [f"not had: {g['document']}, {g['url']}: {g['why']}" for g in kind["not_had"]]
+    lines += [f"not had: {g['title']}, {g['url']}: {g['why']}" for g in kind["not_had"]]
     return head, lines, rows
 
 

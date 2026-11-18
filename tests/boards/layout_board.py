@@ -26,6 +26,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
 import kicadgen  # noqa: E402
 
+CITES = {"ti-slva680a": "section 2.3, Case 2", "ti-szza009": "section 2.1.1"}
+
 HEADER = "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical"
 TVS = "Diode_SMD:D_SOD-323"
 C0805 = "Capacitor_SMD:C_0805_2012Metric"

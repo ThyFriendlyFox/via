@@ -218,12 +218,12 @@
   ],
   "not_had": [
     {
-      "document": "Directive 2014/40/EU, Article 20 (electronic cigarettes, EU market)",
+      "title": "Directive 2014/40/EU, Article 20 (electronic cigarettes, EU market)",
       "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32014L0040",
       "why": "eur-lex.europa.eu answered HTTP 202 with no body to the client ee-workcenter/1.0 on 2026-11-17"
     },
     {
-      "document": "Directive 2014/30/EU, Annex I (electromagnetic compatibility, EU market)",
+      "title": "Directive 2014/30/EU, Annex I (electromagnetic compatibility, EU market)",
       "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32014L0030",
       "why": "eur-lex.europa.eu answered HTTP 202 with no body to the client ee-workcenter/1.0 on 2026-11-17"
     }

@@ -19,6 +19,11 @@ import layoutrules  # noqa: E402
 from boardrules import Board, Pad, Track, Via, Zone  # noqa: E402
 from ratings import Refusal  # noqa: E402
 
+CITES = {
+    "ti-slva680a": "section 1 and figure 1-2; section 2.1; section 2.3",
+    "ti-szza009": "section 2.1.1",
+}
+
 ESD = layoutrules.read_pack(ROOT / "rules" / "board" / "ti-slva680a-esd.json")
 EMI = layoutrules.read_pack(ROOT / "rules" / "board" / "ti-szza009-emi.json")
 BOTH = ["F.Cu", "B.Cu"]

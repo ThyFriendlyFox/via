@@ -596,20 +596,20 @@ def test_every_document_a_rule_of_the_repository_names_is_in_the_index():
     ECSS pack 1; the 2 layout packs of roadmap item 11, TI SLVA680A and SZZA009),
     rules/copper/materials.json 2 (NBS's copper wire tables and TI's AN-2020), rules/interfaces/ 7
     (TI's USB layout note in the 2 TI files, the 3 usb.org specifications in usb2.json and usb3.json,
-    NIST's 2 CODATA pages in constants.json), rules/products/vaping-device-lithium-cell.json 2 more (47
-    CFR 15 Subpart B and 49 CFR 173.185; it names the 2 TI notes too), the 4 facts files of 1 part 4
-    datasheets, passives.json 4, fail-sim-bias's parts.json 2 (Samsung's page and Coilcraft's 806,
-    which passives.json names too): 2 + 3 + 2 + 7 + 2 + 4 + 4 + 2 = 26 named. The 4 fab rule files
-    name 1 + 1 + 1 + 2 = 5 pages: 31 in all. made-up.json's 4 parts name no document, Sierra's fab file
-    names IPC's class standard with no place beside it, and the product kind names 2 IEC standards a
-    laboratory uses, with none: 4 + 1 + 2 = 7 not judged. Files: 2 + 3 + 1 + 5 + 1 + 7 JSON and 4 fab
-    rule files = 23."""
+    NIST's 2 CODATA pages in constants.json), rules/products/vaping-device-lithium-cell.json 4 (47 CFR
+    15 Subpart B, 49 CFR 173.185 and the 2 TI notes; a file's count is its own, so the notes count again
+    here), the 4 facts files of 1 part 4 datasheets, passives.json 4, fail-sim-bias's parts.json 2
+    (Samsung's page and Coilcraft's 806, which passives.json names too): 2 + 3 + 2 + 7 + 4 + 4 + 4 + 2
+    = 28 named. The 4 fab rule files name 1 + 1 + 1 + 2 = 5 pages: 33 in all. made-up.json's 4 parts
+    name no document, Sierra's fab file names IPC's class standard with no place beside it, and the
+    product kind names 2 IEC standards a laboratory uses, with none: 4 + 1 + 2 = 7 not judged. Files:
+    2 + 3 + 1 + 5 + 1 + 7 JSON and 4 fab rule files = 23."""
     globs = json.loads(INDEX.read_text(encoding="utf-8"))["rules"]
     files = sorted({p for pattern in globs for p in ROOT.glob(pattern)})
     code, out = run("rules", *files)
     assert code == 0, out
     assert out.splitlines()[-1] == (
-        "references rules: 31 documents named in 23 files, 31 in the index, 0 not; 7 not judged"
+        "references rules: 33 documents named in 23 files, 33 in the index, 0 not; 7 not judged"
     )
 
 
