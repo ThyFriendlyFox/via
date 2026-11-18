@@ -14,8 +14,8 @@ has RthetaJA 231.1 C/W, the WSON-6 (DRV) 100.2 C/W (section 5.4, page 5), both a
 the most (page 4). The pack's rule junction.ic.regulator allows the least of 85 C, 0.7 x 150 = 105 C
 and 150 - 40 = 110 C: 85 C.
 
-    dropout    VDO = IOUT x 238 mV / 500 mA (SLVA079 equation 1, page 2; SBVS320D 5.5, page 6, and 7.1.2):
-               at 0.1 A 47.6 mV, 3.3 + 0.0476 = 3.3476 V under 4.75 V; at 0.2 A 95.2 mV, 3.3952 V
+    dropout    VDO = IOUT x 238 mV / 500 mA (SLVA079 equation 1, page 2; SBVS320D section 5.5, page 6,
+               and 7.1.2): at 0.1 A 47.6 mV, 3.3 + 0.0476 = 3.3476 V under 4.75 V; at 0.2 A 95.2 mV, 3.3952 V
     PD         (40e-6 + IOUT) x (5.25 - 3.2505), at the least output the accuracy gives (SBVS320D
                equation 6, page 20; SLVA079 equation 11, page 11): at 0.1 A 0.10004 x 1.9995 = 0.20008 -
                0.00005002 = 0.20002998 W; at 0.2 A 0.20004 x 1.9995 = 0.40008 - 0.00010002 = 0.39997998 W
@@ -54,6 +54,12 @@ sys.path.insert(0, str(ROOT / "tools"))
 import blocks  # noqa: E402
 import kicadgen  # noqa: E402
 
+CITES = {
+    "ti-slva079": "equation 1, page 2; equation 8, page 9; equations 10 and 11, page 11",
+    "ti-sbvs320": "sections 5.3, 5.4 and 5.5, pages 4 to 6; sections 7.1.1 and 7.1.2, page 15; equations 6 "
+    "and 7, page 20; table 8-1, page 23",
+    "ti-spra953d": "sections 1.1 and 1.2, pages 2 and 3: what RthetaJA rests on",
+}
 CLI = ROOT / "tools" / "workcenter"
 BOARDS = ROOT / "tests" / "boards"
 FACTS = BOARDS / "library" / "facts"
@@ -290,8 +296,8 @@ def test_a_spec_written_greatest_first_or_not_finite_is_refused(spec, said):
 
 @needs_libs
 def test_an_ambient_under_the_ics_least_junction_is_refused():
-    """At no load the junction is the ambient: -60 C is under the -40 C of SBVS320D 5.3, page 4. At 0.1 A
-    the junction at 30 C is 76.227 C, under 85 C (the sums above)."""
+    """At no load the junction is the ambient: -60 C is under the -40 C of SBVS320D section 5.3, page 4.
+    At 0.1 A the junction at 30 C is 76.227 C, under 85 C (the sums above)."""
     assert refused(amps=0.1, ambient=(-60, 30), stock=[DBV, CIN, SAMSUNG]) == (
         "ldo U1: no stocked IC holds the spec: TLV75533PDBVR: TJ from the least ambient, -60 C, to 76.227 C, "
         f"not within TJ's -40 C to 125 C [{TJ_SPAN}]"

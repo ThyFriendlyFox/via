@@ -387,6 +387,22 @@ def test_an_nxp_number_the_index_lacks_is_found_by_its_family(tmp_path):
     ]
 
 
+def test_the_linear_regulator_block_its_builder_and_its_tests_declare_their_documents():
+    """tools/blocks_ldo.py, tests/test_blocks_ldo.py and tests/boards/block_ldo.py cite the block's note
+    (ti-slva079) and the TLV755P datasheet (ti-sbvs320) by equation, section and page, and the test the
+    thermal metrics note (ti-spra953d), as tools/thermal.py does. The block was built before the check
+    read code: the note's entry had no `names`, so the note was not found by name, and no file had a
+    CITES: 7 fails. Each file's CITES names its documents now: 1 + 3 + 1 = 5 named."""
+    paths = (
+        ROOT / "tools" / "blocks_ldo.py",
+        ROOT / "tests" / "test_blocks_ldo.py",
+        ROOT / "tests" / "boards" / "block_ldo.py",
+    )
+    code, lines = rules(*paths, index=INDEX)
+    assert code == 0, lines
+    assert lines == ["references rules: 5 documents named in 3 files, 5 in the index, 0 not; 0 not judged"]
+
+
 def test_the_board_rules_tool_declares_the_pack_whose_tables_it_reads():
     """tools/boardrules.py reads tables 7-1 and 7-3 of the board pack's standard by number alone, with no
     name beside them, so no check can find them: its CITES names the standard of every pack in

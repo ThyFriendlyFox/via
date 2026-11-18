@@ -16,6 +16,7 @@ from pathlib import Path
 import blocks
 import kicadgen
 
+CITES = {"ti-sbvs320": "table 4-1, page 3: the WSON-6's thermal pad on a large ground plane"}
 HERE = Path(__file__).resolve().parent
 HEADER_2 = "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical"
 C_0603 = "Capacitor_SMD:C_0603_1608Metric"

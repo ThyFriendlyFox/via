@@ -33,6 +33,7 @@ import blocks
 import ratings
 import thermal
 
+CITES = {"ti-slva079": "equation 1, page 2; equation 8 and section 10, page 9; equations 10 and 11, page 11"}
 RULES = blocks.RULES / "ldo.json"
 PACKS = blocks.ROOT / "rules" / "ratings"
 si = ratings.si
