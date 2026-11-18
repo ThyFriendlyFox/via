@@ -1351,6 +1351,11 @@ finding is a gap in the workcenter, never a board's own fault.
      line that cites one. Then read each log the copy touched: a 3-way
      apply puts an entry where its context matched, which can be the
      middle of the log. See each of its tests fail on `main`'s code.
+   Before the push, run the whole suite (`python3 -m pytest tests`),
+   not the tests of the files the merge touched: a branch older than a
+   check of `main` fails it with no conflict in the check's file. 22
+   library tables of 2 branches named this machine's paths, and `main`
+   went red (M217).
    The work has landed when the listing shows the branch at 100 %.
 3. Run `python3 tools/harvest.py scripts`. A script that 2 or more
    projects wrote is a tool the workcenter lacks. Read the newest file of

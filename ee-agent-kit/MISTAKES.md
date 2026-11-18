@@ -1312,3 +1312,8 @@ Cost: 1 request from the owner, and 2 runs of `workcenter pictures` (6 minutes e
 Root cause: I copied v0.2's picture step, which was itself 1 render, instead of reading P23 when the gates went GREEN. P14's close-out names P23, and I did not open either.
 Process: P23
 
+## M217 — 2026-11-18 — 3 branches merged onto `main` on the site's tests alone
+What happened: I merged Lark, Signet v0.5 and Rosetta v0.3 from their branches and pushed `main` after the docs, forms and doc tools tests. `main`'s CI failed 1 test of 1909: `test_no_committed_library_table_names_the_machine_that_wrote_it` found 22 library tables of Lark and Signet v0.5 that named their libraries as `/home/user/via/...`. The branches were generated before `kicadgen.lib_uri` (828702a), and their tables merged with no conflict.
+Cost: 1 red run on `main`, its 15 minutes, and a fix after the push.
+Root cause: I ran the tests of the files I had changed, and read a merge with no conflict as work that met `main`'s checks. A branch older than a check of `main` fails it without touching the check's file.
+Process: P35
