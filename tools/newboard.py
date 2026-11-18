@@ -7,9 +7,11 @@ It writes the files `workcenter next` and the commands after it read first:
     parts.csv            the header `procure` and `sources` read (PARTS_COLUMNS)
     library/sources.csv  the header `fetch --row` appends to (SOURCES_HEADER)
 
-A file that is there is kept, and a library/sources.csv in a folder above serves the project. A
-folder that holds a design (a design file, a KiCad project or a chip) is refused in 1 line, and
-nothing is written. The last line names the next step. No engine runs.
+A file that is there is kept, and a library/sources.csv that `find_sources(<dir>)` finds above (it
+stops at the project's own .git) serves the project. A folder that holds a design (a design file, a
+KiCad project or a chip), an empty name, and a path that cannot be written (a file where a folder
+goes, or a folder where a file goes) are refused in 1 line; every path is judged before the first
+write, so nothing is written. The last line names the next step. No engine runs.
 
 Standard library only, as the CLI is (AGENTS.md invariant 3).
 """
@@ -48,7 +50,21 @@ def held(folder: Path) -> list[str]:
     return sorted(p.name for pattern in DESIGNS for p in folder.glob(pattern))
 
 
+def blocked(path: Path) -> str | None:
+    """Why `path` cannot be written as a file, or None: a folder is there, or the nearest thing above
+    it that is there is a file, so no folder can be made for it."""
+    if path.is_dir():
+        return f"{path} is a folder, where a file goes"
+    for above in path.parents:
+        if above.exists():
+            return None if above.is_dir() else f"{above} is a file, where {path} needs a folder"
+    return None
+
+
 def cmd_new(args, cli) -> int:
+    if not args.dir.strip():
+        print("new: the folder's name is empty; name a folder. Nothing written.")
+        return 1
     target = Path(args.dir).resolve()
     quoted = shlex.quote(args.dir)
     if target.exists() and not target.is_dir():
@@ -61,7 +77,10 @@ def cmd_new(args, cli) -> int:
             f"new: {target} holds a design already ({named}); nothing written. Next: workcenter next {quoted}"
         )
         return 1
-    above = cli.find_sources(target.parent)
+    # As the readers find it (`fetch --row`, `sources`): from the project itself, stopping at its .git.
+    above = cli.find_sources(target)
+    if above == target / "library" / "sources.csv":
+        above = None  # the project's own: kept below as any file that is there
     files = {
         "design.py": design_text(board_name(target), uuid.uuid4()),
         ".gitignore": (TEMPLATE / "gitignore").read_text(encoding="utf-8"),
@@ -69,6 +88,13 @@ def cmd_new(args, cli) -> int:
     }
     if above is None:
         files["library/sources.csv"] = ",".join(cli.SOURCES_HEADER) + "\n"
+    # Every path is judged before the first is written, so a refusal leaves the folder as it was.
+    for relative in files:
+        path = target / relative
+        why = blocked(path) if not path.is_file() else None
+        if why:
+            print(f"new: {why}; nothing written.")
+            return 1
     wrote, kept = [], []
     for relative, text in files.items():
         path = target / relative
