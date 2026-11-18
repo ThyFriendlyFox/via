@@ -644,14 +644,23 @@ theta_jb holds no part. Prefer psi_jb or psi_jt.
    "heat_sink": {"name": "the sink on U1", "theta_cs": 0.5, "theta_sa": 20,
                  "source": "the sink's datasheet, page 2; the pad's datasheet, page 1"}
    ```
-   The junction is then the greater of equation 4 from the stated case
-   and equation 5 from the ambient, TA + (RthetaJC + Rtheta(CS) +
-   Rtheta(SA)) x power (section 2.2, page 7), in place of the 2s2p floor.
-   Equation 5 gives a junction no lower than equation 6, which SPRA953D
-   calls more accurate for any combination; the line says so with the
-   part's RthetaJC / RthetaJA. `heat_sink` is refused with any other
-   figure (psi_jt is not used with a heat sink, section 3.2, page 10), and
-   as text alone. 2 keys within 0.01 C of each
+   Equation 5, TA + (RthetaJC + Rtheta(CS) + Rtheta(SA)) x power
+   (section 2.2, page 7), needs only the run's ambient and the sink's 2
+   resistances, so the gate works it at every run: the junction is the
+   greater of equation 5 and equation 4 from the stated case (in place of
+   the 2s2p floor), or theta_ja at a run whose ambient states no case. A
+   junction over the limit by equation 5 fails, whatever else is set
+   aside; the record's `equation` and the line name the equation that gave
+   the worst junction, with its section and page. Equation 5 gives a
+   junction no lower than equation 6, and equation 6 is not taken:
+   SPRA953D calls it more accurate only if RthetaJA is known for the
+   system configuration (section 2.2, page 7), and the facts' RthetaJA is
+   the test board's, a misapplication on a system board (section 1.1,
+   page 2) and on 2s2p a best case (section 1.2, page 3). The line gives
+   the part's RthetaJC / RthetaJA. `heat_sink` is refused with any other
+   figure (psi_jt is not used with a heat sink, section 3.2, page 10), as
+   text alone, and with a theta_cs or theta_sa of 0 (a sink with no
+   resistance to the air is not a part). 2 keys within 0.01 C of each
    other are refused. The part's `thermal` line names the stated
    temperature and its source when its worst run used it, and, when the
    facts give theta_ja, the junction theta_ja gives at those runs and its
@@ -674,7 +683,7 @@ theta_jb holds no part. Prefer psi_jb or psi_jt.
    | `thermal: U1 (MPN): sim/thermal.json states its board temperature at 70 C ambient, where no run of ldo stands` | The ambient matches no run: write the run's temperature (the deck's own or a corner's). |
    | `thermal: U1 (MPN) not held: its facts (...) name no JEDEC board for theta_ja` | Write `boards` from the thermal table's footnote. A figure on no JEDEC board holds no part. |
    | `... not held at 85 C: its stated board 85.001 C, which gives a junction of 96.035 C, was checked against no board: ...` | No 2s2p floor checks the stated temperature. Judge the part on theta_ja (take `from` out), or, for a case on a heat sink, state theta_jc with `heat_sink` and its 2 resistances. |
-   | `thermal U1: junction ... at its worst of 11 runs (...), from case ..., the case on a heat sink, ..., equation 5 judging` | Equation 5 from the ambient gave more than the stated case: the sink, not the case, sets the junction. A hotter part needs a better sink (a lower Rtheta(SA)) or less power. |
+   | `thermal U1: junction ... at its worst of 11 runs (...), the case on a heat sink, ..., the worst junction by SPRA953D, section 2.2, equation 5, page 7` | Equation 5 from the ambient gave more than the stated case or theta_ja: the sink, not the case, sets the junction. A hotter part needs a better sink (a lower Rtheta(SA)) or less power. |
    | `thermal: no part's junction is judged: sim/thermal.json is not there, ...` | Name each part that dissipates power in `sim/thermal.json` (step 3). |
    | `corners.json: decks.ldo.temperature runs -20 C and 60 C, so 85 C of the file's -20 C and 85 C is not run for ldo` | The deck's own block leaves out a temperature of the file, an end or an inner one. Add it to the deck's block, or take the block out so the deck runs the file's. |
    | `... not judged: its deck ... did not run to its end` | Fix the deck first; its errors are in the same result. |
