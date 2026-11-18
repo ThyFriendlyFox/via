@@ -21,6 +21,8 @@ import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
+import clock
+
 ROOT = Path(__file__).resolve().parents[1]
 INDEX = ROOT / "rules" / "references" / "index.json"
 KINDS = ("standard", "application note", "datasheet")
@@ -216,7 +218,8 @@ def keep(to: Path, doc_id: str, body: bytes, name: str) -> tuple[str, str]:
 
 
 def now() -> str:
-    return datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%MZ")
+    """The run's minute in UTC: every record 1 run files carries the same one."""
+    return clock.moment().astimezone(datetime.UTC).strftime("%Y-%m-%dT%H:%MZ")
 
 
 def answered(status: str, detail: str) -> str:

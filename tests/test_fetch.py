@@ -7,12 +7,12 @@ records every User-Agent it is sent. The library is built in each test's tmp_pat
 
 from __future__ import annotations
 
-import datetime
 import hashlib
 import http.server
 import importlib.machinery
 import io
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -24,6 +24,9 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
+# The day `fetch` runs on here: 1794960060 s is 2026-11-18 00:01:00 UTC (tests/test_clock.py).
+DAY = "2026-11-18"
+PINNED = {"SOURCE_DATE_EPOCH": "1794960060"}
 
 MODEL = (
     "* Acme divider model\n* Model Version: 2.1, Date: 02/02/2007\n.SUBCKT RDIV IN OUT GND\nR1 IN OUT 100\n"
@@ -51,6 +54,7 @@ def fetch(*args: object) -> tuple[int, dict]:
         capture_output=True,
         text=True,
         check=False,
+        env={**os.environ, **PINNED},
     )
     return proc.returncode, (json.loads(proc.stdout) if proc.stdout.strip() else {})
 
@@ -122,7 +126,7 @@ def test_fetch_keeps_the_file_and_prints_its_row(site):
     assert row["MPN"] == "ACME-R" and row["Kind"] == "spice"  # the kind from the suffix
     assert row["URL"] == f"{url}/rdiv.lib" and row["File"] == "acme/rdiv.lib"
     assert row["SHA256"] == sha(MODEL.encode()) and row["Subckt"] == "RDIV"
-    assert row["Checked"] == datetime.date.today().isoformat()
+    assert row["Checked"] == DAY
     assert row["Revision"] == "" and row["Dated"] == ""  # the reader fills these from the file
     assert report["revision_lines"] == ["Model Version: 2.1, Date: 02/02/2007"]
     assert Maker.agents == [load_cli().FETCH_AGENT]  # one request, under the workcenter's own name
@@ -143,8 +147,7 @@ def test_fetch_row_appends_once_in_the_files_own_line_ends(site):
     added = after[len(before) :]
     assert added.endswith(b"\r\n") and added.count(b"\n") == 1, added
     digest = sha(DATASHEET.encode())
-    today = datetime.date.today().isoformat()
-    assert added == f"ACME-2,datasheet,{url}/acme-2.txt,acme/acme-2.txt,,,,,,{digest},{today},\r\n".encode()
+    assert added == f"ACME-2,datasheet,{url}/acme-2.txt,acme/acme-2.txt,,,,,,{digest},{DAY},\r\n".encode()
     assert load_cli().read_sources(lib / "sources.csv")[-1].mpn == "ACME-2"
     # a second row for the same part and kind is refused before anything is asked of the site
     requests = len(Maker.agents)

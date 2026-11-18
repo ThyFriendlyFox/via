@@ -25,6 +25,9 @@ BOARDS = ROOT / "tests" / "boards"
 
 needs_kicad = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
 needs_ngspice = pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed")
+# The day every command here runs on: 1794960060 s is 2026-11-18 00:01:00 UTC (tests/test_clock.py).
+DAY = "2026-11-18"
+PINNED = {"SOURCE_DATE_EPOCH": "1794960060"}
 
 
 def load_cli_module():
@@ -42,6 +45,7 @@ def run(*args: object) -> tuple[int, list[dict]]:
         capture_output=True,
         text=True,
         check=False,
+        env={**os.environ, **PINNED},
     )
     payload = json.loads(proc.stdout) if proc.stdout.strip() else []
     return proc.returncode, payload
@@ -390,10 +394,9 @@ PARTS = "\n".join(
 
 
 def parts_file(tmp_path: Path, text: str = PARTS) -> Path:
-    import datetime
-
+    """Prices checked on the day `run` pins every command to: none of them is old."""
     path = tmp_path / "parts.csv"
-    path.write_text(text.format(today=datetime.date.today().isoformat()), encoding="utf-8")
+    path.write_text(text.format(today=DAY), encoding="utf-8")
     return path
 
 
