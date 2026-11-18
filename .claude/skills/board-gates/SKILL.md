@@ -63,7 +63,15 @@ the step is done. Run it whenever the next step is not plain.
    message that names the rule and the reason.
 5. Re-run from step 2. 1 fix, 1 commit, with the gate's summary line as
    evidence in the message. Loop until GREEN.
-6. GREEN: fabrication outputs are in `build/fab/` (gerbers, drill, BOM,
+6. Give each circuit the board asks a deck for its deck. The SIM gate
+   prints `not judged: the I2C lines ...` for an I2C line with a pull-up and
+   no rise-time deck, and `not judged: U1 (...) feeds the loads ratings.json
+   states ...` for a regulator with a stated load and no load-step deck: a
+   warning, a failure with `--strict`. A board with such a line is not done,
+   even when every deck it has passes. Run `workcenter next <project>`: its
+   RUN line copies the deck from `templates/project/sim/`. Fill it as the
+   `simulate` skill, "Decks a board asks for", says, then go back to step 2.
+7. GREEN: fabrication outputs are in `build/fab/` (gerbers, drill, BOM,
    schematic PDF). Run `workcenter render <project>` for the schematic,
    board, 3D and per-layer images in `build/render/`, and the turning GIFs
    (`--views spin`) that `PROCESSES.md` P23 asks of a finished version. Report the gates table, the
@@ -73,7 +81,7 @@ the step is done. Run it whenever the next step is not plain.
    <version>/docs/gates.md` writes each board's table and deck list into
    the report between its markers, and `workcenter pictures <version>`
    draws and copies every picture P23 asks for.
-7. A generated design (`design.py`, see `board-design`) is fixed in the
+8. A generated design (`design.py`, see `board-design`) is fixed in the
    Python and regenerated with `workcenter design design.py --route`,
    never by editing the `.kicad_*` files.
 
@@ -95,6 +103,8 @@ the step is done. Run it whenever the next step is not plain.
 | SIM | `no sim/corners.json` | Write the file: the temperature range and each part's tolerance, each with its source. |
 | SIM | `frequency plan: ... no overlap answers it` | A source or its harmonic is on a resonance. Move one of them or damp it; the `simulate` skill, "The frequency plan". |
 | SIM | `ngspice exit` | Read `build/sim/<deck>.log` at its first error line. |
+| SIM | `not judged: the I2C lines ...` or `not judged: U1 (...) feeds the loads ...` | The board asks for a deck it has not got. Step 6. |
+| SIM | `<deck>.cir:<n>: still says fill: ...` | A copied template: write the value line `n` names, then delete the line. |
 
 ## Checks
 
