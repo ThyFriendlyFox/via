@@ -149,6 +149,7 @@ def test_a_route_that_joins_every_net_says_0_and_exits_0(tmp_path):
     assert json.loads(summary.stdout)["route"]["unconnected"] == 0
 
 
+@pytest.mark.engine
 @pytest.mark.skipif(
     not LIBS.is_file() or shutil.which("kicad-cli") is None,
     reason="the KiCad libraries and kicad-cli are needed",
