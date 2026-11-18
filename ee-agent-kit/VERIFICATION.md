@@ -1,7 +1,10 @@
 # VERIFICATION.md — one command answers "is this repo healthy"
 
-`make verify` runs `verify/verify.sh`, in order, the steps with no engine
-first so that their failures show early:
+`make verify` runs `verify/verify.sh`. It first waits its turn on the
+machine's engine lock and holds it to its end (`tools/enginelock.py`); the
+commands its tests start, in every shard, are its children and do not
+wait. Then, in order, the steps with no engine first so that their
+failures show early:
 
 1. Lint — `shellcheck` on every shell script, `ruff check` and
    `ruff format --check` on `tools/`, `tests/` and `verify/`.
@@ -14,8 +17,10 @@ first so that their failures show early:
 4. Tests — `verify/testshards.py run`: the files of `tests/` in 1 pytest
    process per processor, split by the seconds `verify/shards.csv` gives
    each (`verify/README.md`). The step is red when a shard fails, when a
-   shard ends with no summary line, or when the ids the shards ran are
-   not the ids 1 process collects. The fixture boards under `tests/boards`
+   shard ends before pytest's end of session, when the collection in 1
+   process fails, when the ids the shards ran are not the ids 1 process
+   collects, or when a test's skip or xfail marks differ between its
+   shard and 1 process. The fixture boards under `tests/boards`
    are the gate tests: `pass-rc-divider` must be GREEN,
    `fail-drc-clearance` must stop at DRC with a `clearance` violation,
    `fail-sim-spec` must fail its `vout` bound. KiCad-dependent tests skip

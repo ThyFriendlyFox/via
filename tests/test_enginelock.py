@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -446,9 +447,11 @@ def test_held_answers_for_a_holders_child_and_for_a_stranger(bench):
 
 def test_verify_takes_the_lock_for_the_whole_gate():
     """verify/verify.sh asks `held` and, outside a holder, runs itself again under `hold` before its
-    first step: the gate runs alone with no lock file of a lead's."""
+    first step, whichever step comes first: the gate runs alone with no lock file of a lead's."""
     text = (ROOT / "verify" / "verify.sh").read_text(encoding="utf-8")
-    head = text[: text.index('step "1/4 lint"')]
+    head = text[: re.search(r'^step "', text, re.M).start()]
+    # The lock comes before the step machinery and the trap: the run under `hold` sets them up itself.
+    assert head.index("python3 tools/enginelock.py held") < head.index("STEP=") < head.index("trap ")
     assert "python3 tools/enginelock.py held" in head
     # `make verify-site` (verify.sh site) is named by its mode (tests/test_ci_scope.py).
     assert (
