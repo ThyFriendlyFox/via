@@ -173,14 +173,65 @@ def test_a_board_with_no_part_that_carries_a_thermal_figure_says_so_in_1_line():
     )
 
 
-def test_a_part_with_no_part_number_is_named_by_its_facts_entry():
-    """A part matched by its symbol has no part number: the line and the row name the entry's name."""
-    entry = ratings._facts("sym.json", {**{k: v for k, v in TLV.data.items() if k != "mpn"}, "symbol": "LDO"})
-    board = thermal.asked({"U1": ("", entry)}, None)
-    assert board["not_judged"][0].startswith("thermal: U1 (LDO) not judged: its facts (sym.json) carry")
-    assert board["not_judged"][0].endswith(
-        '"U1": {"mpn": "LDO", "watts": "<deck>.<measure>", "source": "<how the deck gives its power>"}'
+SYMBOL_ONLY = ratings._facts(
+    "sym.json", {**{k: v for k, v in TLV.data.items() if k != "mpn"}, "symbol": "Regulator_Linear:LDO"}
+)
+BY_SYMBOL = (
+    "which no row of sim/thermal.json can name: a row names a part by its number, and judge() reads the "
+    "facts by that number. Give the part its number in parts.csv beside the schematic, and a facts entry "
+    "that names that number (the ratings skill)"
+)
+
+
+def test_a_part_named_by_its_symbol_is_told_it_needs_a_number_and_is_handed_no_row():
+    """Finding L7B2-2. U1 has no part number; its facts entry names it by its symbol alone (the ratings
+    skill's form for a part with no number). A row reads facts by its part number, so no row can name
+    that entry: the line says what the part needs, and hands out no row the gate would refuse."""
+    board = thermal.asked({"U1": ("", SYMBOL_ONLY)}, None)
+    assert board["not_judged"] == [
+        "thermal: U1 (Regulator_Linear:LDO) not judged: its facts (sym.json) carry junction_max 150 C and "
+        "theta_ja 231.1 C/W, theta_jc 118.4 C/W, theta_jb 64.4 C/W, psi_jt 28.4 C/W and psi_jb 63.8 C/W (p 4 "
+        "and 5) and name it by its symbol, " + BY_SYMBOL
+    ]
+    assert '"mpn"' not in board["not_judged"][0]
+
+
+def test_a_row_for_a_part_named_by_its_symbol_says_what_the_part_needs():
+    """Finding L7B2-2. The row names the symbol, as the line used to hand out: the row still fails, as
+    judge() finds no facts entry by that number, and the line says what the part needs, not to write the
+    board's part number in the row, which the board does not give."""
+    board = thermal.asked({"U1": ("", SYMBOL_ONLY)}, {"U1": "Regulator_Linear:LDO"})
+    assert board["failures"] == [
+        "thermal: U1 (Regulator_Linear:LDO) is judged on facts that are not its own: its row in "
+        "sim/thermal.json names Regulator_Linear:LDO, and the facts entry of the board's part (sym.json) "
+        "names it by its symbol, " + BY_SYMBOL
+    ]
+
+
+def test_a_part_with_no_number_judged_by_its_row_is_counted_among_the_parts_with_a_figure():
+    """Finding L7B2-3. No parts.csv gives U1 a number; its pins fit the DBV entry and its row names
+    TLV75533PDBVR, so judge() judges it on that entry's figures. The board's line counts U1 among the
+    parts that carry a figure, and says the number is its row's, not a parts file's."""
+    entries = {"U1": ("", None), "R1": ("", None)}
+    board = thermal.asked(entries, {"U1": "TLV75533PDBVR"}, maybe={"U1": [TLV]}, parts=None)
+    assert board["not_judged"] == [] and board["failures"] == []
+    assert board["asked"] == ["U1"]
+    assert board["line"] == (
+        "thermal: 1 part of the board carries a thermal figure in its facts: U1; sim/thermal.json names 1 "
+        "of them; U1 has no part number from a parts file: TLV75533PDBVR is its row's in sim/thermal.json"
     )
+
+
+def test_a_row_for_a_reference_that_is_no_fitted_part_of_the_board_is_named():
+    """Finding L7B2-5. The board has U1; the plan has a row for U1 and one for U2, which the schematic
+    does not carry (or marks not fitted): U2's row is named, as a warning."""
+    board = thermal.asked({"U1": ("TLV75533PDBVR", TLV)}, {"U1": "TLV75533PDBVR", "U2": "TLV75533PDBVR"})
+    assert board["strays"] == [
+        "thermal: U2 of sim/thermal.json is no fitted part of the board: the schematic has no U2, or marks "
+        "it not fitted, and its row is judged as a part of the board: write the row under the board part's "
+        "reference, or take it out"
+    ]
+    assert thermal.asked({"U1": ("TLV75533PDBVR", TLV)}, {"U1": "TLV75533PDBVR"})["strays"] == []
 
 
 # ---------------------------------------------------------------- the gate's reading of the board
@@ -236,6 +287,40 @@ def test_a_project_with_no_schematic_names_no_part_of_a_board(tmp_path):
         "thermal: the project has no schematic, so it names no part of a board: only the parts "
         "sim/thermal.json names are judged"
     )
+
+
+LDO_DECK = "* U1, a TLV75533PDBVR, takes 5 V to 3.3 V.\nVIN in 0 DC 5\n.end\n"
+
+
+def test_with_no_schematic_a_part_number_a_deck_names_whose_facts_carry_a_figure_is_asked_for(tmp_path):
+    """Finding L7B2-1. Decks, thermal facts and no schematic, the stage of simulating before layout. The
+    deck names TLV75533PDBVR, whose facts carry a thermal figure; with no sim/thermal.json it is not
+    judged, which fails --strict. The same project with the row is judged on it; a deck that names no such
+    number leaves the 1 line as before."""
+    cli = load_cli()
+    (tmp_path / "library" / "facts").mkdir(parents=True)
+    (tmp_path / "library" / "facts" / "u.json").write_text(json.dumps(TLV.data), encoding="utf-8")
+    project = project_at(cli, tmp_path / "board", sch=False)
+    (project.dir / "sim").mkdir()
+    (project.dir / "sim" / "ldo.cir").write_text(LDO_DECK, encoding="utf-8")
+    record, unjudged = cli.thermal_board(project, tmp_path / "out", None)
+    assert unjudged == [
+        "thermal: TLV75533PDBVR (named by ldo.cir) not judged: its facts (u.json) carry junction_max 150 C "
+        "and theta_ja 231.1 C/W, theta_jc 118.4 C/W, theta_jb 64.4 C/W, psi_jt 28.4 C/W and psi_jb 63.8 C/W "
+        "(p 4 and 5), and sim/thermal.json names no row for it: write its row under `parts`, under the "
+        "reference the part will have on the board (the simulate skill, A part's temperature, step 3): "
+        '"<reference>": {"mpn": "TLV75533PDBVR", "watts": "<deck>.<measure>", "source": "<how the deck '
+        'gives its power>"}'
+    ]
+    assert record["line"] == (
+        "thermal: the project has no schematic, so it names no part of a board; its decks name 1 part "
+        "number whose facts carry a thermal figure: TLV75533PDBVR; sim/thermal.json names 0 of them"
+    )
+    record, unjudged = cli.thermal_board(project, tmp_path / "out", {"U1": "TLV75533PDBVR"})
+    assert unjudged == [] and record["line"].endswith("sim/thermal.json names 1 of them")
+    (project.dir / "sim" / "ldo.cir").write_text("VIN in 0 DC 5\n.end\n", encoding="utf-8")
+    record, unjudged = cli.thermal_board(project, tmp_path / "out", None)
+    assert unjudged == [] and record["line"] == thermal.NO_SCHEMATIC
 
 
 def test_a_schematic_kicad_cli_cannot_read_leaves_the_board_s_parts_not_judged(tmp_path, monkeypatch):
@@ -294,6 +379,34 @@ def test_workcenter_next_sends_an_unplanned_part_to_step_3_of_the_skill():
     do, read = guide.hint("sim", U1_LINE)
     assert do.startswith("Write the part's row in sim/thermal.json, as the line gives it (step 3).")
     assert read.endswith('"A part\'s temperature"')
+
+
+def test_workcenter_next_names_the_step_each_new_thermal_line_asks_for():
+    """Finding L7B2-4. Each of these lines asks for its own step: a part number in parts.csv beside the
+    schematic, the board part's own number in its row, a number and a facts entry for a part named by its
+    symbol, a row under the board's reference, and kicad-cli installed. None gets the generic hint."""
+    maybe = thermal.asked({"U1": ("", None)}, None, maybe={"U1": [TLV]}, parts=None)["not_judged"][0]
+    mismatch = thermal.asked({"U1": ("TLV75533PDBVR", TLV)}, {"U1": "TLV75533PDRVR"})["failures"][0]
+    symbol = thermal.asked({"U1": ("", SYMBOL_ONLY)}, None)["not_judged"][0]
+    stray = thermal.asked({}, {"U2": "TLV75533PDBVR"})["strays"][0]
+    unread = thermal.UNREAD.format(why="kicad-cli is not on PATH to read the schematic's parts")
+    generic, _ = guide.hint("sim", "thermal: x")
+    said = {
+        name: guide.hint("sim", line)[0]
+        for name, line in [
+            ("maybe", maybe),
+            ("mismatch", mismatch),
+            ("symbol", symbol),
+            ("stray", stray),
+            ("unread", unread),
+        ]
+    }
+    assert generic not in said.values()
+    assert said["maybe"].startswith("Give the part its number in parts.csv beside the schematic")
+    assert said["mismatch"].startswith("Write the board part's own number in its row")
+    assert said["symbol"].startswith("Give the part a number in parts.csv beside the schematic and a facts")
+    assert said["stray"].startswith("Write the row under the reference the board gives the part")
+    assert said["unread"].startswith("Install the toolchain")
 
 
 # ---------------------------------------------------------------- the record of equation 5

@@ -130,6 +130,39 @@ def test_with_the_parts_list_elsewhere_the_regulator_is_not_judged_and_no_part_i
 
 
 @needs_engines
+def test_with_no_schematic_and_no_plan_the_regulator_a_deck_names_fails_strict(tmp_path):
+    """Finding L7B2-1. tests/boards/fail-sim-thermal has a deck, thermal facts and no schematic; with its
+    sim/thermal.json taken away the gate judged no junction and passed --strict, while U1 runs at 85 +
+    231.1 x 0.1729537 = 124.97 C over ECSS's 110 C (the fixture's own failure). Its deck names
+    TLV75533PDBVR, whose facts carry a thermal figure: that number is not judged, and --strict fails."""
+    project = copy_of(tmp_path, "fail-sim-thermal")
+    (project / "sim" / "thermal.json").unlink()
+    code, record = sim(project, tmp_path / "out")
+    assert code == 1 and record["status"] == "fail"
+    assert [f[:52] for f in record["details"]["failures"]] == [
+        "thermal: TLV75533PDBVR (named by ldo.cir) not judged"
+    ]
+
+
+@needs_engines
+def test_a_row_for_a_reference_the_board_does_not_carry_is_named(tmp_path):
+    """Finding L7B2-5. pass-block-ldo with U1's row moved under U2, which the board does not carry: the
+    row is judged all the same, and the gate names it as no fitted part of the board."""
+    project = copy_of(tmp_path)
+    path = project / "sim" / "thermal.json"
+    plan = json.loads(path.read_text(encoding="utf-8"))
+    plan["parts"] = {"U2": plan["parts"]["U1"]}
+    path.write_text(json.dumps(plan), encoding="utf-8")
+    code, record = sim(project, tmp_path / "out")
+    assert code == 1
+    assert [f for f in record["details"]["failures"] if f.startswith("thermal: U2 of")] == [
+        "thermal: U2 of sim/thermal.json is no fitted part of the board: the schematic has no U2, or marks "
+        "it not fitted, and its row is judged as a part of the board: write the row under the board part's "
+        "reference, or take it out"
+    ]
+
+
+@needs_engines
 def test_a_board_with_no_deck_still_asks_for_its_charger_s_junction(tmp_path):
     """Finding L7B-3. pass-block-charger with its sim/ folder taken away: U1, BQ21040DBVR, whose facts
     carry junction_max 150 C and RthetaJA 130.8 C/W (BQ21040 datasheet, sections 7.1 and 7.4, pages 3 and

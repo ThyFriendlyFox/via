@@ -1329,8 +1329,10 @@ def thermal_board(project: Project, folder: Path, named: dict[str, str] | None) 
     (tools/thermal.py, `asked`): (record, not judged). `named` maps the plan's parts to their rows' part
     numbers, None with no plan; a row that names another part's number is in the record's `failures`.
     The part numbers are read from <project>/parts.csv alone; a part with none and no facts entry, whose
-    pins are those of an entry with a figure, is not judged. kicad-cli reads the schematic's parts only
-    when a facts entry of the library carries `thermal`."""
+    pins are those of an entry with a figure, is not judged; a row for a reference the board does not fit
+    is named (`strays`). With no schematic, an entry with a figure whose part number a deck names is
+    asked for (tools/thermal.py, `from_decks`). kicad-cli reads the schematic's parts only when a facts
+    entry of the library carries `thermal`."""
     th, rt = thermal(), ratings()
     library = rt.find_facts(project.dir)
     if library is None:
@@ -1341,8 +1343,16 @@ def thermal_board(project: Project, folder: Path, named: dict[str, str] | None) 
         return {"line": None}, [th.UNREAD.format(why=f"library/facts: {exc}")]
     if not any("thermal" in f.data for f in facts):
         return {"line": th.no_figure(len(facts))}, []
+    hot = [f for f in facts if "thermal" in f.data]
     if not project.sch:
-        return {"line": th.NO_SCHEMATIC}, []
+        # No board to read: the decks give the power, so an entry with a figure whose number a deck
+        # names is asked for (a project that simulates before layout).
+        decks = {
+            p.name: p.read_text(encoding="utf-8", errors="replace")
+            for p in sorted((project.dir / "sim").glob("*.cir"))
+        }
+        board = th.from_decks(decks, hot, named)
+        return board, board["not_judged"]
     if not shutil.which(KICAD_CLI):
         return {"line": None}, [
             th.UNREAD.format(why=f"{KICAD_CLI} is not on PATH to read the schematic's parts")
@@ -1360,7 +1370,6 @@ def thermal_board(project: Project, folder: Path, named: dict[str, str] | None) 
     except (ValueError, OSError) as exc:
         return {"line": None}, [th.UNREAD.format(why=str(exc))]
     entries, maybe, unread = {}, {}, []
-    hot = [f for f in facts if "thermal" in f.data]
     for ref, part in net.parts.items():
         try:
             entries[ref] = (mpns.get(ref, ""), rt.facts_of(facts, part, mpns.get(ref, "")))
@@ -1371,7 +1380,7 @@ def thermal_board(project: Project, folder: Path, named: dict[str, str] | None) 
             # No number and no entry: the gate cannot tell which part it is, so it may be one with a figure.
             maybe[ref] = th.could_be(part, hot)
     board = th.asked(entries, named, maybe, "parts.csv" if listed.is_file() else None)
-    return board, unread + board["not_judged"]
+    return board, unread + board["not_judged"] + board["strays"]
 
 
 BUNDLE_RUN = "run.sp"

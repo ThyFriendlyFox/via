@@ -678,8 +678,17 @@ theta_jb holds no part. Prefer psi_jb or psi_jt.
    project with no deck is asked for its parts all the same. No power
    decides it: a part is asked for because its facts carry a thermal
    figure. A board with no such part says so in 1
-   line and passes. A project with no schematic names no part of a board:
-   only the file's parts are judged, and 1 line says so. Without
+   line and passes. A row's `mpn` is how the gate finds the facts, so a
+   part whose facts entry names it by its symbol alone cannot be judged:
+   give it a number in `parts.csv` and an entry that names the number. A
+   part with no number whose row names an entry it could be is judged on
+   that entry, and the board's line says the number is the row's. A row
+   under a reference the board does not fit (another reference, a part
+   marked not fitted) is named, a warning. A project with no schematic
+   names no part of a board: an entry with a thermal figure whose part
+   number a deck names (a word of the deck's text, a comment too) is
+   asked for, and one the file does not name is not judged; with no such
+   number only the file's parts are judged, and 1 line says so. Without
    `sim/thermal.json` the gate judges no junction and prints 1 line that
    says so. `workcenter gates` prints the same `thermal` lines, and
    `--report` writes them under the deck table.
@@ -703,11 +712,14 @@ theta_jb holds no part. Prefer psi_jb or psi_jt.
    | `thermal: U1 (MPN) not judged: its facts (...) carry junction_max ... and sim/thermal.json names no row for it: write its row ...` | Write the row the line gives under `parts` in `sim/thermal.json`: the deck's measure that prints the part's power (step 2), and where that power comes from. Never take `thermal` out of the facts to quiet the line. |
    | `thermal: U1 (MPN) is judged on facts that are not its own: its row in sim/thermal.json names ...` | Write the board part's number in the row, as `parts.csv` gives it. If the board should carry the other part, change the schematic and `parts.csv`, never the row alone. |
    | `thermal: U1 not judged: the project has no parts.csv to give its part number ...` | Put `parts.csv` beside the schematic with the part's row (Value, Footprint, MPN), so the gate reads its number. |
+   | `thermal: U1 (Symbol) not judged: its facts (...) carry ... and name it by its symbol, which no row of sim/thermal.json can name ...` | Give the part its number in `parts.csv` and a facts entry that names that number (the `ratings` skill), then write its row. The same line follows a row that names the symbol. |
+   | `thermal: U2 of sim/thermal.json is no fitted part of the board ...` | Write the row under the reference the board gives the part, or take it out. |
+   | `thermal: MPN (named by ldo.cir) not judged: its facts (...) carry ...` | The project has no schematic and the deck names the part. Write its row under the reference the part will have. |
    | `thermal: which parts of the board carry a thermal figure is not judged: ...` | Do what the reason asks: install kicad-cli, correct the schematic, the facts or `parts.csv`. |
    | `thermal: U1 not judged: ... both speak of U1 ...` | 2 facts entries name the part as closely. Keep 1 (the `ratings` skill). |
    | `thermal: 2 parts of the board carry a thermal figure in their facts: U1, U2; sim/thermal.json names 2 of them` | Nothing: every part that can get hot is named. |
    | `thermal: no part of the board carries a thermal figure in its facts ...` or `thermal: no facts entry of library/facts carries a thermal figure ...` | Nothing to do here. A part with no facts entry is named by `workcenter ratings`; write its facts there. |
-   | `thermal: the project has no schematic, so it names no part of a board ...` | The gate judges only the file's parts. Write the schematic, and the gate asks for the rest. |
+   | `thermal: the project has no schematic, so it names no part of a board ...` | The gate judges the file's parts and the part numbers the decks name. Name each part's number in the deck that gives its power, or write the schematic, and the gate asks for the rest. |
    | `corners.json: decks.ldo.temperature runs -20 C and 60 C, so 85 C of the file's -20 C and 85 C is not run for ldo` | The deck's own block leaves out a temperature of the file, an end or an inner one. Add it to the deck's block, or take the block out so the deck runs the file's. |
    | `... not judged: its deck ... did not run to its end` | Fix the deck first; its errors are in the same result. |
    | `... not judged at the corners of sim/corners.json: the file skips deck ...` | The deck's `skip`, `--nominal`, `temperature: false` or a narrower `temperature` block left the corners out. Run the part's power in a deck the corners run. |
