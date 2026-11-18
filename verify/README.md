@@ -21,13 +21,14 @@ by side, and 1 verdict from all of them.
 | `engine` | `yes` when a test of the file starts an engine (kicad-cli, ngspice, FreeRouting, openEMS, a chip tool); `no` otherwise. A shard runs its `no` files first, so that their failures show early. |
 | `alone` | Empty, or why the file cannot run beside another. Such a file runs in the shard `serial`, after the others. |
 
-The seconds are the mean of 2 whole runs of the gate in 4 shards on
-2026-11-17, on a machine of 4 processors: 1840 tests, 1989.3 s and
-1991.7 s of test time. A file takes longer in a shard than alone, as 4
-shards share the processors: the same tests took 1554.4 s in 1 process
+The seconds come from 1 run of the tests step in 4 shards on 2026-11-18,
+on a machine of 4 processors: 2034 tests, 2553 s of test time
+(`testshards.py table` on that run's logs). A file takes longer in a shard
+than alone, as 4 shards share the processors: on 2026-11-17, 1840 tests
+took 1554.4 s in 1 process
 (`1821 passed, 1 skipped, 18 deselected, 1 warning in 1557.70s`), and
 `tests/test_chips.py` took 251.9 s there and 326.2 s in a shard. `*` takes
-44.2 s, the mean of the 45 files ((1989.3 + 1991.7) / 2 / 45). The
+48.2 s, the mean of the 53 files (2553 / 53). The
 `engine` column comes from a run with a shim in front of each engine on
 `PATH` that logged the test that started it, and from reading the files
 that run an engine the shim does not see (openEMS, KiCad's `pcbnew`
