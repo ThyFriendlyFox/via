@@ -7,7 +7,7 @@ or skill. **Done** is the observable result that ends the case.
 ## Design a board from a spec
 
 **Open.** A spec: what the board does, the body it fits, the connectors. An empty project repository.
-**Run.** The `board-design` skill: pick parts from the libraries, write `design.py`, `workcenter design design.py --route`, then `workcenter gates .`.
+**Run.** The `board-design` skill: `workcenter new <dir>`, pick parts from the libraries, write `design.py`, `workcenter design design.py --route`, then `workcenter gates .`.
 **Done.** GREEN, `design.py` and the generated `.kicad_*` files committed together, images in `docs/`, the README naming each part choice.
 
 ## Validate a board
@@ -49,7 +49,7 @@ or skill. **Done** is the observable result that ends the case.
 ## Verify a board for inspection
 
 **Open.** A board with its decks, and a question: does it meet its parts' ratings and the user's conditions, in a form an inspector can check?
-**Run.** The `verification` skill and P28: `workcenter verify <project> --init`, then the requirements, the system, a writeup per deck, the calculations and the traceability table; `workcenter verify <project>`.
+**Run.** The `verification` skill and P28: `workcenter verify <project> --init`, then the requirements, the system, a writeup per deck, the calculations and the traceability table; `workcenter verify <project>`. `workcenter standards <project>` lists what the product's kind asks and what holds each (ROADMAP item 11, "Safety spacing, ESD and emissions rules, and a product's standards").
 **Done.** `workcenter verify` reports no problems; every FAIL has its size and a proposed fix.
 
 ## Route a board

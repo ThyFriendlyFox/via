@@ -1,0 +1,7 @@
+{
+  "layout": ["ti-slva680a-esd", "ti-szza009-emi"],
+  "connectors": {"J1": "the fixture's cable enters here"},
+  "protectors": {"D1": "TVS diode", "D2": "TVS diode", "D3": "TVS diode"},
+  "ground": ["GND"],
+  "power": ["VBUS", "GND"]
+}

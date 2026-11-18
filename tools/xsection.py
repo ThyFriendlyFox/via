@@ -30,6 +30,12 @@ from pathlib import Path
 
 import numpy as np
 
+# The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
+CITES = {
+    "hammerstad-jensen-1980": "the microstrip's closed forms the test holds it to, as Qucs gives them",
+    "matthaei-ad0402852": "section 5.05: Cohn's exact stripline and coupled stripline forms",
+}
+
 CONSTANTS = json.loads(
     (Path(__file__).resolve().parents[1] / "rules" / "interfaces" / "constants.json").read_text()
 )

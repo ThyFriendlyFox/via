@@ -35,6 +35,12 @@ from pathlib import Path
 
 from kicadgen import Q, parse
 
+# The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
+CITES = {
+    "hammerstad-jensen-1980": "pp. 407-409, equations (1) to (4), and the thickness correction",
+    "bipm-si-brochure-9": "2.3.1, the metre and the speed of light",
+}
+
 C0 = 299792458.0  # m/s, exact by the definition of the metre (SI Brochure, 9th edition, 2019, 2.3.1)
 MU0 = 4e-7 * math.pi  # H/m; CODATA 2018 gives 1.00000000055 times this
 EPS0 = 1.0 / (MU0 * C0 * C0)

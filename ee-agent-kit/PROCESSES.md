@@ -303,6 +303,13 @@ axis it defines (a 3D model's rotation or offset, an export's origin).
    refuses what it cannot follow. A flag that changes what a command is
    for (`-min`, `-max`, a missing `-clock`) is a spelling too: read each
    flag the tool takes on that command before the command counts (M169).
+10. A term a standard defines is judged by the definition, never by the
+    word a tool's file uses for it (KiCad's `micro` is no microvia). A
+    property of how a board is built (HDI) is stated by the project with
+    a source, never read from 1 item of the file. A geometric test takes
+    the file's grain as its tolerance (1 nm in a `.kicad_pcb`), and a
+    case outside it that the check cannot judge gets its own not-judged
+    line (M221, M222).
 
 Done when: a test parses a real sample of each shape, failures among them,
 and the parser's assumptions are written next to it.
@@ -346,6 +353,17 @@ When: every shell command.
 8. A scratch script writes to absolute paths in the session's scratchpad.
    Under `python3 - <<EOF`, `__file__` is no file and a path built from it
    is the working directory, which may be a repository (M175).
+9. Run a `workcenter` command as it is, with no `flock` in front: a long
+   command waits its turn on the machine's engine lock by itself, and a
+   short one never waits (docs/CONFIGURATION.md, `tools/enginelock.py`,
+   names which is which). A waiting command prints 1 line at once and 1
+   every 30 seconds; read it, do not start the command again. Give a
+   background run a time limit longer than the wait it may meet: the runs
+   ahead of it, as its line counts them, times their usual length, and 2
+   hours where that cannot be counted. A command that is not a
+   `workcenter` command and starts an engine (a bare `kicad-cli`, a
+   `pytest` file of engine tests) runs under
+   `python3 tools/enginelock.py hold -- <command>` (M231).
 
 Done when: the command ran where and how you meant, and the paths it
 printed are the ones you expected.
@@ -436,6 +454,17 @@ When: touching `tools/workcenter` or `tools/kicadgen.py`'s command line.
    `tests/test_docs.py` holds each flag a document gives a command to
    that command's own `--help` (M114). A rule that tells the reader to
    reorder a command is not a fix.
+6. A command reads the day and the time through `tools/clock.py`, never
+   through `date.today`, `datetime.now` or `time.time`: `clock.today()`
+   or `clock.moment()` for what it writes, `clock.wall_today()` for a
+   judgement of age, `clock.stamp()` for a time other processes compare.
+   `tools/workcenter`'s `main` takes the 1 reading of the run, so a run
+   that crosses midnight writes 1 day; `tests/test_clock.py` fails on
+   any other reader (M233).
+7. A test that needs the day pins it for the command with
+   `SOURCE_DATE_EPOCH`, or reads the day from what the command wrote. No
+   test file reads the clock when it is loaded: `tests/test_docs.py`
+   holds it (M233).
 
 Done when: `make verify` is green, the configuration table names the
 flag, and every document that writes the command writes one the parser
@@ -548,7 +577,11 @@ When: a change is about to be called done.
    act only together, 2 values written from 1 parameter. Each case that
    the gate passes is a defect, and each case becomes a test. The
    author's own cases show only what the method was built to find
-   (M116).
+   (M116). For a rule from a document, 1 case is written from the
+   requirement's own sentence, not from the code's restatement of it; for
+   a check over copper, 1 case for each kind of copper item reaching each
+   other kind (track, arc, via, pad, pour); for a check of a project, 1
+   case with a nested board (M224 to M228).
 
 7. A branch put on `main` without a pull request (a board repository's
    version, on the owner's word) goes by a fast-forward push, never by
@@ -944,15 +977,21 @@ written for the project, or a 3D body comes from a vendor.
 1. Every part on the schematic gets rows in the project's
    `library/sources.csv`: a datasheet for each, a spice row for each U, Q
    and D (a model file, or a note saying why there is none), a step row
-   where the vendor publishes a body. Fetch the sanctioned way (P25 step 1):
-   `workcenter sources --fetch` asks once under its own name and records a
-   refusal, and `workcenter fetch <url> --to <library>/<maker>/<file> --mpn
-   <MPN> --row` does the same for a file the library does not hold yet; a
-   file no site will serve is left for the user to download, and its row's
-   note says so and from where. The part's value on the schematic names
-   the part those rows are for, copied from `sources.csv`, never typed from
-   memory: a 2835 LED named after another maker's family sat on a board
-   whose datasheet and model were Bridgelux's (M211).
+   where the vendor publishes a body. Its header is
+   `MPN,Kind,URL,File,Member,Revision,Dated,Subckt,Ngspice,SHA256,Checked,Note`;
+   the first `workcenter fetch ... --row` in a project with none writes it.
+   Fetch the sanctioned way (P25 step 1): `workcenter sources --fetch` asks
+   once under its own name and records a refusal, and `workcenter fetch
+   <url> --to <project>/library/<maker>/<file> --mpn <MPN> --row` does the
+   same for a file the library does not hold yet. A body that is empty, cut
+   short, a web page, or a `.pdf` that does not start `%PDF` is refused and
+   nothing is written. A file no site will serve is downloaded by a person
+   and kept with `workcenter fetch --file <file> --url <url> --to ... --mpn
+   <MPN> --row`; its row says the workcenter did not fetch it. The part's
+   value on the schematic names the part those rows are for, copied from
+   `sources.csv`, never typed from memory: a 2835 LED named after another
+   maker's family sat on a board whose datasheet and model were
+   Bridgelux's (M211).
 2. Keep each file as the vendor publishes it, its notice intact; a model
    that ngspice reads differently is translated into a copy in `build/`,
    never in the library. The row records what the file itself prints: the
@@ -1030,7 +1069,11 @@ circuits it touches. The `verification` skill is the how-to.
    constant), its method, and the clause it would be inspected under.
    Read every section, table and figure number from the document's text,
    never from memory (M72), in the package and in any code comment that
-   cites a standard or datasheet (M84). A limit computed from parts'
+   cites a standard or datasheet (M84). A tool or a test that cites a
+   document declares it in a module-level
+   `CITES = {"<index id>": "<where in it>"}`, and the document has an entry in
+   `rules/references/index.json`; `workcenter references rules` fails the
+   citation otherwise (M223). A limit computed from parts'
    values carries the tolerances its source names (M82). A requirement the
    owner restates or adds names "the owner's decision of <date>" in its
    Source; one the owner withdraws moves to the requirements' Withdrawn
@@ -1225,11 +1268,13 @@ a task.
 6. Count the machine too: its memory, not only its processors. Helpers
    that run engines, a health gate and a browser do not run together.
    The health gate that gates a push runs alone (M124).
-7. The signal for "the gate runs" is a file, not a message. The brief
-   names 1 lock file. The lead makes it before a health gate and removes
-   it after. A helper looks for it before each command that runs an
-   engine or a test, and starts none while it is there. The lead starts
-   the gate when the lock is there and no engine of a helper runs (M125).
+7. The workcenter's long commands take turns on the machine by themselves
+   (`tools/enginelock.py`), and `make verify` holds that lock for the whole
+   gate. A brief names no lock file for them and asks for no `flock`: a
+   helper runs the commands as they are, and runs a test file or a bare
+   engine under `python3 tools/enginelock.py hold -- <command>`. A waiting
+   command prints where it stands every 30 seconds; `workcenter doctor`
+   names who holds the lock (M125, M231).
 8. Send no message to a helper that a workflow runs. A message to its id
    starts a second runner from its transcript, and the 2 write the same
    files. The brief tells each helper the same: it sends no message to
@@ -1444,6 +1489,10 @@ lands or is dropped.
    --doing "Dropped: <reason>"` and the issue closed as not planned.
 4. The card names the branch, never an assistant, a model or a session,
    and repeats nothing else the project board shows.
+5. When the board shows a card in a column its `**Status:**` line does not
+   name, or not at all, run the workflow Board by hand (`gh workflow run
+   board.yml`) and read its lines (the `now` skill, steps 15 and 16). Never
+   drag a card.
 
 Done when: every branch with work in progress has 1 card whose Updated
 line is no older than the branch's last commit, and every landed or

@@ -1,0 +1,6 @@
+(version 1)
+# A fab rule file made up for the tests: it names the URL of an entry of the index, with parentheses in it.
+# A derating from https://ecss.nl/wp-content/uploads/2022/07/ECSS-Q-ST-30-11C-Rev.2(23June2021).pdf
+(rule "clearance"
+	(constraint clearance (min 0.13mm))
+	(severity error))

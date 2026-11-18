@@ -13,6 +13,7 @@ import http.server
 import importlib.machinery
 import io
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -24,6 +25,13 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
+# Every `fetch` here runs with SOURCE_DATE_EPOCH exported, as a shell may export it for another build:
+# 315532800 s is 1980-01-01 00:00 UTC (1970 to 1980 is 10 x 365 + 2 leap days = 3652 days, x 86400).
+# A row's Checked is the day the file was checked, the machine's day, not the pin.
+PINNED = {"SOURCE_DATE_EPOCH": "315532800"}
+# The machine's local day read just before and just after the last `fetch`: the command's own reading
+# lies between them, on 1 of the 2 days when midnight falls in between.
+AROUND: list[str] = []
 
 MODEL = (
     "* Acme divider model\n* Model Version: 2.1, Date: 02/02/2007\n.SUBCKT RDIV IN OUT GND\nR1 IN OUT 100\n"
@@ -46,12 +54,15 @@ def load_cli():
 
 
 def fetch(*args: object) -> tuple[int, dict]:
+    AROUND[:] = [datetime.date.today().isoformat()]
     proc = subprocess.run(
         [sys.executable, str(CLI), "--json", "fetch", *map(str, args)],
         capture_output=True,
         text=True,
         check=False,
+        env={**os.environ, **PINNED},
     )
+    AROUND.append(datetime.date.today().isoformat())
     return proc.returncode, (json.loads(proc.stdout) if proc.stdout.strip() else {})
 
 
@@ -122,7 +133,7 @@ def test_fetch_keeps_the_file_and_prints_its_row(site):
     assert row["MPN"] == "ACME-R" and row["Kind"] == "spice"  # the kind from the suffix
     assert row["URL"] == f"{url}/rdiv.lib" and row["File"] == "acme/rdiv.lib"
     assert row["SHA256"] == sha(MODEL.encode()) and row["Subckt"] == "RDIV"
-    assert row["Checked"] == datetime.date.today().isoformat()
+    assert row["Checked"] in AROUND and row["Checked"] != "1980-01-01"  # the machine's day, not the pin
     assert row["Revision"] == "" and row["Dated"] == ""  # the reader fills these from the file
     assert report["revision_lines"] == ["Model Version: 2.1, Date: 02/02/2007"]
     assert Maker.agents == [load_cli().FETCH_AGENT]  # one request, under the workcenter's own name
@@ -143,8 +154,9 @@ def test_fetch_row_appends_once_in_the_files_own_line_ends(site):
     added = after[len(before) :]
     assert added.endswith(b"\r\n") and added.count(b"\n") == 1, added
     digest = sha(DATASHEET.encode())
-    today = datetime.date.today().isoformat()
-    assert added == f"ACME-2,datasheet,{url}/acme-2.txt,acme/acme-2.txt,,,,,,{digest},{today},\r\n".encode()
+    assert added.decode() in {
+        f"ACME-2,datasheet,{url}/acme-2.txt,acme/acme-2.txt,,,,,,{digest},{day},\r\n" for day in AROUND
+    }
     assert load_cli().read_sources(lib / "sources.csv")[-1].mpn == "ACME-2"
     # a second row for the same part and kind is refused before anything is asked of the site
     requests = len(Maker.agents)

@@ -25,6 +25,8 @@ BOARDS = ROOT / "tests" / "boards"
 
 needs_kicad = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
 needs_ngspice = pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed")
+# The day every command here writes: 1794960060 s is 2026-11-18 00:01:00 UTC (tests/test_clock.py).
+PINNED = {"SOURCE_DATE_EPOCH": "1794960060"}
 
 
 def load_cli_module():
@@ -42,6 +44,7 @@ def run(*args: object) -> tuple[int, list[dict]]:
         capture_output=True,
         text=True,
         check=False,
+        env={**os.environ, **PINNED},
     )
     payload = json.loads(proc.stdout) if proc.stdout.strip() else []
     return proc.returncode, payload
@@ -228,6 +231,8 @@ def test_every_cli_flag_is_in_the_configuration_table():
         "tools/fields.py",  # and fields
         "tools/highspeed.py",  # and highspeed
         "tools/now.py",  # and now
+        "tools/standards.py",  # and standards
+        "tools/enginelock.py",  # the engine lock's own command line: hold --what, state --json
         "tools/board.py",
         "tools/harvest.py",
     )
@@ -390,10 +395,14 @@ PARTS = "\n".join(
 
 
 def parts_file(tmp_path: Path, text: str = PARTS) -> Path:
+    """Prices checked the day before the machine's day, read when the file is written: `procure` judges
+    their age on the machine's day, not the pinned one, and finds 1 day, or 2 when midnight falls before
+    the command; STALE_DAYS is 90, so none of them is old."""
     import datetime
 
+    checked = datetime.date.today() - datetime.timedelta(days=1)
     path = tmp_path / "parts.csv"
-    path.write_text(text.format(today=datetime.date.today().isoformat()), encoding="utf-8")
+    path.write_text(text.format(today=checked.isoformat()), encoding="utf-8")
     return path
 
 

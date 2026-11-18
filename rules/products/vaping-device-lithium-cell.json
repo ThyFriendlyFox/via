@@ -1,0 +1,231 @@
+{
+  "kind": "vaping-device-lithium-cell",
+  "title": "A vaping device with a rechargeable lithium-ion cell, a digital controller and a USB port, sold in the United States",
+  "documents": {
+    "47-cfr-15-b": {
+      "issuer": "US Federal Communications Commission, in the eCFR",
+      "number": "47 CFR Part 15, Subpart B",
+      "title": "Radio frequency devices: unintentional radiators",
+      "revision": "eCFR as of 2026-11-01",
+      "url": "https://www.ecfr.gov/api/versioner/v1/full/2026-11-01/title-47.xml?part=15&subpart=B",
+      "sha256": "8436af8347ca1068d5da6a86cdb57698a42fccc2f23aab19f23acada7ce4b991",
+      "read": "2026-11-17",
+      "second_reader": "no"
+    },
+    "49-cfr-173-185": {
+      "issuer": "US Pipeline and Hazardous Materials Safety Administration, in the eCFR",
+      "number": "49 CFR 173.185",
+      "title": "Lithium cells and batteries",
+      "revision": "eCFR as of 2026-11-01",
+      "url": "https://www.ecfr.gov/api/versioner/v1/full/2026-11-01/title-49.xml?part=173&section=173.185",
+      "sha256": "dfa3ff595d24fdcc3af7a0bd9c3e1513d46d7122d048e3ee807e0e39735c84d3",
+      "read": "2026-11-17",
+      "second_reader": "no"
+    },
+    "ti-slva680a": {
+      "issuer": "Texas Instruments",
+      "number": "SLVA680A",
+      "title": "ESD Protection Layout Guide",
+      "revision": "Rev. A, revised April 2022",
+      "url": "https://www.ti.com/lit/an/slva680/slva680.pdf",
+      "sha256": "414236c18903e2489c6564c36718ed3743be9c595f4543098f167259b5ba8635",
+      "read": "2026-11-17",
+      "second_reader": "no"
+    },
+    "ti-szza009": {
+      "issuer": "Texas Instruments",
+      "number": "SZZA009",
+      "title": "PCB Design Guidelines For Reduced EMI",
+      "revision": "November 1999",
+      "url": "https://www.ti.com/lit/an/szza009/szza009.pdf",
+      "sha256": "317f4cb67ff85ae16c769592cabc0128e69f1eaff6a98747ef77be217564e6d2",
+      "read": "2026-11-17",
+      "second_reader": "no"
+    }
+  },
+  "requirements": [
+    {
+      "id": "fcc-authorization",
+      "document": "47-cfr-15-b",
+      "clause": "15.101(a), table 1 to paragraph (a)",
+      "says": "An unintentional radiator is authorized before it is marketed; a Class B digital device by Supplier's Declaration of Conformity or certification.",
+      "held_by": "test"
+    },
+    {
+      "id": "fcc-radiated",
+      "document": "47-cfr-15-b",
+      "clause": "15.109(a)",
+      "says": "A Class B digital device keeps its radiated emissions within the limits of the section.",
+      "held_by": "test",
+      "helped_by": ["ti-szza009-emi"]
+    },
+    {
+      "id": "fcc-conducted",
+      "document": "47-cfr-15-b",
+      "clause": "15.107(a) and (d)",
+      "says": "A device that charges from a line through another device is tested to the conducted limits; one that runs on its battery alone is not.",
+      "held_by": "test"
+    },
+    {
+      "id": "fcc-user-statement",
+      "document": "47-cfr-15-b",
+      "clause": "15.105(b)",
+      "says": "The instructions of a Class B digital device carry the statement the paragraph gives, in a prominent place.",
+      "held_by": "test"
+    },
+    {
+      "id": "un38.3-type",
+      "document": "49-cfr-173-185",
+      "clause": "173.185(a)(1)",
+      "says": "The cell is of a type proven to meet sub-section 38.3 of the UN Manual of Tests and Criteria.",
+      "held_by": "test"
+    },
+    {
+      "id": "un38.3-summary",
+      "document": "49-cfr-173-185",
+      "clause": "173.185(a)(3)",
+      "says": "The maker and each distributor of the cell make its test summary available, with the elements the paragraph lists.",
+      "held_by": "test"
+    },
+    {
+      "id": "test-record",
+      "document": "49-cfr-173-185",
+      "clause": "173.185(a)(2)",
+      "says": "Whoever makes the cell or battery keeps a record that its tests of (a) passed while the design is offered for transport and 1 year after, and shows it to a government's representative on request.",
+      "held_by": "test"
+    },
+    {
+      "id": "venting",
+      "document": "49-cfr-173-185",
+      "clause": "173.185(a)(4)(i)",
+      "says": "Unless the cell meets paragraph (c), it has a safety vent or is designed so it cannot rupture violently in conditions normal to transport.",
+      "held_by": "test"
+    },
+    {
+      "id": "external-short",
+      "document": "49-cfr-173-185",
+      "clause": "173.185(a)(4)(ii)",
+      "says": "The cell or battery is equipped with a means of preventing external short circuits.",
+      "held_by": "test"
+    },
+    {
+      "id": "reverse-current",
+      "document": "49-cfr-173-185",
+      "clause": "173.185(a)(4)(iii)",
+      "says": "Unless the cells meet paragraph (c), a battery of cells, or of strings of cells, in parallel has a means against dangerous reverse current, such as diodes or fuses.",
+      "held_by": "test"
+    },
+    {
+      "id": "wh-marking",
+      "document": "49-cfr-173-185",
+      "clause": "173.185(a)(5)",
+      "says": "From May 10, 2024, a lithium ion battery carries its Watt-hour rating on the outside of its case.",
+      "held_by": "test"
+    },
+    {
+      "id": "packaging",
+      "document": "49-cfr-173-185",
+      "clause": "173.185(b)(1), (b)(2), (b)(4)(i), (b)(4)(iii), (b)(4)(iv) and (b)(7)",
+      "says": "A package of the equipment meets subpart B of part 173; it is packed against short circuits, damage by shifting and accidental activation; its outer packaging is strong enough unless the equipment protects the cell as well; spare cells are packed by (b)(3); by aircraft each piece of equipment is kept from touching another, and the package holds none of the classes (b)(7) names.",
+      "held_by": "test"
+    },
+    {
+      "id": "accidental-operation",
+      "document": "49-cfr-173-185",
+      "clause": "173.185(b)(4)(ii)",
+      "says": "Equipment that contains the cell is packed so as to prevent accidental operation during transport.",
+      "held_by": "test"
+    },
+    {
+      "id": "smaller-cell-exception",
+      "document": "49-cfr-173-185",
+      "clause": "173.185(c)",
+      "says": "A package of equipment whose cells and batteries keep within the Watt-hour limits of (c)(1) may ship under paragraph (c): the battery marked with its Watt-hour rating, packed by (c)(2), the lithium battery mark of (c)(3) on the package, and by aircraft the limits of (c)(4). Cells that meet (c) are outside (a)(4).",
+      "held_by": "test"
+    },
+    {
+      "id": "prototype-shipping",
+      "document": "49-cfr-173-185",
+      "clause": "173.185(e)",
+      "says": "A prototype cell shipped for testing, or a run of at most 100 cells or batteries a year, and equipment that contains them, may ship without the tests of (a) only when packed and noted as (e)(1) to (e)(8) say; not by passenger aircraft.",
+      "held_by": "test"
+    },
+    {
+      "id": "esd-at-connector",
+      "document": "ti-slva680a",
+      "clause": "section 1, figure 1-2, page 2; section 2.1, page 4; section 2.3, page 6",
+      "says": "Each line of a connector that leaves the device has a TVS, the TVS nearer the connector than the part it protects, and no via between the connector and the TVS.",
+      "held_by": "gate",
+      "pack": "ti-slva680a-esd"
+    },
+    {
+      "id": "power-trace-ratio",
+      "document": "ti-szza009",
+      "clause": "section 2.1.1, page 4; section 2.2.4, page 10",
+      "says": "On a two-layer board no power or ground trace is longer than 3 times its width.",
+      "held_by": "gate",
+      "pack": "ti-szza009-emi"
+    }
+  ],
+  "left_out": [
+    {
+      "document": "49-cfr-173-185",
+      "clause": "173.185(a)(1)(i) and (a)(1)(ii)",
+      "why": "which revisions of the UN Manual a type's tests may follow; read with un38.3-type, which holds (a)(1)"
+    },
+    {
+      "document": "49-cfr-173-185",
+      "clause": "173.185(b)(3)",
+      "why": "cells or batteries packed on their own; the kind's cell is inside the equipment, and spare cells packed with it are under packaging, by (b)(4)(iii)"
+    },
+    {
+      "document": "49-cfr-173-185",
+      "clause": "173.185(b)(5)",
+      "why": "cells or batteries that weigh 12 kg or more; a hand-held device's cell is not one"
+    },
+    {
+      "document": "49-cfr-173-185",
+      "clause": "173.185(b)(6)",
+      "why": "large packagings the shipper may choose for a single battery or item; a choice, not a requirement"
+    },
+    {
+      "document": "49-cfr-173-185",
+      "clause": "173.185(d)",
+      "why": "cells shipped for disposal or recycling; not the product sold"
+    },
+    {
+      "document": "49-cfr-173-185",
+      "clause": "173.185(f)",
+      "why": "damaged, defective or recalled cells; a return of the product, not its sale"
+    },
+    {
+      "document": "49-cfr-173-185",
+      "clause": "173.185(g)",
+      "why": "batteries of a medical device, as the section defines one; the kind is no medical device"
+    },
+    {
+      "document": "49-cfr-173-185",
+      "clause": "173.185(h)",
+      "why": "approval to ship a cell that does not conform; the kind conforms or does not ship"
+    }
+  ],
+  "laboratory": [
+    {"standard": "UL 8139", "for": "the electrical, heating, battery and charging systems of a vaping device"},
+    {"standard": "IEC 62133-2", "for": "the safety of a portable lithium cell"},
+    {"standard": "ANSI C63.4-2014", "for": "the measurement of an unintentional radiator's emissions, as 47 CFR 15.31(a)(4) names it (eCFR as of 2026-11-01, read 2026-11-17)"},
+    {"standard": "IEC 61000-4-2", "for": "the ESD immunity test"},
+    {"standard": "UN Manual of Tests and Criteria, sub-section 38.3", "for": "the cell's transport tests, done by the cell's maker"}
+  ],
+  "not_had": [
+    {
+      "title": "Directive 2014/40/EU, Article 20 (electronic cigarettes, EU market)",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32014L0040",
+      "why": "eur-lex.europa.eu answered HTTP 202 with no body to the client ee-workcenter/1.0 on 2026-11-17"
+    },
+    {
+      "title": "Directive 2014/30/EU, Annex I (electromagnetic compatibility, EU market)",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32014L0030",
+      "why": "eur-lex.europa.eu answered HTTP 202 with no body to the client ee-workcenter/1.0 on 2026-11-17"
+    }
+  ]
+}

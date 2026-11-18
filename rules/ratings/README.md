@@ -47,6 +47,33 @@ ambient stated a rule is judged as under its `celsius`, and the notes say that t
 
 A stress with no rule in the pack is held to the part's own rating, and its line says so.
 
+A share that depends on the part's own rating stands in `by_rating`, in place of `max`:
+
+```json
+{
+  "id": "fuse.cartridge.current",
+  "stress": "fuse.current",
+  "kinds": ["fuse.cartridge"],
+  "by_rating": [
+    {"rated": [1, 1.5], "max": 0.45, "above": {"temperature": "case", "celsius": 25, "falls_to": 0.0, "at": 250}}
+  ],
+  "where": "section F3, table 4, page 6 of 7, ..."
+}
+```
+
+Each row names the ratings it covers in `rated`, each above 0, in the stress's unit, its share in
+`max`, and its own `above`, or the rule's. The rule's `above` is held to its form even when every row
+has its own. A rating stands in 1 row; 2 ratings within 1e-9 of each other are 1 rating. A part whose
+rating no row names is held to its own rating, 1.00: over it, the line fails; under it, the derating
+is not judged, and the line says the pack names no share for that rating. A table that lists ratings
+says nothing of the ratings between them.
+
+A document that grants a kind no share, and asks the user to justify one, is a rule with
+`"no_share": true` and no `above`. A part of that kind fails over its own rating; under it, the line
+says the document grants no share for the kind, and is not judged.
+
+A rule holds 1 of `max`, `by_rating` and `no_share`.
+
 ## How each pack reads its document
 
 NASA's document is written for hermetic parts of military styles, and the workcenter's parts are
@@ -130,10 +157,36 @@ voltage and ripple, the insulation voltage of an inductor, and a regulator's inp
 Both documents derate the sum of a capacitor's steady voltage and its ripple; the command judges
 the steady voltage.
 
-3 stresses the command computes have no rule in either pack: the current through a fuse, a ferrite and
-a switch. Each is held to the part's own rating. NASA's table 4 of section F3 derates a cartridge fuse
-by its rating, from 50 % for 2 A and above to 25 % for 1/8 A, and ECSS's table 6-17 a cermet fuse. A
-rule of a pack is 1 share for a kind of part, and neither table is in a pack yet.
+2 stresses the command computes have no rule in either pack: the current through a ferrite and a
+switch. Each is held to the part's own rating.
+
+## A fuse
+
+A fuse's facts name its style by its kind. Each pack holds the fuses its document covers:
+
+| Kind | NASA | ECSS |
+|---|---|---|
+| `fuse.cartridge` | section F3, table 4, page 6 of 7: its rating's row | no share: clause 6.17.1a, page 48 |
+| `fuse.cermet` (metal film on ceramic) | its own rating: table 4 is for the cartridge style | clause 6.17.2, table 6-17, page 49 |
+| `fuse` (a chip fuse, a polymer fuse, a style not named) | its own rating | no share: clause 6.17.1a, page 48 |
+
+- NASA's table 4 has 6 rows: 50 % for 2, 2-1/2, 3, 4, 5, 7, 10 and 15 A; 45 % for 1 and 1-1/2 A;
+  40 % for 3/4 and 1/2 A; 35 % for 3/8 A; 30 % for 1/4 A; 25 % for 1/8 A. A rating the table does not
+  list, 6.3 A or 0.6 A, is held to its own rating, and its derating is not judged.
+- ECSS's clause 6.17.1a, page 48, says the deratings of 6.17.2 apply to cermet fuses only, and that
+  those of other fuse technologies shall be justified. The pack's rule `fuse.other.current` grants
+  them no share: such a fuse fails over its own rating, and under it its derating is not judged.
+- Its column Temperature Derating Factor adds "0.2%/C for an increase in the temperature of fuse body
+  above 25 C". The pack reads it as 0.2 % of the rated current taken off the share for each C: the
+  share falls in a line from its value at 25 C to 0 at 25 C + share / 0.002, so 0.50 reaches 0 at
+  25 + 250 = 275 C, 0.45 at 250 C, 0.40 at 225 C, 0.35 at 200 C, 0.30 at 175 C and 0.25 at 150 C. The
+  other reading, 0.2 % of the derated current, falls slower: the pack holds the lower limit. The
+  temperature is the fuse body's: the command judges it at the ambient, and the report's notes say so.
+- Not held from NASA's section F3: note 5, which asks a fuse rated 125 V to stand 50 V or less (the
+  command reads no voltage across a fuse yet); the column Remarks, the project office's approval of a
+  fuse of 1/2 A or less in flight; note 6, the pulses a fuse withstands.
+- ECSS's table 6-17 is a figure with no numbers in the text: 65 % up to a case of 85 C, in a line to
+  50 % at 110 C, and nothing past 110 C. The pack holds it as the other `above` rules, with `case`.
 
 An integrated circuit's supply and input voltage are held another way. Table 4 of NASA's section M3
 derates a hermetic part's to 0.90 (digital) and 0.80 (linear) of the maximum, and its note 1.1 sends

@@ -23,6 +23,8 @@ BOARDS = ROOT / "tests" / "boards"
 sys.path.insert(0, str(ROOT / "tools"))
 import freqplan  # noqa: E402
 
+CITES = {"nxp-um10204": "Rev. 7.0, table 11, page 44: the SCL clock frequency of the plan's I2C clock"}
+
 needs_ngspice = pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed")
 
 # Every way a deck writes a source: a node called `sin`, a SIN, a PULSE with and without a period, a
@@ -47,7 +49,7 @@ PLAN = {
     "sources": [
         {"name": "keep-alive", "hz": 100000, "tolerance": 0.01, "source": "config.h LH_KEEPALIVE_HZ"},
         {"name": "heater PWM", "hz": 1000, "tolerance": 0.01, "source": "config.h LH_PWM_HZ"},
-        {"name": "I2C clock", "hz": [100000, 400000], "source": "UM10204 Table 10"},
+        {"name": "I2C clock", "hz": [100000, 400000], "source": "UM10204 Table 11"},
     ],
     "resonances": [
         {"name": "strips with C5", "hz": "pdn.f_peak", "q": "pdn.q_peak", "source": "sim/pdn.cir"}

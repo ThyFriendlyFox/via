@@ -34,6 +34,14 @@ sys.path.insert(0, str(ROOT / "tools"))
 import ratings  # noqa: E402
 import thermal  # noqa: E402
 
+# The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
+CITES = {
+    "ti-sbvs320": "sections 5.1 and 5.4, pages 4 and 5",
+    "nasa-eee-inst-002": "section M4, table 4, page 10 of 10",
+    "ecss-q-st-30-11c-rev2": "clause 3.2, page 12; clause 6.21.2, table 6-21, page 57",
+    "ti-spra953d": "sections 1.1 to 5, equation 1, pages 2 and 3",
+}
+
 needs_ngspice = pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed")
 
 NASA = ratings.read_pack(PACKS / "nasa-eee-inst-002.json")
@@ -171,9 +179,11 @@ def test_the_regulator_s_derated_limit_in_each_pack():
     assert thermal.limit(thermal.rule_for(ECSS, "diode.rectifier"), 125)[0] == 85
 
 
-# The ECSS pack's 11 rating rules: a junction rule added after them is rule 12.
+# The ECSS pack's rating rules: a junction rule added after them stands at the place after the
+# last of them (the tool counts a pack's rules from 1), so the place comes from the pack.
 CARD = json.loads((PACKS / "ecss-q-st-30-11c-rev2.json").read_text(encoding="utf-8"))
 CARD["rules"] = [r for r in CARD["rules"] if r["stress"] != "junction.temperature"]
+PLACE = f"pack.json: rule {len(CARD['rules']) + 1}"
 JUNCTION_RULE = {
     "id": "j",
     "stress": "junction.temperature",
@@ -188,16 +198,16 @@ JUNCTION_RULE = {
     [
         (
             {k: v for k, v in JUNCTION_RULE.items() if k != "celsius"},
-            "pack.json: rule 12: 1 limit at least is asked",
+            f"{PLACE}: 1 limit at least is asked",
         ),
-        ({**JUNCTION_RULE, "share": 1.5}, "pack.json: rule 12: share: 1.5 is over 1"),
-        ({**JUNCTION_RULE, "below_rating": -5}, "pack.json: rule 12: below_rating: -5 is under 0"),
-        ({**JUNCTION_RULE, "max": 0.8}, "pack.json: rule 12: `max` is no key here"),
-        ({**JUNCTION_RULE, "kinds": ["chip"]}, "pack.json: rule 12: kinds: `chip` names no kind of part"),
-        ({**JUNCTION_RULE, "where": " "}, "pack.json: rule 12: where: text is asked"),
+        ({**JUNCTION_RULE, "share": 1.5}, f"{PLACE}: share: 1.5 is over 1"),
+        ({**JUNCTION_RULE, "below_rating": -5}, f"{PLACE}: below_rating: -5 is under 0"),
+        ({**JUNCTION_RULE, "max": 0.8}, f"{PLACE}: `max` is no key here"),
+        ({**JUNCTION_RULE, "kinds": ["chip"]}, f"{PLACE}: kinds: `chip` names no kind of part"),
+        ({**JUNCTION_RULE, "where": " "}, f"{PLACE}: where: text is asked"),
         (
             {**JUNCTION_RULE, "id": "output.current"},
-            "pack.json: rule 12: the id `output.current` stands 2 times",
+            f"{PLACE}: the id `output.current` stands 2 times",
         ),
     ],
 )

@@ -25,6 +25,12 @@ import kicadgen
 import ratings
 from ratings import Refusal
 
+# The tables the docstrings name by number alone are the pack's standard's.
+CITES = {
+    "ecss-q-st-70-12c-rev1": "7.1.2j, table 7-1, page 38; 7.4.2a and b, table 7-3, page 45; "
+    "table 13-7, page 130; 3.2.13, page 18; 3.2.40, page 22; 11.6, tables 11-1 and 11-2, page 100; "
+    "13.6.3f and 13.6.3g, page 114; annex D"
+}
 PACKS = Path(__file__).resolve().parent.parent / "rules" / "board"
 PROJECT_FILE = "board-rules.json"
 DEFAULT_CU_UM = 35.0  # KiCad's own copper on a board whose file holds no stackup
@@ -102,8 +108,20 @@ def _current(name: str, current: dict) -> None:
         raise Refusal(f"{at}: tolerance: share: {tol['share']:g} is not under 1")
     _rows(f"{at}: tolerance", tol["rows"], "[up to um, most um]")
     if "via_wall" in current:
-        wall = ratings._keys(f"{at}: via_wall", current["via_wall"], ("um", "where"))
+        wall = ratings._keys(f"{at}: via_wall", current["via_wall"], ("um", "where"), ("boards",))
         _num(f"{at}: via_wall: um", wall["um"], above=0)
+        if wall.get("boards", "hdi") != "hdi":
+            raise Refusal(f"{at}: via_wall: boards: `hdi` is the one kind a wall is limited to")
+    if "via_read" in current:
+        _where(f"{at}: via_read", current["via_read"])
+    if "microvia" in current:
+        micro = ratings._keys(f"{at}: microvia", current["microvia"], ("under_mm", "where"))
+        _num(f"{at}: microvia: under_mm", micro["under_mm"], above=0)
+        _where(f"{at}: microvia", micro["where"])
+    if "parallel" in current:
+        par = ratings._keys(f"{at}: parallel", current["parallel"], ("under_mm", "where"))
+        _num(f"{at}: parallel: under_mm", par["under_mm"], above=0)
+        _where(f"{at}: parallel", par["where"])
 
 
 def read_pack(path: Path) -> Pack:
@@ -157,7 +175,12 @@ def read_pack(path: Path) -> Pack:
                     _num(f"{sat}: {key}", step[key])
     current = data["current"]
     keys = ("rise_c", "rise_where", "model", "valid", "outer_share", "outer_where", "thin_board", "copper")
-    ratings._keys(f"{name}: current", current, (*keys, "tolerance", "via_where"), ("via_wall",))
+    ratings._keys(
+        f"{name}: current",
+        current,
+        (*keys, "tolerance", "via_where"),
+        ("via_wall", "via_read", "microvia", "parallel"),
+    )
     _where(f"{name}: current: rise", current["rise_where"])
     _where(f"{name}: current: outer", current["outer_where"])
     _where(f"{name}: current: via", current["via_where"])
@@ -180,6 +203,37 @@ def read_pack(path: Path) -> Pack:
     _current(name, current)
     pack = ratings._text(f"{name}: pack", data["pack"])
     return Pack(pack, document, voltage, data["spacing"], current, plating)
+
+
+@dataclass
+class Wall:
+    """The copper of a via's wall, um, as the project states it from its fab's document."""
+
+    um: float
+    source: str
+
+
+def read_project_file(project_dir: Path) -> tuple[str, Wall | None, str | None]:
+    """board-rules.json: the pack it names, the via wall it states, and the source by which it states
+    the board is built as HDI (ECSS-Q-ST-70-12C Rev.1, 11.6), each None where it states none."""
+    path = project_dir / PROJECT_FILE
+    data = ratings._keys(PROJECT_FILE, ratings._json(path), ("pack",), ("via_wall", "hdi", *LAYOUT_KEYS))
+    name = ratings._text(f"{PROJECT_FILE}: pack", data["pack"])
+    return (name, *stated_wall(data))
+
+
+def stated_wall(data: dict) -> tuple[Wall | None, str | None]:
+    """The via wall board-rules.json states (`via_wall`) and the source by which it states the board is
+    built as HDI (`hdi`), each None where it states none."""
+    wall = hdi = None
+    if "via_wall" in data:
+        raw = ratings._keys(f"{PROJECT_FILE}: via_wall", data["via_wall"], ("um", "source"))
+        um = _num(f"{PROJECT_FILE}: via_wall: um", raw["um"], above=0)
+        wall = Wall(um, ratings._text(f"{PROJECT_FILE}: via_wall: source", raw["source"]))
+    if "hdi" in data:
+        raw = ratings._keys(f"{PROJECT_FILE}: hdi", data["hdi"], ("source",))
+        hdi = ratings._text(f"{PROJECT_FILE}: hdi: source", raw["source"])
+    return wall, hdi
 
 
 def find_pack(name: str, project_dir: Path) -> tuple[Path, str]:
@@ -267,13 +321,18 @@ def track_need(pack: Pack, amps: float, outer: bool, cu_um: float, board_mm: flo
     return Need(width, where)
 
 
-def via_amps(pack: Pack, drill_mm: float, board_mm: float) -> float | None:
-    """The current 1 via carries: a track of its wall's section (13.6.3f), at the board's rise."""
-    wall = pack.current.get("via_wall")
-    if wall is None:
+def via_amps(pack: Pack, drill_mm: float, board_mm: float, wall_um: float | None = None) -> float | None:
+    """The current 1 via carries: a track of its wall's section (13.6.3f), at the board's rise. The wall
+    is `wall_um`, or the pack's. None for no wall, or for a wall of half the drill or more: that fills
+    the hole, and a filled via is not rated."""
+    if wall_um is None:
+        if pack.current.get("via_wall") is None:
+            return None
+        wall_um = pack.current["via_wall"]["um"]
+    t = wall_um / 1000
+    if 2 * t >= drill_mm - EPS:
         return None
-    t = wall["um"] / 1000
-    area = math.pi / 4 * (drill_mm**2 - max(drill_mm - 2 * t, 0) ** 2)
+    area = math.pi / 4 * (drill_mm**2 - (drill_mm - 2 * t) ** 2)
     rise, _ = _rise(pack, board_mm)
     return amps_for(area, rise, pack.current["model"])
 
@@ -318,6 +377,7 @@ class Track:
     width: float
     start: tuple[float, float]
     end: tuple[float, float]
+    along: float = 0.0  # a chord of an arc: the length of the arc it stands for; 0 for a straight track
 
 
 @dataclass
@@ -327,6 +387,7 @@ class Via:
     size: float
     drill: float
     layers: list[str]
+    kind: str = "through"  # or `blind`, `micro`: KiCad's word, which Board.microvia does not read
 
 
 @dataclass
@@ -337,6 +398,7 @@ class Pad:
     at: tuple[float, float]
     reach: float  # half the pad's greater side
     layers: list[str]
+    footprint: str = ""  # the footprint's library and name, as `Connector_USB:USB_C_...`
 
 
 @dataclass
@@ -362,6 +424,13 @@ class Board:
 
     def outer(self, layer: str) -> bool:
         return layer in (self.copper[0], self.copper[-1])
+
+    def microvia(self, via: Via, pack: Pack) -> bool:
+        """A blind via, exposed on 1 side of the board (3.2.13), under the pack's diameter (3.2.40);
+        KiCad's type word does not count. A pack with no `microvia` has none."""
+        micro = pack.current.get("microvia")
+        sides = (self.copper[0] in via.layers) + (self.copper[-1] in via.layers)
+        return micro is not None and sides == 1 and via.drill < micro["under_mm"] - EPS
 
 
 def _xy(node) -> tuple[float, float]:
@@ -434,11 +503,20 @@ def read_board(text: str) -> Board:
             net = net_of(node)
             if head == "arc":  # 2 chords through the middle: the copper the width is judged on
                 mid = _xy(kicadgen.child(node, "mid"))
-                board.tracks += [Track(net, layer, width, start, mid), Track(net, layer, width, mid, end)]
+                first, second = _arc_halves(start, mid, end)
+                board.tracks += [
+                    Track(net, layer, width, start, mid, first),
+                    Track(net, layer, width, mid, end, second),
+                ]
             else:
                 board.tracks.append(Track(net, layer, width, start, end))
         elif head == "via":
             names = [str(x) for x in kicadgen.atoms(kicadgen.child(node, "layers"))]
+            typed = kicadgen.child(node, "type")
+            words = [str(x) for x in kicadgen.atoms(node)] + (
+                [str(kicadgen.atoms(typed)[0])] if typed else []
+            )
+            kind = next((w for w in ("micro", "blind") if w in words), "through")
             board.vias.append(
                 Via(
                     net_of(node),
@@ -446,6 +524,7 @@ def read_board(text: str) -> Board:
                     float(kicadgen.atoms(kicadgen.child(node, "size"))[0]),
                     float(kicadgen.atoms(kicadgen.child(node, "drill"))[0]),
                     span(names),
+                    kind,
                 )
             )
         elif head == "footprint":
@@ -462,7 +541,7 @@ def read_board(text: str) -> Board:
                 reach = max(_xy(size)) / 2 if size else 0.0
                 names = [str(x) for x in kicadgen.atoms(kicadgen.child(pad, "layers") or ["layers"])]
                 on = list(copper) if "*.Cu" in names else [n for n in names if n in copper]
-                board.pads.append(Pad(ref, str(pad[1]), net_of(pad), at, reach, on))
+                board.pads.append(Pad(ref, str(pad[1]), net_of(pad), at, reach, on, str(node[1])))
         elif head == "zone":
             net = net_of(node)
             for filled in kicadgen.children(node, "filled_polygon"):
@@ -475,6 +554,26 @@ def read_board(text: str) -> Board:
 
 
 ARC_STEPS = 64  # chords an arc of the outline is taken as
+
+
+def _arc_halves(s: tuple, m: tuple, e: tuple) -> tuple[float, float]:
+    """The lengths along the arc through start, mid and end: from start to mid, and from mid to end, each
+    the radius times the angle it turns. 3 points in a line are 2 straight lengths."""
+    d = 2 * (s[0] * (m[1] - e[1]) + m[0] * (e[1] - s[1]) + e[0] * (s[1] - m[1]))
+    if abs(d) < EPS:
+        return math.dist(s, m), math.dist(m, e)
+    sq = [p[0] ** 2 + p[1] ** 2 for p in (s, m, e)]
+    cx = (sq[0] * (m[1] - e[1]) + sq[1] * (e[1] - s[1]) + sq[2] * (s[1] - m[1])) / d
+    cy = (sq[0] * (e[0] - m[0]) + sq[1] * (s[0] - e[0]) + sq[2] * (m[0] - s[0])) / d
+    r = math.hypot(s[0] - cx, s[1] - cy)
+
+    def turn(a: tuple, b: tuple) -> float:
+        """The angle from a to b about the centre, the short way: each half of an arc turns under pi."""
+        da = math.atan2(a[1] - cy, a[0] - cx)
+        db = math.atan2(b[1] - cy, b[0] - cx)
+        return abs((db - da + math.pi) % math.tau - math.pi)
+
+    return r * turn(s, m), r * turn(m, e)
 
 
 def _shoelace(points: list[tuple[float, float]]) -> float:
@@ -499,34 +598,78 @@ def _arc_points(s: tuple, m: tuple, e: tuple) -> list[tuple[float, float]]:
     return [s, *((cx + r * math.cos(a), cy + r * math.sin(a)) for a in angles), e]
 
 
+def _bezier_points(p0: tuple, p1: tuple, p2: tuple, p3: tuple) -> list[tuple[float, float]]:
+    """A cubic curve through its 4 points, as ARC_STEPS chords from p0 to p3."""
+    out = []
+    for i in range(ARC_STEPS + 1):
+        t = i / ARC_STEPS
+        w = ((1 - t) ** 3, 3 * t * (1 - t) ** 2, 3 * t**2 * (1 - t), t**3)
+        out.append(tuple(sum(wk * p[k] for wk, p in zip(w, (p0, p1, p2, p3), strict=True)) for k in (0, 1)))
+    return out
+
+
+def _placed(at: list[float]):
+    """A footprint's point on the board: turned by its angle and moved to its place, as KiCad does."""
+    fx, fy, *rot = at
+    r = math.radians(rot[0] if rot else 0.0)
+    return lambda p: (
+        fx + p[0] * math.cos(r) + p[1] * math.sin(r),
+        fy - p[0] * math.sin(r) + p[1] * math.cos(r),
+    )
+
+
+def _edge_shapes(root):
+    """Each shape on Edge.Cuts, the board's own and those drawn inside a footprint, with the function
+    that places its points on the board."""
+    for node in root[1:]:
+        if not isinstance(node, list) or not node:
+            continue
+        if node[0] == "footprint":
+            place = _placed([float(v) for v in kicadgen.atoms(kicadgen.child(node, "at"))])
+            shapes = [
+                (s, place) for s in node[1:] if isinstance(s, list) and s and str(s[0]).startswith("fp_")
+            ]
+        elif str(node[0]).startswith("gr_"):
+            shapes = [(node, lambda p: p)]
+        else:
+            continue
+        for shape, place in shapes:
+            layer = kicadgen.child(shape, "layer")
+            if layer is not None and str(kicadgen.atoms(layer)[0]) == "Edge.Cuts":
+                yield shape, place
+
+
 def _area(root) -> tuple[float | None, str]:
     """The area inside the board's outline on Edge.Cuts, and for None the reason. Lines and arcs are
     joined end to end into closed outlines; the greatest is the board and the others its holes."""
     near = 1e-3
     areas: list[float] = []
     edges: list[list[tuple[float, float]]] = []
-    for node in root[1:]:
-        if not isinstance(node, list) or not node or not str(node[0]).startswith("gr_"):
-            continue
-        layer = kicadgen.child(node, "layer")
-        if layer is None or str(kicadgen.atoms(layer)[0]) != "Edge.Cuts":
-            continue
+    for node, place in _edge_shapes(root):
+        kind = str(node[0])[3:]
         at = {
             k: _xy(kicadgen.child(node, k))
             for k in ("start", "mid", "end", "center")
             if kicadgen.child(node, k)
         }
-        if node[0] == "gr_rect":
+        pts = (
+            [_xy(p) for p in kicadgen.children(kicadgen.child(node, "pts"), "xy")]
+            if kind in ("poly", "curve")
+            else []
+        )
+        if kind == "rect":  # an area, which a footprint's turn keeps
             (x0, y0), (x1, y1) = at["start"], at["end"]
             areas.append(abs(x1 - x0) * abs(y1 - y0))
-        elif node[0] == "gr_circle":
+        elif kind == "circle":
             areas.append(math.pi * math.dist(at["center"], at["end"]) ** 2)
-        elif node[0] == "gr_poly":
-            areas.append(_shoelace([_xy(p) for p in kicadgen.children(kicadgen.child(node, "pts"), "xy")]))
-        elif node[0] == "gr_line":
-            edges.append([at["start"], at["end"]])
-        elif node[0] == "gr_arc":
-            edges.append(_arc_points(at["start"], at["mid"], at["end"]))
+        elif kind == "poly":
+            areas.append(_shoelace(pts))
+        elif kind == "line":
+            edges.append([place(at["start"]), place(at["end"])])
+        elif kind == "arc":
+            edges.append([place(p) for p in _arc_points(at["start"], at["mid"], at["end"])])
+        elif kind == "curve" and len(pts) == 4:
+            edges.append([place(p) for p in _bezier_points(*pts)])
         else:
             return None, f"the outline on Edge.Cuts holds a {node[0]}, whose area is not taken"
     while edges:
@@ -575,6 +718,105 @@ def net_amps(project: ratings.Project, net: ratings.Netlist) -> dict[str, float]
     return out
 
 
+MOST_SIDES = 10  # pieces a track's removal may leave and still be split every way; more take half the sum
+
+
+def _copper_graph(board: Board, net: str) -> tuple[list[tuple], list[set[int]]]:
+    """The items of 1 net's copper on every layer, and which touch which. An item is (shape, layers,
+    track index or None, pad or None); a via and a pad stand on each of their layers."""
+    items: list[tuple] = []
+    for i, t in enumerate(board.tracks):
+        if t.net == net:
+            items.append((("seg", t.start, t.end, t.width / 2), {t.layer}, i, None))
+    for p in board.pads:
+        if p.net == net:
+            items.append((("seg", p.at, p.at, p.reach), set(p.layers), None, p))
+    for v in board.vias:
+        if v.net == net:
+            items.append((("seg", v.at, v.at, v.size / 2), set(v.layers), None, None))
+    for z in board.zones:
+        if z.net == net:
+            items += [(("zone", poly), {z.layer}, None, None) for poly in z.polygons]
+    near: list[set[int]] = [set() for _ in items]
+    for a in range(len(items)):
+        for b in range(a + 1, len(items)):
+            if items[a][1] & items[b][1] and _meets(items[a][0], items[b][0]):
+                near[a].add(b)
+                near[b].add(a)
+    return items, near
+
+
+def _parts_without(near: list[set[int]], gone: int) -> dict[int, int]:
+    """The piece each item lies in once item `gone` is taken away."""
+    piece: dict[int, int] = {}
+    for start in range(len(near)):
+        if start == gone or start in piece:
+            continue
+        piece[start] = start
+        todo = [start]
+        while todo:
+            for n in near[todo.pop()]:
+                if n != gone and n not in piece:
+                    piece[n] = start
+                    todo.append(n)
+    return piece
+
+
+def stretch_amps(board: Board, stated: dict[str, float]) -> tuple[dict[int, float], dict[str, float]]:
+    """The most current each track can carry, by its index in `board.tracks`, and the most on each net,
+    for each net whose every pad has a stated current (`R5`, or `J6.1` for 1 pin) and whose copper is 1
+    piece. There the currents in balance the currents out (Kirchhoff's current law), so a track carries
+    at most the lesser of the currents on its 2 sides, and no track more than half the pins' sum. A track
+    with 1 end on nothing carries nothing. Any other net is left out: its tracks keep the sum."""
+    per_track: dict[int, float] = {}
+    most: dict[str, float] = {}
+    for net in sorted({t.net for t in board.tracks if t.net}):
+        items, near = _copper_graph(board, net)
+        groups: dict[int, tuple] = {}  # item -> the stated current its pad belongs to
+        amps: dict[tuple, float] = {}
+        for i, item in enumerate(items):
+            p = item[3]
+            if p is None:
+                continue
+            key = f"{p.ref}.{p.number}"
+            gid = (key,) if key in stated else (p.ref,) if p.ref in stated else None
+            if gid is None:
+                break
+            groups[i] = gid
+            amps[gid] = stated[gid[0]]
+        else:
+            if not groups or len(set(_parts_without(near, -1).values())) != 1:
+                continue
+            half = sum(amps.values()) / 2
+            most[net] = half
+            for i, item in enumerate(items):
+                if item[2] is None:
+                    continue
+                per_track[item[2]] = _track_bound(i, items, near, groups, amps, half)
+    return per_track, most
+
+
+def _track_bound(
+    i: int, items: list[tuple], near: list[set[int]], groups: dict, amps: dict, half: float
+) -> float:
+    piece = _parts_without(near, i)
+    sides = sorted({piece[n] for n in near[i]})
+    if len(sides) <= 1:
+        _, a, b, reach = items[i][0]
+        at_a, at_b = ([_meets(("seg", e, e, reach), items[n][0]) for n in near[i]] for e in (a, b))
+        stub = (all(at_a) and not any(at_b)) or (all(at_b) and not any(at_a))
+        return 0.0 if stub else half
+    if len(sides) > MOST_SIDES:
+        return half
+    held = [{gid for n, gid in groups.items() if piece.get(n) == s} for s in sides]
+    best = 0.0
+    for mask in range(1, 2 ** len(sides) - 1):
+        one = set().union(*(held[k] for k in range(len(sides)) if mask >> k & 1))
+        other = set().union(*(held[k] for k in range(len(sides)) if not mask >> k & 1))
+        best = max(best, min(sum(amps[g] for g in one), sum(amps[g] for g in other)))
+    return min(best, half)
+
+
 # ---------------------------------------------------------------- findings
 
 
@@ -610,8 +852,12 @@ def _valid(board: Board, pack: Pack) -> str:
     return ""
 
 
-def width_findings(board: Board, amps: dict[str, float], pack: Pack) -> list[Finding]:
-    """Each track of a net with a current, held to the least width that carries it."""
+def width_findings(
+    board: Board, amps: dict[str, float], pack: Pack, per_track: dict[int, float] | None = None
+) -> list[Finding]:
+    """Each track of a net with a current, held to the least width that carries it: the track's own
+    current where `stretch_amps` worked it out, else the net's."""
+    per_track = per_track or {}
     out: list[Finding] = []
     nets = sorted({t.net for t in board.tracks if t.net})
     for name in [n for n in nets if n not in amps]:
@@ -624,14 +870,17 @@ def width_findings(board: Board, amps: dict[str, float], pack: Pack) -> list[Fin
         model = pack.current["valid"]
         text = f"track widths of {', '.join(carrying)}: {why}, and the model holds only over that"
         return [*out, Finding("not judged", text, pack.cite(model["where"]))]
-    needs: dict[tuple[str, str], Need] = {}
-    for track in board.tracks:
+    needs: dict[tuple[str, str, float], Need] = {}
+    for i, track in enumerate(board.tracks):
         if amps.get(track.net, 0.0) <= 0:
             continue
-        key = (track.net, track.layer)
+        carried = per_track.get(i, amps[track.net])
+        if carried <= 0:
+            continue
+        key = (track.net, track.layer, carried)
         if key not in needs:
             needs[key] = track_need(
-                pack, amps[track.net], board.outer(track.layer), board.cu_um[track.layer], board.thickness
+                pack, carried, board.outer(track.layer), board.cu_um[track.layer], board.thickness
             )
             if needs[key].mm is None:
                 out.append(
@@ -641,9 +890,114 @@ def width_findings(board: Board, amps: dict[str, float], pack: Pack) -> list[Fin
         if need.mm is not None and track.width < need.mm - 1e-6:
             text = (
                 f"track width {track.net} on {track.layer} from {_p(track.start)} to {_p(track.end)}: "
-                f"{track.width:g} mm, limit {_mm(need.mm)} mm for {amps[track.net]:g} A"
+                f"{track.width:g} mm, limit {_mm(need.mm)} mm for {carried:.4g} A"
             )
             out.append(Finding("fail", text, pack.cite(need.where)))
+    return out
+
+
+# A .kicad_pcb holds a coordinate to 6 decimals of a mm (the boards under examples/, as KiCad and
+# FreeRouting wrote them, hold no more). 2 tracks are parallel when their gap changes over their overlap by
+# no more than that rounding can make: 4 ends, each off by half the grain in x and in y.
+GRAIN_MM = 1e-6
+PARALLEL_WITHIN_MM = 4 * math.hypot(GRAIN_MM / 2, GRAIN_MM / 2)
+
+
+@dataclass
+class Beside:
+    """2 straight tracks side by side, seen over the stretch of the first that the second spans."""
+
+    least: float  # the least gap over that stretch, mm, edge to edge
+    most: float  # the greatest
+    degrees: float  # the angle between them
+
+
+def _side_by_side(a: Track, b: Track) -> Beside | None:
+    """The gaps, edge to edge, between 2 straight tracks over the stretch of `a` that `b` spans, and the
+    angle between them; None for 2 that do not overlap along `a` or cross over that stretch."""
+    ax, ay = a.end[0] - a.start[0], a.end[1] - a.start[1]
+    bx, by = b.end[0] - b.start[0], b.end[1] - b.start[1]
+    la, lb = math.hypot(ax, ay), math.hypot(bx, by)
+    if la < EPS or lb < EPS:
+        return None
+    ux, uy = ax / la, ay / la
+    t0, t1 = ((p[0] - a.start[0]) * ux + (p[1] - a.start[1]) * uy for p in (b.start, b.end))
+    lo, hi = max(min(t0, t1), 0.0), min(max(t0, t1), la)
+    if hi - lo <= EPS:
+        return None
+    s0, s1 = ((p[0] - a.start[0]) * uy - (p[1] - a.start[1]) * ux for p in (b.start, b.end))
+    ends = [s0 + (s1 - s0) * (t - t0) / (t1 - t0) for t in (lo, hi)]  # b's offset from a's line
+    if min(ends) <= 0 <= max(ends):
+        return None
+    half = a.width / 2 + b.width / 2
+    degrees = math.degrees(math.atan2(abs(ax * by - ay * bx), abs(ax * bx + ay * by)))
+    return Beside(min(map(abs, ends)) - half, max(map(abs, ends)) - half, degrees)
+
+
+def _made_mm2(pack: Pack, board: Board, track: Track) -> float | None:
+    """A track's section as manufactured: its width less table 7-3's tolerance, by its foil's least
+    thickness as manufactured (table 7-1). None where a table holds no row for its copper."""
+    cu_um = board.cu_um[track.layer]
+    made_um = next((m for d, m in pack.current["copper"]["rows"] if abs(d - cu_um) < 0.05), None)
+    tol = _tolerance(pack, pack.th_um("outer" if board.outer(track.layer) else "inner", cu_um))
+    if made_um is None or tol is None:
+        return None
+    share, most = tol
+    return max(track.width * (1 - share), track.width - most) * made_um / 1000
+
+
+def parallel_findings(
+    board: Board, amps: dict[str, float], pack: Pack, per_track: dict[int, float] | None = None
+) -> list[Finding]:
+    """13.6.3g: 2 tracks with a current that run in parallel on 1 layer, closer than the pack's gap,
+    are held as 1 conductor: the sum of their currents on the sum of their sections as manufactured.
+    2 tracks at an angle that fail as 1 conductor are not judged, by name: the clause names no angle.
+    Those that hold as 1 conductor hold whether or not they are in parallel."""
+    par = pack.current.get("parallel")
+    if par is None or _valid(board, pack):
+        return []
+    per_track = per_track or {}
+    cur, model = pack.current, pack.current["model"]
+    live = [
+        (i, t, per_track.get(i, amps.get(t.net, 0.0)))
+        for i, t in enumerate(board.tracks)
+        if per_track.get(i, amps.get(t.net, 0.0)) > 0
+    ]
+    out: list[Finding] = []
+    for n, (_, a, ia) in enumerate(live):
+        for _, b, ib in live[n + 1 :]:
+            side = _side_by_side(a, b) if a.layer == b.layer and a.net != b.net else None
+            if side is None or side.least <= 0 or side.least >= par["under_mm"]:
+                continue
+            outer = board.outer(a.layer)
+            rise, places = _rise(pack, board.thickness)
+            need = (ia + ib) / cur["outer_share"] if outer else ia + ib
+            sections = [_made_mm2(pack, board, t) for t in (a, b)]
+            what = f"parallel tracks {a.net} and {b.net} on {a.layer} from {_p(a.start)} and {_p(b.start)}"
+            if need > model["most_amps"] or None in sections:
+                why = (
+                    f"{need:.3g} A is over the model's {model['most_amps']:g} A"
+                    if None not in sections
+                    else ""
+                )
+                out.append(
+                    Finding("not judged", f"{what}: {why or 'no row of table 7-1 or 7-3 holds its copper'}")
+                )
+                continue
+            asked = area_for(need, rise, model)
+            if sum(sections) >= asked - 1e-12:
+                continue
+            made = f"{sum(sections):.4g} mm2 as manufactured, limit {asked:.4g} mm2 for {ia + ib:.4g} A"
+            if side.most - side.least > PARALLEL_WITHIN_MM:
+                text = (
+                    f"{what}, at {side.degrees:.3g} degrees, {side.least:g} to {side.most:g} mm apart: as 1 "
+                    f"conductor {made}; 13.6.3g names no angle within which 2 tracks are in parallel"
+                )
+                out.append(Finding("not judged", text, pack.cite(par["where"])))
+                continue
+            where = [par["where"], *places, *([cur["outer_where"]] * outer), model["where"]]
+            where += [cur["copper"]["where"], cur["tolerance"]["where"]]
+            out.append(Finding("fail", f"{what}, {side.least:g} mm apart: {made}", pack.cite(*where)))
     return out
 
 
@@ -691,16 +1045,65 @@ def _meets(x: tuple, y: tuple) -> bool:
     return _touch(x[1], x[2], y[1], y[2], x[3] + y[3])
 
 
-def via_findings(board: Board, amps: dict[str, float], pack: Pack) -> list[Finding]:
+def _wall(pack: Pack, stated: Wall | None, hdi: str | None) -> tuple[float, str] | None:
+    """The via wall a board's vias are held to, um, and its source: the pack's where it holds for this
+    board (an HDI wall where board-rules.json states, with `hdi`, that the board is built as HDI), the
+    project's stated one, and the lesser of the 2 where both are."""
+    walls: list[tuple[float, str]] = []
+    own = pack.current.get("via_wall")
+    if own is not None and (own.get("boards") != "hdi" or hdi is not None):
+        built = f"; {PROJECT_FILE}: hdi: {hdi}" if own.get("boards") == "hdi" else ""
+        walls.append((own["um"], f"{pack.document['number']}: {own['where']}{built}"))
+    if stated is not None:
+        walls.append((stated.um, f"{PROJECT_FILE}: via_wall {stated.um:g} um: {stated.source}"))
+    return min(walls, key=lambda w: w[0]) if walls else None
+
+
+def via_findings(
+    board: Board, amps: dict[str, float], pack: Pack, stated: Wall | None = None, hdi: str | None = None
+) -> list[Finding]:
     """The vias of each net with a current, in groups that join the same pieces of copper: a group
-    carries the net's whole current, and holds as many vias as that asks."""
+    carries the net's whole current, and holds as many vias as that asks. A via's wall is the pack's
+    or the one `board-rules.json` states (`_wall`); a microvia is filled, and not judged. Refuses a
+    stated wall of half a judged via's drill or more."""
     out: list[Finding] = []
     via_where = pack.current["via_where"]
-    for name in sorted({v.net for v in board.vias if amps.get(v.net, 0.0) > 0}):
-        vias = [v for v in board.vias if v.net == name]
-        if pack.current.get("via_wall") is None:
-            text = f"vias of {name}: the pack gives no copper thickness of a via's wall"
-            out.append(Finding("not judged", text, pack.cite(via_where)))
+    wall = _wall(pack, stated, hdi)
+    live = sorted({v.net for v in board.vias if amps.get(v.net, 0.0) > 0})
+    for via in board.vias:
+        full = stated is not None and 2 * stated.um / 1000 >= via.drill - EPS
+        if full and via.net in live and not board.microvia(via, pack):
+            raise Refusal(
+                f"{PROJECT_FILE}: via_wall: {stated.um:g} um fills the hole of the via of {via.net} at "
+                f"{_p(via.at)}, drill {via.drill:g} mm: a wall is under half the drill"
+            )
+    for name in live:
+        micro = [v for v in board.vias if v.net == name and board.microvia(v, pack)]
+        if micro:
+            filled = pack.current["microvia"]["where"]
+            text = (
+                f"microvias of {name}: {len(micro)} at {_p(micro[0].at)}, a filled via, "
+                "whose section the pack rates not"
+            )
+            out.append(Finding("not judged", text, pack.cite(filled)))
+        vias = [v for v in board.vias if v.net == name and not board.microvia(v, pack)]
+        if not vias:
+            continue
+        if wall is None:
+            text = (
+                f"vias of {name}: the pack states no copper of a via's wall for this board; state the fab's "
+                f'in {PROJECT_FILE} as `via_wall`: {{"um": ..., "source": ...}}, or, for a board built as '
+                f'HDI under 11.6, as `hdi`: {{"source": ...}}'
+            )
+            out.append(Finding("not judged", text, pack.cite(via_where, pack.current.get("via_read", ""))))
+            continue
+        filled = [v for v in vias if via_amps(pack, v.drill, board.thickness, wall[0]) is None]
+        if filled:
+            text = (
+                f"vias of {name}: {wall[0]:g} um of wall fills the hole of the via at {_p(filled[0].at)}, "
+                f"drill {filled[0].drill:g} mm, and a filled via is not rated"
+            )
+            out.append(Finding("not judged", text, wall[1]))
             continue
         why = _valid(board, pack)
         if why:
@@ -719,7 +1122,7 @@ def via_findings(board: Board, amps: dict[str, float], pack: Pack) -> list[Findi
             if len({ly for ly, _ in joined}) >= 2:  # a via that joins copper on 1 layer carries nothing
                 groups.setdefault(frozenset(joined), []).append(via)
         for group in groups.values():
-            each = min(via_amps(pack, v.drill, board.thickness) for v in group)
+            each = min(via_amps(pack, v.drill, board.thickness, wall[0]) for v in group)
             asked = math.ceil(amps[name] / each - 1e-9)
             if len(group) < asked:
                 first = group[0]
@@ -728,13 +1131,8 @@ def via_findings(board: Board, amps: dict[str, float], pack: Pack) -> list[Findi
                     f"vias {name} between {first.layers[0]} and {first.layers[-1]} at {_p(first.at)}: "
                     f"{len(group)}, limit {asked} for {amps[name]:g} A ({each:.3g} A each at {rise:.3g} C)"
                 )
-                where = [
-                    via_where,
-                    pack.current["via_wall"]["where"],
-                    *places,
-                    pack.current["model"]["where"],
-                ]
-                out.append(Finding("fail", text, pack.cite(*where)))
+                source = pack.cite(via_where, *places, pack.current["model"]["where"])
+                out.append(Finding("fail", text, f"{source}; {wall[1]}"))
     return out
 
 
@@ -853,18 +1251,55 @@ def clearance_findings(report: dict, rules: dict[str, Rule]) -> list[Finding]:
 NOT_CHECKED = (
     "not checked by any pack here: the gap in Z between layers, to a hole's wall, to the board's edge and "
     "between holes; the current through a pad or a pour, and through a plated pad's barrel as a path "
-    "beside a via"
+    "beside a via; 13.6.3g between 2 tracks of 1 net, on 2 layers, or 3 side by side"
 )
 
 
+LAYOUT_KEYS = ("layout", "connectors", "inside", "protectors", "ground", "power")
+
+
+def project_keys(data: object) -> dict:
+    """board-rules.json: a voltage pack (`pack`), layout packs (`layout`, tools/layoutrules.py), or both,
+    with what the layout packs ask the project to state."""
+    data = ratings._keys(PROJECT_FILE, data, (), ("pack", "via_wall", "hdi", *LAYOUT_KEYS))
+    if "pack" not in data and "layout" not in data:
+        raise Refusal(f"{PROJECT_FILE}: names no pack: give `pack`, `layout` or both")
+    if "layout" in data:
+        ratings._names(f"{PROJECT_FILE}: layout", data["layout"])
+    stated_wall(data)
+    return data
+
+
 def judge(project, out: Path, cli) -> tuple[str, list[Finding], list[str]]:
-    """The board held to the pack its board-rules.json names: the pack's name for the report, the
+    """The board held to the packs its board-rules.json names: the packs' names for the report, the
     findings, and the notes. Refuses a file it does not take; raises RuntimeError when kicad-cli did
     not measure the gaps."""
-    data = ratings._keys(PROJECT_FILE, ratings._json(project.dir / PROJECT_FILE), ("pack",))
-    path, label = find_pack(ratings._text(f"{PROJECT_FILE}: pack", data["pack"]), project.dir)
-    pack = read_pack(path)
+    data = project_keys(ratings._json(project.dir / PROJECT_FILE))
     board = read_board(project.pcb.read_text(encoding="utf-8"))
+    labels: list[str] = []
+    findings: list[Finding] = []
+    notes: list[str] = []
+    for name in data.get("layout", []):
+        import layoutrules
+
+        path, label = find_pack(name, project.dir)
+        lpack = layoutrules.read_pack(path)
+        labels.append(label)
+        notes.append(f"board rules: {label}, {lpack.document['number']} ({lpack.document['revision']})")
+        notes += layoutrules.notes(board, lpack)
+        findings += layoutrules.findings(board, lpack, data)
+    if "pack" not in data:
+        return " + ".join(labels), findings, notes
+    label, more, notes_v = judge_voltage(project, out, cli, data, board)
+    return " + ".join([label, *labels]), more + findings, notes_v + notes
+
+
+def judge_voltage(project, out: Path, cli, data: dict, board: Board) -> tuple[str, list[Finding], list[str]]:
+    """The board held to its voltage pack (`pack`): gaps, widths and vias, each via to the wall
+    board-rules.json states (`via_wall`, `hdi`)."""
+    path, label = find_pack(ratings._text(f"{PROJECT_FILE}: pack", data["pack"]), project.dir)
+    wall, hdi = stated_wall(data)
+    pack = read_pack(path)
     net = netlist(board)
     stated = project.dir / "ratings.json"
     if not stated.is_file():
@@ -892,7 +1327,14 @@ def judge(project, out: Path, cli) -> tuple[str, list[Finding], list[str]]:
         if proc.returncode not in (0, 5) or not report.is_file():
             raise RuntimeError(f"kicad-cli exited {proc.returncode} on the pack's gaps: {proc.stderr[-500:]}")
         findings = clearance_findings(cli.load_json(report), rules) + findings
-    findings += width_findings(board, amps, pack) + via_findings(board, amps, pack)
+    per_track, most = stretch_amps(board, asked.amps)
+    if most:
+        nets = ", ".join(sorted(most))
+        notes.append(f"each track's current from its net's copper, every pad's current stated: {nets}")
+    findings += parallel_findings(board, amps, pack, per_track)
+    findings += width_findings(board, amps, pack, per_track) + via_findings(
+        board, {**amps, **most}, pack, wall, hdi
+    )
     return label, findings, notes
 
 

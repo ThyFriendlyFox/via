@@ -25,6 +25,12 @@ ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
 FIXTURES = ROOT / "tests" / "boards" / "references"
 INDEX = ROOT / "rules" / "references" / "index.json"
+# The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
+CITES = {
+    "ietf-rfc6585": "section 4, page 3: 429 Too Many Requests",
+    "ietf-rfc9110": "section 15.6: Server Error 5xx",
+    "freedesktop-basedir-0.8": "section 2: a relative path is invalid and ignored",
+}
 
 KEPT = b"%PDF-1.4 Acme AN-17 Layout of a buck converter, Rev. B\n"
 BEFORE = b"%PDF-1.4 Acme AN-18 Input filters, Rev. A\n"
@@ -162,7 +168,8 @@ def test_fetch_prints_1_line_per_document_and_a_count(site):
     assert "not asked again" in lines[2] and "references check FILE --id an-19" in lines[2]
     assert all("(ledger of 20" in line for line in lines[:3])
     assert lines[-1] == (
-        "references fetch: 1 kept, 1 changed, 1 refused, 0 gone, 0 not given, 0 not reached; 0 asked now"
+        "references fetch: 1 kept, 1 changed, 0 moved, 1 refused, 0 gone, 0 not given, 0 not reached; "
+        "0 asked now"
     )
 
 
@@ -457,7 +464,8 @@ OTHER_SHA = "0" * 64
         ),
         (
             [GOOD | {"kind": "note"}],
-            "documents[0] acme-an-17: kind 'note' is none of standard, application note, datasheet",
+            "documents[0] acme-an-17: kind 'note' is none of standard, application note, datasheet, "
+            "report, web page, paper, book",
         ),
         (
             [GOOD | {"id": "AN-17"}],
@@ -583,16 +591,25 @@ def test_a_document_served_in_a_zip_is_held_by_the_zips_sha256(tmp_path):
 
 
 def test_every_document_a_rule_of_the_repository_names_is_in_the_index():
-    """`make verify` runs this. The rating packs name 2 standards, the board pack 1, the 4 facts files
-    of 1 part 4 datasheets, passives.json 4, fail-sim-bias's parts.json 2 (Samsung's page and Coilcraft's
-    806, which passives.json names too), rules/copper/materials.json 2, rules/interfaces/ 5 (SPRAAR7J in
-    the 2 TI files, the 3 usb.org specifications in usb2.json and usb3.json; constants.json names none):
-    2 + 1 + 4 + 4 + 2 + 2 + 5 = 20 named. made-up.json's 4 parts name no document: 4 not judged."""
-    code, out = run("rules")
+    """`make verify` runs this on the files the index's `rules` globs find (the code its `code` globs
+    find is tests/test_references_code.py's). The rating packs name 2 standards, the board packs 3 (the
+    ECSS pack 1; the 2 layout packs of roadmap item 11, TI SLVA680A and SZZA009),
+    rules/copper/materials.json 2 (NBS's copper wire tables and TI's AN-2020), rules/interfaces/ 7
+    (TI's USB layout note in the 2 TI files, the 3 usb.org specifications in usb2.json and usb3.json,
+    NIST's 2 CODATA pages in constants.json), rules/products/vaping-device-lithium-cell.json 4 (47 CFR
+    15 Subpart B, 49 CFR 173.185 and the 2 TI notes; a file's count is its own, so the notes count again
+    here), the 4 facts files of 1 part 4 datasheets, passives.json 4, fail-sim-bias's parts.json 2
+    (Samsung's page and Coilcraft's 806, which passives.json names too): 2 + 3 + 2 + 7 + 4 + 4 + 4 + 2
+    = 28 named. The 4 fab rule files name 1 + 1 + 1 + 2 = 5 pages: 33 in all. made-up.json's 4 parts
+    name no document, Sierra's fab file names IPC's class standard with no place beside it, and the
+    product kind names 2 IEC standards a laboratory uses, with none: 4 + 1 + 2 = 7 not judged. Files:
+    2 + 3 + 1 + 5 + 1 + 7 JSON and 4 fab rule files = 23."""
+    globs = json.loads(INDEX.read_text(encoding="utf-8"))["rules"]
+    files = sorted({p for pattern in globs for p in ROOT.glob(pattern)})
+    code, out = run("rules", *files)
     assert code == 0, out
-    files = 2 + 1 + 1 + 5 + 7
     assert out.splitlines()[-1] == (
-        f"references rules: 20 documents named in {files} files, 20 in the index, 0 not; 4 not judged"
+        "references rules: 33 documents named in 23 files, 33 in the index, 0 not; 7 not judged"
     )
 
 
@@ -619,7 +636,7 @@ def test_the_index_globs_cover_every_rule_file_under_rules():
 
 def test_the_repository_holds_no_document_the_index_names():
     """The Scope guard: no tracked file has the SHA256 of a document in the index."""
-    names = {d["sha256"] for d in json.loads(INDEX.read_text(encoding="utf-8"))["documents"]}
+    names = {d["sha256"] for d in json.loads(INDEX.read_text(encoding="utf-8"))["documents"] if "sha256" in d}
     tracked = subprocess.run(
         ["git", "-C", str(ROOT), "ls-files", "-z"], capture_output=True, check=True
     ).stdout.split(b"\0")
