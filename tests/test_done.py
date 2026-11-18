@@ -161,6 +161,43 @@ def test_every_record_short_of_held_is_not_held(tmp_path, capsys, verdict, statu
     assert lines[-1].startswith("RED (ratings not held)")
 
 
+# The fixtures whose ratings.json is there for another command, which reads its volts and amps, and not
+# for `ratings`: they hold no parts file, so `ratings` judges nothing of their parts (NOTHING JUDGED), and
+# a record that judged nothing is not held. Their gates are not GREEN under --strict, and they stay so:
+# their `pass-` or `fail-` is the other command's verdict, which the definition of done does not change.
+# A fixture that should end GREEN under `gates --strict` needs facts for every part, as `pass-ratings-node`.
+FOR_ANOTHER_COMMAND = {
+    "pass-copper-strip": "`copper --strict` reads the amps at J2 and through R1",
+    "fail-copper-neck": "`copper` reads the amps at J2 and through R1",
+    "pass-board-ecss": "the ECSS pack's DRC reads the volts of VIN and the amps of J1",
+    "fail-board-ecss": "the ECSS pack's DRC reads the volts of VIN and the amps of J1",
+}
+
+
+def test_a_fixture_with_ratings_json_is_a_ratings_fixture_or_named_for_another_command(tmp_path, capsys):
+    """Every fixture with a ratings.json asks for the ratings. One named `*-ratings-*` is judged by
+    `ratings`. Any other is in FOR_ANOTHER_COMMAND, holds no parts file, and its gates under --strict
+    say `RATINGS not held` and end `RED (ratings not held)`, with no record and with a record of
+    NOTHING JUDGED, as on any board whose ratings judged nothing."""
+    cli = load_cli()
+    asked = sorted(p.parent.name for p in BOARDS.glob("*/ratings.json"))
+    assert sorted(n for n in asked if "-ratings-" not in n) == sorted(FOR_ANOTHER_COMMAND)
+    for name in FOR_ANOTHER_COMMAND:
+        proj = tmp_path / name
+        shutil.copytree(BOARDS / name, proj, ignore=shutil.ignore_patterns("build"))
+        assert not list(proj.glob("*.csv")), name
+        code, lines = gates(proj, capsys, strict=True)
+        assert code == 1 and lines[-2].startswith("RATINGS not held: no build/ratings/report.json yet"), lines
+        project = cli.find_project(str(proj))
+        files = cli.ratings().read_by_run(project, [], cli)
+        sums = {rel: hashlib.sha256(f.read_bytes()).hexdigest() for rel, f in files.items()}
+        rated(proj, "NOTHING JUDGED (1 not judged)", "fail", inputs={"parts": [], "files": sums})
+        code, lines = gates(proj, capsys, strict=True)
+        assert code == 1, lines
+        assert lines[-2] == f"RATINGS not held: nothing judged (1 not judged) (workcenter ratings {proj})"
+        assert lines[-1].startswith("RED (ratings not held)"), lines
+
+
 def test_held_ratings_leave_the_verdict_green(tmp_path, capsys):
     proj = node(tmp_path)
     rated(proj, "RATINGS HELD")
