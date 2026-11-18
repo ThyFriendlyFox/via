@@ -79,10 +79,19 @@ or any step that downloads, installs, or runs for more than a minute.
    them in 1 step. A green run is read for its time too: a step that
    used more than half its limit is split or given room before a merge
    rests on it (M180).
+8. A test of a workflow step runs the step's own text with a stand-in
+   for every command whose answer depends on the machine (`docker`,
+   `find`, `id`, the user's name, the network), so that the test holds
+   the step's logic and never the machine it runs on: the same on a
+   runner, in the image, as a user id with no name. Each such command's
+   failure is a case. A command whose failure must stop the step runs on
+   its own line (`me=$(id -un)`): inside another command's arguments its
+   exit status is lost under `bash -e` (M269).
 
 Done when: the run is green, its log shows progress lines in every long
 step, no step used more than half its limit, and no step depended on a
-terminal.
+terminal; each test of a step stands in for every command that reads the
+machine, and makes each fail.
 
 ## P3 — Design rules before geometry
 

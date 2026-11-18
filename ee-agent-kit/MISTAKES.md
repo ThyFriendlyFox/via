@@ -1641,3 +1641,9 @@ What happened: A helper of item 9's left-overs ran a command line with `cd /`, a
 Cost: None seen; the rule was broken.
 Root cause: The habit of a terminal, where a folder stays chosen.
 Process: P8
+
+## M269 — 2026-11-18 — A test of a workflow step read the machine's user list
+What happened: The first run of the suite inside the container image (CI run 44409635104) failed `tests/test_image.py::test_the_gates_step_fails_unless_every_file_written_is_the_runners_user`. The test asked `id -un` for the runner's name with `check=True`; inside the image the user id has no passwd line, and GNU `id -un` prints the number and ends with 1.
+Cost: A red run of 1041 s on the wall clock, and the reason read from the test's source: the gate's log did not hold it.
+Root cause: The test read the machine's user list where it meant to test a step's logic. It gave the step stand-ins for `docker` and `find`, not for `id`; and no case made `id -un` fail, so the step's own gap (the substitution inside `test`'s arguments, whose failure `bash -e` does not see) passed too.
+Process: P2
