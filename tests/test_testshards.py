@@ -431,6 +431,94 @@ def test_a_stop_by_signal_ends_every_shard(tmp_path, sig):
             proc.wait()
 
 
+# -- the engine lock that `make verify` holds ------------------------------------------------------------
+
+LOCK = ROOT / "tools" / "enginelock.py"
+
+# A test in a shard: the gate's lock lets it through, and a long command it starts runs at once.
+INSIDE_THE_LOCK = (
+    "import os\nimport subprocess\nimport sys\n\nLOCK = os.environ['LOCK_TOOL']\n\n\n"
+    "def test_held():\n"
+    "    assert subprocess.run([sys.executable, LOCK, 'held']).returncode == 0\n\n\n"
+    "def test_a_long_command_runs_at_once():\n"
+    "    argv = [sys.executable, LOCK, 'hold', '--what', 'engine', '--', sys.executable, '-c', 'pass']\n"
+    "    run = subprocess.run(argv, capture_output=True, text=True, timeout=30)\n"
+    "    assert run.returncode == 0 and 'waiting' not in run.stderr, run.stderr\n"
+)
+
+
+def under_the_lock(tmp_path: Path, root: Path) -> list[str]:
+    """`testshards.py run` started as verify/verify.sh starts it: under `enginelock.py hold --what "make
+    verify"`, in a lock folder of the test's own."""
+    args = ["run", "--root", str(root), "--table", str(root / "shards.csv"), "--jobs", "2"]
+    args += ["--python", sys.executable, "--work", str(tmp_path / "work")]
+    hold = [sys.executable, str(LOCK), "hold", "--what", "make verify", "--"]
+    return [*hold, sys.executable, str(ROOT / "verify" / "testshards.py"), *args]
+
+
+def lock_env(tmp_path: Path) -> dict[str, str]:
+    env = {k: v for k, v in os.environ.items() if not k.startswith("WORKCENTER_LOCK")}
+    return {**env, "WORKCENTER_LOCK_DIR": str(tmp_path / "lock"), "LOCK_TOOL": str(LOCK)}
+
+
+def test_the_shards_of_a_gate_that_holds_the_engine_lock_never_wait_for_it(tmp_path):
+    """`make verify` holds the engine lock to its end, and each shard's tests start long `workcenter`
+    commands. A shard runs in its own session, and is still a child of the holder: the lock lets it
+    through. 2 files in 2 shards each ask `held` and run a command under `hold`: 4 passed, no waiting
+    line, in well under the 30 s a wait would take each."""
+    root = folder(tmp_path, {"test_x.py": INSIDE_THE_LOCK, "test_y.py": INSIDE_THE_LOCK})
+    proc = subprocess.run(
+        under_the_lock(tmp_path, root),
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env=lock_env(tmp_path),
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "ids: 4 collected in 1 process, 4 run in 2 shards; 0 missing" in proc.stdout
+    assert "waiting" not in proc.stdout + proc.stderr
+
+
+def test_a_stop_by_signal_to_the_holders_group_ends_every_shard(tmp_path):
+    """`lead/gate-and-push.sh` starts make with setsid and stops it with TERM to that process group:
+    `enginelock.py hold`, verify.sh and the runner get the signal, the shards (each in its own session)
+    do not. The runner ends them: no shard's pytest is left, and the hold dies of the signal."""
+    root = folder(tmp_path, {"test_x.py": WAITS, "test_y.py": WAITS})
+    pids = tmp_path / "pids"
+    pids.mkdir()
+    proc = subprocess.Popen(
+        under_the_lock(tmp_path, root),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        env={**lock_env(tmp_path), "SHARD_PIDS": str(pids)},
+        start_new_session=True,
+    )
+    try:
+        deadline = time.monotonic() + 60
+        while len(list(pids.iterdir())) < 2:
+            assert time.monotonic() < deadline and proc.poll() is None, "the 2 shards did not start"
+            time.sleep(0.1)
+        os.killpg(proc.pid, signal.SIGTERM)
+        out, _ = proc.communicate(timeout=30)
+        deadline = time.monotonic() + 10
+        while any(running(int(p.name)) for p in pids.iterdir()) and time.monotonic() < deadline:
+            time.sleep(0.1)
+        left = [int(p.name) for p in pids.iterdir() if running(int(p.name))]
+        assert left == [], out
+        assert proc.returncode == -signal.SIGTERM, out
+    finally:
+        for p in pids.iterdir():
+            try:
+                os.kill(int(p.name), signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        if proc.poll() is None:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
+
+
 # -- the work folder and the table ----------------------------------------------------------------------
 
 
