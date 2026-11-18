@@ -1319,13 +1319,25 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def run(args) -> int:
-    """0 held, 1 red, 2 refused: a file the tool cannot read, named with the reason."""
+    """0 held, 1 red, 2 refused: a file the tool cannot read, named with the reason. With --json, 1 JSON
+    object in place of the lines: the verdict, the count of each rule, the failures and the not judged."""
+    as_json = bool(getattr(args, "json", False))
+    said: list[str] = []
+
+    def refuse(why: str) -> int:
+        line = f"legend: refused: {why}"
+        print(
+            json.dumps({"verdict": "refused", "reason": line, "lines": said})
+            if as_json
+            else "\n".join(said + [line])
+        )
+        return 2
+
     path = Path(args.board)
     if path.is_dir():
         boards = sorted(path.glob("*.kicad_pcb"))
         if len(boards) != 1:
-            print(f"legend: refused: {path} holds {len(boards)} boards; name 1")
-            return 2
+            return refuse(f"{path} holds {len(boards)} boards; name 1")
         path = boards[0]
     try:
         fab = args.fab or fab_named(path.parent, path.stem)
@@ -1333,31 +1345,42 @@ def run(args) -> int:
         root = read_file(path)
         read_board_file(path, root)
         if args.show:
-            print(f"legend: {show_designators(root)} hidden designators put back on the silkscreen")
+            said.append(f"legend: {show_designators(root)} hidden designators put back on the silkscreen")
         if args.place:
-            for line in place(root, limit, read_pack()):
-                print(line)
+            said.extend(place(root, limit, read_pack()))
             out = Path(args.place)
             try:
                 out.parent.mkdir(parents=True, exist_ok=True)
                 out.write_text(kicadgen.dumps(root) + "\n", encoding="utf-8")
             except OSError as exc:
                 raise Refusal(f"{out}: {exc}") from exc
-            print(f"legend: placed board written to {out}")
+            said.append(f"legend: placed board written to {out}")
         found = judge(read_board_file(path, root), limit, read_pack())
     except (Refusal, OSError, ValueError) as exc:
-        print(f"legend: refused: {exc}")
-        return 2
+        return refuse(str(exc))
     except Exception as exc:  # a fault of the tool is no verdict on the board: never exit code 1
-        print(f"legend: refused: {path}: the tool failed on it ({type(exc).__name__}: {exc})")
-        return 2
-    for f in found:
-        print(f.line)
+        return refuse(f"{path}: the tool failed on it ({type(exc).__name__}: {exc})")
     fails = sum(f.status == "fail" for f in found)
     unjudged = len(found) - fails
     red = fails or (args.strict and unjudged)
-    counts = ", ".join(f"{r} {sum(f.rule == r and f.status == 'fail' for f in found)}" for r in RULE_NAMES)
-    print(f"LEGEND {'RED' if red else 'HELD'}: {fails} fail ({counts}), {unjudged} not judged; {limit.label}")
+    count = {r: sum(f.rule == r and f.status == "fail" for f in found) for r in RULE_NAMES}
+    counts = ", ".join(f"{r} {n}" for r, n in count.items())
+    verdict = f"LEGEND {'RED' if red else 'HELD'}"
+    if as_json:
+        report = {
+            "verdict": verdict,
+            "board": str(path),
+            "limit": limit.label,
+            "counts": count,
+            "failures": [f.line for f in found if f.status == "fail"],
+            "not_judged": [f.line for f in found if f.status != "fail"],
+            "lines": said,
+        }
+        print(json.dumps(report, indent=2))
+    else:
+        for line in said + [f.line for f in found]:
+            print(line)
+        print(f"{verdict}: {fails} fail ({counts}), {unjudged} not judged; {limit.label}")
     return 1 if red else 0
 
 

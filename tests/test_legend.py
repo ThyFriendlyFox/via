@@ -19,6 +19,7 @@ and OSH Park's 0.0762 mm stroke (rules/oshpark-2layer.kicad_dru: "Silkscreen min
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -1252,6 +1253,33 @@ def test_the_command_exits_1_on_a_failure_and_on_not_judged_only_with_strict(tmp
         pcb.write_text(board(text), encoding="utf-8")
         assert legend.main([str(pcb)] + (["--strict"] if strict else [])) == rc, name
         assert said in capsys.readouterr().out
+
+
+def test_json_prints_the_verdict_and_every_line_as_json(tmp_path):
+    """`workcenter --help` gives every command `--json` ("machine-readable output", docs/CONFIGURATION.md);
+    `workcenter legend --json` printed its text lines all the same. Exit codes stay 0, 1 and 2."""
+    pcb = tmp_path / "x.kicad_pcb"
+    pcb.write_text(board(txt("AB", 120, 110, size=0.6) + txt("CD", 120, 120, face="Arial")), encoding="utf-8")
+    cli = [sys.executable, str(ROOT / "tools" / "workcenter")]
+    for argv in (["legend", str(pcb), "--json"], ["--json", "legend", str(pcb)]):
+        proc = subprocess.run(cli + argv, **RUN)
+        assert proc.returncode == 1, proc.stdout + proc.stderr
+        said = json.loads(proc.stdout)
+        assert said["verdict"] == "LEGEND RED" and said["counts"]["size"] == 1
+        assert [line[:13] for line in said["failures"]] == ["legend size: "]
+        assert [line[:19] for line in said["not_judged"]] == ["legend not judged: "]
+    proc = subprocess.run(cli + ["legend", str(tmp_path / "none.kicad_pcb"), "--json"], **RUN)
+    assert proc.returncode == 2 and json.loads(proc.stdout)["verdict"] == "refused"
+
+
+# `legend` is a long command: a run of the CLI here does not wait on another's engine lock.
+RUN = {
+    "capture_output": True,
+    "text": True,
+    "check": False,
+    "timeout": 120,
+    "env": {**os.environ, "WORKCENTER_LOCK": "off"},
+}
 
 
 def test_the_command_reads_the_projects_fab(tmp_path, capsys):
