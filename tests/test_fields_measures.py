@@ -21,6 +21,8 @@ import fields  # noqa: E402
 
 LINE = ROOT / "tests" / "boards" / "pass-fields-microstrip"
 
+CITES = {"qucs-technical-papers": "eq. 11.79, p. 170 (dielectric loss)"}
+
 
 def write_spec(tmp_path, spec: dict) -> Path:
     path = tmp_path / "fields.json"

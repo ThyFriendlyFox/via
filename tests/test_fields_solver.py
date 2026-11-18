@@ -23,6 +23,7 @@ import fields  # noqa: E402
 CITES = {
     "hammerstad-jensen-1980": "pp. 407-409, equations (1) to (4)",
     "pozar-microwave-engineering-4": "3.195 and 3.196",
+    "qucs-technical-papers": "eq. 11.22 to 11.24, 11.79, 11.80 to 11.83 and 11.185 to 11.190",
 }
 
 CLI = ROOT / "tools" / "workcenter"

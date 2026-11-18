@@ -39,6 +39,7 @@ from kicadgen import Q, parse
 CITES = {
     "hammerstad-jensen-1980": "pp. 407-409, equations (1) to (4), and the thickness correction",
     "bipm-si-brochure-9": "2.3.1, the metre and the speed of light",
+    "qucs-technical-papers": "eq. 11.22 to 11.24 (thickness), eq. 11.79, p. 170 (dielectric loss)",
 }
 
 C0 = 299792458.0  # m/s, exact by the definition of the metre (SI Brochure, 9th edition, 2019, 2.3.1)
