@@ -242,6 +242,70 @@ def test_new_refuses_a_file(tmp_path):
     )
 
 
+def test_new_refuses_a_folder_under_a_file_in_one_line(tmp_path):
+    """A folder above the target is a file: no folder can be made under it. Review finding F1."""
+    env, _ = stand_ins(tmp_path)
+    note = tmp_path / "note.txt"
+    note.write_text("a note\n", encoding="utf-8")
+    made = workcenter("new", str(note / "sub"), env=env)
+    assert (made.returncode, made.stdout.splitlines(), made.stderr) == (
+        1,
+        [f"new: {note} is a file, where {note}/sub/design.py needs a folder; nothing written."],
+        "",
+    )
+
+
+@pytest.mark.parametrize(("there", "kind"), [("library", "file"), ("parts.csv", "folder")])
+def test_new_checks_every_path_before_it_writes_one(tmp_path, there, kind):
+    """A file `library` stops library/sources.csv, a folder `parts.csv` stops the parts file: the
+    refusal is 1 line and the folder holds what it held. Review finding F2."""
+    env, _ = stand_ins(tmp_path)
+    board = tmp_path / "board"
+    board.mkdir()
+    if kind == "file":
+        (board / there).write_text("x\n", encoding="utf-8")
+        line = f"new: {board / there} is a file, where {board}/library/sources.csv needs a folder"
+    else:
+        (board / there).mkdir()
+        line = f"new: {board / there} is a folder, where a file goes"
+    made = workcenter("new", str(board), env=env)
+    assert (made.returncode, made.stdout.splitlines(), made.stderr) == (1, [f"{line}; nothing written."], "")
+    assert files(board) == [there]
+
+
+def test_new_refuses_an_empty_name(tmp_path):
+    """`new ""` would take the current folder, which the user did not name. Review finding F7."""
+    env, _ = stand_ins(tmp_path)
+    made = subprocess.run(
+        [sys.executable, str(CLI), "new", ""],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+        cwd=tmp_path,
+    )
+    assert (made.returncode, made.stdout.splitlines()) == (
+        1,
+        ["new: the folder's name is empty; name a folder. Nothing written."],
+    )
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["engines"]
+
+
+def test_new_under_a_git_folder_starts_its_own_library(tmp_path):
+    """The board is a git repository of its own under a folder with a library: `find_sources`, which
+    `fetch --row` and `sources` call, stops at the board's .git. So `new` starts a library in the board,
+    and `find_sources(board)` finds it. Review finding F3."""
+    env, _ = stand_ins(tmp_path)
+    (tmp_path / "library").mkdir()
+    (tmp_path / "library" / "sources.csv").write_text(SOURCES_HEADER, encoding="utf-8")
+    board = tmp_path / "board"
+    (board / ".git").mkdir(parents=True)
+    made = workcenter("new", str(board), env=env)
+    assert made.returncode == 0, made.stdout + made.stderr
+    assert made.stdout.splitlines()[-1].startswith("new: 4 files written, 0 kept.")
+    assert load_cli().find_sources(board) == board / "library" / "sources.csv"
+
+
 # ------------------------------------------------------------- the route before the gates
 
 
@@ -313,10 +377,61 @@ def test_the_route_step_comes_only_while_the_gates_are_to_run(tmp_path, monkeypa
     assert guide.next_step(cli, str(board)).next == step.next
 
 
+def test_a_hand_drawn_board_gets_no_route_step(tmp_path, monkeypatch):
+    """No design.py: there is no file to route with, so the gates are named, as before the route step
+    came. Review finding F6, the guard `design.is_file()`."""
+    cli = load_cli()
+    monkeypatch.setattr(cli, "KICAD_CLI", sys.executable)
+    board = tmp_path / "b"
+    board.mkdir()
+    (board / "b.kicad_pro").write_text("{}\n", encoding="utf-8")
+    (board / "b.kicad_pcb").write_text(BOARD_9.format(copper=""), encoding="utf-8")
+    assert guide.unrouted(board / "b.kicad_pcb")[1] == ["OUT", "VCC"]
+    step = guide.next_step(cli, str(board), run_check=False)
+    assert (step.next, step.why) == ("Run the gates.", "no build/gates.json yet")
+
+
+def test_a_net_kicad_names_unconnected_asks_for_no_copper(tmp_path):
+    """KiCad names a net `unconnected-(...)` for a pin left open; 2 pads on 1 such net still ask for no
+    track. The board: VCC on R.1 and J.1, `unconnected-(J1-Pad2)` on J.2 and R.2, no copper: VCC's 2
+    pads are counted, the other 2 are not. Review finding F6, the `unconnected-` guard."""
+    pcb = tmp_path / "b.kicad_pcb"
+    pcb.write_text(
+        '(kicad_pcb\n\t(net 1 "VCC")\n\t(net 2 "unconnected-(J1-Pad2)")\n'
+        '\t(footprint "R" (pad "1" smd (net 1 "VCC")) (pad "2" smd (net 2 "unconnected-(J1-Pad2)")))\n'
+        '\t(footprint "J" (pad "1" smd (net 1 "VCC")) (pad "2" smd (net 2 "unconnected-(J1-Pad2)"))))\n',
+        encoding="utf-8",
+    )
+    assert guide.unrouted(pcb) == (2, ["VCC"])
+
+
+def test_a_board_that_is_not_utf8_is_read_and_answered(tmp_path):
+    """Byte 0xe9 (latin-1 for e acute) in a net name: the board is read with the byte replaced, and
+    `next` names the route, not a traceback. The net `V<0xe9>` holds R.1 and J.1: 2 pads on 1 net.
+    Review finding F4."""
+    env, _ = stand_ins(tmp_path)
+    board = tmp_path / "b"
+    board.mkdir()
+    (board / "design.py").write_text("# a design\n", encoding="utf-8")
+    (board / "b.kicad_pro").write_text("{}\n", encoding="utf-8")
+    text = '(kicad_pcb\n\t(net 1 "V\xe9")\n\t(footprint "R" (pad "1" smd (net 1 "V\xe9")))\n'
+    text += '\t(footprint "J" (pad "1" smd (net 1 "V\xe9"))))\n'
+    (board / "b.kicad_pcb").write_bytes(text.encode("latin-1"))
+    assert guide.unrouted(board / "b.kicad_pcb") == (2, ["V�"])
+    proc = workcenter("next", "--trust-design", str(board), env=env)
+    assert proc.returncode == 1 and "Traceback" not in proc.stderr, proc.stderr
+    assert "Route the board before the gates" in proc.stdout
+
+
 def test_the_help_of_next_says_exit_1_is_a_step_and_no_error():
+    """Both helps say it: the command list of `workcenter --help`, and `workcenter next --help`, which
+    is where a reader of `next` looks. Review finding F5."""
+    for args in (["--help"], ["next", "--help"]):
+        proc = subprocess.run([sys.executable, str(CLI), *args], capture_output=True, text=True, check=False)
+        text = " ".join(proc.stdout.split())
+        assert "1 when a step is named (no error: do the step)" in text, args
     proc = subprocess.run([sys.executable, str(CLI), "--help"], capture_output=True, text=True, check=False)
     text = " ".join(proc.stdout.split())
-    assert "1 when a step is named (no error: do the step)" in text
     assert re.search(r"\bnew\b.*start a board project in a folder", text)
 
 
