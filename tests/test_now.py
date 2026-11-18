@@ -79,8 +79,11 @@ def put_record(tree: Path, **fields) -> None:
 
 
 def now(*argv: str) -> subprocess.CompletedProcess:
+    """`workcenter now` on the clock: a SOURCE_DATE_EPOCH the shell exports for another build is dropped,
+    as the tests here compare the card's minute with the clock."""
+    env = {k: v for k, v in os.environ.items() if k != "SOURCE_DATE_EPOCH"}
     return subprocess.run(
-        [sys.executable, str(CLI), "now", *argv], capture_output=True, text=True, check=False
+        [sys.executable, str(CLI), "now", *argv], capture_output=True, text=True, check=False, env=env
     )
 
 
@@ -138,6 +141,18 @@ def test_the_board_reads_the_status_of_the_card_the_command_prints(tmp_path):
     assert title.startswith(board.PREFIX)
     lower = now(str(tree), "--item", "7", "--status", "in progress")
     assert lower.stdout.startswith("**Status:** In progress\n")
+
+
+def test_a_card_that_waits_keeps_the_boards_word_for_each_status(tmp_path):
+    """A wait is said under Blocked on alone: with `--blocked`, the board still reads each of its 3
+    words from the card, and the card names no other state word."""
+    tree = make_tree(tmp_path)
+    assert list(board.WORDS) == ["Todo", "In progress", "Done"]
+    for word in board.WORDS:
+        proc = now(str(tree), "--item", "7", "--status", word, "--blocked", "the owner")
+        assert proc.returncode == 0, proc.stderr
+        assert board.status_of(proc.stdout) == (word, ""), word
+        assert "## Blocked on\nthe owner\n" in proc.stdout
 
 
 def test_work_with_no_item_no_record_and_a_wait(tmp_path):
@@ -372,6 +387,32 @@ def test_the_gate_leaves_a_record_the_card_reads(tmp_path):
     assert ignored.returncode == 0, "build/verify.json is not ignored by git in this repository"
 
 
+def test_the_tests_run_the_card_on_the_clock_whatever_the_shell_pins(tmp_path, monkeypatch):
+    """A shell that exports SOURCE_DATE_EPOCH for other builds does not pin `now()`: the tests that
+    compare the card's minute with the clock read the clock. 315532800 s is 1980-01-01 00:00 UTC."""
+    monkeypatch.setenv("SOURCE_DATE_EPOCH", "315532800")
+    proc = now(str(make_tree(tmp_path)), "--item", "7", "--status", "Todo")
+    assert proc.returncode == 0, proc.stderr
+    assert not proc.stdout.endswith("## Updated\n1980-01-01 00:00 UTC\n")
+
+
+def test_source_date_epoch_pins_the_cards_time_and_the_records(tmp_path):
+    """SOURCE_DATE_EPOCH=1794960060 is 2026-11-18 00:01:00 UTC (the sum in tests/test_clock.py): the
+    card's Updated line and the gate record's time are that moment, not the clock's."""
+    tree = make_tree(tmp_path)
+    head = git(tree, "rev-parse", "HEAD")
+    env = {**os.environ, "SOURCE_DATE_EPOCH": "1794960060"}
+    argv = [sys.executable, str(NOW_PY), "record", "0", "4/4 kit checks", "--tree", str(tree), "--head", head]
+    proc = subprocess.run([*argv, "--dirty", "no"], capture_output=True, text=True, check=False, env=env)
+    assert proc.returncode == 0, proc.stderr
+    assert json.loads((tree / "build" / "verify.json").read_text())["time"] == "2026-11-18T00:01:00Z"
+    argv = [sys.executable, str(CLI), "now", str(tree), "--item", "7", "--status", "Todo"]
+    proc = subprocess.run(argv, capture_output=True, text=True, check=False, env=env)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.endswith("## Updated\n2026-11-18 00:01 UTC\n")
+    assert "## Health gate\nGREEN on `" in proc.stdout and "` at 2026-11-18 00:01 UTC\n" in proc.stdout
+
+
 def test_the_issue_template_has_the_cards_status_line_and_sections(tmp_path):
     tree = make_tree(tmp_path)
     card = now(str(tree), "--item", "7", "--status", "Todo").stdout
@@ -414,8 +455,13 @@ def test_the_record_names_the_commit_the_gate_started_on(tmp_path):
     to `B` during the run, 1 commit before the last (`git rev-list --count A..B` is 1)."""
     tree = make_tree(tmp_path)
     (tree / "tools").mkdir()
-    (tree / "tools" / "now.py").write_text(NOW_PY.read_text(encoding="utf-8"), encoding="utf-8")
-    git(tree, "add", "tools/now.py")
+    for name in ("now.py", "clock.py"):  # now.py reads the time through clock.py
+        (tree / "tools" / name).write_text(
+            (ROOT / "tools" / name).read_text(encoding="utf-8"), encoding="utf-8"
+        )
+    # Importing clock.py leaves tools/__pycache__/, which the repository's own .gitignore names.
+    (tree / ".gitignore").write_text("build/\n__pycache__/\n", encoding="utf-8")
+    git(tree, "add", ".gitignore", "tools/now.py", "tools/clock.py")
     git(tree, "commit", "-q", "-m", "A")
     a, a_short = git(tree, "rev-parse", "HEAD"), git(tree, "rev-parse", "--short", "HEAD")
     gate = (

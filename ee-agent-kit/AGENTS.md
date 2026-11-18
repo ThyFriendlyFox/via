@@ -52,7 +52,7 @@ provides them. `python3 tools/workcenter doctor` says what is present.
     GREEN. GREEN names the count of warnings beside it. `PASS verify`
     is followed by a line that says whether the requirements are met.
 14. `tools/simcorners.py`, `tools/freqplan.py`, `tools/thermal.py`, `tools/guide.py`,
-    `tools/references.py` and `tools/partdata.py` use the standard library
+    `tools/references.py`, `tools/partdata.py` and `tools/clock.py` use the standard library
     only, as the CLI does. They run no engine:
     `tools/workcenter` does.
 15. A bound holds at every corner the project names, or it does not hold.
@@ -148,6 +148,7 @@ provides them. `python3 tools/workcenter doctor` says what is present.
 | vvp's files | vvp opens the file of a `$readmemh` or a `$fopen` from the folder it runs in, and names no file it opened. Yosys looks for a `$readmemh` file beside the RTL. A bench runs in `build/chip/sim/<bench>/`, and a changed copy of the RTL 2 folders deeper: a path from the bench's folder fails there, and the copy fails for that alone. SIM refuses a line that reads a file (`READS_A_FILE`). vvp's own line for a bench that ended is `<file>:<line>: $finish called at <time> (<unit>)`. |
 | A delay OpenSTA does not count | `check_setup` lists a port with no delay. It does not list a port whose delay has `-min` alone, or no `-clock`: no setup path through the pin is judged, and nothing says so. A `set_clock_uncertainty` under 0 and a `set_timing_derate -late` under 1 are taken as written, by the layout build too, which then repairs nothing. Tcl takes the last of an option written 2 times. `read_sdc` in `tools/chipflow.py` fails each. |
 | A path with a space | Yosys reads its script word by word and takes no quoting: a project under `my chips/` fails SYNTH with `Can't open input file`. `chip` refuses a project, an output folder or a source file whose path holds white space, before any gate. |
+| A run that crosses midnight | A health gate takes 20 to 30 minutes. A test that keeps the day of its load, or a command that reads the clock 2 times, sees 2 days in 1 run and fails for no fault of the code (M233). `tools/clock.py` is the 1 reader; a test pins the day with `SOURCE_DATE_EPOCH`. |
 
 ## House style
 

@@ -79,11 +79,26 @@ def written_commands(text: str) -> list[tuple[str, set[str]]]:
     found = []
     for span in spans:
         for part in re.split(r"\bworkcenter (?=[a-z])", " ".join(span.split()))[1:]:
+            part = re.split(r" (?:&&|\|\||\||;|>|2>|>>) ", part)[0]
             names = part.split()[0]
             found += [
                 (name, set(re.findall(r"(?<![\w-])--[a-z][a-z0-9-]*", part))) for name in names.split("|")
             ]
     return found
+
+
+def test_a_command_written_ends_where_the_shell_line_goes_on():
+    """The `now` skill chains `workcenter now` with `>` and `&& gh issue edit N --body-file ...`: the
+    flags after a shell operator are gh's, not the workcenter command's."""
+    span = (
+        "`mkdir -p build && workcenter now . --item 7 > build/now.md"
+        " && gh issue edit N --body-file build/now.md`"
+    )
+    assert written_commands(span) == [("now", {"--item"})]
+    assert written_commands("`workcenter gates|sim <project> --json`") == [
+        ("gates", {"--json"}),
+        ("sim", {"--json"}),
+    ]
 
 
 def as_document(path: Path) -> str:
@@ -205,6 +220,21 @@ def test_a_count_of_tests_in_the_status_file_is_what_pytest_collects():
         for letter, text in (("M", MISTAKES), ("P", PROCESSES))
     }
     assert f"`MISTAKES.md` M1 to M{last['M']}, `PROCESSES.md` P1 to P{last['P']};" in status
+
+
+def test_no_test_file_reads_the_clock_when_it_is_loaded():
+    """tests/test_doctools.py kept `TODAY = datetime.date.today()` from its load, and a CI run that
+    crossed midnight failed on a report the command wrote the next day (2026-11-18). A test that needs
+    the day pins it for the command with SOURCE_DATE_EPOCH, or reads what the command wrote."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import clock
+
+    found = [
+        f"{path.relative_to(ROOT)}:{line}"
+        for path in sorted((ROOT / "tests").rglob("*.py"))
+        for line in clock.clock_calls(path.read_text(encoding="utf-8"), at_load=True)
+    ]
+    assert found == []
 
 
 def test_a_pointer_to_a_roadmap_item_gives_its_number_and_its_title():
@@ -340,8 +370,8 @@ QUICK_START = {
         "^FAIL   sim        2 decks, 32 corner runs, 2 failures, 1 warnings",
     ),
     "workcenter sim tests/boards/fail-freq-overlap": (1, "       - frequency plan: load's harmonic 3 "),
-    "mkdir ~/divider": (0, ""),
-    "cp templates/project/design.py ~/divider/": (0, ""),
+    "workcenter new ~/divider": (0, "new: 4 files written, 0 kept. Next: edit "),
+    "workcenter next ~/divider": (1, "^NEXT       Generate the KiCad project from its design file."),
     "workcenter design ~/divider/design.py --route": (0, "  routed: "),
     "workcenter gates ~/divider --strict": (0, "GREEN (nothing to run for: sim): divider  report "),
 }

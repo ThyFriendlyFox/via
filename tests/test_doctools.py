@@ -7,9 +7,9 @@ version and offboard files, and the lists `costs` writes.
 
 from __future__ import annotations
 
-import datetime
 import importlib.machinery
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -29,7 +29,10 @@ needs_kicad = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kica
 needs_ngspice = pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed")
 needs_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg is not installed")
 needs_rsvg = pytest.mark.skipif(shutil.which("rsvg-convert") is None, reason="rsvg-convert is not installed")
-TODAY = datetime.date.today().isoformat()
+# The day every command here runs on, pinned: no test reads the clock, so a run that crosses midnight
+# passes (2026-11-18). 1794960060 s is 2026-11-18 00:01:00 UTC, the sum in tests/test_clock.py.
+DAY = "2026-11-18"
+PINNED = {"SOURCE_DATE_EPOCH": "1794960060"}
 LIST_HEAD = "Refs,Qty,Value,Footprint,Manufacturer,MPN,Supplier,SKU,Stock,Checked,URL,Note"
 LIST_HEAD += ",Order for 1,Cost for 1,Order for 10,Cost for 10"
 PARTS_HEAD = "Value,Footprint,Qty,Manufacturer,MPN,Supplier,SKU,Pack,Breaks,Stock,Checked,URL,Note"
@@ -37,7 +40,11 @@ PARTS_HEAD = "Value,Footprint,Qty,Manufacturer,MPN,Supplier,SKU,Pack,Breaks,Stoc
 
 def run(*args: object) -> tuple[int, list[dict]]:
     proc = subprocess.run(
-        [sys.executable, str(CLI), "--json", *map(str, args)], capture_output=True, text=True, check=False
+        [sys.executable, str(CLI), "--json", *map(str, args)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, **PINNED},
     )
     payload = json.loads(proc.stdout) if proc.stdout.strip() else []
     return proc.returncode, payload
@@ -238,27 +245,33 @@ CATALOG = "\n".join(
         "1:0.10 10:0.025 25:0.0188,0,{today},,",
         "",
     ]
-).format(today=TODAY)
+)
 
 
 def costs_repo(tmp_path: Path) -> Path:
     """v0.1: the RC fixture and a bare board off it. v0.2: the fixture with its own 10k price, a nested
-    display board (the fixture again), and a cell with no price."""
+    display board (the fixture again), and a cell with no price. Every price was checked the day before
+    the machine's day, read here: `procure` judges age on the machine's day, not the pinned one, and
+    finds 1 day, or 2 when midnight falls before the command, under STALE_DAYS (90)."""
+    import datetime
+
+    checked = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
     repo = tmp_path / "repo"
     shutil.copytree(BOARDS / "pass-rc-divider", repo / "v0.1", ignore=shutil.ignore_patterns("sim"))
     shutil.copytree(BOARDS / "pass-rc-divider", repo / "v0.2", ignore=shutil.ignore_patterns("sim"))
     shutil.copytree(
         BOARDS / "pass-rc-divider", repo / "v0.2" / "display", ignore=shutil.ignore_patterns("sim")
     )
-    write(repo / "parts" / "catalog.csv", CATALOG)
+    write(repo / "parts" / "catalog.csv", CATALOG.format(today=checked))
     write(
         repo / "parts" / "version" / "v0.2.csv",
-        f"{PARTS_HEAD}\n10k,Resistor_SMD:R_0603_1608Metric,,Yageo,RC0603FR-0710KL,Digi-Key,X,,1:0.50,100,{TODAY},,\n",
+        f"{PARTS_HEAD}\n10k,Resistor_SMD:R_0603_1608Metric,,Yageo,RC0603FR-0710KL,Digi-Key,X,,1:0.50,100,"
+        f"{checked},,\n",
     )
     write(
         repo / "parts" / "offboard" / "v0.1.csv",
         f"{PARTS_HEAD}\nPCB,,1,OSH Park,bare board to this version's gerbers,OSH Park,,3,3:2.00,,"
-        f"{TODAY},,sets of 3\n",
+        f"{checked},,sets of 3\n",
     )
     write(repo / "parts" / "offboard" / "v0.2.csv", f"{PARTS_HEAD}\nCell,,1,,,,,,,,,,no part chosen\n")
     write(
@@ -357,7 +370,9 @@ def result(gate: str, status: str, summary: str, details: dict | None = None) ->
     return types.SimpleNamespace(gate=gate, status=status, summary=summary, details=details or {})
 
 
-def test_gates_report_writes_its_blocks_and_keeps_the_prose(tmp_path):
+def test_gates_report_writes_its_blocks_and_keeps_the_prose(tmp_path, monkeypatch):
+    for key, value in PINNED.items():
+        monkeypatch.setenv(key, value)
     project_dir = tmp_path / "rc"
     shutil.copytree(BOARDS / "pass-rc-divider", project_dir)
     project = types.SimpleNamespace(name="rc_divider", dir=project_dir)
@@ -382,7 +397,7 @@ def test_gates_report_writes_its_blocks_and_keeps_the_prose(tmp_path):
         "# Gates report: rc_divider\n\n## rc_divider\n\n<!-- workcenter gates rc_divider -->\n"
     )
     assert "| ERC | pass | 0 errors, 0 warnings |" in text and "\n## Simulation: rc_divider\n" in text
-    assert f"GREEN on {TODAY}: `workcenter gates` with KiCad 10.0.7, ngspice 10.0.7." in text
+    assert f"GREEN on {DAY}: `workcenter gates` with KiCad 10.0.7, ngspice 10.0.7." in text
     deck = (
         "| `sim/rc_divider.cir` | RC divider fixture: 5 V through 10k into 10k to ground | 1 | none | pass |"
     )
@@ -403,7 +418,7 @@ def test_gates_report_writes_its_blocks_and_keeps_the_prose(tmp_path):
     ]
     doctools.gates_report(tmp_path / "warned.md", project, warned, fake_cli())
     text_warned = (tmp_path / "warned.md").read_text(encoding="utf-8")
-    assert f"GREEN with 1 warning on {TODAY}: `workcenter gates`" in text_warned
+    assert f"GREEN with 1 warning on {DAY}: `workcenter gates`" in text_warned
     assert "to ground | 1 | 18 | 1 warning |" in text_warned
     # A deck the project keeps out of the corners carries the project's reason.
     skipped = green[:2] + [
@@ -437,7 +452,7 @@ def test_gates_report_writes_its_blocks_and_keeps_the_prose(tmp_path):
     assert (
         text.count("<!-- workcenter gates rc_divider -->") == 1 and text.count("<!-- workcenter decks") == 1
     )
-    assert "| EXPORT | not run | an earlier gate was red |" in text and f"RED on {TODAY}" in text
+    assert "| EXPORT | not run | an earlier gate was red |" in text and f"RED on {DAY}" in text
     assert "5 V through 10k into 10k to ground | 1 | none | 1 failure |" in text
     report.write_text("<!-- workcenter gates rc_divider -->\nno end\n", encoding="utf-8")
     with pytest.raises(SystemExit, match="no closing marker"):

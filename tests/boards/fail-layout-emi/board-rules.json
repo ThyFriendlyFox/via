@@ -1,0 +1,5 @@
+{
+  "layout": ["ti-szza009-emi"],
+  "power": ["VBUS", "GND"],
+  "ground": ["GND"]
+}

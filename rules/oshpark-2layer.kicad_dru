@@ -5,6 +5,7 @@
 # `fab = "oshpark-2layer"`, or for one run with `workcenter drc --fab oshpark-2layer`, the rules with no
 # layer and no condition raise the board's own minimums, and only the others are copied into the
 # project (rules/README.md, M62). rules/README.md lists what OSH Park publishes that this file leaves out.
+# second_reader: 2026-11-17, every number compared; the page fetched again had SHA256 abd76a095e9b9d4c193b09d2d77a800180c105b27f9ee98e0916b954deb6dd4c
 
 # "Trace Width 6mil (0.1524mm)"
 (rule "oshpark-2layer: trace width 6 mil"

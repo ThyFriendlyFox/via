@@ -86,6 +86,21 @@
       "where": "clause 6.29.2, table 6-36, page 76"
     },
     {
+      "id": "fuse.cermet.current",
+      "stress": "fuse.current",
+      "kinds": ["fuse.cermet"],
+      "max": 0.65,
+      "above": {"temperature": "case", "celsius": 85, "falls_to": 0.50, "at": 110},
+      "where": "clause 6.17.2, table 6-17, page 49, a figure: 65 % up to 85 C of the case, in a line to 50 % at 110 C"
+    },
+    {
+      "id": "fuse.other.current",
+      "stress": "fuse.current",
+      "kinds": ["fuse"],
+      "no_share": true,
+      "where": "clause 6.17.1a, page 48: the deratings of 6.17.2 cover cermet fuses only, and those of other fuse technologies shall be justified"
+    },
+    {
       "id": "output.current",
       "stress": "rail.load",
       "kinds": ["ic"],

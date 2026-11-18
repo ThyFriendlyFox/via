@@ -24,6 +24,8 @@ import uuid
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+# The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
+CITES = {"ecss-q-st-70-12c-rev1": "13.6.3c, the board's size for the current model"}
 NS = uuid.UUID("8d3e9c4a-5f1b-4f2e-9a7d-2c1b3e4f5a6b")
 NAME = "rc_divider"
 ROOT_UUID = str(uuid.uuid5(NS, "sheet/root"))
@@ -282,11 +284,15 @@ CLEARANCE_DEFECT = [((119.0, 116.0), (119.0, 112.65)), ((119.0, 112.65), (116.5,
 FAB_DEFECT_VIA = (110.0, 107.54)
 FAB_DEFECT_BACK = ((110.0, 107.54), (105.0, 107.54))
 # pass-board-ecss and fail-board-ecss: the divider on an 80 x 80 mm outline (ECSS-Q-ST-70-12C Rev.1
-# 13.6.3c asks more than 75 x 75 mm for its current model), VIN and GND drawn 0.8 mm for the 1 A their
-# ratings.json states (0.752 mm asked, rules/board/README.md). The fault: 1 VIN segment left at 0.25 mm,
-# and a GND stub on B.Cu whose end stands 0.22 mm from J1 pin 1 (VIN), where table 13-7 asks 0.25 mm.
+# 13.6.3c asks more than 75 x 75 mm for its current model), VIN and GND drawn 1.4 mm for the 1 A their
+# ratings.json states: 0.752 mm asked alone (rules/board/README.md), and VIN runs beside GND less than
+# 25 mm away, so 13.6.3g holds the 2 as 1 conductor of 2 A, 0.064379 mm2 as manufactured; 2 tracks of
+# 1.4 mm give 2 x max(1.4 x 0.8, 1.4 - 0.05) x 0.025 = 0.0675 mm2. The fault: 1 VIN segment left at
+# 0.25 mm, and a GND stub on B.Cu, 0.8 mm wide, whose end stands 0.22 mm from J1 pin 1 (VIN), where
+# table 13-7 asks 0.25 mm.
 ECSS_OUTLINE = (180, 180)
-ECSS_WIDE = 0.8
+ECSS_WIDE = 1.4
+ECSS_STUB_WIDTH = 0.8
 ECSS_NARROW = ((109.0, 105.0), (109.0, 103.0))
 ECSS_STUB = [
     ((105.0, 110.08), (102.0, 110.08)),
@@ -487,7 +493,7 @@ def board(defect: bool, fab_defect: bool = False, ecss: str = "") -> str:
     if ecss == "fail":
         for i, (a, b) in enumerate(ECSS_STUB):
             out.append(f"""
-	(segment (start {fmt(a[0])} {fmt(a[1])}) (end {fmt(b[0])} {fmt(b[1])}) (width {fmt(ECSS_WIDE)}) (layer "B.Cu") (net {NETS["/GND"]}) (uuid "{uid(f"ecss/stub/{i}")}"))""")
+	(segment (start {fmt(a[0])} {fmt(a[1])}) (end {fmt(b[0])} {fmt(b[1])}) (width {fmt(ECSS_STUB_WIDTH)}) (layer "B.Cu") (net {NETS["/GND"]}) (uuid "{uid(f"ecss/stub/{i}")}"))""")
     if fab_defect:
         (a, b), (x, y) = FAB_DEFECT_BACK, FAB_DEFECT_VIA
         out.append(f"""

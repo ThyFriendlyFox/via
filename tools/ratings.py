@@ -769,9 +769,24 @@ class Rule:
     id: str
     stress: str
     kinds: tuple[str, ...]
-    max: float  # the share of the part's rating the stress may reach
+    max: float  # the share of the part's rating the stress may reach; of a rule by rating, its greatest
     where: str  # the clause, the table and the page of the pack's document
     above: tuple[str, float, float, float] | None  # ambient or case, from this C, falls to, at this C
+    # a share that depends on the part's own rating: (the ratings a row names, its share, its `above`)
+    bands: tuple[tuple[tuple[float, ...], float, tuple[str, float, float, float] | None], ...] = ()
+    grants: bool = True  # False: the document grants the kind no share, and asks the user to justify one
+
+    def at(self, rated: float) -> Rule | None:
+        """The rule for a part of this rating: the row that names the rating, or None when no row does
+        or the rule grants no share. A rule of 1 share is the same for every rating."""
+        if not self.grants:
+            return None
+        if not self.bands:
+            return self
+        for ratings, share, above in self.bands:
+            if any(math.isclose(rated, r, rel_tol=EPS) for r in ratings):
+                return Rule(self.id, self.stress, self.kinds, share, self.where, above)
+        return None
 
 
 @dataclass
@@ -813,7 +828,17 @@ def read_pack(path: Path, own: str = "") -> Pack:
         if isinstance(raw, dict) and raw.get("stress") == JUNCTION:
             rule = _keys(where, raw, ("id", "stress", "kinds", "where"), JUNCTION_LIMITS)
         else:
-            rule = _keys(where, raw, ("id", "stress", "kinds", "max", "where"), ("above",))
+            shares = ("max", "by_rating", "no_share")
+            rule = _keys(where, raw, ("id", "stress", "kinds", "where"), (*shares, "above"))
+            held = [key for key in shares if key in rule]
+            if len(held) > 1:
+                raise Refusal(f"{where}: `max`, `by_rating` and `no_share`: a rule holds 1 of them")
+            if not held:
+                raise Refusal(f"{where}: `max`, `by_rating` or `no_share` is asked")
+            if "no_share" in rule and rule["no_share"] is not True:
+                raise Refusal(f"{where}: no_share: true is asked")
+            if "no_share" in rule and "above" in rule:
+                raise Refusal(f"{where}: above: a rule that grants no share has none to lower")
         if rule["stress"] not in (*STRESSES, JUNCTION):
             known = ", ".join((*STRESSES, JUNCTION))
             raise Refusal(f"{where}: `{rule['stress']}` is no stress the command computes; they are {known}")
@@ -843,22 +868,15 @@ def read_pack(path: Path, own: str = "") -> Pack:
                 )
             )
             continue
-        most = _number(f"{where}: max", rule["max"], 0, 1)
-        above = None
-        if "above" in rule:
-            term = _keys(f"{where}: above", rule["above"], ("temperature", "celsius", "falls_to", "at"))
-            if term["temperature"] not in ("ambient", "case"):
-                raise Refusal(f"{where}: above: temperature is `ambient` or `case`")
-            above = (
-                term["temperature"],
-                _number(f"{where}: above: celsius", term["celsius"]),
-                _number(f"{where}: above: falls_to", term["falls_to"], 0, 1),
-                _number(f"{where}: above: at", term["at"]),
-            )
-            if above[3] <= above[1]:
-                raise Refusal(f"{where}: above: `at` is not above `celsius`")
-            if above[2] > most:  # a share that rises with the temperature is no derating
-                raise Refusal(f"{where}: above: `falls_to` is above `max`")
+        bands = _bands(where, rule["by_rating"], rule.get("above")) if "by_rating" in rule else ()
+        grants = "no_share" not in rule
+        most = (
+            max(b[1] for b in bands)
+            if bands
+            else _number(f"{where}: max", rule["max"], 0, 1)
+            if grants
+            else 0
+        )
         rules.append(
             Rule(
                 _text(f"{where}: id", rule["id"]),
@@ -866,11 +884,56 @@ def read_pack(path: Path, own: str = "") -> Pack:
                 tuple(_names(f"{where}: kinds", rule["kinds"])),
                 most,
                 _text(f"{where}: where", rule["where"]),
-                above,
+                None if bands or "above" not in rule else _above(where, rule["above"], most),
+                bands,
+                grants,
             )
         )
     name = _text(f"{path.name}: pack", data["pack"])
     return Pack(f"{own} (the project's own)" if own else name, document, rules, junction)
+
+
+def _above(where: str, raw: object, most: float) -> tuple[str, float, float, float]:
+    """A share that falls in a line with the temperature, from `celsius` to `falls_to` at `at`."""
+    term = _keys(f"{where}: above", raw, ("temperature", "celsius", "falls_to", "at"))
+    if term["temperature"] not in ("ambient", "case"):
+        raise Refusal(f"{where}: above: temperature is `ambient` or `case`")
+    above = (
+        term["temperature"],
+        _number(f"{where}: above: celsius", term["celsius"]),
+        _number(f"{where}: above: falls_to", term["falls_to"], 0, 1),
+        _number(f"{where}: above: at", term["at"]),
+    )
+    if above[3] <= above[1]:
+        raise Refusal(f"{where}: above: `at` is not above `celsius`")
+    if above[2] > most:  # a share that rises with the temperature is no derating
+        raise Refusal(f"{where}: above: `falls_to` is above `max`")
+    return above
+
+
+def _bands(where: str, raw: object, above: object) -> tuple:
+    """The rows of a rule by rating: each names the ratings it covers, its share, and its own `above`
+    or the rule's. A rating stands in 1 row: 2 that Rule.at() would take for 1 are refused."""
+    if above is not None:  # held to its form whether or not a row takes it
+        _above(where, above, 1)
+    if not isinstance(raw, list) or not raw:
+        raise Refusal(f"{where}: by_rating: a list of shares is asked")
+    bands, seen = [], []
+    for i, row in enumerate(raw, start=1):
+        here = f"{where}: by_rating {i}"
+        row = _keys(here, row, ("rated", "max"), ("above",))
+        if not isinstance(row["rated"], list) or not row["rated"]:
+            raise Refusal(f"{here}: rated: a list of ratings is asked")
+        rated = tuple(_number(f"{here}: rated", r, above=0) for r in row["rated"])
+        for r in rated:
+            first = next((j for s, j in seen if math.isclose(r, s, rel_tol=EPS)), None)
+            if first is not None:
+                raise Refusal(f"{here}: rated: {r:g} stands in by_rating {first} too")
+            seen.append((r, i))
+        share = _number(f"{here}: max", row["max"], 0, 1)
+        term = row.get("above", above)
+        bands.append((rated, share, None if term is None else _above(here, term, share)))
+    return tuple(bands)
 
 
 def factor(rule: Rule, ambient: float | None) -> tuple[float, str]:
@@ -1003,7 +1066,9 @@ PASSIVE = {  # kind -> the keys an entry must hold, and those it may
     # an inductor's `kept` is pairs [amps, share of the value kept]: the SIM gate's, not judged here
     "inductor": (("tolerance", "amps_saturation"), ("henries", "amps_rms", "kept")),
     "ferrite": ((), ("amps", "volts")),
-    "fuse": (("amps",), ("volts",)),
+    "fuse": (("amps",), ("volts",)),  # a fuse of no style a pack names: held to its own rating
+    "fuse.cartridge": (("amps",), ("volts",)),  # NASA EEE-INST-002, section F3, table 4
+    "fuse.cermet": (("amps",), ("volts",)),  # metal film on ceramic: ECSS-Q-ST-30-11C, table 6-17
     "link": ((), ()),
     "switch": ((), ("amps", "volts")),
     "testpoint": ((), ()),
@@ -1062,6 +1127,13 @@ ROLES = {
 }
 SWING = {"output": 2, "io": 2, "switched": 2, "open_drain": 1}  # how many pins a role's swing names
 OUTSIDE = ("source", "load", "nothing")  # what stands behind a connector's pin
+# The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
+CITES = {
+    "ti-slva477c": "section 2, the efficiency; equations 1, 2, 4 and 11",
+    "ti-spra953d": "the names of a datasheet's thermal figures",
+    "nasa-eee-inst-002": "section F3, table 4: a cartridge fuse's current by its rating",
+    "ecss-q-st-30-11c-rev2": "table 6-17 and clause 6.17.1a: a cermet fuse, and no share for another",
+}
 # TI SLVA477C, "Basic Calculation of a Buck Converter's Power Stage" (revised September 2026): the
 # efficiency its section 2 names for a duty cycle when a datasheet gives none, and where its sums stand.
 BUCK_EFFICIENCY = 0.9
@@ -1438,7 +1510,7 @@ def model_of(facts: Facts, part: Part) -> Model:
         if ohms is None:  # it may conduct, and nothing says how much
             return Model(passes=[(*part.pins, False)])
         return Model(ohms=(ohms * (1 - data["tolerance"]), ohms * (1 + data["tolerance"])))
-    if kind in ("ferrite", "fuse", "link", "inductor"):
+    if kind.partition(".")[0] in ("ferrite", "fuse", "link", "inductor"):
         # An inductor is a wire to a steady voltage. One behind a switched pin is another matter: it
         # carries the average of the swing, and judge() takes its link away.
         return Model(links=[_two_pins(facts, part)])
@@ -1781,12 +1853,16 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
         text = f"{name_of(ref)}: the project states {si(project.amps[ref], 'A')} through it"
         out.append(Finding("not judged", ref, stress, f"{text}, and its facts hold no current rating"))
 
-    def limit_of(stress: str, ref: str) -> tuple[float, str, str]:
-        """The share of its rating a part may reach, the rule's name, and the source for the line."""
+    def limit_of(stress: str, ref: str, rated: float) -> tuple[float | None, str, str]:
+        """The share of its rating a part may reach, the rule's name, and the source for the line. The
+        share is None when the rule grants none for this part, by its kind or its rating."""
         rule = pack.rule(stress, of[ref].kind)
         if rule is None:
             return 1.0, stress, f"{of[ref].source}: the part's own rating"
-        share, note = factor(rule, project.ambient)
+        row = rule.at(rated)
+        if row is None:
+            return None, rule.id, f"{pack.document['number']}, {rule.where}"
+        share, note = factor(row, project.ambient)
         if note and note not in notes:
             notes.append(note)
         return share, rule.id, f"{pack.document['number']}, {rule.where}"
@@ -1813,10 +1889,24 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
         if isinstance(value, str):
             out.append(Finding("not judged", ref, stress, f"{label}: {value}"))
             return
-        share, rule, source = limit_of(stress, ref)
+        share, rule, source = limit_of(stress, ref, rated)
         if rated <= 0:  # a rating that falls with the temperature has reached 0 at this ambient
             text = f"{label}: {si(value, unit)} on {si(rated, unit)} rated: nothing of the rating is left"
             judged(ref, rule, value <= EPS, text, source)
+            return
+        if share is None:  # no derated share: the part's own rating, 1.00, holds all the same
+            if pack.rule(stress, of[ref].kind).grants:
+                why = f"the pack names no share for a rating of {si(rated, unit)}"
+            else:
+                why = "the pack's document grants no share for this kind of part"
+            if value > rated + EPS:
+                over = value / rated
+                text = f"{label}: {si(value, unit)} on {si(rated, unit)} rated is {over:.2f}"
+                own = f"{of[ref].source}: the part's own rating"
+                judged(ref, rule, False, f"{text}, the limit is 1.00, the part's own rating: {why}", own)
+                return
+            text = f"{label}: {si(value, unit)} on {si(rated, unit)} rated: {why}"
+            out.append(Finding("not judged", ref, rule, text, source))
             return
         holds = value <= rated * share + EPS
         of_it = f"{value / rated:.2f}"
@@ -1986,13 +2076,14 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
             judged(
                 ref, "inductor.current", amps <= rated + EPS, text, f"{found.source}: the part's own rating"
             )
-        elif kind in ("fuse", "ferrite", "switch") and ref in project.amps:
+        elif kind.partition(".")[0] in ("fuse", "ferrite", "switch") and ref in project.amps:
+            stress = f"{kind.partition('.')[0]}.current"  # a cartridge fuse's is a fuse's current
             if "amps" in data:
                 amps = project.amps[ref]
                 label = f"{name_of(ref)} current, with the {si(amps, 'A')} the project states"
-                ratio(ref, f"{kind}.current", label, amps, data["amps"], "A")
+                ratio(ref, stress, label, amps, data["amps"], "A")
             else:
-                unrated(ref, f"{kind}.current")
+                unrated(ref, stress)
         elif kind.startswith("diode"):
             if ref in project.amps and "amps_forward" in data:
                 amps = project.amps[ref]
@@ -2482,7 +2573,7 @@ def _joined(net: Netlist, of: dict[str, Facts]) -> dict[str, str]:
 
     for ref, found in of.items():
         pins = list(net.parts[ref].pins.values())
-        wire = found.kind in ("fuse", "ferrite", "link")
+        wire = found.kind.partition(".")[0] in ("fuse", "ferrite", "link")
         wire = wire or (found.kind == "resistor" and value_of(found, net.parts[ref]) == 0)
         if wire and len(pins) == 2:
             leader[find(pins[0])] = find(pins[1])

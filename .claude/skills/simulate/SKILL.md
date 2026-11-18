@@ -175,7 +175,7 @@ the rail's average stays inside its bound (`tests/boards/fail-freq-overlap`).
 {
   "sources": [
     { "name": "heater PWM", "hz": 1000, "tolerance": 0.01, "source": "config.h LH_PWM_HZ; HSI 1 %" },
-    { "name": "I2C clock", "hz": [100000, 400000], "source": "UM10204 Table 10" }
+    { "name": "I2C clock", "hz": [100000, 400000], "source": "UM10204 Table 11" }
   ],
   "resonances": [
     { "name": "cell strips with C5", "hz": "pdn.f_peak", "q": "pdn.q_peak", "source": "sim/pdn.cir" }
@@ -304,6 +304,53 @@ P27; `workcenter sources` checks the rows). Fetch a model the part has no
 row for yet with `workcenter fetch <url> --to library/<maker>/<file> --mpn
 <MPN> --row` (`--member` for a file inside a zip), then fill the row's
 `Revision`, `Dated` and `Ngspice` from the file.
+
+### A part's file and its row
+
+The same steps keep a datasheet or a 3D body. Each step is 1 command.
+
+1. `workcenter fetch <url> --to <project>/library/<maker>/<file> --mpn <MPN> --row`
+   - `fetch: <url> ok, ... wrote ...`: the file is kept and its row written.
+     Fill `Revision` and `Dated` from the `revision?` lines.
+   - `sources: started <path>`: the project had no `library/sources.csv`;
+     this one is new, with the header
+     `MPN,Kind,URL,File,Member,Revision,Dated,Subckt,Ngspice,SHA256,Checked,Note`.
+     Nothing to do.
+   - `fetch: <url> gave an HTML page ...`, `gave an empty file (0 bytes)`,
+     `gave a file that starts ..., not %PDF`, `gave N of the M bytes its
+     Content-Length names` or `gave N bytes, cut short inside a chunk ...`:
+     the site served something that is not the file. Nothing was written.
+     Go to step 2.
+   - `fetch: <url> refused (HTTP 403) ...`: the site refuses the
+     workcenter's name. Never ask again under another name. Go to step 2.
+   - `fetch: <url> gone (HTTP 404) ...`: find the maker's current URL and
+     run step 1 again.
+   - `fetch: <url> error (...)`: the site's answer could not be read.
+     Go to step 2.
+2. A person downloads the file in a browser, then:
+   `workcenter fetch --file <downloaded file> --url <url> --to <project>/library/<maker>/<file> --mpn <MPN> --row`.
+   The row records `--url` and the note "downloaded by a person from the
+   URL; not fetched by the workcenter". For a zip, add `--member <name>`:
+   the member is read out and kept, not the zip.
+   - `fetch: <file> is an HTML page ...`, `is an empty file (0 bytes)` or
+     `is a file that starts ..., not %PDF`: the browser saved something
+     that is not the file. Download it again from the maker.
+   - `fetch: no member '<name>' in <file>`: list the zip and give the
+     member's name as the zip holds it.
+   - `fetch: <file> (downloaded from <url>), ...`: done.
+3. `workcenter sources <project>` judges every kept file of the board's
+   parts. It needs a schematic and a parts file; until both exist it
+   judges nothing, and steps 1 and 2 are the only check of the file.
+   - `<project>: no KiCad project, schematic, board or sim/ directory found`
+     or a `SKIP` line for `sources` that ends `no schematic in project`:
+     nothing was judged. Run step 3 again once the board has a schematic.
+   - A `SKIP` line for `sources` that ends `no parts file: name one with
+     --parts or add <path>`: nothing was judged. Give the parts file with `--parts <file>`.
+   - `<MPN> <kind>: <file> is an HTML page ...`, `is an empty file (0 bytes)`
+     or `is a file that starts ..., not %PDF`: a row written before fetch
+     judged bodies keeps the wrong file. It is the row's only problem; its
+     SHA256 is not judged. Delete the file and its row, then run step 1
+     again.
 
 A number the deck needs from a datasheet's curve (a fuse's melting time at
 a current, a MOSFET's safe operating area) is read from the PDF's vectors

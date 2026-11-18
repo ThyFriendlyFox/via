@@ -20,6 +20,12 @@ PACKS = ROOT / "rules" / "ratings"
 sys.path.insert(0, str(ROOT / "tools"))
 import ratings  # noqa: E402
 
+# The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
+CITES = {
+    "nasa-eee-inst-002": "sections C1, M4, R2 and S1, each table 4",
+    "ti-slva477c": "equations 1, 2, 4 and 11, and section 2",
+}
+
 # What kicad-cli 10.0.8 writes for a divider from VIN to GND with a capacitor on its tap, a header and
 # a pin left open: the elements and attributes are copied from an export of tests/boards/pass-rc-divider
 # and of a board with an IC (the `+no_connect` type, the `unconnected-(...)` net, and `pinfunction`,
@@ -950,7 +956,7 @@ IN_A_ROW = {
 
 def test_a_stated_current_through_a_fuse_a_ferrite_and_a_switch_is_held_to_the_part_s_rating(tmp_path):
     """1.5 A through a 2 A fuse is 0.75, 600 mA through a 500 mA ferrite is 1.20 and 20 mA through a
-    50 mA switch is 0.40. Neither pack holds a rule for the 3: each is held to its own rating. The
+    50 mA switch is 0.40. NASA's pack holds no rule for the 3: each is held to its own rating. The
     command took the 3 currents before, held them to nothing, and printed RATINGS HELD."""
     net, mpns = circuit(**IN_A_ROW)
     facts = library(
@@ -3128,14 +3134,18 @@ def test_a_shipped_pack_loads_and_each_of_its_limits_names_a_table_and_a_page(na
     assert pack.name == name
     assert re.fullmatch(r"[0-9a-f]{64}", pack.document["sha256"])
     assert pack.document["url"].startswith("https://")
-    # 3 currents have no row in either pack and are held to the part's own rating: NASA's table 4 of
-    # section F3 derates a cartridge fuse by its rating and ECSS's table 6-17 a cermet fuse, and a pack's
-    # rule is 1 share for a kind
-    no_row = {"fuse.current", "ferrite.current", "switch.current"}
+    # 2 currents have no row in either pack and are held to the part's own rating; a fuse's has a row
+    # for 1 style of fuse in each (tests/test_ratings_fuse.py)
+    no_row = {"ferrite.current", "switch.current"}
     assert {rule.stress for rule in pack.rules} == set(ratings.STRESSES) - no_row
     for rule in pack.rules:
+        if not rule.grants:  # a clause that grants no share and asks for a justification: no table
+            assert rule.where.startswith("clause ") and "page" in rule.where, rule.id
+            assert rule.max == 0 and rule.at(1.0) is None, rule.id
+            continue
         assert "table" in rule.where and "page" in rule.where, rule.id
         assert 0 < rule.max < 1, rule.id
+    assert [r.id for r in pack.rules if not r.grants] == (["fuse.other.current"] if "ecss" in name else [])
 
 
 RESISTOR = {"kind": "resistor", "mpn": "R-1", "tolerance": 0.01, "watts": 0.1, "volts": 50, "source": READ}

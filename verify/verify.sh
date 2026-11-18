@@ -7,6 +7,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# The gate runs alone: it waits its turn on the machine's engine lock and holds it to its end. The
+# commands its tests start are its children and do not wait for it (tools/enginelock.py).
+if ! python3 tools/enginelock.py held; then
+  exec python3 tools/enginelock.py hold --what "make verify" -- bash verify/verify.sh "$@"
+fi
+
 VENV_PY=/opt/workcenters/ee/venv/bin/python
 PY=python3
 [[ -x "$VENV_PY" ]] && PY="$VENV_PY"
@@ -22,9 +28,9 @@ trap 'python3 tools/now.py record "$?" "$STEP" --head "$GATE_HEAD" --dirty "$GAT
   || echo "no gate record written" >&2' EXIT
 
 step "1/4 lint"
-shellcheck install.sh verify/verify.sh environment/setup.sh site/build.sh
-"$PY" -m ruff check tools tests
-"$PY" -m ruff format --check tools tests
+shellcheck install.sh verify/verify.sh environment/setup.sh site/build.sh ee-agent-kit/lead/gate-and-push.sh
+"$PY" -m ruff check tools tests ee-agent-kit/lead
+"$PY" -m ruff format --check tools tests ee-agent-kit/lead
 
 step "2/4 doctor"
 python3 tools/workcenter doctor

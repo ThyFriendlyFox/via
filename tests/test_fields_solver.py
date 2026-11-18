@@ -18,6 +18,12 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 import fields  # noqa: E402
 
+# The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
+CITES = {
+    "hammerstad-jensen-1980": "pp. 407-409, equations (1) to (4)",
+    "pozar-microwave-engineering-4": "3.195 and 3.196",
+}
+
 CLI = ROOT / "tools" / "workcenter"
 needs_openems = pytest.mark.skipif(fields.OpenEMS.binary() is None, reason="not installed: openEMS")
 

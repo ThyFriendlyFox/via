@@ -34,12 +34,16 @@ unset variable never causes a failure.
 | `OPENEMS` | command | `$WORKCENTER_ROOT/openems/bin/openEMS`, else `openEMS` on `PATH` | The field solver `workcenter fields` runs; `doctor` reports it. |
 | `KIKIT_PYTHON` | command | the venv's Python (`$WORKCENTER_ROOT/venv/bin/python`) | The Python that imports KiKit; EXPORT runs `tools/panel.py` with it for a project that holds `panel.json`. |
 | `KISTACK_DIR` | path | `<checkout>/third_party/kistack` | The kistack copy whose `skills/layout-placement/scripts` `workcenter placement` runs. |
+| `SOURCE_DATE_EPOCH` | integer, seconds since 1970-01-01 00:00:00 UTC | unset: the clock, read once at the command's start | Pins the day and the time a command writes into a file: the gates report's `GREEN on <day>`, the ledger's `at` of `references`, the card's `Updated` and `build/verify.json`'s `time`. It does not pin a judgement of now: `procure` and `costs` judge a price's age, and `fetch` writes its `Checked`, on the machine's day of the same run; the engine lock's times are the machine's clock. The pinned day is the moment's day in UTC; unset, the machine's local day. A value that is no integer, or a moment outside years 1 to 9999, ends the command with exit 1 and 1 line (SOURCE_DATE_EPOCH specification, revision 1.1, section SOURCE_DATE_EPOCH). A shell that exports it for other builds pins those days too. |
+| `WORKCENTER_LOCK_DIR` | absolute path | `/tmp/workcenter-lock-<uid>` (`/tmp/workcenter-lock-0` for root), whatever TMPDIR says | The engine lock's folder: 1 per machine and user, never inside a project. Each run of a long command keeps 1 ticket file there while it waits and runs. A path that is a file, a link, relative or not writable, or (the default only) another user's folder, is refused in 1 line that names the setting, the path and why (exit 2). |
+| `WORKCENTER_LOCK` | `off` or empty | empty (on) | `off` (or `0`, `no`, `false`): no command takes the lock or waits on it. |
+| `WORKCENTER_LOCK_EVERY` | seconds | `30` | How often a waiting run repeats its line (at least 0.05). |
 
 | Flag | Commands | Default | Use |
 |---|---|---|---|
 | `--json` | all | off | Machine-readable output. Read before the command or after it. |
 | `--out DIR` | gates, erc, drc, sim, export, autoroute, render, procure, sources, verify, ratings, copper, fields, highspeed; design; ci | `<project>/build`; design: the design file's folder (with `--check`, a temporary folder); ci: `<repo>/build/ci` | Where reports and artifacts go; for design, where the KiCad project is written; for ci, each step's script, `$GITHUB_ENV` file and log. |
-| `--strict` | gates, erc, drc, sim, export, render, procure, sources, verify, ratings, copper | off | Warnings fail the gate; for ratings, a stress that was not judged; for copper, a net with a stated current, or named in `ratings.json`, that `copper.json` does not name, a pin of a judged net with no stated current, a pin of the entry's part that `from` does not name, a part's heat with no pad on the board, or a limit it does not state; for verify, a requirement whose verdict is FAIL or OPEN, and decks that ran without corners; for render, a part the 3D views draw without a body fails it; for procure, a line short of stock or a price older than 90 days; for sim, a model outside a `warn` bound (its datasheet), a project with no `sim/corners.json` or with decks that drive periodic sources and no `sim/frequency-plan.json`, a deck with no bound, a deck whose measures do not move with temperature, a part named like a board reference that no tolerance covers, and an operating point ngspice doubts (`singular matrix`); for sources, a datasheet kept as a note only, a file with no SHA256 or revision recorded, a model older than its datasheet, or a load check skipped. |
+| `--strict` | gates, erc, drc, sim, export, render, procure, sources, verify, ratings, copper, standards | off | Warnings fail the gate; for ratings, a stress that was not judged; for copper, a net with a stated current, or named in `ratings.json`, that `copper.json` does not name, a pin of a judged net with no stated current, a pin of the entry's part that `from` does not name, a part's heat with no pad on the board, or a limit it does not state; for verify, a requirement whose verdict is FAIL or OPEN, and decks that ran without corners; for render, a part the 3D views draw without a body fails it; for procure, a line short of stock or a price older than 90 days; for sim, a model outside a `warn` bound (its datasheet), a project with no `sim/corners.json` or with decks that drive periodic sources and no `sim/frequency-plan.json`, a deck with no bound, a deck whose measures do not move with temperature, a part named like a board reference that no tolerance covers, and an operating point ngspice doubts (`singular matrix`); for sources, a datasheet kept as a note only, a file with no SHA256 or revision recorded, a model older than its datasheet, or a load check skipped; for standards, a requirement not held. |
 | `--parts FILE` | procure, sources, ratings | `<project>/parts.csv` | A parts CSV, repeatable; the first row whose Value and Footprint match a BOM line prices it (procure) or names its MPN (sources, ratings), and every row with no Footprint is an item off the board. Columns in the `procurement` skill. |
 | `--init` | ratings | off | Write `ratings.json` beside the schematic, with the pack `nasa-eee-inst-002` and no net, when there is none; never over a file that exists. Nothing is judged, and no output folder is made. |
 | `--facts REF` | ratings | none | Print an entry of facts to fill for 1 part of the schematic: its part number or its symbol, its pins, an empty source. Nothing is judged: the netlist it reads is left in `<out>/ratings/`, with no record and no page of a run. |
@@ -56,12 +60,14 @@ unset variable never causes a failure.
 | `--trust-design` | next | off | Do not run `design --check` on the project's design file. That check takes a few seconds and needs the KiCad libraries; without it the KiCad files are taken to match the design file. |
 | `--nominal` | sim | off | Run each deck as written only. The corners of `sim/corners.json` are left out, and the result names that as a warning, so a quick run is never taken for a full one. |
 | `--bundle DIR` | sim | none | Also write each deck into `DIR/<deck>/` as a folder any machine with ngspice runs: `run.sp` (sets the mode the models need, changes to its own folder, then reads the deck), the deck with its includes pointing into `models/`, every included file there (the translated copy where its row lists fixes), the other files of the deck's folder, `expect.json`, `measures.json` and `README.md`. The command then runs each folder from a copy in another place with an empty home folder and fails when a measure differs from the gate's (M105). An earlier bundle in `DIR/<deck>/` is replaced; a folder of that name that holds no `run.sp` is refused. The receiver runs `ngspice -b run.sp`. |
-| `URL` | fetch | none | The maker's URL for one file. Fetched once under the workcenter's own user agent; a refusal is reported and never retried. |
+| `URL` | fetch | none; give it or `--file` | The maker's URL for one file. Fetched once under the workcenter's own user agent; a refusal is reported and never retried. A body that is empty, cut short, served as `text/html`, starting as an HTML page, or a `.pdf` that does not start `%PDF` is refused and nothing is written. |
 | `--to FILE` | fetch | none (required) | Where the library keeps it, `<library>/<maker>/<file>`. An existing file that differs from the download is refused; the same file is left as it is. |
+| `--file FILE` | fetch | none | A file a person downloaded, taken instead of a fetch: judged like a fetched body, copied into `--to`, hashed, and its row's Note says the workcenter did not fetch it. Needs `--url`; refused with a URL argument. With `--member`, the member is read out of the zip and kept. |
+| `--url URL` | fetch | none | With `--file`: where the person downloaded it from; it is the row's `URL`. Refused without `--file`. |
 | `--mpn MPN` | fetch | none | The part number the row names. Needed for `--row`. |
 | `--kind KIND` | fetch | from the file's suffix: `.pdf` datasheet, `.lib` `.mod` `.cir` `.sub` `.spi` `.sp` `.ckt` spice, `.step` `.stp` step | `datasheet`, `spice` or `step`. A spice file that defines one `.SUBCKT` fills the row's `Subckt`. |
 | `--member NAME` | fetch | none | The file inside a zip at the URL; the row records it in `Member`. |
-| `--row` | fetch | off | Append the row to `sources.csv`, as text after the file's own bytes and in its line ends. Refused, before any request, when the MPN already has a row of that kind. `Revision` and `Dated` stay empty for the reader to fill from the file. |
+| `--row` | fetch | off | Append the row to `sources.csv`, as text after the file's own bytes and in its line ends. Refused, before any request, when the MPN already has a row of that kind. With no `sources.csv` at or above `--to`, and `--to` under a folder named `library`, it starts that folder's `sources.csv` with the header and prints `sources: started <path>`. `Revision` and `Dated` stay empty for the reader to fill from the file. |
 | `PDF` | curve | none | The datasheet. |
 | `--page N` | curve | `1` | The page, counted from 1. |
 | `--frame X0,Y0,X1,Y1` | curve | none | The plot's frame in PDF points, y up (the listing names each stroked rectangle as a candidate). Without it, the command lists the page's paths grouped by kind, width, paint and colour, the frames and the numeric labels. |
@@ -77,6 +83,7 @@ unset variable never causes a failure.
 | `--skip REGEX` | ci | `(?i)\b(install\|upload)` | Skip the steps whose name matches; `uses:` steps are always skipped. A step whose `${{ }}` the replay cannot read (only `env.*`, `github.workspace`, `runner.temp` and `runner.os` are read) is red until its name is skipped. |
 | `FIRMWARE` | mutate | none | The firmware folder the test command runs in; each mutation gets its own copy, without `build/`. |
 | `--mutations FILE` | mutate | none (required) | The project's list. JSON: `[{"name", "file", "old", "new"}]` or `{"test": CMD, "mutations": [...]}`. Python: a top-level `MUTATIONS = [(name, file, old, new), ...]` and an optional `TEST = "..."`, read as literals and never run. Every `old` must be in its file exactly once; the command checks each before running any. |
+| `COPY` (Python) / `copy` (JSON) | mutate | the whole tree but `build/` | The paths, from the tree's root, each copy holds. A path that is absolute or holds `..`, a path that is not there, and a mutation of a file no `COPY` path holds are refused before anything runs. |
 | `--test CMD` | mutate | the list's `test`, else `make -k test` | The test command, run under `bash -c` in each copy. It must pass unmutated. A mutation that fails it is caught; one that a compiler's `file:line: error:` stops did not build, and fails the run as a survivor does. |
 | `--only TEXT` | mutate | every mutation | Run only the mutations whose name holds this text (repeatable). |
 | `--jobs N` | mutate, sim | mutate: `1`; sim: one per processor, 8 at most | Mutations run at once; for sim, corner runs of one deck at once. A whole number, 0 or more: anything else is a usage error, exit 2. |
@@ -150,6 +157,93 @@ unset variable never causes a failure.
 | `--out FILE` | diagram | required | The SVG to write. |
 | `--png` | diagram | off | Also write `<out>.png` with `rsvg-convert`, at the drawing's width. |
 
+## `tools/enginelock.py` (the engine lock)
+
+A long command waits its turn on the machine's engine lock and holds it to its end. The other
+commands never take it and never wait. `tools/enginelock.py` names each command of
+`workcenter --help` in `LONG` or in `SHORT`, and `tests/test_enginelock.py` fails on a command
+named in neither. A command is long when it ran over 3 s on the largest input measured, or when
+the project and not the command sets its length (a deck's transient, a corner list, a mutation
+list, a router's time limit).
+
+| Flag | Of | Default | Meaning |
+|---|---|---|---|
+| `hold -- CMD` | enginelock.py | | Run CMD under the lock. The exit code is CMD's (128 and the signal for a command a signal killed). |
+| `--what NAME` | enginelock.py hold | the command | The name the waiting line and `doctor` show for this run. |
+| `held` | enginelock.py | | Exit 0 when this process may run a long command without waiting (the lock is off, or the holder is this process or an ancestor), else 1. |
+| `state [--json]` | enginelock.py | | Who holds the lock, since when, and how many wait. |
+
+Times measured on 2026-11-18 on this machine (4 processors, other agents running) with
+`WORKCENTER_LOCK=off`, on copies of the fixtures under `tests/boards/` and `tests/chips/` and of
+Last Hit v0.16: the wall time of 1 run. The Last Hit rows of `sim`, `measure` and `verify` are from
+a 2nd copy that keeps `library/` and `parts/` beside `v0.16/`, where all 12 decks ran; each of those
+exited 1 on the board's own findings.
+
+| Command | Takes the lock | Measured | On |
+|---|---|---|---|
+| `design --route` | yes | 5.25 s | pass-first-design |
+| `gates` | yes | 4.01 s; 14.39 s | pass-rc-divider; Last Hit v0.16 |
+| `sim` | yes: its length is the decks' and the corners' | 0.43 s; 11.15 s | pass-rc-divider; Last Hit v0.16 (12 decks) |
+| `measure` | yes: it runs the project's sim, every deck and corner, as `sim` does | 0.38 s; 11.47 s | pass-rc-divider; Last Hit v0.16 (12 decks) |
+| `export` | yes | 2.52 s; 4.98 s | pass-rc-divider; Last Hit v0.16 |
+| `render` | yes | 38.93 s | pass-rc-divider |
+| `pictures` | yes: it runs `render` for each board | not measured | |
+| `copper` | yes | 16.45 s | pass-copper-strip |
+| `highspeed` | yes | 10.58 s | pass-highspeed |
+| `fields` | yes | 10.22 s | pass-fields-microstrip |
+| `inspect map` | yes | 7.00 s | Last Hit v0.16 |
+| `chip` (all but `chip init`) | yes | 38.17 s (`chip gates`) | tests/chips/pass-counter |
+| `mutate` | yes | 1210.74 s (`--jobs 4`) | Last Hit v0.16 firmware |
+| `verify` (not `--init`) | yes: it runs the decks again | 11.23 s | Last Hit v0.16 (12 decks) |
+| `autoroute` | yes: FreeRouting, as `design --route` | not measured | |
+| `bench` | yes: it routes each board with each router | not measured | |
+| `ci` | yes: it replays a workflow, `make verify` among its steps | not measured | |
+| `design` (no `--route`) | no | 1.51 s | pass-first-design |
+| `drc` | no | 0.84 s; 1.21 s | pass-rc-divider; Last Hit v0.16 |
+| `erc` | no | 0.49 s; 0.60 s | pass-rc-divider; Last Hit v0.16 |
+| `sources` | no | 1.36 s | Last Hit v0.16 |
+| `costs` | no | 0.77 s | the Last Hit repository |
+| `doctor` | no | 0.69 s | |
+| `procure` | no | 0.54 s | Last Hit v0.16 |
+| `placement` | no | 0.53 s (`pin_sides`); 0.48 s (`placement_audit`) | Last Hit v0.16 |
+| `ratings` | no | 0.47 s | pass-ratings-node |
+| `inspect` (all views but `map`) | no | 0.47 s (`list`) | Last Hit v0.16 |
+| `now` | no | 0.26 s (it refused: no `--item`) | this tree |
+| `standards` | no | 0.24 s | pass-layout with a `product.json` |
+| `references` | no | 0.22 s (`check`) | tests/boards/references/pass/pack.json |
+| `docs` | no | 0.21 s | Last Hit v0.16 |
+| `diagram` | no | 0.21 s | Last Hit v0.16 |
+| `next` | no | 0.18 s | pass-rc-divider |
+| `new` | no | 0.17 s | an empty folder |
+| `fetch`, `curve`, `version` | no | not measured | |
+
+A waiting command prints, on stderr, 1 line at once and 1 every 30 s:
+
+    workcenter: waiting on the engine lock: 2 runs ahead; held by `workcenter gates v0.16` (pid 4242) since 10:02:13, 3 min 5 s ago; lock folder /tmp/workcenter-lock-0
+
+and `workcenter: took the engine lock after 4 min 12 s` when it starts. A run that ended while an
+engine it started still runs is named `..., which ended; 1 process it started still runs (pid N)
+and keeps the lock until it ends`. A run stopped by SIGTERM or SIGHUP prints
+`workcenter: stopped by signal 15 (SIGTERM) after waiting ...` (or `after holding the engine lock
+for ...`) and frees its place; a holder first passes the signal to the processes it started and
+adds `; passed it to 1 process it started`. A run killed by SIGKILL frees its place when the last
+process it started ends. `workcenter doctor` prints `engine lock  free (<folder>)`, or
+`held by ... since ..., N waiting (<folder>)`, or `not judged: <why>`; `workcenter --json doctor`
+carries `engine_lock`.
+
+How to use it:
+
+1. Run the command as it is. No `flock` in front.
+2. A line `waiting on the engine lock: N runs ahead` means the command waits its turn. Do not
+   start it again. Read the next line in 30 s; `N` falls as the runs ahead end.
+3. `workcenter doctor` names the holder and how many wait.
+4. A command that is not a `workcenter` command and starts an engine (a bare `kicad-cli`,
+   `ngspice`, a `pytest` file of engine tests) runs as
+   `python3 tools/enginelock.py hold --what "<name>" -- <command>`.
+5. A script that holds the lock and starts a long command through a process that is not its
+   child or grandchild (a service, a process reparented to init) waits on itself forever: run
+   the command as a child, or with `WORKCENTER_LOCK=off`.
+
 ## `ratings.json` (beside a schematic, for `workcenter ratings`)
 
 | Field | Type | Default | Use |
@@ -193,7 +287,9 @@ part by `mpn` or `mpns` and whose `source.sha256` is a row of
 |---|---|---|---|
 | `BOARD_TOKEN` | repository secret | none | A classic personal access token with the `project` and `repo` scopes; the board is changed with it. Without it the job prints 1 line and ends green. |
 | `BOARD_URL` | repository variable | `https://github.com/users/ThyFriendlyFox/projects/2` | The project board the work cards stand on (`https://github.com/users/<login>/projects/<n>` or `https://github.com/orgs/<login>/projects/<n>`). |
-| `--event` | flag of `tools/board.py` | required | The issues event's JSON file (`GITHUB_EVENT_PATH`). |
+| `--event` | flag of `tools/board.py` | 1 of `--event` and `--all` is required | The issues event's JSON file (`GITHUB_EVENT_PATH`): that 1 card. |
+| `--all` | flag of `tools/board.py` | off | Every work card of `--repo`, open and closed; the workflow passes it on its schedule and when run by hand. |
+| `--repo` | flag of `tools/board.py` | required with `--all` | The repository, `<owner>/<name>` (`GITHUB_REPOSITORY`). |
 | `--board` | flag of `tools/board.py` | required | The project's URL. |
 
 ## `copper.json` (beside a board, for `workcenter copper`)
@@ -240,7 +336,34 @@ names.
 
 | Field | Type | Default | Use |
 |---|---|---|---|
-| `pack` | name or path | none (required) | The board rule pack the DRC holds the board to: a file of `rules/board/` without `.json` (`ecss-q-st-70-12c-rev1`), or the path of a pack from the project's folder. The volts and amps come from the project's `ratings.json`, which must stand beside the board. No file: no pack. |
+| `pack` | name or path | none; required when there is no `layout` | The board rule pack the DRC holds the board to: a file of `rules/board/` without `.json` (`ecss-q-st-70-12c-rev1`), or the path of a pack from the project's folder. The volts and amps come from the project's `ratings.json`, which must stand beside the board. No file: no pack. |
+| `via_wall` | `{"um": number, "source": text}` | none: no stated wall | The least copper of a via's wall the fab promises, um, with the fab's document, the place and the date read. Under half the least drill of a judged via, or the file is refused. With `hdi` the lesser of it and the pack's 25 um is taken. |
+| `hdi` | `{"source": text}` | none: not HDI | The order or document by which the board is built as HDI under ECSS-Q-ST-70-12C Rev.1, 11.6. The pack's 25 um wall then holds its vias (tables 11-1 and 11-2, page 100). A via's KiCad flag never makes a board HDI. |
+| `layout` | list of layout pack names | none | The layout packs the DRC gate holds the board to (`rules/board/`, `"kind": "layout"`): `ti-slva680a-esd`, `ti-szza009-emi`. With or without `pack`. |
+| `connectors` | object, reference: why | none | The connectors that leave the device; asked by `ti-slva680a-esd`. A part with a reference J, P or X and digits, or a footprint in a `Connector...` or `TerminalBlock...` library or the `Battery` library, must be named here or under `inside`. |
+| `inside` | list of references | none | Connectors that stay inside the device; not judged for ESD. |
+| `protectors` | object, reference: what | none | The parts that protect against ESD; each needs a pad on a `ground` net. |
+| `ground` | list of nets | none | Ground nets: their connector pins need no protector, and they are judged by the 3:1 rule. |
+| `power` | list of nets | none | Power nets held to `ti-szza009-emi`'s 3:1. |
+
+## `product.json` (beside a board, for `workcenter standards`)
+
+| Field | Type | Default | Use |
+|---|---|---|---|
+| `kind` | a file of `rules/products/` without `.json` | none (required) | The product kind whose requirements `workcenter standards` lists (`vaping-device-lithium-cell`). |
+| `tests` | object, requirement: [IDs] | none | The IDs of the verification package whose PASS in `verification/traceability.md` holds a requirement. |
+
+## `rules/references/index.json` (for `workcenter references`)
+
+| Key | Type | Default | Use |
+|---|---|---|---|
+| `rules` | list of globs from the repository's root | none | The rule files `references rules` reads with no PATH: JSON rules, facts and `.kicad_dru` files. |
+| `code` | list of globs from the repository's root | none | The tool code and tests `references rules` reads for citations: `["tools/*.py", "tools/workcenter", "tests/*.py", "tests/boards/*.py", "ee-agent-kit/lead/*.py"]`. |
+| `numbers` | list of `{"pattern", "family"}` | none | The families of document numbers looked for in code, fab rule files and JSON rules' texts. A pattern that is not a regular expression is refused. |
+| an entry's `kind` | `standard`, `application note`, `datasheet`, `report`, `web page`, `paper` or `book` | none | The first 4 are held by `sha256`; a web page by its `values`; a paper or a book is cited and not held. |
+| an entry's `names` | list of texts | `[]` | The texts code names the document by, e.g. `["SLVA477C"]`. |
+| a web page entry's `values` | list of `{"says", "for"}` | none | Each value the rules take from the page: the page's own text and the rule that takes it. |
+| a tool's or a test's `CITES` | `{"<index id>": "<where in it>"}` at module level | none | The documents the file cites. |
 
 ## `pictures.json` (a version's, for `workcenter pictures`)
 

@@ -59,7 +59,7 @@ parts, each entry read from its datasheet.
    | `accepts a failure of ..., and <part> is not judged now` | Give the part what its own `not judged` line asks for. The acceptance then meets its failure again. |
    | `no source holds <net>` | Nothing the command knows drives the net. State it in `nets`, or correct the facts of the part that drives it. For the net behind a sense resistor, state the resistor's current under `parts`: the net then follows the resistor's other net. |
    | `has no data on the value it keeps` | Add `kept` to the capacitor's facts from its maker's DC bias curve, or fit a part that has one. |
-   | `its facts hold no voltage rating` or `has no tolerance in its facts` | Add `volts` or `tolerance` to the capacitor's facts from its datasheet. With no datasheet in `library/`, get it first. |
+   | `its facts hold no voltage rating` or `has no tolerance in its facts` | Add `volts` or `tolerance` to the capacitor's facts from its datasheet. With no datasheet in `library/`, get it first (the `simulate` skill, "A part's file and its row"). |
    | `its facts hold no current rating` | `ratings.json` states a current through the part. Add the rating to its facts from its datasheet: `amps_forward` for a diode, `amps_drain` for a transistor, `amps` for a ferrite or a switch. |
 
 4. Write 1 part's facts. `workcenter ratings <project> --facts U1` prints
@@ -188,7 +188,7 @@ count as a second reading.
 | `diode.clamp` (zener, TVS) | `diodes`, `volts_standoff` | |
 | `transistor.mosfet` | `transistors`: `[{"gate": "1", "drain": "3", "source": "2"}]`, `volts_drain_source`, `volts_gate_source` | `amps_drain`: a number, or pairs `[celsius, amps]` when the datasheet states it at 2 temperatures; held to the current the project states. `watts` |
 | `connector` | | `pins`: `[{"numbers": ["1"], "outside": "source"}]`, with `source`, `load` or `nothing` |
-| `fuse` | `amps`: the rated current, held to the current the project states for the part | `volts` |
+| `fuse.cartridge`, `fuse.cermet` (metal film on ceramic), `fuse` (any other style) | `amps`: the rated current, held to the current the project states for the part | `volts` |
 | `ferrite`, `switch` | | `amps`: held to the current the project states. `volts` |
 | `link`, `testpoint`, `mechanical` | | |
 | `ic` | `family`: `digital`, `linear`, `regulator.linear` or `regulator.switching`; `pins` | `needs`, `switching` |
@@ -287,9 +287,15 @@ rating.
   current through a fuse, a ferrite and a switch are held to the current
   `ratings.json` states for the part. A rating the datasheet gives at 2
   temperatures is read at the project's ambient. Neither pack holds a
-  rule for a fuse, a ferrite or a switch: each is held to its own rating.
-  A stated current whose part has no current rating in its facts is not
-  judged.
+  rule for a ferrite or a switch: each is held to its own rating. A fuse
+  is held by its style: NASA's pack holds a `fuse.cartridge` to the row of
+  its table 4 that lists its rating, ECSS's pack holds a `fuse.cermet` to
+  its table 6-17 and grants every other fuse no share (clause 6.17.1a),
+  and NASA's pack holds every other fuse to its own rating
+  (`rules/ratings/README.md`, "A fuse"). A fuse the pack grants no share,
+  as a cartridge fuse whose rating table 4 does not list (6.3 A), fails
+  over its own rating; under it, its derating is not judged. A stated
+  current whose part has no current rating in its facts is not judged.
 - The nets a wire joins are 1 node: a fuse, a ferrite, a link, a 0 ohm
   resistor, an inductor. A part between 2 nets of 1 node has 0 V across
   it, and its line says `2 nets that a wire joins`.
@@ -360,6 +366,36 @@ sound. Check such a line by hand before the design changes:
   its node, an LED behind its resistor.
 - 2 needs on 1 pair of nets take their capacitors in the order of the
   parts' references, each in its own unit.
+
+## Changing the engine
+
+`tools/ratings.py` keeps a mutation list, as a firmware does (PROCESSES.md
+P18): `tests/ratings_mutations.py`, single changes that the ratings tests
+must each fail on. After any change of `tools/ratings.py`:
+
+1. Run `python -m pytest tests/test_ratings_mutations.py -q`. It runs in
+   `make verify`, in about 11 s. A line `the old text stands 0 times`
+   names a mutation whose text the change moved: write its `old` and
+   `new` again from the engine as it is now, in the same commit. A
+   `SyntaxError` names a `new` that no longer compiles: correct it.
+2. Run `make mutate-ratings`. It takes minutes and is not in `make verify`:
+   run it before a commit that changes `tools/ratings.py`, and in a
+   change's review. Each line starts with the mutation's state:
+   - `caught`: a test failed on it. Nothing to do.
+   - `SURVIVED`: no test failed. Write the test that does, in
+     `tests/test_ratings_edges.py`, with the mutation's name in its
+     docstring. Then run `PYTHON=<venv python> python3 tools/workcenter
+     mutate . --mutations tests/ratings_mutations.py --only <NAME>` and see
+     `caught`. A change that no test can catch, since the engine gives the
+     same answer for every input, moves to `EQUIVALENT` with the reason.
+   - `mutate: anchor:` before any run: step 1 was skipped.
+   - `fails before any mutation`: the tests fail on the engine as it is.
+     Make them pass first.
+3. A new branch of the engine gets mutations of its own in the list,
+   named for what they change, and each is caught.
+
+The last line, `mutate: N mutations, N caught, 0 survived, 0 did not
+build`, and exit code 0 are the pass.
 
 ## Done when
 

@@ -61,6 +61,7 @@ honestly passes it.
 | kicadgen | this repo | `workcenter design <design.py> [--route [--seed <board>]\|--check]`; `python3 tools/kicadgen.py pins\|footprint\|symbol-add` | `install.sh` (part of the checkout) |
 | pdfminer.six, PyYAML | 20260107, 6.0.3 | `workcenter curve` (a PDF page's vector paths), `workcenter ci` (a GitHub workflow), each run under the venv | `install.sh` (PyPI) |
 | workcenter CLI | this repo | `workcenter` | `install.sh` (symlink to `tools/workcenter`) |
+| Engine lock | this repo | `tools/enginelock.py`: a long command (`design --route`, `gates`, `sim`, `measure`, `export`, `render`, `copper`, `highspeed`, `fields`, `mutate` and the others of docs/CONFIGURATION.md's table) waits its turn on the machine's engine lock and prints where it stands every 30 s; the others never wait. `make verify` holds it for the whole gate. `WORKCENTER_LOCK=off` turns it off; `workcenter doctor` shows it; `python3 tools/enginelock.py hold -- <command>` puts any other command under it | the checkout |
 | scene | this repo | `tools/scene.py`: assembly scenes a project's script builds, run by `workcenter pictures` | the checkout; KiCad's `pcbnew` and FFmpeg by `install.sh` |
 | kistack | `641ade9` | `.claude/skills/kistack/SKILL.md` routes to `third_party/kistack/skills/`; `workcenter placement <check> <board> [args]` runs its placement checks | the checkout (vendored, `third_party/kistack/VENDORED.md`); shapely, numpy and pygerber by `install.sh` (PyPI) |
 | Board inspection | this repo | `workcenter inspect <view> <board> ...`, the views `map`, `list`, `probe`, `net`, `islands`, `resistance`, `crossed` (KiCad's `pcbnew` and Pillow under the venv); `python3 tools/stretch.py <design.py> --cut X --grow G` | `install.sh` (part of the checkout; Pillow from PyPI) |
@@ -88,8 +89,12 @@ file: it needs nothing else.
 | `procurement` | A human asks what a board costs, for its parts list, or to order its parts. |
 | `ratings` | A schematic is to be held to its parts' ratings before layout: each part's facts from its datasheet, with the page of each pin's and each needed part's numbers, the voltages and currents the board cannot say, and `workcenter ratings` until every stress holds. |
 | `board-rules` | A routed board is to be held to a standard: each gap to the voltage between its nets and each track's width to its net's current, from `ratings.json`, with `board-rules.json` naming the pack; or to a fab's published limits. |
+| `standards` | A board is near release and someone asks what its product must meet: `product.json` names the kind, and `workcenter standards` lists each requirement of the kind's free documents as held by a gate, held by a named test, or not held. |
 | `references` | A rule cites a standard or a datasheet: get the copy it was written from with `workcenter references fetch`, judge a file a person downloaded with `workcenter references check`, and keep `workcenter references rules` passing. |
 | `now` | Several agents work at once and a maintainer follows them on the project board: 1 work card per piece of work with `workcenter now`, its `**Status:**` line Todo, In progress or Done, in 1 GitHub issue's body rewritten at each landing, block and health gate, or on the `status` branch with `--write`. |
+| `lead` | Roadmap work is to be done by helpers: a worktree and a brief per piece, a build, an attack and a fix, a second attack for a piece called not sound, and `ee-agent-kit/lead/landed.py` to see which pieces have finished. |
+| `land` | Finished pieces are to go onto the work branch, and later onto the default branch: commits in a straight line, docs files applied, the health gate alone with the push behind VERIFY GREEN (`ee-agent-kit/lead/gate-and-push.sh`), a merge commit only at the owner's word. |
+| `user-round` | The roadmap is to be checked against the goal: 3 users of different sizes, 1 board spec, their logs checked and ranked into roadmap candidates, each with what the small user does after the change. |
 | `highspeed` | A board carries a fast interface (USB 2.0, USB 3.x): `interfaces.json` names each pair, and `workcenter highspeed` until every width, gap, length, skew, via count and ground plane holds; then `workcenter drc --fab build/highspeed/highspeed.kicad_dru`. |
 | `copper` | A routed board carries a stated current or a part's stated heat: each power net's drop and current density, in its copper and in each barrel, and the board's temperature, against the limits of `copper.json`, with a picture of each and `workcenter copper` until every limit holds. |
 | `fields` | A fast interface or an antenna on a routed board: a track's impedance, loss or crosstalk, held by `workcenter fields` to the limits `fields.json` states, each with its source. |
@@ -194,14 +199,23 @@ board is held to that board rule pack too, after KiCad's own rules:
 project's own by its path from the project's folder. The voltage of each
 net and the current on it come from `ratings.json`; without that file the
 DRC is red with 1 line. Each gap is held to the voltage between its 2 nets
-and each track's width to its net's current; vias are counted against the
-wall a pack gives, and the shipped pack gives none, so they are not judged.
+and each track's width to its net's current. Each net's vias are held to
+its current against the wall `board-rules.json` states: `via_wall` from the
+fab, or `hdi` for a board built as HDI (25 um); with neither, the vias are
+not judged.
 KiCad measures the pack's gaps on a copy in `build/board-rules/`, with 1
 witness rule per net that shows KiCad read the rule file; the project's
 files do not change. The DRC line ends `board rules <pack>: N fail, M not
 judged`, and each failure names its document, clause, table and page. A
 net whose name a KiCad rule cannot hold is not judged. With `--strict`, a
 line not judged fails the gate. The `board-rules` skill is the procedure.
+
+`board-rules.json` also takes `layout`, a list of layout packs, with or
+without `pack` (`rules/board/README.md`, "Layout packs"):
+`ti-slva680a-esd` (TI SLVA680A: a TVS at each line of a connector that
+leaves the device) and `ti-szza009-emi` (TI SZZA009: power and ground
+traces at most 3:1 on a 2-layer board). The project states what the board
+file cannot: `connectors`, `inside`, `protectors`, `ground`, `power`.
 
 Not a gate, but part of every hand-off: `workcenter render <project>` writes
 the schematic, board top and bottom, and 3D images into `build/render/`, and
@@ -417,6 +431,19 @@ exits 1. Ordering, assembling and measuring the board are the owner's acts;
 the plan's Reading column is theirs to fill. The `fabrication` skill is the
 procedure.
 
+Not a gate: `workcenter new <dir>` starts a board project
+(`tools/newboard.py`). It writes `design.py` from
+`templates/project/design.py` under the folder's name with a namespace of
+its own, `.gitignore`, `parts.csv` with the header `procure` reads, and
+`library/sources.csv` with the header `fetch --row` appends to; a
+`library/sources.csv` above, found as `fetch --row` finds it (it stops
+at the project's own `.git`), serves instead. A file that is there is
+kept. A folder that holds `design.py`, `chip.json` or a KiCad project
+file is refused in 1 line, and so are an empty name and a path that
+cannot be written; every path is judged before the first write, so
+nothing is written. It runs no engine. `workcenter next` names it on a
+folder with no design.
+
 Not a gate: `workcenter next <project>` names the one next step
 (`tools/guide.py`): what to do, the command, why, what to read, and when
 the step is done. It reads `build/gates.json`, `build/verify.json` and
@@ -427,8 +454,11 @@ its first problem. A project with a `ratings.json` is held to its parts'
 ratings in 2 places: a stress that fails, or a file `ratings` does not
 take, comes before the gates, since a part that changes takes its routes
 with it; what is left not judged comes after them, and the project is not
-done until the last line is `RATINGS HELD`. It exits 0
-when nothing is left and 1 when a step is. A finished project gets no `RUN`
+done until the last line is `RATINGS HELD`. A board generated without
+`--route` is told to route before the gates: the answer counts the pads
+on nets with no track, via or pour. It exits 0 when nothing is left and 1
+when a step is named; exit 1 is no error, it means do the step. A finished
+project gets no `RUN`
 line. It writes nothing. For a chip project (`tools/chipguide.py`) the
 order is `chip.json`, the engines and the process kit, the RTL, a bench,
 a file that is still the example `chip init` wrote, the chip gates'
@@ -441,9 +471,18 @@ refusal is reported, never retried), keeps it, and prints its
 `sources.csv` row: the URL, the file, its SHA256, today as `Checked`, a
 model's `.SUBCKT`, and lines of the file that may carry its revision.
 `Revision` and `Dated` are left for the reader to fill from the file.
-`--row` with `--mpn` appends the row and refuses a second row of one kind
-for one part. For a part before any board names it; `workcenter sources`
-then checks the row like any other (`PROCESSES.md` P27).
+A body that is empty, cut short, served as `text/html`, starting as an
+HTML page, or a `.pdf` that does not start `%PDF` is refused in 1 line
+and nothing is written.
+`--file <path> --url <url>` keeps a file a person downloaded instead: it is
+judged the same way, copied, hashed, and its row's Note says the workcenter
+did not fetch it. `--row` with `--mpn` appends the row and refuses a second
+row of one kind for one part. With no `sources.csv` at or above `--to`,
+and `--to` under a folder named `library`, it starts that folder's
+`sources.csv` with its header and prints `sources: started <path>`. For a
+part before any board names it; `workcenter sources` then checks the row
+like any other, and fails a kept file that is empty, an HTML page, or a
+`.pdf` without `%PDF` (`PROCESSES.md` P27).
 
 Not a gate: `workcenter curve <pdf> --page N` lists the page's vector
 paths grouped by kind, stroke width, paint and colour, with the stroked
@@ -482,7 +521,8 @@ command (`make -k test` unless the list or `--test` names another) must
 fail on it. Every mutation's text must be in its file exactly once, checked
 before anything runs, and the tests must pass unmutated. A mutation that
 survives, or that a compiler stops, fails the run. The project's tree is
-never written.
+never written. A list may name `COPY`, the paths each copy holds.
+`make mutate-ratings` runs the ratings engine's list.
 
 Not a gate: `workcenter ratings <project>` holds the schematic to its parts'
 ratings, for a project with a `ratings.json` beside its schematic (`--init`
@@ -500,7 +540,11 @@ the rating that the rule pack allows (`rules/ratings/nasa-eee-inst-002.json`,
 regulator's load to what it gives; an output a divider sets to that
 divider's sum; a buck converter's inductor to its peak current; and the
 capacitors and the inductor a datasheet asks for to what stands in the
-schematic. An entry of facts that gives a pin's name to another number
+schematic. A fuse's facts name its style: `fuse.cartridge` (NASA
+EEE-INST-002 F3 table 4), `fuse.cermet` (ECSS table 6-17), or `fuse`. A
+fuse no row covers, or that ECSS grants no share (clause 6.17.1a), fails
+over its own rating, and at or under it its derating is not judged. An
+entry of facts that gives a pin's name to another number
 than the schematic's symbol does fails too. A line is `fail`, `accepted`,
 `not judged` or `hold`. A line that holds a stress to a limit names the
 limit's document; a pack's rule, a pin's limit and a needed part name
@@ -535,7 +579,9 @@ to `now/<branch>.md` in a checkout of the `status` branch and prints the
 git commands to commit and push it; it runs none. The workflow Board
 (`.github/workflows/board.yml`, `tools/board.py`) puts each issue titled
 `Work card: ...` in the column its `**Status:**` line names, and a closed
-card in Done; it needs the repository secret `BOARD_TOKEN`.
+card in Done: on the card's own event, and once a day and by hand for every
+card (`--all`), so a missed run is put right; it needs the repository secret
+`BOARD_TOKEN`.
 
 Not a gate: `workcenter highspeed <project> [--strict] [--verbose] [--out
 DIR]` holds the fast pairs `interfaces.json` names to their interface's
@@ -624,9 +670,26 @@ or `source`, or in a table `documents: {id: {...}}`, that the index lacks,
 names at another URL, or names without both a URL and a SHA256. Only a
 source whose `document` is `no datasheet: <why>` or `no document: <why>`
 is not judged. A document served in a zip names the zip's SHA256 as
-`zip_sha256`, and the index holds the zip. `make verify` runs it on
-`rules/ratings/`, `rules/board/`, `rules/copper/`, `rules/interfaces/` and
-`tests/boards/**/facts/` through `tests/test_references.py`. The `references` skill is the procedure.
+`zip_sha256`, and the index holds the zip. It reads the names in a
+`.kicad_dru` file and in a JSON rule's texts, and each URL of a
+`.kicad_dru` file. It reads tool code and tests: a file declares each
+document it cites in a module-level `CITES = {"<id>": "<where>"}`, and a
+name with a section, table, page, clause or equation beside it fails when
+the index or `CITES` lacks it. A web page is held by the values read from
+it, not by a SHA256: `fetch` says `kept` when each stands on the page,
+`moved` when 1 is gone. A paper or a book is cited and not held.
+`make verify` runs it on the globs the index lists under `rules` and `code`
+through `tests/test_references.py` and `tests/test_references_code.py`.
+The `references` skill is the procedure.
+
+Not a gate: `workcenter standards <project> [--strict]` reads
+`product.json` (`kind`, `tests`), `verification/traceability.md` and
+`board-rules.json`, and prints 1 line for each requirement of the kind in
+`rules/products/`: `held by a gate`, `held by a test` or `not held`, with
+the document and clause. A gate holds a requirement only when every board
+of the project, nested ones too, runs its layout pack with 0 fail and 0
+not judged. Exit 1 with `--strict` when any is not held. It writes
+nothing. The `standards` skill is the procedure.
 
 Not a gate: `workcenter verify <project>` checks the project's verification
 package (`PROCESSES.md` P28, the `verification` skill) in
@@ -724,6 +787,12 @@ stale (`tools/doctools.py`):
   groups, a legend of the styles used. `templates/verification/system/
   block-diagram.json` is the starter `verify --init` copies.
 
+`SOURCE_DATE_EPOCH`, when set, is the day and the time every command
+writes into a file (the gates report's day among them), in UTC: a build
+that pins it gets the same report from the same files on any day. It
+never sets the day a price's age is judged on, the `Checked` day `fetch`
+writes, or the engine lock's times: those are the machine's clock.
+
 A project may add gates. It may not remove these.
 
 ### Chip gates
@@ -794,8 +863,11 @@ and no analog block. The engines install on request:
   limits for `workcenter fields`
 - Optional: `panel.json` beside the board, a KiKit preset; it asks EXPORT
   for a panel
-- Optional: `board-rules.json` beside the board, `{"pack": "<name>"}`, for
-  the board rule pack the DRC holds the board to; it needs `ratings.json`
+- Optional: `board-rules.json` beside the board, `{"pack": "<name>"}` or
+  `{"layout": [...]}`, for the board rule pack the DRC holds the board to; a
+  `pack` needs `ratings.json`
+- Optional: `product.json` beside the board, `{"kind": "<kind>"}`, for
+  `workcenter standards`
 - Optional, a project kept as version folders (`v0.1/`, `v0.2/`, ... at the
   repository's root, a nested board one folder down): `parts/catalog.csv`,
   `parts/version/<id>.csv` and `parts/offboard/<id>.csv` for `workcenter
@@ -805,7 +877,7 @@ and no analog block. The engines install on request:
   names beside it, for `workcenter sources` and the vendor models a deck
   includes. Columns: `MPN,Kind,URL,File,Member,Revision,Dated,Subckt,Ngspice,SHA256,Checked,Note`;
   `Kind` is `datasheet`, `spice` or `step`; a row with no `File` needs a `Note`;
-  `workcenter fetch --row` adds one
+  `workcenter fetch --row` adds one, and starts the file with this header when the project has none
 - Optional: a firmware mutation list (JSON, or a Python file with `MUTATIONS`)
   kept with the firmware, for `workcenter mutate`
 - A chip project (`workcenter chip init <dir> --top <module>` writes its

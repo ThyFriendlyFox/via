@@ -90,8 +90,11 @@ workcenter fetch <maker's URL> --to library/<maker>/<file> --mpn <MPN> --row
 It asks the maker's site once under the workcenter's own name, keeps the
 file, and appends its `sources.csv` row with the SHA256 and today's date.
 Fill `Revision` and `Dated` from the file itself; the command prints the
-lines that may carry them. A refusal is the site's answer: download the
-file by hand, or keep a row with no file and a note that says where it is.
+lines that may carry them. A refusal, or a body that is not the file, is
+the site's answer: a person downloads the file and keeps it with
+`workcenter fetch --file <file> --url <url> --to ... --mpn <MPN> --row`
+(the `simulate` skill, "A part's file and its row", says what to do with
+each line).
 
 ## Checks
 

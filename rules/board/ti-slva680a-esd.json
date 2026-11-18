@@ -1,0 +1,37 @@
+{
+  "pack": "ti-slva680a-esd",
+  "kind": "layout",
+  "document": {
+    "issuer": "Texas Instruments",
+    "number": "SLVA680A",
+    "title": "ESD Protection Layout Guide",
+    "revision": "Rev. A, revised April 2022",
+    "url": "https://www.ti.com/lit/an/slva680/slva680.pdf",
+    "sha256": "414236c18903e2489c6564c36718ed3743be9c595f4543098f167259b5ba8635",
+    "read": "2026-11-17",
+    "second_reader": "no"
+  },
+  "rules": [
+    {
+      "id": "protector",
+      "check": "esd_protector",
+      "where": "section 1 and figure 1-2, page 2: ESD enters through a cable connection, and a TVS between the ESD source and the protected IC shunts it to ground"
+    },
+    {
+      "id": "nearest",
+      "check": "esd_nearest",
+      "where": "section 2.1, Summary, page 4: place the TVS as near to the connector as design rules allow, and the protected IC much further from the TVS than the TVS is to the connector, and route directly from the ESD Source to the TVS; section 2.3, page 6: Case 2, where the ESD current branches to the Protected IC before the TVS, is to be avoided"
+    },
+    {
+      "id": "no-via",
+      "check": "esd_no_via",
+      "where": "section 2.1, page 4: the protected line runs directly from the ESD source to the protection pin of the TVS, ideally with no vias; section 2.3, page 6: route from the ESD source to the TVS without switching layers by via"
+    }
+  ],
+  "not_judged": [
+    "section 2.1, page 4: the stub between the TVS and the protected line, and the inductance from the TVS to ground; the check holds only that the TVS has a pad on a ground net",
+    "section 2.2, page 6: unprotected traces in the area between the ESD source and the TVS, and corners over 45 degrees on that path",
+    "section 2.4, pages 7 and 8: the ground scheme",
+    "section 2.1, page 4: how much further the protected IC stands; the check holds further, not much further"
+  ]
+}

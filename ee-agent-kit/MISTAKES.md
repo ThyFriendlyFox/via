@@ -1317,3 +1317,116 @@ What happened: I merged Lark, Signet v0.5 and Rosetta v0.3 from their branches a
 Cost: 1 red run on `main`, its 15 minutes, and a fix after the push.
 Root cause: I ran the tests of the files I had changed, and read a merge with no conflict as work that met `main`'s checks. A branch older than a check of `main` fails it without touching the check's file.
 Process: P35
+
+## M218 — 2026-11-17 — A lock written over, and a review with no result read as 0 findings
+Numbered M207 on the work branch until it took in the default branch on 2026-11-18.
+What happened: The scratch `gate-and-push.sh` wrote `GATE.lock` whether or not a lock was there, and its EXIT trap, set before its first check, removed the lock on every exit. A second gate, or a gate that stopped at its HEAD check, removed the lock of a gate still running, and helpers then started tests during it. The scratch `landed.py` turned a review whose result was null into an empty object: no findings, so no fix asked, and the piece read as landed with no review.
+The first fix took null alone as "no result"; a review of plain text or `{}` still read as 0 findings and landed, and a gate stopped by a signal still removed its lock while `make verify` ran on.
+Cost: Found when the tools were brought into the kit, and the rest by the item's review; `tests/test_lead.py` holds each (a taken lock stops the gate and is left as it was; a null review, a review with no verdict and a fix with no list `fixed` wait; a stopped gate ends make before the lock goes).
+Root cause: A lock that is not made atomically is no lock, and a missing result was given a default that means "passed". The fix named the 1 missing value seen (null) and not the rule: a result counts only when it holds what a judgement holds.
+Process: P31
+
+## M219 — 2026-11-17 — A board that follows events only
+Numbered M208 on the work branch until it took in the default branch on 2026-11-18.
+What happened: Every work card stood in Todo while its body said In progress. The cards were on the project before the workflow Board reached the default branch, and Board moved a card only on that card's own event, so no event ever moved them.
+Cost: The owner saw a wrong board; found by the owner, not by a test.
+Root cause: A workflow that mirrors state from events is as right as the last event that reached it. It also needs a run that reads the whole state, by hand and on a schedule.
+Process: P36
+
+## M220 — 2026-11-17 — A stand-in that answers whatever the query asks
+Numbered M209 on the work branch until it took in the default branch on 2026-11-18.
+What happened: The stand-in `tests/board/gh.py` answered a canned page whatever the query asked. A field dropped from the query `ISSUES` or `ITEMS` in `tools/board.py` was still in the answer, and the tests stayed green.
+Cost: Found by the review of `--all`; 2 tests now hold the cut, and a dropped field fails tests.
+Root cause: A stand-in for an API answers only what the request asks for, as the API does.
+Process: P7
+
+## M221 — 2026-11-17 — A CAD tool's word taken for the standard's term
+Numbered M210 on the work branch until it took in the default branch on 2026-11-18.
+What happened: The board-rules check took a via that KiCad flags `micro` for a microvia, and any microvia on a board for proof that the board is HDI. A 0.3 mm through via with the flag gave every via of the board the 25 um wall the standard gives HDI boards alone.
+Cost: Found by the review of roadmap item 6's left-overs; vias of a board not built as HDI held to a wall no document promised it.
+Root cause: The standard defines a microvia by its shape (a blind via under 250 um, 3.2.40, page 22; blind, 3.2.13, page 18), and HDI is how a board is built (3.2.31, page 20; clause 11). The check read a word of the tool instead of the definition, and a property of the whole board from 1 part of it.
+Process: P7
+
+## M222 — 2026-11-17 — "Parallel" tested by exact equality on rounded coordinates
+Numbered M211 on the work branch until it took in the default branch on 2026-11-18.
+What happened: 13.6.3g holds 2 parallel tracks under 25 mm apart as 1 conductor. The check took 2 tracks as parallel only when their gap was the same to the last digit. A `.kicad_pcb` holds a coordinate to 6 decimals of a mm, so 2 tracks drawn parallel could be 1 nm off, and the rule was skipped with no line.
+Cost: Found by the review of roadmap item 6's left-overs; a pair that fails as 1 conductor passed.
+Root cause: A geometric test used no tolerance where the file rounds, and a case the check could not judge got no line of its own.
+Process: P7
+
+## M223 — 2026-11-17 — Documents cited in code that no index held
+Numbered M212 on the work branch until it took in the default branch on 2026-11-18.
+What happened: 3 TI notes, 2 RFCs, the XDG specification, NBS Handbook 100, the SI Brochure and 3 textbooks were cited in tool code and tests with their sections and pages, and the index held none of them. `references rules` read only JSON rule files. The high-speed work that landed the same day cited 2 reports, NIST's CODATA pages and DLMF in its code and test, and wrote a source as a text. The frequency plan cited NXP's UM10204 by a table that does not hold the value.
+Cost: a first run of the new check failed 24 citations in 12 files (the piece's own run); on the trunk it failed 3 more and missed 6 documents, 1 of them cited by the wrong table. On the trunk of 2026-11-18 it failed 1 more: the board rules' test of item 6, which landed beside it.
+Root cause: the check was built for rule packs, and code was not a place a rule could stand. P28 step 3 asked a code comment to cite from the document's text, and nothing held the document to the index.
+Process: P28
+
+## M224 — 2026-11-17 — A requirement held because a file named the gate
+Numbered M213 on the work branch until it took in the default branch on 2026-11-18.
+What happened: `workcenter standards` said a requirement was held by a gate when `board-rules.json` named the layout pack. It never ran the pack on the board. A board that broke the pack was reported as holding it.
+Cost: Found by the first review of roadmap item 11; fixed with a test.
+Root cause: A status of held came from a configuration file, not from the gate's own result on the board.
+Process: P14
+
+## M225 — 2026-11-17 — A rule measured between joints of drawn segments, not along the copper
+Numbered M214 on the work branch until it took in the default branch on 2026-11-18.
+What happened: The 3:1 rule of SZZA009 measured each drawn segment between its ends. A copy of a segment laid over half of a 3.07 to 1 track split it into pieces under 3 to 1, and the strict DRC passed.
+Cost: Found by the first review of roadmap item 11; fixed with a test.
+Root cause: A length was taken from how the file draws the copper, not from the copper's path between 2 pads.
+Process: P14
+
+## M226 — 2026-11-17 — "Nearest" checked from the protector's side only
+Numbered M215 on the work branch until it took in the default branch on 2026-11-18.
+What happened: The `nearest` rule checked 2 distances measured from the TVS. A line that branched at the connector, with a capacitor 2.89 mm from it and the TVS 4.35 mm from it, passed, and `standards` said the ESD requirement was held.
+Cost: Found by the second review of roadmap item 11; fixed with the fixture `fail-layout-tee`.
+Root cause: The test was written from the code's restatement of the rule, not from the requirement's own sentence: "the TVS nearer the connector than the part it protects".
+Process: P14
+
+## M227 — 2026-11-17 — A copper graph that joined pours only to track points
+Numbered M216 on the work branch until it took in the default branch on 2026-11-18.
+What happened: The 3:1 rule joined a pour to the points of tracks, never to vias or pads. A trace from a pad through a via into the pour of the other face gave no trace to judge and 0 findings (the reviewer's run: 6 mm by 0.25 mm, 24 to 1).
+Cost: Found by the second review of roadmap item 11; fixed with a test.
+Root cause: Each kind of copper item was not tested for reaching each other kind.
+Process: P14
+
+## M228 — 2026-11-17 — A project check that read only the top folder
+Numbered M217 on the work branch until it took in the default branch on 2026-11-18.
+What happened: `workcenter standards` judged the board in the project's own folder. A product laid out like Last Hit v0.16, with a second board in `display/`, was reported as holding the ESD pack while `display/` failed it 4 times.
+Cost: Found by the second review of roadmap item 11; fixed with a test.
+Root cause: "The project" was read as 1 folder. The workcenter's own layouts put a second board 1 folder down.
+Process: P14
+
+## M229 — 2026-11-17 — A test run while the health gate held its lock
+Numbered M218 on the work branch until it took in the default branch on 2026-11-18.
+What happened: On `wip/u-new` the run that showed `tests/test_new.py` failing before its code (18 failed in 4.73 s, no engine) started while `GATE.lock` existed. The command listed the lock with `ls` and went on. Later, to skip a queue of 10 runs on `ENGINE.lock`, I ran `tests/test_guide.py` and `tests/test_chipguide.py` without the lock, leaving out the 1 test marked for ngspice. The run took 187 s, and `test_next_walks_the_template_from_its_first_file_to_green` alone took 151 s: it runs the chip engines. The brief puts the lock in front of any engine run and any run over 1 minute.
+Cost: 1 run of 5 s beside the health gate; 1 run of 187 s with chip engines beside other agents' locked runs (the builder's runs).
+Root cause: As M201: the lock was looked at, not waited on. And a test file was taken for engine-free by its skip marks, not by its durations: a test that runs engines need not carry a mark. Later runs waited for `GATE.lock` to go, took `ENGINE.lock`, and checked `GATE.lock` again inside it.
+Process: P31
+
+## M230 — 2026-11-18 — A shared fetch function judged a body for one caller's needs
+Numbered M219 on the work branch until it took in the default branch on 2026-11-18.
+What happened: `fetch_url` in `tools/workcenter` gained a judgement of each body: an HTML page is refused, since a datasheet that is a web page is an error page. `workcenter references fetch` calls the same function, and its web page entries are HTML pages by design. Every one came back "not reached".
+Cost: On the landing head, 2 tests of `tests/test_references_pages.py` failed; the piece's own tests passed.
+Root cause: The piece was built before the web page entries landed, and it changed a function with 2 callers while testing 1.
+Fix: `fetch_url(..., judge=False)` from `tools/references.py`, which judges a copy by its SHA256 or its values; `test_references_fetch_still_keeps_a_web_page_entry_served_as_text_html`.
+Process: P27
+
+## M231 — 2026-11-17 — A lock that lived in briefs, not in the tools
+Numbered M220 on the work branch until it took in the default branch on 2026-11-18.
+What happened: Several agents on 1 machine ran routes, gates and simulations. A lead told each helper to put `flock ENGINE.lock` in front of heavy runs; no document of the workcenter named the rule. 3 users of user round 1 lost time behind it: `workcenter next` sat 10 minutes with no output behind the lock, a 3 s `design` waited about 5 minutes, a queued `design --route` was killed at the 30-minute background limit with only `[killed]`, and `gates` waited more than 30 minutes twice. The kernel's flock serves its waiters in no fixed order. While the fix was built, its own test run waited 406 s for the brief's lock file before it could start.
+Cost: about 2 hours of 1 user and a run each of 2 others; no verdict for 1 board.
+Root cause: The lock was a convention of a lead's brief, taken by hand around any command, fair to nobody, and silent.
+Process: P8
+
+## M232 — 2026-11-17 — A fix pass that ran only the tests of its own findings
+Numbered M221 on the work branch until it took in the default branch on 2026-11-18.
+What happened: A fix for roadmap item 1's review (L1-06) added a hint to `tools/guide.py` with a sentence of 25 words. Its helper ran the ratings test files, `tests/test_guide_ratings.py` and `tests/test_mutate.py` (1064 passed), and not `tests/test_guide.py`, which refuses any hint sentence over 20 words. The landing run found it.
+Cost: 1 landing commit; the piece would have failed `make verify`.
+Root cause: The test files run were the ones of the findings, not the ones of the files changed. Every test file of a tool a change touches is run, not only the file the change's own tests sit in.
+Process: P14
+
+## M233 — 2026-11-18 — A test that kept the day it was loaded
+What happened: The CI run of `main` for merge commit e471028 started at 23:53 UTC and failed at 00:14 UTC with 1 test: `tests/test_doctools.py::test_gates_report_writes_its_blocks_and_keeps_the_prose`, `assert 'GREEN on 2026-11-17: ...' in <the report>`. The file read the day once when pytest loaded it (`TODAY = datetime.date.today()`), and `gates_report` wrote its own reading after midnight. The re-run passed. 2 commands read the clock more than once in 1 run as well: `workcenter costs` once per board, and `references fetch` once per document.
+Cost: A red run of `main` with no fault in the code, and a helper's time on a fault that was not there. A health gate takes 20 to 30 minutes, so every gate that started in a day's last half hour could fail the same way.
+Root cause: Each tool and each test read the clock where it needed a day, and nothing named 1 reading per run. `tools/clock.py` now holds the 1 reading a command takes at its start, SOURCE_DATE_EPOCH pins it, `tests/test_clock.py` holds every tool to reading the clock through it, and `tests/test_docs.py` holds every test file to reading no clock at load.
+Process: P10

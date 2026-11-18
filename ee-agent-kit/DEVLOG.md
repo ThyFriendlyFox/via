@@ -39,6 +39,62 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-18 — The long commands take turns by themselves
+
+The roadmap's entry "Out of band: a lock the tools take themselves" landed (in part). Each long `workcenter` command takes a numbered ticket in `/tmp/workcenter-lock-<uid>` and runs when no live ticket has a lower number; a ticket is live while its process holds a flock on it, or while a process that run started still runs. A waiting run says so at once and every 30 s. `make verify` runs itself again under `enginelock.py hold`, so the gate runs alone and its tests' commands, its children, never wait. The review found 7 faults; all were fixed with tests. On landing, the 2 commands the trunk gained since (`new`, `standards`) were measured at 0.17 s and 0.24 s and named short, and a test now fails on any command named neither long nor short. The whole test file ran 20 times in a loop on the landing head with 0 failures.
+
+Evidence: `tests/test_enginelock.py` (27 tests); landing head 38a48a2, on the trunk 0dc3205.
+
+## 2026-11-18 — A datasheet that was a web page
+
+User round 1, D landed. In user round 1 the large user's project kept 2 Samsung datasheets that were
+error pages: each file was named `.pdf` and started `<html lang="ko">`. `workcenter fetch` had written
+them, and `workcenter sources` passed them. `fetch` now judges a body by its first 1024 bytes, its
+length and its Content-Type, and refuses an empty body, a cut one, a web page, and a `.pdf` that does not
+start `%PDF`. `sources` fails such a file already kept. The round's other gap was a new project: `fetch
+--row` refused to run with no `library/sources.csv`. It now starts the file with its header. A file no
+site will serve is downloaded by a person and kept with `--file`. A review found 7 faults; the worst let
+an error page that opens with `<head>` land as a SPICE model. All 7 are fixed. On the trunk the new
+judgement refused every web page that `workcenter references` holds by its values; that call no longer
+judges the body.
+
+Evidence: `tests/test_fetch_checks.py` (27 tests); landing head 326f81d, on the trunk ecf27ae.
+
+## 2026-11-18 — A new user starts a board with 1 command
+
+User round 1 sent 3 users of different sizes through 1 board spec. The small one found no command
+that starts a board, and 2 of them were told to run the gates on a board with no copper. Now
+`workcenter new <dir>` writes a project to edit, and `workcenter next` names it on an empty folder in
+about 0.2 s with no engine. On a board generated without `--route`, `next` names the route first and
+counts the pads with no copper. 1 review found 7 faults, among them 2 tracebacks in `new`, 1 after it
+had written 3 files. All 7 are fixed, each with a test; `tests/test_new.py` has 26 tests. Left: the
+lock the small user waited on.
+
+## 2026-11-18 — Roadmap item 11 landed (in part): ESD and emissions rules from 2 TI notes, and a product's standards
+
+Roadmap item 11 landed (in part). On 2026-11-17 the builder read TI SLVA680A and SZZA009, and the eCFR's 47 CFR Part 15 Subpart B and 49 CFR 173.185, under the client name `ee-workcenter/1.0`. EUR-Lex answered HTTP 202 with no body to that name, so the 2 EU directives are listed as not had. No free document with creepage numbers was read, so the DRC gate does not hold creepage yet.
+
+The work was reviewed twice, and both reviews said "not sound". The first found boards that broke both packs and still passed a strict DRC, and a requirement reported as held when it was not. The second found a part nearer the connector than the protector that passed, a track through a via into a pour that was never judged, arcs measured as chords and a second board of the product that was not looked at. Each finding was fixed with a test.
+
+On landing, `workcenter references rules` found that the index lacked the 2 TI notes, and that it did not read `rules/products/` at all. The index now holds the 4 documents and reads the folder. On the trunk, where item 2's check of the code had landed first, the notes needed their names in the index, the layout tool and its tests a `CITES` table, and the kind's 2 documents not had a `title` in place of a `document`. The rule files now name 33 documents in 23 files, 33 in the index, 0 not.
+
+Last Hit v0.16's list, from its fixture: 17 requirements, 1 held by a test, 16 not held.
+
+## 2026-11-18 — A via held to its net's current, and a CAD tool's word taken for the standard's
+
+Roadmap item 6 landed (in part). ECSS-Q-ST-70-12C Rev.1 rates a via as a track of its section
+(13.6.3f, page 114), but it states the copper of a via's wall only for boards built as HDI (tables
+11-1 and 11-2, page 100). A project now states its board's wall in `board-rules.json`, from its fab
+and with a source, or states with a source that the board is built as HDI, and its vias are held to
+that wall. With neither, the vias are not judged, and the line names every clause read. Each track is
+now held to the current its side of the net carries, where every pad's current is stated. 2 parallel
+tracks under 25 mm apart are held as 1 conductor (13.6.3g). The 3 fab files were read a second time.
+A reviewer found 5 faults. The worst: the build read KiCad's `micro` flag on any via as a microvia, and
+a microvia as proof that the whole board is HDI. A 0.3 mm through via with the flag gave every via of
+the board a 25 um wall. The standard defines a microvia by its shape (3.2.40, page 22), and HDI is how
+a board is built. HDI is now what the project states. Another fault: 2 tracks that a file rounds 1 nm
+apart were not parallel, and the rule was skipped with no line. All 5 are fixed with tests.
+
 ## 2026-11-18 — Lark and 2 new versions on the site, a community link, and a post per board
 
 The owner asked for a link to the team's Discord, a line at the foot of every page, the new
@@ -62,6 +118,30 @@ Published post: Herald: answering a fire panel's phone call in firmware.
 Evidence: the docs tests 31 passed, 2 skipped (KiCad), with the forms tests; `site/blog.py
 --check`, `site/examples.py --check` and `site/forms.py --check` exit 0; each post passes the
 blog's sentence and word rules.
+
+## 2026-11-17 — Roadmap item 1 landed (in part): a fuse's rule, and the engine's mutation list
+
+Roadmap item 1 landed (in part). A fuse's current now has a rule in both packs. NASA holds a cartridge fuse by its rating, from table 4 of section F3. ECSS holds a cermet fuse to table 6-17, and grants any other fuse no share. The engine got its mutation list: 433 single changes, run with `make mutate-ratings`. A reviewer found 9 faults. The worst let a cartridge fuse of a rating the table does not list pass at 3 times its rating. All 9 are fixed, each with a test that failed first. `procure` now refuses a parts row with too few or too many fields, where it crashed. On landing, 1 hint was a sentence of 25 words, which `tests/test_guide.py` refuses; the fix pass had not run that file.
+
+Evidence: wip/land-l1 e6509f73c644320ac3325336e9e2d8106a4b1f4a, on the trunk f53caf3; `mutate: 433 mutations, 433 caught, 0 survived, 0 did not build  [165.2s]`
+
+## 2026-11-17 — Roadmap item 2 landed (in part): code declares the documents it cites
+
+Roadmap item 2 landed (in part). Samsung's part page gave a new SHA256 on every fetch: it carries a session token and a time stamp. JLCPCB's and OSH Park's pages did the same. A SHA256 cannot hold such a page, so a web page entry now holds the text of each value the rules take, and `fetch` looks for that text in the page. 3 fab files quote their page with other punctuation than the page has, so the entries hold the page's own text. Tool code and tests name a document in 1 declared way, a `CITES` table, and `references rules` fails a citation the table or the index lacks. A review found 11 faults; 7 were checks that passed what they should fail. When the piece came onto the trunk, the check failed 3 times on the high-speed work that landed beside it, and missed 5 documents its test cited: NIST's 2 CODATA pages, DLMF and 2 reports. On the second landing it missed NXP's I2C-bus specification in the frequency plan: no family read NXP's numbers. The plan cited table 10 of Rev. 7.0, and the SCL clock is in table 11. They are in the index now, and the files declare them. On the trunk the check failed once more, on the board rules' test of item 6, which landed beside it with no `CITES`; the test and `tools/boardrules.py` now declare the clauses they cite.
+
+## 2026-11-17 — The board puts right a card whose own run was missed
+
+The owner saw every work card in Todo with `**Status:** In progress` in its body. Board moved a card only on that card's own event, and the cards were older than the workflow on the default branch. `tools/board.py --all` walks every card; the schedule and Run workflow call it. The concurrency group became 1 word for every run: a group keyed on the issue number is empty on a schedule, and 2 groups would let a run of all cards and a run of 1 card write the same card at once. GitHub's `queue: max` keeps the runs waiting instead of cancelling all but 1. A review found that the stand-in for GitHub answered a canned page whatever the query asked, so a query that lost a field still passed; the stand-in now cuts each answer to the query. Board ran against GitHub first at 23:54 UTC on issue events, 22 runs, all green; `--all` has not run there yet.
+
+Evidence: `tests/test_board.py` 88 passed on the landing head.
+
+## 2026-11-17 — The lead's ways of working, written down
+
+The owner asked for the ways the lead worked today to be skills in the kit: the project board, all of it. They lived in 3 workflow scripts and 3 scratch files. They are now 4 skills and 6 files under `ee-agent-kit/lead/`, with every path of the session taken out. Writing them down found 2 faults in the scratch tools. `gate-and-push.sh` wrote its lock over one that was there, and its exit trap then removed the other gate's lock; it now makes the lock only if none is there and leaves another's alone. `landed.py` read a review that ended with no result as a review with 0 findings, so a piece with no review could read as finished; it now names it as waiting.
+
+A reviewer who did not write the tools found 10 faults, and the same root cause came back in a new form. `landed.py` no longer took a null review as passed, but it still landed a piece whose review was a sentence of text or `{}`. A review now counts only with a verdict and a list of findings, and a fix only with a list `fixed`. A review started twice kept only the result reported last; both now count. 2 journals that used the same agent ids mixed their pieces. The gate, stopped by a signal, removed its lock while `make verify` ran on; it now ends make's process group first. `quiet.py` missed a test run started as `pytest`. The skills were written beside the card's own change of the same day; on landing, the `now` skill takes the command's `--status` and the card's form as the trunk holds them.
+
+Evidence: branch `wip/land-kit-skills`; `tests/test_lead.py`, `tests/test_lead_skills.py`, `tests/test_now.py`.
 
 ## 2026-11-17 — Signet in 8 sections, and the tile its pictures left out
 

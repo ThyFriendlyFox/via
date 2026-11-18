@@ -8,7 +8,6 @@ the engine is absent.
 
 from __future__ import annotations
 
-import datetime
 import hashlib
 import http.server
 import importlib.machinery
@@ -97,7 +96,8 @@ def library(tmp_path: Path, url: str = "https://example.com") -> tuple[Path, Pat
     ]
     (lib / "sources.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
     parts = tmp_path / "parts.csv"
-    parts.write_text(PARTS.format(today=datetime.date.today().isoformat()), encoding="utf-8")
+    # `sources` reads no part's Checked date: any day stands here, and the test reads no clock.
+    parts.write_text(PARTS.format(today="2026-11-18"), encoding="utf-8")
     return lib / "sources.csv", parts
 
 
