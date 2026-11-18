@@ -25,6 +25,15 @@ RATINGS = ".claude/skills/ratings/SKILL.md"
     [
         # parts_rows() in tools/ratings.py
         ("parts.csv:2: 3 fields, and the header names 13", "every field its header names", '"Inputs"'),
+        ("parts list.csv:4: 3 fields, and the header names 13", "every field its header names", '"Inputs"'),
+        # parts_rows(): a file that is not there, or no UTF-8
+        ("/home/me/board/parts.csv: No such file or directory", "cannot be read", '"Inputs"'),
+        ("parts.csv: not UTF-8: 'utf-8' codec can't decode byte 0xff", "cannot be read", '"Inputs"'),
+        (
+            "My Board.kicad_sch: net GND names R9, which is no part of the netlist",
+            "Correct the schematic",
+            '"Inputs"',
+        ),
         # export_netlist(): the netlist reader's refusal, named by the schematic
         (
             "rc_divider.kicad_sch: net GND names R9, which is no part of the netlist",
@@ -34,6 +43,7 @@ RATINGS = ".claude/skills/ratings/SKILL.md"
         # cmd_ratings(): --out names a file, or the default folder cannot be made
         ("--out /tmp/x/out.txt: a file stands there, and a folder is asked", "--out", '"Steps"'),
         ("/home/me/board/build: Permission denied", "--out", '"Steps"'),
+        ("/home/me/My Board/build: Permission denied", "--out", '"Steps"'),
         # read_project()
         (
             "ratings.json: `speed` is no key here; the keys are pack, nets",
