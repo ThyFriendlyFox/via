@@ -5,9 +5,9 @@ file explains them and holds the repository settings that are not files.
 
 | File | Trigger | Does |
 |---|---|---|
-| `ci.yml` | push to `main`, every PR, manual | `full`: the image of this commit's toolchain when the registry gives it, else `sudo ./install.sh`; then `make verify` (tools/ci/README.md, "Where `full` runs"). |
-| `nightly.yml` | 06:17 UTC daily | `sudo env REQUIRE_FREEROUTING=1 ./install.sh` then `make verify`, always by install.sh. Files 1 `ci-failure` issue on red when none is open. Catches a moved PPA, a new KiCad point release, a broken dependency. |
-| `image.yml` | PR on the files the build reads, every push to `main`, `v*.*.*`, Monday 04:17 UTC, manual | Builds the image on amd64 and arm64 from install.sh, checks it with doctor and the gates as a user; pushes to `ghcr.io/<owner>/ee-workcenter` except on a PR. |
+| `ci.yml` | push to `main`, every PR, manual | `full`: the image of this commit's toolchain when the registry gives it, else `sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh`; then `make verify` (tools/ci/README.md, "Where `full` runs"). |
+| `nightly.yml` | 06:17 UTC daily | `sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh` then `make verify`, always by install.sh. Files 1 `ci-failure` issue on red when none is open. Catches a moved PPA, a new KiCad point release, a broken dependency. |
+| `image.yml` | PR on the files the build reads, every push to `main`, `v*.*.*`, Monday 04:17 UTC, manual | Builds the image on amd64 and arm64 from install.sh, with CI's 2 bounds of its apt step as build arguments, checks it with doctor and the gates as a user; pushes to `ghcr.io/<owner>/ee-workcenter` except on a PR. |
 | `release.yml` | tag `v*.*.*` | Publishes the GitHub Release with generated notes (the image comes from `image.yml`). |
 | `stale.yml` | Mondays | Marks issues stale after 60 days, closes after 14 more. `blocked`, `security`, `accepted` are exempt. |
 | `../dependabot.yml` | weekly | pip (`requirements.txt`), GitHub Actions, Docker base image. Minor and patch updates grouped. |
@@ -16,8 +16,12 @@ file explains them and holds the repository settings that are not files.
 ## Toolchain step
 
 CI's `full` job takes the toolchain from the image of its tag when the
-registry has it, else installs with `sudo env REQUIRE_FREEROUTING=1 ./install.sh`
-(tools/ci/README.md, "Where `full` runs"). The runner is `ubuntu-24.04`, so the PPA step, the Java package, and ngspice
+registry has it, else installs with `sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh`
+(tools/ci/README.md, "Where `full` runs").
+
+The 2 bounds end a stalled index or download with apt's own line within the `full` job's 30 minutes: 88 s for the key + 3 x 120 + 2 x 20 + 570 = 1058 s of the 1066 s the newest passing run left (job 134941364976). The nightly run (45 minutes) and the image build (60 minutes) set the same 2; `test_the_worst_case_of_the_apt_step_fits_the_jobs_limit` reads each workflow's own limit. A person's computer has no total bound.
+
+The runner is `ubuntu-24.04`, so the PPA step, the Java package, and ngspice
 match the cloud environment. `REQUIRE_FREEROUTING=1` makes a blocked JAR
 download fail the run; a green CI proves the autoroute engine installs.
 
@@ -34,6 +38,10 @@ The lines to read in the first runs:
 - The build step: `[install] boot: ... missing; apt install curl gnupg ca-certificates git make gcc libc6-dev` (install.sh's first step), then `workcenter ee: ok` (amd64) or `degraded, without openems` (arm64), then `image tc-... (x86_64|aarch64) at /opt/workcenters/ee/image.json` with 6 version lines (`image.py record`). A line `image.py: record refused: ...` is a failed image.
 - "The gates" step: `GREEN: rc_divider` and `owners of the files written: <the runner's user>`.
 - CI's `full` job: `where: image: the registry holds ...` or `where: install: ...` with its reason; on the image path `image: the checkout's Dockerfile, install.sh, requirements.txt are those the image was built from` before `make verify`. On the image's own pull request the job takes the install path (`where: install: this change edits Dockerfile, install.sh: the install path is their test`).
+
+## What CI still needs from a third party
+
+CI's `full` job still needs Launchpad's host on every run that takes the install path. The owner chose the container image to end that: the `full` job runs in the image of its toolchain's content tag when the registry has it, and needs no third party then (`tools/image.py decide`). What stays open: a pull request that changes `Dockerfile`, `install.sh` or `requirements.txt` takes the install path, as its test, and needs Launchpad's host; and every push to main runs install.sh again inside the image build, so an outage of KiCad 10's package source turns that `Image` run red and leaves `main`'s image stale. Building the toolchain layer from install.sh and requirements.txt alone, kept between builds by the registry's cache, would let a push that changes neither run without a third party; it is not built.
 
 ## The website (Vercel project settings)
 

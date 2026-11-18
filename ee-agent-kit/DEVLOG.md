@@ -39,6 +39,12 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-18 — The install script when KiCad 10's package source does not answer
+
+On 2026-11-18 Launchpad's host answered 503 on and off. In 1 CI run the index of KiCad 10's source did not arrive, `apt-get update` ended with 0, and apt installed Ubuntu's KiCad 7. In another, a package file did not arrive and a pipe's `|| true` hid apt's exit code. Both ended with "kicad-cli 10.x not found after install". The apt step now tries the index 3 times, checks every KiCad candidate before it downloads anything, and stops with apt's own line and what to do. The first run of the new tests sourced the script on this machine, which runs as root, before it had its guard; main() ran and changed 5 things outside the test (M261). The tests then got a fence for every program that can write and a scan of the script's code, and 3 reviews found the fence open 2 times. The lead decided that a person's computer gets no total bound; CI, the nightly run and the image build set 120 s and 570 s. At landing, the container image's first step (step_boot) met the harness: its certificates' path was a literal, so every test refused to run, and its apt calls let a failure through; both fixed. The key fetch's stop now says the key did not arrive, where it said nothing.
+
+Evidence: `tests/test_install_apt.py` (81 tests), `tests/install_mutations.py` (83 caught); landing branch `wip/land-install`.
+
 ## 2026-11-18 — The container image
 
 Launchpad's package host answered 503 on and off for more than an hour, and CI's runs failed or waited in their install step. The owner asked for the container image. It is built from the same install.sh as CI, on Ubuntu 24.04, for amd64 and arm64 (the KiCad 10 PPA serves both; GitHub gives public repositories arm64 runners); its tag is the sha256 of the toolchain's 3 files. CI's full job runs inside it when the registry has the image of its own files and installs as before when not. A user id with no home stops kicad-cli (`Environment variable HOME is empty`), so the image gives every user id a home. The image leaves out the example boards and the site (394 MB of the working tree): no tool it runs reads them. What the image saves first is the dependence on a third party's host, not time. Not built yet: the first build is the pull request's.
