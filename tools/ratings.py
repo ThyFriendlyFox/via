@@ -707,15 +707,18 @@ SHA256_RE = re.compile(r"[0-9a-fA-F]{64}")
 
 def _date(where: str, value: object, or_no: bool = False) -> None:
     """A date the calendar has, as YYYY-MM-DD. `no` too where a second reader may not have read yet:
-    any other word there would count as a reading."""
+    any other word there would count as a reading. A day after today, by this machine's clock, has
+    seen no reading yet."""
     if or_no and value == "no":
         return
     try:
         if not isinstance(value, str) or not DATE_RE.fullmatch(value):
             raise ValueError
-        datetime.date.fromisoformat(value)
+        day = datetime.date.fromisoformat(value)
     except ValueError:
         raise Refusal(f"{where}: write {'`no`, or ' if or_no else ''}the date as YYYY-MM-DD") from None
+    if day > datetime.date.today():
+        raise Refusal(f"{where}: {value} is after today: write the date the document was read")
 
 
 def _source(where: str, source: dict) -> None:

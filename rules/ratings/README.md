@@ -213,7 +213,7 @@ table, or a company's. It has the same keys, and each rule its `where`. The comm
 an unknown stress, a rule with no `where`, a share that rises with the temperature (`falls_to` above
 `max`), or a document with no URL, SHA256 and date read. A URL is written whole, as
 `https://example.com/file.pdf`, a SHA256 as 64 hex digits and a date as `2026-11-17`; `second_reader`
-is `no` or the date.
+is `no` or the date. A date after today, by the machine's clock, is refused: no one has read on it yet.
 
 A run that such a file judged says so. The first line, `report.md` and `report.json` name the pack
 by the path `ratings.json` gives, with `(the project's own)` after it:

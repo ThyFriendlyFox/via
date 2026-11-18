@@ -350,7 +350,7 @@ def test_a_stated_board_under_its_run_s_ambient_is_set_aside_and_theta_ja_judges
     ]
     assert judged["not_judged"] == [
         "thermal: U1 (TLV75533PDBVR) not judged from its stated board temperature: sim/thermal.json states "
-        f"20 C at 85 C ambient, under the air; {BELOW}"
+        f"20 C at 85 C ambient, not above the air; {BELOW}"
     ]
     assert judged["parts"]["U1"]["held"] is False
 
@@ -364,11 +364,76 @@ def test_a_part_with_a_stated_temperature_set_aside_is_never_held(tmp_path):
     assert judged["failures"] == []
     assert judged["not_judged"] == [
         "thermal: U1 (TLV75533PDBVR) not judged from its stated board temperature: sim/thermal.json states "
-        f"50 C at 60 C ambient, under the air; {BELOW}"
+        f"50 C at 60 C ambient, not above the air; {BELOW}"
     ]
     part = judged["parts"]["U1"]
     assert part["held"] is None and part["worst"]["figure"] == "theta_ja"
     assert part["worst"]["junction"] == pytest.approx(83.11)
+
+
+def test_a_stated_board_at_its_run_s_ambient_is_set_aside_as_one_under_it(tmp_path):
+    """A part that dissipates heats its board above the air (SPRA953D, section 4, figure 4-1, page 10),
+    so a board stated at 85 C at 85 C ambient is set aside as well: theta_ja gives 85 + 231.1 x 0.17296
+    = 124.97 C, over 110 C. Taken, the board would give 85 + 63.8 x 0.17296 = 96.03 C and hold it."""
+    even = {"figure": "psi_jb", "celsius": {"85": 85}, "source": "measured"}
+    plan = plan_of(tmp_path, {"U1": {**U1, "from": even}})
+    judged = thermal.judge(plan, runs_at(("85 C", 85.0, 0.17296)), FACTS_LIST, ECSS)
+    assert len(judged["failures"]) == 1
+    assert judged["failures"][0].startswith(
+        "thermal: U1 (TLV75533PDBVR) at 85 C ambient: junction 124.97 C, over 110 C (85 C): 85 C + 231.1 C/W"
+    )
+    assert judged["not_judged"] == [
+        "thermal: U1 (TLV75533PDBVR) not judged from its stated board temperature: sim/thermal.json states "
+        f"85 C at 85 C ambient, not above the air; {BELOW}"
+    ]
+    assert judged["parts"]["U1"]["held"] is False
+
+
+def test_a_stated_junction_under_the_one_theta_ja_gives_on_the_2s2p_board_holds_no_part(tmp_path):
+    """SPRA953D, section 1.2, page 3: a 2s2p board gives a best case. A board stated at 85.001 C at 85 C
+    ambient gives 85.001 + 63.8 x 0.17296 = 96.036 C, inside 110 C, under the 85 + 231.1 x 0.17296 =
+    124.97 C theta_ja gives on the 2s2p board of JESD 51-7: the junction is judged from the board, and
+    the part is not held."""
+    above = {"figure": "psi_jb", "celsius": {"85": 85.001}, "source": "measured"}
+    plan = plan_of(tmp_path, {"U1": {**U1, "from": above}})
+    judged = thermal.judge(plan, runs_at(("85 C", 85.0, 0.17296)), FACTS_LIST, ECSS)
+    assert judged["failures"] == []
+    assert judged["not_judged"] == [
+        "thermal: U1 (TLV75533PDBVR) not held at 85 C: its stated board 85.001 C gives a junction of "
+        "96.036 C, under the 124.97 C theta_ja gives on the high-k 2s2p board of JESD 51-7, which "
+        "SPRA953D calls a best case (section 1.2, page 3)"
+    ]
+    part = judged["parts"]["U1"]
+    assert part["held"] is None and part["worst"]["junction"] == pytest.approx(96.035848)
+
+
+def test_a_junction_from_theta_jb_holds_no_part(tmp_path):
+    """SPRA953D, section 4, page 10: RthetaJB is useful for a first-pass estimation, and no bound is
+    given. A board at 90 C at 60 C ambient, 0.1 W: 90 + 64.4 x 0.1 = 96.44 C, inside 110 C and above the
+    60 + 231.1 x 0.1 = 83.11 C of theta_ja; the part is still not held."""
+    board = {"figure": "theta_jb", "celsius": {"60": 90}, "source": "measured"}
+    plan = plan_of(tmp_path, {"U1": {**U1, "from": board}})
+    judged = thermal.judge(plan, runs_at(("60 C", 60.0, 0.1)), FACTS_LIST, ECSS)
+    assert judged["failures"] == []
+    assert judged["not_judged"] == [
+        "thermal: U1 (TLV75533PDBVR) not held at 60 C: its junction there comes from theta_jb, which "
+        "SPRA953D calls useful for a first-pass estimation only and gives no bound on (section 4, page "
+        "10); psi_jb gives the junction from the board's temperature (section 5.1, equation 9, page 11)"
+    ]
+    part = judged["parts"]["U1"]
+    assert part["held"] is None and part["worst"]["junction"] == pytest.approx(96.44)
+
+
+def test_a_part_judged_from_a_stated_temperature_names_it_and_its_source(tmp_path):
+    """A board at 90 C at 60 C ambient, 0.1 W: 90 + 63.8 x 0.1 = 96.38 C on psi_jb, above the 83.11 C of
+    theta_ja, inside 110 C: held, and the record names the stated board and where it comes from."""
+    board = {"figure": "psi_jb", "celsius": {"60": 90}, "source": "a thermocouple under U1"}
+    plan = plan_of(tmp_path, {"U1": {**U1, "from": board}})
+    part = thermal.judge(plan, runs_at(("60 C", 60.0, 0.1)), FACTS_LIST, ECSS)["parts"]["U1"]
+    assert part["held"] is True and part["worst"]["from"] == 90
+    assert part["stated"] == {"figure": "psi_jb", "temperature": "board", "source": "a thermocouple under U1"}
+    plan = plan_of(tmp_path, {"U1": U1})
+    assert "stated" not in thermal.judge(plan, runs_at(("60 C", 60.0, 0.1)), FACTS_LIST, ECSS)["parts"]["U1"]
 
 
 def test_theta_jb_claims_no_bound_spra953d_does_not_give():
@@ -418,9 +483,29 @@ def test_a_part_with_no_theta_ja_is_judged_only_where_its_temperature_is_stated(
     assert (part["runs"], part["held"], part["worst"]["junction"]) == (1, None, 92.5)
 
 
-def test_a_stated_figure_the_facts_do_not_give_leaves_the_part_not_judged(tmp_path):
+def test_a_stated_figure_the_facts_do_not_give_sets_the_statement_aside_and_theta_ja_judges(tmp_path):
+    """Q-1 gives theta_ja 100 C/W on a 2s2p board and no psi_jb. `from` names psi_jb: the statement is
+    set aside and theta_ja judges every run: at 60 C and 0.6 W, 60 + 100 x 0.6 = 120 C, over 110 C."""
+    term = {**BASE, "boards": {"theta_ja": "2s2p", "page": 2}}
     plan = plan_of(tmp_path, {"Q1": {"mpn": "Q-1", "watts": "ldo.p_u1", "source": "s", "from": BOARD_AT_60}})
-    judged = thermal.judge(plan, runs_at(("60 C", 60.0, 0.1)), facts_with(BASE), ECSS)
+    judged = thermal.judge(plan, runs_at(("60 C", 60.0, 0.6)), facts_with(term), ECSS)
+    assert len(judged["failures"]) == 1
+    assert judged["failures"][0].startswith(
+        "thermal: Q1 (Q-1) at 60 C ambient: junction 120 C, over 110 C (60 C): 60 C + 100 C/W x 0.6 W"
+    )
+    assert judged["not_judged"] == [
+        "thermal: Q1 (Q-1) not judged from its stated board temperature: sim/thermal.json names psi_jb in "
+        "`from`, and its facts (q.json) give no psi_jb; theta_ja judges its runs"
+    ]
+    assert judged["parts"]["Q1"]["held"] is False
+    judged = thermal.judge(plan, runs_at(("60 C", 60.0, 0.1)), facts_with(term), ECSS)
+    assert judged["failures"] == [] and judged["parts"]["Q1"]["held"] is None
+
+
+def test_a_stated_figure_the_facts_do_not_give_and_no_theta_ja_leaves_the_part_not_judged(tmp_path):
+    term = {"junction_max": 150, "theta_jc": 20, "page": 2, "boards": {"theta_jc": "2s2p", "page": 2}}
+    plan = plan_of(tmp_path, {"Q1": {"mpn": "Q-1", "watts": "ldo.p_u1", "source": "s", "from": BOARD_AT_60}})
+    judged = thermal.judge(plan, runs_at(("60 C", 60.0, 0.1)), facts_with(term), ECSS)
     assert judged["parts"] == {} and judged["failures"] == []
     assert judged["not_judged"] == [
         "thermal: Q1 (Q-1) not judged: sim/thermal.json names psi_jb in `from`, and its facts (q.json) give "
@@ -472,6 +557,23 @@ def test_a_junction_rule_takes_its_own_reading_or_its_document_s(tmp_path):
     with pytest.raises(ratings.Refusal) as caught:
         ratings.read_pack(path)
     assert str(caught.value).startswith("pack.json: rule 12: second_reader: write `no`, or the date")
+
+
+def test_a_reading_dated_after_today_is_refused(tmp_path):
+    """No one has read a document on a day still to come: a rule's or a facts entry's second reading, or
+    its first, dated after today counts as no reading and is refused with its place."""
+    card = json.loads((PACKS / "ecss-q-st-30-11c-rev2.json").read_text(encoding="utf-8"))
+    junction = next(r for r in card["rules"] if r["stress"] == "junction.temperature")
+    junction["second_reader"] = "2099-01-01"
+    path = tmp_path / "pack.json"
+    path.write_text(json.dumps(card), encoding="utf-8")
+    with pytest.raises(ratings.Refusal) as caught:
+        ratings.read_pack(path)
+    assert "second_reader: 2099-01-01 is after today" in str(caught.value)
+    for key in ("second_reader", "read"):
+        with pytest.raises(ratings.Refusal) as caught:
+            ratings._facts("part.json", {**MOSFET, "source": {**SOURCE, key: "2099-01-01"}})
+        assert f"{key}: 2099-01-01 is after today" in str(caught.value)
 
 
 def test_a_part_names_what_rests_on_1_reading(tmp_path):
@@ -560,3 +662,25 @@ def test_a_stated_board_temperature_fails_a_part_theta_ja_holds_in_the_gate(tmp_
         f"0.17252 W of ldo.p_u1, psi_jb and junction_max of {TLV755}, p 4 and 5, psi_jb on the high-k 2s2p "
         f"board of JESD 51-7 (p 5); {LIMIT}"
     ]
+
+
+@needs_ngspice
+def test_a_passing_line_names_the_stated_temperature_and_its_source(tmp_path):
+    """pass-sim-thermal with a board at 90 C at 60 C ambient: 90 + 63.8 x 0.17252 = 101.01 C at R1 1 %
+    low, inside 110 C and above the 99.87 C of theta_ja there. The line names the board and its source."""
+    project = copy_of(tmp_path, "pass-sim-thermal")
+    plan = json.loads((project / "sim" / "thermal.json").read_text(encoding="utf-8"))
+    plan["parts"]["U1"]["from"] = {**BOARD_AT_60, "celsius": {"60": 90}}
+    (project / "sim" / "thermal.json").write_text(json.dumps(plan), encoding="utf-8")
+    proc = subprocess.run(
+        [sys.executable, str(CLI), "sim", str(project), "--out", str(tmp_path / "out"), "--strict"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stdout
+    line = next(x for x in proc.stdout.splitlines() if x.startswith("thermal U1:"))
+    assert "101.01 C at its worst of" in line
+    assert (
+        "(60 C, R1 -1 %), from board 90 C at 60 C ambient (a board temperature made up for the test);" in line
+    )
