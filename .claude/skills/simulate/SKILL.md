@@ -665,9 +665,18 @@ theta_jb holds no part. Prefer psi_jb or psi_jt.
    temperature and its source when its worst run used it, and, when the
    facts give theta_ja, the junction theta_ja gives at those runs and its
    board, so the owner sees how far the statement moves the verdict.
-   Without `sim/thermal.json` the gate judges no junction and prints 1
-   line that says so. `workcenter gates` prints the same `thermal` lines,
-   and `--report` writes them under the deck table.
+   The gate finds the parts that can get hot by itself: every part of
+   the board whose facts carry `thermal`. It reads the schematic's parts
+   with kicad-cli and each part's number from `parts.csv`, as `workcenter
+   ratings` does. A part of them that the file does not name is not
+   judged, on 1 line that gives the row to write (a warning, a failure
+   with `--strict`). No power decides it: a part is asked for because its
+   facts carry a thermal figure. A board with no such part says so in 1
+   line and passes. A project with no schematic names no part of a board:
+   only the file's parts are judged, and 1 line says so. Without
+   `sim/thermal.json` the gate judges no junction and prints 1 line that
+   says so. `workcenter gates` prints the same `thermal` lines, and
+   `--report` writes them under the deck table.
 4. Run `workcenter sim <project>`. Read each line that starts with
    `thermal:`, and each line that starts with `corners.json: decks.`:
 
@@ -684,7 +693,13 @@ theta_jb holds no part. Prefer psi_jb or psi_jt.
    | `thermal: U1 (MPN) not held: its facts (...) name no JEDEC board for theta_ja` | Write `boards` from the thermal table's footnote. A figure on no JEDEC board holds no part. |
    | `... not held at 85 C: its stated board 85.001 C, which gives a junction of 96.035 C, was checked against no board: ...` | No 2s2p floor checks the stated temperature. Judge the part on theta_ja (take `from` out), or, for a case on a heat sink, state theta_jc with `heat_sink` and its 2 resistances. |
    | `thermal U1: junction ... at its worst of 11 runs (...), the case on a heat sink, ..., the worst junction by SPRA953D, section 2.2, equation 5, page 7` | Equation 5 from the ambient gave more than the stated case or theta_ja: the sink, not the case, sets the junction. A hotter part needs a better sink (a lower Rtheta(SA)) or less power. |
-   | `thermal: no part's junction is judged: sim/thermal.json is not there, ...` | Name each part that dissipates power in `sim/thermal.json` (step 3). |
+   | `thermal: no part's junction is judged: sim/thermal.json is not there ...` | Name each part that dissipates power in `sim/thermal.json` (step 3). The lines below it name the parts whose facts carry a thermal figure. |
+   | `thermal: U1 (MPN) not judged: its facts (...) carry junction_max ... and sim/thermal.json names no row for it: write its row ...` | Write the row the line gives under `parts` in `sim/thermal.json`: the deck's measure that prints the part's power (step 2), and where that power comes from. Never take `thermal` out of the facts to quiet the line. |
+   | `thermal: which parts of the board carry a thermal figure is not judged: ...` | Do what the reason asks: install kicad-cli, correct the schematic, the facts or `parts.csv`. |
+   | `thermal: U1 not judged: ... both speak of U1 ...` | 2 facts entries name the part as closely. Keep 1 (the `ratings` skill). |
+   | `thermal: 2 parts of the board carry a thermal figure in their facts: U1, U2; sim/thermal.json names 2 of them` | Nothing: every part that can get hot is named. |
+   | `thermal: no part of the board carries a thermal figure in its facts ...` or `thermal: no facts entry of library/facts carries a thermal figure ...` | Nothing to do here. A part with no facts entry is named by `workcenter ratings`; write its facts there. |
+   | `thermal: the project has no schematic, so it names no part of a board ...` | The gate judges only the file's parts. Write the schematic, and the gate asks for the rest. |
    | `corners.json: decks.ldo.temperature runs -20 C and 60 C, so 85 C of the file's -20 C and 85 C is not run for ldo` | The deck's own block leaves out a temperature of the file, an end or an inner one. Add it to the deck's block, or take the block out so the deck runs the file's. |
    | `... not judged: its deck ... did not run to its end` | Fix the deck first; its errors are in the same result. |
    | `... not judged at the corners of sim/corners.json: the file skips deck ...` | The deck's `skip`, `--nominal`, `temperature: false` or a narrower `temperature` block left the corners out. Run the part's power in a deck the corners run. |
@@ -702,7 +717,12 @@ theta_jb holds no part. Prefer psi_jb or psi_jt.
    second reader compared), the run as written and the worst run, each
    with its ambient, its power, its figure, the stated temperature when
    there is one (`from`) and its junction. `held` is true, false, or null
-   when a run or a corner was not judged or a figure has no board.
+   when a run or a corner was not judged or a figure has no board. A run
+   that equation 5 judged names `theta_jc` as its figure, with
+   `equation` `5`; what theta_ja or the stated case gave there stands
+   under `beside`. `details.thermal.board` holds the board's line, the
+   parts whose facts carry a thermal figure (`asked`) and those the file
+   leaves out (`unplanned`).
 
 ## Checks
 

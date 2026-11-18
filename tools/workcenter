@@ -1248,6 +1248,13 @@ def gate_sim(
     elif decks and not (sim_dir / th.PLAN_FILE).is_file():
         # No file is no junction judged: the record and the printed result say so.
         heated = {"pack": None, "parts": {}, "not_judged": [], "unplanned": th.NO_PLAN}
+    if heated is not None:
+        # Every part of the board whose facts carry a thermal figure is asked for, named in the plan or
+        # not (roadmap item 7): one the plan leaves out is not judged.
+        board, board_unjudged = thermal_board(project, sim_out / "thermal", set(heat.parts) if heat else None)
+        heated["board"] = board
+        heated["not_judged"] = heated["not_judged"] + board_unjudged
+        warned += board_unjudged
     if strict:
         failures += warned
     summary = f"{len(decks)} decks"
@@ -1302,6 +1309,48 @@ def sim_thermal(
     ]
     record = {"pack": pack.name, "parts": judged["parts"], "not_judged": unjudged}
     return record, judged["failures"], unjudged
+
+
+def thermal_board(project: Project, folder: Path, named: set[str] | None) -> tuple[dict, list[str]]:
+    """The parts of the board whose facts carry a thermal figure, and those sim/thermal.json leaves out
+    (tools/thermal.py, `asked`): (record, not judged). `named` is the plan's parts, None with no plan.
+    kicad-cli reads the schematic's parts only when a facts entry of the library carries `thermal`."""
+    th, rt = thermal(), ratings()
+    library = rt.find_facts(project.dir)
+    if library is None:
+        return {"line": th.NO_LIBRARY}, []
+    try:
+        facts = rt.read_facts(library)
+    except (ValueError, OSError) as exc:
+        return {"line": None}, [th.UNREAD.format(why=f"library/facts: {exc}")]
+    if not any("thermal" in f.data for f in facts):
+        return {"line": th.no_figure(len(facts))}, []
+    if not project.sch:
+        return {"line": th.NO_SCHEMATIC}, []
+    if not shutil.which(KICAD_CLI):
+        return {"line": None}, [
+            th.UNREAD.format(why=f"{KICAD_CLI} is not on PATH to read the schematic's parts")
+        ]
+    folder.mkdir(parents=True, exist_ok=True)
+    try:
+        net, stderr = rt.export_netlist(project, folder, sys.modules[__name__])
+        if net is None:
+            return {"line": None}, [
+                th.UNREAD.format(why=f"kicad-cli wrote no netlist: {stderr.strip()[-200:]}")
+            ]
+        listed = project.dir / "parts.csv"
+        rows = rt.parts_rows([listed], sys.modules[__name__]) if listed.is_file() else []
+        mpns = rt.part_numbers(net, rows)
+    except (ValueError, OSError) as exc:
+        return {"line": None}, [th.UNREAD.format(why=str(exc))]
+    entries, unread = {}, []
+    for ref, part in net.parts.items():
+        try:
+            entries[ref] = (mpns.get(ref, ""), rt.facts_of(facts, part, mpns.get(ref, "")))
+        except rt.Refusal as exc:  # 2 entries speak of the part as closely
+            unread.append(f"thermal: {ref} not judged: {exc}")
+    board = th.asked(entries, named)
+    return board, unread + board["not_judged"]
 
 
 BUNDLE_RUN = "run.sp"
