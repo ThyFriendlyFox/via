@@ -24,15 +24,21 @@ import sys
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
 BOARDS = ROOT / "tests" / "boards"
 TEMPLATES = ROOT / "templates" / "project" / "sim"
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("kicad-cli") is None or shutil.which("ngspice") is None,
-    reason="kicad-cli and ngspice are needed",
+# Every test starts kicad-cli or ngspice: the fast run (`-m "not engine"`) leaves the file out.
+pytestmark = list(
+    engine(
+        pytest.mark.skipif(
+            shutil.which("kicad-cli") is None or shutil.which("ngspice") is None,
+            reason="kicad-cli and ngspice are needed",
+        )
+    )
 )
 
 # The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
