@@ -559,6 +559,23 @@ def test_the_routers_files_point_at_item_5_by_its_roadmap_title():
     assert [p for p in pointers if items.get(p[1]) != p[2]] == []
 
 
+def test_every_rule_around_a_route_has_its_test_here():
+    """The autoroute skill's "The rules around a route" numbers 20 rules; each must be held by a test
+    of this file whose docstring starts `Rule N.`. A rule dropped from the tests, or added to the skill
+    without a test, fails here (the owner's word of 2026-11-17: the rules around FreeRouting are kept)."""
+    skill = (ROOT / ".claude" / "skills" / "autoroute" / "SKILL.md").read_text(encoding="utf-8")
+    section = skill.split("## The rules around a route", 1)[1].split("\n## ", 1)[0]
+    rules = {int(n) for n in re.findall(r"^(\d+)\. ", section, re.M)}
+    assert rules == set(range(1, 21))
+    held = set()
+    for name, test in globals().items():
+        if name.startswith("test_") and callable(test):
+            match = re.match(r"Rule (\d+)\.", (test.__doc__ or "").strip())
+            if match:
+                held.add(int(match.group(1)))
+    assert sorted(rules - held) == []
+
+
 def test_a_router_the_workcenter_does_not_know_is_refused(tmp_path):
     """`--router` takes the names of the routers the workcenter knows, and nothing else."""
     proc = subprocess.run(
