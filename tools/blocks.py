@@ -25,6 +25,10 @@ from types import SimpleNamespace
 
 import ratings
 
+CITES = {
+    "ti-slva477c": "equations 1, 2, 3, 4 and 11; sections 3, 6 and 7",
+    "ti-slvsdg1": "equations 1 (7.3.2) and 2, table 4 and its notes; sections 6.3, 6.5, 8.2.2.2 to 8.2.2.5",
+}
 ROOT = Path(__file__).resolve().parents[1]
 RULES = ROOT / "rules" / "blocks"
 HEADER = "Value,Footprint,Qty,Manufacturer,MPN,Supplier,SKU,Pack,Breaks"

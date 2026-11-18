@@ -9,7 +9,7 @@ inductance fall 30 %: the block counts the larger, 2.2 uH x 0.7 = 1.54 uH at the
     equation 1    D = 3.3 / (5.25 x 0.9) = 3.3 / 4.725 = 0.698413
     equation 2    dIL = (5.25 - 3.3) x 0.698413 / (1.35e6 x 1.54e-6) = 1.361905 / 2.079 = 0.655077 A
     equation 3    IMAXOUT = 3 - 0.655077 / 2 = 2.672462 A
-    equation 4    at 0.5 A: 0.5 + 0.327538 = 0.827538 A; with SLVSDG1C 8.2.2.4's 20 % of margin (page 10)
+    equation 4    at 0.5 A: 0.5 + 0.327538 = 0.827538 A; with SLVSDG1C section 8.2.2.4's 20 % (page 10)
                   0.827538 x 1.2 = 0.993046 A, under SRN2010TA-2R2M's 1.26 A
                   at 1.0 A: 1.327538 A, x 1.2 = 1.593046 A, over its 1.26 A and under XAL4020-222ME's 5.6 A
                   at 0.9 A: 1.227538 A, under 1.26 A, but x 1.2 = 1.473046 A, over it
@@ -40,6 +40,10 @@ sys.path.insert(0, str(ROOT / "tools"))
 import blocks  # noqa: E402
 import kicadgen  # noqa: E402
 
+CITES = {
+    "ti-slva477c": "equations 1, 2, 3, 4 and 11; sections 6 and 7",
+    "ti-slvsdg1": "equations 1 (7.3.2) and 2, table 4 and its notes; sections 6.3, 6.5, 8.2.2.4 and 8.2.2.5",
+}
 CLI = ROOT / "tools" / "workcenter"
 BOARDS = ROOT / "tests" / "boards"
 FACTS = BOARDS / "library" / "facts"
@@ -273,7 +277,7 @@ def test_table_4s_row_is_taken_from_the_voltage_the_divider_sets():
 
 @needs_libs
 def test_an_output_over_the_least_input_is_refused():
-    """5 V is over the least input, 4.75 V: VOUT runs from 0.6 V to VIN (SLVSDG1C 6.3, page 4)."""
+    """5 V is over the least input, 4.75 V: VOUT runs from 0.6 V to VIN (SLVSDG1C section 6.3, page 4)."""
     assert (
         refused(amps=0.5, vout=5.0) == f"buck U1: VOUT of 5 V is over the least input, 4.75 V [{VOUT_WHERE}]"
     )
@@ -290,7 +294,7 @@ def test_a_duty_cycle_over_1_is_refused():
 
 @needs_libs
 def test_an_output_under_the_reference_is_refused():
-    """0.5 V is under the 0.6 V that VOUT starts at (SLVSDG1C 6.3, page 4)."""
+    """0.5 V is under the 0.6 V that VOUT starts at (SLVSDG1C section 6.3, page 4)."""
     assert refused(amps=0.5, vout=0.5) == f"buck U1: VOUT of 500 mV is under 600 mV [{VOUT_WHERE}]"
 
 
@@ -381,7 +385,7 @@ def test_a_divider_that_sets_the_output_outside_the_references_accuracy_is_refus
     """A made-up 5 % 430k is the stock's nearest to 450k: 0.6 x 5.3 = 3.18 V, 3.6 % under 3.3 V. The span
     0.588 x (1 + 430 x 0.95 / 101) = 2.966 V to 0.612 x (1 + 430 x 1.05 / 99) = 3.403 V holds 3.3 V, and
     the block took it before the fix. It now holds the output set to 2 %, the reference's own accuracy:
-    588 mV to 612 mV around 600 mV (SLVSDG1C 6.5, page 4)."""
+    588 mV to 612 mV around 600 mV (SLVSDG1C section 6.5, page 4)."""
     loose = {"kind": "resistor", "mpn": "LOOSE-430K", "tolerance": 0.05, "watts": 0.1, "volts": 50}
     r430 = blocks.Stock("made up", "LOOSE-430K", "430k", R_0603)
     assert refused(amps=0.5, stock=[SRN, R100, r430, CIN, COUT], facts=facts_with(tmp_path, loose)) == (
@@ -395,7 +399,7 @@ def test_a_divider_that_sets_the_output_outside_the_references_accuracy_is_refus
 def test_an_input_capacitor_is_held_to_the_value_it_keeps_at_the_greatest_input():
     """With no 16 V capacitor stocked, C1 was CL10A106KP8NNN before the fix, counted at its written 10 uF.
     Its facts keep 0.26677 of it at 5.25 V (between (5.2344, 0.26773) and (5.35535, 0.26029)):
-    10 uF x 0.9 x 0.26677 = 2.4 uF, under the 4.7 uF of SLVSDG1C 8.2.2.5 (page 10)."""
+    10 uF x 0.9 x 0.26677 = 2.4 uF, under the 4.7 uF of SLVSDG1C section 8.2.2.5 (page 10)."""
     assert refused(amps=0.5, stock=[SRN, R100, R453, COUT]) == (
         "buck U1: no stocked capacitor gives 4.7 uF of input capacitance at 5.25 V: CL10A106KP8NNN: 10 uF "
         f"less 10 % keeps 2.4 uF at 5.25 V, under 4.7 uF [{INPUT_WHERE}]"
@@ -527,7 +531,8 @@ def test_a_capacitor_under_x5r_is_passed_over(tmp_path):
 @needs_libs
 def test_output_capacitance_over_47_uf_is_refused(tmp_path):
     """A made-up 100 uF capacitor that keeps all its value: 5 uF / (100 uF x 0.8) = 0.06, so 1, and
-    1 x 100 uF is over the 47 uF of SLVSDG1C 8.2.2.5 (page 10). FIXTURE-10U-16V gives no kept value."""
+    1 x 100 uF is over the 47 uF of SLVSDG1C section 8.2.2.5 (page 10). FIXTURE-10U-16V gives no kept
+    value."""
     big = {"kind": "capacitor.ceramic", "mpn": "FIXTURE-100U-10V", "tolerance": 0.2, "volts": 10}
     facts = facts_with(tmp_path, {**big, "dielectric": "X5R", "kept": [[0, 1.0], [10, 1.0]]})
     cap = blocks.Stock("made up", "FIXTURE-100U-10V", "100u 10V", "Capacitor_SMD:C_1210_3225Metric")
@@ -544,7 +549,7 @@ KEEPS_ALL = {"kind": "capacitor.ceramic", "tolerance": 0.2, "volts": 10, "dielec
 @needs_libs
 def test_1_capacitor_of_10_uf_is_within_10_uf_to_47_uf(tmp_path):
     """A made-up 10 uF capacitor that keeps all its value: 5 uF / (10 uF x 0.8) = 0.625, so 1, and
-    1 x 10 uF is the 10 uF the span starts at (SLVSDG1C 8.2.2.5, page 10)."""
+    1 x 10 uF is the 10 uF the span starts at (SLVSDG1C section 8.2.2.5, page 10)."""
     facts = facts_with(tmp_path, {**KEEPS_ALL, "mpn": "FIXTURE-10U-FLAT", "kept": [[0, 1.0], [10, 1.0]]})
     cap = blocks.Stock("made up", "FIXTURE-10U-FLAT", "10u flat", C_0603)
     d, _ = buck(0.5, stock=[SRN, R100, R453, CIN, cap], facts=facts)
@@ -555,7 +560,7 @@ def test_1_capacitor_of_10_uf_is_within_10_uf_to_47_uf(tmp_path):
 @needs_libs
 def test_output_capacitance_under_10_uf_is_refused(tmp_path):
     """A made-up 4.7 uF capacitor that keeps all its value: 5 uF / (4.7 uF x 0.8) = 5 / 3.76 = 1.33, so 2,
-    and 2 x 4.7 uF = 9.4 uF is under the 10 uF of SLVSDG1C 8.2.2.5 (page 10)."""
+    and 2 x 4.7 uF = 9.4 uF is under the 10 uF of SLVSDG1C section 8.2.2.5 (page 10)."""
     facts = facts_with(tmp_path, {**KEEPS_ALL, "mpn": "FIXTURE-4U7-FLAT", "kept": [[0, 1.0], [10, 1.0]]})
     cap = blocks.Stock("made up", "FIXTURE-4U7-FLAT", "4.7u flat", C_0603)
     assert refused(amps=0.5, stock=[SRN, R100, R453, cap, CIN], facts=facts) == (
