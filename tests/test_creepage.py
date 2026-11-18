@@ -885,11 +885,35 @@ def _bad(tmp_path, base: Path, change) -> Path:
             lambda d: d["conditions"]["pollution_degree"]["values"].append("2 I"),
             r"bad.json: conditions: pollution_degree: values: `2 I` holds a space",
         ),
+        # The landing's mutation run: each of these passed or ended in a KeyError on a mutant.
+        (TI, lambda d: d["creepage"].update(rows=[]), r"bad.json: creepage: rows: a list of rows is asked"),
+        (TI, lambda d: d.update(conditions={}), r"bad.json: conditions: an object of conditions is asked"),
+        (
+            TI,
+            lambda d: d["creepage"]["rows"][0]["mm"].pop("2 III"),
+            r"bad.json: creepage rows 1: mm: an object of .* is asked",
+        ),
+        (TI, lambda d: d["not_judged"].insert(0, "nowhere"), r"bad.json: not_judged 1: where: name the page"),
     ],
 )
 def test_a_project_pack_with_a_fault_is_refused_with_its_place(tmp_path, base, change, message):
     with pytest.raises(Refusal, match=message):
         creepage.read_pack(_bad(tmp_path, base, change))
+
+
+def test_only_a_pack_of_kind_creepage_is_a_creepage_pack():
+    """The landing's mutation run: `is_creepage` read any JSON object as a creepage pack on a mutant."""
+    assert creepage.is_creepage(MIL) and creepage.is_creepage(TI)
+    assert not creepage.is_creepage(PACKS / "ti-slva680a-esd.json")
+    assert not creepage.is_creepage(PACKS / "ecss-q-st-70-12c-rev1.json")
+
+
+@pytest.mark.parametrize("stated", [{}, {"condition": "A"}, ["mil-hdbk-454c-g69"], "mil-hdbk-454c-g69"])
+def test_creepage_with_no_pack_is_refused(stated):
+    """`creepage` in board-rules.json is an object with `pack`; anything else is refused before the
+    project or the board is read (the landing's mutation run: a KeyError on a mutant)."""
+    with pytest.raises(Refusal, match=r"board-rules.json: creepage: an object with `pack`"):
+        creepage.judge(None, stated, "", {})
 
 
 def test_each_pack_says_what_it_takes_of_solder_mask_and_coating():
@@ -1284,3 +1308,27 @@ def test_1_v_between_2_nets_is_a_voltage_on_every_way():
         copper(5.0), ONE_VOLT, creepage.read_pack(TI), {"pollution_degree": "2", "material_group": "III"}
     )
     assert TI_NO_CLEARANCE.format("F.Cu", "1 pair of nets") in [f.line for f in ti_found]
+
+
+NO_VOLT = {"HV": (0.0, 0.0), "GND": (0.0, 0.0)}
+
+
+def test_0_v_between_2_nets_is_no_voltage_on_any_way():
+    """2 nets that both stand at 0 V have no voltage between them: the copper of
+    test_1_v_between_2_nets_is_a_voltage_on_every_way prints no line through the laminate, and the TI
+    pack prints no clearance line for them (the landing's mutation run: on a mutant each printed a
+    `not judged` line for the pair)."""
+    mil = creepage.read_pack(MIL)
+    laminate = creepage.Copper(
+        layers=["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"],
+        shapes={
+            "F.Cu": [("GND", square(115, 107.5)), ("HV", creepage.circle((135, 125), 0.4))],
+            "In1.Cu": [("HV", rect(110, 100, 120, 115))],
+        },
+        cuts=[],
+    )
+    assert creepage.findings(laminate, NO_VOLT, mil, MIL_AI) == []
+    ti_found = creepage.findings(
+        copper(5.0), NO_VOLT, creepage.read_pack(TI), {"pollution_degree": "2", "material_group": "III"}
+    )
+    assert [f.line for f in ti_found if "clearance" in f.line] == []
