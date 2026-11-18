@@ -3224,10 +3224,13 @@ def body_wrong(name: str, head: bytes, size: int, content_type: str = "") -> str
     return ""
 
 
-def fetch_url(url: str, member: str = "", name: str = "") -> tuple[str, bytes | None, str]:
+def fetch_url(
+    url: str, member: str = "", name: str = "", judge: bool = True
+) -> tuple[str, bytes | None, str]:
     """GET a URL as FETCH_AGENT: ("ok", bytes, final URL), or ("refused" | "gone" | "unreachable" |
     "error" | "wrong", None, why). A zip's member is read out when one is named. "wrong": the body is
-    cut short of its Content-Length, or is not what the file `name` says (body_wrong)."""
+    cut short of its Content-Length, or (with `judge`) is not what the file `name` says (body_wrong).
+    `workcenter references` passes judge=False: a web page entry is an HTML page by design."""
     import http.client
     import io
     import urllib.error
@@ -3267,7 +3270,7 @@ def fetch_url(url: str, member: str = "", name: str = "") -> tuple[str, bytes | 
                 body = zf.read(member)
         except (zipfile.BadZipFile, KeyError) as exc:
             return "error", None, f"no member {member!r} in the download: {exc}"
-    wrong = body_wrong(name or member or url.split("?")[0], body[:BODY_HEAD], len(body), ctype)
+    wrong = judge and body_wrong(name or member or url.split("?")[0], body[:BODY_HEAD], len(body), ctype)
     if wrong:
         return "wrong", None, wrong
     return "ok", body, final

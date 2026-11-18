@@ -489,7 +489,8 @@ def cmd_fetch(args, cli) -> int:
         ask = doc["id"] in again or rec is None or rec.get("url") != doc["url"] or not still_held(to, rec)
         if ask:
             asked += 1
-            status, body, detail = cli.fetch_url(doc["url"])
+            # judged here by its SHA256 or its values; a web page entry is an HTML page by design
+            status, body, detail = cli.fetch_url(doc["url"], judge=False)
             state = "copy" if body is not None else answered(status, detail)
             if body is not None:
                 digest, rel = keep(to, doc["id"], body, doc["url"])

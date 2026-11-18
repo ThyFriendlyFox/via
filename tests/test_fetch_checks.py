@@ -45,6 +45,9 @@ XHTML = (
 )
 UTF16 = b"\xff\xfe" + "<!DOCTYPE html><html><body>error</body></html>".encode("utf-16-le")  # the BOM FF FE
 SPACED = b"\r\n\r\n  <html><body>gone</body></html>\r\n"
+# A fab's capability page: `workcenter references` holds it by the values read from it, so it must come
+# back from fetch_url as the web page it is.
+FAB_PAGE = b"<!doctype html><html><body><td>Minimum trace</td><td>4 mil (0.1016 mm)</td></body></html>\n"
 
 # path: (Content-Type, body, Content-Length sent, bytes sent)
 PAGES: dict[str, tuple[str, bytes, int | None]] = {
@@ -61,6 +64,7 @@ PAGES: dict[str, tuple[str, bytes, int | None]] = {
     "/xhtml.step": ("application/octet-stream", XHTML, None),
     "/utf16.lib": ("application/octet-stream", UTF16, None),
     "/spaced.lib": ("text/plain", SPACED, None),
+    "/fab.html": ("text/html; charset=utf-8", FAB_PAGE, None),  # a web page entry of the reference index
 }
 # path: the whole response, written as it stands, then the connection closes
 RAW: dict[str, bytes] = {
@@ -312,6 +316,37 @@ def test_a_response_that_is_not_http_is_1_line_not_a_traceback(site):
         f"fetch: {url}/badstatus.pdf error (BadStatusLine: HTTP/1.1 OK-ish); nothing written"
     )
     assert not dest.exists() and not (project / "library").exists()
+
+
+def test_references_fetch_still_keeps_a_web_page_entry_served_as_text_html(site, tmp_path):
+    """`workcenter references fetch` reads its documents through fetch_url too. A web page entry is an
+    HTML page by design and is judged by its values, not refused as a body that is not what its name
+    says (the landing of 2026-11-18: fetch's new judgement made every web page entry 'not reached')."""
+    url, _ = site
+    entry = {
+        "id": "fab-page",
+        "kind": "web page",
+        "maker": "A fab made up for the tests",
+        "title": "Capabilities, a page made up for the tests",
+        "url": f"{url}/fab.html",
+        "read": "2026-11-17",
+        "values": [
+            {"says": "Minimum trace 4 mil (0.1016 mm)", "for": "fab: trace 4 mil, made up for the tests"}
+        ],
+    }
+    index = tmp_path / "index.json"
+    index.write_text(json.dumps({"documents": [entry]}), encoding="utf-8")
+    proc = subprocess.run(
+        [sys.executable, str(CLI), "references", "fetch", "--index", str(index), "--to", str(tmp_path / "r")],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert proc.stdout.startswith("kept fab-page: a web page, held by its values"), proc.stdout
+    # the same page given to `workcenter fetch` as a datasheet is still refused
+    code, report = fetch(f"{url}/fab.html", "--to", tmp_path / "library" / "acme" / "fab.pdf", "--mpn", "X")
+    assert code == 1 and report["status"] == "wrong", report
 
 
 def test_a_utf16_big_endian_page_is_an_html_page():
