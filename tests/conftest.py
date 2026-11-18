@@ -14,5 +14,6 @@ from engine_marker import (  # noqa: E402, F401
     pytest_configure,
     pytest_runtest_call,
     pytest_runtest_setup,
+    pytest_runtest_teardown,
     pytest_unconfigure,
 )

@@ -4,7 +4,11 @@ A test that starts kicad-cli, ngspice, FreeRouting, openEMS, a chip engine or Ki
 carries `@pytest.mark.engine`. The fast run (`make verify-site`) runs `-m "not engine"` with
 WORKCENTER_NO_ENGINES=1. In every run this plugin puts `guard/` first on PYTHONPATH, so each Python
 process a test starts writes its engine starts to 1 log (guard/engine_watch.py), and it fails a test
-without the marker that wrote a line, in its setup or in its call.
+without the marker that wrote a line, in its setup, its call or its teardown.
+
+A start while a module is collected is not held: a module's probe (`import pcbnew` in a try,
+`importlib.util.find_spec("pcbnew")`) decides its skip marks, and the fast run refuses it, so it costs
+no engine there. Holding it would mark whole modules whose other tests start no engine.
 """
 
 from __future__ import annotations
@@ -89,6 +93,15 @@ def pytest_runtest_setup(item):
 
 @pytest.hookimpl(wrapper=True)
 def pytest_runtest_call(item):
+    start = _size()
+    try:
+        return (yield)
+    finally:
+        _hold(item, start)
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_teardown(item, nextitem):
     start = _size()
     try:
         return (yield)
