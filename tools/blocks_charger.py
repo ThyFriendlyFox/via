@@ -26,6 +26,7 @@ import blocks
 import ratings
 import thermal
 
+CITES = {"ti-spra953d": "section 1.1, equation 1, page 2: TJ = TA + RthetaJA x P"}
 RULES = blocks.RULES / "charger.json"
 PACKS = blocks.ROOT / "rules" / "ratings"
 NETS = ("in", "bat", "gnd", "cell", "chg")

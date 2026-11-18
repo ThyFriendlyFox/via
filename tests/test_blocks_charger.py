@@ -5,7 +5,7 @@ protector and its 2 CSD17313Q2 transistors, added to a design in 1 call, every v
 The sums of the fixture, by hand. The input is 4.75 V to 5.25 V; the cell's limits are made up: 2.5 V to
 4.3 V, 0.5 A in charge, 3 A in discharge; the system draws 1 A; the ambient is 0 C to 40 C.
 
-    KISET, 150 mA     the row of 60 mA to 1000 mA: 490, 540, 590 A ohm (SLUSCE2D 7.5, page 5)
+    KISET, 150 mA     the row of 60 mA to 1000 mA: 490, 540, 590 A ohm (SLUSCE2D section 7.5, page 5)
     equation 1        RISET = 540 / 0.15 = 3600 ohm; the stock holds 3.6k, 1 %
                       typical 540 / 3600 = 0.15 A; least 490 / (3600 x 1.01) = 490 / 3636 = 0.134763 A;
                       greatest 590 / (3600 x 0.99) = 590 / 3564 = 0.165544 A, under the cell's 0.5 A
@@ -28,12 +28,12 @@ The sums of the fixture, by hand. The input is 4.75 V to 5.25 V; the cell's limi
     OVP               4.275 V -/+ 20 mV (SLUSBU9I table 4, page 3; 6.6, page 6): 4.255 V to 4.295 V; over
                       the charger's 4.23 V (VOUT(REG) MAX, page 5), within the cell's 4.3 V
     UVP               2.8 V - 50 mV = 2.75 V, over the cell's 2.5 V
-    transistors       2 x 42 mohm = 84 mohm (SLPS260E 5.1, VGS = 3 V, MAX, page 3); OCD's least 100 - 15
-                      = 85 mV; OCC's least 85 mV. The load: 0.084 x 1 = 84 mV, under 85 mV. The charge:
-                      0.084 x 0.165544 = 13.906 mV. At the typical 31 mohm the discharge trips at
+    transistors       2 x 42 mohm = 84 mohm (SLPS260E section 5.1, VGS = 3 V, MAX, page 3); OCD's least
+                      100 - 15 = 85 mV; OCC's least 85 mV. The load: 0.084 x 1 = 84 mV, under 85 mV. The
+                      charge: 0.084 x 0.165544 = 13.906 mV. At the typical 31 mohm the discharge trips at
                       0.115 / 0.062 = 1.854839 A, under the cell's 3 A
     not judged        4 items, handed to `workcenter ratings` in ratings.json: the 2 transistors' drop at
-                      heat and at a gate under 3 V (SLUSBU9I 9.2.2, page 20, asks it derated; SLPS260E
+                      heat and at a gate under 3 V (SLUSBU9I section 9.2.2, page 20, asks it derated; SLPS260E
                       gives no MAX above 25 C or under VGS = 3 V); the trip under the typical on-resistance;
                       VUVP's tolerance, stated at 25 C only, at 0 C to 40 C; the value C3 keeps
 """
@@ -58,6 +58,13 @@ sys.dont_write_bytecode = True
 import blocks  # noqa: E402
 import kicadgen  # noqa: E402
 
+CITES = {
+    "ti-slusce2": "equations 1 and 8; sections 7.3 and 7.5, pages 4 and 5; the pin table, page 3",
+    "ti-slusbu9": "table 4, page 3; sections 6.3 and 6.6, pages 5 and 6; section 9.2.2, page 20",
+    "ti-slps260": "section 5.1, RDS(on) at VGS = 3 V, page 3",
+    "ti-spra953d": "section 1.1, equation 1, page 2: TJ = TA + RthetaJA x P",
+    "ecss-q-st-30-11c-rev2": "clause 6.21.2, table 6-21, page 57: a junction's limit",
+}
 CLI = ROOT / "tools" / "workcenter"
 BOARDS = ROOT / "tests" / "boards"
 FACTS = BOARDS / "library" / "facts"
@@ -209,8 +216,8 @@ def test_0_15_a_takes_3_6k_and_holds_every_sum():
 def test_what_the_block_cannot_judge_goes_to_ratings_json():
     """Each `not judged` sum is an entry of ratings.json's `not_judged`, with its parts, so that
     `workcenter ratings` prints it. At 1.01 A the load gives 2 x 42 mohm x 1.01 A = 84.84 mV, under 85 mV:
-    the block builds, and the transistors' drop at heat and at a low gate is not judged (SLUSBU9I 9.2.2,
-    page 20)."""
+    the block builds, and the transistors' drop at heat and at a low gate is not judged (SLUSBU9I
+    section 9.2.2, page 20)."""
     _, block = charger(load=1.01)
     entries = block.ratings["not_judged"]
     assert {k: v["parts"] for k, v in entries.items()} == {
@@ -228,8 +235,8 @@ def test_what_the_block_cannot_judge_goes_to_ratings_json():
 
 @needs_libs
 def test_an_ambient_over_the_overcharge_tolerances_range_leaves_it_not_judged():
-    """VOVP's 20 mV holds for TA = 0 C to 60 C (SLUSBU9I 6.6, page 6). At 0 C to 65 C, 0.1 A on a stocked
-    5.36k: 590 / (5360 x 0.99) = 0.111186 A, P = 2.75 x 0.111186 + 0.00525 = 0.311012 W,
+    """VOVP's 20 mV holds for TA = 0 C to 60 C (SLUSBU9I section 6.6, page 6). At 0 C to 65 C, 0.1 A on a
+    stocked 5.36k: 590 / (5360 x 0.99) = 0.111186 A, P = 2.75 x 0.111186 + 0.00525 = 0.311012 W,
     TJ = 65 + 130.8 x 0.311012 = 105.68 C, under 110 C: the block builds, and the threshold's tolerance
     is not judged."""
     stock = [*block_charger().STOCK, blocks.Stock("Vishay", "CRCW06035K36FKEA", "5.36k", R_0603)]
@@ -243,7 +250,7 @@ def test_an_ambient_over_the_overcharge_tolerances_range_leaves_it_not_judged():
 
 @needs_libs
 def test_an_ambient_outside_the_protectors_range_is_refused():
-    """TAmb of the BQ29700 is -40 C to 85 C (SLUSBU9I 6.3, page 5): -60 C is under it."""
+    """TAmb of the BQ29700 is -40 C to 85 C (SLUSBU9I section 6.3, page 5): -60 C is under it."""
     assert refused(ambient=(-60.0, 20.0)) == (
         f"charger U2: the ambient reaches -60 C, outside BQ29700DSER's -40 C to 85 C [{PS}, section 6.3, "
         "Recommended Operating Conditions, TAmb, page 5]"
@@ -252,8 +259,8 @@ def test_an_ambient_outside_the_protectors_range_is_refused():
 
 @needs_libs
 def test_an_ambient_under_the_chargers_least_junction_is_refused():
-    """TJ of the BQ21040 is 0 C to 125 C (SLUSCE2D 7.3, page 4); the junction is never under the ambient,
-    so an ambient of -30 C puts it under 0 C."""
+    """TJ of the BQ21040 is 0 C to 125 C (SLUSCE2D section 7.3, page 4); the junction is never under the
+    ambient, so an ambient of -30 C puts it under 0 C."""
     assert refused(ambient=(-30.0, 20.0)) == (
         "charger U1: the ambient reaches -30 C, and the junction is at least the ambient: under "
         f"BQ21040DBVR's least, 0 C [{DS}, section 7.3, Recommended Operating Conditions, TJ, MIN, page 4]"
@@ -414,7 +421,7 @@ def test_a_protector_the_rules_do_not_hold_is_refused():
 
 @needs_libs
 def test_a_current_over_the_ics_800_ma_is_refused():
-    """0.9 A is over IOUT's 0.8 A (SLUSCE2D 7.3, page 4; 7.5, page 5)."""
+    """0.9 A is over IOUT's 0.8 A (SLUSCE2D section 7.3, page 4; section 7.5, page 5)."""
     assert refused(amps=0.9) == (
         "charger U1: a charge current of 900 mA is outside BQ21040DBVR's 10 mA to 800 mA "
         f"[{DS}, section 7.5, IOUT(RANGE), 10 mA to 800 mA, page 5; section 7.3, IOUT at most 0.8 A, page 4]"
@@ -433,7 +440,7 @@ def test_a_resistor_outside_the_ics_range_is_refused():
 
 @needs_libs
 def test_an_input_over_the_ics_operating_range_is_refused():
-    """6.5 V is over the 6.45 V where OVP restricts IN (SLUSCE2D 7.3, page 4)."""
+    """6.5 V is over the 6.45 V where OVP restricts IN (SLUSCE2D section 7.3, page 4)."""
     assert refused(vin=(4.75, 6.5)) == (
         "charger U1: the input reaches 6.5 V, IN of BQ21040DBVR operates from 4.45 V to 6.45 V "
         f"[{DS}, section 7.3, Recommended Operating Conditions, IN operating voltage range, restricted by "
