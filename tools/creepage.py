@@ -1465,6 +1465,7 @@ def judge(project, stated: dict, board_text: str, spans: dict) -> tuple[str, lis
         raise Refusal(f"{at}: pack: {label} is no creepage pack")
     pack = read_pack(path)
     cond = pack.conditions_of(stated)
+    boardrules.check_board(board_text, project.pcb.name)
     cu = read_copper(board_text)
     notes = [
         f"board rules: {label}, {pack.document['number']} ({pack.document['revision']}), "
