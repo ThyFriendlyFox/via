@@ -103,6 +103,8 @@ exception to these rules:
   suggestions here!" The first "here" is the subscribe form under the
   message, which takes the reader's email. The second is the feedback
   page, `/feedback`. The blog does not explain what a blog is.
+- The heading of the home page's example, of 2026-11-18, with its
+  exclamation mark: "Here's a board made with Via!"
 - The line at the bottom of every page, of 2026-11-18, in title case:
   "Made by Team Reagent for Builders", a link to `reagent-systems.com`.
   The menu's and the footer's "Community" is the team's Discord server,
