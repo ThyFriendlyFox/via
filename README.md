@@ -83,12 +83,12 @@ horns, and a knob read as 1 number whose 5 positions 6 decks prove never meet.
 
 ## An example: Signet, a mouse worn as a ring
 
-<a href="examples/ring-mouse/README.md"><img alt="Signet turning: six black boards with gold edge pads in a hexagonal ring, soldered edge to edge, the radio module on top and a foil cell at the bottom" src="examples/ring-mouse/v0.4/docs/assembly-spin.gif" width="560"></a>
+<a href="examples/ring-mouse/README.md"><img alt="Signet turning: eight black boards with gold edge pads in an octagonal ring, soldered edge to edge, the radio module on top and a foil cell at the bottom" src="examples/ring-mouse/v0.5/docs/assembly-spin.gif" width="560"></a>
 
 [`examples/ring-mouse`](examples/ring-mouse/README.md) is a mouse you wear on the index finger, made
-with the workcenter as a series of prototypes, a version per pass of a loop. Six 4-layer boards, 12
-mm along the finger, sit on the faces of a hexagonal prism round it, each soldered to the next by 8
-plated edge pads. The ring turns with the hand and the cursor follows its gyroscope; the thumb slides
+with the workcenter as a series of prototypes, a version per pass of a loop. Eight 4-layer boards,
+12 mm along the finger, sit on the faces of an octagonal prism round it, each soldered to the next by
+8 plated edge pads. The ring turns with the hand and the cursor follows its gyroscope; the thumb slides
 along a 3-channel strip to scroll and presses the side to click. A Bluetooth LE module, a charger,
 a 3.3 V rail and a 20 mAh cell ride on the other tiles, and every tile is GREEN.
 

@@ -787,9 +787,9 @@ def test_the_example_pages_are_what_site_examples_writes():
     assert [entry.stage for entry in wyvern.timeline] == ["v0.1", "v0.2"]
     assert wyvern.verdict.startswith("GREEN")
     assert [gate for gate, _, _ in wyvern.checks] == ["ERC", "DRC", "SIM", "EXPORT"]
-    # Signet is 6 boards: 1 verdict each, and no board drawing.
+    # Signet is 8 boards since v0.5: 1 verdict each, and no board drawing.
     signet = found["signet"]
-    assert signet.board is None and len(signet.per_board) == 6 and signet.verdict == "GREEN on all 6 boards"
+    assert signet.board is None and len(signet.per_board) == 8 and signet.verdict == "GREEN on all 8 boards"
     # The page follows its sources: a step's title, changed, changes the page.
     rosetta.timeline[0].title = "A title no step has"
     assert "A title no step has" in examples.example_page(rosetta, board, set())

@@ -777,3 +777,26 @@ def test_a_scene_places_bodies_renders_and_turns(tmp_path):
     assert proc.returncode == 0, proc.stderr[-2000:]
     assert not (out / "iso.png").exists()
     assert f"frames: {out / 'turn-frames.png'}" in proc.stdout.splitlines()
+
+
+@needs_kicad
+def test_a_scene_refuses_a_second_body_under_a_name_it_wrote(tmp_path):
+    # Signet's assemblies wrote the cell tile's board body and then the pouch as cell.wrl; the pouch
+    # replaced the board on disk, and the tile was missing from 4 versions' pictures (M212).
+    import os
+
+    shutil.copytree(BOARDS / "pass-rc-divider", tmp_path / "board")
+    script = write(
+        tmp_path / "twice.py",
+        'import scene\ns = scene.Scene("board/rc_divider.kicad_pcb", out="build/scene")\n'
+        's.box("part.wrl", (1.0, 1.0, 1.0))\ns.cylinder("part.wrl", d=1.0, length=2.0)\n',
+    )
+    env = {**os.environ, "PYTHONPATH": str(ROOT / "tools"), "PYTHONDONTWRITEBYTECODE": "1"}
+    venv = Path("/opt/workcenters/ee/venv/bin/python")
+    python = str(venv) if venv.exists() else sys.executable
+    proc = subprocess.run([python, str(script)], capture_output=True, text=True, env=env, check=False)
+    if "No module named 'pcbnew'" in proc.stderr:
+        pytest.skip("KiCad's pcbnew module is not importable")
+    assert proc.returncode == 1, proc.stderr[-2000:]
+    assert "scene: part.wrl already holds the meshes of 'box 1.0 x 1.0 x 1.0 mm'" in proc.stderr
+    assert (tmp_path / "build" / "scene" / "bodies" / "part.wrl").read_text().count("box 1.0 x 1.0 x 1.0 mm")

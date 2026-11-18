@@ -106,7 +106,10 @@ classes.
    out before the route (M137). List it with no `--layer`: a keep-out on
    one face that bans vias holds the other face's pads too, and a pad of
    a poured net counts, since it reaches the pour through a via beside it
-   (M138).
+   (M138). A pad outside a keep-out whose way out passes it needs a
+   track's room there (2 clearances and a width), and a small part in a
+   packed row needs room for its ground via, or a filled via in its pad:
+   the courtyards and the unrouted DRC see neither (M213).
 5. Via sizes are rules too. The default via, each net class's and each
    hand via must meet the board's minimum hole (0.3 mm), minimum via
    (0.5 mm) and annular ring (0.1 mm), as `Design.board_rules()` gives
@@ -811,7 +814,11 @@ after any change to what the boards look like in that version.
    and an assembly) writes one sheet per GIF with the frames at 0, 90, 180
    and 270 degrees, and leaves `docs/` alone. The end-on frames crop first:
    lower `zoom`, and raise the pivot's z to the middle of a tall assembly,
-   in the manifest, until all four are whole.
+   in the manifest, until all four are whole. Run it for every version,
+   not only the first: a version copies its manifest and its scenes with
+   their zoom. For an example in `examples/`, `python3 site/examples.py
+   --pictures` names a turning render that cuts the thing off ("cuts it
+   off at frame N"); the version is not done while it names one (M214).
 3. `workcenter pictures <version>`: every board's stills and every layer
    (`render --strict`: a part the 3D views draw without a body fails its
    board, and nothing of that board is copied; give the part its body,
@@ -833,7 +840,9 @@ after any change to what the boards look like in that version.
    at its mid-plane, and KiCad turns a model the other way from the
    right-hand rule (the `board-design` skill). A picture that looks wrong
    is fixed by measuring 1 body, never by moving the scene until it looks
-   right: 2 errors can show as 1 (M131).
+   right: 2 errors can show as 1 (M131). Each body takes a name of its
+   own: `tools/scene.py` stops on a second body under a name the scene
+   wrote, which would replace the first on disk (M212).
 8. Pictures of a large board take a while: a 244 mm motherboard's took 17
    minutes, most of it the turning GIF. Run them as a background job with
    a limit over the sum of every step the job holds (M154).
