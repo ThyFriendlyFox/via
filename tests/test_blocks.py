@@ -751,7 +751,8 @@ WARNINGS = [
 def test_each_fixture_is_routed_and_its_gates_are_green_with_the_3_warnings_named(name, tmp_path):
     """ERC, DRC (0 unconnected: the router finished), SIM and EXPORT pass. The 3 warnings are what the
     gates cannot judge: the capacitors' maker's page is kept outside the repository, and the block writes
-    no frequency plan. A strict run fails on them and on nothing else."""
+    no frequency plan. A strict run fails on them, and on the ratings until a `ratings` run holds them
+    (the fixture holds a ratings.json; `gates` reads its record), and on nothing else."""
     run = subprocess.run(
         [sys.executable, str(CLI), "--json", "gates", str(BOARDS / name), "--out", str(tmp_path)],
         capture_output=True,

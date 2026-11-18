@@ -622,22 +622,31 @@ def test_the_fixture_is_routed_and_its_gates_are_green(tmp_path):
     and EXPORT pass. Over the corners of R1 (1 %) and the ambient (0 C and 40 C), by hand: the charge
     current runs from 590 / 3636 = 0.162266 A to 590 / 3564 = 0.165544 A, and U1's power from
     2.75 x 0.162266 + 0.00525 = 0.451482 W to 0.460496 W; its junction at 40 C reaches
-    40 + 130.8 x 0.460496 = 100.233 C."""
+    40 + 130.8 x 0.460496 = 100.233 C.
+
+    The fixture's ratings are held with 4 not judged by design (the block hands them to `ratings`), so
+    after a `ratings` run the gates say they are not held: a plain run is GREEN with that 1 warning, and a
+    strict run ends `RED (ratings not held)`. The fixture is copied beside the fixtures' shared library,
+    and the record is written into the copy."""
+    boards = tmp_path / "boards"
+    boards.mkdir()
+    (boards / "library").symlink_to(BOARDS / "library")
+    proj = boards / "pass-block-charger"
+    shutil.copytree(BOARDS / "pass-block-charger", proj, ignore=shutil.ignore_patterns("build"))
+    rated = subprocess.run(
+        [sys.executable, str(CLI), "ratings", str(proj)], capture_output=True, text=True, check=False
+    )
+    assert rated.returncode == 0, rated.stdout + rated.stderr
     run = subprocess.run(
-        [
-            sys.executable,
-            str(CLI),
-            "--json",
-            "gates",
-            str(BOARDS / "pass-block-charger"),
-            "--out",
-            str(tmp_path),
-        ],
+        [sys.executable, str(CLI), "--json", "gates", str(proj), "--out", str(tmp_path)],
         capture_output=True,
         text=True,
         check=False,
     )
     assert run.returncode == 0, run.stdout + run.stderr
+    said = run.stderr.splitlines()
+    assert said[-2] == f"RATINGS not held: 4 not judged (workcenter ratings {proj})", run.stderr
+    assert said[-1].startswith("GREEN with "), run.stderr
     records = {r["gate"]: r for r in json.loads(run.stdout)}
     assert [records[g]["status"] for g in ("erc", "drc", "sim", "export")] == ["pass"] * 4
     assert records["drc"]["summary"] == "0 errors, 0 warnings (0 unconnected, 0 parity)"

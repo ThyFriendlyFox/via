@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -28,9 +29,14 @@ import kicadgen  # noqa: E402
 CLI = ROOT / "tools" / "workcenter"
 LIBS = kicadgen.SYMBOL_DIR / "Device.kicad_sym"
 JAR = Path("/opt/workcenters/ee/freerouting/freerouting.jar")
-needs_engines = pytest.mark.skipif(
-    not LIBS.is_file() or shutil.which("kicad-cli") is None or not JAR.is_file() or not shutil.which("java"),
-    reason="the KiCad libraries, kicad-cli and FreeRouting are needed",
+needs_engines = engine(
+    pytest.mark.skipif(
+        not LIBS.is_file()
+        or shutil.which("kicad-cli") is None
+        or not JAR.is_file()
+        or not shutil.which("java"),
+        reason="the KiCad libraries, kicad-cli and FreeRouting are needed",
+    )
 )
 
 # The first unconnected item of a KiCad 10.0 DRC report (`kicad-cli pcb drc --format json`), from the

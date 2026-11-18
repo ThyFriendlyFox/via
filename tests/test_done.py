@@ -27,6 +27,7 @@ import types
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
@@ -34,7 +35,9 @@ BOARDS = ROOT / "tests" / "boards"
 sys.path.insert(0, str(ROOT / "tools"))
 import guide  # noqa: E402
 
-needs_kicad = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+needs_kicad = engine(
+    pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+)
 GATES = ("erc", "drc", "sim", "export")
 NOT_ASKED = "RATINGS not asked for: no ratings.json beside the schematic"
 
@@ -176,12 +179,15 @@ FOR_ANOTHER_COMMAND = {
 
 def test_a_fixture_with_ratings_json_is_a_ratings_fixture_or_named_for_another_command(tmp_path, capsys):
     """Every fixture with a ratings.json asks for the ratings. One named `*-ratings-*` is judged by
-    `ratings`. Any other is in FOR_ANOTHER_COMMAND, holds no parts file, and its gates under --strict
-    say `RATINGS not held` and end `RED (ratings not held)`, with no record and with a record of
-    NOTHING JUDGED, as on any board whose ratings judged nothing."""
+    `ratings`, and so is a circuit block's `pass-block-*`, which its block's tests hold to
+    `ratings --strict` and to `gates --strict` after a ratings run (tests/test_blocks*.py). Any other is
+    in FOR_ANOTHER_COMMAND, holds no parts file, and its gates under --strict say `RATINGS not held` and
+    end `RED (ratings not held)`, with no record and with a record of NOTHING JUDGED, as on any board
+    whose ratings judged nothing."""
     cli = load_cli()
     asked = sorted(p.parent.name for p in BOARDS.glob("*/ratings.json"))
-    assert sorted(n for n in asked if "-ratings-" not in n) == sorted(FOR_ANOTHER_COMMAND)
+    judged = [n for n in asked if "-ratings-" in n or n.startswith("pass-block-")]
+    assert sorted(set(asked) - set(judged)) == sorted(FOR_ANOTHER_COMMAND)
     for name in FOR_ANOTHER_COMMAND:
         proj = tmp_path / name
         shutil.copytree(BOARDS / name, proj, ignore=shutil.ignore_patterns("build"))

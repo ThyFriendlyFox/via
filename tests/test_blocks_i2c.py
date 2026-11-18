@@ -654,18 +654,36 @@ def test_each_fixture_is_what_its_design_file_writes_and_passes_ratings_strict(n
 RISES = {"pass-block-i2c": (184.54e-9, 188.27e-9), "pass-block-i2c-2x": (251.65e-9, 256.73e-9)}
 
 
+def rated_copy(name: str, tmp_path: Path) -> Path:
+    """A copy of the fixture beside the fixtures' shared library, and its `ratings` run. `gates --strict`
+    reads that record: a project with a ratings.json is GREEN under --strict only when it is held."""
+    boards = tmp_path / "boards"
+    boards.mkdir()
+    (boards / "library").symlink_to(BOARDS / "library")
+    proj = boards / name
+    shutil.copytree(BOARDS / name, proj, ignore=shutil.ignore_patterns("build"))
+    rated = subprocess.run(
+        [sys.executable, str(CLI), "ratings", str(proj)], capture_output=True, text=True, check=False
+    )
+    assert rated.returncode == 0, rated.stdout + rated.stderr
+    return proj
+
+
 @needs_kicad
 @pytest.mark.parametrize("name", FIXTURES)
 def test_each_fixture_is_routed_and_its_gates_are_green(name, tmp_path):
-    """ERC, DRC (0 unconnected: the router finished), SIM and EXPORT pass, and a strict run too: the deck's
-    rise at its corners is equation 5's, under fast mode's 300 ns."""
+    """ERC, DRC (0 unconnected: the router finished), SIM and EXPORT pass, and a strict run too, once a
+    `ratings` run holds the fixture's ratings: the deck's rise at its corners is equation 5's, under fast
+    mode's 300 ns."""
+    proj = rated_copy(name, tmp_path)
     run = subprocess.run(
-        [sys.executable, str(CLI), "--json", "gates", str(BOARDS / name), "--out", str(tmp_path), "--strict"],
+        [sys.executable, str(CLI), "--json", "gates", str(proj), "--out", str(tmp_path), "--strict"],
         capture_output=True,
         text=True,
         check=False,
     )
     assert run.returncode == 0, run.stdout + run.stderr
+    assert "RATINGS held: build/ratings/report.json says RATINGS HELD" in run.stderr.splitlines(), run.stderr
     records = {r["gate"]: r for r in json.loads(run.stdout)}
     assert [records[g]["status"] for g in ("erc", "drc", "sim", "export")] == ["pass"] * 4
     assert records["drc"]["summary"] == "0 errors, 0 warnings (0 unconnected, 0 parity)"
