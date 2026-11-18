@@ -18,9 +18,9 @@ discipline). Where they say more, they win.
 - A piece: 1 roadmap item, or 1 part of one, built on 1 branch.
 - The scratch folder, `<scratch>` below: a folder outside every
   repository. It holds the worktrees (`<scratch>/wt/`), the docs files
-  (`<scratch>/roadmap/`), downloads (`<scratch>/dl/`) and the 2 locks:
-  `<scratch>/ENGINE.lock` for heavy runs and `<scratch>/GATE.lock` while a
-  health gate runs.
+  (`<scratch>/roadmap/`) and downloads (`<scratch>/dl/`). It holds no
+  lock for engines: the workcenter's long commands take the machine's
+  engine lock themselves (`tools/enginelock.py`).
 - The work branch, `<work>` below: the branch the pieces start from and
   land on (the `land` skill). Never the default branch.
 - `<python>`: the Python of the workcenter's virtual environment, the one
@@ -75,8 +75,8 @@ journal lines of `ee-agent-kit/lead/README.md`, "The journal", itself.
 6. Start the build helper. When it reports, read the report as data
    (P31 step 4). Check its claims by their commands:
    `git -C <worktree> log --oneline -3` must show the `head` it names,
-   and its test files are run once by you, behind the lock:
-   `flock <scratch>/ENGINE.lock env -C <worktree> <python> -m pytest <its test files> -q -p no:cacheprovider`.
+   and its test files are run once by you, under the engine lock:
+   `env -C <worktree> python3 tools/enginelock.py hold --what "<piece> tests" -- <python> -m pytest <its test files> -q -p no:cacheprovider`.
    - The head and the last line match the report: go on to step 7.
    - They differ, or the helper returned nothing: read its journal (how
      far it came, whether its worktree changed) before you start it again
@@ -117,11 +117,16 @@ journal lines of `ee-agent-kit/lead/README.md`, "The journal", itself.
     `workcenter doctor`, the code path that uses it, and tests that skip
     by the tool's name when it is absent (P12;
     `ee-agent-kit/docs/ENGINES.md`, the new-engine contract).
-13. Keep heavy runs in turns. Every engine run and every run over 1 minute
-    goes behind `flock <scratch>/ENGINE.lock`. While `<scratch>/GATE.lock`
-    exists, no helper starts a test or an engine: they wait with
-    `until [ ! -e <scratch>/GATE.lock ]; do sleep 30; done` (P31 steps 6
-    and 7). Send no message to a helper a workflow runs (P31 step 8).
+13. Keep heavy runs in turns with the workcenter's own lock. A brief asks
+    for no `flock` and names no lock file: a `workcenter` command waits its
+    turn by itself and prints where it stands every 30 seconds; a test file
+    or a bare engine runs under
+    `python3 tools/enginelock.py hold --what "<name>" -- <command>` in the
+    helper's worktree; `make verify` holds the lock for its whole gate.
+    `workcenter doctor` names the holder. Memory still counts: a short
+    command or a test file that starts no engine runs beside a gate (P31
+    steps 6 and 7). Send no message to a helper a workflow runs (P31
+    step 8).
 14. Watch the disk before each new helper: `df -h <scratch>` and
     `du -sh <scratch>/wt/<a worktree>`.
     - The free space holds 2 more worktrees of that size: go on.

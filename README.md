@@ -336,6 +336,7 @@ images are drawn.
 | `tools/partdata.py` | The makers' data of a deck's capacitors and inductors: picks each curve from the part's facts when its maker's file has its row in `library/sources.csv`, and rewrites the deck's part as ngspice's behavioural element on it. Standard library only; the SIM gate runs it. |
 | `tools/guide.py` | `workcenter next`: the one next step and the fix for each kind of failure. |
 | `tools/newboard.py` | `workcenter new`: a board project from `templates/project/`, with the headers of the parts file and of `library/sources.csv`. Standard library only. |
+| `tools/enginelock.py` | The engine lock: long `workcenter` commands take turns on 1 machine in the order they came, and `make verify` holds it for the whole gate; `hold`, `held` and `state` on its own command line. Standard library only. |
 | `tools/ratings.py` | `workcenter ratings`: the voltage span of each net, the facts of each part, and each stress against its limit. Standard library only. |
 | `tools/fabfiles.py`, `tools/panel.py` | EXPORT's files read back against the board: the placement file, the assembly pages, IPC-2581 and the panel. `panel.py` runs KiKit's panelization under `KIKIT_PYTHON`. |
 | `tools/measureplan.py` | `workcenter measure`: the plan of measurements from the decks' bounds and the board's nets. Standard library only. |

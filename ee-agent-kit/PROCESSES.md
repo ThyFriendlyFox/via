@@ -336,6 +336,17 @@ When: every shell command.
 8. A scratch script writes to absolute paths in the session's scratchpad.
    Under `python3 - <<EOF`, `__file__` is no file and a path built from it
    is the working directory, which may be a repository (M175).
+9. Run a `workcenter` command as it is, with no `flock` in front: a long
+   command waits its turn on the machine's engine lock by itself, and a
+   short one never waits (docs/CONFIGURATION.md, `tools/enginelock.py`,
+   names which is which). A waiting command prints 1 line at once and 1
+   every 30 seconds; read it, do not start the command again. Give a
+   background run a time limit longer than the wait it may meet: the runs
+   ahead of it, as its line counts them, times their usual length, and 2
+   hours where that cannot be counted. A command that is not a
+   `workcenter` command and starts an engine (a bare `kicad-cli`, a
+   `pytest` file of engine tests) runs under
+   `python3 tools/enginelock.py hold -- <command>` (M220).
 
 Done when: the command ran where and how you meant, and the paths it
 printed are the ones you expected.
@@ -1207,11 +1218,13 @@ a task.
 6. Count the machine too: its memory, not only its processors. Helpers
    that run engines, a health gate and a browser do not run together.
    The health gate that gates a push runs alone (M124).
-7. The signal for "the gate runs" is a file, not a message. The brief
-   names 1 lock file. The lead makes it before a health gate and removes
-   it after. A helper looks for it before each command that runs an
-   engine or a test, and starts none while it is there. The lead starts
-   the gate when the lock is there and no engine of a helper runs (M125).
+7. The workcenter's long commands take turns on the machine by themselves
+   (`tools/enginelock.py`), and `make verify` holds that lock for the whole
+   gate. A brief names no lock file for them and asks for no `flock`: a
+   helper runs the commands as they are, and runs a test file or a bare
+   engine under `python3 tools/enginelock.py hold -- <command>`. A waiting
+   command prints where it stands every 30 seconds; `workcenter doctor`
+   names who holds the lock (M125, M220).
 8. Send no message to a helper that a workflow runs. A message to its id
    starts a second runner from its transcript, and the 2 write the same
    files. The brief tells each helper the same: it sends no message to

@@ -1331,3 +1331,9 @@ Cost: On the landing head, 2 tests of `tests/test_references_pages.py` failed; t
 Root cause: The piece was built before the web page entries landed, and it changed a function with 2 callers while testing 1.
 Fix: `fetch_url(..., judge=False)` from `tools/references.py`, which judges a copy by its SHA256 or its values; `test_references_fetch_still_keeps_a_web_page_entry_served_as_text_html`.
 Process: P27
+
+## M220 — 2026-11-17 — A lock that lived in briefs, not in the tools
+What happened: Several agents on 1 machine ran routes, gates and simulations. A lead told each helper to put `flock ENGINE.lock` in front of heavy runs; no document of the workcenter named the rule. 3 users of user round 1 lost time behind it: `workcenter next` sat 10 minutes with no output behind the lock, a 3 s `design` waited about 5 minutes, a queued `design --route` was killed at the 30-minute background limit with only `[killed]`, and `gates` waited more than 30 minutes twice. The kernel's flock serves its waiters in no fixed order. While the fix was built, its own test run waited 406 s for the brief's lock file before it could start.
+Cost: about 2 hours of 1 user and a run each of 2 others; no verdict for 1 board.
+Root cause: The lock was a convention of a lead's brief, taken by hand around any command, fair to nobody, and silent.
+Process: P8

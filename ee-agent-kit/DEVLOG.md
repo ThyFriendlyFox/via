@@ -39,6 +39,12 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-18 — The long commands take turns by themselves
+
+The roadmap's entry "Out of band: a lock the tools take themselves" landed (in part). Each long `workcenter` command takes a numbered ticket in `/tmp/workcenter-lock-<uid>` and runs when no live ticket has a lower number; a ticket is live while its process holds a flock on it, or while a process that run started still runs. A waiting run says so at once and every 30 s. `make verify` runs itself again under `enginelock.py hold`, so the gate runs alone and its tests' commands, its children, never wait. The review found 7 faults; all were fixed with tests. On landing, the 2 commands the trunk gained since (`new`, `standards`) were measured at 0.17 s and 0.24 s and named short, and a test now fails on any command named neither long nor short. The whole test file ran 20 times in a loop on the landing head with 0 failures.
+
+Evidence: `tests/test_enginelock.py` (27 tests); landing head 38a48a2, on the trunk 0dc3205.
+
 ## 2026-11-18 — A datasheet that was a web page
 
 User round 1, D landed. In user round 1 the large user's project kept 2 Samsung datasheets that were

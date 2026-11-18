@@ -34,6 +34,9 @@ unset variable never causes a failure.
 | `OPENEMS` | command | `$WORKCENTER_ROOT/openems/bin/openEMS`, else `openEMS` on `PATH` | The field solver `workcenter fields` runs; `doctor` reports it. |
 | `KIKIT_PYTHON` | command | the venv's Python (`$WORKCENTER_ROOT/venv/bin/python`) | The Python that imports KiKit; EXPORT runs `tools/panel.py` with it for a project that holds `panel.json`. |
 | `KISTACK_DIR` | path | `<checkout>/third_party/kistack` | The kistack copy whose `skills/layout-placement/scripts` `workcenter placement` runs. |
+| `WORKCENTER_LOCK_DIR` | absolute path | `/tmp/workcenter-lock-<uid>` (`/tmp/workcenter-lock-0` for root), whatever TMPDIR says | The engine lock's folder: 1 per machine and user, never inside a project. Each run of a long command keeps 1 ticket file there while it waits and runs. A path that is a file, a link, relative or not writable, or (the default only) another user's folder, is refused in 1 line that names the setting, the path and why (exit 2). |
+| `WORKCENTER_LOCK` | `off` or empty | empty (on) | `off` (or `0`, `no`, `false`): no command takes the lock or waits on it. |
+| `WORKCENTER_LOCK_EVERY` | seconds | `30` | How often a waiting run repeats its line (at least 0.05). |
 
 | Flag | Commands | Default | Use |
 |---|---|---|---|
@@ -151,6 +154,93 @@ unset variable never causes a failure.
 | `--from VERSION` | version new | the latest version folder | The folder the new version copies. |
 | `--out FILE` | diagram | required | The SVG to write. |
 | `--png` | diagram | off | Also write `<out>.png` with `rsvg-convert`, at the drawing's width. |
+
+## `tools/enginelock.py` (the engine lock)
+
+A long command waits its turn on the machine's engine lock and holds it to its end. The other
+commands never take it and never wait. `tools/enginelock.py` names each command of
+`workcenter --help` in `LONG` or in `SHORT`, and `tests/test_enginelock.py` fails on a command
+named in neither. A command is long when it ran over 3 s on the largest input measured, or when
+the project and not the command sets its length (a deck's transient, a corner list, a mutation
+list, a router's time limit).
+
+| Flag | Of | Default | Meaning |
+|---|---|---|---|
+| `hold -- CMD` | enginelock.py | | Run CMD under the lock. The exit code is CMD's (128 and the signal for a command a signal killed). |
+| `--what NAME` | enginelock.py hold | the command | The name the waiting line and `doctor` show for this run. |
+| `held` | enginelock.py | | Exit 0 when this process may run a long command without waiting (the lock is off, or the holder is this process or an ancestor), else 1. |
+| `state [--json]` | enginelock.py | | Who holds the lock, since when, and how many wait. |
+
+Times measured on 2026-11-18 on this machine (4 processors, other agents running) with
+`WORKCENTER_LOCK=off`, on copies of the fixtures under `tests/boards/` and `tests/chips/` and of
+Last Hit v0.16: the wall time of 1 run. The Last Hit rows of `sim`, `measure` and `verify` are from
+a 2nd copy that keeps `library/` and `parts/` beside `v0.16/`, where all 12 decks ran; each of those
+exited 1 on the board's own findings.
+
+| Command | Takes the lock | Measured | On |
+|---|---|---|---|
+| `design --route` | yes | 5.25 s | pass-first-design |
+| `gates` | yes | 4.01 s; 14.39 s | pass-rc-divider; Last Hit v0.16 |
+| `sim` | yes: its length is the decks' and the corners' | 0.43 s; 11.15 s | pass-rc-divider; Last Hit v0.16 (12 decks) |
+| `measure` | yes: it runs the project's sim, every deck and corner, as `sim` does | 0.38 s; 11.47 s | pass-rc-divider; Last Hit v0.16 (12 decks) |
+| `export` | yes | 2.52 s; 4.98 s | pass-rc-divider; Last Hit v0.16 |
+| `render` | yes | 38.93 s | pass-rc-divider |
+| `pictures` | yes: it runs `render` for each board | not measured | |
+| `copper` | yes | 16.45 s | pass-copper-strip |
+| `highspeed` | yes | 10.58 s | pass-highspeed |
+| `fields` | yes | 10.22 s | pass-fields-microstrip |
+| `inspect map` | yes | 7.00 s | Last Hit v0.16 |
+| `chip` (all but `chip init`) | yes | 38.17 s (`chip gates`) | tests/chips/pass-counter |
+| `mutate` | yes | 1210.74 s (`--jobs 4`) | Last Hit v0.16 firmware |
+| `verify` (not `--init`) | yes: it runs the decks again | 11.23 s | Last Hit v0.16 (12 decks) |
+| `autoroute` | yes: FreeRouting, as `design --route` | not measured | |
+| `bench` | yes: it routes each board with each router | not measured | |
+| `ci` | yes: it replays a workflow, `make verify` among its steps | not measured | |
+| `design` (no `--route`) | no | 1.51 s | pass-first-design |
+| `drc` | no | 0.84 s; 1.21 s | pass-rc-divider; Last Hit v0.16 |
+| `erc` | no | 0.49 s; 0.60 s | pass-rc-divider; Last Hit v0.16 |
+| `sources` | no | 1.36 s | Last Hit v0.16 |
+| `costs` | no | 0.77 s | the Last Hit repository |
+| `doctor` | no | 0.69 s | |
+| `procure` | no | 0.54 s | Last Hit v0.16 |
+| `placement` | no | 0.53 s (`pin_sides`); 0.48 s (`placement_audit`) | Last Hit v0.16 |
+| `ratings` | no | 0.47 s | pass-ratings-node |
+| `inspect` (all views but `map`) | no | 0.47 s (`list`) | Last Hit v0.16 |
+| `now` | no | 0.26 s (it refused: no `--item`) | this tree |
+| `standards` | no | 0.24 s | pass-layout with a `product.json` |
+| `references` | no | 0.22 s (`check`) | tests/boards/references/pass/pack.json |
+| `docs` | no | 0.21 s | Last Hit v0.16 |
+| `diagram` | no | 0.21 s | Last Hit v0.16 |
+| `next` | no | 0.18 s | pass-rc-divider |
+| `new` | no | 0.17 s | an empty folder |
+| `fetch`, `curve`, `version` | no | not measured | |
+
+A waiting command prints, on stderr, 1 line at once and 1 every 30 s:
+
+    workcenter: waiting on the engine lock: 2 runs ahead; held by `workcenter gates v0.16` (pid 4242) since 10:02:13, 3 min 5 s ago; lock folder /tmp/workcenter-lock-0
+
+and `workcenter: took the engine lock after 4 min 12 s` when it starts. A run that ended while an
+engine it started still runs is named `..., which ended; 1 process it started still runs (pid N)
+and keeps the lock until it ends`. A run stopped by SIGTERM or SIGHUP prints
+`workcenter: stopped by signal 15 (SIGTERM) after waiting ...` (or `after holding the engine lock
+for ...`) and frees its place; a holder first passes the signal to the processes it started and
+adds `; passed it to 1 process it started`. A run killed by SIGKILL frees its place when the last
+process it started ends. `workcenter doctor` prints `engine lock  free (<folder>)`, or
+`held by ... since ..., N waiting (<folder>)`, or `not judged: <why>`; `workcenter --json doctor`
+carries `engine_lock`.
+
+How to use it:
+
+1. Run the command as it is. No `flock` in front.
+2. A line `waiting on the engine lock: N runs ahead` means the command waits its turn. Do not
+   start it again. Read the next line in 30 s; `N` falls as the runs ahead end.
+3. `workcenter doctor` names the holder and how many wait.
+4. A command that is not a `workcenter` command and starts an engine (a bare `kicad-cli`,
+   `ngspice`, a `pytest` file of engine tests) runs as
+   `python3 tools/enginelock.py hold --what "<name>" -- <command>`.
+5. A script that holds the lock and starts a long command through a process that is not its
+   child or grandchild (a service, a process reparented to init) waits on itself forever: run
+   the command as a child, or with `WORKCENTER_LOCK=off`.
 
 ## `ratings.json` (beside a schematic, for `workcenter ratings`)
 
