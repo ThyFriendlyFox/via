@@ -186,7 +186,9 @@ The gate picks the tolerance runs itself. No key asks for them.
 3. Give each part its temperature behaviour in the deck: a resistor's
    coefficient from its datasheet (`R1 a b 10k tc1=100u`), a model that
    carries temperature. The gate warns when no measure of a deck moves
-   with temperature: such a deck proves nothing about heat or cold.
+   with temperature: such a deck proves nothing about heat or cold. A deck
+   that `sim/thermal.json` names is not warned: its corners' temperature is
+   the ambient its junctions are judged at.
 4. A bound holds at every corner. 2 kinds hold as written only: a bound
    with `warn` (a model against its datasheet's row, which is stated at
    the row's own conditions), and a bound that says `"at": "nominal"`.

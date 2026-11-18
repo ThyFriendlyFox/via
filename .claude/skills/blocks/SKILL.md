@@ -244,7 +244,13 @@ lets the block move to it when the junction runs hot.
    pack's limit (`sim/thermal.json`), and the load to the IC's IOUT
    (`sim/ldo.expect.json`). The deck draws U1's output at the least its
    accuracy gives, where it dissipates the most; it does not model the IC's
-   regulation, so no bound holds `vout`.
+   regulation, so no bound holds `vout`. `workcenter gates .` prints 2
+   `not judged:` warnings, and `gates . --strict` is RED on those 2 alone: no
+   deck says `* deck: load-step U1` (the block's deck draws U1 and steps no
+   load), and C1 and C2 hold their makers' data while no deck holds a
+   capacitor or an inductor. Copy `templates/project/sim/load_step.cir` with
+   a model of U1 to judge the first (the library holds none of the TLV755P);
+   say both in the version's README until then.
 
 ## Adding an IC to a block
 

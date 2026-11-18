@@ -1586,3 +1586,9 @@ What happened: A shell command of the legend's builder began with `cd /` (a DRC 
 Cost: None: it ran kicad-cli on scratch copies. A command run in the wrong folder would have run quietly there.
 Root cause: The habit of a terminal, where a folder stays chosen; here parallel commands share 1 shell. `env -C <tree>` or absolute paths are the fix, as every other command of the piece used.
 Process: P8
+
+## M260 — 2026-11-18 — A block sized its parts from a spec it never checked
+What happened: `blocks.ldo` took `vin` and `ambient` as (least, greatest) without checking the order or that each number is finite. A range written greatest first took the dissipation at the least input and the junction at the least ambient, and built the SOT-23-5 where the WSON-6 was needed; a NaN ambient printed "TJ = nan C, under 85 C". Its deck also held the output to a bound it could not miss, since the deck draws the output as a constant (review findings LDO-1 to LDO-3 and LDO-5).
+Cost: Found by the block's 1 review before landing; fixed with tests.
+Root cause: The block's sums were checked against the cases the builder wrote, not against the spec a user can write. A bound on a value the deck draws holds nothing.
+Process: P14

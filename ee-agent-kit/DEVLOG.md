@@ -39,6 +39,16 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-18 — The linear regulator, the sixth circuit block
+
+The linear regulator block was built after the buck and took its first review's lesson: a block checks the output it builds, not the output it was asked for. A fixed-output LDO builds its nominal, so the block reads it from the datasheet's device nomenclature (table 8-1) and refuses an IC whose nominal is not the output asked; an asked 3.26 V used to pass because it lay inside the 3.3 V part's 1.5 % accuracy. The second fixture doubles the load to 0.2 A: the SOT-23-5's junction would reach 122.44 C against the NASA pack's 85 C, so the block takes the WSON-6 (100.2 C/W, 70.078 C).
+
+Its review found that the block built parts from inputs it never read: an ambient or an input range written greatest first took the junction at the least ambient and the dissipation at the least input, and built the hot SOT-23-5 where the WSON-6 was needed; a NaN ambient printed "TJ = nan C, under 85 C". The block now refuses those on 1 line before it sizes anything, takes the dissipation at the least output its accuracy allows (a junction of 86.39 C at 0.122 A had passed as 85 C), holds the junction to the datasheet's -40 C to 125 C and each capacitor to its curve over temperature, and passes over an IC whose rules or facts it cannot read instead of failing with a traceback. The deck's bound on the output could not fail, since the deck draws the output: it is gone, and the deck says the output is not judged.
+
+Landing it on the trunk found what the trunk had learned since the block was built. The block cited its note and its datasheet with no `CITES`; its fixture tests started KiCad and ngspice with no `engine` marker; and the trunk's definition of done made its fixtures RED under `--strict`, on 2 things the block's deck does not judge: a load step, and the capacitors on their makers' data. The fixtures' plain runs are GREEN with those 2 warnings, and the tests say so.
+
+Evidence: `tests/test_blocks_ldo.py` (51 tests); landing branch `wip/land-b-ldo`.
+
 ## 2026-11-18 — A board's printed text that can be read
 
 The owner asked on 2026-11-17 how to make the labels printed on the boards legible and not overlap. The DRC gate now judges every silkscreen text from the board file, and the generator places designators itself when a design asks. 2 reviews called it not sound; their 19 findings are fixed with tests. The owner decided that a label fault fails the gate at once. On scratch copies of the 17 example boards of the latest versions, 11 now fail on their own text, which the placer does not move: notes on vias, letters set close, text under 0.8 mm. Every example hides its designators; put back and placed, 831 went round their parts or to the Fab layer (186), with no failure of their own.
