@@ -28,8 +28,9 @@ The base is Simplified Technical English:
     no opener that judges or announces ("Good call", "Here is"), and
     no closing offer ("Want me to ...?"). Ask a question plainly.
 
-These rules hold for every message to the owner, and for every post
-on the site's blog.
+These rules hold for every message to the owner. The website, its blog
+included, follows `docs/WEBSITE-WRITING.md`, the owner's rules of
+2026-11-18, which ask for contractions.
 
 ## Claims
 

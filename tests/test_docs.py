@@ -781,13 +781,29 @@ def test_the_blog_is_what_site_blog_writes():
             blog.href(nowhere, "../")
 
 
-def test_each_post_is_in_tone_md_english():
-    """A post is American Simplified Technical English (TONE.md, P37, M206): each sentence under 20
-    words, American spelling, no em dash, no contraction, none of the words TONE.md bans."""
+def test_each_post_follows_the_website_writing_rules():
+    """A post follows the owner's rules for the website (docs/WEBSITE-WRITING.md, P37), as far as a
+    machine can count them: 1 idea in a sentence (32 words at most), American spelling, no em dash,
+    none of the ban list's tells or jargon glosses ("engineers call this"), no colon label, and
+    contractions, not "does not" and "it is" throughout."""
     banned = re.compile(
-        r"—|\b(colour|centre|grey|behaviour|organis|realis|metre|litre)\w*"
-        r"|\b\w+(n't|'re|'ve|'ll|'d)\b|\b(it|that|there|here|what)'s\b"
-        r"|\b(simply|just|very|really|truly|actually|robust|seamless|real)\b",
+        r"—|\b(colour|centre|grey|behaviour|organis|realis|metre|litre|labelled|modelled)\w*"
+        r"|\b(load-bearing|seams?|smoking gun|honest take|the honest answer|the real question|quietly"
+        r"|unpack|sit with|actually|worth noting|a couple of things|one thing to keep in mind|happy to"
+        r"|feel free|just say the word|circling back|bottom line|in plain english|and that matters"
+        r"|here's where it gets interesting|confirmed)\b"
+        r"|\b(engineers|scientists|physicists|designers|players|people|we|they) calls? (this|that|it|them)\b"
+        r"|\b(is|are) called\b",
+        re.IGNORECASE,
+    )
+    label = re.compile(
+        r"^(the (fix|catch|point|trick|upshot|result|answer|problem|gap|rule|bet|lesson|takeaway)"
+        r"|in short|one thing worth doing|honest assessment|the non-negotiable)\s*:",
+        re.IGNORECASE,
+    )
+    uncontracted = re.compile(
+        r"\b(do not|does not|did not|is not|are not|was not|were not|cannot|can not|will not|would not"
+        r"|has not|have not|had not|should not|could not|it is|that is|there is|we are|they are)\b",
         re.IGNORECASE,
     )
     posts = sorted(p for p in (ROOT / "blog").glob("*.md") if p.name != "README.md")
@@ -797,10 +813,12 @@ def test_each_post_is_in_tone_md_english():
         body = re.sub(r"```.*?```", "", body, flags=re.S)
         body = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", body)
         body = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", body)
+        assert len(uncontracted.findall(body)) <= 3, (post.name, uncontracted.findall(body))
         for line in body.splitlines():
             for sentence in re.split(r"(?<=[.:;?!])\s+(?=[A-Z`\"])", line.strip("-# ").strip()):
-                assert len(sentence.split()) < 20, (post.name, sentence)
+                assert len(sentence.split()) <= 32, (post.name, sentence)
                 assert not banned.search(sentence), (post.name, banned.search(sentence).group(0), sentence)
+                assert not label.search(sentence), (post.name, sentence)
 
 
 def test_the_example_pages_are_what_site_examples_writes():

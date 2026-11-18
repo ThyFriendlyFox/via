@@ -51,6 +51,12 @@ owner asked on 2026-11-12 for professional copy that says what Via does
 for the reader. These rules win over the ones above on the site, and only
 there.
 
+Every word on the website, its blog included, follows
+[`WEBSITE-WRITING.md`](WEBSITE-WRITING.md), the owner's rules of
+2026-11-18: contractions, 1 idea in a sentence, plain sentences with a
+number in them, and none of its ban list. Where a rule below and that file
+disagree, the file wins.
+
 1. Lead with what the reader gets, then how Via does it.
 2. Write a headline as 1 plain sentence in sentence case, with no closing
    period: "Four checks before any board is released".
@@ -69,13 +75,14 @@ there.
    claims nothing a run, a file or a test does not show.
 8. Justify a paragraph to its column, with hyphenation on. A part's label
    on the example's board is too narrow for it, and stays ragged.
-9. Write a blog post, and the blog's own words, in American Simplified
-   Technical English, by the rules of `TONE.md`.
+9. Write a blog post, and the blog's own words, by `WEBSITE-WRITING.md`.
+   It replaced `TONE.md`'s Simplified Technical English on the blog on
+   2026-11-18.
 10. A post about an example board speaks as the engineers who made it,
     "we": how we came to make it, the science and the papers behind the
     device, and how the design went. It explains each idea in plain words
-    a slightly technical reader follows, before it names the idea (the
-    owner's ask of 2026-11-18). It cites a paper only when the paper says
+    a slightly technical reader follows, with its number, and with no
+    staged scene or made-up comparison (the owner's asks of 2026-11-18). It cites a paper only when the paper says
     what the post says, and states no fact about the board that its files
     do not.
 

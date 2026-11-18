@@ -1505,14 +1505,18 @@ P35 on main until the merge of 2026-11-17.
 When: writing a post for the site's blog, the blog's own words, or a
 message to the owner.
 
-1. Write in American Simplified Technical English by `TONE.md`'s rules:
-   1 idea in a sentence, under 20 words, the active voice, American
-   spelling, no contraction.
-2. Leave out the patterns `TONE.md` rule 10 names: personification, an
-   intensifier, a list of 3 for rhythm, an em dash, an opener that judges
-   or announces, a closing offer (M206).
-3. Read the draft once for those patterns before it is shown, then run
-   the docs tests: they hold each post to the limits a machine can count.
+1. On the website and its blog, write by `docs/WEBSITE-WRITING.md`, the
+   owner's rules of 2026-11-18: contractions, 1 idea in a sentence, and
+   none of its ban list. Read the file before the first sentence.
+2. In a message to the owner, write in American Simplified Technical
+   English by `TONE.md`'s rules, and leave out the patterns its rule 10
+   names: personification, an intensifier, a list of 3 for rhythm, an em
+   dash, an opener that judges or announces, a closing offer (M206).
+3. Read the draft against the checklist at the end of
+   `WEBSITE-WRITING.md` (or `TONE.md` rule 10 for a message) before it is
+   shown, then run the docs tests: they hold each post to the limits a
+   machine can count.
 
-Done when: the docs tests pass on every post in `blog/`, and the message
-or page has none of rule 10's patterns.
+Done when: the docs tests pass on every post in `blog/`, the page passes
+`WEBSITE-WRITING.md`'s checklist, and a message has none of `TONE.md`
+rule 10's patterns.

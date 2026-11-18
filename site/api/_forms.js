@@ -4,7 +4,7 @@
 // whose name starts with "_".
 
 export const MOST = { email: 254, message: 5000 };
-export const NOT_SENT = "The form did not send. Try again.";
+export const NOT_SENT = "That didn't send. Try again.";
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const text = (form, name) => {
@@ -41,8 +41,8 @@ export async function suggestion(form, now) {
   const message = text(form, "message");
   const email = text(form, "email");
   if (!message) return { error: "Write a suggestion." };
-  if (message.length > MOST.message) return { error: `Write the suggestion in ${MOST.message} characters or fewer.` };
-  if (email && !isEmail(email)) return { error: "Enter an email address, or leave the email empty." };
+  if (message.length > MOST.message) return { error: `Keep the suggestion under ${MOST.message.toLocaleString("en-US")} characters.` };
+  if (email && !isEmail(email)) return { error: "Enter an email address, or leave that field empty." };
   return {
     pathname: `feedback/${now.toISOString().replace(/[:.]/g, "-")}-${crypto.randomUUID().slice(0, 8)}.json`,
     record: { message, email: email || null, page: from(form), at: now.toISOString() },
@@ -73,7 +73,7 @@ export async function receive(request, read, keep, done) {
     script
       ? Response.json({ ok: false, error }, { status })
       : new Response(`${error}\n`, { status, headers: { "content-type": "text/plain; charset=utf-8" } });
-  if (!ours(request)) return refuse(403, "Send the form from the site's own page.");
+  if (!ours(request)) return refuse(403, "Send the form from the site.");
   let form;
   try {
     form = await request.formData();

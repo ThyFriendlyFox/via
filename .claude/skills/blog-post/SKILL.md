@@ -32,8 +32,8 @@ path below to where it keeps posts (`blog/`, `posts/`, or the site repo).
    subject.
 2. Write the title: under 60 characters, names the change, no pun
    unless the human asked for puns.
-3. Write the post in `TONE.md` voice (American Simplified Technical
-   English), 300–800 words:
+3. Write the post by `docs/WEBSITE-WRITING.md` (the owner's rules for
+   the website), 300–800 words:
    - **Open** with what changed for the reader, in 2 sentences.
    - **Show** it: one concrete example from a use case — commands,
      screenshots, or output. Real evidence from the shipped item.
@@ -69,8 +69,8 @@ website rule 10 holds it.
 3. Give 2 to 4 sections of science, each on 1 idea the device depends on:
    how it works, the paper, standard or book it comes from (authors,
    title, venue, year), and how the board uses it. Build each idea from
-   the ground up with a number or an everyday comparison before naming
-   it. Cite only a work that says what the post says; leave a doubtful
+   the ground up with its number, in plain words, with no staged scene
+   or made-up comparison. Cite only a work that says what the post says; leave a doubtful
    one out.
 4. Tell how the design went, from the example's README, TIMELINE.md,
    LOOP.md, the devlog and `MISTAKES.md`, numbers copied from the files.
@@ -83,9 +83,9 @@ website rule 10 holds it.
 - Every claim in the post traces to a devlog entry, changelog line, or
   shipped-item evidence. No claim without a source.
 - No marketing words. Run the docs/STYLE.md rules over the draft.
-- American Simplified Technical English, by `TONE.md`'s rules: short
-  active sentences, American spelling, none of the patterns rule 10
-  names.
+- The website writing rules (`docs/WEBSITE-WRITING.md`): contractions,
+  1 idea in a sentence, none of its ban list, and its checklist read
+  before the post is shown.
 - A reader who has never seen the project understands the opening
   2 sentences.
 - The post names version numbers and dates as digits.

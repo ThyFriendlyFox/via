@@ -141,8 +141,12 @@ def test_a_form_that_is_not_whole_keeps_nothing_and_says_why():
         ("subscribe", {"email": "nope"}, "Enter an email address."),
         ("subscribe", {"email": "a@" + "b" * 250 + ".com"}, "Enter an email address."),
         ("feedback", {"message": "  "}, "Write a suggestion."),
-        ("feedback", {"message": "x" * 5001}, "Write the suggestion in 5000 characters or fewer."),
-        ("feedback", {"message": "Hi", "email": "nope"}, "Enter an email address, or leave the email empty."),
+        ("feedback", {"message": "x" * 5001}, "Keep the suggestion under 5,000 characters."),
+        (
+            "feedback",
+            {"message": "Hi", "email": "nope"},
+            "Enter an email address, or leave that field empty.",
+        ),
     ):
         answer = send(form, fields)
         assert (answer["status"], answer["json"], answer["kept"]) == (400, {"ok": False, "error": error}, [])
@@ -177,5 +181,5 @@ def test_a_store_that_fails_tells_the_reader_to_try_again():
     answer = send("subscribe", {"email": "a@example.com"}, fail=True)
     assert (answer["status"], answer["json"]) == (
         500,
-        {"ok": False, "error": "The form did not send. Try again."},
+        {"ok": False, "error": "That didn't send. Try again."},
     )

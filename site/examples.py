@@ -711,7 +711,7 @@ def example_page(ex: Example, board: Board | None, pictures: set[str]) -> str:
         <div class="wrap">
           <div class="head" data-reveal data-stagger>
             <p class="eyebrow">The hard parts</p>
-            <h2 class="title" id="hard-title">What is hard about it, and where each part lives</h2>
+            <h2 class="title" id="hard-title">What's hard about it, and where each part is</h2>
           </div>
           <div class="hard" data-reveal data-stagger>{cards}</div>
         </div>
@@ -838,7 +838,7 @@ def example_page(ex: Example, board: Board | None, pictures: set[str]) -> str:
         <div class="wrap">
           <div class="head" data-reveal data-stagger>
             <p class="eyebrow">What is open</p>
-            <h2 class="title" id="open-title">What is still to be done on this board</h2>
+            <h2 class="title" id="open-title">What's still left to do on this board</h2>
           </div>
           <ul class="open" data-reveal data-stagger>{items}</ul>{rest}
           <div class="actions">

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Via: AI-assisted circuit board design, checked from schematic to fabrication</title>
-    <meta name="description" content="Via lets an AI agent design printed circuit boards in code and checks every board the way an experienced engineer would: electrical rules, design rules, simulation across temperature and part tolerances, and fabrication export. Open source under the MIT license.">
+    <meta name="description" content="Via lets an AI agent design circuit boards in code. Every board goes through four checks before Via writes the files a fab needs. It's open source under the MIT license.">
     <link rel="canonical" href="%ORIGIN%/">
     <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
@@ -16,7 +16,7 @@
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Via">
     <meta property="og:title" content="Via: AI-assisted circuit board design, checked from schematic to fabrication">
-    <meta property="og:description" content="Design printed circuit boards with an AI agent, and get fabrication files only for boards that pass every check. Open source under the MIT license.">
+    <meta property="og:description" content="Design circuit boards with an AI agent. Via writes the fabrication files only for a board that passes every check. It's open source under the MIT license.">
     <meta property="og:url" content="%ORIGIN%/">
     <meta property="og:image" content="%ORIGIN%/og.png"><meta property="og:image:type" content="image/png"><meta property="og:image:width" content="1280"><meta property="og:image:height" content="640"><meta property="og:image:alt" content="The Via wordmark and the headline Circuit Boards From AI, beside the routed board of Herald, a fire alarm communicator designed with Via"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="%ORIGIN%/og.png"><meta name="twitter:image:alt" content="The Via wordmark and the headline Circuit Boards From AI, beside the routed board of Herald, a fire alarm communicator designed with Via">
     <!-- Before first paint: the theme the address asks for (?theme=dark), else the stored one, else
@@ -121,7 +121,7 @@
                 <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
               </a>
             </div>
-                        <p class="small">Via is in early development and has no release yet. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/STATUS.md">See the current status</a>.</p>
+                        <p class="small">Via is in early development, and there's no release yet. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/STATUS.md">See the current status</a>.</p>
             <div class="install" data-copyable>
               <div class="install-head">
                 <p class="eyebrow">Install on Ubuntu 24.04</p>
@@ -172,7 +172,7 @@
           <div class="head" data-reveal data-stagger>
             <p class="eyebrow">Example project</p>
             <h2 class="title" id="herald-title">A fire alarm communicator, designed end to end with Via</h2>
-            <p class="lede">Herald connects a fire alarm control panel to a monitoring station over LTE-M, with Wi-Fi as a backup. Via took it from a written brief to a routed four-layer board, 84.4 × 64 mm with 127 parts on one side, and the files a fabricator needs. Every part on the board below is labelled with the information Via gathered for it.</p>
+            <p class="lede">Herald connects a fire alarm panel to a monitoring station over LTE-M, with Wi-Fi as a backup. Via took it from a written brief to a routed four-layer board and the files a fab needs. It's 84.4 × 64 mm, with all 127 parts on the front. Every part on the board below has a label with what Via found out about it.</p>
           </div>
 
           <div class="stage tour" data-reveal data-tour>
@@ -365,12 +365,12 @@
             <div class="tour-cards" data-cards="right"></div>
             <svg class="leaders" data-leaders aria-hidden="true"></svg>
           </div>
-          <p class="after">This view is generated from Herald's design file and routed board. Each label shows what Via recorded for that part: its value, footprint and connections; the manufacturer's description and datasheet; why it was chosen; and every simulation that tests it, with the results across temperature and tolerance. Select any part on the board to see its label.</p>
+          <p class="after">This drawing comes from Herald's design file and routed board. Each label holds what Via recorded for that part, from its value and datasheet to the simulations that test it. Tap or click a part to see its label.</p>
 
           <div class="hard" data-reveal data-stagger>
             <div><span class="ref">J2 · Q3 · Q4</span><h3>A phone line for a panel that expects one</h3><p>Fire panels report by telephone. Herald supplies the panel's dialer with a current-limited line from its 24 V input and detects when the dialer goes off hook.</p></div>
             <div><span class="ref">U5 · GPIO7</span><h3>Tone decoding in firmware</h3><p>A Goertzel filter decodes the dialer's DTMF digits to the limits of ITU-T Q.24, verified on the host with a complete Contact ID call.</p></div>
-            <div><span class="ref">GPIO14 · R25–R27</span><h3>Line tones from a PWM pin</h3><p>Dial tone, handshake and acknowledgement come from a microcontroller pin through two RC stages. Simulation caught a first design that was too weak for the line before any board was made.</p></div>
+            <div><span class="ref">GPIO14 · R25–R27</span><h3>Line tones from a PWM pin</h3><p>Dial tone, handshake and acknowledgment come from a microcontroller pin through two RC stages. Simulation caught a first design that was too weak for the line before any board was made.</p></div>
             <div><span class="ref">J3 · R31 · R32 · U8</span><h3>Three supervised inputs</h3><p>End-of-line resistors let one ADC reading tell a closed contact, an intact loop and a cut wire apart, with at least 0.2 V of margin at every simulated corner.</p></div>
             <div><span class="ref">K1 · Q6 · J7</span><h3>A fail-safe trouble relay</h3><p>The relay is held on while Herald is healthy. A power loss or a reset releases it, and the panel reports the fault.</p></div>
             <div><span class="ref">U3 · J4 · J5</span><h3>Cellular first</h3><p>A Quectel BG95-M1 LTE-M module with a nano SIM, level-shifted to the ESP32-S3, with a hand-routed 50 Ω antenna feed.</p></div>
@@ -386,7 +386,7 @@
             </div>
             <div class="renders-side">
               <h3>The board in 3D</h3>
-              <p>KiCad's model of the routed board, with every part, in its real colours: red solder mask, white legend and gold-plated pads. Drag to turn it: every part sits on the front, and the back carries the installer's notes.</p>
+              <p>This is KiCad's model of the routed board with every part on it. The solder mask is red, the legend white and the pads gold-plated. Drag to turn it. Every part sits on the front, and the back has the installer's notes.</p>
               <img class="layers-thumb" src="showcase/herald-layers.png" width="1200" height="722" loading="lazy" alt="Every layer of Herald on its own, from workcenter render">
             </div>
           </div>
@@ -405,7 +405,7 @@ PASS   sim        8 decks, 573 corner runs, 0 failures  [1.56s]
 PASS   export     7/7 outputs, 24 gerber files, 3 files read back  [3.94s]</span>
 <span class="verdict">GREEN with 7 warnings: herald  report /home/user/via/examples/fire-alarm-communicator/v0.1/build/gates.json</span></pre>
             </div>
-            <figcaption>Via's four checks on Herald, exactly as the terminal printed them. The seven warnings flag silkscreen outlines that meet the board edge, where the terminal blocks and the USB-C connector face outward. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/fire-alarm-communicator/v0.1/README.md">The project README</a> covers the specification, the pin plan, every part and the open items, and <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/fire-alarm-communicator/v0.1/design.py">the design file</a> is the board itself.</figcaption>
+            <figcaption>Via's four checks on Herald, as the terminal printed them. The seven warnings are silkscreen outlines that touch the board edge, where the terminal blocks and the USB-C connector face out. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/fire-alarm-communicator/v0.1/README.md">The project README</a> has the specification, the pin plan, every part and what's still open. Via builds the board from <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/fire-alarm-communicator/v0.1/design.py">the design file</a>.</figcaption>
           </figure>
         </div>
       </section>
@@ -481,7 +481,7 @@ PASS   export     7/7 outputs, 24 gerber files, 3 files read back  [3.94s]</span
               <p class="fname">examples/universal-controller/v0.1/rosetta.kicad_sch</p>
               <div class="text">
                 <h3>Electrical rules (ERC)</h3>
-                <p>KiCad's electrical rule check on the schematic. On Rosetta's first wired schematic it found a stick's click on a net named <code>L3</code> while the shift register read <code>BTN_L3</code>: two labels, each on one pin, connected to nothing.</p>
+                <p>KiCad's electrical rule check on the schematic. On Rosetta's first wired schematic it found a stick's click on a net named <code>L3</code> while the shift register read <code>BTN_L3</code>. That left two labels, each on one pin and connected to nothing.</p>
               </div>
             </article>
             <article class="draw">
@@ -551,7 +551,7 @@ PASS   export     7/7 outputs, 24 gerber files, 3 files read back  [3.94s]</span
               <p class="fname">tests/boards/fail-freq-overlap/sim/frequency-plan.json</p>
               <div class="text">
                 <h3>The frequency plan</h3>
-                <p>Switching frequencies and their harmonics are checked against every resonance the simulations measure. In this test circuit the load's third harmonic lands on the filter's peak: the rail swings while its average still passes.</p>
+                <p>Via checks switching frequencies and their harmonics against every resonance the simulations measure. In this test circuit, the load's third harmonic lands on the filter's peak. The rail swings, even though its average still passes.</p>
               </div>
             </article>
             <article class="draw">
@@ -576,7 +576,7 @@ PASS   export     7/7 outputs, 24 gerber files, 3 files read back  [3.94s]</span
               <p class="fname">examples/universal-controller/v0.1/rosetta.kicad_pcb</p>
               <div class="text">
                 <h3>Automatic routing</h3>
-                <p>FreeRouting routes the board from the design file, with no manual steps in a GUI. Rosetta v0.1's four layers routed once the RP2040's capacitors moved to its corners and its vias shrank to 0.45 mm.</p>
+                <p>FreeRouting routes the board from the design file. Rosetta v0.1's four layers routed once the RP2040's capacitors moved to its corners and its vias shrank to 0.45 mm.</p>
               </div>
             </article>
             <article class="draw">
@@ -610,7 +610,7 @@ DONE WHEN  the last line starts with GREEN</span></pre>
               <p class="fname">workcenter next</p>
               <div class="text">
                 <h3>What to fix next</h3>
-                <p>When a check fails, <code>workcenter next</code> says what to do: the change to make, the command to run, why the check failed and the guide to read. Here, a test circuit meets its limit at room temperature but drifts out of it at 85 °C. Engineers and AI agents get the same guidance.</p>
+                <p>When a check fails, <code>workcenter next</code> tells you the change to make, the command to run, why the check failed and which guide to read. Here, a test circuit meets its limit at room temperature but drifts out at 85 °C. It gives engineers and AI agents the same answer.</p>
               </div>
             </article>
           </div>
@@ -639,7 +639,7 @@ FAIL   drc        1 errors, 1 warnings (0 unconnected, 0 parity)  [0.63s]
                 <li class="bad"><i></i>RED <span>exit 1</span></li>
                 <li><i></i>SKIPPED <span>exit 2</span></li>
               </ul>
-              <p>The exit code matches the last line, so scripts and CI can rely on it. A check whose tool is missing is reported as skipped, never as passed.</p>
+              <p>The exit code matches the last line, so scripts and CI can use it. If a check's tool isn't installed, the check reports SKIPPED.</p>
             </div>
           </div>
         </div>
@@ -650,7 +650,7 @@ FAIL   drc        1 errors, 1 warnings (0 unconnected, 0 parity)  [0.63s]
           <div class="head" data-reveal data-stagger>
             <p class="eyebrow">Design as code</p>
             <h2 class="title" id="board-title">How a Python File Becomes a Board</h2>
-            <p class="lede">Parts, connections and placement live in one file under version control. Change a line, regenerate, and Via rebuilds the schematic and the routed board, with no manual steps in a GUI.</p>
+            <p class="lede">Parts, connections and placement are in one file under version control. Change a line and run it again, and Via rebuilds the schematic and the routed board.</p>
           </div>
           <div class="files wide" data-reveal data-stagger>
             <figure>
@@ -678,7 +678,7 @@ FAIL   drc        1 errors, 1 warnings (0 unconnected, 0 parity)  [0.63s]
                 <h3>herald.kicad_pcb</h3>
                 <div class="view"><img src="showcase/herald-top.png" width="1200" height="762" loading="lazy" alt="Herald's routed board in 3D, from the front"></div>
               </div>
-              <figcaption><b>and routes the board,</b> with no manual steps in a GUI.</figcaption>
+              <figcaption><b>and routes the board.</b></figcaption>
             </figure>
           </div>
           <p class="after"><code>workcenter design design.py --route</code> writes Herald's KiCad schematic and routed board from its design file, so every change to the board is a change you can review.</p>
@@ -738,8 +738,8 @@ FAIL   drc        1 errors, 1 warnings (0 unconnected, 0 parity)  [0.63s]
               </div>
             </div>
           </div>
-          <p class="after">The command-line tool needs only Python's standard library. <code>workcenter doctor</code> reports the status of each engine, and a check whose engine is missing is reported as skipped, never as passed.</p>
-          <p class="after">Every procedure is written as a skill an agent can follow: designing a board, running the checks, simulating, routing, pricing parts and writing a verification package. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/WORKCENTER.md">The contract</a> lists everything a project receives.</p>
+          <p class="after">The command-line tool needs only Python's standard library. <code>workcenter doctor</code> tells you which engines are installed.</p>
+          <p class="after">Each procedure, from designing a board to pricing its parts, is a skill an agent can follow. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/WORKCENTER.md">The contract</a> lists everything a project gets.</p>
         </div>
       </section>
 
@@ -760,7 +760,7 @@ FAIL   drc        1 errors, 1 warnings (0 unconnected, 0 parity)  [0.63s]
               <svg class="done" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
             </button>
           </div>
-          <p class="after"><b>Current status.</b> Via is in early development and has no release yet. The checks, the simulation corners, the frequency plan and <code>workcenter next</code> run in every test of the repository. The Docker image and the cloud setup script are not released yet, and chip design, from RTL to mask layout, is in progress. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/STATUS.md">The status page</a> has the details.</p>
+          <p class="after">Via is in early development, and there's no release yet. The repository's tests run the checks, the simulation corners, the frequency plan and <code>workcenter next</code>. The Docker image and the cloud setup script aren't released. Chip design, from RTL to mask layout, is in progress. <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/STATUS.md">The status page</a> has the details.</p>
           <div class="cards" data-reveal data-stagger>
             <a class="card" href="https://github.com/ThyFriendlyFox/via/tree/main/examples">
               <h3>Example projects <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></h3>
@@ -768,11 +768,11 @@ FAIL   drc        1 errors, 1 warnings (0 unconnected, 0 parity)  [0.63s]
             </a>
             <a class="card" href="https://github.com/ThyFriendlyFox/via/blob/main/environment/README.md">
               <h3>Cloud environment <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></h3>
-              <p>Run Via in a hosted environment that carries the tools, while your board lives in its own repository.</p>
+              <p>Run Via in a hosted environment that has the tools installed. Your board stays in its own repository.</p>
             </a>
             <a class="card" href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/ROADMAP.md">
               <h3>Roadmap <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></h3>
-              <p>What is being built next, in priority order.</p>
+              <p>What we're building next, in order.</p>
             </a>
           </div>
         </div>
