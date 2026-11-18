@@ -29,8 +29,8 @@
 #   SKIP_APT              1 skips the apt step (for images that ship KiCad 10)
 #   KICAD_INDEX_TRIES     tries to fetch the index of KiCad 10's package source (default 3)
 #   KICAD_INDEX_WAIT      seconds between 2 tries (default 20)
-#   APT_UPDATE_TIMEOUT    seconds 1 `apt-get update` may take (default 75)
-#   APT_DOWNLOAD_TIMEOUT  seconds the download of the packages may take (default 280)
+#   APT_UPDATE_TIMEOUT    seconds 1 `apt-get update` of KiCad 10's index may take (default 120)
+#   APT_DOWNLOAD_TIMEOUT  seconds the download of the packages may take (default 600)
 #   KICAD_KEYRING, KICAD_SOURCES, WORKCENTER_LINK, OS_RELEASE, JVM_DIR
 #                         the paths outside WORKCENTER_ROOT the script writes or reads (defaults
 #                         below); the tests point them into a folder of their own
@@ -39,6 +39,13 @@
 #                         (default 0: a board needs none of them)
 
 set -euo pipefail
+
+# From standard input (`bash -s < install.sh`, `curl ... | bash`) the script has no file, and SRC_DIR
+# below is read from it.
+if [[ -z "${BASH_SOURCE[0]:-}" ]]; then
+  printf '[install] ERROR: %s\n' "install.sh runs as a file, not from standard input: sudo ./install.sh" >&2
+  exit 1
+fi
 
 WC_NAME="ee"
 WC_ROOT="${WORKCENTER_ROOT:-/opt/workcenters/${WC_NAME}}"
@@ -64,20 +71,23 @@ JVM_DIR="${JVM_DIR:-/usr/lib/jvm}"
 # The bounds of the apt step. Launchpad's host flaps: on 2026-11-18 it answered 503 for the index
 # (CI job 134932219722) and for a package file (job 134906707485), and in 1 minute 200 for the index
 # and 503 for a file. A short wait rides that out; a long outage ends here with apt's own line.
-# CI's `full` job has 1800 s for the checkout, this script and `make verify` (.github/workflows/ci.yml).
-# The passing run of that day (job 134889089620) used 8 s for the checkout, 35 s for the update, 218 s
-# for the download, 31 s to unpack and set up, 32 s for the steps after apt and 1152 s for `make
-# verify`. 1800 - 8 - 31 - 32 - 1152 leaves 577 s for the updates, the waits and the download.
-# The slowest update seen took 48 s (job 134906707485): 75 s each. 3 tries with 20 s between them:
-# 3 x 75 + 2 x 20 = 265 s. The download gets 280 s, 1.28 times the 218 s seen: 545 s in all.
+# CI's `full` job has 1800 s (.github/workflows/ci.yml, timeout-minutes: 30). The newest passing run
+# of that day (job 134941364976) used 9 s before this script, 11 s for the update, 112 s for the
+# download, 27 s to unpack and set up, 28 s for the steps after apt and 670 s for `make verify`:
+# 1800 - 9 - 27 - 28 - 670 leaves 1066 s for the updates, the waits and the download. The slowest
+# update seen took 48 s (job 134906707485): 120 s each. 3 tries with 20 s between them: 3 x 120 +
+# 2 x 20 = 400 s. The download gets 600 s: 2.75 times the slowest seen (218 s for 281.1 MB, job
+# 134889089620), or 3.75 Mbit/s. 1000 s in all. A slower line sets APT_DOWNLOAD_TIMEOUT.
 KICAD_INDEX_TRIES="${KICAD_INDEX_TRIES:-3}"
 KICAD_INDEX_WAIT="${KICAD_INDEX_WAIT:-20}"
-APT_UPDATE_TIMEOUT="${APT_UPDATE_TIMEOUT:-75}"
-APT_DOWNLOAD_TIMEOUT="${APT_DOWNLOAD_TIMEOUT:-280}"
-# apt's own bounds on 1 file, as before: 3 more tries, and a server silent for 60 s is given up.
+APT_UPDATE_TIMEOUT="${APT_UPDATE_TIMEOUT:-120}"
+APT_DOWNLOAD_TIMEOUT="${APT_DOWNLOAD_TIMEOUT:-600}"
+# apt's own bounds on 1 file, as before: 3 more tries, and a server silent for 60 s is given up. 4 x 60
+# = 240 s on 1 silent file stays within the download's bound, so apt names that file before the cut.
 APT_FILE_RETRIES="3"
 APT_FILE_TIMEOUT="60"
-APT_PROGRESS='^(Get:[0-9]+|Setting up|Unpacking) '
+# apt's Err: and Ign: lines name the file and the host that failed: a cut download shows them.
+APT_PROGRESS='^((Get|Err|Ign):[0-9]+|Setting up|Unpacking) '
 
 FREEROUTING_VERSION="${FREEROUTING_VERSION:-1.9.0}"
 FREEROUTING_SHA256="${FREEROUTING_SHA256:-9084a4888937a7f31f857ecc12aa7a37407f51160e4d2892dff9c9bb47ae3102}"
@@ -149,7 +159,32 @@ stop() {
   printf '[install] %s\n' "$2" >&2
   exit 1
 }
-AGAIN="KiCad 10 comes from a third party's package source (Launchpad's KiCad PPA). No KiCad was installed. Run the script again later."
+
+# What a stop before the install leaves: no KiCad from this run, and the computer's own KiCad as it was.
+kicad_kept() {
+  local seen
+  seen="$(kicad-cli version 2>/dev/null | head -n 1 || true)"
+  if [[ -n "$seen" ]]; then
+    printf 'This run installed no KiCad; the KiCad on this computer (%s) is unchanged.' "$seen"
+  else
+    printf 'This run installed no KiCad.'
+  fi
+}
+
+# What to do after apt's line $1: "again later" ($2) only for a cause that passes by itself (a 5xx, a
+# host that did not answer, a bound reached). The texts are apt 2.8.3's (its po/*.pot).
+apt_advice() {
+  case "$1" in
+    *"Could not get lock"* | *"Unable to lock"* | *"Unable to acquire the dpkg frontend lock"*)
+      printf 'Another apt or dpkg holds its lock (an update or an install of its own): run the script again when it has ended.' ;;
+    *" 5"[0-9][0-9]" "* | *"did not end within"* | *"Temporary failure resolving"* | *"Could not connect"* \
+      | *"Connection timed out"* | *"Connection failed"*)
+      printf '%s' "$2" ;;
+    *)
+      printf 'Fix what apt said, then run the script again.' ;;
+  esac
+}
+LATER="KiCad 10 comes from a third party's package source (Launchpad's KiCad PPA), which did not answer this time: run the script again later."
 
 add_kicad_ppa() {
   local codename
@@ -191,24 +226,41 @@ EOF
 # names the source. apt ends with 0 when an index failed and it only warned (job 134932219722 at
 # 15:57:17), so its code alone does not tell. `--error-on=any` (APT::Update::Error-Mode, apt 2.8.3)
 # would fail on any source's warning too, and then blame KiCad's. The candidate check reads the rest.
-# Sets APT_SAID to apt's last line about the source, or to what ended the try.
+# apt names a source by its address without the last slash ("GPG error: <address> noble InRelease",
+# "The repository '<address> noble Release' ..."), and with it in "Failed to fetch <address>/dists/...":
+# the address is matched without it. Sets APT_SAID to apt's last line about the source, else apt's last
+# E: line, else what ended the try. A source with 2 keys, or no release for this Ubuntu, is not tried
+# again: neither passes by itself.
 APT_SAID=""
+KICAD_TRIED=0
+# True when apt's line $1 is about KiCad's own source and does not pass by itself: a second key for it,
+# or no release of it for this Ubuntu. Another source's line of the same kind is the user's.
+kicad_lasting() {
+  case "$1" in
+    *"Conflicting values set for option Signed-By regarding source ${KICAD_PPA_URL%/}"* \
+      | *"${KICAD_PPA_URL%/} "*"does not have a Release file"*) return 0 ;;
+  esac
+  return 1
+}
 kicad_index() {
   local try out rc
   for ((try = 1; try <= KICAD_INDEX_TRIES; try++)); do
+    KICAD_TRIED=$try
     log "apt: update, try ${try} of ${KICAD_INDEX_TRIES}"
     rc=0
     out="$(timeout "$APT_UPDATE_TIMEOUT" apt-get update -qq 2>&1)" || rc=$?
     if [[ -n "$out" ]]; then printf '%s\n' "$out" >&2; fi
-    APT_SAID="$(grep -F "$KICAD_PPA_URL" <<< "$out" | grep -E '^(W|E|Err):' | tail -n 1 || true)"
+    APT_SAID="$(grep -F "${KICAD_PPA_URL%/}" <<< "$out" | grep -E '^(W|E|Err):' | tail -n 1 || true)"
     if ((rc == 0)) && [[ -z "$APT_SAID" ]]; then
       return 0
     fi
     if ((rc == 124)); then
       APT_SAID="nothing: apt-get update did not end within ${APT_UPDATE_TIMEOUT} s (APT_UPDATE_TIMEOUT)"
     elif [[ -z "$APT_SAID" ]]; then
-      APT_SAID="exit code ${rc}: $(tail -n 1 <<< "$out")"
+      APT_SAID="$(grep -E '^E:' <<< "$out" | tail -n 1 || true)"
+      APT_SAID="exit code ${rc}: ${APT_SAID:-$(tail -n 1 <<< "$out")}"
     fi
+    if kicad_lasting "$APT_SAID"; then return 1; fi
     if ((try < KICAD_INDEX_TRIES)); then
       log "apt: the index of KiCad 10's source is not there yet; waiting ${KICAD_INDEX_WAIT} s"
       sleep "$KICAD_INDEX_WAIT"
@@ -217,18 +269,44 @@ kicad_index() {
   return 1
 }
 
-# For each KiCad package: `name|candidate|archive`. `apt-cache policy` prints "  Candidate: <version>"
-# and, under "Version table:", each version, then 1 line per archive that has it ("        500
-# <address> <suite>/<component> <arch> Packages"; tests/samples/install/policy-ppa.txt). The archive
-# is KiCad 10's source when it has the candidate, else the first other archive that does.
+# The stop after kicad_index, with what to do read from apt's line. A sources file that breaks every
+# `apt update` (a second key for the source, a release the source does not serve) is removed.
+kicad_index_stop() {
+  local first file others="" tries="tries" lasting=""
+  if ((KICAD_TRIED == 1)); then tries="try"; fi
+  first="apt: the index of KiCad 10's package source did not arrive in ${KICAD_TRIED} ${tries}: $(kicad_source); apt said: ${APT_SAID}"
+  if kicad_lasting "$APT_SAID"; then lasting="$APT_SAID"; fi
+  case "$lasting" in
+    *"Conflicting values set for option Signed-By"*)
+      while IFS= read -r file; do
+        if [[ -n "$file" && "$file" != "$KICAD_SOURCES" ]]; then others+="${others:+, }${file}"; fi
+      done < <(grep -lF "${KICAD_PPA_URL%/}" "$(dirname "$KICAD_SOURCES")"/* 2>/dev/null || true)
+      rm -f "$KICAD_SOURCES"
+      stop "$first" "Another file names KiCad 10's package source with another key: ${others:-none found beside ${KICAD_SOURCES}}. ${KICAD_SOURCES} was removed, so apt works as before. Remove the other file, then run the script again. $(kicad_kept)" ;;
+    *"does not have a Release file"*)
+      rm -f "$KICAD_SOURCES"
+      stop "$first" "KiCad 10's package source serves no release for $(os_codename) (${OS_RELEASE}); install.sh is for Ubuntu 24.04 (noble). ${KICAD_SOURCES} was removed, so apt works as before. $(kicad_kept)" ;;
+    *)
+      stop "$first" "$(kicad_kept) $(apt_advice "$APT_SAID" "$LATER")" ;;
+  esac
+}
+
+# For each KiCad package: `name|candidate|archive|source's version`. `apt-cache policy` prints
+# "  Candidate: <version>" and, under "Version table:", each version, then 1 line per archive that has
+# it ("        500 <address> <suite>/<component> <arch> Packages"; tests/samples/install/policy-ppa.txt).
+# The archive is KiCad 10's source when it has the candidate, else the first other archive that does.
+# The source's version is the first version KiCad 10's source has, candidate or not. The program holds
+# no `|`, `>` or `||` outside its texts and patterns: the tests' fence refuses an awk that could write.
 kicad_candidates() {
   apt-cache policy "${KICAD_PACKAGES[@]}" | awk -v src="$(kicad_source)" '
-    function done() { if (pkg != "") print pkg "|" cand "|" from }
-    /^[^ ].*:$/ { done(); pkg = substr($0, 1, length($0) - 1); cand = ""; from = ""; ver = ""; next }
+    function done() { if (pkg != "") print pkg "|" cand "|" from "|" own }
+    /^[^ ].*:$/ { done(); pkg = substr($0, 1, length($0) - 1); cand = ""; from = ""; ver = ""; own = ""; next }
     /^  Candidate: / { cand = $2; next }
     /^ (\*\*\*|   ) [^ ]+ [0-9]+$/ { ver = $(NF - 1); next }
-    /^        [0-9]+ / && ver != "" && ver == cand {
+    /^        [0-9]+ / && ver != "" {
       line = $0; sub(/^ +[0-9]+ /, "", line); sub(/ [^ ]+ Packages$/, "", line)
+      if (own == "" && index(line, src) == 1) own = ver
+      if (ver != cand) next
       if (index(line, src) == 1) from = line
       else if (from == "" && line != "/var/lib/dpkg/status") from = line
     }
@@ -236,40 +314,67 @@ kicad_candidates() {
 }
 
 # Stops unless every KiCad package's candidate is 10.x from KiCad 10's source: apt must never install
-# Ubuntu's own KiCad (7.0.11 in job 134932219722). A pin under /etc/apt/preferences.d would do it too,
-# but it stays on the user's computer after the script and says only "no installation candidate".
+# Ubuntu's own KiCad (7.0.11 in job 134932219722). A pin of the source would do it too, but it stays
+# on the user's computer after the script and says only "no installation candidate". When the source
+# has a 10.x the candidate is not, a pin or another source outranks it, and the stop says so.
 kicad_candidates_check() {
-  local rows pkg row cand from src bad=()
+  local rows pkg row cand from own src errors advice rc=0 outranked=0 bad=()
   src="$(kicad_source)"
-  rows="$(kicad_candidates)"
+  errors="$(mktemp)"
+  rows="$(kicad_candidates 2> "$errors")" || rc=$?
+  cat "$errors" >&2
+  if ((rc != 0)); then
+    APT_SAID="$(grep -m1 '^E:' "$errors" || true)"
+    rm -f "$errors"
+    stop "apt: \`apt-cache policy ${KICAD_PACKAGES[*]}\` ended with exit code ${rc}; apt said: ${APT_SAID:-nothing}" \
+      "$(kicad_kept) $(apt_advice "$APT_SAID" "$LATER")"
+  fi
+  rm -f "$errors"
   for pkg in "${KICAD_PACKAGES[@]}"; do
     row="$(grep -F "${pkg}|" <<< "$rows" | grep -E "^${pkg}\|" || true)"
-    IFS='|' read -r _ cand from <<< "$row"
+    IFS='|' read -r _ cand from own <<< "$row"
     if [[ -z "$cand" || "$cand" == "(none)" ]]; then
+      if [[ "$own" == 10.* ]]; then outranked=1; fi
       bad+=("${pkg} (apt has none)")
-    elif [[ "$cand" != 10.* || "$from" != "$src"* ]]; then
+    elif [[ "$cand" == 10.* && "$from" == "$src"* ]]; then
+      continue
+    elif [[ "$own" == 10.* ]]; then
+      outranked=1
+      bad+=("${pkg} (apt prefers ${cand} from ${from:-no archive} to the source's ${own})")
+    else
       bad+=("${pkg} (apt has ${cand} from ${from:-no archive})")
     fi
   done
   if ((${#bad[@]})); then
-    stop "apt: KiCad 10's package source gave no candidate for $(printf '%s, ' "${bad[@]}" | sed 's/, $//'): ${src}; apt said: ${APT_SAID:-nothing about this source}" "$AGAIN"
+    if ((outranked)); then
+      advice="A pin (apt_preferences) or another package source outranks KiCad 10's package source; \`apt-cache policy kicad\` shows which. Remove it, then run the script again."
+    else
+      advice="KiCad 10 comes from a third party's package source (Launchpad's KiCad PPA), which does not offer every package as 10.x now: run the script again later."
+    fi
+    stop "apt: not every KiCad package's candidate is 10.x from KiCad 10's package source: $(printf '%s, ' "${bad[@]}" | sed 's/, $//'): ${src}; apt said: ${APT_SAID:-nothing about this source}" \
+      "$(kicad_kept) ${advice}"
   fi
   log "apt: every KiCad package's candidate is 10.x from ${src}"
 }
 
-# Runs a command with its progress lines shown as they come (M86: both filters flush each line), and
-# returns the command's own exit code: grep ends with 1 when no line matches, as when every package is
-# installed already. Call it as `apt_shown ... || rc=$?`. apt prints its W: and E: lines on stderr when
-# it has fetched what it could; they are shown after the progress, as apt printed them, and apt's first
-# E: line is kept in APT_SAID.
+# Runs a command with its progress lines shown as they come (M86: the filters flush each line, and tee
+# does not buffer), and returns the command's own exit code: grep ends with 1 when no line matches, as
+# when every package is installed already. Call it as `apt_shown ... || rc=$?`. apt prints its W: and
+# E: lines on stderr when it has fetched what it could; they are shown after the progress, as apt
+# printed them. APT_SAID keeps apt's first E: line, else its last Err: line (a cut download prints no
+# E: line).
 apt_shown() {
-  local codes errors
+  local codes errors shown
   errors="$(mktemp)"
-  "$@" 2> "$errors" | grep --line-buffered -E "$APT_PROGRESS" | sed -u 's/^/[apt] /'
+  shown="$(mktemp)"
+  "$@" 2> "$errors" | grep --line-buffered -E "$APT_PROGRESS" | sed -u 's/^/[apt] /' | tee "$shown"
   codes=("${PIPESTATUS[@]}")
   cat "$errors" >&2
   APT_SAID="$(grep -m1 '^E:' "$errors" || true)"
-  rm -f "$errors"
+  if [[ -z "$APT_SAID" ]]; then
+    APT_SAID="$(grep -E '^\[apt\] Err:' "$shown" | tail -n 1 | sed 's/^\[apt\] //' || true)"
+  fi
+  rm -f "$errors" "$shown"
   return "${codes[0]}"
 }
 
@@ -279,16 +384,20 @@ step_apt() {
     return
   fi
   export DEBIAN_FRONTEND=noninteractive
+  # The step reads apt's lines, so apt speaks in the C locale whatever the user's language: in apt
+  # 2.8.3's de.po, "  Candidate: " is "  Installationskandidat: " and "Get:" is "Holen:". Only here.
+  local -x LC_ALL=C
   local packages=("${BASE_PACKAGES[@]}") rc seen
   if kicad10_present; then
     log "apt: KiCad 10 present ($(kicad-cli version)); PPA step skipped"
     log "apt: update"
-    timeout "$APT_UPDATE_TIMEOUT" apt-get update -qq \
-      || die "apt: apt-get update ended with exit code $? (bound ${APT_UPDATE_TIMEOUT} s, APT_UPDATE_TIMEOUT)"
+    # No bound here, as before this change: CI never has KiCad 10 at this point, and a slow line on a
+    # computer that has it is no reason to stop.
+    apt-get update -qq || die "apt: apt-get update ended with exit code $?; apt's lines are above"
   else
     add_kicad_ppa
     packages+=("${KICAD_PACKAGES[@]}")
-    kicad_index || stop "apt: the index of KiCad 10's package source did not arrive in ${KICAD_INDEX_TRIES} tries: $(kicad_source); apt said: ${APT_SAID}" "$AGAIN"
+    kicad_index || kicad_index_stop
     kicad_candidates_check
   fi
   log "apt: download ${packages[*]}"
@@ -304,10 +413,10 @@ step_apt() {
     "${packages[@]}" || rc=$?
   if ((rc == 124)); then
     stop "apt: the download did not end within ${APT_DOWNLOAD_TIMEOUT} s (APT_DOWNLOAD_TIMEOUT); apt said: ${APT_SAID:-nothing}" \
-      "No package was installed. The files already downloaded stay in /var/cache/apt/archives. Run the script again later."
+      "No package was installed. Run the script again now: apt keeps the files it has downloaded and goes on from them. On a slow line, set APT_DOWNLOAD_TIMEOUT to more seconds."
   elif ((rc != 0)); then
     stop "apt: the download ended with apt-get's exit code ${rc}, within its bound of ${APT_DOWNLOAD_TIMEOUT} s; apt said: ${APT_SAID:-nothing}" \
-      "No package was installed. The files already downloaded stay in /var/cache/apt/archives. Run the script again later."
+      "No package was installed. $(apt_advice "$APT_SAID" "A package source did not serve a file this time: run the script again later; apt keeps the files it has downloaded.")"
   fi
   log "apt: install ${packages[*]}"
   # Non-interactive so no debconf prompt can wait on a terminal. APT::Get::Download=false is the
