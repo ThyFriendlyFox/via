@@ -223,6 +223,22 @@ def test_ti_passes_the_slot_and_fails_without_it():
     assert creepage.findings(copper(5.0, [rect(112, 105, 113, 110)]), SPANS, pack, cond) == []
 
 
+def test_ti_fails_a_slot_narrower_than_table_7_asks():
+    """A slot 0.8 mm wide (x 112.1 to 112.9) on the straight way: SLUP419 table 7, page 11, counts a slot
+    from 1.0 mm at pollution degree 2, so the way is crossed, 3.3 mm, under 4.0 mm (table 3, page 7):
+    the creepage fails, and so does the slot, on 1 line each."""
+    pack = creepage.read_pack(TI)
+    cond = {"pollution_degree": "2", "material_group": "III"}
+    found = creepage.findings(copper(5.0, [rect(112.1, 105, 112.9, 110)]), SPANS, pack, cond)
+    assert [f.line for f in found] == [
+        "fail creepage HV to GND on F.Cu at (110.85, 106.65): 3.3 mm along the surface at 400 V, at least "
+        "4 mm (pollution degree 2, material group III) [SLUP419: table 3, page 7]",
+        "fail slot HV to GND on F.Cu at (112.1, 105): 0.8 mm wide, at least 1 mm to lengthen the way "
+        "(pollution degree 2) [SLUP419: table 7 and figure 9, page 11: the least width of a slot cut into a "
+        "PCB to increase creepage]",
+    ]
+
+
 def test_ti_between_rows_is_not_judged():
     """200 V between the 63 and 400 V rows: 3.3 mm lies between 1.25 and 4.0 mm."""
     pack = creepage.read_pack(TI)
@@ -281,3 +297,312 @@ def test_read_copper_takes_pads_on_both_faces_and_the_inner_cut():
     # GND's round pad, 1.7 mm across at x 115: its polygon reaches x 115 - 0.85 / cos(pi / 16) at most.
     gnd = next(p for n, p in cu.shapes["F.Cu"] if n == "GND")
     assert min(x for x, _ in gnd) == pytest.approx(115 - 0.85 / math.cos(math.pi / 16), abs=1e-9)
+
+
+# ---------------------------------------------------------------- the review's boards
+
+HEAD = """(kicad_pcb (version 20241229) (generator "test")
+  (general (thickness 1.6))
+  (layers (0 "F.Cu" signal) (2 "B.Cu" signal) (25 "Edge.Cuts" user))
+  (net 0 "") (net 1 "HV") (net 2 "GND")
+  (gr_rect (start 100 100) (end 125 115) (layer "Edge.Cuts"))
+"""
+MIL_AI = {"condition": "A", "enclosure": "I"}
+
+
+def smd(name: str, at: str, size: str, net: str, layer: str = "F.Cu") -> str:
+    net_s = f' (net "{net}")' if net else ""
+    return (
+        f'  (footprint "x:{name}" (layer "{layer}") (at {at})\n'
+        f'    (pad "1" smd rect (at 0 0) (size {size}) (layers "{layer}"){net_s}))\n'
+    )
+
+
+def judged(text: str, spans: dict = SPANS) -> list:
+    return creepage.findings(creepage.read_copper(text), spans, creepage.read_pack(MIL), MIL_AI)
+
+
+# A GND arc of radius 3 mm, width 0.3 mm, centre (115, 107.5), from 270 through 180 to 90 degrees (y down),
+# and an HV via of 1 mm on the 225 degree ray, 6.15 mm from the centre: 4.348701 x sqrt(2) = 6.15.
+ARC = (
+    HEAD
+    + """  (via (at 110.651299 103.151299) (size 1) (drill 0.5) (layers "F.Cu" "B.Cu") (net 1))
+  (arc (start 115 104.5) (mid 112 107.5) (end 115 110.5) (width 0.3) (layer "F.Cu") (net 2))
+)
+"""
+)
+
+
+def test_an_arc_track_is_drawn_outside_its_copper():
+    """Every point of the arc's copper, at radius 3 - 0.15 and 3 + 0.15 mm from 90 to 270 degrees and
+    round each end, lies in the polygons; no corner of them stands more than 0.0049 mm off the copper:
+    the band's outer corners stand at 3.15 / cos(pi / 128) - 3.15 = 0.00095 mm, the ends' at
+    0.15 x (1 / cos(pi / 16) - 1) = 0.0029 mm."""
+    polys = creepage.arc_track((115, 104.5), (112, 107.5), (115, 110.5), 0.3)
+    c = (115.0, 107.5)
+    for k in range(361):
+        t = math.radians(90 + k / 2)
+        for r in (2.85, 3.0, 3.15):
+            q = (c[0] + r * math.cos(t), c[1] + r * math.sin(t))
+            assert creepage.nearest(polys, q)[0] <= 1e-9, (k, r)
+    for end in ((115, 104.5), (115, 110.5)):
+        for k in range(36):
+            t = math.radians(10 * k)
+            q = (end[0] + 0.15 * math.cos(t), end[1] + 0.15 * math.sin(t))
+            assert creepage.nearest(polys, q)[0] <= 1e-9
+    for poly in polys:
+        for p in poly:
+            off_band = abs(math.hypot(p[0] - c[0], p[1] - c[1]) - 3) - 0.15
+            in_sweep = p[0] <= c[0] + 1e-9
+            off_ends = min(math.hypot(p[0] - e[0], p[1] - e[1]) for e in ((115, 104.5), (115, 110.5))) - 0.15
+            assert min(off_band if in_sweep else math.inf, off_ends) <= 0.0049
+
+
+def test_an_arc_track_is_not_read_as_2_chords():
+    """The review's board C1: the true gap is 6.15 - 3 - 0.15 - 0.5 = 2.5 mm, under the 3 mm of table
+    69-I, page 69-2 (300 to 600 V, condition A, enclosure I). Read as 2 chords it read 3.379 mm and passed.
+    The polygons stand at most 0.5 x (1 / cos(pi / 16) - 1) = 0.0098 mm (the via) + 0.00095 mm (the arc)
+    outside the copper, so the gap read lies from 2.5 - 0.0108 to 2.5 mm."""
+    found = judged(ARC)
+    fails = [f for f in found if f.status == "fail" and f.text.startswith("creepage HV to GND on F.Cu")]
+    assert len(fails) == 1, [f.line for f in found]
+    read = float(fails[0].text.split(": ")[1].split(" mm")[0])
+    assert 2.5 - 0.0108 - 0.001 <= read <= 2.5
+
+
+FACES = (
+    HEAD + smd("HVPAD", "110 100.8", "2 1", "HV") + smd("GNDPAD", "110 100.8", "2 1", "GND", "B.Cu") + ")\n"
+)
+
+
+def test_copper_on_the_2_faces_near_the_edge_is_not_judged():
+    """The review's board C2: HV's pad on F.Cu and GND's on B.Cu, each 2 x 1 mm at y 100.8, from y
+    100.3: 0.3 mm from the edge at y 100. The way round the edge is at least 0.3 + 1.6 + 0.3 = 2.2 mm,
+    under 3 mm: not judged, 1 line. Through air, at least sqrt((0.3 + 0.3)^2 + 1.6^2) = 1.709 mm, over the
+    1.5 mm of clearance: no line."""
+    found = judged(FACES)
+    assert [f.line for f in found] == [
+        "not judged creepage HV on F.Cu to GND on B.Cu at (109, 100.3): at least 2.2 mm round the board's "
+        "edge or through a hole, 3 mm asked at 400 V: this check does not measure a way between the 2 "
+        "faces [MIL-HDBK-454C: guideline 69, 4.1 page 69-1; table 69-I, leakage distances, page 69-2]"
+    ]
+
+
+def test_copper_on_the_2_faces_far_enough_from_the_edge_holds():
+    """The same pads at y 101.5, from y 101: 1 mm from the edge. At least 1 + 1.6 + 1 = 3.6 mm round the
+    edge, over 3 mm: no line."""
+    far = FACES.replace("110 100.8", "110 101.5")
+    assert judged(far) == []
+
+
+def test_copper_with_no_net_shortens_the_way_to_the_edge():
+    """The pads 1 mm from the edge (3.6 mm round it), and a pad with no net on F.Cu, 2 x 0.8 mm at y
+    100.5, from y 100.1 to 100.9: 0.1 mm from HV's pad and 0.1 mm from the edge. Across it the way is at
+    least 0.1 + 0.1 + 1.6 + 1 = 2.8 mm, under 3 mm."""
+    far = FACES.replace("110 100.8", "110 101.5")
+    text = far[: far.rindex(")")] + smd("FLOAT", "110 100.5", "2 0.8", "") + ")\n"
+    assert [f.line for f in judged(text)] == [
+        "not judged creepage HV on F.Cu to GND on B.Cu at (109, 101): at least 2.8 mm round the board's "
+        "edge or through a hole, 3 mm asked at 400 V: this check does not measure a way between the 2 "
+        "faces [MIL-HDBK-454C: guideline 69, 4.1 page 69-1; table 69-I, leakage distances, page 69-2]"
+    ]
+
+
+FLOATING = (
+    HEAD
+    + smd("HVPAD", "110 107.5", "1.7 1.7", "HV")
+    + smd("GNDPAD", "115 107.5", "1.7 1.7", "GND")
+    + smd("FLOAT", "112.5 107.5", "1.7 1.7", "")
+    + ")\n"
+)
+
+
+def test_a_pad_with_no_net_between_2_nets_is_not_judged():
+    """The review's board C3: 3.3 mm straight, but a pad with no net stands between, 1.7 mm square at x
+    112.5: 111.65 - 110.85 = 0.8 mm from HV and 114.15 - 113.35 = 0.8 mm from GND. 0.8 + 0.8 = 1.6 mm,
+    under 3 mm."""
+    found = judged(FLOATING)
+    assert [f.line for f in found] == [
+        "not judged creepage HV to GND on F.Cu at (110.85, 106.65): 1.6 mm across copper with no net (a pad "
+        "with no net at (112.5, 107.5)), under the 3 mm asked at 400 V: this check does not judge a way "
+        "across a conductor with no net [MIL-HDBK-454C: guideline 69, 4.1 page 69-1; table 69-I, leakage "
+        "distances, page 69-2]"
+    ]
+
+
+def test_2_pads_with_no_net_in_a_row_are_not_judged():
+    """HV's pad at x 110 (to 110.85), GND's at x 116 (from 115.15): 4.3 mm straight. 2 pads with no net,
+    0.8 mm squares at x 112.05 (111.65 to 112.45) and 113.95 (113.55 to 114.35). The first alone leaves
+    0.8 + (115.15 - 112.45) = 3.5 mm, the second (113.55 - 110.85) + 0.8 = 3.5 mm, both over 3 mm. The
+    2 in a row leave 0.8 + (113.55 - 112.45) + 0.8 = 2.7 mm, under 3 mm."""
+    text = (
+        HEAD
+        + smd("HVPAD", "110 107.5", "1.7 1.7", "HV")
+        + smd("GNDPAD", "116 107.5", "1.7 1.7", "GND")
+        + smd("F1", "112.05 107.5", "0.8 0.8", "")
+        + smd("F2", "113.95 107.5", "0.8 0.8", "")
+        + ")\n"
+    )
+    found = judged(text)
+    assert len(found) == 1 and found[0].status == "not judged", [f.line for f in found]
+    assert "2.7 mm across copper with no net" in found[0].text
+
+
+def test_a_pad_with_no_net_out_of_the_way_holds():
+    """The pad with no net at (112.5, 112): from y 111.15, 111.15 - 108.35 = 2.8 mm below the 2 pads and
+    0.8 mm to the side of each: sqrt(0.8^2 + 2.8^2) = 2.912 mm to each, 5.824 mm across it, over 3 mm."""
+    assert judged(FLOATING.replace("112.5 107.5", "112.5 112")) == []
+
+
+PADANGLE = (
+    HEAD
+    + """  (footprint "x:HVPAD" (layer "F.Cu") (at 110 107.5 90)
+    (pad "1" smd rect (at 0 0) (size 4 1) (layers "F.Cu") (net "HV")))
+"""
+    + smd("GNDPAD", "114 107.5", "1 1", "GND")
+    + ")\n"
+)
+
+
+def test_a_pad_whose_file_gives_no_angle_stands_at_0_degrees():
+    """The review's board C4. A pad's angle in a board file is the board's, and KiCad leaves it out at 0:
+    the HV pad, 4 x 1 mm at (110, 107.5), spans x 108 to 112, though its footprint is turned 90 degrees.
+    GND's 1 mm pad at x 114 starts at 113.5: 1.5 mm, at least the 1.5 mm of clearance, under the 3 mm of
+    leakage."""
+    cu = creepage.read_copper(PADANGLE)
+    hv = next(p for n, p in cu.shapes["F.Cu"] if n == "HV")
+    assert (min(x for x, _ in hv), max(x for x, _ in hv)) == pytest.approx((108, 112), abs=1e-9)
+    assert [f.line for f in judged(PADANGLE)] == [
+        "fail creepage HV to GND on F.Cu at (112, 107): 1.5 mm along the surface at 400 V, at least 3 mm "
+        "(condition A, enclosure I) [MIL-HDBK-454C: guideline 69, 4.1 page 69-1; table 69-I, leakage "
+        "distances, page 69-2]"
+    ]
+
+
+def test_a_pad_whose_shape_is_offset_from_its_hole_is_read_round_both():
+    """KiCad's pad `(drill 0.5 (offset 1 0))` moves the pad's copper 1 mm from its hole, from x 109.5 to
+    110.5 to x 110.5 to 111.5. The pad is read as a 3 x 3 mm square round its hole, which holds the
+    copper wherever the offset turns: to x 111.5. GND's 1 mm pad at x 114 starts at 113.5: 2 mm, under
+    3 mm. Read without the offset it is 3 mm, and passes."""
+    text = (
+        HEAD
+        + """  (footprint "x:HVPIN" (layer "F.Cu") (at 110 107.5)
+    (pad "1" thru_hole rect (at 0 0) (size 1 1) (drill 0.5 (offset 1 0)) (layers "*.Cu") (net "HV")))
+"""
+        + smd("GNDPAD", "114 107.5", "1 1", "GND")
+        + ")\n"
+    )
+    fails = [f.text for f in judged(text) if f.status == "fail"]
+    assert len(fails) == 1 and ": 2 mm along the surface at 400 V" in fails[0], fails
+
+
+def test_a_pad_with_a_padstack_is_not_judged():
+    """KiCad 10 can give a pad another size on another layer, in `(padstack ...)`: the size read is the
+    first layer's only, so the pad is named as copper not read."""
+    text = (
+        HEAD
+        + """  (footprint "x:HVPAD" (layer "F.Cu") (at 110 107.5)
+    (pad "1" smd rect (at 0 0) (size 1.7 1.7) (layers "F.Cu") (net "HV")
+      (padstack (mode front_inner_back) (layer "Inner" (size 1 1)))))
+"""
+        + smd("GNDPAD", "115 107.5", "1.7 1.7", "GND")
+        + ")\n"
+    )
+    found = judged(text)
+    assert [f.line for f in found] == [
+        "not judged creepage on F.Cu: 1 shape drawn on the copper is not read (a pad with a padstack of "
+        "x:HVPAD at (110, 107.5))"
+    ]
+
+
+def test_copper_drawn_as_a_shape_is_not_judged():
+    """A line drawn on F.Cu is copper this module does not read: 1 line for the layer."""
+    text = FLOATING.replace(
+        smd("FLOAT", "112.5 107.5", "1.7 1.7", ""),
+        '  (gr_line (start 112.5 105) (end 112.5 110) (width 0.2) (layer "F.Cu"))\n',
+    )
+    found = judged(text)
+    assert [f.line for f in found] == [
+        "not judged creepage on F.Cu: 1 shape drawn on the copper is not read (a gr_line at (112.5, 105))"
+    ]
+
+
+# ---------------------------------------------------------------- a project's own pack
+
+
+def _bad(tmp_path, base: Path, change) -> Path:
+    data = json.loads(base.read_text(encoding="utf-8"))
+    change(data)
+    path = tmp_path / "bad.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return path
+
+
+@pytest.mark.parametrize(
+    ("base", "change", "message"),
+    [
+        (TI, lambda d: d.update(not_judged=[]), r"bad.json: not_judged: a pack with no clearance table"),
+        (
+            TI,
+            lambda d: d["slot"].update(least_mm=[1.0]),
+            r"bad.json: slot: least_mm: an object of each value of pollution_degree",
+        ),
+        (
+            MIL,
+            lambda d: [d[t]["rows"][0].update(volts=[10, 150]) for t in ("creepage", "clearance")],
+            r"bad.json: creepage rows 1: volts: a table of ranges starts at 0 V, not 10 V",
+        ),
+        (
+            TI,
+            lambda d: d["conditions"]["pollution_degree"]["values"].append("2 I"),
+            r"bad.json: conditions: pollution_degree: values: `2 I` holds a space",
+        ),
+    ],
+)
+def test_a_project_pack_with_a_fault_is_refused_with_its_place(tmp_path, base, change, message):
+    with pytest.raises(Refusal, match=message):
+        creepage.read_pack(_bad(tmp_path, base, change))
+
+
+def test_the_mil_pack_holds_a_hash_of_its_table_s_text():
+    """Each download of MIL-HDBK-454C carries its own time stamp, so the file's SHA256 is the copy's
+    alone. The text of PDF pages 129 and 130 (69-1 and 69-2) with the stamp's line removed gave
+    b2547e85... from both copies fetched on 2026-11-17."""
+    pack = creepage.read_pack(MIL)
+    assert pack.text["sha256"] == "b2547e850a43bac8d44067a19a5e2804cc91c5e2f3682a0ad0dc585b13ce8a73"
+    assert "129" in pack.text["pages"] and "Downloaded" in pack.text["how"]
+
+
+# ---------------------------------------------------------------- a board of many nets
+
+
+def test_a_board_of_150_nets_and_a_zone_is_judged_in_seconds():
+    """150 nets of 1 pad and 1 track each, 24 V, round a GND zone of 4000 corners, on F.Cu. Every pair
+    carries 24 V (boardrules.between of 0 to 24 and 0 to 24). The review's real board of 165 nets did not
+    finish in 110 s; this one must finish in 20."""
+    import signal
+
+    zone = [(100 + 50 * k / 1000, 100.0) for k in range(1000)]
+    zone += [(150.0, 100 + 50 * k / 1000) for k in range(1000)]
+    zone += [(150 - 50 * k / 1000, 150.0) for k in range(1000)]
+    zone += [(100.0, 150 - 50 * k / 1000) for k in range(1000)]
+    shapes = [("GND", zone)]
+    spans = {"GND": (0.0, 0.0)}
+    for i in range(150):
+        x, y = 153 + (i % 15) * 6, 100 + (i // 15) * 6  # the first column 153 - 0.5 - 150 = 2.5 mm off
+        shapes.append((f"N{i}", square(x, y, 1)))
+        shapes.append((f"N{i}", creepage.capsule((x, y), (x + 3, y + 3), 0.25)))
+        spans[f"N{i}"] = (0.0, 24.0)
+    cu = creepage.Copper(layers=["F.Cu", "B.Cu"], shapes={"F.Cu": shapes, "B.Cu": []}, cuts=[])
+
+    def late(*_):
+        raise TimeoutError("not done in 20 s")
+
+    old = signal.signal(signal.SIGALRM, late)
+    signal.alarm(20)
+    try:
+        found = creepage.findings(cu, spans, creepage.read_pack(MIL), MIL_AI)
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old)
+    assert found == []
