@@ -14,7 +14,8 @@ no assistant, no model and no session.
 Nobody moves a card on the board by hand. The workflow
 `.github/workflows/board.yml` runs `tools/board.py` each time a card is
 opened, edited, closed or reopened, and puts the card in the column its
-`**Status:**` line names.
+`**Status:**` line names. Once a day and by hand it does the same for
+every card (steps 15 and 16).
 
 ## The card
 
@@ -183,7 +184,8 @@ number and `<branch>` your branch.
       step 4). Nothing to do; say so in your report.
     - A run: take its id, go on to step 13.
 13. Read its line: `gh run view <run id> --log`, and find the line that
-    starts with `board:`. Each line and what to do is in
+    starts with `board:`. A run on the schedule or by hand prints 1 line
+    per card: read it as in step 16. Each line and what to do is in
     `tests/board/README.md`, "Reading a run". The usual ones:
     - `board: card #N stands in <column> on <url>`: done.
     - `board: card #N is on <url> and left where it stands: ...`: the
@@ -203,14 +205,6 @@ number and `<branch>` your branch.
     workflow again until the owner says it is done; then
     `gh run rerun <run id>`, once, and read it as in step 13.
 
-## For the maintainer
-
-- The project board shows each card in its column. Open cards:
-  `gh issue list --search "in:title Work card:"`. Waiting for you:
-  `gh issue list --label question`.
-- Without GitHub's issues: `git fetch origin status` and read `now/` on
-  that branch.
-
 ### When the board looks wrong
 
 A card stands in a column its `**Status:**` line does not name, or is
@@ -218,9 +212,9 @@ not on the board. Nobody drags a card, and nobody edits a card only to
 move it. The Board workflow walks every card once a day at 04:17 UTC;
 to put it right now:
 
-11. Run the workflow Board by hand: the repository's Actions tab, Board,
+15. Run the workflow Board by hand: the repository's Actions tab, Board,
     Run workflow. From a shell: `gh workflow run board.yml`.
-12. Open the run, the step "Put the card in its column". It prints 1 line
+16. Open the run, the step "Put the card in its column". It prints 1 line
     per card and a last line `board: N cards: M moved, A added, T already
     there, X not moved, F failed`.
     - `#N <column>: moved from <column>`, `added and placed`, `already
@@ -231,12 +225,20 @@ to put it right now:
     - `#N not moved: it is not from the owner, a member or a collaborator`:
       a stranger's issue. It is never put on the board. Nothing to do.
     - `#N FAIL: <what>`: that card's write failed; the others were written.
-      Run step 11 again. The same line twice: read what it names
+      Run step 15 again. The same line twice: read what it names
       (`tests/board/README.md`, "Reading a run of every card").
     - `board: FAIL: <what>`: no card was judged. A token or a project URL
-      is wrong; `tests/board/README.md` says which line means what.
-    - `board: no secret BOARD_TOKEN is set`: the owner sets it once
-      (`tests/board/README.md`, "Setting it up").
+      is wrong; read it as in step 14.
+    - `board: no secret BOARD_TOKEN is set`: setup step 1 is not done.
+      Tell the owner in 1 line.
+
+## For the maintainer
+
+- The project board shows each card in its column. Open cards:
+  `gh issue list --search "in:title Work card:"`. Waiting for you:
+  `gh issue list --label question`.
+- Without GitHub's issues: `git fetch origin status` and read `now/` on
+  that branch.
 
 ## Done when
 
