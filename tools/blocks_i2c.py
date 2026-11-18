@@ -7,8 +7,10 @@ It works out RP(min) from the low level and the sink current (equation 1 and tab
 device's own sink, and RP(max) from the rise time and the bus capacitance (equation 6 and table 2-1). It
 takes the first stocked resistor that holds both bounds at its tolerance, and refuses with the equation
 when the bounds cross or no stocked value lies between them. Each device's bus pins are held to their
-voltage limits. The block reads its 2 pull-ups back from the design before it returns, and writes a deck
-that holds the rise of SDA to the speed's limit.
+voltage limits, each pin named SDA or SCL to its own line, and no ground pin may sit on the supply the
+pull-ups go to; the block states that supply's span, `volts`, for `workcenter ratings`. The block reads
+its 2 pull-ups back from the design before it returns, and writes a deck that holds the rise of SDA to
+the speed's limit.
 
 The numbers of the note stand in `rules/blocks/i2c.json`, each with its section, table and page.
 """
@@ -16,6 +18,8 @@ The numbers of the note stand in `rules/blocks/i2c.json`, each with its section,
 from __future__ import annotations
 
 import json
+import math
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -68,6 +72,11 @@ def _bus_parts(d, lines: tuple[str, str], devices: dict, found, facts: Path, min
                     f = ratings.facts_of(found, stock, devices[part.ref])
                     if f is None:
                         raise Refused(f"i2c {part.ref}: {facts} holds no facts of {devices[part.ref]}")
+                    if "pins" not in f.data:
+                        raise Refused(
+                            f"i2c {part.ref}: the facts of {devices[part.ref]} give no pins (a {f.kind}): "
+                            f"the block judges a device on the bus by its pins [{f.source}]"
+                        )
                     out.append((line, part, number, f))
                 elif part.symbol.lib_id.startswith("Connector"):
                     out.append((line, part, number, None))
@@ -79,6 +88,57 @@ def _bus_parts(d, lines: tuple[str, str], devices: dict, found, facts: Path, min
     return out
 
 
+def _src(f, pin: dict) -> str:
+    return f"{f.source}, {ratings._p(pin['page'])}" if "page" in pin else f.source
+
+
+def _device_nets(part, f, nets: tuple[str, str, str], pair: str) -> None:
+    """Each pin of a device on the bus where its facts name it: a pin named SDA on the data line, SCL on
+    the clock line, and no ground on the net the pull-ups go to."""
+    sda, scl, vdd = nets
+    for pin in f.data["pins"]:
+        here = [(n, part.nets.get(n)) for n in pin["numbers"]]
+        if pin["role"] == "ground" and any(net == vdd for _, net in here):
+            n = next(n for n, net in here if net == vdd)
+            raise Refused(
+                f"i2c {pair}: the pull-ups go to {vdd}, and {part.ref} {pin['name']}, pin {n}, a ground, is "
+                f"on it: the bus is pulled up to its supply, not to a ground [{_src(f, pin)}]"
+            )
+        words = set(re.split(r"[^A-Za-z0-9]+", pin["name"].upper()))
+        for word, want, what in (("SDA", sda, "data"), ("SCL", scl, "clock")):
+            if word not in words:
+                continue
+            for n, net in here:
+                if net != want:
+                    raise Refused(
+                        f"i2c {part.ref} {pin['name']}: pin {n} is on {net or 'no net'}, not on {want}, the "
+                        f"bus's {what} line [{_src(f, pin)}]"
+                    )
+
+
+def _spec(pair: str, volts, farads, track, nets) -> None:
+    """The numbers of the spec: each finite and over 0, the bus voltage least first, 3 nets."""
+
+    def over_0(*xs) -> bool:
+        return all(isinstance(x, (int, float)) and math.isfinite(x) and x > 0 for x in xs)
+
+    if len(set(nets)) != 3:
+        raise Refused(
+            f"i2c {pair}: nets={nets!r}: SDA, SCL and the supply they pull up to are 3 different nets"
+        )
+    if not over_0(*volts):
+        raise Refused(f"i2c {pair}: volts={volts!r}: each a finite number over 0")
+    if volts[0] > volts[1]:
+        raise Refused(
+            f"i2c {pair}: volts=({_g(volts[0])}, {_g(volts[1])}) is written greatest first: volts is (least, "
+            "greatest), and the block judges the pins and the sinks at the greatest"
+        )
+    if farads is not None and not over_0(farads):
+        raise Refused(f"i2c {pair}: farads={farads!r}: the bus capacitance is a finite number over 0")
+    if track is not None and not over_0(*track[:2]):
+        raise Refused(f"i2c {pair}: track={track!r}: mm and farads per mm are each a finite number over 0")
+
+
 def _device_pin(line, part, number, f, vdd: str, top: float, sums: list[str]) -> dict:
     """A device's pin on the bus: its role, its voltage limits against the bus's 0 V to `top`."""
     pin_of = {p["name"]: p for p in f.data["pins"]}
@@ -86,7 +146,7 @@ def _device_pin(line, part, number, f, vdd: str, top: float, sums: list[str]) ->
     if pin is None:
         raise Refused(f"i2c {part.ref}: its facts give no pin {number} [{f.source}]")
     name = f"{part.ref} {pin['name']}"
-    src = f"{f.source}, {ratings._p(pin['page'])}" if "page" in pin else f.source
+    src = _src(f, pin)
     if pin["role"] not in BUS_ROLES:
         raise Refused(
             f"i2c {name}: its role is {pin['role']}: a line of the bus takes an open drain, an io or an "
@@ -139,6 +199,7 @@ def i2c(  # noqa: PLR0912, PLR0913, PLR0915
     refs = {"sda": "R1", "scl": "R2"} | (refs or {})
     pair = f"{refs['sda']} {refs['scl']}"
     shown = f"{refs['sda']}, {refs['scl']}"
+    _spec(pair, volts, farads, track, nets)
     note = load_rules(rules)["note"]
     table = _where(note, note["speeds_where"])
     eq = {n: _where(note, f"equation {n}, page {e['page']}") for n, e in note["equations"].items()}
@@ -174,6 +235,8 @@ def i2c(  # noqa: PLR0912, PLR0913, PLR0915
 
     # Each device on the bus: its pins' limits, its sink, its capacitance.
     bus = _bus_parts(d, (sda, scl), devices, found, Path(facts), set(refs.values()))
+    for part, f in {part.ref: (part, f) for _, part, _, f in bus if f}.values():
+        _device_nets(part, f, nets, pair)
     pins = [(line, part, _device_pin(line, part, n, f, vdd, top, sums)) for line, part, n, f in bus if f]
     connectors = sorted({part.ref for line, part, n, f in bus if f is None})
     for _line, _part, one in pins:
@@ -199,6 +262,7 @@ def i2c(  # noqa: PLR0912, PLR0913, PLR0915
     for line in (sda, scl):
         here = [(part.ref, one) for ln, part, one in pins if ln == line and "farads" in one["pin"]]
         per_line[line] = (sum(one["pin"]["farads"] for _, one in here), here)
+    unsummed = [(line, one) for line, _part, one in pins if "farads" not in one["pin"]]
     if farads is not None:
         for line, (total, here) in per_line.items():
             if farads < total * (1 - ratings.EPS):
@@ -213,6 +277,11 @@ def i2c(  # noqa: PLR0912, PLR0913, PLR0915
             f"{sda}, {scl}: Cb = {ratings.si(cb, 'F')}, stated; the devices' pins give "
             f"{ratings.si(per_line[sda][0], 'F')} on {sda} and {ratings.si(per_line[scl][0], 'F')} on {scl}"
         )
+        sums += [
+            f"{one['name']}: its facts give no capacitance: not in the devices' sum on {line}; not judged "
+            f"against the stated Cb [{one['src']}]"
+            for line, one in unsummed
+        ]
         sums += [f"{ref}: a connector: what stands behind it is in the stated Cb" for ref in connectors]
     elif track is not None:
         if connectors:
@@ -220,6 +289,12 @@ def i2c(  # noqa: PLR0912, PLR0913, PLR0915
             raise Refused(
                 f"i2c {connectors[0]}: a connector on {line}: what stands behind it is in no sum; state the "
                 "bus capacitance, farads="
+            )
+        if unsummed:
+            one = unsummed[0][1]
+            raise Refused(
+                f"i2c {one['name']}: its facts give no capacitance: Cb cannot be summed; state the bus "
+                f"capacitance, farads= [{one['src']}]"
             )
         mm, per_mm, said = track
         cb = 0.0
@@ -304,10 +379,20 @@ def i2c(  # noqa: PLR0912, PLR0913, PLR0915
 
     # No span is stated for SDA and SCL: `workcenter ratings` works them out from the pull-ups and the open
     # drains, and holds the supply where each pin's limit is tightest. A stated span would stand apart
-    # from the supply's, and a limit of VCC on a line pulled up to the same VCC would fail.
+    # from the supply's, and a limit of VCC on a line pulled up to the same VCC would fail. The supply's
+    # span is stated: `volts`, which the sums and the deck use; `blocks.ratings_json` refuses a design
+    # that states another span for the same net.
+    entries = {
+        "nets": {
+            vdd: {
+                "volts": [bottom, top],
+                "source": f"the bus voltage of the I2C block {pair}: i2c(volts=({_g(bottom)}, {_g(top)}))",
+            }
+        }
+    }
     rows = rows_of([(item, 2)])
     files = _deck(refs["sda"], sda, item, f, ohms, cb, top, rise, note, speed, sums)
-    return Block("i2c", sums, {}, rows, files)
+    return Block("i2c", sums, entries, rows, files)
 
 
 def _read_back(d, chosen, value, ohms, t, least, rise, factor, cb) -> None:  # noqa: PLR0913
