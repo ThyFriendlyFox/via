@@ -2,17 +2,20 @@
 GREEN and its ratings are held. `workcenter gates` says on 1 line whether they are, `--strict` does not
 end GREEN while they are not, and `workcenter next` says nothing is left only when both hold.
 
-Held: `build/ratings/report.json` says exactly `RATINGS HELD`, and no input of that run (the schematic,
-`ratings.json`, `parts.csv`, the facts) is newer than the record. A stale record is not held.
+Held: `build/ratings/report.json` says exactly `RATINGS HELD`, and the files that run read are the files
+there now, each with the same SHA256: the schematic, `ratings.json`, the parts files it was given, the
+pack `ratings.json` names, and every facts file. A file changed, gone or new since the run makes the
+record stale, and a stale record is not held. A record that names no file it read is not held either.
 
 Most tests run `cmd_gates` with the 4 gates replaced by functions that return a pass, so they need no
-engine; the ratings record is written by hand as a ratings run leaves it. 1 test runs the real gates
-and the real `ratings` on the fixture `pass-ratings-node`, and skips without kicad-cli.
+engine; the ratings record is written by hand as a ratings run leaves it. 2 tests run the real gates
+and the real `ratings` on the fixture `pass-ratings-node`, and skip without kicad-cli.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.machinery
 import json
 import os
@@ -52,18 +55,44 @@ def node(tmp_path: Path) -> Path:
     return proj
 
 
-def rated(proj: Path, verdict: str | None, status: str = "pass", summary: str = "") -> None:
-    """The record a ratings run leaves, a moment after the project's files."""
+PACK = ROOT / "rules" / "ratings" / "nasa-eee-inst-002.json"  # the pack the fixture's ratings.json names
+
+
+def read_by_run(proj: Path, parts: tuple[str, ...] = ("parts.csv",), more: tuple[Path, ...] = ()) -> dict:
+    """The files a ratings run of the fixture reads, as its record names them: each path from the
+    project's folder with its SHA256. The schematic, ratings.json, the parts files, the pack, and the
+    facts in `more` (a test's folder has no library/facts above it unless the test puts one there)."""
+    files = [proj / "node.kicad_sch", proj / "ratings.json", *(proj / p for p in parts), PACK, *more]
+    return {
+        "parts": list(parts),
+        "files": {os.path.relpath(f, proj): hashlib.sha256(f.read_bytes()).hexdigest() for f in files},
+    }
+
+
+def rated(
+    proj: Path,
+    verdict: str | None,
+    status: str = "pass",
+    summary: str = "",
+    inputs: dict | None = None,
+    named: bool = True,
+) -> None:
+    """The record a ratings run leaves, a moment after the project's files. A run with a verdict names
+    the files it read (`inputs`, by default those of `read_by_run`); a refusal names none."""
     folder = proj / "build" / "ratings"
     folder.mkdir(parents=True, exist_ok=True)
     details = {"failures": [], "warnings": [], **({"verdict": verdict} if verdict else {})}
+    if verdict and named:
+        details["inputs"] = inputs or read_by_run(proj)
     record = {"gate": "ratings", "status": status, "summary": summary, "details": details}
     (folder / "report.json").write_text(json.dumps({**record, "artifacts": [], "seconds": 0.0}), "utf-8")
     later = time.time() + 5
     os.utime(folder / "report.json", (later, later))
 
 
-def gates(proj: Path, capsys, *, strict: bool = False, fail: str = "", report: Path | None = None):
+def gates(
+    proj: Path, capsys, *, strict: bool = False, fail: str = "", report: Path | None = None, as_json=False
+):
     """`workcenter gates` with each gate a pass (or `fail` failing): the exit code and the lines."""
     cli = load_cli()
 
@@ -78,7 +107,7 @@ def gates(proj: Path, capsys, *, strict: bool = False, fail: str = "", report: P
         setattr(cli, f"gate_{name}", gate(name))
     cli.tool_version = lambda *_a, **_k: "10.0.7"
     args = argparse.Namespace(
-        project=str(proj), out=None, strict=strict, step=False, fab=None, report=report, json=False
+        project=str(proj), out=None, strict=strict, step=False, fab=None, report=report, json=as_json
     )
     code = cli.cmd_gates(args)
     return code, capsys.readouterr().out.splitlines()
@@ -137,18 +166,166 @@ def test_held_ratings_leave_the_verdict_green(tmp_path, capsys):
 
 
 def test_a_stale_record_is_not_held(tmp_path, capsys):
-    """The schematic or the facts changed after the ratings ran: the record speaks of other files."""
+    """parts.csv changed after the ratings ran, and was put back with an old time (as `cp -p`, `tar`
+    and `rsync -a` keep it): the record speaks of other files. A file touched and not changed is the
+    file the run read."""
     proj = node(tmp_path)
     rated(proj, "RATINGS HELD")
-    later = time.time() + 60
-    os.utime(proj / "parts.csv", (later, later))
+    earlier = time.time() - 600
+    with (proj / "parts.csv").open("a", encoding="utf-8") as fh:
+        fh.write("1k,R_0603,1,Yageo,RC0603FR-071KL,,,,\n")
+    os.utime(proj / "parts.csv", (earlier, earlier))
     code, lines = gates(proj, capsys, strict=True)
     assert code == 1
     assert lines[-2] == f"RATINGS not held: parts.csv changed after the last run (workcenter ratings {proj})"
     rated(proj, "RATINGS HELD")  # a new run, after the change
-    os.utime(proj / "build" / "ratings" / "report.json", (later + 5, later + 5))
+    later = time.time() + 60
+    os.utime(proj / "ratings.json", (later, later))
     code, lines = gates(proj, capsys, strict=True)
     assert code == 0 and lines[-2].startswith("RATINGS held:")
+
+
+def with_facts(tmp_path: Path) -> tuple[Path, Path]:
+    """The fixture with 1 facts file in a library above it, where `ratings` finds it."""
+    proj = node(tmp_path)
+    facts = tmp_path / "library" / "facts"
+    facts.mkdir(parents=True)
+    shutil.copy(BOARDS / "library" / "facts" / "passives.json", facts / "passives.json")
+    return proj, facts
+
+
+def test_a_facts_file_deleted_after_the_run_makes_the_record_stale(tmp_path, capsys):
+    """F1 of the review: passives.json taken away after a HELD run. A fresh run then says RATINGS NOT
+    HELD (1 fail, 18 not judged); the record speaks of a file that is gone."""
+    proj, facts = with_facts(tmp_path)
+    rated(proj, "RATINGS HELD", inputs=read_by_run(proj, more=(facts / "passives.json",)))
+    (facts / "passives.json").unlink()
+    code, lines = gates(proj, capsys, strict=True)
+    assert code == 1 and lines[-1].startswith("RED (ratings not held)")
+    assert lines[-2] == (
+        f"RATINGS not held: ../library/facts/passives.json is gone since the last run "
+        f"(workcenter ratings {proj})"
+    )
+
+
+def test_a_facts_file_added_after_the_run_makes_the_record_stale(tmp_path, capsys):
+    proj, facts = with_facts(tmp_path)
+    rated(proj, "RATINGS HELD", inputs=read_by_run(proj, more=(facts / "passives.json",)))
+    shutil.copy(BOARDS / "library" / "facts" / "ti-tlv755p.json", facts / "ti-tlv755p.json")
+    code, lines = gates(proj, capsys, strict=True)
+    assert code == 1
+    assert lines[-2] == (
+        f"RATINGS not held: ../library/facts/ti-tlv755p.json is new since the last run "
+        f"(workcenter ratings {proj})"
+    )
+
+
+def test_a_parts_file_outside_the_project_is_watched(tmp_path, capsys):
+    """F2 of the review: `ratings --parts ../parts/catalog.csv`, then the catalog edited. The record
+    names the file it was given, and the gates check that file."""
+    proj = node(tmp_path)
+    (tmp_path / "parts").mkdir()
+    catalog = tmp_path / "parts" / "catalog.csv"
+    shutil.move(proj / "parts.csv", catalog)
+    rated(proj, "RATINGS HELD", inputs=read_by_run(proj, parts=("../parts/catalog.csv",)))
+    code, lines = gates(proj, capsys, strict=True)
+    assert code == 0 and lines[-2].startswith("RATINGS held:"), lines
+    rows = catalog.read_text(encoding="utf-8").splitlines(keepends=True)
+    catalog.write_text("".join(r for r in rows if not r.startswith("453k,")), encoding="utf-8")
+    code, lines = gates(proj, capsys, strict=True)
+    assert code == 1
+    assert lines[-2] == (
+        f"RATINGS not held: ../parts/catalog.csv changed after the last run (workcenter ratings {proj})"
+    )
+
+
+def test_a_project_parts_csv_new_since_a_run_without_one_is_seen(tmp_path, capsys):
+    """A run with no parts file; then parts.csv appears, which the next run would read."""
+    proj = node(tmp_path)
+    kept = (proj / "parts.csv").read_bytes()
+    (proj / "parts.csv").unlink()
+    rated(proj, "RATINGS HELD", inputs=read_by_run(proj, parts=()))
+    (proj / "parts.csv").write_bytes(kept)
+    code, lines = gates(proj, capsys, strict=True)
+    assert code == 1
+    assert lines[-2] == f"RATINGS not held: parts.csv is new since the last run (workcenter ratings {proj})"
+
+
+def test_a_project_pack_is_watched(tmp_path, capsys):
+    """F2 of the review: ratings.json names a pack of the project's own, mine.json, changed after the
+    run."""
+    proj = node(tmp_path)
+    shutil.copy(PACK, proj / "mine.json")
+    stated = json.loads((proj / "ratings.json").read_text(encoding="utf-8"))
+    (proj / "ratings.json").write_text(json.dumps({**stated, "pack": "mine.json"}), encoding="utf-8")
+    files = [proj / "node.kicad_sch", proj / "ratings.json", proj / "parts.csv", proj / "mine.json"]
+    inputs = {
+        "parts": ["parts.csv"],
+        "files": {f.name: hashlib.sha256(f.read_bytes()).hexdigest() for f in files},
+    }
+    rated(proj, "RATINGS HELD", inputs=inputs)
+    code, lines = gates(proj, capsys, strict=True)
+    assert code == 0 and lines[-2].startswith("RATINGS held:"), lines
+    with (proj / "mine.json").open("a", encoding="utf-8") as fh:
+        fh.write("\n")
+    code, lines = gates(proj, capsys, strict=True)
+    assert code == 1
+    assert lines[-2] == f"RATINGS not held: mine.json changed after the last run (workcenter ratings {proj})"
+
+
+def test_a_held_record_that_names_no_file_it_read_is_not_held(tmp_path, capsys):
+    """A record of a run that kept no list of its files cannot say they are the files there now."""
+    proj = node(tmp_path)
+    rated(proj, "RATINGS HELD", named=False)
+    code, lines = gates(proj, capsys, strict=True)
+    assert code == 1
+    assert lines[-2] == (
+        f"RATINGS not held: build/ratings/report.json names no file its run read (workcenter ratings {proj})"
+    )
+
+
+@pytest.mark.parametrize(
+    ("details", "why"),
+    [
+        ([], "build/ratings/report.json: details is no object"),
+        ({"verdict": 5}, "build/ratings/report.json: details.verdict is no text"),
+        ({"verdict": "RATINGS HELD", "failures": "x"}, "build/ratings/report.json: details.failures is no list"),
+        (
+            {"verdict": "RATINGS HELD", "inputs": {"files": []}},
+            "build/ratings/report.json: details.inputs is no object of parts and files",
+        ),
+    ],
+)
+def test_a_record_that_is_no_record_of_a_run_is_refused_in_1_line(tmp_path, capsys, details, why):
+    """F3 of the review: these gave a traceback. Each is 1 line naming the file and the key."""
+    proj = node(tmp_path)
+    folder = proj / "build" / "ratings"
+    folder.mkdir(parents=True)
+    record = {"gate": "ratings", "status": "pass", "summary": "", "details": details, "artifacts": []}
+    (folder / "report.json").write_text(json.dumps({**record, "seconds": 0.0}), encoding="utf-8")
+    code, lines = gates(proj, capsys, strict=True)
+    assert code == 1 and lines[-2] == f"RATINGS not held: {why} (workcenter ratings {proj})"
+    assert lines[-1].startswith("RED (ratings not held)")
+
+
+def test_gates_json_says_the_ratings_and_the_verdict(tmp_path, capsys):
+    """F4 of the review: `--json --strict` exited 1 with 4 passing gates and no reason. The list keeps
+    its records of the 4 gates and ends with 1 record of the verdict that carries the ratings line;
+    build/gates.json keeps its shape, the 4 gates alone."""
+    proj = node(tmp_path)
+    rated(proj, "RATINGS HELD, 3 NOT JUDGED")
+    code, lines = gates(proj, capsys, strict=True, as_json=True)
+    said = json.loads("\n".join(lines))
+    assert code == 1
+    assert [r["gate"] for r in said] == [*GATES, "verdict"]
+    assert said[-1]["status"] == "fail" and said[-1]["summary"] == "RED (ratings not held)"
+    assert said[-1]["details"]["ratings"] == {
+        "asked": True,
+        "held": False,
+        "line": f"RATINGS not held: 3 not judged (workcenter ratings {proj})",
+    }
+    kept = json.loads((proj / "build" / "gates.json").read_text(encoding="utf-8"))
+    assert [r["gate"] for r in kept] == list(GATES)
 
 
 def test_no_record_yet_is_not_held(tmp_path, capsys):
@@ -187,11 +364,30 @@ def test_the_gates_report_carries_the_same_verdict_and_the_ratings_line(tmp_path
 
 
 def test_next_is_done_only_when_the_gates_line_says_held(tmp_path, capsys):
-    """For each record, `next` says Nothing exactly when `gates` prints `RATINGS held`."""
-    proj = node(tmp_path)
+    """For each record, `next` says Nothing exactly when `gates` prints `RATINGS held`. The last 3
+    records are where `next`'s check before this item (the verdict alone, and inputs newer than the
+    record) said done: a facts file gone since a HELD run, a HELD record that names no file it read,
+    and a record whose details are no object (a traceback then)."""
+    proj, facts = with_facts(tmp_path)
     env = {**os.environ, "NGSPICE": sys.executable, "KICAD_CLI": sys.executable}
-    for verdict in ("RATINGS HELD", "RATINGS HELD, 3 NOT JUDGED", "RATINGS NOT HELD (1 fail)"):
-        rated(proj, verdict, "pass" if verdict.startswith("RATINGS HELD") else "fail")
+    whole = read_by_run(proj, more=(facts / "passives.json",))
+    gone = {**whole, "files": {**whole["files"], "../library/facts/gone.json": "0" * 64}}
+    cases = [
+        ("RATINGS HELD", whole, True, True),
+        ("RATINGS HELD, 3 NOT JUDGED", whole, True, False),
+        ("RATINGS NOT HELD (1 fail)", whole, True, False),
+        ("RATINGS HELD", gone, True, False),
+        ("RATINGS HELD", None, False, False),
+        ("details []", None, True, False),
+    ]
+    for verdict, inputs, named, held in cases:
+        rated(proj, verdict, "fail" if "NOT" in verdict else "pass", inputs=inputs, named=named)
+        if verdict == "details []":
+            record = proj / "build" / "ratings" / "report.json"
+            raw = json.loads(record.read_text(encoding="utf-8"))
+            record.write_text(json.dumps({**raw, "details": []}), encoding="utf-8")
+            later = time.time() + 5
+            os.utime(record, (later, later))
         records = [
             {"gate": g, "status": "pass", "summary": "", "details": {}, "artifacts": [], "seconds": 0.0}
             for g in GATES
@@ -206,10 +402,11 @@ def test_next_is_done_only_when_the_gates_line_says_held(tmp_path, capsys):
             check=False,
             env=env,
         )
+        assert proc.returncode in (0, 1) and "Traceback" not in proc.stderr, (verdict, proc.stderr)
         step = json.loads(proc.stdout)
         state = guide.ratings_state(load_cli(), load_cli().find_project(str(proj)))
         assert step["done"] is state.held, (verdict, step)
-        assert state.held is (verdict == "RATINGS HELD")
+        assert state.held is held, (verdict, state)
 
 
 # ------------------------------------------------------------- real runs
