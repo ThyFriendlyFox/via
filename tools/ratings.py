@@ -764,6 +764,9 @@ class JunctionRule:
     share: float | None
     below: float | None
     where: str
+    # the date a second reader compared the rule with its document, or `no`; the document's when the
+    # rule names none
+    second_reader: str = "no"
 
 
 @dataclass(frozen=True)
@@ -828,7 +831,7 @@ def read_pack(path: Path, own: str = "") -> Pack:
     for i, raw in enumerate(data["rules"], start=1):
         where = f"{path.name}: rule {i}"
         if isinstance(raw, dict) and raw.get("stress") == JUNCTION:
-            rule = _keys(where, raw, ("id", "stress", "kinds", "where"), JUNCTION_LIMITS)
+            rule = _keys(where, raw, ("id", "stress", "kinds", "where"), (*JUNCTION_LIMITS, "second_reader"))
         else:
             shares = ("max", "by_rating", "no_share")
             rule = _keys(where, raw, ("id", "stress", "kinds", "where"), (*shares, "above"))
@@ -857,6 +860,8 @@ def read_pack(path: Path, own: str = "") -> Pack:
         if rule["stress"] == JUNCTION:
             if not any(key in rule for key in JUNCTION_LIMITS):
                 raise Refusal(f"{where}: 1 limit at least is asked, of {', '.join(JUNCTION_LIMITS)}")
+            reader = rule.get("second_reader", document["second_reader"])
+            _date(f"{where}: second_reader", reader, or_no=True)
             junction.append(
                 JunctionRule(
                     rule["id"],
@@ -867,6 +872,7 @@ def read_pack(path: Path, own: str = "") -> Pack:
                     if "below_rating" in rule
                     else None,
                     _text(f"{where}: where", rule["where"]),
+                    reader,
                 )
             )
             continue
@@ -1119,6 +1125,9 @@ OTHER = {
 # ambient, to the case, to the board, and the 2 characterisation parameters to the package's top and the
 # board.
 FIGURES = ("theta_ja", "theta_jc", "theta_jb", "psi_jt", "psi_jb")
+# The JEDEC test boards a figure is measured on, as TI SPRA953D names them (table 3-1, note 11, page 9).
+# JESD51 itself was not read: JEDEC refused the workcenter's client name on 2026-11-17 and 2026-11-18.
+BOARDS = {"1s0p": "the low-k 1s0p board of JESD 51-3", "2s2p": "the high-k 2s2p board of JESD 51-7"}
 FAMILIES = ("digital", "linear", "regulator.linear", "regulator.switching")
 # The keys that hold a rating, or a value a current is divided by. Each is above 0: a stress is a share
 # of its rating, and 0 V, 0 W, 0 A, 0 F and 0 H are wrong facts and no division. `ohms` may be 0, a link.
@@ -1437,7 +1446,7 @@ def _facts(where: str, raw: object) -> Facts:
                         _text(f"{where}: {key} {i}: {end}", one[end])
     if "thermal" in data:
         # the greatest junction temperature and the figures, all on the pages `page` names
-        term = _keys(f"{where}: thermal", data["thermal"], ("junction_max", "page"), FIGURES)
+        term = _keys(f"{where}: thermal", data["thermal"], ("junction_max", "page"), (*FIGURES, "boards"))
         _number(f"{where}: thermal: junction_max", term["junction_max"], above=0)
         _page(f"{where}: thermal", term["page"])
         if not any(key in term for key in FIGURES):
@@ -1445,6 +1454,21 @@ def _facts(where: str, raw: object) -> Facts:
         for key in FIGURES:
             if key in term:
                 _number(f"{where}: thermal: {key}", term[key], above=0)
+        if "boards" in term:
+            # the JEDEC board each figure was measured on, as the datasheet's thermal table says
+            said = f"{where}: thermal: boards"
+            boards = _keys(said, term["boards"], ("page",), FIGURES)
+            _page(said, boards["page"])
+            if len(boards) == 1:
+                raise Refusal(f"{said}: 1 figure at least is asked, of {', '.join(FIGURES)}")
+            for key in (k for k in FIGURES if k in boards):
+                if boards[key] not in BOARDS:
+                    raise Refusal(
+                        f"{said}: {key}: `{boards[key]}` is no JEDEC board the workcenter knows; they are "
+                        f"{', '.join(BOARDS)}"
+                    )
+                if key not in term:
+                    raise Refusal(f"{said}: {key}: the facts give no {key}")
     if kind == "connector":
         if not isinstance(data.get("pins", []), list):
             raise Refusal(f"{where}: pins: a list of pins is asked")

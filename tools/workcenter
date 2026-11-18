@@ -1118,6 +1118,15 @@ def gate_sim(
         ambient = written_at if len(named) < 2 else f"the deck ran at {th.celsius(named)}"
         heat_runs[deck.stem] = [(th.WRITTEN, ambient, measures)] if ran_clean else None
         own = corners.get(deck.stem) if corners else None
+        # A deck's own temperature block that leaves out an end of the file's span: those corners never run.
+        left = sc.left_out(own.temperatures, corner_temps) if own and not own.skip else []
+        narrower = ""
+        if left:
+            narrower = (
+                f"decks.{deck.stem}.temperature runs {th.celsius(own.temperatures)}, so {th.celsius(left)} "
+                f"of the file's {th.celsius(corner_temps)} {'is' if len(left) == 1 else 'are'} not run"
+            )
+            warned.append(f"{sc.CORNERS_FILE}: {narrower} for {deck.stem}")
         if own and own.skip:
             heat_unrun[deck.stem] = f"the file skips deck {deck.stem}: {own.skip}"
         elif own and nominal:
@@ -1127,6 +1136,8 @@ def gate_sim(
                 f"the file sets deck {deck.stem}'s temperature to false, so it ran at none of "
                 f"{th.celsius(corner_temps)}"
             )
+        elif left:
+            heat_unrun[deck.stem] = narrower
         sound: list = []
         # The corners, when the project names any: a deck that did not run as written has none to add.
         if corners and deck.stem in corners and not nominal and ran_clean:
@@ -1528,6 +1539,7 @@ def cmd_sim(args) -> int:
             f"run{'s' if part['runs'] > 1 else ''} ({worst['run']}); limit {part['limit']:g} C"
             + ("; not judged at every run" if part["held"] is None else "")
             + f"; {part['assumes']}"
+            + (f"; read once: {', '.join(part['read_once'])}" if part["read_once"] else "")
         )
     return code
 
