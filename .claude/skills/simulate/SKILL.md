@@ -400,7 +400,20 @@ The fixture is `tests/boards/fail-sim-bias`.
 |---|---|---|
 | `kept` | capacitor | `[volts, share of the value kept]`, from the DC bias curve |
 | `kept_celsius` | capacitor | `[celsius, share against 25 C]`, from the temperature curve with no bias |
+| `kept_celsius_at` | capacitor | `{"volts": V, "kept": [celsius, share]}`, the maker's temperature curve at 1 bias (Samsung's BiasTCC) |
+| `esr` | capacitor | `{"ohms": R, "hz": f}`, the series resistance at the frequency it was read at |
+| `esl` | capacitor | `{"henries": L, "hz": f}`, the series inductance, where the maker gives a figure |
 | `kept` | inductor | `[amps, share of the value kept]`, from the L vs current curve |
+
+With `kept_celsius_at`, the share at its bias is the maker's combined
+figure. Between 0 V and that bias the temperature factor goes from the
+0 V curve's to the bias curve's in proportion to the volts, and past the
+bias it stays the bias curve's. `esr` and `esl` go in series with the
+capacitance in the run's copy; the curve reads the voltage across the
+capacitance alone. Read `esr` at the deck's switching frequency, and say
+in `note` between which points of the maker's graph. Never work out an
+ESL from an impedance curve: enter `esl` only from a figure the maker
+gives.
 
 1. Fetch the maker's file: `workcenter fetch <url> --to library/<maker>/<file>
    --mpn <MPN> --row`. A maker that publishes the curve as numbers (a data
@@ -412,9 +425,12 @@ The fixture is `tests/boards/fail-sim-bias`.
    and how each share was worked out.
 3. Write the part in the deck by its board reference, at its nominal value:
    `C2 out 0 10u`, `L1 sw out 2.2u`. Write it in the deck's own lines: not
-   inside a `.subckt`, not in a file the deck includes. Give it no `ic=`
-   and couple no K element to it: the gate does not rewrite those, and the
-   part runs ideal.
+   inside a `.subckt`, not in a file the deck includes, at any depth: the
+   gate does not rewrite those, and the part runs ideal. An inductor that a
+   K element couples runs ideal too (a warning, not a failure). With
+   `uic`, a capacitor's `ic=` goes to a 1 F capacitor whose current drives
+   the part (`bc2_ic`, `cc2_ic` in the run's copy); without `uic` ngspice
+   uses no `ic=`, and the gate takes it off.
 4. Run `workcenter sim <project>`. The record names each part it ran on its
    data under `decks.<deck>.parts`, with its facts and its row.
 5. Read each line:
@@ -428,21 +444,23 @@ The fixture is `tests/boards/fail-sim-bias`.
    | `...: its facts name the parts by the pattern ...` | Enter the curve under the part number (`mpn`, or `mpns` for the part numbers of 1 value). |
    | `...: the file sources.csv:N keeps, ..., is not the one its SHA256 names` | Fetch the file again, or correct `source.sha256` and the row to the file's. |
    | `...: it stands inside .subckt ...` | Move the part into the deck's top level. |
-   | `...: it stands in <file>, a file the deck includes ...` | Move the part from the included file into the deck. |
-   | `...: its ic= sets its starting ...` | Remove `ic=`; start the deck from its operating point, or set the node with `.ic v(node)=...`. |
-   | `...: it is coupled by K...` | The gate cannot run a coupled inductor on its curve. A coupled part (a transformer, a common-mode choke) has no `kept` of a single inductor: enter its facts without `kept`, and say why in `note`. |
+   | `...: it stands in <file>, a file the deck includes ...` | Move the part from the included file into the deck. `<file> (from <other>)` is a file that `<other>` includes. |
+   | `...: its ic= sets its starting current ...` or `...: its ic=... is no number ...` | The gate moves only a capacitor's `ic=` that is a number. Write the number, or take the `ic=` off and start the deck from its operating point (no `uic`). |
+   | warning `not judged: <deck>: <ref> runs as an ideal part ...: it is coupled by K..., and the gate models no coupled inductor's curve` | The deck runs the part at its written value. Check by hand that the core does not saturate at the deck's current: the coupled part's facts give its saturation current. |
    | `...: its value ... is no number and no expression` | Write the part's value as a number. |
    | warning `<ref>'s curve ends at ... under its rating` | Past the last point the deck holds the last share. Enter the maker's points up to the rating if the maker gives them. |
    | warning `<ref> runs on its maker's data, and whether that is its maker's file is not judged: ... keeps no file` | Keep the maker's file in the library with its row's `File`, when its terms allow. |
    | warning `not judged: C2 and L1 hold their makers' data, and no deck element carries their reference` | Name the deck's parts by their board references (step 3). |
+   | warning `not judged: C2 and L1 hold their makers' data, and no deck holds a capacitor or an inductor` | The decks run no capacitor and no inductor. If a deck models one in another way (a subcircuit, a B source), write it as the part, by its reference. |
+   | warning `not judged: whether C2 and L1 run on their makers' data: ... the project has no schematic ...` | The schematic gives each part its number. Draw it, or run the decks of a project that has one. |
+   | warning `not judged: whether ... : ... kicad-cli ...` | Install KiCad (`sudo ./install.sh`) and run again. |
 
 6. A corner moves the written value by its tolerance, and the curve applies
-   on top. A temperature corner moves `kept_celsius` with it.
+   on top. A temperature corner moves `kept_celsius` and `kept_celsius_at`
+   with it.
 
-What it does not do: the 2 capacitor curves are multiplied. A maker's
-curve at 1 bias and many temperatures shows more value kept than the
-product: CL10A106KP8NNN at 5 V and 85 C keeps 27.6 %, the product 24.1 %.
-ESR and ESL are not added.
+What it does not do: an inductor's temperature, its DC resistance and a
+coupled inductor's curve; a capacitor's ESR at more than 1 frequency.
 
 ## A bound that serves a requirement
 
