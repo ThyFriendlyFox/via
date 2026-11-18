@@ -25,8 +25,7 @@ BOARDS = ROOT / "tests" / "boards"
 
 needs_kicad = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
 needs_ngspice = pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed")
-# The day every command here runs on: 1794960060 s is 2026-11-18 00:01:00 UTC (tests/test_clock.py).
-DAY = "2026-11-18"
+# The day every command here writes: 1794960060 s is 2026-11-18 00:01:00 UTC (tests/test_clock.py).
 PINNED = {"SOURCE_DATE_EPOCH": "1794960060"}
 
 
@@ -394,9 +393,14 @@ PARTS = "\n".join(
 
 
 def parts_file(tmp_path: Path, text: str = PARTS) -> Path:
-    """Prices checked on the day `run` pins every command to: none of them is old."""
+    """Prices checked the day before the machine's day, read when the file is written: `procure` judges
+    their age on the machine's day, not the pinned one, and finds 1 day, or 2 when midnight falls before
+    the command; STALE_DAYS is 90, so none of them is old."""
+    import datetime
+
+    checked = datetime.date.today() - datetime.timedelta(days=1)
     path = tmp_path / "parts.csv"
-    path.write_text(text.format(today=DAY), encoding="utf-8")
+    path.write_text(text.format(today=checked.isoformat()), encoding="utf-8")
     return path
 
 

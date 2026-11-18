@@ -2711,7 +2711,7 @@ def gate_procure(
         for refs, _, m, value, _ in lines
         if m and m.buys and not m.breaks
     ]
-    today = clock().today()
+    today = clock().wall_today()  # a price's age is judged on the machine's day, not on a pinned one
     short, stale = [], []
     suppliers: list[str] = []
     totals = {n: {} for n in boards}
@@ -2734,7 +2734,9 @@ def gate_procure(
                 age = (today - datetime.date.fromisoformat(m.checked)).days
             except ValueError:
                 age = None
-            if age is None or age > STALE_DAYS:
+            if age is not None and age < 0:
+                stale.append(f"{refs or value}: price checked {m.checked}, after the day of the run, {today}")
+            elif age is None or age > STALE_DAYS:
                 stale.append(f"{refs or value}: price checked {m.checked or 'on no date'}")
         priced.append((refs, qty, m, value, fp, orders))
 
@@ -3641,7 +3643,7 @@ def cmd_fetch(args) -> int:
         "Member": args.member or "",
         "Subckt": subckt,
         "SHA256": digest,
-        "Checked": clock().today().isoformat(),
+        "Checked": clock().wall_today().isoformat(),  # the day of the check, never a pinned one
     }
     header = SOURCES_HEADER
     if rows_text:

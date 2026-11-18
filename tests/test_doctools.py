@@ -245,27 +245,33 @@ CATALOG = "\n".join(
         "1:0.10 10:0.025 25:0.0188,0,{today},,",
         "",
     ]
-).format(today=DAY)
+)
 
 
 def costs_repo(tmp_path: Path) -> Path:
     """v0.1: the RC fixture and a bare board off it. v0.2: the fixture with its own 10k price, a nested
-    display board (the fixture again), and a cell with no price."""
+    display board (the fixture again), and a cell with no price. Every price was checked the day before
+    the machine's day, read here: `procure` judges age on the machine's day, not the pinned one, and
+    finds 1 day, or 2 when midnight falls before the command, under STALE_DAYS (90)."""
+    import datetime
+
+    checked = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
     repo = tmp_path / "repo"
     shutil.copytree(BOARDS / "pass-rc-divider", repo / "v0.1", ignore=shutil.ignore_patterns("sim"))
     shutil.copytree(BOARDS / "pass-rc-divider", repo / "v0.2", ignore=shutil.ignore_patterns("sim"))
     shutil.copytree(
         BOARDS / "pass-rc-divider", repo / "v0.2" / "display", ignore=shutil.ignore_patterns("sim")
     )
-    write(repo / "parts" / "catalog.csv", CATALOG)
+    write(repo / "parts" / "catalog.csv", CATALOG.format(today=checked))
     write(
         repo / "parts" / "version" / "v0.2.csv",
-        f"{PARTS_HEAD}\n10k,Resistor_SMD:R_0603_1608Metric,,Yageo,RC0603FR-0710KL,Digi-Key,X,,1:0.50,100,{DAY},,\n",
+        f"{PARTS_HEAD}\n10k,Resistor_SMD:R_0603_1608Metric,,Yageo,RC0603FR-0710KL,Digi-Key,X,,1:0.50,100,"
+        f"{checked},,\n",
     )
     write(
         repo / "parts" / "offboard" / "v0.1.csv",
         f"{PARTS_HEAD}\nPCB,,1,OSH Park,bare board to this version's gerbers,OSH Park,,3,3:2.00,,"
-        f"{DAY},,sets of 3\n",
+        f"{checked},,sets of 3\n",
     )
     write(repo / "parts" / "offboard" / "v0.2.csv", f"{PARTS_HEAD}\nCell,,1,,,,,,,,,,no part chosen\n")
     write(

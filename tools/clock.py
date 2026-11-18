@@ -10,10 +10,16 @@ embedded timestamps in place of the current date and time"). Its value is an int
 1970-01-01 00:00:00 UTC with no fractional part, as `date +%s` prints it; the pinned day is that
 moment's day in UTC. A malformed value ends the command with exit code 1 and 1 line, as the same
 section asks ("SHOULD exit with a non-zero error code"). Unpinned, the day is the machine's local day,
-as it was before this module.
+as it was before this module. The pin is for what a command writes. A judgement of age against now (a
+price's `Checked` day in `procure` and `costs`) and the day a check is recorded (`fetch`'s `Checked`)
+read `wall_today()`, the same run's reading of the machine's clock, pinned or not: a value set as the
+specification asks is a past day, and a 2-year-old price judged against it would pass as fresh.
 
 `clock_calls` names the lines of a Python file that read the clock: tests/test_clock.py holds every
-other tool to calling none, and tests/test_docs.py holds every test file to calling none at load.
+other tool to calling none, and tests/test_docs.py holds every test file to calling none at load. It
+resolves a module or class imported under another name and a reader bound to a name, counts the
+shell's `date` run through a call, and, at load, follows a call into a function of the same file. It
+does not follow a call into another module, or into a method of a class.
 
 Standard library only, as the CLI is (AGENTS.md invariant 3).
 """
@@ -31,6 +37,7 @@ SOURCE = "SOURCE_DATE_EPOCH specification, revision 1.1, section SOURCE_DATE_EPO
 INTEGER = re.compile(r"-?[0-9]+", re.ASCII)
 
 _held: datetime.datetime | None = None
+_held_wall: datetime.datetime | None = None
 
 
 class Malformed(ValueError):
@@ -42,43 +49,60 @@ def _wall() -> datetime.datetime:
     return datetime.datetime.now().astimezone()
 
 
-def _read() -> datetime.datetime:
+def _pinned() -> datetime.datetime | None:
+    """SOURCE_DATE_EPOCH's moment in UTC, or None when it is unset."""
     value = os.environ.get(ENV)
     if value is None:
-        return _wall()
+        return None
+    if not INTEGER.fullmatch(value):
+        raise Malformed(
+            f"{ENV} is {value!r}, not a whole number of seconds since 1970-01-01 00:00:00 UTC ({SOURCE})"
+        )
     try:
-        if not INTEGER.fullmatch(value):
-            raise ValueError
         return datetime.datetime.fromtimestamp(int(value), datetime.UTC)
     except (ValueError, OverflowError, OSError):
         raise Malformed(
-            f"{ENV} is {value!r}, not a whole number of seconds since 1970-01-01 00:00:00 UTC ({SOURCE})"
+            f"{ENV} is {value!r}, a moment outside the years {datetime.MINYEAR} to {datetime.MAXYEAR} a "
+            "date holds (Python datetime.MINYEAR, datetime.MAXYEAR)"
         ) from None
 
 
 @contextlib.contextmanager
 def run():
     """Hold 1 reading for the command inside; the reading before it comes back at the end."""
-    global _held
-    before = _held
+    global _held, _held_wall
+    before = _held, _held_wall
     try:
-        _held = _read()
+        pinned = _pinned()
     except Malformed as why:
         raise SystemExit(str(why)) from None
+    _held_wall = _wall()
+    _held = pinned or _held_wall
     try:
         yield _held
     finally:
-        _held = before
+        _held, _held_wall = before
 
 
 def moment() -> datetime.datetime:
-    """The command's moment, an aware datetime: the run's reading, else the clock now."""
-    return _held if _held is not None else _read()
+    """The command's moment, an aware datetime: the run's reading, else the clock now. SOURCE_DATE_EPOCH
+    pins it: it is the time a command writes into a file."""
+    if _held is not None:
+        return _held
+    return _pinned() or _wall()
 
 
 def today() -> datetime.date:
     """The command's day: UTC when pinned, the machine's local day when not."""
     return moment().date()
+
+
+def wall_today() -> datetime.date:
+    """The machine's local day at the run's start, whatever SOURCE_DATE_EPOCH says: the day a judgement
+    of age is made on and a check is recorded on. The specification asks the variable for "embedded
+    timestamps" (section SOURCE_DATE_EPOCH), and its value is in the past: a price judged against it
+    would pass as fresh."""
+    return (_held_wall if _held_wall is not None else _wall()).date()
 
 
 # ------------------------------------------------------------ who reads the clock
@@ -102,33 +126,95 @@ READERS = {
 OWN = {("clock", "moment"), ("clock", "today")}
 
 
+# The shell's clock, run through subprocess or os: `date`, or a path that ends in it, as a command's 1st word.
+SHELL = re.compile(r"(\S*/)?date(\s|$)")
+RUNNERS = {"run", "call", "check_call", "check_output", "Popen", "system", "popen", "getoutput"}
+
+
 def clock_calls(source: str, at_load: bool = False) -> list[int]:
     """The lines of `source` that read the clock other than through this module. With `at_load`, the
     calls that run when the file is imported, this module's own readers among them: a module's
-    statements, class bodies, decorators and default values, not the bodies of functions."""
+    statements, class bodies, decorators and default values, not the bodies of functions, and a call
+    there into a function of the same file that reads the clock, however deep."""
     readers = READERS | OWN if at_load else READERS
+    owners = {owner for owner, _ in readers}
     tree = ast.parse(source)
-    bare = {}  # a name bound by `from time import time as now`, and the like: now -> ("time", "time")
+    # What a name stands for: a module or a class by its own name (`import time as t`: t -> "time"), or
+    # a reader (`from time import time as now`, `now = datetime.datetime.now`: now -> ("time", "time")).
+    names: dict[str, str | tuple[str, str]] = {}
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module in ("time", "datetime"):
+        if isinstance(node, ast.Import):
             for alias in node.names:
-                for owner, name in READERS:
-                    if owner == node.module and name == alias.name:
-                        bare[alias.asname or alias.name] = (owner, name)
-    found: list[int] = []
+                if alias.name in owners:
+                    names[alias.asname or alias.name] = alias.name
+        elif isinstance(node, ast.ImportFrom) and node.module in owners:
+            for alias in node.names:
+                if (node.module, alias.name) in readers:
+                    names[alias.asname or alias.name] = (node.module, alias.name)
+                elif node.module == "datetime" and alias.name in owners:
+                    names[alias.asname or alias.name] = alias.name
+
+    def owner_of(node: ast.expr) -> str | None:
+        if isinstance(node, ast.Attribute):
+            return node.attr
+        if isinstance(node, ast.Name):
+            meant = names.get(node.id, node.id)
+            return meant if isinstance(meant, str) else None
+        return None
+
+    def reader(node: ast.expr) -> bool:
+        if isinstance(node, ast.Name):
+            return isinstance(names.get(node.id), tuple)
+        return isinstance(node, ast.Attribute) and (owner_of(node.value), node.attr) in readers
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and reader(node.value):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    names[target.id] = ("bound", target.id)
+
+    def shell(call: ast.Call) -> bool:
+        name = call.func.attr if isinstance(call.func, ast.Attribute) else getattr(call.func, "id", "")
+        if name not in RUNNERS or not call.args:
+            return False
+        first = call.args[0]
+        if isinstance(first, (ast.List, ast.Tuple)) and first.elts:
+            first = first.elts[0]
+        return (
+            isinstance(first, ast.Constant)
+            and isinstance(first.value, str)
+            and bool(SHELL.match(first.value))
+        )
 
     def reads(call: ast.Call) -> bool:
-        func = call.func
-        if isinstance(func, ast.Name):
-            return func.id in bare
-        if not isinstance(func, ast.Attribute):
-            return False
-        owner = func.value
-        name = owner.attr if isinstance(owner, ast.Attribute) else getattr(owner, "id", None)
-        return (name, func.attr) in readers
+        return reader(call.func) or shell(call)
+
+    # At load, a call into a function of this file reads the clock when its body does, or calls one that
+    # does: the set grows until it holds still.
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    reading: set[str] = set()
+    while at_load:
+        more = {
+            name
+            for name, node in functions.items()
+            if name not in reading
+            and any(
+                isinstance(sub, ast.Call)
+                and (reads(sub) or (isinstance(sub.func, ast.Name) and sub.func.id in reading))
+                for sub in ast.walk(node)
+            )
+        }
+        if not more:
+            break
+        reading |= more
+    found: list[int] = []
 
     def visit(node: ast.AST) -> None:
-        if isinstance(node, ast.Call) and reads(node):
+        if isinstance(node, ast.Call) and (
+            reads(node) or (isinstance(node.func, ast.Name) and node.func.id in reading)
+        ):
             found.append(node.lineno)
         if at_load and isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
             args = node.args
