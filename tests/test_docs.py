@@ -446,10 +446,11 @@ def beside_page(page: Path, link: str) -> bool:
 def test_every_page_a_reader_opens_loads_the_hosts_analytics_script_once():
     """The owner turned Vercel's Web Analytics on (pull request 62): each page a reader opens loads
     the host's script, 1 time, and queues its events until the script is there. The pages that
-    `site/examples.py` and `site/blog.py` write get these lines from `site/frame.py`. A line edited
-    into a written page by hand is gone at the next run of its generator, so the frame holds them."""
+    `site/examples.py`, `site/blog.py` and `site/forms.py` write get these lines from `site/frame.py`.
+    A line edited into a written page by hand is gone at the next run of its generator, so the frame
+    holds them."""
     queue = "window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };"
-    pages = (SITE / "index.html", SITE / "404.html", *example_pages(), *blog_pages())
+    pages = (SITE / "index.html", SITE / "404.html", SITE / "feedback.html", *example_pages(), *blog_pages())
     assert len(pages) >= 11
     for page in pages:
         text = page.read_text(encoding="utf-8")
@@ -458,7 +459,7 @@ def test_every_page_a_reader_opens_loads_the_hosts_analytics_script_once():
         assert text.count(queue) == 1, page.name
     tag = f'<script defer src="{HOSTED}"></script>'
     assert (SITE / "frame.py").read_text(encoding="utf-8").count(tag) == 1
-    for generator in ("examples.py", "blog.py"):
+    for generator in ("examples.py", "blog.py", "forms.py"):
         assert "from frame import" in (SITE / generator).read_text(encoding="utf-8"), generator
 
 
@@ -467,7 +468,14 @@ def test_every_link_on_the_site_names_what_exists():
     the merge. A link into the page names an id, and a link beside the page names a file."""
     blob = "https://github.com/ThyFriendlyFox/via/blob/main/"
     missing, to_repo, into_page, beside = [], 0, 0, 0
-    for page in (SITE / "index.html", SITE / "404.html", SITE / "og.html", *example_pages(), *blog_pages()):
+    for page in (
+        SITE / "index.html",
+        SITE / "404.html",
+        SITE / "og.html",
+        SITE / "feedback.html",
+        *example_pages(),
+        *blog_pages(),
+    ):
         text = page.read_text(encoding="utf-8")
         for link in links_of(page):
             if link.startswith(blob):
@@ -510,7 +518,12 @@ def test_the_site_builds_for_an_address_and_without_one(tmp_path):
     assert len(alts) == 2 and alts[0] == alts[1] and "Herald" in alts[0]
     assert '<base href="https://example.org/via/">' in (served / "404.html").read_text(encoding="utf-8")
     assert (served / "og.png").is_file() and (served / "fonts" / "LICENSE").is_file()
-    pages = ["index.html", "404.html", *(str(p.relative_to(SITE)) for p in (*example_pages(), *blog_pages()))]
+    pages = [
+        "index.html",
+        "404.html",
+        "feedback.html",
+        *(str(p.relative_to(SITE)) for p in (*example_pages(), *blog_pages())),
+    ]
     # A post is served at /blog/<slug> with its share card, and the feed with whole addresses.
     post = next((SITE / "blog").glob("*.html")).stem
     built_post = (served / "blog" / f"{post}.html").read_text(encoding="utf-8")
@@ -716,15 +729,19 @@ def test_the_blog_is_what_site_blog_writes():
     assert found and {p.slug for p in found} == {p.stem for p in (SITE / "blog").glob("*.html")}
     listed = (SITE / "blog.html").read_text(encoding="utf-8")
     feed = (SITE / "blog" / "feed.xml").read_text(encoding="utf-8")
+    assert 'suggestions <a class="link" href="feedback.html">here</a>!' in listed
     for post in found:
         page = (SITE / "blog" / f"{post.slug}.html").read_text(encoding="utf-8")
         assert f'href="blog/{post.slug}.html"' in listed and f"%ORIGIN%/blog/{post.slug}</link>" in feed
-        # Its way back into the site: the home page, the boards, the checks and every post.
+        # Its way back into the site: the home page, the boards, the checks and every post. The owner's
+        # message: "here" to the subscribe form under it, and "here" to the feedback page.
         for back in (
             'href="../"',
             'href="../examples.html"',
             'href="../index.html#gates"',
             'href="../blog.html"',
+            'Subscribe <a class="link" href="#subscribe">here</a>',
+            'suggestions <a class="link" href="../feedback.html">here</a>!',
         ):
             assert back in page, (post.slug, back)
         # Its share card and its record, on the 1 line build.sh fills with the site's address.

@@ -37,7 +37,8 @@ mkdir -p "$out/fonts" "$out/showcase/datasheets" "$out/vendor" "$out/examples"
 # What the site serves: the examples' pictures, Herald's 3D model and its datasheets' first pages,
 # the agents' marks, Motion, model-viewer and the meshopt decoder with their licenses. og.html,
 # media/ (the README's pictures), the scripts that draw the pictures and write the example pages,
-# vercel.json and each README.md stay in the repository.
+# vercel.json and each README.md stay in the repository. api/ holds the forms' functions: Vercel
+# builds them from the project's folder, not from OUT.
 for file in site.css site.js effects.js example.js agents.svg favicon.svg favicon-32.png apple-touch-icon.png \
   og.png logo.svg fonts/inter-latin-wght-normal.woff2 fonts/LICENSE \
   showcase/herald-top.png showcase/herald-layers.png showcase/herald-schematic.png showcase/herald.glb \
@@ -85,7 +86,8 @@ if [ -n "$origin" ] && [ -f "$here/blog/feed.xml" ]; then
   sed "s|%ORIGIN%|$origin|g" "$here/blog/feed.xml" >"$out/blog/feed.xml"
 fi
 
-for path in "$here/index.html" "$here/404.html" "$here/examples.html" "$here"/examples/*.html "$here/blog.html" "$here"/blog/*.html; do
+for path in "$here/index.html" "$here/404.html" "$here/examples.html" "$here"/examples/*.html "$here/blog.html" "$here"/blog/*.html \
+  "$here/feedback.html"; do
   [ -f "$path" ] || continue
   page=${path#"$here"/}
   if [ -n "$origin" ]; then

@@ -23,7 +23,10 @@ download fail the run; a green CI proves the autoroute engine installs.
 
 - The Vercel project `via`, linked to this repository, Root Directory
   `site`, production branch `main`, production at <https://via.computer>. `site/vercel.json` holds the build command,
-  the output folder and the headers, so the project needs no other setting.
+  the output folder and the headers. The project has 1 other setting: the
+  private Blob store `via-forms` is connected to it, and gives the forms'
+  functions in `site/api/` the variable `BLOB_READ_WRITE_TOKEN` in
+  production, preview and development (`site/README.md`, "The forms").
 - Every push to `main` deploys production. Every other branch gets a
   preview. The project's setting that skips a deployment when a push
   leaves the Root Directory unchanged is on. `make verify` runs the same `site/build.sh` in

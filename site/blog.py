@@ -43,6 +43,7 @@ POSTS = ROOT / "blog"
 OUT = SITE / "blog"
 sys.path.insert(0, str(SITE))
 
+from forms import subscribe  # noqa: E402
 from frame import REPO, shell  # noqa: E402
 
 SCRIPTS = ["vendor/motion-14.6.0.js", "site.js", "effects.js"]
@@ -52,14 +53,14 @@ BLOG = "Via blog"
 ABOUT = "We're making Via better every day! Subscribe to keep up to date with our progress."
 # The owner's words of 2026-11-17 to the reader, at the head of the blog and after each post.
 HEADLINE = "We're making Via better every day!"
-SUGGEST = f"{REPO}/issues/new"
 
 
-def message(feed: str) -> str:
-    """The owner's message under the headline: where to subscribe, and where to send a suggestion."""
+def message(up: str) -> str:
+    """The owner's message under the headline: the first "here" is the subscribe form under it
+    (site/forms.py), the second the feedback page. `up` leads back to the site's root."""
     return (
-        f'Subscribe <a class="link" href="{feed}">here</a> to keep up to date with our progress. '
-        f'Give us suggestions <a class="link" href="{SUGGEST}">here</a>!'
+        'Subscribe <a class="link" href="#subscribe">here</a> to keep up to date with our progress. '
+        f'Give us suggestions <a class="link" href="{up}feedback.html">here</a>!'
     )
 ARROW = '<svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>'
 
@@ -378,7 +379,8 @@ def post_page(post: Post, newer: Post | None, older: Post | None) -> str:
           <div class="head" data-reveal data-stagger>
             <p class="eyebrow">Via</p>
             <h2 class="title" id="after-title">{HEADLINE}</h2>
-            <p class="lede message">{message("feed.xml")}</p>
+            <p class="lede message">{message(up)}</p>
+{subscribe(f"/{canonical}", "            ")}
           </div>
           <div class="actions" data-reveal>
             <a class="btn btn-primary" href="{up}index.html#run">Get started</a>
@@ -414,7 +416,8 @@ def index_page(found: list[Post]) -> str:
           <div class="head" data-reveal data-stagger>
             <p class="eyebrow">Blog</p>
             <h1 class="title" id="blog-title">{HEADLINE}</h1>
-            <p class="lede message">{message("blog/feed.xml")}</p>
+            <p class="lede message">{message("")}</p>
+{subscribe("/blog", "            ")}
           </div>
           <ol class="posts" data-reveal data-stagger>
 {listed}

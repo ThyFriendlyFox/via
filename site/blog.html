@@ -79,7 +79,18 @@
           <div class="head" data-reveal data-stagger>
             <p class="eyebrow">Blog</p>
             <h1 class="title" id="blog-title">We're making Via better every day!</h1>
-            <p class="lede message">Subscribe <a class="link" href="blog/feed.xml">here</a> to keep up to date with our progress. Give us suggestions <a class="link" href="https://github.com/ThyFriendlyFox/via/issues/new">here</a>!</p>
+            <p class="lede message">Subscribe <a class="link" href="#subscribe">here</a> to keep up to date with our progress. Give us suggestions <a class="link" href="feedback.html">here</a>!</p>
+            <form class="form subscribe" id="subscribe" action="/api/subscribe" method="post" data-form="subscribed">
+              <label class="sr-only" for="subscribe-email">Email</label>
+              <div class="form-row">
+                <input id="subscribe-email" name="email" type="email" autocomplete="email" maxlength="254" placeholder="Email" required>
+                <button class="btn btn-primary" type="submit">Subscribe</button>
+              </div>
+              <p class="trap" aria-hidden="true"><label>Website <input name="website" tabindex="-1" autocomplete="off"></label></p>
+              <input type="hidden" name="from" value="/blog">
+              <p class="form-error" data-form-error role="alert" hidden></p>
+            </form>
+            <p class="form-done" id="subscribed" tabindex="-1">Thank you. You are subscribed.</p>
           </div>
           <ol class="posts" data-reveal data-stagger>
             <li><a class="post-card" href="blog/herald-fire-alarm-communicator.html"><time datetime="2026-11-17">17 November 2026</time><h2>Herald, a fire alarm communicator designed with Via</h2><p>Herald is a fire alarm communicator. An AI agent designed it with Via from a written brief. The design file, the routed board and the results of the checks are in the Via repository.</p><ul class="chips" aria-label="Tags"><li>examples</li><li>herald</li><li>simulation</li></ul></a></li>
@@ -95,6 +106,7 @@
           <nav aria-label="Footer">
             <ul>
               <li><a href="blog.html">Blog</a></li>
+              <li><a href="feedback.html">Feedback</a></li>
               <li><a href="https://github.com/ThyFriendlyFox/via">GitHub</a></li>
               <li><a href="https://github.com/ThyFriendlyFox/via/blob/main/WORKCENTER.md">Contract</a></li>
               <li><a href="https://github.com/ThyFriendlyFox/via/blob/main/ee-agent-kit/STATUS.md">Status</a></li>

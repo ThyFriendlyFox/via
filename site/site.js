@@ -37,6 +37,49 @@
     show();
   });
 
+  // A form (site/forms.py) sends its fields to its function and shows the answer in place: the
+  // thank-you line whose id its data-form names, or the function's error under the fields.
+  for (const form of document.querySelectorAll("[data-form]")) {
+    const done = document.getElementById(form.dataset.form);
+    const error = form.querySelector("[data-form-error]");
+    const button = form.querySelector('button[type="submit"]');
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      button.disabled = true;
+      error.hidden = true;
+      let answer = null;
+      try {
+        const response = await fetch(form.action, {
+          method: "POST",
+          body: new FormData(form),
+          headers: { accept: "application/json" },
+        });
+        answer = await response.json();
+      } catch {}
+      button.disabled = false;
+      if (answer?.ok) {
+        form.hidden = true;
+        done.dataset.shown = "";
+        done.focus();
+        return;
+      }
+      error.textContent = answer?.error || "The form did not send. Try again.";
+      error.hidden = false;
+    });
+  }
+
+  // A link to a form puts the cursor in its first field. The jump to the form's id alone would leave
+  // the focus on the page.
+  for (const link of document.querySelectorAll('a[href^="#"]')) {
+    const form = document.getElementById(link.getAttribute("href").slice(1));
+    const field = form?.tagName === "FORM" && form.querySelector("input, textarea");
+    if (!field) continue;
+    link.addEventListener("click", (e) => {
+      e.preventDefault();
+      field.focus();
+    });
+  }
+
   for (const button of document.querySelectorAll("[data-copy]")) {
     button.addEventListener("click", async () => {
       const pre = (button.closest("[data-copyable]") || button.parentElement).querySelector("pre");
