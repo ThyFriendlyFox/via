@@ -1,0 +1,10 @@
+{
+  "pack": "nasa-eee-inst-002",
+  "parts": {
+    "U1": {
+      "mpn": "TLV75533PDRVR",
+      "watts": "ldo.p_u1",
+      "source": "the deck's input power less its output power"
+    }
+  }
+}

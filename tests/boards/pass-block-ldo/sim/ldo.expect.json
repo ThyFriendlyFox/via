@@ -1,0 +1,11 @@
+{
+  "iout": {
+    "max": 0.5,
+    "source": "U1 TLV75533PDBVR gives 500 mA at the most [TLV755P datasheet, SBVS320D, section 5.3, Recommended Operating Conditions, IOUT, page 4]"
+  },
+  "vout": {
+    "min": 3.2505,
+    "max": 3.3495,
+    "source": "U1 TLV75533PDBVR regulates to 3.3 V x (1 +- 0.015), the 3.3 V asked [TLV755P datasheet, SBVS320D, table 8-1, Device Nomenclature, page 23: xx in TLV755xxP is the nominal output, 33 = 3.3 V; section 5.5, Output accuracy, VOUT >= 1 V, -1.5 % to 1.5 %, page 5]"
+  }
+}
