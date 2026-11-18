@@ -1,6 +1,6 @@
 ---
 name: Blocks
-description: Adds a circuit block to a design file in 1 call - today a buck regulator by TI SLVA477C - from the input range, the output voltage and the load current; the block works out each part's value by the note's equations, takes each part from the designer's stock, writes its ratings.json entries, its parts.csv rows and its deck, and fails on 1 line that names the equation no stocked part meets.
+description: Adds a circuit block to a design file in 1 call - a buck regulator (blocks.buck), a linear regulator (blocks.ldo), a USB-C sink port (blocks.usbc), an I2C bus's pull-ups (blocks.i2c), a single-cell charger with its protection (blocks.charger, step by step in the charger-block skill) or a microcontroller with its crystal and decoupling (blocks.mcu) - from its numbers (the input range, the output voltage, the load current); the block works out each part's value by its maker's note, takes each part from the designer's stock, writes its ratings.json entries, its parts.csv rows and, for all but the microcontroller, its deck, and fails on 1 line that names the equation or the clause no stocked part meets.
 ---
 
 # Blocks
