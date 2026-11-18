@@ -28,7 +28,7 @@ REF_RE = re.compile(r"^([CL])\d+$")  # a board reference whose whole letter pref
 KIND_OF = {"C": "capacitor", "L": "inductor"}
 UNIT = {"C": "V", "L": "A"}
 CAPACITOR_ONLY = ("kept_celsius_at", "esr", "esl")
-UIC_RE = re.compile(r"^\s*\.?tran\b.*\buic\b", re.IGNORECASE | re.MULTILINE)  # a transient from the ICs
+UIC_RE = re.compile(r"^\s*tran\b.*\buic\b", re.IGNORECASE)  # a `.control` transient from the ICs
 HOLDS = ("kept", "kept_celsius", *CAPACITOR_ONLY)  # the facts keys the gate runs a part on
 
 
@@ -118,9 +118,71 @@ def choose(
             name = row.file.replace("\\", "/").rsplit("/", 1)[-1]
             refused[ref] = f"the file {row.source} keeps, {name}, is not the one its SHA256 names"
             continue
+        if bias is not None and (why := _bias_refused(bias, kept)):
+            refused[ref] = why
+            continue
         rating = data.get("volts") if kind == "C" else data.get("amps_saturation")
         found[ref] = Curve(ref, kind, kept, celsius, entry.where, row.source, rating, "", bias, esr, esl)
     return found, refused, unjudged
+
+
+def _bias_refused(bias: dict, kept: list | None) -> str | None:
+    """Why a temperature curve at 1 bias cannot be taken, or None. `apply` divides its shares by the
+    share the DC bias curve keeps at that bias, so they are to be against the value at 0 V and 25 C, as
+    Samsung's BiasTCC data gives them: its 25 C share is then nearer that share than 1. A curve that
+    keeps 1 at 25 C was entered against 25 C at its own bias, and would undo the DC bias loss."""
+    reference = "the value at 0 V and 25 C"
+    if not kept:
+        return f"its kept_celsius_at has no DC bias curve (`kept`) to hold its shares to {reference}"
+    points = bias["kept"]
+    if not points[0][0] <= 25 <= points[-1][0]:
+        return f"its kept_celsius_at does not reach 25 C, so its shares cannot be held to {reference}"
+    volts, there, at25 = bias["volts"], _at(kept, bias["volts"]), _at(points, 25)
+    if abs(at25 - there) <= abs(at25 - 1):
+        return None
+    return (
+        f"its kept_celsius_at keeps {at25:.5g} at 25 C, nearer 1 than the {there:.5g} its DC bias curve "
+        f"keeps at {volts:g} V: its shares are to be against the value at 0 V and 25 C, as the gate "
+        f"divides them by {there:.5g}"
+    )
+
+
+def between(curve: Curve) -> str | None:
+    """The line that names the temperature factor between 0 V and a capacitor's bias curve as the
+    gate's, not the maker's: a straight line in volts between the maker's 2 curves."""
+    if not curve.bias:
+        return None
+    volts = f"{curve.bias['volts']:g} V"
+    return (
+        f"not judged: {curve.ref}'s share at a temperature between 0 V and {volts}: the gate goes from its "
+        f"maker's temperature curve at 0 V to the one at {volts} in a straight line in volts, which the "
+        "maker does not publish"
+    )
+
+
+def _uic(lines: list[str]) -> bool:
+    """Whether the deck's transient starts from the initial conditions: `uic` among the tokens of a
+    `.tran` statement, its `+` lines included as ngspice joins them, or on a `tran` of `.control`."""
+    for i in simcorners.netlist_lines(lines):
+        tokens = [t[3].lower() for t in simcorners.logical_tokens(lines, i)]
+        if tokens and tokens[0] == ".tran" and "uic" in tokens:
+            return True
+    return any(UIC_RE.match(text) for _, _, text in simcorners.control_commands(lines))
+
+
+def _blocks(lines: list[str], starts: list[int]) -> dict[int, str]:
+    """The `.subckt` each netlist line inside one stands in, by its index."""
+    within: dict[int, str] = {}
+    block = ""
+    for i in starts:
+        word = lines[i].split()[0].lower()
+        if word == ".subckt":
+            block = lines[i].split()[1] if len(lines[i].split()) > 1 else "?"
+        elif word == ".ends":
+            block = ""
+        elif block:
+            within[i] = block
+    return within
 
 
 def short_of_rating(curve: Curve) -> str | None:
@@ -158,10 +220,13 @@ def _value(token: str) -> str | None:
 
 
 def _coupled(lines: list[str]) -> dict[str, str]:
-    """Each inductor a K element couples, upper case, and the first K that names it."""
+    """Each inductor a K element of the deck's top level couples, upper case, and the first K that names
+    it. A K inside a `.subckt` couples that block's own inductors, not the deck's."""
     coupled: dict[str, str] = {}
-    for i in simcorners.netlist_lines(lines):
-        if lines[i].split()[0][0].lower() == "k":
+    starts = simcorners.netlist_lines(lines)
+    within = _blocks(lines, starts)
+    for i in starts:
+        if i not in within and lines[i].split()[0][0].lower() == "k":
             for other in [t[3].upper() for t in simcorners.logical_tokens(lines, i)[1:3]]:
                 coupled.setdefault(other, lines[i].split()[0])
     return coupled
@@ -183,29 +248,23 @@ def apply(
 ) -> tuple[str, list[str], dict[str, str]]:
     """The deck with each part `curves` names written on its maker's data: (text, applied, ideal).
     `ideal` names each part the gate cannot rewrite, with the reason: it stands inside a .subckt (each
-    copy would share 1 rewrite) or outside the deck's own lines, in a file of `included` (the path as
-    the deck writes it, and its text); its value is no number and no expression; or, in a deck whose
-    transient starts from the initial conditions (`uic`), it has an ic= that is no capacitor's to
-    ground with a number. ngspice 42 drops an ic= from a behavioural C or L: a capacitor's to ground
-    moves to its node's `.ic`, and without `uic`, where ngspice uses no ic=, an ic= is taken off. An
+    copy would share 1 rewrite), and no element of its name stands at the deck's top level, or outside
+    the deck's own lines, in a file of `included` (the path as the deck writes it, and its text); its
+    value is no number and no expression; or, in a deck whose transient starts from the initial
+    conditions (`uic`, on the `.tran` card or its `+` lines), it has an ic= that is no capacitor's with
+    a number, or its line holds another parameter (m=, tc1=) that the form for an ic= does not carry.
+    ngspice 42 drops an ic= from a behavioural C or L: a capacitor's moves to a unit capacitor whose
+    current drives the part, and without `uic`, where ngspice uses no ic=, an ic= is taken off. An
     inductor a K element couples is left as written and is in neither list: `not_modelled` names it.
     A capacitor's ESR and ESL go in series with it, toward its second node."""
     lines = text.split("\n")
     starts = simcorners.netlist_lines(lines)
-    within: dict[int, str] = {}
+    within = _blocks(lines, starts)
+    top = {lines[i].split()[0].upper() for i in starts if i not in within}
     coupled = _coupled(lines)
-    block = ""
-    for i in starts:
-        word = lines[i].split()[0].lower()
-        if word == ".subckt":
-            block = lines[i].split()[1] if len(lines[i].split()) > 1 else "?"
-        elif word == ".ends":
-            block = ""
-        elif block:
-            within[i] = block
     edits: dict[int, list[tuple[int, int, str]]] = {}
     after: dict[int, list[str]] = {}
-    uic = bool(UIC_RE.search(text))
+    uic = _uic(lines)
     hidden: set[int] = set()  # the lines of an element the gate writes again in another form
     applied: list[str] = []
     ideal: dict[str, str] = {}
@@ -225,7 +284,9 @@ def apply(
         if name in coupled:
             continue
         if i in within:
-            ideal[name] = f"it stands inside .subckt {within[i]}, which the gate does not rewrite"
+            # an element of the same name at the top level is the board's part; this one is the block's
+            if name not in top:
+                ideal[name] = f"it stands inside .subckt {within[i]}, which the gate does not rewrite"
             continue
         tokens = simcorners.logical_tokens(lines, i)
         n1, n2 = tokens[1], tokens[2]
@@ -261,6 +322,19 @@ def apply(
                     if curve.kind == "L"
                     else f"its ic={told} is no number, and the gate writes a starting voltage only as a "
                     "number"
+                )
+                continue
+            # the B source carries none of the line's other parameters (m=, tc1=, scale=, ...), which
+            # ngspice keeps on the named form `C='...'` (a run of tests/test_partdata.py)
+            at = tokens.index(place)
+            used = {0, 1, 2, at, ic, ic + 1, ic + 2} | (
+                {at - 2, at - 1} if tokens[at - 1][3] == "=" else set()
+            )
+            rest = " ".join(t[3] for k, t in enumerate(tokens) if k not in used).replace(" = ", "=")
+            if uic and rest:
+                ideal[name] = (
+                    f"its line also holds {rest}, which the form the gate writes for an ic= under uic "
+                    "does not carry"
                 )
                 continue
             if not uic:

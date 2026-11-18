@@ -227,7 +227,18 @@ def test_a_project_with_no_schematic_leaves_its_deck_parts_not_judged(tmp_path):
             "the project has no schematic to give the parts' numbers"
         ],
     )
-    deck.write_text("t\nR1 a 0 1k\nCout a 0 1u\n.end\n", encoding="utf-8")  # no deck part like a reference
+    # a C or an L not named like a reference may be a part with data too: with no schematic it is named
+    deck.write_text("t\nR1 a 0 1k\nCout a 0 1u\n.end\n", encoding="utf-8")
+    assert cli.deck_part_data(project, tmp_path / "out", None, [deck])[4] == [
+        "not judged: whether Cout runs on its maker's data: the library's facts hold curves, and the "
+        "project has no schematic to give the parts' numbers"
+    ]
+    deck.write_text("t\nL1 sw out 2.2u\nCout out 0 1u\n.end\n", encoding="utf-8")
+    assert cli.deck_part_data(project, tmp_path / "out", None, [deck])[4] == [
+        "not judged: whether L1 and Cout run on their makers' data: the library's facts hold curves, and "
+        "the project has no schematic to give the parts' numbers"
+    ]
+    deck.write_text("t\nR1 a 0 1k\n.end\n", encoding="utf-8")  # no C or L at all
     assert cli.deck_part_data(project, tmp_path / "out", None, [deck]) == ({}, {}, {}, [], [])
 
 
@@ -274,6 +285,38 @@ def test_a_capacitor_s_initial_condition_moves_to_a_unit_capacitor_it_drives():
     ]
 
 
+def test_uic_on_a_continuation_line_of_the_tran_card_is_read():
+    """ngspice joins `+ uic` onto the `.tran` card and then uses C2's ic=: the gate moves it to the unit
+    capacitor, as for `uic` on the card's own line, and does not take it off."""
+    deck = "t\nC2 out 0 10u ic=5\nR1 out 0 1k\n.tran 1u 2m\n+ uic\n.end\n"
+    text, applied, ideal = partdata.apply(deck, {"C2": curve("C2", [[0, 1.0], [4, 0.5]])})
+    assert applied == ["C2"] and ideal == {}
+    assert "cc2_ic c2_ic 0 1 ic=5" in text.splitlines()
+    # a word that only holds the letters, in a title or a comment, is no uic
+    deck = "t uic\nC2 out 0 10u ic=5\n* .tran 1u 2m uic\n.tran 1u 2m\n.end\n"
+    text, _, _ = partdata.apply(deck, {"C2": curve("C2", [[0, 1.0], [4, 0.5]])})
+    assert text.splitlines()[1] == "C2 out 0 C='(10u)*pwl(abs(v(out,0)),0,1,4,0.5)'"
+
+
+def test_a_capacitor_with_an_ic_and_other_parameters_under_uic_runs_ideal_and_is_named():
+    """The form the gate writes for an ic= under uic is a B source: it carries no m=, tc1= or other
+    parameter of the line, so C2 with m=2 would run at half its capacitance. Without uic the gate keeps
+    the named form, `C='...'`, and the line's m=2 stays on it: ngspice 42 took 39.99 ms to charge
+    10 uF with m=2 by 1 mA to 2 V in that form, as written, and 19.99 ms without m (a run on 2026-11-18)."""
+    c2 = curve("C2", [[0, 1.0], [4, 0.5]])
+    for extra, said in (("m=2", "m=2"), ("tc1 = 0.01", "tc1=0.01")):
+        deck = f"t\nC2 out 0 10u {extra} ic=5\nR1 out 0 1k\n.tran 1u 2m uic\n.end\n"
+        text, applied, ideal = partdata.apply(deck, {"C2": c2})
+        assert applied == [] and text == deck
+        assert ideal == {
+            "C2": f"its line also holds {said}, which the form the gate writes for an ic= under uic "
+            "does not carry"
+        }
+    text, applied, _ = partdata.apply("t\nC2 out 0 10u m=2\n.end\n", {"C2": c2})
+    assert applied == ["C2"]
+    assert text.splitlines()[1] == "C2 out 0 C='(10u)*pwl(abs(v(out,0)),0,1,4,0.5)' m=2"
+
+
 def test_a_part_whose_initial_condition_the_gate_cannot_move_runs_ideal_and_is_named():
     """With `uic`: an inductor's ic= (no form of it was run to the same numbers), and a capacitor's ic=
     that is no number."""
@@ -297,6 +340,21 @@ def test_an_inductor_a_k_element_couples_runs_ideal_and_is_named_as_not_modelled
     assert partdata.not_modelled(deck, curves) == {
         "L1": "it is coupled by K1, and the gate models no coupled inductor's curve"
     }
+
+
+def test_a_k_element_inside_a_subckt_couples_only_that_block_s_inductors():
+    """K1 couples the L1 and L2 of .subckt xfmr. The board's L1 stands at the top level and no K there
+    names it: it runs on its curve, and nothing names it as coupled."""
+    deck = (
+        "t\n.subckt xfmr p s\nL1 p 0 1u\nL2 s 0 1u\nK1 L1 L2 0.9\n.ends\n"
+        "L1 sw out 2.2u\nC9 out 0 10u\nX1 a b xfmr\n.end\n"
+    )
+    curves = {"L1": curve("L1", [[0, 1.0], [2, 0.5]])}
+    text, applied, ideal = partdata.apply(deck, curves)
+    assert (applied, ideal) == (["L1"], {})
+    assert "L1 sw l1_kept L='(2.2u)*pwl(abs(i(vl1_kept)),0,1,2,0.5)'" in text.splitlines()
+    assert "L1 p 0 1u" in text.splitlines()
+    assert partdata.not_modelled(deck, curves) == {}
 
 
 def test_a_part_the_deck_does_not_hold_is_not_named():
@@ -405,11 +463,57 @@ def test_a_row_that_keeps_no_file_leaves_the_sha256_not_judged(tmp_path):
 
 
 def test_a_capacitor_s_bias_curve_esr_and_esl_are_taken_from_its_facts():
+    """The DC bias curve keeps 1 + (0.44 - 1) x 5 / 10 = 0.72 at 5 V, and the curve at 5 V keeps 0.72
+    at 25 C: its shares are against the value at 0 V and 25 C."""
     at = {"volts": 5, "kept": [[25, 0.72], [85, 0.7]]}
     esr, esl = {"ohms": 0.0035, "hz": 1.5e6}, {"henries": 5e-10, "hz": 1e8}
-    entry = facts(kept_celsius_at=at, esr=esr, esl=esl)
+    entry = facts(kept=[[0, 1.0], [10, 0.44]], kept_celsius_at=at, esr=esr, esl=esl)
     found, refused, _ = partdata.choose({"C2": ("CL10A106KP8NNN", entry)}, [row()])
     assert refused == {} and (found["C2"].bias, found["C2"].esr, found["C2"].esl) == (at, esr, esl)
+
+
+def test_a_bias_curve_whose_shares_are_not_against_0_v_and_25_c_is_refused():
+    """The gate divides the curve at 5 V by the 0.75 the DC bias curve keeps there (1 + (0.5 - 1) x
+    5 / 10): its shares are against the value at 0 V and 25 C, as Samsung's BiasTCC data gives them,
+    and its 25 C share is then near 0.75. A curve that keeps 1 at 25 C, |1 - 1| = 0 from 1 and
+    |1 - 0.75| = 0.25 from 0.75, was entered against 25 C at its own bias, and would undo the DC bias
+    loss at 5 V. A curve that does not reach 25 C, or a part with no DC bias curve, cannot be held to
+    that, and is refused too."""
+    kept = [[0, 1.0], [10, 0.5]]
+    for at, keys, said in (
+        (
+            {"volts": 5, "kept": [[-55, 0.95], [25, 1.0], [85, 0.95]]},
+            {"kept": kept},
+            "its kept_celsius_at keeps 1 at 25 C, nearer 1 than the 0.75 its DC bias curve keeps at 5 V: "
+            "its shares are to be against the value at 0 V and 25 C, as the gate divides them by 0.75",
+        ),
+        (
+            {"volts": 5, "kept": [[50, 0.74], [85, 0.7]]},
+            {"kept": kept},
+            "its kept_celsius_at does not reach 25 C, so its shares cannot be held to the value at 0 V "
+            "and 25 C",
+        ),
+        (
+            {"volts": 5, "kept": [[25, 0.74], [85, 0.7]]},
+            {},
+            "its kept_celsius_at has no DC bias curve (`kept`) to hold its shares to the value at 0 V "
+            "and 25 C",
+        ),
+    ):
+        entry = facts(kept_celsius_at=at, **keys)
+        found, refused, _ = partdata.choose({"C2": ("CL10A106KP8NNN", entry)}, [row()])
+        assert (found, refused) == ({}, {"C2": said})
+
+
+def test_the_temperature_factor_between_0_v_and_the_bias_is_named_as_not_the_maker_s():
+    """The maker gives the temperature curve at 0 V and at 1 bias; between them the gate draws a
+    straight line in volts, which is no curve of the maker's: it says so."""
+    assert partdata.between(bias_curve()) == (
+        "not judged: C2's share at a temperature between 0 V and 5 V: the gate goes from its maker's "
+        "temperature curve at 0 V to the one at 5 V in a straight line in volts, which the maker does "
+        "not publish"
+    )
+    assert partdata.between(curve("C2", [[0, 1.0], [4, 0.5]], [[25, 1.0], [85, 0.8]])) is None
 
 
 def test_the_facts_take_a_bias_curve_esr_and_esl_and_refuse_them_malformed(tmp_path):
@@ -526,6 +630,26 @@ def test_the_initial_condition_on_the_part_and_on_the_node_give_the_same_run(tmp
 
 
 @needs_ngspice
+def test_uic_on_a_continuation_line_gives_the_written_run(tmp_path):
+    """`.tran 1u 2m` with `+ uic` on the next line: ngspice starts C2 from its ic=5, and v = 5 x
+    e^(-1m / (10u x 1k)) = 5 x e^-0.1 = 4.5242 V at 1 ms, as written and as the gate rewrites it on a
+    curve that keeps 1 at every voltage."""
+    deck = "t\nC2 out 0 10u ic=5\nR1 out 0 1k\n.tran 1u 2m\n+ uic\n.meas tran v1 find v(out) at=1m\n.end\n"
+
+    def measured(text: str) -> float:
+        (tmp_path / "c.cir").write_text(text, encoding="utf-8")
+        proc = subprocess.run(
+            ["ngspice", "-b", "c.cir"], cwd=tmp_path, capture_output=True, text=True, check=False
+        )
+        return float(next(ln for ln in proc.stdout.splitlines() if ln.split()[:2] == ["v1", "="]).split()[2])
+
+    written = measured(deck)
+    rewritten = partdata.apply(deck, {"C2": curve("C2", [[0, 1.0], [10, 1.0]])})[0]
+    assert written == pytest.approx(4.5242, rel=1e-3)
+    assert measured(rewritten) == pytest.approx(written, rel=1e-4)
+
+
+@needs_ngspice
 @pytest.mark.parametrize(
     ("volts", "share"),
     [
@@ -590,6 +714,9 @@ def test_the_regulator_misses_its_ripple_bound_with_the_makers_data_and_the_gate
     assert unjudged == [
         "C2 runs on its maker's data, and whether that is its maker's file is not judged: sources.csv:2 "
         f"keeps no file, so nothing holds its SHA256 ({SHA[:12]}...) against the maker's",
+        "not judged: C2's share at a temperature between 0 V and 5 V: the gate goes from its maker's "
+        "temperature curve at 0 V to the one at 5 V in a straight line in volts, which the maker does "
+        "not publish",
         "L1 runs on its maker's data, and whether that is its maker's file is not judged: sources.csv:3 "
         "keeps no file, so nothing holds its SHA256 (b26cf975bd56...) against the maker's",
     ]

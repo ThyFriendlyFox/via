@@ -353,15 +353,19 @@ The fixture is `tests/boards/fail-sim-bias`.
 |---|---|---|
 | `kept` | capacitor | `[volts, share of the value kept]`, from the DC bias curve |
 | `kept_celsius` | capacitor | `[celsius, share against 25 C]`, from the temperature curve with no bias |
-| `kept_celsius_at` | capacitor | `{"volts": V, "kept": [celsius, share]}`, the maker's temperature curve at 1 bias (Samsung's BiasTCC) |
+| `kept_celsius_at` | capacitor | `{"volts": V, "kept": [celsius, share against 0 V and 25 C]}`, the maker's temperature curve at 1 bias (Samsung's BiasTCC) |
 | `esr` | capacitor | `{"ohms": R, "hz": f}`, the series resistance at the frequency it was read at |
 | `esl` | capacitor | `{"henries": L, "hz": f}`, the series inductance, where the maker gives a figure |
 | `kept` | inductor | `[amps, share of the value kept]`, from the L vs current curve |
 
 With `kept_celsius_at`, the share at its bias is the maker's combined
-figure. Between 0 V and that bias the temperature factor goes from the
-0 V curve's to the bias curve's in proportion to the volts, and past the
-bias it stays the bias curve's. `esr` and `esl` go in series with the
+figure. Its shares are against the value at 0 V and 25 C, so at 25 C it
+keeps about what `kept` keeps at that bias. The gate refuses a curve whose
+25 C share is nearer 1 than that, a curve that does not reach 25 C, and
+one with no `kept`. Between 0 V and that bias the temperature factor goes
+from the 0 V curve's to the bias curve's in a straight line in volts.
+That line is the gate's, not the maker's: the run says `not judged` for
+it. Past the bias the factor stays the bias curve's. `esr` and `esl` go in series with the
 capacitance in the run's copy; the curve reads the voltage across the
 capacitance alone. Read `esr` at the deck's switching frequency, and say
 in `note` between which points of the maker's graph. Never work out an
@@ -380,10 +384,13 @@ gives.
    `C2 out 0 10u`, `L1 sw out 2.2u`. Write it in the deck's own lines: not
    inside a `.subckt`, not in a file the deck includes, at any depth: the
    gate does not rewrite those, and the part runs ideal. An inductor that a
-   K element couples runs ideal too (a warning, not a failure). With
-   `uic`, a capacitor's `ic=` goes to a 1 F capacitor whose current drives
-   the part (`bc2_ic`, `cc2_ic` in the run's copy); without `uic` ngspice
-   uses no `ic=`, and the gate takes it off.
+   K element of the deck's top level couples runs ideal too (a warning, not
+   a failure); a K inside a `.subckt` couples only that block's parts. With
+   `uic` (on the `.tran` line or a `+` line after it), a capacitor's `ic=`
+   goes to a 1 F capacitor whose current drives the part (`bc2_ic`,
+   `cc2_ic` in the run's copy); that form carries no `m=`, `tc1=` or other
+   parameter of the line, so such a part runs ideal. Without `uic` ngspice
+   uses no `ic=`, and the gate takes it off; `m=` and the others stay.
 4. Run `workcenter sim <project>`. The record names each part it ran on its
    data under `decks.<deck>.parts`, with its facts and its row.
 5. Read each line:
@@ -399,6 +406,9 @@ gives.
    | `...: it stands inside .subckt ...` | Move the part into the deck's top level. |
    | `...: it stands in <file>, a file the deck includes ...` | Move the part from the included file into the deck. `<file> (from <other>)` is a file that `<other>` includes. |
    | `...: its ic= sets its starting current ...` or `...: its ic=... is no number ...` | The gate moves only a capacitor's `ic=` that is a number. Write the number, or take the `ic=` off and start the deck from its operating point (no `uic`). |
+   | `...: its line also holds m=2, which the form the gate writes for an ic= under uic does not carry` | Write the part's whole value (`20u` for `10u m=2`), or start the deck from its operating point (no `uic`). |
+   | `...: its kept_celsius_at keeps ... at 25 C, nearer 1 than ...` | Enter the curve's shares against the value at 0 V and 25 C, as the maker's data gives them. |
+   | warning `not judged: C2's share at a temperature between 0 V and 5 V: ...` | The maker gives no curve between 0 V and the bias. If the working voltage is far from both, enter the maker's curve at a bias near it, where the maker gives one. |
    | warning `not judged: <deck>: <ref> runs as an ideal part ...: it is coupled by K..., and the gate models no coupled inductor's curve` | The deck runs the part at its written value. Check by hand that the core does not saturate at the deck's current: the coupled part's facts give its saturation current. |
    | `...: its value ... is no number and no expression` | Write the part's value as a number. |
    | warning `<ref>'s curve ends at ... under its rating` | Past the last point the deck holds the last share. Enter the maker's points up to the rating if the maker gives them. |
