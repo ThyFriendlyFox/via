@@ -34,7 +34,7 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 WC_ROOT = Path(os.environ.get("WORKCENTER_ROOT", "/opt/workcenters/ee"))
 SRC_DIR = Path(__file__).resolve().parent.parent
@@ -4644,6 +4644,14 @@ def read_mutation_list(path: Path) -> tuple[list[dict], str | None, list[str] | 
         raise ValueError(f"{path.name}: TEST is not a command line")
     if copy is not None and (not isinstance(copy, list) or not all(isinstance(p, str) and p for p in copy)):
         raise ValueError(f"{path.name}: COPY is not a list of paths")
+    for part in copy or []:  # a copy is written under its own folder, and removed with it
+        if PurePosixPath(part).is_absolute() or ".." in PurePosixPath(part).parts:
+            raise ValueError(f"{path.name}: COPY: {part} is not a path inside the tree")
+    held = [PurePosixPath(p) for p in copy or []]
+    for i, m in enumerate(mutations, 1):
+        file = PurePosixPath(m["file"])
+        if copy is not None and not any(c == file or c in file.parents for c in held):
+            raise ValueError(f"{path.name}: mutation {i} ({m['name']}): {m['file']} is under no COPY path")
     return mutations, test, copy
 
 
