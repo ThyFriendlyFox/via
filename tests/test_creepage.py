@@ -1104,3 +1104,91 @@ def test_a_round_oval_pad_is_read_as_a_circle():
     )
     oval = [p for n, p in creepage.read_copper(text).shapes["F.Cu"] if n == "HV"][1]
     assert min(x for x, _ in oval) == pytest.approx(120 - 0.85 / math.cos(math.pi / 16), abs=1e-9)
+
+
+# ---------------------------------------------------------------- the mutants the rerun left
+
+
+def test_an_unread_cut_beside_a_pair_that_holds_leaves_it_held():
+    """3.3 mm straight, over the 3 mm of leakage, and a cut the check does not measure over the gap: a
+    cut only lengthens a way, so the pair holds and no line is printed."""
+    cu = copper(5.0)
+    cu.cuts = [creepage.Cut(None, "a circle on Edge.Cuts", (111.0, 109.0, 113.0, 110.0))]
+    assert creepage.findings(cu, SPANS, creepage.read_pack(MIL), MIL_AI) == []
+
+
+def test_a_voltage_over_the_last_row_between_the_2_faces_is_not_judged():
+    """HV on F.Cu alone and GND on B.Cu alone at 1200 V, over the 1000 V of table 69-I's last row."""
+    cu = creepage.Copper(
+        layers=["F.Cu", "B.Cu"],
+        shapes={"F.Cu": [("HV", square(110, 107.5))], "B.Cu": [("GND", square(115, 107.5))]},
+        cuts=[],
+    )
+    found = creepage.findings(cu, {"HV": (0.0, 1200.0), "GND": (0.0, 0.0)}, creepage.read_pack(MIL), MIL_AI)
+    assert [f.line.split(" [")[0] for f in found] == [
+        "not judged creepage HV on F.Cu to GND on B.Cu: 1200 V is over 1000 V, the table's last row"
+    ]
+
+
+def test_a_gap_under_the_first_row_of_points_is_not_judged():
+    """SLUP419 table 3, page 7: its first row is 63 V, 1.25 mm (degree 2, group III). At 50 V a gap of 1
+    mm is under it, and the table says nothing below 63 V."""
+    found = ti(apart(1.0), {"HV": (0.0, 50.0), "GND": (0.0, 0.0)})
+    assert [f.status for f in found] == ["not judged"]
+    assert "1 mm at 50 V, under 63 V, the table's first row, under its 1.25 mm" in found[0].text
+
+
+@pytest.mark.parametrize(
+    ("prims", "named"),
+    [
+        (" (primitives (gr_poly (pts (xy 0 0) (xy 1 0) (xy 1 1)) (width 0) (fill yes)))", True),
+        (" (primitives)", False),
+        ("", False),
+    ],
+)
+def test_a_custom_pad_is_named_only_with_primitives(prims, named):
+    """A custom pad is read as a square of its anchor's side; 1 primitive or more is copper not read."""
+    text = (
+        HEAD
+        + '  (footprint "x:C" (layer "F.Cu") (at 110 107.5)\n'
+        + f'    (pad "1" smd custom (at 0 0) (size 0.5 0.5) (layers "F.Cu") (net "HV"){prims}))\n'
+        + smd("GNDPAD", "115 107.5", "1.7 1.7", "GND")
+        + ")\n"
+    )
+    line = (
+        "not judged creepage on F.Cu: 1 shape drawn on the copper is not read (a custom pad of x:C at "
+        "(110, 107.5))"
+    )
+    assert [f.line for f in judged(text)] == ([line] if named else [])
+
+
+def test_a_trapezoid_pad_with_no_delta_is_its_rectangle():
+    """A trapezoid pad 1 x 1 mm with no `rect_delta` at x 110 reaches x 110.5; GND's 1 mm pad at x 114
+    starts at 113.5: 3 mm, the 3 mm of leakage: no line."""
+    text = (
+        HEAD
+        + '  (footprint "x:T" (layer "F.Cu") (at 110 107.5)\n'
+        + '    (pad "1" smd trapezoid (at 0 0) (size 1 1) (layers "F.Cu") (net "HV")))\n'
+        + smd("GNDPAD", "114 107.5", "1 1", "GND")
+        + ")\n"
+    )
+    assert judged(text) == []
+
+
+def test_a_plated_hole_of_a_net_with_a_voltage_is_no_way_between_the_faces():
+    """HV's pad on F.Cu, GND's on B.Cu, and a plated pad of MID (0 to 400 V) between them: the way through
+    its barrel crosses MID's copper, so it is judged as HV to MID and MID to GND (both fail at 0.65 mm),
+    never as a way from HV to GND, and its hole is no wall."""
+    joint = (
+        '  (footprint "x:TP" (layer "F.Cu") (at 112.5 107.5)\n'
+        '    (pad "1" thru_hole circle (at 0 0) (size 2 2) (drill 1) (layers "*.Cu") (net "MID")))\n'
+    )
+    spans = {**SPANS, "MID": (0.0, 400.0)}
+    found = judged(BARREL.format(joint), spans)
+    assert not [f.line for f in found if "HV on F.Cu to GND on B.Cu" in f.text]
+    assert {f.text.split(" at ")[0] for f in found if f.status == "fail"} == {
+        "clearance HV to MID on F.Cu",
+        "creepage HV to MID on F.Cu",
+        "clearance MID to GND on B.Cu",
+        "creepage MID to GND on B.Cu",
+    }
