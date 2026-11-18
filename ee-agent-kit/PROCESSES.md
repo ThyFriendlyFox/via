@@ -519,6 +519,10 @@ that may be absent.
    the engines' own folder set to one that is not there. A test that
    names the engine as present carries no mark, and fails only there
    (M170).
+7. A test that starts an engine carries `@pytest.mark.engine` (or a file's
+   `needs_*` mark built with `engine(...)` from `tests/conftest.py`). A
+   test without it that starts one fails in every run
+   (`tools/ci/engine_marker.py`); `make verify-site` finds such a test.
 
 Done when: the summary shows no unexpected skips, the engine test is
 green on the runner, and a run with an engine taken away is not GREEN.

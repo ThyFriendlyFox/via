@@ -39,6 +39,12 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-18 — CI by what a change needs
+
+A README fix waited for the same gate as a new solver: on 2026-11-17 a `make verify` ran more than 26 minutes here (read from `ps` by the piece's builder). `tools/ci/scope.py` now reads the diff and answers fast or full; the fast run builds the site, runs the tests that start no engine with every engine refused, and runs the kit's checks. The hard part was knowing which tests start an engine: a guard in every Python process the tests start writes each start down, and a test without the `engine` marker that wrote one fails. Its first run on the builder's branch found 64 such tests that no skip mark named. On the landing head it found 8 more in files the trunk added since: 2 doctor tests of `tests/test_enginelock.py`, the 4 of `tests/test_layoutrules_drc.py`, 1 of `tests/test_fetch_checks.py` and 1 of `tests/test_procure_rows.py`. With the marks, `make verify-site` ran 2519 tests in 423.29 s: GREEN, and still not the minute the roadmap asks.
+
+Evidence: `tests/test_ci_scope.py` (18 tests), `tests/test_engine_marker.py` (8 tests); landing head 013afc1.
+
 ## 2026-11-18 — The long commands take turns by themselves
 
 The roadmap's entry "Out of band: a lock the tools take themselves" landed (in part). Each long `workcenter` command takes a numbered ticket in `/tmp/workcenter-lock-<uid>` and runs when no live ticket has a lower number; a ticket is live while its process holds a flock on it, or while a process that run started still runs. A waiting run says so at once and every 30 s. `make verify` runs itself again under `enginelock.py hold`, so the gate runs alone and its tests' commands, its children, never wait. The review found 7 faults; all were fixed with tests. On landing, the 2 commands the trunk gained since (`new`, `standards`) were measured at 0.17 s and 0.24 s and named short, and a test now fails on any command named neither long nor short. The whole test file ran 20 times in a loop on the landing head with 0 failures.

@@ -1436,3 +1436,21 @@ What happened: The router's count of open connections was read with a pattern, `
 Cost: Found by the item's review; the 3 rule 15 tests of `tests/test_routers.py` hold the jar's own formats.
 Root cause: The test's author wrote the tool's output from memory, and the test then agreed with the parser it was meant to check.
 Process: P4
+
+## M235 — 2026-11-17 — A test file run while a health gate held GATE.lock
+What happened: On `wip/ci` the 2 new test files were run once (0.10 s, a collection error) while `scratchpad/GATE.lock` existed; the brief says to run no test while it does. On 2026-11-18 the landing of the same piece chained a test run behind `ls GATE.lock` in 1 command; the lock had come 14 s after the last look, the run waited on the engine lock behind the gate, and was stopped before pytest started.
+Cost: None measured; the first run was 0.10 s. It could have slowed the gate's timing.
+Root cause: The lock was checked in the same command as the run, and its answer was read after.
+Process: P31
+
+## M236 — 2026-11-17 — A `cd` in a shell command
+What happened: On `wip/ci` a command held `( cd / ; true )`, a leftover with no effect. P8 forbids `cd` in any command.
+Cost: None; it ran in a child shell.
+Root cause: A command was assembled by hand without reading it whole before it ran.
+Process: P8
+
+## M237 — 2026-11-17 — A background job stopped by the terminal
+What happened: `make verify-site` started in the background under `flock` stopped at once ("Stopped"), twice, and wrote nothing; `setsid -w` ran it.
+Cost: 2 places in the engine lock's queue, about 20 minutes.
+Root cause: A job in the background of an interactive shell is stopped when a child touches the terminal; `< /dev/null` alone did not prevent it.
+Process: P8

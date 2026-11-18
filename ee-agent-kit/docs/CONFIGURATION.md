@@ -285,6 +285,15 @@ part by `mpn` or `mpns` and whose `source.sha256` is a row of
 | `--head`, `--dirty`, `--tree` | flags of `python3 tools/now.py record <code> <step>` | `--tree .` | What `verify/verify.sh` runs on exit: the commit the gate started on, whether the tree differed from it then (`yes` or `no`), the repository's root. |
 | the file | object | none until a gate has run | Written by `verify/verify.sh` on exit: gate, verdict (GREEN on exit 0, else RED), last step, the commit it started on, branch, dirty (at the start or the end, untracked files included), moved_to (the commit HEAD moved to during the run, or null), UTC time. Ignored by git. `workcenter now` reads it, and refuses a record that does not have this shape. |
 
+## `make scope`, `make verify-site` and the `engine` marker
+
+| Field | Type | Default | Use |
+|---|---|---|---|
+| `SCOPE_BASE` (make) | git ref | `origin/main` | `make scope` compares the working tree with `git merge-base SCOPE_BASE HEAD`. |
+| `WORKCENTER_NO_ENGINES` | `1` or unset | unset | `1` refuses every engine start in a test run (`make verify-site` sets it): the start raises FileNotFoundError, read as an absent engine. |
+| `WORKCENTER_ENGINE_LOG` | path | a temp file per pytest run | Where each engine start of a test run is written; the `engine` marker is held against it. |
+| `--repo`, `--base`, `--head`, `--paths`, `--github-output` | `tools/ci/scope.py` flags | repo: here; head: the working tree | The change to judge; an empty `--base` is full; `--github-output` appends `scope=<answer>` to `$GITHUB_OUTPUT`. |
+
 ## The workflow Board (`.github/workflows/board.yml`, `tools/board.py`)
 
 | Field | Type | Default | Use |
