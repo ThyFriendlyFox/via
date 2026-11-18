@@ -5249,12 +5249,12 @@ def cmd_gates(args) -> int:
         results.append(result)
         if result.status in ("fail", "error"):
             break
-    emit(results, args, out)
     # Done is 1 definition: the gates GREEN and, for a project with a ratings.json, its ratings held.
     # The gates do not run `ratings`; they read its record, as `next` does.
     rated = guide().ratings_state(sys.modules[__name__], project)
     said, code = gates_verdict(results, rated.asked and not rated.held, args.strict)
     named = shlex.quote(str(args.project))
+    emit(results, args, out)
     if args.report:
         # The one file a gate run writes outside `out`: named by the user, only between its markers.
         blocks = doctools().gates_report(
@@ -5268,9 +5268,9 @@ def cmd_gates(args) -> int:
         if not args.json:
             print(f"wrote {', '.join(blocks)} into {args.report}")
     # The verdict is the last line, whatever else the run wrote: a reader and a script take it from there.
-    if not args.json:
-        print(rated.line(named))
-        print(f"{said}: {project.name}  report {out / 'gates.json'}")
+    # With --json, stdout holds the gates' records alone, and the 2 lines go to stderr.
+    for line in (rated.line(named), f"{said}: {project.name}  report {out / 'gates.json'}"):
+        print(line, file=sys.stderr if args.json else sys.stdout)
     return code
 
 

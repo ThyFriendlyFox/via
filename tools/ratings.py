@@ -16,9 +16,11 @@ from __future__ import annotations
 import csv
 import datetime
 import fnmatch
+import hashlib
 import itertools
 import json
 import math
+import os
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -2884,6 +2886,27 @@ def find_pack(name: str, project_dir: Path, packs: Path) -> Path:
     raise Refusal(f"ratings.json: pack: `{name}` is no pack; the workcenter holds {known}")
 
 
+def read_by_run(project, parts: list[Path], cli) -> dict[str, Path]:
+    """The files a run of `project` with these parts files reads, each by its path from the project's
+    folder: the schematics, ratings.json, the parts files, the pack ratings.json names and every facts
+    file. A pack that cannot be found is left out: the run refuses ratings.json then."""
+    stated = project.dir / "ratings.json"
+    files = sorted(project.dir.glob("*.kicad_sch")) + [stated, *parts]
+    try:
+        name = json.loads(stated.read_text(encoding="utf-8")).get("pack")
+        packs = cli.SRC_DIR / "rules" / "ratings"
+        files.append(find_pack(name, project.dir, packs) if isinstance(name, str) else None)
+    except (OSError, ValueError, AttributeError):
+        pass
+    library = find_facts(project.dir)
+    files += sorted(library.glob("*.json")) if library else []
+    return {os.path.relpath(f, project.dir): f for f in files if f is not None}
+
+
+def sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def parts_rows(paths: list[Path], cli) -> list:
     """The rows of the parts files, as `procure` and `sources` read them. A file that is not there, that
     is no UTF-8, or that holds a row with fewer fields than its header is refused with its name and its
@@ -3052,10 +3075,16 @@ def gate_ratings(project, out: Path, parts: list[Path], strict: bool, cli):
     failures, warnings = failures[:SHOWN], warnings[: max(0, SHOWN - len(failures))]
     if more > 0:
         (failures if not warnings else warnings).append(f"... {more} more in {page}")
+    # what this run read, so that `gates` and `next` can tell a record of other files (guide.ratings_state)
+    inputs = {
+        "parts": [os.path.relpath(p, project.dir) for p in parts],
+        "files": {rel: sha256(path) for rel, path in read_by_run(project, parts, cli).items()},
+    }
     details = {
         "failures": failures,
         "warnings": warnings,
         "verdict": said,
+        "inputs": inputs,
         "pack": report.pack,
         "notes": report.notes,
         "findings": [vars(f) for f in report.findings],
