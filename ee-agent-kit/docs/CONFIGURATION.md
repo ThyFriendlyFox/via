@@ -22,6 +22,16 @@ unset variable never causes a failure.
 | `SKIP_APT` | `0`/`1` | `0` | `1` skips the apt step entirely. |
 | `REQUIRE_OPENEMS` | `0`/`1` | `0` | `1` makes a failed openEMS step fatal, a wrong checksum among them; else it warns and `workcenter fields` skips. |
 | `OPENEMS_POOL` | URL | `https://deb.debian.org/debian/pool/main/o/openems` | Where Debian 12's 4 openEMS packages are fetched; each is checked against the SHA256 pinned in the script. |
+| `KICAD_INDEX_TRIES` | integer | `3` | Tries to fetch the index of KiCad 10's package source. |
+| `KICAD_INDEX_WAIT` | seconds | `20` | Seconds between 2 tries. |
+| `APT_UPDATE_TIMEOUT` | seconds | empty (no bound) | Seconds 1 `apt-get update` of every package source may take. CI's full job, the nightly run and the image build set `120`. A computer that already has KiCad 10 has no bound either way. Under sudo, pass it with env: `sudo env APT_UPDATE_TIMEOUT=300 ./install.sh`. A value that is not a whole number above 0 stops the script. |
+| `APT_DOWNLOAD_TIMEOUT` | seconds | empty (no bound) | Seconds the download of the packages may take. CI's full job, the nightly run and the image build set `570` (281 MB in 570 s is 3.95 Mbit/s). Under sudo, pass it with env: `sudo env APT_DOWNLOAD_TIMEOUT=900 ./install.sh` (sudo drops a variable set before it). |
+| `KICAD_KEYRING` | path | `/etc/apt/keyrings/kicad-10.0-releases.gpg` | The PPA key's file (the tests move it). |
+| `KICAD_SOURCES` | path | `/etc/apt/sources.list.d/kicad-10.0-releases.sources` | The PPA's sources file (the tests move it). A file there that is not what install.sh writes is left alone and stops the script; the script's own is removed on a stop for a second key or a release the PPA does not serve. |
+| `WORKCENTER_LINK` | path | `/usr/local/bin/workcenter` | The `workcenter` link (the tests move it). |
+| `OS_RELEASE` | path | `/etc/os-release` | Where the Ubuntu codename is read (the tests move it). |
+| `JVM_DIR` | path | `/usr/lib/jvm` | Where `libawt_xawt.so` is looked for (the tests move it). |
+| `CA_BUNDLE` | path | `/etc/ssl/certs/ca-certificates.crt` | The certificates the first step looks for; when it is empty or absent, the first step installs `ca-certificates` (the tests move it). |
 
 ## `tools/workcenter`
 
@@ -220,6 +230,7 @@ exited 1 on the board's own findings.
 | `references` | no | 0.22 s (`check`) | tests/boards/references/pass/pack.json |
 | `docs` | no | 0.21 s | Last Hit v0.16 |
 | `diagram` | no | 0.21 s | Last Hit v0.16 |
+| `image` | no | 0.22 s | this tree, at HEAD |
 | `next` | no | 0.18 s | pass-rc-divider |
 | `new` | no | 0.17 s | an empty folder |
 | `fetch`, `curve`, `version` | no | not measured | |
@@ -311,6 +322,21 @@ part by `mpn` or `mpns` and whose `source.sha256` is a row of
 | `--jobs` | flag of `verify/testshards.py run` | the processors (`os.cpu_count()`) | How many shards run side by side. |
 | `--work` | flag of `verify/testshards.py run` | a new folder under `$TMPDIR` | Where the shards' logs go. A folder named here is kept, and must be empty or new; a folder of its own is deleted when green and kept when red. |
 | `--table` | flag of `verify/testshards.py run` and `table` | `verify/shards.csv` | The table the files are split by, or written from. |
+
+## The container image (`Dockerfile`, `.github/workflows/image.yml`, `tools/image.py`)
+
+| Field | Type | Default | Use |
+|---|---|---|---|
+| `CI_FULL_IN_IMAGE` | repository variable (Settings, Secrets and variables, Actions, Variables) | unset | `0` sends CI's `full` job to install.sh on every run; anything else lets it run in the image of its own toolchain when the registry gives it. |
+| `TOOLCHAIN_TAG` | `docker build --build-arg` | empty | The content tag the workflow worked out; `image.py record` refuses the build when the files it copied make another. Empty: not compared. |
+| `WORKCENTER_REVISION` | `docker build --build-arg` | empty | The commit the image is built from, written into `/opt/workcenters/ee/image.json`. |
+| `APT_UPDATE_TIMEOUT`, `APT_DOWNLOAD_TIMEOUT` | `docker build --build-arg` | empty | Handed to install.sh on the Dockerfile's install line. The image workflow passes `120` and `570`, as CI's full job sets them; a build without them has no bound. |
+| `HOME` | the image's environment | `/home/workcenter` (mode 1777) | KiCad and the CLI need a home they can write, for any `--user`. |
+| `--rev REV` | `workcenter image`, `image.py tag` | `HEAD` | The commit whose `Dockerfile`, `install.sh` and `requirements.txt` make the content tag. |
+| `--repo DIR`, `--owner OWNER`, `--json`, `--github-output` | `image.py tag` | repo: the workcenter's checkout | `--owner` also prints the image's name under that owner, in lower case; `--github-output` appends `tag=` (and `image=`) to `$GITHUB_OUTPUT`. |
+| `--base REV`, `--head REV`, `--enabled VALUE` | `image.py decide`, with `--repo DIR`, `--owner OWNER` (required) and `--github-output` | base: required (empty: none); head: `HEAD`; repo: the working folder | Where CI's `full` job runs: `where=image` and the image by digest, or `where=install`, with the reason. `--enabled` is the value of `CI_FULL_IN_IMAGE`. |
+| `--out FILE`, `--src DIR`, `--expect-tag TAG`, `--revision REV` | `image.py record` (the Dockerfile's last RUN) | out: `/opt/workcenters/ee/image.json`; src: the workcenter's checkout | Writes the image's record; exit 1 and nothing written on a doctor that does not pass or on another tag than `--expect-tag`. |
+| `--src DIR`, `--record FILE` | `image.py check` (CI, inside the image) | src: the working folder; record: `/opt/workcenters/ee/image.json` | Exit 1 when a toolchain file of the checkout is not the one the image was built from. |
 
 ## The workflow Board (`.github/workflows/board.yml`, `tools/board.py`)
 

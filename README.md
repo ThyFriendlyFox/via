@@ -237,6 +237,8 @@ workcenter sim tests/boards/fail-sim-corner         # red at its corners, on pur
 workcenter sim tests/boards/fail-freq-overlap       # red on the frequency plan
 ```
 
+On your own computer the install has no time limit: a slow line finishes, and apt gives up a stalled file by itself; to set one, pass it through sudo with env (`sudo env APT_DOWNLOAD_TIMEOUT=900 ./install.sh`). CI sets `APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570`, so a stall ends with apt's own line before the job's limit. Run the script as a file, not through a pipe or `bash <(...)`.
+
 Output goes to `<project>/build/`: `erc.json`, `drc.json`, `sim/`,
 `fab/` (gerbers, drill, BOM, schematic PDF), `gates.json`.
 
@@ -260,7 +262,7 @@ has the procedure from a spec to a GREEN board.
 has every flag.
 
 <details>
-<summary>The 36 commands</summary>
+<summary>The 37 commands</summary>
 
 | Command | What |
 |---|---|
@@ -277,6 +279,7 @@ has every flag.
 | `measure` | Write the plan of measurements for a built board: for each sim bound the pad to probe, the reference pad, the instrument, the span the reading must fall in and the predicted value, as written and over the corners. |
 | `now` | The work card of 1 piece of work in progress: its `**Status:**` line for the project board (Todo, In progress or Done), its branch and last commit, what is done now, the last health gate, what it waits for and what is left. 1 issue's body per piece of work, titled `Work card: ...` and rewritten in place; `--write` puts it on the `status` branch for a host without GitHub. |
 | `standards` | List each requirement of the product kind `product.json` names, from free documents, as held by a gate, held by a named test of the verification package, or not held, with the document and clause. A list, not a certificate. |
+| `image` | The content tag of the toolchain's files (`Dockerfile`, `install.sh`, `requirements.txt`) at a commit, the name of the image of that tag, and in the image the record of its build: tag, commit, machine, the tools' versions. Runs no engine. |
 | `legend` | Hold every text printed on a board to its fab's least height and stroke and to no overlap, no hidden or stray designator and 2 directions a side, from the board file; `--place OUT` writes a copy with each designator placed. |
 | `highspeed` | Hold the fast pairs that `interfaces.json` names to their interface's document: the width a cross-section solver gives for its impedance on the board's stackup at the gap the tracks have, the gap, the length, the skew within a pair, the vias, and an unbroken ground plane above and below; write the same limits as KiCad rules. |
 | `copper` | Hold a routed board's power nets to a greatest voltage drop and current density on their own copper and in each via's barrel, and the board to a greatest temperature from its parts' heat; draw each as a picture. Every constant names its document; every limit is the project's. |
@@ -310,10 +313,9 @@ procedure is a Markdown file under `.claude/skills/`, and every check is a
 command. `workcenter next <project>` gives the step, and `make verify`
 the repository's health.
 
-**A Docker image.** `docker build -t ee-workcenter .` builds on the
-official `kicad/kicad:10.0` base. `release.yml` publishes the image to
-GHCR on a version tag (`v*.*.*`). No tag exists yet, and the build has
-not run.
+**A Docker image.** With Docker instead of installing (amd64 or arm64; no openEMS on arm64):
+`docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work ghcr.io/thyfriendlyfox/ee-workcenter:main workcenter gates .`.
+The files the gates write belong to you. The image holds the toolchain install.sh installs and the workcenter, without the example boards and the site; `.github/workflows/image.yml` builds it on Ubuntu 24.04 and publishes it from `main`, a release's tag, each Monday and by hand. Pin a toolchain by its digest from the `Image` workflow's summary. Not built yet: the first build is the pull request's.
 
 ## The website
 
@@ -357,6 +359,7 @@ images are drawn.
 | `tools/board.py`, `.github/workflows/board.yml` | The workflow Board: each issue titled `Work card: ...` stands on the owner's project board in the column its `**Status:**` line names, and a closed card is Done. Once a day and by hand (`--all`) it walks every card and puts right the ones that stand wrong. Standard library only; it needs the repository secret `BOARD_TOKEN`. |
 | `tools/highspeed.py` | `workcenter highspeed`: the board's stackup, its fast pairs' widths, gaps, lengths, skew, vias and planes against `rules/interfaces/`, and the KiCad rules file. Standard library only. |
 | `tools/legend.py` | The legend check and the designator placer: `workcenter legend`, the DRC gate's legend lines, `Design.place_designators`. Standard library only. |
+| `tools/image.py` | `workcenter image` and the image's own command line: the content tag of the toolchain's files, where CI's `full` job runs (`decide`), the record the Dockerfile writes (`record`), the check inside CI (`check`). Standard library only. |
 | `tools/xsection.py` | The cross-section solver: a track's or a pair's impedance and eps_eff on a layer stack, and the width for a target. Needs numpy; `workcenter highspeed` runs it under the venv. |
 | `tools/copper.py` | `workcenter copper`: the board's copper on a grid, each cell weighted by its copper, the drop and the heat by conjugate gradients, the pictures and the report. Runs under the venv's Python (numpy, pcbnew, Pillow). |
 | `tools/fields.py` | `workcenter fields`: the model of a board's critical nets from its board file, the mesh, the ports, openEMS run as its own program, and the limits held. Standard library only. |
@@ -385,7 +388,7 @@ images are drawn.
 | `examples/` | Example projects made with the workcenter, each in version folders with its own README. |
 | `third_party/kistack/` | The vendored kistack skills. |
 | `environment/` | Cloud environment setup script and hosts. |
-| `Dockerfile`, `.github/workflows/` | The image. CI on each pull request and push to `main`, a nightly run, the release, stale issues, and Board: each `Work card: ...` issue in the column of the project board its `**Status:**` line names. |
+| `Dockerfile`, `.github/workflows/` | The image. `image.yml` builds it for amd64 and arm64. CI on each pull request and push to `main`, a nightly run, the release, stale issues, and Board: each `Work card: ...` issue in the column of the project board its `**Status:**` line names. |
 | `requirements.txt`, `pyproject.toml` | The venv's packages for tests and lint; the settings of ruff and pytest. |
 | `site/` | The website: 1 static page, its stylesheet, the Open Graph image. `site/media/` holds this file's pictures. |
 | `ee-agent-kit/` | How work on this repository is run. Start at `ee-agent-kit/ROUTING.md`. `ee-agent-kit/lead/` holds the lead's tools: `landed.py`, `gate-and-push.sh`, `quiet.py` and 3 example workflow scripts (`ee-agent-kit/lead/README.md`). |

@@ -339,7 +339,8 @@ def test_the_fast_job_installs_no_engine_and_the_full_job_is_the_gate_of_today()
     fast, full = run_lines(jobs["fast"]), run_lines(jobs["full"])
     assert "install.sh" not in fast and "make verify-site" in fast
     assert "make verify-site" not in full
-    assert "sudo env REQUIRE_FREEROUTING=1 ./install.sh" in full and "make verify" in full.split("\n")
+    install = "sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh"
+    assert install in full.split("\n") and "make verify" in full.split("\n")
 
 
 def test_the_last_job_always_runs_and_passes_only_when_the_asked_job_passed(tmp_path):
@@ -377,7 +378,12 @@ def test_the_nightly_run_stays_the_full_gate():
     yaml = pytest.importorskip("yaml")
     nightly = yaml.safe_load((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))
     assert "schedule" in nightly[True]
-    assert "make verify" in run_lines(nightly["jobs"]["verify"]).split("\n")
+    lines = run_lines(nightly["jobs"]["verify"]).split("\n")
+    assert "make verify" in lines
+    # The nightly run installs as CI's full job does, with CI's 2 bounds.
+    assert (
+        "sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh" in lines
+    )
 
 
 def test_the_makefile_asks_the_same_script_and_names_no_path_of_its_own():

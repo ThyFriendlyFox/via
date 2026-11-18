@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install the workcenter toolchain
-        run: sudo env REQUIRE_FREEROUTING=1 ./install.sh
+        run: sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh
       - name: Verify
         run: make verify
       - name: File issue on failure

@@ -87,6 +87,7 @@ honestly passes it.
 | kicadgen | this repo | `workcenter design <design.py> [--route [--seed <board>]\|--check]`; `python3 tools/kicadgen.py pins\|footprint\|symbol-add` | `install.sh` (part of the checkout) |
 | pdfminer.six, PyYAML | 20260107, 6.0.3 | `workcenter curve` (a PDF page's vector paths), `workcenter ci` (a GitHub workflow), each run under the venv | `install.sh` (PyPI) |
 | workcenter CLI | this repo | `workcenter` | `install.sh` (symlink to `tools/workcenter`) |
+| Container image | this repo | `workcenter image [--rev REV] [--json]`; `docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work ghcr.io/<owner>/ee-workcenter:<tag> workcenter gates .` | `.github/workflows/image.yml` (the Dockerfile runs `install.sh`) |
 | Engine lock | this repo | `tools/enginelock.py`: a long command (`design --route`, `gates`, `sim`, `measure`, `export`, `render`, `copper`, `highspeed`, `fields`, `mutate` and the others of docs/CONFIGURATION.md's table) waits its turn on the machine's engine lock and prints where it stands every 30 s; the others never wait. `make verify` holds it for the whole gate, and `make verify-site` for the whole fast gate. `WORKCENTER_LOCK=off` turns it off; `workcenter doctor` shows it; `python3 tools/enginelock.py hold -- <command>` puts any other command under it | the checkout |
 | scene | this repo | `tools/scene.py`: assembly scenes a project's script builds, run by `workcenter pictures` | the checkout; KiCad's `pcbnew` and FFmpeg by `install.sh` |
 | kistack | `641ade9` | `.claude/skills/kistack/SKILL.md` routes to `third_party/kistack/skills/`; `workcenter placement <check> <board> [args]` runs its placement checks | the checkout (vendored, `third_party/kistack/VENDORED.md`); shapely, numpy and pygerber by `install.sh` (PyPI) |
@@ -94,6 +95,8 @@ honestly passes it.
 | Corners, frequency plan and junctions | this repo | `sim/corners.json`, `sim/frequency-plan.json` and `sim/thermal.json`, read by `workcenter sim` (`tools/simcorners.py`, `tools/freqplan.py`, `tools/thermal.py`); `workcenter sim --bundle <dir>` for a deck that runs on any machine | the checkout; ngspice by `install.sh` |
 | Next step | this repo | `workcenter next <project>` (`tools/guide.py`; `tools/chipguide.py` for a chip project) | the checkout |
 | Chip projects | this repo | `workcenter chip init <dir> --top NAME`, `workcenter chip gates <project>` (`tools/chipflow.py`, `tools/chipfront.py`, `tools/chipback.py`, a process table in `pdks/`); all 10 gates run and tests hold each; the acceptance processor (760 cells, a 40 ns clock, the sky130A process) is GREEN with `--strict` | the checkout; the engines in `<root>/chip` (`sudo ./install.sh --chip`) |
+
+On your own computer the install has no time limit: a slow line finishes, and apt gives up a stalled file by itself; to set one, pass it through sudo with env (`sudo env APT_DOWNLOAD_TIMEOUT=900 ./install.sh`). CI sets `APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570`, so a stall ends with apt's own line before the job's limit. Run the script as a file, not through a pipe or `bash <(...)`.
 
 ## Skills
 
@@ -911,6 +914,12 @@ The process is a table in `pdks/` (`pdks/README.md`): `sky130A` with the
 library `sky130_fd_sc_hd`. The first flow takes 1 clock, no memory macro
 and no analog block. The engines install on request:
 `sudo ./install.sh --chip`.
+
+## The container image
+
+`ghcr.io/<owner>/ee-workcenter` holds the toolchain install.sh installs and the workcenter at the commit it was built from, without the example boards (`examples/`) and the site (`site/`), at `/opt/workcenters/ee`, with `workcenter` on PATH and `/work` for a mounted project. `docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work <image> workcenter gates .`: the files written belong to that user. Tags: `tc-<16 hex digits>` (the content of `Dockerfile`, `install.sh` and `requirements.txt`; `workcenter image` prints it; it moves to a new build on each push to main and each week), `tc-<16 hex digits>-<YYYYMMDD>`, `tc-<16 hex digits>-amd64` and `-arm64` (1 machine's), `main`, a release's `vX.Y.Z`; a digest never moves. `/opt/workcenters/ee/image.json` names its tag, commit and tools' versions (`python3 /opt/workcenters/ee/src/tools/image.py show`). It is not: a desktop (no window, no KiCad editor), a place to keep work (mount the project), or openEMS on arm64. Every image passed `workcenter doctor` in its build and ran the gates on a fixture as a user without root; no other is published. Its build bounds install.sh's apt step as CI does (`--build-arg APT_UPDATE_TIMEOUT=120 --build-arg APT_DOWNLOAD_TIMEOUT=570`); a build without them has no bound.
+
+Not a gate: `workcenter image [--rev REV] [--json]` prints the content tag of the toolchain's files at a commit and the name of the image of that tag; inside the image it also prints the record of its build. It runs no engine.
 
 ## Paths
 

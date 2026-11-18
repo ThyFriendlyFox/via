@@ -76,7 +76,43 @@ program under the temporary folder is a test's stand-in, not an engine.
 ## The workflow
 
 `.github/workflows/ci.yml` has 4 jobs. `scope` runs `scope.py` and is the
-only job that decides. `fast` runs `make verify-site` with no toolchain.
-`full` installs the toolchain and runs `make verify`. `verdict` always runs
-and passes only when the job the scope asked for passed: make `verdict` the
-required check. The nightly run (`nightly.yml`) stays the full gate.
+only job that decides fast or full. `fast` runs `make verify-site` with no
+toolchain. `full` gets the toolchain and runs `make verify`. `verdict` always
+runs and passes only when the job the scope asked for passed: make `verdict`
+the required check. The nightly run (`nightly.yml`) stays the full gate.
+
+## Where `full` runs
+
+`full` decides its own path in its first step, `tools/image.py decide`, and
+prints 1 line: `where: image: ...` or `where: install: ...`, with the reason.
+
+- `image`: the registry gave the image whose content tag is that of this
+  commit's `Dockerfile`, `install.sh` and `requirements.txt`
+  (`workcenter image` prints the tag). The job runs `make verify` in it as
+  the runner's user, after `tools/image.py show` (the image's tag, commit
+  and tools' versions) and `tools/image.py check` (the checkout's 3 files
+  are those the image was built from; a difference fails the job).
+- `install`: `sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh`,
+  then `make verify`, as before the image; the 2 bounds end a stalled
+  index or download with apt's own line within the job's 30 minutes (the
+  nightly run and the image build set the same 2). It is taken when the change edits 1
+  of the 3 files (the install path is their test), when the registry has
+  no image of the tag (the first run, a new toolchain not yet published),
+  when the pull is refused or the registry does not answer, when the
+  files cannot be read, and when the repository variable
+  `CI_FULL_IN_IMAGE` is `0`.
+
+The last step fails unless the decided path's verify step ran and passed.
+
+What differs inside the image: the runner has `node`, the image does not,
+so the tests that need it (6 of `tests/test_forms.py`, 1 of
+`tests/test_lead.py`) skip there. A change to a file they read
+(`site/api/`, `ee-agent-kit/lead/workflows/`, the 2 test files; the list
+is `NODE_PATHS` in `tools/image.py`) takes the install path, where they
+run. On the image path the `where:` line ends `not judged there: the
+tests that need node`, with the reason.
+
+To read a run: the line `where:` in the step "Decide where the gate runs";
+on the image path, the lines `image:`, the record's JSON and `image: the
+checkout's Dockerfile, install.sh, requirements.txt are those the image
+was built from` before `make verify`.
