@@ -178,6 +178,30 @@ def test_three_waiters_are_served_in_the_order_they_came(bench):
     assert bench.log() == ["start A", "end A", "start B", "end B", "start C", "end C", "start D", "end D"]
 
 
+def test_two_commands_wait_for_a_gate_and_the_first_starts_within_a_second_of_its_end(bench):
+    """ROADMAP's Evidence: a gate (`hold --what "make verify"`, engine G) holds; B and C come while it
+    runs and wait; G ends and B's engine starts within 1 s: 1 poll of 0.1 s plus the start of B's engine
+    process (about 0.1 s here), 0.2 s, under the 1 s bar with room for a busy machine. C starts after B."""
+    gate = [PY, str(LOCK), "hold", "--what", "make verify", "--", PY, str(bench.engine), "G", str(bench.tmp)]
+    bench.start(gate, "G")
+    until("the gate to start", lambda: started(bench, "G"))
+    bench.hold("B")
+    until("B's ticket", lambda: len(bench.tickets()) == 2)
+    bench.hold("C")
+    until("C's ticket", lambda: len(bench.tickets()) == 3)
+    time.sleep(0.3)
+    assert bench.log() == ["start G"]
+    assert "held by `make verify`" in bench.err("C")
+    bench.release("G")
+    until("the gate to end", lambda: "end G" in bench.log())
+    ended = time.monotonic()
+    until("B to start", lambda: started(bench, "B"))
+    assert time.monotonic() - ended < 1.0
+    bench.release("B")
+    until("C to start", lambda: started(bench, "C"))
+    assert bench.log() == ["start G", "end G", "start B", "end B", "start C"]
+
+
 def test_a_holder_killed_with_sigkill_frees_the_lock(bench):
     """A's lock process dies by SIGKILL; B, waiting behind it, starts, and A's ticket is gone."""
     a = bench.hold("A")
@@ -385,15 +409,22 @@ def test_two_sim_runs_take_turns_and_the_second_names_the_first(bench):
 
 def test_a_short_command_returns_while_a_long_one_holds(bench):
     """`workcenter next` and `workcenter design` with no --route never take the lock: each ends while
-    `workcenter sim` holds it, and neither prints a waiting line."""
+    `workcenter sim` holds it and 5 more runs wait behind it (6 tickets: A, then B to F), and neither
+    prints a waiting line. `next` gives its NEXT line in under 5 s, the bar of user round 1's candidate 3
+    (`done_when`: "under 5 s" with 6 routes queued); it took 0.18 s alone on 2026-11-18."""
     project = sim_project(bench)
     workcenter(bench, "A", "sim", str(project), "--out", str(bench.tmp / "out-a"))
     until("A's engine", lambda: started(bench, "A"))
     assert len(bench.tickets()) == 1
+    for n, tag in enumerate("BCDEF", start=2):
+        bench.hold(tag)
+        until(f"{tag}'s ticket", lambda n=n: len(bench.tickets()) == n)
     env = bench.env()
+    began = time.monotonic()
     nxt = subprocess.run(
-        [PY, str(CLI), "next", str(project)], env=env, capture_output=True, text=True, timeout=60
+        [PY, str(CLI), "next", str(project)], env=env, capture_output=True, text=True, timeout=10
     )
+    assert time.monotonic() - began < 5
     assert "engine lock" not in nxt.stderr
     assert "NEXT" in nxt.stdout or "DONE" in nxt.stdout, nxt.stdout
     first = bench.tmp / "first"
@@ -452,11 +483,15 @@ def ns(command: str, **kw) -> argparse.Namespace:
 
 
 def test_the_long_commands_are_the_measured_ones():
-    """The table of docs/CONFIGURATION.md: these take the lock, and only these."""
+    """The table of docs/CONFIGURATION.md: these take the lock, and only these. Measured on 2026-11-18 with
+    the lock off: `copper` 16.45 s on pass-copper-strip, `highspeed` 10.58 s on pass-highspeed, `export`
+    4.98 s on Last Hit v0.16, each over the 3 s line; `erc` 0.60 s and `drc` 1.21 s on the same board, and
+    `design` without --route 1.51 s, stay under it."""
     sys.path.insert(0, str(ROOT / "tools"))
     import enginelock
 
     long_ = ["gates", "sim", "mutate", "bench", "fields", "autoroute", "render", "pictures", "chip", "ci"]
+    long_ += ["copper", "highspeed", "export"]
     for name in long_:
         assert enginelock.is_long(ns(name)), name
     assert enginelock.is_long(ns("design", route=True))
@@ -464,5 +499,6 @@ def test_the_long_commands_are_the_measured_ones():
     assert enginelock.is_long(ns("verify", init=False))
     assert not enginelock.is_long(ns("verify", init=True))
     short = ["next", "ratings", "fetch", "doctor", "now", "references", "curve", "procure", "measure"]
+    short += ["erc", "drc", "placement", "inspect", "sources", "docs", "costs", "version", "diagram"]
     for name in short:
         assert not enginelock.is_long(ns(name)), name
