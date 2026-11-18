@@ -8,6 +8,7 @@ command added without its line in the README fails here, not in a reader's hands
 from __future__ import annotations
 
 import html
+import json
 import os
 import re
 import shutil
@@ -517,6 +518,7 @@ def test_the_site_builds_for_an_address_and_without_one(tmp_path):
     assert f"<link>https://example.org/via/blog/{post}</link>" in (served / "blog" / "feed.xml").read_text(
         encoding="utf-8"
     )
+    assert (served / "blog" / "news.json").read_bytes() == (SITE / "blog" / "news.json").read_bytes()
     example = (served / "examples" / "rosetta.html").read_text(encoding="utf-8")
     assert '<link rel="canonical" href="https://example.org/via/examples/rosetta">' in example
     # A host may keep a stylesheet or a script for hours while it asks again for the page (M157): the
@@ -715,6 +717,10 @@ def test_the_blog_is_what_site_blog_writes():
     listed = (SITE / "blog.html").read_text(encoding="utf-8")
     feed = (SITE / "blog" / "feed.xml").read_text(encoding="utf-8")
     assert 'suggestions <a class="link" href="feedback.html">here</a>!' in listed
+    # The news bar along the bottom of each page runs the newest posts, each to its own page.
+    news = json.loads((SITE / "blog" / "news.json").read_text(encoding="utf-8"))["items"]
+    assert [item["href"] for item in news] == [f"/blog/{post.slug}" for post in found[: blog.NEWS]]
+    assert [item["text"] for item in news] == [f"New post: {post.title}" for post in found[: blog.NEWS]]
     for post in found:
         page = (SITE / "blog" / f"{post.slug}.html").read_text(encoding="utf-8")
         assert f'href="blog/{post.slug}.html"' in listed and f"%ORIGIN%/blog/{post.slug}</link>" in feed

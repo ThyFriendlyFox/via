@@ -11,7 +11,9 @@ with its fields between 2 `---` lines: `title`, `date` and `tags`, and, where it
 - `site/blog/<slug>.html`, the post at `/blog/<slug>`: the site's header and footer, the post, the
   posts before and after it, and the way back into the site: the boards, the checks, the start;
 - `site/blog.html`, the list of posts at `/blog`, the newest first;
-- `site/blog/feed.xml`, the posts as an RSS feed, its addresses from the site's (`build.sh`).
+- `site/blog/feed.xml`, the posts as an RSS feed, its addresses from the site's (`build.sh`);
+- `site/blog/news.json`, the newest posts for the news bar along the bottom of each page
+  (`site.js`).
 
 Each post's page carries its share card (Open Graph and X's tags) and its record for search
 engines (a BlogPosting in JSON-LD), all on the line `build.sh` fills with the site's address.
@@ -53,6 +55,8 @@ BLOG = "Via blog"
 ABOUT = "We're making Via better every day! Subscribe to keep up to date with our progress."
 # The owner's words of 2026-11-17 to the reader, at the head of the blog and after each post.
 HEADLINE = "We're making Via better every day!"
+# The news bar runs the newest posts along the bottom of each page that loads site.js.
+NEWS = 6
 
 
 def message(up: str) -> str:
@@ -460,10 +464,16 @@ def feed(found: list[Post]) -> str:
 """
 
 
+def news(found: list[Post]) -> str:
+    """The newest posts as the news bar reads them: each its words and its address on the site."""
+    items = [{"text": f"New post: {post.title}", "href": f"/blog/{post.slug}"} for post in found[:NEWS]]
+    return json.dumps({"items": items}, ensure_ascii=False, indent=1) + "\n"
+
+
 def pages() -> dict[Path, str]:
     """Every file this script writes, with its text."""
     found = posts()
-    written = {SITE / "blog.html": index_page(found), OUT / "feed.xml": feed(found)}
+    written = {SITE / "blog.html": index_page(found), OUT / "feed.xml": feed(found), OUT / "news.json": news(found)}
     for i, post in enumerate(found):
         newer = found[i - 1] if i > 0 else None
         older = found[i + 1] if i + 1 < len(found) else None

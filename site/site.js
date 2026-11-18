@@ -80,6 +80,61 @@
     });
   }
 
+  // The news bar: the newest posts (blog/news.json, from site/blog.py) run along the bottom of the
+  // screen, and the button to the community stays at its right. The posts rest under a pointer or the
+  // focus; a reader who asks for reduced motion scrolls them by hand. No file, no bar.
+  if (!root.dataset.shot) {
+    fetch("/blog/news.json")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((news) => {
+        const items = news?.items || [];
+        if (!items.length) return;
+        const list = document.createElement("ul");
+        list.className = "ticker-items";
+        const add = (repeat) => {
+          for (const item of items) {
+            const li = document.createElement("li");
+            const a = document.createElement("a");
+            a.href = item.href;
+            a.textContent = item.text;
+            if (repeat) {
+              li.setAttribute("aria-hidden", "true");
+              a.tabIndex = -1;
+            }
+            li.append(a);
+            list.append(li);
+          }
+        };
+        add(false);
+        const view = document.createElement("div");
+        view.className = "ticker-view";
+        const track = document.createElement("div");
+        track.className = "ticker-track";
+        track.append(list);
+        view.append(track);
+        const join = document.createElement("a");
+        join.className = "btn btn-primary";
+        join.href = "https://discord.reagent-systems.com";
+        join.textContent = "Join the community";
+        const bar = document.createElement("aside");
+        bar.className = "ticker";
+        bar.setAttribute("aria-label", "News");
+        bar.append(view, join);
+        document.body.append(bar);
+        root.classList.add("has-ticker");
+        // The track holds the list twice and moves by one list's width, so the second takes the first's
+        // place unseen. One list is at least as wide as the screen, or a gap would show at the loop.
+        for (let i = 0; i < 12 && list.scrollWidth < Math.max(view.clientWidth, screen.width); i++) add(true);
+        const copy = list.cloneNode(true);
+        copy.setAttribute("aria-hidden", "true");
+        for (const a of copy.querySelectorAll("a")) a.tabIndex = -1;
+        track.append(copy);
+        // 60 px a second, whatever the list's length.
+        track.style.setProperty("--ticker-time", `${Math.round(list.scrollWidth / 60)}s`);
+      })
+      .catch(() => {});
+  }
+
   for (const button of document.querySelectorAll("[data-copy]")) {
     button.addEventListener("click", async () => {
       const pre = (button.closest("[data-copyable]") || button.parentElement).querySelector("pre");
