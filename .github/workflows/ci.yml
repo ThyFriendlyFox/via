@@ -87,7 +87,7 @@ jobs:
             --enabled "$ENABLED" --github-output
       - name: Install the workcenter toolchain (same script as the cloud environment)
         if: steps.where.outputs.where == 'install'
-        run: sudo env REQUIRE_FREEROUTING=1 ./install.sh
+        run: sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=600 ./install.sh
       - name: Verify
         id: verify
         if: steps.where.outputs.where == 'install'

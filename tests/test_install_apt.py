@@ -44,8 +44,12 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 INSTALL = ROOT / "install.sh"
+WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 SAMPLES = ROOT / "tests" / "samples" / "install"
 BASH = "/bin/bash"
+# A person's computer has no total bound; CI sets these 2 in its install step (the workflow file, held to
+# them by test_the_worst_case_of_the_apt_step_fits_the_jobs_limit).
+CI = {"APT_UPDATE_TIMEOUT": "120", "APT_DOWNLOAD_TIMEOUT": "600"}
 
 URL = "https://ppa.launchpadcontent.net/kicad/kicad-10.0-releases/ubuntu"
 SOURCE = f"{URL} noble"
@@ -283,18 +287,18 @@ esac
 
 
 def test_index_on_the_first_try_then_the_download_then_the_install(tmp_path):
-    """1 update, 0 waits, the candidates read, then the download (bounded) and the install from it."""
+    """1 update, 0 waits, the candidates read, then the download and the install from it. A person's
+    computer sets no bound: no `timeout` runs, and apt's own per-file bounds stay."""
     code, out, err, calls = run(tmp_path)
     assert code == 0, err
-    assert len(updates(calls)) == 1
+    assert updates(calls) == ["apt-get update -qq"]
     assert of(calls, "sleep") == []
     assert of(calls, "apt-cache") == ["apt-cache policy kicad kicad-symbols kicad-footprints kicad-templates"]
     download, install = installs(calls)
     assert "--download-only" in download and "--download-only" not in install
+    assert download.startswith("apt-get install ") and "-o Acquire::http::Timeout=60" in download
     assert "-o APT::Get::Download=false" in install
-    # the update and the download run under their bounds: 120 s and 600 s by default
-    assert "timeout 120 apt-get update -qq" in of(calls, "timeout")
-    assert "timeout 600 apt-get install" in "\n".join(of(calls, "timeout"))
+    assert of(calls, "timeout") == []
     # the key was fetched and checked, and the sources file names the source
     assert (tmp_path / "keyrings" / "kicad-10.0-releases.gpg").read_text(encoding="utf-8") == "a key\n"
     sources = tmp_path / "sources.list.d" / "kicad-10.0-releases.sources"
@@ -303,6 +307,69 @@ def test_index_on_the_first_try_then_the_download_then_the_install(tmp_path):
     assert "[apt] Get:172 https://ppa.launchpadcontent.net/" in out
     assert "[apt] Setting up kicad (10.0.8~ubuntu24.04.1) ..." in out
     assert out.splitlines()[-1] == "[install] apt: done; kicad-cli 10.0.8"
+
+
+def test_the_bounds_ci_sets_run_the_update_and_the_download_under_timeout(tmp_path):
+    """APT_UPDATE_TIMEOUT=120 and APT_DOWNLOAD_TIMEOUT=600, as CI's install step sets them: the update
+    and the download run under `timeout`; the install from the downloaded files does not."""
+    code, out, err, calls = run(tmp_path, env=CI)
+    assert code == 0, err
+    bounded = of(calls, "timeout")
+    assert bounded[0] == "timeout 120 apt-get update -qq"
+    assert bounded[1].startswith("timeout 600 apt-get install -y --no-install-recommends --download-only ")
+    assert len(bounded) == 2
+    assert out.splitlines()[-1] == "[install] apt: done; kicad-cli 10.0.8"
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("APT_DOWNLOAD_TIMEOUT", "abc"),
+        ("APT_DOWNLOAD_TIMEOUT", "0"),
+        ("APT_DOWNLOAD_TIMEOUT", "-5"),
+        ("APT_DOWNLOAD_TIMEOUT", "10m"),
+        ("APT_UPDATE_TIMEOUT", "abc"),
+        ("APT_UPDATE_TIMEOUT", "0"),
+    ],
+)
+def test_a_bound_that_is_not_a_whole_number_of_seconds_stops_before_anything_runs(tmp_path, name, value):
+    """1 line that names the variable and its value; no program ran, SKIP_APT or not."""
+    for skip in ("0", "1"):
+        (tmp_path / skip).mkdir()
+        code, out, err, calls = run(tmp_path / skip, env={name: value, "SKIP_APT": skip})
+        assert (code, out, calls) == (1, "", [])
+        assert err == (
+            f"[install] ERROR: {name}={value} is not a whole number of seconds above 0; "
+            f"set it to one, or leave {name} unset for no bound\n"
+        )
+
+
+def test_an_empty_bound_is_no_bound(tmp_path):
+    """Set but empty is the default: no `timeout` runs."""
+    code, _, err, calls = run(tmp_path, env={"APT_UPDATE_TIMEOUT": "", "APT_DOWNLOAD_TIMEOUT": ""})
+    assert code == 0, err
+    assert of(calls, "timeout") == []
+
+
+@pytest.mark.parametrize("step", ["update", "download"])
+def test_apts_own_code_124_with_no_bound_is_no_cut(tmp_path, step):
+    """With no bound set, an exit code 124 is apt's own: the stop quotes it and names no bound."""
+    if step == "update":
+        answer = update_says(E_LOCKDIR, code=124)
+        said = (
+            "[install] ERROR: apt: the index of KiCad 10's package source did not arrive in 3 tries: "
+            f"{SOURCE}; apt said: exit code 124: {E_LOCKDIR}"
+        )
+    else:
+        answer = f"""case "$*" in
+  *--download-only*) exit 124 ;;
+esac
+{DEFAULTS["apt-get"]}"""
+        said = "[install] ERROR: apt: the download ended with apt-get's exit code 124; apt said: nothing"
+    code, _, err, calls = run(tmp_path, {"apt-get": answer})
+    assert code == 1
+    assert of(calls, "timeout") == []
+    assert err.splitlines()[-2] == said
 
 
 def test_index_fails_2_times_then_arrives(tmp_path):
@@ -353,9 +420,9 @@ esac"""
 
 
 def test_an_update_that_does_not_end_is_a_failed_try(tmp_path):
-    """The bound of 1 update is 120 s by default; `timeout` ends with 124 when it is reached."""
+    """With CI's bound of 120 s on 1 update, `timeout` ends with 124 when it is reached."""
     answer = '[[ "$*" == *update* ]] && exit 124; shift; exec "$@"'
-    code, _, err, calls = run(tmp_path, {"timeout": answer})
+    code, _, err, calls = run(tmp_path, {"timeout": answer}, env=CI)
     assert code == 1
     assert of(calls, "timeout")[0] == "timeout 120 apt-get update -qq"
     assert len(of(calls, "timeout")) == 3
@@ -576,23 +643,24 @@ esac
     assert out.splitlines()[-1] == "after: unset"
 
 
-def test_a_failed_download_ends_with_apts_lines_and_stops_the_script(tmp_path):
+@pytest.mark.parametrize("bounds", [{}, CI], ids=["no bound", "CI's bounds"])
+def test_a_failed_download_ends_with_apts_lines_and_stops_the_script(tmp_path, bounds):
     """apt-get ends with 100 and its E: lines (job 134906707485 at 15:44:22): exit 1, no install, no
-    later step."""
+    later step; with a bound or without."""
     answer = f"""case "$*" in
   *--download-only*)
     echo "Get:172 https://ppa.launchpadcontent.net/x [48.0 MB]"
     echo '{E_FETCH}' >&2; echo '{E_SOME}' >&2; exit 100 ;;
 esac
 {DEFAULTS["apt-get"]}"""
-    code, out, err, calls = run(tmp_path, {"apt-get": answer}, body="step_apt; echo NEXT STEP")
+    code, out, err, calls = run(tmp_path, {"apt-get": answer}, env=bounds, body="step_apt; echo NEXT STEP")
     assert code == 1
     assert [c for c in installs(calls) if "--download-only" not in c] == []
     assert E_FETCH in err.splitlines()
     assert "[apt] Get:172 https://ppa.launchpadcontent.net/x [48.0 MB]" in out
+    within = ", within its bound of 600 s" if bounds else ""
     stop = (
-        "[install] ERROR: apt: the download ended with apt-get's exit code 100, within its bound of 600 s; "
-        f"apt said: {E_FETCH}"
+        f"[install] ERROR: apt: the download ended with apt-get's exit code 100{within}; apt said: {E_FETCH}"
     )
     assert err.splitlines()[-2:] == [stop, LATER]
     assert "NEXT STEP" not in out
@@ -610,8 +678,7 @@ esac
     assert code == 1
     assert [c for c in installs(calls) if "--download-only" not in c] == []
     assert err.splitlines()[-2:] == [
-        f"[install] ERROR: apt: the download ended with apt-get's exit code {rc}, within its bound of 600 s; "
-        "apt said: nothing",
+        f"[install] ERROR: apt: the download ended with apt-get's exit code {rc}; apt said: nothing",
         "[install] No package was installed. Fix what apt said, then run the script again.",
     ]
 
@@ -641,7 +708,7 @@ def test_a_cut_download_names_the_file_that_failed(tmp_path):
 esac
 {DEFAULTS["apt-get"]}"""
     cut = 'if [[ "$*" == *--download-only* ]]; then shift; "$@"; exit 124; fi; shift; exec "$@"'
-    code, out, err, _ = run(tmp_path, {"apt-get": apt, "timeout": cut})
+    code, out, err, _ = run(tmp_path, {"apt-get": apt, "timeout": cut}, env=CI)
     assert code == 1
     assert f"[apt] {err_line}" in out
     assert err.splitlines()[-2:] == [
@@ -720,9 +787,10 @@ def test_the_last_check_says_what_it_checked(tmp_path):
 
 def test_kicad_10_present_skips_the_source_step(tmp_path):
     """No key, no sources file, no candidates read; 1 update with no bound (as before this change: a
-    slow line is no reason to stop a computer that has KiCad 10), then the download and the install."""
+    slow line is no reason to stop a computer that has KiCad 10, and CI never has it here), then the
+    download and the install. CI's bounds are set, and still the update runs with none."""
     (tmp_path / "installed").write_text("", encoding="utf-8")
-    code, out, err, calls = run(tmp_path)
+    code, out, err, calls = run(tmp_path, env=CI)
     assert code == 0, err
     assert "[install] apt: KiCad 10 present (10.0.8); PPA step skipped" in out
     assert of(calls, "curl") == [] and of(calls, "apt-cache") == []
@@ -927,24 +995,42 @@ def assigned(name: str, env: bool = True) -> int:
     return int(value)
 
 
+def test_a_persons_computer_has_no_total_bound_by_default():
+    """APT_UPDATE_TIMEOUT and APT_DOWNLOAD_TIMEOUT default to empty: no bound unless set."""
+    text = INSTALL.read_text(encoding="utf-8")
+    for name in ("APT_UPDATE_TIMEOUT", "APT_DOWNLOAD_TIMEOUT"):
+        assert re.findall(rf'^{name}="\$\{{{name}:-(.*)\}}"$', text, re.M) == [""], name
+
+
+def ci_bounds() -> tuple[dict, int]:
+    """The bounds CI's install step sets, and the `full` job's limit in s, both read from ci.yml."""
+    yaml = pytest.importorskip("yaml")
+    full = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"]["full"]
+    (install,) = [s["run"] for s in full["steps"] if "./install.sh" in s.get("run", "")]
+    bounds = dict(re.findall(r"\b(APT_(?:UPDATE|DOWNLOAD)_TIMEOUT)=(\S+)", install))
+    return bounds, int(full["timeout-minutes"]) * 60
+
+
 def test_the_worst_case_of_the_apt_step_fits_the_jobs_limit():
-    """CI's `full` job has 1800 s (.github/workflows/ci.yml, timeout-minutes: 30). The newest passing run
-    of 2026-11-18 (job 134941364976; log lines 2, 169, 352, 710, 823, 843 and 933) used 9 s before
-    install.sh (16:10:05.85 to 16:10:14.58), 27 s to unpack and set up (16:12:18.72 to 16:12:45.28), 28 s
-    for the steps after apt (to 16:13:13.37) and 670 s for `make verify` (16:13:13.86 to 16:24:23.84):
+    """The 2 bounds CI sets and the `full` job's limit are read from .github/workflows/ci.yml, so a change
+    of either without the other fails here. The newest passing run of 2026-11-18 (job 134941364976; log
+    lines 2, 169, 352, 710, 823, 843 and 933) used 9 s before install.sh (16:10:05.85 to 16:10:14.58),
+    27 s to unpack and set up (16:12:18.72 to 16:12:45.28), 28 s for the steps after apt (to 16:13:13.37)
+    and 670 s for `make verify` (16:13:13.86 to 16:24:23.84): of the job's 1800 s (timeout-minutes: 30),
     1800 - 9 - 27 - 28 - 670 = 1066 s are left for the updates, the waits and the download.
     3 x 120 + 2 x 20 + 600 = 1000 s."""
+    bounds, limit = ci_bounds()
+    assert bounds == CI
     tries, wait = assigned("KICAD_INDEX_TRIES"), assigned("KICAD_INDEX_WAIT")
-    update, download = assigned("APT_UPDATE_TIMEOUT"), assigned("APT_DOWNLOAD_TIMEOUT")
-    assert (tries, wait, update, download) == (3, 20, 120, 600)
-    assert tries * update + (tries - 1) * wait + download <= 1800 - 9 - 27 - 28 - 670
+    update, download = int(bounds["APT_UPDATE_TIMEOUT"]), int(bounds["APT_DOWNLOAD_TIMEOUT"])
+    assert tries * update + (tries - 1) * wait + download <= limit - 9 - 27 - 28 - 670
 
 
 def test_one_silent_file_fits_the_download_bound():
     """apt gives a silent server APT_FILE_TIMEOUT s, APT_FILE_RETRIES + 1 times: that must end within
-    the download's bound, so that apt names the file (Err:) before the bound cuts it."""
+    the download's bound CI sets, so that apt names the file (Err:) before the bound cuts it."""
     retries, timeout = assigned("APT_FILE_RETRIES", env=False), assigned("APT_FILE_TIMEOUT", env=False)
-    assert (retries + 1) * timeout < assigned("APT_DOWNLOAD_TIMEOUT")
+    assert (retries + 1) * timeout < int(ci_bounds()[0]["APT_DOWNLOAD_TIMEOUT"])
 
 
 def test_the_step_holds_no_bare_bound():

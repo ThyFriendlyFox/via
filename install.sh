@@ -29,8 +29,10 @@
 #   SKIP_APT              1 skips the apt step (for images that ship KiCad 10)
 #   KICAD_INDEX_TRIES     tries to fetch the index of KiCad 10's package source (default 3)
 #   KICAD_INDEX_WAIT      seconds between 2 tries (default 20)
-#   APT_UPDATE_TIMEOUT    seconds 1 `apt-get update` of KiCad 10's index may take (default 120)
-#   APT_DOWNLOAD_TIMEOUT  seconds the download of the packages may take (default 600)
+#   APT_UPDATE_TIMEOUT    seconds 1 `apt-get update` of KiCad 10's index may take (default empty:
+#                         no bound; CI sets 120)
+#   APT_DOWNLOAD_TIMEOUT  seconds the download of the packages may take (default empty: no bound;
+#                         CI sets 600)
 #   KICAD_KEYRING, KICAD_SOURCES, WORKCENTER_LINK, OS_RELEASE, JVM_DIR
 #                         the paths outside WORKCENTER_ROOT the script writes or reads (defaults
 #                         below); the tests point them into a folder of their own
@@ -68,22 +70,27 @@ BASE_PACKAGES=(ngspice openjdk-21-jre-headless xvfb shellcheck librsvg2-bin ffmp
 OS_RELEASE="${OS_RELEASE:-/etc/os-release}"
 JVM_DIR="${JVM_DIR:-/usr/lib/jvm}"
 
-# The bounds of the apt step. Launchpad's host flaps: on 2026-11-18 it answered 503 for the index
-# (CI job 134932219722) and for a package file (job 134906707485), and in 1 minute 200 for the index
-# and 503 for a file. A short wait rides that out; a long outage ends here with apt's own line.
-# CI's `full` job has 1800 s (.github/workflows/ci.yml, timeout-minutes: 30). The newest passing run
-# of that day (job 134941364976) used 9 s before this script, 11 s for the update, 112 s for the
-# download, 27 s to unpack and set up, 28 s for the steps after apt and 670 s for `make verify`:
-# 1800 - 9 - 27 - 28 - 670 leaves 1066 s for the updates, the waits and the download. The slowest
-# update seen took 48 s (job 134906707485): 120 s each. 3 tries with 20 s between them: 3 x 120 +
-# 2 x 20 = 400 s. The download gets 600 s: 2.75 times the slowest seen (218 s for 281.1 MB, job
-# 134889089620), or 3.75 Mbit/s. 1000 s in all. A slower line sets APT_DOWNLOAD_TIMEOUT.
+# The bounds of the apt step.
+# The index: every computer tries it KICAD_INDEX_TRIES times, KICAD_INDEX_WAIT s apart. Launchpad's
+# host flaps: on 2026-11-18 it answered 503 for the index (CI job 134932219722) and for a package file
+# (job 134906707485), and within 1 minute 200 for the index and 503 for a file. A short wait rides that
+# out. A long outage ends after the last try, with apt's own line.
+# A person's computer gets no total bound on `apt-get update` or on the download. A slow line that
+# makes progress finishes. apt ends a stall itself: a server silent for APT_FILE_TIMEOUT s is given up,
+# and tried APT_FILE_RETRIES times more. The progress lines show that the run is alive.
+# CI sets both bounds, in the install step of .github/workflows/ci.yml: APT_UPDATE_TIMEOUT=120 and
+# APT_DOWNLOAD_TIMEOUT=600. Its `full` job has 1800 s (timeout-minutes: 30), and a stall must end with
+# apt's line, not at the job's limit with none. The newest passing run (job 134941364976) used 9 s
+# before this script, 27 s to unpack and set up, 28 s for the steps after apt and 670 s for
+# `make verify`: 1066 s are left. 3 x 120 + 2 x 20 + 600 = 1000 s. The slowest update seen took 48 s
+# (job 134906707485); the slowest download 218 s for 281.1 MB (job 134889089620).
+# Either bound is a whole number of seconds; empty, the default, means no bound.
 KICAD_INDEX_TRIES="${KICAD_INDEX_TRIES:-3}"
 KICAD_INDEX_WAIT="${KICAD_INDEX_WAIT:-20}"
-APT_UPDATE_TIMEOUT="${APT_UPDATE_TIMEOUT:-120}"
-APT_DOWNLOAD_TIMEOUT="${APT_DOWNLOAD_TIMEOUT:-600}"
+APT_UPDATE_TIMEOUT="${APT_UPDATE_TIMEOUT:-}"
+APT_DOWNLOAD_TIMEOUT="${APT_DOWNLOAD_TIMEOUT:-}"
 # apt's own bounds on 1 file, as before: 3 more tries, and a server silent for 60 s is given up. 4 x 60
-# = 240 s on 1 silent file stays within the download's bound, so apt names that file before the cut.
+# = 240 s on 1 silent file stays within CI's download bound, so apt names that file before the cut.
 APT_FILE_RETRIES="3"
 APT_FILE_TIMEOUT="60"
 # apt's Err: and Ign: lines name the file and the host that failed: a cut download shows them.
@@ -151,6 +158,28 @@ os_codename() {
 # KiCad 10's source as `apt-cache policy` names it: the address without its last slash, and the suite.
 kicad_source() {
   printf '%s %s' "${KICAD_PPA_URL%/}" "$(os_codename)"
+}
+
+# Runs $2... under `timeout $1` when a bound $1 is set, else with no total bound.
+bounded() {
+  local secs="$1"
+  shift
+  if [[ -n "$secs" ]]; then
+    timeout "$secs" "$@"
+  else
+    "$@"
+  fi
+}
+
+# Stops on a bound that is set but is not a whole number of seconds above 0, before anything runs.
+apt_bounds_check() {
+  local name value
+  for name in APT_UPDATE_TIMEOUT APT_DOWNLOAD_TIMEOUT; do
+    value="${!name}"
+    if [[ -n "$value" && ! "$value" =~ ^[1-9][0-9]*$ ]]; then
+      die "${name}=${value} is not a whole number of seconds above 0; set it to one, or leave ${name} unset for no bound"
+    fi
+  done
 }
 
 # 2 lines and exit 1: what failed, where, the value and apt's own line; then what to do.
@@ -222,8 +251,8 @@ EOF
 }
 
 # `apt-get update` until the index of KiCad 10's source is there, at most KICAD_INDEX_TRIES times.
-# A try is good when apt-get ends with 0 within APT_UPDATE_TIMEOUT and prints no W: or E: line that
-# names the source. apt ends with 0 when an index failed and it only warned (job 134932219722 at
+# A try is good when apt-get ends with 0 (within APT_UPDATE_TIMEOUT when it is set) and prints no W: or
+# E: line that names the source. apt ends with 0 when an index failed and it only warned (job 134932219722 at
 # 15:57:17), so its code alone does not tell. `--error-on=any` (APT::Update::Error-Mode, apt 2.8.3)
 # would fail on any source's warning too, and then blame KiCad's. The candidate check reads the rest.
 # apt names a source by its address without the last slash ("GPG error: <address> noble InRelease",
@@ -248,13 +277,13 @@ kicad_index() {
     KICAD_TRIED=$try
     log "apt: update, try ${try} of ${KICAD_INDEX_TRIES}"
     rc=0
-    out="$(timeout "$APT_UPDATE_TIMEOUT" apt-get update -qq 2>&1)" || rc=$?
+    out="$(bounded "$APT_UPDATE_TIMEOUT" apt-get update -qq 2>&1)" || rc=$?
     if [[ -n "$out" ]]; then printf '%s\n' "$out" >&2; fi
     APT_SAID="$(grep -F "${KICAD_PPA_URL%/}" <<< "$out" | grep -E '^(W|E|Err):' | tail -n 1 || true)"
     if ((rc == 0)) && [[ -z "$APT_SAID" ]]; then
       return 0
     fi
-    if ((rc == 124)); then
+    if ((rc == 124)) && [[ -n "$APT_UPDATE_TIMEOUT" ]]; then
       APT_SAID="nothing: apt-get update did not end within ${APT_UPDATE_TIMEOUT} s (APT_UPDATE_TIMEOUT)"
     elif [[ -z "$APT_SAID" ]]; then
       APT_SAID="$(grep -E '^E:' <<< "$out" | tail -n 1 || true)"
@@ -379,6 +408,7 @@ apt_shown() {
 }
 
 step_apt() {
+  apt_bounds_check
   if [[ "$SKIP_APT" == "1" ]]; then
     log "apt: skipped (SKIP_APT=1)"
     return
@@ -391,8 +421,8 @@ step_apt() {
   if kicad10_present; then
     log "apt: KiCad 10 present ($(kicad-cli version)); PPA step skipped"
     log "apt: update"
-    # No bound here, as before this change: CI never has KiCad 10 at this point, and a slow line on a
-    # computer that has it is no reason to stop.
+    # No bound here, even when APT_UPDATE_TIMEOUT is set, as before this change: CI never has KiCad 10
+    # at this point, and a slow line on a computer that has it is no reason to stop.
     apt-get update -qq || die "apt: apt-get update ended with exit code $?; apt's lines are above"
   else
     add_kicad_ppa
@@ -404,18 +434,18 @@ step_apt() {
   # Visible progress: KiCad is a large download from a PPA that can be slow; a hidden install that
   # takes 20 minutes looks hung. Both filters flush each line: into a pipe grep and sed buffer 4 KB,
   # which hid every line for 50 minutes (M86). A stalled server is given up after APT_FILE_TIMEOUT and
-  # retried, where the default waited on it. The download comes first and alone, within its bound:
-  # stopping it changes nothing installed. The install then reads only the downloaded files.
+  # retried, where the default waited on it. The download comes first and alone, within its bound when
+  # one is set: stopping it changes nothing installed. The install then reads only the downloaded files.
   rc=0
-  apt_shown timeout "$APT_DOWNLOAD_TIMEOUT" apt-get install -y --no-install-recommends --download-only \
+  apt_shown bounded "$APT_DOWNLOAD_TIMEOUT" apt-get install -y --no-install-recommends --download-only \
     -o Acquire::Retries="$APT_FILE_RETRIES" \
     -o Acquire::http::Timeout="$APT_FILE_TIMEOUT" -o Acquire::https::Timeout="$APT_FILE_TIMEOUT" \
     "${packages[@]}" || rc=$?
-  if ((rc == 124)); then
+  if ((rc == 124)) && [[ -n "$APT_DOWNLOAD_TIMEOUT" ]]; then
     stop "apt: the download did not end within ${APT_DOWNLOAD_TIMEOUT} s (APT_DOWNLOAD_TIMEOUT); apt said: ${APT_SAID:-nothing}" \
       "No package was installed. Run the script again now: apt keeps the files it has downloaded and goes on from them. On a slow line, set APT_DOWNLOAD_TIMEOUT to more seconds."
   elif ((rc != 0)); then
-    stop "apt: the download ended with apt-get's exit code ${rc}, within its bound of ${APT_DOWNLOAD_TIMEOUT} s; apt said: ${APT_SAID:-nothing}" \
+    stop "apt: the download ended with apt-get's exit code ${rc}${APT_DOWNLOAD_TIMEOUT:+, within its bound of ${APT_DOWNLOAD_TIMEOUT} s}; apt said: ${APT_SAID:-nothing}" \
       "No package was installed. $(apt_advice "$APT_SAID" "A package source did not serve a file this time: run the script again later; apt keeps the files it has downloaded.")"
   fi
   log "apt: install ${packages[*]}"
