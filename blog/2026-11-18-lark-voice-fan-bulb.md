@@ -7,7 +7,7 @@ image: /examples/lark/card.png
 
 Lark is a ceiling-fan light bulb designed for voice control, with the speech recognition inside the bulb. It screws into the fan's E26 socket and runs on 120 V mains. We asked for it after our Matter smart-home devices did not work well. An AI agent designed its four circuit boards with Via, our tools and checks for KiCad board design.
 
-![Lark v0.1 as it hangs base-up: the E26 base at the top, the driver board standing in a clear neck, the light disc across it, and a narrow board down the dome to a small disc at the tip](/examples/lark/card.png "Lark v0.1: four boards in an A19 bulb, drawn from the design files")
+![Lark's light disc in 3D: 16 LEDs on a ring round 3 slots, on an aluminum disc](/examples/lark/card.png "The light disc of Lark v0.1, one of its four boards, drawn from its design file")
 
 We wrote the brief and read the agent's work, its check results and its mistakes. No Lark has been built, and its voice and radio firmware is not written.
 
@@ -31,7 +31,7 @@ A common way to dim LEDs is PWM, pulse-width modulation: switching them fully on
 
 Lark has no isolation, the break a transformer makes between the mains and what you touch. Every node, the 3.3 V logic too, sits at mains potential. The plastic housing is the insulation from a hand.
 
-Inside, the logic can differ from the mains nets by up to 198 V. IPC-2221B, the *Generic Standard on Printed Board Design*, gives copper gaps by voltage in Table 6-1. For 151 to 250 V, it sets 0.8 mm on an outer layer for a coated lead or termination. Inside the board, in solid glass-epoxy, it sets 0.2 mm. The agent wrote both into the [rule file](examples/fan-bulb/v0.1/rules/lark.kicad_dru), and the design rule check (DRC) holds every gap to them.
+Inside, the logic can differ from the mains nets by up to 198 V. IPC-2221B, the *Generic Standard on Printed Board Design*, gives copper gaps by voltage in Table 6-1. For 151 to 250 V, it sets 0.8 mm on an outer layer beside a part's lead. Inside the board, in solid glass-epoxy, it sets 0.2 mm. The agent wrote both into the [rule file](examples/fan-bulb/v0.1/rules/lark.kicad_dru), and the design rule check (DRC) holds every gap to them.
 
 We asked for a DIP switch on the side to choose Alexa or Apple Home. Its contacts would sit at mains potential under a finger. The agent chose a magnet in a slider outside the sealed housing, over two Hall switches inside. In the Hall effect, a magnetic field pushes moving charges to one side of a thin plate. A small voltage then appears across it.
 
