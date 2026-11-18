@@ -63,6 +63,7 @@ LONG = {
     "design": "with --route",
     "verify": "without --init",
     "chip": "except chip init",
+    "inspect": "inspect map only",
 }
 
 
@@ -75,6 +76,8 @@ def is_long(args: argparse.Namespace) -> bool:
         return not getattr(args, "init", False)
     if cmd == "chip":
         return getattr(args, "chip_command", None) != "init"
+    if cmd == "inspect":
+        return getattr(args, "view", None) == "map"
     return LONG.get(cmd) == "always"
 
 
