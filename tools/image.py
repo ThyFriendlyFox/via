@@ -39,6 +39,10 @@ TOOLCHAIN_FILES = ("Dockerfile", "install.sh", "requirements.txt")
 RECORD = Path("/opt/workcenters/ee/image.json")
 SRC = Path(__file__).resolve().parents[1]
 DISABLE = "CI_FULL_IN_IMAGE"
+# The image holds no node, so the tests that run it skip there. A change to a file they read takes the
+# install path, where node is: the 2 test files, the forms' functions test_forms.py runs and the
+# workflow scripts test_lead.py parses. tests/test_image.py finds every test that asks for node.
+NODE_PATHS = ("site/api/", "ee-agent-kit/lead/workflows/", "tests/test_forms.py", "tests/test_lead.py")
 
 Reader = Callable[[str], bytes]
 
@@ -121,6 +125,23 @@ def changed_files(repo: Path, base: str, head: str) -> list[str] | None:
     return changed
 
 
+def changed_paths(repo: Path, base: str, head: str) -> list[str] | None:
+    """Every path the change edits; None where the base cannot be read."""
+    if not base:
+        return None
+    if subprocess.run(["git", "-C", str(repo), "cat-file", "-e", f"{base}^{{commit}}"]).returncode != 0:
+        return None
+    diff = subprocess.run(
+        ["git", "-C", str(repo), "diff", "--name-only", base, head], capture_output=True, text=True
+    )
+    return diff.stdout.split() if diff.returncode == 0 else None
+
+
+def needs_node(paths: list[str]) -> list[str]:
+    """The paths a test that runs node reads."""
+    return [p for p in paths if any(p == n or (n.endswith("/") and p.startswith(n)) for n in NODE_PATHS)]
+
+
 def pull(ref: str) -> tuple[bool, str]:
     """`docker pull` of 1 image: (True, the image by digest) or (False, the registry's last line)."""
     try:
@@ -148,9 +169,11 @@ def decide(
     pull: Callable[[str], tuple[bool, str]],
     owner: str,
     unread: str = "",
+    node: list[str] | None = None,
 ) -> dict[str, str]:
     """Where the full job runs: in the image of this commit's tag when the registry gives it, else by
-    install.sh as before. `changed` is None where no base could be read."""
+    install.sh as before. `changed` is None where no base could be read; `node` is the paths of the
+    change that a test running node reads, None where no base says which paths changed."""
 
     def install(reason: str) -> dict[str, str]:
         return {"where": "install", "image": "", "reason": reason}
@@ -161,11 +184,25 @@ def decide(
         return install(f"the toolchain's files cannot be read at this commit: {unread or 'absent'}")
     if changed:
         return install(f"this change edits {', '.join(changed)}: the install path is their test")
+    if node:
+        return install(
+            f"this change edits {', '.join(node)}: the tests that need node run on the install path "
+            "(the image holds no node)"
+        )
     ref = f"{image_name(owner)}:{tag}"
     ok, said = pull(ref)
     if not ok:
         return install(f"the registry gave no {ref}: {said}")
-    return {"where": "image", "image": said, "reason": f"the registry holds {ref} ({said.split('@', 1)[1]})"}
+    unjudged = "not judged there: the tests that need node (no node in the image); " + (
+        "no base says which files this change edits"
+        if node is None
+        else "this change edits no file they read"
+    )
+    return {
+        "where": "image",
+        "image": said,
+        "reason": f"the registry holds {ref} ({said.split('@', 1)[1]}); {unjudged}",
+    }
 
 
 # ---------------------------------------------------------------- the build's record
@@ -221,9 +258,28 @@ def record(src: Path, out: Path, expect: str, revision: str, payload: dict, mach
     return rec
 
 
+def read_record(rec_path: Path) -> dict:
+    """An image's record, or Refused naming the file and why it is not one."""
+
+    def refuse(why: str) -> Refused:
+        return Refused(f"{rec_path}: not a record ({why})")
+
+    try:
+        rec = json.loads(Path(rec_path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError) as exc:
+        raise refuse(f"unreadable: {exc}") from None
+    except json.JSONDecodeError as exc:
+        raise refuse(f"no JSON: {exc}") from None
+    if not isinstance(rec, dict):
+        raise refuse(f"a JSON {type(rec).__name__}, not an object")
+    if not isinstance(rec.get("files", {}), dict):
+        raise refuse(f"its files are a JSON {type(rec['files']).__name__}, not an object")
+    return rec
+
+
 def check(src: Path, rec_path: Path) -> list[str]:
     """Each toolchain file of the checkout whose bytes are not those the image was built from."""
-    rec = json.loads(Path(rec_path).read_text(encoding="utf-8"))
+    rec = read_record(rec_path)
     have = sums(from_disk(src))
     built = rec.get("files", {})
     return [
@@ -317,7 +373,9 @@ def main(argv: list[str] | None = None) -> int:
             changed = changed_files(args.repo, args.base, args.head)
         except Absent as exc:
             changed, unread = None, str(exc)
-        d = decide(args.enabled, tag, changed, pull, args.owner, unread)
+        edited = changed_paths(args.repo, args.base, args.head)
+        node = None if edited is None else needs_node(edited)
+        d = decide(args.enabled, tag, changed, pull, args.owner, unread, node)
         print(f"where: {d['where']}: {d['reason']}")
         if args.github_output:
             github_output(d)
@@ -347,7 +405,11 @@ def main(argv: list[str] | None = None) -> int:
                 f"image.py: no record at {args.record}: this is not the workcenter's image", file=sys.stderr
             )
             return 1
-        problems = check(args.src, args.record)
+        try:
+            problems = check(args.src, args.record)
+        except (Refused, Absent) as exc:
+            print(f"image.py: {exc}", file=sys.stderr)
+            return 1
         for line in problems:
             print(f"FAIL image: {line}")
         if not problems:
@@ -357,7 +419,11 @@ def main(argv: list[str] | None = None) -> int:
     if not RECORD.is_file():
         print(f"image.py: no record at {RECORD}: this is not the workcenter's image", file=sys.stderr)
         return 1
-    print(RECORD.read_text(encoding="utf-8").rstrip())
+    try:
+        print(json.dumps(read_record(RECORD), indent=2))
+    except Refused as exc:
+        print(f"image.py: {exc}", file=sys.stderr)
+        return 1
     return 0
 
 
@@ -378,7 +444,11 @@ def cmd_image(args, cli) -> int:
     except Absent as exc:
         said = {"tag": None, "rev": args.rev, "files": {}, "not_judged": f"{exc} (no git checkout?)"}
     said["image"] = image_name("<owner>")
-    said["installed"] = json.loads(RECORD.read_text(encoding="utf-8")) if RECORD.is_file() else None
+    try:
+        said["installed"] = read_record(RECORD) if RECORD.is_file() else None
+    except Refused as exc:
+        print(f"workcenter image: {exc}", file=sys.stderr)
+        return 1
     if getattr(args, "json", False):
         print(json.dumps(said, indent=2))
         return 0
@@ -391,8 +461,8 @@ def cmd_image(args, cli) -> int:
     inst = said["installed"]
     if inst:
         built = inst.get("revision") or "an unnamed commit"
-        print(f"this image: {inst['tag']} built at {built} ({inst['machine']})")
-        for tool, version in inst["versions"].items():
+        print(f"this image: {inst.get('tag')} built at {built} ({inst.get('machine')})")
+        for tool, version in dict(inst.get("versions") or {}).items():
             print(f"  {tool:12} {version or 'absent'}")
     else:
         print(f"this is not the workcenter's image: no record at {RECORD}")

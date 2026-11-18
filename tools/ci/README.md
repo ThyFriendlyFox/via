@@ -103,8 +103,12 @@ prints 1 line: `where: image: ...` or `where: install: ...`, with the reason.
 The last step fails unless the decided path's verify step ran and passed.
 
 What differs inside the image: the runner has `node`, the image does not,
-so the tests that need it (`tests/test_forms.py`, 1 test of
-`tests/test_lead.py`) skip there and run on the install path.
+so the tests that need it (6 of `tests/test_forms.py`, 1 of
+`tests/test_lead.py`) skip there. A change to a file they read
+(`site/api/`, `ee-agent-kit/lead/workflows/`, the 2 test files; the list
+is `NODE_PATHS` in `tools/image.py`) takes the install path, where they
+run. On the image path the `where:` line ends `not judged there: the
+tests that need node`, with the reason.
 
 To read a run: the line `where:` in the step "Decide where the gate runs";
 on the image path, the lines `image:`, the record's JSON and `image: the

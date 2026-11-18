@@ -101,6 +101,18 @@ def test_the_last_step_runs_doctor_and_records_the_versions_and_home_comes_after
     assert ("WORKDIR", "/work") in dockerfile()
 
 
+def test_every_run_fails_the_build_when_any_of_its_commands_fails():
+    """Promise 4 (no image whose doctor does not pass) rests on the last RUN's exit code: Docker's /bin/sh
+    stops a RUN only where its commands are joined by `&&`. A `||`, a `;` or a pipe lets a failing doctor
+    or a refused record through, so no RUN holds one, and none turns off the shell's exit code."""
+    for run in runs():
+        assert not re.search(r"\|\||;|(?<!\|)\|(?!\|)|set \+e", run), run
+    last = runs()[-1]
+    joined = [part.strip() for part in last.split("&&")]
+    assert joined[0] == "HOME=/root workcenter doctor"
+    assert joined[1].startswith("HOME=/root python3 tools/image.py record ")
+
+
 def test_the_dockerfile_holds_no_secret_no_user_and_pipes_no_download_into_a_shell():
     """No ARG or ENV names a token, a password or a key; no line holds a GitHub token's prefix; no
     download is piped into a shell. No USER: CI and a user pass `--user`, and GitHub's Dockerfile
@@ -329,6 +341,83 @@ def test_decide_writes_where_image_and_reason_to_the_github_output(repo, tmp_pat
     ]
 
 
+def stub(folder: Path, name: str, body: str) -> None:
+    folder.mkdir(exist_ok=True)
+    (folder / name).write_text(f"#!/bin/bash\n{body}\n", encoding="utf-8")
+    (folder / name).chmod(0o755)
+
+
+def test_pull_takes_the_image_by_its_digest_alone(tmp_path, monkeypatch):
+    """A stub `docker` on PATH: the pull succeeds, and `docker image inspect` prints what $SAID holds. An
+    image with no repo digest (built here, never pushed) is not taken: CI must run the image the
+    registry holds, by digest."""
+    bin_ = tmp_path / "bin"
+    stub(bin_, "docker", 'if [ "$1" = image ]; then echo "$SAID"; fi; exit 0')
+    monkeypatch.setenv("PATH", f"{bin_}:{os.environ['PATH']}")
+    digest = "ghcr.io/o/ee-workcenter@sha256:" + "c" * 64
+    monkeypatch.setenv("SAID", digest)
+    assert image.pull("ghcr.io/o/ee-workcenter:tc-x") == (True, digest)
+    monkeypatch.setenv("SAID", "ghcr.io/o/ee-workcenter:tc-x")
+    ok, said = image.pull("ghcr.io/o/ee-workcenter:tc-x")
+    assert not ok and said == "the image pulled has no digest: ghcr.io/o/ee-workcenter:tc-x"
+
+
+def test_every_test_that_needs_node_is_routed_to_the_install_path_by_the_files_it_reads():
+    """The image holds no node, so on the image path the tests that run node skip. A change to a file
+    they read goes to the install path, where they run. The files, read from the 2 tests: test_forms.py
+    runs site/api/_forms.js (its API folder); test_lead.py parses ee-agent-kit/lead/workflows/*.js."""
+    asking = sorted(
+        f"tests/{p.name}"
+        for p in (ROOT / "tests").glob("test_*.py")
+        if re.search(r"""which\(["']node["']\)""", p.read_text(encoding="utf-8"))
+    )
+    assert asking == ["tests/test_forms.py", "tests/test_lead.py"]
+    assert set(image.NODE_PATHS) == {*asking, "site/api/", "ee-agent-kit/lead/workflows/"}
+    assert image.needs_node(["tools/fields.py", "site/api/_forms.js"]) == ["site/api/_forms.js"]
+    assert image.needs_node(["ee-agent-kit/lead/workflows/user-round.js"]) != []
+    assert image.needs_node(["site/index.html", "tests/test_image.py", "ee-agent-kit/lead/x.md"]) == []
+
+
+def test_a_change_to_what_node_reads_runs_on_the_install_path():
+    asked: list[str] = []
+    d = image.decide(
+        "", "tc-x", [], lambda r: asked.append(r) or (False, ""), "o", node=["site/api/_forms.js"]
+    )
+    assert asked == []
+    assert d == {
+        "where": "install",
+        "image": "",
+        "reason": "this change edits site/api/_forms.js: the tests that need node run on the install path "
+        "(the image holds no node)",
+    }
+
+
+def test_the_image_path_says_the_node_tests_are_not_judged_there():
+    """A change that touches nothing node reads: the reason names the tests the image path does not
+    judge. With no base the files changed are not known, and the reason says so."""
+    d = image.decide("", "tc-x", [], pulled("sha256:" + "d" * 64), "o", node=[])
+    assert d["where"] == "image" and d["reason"].endswith(
+        "; not judged there: the tests that need node (no node in the image); this change edits no file "
+        "they read"
+    )
+    blind = image.decide("", "tc-x", None, pulled("sha256:" + "d" * 64), "o", node=None)
+    assert blind["where"] == "image" and blind["reason"].endswith(
+        "; not judged there: the tests that need node (no node in the image); no base says which files "
+        "this change edits"
+    )
+
+
+def test_the_paths_a_change_edits_are_read_from_git(repo):
+    base = git(repo, "rev-parse", "HEAD")
+    (repo / "site" / "api").mkdir(parents=True)
+    (repo / "site" / "api" / "_forms.js").write_text("x\n", encoding="utf-8")
+    git(repo, "add", ".")
+    git(repo, "commit", "-q", "-m", "forms")
+    assert image.changed_paths(repo, base, "HEAD") == ["site/api/_forms.js"]
+    assert image.changed_paths(repo, "", "HEAD") is None
+    assert image.changed_paths(repo, "0" * 40, "HEAD") is None
+
+
 # ---------------------------------------------------------------- the build's record and its check
 
 
@@ -410,6 +499,79 @@ def test_the_check_inside_ci_refuses_an_image_of_another_requirements_txt(tmp_pa
     ]
 
 
+def image_cli(*argv: str, path: str | None = None) -> subprocess.CompletedProcess:
+    env = {**os.environ, **({"PATH": path} if path else {})}
+    return subprocess.run(
+        [sys.executable, str(ROOT / "tools" / "image.py"), *argv], capture_output=True, text=True, env=env
+    )
+
+
+def fixed_tree(at: Path) -> Path:
+    at.mkdir()
+    for name, data in FIXED.items():
+        (at / name).write_bytes(data)
+    return at
+
+
+def test_the_record_command_exits_1_and_writes_nothing_on_a_refused_record(tmp_path):
+    """The Dockerfile's last RUN fails the build on this exit code alone (Promise 4). The tree holds the
+    3 fixed files (tag tc-7b247424ac84899d, worked out above) and no tools/workcenter, so its doctor
+    gives no JSON and is read as `doctor: fail`. Another tag is refused first; the right tag is then
+    refused for the doctor."""
+    src = fixed_tree(tmp_path / "src")
+    out = tmp_path / "image.json"
+    other = image_cli("record", "--src", str(src), "--out", str(out), "--expect-tag", "tc-0000000000000000")
+    assert other.returncode == 1, other.stdout + other.stderr
+    assert "record refused: the files in the image make tc-7b247424ac84899d" in other.stderr
+    failed = image_cli("record", "--src", str(src), "--out", str(out), "--expect-tag", "tc-7b247424ac84899d")
+    assert failed.returncode == 1, failed.stdout + failed.stderr
+    assert "record refused: doctor: fail" in failed.stderr
+    assert not out.exists()
+
+
+def test_the_check_command_exits_1_on_files_the_image_was_not_built_from(tmp_path):
+    """CI's image path runs `image.py check` under `bash -e`; its exit code is what stops `make verify`
+    on an image of another requirements.txt."""
+    src = fixed_tree(tmp_path / "src")
+    rec = tmp_path / "image.json"
+    rec.write_text(json.dumps({"files": {n: hashlib.sha256(d).hexdigest() for n, d in FIXED.items()}}))
+    same = image_cli("check", "--src", str(src), "--record", str(rec))
+    assert same.returncode == 0, same.stdout + same.stderr
+    (src / "requirements.txt").write_bytes(b"d\n")
+    moved = image_cli("check", "--src", str(src), "--record", str(rec))
+    assert moved.returncode == 1 and moved.stdout.startswith("FAIL image: requirements.txt: "), moved.stdout
+
+
+def test_a_record_that_is_not_one_is_refused_by_its_path_not_by_a_traceback(tmp_path):
+    """An empty file, a JSON list, and a `files` that is not an object: each is 1 line naming the file and
+    why, exit code 1, from `image.py check` and from `workcenter image`."""
+    src = fixed_tree(tmp_path / "src")
+    cases = {
+        "empty.json": ("", "no JSON: Expecting value: line 1 column 1 (char 0)"),
+        "list.json": ("[]", "a JSON list, not an object"),
+        "files.json": ('{"files": ["x"]}', "its files are a JSON list, not an object"),
+    }
+    for name, (text, why) in cases.items():
+        rec = tmp_path / name
+        rec.write_text(text, encoding="utf-8")
+        ran = image_cli("check", "--src", str(src), "--record", str(rec))
+        assert ran.returncode == 1, (name, ran.stdout, ran.stderr)
+        assert ran.stderr == f"image.py: {rec}: not a record ({why})\n", ran.stderr
+        with pytest.raises(image.Refused, match=re.escape(f"{rec}: not a record ({why})")):
+            image.read_record(rec)
+
+
+def test_workcenter_image_refuses_a_record_that_is_not_one(tmp_path, monkeypatch, capsys):
+    rec = tmp_path / "image.json"
+    rec.write_text("", encoding="utf-8")
+    monkeypatch.setattr(image, "RECORD", rec)
+    cli = type("Cli", (), {"SRC_DIR": ROOT})
+    code = image.cmd_image(type("Args", (), {"rev": "HEAD"})(), cli)
+    assert code == 1
+    said = capsys.readouterr()
+    assert f"{rec}: not a record (no JSON: Expecting value" in said.err and "Traceback" not in said.err
+
+
 # ---------------------------------------------------------------- the workflows, by their parsed text
 
 
@@ -429,7 +591,9 @@ def test_the_image_workflow_builds_on_a_pull_request_and_pushes_only_from_main_t
     watched = set(on["pull_request"]["paths"])
     assert set(image.TOOLCHAIN_FILES) <= watched
     assert {".dockerignore", ".github/workflows/image.yml", "tools/image.py"} <= watched
-    assert set(on["push"]["paths"]) == watched and on["push"]["branches"] == ["main"]
+    # `main` is the image a user is told to run: every push to main builds it, so its workcenter code is
+    # main's, not that of the last change to a toolchain file. No path filter on push.
+    assert "paths" not in on["push"] and on["push"]["branches"] == ["main"]
     assert on["push"]["tags"] == ["v*.*.*"]
     assert len(on["schedule"]) == 1 and len(on["schedule"][0]["cron"].split()) == 5
     assert f["permissions"] == {"contents": "read"}
@@ -463,6 +627,53 @@ def test_the_image_workflow_tags_by_content_main_a_release_and_the_day_and_summa
     assert "GITHUB_STEP_SUMMARY" in build and "GITHUB_STEP_SUMMARY" in publish
     # Only the build arguments that name the build; the toolchain is the Dockerfile's text alone.
     assert set(re.findall(r"--build-arg (\w+)=", build)) == {"TOOLCHAIN_TAG", "WORKCENTER_REVISION"}
+
+
+def step_named(job: dict, start: str) -> dict:
+    (step,) = [s for s in job["steps"] if s.get("name", "").startswith(start)]
+    return step
+
+
+def test_the_gates_step_fails_unless_every_file_written_is_the_runners_user(tmp_path):
+    """The step runs here with a stub `docker` (the gates write nothing) and a stub `find` that prints the
+    owners $OWNERS names. Promise 3: 1 owner, the runner's user, passes; another owner beside it fails."""
+    step = step_named(flow(IMAGE_FLOW)["jobs"]["build"], "The gates on a fixture")
+    bin_ = tmp_path / "bin"
+    stub(bin_, "docker", "exit 0")
+    stub(bin_, "find", 'printf "$OWNERS\\n"')
+    me = subprocess.run(["id", "-un"], capture_output=True, text=True, check=True).stdout.strip()
+    codes = {}
+    for owners in (me, f"{me}\\nnobody-else", "nobody-else"):
+        env = {
+            **os.environ,
+            "PATH": f"{bin_}:{os.environ['PATH']}",
+            "TMPDIR": str(tmp_path),
+            "OWNERS": owners,
+        }
+        env |= {"IMAGE": "i", "TAG": "t", "ARCH": "amd64"}
+        ran = subprocess.run(
+            ["bash", "-e", "-c", step["run"]], cwd=ROOT, env=env, capture_output=True, text=True
+        )
+        codes[owners] = ran.returncode
+    assert codes == {me: 0, f"{me}\\nnobody-else": 1, "nobody-else": 1}
+
+
+def test_the_image_path_runs_make_verify_only_after_its_check_passes(tmp_path):
+    """The image path's script runs here under `bash -e`, as the step runs it inside the image, with
+    stubs: `python3` fails its `check` when $CHECK is 1, `make` leaves a mark. make verify runs only
+    when the image's toolchain files are the checkout's."""
+    run = step_named(full_job(), "Verify inside the image")["run"]
+    script = re.search(r"bash -e -c '([^']*)'", run).group(1)
+    bin_ = tmp_path / "bin"
+    stub(bin_, "python3", 'if [ "$2" = check ]; then [ "$CHECK" = 0 ]; fi')
+    stub(bin_, "make", 'touch "$MARK"')
+    seen = {}
+    for check in ("0", "1"):
+        mark = tmp_path / f"made-{check}"
+        env = {"PATH": f"{bin_}:/usr/bin:/bin", "CHECK": check, "MARK": str(mark), "IMAGE": "i"}
+        ran = subprocess.run(["bash", "-e", "-c", script], env=env, capture_output=True, text=True)
+        seen[check] = (ran.returncode == 0, mark.exists())
+    assert seen == {"0": (True, True), "1": (False, False)}
 
 
 def test_the_release_workflow_no_longer_builds_an_image_of_its_own():

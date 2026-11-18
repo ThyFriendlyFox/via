@@ -6,8 +6,7 @@ name: Image
 # owner's name in lower case, with the workflow's own token.
 on:
   pull_request:
-    # The files the build reads to make the toolchain, and the tools that name and check it. The 2 lists
-    # are the same (tests/test_image.py holds it).
+    # The files the build reads to make the toolchain, and the tools that name and check it.
     paths:
       - Dockerfile
       - .dockerignore
@@ -17,16 +16,10 @@ on:
       - tools/workcenter
       - .github/workflows/image.yml
   push:
+    # Every push to main, with no path filter: the image holds the workcenter at its commit, so `main`
+    # is main's code once its build ends, whichever file the push changed.
     branches: [main]
     tags: ['v*.*.*']
-    paths:
-      - Dockerfile
-      - .dockerignore
-      - install.sh
-      - requirements.txt
-      - tools/image.py
-      - tools/workcenter
-      - .github/workflows/image.yml
   schedule:
     # Monday 04:17 UTC: KiCad's point releases and Ubuntu's fixes reach the image within a week.
     - cron: '17 4 * * 1'
