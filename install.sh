@@ -254,18 +254,29 @@ add_kicad_ppa() {
   if [[ ! -s "$KICAD_KEYRING" ]]; then
     log "apt: fetching PPA signing key ${KICAD_PPA_FPR}"
     rm -f "${KICAD_KEYRING}.tmp"
+    # curl's own error line of each address, for the stop when the key arrives from neither.
+    local errors keyserver launchpad
+    errors="$(mktemp)"
     # Some proxies reset every connection to the keyserver; Launchpad's API serves the same key
     # as a JSON string. Either way the fingerprint check below decides whether it is trusted.
     if ! curl -fsSL --retry 3 --retry-max-time "$KICAD_KEY_TIMEOUT" --connect-timeout 20 --max-time "$KICAD_KEY_TIMEOUT" \
-      "https://keyserver.ubuntu.com/pks/lookup?op=get&options=mr&search=0x${KICAD_PPA_FPR}" \
+      "https://keyserver.ubuntu.com/pks/lookup?op=get&options=mr&search=0x${KICAD_PPA_FPR}" 2> "$errors" \
       | gpg --dearmor -o "${KICAD_KEYRING}.tmp" || [[ ! -s "${KICAD_KEYRING}.tmp" ]]; then
+      keyserver="$(tail -n 1 "$errors")"
       warn "apt: keyserver.ubuntu.com did not answer; fetching the key from api.launchpad.net"
       rm -f "${KICAD_KEYRING}.tmp"
-      curl -fsSL --retry 3 --retry-max-time "$KICAD_KEY_TIMEOUT" --connect-timeout 20 --max-time "$KICAD_KEY_TIMEOUT" \
-        "https://api.launchpad.net/devel/~kicad/+archive/ubuntu/kicad-10.0-releases?ws.op=getSigningKeyData" \
+      if ! curl -fsSL --retry 3 --retry-max-time "$KICAD_KEY_TIMEOUT" --connect-timeout 20 --max-time "$KICAD_KEY_TIMEOUT" \
+        "https://api.launchpad.net/devel/~kicad/+archive/ubuntu/kicad-10.0-releases?ws.op=getSigningKeyData" 2> "$errors" \
         | python3 -c 'import json, sys; sys.stdout.write(json.load(sys.stdin))' \
-        | gpg --dearmor -o "${KICAD_KEYRING}.tmp"
+        | gpg --dearmor -o "${KICAD_KEYRING}.tmp" || [[ ! -s "${KICAD_KEYRING}.tmp" ]]; then
+        launchpad="$(tail -n 1 "$errors")"
+        rm -f "$errors" "${KICAD_KEYRING}.tmp"
+        # No key is no fingerprint: the stop says what happened, not "mismatch".
+        stop "apt: the PPA signing key did not arrive from keyserver.ubuntu.com (curl said: ${keyserver:-nothing; the answer held no key}) or from api.launchpad.net (curl said: ${launchpad:-nothing; the answer held no key}); each try of each address had at most ${KICAD_KEY_TIMEOUT} s (KICAD_KEY_TIMEOUT)" \
+          "$(kicad_kept) Check that this computer reaches keyserver.ubuntu.com or api.launchpad.net, then run the script again."
+      fi
     fi
+    rm -f "$errors"
     gpg --no-default-keyring --keyring "${KICAD_KEYRING}.tmp" --list-keys --with-colons 2>/dev/null \
       | grep -q "^fpr:::::::::${KICAD_PPA_FPR}:" \
       || die "apt: PPA key fingerprint mismatch; refusing to trust it"
