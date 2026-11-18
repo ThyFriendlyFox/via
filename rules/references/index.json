@@ -4,6 +4,7 @@
     "rules/board/*.json",
     "rules/copper/*.json",
     "rules/interfaces/*.json",
+    "rules/products/*.json",
     "rules/*.kicad_dru",
     "tests/boards/**/facts/*.json"
   ],
@@ -549,6 +550,50 @@
       "url": "https://www.nxp.com/docs/en/user-guide/UM10204.pdf",
       "sha256": "dc91f00f65584e06ef36e26c93bf9d91a95fb3c8a1830a9223e53caf678b36af",
       "read": "2026-11-18"
+    },
+    {
+      "id": "ti-slva680a",
+      "kind": "application note",
+      "maker": "Texas Instruments",
+      "number": "SLVA680A",
+      "title": "ESD Protection Layout Guide",
+      "revision": "Rev. A, revised April 2022",
+      "url": "https://www.ti.com/lit/an/slva680/slva680.pdf",
+      "sha256": "414236c18903e2489c6564c36718ed3743be9c595f4543098f167259b5ba8635",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "ti-szza009",
+      "kind": "application note",
+      "maker": "Texas Instruments",
+      "number": "SZZA009",
+      "title": "PCB Design Guidelines For Reduced EMI",
+      "revision": "November 1999",
+      "url": "https://www.ti.com/lit/an/szza009/szza009.pdf",
+      "sha256": "317f4cb67ff85ae16c769592cabc0128e69f1eaff6a98747ef77be217564e6d2",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "47-cfr-15-b",
+      "kind": "standard",
+      "issuer": "US Federal Communications Commission, in the eCFR",
+      "number": "47 CFR Part 15, Subpart B",
+      "title": "Radio frequency devices: unintentional radiators",
+      "revision": "eCFR as of 2026-11-01",
+      "url": "https://www.ecfr.gov/api/versioner/v1/full/2026-11-01/title-47.xml?part=15&subpart=B",
+      "sha256": "8436af8347ca1068d5da6a86cdb57698a42fccc2f23aab19f23acada7ce4b991",
+      "read": "2026-11-17"
+    },
+    {
+      "id": "49-cfr-173-185",
+      "kind": "standard",
+      "issuer": "US Pipeline and Hazardous Materials Safety Administration, in the eCFR",
+      "number": "49 CFR 173.185",
+      "title": "Lithium cells and batteries",
+      "revision": "eCFR as of 2026-11-01",
+      "url": "https://www.ecfr.gov/api/versioner/v1/full/2026-11-01/title-49.xml?part=173&section=173.185",
+      "sha256": "dfa3ff595d24fdcc3af7a0bd9c3e1513d46d7122d048e3ee807e0e39735c84d3",
+      "read": "2026-11-17"
     }
   ]
 }
