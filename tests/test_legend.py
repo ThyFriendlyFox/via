@@ -312,6 +312,127 @@ def test_a_text_in_a_font_the_tool_cannot_measure_is_not_judged():
     assert "Arial" in found[0].line
 
 
+R_PADS = ((-0.8, 0, 0.8, 0.95, "smd"), (0.8, 0, 0.8, 0.95, "smd"))
+
+
+def field(name, value, at=(0, 0), layer="F.SilkS", size=0.5, thick=0.05, hide=""):
+    hidden = " (hide yes)" if hide else ""
+    return (
+        f'(property "{name}" "{value}" (at {at[0]} {at[1]} 0) (layer "{layer}"){hidden} '
+        f"(effects (font (size {size} {size}) (thickness {thick}))))"
+    )
+
+
+def test_a_parts_own_field_on_the_silkscreen_is_judged():
+    """The second review's h1-field: R1 at (120, 110) shows its field MPN "RC0603" at its centre, 0.5 mm
+    high stroked 0.05 mm. Its box 6 x 1.055118 x 0.5 + 0.05 = 3.215354 by 0.55 mm: 118.392323..121.607677
+    by 109.725..110.275. Under 0.8 mm high and 0.0762 mm stroke, and on both pads' openings (118.8..119.6
+    and 120.4..121.2 by 109.525..110.475): 0.8 x 0.55 mm each. Hidden, or on F.Fab, it is not printed."""
+    shown = fp("R1", 120, 110, (-1.5, -0.8, 1.5, 0.8), R_PADS, extra=field("MPN", "RC0603"))
+    found = judge(board(shown))
+    what = 'field MPN of R1 "RC0603"'
+    assert fails(found) == [("size", what), ("size", what), ("overlap", what), ("overlap", what)]
+    assert "on the solder mask opening of R1 pad 1 by 0.8 x 0.55 mm" in found[2].line
+    for unseen in (field("MPN", "RC0603", hide="yes"), field("MPN", "RC0603", layer="F.Fab")):
+        assert judge(board(fp("R1", 120, 110, (-1.5, -0.8, 1.5, 0.8), R_PADS, extra=unseen))) == []
+
+
+DIMENSION = (
+    '(dimension (type aligned) (layer "{layer}") (pts (xy 95 110) (xy 105 110)) (height 0) '
+    '(gr_text "10.00 mm" (at 100 110 0) (layer "{layer}") (effects (font (size 0.5 0.5) (thickness 0.05)))) '
+    "(format (units 3) (units_format 1) (precision 2)) (style (thickness 0.1) (arrow_length 1)))"
+)
+
+
+def test_a_dimension_table_or_barcode_on_the_silkscreen_is_not_judged_by_name():
+    """A dimension prints its number, a table its cells and a barcode its bars; the tool measures none of
+    them, so each is printed as not judged, with where it is. On a layer that is not printed, nothing."""
+    table = (
+        '(table (column_count 1) (layer "F.SilkS") (cells (table_cell "Rev A" (start 110 105) (end 115 107) '
+        '(layer "F.SilkS") (effects (font (size 1 1) (thickness 0.15))))))'
+    )
+    barcode = '(barcode (at 130 105 0) (layer "F.SilkS") (size 3 3) (text "SN1") (type qr))'
+    # A footprint's own dimension is written in the footprint's frame: (-5, 10) of U1 at (115, 113).
+    own = DIMENSION.format(layer="F.SilkS").replace("(xy 95 110)", "(xy -5 10)")
+    in_fp = fp("U1", 115, 113, (-3, -3, 3, 3), ref_at=(0, -3.725, 0), extra=own)
+    found = judge(board(DIMENSION.format(layer="F.SilkS"), table, barcode, in_fp))
+    assert fails(found) == []
+    assert [f.line for f in found] == [
+        'legend not judged: dimension "10.00 mm" at (95, 110) mm on F.SilkS: the tool does not measure what '
+        "KiCad draws for it",
+        'legend not judged: table "Rev A" at (110, 105) mm on F.SilkS: the tool does not measure what KiCad '
+        "draws for it",
+        'legend not judged: barcode "SN1" at (130, 105) mm on F.SilkS: the tool does not measure what KiCad '
+        "draws for it",
+        'legend not judged: dimension "10.00 mm" of U1 at (110, 123) mm on F.SilkS: the tool does not measure '
+        "what KiCad draws for it",
+    ]
+    assert judge(board(DIMENSION.format(layer="Dwgs.User"))) == []
+
+
+def test_a_text_on_a_custom_pads_shape_fails_overlap():
+    """The second review's a3_custom: Q1's pad 3 at (120, 110) is a 0.5 mm anchor and a 4 x 1 mm polygon,
+    118..122 by 109.5..110.5. "A" at (121.5, 110), 0.8 mm high: 1.055118 x 0.8 + 0.15 = 0.994094 wide,
+    121.002953..121.997047 by 109.525..110.475, off the anchor and wholly on the polygon."""
+    q1 = (
+        '(footprint "X:Q1" (layer "F.Cu") (at 120 110) (property "Reference" "Q1" (at 0 -3 0) (layer "F.Fab") '
+        "(effects (font (size 1 1) (thickness 0.15)))) "
+        '(fp_rect (start -2.5 -1) (end 2.5 1) (layer "F.CrtYd")) '
+        '(pad "3" smd custom (at 0 0) (size 0.5 0.5) (layers "F.Cu" "F.Mask") '
+        "(options (clearance outline) (anchor rect)) "
+        "(primitives (gr_poly (pts (xy -2 -0.5) (xy 2 -0.5) (xy 2 0.5) (xy -2 0.5)) (width 0) (fill yes)))))"
+    )
+    found = judge(board(q1, txt("A", 121.5, 110, size=0.8)))
+    assert [f.line for f in found] == [
+        'legend overlap: text "A" at (121.5, 110) mm on F.SilkS: on the solder mask opening of Q1 pad 3 by '
+        "0.994 x 0.95 mm (rules/legend.json)"
+    ]
+
+
+def test_kicads_mask_clip_naming_only_a_pad_is_kept_where_a_text_is_on_it(tmp_path):
+    """kicad-cli 10.0.8 on h1-field named only the pad in each silk_over_copper of the field on it
+    ("Pad 1 [<no net>] of R1 on F.Cu" at (119.2, 110)): the text it clips is not named. The gate keeps it as
+    a failure where a text of the board is on that pad's opening, and as not judged where none is."""
+    report = {
+        "violations": [
+            {
+                "type": "silk_over_copper",
+                "severity": "warning",
+                "description": "Silkscreen clipped by solder mask",
+                "items": [{"description": "Pad 1 [<no net>] of R1 on F.Cu", "pos": {"x": 119.2, "y": 110.0}}],
+            }
+        ]
+    }
+    assert legend.kicad_findings(report) == []
+    on = legend.read_board(kicadgen.parse(board(fp("R1", 120, 110, (-1.5, -0.8, 1.5, 0.8), R_PADS), txt("A", 119.2, 110))))
+    off = legend.read_board(kicadgen.parse(board(fp("R1", 120, 110, (-1.5, -0.8, 1.5, 0.8), R_PADS))))
+    said = (
+        "KiCad silk_over_copper at (119.2, 110) mm: Silkscreen clipped by solder mask: Pad 1 [<no net>] of R1 "
+        "on F.Cu"
+    )
+    assert legend.kicad_unnamed(report, on) == (
+        [f'legend overlap: {said}; on it: text "A" (KiCad\'s own check, warning in its report)'],
+        [],
+    )
+    assert legend.kicad_unnamed(report, off) == (
+        [],
+        [
+            f"legend not judged: {said}: KiCad names no silkscreen item and no text the tool reads is on it "
+            "(KiCad's own check, warning in its report)"
+        ],
+    )
+    # The gate takes both: the failure red, the not judged a warning (red with --strict).
+    proj = project(tmp_path, board(fp("R1", 120, 110, (-1.5, -0.8, 1.5, 0.8), R_PADS)))
+    loose, strict = legend.gate(proj, report, False, None), legend.gate(proj, report, True, None)
+    assert (loose["red"], loose["failures"], len(loose["warnings"])) == (False, [], 1)
+    assert (strict["red"], len(strict["failures"])) == (True, 1)
+    (tmp_path / "x.kicad_pcb").write_text(
+        board(fp("R1", 120, 110, (-1.5, -0.8, 1.5, 0.8), R_PADS), txt("A", 119.2, 110)), encoding="utf-8"
+    )
+    on_gate = legend.gate(proj, report, False, None)
+    assert on_gate["red"] and on_gate["failures"][-1].startswith("legend overlap: KiCad silk_over_copper")
+
+
 def test_hidden_and_fab_layer_text_is_not_printed_and_not_judged():
     b = board(txt("AB", 101, 110, layer="F.Fab"))
     assert judge(b) == []
