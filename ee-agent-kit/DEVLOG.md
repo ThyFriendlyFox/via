@@ -39,6 +39,30 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-18 — Lark and 2 new versions on the site, a community link, and a post per board
+
+The owner asked for a link to the team's Discord, a line at the foot of every page, the new
+lightbulb example on the site, and the new versions of the first six. The lightbulb, Lark, was on
+an open branch, as were Signet v0.5 and Rosetta v0.3. I merged all 3. Their 10 mistakes had taken
+numbers `main` already used, so they are M207 to M216 now, in every file that cites them. Lark's
+whole-bulb renders show a clear housing and a fan behind it, and the site's key left a pale outline
+of both. Its card is its light disc. The owner then asked for a post on each board, told by an
+engineer who knows the science behind it. 7 writers drafted the posts from a brief and a checker;
+I read each against its board's files and its citations. In Lark's I changed the picture's words
+to the light disc and dropped a spacing class the rule file may name wrong.
+
+Published post: Hush, a speaker that plays the inverse of what it hears.
+Published post: Lark, a voice-controlled ceiling-fan bulb on four boards.
+Published post: Signet, a mouse worn as a ring of flat boards.
+Published post: Rosetta, a controller whose knob picks the console.
+Published post: Wyvern, a Snapdragon module on one flat board.
+Published post: Basalt: fitting a Threadripper onto a microATX board.
+Published post: Herald: answering a fire panel's phone call in firmware.
+
+Evidence: the docs tests 31 passed, 2 skipped (KiCad), with the forms tests; `site/blog.py
+--check`, `site/examples.py --check` and `site/forms.py --check` exit 0; each post passes the
+blog's sentence and word rules.
+
 ## 2026-11-17 — Signet in 8 sections, and the tile its pictures left out
 
 The owner asked for the ring to have more sections, so that it is smoother. More tiles turn the
