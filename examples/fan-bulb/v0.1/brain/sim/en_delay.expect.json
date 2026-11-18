@@ -1,0 +1,5 @@
+{
+  "c6_after_ms": {"min": 0.05, "source": "U1's EN rises 50 us or more after VDD reaches 3.0 V (ESP32-C6 datasheet, power-up timing tSTBL)"},
+  "s3_after_ms": {"min": 0.05, "source": "U2's CHIP_PU likewise (ESP32-S3 datasheet v2.2, power-up timing tSTBL)"},
+  "c6_up_ms": {"max": 50, "source": "the radio starts within 50 ms of the line: the bulb answers a pull chain at once (README, Firmware)"}
+}

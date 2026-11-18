@@ -1,0 +1,7 @@
+{
+  "ratio": {
+    "min": 0.7933,
+    "max": 0.8733,
+    "source": "position 1 (PS4) at 5/6 of full scale, within 0.04: half the 0.0833 margin to the decoder's thresholds"
+  }
+}

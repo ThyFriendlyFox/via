@@ -1,0 +1,4 @@
+{
+  "v_dc": {"min": 3.1, "max": 3.6, "source": "the SPH0641LU4H-1's 1.62 to 3.6 V (datasheet rev. B); the drop across R2 at 1.4 mA"},
+  "ripple_mv": {"max": 3, "source": "under 3 mV peak to peak: 30 times under the 100 mV the microphone's own power supply rejection is stated at (datasheet rev. B, PSR), so the ripple sits under its noise floor"}
+}

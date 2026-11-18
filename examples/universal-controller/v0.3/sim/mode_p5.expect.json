@@ -1,0 +1,7 @@
+{
+  "ratio": {
+    "min": 0.1267,
+    "max": 0.2067,
+    "source": "position 5 (Bluetooth) at 1/6 of full scale, within 0.04: half the 0.0833 margin to the decoder's thresholds"
+  }
+}

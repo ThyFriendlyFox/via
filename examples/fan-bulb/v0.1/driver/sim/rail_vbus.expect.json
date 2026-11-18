@@ -1,0 +1,6 @@
+{
+  "z_peak": {
+    "max": 100,
+    "source": "VBUS's impedance under 100 ohm from 1 to 50 kHz: the ULD capacitors' 96 ohm of ESR damp the pi filter flat, so no source meets a resonance (sim/frequency-plan.json)"
+  }
+}

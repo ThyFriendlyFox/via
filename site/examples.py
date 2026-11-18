@@ -61,6 +61,10 @@ PICTURES = {
     # The card that names the example on the site: the made thing, where there is more than a board.
     "card.png": ("assembly-iso.png", "board-3d-iso.png"),
 }
+# A card whose made thing the key cannot lift off KiCad's backdrop. Every whole-bulb render of Lark
+# draws a clear housing and a fan behind it; the card left a pale outline of both. Its card is its
+# light disc, the 16 LEDs on their ring.
+CARD_FROM = {"lark": "light-board-3d-iso.png"}
 # The widest each picture is written: twice the most a page shows it at. A picture is written in 256
 # colours with its transparency, a fifth of the bytes, and no banding a reader sees on a render.
 WIDTHS = {"top.png": 1100, "bottom.png": 1100, "card.png": 760}
@@ -954,6 +958,8 @@ def write_pictures(ex: Example) -> None:
     folder.mkdir(parents=True, exist_ok=True)
     record: dict = {"sources": {}}
     for name, sources in PICTURES.items():
+        if name == "card.png" and ex.slug in CARD_FROM:
+            sources = (CARD_FROM[ex.slug],)
         (folder / name).unlink(missing_ok=True)
         source = next((docs / s for s in sources if (docs / s).is_file()), None)
         if source is None:

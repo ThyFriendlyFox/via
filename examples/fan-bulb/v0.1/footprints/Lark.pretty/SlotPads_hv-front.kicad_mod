@@ -1,0 +1,55 @@
+(footprint "SlotPads_hv-front"
+	(version 20241229)
+	(generator "make_footprints")
+	(layer "F.Cu")
+	(descr "Lark joint hv-front: 2 pads beside the slot of the driver's tongue; place at the disc's centre")
+	(tags "joint tongue slot bulb")
+	(property "Reference" "J**"
+		(at 0 0.25 0)
+		(layer "F.SilkS")
+		(hide yes)
+		(uuid "07f8840e-d185-520d-851a-261dc47812ef")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.1)
+			)
+		)
+	)
+	(property "Value" "SlotPads_hv-front"
+		(at 0 3.75 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "8c8c8d89-1aa4-5a8e-ab28-2831a4633fd5")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.1)
+			)
+		)
+	)
+	(attr smd exclude_from_pos_files exclude_from_bom)
+	(fp_rect
+		(start -9.75 1.1)
+		(end -4.45 2.9)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "c1fa1376-2746-5dc4-8410-a17152a66067")
+	)
+	(pad "1" smd rect
+		(at -8.6 2)
+		(size 2 1.5)
+		(layers "F.Cu" "F.Mask")
+		(uuid "67fb4df5-f3f9-5f46-9188-a75fd1cfe94c")
+	)
+	(pad "2" smd rect
+		(at -5.6 2)
+		(size 2 1.5)
+		(layers "F.Cu" "F.Mask")
+		(uuid "c761ddcf-d875-54f4-9f22-c7c9287b00f7")
+	)
+)

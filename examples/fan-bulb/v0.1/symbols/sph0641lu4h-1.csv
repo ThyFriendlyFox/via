@@ -1,0 +1,6 @@
+Number,Name,Type,Side
+5,VDD,power_in,top
+2,SEL,input,left
+4,CLOCK,input,left
+1,DATA,tri_state,right
+3,GND,power_in,bottom

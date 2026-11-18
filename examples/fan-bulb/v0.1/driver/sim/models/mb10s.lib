@@ -1,0 +1,10 @@
+* MB10S, 1000 V 0.5 A bridge (onsemi MB10S rev. 3): 4 diodes fitted to the datasheet's
+* VF <= 1.0 V at 0.5 A per diode, 1000 V. Pins as KiCad's MB6S symbol: AC1, AC2, +, -.
+* onsemi publishes no model (library/sources.csv). sim/mb10s_model.cir holds it to the datasheet.
+.subckt MB10S AC1 AC2 P N
+D1 AC1 P DBR
+D2 AC2 P DBR
+D3 N AC1 DBR
+D4 N AC2 DBR
+.model DBR D(IS=1e-9 N=1.8 RS=0.1 BV=1000 IBV=5u CJO=15p TT=2u)
+.ends MB10S

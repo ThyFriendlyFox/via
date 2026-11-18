@@ -1,0 +1,67 @@
+(footprint "Tongue_lv-front"
+	(version 20241229)
+	(generator "make_footprints")
+	(layer "F.Cu")
+	(descr "Lark joint lv-front: 4 pads on the driver's tongue, 1.1 x 1.35 mm, their middle at z 51.275 mm; place at the bulb's axis")
+	(tags "joint tongue slot bulb")
+	(property "Reference" "J**"
+		(at 0 -1.675 0)
+		(layer "F.SilkS")
+		(hide yes)
+		(uuid "3970e86a-5d1e-5e4b-abab-014a739a0678")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.1)
+			)
+		)
+	)
+	(property "Value" "Tongue_lv-front"
+		(at 0 1.675 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "75a4ac4d-7193-53ac-ae56-7bccb5d38cb4")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.1)
+			)
+		)
+	)
+	(attr smd exclude_from_pos_files exclude_from_bom)
+	(fp_rect
+		(start 4 -0.825)
+		(end 10.2 0.825)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "182f13eb-3772-5ef4-a0b4-12a0a4923593")
+	)
+	(pad "1" smd rect
+		(at 4.7 0)
+		(size 1.1 1.35)
+		(layers "F.Cu" "F.Mask")
+		(uuid "421a069b-16a4-5e93-ba57-264ca61fad57")
+	)
+	(pad "2" smd rect
+		(at 6.3 0)
+		(size 1.1 1.35)
+		(layers "F.Cu" "F.Mask")
+		(uuid "ed9f9fd5-3a79-512c-babc-ee6ca552745f")
+	)
+	(pad "3" smd rect
+		(at 7.9 0)
+		(size 1.1 1.35)
+		(layers "F.Cu" "F.Mask")
+		(uuid "305eb621-b99f-51f9-a3f0-32ad67eb62ce")
+	)
+	(pad "4" smd rect
+		(at 9.5 0)
+		(size 1.1 1.35)
+		(layers "F.Cu" "F.Mask")
+		(uuid "6ed65dc6-36c1-5ca8-9293-ec88c1e28f71")
+	)
+)

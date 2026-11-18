@@ -106,7 +106,10 @@ classes.
    out before the route (M137). List it with no `--layer`: a keep-out on
    one face that bans vias holds the other face's pads too, and a pad of
    a poured net counts, since it reaches the pour through a via beside it
-   (M138).
+   (M138). A pad outside a keep-out whose way out passes it needs a
+   track's room there (2 clearances and a width), and a small part in a
+   packed row needs room for its ground via, or a filled via in its pad:
+   the courtyards and the unrouted DRC see neither (M213).
 5. Via sizes are rules too. The default via, each net class's and each
    hand via must meet the board's minimum hole (0.3 mm), minimum via
    (0.5 mm) and annular ring (0.1 mm), as `Design.board_rules()` gives
@@ -185,7 +188,21 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
     row of stages) is a pour on a layer the design gives it, drawn by the
     design, and goes to the router as a plane net: 1 pin, its vias
     obstacles. A motherboard's 4 supply nets as tracks ran 20 minutes
-    without finishing a pass, twice (M150).
+    without finishing a pass, twice (M150). A plane layer in
+    `plane_layers` is not in the router's file at all: its net goes to
+    the router as tracks unless the design's `dsn()` says otherwise (M207).
+13. A net cut to 1 pin leaves its other pads out of every net class: the
+    router keeps only its default clearance from them, and a class-pair
+    rule (`class_class`) that keeps a switch node 0.8 mm from the logic
+    stops reaching the plane net's pads. Where such a rule names the plane
+    net's class, give the router the plane layer as a `power` layer with
+    the net's `plane` on it instead, every through-hole shape on that layer
+    too: its pads keep their class and it has nothing to route (M208).
+14. Run the checkout's own tools: `python3 tools/workcenter` from the
+    repository, or the installed `workcenter` only after `workcenter doctor`
+    names the checkout as its source. A container image holds the copy of
+    the tools it was built from. Read step 6 as the file says it now, not
+    as an earlier session remembered it (M215).
 
 Done when: the DRC after the route lists 0 errors, or every remaining
 error is named in the next design change.
@@ -292,7 +309,7 @@ axis it defines (a 3D model's rotation or offset, an export's origin).
     a source, never read from 1 item of the file. A geometric test takes
     the file's grain as its tolerance (1 nm in a `.kicad_pcb`), and a
     case outside it that the check cannot judge gets its own not-judged
-    line (M210, M211).
+    line (M221, M222).
 
 Done when: a test parses a real sample of each shape, failures among them,
 and the parser's assumptions are written next to it.
@@ -346,7 +363,7 @@ When: every shell command.
    hours where that cannot be counted. A command that is not a
    `workcenter` command and starts an engine (a bare `kicad-cli`, a
    `pytest` file of engine tests) runs under
-   `python3 tools/enginelock.py hold -- <command>` (M220).
+   `python3 tools/enginelock.py hold -- <command>` (M231).
 
 Done when: the command ran where and how you meant, and the paths it
 printed are the ones you expected.
@@ -458,6 +475,12 @@ reservations, or part spacing in a design to help the router.
    than three pad pitches, list the pads on each side of it whose nets
    must cross it. If one of them cannot cross on the other layer, move a
    part instead of drawing the lane.
+6. A part turned so its pins face their partners: generate, read the
+   turned part's pads with `workcenter inspect list <board> --box` and its
+   partners' pads beside them, and route only when each pin faces where it
+   goes. A pin side worked out from the footprint's rotation in the head
+   was wrong for a SOT-223 and cost a route that left 30 links open
+   against 20 (M209).
 
 Done when: the commit says what was measured and the number went down.
 
@@ -547,7 +570,7 @@ When: a change is about to be called done.
    requirement's own sentence, not from the code's restatement of it; for
    a check over copper, 1 case for each kind of copper item reaching each
    other kind (track, arc, via, pad, pour); for a check of a project, 1
-   case with a nested board (M213 to M217).
+   case with a nested board (M224 to M228).
 
 7. A branch put on `main` without a pull request (a board repository's
    version, on the owner's word) goes by a fast-forward push, never by
@@ -818,7 +841,11 @@ after any change to what the boards look like in that version.
    and an assembly) writes one sheet per GIF with the frames at 0, 90, 180
    and 270 degrees, and leaves `docs/` alone. The end-on frames crop first:
    lower `zoom`, and raise the pivot's z to the middle of a tall assembly,
-   in the manifest, until all four are whole.
+   in the manifest, until all four are whole. Run it for every version,
+   not only the first: a version copies its manifest and its scenes with
+   their zoom. For an example in `examples/`, `python3 site/examples.py
+   --pictures` names a turning render that cuts the thing off ("cuts it
+   off at frame N"); the version is not done while it names one (M214).
 3. `workcenter pictures <version>`: every board's stills and every layer
    (`render --strict`: a part the 3D views draw without a body fails its
    board, and nothing of that board is copied; give the part its body,
@@ -840,7 +867,9 @@ after any change to what the boards look like in that version.
    at its mid-plane, and KiCad turns a model the other way from the
    right-hand rule (the `board-design` skill). A picture that looks wrong
    is fixed by measuring 1 body, never by moving the scene until it looks
-   right: 2 errors can show as 1 (M131).
+   right: 2 errors can show as 1 (M131). Each body takes a name of its
+   own: `tools/scene.py` stops on a second body under a name the scene
+   wrote, which would replace the first on disk (M212).
 8. Pictures of a large board take a while: a 244 mm motherboard's took 17
    minutes, most of it the turning GIF. Run them as a background job with
    a limit over the sum of every step the job holds (M154).
@@ -947,7 +976,11 @@ written for the project, or a 3D body comes from a vendor.
    short, a web page, or a `.pdf` that does not start `%PDF` is refused and
    nothing is written. A file no site will serve is downloaded by a person
    and kept with `workcenter fetch --file <file> --url <url> --to ... --mpn
-   <MPN> --row`; its row says the workcenter did not fetch it.
+   <MPN> --row`; its row says the workcenter did not fetch it. The part's
+   value on the schematic names the part those rows are for, copied from
+   `sources.csv`, never typed from memory: a 2835 LED named after another
+   maker's family sat on a board whose datasheet and model were
+   Bridgelux's (M211).
 2. Keep each file as the vendor publishes it, its notice intact; a model
    that ngspice reads differently is translated into a copy in `build/`,
    never in the library. The row records what the file itself prints: the
@@ -991,6 +1024,12 @@ written for the project, or a 3D body comes from a vendor.
     method=gear` with `reltol`, `vntol` and `chgtol` loosened, its answer
     checked against the other integration method. A deck is left out of
     the corners only with a reason no option fixes (M144).
+11. A deck's load or stimulus is written as a sum in its header from the
+    parts and the firmware constants it names (each string's watts, each
+    efficiency), and a firmware limit the sum depends on exists in the
+    firmware's code with a host test, before the deck's bounds are judged.
+    A bus deck said "both strings at full current" over a load that was 1
+    string's, and no firmware held the 2 strings to it (M210).
 
 Done when: `workcenter sources` passes for every board of the version, each
 model a deck uses has its datasheet rows as `warn` bounds, each loop deck
@@ -1023,7 +1062,7 @@ circuits it touches. The `verification` skill is the how-to.
    document declares it in a module-level
    `CITES = {"<index id>": "<where in it>"}`, and the document has an entry in
    `rules/references/index.json`; `workcenter references rules` fails the
-   citation otherwise (M212). A limit computed from parts'
+   citation otherwise (M223). A limit computed from parts'
    values carries the tolerances its source names (M82). A requirement the
    owner restates or adds names "the owner's decision of <date>" in its
    Source; one the owner withdraws moves to the requirements' Withdrawn
@@ -1224,7 +1263,7 @@ a task.
    helper runs the commands as they are, and runs a test file or a bare
    engine under `python3 tools/enginelock.py hold -- <command>`. A waiting
    command prints where it stands every 30 seconds; `workcenter doctor`
-   names who holds the lock (M125, M220).
+   names who holds the lock (M125, M231).
 8. Send no message to a helper that a workflow runs. A message to its id
    starts a second runner from its transcript, and the 2 write the same
    files. The brief tells each helper the same: it sends no message to
@@ -1346,6 +1385,11 @@ finding is a gap in the workcenter, never a board's own fault.
      line that cites one. Then read each log the copy touched: a 3-way
      apply puts an entry where its context matched, which can be the
      middle of the log. See each of its tests fail on `main`'s code.
+   Before the push, run the whole suite (`python3 -m pytest tests`),
+   not the tests of the files the merge touched: a branch older than a
+   check of `main` fails it with no conflict in the check's file. 22
+   library tables of 2 branches named this machine's paths, and `main`
+   went red (M217).
    The work has landed when the listing shows the branch at 100 %.
 3. Run `python3 tools/harvest.py scripts`. A script that 2 or more
    projects wrote is a tool the workcenter lacks. Read the newest file of

@@ -1,0 +1,12 @@
+Number,Name,Type,Side
+A1,X_VCC,power_in,left
+A2,X_OUT,output,left
+A3,X_GND,power_in,left
+B1,Y_VCC,power_in,left
+B2,Y_OUT,output,left
+B3,Y_GND,power_in,left
+a,SW_A,passive,right
+d,SW_D,passive,right
+b,SW_B,passive,right
+c,SW_C,passive,right
+MP,FRAME,passive,right

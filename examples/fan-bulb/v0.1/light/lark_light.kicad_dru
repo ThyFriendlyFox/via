@@ -1,0 +1,28 @@
+(version 1)
+# Lark's spacing between the mains domain and the 3.3 V logic. The bulb is not isolated: every node
+# is at mains potential to earth, and the housing is the insulation. These rules keep the boards'
+# own nodes apart where they differ by up to the rectified mains' 198 V peak (140 V rms high line).
+# IPC-2221B Table 6-1, 151-250 V: B1 (internal conductors) 0.2 mm, B4 (external, coated) 0.4 mm, A6
+# (external component lead or termination, coated) 0.8 mm. Nets of the net class HV differ from GND by up to 198 V.
+
+# An HV or LNK net (any net class but Default) to a logic net on F.Cu or B.Cu: 0.8 mm, A6, so a bare
+# pad meets the coated rule too.
+(rule "lark: HV to logic 0.8 mm"
+	(layer outer)
+	(constraint clearance (min 0.8mm))
+	(condition "A.NetClass != 'Default' && B.NetClass == 'Default'"))
+
+# Inside the board, between 2 layers of FR-4: B1 (internal conductors), 0.2 mm up to 300 V, for an HV
+# or LNK net to any other net.
+(rule "lark: HV inside 0.2 mm"
+	(layer inner)
+	(constraint clearance (min 0.2mm))
+	(condition "A.NetClass != 'Default' || B.NetClass != 'Default'"))
+
+# Pads of 1 part keep the spacing its maker drew: an offline LED controller's VIN pin stands 1.27 mm
+# from its CS pin. The datasheet's own pin pitch is the rating.
+(rule "lark: pads of 1 part"
+	(constraint clearance (min 0.2mm))
+	(condition "A.Type == 'Pad' && B.Type == 'Pad' && A.Reference == B.Reference"))
+
+# Copied by the workcenter from lark.kicad_dru (Design.fab); edit the source, not this file.

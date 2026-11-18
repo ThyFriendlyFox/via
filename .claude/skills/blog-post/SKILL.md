@@ -52,6 +52,32 @@ path below to where it keeps posts (`blog/`, `posts/`, or the site repo).
 7. Do not publish beyond the repo without the human's go-ahead: the
    post goes live when it reaches `main`.
 
+## A post about an example board
+
+The owner's ask of 2026-11-18: each example board has a post, written as
+an electrical engineer who knows the theory, the science and the papers
+behind the device, explains them to a reader who is a little technical:
+"hey, this is a project, and how we came to make it". `docs/STYLE.md`
+website rule 10 holds it.
+
+1. Speak as "we", Team Reagent. Say once that an AI agent designed the
+   board with Via from our brief. Invent no personal story: the brief,
+   the owner's asks in the devlog and the rounds in the files are the
+   story.
+2. Open with what the device is and why we made it. Put the board's
+   `card.png` alone on its line after that.
+3. Give 2 to 4 sections of science, each on 1 idea the device depends on:
+   how it works, the paper, standard or book it comes from (authors,
+   title, venue, year), and how the board uses it. Build each idea from
+   the ground up with a number or an everyday comparison before naming
+   it. Cite only a work that says what the post says; leave a doubtful
+   one out.
+4. Tell how the design went, from the example's README, TIMELINE.md,
+   LOOP.md, the devlog and `MISTAKES.md`, numbers copied from the files.
+5. End with what is open, then 1 or 2 sentences of intent.
+6. 900 to 1300 words. Name the file `blog/YYYY-MM-DD-<board>-<words>.md`
+   and set `image` to the board's card.
+
 ## Checks
 
 - Every claim in the post traces to a devlog entry, changelog line, or

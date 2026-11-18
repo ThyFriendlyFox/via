@@ -1,0 +1,4 @@
+{
+  "vstr_typ": {"min": 72.0, "max": 74.5, "source": "8 x the typical 9.2 V at 25 C and 9.1 V at 85 C, Bridgelux DS207 Tables 1 and 2: 72.8 to 73.6 V; the model's own spread over 0 to 85 C"},
+  "vstr_max": {"max": 77.5, "source": "the highest string the driver serves: 8 LEDs at the top bin (9.6 V, Table 1) at the coldest corner. driver/sim/bus_valley.cir holds the bus over 77.5 / 0.75 = 103 V, the HV9961's duty limit (DS20005588B, Section 3.3)"}
+}

@@ -95,6 +95,30 @@ the board a 25 um wall. The standard defines a microvia by its shape (3.2.40, pa
 a board is built. HDI is now what the project states. Another fault: 2 tracks that a file rounds 1 nm
 apart were not parallel, and the rule was skipped with no line. All 5 are fixed with tests.
 
+## 2026-11-18 — Lark and 2 new versions on the site, a community link, and a post per board
+
+The owner asked for a link to the team's Discord, a line at the foot of every page, the new
+lightbulb example on the site, and the new versions of the first six. The lightbulb, Lark, was on
+an open branch, as were Signet v0.5 and Rosetta v0.3. I merged all 3. Their 10 mistakes had taken
+numbers `main` already used, so they are M207 to M216 now, in every file that cites them. Lark's
+whole-bulb renders show a clear housing and a fan behind it, and the site's key left a pale outline
+of both. Its card is its light disc. The owner then asked for a post on each board, told by an
+engineer who knows the science behind it. 7 writers drafted the posts from a brief and a checker;
+I read each against its board's files and its citations. In Lark's I changed the picture's words
+to the light disc and dropped a spacing class the rule file may name wrong.
+
+Published post: Hush, a speaker that plays the inverse of what it hears.
+Published post: Lark, a voice-controlled ceiling-fan bulb on four boards.
+Published post: Signet, a mouse worn as a ring of flat boards.
+Published post: Rosetta, a controller whose knob picks the console.
+Published post: Wyvern, a Snapdragon module on one flat board.
+Published post: Basalt: fitting a Threadripper onto a microATX board.
+Published post: Herald: answering a fire panel's phone call in firmware.
+
+Evidence: the docs tests 31 passed, 2 skipped (KiCad), with the forms tests; `site/blog.py
+--check`, `site/examples.py --check` and `site/forms.py --check` exit 0; each post passes the
+blog's sentence and word rules.
+
 ## 2026-11-17 — Roadmap item 1 landed (in part): a fuse's rule, and the engine's mutation list
 
 Roadmap item 1 landed (in part). A fuse's current now has a rule in both packs. NASA holds a cartridge fuse by its rating, from table 4 of section F3. ECSS holds a cermet fuse to table 6-17, and grants any other fuse no share. The engine got its mutation list: 433 single changes, run with `make mutate-ratings`. A reviewer found 9 faults. The worst let a cartridge fuse of a rating the table does not list pass at 3 times its rating. All 9 are fixed, each with a test that failed first. `procure` now refuses a parts row with too few or too many fields, where it crashed. On landing, 1 hint was a sentence of 25 words, which `tests/test_guide.py` refuses; the fix pass had not run that file.
@@ -118,6 +142,25 @@ The owner asked for the ways the lead worked today to be skills in the kit: the 
 A reviewer who did not write the tools found 10 faults, and the same root cause came back in a new form. `landed.py` no longer took a null review as passed, but it still landed a piece whose review was a sentence of text or `{}`. A review now counts only with a verdict and a list of findings, and a fix only with a list `fixed`. A review started twice kept only the result reported last; both now count. 2 journals that used the same agent ids mixed their pieces. The gate, stopped by a signal, removed its lock while `make verify` ran on; it now ends make's process group first. `quiet.py` missed a test run started as `pytest`. The skills were written beside the card's own change of the same day; on landing, the `now` skill takes the command's `--status` and the card's form as the trunk holds them.
 
 Evidence: branch `wip/land-kit-skills`; `tests/test_lead.py`, `tests/test_lead_skills.py`, `tests/test_now.py`.
+
+## 2026-11-17 — Signet in 8 sections, and the tile its pictures left out
+
+The owner asked for the ring to have more sections, so that it is smoother. More tiles turn the
+ring less at each corner and leave each tile less room. The radio module sets the widest tile, so 8
+is the most that fits: the 5 small tiles are 6.83 mm, room for 1 regulator or charger between 2
+joints, and 9 tiles would leave them 5.8 mm. The ring now turns 66.9 degrees beside the radio and
+37.7 elsewhere, where it turned up to 75.9. The old power tile became 3 tiles, and the radio's small
+parts became 0201s or moved to the tiles beside it. My first radio, 12.7 mm, fitted every courtyard
+and routed with 18 links open: there was no room for the capacitors' ground vias, and 1 pad sat
+behind the antenna's keep-out. At 13.2 mm, with filled vias in the pads and a few links drawn by
+hand, it routed. The new pictures showed a hole where the cell tile should be: since v0.2 the
+assembly had written the tile and its pouch under 1 file name, and the pouch won. `scene.py` now
+refuses a second body under a name it wrote. The site's page found one more: the ring's turning
+picture had never shown the ring, only 2 or 3 tiles at a time, since v0.1. I had sent it to the
+owner twice. It turns at half the zoom now, checked frame by frame.
+
+Evidence: every tile of `examples/ring-mouse/v0.5` GREEN (the radio with 2 legend warnings); 52
+corner runs on the gauge's deck; `make -C firmware test`; M212 to M214.
 
 ## 2026-11-17 — The blog's links keep what a reader sends
 
@@ -650,6 +693,28 @@ a label names is built at the size it reserves (it fails with 1 removed);
 the page in Chromium at 1440, 800 and 390 px: 1 label every 3 seconds,
 the model drawn with no console error, no sideways scroll; `make verify`
 before the push.
+
+## 2026-11-12 — Rosetta v0.3: a screen, rings round the sticks, turbo and a cell
+
+The owner asked for the controller to be wireless and run more of itself
+in software: a screen, lights round the sticks, back buttons for turbo,
+a rechargeable cell with fast USB-C charging, and USB-C data when the
+cell is flat. v0.3 has all of them on the same outline. Turbo repeats a
+button at a fixed rate; I said I would not build timing meant to get
+past a game's detection, and did not. The charger's 9 and 12 V modes
+stay off, because the same 5 V feeds the licensed controller on the
+second port. A ring of LEDs could not sit on a circle round a stick's
+rectangular body at first; turned by half a step, all 8 clear it. The
+first 2 routes ran an old copy of the tools inside the container, at
+more passes than the process now names, and timed out with nothing.
+Routed with the repository's tools at 12 passes, 6 power links stayed
+open at chips whose pins are closer than the power tracks are wide; short
+narrow tracks out of each pin closed them, and 3 more links were drawn
+by hand.
+
+Evidence: `workcenter gates examples/universal-controller/v0.3` GREEN with
+5 warnings; `make -C examples/universal-controller/v0.3/firmware test`;
+M215
 
 ## 2026-11-12 — A reader who trusts nothing read the README's front page
 

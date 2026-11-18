@@ -1,0 +1,9 @@
+{
+  "sources": [
+    {"name": "the driver's LinkSwitch-TN2 ripple on +3V3", "hz": [62000, 70000], "source": "LinkSwitch-TN2 datasheet rev. Q, fOSC 62 / 66 / 70 kHz; sim/mic_supply.cir drives it"}
+  ],
+  "resonances": [],
+  "harmonics": 10,
+  "guard": 0.1,
+  "overlaps": []
+}

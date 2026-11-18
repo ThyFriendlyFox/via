@@ -1,0 +1,43 @@
+* Lark: the bus through each 120 Hz valley at full power, 120 V rms. The mains reach F1 at their
+* peak at t = 0 (the worst inrush); BR1 (MB10S, models/mb10s.lib) fills C2, L1 carries it to C3 and
+* C4. The load is the most the firmware draws: warm and cool together at 90 % of one string's full
+* current (README, Firmware: the power budget), 0.9 x 7.4 W of LEDs (sim/led_channel.cir) at 90 %,
+* and 0.6 W of logic at 70 %: 8.3 W drawn from VBUS as a constant power. At 100 % of one string
+* (9.1 W) a capacitor at +20 % beside 2 at -20 % carries 48.3 mA, over its 47 mA.
+* Each ULD capacitor carries its ESR at 120 Hz: tan d 0.24 / (2 pi 120 x 3.3 uF) = 96 ohm (Nichicon
+* ULD, CAT.8100N). The bus's negative rail is NBUS (ngspice reads a node named gnd as ground,
+* which would join it to the mains' return). VBUS must stay over the strings' highest voltage over 0.75, the HV9961's duty
+* limit, or the LEDs' current dips 120 times a second: under a fan's blades a strobe. The deck
+* starts with every capacitor empty (uic) and reads each one's ripple current.
+.include "models/mb10s.lib"
+.param vrms=120 pload=8.3
+VAC ac1 0 SIN(0 {vrms*1.41421} 60 0 0 90)
+RF1 ac1 aclf 10
+XBR1 aclf 0 vrect nbus MB10S
+C1 vrect nbus 100n
+C2 vrect c2x 3.3u
+VC2 c2x c2e DC 0
+RC2 c2e nbus 96
+L1 vrect l1e 470u
+RL1 l1e vbus 3.3
+C3 vbus c3x 3.3u
+VC3 c3x c3e DC 0
+RC3 c3e nbus 96
+C4 vbus c4e 3.3u
+RC4 c4e nbus 96
+BLOAD vbus nbus I = {pload} / max(V(vbus, nbus), 30)
+.options method=gear reltol=1e-3
+.control
+tran 5u 300m 0 5u uic
+let vb = v(vbus) - v(nbus)
+meas tran vbus_min min vb from=200m to=300m
+meas tran vbus_max max vb from=200m to=300m
+meas tran i_in min i(vac) from=0 to=10m
+let inrush_a = -i_in
+meas tran ic2_rms rms i(vc2) from=200m to=300m
+meas tran ic3_rms rms i(vc3) from=200m to=300m
+let ic2_rms_ma = ic2_rms * 1000
+let ic3_rms_ma = ic3_rms * 1000
+print vbus_min vbus_max inrush_a ic2_rms_ma ic3_rms_ma
+.endc
+.end

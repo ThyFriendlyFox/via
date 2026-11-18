@@ -1,0 +1,32 @@
+* Lark: VBUS's impedance where the LED channels draw their switching current (PROCESSES.md P30).
+* Between the line's peaks BR1 is off: C2 hangs from L1's far end, C3 and C4 sit at VBUS. Each ULD
+* capacitor carries its 120 Hz ESR (96 ohm, from tan d 0.24, Nichicon CAT.8100N), L1 its DCR (3.3 ohm,
+* Bourns SDR0604-471KL). A 1 A AC current at VBUS reads the impedance in ohms. The peak is looked
+* for from 1 kHz to 50 kHz, where the pi filter would ring (the sweep's own span; a loop finds where the impedance is highest, which
+* is the span's edge when nothing peaks), under the LinkSwitch's 62 kHz and the LED channels' 150 kHz.
+RLK vrect 0 1G
+C2 vrect c2e 3.3u
+RC2 c2e 0 96
+L1 vrect l1e 470u
+RL1 l1e vbus 3.3
+C3 vbus c3e 3.3u
+RC3 c3e 0 96
+C4 vbus c4e 3.3u
+RC4 c4e 0 96
+ITEST 0 vbus DC 0 AC 1
+.control
+ac dec 200 1k 50k
+let zv = vm(vbus)
+let fv = real(frequency)
+let z_peak = vecmax(zv)
+let f_peak = fv[0]
+let k = 0
+while k < length(zv)
+  if zv[k] >= z_peak
+    let f_peak = fv[k]
+  end
+  let k = k + 1
+end
+print z_peak f_peak
+.endc
+.end

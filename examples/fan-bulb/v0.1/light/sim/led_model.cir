@@ -1,0 +1,14 @@
+* Lark: the LED model against its datasheet. 100 mA through 1 LED9V at 25 C and at 85 C (Bridgelux
+* DS207 rev. G, Tables 1 and 2: pulsed, the solder point at the temperature). A DC sweep of the
+* circuit's temperature runs both in one deck; the deck runs as written, not at the corners.
+.include "models/led_2835_9v.lib"
+I1 0 a DC 100m
+X1 a 0 LED9V
+.control
+dc temp 25 85 60
+let vf25 = v(a)[0]
+let vf85 = v(a)[1]
+let tc_mv = (vf85 - vf25) / 60 * 1000
+print vf25 vf85 tc_mv
+.endc
+.end

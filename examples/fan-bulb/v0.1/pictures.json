@@ -1,0 +1,97 @@
+{
+  "boards": [
+    {
+      "path": "driver",
+      "name": "driver",
+      "prefix": "driver-",
+      "strict": true,
+      "stills": [
+        "board-3d-top.png",
+        "board-3d-bottom.png",
+        "board-3d-iso.png",
+        "schematic.png"
+      ],
+      "layers": "layers-driver.png",
+      "spins": [
+        {
+          "as": "driver-spin.gif",
+          "tilt": -55,
+          "zoom": 0.9
+        }
+      ]
+    },
+    {
+      "path": "light",
+      "name": "light",
+      "prefix": "light-",
+      "strict": true,
+      "stills": [
+        "board-3d-top.png",
+        "board-3d-bottom.png",
+        "board-3d-iso.png",
+        "schematic.png"
+      ],
+      "layers": "layers-light.png",
+      "spins": [
+        {
+          "as": "light-spin.gif",
+          "tilt": -55,
+          "zoom": 0.9
+        }
+      ]
+    },
+    {
+      "path": "brain",
+      "name": "brain",
+      "prefix": "brain-",
+      "strict": true,
+      "stills": [
+        "board-3d-top.png",
+        "board-3d-bottom.png",
+        "board-3d-iso.png",
+        "schematic.png"
+      ],
+      "layers": "layers-brain.png",
+      "spins": [
+        {
+          "as": "brain-spin.gif",
+          "tilt": -55,
+          "zoom": 0.9
+        }
+      ]
+    },
+    {
+      "path": "ear",
+      "name": "ear",
+      "prefix": "ear-",
+      "strict": true,
+      "stills": [
+        "board-3d-top.png",
+        "board-3d-bottom.png",
+        "board-3d-iso.png",
+        "schematic.png"
+      ],
+      "layers": "layers-ear.png",
+      "spins": [
+        {
+          "as": "ear-spin.gif",
+          "tilt": -55,
+          "zoom": 0.9
+        }
+      ]
+    }
+  ],
+  "scenes": [
+    {
+      "script": "assembly.py",
+      "what": "the 4 boards in the A19 housing, hanging base-up, the neck and dome drawn clear",
+      "copy": {
+        "build/assembly/assembly-iso.png": "assembly-iso.png",
+        "build/assembly/assembly-side.png": "assembly-side.png",
+        "build/assembly/assembly-room.png": "assembly-room.png",
+        "build/assembly/assembly-top.png": "assembly-top.png",
+        "build/assembly/assembly-spin.gif": "assembly-spin.gif"
+      }
+    }
+  ]
+}

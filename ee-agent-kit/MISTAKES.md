@@ -1252,93 +1252,174 @@ Cost: a rewrite of the post and of the blog's words, and a preview the owner cou
 Root cause: `TONE.md` held my own words and `docs/STYLE.md` the site's, and neither named the blog, so I wrote the post to the website's rules and not to STE's limits. Neither named American spelling or the patterns that mark text as a model's. Nothing counted a post's sentences.
 Process: P37
 
-## M207 — 2026-11-17 — A lock written over, and a review with no result read as 0 findings
+## M207 — 2026-11-17 — A ground plane the router never saw, again
+What happened: Lark's driver went to 4 layers with In1 a ground plane in `plane_layers`. kicadgen leaves a plane layer out of the router's file, so FreeRouting got GND as an ordinary net and joined every GND pad and via with tracks on In2: 37 links stayed open, more than the 26 of the 2-layer board. P4 step 12 (M150) says a plane net goes to the router as 1 pin; I had not applied it to a net the design itself makes a plane.
+Cost: 3 routes of 4 to 6 minutes, the first of them read as a spacing problem.
+Root cause: A step written for supply nets was read as not covering ground, and the router's file was not read before the route.
+Process: P4
+
+## M208 — 2026-11-17 — A plane net cut to 1 pin slipped out of its clearance rule
+What happened: Following P4 step 12, Lark's driver cut GND to 1 pin in the router's file. The router then kept only its default 0.2 mm from the other GND pads, and the class-pair rule that keeps the LinkSwitch's switch node 0.8 mm from the logic no longer reached them: the route put LNK_SW tracks 0.2 mm from 2 GND pads, 4 DRC errors. Giving the router In1 as a power layer holding the GND plane kept every GND pad in GND's class and left it nothing to route: 0 spacing errors.
+Cost: 1 route.
+Root cause: Cutting a net to 1 pin also cuts its pads out of every net class rule; the step that said to cut it did not say so.
+Process: P4
+
+## M209 — 2026-11-17 — A part turned by a pin side worked out in the head
+What happened: To shorten Lark's gate and sense links I turned the HV9961s and the MOSFETs from a pin side worked out in my head: a SOT-223's pins along its y axis. At rotation 0 they lie along x. One turn put each controller's VIN, CS and GATE on the cone's narrow edge, and the turn back the other way left 30 links open against 20. The pads read from `workcenter inspect list` showed each side at once.
+Cost: 2 routes and the reverts.
+Root cause: A turn judged from the footprint's rotation in the head, not from the turned part's pads on the generated board.
+Process: P11
+
+## M210 — 2026-11-17 — A deck's load that the firmware did not hold
+What happened: Lark's bus deck said "both LED channels at full current" over a 9.1 W load, 1 string's worth of LEDs. At the corners a bulk capacitor at +20 % beside 2 at -20 % carried 48.4 mA against its 47 mA rating. Both strings at full would draw more still, and nothing in the firmware held the 2 strings to 1 string's worth. The firmware now holds warm and cool together to 90 % of one string (`LARK_BUDGET`, with host tests), the deck's load is that sum, 8.3 W, and the worst corner carries 44.7 mA.
+Cost: a failed SIM gate, a deck rewrite and a firmware rule.
+Root cause: A deck's load written from intent, not as a sum from its parts and from a firmware limit that existed.
+Process: P27
+
+## M211 — 2026-11-17 — An LED named after another maker's part
+What happened: Lark's light disc named its 16 LEDs "LM281B+ 9V", another maker's 2835 family, while the library, the datasheet and the fitted model were Bridgelux's BXEN-27G and BXEN-50G. Writing the bill of materials from the boards showed it before the commit; the value now names the Bridgelux parts.
+Cost: 1 regeneration of the disc.
+Root cause: A part's value typed from memory, not copied from the row in `sources.csv` its datasheet and model hang on.
+Process: P27
+
+## M212 — 2026-11-17 — A tile drawn over by its own cell
+What happened: Signet's `assembly.py` wrote the cell tile's board body as `cell.wrl` with `scene.board_body`, then the pouch that lies on it with `scene.write`, under the same name. The pouch replaced the board on disk, and both places drew the pouch. v0.2 to v0.4 showed the ring with no cell tile under the pouch. v0.4's end view showed the hole, and I read it as the pouch hiding the tile. I found it in v0.5, when the new ring's iso view showed nothing between the charge and rail tiles.
+Cost: 3 versions' pictures without a tile; 1 assembly drawn again.
+Root cause: `tools/scene.py` gave a body the name it was asked for and wrote over any body of that name without a word, and I looked at a render for what I expected to see.
+Process: P23
+
+## M213 — 2026-11-17 — A narrower tile checked by its courtyards alone
+What happened: For Signet v0.5 I narrowed the radio tile from 15.6 to 12.7 mm, with a column of 0201s on end each side of the module. Every courtyard fitted and the unrouted DRC showed only unconnected items. The route left 18 links open: no 0201 had room beside it for a ground via, and the antenna's keep-out stood 0.1 mm from J1's first pad, whose only path passed through the keep-out. At 13.2 mm, with a filled via in each ground pad and a lane past the keep-out, the router still left the parts' short links to the module for last and could not make them; drawn by hand, the tile routed GREEN.
+Cost: 2 radio routes and 1 full route of 8 tiles, about 40 minutes.
+Root cause: I sized the tile from its courtyards and took the unrouted DRC as the check. Neither sees a pad with no path out, and P3 named keep-outs only for the pads inside them.
+Process: P3
+
+## M214 — 2026-11-17 — A ring's turning picture that never showed the ring
+What happened: Signet's assembly GIF, the picture at the head of its series index and of the root README's section on it, turned with the camera at twice the stills' zoom (0.8 against 0.4). Every frame showed 2 or 3 tiles and the gap between them, never the ring. v0.1 to v0.4 kept it so; I sent it to the owner as "the ring turning" with v0.3 and v0.4. `site/examples.py --pictures` found it when v0.5 reached the site: it left the spin out, "cuts it off at frame 0". At zoom 0.38 all 4 test frames hold the ring whole.
+Cost: 4 versions' turning pictures, and the owner shown a picture that did not show the thing.
+Root cause: P23's framing check ran once, for v0.1, and I did not look at its 4 frames against "whole"; each later version copied the zoom and nothing looked again.
+Process: P23
+
+## M215 — 2026-11-12 — 2 routes ran an image's old tools, at passes P4 no longer named
+What happened: I routed Rosetta v0.3 (176 parts) twice in parallel, at 30 and 40 passes with a 3500 s timeout. Both ran out of time before FreeRouting wrote its session, and left nothing. The runs used the `workcenter` installed in the Docker image, a copy of the tools from the day the image was built: its traceback named `/opt/workcenters/ee/src/tools/kicadgen.py`, not the checkout, which had moved 13 commits. P4 step 6 had changed in those commits to 12 to 20 passes; I took 30 to 40 from memory. A 2-pass run on the checkout's tools took 6 minutes and left 30 connections open.
+Cost: 1 hour of 2 router slots, and a check that "the board is the same under the new tools" that ran the old ones.
+Root cause: I took the installed command for the checkout's, and read a process step from what I remembered instead of the file.
+Process: P4
+
+## M216 — 2026-11-17 — Rosetta v0.3's pictures were 1 render, not P23's set
+What happened: I drew Rosetta v0.3's pictures with `workcenter render` and kept 6 files: 3 stills, 1 turning GIF, the schematic and the sheet of every layer. The render had drawn each of the 17 layers on its own, and I left them in the scratchpad. P23 names `workcenter pictures`, which writes `pictures.json`, checks each GIF's framing, copies every layer into `docs/layers/`, draws the flat front and back, and turns a board with parts on both faces with its back up too. The owner saw the board's layers only on 1 sheet and asked for each one.
+Cost: 1 request from the owner, and 2 runs of `workcenter pictures` (6 minutes each).
+Root cause: I copied v0.2's picture step, which was itself 1 render, instead of reading P23 when the gates went GREEN. P14's close-out names P23, and I did not open either.
+Process: P23
+
+## M217 — 2026-11-18 — 3 branches merged onto `main` on the site's tests alone
+What happened: I merged Lark, Signet v0.5 and Rosetta v0.3 from their branches and pushed `main` after the docs, forms and doc tools tests. `main`'s CI failed 1 test of 1909: `test_no_committed_library_table_names_the_machine_that_wrote_it` found 22 library tables of Lark and Signet v0.5 that named their libraries as `/home/user/via/...`. The branches were generated before `kicadgen.lib_uri` (828702a), and their tables merged with no conflict.
+Cost: 1 red run on `main`, its 15 minutes, and a fix after the push.
+Root cause: I ran the tests of the files I had changed, and read a merge with no conflict as work that met `main`'s checks. A branch older than a check of `main` fails it without touching the check's file.
+Process: P35
+
+## M218 — 2026-11-17 — A lock written over, and a review with no result read as 0 findings
+Numbered M207 on the work branch until it took in the default branch on 2026-11-18.
 What happened: The scratch `gate-and-push.sh` wrote `GATE.lock` whether or not a lock was there, and its EXIT trap, set before its first check, removed the lock on every exit. A second gate, or a gate that stopped at its HEAD check, removed the lock of a gate still running, and helpers then started tests during it. The scratch `landed.py` turned a review whose result was null into an empty object: no findings, so no fix asked, and the piece read as landed with no review.
 The first fix took null alone as "no result"; a review of plain text or `{}` still read as 0 findings and landed, and a gate stopped by a signal still removed its lock while `make verify` ran on.
 Cost: Found when the tools were brought into the kit, and the rest by the item's review; `tests/test_lead.py` holds each (a taken lock stops the gate and is left as it was; a null review, a review with no verdict and a fix with no list `fixed` wait; a stopped gate ends make before the lock goes).
 Root cause: A lock that is not made atomically is no lock, and a missing result was given a default that means "passed". The fix named the 1 missing value seen (null) and not the rule: a result counts only when it holds what a judgement holds.
 Process: P31
 
-## M208 — 2026-11-17 — A board that follows events only
+## M219 — 2026-11-17 — A board that follows events only
+Numbered M208 on the work branch until it took in the default branch on 2026-11-18.
 What happened: Every work card stood in Todo while its body said In progress. The cards were on the project before the workflow Board reached the default branch, and Board moved a card only on that card's own event, so no event ever moved them.
 Cost: The owner saw a wrong board; found by the owner, not by a test.
 Root cause: A workflow that mirrors state from events is as right as the last event that reached it. It also needs a run that reads the whole state, by hand and on a schedule.
 Process: P36
 
-## M209 — 2026-11-17 — A stand-in that answers whatever the query asks
+## M220 — 2026-11-17 — A stand-in that answers whatever the query asks
+Numbered M209 on the work branch until it took in the default branch on 2026-11-18.
 What happened: The stand-in `tests/board/gh.py` answered a canned page whatever the query asked. A field dropped from the query `ISSUES` or `ITEMS` in `tools/board.py` was still in the answer, and the tests stayed green.
 Cost: Found by the review of `--all`; 2 tests now hold the cut, and a dropped field fails tests.
 Root cause: A stand-in for an API answers only what the request asks for, as the API does.
 Process: P7
 
-## M210 — 2026-11-17 — A CAD tool's word taken for the standard's term
+## M221 — 2026-11-17 — A CAD tool's word taken for the standard's term
+Numbered M210 on the work branch until it took in the default branch on 2026-11-18.
 What happened: The board-rules check took a via that KiCad flags `micro` for a microvia, and any microvia on a board for proof that the board is HDI. A 0.3 mm through via with the flag gave every via of the board the 25 um wall the standard gives HDI boards alone.
 Cost: Found by the review of roadmap item 6's left-overs; vias of a board not built as HDI held to a wall no document promised it.
 Root cause: The standard defines a microvia by its shape (a blind via under 250 um, 3.2.40, page 22; blind, 3.2.13, page 18), and HDI is how a board is built (3.2.31, page 20; clause 11). The check read a word of the tool instead of the definition, and a property of the whole board from 1 part of it.
 Process: P7
 
-## M211 — 2026-11-17 — "Parallel" tested by exact equality on rounded coordinates
+## M222 — 2026-11-17 — "Parallel" tested by exact equality on rounded coordinates
+Numbered M211 on the work branch until it took in the default branch on 2026-11-18.
 What happened: 13.6.3g holds 2 parallel tracks under 25 mm apart as 1 conductor. The check took 2 tracks as parallel only when their gap was the same to the last digit. A `.kicad_pcb` holds a coordinate to 6 decimals of a mm, so 2 tracks drawn parallel could be 1 nm off, and the rule was skipped with no line.
 Cost: Found by the review of roadmap item 6's left-overs; a pair that fails as 1 conductor passed.
 Root cause: A geometric test used no tolerance where the file rounds, and a case the check could not judge got no line of its own.
 Process: P7
 
-## M212 — 2026-11-17 — Documents cited in code that no index held
+## M223 — 2026-11-17 — Documents cited in code that no index held
+Numbered M212 on the work branch until it took in the default branch on 2026-11-18.
 What happened: 3 TI notes, 2 RFCs, the XDG specification, NBS Handbook 100, the SI Brochure and 3 textbooks were cited in tool code and tests with their sections and pages, and the index held none of them. `references rules` read only JSON rule files. The high-speed work that landed the same day cited 2 reports, NIST's CODATA pages and DLMF in its code and test, and wrote a source as a text. The frequency plan cited NXP's UM10204 by a table that does not hold the value.
 Cost: a first run of the new check failed 24 citations in 12 files (the piece's own run); on the trunk it failed 3 more and missed 6 documents, 1 of them cited by the wrong table. On the trunk of 2026-11-18 it failed 1 more: the board rules' test of item 6, which landed beside it.
 Root cause: the check was built for rule packs, and code was not a place a rule could stand. P28 step 3 asked a code comment to cite from the document's text, and nothing held the document to the index.
 Process: P28
 
-## M213 — 2026-11-17 — A requirement held because a file named the gate
+## M224 — 2026-11-17 — A requirement held because a file named the gate
+Numbered M213 on the work branch until it took in the default branch on 2026-11-18.
 What happened: `workcenter standards` said a requirement was held by a gate when `board-rules.json` named the layout pack. It never ran the pack on the board. A board that broke the pack was reported as holding it.
 Cost: Found by the first review of roadmap item 11; fixed with a test.
 Root cause: A status of held came from a configuration file, not from the gate's own result on the board.
 Process: P14
 
-## M214 — 2026-11-17 — A rule measured between joints of drawn segments, not along the copper
+## M225 — 2026-11-17 — A rule measured between joints of drawn segments, not along the copper
+Numbered M214 on the work branch until it took in the default branch on 2026-11-18.
 What happened: The 3:1 rule of SZZA009 measured each drawn segment between its ends. A copy of a segment laid over half of a 3.07 to 1 track split it into pieces under 3 to 1, and the strict DRC passed.
 Cost: Found by the first review of roadmap item 11; fixed with a test.
 Root cause: A length was taken from how the file draws the copper, not from the copper's path between 2 pads.
 Process: P14
 
-## M215 — 2026-11-17 — "Nearest" checked from the protector's side only
+## M226 — 2026-11-17 — "Nearest" checked from the protector's side only
+Numbered M215 on the work branch until it took in the default branch on 2026-11-18.
 What happened: The `nearest` rule checked 2 distances measured from the TVS. A line that branched at the connector, with a capacitor 2.89 mm from it and the TVS 4.35 mm from it, passed, and `standards` said the ESD requirement was held.
 Cost: Found by the second review of roadmap item 11; fixed with the fixture `fail-layout-tee`.
 Root cause: The test was written from the code's restatement of the rule, not from the requirement's own sentence: "the TVS nearer the connector than the part it protects".
 Process: P14
 
-## M216 — 2026-11-17 — A copper graph that joined pours only to track points
+## M227 — 2026-11-17 — A copper graph that joined pours only to track points
+Numbered M216 on the work branch until it took in the default branch on 2026-11-18.
 What happened: The 3:1 rule joined a pour to the points of tracks, never to vias or pads. A trace from a pad through a via into the pour of the other face gave no trace to judge and 0 findings (the reviewer's run: 6 mm by 0.25 mm, 24 to 1).
 Cost: Found by the second review of roadmap item 11; fixed with a test.
 Root cause: Each kind of copper item was not tested for reaching each other kind.
 Process: P14
 
-## M217 — 2026-11-17 — A project check that read only the top folder
+## M228 — 2026-11-17 — A project check that read only the top folder
+Numbered M217 on the work branch until it took in the default branch on 2026-11-18.
 What happened: `workcenter standards` judged the board in the project's own folder. A product laid out like Last Hit v0.16, with a second board in `display/`, was reported as holding the ESD pack while `display/` failed it 4 times.
 Cost: Found by the second review of roadmap item 11; fixed with a test.
 Root cause: "The project" was read as 1 folder. The workcenter's own layouts put a second board 1 folder down.
 Process: P14
 
-## M218 — 2026-11-17 — A test run while the health gate held its lock
+## M229 — 2026-11-17 — A test run while the health gate held its lock
+Numbered M218 on the work branch until it took in the default branch on 2026-11-18.
 What happened: On `wip/u-new` the run that showed `tests/test_new.py` failing before its code (18 failed in 4.73 s, no engine) started while `GATE.lock` existed. The command listed the lock with `ls` and went on. Later, to skip a queue of 10 runs on `ENGINE.lock`, I ran `tests/test_guide.py` and `tests/test_chipguide.py` without the lock, leaving out the 1 test marked for ngspice. The run took 187 s, and `test_next_walks_the_template_from_its_first_file_to_green` alone took 151 s: it runs the chip engines. The brief puts the lock in front of any engine run and any run over 1 minute.
 Cost: 1 run of 5 s beside the health gate; 1 run of 187 s with chip engines beside other agents' locked runs (the builder's runs).
 Root cause: As M201: the lock was looked at, not waited on. And a test file was taken for engine-free by its skip marks, not by its durations: a test that runs engines need not carry a mark. Later runs waited for `GATE.lock` to go, took `ENGINE.lock`, and checked `GATE.lock` again inside it.
 Process: P31
 
-## M219 — 2026-11-18 — A shared fetch function judged a body for one caller's needs
+## M230 — 2026-11-18 — A shared fetch function judged a body for one caller's needs
+Numbered M219 on the work branch until it took in the default branch on 2026-11-18.
 What happened: `fetch_url` in `tools/workcenter` gained a judgement of each body: an HTML page is refused, since a datasheet that is a web page is an error page. `workcenter references fetch` calls the same function, and its web page entries are HTML pages by design. Every one came back "not reached".
 Cost: On the landing head, 2 tests of `tests/test_references_pages.py` failed; the piece's own tests passed.
 Root cause: The piece was built before the web page entries landed, and it changed a function with 2 callers while testing 1.
 Fix: `fetch_url(..., judge=False)` from `tools/references.py`, which judges a copy by its SHA256 or its values; `test_references_fetch_still_keeps_a_web_page_entry_served_as_text_html`.
 Process: P27
 
-## M220 — 2026-11-17 — A lock that lived in briefs, not in the tools
+## M231 — 2026-11-17 — A lock that lived in briefs, not in the tools
+Numbered M220 on the work branch until it took in the default branch on 2026-11-18.
 What happened: Several agents on 1 machine ran routes, gates and simulations. A lead told each helper to put `flock ENGINE.lock` in front of heavy runs; no document of the workcenter named the rule. 3 users of user round 1 lost time behind it: `workcenter next` sat 10 minutes with no output behind the lock, a 3 s `design` waited about 5 minutes, a queued `design --route` was killed at the 30-minute background limit with only `[killed]`, and `gates` waited more than 30 minutes twice. The kernel's flock serves its waiters in no fixed order. While the fix was built, its own test run waited 406 s for the brief's lock file before it could start.
 Cost: about 2 hours of 1 user and a run each of 2 others; no verdict for 1 board.
 Root cause: The lock was a convention of a lead's brief, taken by hand around any command, fair to nobody, and silent.
 Process: P8
 
-## M221 — 2026-11-17 — A fix pass that ran only the tests of its own findings
+## M232 — 2026-11-17 — A fix pass that ran only the tests of its own findings
+Numbered M221 on the work branch until it took in the default branch on 2026-11-18.
 What happened: A fix for roadmap item 1's review (L1-06) added a hint to `tools/guide.py` with a sentence of 25 words. Its helper ran the ratings test files, `tests/test_guide_ratings.py` and `tests/test_mutate.py` (1064 passed), and not `tests/test_guide.py`, which refuses any hint sentence over 20 words. The landing run found it.
 Cost: 1 landing commit; the piece would have failed `make verify`.
 Root cause: The test files run were the ones of the findings, not the ones of the files changed. Every test file of a tool a change touches is run, not only the file the change's own tests sit in.

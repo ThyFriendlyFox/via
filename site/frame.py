@@ -96,6 +96,7 @@ def shell(
             <li><a href="{up}index.html#gates">Checks</a></li>
             <li><a href="{up}index.html#run">Get started</a></li>
             <li><a href="{up}blog.html">Blog</a></li>
+            <li><a href="https://discord.reagent-systems.com">Community</a></li>
           </ul>
         </nav>
         <div class="header-end">
@@ -123,6 +124,7 @@ def shell(
             <ul>
               <li><a href="{up}blog.html">Blog</a></li>
               <li><a href="{up}feedback.html">Feedback</a></li>
+              <li><a href="https://discord.reagent-systems.com">Community</a></li>
               <li><a href="{REPO}">GitHub</a></li>
               <li><a href="{REPO}/blob/main/WORKCENTER.md">Contract</a></li>
               <li><a href="{REPO}/blob/main/ee-agent-kit/STATUS.md">Status</a></li>
@@ -132,6 +134,7 @@ def shell(
           </nav>
         </div>
         <p class="small">Via is built under the MIT License.</p>
+        <p class="small made"><a href="https://reagent-systems.com">Made by Team Reagent for Builders</a></p>
       </div>
     </footer>
 

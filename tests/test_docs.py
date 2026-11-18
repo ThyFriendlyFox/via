@@ -790,11 +790,11 @@ def test_the_example_pages_are_what_site_examples_writes():
 
     found = {ex.slug: ex for ex in examples.examples()}
     assert set(found) == {p.stem for p in (SITE / "examples").glob("*.html")}
-    # Rosetta shows v0.2, its board and its card's numbers, and v0.1's steps from v0.1's TIMELINE.md.
+    # Rosetta shows v0.3, its board and its card's numbers, and v0.1's steps from v0.1's TIMELINE.md.
     rosetta = found["rosetta"]
     board = examples.draw_board(rosetta.board)
     page = examples.example_page(rosetta, board, {"spin.webp", "top.png", "bottom.png"})
-    assert rosetta.version == "v0.2" and (board.layers, board.parts) == (6, 135)
+    assert rosetta.version == "v0.3" and (board.layers, board.parts) == (6, 176)
     assert len(rosetta.timeline) >= 8 and {entry.version for entry in rosetta.timeline} == {"v0.1"}
     assert f"{board.segments:,} track segments" in page
     # Wyvern's steps are its README's "What changed" sections, oldest first; its verdict is its report's.
@@ -802,9 +802,9 @@ def test_the_example_pages_are_what_site_examples_writes():
     assert [entry.stage for entry in wyvern.timeline] == ["v0.1", "v0.2"]
     assert wyvern.verdict.startswith("GREEN")
     assert [gate for gate, _, _ in wyvern.checks] == ["ERC", "DRC", "SIM", "EXPORT"]
-    # Signet is 6 boards: 1 verdict each, and no board drawing.
+    # Signet is 8 boards since v0.5: 1 verdict each, and no board drawing.
     signet = found["signet"]
-    assert signet.board is None and len(signet.per_board) == 6 and signet.verdict == "GREEN on all 6 boards"
+    assert signet.board is None and len(signet.per_board) == 8 and signet.verdict == "GREEN on all 8 boards"
     # The page follows its sources: a step's title, changed, changes the page.
     rosetta.timeline[0].title = "A title no step has"
     assert "A title no step has" in examples.example_page(rosetta, board, set())

@@ -1,0 +1,7 @@
+{
+  "ratio": {
+    "min": 0.46,
+    "max": 0.54,
+    "source": "position 3 (Xbox) at 3/6 of full scale, within 0.04: half the 0.0833 margin to the decoder's thresholds"
+  }
+}

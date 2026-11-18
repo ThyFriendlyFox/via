@@ -71,6 +71,13 @@ there.
    on the example's board is too narrow for it, and stays ragged.
 9. Write a blog post, and the blog's own words, in American Simplified
    Technical English, by the rules of `TONE.md`.
+10. A post about an example board speaks as the engineers who made it,
+    "we": how we came to make it, the science and the papers behind the
+    device, and how the design went. It explains each idea in plain words
+    a slightly technical reader follows, before it names the idea (the
+    owner's ask of 2026-11-18). It cites a paper only when the paper says
+    what the post says, and states no fact about the board that its files
+    do not.
 
 The owner's own wording stands as the owner wrote it, and is the only
 exception to these rules:
@@ -89,3 +96,7 @@ exception to these rules:
   suggestions here!" The first "here" is the subscribe form under the
   message, which takes the reader's email. The second is the feedback
   page, `/feedback`. The blog does not explain what a blog is.
+- The line at the bottom of every page, of 2026-11-18, in title case:
+  "Made by Team Reagent for Builders", a link to `reagent-systems.com`.
+  The menu's and the footer's "Community" is the team's Discord server,
+  `discord.reagent-systems.com`.

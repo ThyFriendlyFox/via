@@ -1,0 +1,66 @@
+(footprint "RV_SMD_TDK_CU3225"
+	(version 20241229)
+	(generator "make_footprints")
+	(layer "F.Cu")
+	(descr "TDK EPCOS CU3225 SMD varistor, 8.0 x 6.3 x 3.2 mm")
+	(tags "varistor MOV SMD")
+	(property "Reference" "RV**"
+		(at 0 -4 0)
+		(layer "F.SilkS")
+		(hide yes)
+		(uuid "8dd8ef15-eba7-5fa2-95c1-0e9db5257a05")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.1)
+			)
+		)
+	)
+	(property "Value" "RV_SMD_TDK_CU3225"
+		(at 0 4 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "83397c49-fe11-55be-8d56-e02f6bfff3f9")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.1)
+			)
+		)
+	)
+	(attr smd)
+	(fp_rect
+		(start -5.3 -3.4)
+		(end 5.3 3.4)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "0be99847-5e8e-50d9-8229-0c83898bb9fb")
+	)
+	(fp_rect
+		(start -4 -3.15)
+		(end 4 3.15)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.Fab")
+		(uuid "a1e6db15-11a9-5d74-86c0-c7e55018a95e")
+	)
+	(pad "1" smd rect
+		(at -3.65 0)
+		(size 2.8 3.5)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "d174dc9e-9052-56cc-91da-454942bcd39e")
+	)
+	(pad "2" smd rect
+		(at 3.65 0)
+		(size 2.8 3.5)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "8810e83a-dd6d-58e0-8f25-eec31e99262b")
+	)
+)

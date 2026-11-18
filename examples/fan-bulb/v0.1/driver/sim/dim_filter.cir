@@ -1,0 +1,25 @@
+* Lark: DIM_W through R5, R6 and C7 to the warm controller's LD pin (DIM_C, R7, R8, C8 are the
+* same). The brain's LEDC drives 3.3 V PWM at 20 kHz; R6 over R5 + R6 scales it to 1.49 V at full
+* duty, under the 1.5 V where the HV9961 stops dimming (DS20005588B, Eq. 3-3). A at half duty from
+* t = 0: the ripple and the settling; B at full duty: the top of the range.
+
+VPA dima 0 PULSE(0 3.3 0 20n 20n 24.98u 50u)
+R5A dima lda 12.1k
+R6A lda 0 10k
+C7A lda 0 1u
+VPB dimb 0 DC 3.3
+R5B dimb ldb 12.1k
+R6B ldb 0 10k
+C7B ldb 0 1u
+.control
+tran 1u 80m 0 1u
+meas tran ld_mean avg v(lda) from=60m to=80m
+meas tran ld_lo min v(lda) from=70m to=80m
+meas tran ld_hi max v(lda) from=70m to=80m
+let ld_ripple_mv = (ld_hi - ld_lo) * 1000
+meas tran t_settle when v(lda)=0.7387 rise=1
+let t_settle_ms = t_settle * 1000
+meas tran ld_full avg v(ldb) from=60m to=80m
+print ld_mean ld_ripple_mv t_settle_ms ld_full
+.endc
+.end
