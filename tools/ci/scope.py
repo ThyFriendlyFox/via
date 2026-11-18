@@ -93,6 +93,11 @@ def judge(path: str, old: str | None, new: str | None, texts: bool) -> tuple[str
     before = document_text(path, old or "")
     after = document_text(path, new or "")
     if not texts:
+        if new is None:
+            return (
+                FULL,
+                "absent from the working tree, so a list of paths cannot show whether it showed a run",
+            )
         if runs_in(after) or quick_start(after):
             return FULL, "a list of paths cannot show whether its shown runs changed"
         return answer, why
@@ -129,11 +134,17 @@ def changed_paths(repo: Path, base: str, head: str | None) -> tuple[list[str] | 
     if diff.returncode != 0:
         said = diff.stderr.decode("utf-8", errors="replace").strip().splitlines()
         return None, said[0] if said else f"git diff exit code {diff.returncode}"
-    paths = [p for p in diff.stdout.decode("utf-8").split("\0") if p]
+    # A name that is not UTF-8 keeps its bytes (os.fsdecode), so git finds it again; shown() escapes them.
+    paths = [p for p in os.fsdecode(diff.stdout).split("\0") if p]
     if head is None:
         new = git(repo, "ls-files", "--others", "--exclude-standard", "-z")
-        paths += [p for p in new.stdout.decode("utf-8").split("\0") if p]
+        paths += [p for p in os.fsdecode(new.stdout).split("\0") if p]
     return sorted(set(paths)), ""
+
+
+def shown(path: str) -> str:
+    """A path as printable text: a byte of its name that is not UTF-8 shows as `\\xe9`."""
+    return os.fsencode(path).decode("utf-8", errors="backslashreplace")
 
 
 def decide(repo: Path, base: str | None, head: str | None, paths: list[str] | None) -> list[tuple[str, str]]:
@@ -153,7 +164,9 @@ def decide(repo: Path, base: str | None, head: str | None, paths: list[str] | No
         else:
             ref = head or None
             lines = [(*judge(p, text_at(repo, base, p), text_at(repo, ref, p), texts=True), p) for p in found]
-    judged = [(answer, f"{path}: {why}") for answer, why, path in sorted(lines, key=lambda x: (x[0], x[2]))]
+    judged = [
+        (answer, f"{shown(path)}: {why}") for answer, why, path in sorted(lines, key=lambda x: (x[0], x[2]))
+    ]
     answer = FULL if any(a == FULL for a, _ in judged) else FAST
     return [*judged, (answer, "")]
 
