@@ -725,6 +725,14 @@ def gates_report(
             else:
                 runs = f"none: {corners['skip']}" if "skip" in corners else str(corners["runs"])
             lines.append(md_row([f"`sim/{deck.name}`", what, str(bounds), runs, result]))
+        # Each part's junction, as `sim` prints it: the figure, the board and any heat sink it was held on.
+        held_on = []
+        if details.get("thermal"):
+            import thermal
+
+            held_on = thermal.lines(details)
+        if held_on:
+            lines += [""] + [f"- {line}" for line in held_on]
         blocks[f"decks {project.name}"] = "\n".join(lines)
     text = report.read_text(encoding="utf-8") if report.is_file() else f"# Gates report: {project.name}\n"
     for name, body in blocks.items():

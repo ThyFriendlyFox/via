@@ -444,7 +444,8 @@ EPS_RUNS = (("as written", 25.0, 0.1702), ("-20 C", -20.0, 0.17), ("85 C", 85.0,
 UNCHECKED = (
     "thermal: Q1 (Q-1) not held as written (and 2 more runs): its stated board 25.001 C, which gives a "
     "junction of 35.86 C, was checked against no board: {why}, and only theta_ja on the high-k 2s2p board "
-    "of JESD 51-7, which SPRA953D calls a best case (section 1.2, page 3), bounds a stated temperature"
+    "of JESD 51-7, a best case and no bound (SPRA953D, section 1.2, page 3), is the floor the gate holds a "
+    "stated temperature's junction to"
 )
 
 
@@ -463,9 +464,9 @@ UNCHECKED = (
 def test_a_stated_temperature_no_2s2p_theta_ja_bounds_holds_no_part(tmp_path, term, why):
     """A board 0.001 C above the air at each ambient. At 85 C and 0.17295 W, psi_jb gives 85.001 + 63.8
     x 0.17295 = 96.035 C, inside 110 C, where theta_ja gives 85 + 231.1 x 0.17295 = 124.97 C, over it.
-    Only theta_ja on the 2s2p board, a best case (SPRA953D, section 1.2, page 3), bounds the statement;
-    with none the stated board is judged by nothing, and the part is not held. As written: 25.001 + 63.8
-    x 0.1702 = 35.86 C."""
+    Only theta_ja on the 2s2p board, a best case and no bound (SPRA953D, section 1.2, page 3), is the floor
+    the statement is held to; with none the stated board is judged by nothing, and the part is not held.
+    As written: 25.001 + 63.8 x 0.1702 = 35.86 C."""
     plan = plan_of(tmp_path, {"Q1": {"mpn": "Q-1", "watts": "ldo.p_u1", "source": "s", "from": EPSILON}})
     judged = thermal.judge(plan, runs_at(*EPS_RUNS), facts_with(term), ECSS)
     assert judged["failures"] == []
@@ -491,7 +492,44 @@ def test_a_stated_temperature_names_the_junction_theta_ja_gives_there_and_its_bo
     assert "theta_ja_gives" not in part
 
 
-HEAT_SINK = "an aluminium heat sink on the case, made up for the test"
+NO_MARGIN = (
+    "held on theta_ja on the high-k 2s2p board of JESD 51-7 with no margin: SPRA953D calls that board a best "
+    "case, not a bound, and gives as much as a 50 % RthetaJA variation between the 1s and 2s2p boards "
+    "(section 1.2, page 3)"
+)
+
+
+def test_a_part_held_on_theta_ja_on_the_2s2p_board_is_said_to_be_held_with_no_margin(tmp_path):
+    """The reviewer's `best` board: 60 C ambient, 0.17252 W, 60 + 231.1 x 0.17252 = 99.869 C, inside
+    110 C on the 2s2p board. SPRA953D, section 1.2, page 3: a 2s2p board gives a best case, and 'as much
+    as a 50% RthetaJA variation can be expected as a function of 1s vs 2s2p test card construction
+    alone'. The part is held, and its record and line say it stands on the best case with no margin. A
+    theta_ja on the 1s0p board, SPRA953D's typical case, carries no such line."""
+    plan = plan_of(tmp_path, {"U1": U1})
+    judged = thermal.judge(plan, runs_at(("60 C", 60.0, 0.17252)), FACTS_LIST, ECSS)
+    part = judged["parts"]["U1"]
+    assert part["held"] is True and part["no_margin"] is True
+    assert part["worst"]["junction"] == pytest.approx(99.869372)
+    assert f"; {NO_MARGIN}" in thermal.lines({"thermal": judged})[0]
+    plan = plan_of(tmp_path, {"Q1": {"mpn": "Q-1", "watts": "ldo.p_u1", "source": "s"}})
+    judged = thermal.judge(plan, runs_at(("60 C", 60.0, 0.1)), facts_with(ONE_S), ECSS)
+    assert "no_margin" not in judged["parts"]["Q1"]
+    assert NO_MARGIN not in thermal.lines({"thermal": judged})[0]
+
+
+def test_the_module_calls_the_2s2p_figure_a_best_case_and_no_bound():
+    """SPRA953D, section 1.2, page 3, calls the 2s2p figure a best case performance estimate."""
+    said = " ".join(thermal.__doc__.split())
+    assert "bounds a stated temperature" not in said
+    assert "SPRA953D's best-case estimate, not a bound" in said
+
+
+HEAT_SINK = {
+    "name": "an aluminium heat sink on the case, made up for the test",
+    "theta_cs": 0.5,
+    "theta_sa": 5,
+    "source": "the sink's and the pad's datasheets, made up for the test",
+}
 SUNK = {"figure": "theta_jc", "celsius": {"25": 27, "85": 87}, "source": "a thermocouple through the sink"}
 
 
@@ -499,13 +537,17 @@ def test_a_case_stated_on_a_heat_sink_is_not_bound_by_the_2s2p_board(tmp_path):
     """RthetaJC was devised for a case on a heat sink (SPRA953D, section 2, page 6; section 2.2, equation
     5, page 7). theta_jc 118.4 C/W: as written 27 + 118.4 x 0.1702 = 47.152 C, under the 25 + 231.1 x
     0.1702 = 64.333 C theta_ja gives on the 2s2p board; at 85 C 87 + 118.4 x 0.17295 = 107.48 C, inside
-    110 C. Stated on a heat sink, the part is held; without it, the best case holds it not."""
+    110 C. Equation 5 from the ambient gives 25 + (118.4 + 0.5 + 5) x 0.1702 = 46.088 C and 85 + 123.9 x
+    0.17295 = 106.43 C, under both. Stated on a heat sink, the part is held; without it, the best case
+    holds it not."""
     plan = plan_of(tmp_path, {"U1": {**U1, "from": {**SUNK, "heat_sink": HEAT_SINK}}})
     runs = runs_at(("as written", 25.0, 0.1702), ("85 C", 85.0, 0.17295))
     judged = thermal.judge(plan, runs, FACTS_LIST, ECSS)
     assert judged["failures"] == [] and judged["not_judged"] == []
     part = judged["parts"]["U1"]
     assert part["held"] is True and part["worst"]["junction"] == pytest.approx(107.47728)
+    assert part["worst"]["equation"] == "4"
+    assert part["worst"]["sink_junction"] == pytest.approx(106.428505)
     assert part["stated"]["heat_sink"] == HEAT_SINK
     plan = plan_of(tmp_path, {"U1": {**U1, "from": SUNK}})
     judged = thermal.judge(plan, runs, FACTS_LIST, ECSS)
@@ -532,6 +574,70 @@ def test_a_heat_sink_is_stated_with_theta_jc_only(tmp_path, figure):
         "devised for a case on a heat sink (SPRA953D, section 2, page 6; section 2.2, equation 5, page 7), "
         f"and psi_jt should not be used with one (section 3.2, page 10); `from` names {figure}"
     ]
+
+
+SINK_ASKED = (
+    "SPRA953D's equation 5 asks for the heat sink's Rtheta(CS) and Rtheta(SA) (section 2.2, page 7): state "
+    '{"name": ..., "theta_cs": C/W, "theta_sa": C/W, "source": ...}'
+)
+
+
+@pytest.mark.parametrize(
+    ("sink", "problem"),
+    [
+        ("x", f"heat_sink: {SINK_ASKED}"),
+        ({"name": "a sink", "theta_cs": 0.5, "source": "s"}, "heat_sink: `theta_sa` is missing"),
+        ({**HEAT_SINK, "theta_sa": -1}, "heat_sink: theta_sa: -1 is under 0"),
+        ({**HEAT_SINK, "source": " "}, "heat_sink: source: text is asked, and there is none"),
+    ],
+)
+def test_a_heat_sink_is_named_with_its_2_resistances_and_their_source(tmp_path, sink, problem):
+    """The reviewer's `heat_sink: "x"` held a case 0.001 C above the air. SPRA953D, section 2.2,
+    equation 5, page 7: TJ = TA + (RthetaJC + Rtheta(CS) + Rtheta(SA)) x power; a heat sink is named with
+    the 2 resistances it adds and where they come from."""
+    (tmp_path / "thermal.json").write_text(
+        json.dumps({"pack": "p", "parts": {"U1": {**U1, "from": {**SUNK, "heat_sink": sink}}}}),
+        encoding="utf-8",
+    )
+    plan, problems = thermal.read_plan(tmp_path, ["ldo"])
+    assert plan is None
+    assert problems == [f"thermal.json: parts: U1: from: {problem}"]
+
+
+def test_a_case_on_a_heat_sink_is_judged_by_equation_5_from_the_ambient_too(tmp_path):
+    """The reviewer's case 0.001 C above the air at 85 C, 0.17295 W: equation 4 gives 85.001 + 118.4 x
+    0.17295 = 105.48 C, inside 110 C. With a sink of 0.5 + 30 C/W, equation 5 (SPRA953D, section 2.2,
+    page 7) gives 85 + (118.4 + 0.5 + 30) x 0.17295 = 110.75 C, over 110 C: the greater judges, and the
+    failure line carries equation 5's sum and the sink's source."""
+    sink = {**HEAT_SINK, "theta_sa": 30}
+    case = {"figure": "theta_jc", "celsius": {"85": 85.001}, "source": "a case 0.001 C above the air"}
+    plan = plan_of(tmp_path, {"U1": {**U1, "from": {**case, "heat_sink": sink}}})
+    judged = thermal.judge(plan, runs_at(("85 C", 85.0, 0.17295)), FACTS_LIST, ECSS)
+    assert judged["failures"] == [
+        "thermal: U1 (TLV75533PDBVR) at 85 C ambient: junction 110.75 C, over 110 C (85 C): 85 C + (118.4 "
+        "C/W + theta_cs 0.5 C/W + theta_sa 30 C/W of the heat sink, an aluminium heat sink on the case, made "
+        "up for the test (the sink's and the pad's datasheets, made up for the test)) x 0.17295 W of "
+        f"ldo.p_u1, SPRA953D, section 2.2, equation 5, page 7, theta_jc and junction_max of {TLV755}, p 4 "
+        f"and 5, theta_jc on the high-k 2s2p board of JESD 51-7 (p 5); {LIMIT}"
+    ]
+    part = judged["parts"]["U1"]
+    assert part["held"] is False and part["worst"]["junction"] == pytest.approx(110.752255)
+    assert part["worst"]["equation"] == "5"
+
+
+def test_a_heat_sink_s_equation_5_is_named_as_no_lower_than_equation_6():
+    """SPRA953D, section 2.2, page 7: equation 5 is most accurate where RthetaJC is small against
+    RthetaJA; equation 6, RthetaJA in parallel with RthetaJC + Rtheta(CS) + Rtheta(SA), is more accurate
+    for any combination. A parallel pair is under either of its 2, so equation 5's junction is no lower
+    than equation 6's: the TLV755P's 118.4 / 231.1 = 0.512 is taken, and the line says so."""
+    term = {f.name: f for f in FACTS_LIST}["TLV75533PDBVR"].data["thermal"]
+    said = thermal.sink_assumes(term)
+    assert said == (
+        "on a heat sink, equation 5 gives TJ = TA + (RthetaJC + Rtheta(CS) + Rtheta(SA)) x power, most "
+        "accurate where RthetaJC is small against RthetaJA (here 118.4 / 231.1 = 0.512); it gives a "
+        "junction no lower than equation 6, which SPRA953D calls more accurate for any combination "
+        "(section 2.2, page 7), and the greater of equations 4 and 5 judges"
+    )
 
 
 def test_a_junction_from_theta_jb_holds_no_part(tmp_path):
@@ -607,7 +713,8 @@ def test_a_part_with_no_theta_ja_is_judged_only_where_its_temperature_is_stated(
         "ambient only, and its facts give no theta_ja",
         "thermal: Q1 (Q-1) not held at 85 C: its stated board 90 C, which gives a junction of 92.5 C, was "
         "checked against no board: its facts give no theta_ja, and only theta_ja on the high-k 2s2p board of "
-        "JESD 51-7, which SPRA953D calls a best case (section 1.2, page 3), bounds a stated temperature",
+        "JESD 51-7, a best case and no bound (SPRA953D, section 1.2, page 3), is the floor the gate holds a "
+        "stated temperature's junction to",
     ]
     part = judged["parts"]["Q1"]
     assert (part["runs"], part["held"], part["worst"]["junction"]) == (1, None, 92.5)
@@ -902,3 +1009,35 @@ def test_a_project_with_decks_and_no_thermal_file_is_told_no_junction_is_judged(
         "parts it names (the simulate skill, A part's temperature)"
     )
     assert said in proc.stdout.splitlines(), proc.stdout
+
+
+@needs_ngspice
+def test_gates_and_its_report_carry_each_part_s_thermal_line_and_its_heat_sink(tmp_path):
+    """pass-sim-thermal with a case on a heat sink at -20, 25 and 60 C. At 60 C, R1 1 % low, 0.17252 W:
+    equation 4 gives 70 + 118.4 x 0.17252 = 90.426 C, equation 5 60 + 123.9 x 0.17252 = 81.375 C. The
+    line `sim` prints, with the heat sink, is what `gates` prints and what `--report` writes, where a
+    reviewer decides a board is done; the verdict stays the last line."""
+    project = copy_of(tmp_path, "pass-sim-thermal")
+    plan = json.loads((project / "sim" / "thermal.json").read_text(encoding="utf-8"))
+    case = {"figure": "theta_jc", "celsius": {"-20": -10, "25": 35, "60": 70}, "source": "a thermocouple"}
+    plan["parts"]["U1"]["from"] = {**case, "heat_sink": HEAT_SINK}
+    (project / "sim" / "thermal.json").write_text(json.dumps(plan), encoding="utf-8")
+    report = tmp_path / "gates.md"
+    proc = subprocess.run(
+        [sys.executable, str(CLI), "gates", str(project), "--strict", "--out", str(tmp_path / "out")]
+        + ["--report", str(report)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    lines = proc.stdout.splitlines()
+    line = next(x for x in lines if x.startswith("thermal U1:"))
+    assert "90.426 C at its worst of" in line
+    assert (
+        "(60 C, R1 -1 %), from case 70 C at 60 C ambient (a thermocouple), the case on a heat sink, an "
+        "aluminium heat sink on the case, made up for the test, theta_cs 0.5 C/W and theta_sa 5 C/W (the "
+        "sink's and the pad's datasheets, made up for the test);"
+    ) in line
+    assert lines[-1].startswith("GREEN")
+    assert f"- {line}" in report.read_text(encoding="utf-8").splitlines()

@@ -1533,42 +1533,8 @@ def cmd_sim(args) -> int:
             print(f"rerun {name}: {deck['rerun']}")
         if deck.get("bundle"):
             print(f"bundle {name}: ngspice -b {shlex.quote(str(Path(deck['bundle']) / BUNDLE_RUN))}")
-    if (result.details.get("thermal") or {}).get("unplanned"):
-        print(result.details["thermal"]["unplanned"])
-    for ref, part in ((result.details.get("thermal") or {}).get("parts") or {}).items():
-        w, worst = part["written"], part["worst"]
-        print(
-            f"thermal {ref}: junction "
-            + (f"{w['junction']:.5g} C as written ({w['ambient']:g} C), " if w else "not judged as written, ")
-            + f"{worst['junction']:.5g} C at its worst of {part['runs']} "
-            f"run{'s' if part['runs'] > 1 else ''} ({worst['run']})"
-            + (
-                f", from {part['stated']['temperature']} {worst['from']:g} C at {worst['ambient']:g} C "
-                f"ambient ({part['stated']['source']})"
-                + (
-                    f", the case on a heat sink ({part['stated']['heat_sink']})"
-                    if part["stated"].get("heat_sink")
-                    else ""
-                )
-                if worst.get("from") is not None
-                else ""
-            )
-            + f"; limit {part['limit']:g} C"
-            + (
-                f"; where a stated temperature judged, theta_ja {gives['theta_ja']:g} C/W "
-                + (
-                    f"on {ratings().BOARDS[gives['board']]}"
-                    if gives["board"]
-                    else "on no JEDEC board its facts name"
-                )
-                + f" gives {gives['junction']:.5g} C at its worst ({gives['run']})"
-                if (gives := part.get("theta_ja_gives"))
-                else ""
-            )
-            + ("; not judged at every run" if part["held"] is None else "")
-            + f"; {part['assumes']}"
-            + (f"; read once: {', '.join(part['read_once'])}" if part["read_once"] else "")
-        )
+    for line in thermal().lines(result.details):
+        print(line)
     return code
 
 
@@ -5434,6 +5400,12 @@ def cmd_gates(args) -> int:
     said, code = gates_verdict(results, rated.asked and not rated.held, args.strict)
     named = shlex.quote(str(args.project))
     emit(results, args, out)
+    if not args.json:
+        # Each part's junction, as `sim` prints it: what a part was held on is read where done is decided.
+        for result in results:
+            if result.gate == "sim":
+                for line in thermal().lines(result.details):
+                    print(line)
     if args.report:
         # The one file a gate run writes outside `out`: named by the user, only between its markers.
         blocks = doctools().gates_report(

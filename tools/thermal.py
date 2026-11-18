@@ -11,9 +11,11 @@ equation 1, page 2).
 That sum is an estimate on the datasheet's test board, not on the project's board. SPRA953D calls its
 use for a system board a misapplication with erroneous results (section 1.1, page 2): the test board
 is the heat sink, and RthetaJA changes with it. A JEDEC 2s2p board gives a best case, a 1s board a
-typical one (section 1.2, page 3). EIA/JESD51 defines how RthetaJA is measured, not this estimate.
-So every judged part carries `assumes`, which names the board of each figure it used, and a figure
-whose board the facts do not name holds no part.
+typical one, and as much as a 50 % RthetaJA variation comes of that choice alone (section 1.2, page 3).
+EIA/JESD51 defines how RthetaJA is measured, not this estimate. So every judged part carries
+`assumes`, which names the board of each figure it used, and a figure whose board the facts do not name
+holds no part. A part held on theta_ja on the 2s2p board is held on SPRA953D's best-case estimate, not
+a bound, with no margin: its record (`no_margin`) and its line say so.
 
 Where the project states the case, the board or the package top's temperature at a run's ambient
 (`from`: measured, or computed as `workcenter copper` computes a board), the junction there is that
@@ -21,12 +23,16 @@ temperature plus the figure the project names times the power (SPRA953D, equatio
 part's record (`stated`) and its line name the stated temperature and its source, and, where the facts
 give theta_ja, the junction theta_ja gives at those runs and its board (`theta_ja_gives`). A stated
 temperature not above its ambient, or a figure the facts lack, is set aside; a junction from theta_jb,
-or under the one theta_ja gives on the 2s2p board, holds no part. Only theta_ja on the 2s2p board bounds
-a stated temperature: with theta_ja on 1s0p, on no board, or no theta_ja, the stated temperature is
-checked against no board and holds no part. A case the project states on a heat sink (`heat_sink`,
-theta_jc only) is what RthetaJC was devised for (SPRA953D, section 2, page 6; section 2.2, equation 5,
-page 7): the 2s2p board does not bound it, and the project's own statement and source stand. A run or a
-corner the gate could not judge leaves the part not held and named as not judged.
+or under the one theta_ja gives on the 2s2p board, holds no part. The junction theta_ja gives on the 2s2p
+board is SPRA953D's best-case estimate, not a bound; it is the floor the gate holds a stated
+temperature's junction to, the only check on a number the project states. With theta_ja on 1s0p, on no
+board, or no theta_ja, the stated temperature is checked against no board and holds no part. Equation 4
+with a measured case gives a junction above the real one (section 2.2, page 7), but the gate cannot tell
+a measured case from a written one, so a case is held to the floor too. A case the project states on a
+heat sink (`heat_sink`, theta_jc only) is what RthetaJC was devised for (SPRA953D, section 2, page 6):
+the sink is named with its Rtheta(CS) and Rtheta(SA) and their source, and the greater of equation 4
+from the case and equation 5 from the ambient (section 2.2, page 7) judges, in place of the floor. A run
+or a corner the gate could not judge leaves the part not held and named as not judged.
 
 Standard library only, as the CLI is. No engine runs here: `tools/workcenter` runs the decks.
 """
@@ -92,8 +98,46 @@ HEAT_SINK = (
     "section 2, page 6; section 2.2, equation 5, page 7), and psi_jt should not be used with one "
     "(section 3.2, page 10)"
 )
+# What a heat sink is stated with: SPRA953D's equation 5 is TJ = TA + (RthetaJC + Rtheta(CS) +
+# Rtheta(SA)) x power (section 2.2, page 7).
+SINK_KEYS = ("name", "theta_cs", "theta_sa", "source")
+SINK_ASKED = (
+    "SPRA953D's equation 5 asks for the heat sink's Rtheta(CS) and Rtheta(SA) (section 2.2, page 7): state "
+    '{"name": ..., "theta_cs": C/W, "theta_sa": C/W, "source": ...}'
+)
+EQUATION_5 = "SPRA953D, section 2.2, equation 5, page 7"
+# What a part judged on theta_ja on the 2s2p board stands on.
+NO_MARGIN = (
+    f"held on theta_ja on {ratings.BOARDS['2s2p']} with no margin: SPRA953D calls that board a best case, "
+    "not a bound, and gives as much as a 50 % RthetaJA variation between the 1s and 2s2p boards "
+    "(section 1.2, page 3)"
+)
 MEASURE_RE = re.compile(r"([A-Za-z_]\w*)\.([A-Za-z_]\w*)")
 WRITTEN = "as written"  # the label of the run of a deck as written
+
+
+@dataclass(frozen=True)
+class HeatSink:
+    """What holds a case: its name, the interface's Rtheta(CS) and the sink's Rtheta(SA) in C/W, and
+    where the 2 come from (SPRA953D, section 2.2, equation 5, page 7)."""
+
+    name: str
+    theta_cs: float
+    theta_sa: float
+    source: str
+
+    def record(self) -> dict:
+        return {
+            "name": self.name,
+            "theta_cs": self.theta_cs,
+            "theta_sa": self.theta_sa,
+            "source": self.source,
+        }
+
+    def said(self) -> str:
+        return (
+            f"{self.name}, theta_cs {self.theta_cs:g} C/W and theta_sa {self.theta_sa:g} C/W ({self.source})"
+        )
 
 
 @dataclass(frozen=True)
@@ -104,7 +148,7 @@ class Stated:
     figure: str
     celsius: dict[float, float]
     source: str
-    heat_sink: str | None = None  # what holds the case, with theta_jc only
+    heat_sink: HeatSink | None = None  # what holds the case, with theta_jc only
 
 
 @dataclass(frozen=True)
@@ -163,7 +207,7 @@ def read_plan(sim_dir: Path, decks: list[str]) -> tuple[Plan | None, list[str]]:
 
 def _stated(where: str, raw: object) -> Stated:
     """A part's `from`: {"figure": "psi_jb", "celsius": {"85": 101.5}, "source": "..."}, and with
-    theta_jc `heat_sink`: what holds the case."""
+    theta_jc `heat_sink`: what holds the case, with the 2 resistances it adds and their source."""
     data = ratings._keys(where, raw, ("figure", "celsius", "source"), ("heat_sink",))
     figure = data["figure"]
     if not isinstance(figure, str) or figure not in STATED:
@@ -171,9 +215,21 @@ def _stated(where: str, raw: object) -> Stated:
             f"{where}: figure: `{figure}` is no figure from a stated temperature; they are "
             f"{', '.join(STATED)}"
         )
-    sink = ratings._text(f"{where}: heat_sink", data["heat_sink"]) if "heat_sink" in data else None
-    if sink is not None and figure != "theta_jc":
-        raise ratings.Refusal(f"{where}: heat_sink: {HEAT_SINK}; `from` names {figure}")
+    sink = None
+    if "heat_sink" in data:
+        if figure != "theta_jc":
+            raise ratings.Refusal(f"{where}: heat_sink: {HEAT_SINK}; `from` names {figure}")
+        raw_sink = data["heat_sink"]
+        if not isinstance(raw_sink, dict):
+            raise ratings.Refusal(f"{where}: heat_sink: {SINK_ASKED}")
+        at = f"{where}: heat_sink"
+        ratings._keys(at, raw_sink, SINK_KEYS)
+        sink = HeatSink(
+            ratings._text(f"{at}: name", raw_sink["name"]),
+            ratings._number(f"{at}: theta_cs", raw_sink["theta_cs"], 0),
+            ratings._number(f"{at}: theta_sa", raw_sink["theta_sa"], 0),
+            ratings._text(f"{at}: source", raw_sink["source"]),
+        )
     temps = data["celsius"]
     if not isinstance(temps, dict) or not temps:
         raise ratings.Refusal(
@@ -309,6 +365,23 @@ def assumes(figure: str, term: dict) -> str:
     return f"{figure} {value:g} C/W {on}: {METHOD[figure]}"
 
 
+def sink_assumes(term: dict) -> str:
+    """What a junction of a case on a heat sink rests on (SPRA953D, section 2.2, page 7). Equation 6
+    takes RthetaJA in parallel with RthetaJC + Rtheta(CS) + Rtheta(SA), which is under that sum, so
+    equation 5 gives a junction no lower than equation 6 for any RthetaJA."""
+    ratio = (
+        f" (here {term['theta_jc']:g} / {term['theta_ja']:g} = {term['theta_jc'] / term['theta_ja']:.3g})"
+        if "theta_ja" in term
+        else ""
+    )
+    return (
+        "on a heat sink, equation 5 gives TJ = TA + (RthetaJC + Rtheta(CS) + Rtheta(SA)) x power, most "
+        f"accurate where RthetaJC is small against RthetaJA{ratio}; it gives a junction no lower than "
+        "equation 6, which SPRA953D calls more accurate for any combination (section 2.2, page 7), and the "
+        "greater of equations 4 and 5 judges"
+    )
+
+
 def _how(part: Part, term: dict, ambient: float) -> tuple[str, float] | None:
     """The figure a run's junction comes from and the temperature it starts from: the project's stated
     one at that ambient, else RthetaJA from the ambient, else None. A stated temperature not above its
@@ -430,7 +503,16 @@ def judge(
             row = {"run": label, "ambient": ambient, "watts": watts, "figure": figure}
             if figure != "theta_ja":
                 row["from"] = start
-            rows.append({**row, "junction": start + term[figure] * watts})
+            junction = start + term[figure] * watts
+            sink = part.stated.heat_sink if part.stated and figure != "theta_ja" else None
+            if sink is not None:
+                # Equation 5 from the ambient (SPRA953D, section 2.2, page 7) beside equation 4 from the
+                # stated case: the greater judges, so a case stated too near the air for its sink does
+                # not lower the junction.
+                row["sink_junction"] = ambient + (term[figure] + sink.theta_cs + sink.theta_sa) * watts
+                row["equation"] = "5" if row["sink_junction"] > junction else "4"
+                junction = max(junction, row["sink_junction"])
+            rows.append({**row, "junction": junction})
         if unstated:
             not_judged.append(
                 f"{name} not judged {_at(unstated[0])}{_more(len(unstated) - 1)}: sim/thermal.json states "
@@ -498,8 +580,9 @@ def judge(
             not_judged.append(
                 f"{name} not held {_at(r['run'])}{_more(len(unchecked) - 1)}: its stated "
                 f"{STATED[r['figure']]} {r['from']:g} C, which gives a junction of {r['junction']:.5g} C, "
-                f"was checked against no board: {why}, and only theta_ja on {ratings.BOARDS['2s2p']}, which "
-                "SPRA953D calls a best case (section 1.2, page 3), bounds a stated temperature"
+                f"was checked against no board: {why}, and only theta_ja on {ratings.BOARDS['2s2p']}, a best "
+                "case and no bound (SPRA953D, section 1.2, page 3), is the floor the gate holds a stated "
+                "temperature's junction to"
             )
         if best:
             r, ja = best[0]
@@ -532,7 +615,7 @@ def judge(
             "junction_max": rated,
             "limit": most,
             "limit_source": said,
-            "assumes": "; ".join(assumes(f, term) for f in used),
+            "assumes": "; ".join([assumes(f, term) for f in used] + ([sink_assumes(term)] if sunk else [])),
             "read_once": read_once,
             "written": rows[0] if rows[0]["run"] == WRITTEN else None,
             "worst": worst,
@@ -556,6 +639,10 @@ def judge(
                 else True
             ),
         }
+        if ja_board == "2s2p" and any(r["figure"] == "theta_ja" for r in rows):
+            # SPRA953D calls the 2s2p figure a best case, with as much as a 50 % RthetaJA variation from
+            # the board alone (section 1.2, page 3): a part judged on it stands with no margin.
+            parts[ref]["no_margin"] = True
         if from_stated:
             parts[ref]["stated"] = {
                 "figure": part.stated.figure,
@@ -563,7 +650,7 @@ def judge(
                 "source": part.stated.source,
             }
             if sunk:
-                parts[ref]["stated"]["heat_sink"] = part.stated.heat_sink
+                parts[ref]["stated"]["heat_sink"] = part.stated.heat_sink.record()
             if "theta_ja" in term:
                 # What theta_ja gives where a stated temperature judged, so the owner sees how far the
                 # statement moves the verdict.
@@ -584,13 +671,72 @@ def judge(
                 else f"{STATED[figure]} {worst['from']:g} C at {worst['ambient']:g} C ambient "
                 f"({part.stated.source})"
             )
+            through = f"{term[figure]:g} C/W"
+            if worst.get("equation") == "5":
+                sink = part.stated.heat_sink
+                start = f"{worst['ambient']:g} C"
+                through = (
+                    f"({term[figure]:g} C/W + theta_cs {sink.theta_cs:g} C/W + theta_sa "
+                    f"{sink.theta_sa:g} C/W of the heat sink, {sink.name} ({sink.source}))"
+                )
+                measure_said = f"{measure}, {EQUATION_5}"
+            else:
+                measure_said = measure
             more = len(over) - 1
             failures.append(
                 f"{name} at {worst['ambient']:g} C ambient: junction {worst['junction']:.5g} C, over "
                 f"{most:g} C ({worst['run']}"
                 + (f", and {more} more run{'s' if more > 1 else ''}" if more else "")
-                + f"): {start} + {term[figure]:g} C/W x {worst['watts']:.5g} W of {measure}, {figure} and "
+                + f"): {start} + {through} x {worst['watts']:.5g} W of {measure_said}, {figure} and "
                 f"junction_max of {entry.source}, {ratings._p(term['page'])}, {_board(figure, term)}; "
                 f"limit {said}"
             )
     return {"failures": failures, "not_judged": not_judged, "parts": parts}
+
+
+def lines(details: dict) -> list[str]:
+    """The SIM gate's thermal lines from its record: that no junction was judged, or each part's junction
+    as written and at its worst, what it started from, its limit and what it rests on. `sim` and `gates`
+    print them, and `gates --report` writes them, where a reviewer decides a board is done."""
+    said = []
+    if (details.get("thermal") or {}).get("unplanned"):
+        said.append(details["thermal"]["unplanned"])
+    for ref, part in ((details.get("thermal") or {}).get("parts") or {}).items():
+        w, worst = part["written"], part["worst"]
+        sink = (part.get("stated") or {}).get("heat_sink")
+        said.append(
+            f"thermal {ref}: junction "
+            + (f"{w['junction']:.5g} C as written ({w['ambient']:g} C), " if w else "not judged as written, ")
+            + f"{worst['junction']:.5g} C at its worst of {part['runs']} "
+            f"run{'s' if part['runs'] > 1 else ''} ({worst['run']})"
+            + (
+                f", from {part['stated']['temperature']} {worst['from']:g} C at {worst['ambient']:g} C "
+                f"ambient ({part['stated']['source']})"
+                + (
+                    f", the case on a heat sink, {sink['name']}, theta_cs {sink['theta_cs']:g} C/W and "
+                    f"theta_sa {sink['theta_sa']:g} C/W ({sink['source']})"
+                    + (", equation 5 judging" if worst.get("equation") == "5" else "")
+                    if sink
+                    else ""
+                )
+                if worst.get("from") is not None
+                else ""
+            )
+            + f"; limit {part['limit']:g} C"
+            + (
+                f"; where a stated temperature judged, theta_ja {gives['theta_ja']:g} C/W "
+                + (
+                    f"on {ratings.BOARDS[gives['board']]}"
+                    if gives["board"]
+                    else "on no JEDEC board its facts name"
+                )
+                + f" gives {gives['junction']:.5g} C at its worst ({gives['run']})"
+                if (gives := part.get("theta_ja_gives"))
+                else ""
+            )
+            + ("; not judged at every run" if part["held"] is None else "")
+            + (f"; {NO_MARGIN}" if part.get("no_margin") and part["held"] else "")
+            + f"; {part['assumes']}"
+            + (f"; read once: {', '.join(part['read_once'])}" if part["read_once"] else "")
+        )
+    return said
