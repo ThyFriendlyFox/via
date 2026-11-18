@@ -468,7 +468,9 @@ COPPER_HEADS = ("segment", "arc", "via", "zone")
 def unrouted(pcb: Path) -> tuple[int, list[str]]:
     """The nets of 2 pads or more that hold no track, via or pour on the board, and their pads' count.
     A net with some copper is not named: whether it joins every pad is DRC's to judge."""
-    text = pcb.read_text(encoding="utf-8")
+    # A byte that is not UTF-8 (a board saved by another tool) becomes U+FFFD: the nets are still told
+    # apart, and `next` names a step rather than stopping on it.
+    text = pcb.read_text(encoding="utf-8", errors="replace")
     names: dict[str, str] = {}
     pads: dict[str, int] = {}
     copper: set[str] = set()
@@ -844,12 +846,12 @@ def cmd_next(args, cli) -> int:
 
 def register(sub, cli) -> None:
     """Add this module's command to the workcenter's parser; it sets `run` to its handler."""
-    p = sub.add_parser(
-        "next",
-        help="name the one next step for a project: what to do, the command, why, what to read, and when "
+    text = (
+        "name the one next step for a project: what to do, the command, why, what to read, and when "
         "it is done; exit 0 when nothing is left, 1 when a step is named (no error: do the step). Reads "
-        "build/gates.json and build/verify.json; writes nothing; runs no engine on a folder without a design",
+        "build/gates.json and build/verify.json; writes nothing; runs no engine on a folder without a design"
     )
+    p = sub.add_parser("next", help=text, description=text[0].upper() + text[1:] + ".")
     p.add_argument("project", help="the project directory")
     p.add_argument(
         "--trust-design",
