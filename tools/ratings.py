@@ -1131,6 +1131,8 @@ OUTSIDE = ("source", "load", "nothing")  # what stands behind a connector's pin
 CITES = {
     "ti-slva477c": "section 2, the efficiency; equations 1, 2, 4 and 11",
     "ti-spra953d": "the names of a datasheet's thermal figures",
+    "nasa-eee-inst-002": "section F3, table 4: a cartridge fuse's current by its rating",
+    "ecss-q-st-30-11c-rev2": "table 6-17 and clause 6.17.1a: a cermet fuse, and no share for another",
 }
 # TI SLVA477C, "Basic Calculation of a Buck Converter's Power Stage" (revised September 2026): the
 # efficiency its section 2 names for a duty cycle when a datasheet gives none, and where its sums stand.

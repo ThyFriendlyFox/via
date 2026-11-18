@@ -33,6 +33,11 @@ from test_ratings import (
     regulator,
 )
 
+CITES = {
+    "nasa-eee-inst-002": "section F3, table 4, page 6 of 7: a cartridge fuse by its rating",
+    "ecss-q-st-30-11c-rev2": "clause 6.17.2, table 6-17, page 49; clause 6.17.1a, page 48",
+}
+
 ECSS = ratings.read_pack(PACKS / "ecss-q-st-30-11c-rev2.json")
 ECSS_SOURCE = "ECSS-Q-ST-30-11C Rev.2"
 NASA_FUSE = f"{NASA_SOURCE}, section F3, table 4, page 6 of 7"
