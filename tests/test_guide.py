@@ -766,11 +766,15 @@ def test_the_answer_prints_one_field_to_a_line(tmp_path):
         "DONE WHEN  the last line starts with GREEN",
     ]
     assert not (proj / "build").exists()  # the command writes nothing
-    # an answer with no single command prints no RUN line: a shell refuses 2 commands joined by "or"
+    # an answer with no command prints no RUN line: a finished project's
+    report(proj, [record("sim", "pass", {"failures": [], "warnings": []})])
+    labels = [line[:10].strip() for line in printed(proj).stdout.splitlines()]
+    assert labels == ["NEXT", "WHY"]
+    # an empty folder's answer is 1 command, `workcenter new`, since 2026-11-17
     empty = tmp_path / "empty"
     empty.mkdir()
     labels = [line[:10].strip() for line in printed(empty).stdout.splitlines()]
-    assert labels == ["NEXT", "WHY", "READ", "DONE WHEN"]
+    assert labels == ["NEXT", "RUN", "WHY", "READ", "DONE WHEN"]
 
 
 def test_next_leaves_the_project_as_it_was(tmp_path):
