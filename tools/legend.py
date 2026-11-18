@@ -13,11 +13,12 @@ design adds. `judge` holds each to 5 rules and gives 1 line per failure:
     nearest    a designator nearer another part than its own, or further from its own than the reach of
                rules/legend.json
     direction  text in more than 2 directions on 1 side (180 degrees is a direction of its own: KiCad 10
-               prints a text at 180 upside down), and text on the back that is not mirrored
+               prints a board text at 180 upside down; a footprint's text it keeps upright, at 0, unless
+               the text is written (unlocked yes)), and text on the back that is not mirrored
 
 A text's box is measured for KiCad's stroke font: each character 1.34 / 1.27 of the glyph width
 (kicadgen.TEXT_ADVANCE), plus the stroke; the glyph height plus the stroke; justified top or bottom, half a
-glyph height below or above its anchor. A text with no (thickness) has KiCad's stroke, 1/8 of its size.
+glyph height below or above its anchor. A text with no (thickness) has KiCad's stroke, 1/8 of its glyph width.
 A text in another font, of more than 1 line, holding a text variable the tool does not resolve, or in a
 text box, is not measured: it is printed as not judged with the reason. So is a designator whose part has
 no courtyard, body or pad, and the edge of a board with no outline.
@@ -66,9 +67,11 @@ KICAD_CHECKS = {
     "silk_over_copper": "overlap",
     "silk_edge_clearance": "overlap",
 }
-# The stroke KiCad 10 gives a text with no (thickness), over its size: kicad-cli 10.0.8 DRC read 0.125 mm
-# on "AB" 1 mm high (scratch run of 2026-11-17; KiCad's GetPenSizeForNormal, size / 8).
+# The stroke KiCad 10 gives a text with no (thickness), over its glyph width (the second number of its
+# (size height width)): kicad-cli 10.0.8 DRC read 0.125 mm on "AB" (size 1 1), and pcbnew 10.0.8 read
+# 0.25, 0.125 and 0.25 mm on (size 1 2), (size 2 1) and (size 2 2) (scratch probes of 2026-11-17).
 DEFAULT_STROKE = 1 / 8
+UNLOCKED = "unlocked"  # the word KiCad writes on a footprint text it does not keep upright
 CHORD_MM = 0.001  # the most a chord the tool follows an arc or a circle by lies inside it
 # A text variable of the title block, as KiCad names it, and its field in (title_block).
 TITLE_VARS = {"TITLE": "title", "ISSUE_DATE": "date", "REVISION": "rev", "COMPANY": "company"}
@@ -176,6 +179,12 @@ class Text:
     node: list | None = None
     vjust: int = 0  # 1 top, 0 centre, -1 bottom
     variable: str = ""  # a text variable the tool does not resolve
+    upright: bool = False  # KiCad keeps it upright: drawn at its angle turned into -90..90
+
+    @property
+    def reads(self) -> float:
+        """The direction it reads in on the board."""
+        return direction(self.angle, self.upright)
 
     @property
     def what(self) -> str:
@@ -347,7 +356,7 @@ def _text(node, kind: str, owner: str, text: str, origin=None, values=None, what
     if h <= 0 or w <= 0:
         raise Refusal(f"{what} at ({_mm(x)}, {_mm(y)}): its size {fmt(h)} x {fmt(w)} mm is not a size")
     thick = child(font, "thickness")
-    t = _f(thick, 0, 0.0) if thick else round(min(h, w) * DEFAULT_STROKE, 6)
+    t = _f(thick, 0, 0.0) if thick else round(w * DEFAULT_STROKE, 6)
     face = child(font, "face")
     just = [str(a) for a in atoms(child(eff, "justify") or ["justify"])]
     shown, variable = _resolve(text, values or {})
@@ -368,7 +377,18 @@ def _text(node, kind: str, owner: str, text: str, origin=None, values=None, what
         node,
         1 if "top" in just else -1 if "bottom" in just else 0,
         variable,
+        _upright(node, origin is not None),
     )
+
+
+def _upright(node, in_footprint: bool) -> bool:
+    """KiCad keeps a footprint's text upright unless the text is written (unlocked yes); it keeps no board
+    text upright. pcbnew 10 saved a designator whose keep upright it had turned off as (unlocked yes), and a
+    gr_text it had been told to keep upright read back as not kept (scratch probe of 2026-11-18)."""
+    if not in_footprint:
+        return False
+    said = child(node, UNLOCKED)
+    return said is None or "no" in atoms(said)
 
 
 def _arc(cx: float, cy: float, r: float, a0: float, sweep: float) -> list[Point]:
@@ -700,10 +720,13 @@ def part_gap(box: Box, part: Part) -> float:
     return min(best, min(_to_segment(c, a, b) for c in corners for a, b in edges))
 
 
-def direction(angle: float) -> float:
+def direction(angle: float, upright: bool = False) -> float:
     """The direction a text reads in: its angle, once round. 180 is not 0: KiCad 10 prints a gr_text at
-    180 degrees upside down (a kicad-cli plot of an "L" at 180 has its foot at the top)."""
-    return round(angle % 360.0, 3) % 360.0
+    180 degrees upside down (a kicad-cli plot of an "L" at 180 has its foot at the top). A text KiCad keeps
+    upright (a footprint's, unless it says not) is drawn at its angle turned into -90..90: 180 reads as 0,
+    270 as 90 (pcbnew 10 drew a designator written at 180 at 0)."""
+    whole = 180.0 if upright else 360.0
+    return round(angle % whole, 3) % whole
 
 
 def _mm(v: float) -> str:
@@ -841,9 +864,9 @@ def judge(board: Board, limit: Limit, pack: dict[str, float]) -> list[Finding]:
     most = int(pack["directions_per_side"])
     for layer in SILK:
         on = [t for t in measured if t.layer == layer]
-        dirs = sorted({direction(t.angle) for t in on})
+        dirs = sorted({t.reads for t in on})
         if len(dirs) > most:
-            counts = ", ".join(f"{fmt(d)} degrees: {sum(direction(t.angle) == d for t in on)}" for d in dirs)
+            counts = ", ".join(f"{fmt(d)} degrees: {sum(t.reads == d for t in on)}" for d in dirs)
             out.append(
                 Finding(
                     "direction",
@@ -880,7 +903,7 @@ def place(root: list, limit: Limit, pack: dict[str, float], fixed: set[str] = fr
         if not (t.kind == "designator" and t.owner in moving and t.node is moving[t.owner].node)
     ]
     placed: list[tuple[str, Box]] = []  # layer, box
-    dirs = {layer: {direction(t.angle) for t in keep if t.layer == layer} for layer in SILK}
+    dirs = {layer: {t.reads for t in keep if t.layer == layer} for layer in SILK}
     parts = sorted((p for p in board.parts if p.ref in moving), key=lambda p: (-round(p.area, 6), p.ref))
 
     def clear(t: Text, box: Box, angle: float) -> bool:
