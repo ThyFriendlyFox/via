@@ -973,6 +973,46 @@ def test_the_placer_does_not_put_a_designator_nearer_another_part():
     assert kicadgen.atoms(kicadgen.child(ref, "at")) == ["4.280118", "0", "0"]
 
 
+def _u1_at(root) -> list[str]:
+    u1 = next(f for f in kicadgen.children(root, "footprint") if "U1" in f[1])
+    return kicadgen.atoms(kicadgen.child(kicadgen.children(u1, "property")[0], "at"))
+
+
+def test_the_placer_keeps_a_designator_off_a_design_text_of_its_layer_only():
+    """"XY" at (115, 109.275) on F.SilkS is on the place above U1 (113.869882..116.130118 by 108.7..109.85):
+    the next place, right, (4.280118, 0). The same text on B.SilkS is on the other layer: above it goes."""
+    u1 = fp("U1", 115, 113, (-3, -3, 3, 3), ref_at=(0, 0, 0))
+    root, _ = place(board(u1, txt("XY", 115, 109.275)))
+    assert _u1_at(root) == ["4.280118", "0", "0"]
+    root, _ = place(board(u1, txt("XY", 115, 109.275, layer="B.SilkS", mirror=True)))
+    assert _u1_at(root) == ["0", "-3.725", "0"]
+
+
+def test_the_placer_keeps_a_designator_off_one_it_has_placed():
+    """U1 (36 mm2) is placed first, above itself: 113.869882..116.130118 by 108.7..109.85. U2's courtyard,
+    113..115 by 110.4..111.4, lies on U1's; above U2 (111.869882..114.130118 by 109.1..110.25) is on U1's
+    designator, right and below are under U1, and left, x = 113 - 0.15 - 1.130118 = 111.719882, is clear:
+    local (-2.280118, 0)."""
+    u2 = fp("U2", 114, 110.9, (-1, -0.5, 1, 0.5), ref_at=(0, 0, 0))
+    root, lines = place(board(fp("U1", 115, 113, (-3, -3, 3, 3), ref_at=(0, 0, 0)), u2))
+    assert lines == []
+    assert _u1_at(root) == ["0", "-3.725", "0"]
+    u2_node = next(f for f in kicadgen.children(root, "footprint") if "U2" in f[1])
+    assert kicadgen.atoms(kicadgen.child(kicadgen.children(u2_node, "property")[0], "at")) == [
+        "-2.280118",
+        "0",
+        "0",
+    ]
+
+
+def test_the_placer_keeps_a_designator_from_under_another_part():
+    """U2's courtyard 113..117 by 108..109.99 (its designator fixed) covers the place above U1 (113.869882..
+    116.130118 by 108.7..109.85): the next place, right, (4.280118, 0)."""
+    u2 = fp("U2", 115, 109, (-2, -1, 2, 0.99), ref_at=(0, -3, 0))
+    root, _ = place(board(fp("U1", 115, 113, (-3, -3, 3, 3), ref_at=(0, 0, 0)), u2), fixed={"U2"})
+    assert _u1_at(root) == ["4.280118", "0", "0"]
+
+
 def test_the_placer_keeps_to_the_reach():
     """With a reach of 0.1 mm, under the placer's own gap of 0.15 mm, no place is near enough."""
     pack = dict(PACK, designator_reach_mm=0.1)
