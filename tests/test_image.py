@@ -80,10 +80,28 @@ def test_the_toolchain_is_installed_by_install_sh_alone_and_its_apt_lists_go_in_
     installing = [r for r in runs() if "./install.sh" in r]
     assert len(installing) == 1
     (run,) = installing
-    assert "REQUIRE_FREEROUTING=1 ./install.sh" in run
+    # As CI does, with the 2 bounds the build is given (none unless the image workflow passes them).
+    assert re.match(r"REQUIRE_FREEROUTING=1 (APT_\w+_TIMEOUT=\"\$APT_\w+_TIMEOUT\" )*\./install\.sh ", run)
     assert "rm -rf /var/lib/apt/lists/*" in run and "apt-get clean" in run
     own = re.compile(r"apt-get install|apt install|dpkg -i|pip3? install|python3? -m pip|snap install")
     assert [r for r in runs() if own.search(r)] == []
+
+
+def test_the_install_line_hands_install_sh_the_2_bounds_of_build_arguments_that_default_to_none():
+    """The image workflow passes CI's 2 bounds as build arguments; the Dockerfile declares them with
+    empty defaults before the install's RUN and hands them to install.sh there, so a person's own
+    `docker build .` has no bound (install.sh reads an empty value as none)."""
+    words = dockerfile()
+    install = next(i for i, (w, a) in enumerate(words) if w == "RUN" and "./install.sh" in a)
+    for name in ("APT_UPDATE_TIMEOUT", "APT_DOWNLOAD_TIMEOUT"):
+        declared = [i for i, (w, a) in enumerate(words) if w == "ARG" and a.split("=")[0] == name]
+        assert len(declared) == 1 and declared[0] < install, name
+        assert words[declared[0]][1] == f"{name}=", name
+        assert f'{name}="${name}"' in words[install][1], name
+    assert words[install][1].startswith(
+        'REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT="$APT_UPDATE_TIMEOUT" '
+        'APT_DOWNLOAD_TIMEOUT="$APT_DOWNLOAD_TIMEOUT" ./install.sh'
+    )
 
 
 def test_the_last_step_runs_doctor_and_records_the_versions_and_home_comes_after_it():
@@ -677,8 +695,15 @@ def test_the_image_workflow_tags_by_content_main_a_release_and_the_day_and_summa
     ):
         assert tag in publish, tag
     assert "GITHUB_STEP_SUMMARY" in build and "GITHUB_STEP_SUMMARY" in publish
-    # Only the build arguments that name the build; the toolchain is the Dockerfile's text alone.
-    assert set(re.findall(r"--build-arg (\w+)=", build)) == {"TOOLCHAIN_TAG", "WORKCENTER_REVISION"}
+    # The build arguments that name the build, and CI's 2 bounds of install.sh's apt step (a person's
+    # own `docker build .` passes none: no bound); the toolchain is the Dockerfile's text alone.
+    assert set(re.findall(r"--build-arg (\w+)=", build)) == {
+        "TOOLCHAIN_TAG",
+        "WORKCENTER_REVISION",
+        "APT_UPDATE_TIMEOUT",
+        "APT_DOWNLOAD_TIMEOUT",
+    }
+    assert "--build-arg APT_UPDATE_TIMEOUT=120 --build-arg APT_DOWNLOAD_TIMEOUT=570" in build
 
 
 def step_named(job: dict, start: str) -> dict:

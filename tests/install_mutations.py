@@ -15,8 +15,16 @@ TEST = (
     "${PYTHON:-python3} -m pytest tests/test_install_apt.py -x -q -p no:cacheprovider"
     " --deselect tests/test_install_apt.py::test_each_mutation_of_the_list_changes_1_place_of_the_script"
 )
-# ci.yml: the bounds CI sets and its job's limit are read from it by the tests.
-COPY = ["install.sh", "pyproject.toml", "tests", "tools", ".github/workflows/ci.yml"]
+# The 3 workflows that run install.sh: the bounds each sets and its job's limit are read by the tests.
+COPY = [
+    "install.sh",
+    "pyproject.toml",
+    "tests",
+    "tools",
+    ".github/workflows/ci.yml",
+    ".github/workflows/nightly.yml",
+    ".github/workflows/image.yml",
+]
 
 # fmt: off
 MUTATIONS = [

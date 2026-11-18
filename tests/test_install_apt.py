@@ -1540,18 +1540,31 @@ def test_a_persons_computer_has_no_total_bound_by_default():
         assert re.findall(rf'^{name}="\$\{{{name}:-(.*)\}}"$', text, re.M) == [""], name
 
 
-def ci_bounds() -> tuple[dict, int]:
-    """The bounds CI's install step sets, and the `full` job's limit in s, both read from ci.yml."""
+def ci_bounds(path: Path = WORKFLOW, job: str = "full") -> tuple[dict, int]:
+    """The bounds a workflow's install sets, and its job's limit in s, both read from the workflow: the
+    install step's command line (ci.yml's `full` job, nightly.yml's `verify` job), or the image build's
+    `--build-arg`s, which the Dockerfile hands to install.sh (image.yml's `build` job)."""
     yaml = pytest.importorskip("yaml")
-    full = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"]["full"]
-    (install,) = [s["run"] for s in full["steps"] if "./install.sh" in s.get("run", "")]
+    steps = yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"][job]
+    runs = [s.get("run", "") for s in steps["steps"]]
+    (install,) = [r for r in runs if "./install.sh" in r or "docker build" in r]
     bounds = dict(re.findall(r"\b(APT_(?:UPDATE|DOWNLOAD)_TIMEOUT)=(\S+)", install))
-    return bounds, int(full["timeout-minutes"]) * 60
+    return bounds, int(steps["timeout-minutes"]) * 60
 
 
-def test_the_worst_case_of_the_apt_step_fits_the_jobs_limit():
-    """The 2 bounds CI sets and the `full` job's limit are read from .github/workflows/ci.yml, so a change
-    of either without the other fails here. The newest passing run of 2026-11-18 (job 134941364976; log
+# Every workflow that runs install.sh on a runner: CI's full job, the nightly run and the image build.
+INSTALLING = {
+    "ci.yml": (WORKFLOW, "full"),
+    "nightly.yml": (WORKFLOW.parent / "nightly.yml", "verify"),
+    "image.yml": (WORKFLOW.parent / "image.yml", "build"),
+}
+
+
+@pytest.mark.parametrize("name", list(INSTALLING))
+def test_the_worst_case_of_the_apt_step_fits_the_jobs_limit(name):
+    """Each workflow that runs install.sh sets CI's 2 bounds, and its own job's limit is read from it
+    (ci.yml 30 minutes, nightly.yml 45, image.yml 60), so a change of either without the other fails
+    here. The newest passing run of 2026-11-18 (job 134941364976; log
     lines 2, 169, 352, 710, 823, 843 and 933) used 9 s before install.sh (16:10:05.85 to 16:10:14.58),
     27 s to unpack and set up (16:12:18.72 to 16:12:45.28), 28 s for the steps after apt (to 16:13:13.37)
     and 670 s for `make verify` (16:13:13.86 to 16:24:23.84): of the job's 1800 s (timeout-minutes: 30),
@@ -1560,8 +1573,10 @@ def test_the_worst_case_of_the_apt_step_fits_the_jobs_limit():
     while curl's retry timer is below KICAD_KEY_TIMEOUT (--retry-max-time), each try lasts at most
     KICAD_KEY_TIMEOUT (--max-time), and with --retry 3 curl waits 1, 2, then 4 s (curl 8.5.0's manual,
     --retry and --retry-max-time): at most 20 + 4 + 20 = 44 s an address, 88 s for both.
-    88 + 3 x 120 + 2 x 20 + 570 = 1058 s."""
-    bounds, limit = ci_bounds()
+    88 + 3 x 120 + 2 x 20 + 570 = 1058 s. The nightly run and the image build are held to the same 734 s
+    of other steps; neither has a passing run of its own measured (the image build runs no
+    `make verify`, but builds, checks and pushes)."""
+    bounds, limit = ci_bounds(*INSTALLING[name])
     assert bounds == CI
     tries, wait = assigned("KICAD_INDEX_TRIES"), assigned("KICAD_INDEX_WAIT")
     update, download = int(bounds["APT_UPDATE_TIMEOUT"]), int(bounds["APT_DOWNLOAD_TIMEOUT"])
