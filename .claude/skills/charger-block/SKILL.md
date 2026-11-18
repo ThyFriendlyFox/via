@@ -15,7 +15,8 @@ skill says how blocks work; this skill is the charger's own steps.
 |---|---|---|
 | RISET | `RISET = KISET / IOUT`, KISET's typical value of the current's row | SLUSCE2D equation 1, page 13; KISET, page 5 |
 | The charge current's span | KISET's MIN and MAX and the resistor's tolerance | page 5 |
-| The charger's power and junction | `P = (VIN - VBAT) x IOUT` at the greatest input, the greatest current and the least cell voltage in fast charge; `TJ = TA + RthetaJA x P` at the greatest ambient, held to 125 C | equation 8, page 23; RthetaJA, page 4; TJ, page 4 |
+| The charger's power and junction | `P = (VIN - VBAT) x IOUT` at the greatest input, the greatest current and the least cell voltage in fast charge; `TJ = TA + RthetaJA x P` at the greatest ambient, held to the least of 125 C and the rating pack's limit (110 C in `ecss-q-st-30-11c-rev2`), the limit the SIM gate holds | equation 8, page 23; RthetaJA, page 4; TJ, page 4 |
+| The ambient | -40 C to 85 C for the BQ29700; 0 C at the least for the BQ21040's junction | SLUSBU9I 6.3, page 5; SLUSCE2D 7.3, page 4 |
 | C1, C2 | 1 uF to 10 uF, effective at the voltage each sees | pin table, page 3; figure 10, page 17 |
 | R2 (TS) | 10 kohm: no thermistor | section 9.2.2.1.3, page 18 |
 | Overcharge, overdischarge | the BQ29700's thresholds and tolerances against the cell's limits and the charger's regulation | SLUSBU9I table 4, page 3; section 6.6, page 6 |
@@ -50,10 +51,15 @@ skill says how blocks work; this skill is the charger's own steps.
    `block.rows` and `block.files` as the `blocks` skill shows.
    `tests/boards/block_charger.py` is a whole example.
 3. Run `workcenter design design.py`. What it prints:
-   - `charger U1: P = ... TJ = ... over 125 C: at X C the charge current reaches
+   - `charger U1: P = ... TJ = ... over 110 C: at X C the charge current reaches
      Y A at the most`: the charger would run hot. Ask Y A or less, lower the
      greatest input or the ambient, or take a charger in a package with a
-     lower RthetaJA.
+     lower RthetaJA. The limit is the least of the datasheet's 125 C and the
+     pack's; the line's source names both.
+   - `` `vin`'s first number ... is above its second``, `` `nets` lacks ...``,
+     `a load of X is asked`: the call is wrong. Spans go least first.
+   - `the ambient reaches X C, outside BQ29700DSER's ...` or `... under
+     BQ21040DBVR's least, 0 C`: the parts do not run there.
    - `charger U1: a charge current of X is outside ...`, `RISET = ... outside
      ...`, `the input reaches X V`: the datasheet does not allow the spec.
    - `RISET of ... sets ..., and X is asked`: the stock has no resistor near
@@ -72,12 +78,22 @@ skill says how blocks work; this skill is the charger's own steps.
    - `design ... green`: the parts, `ratings.json`, `parts.csv` and `sim/` are
      written.
 4. Open `sim/charger.cir`. Its lines after `* The sums:` are `block.sums`: 1
-   line per value with its equation and page. 1 line starts `not judged`:
-   copy it into the version's README with the sums.
-5. Run `workcenter ratings . --strict`. It holds each pin, each capacitor and
-   each transistor to its rating, and the 3 capacitors the 2 ICs need.
+   line per value with its equation and page. The lines that start
+   `not judged:` are what the block cannot judge. The fixture has 4: the
+   overdischarge threshold's tolerance (stated at 25 C only), the 2
+   transistors' drop at heat and at a gate under 3 V, the trip under the
+   typical on-resistance, and the value C3 keeps. A fifth comes when the
+   ambient leaves 0 C to 60 C: the overcharge threshold's tolerance. Copy them
+   into the version's README with the sums.
+5. Run `workcenter ratings .`. It holds each pin, each capacitor and each
+   transistor to its rating, and the 3 capacitors the 2 ICs need. The block
+   writes its `not judged` items into `ratings.json` under `not_judged`, and
+   the command prints each as `not judged`: the last line is
+   `RATINGS HELD, 4 NOT JUDGED`, exit 0. `--strict` fails on them: no
+   number in the datasheets judges them, so the block cannot close them. Name
+   each in the version's README.
 6. Run `workcenter design design.py --route`, then `workcenter gates .`. The
    SIM gate runs `sim/charger.cir` at each corner of `sim/corners.json`: the
    charge current against the cell's, the charger's power against the power
-   that keeps 125 C, and, through `sim/thermal.json`, the junction against the
-   rating pack's derated limit.
+   that keeps the block's limit, and, through `sim/thermal.json`, the junction
+   against the rating pack's derated limit.

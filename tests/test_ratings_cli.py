@@ -209,7 +209,8 @@ def test_a_file_the_command_does_not_take_fails_the_run_with_its_place(tmp_path)
     (project / "ratings.json").write_text(json.dumps({**stated, "speed": 1}), encoding="utf-8")
     code, text = say("ratings", project)
     assert code == 1, text
-    assert "- ratings.json: `speed` is no key here; the keys are pack, nets, ambient, parts, accepted" in text
+    keys = "pack, nets, ambient, parts, accepted, not_judged"
+    assert f"- ratings.json: `speed` is no key here; the keys are {keys}" in text
     # the record holds the refusal too: `workcenter next` reads it there
     record = json.loads((project / "build" / "ratings" / "report.json").read_text(encoding="utf-8"))
     assert record["status"] == "fail"
@@ -463,7 +464,8 @@ def test_a_run_that_judged_nothing_leaves_its_own_page_and_none_of_an_earlier_ru
     rewrite(project / "ratings.json", lambda stated: stated.update(speed=1))
     code, text = say("ratings", project)
     assert code == 1 and text.startswith(REFUSED), text
-    line = "ratings.json: `speed` is no key here; the keys are pack, nets, ambient, parts, accepted"
+    keys = "pack, nets, ambient, parts, accepted, not_judged"
+    line = f"ratings.json: `speed` is no key here; the keys are {keys}"
     assert (folder / "report.md").read_text(encoding="utf-8") == (
         f"# Ratings\n\nratings: a file is not as the command reads it\n\nNothing was judged.\n\n- {line}\n"
     )
