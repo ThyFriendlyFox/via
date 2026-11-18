@@ -17,7 +17,7 @@
       <category>usb-c</category>
       <category>power</category>
       <category>signal-integrity</category>
-      <description>Wyvern is a Snapdragon development board laid out like a Teensy, the small microcontroller board.</description>
+      <description>Wyvern is a Snapdragon development board laid out like a Teensy. A Qualcomm QCS6490 module, which runs Linux or Android, shares the board with an RP2350 microcontroller on 30 pins.</description>
     </item>
     <item>
       <title>Signet, a mouse worn as a ring of flat boards</title>
@@ -53,7 +53,7 @@
       <category>led drivers</category>
       <category>flicker</category>
       <category>mains safety</category>
-      <description>Lark is a ceiling-fan light bulb designed for voice control, with the speech recognition inside the bulb. It screws into the fan&#x27;s E26 socket and runs on 120 V mains.</description>
+      <description>Lark is a ceiling-fan light bulb designed for voice control, with the speech recognition running inside the bulb. It screws into the fan&#x27;s E26 socket and runs on 120 V mains.</description>
     </item>
     <item>
       <title>Hush, a speaker that plays the inverse of what it hears</title>
@@ -65,7 +65,7 @@
       <category>acoustics</category>
       <category>feedback</category>
       <category>simulation</category>
-      <description>Hush is a ring-shaped circuit board that sits on the face of a 40 mm speaker. A microphone on its hub picks up the noise in front of the cone. The speaker then plays the opposite of that noise.</description>
+      <description>Hush is a ring-shaped circuit board that sits on the face of a 40 mm speaker. A microphone on its hub picks up the noise in front of the cone, and the speaker plays the opposite of that noise.</description>
     </item>
     <item>
       <title>Basalt: fitting a Threadripper onto a microATX board</title>
@@ -77,7 +77,7 @@
       <category>ddr5</category>
       <category>power delivery</category>
       <category>escape routing</category>
-      <description>Basalt is a motherboard for AMD&#x27;s Threadripper 7000 and 9000 processors, on a microATX board 244 mm square. Every board made for this platform, TRX50, is ATX or larger. We asked for a smaller one.</description>
+      <description>Basalt is a motherboard for AMD&#x27;s Threadripper 7000 and 9000 processors, on a microATX board 244 mm square.</description>
     </item>
     <item>
       <title>Herald: answering a fire panel&#x27;s phone call in firmware</title>
@@ -89,7 +89,7 @@
       <category>dtmf</category>
       <category>signal processing</category>
       <category>fire alarms</category>
-      <description>Herald is a board designed to sit beside a fire alarm panel and pass on its reports. Many panels report by dialing a monitoring station over a phone line. Herald stands in for that line.</description>
+      <description>Herald is a board that sits beside a fire alarm panel and passes its reports on. Many panels report by dialing a monitoring station over a phone line.</description>
     </item>
   </channel>
 </rss>

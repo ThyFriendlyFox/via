@@ -39,6 +39,19 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-18 — The website talks with its reader
+
+The owner read the first pass to the writing rules and said it still sounded bad: no soul, written
+like commands, and talking down. I added the owner's words and what follows from them to
+`docs/WEBSITE-WRITING.md`. The pages and forms now describe what happens and speak as the team
+("You can turn it around", "That doesn't look like an email address") where they gave orders. 3
+writers gave the 7 posts a voice pass: textbook definitions out, the team's view in. I held each
+post's numbers and links to the version before. 2 cuts dropped board facts, and I put Rosetta's
+cell size back; Hush's 101,000 Pa of air stays out. 1 line in Lark judged the owner's own request,
+and now gives the reason from its README instead.
+
+Evidence: the docs and forms tests 33 passed, 2 skipped (KiCad).
+
 ## 2026-11-18 — The website in the owner's writing rules
 
 The owner gave a set of rules for writing that does not sound like a model's, and asked for them on
