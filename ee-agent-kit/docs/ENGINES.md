@@ -42,6 +42,10 @@ with `-de`, `-do`, `-mp` and `-dct 0`. Without `-dct 0` release 1.9.0 waits
 20 s before each route, for a click on a dialog. For a hand-drawn board `kicad-cli` 10 cannot
 export a DSN, so the autoroute command takes one exported from KiCad
 (`<project>/<name>.dsn` or `--dsn`) and skips loudly without it.
+FreeRouting writes its session only when it ends. `workcenter design
+--route` starts it in a session of its own, with its log written as it
+runs, and at the limit ends the router, `xvfb-run` and the display server
+together. That run is 1 `route:` line and exit 1, with nothing routed.
 
 ```sh
 FREEROUTING_JAR=/opt/workcenters/ee/freerouting/freerouting.jar   # default

@@ -40,7 +40,7 @@ unset variable never causes a failure.
 | `--sources FILE` | sources, fetch | sources: the nearest `library/sources.csv` at or above the project; fetch: the nearest `sources.csv` at or above `--to` | The library's manifest: one row per datasheet, SPICE model or STEP file, the files beside it (`WORKCENTER.md`, "Project requirements"). The SIM gate finds it the same way. For fetch, a file not there yet is started with the header. |
 | `--deck NAME` | sim | every deck | Run only `sim/NAME.cir` (with or without `.cir`), the gate's way: the model rows' translation and mode, the expect bounds, the deck's corners. Prints every value the deck printed, with its bound and its least and greatest value over the corners. The frequency plan is not judged: it needs every deck. An unknown name is an error that lists the decks. |
 | `--keep` | sim | off | Run each deck from `<out>/sim/run/<deck>/`, a deck the gate runs in place too (with the deck folder's own `.spiceinit`), leave the folder, and print the one command that reruns it by hand: `env -C <run folder> ngspice -b <deck>.cir` (M94). |
-| `PROJECT` | next | none | The project directory. `next` prints the one next step for it: `NEXT` (what to do), `RUN` (the command), `WHY`, `READ` (the section that explains it) and `DONE WHEN`; with `--json`, the same as an object. Exit 0 when nothing is left, 1 when a step is; a finished project gets no `RUN` line. It reads `build/gates.json` and `build/verify.json` and writes nothing. |
+| `PROJECT` | next | none | The project directory. `next` prints the one next step for it: `NEXT` (what to do), `RUN` (the command), `WHY`, `READ` (the section that explains it) and `DONE WHEN`; with `--json`, the same as an object. Exit 0 when nothing is left, 1 when a step is; a finished project gets no `RUN` line. It reads `build/gates.json`, `build/verify.json` and `build/route/design.json` and writes nothing. A last `design --route` that routed nothing (its router was not started, or left no session) is answered before any gate: with the fix for the first line that run printed, or, when the design file is newer than that record, with the route itself. |
 | `--trust-design` | next | off | Do not run `design --check` on the project's design file. That check takes a few seconds and needs the KiCad libraries; without it the KiCad files are taken to match the design file. |
 | `--nominal` | sim | off | Run each deck as written only. The corners of `sim/corners.json` are left out, and the result names that as a warning, so a quick run is never taken for a full one. |
 | `--bundle DIR` | sim | none | Also write each deck into `DIR/<deck>/` as a folder any machine with ngspice runs: `run.sp` (sets the mode the models need, changes to its own folder, then reads the deck), the deck with its includes pointing into `models/`, every included file there (the translated copy where its row lists fixes), the other files of the deck's folder, `expect.json`, `measures.json` and `README.md`. The command then runs each folder from a copy in another place with an empty home folder and fails when a measure differs from the gate's (M105). An earlier bundle in `DIR/<deck>/` is replaced; a folder of that name that holds no `run.sp` is refused. The receiver runs `ngspice -b run.sp`. |
@@ -76,12 +76,12 @@ unset variable never causes a failure.
 | `--step` | gates, export | off | Also export a STEP model. |
 | `--fab NAME` | gates, drc | none | Also check a fab's limits: a rule set in `rules/` (`sierra-circuits-web`) or a `.kicad_dru` path, laid over the project's own rules on a copy in `<out>/fab-<name>/`. A design file's `fab` field does the same for good (`rules/README.md`). |
 | `--dsn FILE` | autoroute | `<project>/<name>.dsn`, then `build/route/<name>.dsn` | Specctra DSN exported from KiCad. Absent means the command skips. |
-| `--passes N` | autoroute, design | `20` autoroute, `60` design | FreeRouting optimisation passes. |
+| `--passes N` | autoroute, design | autoroute: `20`; design: the design file's `route["passes"]`, else `60`, or `12` for a board of more than 50 parts | FreeRouting optimisation passes. |
 | `--threads N` | autoroute | engine default | FreeRouting thread count. |
-| `--timeout S` | autoroute, design, mutate | `600` autoroute, `900` design, `600` mutate | Kill the router after S seconds; for mutate, a test run past it counts as caught (the tests did not pass). |
-| `--route` | design | off | Export the DSN, run FreeRouting, merge the session before writing. |
-| `--rounds N` | design | `4` | Route again, up to N rounds, with a via reserved beside each pad a pour lost. |
-| `--seed BOARD` | design (with `--route`) | none | A routed `.kicad_pcb`, read only, usually the previous version's: its router tracks and vias go to FreeRouting held (`shove_fixed`: pushed aside, never ripped up), so the router keeps the paths that still fit and routes only the rest; seed copper that hangs from nothing goes in unfixed. Left out first and counted: the design's own hand copper, nets the design lost, stitching vias, arcs, and copper that now meets another net's pad or copper, a keepout or the board edge. Prints a `seed:` line with the counts and how many tracks the new route kept. |
+| `--timeout S` | autoroute, design, mutate | autoroute: `600`; design: the design file's `route["timeout"]`, else `900`, or `3600` for a board of more than 50 parts; mutate: `600` | Stop the router after S seconds. For design, the router is stopped with its display server and the run is 1 `route:` line and exit 1: FreeRouting writes its session only when it ends, so nothing is routed, and what it printed is in `build/route/freerouting.log`. For mutate, a test run past it counts as caught (the tests did not pass). |
+| `--route` | design | off | Write the unrouted project, run KiCad's ERC and DRC on it, then export the DSN, run FreeRouting and merge the session before writing again. The router is not started on a design that is red already (a `via:`, `part:` or `sim:` line, or a `pull:` line with `check_pulls`), nor on an error of either check: an unconnected item is none, since the route joins it, and a warning is none. Each error prints as an `erc:` or a `drc:` line with the rule, its description and each item with its place in mm, sorted, the first 20 of each and then a count; the last line says `red`, that the router was not started, and that the board on disk is the unrouted one; exit 1. Without `kicad-cli` the route is skipped, exit 2. No flag turns the checks off. Under `--out` the ERC's `simulation_model_issue` is left out: the project names its model files from the other folder. Writes `build/route/` beside the project: `erc.json` and `drc.json` (KiCad's reports of the unrouted project; those of an earlier run are removed first), `<name>.dsn`, `<name>.ses`, `freerouting.log`, and `design.json`, the run's `--json` summary, which `workcenter next` reads. kicad-cli leaves `<name>.kicad_prl` beside the project, as it does for a gate. |
+| `--rounds N` | design | the design file's `route["rounds"]`, else `4` | Route again, up to N rounds, with a via reserved beside each pad a pour lost. |
+| `--seed BOARD` | design (with `--route`) | none | A routed `.kicad_pcb`, read only, usually the previous version's: its router tracks and vias go to FreeRouting held (`shove_fixed`: pushed aside, never ripped up), so the router keeps the paths that still fit and routes only the rest; seed copper that hangs from nothing goes in unfixed. Left out first and counted: the design's own hand copper, nets the design lost, stitching vias, arcs, and copper that now meets another net's pad or copper, a keepout or the board edge. Prints a `seed:` line with the counts and how many tracks the new route kept. A seed that is the project's own board is read first and then replaced by the unrouted board, so the command keeps a copy as `build/route/<name>.seed.kicad_pcb`; when the route is not started or leaves no route, the last line names that copy. |
 | `CHECK BOARD ARGS` | placement | none | `CHECK` is one of `pin_sides`, `placement_audit`, `route_check`, `local_search`, `group_search`; `BOARD` a project folder or `.kicad_pcb`; `ARGS` go to the check as kistack documents them (`U1`, `--ic U1`, `--track 0.15 --clear 0.1 --via 0.5 --edge 0.3` for a board with a `.kicad_dru`). |
 | `VIEW BOARD` | inspect | none | `VIEW` is one of `map`, `list`, `probe`, `net`, `islands`, `resistance`, `crossed`; `BOARD` a project folder or `.kicad_pcb`. KiCad's `pcbnew` reads the board under the venv's Python; only `map` writes files. `--json` goes after the view too. |
 | `--box X0 X1 Y0 Y1` | inspect map, list, crossed | none (required) | The window in board millimetres, the x range first. |
@@ -119,6 +119,38 @@ unset variable never causes a failure.
 | `--from VERSION` | version new | the latest version folder | The folder the new version copies. |
 | `--out FILE` | diagram | required | The SVG to write. |
 | `--png` | diagram | off | Also write `<out>.png` with `rsvg-convert`, at the drawing's width. |
+
+## A design file's `route` (for `workcenter design --route`)
+
+`d.route = {"passes": 12, "timeout": 3600, "rounds": 4}`, or any of the
+3 keys. A flag of the command wins over a key here. A key that is none of
+the 3, or a value that is no whole number of 1 or more, is refused when
+the design file is loaded: 1 `file:` line with what to write, exit 1,
+nothing written.
+
+| Key | Type | Default | Use |
+|---|---|---|---|
+| `passes` | whole number, 1 or more | `60`; `12` for a board of more than 50 parts | FreeRouting's optimisation passes (`--passes`). |
+| `timeout` | whole number, 1 or more | `900`; `3600` for a board of more than 50 parts | Seconds the router may run (`--timeout`). |
+| `rounds` | whole number, 1 or more | `4` | Rounds of routing again with a via reserved beside each pad a pour lost (`--rounds`). |
+
+The parts counted are those placed on the board. A route with any other
+numbers than `60`, `900` and `4` by default prints each on its `routed:`
+line with where it came from: `10 passes (design), 600 s limit (flag), 4
+rounds at most (default)`.
+
+## The summary of `workcenter design --route` (`--json`, and `build/route/design.json`)
+
+A run without `--route` prints none of these keys and writes no record.
+
+| Key | Use |
+|---|---|
+| `route_numbers` | `{"passes": {"value": 60, "from": "default"}, "timeout": {...}, "rounds": {...}}`: what the route runs with, and where each number came from: `flag`, `design` or `default`. |
+| `erc_problems`, `drc_problems` | Each error of KiCad's ERC of the schematic and of its DRC of the unrouted board, as the `erc:` and `drc:` lines without their first word; every error, sorted. Absent when the checks did not run: the design was red already, or an engine was absent. |
+| `route` | A route that ended: `dsn`, `ses`, `log`, `segments`, `vias`, `unrouted`. `{"skip": why}`: an engine is absent, exit 2. `{"refused": why}`: the router was not started, exit 1. `{"error": line, "log": path}`: the router was stopped at its limit, or ended with no session or with another exit code than 0, exit 1. `{"error": line}` with no `log`: kicad-cli wrote no report of the unrouted project, exit 1. |
+| `rounds` | The rounds whose board was written. After a route that left no session in a later round, the board on disk is that round's, and the last line says so. |
+| `seed_copy` | With a `--seed` that is the project's own board: the copy of it the command kept, `build/route/<name>.seed.kicad_pcb`. |
+| `red` | With exit 1: each cause as the last line names it, `1 DRC error(s) on the unrouted board` and `the router left no route` among them. |
 
 ## `pictures.json` (a version's, for `workcenter pictures`)
 

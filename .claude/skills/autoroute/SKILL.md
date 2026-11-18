@@ -29,8 +29,17 @@ session (`.ses`). There are 2 ways in:
 ## Steps, generated design
 
 1. `workcenter drc .` first. Fix courtyard overlaps and pad clearance in
-   the placement; the router cannot.
-2. `workcenter design design.py --route --passes 60`. The command prints
+   the placement; the router cannot. The next command makes this check
+   itself and does not start the router on an error, so this step is the
+   look before it, not the only guard.
+2. `workcenter design design.py --route`. The command writes the unrouted
+   project, runs KiCad's ERC and DRC on it, and starts the router only
+   when neither has an error other than an unconnected item and the design
+   is not red already. An error is an `erc:` or a `drc:` line with the
+   parts, the pads or the track it names and their places; the last line
+   then says `red` and that the board on disk is the unrouted one. The
+   reports are `build/route/erc.json` and `build/route/drc.json`. After a
+   route the command prints
    the segment and via counts, how many rounds it took, a `stitch:` line
    for each via it dropped through a pour's island (the net, the island's
    layer and pads, the layer the via reaches), and any ground pad left on
@@ -40,6 +49,14 @@ session (`.ses`). There are 2 ways in:
    when it gives up on a connection. The exit code is the verdict: exit 1
    writes every file and ends on a line that says `red` and names each
    failure (M85).
+   - The passes, the limit in seconds and the rounds come from the design
+     file's `d.route = {"passes": 12, "timeout": 3600, "rounds": 4}`, each
+     unless its flag is given (`--passes`, `--timeout`, `--rounds`). With
+     neither, a board of up to 50 parts routes with 60 passes and 900 s,
+     and a larger one with 12 passes and 3600 s (`PROCESSES.md` P4 step
+     6). FreeRouting writes its session only when it ends. A route the
+     limit stops is 1 `route:` line and exit 1: nothing is routed, and
+     the router's output is in `build/route/freerouting.log` (M128).
    - A new version of a routed board (a part added or moved, P22): add
      `--seed <previous>/<name>.kicad_pcb`. The previous board's router
      tracks and vias go in held, so FreeRouting keeps the paths that
@@ -47,7 +64,11 @@ session (`.ses`). There are 2 ways in:
      what was left out (hand copper, stitching vias, copper on a pad,
      other copper, a keepout or the edge) and how many seed tracks the
      new route kept. Without `--seed` the router starts from nothing and
-     can move nets far from the change (M89).
+     can move nets far from the change (M89). A seed that is the project's
+     own board (`--seed <name>.kicad_pcb` in the design's folder) is read
+     first, and the unrouted board then replaces it. The command keeps a
+     copy as `build/route/<name>.seed.kicad_pcb`. After a route that was
+     not started or left no route, seed the next run from that copy.
 3. `workcenter drc .` reports what stayed unrouted. Unrouted nets mean a
    track width that cannot enter a pad, a crowded region, or a part
    placed where the net cannot reach it. Change the design, run again.
@@ -82,6 +103,10 @@ session (`.ses`). There are 2 ways in:
   updates and, when that fails, sleeps forever after routing without
   saving the session; `install.sh` pins 1.9.0 for that reason. Pass
   `--passes` to trade time for completion.
+- The router runs in a session of its own, under `xvfb-run` when no
+  display is set. At the limit the design command ends the wrapper, its
+  display server and the router together; ending the wrapper alone left
+  the other 2 running.
 - Per-net widths and vias come from `d.net_classes`; FreeRouting honours
   them through DSN classes. The DRC checks them through the project's
   net class patterns.

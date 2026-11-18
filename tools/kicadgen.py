@@ -34,9 +34,11 @@ import math
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -1157,6 +1159,11 @@ class Design:
     # Fail `workcenter design` on a part with neither a sim() nor a no_sim() (sim_problems()); off by
     # default so boards made before the check regenerate as they were.
     check_sim: bool = False
+    # The numbers of this board's route, for `workcenter design --route`: FreeRouting's passes, the
+    # seconds it may run, and the rounds it is run again for pads a pour lost, as
+    # {"passes": 12, "timeout": 3600, "rounds": 4} or any of the 3 (ROUTE_KEYS). A flag of the command
+    # wins over a number here, and a number named in neither is the command's own (route_numbers()).
+    route: dict[str, int] = field(default_factory=dict)
     # Each via write() adds through a pour's island after routing, with the island it ties, so a via
     # that moves between two runs can be traced to the pads it serves (stitch_zones()).
     stitches: list[dict] = field(default_factory=list)
@@ -3141,6 +3148,29 @@ class Design:
         if self.copper_finish and self.copper_finish not in FINISHES:
             raise ValueError(f"copper_finish is {self.copper_finish!r}. KiCad names {', '.join(FINISHES)}.")
 
+    def check_route(self) -> None:
+        """Refuse a `route` that is no dict, that holds a key other than ROUTE_KEYS, or whose number is
+        no whole number of 1 or more. A key spelt wrong would leave the route at a default that the
+        design's author meant to replace, and say nothing."""
+        example = {"passes": 12, "timeout": 3600, "rounds": 4}
+        whole = ", ".join(f'"{key}": {example[key]}' for key in ROUTE_KEYS)
+        if not isinstance(self.route, dict):
+            raise TypeError(
+                f"route is a {type(self.route).__name__}, not a dict. Write d.route = {{{whole}}}, or any of "
+                f"the {len(ROUTE_KEYS)}."
+            )
+        for key, value in self.route.items():
+            if key not in ROUTE_KEYS:
+                raise ValueError(
+                    f"route has the key {key!r}, which is none of {', '.join(ROUTE_KEYS)}. Write d.route = "
+                    f"{{{whole}}}, or any of the {len(ROUTE_KEYS)}."
+                )
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValueError(
+                    f'route["{key}"] is {value!r}, not a whole number of 1 or more. Write d.route = '
+                    f'{{"{key}": {example[key]}}}.'
+                )
+
     def _look(self, stack: Node) -> Node:
         """A stackup with the design's mask colour, legend colour and finish, each where KiCad writes
         it: a layer's colour after its type, the finish in `copper_finish`."""
@@ -4542,6 +4572,7 @@ def load_design(path: Path) -> Design:
         raise TypeError(f"{path}: build() returned {type(design).__name__}, not Design")
     design.check_power_nets()  # here, before a caller checks, routes or writes anything
     design.check_look()
+    design.check_route()
     return design
 
 
@@ -4579,6 +4610,62 @@ def board_copper(path: Path) -> dict:
 
 
 UNROUTED_RE = re.compile(r"Auto-routing was completed in .*?\((\d+) unrouted\)")
+# A route's numbers, as `Design.route` and the flags of `workcenter design --route` name them.
+ROUTE_KEYS = ("passes", "timeout", "rounds")
+# What a route runs with when neither names a number. A board of more than LARGE_BOARD parts takes
+# PROCESSES.md P4 step 6's passes and an hour: FreeRouting writes its session only when it ends, and
+# 60 passes on 140 parts ran past the 900 s that stop a small board's route (M128).
+ROUTE_DEFAULTS = {"passes": 60, "timeout": 900, "rounds": 4}
+LARGE_BOARD = 50
+LARGE_BOARD_DEFAULTS = {"passes": 12, "timeout": 3600}
+STOP_GRACE = 3.0  # seconds a stopped router and its display server get to end by themselves
+
+
+def route_numbers(design: Design, given: dict[str, int | None]) -> dict[str, tuple[int, str]]:
+    """The numbers a route of `design` runs with, each with where it came from: `given` (the command's
+    flags, None for one that was not given) is "flag", then `design.route` is "design", then
+    "default". The default follows the parts placed on the board, which are what the router gets."""
+    placed = sum(1 for part in design.parts if part.on_board and part.pcb_at)
+    defaults = {**ROUTE_DEFAULTS, **(LARGE_BOARD_DEFAULTS if placed > LARGE_BOARD else {})}
+    out = {}
+    for key in ROUTE_KEYS:
+        if given.get(key) is not None:
+            out[key] = (given[key], "flag")
+        elif key in design.route:
+            out[key] = (design.route[key], "design")
+        else:
+            out[key] = (defaults[key], "default")
+    return out
+
+
+class RouteError(RuntimeError):
+    """A router that was started and left no session: stopped at its limit (`stopped`), or ended with
+    exit code `code`. The message says which, quotes the last line the router printed and names the
+    log that holds the rest."""
+
+    def __init__(self, message: str, log: Path, stopped: bool, code: int | None) -> None:
+        super().__init__(message)
+        self.log, self.stopped, self.code = log, stopped, code
+
+
+def _stop_group(proc: subprocess.Popen) -> None:
+    """End a process that was started in a session of its own, with every process of its group:
+    SIGTERM first, so that a display server removes its lock and its socket, then SIGKILL for what
+    still runs after STOP_GRACE."""
+    for sig, grace in ((signal.SIGTERM, STOP_GRACE), (signal.SIGKILL, 0.0)):
+        try:
+            os.killpg(proc.pid, sig)
+        except ProcessLookupError:
+            break
+        end = time.monotonic() + grace
+        while time.monotonic() < end:
+            proc.poll()  # collect the group's first process: until then it counts as a member
+            try:
+                os.killpg(proc.pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.05)
+    proc.wait()
 
 
 def route(
@@ -4593,10 +4680,15 @@ def route(
     """Export the DSN, run FreeRouting, merge the session into the design. Returns a summary.
     `seed` is a previous route's copper as `Design.seed_wiring()` keeps it. The summary's `unrouted` is
     FreeRouting's own count when its log has one, else `Design.bare_connections()` when the route left
-    every connection without copper, else None."""
+    every connection without copper, else None. A JAR or a `java` that is not there is a
+    FileNotFoundError, before anything is written. A router that is stopped at `timeout`, or that ends
+    without a session, is a RouteError; what it printed is in `freerouting.log` either way."""
     jar = jar or Path(os.environ.get("FREEROUTING_JAR", "/opt/workcenters/ee/freerouting/freerouting.jar"))
     if not jar.is_file():
         raise FileNotFoundError(str(jar))
+    # Under xvfb-run a `java` that is not on PATH is the wrapper's exit code 127, not an OSError.
+    if shutil.which(java) is None:
+        raise FileNotFoundError(java)
     build_dir = Path(build_dir)
     build_dir.mkdir(parents=True, exist_ok=True)
     dsn, ses, log = (
@@ -4612,11 +4704,43 @@ def route(
     cmd = [java, "-jar", str(jar), "-de", str(dsn), "-do", str(ses), "-mp", str(passes), "-dct", "0"]
     if not os.environ.get("DISPLAY") and shutil.which("xvfb-run"):
         cmd = ["xvfb-run", "-a", *cmd]
-    proc = subprocess.run(cmd, cwd=build_dir, capture_output=True, text=True, timeout=timeout, check=False)
-    text = (proc.stdout or "") + "\n" + (proc.stderr or "")
-    log.write_text(text, encoding="utf-8")
-    if proc.returncode != 0 or not ses.is_file():
-        raise RuntimeError(f"FreeRouting exited {proc.returncode}; see {log}")
+    # The router writes its log as it runs, so a route that is stopped leaves what it printed. It runs
+    # in a session of its own: the limit then ends xvfb-run, the display server and the router. Ending
+    # xvfb-run alone left the other 2 running.
+    stopped = False
+    with log.open("w", encoding="utf-8") as fh:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=build_dir,
+            stdin=subprocess.DEVNULL,
+            stdout=fh,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        try:
+            code: int | None = proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            stopped, code = True, None
+            _stop_group(proc)
+        except BaseException:
+            # An interrupt from the keyboard reaches this process alone: the router's session is its own.
+            _stop_group(proc)
+            raise
+    text = log.read_text(encoding="utf-8", errors="replace")
+    if stopped or code != 0 or not ses.is_file():
+        printed = [line.strip() for line in text.splitlines() if line.strip()]
+        last = f'Its last line: "{printed[-1]}" ({log}).' if printed else f"It printed nothing ({log})."
+        if stopped:
+            ses.unlink(missing_ok=True)  # a session the limit cut short is no session
+            raise RouteError(
+                f"FreeRouting was stopped after {timeout} s, its limit, at {passes} passes, and wrote no "
+                f"session: it writes one only when it ends. {last}",
+                log,
+                True,
+                None,
+            )
+        session = "its session is not merged" if ses.is_file() else "wrote no session"
+        raise RouteError(f"FreeRouting exited {code} and {session}. {last}", log, False, code)
     segments, vias = design.merge_ses(ses.read_text(encoding="utf-8"))
     m = UNROUTED_RE.search(text)
     # FreeRouting 1.9.0 logs no count, and it ends with exit code 0 on a board where it joined nothing

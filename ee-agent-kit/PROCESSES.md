@@ -46,7 +46,10 @@ must clear or land on a pad.
    round it from those ends, never from the footprint file (M57).
 
 Done when: the pre-routed board's DRC shows only unconnected items and
-`workcenter design` reports no via problem.
+`workcenter design` reports no via problem. `workcenter design --route`
+holds the first half: it runs that DRC itself, prints each error as a
+`drc:` line with the pad or the track and its place, and does not start
+the router on one (M11, M152).
 
 ## P2 — CI and install steps
 
@@ -124,7 +127,15 @@ classes.
 
 Done when: ERC 0/0 and DRC shows only unconnected items before the first
 route, `workcenter design` reports no via problem, and the via-free areas
-are named in a comment in the design file.
+are named in a comment in the design file. `workcenter design --route`
+holds the errors: it writes the unrouted project, runs KiCad's ERC and
+DRC on it, and does not start the router on a design that is red already
+(a `via:`, `part:` or `sim:` line, or a `pull:` line with `check_pulls`)
+or on an error of either check, an unconnected item excepted. Each error
+is an `erc:` or a `drc:` line, the last line says `red`, and the board on
+disk is the unrouted one. It does not hold a warning. A net named on 1
+pin is a warning of the ERC (`isolated_pin_label`), so read `workcenter
+erc .` for warnings before the first route (M127).
 
 ## P4 — Before every route
 
@@ -133,7 +144,10 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
 1. Regenerate from the design file in the same command. A DSN from an
    earlier generation routes against parts that have moved and ships
    shorts that look like the router's fault.
-2. P3's "Done when" holds on this exact design.
+2. P3's "Done when" holds on this exact design. `workcenter design
+   --route` checks its errors on this exact design before it starts the
+   router, and refuses the route on one; `workcenter autoroute` checks
+   nothing, so run `workcenter erc .` and `workcenter drc .` before it.
 3. One route per design change. Its verdict is the exit code: `workcenter
    design` exits 1 on a hand via its own check refuses (a `via:` line)
    even though it writes every file (M85). Read the printed summary:
@@ -146,7 +160,9 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
    discarded (M66). Before a grid router or FreeRouting runs on new
    parts, every new courtyard is checked against every other: a
    router's failures near 2 parts on each other read as routing
-   problems (M155).
+   problems (M155). `workcenter design --route` makes that check with
+   KiCad's DRC and names each 2 such parts on a `drc:` line; a grid router
+   of the design file's own runs before that line.
 5. A route run only to evaluate (an archived version, a what-if) writes
    with `--out` to the scratchpad: without it `workcenter design` rewrites
    the project's KiCad files in place (M67).
@@ -155,7 +171,14 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
    session only when it ends, so a run the timeout stops leaves nothing:
    60 passes on 140 parts ran past the 15-minute default (M128). A route
    seeded from a previous one can lose connections its seed had; it is no
-   way to finish a board (M147).
+   way to finish a board (M147). Write the board's numbers in its design
+   file, as `d.route = {"passes": 12, "timeout": 3600, "rounds": 4}`: the
+   command `workcenter design design.py --route` then routes that board
+   with them, whoever runs it. With neither a flag nor that record, a
+   board of more than 50 parts routes with 12 passes and 3600 s, and a
+   smaller one with 60 passes and 900 s. A route the limit stops is 1
+   `route:` line and exit 1: it wrote no session, and its last output is
+   in `build/route/freerouting.log`.
 7. A route that leaves a link open: read `AGENTS.md`'s landmine row "FreeRouting
    gives up" before routing again. More passes give the same board. Draw the
    whole net that stays open with `d.track`, pad to pad, along a path an

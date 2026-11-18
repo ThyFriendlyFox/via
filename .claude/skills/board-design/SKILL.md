@@ -256,11 +256,20 @@ project and routes it with FreeRouting. No GUI at any step.
 4. **Generate and check.** `workcenter design design.py` then
    `workcenter erc .` and `workcenter drc .`. Fix every error except
    unconnected items before routing. Courtyard overlaps and pad clearance
-   are placement mistakes the router cannot fix. Then, for each IC whose
+   are placement mistakes the router cannot fix. Read the ERC's warnings
+   too: a net named on 1 pin is a warning (`isolated_pin_label`), and the
+   route does not wait for it (M127). Then, for each IC whose
    parts moved, `workcenter placement placement_audit . --ic U1` and
    `workcenter placement route_check . --ic U1` (kistack's checks; the
    `kistack` skill and its layout-placement guide say what to fix first).
-5. **Route.** `workcenter design design.py --route --passes 60`. The
+5. **Route.** `workcenter design design.py --route`. The command first
+   writes the unrouted project and runs KiCad's ERC and DRC on it. It does
+   not start the router on a design that is red already (a `via:`, `part:`
+   or `sim:` line), nor on an error of either check other than an
+   unconnected item: each is an `erc:` or a `drc:` line that names the
+   parts, the pads or the track with their places, and the board on disk
+   is then the unrouted one. Correct the design file and run the command
+   again; `workcenter next .` names that step. The
    command prints what the router did, a `stitch:` line for each via it
    dropped through a pour's island with the pads that island holds, and
    which ground pads ended up on an island; `workcenter drc .` lists what
@@ -269,7 +278,19 @@ project and routes it with FreeRouting. No GUI at any step.
    regenerate check fails on it (M85). A route that leaves every
    connection without copper (parts placed off the board, a width that
    enters no pad) prints the count as `unrouted` and exits 1; a board with
-   nothing to route exits 0. On a board copied from a routed
+   nothing to route exits 0. The route's numbers are the design's:
+   `d.route = {"passes": 12, "timeout": 3600, "rounds": 4}` (any of the 3)
+   gives FreeRouting's passes, the seconds it may run and the rounds for
+   pads a pour lost, so the same command routes the board for everyone. A
+   flag (`--passes`, `--timeout`, `--rounds`) wins over the record. With
+   neither, a board of up to 50 parts routes with 60 passes and 900 s, a
+   larger one with 12 passes and 3600 s (`PROCESSES.md` P4 step 6). A
+   route with other numbers than a small board's names each on its
+   `routed:` line, with where it came from (flag, design or default). Route a
+   large board in the background. FreeRouting writes its session only when
+   it ends: a route the limit stops is 1 `route:` line and exit 1, with
+   the router's output in `build/route/freerouting.log` and nothing routed
+   (M128). On a board copied from a routed
    version, route with `--seed <previous>/<name>.kicad_pcb`: the old
    router copper that still fits stays and only the rest is rerouted, so a
    part placed on a routed path costs its own nets, not the whole board
