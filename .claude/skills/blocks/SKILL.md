@@ -171,7 +171,7 @@ Spy-Bi-Wire header. `tests/boards/block_mcu.py` is a whole example.
 
 ## The linear regulator, `blocks.ldo`
 
-The block takes the first stocked IC of `rules/blocks/ldo.json` that holds 5
+The block takes the first stocked IC of `rules/blocks/ldo.json` that holds 6
 checks, then 1 input and 1 output capacitor. List the ICs in your stock in the
 order you want them tried; a package with a lower RthetaJA after a smaller one
 lets the block move to it when the junction runs hot.
@@ -185,18 +185,29 @@ lets the block move to it when the junction runs hot.
                       sch_at=(76.2, 76.2), pcb_at=(111.0, 108.0))
    ```
 
-   `ambient` is the least and the greatest air temperature around the board,
-   in C. `pack` is the pack of your `ratings.json`. `tests/boards/block_ldo.py`
-   is a whole example.
+   `vin` is (least, greatest) in V and `ambient` is the least and the greatest
+   air temperature around the board, in C, each a finite number. `pack` is the
+   pack of your `ratings.json`. `tests/boards/block_ldo.py` is a whole example.
 2. Run `workcenter design design.py`. What it prints:
+   - `ldo U1: vin=(A, B) is written greatest first` or `ambient=(A, B) is
+     written greatest first`: write the range least first.
+   - `ldo U1: <name>=...: each number of the spec must be finite`: give a
+     number, not NaN or infinity.
+   - `ldo U1: ldo.json: its note gives no page of equation N`: the rules file
+     is damaged. Enter the page from TI SLVA079.
    - `ldo U1: no stocked IC holds the spec: <MPN>: ...`: each stocked IC and
      why it missed, with its equation and page. Do as each says:
      - `regulates to VOUT(NOM) = A V, not the X V asked`: the IC is fixed at
        another output (table 8-1 of its datasheet). Stock the IC of the output
        you ask.
-     - `ldo.json gives it no <keys>`: the IC's entry lacks those numbers or
-       their `where`. Enter them from the datasheet (see "Adding an IC to a
-       block" below).
+     - `ldo.json gives it no <keys>` or `ldo.json holds <key> as <value>,
+       not <shape>`: the IC's entry lacks those numbers or their `where`, or
+       holds one the block cannot read. Enter them from the datasheet (see
+       "Adding an IC to a block" below).
+     - `<file> gives no <keys>: the block judges no IC whose facts lack it`:
+       the IC's facts lack its RthetaJA (`thermal theta_ja`), its input's range
+       (`IN operating`) or its ground current (`IN amps`). Enter them from the
+       datasheet (the `ratings` skill).
      - `the input reaches X V, IN operates from ...`: change the input range
        or the IC.
      - `IOUT of X A is over ...`: the IC cannot give the load.
@@ -204,24 +215,36 @@ lets the block move to it when the junction runs hot.
        least input is too low for the full load (SLVA079 equation 1). Raise
        the least input, lower the load, or stock an IC of lower dropout.
      - `TJ = ... C, over ... C`: the junction at the greatest ambient passes
-       the pack's limit. Stock a package of lower RthetaJA, lower the input,
-       the load or the ambient.
+       the pack's limit. The dissipation is taken at the greatest input and
+       the least output the IC's accuracy gives. Stock a package of lower
+       RthetaJA, lower the input, the load or the ambient.
+     - `TJ from the least ambient, A C, to B C, not within TJ's ...`: the
+       ambient is colder, or the junction hotter, than the datasheet's
+       recommended junction span. Change the ambient or the IC.
    - `ldo U1: no stocked capacitor holds C2 at X V: ...`: each stocked
      capacitor and why it missed: its dielectric, its rating, its value
-     outside the datasheet's span, no curve of the value it keeps, or what it
-     keeps at the pin's voltage less its tolerance not over 0.47 uF. Stock a
-     part that holds, with its facts and its curve.
+     outside the datasheet's span, no curve of the value it keeps, a curve
+     over temperature (`kept_celsius`) that does not cover the ambient, or
+     what it keeps at the pin's voltage and the worst ambient less its
+     tolerance not over 0.47 uF. Stock a part that holds, with its facts and
+     its curves.
    - `ldo U1: a load of 0 A`: give the load you draw.
 3. Read `block.sums` in `sim/ldo.cir` after `* The sums:`. A line
    `U1: <MPN> passed over: ...` names an IC the block tried first. The line
    `its CSR is not judged` says the datasheet gives no stable CSR range: the
-   block does not judge the output capacitor's ESR. Copy the sums into the
-   version's README.
+   block does not judge the output capacitor's ESR. A capacitor line that
+   says `its value over temperature is not judged` names a part whose facts
+   give no `kept_celsius`: add its maker's curve. The junction line ends with
+   what RthetaJA rests on: the datasheet's JEDEC test board. A board unlike
+   it changes RthetaJA (SPRA953D, section 1.1, page 2): say in the README how
+   yours differs. Copy the sums into the version's README.
 4. Run `workcenter ratings . --strict`, then `workcenter design design.py
    --route` and `workcenter gates . --strict`. The SIM gate runs `sim/ldo.cir`
-   at each temperature of `sim/corners.json`, holds `vout` to the span the
-   IC's accuracy gives (`sim/ldo.expect.json`) and U1's junction under the
-   pack's limit (`sim/thermal.json`).
+   at each temperature of `sim/corners.json` and holds U1's junction under the
+   pack's limit (`sim/thermal.json`), and the load to the IC's IOUT
+   (`sim/ldo.expect.json`). The deck draws U1's output at the least its
+   accuracy gives, where it dissipates the most; it does not model the IC's
+   regulation, so no bound holds `vout`.
 
 ## Adding an IC to a block
 

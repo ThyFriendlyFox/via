@@ -55,7 +55,8 @@
       "input_least": {"value": 1e-6, "where": "section 5.3, Recommended Operating Conditions, CIN, page 4"},
       "dielectrics": {"value": ["X5R", "X7R"], "where": "section 7.1.1, page 15: X5R- and X7R-type ceramic capacitors"},
       "csr": {"where": "the datasheet gives no graph of a stable CSR; section 7.1.1, page 15, names X5R and X7R ceramics for their small change of ESR"},
-      "dissipation": {"where": "section 7.2.2.2, equations 6 and 7, page 20"}
+      "dissipation": {"where": "section 7.2.2.2, equations 6 and 7, page 20"},
+      "junction_span": {"value": [-40, 125], "where": "section 5.3, Recommended Operating Conditions, TJ, page 4"}
     },
     {
       "mpn": "TLV75533PDRVR",
@@ -92,7 +93,8 @@
       "input_least": {"value": 1e-6, "where": "section 5.3, Recommended Operating Conditions, CIN, page 4"},
       "dielectrics": {"value": ["X5R", "X7R"], "where": "section 7.1.1, page 15: X5R- and X7R-type ceramic capacitors"},
       "csr": {"where": "the datasheet gives no graph of a stable CSR; section 7.1.1, page 15, names X5R and X7R ceramics for their small change of ESR"},
-      "dissipation": {"where": "section 7.2.2.2, equations 6 and 7, page 20"}
+      "dissipation": {"where": "section 7.2.2.2, equations 6 and 7, page 20"},
+      "junction_span": {"value": [-40, 125], "where": "section 5.3, Recommended Operating Conditions, TJ, page 4"}
     }
   ]
 }
