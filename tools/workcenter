@@ -5644,8 +5644,13 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     # A long command waits its turn on the machine's engine lock and holds it to the end (enginelock.py).
-    with enginelock().for_command(args, sys.argv[1:] if argv is None else list(argv)):
-        return dispatch(parser, args)
+    lock = enginelock()
+    try:
+        with lock.for_command(args, sys.argv[1:] if argv is None else list(argv)):
+            return dispatch(parser, args)
+    except lock.Refused as exc:
+        print(f"workcenter: {exc}", file=sys.stderr)
+        return 2
 
 
 def dispatch(parser: argparse.ArgumentParser, args) -> int:
