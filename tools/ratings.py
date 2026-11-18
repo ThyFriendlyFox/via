@@ -972,12 +972,14 @@ class Project:
     # `U1`, or `U1.2` for 1 pad: the heat a part gives off, which `workcenter copper` spreads through
     # the board from its pads, or from the pad named
     watts: dict[str, float] = field(default_factory=dict)
+    # (part, text, source): what a block or the designer states it could not judge, printed as not judged
+    unjudged: list[tuple[str, str, str]] = field(default_factory=list)
 
 
 def read_project(path: Path, net: Netlist) -> Project:
     """A project's ratings.json, held to the netlist: a net or a part it names is one of the schematic."""
     name = path.name
-    data = _keys(name, _json(path), ("pack", "nets"), ("ambient", "parts", "accepted"))
+    data = _keys(name, _json(path), ("pack", "nets"), ("ambient", "parts", "accepted", "not_judged"))
     nets: dict[str, Span] = {}
     stated: dict[str, str] = {}  # a net of the schematic -> the key that states it
     for key, raw in _object(f"{name}: nets", data["nets"], "net").items():
@@ -1047,7 +1049,21 @@ def read_project(path: Path, net: Netlist) -> Project:
             raise Refusal(f"{where}: entry {first[(*key, piece)]} accepts the same part, rule and line")
         first[(*key, piece)] = i
         accepted.setdefault(key, []).append((piece, words))
-    return Project(_text(f"{name}: pack", data["pack"]), ambient, nets, amps, accepted, volts, watts)
+    unjudged: list[tuple[str, str, str]] = []
+    for key, raw in _object(f"{name}: not_judged", data.get("not_judged", {}), "item").items():
+        where = f"{name}: not_judged: {key}"
+        entry = _keys(where, raw, ("parts", "why", "source"))
+        refs = entry["parts"]
+        if (
+            not isinstance(refs, list)
+            or not refs
+            or any(not isinstance(r, str) or r not in net.parts for r in refs)
+        ):
+            raise Refusal(f"{where}: parts: a list of parts of the schematic is asked")
+        why, source = _text(f"{where}: why", entry["why"]), _text(f"{where}: source", entry["source"])
+        unjudged.append((refs[0], f"{key}: {why}", source))
+    pack = _text(f"{name}: pack", data["pack"])
+    return Project(pack, ambient, nets, amps, accepted, volts, watts, unjudged)
 
 
 # ---------------------------------------------------------------- the facts of a part
@@ -2187,6 +2203,8 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
                 f"{key}: ratings.json states {si(amps, 'A')} behind the pin, "
                 "and the command holds no pin's current to a limit"
             )
+
+    out += [Finding("not judged", ref, "stated", text, source) for ref, text, source in project.unjudged]
 
     # An acceptance is the owner's word on 1 failure. One that meets 1 failure accepts it. One that
     # meets 2 accepts neither: the second is a failure the owner has not seen. One that meets none

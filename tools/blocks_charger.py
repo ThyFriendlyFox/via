@@ -9,7 +9,11 @@ states, and its 2 transistors to the procedure of its section 9.2.2. The numbers
 rules/blocks/charger.json with their clause and page; a part's own ratings in library/facts/.
 
 The block checks what it builds before it returns: a charge current the IC, its resistor range or its
-dissipation does not allow is refused in 1 line with the equation and its page.
+dissipation does not allow is refused in 1 line with the equation and its page. The junction is held to
+the least of the datasheet's 125 C and the rating pack's derated limit, the one the SIM gate holds. What
+the block cannot judge (a tolerance stated at another ambient, an on-resistance with no MAX at heat or at
+a low gate) is a `not judged` sum and an entry of ratings.json's `not_judged`, which `workcenter ratings`
+prints.
 """
 
 from __future__ import annotations
@@ -20,8 +24,11 @@ from pathlib import Path
 
 import blocks
 import ratings
+import thermal
 
 RULES = blocks.RULES / "charger.json"
+PACKS = blocks.ROOT / "rules" / "ratings"
+NETS = ("in", "bat", "gnd", "cell", "chg")
 
 
 @dataclass(frozen=True)
@@ -37,6 +44,42 @@ class Cell:
 
 def _g(x: float) -> str:
     return f"{x:.4g}"
+
+
+def _span(u: str, name: str, value, unit: str) -> tuple[float, float]:
+    """A span the caller gives: 2 numbers, the least first."""
+    two = isinstance(value, (tuple, list)) and len(value) == 2
+    if not two or not all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in value):
+        raise blocks.Refused(
+            f"charger {u}: `{name}` is {value!r}; it needs 2 numbers in {unit}, the least first"
+        )
+    if value[0] > value[1]:
+        raise blocks.Refused(
+            f"charger {u}: `{name}`'s first number, {_g(value[0])} {unit}, is above its second, "
+            f"{_g(value[1])} {unit}"
+        )
+    return float(value[0]), float(value[1])
+
+
+def _limit(u: str, chip: dict, chip_facts, pack: str, facts: Path) -> tuple[float, str]:
+    """The junction's limit: the least of the datasheet's recommended TJ and the rating pack's derated
+    limit on the facts' junction_max, the limit the SIM gate's thermal check holds the part to."""
+    own = chip["junction"]["value"]
+    try:
+        path = ratings.find_pack(pack, Path(facts).parent.parent, PACKS)
+        found = ratings.read_pack(path, own="" if path.parent == PACKS else pack)
+    except ratings.Refusal as exc:
+        raise blocks.Refused(f"charger {u}: {exc}") from None
+    rated = chip_facts.data["thermal"].get("junction_max")
+    rule = thermal.rule_for(found, thermal.kind_of(chip_facts))
+    if rule is None or rated is None:
+        return own, f"the limit is {_g(own)} C: {pack} gives none for {thermal.kind_of(chip_facts)}"
+    most, how = thermal.limit(rule, rated)
+    pages = ratings._p(chip_facts.data["thermal"]["page"])
+    return min(own, most), (
+        f"the limit is the least of {_g(own)} C and {pack}'s {how} ({rule.where}), on a junction rated "
+        f"{rated:g} C (junction_max of {chip_facts.source}, {pages})"
+    )
 
 
 def _row(rows: list, amps: float) -> list | None:
@@ -115,6 +158,20 @@ def charger(  # noqa: PLR0912, PLR0913, PLR0915
         "chg": "Q2",
     } | (refs or {})
     u, p2 = refs["ic"], refs["protector"]
+    # The arguments' shape, before any number is taken from them.
+    vin_low, vin_high = _span(u, "vin", vin, "V")
+    amb_low, amb_high = _span(u, "ambient", ambient, "C")
+    cell_low, cell_high = _span(u, "cell.volts", cell.volts, "V")
+    lacking = [k for k in NETS if k not in nets]
+    if lacking:
+        raise blocks.Refused(
+            f"charger {u}: `nets` lacks {', '.join(lacking)}; it needs {', '.join(NETS[:-1])} and {NETS[-1]}"
+        )
+    if load <= 0:
+        raise blocks.Refused(
+            f"charger {u}: a load of {ratings.si(load, 'A')} is asked; the transistors are held to a load "
+            "over 0 A"
+        )
     data = blocks.load_rules(rules)
     chip, guard = data["charger"], data["protector"]
     if chip["mpn"] != ic:
@@ -136,10 +193,14 @@ def charger(  # noqa: PLR0912, PLR0913, PLR0915
     if chip_facts is None or "thermal" not in chip_facts.data:
         raise blocks.Refused(f"charger {u}: {facts} holds no facts of {ic} with its thermal figures")
     sums: list[str] = []
+    unjudged: dict[str, dict] = {}  # what the block cannot judge: ratings.json's `not_judged`
 
-    # The input, the current asked and the cell's limits, before any part is taken.
+    def not_judged(label: str, parts: list[str], why: str, source: str) -> None:
+        unjudged[label] = {"parts": parts, "why": why, "source": source}
+        sums.append(f"not judged: {label}: {why} [{source}]")
+
+    # The input, the current asked, the ambient and the cell's limits, before any part is taken.
     low, high = chip["vin"]["value"]
-    vin_low, vin_high = vin
     if vin_low < low or vin_high > high:
         reach = vin_high if vin_high > high else vin_low
         raise blocks.Refused(
@@ -152,7 +213,19 @@ def charger(  # noqa: PLR0912, PLR0913, PLR0915
             f"charger {u}: a charge current of {ratings.si(amps, 'A')} is outside {ic}'s "
             f"{ratings.si(least, 'A')} to {ratings.si(most, 'A')} [{at(chip, 'amps')}]"
         )
-    cell_low, cell_high = cell.volts
+    t_low, t_high = guard["ambient"]["value"]
+    if amb_low < t_low or amb_high > t_high:
+        reach = amb_high if amb_high > t_high else amb_low
+        raise blocks.Refused(
+            f"charger {p2}: the ambient reaches {_g(reach)} C, outside {protector}'s {_g(t_low)} C to "
+            f"{_g(t_high)} C [{at(guard, 'ambient')}]"
+        )
+    tj_least = chip["junction_least"]["value"]
+    if amb_low < tj_least:
+        raise blocks.Refused(
+            f"charger {u}: the ambient reaches {_g(amb_low)} C, and the junction is at least the ambient: "
+            f"under {ic}'s least, {_g(tj_least)} C [{at(chip, 'junction_least')}]"
+        )
 
     # The programming resistor: equation 1 at KISET's typical value, then the stock's nearest, then the
     # span of current it gives with KISET's limits and the resistor's tolerance.
@@ -211,13 +284,13 @@ def charger(  # noqa: PLR0912, PLR0913, PLR0915
     why = "the cell's least" if vbat == cell_low else "VLOWV's least: under it the charge is 20 %"
     icc = chip["icc"]["value"]
     theta = chip_facts.data["thermal"]["theta_ja"]
-    limit = chip["junction"]["value"]
-    hot = ambient[1]
+    limit, limit_where = _limit(u, chip, chip_facts, pack, facts)
+    hot = amb_high
     watts = (vin_high - vbat) * i_high + vin_high * icc  # equation 8, and the supply's own current
     tj = hot + theta * watts
     heat_where = (
         f"{eq('8')}; {at(chip, 'vlowv')}; {at(chip, 'icc')}; {at(chip, 'theta_ja')}; {at(chip, 'junction')}; "
-        "TJ = TA + RthetaJA x P, TI SPRA953D, section 1.1, equation 1, page 2"
+        f"TJ = TA + RthetaJA x P, TI SPRA953D, section 1.1, equation 1, page 2; {limit_where}"
     )
     sum_p = (
         f"P = ({_g(vin_high)} V - {_g(vbat)} V) x {ratings.si(i_high, 'A')} + {_g(vin_high)} V x "
@@ -280,6 +353,23 @@ def charger(  # noqa: PLR0912, PLR0913, PLR0915
         f"[{at(chip, 'vout_reg')}; {ovp_where}; "
         f"{cell.source}]"
     )
+
+    def stated_at(key: str, label: str, name: str, where: str) -> None:
+        """A tolerance stated at an ambient the design leaves: not judged there."""
+        lo, hi = guard[key]["celsius"]
+        if lo <= amb_low and amb_high <= hi:
+            return
+        ta = f"{_g(lo)} C" if lo == hi else f"{_g(lo)} C to {_g(hi)} C"
+        mv = _g(guard[key]["value"] * 1000)
+        not_judged(
+            label,
+            [p2],
+            f"{name}'s tolerance, {mv} mV, is stated at TA = {ta}, and the ambient runs {_g(amb_low)} C to "
+            f"{_g(amb_high)} C",
+            where,
+        )
+
+    stated_at("ovp_tolerance", f"{p2}: the overcharge threshold's tolerance", "VOVP", ovp_where)
     uvp, uvp_tol = guard["uvp"]["value"], guard["uvp_tolerance"]["value"]
     uvp_where = f"{at(guard, 'uvp')}; {at(guard, 'uvp_tolerance')}"
     if uvp - uvp_tol < cell_low * (1 - ratings.EPS):
@@ -289,9 +379,9 @@ def charger(  # noqa: PLR0912, PLR0913, PLR0915
         )
     sums.append(
         f"{p2}: the overdischarge threshold is {_g(uvp - uvp_tol)} V at the least, over the cell's "
-        f"{_g(cell_low)} V; its tolerance is the one at 25 C, the 1 the datasheet gives [{uvp_where}; "
-        f"{cell.source}]"
+        f"{_g(cell_low)} V [{uvp_where}; {cell.source}]"
     )
+    stated_at("uvp_tolerance", f"{p2}: the overdischarge threshold's tolerance", "VUVP", uvp_where)
 
     # The 2 transistors: section 9.2.2's procedure with each FET's greatest on-resistance.
     occ = guard["occ"]["value"] - guard["occ_tolerance"]["value"]
@@ -338,37 +428,64 @@ def charger(  # noqa: PLR0912, PLR0913, PLR0915
             f"[{fet_where}]"
         )
     fet, fet_facts, r_typ, r_max = taken
-    rds_where = rated[fet.mpn]["rds_on"]["where"]
+    rds = rated[fet.mpn]["rds_on"]
+    rds_where = rds["where"]
+    rds_at = f"{_g(rds['celsius'])} C and VGS = {_g(rds['gate_volts'])} V"
     total = 2 * r_max
     pair_refs = f"{refs['dsg']}, {refs['chg']}"
+    pair = [refs["dsg"], refs["chg"]]
     sums.append(
-        f"{pair_refs}: {fet.mpn}, 2 x {ratings.si(r_max, 'ohm')} = {ratings.si(total, 'ohm')}; "
+        f"{pair_refs}: {fet.mpn}, 2 x {ratings.si(r_max, 'ohm')} = {ratings.si(total, 'ohm')} at {rds_at}; "
         f"the load gives {ratings.si(total * load, 'V')}, under VOCD's least, {ratings.si(ocd_low, 'V')}; "
         f"the charge gives {ratings.si(total * i_high, 'V')}, under OCC's least, {ratings.si(occ, 'V')} "
         f"[{fet_where}; {rds_where}]"
     )
     trip = ocd_high / (2 * r_typ)
-    gate = guard["gate_volts"]["value"]
-    sums.append(
-        f"{pair_refs}: at the typical {ratings.si(r_typ, 'ohm')} the discharge trips at "
-        f"{ratings.si(ocd_high, 'V')} / {ratings.si(2 * r_typ, 'ohm')} = {ratings.si(trip, 'A')}, the cell "
-        f"gives {ratings.si(cell.discharge_amps, 'A')}; not judged: the trip with a transistor under its "
-        f"typical on-resistance, which the datasheet does not bound, and the on-resistance with a gate under "
-        f"the {ratings.si(gate, 'V')} the protector gives at a cell of 3.8 V [{fet_where}; {rds_where}; "
-        f"{at(guard, 'gate_volts')}; {cell.source}]"
-    )
     if trip > cell.discharge_amps:
         raise blocks.Refused(
             f"charger {p2}: the discharge trips at {ratings.si(trip, 'A')} at the typical on-resistance, "
             f"over the cell's {ratings.si(cell.discharge_amps, 'A')} "
             f"[{fet_where}; {rds_where}; {cell.source}]"
         )
-    filt = guard["filter_farads"]["value"]
-    c_bat, _ = _capacitor(p2, caps, cell_high, (filt, filt), at(guard, "filter_farads"), kept_needed=False)
     sums.append(
-        f"{refs['bat']}: {c_bat[0].value} on BAT, rated {ratings.si(c_bat[1].data['volts'], 'V')}; the value "
-        f"it keeps is not judged: the datasheet asks {ratings.si(filt, 'F')} and no effective value "
-        f"[{at(guard, 'filter_farads')}]"
+        f"{pair_refs}: at the typical {ratings.si(r_typ, 'ohm')} the discharge trips at "
+        f"{ratings.si(ocd_high, 'V')} / {ratings.si(2 * r_typ, 'ohm')} = {ratings.si(trip, 'A')}, under the "
+        f"cell's {ratings.si(cell.discharge_amps, 'A')} [{fet_where}; {rds_where}; {cell.source}]"
+    )
+    # SLUSBU9I 9.2.2 asks the on-resistance derated for heat and gate drive; the FET's datasheet gives
+    # its MAX at 1 temperature and 1 gate voltage, and the protector's gate drive at 1 cell voltage.
+    gate = guard["gate_volts"]
+    drive, at_cell = ratings.si(gate["value"], "V"), ratings.si(gate["at_cell"], "V")
+    not_judged(
+        f"{pair_refs}: the on-resistance at heat and at a low gate",
+        pair,
+        f"the load's {ratings.si(total * load, 'V')} and the charge's {ratings.si(total * i_high, 'V')} are "
+        f"worked out at RDS(on) MAX at {rds_at}; {fet.mpn}'s datasheet gives no MAX above "
+        f"{_g(rds['celsius'])} C or under VGS = {_g(rds['gate_volts'])} V, and {protector} drives the gate "
+        f"to {drive} at the least only at a cell of {at_cell}, while the cell runs down to "
+        f"{_g(uvp - uvp_tol)} V",
+        f"{gshort}, {guard['derating_rule']}; {rds_where}; {at(guard, 'gate_volts')}; {uvp_where}",
+    )
+    not_judged(
+        f"{pair_refs}: the discharge trip",
+        pair,
+        f"under the typical {ratings.si(r_typ, 'ohm')}, which {fet.mpn}'s datasheet does not bound from "
+        f"below, the discharge trips over {ratings.si(trip, 'A')}",
+        f"{fet_where}; {rds_where}; {cell.source}",
+    )
+    filt = guard["filter_farads"]["value"]
+    filt_where = at(guard, "filter_farads")
+    c_bat, _ = _capacitor(p2, caps, cell_high, (filt, filt), filt_where, kept_needed=False)
+    sums.append(
+        f"{refs['bat']}: {c_bat[0].value} on BAT, rated {ratings.si(c_bat[1].data['volts'], 'V')}, the "
+        f"{ratings.si(filt, 'F')} {protector} asks [{filt_where}]"
+    )
+    not_judged(
+        f"{refs['bat']}: the value it keeps",
+        [refs["bat"]],
+        f"{protector} asks {ratings.si(filt, 'F')} on BAT and states no value it must keep at the cell's "
+        "voltage",
+        filt_where,
     )
     pairs = {}
     for key in ("filter_ohms", "sense_ohms"):
@@ -454,11 +571,13 @@ def charger(  # noqa: PLR0912, PLR0913, PLR0915
                 "source": f"between the 2 transistors, {gnd} and {neg}: under {drop}, or {p2} opens them "
                 f"[{at(guard, 'ocd_tolerance')}]",
             },
-        }
+        },
+        # `workcenter ratings` prints each as not judged, and its --strict fails on them
+        "not_judged": unjudged,
     }
     files = charger_deck(
-        u, ic, refs["iset"], ohms, k_max, vin_high, vbat, icc, cell, hot, theta, limit, chip, short, sums,
-        pack, iset[1].data["tolerance"], iset[1].source, ambient,
+        u, ic, refs["iset"], ohms, k_max, vin_high, vbat, icc, cell, hot, theta, limit, limit_where, chip,
+        short, sums, pack, iset[1].data["tolerance"], iset[1].source, (amb_low, amb_high),
     )  # fmt: skip
     return blocks.Block("charger", sums, entries, rows, files)
 
@@ -476,6 +595,7 @@ def charger_deck(  # noqa: PLR0913
     hot,
     theta,
     limit,
+    limit_where,
     chip,
     short,
     sums,
@@ -521,7 +641,7 @@ def charger_deck(  # noqa: PLR0913
             "max": round(most_w, 6),
             "source": f"({_g(limit)} C - {_g(hot)} C) / {_g(theta)} C/W: the power that keeps {u}'s junction "
             f"at {_g(limit)} C at the greatest ambient [{chip['junction']['where']}; "
-            f"{chip['theta_ja']['where']}]",
+            f"{chip['theta_ja']['where']}; {limit_where}]",
         },
     }
     corners = {
