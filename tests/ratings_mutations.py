@@ -8,7 +8,7 @@ verify`: an edit of the engine that moves an anchor fixes the anchor in the same
 A name is the reviewer's id of 2026-11-17 and the part of the engine it changes. The reviewer's 431
 changes were written against an older engine; each is anchored here to the text it changes now.
 EQUIVALENT names the changes no test can catch, each with the reason; GONE the ones whose code was
-rewritten since. FU01 to FU10 change the rule by rating that a fuse's current is held to.
+rewritten since. FU01 to FU14 change the rule by rating that a fuse's current is held to.
 """
 
 TEST = (
@@ -134,7 +134,7 @@ MUTATIONS = [
     ('FO13 facts_of', 'tools/ratings.py', 'facts.data[key] if key in facts.data else part_value(part.value)', 'part_value(part.value)'),
     ('FP01 find_pack', 'tools/ratings.py', 'if (project_dir / name).is_file():', 'if False:'),
     ('FP02 find_pack', 'tools/ratings.py', 'sorted(p.stem for p in packs.glob', 'list(p.stem for p in packs.glob'),
-    ('FU01 _bands', 'tools/ratings.py', '            if r in seen:', '            if False:'),
+    ('FU01 _bands', 'tools/ratings.py', '            if first is not None:', '            if False:'),
     ('FU02 Rule.at', 'tools/ratings.py', 'for ratings, share, above in self.bands:', 'for ratings, share, above in self.bands[:1]:'),
     ('FU03 _bands', 'tools/ratings.py', 'term = row.get("above", above)', 'term = above'),
     ('FU04 judge.fuse', 'tools/ratings.py', 'stress = f"{kind.partition(\'.\')[0]}.current"', 'stress = f"{kind}.current"'),
@@ -144,6 +144,10 @@ MUTATIONS = [
     ('FU08 Rule.at', 'tools/ratings.py', 'math.isclose(rated, r, rel_tol=EPS)', 'rated == r'),
     ('FU09 read_pack', 'tools/ratings.py', 'raise Refusal(f"{where}: `max` and `by_rating` stand together; a rule holds 1 of them")', 'pass'),
     ('FU10 _bands', 'tools/ratings.py', 'share = _number(f"{here}: max", row["max"], 0, 1)', 'share = _number(f"{here}: max", row["max"])'),
+    ('FU11 _bands', 'tools/ratings.py', 'term = row.get("above", above)', 'term = row.get("above")'),
+    ('FU12 _bands', 'tools/ratings.py', 'r, above=0) for r in row["rated"]', 'r) for r in row["rated"]'),
+    ('FU13 _bands', 'tools/ratings.py', '        _above(where, above, 1)', '        pass'),
+    ('FU14 _bands', 'tools/ratings.py', 'math.isclose(r, s, rel_tol=EPS)', 'r == s'),
     ('GT02 gate_ratings.strict', 'tools/ratings.py', 'if strict else ("fail",)', 'if not strict else ("fail",)'),
     ('GT03 gate_ratings.details', 'tools/ratings.py', 'not in (*red, "hold")', 'not in (*red,)'),
     ('GT04 gate_ratings.cut', 'tools/ratings.py', 'SHOWN = 20', 'SHOWN = 10'),
