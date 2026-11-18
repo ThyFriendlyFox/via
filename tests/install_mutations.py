@@ -15,7 +15,8 @@ TEST = (
     "${PYTHON:-python3} -m pytest tests/test_install_apt.py -x -q -p no:cacheprovider"
     " --deselect tests/test_install_apt.py::test_each_mutation_of_the_list_changes_1_place_of_the_script"
 )
-COPY = ["install.sh", "pyproject.toml", "tests", "tools"]
+# ci.yml: the bounds CI sets and its job's limit are read from it by the tests.
+COPY = ["install.sh", "pyproject.toml", "tests", "tools", ".github/workflows/ci.yml"]
 
 # fmt: off
 MUTATIONS = [
@@ -38,7 +39,8 @@ MUTATIONS = [
     ("IA09 apt_shown: always 0", "install.sh",
      'return "${codes[0]}"', "return 0"),
     ("IA10 download: a stall read as a failure", "install.sh",
-     "if ((rc == 124)); then\n    stop", "if ((rc == 999)); then\n    stop"),
+     'if ((rc == 124)) && [[ -n "$APT_DOWNLOAD_TIMEOUT" ]]; then\n    stop',
+     'if ((rc == 999)) && [[ -n "$APT_DOWNLOAD_TIMEOUT" ]]; then\n    stop'),
     ("IA11 install: may download again", "install.sh",
      "    -o APT::Get::Download=false ", "    "),
     ("IA12 the guard", "install.sh",
@@ -52,7 +54,7 @@ MUTATIONS = [
     ("IA16 kicad_index: another source's line", "install.sh",
      'grep -F "${KICAD_PPA_URL%/}" <<< "$out"', 'grep -F "Failed" <<< "$out"'),
     ("IA17 download: no bound", "install.sh",
-     'apt_shown timeout "$APT_DOWNLOAD_TIMEOUT" apt-get', "apt_shown apt-get"),
+     'apt_shown bounded "$APT_DOWNLOAD_TIMEOUT" apt-get', "apt_shown apt-get"),
     ("IA18 the link's path a literal again", "install.sh",
      'ln -sfn "${SRC_DIR}/tools/workcenter" "$WORKCENTER_LINK"',
      'ln -sfn "${SRC_DIR}/tools/workcenter" /usr/local/bin/workcenter'),
@@ -110,5 +112,31 @@ MUTATIONS = [
     ("IA41 another source's missing release blamed on KiCad's", "install.sh",
      '| *"${KICAD_PPA_URL%/} "*"does not have a Release file"*) return 0 ;;',
      '| *"does not have a Release file"*) return 0 ;;'),
+    ("IA42 a person's computer: the update bounded by default", "install.sh",
+     'APT_UPDATE_TIMEOUT="${APT_UPDATE_TIMEOUT:-}"', 'APT_UPDATE_TIMEOUT="${APT_UPDATE_TIMEOUT:-120}"'),
+    ("IA43 a person's computer: the download bounded by default", "install.sh",
+     'APT_DOWNLOAD_TIMEOUT="${APT_DOWNLOAD_TIMEOUT:-}"',
+     'APT_DOWNLOAD_TIMEOUT="${APT_DOWNLOAD_TIMEOUT:-600}"'),
+    ("IA44 bounded: timeout with no bound", "install.sh",
+     '  if [[ -n "$secs" ]]; then\n    timeout', "  if true; then\n    timeout"),
+    ("IA45 bounded: a bound set and not applied", "install.sh",
+     '  if [[ -n "$secs" ]]; then\n    timeout', "  if false; then\n    timeout"),
+    ("IA46 a wrong bound not checked", "install.sh",
+     "  apt_bounds_check\n", "  true\n"),
+    ("IA47 a bound of 0 taken", "install.sh",
+     '"$value" =~ ^[1-9][0-9]*$', '"$value" =~ ^[0-9]+$'),
+    ("IA48 the update's bound not checked", "install.sh",
+     "for name in APT_UPDATE_TIMEOUT APT_DOWNLOAD_TIMEOUT; do", "for name in APT_DOWNLOAD_TIMEOUT; do"),
+    ("IA49 kicad_index: apt's own 124 read as a cut", "install.sh",
+     'if ((rc == 124)) && [[ -n "$APT_UPDATE_TIMEOUT" ]]; then', "if ((rc == 124)); then"),
+    ("IA50 download: apt's own 124 read as a cut", "install.sh",
+     'if ((rc == 124)) && [[ -n "$APT_DOWNLOAD_TIMEOUT" ]]; then\n    stop',
+     "if ((rc == 124)); then\n    stop"),
+    ("IA51 download: a failure names a bound it does not have", "install.sh",
+     "${APT_DOWNLOAD_TIMEOUT:+, within its bound of ${APT_DOWNLOAD_TIMEOUT} s}",
+     ", within its bound of ${APT_DOWNLOAD_TIMEOUT} s"),
+    ("IA52 the cut names a fixed number, not the bound set", "install.sh",
+     "    stop \"apt: the download did not end within ${APT_DOWNLOAD_TIMEOUT} s",
+     "    stop \"apt: the download did not end within 600 s"),
 ]
 # fmt: on
