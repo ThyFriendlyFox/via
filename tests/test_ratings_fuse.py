@@ -19,12 +19,14 @@ from test_ratings import (
     NASA,
     NASA_SOURCE,
     PACKS,
+    POWER_FET,
     V5,
     ceramic,
     circuit,
     entry,
     found,
     library,
+    power_fet,
     project,
     ratings,
     regulator,
@@ -95,6 +97,44 @@ def test_a_rating_table_4_does_not_name_is_not_judged(tmp_path):
         "rating less for each C of the fuse body above 25 C]"
     ]
     assert ratings.verdict(report) == ("RATINGS HELD, 1 NOT JUDGED", 0)
+    at_its_rating = fused(tmp_path, "fuse.cartridge", 6.3, 6.3, NASA)  # 6.3 / 6.3 = 1.00: not over it
+    assert found(at_its_rating, "fail") == [] and len(found(at_its_rating, "not judged")) == 1
+
+
+@pytest.mark.parametrize(
+    ("rated", "amps", "of_it"),
+    [
+        (6.3, 20.0, "3.17"),  # 20 / 6.3 = 3.1746: 6.3 A is in no row of table 4
+        (20.0, 30.0, "1.50"),  # 30 / 20 = 1.50: table 4 ends at 15 A
+    ],
+)
+def test_a_rating_table_4_does_not_name_is_still_held_to_the_part_s_own(tmp_path, rated, amps, of_it):
+    """The table says nothing of the derated share, and the part's own rating, 1.00, holds all the same
+    (rules/ratings/README.md: a stress with no rule is held to the part's own rating)."""
+    report = fused(tmp_path, "fuse.cartridge", rated, amps, NASA)
+    r, a = f"{rated:g} A", f"{amps:g} A"
+    assert found(report, "fail") == [
+        f"fail F1 F current, with the {a} the project states: {a} on {r} rated is {of_it}, the limit is "
+        f"1.00, the part's own rating: the pack names no share for a rating of {r} [DS-1, rev A: the part's "
+        "own rating]"
+    ]
+    assert ratings.verdict(report) == ("RATINGS NOT HELD (1 fail)", 1)
+
+
+def test_a_rating_at_0_that_the_rule_names_no_share_for_fails_and_ends_no_run(tmp_path):
+    """4 A at 25 C and 0 A at 150 C: at 150 C nothing of the rating is left. A pack whose rule names no
+    share for that rating sent the part to its own rating, 1 A / 0 A, and the run ended in a
+    ZeroDivisionError."""
+    net, mpns = circuit(Q1=("FET", "FET-2", POWER_FET))
+    nets = {"LOAD": (0.0, 12.6), "GATE": (0.0, 3.3), **GND}
+    facts = library(tmp_path, power_fet(amps_drain=[[25, 4.0], [150, 0]]))
+    rule = {"id": "q", "stress": "mosfet.drain_current", "kinds": ["transistor"], "where": "table 1, page 1"}
+    pack = pack_of(tmp_path, {**rule, "by_rating": [{"rated": [4], "max": 0.5}]})
+    report = ratings.judge(net, mpns, facts, project(nets, amps={"Q1": 1.0}, ambient=150), pack)
+    assert [line.split(" [")[0] for line in found(report, "fail")] == [
+        "fail Q1 FET drain current, with the 1 A the project states: 1 A on 0 A rated: "
+        "nothing of the rating is left"
+    ]
 
 
 def test_the_body_above_25_c_takes_0_2_percent_of_the_rating_for_each_c(tmp_path):
