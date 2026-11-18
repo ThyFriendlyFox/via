@@ -614,6 +614,7 @@
       "kind": "datasheet",
       "maker": "Texas Instruments",
       "number": "SLLSEG9C",
+      "names": ["SLLSEG9C"],
       "title": "TPD2E2U06 Dual-Channel High-Speed ESD Protection Device",
       "revision": "June 2013, revised December 2019",
       "url": "https://www.ti.com/lit/ds/symlink/tpd2e2u06.pdf",

@@ -590,6 +590,38 @@ def test_a_document_served_in_a_zip_is_held_by_the_zips_sha256(tmp_path):
     assert lines[-1] == "references rules: 1 documents named in 1 files, 0 in the index, 1 not; 0 not judged"
 
 
+def test_a_table_entry_that_wraps_its_document_is_read_by_the_document(tmp_path):
+    """rules/blocks/usbc.json names its documents in a table whose entries hold the document under
+    `document`, beside a `member` and a `short` label: `documents: {id: {"document": {...}, ...}}`. The
+    document inside is the source; before, the entry itself was taken as the source and failed as
+    naming no URL and no SHA256."""
+    url = "https://maker.example/spec.zip"
+    index = tmp_path / "index.json"
+    entry = {
+        "id": "spec",
+        "kind": "standard",
+        "issuer": "A forum",
+        "number": "SPEC",
+        "title": "A specification",
+        "revision": "1.0",
+        "url": url,
+        "sha256": "cd" * 32,
+        "read": "2026-11-17",
+    }
+    index.write_text(json.dumps({"rules": ["rules/x/*.json"], "documents": [entry]}), encoding="utf-8")
+    rule = tmp_path / "block.json"
+    wrapped = {"document": {"number": "SPEC", "url": url, "sha256": "cd" * 32}, "short": "SPEC 1.0"}
+    rule.write_text(json.dumps({"documents": {"spec": wrapped}}), encoding="utf-8")
+    code, lines = rules(rule, index=index)
+    assert code == 0, lines
+    assert lines[-1] == "references rules: 1 documents named in 1 files, 1 in the index, 0 not; 0 not judged"
+    wrapped["document"]["sha256"] = "ef" * 32
+    rule.write_text(json.dumps({"documents": {"spec": wrapped}}), encoding="utf-8")
+    code, lines = rules(rule, index=index)
+    assert code == 1
+    assert lines[-1] == "references rules: 1 documents named in 1 files, 0 in the index, 1 not; 0 not judged"
+
+
 def test_every_document_a_rule_of_the_repository_names_is_in_the_index():
     """`make verify` runs this on the files the index's `rules` globs find (the code its `code` globs
     find is tests/test_references_code.py's). The rating packs name 2 standards, the board packs 3 (the
@@ -605,13 +637,15 @@ def test_every_document_a_rule_of_the_repository_names_is_in_the_index():
     files name 1 + 1 + 1 + 2 = 5 pages: 37 in all. made-up.json's 4 parts name no document, Sierra's fab
     file names IPC's class standard with no place beside it, and the product kind names 2 IEC standards a
     laboratory uses, with none: 4 + 1 + 2 = 7 not judged. Files: 2 + 3 + 1 + 5 + 1 + 1 + 8 JSON and 4 fab
-    rule files = 25."""
+    rule files = 25. The USB-C block adds rules/blocks/usbc.json, 4 (the 2 usb.org specifications, its
+    receptacle's drawing, its clamp's datasheet), and the facts of its receptacle, its clamp and its
+    capacitor, 1 each: 37 + 4 + 3 = 44 named in 25 + 4 = 29 files."""
     globs = json.loads(INDEX.read_text(encoding="utf-8"))["rules"]
     files = sorted({p for pattern in globs for p in ROOT.glob(pattern)})
     code, out = run("rules", *files)
     assert code == 0, out
     assert out.splitlines()[-1] == (
-        "references rules: 37 documents named in 25 files, 37 in the index, 0 not; 7 not judged"
+        "references rules: 44 documents named in 29 files, 44 in the index, 0 not; 7 not judged"
     )
 
 

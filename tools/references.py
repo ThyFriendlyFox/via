@@ -640,7 +640,11 @@ def cited(data, pointer: str = ""):
                 and all(isinstance(v, dict) for v in value.values())
             ):
                 for doc_id, doc in value.items():
-                    yield "source", f"{here}.{doc_id}", doc
+                    if isinstance(doc.get("document"), dict):
+                        # an entry that holds its document under `document` (rules/blocks/usbc.json)
+                        yield from cited(doc, f"{here}.{doc_id}")
+                    else:
+                        yield "source", f"{here}.{doc_id}", doc
             else:
                 yield from cited(value, here)
     elif isinstance(data, list):
