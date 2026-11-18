@@ -39,6 +39,19 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-18 — The website in the owner's writing rules
+
+The owner gave a set of rules for writing that does not sound like a model's, and asked for them on
+the website. They ask for contractions, where the blog's old rules forbade them, and they ban the
+staged scenes and "engineers call this" glosses the board posts used. I kept the rules as given in
+`docs/WEBSITE-WRITING.md`, with a voice profile from the owner's own lines, since no sample of the
+owner's mail was read. I rewrote the home page, the 404 page, the forms' messages and 2 headings of
+the example pages. 3 writers rewrote the 7 posts against the file and a checker; I compared each
+post's numbers and links with the old one and read each against the checklist. Nothing was added.
+
+Evidence: the docs and forms tests 33 passed, 2 skipped (KiCad); each post's numbers and links match
+the version before.
+
 ## 2026-11-18 — The long commands take turns by themselves
 
 The roadmap's entry "Out of band: a lock the tools take themselves" landed (in part). Each long `workcenter` command takes a numbered ticket in `/tmp/workcenter-lock-<uid>` and runs when no live ticket has a lower number; a ticket is live while its process holds a flock on it, or while a process that run started still runs. A waiting run says so at once and every 30 s. `make verify` runs itself again under `enginelock.py hold`, so the gate runs alone and its tests' commands, its children, never wait. The review found 7 faults; all were fixed with tests. On landing, the 2 commands the trunk gained since (`new`, `standards`) were measured at 0.17 s and 0.24 s and named short, and a test now fails on any command named neither long nor short. The whole test file ran 20 times in a loop on the landing head with 0 failures.

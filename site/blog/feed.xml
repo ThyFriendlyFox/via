@@ -29,7 +29,7 @@
       <category>geometry</category>
       <category>gyroscope</category>
       <category>capacitive touch</category>
-      <description>Signet is a computer mouse you wear as a ring on your index finger. Eight small circuit boards sit round the finger, each soldered to the next along its edge.</description>
+      <description>Signet is a computer mouse you wear as a ring on your index finger. It&#x27;s made of eight small circuit boards that sit around the finger, each one soldered to the next along an edge.</description>
     </item>
     <item>
       <title>Rosetta, a controller whose knob picks the console</title>
@@ -41,7 +41,7 @@
       <category>usb</category>
       <category>sensors</category>
       <category>batteries</category>
-      <description>Rosetta is one game controller for a PS4, a PS5, an Xbox, a Switch or anything over Bluetooth. A five-position knob, where an Xbox 360 pad has its guide button, picks the console.</description>
+      <description>Rosetta is one game controller for a PS4, a PS5, an Xbox, a Switch or anything over Bluetooth. You pick the console with a five-position knob that sits where an Xbox 360 pad has its guide button.</description>
     </item>
     <item>
       <title>Lark, a voice-controlled ceiling-fan bulb on four boards</title>
@@ -65,7 +65,7 @@
       <category>acoustics</category>
       <category>feedback</category>
       <category>simulation</category>
-      <description>Hush is a ring of circuit board that sits on the face of a 40 mm speaker. A microphone on its hub hears the noise in front of the cone, and the speaker plays its opposite.</description>
+      <description>Hush is a ring-shaped circuit board that sits on the face of a 40 mm speaker. A microphone on its hub picks up the noise in front of the cone. The speaker then plays the opposite of that noise.</description>
     </item>
     <item>
       <title>Basalt: fitting a Threadripper onto a microATX board</title>
@@ -77,7 +77,7 @@
       <category>ddr5</category>
       <category>power delivery</category>
       <category>escape routing</category>
-      <description>Basalt is a motherboard for AMD&#x27;s Threadripper 7000 and 9000 processors, on a microATX board 244 mm square.</description>
+      <description>Basalt is a motherboard for AMD&#x27;s Threadripper 7000 and 9000 processors, on a microATX board 244 mm square. Every board made for this platform, TRX50, is ATX or larger. We asked for a smaller one.</description>
     </item>
     <item>
       <title>Herald: answering a fire panel&#x27;s phone call in firmware</title>
@@ -89,7 +89,7 @@
       <category>dtmf</category>
       <category>signal processing</category>
       <category>fire alarms</category>
-      <description>Herald is a board designed to sit beside a fire alarm panel and pass on its reports. Many panels report by dialing a monitoring station on a phone line, and Herald stands in for that line.</description>
+      <description>Herald is a board designed to sit beside a fire alarm panel and pass on its reports. Many panels report by dialing a monitoring station over a phone line. Herald stands in for that line.</description>
     </item>
   </channel>
 </rss>
