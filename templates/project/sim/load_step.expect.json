@@ -1,0 +1,14 @@
+{
+  "undershoot": {
+    "max": 0.1,
+    "source": "fill: the regulator's datasheet: its load transient's dip for this step, with the document, its revision, the table or figure and the page"
+  },
+  "overshoot": {
+    "max": 0.1,
+    "source": "fill: the regulator's datasheet: its load transient's rise when the load steps back, with the document, its revision, the table or figure and the page"
+  },
+  "v_low": {
+    "min": 3.0,
+    "source": "fill: the least supply of each part on the rail, from its datasheet, with the page"
+  }
+}

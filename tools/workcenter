@@ -395,6 +395,33 @@ def thermal():
     return module
 
 
+def deck_needs(project: Project, out: Path, decks: list[Path]) -> list[str]:
+    """The circuits of the schematic that no deck answers (tools/simneeds.py): an I2C line with its
+    pull-up, a regulator with a stated load. 1 `not judged:` line each. The netlist is exported only
+    from a schematic whose text names SDA, SCL or a regulator's library."""
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import simneeds
+
+    sheets = sorted(project.dir.glob("*.kicad_sch")) if project.sch else []
+    if not simneeds.worth_reading([s.read_text(encoding="utf-8", errors="replace") for s in sheets]):
+        return []
+    if not shutil.which(KICAD_CLI):
+        return [
+            f"not judged: the decks the schematic asks for: {KICAD_CLI} is not on PATH to read its netlist"
+        ]
+    out.mkdir(parents=True, exist_ok=True)
+    text, err = schematic_netlist(project, out)
+    try:
+        net = ratings().read_netlist(text) if text is not None else None
+    except ValueError as exc:
+        net, err = None, str(exc)
+    if net is None:
+        return [f"not judged: the decks the schematic asks for: no netlist ({err.strip()[-200:]})"]
+    loads = simneeds.stated_loads(project.dir / "ratings.json")
+    texts = {d.stem: d.read_text(encoding="utf-8", errors="replace") for d in decks}
+    return [n.line for n in simneeds.needs(net, loads, texts)]
+
+
 def deck_part_data(
     project: Project, folder: Path, sources: Path | None, decks: list[Path]
 ) -> tuple[dict, dict, dict, list, list]:
@@ -546,6 +573,9 @@ def read_expect(path: Path, lower_case: bool = True) -> tuple[dict[str, dict], l
             for key in ("source", "warn", "req")
             if not isinstance(entry.get(key, ""), str)
         ]
+        if str(entry.get("source", "")).strip().lower().startswith("fill:"):
+            # A copied template's bound: its number is a placeholder until its source is written.
+            bad.append(f"{name}: its source still says fill: write the document, the table and the page")
         problems += bad
         if not bad:
             bounds[name] = entry
@@ -861,7 +891,16 @@ def gate_sim(
     sim_dir = project.dir / "sim"
     every = sorted(sim_dir.glob("*.cir")) if sim_dir.is_dir() else []
     decks = every
+    # A circuit the schematic holds and no deck answers is not judged: a warning, a failure with --strict.
+    asked = deck_needs(project, out / "sim", every) if only is None else []
     if not decks:
+        if asked:
+            return Result(
+                "sim",
+                "fail" if strict else "skip",
+                f"no sim/*.cir in project, and the schematic asks for {len(asked)} decks",
+                {"failures": asked} if strict else {"warnings": asked},
+            )
         return Result("sim", "skip", "no sim/*.cir in project")
     if only is not None:
         name = only.removesuffix(".cir")
@@ -911,7 +950,7 @@ def gate_sim(
         wanted |= {ref for ref in (r.hz, r.q) if isinstance(ref, str)}
     # The decks that answer an overlap: their corners carry the resonance across its span.
     answering = {o.evidence.split(".", 1)[0] for o in plan.overlaps} if plan else set()
-    warned: list[str] = []
+    warned: list[str] = list(asked)
     expects: dict[str, dict[str, dict]] = {}
     corner_runs = 0
     # The makers' data of the schematic's capacitors and inductors: each deck runs with it in place of
@@ -969,6 +1008,12 @@ def gate_sim(
         # An altermod line with several parameters keeps only its first (ngspice 42): a corner that
         # switches a part to its maximum model runs with the rest as they were (M172).
         failures += [f"{deck.stem}: {p}" for p in sc.crowded_altermods(deck_text)]
+        # A copied template's `* fill:` line names a value not yet set: the deck is still the template's.
+        failures += [
+            f"{deck.name}:{i}: still says fill: set what it names, then delete the line"
+            for i, ln in enumerate(deck_text.splitlines(), start=1)
+            if re.match(r"\*\s*fill:", ln.strip(), re.IGNORECASE)
+        ]
         expect, expect_problems = read_expect(sim_dir / f"{deck.stem}.expect.json")
         failures += [f"{deck.stem}.expect.json: {p}" for p in expect_problems]
         expects[deck.stem] = expect

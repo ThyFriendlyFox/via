@@ -1,0 +1,11 @@
+{
+  "tr": {
+    "min": 2.0e-8,
+    "max": 3.0e-7,
+    "source": "UM10204 Rev. 7.0, Table 11, page 44: tr of SDA and SCL in Fast-mode (400 kHz), 20 to 300 ns from 0.3 VDD to 0.7 VDD. For Standard-mode (100 kHz) the same row gives 1000 ns at most and no least; for Fast-mode Plus (1 MHz), 120 ns at most and no least"
+  },
+  "isink": {
+    "max": 0.003,
+    "source": "UM10204 Rev. 7.0, Table 10, page 43: IOL, a Standard- or Fast-mode device sinks 3 mA at VOL 0.4 V at the least, so the pull-up may ask no more (VDD over 2 V; Fast-mode Plus: 20 mA)"
+  }
+}

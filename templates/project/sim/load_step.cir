@@ -1,0 +1,30 @@
+* deck: load-step U1
+* fill: write the regulator's reference on the line above as the schematic names it, then delete this line.
+* The output of 1 regulator when its load steps from light to the load ratings.json states at 1 ms,
+* and back at 2 ms. Read each bound in the regulator's datasheet: the load-transient row of its
+* electrical characteristics (a change of VOUT for a step of IOUT in a stated time), or its
+* load-transient figure. Make the step the datasheet's, and write its document, revision, table or
+* figure and page as each bound's source in load_step.expect.json.
+* fill: point .include at the maker's model in library/ and delete this line (the simulate skill, "A vendor's model").
+* A part with no model is fitted to its datasheet in sim/models/ ("A part with no model").
+.include "../library/MAKER/MODEL.lib"
+* fill: set VIN to the regulator's least input, from ratings.json's span of its net, then delete this line.
+VIN in 0 DC 5
+* fill: name C1 and C2 as the schematic names the input and output capacitors, with their values.
+C1 in 0 1u
+* fill: write the model's subcircuit and its pin order, as its .subckt line gives them.
+XU1 in 0 out MODEL
+C2 out 0 1u
+* fill: set the light load, the stated load and the step's time (here 1 mA, 100 mA, 1 us).
+ILOAD out 0 PWL(0 1m 1m 1m 1.001m 100m 2m 100m 2.001m 1m 3m 1m)
+.tran 0.1u 3m
+.control
+run
+meas tran v_light find v(out) at=0.999m
+meas tran v_low min v(out) from=1m to=2m
+meas tran v_high max v(out) from=2m to=3m
+let undershoot = v_light - v_low
+let overshoot = v_high - v_light
+print v_light v_low undershoot overshoot
+.endc
+.end

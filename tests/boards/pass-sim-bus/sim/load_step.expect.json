@@ -1,0 +1,5 @@
+{
+  "undershoot": {"max": 0.2, "source": "the fixture's own requirement for its made-up regulator: 200 mV at most"},
+  "overshoot": {"max": 0.2, "source": "the fixture's own requirement for its made-up regulator: 200 mV at most"},
+  "v_low": {"min": 3.0, "source": "the fixture's own requirement: the rail stays at 3.0 V or above"}
+}
