@@ -1,4 +1,6 @@
-"""The routers the workcenter can run, behind 1 interface (ROADMAP item 5, "a second router").
+"""The routers the workcenter can run, behind 1 interface.
+
+ROADMAP item 5, "A routing benchmark and a second router".
 
 A router here is a program that reads the Specctra DSN the workcenter writes and writes a Specctra
 session (.ses) the workcenter reads back. Every rule around a route is the workcenter's, not the
