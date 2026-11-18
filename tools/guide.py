@@ -13,7 +13,8 @@ answer asks no judgement of its caller, so a person or an agent of any size foll
     DONE WHEN  the last line starts with GREEN
 
 The order: the path (a folder, or a KiCad file that names its project), the project's files, the
-toolchain, the design file against the KiCad files it generates, the gates' report (run again when any
+toolchain, the design file against the KiCad files it generates, a board with nets that hold no copper
+(routed before the gates), the gates' report (run again when any
 input is newer, or when it is from a run without an engine), the first failure of the first red gate,
 the first warning of a GREEN run, the verification package when the project has one. A failure or a
 warning is answered from HINTS: the fix this workcenter's skills give for that kind of line.
