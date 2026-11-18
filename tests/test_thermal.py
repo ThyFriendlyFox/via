@@ -82,17 +82,16 @@ def refusal(raw: dict) -> str:
 
 def test_the_regulator_s_facts_carry_its_figures_and_the_pages_they_stand_on():
     """SBVS320D, the DBV column: RthetaJA 231.1, RthetaJC(top) 118.4, RthetaJB 64.4, psiJT 28.4 and psiJB
-    63.8 C/W (page 5), and an operating junction of 150 C at the most (page 4)."""
+    63.8 C/W (page 5), and an operating junction of 150 C at the most (page 4); footnote 2 of section 5.4
+    (page 5): the JEDEC rows apply to the 2s2p board."""
     facts = {f.name: f for f in ratings.read_facts(FACTS)}
     term = facts["TLV75533PDBVR"].data["thermal"]
+    figures = {"theta_ja": 231.1, "theta_jc": 118.4, "theta_jb": 64.4, "psi_jt": 28.4, "psi_jb": 63.8}
     assert term == {
         "junction_max": 150,
-        "theta_ja": 231.1,
-        "theta_jc": 118.4,
-        "theta_jb": 64.4,
-        "psi_jt": 28.4,
-        "psi_jb": 63.8,
+        **figures,
         "page": [4, 5],
+        "boards": {**dict.fromkeys(figures, "2s2p"), "page": 5},
     }
 
 
@@ -307,8 +306,9 @@ def test_a_part_past_its_limit_fails_on_1_line_with_the_corner_and_both_temperat
     assert judged["failures"] == [
         "thermal: U1 (TLV75533PDBVR) at 85 C ambient: junction 124.97 C, over 110 C "
         "(85 C, R1 -1 %, and 1 more run): 85 C + 231.1 C/W x 0.17296 W of ldo.p_u1, theta_ja and "
-        f"junction_max of {TLV755}, p 4 and 5; limit 110 C, the least of 110 C and 150 C - 40 C "
-        "(ecss-q-st-30-11c-rev2, clause 6.21.2, table 6-21, page 57)"
+        f"junction_max of {TLV755}, p 4 and 5, theta_ja on the high-k 2s2p board of JESD 51-7 (p 5); limit "
+        "110 C, the least of 110 C and 150 C - 40 C (ecss-q-st-30-11c-rev2, clause 6.21.2, table 6-21, "
+        "page 57)"
     ]
     assert judged["not_judged"] == []
     part = judged["parts"]["U1"]
@@ -316,6 +316,7 @@ def test_a_part_past_its_limit_fails_on_1_line_with_the_corner_and_both_temperat
         "run": "as written",
         "ambient": 25.0,
         "watts": 0.1702,
+        "figure": "theta_ja",
         "junction": pytest.approx(64.33322),
     }
     assert part["worst"]["junction"] == pytest.approx(124.971056)
@@ -360,8 +361,8 @@ def test_a_part_with_no_thermal_figure_is_not_judged_and_says_why(tmp_path):
     assert judged["not_judged"] == [
         "thermal: Q1 (Q-1) not judged: its facts give theta_jc and psi_jt, and no theta_ja: theta_jc "
         "gives the junction from the case's temperature (ECSS-Q-ST-30-11C Rev.2, clause 3.2, page 12; "
-        "SPRA953D, section 2), and psi_jt from the package top's temperature (SPRA953D, section 3); no "
-        "deck gives either"
+        "SPRA953D, section 2), and psi_jt from the package top's temperature (SPRA953D, section 3); state "
+        "either in sim/thermal.json's `from`, with its source"
     ]
     judged = thermal.judge(plan, runs, [], ECSS)
     assert judged["not_judged"] == [
@@ -443,13 +444,14 @@ def test_a_run_whose_temperature_is_not_known_is_not_judged_and_says_why(tmp_pat
 
 def test_a_judged_part_names_the_board_its_figure_stands_on(tmp_path):
     """SPRA953D, section 1.2, page 3: a 2s2p test board gives a best case, a 1s board a typical one;
-    section 1.1, page 2: a board unlike the test board changes RthetaJA."""
+    section 1.1, page 2: a board unlike the test board changes RthetaJA. SBVS320D, section 5.4,
+    footnote 2, page 5: the figure stands on the 2s2p board."""
     runs = {"ldo": [("as written", 25.0, {"p_u1": 0.1702})]}
     part = thermal.judge(plan_of(tmp_path), runs, FACTS_LIST, ECSS)["parts"]["U1"]
     assert part["assumes"] == (
-        "theta_ja 231.1 C/W is the datasheet's test board's: a JEDEC 2s2p board gives a best case and a "
-        "1s board a typical one (SPRA953D, section 1.2, page 3); a board unlike the test board changes "
-        "it (section 1.1, page 2)"
+        "theta_ja 231.1 C/W was measured on the high-k 2s2p board of JESD 51-7 (p 5): a 2s2p board gives a "
+        "best case and a 1s0p board a typical one (SPRA953D, section 1.2, page 3); a board unlike the test "
+        "board changes it (section 1.1, page 2)"
     )
 
 
@@ -491,8 +493,9 @@ def test_the_regulator_holds_at_25_c_and_fails_at_the_hot_corner(tmp_path):
     assert failures == [
         "thermal: U1 (TLV75533PDBVR) at 85 C ambient: junction 124.97 C, over 110 C "
         "(85 C, R1 -1 %, and 2 more runs): 85 C + 231.1 C/W x 0.17295 W of ldo.p_u1, theta_ja and "
-        f"junction_max of {TLV755}, p 4 and 5; limit 110 C, the least of 110 C and 150 C - 40 C "
-        "(ecss-q-st-30-11c-rev2, clause 6.21.2, table 6-21, page 57)"
+        f"junction_max of {TLV755}, p 4 and 5, theta_ja on the high-k 2s2p board of JESD 51-7 (p 5); limit "
+        "110 C, the least of 110 C and 150 C - 40 C (ecss-q-st-30-11c-rev2, clause 6.21.2, table 6-21, "
+        "page 57)"
     ]
     part = record["details"]["thermal"]["parts"]["U1"]
     assert part["written"]["ambient"] == 25.0
@@ -652,5 +655,7 @@ def test_the_printed_line_of_a_judged_part_names_the_board_its_figure_stands_on(
         check=False,
     )
     assert (
-        "limit 110 C; theta_ja 231.1 C/W is the datasheet's test board's: a JEDEC 2s2p board" in proc.stdout
+        "limit 110 C; theta_ja 231.1 C/W was measured on the high-k 2s2p board of JESD 51-7 (p 5)"
+        in proc.stdout
     )
+    assert "read once" not in proc.stdout
