@@ -317,24 +317,40 @@ The same steps keep a datasheet or a 3D body. Each step is 1 command.
      `MPN,Kind,URL,File,Member,Revision,Dated,Subckt,Ngspice,SHA256,Checked,Note`.
      Nothing to do.
    - `fetch: <url> gave an HTML page ...`, `gave an empty file (0 bytes)`,
-     `gave a file that starts ..., not %PDF` or `gave N of the M bytes its
-     Content-Length names`: the site served something that is not the file.
-     Nothing was written. Go to step 2.
+     `gave a file that starts ..., not %PDF`, `gave N of the M bytes its
+     Content-Length names` or `gave N bytes, cut short inside a chunk ...`:
+     the site served something that is not the file. Nothing was written.
+     Go to step 2.
    - `fetch: <url> refused (HTTP 403) ...`: the site refuses the
      workcenter's name. Never ask again under another name. Go to step 2.
    - `fetch: <url> gone (HTTP 404) ...`: find the maker's current URL and
      run step 1 again.
+   - `fetch: <url> error (...)`: the site's answer could not be read.
+     Go to step 2.
 2. A person downloads the file in a browser, then:
    `workcenter fetch --file <downloaded file> --url <url> --to <project>/library/<maker>/<file> --mpn <MPN> --row`.
    The row records `--url` and the note "downloaded by a person from the
-   URL; not fetched by the workcenter".
-   - `fetch: <file> is an HTML page ...`: the browser saved a web page, not
-     the file. Download it again from the maker.
+   URL; not fetched by the workcenter". For a zip, add `--member <name>`:
+   the member is read out and kept, not the zip.
+   - `fetch: <file> is an HTML page ...`, `is an empty file (0 bytes)` or
+     `is a file that starts ..., not %PDF`: the browser saved something
+     that is not the file. Download it again from the maker.
+   - `fetch: no member '<name>' in <file>`: list the zip and give the
+     member's name as the zip holds it.
    - `fetch: <file> (downloaded from <url>), ...`: done.
-3. `workcenter sources <project>`
-   - `<MPN> datasheet: <file> is an HTML page ...` or `is an empty file`:
-     a row written before fetch judged bodies keeps the wrong file. Delete
-     the file and its row, then run step 1 again.
+3. `workcenter sources <project>` judges every kept file of the board's
+   parts. It needs a schematic and a parts file; until both exist it
+   judges nothing, and steps 1 and 2 are the only check of the file.
+   - `<project>: no KiCad project, schematic, board or sim/ directory found`
+     or a `SKIP` line for `sources` that ends `no schematic in project`:
+     nothing was judged. Run step 3 again once the board has a schematic.
+   - A `SKIP` line for `sources` that ends `no parts file: name one with
+     --parts or add <path>`: nothing was judged. Give the parts file with `--parts <file>`.
+   - `<MPN> <kind>: <file> is an HTML page ...`, `is an empty file (0 bytes)`
+     or `is a file that starts ..., not %PDF`: a row written before fetch
+     judged bodies keeps the wrong file. It is the row's only problem; its
+     SHA256 is not judged. Delete the file and its row, then run step 1
+     again.
 
 A number the deck needs from a datasheet's curve (a fuse's melting time at
 a current, a MOSFET's safe operating area) is read from the PDF's vectors
