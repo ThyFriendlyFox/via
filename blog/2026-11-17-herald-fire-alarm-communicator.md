@@ -5,11 +5,11 @@ tags: [examples, herald, dtmf, signal processing, fire alarms]
 image: /examples/herald/card.png
 ---
 
-Herald is a board designed to sit beside a fire alarm panel and pass on its reports. Many panels report by dialing a monitoring station on a phone line, and Herald stands in for that line. Reports then leave over LTE-M, a low-power form of the 4G cell network, or Wi-Fi. We made it as an example for Via, our toolkit for circuit boards designed by AI.
+Herald is a board designed to sit beside a fire alarm panel and pass on its reports. Many panels report by dialing a monitoring station on a phone line, and Herald stands in for that line. Reports then leave over LTE-M, a low-power form of the 4G cell network, with Wi-Fi as backup. We made it as an example for Via, our toolkit for circuit boards designed by AI.
 
 ![Herald's routed board in 3D: a red board with the LTE-M modem, a nano SIM holder, the ESP32-S3 module, a relay, five status lights and black screw terminals along its front edge](/examples/herald/card.png "Herald v0.1, rendered by KiCad")
 
-We are Team Reagent, the electrical engineers who build Via. An AI agent designed Herald with Via's tools, skills and checks. We asked for a compact board and read the agent's work, checks and mistakes. The board is 84.4 by 64 mm, with four copper layers and 127 parts. [Herald's page](/examples/herald) shows it in 3D.
+We are Team Reagent, the electrical engineers who build Via. An AI agent designed Herald with Via's tools, skills and checks. We asked for a compact board and read the agent's work, checks and mistakes. The board is 84.4 by 64 mm, with four copper layers and 127 parts, all on the front. [Herald's page](/examples/herald) shows it in 3D.
 
 ## How a fire panel places a call
 
@@ -17,9 +17,9 @@ A landline is a pair of wires from the phone exchange. While the phone rests, th
 
 Herald takes the exchange's place. Two transistors feed the line from the panel's 24 V output, limited to 20 to 28 mA. A 47 ohm resistor turns that current into a voltage for the ESP32-S3, the board's microcontroller. In simulation, off hook reads 0.776 V or more, and on hook 0.040 V or less.
 
-Herald's design then plays dial tone: 350 and 440 Hz together. After the dialer dials, Herald answers with a handshake: 1400 then 2300 Hz, 100 ms each. The dialer sends its message as touch-tone digits. Herald confirms a good message with a "kissoff" tone, 1400 Hz for 800 ms.
+Herald then plays dial tone: 350 and 440 Hz together. After the dialer dials, Herald answers with a handshake: 1400 then 2300 Hz, 100 ms each. The dialer sends its message as touch-tone digits. Herald confirms a good message with a "kissoff" tone, 1400 Hz for 800 ms.
 
-The message follows Contact ID, the alarm maker Ademco's format, now the standard SIA DC-05. Its 16 digits hold an account, a zone and an event code, where 110 means fire alarm. The last digit makes the sum of all 16 a multiple of 15, with each 0 counted as 10. A wrong digit breaks the sum, so Herald sends no kissoff, and the dialer sends the message again. The agent took these values from open-source receivers and makers' documents, not the DC-05 text.
+The message follows Contact ID, the alarm maker Ademco's format, now the standard SIA DC-05. Its 16 digits hold an account, a zone and an event code, where 110 means fire alarm. The last digit makes the sum of all 16 a multiple of 15, with each 0 counted as 10. A wrong digit breaks the sum, so Herald sends no kissoff, and the dialer sends the message again. The agent took these values from open-source receivers and manuals, not the DC-05 text.
 
 ## Eight tones for 16 keys
 
@@ -43,13 +43,20 @@ Tests on a computer play all 16 keys through the decoder, plus tones it must ref
 
 Other panels report by closing a relay contact, a switch. If a bare switch's wire breaks, the circuit looks like an open switch, the quiet state. Fire systems add an end-of-line resistor across the switch, at its far end.
 
-Each of Herald's three inputs has a 4.7 kilohm pull-up to 3.3 V. The end-of-line resistor matches it, so a whole loop reads about half. A closed switch pulls the reading near zero. A cut wire leaves only the pull-up, and the reading rises to 3.3 V.
+Each of Herald's three inputs has a 4.7 kilohm pull-up to 3.3 V. The end-of-line resistor matches it, so a whole loop reads about half. A closed switch pulls the reading near zero. A cut wire leaves only the pull-up, and the reading rises to 3.3 V. A relay, held on while Herald is healthy, opens on a lost supply or a reset, warning the panel.
 
 Four simulations test the cases at 0 and 50 °C and at each part's tolerance limits. The worst readings are 0.151 V closed, 1.555 to 1.798 V whole and 3.186 V cut. Each stays 0.2 V or more from the firmware's thresholds.
 
 ## How the design went
 
-The agent writes the whole board as one Python file, [`design.py`](examples/fire-alarm-communicator/v0.1/design.py). Via makes it a KiCad project, routes it, then checks electrical rules, design rules, simulation and fabrication files. Simulation covers eight circuit files, called decks, in 573 runs across temperature and part tolerance. On the last run, all four checks passed, with seven warnings for white printing at the edge.
+The agent writes the whole board as one Python file, [`design.py`](examples/fire-alarm-communicator/v0.1/design.py). Via makes it a KiCad project, routes it, then checks electrical rules, design rules, simulation and fabrication files:
+
+```sh
+workcenter design design.py --route
+workcenter gates .
+```
+
+Simulation covers eight circuit files, called decks, in 573 runs across temperature and tolerance. On the last run, all four checks passed, with seven warnings for white printing at the edge.
 
 In six of eight design rounds, a reviewer new to the board read its pictures against one fixed prompt. The reviewer's list became the next round's work. The board shrank from 96 to 84.4 mm wide, and the terminals turned black.
 
@@ -59,7 +66,7 @@ FreeRouting, the open-source router, connected all but three nets, and the agent
 
 ## What is open
 
-Nobody has built a Herald board or priced its parts. The firmware for the inputs, the hook, DTMF and Contact ID has run only in tests on a computer. The agent has not written the tone player, the modem's commands or the relay's watchdog. We have not chosen a protocol to the station yet.
+Nobody has built a Herald board or priced its parts. Herald's firmware has run only in tests on a computer. The agent has not written the tone player, the modem's commands or the relay's watchdog. We have not chosen a protocol to the station.
 
 A communicator that a fire alarm system relies on carries a listing to UL 864 or a local equivalent. UL 864 is the standard for control units and accessories for fire alarm systems. A listing means an approved lab tested the product to it. Herald has none: no surge test, no supervision timing check, no listing. [The README](examples/fire-alarm-communicator/v0.1/README.md) lists every open item.
 
