@@ -34,6 +34,7 @@ def test_a_long_row_is_refused_with_its_file_and_line(tmp_path):
     assert str(caught.value) == "parts.csv:2: 15 fields, and the header names 13"
 
 
+@pytest.mark.engine
 @pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
 def test_procure_on_a_row_of_3_fields_is_an_error_that_names_the_line(tmp_path):
     """The whole command: an error record, not a traceback."""

@@ -461,6 +461,7 @@ def test_a_kept_web_page_is_1_problem_whatever_else_its_row_says(tmp_path):
     ]
 
 
+@pytest.mark.engine
 @pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
 def test_workcenter_sources_fails_a_board_whose_datasheet_is_a_web_page(tmp_path):
     """The RC divider fixture's 3 parts, each with a datasheet row; the resistor's kept datasheet is the
