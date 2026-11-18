@@ -1,0 +1,12 @@
+{
+ "sources": {
+  "top.png": "assembly-top.png",
+  "spin.webp": "assembly-spin.gif",
+  "card.png": "light-board-3d-iso.png"
+ },
+ "spin": {
+  "frames": 36,
+  "width": 616,
+  "height": 368
+ }
+}
