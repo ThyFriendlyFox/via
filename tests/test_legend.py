@@ -467,6 +467,41 @@ def test_the_placer_turns_a_designator_where_upright_does_not_fit():
     assert kicadgen.atoms(kicadgen.child(ref, "at")) == ["5.280118", "0", "0"]
 
 
+@pytest.mark.parametrize(
+    "art",
+    [
+        # A text box above U1, 113..117 by 108..109.5 (the second review's a2_placer C1).
+        '(gr_text_box "NOTE" (start 113 108) (end 117 109.5) (margins 0 0 0 0) (layer "F.SilkS") '
+        "(effects (font (size 1 1) (thickness 0.15))) (border no))",
+        # U1's own field "LM358" at local (0, -3.7): 5 x 1.055118 + 0.15 = 5.42559 by 1.15 mm, 112.287205..
+        # 117.712795 by 108.725..109.875 (C2).
+        "",
+    ],
+)
+def test_the_placer_keeps_a_designator_off_a_text_box_and_off_its_parts_own_field(art):
+    """Above U1 (113.869882..116.130118 by 108.7..109.85, as in the first placer test) is on either; the
+    next place, right, is clear: x = 118 + 0.15 + 1.130118 = 119.280118, y = 113, local (4.280118, 0)."""
+    own = field("MPN", "LM358", at=(0, -3.7), size=1, thick=0.15) if not art else ""
+    root, lines = place(board(fp("U1", 115, 113, (-3, -3, 3, 3), ref_at=(0, 0, 0), extra=own), art))
+    assert lines == []
+    ref = kicadgen.children(kicadgen.children(root, "footprint")[0], "property")[0]
+    assert kicadgen.atoms(kicadgen.child(ref, "at")) == ["4.280118", "0", "0"]
+    assert fails(legend.judge(legend.read_board(root), legend.limits(None), PACK)) == []
+
+
+def test_a_text_on_a_text_box_fails_overlap():
+    """"AB" at (115, 109): 113.869882..116.130118 by 108.425..109.575, on the text box 113..117 by
+    108..109.5 by 2.260236 x 1.075 mm."""
+    note = (
+        '(gr_text_box "NOTE" (start 113 108) (end 117 109.5) (margins 0 0 0 0) (layer "F.SilkS") '
+        "(effects (font (size 1 1) (thickness 0.15))) (border no))"
+    )
+    found = judge(board(note, txt("AB", 115, 109)))
+    assert fails(found) == [("overlap", 'text "AB"')]
+    assert 'on the area of text box "NOTE" at (113, 108) mm on F.SilkS by 2.26 x 1.075 mm' in found[1].line
+    assert fails(judge(board(note, txt("AB", 115, 109, layer="B.SilkS", mirror=True)))) == []
+
+
 def test_the_placer_leaves_a_fixed_designator_and_the_check_still_judges_it():
     text = board(fp("U1", 115, 113, (-3, -3, 3, 3), ref_at=(0, 0, 0)))
     root, lines = place(text, fixed={"U1"})
