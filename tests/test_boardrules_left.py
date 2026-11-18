@@ -25,6 +25,14 @@ sys.path.insert(0, str(ROOT / "tools"))
 import boardrules  # noqa: E402
 import ratings  # noqa: E402
 
+CITES = {
+    "ecss-q-st-70-12c-rev1": "3.2.13, 3.2.31, 3.2.40, 7.4.2c, 7.5.3i, 11.6, 13.6.2a, 13.6.3f, 13.6.3g, "
+    "13.6.4.2b; tables 7-1, 7-3, 11-1 and 11-2; annex D, D.1.2b and D.2d",
+    "jlcpcb-pcb-capabilities": "the second reading of rules/jlcpcb-2layer.kicad_dru",
+    "pcbway-capabilities": "the second reading of rules/pcbway-standard.kicad_dru",
+    "oshpark-two-layer": "the second reading of rules/oshpark-2layer.kicad_dru",
+}
+
 DOC = "ECSS-Q-ST-70-12C Rev.1"
 
 
