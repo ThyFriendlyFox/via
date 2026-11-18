@@ -205,6 +205,24 @@ def test_only_the_clock_module_reads_the_clock():
     assert shells == []
 
 
+def test_the_engine_lock_stamps_its_tickets_with_the_machines_clock_not_a_pinned_or_held_one(monkeypatch):
+    """The engine lock compares the times of tickets that many processes wrote, and prints how long a
+    run has held it. A pinned or held reading would say a run of 1980 held it for 46 years, or that a
+    wait of 2 minutes took none. clock.stamp() is the machine's clock at each call, pinned or not."""
+    import enginelock
+
+    readings = iter([BEFORE, AFTER, AFTER])
+    monkeypatch.setattr(clock, "_wall", lambda: datetime.datetime.fromisoformat(next(readings)))
+    monkeypatch.setenv("SOURCE_DATE_EPOCH", "315532800")
+    with clock.run():  # takes the reading BEFORE
+        stamp = clock.stamp()  # reads AFTER
+    assert stamp == float(AFTER_EPOCH)
+    holder = {"what": "workcenter gates", "pid": 1, "since": float(BEFORE_EPOCH)}
+    monkeypatch.setattr(enginelock, "_clock", lambda t: "23:59:00")
+    text = enginelock.holder_text(holder)
+    assert text == "held by `workcenter gates` (pid 1) since 23:59:00, 2 min 0 s ago"
+
+
 def test_the_reader_of_calls_finds_each_spelling_and_tells_load_from_call():
     source = (
         "import datetime, time\n"
@@ -235,6 +253,8 @@ def test_the_reader_of_calls_finds_each_spelling_and_tells_load_from_call():
         ("from datetime import datetime as dt\ndef f():\n    return dt.now()\n", False, [3]),
         ("from datetime import date as D\nTODAY = D.today()\n", True, [2]),
         ("import clock as c\nTODAY = c.today()\n", True, [2]),
+        ("import clock\nDAY = clock.wall_today()\n", True, [2]),
+        ("import clock\nCAME = clock.stamp()\n", True, [2]),
         ("from clock import today as day\nTODAY = day()\n", True, [2]),
         ("import datetime\nnow = datetime.datetime.now\nTODAY = now().date()\n", True, [3]),
         ("import subprocess\ndef f():\n    return subprocess.run(['date', '+%F']).stdout\n", False, [3]),

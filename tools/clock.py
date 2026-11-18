@@ -105,6 +105,13 @@ def wall_today() -> datetime.date:
     return (_held_wall if _held_wall is not None else _wall()).date()
 
 
+def stamp() -> float:
+    """The machine's clock now, in seconds since 1970-01-01 00:00:00 UTC, read at each call, whatever
+    SOURCE_DATE_EPOCH says and inside a run too: a time that other processes read and compare, as the
+    engine lock's tickets are. A pinned or held reading would make a wait of minutes take none."""
+    return _wall().timestamp()
+
+
 # ------------------------------------------------------------ who reads the clock
 
 # (owner, name) of a call that reads the wall clock. time.monotonic and time.perf_counter measure a
@@ -123,7 +130,7 @@ READERS = {
     ("time", "asctime"),
 }
 # This module's own readers: the way a tool reads the clock, and still a reading when a file is loaded.
-OWN = {("clock", "moment"), ("clock", "today")}
+OWN = {("clock", "moment"), ("clock", "today"), ("clock", "wall_today"), ("clock", "stamp")}
 
 
 # The shell's clock, run through subprocess or os: `date`, or a path that ends in it, as a command's 1st word.
