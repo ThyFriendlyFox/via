@@ -2896,7 +2896,16 @@ STATED = {
         (changed(STATED, "nets", drop=True), "ratings.json: `nets` is missing"),
         (
             changed(STATED, "speed", to=1),
-            "ratings.json: `speed` is no key here; the keys are pack, nets, ambient, parts, accepted",
+            "ratings.json: `speed` is no key here; the keys are pack, nets, ambient, parts, accepted, "
+            "not_judged",
+        ),
+        (
+            changed(STATED, "not_judged", to={"R9: x": {"parts": ["R9"], "why": "w", "source": "s"}}),
+            "ratings.json: not_judged: R9: x: parts: a list of parts of the schematic is asked",
+        ),
+        (
+            changed(STATED, "not_judged", to={"C1: x": {"parts": ["C1"], "source": "s"}}),
+            "ratings.json: not_judged: C1: x: `why` is missing",
         ),
         (changed(STATED, "nets", "V5", "source", drop=True), "ratings.json: nets: V5: `source` is missing"),
         (

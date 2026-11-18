@@ -4,7 +4,7 @@
     "source": "the cell's greatest charge current [the fixture's cell, made up for tests/boards: 2.5 V to 4.3 V, 0.5 A in charge, 3 A in discharge]"
   },
   "p_u1": {
-    "max": 0.649847,
-    "source": "(125 C - 40 C) / 130.8 C/W: the power that keeps U1's junction at 125 C at the greatest ambient [section 7.3, Recommended Operating Conditions, TJ, MAX, page 4; section 7.4, Thermal Information, RthetaJA of the DBV package, page 4]"
+    "max": 0.535168,
+    "source": "(110 C - 40 C) / 130.8 C/W: the power that keeps U1's junction at 110 C at the greatest ambient [section 7.3, Recommended Operating Conditions, TJ, MAX, page 4; section 7.4, Thermal Information, RthetaJA of the DBV package, page 4; the limit is the least of 125 C and ecss-q-st-30-11c-rev2's 110 C, the least of 110 C and 150 C - 40 C (clause 6.21.2, table 6-21, page 57), on a junction rated 150 C (junction_max of bq21040 datasheet, SLUSCE2D, April 2016, revised January 2019, p 3 and 4)]"
   }
 }
