@@ -2993,3 +2993,8 @@ html.has-ticker body {
 html[data-shot] .ticker {
   display: none;
 }
+
+/* Herald follows the agents' strip straight on: it's a board one of those agents made. */
+#herald > .wrap {
+  padding-top: 1.5rem;
+}
