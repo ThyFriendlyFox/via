@@ -20,7 +20,9 @@ Standard library only, as kicadgen is.
 
 from __future__ import annotations
 
+import itertools
 import json
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -29,6 +31,31 @@ import ratings
 
 RULES = blocks.RULES / "usbc.json"
 LEVELS = ("default", "1.5A", "3.0A")
+SIGNALS = ("VBUS", "GND", "D+", "D-", "CC1", "CC2")
+# Where the block puts each clamp on the board, from the receptacle's centre, in mm.
+CLAMP_AT = (1.5, -10.5)
+
+
+def _number(x) -> bool:
+    """A finite int or float, not a bool."""
+    return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+
+
+def _shorts(j: str, nets: dict[str, str], signals_where: str, rd_where: str) -> list[str]:
+    """1 line for each net that holds more than 1 of the port's signals."""
+    held: dict[str, list[str]] = {}
+    for signal in SIGNALS:
+        held.setdefault(nets[signal], []).append(signal)
+    out = []
+    for net, signals in held.items():
+        if len(signals) < 2:  # noqa: PLR2004
+            continue
+        names = f"{', '.join(signals[:-1])} and {signals[-1]}"
+        where = signals_where + (f"; {rd_where}" if any(s.startswith("CC") for s in signals) else "")
+        out.append(
+            f"usbc {j}: {names} are on 1 net, {net}; each signal of the port asks a net of its own [{where}]"
+        )
+    return out
 
 
 @dataclass
@@ -98,6 +125,31 @@ def usbc(  # noqa: PLR0913, PLR0915
         )
     ads = {a["name"]: a for a in data["advertisements"]}
 
+    # What the call gives, before any number is worked out of it.
+    if not _number(amps):
+        raise blocks.Refused(f"usbc {j}: amps={amps!r}: a number of amperes is asked")
+    if (
+        not isinstance(nets, (tuple, list))
+        or len(nets) != len(SIGNALS)
+        or not all(isinstance(n, str) and n for n in nets)
+    ):
+        raise blocks.Refused(
+            f"usbc {j}: nets={nets!r}: 6 net names are asked, for {', '.join(SIGNALS[:-1])} and {SIGNALS[-1]}"
+        )
+    shorts = _shorts(j, dict(zip(SIGNALS, nets, strict=True)), f"{typec}, {data['signals']['where']}",
+                     _doc(data, data["rd"]))  # fmt: skip
+    if shorts:
+        raise blocks.Refused("\n".join(shorts))
+    if (
+        not isinstance(farads, (tuple, list))
+        or len(farads) != 2  # noqa: PLR2004
+        or not all(_number(x) and x >= 0 for x in farads)
+        or farads[0] > farads[1]
+    ):
+        raise blocks.Refused(
+            f"usbc {j}: farads={farads!r}: (least, most) is asked, in farads, each 0 or more, the least first"
+        )
+
     # The current: the least advertisement that allows it, held to the one the design can read.
     if amps <= 0:
         raise blocks.Refused(
@@ -122,11 +174,23 @@ def usbc(  # noqa: PLR0913, PLR0915
         f"{j}: a load of {ratings.si(amps, 'A')} needs the {needed['name']} advertisement, which allows "
         f"{ratings.si(needed['amps'], 'A')}; the design detects up to {detects} [{_doc(data, needed)}]"
     ]
-    if needed["name"] != "default":
-        low = needed["cc"][0]
+    unit = data["unit_load"]
+    if needed["name"] == "default" and amps > unit["value"] * (1 + ratings.EPS):
+        # The block wires D+ and D-: the sink is a USB 2.0 device, not a Power Sinking Device.
         sums.append(
-            f"{nets[4]}, {nets[5]}: draw over {ratings.si(ads['default']['amps'], 'A')} only while {nets[4]} "
-            f"or {nets[5]} reads {ratings.si(low, 'V')} or more [{typec}, {needed['cc_where']}]"
+            f"{j}: {nets[2]} and {nets[3]} are wired, so the sink connects as a USB 2.0 device and draws at "
+            f"most {ratings.si(unit['value'], 'A')} until it is configured; whether the design waits for its "
+            f"configuration is not judged: the block cannot see the firmware [{_doc(data, unit)}; {typec}, "
+            f"{unit['psd']}]"
+        )
+    # Each step up asks the part that reads CC for the threshold of table 4-36 between the 2 ranges, set
+    # inside the threshold's band: a range's own end lies outside that band.
+    for below, ad in itertools.pairwise(data["advertisements"][: LEVELS.index(needed["name"]) + 1]):
+        t_lo, t_hi = ad["threshold"]
+        sums.append(
+            f"{nets[4]}, {nets[5]}: draw over {ratings.si(below['amps'], 'A')} only while {nets[4]} or "
+            f"{nets[5]} is over the threshold, which the part that reads CC sets within {t_lo:g} V to "
+            f"{t_hi:g} V [{typec}, {ad['threshold_where']}; {_doc(data, data['adjust'])}]"
         )
 
     found = ratings.read_facts(Path(facts))
@@ -144,6 +208,9 @@ def usbc(  # noqa: PLR0913, PLR0915
         if f is None or f.kind != "resistor":
             continue
         ohms, t = ratings.part_value(s.value), f.data["tolerance"]
+        if ohms is None:
+            missed.append(f"{s.mpn}: its Value {s.value!r} names no resistance")
+            continue
         least, most = ohms * (1 - t), ohms * (1 + t)
         if least < lo * (1 - ratings.EPS) or most > hi * (1 + ratings.EPS):
             missed.append(f"{s.mpn} is {ratings.si(least, 'ohm')} to {ratings.si(most, 'ohm')}")
@@ -179,7 +246,9 @@ def usbc(  # noqa: PLR0913, PLR0915
     sums.append(
         f"{u1}, {u2}: {clamp['mpn']} stands off {ratings.si(standoff, 'V')} [{clamp_facts.source}]; "
         f"{nets[2]} and {nets[3]} reach {ratings.si(data_most, 'V')} [{_doc(data, data['data_volts'])}], "
-        f"{nets[4]} and {nets[5]} {ratings.si(cc_most, 'V')} [{cc_where}]; each is placed beside {j} "
+        f"{nets[4]} and {nets[5]} {ratings.si(cc_most, 'V')} [{cc_where}]; each is placed "
+        f"{math.hypot(*CLAMP_AT):.3g} mm from {j}'s centre, and the length of copper from {j} to each after "
+        f"routing is not judged: the block runs before the router "
         f"[{clamp['source']['document']}, {clamp['placement']['where']}]"
     )
 
@@ -202,6 +271,9 @@ def usbc(  # noqa: PLR0913, PLR0915
             continue
         value = ratings.part_value(s.value)
         t = f.data.get("tolerance")
+        if value is None:
+            missed.append(f"{s.mpn}: its Value {s.value!r} names no capacitance")
+            continue
         if t is None or "volts" not in f.data:
             missed.append(f"{s.mpn}: its facts give no tolerance or no voltage rating")
             continue
@@ -254,10 +326,11 @@ def usbc(  # noqa: PLR0913, PLR0915
     d.add(r2, "Device:R", res.value, res.footprint, sch_at=(sx + 40.64, sy - 5.08),
           pcb_at=(px + 3.0, py - 7.5), pcb_rot=90, nets={"1": cc2, "2": gnd})  # fmt: skip
     io = clamp["pins"]
+    cx, cy = CLAMP_AT
     d.add(u1, clamp["symbol"], clamp["value"], clamp["footprint"], sch_at=(sx + 30.48, sy + 15.24),
-          pcb_at=(px - 1.5, py - 10.5), nets={io["IO1"]: dp, io["IO2"]: dm, io["GND"]: gnd})  # fmt: skip
+          pcb_at=(px - cx, py + cy), nets={io["IO1"]: dp, io["IO2"]: dm, io["GND"]: gnd})  # fmt: skip
     d.add(u2, clamp["symbol"], clamp["value"], clamp["footprint"], sch_at=(sx + 45.72, sy + 15.24),
-          pcb_at=(px + 1.5, py - 10.5), nets={io["IO1"]: cc1, io["IO2"]: cc2, io["GND"]: gnd})  # fmt: skip
+          pcb_at=(px + cx, py + cy), nets={io["IO1"]: cc1, io["IO2"]: cc2, io["GND"]: gnd})  # fmt: skip
     d.add(refs["vbus"], "Device:C", c.value, c.footprint, sch_at=(sx + 55.88, sy - 5.08),
           pcb_at=(px + 6.5, py - 8.0), pcb_rot=90, nets={"1": vbus, "2": gnd})  # fmt: skip
 
@@ -283,6 +356,7 @@ def usbc(  # noqa: PLR0913, PLR0915
             "data": _wiring(data, "data"),
             "sbu": _wiring(data, "sbu"),
             "unused": _wiring(data, "unused"),
+            "signals": f"{typec}, {data['signals']['where']}",
             "rd": rd_where,
             "cc": cc_where,
             "data_volts": _doc(data, data["data_volts"]),
@@ -296,7 +370,9 @@ def usbc(  # noqa: PLR0913, PLR0915
     sums.append(
         f"{j}: the shell and the 4 GND pins on {gnd}, the 4 VBUS pins on {vbus}, A6 and B6 on {dp}, "
         f"A7 and B7 on {dm}, SBU1, SBU2 and the unused pins not connected [{typec}, section 3.2.1, note 11, "
-        "page 47; section 3.2.3, table 3-5, notes 1 to 5, page 77]"
+        "page 47; section 3.2.3, table 3-5, notes 1 to 5, page 77]; the length of the A6 to B6 and A7 to B7 "
+        f"shorts, at most {data['short']['value_mm']:g} mm, is not judged: the block runs before the router "
+        f"[{_doc(data, data['short'])}]"
     )
 
     rows = blocks.rows_of(
@@ -329,6 +405,10 @@ def check(d, port: Port) -> list[str]:  # noqa: PLR0912
     """Read back what the block added to the design and check it; 1 line per fault, with the value, the
     limit and the clause. An empty list: the port is as the specification asks."""
     j = port.connector
+    # 2 signals on 1 net is a short, whatever each pin reads: CC1 and CC2 together put both Rd on each pin.
+    shorts = _shorts(j, port.nets, port.where["signals"], port.where["rd"])
+    if shorts:
+        return shorts
     out: list[str] = []
     jn = _nets_of(d, j)
     if not jn:
@@ -425,6 +505,8 @@ def cc_deck(
         f"[{typec}, {data['pullup_volts']['where']}].",
         f"* Rd is {j}'s {res.value}, {res.mpn}, the .param rd at {res_facts.data['tolerance'] * 100:g} % "
         f"[{res_facts.source}].",
+        f"* Not judged: Rp as the 2 other columns of {typec}, {data['rp_not_modelled']['where']}; the deck "
+        f"models the resistor pull-up to {_n(lo)} V to {_n(hi)} V alone.",
         "* The sums:",
         *[f"*   {line}" for line in sums],
         f".param vpu={_n(mid)}",
