@@ -1,0 +1,10 @@
+{
+  "pack": "nasa-eee-inst-002",
+  "nets": {
+    "GND": {"volts": [0, 0], "source": "the reference: J1 pin 2"},
+    "+5V": {"volts": [4.75, 5.25], "source": "the supply on J1: 5 V within 5 %, this fixture's own requirement"}
+  },
+  "parts": {
+    "J2.1": {"amps": 0.1, "source": "the I2C header's device: 100 mA at the most, this fixture's own requirement"}
+  }
+}

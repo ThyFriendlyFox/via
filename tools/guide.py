@@ -535,6 +535,35 @@ def trouble(cli, results: list) -> tuple[str, str, bool] | None:
     return None
 
 
+DECK_STEPS = {  # a template of templates/project/sim/ -> what to do once it is copied
+    "i2c_rise": "Copy the I2C rise-time deck into sim/. Set each value its `* fill:` lines name, then "
+    "delete those lines.",
+    "load_step": "Copy the load-step deck into sim/. Include the regulator's model and set each value its "
+    "`* fill:` lines name. Write each bound's source from the datasheet, then delete those lines.",
+}
+
+
+def copy_deck(cli, project, quoted: str, stem: str, line: str, gates: str) -> Step:
+    """The step for a circuit the SIM gate found no deck for: copy the template's deck and its bounds
+    under a name sim/ does not hold yet (tools/simneeds.py), then write the board's values into them."""
+    import simneeds
+
+    name = simneeds.free_name(project.dir / "sim", stem)
+    src = cli.SRC_DIR / "templates" / "project" / "sim"
+    copies = " && ".join(
+        f"cp {shlex.quote(str(src / f'{stem}{ext}'))} {quoted}/sim/{name}{ext}"
+        for ext in (".cir", ".expect.json")
+    )
+    return Step(
+        DECK_STEPS[stem],
+        f"mkdir -p {quoted}/sim && {copies}",
+        f"SIM: {line}",
+        f'{SIMULATE}, "Decks a board asks for"',
+        f"sim/{name}.cir holds no `* fill:` line, and `{gates} --strict` runs it and asks for no deck "
+        "it answers",
+    )
+
+
 def next_step(cli, target: str, run_check=True) -> Step:
     """The first step a project has not done. `run_check` runs `design --check` for a project with a
     design file (a few seconds); without it the design file is trusted to match."""
@@ -751,6 +780,9 @@ def next_step(cli, target: str, run_check=True) -> Step:
     found = trouble(cli, results)
     if found:
         gate, line, failed = found
+        asked = re.search(r"copy templates/project/sim/(\w+)\.cir$", line) if gate == "sim" else None
+        if asked:
+            return copy_deck(cli, project, quoted, asked.group(1), line, gates)
         do, read = hint(gate, line)
         return Step(
             do,
