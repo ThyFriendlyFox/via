@@ -23,6 +23,7 @@ import time
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -35,7 +36,9 @@ LIBS = kicadgen.SYMBOL_DIR / "Device.kicad_sym"
 R0603 = "Resistor_SMD:R_0603_1608Metric"
 
 needs_libs = pytest.mark.skipif(not LIBS.is_file(), reason="KiCad symbol libraries are not installed")
-needs_kicad = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+needs_kicad = engine(
+    pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+)
 FR2 = routers.ROUTERS["freerouting2"]
 needs_freerouting2 = pytest.mark.skipif(
     bool(FR2.absent()), reason=f"FreeRouting 2.5.0 (freerouting2) is not installed: {FR2.absent()}"
@@ -311,6 +314,7 @@ def test_a_seed_goes_to_the_router_held_as_shove_fixed(tmp_path):
 
 
 @needs_libs
+@pytest.mark.engine  # the poured net's fill starts kicad-cli (tools/ci/engine_marker.py)
 def test_an_ordered_route_runs_the_router_once_per_stage_with_the_nets_so_far(tmp_path):
     """Rule 9. With C poured, stage 1 (pours) is C; no part is fine pitch and no net ends in a pair's
     ending, so stage 2 is the rest: A and B. 2 router runs, each on its own DSN; the second DSN lists
@@ -615,6 +619,7 @@ def test_bench_names_a_router_by_its_name_and_does_not_run_an_absent_one(tmp_pat
     assert f"freerouting2: not run: freerouting2: no jar at {tmp_path / 'none.jar'}" in proc.stdout
 
 
+@pytest.mark.engine  # doctor asks every engine for its version (tools/ci/engine_marker.py)
 def test_doctor_has_a_row_for_the_second_router(tmp_path):
     """`workcenter doctor` names freerouting2 with its jar's path. Where install.sh never put it (no
     folder under WORKCENTER_ROOT) the row is advisory: a workcenter without it is not degraded."""
