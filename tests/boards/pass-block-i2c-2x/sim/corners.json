@@ -1,0 +1,6 @@
+{
+  "tolerance": {
+    "R": 0.01,
+    "source": "R1 CRCW06031K50FKEA from Vishay D/CRCW e3 datasheet, document 20035, 14-Apr-2026"
+  }
+}

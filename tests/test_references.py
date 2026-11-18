@@ -642,13 +642,15 @@ def test_every_document_a_rule_of_the_repository_names_is_in_the_index():
     capacitor, 1 each: 37 + 4 + 3 = 44 named in 25 + 4 = 29 files. The I2C block adds
     rules/blocks/i2c.json, 2 (its note TI SLVA689A, and its `short` label, which names the note with no
     place beside it and so is also 1 not judged), and the facts of its fixtures' TCA9534, its
-    datasheet: 44 + 2 + 1 = 47 named in 29 + 2 = 31 files, 7 + 1 = 8 not judged."""
+    datasheet: 44 + 2 + 1 = 47 named in 29 + 2 = 31 files, 7 + 1 = 8 not judged. Its fixtures'
+    made-up-i2c.json, the 32nd file, holds 1 made-up header that names no document: 8 + 1 = 9 not
+    judged."""
     globs = json.loads(INDEX.read_text(encoding="utf-8"))["rules"]
     files = sorted({p for pattern in globs for p in ROOT.glob(pattern)})
     code, out = run("rules", *files)
     assert code == 0, out
     assert out.splitlines()[-1] == (
-        "references rules: 47 documents named in 31 files, 47 in the index, 0 not; 8 not judged"
+        "references rules: 47 documents named in 32 files, 47 in the index, 0 not; 9 not judged"
     )
 
 

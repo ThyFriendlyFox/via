@@ -1,0 +1,22 @@
+i2c: the SDA line of the I2C block R1, written by tools/blocks_i2c.py
+* R1 CRCW06031K50FKEA pulls SDA up to 3.465 V, the bus's greatest voltage; CBUS is the bus capacitance. The open drain lets go at 0 s.
+* tr runs from 0.3 to 0.7 of the supply [TI SLVA689A, section 2, equation 4, page 3: VIL = 0.3 x VCC; section 2, equation 3, page 3: VIH = 0.7 x VCC].
+* The bound is fast mode's tr [TI SLVA689A, section 2, table 2-1, Parametrics from I2C specifications, the rows tr and Cb, page 3].
+* The sums:
+*   R1, R2: RP(min) = (3.465 V - 400 mV) / 3 mA = 1.02 kohm [TI SLVA689A, equation 1, page 3; TI SLVA689A, section 2, table 2-1, the row VOL at 3 mA current sink, VCC > 2 V: 0.4 V in each mode, page 3]
+*   U1 SDA: RP(min) = (3.465 V - 400 mV) / 3 mA = 1.02 kohm, its sink [TCA9534 datasheet, SCPS197D, September 2014, revised October 2017, p 5, 6 and 7; TI SLVA689A, equation 1, page 3]
+*   SDA, SCL: Cb = 200 pF, stated; the devices' pins give 9.5 pF on SDA and 8 pF on SCL
+*   J2: a connector: what stands behind it is in the stated Cb
+*   R1, R2: RP(max) = 300 ns / (0.8473 x 200 pF) = 1.77 kohm [TI SLVA689A, equation 6, page 3; TI SLVA689A, section 2, table 2-1, Parametrics from I2C specifications, the rows tr and Cb, page 3]
+*   R1, R2: 1.5k, 1 %: 1.48 kohm to 1.52 kohm, within 1.02 kohm to 1.77 kohm; passed over: 4.7k, 4.75 kohm at +1 %, over RP(max); 2.2k, 2.22 kohm at +1 %, over RP(max) [TI SLVA689A, section 3, page 4: any resistor between RP(min) and RP(max); a smaller one is faster, a larger one draws less power]
+*   SDA, SCL: the devices' greatest clock is not judged: their facts hold none; fast mode is the speed asked
+V1 vdd 0 3.465
+R1 vdd sda 1.5k
+CBUS sda 0 200p
+.ic v(sda)=0
+.control
+tran 1.5n 3000n uic
+meas tran tr trig v(sda) val=1.0395 rise=1 targ v(sda) val=2.4255 rise=1
+print tr
+.endc
+.end
