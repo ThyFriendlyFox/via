@@ -1,0 +1,93 @@
+---
+name: MCP
+description: Serves the workcenter's doctor, gates, erc, drc, sim, export and autoroute to a host that is not Claude Code, as MCP tools over stdio, each tool running its own command and answering its lines and exit code.
+---
+
+# MCP
+
+A host that is not Claude Code (another agent, an editor, a desktop app)
+reaches the gates through MCP, the Model Context Protocol. `workcenter mcp`
+is an MCP server on stdio. It offers 7 tools: `doctor`, `gates`, `erc`,
+`drc`, `sim`, `export` and `autoroute`. Each tool runs the command of its
+name, `workcenter <tool> <project> ...`, and answers with the lines the
+command prints and its exit code. Nothing in the server judges a board.
+
+The server speaks MCP revision 2025-11-25, the last revision with the
+`initialize` handshake. A host of revision 2026-07-28 that also speaks the
+older revisions falls back to it; a host that speaks only 2026-07-28 and
+later does not. stdio only: no HTTP, no authentication.
+
+## Inputs
+
+| Input | Holds |
+|---|---|
+| ROOT, the server's 1 argument | The folder the tools may reach: 1 project, or a repository of versions (`v0.1/` to `v0.16/`). Every path a call names must lie inside it. |
+| A tool's `project` | The project folder or a KiCad file, relative to ROOT. Default `.`. |
+| `out`, `dsn`, `fab` | Paths inside ROOT. `fab` may also be the name of a rule set in the workcenter's `rules/`. |
+
+## Steps
+
+1. Check the engines: `workcenter doctor`.
+   - A line `ok` for an engine: that engine is there.
+   - A line `MISSING` (a required engine) or `absent` (an optional one): the
+     tools that need it answer a skip with exit code 2. Install it with
+     `install.sh`, never another way.
+2. Check the server by hand, from a shell, with 2 messages on its stdin:
+
+   ```sh
+   printf '%s\n' \
+     '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"me","version":"1"}}}' \
+     '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+     | workcenter mcp <project>
+   ```
+
+   - 2 lines of JSON come back: `"id":1` names `"protocolVersion":"2025-11-25"`,
+     `"id":2` lists the 7 tools. Go on.
+   - `workcenter mcp <project>: not a folder` on stderr, exit code 2: name a
+     folder that exists.
+3. Give the host the server's command line. A host takes a command and its
+   arguments; name the CLI by its full path, since a host may start it from
+   any folder: `python3 <workcenter>/tools/workcenter mcp <project>`.
+   - The host lists 7 tools: go on.
+   - The host lists none: read its log. The server writes nothing but MCP
+     messages to stdout; a message on its stderr is the CLI's own.
+4. Call a tool from the host. Each answer is the command's lines, then the
+   line `exit code N`. Read the lines as the command's own skill says:
+   `board-gates` for `gates`, `erc`, `drc` and `export`, `simulate` for
+   `sim`, `autoroute` for `autoroute`.
+   - `exit code 0`: the command passed. `isError` is false.
+   - `exit code 1`: the command failed. Each failure is its own line under
+     the gate's line. `isError` is true.
+   - `exit code 2`: a gate was skipped: an engine is missing. It is not a pass.
+   - 1 line `refused: <what> <path> is outside <ROOT> ...`: the call named a
+     path outside ROOT. Nothing ran. Name a path inside ROOT, or start the
+     server on a wider ROOT.
+   - 1 line `refused: <tool> takes ..., not ...` or `refused: <name> must be
+     ...`: an argument the tool does not take, or of the wrong kind. Nothing
+     ran. Fix the argument.
+5. A long tool (`gates`, `sim`, `export`, `autoroute`) waits its turn on the
+   machine's engine lock, as the command does. Meanwhile the server still
+   answers `ping` and other calls.
+   - With `_meta.progressToken` on the call, each line the command prints
+     comes as 1 `notifications/progress`; `waiting on the engine lock` is
+     such a line.
+   - To stop a call, the host sends `notifications/cancelled` with its id.
+     The command and its engines stop, and no answer comes for that id.
+6. End the session: the host closes the server's stdin. Calls still running
+   are answered first, then the server exits 0. A SIGTERM stops every
+   command it started and the server exits 143.
+
+## What it does not do
+
+- It holds no state between calls: each call is 1 run of 1 command.
+- It offers no resources, no prompts and no HTTP transport.
+- It runs nothing outside ROOT, and writes only where the command writes
+  (`<project>/build` or `out`).
+
+## Tests
+
+`tests/test_mcp.py` drives the server with a scripted JSON-RPC session over
+a pipe: the 7 tools and their schemas, each option a flag of its command, the
+refusals, the protocol's error codes, a `ping` answered while `sim` waits on
+the engine lock, a cancel, stdin closed, SIGTERM, and `erc` and `drc`
+answering the same lines and exit codes as the commands.
