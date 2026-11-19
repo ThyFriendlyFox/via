@@ -13,7 +13,7 @@ doctor:             ## report engine status; the "build" of this repo is a worki
 	python3 tools/workcenter doctor
 
 lint:               ## shellcheck + ruff, read-only
-	shellcheck install.sh verify/verify.sh environment/setup.sh site/build.sh ee-agent-kit/lead/gate-and-push.sh
+	shellcheck install.sh verify/verify.sh environment/setup.sh site/build.sh ee-agent-kit/lead/gate-and-push.sh tools/ci/apt_archive.sh
 	$(PY) -m ruff check tools tests verify ee-agent-kit/lead
 	$(PY) -m ruff format --check tools tests verify ee-agent-kit/lead
 
