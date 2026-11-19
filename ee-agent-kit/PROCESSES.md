@@ -514,6 +514,13 @@ When: touching `tools/workcenter` or `tools/kicadgen.py`'s command line.
 8. A verdict that 2 commands print is 1 function they both call:
    `guide.ratings_state` is read by `gates` and `next`, and
    `tests/test_done.py` holds every kind of record to it (M251).
+9. A command that starts Python in or on a folder it does not own (a
+   board's, a project's) starts it isolated (`python3 -I`), so that a
+   module planted there (`kikit/`, `pcbnew.py`, `yaml.py`,
+   `sitecustomize.py`) is never imported; a probe that asks "is module X
+   there" is such a start too. A file the command hands to another tool is
+   refused when it names code for that tool to run. A test plants such a
+   module in the folder and holds that it was not imported (M295).
 
 Done when: `make verify` is green, the configuration table names the
 flag, and every document that writes the command writes one the parser

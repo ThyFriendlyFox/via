@@ -1797,3 +1797,9 @@ What happened: `workcenter autoroute --apply` (roadmap item 15, landed in batch 
 Cost: Found before a person's board was written; a check round and a fix round on a piece already landed in the batch.
 Root cause: The write was built and reviewed for the board, not for the file: a path written by the tool, as `workcenter design` writes its own output. Nothing asked who else owns the file (the person, KiCad, a link, an earlier run), and the session merge was free to rewrite the person's copper because the generated designs it was made for have none.
 Process: P14
+
+## M295 — 2026-11-19 — A probe asked "is KiKit there" with a board's folder first on Python's import path
+What happened: `workcenter gates` and `workcenter export` probed KiKit with `python -c "import kikit.panelize_ui"` in the board's working directory, and `-c` puts that directory first on the import path. A `kikit/` folder, a `pcbnew.py` or a `sitecustomize.py` at a board repository's root ran as Python during the gates, for every user of the command, and in the reusable workflow during a pull request's check. The third independent check of roadmap item 16 found it (R16-N3); `workcenter ci`'s PyYAML reader and `workcenter placement`'s runner started Python the same way. A KiKit preset could name Python too (a section's `code`, a text's `plugin`, `post.script`).
+Cost: None seen: found before a board repository called the workflow. Every gate run on a board from a stranger could have run its code.
+Root cause: The probe was written to ask a question of the toolchain, and was not read as a run of Python in a folder the tool does not own. `-c` and a script's own folder both go first on `sys.path`; nothing started those Pythons isolated, and no test planted a module in a board's folder.
+Process: P10
