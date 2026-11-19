@@ -952,8 +952,13 @@ def test_the_full_job_decides_its_path_then_runs_the_same_make_verify_on_either(
     inside = [s for s in steps if s.get("if") == "steps.where.outputs.where == 'image'"]
     # The install path's line carries CI's 2 bounds (the install script's piece; its tests read them).
     # Before it, apt is turned to Ubuntu's own archive (tests/test_ci_apt_archive.py holds that step).
-    bounded = "sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh"
-    assert [s["run"] for s in install][1:] == [bounded, "make verify"]
+    # Since the slow-download fix the line also passes the archive step's slow mode as
+    # APT_SLOW_PASS_COMMAND (tests/test_ci_apt_archive.py and tests/test_install_apt.py hold it).
+    bounded = (
+        "sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 "
+        'APT_SLOW_PASS_COMMAND="$slow" ./install.sh'
+    )
+    assert [s["run"].strip().splitlines()[-1] for s in install][1:] == [bounded, "make verify"]
     assert "tools/ci/apt_archive.sh" in install[0]["run"]
     (run,) = inside
     assert '--user "$(id -u):$(id -g)"' in run["run"] and "tools/image.py check" in run["run"]
