@@ -50,6 +50,16 @@ OUTCOMES = ("passed", "failed", "skipped", "xfailed", "xpassed")
 # it prints the last TAIL lines of output, or a crash's stack: its first HEAD and last TAIL lines.
 HEAD, TAIL, SECTION, WIDTH, REASONS = 10, 30, 10, 300, 10
 
+# The tests a run did not judge for a reason of the machine it ran on (M307): a skip or skipif mark that
+# holds here (no root, a tool or a folder not there, a variable not set), or a skip inside the test. The
+# summary prints 1 line for each reason with its count and its first IDS ids, the reason cut to
+# REASON_WIDTH characters; the file NOT_JUDGED in the run's logs folder holds every id and whole reason.
+# A test the run deselects (`-m "not engine"`) is never collected, so it is in neither.
+NOT_JUDGED = "not-judged.txt"
+IDS, REASON_WIDTH = 3, 200
+MARK = "skipped by a mark on this machine"
+INSIDE = "skipped inside the test"
+
 
 # -- the pytest side: loaded with `-p testshards` ---------------------------------------------------
 
@@ -73,6 +83,45 @@ def bounded(lines: list[str], head: int, tail: int) -> list[str]:
     if len(out) > head + tail:
         out = [*out[:head], f"[... {len(out) - head - tail} lines cut here]", *out[len(out) - tail :]]
     return out
+
+
+def skip_groups(reasons: dict[str, str]) -> list[tuple[str, list[str]]]:
+    """Each reason with the ids it skipped, in the order given: the largest group first, then by reason."""
+    groups: dict[str, list[str]] = {}
+    for i, text in reasons.items():
+        groups.setdefault(text, []).append(i)
+    return sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+
+
+def shown_reason(text: str) -> str:
+    """A reason on 1 line (a newline is `\\n`), cut to REASON_WIDTH characters with what it cut."""
+    if len(text) <= REASON_WIDTH:
+        return printable(repr(text))
+    return printable(f"{text[:REASON_WIDTH]!r} [... {len(text) - REASON_WIDTH} characters cut]")
+
+
+def group_line(kind: str, reason: str, ids: list[str]) -> str:
+    """`  not judged: N tests <kind> (<reason>): <first IDS ids>, and M more`."""
+    word = "test" if len(ids) == 1 else "tests"
+    shown = ", ".join(ids[:IDS]) + (f", and {len(ids) - IDS} more" if len(ids) > IDS else "")
+    return printable(f"  not judged: {len(ids)} {word} {kind} ({shown_reason(reason)}): {shown}")
+
+
+def write_not_judged(path: Path, marked: dict[str, str], inside: dict[str, str]) -> int:
+    """Write every id the run did not judge into `path`, by kind and reason, whole; return their count."""
+    count = len(marked) + len(inside)
+    lines = [f"# The tests this run did not judge for a reason of the machine it ran on: {count}."]
+    for kind, reasons in ((MARK, marked), (INSIDE, inside)):
+        for text, ids in skip_groups(reasons):
+            word = "test" if len(ids) == 1 else "tests"
+            lines.append(f"{len(ids)} {word} {kind} ({text!r}):")
+            lines += [f"  {i}" for i in sorted(ids)]
+    path.write_text(printable("\n".join(lines)) + "\n", encoding="utf-8")
+    return count
+
+
+def whole_list_line(count: int, path: Path) -> str:
+    return printable(f"  not judged: the whole list of {count} is in {path}")
 
 
 def why(report) -> list[str]:
@@ -109,8 +158,16 @@ def _marks(item) -> dict:
     return {"skip": None if skip is None else skip.reason, "xfail": None if xfail is None else xfail.reason}
 
 
+# What this process saw, for its own summary when it runs alone (the fast lane): each collected id a
+# skip mark skips here, with the mark's reason, and each id that was skipped, with the report's reason.
+_MARKED: dict[str, str] = {}
+_SKIPPED: dict[str, str] = {}
+
+
 def pytest_collection_finish(session) -> None:
-    _log([{"collected": item.nodeid, **_marks(item)} for item in session.items])
+    records = [{"collected": item.nodeid, **_marks(item)} for item in session.items]
+    _MARKED.update({rec["collected"]: rec["skip"] for rec in records if rec.get("skip") is not None})
+    _log(records)
 
 
 def pytest_runtest_logreport(report) -> None:
@@ -119,9 +176,31 @@ def pytest_runtest_logreport(report) -> None:
         record["xfail"] = True
     if report.skipped and isinstance(report.longrepr, tuple) and len(report.longrepr) == 3:
         record["reason"] = str(report.longrepr[2]).removeprefix("Skipped: ")
+    if report.skipped and "xfail" not in record:
+        _SKIPPED[report.nodeid] = record.get("reason", "")
     if report.failed:
         record["why"] = why(report)
     _log([record])
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
+    """In a pytest that runs alone with `-p testshards` (the fast lane, `make verify-site`): the tests it
+    did not judge, by kind and reason, and the file that holds them all, in pytest's base folder. A shard
+    prints nothing here: the runner joins its shards' logs and prints the same lines once."""
+    if os.environ.get("TESTSHARDS_SHARD") or config.option.collectonly or not _SKIPPED:
+        return
+    marked = {i: _MARKED[i] for i in _SKIPPED if i in _MARKED}
+    inside = {i: text for i, text in _SKIPPED.items() if i not in _MARKED}
+    try:
+        folder = Path(config._tmp_path_factory.getbasetemp())
+    except (AttributeError, OSError):
+        folder = Path(tempfile.mkdtemp(prefix="ee-verify-site-"))
+    path = folder / NOT_JUDGED
+    count = write_not_judged(path, marked, inside)
+    for kind, reasons in ((MARK, marked), (INSIDE, inside)):
+        for text, ids in skip_groups(reasons):
+            terminalreporter.write_line(group_line(kind, text, ids))
+    terminalreporter.write_line(whole_list_line(count, path))
 
 
 def pytest_collectreport(report) -> None:
@@ -592,9 +671,21 @@ def run(args: argparse.Namespace) -> int:
     wall = time.monotonic() - wall
     code = judge(started, collect.returncode, collect_log, collect_out, wall, told=told, work=work)
     # The shards' tmp_path folders of 1 whole run took 607 MB. A green run made its own folder and needs
-    # nothing in it; a red run, or a folder the caller named, is kept for its logs.
+    # nothing in it but the list of the tests it did not judge, which the summary names; a red run, or a
+    # folder the caller named, is kept for its logs.
     if code == 0 and not args.work:
-        shutil.rmtree(work, ignore_errors=True)
+        listed = work / NOT_JUDGED
+        if listed.is_file():
+            for path in work.iterdir():
+                if path == listed:
+                    continue
+                if path.is_dir() and not path.is_symlink():
+                    shutil.rmtree(path, ignore_errors=True)
+                else:
+                    path.unlink(missing_ok=True)
+            print(f"logs kept: {work}, {NOT_JUDGED} alone")
+        else:
+            shutil.rmtree(work, ignore_errors=True)
     else:
         print(f"logs kept: {work}")
     return code
@@ -675,9 +766,25 @@ def judge(
     inside = sorted(i for i, v in result.items() if v == "skipped" and i not in marked)
     for i in inside:
         print(
-            f"  not judged: {i}: skipped inside the test in shard {by_shard.get(i, '?')} "
-            f"({reasons.get(i, '')!r}); 1 process did not run it"
+            printable(
+                f"  not judged: {i}: skipped inside the test in shard {by_shard.get(i, '?')} "
+                f"({reasons.get(i, '')!r}); 1 process did not run it"
+            )
         )
+    # A test a skip mark skipped for this machine (M307): 1 line per reason, the whole list in a file. A
+    # test the run deselects is not collected, so it has no record here.
+    by_mark = {
+        rec["collected"]: rec["skip"]
+        for log in logs.values()
+        for rec in log
+        if rec.get("skip") is not None and result.get(rec["collected"]) == "skipped"
+    }
+    for text, ids in skip_groups(by_mark):
+        print(group_line(MARK, text, ids))
+    if (by_mark or inside) and work is not None:
+        path = work / NOT_JUDGED
+        count = write_not_judged(path, by_mark, {i: reasons.get(i, "") for i in inside})
+        print(whole_list_line(count, path))
 
     per_file: dict[str, float] = {}
     where: dict[str, str] = {}
@@ -702,7 +809,8 @@ def judge(
     if red:
         print("TESTS RED: " + "; ".join(red))
         return 1
-    tail = f"; {len(inside)} not judged (skipped inside the test)" if inside else ""
+    tail = f"; {len(inside)} not judged ({INSIDE})" if inside else ""
+    tail += f"; {len(by_mark)} not judged ({MARK})" if by_mark else ""
     print(f"TESTS GREEN: {total} tests in {len(started)} shards{tail}")
     return 0
 

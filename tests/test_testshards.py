@@ -884,3 +884,233 @@ def test_output_after_the_summary_line_leaves_a_green_shard_green(tmp_path):
     proc = gate(folder(tmp_path, files))
     assert proc.returncode == 0, proc.stdout
     assert "TESTS GREEN: 9 tests in 2 shards" in proc.stdout
+
+
+# -- the tests a mark skips for the machine: named in groups by reason, the whole list in a file ----------
+#
+# On 2026-11-19 a test that needs root was skipped by its mark on GitHub and failed wherever it ran (M307).
+# The run named only the 3 tests that skip inside themselves, not the 66 a mark skipped.
+
+
+def not_judged(stdout: str) -> list[str]:
+    return [line for line in stdout.splitlines() if line.startswith("  not judged: ")]
+
+
+def skipped_by(reason: str, names: list[str], condition: str = "True") -> str:
+    """A test file whose tests a skipif mark skips when `condition` holds, with that reason."""
+    text = "import pytest\n"
+    for name in names:
+        text += f"\n\n@pytest.mark.skipif({condition}, reason={reason!r})\ndef {name}():\n    pass\n"
+    return text
+
+
+def test_a_mark_whose_condition_is_false_names_nothing(tmp_path):
+    """The mark's condition is false: the test runs and passes, and no `not judged:` line, no file."""
+    files = dict(FOUR)
+    files["test_s.py"] = skipped_by("never here", ["test_runs"], condition="False")
+    proc = gate(folder(tmp_path, files))
+    assert proc.returncode == 0, proc.stdout
+    # test_p, test_q and test_r hold 2 tests each, test_s 1: 7.
+    assert "outcomes: 7 passed, 0 failed, 0 skipped" in proc.stdout
+    assert not_judged(proc.stdout) == [], proc.stdout
+    assert not (tmp_path / "work" / testshards.NOT_JUDGED).exists()
+
+
+def test_tests_a_mark_skips_are_named_in_groups_with_a_count_and_the_first_3_ids(tmp_path):
+    """4 tests skipped for 1 reason, 1 for another: 2 lines, the larger group first, each with its count
+    and at most 3 ids; then 1 line that names the file with all 5. The verdict stays green."""
+    files = dict(FOUR)
+    files["test_s.py"] = skipped_by("no chip folder", [f"test_c{n}" for n in range(1, 5)])
+    files["test_t.py"] = skipped_by("not root", ["test_r1"])
+    proc = gate(folder(tmp_path, files))
+    assert proc.returncode == 0, proc.stdout
+    listed = tmp_path / "work" / testshards.NOT_JUDGED
+    assert not_judged(proc.stdout) == [
+        "  not judged: 4 tests skipped by a mark on this machine ('no chip folder'): "
+        "tests/test_s.py::test_c1, tests/test_s.py::test_c2, tests/test_s.py::test_c3, and 1 more",
+        "  not judged: 1 test skipped by a mark on this machine ('not root'): tests/test_t.py::test_r1",
+        f"  not judged: the whole list of 5 is in {listed}",
+    ], proc.stdout
+    # test_p, test_q and test_r hold 2 tests each: 6 + 4 + 1 = 11.
+    assert (
+        "TESTS GREEN: 11 tests in 2 shards; 5 not judged (skipped by a mark on this machine)" in proc.stdout
+    )
+    text = listed.read_text(encoding="utf-8")
+    for n in range(1, 5):
+        assert f"  tests/test_s.py::test_c{n}\n" in text
+    assert "  tests/test_t.py::test_r1\n" in text
+
+
+def test_a_test_that_skips_itself_keeps_its_line_and_is_in_the_file(tmp_path):
+    """pytest.skip() inside the test keeps the line it had; it is in no mark's group, and the file holds
+    it under its own heading."""
+    files = dict(FOUR)
+    files["test_s.py"] = PASSING + (
+        "\n\nimport pytest\n\n\ndef test_skips_itself():\n    pytest.skip('no board here')\n"
+    )
+    proc = gate(folder(tmp_path, files))
+    assert proc.returncode == 0, proc.stdout
+    lines = not_judged(proc.stdout)
+    listed = tmp_path / "work" / testshards.NOT_JUDGED
+    assert len(lines) == 2, proc.stdout
+    assert re.fullmatch(
+        r"  not judged: tests/test_s\.py::test_skips_itself: skipped inside the test in shard \d "
+        r"\('no board here'\); 1 process did not run it",
+        lines[0],
+    )
+    assert lines[1] == f"  not judged: the whole list of 1 is in {listed}"
+    assert "1 test skipped inside the test ('no board here'):\n  tests/test_s.py::test_skips_itself\n" in (
+        listed.read_text(encoding="utf-8")
+    )
+
+
+def test_a_test_the_run_deselects_is_not_named(tmp_path):
+    """`-m "not engine"` leaves a test out on purpose (the fast lane's own line says so): it is not
+    collected, so its true skip mark is never evaluated, and no line names it."""
+    files = dict(FOUR)
+    files["test_s.py"] = (
+        "import pytest\n\n\n@pytest.mark.engine\n@pytest.mark.skipif(True, reason='left out')\n"
+        "def test_deselected():\n    pass\n"
+    ) + PASSING
+    root = folder(tmp_path, files)
+    (root / "pytest.ini").write_text(
+        '[pytest]\ntestpaths = tests\nmarkers =\n    engine: starts an engine\naddopts = -m "not engine"\n',
+        encoding="utf-8",
+    )
+    proc = gate(root)
+    assert proc.returncode == 0, proc.stdout
+    # test_p, test_q, test_r and test_s hold 2 tests each that run: 8.
+    assert "ids: 8 collected in 1 process, 8 run in 2 shards" in proc.stdout
+    assert not_judged(proc.stdout) == [], proc.stdout
+    assert "left out" not in proc.stdout
+
+
+def test_a_run_with_no_skip_prints_no_line_and_leaves_no_folder(tmp_path):
+    proc = gate(folder(tmp_path, FOUR))
+    assert proc.returncode == 0, proc.stdout
+    assert not_judged(proc.stdout) == [], proc.stdout
+    assert "not judged" not in proc.stdout
+    green = run_in_temp(folder(tmp_path / "g", FOUR), tmp_path / "tg")
+    assert green.returncode == 0, green.stdout
+    assert list((tmp_path / "tg").iterdir()) == []
+
+
+def test_500_tests_skipped_for_1_reason_are_1_line_of_3_ids_and_the_file_holds_all_500(tmp_path):
+    files = dict(FOUR)
+    files["test_s.py"] = (
+        "import pytest\n\n\n@pytest.mark.skipif(True, reason='no chip folder')\n"
+        "@pytest.mark.parametrize('n', range(500))\ndef test_c(n):\n    pass\n"
+    )
+    proc = gate(folder(tmp_path, files))
+    assert proc.returncode == 0, proc.stdout
+    listed = tmp_path / "work" / testshards.NOT_JUDGED
+    assert not_judged(proc.stdout) == [
+        "  not judged: 500 tests skipped by a mark on this machine ('no chip folder'): "
+        "tests/test_s.py::test_c[0], tests/test_s.py::test_c[1], tests/test_s.py::test_c[2], and 497 more",
+        f"  not judged: the whole list of 500 is in {listed}",
+    ], proc.stdout
+    ids = [line[2:] for line in listed.read_text(encoding="utf-8").splitlines() if line.startswith("  ")]
+    assert sorted(ids) == sorted(f"tests/test_s.py::test_c[{n}]" for n in range(500))
+
+
+def test_a_reason_with_a_newline_is_1_line_and_a_long_reason_is_cut_in_the_summary_not_in_the_file(tmp_path):
+    """A newline is printed as `\\n`, so the group is 1 line. A reason of 1000 characters keeps its first
+    testshards.REASON_WIDTH in the summary and says how many it cut; the file holds it whole."""
+    files = dict(FOUR)
+    files["test_s.py"] = skipped_by("first line\nsecond line", ["test_newline"])
+    files["test_t.py"] = skipped_by("y" * 1000, ["test_long"])
+    proc = gate(folder(tmp_path, files))
+    assert proc.returncode == 0, proc.stdout
+    lines = not_judged(proc.stdout)
+    assert (
+        "  not judged: 1 test skipped by a mark on this machine ('first line\\nsecond line'): "
+        "tests/test_s.py::test_newline"
+    ) in lines, proc.stdout
+    cut = 1000 - testshards.REASON_WIDTH
+    (long,) = [line for line in lines if "yyy" in line]
+    assert long == (
+        f"  not judged: 1 test skipped by a mark on this machine ('{'y' * testshards.REASON_WIDTH}' "
+        f"[... {cut} characters cut]): tests/test_t.py::test_long"
+    )
+    text = (tmp_path / "work" / testshards.NOT_JUDGED).read_text(encoding="utf-8")
+    assert f"('{'y' * 1000}')" in text
+    assert "'first line\\nsecond line'" in text
+
+
+def test_a_green_run_with_skips_keeps_only_the_list_in_its_own_folder(tmp_path):
+    """A green run removes its tests' folders (607 MB once) but keeps the file the summary names."""
+    files = dict(FOUR)
+    files["test_s.py"] = skipped_by("no chip folder", ["test_c"])
+    proc = run_in_temp(folder(tmp_path / "g", files), tmp_path / "tg")
+    assert proc.returncode == 0, proc.stdout
+    (kept,) = list((tmp_path / "tg").iterdir())
+    assert [p.name for p in kept.iterdir()] == [testshards.NOT_JUDGED]
+    assert f"  not judged: the whole list of 1 is in {kept / testshards.NOT_JUDGED}" in proc.stdout
+    assert f"logs kept: {kept}" in proc.stdout
+
+
+# -- the fast lane: 1 pytest with `-p testshards`, no shards ------------------------------------------------
+
+
+def lane(root: Path, basetemp: Path) -> subprocess.CompletedProcess:
+    """pytest as `make verify-site` runs it: the tests that start no engine, the plugin loaded."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("TESTSHARDS_")}
+    env["PYTHONPATH"] = os.pathsep.join(p for p in (str(ROOT / "verify"), env.get("PYTHONPATH", "")) if p)
+    cmd = [sys.executable, "-m", "pytest", "-q", "-p", "testshards", "-p", "no:cacheprovider"]
+    cmd += ["-m", "not engine", "--basetemp", str(basetemp), "tests"]
+    return subprocess.run(cmd, cwd=root, env=env, capture_output=True, text=True, timeout=300, check=False)
+
+
+def test_the_fast_lane_names_its_groups_and_leaves_the_deselected_test_out(tmp_path):
+    """1 test a mark skips, 1 that skips itself, 1 that `-m "not engine"` deselects (its mark would skip
+    it too): 2 groups, 1 line for the file in pytest's base folder, and nothing of the deselected test."""
+    files = dict(FOUR)
+    files["test_s.py"] = skipped_by("no chip folder", ["test_c"]) + (
+        "\n\ndef test_inside():\n    pytest.skip('no board here')\n\n\n"
+        "@pytest.mark.engine\n@pytest.mark.skipif(True, reason='left out')\n"
+        "def test_deselected():\n    pass\n"
+    )
+    root = folder(tmp_path, files)
+    (root / "pytest.ini").write_text(
+        "[pytest]\ntestpaths = tests\nmarkers =\n    engine: starts an engine\n", encoding="utf-8"
+    )
+    base = tmp_path / "base"
+    proc = lane(root, base)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert not_judged(proc.stdout) == [
+        "  not judged: 1 test skipped by a mark on this machine ('no chip folder'): tests/test_s.py::test_c",
+        "  not judged: 1 test skipped inside the test ('no board here'): tests/test_s.py::test_inside",
+        f"  not judged: the whole list of 2 is in {base / testshards.NOT_JUDGED}",
+    ], proc.stdout
+    assert "left out" not in proc.stdout
+    assert "test_deselected" not in (base / testshards.NOT_JUDGED).read_text(encoding="utf-8")
+
+
+def test_the_fast_lane_with_no_skip_prints_no_line(tmp_path):
+    proc = lane(folder(tmp_path, FOUR), tmp_path / "base")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "not judged" not in proc.stdout
+    assert not (tmp_path / "base" / testshards.NOT_JUDGED).exists()
+
+
+def test_the_fast_gate_loads_the_plugin_that_names_the_groups():
+    """`make verify-site` runs 1 pytest, not the shard runner: its line loads `-p testshards` with
+    verify/ on PYTHONPATH."""
+    text = (ROOT / "verify" / "verify.sh").read_text(encoding="utf-8")
+    site = text.split('if [[ "$mode" == site ]]; then', 1)[1].split("\nfi\n", 1)[0]
+    (pytest_line,) = [line for line in site.splitlines() if "-m pytest" in line]
+    assert 'PYTHONPATH="verify${PYTHONPATH:+:$PYTHONPATH}"' in pytest_line
+    assert " -p testshards " in pytest_line
+
+
+def test_a_red_runs_kept_logs_copy_the_list():
+    """tools/ci/kept_logs.py copies the files whose names end in its SUFFIXES from the kept folder."""
+    sys.path.insert(0, str(ROOT / "tools" / "ci"))
+    import kept_logs
+
+    assert testshards.NOT_JUDGED.endswith(kept_logs.SUFFIXES)
+
+
+def test_the_groups_are_ordered_by_size_then_reason():
+    groups = testshards.skip_groups({"a": "r2", "b": "r1", "c": "r2", "d": "r0"})
+    assert groups == [("r2", ["a", "c"]), ("r0", ["d"]), ("r1", ["b"])]

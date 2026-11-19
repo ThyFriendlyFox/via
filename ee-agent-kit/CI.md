@@ -135,7 +135,7 @@ The shards of `full` are planned from `verify/shards.csv`, each file's seconds i
 
 ## What GitHub does not judge
 
-`fast` runs without engines, and both paths of `full` run as a user id that is not root (uid 1001 on the install path), on a runner with no chip folder. A test that skips for who runs it or where is green on GitHub and judged nowhere there. The `full` job of run 44585103119 (wip/install2 at c49fece, 2026-11-19) skipped 69 tests and named 3 as not judged: the shard runner names only a test that skips inside the test, not one a decorator skips (STATUS, "The health gate in shards"). The 69, from main 2bbc05b's code, each skip mark evaluated as on that runner (user id 1001, no chip folder, none of the chip engines, no `WORKCENTER_TEST_IMAGE_BUILD`), plus the 3 the summary names: 66 + 3 = 69, the run's count.
+`fast` runs without engines, and both paths of `full` run as a user id that is not root (uid 1001 on the install path), on a runner with no chip folder. A test that skips for who runs it or where is green on GitHub and judged nowhere there. The `full` job of run 44585103119 (wip/install2 at c49fece, 2026-11-19) skipped 69 tests and named 3 as not judged: the shard runner then named only a test that skips inside the test, not one a decorator skips (STATUS, "The health gate in shards"). It names both now (below). The 69, from main 2bbc05b's code, each skip mark evaluated as on that runner (user id 1001, no chip folder, none of the chip engines, no `WORKCENTER_TEST_IMAGE_BUILD`), plus the 3 the summary names: 66 + 3 = 69, the run's count.
 
 | Tests | Why GitHub skips them | Who must run them |
 |---|---|---|
@@ -147,7 +147,24 @@ The shards of `full` are planned from `verify/shards.csv`, each file's seconds i
 
 One more path GitHub never takes: `tests/test_ci_apt_archive.py`'s `unprivileged()` runs the refusal as user id 12345 through setpriv only when the run is root; on GitHub it runs as the runner's own user id.
 
-A landing that changes what one of these tests holds is judged only where it runs (PROCESSES.md P12 step 13, M307). To list them again: a collect-only plugin that sets `os.geteuid` and `os.getuid` to 1001, `WORKCENTER_CHIP_TOOLS` to a folder that is not there, hides the chip engines from `shutil.which`, and evaluates each test's `skipif` marks; then add the tests that skip inside themselves, which a `full` log names as `not judged:`.
+A landing that changes what one of these tests holds is judged only where it runs (PROCESSES.md P12 step 13, M307).
+
+The run names these tests itself. `make verify` (verify/testshards.py) and `make verify-site` (pytest with `-p testshards`) end with `not judged:` lines. A test a skip mark skipped on that machine is in 1 line per reason, with the count and the first 3 ids. A test that skipped inside itself keeps its own line under `make verify`, and is grouped by reason under `make verify-site`. The last line names `not-judged.txt`, which holds every id and every whole reason. Under `make verify` it is in the run's logs folder (`ee-verify-*`), kept on a green run too, alone. Under `make verify-site` it is in pytest's base folder (`pytest-of-<user>/pytest-<n>/`). A test the lane leaves out on purpose (`-m "not engine"`) is never collected and is not named: the lane's own line says it. A red run's kept logs (tools/ci/kept_logs.py) copy the file: it ends in `.txt` and sits at the top of a folder both patterns name. A green run uploads no artifact, so there the lines in the job's log are the record. The table above stays the account of who must run each group.
+
+The counts, file by file, on GitHub's `full` job. `tests/test_ci_notjudged.py` collects the suite with `-p github_full` (verify/github_full.py: user id 1001, no chip folder and no chip engine on `PATH`, no FreeRouting 2.5.0, no `WORKCENTER_TEST_IMAGE_BUILD`), runs no test, and holds the first column to it. A skip inside a test is seen only when the test runs, so the second column is from the `full` log. A new skip mark that holds on GitHub fails that test, which names the file; correct this table in the same change.
+
+| File | Skipped by a mark | Skipped inside the test |
+|---|---|---|
+| `tests/test_chipback.py` | 23 | 1 |
+| `tests/test_chipfront.py` | 17 | 0 |
+| `tests/test_chips.py` | 12 | 0 |
+| `tests/test_chipflow.py` | 8 | 0 |
+| `tests/test_chipinstall.py` | 2 | 0 |
+| `tests/test_chipguide.py` | 1 | 0 |
+| `tests/test_image.py` | 2 | 0 |
+| `tests/test_lead.py` | 0 | 2 |
+| `tests/test_routers.py` | 1 | 0 |
+| all | 66 | 3 |
 
 ## The nightly's ci-failure issue
 
