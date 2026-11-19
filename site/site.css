@@ -3009,3 +3009,93 @@ html[data-shot] .ticker {
 #herald > .wrap {
   padding-top: 1.5rem;
 }
+
+/* --------------------------------------------------------------- sticker */
+
+/* The hero's way to the forms: the owner's line on a card at 20 degrees, beside the wordmark on a
+   wide screen and under the buttons on a narrow one. It wiggles every few seconds, unless the
+   reader asked for reduced motion, and stands still under a pointer. */
+.sticker {
+  display: grid;
+  gap: 0.375rem;
+  width: 15rem;
+  margin-block: 3rem 2rem;
+  padding: 1.125rem 1.25rem 1.25rem;
+  border-radius: 1.25rem;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: 0 18px 40px -18px oklch(0 0 0 / 55%);
+  text-align: left;
+  rotate: 20deg;
+  transition: scale 200ms var(--ease);
+}
+
+.sticker:hover,
+.sticker:focus-within {
+  scale: 1.05;
+}
+
+.sticker-line {
+  margin-bottom: 0.25rem;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-wrap: balance;
+}
+
+.sticker-link {
+  width: fit-content;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklch, currentColor 40%, transparent);
+  text-underline-offset: 3px;
+}
+
+.sticker-link:hover {
+  text-decoration-color: currentColor;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sticker {
+    animation: sticker-wiggle 5s ease-in-out 1.5s infinite;
+  }
+  .sticker:hover,
+  .sticker:focus-within {
+    animation-play-state: paused;
+  }
+}
+
+@keyframes sticker-wiggle {
+  0%,
+  78%,
+  100% {
+    rotate: 20deg;
+  }
+  82% {
+    rotate: 25deg;
+  }
+  86% {
+    rotate: 15deg;
+  }
+  90% {
+    rotate: 23deg;
+  }
+  94% {
+    rotate: 18deg;
+  }
+}
+
+/* Under 1280 px the wordmark reaches the card's place, so the card stays under the buttons. */
+@media (min-width: 1280px) {
+  .sticker {
+    position: absolute;
+    top: 14rem;
+    right: max(2rem, calc((100vw - 76rem) / 2 + 1rem));
+    margin: 0;
+  }
+}
+
+html[data-shot] .sticker {
+  display: none;
+}
