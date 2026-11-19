@@ -180,7 +180,7 @@ READERS = ["basename", "cat", "dirname", "grep", "head", "readlink", "seq", "tai
 # The stand-in python3 on the key's pipe reads all its input before it ends, as the real one does
 # (json.load reads to the end first). One that ends unread races the stand-in curl: when python3 ends
 # first, curl's write dies of SIGPIPE, pipefail fails the pipeline, and a test's answer rests on which
-# process ended first (M269: IA82 survived 1 run in 3). Any other call of python3 reads nothing: its
+# process ended first (M270: IA82 survived 1 run in 3). Any other call of python3 reads nothing: its
 # input is the test's, which may be a terminal.
 DRAINS = 'case "$*" in *json.load*) cat > /dev/null ;; esac; '
 
@@ -236,7 +236,7 @@ def folder(tmp_path: Path, answers: dict | None = None) -> dict:
     runs the script while the scans see a write that passes no fence: a redirection runs before any
     test could fail on it."""
     assert unfenced_in_the_script() == ()
-    # No stand-in python3 may end before it has read the key's pipe (M269).
+    # No stand-in python3 may end before it has read the key's pipe (M270).
     assert {**DEFAULTS, **(answers or {})}["python3"].startswith(DRAINS)
     bin_dir, tools = tmp_path / "bin", tmp_path / "tools"
     bin_dir.mkdir()

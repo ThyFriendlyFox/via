@@ -756,6 +756,16 @@ charger, or any other load from a battery.
    catch it removed. A stop's advice line, and its side effects on files
    beside the script's own (a bystander file that must survive), each have
    a mutant. The list copies every file its tests read (M261).
+8. A stand-in that sits on the reading end of a pipe reads all its input
+   before it ends, as the real program does, whatever it answers: one
+   that ends unread makes its writer die of SIGPIPE when it ends first,
+   and under `pipefail` the test's answer then rests on which process
+   ended first (M270). A test that rests on an order of 2 processes
+   chooses that order (one waits for the other's mark), or its margin is
+   measured and written beside it. A mutation count goes into a document
+   only after the whole list has run 3 times with the same count; a
+   mutant caught on some runs and not others is not caught: find the
+   order its test rests on and fix the test before the count is written.
 
 Done when: the host tests cover steps 1, 2, 3 and 5, the mutation run
 catches every mutation after the last firmware change, and the cut-off
