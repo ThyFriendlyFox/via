@@ -960,7 +960,14 @@ figcaption {
 
 /* ---------------------------------------------------------------- footer */
 
+/* Its own room at the top and a hairline over it, so its first line never sits on the edge of a
+   section with another background (the owner found it cramped, 2026-11-19). */
+.site-footer {
+  box-shadow: inset 0 1px 0 var(--edge);
+}
+
 .site-footer .wrap {
+  padding-top: 3rem;
   padding-bottom: 3rem;
 }
 
@@ -2909,8 +2916,8 @@ main .post-card p {
 
 /* -------------------------------------------------------------- news bar */
 
-/* site.js builds it from blog/news.json: the newest posts run along the bottom of the screen, and the
-   button to the community stays at the right. */
+/* site.js builds it from blog/news.json: the newest posts run along the bottom of the screen, a
+   button at the left closes it, and the button to the community stays at the right. */
 .ticker {
   position: fixed;
   right: 0;
@@ -2921,7 +2928,7 @@ main .post-card p {
   align-items: center;
   gap: 0.75rem;
   height: 3.25rem;
-  padding-right: 0.5rem;
+  padding-inline: 0.5rem;
   background: var(--card);
   box-shadow:
     0 -1px 0 var(--edge),
@@ -2985,6 +2992,70 @@ main .post-card p {
   height: 2.25rem;
   padding-inline: 1rem;
   font-size: 0.8125rem;
+}
+
+/* The close button: an X at the bar's left. */
+.ticker-close {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  color: var(--muted-foreground);
+  transition:
+    background-color 150ms var(--ease),
+    color 150ms var(--ease);
+}
+
+.ticker-close:hover {
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+.ticker-close svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+/* "Join the community" over a gradient of orange and gray that moves left to right, at the owner's
+   ask (2026-11-19). The gradient is 2 rounds of orange and gray at twice the button's width; moving it
+   by the button's width brings the second round where the first was, so the loop has no seam. White
+   words keep 4.5:1 on both colours. A reader who asks for reduced motion gets it still. */
+.ticker-join {
+  --join-orange: oklch(0.56 0.16 45);
+  --join-gray: oklch(0.45 0.005 60);
+  background: linear-gradient(
+    100deg,
+    var(--join-orange) 0%,
+    var(--join-gray) 25%,
+    var(--join-orange) 50%,
+    var(--join-gray) 75%,
+    var(--join-orange) 100%
+  );
+  background-size: 200% 100%;
+  color: #fff;
+  font-weight: 600;
+  text-shadow: 0 1px 1px oklch(0 0 0 / 25%);
+}
+
+.ticker-join:hover {
+  filter: brightness(1.08);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ticker-join {
+    animation: join-flow 4s linear infinite;
+  }
+}
+
+@keyframes join-flow {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
 }
 
 @keyframes ticker {
