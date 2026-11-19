@@ -34,11 +34,11 @@ jobs:
           esac
           python3 tools/ci/scope.py --base "$base" --head HEAD --github-output
 
-  # A change no engine reads: no toolchain; shellcheck, the site's build, the tests that start no
-  # engine, and the kit's checks (make verify-site).
+  # Every change: no toolchain; shellcheck, the site's build, the tests that start no engine, and the
+  # kit's checks (make verify-site). It runs beside `full` too: its runner has no KiCad, so a test that
+  # needs KiCad's files and does not say so fails on the pull request that adds it (PROCESSES.md P12).
   fast:
     needs: scope
-    if: needs.scope.outputs.scope == 'fast'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -127,15 +127,16 @@ jobs:
             *) echo "no path was decided"; exit 1 ;;
           esac
 
-  # Always runs, so a required check always resolves: green only when the job the scope asked for
-  # passed. A skipped job is not a pass, and a failed scope job leaves no answer.
+  # Always runs, so a required check always resolves: green only when fast passed on every change,
+  # and full passed as well for a full change. A skipped job is not a pass, and a failed scope job
+  # leaves no answer.
   verdict:
     needs: [scope, fast, full]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
-      - name: The asked job passed
+      - name: The asked jobs passed
         env:
           SCOPE: ${{ needs.scope.outputs.scope }}
           FAST: ${{ needs.fast.result }}
@@ -144,6 +145,6 @@ jobs:
           echo "scope: ${SCOPE:-none}; fast: $FAST; full: $FULL"
           case "$SCOPE" in
             fast) test "$FAST" = success ;;
-            full) test "$FULL" = success ;;
+            full) test "$FAST" = success && test "$FULL" = success ;;
             *) echo "the scope job gave no answer"; exit 1 ;;
           esac

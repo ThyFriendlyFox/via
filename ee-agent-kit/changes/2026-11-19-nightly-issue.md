@@ -1,0 +1,2 @@
+### Changed
+- The nightly run's `ci-failure` issue follows the nights. A failed night opens it, or adds 1 comment when it is open, with the run's address, the step that failed and the gate's `why:` lines, so a reader need not open the log. A passed night closes it with 1 comment that names the run. Before, a stale issue hid every later failure: issue 63 of 2026-11-17 stayed open after the next night passed, until it was closed by hand.

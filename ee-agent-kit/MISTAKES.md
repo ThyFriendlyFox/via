@@ -1703,9 +1703,9 @@ Root cause: A file that a running process reads was changed in 2 writes. Between
 Process: P31
 
 ## M279 — 2026-11-19 — main moved under the open pull request 4 times in 1 day
-What happened: Another session pushes site changes straight to main, each with a changelog line. On 2026-11-19 main moved under the open pull request 4 times. Each time the pull request conflicted in `ee-agent-kit/CHANGELOG.md`, and GitHub ran no checks on it. Each lap (merge main, gate, push, CI) cost about 40 minutes. From 00:00 to 05:04 UTC main gained 17 commits, and 15 of them changed `ee-agent-kit/CHANGELOG.md` (`git log --first-parent`).
+What happened: Another session pushes site changes straight to main, each with a changelog line. On 2026-11-19 main moved under the open pull request 4 times. Each time the pull request conflicted in `ee-agent-kit/CHANGELOG.md`, and GitHub ran no checks on it. Each lap (merge main, gate, push, CI) cost about 40 minutes. From 00:00 to 05:04 UTC main gained 17 commits, and 15 of them changed `ee-agent-kit/CHANGELOG.md` (`git log --first-parent`). By the lead's count main moved under the pull request 6 times that day, the last at 07:49 UTC (4 commits of the site's session), and CHANGELOG.md conflicted again.
 Cost: About 40 minutes for each of 4 laps.
-Root cause: Every change writes its line at 1 place in 1 file, the top of `## [Unreleased]`, so any 2 changes conflict there. The lead started each lap without asking the owner to hold the other session's pushes, and did not say what each move cost.
+Root cause: Every change writes its line at 1 place in 1 file, the top of `## [Unreleased]`, so any 2 changes conflict there. The lead started each lap without asking the owner to hold the other session's pushes, and did not say what each move cost. Fixed by giving each change a file of its own: `ee-agent-kit/changes/`, `tools/ci/changes.py` (P14 step 9).
 Process: P14
 
 ## M280 — 2026-11-19 — A sentence about the container package's visibility was written from an assumption
@@ -1719,3 +1719,9 @@ What happened: CI's `make verify` on the pull request failed `tests/test_lead.py
 Cost: 1 red CI run of the pull request, and a check that, with a cut line, lets the gate start while a helper's script works.
 Root cause: The check read another tool's output without asking for the whole of it. `ps` sizes its lines to COLUMNS or a terminal, and the test ran only with neither set. `quiet.py` and the test now call `ps -ww`, and the test runs once more with `COLUMNS=40`.
 Process: P7
+
+## M282 — 2026-11-19 — 7 tests needed KiCad's libraries without a skip, and CI's fast job was red on main
+What happened: CI run 44462711649 on main (6f66757, a site-only push) ended `make verify-site` with `7 failed, 3019 passed, 367 skipped, 430 deselected in 365.56s`; run 44455634601 at c018f9f was red the same way. The 7 load KiCad's symbol libraries (`FileNotFoundError: ... '/usr/share/kicad/symbols/Connector_Generic.kicad_sym'`, and `power.kicad_sym`): tests/test_fab.py (1), tests/test_legend.py (3), tests/test_copper.py (2) and tests/test_blocks_mcu.py (1). 2 more tests, in tests/test_new.py and tests/test_guide.py, read `/usr/share/kicad` by name for their skip, not the folder the code reads. 6 more, tests/test_ratings_cli.py's design check of its 6 fixtures, skipped where kicad-cli is absent but loaded the libraries: they skip on CI and failed in the fast gate on a machine with KiCad (`6 failed, 4 passed, 46 deselected`).
+Cost: Every site-only push to main showed a red CI, and the site's own work could not tell its faults from this one.
+Root cause: The tests came in through pull requests whose scope was full. The full job installs KiCad, where they pass; the fast job, the only one without KiCad, ran only for fast changes. `make verify-site` on Via's own machine refused engines but read KiCad's installed libraries, so it did not see it either. A skip on an engine's presence does not stand in for a skip on the libraries: the first fix's own check hid kicad-cli from PATH, which turned the 6 into skips, and missed them.
+Process: P12

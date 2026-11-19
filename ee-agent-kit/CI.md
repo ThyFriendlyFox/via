@@ -5,13 +5,13 @@ file explains them and holds the repository settings that are not files.
 
 | File | Trigger | Does |
 |---|---|---|
-| `ci.yml` | push to `main`, every PR, manual | `full`: the image of this commit's toolchain when the registry gives it, else `tools/ci/apt_archive.sh` (apt asks Ubuntu's own archive, not the runner's regional mirror), then `sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh`; then `make verify` (tools/ci/README.md, "Where `full` runs"). |
+| `ci.yml` | push to `main`, every PR, manual | `fast` on every change: no toolchain, `make verify-site` (KiCad's libraries hidden, no engine started). `full`: the image of this commit's toolchain when the registry gives it, else `tools/ci/apt_archive.sh` (apt asks Ubuntu's own archive, not the runner's regional mirror), then `sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh`; then `make verify` (tools/ci/README.md, "Where `full` runs"). `verdict` passes when `fast` passed and, for a change `tools/ci/scope.py` calls full, `full` too. |
 | `nightly.yml` | 06:17 UTC daily | `tools/ci/apt_archive.sh`, then `sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh` then `make verify`, always by install.sh. Keeps 1 `ci-failure` issue in step with the nights (`tools/ci/nightly_issue.py`): a failed night opens it or adds 1 comment with the run and the gate's `why:` lines; a passed night closes it with 1 comment naming the run; a second open one is closed as a duplicate of the oldest (tools/ci/README.md, "The nightly's `ci-failure` issue"). Catches a moved PPA, a new KiCad point release, a broken dependency. |
 | `image.yml` | PR on the files the build reads, every push to `main`, `v*.*.*`, Monday 04:17 UTC, manual | Builds the image on amd64 and arm64 from install.sh, with CI's 2 bounds of its apt step as build arguments, checks it with doctor and the gates as a user; pushes to `ghcr.io/<owner>/via` except on a PR. |
 | `release.yml` | tag `v*.*.*` | Publishes the GitHub Release with generated notes (the image comes from `image.yml`). |
 | `stale.yml` | Mondays | Marks issues stale after 60 days, closes after 14 more. `blocked`, `security`, `accepted` are exempt. |
 | `../dependabot.yml` | weekly | pip (`requirements.txt`), GitHub Actions, Docker base image. Minor and patch updates grouped. |
-| `../PULL_REQUEST_TEMPLATE.md` | every PR | What, Why, Evidence, checklist. |
+| `../PULL_REQUEST_TEMPLATE.md` | every PR | What, Why, Evidence, checklist; the changelog line is a new file under `ee-agent-kit/changes/`. |
 
 ## Toolchain step
 
@@ -27,9 +27,17 @@ download fail the run; a green CI proves the autoroute engine installs.
 
 Before install.sh, the install path and the nightly run turn apt from the runner's regional mirror to Ubuntu's own archive: `sudo env APT_ARCHIVE_CI=1 bash tools/ci/apt_archive.sh /etc/apt`. Twice the mirror us-east-2.ec2.archive.ubuntu.com crawled and the download hit its bound of 570 s (CI runs 44402154007 and 44432768560), while the image builds of the same hours asked archive.ubuntu.com and were fast (`Image` run 44432768632 built both machines between 00:54 and 00:59 UTC on 2026-11-19). The script changes only a regional or cloud host of archive.ubuntu.com or ports.ubuntu.com; a layout it does not know, it names and leaves. Setting the repository variable `CI_APT_UBUNTU_ARCHIVE` to `0` turns it off (tools/ci/README.md, "Ubuntu's own archive on the install path"). Its first run on a runner, CI run 44444183056 (2026-11-19), passed, and the install step then took 1 min 29 s, where the 3 runs before it on the regional mirror ran 9 min 43 s or more and stopped at the download's bound.
 
+## The fast job on every change
+
+`fast` runs on every pull request and push, beside `full`. Its runner has no KiCad. A test that loads KiCad's symbol or footprint libraries without a skip passes in `full` and fails in `fast`; when `fast` ran only for fast changes, 7 such tests reached main through full pull requests and turned every site-only push red (CI runs 44455634601 and 44462711649). `verdict` asks `fast` for every change and `full` too for a full one. `make verify-site` sets `KICAD_SYMBOL_DIR` and `KICAD_FOOTPRINT_DIR` to empty folders, so it fails such a test on a machine with KiCad (tools/ci/README.md, "A test that needs KiCad's libraries"). Run it before every push: it also fails a test that skips on kicad-cli but loads the libraries, which the CI runner skips.
+
 ## The nightly's ci-failure issue
 
 The nightly run's last step runs on a passed and a failed night, not on a cancelled one. It lists the open issues labelled `ci-failure`, calls `tools/ci/nightly_issue.py` with the night's outcome, the gate's log (`build/nightly-verify.log`, written by the Verify step through `tee`) and each step's outcome, and does what it prints. Issue 63 of nightly run 44031336712 (2026-11-17) stayed open after run 44251400298 passed and was closed by hand; the step now closes such an issue on the next passed night. To read a night: the step's lines `nightly-issue: open ...`, `comment on #N`, `close #N as completed` or `as not_planned`, or `nothing to do`. Not yet run on GitHub. A night that hits the job's time limit counts as cancelled: the step is skipped, and an open issue stays as it is.
+
+## The changelog in files of their own
+
+A change writes its changelog line into `ee-agent-kit/changes/<yyyy-mm-dd>-<slug>.md`, not into CHANGELOG.md (tools/ci/README.md, "A changelog line in a file of its own"). The kit checks of `ci.yml`'s fast and full jobs run `python3 tools/ci/changes.py check`; a fault is 1 line, `<file>:<line>: <why>`. On 2026-11-19 an open pull request conflicted in CHANGELOG.md each time `main` moved, and GitHub runs no checks on a pull request that conflicts (M279). A release folds the files with `fold` (RELEASING.md step 2).
 
 ## The container image: what the owner does once
 

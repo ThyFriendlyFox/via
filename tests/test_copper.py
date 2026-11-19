@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 np = pytest.importorskip("numpy")
 import copper  # noqa: E402
+import kicadgen  # noqa: E402
 
 # The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
 CITES = {
@@ -40,6 +41,11 @@ try:
 except ImportError:
     HAS_PCBNEW = False
 needs_pcbnew = engine(pytest.mark.skipif(not HAS_PCBNEW, reason="KiCad's pcbnew module is not importable"))
+# `workcenter design` on a fixture loads KiCad's symbols and footprints (tools/kicadgen.py SYMBOL_DIR).
+needs_libs = pytest.mark.skipif(
+    not (kicadgen.SYMBOL_DIR / "Device.kicad_sym").is_file(),
+    reason="KiCad symbol libraries are not installed",
+)
 
 
 # ---------------------------------------------------------------- the drop
@@ -144,6 +150,7 @@ def run_cli(*args: str) -> subprocess.CompletedProcess:
     )
 
 
+@needs_libs
 @pytest.mark.parametrize("fixture", ["pass-copper-strip", "fail-copper-neck"])
 def test_fixture_is_what_its_design_writes(fixture, tmp_path):
     proc = run_cli("design", str(BOARDS / fixture / "design.py"), "--check", "--out", str(tmp_path))

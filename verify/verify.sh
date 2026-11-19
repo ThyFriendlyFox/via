@@ -32,7 +32,8 @@ step() {
   return 0
 }
 
-# `verify.sh site` is the fast gate (make verify-site): for a change tools/ci/scope.py calls fast.
+# `verify.sh site` is the fast gate (make verify-site): for every change, and beside the full gate
+# for a change tools/ci/scope.py calls full. It hides KiCad's libraries.
 # It starts no engine: the tests marked `engine` are left out, and any other test that starts one
 # is refused (WORKCENTER_NO_ENGINES=1) and fails (tools/ci/engine_marker.py).
 mode=${1:-full}
@@ -70,6 +71,8 @@ awk '/^## M[0-9]+ /{if (h != "" && !p) {print h ": no Process line"; bad = 1}; h
 awk '/^## P[0-9]+ /{if (h != "" && !d) {print h ": no Done when line"; bad = 1}; h = $0; d = 0}
      /^Done when:/{d = 1}
      END{if (h != "" && !d) {print h ": no Done when line"; bad = 1}; exit bad}' ee-agent-kit/PROCESSES.md || exit 1
+# A change's changelog line is a file of its own under ee-agent-kit/changes/ (M279); each is well formed.
+python3 tools/ci/changes.py check || exit 1
 echo "kit checks ok"
 }
 
@@ -83,7 +86,11 @@ if [[ "$mode" == site ]]; then
   sh site/build.sh "$built/site"
   echo "site built: $(find "$built/site" -type f | wc -l) files"
   step "3/4 tests that start no engine"
-  WORKCENTER_NO_ENGINES=1 "$PY" -m pytest -q -p no:cacheprovider -m "not engine" tests
+  # The fast job's runner has no KiCad: its symbol and footprint folders (tools/kicadgen.py) are empty
+  # folders here too, so a test that loads a library without saying so fails on any machine (P12).
+  nokicad="$built/no-kicad"
+  mkdir -p "$nokicad/symbols" "$nokicad/footprints"
+  KICAD_SYMBOL_DIR="$nokicad/symbols" KICAD_FOOTPRINT_DIR="$nokicad/footprints" WORKCENTER_NO_ENGINES=1 "$PY" -m pytest -q -p no:cacheprovider -m "not engine" tests
   step "4/4 kit checks"
   kit_checks
   printf '\nVERIFY-SITE GREEN in %ss\n' "$SECONDS"

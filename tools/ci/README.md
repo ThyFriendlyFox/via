@@ -13,6 +13,7 @@ the minute the roadmap asks for.
 | `guard/engine_watch.py` | Writes a line for each engine a Python process starts; refuses it in the fast run. |
 | `guard/sitecustomize.py` | Loads the watch in every Python process that has `guard/` on PYTHONPATH. |
 | `apt_archive.sh` | On CI's install path, before install.sh: apt asks Ubuntu's own archive, not the runner's regional mirror. |
+| `changes.py` | A change's changelog line in a file of its own under `ee-agent-kit/changes/`: `check` (in the kit checks), `show`, and `fold <X.Y.Z> <date>` for a release. |
 | `nightly_issue.py` | The nightly run's last step: reads the night's outcome, the gate's log and the open `ci-failure` issues, and prints what to do (open, comment, close or nothing) with the text. |
 
 ## The rules of `scope.py`
@@ -39,9 +40,11 @@ the minute the roadmap asks for.
    - A line `fast  <path>: <why>`: this path needs no engine.
    - A line `full  <path>: <why>`: this path needs the full gate.
    - The last line is the answer: `fast` or `full`.
-2. If the answer is `fast`, run `make verify-site`. It ends with
+2. Run `make verify-site` for every answer. It ends with
    `VERIFY-SITE GREEN in <n>s`. Any other end is red: read the step above it.
-3. If the answer is `full`, run `make verify`. It ends with `VERIFY GREEN`.
+   It is the only local run that hides KiCad's libraries, and CI's `fast`
+   job runs it on every change.
+3. If the answer is `full`, run `make verify` too. It ends with `VERIFY GREEN`.
 
 ## A test that starts an engine
 
@@ -79,9 +82,68 @@ program under the temporary folder is a test's stand-in, not an engine.
 
 `.github/workflows/ci.yml` has 4 jobs. `scope` runs `scope.py` and is the
 only job that decides fast or full. `fast` runs `make verify-site` with no
-toolchain. `full` gets the toolchain and runs `make verify`. `verdict` always
-runs and passes only when the job the scope asked for passed: make `verdict`
-the required check. The nightly run (`nightly.yml`) stays the full gate.
+toolchain, on every change: for a full change it runs beside `full`. `full`
+gets the toolchain and runs `make verify`. `verdict` always runs and passes
+only when `fast` passed and, for a full change, `full` passed too: make
+`verdict` the required check. The nightly run (`nightly.yml`) stays the full
+gate.
+
+`fast` runs on full changes because only its runner lacks KiCad. A test that
+loads KiCad's symbol or footprint libraries without a skip mark passes in
+`full` and fails in `fast`. Before, `fast` ran only on fast changes, so such a
+test reached main through a full pull request and turned the next fast push
+red (CI runs 44455634601 and 44462711649).
+
+## A test that needs KiCad's libraries
+
+A test that loads a symbol or footprint from KiCad's libraries
+(`tools/kicadgen.py` reads `KICAD_SYMBOL_DIR` and `KICAD_FOOTPRINT_DIR`,
+default `/usr/share/kicad/symbols` and `/usr/share/kicad/footprints`) carries
+the skip its file already has, `needs_libs`:
+`pytest.mark.skipif(not LIBS.is_file(), reason="KiCad symbol libraries are not installed")`
+with `LIBS = kicadgen.SYMBOL_DIR / "Device.kicad_sym"`. A test that starts
+`workcenter design` on a fixture board loads them too. It carries
+`needs_libs` even when it already skips where kicad-cli is absent: the fast
+gate on a machine with KiCad has kicad-cli and hides the libraries only.
+
+`make verify-site` sets both variables to empty folders of its own, so it
+finds such a test on a machine that has KiCad. To run 1 file that way:
+
+```
+KICAD_SYMBOL_DIR=/nonexistent KICAD_FOOTPRINT_DIR=/nonexistent WORKCENTER_NO_ENGINES=1 \
+  python -m pytest tests/<file> -p no:cacheprovider -q -m "not engine"
+```
+
+## A changelog line in a file of its own
+
+A change does not edit `ee-agent-kit/CHANGELOG.md`. It adds 1 file,
+`ee-agent-kit/changes/<yyyy-mm-dd>-<slug>.md`: line 1 is 1 of Keep a
+Changelog's headings (`### Added`, `### Changed`, `### Deprecated`,
+`### Removed`, `### Fixed`, `### Security`), then 1 or more `- ` lines as
+they will stand in CHANGELOG.md. 2 changes then write 2 files, and 2 files
+of 2 names merge clean. On 2026-11-19 `main` moved under an open pull
+request 5 times, and each time the pull request conflicted in CHANGELOG.md
+alone (M279). Pick a slug of your own: 1 name in 2 branches is git's
+add/add conflict, as for any file; keep both lines and rename 1 file.
+Each `- ` line stands once: `check` refuses a line that CHANGELOG.md,
+another change file or the same file already holds, and a line that ends
+in white space.
+
+1. `python3 tools/ci/changes.py check`: every change file is well formed.
+   A fault is 1 line, `<file>:<line>: <why>`, and the exit is 1. The kit
+   checks of `make verify` and `make verify-site` run it.
+2. `python3 tools/ci/changes.py show`: what `## [Unreleased]` holds today.
+   Under each heading, the change files' lines come first, newest first by
+   the date in the name, then CHANGELOG.md's own Unreleased lines.
+3. `python3 tools/ci/changes.py fold <X.Y.Z> <YYYY-MM-DD>`: the release
+   step (`ee-agent-kit/RELEASING.md` step 2). It writes the release's
+   section with both places' lines, leaves an empty `## [Unreleased]` and
+   deletes the folded files. A second run changes nothing. A version that
+   is already there, with lines still unreleased, is refused.
+
+A line written straight under `## [Unreleased]` stays valid: every action
+reads both places, and so does the roadmap pointer test in
+`tests/test_docs.py`. The script is Python's standard library only.
 
 ## The nightly's `ci-failure` issue
 

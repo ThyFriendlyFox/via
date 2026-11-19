@@ -261,7 +261,7 @@ Python package in `requirements.txt`.
 1. Reproduce the fault or the gain with the exact version, in the
    environment that showed it (proxied cloud session, GitHub runner).
 2. Pin with the reason in `install.sh` (a comment with the symptom), a
-   row in the landmine map, a CHANGELOG line, `docs/ENGINES.md`, and
+   row in the landmine map, a change file under `ee-agent-kit/changes/`, `docs/ENGINES.md`, and
    every table that repeats the default (`docs/CONFIGURATION.md`):
    `grep -rn` the old version string across the kit before the commit.
 3. Keep a check that fails when the pin is lost: a doctor line, a test,
@@ -568,6 +568,15 @@ that may be absent.
    its seconds from a run, `engine` yes when a test of it carries the
    `engine` mark (`verify/README.md`, "Keeping the table true"). A file
    with no row takes the `*` row's seconds, and no check fails on it.
+10. A test that loads KiCad's symbol or footprint libraries (`tools/kicadgen.py`
+    `SYMBOL_DIR`, `FOOTPRINT_DIR`; `workcenter design` on a fixture loads them)
+    carries its file's `needs_libs` skip on `kicadgen.SYMBOL_DIR`, never a
+    path written out. It carries it even when it already skips on an
+    engine's presence, such as kicad-cli. CI's `fast` job, which has no
+    KiCad, runs on every change, and `make verify-site` sets both folders
+    to empty ones; on a machine with KiCad it keeps the engines on PATH and
+    runs a test that skips on them, so a test without the skip fails there
+    (M282).
 
 Done when: the summary shows no unexpected skips, the engine test is
 green on the runner, and a run with an engine taken away is not GREEN.
@@ -661,7 +670,12 @@ When: a change is about to be called done.
    the merge, and say what each move of `main` costs: a merge of `main`,
    a new health gate, a push and CI, about 40 minutes here. A push to
    `main` that adds a changelog line makes the pull request conflict, and
-   GitHub runs no checks on a pull request that conflicts (M279).
+   GitHub runs no checks on a pull request that conflicts (M279). A
+   change writes its changelog line into a file of its own under
+   `ee-agent-kit/changes/`, never into CHANGELOG.md, so it moves no
+   shared line; a branch that still holds lines under `## [Unreleased]`
+   moves them into change files before it merges `main`
+   (`ee-agent-kit/changes/README.md`).
 
 Done when: the remote has the commit, its CI run is green, and the report
 has been sent. For a gate's method: the attack's cases are tests; after 2

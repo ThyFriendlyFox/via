@@ -27,6 +27,7 @@ CLI = ROOT / "tools" / "workcenter"
 TEMPLATE = ROOT / "templates" / "project" / "design.py"
 sys.path.insert(0, str(ROOT / "tools"))
 import guide  # noqa: E402
+import kicadgen  # noqa: E402
 
 # Every engine a command of the workcenter starts by name (tools/workcenter's doctor, the chip gates'
 # engines, the display server of the renders), and `flock`, which the small user waited on.
@@ -58,8 +59,9 @@ SOURCES_HEADER = "MPN,Kind,URL,File,Member,Revision,Dated,Subckt,Ngspice,SHA256,
 # processors at a load average of 3.3: 10 runs of `next` on an empty folder took 0.173 to 0.234 s. The
 # round's candidate asks for an answer within a second; the fastest of 3 takes the scheduler's noise out.
 BOUND = 1.0
+# The folder tools/kicadgen.py reads (KICAD_SYMBOL_DIR), so `make verify-site` skips it as CI's fast job does.
 needs_symbols = pytest.mark.skipif(
-    not Path("/usr/share/kicad/symbols/Device.kicad_sym").is_file(), reason="KiCad's symbol library is absent"
+    not (kicadgen.SYMBOL_DIR / "Device.kicad_sym").is_file(), reason="KiCad's symbol library is absent"
 )
 
 

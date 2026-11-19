@@ -21,6 +21,9 @@ path below to where it keeps posts (`blog/`, `posts/`, or the site repo).
 
 1. `DEVLOG.md` — the entries since the last post. The story.
 2. `CHANGELOG.md` — the released versions in the window. The facts.
+   The lines not yet released stand in 2 places: under its
+   `## [Unreleased]` and in the change files of `ee-agent-kit/changes/`.
+   `python3 tools/ci/changes.py show` prints both together.
 3. `ROADMAP.md` Shipped table — the promises and their evidence.
 4. `docs/USE-CASES.md` — the reader's problems. Every post connects
    the work to at least one use case.

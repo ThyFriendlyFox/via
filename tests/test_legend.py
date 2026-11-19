@@ -39,6 +39,11 @@ import kicadgen  # noqa: E402
 import legend  # noqa: E402
 
 PACK = legend.read_pack()
+# A test that writes a fixture's board from its design loads KiCad's symbols and footprints.
+needs_libs = pytest.mark.skipif(
+    not (kicadgen.SYMBOL_DIR / "Device.kicad_sym").is_file(),
+    reason="KiCad symbol libraries are not installed",
+)
 
 
 def txt(s, x, y, size=1.0, thick=0.15, layer="F.SilkS", angle=0, mirror=False, face="", just=""):
@@ -573,6 +578,7 @@ def test_show_puts_a_hidden_designator_back_on_its_side():
     assert (t.what, t.layer, t.mirrored) == ("designator R5", "B.SilkS", True)
 
 
+@needs_libs
 def test_two_runs_of_the_placer_give_the_same_board():
     a, b = dense(True).board(), dense(True).board()
     assert a == b
@@ -612,6 +618,7 @@ def _dense_raw() -> tuple[str, ...]:
 DENSE_RAW = _dense_raw()
 
 
+@needs_libs
 def test_the_dense_fixture_fails_as_the_library_places_it_and_holds_once_placed():
     """As the library places them, the designators break the rules on 18 lines: 12 overlap and 6 hidden
     (see DENSE_RAW for each, and why). Once placed, none."""
@@ -1368,6 +1375,7 @@ def _ref_at(root, ref: str) -> list[str]:
     raise AssertionError(ref)
 
 
+@needs_libs
 def test_a_designator_fixed_in_the_design_is_written_where_it_says():
     """The dense fixture's U1 at (115, 110), not turned: its designator fixed at (115, 104) is at
     (0, -6) in its frame, with the placer off. A part the design does not have is refused."""

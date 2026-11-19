@@ -39,6 +39,24 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-19 — The quick CI check was red on main for 7 tests that needed KiCad
+
+Every site-only push to main showed a red CI. The quick check runs on a machine with no KiCad, and 7 tests read KiCad's parts libraries without saying so. They came in through pull requests that ran only the full check, where KiCad is installed, so nobody saw it. We marked the 7 to skip where the libraries are absent. The quick check now runs on every pull request, next to the full one, and both must pass. Run on a machine with KiCad, the quick check now hides KiCad's libraries, so it fails the same way the CI machine does. It found 6 more tests that way: they skipped where KiCad's program is absent, but read the libraries.
+
+Evidence: CI runs 44455634601 and 44462711649 (red); commits 7a63688 and 240ec4c on wip/fast-lane; M282.
+
+## 2026-11-19 — A changelog line goes into a file of its own
+
+Another session pushes site changes straight to main, each with a line in CHANGELOG.md. From 00:00 to 05:04 UTC main gained 17 first-parent commits, and 15 of them changed that file. Each time main moved, the open pull request conflicted in CHANGELOG.md alone, GitHub ran no checks on it, and a lap of merge, test and push cost about 40 minutes. By the lead's count it happened 6 times that day, the last to pull request 98 at 07:49 UTC. The cause: 2 sessions write the same lines of 1 file. Now a change adds 1 small file under ee-agent-kit/changes/, and a release folds those files into CHANGELOG.md. A line written the old way still counts, so nothing broke on the day the rule changed. The batch's 12 lines under Unreleased moved into 5 change files, and its CHANGELOG.md now equals main's.
+
+Evidence: `tests/test_ci_changes.py` (18 tests); `git merge-tree` of the batch with main, before (conflict) and after the move of its lines (clean); M279; branch `wip/changes-folder`.
+
+## 2026-11-19 — The SIM gate asks for the parts that can get hot
+
+A model that never wrote `sim/thermal.json` got a pass with nothing judged. The SIM gate now reads the board's parts with kicad-cli and asks for each part whose facts carry a thermal figure. The first review found a row with the WSON part's number holding the SOT-23 part on the WSON's facts; the gate now compares the number. A parts list outside the project left the regulator with no number, and the line said no part carried a figure; the gate now asks for an unnumbered part whose pins fit an entry with a figure. The second review found that a project with decks and no schematic passed `--strict` at 124.97 C; the gate now reads the decks for part numbers with a figure. The third check found a row for no fitted part still judged and failing at 106.26 C; the board is now read first and such a row is left out of the judging. Landing found 2 fixtures named `pass-` that the new rule failed under `sim --strict`: each had a made-up U1 with no number and the pins of a real regulator. Each now gives its U1 a made-up number in `parts.csv`. The rule can raise a false alarm on an unnumbered part; the number clears it.
+
+Evidence: `tests/test_thermal_asked.py` (26 tests), `tests/test_thermal_asked_boards.py` (9 tests); branch `wip/land-l7b`, 95e097c.
+
 ## 2026-11-19 — The nightly's ci-failure issue opens, speaks and closes by itself
 
 Nightly run 44031336712 failed on 2026-11-17 and opened issue 63. Run 44251400298 passed the next morning. The old step runs only on failure and opens an issue only when none is open, so issue 63 stayed open until it was closed by hand at 20:58 UTC on 2026-11-18. While it was open, a new failure would have said nothing. Now `tools/ci/nightly_issue.py` decides from the night's outcome, the gate's log and the open issues, and the workflow's last step carries the answer to GitHub. A failed night opens or comments, with the gate's `why:` lines; a passed night closes. Of 2 open issues the oldest is spoken to and the other closed as its duplicate. 21 tests, seen failing first (18 failed before the script; the 3 a review added failed before their fix). No GitHub run has used it yet.

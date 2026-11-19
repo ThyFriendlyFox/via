@@ -68,7 +68,7 @@ already defines.
 
 ## Standing rules (apply in every instance)
 
-- Docs move with behavior: STATUS.md, CHANGELOG.md, ROADMAP.md updates land in the same commit/PR as the change they describe.
+- Docs move with behavior: STATUS.md, ROADMAP.md and the change's changelog line land in the same commit/PR as the change they describe. The changelog line is a file of its own under `ee-agent-kit/changes/`, not an edit of CHANGELOG.md (the folder's README says the form).
 - Commit at boundaries with evidence in the message. Never commit directly to `main`.
 - Report outcomes faithfully: failing is reported as failing, with output.
 - Scope is what the current roadmap item names — no side quests. Defects found on the way get fixed if they block the item, otherwise queued in ROADMAP.md.

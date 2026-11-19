@@ -24,6 +24,10 @@ sys.path.insert(0, str(ROOT / "tools"))
 import kicadgen  # noqa: E402
 
 SIERRA = "sierra-circuits-web"
+# A design that writes its project loads KiCad's power symbols (tools/kicadgen.py SYMBOL_DIR).
+needs_libs = pytest.mark.skipif(
+    not (kicadgen.SYMBOL_DIR / "power.kicad_sym").is_file(), reason="KiCad symbol libraries are not installed"
+)
 needs_kicad = engine(
     pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
 )
@@ -109,6 +113,7 @@ def test_design_fab_raises_the_board_rules_and_refuses_the_fabs_vias(tmp_path):
     assert d.board_rules()["min_via_annular_width"] == 0.2
 
 
+@needs_libs
 def test_design_fab_writes_the_rule_file_into_the_project(tmp_path):
     d = kicadgen.Design(name="t", namespace=uuid.UUID(int=12), fab=SIERRA)
     d.outline = (100.0, 100.0, 110.0, 110.0)

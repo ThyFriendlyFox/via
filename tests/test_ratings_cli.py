@@ -30,8 +30,16 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
 BOARDS = ROOT / "tests" / "boards"
+sys.path.insert(0, str(ROOT / "tools"))
+import kicadgen  # noqa: E402
 
 pytestmark = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+# `workcenter design` on a fixture loads KiCad's symbols (tools/kicadgen.py SYMBOL_DIR). The skip on
+# kicad-cli does not stand in for it: the fast gate on a machine with KiCad hides the libraries only.
+needs_libs = pytest.mark.skipif(
+    not (kicadgen.SYMBOL_DIR / "Connector_Generic.kicad_sym").is_file(),
+    reason="KiCad symbol libraries are not installed",
+)
 
 # The documents this file cites, by their ids in rules/references/index.json (`workcenter references rules`).
 CITES = {
@@ -611,6 +619,7 @@ def test_facts_prints_an_entry_to_fill_with_the_part_s_number_and_pins(tmp_path)
     assert code != 0 and "U9 is no part of the schematic" in text
 
 
+@needs_libs
 @pytest.mark.parametrize("name", FIXTURES)
 def test_each_fixture_s_schematic_is_what_its_design_file_writes(name):
     code, text = say("design", BOARDS / name / "design.py", "--check")

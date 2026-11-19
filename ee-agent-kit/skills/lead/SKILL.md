@@ -28,6 +28,13 @@ discipline). Where they say more, they win.
 - The shared documents: `ee-agent-kit/STATUS.md`, `CHANGELOG.md`,
   `ROADMAP.md`, `DEVLOG.md`, `MISTAKES.md`, `docs/CONFIGURATION.md`,
   `README.md` and `WORKCENTER.md`. Only the integrator edits them.
+- A change file: a piece's changelog line, in a file of its own,
+  `ee-agent-kit/changes/<yyyy-mm-dd>-<slug>.md` (the form is in
+  `ee-agent-kit/changes/README.md`). It is not a shared document: the
+  helper writes and commits it with the piece, and
+  `python3 tools/ci/changes.py check` judges it. 2 pieces never write the
+  same place, so a move of `<work>` or of `main` does not conflict in the
+  changelog (M279).
 
 ## Scripts or by hand
 
@@ -63,7 +70,8 @@ journal lines of `ee-agent-kit/lead/README.md`, "The journal", itself.
      (folders that are read-only today, installs that were refused);
    - the docs file `<scratch>/roadmap/wip-<short name>-docs.md`: the
      helper never edits a shared document, and writes there what each
-     should gain, as exact paragraphs or rows;
+     should gain, as exact paragraphs or rows; its changelog line it
+     writes as a change file in its worktree, not in the docs file;
    - what to report: the fields of `BUILD_SCHEMA` in the same file.
    Before you send it, check that every path in it exists:
    `ls -d <each path>`.

@@ -54,7 +54,9 @@ Populate `docs/` from the repo itself:
 ## 5. Wire the machinery
 
 - Instantiate workflows from `CI.md` into `.github/workflows/`.
-- Ensure `CHANGELOG.md` exists (seed is in this kit).
+- Ensure `CHANGELOG.md` exists (seed is in this kit), and the folder
+  `ee-agent-kit/changes/` with its README: a change writes its changelog
+  line there, in a file of its own.
 - Run `{{VERIFY_CMD}}`; fix until green — this is the baseline.
 
 ## 5b. Start the devlog and install the skill

@@ -1116,16 +1116,21 @@ def test_a_stated_board_a_hair_above_the_air_on_a_1s0p_theta_ja_fails_strict(tmp
 
 @needs_ngspice
 def test_a_project_with_decks_and_no_thermal_file_is_told_no_junction_is_judged(tmp_path):
-    """fail-sim-thermal with no sim/thermal.json: U1 reaches 124.97 C at 85 C on theta_ja, and the gate,
-    which judges only the parts the file names, says that it judged no junction."""
+    """fail-sim-thermal with no sim/thermal.json: U1 reaches 124.97 C at 85 C on theta_ja, and the gate
+    says that it judged no junction. The fixture has no schematic, so it names no part of a board; its
+    deck names TLV75533PDBVR, whose facts carry a thermal figure, and the next line says so (finding
+    L7B2-1: the number is not judged, which tests/test_thermal_asked_boards.py fails --strict on)."""
     project = copy_of(tmp_path, "fail-sim-thermal")
     (project / "sim" / "thermal.json").unlink()
     proc = sim_text(project, tmp_path / "out")
-    said = (
-        "thermal: no part's junction is judged: sim/thermal.json is not there, and the gate judges only the "
-        "parts it names (the simulate skill, A part's temperature)"
-    )
-    assert said in proc.stdout.splitlines(), proc.stdout
+    said = [
+        "thermal: no part's junction is judged: sim/thermal.json is not there (the simulate skill, A part's "
+        "temperature, step 3)",
+        "thermal: the project has no schematic, so it names no part of a board; its decks name 1 part number "
+        "whose facts carry a thermal figure: TLV75533PDBVR; sim/thermal.json names 0 of them",
+    ]
+    lines = proc.stdout.splitlines()
+    assert said[0] in lines and lines[lines.index(said[0]) + 1] == said[1], proc.stdout
 
 
 @needs_ngspice

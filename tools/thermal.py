@@ -36,11 +36,22 @@ ambient and the sink's 2 resistances, so it is worked at every run whose ambient
 of equation 5 and what judged the run before it (equation 4 from a stated case, in place of the floor,
 or theta_ja where no case is stated) judges, and a junction over the limit by equation 5 fails whatever
 else is set aside. The record (`equation`) and the line name the equation that gave the worst junction,
-with its section and page. Equation 6, RthetaJA in parallel with that sum, is not taken: SPRA953D calls
-it more accurate only if RthetaJA is known for the system configuration (section 2.2, page 7), and the
-facts' RthetaJA is the test board's, a misapplication on a system board (section 1.1, page 2) and on
-2s2p a best case (section 1.2, page 3). A run or a corner the gate could not judge leaves the part not
-held and named as not judged.
+with its section and page; a run equation 5 judged names theta_jc as its figure, and keeps what equation 1
+or 4 gave there under `beside`, with the stated case it started from. Equation 6, RthetaJA in parallel
+with that sum, is not taken: SPRA953D calls it more accurate only if RthetaJA is known for the system
+configuration (section 2.2, page 7), and the facts' RthetaJA is the test board's, a misapplication on
+a system board (section 1.1, page 2) and on 2s2p a best case (section 1.2, page 3). A run or a corner
+the gate could not judge leaves the part not held and named as not judged.
+
+The gate asks for the parts itself (`asked`): every part of the board whose facts carry `thermal`, a
+junction_max and 1 figure at least, can get hot, and a part of them that sim/thermal.json does not name
+is not judged, on 1 line that names its figures and the row to write. No power is guessed: a part is
+asked for because its facts carry a thermal figure. A row whose part number is not the board part's
+fails, as judge() reads the facts by the row's number; a part with no number and no facts entry whose
+pins are those of an entry with a figure may be that part, and is not judged. A part whose entry names
+it by its symbol alone cannot be named by a row, which reads facts by number: the line says it needs a
+number. A row under a reference the board does not fit is named, and not judged. With no schematic
+(`from_decks`), an entry with a figure whose part number a deck names is asked for.
 
 Standard library only, as the CLI is. No engine runs here: `tools/workcenter` runs the decks.
 """
@@ -67,9 +78,20 @@ CITES = {
 PLAN_FILE = "thermal.json"
 # What SIM prints when a project's decks ran and it has no sim/thermal.json: no junction was judged.
 NO_PLAN = (
-    "thermal: no part's junction is judged: sim/thermal.json is not there, and the gate judges only the "
-    "parts it names (the simulate skill, A part's temperature)"
+    "thermal: no part's junction is judged: sim/thermal.json is not there (the simulate skill, A part's "
+    "temperature, step 3)"
 )
+# What SIM says of the board's parts when it cannot or need not read them (`asked` reads them).
+NO_LIBRARY = (
+    "thermal: the project has no library/facts, so no part of the board carries a thermal figure and none "
+    "is asked for; `workcenter ratings` names the parts with no facts"
+)
+NO_SCHEMATIC = (
+    "thermal: the project has no schematic, so it names no part of a board: only the parts sim/thermal.json "
+    "names are judged"
+)
+UNREAD = "thermal: which parts of the board carry a thermal figure is not judged: {why}"
+ROW = '"{ref}": {{"mpn": "{mpn}", "watts": "<deck>.<measure>", "source": "<how the deck gives its power>"}}'
 JUNCTION = ratings.JUNCTION
 FIGURES = ratings.FIGURES
 # The figures that give the junction from a temperature other than the ambient's, which no deck gives,
@@ -432,6 +454,234 @@ def _under(part: Part) -> dict[float, float]:
     return {at: temp for at, temp in part.stated.celsius.items() if temp <= at}
 
 
+def _stated_at(row: dict) -> float | None:
+    """The stated temperature a run stood on: the row's own start, or, where equation 5 judged the run,
+    the one equation 4 started from beside it."""
+    return row.get("from", (row.get("beside") or {}).get("from"))
+
+
+def no_figure(entries: int) -> str:
+    """What SIM says when no facts entry of the library carries a thermal figure."""
+    return (
+        f"thermal: no facts entry of library/facts carries a thermal figure ({entries} "
+        f"entr{'y' if entries == 1 else 'ies'}), so no part of the board is asked for"
+    )
+
+
+def _by_ref(ref: str) -> tuple:
+    """A board reference in the board's order: U2 before U10."""
+    m = re.fullmatch(r"(\D*)(\d*)(.*)", ref)
+    return (m.group(1), int(m.group(2)) if m.group(2) else -1, m.group(3))
+
+
+def could_be(part: ratings.Part, hot: list[ratings.Facts]) -> list[ratings.Facts]:
+    """The entries with a thermal figure that a part with no part number and no facts entry could be:
+    those whose every pin number is a pin of the part. A part of 2 pins is no regulator of 5."""
+    return [f for f in hot if {n for p in f.data.get("pins", []) for n in p["numbers"]} <= set(part.pins)]
+
+
+BY_SYMBOL = (
+    "which no row of sim/thermal.json can name: a row names a part by its number, and judge() reads the "
+    "facts by that number. Give the part its number in parts.csv beside the schematic, and a facts entry "
+    "that names that number (the ratings skill)"
+)
+
+
+def _by_symbol_only(entry: ratings.Facts) -> bool:
+    """Whether a facts entry names its parts by their symbol alone, with no number and no pattern of one
+    (the ratings skill's form for a part with no number): no row's part number speaks of it."""
+    return not any(key in entry.data for key in ("mpn", "mpns", "match"))
+
+
+def _names_its_part(row_mpn: str, mpn: str, entry: ratings.Facts | None, maybe: list) -> bool:
+    """Whether a row's part number is the board part's: its number from the parts file; with none, a
+    number its facts entry names; with no entry, a number an entry it could be names."""
+    if mpn:
+        return row_mpn == mpn
+    if entry is not None:
+        return entry.speaks_of(row_mpn, "", "") >= 2
+    return any(f.speaks_of(row_mpn, "", "") >= 2 for f in maybe)
+
+
+def asked(
+    entries: dict[str, tuple[str, ratings.Facts | None]],
+    named: dict[str, str] | None,
+    maybe: dict[str, list[ratings.Facts]] | None = None,
+    parts: str | None = "parts.csv",
+    unread: tuple[str, ...] = (),
+) -> dict:
+    """The parts of the board that can get hot, and those sim/thermal.json leaves out: {"line", "asked",
+    "unplanned", "not_judged", "failures", "mismatched", "strays"}; a stray is a row for a reference that
+    is no fitted part of the board, {ref: {"mpn", "line"}}, and is not judged. `entries` maps each part
+    of the board to its part number and the facts entry that names it (None: no entry); `unread` names
+    the fitted parts whose facts could not be read (2 entries speak of them as closely): they are no
+    strays, and their rows are judged by number. `named` maps the plan's parts to the
+    part numbers of their rows (None: no plan). A part is asked for because its facts carry `thermal`, a
+    junction_max and 1 figure at least: no power is guessed. `maybe` maps a part with no number and no
+    entry to the entries with a figure it could be (`could_be`): it is not judged, as the gate cannot
+    tell. `parts` names the parts file the numbers came from, None when the project has none. A row whose
+    part number is not the board part's names facts that are not its own: it fails, and does not count
+    as naming the part (judge() reads the facts by the row's number)."""
+    named, maybe = named or {}, {ref: m for ref, m in (maybe or {}).items() if m}
+    failures, mismatched = [], []
+    for ref in sorted(set(named) & set(entries), key=_by_ref):
+        mpn, entry = entries[ref]
+        if _names_its_part(named[ref], mpn, entry, maybe.get(ref, [])):
+            continue
+        remedy = (
+            ": write the board's part number in its row (the simulate skill, A part's temperature, step 3)"
+        )
+        if mpn:
+            why = f"{parts} gives {mpn}"
+        elif entry is not None and _by_symbol_only(entry):
+            why, remedy = f"the facts entry of the board's part ({entry.where}) names it by its symbol", ""
+        elif entry is not None:
+            why = f"the facts entry of the board's part ({entry.where}) does not name it"
+        else:
+            why = (
+                "the board's part has no part number and no facts entry, and no entry whose pins it has "
+                "names it"
+            )
+        mismatched.append(ref)
+        failures.append(
+            f"thermal: {ref} ({mpn or (entry.name if entry else 'no part number')}) is judged on facts that "
+            f"are not its own: its row in sim/thermal.json names {named[ref]}, and {why}"
+            + (remedy or f", {BY_SYMBOL}")
+        )
+    held = {ref for ref in named if ref not in mismatched}
+    # A row for a reference the board does not carry, or marks not fitted, is no part of the board: the
+    # gate does not judge it (tools/workcenter leaves it out of judge()), and names it with its number.
+    # A file with no row is refused, so the line says to delete the file when the row is its only one.
+    strays = {
+        ref: {
+            "mpn": named[ref],
+            "line": f"thermal: {ref} of sim/thermal.json is no fitted part of the board: the schematic has "
+            f"no {ref}, or marks it not fitted, so its row ({named[ref]}) is not judged: write the row under "
+            "the board part's reference, or take it out; if it is the only row, delete sim/thermal.json",
+        }
+        for ref in sorted(set(named) - set(entries) - set(unread), key=_by_ref)
+    }
+    hot = sorted(
+        (ref for ref, (_, f) in entries.items() if f is not None and "thermal" in f.data), key=_by_ref
+    )
+    # A part with no number and no entry, whose row names an entry it could be, is judged on that entry's
+    # figures (judge() reads them by the row's number): it carries a figure, and its number is the row's.
+    by_row = sorted((ref for ref in maybe if ref in entries and ref in held), key=_by_ref)
+    unsure = sorted((ref for ref in maybe if ref in entries and ref not in held), key=_by_ref)
+    left = [ref for ref in hot if ref not in held and ref not in mismatched]
+    not_judged = []
+    for ref in [r for r in unsure if r not in mismatched]:
+        could = maybe[ref]
+        listed = ", ".join(f"{f.name} ({f.where})" for f in could)
+        why = (
+            f"no row of {parts} names its Value and Footprint"
+            if parts
+            else "the project has no parts.csv to give its part number"
+        )
+        not_judged.append(
+            f"thermal: {ref} not judged: {why} and no facts entry names it by its symbol, and it has the "
+            f"pins of {listed}, whose facts carry a thermal figure: give its part number in parts.csv beside "
+            "the schematic, the file the gate reads it from"
+        )
+    unplanned = sorted({*left, *(r for r in unsure if r not in mismatched)}, key=_by_ref)
+    record = {"unplanned": unplanned, "failures": failures, "mismatched": mismatched, "strays": strays}
+    carrying = sorted([*hot, *by_row], key=_by_ref)
+    if not carrying:
+        bare = sum(1 for _, f in entries.values() if f is None)
+        count = f"{len(entries)} part{'s' if len(entries) != 1 else ''}"
+        said = f"{count}; {bare} with no facts entry, which `workcenter ratings` names" if bare else count
+        line = (
+            "thermal: no part of the board carries a thermal figure in its facts, so no junction is asked "
+            f"for ({said})"
+        )
+        if unsure:
+            line = (
+                "thermal: no part of the board is known to carry a thermal figure in its facts; "
+                f"{len(unsure)} part{'s' if len(unsure) != 1 else ''} with no part number may: "
+                f"{', '.join(unsure)}"
+            )
+        return {"line": line, "asked": [], "not_judged": not_judged, **record}
+    for ref in left:
+        mpn, entry = entries[ref]
+        if not mpn and _by_symbol_only(entry):
+            # A row reads the facts by its part number: no row can name an entry named by its symbol.
+            not_judged.append(
+                f"thermal: {ref} ({entry.name}) not judged: {_carries(entry)} and name it by its symbol, "
+                + BY_SYMBOL
+            )
+            continue
+        number = mpn or entry.name
+        not_judged.append(
+            f"thermal: {ref} ({number}) not judged: {_carries(entry)}, and sim/thermal.json names no row for "
+            "it: write its row under `parts` (the simulate skill, A part's temperature, step 3): "
+            + ROW.format(ref=ref, mpn=number)
+        )
+    line = (
+        f"thermal: {len(carrying)} part{'s' if len(carrying) != 1 else ''} of the board "
+        f"carr{'ies' if len(carrying) == 1 else 'y'} a thermal figure in "
+        f"{'its' if len(carrying) == 1 else 'their'} facts: {', '.join(carrying)}; sim/thermal.json names "
+        f"{len([r for r in carrying if r in held])} of them"
+    )
+    for ref in by_row:
+        line += f"; {ref} has no part number from a parts file: {named[ref]} is its row's in sim/thermal.json"
+    if unsure:
+        line += f"; {len(unsure)} more with no part number may: {', '.join(unsure)}"
+    return {"line": line, "asked": carrying, "not_judged": not_judged, **record}
+
+
+def _carries(entry: ratings.Facts) -> str:
+    """What a facts entry's thermal figures are, with their pages: `its facts (x.json) carry ...`."""
+    term = entry.data["thermal"]
+    figures = [f"{f} {term[f]:g} C/W" for f in FIGURES if f in term]
+    listed = figures[0] if len(figures) == 1 else f"{', '.join(figures[:-1])} and {figures[-1]}"
+    return (
+        f"its facts ({entry.where}) carry junction_max {term['junction_max']:g} C and {listed} "
+        f"({ratings._p(term['page'])})"
+    )
+
+
+# A deck's text in words: a part number is 1 of them (`TLV75533PDBVR,` and `(TLV75533PDBVR)` alike).
+DECK_WORD_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.+#/-]*[A-Za-z0-9+#]|[A-Za-z0-9]")
+
+
+def from_decks(decks: dict[str, str], hot: list[ratings.Facts], named: dict[str, str] | None) -> dict:
+    """With no schematic, the parts the decks name: {"line", "asked", "not_judged"}. `decks` maps each
+    deck's file name to its text; `hot` are the facts entries with a thermal figure; `named` maps the
+    plan's parts to their rows' part numbers (None: no plan). An entry whose part number a deck names
+    (a word of its text, by its number or its pattern) is asked for, and one no row names is not
+    judged: a project that simulates before layout has decks and no board, and its decks give the
+    power. A deck that names no number names no part: only the plan's parts are judged then."""
+    found: dict[str, tuple[ratings.Facts, str, list[str]]] = {}
+    for deck, text in sorted(decks.items()):
+        for word in dict.fromkeys(DECK_WORD_RE.findall(text)):
+            for f in hot:
+                if f.speaks_of(word, "", "") >= 2:
+                    entry = found.setdefault(f.where, (f, word, []))
+                    if deck not in entry[2]:
+                        entry[2].append(deck)
+    if not found:
+        return {"line": NO_SCHEMATIC, "asked": [], "not_judged": []}
+    rows = list((named or {}).values())
+    numbers, not_judged, held = [], [], 0
+    for f, number, where in found.values():
+        numbers.append(number)
+        if any(f.speaks_of(row, "", "") >= 2 for row in rows):
+            held += 1
+            continue
+        not_judged.append(
+            f"thermal: {number} (named by {', '.join(where)}) not judged: {_carries(f)}, and "
+            "sim/thermal.json names no row for it: write its row under `parts`, under the reference the part "
+            "will have on the board (the simulate skill, A part's temperature, step 3): "
+            + ROW.format(ref="<reference>", mpn=number)
+        )
+    line = (
+        "thermal: the project has no schematic, so it names no part of a board; its decks name "
+        f"{len(numbers)} part number{'s' if len(numbers) != 1 else ''} whose facts carry a thermal figure: "
+        f"{', '.join(numbers)}; sim/thermal.json names {held} of them"
+    )
+    return {"line": line, "asked": numbers, "not_judged": not_judged}
+
+
 def _more(count: int) -> str:
     return f" (and {count} more run{'s' if count > 1 else ''})" if count else ""
 
@@ -545,6 +795,14 @@ def judge(
                 row["sink_junction"] = ambient + (term["theta_jc"] + sink.theta_cs + sink.theta_sa) * watts
                 before = "1" if figure == "theta_ja" else "4"
                 row["equation"] = "5" if row["sink_junction"] > junction else before
+                if row["equation"] == "5":
+                    # Equation 5 judged the run: theta_jc from the ambient. What equation 1 or 4 gave
+                    # there stays beside it, with the stated case it started from.
+                    if how is not None:
+                        row["beside"] = {"figure": figure, "equation": before, "junction": junction}
+                        if "from" in row:
+                            row["beside"]["from"] = row.pop("from")
+                    row["figure"] = "theta_jc"
                 junction = max(junction, row["sink_junction"])
             rows.append({**row, "junction": junction})
         if unstated:
@@ -568,7 +826,7 @@ def judge(
                 t
                 for t in part.stated.celsius
                 if t not in under
-                and not any(r.get("from") is not None and abs(r["ambient"] - t) <= TEMP_MATCH for r in rows)
+                and not any(_stated_at(r) is not None and abs(r["ambient"] - t) <= TEMP_MATCH for r in rows)
             ]
             if idle:
                 not_judged.append(
@@ -578,7 +836,10 @@ def judge(
         if not rows:
             continue
         # On a heat sink equation 5 takes theta_jc at every run, so its board is asked for too.
-        used = list(dict.fromkeys([r["figure"] for r in rows] + (["theta_jc"] if sunk else [])))
+        # A figure that equation 5 outweighed at a run (`beside`) was still worked there: its board is
+        # asked for too, as before the record named equation 5's figure.
+        beside = [r["beside"]["figure"] for r in rows if "beside" in r]
+        used = list(dict.fromkeys([r["figure"] for r in rows] + beside + (["theta_jc"] if sunk else [])))
         unboarded = [f for f in used if f not in term.get("boards", {})]
         not_judged += [
             f"{name} not held: its facts ({entry.where}) name no JEDEC board for {f}: write `boards` in "
@@ -591,7 +852,7 @@ def judge(
         # states on a heat sink is what theta_jc was devised for (section 2, page 6; section 2.2,
         # equation 5, page 7): the 2s2p board bounds it not.
         ja_board = term.get("boards", {}).get("theta_ja") if "theta_ja" in term else None
-        from_stated = [r for r in rows if r.get("from") is not None]
+        from_stated = [r for r in rows if _stated_at(r) is not None]
         best, unchecked = [], []
         if from_stated and not sunk:
             if ja_board == "2s2p":
@@ -736,6 +997,8 @@ def lines(details: dict) -> list[str]:
     said = []
     if (details.get("thermal") or {}).get("unplanned"):
         said.append(details["thermal"]["unplanned"])
+    if ((details.get("thermal") or {}).get("board") or {}).get("line"):
+        said.append(details["thermal"]["board"]["line"])
     for ref, part in ((details.get("thermal") or {}).get("parts") or {}).items():
         w, worst = part["written"], part["worst"]
         sink = (part.get("stated") or {}).get("heat_sink")

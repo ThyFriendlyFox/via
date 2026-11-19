@@ -666,7 +666,8 @@ DONE WHEN  the last line starts with GREEN</span></pre>
 PASS   drc        0 errors, 0 warnings (0 unconnected, 0 parity), legend (no fab named: held to the least of the 4 fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer)): 0 fail, 0 not judged  [0.68s]
 PASS   sim        1 decks, 46 corner runs, 0 failures  [0.16s]
 PASS   export     7/7 outputs, 22 gerber files, 3 files read back  [2.18s]
-thermal: no part's junction is judged: sim/thermal.json is not there, and the gate judges only the parts it names (the simulate skill, A part's temperature)
+thermal: no part's junction is judged: sim/thermal.json is not there (the simulate skill, A part's temperature, step 3)
+thermal: no part of the board carries a thermal figure in its facts, so no junction is asked for (4 parts; 3 with no facts entry, which `workcenter ratings` names)
 RATINGS not asked for: no ratings.json beside the schematic</span>
 <span class="verdict">GREEN: rc_divider  report tests/boards/pass-rc-divider/build/gates.json</span>
 

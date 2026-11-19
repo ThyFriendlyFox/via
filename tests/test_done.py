@@ -197,11 +197,14 @@ def test_a_fixture_with_ratings_json_is_a_ratings_fixture_or_named_for_another_c
     for name in FOR_ANOTHER_COMMAND:
         proj = tmp_path / name
         shutil.copytree(BOARDS / name, proj, ignore=shutil.ignore_patterns("build"))
-        assert not list(proj.glob("*.csv")), name
+        # pass-sim-bus's parts.csv gives its made-up regulator a number, so that SIM does not take U1 for a
+        # part with a thermal figure (roadmap item 7): it holds that 1 row and nothing for the ratings.
+        listed = sorted(p.name for p in proj.glob("*.csv"))
+        assert listed == (["parts.csv"] if name == "pass-sim-bus" else []), (name, listed)
         code, lines = gates(proj, capsys, strict=True)
         assert code == 1 and lines[-2].startswith("RATINGS not held: no build/ratings/report.json yet"), lines
         project = cli.find_project(str(proj))
-        files = cli.ratings().read_by_run(project, [], cli)
+        files = cli.ratings().read_by_run(project, [proj / n for n in listed], cli)
         sums = {rel: hashlib.sha256(f.read_bytes()).hexdigest() for rel, f in files.items()}
         rated(proj, "NOTHING JUDGED (1 not judged)", "fail", inputs={"parts": [], "files": sums})
         code, lines = gates(proj, capsys, strict=True)
@@ -542,10 +545,17 @@ def test_the_real_record_names_the_files_its_run_read(tmp_path):
         f"RATINGS not held: ../parts/catalog.csv changed after the last run (workcenter ratings {proj})"
     )
     catalog.write_bytes(kept)
-    # A plain run: U1's missing load-step deck (User round 1, G) is its 1 warning, which --strict fails on.
+    # A plain run: U1's missing load-step deck (User round 1, G) is 1 warning, which --strict fails on.
+    # The 3 others are roadmap item 7's: the SIM gate reads part numbers from parts.csv beside the
+    # schematic alone, and this copy keeps them in ../parts/catalog.csv. So U1, U2 and U3 have no number
+    # there and the pins of TLV75533PDBVR, whose facts carry a thermal figure: each is not judged.
     green = run("gates", proj)
     assert green.returncode == 0 and green.stdout.splitlines()[-2].startswith("RATINGS held:"), green.stdout
-    assert green.stdout.splitlines()[-1].startswith("GREEN with 1 warning "), green.stdout
+    assert green.stdout.splitlines()[-1].startswith("GREEN with 4 warnings "), green.stdout
+    thermal = [line.strip() for line in green.stdout.splitlines() if "warning: thermal:" in line]
+    assert [line.split(" not judged:")[0] for line in thermal] == [
+        f"- warning: thermal: {ref}" for ref in ("U1", "U2", "U3")
+    ], green.stdout
     (tmp_path / "a" / "library" / "facts" / "passives.json").unlink()
     gone = run("gates", proj, "--strict")
     assert gone.returncode == 1, gone.stdout
