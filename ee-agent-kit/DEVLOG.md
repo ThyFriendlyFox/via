@@ -49,7 +49,7 @@ Evidence: the log of job 135500622487 (run 44506767788), lines 207 to 211, 220, 
 
 CI's `full` job ran `make verify`, and on the install path `docker info` answers. So the build test of `tests/test_image.py` built the whole image inside the test run and ran the gates in it. In job 135422229691 that was about 669 s of the file's 674.6 s, while `verify/shards.csv` gave the file 5.3 s. It made its shard the longest, 991 s against 785, 579 and 385 s. Main's push run 44496113605 was cancelled at the job's 30 minutes. The lead decided that the real build is `image.yml`'s job. The test now runs only when asked by name, and `image.yml` checks the 1 thing it did not check before: that the gates wrote `build/gates.json`. Tests refuse `continue-on-error` and another shell on that job's 2 steps, and a conftest.py or pyproject.toml that sets the variable. On a machine with no daemon the file takes 6.5 s alone; that row reshuffles the shards, so the saving is an estimate (about 206 s on that job's split) until the first run on GitHub. That job's `make verify` ran 1003 s, not the 670 s the apt step's worst case is worked out against; the next passing run gives the new figure.
 
-Evidence: `tests/test_image.py` (54 tests); job 135422229691, run 44496113605; branch `wip/image-build-test`, 25be1c4.
+Evidence: `tests/test_image.py` (54 tests); job 135422229691, run 44496113605; branch `wip/image-build-test`, 25be1c4; M287, P2 step 10.
 
 ## 2026-11-19 — Doctor reads the venv against requirements.txt
 

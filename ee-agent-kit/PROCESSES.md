@@ -94,6 +94,11 @@ or any step that downloads, installs, or runs for more than a minute.
    file, and for every file that queues on that source in turn. Bound
    that sum within the step's own bound, with a test that computes it
    from the step's constants (M285).
+10. A workflow's own job is not repeated inside the health gate's test
+    run. A test that does that job (a whole image build) runs only when a
+    variable asks for it by name, its skip names the workflow and the 1
+    command that runs it, and the workflow checks every thing the test
+    checked, with no `continue-on-error` on the job or those steps (M287).
 
 Done when: the run is green, its log shows progress lines in every long
 step, no step used more than half its limit, and no step depended on a
