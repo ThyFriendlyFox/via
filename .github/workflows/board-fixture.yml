@@ -1,0 +1,28 @@
+# The reusable workflow board-gates.yml, called as a board repository calls it, on the fixture
+# tests/boards/pass-rc-divider with --strict. The workcenter is this run's own commit, so a pull request
+# that changes board-gates.yml runs its own text. GREEN is the only green check.
+name: Board gates fixture
+on:
+  pull_request:
+    paths:
+      - .github/workflows/board-gates.yml
+      - .github/workflows/board-fixture.yml
+      - tests/boards/pass-rc-divider/**
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/board-gates.yml
+      - .github/workflows/board-fixture.yml
+      - tests/boards/pass-rc-divider/**
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: read
+jobs:
+  fixture:
+    uses: ./.github/workflows/board-gates.yml
+    with:
+      projects: '["tests/boards/pass-rc-divider"]'
+      strict: true
+      workcenter-repository: ${{ github.repository }}
+      workcenter-ref: ${{ github.sha }}
