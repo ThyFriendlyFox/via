@@ -398,16 +398,16 @@ The same steps keep a datasheet or a 3D body. Each step is 1 command.
      Content-Length names` or `gave N bytes, cut short inside a chunk ...`:
      the site served something that is not the file. Nothing was written.
      Go to step 2.
-   - `fetch: <url> refused (HTTP 403) ...`: the site refuses the
-     workcenter's name. Never ask again under another name. Go to step 2.
+   - `fetch: <url> refused (HTTP 403) ...`: the site refuses
+     Via's name. Never ask again under another name. Go to step 2.
    - `fetch: <url> gone (HTTP 404) ...`: find the maker's current URL and
      run step 1 again.
    - `fetch: <url> error (...)`: the site's answer could not be read.
      Go to step 2.
 2. A person downloads the file in a browser, then:
    `workcenter fetch --file <downloaded file> --url <url> --to <project>/library/<maker>/<file> --mpn <MPN> --row`.
-   The row records `--url` and the note "downloaded by a person from the
-   URL; not fetched by the workcenter". For a zip, add `--member <name>`:
+   The row records `--url` and the note `downloaded by a person from the
+   URL; not fetched by the workcenter`. For a zip, add `--member <name>`:
    the member is read out and kept, not the zip.
    - `fetch: <file> is an HTML page ...`, `is an empty file (0 bytes)` or
      `is a file that starts ..., not %PDF`: the browser saved something
@@ -578,7 +578,7 @@ estimate, not a bound: a part held on it is held with no margin, and its
 JESD 51-3) and `2s2p` (the high-k board of JESD 51-7), as SPRA953D names
 them (table 3-1, note 11, page 9). A figure whose board the facts do not
 name holds no part. Every printed `thermal` line names the board. JESD51
-itself was not read: JEDEC refused the workcenter's client name.
+itself was not read: JEDEC refused Via's client name.
 
 Where the project knows the case, the board or the package top's
 temperature (measured, or computed by `workcenter copper`), the gate takes

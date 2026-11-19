@@ -19,11 +19,11 @@ discipline). Where they say more, they win.
 - The scratch folder, `<scratch>` below: a folder outside every
   repository. It holds the worktrees (`<scratch>/wt/`), the docs files
   (`<scratch>/roadmap/`) and downloads (`<scratch>/dl/`). It holds no
-  lock for engines: the workcenter's long commands take the machine's
+  lock for engines: Via's long commands take the machine's
   engine lock themselves (`tools/enginelock.py`).
 - The work branch, `<work>` below: the branch the pieces start from and
   land on (the `land` skill). Never the default branch.
-- `<python>`: the Python of the workcenter's virtual environment, the one
+- `<python>`: the Python of Via's virtual environment, the one
   `make` uses (`Makefile`, `VENV_PY`).
 - The shared documents: `ee-agent-kit/STATUS.md`, `CHANGELOG.md`,
   `ROADMAP.md`, `DEVLOG.md`, `MISTAKES.md`, `docs/CONFIGURATION.md`,
@@ -123,12 +123,12 @@ journal lines of `ee-agent-kit/lead/README.md`, "The journal", itself.
     The roadmap item stays `in progress`, never shipped, while 1 sentence
     of its Promise is untrue.
 12. A tool the work needs is missing on this machine. Never ask the owner
-    about the machine. The missing tool becomes work for a helper: the
-    workcenter gains its install step in `install.sh`, its row in
+    about the machine. The missing tool becomes work for a helper: Via
+    gains its install step in `install.sh`, its row in
     `workcenter doctor`, the code path that uses it, and tests that skip
     by the tool's name when it is absent (P12;
     `ee-agent-kit/docs/ENGINES.md`, the new-engine contract).
-13. Keep heavy runs in turns with the workcenter's own lock. A brief asks
+13. Keep heavy runs in turns with Via's own lock. A brief asks
     for no `flock` and names no lock file: a `workcenter` command waits its
     turn by itself and prints where it stands every 30 seconds; a test file
     or a bare engine runs under

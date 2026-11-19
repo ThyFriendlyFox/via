@@ -23,7 +23,7 @@ project and routes it with FreeRouting. No GUI at any step.
    `python3 tools/kicadgen.py footprint Lib:Footprint` to read pins, pad
    numbers, and courtyards before placing anything.
 3. The `attached-repos` roles: the design file lives in the project
-   repository, never in the workcenter.
+   repository, never in Via.
 
 ## Steps
 
@@ -31,7 +31,7 @@ project and routes it with FreeRouting. No GUI at any step.
    exists first; several common modules are not in KiCad's libraries.
    Record the choice and the reason in the project README.
 2. **Write `design.py`.** Start with `workcenter new <dir>`. It writes
-   the workcenter's `templates/project/design.py` into the folder, under
+   Via's `templates/project/design.py` into the folder, under
    the folder's name and with a namespace of its own, and `.gitignore`,
    `parts.csv` and `library/sources.csv` with their headers. It refuses a
    folder that holds a design. Its last line names the next command.
@@ -198,7 +198,7 @@ project and routes it with FreeRouting. No GUI at any step.
      `<name>.kicad_dru` and raises the board's own minimums to its
      board-wide ones, so the via check below and the DRC hold the board to
      what the fab can make. Sierra's Web PCB wants a 6 mil (0.1524 mm) ring,
-     so the workcenter's 0.6/0.3 mm via does not do (0.65/0.3 does), 5 mil
+     so Via's 0.6/0.3 mm via does not do (0.65/0.3 does), 5 mil
      legend text (`d.text(..., thickness=0.13)`), and 13 mil from every
      hole to inner-layer copper.
    - Via sizes (`via_size`, `via_drill`, each net class's `via` and

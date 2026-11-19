@@ -59,7 +59,7 @@ Make tree A once: `git worktree add <scratch>/wt/int <work>`.
    then run the piece's test files, `tests/test_docs.py`, and the test
    file of each tool file in the list:
    `flock <scratch>/ENGINE.lock env -C <scratch>/wt/int <python> -m pytest <files> -q -p no:cacheprovider`,
-   with `<python>` the Python of the workcenter's virtual environment
+   with `<python>` the Python of Via's virtual environment
    (`Makefile`, `VENV_PY`).
    While `<scratch>/GATE.lock` exists, wait first:
    `until [ ! -e <scratch>/GATE.lock ]; do sleep 30; done`.

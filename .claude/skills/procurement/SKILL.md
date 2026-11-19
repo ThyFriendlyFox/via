@@ -87,7 +87,7 @@ A part chosen here also needs its datasheet in the project's library
 workcenter fetch <maker's URL> --to library/<maker>/<file> --mpn <MPN> --row
 ```
 
-It asks the maker's site once under the workcenter's own name, keeps the
+It asks the maker's site once under Via's own name, keeps the
 file, and appends its `sources.csv` row with the SHA256 and today's date.
 Fill `Revision` and `Dated` from the file itself; the command prints the
 lines that may carry them. A refusal, or a body that is not the file, is

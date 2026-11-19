@@ -3,7 +3,7 @@ name: kistack
 description: Routes an agent to the vendored kistack KiCad skills (placement, layout, schematic, BOM, footprint, symbol, export, Gerber review, panelize) at the step where each helps, runs kistack's placement checks headless with `workcenter placement`, and says where this workcenter's rules override kistack's.
 ---
 
-# kistack in the workcenter
+# kistack in Via
 
 `third_party/kistack/` holds American Embedded's kistack skills, pinned to one
 commit (`third_party/kistack/VENDORED.md`). They are a second opinion written by
@@ -29,7 +29,7 @@ which.
 | A panel | `skills/panelize/SKILL.md` | KiKit settings. KiKit is not installed here; say so rather than install it unasked. |
 | Product photos | `skills/pcb-product-render/SKILL.md` | Needs Blender, which is not installed. |
 
-## Where the workcenter wins
+## Where Via wins
 
 These override the kistack text wherever the two disagree:
 

@@ -1,6 +1,6 @@
 ---
 name: Autoroute
-description: Routes a board with FreeRouting headless (1.9.0 by default, 2.5.0 with --router freerouting2); generated designs round-trip through Specctra DSN and SES automatically, hand-drawn boards supply the DSN; lists the rules the workcenter keeps around every router.
+description: Routes a board with FreeRouting headless (1.9.0 by default, 2.5.0 with --router freerouting2); generated designs round-trip through Specctra DSN and SES automatically, hand-drawn boards supply the DSN; lists the rules Via keeps around every router.
 ---
 
 # Autoroute
@@ -99,7 +99,7 @@ It writes only into `--out`.
      in 1 of the 3. When the default did not finish, the line says `not
      judged` and the default stays.
 3. `--router NAME=JAR` (repeatable) names each FreeRouting jar to run; the
-   first is the default. Without it the workcenter's own jar runs.
+   first is the default. Without it Via's own jar runs.
    `--time-limit`, `--threads` and `--passes` take a whole number above 0.
 4. `workcenter bench --out <scratch>/bench` with no design file rebuilds
    `bench.md`, the table of every run in the folder. It exits 2 when a
@@ -139,7 +139,7 @@ errors. Bench it with `--order` before a board takes it.
 ## Steps, a second router
 
 The routers live in `tools/routers.py`, each with a name, how its
-presence and version are found, how it is run on the workcenter's DSN,
+presence and version are found, how it is run on Via's DSN,
 and how its log's count is read. `freerouting` (FreeRouting 1.9.0) is
 the default. `freerouting2` (FreeRouting 2.5.0) is the second; it is not
 the default, because no benchmark of it exists yet (the scope guard of
@@ -163,7 +163,7 @@ ROADMAP item 5).
 
 ## The rules around a route
 
-These are the workcenter's, not the router's. A second router runs inside
+These are Via's, not the router's. A second router runs inside
 all of them; `tests/test_routers.py` holds each with a stand-in router
 (a program that writes a known session), so none of them needs a real
 router. The number is the test's rule number.
@@ -200,7 +200,7 @@ What the router is handed (the DSN):
 
 The run:
 10. Passes (`--passes`, `-mp`, default 60), threads (`--threads`, `-mt`
-    only above 0) and `-dct 0` (no 20 s dialog wait) are the workcenter's.
+    only above 0) and `-dct 0` (no 20 s dialog wait) are Via's.
 11. The time limit (`--timeout`, default 900 s) stops the router and every
     process it started; nothing is read, since a session is written only
     at the end (M128). 1 line, exit 1, no board written.
@@ -249,14 +249,14 @@ The second router:
   saving the session; `install.sh` pins 1.9.0 for that reason. Pass
   `--passes` to trade time for completion. Releases 2.2.2, 2.4.1 and
   2.5.0 hold class files of version 69 (the header of
-  `app/freerouting/Freerouting.class` in each jar); the workcenter's
+  `app/freerouting/Freerouting.class` in each jar); Via's
   Java 21.0.13 reads up to version 65 (`java -XshowSettings:properties
   -version` prints `java.class.version = 65.0`). None of them has been
   benchmarked.
 - `-da` stops FreeRouting 2.5.0's usage data, not its version check. No
   flag or setting stops that: each run asks api.github.com for the latest
   release, under its own User-Agent `Freerouting-Version-Checker`, not
-  the workcenter's `ee-workcenter/1.0` (read with `javap` in
+  Via's `ee-workcenter/1.0` (read with `javap` in
   `app.freerouting.Freerouting` and `app.freerouting.util.VersionChecker`
   of the pinned jar). It runs on a daemon thread with a 5 s timeout, so it
   does not hold the route as 2.1.0's did.
