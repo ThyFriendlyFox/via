@@ -39,6 +39,12 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-19 — The image holds node
+
+The image had no node, so the test files that run it skipped inside it (CI runs 44409635104 and 44428908528). To keep them judged, `decide` sent every change to a file they read to the install path. On 2026-11-19 a push of website work went there for that alone, and both its attempts stopped at the download's bound on a slow mirror (CI run 44432768560). A change that needs no new toolchain should not need the install path. The Dockerfile now installs Ubuntu 24.04's `nodejs`, 18.19.1, after install.sh and in the same layer, and `decide` lost its node rule. install.sh does not install node: a board needs none, only Via's own tests do. Node 18 has no global `crypto`, which the forms' rules use; the test driver now gives it from `node:crypto`. No image with node was built here, since no Docker daemon answers. At landing, the batch's nightly issue step had joined the node rule's list; that test runs node too, and now runs in the image.
+
+Evidence: `tests/test_image.py` (49 tests), `tests/test_forms.py`, `tests/test_lead.py` and `tests/test_ci_nightly_issue.py`: 122 passed, 1 skipped (the real build, no Docker daemon); branch `wip/node-image`, f7a56d6.
+
 ## 2026-11-19 — The product is called Via, and its command stays workcenter
 
 The owner asked that everything a person reads call the product Via, then "okay so don't change workcenter the command or the internal names, just the user-facing text is fine." 174 lines of the documents said `EE Workcenter` or `the workcenter` in prose; 0 do now, and a test holds it. History, code spans and the lines the gates print kept their words. At landing, 43 more lines that the batch had written since the change was branched said the old name, and they were renamed too.
