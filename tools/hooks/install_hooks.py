@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Install the workcenter's agent hooks into a Claude Code settings file (user-wide by default).
+"""Install Via's agent hooks into a Claude Code settings file (user-wide by default).
 
 The repository's own `.claude/settings.json` only loads in a session opened inside this repository.
-A board session opened elsewhere (a project with the workcenter beside it, a session rooted above
+A board session opened elsewhere (a project with Via beside it, a session rooted above
 both) runs without the no-`cd` hook (M35) and without the hook that refuses a test edited by a
 script (M61, M119). Writing the user's settings is the user's call, so nothing runs this
 automatically: run it once by hand to enable both hooks everywhere, and `workcenter doctor` reports

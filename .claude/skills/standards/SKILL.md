@@ -28,7 +28,7 @@ holds none of their numbers.
 | `product.json`, beside the board | `kind`, and `tests`: for a requirement, the IDs of the verification package that hold it | You |
 | `verification/traceability.md` | each ID's verdict: PASS, FAIL or OPEN | You, by the verification skill |
 | `board-rules.json`, beside the board | the layout packs (`layout`) that hold a requirement by the DRC gate | You, by the board-rules skill |
-| `rules/products/<kind>.json`, in the workcenter | the requirements, each with its document and clause | The workcenter |
+| `rules/products/<kind>.json`, in Via | the requirements, each with its document and clause | Via |
 
 The worked example is `tests/products/last-hit`: Last Hit v0.16, a
 vaping device with a lithium cell.
@@ -36,8 +36,8 @@ vaping device with a lithium cell.
 ## Steps
 
 1. Write `product.json` beside the board with the Write tool:
-   `{"kind": "vaping-device-lithium-cell"}`. `ls rules/products/` in the
-   workcenter names the kinds.
+   `{"kind": "vaping-device-lithium-cell"}`. `ls rules/products/` in
+   Via names the kinds.
 2. Run `workcenter standards <project>`. The first line counts:
    `STANDARDS <kind>: N held by a gate, M held by a test, K not held`.
 3. For each line `- held by a gate: <id> [...] -- drc, pack <pack>: 0 fail, 0 not judged (board-rules.json, <board>.kicad_pcb)`:

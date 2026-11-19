@@ -197,12 +197,34 @@ def test_check_on_this_repository_passes_well_under_a_second():
     assert seconds < 1.0, seconds
 
 
-def test_the_kit_checks_of_both_gates_run_check():
-    """verify.sh's kit_checks runs in `make verify` (step 2/4) and in `make verify-site` (step 4/4)."""
-    text = (ROOT / "verify" / "verify.sh").read_text(encoding="utf-8")
+def modes_that_run_check(text: str) -> set[str]:
+    """The modes of verify.sh whose run reaches `changes.py check`: kit_checks holds the call, and a mode
+    runs it when its own block calls kit_checks (`kit`, `site`) or, for `full`, the text after both."""
     body = text.split("kit_checks() {", 1)[1].split('echo "kit checks ok"', 1)[0]
-    assert "python3 tools/ci/changes.py check" in body
-    assert text.count("\nkit_checks\n") == 1 and text.count("\n  kit_checks\n") == 1
+    if "python3 tools/ci/changes.py check" not in body:
+        return set()
+    rest = text.split('echo "kit checks ok"\n}\n', 1)[1]
+    found, full = set(), rest
+    for mode in ("kit", "site"):
+        opening = f'if [[ "$mode" == {mode} ]]; then\n'
+        block = rest.split(opening, 1)[1].split("\nfi\n", 1)[0] if opening in rest else ""
+        if "\n  kit_checks\n" in f"\n{block}\n":
+            found.add(mode)
+        full = full.replace(opening + block + "\nfi\n", "")
+    if "\nkit_checks\n" in full:
+        found.add("full")
+    return found
+
+
+def test_every_gate_that_runs_the_kit_checks_runs_check():
+    """`changes.py check` runs inside verify.sh's kit_checks, and each mode that is a gate runs them:
+    `make verify` (full, step 2/4), `make verify-site` (site, step 4/4) and `make kit`, inside
+    `make check` (kit). A count of the calls broke when the kit mode came with a call of its own."""
+    text = (ROOT / "verify" / "verify.sh").read_text(encoding="utf-8")
+    assert modes_that_run_check(text) == {"full", "site", "kit"}
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    for mode in ("site", "kit"):
+        assert f"verify/verify.sh {mode}" in makefile, mode
 
 
 # ---------------------------------------------------------------- show

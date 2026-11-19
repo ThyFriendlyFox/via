@@ -24,8 +24,8 @@ own rules, and each failure names the clause it breaks.
 |---|---|---|
 | `board-rules.json`, beside the board | `{"pack": "ecss-q-st-70-12c-rev1"}`: the pack the board is held to; and `via_wall`, the least copper of a via's wall your fab promises, with its source (step 7) | You |
 | `ratings.json`, beside the board | `nets`: each net's span of volts. `parts`: the amps on a pin (`J1.1`) or through a part of 2 pins (`R5`). The same file `workcenter ratings` reads: never state a number 2 times | You, each entry with its source |
-| `rules/board/<pack>.json`, in the workcenter | The standard's numbers, each with its clause, table and page | The workcenter. Never edit one to pass |
-| `rules/<fab>.kicad_dru`, in the workcenter | A fab's published limits | The workcenter |
+| `rules/board/<pack>.json`, in Via | The standard's numbers, each with its clause, table and page | Via. Never edit one to pass |
+| `rules/<fab>.kicad_dru`, in Via | A fab's published limits | Via |
 
 The worked example is `tests/boards/pass-board-ecss`, and
 `tests/boards/fail-board-ecss` with 1 gap and 1 track too small.
@@ -96,7 +96,7 @@ The worked example is `tests/boards/pass-board-ecss`, and
      version's README.
 8. If the run prints `kicad-cli did not read the pack's rules`, KiCad
    could not read the rule file in `build/board-rules/`. Do not pass the
-   board; report the file and the KiCad version to the workcenter's owner.
+   board; report the file and the KiCad version to Via's owner.
 9. Run step 3 again until it prints `PASS drc` with `0 fail, 0 not judged`.
 10. For a fab, run `workcenter drc <project> --fab <name>` with a name from
    `rules/README.md` (`jlcpcb-2layer`, `pcbway-standard`, `oshpark-2layer`,

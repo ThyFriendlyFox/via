@@ -1,5 +1,5 @@
 {
-  "about": "The workcenter's own rules for a board's legend (tools/legend.py). The least height and stroke of a text are not here: each comes from the fab's rule set in rules/, read from its own page. The numbers here are the workcenter's choices, from no standard; each says why.",
+  "about": "Via's own rules for a board's legend (tools/legend.py). The least height and stroke of a text are not here: each comes from the fab's rule set in rules/, read from its own page. The numbers here are Via's choices, from no standard; each says why.",
   "designator_reach_mm": {
     "value": 2.0,
     "why": "A designator further than this from its own part's courtyard is not taken as its part's. The KiCad library puts a 0603's designator 0.125 mm off its courtyard and a header's 0.035 mm off; 2.0 mm leaves room for a placed one and is less than a 0603's length and a half."

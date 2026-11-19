@@ -14,8 +14,8 @@ the page and the words each rule comes from. A project uses one in two ways:
 
 A fab's limits only add floors. In KiCad's DRC a custom rule overrides the board's own constraints and
 every net class's, so a board-wide rule here (no layer, no condition) would put a 0.2 mm net class
-clearance down to the fab's 4 mil, and a stricter board minimum (a 0.25 mm hole) down to the fab's. The
-workcenter therefore never copies a board-wide rule into a project: it carries it as the board's own
+clearance down to the fab's 4 mil, and a stricter board minimum (a 0.25 mm hole) down to the fab's. Via
+therefore never copies a board-wide rule into a project: it carries it as the board's own
 minimum, and raises each rule it keeps to the board's own setting where that is stricter
 (`kicadgen.fab_project_rules`; M62).
 
@@ -26,7 +26,7 @@ minimum, and raises each rule it keeps to the board's own setting where that is 
 the width and vias for its current, which `workcenter drc` judges when a project names one
 (`board/README.md`).
 
-Each fab's page was fetched under the workcenter's own client name, `ee-workcenter/1.0`; each file
+Each fab's page was fetched under Via's own client name, `ee-workcenter/1.0`; each file
 names the page's SHA256 as fetched.
 
 | File | Fab and service | Read | Second reader |
@@ -36,7 +36,7 @@ names the page's SHA256 as fetched.
 | `pcbway-standard.kicad_dru` | PCBWay, standard rigid PCB | 2026-11-17 | 2026-11-17 |
 | `oshpark-2layer.kicad_dru` | OSH Park, 2 layer prototype service | 2026-11-17 | 2026-11-17 |
 
-A second reader fetches the page again under the workcenter's own client name, compares every number
+A second reader fetches the page again under Via's own client name, compares every number
 of the file with it, and writes `# second_reader: <date>, every number compared; the page fetched again
 had SHA256 <hash>` under the file's header. A file with a number not compared gets no such line.
 

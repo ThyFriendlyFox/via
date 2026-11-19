@@ -164,7 +164,7 @@ def test_no_judged_run_keeps_the_default_and_says_so():
     stopped = {"board": "b", "router": "fr-a", "status": "time limit", "seconds": 300.0}
     router, why = routebench.choose([stopped], "fr-a")["b"]
     assert router == "fr-a"
-    assert why == "no run finished: the workcenter's router stays"
+    assert why == "no run finished: Via's router stays"
 
 
 def test_a_table_row_names_every_number_of_its_run():

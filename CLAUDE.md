@@ -1,4 +1,4 @@
-# EE Workcenter
+# Via
 
 This repository is a workcenter: tools, skills, and gates for turning a
 KiCad 10 project into fabrication outputs that passed every check.
@@ -27,4 +27,4 @@ line for an assistant, a session line, or a tool's name as an author.
 
 Session with more than 1 repository: run the `attached-repos` skill before
 the first edit. This repository is read-only during a board task unless the
-task is about the workcenter itself.
+task is about Via itself.

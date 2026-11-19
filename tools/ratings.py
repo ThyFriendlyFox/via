@@ -1133,7 +1133,7 @@ OTHER = {
 # board.
 FIGURES = ("theta_ja", "theta_jc", "theta_jb", "psi_jt", "psi_jb")
 # The JEDEC test boards a figure is measured on, as TI SPRA953D names them (table 3-1, note 11, page 9).
-# JESD51 itself was not read: JEDEC refused the workcenter's client name on 2026-11-17 and 2026-11-18.
+# JESD51 itself was not read: JEDEC refused Via's client name on 2026-11-17 and 2026-11-18.
 BOARDS = {"1s0p": "the low-k 1s0p board of JESD 51-3", "2s2p": "the high-k 2s2p board of JESD 51-7"}
 FAMILIES = ("digital", "linear", "regulator.linear", "regulator.switching")
 # The keys that hold a rating, or a value a current is divided by. Each is above 0: a stress is a share
@@ -1471,7 +1471,7 @@ def _facts(where: str, raw: object) -> Facts:
             for key in (k for k in FIGURES if k in boards):
                 if not isinstance(boards[key], str) or boards[key] not in BOARDS:
                     raise Refusal(
-                        f"{said}: {key}: `{boards[key]}` is no JEDEC board the workcenter knows; they are "
+                        f"{said}: {key}: `{boards[key]}` is no JEDEC board Via knows; they are "
                         f"{', '.join(BOARDS)}"
                     )
                 if key not in term:
@@ -2960,15 +2960,15 @@ def find_facts(start: Path) -> Path | None:
 
 
 def find_pack(name: str, project_dir: Path, packs: Path) -> Path:
-    """A pack by its name among the workcenter's, or by a path from the project's folder. A pack of the
-    workcenter goes by its name alone: a name that walks out of the packs' folder is none of them."""
+    """A pack by its name among Via's, or by a path from the project's folder. A pack of
+    Via goes by its name alone: a name that walks out of the packs' folder is none of them."""
     shipped = packs / f"{name}.json"
     if shipped.parent == packs and shipped.is_file():
         return shipped
     if (project_dir / name).is_file():
         return project_dir / name
     known = ", ".join(sorted(p.stem for p in packs.glob("*.json")))
-    raise Refusal(f"ratings.json: pack: `{name}` is no pack; the workcenter holds {known}")
+    raise Refusal(f"ratings.json: pack: `{name}` is no pack; Via holds {known}")
 
 
 def read_by_run(project, parts: list[Path], cli) -> dict[str, Path]:
@@ -2995,7 +2995,7 @@ def sha256(path: Path) -> str:
 def parts_rows(paths: list[Path], cli) -> list:
     """The rows of the parts files, as `procure` and `sources` read them. A file that is not there, that
     is no UTF-8, or that holds a row with fewer fields than its header is refused with its name and its
-    line: the workcenter's reader of a row asks every field of it."""
+    line: Via's reader of a row asks every field of it."""
     rows = []
     for path in paths:
         try:
@@ -3016,7 +3016,7 @@ def parts_rows(paths: list[Path], cli) -> list:
             raise Refusal(f"{path.name}: {exc}") from None
         try:
             rows += cli.read_parts(path)
-        except ValueError as exc:  # the workcenter's reader names the file and the line
+        except ValueError as exc:  # Via's reader names the file and the line
             raise Refusal(str(exc)) from None
     return rows
 
@@ -3037,7 +3037,7 @@ def export_netlist(project, folder: Path, cli) -> tuple[Netlist | None, str]:
 
 
 def refusal(exc: Exception, cli):
-    """A file or a flag the command does not take, as a Result of the workcenter's kind."""
+    """A file or a flag the command does not take, as a Result of Via's kind."""
     return cli.Result("ratings", "fail", "a file is not as the command reads it", {"failures": [str(exc)]})
 
 
@@ -3118,7 +3118,7 @@ def skeleton(net: Netlist, ref: str, mpn: str) -> dict:
 
 
 def gate_ratings(project, out: Path, parts: list[Path], strict: bool, cli):
-    """The command's run as a Result of the workcenter's kind: skip when the project asks for no
+    """The command's run as a Result of Via's kind: skip when the project asks for no
     judgement or holds no schematic, fail on a file the command does not take, on a failure, and with
     --strict on what was not judged."""
     if not project.sch:
@@ -3139,7 +3139,7 @@ def gate_ratings(project, out: Path, parts: list[Path], strict: bool, cli):
         asked = read_project(stated, net)
         packs = cli.SRC_DIR / "rules" / "ratings"
         found = find_pack(asked.pack, project.dir, packs)
-        # a file of the workcenter's packs is the workcenter's, by whatever path the project names it
+        # a file of Via's packs is Via's, by whatever path the project names it
         pack = read_pack(found, "" if found.resolve().parent == packs.resolve() else asked.pack)
         library = find_facts(project.dir)
         facts = read_facts(library) if library else []
@@ -3237,7 +3237,7 @@ def cmd_ratings(args, cli) -> int:
 
 
 def register(sub, cli) -> None:
-    """Add `ratings` to the workcenter's parser; it sets `run` to its handler."""
+    """Add `ratings` to Via's parser; it sets `run` to its handler."""
     p = sub.add_parser(
         "ratings",
         help="hold the schematic to its parts' ratings: each pin's voltage limits, each capacitor's, "

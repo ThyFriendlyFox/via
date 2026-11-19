@@ -10,7 +10,7 @@ pack in `ratings.json`. No limit stands in the command's code, and a pack is nev
 | `ecss-q-st-30-11c-rev2.json` | ECSS-Q-ST-30-11C Rev.2, "Space product assurance - Derating - EEE components" | 23 June 2021 | 2026-11-17 | 2026-11-17 |
 
 Both documents are free to download, and both are written for space flight hardware: NASA's for
-parts on its Goddard flight projects, ECSS's for parts approved for space. The workcenter ships them
+parts on its Goddard flight projects, ECSS's for parts approved for space. Via ships them
 because every limit in them is public and stands in a table. A product on the ground may hold them, or
 a pack of its own. Each pack's `document` holds the URL and the SHA256 of the file that was read.
 
@@ -76,7 +76,7 @@ A rule holds 1 of `max`, `by_rating` and `no_share`.
 
 ## How each pack reads its document
 
-NASA's document is written for hermetic parts of military styles, and the workcenter's parts are
+NASA's document is written for hermetic parts of military styles, and Via's parts are
 plastic and commercial. Where the document has a row for such parts the pack holds that row:
 
 - A regulator's output current: table 4 of section M4, for plastic parts: 0.7 for a linear or
@@ -151,7 +151,7 @@ How each pack reads its document:
 - Each ECSS table allows 125 C as an exception when the maker's Tjmax is 150 C or more and ESCC
   evaluation reports are at hand. The pack does not hold the exception: a project with the reports
   writes a pack of its own.
-- The plastic parts of NASA's section M4 are the workcenter's parts, as for a regulator's output
+- The plastic parts of NASA's section M4 are Via's parts, as for a regulator's output
   current. Section M3, for hermetic parts, has 0.8 and 0.75 with note 2: 110 C or 40 C under.
 
 ## What the packs leave out
@@ -221,5 +221,5 @@ refused when it is after the machine's day in UTC plus 1 (`tools/clock.py`, `wal
 A run that such a file judged says so. The first line, `report.md` and `report.json` name the pack
 by the path `ratings.json` gives, with `(the project's own)` after it:
 `pack house.json (the project's own)`. The name inside the file is not printed, so a copy of a shipped
-pack with rules taken out does not pass for the shipped pack. A file of `rules/ratings/` is the
-workcenter's pack by whatever path a project names it.
+pack with rules taken out does not pass for the shipped pack. A file of `rules/ratings/` is
+Via's pack by whatever path a project names it.

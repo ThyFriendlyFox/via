@@ -13,10 +13,10 @@ from __future__ import annotations
 
 import uuid
 
-# `workcenter design` puts the workcenter's tools/ on the import path before it loads this file.
+# `workcenter design` puts Via's tools/ on the import path before it loads this file.
 import kicadgen
 
-# Read each part before it goes in. From the workcenter's folder:
+# Read each part before it goes in. From Via's folder:
 #   python3 tools/kicadgen.py pins Device:R Connector_Generic:Conn_01x03    each pin: number, name, type
 #   python3 tools/kicadgen.py footprint Resistor_SMD:R_0603_1608Metric      each pad, and the courtyard
 R_0603 = "Resistor_SMD:R_0603_1608Metric"

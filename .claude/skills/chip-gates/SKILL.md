@@ -203,7 +203,7 @@ Reports: `build/chip/drc/magic.rpt` and `build/chip/drc/klayout-mr.lyrdb`.
 `<deck>: N items break a rule: <rules>`: the layout is made of the kit's
 cells and the router's wires, so a broken rule is a fault of the build
 and not of the RTL. Build again on a larger die. When the count stays,
-report the line with the rule's name: it is a defect of the workcenter.
+report the line with the rule's name: it is a defect of Via.
 
 ## ANTENNA
 
@@ -220,7 +220,7 @@ Reports: `build/chip/lvs/lvs.rpt` and `extract.log`.
 
 `the layout is not the netlist`: no change of the RTL causes this. Run
 all the gates again. When it stays, report the line: it is a defect of
-the workcenter.
+Via.
 
 ## EXPORT
 

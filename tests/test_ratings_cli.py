@@ -235,8 +235,7 @@ def test_a_file_the_command_does_not_take_fails_the_run_with_its_place(tmp_path)
     code, text = say("ratings", project)
     assert code == 1, text
     assert (
-        "- ratings.json: pack: `mil-hdbk` is no pack; the workcenter holds "
-        "ecss-q-st-30-11c-rev2, nasa-eee-inst-002"
+        "- ratings.json: pack: `mil-hdbk` is no pack; Via holds ecss-q-st-30-11c-rev2, nasa-eee-inst-002"
     ) in text
 
 
@@ -459,7 +458,7 @@ def test_a_pack_of_the_project_s_own_is_named_by_its_file_and_as_the_project_s_o
     assert record["details"]["pack"] == "house.json (the project's own)"
     page = (folder / "report.md").read_text(encoding="utf-8").splitlines()
     assert " hold, 0 not judged; pack house.json (the project's own)" in page[2]
-    # a pack of the workcenter is the workcenter's by whatever path the project names its file
+    # a pack of Via is Via's by whatever path the project names its file
     packs = ROOT / "rules" / "ratings"
     rewrite(
         project / "ratings.json", lambda stated: stated.update(pack=str(packs / "nasa-eee-inst-002.json"))

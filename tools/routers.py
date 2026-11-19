@@ -1,9 +1,9 @@
-"""The routers the workcenter can run, behind 1 interface.
+"""The routers Via can run, behind 1 interface.
 
 ROADMAP item 5, "A routing benchmark and a second router".
 
-A router here is a program that reads the Specctra DSN the workcenter writes and writes a Specctra
-session (.ses) the workcenter reads back. Every rule around a route is the workcenter's, not the
+A router here is a program that reads the Specctra DSN Via writes and writes a Specctra
+session (.ses) Via reads back. Every rule around a route is Via's, not the
 router's: the DSN's content (planes, hand copper, seed, stages, grown holes), the passes, the threads,
 the time limit, the log, the reading back, the count of open connections and the DRC after. The
 autoroute skill lists them; tests/test_routers.py holds each with a stand-in router.
@@ -11,7 +11,7 @@ autoroute skill lists them; tests/test_routers.py holds each with a stand-in rou
 Each router names:
 - how its presence is found (`absent()`: "" when it can run, else why not),
 - its version (`version()`: the jar's file name and its manifest's build),
-- how it is run on the workcenter's DSN (`command()`, `run()`),
+- how it is run on Via's DSN (`command()`, `run()`),
 - how its output is read back (the session file; `unrouted()` reads its log's count).
 
 Standard library only, as the CLI is.

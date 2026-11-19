@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import uuid
 
-# `workcenter design` puts the workcenter's tools/ on the import path before it loads a design file.
+# `workcenter design` puts Via's tools/ on the import path before it loads a design file.
 import kicadgen
 
 FAULTS = ("", "pin", "decoupling", "inductor", "bias")

@@ -356,7 +356,7 @@ def test_fetch_asks_again_when_the_index_moves_a_url(site):
 @pytest.mark.parametrize(("path", "status"), [("/busy/an-22.pdf", 429), ("/err/an-23.pdf", 500)])
 def test_fetch_records_nothing_for_an_answer_that_gives_no_copy_and_asks_it_again(site, path, status):
     """429 limits the rate (RFC 6585, section 4, p 3) and 500 says the server erred (RFC 9110, section
-    15.6): neither refuses the workcenter's name nor says the file is gone. Each of 2 runs asks once:
+    15.6): neither refuses Via's name nor says the file is gone. Each of 2 runs asks once:
     2 requests, exit 2 (not judged) both times."""
     index, refs = site
     doc_id = path.rsplit("/", 1)[1].removesuffix(".pdf")

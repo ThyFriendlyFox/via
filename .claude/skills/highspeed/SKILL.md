@@ -23,7 +23,7 @@ limit and the document with its clause and page.
   gap you mean between the 2 tracks, edge to edge, in mm. It may be left
   out. The command measures the gap on the board either way and solves the
   width at the measured gap; a `gap` the board does not have fails.
-- `rules/interfaces/<name>.json` in the workcenter: 1 file for each
+- `rules/interfaces/<name>.json` in Via: 1 file for each
   interface, each limit with its document, revision, clause, table and page
   (`rules/interfaces/README.md` lists them).
 

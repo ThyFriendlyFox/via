@@ -20,7 +20,7 @@ already defines.
 | A board is GREEN and is to become compact, correct and good to look at, or "iterate on it" | `../.claude/skills/board-loop/SKILL.md` | 1 prompt run again and again; a reviewer who has not seen the earlier rounds names the 3 worst problems. The project's `LOOP.md` (from `templates/project/LOOP.md`) holds the prompt, the checklist and the log. |
 | A circuit's limit, a part that switches, a deck for another machine | `../.claude/skills/simulate/SKILL.md` | Corners (`sim/corners.json`), the frequency plan (`sim/frequency-plan.json`, `PROCESSES.md` P30), bundles (`sim --bundle`). |
 | About to start a helper on part of a task | `PROCESSES.md` P31 | Budget first, the lead in its own worktree, a brief per helper. |
-| A project's version landed, a branch is about to be deleted, or "what did the projects teach the workcenter?" | `PROCESSES.md` P35 | `python3 tools/harvest.py branches`, `scripts`, `mistakes`; each finding with its evidence and 6 scores as a row of the table under "Later" in ROADMAP.md, the highest rating first; `python3 tools/harvest.py later` holds the table. |
+| A project's version landed, a branch is about to be deleted, or "what did the projects teach Via?" | `PROCESSES.md` P35 | `python3 tools/harvest.py branches`, `scripts`, `mistakes`; each finding with its evidence and 6 scores as a row of the table under "Later" in ROADMAP.md, the highest rating first; `python3 tools/harvest.py later` holds the table. |
 | Asked "where does this project stand?" | `STATUS.md` | Answer from it; update it when state changes. |
 | The gate fails, or you're adding/changing checks | `VERIFICATION.md` | One command answers "is this repo healthy". |
 | Cutting a release / tagging | `RELEASING.md` | Weekly cycle ends here. |
@@ -36,7 +36,7 @@ already defines.
 | Writing YOUR OWN words — commits, PR bodies, reports, devlog entries | `TONE.md` | The agent's voice. Always in effect, like AGENTS.md. |
 | Recording what happened this week (or any notable event) | `DEVLOG.md` | Append-only plain history. Every cycle writes an entry. |
 | Asked for a blog post / public write-up of recent work | `skills/blog-post/SKILL.md` | Devlog in, post out. Never publishes without a go-ahead. |
-| The session holds more than 1 repository, or a repository was added mid-session | `skills/attached-repos/SKILL.md` | Assign roles before the first edit. The board is the project; this repo is the workcenter and read-only. |
+| The session holds more than 1 repository, or a repository was added mid-session | `skills/attached-repos/SKILL.md` | Assign roles before the first edit. The board is the project; this repo, Via, is a workcenter and read-only. |
 | Changing what a project gets from this workcenter (a tool, gate, path, requirement) | `../WORKCENTER.md` | The contract. Same commit as the change. `WORKCENTER.template.md` is the blank for new workcenters. |
 | Placing parts, reviewing a schematic, layout or Gerbers, a part's derating, a footprint, a symbol, a panel | `../.claude/skills/kistack/SKILL.md` | Names the vendored kistack skill for the step (`third_party/kistack/`) and where this kit's rules win over it. |
 | A schematic's parts against their ratings before layout: a pin's voltage limits, a part's derating, a regulator's load, the parts a datasheet asks for | `../.claude/skills/ratings/SKILL.md` | `workcenter ratings`: each part's facts from its datasheet with the page of every number, the nets the board cannot say, a rule pack that names its standard. |
@@ -53,7 +53,7 @@ already defines.
 | ESD at a connector, or power traces of a 2-layer board, against a maker's note | `../.claude/skills/board-rules/SKILL.md` | `board-rules.json` names the layout packs under `layout`; the project names its connectors, protectors, ground and power nets |
 | A board's labels: their size, overlap, designators placed or hidden | `../.claude/skills/legend/SKILL.md` | `workcenter legend`; `Design.place_designators`; the DRC gate prints each `legend` line. |
 | What a product must meet: its kind's requirements and what holds each | `../.claude/skills/standards/SKILL.md` | `product.json` names the kind; `workcenter standards` lists each requirement as held by a gate, a test, or not held |
-| A rule cites a standard or a datasheet; a document's revision changed; a tool or a test cites a document; `make verify` fails in `tests/test_references.py` or `tests/test_references_code.py` | `../.claude/skills/references/SKILL.md` | `workcenter references`: the index of the documents the rules cite, each fetched once under the workcenter's name and held by its SHA256. |
+| A rule cites a standard or a datasheet; a document's revision changed; a tool or a test cites a document; `make verify` fails in `tests/test_references.py` or `tests/test_references_code.py` | `../.claude/skills/references/SKILL.md` | `workcenter references`: the index of the documents the rules cite, each fetched once under Via's name and held by its SHA256. |
 | A design needs a buck regulator, a linear regulator, a USB-C port, an I2C bus or a microcontroller's crystal and decoupling, or another circuit a maker's note tells how to build | `../.claude/skills/blocks/SKILL.md` | `blocks.buck`, `blocks.ldo`, `blocks.usbc`, `blocks.i2c` or `blocks.mcu` in the design file: the values by the maker's note, the parts from your stock, the facts to `workcenter ratings`. |
 | A board charges 1 lithium cell | `../.claude/skills/charger-block/SKILL.md` | `blocks.charger` in the design file: a BQ21040 with a BQ29700 and 2 CSD17313Q2, every value from the datasheets with its page. |
 | Requirements, a design review, an inspection (MIL-STD, DO-160), proof that a board meets its parts' ratings | `../.claude/skills/verification/SKILL.md` and `PROCESSES.md` P28 | The verification package: conditions, sourced requirements, cited nodal analysis per deck, traceability; `workcenter verify` checks it against a fresh run. |
@@ -63,7 +63,7 @@ already defines.
 1. `SECURITY.md` overrides everything for security-shaped work.
 2. `AGENTS.md` is binding whenever code is touched; `PROCESSES.md` is binding whenever an action it names is taken; `TONE.md` is binding whenever the agent writes words. When any of them conflicts with intuition, it wins.
 3. `ROADMAP.md` decides what gets built. If requested work isn't on it, add it to the roadmap first (or get the human to), then build it. **The roadmap is not optional — every feature flows down from it.**
-4. `VERIFICATION.md`'s gate decides what ships. No green, no push.
+4. `VERIFICATION.md`'s gate decides what ships. No green, no merge: `main` takes only a commit the gate passed (`CI.md`, "Where the health gate runs").
 5. Everything else is reference.
 
 ## Standing rules (apply in every instance)

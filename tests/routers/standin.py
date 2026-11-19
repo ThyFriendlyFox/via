@@ -4,7 +4,7 @@
     {"ses": "<session text>" or null, "log": "<printed>", "exit": 0, "sleep": 0, "record": "<path>"}
 
 - `record`: a JSON line is appended per call: the arguments, DISPLAY, the folder it ran in, the
-  DSN's text and whether a `.rules` file stands beside the DSN. A test reads what the workcenter
+  DSN's text and whether a `.rules` file stands beside the DSN. A test reads what Via
   handed the router from it.
 - `sleep`: seconds to wait before anything else, in a child process, as Java under xvfb-run is.
 - `log` is printed; `ses`, when not null, is written where -do says; then it exits with `exit`.

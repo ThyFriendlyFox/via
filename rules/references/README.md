@@ -1,6 +1,6 @@
 # The reference library
 
-`index.json` names each document a rule of the workcenter cites: the standards of the rating packs
+`index.json` names each document a rule of Via cites: the standards of the rating packs
 (`rules/ratings/*.json`) and of the board rule pack (`rules/board/*.json`), the documents of the
 constants of `workcenter copper` (`rules/copper/*.json`, a table `documents: {id: {...}}`), the
 documents of the fast interfaces (`rules/interfaces/*.json`, the same table), the fab pages of the fab
@@ -80,7 +80,7 @@ An entry is 1 of 3 sorts:
 The last 5 entries joined on 2026-11-17 when the index's check met the high-speed pieces:
 `rules/interfaces/constants.json` takes its 2 constants from NIST's 2 pages, and
 `tests/test_xsection.py` holds the cross-section solver to the 2 reports and to DLMF 19.8.5. Each copy
-was fetched that day under the workcenter's own name. `workcenter references check` called each copy
+was fetched that day under Via's own name. `workcenter references check` called each copy
 `same`: the 2 reports by the SHA256 their citing file gives in part, the 3 pages by their values.
 
 The last entry joined on 2026-11-18: `tools/freqplan.py` and `tests/test_freqplan.py` give NXP's I2C-bus
@@ -89,7 +89,7 @@ day, and `workcenter references check` called it `same`. Rev. 7.0 gives the SCL 
 table 11, page 44; the 2 files said table 10, the I/O stages, and now say table 11.
 
 On 2026-11-17 `workcenter references fetch` asked for the 25 held documents and web pages of the index
-as it stood before the documents of `rules/interfaces/` joined it, under the workcenter's own name:
+as it stood before the documents of `rules/interfaces/` joined it, under Via's own name:
 `24 kept, 1 changed, 0 moved, 0 refused, 0 gone, 0 not given, 0 not reached, 3 not held`. The title,
 number and revision of each held entry were read from the first page of its copy. The 1 changed is
 `ti-sbvs320`: TI's copy of that day prints the same revision, SBVS320D of September 2024, with other
@@ -108,25 +108,25 @@ Samsung's, JLCPCB's and OSH Park's pages gave 3 SHA256s for each page. Every val
 copy and on the third; the second was not read for its values.
 
 `ti-slusce2`, `ti-slusbu9` and `ti-slps260`, the datasheets of the charger block
-(`rules/blocks/charger.json`) and of its parts' facts, were downloaded on 2026-11-17 under the
-workcenter's name. Their number, title and revision are those of their first page; the SHA256 is that
+(`rules/blocks/charger.json`) and of its parts' facts, were downloaded on 2026-11-17 under
+Via's name. Their number, title and revision are those of their first page; the SHA256 is that
 of each copy, and `workcenter references fetch` has not asked for them yet.
 
-The 4 entries of the USB-C block (`rules/blocks/usbc.json`) were downloaded on 2026-11-17 under the
-workcenter's name. The USB Type-C specification is a zip: the SHA256 is the zip's, and the block's rules
+The 4 entries of the USB-C block (`rules/blocks/usbc.json`) were downloaded on 2026-11-17 under
+Via's name. The USB Type-C specification is a zip: the SHA256 is the zip's, and the block's rules
 name each PDF inside with its own SHA256. The block's USB 2.0 zip is the index's `usb-20`, by the same
 SHA256. `samsung-cl10a475ko8nnn` is a page like `samsung-cl10a106kp8nnn`: a new fetch differs in its
 session token and its time stamp. ST's USBLC6-2 datasheet, asked first for the clamp, gave no answer to
-the workcenter's name; TI's TPD2E2U06 was taken instead.
+Via's name; TI's TPD2E2U06 was taken instead.
 
 `ti-slva689a`, the note of the I2C block (`rules/blocks/i2c.json`), and `ti-scps197d`, the datasheet of
-its fixtures' TCA9534, were downloaded on 2026-11-17 under the workcenter's name; the number, title and
+its fixtures' TCA9534, were downloaded on 2026-11-17 under Via's name; the number, title and
 revision of each are those of its first page. The block takes table 2-1 from SLVA689A, which quotes
 NXP's UM10204; the index holds UM10204 (`nxp-um10204`, fetched on 2026-11-18 for another piece), and the
 block does not read it yet.
 
 The 6 entries of the microcontroller block (`rules/blocks/mcu.json`,
-`tests/boards/library/facts/mcu-block.json`) were downloaded on 2026-11-17 under the workcenter's name.
+`tests/boards/library/facts/mcu-block.json`) were downloaded on 2026-11-17 under Via's name.
 `ti-slau278` and `ti-slau272d` are TI's user's guides, held by their SHA256 as a datasheet is.
 
 ## The 3 commands

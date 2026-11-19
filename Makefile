@@ -1,10 +1,13 @@
-# EE Workcenter — canonical commands. ee-agent-kit/AGENTS.md names these.
+# Via — canonical commands. ee-agent-kit/AGENTS.md names these.
 VENV_PY := /opt/workcenters/ee/venv/bin/python
 PY := $(shell test -x $(VENV_PY) && echo $(VENV_PY) || echo python3)
 
 SCOPE_BASE ?= origin/main
 
-.PHONY: install doctor lint format test verify image mutate-ratings scope verify-site
+.PHONY: install doctor lint format test kit check verify image mutate-ratings scope verify-site
+
+# The kit's own tests that `make check` runs before the files a change names in TESTS.
+KIT_TESTS := tests/test_gate_rule.py tests/test_lead_skills.py tests/test_docs.py::test_no_commit_names_an_assistant_as_its_author
 
 install:            ## install or update every engine (root)
 	./install.sh
@@ -22,6 +25,12 @@ format:             ## apply ruff formatting
 
 test:               ## gate tests on the fixture boards
 	$(PY) -m pytest -q tests
+
+kit:                ## the gate's kit checks alone (2 copies of every kit skill, frontmatter, CLAUDE.md = AGENTS.md, MISTAKES and PROCESSES); no lock
+	verify/verify.sh kit
+
+check: lint kit     ## the fast checks before a push to a work branch: lint, kit checks, the kit's tests, TESTS="<files>"; no engine
+	WORKCENTER_NO_ENGINES=1 $(PY) -m pytest -q -p no:cacheprovider -m "not engine" $(KIT_TESTS) $(TESTS)
 
 scope:              ## fast or full: what the change from SCOPE_BASE to the working tree needs
 	$(PY) tools/ci/scope.py --base "$$(git merge-base $(SCOPE_BASE) HEAD)"

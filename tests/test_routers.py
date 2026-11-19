@@ -2,7 +2,7 @@
 
 ROADMAP item 5, "A routing benchmark and a second router".
 
-Every rule around a route is the workcenter's, not the router's. Each test here runs the whole
+Every rule around a route is Via's, not the router's. Each test here runs the whole
 `workcenter design --route` with a stand-in router (tests/routers/standin.py, called as Java is) that
 writes a known output, and holds 1 rule of the list in .claude/skills/autoroute/SKILL.md ("The rules
 around a route"). None of them needs a real router. The tests of a real FreeRouting 2.5.0 skip with its
@@ -108,7 +108,7 @@ def session(nets: list[str], d: kicadgen.Design | None = None) -> str:
 
 
 def standin(tmp_path: Path, java_version: str = "21.0.13", **plan) -> dict[str, str]:
-    """The environment that makes the workcenter run the stand-in as FreeRouting 1.9.0 and 2.5.0: a
+    """The environment that makes Via run the stand-in as FreeRouting 1.9.0 and 2.5.0: a
     `java` that runs standin.py, and a jar that holds the plan."""
     java = tmp_path / "java"
     java.write_text(
@@ -587,7 +587,7 @@ def test_every_rule_around_a_route_has_its_test_here():
 
 
 def test_a_router_the_workcenter_does_not_know_is_refused(tmp_path):
-    """`--router` takes the names of the routers the workcenter knows, and nothing else."""
+    """`--router` takes the names of the routers Via knows, and nothing else."""
     proc = subprocess.run(
         [sys.executable, str(CLI), "design", str(tmp_path / "d.py"), "--route", "--router", "nope"],
         capture_output=True,

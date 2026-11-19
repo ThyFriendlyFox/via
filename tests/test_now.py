@@ -464,8 +464,9 @@ def test_the_record_names_the_commit_the_gate_started_on(tmp_path):
     git(tree, "add", ".gitignore", "tools/now.py", "tools/clock.py")
     git(tree, "commit", "-q", "-m", "A")
     a, a_short = git(tree, "rev-parse", "HEAD"), git(tree, "rev-parse", "--short", "HEAD")
+    # verify.sh reads its mode before the engine lock, above these lines; `make verify` is `full`.
     gate = (
-        f"set -euo pipefail\ncd {shlex.quote(str(tree))}\n{gate_lines()}"
+        f"set -euo pipefail\ncd {shlex.quote(str(tree))}\nmode=full\n{gate_lines()}"
         f'step "4/4 tests"\n{shlex.join(GIT)} commit -q --allow-empty -m B\n'
     )
     proc = subprocess.run(["bash", "-c", gate], capture_output=True, text=True, check=False)

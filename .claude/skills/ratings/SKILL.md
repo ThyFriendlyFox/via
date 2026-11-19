@@ -31,7 +31,7 @@ datasheet and no page: the facts of those kinds hold none.
 | `ratings.json`, beside the schematic | The rule pack, and what the board cannot say of itself: the voltage of each net a source off the board fixes, a load's current, the ambient temperature, a failure the owner accepts. | You, each entry with its source |
 | `library/facts/*.json`, in the project's folder or a folder above it | What each part's datasheet says: 1 entry for a part or a family of parts. | You, each entry with its source and each pin's numbers with their page |
 | `parts.csv` | The manufacturer part number of each Value and Footprint, as `procure` and `sources` read it. A part with no number is named by its symbol. | The procurement skill |
-| `rules/ratings/<pack>.json`, in the workcenter | The limits of a derating standard, each with its table and page. | The workcenter. Never edit one to pass |
+| `rules/ratings/<pack>.json`, in Via | The limits of a derating standard, each with its table and page. | Via. Never edit one to pass |
 
 The worked example is `tests/boards/pass-ratings-node` with the facts in
 `tests/boards/library/facts/`: a buck regulator, 2 logic buffers and their

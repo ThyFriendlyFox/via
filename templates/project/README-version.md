@@ -31,7 +31,7 @@
 
 <!-- fill: one paragraph: what the device is and does, for a reader who has never seen it. -->
 
-<!-- fill: one paragraph: what this repository holds, and that the EE Workcenter supplies the tools and gates. -->
+<!-- fill: one paragraph: what this repository holds, and that Via supplies the tools and gates. -->
 
 | Item | State |
 |---|---|

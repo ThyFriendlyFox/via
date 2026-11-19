@@ -1,6 +1,6 @@
 # Architecture
 
-EE Workcenter is a toolchain installer, a Python command line, and a set
+Via is a toolchain installer, a Python command line, and a set
 of skills that together run 4 gates on a KiCad 10 project. The table
 has its 10 parts.
 
@@ -14,7 +14,7 @@ has its 10 parts.
 | Manifest | `WORKCENTER.md` | The contract a project gets: tools, skills, gates, paths, requirements. |
 | Templates | `templates/` | The files a project starts from: the verification package (`workcenter verify --init` copies `templates/verification/`), the brief and facts file for helpers on one package, and a first design file, a version's README and gates report (`templates/project/`). |
 | Environment | `environment/`, `Dockerfile` | The 2 ways the installer reaches a machine: a Claude Code cloud environment setup script, or the container image, which runs install.sh on Ubuntu 24.04. |
-| Website | `site/` | 1 static page that says what the workcenter is, with real runs of its commands and a fixture board from its design file. Plain HTML, 1 stylesheet, 1 script; no install step. `site/build.sh` writes the folder a host serves. `site/media/` holds the pictures of the root `README.md`, each with the command that draws it. `tests/test_docs.py` holds the site's runs, its links and its build to the code, and each picture to the README that shows it. |
+| Website | `site/` | 1 static page that says what Via is, with real runs of its commands and a fixture board from its design file. Plain HTML, 1 stylesheet, 1 script; no install step. `site/build.sh` writes the folder a host serves. `site/media/` holds the pictures of the root `README.md`, each with the command that draws it. `tests/test_docs.py` holds the site's runs, its links and its build to the code, and each picture to the README that shows it. |
 | Kit | `ee-agent-kit/` | How work on this repository is run. Process, not product. |
 
 ## Data flow
@@ -25,7 +25,7 @@ has its 10 parts.
    and copies `WORKCENTER.md` to `/opt/workcenters/ee/`.
 2. An agent opens a board repository in that environment. With 2
    repositories attached, the `attached-repos` skill assigns roles:
-   the board is the project, this repository is the workcenter.
+   the board is the project, and this repository, Via, is a workcenter.
 3. The agent runs `workcenter gates <project>`.
 4. The CLI finds `<name>.kicad_pro` and its siblings, then calls
    `kicad-cli sch erc`, `kicad-cli pcb drc`, `ngspice -b`, and
@@ -58,8 +58,8 @@ writes it into the DSN, held where it connects and unfixed at its loose ends.
 | `tools/inspect_board.py` | The engine of `workcenter inspect`: a `Board` read with KiCad's `pcbnew` (items, rule areas, courtyards, the stackup, the project's net classes and `.kicad_dru`), `touch`/`groups` for connectivity, one `cmd_*` per view. The CLI runs it under the venv's Python with its arguments as JSON; it writes only `map`'s images. |
 | `tools/stretch.py` | Grows a design file at a cut through Python's `ast`: board x-coordinates in code move, comments and strings never do. Standard library only. |
 | `tools/harvest.py` | 4 listings for `PROCESSES.md` P35. `later()` holds the roadmap's rated candidates to their own numbers: a rating is its 6 scores' sum (f + c + l + g less e + r), each score inside its anchors, the rows highest first, the evidence an entry of the log or a file that is there, with a line it has. The other 3 read git objects alone: `branches()` (a branch's base is its merge base with main, or the newest commit whose tree main's history holds; a line it added counts as on main without the number of a mistake, a process or a step), `scripts()` (a project's own scripts by file name, with the functions 2 projects share), `mistakes()` (an entry that names an earlier entry of its process). Standard library only; it writes nothing. |
-| `tools/ratings.py` | `workcenter ratings`, in 5 parts. `read_netlist()` reads kicad-cli's XML netlist. `net_spans()` gives each net 2 spans from the declared nets and each part's `Model`: every voltage it can stand at, and what its sources hold it to; `resistor_spans()` solves a divider at the corners of its tolerances. `read_project()`, `read_facts()` and `read_pack()` take `ratings.json`, `library/facts/*.json` and a pack of `rules/ratings/`, and refuse a file that is wrong in 1 place with the place. `judge()` holds each stress to its limit and returns findings (`fail`, `accepted`, `not judged`, `hold`); no limit stands in the code. `register()` adds the command to the workcenter's parser; the CLI exports the netlist. Standard library only; it writes `build/ratings/`. |
-| `tools/doctools.py` | The document commands: `docs`, `costs`, `pictures`, `version new`, `diagram`, and `gates_report()` for `gates --report`. `register()` adds them to the workcenter's parser with the CLI module as `cli`, so they report through its `Result` and `emit` and reuse `gate_procure` and `gate_render`. Marked blocks (`fill_block`) are the only text they rewrite in a hand-written file. Standard library only. |
+| `tools/ratings.py` | `workcenter ratings`, in 5 parts. `read_netlist()` reads kicad-cli's XML netlist. `net_spans()` gives each net 2 spans from the declared nets and each part's `Model`: every voltage it can stand at, and what its sources hold it to; `resistor_spans()` solves a divider at the corners of its tolerances. `read_project()`, `read_facts()` and `read_pack()` take `ratings.json`, `library/facts/*.json` and a pack of `rules/ratings/`, and refuse a file that is wrong in 1 place with the place. `judge()` holds each stress to its limit and returns findings (`fail`, `accepted`, `not judged`, `hold`); no limit stands in the code. `register()` adds the command to Via's parser; the CLI exports the netlist. Standard library only; it writes `build/ratings/`. |
+| `tools/doctools.py` | The document commands: `docs`, `costs`, `pictures`, `version new`, `diagram`, and `gates_report()` for `gates --report`. `register()` adds them to Via's parser with the CLI module as `cli`, so they report through its `Result` and `emit` and reuse `gate_procure` and `gate_render`. Marked blocks (`fill_block`) are the only text they rewrite in a hand-written file. Standard library only. |
 | `tools/scene.py` | Assembly scenes: a routed board loaded with KiCad's `pcbnew`, bodies on empty anchor footprints, stills from kicad-cli, the turning GIF from `workcenter render --views spin`. Runs under the venv's Python; a project's scene script imports it. |
 
 ## Boundaries
@@ -67,6 +67,6 @@ writes it into the DSN, held where it connects and unfixed at its loose ends.
 | Boundary | Rule |
 |---|---|
 | CLI ↔ engines | Subprocess only. The CLI reads the engines' report files; it never imports KiCad or ngspice libraries. A venv package (pcbnew, shapely, pdfminer, PyYAML) runs in a subprocess under the venv's Python and hands back text or JSON. |
-| Workcenter ↔ project | The workcenter reads the project and writes only `<project>/build/` or `--out`. Project source files are never modified by a gate run. |
+| Via ↔ project | Via reads the project and writes only `<project>/build/` or `--out`. Project source files are never modified by a gate run. |
 | Kit ↔ code | The kit is read by agents and humans. Nothing executes it. `verify/verify.sh` checks its invariants (placeholders, skill parity). |
 | Installer ↔ everything else | Every other part assumes the installer ran. Nothing else installs software. |

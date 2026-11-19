@@ -1,8 +1,8 @@
 # The loop that made NAME
 
 NAME is improved in a loop: 1 prompt, run again and again, each pass
-starting from what the last one left on disk and from the log below. The
-workcenter's `board-loop` skill says what a pass is. Say here which shape
+starting from what the last one left on disk and from the log below. Via's
+`board-loop` skill says what a pass is. Say here which shape
 this loop has, and delete the other 2:
 
 - Passes inside 1 version: every pass changes VERSION, until its first

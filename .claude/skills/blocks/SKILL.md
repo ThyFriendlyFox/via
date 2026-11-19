@@ -254,7 +254,7 @@ lets the block move to it when the junction runs hot.
 
 ## Adding an IC to a block
 
-1. Download the IC's datasheet under the workcenter's name into a folder
+1. Download the IC's datasheet under Via's name into a folder
    outside every repository, and its SHA256 with `sha256sum`.
 2. Add an entry to `ics` in `rules/blocks/<block>.json` with each number and
    its `where`: section, table and page. A number you cannot find in the

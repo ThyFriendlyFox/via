@@ -1,5 +1,5 @@
 """The opt-in chip step of install.sh: every download pinned, off unless asked for, and the engines it
-installs print the versions the workcenter was proven on.
+installs print the versions Via was proven on.
 
 The step itself needs root and the network, so no test runs it. The tests read the script and its lock
 files, and, where the step has run, start each engine once.

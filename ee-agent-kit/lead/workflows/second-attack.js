@@ -6,7 +6,7 @@
 //   scratch    the scratch folder, outside every repository
 //   lead_tree  the lead's own worktree
 //   base       the work branch the items' branches started from
-//   python     the Python of the workcenter's virtual environment
+//   python     the Python of Via's virtual environment
 //   models     optional: { attack, fix }, the host's model names; left out, the host's default
 //   items      a list of { n, title, branch, worktree, first, focus }: `first` is what the first
 //              review found, `focus` the ordinary inputs the second reviewer builds first

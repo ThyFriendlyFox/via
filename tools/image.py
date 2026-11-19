@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""image — the workcenter's container image: its name, its content tag, the record of its build, and
+"""image — Via's container image: its name, its content tag, the record of its build, and
 where CI's full job runs.
 
 The content tag names a toolchain by the files that define it (TOOLCHAIN_FILES): the sha256 of each
@@ -411,9 +411,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "check":
         if not args.record.is_file():
-            print(
-                f"image.py: no record at {args.record}: this is not the workcenter's image", file=sys.stderr
-            )
+            print(f"image.py: no record at {args.record}: this is not Via's image", file=sys.stderr)
             return 1
         try:
             problems = check(args.src, args.record)
@@ -427,7 +425,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1 if problems else 0
 
     if not RECORD.is_file():
-        print(f"image.py: no record at {RECORD}: this is not the workcenter's image", file=sys.stderr)
+        print(f"image.py: no record at {RECORD}: this is not Via's image", file=sys.stderr)
         return 1
     try:
         print(json.dumps(read_record(RECORD), indent=2))
@@ -438,10 +436,10 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def register(sub, cli) -> None:
-    """Add `image` to the workcenter's parser."""
+    """Add `image` to Via's parser."""
     p = sub.add_parser(
         "image",
-        help="the content tag of the workcenter's toolchain files at a commit, and the record of the "
+        help="the content tag of Via's toolchain files at a commit, and the record of the "
         "image this runs in when there is one; runs no engine",
     )
     p.add_argument("--rev", default="HEAD", help="the commit (default HEAD)")
@@ -475,7 +473,7 @@ def cmd_image(args, cli) -> int:
         for tool, version in dict(inst.get("versions") or {}).items():
             print(f"  {tool:12} {version or 'absent'}")
     else:
-        print(f"this is not the workcenter's image: no record at {RECORD}")
+        print(f"this is not Via's image: no record at {RECORD}")
     return 0
 
 

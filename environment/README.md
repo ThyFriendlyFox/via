@@ -1,4 +1,4 @@
-# Cloud environment for the EE Workcenter
+# Cloud environment for Via
 
 A Claude Code cloud environment named `EE Workcenter` gives every session
 opened in it the engines from this repository. The environment, not the
@@ -42,7 +42,7 @@ environment, run the install with `INSTALL_CHIP=1`:
 INSTALL_CHIP=1 bash /opt/workcenters/ee/src/install.sh
 ```
 
-The step adds 1.9 GB and took 32 s on the workcenter's machine, with the
+The step adds 1.9 GB and took 32 s on the machine where Via is developed, with the
 4 Ubuntu packages already there. It reaches these hosts beyond the ones
 above:
 

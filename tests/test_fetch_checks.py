@@ -179,8 +179,8 @@ def test_a_file_outside_any_library_folder_still_needs_one_named(site, tmp_path)
 
 
 def test_a_downloaded_file_is_kept_hashed_and_given_its_row(site, tmp_path):
-    """The workcenter asks no site: the bytes are the person's file, the URL is the one they name, and
-    the row says the workcenter did not fetch it."""
+    """Via asks no site: the bytes are the person's file, the URL is the one they name, and
+    the row says Via did not fetch it."""
     _, project = site
     download = tmp_path / "Downloads" / "CL10A105KB8NNNC.pdf"
     download.parent.mkdir()
@@ -292,7 +292,7 @@ def test_a_body_that_is_not_what_its_name_says_is_refused(site, path, says):
     assert error.startswith(f"{url}{path} gave {says}; nothing written"), error
     assert "\n" not in error
     assert not dest.exists() and not (project / "library").exists()
-    assert len(Maker.agents) == 1  # asked once, under the workcenter's own name
+    assert len(Maker.agents) == 1  # asked once, under Via's own name
     code, out = fetch(f"{url}{path}", "--to", dest, "--mpn", "ACME-1", "--row", json_out=False)
     assert code == 1 and out.count("\n") == 1 and out.startswith(f"fetch: {url}{path} gave {says}"), out
 

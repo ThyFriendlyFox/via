@@ -5,7 +5,7 @@ description: The routine that keeps the roadmap pointed at the goal - a small mo
 
 # User round
 
-The goal of the workcenter: a small model, given only this repository,
+The goal of Via: a small model, given only this repository,
 reaches the same working board a senior engineer would. A user round
 measures how far that holds today and turns the gap into roadmap work.
 

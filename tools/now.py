@@ -309,7 +309,7 @@ def record(code: int, step: str, tree: Path, head: str, dirty_at_start: bool) ->
 
 
 def register(sub, cli) -> None:
-    """Add `now` to the workcenter's parser."""
+    """Add `now` to Via's parser."""
     p = sub.add_parser(
         "now",
         help="print the card of 1 piece of work in progress: its **Status:** line for the project board, "

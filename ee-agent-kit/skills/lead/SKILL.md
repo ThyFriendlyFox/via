@@ -19,11 +19,11 @@ discipline). Where they say more, they win.
 - The scratch folder, `<scratch>` below: a folder outside every
   repository. It holds the worktrees (`<scratch>/wt/`), the docs files
   (`<scratch>/roadmap/`) and downloads (`<scratch>/dl/`). It holds no
-  lock for engines: the workcenter's long commands take the machine's
+  lock for engines: Via's long commands take the machine's
   engine lock themselves (`tools/enginelock.py`).
 - The work branch, `<work>` below: the branch the pieces start from and
   land on (the `land` skill). Never the default branch.
-- `<python>`: the Python of the workcenter's virtual environment, the one
+- `<python>`: the Python of Via's virtual environment, the one
   `make` uses (`Makefile`, `VENV_PY`).
 - The shared documents: `ee-agent-kit/STATUS.md`, `CHANGELOG.md`,
   `ROADMAP.md`, `DEVLOG.md`, `MISTAKES.md`, `docs/CONFIGURATION.md`,
@@ -59,6 +59,9 @@ journal lines of `ee-agent-kit/lead/README.md`, "The journal", itself.
    `git -C <scratch>/wt/lead worktree add -q -b wip/<short name> <scratch>/wt/<short name> <work>`.
    A piece that builds on another names that branch, and the helper
    merges it first (`git -C <worktree> merge --no-edit wip/<other>`).
+   `<work>` there is a commit whose `verdict` is green (step 16): while
+   CI still runs on the tip, start the piece from the last green commit
+   and name its hash in place of `<work>`.
 4. Write the brief (P31 step 3). It holds:
    - the spec: the roadmap entry by its heading in
      `ee-agent-kit/ROADMAP.md` (`### <n>.`), to be read word for word;
@@ -120,12 +123,12 @@ journal lines of `ee-agent-kit/lead/README.md`, "The journal", itself.
     The roadmap item stays `in progress`, never shipped, while 1 sentence
     of its Promise is untrue.
 12. A tool the work needs is missing on this machine. Never ask the owner
-    about the machine. The missing tool becomes work for a helper: the
-    workcenter gains its install step in `install.sh`, its row in
+    about the machine. The missing tool becomes work for a helper: Via
+    gains its install step in `install.sh`, its row in
     `workcenter doctor`, the code path that uses it, and tests that skip
     by the tool's name when it is absent (P12;
     `ee-agent-kit/docs/ENGINES.md`, the new-engine contract).
-13. Keep heavy runs in turns with the workcenter's own lock. A brief asks
+13. Keep heavy runs in turns with Via's own lock. A brief asks
     for no `flock` and names no lock file: a `workcenter` command waits its
     turn by itself and prints where it stands every 30 seconds; a test file
     or a bare engine runs under
@@ -161,13 +164,21 @@ journal lines of `ee-agent-kit/lead/README.md`, "The journal", itself.
     Remove only folders no running process uses: look with
     `pgrep -a pytest` first, and never remove pytest's temp root while a
     pytest runs (P31 step 14).
-16. Run the health gate (`ee-agent-kit/lead/gate-and-push.sh`) in the
-    background with a time limit of 2 hours: its wait for helpers can be
-    longer than its run (P31 step 12). While it runs, edit no tool it
-    calls: write the new version beside it and move it into place in 1
-    step, or stop the gate first (P31 step 13). Before a lap that ends in
-    a merge to `main`, ask the owner to hold other sessions' pushes to
-    `main`, and say what each move costs (P14 step 9).
+16. The health gate runs on GitHub, not on this machine
+    (`ee-agent-kit/CI.md`, "Where the health gate runs"). A landing is
+    pushed to the work branch on `make check`, and CI's `full` job runs
+    `make verify` on the pushed commit. Nothing from the work branch is
+    merged, released, or used as the start of other work until CI's
+    `verdict` is green on that exact commit (the `land` skill, steps 5,
+    6 and 13). So the helpers keep the machine while a landing is gated.
+    On a machine with no CI, the gate runs here instead
+    (`ee-agent-kit/lead/gate-and-push.sh`, the `land` skill, "With no
+    CI"), in the background with a time limit of 2 hours: its wait for
+    helpers can be longer than its run (P31 step 12). While it runs, edit
+    no tool it calls: write the new version beside it and move it into
+    place in 1 step, or stop the gate first (P31 step 13). Before a lap
+    that ends in a merge to `main`, ask the owner to hold other sessions'
+    pushes to `main`, and say what each move costs (P14 step 9).
 
 ## Done when
 

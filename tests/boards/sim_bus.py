@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import uuid
 
-# `workcenter design` puts the workcenter's tools/ on the import path before it loads a design file.
+# `workcenter design` puts Via's tools/ on the import path before it loads a design file.
 import kicadgen
 
 HEADER_2 = "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical"

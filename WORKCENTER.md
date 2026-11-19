@@ -1,11 +1,11 @@
-# WORKCENTER.md — EE Workcenter
+# WORKCENTER.md — Via
 
 <!-- This file at the root marks the repository as a workcenter to
      skills/attached-repos. install.sh copies it to
      /opt/workcenters/ee/WORKCENTER.md so an environment without the
      repository attached still finds it. -->
 
-The EE Workcenter turns a KiCad 10 project into fabrication outputs that
+Via turns a KiCad 10 project into fabrication outputs that
 passed every gate. "Done" means `workcenter gates <project> --strict`
 prints GREEN. For a project with a `ratings.json` beside its schematic,
 that GREEN needs its ratings held: `build/ratings/report.json` says
@@ -125,7 +125,7 @@ file: it needs nothing else.
 | `legend` | A board's labels must be legible and not overlap: each designator placed by the generator, every text held by the DRC gate to the fab's least size and the legend's rules. |
 | `now` | Several agents work at once and a maintainer follows them on the project board: 1 work card per piece of work with `workcenter now`, its `**Status:**` line Todo, In progress or Done, in 1 GitHub issue's body rewritten at each landing, block and health gate, or on the `status` branch with `--write`. |
 | `lead` | Roadmap work is to be done by helpers: a worktree and a brief per piece, a build, an attack and a fix, a second attack for a piece called not sound, and `ee-agent-kit/lead/landed.py` to see which pieces have finished. |
-| `land` | Finished pieces are to go onto the work branch, and later onto the default branch: commits in a straight line, docs files applied, the health gate alone with the push behind VERIFY GREEN (`ee-agent-kit/lead/gate-and-push.sh`), a merge commit only at the owner's word. |
+| `land` | Finished pieces are to go onto the work branch, and later onto the default branch: commits in a straight line, docs files applied, a push on `make check`, CI's `verdict` green on the pushed commit before anything builds on it, a merge that names its head (`ee-agent-kit/lead/gate-and-push.sh` where there is no CI), a merge commit only at the owner's word. |
 | `user-round` | The roadmap is to be checked against the goal: 3 users of different sizes, 1 board spec, their logs checked and ranked into roadmap candidates, each with what the small user does after the change. |
 | `highspeed` | A board carries a fast interface (USB 2.0, USB 3.x): `interfaces.json` names each pair, and `workcenter highspeed` until every width, gap, length, skew, via count and ground plane holds; then `workcenter drc --fab build/highspeed/highspeed.kicad_dru`. |
 | `copper` | A routed board carries a stated current or a part's stated heat: each power net's drop and current density, in its copper and in each barrel, and the board's temperature, against the limits of `copper.json`, with a picture of each and `workcenter copper` until every limit holds. |
@@ -343,7 +343,7 @@ note why there is none) for each U, Q and D, each kept file present and
 unchanged since its SHA256 was recorded, printing the revision its row
 records, each model defining its `.SUBCKT` and loading in ngspice with its
 sub-models, and a model older than its datasheet named. `--fetch` reads each
-row's URL once more, under the workcenter's own name, and says which files
+row's URL once more, under Via's own name, and says which files
 differ from the library's (a refusal is recorded, never retried). It writes
 `build/sources/sources.md` and `sources.json` and never writes the library
 (`PROCESSES.md` P27).
@@ -581,7 +581,7 @@ report, its first failure, its first warning, and a `README.md` that
 still says `fill:`.
 
 Not a gate: `workcenter fetch <url> --to <library>/<maker>/<file>` fetches
-one datasheet, model or body once under the workcenter's own name (a
+one datasheet, model or body once under Via's own name (a
 refusal is reported, never retried), keeps it, and prints its
 `sources.csv` row: the URL, the file, its SHA256, today as `Checked`, a
 model's `.SUBCKT`, and lines of the file that may carry its revision.
@@ -590,7 +590,7 @@ A body that is empty, cut short, served as `text/html`, starting as an
 HTML page, or a `.pdf` that does not start `%PDF` is refused in 1 line
 and nothing is written.
 `--file <path> --url <url>` keeps a file a person downloaded instead: it is
-judged the same way, copied, hashed, and its row's Note says the workcenter
+judged the same way, copied, hashed, and its row's Note says Via
 did not fetch it. `--row` with `--mpn` appends the row and refuses a second
 row of one kind for one part. With no `sources.csv` at or above `--to`,
 and `--to` under a folder named `library`, it starts that folder's
@@ -770,7 +770,7 @@ rules cite, `rules/references/index.json`: each standard and datasheet
 with its maker or issuer, number, title, revision, URL and the SHA256 of
 the copy the rule was written from. The repository holds the index, never
 a document. `workcenter references fetch [ID ...] [--to DIR]` asks each
-URL once under the workcenter's own name. It keeps each answer in DIR
+URL once under Via's own name. It keeps each answer in DIR
 (default `~/.cache/ee-workcenter/references`, never inside a repository)
 with a `ledger.json`, and a later run asks again for none (`--again ID`
 asks once more). Each document is `kept` (the indexed copy), `changed`
@@ -949,7 +949,7 @@ and no analog block. The engines install on request:
 
 ## The container image
 
-`ghcr.io/<owner>/via` holds the toolchain install.sh installs and the workcenter at the commit it was built from, without the example boards (`examples/`) and the site (`site/`), at `/opt/workcenters/ee`, with `workcenter` on PATH and `/work` for a mounted project. `docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work <image> workcenter gates .`: the files written belong to that user. That user id has no name in the image: GNU `id -un` prints its number and ends with 1. The workcenter's tools ask for HOME, which the image sets, and never for a user name. Tags: `tc-<16 hex digits>` (the content of `Dockerfile`, `install.sh` and `requirements.txt`; `workcenter image` prints it; it moves to a new build on each push to main and each week), `tc-<16 hex digits>-<YYYYMMDD>`, `tc-<16 hex digits>-amd64` and `-arm64` (1 machine's), `main`, a release's `vX.Y.Z`; a digest never moves. `/opt/workcenters/ee/image.json` names its tag, commit and tools' versions (`python3 /opt/workcenters/ee/src/tools/image.py show`). It is not: a desktop (no window, no KiCad editor), a place to keep work (mount the project), or openEMS on arm64. Every image passed `workcenter doctor` in its build and ran the gates on a fixture as a user without root; no other is published. Its build bounds install.sh's apt step as CI does (`--build-arg APT_UPDATE_TIMEOUT=120 --build-arg APT_DOWNLOAD_TIMEOUT=570`); a build without them has no bound.
+`ghcr.io/<owner>/via` holds the toolchain install.sh installs and Via at the commit it was built from, without the example boards (`examples/`) and the site (`site/`), at `/opt/workcenters/ee`, with `workcenter` on PATH and `/work` for a mounted project. `docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work <image> workcenter gates .`: the files written belong to that user. That user id has no name in the image: GNU `id -un` prints its number and ends with 1. Via's tools ask for HOME, which the image sets, and never for a user name. Tags: `tc-<16 hex digits>` (the content of `Dockerfile`, `install.sh` and `requirements.txt`; `workcenter image` prints it; it moves to a new build on each push to main and each week), `tc-<16 hex digits>-<YYYYMMDD>`, `tc-<16 hex digits>-amd64` and `-arm64` (1 machine's), `main`, a release's `vX.Y.Z`; a digest never moves. `/opt/workcenters/ee/image.json` names its tag, commit and tools' versions (`python3 /opt/workcenters/ee/src/tools/image.py show`). It is not: a desktop (no window, no KiCad editor), a place to keep work (mount the project), or openEMS on arm64. Every image passed `workcenter doctor` in its build and ran the gates on a fixture as a user without root; no other is published. Its build bounds install.sh's apt step as CI does (`--build-arg APT_UPDATE_TIMEOUT=120 --build-arg APT_DOWNLOAD_TIMEOUT=570`); a build without them has no bound.
 
 Not a gate: `workcenter image [--rev REV] [--json]` prints the content tag of the toolchain's files at a commit and the name of the image of that tag; inside the image it also prints the record of its build. It runs no engine.
 

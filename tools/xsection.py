@@ -17,7 +17,7 @@ Hammerstad and Jensen's microstrip and Cohn's exact stripline and coupled stripl
 A copper layer's own thickness beside the strip is taken as the slab the strip sits in, or air when the
 strip stands on top of the stack (an outer layer, no solder mask).
 
-Needs numpy: it runs under the workcenter venv's Python, as `tools/workcenter` runs it. As a script it
+Needs numpy: it runs under Via's venv's Python, as `tools/workcenter` runs it. As a script it
 reads 1 JSON request on its argument and prints 1 JSON answer.
 """
 

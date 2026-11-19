@@ -416,7 +416,7 @@ Edit tool.
    M168, M182). Read each Bash command for a write before it is sent:
    `>`, `tee`, `sed -i`, `printf` into a file, `write_text`, `open(`
    with `w`. When the path is in the repository and the text is your
-   own, not a command's of the workcenter, the write is the Edit or the
+   own, not a command's of Via, the write is the Edit or the
    Write tool's, with a hook loaded or without one (M183).
 6. Inside a quoted heredoc (`<<'EOF'`) the shell passes text through as
    written. Write no backslash escapes in it at all: `chr(10)` for a line
@@ -577,6 +577,16 @@ that may be absent.
     to empty ones; on a machine with KiCad it keeps the engines on PATH and
     runs a test that skips on them, so a test without the skip fails there
     (M282).
+11. A test session shares the machine's engine lock with every other run:
+    its long commands wait while another session's run holds it. A waiting
+    run writes its 2 lines to the file `WORKCENTER_LOCK_LOG` names, and
+    `tests/conftest.py` names 1 for the session, so a test that compares
+    stderr is not broken by them. A test that starts a long command keeps
+    that variable in the environment it passes (start from `os.environ`);
+    a test of the lock itself takes it out. To see a test hold its
+    comparison under a wait, run it while a loop holds the lock in a folder
+    of its own (`WORKCENTER_LOCK_DIR`) with
+    `python3 tools/enginelock.py hold -- sleep 2` (M283).
 
 Done when: the summary shows no unexpected skips, the engine test is
 green on the runner, and a run with an engine taken away is not GREEN.
@@ -608,23 +618,41 @@ names has a "Done when" line.
 
 When: a change is about to be called done.
 
-1. `make verify` green locally; for a board, `workcenter gates .` GREEN
-   and the project's own CI checks run locally the way CI runs them (a
-   board repository regenerates every project with `workcenter design
-   <p>/design.py --out <scratch>` and needs exit 0, M85; `workcenter design
-   <p>/design.py --check` is that step for one project, and `workcenter ci
-   <repo>` replays the whole workflow and prints `CI REPLAY GREEN`). Run them
-   with an absolute path (`make -C /path verify`), never behind a `cd`, and
-   in the background with a log.
-2. Chain the commit and the push behind the verdict itself, never behind
-   a look at the log: `grep -q 'VERIFY GREEN' log && git push ...`. A
-   `tail` succeeds whatever the log says. Every check you run before a
-   push is in the chain (`ruff check ... && make test && git push`); a
-   check whose result only prints is not a gate. A rebase, a merge of
-   `main` or a renumbering of log entries after the run makes a new tree:
-   run `make verify` on it before its push, force-push included (M166).
+1. Before each push to a work branch of Via, run the fast
+   checks, `make check`: `make -C /path check TESTS="<the test files of what the change
+   touches>"`. It runs `make lint`, the gate's kit checks (`make kit`) and the kit's own tests, starts no
+   engine, takes no lock, and does not need the machine alone. The whole
+   health gate, `make verify`, runs on GitHub (step 4). For a board,
+   `workcenter gates .` GREEN and the project's own CI checks run locally
+   the way CI runs them (a board repository regenerates every project with
+   `workcenter design <p>/design.py --out <scratch>` and needs exit 0, M85;
+   `workcenter design <p>/design.py --check` is that step for one project,
+   and `workcenter ci <repo>` replays the whole workflow and prints
+   `CI REPLAY GREEN`). Run them with an absolute path, never behind a `cd`.
+2. Chain the push behind the verdict itself, never behind a look at the
+   log: `make -C /path check TESTS="..." && git push ...`. A `tail`
+   succeeds whatever the log says. Every check you run before a push is in
+   the chain (`make -C /path check TESTS="..." && git push ...`); a check whose
+   result only prints is not a gate.
 3. Push, then confirm the remote holds it: `git ls-remote`.
-4. Watch CI to the end; red CI is work now, not later.
+4. `main` takes no commit that its gate did not pass on that exact
+   commit: `make verify` for a change `make scope` calls `full`, and
+   `make verify-site` for one it calls `fast`. On GitHub that is CI's
+   `fast` job, and its `full` job for a full change: the pull request's
+   `verdict` check green on its head commit. A work branch with no pull request asks for
+   a run by hand: `gh workflow run ci.yml --ref <branch>`, which is always
+   `full`. Watch CI to the end; red CI is work now, not later. Until
+   `verdict` is green on a commit, nobody merges it, releases from it, or
+   starts other work from it. A red `verdict` is answered with a new
+   commit; pushed history is not rewritten. A rebase, a merge of `main` or
+   a renumbering of log entries makes a new commit: it waits for its own
+   `verdict`, force-push included (M166). Merge only a head that holds
+   `main`'s tip, with `gh pr merge <number> --merge --match-head-commit
+   <sha>`: then the tree CI tested is the tree that lands. Where there is
+   no CI (a fork without Actions, an offline machine), run `make verify`
+   on the machine, alone (P31 step 6), in the background with a log, and
+   chain the push behind it: `grep -q 'VERIFY GREEN' log && git push ...`
+   (`ee-agent-kit/lead/gate-and-push.sh` does this).
 5. The report names the commit, the run link, and the numbers from the
    gate report; a skipped or blocked part is named as such. A board
    version's report carries its pictures (P23). It gives each verdict as
@@ -740,7 +768,7 @@ configures those pins compiles, and `workcenter design` reports no
 
 ## P17 — Copper the tools add
 
-When: changing code in the workcenter that places copper on its own
+When: changing code in Via that places copper on its own
 (stitching vias, reserved vias, generated tracks or pours).
 
 1. List every code path that places that copper: grep the generator for
@@ -976,7 +1004,7 @@ after any change to what the boards look like in that version.
    M52), the GIFs, the scenes, then the copies into `docs/` and
    `docs/layers/`. It exits 1 on any failure. A still shows the board's
    own stackup colours: kicad-cli draws its preset's green unless it is
-   given `--use-board-stackup-colors`, which the workcenter passes (M134).
+   given `--use-board-stackup-colors`, which Via passes (M134).
 4. The README shows the GIFs beside the stills and the layer sheets, and
    names `workcenter pictures <version>` and its `pictures.json`, which
    the next version copies with the folder and so draws the same way.
@@ -1100,7 +1128,7 @@ written for the project, or a 3D body comes from a vendor.
    short, a web page, or a `.pdf` that does not start `%PDF` is refused and
    nothing is written. A file no site will serve is downloaded by a person
    and kept with `workcenter fetch --file <file> --url <url> --to ... --mpn
-   <MPN> --row`; its row says the workcenter did not fetch it. The part's
+   <MPN> --row`; its row says Via did not fetch it. The part's
    value on the schematic names the part those rows are for, copied from
    `sources.csv`, never typed from memory: a 2835 LED named after another
    maker's family sat on a board whose datasheet and model were
@@ -1380,8 +1408,11 @@ a task.
    started anew: its work so far is kept.
 6. Count the machine too: its memory, not only its processors. Helpers
    that run engines, a health gate and a browser do not run together.
-   The health gate that gates a push runs alone (M124).
-7. The workcenter's long commands take turns on the machine by themselves
+   A health gate on the machine runs alone (M124). Where CI runs, the
+   gate that lets a commit reach `main` runs on GitHub (P14 step 4), and
+   a push to a work branch needs only `make check`; steps 11 to 14 are
+   for a gate on the machine: one with no CI, or a run to see a fault.
+7. Via's long commands take turns on the machine by themselves
    (`tools/enginelock.py`), and `make verify` holds that lock for the whole
    gate. A brief names no lock file for them and asks for no `flock`: a
    helper runs the commands as they are, and runs a test file or a bare
@@ -1475,7 +1506,11 @@ author, a message line, a file that must leave every commit.
    check that is not yours: each new commit object from its old one and
    the rules, hashed, equal to the new id. Fix what it finds and have it
    checked again.
-5. Run `make verify` on the exact trees that will be pushed.
+5. Let the gate pass the exact commits that will be pushed. Push them
+   first to a new work branch, ask CI for a run by hand
+   (`gh workflow run ci.yml --ref <that branch>`), and go on only when
+   its `verdict` is green on each branch's head. Where there is no CI,
+   run `make verify` on each tree.
 6. Name what follows the default branch before it moves: CI, a deploy,
    another repository that clones it. Replay that repository's checks
    with the old tree and with the new one.
@@ -1485,9 +1520,9 @@ author, a message line, a file that must leave every commit.
    the push cannot change: the commits a pull request page keeps, a
    branch this session cannot delete, a clone that holds the old history.
 
-Done when: the remote's branches are the checked commits, `make verify`
-is GREEN on them, and the owner holds the old history and the list of
-step 8.
+Done when: the remote's branches are the checked commits, the gate
+passed them (CI's `verdict` green, or `VERIFY GREEN` where there is no
+CI), and the owner holds the old history and the list of step 8.
 
 ## P34 — The form of a new product
 
@@ -1519,12 +1554,12 @@ miss.
 ## P35 — Harvesting what the projects found
 
 When: a project's version has landed, a branch is about to be deleted, or
-the owner asks what the projects taught the workcenter.
+the owner asks what the projects taught Via.
 
 Every project leaves findings in 4 places: commits on a branch that never
-reached `main`, scripts it wrote because the workcenter had no tool, the
+reached `main`, scripts it wrote because Via had no tool, the
 mistakes log, and its own notes (`LOOP.md`, each version's README). A
-finding is a gap in the workcenter, never a board's own fault.
+finding is a gap in Via, never a board's own fault.
 
 1. Fetch every branch: `git fetch origin
    '+refs/heads/*:refs/remotes/origin/*'`. Run `python3 tools/harvest.py
@@ -1543,14 +1578,15 @@ finding is a gap in the workcenter, never a board's own fault.
      line that cites one. Then read each log the copy touched: a 3-way
      apply puts an entry where its context matched, which can be the
      middle of the log. See each of its tests fail on `main`'s code.
-   Before the push, run the whole suite (`python3 -m pytest tests`),
-   not the tests of the files the merge touched: a branch older than a
+   Before the merge, the whole suite passes on the merged commit (CI's
+   `verdict` on its pull request, or `make verify` where there is no CI),
+   not only the tests of the files the merge touched: a branch older than a
    check of `main` fails it with no conflict in the check's file. 22
    library tables of 2 branches named this machine's paths, and `main`
    went red (M217).
    The work has landed when the listing shows the branch at 100 %.
 3. Run `python3 tools/harvest.py scripts`. A script that 2 or more
-   projects wrote is a tool the workcenter lacks. Read the newest file of
+   projects wrote is a tool Via lacks. Read the newest file of
    each project, and write the finding with the calls they share.
 4. Run `python3 tools/harvest.py mistakes`. An entry that names an
    earlier entry of its own process is a step that did not hold. A step
@@ -1599,7 +1635,7 @@ finding is a gap in the workcenter, never a board's own fault.
    read carries `no`, even when a script held its quotes to their files:
    22 rows of the first table's draft had a day they had not earned. In a
    row, a line number stays only with a file under `examples/`; a file of
-   the workcenter's own code is named with its function, since its lines
+   Via's own code is named with its function, since its lines
    move with every commit. The rows stand in order of rating, the highest
    first. `python3 tools/harvest.py later` holds each rating to its
    scores, each score to its anchors, the rows to their order and the

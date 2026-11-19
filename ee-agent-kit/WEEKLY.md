@@ -21,8 +21,14 @@ each boundary.
 ## The cycle
 
 **0. Preflight.** Fetch; branch from latest `main` as
-`feat/<slug>`. Run `make verify` — the baseline must be green before
-feature work starts. A red baseline is this week's feature: fix it,
+`feat/<slug>`. The baseline is `main`'s tip: CI's `verdict` must be
+green on it before feature work starts. Find the run of that exact
+commit, not the newest run of `main`, which can be an older commit's or
+cancelled:
+`gh run list --workflow ci.yml --commit $(git rev-parse origin/main) --json databaseId,status,conclusion`.
+When its `status` is `completed`, read its `verdict` job:
+`gh run view <databaseId> --json jobs --jq '.jobs[] | select(.name == "verdict") | .conclusion'`
+prints `success`. Where there is no CI, `make verify` on it. A red baseline is this week's feature: fix it,
 ship the fix as the weekly update, and record that in ROADMAP.md.
 
 **1. Pick.** Top unblocked item in the Feature Queue. Do not skip or
@@ -33,8 +39,9 @@ sentence, sharpen it now — before code. Write down what evidence will
 prove it and what is out of scope. Mark the item `in progress (week of
 <date>)`.
 
-**3. Build.** The loop: implement → `make verify` → commit at each
-boundary with evidence in the message. Scope is the item's promise —
+**3. Build.** The loop: implement → `make check` with the change's test
+files → commit at each boundary with evidence in the message → push.
+`make verify` runs on the pull request, in CI's `full` job. Scope is the item's promise —
 defects found en route get fixed if they block the promise, otherwise
 queued in ROADMAP.md "Later" as a row of its table, with its 6 scores and
 `no` under "Checked" (`PROCESSES.md` P35 steps 7 and 9). No side quests.
@@ -60,7 +67,8 @@ or link it in the PR/commit).
   All user-facing words obey `docs/STYLE.md`.
 
 **6. Ship.** Push the branch; open a PR per `CONTRIBUTING.md` (or merge
-directly if the repo's policy allows agent merges). CI must be green.
+directly if the repo's policy allows agent merges). Merge only when CI's
+`verdict` is green on the head commit.
 
 **7. Release.** Follow `RELEASING.md`: the weekly update is a **minor**
 version by default, **major** if the promise involved a breaking change.

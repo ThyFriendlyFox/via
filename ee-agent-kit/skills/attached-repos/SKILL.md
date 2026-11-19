@@ -29,7 +29,7 @@ before the first edit.
 2. `$CLAUDE_ADDITIONAL_DIRECTORIES`, when set. Each entry is a directory
    the session can read and edit.
 3. `WORKCENTER.md` at a repository root. Its presence marks a
-   workcenter. Its contents list the tools, skills, gates, and paths the
+   workcenter. Its contents list the tools, skills, gates, and paths that
    workcenter provides.
 4. A `ROUTING.md` inside a directory whose name ends in `agent-kit`
    (`agent-kit/`, `ee-agent-kit/`) at a repository root. Its presence
@@ -47,7 +47,7 @@ before the first edit.
      project, the task names the target. If the task does not, ask
      before the first edit.
 3. Read, in this order: the project's kit `ROUTING.md` when present, then the project's `AGENTS.md` or `CLAUDE.md`, then each
-   workcenter's `WORKCENTER.md`. The workcenter's skills are already
+   workcenter's `WORKCENTER.md`. Each workcenter's skills are already
    loaded; `WORKCENTER.md` says which skill fits which step.
 4. Apply the rules below for the rest of the session.
 5. Report the roles in the first message after setup, 1 line per
@@ -60,7 +60,7 @@ before the first edit.
   reports, and commits land in the project repository.
 - **A workcenter is read-only.** The agent runs its tools, follows its
   skills, and reads its docs. It does not edit, commit to, or branch a
-  workcenter unless the task is about the workcenter itself. Then the
+  workcenter unless the task is about that workcenter itself. Then that
   workcenter is the project for that task and the rule above applies
   to it.
 - **Workcenter gates bind project files.** `WORKCENTER.md` names gates,
@@ -73,7 +73,7 @@ before the first edit.
   file, the project rule wins, except for gates.
 - **Tool state stays out of the project.** Caches, logs, and scratch
   output of workcenter tools go to the scratchpad or to a path
-  `WORKCENTER.md` names. `.gitignore` entries the workcenter requires
+  `WORKCENTER.md` names. `.gitignore` entries a workcenter requires
   land in the project in the first commit that uses the tool.
 - **1 branch per repository.** A task that changes 2 repositories gets
   2 branches and 2 pull requests, each citing the other.

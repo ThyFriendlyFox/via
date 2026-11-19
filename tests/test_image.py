@@ -200,7 +200,7 @@ def called_by_the_runs() -> list[Path]:
 
 def test_the_image_holds_no_example_board_and_no_site_and_nothing_it_runs_reads_them():
     """examples/ (376 MB of the working tree) and site/ (18 MB) are not in the build context, so the
-    image holds the workcenter without the example boards and the site. Nothing the RUN lines run reads
+    image holds Via without the example boards and the site. Nothing the RUN lines run reads
     a path under them: not install.sh, not the CLI's doctor, not the record. image.py's NODE_PATHS
     names site/api/ for CI's choice of path on the checkout, outside the image, and the record, the
     check and the doctor's run do not read it."""

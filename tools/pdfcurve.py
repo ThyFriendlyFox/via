@@ -3,7 +3,7 @@
 
     /opt/workcenters/ee/venv/bin/python tools/pdfcurve.py datasheet.pdf 3
 
-Runs under the workcenter venv: it needs pdfminer.six (requirements.txt). The CLI does the rest
+Runs under Via's venv: it needs pdfminer.six (requirements.txt). The CLI does the rest
 (groups, the plot's frame, the mapping onto its axes) with the standard library.
 
 Each path: its points in PDF points with y up (pdfminer drops Bezier control points and splits a

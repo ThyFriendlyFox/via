@@ -45,7 +45,7 @@ means for it.>
 ## Project requirements
 
 <!-- What a project must hold so the tools work. The first commit that
-     uses the workcenter adds these. -->
+     uses this workcenter adds these. -->
 
 - `.gitignore` entries: `<pattern>`
 - Files: `<file the tools expect at the project root>`

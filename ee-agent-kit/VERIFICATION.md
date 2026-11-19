@@ -34,6 +34,11 @@ seconds and the 10 slowest test files.
 ## Rules
 
 - CI runs **the same command** as local. No CI-only logic.
+- Where it runs: in CI's `full` job, on each pull request. `main` takes
+  no commit that its gate did not pass on that exact commit (the
+  `verdict` check). The gate is `make verify` for a change `make scope` calls `full`, and `make verify-site` for one it calls `fast`.
+  A push to a work branch needs only `make check`. With no CI, `make verify`
+  runs on the machine (`CI.md`, "Where the health gate runs").
 - A gate that can't run in some environment **skips loudly**, never
   passes silently.
 - New behavior lands with its gate in the same PR whenever feasible.

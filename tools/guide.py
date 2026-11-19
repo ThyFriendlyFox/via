@@ -1058,7 +1058,7 @@ def cmd_next(args, cli) -> int:
 
 
 def register(sub, cli) -> None:
-    """Add this module's command to the workcenter's parser; it sets `run` to its handler."""
+    """Add this module's command to Via's parser; it sets `run` to its handler."""
     text = (
         "name the one next step for a project: what to do, the command, why, what to read, and when "
         "it is done; exit 0 when nothing is left, 1 when a step is named (no error: do the step). Reads "

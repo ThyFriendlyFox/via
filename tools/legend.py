@@ -1302,7 +1302,7 @@ def _arguments(ap) -> None:
 
 
 def register(sub, cli) -> None:
-    """Add `legend` to the workcenter's parser."""
+    """Add `legend` to Via's parser."""
     p = sub.add_parser(
         "legend",
         help="every text printed on a board against its fab's least size and the legend's rules, without "

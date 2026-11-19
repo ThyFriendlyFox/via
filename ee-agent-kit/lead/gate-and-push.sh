@@ -1,6 +1,6 @@
 #!/bin/bash
-# Run a tree's health gate alone and push its commit only on VERIFY GREEN (PROCESSES.md P14 step 2,
-# P31 steps 6 and 7). It takes the lock, waits until no helper's engine or test runs, runs
+# Run a tree's health gate alone and push its commit only on VERIFY GREEN: the way for a machine with no
+# CI (PROCESSES.md P14 step 4, P31 steps 6 and 7; where CI runs, its `verdict` gates). It takes the lock, waits until no helper's engine or test runs, runs
 # `make -C <tree> verify`, and pushes <commit> with a lease only when the gate printed `VERIFY GREEN`,
 # exited 0, and the tree is still <commit> with nothing changed.
 #

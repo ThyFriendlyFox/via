@@ -1533,7 +1533,7 @@ def test_the_packs_a_refusal_names_stand_in_order_whatever_order_the_folder_give
         (tmp_path / f"{name}.json").write_text("{}", encoding="utf-8")
     with pytest.raises(ratings.Refusal) as caught:
         ratings.find_pack("mil-hdbk", tmp_path, Backwards(tmp_path))
-    assert str(caught.value) == "ratings.json: pack: `mil-hdbk` is no pack; the workcenter holds a, b, c"
+    assert str(caught.value) == "ratings.json: pack: `mil-hdbk` is no pack; Via holds a, b, c"
 
 
 def test_a_row_with_no_footprint_or_no_number_names_no_part():
@@ -1564,7 +1564,7 @@ def test_an_entry_to_fill_lists_the_numbers_of_a_pin_name_in_order():
 
 # ---------------------------------------------------------------- the gate
 #
-# gate_ratings on a netlist's text. The 4 things it takes from the workcenter are stood in for: its
+# gate_ratings on a netlist's text. The 4 things it takes from Via are stood in for: its
 # Result, the netlist kicad-cli writes, the folder of the packs and the reader of the parts files.
 
 
@@ -1877,7 +1877,7 @@ def test_an_inductor_at_the_greatest_value_asked_holds(tmp_path):
 
 
 def test_the_gate_s_summary_is_the_line_of_counts_without_the_command_s_name(tmp_path):
-    """GT09. The workcenter prints `FAIL ratings <summary>`: the name stands there once."""
+    """GT09. Via prints `FAIL ratings <summary>`: the name stands there once."""
     result = gate(tmp_path, capacitors("C16"), facts=(WEAK,))
     assert result.summary.startswith("1 fail, 0 accepted, 0 hold, 0 not judged; pack nasa-eee-inst-002")
 
@@ -1896,7 +1896,7 @@ def test_the_gate_skips_a_project_with_no_ratings_json(tmp_path):
     assert not (tmp_path / "build").exists()
 
 
-# `workcenter ratings` itself: cmd_ratings with the workcenter's 7 parts it calls stood in for.
+# `workcenter ratings` itself: cmd_ratings with Via's 7 parts it calls stood in for.
 
 
 def command(folder: Path, text: str = NETLIST, rows: tuple = (), **flags):

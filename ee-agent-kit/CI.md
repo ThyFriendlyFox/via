@@ -5,13 +5,64 @@ file explains them and holds the repository settings that are not files.
 
 | File | Trigger | Does |
 |---|---|---|
-| `ci.yml` | push to `main`, every PR, manual | `fast` on every change: no toolchain, `make verify-site` (KiCad's libraries hidden, no engine started). `full`: the image of this commit's toolchain when the registry gives it, else `tools/ci/apt_archive.sh` (apt asks Ubuntu's own archive, not the runner's regional mirror), then `sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh`; then `make verify` (tools/ci/README.md, "Where `full` runs"). `verdict` passes when `fast` passed and, for a change `tools/ci/scope.py` calls full, `full` too. |
+| `ci.yml` | push to `main`, every PR, manual (`gh workflow run ci.yml --ref <branch>`: always `full`, the gate of a branch with no pull request) | `fast` on every change: no toolchain, `make verify-site` (KiCad's libraries hidden, no engine started). `full`: the image of this commit's toolchain when the registry gives it, else `tools/ci/apt_archive.sh` (apt asks Ubuntu's own archive, not the runner's regional mirror), then `sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh`; then `make verify` (tools/ci/README.md, "Where `full` runs"). `verdict` passes when `fast` passed and, for a change `tools/ci/scope.py` calls full, `full` too. |
 | `nightly.yml` | 06:17 UTC daily | `tools/ci/apt_archive.sh`, then `sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh` then `make verify`, always by install.sh. Keeps 1 `ci-failure` issue in step with the nights (`tools/ci/nightly_issue.py`): a failed night opens it or adds 1 comment with the run and the gate's `why:` lines; a passed night closes it with 1 comment naming the run; a second open one is closed as a duplicate of the oldest (tools/ci/README.md, "The nightly's `ci-failure` issue"). Catches a moved PPA, a new KiCad point release, a broken dependency. |
 | `image.yml` | PR on the files the build reads, every push to `main`, `v*.*.*`, Monday 04:17 UTC, manual | Builds the image on amd64 and arm64 from install.sh, with CI's 2 bounds of its apt step as build arguments, checks it with doctor and the gates as a user; pushes to `ghcr.io/<owner>/via` except on a PR. |
 | `release.yml` | tag `v*.*.*` | Publishes the GitHub Release with generated notes (the image comes from `image.yml`). |
 | `stale.yml` | Mondays | Marks issues stale after 60 days, closes after 14 more. `blocked`, `security`, `accepted` are exempt. |
 | `../dependabot.yml` | weekly | pip (`requirements.txt`), GitHub Actions, Docker base image. Minor and patch updates grouped. |
 | `../PULL_REQUEST_TEMPLATE.md` | every PR | What, Why, Evidence, checklist; the changelog line is a new file under `ee-agent-kit/changes/`. |
+
+## Where the health gate runs
+
+`main` takes no commit that its gate did not pass on that exact commit. The gate is `make verify` for a change `make scope` calls `full`, and `make verify-site` for one it calls `fast`. The full gate runs on GitHub, in the `full` job of `ci.yml`. It is the
+same `make verify` as on a machine. The owner chose this on 2026-11-19.
+
+| The change | Before its push | On GitHub | What may merge |
+|---|---|---|---|
+| Any change, pushed to a work branch with a pull request | `make check TESTS="<the test files of what it touches>"` | The push starts `ci.yml`. The `scope` job picks `fast` or `full`. `fast` runs on every change; `verdict` is green only when `fast` passed and, for a `full` change, `full` too. | The head commit, when `verdict` is green on it and the branch holds `main`'s tip. |
+| A work branch with no pull request yet | `make check TESTS="..."` | A run by hand: `gh workflow run ci.yml --ref <branch>` (`workflow_dispatch`). It is always `full`. | Nothing merges without a pull request. A green `verdict` lets others start work from that commit. |
+| A change `make scope` calls `fast`, pushed straight to `main` | `make verify-site` | The push to `main` runs `ci.yml`; its `fast` job runs `make verify-site` again. | It is on `main` already. |
+| A release | The release commit goes through a pull request like any change. | Its `verdict` on `main`. | The tag goes only on a commit whose `full` job passed. A release commit is `fast`, so ask for a run by hand on `main`: `gh workflow run ci.yml --ref main` (RELEASING.md step 4). |
+| Any change, where there is no CI (a fork without Actions, an offline machine) | `make verify`, alone on the machine (`ee-agent-kit/lead/gate-and-push.sh` pushes only on `VERIFY GREEN`) | Nothing. | The commit that printed `VERIFY GREEN`. |
+
+`make check` is `make lint`, then the gate's kit checks (`make kit`, `verify/verify.sh kit`: the 2 copies of every kit skill, each skill's frontmatter, CLAUDE.md = AGENTS.md, every mistake's process and every process's Done when; 0.6 s to 0.75 s here), then pytest on the kit's own tests and the files in `TESTS`: the commits' authors (`tests/test_docs.py`), the 2 copies of the lead's skills (`tests/test_lead_skills.py`), and this rule's documents and kit checks (`tests/test_gate_rule.py`). Engine starts are refused and the tests marked `engine` are left out, as in `make verify-site`. It takes no lock, so it does not need the machine alone. With no `TESTS` it took 8.2 s to 14.5 s here, 3 runs on 4 processors with helpers at work (load average 5.2 to 6.5), on 2026-11-19.
+
+When CI itself cannot run for a cause outside the change, the gate is `make verify` on the machine on the exact commit, by the same rule as a machine with no CI. On 2026-11-19 at 07:14 UTC a package host was down: `apt-get update` did not end within 120 s on the runner, 3 tries, and the job stopped before any test.
+
+The rules that follow from it:
+
+- A work branch may hold a commit the gate has not passed yet. The pull
+  request shows it: its checks are pending or red. Nobody merges it,
+  releases from it, or starts other work from it until `verdict` is
+  green on that commit.
+- A red `verdict` is answered with a new commit. Pushed history is not
+  rewritten. A red gate is fixed, not left (AGENTS.md).
+- A pull request's run tests its head merged with `main` as it was when
+  the run started. Merge `main` into the branch first, so the tree CI
+  tested is the tree that lands. If `main` moves before the merge, merge
+  it in again and wait for the new `verdict`.
+- Merge with `gh pr merge <number> --merge --match-head-commit <sha>`.
+  GitHub then refuses the merge if the head is no longer the commit
+  whose `verdict` you read.
+- The gate's lock and the helpers' rules for it (PROCESSES.md P31 steps
+  11 to 14) are for a gate on a machine. A landing that CI gates needs
+  neither.
+- `verdict` can be made a required check of `main` in the repository's
+  settings (Branches). GitHub then refuses a merge without it. It is a
+  setting, not a file; this document does not say whether it is on.
+
+Why, from the runs of 2026-11-19. On the machine, the gate needs the
+machine alone. The gate push24 waited 50 min 31 s for quiet and was
+ended by its 1-hour limit (MISTAKES.md M273). The gate push28 ran
+`make verify` in 906 s (its tests 889 s), from 05:26:16 UTC; the gate
+before it, push27, had made its lock at 05:06:51 (M274, M278). While a
+gate waits or runs, no helper may start a test. CI's `full` job ran the
+same `make verify` on the same commit, 9beca5b, in 14 min 58 s (run
+44466890200, 05:41:46 to 05:56:44 UTC, on the install path), while the
+machine went on working. Inside the image, the `full` job of run
+44428908528 took 12 min 42 s. Before this change each landing ran the
+whole suite 2 times: on the machine, then on the pull request.
 
 ## Toolchain step
 
@@ -24,6 +75,8 @@ The 2 bounds end a stalled index or download with apt's own line within the `ful
 The runner is `ubuntu-24.04`, so the PPA step, the Java package, and ngspice
 match the cloud environment. `REQUIRE_FREEROUTING=1` makes a blocked JAR
 download fail the run; a green CI proves the autoroute engine installs.
+
+`make verify` holds the engine lock for the whole gate, so its tests' commands never wait on it. `tests/conftest.py` still names a file for a waiting run's 2 lines (`WORKCENTER_LOCK_LOG`), so a test that compares stderr reads the same lines in CI and on a machine where another session holds the lock.
 
 Before install.sh, the install path and the nightly run turn apt from the runner's regional mirror to Ubuntu's own archive: `sudo env APT_ARCHIVE_CI=1 bash tools/ci/apt_archive.sh /etc/apt`. Twice the mirror us-east-2.ec2.archive.ubuntu.com crawled and the download hit its bound of 570 s (CI runs 44402154007 and 44432768560), while the image builds of the same hours asked archive.ubuntu.com and were fast (`Image` run 44432768632 built both machines between 00:54 and 00:59 UTC on 2026-11-19). The script changes only a regional or cloud host of archive.ubuntu.com or ports.ubuntu.com; a layout it does not know, it names and leaves. Setting the repository variable `CI_APT_UBUNTU_ARCHIVE` to `0` turns it off (tools/ci/README.md, "Ubuntu's own archive on the install path"). Its first run on a runner, CI run 44444183056 (2026-11-19), passed, and the install step then took 1 min 29 s, where the 3 runs before it on the regional mirror ran 9 min 43 s or more and stopped at the download's bound.
 
@@ -51,7 +104,7 @@ A change writes its changelog line into `ee-agent-kit/changes/<yyyy-mm-dd>-<slug
 
 Done on 2026-11-18: steps 1 and 2. Pull request 92's `Image` run (44396387137) built both machines' images and pushed nothing; `build (amd64)` stopped on its first run on a 503 of the KiCad 10 source and passed on its 1 re-run. It was merged as 1fb707c, and the `Image` run on main (44402154037) built both images, pushed them, and its `publish` job passed at 21:36 UTC. Those images went to the old package, `ee-workcenter`. Step 3 for `via` waits for its first push. CI run 44409635104 took the image path first: the install step was skipped and `make verify` ran inside the image, 3732 of 3811 tests passed and 1 failed, a test of the gates step that read the machine's user list, fixed since.
 
-A user's commands for the image of a release: the README, "Run the workcenter from its container".
+A user's commands for the image of a release: the README, "Run Via from its container".
 
 The lines to read in the first runs:
 

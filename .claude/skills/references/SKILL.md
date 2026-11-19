@@ -1,6 +1,6 @@
 ---
 name: References
-description: Keeps the index of the standards, makers' application notes, datasheets, web pages, papers and books the workcenter's rules and code cite - each held by its SHA256, a web page by the values read from it, a paper or book with no free copy as cited and not held - fetches each once under the workcenter's own name into a folder outside every repository, checks a file a person downloaded against it, and fails a rule, a fab rule file or a tool's citation that names a document the index lacks.
+description: Keeps the index of the standards, makers' application notes, datasheets, web pages, papers and books Via's rules and code cite - each held by its SHA256, a web page by the values read from it, a paper or book with no free copy as cited and not held - fetches each once under Via's own name into a folder outside every repository, checks a file a person downloaded against it, and fails a rule, a fab rule file or a tool's citation that names a document the index lacks.
 ---
 
 # References
@@ -13,7 +13,7 @@ names the copy each rule was written from by its SHA256.
 and fails a rule whose document the index lacks.
 
 The repository holds the index and the rules, never a document: the makers'
-and the issuers' terms forbid a copy. A site that refuses the workcenter's
+and the issuers' terms forbid a copy. A site that refuses Via's
 name is not asked under another.
 
 ## When
@@ -123,8 +123,8 @@ name is not asked under another.
    - `not held <id>: a paper, cited and not held (...)` (or a book):
      there is no copy to fetch. Read it in a library at the place the line
      names.
-   - `refused <id>: <url> answered HTTP 403 ...`: the site refused the
-     workcenter's name. Do not ask again under another name. Download the
+   - `refused <id>: <url> answered HTTP 403 ...`: the site refused
+     Via's name. Do not ask again under another name. Download the
      file by hand in a browser and go to step 4.
    - `gone <id>: ... HTTP 404`: the URL moved. Find the maker's new URL,
      change the entry's URL, and run step 3 again.

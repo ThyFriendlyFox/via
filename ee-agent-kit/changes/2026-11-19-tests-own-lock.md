@@ -1,0 +1,2 @@
+### Fixed
+- A test session's run no longer fails when another session's run on the machine holds the engine lock. A waiting run writes its 2 lines (`waiting on the engine lock`, `took the engine lock after`) to the file `WORKCENTER_LOCK_LOG` names; `tests/conftest.py` names 1 for each session and prints what it holds in the summary. The lock stays 1 for the machine. On 2026-11-19 a run of 17 test files ended `2 failed, 548 passed`, and 3 tests of `tests/test_ci.py` failed 3 times, each on those lines.

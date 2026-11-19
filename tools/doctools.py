@@ -1,4 +1,4 @@
-"""doctools — the documents a board version carries, made by the workcenter. Standard library only.
+"""doctools — the documents a board version carries, made by Via. Standard library only.
 
 `tools/workcenter` registers these commands with `register(sub, cli)`, passing itself as `cli`, so they
 report through its `Result` and `emit` and reach its gates (`gate_procure`, `gate_render`):
@@ -1481,7 +1481,7 @@ def board_counts(value: str) -> tuple[int, ...]:
 
 
 def register(sub, cli) -> None:
-    """Add this module's commands to the workcenter's parser; each sets `run` to its handler."""
+    """Add this module's commands to Via's parser; each sets `run` to its handler."""
     p = sub.add_parser(
         "docs",
         help="a version folder's CONTENTS.md and datasheets/: writes CONTENTS.md, copies each part's "
@@ -1543,7 +1543,4 @@ def register(sub, cli) -> None:
 
 
 if __name__ == "__main__":
-    sys.exit(
-        "doctools is part of the workcenter command line: "
-        "run `workcenter docs|costs|pictures|version|diagram`"
-    )
+    sys.exit("doctools is part of Via's command line: run `workcenter docs|costs|pictures|version|diagram`")
