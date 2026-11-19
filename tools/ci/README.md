@@ -233,7 +233,7 @@ index within 120 s in 3 tries (run 44477966021). So apt keeps more than
   `dists/<suite>/main/binary-<arch>/Packages.gz`, side by side, 3 s each,
   ended at 4 s: at most 5 s in all, of the 8 s the `full` job's limit
   leaves beside install.sh's worst case. The list's priorities follow bytes a
-  second. A host that does not answer goes last and stays. With no answer
+  second of a 1 MiB sample: a first guess, not a promise for the download. A host that does not answer goes last and stays. With no answer
   at all the priorities stay as the runner wrote them; hosts of 1
   priority, or of none, apt asks in random order, and the line says so.
 - `/etc/apt/apt.conf.d/80apt-archive-ci` sets apt's http and https
@@ -253,10 +253,13 @@ index within 120 s in 3 tries (run 44477966021). So apt keeps more than
 1. Read its lines in the step "Rank the hosts of Ubuntu's archive". A
    line `probe <host>: <n> bytes in <s> s, <r> bytes/s` or
    `probe <host>: no answer (...); it goes last` per host, then
-   `apt-mirrors.txt: apt asks <first>, then ...: the fastest first`, or
+   `apt-mirrors.txt: apt asks <first>, then ...: the fastest in a 1 MiB sample first`, or
    `no host answered the probe; apt asks in the runner's order: ...`
    (`... by the runner's priorities: <a> and <b> in random order, ...`
    when priorities tie or are missing).
+   After a slow download pass, the install step prints `[apt-archive]
+   /etc/apt/apt-mirrors.txt: <host> served a download pass too slow to
+   finish; apt asks ...`.
    A line `<file>: <host> -> mirror+file:/etc/apt/apt-mirrors.txt` names a
    source file it pointed at the list, and `added ...` the hosts the list
    gained. A line `no regional or cloud mirror ...; changed nothing` says
@@ -272,8 +275,13 @@ index within 120 s in 3 tries (run 44477966021). So apt keeps more than
 What it does not cover:
 
 - A host that keeps sending a trickle never goes silent for 15 s, so apt
-  does not leave it. The probe ranks it last only if it is slow at the
-  step's start.
+  does not leave it. install.sh does: it watches each bounded download
+  pass and ends one too slow to finish in the time left
+  (`APT_WATCH_WINDOW`, 120 s), and the install step's
+  `APT_SLOW_PASS_COMMAND` runs `tools/ci/apt_archive.sh --slow <hosts>`
+  before the next pass: the host that served the slow pass goes last (CI
+  run 44506767788: the first host sent its 1 MiB sample at 2.47 MB/s and
+  the download at 48.3 kB/s).
 - install.sh's download passes its own `Acquire::http::Timeout=60` and
   `Acquire::Retries=3` on apt's command line, which win over the file: in
   the download a silent host is left after 4 tries of 60 s.

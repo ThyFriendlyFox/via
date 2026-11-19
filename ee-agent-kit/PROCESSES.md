@@ -109,6 +109,11 @@ or any step that downloads, installs, or runs for more than a minute.
     runner carries beside it (another vendor's JDK under `JVM_DIR`); its
     tests skip on the product's own pick, never on whatever stands first
     on PATH (M289).
+12. A host chosen by a sample is a first guess. A transfer that has a
+    bound watches its own progress, and ends a pass that cannot finish in
+    the time left at the rate it gets, so that the next pass, or the next
+    host, has time. A setting written for a step is checked in that
+    step's own log: a later command line can override it (M293).
 
 Done when: the run is green, its log shows progress lines in every long
 step, no step used more than half its limit, and no step depended on a
