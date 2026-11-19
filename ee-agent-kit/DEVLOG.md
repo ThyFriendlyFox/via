@@ -39,6 +39,12 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-19 — A changelog line goes into a file of its own
+
+Another session pushes site changes straight to main, each with a line in CHANGELOG.md. From 00:00 to 05:04 UTC main gained 17 first-parent commits, and 15 of them changed that file. Each time main moved, the open pull request conflicted in CHANGELOG.md alone, GitHub ran no checks on it, and a lap of merge, test and push cost about 40 minutes. By the lead's count it happened 6 times that day, the last to pull request 98 at 07:49 UTC. The cause: 2 sessions write the same lines of 1 file. Now a change adds 1 small file under ee-agent-kit/changes/, and a release folds those files into CHANGELOG.md. A line written the old way still counts, so nothing broke on the day the rule changed. The batch's 12 lines under Unreleased moved into 5 change files, and its CHANGELOG.md now equals main's.
+
+Evidence: `tests/test_ci_changes.py` (18 tests); `git merge-tree` of the batch with main, before (conflict) and after the move of its lines (clean); M279; branch `wip/changes-folder`.
+
 ## 2026-11-19 — The SIM gate asks for the parts that can get hot
 
 A model that never wrote `sim/thermal.json` got a pass with nothing judged. The SIM gate now reads the board's parts with kicad-cli and asks for each part whose facts carry a thermal figure. The first review found a row with the WSON part's number holding the SOT-23 part on the WSON's facts; the gate now compares the number. A parts list outside the project left the regulator with no number, and the line said no part carried a figure; the gate now asks for an unnumbered part whose pins fit an entry with a figure. The second review found that a project with decks and no schematic passed `--strict` at 124.97 C; the gate now reads the decks for part numbers with a figure. The third check found a row for no fitted part still judged and failing at 106.26 C; the board is now read first and such a row is left out of the judging. Landing found 2 fixtures named `pass-` that the new rule failed under `sim --strict`: each had a made-up U1 with no number and the pins of a real regulator. Each now gives its U1 a made-up number in `parts.csv`. The rule can raise a false alarm on an unnumbered part; the number clears it.

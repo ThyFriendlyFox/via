@@ -1703,9 +1703,9 @@ Root cause: A file that a running process reads was changed in 2 writes. Between
 Process: P31
 
 ## M279 — 2026-11-19 — main moved under the open pull request 4 times in 1 day
-What happened: Another session pushes site changes straight to main, each with a changelog line. On 2026-11-19 main moved under the open pull request 4 times. Each time the pull request conflicted in `ee-agent-kit/CHANGELOG.md`, and GitHub ran no checks on it. Each lap (merge main, gate, push, CI) cost about 40 minutes. From 00:00 to 05:04 UTC main gained 17 commits, and 15 of them changed `ee-agent-kit/CHANGELOG.md` (`git log --first-parent`).
+What happened: Another session pushes site changes straight to main, each with a changelog line. On 2026-11-19 main moved under the open pull request 4 times. Each time the pull request conflicted in `ee-agent-kit/CHANGELOG.md`, and GitHub ran no checks on it. Each lap (merge main, gate, push, CI) cost about 40 minutes. From 00:00 to 05:04 UTC main gained 17 commits, and 15 of them changed `ee-agent-kit/CHANGELOG.md` (`git log --first-parent`). By the lead's count main moved under the pull request 6 times that day, the last at 07:49 UTC (4 commits of the site's session), and CHANGELOG.md conflicted again.
 Cost: About 40 minutes for each of 4 laps.
-Root cause: Every change writes its line at 1 place in 1 file, the top of `## [Unreleased]`, so any 2 changes conflict there. The lead started each lap without asking the owner to hold the other session's pushes, and did not say what each move cost.
+Root cause: Every change writes its line at 1 place in 1 file, the top of `## [Unreleased]`, so any 2 changes conflict there. The lead started each lap without asking the owner to hold the other session's pushes, and did not say what each move cost. Fixed by giving each change a file of its own: `ee-agent-kit/changes/`, `tools/ci/changes.py` (P14 step 9).
 Process: P14
 
 ## M280 — 2026-11-19 — A sentence about the container package's visibility was written from an assumption

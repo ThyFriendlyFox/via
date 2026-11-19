@@ -11,7 +11,7 @@ file explains them and holds the repository settings that are not files.
 | `release.yml` | tag `v*.*.*` | Publishes the GitHub Release with generated notes (the image comes from `image.yml`). |
 | `stale.yml` | Mondays | Marks issues stale after 60 days, closes after 14 more. `blocked`, `security`, `accepted` are exempt. |
 | `../dependabot.yml` | weekly | pip (`requirements.txt`), GitHub Actions, Docker base image. Minor and patch updates grouped. |
-| `../PULL_REQUEST_TEMPLATE.md` | every PR | What, Why, Evidence, checklist. |
+| `../PULL_REQUEST_TEMPLATE.md` | every PR | What, Why, Evidence, checklist; the changelog line is a new file under `ee-agent-kit/changes/`. |
 
 ## Toolchain step
 
@@ -30,6 +30,10 @@ Before install.sh, the install path and the nightly run turn apt from the runner
 ## The nightly's ci-failure issue
 
 The nightly run's last step runs on a passed and a failed night, not on a cancelled one. It lists the open issues labelled `ci-failure`, calls `tools/ci/nightly_issue.py` with the night's outcome, the gate's log (`build/nightly-verify.log`, written by the Verify step through `tee`) and each step's outcome, and does what it prints. Issue 63 of nightly run 44031336712 (2026-11-17) stayed open after run 44251400298 passed and was closed by hand; the step now closes such an issue on the next passed night. To read a night: the step's lines `nightly-issue: open ...`, `comment on #N`, `close #N as completed` or `as not_planned`, or `nothing to do`. Not yet run on GitHub. A night that hits the job's time limit counts as cancelled: the step is skipped, and an open issue stays as it is.
+
+## The changelog in files of their own
+
+A change writes its changelog line into `ee-agent-kit/changes/<yyyy-mm-dd>-<slug>.md`, not into CHANGELOG.md (tools/ci/README.md, "A changelog line in a file of its own"). The kit checks of `ci.yml`'s fast and full jobs run `python3 tools/ci/changes.py check`; a fault is 1 line, `<file>:<line>: <why>`. On 2026-11-19 an open pull request conflicted in CHANGELOG.md each time `main` moved, and GitHub runs no checks on a pull request that conflicts (M279). A release folds the files with `fold` (RELEASING.md step 2).
 
 ## The container image: what the owner does once
 
