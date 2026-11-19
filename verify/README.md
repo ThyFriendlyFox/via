@@ -50,8 +50,14 @@ lock's own commands.
 | Line | What to do |
 |---|---|
 | `FAILED <id> (shard N) at T s` | A test failed, T seconds after its shard started; the line comes while the other shards run on. Run its file alone: `python -m pytest <file> -q`. |
+| `why: <id>, failed at call (shard N):` | What pytest reported for it, under `  \| `: the first 10 and last 30 lines of the traceback (the test's frame, the line that raised, the exception), each captured output's last 10 lines, 300 characters a line. `an error at setup` or `an error at teardown` for a fixture's error. The first 10 such reports are printed. A character UTF-8 cannot write is printed escaped. |
+| `why: <file> could not be collected (shard N):` | The file's import or collection error, from the shard, or `(the collection in 1 process)` when only 1 process met it. |
+| `why: shard N ended with no report from pytest (...)` | The shard was killed, crashed or cut off. The line names the test it started last and did not end, then the last 30 lines of its `pytest.log`; after a crash, its `Fatal Python error` and the stack, the test's frame first. |
+| `why: shard N exited <code> and no test failed` | pytest reached its end of session and stopped for another reason (5: no tests; 3: an internal error, with its `INTERNALERROR>` lines). The end of its `pytest.log` follows. A usage error or a conftest that cannot load (4) never reaches the end of session: it shows as `why: shard N ended with no report from pytest (exit 4)`, with pytest's error in the lines below. |
+| `why: shard N was running <id> when stopped` | The gate was stopped by a signal (a CI time limit): the test each shard had started and not ended (`was between tests` when it had none). |
+| `why: N more failed tests' reports are not printed here` | More than 10 failures: the rest are counted; each shard's whole report is its `pytest.log` under the folder named. |
 | `shard N exited <code>` | pytest in that shard did not pass. Its log is under the `logs:` folder the run printed. |
-| `shard N ended before pytest's end of session` | The shard was killed, crashed, or a test ended the process (even with exit 0). Read the end of its `pytest.log`. |
+| `shard N ended before pytest's end of session` | The shard was killed, crashed, or a test ended the process (even with exit 0). The end of its `pytest.log` is printed under `why: shard N ended ...`. |
 | `the collection in 1 process exited <code>` | `pytest --collect-only` failed in 1 process. Its last 5 lines follow. |
 | `missing: <id>` | 1 process collects the test, and no shard ran it. |
 | `not collected: <id>` | A shard ran a test that 1 process does not collect. |

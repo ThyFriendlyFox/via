@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/) · Versioning: [SemVer](
 
 ## [Unreleased]
 ### Changed
+- When a test fails, `make verify` prints why: what pytest reported for it under a `why:` line (the traceback's first 10 and last 30 lines, each captured output's last 10), for the first 10 failures, errors at setup or teardown, and files that could not be collected; the count of the rest and where the whole reports are. A shard that ended with no report names the test it started last and prints the end of its output. A stop by signal names the test each shard was running. A report's character that UTF-8 cannot write is printed escaped, so the verdict always follows. The lines printed before are unchanged.
 - The image build and the nightly run bound install.sh's apt step as CI's full job does (APT_UPDATE_TIMEOUT=120, APT_DOWNLOAD_TIMEOUT=570): the Dockerfile takes both as build arguments with empty defaults, so a `docker build .` of a person's own has no bound.
 - install.sh installs curl, gpg, certificates, git, make and a C compiler first where 1 is missing (a bare Ubuntu 24.04).
 - `release.yml` no longer builds an image; `image.yml` builds the image of a release's tag.

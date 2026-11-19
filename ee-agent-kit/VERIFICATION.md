@@ -20,7 +20,9 @@ failures show early:
    shard ends before pytest's end of session, when the collection in 1
    process fails, when the ids the shards ran are not the ids 1 process
    collects, or when a test's skip or xfail marks differ between its
-   shard and 1 process. The fixture boards under `tests/boards`
+   shard and 1 process. A failure's report is printed in the step's own
+   output, bounded (`verify/README.md`): after a CI run, or inside the
+   image, the shards' logs are gone. The fixture boards under `tests/boards`
    are the gate tests: `pass-rc-divider` must be GREEN,
    `fail-drc-clearance` must stop at DRC with a `clearance` violation,
    `fail-sim-spec` must fail its `vout` bound. KiCad-dependent tests skip
