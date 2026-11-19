@@ -81,7 +81,7 @@ None carries a signal past its via. Removing them changes the route.
 
 ## Pull check
 
-`check_pulls` is on (workcenter PROCESSES.md P16 step 5). Every control input has a resistor to a
+`check_pulls` is on (Via's PROCESSES.md P16 step 5). Every control input has a resistor to a
 rail or a driver, or is named in `defined_nets` with what holds it: the module's power, reset and
 recovery keys and its SD command and card-detect lines (each pulled up on the module, PU 10K in
 Vantron's pin table); the RP2350's own pull-ups on RUN, QSPI_SS, SWCLK and SWDIO; the converter's

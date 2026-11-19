@@ -13,8 +13,8 @@ This folder is the hardware. Each prototype is its own folder, and each folder i
 project: `design.py`, the generated `.kicad_*` files, its footprints, symbols and 3D models, its
 README with the spec, pin plan, BOM and decisions, its images under `docs/`, its simulation decks
 under `sim/`. It is laid out the way a board repository is (compare
-[thyfriendlyfox/vape-prototype](https://github.com/ThyFriendlyFox/vape-prototype)), and it is the
-EE Workcenter's example of what a design file can make: the workcenter, this repository's `tools/`,
+[thyfriendlyfox/vape-prototype](https://github.com/ThyFriendlyFox/vape-prototype)), and it is
+Via's example of what a design file can make: Via, this repository's `tools/`,
 supplies the tools and gates; this folder supplies the board.
 
 The latest version, [v0.2](v0.2/), turning once round (`workcenter pictures v0.2`):
@@ -38,5 +38,5 @@ The commit is where that version was finished; its folder holds the files from t
 |---|---|
 | [`v0.2/`](v0.2/), [`v0.1/`](v0.1/) | each version's board: `design.py` and what it generates, `sim/`, `docs/` (v0.1's also `assembly.py`) |
 | [`parts/`](parts/) | an orderable part for every line (`catalog.csv`), what is off the board (`offboard/`), the priced lists |
-| [`library/`](library/) | `sources.csv`: each datasheet the design reads, its address, revision and the SHA-256 of the copy read; the PDFs stay with their makers, so the workcenter stays small |
+| [`library/`](library/) | `sources.csv`: each datasheet the design reads, its address, revision and the SHA-256 of the copy read; the PDFs stay with their makers, so the repository stays small |
 | [`CLAUDE.md`](CLAUDE.md) | the commands, for an agent or a person working on the series |

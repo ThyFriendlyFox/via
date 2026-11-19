@@ -10,7 +10,7 @@ drives 30 pins at 3.3 V the way a Teensy's microcontroller does; the Snapdragon 
 its bootloader and talks to it over USB, so Linux flashes it. One USB-C cable powers the board and
 carries USB 3.1 and a DisplayPort monitor.
 
-This folder is a whole KiCad 10 project made with the EE Workcenter: `design.py` is the board, and
+This folder is a whole KiCad 10 project made with Via: `design.py` is the board, and
 the `.kicad_*` files beside it are what `workcenter design` writes from it.
 
 | Item | State |
@@ -26,7 +26,7 @@ the `.kicad_*` files beside it are what `workcenter design` writes from it.
 
 ## Images
 
-With the Snapdragon module on its sockets (`assembly.py` on the workcenter's `tools/scene.py`,
+With the Snapdragon module on its sockets (`assembly.py` on Via's `tools/scene.py`,
 drawn by `workcenter pictures .`), turning once round:
 
 ![assembly turning](docs/assembly-spin.gif)
@@ -59,11 +59,11 @@ and the 5 bodies in `models/`.
 ## What changed in v0.1: the first board
 
 The request: a new microcontroller development board, something like a Teensy but with a Snapdragon
-chip, compact, as the workcenter's example of what it can make.
+chip, compact, as Via's example of what it can make.
 
 | Finding | The owner's answer | What v0.1 does |
 |---|---|---|
-| A Snapdragon cannot stand alone on a board this size: it needs LPDDR4X, flash and 3 PMICs, and its 0.4 mm BGA needs microvias and length-matched memory lanes the workcenter's router does not draw | shown the plan (the module on a Teensy-shaped carrier, an RP2350 on the pins) on 2026-11-11; the answer named vape-prototype as the layout to follow, and the work went on | carries the Snapdragon 845 on Lantronix's Open-Q 845 uSOM, whose pinout and land pattern are public ("The Snapdragon module") |
+| A Snapdragon cannot stand alone on a board this size: it needs LPDDR4X, flash and 3 PMICs, and its 0.4 mm BGA needs microvias and length-matched memory lanes Via's router does not draw | shown the plan (the module on a Teensy-shaped carrier, an RP2350 on the pins) on 2026-11-11; the answer named vape-prototype as the layout to follow, and the work went on | carries the Snapdragon 845 on Lantronix's Open-Q 845 uSOM, whose pinout and land pattern are public ("The Snapdragon module") |
 | A Snapdragon's pins run at 1.8 V; a Teensy's at 3.3 V | part of the same plan | an RP2350 drives the pins at 3.3 V; the Snapdragon's own I2C, debug UART, power key and reset are on the pins too, marked 1.8 V ("The RP2350") |
 
 ### Board
@@ -294,7 +294,7 @@ board's 1 % resistors, C1 and C2 at 50 % either way and a cable from 0.5 to 1.5 
 
 ### Frequency plan
 
-`sim/frequency-plan.json` (workcenter PROCESSES.md P30); `workcenter sim .` holds each source's first
+`sim/frequency-plan.json` (Via's PROCESSES.md P30); `workcenter sim .` holds each source's first
 10 harmonics against each resonance's band.
 
 | Source | Frequency | From |
@@ -403,7 +403,7 @@ priced list is `../parts/lists/v0.1.md`.
 
 ## Working on this board
 
-The tools come from the EE Workcenter, this repository's `tools/`. Run the commands from this
+The tools come from Via, this repository's `tools/`. Run the commands from this
 folder.
 
 ```sh
@@ -430,7 +430,7 @@ more ground vias stitch the patch of top copper the top-layer pairs ring under t
 
 - **A module, not the chip** (v0.1). The QRB2210, the Snapdragon-class chip Arduino's UNO Q carries,
   has a public pinout but sits in a 752-ball 0.4 mm BGA that needs LPDDR4X, eMMC and a PMIC routed
-  on an HDI board with matched lengths; the workcenter's generator draws through vias only and its
+  on an HDI board with matched lengths; Via's generator draws through vias only and its
   router matches no lengths. The Open-Q 845 uSOM has all of that inside and a public pinout and land
   pattern, so the carrier can be checked pin by pin against its datasheet.
 - **An RP2350 on the pins** (v0.1). The Snapdragon's pins are 1.8 V, a Teensy's 3.3 V. The RP2350 is
@@ -446,7 +446,7 @@ more ground vias stitch the patch of top copper the top-layer pairs ring under t
   (VBATT_CONN_VSENSE_P) across no shunt (CS_P, CS_N to ground). The carrier design guide that would
   confirm it needs a registration.
 - **0.2 mm from copper to a hole or the edge** (v0.1). The receptacle's rear shell slot and its peg
-  are 0.375 mm apart, so no pad keeps a 6 mil ring and the workcenter's 0.3 mm. The 2 rear tabs carry
+  are 0.375 mm apart, so no pad keeps a 6 mil ring and Via's 0.3 mm. The 2 rear tabs carry
   copper on the outer layers only (they are unnumbered in `footprints/`); the shell is grounded by
   its front tabs.
 
