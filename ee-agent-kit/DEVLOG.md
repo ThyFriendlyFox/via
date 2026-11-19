@@ -39,6 +39,12 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-19 — The website and the example boards say Via
+
+The owner asked that the old name leave the website and the example boards. The name pass had left 5 program strings that the site and the boards quote: the gates' legend line, the rule file's header, the downloaded file's note, a titled schematic's company and the local image tag. They say Via now, and the readers take both forms, because boards made before today keep their files; only those 2 header forms name a fab. 1 helper per example board reworded its documents, Lark's light disc's rule file was written again by the tool, the example pages were rebuilt by `site/examples.py`, and Rosetta v0.1's shown gates run was brought to the program's new line. The name test now reads the examples' Markdown and the visible text of every site page. An independent check found 43 files under `examples/` changed, all Markdown or Python but 1 line of Lark's rule file, no schematic, board or picture; gates on 3 boards gave the same verdicts with only the name different, and the built site has 0 hits for the old name. 5 routed boards keep the old header in their copied rule files until they are next routed, and Wyvern's sources keep a phrase until a follow-up.
+
+Evidence: `tests/test_product_name.py` (7 tests); branch `wip/name-site`, d8da829.
+
 ## 2026-11-19 — A stopped test run waits for its shards even when it is told to stop twice
 
 Main's quick CI check went red on 1 test of the stop of the test shards, a test the change did not touch. The same tree had passed it 25 minutes earlier. The test read a process's file in `/proc` just as another process cleared that process away, and the read failed. The real fault was in the runner. Under the engine lock's `hold`, the runner hears the stop 2 times, from its group and from the hold. The second stop broke off its clean-up, so it left without waiting for its shards. The runner now ignores a stop after the first. The test now checks that the runner waited for every shard, and it no longer waits for a guessed time; a third test calls the clean-up on children only it can reap, and the stop tests fail in 30 s on a runner that hangs. The reviewer ran the holder test 100 times of 100 with no load and 100 of 100 beside 4 busy loops, and the new test failed 20 of 20 against the old runner. Left: a stop raised inside a shard's Popen, after the fork and before the handle is kept, loses that shard, with no test.
