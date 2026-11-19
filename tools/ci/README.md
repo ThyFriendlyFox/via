@@ -12,6 +12,7 @@ the minute the roadmap asks for.
 | `engine_marker.py` | The pytest plugin behind the `engine` marker. `tests/conftest.py` loads it. |
 | `guard/engine_watch.py` | Writes a line for each engine a Python process starts; refuses it in the fast run. |
 | `guard/sitecustomize.py` | Loads the watch in every Python process that has `guard/` on PYTHONPATH. |
+| `apt_archive.sh` | On CI's install path, before install.sh: apt asks Ubuntu's own archive, not the runner's regional mirror. |
 
 ## The rules of `scope.py`
 
@@ -103,6 +104,29 @@ prints 1 line: `where: image: ...` or `where: install: ...`, with the reason.
   `CI_FULL_IN_IMAGE` is `0`.
 
 The last step fails unless the decided path's verify step ran and passed.
+
+## Ubuntu's own archive on the install path
+
+Before install.sh, the install path (and the nightly run) runs
+`sudo env APT_ARCHIVE_CI=1 bash tools/ci/apt_archive.sh /etc/apt`. The
+runner's apt asks a regional mirror of Ubuntu's archive, and twice it
+crawled to the download's bound of 570 s (CI runs 44402154007 and
+44432768560). The script changes such a host to archive.ubuntu.com, or
+ports.ubuntu.com on an arm machine, and nothing else.
+
+1. Read its lines in the step "Ask Ubuntu's own archive". A line
+   `<file>: <host> -> archive.ubuntu.com` names each file it changed.
+   A line `no regional or cloud mirror ...; changed nothing` says there was none.
+   A line `... a layout this script does not know; changed nothing` means
+   the runner image changed its apt files: read them, then the script.
+2. To turn it off without a commit: the repository variable
+   `CI_APT_UBUNTU_ARCHIVE` = `0`. The step then prints 1 line that names it.
+3. It refuses this machine's /etc/apt unless `APT_ARCHIVE_CI=1`: a
+   person's computer keeps its mirror. Its tests run it on a folder of
+   their own (`tests/test_ci_apt_archive.py`).
+
+It does not help when archive.ubuntu.com itself is slow or down, nor with
+KiCad 10's source (the PPA). The image build already asks archive.ubuntu.com.
 
 What differs inside the image: the runner has `node`, the image does not,
 so the tests that need it (6 of `tests/test_forms.py`, 1 of

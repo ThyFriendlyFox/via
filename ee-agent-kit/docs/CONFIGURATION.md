@@ -25,7 +25,9 @@ unset variable never causes a failure.
 | `KICAD_INDEX_TRIES` | integer | `3` | Tries to fetch the index of KiCad 10's package source. |
 | `KICAD_INDEX_WAIT` | seconds | `20` | Seconds between 2 tries. |
 | `APT_UPDATE_TIMEOUT` | seconds | empty (no bound) | Seconds 1 `apt-get update` of every package source may take. CI's full job, the nightly run and the image build set `120`. A computer that already has KiCad 10 has no bound either way. Under sudo, pass it with env: `sudo env APT_UPDATE_TIMEOUT=300 ./install.sh`. A value that is not a whole number above 0 stops the script. |
-| `APT_DOWNLOAD_TIMEOUT` | seconds | empty (no bound) | Seconds the download of the packages may take. CI's full job, the nightly run and the image build set `570` (281 MB in 570 s is 3.95 Mbit/s). Under sudo, pass it with env: `sudo env APT_DOWNLOAD_TIMEOUT=900 ./install.sh` (sudo drops a variable set before it). |
+| `APT_DOWNLOAD_TIMEOUT` | seconds | empty (no bound) | Seconds the download of the packages may take. It bounds all passes of the download and all waits between them together, not each pass. When the next wait would leave no time for another pass, the script stops after the passes made, says so, and keeps the advice for apt's own line; the advice for a slow line comes only when `timeout` cut a pass. CI's full job, the nightly run and the image build set `570` (281 MB in 570 s is 3.95 Mbit/s). Under sudo, pass it with env: `sudo env APT_DOWNLOAD_TIMEOUT=900 ./install.sh` (sudo drops a variable set before it). |
+| `APT_DOWNLOAD_TRIES` | integer | `5` | Passes of the download. A pass is made again only when apt-get ended with 100 and printed an `E: Failed to fetch` line: a source did not serve a file. apt keeps the files it has, so a later pass asks only for the rest. A value that is not a whole number from 1 to 99 stops the script before its first step installs anything. |
+| `APT_DOWNLOAD_WAIT` | seconds | `20` | Seconds between 2 passes. A value that is not a whole number from 0 to 999 stops the script before its first step installs anything. |
 | `KICAD_KEYRING` | path | `/etc/apt/keyrings/kicad-10.0-releases.gpg` | The PPA key's file (the tests move it). |
 | `KICAD_SOURCES` | path | `/etc/apt/sources.list.d/kicad-10.0-releases.sources` | The PPA's sources file (the tests move it). A file there that is not what install.sh writes is left alone and stops the script; the script's own is removed on a stop for a second key or a release the PPA does not serve. |
 | `WORKCENTER_LINK` | path | `/usr/local/bin/workcenter` | The `workcenter` link (the tests move it). |
@@ -313,12 +315,14 @@ part by `mpn` or `mpns` and whose `source.sha256` is a row of
 | `WORKCENTER_NO_ENGINES` | `1` or unset | unset | `1` refuses every engine start in a test run (`make verify-site` sets it): the start raises FileNotFoundError, read as an absent engine. |
 | `WORKCENTER_ENGINE_LOG` | path | a temp file per pytest run | Where each engine start of a test run is written; the `engine` marker is held against it. |
 | `--repo`, `--base`, `--head`, `--paths`, `--github-output` | `tools/ci/scope.py` flags | repo: here; head: the working tree | The change to judge; an empty `--base` is full; `--github-output` appends `scope=<answer>` to `$GITHUB_OUTPUT`. |
+| `CI_APT_UBUNTU_ARCHIVE` | repository variable (Settings, Secrets and variables, Actions, Variables) | unset | `0` leaves the runner's apt mirror as it is on CI's install path and in the nightly run; anything else runs `tools/ci/apt_archive.sh`, which turns a regional or cloud mirror of Ubuntu's archive into archive.ubuntu.com (ports.ubuntu.com on arm). |
+| `APT_ARCHIVE_CI`, `APT_DIR` and the 1 argument | `tools/ci/apt_archive.sh` | the argument, else `APT_DIR`, else /etc/apt | The folder of apt's files to change. The script refuses /etc/apt unless `APT_ARCHIVE_CI=1`, which the workflows set; a test gives it a folder of its own. Exit 0 when it ran, 2 when it refused or found no folder. |
 
 ## `verify/testshards.py` and `verify/shards.csv` (the tests step of `make verify`)
 
 | Field | Type | Default | Use |
 |---|---|---|---|
-| `verify/shards.csv` | CSV: `file`, `seconds`, `engine`, `alone` | 68 rows and `*` | Each test file's seconds in a shard, whether it starts an engine (its `no` files run first in a shard), and why it must run alone (it runs in the shard `serial`, after the others). `*` is the row for a file not listed (41.9 s). `verify/README.md` says how to keep it true. |
+| `verify/shards.csv` | CSV: `file`, `seconds`, `engine`, `alone` | 90 rows and `*` | Each test file's seconds in a shard, whether it starts an engine (its `no` files run first in a shard), and why it must run alone (it runs in the shard `serial`, after the others). `*` is the row for a file not listed (41.9 s). `verify/README.md` says how to keep it true. |
 | `--jobs` | flag of `verify/testshards.py run` | the processors (`os.cpu_count()`) | How many shards run side by side. |
 | `--work` | flag of `verify/testshards.py run` | a new folder under `$TMPDIR` | Where the shards' logs go. A folder named here is kept, and must be empty or new; a folder of its own is deleted when green and kept when red. |
 | `--table` | flag of `verify/testshards.py run` and `table` | `verify/shards.csv` | The table the files are split by, or written from. |

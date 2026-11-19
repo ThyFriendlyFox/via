@@ -554,6 +554,10 @@ that may be absent.
    those forms, and the harness asserts the scan before it runs the script.
    The machine may run as root, so a test never relies on a permission
    error to stay safe (M261).
+9. A new test file gets its row in `verify/shards.csv` in the same commit:
+   its seconds from a run, `engine` yes when a test of it carries the
+   `engine` mark (`verify/README.md`, "Keeping the table true"). A file
+   with no row takes the `*` row's seconds, and no check fails on it.
 
 Done when: the summary shows no unexpected skips, the engine test is
 green on the runner, and a run with an engine taken away is not GREEN.
@@ -756,6 +760,23 @@ charger, or any other load from a battery.
    catch it removed. A stop's advice line, and its side effects on files
    beside the script's own (a bystander file that must survive), each have
    a mutant. The list copies every file its tests read (M261).
+8. A stand-in that sits on the reading end of a pipe reads all its input
+   before it ends, as the real program does, whatever it answers: one
+   that ends unread makes its writer die of SIGPIPE when it ends first,
+   and under `pipefail` the test's answer then rests on which process
+   ended first (M270). A test that rests on an order of 2 processes
+   chooses that order (one waits for the other's mark), or its margin is
+   measured and written beside it. A mutation count goes into a document
+   only after the whole list has run 3 times with the same count; a
+   mutant caught on some runs and not others is not caught: find the
+   order its test rests on and fix the test before the count is written.
+   A script that ends a background child keeps nothing it needs between
+   the child's `&` and the line that keeps its pid: it ends the child's
+   whole process group (made before the `&` returns), and a signal in that
+   gap is noted and taken once the pid is kept. Its test holds the script
+   at each such point (a BASH_ENV hook with a DEBUG trap, or a stand-in
+   that waits for a mark) and sends the kill there, so the order is chosen
+   and the test fails every time on the fault (M272).
 
 Done when: the host tests cover steps 1, 2, 3 and 5, the mutation run
 catches every mutation after the last firmware change, and the cut-off
@@ -1348,6 +1369,14 @@ a task.
 9. A helper has stopped when its task says so: the workflow's notice, or
    the stop the lead asked for. A quiet transcript is no stop. Change no
    file a helper owns before that (M125).
+10. When a landing is accepted, the lead removes that piece's worktree
+    (`git worktree remove`, which refuses a tree with changes) and the
+    folders of copies its reviews and its landing prep made. Before a
+    health gate and before sending helpers, the lead reads `df -h` on the
+    scratch folder; with less than 5 GB free, it clears the copies of
+    landed pieces first. The 5 GB is the lead's choice: here a whole
+    checkout with its build folders took about 410 MB, and a review's
+    copies up to 2440 MB (M271).
 
 Done when: every report is read, each helper's changes are merged or
 removed, and `git worktree list` shows only what is still in use.

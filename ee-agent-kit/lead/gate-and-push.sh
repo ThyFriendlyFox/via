@@ -76,21 +76,41 @@ fi
 # last: a helper that waits for the lock to go must never start while `make verify` still runs.
 SAMPLER=
 MAKE_PID=
+# The sampler is its own process group, made by this shell before its `&` returns (set -m below), and
+# everything it starts stays in it. SIGKILL to the group ends the sampler with its sleep and its quiet
+# check at any point of its loop: nothing it started outlives it or holds the gate's output.
+# shellcheck disable=SC2317  # run by the traps
+end_sampler() {
+  if [ -n "$SAMPLER" ]; then
+    kill -KILL -- "-$SAMPLER" 2>/dev/null
+    wait "$SAMPLER" 2>/dev/null
+    SAMPLER=
+  fi
+}
 # shellcheck disable=SC2317  # run by the traps
 finish() {
-  if [ -n "$SAMPLER" ]; then kill "$SAMPLER" 2>/dev/null; wait "$SAMPLER" 2>/dev/null; fi
+  end_sampler
   if [ -n "$MAKE_PID" ] && kill -0 "$MAKE_PID" 2>/dev/null; then
-    kill -TERM -- "-$MAKE_PID" 2>/dev/null
+    # Until setsid has made make's group, a kill of the group finds none: end the process itself.
+    kill -TERM -- "-$MAKE_PID" 2>/dev/null || kill -TERM "$MAKE_PID" 2>/dev/null
     wait "$MAKE_PID" 2>/dev/null
     say "make verify was stopped"
   fi
   rm -f "$LOCK"
   say "lock removed"
 }
+# A signal that comes between a job's `&` and the line that keeps its pid would find no pid to end:
+# while a job starts, a signal is only noted, and it ends the gate once the pid is kept.
+SIGNAL=
+hold_signals() { trap 'SIGNAL=129' HUP; trap 'SIGNAL=130' INT; trap 'SIGNAL=143' TERM; }
+take_signals() {
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  if [ -n "$SIGNAL" ]; then exit "$SIGNAL"; fi
+}
 trap finish EXIT
-trap 'exit 129' HUP
-trap 'exit 130' INT
-trap 'exit 143' TERM
+take_signals
 
 say "lock made; waiting for quiet"
 quiet=0
@@ -109,35 +129,36 @@ done
 say "quiet for $TRIES looks after $waited s; the gate starts"
 
 # While the gate runs, note each engine, test run or script of a helper: the gate must run alone.
-# Its sleep runs in the background, so a kill ends the sampler at once and not after the sleep.
+# With set -m the sampler's `&` gives it a process group of its own (end_sampler); inside it job control
+# is off, so its sleep and its quiet check join that group.
+hold_signals
+set -m
 (
-  nap=
-  # shellcheck disable=SC2317  # run by the trap
-  trap 'if [ -n "$nap" ]; then kill "$nap" 2>/dev/null; fi; exit 0' TERM
+  set +m
   while true; do
     found=$(busy)
     if [ -n "$found" ]; then
       date -u +%H:%M:%S
       echo "$found"
     fi >> "$FOREIGN"
-    sleep "$SAMPLE" &
-    nap=$!
-    wait "$nap"
+    sleep "$SAMPLE"
   done
 ) &
 SAMPLER=$!
+set +m
+take_signals
 
 START=$(date +%s)
 # make runs in its own process group (setsid), so a stop ends it with every test it started; `wait`
 # lets a signal to the gate through at once.
+hold_signals
 setsid make -C "$T" verify > "$LOG" 2>&1 &
 MAKE_PID=$!
+take_signals
 wait "$MAKE_PID"
 RC=$?
 MAKE_PID=
-kill "$SAMPLER" 2>/dev/null
-wait "$SAMPLER" 2>/dev/null
-SAMPLER=
+end_sampler
 END=$(date +%s)
 say "make verify ended with exit code $RC after $((END - START)) s"
 tail -3 "$LOG" >> "$OUT"

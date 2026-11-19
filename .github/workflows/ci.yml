@@ -85,6 +85,19 @@ jobs:
             || echo "no login to ghcr.io: only a public image can be pulled"
           python3 tools/image.py decide --base "$base" --owner "$GITHUB_REPOSITORY_OWNER" \
             --enabled "$ENABLED" --github-output
+      # The runner's regional mirror crawled twice to the download's bound (runs 44402154007 and
+      # 44432768560); Ubuntu's own archive served the image builds of the same hours. A person's computer
+      # keeps its mirror: install.sh does not change it. The variable CI_APT_UBUNTU_ARCHIVE=0 turns it off.
+      - name: Ask Ubuntu's own archive, not the runner's regional mirror
+        if: steps.where.outputs.where == 'install'
+        env:
+          ENABLED: ${{ vars.CI_APT_UBUNTU_ARCHIVE }}
+        run: |
+          if [ "$ENABLED" = 0 ]; then
+            echo "[apt-archive] off: the repository variable CI_APT_UBUNTU_ARCHIVE is 0; apt keeps the runner's mirror"
+          else
+            sudo env APT_ARCHIVE_CI=1 bash tools/ci/apt_archive.sh /etc/apt
+          fi
       - name: Install the workcenter toolchain (same script as the cloud environment)
         if: steps.where.outputs.where == 'install'
         run: sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh

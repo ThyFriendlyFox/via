@@ -12,6 +12,16 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      # As in ci.yml's install path: Ubuntu's own archive, not the runner's regional mirror.
+      - name: Ask Ubuntu's own archive, not the runner's regional mirror
+        env:
+          ENABLED: ${{ vars.CI_APT_UBUNTU_ARCHIVE }}
+        run: |
+          if [ "$ENABLED" = 0 ]; then
+            echo "[apt-archive] off: the repository variable CI_APT_UBUNTU_ARCHIVE is 0; apt keeps the runner's mirror"
+          else
+            sudo env APT_ARCHIVE_CI=1 bash tools/ci/apt_archive.sh /etc/apt
+          fi
       - name: Install the workcenter toolchain
         run: sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh
       - name: Verify
