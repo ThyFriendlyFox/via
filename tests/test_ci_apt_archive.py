@@ -806,6 +806,44 @@ def test_the_host_of_a_slow_pass_goes_last_and_the_others_keep_their_order(tmp_p
     assert snapshot(apt)["apt-mirrors.txt"] == mirrors(EC2, own=2, archive=1, security=3)
 
 
+def test_of_2_named_hosts_the_list_holds_the_first_named_goes_last(tmp_path):
+    """install.sh names the hosts of the slow pass, the most files first: in CI e.g. us-east-2.ec2, the
+    PPA and security. The list holds 2 of them; the first named, us-east-2.ec2, goes last, and security
+    keeps its place."""
+    apt = layout(
+        tmp_path,
+        {
+            "sources.list.d/ubuntu.sources": deb822(LIST, LIST),
+            "apt-mirrors.txt": mirrors(EC2, own=1, archive=3, security=2),
+        },
+    )
+    ran = run("--slow", ECTWO, PPA_HOST, "security.ubuntu.com", tmp=tmp_path, env={"APT_DIR": str(apt)})
+    assert ran.returncode == 0, ran.stderr
+    assert lines(ran) == [slow_line(apt, ECTWO, SECURITY, ARCHIVE, EC2)]
+    assert snapshot(apt)["apt-mirrors.txt"] == mirrors(EC2, own=3, archive=2, security=1)
+
+
+def test_a_slow_pass_on_the_host_already_last_leaves_the_file_untouched(tmp_path):
+    """A second slow pass on the host the first one sent last changes no byte, so the file is not
+    written again: its time of change stays."""
+    apt = layout(
+        tmp_path,
+        {
+            "sources.list.d/ubuntu.sources": deb822(LIST, LIST),
+            "apt-mirrors.txt": mirrors(EC2, own=1, archive=3, security=2),
+        },
+    )
+    run("--slow", ECTWO, tmp=tmp_path, env={"APT_DIR": str(apt)})
+    listed = apt / "apt-mirrors.txt"
+    written = listed.read_text()
+    os.utime(listed, (1_000_000_000, 1_000_000_000))
+    ran = run("--slow", ECTWO, tmp=tmp_path, env={"APT_DIR": str(apt)})
+    assert ran.returncode == 0, ran.stderr
+    assert lines(ran) == [slow_line(apt, ECTWO, SECURITY, ARCHIVE, EC2)]
+    assert listed.read_text() == written
+    assert listed.stat().st_mtime == 1_000_000_000
+
+
 def test_a_list_with_comments_keeps_them_and_a_line_without_priority_gets_one(tmp_path):
     lst = f"# the runner's\n{EC2}\tpriority:1\n{ARCHIVE}\n{SECURITY}\tpriority:2\n"
     apt = layout(tmp_path, {"sources.list.d/ubuntu.sources": deb822(LIST, LIST), "apt-mirrors.txt": lst})
