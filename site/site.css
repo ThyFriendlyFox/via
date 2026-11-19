@@ -3096,7 +3096,7 @@ html[data-shot] .ticker {
 @media (min-width: 1000px) {
   .sticker {
     position: absolute;
-    top: 13rem;
+    top: 19rem;
     left: calc(50% + 18rem + (min(50%, 600px) - 19rem) / 2 - 7.5em);
     margin: 0;
     font-size: clamp(0.75rem, (min(50vw, 600px) - 20rem) / 17, 1rem);
