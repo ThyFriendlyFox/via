@@ -1603,6 +1603,15 @@ a task.
     which. A claim the design's safety rests on is checked that way before
     the design rests on it; a helper who finds it false says so first,
     and the documents carry the correction (M310).
+17. A brief that keeps a program off the machine names every program of
+    its family by name (apt, apt-get, apt-cache, apt-config, dpkg,
+    dpkg-query, pip, docker) and says "start none of them, with any
+    argument, `--version` and other queries included". What such a
+    program would say is read in its source or documentation, or the
+    helper asks the lead. A brief that asks for the engine lock says that
+    a test file whose tests start an engine runs whole only behind the
+    lock, or with `-m "not engine"` without it, and that the helper reads
+    the file's marks before it runs the file (M311).
 
 Done when: every report is read, each helper's changes are merged or
 removed, and `git worktree list` shows only what is still in use.
