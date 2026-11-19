@@ -778,6 +778,10 @@ def test_a_gate_stopped_by_sigterm_ends_make_and_its_sampler_before_it_frees_the
     assert remote_head(gate_setup) == gate_setup["base"]
 
 
+# sh: wait until the last `&` job, a sleep, has exec'd (no single quotes, for use inside `sh -c '...'`).
+EXECED = 'while [ "$(cat /proc/$!/comm 2>/dev/null)" != sleep ]; do :; done;'
+
+
 def stand_in(tmp_path: Path, setup: dict, name: str, text: str) -> dict:
     """The setup's env with a stand-in `name` (a sh script) first on PATH."""
     bin_dir = tmp_path / "bin2"
@@ -869,8 +873,8 @@ def test_the_lock_goes_only_after_every_process_of_makes_group_has_ended(gate_se
         gate_setup,
         "make",
         f'echo "$*" >> "$STANDIN_CALLS"\n'
-        f'sh -c \'echo $$ > {test_pid}; trap "sleep 1; ls {lock} > {report} 2>&1; exit 1" TERM;'
-        " sleep 60 & wait' &\n"
+        f'sh -c \'trap "sleep 1; ls {lock} > {report} 2>&1; exit 1" TERM;'
+        f" sleep 60 & {EXECED} echo $$ > {test_pid}; wait' &\n"
         "wait\n",
     )
     argv = ["bash", str(GATE), str(gate_setup["tree"]), "work", gate_setup["head"], gate_setup["base"], "t1"]
@@ -935,7 +939,10 @@ def test_nothing_cuts_short_the_end_of_a_stopped_gate(gate_setup, tmp_path, seco
         tmp_path,
         gate_setup,
         "make",
-        f"echo $$ > {make_pid}\ntrap 'touch {stopping}; sleep 1; exit 1' TERM\nsleep 60 &\nwait\n",
+        # The pid is written once the trap is set and the sleep has exec'd: a TERM that reaches the
+        # forked child before its exec is lost (sh's handler only notes it), the sleep then runs its
+        # 60 s, and the gate rightly waits 30 s for it before SIGKILL.
+        f"trap 'touch {stopping}; sleep 1; exit 1' TERM\nsleep 60 &\n{EXECED}echo $$ > {make_pid}\nwait\n",
     )
     argv = ["bash", str(GATE), str(gate_setup["tree"]), "work", gate_setup["head"], gate_setup["base"], "t1"]
     proc = subprocess.Popen(argv, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
