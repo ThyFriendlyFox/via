@@ -17,11 +17,13 @@
 #   GATE_QUIET_SECONDS   seconds between 2 looks for quiet (default 15)
 #   GATE_QUIET_TRIES     quiet looks in a row before the gate starts (default 3)
 #   GATE_QUIET_LIMIT     seconds to wait for quiet before it stops (default 3600)
-#   GATE_SAMPLE_SECONDS  seconds between 2 looks for helpers' work during the gate (default 20)
+#   GATE_SAMPLE_SECONDS  seconds between 2 looks for helpers' work during the gate, above 0 (default 20)
+#   GATE_STOP_SECONDS    seconds a stopped make's process group gets to end before SIGKILL (default 30)
 #
 # Exit: 0 pushed; 1 the gate was red; 2 a bad call (GATE_DIR unset or no folder); 3 stopped (HEAD,
 # branch, tree or lock); 4 no quiet in time; 5 the push failed: the remote branch is no longer the lease,
-# or 5 tries failed; 6 the quiet check failed; 129, 130 or 143 stopped by a signal, with make ended first.
+# or 5 tries failed; 6 the quiet check failed; 129, 130 or 143 stopped by a signal, with make's whole
+# process group ended first.
 # Needs bash, git, setsid (util-linux) and ps.
 
 if [ $# -lt 5 ] || [ $# -gt 6 ]; then
@@ -48,6 +50,7 @@ STEP=${GATE_QUIET_SECONDS:-15}
 TRIES=${GATE_QUIET_TRIES:-3}
 LIMIT=${GATE_QUIET_LIMIT:-3600}
 SAMPLE=${GATE_SAMPLE_SECONDS:-20}
+STOP=${GATE_STOP_SECONDS:-30}
 LOG=$GATE_DIR/verify-$LABEL.log
 OUT=$GATE_DIR/gate-$LABEL.status
 FOREIGN=$GATE_DIR/gate-$LABEL.foreign
@@ -76,26 +79,57 @@ fi
 # last: a helper that waits for the lock to go must never start while `make verify` still runs.
 SAMPLER=
 MAKE_PID=
-# The sampler is its own process group, made by this shell before its `&` returns (set -m below), and
-# everything it starts stays in it. SIGKILL to the group ends the sampler with its sleep and its quiet
-# check at any point of its loop: nothing it started outlives it or holds the gate's output.
+MAKE_GROUP=
+# The sampler is a coprocess in the gate's own process group. It sleeps with the builtin `read -t` on
+# its stdin, a pipe whose only write end this shell holds (bash closes a coprocess's pipes in every
+# other process it starts). Closing that end, or any death of this shell, SIGKILL too, ends the
+# sampler's `read` at once, and the sampler ends after the look it is in. No signal goes to it by pid.
 # shellcheck disable=SC2317  # run by the traps
 end_sampler() {
   if [ -n "$SAMPLER" ]; then
-    kill -KILL -- "-$SAMPLER" 2>/dev/null
+    if [ -n "${SAMPLER_IO[1]:-}" ]; then
+      to_sampler=${SAMPLER_IO[1]}
+      exec {to_sampler}>&-
+    fi
     wait "$SAMPLER" 2>/dev/null
     SAMPLER=
   fi
 }
+# make's tests can take longer than make to end, and some may run on after make ended: the lock goes
+# only once make's whole process group is empty, after SIGKILL to it if it still runs STOP s later.
 # shellcheck disable=SC2317  # run by the traps
-finish() {
-  end_sampler
+end_make() {
   if [ -n "$MAKE_PID" ] && kill -0 "$MAKE_PID" 2>/dev/null; then
     # Until setsid has made make's group, a kill of the group finds none: end the process itself.
     kill -TERM -- "-$MAKE_PID" 2>/dev/null || kill -TERM "$MAKE_PID" 2>/dev/null
     wait "$MAKE_PID" 2>/dev/null
     say "make verify was stopped"
+  elif [ -n "$MAKE_GROUP" ] && kill -TERM -- "-$MAKE_GROUP" 2>/dev/null; then
+    say "make ended, and processes of its group still ran: sent them SIGTERM"
   fi
+  MAKE_PID=
+  if [ -z "$MAKE_GROUP" ]; then return 0; fi
+  tenths=0
+  while kill -0 -- "-$MAKE_GROUP" 2>/dev/null; do
+    if [ "$tenths" -eq $((STOP * 10)) ]; then
+      kill -KILL -- "-$MAKE_GROUP" 2>/dev/null
+      say "make's process group still ran $STOP s after the stop: sent it SIGKILL"
+    elif [ "$tenths" -gt $((STOP * 10 + 100)) ]; then
+      say "make's process group still holds processes 10 s after SIGKILL"
+      break
+    fi
+    sleep 0.1
+    tenths=$((tenths + 1))
+  done
+  MAKE_GROUP=
+}
+# shellcheck disable=SC2317  # run by the traps
+finish() {
+  # Nothing may cut this short, or the lock stays for good: not a second signal, and not a write to
+  # a caller's pipe that has closed.
+  trap '' HUP INT TERM PIPE
+  end_sampler
+  end_make
   rm -f "$LOCK"
   say "lock removed"
 }
@@ -129,23 +163,22 @@ done
 say "quiet for $TRIES looks after $waited s; the gate starts"
 
 # While the gate runs, note each engine, test run or script of a helper: the gate must run alone.
-# With set -m the sampler's `&` gives it a process group of its own (end_sampler); inside it job control
-# is off, so its sleep and its quiet check join that group.
+# `read` ends with a status over 128 only when its time is up; the end of its pipe ends the loop
+# (end_sampler).
 hold_signals
-set -m
-(
-  set +m
+coproc SAMPLER_IO {
   while true; do
-    found=$(busy)
+    found=$(busy < /dev/null)
     if [ -n "$found" ]; then
       date -u +%H:%M:%S
       echo "$found"
-    fi >> "$FOREIGN"
-    sleep "$SAMPLE"
-  done
-) &
+    fi
+    read -r -t "$SAMPLE" _
+    rc=$?
+    if [ "$rc" -le 128 ]; then break; fi
+  done >> "$FOREIGN"
+}
 SAMPLER=$!
-set +m
 take_signals
 
 START=$(date +%s)
@@ -154,6 +187,7 @@ START=$(date +%s)
 hold_signals
 setsid make -C "$T" verify > "$LOG" 2>&1 &
 MAKE_PID=$!
+MAKE_GROUP=$MAKE_PID
 take_signals
 wait "$MAKE_PID"
 RC=$?
