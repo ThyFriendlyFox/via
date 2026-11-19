@@ -8,7 +8,7 @@ turns with the hand and the cursor follows its gyroscope; the thumb slides along
 scroll, and presses the clicks tile for the left and the right button. The ring talks Bluetooth LE
 to the computer as an ordinary HID mouse and charges on a post through 2 pads inside it.
 
-This folder is a whole project made with the EE Workcenter: `ring.py` is what the tiles share,
+This folder is a whole project made with Via: `ring.py` is what the tiles share,
 each tile's `design.py` is its board, and the `.kicad_*` files beside each are what
 `workcenter design` writes from it.
 
@@ -25,7 +25,7 @@ each tile's `design.py` is its board, and the `.kicad_*` files beside each are w
 ## Images
 
 The ring with the solder in its joints and the cell on its tile, from the thumb's side and along the
-finger (`assembly.py` on the workcenter's `tools/scene.py`, drawn by `workcenter pictures .` from
+finger (`assembly.py` on Via's `tools/scene.py`, drawn by `workcenter pictures .` from
 [`pictures.json`](pictures.json)):
 
 ![the ring turning](docs/assembly-spin.gif)
@@ -70,7 +70,7 @@ The owner asked for more sections, so that the ring reads smoother.
 | The power tile's 12 parts do not fit 6.83 mm | v0.4's `power/design.py` | 3 tiles: charge (the charger, its 2 diodes), rail (the regulator) and gauge (the divider and its deck), round the cell |
 | The cell tile is 6.83 mm: no room for D1 between the tab pads, nor for 2.0 mm charging pads, nor for 2 of the library's test pads (2 mm courtyards) | the tile's courtyards | D1 moves to the charge tile, the first part the post's 5 V reaches; the tab pads are 1.0 x 1.4 mm (`Ring:CellTab_1x1.4mm`, new) at x +-0.95, the charging pads 1.0 mm round at +-1.1; the 10 mm pouch reaches 1.6 mm past each edge |
 | The motion tile turned to a new angle | `ring.face_angle("motion")` is -66.85 degrees | `AIR_TILE_DEG` is -66.85 |
-| The cell tile was missing from every assembly picture since v0.2: `assembly.py` wrote the tile's board body as `cell.wrl`, then the pouch under the same name, which replaced it | v0.4's `assembly-end.png`, its bottom face empty under the pouch; `build/assembly/bodies/cell.wrl`, 7 kB of pouch | the pouch is `pouch.wrl`; the workcenter's `tools/scene.py` now refuses a second body under a name it wrote (M212) |
+| The cell tile was missing from every assembly picture since v0.2: `assembly.py` wrote the tile's board body as `cell.wrl`, then the pouch under the same name, which replaced it | v0.4's `assembly-end.png`, its bottom face empty under the pouch; `build/assembly/bodies/cell.wrl`, 7 kB of pouch | the pouch is `pouch.wrl`; Via's `tools/scene.py` now refuses a second body under a name it wrote (M212) |
 | The turning GIF never showed the whole ring: since v0.1 it turned at twice the stills' zoom, 2 or 3 tiles to a frame | `site/examples.py --pictures`: "assembly-spin.gif cuts it off at frame 0"; v0.4's frames | `assembly.py` turns it at zoom 0.38, and all 4 frames of the framing check (`workcenter pictures . --frames 4`) hold the ring whole (M214) |
 
 ### Board
@@ -372,7 +372,7 @@ make -C firmware test                        # the decoder's host tests
 workcenter pictures .                        # the renders, GIFs and the assembly into docs/
 ```
 
-KiCad's 3D views need the bodies the tiles name (the workcenter's `site/media/README.md` says how
+KiCad's 3D views need the bodies the tiles name (Via's `site/media/README.md` says how
 to fetch them into `KICAD10_3DMODEL_DIR`).
 
 ## Decisions
@@ -405,7 +405,7 @@ to fetch them into `KICAD10_3DMODEL_DIR`).
   for the module and its capacitors side by side. 8 tiles round the finger would be 8.3 mm each.
   The radio's tile takes 15.6 mm; the other 5 share the rest (until v0.4: a ring of 5 equal tiles
   and a wider one does not close).
-- **Solder joints, not a flex** (v0.1). The workcenter makes rigid boards; 8 plated pads a side and
+- **Solder joints, not a flex** (v0.1). Via makes rigid boards; 8 plated pads a side and
   a fillet each hold the tiles and carry the signals, as Last Hit's display board stands on its
   base. A rigid-flex ring is the production answer, and out of reach of these tools.
 - **The STM32WB5MMG** (v0.1). The only BLE module in KiCad's library with its antenna inside and a

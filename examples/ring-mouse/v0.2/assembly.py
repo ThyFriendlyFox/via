@@ -6,11 +6,11 @@ turned about the ring's axis to its place (ring.py: centre_angle). The ring's ax
 radio tile's y, under its middle, R_IN below its inner face. Each joint's 8 pads hold a solder
 fillet across the V the 2 boards open outside. The cell, a 3 x 10 x 10 mm foil pouch with a Kapton
 band, lies on the cell tile's outer face from its fingertip edge, its 2 nickel tabs folded onto the
-pads beyond its end. The scene, the bodies the boards name, the renders and the GIF come from the EE
-Workcenter's `tools/scene.py`; this file holds only the ring's placements.
+pads beyond its end. The scene, the bodies the boards name, the renders and the GIF come from
+Via's `tools/scene.py`; this file holds only the ring's placements.
 
     workcenter design radio/design.py --route       # and each other tile: the routed boards this reads
-    workcenter pictures .                           # runs this with the workcenter's tools/ on PYTHONPATH
+    workcenter pictures .                           # runs this with Via's tools/ on PYTHONPATH
 
 Writes build/assembly/: the scene's bodies, signet_assembly.kicad_pcb, the images assembly-iso.png
 (the thumb's side), assembly-iso-back.png, assembly-end.png, assembly-top.png and assembly-palm.png,
