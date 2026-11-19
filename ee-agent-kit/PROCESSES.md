@@ -329,6 +329,11 @@ axis it defines (a 3D model's rotation or offset, an export's origin).
     the file's grain as its tolerance (1 nm in a `.kicad_pcb`), and a
     case outside it that the check cannot judge gets its own not-judged
     line (M221, M222).
+11. A check that reads command lines from `ps` asks for unlimited width
+    (`ps -ww`). Without it `ps` cuts each line to the COLUMNS variable or a
+    terminal's width, and what stood at the end of a long line is gone
+    with no error. A test of such a check runs it once under a narrow
+    COLUMNS, with a command line longer than that width (M281).
 
 Done when: a test parses a real sample of each shape, failures among them,
 and the parser's assumptions are written next to it.
@@ -1407,8 +1412,8 @@ a task.
     is not edited in place. Write the new version beside it and move it
     into place in 1 step (`mv`), or stop the gate first (M278).
 14. A cleaning of the disk names only folders that no running process
-    uses: look first (`pgrep -a pytest`, and `ps -eo pid,args` for each
-    folder's name). Never remove pytest's temp root (`/tmp/pytest-of-<user>`)
+    uses: look first (`pgrep -a pytest`, and `ps -ww -eo pid,args` for each
+    folder's name, P7 step 11). Never remove pytest's temp root (`/tmp/pytest-of-<user>`)
     while a pytest runs; a helper's own run takes `--basetemp` under its
     own folder (M276).
 
