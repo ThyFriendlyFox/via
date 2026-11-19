@@ -253,7 +253,7 @@ def test_the_probe_runs_no_code_from_the_folder_doctor_runs_in(tmp_path, monkeyp
 
 def test_a_probe_that_does_not_answer_leaves_the_row_advisory(tmp_path):
     """The venv's Python failed (a timeout on a loaded machine, a shadowed module): nothing is read, so
-    no pin is called missing and the workcenter is not degraded by this row."""
+    no pin is called missing and Via is not degraded by this row."""
     venv = fake_venv(tmp_path, "echo broken; exit 3")
     (venv / "lib" / "python3.12" / "site-packages").mkdir(parents=True)
     src = tmp_path / "src"

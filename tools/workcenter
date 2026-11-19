@@ -5526,7 +5526,7 @@ def requirements_fix(venv: Path, src: Path) -> str:
 
 def requirements_row(req_file: Path, paths: list[Path], own: list[Path], env: dict, fix: str) -> dict:
     """Doctor's `requirements` row: requirements.txt's pins against the packages `paths` hold. A pin
-    missing or at another version makes it not ok (the workcenter `degraded`), named with `fix`. A
+    missing or at another version makes it not ok (Via `degraded`), named with `fix`. A
     package in `own` (the venv's own folders) that no pin or its dependencies account for is a note."""
     row: dict = {
         "required": False,
@@ -5741,7 +5741,7 @@ def requirement_lines(text: str) -> list[tuple[int, str]]:
 
 # `-c` puts the folder it runs in first on sys.path, where a `platform.py` or `json.py` would shadow the
 # standard library: the probe takes it off before it imports. (`-I` would also drop the user's site,
-# which the venv's Python reads when the workcenter runs.)
+# which the venv's Python reads when Via runs.)
 VENV_SITE_PROBE = (
     "import sys\n"
     "if sys.path[:1] == ['']:\n"
@@ -5784,7 +5784,7 @@ def requirements_doctor_row(venv: Path | None = None, src: Path | None = None) -
     src = src or SRC_DIR
     req = src / "requirements.txt"
     if not (venv / "bin" / "python").exists():
-        # The `venv` row says the venv is absent and degrades the workcenter; this row repeats nothing.
+        # The `venv` row says the venv is absent and degrades Via; this row repeats nothing.
         return {"required": False, "advisory": True, "ok": False, "path": str(req), "lines": []}
     try:
         paths, own, env = venv_site(venv)
@@ -5844,7 +5844,7 @@ def doctor_row_text(name: str, c: dict) -> list[str]:
 
 
 def doctor_checks_degraded(checks: dict) -> list[str]:
-    """The rows that make the workcenter `degraded`: not required, not advisory, not ok."""
+    """The rows that make Via `degraded`: not required, not advisory, not ok."""
     return [k for k, v in checks.items() if not v["required"] and not v.get("advisory") and not v["ok"]]
 
 
