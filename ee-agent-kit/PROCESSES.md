@@ -244,6 +244,11 @@ README, devlog, status line, or PR body.
    it) is read from the board with `workcenter inspect list <board> --box
    X0 X1 Y0 Y1` before it goes into a document, never written from memory
    (M179).
+7. A claim about an outside service's state (a package public or
+   private, a setting on or off) is read from that service
+   first: its page, its API or a fetch. The sentence carries the date it
+   was read. A state no one has read is not written as a fact: write
+   that it is not read yet, and what will show it (M280).
 
 Done when: every name in the document resolves on the remote at the time
 of the push.
@@ -324,6 +329,11 @@ axis it defines (a 3D model's rotation or offset, an export's origin).
     the file's grain as its tolerance (1 nm in a `.kicad_pcb`), and a
     case outside it that the check cannot judge gets its own not-judged
     line (M221, M222).
+11. A check that reads command lines from `ps` asks for unlimited width
+    (`ps -ww`). Without it `ps` cuts each line to the COLUMNS variable or a
+    terminal's width, and what stood at the end of a long line is gone
+    with no error. A test of such a check runs it once under a narrow
+    COLUMNS, with a command line longer than that width (M281).
 
 Done when: a test parses a real sample of each shape, failures among them,
 and the parser's assumptions are written next to it.
@@ -645,6 +655,13 @@ When: a change is about to be called done.
    disagreement. The model and a generator stay in the repository as a
    test that runs in under 20 s and prints the smallest disagreeing case
    (`tests/test_thermal_model.py`, M263).
+
+9. Before a lap that ends in a merge to `main` (a release's pull
+   request), ask the owner to hold other sessions' pushes to `main` until
+   the merge, and say what each move of `main` costs: a merge of `main`,
+   a new health gate, a push and CI, about 40 minutes here. A push to
+   `main` that adds a changelog line makes the pull request conflict, and
+   GitHub runs no checks on a pull request that conflicts (M279).
 
 Done when: the remote has the commit, its CI run is green, and the report
 has been sent. For a gate's method: the attack's cases are tests; after 2
@@ -1377,6 +1394,28 @@ a task.
     landed pieces first. The 5 GB is the lead's choice: here a whole
     checkout with its build folders took about 410 MB, and a review's
     copies up to 2440 MB (M271).
+11. The brief keeps each run short. A helper's test command takes at
+    most about 5 minutes; a longer list is split into parts. Before each
+    part, and before each run of a loop, the helper looks for the gate's
+    lock (`GATE.lock` in the folder `gate-and-push.sh` takes as
+    `GATE_DIR`) and waits while it exists. It waits in a sleep with
+    nothing else running (`sleep`, or `time.sleep` in a script):
+    `ee-agent-kit/lead/quiet.py` counts that as quiet. A run over 1 minute
+    goes behind the engine lock (step 7). The lead does not end a helper's
+    process to free the machine: the session may refuse it, and the brief
+    is the place to keep runs short (M274, M275, M277).
+12. The health gate runs in the background with a time limit longer than
+    its longest wait plus its run: 2 hours here, where the run took 919 s
+    and 1 wait for the engine lock and quiet took 50 minutes (P8 step 9,
+    M273).
+13. A tool that a running gate calls (the quiet check, the gate script)
+    is not edited in place. Write the new version beside it and move it
+    into place in 1 step (`mv`), or stop the gate first (M278).
+14. A cleaning of the disk names only folders that no running process
+    uses: look first (`pgrep -a pytest`, and `ps -ww -eo pid,args` for each
+    folder's name, P7 step 11). Never remove pytest's temp root (`/tmp/pytest-of-<user>`)
+    while a pytest runs; a helper's own run takes `--basetemp` under its
+    own folder (M276).
 
 Done when: every report is read, each helper's changes are merged or
 removed, and `git worktree list` shows only what is still in use.

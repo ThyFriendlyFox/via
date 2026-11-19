@@ -736,7 +736,7 @@ def test_a_gate_stopped_by_sigterm_ends_make_and_its_sampler_before_it_frees_the
     assert proc.returncode != 0
     time.sleep(1)
     assert not alive(make_pid), "make verify runs on after the gate ended"
-    left = subprocess.run(["ps", "-eo", "pid=,args="], capture_output=True, text=True).stdout
+    left = subprocess.run(["ps", "-ww", "-eo", "pid=,args="], capture_output=True, text=True).stdout
     assert [line for line in left.splitlines() if str(GATE) in line and str(gate_setup["tree"]) in line] == []
     assert not (gate_setup["dir"] / "GATE.lock").exists()
     assert remote_head(gate_setup) == gate_setup["base"]
@@ -801,6 +801,78 @@ def test_quiet_names_engines_tests_and_scripts_in_the_given_folders(tmp_path):
         "600 bash bash /scratch/work.sh",
         "800 yosys /opt/chip/bin/yosys -s synth.ys",
     ]
+
+
+# Each stand-in learns where to write 'up' from STANDIN_UP, not from its command line: a path under
+# pytest's base folder (/tmp/pytest-of-<user>/...) would put the word pytest on it.
+STANDIN_SLEEPS = (
+    "import os, pathlib, time; pathlib.Path(os.environ['STANDIN_UP']).write_text('up'); time.sleep(60)"
+)
+STANDIN_WORKS = (
+    "import os, pathlib; pathlib.Path(os.environ['STANDIN_UP']).write_text('up')\nwhile True: pass"
+)
+STANDIN_WAITS_ON_A_CHILD = (
+    "import os, pathlib, subprocess; pathlib.Path(os.environ['STANDIN_UP']).write_text('up')\n"
+    "subprocess.run(['sleep', '60'])"
+)
+# A width narrower than every stand-in's command line, as COLUMNS may set it for `ps` (M281).
+NARROW_COLUMNS = "40"
+
+
+@pytest.mark.parametrize("columns", [None, NARROW_COLUMNS], ids=["inherited-width", "narrow-width"])
+def test_quiet_leaves_out_a_python_script_that_sleeps_with_nothing_below_it(tmp_path, columns):
+    """A helper's script that waits for the gate's lock in `time.sleep` starts no `sleep` process
+    (M277). With nothing below it and no processor time used for 2 s, it is quiet; counted as busy, it
+    and the gate wait for each other. A script that works is busy, and so is one with a child: the
+    child may be its test run. The real `ps` and /proc; the folder is a name on each command line.
+    Only the 3 stand-ins' lines are read: the machine may run other things. Under a narrow COLUMNS
+    the same holds: `ps` cut to that width would lose the folder at the end of each line (M281)."""
+    import time
+
+    folder = f"/quiet-standins-{os.getpid()}"
+    gate = subprocess.Popen(["sleep", "60"])
+    standins = {}
+    try:
+        for name, code in (
+            ("sleeps", STANDIN_SLEEPS),
+            ("works", STANDIN_WORKS),
+            ("child", STANDIN_WAITS_ON_A_CHILD),
+        ):
+            up = tmp_path / f"{name}.up"
+            argv = [sys.executable, "-c", code, folder]
+            assert len(" ".join(argv)) > int(NARROW_COLUMNS)
+            env = {**os.environ, "STANDIN_UP": str(up)}
+            standins[name] = (subprocess.Popen(argv, env=env, start_new_session=True), up)
+        for _proc, up in standins.values():
+            for _ in range(100):
+                if up.exists():
+                    break
+                time.sleep(0.1)
+            assert up.exists(), "a stand-in did not start"
+        time.sleep(0.5)
+        env = dict(os.environ)
+        if columns is not None:
+            env["COLUMNS"] = columns
+        run = subprocess.run(
+            [sys.executable, str(QUIET), str(gate.pid), folder],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert run.returncode == 0, run.stderr
+        printed = {int(line.split()[0]) for line in run.stdout.splitlines()}
+        assert standins["sleeps"][0].pid not in printed
+        assert standins["works"][0].pid in printed
+        assert standins["child"][0].pid in printed
+    finally:
+        import signal
+
+        for proc, _ in standins.values():
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
+        gate.kill()
+        gate.wait()
 
 
 def test_quiet_refuses_a_root_that_is_no_number():

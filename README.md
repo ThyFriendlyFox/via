@@ -349,7 +349,7 @@ docker run --rm -v "%cd%:/work" ghcr.io/thyfriendlyfox/via:v0.1.0 workcenter gat
 
 - On Linux, `--user` makes the files the gates write yours; the image's build checks this with the same command.
 - With no command, the image runs `workcenter doctor`.
-- The package is private until the owner makes it public; until then, a pull needs `docker login ghcr.io` with a token that can read it.
+- The package is public: a pull needs no login.
 - On arm64 (an Apple Silicon Mac, a Windows on Arm PC) the image has no openEMS; `--platform linux/amd64` runs the amd64 image, with openEMS, under emulation.
 - Docker Desktop on Windows and macOS runs Linux containers, and this image is a Linux image (Ubuntu 24.04).
 - The chip engines are not in the image; `sudo ./install.sh --chip` installs them on Ubuntu 24.04.
@@ -416,7 +416,7 @@ images are drawn.
 | `tools/pdfcurve.py`, `tools/kistack_board.py` | A PDF page's vector paths; the board reader kistack's checks run on. |
 | `tools/harvest.py` | What the projects taught the workcenter, read from the repository: each branch's work that main lacks, the scripts projects wrote for themselves, the mistakes made again; and the roadmap's rated candidates held to their scores. |
 | `tools/hooks/` | Claude Code hooks: no `cd` in a command, no test written by a script. |
-| `tools/ci/` | `scope.py`: what a change needs, `fast` or `full`; the `engine` marker's plugin and its guard. `make scope`, `make verify-site`. |
+| `tools/ci/` | `scope.py`: what a change needs, `fast` or `full`; the `engine` marker's plugin and its guard; `nightly_issue.py`: what the nightly run does with its `ci-failure` issue. `make scope`, `make verify-site`. |
 | `WORKCENTER.md` | The contract a project gets from this workcenter. |
 | `AGENTS.md`, `CLAUDE.md` | Where an agent starts. The same text. |
 | `.claude/skills/` | `attached-repos`, `autoroute`, `blocks`, `blog-post`, `board-design`, `board-gates`, `board-loop`, `board-rules`, `charger-block`, `chip-design`, `chip-gates`, `copper`, `fabrication`, `fields`, `highspeed`, `kistack`, `land`, `lead`, `legend`, `now`, `procurement`, `ratings`, `references`, `simulate`, `standards`, `user-round`, `verification`. |
@@ -446,9 +446,9 @@ says how to report a vulnerability.
 
 [`ee-agent-kit/STATUS.md`](ee-agent-kit/STATUS.md) has each area's state
 with its evidence. In short: the gates, the corners, the frequency plan and `workcenter next`
-run on the fixture boards in `make verify`. Via has no release yet. The
+run on the fixture boards in `make verify`. Via's first release is v0.1.0, of 2026-11-19. The
 cloud setup script has not run yet. The Docker image is built on GitHub,
-and the package is still private.
+and its package is public.
 
 ## License
 

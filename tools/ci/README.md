@@ -13,6 +13,7 @@ the minute the roadmap asks for.
 | `guard/engine_watch.py` | Writes a line for each engine a Python process starts; refuses it in the fast run. |
 | `guard/sitecustomize.py` | Loads the watch in every Python process that has `guard/` on PYTHONPATH. |
 | `apt_archive.sh` | On CI's install path, before install.sh: apt asks Ubuntu's own archive, not the runner's regional mirror. |
+| `nightly_issue.py` | The nightly run's last step: reads the night's outcome, the gate's log and the open `ci-failure` issues, and prints what to do (open, comment, close or nothing) with the text. |
 
 ## The rules of `scope.py`
 
@@ -82,6 +83,30 @@ toolchain. `full` gets the toolchain and runs `make verify`. `verdict` always
 runs and passes only when the job the scope asked for passed: make `verdict`
 the required check. The nightly run (`nightly.yml`) stays the full gate.
 
+## The nightly's `ci-failure` issue
+
+The nightly run's last step runs on a passed and a failed night. It lists
+the open issues labelled `ci-failure` and asks `nightly_issue.py` what to do.
+
+1. A failed night with no open issue opens one.
+2. A failed night with an open issue adds 1 comment to it.
+3. A passed night closes each open issue, with 1 comment that names its run.
+4. A passed night with no open issue does nothing.
+
+With 2 or more open, the oldest (lowest number) is spoken to: it holds the
+history. On a failed night each other one is closed as its duplicate, so 1
+stays open and the next failure is seen. The text holds the run's address,
+the step that failed, the gate's `FAILED`, `why:` and `TESTS RED` lines,
+bounded to 20000 characters, inside a code fence. A text over the bound is
+cut, and the fence open at the cut is closed with its own backticks. A gate
+that stopped before its tests gives its step and the last 40 lines of its
+log. The step is named only from a step line of `verify/verify.sh`
+(`== 1/4 lint`), in backticks; any other `== ` line stays in the fence. A night
+that stopped at install has no log and says so. The script is Python's
+standard library only: on that night there is no venv, and the runner's
+`python3` runs it. Its tests run the step's own script under node with a
+stand-in GitHub (`tests/test_ci_nightly_issue.py`).
+
 ## Where `full` runs
 
 `full` decides its own path in its first step, `tools/image.py decide`, and
@@ -130,9 +155,10 @@ KiCad 10's source (the PPA). The image build already asks archive.ubuntu.com.
 
 What differs inside the image: the runner has `node`, the image does not,
 so the tests that need it (6 of `tests/test_forms.py`, 1 of
-`tests/test_lead.py`) skip there. A change to a file they read
-(`site/api/`, `ee-agent-kit/lead/workflows/`, the 2 test files; the list
-is `NODE_PATHS` in `tools/image.py`) takes the install path, where they
+`tests/test_lead.py`, 3 of `tests/test_ci_nightly_issue.py`) skip there.
+A change to a file they read (`site/api/`, `ee-agent-kit/lead/workflows/`,
+`.github/workflows/nightly.yml`, `tools/ci/nightly_issue.py`, the 3 test
+files; the list is `NODE_PATHS` in `tools/image.py`) takes the install path, where they
 run. On the image path the `where:` line ends `not judged there: the
 tests that need node`, with the reason.
 

@@ -8,7 +8,7 @@ machine or a session, and none names a model.
 |---|---|---|
 | `landed.py` | Reads the helpers' journals and says which piece of work has finished its build, its reviews and its fixes, and what each other piece waits for. | `lead`, step 10 |
 | `gate-and-push.sh` | Takes the lock, waits until no helper's engine or test runs, runs `make -C <tree> verify` alone, and pushes only on `VERIFY GREEN` with the tree unchanged. | `land`, step 7 |
-| `quiet.py` | Prints each process that is a helper's engine, test run or script; nothing means quiet. `gate-and-push.sh` calls it. | `land`, step 7 |
+| `quiet.py` | Prints each process that is a helper's engine, test run or script; nothing means quiet. A script that only waits is left out: a shell script with only a `sleep` below it, and a Python script with nothing below it that sleeps and used no processor time for 2 s (`time.sleep`, M277). `gate-and-push.sh` calls it. | `land`, step 7 |
 | `workflows/roadmap-lane.js` | An example for a host that runs workflow scripts: build, attack and fix, 1 item per helper, rounds of items. | `lead`, steps 5 to 9 |
 | `workflows/second-attack.js` | The same: a second review of a piece the first called `not sound`, and its fix. | `lead`, step 9 |
 | `workflows/user-round.js` | The same: 3 users of different sizes on 1 board spec, and the ranking of what they hit. | `user-round`, steps 3 to 6 |
@@ -60,3 +60,12 @@ longer the lease, or 5 tries failed), 6 when the quiet check failed. A
 gate stopped by a signal ends `make verify` and every process it started
 before it removes the lock. Its header names its environment variables.
 `tests/test_lead.py` holds all 3 and the 3 scripts.
+
+A gate in the background gets a time limit of 2 hours: it waits for the
+engine lock and for quiet before its run, and 1 such wait took 50 minutes
+(PROCESSES.md P31 step 12, M273). A helper's loop of runs looks for
+`GATE.lock` in `GATE_DIR` before each run and waits in a sleep while it
+exists (P31 step 11). While a gate runs, `quiet.py` and
+`gate-and-push.sh` are not edited in place: the new version is written
+beside the old one and moved into place in 1 step, or the gate is
+stopped first (P31 step 13, M278).

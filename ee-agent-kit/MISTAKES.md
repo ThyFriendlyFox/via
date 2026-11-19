@@ -1665,3 +1665,57 @@ What happened: The health gate of 2026-11-19 02:02 UTC on 2b727ba (3881 tests in
 Cost: A red health gate of 927 s on the wall clock, a red CI run of 1053 s on the wall clock, and a helper's round to find the cause.
 Root cause: The sampler ran `sleep "$SAMPLE" &` and kept its pid on the next line, `nap=$!`; its TERM trap killed "$nap". A TERM between the 2 lines found no pid (in later rounds, the pid of the sleep before), so the trap ended the sampler and left the new sleep, which held the gate's stdout and stderr for its 60 s; `subprocess.run(capture_output=True)` waits for both to close. The script's comment said a kill ended the sampler at once. The fixer's proof: a BASH_ENV hook that held the sampler before each of its commands in turn left `sleep 60` and the pipes open only at `nap=$!`; with no hook, the old script held its pipes open in 2 of 200 runs under 4 busy loops and 0 of 200 with none. The same kind sat in the gate's own shell: a signal between a job's `&` and the line that keeps its pid, and a signal before setsid had made make's group. Every test of the gate passed because none chose the moment a kill came: each rested on the order in which 2 processes happened to run.
 Process: P18
+
+## M273 — 2026-11-19 — The health gate's time limit ended it after it waited 50 minutes for helpers' test runs
+What happened: The lead ran the health gate labelled push24 in the background with a limit of 1 hour. Its status file: the lock made at 03:23:11 UTC, the engine lock held at 03:33:49, `quiet for 45 s after 2385 s; the gate starts` at 04:13:42, the lock removed at 04:23:11. Helpers' loops of test runs kept the machine busy, so 50 min 31 s went by before `make verify` started. The limit then ended it: `stopped by signal 15 (SIGTERM) after holding the engine lock for 9 min 28 s: make verify`. Nothing was pushed.
+Cost: 1 hour of the gate with no verdict. The next gate (push25) made its lock at 04:23:37 and pushed at 04:39:58.
+Root cause: The limit was set for the run, not for the wait before it. P8 step 9 asks for a limit longer than the wait, and 2 hours where the wait cannot be counted. The helpers' loops did not look for the gate's lock between runs, so the wait had no end the lead could count.
+Process: P31
+
+## M274 — 2026-11-19 — A helper's test command of 20 minutes held the health gate behind it
+What happened: A helper ran 17 test files in 1 command, without the engine lock: `2 failed, 548 passed, 1 skipped in 1207.75s (0:20:07)`. Its log was last written at 05:17:27 UTC, so the run started at about 04:57:20. The gate push27 made its lock at 05:06:51, about 9 minutes after the run started, and held the engine lock from 05:14:01. It could not start until the run ended at 05:17:27.
+Cost: The gate waited for quiet behind 1 command from 05:14:01 to 05:17:27, and the run shared the machine with the gate's wait from 05:06:51.
+Root cause: The brief let a helper run a long list in 1 command, and the run took no engine lock (P31 step 7). A command of 20 minutes cannot look for the gate's lock in its middle.
+Process: P31
+
+## M275 — 2026-11-19 — The lead asked to end a helper's test run, and the permission check refused it
+What happened: To let the gate push27 start, the lead asked to end the helper's test run of M274. The session's permission check refused it: the run was another agent's work. The gate waited until the run ended.
+Cost: A refused request, and the gate's wait of M274.
+Root cause: The lead reached for a stop it may not make. The brief should have kept the run short instead.
+Process: P31
+
+## M276 — 2026-11-19 — A disk cleaning removed pytest's temp root while a helper's pytest used it
+What happened: Cleaning the disk, the lead removed /tmp/pytest-of-root while a helper's pytest run used it. The run had 65 errors, each a `FileNotFoundError`. The helper ran again with `--basetemp` under its own folder and passed.
+Cost: A helper's test run, and its second run.
+Root cause: The cleaning chose a folder by its name and its size, not by what used it. pytest makes each test's `tmp_path` under that root, and no one looked for a running pytest first.
+Process: P31
+
+## M277 — 2026-11-19 — The quiet check counted a sleeping Python script as busy, and it and the gate waited for each other
+What happened: A helper's script, a loop of mutation runs, waited for the gate's lock to go in `time.sleep(30)`, as its brief told it. `time.sleep` starts no `sleep` process. The lead's quiet check counted a Python process that named the scratch folder as busy; it left out only a shell script with a `sleep` below it. From about 05:17:30 UTC the gate push27 waited for the script and the script waited for the gate, until the lead saw it. The script had used 4 ticks of processor time in 12 minutes.
+Cost: The gate's wait from about 05:17:30 until the lead saw it, and then M278.
+Root cause: The check judged a script by its name and its children, not by what it did. A wait the brief asked for was taken for work. The repository's `ee-agent-kit/lead/quiet.py` had the same gap: a Python script whose command line names a given folder was busy. It now leaves out such a script with nothing below it that sleeps and used no processor time for 2 s; `tests/test_lead.py` holds a sleeping, a working and a waiting-on-a-child stand-in.
+Process: P31
+
+## M278 — 2026-11-19 — The quiet check was edited in place while a gate called it, and the gate stopped
+What happened: The lead made M277's fix to its own copy of the quiet check in 2 edits, while the gate push27 called the check every 15 s. Between the edits the file named a function that was not yet there. The check failed, and the gate stopped: `05:19:33 STOP: quiet.py failed`. It lost its place in the queue to a helper's mutation run of about 5 minutes. The next gate, push28, made its lock at 05:22:54 and started at 05:26:16.
+Cost: The gate push27, which had held the engine lock since 05:14:01, and a new gate behind a 5-minute run.
+Root cause: A file that a running process reads was changed in 2 writes. Between them it was a program that did not run.
+Process: P31
+
+## M279 — 2026-11-19 — main moved under the open pull request 4 times in 1 day
+What happened: Another session pushes site changes straight to main, each with a changelog line. On 2026-11-19 main moved under the open pull request 4 times. Each time the pull request conflicted in `ee-agent-kit/CHANGELOG.md`, and GitHub ran no checks on it. Each lap (merge main, gate, push, CI) cost about 40 minutes. From 00:00 to 05:04 UTC main gained 17 commits, and 15 of them changed `ee-agent-kit/CHANGELOG.md` (`git log --first-parent`).
+Cost: About 40 minutes for each of 4 laps.
+Root cause: Every change writes its line at 1 place in 1 file, the top of `## [Unreleased]`, so any 2 changes conflict there. The lead started each lap without asking the owner to hold the other session's pushes, and did not say what each move cost.
+Process: P14
+
+## M280 — 2026-11-19 — A sentence about the container package's visibility was written from an assumption
+What happened: README.md said of the container image: "The package is private until the owner makes it public; until then, a pull needs `docker login ghcr.io` with a token that can read it." The lead wrote it without a look at the package. The owner saw the earlier package, `ee-workcenter`, marked public. At 06:00 UTC on 2026-11-19 a request with no login for the manifest of `ghcr.io/thyfriendlyfox/via:tc-ad6cb1705e532dcc` got HTTP 200, with linux/amd64 and linux/arm64 in it: the new package is public, and the sentence was false. The same claim stood in README.md's state paragraph, in STATUS.md (its Known red and Last release lines, and the owner's open steps) and in ROADMAP.md's entry for the image (2 places); each now says the package is public. CI.md's steps and the released section of CHANGELOG.md stay as written.
+Cost: A false sentence in README.md that told users to log in for a public image, 6 more like it in README.md and the kit's documents, and the owner's time to find it.
+Root cause: A claim about an outside service's state was written from what such a service usually does, not read from the service.
+Process: P5
+
+## M281 — 2026-11-19 — The quiet check read `ps` lines cut to a width and missed a working script
+What happened: CI's `make verify` on the pull request failed `tests/test_lead.py::test_quiet_leaves_out_a_python_script_that_sleeps_with_nothing_below_it`: the stand-in that works (`while True: pass`) was not printed as busy (`assert 7751 in {5595, 5596, 5597, 5598}`; the 4 were the test shards). `ee-agent-kit/lead/quiet.py` listed processes with `ps -eo pid=,ppid=,comm=,args=`. procps 4.0.4 writes unlimited lines to a pipe, but cuts each line to the COLUMNS variable when it is set (`src/ps/global.c`, lines 268 to 275). Under `COLUMNS=80` the stand-ins' command lines, about 130 characters, lost their ends and with them the folder's name, so no stand-in was a candidate at all. The same test with `COLUMNS=80` failed the same way on a cloud machine. The test's own look at what a stopped gate left behind (`ps -eo pid=,args=`) had the same gap and would pass on a cut line. On the cloud machine the test failed a second way too, with no COLUMNS: each stand-in's marker file was under `/tmp/pytest-of-root/`, its path on the stand-in's command line held the word pytest, and the check counts a Python process whose line holds pytest as a test run, so the sleeping stand-in was busy. CI's shards set `--basetemp` to a folder without that word. The stand-ins now take the marker's path from the environment.
+Cost: 1 red CI run of the pull request, and a check that, with a cut line, lets the gate start while a helper's script works.
+Root cause: The check read another tool's output without asking for the whole of it. `ps` sizes its lines to COLUMNS or a terminal, and the test ran only with neither set. `quiet.py` and the test now call `ps -ww`, and the test runs once more with `COLUMNS=40`.
+Process: P7
