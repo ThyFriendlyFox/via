@@ -41,7 +41,7 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ## 2026-11-19 — The product is called Via, and its command stays workcenter
 
-The owner asked that everything a person reads call the product Via, then "okay so don't change workcenter the command or the internal names, just the user-facing text is fine." 174 lines of the documents said "EE Workcenter" or "the workcenter" in prose; 0 do now, and a test holds it. History, code spans and the lines the gates print kept their words. At landing, 43 more lines that the batch had written since the change was branched said the old name, and they were renamed too.
+The owner asked that everything a person reads call the product Via, then "okay so don't change workcenter the command or the internal names, just the user-facing text is fine." 174 lines of the documents said `EE Workcenter` or `the workcenter` in prose; 0 do now, and a test holds it. History, code spans and the lines the gates print kept their words. At landing, 43 more lines that the batch had written since the change was branched said the old name, and they were renamed too.
 
 Evidence: `tests/test_product_name.py` (3 tests); branch `wip/via-name`, 165efc6.
 
