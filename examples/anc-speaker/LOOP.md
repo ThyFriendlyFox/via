@@ -9,7 +9,7 @@ version README's Board section says what each review found and what changed.
 ## The prompt
 
 ```text
-examples/anc-speaker/v0.1 is the workcenter's example of what people make with Via: a noise
+examples/anc-speaker/v0.1 is Via's example of what people make with it: a noise
 cancelling speaker that hears the room with a mic and plays the inverse wave. It must be compact,
 correct, and gorgeous: a board someone would want to hold and photograph. Read this file and its
 log, do one iteration, and append to the log.
