@@ -120,6 +120,18 @@ def test_no_kept_folder_keeps_nothing_and_does_not_fail_the_job(tmp_path):
     assert [p.name for p in (tmp_path / INTO).iterdir()] == ["KEPT.txt"]
 
 
+def test_a_plain_file_that_matches_the_pattern_is_no_folder(tmp_path):
+    """Only folders are kept: a file whose name matches the pattern is not named as one."""
+    (tmp_path / "tmp").mkdir(exist_ok=True)
+    (tmp_path / "tmp" / "ee-verify-note.txt").write_text("not a folder\n", encoding="utf-8")
+    ran = keep(tmp_path, str(tmp_path / "tmp" / "ee-verify-*"))
+    assert ran.returncode == 0
+    assert (
+        ran.stdout.strip()
+        == f"kept_logs: no folder matches {tmp_path / 'tmp' / 'ee-verify-*'}: nothing to keep"
+    )
+
+
 def test_a_link_out_of_the_folder_is_not_followed(tmp_path):
     work = kept_folder(tmp_path)
     secret = tmp_path / "elsewhere"

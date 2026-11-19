@@ -394,7 +394,8 @@ kicad_lasting() {
 # The package sources apt reads, 1 line each: "<address> <suite>". The files are those kicad_index_stop
 # reads: sources.list, then *.list and *.sources beside the script's file; a file of another name is not
 # read. A deb-src source counts: the update fetches its index too. A commented line names no type, and a
-# deb822 stanza gives 1 line per address and suite.
+# deb822 stanza gives 1 line per address and suite. apt reads no stanza whose `Enabled:` is false (no,
+# false, off, without, disable or 0: apt-pkg/contrib/strutl.cc, StringToBool), so neither does this.
 apt_sources() {
   local parts file
   local -a files=()
@@ -405,15 +406,16 @@ apt_sources() {
   if ((${#files[@]} == 0)); then return 0; fi
   awk '
     function flush(  a, b, n, m, x, y) {
-      if (u != "" && s != "") {
+      if (u != "" && s != "" && !off) {
         n = split(u, a, " "); m = split(s, b, " ")
         for (x = 1; x <= n; x++) for (y = 1; y <= m; y++) print a[x], b[y]
       }
-      u = ""; s = ""
+      u = ""; s = ""; off = 0
     }
     FNR == 1 { flush() }
     $1 ~ /^deb(-src)?$/ { i = 2; if ($i ~ /^\[/) { while (i <= NF && $i !~ /\]$/) i++; i++ } print $i, $(i + 1); next }
     /^[[:space:]]*$/ { flush(); next }
+    $1 == "Enabled:" { off = (tolower($2) ~ /^(no|false|off|without|disable|0)$/); next }
     $1 == "URIs:" { for (j = 2; j <= NF; j++) u = u (j == 2 ? "" : " ") $j; next }
     $1 == "Suites:" { for (j = 2; j <= NF; j++) s = s (j == 2 ? "" : " ") $j; next }
     END { flush() }' "${files[@]}"

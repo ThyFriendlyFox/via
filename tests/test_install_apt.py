@@ -651,6 +651,102 @@ def test_a_cut_try_shows_at_most_its_last_10_lines(tmp_path):
     assert len(said) == 3 and all(x.endswith("; apt printed no line in that try") for x in said)
 
 
+def first_cut(out: str) -> str:
+    """The line of the first cut try, from `the sources` on."""
+    (said, *_) = [x for x in out.splitlines() if "did not end within" in x]
+    return said.split("; the sources that had not answered (no Hit, Get, Ign or Err line): ", 1)[1]
+
+
+def test_a_deb_src_source_that_printed_nothing_is_named(tmp_path):
+    """The update fetches a deb-src source's index too: one that printed no line is named."""
+    runner_sources(tmp_path)
+    with (tmp_path / "sources.list").open("a", encoding="utf-8") as text:
+        text.write("deb-src http://src.example/ubuntu noble main\n")
+    code, out, _, _ = run(tmp_path, {"timeout": cut_update(*HEARD)}, env=CI)
+    assert code == 1
+    assert first_cut(out).startswith("http://src.example/ubuntu noble, mirror+file:")
+
+
+def test_a_source_whose_only_line_is_err_has_answered(tmp_path):
+    """An Err: line is the host's answer (a failure): that source is not named, as for Hit, Get and Ign."""
+    runner_sources(tmp_path)
+    heard = (
+        *HEARD,
+        "Err:4 http://slow.example/ubuntu noble InRelease",
+        "Err:5 http://slow.example/ubuntu noble-updates InRelease",
+    )
+    code, out, _, _ = run(tmp_path, {"timeout": cut_update(*heard)}, env=CI)
+    assert code == 1
+    assert first_cut(out).startswith(f"{NOT_NAMED}; ")
+
+
+def test_a_source_with_a_port_is_heard_by_its_host(tmp_path):
+    """apt's line names the address with its port; the source is heard by its host all the same."""
+    runner_sources(tmp_path)
+    with (tmp_path / "sources.list").open("a", encoding="utf-8") as text:
+        text.write("deb http://port.example:8080/ubuntu noble main\n")
+    heard = (*HEARD, "Hit:4 http://port.example:8080/ubuntu noble InRelease")
+    code, out, _, _ = run(tmp_path, {"timeout": cut_update(*heard)}, env=CI)
+    assert code == 1
+    assert "port.example" not in first_cut(out)
+
+
+def test_a_host_whose_name_holds_another_does_not_answer_for_it(tmp_path):
+    """us.archive.ubuntu.com answered for noble-updates; archive.ubuntu.com printed nothing for noble.
+    The match is of the whole host and suite, not of a part of a line."""
+    (tmp_path / "sources.list.d").mkdir()
+    (tmp_path / "sources.list").write_text(
+        "deb http://archive.ubuntu.com/ubuntu noble main\n"
+        "deb http://us.archive.ubuntu.com/ubuntu noble-updates main\n",
+        encoding="utf-8",
+    )
+    heard = (HEARD[1], "Hit:3 http://us.archive.ubuntu.com/ubuntu noble-updates InRelease")
+    code, out, _, _ = run(tmp_path, {"timeout": cut_update(*heard)}, env=CI)
+    assert code == 1
+    assert first_cut(out).startswith("http://archive.ubuntu.com/ubuntu noble; ")
+
+
+def test_an_update_that_ends_with_124_and_no_bound_is_not_said_as_cut(tmp_path):
+    """With no APT_UPDATE_TIMEOUT nothing cuts the update: an exit code 124 is apt's own, and the try is
+    not said as one its bound ended."""
+    runner_sources(tmp_path)
+    code, out, err, _ = run(tmp_path, {"apt-get": update_says(E_LOCK, code=124)})
+    assert code == 1
+    assert "did not end within" not in out + err
+    assert f"apt said: exit code 124: {E_LOCK}" in err
+
+
+def test_a_cut_try_of_1_line_says_its_last_line(tmp_path):
+    runner_sources(tmp_path)
+    code, out, _, _ = run(tmp_path, {"timeout": cut_update(HEARD[1])}, env=CI)
+    assert code == 1
+    assert first_cut(out).endswith("; apt's last line of that try:")
+
+
+def test_a_disabled_stanza_is_not_named_and_its_hosts_go_to_no_command(tmp_path):
+    """apt does not read a deb822 stanza with `Enabled: no`: it prints no line for it, and it is not named
+    or given to the command."""
+    runner_sources(tmp_path)
+    other = tmp_path / "other-mirrors.txt"
+    other.write_text(
+        "http://healthy.example/ubuntu/\tpriority:1\nhttp://b.example/ubuntu/\n", encoding="utf-8"
+    )
+    (tmp_path / "sources.list.d" / "off.sources").write_text(
+        f"Enabled: no\nTypes: deb\nURIs: mirror+file:{other}\nSuites: jammy\nComponents: main\n",
+        encoding="utf-8",
+    )
+    heard = (
+        *HEARD,
+        "Hit:4 http://slow.example/ubuntu noble InRelease",
+        "Hit:5 http://slow.example/ubuntu noble-updates InRelease",
+    )
+    env = {**CI, "APT_SLOW_PASS_COMMAND": "slow-pass --slow"}
+    code, out, _, calls = run(tmp_path, {"timeout": cut_update(*heard), "slow-pass": "exit 0"}, env=env)
+    assert code == 1
+    assert first_cut(out).startswith(f"{NOT_NAMED}; ")
+    assert of(calls, "slow-pass") == []
+
+
 def test_between_2_cut_tries_the_named_command_moves_the_mirror_lists_silent_hosts(tmp_path):
     """The hook of the download (APT_SLOW_PASS_COMMAND, CI: tools/ci/apt_archive.sh --slow) runs between
     2 tries too, with the hosts of the mirror list's sources that had not answered, in the order apt
@@ -693,7 +789,9 @@ def test_between_2_cut_tries_the_host_apt_asks_first_goes_last_each_time(tmp_pat
         f"Types: deb\nURIs: mirror+file:{listed}\nSuites: noble noble-updates\nComponents: main\n",
         encoding="utf-8",
     )
-    hook = f'PATH=/usr/bin:/bin TMPDIR="$STUB_DIR/tmp" APT_DIR={apt} APT_ARCHIVE_CI=1 {BASH} {APT_ARCHIVE} "$@"'
+    hook = (
+        f'PATH=/usr/bin:/bin TMPDIR="$STUB_DIR/tmp" APT_DIR={apt} APT_ARCHIVE_CI=1 {BASH} {APT_ARCHIVE} "$@"'
+    )
     env = {**CI, "APT_SLOW_PASS_COMMAND": "slow-pass --slow"}
     code, out, err, calls = run(tmp_path, {"timeout": cut_update(*HEARD), "slow-pass": hook}, env=env)
     assert code == 1, err
@@ -2855,6 +2953,19 @@ def test_an_openems_download_that_never_comes_warns_with_the_file_and_the_host(t
     assert len([c for c in of(calls, "timeout") if "--download-only" in c]) == 5
 
 
+@pytest.mark.parametrize("comes", [True, False], ids=["comes", "never"])
+def test_an_other_download_leaves_no_file_of_its_own(tmp_path, comes):
+    """The download of the openEMS step keeps its stop's lines in a temp file under TMPDIR: it is gone
+    after the step, whether the download came or not."""
+    never = f"echo {shlex.quote(E_520)} >&2; echo {shlex.quote(E_FILES)} >&2; exit 100"
+    answer = by_pass("exit 0") if comes else by_pass(never)
+    stubs = {**openems_folder(tmp_path), "apt-get": answer}
+    code, out, err, calls = run(tmp_path, stubs, env=OTHERS, body="step_openems")
+    assert code == 0, err
+    assert len(of(calls, "mktemp")) >= 1
+    assert sorted(p.name for p in (tmp_path / "tmp").iterdir()) == []
+
+
 def test_a_stalled_openems_pass_is_ended_and_its_stop_names_its_own_bound(tmp_path):
     """The passing run of job 135593285528: the openEMS step's download stalled 282.8 s, 385 s in all,
     with no bound. Now the watch ends a pass too slow to finish within APT_OTHER_TIMEOUT, and its stop
@@ -2876,9 +2987,16 @@ def test_a_boot_update_that_does_not_end_names_the_sources_that_had_not_answered
     printed nothing for 271 s between `boot:` and its first Get (#9 0.113 to #9 271.2): with -qq that
     cannot be split between the update and the download, so 1 try of 120 s could have refused it."""
     listed = runner_sources(tmp_path)
-    env = {**OTHERS, "CA_BUNDLE": str(tmp_path / "no-bundle.crt"), "APT_SLOW_PASS_COMMAND": "slow-pass --slow"}
+    env = {
+        **OTHERS,
+        "CA_BUNDLE": str(tmp_path / "no-bundle.crt"),
+        "APT_SLOW_PASS_COMMAND": "slow-pass --slow",
+    }
     code, out, err, calls = run(
-        tmp_path, {**BOOT_TOOLS, "timeout": cut_update(*HEARD), "slow-pass": "exit 0"}, env=env, body="step_boot"
+        tmp_path,
+        {**BOOT_TOOLS, "timeout": cut_update(*HEARD), "slow-pass": "exit 0"},
+        env=env,
+        body="step_boot",
     )
     assert code == 1
     lines = out.splitlines()
@@ -2987,7 +3105,8 @@ def test_a_bad_value_stops_before_the_first_step_installs(tmp_path, name, value)
     [
         (
             update_says(E_LOCK, code=100),
-            f"[install] ERROR: boot: `apt-get update` ended with exit code 100 in try 3 of 3; apt said: {E_LOCK}",
+            "[install] ERROR: boot: `apt-get update` ended with exit code 100 in try 3 of 3; "
+            f"apt said: {E_LOCK}",
         ),
         (
             'case "$*" in *--download-only*) exit 0 ;; '
@@ -3577,7 +3696,15 @@ def test_no_text_keeps_a_figure_of_the_former_arithmetic():
         name: (ROOT / name).read_text(encoding="utf-8")
         for name in ("install.sh", "ee-agent-kit/CI.md", "tools/ci/apt_archive.sh", "tools/ci/README.md")
     }
-    stale = ("1058 s", "1066 s", "8 s the", "the 8 s", "8 s CI", "timeout-minutes: 30", "15 s rule does not hold")
+    stale = (
+        "1058 s",
+        "1066 s",
+        "8 s the",
+        "the 8 s",
+        "8 s CI",
+        "timeout-minutes: 30",
+        "15 s rule does not hold",
+    )
     found = [(name, x) for name, text in texts.items() for x in stale if x in " ".join(text.split())]
     assert found == []
     assert "2163 s" in " ".join(texts["install.sh"].split())
