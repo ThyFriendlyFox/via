@@ -384,10 +384,11 @@ WAITS = (
 
 
 def running(pid: int) -> bool:
-    """A process that exists and is not a zombie (its state in /proc/<pid>/stat, after the name)."""
+    """A process that exists and is not a zombie (its state in /proc/<pid>/stat, after the name). A
+    process reaped between the file's open and its read makes the read fail with ESRCH: not running."""
     try:
         stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
-    except FileNotFoundError:
+    except (FileNotFoundError, ProcessLookupError):
         return False
     return stat.rsplit(")", 1)[1].split()[0] != "Z"
 
@@ -488,7 +489,10 @@ def test_the_shards_of_a_gate_that_holds_the_engine_lock_never_wait_for_it(tmp_p
 def test_a_stop_by_signal_to_the_holders_group_ends_every_shard(tmp_path):
     """`lead/gate-and-push.sh` starts make with setsid and stops it with TERM to that process group:
     `enginelock.py hold`, verify.sh and the runner get the signal, the shards (each in its own session)
-    do not. The runner ends them: no shard's pytest is left, and the hold dies of the signal."""
+    do not. The runner ends them: no shard's pytest is left, and the hold dies of the signal.
+    The hold passes its TERM on to the runner too, so the runner gets 2. It ends and waits for every
+    shard before it exits, so once the output has ended no shard's pid is in /proc, not even a dead one
+    that another process has yet to reap: nothing is left to wait for."""
     root = folder(tmp_path, {"test_x.py": WAITS, "test_y.py": WAITS})
     pids = tmp_path / "pids"
     pids.mkdir()
@@ -501,17 +505,18 @@ def test_a_stop_by_signal_to_the_holders_group_ends_every_shard(tmp_path):
         start_new_session=True,
     )
     try:
+        # The hold leads its own group from the start (setsid runs before exec), and each shard has
+        # written its pid, so the runner has its handlers set and both shards are up.
+        assert os.getpgid(proc.pid) == proc.pid
         deadline = time.monotonic() + 60
         while len(list(pids.iterdir())) < 2:
             assert time.monotonic() < deadline and proc.poll() is None, "the 2 shards did not start"
             time.sleep(0.1)
         os.killpg(proc.pid, signal.SIGTERM)
         out, _ = proc.communicate(timeout=30)
-        deadline = time.monotonic() + 10
-        while any(running(int(p.name)) for p in pids.iterdir()) and time.monotonic() < deadline:
-            time.sleep(0.1)
-        left = [int(p.name) for p in pids.iterdir() if running(int(p.name))]
+        left = [p.name for p in pids.iterdir() if Path(f"/proc/{p.name}").exists()]
         assert left == [], out
+        assert "stopped by signal 15: 3 pytest processes started, none left running" in out, out
         assert proc.returncode == -signal.SIGTERM, out
     finally:
         for p in pids.iterdir():
@@ -522,6 +527,46 @@ def test_a_stop_by_signal_to_the_holders_group_ends_every_shard(tmp_path):
         if proc.poll() is None:
             os.killpg(proc.pid, signal.SIGKILL)
             proc.wait()
+
+
+def test_a_stop_signal_during_the_clean_up_does_not_cut_it_short(tmp_path):
+    """Under `enginelock.py hold` the runner gets 2 TERMs: 1 sent to the group and 1 the hold passes on,
+    milliseconds apart. The second must not end the clean-up that the first began. TERM goes to the
+    runner again and again until it exits: it still prints its stop line, and it waits for each shard
+    before it exits, so no shard's pid is in /proc after it, not even a dead one not yet reaped."""
+    root = folder(tmp_path, {"test_x.py": WAITS, "test_y.py": WAITS})
+    pids = tmp_path / "pids"
+    pids.mkdir()
+    args = ["run", "--root", str(root), "--table", str(root / "shards.csv"), "--jobs", "2"]
+    args += ["--python", sys.executable, "--work", str(tmp_path / "work")]
+    proc = subprocess.Popen(
+        [sys.executable, str(ROOT / "verify" / "testshards.py"), *args],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        env={**os.environ, "SHARD_PIDS": str(pids)},
+    )
+    try:
+        deadline = time.monotonic() + 60
+        while len(list(pids.iterdir())) < 2:
+            assert time.monotonic() < deadline and proc.poll() is None, "the 2 shards did not start"
+            time.sleep(0.1)
+        while proc.poll() is None:
+            proc.send_signal(signal.SIGTERM)
+        out = proc.stdout.read()
+        left = [p.name for p in pids.iterdir() if Path(f"/proc/{p.name}").exists()]
+        assert left == [], out
+        assert "stopped by signal 15: 3 pytest processes started, none left running" in out, out
+    finally:
+        for p in pids.iterdir():
+            try:
+                os.kill(int(p.name), signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+        proc.stdout.close()
 
 
 # -- the work folder and the table ----------------------------------------------------------------------
