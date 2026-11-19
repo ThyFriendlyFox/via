@@ -340,15 +340,20 @@ class Server:
         with self.state:
             if rid in self.cancelled:
                 return
-            proc = subprocess.Popen(
-                [sys.executable, str(self.cli), *words],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                cwd=self.root,
-                env=env,
-                start_new_session=True,
-            )
+            try:
+                proc = subprocess.Popen(
+                    [sys.executable, str(self.cli), *words],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    cwd=self.root,
+                    env=env,
+                    start_new_session=True,
+                )
+            except OSError as exc:
+                text = f"not run: workcenter {words[0]} could not start in {self.root}: {exc.strerror}"
+                self.result(rid, {"content": [{"type": "text", "text": text}], "isError": True})
+                return
             self.running[rid] = proc
         lines: list[str] = []
         for raw in proc.stdout:

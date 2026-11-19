@@ -270,6 +270,22 @@ def test_an_argument_of_the_wrong_kind_is_refused_in_1_line(tmp_path, lock_dir, 
     assert client.close() == 0
 
 
+def test_a_command_that_cannot_start_is_answered_in_1_line(tmp_path, lock_dir, request):
+    """The root removed while the server runs: the command cannot start in it. The call is still
+    answered, in 1 line that names the root, with isError and no exit code, since nothing ran."""
+    root = tmp_path / "gone"
+    root.mkdir()
+    client = served(root, lock_dir, request)
+    client.start()
+    root.rmdir()
+    result = client.call("tools/call", {"name": "erc", "arguments": {}})["result"]
+    lines = tool_text(result)
+    assert result["isError"] is True and "structuredContent" not in result
+    assert len(lines) == 1 and lines[0].startswith("not run: ") and str(root) in lines[0], lines
+    assert client.call("ping")["result"] == {}
+    assert client.close() == 0
+
+
 def test_protocol_errors_carry_json_rpc_codes(tmp_path, lock_dir, request):
     """-32700 for a line that is not JSON, with a null id; -32600 for a message that is not an object
     (a batch: the transport carries "individual JSON-RPC requests, notifications, or responses"); -32601
