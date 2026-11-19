@@ -31,6 +31,8 @@ python3 site/blog.py                             # the blog, from the posts in b
 python3 site/blog.py --check                     # exit 1 when a blog page is not what the script writes
 python3 site/forms.py                            # the feedback page
 python3 site/forms.py --check                    # exit 1 when the feedback page is not what the script writes
+python3 site/guide.py                            # the guide
+python3 site/guide.py --check                    # exit 1 when the guide is not what the script writes
 sh site/build.sh out https://example.org         # the files a host serves, in out/
 ```
 
@@ -45,7 +47,7 @@ empty.
 
 | Path | Holds |
 |---|---|
-| `index.html` | The home page: the hero (the wordmark built as a board is, the owner's headline, the install line, the card that leads to the 2 forms and the agents' strip), Herald, the boards, the checks, design as code, the architecture and getting started. `%ORIGIN%` marks each line that needs the site's address. `?theme=dark` and `?theme=light` ask for a theme; `?shot=diagram` shows the diagram alone, for a capture. The card (`.sticker`) holds the blog's line "We're making Via better every day!" and 2 buttons, each with an icon and an arrow: a filled one to the subscribe form and an outlined one to the feedback page. It wiggles every 5 s unless the reader asks for reduced motion, and stops under a pointer or the focus. From 1000 px it leans 20 degrees in the middle of the space right of the wordmark, where the owner asked for it, and its font (every size in it is in em) shrinks to fit that space. Below 1000 px there is no such space, so it lies level under the buttons, as wide as the text up to 26rem, at the owner's word. A capture hides it. |
+| `index.html` | The home page: the hero (the wordmark built as a board is, the owner's headline, the install line, the card that leads to the 2 forms and the agents' strip), Herald, the boards, the checks, design as code, the architecture and getting started. `%ORIGIN%` marks each line that needs the site's address. `?theme=dark` and `?theme=light` ask for a theme; `?shot=diagram` shows the diagram alone, for a capture. The hero holds 2 cards (`.sticker`). The right one holds the blog's line "We're making Via better every day!" and 2 buttons, each with an icon and an arrow: a filled one to the subscribe form and an outlined one to the feedback page. The left one (`.sticker-guide`) holds "Here's how to use Via, step by step!" and a button to the guide. Each wiggles every 5 s, 2.5 s apart, unless the reader asks for reduced motion, and stops under a pointer or the focus. From 1000 px the right card leans 20 degrees in the middle of the space right of the wordmark, beside the headline, where the owner asked for it, and the left card is its mirror at -20 degrees; their fonts (every size in them is in em) shrink to fit that space. Below 1000 px there is no such space, so they lie level under the buttons, one over the other, as wide as the text up to 26rem, at the owner's word. A capture hides them. |
 | `examples.html`, `examples/<name>.html` | The list of examples, and 1 page for each. `examples.py` writes them; do not edit them by hand. |
 | `examples/<name>/` | What an example's page shows: `board.svg`, the board drawn from its file for the explorer; `spin.webp`, the turntable's views side by side, where they show the whole of it; `top.png` and `bottom.png`, KiCad's renders with the backdrop taken out, at most 1100 px wide; `card.png`, the picture on its card (the assembly where there is one, or the render `CARD_FROM` in `examples.py` names), 760 px wide; all 3 in 256 colours; `pictures.json`, the render each came from and the turntable's frames. |
 | `examples.py` | Writes the example pages. "The example pages" below says what it reads. |
@@ -53,6 +55,7 @@ empty.
 | `blog.py` | Writes the blog. "A new post" below says how. |
 | `feedback.html` | The feedback page at `/feedback`. `forms.py` writes it; do not edit it by hand. |
 | `forms.py` | Writes the feedback page, and gives `blog.py` the subscribe form. "The forms" below says where each form goes. |
+| `guide.html`, `guide.py` | The guide at `/guide`: how to use Via, step by step, in plain English, from where Via runs to the files a board maker takes. `guide.py` writes it from the commands of the root README's "Quick start" and "Where it runs"; do not edit the page by hand. A test holds each `workcenter` command it shows to the tool's commands, and each path to the tree. |
 | `api/` | The 2 functions the forms post to, and `_forms.js`, their rules. |
 | `package.json`, `package-lock.json` | The functions' only dependency, `@vercel/blob`, at 1 version. |
 | `frame.py` | The head, header and footer every page `examples.py` and `blog.py` write shares: the menu (with the blog and Community, the Discord server at `discord.reagent-systems.com`), the footer (with the blog, the feedback page and Community, and the line "Made by Team Reagent for Builders" to `reagent-systems.com`), the theme before the first paint and the analytics' 2 script tags. |

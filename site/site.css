@@ -3010,6 +3010,34 @@ html[data-shot] .ticker {
   padding-top: 1.5rem;
 }
 
+/* ---- the guide: how to use Via, step by step (site/guide.py) ------------------------------------ */
+.guide-n {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  margin-right: 0.5rem;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 0.9375rem;
+  vertical-align: 0.15em;
+}
+.guide-cmd {
+  position: relative;
+}
+.guide-cmd pre {
+  padding-right: 3.5rem;
+}
+.guide-cmd .prompt {
+  color: var(--muted-foreground);
+  user-select: none;
+}
+.guide-cmd .copy {
+  top: 0.6875rem;
+  right: 0.6875rem;
+}
+
 /* --------------------------------------------------------------- sticker */
 
 /* The hero's way to the forms: the owner's line on a card, with 2 buttons. From 1000 px it leans
@@ -3039,6 +3067,13 @@ html[data-shot] .ticker {
 .sticker:hover,
 .sticker:focus-within {
   scale: 1.03;
+}
+
+/* On a phone the 2 cards stand one over the other: the guide's, then the forms'. */
+@media (max-width: 999.98px) {
+  .sticker + .sticker {
+    margin-top: 1rem;
+  }
 }
 
 .sticker-line {
@@ -3110,6 +3145,10 @@ html[data-shot] .ticker {
   .sticker:focus-within {
     animation-play-state: paused;
   }
+  /* The 2 cards take turns: the guide's wiggles 2.5 s after the forms'. */
+  .sticker-guide {
+    animation-delay: 4s;
+  }
 }
 
 @keyframes sticker-wiggle {
@@ -3151,6 +3190,19 @@ html[data-shot] .ticker {
   .sticker:hover,
   .sticker:focus-within {
     scale: 1.05;
+  }
+}
+
+/* The guide's card is the forms' card in a mirror, left of the wordmark at -20 degrees: its right
+   edge is as far left of the middle as the forms' card's left edge is right of it. It is 1 button
+   shorter, so it sits 1.3em lower, which puts the 2 cards' middles level. */
+@media (min-width: 1000px) {
+  .sticker-guide {
+    --tilt: -20deg;
+    --swing: -5deg;
+    top: calc(24rem + 1.3em);
+    right: calc(50% + 18rem + (min(50% - 1.5rem, 632px) - 18rem) / 2 - 8em);
+    left: auto;
   }
 }
 
