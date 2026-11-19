@@ -30,6 +30,19 @@ LOCK_LOG = "WORKCENTER_LOCK_LOG"
 _made: list[str] = []
 
 
+def router_absent() -> str:
+    """Why Via's default router cannot run here, "" when it can: the router's own absent(), which rests
+    on the java the product picks (routers.workcenter_java). A routing test skips on this, never on
+    the first java on PATH: in CI run 44515796762 a java stood on PATH, so 13 tests ran, and the product
+    ran another java, which could not draw FreeRouting's window."""
+    tools = str(Path(__file__).resolve().parents[1] / "tools")
+    if tools not in sys.path:
+        sys.path.insert(0, tools)
+    import routers
+
+    return routers.get(routers.DEFAULT).absent()
+
+
 def pytest_configure(config):
     engine_marker.pytest_configure(config)
     if not os.environ.get(LOCK_LOG):

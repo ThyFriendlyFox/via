@@ -1762,19 +1762,25 @@ Cost: A red CI run on main for a change that did not touch the test, a helper's 
 Root cause: The runner's handler raised on every stop, so a stop that came during the clean-up of the first ended it. The test waited up to 10 s for the shards to go, a guessed time that hid the runner's fault, and its `/proc` helper caught only `FileNotFoundError`. A test that reads `/proc` for a child's grandchildren sees them only while no reaper has taken them, so it depends on the machine's init. The deterministic guards are `test_a_stop_signal_during_the_clean_up_does_not_cut_it_short` and `test_the_clean_up_kills_and_waits_for_every_shard_whoever_reaps_orphans`.
 Process: P18
 
-## M289 — 2026-11-19 — A test's path out of the root led back into it, and the call ran the gates
+## M289 — 2026-11-19 — The Java install.sh recorded could not draw FreeRouting's window
+What happened: Pull request 116 made Via run the JVM install.sh records instead of the first java on PATH. Its first full run on GitHub's install path (run 44515796762, job 135531488086) recorded `/usr/lib/jvm/java-21-openjdk-amd64/bin/java`, the JVM of openjdk-21-jre-headless, and doctor read `ok java 21.0.13.1`. 13 routing tests failed, each in `FreeRouting exited 1; see <log>` or on what followed it (`KeyError: 'segments'`, a missing `  route: ` line). The headless runtime has no `lib/libawt_xawt.so` (its dpkg file list), and FreeRouting 1.9.0 stops with `java.awt.HeadlessException` without it. The apt step's check, `find "$JVM_DIR" -name libawt_xawt.so`, found the library in another JDK the runner carries under /usr/lib/jvm, so openjdk-21-jre was not installed. Before the pull request the router ran on the first java of PATH there, which could draw. On the machines it was built and reviewed on, and in the image, no other JDK exists, so the full runtime was installed and nothing showed.
+Cost: 1 full run of 13 minutes on GitHub red, a pull request held, and a round to find a cause the log did not show (the gate's kept logs, the router's own among them, are not uploaded from a red run).
+Root cause: A check asked "is the library somewhere on this machine" for a thing 1 named program needs, and a claim about a package's contents (that Ubuntu's headless runtime ships the library) was written from memory. The java record was reviewed and landed with no run on the machine it was written for, GitHub's runner, where the ground differed: its stand-ins answered `-version` only, never a JVM that runs and cannot do the router's job, and the routing tests skipped on `shutil.which("java")`, not on the java the product picks.
+Process: P2
+
+## M290 — 2026-11-19 — A test's path out of the root led back into it, and the call ran the gates
 What happened: A case of `tests/test_mcp.py` (roadmap item 17, `wip/r17`) meant a link out of the root and named `away/root`, which the link resolved back into the root. The call ran `gates` on the fixture, and the engine guard (`tools/ci/engine_marker.py`) caught kicad-cli and ngspice started by a test without the `engine` marker, in the first run.
 Cost: 1 red run of the builder's; no commit carried it.
 Root cause: The expected answer of each path case was not worked out by hand before the case was written: `away` is tmp_path, `away/lock` is tmp_path/lock, outside the root, and `away/root` is the root itself. Each case is now worked out that way. The guard of P12 step 7 did its work.
 Process: P12
 
-## M290 — 2026-11-19 — A command line of the keeper's used `cd` again
+## M291 — 2026-11-19 — A command line of the keeper's used `cd` again
 What happened: Cleaning the batch's work folder after pull request 116, the keeper ran 1 shell command that began `cd <scratchpad>/batch4-work 2>/dev/null;` before an `rm -f` of named files by absolute path, against "Absolute paths, and no `cd`" (P8 step 1, M268): the same mistake as M284, by the same keeper.
 Cost: None seen: the `rm` named its files by absolute path, and only the keeper's own logs went. The rule was broken a second time.
 Root cause: As in M284: the habit of a terminal, and nothing in this session's shell refuses a `cd`: the repository's no-`cd` hook is not loaded in a session opened outside the repository (`workcenter doctor` here: `absent   no-cd hook`). P13 step 3 asks for a machine check after a second time; the check that exists is that hook, and this session does not load it.
 Process: P8
 
-## M291 — 2026-11-19 — A gate's pass rested on 1 judge that a project setting switches off
+## M292 — 2026-11-19 — A gate's pass rested on 1 judge that a project setting switches off
 What happened: `workcenter autoroute --apply` (roadmap item 15, `wip/r15`) passed when KiCad's DRC listed 0 unconnected items. A `.kicad_pro` with `unconnected_items` set to `ignore` makes that list empty on a board left mostly open, and FreeRouting 1.9.0 logs no count of open connections, so such a board passed. The review of item 15 found it (F1).
 Cost: None on a board: found before the branch landed. Had it landed, a project that ignores unconnected items would have got a pass for a board with open nets.
 Root cause: The check read an empty list as "nothing open" without asking whether the list could have been filled. Now, before a check passes on an empty list, it asks whether that list could have been filled; when it could not, the check prints not judged with the reason (SKIP, exit 2).

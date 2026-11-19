@@ -5357,14 +5357,18 @@ def freerouting2_row() -> dict:
 
 
 def java_row() -> dict:
-    """Doctor's row for the java Via runs (routers.workcenter_java): ok at Java JAVA_MIN or
-    newer. Its line names the version, the path and where the path came from."""
-    exe, how = routers().workcenter_java()
+    """Doctor's row for the java Via runs (routers.java_choice, the router's own pick): ok at Java
+    JAVA_MIN or newer when FreeRouting can run on it. Its line names the version, the path, where the
+    path came from, and why FreeRouting cannot run on it when it cannot (CI run 44515796762: a JVM
+    without lib/libawt_xawt.so)."""
+    exe, how, why = routers().java_choice()
     found = shutil.which(exe)
     java = tool_version([exe, "-version"], r'(?<=version ")\d+(\.\d+)*') if found else None
-    ok = bool(java and int(java.split(".")[0]) >= routers().JAVA_MIN)
+    ok = bool(java and int(java.split(".")[0]) >= routers().JAVA_MIN and not why)
     if found:
-        line = f"{java or 'none'} at {found}, {how}"
+        line = f"{java or 'none'} at {found}, {how}" + (
+            f"; FreeRouting cannot run on it: {why}" if why else ""
+        )
     elif how == "the first java on PATH":
         line = "none: no java on PATH"
     else:
