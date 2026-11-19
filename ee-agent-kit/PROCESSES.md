@@ -116,6 +116,14 @@ or any step that downloads, installs, or runs for more than a minute.
     the time left at the rate it gets, so that the next pass, or the next
     host, has time. A setting written for a step is checked in that
     step's own log: a later command line can override it (M301).
+13. Every transfer of a step gets the same bound, retries and watch as
+    the one that failed: list the step's downloads by name before the fix,
+    and the job's worst-case test sums each of them, with the figures of
+    the newest passing log (M303).
+14. A bounded try keeps its evidence: when the bound ends it, it prints
+    the program's own last lines and what had not answered. A red CI run
+    uploads the gate's kept folder as an artifact, bounded in size and
+    days (M304).
 
 Done when: the run is green, its log shows progress lines in every long
 step, no step used more than half its limit, and no step depended on a
@@ -785,6 +793,11 @@ When: a change is about to be called done.
     through a link to its target and keeps the file's mode; it changes
     only what it adds; and it never writes over an earlier backup. Each
     of these has a test (M294).
+11. A change that widens what a check asks of a program (a java, an
+    engine) finds every test that gives that program a stand-in (`grep`
+    the tests for the variable or the name), in every branch about to
+    meet it, and runs them all after the merge, not only the files the
+    pick touched (M305).
 
 Done when: the remote has the commit, its CI run is green, and the report
 has been sent. For a gate's method: the attack's cases are tests; after 2

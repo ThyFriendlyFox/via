@@ -1845,3 +1845,21 @@ What happened: Pull request 116 gave doctor's java row a new reading of `java -v
 Cost: None seen on a machine: no run met such a java. On main since pull request 116, doctor, and so every health gate and the image build, would have stopped on 1 such java on PATH.
 Root cause: The new reading was tested only with the output it expected (`version "21.0.13"`, `version "17.0.21"`), never with an output it did not: no version, an empty line, another language. P7 asks for a sample of each shape a tool prints, failures among them, and the new row's tests had only the working shapes.
 Process: P7
+
+## M303 — 2026-11-19 — Only 1 of the script's 3 downloads was bounded, and the job's arithmetic counted only that 1
+What happened: The first 2 designs of the slow-download fix bounded, retried and watched the main download of install.sh. The openEMS step downloaded its libraries with a plain `apt-get install ... | grep ... || true`, and the boot step with 1 `apt-get install`, neither bounded nor tried again. In the image build of job 135588402925 (2026-11-19) the openEMS step got HTTP 520 for libfparser4 after a stall of 48 s, went on, and the build was refused at `image.py: record refused: openems: not ok in the image`. In the passing job 135593285528 the same download took 385 s, with 1 stall of 282.8 s. `test_the_worst_case_of_the_apt_step_fits_the_jobs_limit` counted 670 s for `make verify` (725 s that day) and did not count the openEMS step at all: the job's real worst case was over its 30 minutes. And install.sh's own per-file retries on apt's command line overrode the CI step's 0 retries (151 files asked again of the same slow host, job 135500622487).
+Cost: 1 red image build; a `full` job whose limit its own worst case did not fit; a third design (`wip/install3`).
+Root cause: The fix was written for the transfer that had failed, not for every transfer of the step. The arithmetic was a list of the bounds, not of the step's transfers, so a transfer with no bound added nothing to it. A setting passed to a program was checked where it was written, not where the program read it.
+Process: P2
+
+## M304 — 2026-11-19 — A failure's own evidence was thrown away
+What happened: 3 failures of 2026-11-19 left no evidence of their cause. The index update ran with `-qq`, so 3 cut tries of 120 s each (job 135588570683) printed no line of any source. The openEMS step's filter kept only `Get:` lines, so its 520 came only from apt's stderr. And when 13 routing tests failed on GitHub (run 44515796762), the gate printed `see /tmp/ee-verify-.../freerouting.log`: the file was gone with the runner, and the run had 0 artifacts.
+Cost: A lost diagnosis each time: the next design had to guess which host stalled and why the routes failed.
+Root cause: Quiet output and a temporary folder were chosen for a passing run. A failing run needs what the passing run throws away, and nothing kept it. Since `wip/install3` a cut try prints apt's last lines and the sources that had not answered, and a red gate step uploads its kept folder (run 44585103119 kept 2 artifacts).
+Process: P2
+
+## M305 — 2026-11-19 — A check that every caller's stand-in must pass was widened on 1 branch while another branch added callers
+What happened: The Java review's fix (73cb50e, on wip/install2) held the java that `JAVA` names to the same check as a recorded one: `lib/libawt_xawt.so` beside its bin folder. Item 15's tests (`tests/test_boardroute.py`, landed on wip/batch5) named a stand-in java through `JAVA` that was a bare script in the test's folder. wip/install2 merged wip/batch5 and then took the Java fix, and 9 tests of test_boardroute failed in GitHub's run by hand at cf12e37 (run 44581758464, `fast`): `freerouting: .../java (set by JAVA) cannot run FreeRouting 1.9.0: .../lib has no libawt_xawt.so`. The keeper's checks after that landing had run the files the pick touched, and test_boardroute was not among them.
+Cost: 1 red run by hand, and a fix of the stand-in (c49fece); found by GitHub, not here.
+Root cause: A change that widens what every caller's stand-in must satisfy was checked against the callers its branch knew; another branch added callers in the same hours, and the run after the merge chose its test files by what the pick had touched, not by who calls the changed check.
+Process: P14
