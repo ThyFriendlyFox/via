@@ -170,6 +170,18 @@ child_runs() {
   stat=${stat#* }
   [ "${stat%% *}" = "$$" ]
 }
+# child_ended <pid>: the pid is a child of this shell that has ended and is not reaped yet. Only such
+# a child, or one that runs, is waited for: bash can count a child it has reaped as running (one that
+# a signal to the gate's group ended as it started), and its `wait` then waits for good.
+# shellcheck disable=SC2317  # run by the traps
+child_ended() {
+  local stat
+  read -r stat 2>/dev/null < "/proc/$1/stat" || return 1
+  stat=${stat##*) }
+  [ "${stat%% *}" = Z ] || return 1
+  stat=${stat#* }
+  [ "${stat%% *}" = "$$" ]
+}
 # kill_tree <pid>: SIGKILL to the process and to every process under it. Each one is stopped before
 # its children are read: a stopped process reaps none, so each number read is still that child's when
 # its SIGKILL goes. Called only on this shell's child that has not ended.
@@ -208,7 +220,7 @@ end_sampler() {
     sleep 0.1
     tenths=$((tenths + 1))
   done
-  wait "$SAMPLER" 2>/dev/null
+  if child_runs "$SAMPLER" || child_ended "$SAMPLER"; then wait "$SAMPLER" 2>/dev/null; fi
   SAMPLER=
 }
 # make_runs: make, or a process of its group, still runs. make is reaped as soon as it has ended: an
@@ -217,7 +229,7 @@ end_sampler() {
 make_runs() {
   if [ -n "$MAKE_PID" ]; then
     if child_runs "$MAKE_PID"; then return 0; fi
-    wait "$MAKE_PID" 2>/dev/null
+    if child_ended "$MAKE_PID"; then wait "$MAKE_PID" 2>/dev/null; fi
     MAKE_PID=
   fi
   [ -n "$MAKE_GROUP" ] && kill -0 -- "-$MAKE_GROUP" 2>/dev/null
