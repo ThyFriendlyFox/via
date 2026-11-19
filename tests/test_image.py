@@ -543,6 +543,7 @@ def doctor(**over) -> dict:
         "java": {"required": False, "ok": True, "version": "21.0.9"},
         "freerouting": {"required": False, "ok": True, "path": "/x/freerouting.jar"},
         "venv": {"required": False, "ok": True},
+        "requirements": {"required": False, "ok": True},
         "xvfb": {"required": False, "ok": True},
         "symbols": {"required": False, "ok": True},
         "openems": {"required": False, "ok": True, "version": "v0.0.35"},
@@ -561,6 +562,14 @@ def test_an_image_whose_doctor_does_not_pass_is_refused_by_name():
         "kicad-cli: not ok in the image",
     ]
     assert image.judge_doctor(doctor(freerouting=False), "aarch64") == ["freerouting: not ok in the image"]
+
+
+def test_an_image_whose_venv_disagrees_with_requirements_txt_is_refused():
+    """The image's tag names requirements.txt's sum; doctor's `requirements` row says whether the venv
+    holds those pins. The 2 must not disagree: a venv that lacks a pin, or holds another version of
+    it, is no image of that tag."""
+    assert image.judge_doctor(doctor(requirements=False), "x86_64") == ["requirements: not ok in the image"]
+    assert image.judge_doctor(doctor(requirements=False), "aarch64") == ["requirements: not ok in the image"]
 
 
 def test_openems_is_asked_of_the_amd64_image_alone():

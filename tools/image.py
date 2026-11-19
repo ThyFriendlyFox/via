@@ -178,7 +178,19 @@ def judge_doctor(payload: dict, machine: str) -> list[str]:
     amd64 packages of it. node is asked of both: doctor's row is advisory (a board needs none), but CI
     runs Via's own tests in the image, and 3 of their files run node."""
     problems = [f"doctor: {payload.get('status')}"] if payload.get("status") == "fail" else []
-    wanted = ["kicad-cli", "ngspice", "python", "java", "freerouting", "venv", "xvfb", "symbols", "node"]
+    # `requirements`: the venv holds requirements.txt's pins, the file whose sum is in the tag.
+    wanted = [
+        "kicad-cli",
+        "ngspice",
+        "python",
+        "java",
+        "freerouting",
+        "venv",
+        "requirements",
+        "xvfb",
+        "symbols",
+        "node",
+    ]
     if machine == "x86_64":
         wanted.append("openems")
     checks = payload.get("checks", {})
