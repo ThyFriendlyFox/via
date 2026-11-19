@@ -3569,6 +3569,22 @@ def test_the_worst_case_of_the_apt_step_fits_the_jobs_limit(name):
         assert (worst + sum(MEASURED.values()), limit) == (2863, 3600)
 
 
+def test_no_text_keeps_a_figure_of_the_former_arithmetic():
+    """The worst case is 2163 s of `full`'s 2400 (above): 237 s are left, not 8, and the bounded part is
+    1358 s, not 1058. CI passes 0 retries and 15 s per file where it keeps the mirror list, so no text may
+    say that install.sh's 3 and 60 s win in CI's download."""
+    texts = {
+        name: (ROOT / name).read_text(encoding="utf-8")
+        for name in ("install.sh", "ee-agent-kit/CI.md", "tools/ci/apt_archive.sh", "tools/ci/README.md")
+    }
+    stale = ("1058 s", "1066 s", "8 s the", "the 8 s", "8 s CI", "timeout-minutes: 30", "15 s rule does not hold")
+    found = [(name, x) for name, text in texts.items() for x in stale if x in " ".join(text.split())]
+    assert found == []
+    assert "2163 s" in " ".join(texts["install.sh"].split())
+    gates = (ROOT / ".github" / "workflows" / "board-gates.yml").read_text(encoding="utf-8")
+    assert "worst case is 1058 s" not in " ".join(gates.split())
+
+
 def test_one_silent_file_fits_the_download_bound():
     """apt gives a silent server APT_FILE_TIMEOUT s, APT_FILE_RETRIES + 1 times: that must end within
     the download's bound CI sets, so that apt names the file (Err:) before the bound cuts it."""

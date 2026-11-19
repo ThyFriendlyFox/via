@@ -60,11 +60,12 @@ jobs:
   gates:
     name: gates ${{ matrix.project }}
     runs-on: ubuntu-24.04
-    # The nightly run's 45 minutes: the apt step's worst case is 1058 s (ee-agent-kit/CI.md, "Toolchain
-    # step"), and the steps around it took 64 s; 1578 s are left for the checkouts, the pull and the
-    # gates. That is not a worst case: install.sh's main() also runs step_freerouting, step_openems and
-    # step_python (curl with no --max-time, and pip), and has no switch that skips them. Only these 45
-    # minutes bound them.
+    # The nightly run's 45 minutes: the 2 bounds this job sets hold the apt step's key, update and main
+    # download to 88 + 3 x 120 + 2 x 20 + 570 = 1058 s, and the steps around it took 64 s; 1578 s are
+    # left for the checkouts, the pull and the gates. It sets no APT_OTHER_TIMEOUT, so the openEMS step's
+    # download has no bound here (ee-agent-kit/CI.md, "Toolchain step": 300 s in ci.yml). That is not a
+    # worst case: install.sh's main() also runs step_freerouting, step_openems and step_python (curl with
+    # no --max-time, and pip), and has no switch that skips them. Only these 45 minutes bound them.
     timeout-minutes: 45
     permissions:
       contents: read

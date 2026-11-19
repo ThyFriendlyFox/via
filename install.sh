@@ -101,13 +101,14 @@ CA_BUNDLE="${CA_BUNDLE:-/etc/ssl/certs/ca-certificates.crt}"
 # A person's computer gets no total bound on `apt-get update` or on the download. A slow line that
 # makes progress finishes. apt ends a stall itself: a server silent for APT_FILE_TIMEOUT s is given up,
 # and tried APT_FILE_RETRIES times more. The progress lines show that the run is alive.
-# CI sets both bounds, in the install step of .github/workflows/ci.yml: APT_UPDATE_TIMEOUT=120 and
-# APT_DOWNLOAD_TIMEOUT=570. Its `full` job has 1800 s (timeout-minutes: 30), and a stall must end with
-# apt's line, not at the job's limit with none. The newest passing run (job 134941364976) used 9 s
-# before this script, 27 s to unpack and set up, 28 s for the steps after apt and 670 s for
-# `make verify`: 1066 s are left for the key, the updates, the waits and the download. The key fetch
-# takes at most 88 s (KICAD_KEY_TIMEOUT below); 88 + 3 x 120 + 2 x 20 + 570 = 1058 s. The slowest
-# update seen took 48 s (job 134906707485); the slowest download 218 s for 281.1 MB (job 134889089620).
+# CI sets the bounds, in the install step of .github/workflows/ci.yml: APT_UPDATE_TIMEOUT=120,
+# APT_DOWNLOAD_TIMEOUT=570 and APT_OTHER_TIMEOUT=300 (below). Its `full` job has 2400 s (40 minutes),
+# and a stall must end with apt's line, not at the job's limit with none. The passing run of job
+# 135593285528 used 805 s outside the bounds, 725 s of them for `make verify`. The key fetch takes at
+# most 88 s (KICAD_KEY_TIMEOUT below); 88 + 3 x 120 + 2 x 20 + 570 + 300 = 1358 s, 2163 s in all, 237 s
+# left (ee-agent-kit/CI.md, "Toolchain step"; test_the_worst_case_of_the_apt_step_fits_the_jobs_limit).
+# The slowest update seen took 48 s (job 134906707485); the slowest download 218 s for 281.1 MB (job
+# 134889089620).
 # Either bound is a whole number of seconds; empty, the default, means no bound.
 KICAD_INDEX_TRIES="${KICAD_INDEX_TRIES:-3}"
 KICAD_INDEX_WAIT="${KICAD_INDEX_WAIT:-20}"
