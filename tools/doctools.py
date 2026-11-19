@@ -1543,7 +1543,4 @@ def register(sub, cli) -> None:
 
 
 if __name__ == "__main__":
-    sys.exit(
-        "doctools is part of Via's command line: "
-        "run `workcenter docs|costs|pictures|version|diagram`"
-    )
+    sys.exit("doctools is part of Via's command line: run `workcenter docs|costs|pictures|version|diagram`")

@@ -235,8 +235,7 @@ def test_a_file_the_command_does_not_take_fails_the_run_with_its_place(tmp_path)
     code, text = say("ratings", project)
     assert code == 1, text
     assert (
-        "- ratings.json: pack: `mil-hdbk` is no pack; Via holds "
-        "ecss-q-st-30-11c-rev2, nasa-eee-inst-002"
+        "- ratings.json: pack: `mil-hdbk` is no pack; Via holds ecss-q-st-30-11c-rev2, nasa-eee-inst-002"
     ) in text
 
 

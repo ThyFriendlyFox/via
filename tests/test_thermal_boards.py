@@ -147,8 +147,7 @@ BASE = {"junction_max": 150, "theta_ja": 100, "page": 2}
         ({"page": 3}, "part.json: thermal: boards: 1 figure at least is asked"),
         (
             {"theta_ja": "2s", "page": 3},
-            "part.json: thermal: boards: theta_ja: `2s` is no JEDEC board Via knows; they are "
-            "1s0p, 2s2p",
+            "part.json: thermal: boards: theta_ja: `2s` is no JEDEC board Via knows; they are 1s0p, 2s2p",
         ),
         (
             {"theta_ja": "2s2p", "psi_jb": "2s2p", "page": 3},

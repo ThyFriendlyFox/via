@@ -3587,8 +3587,7 @@ def test_a_pack_is_found_by_its_name_or_by_a_path_from_the_project(tmp_path):
     with pytest.raises(ratings.Refusal) as caught:
         ratings.find_pack("mil-hdbk", tmp_path, PACKS)
     assert str(caught.value) == (
-        "ratings.json: pack: `mil-hdbk` is no pack; Via holds "
-        "ecss-q-st-30-11c-rev2, nasa-eee-inst-002"
+        "ratings.json: pack: `mil-hdbk` is no pack; Via holds ecss-q-st-30-11c-rev2, nasa-eee-inst-002"
     )
     # a pack of Via goes by its name alone: a path out of the packs' folder names none
     assert (PACKS / ".." / "ratings" / "nasa-eee-inst-002.json").is_file()

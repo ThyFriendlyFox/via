@@ -411,9 +411,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "check":
         if not args.record.is_file():
-            print(
-                f"image.py: no record at {args.record}: this is not Via's image", file=sys.stderr
-            )
+            print(f"image.py: no record at {args.record}: this is not Via's image", file=sys.stderr)
             return 1
         try:
             problems = check(args.src, args.record)
