@@ -220,7 +220,7 @@ session import (ROADMAP item 15, "Headless autoroute for hand-drawn boards").
 The engines that take RTL to a GDSII layout. A board needs none of them,
 so they install on request: `sudo INSTALL_CHIP=1 ./install.sh`, or
 `sudo ./install.sh --chip` for this step alone. The step takes 32 s and
-1.9 GB on Via's machine. A second run downloads nothing.
+1.9 GB on the machine where Via is developed. A second run downloads nothing.
 
 | Engine | Version | From | Where |
 |---|---|---|---|

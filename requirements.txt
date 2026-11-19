@@ -1,4 +1,4 @@
-# Python tooling for Via's venv (/opt/workcenters/ee/venv).
+# Python tooling for the EE Workcenter venv (/opt/workcenters/ee/venv).
 # The `workcenter` CLI itself uses the standard library only.
 kicad-python==0.8.0
 pytest==9.1.1
