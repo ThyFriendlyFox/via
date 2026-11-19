@@ -429,6 +429,15 @@
   if (!moving) return;
   const { animate, inView, scroll, stagger } = M;
   const ease = [0.2, 0, 0, 1];
+  // inView for each element a selector finds, asking for a share of it in view, but never for more
+  // of it than half the screen's height: a run of Herald's checks wraps to several screens on a phone,
+  // and 40% of it could never be in view at once, so its lines stayed hidden (2026-11-19).
+  const seen = (selector, callback, amount) => {
+    for (const el of document.querySelectorAll(selector)) {
+      const most = (0.5 * innerHeight) / Math.max(el.getBoundingClientRect().height, 1);
+      inView(el, callback, { amount: Math.min(amount, most) });
+    }
+  };
 
   // ---- the logo: its pads land, then its traces are drawn --------------------------------------
   for (const logo of document.querySelectorAll("[data-logo]")) {
@@ -456,7 +465,7 @@
   }
 
   // ---- a drawing draws itself when it comes into view: site.css times each stroke ---------------
-  inView(".draw", (el) => el.classList.add("drawn"), { amount: 0.35 });
+  seen(".draw", (el) => el.classList.add("drawn"), 0.35);
 
   // ---- the hero's traces draw, then drift with the scroll -------------------------------------
   const traces = document.querySelector("[data-traces]");
@@ -467,7 +476,7 @@
   }
 
   // ---- anything marked data-reveal rises in when it comes into view ---------------------------
-  inView(
+  seen(
     "[data-reveal]",
     (el) => {
       if (el.matches("[data-stagger]")) {
@@ -476,7 +485,7 @@
         animate(el, { opacity: [0, 1], y: [18, 0] }, { duration: 0.6, ease });
       }
     },
-    { amount: 0.2 },
+    0.2,
   );
 
   // ---- the example's copper sweeps in a layer at a time: the back, the inner layer, the front ---
@@ -484,17 +493,17 @@
   if (copper.length) {
     const hidden = "inset(0% 100% 0% 0%)";
     for (const layer of copper) layer.style.clipPath = hidden;
-    inView(
+    seen(
       "[data-face]",
       () => {
         animate(copper, { clipPath: [hidden, "inset(0% 0% 0% 0%)"] }, { delay: stagger(0.35), duration: 1.3, ease });
       },
-      { amount: 0.3 },
+      0.3,
     );
   }
 
   // ---- a run types out a line at a time when it comes into view -------------------------------
-  inView(
+  seen(
     ".run pre",
     (pre) => {
       const lines = pre.querySelectorAll(".cmd, .out, .verdict");
@@ -502,7 +511,7 @@
       const verdict = pre.querySelectorAll(".verdict");
       animate(verdict, { backgroundColor: ["oklch(0.6 0.15 150 / 0.25)", "oklch(0.6 0.15 150 / 0)"] }, { delay: lines.length * 0.18, duration: 1.2 });
     },
-    { amount: 0.4 },
+    0.4,
   );
 
   // ---- the board leans toward the pointer --------------------------------------------------------
@@ -523,13 +532,13 @@
   }
 
   // ---- the diagram: each node in turn, each arrow drawn --------------------------------------
-  inView(
+  seen(
     ".flow",
     (flow) => {
       const steps = flow.querySelectorAll(".node, .hop");
       animate(steps, { opacity: [0, 1], y: [10, 0] }, { delay: stagger(0.12), duration: 0.45, ease });
     },
-    { amount: 0.3 },
+    0.3,
   );
 
   // ---- the progress line under the header follows the page ------------------------------------

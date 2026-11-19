@@ -108,6 +108,8 @@ exception to these rules:
   page, `/feedback`. The blog does not explain what a blog is.
 - The heading of the home page's example, of 2026-11-18, with its
   exclamation mark: "Here's a board made with Via!"
+- The heading over Herald's run of the checks on the home page, of
+  2026-11-19: "What Via looks like in the CLI".
 - The heading of the home page's checks, of 2026-11-19: "How we check a
   board". The section after it keeps "Free and open source under the MIT
   license".
@@ -120,3 +122,6 @@ exception to these rules:
   "Only Cool Kids Allowed!", "Building Tomorrow Today!", "We have a
   dog", "Check out our community!" (a link to the Discord server) and
   "Free inference found here!". They live in `QUIPS` in `site/blog.py`.
+- The button on the hero's guide card, of 2026-11-19, with its exclamation
+  mark: "Ask us for help!", a link to the Discord server. The card's
+  other button leads to the guide, `/guide`.

@@ -87,7 +87,7 @@ if [ -n "$origin" ] && [ -f "$here/blog/feed.xml" ]; then
 fi
 
 for path in "$here/index.html" "$here/404.html" "$here/examples.html" "$here"/examples/*.html "$here/blog.html" "$here"/blog/*.html \
-  "$here/feedback.html"; do
+  "$here/feedback.html" "$here/guide.html"; do
   [ -f "$path" ] || continue
   page=${path#"$here"/}
   if [ -n "$origin" ]; then

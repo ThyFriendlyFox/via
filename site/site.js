@@ -81,14 +81,20 @@
   }
 
   // The news bar: the newest posts (blog/news.json, from site/blog.py) run along the bottom of the
-  // screen, and the button to the community stays at its right. The posts rest under a pointer or the
-  // focus; a reader who asks for reduced motion scrolls them by hand. No file, no bar.
+  // screen, the X at its left closes it, and the button to the community stays at its right. The posts
+  // rest under a pointer or the focus; a reader who asks for reduced motion scrolls them by hand. No
+  // file, no bar. A closed bar stays closed on every page until a newer post comes: the browser keeps
+  // the newest post's address it was closed on (a convenience; without storage it just comes back).
   if (!root.dataset.shot) {
     fetch("/blog/news.json")
       .then((r) => (r.ok ? r.json() : null))
       .then((news) => {
         const items = news?.items || [];
         if (!items.length) return;
+        const newest = items[0].href || items[0].text;
+        try {
+          if (localStorage.getItem("news-closed") === newest) return;
+        } catch {}
         const list = document.createElement("ul");
         list.className = "ticker-items";
         const add = (repeat) => {
@@ -114,13 +120,30 @@
         track.append(list);
         view.append(track);
         const join = document.createElement("a");
-        join.className = "btn btn-primary";
+        join.className = "btn btn-primary ticker-join";
         join.href = "https://discord.reagent-systems.com";
-        join.textContent = "Join the community";
+        // The words glisten: site.css paints them with a moving glint of orange.
+        const shine = document.createElement("span");
+        shine.className = "shine";
+        shine.textContent = "Join the community";
+        join.append(shine);
+        const close = document.createElement("button");
+        close.className = "ticker-close";
+        close.type = "button";
+        close.setAttribute("aria-label", "Close the news bar");
+        close.innerHTML =
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
         const bar = document.createElement("aside");
         bar.className = "ticker";
         bar.setAttribute("aria-label", "News");
-        bar.append(view, join);
+        bar.append(close, view, join);
+        close.addEventListener("click", () => {
+          bar.remove();
+          root.classList.remove("has-ticker");
+          try {
+            localStorage.setItem("news-closed", newest);
+          } catch {}
+        });
         document.body.append(bar);
         root.classList.add("has-ticker");
         // The track holds the list twice and moves by one list's width, so the second takes the first's

@@ -54,6 +54,7 @@ def feedback_page() -> str:
             <p class="eyebrow">Feedback</p>
             <h1 class="title" id="feedback-title">Give us suggestions</h1>
           </div>
+          <p class="form-done title" id="sent" tabindex="-1">Thanks! Your suggestion\'s on its way to us.</p>
           <form class="form feedback" id="feedback" action="/api/feedback" method="post" data-form="sent">
             <label for="feedback-message">Suggestion</label>
             <textarea id="feedback-message" name="message" rows="8" maxlength="5000" required></textarea>
@@ -64,7 +65,6 @@ def feedback_page() -> str:
             <p class="form-error" data-form-error role="alert" hidden></p>
             <button class="btn btn-primary" type="submit">Send</button>
           </form>
-          <p class="form-done" id="sent" tabindex="-1">Thanks! Your suggestion\'s on its way to us.</p>
         </div>
       </section>"""
     return shell("Feedback · Via", "Give us suggestions for Via.", "feedback", "", body, SCRIPTS)
