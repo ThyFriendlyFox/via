@@ -1,6 +1,8 @@
 # The reusable workflow board-gates.yml, called as a board repository calls it, on the fixture
 # tests/boards/pass-rc-divider with --strict. The workcenter is this run's own commit, so a pull request
-# that changes board-gates.yml runs its own text. GREEN is the only green check.
+# that changes board-gates.yml, or a file the job executes, runs its own text. GREEN is the only green
+# check. The paths: the 2 workflows, the fixture, tools/ (workcenter, image.py, ci/apt_archive.sh and
+# what they import), install.sh and the image's other 2 inputs, Dockerfile and requirements.txt.
 name: Board gates fixture
 on:
   pull_request:
@@ -8,12 +10,20 @@ on:
       - .github/workflows/board-gates.yml
       - .github/workflows/board-fixture.yml
       - tests/boards/pass-rc-divider/**
+      - tools/**
+      - install.sh
+      - requirements.txt
+      - Dockerfile
   push:
     branches: [main]
     paths:
       - .github/workflows/board-gates.yml
       - .github/workflows/board-fixture.yml
       - tests/boards/pass-rc-divider/**
+      - tools/**
+      - install.sh
+      - requirements.txt
+      - Dockerfile
   workflow_dispatch:
 permissions:
   contents: read

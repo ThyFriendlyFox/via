@@ -6,13 +6,14 @@
 #       uses: ThyFriendlyFox/via/.github/workflows/board-gates.yml@main
 #
 # Each project folder is 1 job. The check is the gates' exit code: GREEN is green, RED and SKIPPED are
-# red. The job's summary holds the gates table that `workcenter gates --report` writes, and where the
-# gates ran. Nothing is posted to the pull request.
+# red. A GREEN with ERC, DRC or EXPORT at skip is red too: no board was there to judge. The job's
+# summary holds the gates table that `workcenter gates --report` writes, and where the gates ran.
+# Nothing is posted to the pull request.
 #
 # Where the gates run: the workcenter's container image of the toolchain files at `workcenter-ref`
-# (tools/image.py tag) when the runner can pull it, else install.sh, as CI's install path runs it. Until
-# the package's owner makes it public, a board repository's token is refused it and every run takes the
-# install path (ee-agent-kit/CI.md, "The container image: what the owner does once", step 3).
+# (tools/image.py tag) when the runner can pull it, else install.sh, as CI's install path runs it. The
+# package is public, so the image is the normal path; the install path is taken when the registry holds
+# no image of that toolchain, or when the caller sets use-image: false.
 #
 # Every input and the project's name reach a script through `env:` alone; no `run:` holds an expression.
 name: Board gates
@@ -150,6 +151,19 @@ jobs:
               exit 1
               ;;
           esac
+          # GREEN with ERC, DRC or EXPORT at skip judged no board: its schematic or its .kicad_pcb is not
+          # there. SIM at skip (no sim/*.cir) stays green; the summary's table shows it.
+          not_judged=""
+          if [ -s "$report" ]; then
+            not_judged=$(sed -nE 's/^\| (ERC|DRC|EXPORT) \| skip \| (.*) \|$/\1 \2/p' "$report")
+          fi
+          if [ -n "$not_judged" ]; then
+            while read -r gate why; do
+              echo "RED: $PROJECT: $gate not judged: $why; this check is green only when ERC, DRC and" \
+                "EXPORT ran (.claude/skills/board-ci/SKILL.md, \"A board that is not there is red\")"
+            done <<< "$not_judged"
+            exit 1
+          fi
       - name: The gates table into the job's summary
         if: always()
         env:

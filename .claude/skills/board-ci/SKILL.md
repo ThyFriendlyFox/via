@@ -9,7 +9,8 @@ A board repository gets `workcenter gates` on every pull request from 1
 small workflow file. The file calls the workcenter's reusable workflow
 `.github/workflows/board-gates.yml`. Each project folder is 1 job. The
 job's check is the gates' verdict: GREEN is green; RED and SKIPPED are
-red. The job's summary holds the gates table, the same table
+red. A GREEN with ERC, DRC or EXPORT at skip is red: no board was there to
+judge. The job's summary holds the gates table, the same table
 `workcenter gates --report` writes into `docs/gates.md`, and says where the
 gates ran. Nothing is posted to the pull request.
 
@@ -22,7 +23,8 @@ gates ran. Nothing is posted to the pull request.
 ## The caller
 
 Save this as `.github/workflows/gates.yml` in the board repository. Change
-`projects` to the folders that hold a `.kicad_pro`.
+`projects` to the folders that hold a `.kicad_pro`. Here `v1` is a board
+gated without `--strict`, and `v1/display` a board gated with it.
 
 ```yaml
 name: Gates
@@ -38,9 +40,18 @@ jobs:
   gates:
     uses: ThyFriendlyFox/via/.github/workflows/board-gates.yml@main
     with:
-      projects: '["v0.16", "v0.16/display"]'
+      projects: '["v1"]'
+  gates-strict:
+    uses: ThyFriendlyFox/via/.github/workflows/board-gates.yml@main
+    with:
+      projects: '["v1/display"]'
       strict: true
 ```
+
+`strict` holds for every project of 1 call. Gate each project as its own
+contract says: the projects gated with `--strict` go in 1 call with
+`strict: true`, the others in a second call. 1 call is enough when all of
+them are gated the same way.
 
 `permissions` must give `packages: read`: the called job asks for it, and
 GitHub refuses a called job more than its caller gives.
@@ -71,12 +82,23 @@ GitHub refuses a called job more than its caller gives.
    (`ee-agent-kit/CI.md`, "Toolchain step"). The install path takes about
    2 to 10 minutes before the gates start.
 
-A package is private until its owner makes it public
-(`ee-agent-kit/CI.md`, "The container image: what the owner does once",
-step 3). While it is private, a board repository's token is refused it,
-and every run takes the install path. The owner can also add the board
-repository under the package's "Manage Actions access". The step `Where
-the gates run` says which path a run took, and why.
+The image path is the normal path. The package `ghcr.io/thyfriendlyfox/via`
+is public: on 2026-11-19 the registry gave its tag list and the manifest
+of `tc-ad6cb1705e532dcc`, the tag of `main`'s toolchain, to a pull with no
+login. The install path is taken when the registry holds no image of the
+toolchain at `workcenter-ref` (a commit whose toolchain files changed and
+whose image was not pushed), or when `use-image` is `false`. The step
+`Where the gates run` says which path a run took, and why.
+
+What only a run on GitHub shows of the image path: that `docker run
+--user` with the runner's user id and group can write the board's
+`build/` folder and the report in the runner's temp folder (`--user`);
+that `image.py check` passes on the workcenter's checkout inside the image
+(`image.py check`); and that the workcenter and KiCad run with no home of
+that user in the image, where `HOME` is not the runner's home (`HOME`).
+The same `docker run --user` runs `workcenter gates .` in the image's own
+workflow, `.github/workflows/image.yml`, step `The gates on a fixture, as
+the runner's user`.
 
 ## Steps
 
@@ -88,7 +110,7 @@ the gates run` says which path a run took, and why.
    | The line says | It means |
    |---|---|
    | `where: image: the registry gave ghcr.io/...` | The gates run in the image. Nothing is installed. |
-   | `where: install: the registry gave no ghcr.io/...: <docker's last line>` | The image could not be pulled: `denied` or `unauthorized` while the package is private, `manifest unknown` when no image of that toolchain was built. The install path runs. |
+   | `where: install: the registry gave no ghcr.io/...: <docker's last line>` | The image could not be pulled: `manifest unknown` when no image of that toolchain was built, `denied` or `unauthorized` when the registry refuses the token. The install path runs. |
    | `where: install: the input use-image is false` | The caller asked for the install path. |
 
 3. Read the step `workcenter gates`. Its last line is the verdict:
@@ -97,6 +119,8 @@ the gates run` says which path a run took, and why.
      `board-gates` skill, push, and the check runs again.
    - `SKIPPED (...)`: an engine was absent, and the check is red. Read
      the install step's log for the engine it names.
+   - `RED: <project>: DRC not judged: no board in project; ...`: see
+     "A board that is not there is red" below. The check is red.
 4. Open the run's summary page. Each project has its gates table, its
    decks when it has `sim/`, and a `Where:` line. A project with no table
    says `No gates table for <project>`: the gates step stopped before the
@@ -104,6 +128,22 @@ the gates run` says which path a run took, and why.
 5. Make the check required: the repository's Settings, Branches, the rule
    for `main`, Require status checks, `gates / gates <project>` for each
    project.
+
+## A board that is not there is red
+
+`workcenter gates` says GREEN when every gate that had something to run
+passed, and names the others: a folder whose `.kicad_pcb` was deleted is
+`GREEN (nothing to run for: drc, export)`. That board was not judged. So
+after a GREEN the gates step reads the table, and for each of ERC, DRC and
+EXPORT at `skip` prints 1 line and ends red:
+
+```
+RED: v1: DRC not judged: no board in project; this check is green only when ERC, DRC and EXPORT ran (...)
+```
+
+This holds with and without `strict`. SIM at `skip` (`no sim/*.cir in
+project`) stays green: the board was judged, and the summary's table shows
+the row.
 
 ## What the workflow does not do
 
@@ -121,5 +161,8 @@ This repository calls the workflow on its fixture
 under test. `tests/test_board_gates_workflow.py` runs each step's text
 with stand-ins for `docker`, `sudo` and `id`, walks the whole job on both
 paths, and runs the gates step on this machine's toolchain on
-`pass-rc-divider` (GREEN with `--strict`) and `fail-drc-clearance` (RED at
-DRC).
+`pass-rc-divider` (GREEN with `--strict`), `fail-drc-clearance` (RED at
+DRC) and `pass-rc-divider` with its `.kicad_pcb` deleted (red: DRC and
+EXPORT not judged). The fixture's workflow runs when either workflow, the
+fixture, `tools/`, `install.sh`, `requirements.txt` or `Dockerfile`
+changes.
