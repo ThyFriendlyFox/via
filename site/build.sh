@@ -35,17 +35,16 @@ here=$(dirname -- "$0")
 mkdir -p "$out/fonts" "$out/showcase/datasheets" "$out/vendor" "$out/examples"
 
 # What the site serves: the examples' pictures, Herald's 3D model and its datasheets' first pages,
-# the agents' marks, Motion, model-viewer, the meshopt decoder and three.js (the explorer's 3D view, which
-# board3d.js draws) with their licenses. og.html,
+# the agents' marks, Motion, model-viewer and the meshopt decoder with their licenses. og.html,
 # media/ (the README's pictures), the scripts that draw the pictures and write the example pages,
 # vercel.json and each README.md stay in the repository. api/ holds the forms' functions: Vercel
 # builds them from the project's folder, not from OUT.
-for file in site.css site.js effects.js example.js board3d.js agents.svg favicon.svg favicon-32.png apple-touch-icon.png \
+for file in site.css site.js effects.js example.js agents.svg favicon.svg favicon-32.png apple-touch-icon.png \
   og.png logo.svg fonts/inter-latin-wght-normal.woff2 fonts/LICENSE \
   showcase/herald-top.png showcase/herald-layers.png showcase/herald-schematic.png showcase/herald.glb \
   showcase/agentcast.png \
   vendor/motion-14.6.0.js vendor/MOTION-LICENSE.md vendor/model-viewer-4.4.0.min.js vendor/MODEL-VIEWER-LICENSE \
-  vendor/meshopt_decoder-1.2.0.js vendor/MESHOPTIMIZER-LICENSE.md vendor/three-0.170.0.module.min.js vendor/THREE-LICENSE; do
+  vendor/meshopt_decoder-1.2.0.js vendor/MESHOPTIMIZER-LICENSE.md; do
   cp "$here/$file" "$out/$file"
 done
 cp "$here"/showcase/datasheets/*.png "$out/showcase/datasheets/"
@@ -57,7 +56,6 @@ css=$(cksum <"$here/site.css" | cut -d ' ' -f 1)
 js=$(cksum <"$here/site.js" | cut -d ' ' -f 1)
 fx=$(cksum <"$here/effects.js" | cut -d ' ' -f 1)
 ex=$(cksum <"$here/example.js" | cut -d ' ' -f 1)
-b3=$(cksum <"$here/board3d.js" | cut -d ' ' -f 1)
 # X and Discord keep a shared link's picture by its address, for days: the Open Graph image is named
 # with its checksum too, so a new picture is fetched anew.
 og=$(cksum <"$here/og.png" | cut -d ' ' -f 1)
@@ -65,7 +63,6 @@ og=$(cksum <"$here/og.png" | cut -d ' ' -f 1)
 up='\(\(\.\./\)*\)'
 version="s|href=\"${up}site.css\"|href=\"\1site.css?v=$css\"|; s|src=\"${up}site.js\"|src=\"\1site.js?v=$js\"|"
 version="$version; s|src=\"${up}effects.js\"|src=\"\1effects.js?v=$fx\"|; s|src=\"${up}example.js\"|src=\"\1example.js?v=$ex\"|"
-version="$version; s|src=\"${up}board3d.js\"|src=\"\1board3d.js?v=$b3\"|"
 version="$version; s|/og.png\"|/og.png?v=$og\"|g"
 
 # Each example's page and the files it shows, as site/examples.py writes them.

@@ -88,7 +88,6 @@
       .then((text) => {
         view.innerHTML = text;
         explore(box, view.querySelector("svg"), info, hint);
-        offer3d(box, view.querySelector("svg"), info, hint);
       })
       .catch(() => {
         info.textContent = "The drawing did not load. The board is in the repository: open it in KiCad.";
@@ -117,37 +116,6 @@
       if (to === undefined) return;
       e.preventDefault();
       pick(tabs[(to + tabs.length) % tabs.length], true);
-    });
-  }
-
-  // ---- the board in 3D: a button by the zoom; the first press loads board3d.js and three.js ------
-  function offer3d(box, svg, info, hint) {
-    const src = box.dataset.board3dSrc;
-    if (!src || !("WebGLRenderingContext" in window)) return;
-    const button = document.createElement("button");
-    button.type = "button";
-    button.setAttribute("aria-pressed", "false");
-    button.textContent = "3D";
-    box.querySelector(".ex-zoom").prepend(button);
-    let board = null;
-    button.addEventListener("click", async () => {
-      const on = button.getAttribute("aria-pressed") !== "true";
-      if (on && !board) {
-        button.disabled = true;
-        info.textContent = "The 3D view is loading.";
-        try {
-          const { mount } = await import(new URL(src, document.baseURI).href);
-          board = mount(box, svg, info);
-        } catch {
-          info.textContent = "The 3D view did not load in this browser. The flat drawing is still here.";
-          button.disabled = false;
-          return;
-        }
-        button.disabled = false;
-      }
-      button.setAttribute("aria-pressed", String(on));
-      if (on) board.enter();
-      else board.leave(hint);
     });
   }
 
