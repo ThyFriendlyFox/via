@@ -7,7 +7,7 @@ Real output of OpenROAD `f12e2f47`, OpenSTA 2.3.1, Magic 8.3.465, Netgen
 Each sample but 1 is a run on a copy of the template project
 (`workcenter chip init reg8 --top reg8`) with 1 thing changed. 4 paths are
 rewritten in each file: the project's folder is `/work/reg8`, the process
-kit is `/kit`, the workcenter is `/workcenter`, the folder of the chip
+kit is `/kit`, Via is `/workcenter`, the folder of the chip
 engines is `/chip`. Nothing else is changed, and no file is typed.
 `layout-router-violations.log` is a run on the acceptance processor, and
 its project's folder is `/work/acc8`.

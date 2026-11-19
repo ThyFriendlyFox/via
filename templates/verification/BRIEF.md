@@ -5,8 +5,8 @@
      Copy BRIEF.md and FACTS.md into one folder of the session's scratchpad,
      never into the project: `workcenter verify --init` leaves both out.
      Replace each {name} with its value: {board}, {version}, {previous}, {task},
-     {repo} (the project repository's absolute path), {workcenter} (the
-     workcenter's absolute path) and {scratch} (the folder that holds this
+     {repo} (the project repository's absolute path), {workcenter} (Via's
+     absolute path) and {scratch} (the folder that holds this
      file). Write every path absolute and in backticks. Fill each "fill"
      comment, delete this comment, then run the checks in the verification
      skill's "Helpers" section before you send the brief. -->

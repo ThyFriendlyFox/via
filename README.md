@@ -5,8 +5,8 @@
 
 [Website](https://via.computer) · [Contract](WORKCENTER.md) · [Status](ee-agent-kit/STATUS.md) · [Roadmap](ee-agent-kit/ROADMAP.md)
 
-Via is the EE Workcenter. A workcenter is a set of tools, skills and gates
-that an agent steps into to do one kind of work well. This one does
+Via is a workcenter: a set of tools, skills and gates
+that an agent steps into to do one kind of work well. Via does
 electronics: it turns a KiCad 10 project into fabrication outputs that
 passed every gate.
 
@@ -82,7 +82,7 @@ every corner, and a fail-safe relay tells the panel when Herald itself fails.
 <a href="examples/universal-controller/v0.3/README.md"><img alt="Rosetta v0.3 in 3D: an Xbox 360-style controller board with 2 thumbsticks in rings of LEDs, an OLED screen under the dip, a D-pad, face buttons, a 5-position knob with a ring of LEDs and 2 USB-C ports" src="site/showcase/rosetta-iso.png"></a>
 
 [`examples/universal-controller/v0.3`](examples/universal-controller/v0.3/README.md) is a wireless game
-controller made with the workcenter: a 5-position knob picks a PS4, a PS5, an Xbox, a Switch or
+controller made with Via: a 5-position knob picks a PS4, a PS5, an Xbox, a Switch or
 Bluetooth. Its board is laid out like an Xbox 360 controller's, 148 x 82 mm, 6 layers, routed
 and GREEN: thumbsticks soldered on (the footprint written from ALPS's drawing), each in a ring of 8
 RGB LEDs; Hall-effect triggers on the shoulder horns; an OLED screen under the dip; 2 back buttons
@@ -97,7 +97,7 @@ knob's 5 positions never meet.
 <a href="examples/ring-mouse/README.md"><img alt="Signet turning: eight black boards with gold edge pads in an octagonal ring, soldered edge to edge, the radio module on top and a foil cell at the bottom" src="examples/ring-mouse/v0.5/docs/assembly-spin.gif" width="560"></a>
 
 [`examples/ring-mouse`](examples/ring-mouse/README.md) is a mouse you wear on the index finger, made
-with the workcenter as a series of prototypes, a version per pass of a loop. Eight 4-layer boards,
+with Via as a series of prototypes, a version per pass of a loop. Eight 4-layer boards,
 12 mm along the finger, sit on the faces of an octagonal prism round it, each soldered to the next by
 8 plated edge pads. The ring turns with the hand and the cursor follows its gyroscope; the thumb slides
 along a 3-channel strip to scroll and presses the side to click. A Bluetooth LE module, a charger,
@@ -277,7 +277,7 @@ has every flag.
 | `gates` | The 4 gates in order; the last line is the verdict. |
 | `verify` | Check a verification package against a fresh run; say whether the requirements are met. |
 | `ratings` | Hold a schematic to its parts' ratings: each pin's voltage limits, each part's derating by a named standard, each regulator's output, load and support parts. Every limit names its document, and a pack's rule and a pin's limit their page. |
-| `references` | The index of the standards, notes, datasheets, reports, web pages, papers and books the rules and the code cite, each held by the SHA256 of its copy, a web page by the values read from it: `fetch` gets each once under the workcenter's own name into a folder outside the repository, `check` judges a file a person downloaded, `rules` fails a rule or a tool's `CITES` whose document the index lacks. |
+| `references` | The index of the standards, notes, datasheets, reports, web pages, papers and books the rules and the code cite, each held by the SHA256 of its copy, a web page by the values read from it: `fetch` gets each once under Via's own name into a folder outside the repository, `check` judges a file a person downloaded, `rules` fails a rule or a tool's `CITES` whose document the index lacks. |
 | `measure` | Write the plan of measurements for a built board: for each sim bound the pad to probe, the reference pad, the instrument, the span the reading must fall in and the predicted value, as written and over the corners. |
 | `now` | The work card of 1 piece of work in progress: its `**Status:**` line for the project board (Todo, In progress or Done), its branch and last commit, what is done now, the last health gate, what it waits for and what is left. 1 issue's body per piece of work, titled `Work card: ...` and rewritten in place; `--write` puts it on the `status` branch for a host without GitHub. |
 | `standards` | List each requirement of the product kind `product.json` names, from free documents, as held by a gate, held by a named test of the verification package, or not held, with the document and clause. A list, not a certificate. |
@@ -317,9 +317,9 @@ the repository's health.
 
 **A Docker image.** With Docker instead of installing (amd64 or arm64; no openEMS on arm64):
 `docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work ghcr.io/thyfriendlyfox/via:main workcenter gates .`.
-The files the gates write belong to you. The image holds the toolchain install.sh installs and the workcenter, without the example boards and the site; `.github/workflows/image.yml` builds it on Ubuntu 24.04 and publishes it from `main`, a release's tag, each Monday and by hand. Pin a toolchain by its digest from the `Image` workflow's summary. The package is named `via`. Its first image is pushed by the release's tag or the next push to `main`; the images built before the first release went to an older package, `ee-workcenter`, which is no longer updated.
+The files the gates write belong to you. The image holds the toolchain install.sh installs and Via, without the example boards and the site; `.github/workflows/image.yml` builds it on Ubuntu 24.04 and publishes it from `main`, a release's tag, each Monday and by hand. Pin a toolchain by its digest from the `Image` workflow's summary. The package is named `via`. Its first image is pushed by the release's tag or the next push to `main`; the images built before the first release went to an older package, `ee-workcenter`, which is no longer updated.
 
-### Run the workcenter from its container
+### Run Via from its container
 
 The image of the release v0.1.0 has the tag `v0.1.0`.
 It mounts your project on `/work`, its working folder.
@@ -415,7 +415,7 @@ images are drawn.
 | `tools/inspect_board.py`, `tools/stretch.py` | Read a routed board with KiCad's geometry; grow a design at a cut. |
 | `tools/doctools.py`, `tools/scene.py`, `tools/wrlgen.py` | Document commands; assembly scenes; 3D bodies. |
 | `tools/pdfcurve.py`, `tools/kistack_board.py` | A PDF page's vector paths; the board reader kistack's checks run on. |
-| `tools/harvest.py` | What the projects taught the workcenter, read from the repository: each branch's work that main lacks, the scripts projects wrote for themselves, the mistakes made again; and the roadmap's rated candidates held to their scores. |
+| `tools/harvest.py` | What the projects taught Via, read from the repository: each branch's work that main lacks, the scripts projects wrote for themselves, the mistakes made again; and the roadmap's rated candidates held to their scores. |
 | `tools/hooks/` | Claude Code hooks: no `cd` in a command, no test written by a script. |
 | `tools/ci/` | `scope.py`: what a change needs, `fast` or `full`; the `engine` marker's plugin and its guard; `nightly_issue.py`: what the nightly run does with its `ci-failure` issue. `make scope`, `make verify-site`. |
 | `WORKCENTER.md` | The contract a project gets from this workcenter. |
@@ -424,7 +424,7 @@ images are drawn.
 | `templates/` | A first design file, a version's README and gates report, `corners.json`, `frequency-plan.json`, the verification package. |
 | `rules/` | Fabrication houses' limits as KiCad design rules: Sierra Circuits, JLCPCB, PCBWay, OSH Park. `rules/ratings/`: 2 derating standards as packs for `workcenter ratings`, each limit with its table and page. `rules/board/`: ECSS-Q-ST-70-12C Rev.1 as a board rule pack for `workcenter drc`, each limit with its clause, table and page. `rules/copper/`: the 5 constants of `workcenter copper`, each with its document and page. `rules/interfaces/`: the fast interfaces `workcenter highspeed` holds a pair to, each limit with its document, clause and page. `rules/references/`: the index of the 18 documents the rules cite (7 standards, 2 application notes, 9 datasheets), each with its URL and SHA256; no document itself. |
 | `tests/` | The tests of the tools. `tests/boards/` holds the fixture boards and what each proves. |
-| `examples/` | Example projects made with the workcenter, each in version folders with its own README. |
+| `examples/` | Example projects made with Via, each in version folders with its own README. |
 | `third_party/kistack/` | The vendored kistack skills. |
 | `environment/` | Cloud environment setup script and hosts. |
 | `Dockerfile`, `.github/workflows/` | The image. `image.yml` builds it for amd64 and arm64. CI on each pull request and push to `main`, a nightly run, the release, stale issues, and Board: each `Work card: ...` issue in the column of the project board its `**Status:**` line names. |
