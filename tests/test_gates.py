@@ -105,7 +105,15 @@ def test_doctor_reports_every_engine():
         [sys.executable, str(CLI), "--json", "doctor"], capture_output=True, text=True, check=False
     )
     payload = json.loads(proc.stdout)
-    assert set(payload["checks"]) >= {"kicad-cli", "ngspice", "python", "java", "freerouting", "manifest"}
+    assert set(payload["checks"]) >= {
+        "kicad-cli",
+        "ngspice",
+        "python",
+        "java",
+        "freerouting",
+        "manifest",
+        "requirements",
+    }
     assert payload["checks"]["manifest"]["ok"] is True
     assert code in (0, 1)
 

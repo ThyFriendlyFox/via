@@ -39,20 +39,6 @@ TOOLCHAIN_FILES = ("Dockerfile", "install.sh", "requirements.txt")
 RECORD = Path("/opt/workcenters/ee/image.json")
 SRC = Path(__file__).resolve().parents[1]
 DISABLE = "CI_FULL_IN_IMAGE"
-# The image holds no node, so the tests that run it skip there. A change to a file they read takes the
-# install path, where node is: the 3 test files, the forms' functions test_forms.py runs, the
-# workflow scripts test_lead.py parses, and the nightly's issue step test_ci_nightly_issue.py runs (its
-# script in nightly.yml and the nightly_issue.py that script runs). tests/test_image.py finds every
-# test that asks for node.
-NODE_PATHS = (
-    "site/api/",
-    "ee-agent-kit/lead/workflows/",
-    ".github/workflows/nightly.yml",
-    "tools/ci/nightly_issue.py",
-    "tests/test_ci_nightly_issue.py",
-    "tests/test_forms.py",
-    "tests/test_lead.py",
-)
 
 Reader = Callable[[str], bytes]
 
@@ -135,23 +121,6 @@ def changed_files(repo: Path, base: str, head: str) -> list[str] | None:
     return changed
 
 
-def changed_paths(repo: Path, base: str, head: str) -> list[str] | None:
-    """Every path the change edits; None where the base cannot be read."""
-    if not base:
-        return None
-    if subprocess.run(["git", "-C", str(repo), "cat-file", "-e", f"{base}^{{commit}}"]).returncode != 0:
-        return None
-    diff = subprocess.run(
-        ["git", "-C", str(repo), "diff", "--name-only", base, head], capture_output=True, text=True
-    )
-    return diff.stdout.split() if diff.returncode == 0 else None
-
-
-def needs_node(paths: list[str]) -> list[str]:
-    """The paths a test that runs node reads."""
-    return [p for p in paths if any(p == n or (n.endswith("/") and p.startswith(n)) for n in NODE_PATHS)]
-
-
 def pull(ref: str) -> tuple[bool, str]:
     """`docker pull` of 1 image: (True, the image by digest) or (False, the registry's last line)."""
     try:
@@ -179,11 +148,10 @@ def decide(
     pull: Callable[[str], tuple[bool, str]],
     owner: str,
     unread: str = "",
-    node: list[str] | None = None,
 ) -> dict[str, str]:
     """Where the full job runs: in the image of this commit's tag when the registry gives it, else by
-    install.sh as before. `changed` is None where no base could be read; `node` is the paths of the
-    change that a test running node reads, None where no base says which paths changed."""
+    install.sh as before. `changed` is None where no base could be read. The image holds node, so the
+    whole suite runs there: no other path of the change moves the job."""
 
     def install(reason: str) -> dict[str, str]:
         return {"where": "install", "image": "", "reason": reason}
@@ -194,25 +162,11 @@ def decide(
         return install(f"the toolchain's files cannot be read at this commit: {unread or 'absent'}")
     if changed:
         return install(f"this change edits {', '.join(changed)}: the install path is their test")
-    if node:
-        return install(
-            f"this change edits {', '.join(node)}: the tests that need node run on the install path "
-            "(the image holds no node)"
-        )
     ref = f"{image_name(owner)}:{tag}"
     ok, said = pull(ref)
     if not ok:
         return install(f"the registry gave no {ref}: {said}")
-    unjudged = "not judged there: the tests that need node (no node in the image); " + (
-        "no base says which files this change edits"
-        if node is None
-        else "this change edits no file they read"
-    )
-    return {
-        "where": "image",
-        "image": said,
-        "reason": f"the registry holds {ref} ({said.split('@', 1)[1]}); {unjudged}",
-    }
+    return {"where": "image", "image": said, "reason": f"the registry holds {ref} ({said.split('@', 1)[1]})"}
 
 
 # ---------------------------------------------------------------- the build's record
@@ -221,9 +175,22 @@ def decide(
 def judge_doctor(payload: dict, machine: str) -> list[str]:
     """What keeps an image from being published: a doctor that fails, and each engine the image is for
     that doctor does not find. openEMS is asked of the amd64 image alone: install.sh fetches Debian's
-    amd64 packages of it."""
+    amd64 packages of it. node is asked of both: doctor's row is advisory (a board needs none), but CI
+    runs Via's own tests in the image, and 3 of their files run node."""
     problems = [f"doctor: {payload.get('status')}"] if payload.get("status") == "fail" else []
-    wanted = ["kicad-cli", "ngspice", "python", "java", "freerouting", "venv", "xvfb", "symbols"]
+    # `requirements`: the venv holds requirements.txt's pins, the file whose sum is in the tag.
+    wanted = [
+        "kicad-cli",
+        "ngspice",
+        "python",
+        "java",
+        "freerouting",
+        "venv",
+        "requirements",
+        "xvfb",
+        "symbols",
+        "node",
+    ]
     if machine == "x86_64":
         wanted.append("openems")
     checks = payload.get("checks", {})
@@ -242,6 +209,7 @@ def versions(payload: dict) -> dict[str, str]:
         "python": checks.get("python", {}).get("version") or "",
         "freerouting": found.group(1) if found else "",
         "openems": checks.get("openems", {}).get("version") or "",
+        "node": checks.get("node", {}).get("version") or "",
     }
 
 
@@ -383,9 +351,7 @@ def main(argv: list[str] | None = None) -> int:
             changed = changed_files(args.repo, args.base, args.head)
         except Absent as exc:
             changed, unread = None, str(exc)
-        edited = changed_paths(args.repo, args.base, args.head)
-        node = None if edited is None else needs_node(edited)
-        d = decide(args.enabled, tag, changed, pull, args.owner, unread, node)
+        d = decide(args.enabled, tag, changed, pull, args.owner, unread)
         print(f"where: {d['where']}: {d['reason']}")
         if args.github_output:
             github_output(d)

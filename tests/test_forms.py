@@ -25,7 +25,9 @@ NODE = shutil.which("node")
 needs_node = pytest.mark.skipif(NODE is None, reason="node runs the forms' functions")
 
 # 1 request to a function's rules: the store keeps each file in a list, or fails when asked to.
+# Node 18, the image's (Ubuntu 24.04's nodejs), has no global `crypto`; Vercel's runtime has it.
 DRIVER = """
+globalThis.crypto ??= (await import("node:crypto")).webcrypto;
 const { pathToFileURL } = await import("node:url");
 const forms = await import(pathToFileURL(process.env.FORMS_API + "/_forms.js").href);
 const c = JSON.parse(process.env.FORMS_CASE);
@@ -53,13 +55,16 @@ def send(
     origin: str | None = "https://via.computer",
     method: str = "POST",
     fail: bool = False,
+    bare: bool = False,
 ) -> dict:
+    """`bare`: node as Ubuntu 24.04 gives it, 18.19.1, which has no global `crypto` (Node's docs,
+    globalThis.crypto: no longer behind a flag from v19.0.0); the driver takes it out first."""
     headers = {"accept": "application/json"} if script else {}
     if origin:
         headers["origin"] = origin
     case = {"form": form, "fields": fields, "headers": headers, "method": method, "fail": fail}
     proc = subprocess.run(
-        [NODE, "--input-type=module", "-e", DRIVER],
+        [NODE, "--input-type=module", "-e", ("delete globalThis.crypto;\n" if bare else "") + DRIVER],
         env={**os.environ, "FORMS_API": str(API), "FORMS_CASE": json.dumps(case)},
         capture_output=True,
         text=True,
@@ -174,6 +179,17 @@ def test_a_program_or_another_site_keeps_nothing():
     foreign = send("feedback", {"message": "Hi"}, origin="https://elsewhere.example")
     assert (foreign["status"], foreign["kept"]) == (403, [])
     assert send("subscribe", {}, method="GET", script=False)["status"] == 405
+
+
+@needs_node
+def test_the_rules_run_on_the_node_of_the_workcenters_image():
+    """The image installs Ubuntu 24.04's nodejs, 18.19.1, whose global scope has no `crypto`. The
+    rules hash an address and name a suggestion with `crypto`; Vercel's runtime has it, so the driver
+    gives it from node:crypto where it is missing, as on Ubuntu's node."""
+    subscribed = send("subscribe", {"email": "a@example.com"}, bare=True)
+    assert subscribed["status"] == 200 and len(subscribed["kept"]) == 1
+    sent = send("feedback", {"message": "Hi"}, bare=True)
+    assert sent["status"] == 200 and len(sent["kept"]) == 1
 
 
 @needs_node

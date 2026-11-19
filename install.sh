@@ -591,15 +591,17 @@ step_apt() {
     seen="$(kicad-cli version 2>/dev/null | head -n 1 || true)"
     die "apt: after the install \`kicad-cli version\` prints ${seen:-nothing}, not 10.x"
   fi
-  # FreeRouting draws its window under xvfb, so Java needs its X11 library. Ubuntu's headless
-  # runtime ships libawt_xawt.so; Debian's (the base of the official KiCad image) does not, and
-  # FreeRouting stops there with a HeadlessException. The full runtime carries it.
-  if ! find "$JVM_DIR" -name libawt_xawt.so 2>/dev/null | grep -q .; then
-    log "apt: install openjdk-21-jre (this runtime has no libawt_xawt.so, which FreeRouting needs)"
+  # FreeRouting draws its window under xvfb, so Java needs its X11 library, lib/libawt_xawt.so. Neither
+  # Ubuntu's headless runtime (its file list names libawt.so and libawt_headless.so) nor Debian's (the
+  # base of the official KiCad image) has it; the full runtime, openjdk-21-jre, adds it. The library
+  # counts only in the JVM of the 21 that the java step records: in CI run 44515796762 a JDK of the
+  # runner's own under JVM_DIR had one, nothing more was installed, and every route ended in exit 1.
+  if ! jvm21_draws; then
+    log "apt: install openjdk-21-jre (the JVM of the 21 under ${JVM_DIR} has no lib/libawt_xawt.so, which FreeRouting needs)"
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openjdk-21-jre \
       | grep --line-buffered -E '^(Setting up) ' | sed -u 's/^/[apt] /' || true
-    find "$JVM_DIR" -name libawt_xawt.so 2>/dev/null | grep -q . \
-      || die "libawt_xawt.so not found after installing openjdk-21-jre: FreeRouting cannot run"
+    jvm21_draws \
+      || die "lib/libawt_xawt.so not found in ${JVM_DIR}/java-21-openjdk-* after installing openjdk-21-jre: FreeRouting cannot run"
   fi
   log "apt: done; kicad-cli $(kicad-cli version)"
 }
@@ -664,6 +666,102 @@ step_freerouting() {
   fi
   ln -sfn "$jar" "${dir}/freerouting.jar"
   log "freerouting: ${jar}"
+}
+
+# The java Via runs (tools/routers.py, workcenter_java): the JVM of the apt step's package
+# openjdk-21-jre-headless (BASE_PACKAGES), by the path this step records in WC_ROOT/java.path, whatever
+# java stands first on PATH; the java on PATH only when no such JVM is there. On GitHub's runner the first
+# java on PATH is the runner's own: in CI run 44444183056 apt set up openjdk-21-jre-headless 21.0.13.1,
+# and doctor then read `absent   java         17.0.21`. FreeRouting's Java is 21
+# (ee-agent-kit/docs/ENGINES.md); doctor holds it to JAVA_MIN in tools/routers.py, the same number. The
+# JVM must also draw FreeRouting's window: lib/libawt_xawt.so, which openjdk-21-jre adds (CI run
+# 44515796762 recorded the headless one, and every route there ended in exit 1).
+JAVA_MIN="21"
+
+# A JVM of the 21 that can draw FreeRouting's window: it has AWT's X11 library (openjdk-21-jre's).
+jvm21_draws() {
+  local candidate
+  for candidate in "${JVM_DIR}/java-21-openjdk-"*; do
+    if [[ -f "${candidate}/lib/libawt_xawt.so" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+step_java() {
+  local jvm found="" said="" ran="" code unrun="" broke="" major="" what re='version "([0-9]+)'
+  local nodraw="" heard=""
+  # The first JVM whose java runs, names its version and can draw FreeRouting's window
+  # (lib/libawt_xawt.so). On a multiarch machine the first folder in glob order can be another
+  # architecture's, whose java does not run (exec gives 126).
+  for jvm in "${JVM_DIR}/java-21-openjdk-"*; do
+    if [[ ! -x "${jvm}/bin/java" ]]; then
+      continue
+    fi
+    code=0
+    ran="$("${JVM_DIR}/${jvm##*/}/bin/java" -version 2>&1)" || code=$?
+    if ((code == 0)) && [[ "$ran" =~ $re ]]; then
+      if [[ -f "${jvm}/lib/libawt_xawt.so" ]]; then
+        found="${jvm}/bin/java"
+        said="$ran"
+        break
+      fi
+      if [[ -z "$nodraw" ]]; then
+        nodraw="${jvm}/bin/java"
+        heard="$ran"
+      fi
+      continue
+    fi
+    if [[ -z "$unrun" ]]; then
+      unrun="${jvm}/bin/java"
+      broke="${ran//$'\n'/ } (exit ${code})"
+    fi
+  done
+  # None runs and draws: the first that runs is recorded all the same (Via names it when it refuses
+  # it), else the first, and the step names what is wrong with it.
+  if [[ -z "$found" && -n "$nodraw" ]]; then
+    found="$nodraw"
+    said="$heard"
+  else
+    nodraw=""
+  fi
+  if [[ -z "$found" ]]; then
+    found="$unrun"
+  fi
+  mkdir -p "$WC_ROOT"
+  if [[ -n "$found" ]]; then
+    printf '%s\n' "$found" > "${WC_ROOT}/java.path"
+    what="${found} (the JVM of the apt step's openjdk-21-jre-headless, recorded in ${WC_ROOT}/java.path)"
+  else
+    # No record: Via reads PATH, as this step says.
+    rm -f "${WC_ROOT}/java.path"
+    if command -v java > /dev/null 2>&1; then
+      said="$(java -version 2>&1 || true)"
+      what="$(command -v java) (the first java on PATH: no JVM of the apt step under ${JVM_DIR})"
+    else
+      what="no java (no JVM of the apt step under ${JVM_DIR}, and none on PATH)"
+    fi
+  fi
+  if [[ "$said" =~ $re ]]; then
+    major="${BASH_REMATCH[1]}"
+    what+=", Java ${major}"
+  elif [[ -n "$broke" ]]; then
+    what+=", whose -version said: ${broke}"
+  fi
+  if [[ -n "$nodraw" ]]; then
+    what+=", whose JVM has no lib/libawt_xawt.so: a headless runtime, which cannot draw FreeRouting's window"
+  fi
+  if [[ -n "$major" ]] && ((major >= JAVA_MIN)) && [[ -z "$nodraw" ]]; then
+    log "java: ${what}: Via runs it"
+    return 0
+  fi
+  what="java: Via would run ${what}; FreeRouting needs Java ${JAVA_MIN} or newer (ee-agent-kit/docs/ENGINES.md)"
+  if [[ "$REQUIRE_FREEROUTING" == "1" ]]; then
+    stop "${what}, and REQUIRE_FREEROUTING=1" \
+      "Install openjdk-21-jre-headless and openjdk-21-jre, the apt step's packages, so that their JVM is in ${JVM_DIR} (java-21-openjdk-<arch>) with lib/libawt_xawt.so, then run the script again: install.sh records it for Via."
+  fi
+  warn "${what}; doctor says java is absent until \`sudo ./install.sh\` records a Java ${JAVA_MIN}"
 }
 
 openems_fail() {
@@ -912,6 +1010,7 @@ main() {
   step_boot
   step_apt
   step_freerouting
+  step_java
   step_openems
   step_python
   step_link

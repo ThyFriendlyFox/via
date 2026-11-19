@@ -2,12 +2,14 @@
 CI's full job that runs inside it when the registry holds it, and a run as a user id with no home.
 
 No Docker daemon answers on the machines these tests were written on, and GitHub Actions does not run
-here: the Dockerfile and both workflows are held by their parsed text, and the 1 real build test skips
-by the tool's name where `docker info` fails. The real build is the `image` workflow's job.
+here: the Dockerfile and both workflows are held by their parsed text. The real build is the `image`
+workflow's job: the 1 real build test runs only when WORKCENTER_TEST_IMAGE_BUILD is 1 and `docker info`
+answers, and nothing sets the variable for the health gate.
 """
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import inspect
 import json
@@ -74,17 +76,44 @@ def test_the_image_starts_from_ubuntu_24_04_alone():
     assert [args for word, args in dockerfile() if word == "FROM"] == ["ubuntu:24.04"]
 
 
-def test_the_toolchain_is_installed_by_install_sh_alone_and_its_apt_lists_go_in_the_same_layer():
-    """1 RUN runs install.sh as CI does (REQUIRE_FREEROUTING=1); the apt lists and caches it made are
-    removed in that RUN, so no layer keeps them. No RUN installs a package of its own."""
+def test_the_toolchain_is_install_sh_and_node_for_the_tests_and_the_apt_lists_go_in_the_same_layer():
+    """1 RUN runs install.sh as CI does (REQUIRE_FREEROUTING=1), then installs Ubuntu's own `nodejs`
+    with the index install.sh fetched; the apt lists and caches they made are removed in that RUN, so no
+    layer keeps them. node is for Via's own tests (tests/test_forms.py, tests/test_lead.py, and
+    tests/test_ci_nightly_issue.py),
+    not for a board: install.sh, what every user gets, does not install it. No other package is the
+    Dockerfile's own, and no other package source is added."""
     installing = [r for r in runs() if "./install.sh" in r]
     assert len(installing) == 1
     (run,) = installing
     # As CI does, with the 2 bounds the build is given (none unless the image workflow passes them).
     assert re.match(r"REQUIRE_FREEROUTING=1 (APT_\w+_TIMEOUT=\"\$APT_\w+_TIMEOUT\" )*\./install\.sh ", run)
-    assert "rm -rf /var/lib/apt/lists/*" in run and "apt-get clean" in run
+    node = "apt-get install -y --no-install-recommends nodejs"
+    parts = [part.strip() for part in run.split("&&")]
+    assert parts[1:] == [node, "apt-get clean", "rm -rf /var/lib/apt/lists/* /root/.cache"]
     own = re.compile(r"apt-get install|apt install|dpkg -i|pip3? install|python3? -m pip|snap install")
-    assert [r for r in runs() if own.search(r)] == []
+    assert [m.group(0) for r in runs() for m in own.finditer(r)] == ["apt-get install"]
+    text = DOCKERFILE.read_text(encoding="utf-8")
+    assert not re.search(r"nodesource|deb\.nodesource|sources\.list|add-apt-repository|nvm", text)
+    assert "nodejs" not in (ROOT / "install.sh").read_text(encoding="utf-8")
+
+
+def test_every_test_that_asks_for_node_finds_it_in_the_image():
+    """The tests that run node: test_forms.py runs site/api/_forms.js, test_lead.py parses
+    ee-agent-kit/lead/workflows/*.js, test_ci_nightly_issue.py runs the nightly's issue step.
+    Before node was in the image they skipped there (CI runs
+    44409635104 and 44428908528: `skipped inside the test in shard 1 ('node is not on PATH')`), and
+    CI sent a change to what they read to the install path. Now the image holds node: the path rule
+    is gone, and `decide` reads no path of the change but the toolchain's files."""
+    asking = sorted(
+        f"tests/{p.name}"
+        for p in (ROOT / "tests").glob("test_*.py")
+        if re.search(r"""which\(["']node["']\)""", p.read_text(encoding="utf-8"))
+    )
+    assert asking == ["tests/test_ci_nightly_issue.py", "tests/test_forms.py", "tests/test_lead.py"]
+    assert "nodejs" in " ".join(runs())
+    assert not hasattr(image, "NODE_PATHS") and not hasattr(image, "needs_node")
+    assert "node" not in inspect.signature(image.decide).parameters
 
 
 def test_the_install_line_hands_install_sh_the_2_bounds_of_build_arguments_that_default_to_none():
@@ -201,27 +230,21 @@ def called_by_the_runs() -> list[Path]:
 def test_the_image_holds_no_example_board_and_no_site_and_nothing_it_runs_reads_them():
     """examples/ (376 MB of the working tree) and site/ (18 MB) are not in the build context, so the
     image holds Via without the example boards and the site. Nothing the RUN lines run reads
-    a path under them: not install.sh, not the CLI's doctor, not the record. image.py's NODE_PATHS
-    names site/api/ for CI's choice of path on the checkout, outside the image, and the record, the
-    check and the doctor's run do not read it."""
+    a path under them: not install.sh, not the CLI's doctor, not the record. The tests that run node
+    read site/api/ on CI's checkout, which is mounted into the image, not on the image's own copy."""
     ignored = (ROOT / ".dockerignore").read_text(encoding="utf-8").split()
     assert "examples" in ignored and "site" in ignored
     assert UNDER_LEFT_OUT.search('ROOT / "examples"') and UNDER_LEFT_OUT.search('"site/api/"')
     assert not UNDER_LEFT_OUT.search("--system-site-packages") and not UNDER_LEFT_OUT.search('"site",')
-    allowed = {f'"{p}"' for p in image.NODE_PATHS}
     found = []
     for file in called_by_the_runs():
         for number, line in enumerate(file.read_text(encoding="utf-8").splitlines(), 1):
             code = line.strip()
             if code.startswith("#"):
                 continue
-            for word in allowed:
-                code = code.replace(word, "")
             if UNDER_LEFT_OUT.search(code):
                 found.append(f"{file.relative_to(ROOT)}:{number}: {line.strip()}")
     assert found == []
-    for function in (image.record, image.check, image.doctor_payload, image.judge_doctor):
-        assert "NODE_PATHS" not in inspect.getsource(function)
 
 
 # ---------------------------------------------------------------- the content tag
@@ -440,78 +463,75 @@ def test_pull_takes_the_image_by_its_digest_alone(tmp_path, monkeypatch):
     assert not ok and said == "the image pulled has no digest: ghcr.io/o/via:tc-x"
 
 
-def test_every_test_that_needs_node_is_routed_to_the_install_path_by_the_files_it_reads():
-    """The image holds no node, so on the image path the tests that run node skip. A change to a file
-    they read goes to the install path, where they run. The files, read from the 3 tests:
-    test_ci_nightly_issue.py runs the script of the nightly's issue step, taken from
-    .github/workflows/nightly.yml, which runs tools/ci/nightly_issue.py; test_forms.py runs
-    site/api/_forms.js (its API folder); test_lead.py parses ee-agent-kit/lead/workflows/*.js."""
-    asking = sorted(
-        f"tests/{p.name}"
-        for p in (ROOT / "tests").glob("test_*.py")
-        if re.search(r"""which\(["']node["']\)""", p.read_text(encoding="utf-8"))
-    )
-    assert asking == ["tests/test_ci_nightly_issue.py", "tests/test_forms.py", "tests/test_lead.py"]
-    assert set(image.NODE_PATHS) == {
-        *asking,
-        "site/api/",
-        "ee-agent-kit/lead/workflows/",
-        ".github/workflows/nightly.yml",
-        "tools/ci/nightly_issue.py",
-    }
-    assert image.needs_node(["tools/fields.py", "site/api/_forms.js"]) == ["site/api/_forms.js"]
-    assert image.needs_node(["ee-agent-kit/lead/workflows/user-round.js"]) != []
-    assert image.needs_node(["site/index.html", "tests/test_image.py", "ee-agent-kit/lead/x.md"]) == []
-    assert image.needs_node([".github/workflows/ci.yml", "tools/ci/apt_archive.sh", "tools/ci/x.py"]) == []
-
-
-@pytest.mark.parametrize(
-    "path",
-    [
-        "site/api/_forms.js",
-        ".github/workflows/nightly.yml",
-        "tools/ci/nightly_issue.py",
-        "tests/test_ci_nightly_issue.py",
-    ],
-)
-def test_a_change_to_what_node_reads_runs_on_the_install_path(path):
+def decided(repo: Path, base: str, monkeypatch, tmp_path, said) -> tuple[list[str], list[str]]:
+    """`image.py decide` on the repo's HEAD with a stand-in pull: the refs it asked for and the lines
+    it wrote to $GITHUB_OUTPUT."""
+    out = tmp_path / "decided"
+    out.unlink(missing_ok=True)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out))
     asked: list[str] = []
-    node = image.needs_node(["tools/fields.py", path])
-    assert node == [path]
-    d = image.decide("", "tc-x", [], lambda r: asked.append(r) or (False, ""), "o", node=node)
-    assert asked == []
-    assert d == {
-        "where": "install",
-        "image": "",
-        "reason": f"this change edits {path}: the tests that need node run on the install path "
-        "(the image holds no node)",
-    }
+    monkeypatch.setattr(image, "pull", lambda ref: asked.append(ref) or said(ref))
+    argv = ["decide", "--repo", str(repo), "--base", base, "--owner", "O", "--github-output"]
+    assert image.main(argv) == 0
+    return asked, out.read_text(encoding="utf-8").splitlines()
 
 
-def test_the_image_path_says_the_node_tests_are_not_judged_there():
-    """A change that touches nothing node reads: the reason names the tests the image path does not
-    judge. With no base the files changed are not known, and the reason says so."""
-    d = image.decide("", "tc-x", [], pulled("sha256:" + "d" * 64), "o", node=[])
-    assert d["where"] == "image" and d["reason"].endswith(
-        "; not judged there: the tests that need node (no node in the image); this change edits no file "
-        "they read"
-    )
-    blind = image.decide("", "tc-x", None, pulled("sha256:" + "d" * 64), "o", node=None)
-    assert blind["where"] == "image" and blind["reason"].endswith(
-        "; not judged there: the tests that need node (no node in the image); no base says which files "
-        "this change edits"
-    )
+def test_a_change_to_what_node_reads_runs_in_the_image_when_the_registry_holds_it(
+    repo, tmp_path, monkeypatch
+):
+    """The image holds node, so a change to the forms' functions, the workflow scripts or the 2 tests
+    that run node goes where any other change goes: the image of its tag when the registry gives it.
+    On 2026-11-19 such a push (website work) took the install path for that reason alone and stopped
+    at the download's bound on both attempts (CI run 44432768560)."""
+    base = git(repo, "rev-parse", "HEAD")
+    for path in ("site/api/_forms.js", "ee-agent-kit/lead/workflows/x.js", "tests/test_forms.py"):
+        (repo / path).parent.mkdir(parents=True, exist_ok=True)
+        (repo / path).write_text("x\n", encoding="utf-8")
+    git(repo, "add", ".")
+    git(repo, "commit", "-q", "-m", "node reads these")
+    digest = "sha256:" + "e" * 64
+    asked, lines = decided(repo, base, monkeypatch, tmp_path, pulled(digest))
+    ref = "ghcr.io/o/via:tc-7b247424ac84899d"
+    assert asked == [ref]
+    assert lines == [
+        "where=image",
+        f"image=ghcr.io/o/via@{digest}",
+        f"reason=the registry holds {ref} ({digest})",
+    ]
 
 
-def test_the_paths_a_change_edits_are_read_from_git(repo):
+def test_a_change_to_what_node_reads_still_installs_when_the_registry_lacks_its_tag(
+    repo, tmp_path, monkeypatch
+):
+    """The tag moves with the Dockerfile, so the first image with node is the Image workflow's to
+    build; until the registry holds it, `decide` takes the install path as for any new tag."""
     base = git(repo, "rev-parse", "HEAD")
     (repo / "site" / "api").mkdir(parents=True)
     (repo / "site" / "api" / "_forms.js").write_text("x\n", encoding="utf-8")
     git(repo, "add", ".")
     git(repo, "commit", "-q", "-m", "forms")
-    assert image.changed_paths(repo, base, "HEAD") == ["site/api/_forms.js"]
-    assert image.changed_paths(repo, "", "HEAD") is None
-    assert image.changed_paths(repo, "0" * 40, "HEAD") is None
+    asked, lines = decided(repo, base, monkeypatch, tmp_path, refused("manifest unknown"))
+    ref = "ghcr.io/o/via:tc-7b247424ac84899d"
+    assert asked == [ref]
+    assert lines == ["where=install", "image=", f"reason=the registry gave no {ref}: manifest unknown"]
+
+
+def test_a_change_to_a_toolchain_file_and_to_what_node_reads_installs_without_asking(
+    repo, tmp_path, monkeypatch
+):
+    """Dockerfile, install.sh or requirements.txt edited: the install path is their test, whatever
+    else the change edits, and the registry is not asked."""
+    for name in image.TOOLCHAIN_FILES:
+        base = git(repo, "rev-parse", "HEAD")
+        (repo / name).write_bytes((repo / name).read_bytes() + b"# more\n")
+        (repo / "tests").mkdir(exist_ok=True)
+        (repo / "tests" / "test_lead.py").write_text(f"# {name}\n", encoding="utf-8")
+        git(repo, "add", ".")
+        git(repo, "commit", "-q", "-m", name)
+        asked, lines = decided(repo, base, monkeypatch, tmp_path, pulled("sha256:" + "f" * 64))
+        assert asked == []
+        assert lines[:2] == ["where=install", "image="]
+        assert lines[2] == f"reason=this change edits {name}: the install path is their test"
 
 
 # ---------------------------------------------------------------- the build's record and its check
@@ -525,9 +545,11 @@ def doctor(**over) -> dict:
         "java": {"required": False, "ok": True, "version": "21.0.9"},
         "freerouting": {"required": False, "ok": True, "path": "/x/freerouting.jar"},
         "venv": {"required": False, "ok": True},
+        "requirements": {"required": False, "ok": True},
         "xvfb": {"required": False, "ok": True},
         "symbols": {"required": False, "ok": True},
         "openems": {"required": False, "ok": True, "version": "v0.0.35"},
+        "node": {"required": False, "advisory": True, "ok": True, "version": "18.19.1"},
     }
     for name, ok in over.items():
         checks[name.replace("_", "-")]["ok"] = ok
@@ -544,11 +566,28 @@ def test_an_image_whose_doctor_does_not_pass_is_refused_by_name():
     assert image.judge_doctor(doctor(freerouting=False), "aarch64") == ["freerouting: not ok in the image"]
 
 
+def test_an_image_whose_venv_disagrees_with_requirements_txt_is_refused():
+    """The image's tag names requirements.txt's sum; doctor's `requirements` row says whether the venv
+    holds those pins. The 2 must not disagree: a venv that lacks a pin, or holds another version of
+    it, is no image of that tag."""
+    assert image.judge_doctor(doctor(requirements=False), "x86_64") == ["requirements: not ok in the image"]
+    assert image.judge_doctor(doctor(requirements=False), "aarch64") == ["requirements: not ok in the image"]
+
+
 def test_openems_is_asked_of_the_amd64_image_alone():
     """install.sh fetches openEMS as Debian's amd64 packages (`_amd64.deb`, its step_openems): on arm64
     the step warns and `workcenter fields` skips, so the arm64 image is not refused for it."""
     assert image.judge_doctor(doctor(openems=False), "x86_64") == ["openems: not ok in the image"]
     assert image.judge_doctor(doctor(openems=False), "aarch64") == []
+
+
+def test_an_image_without_node_is_refused_on_both_machines():
+    """node's row is advisory, so doctor still says `ok` without it: a board needs no node. The image
+    is for Via's own tests too, and `record` refuses it without node."""
+    bare = doctor(node=False)
+    assert bare["status"] == "ok"
+    for machine in ("x86_64", "aarch64"):
+        assert image.judge_doctor(bare, machine) == ["node: not ok in the image"]
 
 
 def test_the_record_holds_the_tag_the_versions_and_the_files_and_refuses_another_tag(tmp_path):
@@ -571,11 +610,28 @@ def test_the_record_holds_the_tag_the_versions_and_the_files_and_refuses_another
         "python": "3.12.3",
         "freerouting": "1.9.0",
         "openems": "v0.0.35",
+        "node": "18.19.1",
     }
     assert record["files"]["requirements.txt"] == hashlib.sha256(b"c\n").hexdigest()
     assert json.loads(out.read_text(encoding="utf-8")) == record
     with pytest.raises(image.Refused, match="the workflow named tc-0000000000000000"):
         image.record(src, tmp_path / "other.json", "tc-0000000000000000", "abc123", payload, "x86_64")
+
+
+def test_show_and_workcenter_image_name_nodes_version_beside_the_other_tools(tmp_path, monkeypatch, capsys):
+    """CI's image path prints `image.py show` before `make verify`, and the Image workflow puts it in
+    the run's summary: node's version is 1 of its lines, as doctor read it in the build."""
+    src = fixed_tree(tmp_path / "src")
+    out = tmp_path / "image.json"
+    image.record(src, out, "", "abc123", doctor(), "x86_64")
+    monkeypatch.setattr(image, "RECORD", out)
+    assert image.main(["show"]) == 0
+    assert json.loads(capsys.readouterr().out)["versions"]["node"] == "18.19.1"
+    cli = type("Cli", (), {"SRC_DIR": ROOT})
+    assert image.cmd_image(type("Args", (), {"rev": "HEAD"})(), cli) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert "  node         18.19.1" in lines
+    assert lines.index("  openems      v0.0.35") < lines.index("  node         18.19.1")
 
 
 def test_the_check_inside_ci_refuses_an_image_of_another_requirements_txt(tmp_path):
@@ -748,18 +804,26 @@ def test_the_gates_step_fails_unless_every_file_written_is_the_runners_user(tmp_
     prints is the owner find prints."""
     step = step_named(flow(IMAGE_FLOW)["jobs"]["build"], "The gates on a fixture")
     bin_ = tmp_path / "bin"
-    stub(bin_, "docker", "exit 0")
+    # The stand-in `docker` writes the gates' record into the folder mounted at /work when $WRITE is 1.
+    stub(
+        bin_,
+        "docker",
+        'while [ $# -gt 0 ]; do if [ "$1" = -v ]; then board="${2%:/work}"; fi; shift; done\n'
+        'if [ "$WRITE" = 1 ]; then mkdir -p "$board/build" && echo "{}" > "$board/build/gates.json"; fi',
+    )
     stub(bin_, "find", 'printf "$OWNERS\\n"')
     stub(bin_, "id", 'if [ "$1" = -un ]; then echo "$ME"; exit "$ID_CODE"; fi; echo 1001')
     cases = {
-        ("runner", "runner", 0): 0,
-        ("runner\\nnobody-else", "runner", 0): 1,
-        ("runner\\nzz-other", "runner", 0): 1,
-        ("nobody-else", "runner", 0): 1,
-        ("1001", "1001", 1): 1,
+        ("runner", "runner", 0, 1): 0,
+        ("runner\\nnobody-else", "runner", 0, 1): 1,
+        ("runner\\nzz-other", "runner", 0, 1): 1,
+        ("nobody-else", "runner", 0, 1): 1,
+        ("1001", "1001", 1, 1): 1,
+        # The gates ended 0 and wrote no build/gates.json: the record the gates write is missing.
+        ("runner", "runner", 0, 0): 1,
     }
     codes = {}
-    for owners, me, id_code in cases:
+    for owners, me, id_code, write in cases:
         env = {
             **os.environ,
             "PATH": f"{bin_}:{os.environ['PATH']}",
@@ -767,13 +831,85 @@ def test_the_gates_step_fails_unless_every_file_written_is_the_runners_user(tmp_
             "OWNERS": owners,
             "ME": me,
             "ID_CODE": str(id_code),
+            "WRITE": str(write),
         }
         env |= {"IMAGE": "i", "TAG": "t", "ARCH": "amd64"}
         ran = subprocess.run(
             ["bash", "-e", "-c", step["run"]], cwd=ROOT, env=env, capture_output=True, text=True
         )
-        codes[(owners, me, id_code)] = ran.returncode
+        codes[(owners, me, id_code, write)] = ran.returncode
     assert codes == cases
+
+
+def test_the_image_workflow_checks_on_every_machine_what_the_build_test_checked():
+    """The build test (run by name alone) asserted 4 things: the image builds, the gates on the fixture
+    end 0 as the calling user, they write build/gates.json, and that file is the calling user's. The
+    image workflow's build job holds each, on both machines, on every pull request that touches the
+    toolchain's files: the build step, the gates step under `bash -e`, `test -s` on the record, and the
+    owners of every file the gates wrote."""
+    holds_what_the_build_test_checked(flow(IMAGE_FLOW))
+
+
+def holds_what_the_build_test_checked(data: dict) -> None:
+    """Asserts that the image workflow's build job holds the 4 checks of the build test, and that a
+    failure of either step fails the run: no `continue-on-error`, and GitHub's default shell, `bash -e`."""
+    job = data["jobs"]["build"]
+    assert "if" not in job and "continue-on-error" not in job
+    assert "defaults" not in data and "defaults" not in job
+    build = step_named(job, "Build")
+    assert "if" not in build and build["run"].lstrip().startswith("docker build ")
+    gates = step_named(job, "The gates on a fixture")
+    assert "if" not in gates
+    for step in (build, gates):
+        assert "continue-on-error" not in step and "shell" not in step, step["name"]
+    lines = [line.strip() for line in gates["run"].splitlines()]
+    assert 'cp -r tests/boards/pass-rc-divider "$board"' in lines
+    run = next(i for i, line in enumerate(lines) if line.startswith("docker run "))
+    assert '--user "$(id -u):$(id -g)"' in lines[run] and lines[run].endswith("workcenter gates .")
+    written = lines.index('test -s "$board/build/gates.json"')
+    assert run < written < lines.index('test "$owners" = "$me"')
+
+
+def test_a_build_job_whose_failure_does_not_fail_the_run_holds_nothing():
+    """`continue-on-error` on the build job, the Build step or the gates step leaves the run green when
+    the build or the gates fail. A `shell` that is not GitHub's default `bash -e` (on the step, the job's
+    or the workflow's `defaults`) lets a failing line pass. Each planted key is refused."""
+    real = flow(IMAGE_FLOW)
+
+    def planted(where: str, key: str, value):
+        data = copy.deepcopy(real)
+        job = data["jobs"]["build"]
+        places = {
+            "job": job,
+            "Build": step_named(job, "Build"),
+            "gates": step_named(job, "The gates on a fixture"),
+            "workflow": data,
+        }
+        place = places[where]
+        if key == "defaults":
+            place["defaults"] = {"run": {"shell": value}}
+        else:
+            place[key] = value
+        return data
+
+    cases = [
+        ("job", "continue-on-error", True),
+        ("job", "continue-on-error", "${{ matrix.arch == 'arm64' }}"),
+        ("Build", "continue-on-error", True),
+        ("gates", "continue-on-error", True),
+        ("Build", "shell", "bash {0}"),
+        ("gates", "shell", "bash {0}"),
+        ("job", "defaults", "bash {0}"),
+        ("workflow", "defaults", "bash {0}"),
+    ]
+    held = []
+    for where, key, value in cases:
+        try:
+            holds_what_the_build_test_checked(planted(where, key, value))
+        except AssertionError:
+            continue
+        held.append((where, key, value))
+    assert held == []
 
 
 def test_the_image_path_runs_make_verify_only_after_its_check_passes(tmp_path):
@@ -861,8 +997,100 @@ def daemon() -> bool:
     return subprocess.run(["docker", "info"], capture_output=True).returncode == 0
 
 
+# The real build is the image workflow's job. Inside CI's full job it took about 669 s of 674.6 s for this
+# file (job 135422229691), so the health gate's test run does not repeat it: it runs when asked by name.
+BUILD_ASKED = "WORKCENTER_TEST_IMAGE_BUILD"
+BUILD_BY_HAND = (
+    "WORKCENTER_TEST_IMAGE_BUILD=1 python3 -m pytest "
+    "tests/test_image.py::test_the_image_builds_and_runs_the_gates_as_the_calling_user"
+)
+BUILD_ELSEWHERE = (
+    ".github/workflows/image.yml builds the image and runs the gates in it on amd64 and arm64, "
+    "on every pull request that touches the toolchain's files and on every push to main"
+)
+
+
+def build_skip(env, answers) -> str | None:
+    """Why the real build test does not run, or None when it runs: asked by name and a daemon answers.
+    `answers` (the daemon's check) is called only when the build is asked for."""
+    if env.get(BUILD_ASKED) != "1":
+        return f"{BUILD_ASKED} is not 1: {BUILD_ELSEWHERE}; by hand: {BUILD_BY_HAND}"
+    if not answers():
+        return "docker: no daemon answers `docker info`"
+    return None
+
+
+BUILD_SKIP = build_skip(os.environ, daemon)
+
+
+def test_the_build_test_runs_only_when_asked_by_name():
+    asked: list[bool] = []
+
+    def answers():
+        asked.append(True)
+        return True
+
+    for env in ({}, {BUILD_ASKED: "0"}, {BUILD_ASKED: "yes"}, {BUILD_ASKED: ""}):
+        said = build_skip(env, answers)
+        assert said and said.startswith(f"{BUILD_ASKED} is not 1: "), env
+        assert ".github/workflows/image.yml" in said and "every pull request" in said
+        assert "every push to main" in said and said.endswith(f"by hand: {BUILD_BY_HAND}")
+    assert asked == []
+    assert build_skip({BUILD_ASKED: "1"}, lambda: False) == "docker: no daemon answers `docker info`"
+    assert build_skip({BUILD_ASKED: "1"}, answers) is None and asked == [True]
+    marks = {m.name: m for m in test_the_image_builds_and_runs_the_gates_as_the_calling_user.pytestmark}
+    assert "engine" in marks
+    assert marks["skipif"].args == (BUILD_SKIP is not None,)
+    assert marks["skipif"].kwargs["reason"] == (BUILD_SKIP or "")
+
+
+def asking_for_the_build(root: Path) -> list[str]:
+    """The files of `root` that run tests or set them up and name the build's variable: every workflow,
+    the Makefile, every file under verify/ but its documents, pytest's configuration files and every
+    conftest.py at the root or under tests/ (pytest reads them before this file works out BUILD_SKIP)."""
+    places = [*sorted((root / ".github" / "workflows").glob("*.yml")), root / "Makefile"]
+    places += sorted(p for p in (root / "verify").iterdir() if p.is_file() and p.suffix != ".md")
+    places += [
+        root / name for name in ("pyproject.toml", "pytest.ini", "setup.cfg", "tox.ini", "conftest.py")
+    ]
+    places += sorted((root / "tests").rglob("conftest.py"))
+    places = [p for p in places if p.is_file()]
+    return [str(p.relative_to(root)) for p in places if BUILD_ASKED in p.read_text(encoding="utf-8")]
+
+
+def test_nothing_asks_for_the_build_test_by_default(tmp_path):
+    """Not CI's jobs, not the nightly run, not `make verify` or `make check`. A tree where a workflow or
+    the Makefile, pyproject.toml or a conftest.py sets the name is found by it."""
+    assert asking_for_the_build(ROOT) == []
+    planted = tmp_path / "tree"
+    flows = planted / ".github" / "workflows"
+    flows.mkdir(parents=True)
+    (planted / "verify").mkdir()
+    (flows / "ci.yml").write_text(f"env:\n  {BUILD_ASKED}: '1'\n", encoding="utf-8")
+    (planted / "Makefile").write_text(f"verify:\n\t{BUILD_ASKED}=1 bash verify/verify.sh\n", encoding="utf-8")
+    (planted / "verify" / "verify.sh").write_text("make lint\n", encoding="utf-8")
+    (planted / "verify" / "README.md").write_text(f"Not set: `{BUILD_ASKED}=1`.\n", encoding="utf-8")
+    # pytest reads conftest.py and pyproject.toml before this file works out BUILD_SKIP.
+    (planted / "tests" / "deep").mkdir(parents=True)
+    (planted / "tests" / "conftest.py").write_text(f'os.environ["{BUILD_ASKED}"] = "1"\n', encoding="utf-8")
+    (planted / "tests" / "deep" / "conftest.py").write_text(
+        f'os.environ["{BUILD_ASKED}"] = "1"\n', encoding="utf-8"
+    )
+    (planted / "conftest.py").write_text("import os\n", encoding="utf-8")
+    (planted / "pyproject.toml").write_text(
+        f'[tool.pytest.ini_options]\nenv = ["{BUILD_ASKED}=1"]\n', encoding="utf-8"
+    )
+    assert asking_for_the_build(planted) == [
+        ".github/workflows/ci.yml",
+        "Makefile",
+        "pyproject.toml",
+        "tests/conftest.py",
+        "tests/deep/conftest.py",
+    ]
+
+
 @pytest.mark.engine
-@pytest.mark.skipif(not daemon(), reason="docker: no daemon answers `docker info`; the image workflow builds")
+@pytest.mark.skipif(BUILD_SKIP is not None, reason=BUILD_SKIP or "")
 def test_the_image_builds_and_runs_the_gates_as_the_calling_user(tmp_path):
     tag = image.content_tag(image.from_disk(ROOT))
     name = f"via-test:{tag}"
@@ -882,6 +1110,50 @@ def test_the_image_builds_and_runs_the_gates_as_the_calling_user(tmp_path):
     )
     assert ran.returncode == 0, ran.stdout + ran.stderr
     assert (board / "build" / "gates.json").stat().st_uid == os.getuid()
+
+
+def run_doctor(path: str, tmp_path: Path) -> tuple[list[str], dict]:
+    said = []
+    for argv in (["doctor"], ["--json", "doctor"]):
+        env = {**os.environ, "PATH": path, "HOME": str(tmp_path)}
+        proc = subprocess.run(
+            [sys.executable, str(ROOT / "tools" / "workcenter"), *argv],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        said.append(proc.stdout)
+    return said[0].splitlines(), json.loads(said[1])
+
+
+@pytest.mark.engine  # doctor asks every engine for its version (tools/ci/engine_marker.py)
+def test_doctor_names_node_as_a_tool_of_the_workcenters_own_tests_and_never_a_fault(tmp_path):
+    """A stand-in `node` that prints Ubuntu 24.04's version gives node's row that version; with no node
+    on PATH the row is absent and advisory: not in `degraded`, and the status is the same, since a
+    board needs no node. Both lines say what node is for."""
+    bin_ = tmp_path / "bin"
+    stub(bin_, "node", 'if [ "$1" = --version ]; then echo v18.19.1; fi')
+    dirs = [d for d in os.environ["PATH"].split(os.pathsep) if d and not (Path(d) / "node").exists()]
+    lines, with_node = run_doctor(os.pathsep.join([str(bin_), *dirs]), tmp_path)
+    for_ = (
+        "Via's own tests (tests/test_forms.py, tests/test_lead.py, tests/test_ci_nightly_issue.py); "
+        "a board needs none"
+    )
+    assert with_node["checks"]["node"] == {
+        "required": False,
+        "advisory": True,
+        "ok": True,
+        "version": "18.19.1",
+        "for": for_,
+    }
+    (line,) = [ln for ln in lines if ln.split()[1:2] == ["node"]]
+    assert line == f"  ok       node         18.19.1  ({for_})"
+    lines, without = run_doctor(os.pathsep.join(dirs), tmp_path)
+    assert without["checks"]["node"]["ok"] is False and without["checks"]["node"]["advisory"] is True
+    assert "node" not in without["degraded"] and "node" not in without["missing_required"]
+    assert without["status"] == with_node["status"]
+    (line,) = [ln for ln in lines if ln.split()[1:2] == ["node"]]
+    assert line == f"  absent   node         ({for_})"
 
 
 SETPRIV = shutil.which("setpriv")

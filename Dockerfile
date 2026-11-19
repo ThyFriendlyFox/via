@@ -1,5 +1,5 @@
-# The EE Workcenter's image: the toolchain install.sh defines, and the workcenter at the commit it was
-# built from. The image workflow (.github/workflows/image.yml) builds it, checks it and publishes it;
+# The EE Workcenter's image: the toolchain install.sh defines, node for the workcenter's own tests, and
+# the workcenter at the commit it was built from. The image workflow (.github/workflows/image.yml) builds it, checks it and publishes it;
 # tools/image.py works out its tag from this file, install.sh and requirements.txt. It holds the
 # workcenter without the example boards and the site (.dockerignore leaves out examples/ and site/):
 # no tool it runs reads them, and a project is mounted on /work.
@@ -18,9 +18,15 @@ COPY . .
 # apt lists and the caches it made are removed in the layer that made them. The image workflow passes
 # CI's 2 bounds of the apt step (APT_UPDATE_TIMEOUT=120, APT_DOWNLOAD_TIMEOUT=570); a build that passes
 # none, as `docker build .` does, has no bound, as on a person's computer.
+#
+# Then node, from Ubuntu's own packages with the index install.sh fetched (24.04 gives nodejs 18.19.1):
+# the workcenter's own tests run it (tests/test_forms.py runs the site's forms functions,
+# tests/test_lead.py parses the lead's workflow scripts), so CI's whole suite runs inside the image. A
+# board needs no node, so install.sh, what every user gets, does not install it.
 ARG APT_UPDATE_TIMEOUT=
 ARG APT_DOWNLOAD_TIMEOUT=
 RUN REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT="$APT_UPDATE_TIMEOUT" APT_DOWNLOAD_TIMEOUT="$APT_DOWNLOAD_TIMEOUT" ./install.sh \
+ && apt-get install -y --no-install-recommends nodejs \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/* /root/.cache
 

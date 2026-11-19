@@ -346,7 +346,15 @@ class Stopped(SystemExit):
         self.signum = signum
 
 
+STOPS = (signal.SIGTERM, signal.SIGHUP)
+
+
 def _stop(signum, frame) -> None:
+    """The first stop. Every later one is ignored: under `enginelock.py hold` the runner gets the signal
+    twice, from its group and from the hold, and a second Stopped raised inside the clean-up would end it
+    before it had ended and waited for every shard."""
+    for s in STOPS:
+        signal.signal(s, signal.SIG_IGN)
     raise Stopped(signum)
 
 
@@ -536,7 +544,7 @@ def run(args: argparse.Namespace) -> int:
     started: list[Started] = []
     told = Told()
     procs: list[subprocess.Popen] = []
-    handlers = {s: signal.signal(s, _stop) for s in (signal.SIGTERM, signal.SIGHUP)}
+    handlers = {s: signal.signal(s, _stop) for s in STOPS}
     try:
         with open(collect_out, "w", encoding="utf-8") as out:
             collect = subprocess.Popen(
