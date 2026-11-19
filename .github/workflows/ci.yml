@@ -158,7 +158,7 @@ jobs:
           if [ "$ENABLED" != 0 ]; then slow="env APT_ARCHIVE_CI=1 bash tools/ci/apt_archive.sh --slow"; retries=0; seconds=15; fi
           sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 APT_OTHER_TIMEOUT=300 APT_FILE_RETRIES="$retries" APT_FILE_TIMEOUT="$seconds" APT_SLOW_PASS_COMMAND="$slow" ./install.sh
       # apt takes a file already in its folder by its size alone (apt 2.8.3): the check holds every file
-      # to the SHA256 of apt's signed indexes after the install, fails the run on a file that is not the
+      # to the SHA256 of apt's signed indexes after the install (passed or not), fails the run on a file that is not the
       # package, and keeps for the save only the files an index lists. It says why nothing is saved.
       - name: Check apt's package files against its indexes and keep them for later runs
         id: apt-cache-keep

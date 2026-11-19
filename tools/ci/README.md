@@ -225,12 +225,15 @@ package files kept between runs") has the why and the numbers.
 1. Before install.sh: `apt_cache.sh key install.sh "$GITHUB_OUTPUT"` makes
    the key; `actions/cache/restore@v4` restores
    `$RUNNER_TEMP/apt-archives`; `apt_cache.sh restore` copies each regular
-   `.deb` file into `/var/cache/apt/archives` with `sudo cp`. A link or a
-   file of another kind stays out. install.sh does not change.
-2. After install.sh: `apt_cache.sh keep` checks every `.deb` in apt's folder
-   against the SHA256 of apt's signed indexes (`apt-cache show
-   <package>=<version>`). A file whose bytes differ fails the run: apt
-   2.8.3 takes a file already there by its size alone. Then, for a push to
+   `.deb` file of the kept folder itself into `/var/cache/apt/archives`
+   with `sudo cp`. A link, a folder below it (`partial/`) or a file of
+   another kind stays out; a kept folder that is itself a link gives
+   nothing. install.sh does not change.
+2. After install.sh, whether it passed or not: `apt_cache.sh keep` checks
+   every `.deb` in apt's folder against the SHA256 of apt's signed indexes
+   (`apt-cache show <package>=<version>`). A file whose bytes differ fails
+   the run: apt 2.8.3 takes a file already there by its size alone. That
+   apt does so has been read in its source, not yet seen on a runner. Then, for a push to
    main, the nightly run or a run by hand, after a good install, it makes the
    kept folder anew from the files that matched and sets `save=true`;
    `actions/cache/save@v4` saves it.

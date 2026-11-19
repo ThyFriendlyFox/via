@@ -381,6 +381,35 @@ def test_a_restore_leaves_out_a_file_that_is_not_a_deb_and_a_link(tmp_path):
     assert [p.name for p in (tmp_path / "archives").iterdir()] == ["curl_8.5.0-2ubuntu10.6_amd64.deb"]
 
 
+def test_a_restore_takes_no_deb_from_a_folder_inside_the_kept_one(tmp_path):
+    """Only the kept folder's own files: a .deb in a folder below it (apt's `partial/`) stays out."""
+    kept = tmp_path / "runner" / "apt-archives"
+    deb(kept, "curl_8.5.0-2ubuntu10.6_amd64.deb", b"c" * 10)
+    deb(kept / "partial", "kicad_10.0.8~ubuntu24.04.1_amd64.deb", b"p" * 5)
+    ran = restore(tmp_path)
+    assert ran.returncode == 0, ran.stderr
+    assert ran.stdout.splitlines() == [
+        f"{PREFIX} restored 1 files, 10 bytes, into {tmp_path / 'archives'}; left out 1 that are not a "
+        "regular .deb file: partial"
+    ]
+    assert [p.name for p in (tmp_path / "archives").iterdir()] == ["curl_8.5.0-2ubuntu10.6_amd64.deb"]
+
+
+def test_a_kept_folder_that_is_a_link_restores_nothing(tmp_path):
+    """The restore writes a folder; a link in its place points anywhere, so nothing behind it is copied."""
+    elsewhere = tmp_path / "elsewhere"
+    deb(elsewhere, "curl_8.5.0-2ubuntu10.6_amd64.deb", b"c" * 10)
+    (tmp_path / "runner").mkdir()
+    (tmp_path / "runner" / "apt-archives").symlink_to(elsewhere)
+    ran = restore(tmp_path)
+    assert ran.returncode == 0, ran.stderr
+    assert ran.stdout.splitlines() == [
+        f"{PREFIX} restored 0 files: {tmp_path / 'runner' / 'apt-archives'} is a link, not a folder; "
+        "apt gets every file"
+    ]
+    assert calls(tmp_path) == [] and list((tmp_path / "archives").iterdir()) == []
+
+
 def test_a_failed_copy_does_not_stop_the_run(tmp_path):
     """The stand-in cp refuses a path under /var: here the archives folder is one, as a copy that fails."""
     kept = tmp_path / "runner" / "apt-archives"
@@ -442,6 +471,9 @@ def test_a_good_install_on_main_keeps_the_files_an_index_lists_with_their_sha256
         "libfoo_1%3a2.0-1_amd64.deb",
     ]
     assert outputs(tmp_path) == "save=true\n"
+    # The kept files keep their times, not apt's owner (root) or mode: the runner's user saves them.
+    (copied,) = [c for c in calls(tmp_path) if c.startswith("cp ")]
+    assert copied.split()[1:4] == ["--preserve=timestamps", "-t", str(kept)]
     (asked,) = [c for c in calls(tmp_path) if c.startswith("apt-cache ")]
     assert asked.split()[1:] == [
         "show",
@@ -458,14 +490,53 @@ def test_a_night_and_a_run_by_hand_save_too(tmp_path, event):
     assert outputs(tmp_path) == "save=true\n"
 
 
-def test_a_failed_install_saves_nothing_and_checks_nothing(tmp_path):
-    ran = keep(tmp_path, installed="failure")
+@pytest.mark.parametrize("installed", ["failure", "cancelled", "skipped", ""])
+def test_an_install_that_did_not_pass_checks_the_files_and_saves_nothing(tmp_path, installed):
+    """Only `success` saves: a failed, cancelled or skipped install step, or none at all, does not. The
+    files are checked all the same, so a file that broke the install is named."""
+    ran = keep(tmp_path, installed=installed)
     assert ran.returncode == 0, ran.stderr
     assert ran.stdout.splitlines() == [
-        f"{PREFIX} not saved: the install step ended with failure; only a good install saves"
+        checked(tmp_path, 3, 2, 1),
+        f"{PREFIX} not saved: the install step ended with {installed or 'no outcome'}; only a good install "
+        "saves",
     ]
     assert outputs(tmp_path) == "save=false\n"
-    assert calls(tmp_path) == [] and not (tmp_path / "runner" / "apt-archives").exists()
+    assert not (tmp_path / "runner" / "apt-archives").exists()
+
+
+def test_a_forged_file_is_named_after_a_failed_install_too(tmp_path):
+    """A kept file of the right size and other bytes is most likely seen as a broken install. The check
+    names it then too, and the step fails."""
+    forged = ("kicad", "10.0.8~ubuntu24.04.1", "amd64", b"X" * 300)
+    ran = keep(
+        tmp_path,
+        installed="failure",
+        answer=stanza(*KICAD),
+        files={"kicad_10.0.8~ubuntu24.04.1_amd64.deb": forged},
+    )
+    assert ran.returncode == 1
+    got, want = hashlib.sha256(b"X" * 300).hexdigest(), hashlib.sha256(b"K" * 300).hexdigest()
+    assert ran.stdout.splitlines() == [
+        f"{PREFIX} kicad_10.0.8~ubuntu24.04.1_amd64.deb: SHA256 {got}, but apt's index says {want}: apt took "
+        "this kept file by its size and installed it; nothing is saved"
+    ]
+    assert outputs(tmp_path) == "save=false\n"
+
+
+def test_no_key_saves_nothing(tmp_path):
+    for name, (_, _, _, body) in FILES.items():
+        deb(tmp_path / "archives", name, body)
+    bin_ = standins(tmp_path, answer=stanza(*KICAD) + stanza(*EPOCH))
+    step = by_id(steps_of("ci.yml"), "apt-cache-keep")["run"]
+    ran = run(tmp_path, bin_, step, EVENT="push", INSTALLED="success", HIT="false", KEY="")
+    assert ran.returncode == 0, ran.stderr
+    assert ran.stdout.splitlines() == [
+        checked(tmp_path, 3, 2, 1),
+        f"{PREFIX} not saved: the key step gave no key",
+    ]
+    assert outputs(tmp_path) == "save=false\n"
+    assert not (tmp_path / "runner" / "apt-archives").exists()
 
 
 @pytest.mark.parametrize("event", ["pull_request", "pull_request_target", ""])
