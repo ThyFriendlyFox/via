@@ -53,7 +53,20 @@ jobs:
       - name: Install the Python packages the tests read (no engine)
         run: python -m pip install --progress-bar off -r requirements.txt
       - name: Verify the site, the documents and the kit
+        id: gate
         run: make verify-site
+      # A red gate keeps its evidence: its logs go into an artifact, bounded (tools/ci/kept_logs.py: 50 MB,
+      # each file's last 2 MB) and kept 7 days. Never on success; the job holds no secret.
+      - name: Keep the logs of the failed gate
+        if: failure() && steps.gate.outcome == 'failure'
+        run: python3 tools/ci/kept_logs.py "$RUNNER_TEMP/kept-logs" "${TMPDIR:-/tmp}/pytest-of-*"
+      - uses: actions/upload-artifact@v4
+        if: failure() && steps.gate.outcome == 'failure'
+        with:
+          name: gate-logs-fast-gate
+          path: ${{ runner.temp }}/kept-logs
+          retention-days: 7
+          if-no-files-found: ignore
 
   # Any other change: the toolchain and the full health gate. The toolchain is the image of this commit's
   # toolchain files (tools/image.py) when the registry gives it, else install.sh as before: a change to
@@ -123,15 +136,42 @@ jobs:
         id: verify
         if: steps.where.outputs.where == 'install'
         run: make verify
+      # A red gate keeps its evidence: the folder verify/testshards.py keeps (`logs kept: <folder>`), as an
+      # artifact, bounded (tools/ci/kept_logs.py: 50 MB, each file's last 2 MB) and kept 7 days. On
+      # 2026-11-19 a red run said `see /tmp/ee-verify-.../freerouting.log`, and the file was gone with the
+      # runner. Never on success; the gate's steps and these hold no secret.
+      - name: Keep the logs of the failed gate
+        if: failure() && steps.verify.outcome == 'failure'
+        run: python3 tools/ci/kept_logs.py "$RUNNER_TEMP/kept-logs" "${TMPDIR:-/tmp}/ee-verify-*"
+      - uses: actions/upload-artifact@v4
+        if: failure() && steps.verify.outcome == 'failure'
+        with:
+          name: gate-logs-full-verify
+          path: ${{ runner.temp }}/kept-logs
+          retention-days: 7
+          if-no-files-found: ignore
+      # The container's /tmp is a folder of the runner's temp, so the folder the gate keeps outlives
+      # `docker run --rm`: it lands at $RUNNER_TEMP/image-tmp/ee-verify-*.
       - name: Verify inside the image, as the runner's user
         id: inside
         if: steps.where.outputs.where == 'image'
         env:
           IMAGE: ${{ steps.where.outputs.image }}
         run: |
+          mkdir -p "$RUNNER_TEMP/image-tmp"
           docker run --rm --user "$(id -u):$(id -g)" -e CI -e GITHUB_ACTIONS -e IMAGE \
-            -v "$GITHUB_WORKSPACE":"$GITHUB_WORKSPACE" -w "$GITHUB_WORKSPACE" "$IMAGE" \
+            -v "$GITHUB_WORKSPACE":"$GITHUB_WORKSPACE" -w "$GITHUB_WORKSPACE" -v "$RUNNER_TEMP/image-tmp":/tmp "$IMAGE" \
             bash -e -c 'echo "image: $IMAGE"; python3 tools/image.py show; python3 tools/image.py check; make verify'
+      - name: Keep the logs of the failed gate
+        if: failure() && steps.inside.outcome == 'failure'
+        run: python3 tools/ci/kept_logs.py "$RUNNER_TEMP/kept-logs" "$RUNNER_TEMP/image-tmp/ee-verify-*"
+      - uses: actions/upload-artifact@v4
+        if: failure() && steps.inside.outcome == 'failure'
+        with:
+          name: gate-logs-full-inside
+          path: ${{ runner.temp }}/kept-logs
+          retention-days: 7
+          if-no-files-found: ignore
       - name: The decided path ran and passed
         env:
           WHERE: ${{ steps.where.outputs.where }}

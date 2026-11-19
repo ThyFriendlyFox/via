@@ -14,6 +14,7 @@ the minute the roadmap asks for.
 | `guard/sitecustomize.py` | Loads the watch in every Python process that has `guard/` on PYTHONPATH. |
 | `apt_archive.sh` | On CI's install path, before install.sh: apt asks Ubuntu's own archive, not the runner's regional mirror. |
 | `changes.py` | A change's changelog line in a file of its own under `ee-agent-kit/changes/`: `check` (in the kit checks), `show`, and `fold <X.Y.Z> <date>` for a release. |
+| `kept_logs.py` | After a gate step that failed: copies the logs of the folder the gate kept (`.log`, `.jsonl`, `.txt`, `.rpt`; each file's last 2 MB, 50 MB in all, `KEPT.txt` names what it left out) for ci.yml's artifact, kept 7 days. |
 | `nightly_issue.py` | The nightly run's last step: reads the night's outcome, the gate's log and the open `ci-failure` issues, and prints what to do (open, comment, close or nothing) with the text. |
 
 ## The rules of `scope.py`
