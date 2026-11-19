@@ -714,6 +714,33 @@ def test_between_2_cut_tries_the_host_apt_asks_first_goes_last_each_time(tmp_pat
     assert f"noble ({security}, {archive}, {east}, {azure})" in out
 
 
+NOT_NAMED = (
+    "none: each source printed a line, so a host that began a file and then slowed or stalled is not named "
+    "and not moved"
+)
+
+
+def test_a_cut_try_where_every_source_printed_a_line_says_a_slow_host_is_not_named(tmp_path):
+    """apt prints Get: when a file begins to arrive (apt 2.8.3, apt-private/acqprogress.cc, Fetch), and
+    no line when it ends. A host that sent its headers and then trickled or stalled has printed its Get:,
+    so it counts as having answered: the try cannot name it, and the command moves nothing. The line and
+    the stop say so, not a bare `none`. (Job 135588570683's log, with -qq, cannot tell which case it was.)"""
+    runner_sources(tmp_path)
+    heard = (
+        *HEARD,
+        "Get:4 http://slow.example/ubuntu noble InRelease [256 kB]",
+        "Get:5 http://slow.example/ubuntu noble-updates InRelease [126 kB]",
+    )
+    env = {**CI, "APT_SLOW_PASS_COMMAND": "slow-pass --slow"}
+    code, out, err, calls = run(tmp_path, {"timeout": cut_update(*heard), "slow-pass": "exit 0"}, env=env)
+    assert code == 1
+    said = [x for x in out.splitlines() if "did not end within" in x]
+    assert len(said) == 3
+    assert all(f"(no Hit, Get, Ign or Err line): {NOT_NAMED}; apt's last 5 lines" in x for x in said)
+    assert err.splitlines()[-2].endswith(f"; the sources that had not answered in try 3: {NOT_NAMED}")
+    assert of(calls, "slow-pass") == []
+
+
 def test_a_silent_source_of_1_host_is_simply_tried_again(tmp_path):
     """Only KiCad 10's source (1 host, Launchpad's PPA) printed nothing: no mirror list holds it, so no
     command runs; the next try asks it again, and a hook that fails is said with the try's word."""

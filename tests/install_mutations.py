@@ -557,5 +557,10 @@ MUTATIONS = [
      "seen[h] = 1; p = 999999", "seen[h] = 1; p = 0"),
     ("IA232 update: the priority read as 0", "install.sh",
      'n++; H[n] = h; P[n] = p + 0', 'n++; H[n] = h; P[n] = 0'),
+    # F2: a cut try where every source printed a line says that a slow host is not named.
+    ("IA233 update: a bare none in the cut try's line", "install.sh",
+     "(no Hit, Get, Ign or Err line): ${SILENT:-$NOT_NAMED}", "(no Hit, Get, Ign or Err line): ${SILENT:-none}"),
+    ("IA234 update: a bare none in the stop", "install.sh",
+     "in try ${try}: ${SILENT:-$NOT_NAMED}", "in try ${try}: ${SILENT:-none}"),
 ]
 # fmt: on

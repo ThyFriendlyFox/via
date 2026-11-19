@@ -489,6 +489,10 @@ silent_sources() {
 # empty after a try that ends), then shows apt's last APT_UPDATE_LINES lines of the try as apt printed them.
 # The update gets no watch of its progress, as the download has: its bound, 120 s in CI, is 1
 # APT_WATCH_WINDOW, and the watch judges no pass before a whole window.
+# apt prints Get: when a file begins to arrive (apt-private/acqprogress.cc, Fetch) and nothing when it
+# ends. So a host that sent its headers and then slowed or stalled has answered here: it is not named, and
+# the command does not move it. A cut try where every source printed a line says so (NOT_NAMED).
+NOT_NAMED="none: each source printed a line, so a host that began a file and then slowed or stalled is not named and not moved"
 update_try() {
   local told n
   UPDATE_RC=0
@@ -503,7 +507,7 @@ update_try() {
       told="apt's last ${n} lines of that try:"
       if ((n == 1)); then told="apt's last line of that try:"; fi
     fi
-    log "apt: update, try $1 of $2, did not end within ${APT_UPDATE_TIMEOUT} s (APT_UPDATE_TIMEOUT); the sources that had not answered (no Hit, Get, Ign or Err line): ${SILENT:-none}; ${told}"
+    log "apt: update, try $1 of $2, did not end within ${APT_UPDATE_TIMEOUT} s (APT_UPDATE_TIMEOUT); the sources that had not answered (no Hit, Get, Ign or Err line): ${SILENT:-$NOT_NAMED}; ${told}"
     if [[ -n "$UPDATE_OUT" ]]; then
       tail -n "$APT_UPDATE_LINES" <<< "$UPDATE_OUT" | sed 's/^/[apt] /'
     fi
@@ -542,7 +546,7 @@ kicad_index() {
       return 0
     fi
     if ((rc == 124)) && [[ -n "$APT_UPDATE_TIMEOUT" ]]; then
-      APT_SAID="nothing: \`apt-get update\` of every package source did not end within ${APT_UPDATE_TIMEOUT} s (APT_UPDATE_TIMEOUT); the sources that had not answered in try ${try}: ${SILENT:-none}"
+      APT_SAID="nothing: \`apt-get update\` of every package source did not end within ${APT_UPDATE_TIMEOUT} s (APT_UPDATE_TIMEOUT); the sources that had not answered in try ${try}: ${SILENT:-$NOT_NAMED}"
     elif [[ -z "$APT_SAID" ]]; then
       APT_SAID="$(grep -E '^E:' <<< "$out" | tail -n 1 || true)"
       APT_SAID="exit code ${rc}: ${APT_SAID:-$(tail -n 1 <<< "$out")}"
@@ -1107,7 +1111,7 @@ step_boot() {
   update_try 1 1
   rc=$UPDATE_RC
   if ((rc == 124)) && [[ -n "${APT_UPDATE_TIMEOUT}" ]]; then
-    APT_SAID="nothing: \`apt-get update\` of every package source did not end within ${APT_UPDATE_TIMEOUT} s (APT_UPDATE_TIMEOUT); the sources that had not answered: ${SILENT:-none}"
+    APT_SAID="nothing: \`apt-get update\` of every package source did not end within ${APT_UPDATE_TIMEOUT} s (APT_UPDATE_TIMEOUT); the sources that had not answered: ${SILENT:-$NOT_NAMED}"
   else
     APT_SAID="$(grep -m1 '^E:' <<< "$UPDATE_OUT" || true)"
   fi
