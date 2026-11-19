@@ -80,9 +80,35 @@ program under the temporary folder is a test's stand-in, not an engine.
 
 `.github/workflows/ci.yml` has 4 jobs. `scope` runs `scope.py` and is the
 only job that decides fast or full. `fast` runs `make verify-site` with no
-toolchain. `full` gets the toolchain and runs `make verify`. `verdict` always
-runs and passes only when the job the scope asked for passed: make `verdict`
-the required check. The nightly run (`nightly.yml`) stays the full gate.
+toolchain, on every change: for a full change it runs beside `full`. `full`
+gets the toolchain and runs `make verify`. `verdict` always runs and passes
+only when `fast` passed and, for a full change, `full` passed too: make
+`verdict` the required check. The nightly run (`nightly.yml`) stays the full
+gate.
+
+`fast` runs on full changes because only its runner lacks KiCad. A test that
+loads KiCad's symbol or footprint libraries without a skip mark passes in
+`full` and fails in `fast`. Before, `fast` ran only on fast changes, so such a
+test reached main through a full pull request and turned the next fast push
+red (CI runs 44455634601 and 44462711649).
+
+## A test that needs KiCad's libraries
+
+A test that loads a symbol or footprint from KiCad's libraries
+(`tools/kicadgen.py` reads `KICAD_SYMBOL_DIR` and `KICAD_FOOTPRINT_DIR`,
+default `/usr/share/kicad/symbols` and `/usr/share/kicad/footprints`) carries
+the skip its file already has, `needs_libs`:
+`pytest.mark.skipif(not LIBS.is_file(), reason="KiCad symbol libraries are not installed")`
+with `LIBS = kicadgen.SYMBOL_DIR / "Device.kicad_sym"`. A test that starts
+`workcenter design` on a fixture board loads them too.
+
+`make verify-site` sets both variables to empty folders of its own, so it
+finds such a test on a machine that has KiCad. To run 1 file that way:
+
+```
+KICAD_SYMBOL_DIR=/nonexistent KICAD_FOOTPRINT_DIR=/nonexistent WORKCENTER_NO_ENGINES=1 \
+  python -m pytest tests/<file> -p no:cacheprovider -q -m "not engine"
+```
 
 ## A changelog line in a file of its own
 

@@ -330,7 +330,9 @@ def test_the_workflow_is_1_workflow_whose_first_job_alone_decides_the_scope():
     assert [name for name, job in jobs.items() if "scope.py" in run_lines(job)] == ["scope"]
     assert jobs["scope"]["outputs"] == {"scope": "${{ steps.scope.outputs.scope }}"}
     assert jobs["fast"]["needs"] == "scope" and jobs["full"]["needs"] == "scope"
-    assert jobs["fast"]["if"] == "needs.scope.outputs.scope == 'fast'"
+    # The fast job runs on every change, beside the full one: a test that needs KiCad's files and
+    # does not say so fails on the pull request that adds it, not on main's next fast push (P12).
+    assert "if" not in jobs["fast"]
     assert jobs["full"]["if"] == "needs.scope.outputs.scope == 'full'"
 
 
@@ -343,10 +345,10 @@ def test_the_fast_job_installs_no_engine_and_the_full_job_is_the_gate_of_today()
     assert install in full.split("\n") and "make verify" in full.split("\n")
 
 
-def test_the_last_job_always_runs_and_passes_only_when_the_asked_job_passed(tmp_path):
+def test_the_last_job_always_runs_and_passes_only_when_the_asked_jobs_passed(tmp_path):
     """The verdict job needs all 3, runs with `if: always()`, and its 1 step is run here with each
-    answer: green only when the job the scope asked for succeeded. A skipped job is not a success, and
-    a scope job that failed leaves no answer."""
+    answer: green only when the fast job succeeded and, for a full change, the full job too. A skipped
+    job is not a success, and a scope job that failed leaves no answer."""
     jobs = workflow()["jobs"]
     verdict = jobs["verdict"]
     assert verdict["needs"] == ["scope", "fast", "full"] and verdict["if"] == "always()"
@@ -360,12 +362,16 @@ def test_the_last_job_always_runs_and_passes_only_when_the_asked_job_passed(tmp_
     }
     cases = {
         ("fast", "success", "skipped"): 0,
-        ("full", "skipped", "success"): 0,
+        ("full", "success", "success"): 0,
         ("fast", "failure", "skipped"): 1,
-        ("full", "skipped", "failure"): 1,
+        ("full", "success", "failure"): 1,
+        # a red fast job makes a full change red too: the full job has KiCad, the fast one has not
+        ("full", "failure", "success"): 1,
+        ("full", "skipped", "success"): 1,
+        ("full", "cancelled", "success"): 1,
         ("fast", "skipped", "success"): 1,
         ("full", "success", "skipped"): 1,
-        ("full", "skipped", "cancelled"): 1,
+        ("full", "success", "cancelled"): 1,
         ("", "skipped", "skipped"): 1,
     }
     for (asked, fast, full), code in cases.items():
@@ -404,6 +410,43 @@ def test_the_makefile_asks_the_same_script_and_names_no_path_of_its_own():
     ours = "\n".join(line for line in lines if "scope.py" in line or "verify.sh" in line)
     assert "*.md" not in (ROOT / "Makefile").read_text(encoding="utf-8")
     assert [d for d in ("tests/", "examples/", "templates/", ".claude/") if d in ours] == []
+
+
+def test_the_fast_gate_hides_kicads_libraries_as_the_fast_job_lacks_them(tmp_path):
+    """The fast job's runner has no KiCad. `make verify-site` runs its tests with KiCad's symbol and
+    footprint folders (tools/kicadgen.py reads KICAD_SYMBOL_DIR and KICAD_FOOTPRINT_DIR) set to empty
+    folders of its own, so on a machine with KiCad a test that loads a library without saying so fails
+    there too. The fast gate's lines are run here up to its tests, with stand-ins for the programs."""
+    text = (ROOT / "verify" / "verify.sh").read_text(encoding="utf-8")
+    site = text.split('if [[ "$mode" == site ]]; then', 1)[1].split("\nfi\n", 1)[0]
+    (pytest_line,) = [line for line in site.splitlines() if "-m pytest" in line]
+    assert 'KICAD_SYMBOL_DIR="$nokicad/symbols"' in pytest_line
+    assert 'KICAD_FOOTPRINT_DIR="$nokicad/footprints"' in pytest_line
+    assert "WORKCENTER_NO_ENGINES=1" in pytest_line and '-m "not engine"' in pytest_line
+    # Run the block with stand-ins: each prints the 2 folders it was given and whether each is empty.
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    for name in ("shellcheck", "sh"):
+        (bin_dir / name).write_text("#!/bin/bash\nexit 0\n", encoding="utf-8")
+        (bin_dir / name).chmod(0o755)
+    report = tmp_path / "report"
+    py = bin_dir / "py"
+    py.write_text(
+        "#!/bin/bash\n"
+        'for d in "$KICAD_SYMBOL_DIR" "$KICAD_FOOTPRINT_DIR"; do'
+        f' [[ -d "$d" && -z "$(ls -A "$d")" ]] && echo "empty $d" >> {report}; done\n',
+        encoding="utf-8",
+    )
+    py.chmod(0o755)
+    body = "\n".join(line for line in site.splitlines() if "kit_checks" not in line and "exit 0" not in line)
+    script = tmp_path / "site.sh"
+    script.write_text(f"set -euo pipefail\nstep() {{ :; }}\nPY={py}\n{body}\n", encoding="utf-8")
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+    ran = subprocess.run(["bash", str(script)], env=env, capture_output=True, text=True, cwd=tmp_path)
+    assert ran.returncode == 0, ran.stderr
+    lines = report.read_text(encoding="utf-8").splitlines()
+    assert [line.rsplit("/", 1)[1] for line in lines] == ["symbols", "footprints"], lines
+    assert all("/usr/share/kicad" not in line for line in lines)
 
 
 def test_each_gate_takes_the_engine_lock_under_its_own_name():

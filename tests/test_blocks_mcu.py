@@ -567,6 +567,7 @@ def test_every_number_of_the_rules_names_where_it_stands():
     assert "page " in rules["note"]["sf_min"]["where"]
 
 
+@needs_libs
 def test_the_fixture_whose_crystal_has_twice_the_esr_is_refused_by_workcenter_design(tmp_path):
     """fail-block-mcu-2x stocks the made-up crystal alone: `workcenter design` fails on the 1 line of
     equation 5 and writes no board."""

@@ -32,6 +32,7 @@ CLI = ROOT / "tools" / "workcenter"
 BOARDS = ROOT / "tests" / "boards"
 sys.path.insert(0, str(ROOT / "tools"))
 import guide  # noqa: E402
+import kicadgen  # noqa: E402
 
 needs_ngspice = engine(pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed"))
 
@@ -943,7 +944,7 @@ def build():
 
 
 @pytest.mark.skipif(
-    not Path("/usr/share/kicad/symbols/Device.kicad_sym").is_file(),
+    not (kicadgen.SYMBOL_DIR / "Device.kicad_sym").is_file(),
     reason="KiCad symbol libraries are not installed",
 )
 def test_a_design_file_that_is_refused_is_answered_with_its_first_problem(tmp_path):

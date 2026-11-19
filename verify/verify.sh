@@ -85,7 +85,11 @@ if [[ "$mode" == site ]]; then
   sh site/build.sh "$built/site"
   echo "site built: $(find "$built/site" -type f | wc -l) files"
   step "3/4 tests that start no engine"
-  WORKCENTER_NO_ENGINES=1 "$PY" -m pytest -q -p no:cacheprovider -m "not engine" tests
+  # The fast job's runner has no KiCad: its symbol and footprint folders (tools/kicadgen.py) are empty
+  # folders here too, so a test that loads a library without saying so fails on any machine (P12).
+  nokicad="$built/no-kicad"
+  mkdir -p "$nokicad/symbols" "$nokicad/footprints"
+  KICAD_SYMBOL_DIR="$nokicad/symbols" KICAD_FOOTPRINT_DIR="$nokicad/footprints" WORKCENTER_NO_ENGINES=1 "$PY" -m pytest -q -p no:cacheprovider -m "not engine" tests
   step "4/4 kit checks"
   kit_checks
   printf '\nVERIFY-SITE GREEN in %ss\n' "$SECONDS"
