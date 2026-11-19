@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/) · Versioning: [SemVer](
 
 ## [Unreleased]
 ### Changed
+- README.md, STATUS.md and ROADMAP.md say the container package `ghcr.io/thyfriendlyfox/via` is public, and a pull needs no login: at 06:00 UTC on 2026-11-19 a request with no login for its manifest got HTTP 200. README.md had said a pull needed `docker login ghcr.io` until the owner made the package public; that sentence was written without a look (M280).
 - The lead's quiet check (`ee-agent-kit/lead/quiet.py`) leaves out a Python script with nothing below it that sleeps and used no processor time for 2 s, as it left out a shell script that only sleeps: a helper's script that waited for the gate's lock in `time.sleep` was counted as busy, and it and the gate waited for each other (M277). PROCESSES.md P31 steps 11 to 14, P14 step 9 and P5 step 7, with the `lead` skill, keep helpers' test commands to about 5 minutes, give the health gate 2 hours, keep a gate's tools from edits in place, and ask before a cleaning or a release lap (M273 to M280).
 
 ## [0.1.0] - 2026-11-19
