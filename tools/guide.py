@@ -376,28 +376,29 @@ HINTS: list[tuple[str, str, str]] = [
     ),
     (
         r"^sim: thermal: .*which no row of sim/thermal\.json can name",
-        "Give the part a number in parts.csv beside the schematic and a facts entry that names that number "
-        "(the ratings skill): a row of sim/thermal.json names a part by its number, never by its symbol. "
-        "Then write the part's row (step 3).",
+        "Give the part a number in parts.csv beside the schematic. Write a facts entry that names that "
+        "number (the ratings skill). A row of sim/thermal.json names a part by its number, never by its "
+        "symbol. Then write the part's row (step 3).",
         f'{SIMULATE}, "A part\'s temperature"',
     ),
     (
         r"^sim: thermal: \S+ not judged: .* give its part number in parts\.csv beside the schematic",
-        "Give the part its number in parts.csv beside the schematic, the file the gate reads it from: a "
-        "parts list kept elsewhere is not read. Then run the gate again; it asks for the part's row if its "
-        "facts carry a thermal figure.",
+        "Give the part its number in parts.csv beside the schematic. The gate reads the number from that "
+        "file alone. Then run the gate again; it asks for the part's row if its facts carry a thermal "
+        "figure.",
         f'{SIMULATE}, "A part\'s temperature"',
     ),
     (
         r"^sim: thermal: .* is judged on facts that are not its own",
-        "Write the board part's own number in its row of sim/thermal.json: the number parts.csv gives it, "
-        "or its facts entry names. Never the number of another package or another part.",
+        "Write the board part's own number in its row of sim/thermal.json. That is the number parts.csv "
+        "gives it, or the number its facts entry names. Never the number of another package or another "
+        "part.",
         f'{SIMULATE}, "A part\'s temperature"',
     ),
     (
         r"^sim: thermal: \S+ of sim/thermal\.json is no fitted part of the board",
-        "Write the row under the reference the board gives the part, or take the row out if the part is not "
-        "fitted.",
+        "Write the row under the reference the board gives the part. If the part is not fitted, take the "
+        "row out. If it is the only row, delete sim/thermal.json.",
         f'{SIMULATE}, "A part\'s temperature"',
     ),
     (

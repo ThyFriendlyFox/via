@@ -536,16 +536,27 @@ def test_a_pack_the_workcenter_does_not_hold_fails_the_gate_on_1_line(tmp_path):
 
 @needs_ngspice
 def test_a_part_with_no_facts_passes_only_without_strict_and_is_named_either_way(tmp_path):
+    """The plan names U9 alone. The project has no schematic, and its deck names TLV75533PDBVR, whose
+    facts carry a thermal figure: that part is asked for too, and no row names it (roadmap item 7)."""
     plan = {**PLAN, "parts": {"U9": {"mpn": "NOT-IN-LIBRARY", "watts": "ldo.p_u1", "source": "s"}}}
     project = copied(tmp_path, plan)
     line = (
         "thermal: U9 (NOT-IN-LIBRARY) not judged: no facts entry names NOT-IN-LIBRARY: write one from its "
         "datasheet (the ratings skill)"
     )
+    deck = (
+        "thermal: TLV75533PDBVR (named by ldo.cir) not judged: its facts (ti-tlv755p.json) carry "
+        "junction_max 150 C and theta_ja 231.1 C/W, theta_jc 118.4 C/W, theta_jb 64.4 C/W, psi_jt 28.4 C/W "
+        "and psi_jb 63.8 C/W (p 4 and 5), and sim/thermal.json names no row for it: write its row under "
+        "`parts`, under the reference the part will have on the board (the simulate skill, A part's "
+        "temperature, step 3): "
+        '"<reference>": {"mpn": "TLV75533PDBVR", "watts": "<deck>.<measure>", "source": "<how the deck gives '
+        'its power>"}'
+    )
     code, record = gate(project, "--out", tmp_path / "out")
-    assert code == 0 and record["details"]["warnings"] == [line]
+    assert code == 0 and record["details"]["warnings"] == [line, deck]
     code, record = gate(project, "--out", tmp_path / "out", "--strict")
-    assert code == 1 and record["details"]["failures"] == [line]
+    assert code == 1 and record["details"]["failures"] == [line, deck]
 
 
 @needs_ngspice

@@ -684,7 +684,8 @@ theta_jb holds no part. Prefer psi_jb or psi_jt.
    part with no number whose row names an entry it could be is judged on
    that entry, and the board's line says the number is the row's. A row
    under a reference the board does not fit (another reference, a part
-   marked not fitted) is named, a warning. A project with no schematic
+   marked not fitted) is named, a warning, and is not judged: its
+   junction holds nothing and fails nothing. A project with no schematic
    names no part of a board: an entry with a thermal figure whose part
    number a deck names (a word of the deck's text, a comment too) is
    asked for, and one the file does not name is not judged; with no such
@@ -713,7 +714,7 @@ theta_jb holds no part. Prefer psi_jb or psi_jt.
    | `thermal: U1 (MPN) is judged on facts that are not its own: its row in sim/thermal.json names ...` | Write the board part's number in the row, as `parts.csv` gives it. If the board should carry the other part, change the schematic and `parts.csv`, never the row alone. |
    | `thermal: U1 not judged: the project has no parts.csv to give its part number ...` | Put `parts.csv` beside the schematic with the part's row (Value, Footprint, MPN), so the gate reads its number. |
    | `thermal: U1 (Symbol) not judged: its facts (...) carry ... and name it by its symbol, which no row of sim/thermal.json can name ...` | Give the part its number in `parts.csv` and a facts entry that names that number (the `ratings` skill), then write its row. The same line follows a row that names the symbol. |
-   | `thermal: U2 of sim/thermal.json is no fitted part of the board ...` | Write the row under the reference the board gives the part, or take it out. |
+   | `thermal: U2 of sim/thermal.json is no fitted part of the board ...` | Write the row under the reference the board gives the part, or take it out. If it is the only row, delete sim/thermal.json. |
    | `thermal: MPN (named by ldo.cir) not judged: its facts (...) carry ...` | The project has no schematic and the deck names the part. Write its row under the reference the part will have. |
    | `thermal: which parts of the board carry a thermal figure is not judged: ...` | Do what the reason asks: install kicad-cli, correct the schematic, the facts or `parts.csv`. |
    | `thermal: U1 not judged: ... both speak of U1 ...` | 2 facts entries name the part as closely. Keep 1 (the `ratings` skill). |

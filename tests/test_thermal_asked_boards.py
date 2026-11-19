@@ -19,6 +19,9 @@ import pytest
 from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
+import guide  # noqa: E402
+
 CLI = ROOT / "tools" / "workcenter"
 BOARDS = ROOT / "tests" / "boards"
 
@@ -144,22 +147,94 @@ def test_with_no_schematic_and_no_plan_the_regulator_a_deck_names_fails_strict(t
     ]
 
 
+def at_60(project: Path) -> None:
+    """The ldo deck's corners at 0 C and 60 C, where U1 runs at 60 + 231.1 x 0.20016 = 106.26 C, over
+    NASA EEE-INST-002's 85 C: a row judged there fails by its junction."""
+    path = project / "sim" / "corners.json"
+    corners = json.loads(path.read_text(encoding="utf-8"))
+    corners["temperature"]["values"] = [0, 60]
+    path.write_text(json.dumps(corners), encoding="utf-8")
+
+
+def sim_loose(project: Path, out: Path) -> tuple[int, dict]:
+    """`sim` without --strict."""
+    proc = subprocess.run(
+        [sys.executable, str(CLI), "--json", "sim", str(project), "--out", str(out)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return proc.returncode, json.loads(proc.stdout)[0]
+
+
+def stray(ref: str, mpn: str) -> str:
+    return (
+        f"thermal: {ref} of sim/thermal.json is no fitted part of the board: the schematic has no {ref}, or "
+        f"marks it not fitted, so its row ({mpn}) is not judged: write the row under the board part's "
+        "reference, or take it out; if it is the only row, delete sim/thermal.json"
+    )
+
+
+def stray_is_not_judged(tmp_path: Path, project: Path, ref: str) -> dict:
+    """The gate on a board whose only row is a stray, at 60 C: the stray line alone, a warning without
+    --strict and a failure with it; no junction line, no part held or failed by the row; the record
+    names the row under `strays`; the stray line is the first thermal line, so `next` reaches it before
+    the part the row leaves out, and answers it with its own step."""
+    code, loose = sim_loose(project, tmp_path / "loose")
+    assert not [f for f in loose["details"]["failures"] if f.startswith("thermal")], loose["details"]
+    assert loose["details"]["thermal"]["parts"] == {}
+    thermal = [w for w in loose["details"]["warnings"] if w.startswith("thermal: ")]
+    assert thermal[0] == stray(ref, "TLV75533PDBVR"), loose["details"]["warnings"]
+    assert [w for w in thermal if w.startswith(f"thermal: {ref}")] == [stray(ref, "TLV75533PDBVR")]
+    assert loose["details"]["thermal"]["board"]["strays"] == {
+        ref: {"mpn": "TLV75533PDBVR", "line": stray(ref, "TLV75533PDBVR")}
+    }
+    code, strict = sim(project, tmp_path / "strict")
+    assert code == 1
+    assert [f for f in strict["details"]["failures"] if f.startswith(f"thermal: {ref}")] == [
+        stray(ref, "TLV75533PDBVR")
+    ]
+    assert not [f for f in strict["details"]["failures"] if " junction " in f], strict["details"]
+    do, _ = guide.hint("sim", stray(ref, "TLV75533PDBVR"))
+    assert do.startswith("Write the row under the reference the board gives the part.")
+    assert do.endswith("If it is the only row, delete sim/thermal.json.")
+    return loose
+
+
 @needs_engines
-def test_a_row_for_a_reference_the_board_does_not_carry_is_named(tmp_path):
-    """Finding L7B2-5. pass-block-ldo with U1's row moved under U2, which the board does not carry: the
-    row is judged all the same, and the gate names it as no fitted part of the board."""
+def test_a_row_for_a_reference_the_board_does_not_carry_is_named_and_not_judged(tmp_path):
+    """Finding L7B2-5, and the check after it. pass-block-ldo at 60 C with U1's row moved under U2,
+    which the board does not carry. The row was judged all the same: U2 at 106.26 C over 85 C failed the
+    gate without --strict, and `next` answered that line, for a part the board has not. Now the row is
+    named and not judged. U1 is then asked for: its facts carry a thermal figure and no row names it."""
     project = copy_of(tmp_path)
+    at_60(project)
     path = project / "sim" / "thermal.json"
     plan = json.loads(path.read_text(encoding="utf-8"))
     plan["parts"] = {"U2": plan["parts"]["U1"]}
     path.write_text(json.dumps(plan), encoding="utf-8")
-    code, record = sim(project, tmp_path / "out")
-    assert code == 1
-    assert [f for f in record["details"]["failures"] if f.startswith("thermal: U2 of")] == [
-        "thermal: U2 of sim/thermal.json is no fitted part of the board: the schematic has no U2, or marks "
-        "it not fitted, and its row is judged as a part of the board: write the row under the board part's "
-        "reference, or take it out"
+    loose = stray_is_not_judged(tmp_path, project, "U2")
+    assert [w[:52] for w in loose["details"]["warnings"] if w.startswith("thermal: U1")] == [
+        "thermal: U1 (TLV75533PDBVR) not judged: its facts (t"
     ]
+
+
+@needs_engines
+def test_a_row_for_a_part_marked_not_fitted_is_not_judged_and_deleting_the_file_clears_it(tmp_path):
+    """pass-block-ldo at 60 C with U1 marked not fitted and its row left in: the row is named and not
+    judged (it failed at 106.26 C before). Taking the only row out leaves a file the gate refuses
+    (1 part at least is asked); deleting the file, as the line says, clears it."""
+    project = copy_of(tmp_path)
+    at_60(project)
+    sch = project / "node.kicad_sch"
+    text = sch.read_text(encoding="utf-8")
+    head = text.rindex("(dnp no)", 0, text.index('(property "Reference" "U1"'))
+    sch.write_text(text[:head] + "(dnp yes)" + text[head + len("(dnp no)") :], encoding="utf-8")
+    stray_is_not_judged(tmp_path, project, "U1")
+    (project / "sim" / "thermal.json").unlink()
+    code, record = sim_loose(project, tmp_path / "deleted")
+    said = [*record["details"]["failures"], *record["details"]["warnings"]]
+    assert not [line for line in said if "thermal" in line], said
 
 
 @needs_engines

@@ -224,14 +224,29 @@ def test_a_part_with_no_number_judged_by_its_row_is_counted_among_the_parts_with
 
 def test_a_row_for_a_reference_that_is_no_fitted_part_of_the_board_is_named():
     """Finding L7B2-5. The board has U1; the plan has a row for U1 and one for U2, which the schematic
-    does not carry (or marks not fitted): U2's row is named, as a warning."""
-    board = thermal.asked({"U1": ("TLV75533PDBVR", TLV)}, {"U1": "TLV75533PDBVR", "U2": "TLV75533PDBVR"})
-    assert board["strays"] == [
-        "thermal: U2 of sim/thermal.json is no fitted part of the board: the schematic has no U2, or marks "
-        "it not fitted, and its row is judged as a part of the board: write the row under the board part's "
-        "reference, or take it out"
-    ]
-    assert thermal.asked({"U1": ("TLV75533PDBVR", TLV)}, {"U1": "TLV75533PDBVR"})["strays"] == []
+    does not carry (or marks not fitted): U2's row is named, as a warning, and is not judged. The record
+    keeps what the row named. The line says what clears it: the row under the board's reference, the row
+    taken out, or the file deleted when it is the only row (a file with no row is refused)."""
+    board = thermal.asked({"U1": ("TLV75533PDBVR", TLV)}, {"U1": "TLV75533PDBVR", "U2": "TLV75533PDRVR"})
+    assert board["strays"] == {
+        "U2": {
+            "mpn": "TLV75533PDRVR",
+            "line": "thermal: U2 of sim/thermal.json is no fitted part of the board: the schematic has no "
+            "U2, or marks it not fitted, so its row (TLV75533PDRVR) is not judged: write the row under the "
+            "board part's reference, or take it out; if it is the only row, delete sim/thermal.json",
+        }
+    }
+    assert board["asked"] == ["U1"] and board["failures"] == [] and board["not_judged"] == []
+    assert thermal.asked({"U1": ("TLV75533PDBVR", TLV)}, {"U1": "TLV75533PDBVR"})["strays"] == {}
+
+
+def test_a_row_for_a_fitted_part_whose_facts_could_not_be_read_is_no_stray():
+    """U2 is on the board, but 2 facts entries speak of it as closely, so it has no entry (the gate says
+    so on its own line). Its row is no stray: a stray is not judged, and U2 is fitted."""
+    board = thermal.asked(
+        {"U1": ("TLV75533PDBVR", TLV)}, {"U1": "TLV75533PDBVR", "U2": "TLV75533PDBVR"}, unread=("U2",)
+    )
+    assert board["strays"] == {}
 
 
 # ---------------------------------------------------------------- the gate's reading of the board
@@ -339,6 +354,46 @@ def test_a_schematic_kicad_cli_cannot_read_leaves_the_board_s_parts_not_judged(t
     ]
 
 
+def test_the_row_of_a_fitted_part_whose_facts_are_refused_is_no_stray(tmp_path, monkeypatch):
+    """The board fits U1 and U2; 2 facts entries speak of U2 as closely, so its facts are refused on 1
+    line. U2 is fitted: its row is no stray, so gate_sim judges it by its number. Before, the gate also
+    called the row no fitted part of the board, and left it out of judge()."""
+    cli = load_cli()
+    monkeypatch.setattr(cli, "KICAD_CLI", "sh")
+    (tmp_path / "library" / "facts").mkdir(parents=True)
+    (tmp_path / "library" / "facts" / "u.json").write_text(json.dumps(TLV.data), encoding="utf-8")
+    project = project_at(cli, tmp_path / "board", sch=True)
+    net = ratings.Netlist({"U1": part("U1", 5), "U2": part("U2", 5)}, {})
+    monkeypatch.setattr(ratings, "export_netlist", lambda *a: (net, ""))
+
+    def facts_of(facts, p, mpn):
+        if p.ref == "U2":
+            raise ratings.Refusal("2 entries speak of U2 as closely")
+        return TLV
+
+    monkeypatch.setattr(ratings, "facts_of", facts_of)
+    named = {"U1": "TLV75533PDBVR", "U2": "TLV75533PDBVR"}
+    record, unjudged = cli.thermal_board(project, tmp_path / "out", named)
+    assert record["strays"] == {}
+    assert unjudged == ["thermal: U2 not judged: 2 entries speak of U2 as closely"]
+
+
+def test_a_stray_row_comes_before_the_part_it_leaves_out(tmp_path, monkeypatch):
+    """The row of the board's U1 stands under U2. The stray line comes first, so `next` names its step:
+    moving the row clears both lines."""
+    cli = load_cli()
+    monkeypatch.setattr(cli, "KICAD_CLI", "sh")
+    (tmp_path / "library" / "facts").mkdir(parents=True)
+    (tmp_path / "library" / "facts" / "u.json").write_text(json.dumps(TLV.data), encoding="utf-8")
+    project = project_at(cli, tmp_path / "board", sch=True)
+    net = ratings.Netlist({"U1": part("U1", 5)}, {})
+    monkeypatch.setattr(ratings, "export_netlist", lambda *a: (net, ""))
+    monkeypatch.setattr(ratings, "facts_of", lambda *a: TLV)
+    record, unjudged = cli.thermal_board(project, tmp_path / "out", {"U2": "TLV75533PDBVR"})
+    assert unjudged == [record["strays"]["U2"]["line"], *record["not_judged"]]
+    assert len(unjudged) == 2 and unjudged[1].startswith("thermal: U1 (TLV75533PDBVR) not judged")
+
+
 def test_a_project_with_no_deck_still_asks_for_the_parts_that_carry_a_thermal_figure(tmp_path, monkeypatch):
     """Finding L7B-3. A project with no sim/*.cir: the board's parts are asked for all the same, as no
     deck gives their power. A part not judged is a warning, and fails --strict; with nothing asked for
@@ -388,7 +443,7 @@ def test_workcenter_next_names_the_step_each_new_thermal_line_asks_for():
     maybe = thermal.asked({"U1": ("", None)}, None, maybe={"U1": [TLV]}, parts=None)["not_judged"][0]
     mismatch = thermal.asked({"U1": ("TLV75533PDBVR", TLV)}, {"U1": "TLV75533PDRVR"})["failures"][0]
     symbol = thermal.asked({"U1": ("", SYMBOL_ONLY)}, None)["not_judged"][0]
-    stray = thermal.asked({}, {"U2": "TLV75533PDBVR"})["strays"][0]
+    stray = thermal.asked({}, {"U2": "TLV75533PDBVR"})["strays"]["U2"]["line"]
     unread = thermal.UNREAD.format(why="kicad-cli is not on PATH to read the schematic's parts")
     generic, _ = guide.hint("sim", "thermal: x")
     said = {
@@ -404,8 +459,11 @@ def test_workcenter_next_names_the_step_each_new_thermal_line_asks_for():
     assert generic not in said.values()
     assert said["maybe"].startswith("Give the part its number in parts.csv beside the schematic")
     assert said["mismatch"].startswith("Write the board part's own number in its row")
-    assert said["symbol"].startswith("Give the part a number in parts.csv beside the schematic and a facts")
-    assert said["stray"].startswith("Write the row under the reference the board gives the part")
+    assert said["symbol"].startswith("Give the part a number in parts.csv beside the schematic. Write a")
+    assert said["stray"] == (
+        "Write the row under the reference the board gives the part. If the part is not fitted, take the "
+        "row out. If it is the only row, delete sim/thermal.json."
+    )
     assert said["unread"].startswith("Install the toolchain")
 
 

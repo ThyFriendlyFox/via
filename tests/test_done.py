@@ -542,10 +542,17 @@ def test_the_real_record_names_the_files_its_run_read(tmp_path):
         f"RATINGS not held: ../parts/catalog.csv changed after the last run (workcenter ratings {proj})"
     )
     catalog.write_bytes(kept)
-    # A plain run: U1's missing load-step deck (User round 1, G) is its 1 warning, which --strict fails on.
+    # A plain run: U1's missing load-step deck (User round 1, G) is 1 warning, which --strict fails on.
+    # The 3 others are roadmap item 7's: the SIM gate reads part numbers from parts.csv beside the
+    # schematic alone, and this copy keeps them in ../parts/catalog.csv. So U1, U2 and U3 have no number
+    # there and the pins of TLV75533PDBVR, whose facts carry a thermal figure: each is not judged.
     green = run("gates", proj)
     assert green.returncode == 0 and green.stdout.splitlines()[-2].startswith("RATINGS held:"), green.stdout
-    assert green.stdout.splitlines()[-1].startswith("GREEN with 1 warning "), green.stdout
+    assert green.stdout.splitlines()[-1].startswith("GREEN with 4 warnings "), green.stdout
+    thermal = [line.strip() for line in green.stdout.splitlines() if "warning: thermal:" in line]
+    assert [line.split(" not judged:")[0] for line in thermal] == [
+        f"- warning: thermal: {ref}" for ref in ("U1", "U2", "U3")
+    ], green.stdout
     (tmp_path / "a" / "library" / "facts" / "passives.json").unlink()
     gone = run("gates", proj, "--strict")
     assert gone.returncode == 1, gone.stdout

@@ -50,8 +50,8 @@ asked for because its facts carry a thermal figure. A row whose part number is n
 fails, as judge() reads the facts by the row's number; a part with no number and no facts entry whose
 pins are those of an entry with a figure may be that part, and is not judged. A part whose entry names
 it by its symbol alone cannot be named by a row, which reads facts by number: the line says it needs a
-number. A row under a reference the board does not fit is named. With no schematic (`from_decks`), an
-entry with a figure whose part number a deck names is asked for.
+number. A row under a reference the board does not fit is named, and not judged. With no schematic
+(`from_decks`), an entry with a figure whose part number a deck names is asked for.
 
 Standard library only, as the CLI is. No engine runs here: `tools/workcenter` runs the decks.
 """
@@ -508,11 +508,14 @@ def asked(
     named: dict[str, str] | None,
     maybe: dict[str, list[ratings.Facts]] | None = None,
     parts: str | None = "parts.csv",
+    unread: tuple[str, ...] = (),
 ) -> dict:
     """The parts of the board that can get hot, and those sim/thermal.json leaves out: {"line", "asked",
     "unplanned", "not_judged", "failures", "mismatched", "strays"}; a stray is a row for a reference that
-    is no fitted part of the board. `entries` maps each part of the board to its
-    part number and the facts entry that names it (None: no entry); `named` maps the plan's parts to the
+    is no fitted part of the board, {ref: {"mpn", "line"}}, and is not judged. `entries` maps each part
+    of the board to its part number and the facts entry that names it (None: no entry); `unread` names
+    the fitted parts whose facts could not be read (2 entries speak of them as closely): they are no
+    strays, and their rows are judged by number. `named` maps the plan's parts to the
     part numbers of their rows (None: no plan). A part is asked for because its facts carry `thermal`, a
     junction_max and 1 figure at least: no power is guessed. `maybe` maps a part with no number and no
     entry to the entries with a figure it could be (`could_be`): it is not judged, as the gate cannot
@@ -546,13 +549,18 @@ def asked(
             + (remedy or f", {BY_SYMBOL}")
         )
     held = {ref for ref in named if ref not in mismatched}
-    # A row for a reference the board does not carry, or marks not fitted, judges no part of the board.
-    strays = [
-        f"thermal: {ref} of sim/thermal.json is no fitted part of the board: the schematic has no {ref}, or "
-        "marks it not fitted, and its row is judged as a part of the board: write the row under the board "
-        "part's reference, or take it out"
-        for ref in sorted(set(named) - set(entries), key=_by_ref)
-    ]
+    # A row for a reference the board does not carry, or marks not fitted, is no part of the board: the
+    # gate does not judge it (tools/workcenter leaves it out of judge()), and names it with its number.
+    # A file with no row is refused, so the line says to delete the file when the row is its only one.
+    strays = {
+        ref: {
+            "mpn": named[ref],
+            "line": f"thermal: {ref} of sim/thermal.json is no fitted part of the board: the schematic has "
+            f"no {ref}, or marks it not fitted, so its row ({named[ref]}) is not judged: write the row under "
+            "the board part's reference, or take it out; if it is the only row, delete sim/thermal.json",
+        }
+        for ref in sorted(set(named) - set(entries) - set(unread), key=_by_ref)
+    }
     hot = sorted(
         (ref for ref, (_, f) in entries.items() if f is not None and "thermal" in f.data), key=_by_ref
     )

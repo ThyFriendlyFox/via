@@ -1247,20 +1247,25 @@ def gate_sim(
             judged = fp.check_plan(plan, values, bounded, stimuli)
             failures += [f"frequency plan: {f}" for f in judged.pop("failures")]
             warned += [f"frequency plan: {w}" for w in judged.pop("warnings")]
-    heated = None
-    if heat is not None:
-        heated, heat_failures, heat_unjudged = sim_thermal(project, heat, heat_runs, heat_unrun)
-        failures += heat_failures
-        warned += heat_unjudged
-    elif decks and not (sim_dir / th.PLAN_FILE).is_file():
-        # No file is no junction judged: the record and the printed result say so.
-        heated = {"pack": None, "parts": {}, "not_judged": [], "unplanned": th.NO_PLAN}
-    if heated is not None:
+    heated, board = None, None
+    if heat is not None or (decks and not (sim_dir / th.PLAN_FILE).is_file()):
         # Every part of the board whose facts carry a thermal figure is asked for, named in the plan or
         # not (roadmap item 7): one the plan leaves out is not judged.
         # A row whose part number is not the board part's was judged on another part's facts: it fails.
         named = {ref: p.mpn for ref, p in heat.parts.items()} if heat else None
         board, board_unjudged = thermal_board(project, sim_out / "thermal", named)
+    if heat is not None:
+        # A row for no fitted part of the board is named (board's `strays`) and not judged: its junction
+        # holds nothing and fails nothing.
+        strays = board.get("strays") or {}
+        fitted = th.Plan(heat.pack, {r: p for r, p in heat.parts.items() if r not in strays})
+        heated, heat_failures, heat_unjudged = sim_thermal(project, fitted, heat_runs, heat_unrun)
+        failures += heat_failures
+        warned += heat_unjudged
+    elif board is not None:
+        # No file is no junction judged: the record and the printed result say so.
+        heated = {"pack": None, "parts": {}, "not_judged": [], "unplanned": th.NO_PLAN}
+    if heated is not None:
         heated["board"] = board
         heated["not_judged"] = heated["not_judged"] + board_unjudged
         warned += board_unjudged
@@ -1330,9 +1335,10 @@ def thermal_board(project: Project, folder: Path, named: dict[str, str] | None) 
     numbers, None with no plan; a row that names another part's number is in the record's `failures`.
     The part numbers are read from <project>/parts.csv alone; a part with none and no facts entry, whose
     pins are those of an entry with a figure, is not judged; a row for a reference the board does not fit
-    is named (`strays`). With no schematic, an entry with a figure whose part number a deck names is
-    asked for (tools/thermal.py, `from_decks`). kicad-cli reads the schematic's parts only when a facts
-    entry of the library carries `thermal`."""
+    is named (`strays`, with the number its row names), and gate_sim does not judge it. With no
+    schematic, an entry with a figure whose part number a deck names is asked for (tools/thermal.py,
+    `from_decks`). kicad-cli reads the schematic's parts only when a facts entry of the library carries
+    `thermal`."""
     th, rt = thermal(), ratings()
     library = rt.find_facts(project.dir)
     if library is None:
@@ -1369,18 +1375,21 @@ def thermal_board(project: Project, folder: Path, named: dict[str, str] | None) 
         mpns = rt.part_numbers(net, rows)
     except (ValueError, OSError) as exc:
         return {"line": None}, [th.UNREAD.format(why=str(exc))]
-    entries, maybe, unread = {}, {}, []
+    entries, maybe, unread, refused = {}, {}, [], []
     for ref, part in net.parts.items():
         try:
             entries[ref] = (mpns.get(ref, ""), rt.facts_of(facts, part, mpns.get(ref, "")))
         except rt.Refusal as exc:  # 2 entries speak of the part as closely
             unread.append(f"thermal: {ref} not judged: {exc}")
+            refused.append(ref)
             continue
         if entries[ref] == ("", None):
             # No number and no entry: the gate cannot tell which part it is, so it may be one with a figure.
             maybe[ref] = th.could_be(part, hot)
-    board = th.asked(entries, named, maybe, "parts.csv" if listed.is_file() else None)
-    return board, unread + board["not_judged"] + board["strays"]
+    board = th.asked(entries, named, maybe, "parts.csv" if listed.is_file() else None, tuple(refused))
+    # A stray row comes before the parts left out: a row under the wrong reference leaves its part out,
+    # and moving the row clears both lines, so `next` names the stray's step first.
+    return board, unread + [s["line"] for s in board["strays"].values()] + board["not_judged"]
 
 
 BUNDLE_RUN = "run.sp"
