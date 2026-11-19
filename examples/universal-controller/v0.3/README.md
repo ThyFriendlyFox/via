@@ -20,8 +20,8 @@ the controller and makes the controller wireless:
   alone, cell flat or missing, and J1's data lines go to the RP2040. Plugged in, it is a wired
   controller.
 
-This folder is a whole KiCad 10 project made with the EE Workcenter: `design.py` is the board,
-and the `.kicad_*` files beside it are what `workcenter design` writes from it.
+This folder is a whole KiCad 10 project made with Via: `design.py` is the board, and the
+`.kicad_*` files beside it are what `workcenter design` writes from it.
 
 <!-- pictures:begin -->
 | Turning, the front up | Turning, the back up |
@@ -61,7 +61,7 @@ and the `.kicad_*` files beside it are what `workcenter design` writes from it.
 From `workcenter pictures v0.3` (from `examples/universal-controller/`), which draws what
 `pictures.json` names: the stills, every layer into `docs/layers/`, and the 2 turning GIFs.
 `workcenter pictures v0.3 --frames 4` checked each GIF's framing first. It needs KiCad's 3D
-bodies in `KICAD10_3DMODEL_DIR` (the workcenter's `site/media/README.md` says how to fetch them)
+bodies in `KICAD10_3DMODEL_DIR` (Via's `site/media/README.md` says how to fetch them)
 and the 7 bodies in `models/`.
 <!-- pictures:end -->
 
