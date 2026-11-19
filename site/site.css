@@ -3283,7 +3283,7 @@ html[data-shot] .ticker {
     --tilt: 20deg;
     --swing: 5deg;
     position: absolute;
-    top: 24rem;
+    top: 22rem;
     left: calc(50% + 18rem + (min(50% - 1.5rem, 632px) - 18rem) / 2 - 8em);
     width: 16em;
     margin: 0;
@@ -3296,10 +3296,10 @@ html[data-shot] .ticker {
 }
 
 /* Under 1180 px the paragraph under the 2-line headline is as wide as the space between the cards'
-   inner corners, so the cards sit 3rem higher there, clear of it and of the wordmark. */
+   inner corners, so the cards sit 3rem higher there than on a wider screen, clear of it and of the wordmark. */
 @media (min-width: 1000px) and (max-width: 1179.98px) {
   .sticker {
-    top: 21rem;
+    top: 19rem;
   }
 }
 
