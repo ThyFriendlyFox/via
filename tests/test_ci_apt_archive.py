@@ -449,12 +449,14 @@ def test_ci_calls_the_script_on_the_install_path_only_right_before_install_sh():
 
 
 def test_the_nightly_run_calls_the_same_step_right_before_install_sh():
-    """The nightly run has 1 path, install.sh: its step has no `if`, and is ci.yml's in all else."""
+    """The nightly run has 1 path, install.sh: its step has no `if`, and is ci.yml's in all else. Its
+    `id` names it to the issue's step (tools/ci/nightly_issue.py), which tells the step that failed."""
     job = flow("nightly.yml")["jobs"]["verify"]
     ((i, step),) = archive_steps(job)
     assert i == install_index(job) - 1 and "if" not in step
+    assert step["id"] == "archive"
     ((_, ours),) = archive_steps(flow("ci.yml")["jobs"]["full"])
-    assert {k: v for k, v in ours.items() if k != "if"} == step
+    assert {k: v for k, v in ours.items() if k != "if"} == {k: v for k, v in step.items() if k != "id"}
 
 
 @pytest.mark.parametrize("value", ["", "1", "0", "no"])

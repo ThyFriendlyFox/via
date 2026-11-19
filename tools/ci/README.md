@@ -13,6 +13,7 @@ the minute the roadmap asks for.
 | `guard/engine_watch.py` | Writes a line for each engine a Python process starts; refuses it in the fast run. |
 | `guard/sitecustomize.py` | Loads the watch in every Python process that has `guard/` on PYTHONPATH. |
 | `apt_archive.sh` | On CI's install path, before install.sh: apt asks Ubuntu's own archive, not the runner's regional mirror. |
+| `nightly_issue.py` | The nightly run's last step: reads the night's outcome, the gate's log and the open `ci-failure` issues, and prints what to do (open, comment, close or nothing) with the text. |
 
 ## The rules of `scope.py`
 
@@ -81,6 +82,27 @@ only job that decides fast or full. `fast` runs `make verify-site` with no
 toolchain. `full` gets the toolchain and runs `make verify`. `verdict` always
 runs and passes only when the job the scope asked for passed: make `verdict`
 the required check. The nightly run (`nightly.yml`) stays the full gate.
+
+## The nightly's `ci-failure` issue
+
+The nightly run's last step runs on a passed and a failed night. It lists
+the open issues labelled `ci-failure` and asks `nightly_issue.py` what to do.
+
+1. A failed night with no open issue opens one.
+2. A failed night with an open issue adds 1 comment to it.
+3. A passed night closes each open issue, with 1 comment that names its run.
+4. A passed night with no open issue does nothing.
+
+With 2 or more open, the oldest (lowest number) is spoken to: it holds the
+history. On a failed night each other one is closed as its duplicate, so 1
+stays open and the next failure is seen. The text holds the run's address,
+the step that failed, the gate's `FAILED`, `why:` and `TESTS RED` lines,
+bounded to 20000 characters, inside a code fence. A gate that stopped
+before its tests gives its step and the last 40 lines of its log. A night
+that stopped at install has no log and says so. The script is Python's
+standard library only: on that night there is no venv, and the runner's
+`python3` runs it. Its tests run the step's own script under node with a
+stand-in GitHub (`tests/test_ci_nightly_issue.py`).
 
 ## Where `full` runs
 
