@@ -1827,3 +1827,9 @@ What happened: `make verify` in Via's image on pull request 124 (job `full`, hea
 Cost: 1 red `full` job of the batch's pull request, and a fix round.
 Root cause: A path that 2 rows of 1 command read was computed at import, for every command, from something a container or a service may not have. Every test ran with HOME set and as a user /etc/passwd names; no test started the CLI with a bare environment.
 Process: P10
+
+## M300 — 2026-11-19 — A test of an order effect asked a question whose answer depends on the order
+What happened: The test that holds M296's fix, `tests/test_docs.py::test_a_site_generator_changes_nothing_a_later_import_of_guide_gets`, failed in pull request 124's `fast` job (job 135771280417) and passed in every run of the keeper's: `assert '/home/runner/.../tools/guide.py' == '/home/runner/.../site/guide.py'`. It asked `importlib.util.find_spec("guide")`, which answers from `sys.modules` before it searches the path. In the fast job an earlier test of the same process had already imported tools/guide.py, so the test's first assertion, that the site's folder first on the path shadows tools/guide.py, read the cached module. The keeper ran the file alone or after a selection that imported no `guide`. Reproduced here after `tests/test_guide.py`: `1 failed, 85 passed`.
+Cost: A red `fast` job on the batch's pull request, and a round to find that the fix was right and its test was not.
+Root cause: A test about what an import would find asked a question that `sys.modules` answers, and was run only in orders where nothing had imported the name. The test now asks the path search (`importlib.machinery.PathFinder`), which reads only `sys.path`, and it was run alone, after test_guide, and between test_legend and test_guide, and fails in each order when the restore does nothing.
+Process: P12

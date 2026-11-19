@@ -57,18 +57,26 @@ def _site_leaves_no_trace():
 
 
 def test_a_site_generator_changes_nothing_a_later_import_of_guide_gets():
-    """After a site generator is imported and the test's imports restored, `import guide` with tools/
+    """After a site generator is imported and the test's imports restored, an `import guide` with tools/
     on the path finds tools/guide.py: the site's folder is gone from `sys.path`. Without the restore it
-    finds site/guide.py, which has no `trouble` (tests/test_legend.py's 6 failures, 2026-11-19)."""
-    import importlib.util
+    finds site/guide.py, which has no `trouble` (tests/test_legend.py's 6 failures, 2026-11-19).
+
+    The test asks the path search itself (`PathFinder`), not `importlib.util.find_spec`, which answers
+    from `sys.modules` first: an earlier test of the same process that imported tools/guide.py made the
+    first assertion fail on GitHub (pull request 124's fast job, M300). So it holds in any order, with or
+    without `guide` already imported."""
+    from importlib.machinery import PathFinder
+
+    def found() -> str:
+        return PathFinder.find_spec("guide", sys.path).origin
 
     path, modules = list(sys.path), set(sys.modules)
     sys.path.insert(0, str(ROOT / "tools"))
     site_module("blog")
-    assert importlib.util.find_spec("guide").origin == str(SITE / "guide.py")  # the trap, as it was
+    assert found() == str(SITE / "guide.py")  # the trap, as it was
     restore_imports([str(ROOT / "tools"), *path], modules)
     assert str(SITE) not in sys.path
-    assert importlib.util.find_spec("guide").origin == str(ROOT / "tools" / "guide.py")
+    assert found() == str(ROOT / "tools" / "guide.py")
     assert "blog" not in sys.modules
     restore_imports(path, modules)
 

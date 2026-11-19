@@ -637,7 +637,12 @@ that may be absent.
 12. A test changes nothing another test imports: a folder it puts on
     `sys.path` and the modules it imports from there leave when it ends (a
     fixture restores both), and a test holds that a later `import` of a
-    name 2 folders hold gets the module the code means (M296).
+    name 2 folders hold gets the module the code means (M296). Such a
+    test asks the path search (`importlib.machinery.PathFinder`), never
+    `importlib.util.find_spec` or an `import`, which answer from
+    `sys.modules` first; it runs once alone and once after a test that
+    imported the name, and fails in both when the restore is taken out
+    (M300).
 
 Done when: the summary shows no unexpected skips, the engine test is
 green on the runner, and a run with an engine taken away is not GREEN.
