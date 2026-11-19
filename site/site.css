@@ -2226,6 +2226,42 @@ html:not(.motion) .wordmark .wm-pt,
 .explorer {
   margin-top: 2.5rem;
 }
+/* An example of several boards: a tab for each over its explorer, and the board's file and numbers. */
+.ex-boards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 2.5rem;
+}
+.ex-boards [role="tab"] {
+  height: 2.25rem;
+  padding-inline: 1rem;
+  border-radius: 999px;
+  background: var(--background);
+  box-shadow: 0 0 0 1px var(--edge);
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition:
+    background-color 150ms var(--ease),
+    color 150ms var(--ease);
+}
+.ex-boards [role="tab"]:hover {
+  background: var(--secondary);
+}
+.ex-boards [role="tab"][aria-selected="true"] {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: none;
+}
+.ex-boards + .explorer,
+.ex-boards ~ .explorer {
+  margin-top: 1.25rem;
+}
+.ex-facts {
+  margin-bottom: 0.875rem;
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+}
 .ex-tools {
   display: flex;
   flex-wrap: wrap;

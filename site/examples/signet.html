@@ -82,7 +82,7 @@
             <h1 class="display" id="ex-title">Signet</h1>
             <p class="ex-tagline">A mouse you wear as a ring</p>
             <p class="lede">Eight small boards sit on the faces of an octagonal ring round the index finger, each soldered to the next along its edge. Turn the ring's crown toward the thumb: the ring turns with the hand and the cursor follows its gyroscope; the thumb slides along the scroll strip to scroll, and presses the clicks tile for the left and the right button. The ring talks Bluetooth LE to the computer as an ordinary HID mouse and charges on a post through 2 pads inside it.</p>
-            <ul class="chips" aria-label="The board"><li>v0.5</li><li class="ok">GREEN on all 8 boards</li></ul>
+            <ul class="chips" aria-label="The board"><li>v0.5</li><li>8 boards</li><li class="ok">GREEN on all 8 boards</li></ul>
           </div>
           <div class="turntable" data-turntable data-frames="36" data-columns="6" tabindex="0" role="img" aria-label="Signet in 3D, turning; drag or use the arrow keys to turn it">
             <div class="tt-frames" style="aspect-ratio:616 / 368;background-image:url(signet/spin.webp)"></div>
@@ -91,6 +91,178 @@
           <div class="stills">
             <figure><img src="signet/top.png" width="1100" height="818" loading="lazy" alt="Signet, from above"><figcaption>From above</figcaption></figure>
             <figure><img src="signet/bottom.png" width="1100" height="794" loading="lazy" alt="Signet, from behind"><figcaption>From behind</figcaption></figure>
+          </div>
+        </div>
+      </section>
+
+      <section class="section band" id="board" aria-labelledby="board-title">
+        <div class="wrap">
+          <div class="head" data-reveal data-stagger>
+            <p class="eyebrow">The boards, track by track</p>
+            <h2 class="title" id="board-title">Every track and part of the routed boards, drawn from their files</h2>
+            <p class="lede">Signet is eight boards, each in a folder of its own. You can pick a board, point at a pad to see its part, and click a track, a via or a pad to follow its connection across the board.</p>
+          </div>
+          <div class="ex-boards" role="tablist" aria-label="The boards">
+            <button type="button" role="tab" id="tab-radio" aria-controls="board-radio" aria-selected="true" tabindex="0">Radio</button>
+            <button type="button" role="tab" id="tab-touch" aria-controls="board-touch" aria-selected="false" tabindex="-1">Touch</button>
+            <button type="button" role="tab" id="tab-clicks" aria-controls="board-clicks" aria-selected="false" tabindex="-1">Clicks</button>
+            <button type="button" role="tab" id="tab-charge" aria-controls="board-charge" aria-selected="false" tabindex="-1">Charge</button>
+            <button type="button" role="tab" id="tab-cell" aria-controls="board-cell" aria-selected="false" tabindex="-1">Cell</button>
+            <button type="button" role="tab" id="tab-rail" aria-controls="board-rail" aria-selected="false" tabindex="-1">Rail</button>
+            <button type="button" role="tab" id="tab-gauge" aria-controls="board-gauge" aria-selected="false" tabindex="-1">Gauge</button>
+            <button type="button" role="tab" id="tab-motion" aria-controls="board-motion" aria-selected="false" tabindex="-1">Motion</button>
+          </div>
+          <div class="explorer" id="board-radio" role="tabpanel" aria-labelledby="tab-radio" data-explorer data-src="signet/board-radio.svg">
+            <p class="ex-facts"><code>examples/ring-mouse/v0.5/radio/signet_radio.kicad_pcb</code>: four copper layers, 16 parts, 134 track segments, 18 vias and 19 nets, 13.2 × 12 mm.</p>
+            <div class="ex-tools" role="toolbar" aria-label="The drawing">
+              <div class="ex-layers" aria-label="Layers">
+                <button type="button" aria-pressed="true" data-layer="F.Cu"><i></i>Front</button>
+                <button type="button" aria-pressed="true" data-layer="In1.Cu"><i></i>In1</button>
+                <button type="button" aria-pressed="true" data-layer="In2.Cu"><i></i>In2</button>
+                <button type="button" aria-pressed="true" data-layer="B.Cu"><i></i>Back</button>
+                <button type="button" aria-pressed="false" data-layer="refs"><i></i>Names</button>
+              </div>
+              <div class="ex-zoom">
+                <button type="button" data-zoom="out" aria-label="Zoom out">&#8722;</button>
+                <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
+                <button type="button" data-zoom="home">Whole board</button>
+              </div>
+            </div>
+            <div class="ex-view" data-view></div>
+            <p class="ex-info" data-info aria-live="polite">You can drag to move around, and pinch or hold Ctrl and scroll to zoom.</p>
+          </div>
+          <div class="explorer" id="board-touch" role="tabpanel" aria-labelledby="tab-touch" data-explorer data-src="signet/board-touch.svg" hidden>
+            <p class="ex-facts"><code>examples/ring-mouse/v0.5/touch/signet_touch.kicad_pcb</code>: four copper layers, 6 parts, 68 track segments, 10 vias and nine nets, 10 × 12 mm.</p>
+            <div class="ex-tools" role="toolbar" aria-label="The drawing">
+              <div class="ex-layers" aria-label="Layers">
+                <button type="button" aria-pressed="true" data-layer="F.Cu"><i></i>Front</button>
+                <button type="button" aria-pressed="true" data-layer="In1.Cu"><i></i>In1</button>
+                <button type="button" aria-pressed="true" data-layer="In2.Cu"><i></i>In2</button>
+                <button type="button" aria-pressed="true" data-layer="B.Cu"><i></i>Back</button>
+                <button type="button" aria-pressed="false" data-layer="refs"><i></i>Names</button>
+              </div>
+              <div class="ex-zoom">
+                <button type="button" data-zoom="out" aria-label="Zoom out">&#8722;</button>
+                <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
+                <button type="button" data-zoom="home">Whole board</button>
+              </div>
+            </div>
+            <div class="ex-view" data-view></div>
+            <p class="ex-info" data-info aria-live="polite">You can drag to move around, and pinch or hold Ctrl and scroll to zoom.</p>
+          </div>
+          <div class="explorer" id="board-clicks" role="tabpanel" aria-labelledby="tab-clicks" data-explorer data-src="signet/board-clicks.svg" hidden>
+            <p class="ex-facts"><code>examples/ring-mouse/v0.5/clicks/signet_clicks.kicad_pcb</code>: four copper layers, 4 parts, 52 track segments, one vias and three nets, 6.8 × 12 mm.</p>
+            <div class="ex-tools" role="toolbar" aria-label="The drawing">
+              <div class="ex-layers" aria-label="Layers">
+                <button type="button" aria-pressed="true" data-layer="F.Cu"><i></i>Front</button>
+                <button type="button" aria-pressed="true" data-layer="In1.Cu"><i></i>In1</button>
+                <button type="button" aria-pressed="true" data-layer="In2.Cu"><i></i>In2</button>
+                <button type="button" aria-pressed="true" data-layer="B.Cu"><i></i>Back</button>
+                <button type="button" aria-pressed="false" data-layer="refs"><i></i>Names</button>
+              </div>
+              <div class="ex-zoom">
+                <button type="button" data-zoom="out" aria-label="Zoom out">&#8722;</button>
+                <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
+                <button type="button" data-zoom="home">Whole board</button>
+              </div>
+            </div>
+            <div class="ex-view" data-view></div>
+            <p class="ex-info" data-info aria-live="polite">You can drag to move around, and pinch or hold Ctrl and scroll to zoom.</p>
+          </div>
+          <div class="explorer" id="board-charge" role="tabpanel" aria-labelledby="tab-charge" data-explorer data-src="signet/board-charge.svg" hidden>
+            <p class="ex-facts"><code>examples/ring-mouse/v0.5/charge/signet_charge.kicad_pcb</code>: four copper layers, 8 parts, 75 track segments, no vias and six nets, 6.8 × 12 mm.</p>
+            <div class="ex-tools" role="toolbar" aria-label="The drawing">
+              <div class="ex-layers" aria-label="Layers">
+                <button type="button" aria-pressed="true" data-layer="F.Cu"><i></i>Front</button>
+                <button type="button" aria-pressed="true" data-layer="In1.Cu"><i></i>In1</button>
+                <button type="button" aria-pressed="true" data-layer="In2.Cu"><i></i>In2</button>
+                <button type="button" aria-pressed="true" data-layer="B.Cu"><i></i>Back</button>
+                <button type="button" aria-pressed="false" data-layer="refs"><i></i>Names</button>
+              </div>
+              <div class="ex-zoom">
+                <button type="button" data-zoom="out" aria-label="Zoom out">&#8722;</button>
+                <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
+                <button type="button" data-zoom="home">Whole board</button>
+              </div>
+            </div>
+            <div class="ex-view" data-view></div>
+            <p class="ex-info" data-info aria-live="polite">You can drag to move around, and pinch or hold Ctrl and scroll to zoom.</p>
+          </div>
+          <div class="explorer" id="board-cell" role="tabpanel" aria-labelledby="tab-cell" data-explorer data-src="signet/board-cell.svg" hidden>
+            <p class="ex-facts"><code>examples/ring-mouse/v0.5/cell/signet_cell.kicad_pcb</code>: four copper layers, 6 parts, 37 track segments, no vias and four nets, 6.8 × 12 mm.</p>
+            <div class="ex-tools" role="toolbar" aria-label="The drawing">
+              <div class="ex-layers" aria-label="Layers">
+                <button type="button" aria-pressed="true" data-layer="F.Cu"><i></i>Front</button>
+                <button type="button" aria-pressed="true" data-layer="In1.Cu"><i></i>In1</button>
+                <button type="button" aria-pressed="true" data-layer="In2.Cu"><i></i>In2</button>
+                <button type="button" aria-pressed="true" data-layer="B.Cu"><i></i>Back</button>
+                <button type="button" aria-pressed="false" data-layer="refs"><i></i>Names</button>
+              </div>
+              <div class="ex-zoom">
+                <button type="button" data-zoom="out" aria-label="Zoom out">&#8722;</button>
+                <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
+                <button type="button" data-zoom="home">Whole board</button>
+              </div>
+            </div>
+            <div class="ex-view" data-view></div>
+            <p class="ex-info" data-info aria-live="polite">You can drag to move around, and pinch or hold Ctrl and scroll to zoom.</p>
+          </div>
+          <div class="explorer" id="board-rail" role="tabpanel" aria-labelledby="tab-rail" data-explorer data-src="signet/board-rail.svg" hidden>
+            <p class="ex-facts"><code>examples/ring-mouse/v0.5/rail/signet_rail.kicad_pcb</code>: four copper layers, 5 parts, 54 track segments, no vias and four nets, 6.8 × 12 mm.</p>
+            <div class="ex-tools" role="toolbar" aria-label="The drawing">
+              <div class="ex-layers" aria-label="Layers">
+                <button type="button" aria-pressed="true" data-layer="F.Cu"><i></i>Front</button>
+                <button type="button" aria-pressed="true" data-layer="In1.Cu"><i></i>In1</button>
+                <button type="button" aria-pressed="true" data-layer="In2.Cu"><i></i>In2</button>
+                <button type="button" aria-pressed="true" data-layer="B.Cu"><i></i>Back</button>
+                <button type="button" aria-pressed="false" data-layer="refs"><i></i>Names</button>
+              </div>
+              <div class="ex-zoom">
+                <button type="button" data-zoom="out" aria-label="Zoom out">&#8722;</button>
+                <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
+                <button type="button" data-zoom="home">Whole board</button>
+              </div>
+            </div>
+            <div class="ex-view" data-view></div>
+            <p class="ex-info" data-info aria-live="polite">You can drag to move around, and pinch or hold Ctrl and scroll to zoom.</p>
+          </div>
+          <div class="explorer" id="board-gauge" role="tabpanel" aria-labelledby="tab-gauge" data-explorer data-src="signet/board-gauge.svg" hidden>
+            <p class="ex-facts"><code>examples/ring-mouse/v0.5/gauge/signet_gauge.kicad_pcb</code>: four copper layers, 5 parts, 39 track segments, no vias and five nets, 6.8 × 12 mm.</p>
+            <div class="ex-tools" role="toolbar" aria-label="The drawing">
+              <div class="ex-layers" aria-label="Layers">
+                <button type="button" aria-pressed="true" data-layer="F.Cu"><i></i>Front</button>
+                <button type="button" aria-pressed="true" data-layer="In1.Cu"><i></i>In1</button>
+                <button type="button" aria-pressed="true" data-layer="In2.Cu"><i></i>In2</button>
+                <button type="button" aria-pressed="true" data-layer="B.Cu"><i></i>Back</button>
+                <button type="button" aria-pressed="false" data-layer="refs"><i></i>Names</button>
+              </div>
+              <div class="ex-zoom">
+                <button type="button" data-zoom="out" aria-label="Zoom out">&#8722;</button>
+                <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
+                <button type="button" data-zoom="home">Whole board</button>
+              </div>
+            </div>
+            <div class="ex-view" data-view></div>
+            <p class="ex-info" data-info aria-live="polite">You can drag to move around, and pinch or hold Ctrl and scroll to zoom.</p>
+          </div>
+          <div class="explorer" id="board-motion" role="tabpanel" aria-labelledby="tab-motion" data-explorer data-src="signet/board-motion.svg" hidden>
+            <p class="ex-facts"><code>examples/ring-mouse/v0.5/motion/signet_motion.kicad_pcb</code>: four copper layers, 11 parts, 124 track segments, three vias and 10 nets, 10 × 12 mm.</p>
+            <div class="ex-tools" role="toolbar" aria-label="The drawing">
+              <div class="ex-layers" aria-label="Layers">
+                <button type="button" aria-pressed="true" data-layer="F.Cu"><i></i>Front</button>
+                <button type="button" aria-pressed="true" data-layer="In1.Cu"><i></i>In1</button>
+                <button type="button" aria-pressed="true" data-layer="In2.Cu"><i></i>In2</button>
+                <button type="button" aria-pressed="true" data-layer="B.Cu"><i></i>Back</button>
+                <button type="button" aria-pressed="false" data-layer="refs"><i></i>Names</button>
+              </div>
+              <div class="ex-zoom">
+                <button type="button" data-zoom="out" aria-label="Zoom out">&#8722;</button>
+                <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
+                <button type="button" data-zoom="home">Whole board</button>
+              </div>
+            </div>
+            <div class="ex-view" data-view></div>
+            <p class="ex-info" data-info aria-live="polite">You can drag to move around, and pinch or hold Ctrl and scroll to zoom.</p>
           </div>
         </div>
       </section>
