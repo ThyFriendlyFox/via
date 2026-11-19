@@ -424,39 +424,65 @@ def test_the_gate_ends_its_sampler_without_waiting_out_its_sleep(gate_setup):
     assert time.monotonic() - start < 30
 
 
-# A BASH_ENV file for the gate's bash: it holds 1 process of the gate at 1 command until a signal comes,
-# so that a test chooses the moment a kill reaches it. HOLD_WHERE=main holds the gate's own shell, =sub
-# the sampler (a subshell that shares the gate's stdout), each at the first command after its HOLD_NTH-th
-# `&`: the job runs and the line after the `&` has not kept its pid yet. It writes "<pid> <command>" to
+# A BASH_ENV file for the gate's bash: it holds 1 process of the gate at 1 command until the test lets
+# it go, so that a test chooses the moment a kill or an end reaches it. HOLD_WHERE=main holds the gate's
+# own shell at the first command after its HOLD_NTH-th job starts (`&` or `coproc`): the job runs and
+# the line after it has not kept its pid yet. HOLD_WHERE=nth holds the sampler (the process whose
+# stdout is HOLD_SAMPLER_OUT, the gate's .foreign file) before its HOLD_NTH-th command; HOLD_LOG, when
+# set, gets "<n> <command>" for each command the sampler runs. HOLD_WHERE=func holds the gate's own shell
+# once, before the first command of the function HOLD_FUNC (in a trap, BASH_COMMAND names the command the
+# trap came in, so the hold goes by the function); HOLD_WHERE=locked holds it once, before its first
+# command after the file HOLD_LOCK exists; HOLD_WHERE=cmd holds once, in whichever process of the gate
+# runs it, before the first command whose text holds HOLD_CMD. A hold writes "<pid> <command>" to
 # HOLD_MARK, then waits with the builtin `read` on a FIFO opened read-write (no child, no data, no end)
-# in 0.05 s steps, up to 30 s, until the test has sent its signal and made HOLD_MARK.sent.
+# in 0.05 s steps, up to 30 s, until the test has made HOLD_MARK.sent.
 HOLD = """\
 set -T
 HOLD_TOP=${HOLD_TOP:-$BASHPID}
 __hold_owner=
+__hold_wait() {
+  echo "$BASHPID $BASH_COMMAND" > "$HOLD_MARK"
+  for ((__hold_i = 0; __hold_i < 600; __hold_i++)); do
+    [ ! -e "$HOLD_MARK.sent" ] || break
+    read -r -t 0.05 _ <> "$HOLD_FIFO"
+  done
+}
 __hold() {
   if [ "$__hold_owner" != "$BASHPID" ]; then
     __hold_owner=$BASHPID
     __hold_seen=$!
     __hold_jobs=0
+    __hold_cmds=0
     __hold_sampler=
-    if [ "$BASHPID" != "$HOLD_TOP" ] && [[ /proc/$BASHPID/fd/1 -ef /proc/$HOLD_TOP/fd/1 ]]; then
-      __hold_sampler=1
+  fi
+  if [ -z "$__hold_sampler" ] && [ "$BASHPID" != "$HOLD_TOP" ] && [ -n "${HOLD_SAMPLER_OUT:-}" ] \\
+    && [[ /proc/$BASHPID/fd/1 -ef $HOLD_SAMPLER_OUT ]]; then
+    __hold_sampler=1
+  fi
+  if [ -n "$__hold_sampler" ]; then
+    __hold_cmds=$((__hold_cmds + 1))
+    if [ -n "${HOLD_LOG:-}" ]; then echo "$__hold_cmds $BASH_COMMAND" >> "$HOLD_LOG"; fi
+    if [ "$HOLD_WHERE" = nth ] && [ "$__hold_cmds" = "$HOLD_NTH" ]; then __hold_wait; fi
+    return 0
+  fi
+  if [ "$HOLD_WHERE" = cmd ] && [ -z "${__hold_done:-}" ] && [[ $BASH_COMMAND == *"$HOLD_CMD"* ]]; then
+    __hold_done=1
+    __hold_wait
+    return 0
+  fi
+  if [ "$BASHPID" = "$HOLD_TOP" ] && [ -z "${__hold_done:-}" ]; then
+    if { [ "$HOLD_WHERE" = func ] && [ "${FUNCNAME[1]:-}" = "$HOLD_FUNC" ]; } \\
+      || { [ "$HOLD_WHERE" = locked ] && [ -e "$HOLD_LOCK" ]; }; then
+      __hold_done=1
+      __hold_wait
+      return 0
     fi
   fi
   if [ "$!" = "$__hold_seen" ]; then return 0; fi
   __hold_seen=$!
   __hold_jobs=$((__hold_jobs + 1))
-  case "$HOLD_WHERE" in
-    main) [ "$BASHPID" = "$HOLD_TOP" ] || return 0 ;;
-    sub) [ -n "$__hold_sampler" ] || return 0 ;;
-  esac
-  if [ "$__hold_jobs" = "$HOLD_NTH" ]; then
-    echo "$BASHPID $BASH_COMMAND" > "$HOLD_MARK"
-    for ((__hold_i = 0; __hold_i < 600; __hold_i++)); do
-      [ ! -e "$HOLD_MARK.sent" ] || break
-      read -r -t 0.05 _ <> "$HOLD_FIFO"
-    done
+  if [ "$HOLD_WHERE" = main ] && [ "$BASHPID" = "$HOLD_TOP" ] && [ "$__hold_jobs" = "$HOLD_NTH" ]; then
+    __hold_wait
   fi
   return 0
 }
@@ -482,10 +508,19 @@ def left_of(marker: str) -> list[str]:
     return found
 
 
-def held_gate(setup: dict, tmp_path: Path, mode: str, env: dict, signal_on_mark: bool) -> dict:
-    """Run the gate with HOLD as BASH_ENV and the env given; with signal_on_mark, SIGTERM it once HOLD_MARK
-    holds a line. Returns the exit code, the seconds to the gate's exit and from its exit to the end of
-    its stdout and stderr (None: still open 10 s after), and what of the run still ran after that."""
+def term_then_release(proc: subprocess.Popen, mark: Path) -> None:
+    """SIGTERM the gate, then let the hold go: a trap that only notes the signal does not end `read`."""
+    import signal
+
+    proc.send_signal(signal.SIGTERM)
+    Path(f"{mark}.sent").touch()
+
+
+def held_gate(setup: dict, tmp_path: Path, mode: str, env: dict, on_mark=None, session: bool = False) -> dict:
+    """Run the gate with HOLD as BASH_ENV and the env given (with session, in a session and process group
+    of its own); with on_mark, call on_mark(proc, mark) once HOLD_MARK holds a line. Returns the exit
+    code, the seconds to the gate's exit and from its exit to the end of its stdout and stderr (None:
+    still open 10 s after), and what of the run still ran after that."""
     import signal
     import threading
     import time
@@ -503,28 +538,39 @@ def held_gate(setup: dict, tmp_path: Path, mode: str, env: dict, signal_on_mark:
         "BASH_ENV": str(hook),
         "HOLD_FIFO": str(fifo),
         "HOLD_MARK": str(mark),
+        "HOLD_SAMPLER_OUT": str(setup["dir"] / "gate-t1.foreign"),
         "SAMPLER_RUN": marker,
         **env,
     }
     argv = ["bash", str(GATE), str(setup["tree"]), "work", setup["head"], setup["base"], "t1"]
     start = time.monotonic()
-    proc = subprocess.Popen(argv, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    proc = subprocess.Popen(
+        argv, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=session
+    )
     readers = [threading.Thread(target=f.read) for f in (proc.stdout, proc.stderr)]
     for r in readers:
         r.start()
     try:
-        if signal_on_mark:
+        released = None
+        if on_mark is not None:
             while not (mark.exists() and mark.read_text().strip()) and time.monotonic() - start < 30:
                 time.sleep(0.01)
-            proc.send_signal(signal.SIGTERM)
-            # The signal is sent before the hold lets go: a trap that only notes it does not end `read`.
-            Path(f"{mark}.sent").touch()
+            assert mark.exists(), "the gate was never held"
+            on_mark(proc, mark)
+            released = time.monotonic() - start
         code = proc.wait(timeout=30)
         exited = time.monotonic() - start
         for r in readers:
             r.join(timeout=10)
         closed = None if any(r.is_alive() for r in readers) else time.monotonic() - start - exited
-        return {"code": code, "exited": exited, "closed": closed, "left": left_of(marker), "mark": mark}
+        return {
+            "code": code,
+            "exited": exited,
+            "released": released,
+            "closed": closed,
+            "left": left_of(marker),
+            "mark": mark,
+        }
     finally:
         for line in left_of(marker):
             try:
@@ -538,53 +584,67 @@ def held_gate(setup: dict, tmp_path: Path, mode: str, env: dict, signal_on_mark:
             r.join(timeout=10)
 
 
-def test_a_kill_that_reaches_the_sampler_before_it_keeps_its_sleeps_pid_ends_the_sleep_too(
-    gate_setup, tmp_path
+# The sampler's commands of its first loop up to its sleep; the ones after `read` run only once the gate
+# has closed the sampler's pipe, and every run of the gate runs them.
+SAMPLER_STEPS = ("true", "found=$(busy < /dev/null)", '[ -n "$found" ]', 'read -r -t "$SAMPLE" _')
+
+
+@pytest.mark.parametrize("nth", range(1, len(SAMPLER_STEPS) + 1))
+def test_the_gate_ends_its_sampler_at_any_command_of_its_loop_without_waiting_out_its_look(
+    gate_setup, tmp_path, nth
 ):
-    """The sampler is held at the first command after it started its 60 s sleep; the stand-in make
-    answers once that sleep runs, and the gate ends the sampler. Before the fix the sampler's sleep ran in
-    the background and its pid was kept on the next line (`nap=$!`): a TERM there found no pid, the
-    sleep was left for 60 s and held the gate's stdout and stderr, so a caller that reads them waited
-    60 s (the health gate of 2026-11-19 02:02 UTC, where it came by chance on a loaded machine). Here it
-    comes there every time: before the fix, 10 of 10 runs left `sleep 60` and the pipes open 10 s after
-    the gate's exit. After it, 10 of 10 runs (2026-11-19, load under 2): the gate exited in 0.115 to
-    0.118 s, and its pipes closed 0.000 s after its exit. The margins: the bound of 30 s is over 250 times
-    the slowest exit, and the 10 s the pipes may stay open is 10 s more than any run took."""
-    real_sleep = shutil.which("sleep")
-    bin_dir = tmp_path / "bin2"
-    bin_dir.mkdir()
+    """The sampler looks every 60 s. It is held before its command `nth` of its first loop
+    (SAMPLER_STEPS); the stand-in make then answers green, the gate ends the sampler, and 0.5 s later the
+    hold lets go. The gate must end at once, with its pipes closed and nothing of the run left. An
+    external `sleep "$SAMPLE"` in the sampler, ended by a kill that misses it, held the gate's stdout and
+    stderr for 60 s (M272, the health gate of 2026-11-19 02:02 UTC); a sampler that the gate ends by
+    closing its pipe, but that sleeps with an external `sleep`, makes the gate wait out the 60 s: the
+    test fails on both: against a copy whose sampler sleeps with `sleep "$SAMPLE"`, 4 of 4 commands
+    failed (2026-11-19). Against the fixed script each of the 4 passed 10 of 10 runs (2026-11-19, load
+    2 to 5), the gate exiting 0.064 to 0.214 s after the hold let go; the bound of 10 s is over 45
+    times the slowest."""
+    import time
+
+    log = tmp_path / "steps"
     sleeps = tmp_path / "sleeps"
-    (bin_dir / "sleep").write_text(
-        "#!/bin/sh\n"
-        f'if [ "$1" = "$GATE_SAMPLE_SECONDS" ]; then echo $$ >> "{sleeps}"; fi\n'
-        f'exec {real_sleep} "$@"\n'
-    )
-    (bin_dir / "sleep").chmod(0o755)
     env = {
-        "PATH": f"{bin_dir}{os.pathsep}{gate_setup['env']['PATH']}",
         "GATE_SAMPLE_SECONDS": "60",
         "STANDIN_SLEEPS": str(sleeps),
-        "HOLD_WHERE": "sub",
-        "HOLD_NTH": "1",
+        "HOLD_WHERE": "nth",
+        "HOLD_NTH": str(nth),
+        "HOLD_LOG": str(log),
     }
-    run = held_gate(gate_setup, tmp_path, "asleep", env, signal_on_mark=False)
+
+    def answer_then_release(proc, mark):
+        sleeps.write_text("go\n")
+        time.sleep(0.5)
+        Path(f"{mark}.sent").touch()
+
+    run = held_gate(gate_setup, tmp_path, "asleep", env, on_mark=answer_then_release)
+    held = run["mark"].read_text().split(" ", 1)[1].strip()
+    assert held == SAMPLER_STEPS[nth - 1], log.read_text()
     assert run["code"] == 0
-    assert run["exited"] < 30
+    assert run["exited"] - run["released"] < 10
     assert run["closed"] is not None, f"the gate's pipes were still open 10 s after it ended: {run['left']}"
     assert run["left"] == []
     assert remote_head(gate_setup) == gate_setup["head"]
+    # A gate that does not close the sampler's pipe still ends it, by SIGKILL 10 s later, as close to the
+    # bound above as 0.014 s (the checker, 2026-11-19); the status line tells the 2 apart every time.
+    status = (gate_setup["dir"] / "gate-t1.status").read_text()
+    assert "the sampler's look still ran" not in status, status
 
 
 @pytest.mark.parametrize("nth, job", [(1, "the sampler"), (2, "make")])
 def test_a_sigterm_while_a_job_starts_ends_that_job_before_the_lock_goes(gate_setup, tmp_path, nth, job):
-    """The gate's shell is held at the first command after the `&` of its job `nth` (1 the sampler, 2 make),
-    before the line that keeps the job's pid, and the test sends SIGTERM there. Before the fix, finish()
-    found no pid: 10 of 10 runs of each left the sampler looping for good (it held the gate's pipes), or
-    make running after the lock was removed. After it, the signal waits until the pid is kept, and the job
-    ends with the gate: 10 of 10 runs of each exited in 0.105 to 0.116 s, the pipes closed 0.000 s after
-    (2026-11-19, load under 2); the bound of 30 s is over 250 times the slowest."""
+    """The gate's shell is held at the first command after the start of its job `nth` (1 the sampler's
+    `coproc`, 2 make's `&`), before the line that keeps the job's pid, and the test sends SIGTERM there.
+    Before the fix, finish() found no pid: 10 of 10 runs of each left the sampler looping for good (it
+    held the gate's pipes), or make running after the lock was removed. After it, the signal waits until
+    the pid is kept, and the job ends with the gate: 10 of 10 runs of each (2026-11-19, load 2 to 5)
+    exited in 0.105 to 0.168 s (the sampler) and 0.105 to 2.061 s (make), the pipes closed 0.000 s after;
+    the bound of 30 s is over 14 times the slowest."""
     env = {"GATE_SAMPLE_SECONDS": "60", "HOLD_WHERE": "main", "HOLD_NTH": str(nth)}
-    run = held_gate(gate_setup, tmp_path, "slow", env, signal_on_mark=True)
+    run = held_gate(gate_setup, tmp_path, "slow", env, on_mark=term_then_release)
     assert run["mark"].read_text().split(" ", 1)[1].strip() == ("SAMPLER=$!", "MAKE_PID=$!")[nth - 1]
     assert run["code"] == 143
     assert run["exited"] < 30
@@ -601,7 +661,7 @@ def test_a_sigterm_before_setsid_has_made_makes_group_still_ends_make(gate_setup
     has made make's group; the test sends SIGTERM to the gate then. Before the fix the gate killed the
     group, which did not exist yet, and waited for make: it had not ended after 30 s in 10 of 10 runs.
     After it the gate ends the process itself when there is no group: 10 of 10 runs exited in 0.057 to
-    0.068 s (2026-11-19, load under 2); the bound of 30 s is over 400 times the slowest."""
+    0.135 s (2026-11-19, load 2 to 5); the bound of 30 s is over 200 times the slowest."""
     real_setsid = shutil.which("setsid")
     bin_dir = tmp_path / "bin2"
     bin_dir.mkdir()
@@ -612,7 +672,7 @@ def test_a_sigterm_before_setsid_has_made_makes_group_still_ends_make(gate_setup
     )
     (bin_dir / "setsid").chmod(0o755)
     env = {"PATH": f"{bin_dir}{os.pathsep}{gate_setup['env']['PATH']}", "HOLD_WHERE": "none", "HOLD_NTH": "0"}
-    run = held_gate(gate_setup, tmp_path, "slow", env, signal_on_mark=True)
+    run = held_gate(gate_setup, tmp_path, "slow", env, on_mark=term_then_release)
     assert run["code"] == 143
     assert run["exited"] < 30
     assert run["left"] == []
@@ -660,6 +720,48 @@ def test_a_head_that_is_not_the_named_commit_stops_before_the_lock(gate_setup):
     assert run.returncode == 3
     assert f"STOP: HEAD is not {gate_setup['base']}" in run.stdout
     assert not (gate_setup["dir"] / "GATE.lock").exists()
+
+
+def test_a_git_that_a_signal_ends_before_the_lock_is_a_stop_not_a_moved_head(gate_setup, tmp_path):
+    """A stop reaches the git that reads HEAD before the lock; here a stand-in git ends itself with
+    SIGTERM. The gate read its empty output as another HEAD: exit 3 'STOP: HEAD is not <commit>', which
+    sends the land skill's reader to mend a HEAD that is right (the checker, 2026-11-19: 4 of 120, 4 of
+    150 and 1 of 150 runs of a SIGINT spray, 3 of 160 of SIGTERM). It is now a stop: exit 143."""
+    real_git = shutil.which("git")
+    env = stand_in(
+        tmp_path,
+        gate_setup,
+        "git",
+        f'case " $* " in *" rev-parse HEAD "*) kill -TERM $$ ;; esac\nexec {real_git} "$@"\n',
+    )
+    run = subprocess.run(gate_argv(gate_setup), env=env, capture_output=True, text=True, timeout=60)
+    assert run.returncode == 143, run.stdout + run.stderr
+    assert "HEAD is not" not in run.stdout
+    assert not (gate_setup["dir"] / "GATE.lock").exists()
+    assert not Path(gate_setup["env"]["STANDIN_CALLS"]).exists()
+
+
+def test_a_sigint_while_a_git_before_the_lock_ends_well_stops_the_gate(gate_setup, tmp_path):
+    """A Ctrl-C (SIGINT to the gate's process group) comes while the gate's git reads HEAD; here a
+    stand-in git sends it, ignores it itself, and answers right. The gate had no trap there yet and
+    died by the signal, an exit no document lists (-2, 2026-11-19). The gate now notes signals from
+    before its first command that is not a builtin, and stops before the lock with exit 130."""
+    real_git = shutil.which("git")
+    env = stand_in(
+        tmp_path,
+        gate_setup,
+        "git",
+        'case " $* " in *" rev-parse HEAD "*) trap \'\' INT; kill -INT 0; sleep 0.2 ;; esac\n'
+        f'exec {real_git} "$@"\n',
+    )
+    run = subprocess.run(
+        gate_argv(gate_setup), env=env, capture_output=True, text=True, timeout=60, start_new_session=True
+    )
+    assert run.returncode == 130, run.stdout + run.stderr
+    assert "lock removed" not in run.stdout, "the gate made the lock after the signal"
+    assert not (gate_setup["dir"] / "GATE.lock").exists()
+    assert not Path(gate_setup["env"]["STANDIN_CALLS"]).exists(), "make ran after the signal"
+    assert remote_head(gate_setup) == gate_setup["base"]
 
 
 def test_gate_and_push_needs_its_folder(gate_setup):
@@ -740,6 +842,726 @@ def test_a_gate_stopped_by_sigterm_ends_make_and_its_sampler_before_it_frees_the
     assert [line for line in left.splitlines() if str(GATE) in line and str(gate_setup["tree"]) in line] == []
     assert not (gate_setup["dir"] / "GATE.lock").exists()
     assert remote_head(gate_setup) == gate_setup["base"]
+
+
+# sh: wait until the last `&` job, a sleep, has exec'd (no single quotes, for use inside `sh -c '...'`).
+EXECED = 'while [ "$(cat /proc/$!/comm 2>/dev/null)" != sleep ]; do :; done;'
+
+
+def stand_in(tmp_path: Path, setup: dict, name: str, text: str) -> dict:
+    """The setup's env with a stand-in `name` (a sh script) first on PATH."""
+    bin_dir = tmp_path / "bin2"
+    bin_dir.mkdir(exist_ok=True)
+    (bin_dir / name).write_text("#!/bin/sh\n" + text)
+    (bin_dir / name).chmod(0o755)
+    return {**setup["env"], "PATH": f"{bin_dir}{os.pathsep}{setup['env']['PATH']}"}
+
+
+def wait_for_text(path: Path, limit: float = 30.0) -> str:
+    import time
+
+    start = time.monotonic()
+    while time.monotonic() - start < limit:
+        if path.exists() and path.read_text().strip():
+            return path.read_text()
+        time.sleep(0.01)
+    raise AssertionError(f"{path} was not written in {limit} s")
+
+
+@pytest.mark.parametrize("target", ["group", "pid"])
+def test_a_sigkill_to_the_gate_ends_its_sampler_and_closes_its_pipes(gate_setup, target):
+    """A caller's harness ends the gate with SIGKILL, to its process group or to its pid alone, while
+    make runs; nothing can be trapped. The sampler must not loop on: it would hold the gate's stderr, so
+    a caller that reads the gate's output never sees its end, and it would run the quiet check for good.
+    Make runs on in its own group; the lock stays (SIGKILL). With the sampler as its own process group
+    and an external sleep, both cases left it looping, 1 of 1 run each (2026-11-19); the sampler as a
+    coprocess in the gate's group whose pipe ends with the gate passed 10 of 10 runs of each (load 2 to
+    5), each test's call 0.25 to 0.28 s with its setup. The 10 s the pipes may take is over 35 times
+    that."""
+    import signal
+    import threading
+    import time
+    import uuid
+
+    marker = uuid.uuid4().hex
+    env = {**gate_setup["env"], "STANDIN": "slow", "SAMPLER_RUN": marker, "GATE_SAMPLE_SECONDS": "60"}
+    argv = ["bash", str(GATE), str(gate_setup["tree"]), "work", gate_setup["head"], gate_setup["base"], "t1"]
+    proc = subprocess.Popen(
+        argv, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True
+    )
+    readers = [threading.Thread(target=f.read) for f in (proc.stdout, proc.stderr)]
+    for r in readers:
+        r.start()
+    make_pid = int(wait_for_text(Path(gate_setup["env"]["STANDIN_CALLS"] + ".pid")))
+    try:
+        time.sleep(0.2)
+        if target == "group":
+            os.killpg(proc.pid, signal.SIGKILL)
+        else:
+            os.kill(proc.pid, signal.SIGKILL)
+        proc.wait(timeout=30)
+        for r in readers:
+            r.join(timeout=10)
+        assert not any(r.is_alive() for r in readers), (
+            f"the gate's pipes were open 10 s after: {left_of(marker)}"
+        )
+        mine = []
+        for line in left_of(marker):
+            try:
+                if os.getpgid(int(line.split()[0])) != make_pid:
+                    mine.append(line)
+            except ProcessLookupError:
+                pass
+        assert mine == [], "the sampler runs on after the gate"
+    finally:
+        for line in left_of(marker):
+            try:
+                os.kill(int(line.split()[0]), signal.SIGKILL)
+            except OSError:
+                pass
+        for r in readers:
+            r.join(timeout=10)
+
+
+def test_the_lock_goes_only_after_every_process_of_makes_group_has_ended(gate_setup, tmp_path):
+    """make starts a test that takes 1 s to end after SIGTERM; make itself ends at once. SIGTERM to the
+    gate: the lock must still be there when the test looks, 1 s after its TERM, and the test must have
+    ended when the gate exits. When the gate waited for make's pid alone, 1 of 1 run found the test still
+    running at the gate's exit, with the lock gone (2026-11-19). The fixed script passed 10 of 10 runs
+    (load 2 to 5), each call 2.10 to 3.03 s; the gate's 60 s is over 19 times that."""
+    import signal
+
+    report = tmp_path / "report"
+    lock = gate_setup["dir"] / "GATE.lock"
+    test_pid = tmp_path / "test.pid"
+    env = stand_in(
+        tmp_path,
+        gate_setup,
+        "make",
+        f'echo "$*" >> "$STANDIN_CALLS"\n'
+        f'sh -c \'trap "sleep 1; ls {lock} > {report} 2>&1; exit 1" TERM;'
+        f" sleep 60 & {EXECED} echo $$ > {test_pid}; wait' &\n"
+        "wait\n",
+    )
+    argv = ["bash", str(GATE), str(gate_setup["tree"]), "work", gate_setup["head"], gate_setup["base"], "t1"]
+    proc = subprocess.Popen(argv, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    pid = int(wait_for_text(test_pid))
+    proc.send_signal(signal.SIGTERM)
+    out, err = proc.communicate(timeout=60)
+    assert proc.returncode == 143, out + err
+    assert not alive(pid), "make's test runs on after the gate ended"
+    assert report.read_text().strip() == str(lock), "the lock was gone while make's test still ran"
+    assert not lock.exists()
+
+
+def test_a_process_of_makes_group_that_ignores_sigterm_gets_sigkill_after_the_stop_time(gate_setup, tmp_path):
+    """make starts a test that ignores SIGTERM; GATE_STOP_SECONDS is 1. SIGTERM to the gate: the gate
+    kills make's group after 1 s, then frees the lock. When the gate waited for make's pid alone, 1 of 1
+    run left the test running (2026-11-19). The fixed script passed 10 of 10 runs (load 2 to 5), each
+    call 2.91 to 3.02 s with its setup; the bound of 20 s is over 6 times the slowest."""
+    import signal
+    import time
+
+    test_pid = tmp_path / "test.pid"
+    env = stand_in(
+        tmp_path,
+        gate_setup,
+        "make",
+        f"sh -c 'trap \"\" TERM; echo $$ > {test_pid}; while :; do sleep 1; done' &\nwait\n",
+    )
+    env["GATE_STOP_SECONDS"] = "1"
+    argv = ["bash", str(GATE), str(gate_setup["tree"]), "work", gate_setup["head"], gate_setup["base"], "t1"]
+    proc = subprocess.Popen(argv, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    pid = int(wait_for_text(test_pid))
+    try:
+        start = time.monotonic()
+        proc.send_signal(signal.SIGTERM)
+        out, err = proc.communicate(timeout=60)
+        took = time.monotonic() - start
+        assert proc.returncode == 143, out + err
+        assert took < 20
+        assert not alive(pid), "make's test runs on after the gate ended"
+        assert "make's process group still ran 1 s after the stop: sent it SIGKILL" in out
+        assert not (gate_setup["dir"] / "GATE.lock").exists()
+    finally:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+
+
+@pytest.mark.parametrize("second", ["a second SIGTERM", "a closed stdout"])
+def test_nothing_cuts_short_the_end_of_a_stopped_gate(gate_setup, tmp_path, second):
+    """make takes 1 s to end after SIGTERM. While the gate waits for it, a second SIGTERM comes, or the
+    caller that reads the gate's stdout has gone, so the gate's next line meets a closed pipe. Either
+    used to end the gate inside its EXIT trap: the lock stayed for good, every later gate stopped with
+    'another gate runs', and make ended unattended; 1 of 1 run each (2026-11-19). The fixed script
+    passed 10 of 10 runs of each (load 2 to 5), each call 1.07 to 1.19 s."""
+    import signal
+
+    stopping = tmp_path / "stopping"
+    make_pid = tmp_path / "make.pid"
+    env = stand_in(
+        tmp_path,
+        gate_setup,
+        "make",
+        # The pid is written once the trap is set and the sleep has exec'd: a TERM that reaches the
+        # forked child before its exec is lost (sh's handler only notes it), the sleep then runs its
+        # 60 s, and the gate rightly waits 30 s for it before SIGKILL.
+        f"trap 'touch {stopping}; sleep 1; exit 1' TERM\nsleep 60 &\n{EXECED}echo $$ > {make_pid}\nwait\n",
+    )
+    argv = ["bash", str(GATE), str(gate_setup["tree"]), "work", gate_setup["head"], gate_setup["base"], "t1"]
+    proc = subprocess.Popen(argv, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    pid = int(wait_for_text(make_pid))
+    if second == "a closed stdout":
+        proc.stdout.close()
+    proc.send_signal(signal.SIGTERM)
+    wait_for_file(stopping)
+    if second == "a second SIGTERM":
+        proc.send_signal(signal.SIGTERM)
+    proc.wait(timeout=60)
+    proc.stderr.read()
+    assert proc.returncode == 143
+    assert not alive(pid), "make runs on after the gate ended"
+    status = (gate_setup["dir"] / "gate-t1.status").read_text()
+    assert "make verify was stopped" in status and "lock removed" in status, status
+    assert not (gate_setup["dir"] / "GATE.lock").exists()
+
+
+def wait_for_file(path: Path, limit: float = 30.0) -> None:
+    import time
+
+    start = time.monotonic()
+    while not path.exists():
+        assert time.monotonic() - start < limit, f"{path} was not made in {limit} s"
+        time.sleep(0.01)
+
+
+def test_the_sampler_notes_a_helper_when_the_gate_runs_on_a_terminal_set_to_tostop(gate_setup, tmp_path):
+    """The gate runs on a terminal with `stty tostop`; the quiet check writes a warning to stderr and,
+    once make runs, names a busy helper. A sampler in a background process group of its own was stopped
+    by SIGTTOU at its first write to the terminal, and the .foreign file stayed empty (1 of 1 run,
+    2026-11-19): the land skill found no helper's work. The fixed script passed 10 of 10 runs (load 2
+    to 5)."""
+    if shutil.which("script") is None:
+        pytest.skip("script (util-linux) is not on PATH")
+    import shlex
+
+    go = tmp_path / "go"
+    env = stand_in(
+        tmp_path,
+        gate_setup,
+        "quiet",
+        f"echo 'quiet: a warning' >&2\n[ -e {go} ] && echo '999 helper busy'\nexit 0\n",
+    )
+    env = stand_in(
+        tmp_path, {**gate_setup, "env": env}, "make", f'touch {go}\nsleep 2.5\necho "VERIFY GREEN"\n'
+    )
+    env["GATE_QUIET"] = str(tmp_path / "bin2" / "quiet")
+    argv = ["bash", str(GATE), str(gate_setup["tree"]), "work", gate_setup["head"], gate_setup["base"], "t1"]
+    cmd = f"stty tostop; {shlex.join(argv)}"
+    run = subprocess.run(
+        ["script", "-qec", cmd, "/dev/null"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        cwd=tmp_path,
+    )
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert "999 helper busy" in (gate_setup["dir"] / "gate-t1.foreign").read_text()
+
+
+def test_a_sampler_that_died_early_gets_no_signal_from_the_gate(gate_setup, tmp_path):
+    """The sampler dies early (a stray SIGKILL), and its pid comes back as a helper's process group
+    leader. The gate must send that helper nothing when it ends its sampler. When the gate ended its
+    sampler with SIGKILL to the group of the sampler's pid, it killed the helper (1 of 1 run,
+    2026-11-19); the gate that sends its sampler no signal passed 10 of 10 runs, none skipped. Taking
+    the pid needs /proc/sys/kernel/ns_last_pid (root); without it the test skips."""
+    import signal
+    import time
+
+    go = tmp_path / "go"
+    make_pid = tmp_path / "make.pid"
+    env = stand_in(
+        tmp_path,
+        gate_setup,
+        "make",
+        f'echo $$ > {make_pid}\nwhile [ ! -e {go} ]; do sleep 0.05; done\necho "VERIFY GREEN"\n',
+    )
+    env["GATE_SAMPLE_SECONDS"] = "60"
+    argv = ["bash", str(GATE), str(gate_setup["tree"]), "work", gate_setup["head"], gate_setup["base"], "t1"]
+    proc = subprocess.Popen(argv, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    helper = None
+    try:
+        mpid = int(wait_for_text(make_pid))
+        kids = Path(f"/proc/{proc.pid}/task/{proc.pid}/children").read_text().split()
+        sampler = [int(k) for k in kids if int(k) != mpid][0]
+        os.kill(sampler, signal.SIGKILL)
+        try:
+            os.killpg(sampler, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        start = time.monotonic()
+        while True:
+            try:
+                os.killpg(sampler, 0)
+            except ProcessLookupError:
+                if not alive(sampler) and not Path(f"/proc/{sampler}").exists():
+                    break
+            assert time.monotonic() - start < 30, "the sampler's pid stayed in use"
+            time.sleep(0.01)
+        for _ in range(50):
+            try:
+                Path("/proc/sys/kernel/ns_last_pid").write_text(str(sampler - 1))
+            except OSError:
+                pytest.skip("cannot write /proc/sys/kernel/ns_last_pid")
+            h = subprocess.Popen(["setsid", "sleep", "100"])
+            if h.pid == sampler:
+                helper = h
+                break
+            h.kill()
+            h.wait()
+        if helper is None:
+            pytest.skip("could not take the sampler's pid")
+        time.sleep(0.1)
+        assert os.getpgid(helper.pid) == helper.pid
+        go.touch()
+        out, err = proc.communicate(timeout=60)
+        assert proc.returncode == 0, out + err
+        time.sleep(0.2)
+        assert helper.poll() is None, (
+            f"the gate killed the helper that took its sampler's pid: {helper.poll()}"
+        )
+    finally:
+        go.touch()
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+        if helper is not None:
+            helper.kill()
+            helper.wait()
+
+
+def gate_argv(setup: dict) -> list[str]:
+    return ["bash", str(GATE), str(setup["tree"]), "work", setup["head"], setup["base"], "t1"]
+
+
+def end_marked(marker: str) -> None:
+    """SIGKILL every process of this test's run that still runs (SAMPLER_RUN=<marker>)."""
+    import signal
+
+    for line in left_of(marker):
+        try:
+            os.kill(int(line.split()[0]), signal.SIGKILL)
+        except OSError:
+            pass
+
+
+def test_a_second_signal_as_the_gate_starts_its_end_does_not_cut_the_end_short(gate_setup, tmp_path):
+    """The stand-in make sends the gate SIGTERM, and the gate is held before the first line of its end,
+    finish(); the test sends a second SIGTERM there. When the signal traps ran a bare `exit`, the second
+    signal ran `exit` inside the EXIT trap: finish() stopped, the lock stayed for good and make ran on.
+    Now each trap ignores further signals before it exits."""
+    make_pid = tmp_path / "make.pid"
+    env = stand_in(tmp_path, gate_setup, "make", f"echo $$ > {make_pid}\nkill -TERM $PPID\nexec sleep 60\n")
+    env = {
+        "PATH": env["PATH"],
+        "GATE_SAMPLE_SECONDS": "60",
+        "HOLD_WHERE": "func",
+        "HOLD_FUNC": "finish",
+    }
+    run = held_gate(gate_setup, tmp_path, "slow", env, on_mark=term_then_release)
+    assert run["code"] == 143
+    assert run["left"] == [], "make runs on after the gate ended"
+    assert not (gate_setup["dir"] / "GATE.lock").exists(), "the second signal cut the gate's end short"
+
+
+def test_2_signals_with_no_gap_end_make_and_remove_the_lock_every_time(gate_setup, tmp_path):
+    """2 SIGTERMs back to back, 6 runs. A second signal in the instant between the trap's `exit` and
+    finish()'s first line cut the end short: the checker counted 13 and 22 of 40 runs with the lock left
+    and make running (2026-11-19). Here the old script passed 12 of 12 such runs, so the held test above
+    is the one that fails on the fault; this one keeps the checker's case."""
+    import signal
+    import uuid
+
+    pid_file = Path(gate_setup["env"]["STANDIN_CALLS"] + ".pid")
+    lock = gate_setup["dir"] / "GATE.lock"
+    for n in range(6):
+        marker = uuid.uuid4().hex
+        pid_file.unlink(missing_ok=True)
+        env = {**gate_setup["env"], "STANDIN": "slow", "SAMPLER_RUN": marker}
+        proc = subprocess.Popen(
+            gate_argv(gate_setup), env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        try:
+            make = int(wait_for_text(pid_file))
+            proc.send_signal(signal.SIGTERM)
+            proc.send_signal(signal.SIGTERM)
+            code = proc.wait(timeout=60)
+            assert code == 143, f"run {n}"
+            assert not alive(make), f"run {n}: make runs on after the gate ended"
+            assert not lock.exists(), f"run {n}: the lock stayed"
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+            end_marked(marker)
+
+
+def test_a_real_make_whose_test_ignores_sigterm_is_killed_after_the_stop_time(gate_setup, tmp_path):
+    """GNU make, on SIGTERM, waits for its children before it dies; its test here ignores SIGTERM. The
+    gate must not wait for make without a bound: GATE_STOP_SECONDS (1) runs while make or its group
+    runs, then SIGKILL to the group. When the gate ran a bare `wait` for make first, it hung, ignoring
+    every signal, with the lock in place (the checker, 2026-11-19)."""
+    import signal
+    import time
+    import uuid
+
+    real_make = shutil.which("make", path="/usr/bin:/bin:/usr/local/bin")
+    if real_make is None:
+        pytest.skip("no GNU make")
+    marker = uuid.uuid4().hex
+    test_pid = tmp_path / "test.pid"
+    makefile = tmp_path / "Makefile.verify"
+    makefile.write_text(f".PHONY: verify\nverify:\n\ttrap '' TERM; echo $$$$ > {test_pid}; exec sleep 1000\n")
+    env = stand_in(tmp_path, gate_setup, "make", f"exec {real_make} -f {makefile} verify\n")
+    env.update({"GATE_STOP_SECONDS": "1", "SAMPLER_RUN": marker})
+    proc = subprocess.Popen(
+        gate_argv(gate_setup), env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    )
+    try:
+        pid = int(wait_for_text(test_pid))
+        start = time.monotonic()
+        proc.send_signal(signal.SIGTERM)
+        out, err = proc.communicate(timeout=30)
+        took = time.monotonic() - start
+        assert proc.returncode == 143, out + err
+        assert took < 20
+        assert not alive(pid), "make's test runs on after the gate ended"
+        assert "make's process group still ran 1 s after the stop: sent it SIGKILL" in out
+        assert not (gate_setup["dir"] / "GATE.lock").exists()
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+        end_marked(marker)
+
+
+def test_a_quiet_look_that_hangs_does_not_hold_off_makes_stop_or_the_gates_end(gate_setup, tmp_path):
+    """Once make runs, the quiet check hangs (a 40 s sleep); SIGTERM comes while the sampler's look runs.
+    make must end at once, and the gate within 10 s of its bound on the sampler. When the gate waited
+    for the sampler before it stopped make, make ran on for the whole 40 s (the checker, 2026-11-19).
+    The look itself must not outlive the gate: when the gate sent SIGKILL to the sampler alone, the look
+    ran on for its 40 s and held the gate's stderr (the checker, 2026-11-19)."""
+    import signal
+    import time
+    import uuid
+
+    marker = uuid.uuid4().hex
+    go = tmp_path / "go"
+    look = tmp_path / "look.pid"
+    make_pid = tmp_path / "make.pid"
+    env = stand_in(tmp_path, gate_setup, "quiet", f"[ -e {go} ] || exit 0\necho $$ > {look}\nexec sleep 40\n")
+    env = stand_in(
+        tmp_path, {**gate_setup, "env": env}, "make", f"echo $$ > {make_pid}\ntouch {go}\nexec sleep 60\n"
+    )
+    env.update(
+        {"GATE_QUIET": str(tmp_path / "bin2" / "quiet"), "GATE_SAMPLE_SECONDS": "0.2", "SAMPLER_RUN": marker}
+    )
+    with open(tmp_path / "out", "w") as out:
+        proc = subprocess.Popen(gate_argv(gate_setup), env=env, stdout=out, stderr=out)
+    try:
+        make = int(wait_for_text(make_pid))
+        hung = int(wait_for_text(look))
+        start = time.monotonic()
+        proc.send_signal(signal.SIGTERM)
+        time.sleep(3)
+        assert not alive(make), "make runs on while the sampler's look hangs"
+        code = proc.wait(timeout=60)
+        assert code == 143
+        assert time.monotonic() - start < 20
+        assert not (gate_setup["dir"] / "GATE.lock").exists()
+        status = (gate_setup["dir"] / "gate-t1.status").read_text()
+        assert (
+            "the sampler's look still ran 10 s after its end: sent the sampler and its look SIGKILL" in status
+        )
+        assert not alive(hung), "the sampler's look runs on after the gate ended"
+        assert left_of(marker) == []
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+        end_marked(marker)
+
+
+@pytest.mark.parametrize(
+    "name, value, why",
+    [
+        ("GATE_STOP_SECONDS", "1.5", "must be whole seconds, 0 or more"),
+        ("GATE_STOP_SECONDS", "-1", "must be whole seconds, 0 or more"),
+        ("GATE_STOP_SECONDS", "abc", "must be whole seconds, 0 or more"),
+        ("GATE_STOP_SECONDS", "08", "must be whole seconds, 0 or more"),
+        ("GATE_SAMPLE_SECONDS", "0", "must be a number of seconds above 0"),
+        ("GATE_SAMPLE_SECONDS", "0.0", "must be a number of seconds above 0"),
+        ("GATE_SAMPLE_SECONDS", "abc", "must be a number of seconds above 0"),
+        ("GATE_SAMPLE_SECONDS", "-1", "must be a number of seconds above 0"),
+        ("GATE_QUIET_SECONDS", "abc", "must be a number of seconds, 0 or more"),
+        ("GATE_QUIET_SECONDS", "-1", "must be a number of seconds, 0 or more"),
+        ("GATE_QUIET_SECONDS", "1e3", "must be a number of seconds, 0 or more"),
+        ("GATE_QUIET_TRIES", "0", "must be a whole number above 0"),
+        ("GATE_QUIET_TRIES", "abc", "must be a whole number above 0"),
+        ("GATE_QUIET_TRIES", "1.5", "must be a whole number above 0"),
+        ("GATE_QUIET_LIMIT", "abc", "must be whole seconds, 0 or more"),
+        ("GATE_QUIET_LIMIT", "1.5", "must be whole seconds, 0 or more"),
+        ("GATE_QUIET_LIMIT", "08", "must be whole seconds, 0 or more"),
+    ],
+)
+def test_a_stop_or_sample_time_the_gate_cannot_use_is_a_bad_call(gate_setup, name, value, why):
+    """A fraction of GATE_STOP_SECONDS broke the gate's arithmetic and left the lock for good; a negative
+    one freed the lock while make's test ran; a GATE_SAMPLE_SECONDS of 0, a word or a negative number made
+    the sampler look once and stop, with an empty .foreign file (the checker, 2026-11-19). A
+    GATE_QUIET_SECONDS that is a word, or a GATE_QUIET_TRIES of 0 or a word, skipped the quiet wait: the
+    gate ran and pushed while helpers ran, its status line saying it saw quiet; a GATE_QUIET_LIMIT that
+    is a word made a busy machine's wait endless (the checker, 2026-11-19). Each is now a bad call
+    before the lock."""
+    env = {**gate_setup["env"], "STANDIN": "green", name: value}
+    run = subprocess.run(gate_argv(gate_setup), env=env, capture_output=True, text=True, timeout=60)
+    assert (run.returncode, run.stdout) == (2, "")
+    assert run.stderr.splitlines() == [f"gate-and-push: {name} {why}: {value}"]
+    assert not (gate_setup["dir"] / "GATE.lock").exists()
+    assert not Path(gate_setup["env"]["STANDIN_CALLS"]).exists()
+    assert remote_head(gate_setup) == gate_setup["base"]
+
+
+def test_a_fraction_of_a_second_between_quiet_looks_still_waits_for_quiet(gate_setup, tmp_path):
+    """The quiet check names a helper at its first 2 looks, then none. GATE_QUIET_SECONDS 0.5 broke the
+    gate's arithmetic after the first look: the wait ended there, and the gate ran and pushed while the
+    helper ran, its status line saying 'quiet for 3 looks after 0 s' (the checker, 2026-11-19). The
+    gate must look 5 times at least: 2 busy, then 3 quiet."""
+    looks = tmp_path / "looks"
+    go = tmp_path / "go"
+    env = stand_in(
+        tmp_path,
+        gate_setup,
+        "quiet",
+        f"[ -e {go} ] && exit 0\necho x >> {looks}\n"
+        f"[ \"$(wc -l < {looks})\" -gt 2 ] || echo '4242 python3 /x/helper/engine.py'\nexit 0\n",
+    )
+    env = stand_in(tmp_path, {**gate_setup, "env": env}, "make", f'touch {go}\necho "VERIFY GREEN"\n')
+    env.update({"GATE_QUIET": str(tmp_path / "bin2" / "quiet"), "GATE_QUIET_SECONDS": "0.5"})
+    run = subprocess.run(gate_argv(gate_setup), env=env, capture_output=True, text=True, timeout=120)
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert run.stderr == ""
+    assert len(looks.read_text().splitlines()) >= 5
+    assert "quiet for 3 looks after" in (gate_setup["dir"] / "gate-t1.status").read_text()
+
+
+def test_a_quiet_look_that_fails_during_the_gate_is_written_to_the_foreign_file(gate_setup, tmp_path):
+    """Once make runs, the quiet check fails. The sampler took a failed look as 'no helper', and the
+    .foreign file stayed empty, which the land skill reads as 'no helper ran' (the checker, 2026-11-19).
+    A failed look is now a line of its own in that file."""
+    go = tmp_path / "go"
+    env = stand_in(
+        tmp_path, gate_setup, "quiet", f"[ -e {go} ] || exit 0\necho 'quiet: ps failed' >&2\nexit 1\n"
+    )
+    env = stand_in(
+        tmp_path, {**gate_setup, "env": env}, "make", f'touch {go}\nsleep 1\necho "VERIFY GREEN"\n'
+    )
+    env.update({"GATE_QUIET": str(tmp_path / "bin2" / "quiet"), "GATE_SAMPLE_SECONDS": "0.2"})
+    run = subprocess.run(gate_argv(gate_setup), env=env, capture_output=True, text=True, timeout=120)
+    assert run.returncode == 0, run.stdout + run.stderr
+    foreign = (gate_setup["dir"] / "gate-t1.foreign").read_text()
+    assert f"the quiet check {env['GATE_QUIET']} failed" in foreign, foreign
+
+
+def test_the_gates_own_shell_takes_no_output_through_a_command_substitution_once_a_trap_is_set():
+    """A signal that comes while bash parses a $(...) in the gate's own shell can make its trap fail to
+    parse ('trap: line 2: unexpected EOF while looking for matching `)''): the stop was lost, and the
+    gate ran make to its end and pushed with exit 0 (the checker, 2026-11-19, bash 5.2.21: 1 of 160 and
+    1 of 150 runs of a SIGTERM spray, 2 and 3 of 150 of SIGINT). The gate's own shell now reads output
+    from a file, and takes its times from printf and SECONDS. The only $(...) left run in the sampler, a
+    subshell whose signals have their defaults."""
+    lines = GATE.read_text().splitlines()
+    start = lines.index("coproc SAMPLER_IO {")
+    end = lines.index("}", start)
+    code = [
+        line for i, line in enumerate(lines) if not start <= i <= end and not line.lstrip().startswith("#")
+    ]
+    assert [line.strip() for line in code if "$(" in line.replace("$((", "")] == []
+    assert [line for line in code if "`" in line] == []
+
+
+@pytest.mark.parametrize("sig, code", [("SIGTERM", 143), ("SIGINT", 130)])
+def test_a_signal_to_the_gates_group_while_it_makes_the_lock_removes_the_lock(
+    gate_setup, tmp_path, sig, code
+):
+    """The gate is held at the command that writes the lock, and the test sends the signal to the gate's
+    process group, as a Ctrl-C, a closed terminal or a harness that ends a group does. When a subshell
+    wrote the lock, the signal killed it, its noting traps reset to the defaults, and the gate read that
+    as another gate's lock: exit 3, and when the signal came after the file was opened the lock stayed
+    for good (the checker, 2026-11-19: 3 of 3 held runs, and 6 to 10 of 120 to 160 runs of a spray). The
+    lock is now made in the gate's own shell while a signal is only noted."""
+    import signal
+
+    def group_then_release(proc, mark):
+        os.killpg(proc.pid, getattr(signal, sig))
+        Path(f"{mark}.sent").touch()
+
+    env = {"HOLD_WHERE": "cmd", "HOLD_CMD": '> "$LOCK"'}
+    run = held_gate(gate_setup, tmp_path, "slow", env, on_mark=group_then_release, session=True)
+    assert run["mark"].read_text().strip().endswith('> "$LOCK"')
+    status = (gate_setup["dir"] / "gate-t1.status").read_text()
+    assert run["code"] == code, status
+    assert "another gate runs" not in status, status
+    assert not (gate_setup["dir"] / "GATE.lock").exists()
+    assert not Path(gate_setup["env"]["STANDIN_CALLS"]).exists(), "make ran after the signal"
+    assert run["left"] == []
+
+
+def test_a_group_that_sigkill_cannot_empty_is_given_up_10_s_after_sigkill(gate_setup, tmp_path):
+    """A process of make's group forks a child that exits, then leaves the group with setsid and never
+    reaps it: the group holds only a zombie, which no signal ends. make ends green. The gate sends the
+    group SIGTERM, SIGKILL after GATE_STOP_SECONDS (0 here), gives up 10 s later and says so, then pushes,
+    and the lock goes. No test covered the give-up: without it the gate waited until the zombie's parent
+    ended, and 43 of 43 tests passed (the checker, 2026-11-19)."""
+    import time
+    import uuid
+
+    marker = uuid.uuid4().hex
+    keeper = tmp_path / "keeper.pid"
+    (tmp_path / "keeper.py").write_text(
+        "import os, time\n"
+        "if os.fork() == 0:\n"
+        "    os._exit(0)\n"
+        "os.setsid()\n"
+        f"open({str(keeper)!r}, 'w').write(str(os.getpid()))\n"
+        "time.sleep(60)\n"
+    )
+    env = stand_in(
+        tmp_path,
+        gate_setup,
+        "make",
+        f"{sys.executable} {tmp_path / 'keeper.py'} &\n"
+        f'while [ ! -s {keeper} ]; do sleep 0.01; done\necho "VERIFY GREEN"\n',
+    )
+    env.update({"GATE_STOP_SECONDS": "0", "SAMPLER_RUN": marker})
+    try:
+        start = time.monotonic()
+        run = subprocess.run(gate_argv(gate_setup), env=env, capture_output=True, text=True, timeout=120)
+        took = time.monotonic() - start
+        assert run.returncode == 0, run.stdout + run.stderr
+        assert "make's process group still holds processes 10 s after SIGKILL" in run.stdout, run.stdout
+        assert took < 25
+        assert not (gate_setup["dir"] / "GATE.lock").exists()
+        assert remote_head(gate_setup) == gate_setup["head"]
+    finally:
+        end_marked(marker)
+
+
+def test_a_process_that_takes_makes_pid_during_the_push_gets_no_signal(gate_setup, tmp_path):
+    """make ends green with its group empty; during the push a helper's process takes make's pid as its
+    own process group. The gate must send it nothing. When the gate kept make's group number until its
+    end, it sent that helper SIGTERM (the checker, 2026-11-19). Taking the pid needs
+    /proc/sys/kernel/ns_last_pid (root); without it the test skips."""
+    import signal
+
+    last = Path("/proc/sys/kernel/ns_last_pid")
+    if not os.access(last, os.W_OK):
+        pytest.skip("cannot write /proc/sys/kernel/ns_last_pid")
+    make_pid = tmp_path / "make.pid"
+    helper_pid = tmp_path / "helper.pid"
+    real_git = shutil.which("git")
+    env = stand_in(tmp_path, gate_setup, "make", f'echo $$ > {make_pid}\necho "VERIFY GREEN"\n')
+    env = stand_in(
+        tmp_path,
+        {**gate_setup, "env": env},
+        "git",
+        'case " $* " in\n'
+        '  *" push "*)\n'
+        f"    m=$(cat {make_pid})\n"
+        "    i=0\n"
+        '    while [ "$i" -lt 50 ]; do\n'
+        f"      echo $((m - 1)) > {last} || break\n"
+        "      setsid sleep 100 < /dev/null > /dev/null 2>&1 &\n"
+        "      h=$!\n"
+        f'      if [ "$h" = "$m" ]; then echo "$h" > {helper_pid}; break; fi\n'
+        '      kill "$h"; i=$((i + 1))\n'
+        "    done ;;\n"
+        "esac\n"
+        f'exec {real_git} "$@"\n',
+    )
+    helper = None
+    try:
+        run = subprocess.run(gate_argv(gate_setup), env=env, capture_output=True, text=True, timeout=120)
+        if helper_pid.exists():
+            helper = int(helper_pid.read_text())
+        assert run.returncode == 0, run.stdout + run.stderr
+        if helper is None:
+            pytest.skip("could not take make's pid")
+        status = (gate_setup["dir"] / "gate-t1.status").read_text()
+        assert "processes of its group still ran" not in status, status
+        assert alive(helper), "the gate signalled the helper that took make's pid"
+    finally:
+        if helper is not None:
+            try:
+                os.kill(helper, signal.SIGKILL)
+            except OSError:
+                pass
+
+
+def test_what_a_green_make_leaves_in_its_group_ends_before_the_push(gate_setup, tmp_path):
+    """make ends green and leaves a process of its group running, which ends on SIGTERM. The gate ends
+    it right after make, before the push (so make's group number is not kept through the push), says
+    so, and ends quickly."""
+    import time
+
+    member = tmp_path / "member.pid"
+    env = stand_in(
+        tmp_path,
+        gate_setup,
+        "make",
+        f"sh -c 'sleep 60 & {EXECED} echo $$ > {member}; wait' &\n"
+        f'while [ ! -s {member} ]; do sleep 0.01; done\necho "VERIFY GREEN"\n',
+    )
+    start = time.monotonic()
+    run = subprocess.run(gate_argv(gate_setup), env=env, capture_output=True, text=True, timeout=120)
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert time.monotonic() - start < 15
+    pid = int(member.read_text())
+    assert not alive(pid)
+    lines = (gate_setup["dir"] / "gate-t1.status").read_text().splitlines()
+    said = [i for i, line in enumerate(lines) if "make ended, and processes of its group still ran" in line]
+    pushed = [i for i, line in enumerate(lines) if "PUSHED" in line]
+    assert said and pushed and said[0] < pushed[0], lines
+
+
+def test_a_signal_just_after_the_lock_is_made_still_removes_it(gate_setup, tmp_path):
+    """The gate is held at its first command after the lock exists; SIGTERM there. When the gate set
+    its traps only some lines after the lock, the signal ended it with the lock left for good."""
+    env = {"HOLD_WHERE": "locked", "HOLD_LOCK": str(gate_setup["dir"] / "GATE.lock")}
+    run = held_gate(gate_setup, tmp_path, "slow", env, on_mark=term_then_release)
+    assert run["code"] == 143
+    assert not (gate_setup["dir"] / "GATE.lock").exists()
+    assert not Path(gate_setup["env"]["STANDIN_CALLS"]).exists(), "make ran after the signal"
+    assert run["left"] == []
+
+
+def test_a_closed_stdout_ends_the_gate_with_141_and_removes_the_lock(gate_setup):
+    """The caller that reads the gate's stdout has gone before the gate's first line. The gate ends with
+    141, a listed exit, after its end has removed the lock; nothing is pushed. It died by SIGPIPE (-13)
+    before."""
+    read, write = os.pipe()
+    os.close(read)
+    env = {**gate_setup["env"], "STANDIN": "green"}
+    try:
+        run = subprocess.run(gate_argv(gate_setup), env=env, stdout=write, stderr=subprocess.PIPE, timeout=60)
+    finally:
+        os.close(write)
+    assert run.returncode == 141
+    assert not (gate_setup["dir"] / "GATE.lock").exists()
+    assert remote_head(gate_setup) == gate_setup["base"]
+    assert "lock removed" in (gate_setup["dir"] / "gate-t1.status").read_text()
 
 
 def test_gate_and_push_passes_shellcheck():

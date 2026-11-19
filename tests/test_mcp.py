@@ -40,6 +40,19 @@ needs_kicad = engine(pytest.mark.skipif(shutil.which("kicad-cli") is None, reaso
 needs_ngspice = engine(pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice not installed"))
 
 
+def end_holder(holder: subprocess.Popen) -> None:
+    """End a test's lock holder and the command it holds the lock for: `enginelock.py hold -- sleep`
+    runs the sleep as its child, and a kill of the holder alone left that sleep running after the test
+    (4 `sleep 120` on CI's runner, job 135640214078). The holder is a session of its own; its group goes."""
+    import signal
+
+    try:
+        os.killpg(holder.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    holder.wait()
+
+
 class Client:
     """A test client: starts `workcenter mcp ROOT` and speaks to it over its stdin and stdout."""
 
@@ -329,9 +342,11 @@ def test_a_waiting_gate_leaves_ping_answered_and_is_cancelled(tmp_path, lock_dir
     env = dict(os.environ, WORKCENTER_LOCK_DIR=str(lock_dir))
     env.pop("WORKCENTER_LOCK_TICKET", None)
     holder = subprocess.Popen(
-        [sys.executable, str(LOCK_PY), "hold", "--what", "test holder", "--", "sleep", "120"], env=env
+        [sys.executable, str(LOCK_PY), "hold", "--what", "test holder", "--", "sleep", "120"],
+        env=env,
+        start_new_session=True,
     )
-    request.addfinalizer(lambda: (holder.kill(), holder.wait()))
+    request.addfinalizer(lambda: end_holder(holder))
     end = time.monotonic() + 20
     while not list(lock_dir.glob("*.held")):
         assert time.monotonic() < end, "the holder never took the lock"
@@ -405,9 +420,11 @@ def test_sigterm_stops_the_server_and_the_commands_it_started(tmp_path, lock_dir
     env = dict(os.environ, WORKCENTER_LOCK_DIR=str(lock_dir))
     env.pop("WORKCENTER_LOCK_TICKET", None)
     holder = subprocess.Popen(
-        [sys.executable, str(LOCK_PY), "hold", "--what", "test holder", "--", "sleep", "120"], env=env
+        [sys.executable, str(LOCK_PY), "hold", "--what", "test holder", "--", "sleep", "120"],
+        env=env,
+        start_new_session=True,
     )
-    request.addfinalizer(lambda: (holder.kill(), holder.wait()))
+    request.addfinalizer(lambda: end_holder(holder))
     end = time.monotonic() + 20
     while not list(lock_dir.glob("*.held")):
         assert time.monotonic() < end, "the holder never took the lock"
@@ -436,9 +453,11 @@ def _waiting_sim(tmp_path: Path, lock_dir: Path, request, every: str = "0.2"):
     env = dict(os.environ, WORKCENTER_LOCK_DIR=str(lock_dir))
     env.pop("WORKCENTER_LOCK_TICKET", None)
     holder = subprocess.Popen(
-        [sys.executable, str(LOCK_PY), "hold", "--what", "test holder", "--", "sleep", "120"], env=env
+        [sys.executable, str(LOCK_PY), "hold", "--what", "test holder", "--", "sleep", "120"],
+        env=env,
+        start_new_session=True,
     )
-    request.addfinalizer(lambda: (holder.kill(), holder.wait()))
+    request.addfinalizer(lambda: end_holder(holder))
     end = time.monotonic() + 20
     while not list(lock_dir.glob("*.held")):
         assert time.monotonic() < end, "the holder never took the lock"
@@ -623,9 +642,11 @@ def test_a_gate_that_waited_on_the_lock_finishes_with_its_verdict(tmp_path, lock
     env = dict(os.environ, WORKCENTER_LOCK_DIR=str(lock_dir))
     env.pop("WORKCENTER_LOCK_TICKET", None)
     holder = subprocess.Popen(
-        [sys.executable, str(LOCK_PY), "hold", "--what", "test holder", "--", "sleep", "3"], env=env
+        [sys.executable, str(LOCK_PY), "hold", "--what", "test holder", "--", "sleep", "3"],
+        env=env,
+        start_new_session=True,
     )
-    request.addfinalizer(lambda: (holder.kill(), holder.wait()))
+    request.addfinalizer(lambda: end_holder(holder))
     end = time.monotonic() + 20
     while not list(lock_dir.glob("*.held")):
         assert time.monotonic() < end, "the holder never took the lock"
