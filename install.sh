@@ -428,9 +428,9 @@ uri_host() {
 # The sources (apt_sources) that printed no Hit:, Get:, Ign: or Err: line in apt's lines $1. apt prints 1
 # such line per index file as its server answers or fails (apt 2.8.3, apt-private/acqprogress.cc), with the
 # host a mirror list gave it, so a source of a mirror list (mirror+file:<list>) is heard when any host of
-# its list is. Sets SILENT, the sources, a mirror list's with its hosts in the list's order, and
-# SILENT_HOSTS, the hosts of the silent sources of a list of more than 1 host: apt asks such a list's
-# first host first, and a command can put it last. A source of 1 host (KiCad 10's) is asked again as it is.
+# its list is. Sets SILENT, the sources, a mirror list's with its hosts in the order apt asks them, and
+# SILENT_HOSTS, the hosts of the silent sources of a list of more than 1 host, in that order: a command
+# can put the first last. A source of 1 host (KiCad 10's) is asked again as it is.
 silent_sources() {
   local heard uri suite host said one
   local -a list
@@ -442,8 +442,25 @@ silent_sources() {
   while read -r uri suite; do
     list=()
     if [[ "$uri" == mirror+file:* ]]; then
-      mapfile -t list < <(awk '!/^[[:space:]]*(#|$)/ { h = $1; sub(/^[a-z+]+:\/\//, "", h); sub(/[\/:].*$/, "", h); print h }' \
-        "${uri#mirror+file:}" 2> /dev/null || true)
+      # The hosts in the order apt asks them: the lowest priority first, a line with none last, then the
+      # line (apt-transport-mirror(1); tools/ci/apt_archive.sh's read_list). Its rank step and its --slow
+      # mode rewrite only the priorities: in job 135593285528 the lines were us-east-2, archive, security
+      # and apt asked security first.
+      mapfile -t list < <(awk '!/^[[:space:]]*(#|$)/ {
+          h = $1; sub(/^[a-z+]+:\/\//, "", h); sub(/[\/:].*$/, "", h)
+          if (h in seen) next
+          seen[h] = 1; p = 999999
+          if (match($0, /(^|[[:space:]])priority:[0-9]+/)) { p = substr($0, RSTART, RLENGTH); sub(/^[^:]*:/, "", p) }
+          n++; H[n] = h; P[n] = p + 0
+        }
+        END {
+          for (i = 2; i <= n; i++) {
+            h = H[i]; p = P[i]
+            for (j = i - 1; 1 <= j && p < P[j]; j--) { H[j + 1] = H[j]; P[j + 1] = P[j] }
+            H[j + 1] = h; P[j + 1] = p
+          }
+          for (i = 1; i <= n; i++) print H[i]
+        }' "${uri#mirror+file:}" 2> /dev/null || true)
     else
       list=("$(uri_host "$uri")")
     fi

@@ -482,7 +482,8 @@ MUTATIONS = [
     ("IA188 update: a source heard still named", "install.sh",
      "    if ((one)); then continue; fi\n", ""),
     ("IA189 update: a mirror list's hosts not read", "install.sh",
-     '    if [[ "$uri" == mirror+file:* ]]; then\n      mapfile', "    if false; then\n      mapfile"),
+     '    if [[ "$uri" == mirror+file:* ]]; then\n      # The hosts in the order apt asks them',
+     "    if false; then\n      # The hosts in the order apt asks them"),
     ("IA190 update: a source of 1 host given to the command", "install.sh",
      "    if ((${#list[@]} > 1)); then\n", "    if true; then\n"),
     ("IA191 update: a host given to the command twice", "install.sh",
@@ -548,5 +549,13 @@ MUTATIONS = [
      ""),
     ("IA216 boot: a cut update not said as one", "install.sh",
      'if ((rc == 124)) && [[ -n "${APT_UPDATE_TIMEOUT}" ]]; then', "if false; then"),
+    # The review of wip/install3, from IA230 (the trunk's list already has IA215 and IA216 of its own).
+    # F1: a mirror list's hosts in the order apt asks them.
+    ("IA230 update: a mirror list's hosts in line order", "install.sh",
+     "for (j = i - 1; 1 <= j && p < P[j]; j--)", "for (j = i - 1; 1 <= j && 0; j--)"),
+    ("IA231 update: a line with no priority asked first", "install.sh",
+     "seen[h] = 1; p = 999999", "seen[h] = 1; p = 0"),
+    ("IA232 update: the priority read as 0", "install.sh",
+     'n++; H[n] = h; P[n] = p + 0', 'n++; H[n] = h; P[n] = 0'),
 ]
 # fmt: on

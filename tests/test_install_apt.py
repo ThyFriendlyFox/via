@@ -604,7 +604,8 @@ def cut_update(*lines: str) -> str:
 
 
 def silent(listed: str) -> str:
-    """The mirror list's 2 suites, as a cut try names them: the list's hosts in its order."""
+    """The mirror list's 2 suites, as a cut try names them: the list's hosts in the order apt asks them
+    (here the lines' order: their priorities are 1 and 2)."""
     hosts = "(slow.example, archive.ubuntu.com)"
     return f"{listed} noble {hosts}, {listed} noble-updates {hosts}"
 
@@ -652,8 +653,8 @@ def test_a_cut_try_shows_at_most_its_last_10_lines(tmp_path):
 
 def test_between_2_cut_tries_the_named_command_moves_the_mirror_lists_silent_hosts(tmp_path):
     """The hook of the download (APT_SLOW_PASS_COMMAND, CI: tools/ci/apt_archive.sh --slow) runs between
-    2 tries too, with the hosts of the mirror list's sources that had not answered, in the list's order:
-    the first goes last. It runs before the wait, and not after the last try."""
+    2 tries too, with the hosts of the mirror list's sources that had not answered, in the order apt
+    asks them: the first goes last. It runs before the wait, and not after the last try."""
     runner_sources(tmp_path)
     hook = 'printf "%s\\n" "$*" >> "$STUB_DIR/hooked"; echo "[apt-archive] moved"'
     env = {**CI, "APT_SLOW_PASS_COMMAND": "slow-pass --slow"}
@@ -664,6 +665,53 @@ def test_between_2_cut_tries_the_named_command_moves_the_mirror_lists_silent_hos
     assert of(calls, "slow-pass") == ["slow-pass --slow slow.example archive.ubuntu.com"] * 2
     said = "[install] apt: APT_SLOW_PASS_COMMAND: slow-pass --slow slow.example archive.ubuntu.com"
     assert out.splitlines().count(said) == 2
+
+
+APT_ARCHIVE = ROOT / "tools" / "ci" / "apt_archive.sh"
+
+
+def test_between_2_cut_tries_the_host_apt_asks_first_goes_last_each_time(tmp_path):
+    """The mirror list of job 135593285528 after its rank step: its lines are us-east-2, archive and
+    security, at priorities 3, 2 and 1, and its log says `apt asks https://security.ubuntu.com/ubuntu/,
+    then https://archive.ubuntu.com/ubuntu/, then http://us-east-2...`. The hook gets the silent list's
+    hosts in the order apt asks them (the lowest priority first, then the line), so the real
+    `tools/ci/apt_archive.sh --slow` moves the host apt asks first after each cut try: security, then
+    archive. In line order it moved us-east-2 twice and apt asked security first all 3 tries. A line
+    with no priority (azure, here the first line) is asked last, as apt_archive.sh's read_list has it."""
+    apt = tmp_path / "apt"
+    apt.mkdir()
+    listed = apt / "apt-mirrors.txt"
+    listed.write_text(
+        "http://azure.archive.ubuntu.com/ubuntu/\n"
+        "http://us-east-2.ec2.archive.ubuntu.com/ubuntu/\tpriority:3\n"
+        "https://archive.ubuntu.com/ubuntu/\tpriority:2\n"
+        "https://security.ubuntu.com/ubuntu/\tpriority:1\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "sources.list.d").mkdir()
+    (tmp_path / "sources.list.d" / "ubuntu.sources").write_text(
+        f"Types: deb\nURIs: mirror+file:{listed}\nSuites: noble noble-updates\nComponents: main\n",
+        encoding="utf-8",
+    )
+    hook = f'PATH=/usr/bin:/bin TMPDIR="$STUB_DIR/tmp" APT_DIR={apt} APT_ARCHIVE_CI=1 {BASH} {APT_ARCHIVE} "$@"'
+    env = {**CI, "APT_SLOW_PASS_COMMAND": "slow-pass --slow"}
+    code, out, err, calls = run(tmp_path, {"timeout": cut_update(*HEARD), "slow-pass": hook}, env=env)
+    assert code == 1, err
+    east, archive, security = "us-east-2.ec2.archive.ubuntu.com", "archive.ubuntu.com", "security.ubuntu.com"
+    azure = "azure.archive.ubuntu.com"
+    assert of(calls, "slow-pass") == [
+        f"slow-pass --slow {security} {archive} {east} {azure}",
+        f"slow-pass --slow {archive} {east} {azure} {security}",
+    ]
+    moved = [x.split(": ", 1)[1].split(" was too slow")[0] for x in out.splitlines() if "was too slow" in x]
+    assert moved == [security, archive]
+    assert listed.read_text(encoding="utf-8").splitlines() == [
+        f"http://{azure}/ubuntu/\tpriority:2",
+        f"http://{east}/ubuntu/\tpriority:1",
+        f"https://{archive}/ubuntu/\tpriority:4",
+        f"https://{security}/ubuntu/\tpriority:3",
+    ]
+    assert f"noble ({security}, {archive}, {east}, {azure})" in out
 
 
 def test_a_silent_source_of_1_host_is_simply_tried_again(tmp_path):
