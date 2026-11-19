@@ -5298,6 +5298,7 @@ def cmd_doctor(args) -> int:
     java = tool_version([JAVA, "-version"], r'(?<=version ")\d+(\.\d+)*')
     py = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
     openems = fields().OpenEMS.version()
+    node = tool_version(["node", "--version"], r"(?<=v)\d+(\.\d+)+")
     checks = {
         "kicad-cli": {"required": True, "ok": bool(kicad and kicad.startswith("10.")), "version": kicad},
         "ngspice": {"required": True, "ok": bool(ngspice), "version": ngspice},
@@ -5351,6 +5352,16 @@ def cmd_doctor(args) -> int:
             "ok": (KISTACK_DIR / "skills" / "layout-placement" / "scripts").is_dir(),
             "path": str(KISTACK_DIR),
         },
+        # A tool of Via's own tests, not of a board: install.sh does not install it, and its
+        # absence degrades nothing. The image installs it, and `image.py record` refuses an image without it.
+        "node": {
+            "required": False,
+            "advisory": True,
+            "ok": node is not None,
+            "version": node,
+            "for": "Via's own tests (tests/test_forms.py, tests/test_lead.py, "
+            "tests/test_ci_nightly_issue.py); a board needs none",
+        },
     }
     # The chip engines install on request. A workcenter without them is whole for boards, so their
     # rows are listed only where the chip step ran: an absent one then says what the step lost.
@@ -5379,6 +5390,8 @@ def cmd_doctor(args) -> int:
         for name, c in checks.items():
             mark = "ok " if c["ok"] else ("MISSING" if c["required"] else "absent ")
             extra = c.get("version") or c.get("path") or ""
+            if c.get("for"):
+                extra = f"{extra}  ({c['for']})" if extra else f"({c['for']})"
             print(f"  {mark:8} {name:12} {extra}")
         print(f"  {'':8} engine lock  {enginelock().status_line(payload['engine_lock'])}")
         if not chip_folder.is_dir():
