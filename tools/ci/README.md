@@ -206,7 +206,10 @@ every file they wrote is that user's. The real build test of
 `tests/test_image.py` runs only when asked by name:
 `WORKCENTER_TEST_IMAGE_BUILD=1 python3 -m pytest tests/test_image.py::test_the_image_builds_and_runs_the_gates_as_the_calling_user`,
 on a machine where `docker info` answers. Nothing sets the variable for
-`make verify` or `make check`. On the install path the build took about
+`make verify` or `make check`: a test reads the workflows, the Makefile,
+verify/'s scripts, pyproject.toml and every conftest.py for it. Another
+test refuses `continue-on-error`, and a shell other than GitHub's default
+`bash -e`, on the build job and on its Build and gates steps. On the install path the build took about
 669 s of the file's 674.6 s, and made its shard the longest, 991 s
 (job 135422229691).
 

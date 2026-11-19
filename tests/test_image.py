@@ -9,6 +9,7 @@ answers, and nothing sets the variable for the health gate.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import inspect
 import json
@@ -846,18 +847,69 @@ def test_the_image_workflow_checks_on_every_machine_what_the_build_test_checked(
     image workflow's build job holds each, on both machines, on every pull request that touches the
     toolchain's files: the build step, the gates step under `bash -e`, `test -s` on the record, and the
     owners of every file the gates wrote."""
-    job = flow(IMAGE_FLOW)["jobs"]["build"]
-    assert "if" not in job
+    holds_what_the_build_test_checked(flow(IMAGE_FLOW))
+
+
+def holds_what_the_build_test_checked(data: dict) -> None:
+    """Asserts that the image workflow's build job holds the 4 checks of the build test, and that a
+    failure of either step fails the run: no `continue-on-error`, and GitHub's default shell, `bash -e`."""
+    job = data["jobs"]["build"]
+    assert "if" not in job and "continue-on-error" not in job
+    assert "defaults" not in data and "defaults" not in job
     build = step_named(job, "Build")
     assert "if" not in build and build["run"].lstrip().startswith("docker build ")
     gates = step_named(job, "The gates on a fixture")
     assert "if" not in gates
+    for step in (build, gates):
+        assert "continue-on-error" not in step and "shell" not in step, step["name"]
     lines = [line.strip() for line in gates["run"].splitlines()]
     assert 'cp -r tests/boards/pass-rc-divider "$board"' in lines
     run = next(i for i, line in enumerate(lines) if line.startswith("docker run "))
     assert '--user "$(id -u):$(id -g)"' in lines[run] and lines[run].endswith("workcenter gates .")
     written = lines.index('test -s "$board/build/gates.json"')
     assert run < written < lines.index('test "$owners" = "$me"')
+
+
+def test_a_build_job_whose_failure_does_not_fail_the_run_holds_nothing():
+    """`continue-on-error` on the build job, the Build step or the gates step leaves the run green when
+    the build or the gates fail. A `shell` that is not GitHub's default `bash -e` (on the step, the job's
+    or the workflow's `defaults`) lets a failing line pass. Each planted key is refused."""
+    real = flow(IMAGE_FLOW)
+
+    def planted(where: str, key: str, value):
+        data = copy.deepcopy(real)
+        job = data["jobs"]["build"]
+        places = {
+            "job": job,
+            "Build": step_named(job, "Build"),
+            "gates": step_named(job, "The gates on a fixture"),
+            "workflow": data,
+        }
+        place = places[where]
+        if key == "defaults":
+            place["defaults"] = {"run": {"shell": value}}
+        else:
+            place[key] = value
+        return data
+
+    cases = [
+        ("job", "continue-on-error", True),
+        ("job", "continue-on-error", "${{ matrix.arch == 'arm64' }}"),
+        ("Build", "continue-on-error", True),
+        ("gates", "continue-on-error", True),
+        ("Build", "shell", "bash {0}"),
+        ("gates", "shell", "bash {0}"),
+        ("job", "defaults", "bash {0}"),
+        ("workflow", "defaults", "bash {0}"),
+    ]
+    held = []
+    for where, key, value in cases:
+        try:
+            holds_what_the_build_test_checked(planted(where, key, value))
+        except AssertionError:
+            continue
+        held.append((where, key, value))
+    assert held == []
 
 
 def test_the_image_path_runs_make_verify_only_after_its_check_passes(tmp_path):
@@ -993,16 +1045,22 @@ def test_the_build_test_runs_only_when_asked_by_name():
 
 
 def asking_for_the_build(root: Path) -> list[str]:
-    """The files of `root` that run tests and name the build's variable: every workflow, the Makefile,
-    and every file under verify/ but its documents."""
+    """The files of `root` that run tests or set them up and name the build's variable: every workflow,
+    the Makefile, every file under verify/ but its documents, pytest's configuration files and every
+    conftest.py at the root or under tests/ (pytest reads them before this file works out BUILD_SKIP)."""
     places = [*sorted((root / ".github" / "workflows").glob("*.yml")), root / "Makefile"]
     places += sorted(p for p in (root / "verify").iterdir() if p.is_file() and p.suffix != ".md")
+    places += [
+        root / name for name in ("pyproject.toml", "pytest.ini", "setup.cfg", "tox.ini", "conftest.py")
+    ]
+    places += sorted((root / "tests").rglob("conftest.py"))
+    places = [p for p in places if p.is_file()]
     return [str(p.relative_to(root)) for p in places if BUILD_ASKED in p.read_text(encoding="utf-8")]
 
 
 def test_nothing_asks_for_the_build_test_by_default(tmp_path):
     """Not CI's jobs, not the nightly run, not `make verify` or `make check`. A tree where a workflow or
-    the Makefile sets the name is found by it."""
+    the Makefile, pyproject.toml or a conftest.py sets the name is found by it."""
     assert asking_for_the_build(ROOT) == []
     planted = tmp_path / "tree"
     flows = planted / ".github" / "workflows"
@@ -1012,7 +1070,23 @@ def test_nothing_asks_for_the_build_test_by_default(tmp_path):
     (planted / "Makefile").write_text(f"verify:\n\t{BUILD_ASKED}=1 bash verify/verify.sh\n", encoding="utf-8")
     (planted / "verify" / "verify.sh").write_text("make lint\n", encoding="utf-8")
     (planted / "verify" / "README.md").write_text(f"Not set: `{BUILD_ASKED}=1`.\n", encoding="utf-8")
-    assert asking_for_the_build(planted) == [".github/workflows/ci.yml", "Makefile"]
+    # pytest reads conftest.py and pyproject.toml before this file works out BUILD_SKIP.
+    (planted / "tests" / "deep").mkdir(parents=True)
+    (planted / "tests" / "conftest.py").write_text(f'os.environ["{BUILD_ASKED}"] = "1"\n', encoding="utf-8")
+    (planted / "tests" / "deep" / "conftest.py").write_text(
+        f'os.environ["{BUILD_ASKED}"] = "1"\n', encoding="utf-8"
+    )
+    (planted / "conftest.py").write_text("import os\n", encoding="utf-8")
+    (planted / "pyproject.toml").write_text(
+        f'[tool.pytest.ini_options]\nenv = ["{BUILD_ASKED}=1"]\n', encoding="utf-8"
+    )
+    assert asking_for_the_build(planted) == [
+        ".github/workflows/ci.yml",
+        "Makefile",
+        "pyproject.toml",
+        "tests/conftest.py",
+        "tests/deep/conftest.py",
+    ]
 
 
 @pytest.mark.engine
