@@ -5,7 +5,7 @@ platform), on a microATX board: 244 x 244 mm. No microATX TRX50 board has been m
 ATX. Basalt fits the platform's 4 memory channels, its 48 PCI Express 5.0 lanes and a 350 W
 processor into the smaller form, 2 memory slots each side of the socket.
 
-This folder is a prototype series made with the EE Workcenter, laid out the way a board repository
+This folder is a prototype series made with Via, laid out the way a board repository
 lays out its versions (`PROCESSES.md` P22). Each version is its own folder and a whole KiCad project:
 `design.py` and the modules beside it are the board, the `.kicad_*` files are what
 `workcenter design` writes from them, and its README holds the spec, the decisions and what changed.
