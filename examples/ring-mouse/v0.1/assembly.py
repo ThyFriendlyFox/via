@@ -5,10 +5,10 @@ The radio tile is the scene's board; the other 5 are bodies from their own route
 turned about the ring's axis to its place (ring.py: centre_angle). The ring's axis runs along the
 radio tile's y, under its middle, R_IN + T below its outer face. The cell, a 3 x 10 x 10 mm pouch,
 lies on the cell tile's outer face. The scene, the bodies the boards name, the renders and the GIF
-come from the EE Workcenter's `tools/scene.py`; this file holds only the ring's placements.
+come from Via's `tools/scene.py`; this file holds only the ring's placements.
 
     workcenter design radio/design.py --route       # and each other tile: the routed boards this reads
-    workcenter pictures .                           # runs this with the workcenter's tools/ on PYTHONPATH
+    workcenter pictures .                           # runs this with Via's tools/ on PYTHONPATH
 
 Writes build/assembly/: the scene's bodies, signet_assembly.kicad_pcb, the images assembly-iso.png
 (the thumb's side), assembly-iso-back.png, assembly-end.png, assembly-top.png and assembly-palm.png,

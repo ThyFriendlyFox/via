@@ -5,7 +5,7 @@ finger, soldered edge to edge. The ring turns with the hand and moves the cursor
 along a strip to scroll and presses the ring's side to click. It talks Bluetooth LE to the computer
 as an ordinary mouse.
 
-This folder is a project made with the EE Workcenter, kept the way
+This folder is a project made with Via, kept the way
 [Last Hit](https://github.com/ThyFriendlyFox/vape-prototype) keeps its prototypes: each version is
 its own folder, each tile in it a whole KiCad project built from its `design.py`, with its README,
 its pictures under `docs/` and its firmware. The versions came from a loop: each pass judged the

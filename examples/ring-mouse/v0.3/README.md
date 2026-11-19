@@ -8,7 +8,7 @@ turns with the hand and the cursor follows its gyroscope; the thumb slides along
 scroll, and presses the clicks tile for the left and the right button. The ring talks Bluetooth LE
 to the computer as an ordinary HID mouse and charges on a post through 2 pads inside it.
 
-This folder is a whole project made with the EE Workcenter: `ring.py` is what the tiles share,
+This folder is a whole project made with Via: `ring.py` is what the tiles share,
 each tile's `design.py` is its board, and the `.kicad_*` files beside each are what
 `workcenter design` writes from it.
 
@@ -25,7 +25,7 @@ each tile's `design.py` is its board, and the `.kicad_*` files beside each are w
 ## Images
 
 The ring with the solder in its joints and the cell on its tile, from the thumb's side and along the
-finger (`assembly.py` on the workcenter's `tools/scene.py`, drawn by `workcenter pictures .` from
+finger (`assembly.py` on Via's `tools/scene.py`, drawn by `workcenter pictures .` from
 [`pictures.json`](pictures.json)):
 
 ![the ring turning](docs/assembly-spin.gif)
@@ -278,7 +278,7 @@ make -C firmware test                        # the decoder's host tests
 workcenter pictures .                        # the renders, GIFs and the assembly into docs/
 ```
 
-KiCad's 3D views need the bodies the tiles name (the workcenter's `site/media/README.md` says how
+KiCad's 3D views need the bodies the tiles name (Via's `site/media/README.md` says how
 to fetch them into `KICAD10_3DMODEL_DIR`).
 
 ## Decisions
@@ -293,7 +293,7 @@ to fetch them into `KICAD10_3DMODEL_DIR`).
 - **6 tiles, the radio's wider** (v0.1). A regular hexagon gives every tile 11.55 mm, too narrow
   for the module and its capacitors side by side. 8 tiles round the finger would be 8.3 mm each.
   The radio's tile takes 15.6 mm; the other 5 share the rest.
-- **Solder joints, not a flex** (v0.1). The workcenter makes rigid boards; 8 plated pads a side and
+- **Solder joints, not a flex** (v0.1). Via makes rigid boards; 8 plated pads a side and
   a fillet each hold the tiles and carry the signals, as Last Hit's display board stands on its
   base. A rigid-flex ring is the production answer, and out of reach of these tools.
 - **The STM32WB5MMG** (v0.1). The only BLE module in KiCad's library with its antenna inside and a
