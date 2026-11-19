@@ -97,8 +97,11 @@ With 2 or more open, the oldest (lowest number) is spoken to: it holds the
 history. On a failed night each other one is closed as its duplicate, so 1
 stays open and the next failure is seen. The text holds the run's address,
 the step that failed, the gate's `FAILED`, `why:` and `TESTS RED` lines,
-bounded to 20000 characters, inside a code fence. A gate that stopped
-before its tests gives its step and the last 40 lines of its log. A night
+bounded to 20000 characters, inside a code fence. A text over the bound is
+cut, and the fence open at the cut is closed with its own backticks. A gate
+that stopped before its tests gives its step and the last 40 lines of its
+log. The step is named only from a step line of `verify/verify.sh`
+(`== 1/4 lint`), in backticks; any other `== ` line stays in the fence. A night
 that stopped at install has no log and says so. The script is Python's
 standard library only: on that night there is no venv, and the runner's
 `python3` runs it. Its tests run the step's own script under node with a

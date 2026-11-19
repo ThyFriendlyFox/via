@@ -73,9 +73,11 @@ def reason(log: str | None, steps: dict[str, str]) -> str:
         return "\n\n".join(out)
     lines = log.splitlines()
     blocks = why_blocks(lines)
-    gate = [line[3:] for line in lines if line.startswith("== ")]
+    # Only verify.sh's step() lines (`== 1/4 lint`) name a step: another `== ` line of the log stays
+    # in the fence, and the name, of plain characters only, is put in backticks.
+    gate = [m[1] for line in lines if (m := re.fullmatch(r"== (\d+/\d+ [\w ./-]+)", line))]
     if not blocks:
-        where = f"the gate stopped in its step {gate[-1]}" if gate else "the gate printed no step"
+        where = f"the gate stopped in its step `{gate[-1]}`" if gate else "the gate printed no step"
         tail = lines[-TAIL:]
         out.append(f"no `why:` line in the gate's log; {where}; its last {len(tail)} lines:")
         out.append(fenced([cut(line) for line in tail]))
@@ -114,10 +116,18 @@ def bound(text: str) -> str:
     if len(text) <= MAX_CHARS:
         return text
     note = "\n[... the rest is cut: read the log]"
-    fence = re.findall(r"^(`{3,})$", text, re.M)
-    close = f"\n{fence[-1]}" if fence else ""
-    room = MAX_CHARS - len(note) - len(close)
-    return text[:room].rsplit("\n", 1)[0] + close + note
+    # The longest fence the text holds is room enough for any close; the kept part closes the fence
+    # that is open where the cut falls, with that same fence, or adds none when no fence is open.
+    longest = max((len(f) for f in re.findall(r"^(`{3,})$", text, re.M)), default=0)
+    room = MAX_CHARS - len(note) - (longest + 1)
+    kept = text[:room].rsplit("\n", 1)[0]
+    fence = None
+    for line in kept.splitlines():
+        if fence is None and re.fullmatch(r"`{3,}", line):
+            fence = line
+        elif line == fence:
+            fence = None
+    return kept + (f"\n{fence}" if fence else "") + note
 
 
 def plan(outcome: str, log: str | None, issues: list[dict], run: str, date: str, steps: dict[str, str]):

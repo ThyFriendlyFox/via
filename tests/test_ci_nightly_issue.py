@@ -103,7 +103,7 @@ def test_a_gate_stopped_at_lint_names_its_step_and_shows_the_end_of_its_log():
     (act,) = plan(log=log)
     body = act["body"]
     assert "no `why:` line" in body
-    assert "the gate stopped in its step 1/4 lint" in body
+    assert "the gate stopped in its step `1/4 lint`" in body
     assert "install.sh:12:1: SC2086 quote it" in body
     assert "line 99" in body and "line 0\n" not in body
 
@@ -150,6 +150,50 @@ def test_markdown_in_a_tests_name_stays_inside_a_fence_longer_than_any_it_holds(
         inside |= set(range(a + 1, b))
     holding = [n for n, line in enumerate(body.splitlines()) if name in line]
     assert len(holding) == 2 and set(holding) <= inside
+
+
+def outside(body: str) -> list[str]:
+    """The lines of a body outside its code fences; fails on a fence left open."""
+    out, fence = [], None
+    for line in body.splitlines():
+        if fence is None and line.startswith("```") and set(line) == {"`"}:
+            fence = line
+        elif fence is not None and line == fence:
+            fence = None
+        elif fence is None:
+            out.append(line)
+    assert fence is None, f"the fence {fence!r} is never closed"
+    return out
+
+
+def test_a_text_over_the_bound_is_cut_inside_the_fence_open_there_and_closes_it():
+    """100 `TESTS RED` lines with backticks fill the head's fence past MAX_CHARS: bound() cuts it."""
+    log = "".join(f"TESTS RED: shard {n}: ````x```` " + "y" * 250 + "\n" for n in range(100))
+    log += "why: t::x, failed at call (shard 1):\n  | E boom\n"
+    (act,) = plan(log=log)
+    body = act["body"]
+    assert len(body) <= load().MAX_CHARS
+    assert body.splitlines()[-1] == "[... the rest is cut: read the log]"
+    rest = outside(body)
+    assert rest[-1] == "[... the rest is cut: read the log]"
+    assert not any(line.startswith("TESTS RED") for line in rest)
+
+
+def test_a_cut_outside_any_fence_adds_no_fence():
+    mod = load()
+    text = "```\nshown\n```\n" + "plain line\n" * 5000
+    cut = mod.bound(text)
+    assert len(cut) <= mod.MAX_CHARS and cut.endswith("[... the rest is cut: read the log]")
+    assert cut.count("```") == 2
+    outside(cut)
+
+
+def test_a_line_that_only_looks_like_a_step_is_not_named_outside_the_fence():
+    """Only verify.sh's step() lines (`== N/4 name`) name the step; other `== ` lines stay in the fence."""
+    (act,) = plan(log="== 1/4 lint\nsome output\n== @owner **boom**\n")
+    rest = "\n".join(outside(act["body"]))
+    assert "the gate stopped in its step `1/4 lint`" in rest
+    assert "@owner" not in rest and "**boom**" not in rest
 
 
 def test_2_open_issues_the_oldest_is_spoken_to_the_other_closed_as_its_duplicate():
