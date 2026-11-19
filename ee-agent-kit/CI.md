@@ -13,6 +13,64 @@ file explains them and holds the repository settings that are not files.
 | `../dependabot.yml` | weekly | pip (`requirements.txt`), GitHub Actions, Docker base image. Minor and patch updates grouped. |
 | `../PULL_REQUEST_TEMPLATE.md` | every PR | What, Why, Evidence, checklist; the changelog line is a new file under `ee-agent-kit/changes/`. |
 
+## Where the health gate runs
+
+`main` takes no commit that `make verify` did not pass on that exact
+commit. The gate runs on GitHub, in the `full` job of `ci.yml`. It is the
+same `make verify` as on a machine. The owner chose this on 2026-11-19.
+
+| The change | Before its push | On GitHub | What may merge |
+|---|---|---|---|
+| Any change, pushed to a work branch with a pull request | `make check TESTS="<the test files of what it touches>"` | The push starts `ci.yml`. The `scope` job picks `fast` or `full`. `verdict` is green only when that job passed. | The head commit, when `verdict` is green on it and the branch holds `main`'s tip. |
+| A work branch with no pull request yet | `make check TESTS="..."` | A run by hand: `gh workflow run ci.yml --ref <branch>` (`workflow_dispatch`). It is always `full`. | Nothing merges without a pull request. A green `verdict` lets others start work from that commit. |
+| A change `make scope` calls `fast`, pushed straight to `main` | `make verify-site` | The push to `main` runs `ci.yml`; its `fast` job runs `make verify-site` again. | It is on `main` already. |
+| A release | The release commit goes through a pull request like any change. | Its `verdict` on `main`. | The tag goes only on a commit whose `verdict` is green (RELEASING.md step 1). |
+| Any change, where there is no CI (a fork without Actions, an offline machine) | `make verify`, alone on the machine (`ee-agent-kit/lead/gate-and-push.sh` pushes only on `VERIFY GREEN`) | Nothing. | The commit that printed `VERIFY GREEN`. |
+
+`make check` is `make lint`, then pytest on the kit's own tests and the
+files in `TESTS`: the 2 copies of the lead's skills
+(`tests/test_lead_skills.py`), the commits' authors
+(`tests/test_docs.py`), and this rule's documents
+(`tests/test_gate_rule.py`). Engine starts are refused and the tests
+marked `engine` are left out, as in `make verify-site`. It takes no lock,
+so it does not need the machine alone. With no `TESTS` it took 3.4 s
+here: 3 runs of 3.38 s to 3.45 s on 4 processors, with helpers at work
+(load average 2.1), on 2026-11-19.
+
+The rules that follow from it:
+
+- A work branch may hold a commit the gate has not passed yet. The pull
+  request shows it: its checks are pending or red. Nobody merges it,
+  releases from it, or starts other work from it until `verdict` is
+  green on that commit.
+- A red `verdict` is answered with a new commit. Pushed history is not
+  rewritten. A red gate is fixed, not left (AGENTS.md).
+- A pull request's run tests its head merged with `main` as it was when
+  the run started. Merge `main` into the branch first, so the tree CI
+  tested is the tree that lands. If `main` moves before the merge, merge
+  it in again and wait for the new `verdict`.
+- Merge with `gh pr merge <number> --merge --match-head-commit <sha>`.
+  GitHub then refuses the merge if the head is no longer the commit
+  whose `verdict` you read.
+- The gate's lock and the helpers' rules for it (PROCESSES.md P31 steps
+  11 to 14) are for a gate on a machine. A landing that CI gates needs
+  neither.
+- `verdict` can be made a required check of `main` in the repository's
+  settings (Branches). GitHub then refuses a merge without it. It is a
+  setting, not a file; this document does not say whether it is on.
+
+Why, from the runs of 2026-11-19. On the machine, the gate needs the
+machine alone. The gate push24 waited 50 min 31 s for quiet and was
+ended by its 1-hour limit (MISTAKES.md M273). The gate push28 ran
+`make verify` in 906 s (its tests 889 s), from 05:26:16 UTC; the gate
+before it, push27, had made its lock at 05:06:51 (M274, M278). While a
+gate waits or runs, no helper may start a test. CI's `full` job ran the
+same `make verify` on the same commit, 9beca5b, in 14 min 58 s (run
+44466890200, 05:41:46 to 05:56:44 UTC, on the install path), while the
+machine went on working. Inside the image, the `full` job of run
+44428908528 took 12 min 42 s. Before this change each landing ran the
+whole suite 2 times: on the machine, then on the pull request.
+
 ## Toolchain step
 
 CI's `full` job takes the toolchain from the image of its tag when the

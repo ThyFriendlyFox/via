@@ -7,8 +7,8 @@ machine or a session, and none names a model.
 | File | Does | Skill |
 |---|---|---|
 | `landed.py` | Reads the helpers' journals and says which piece of work has finished its build, its reviews and its fixes, and what each other piece waits for. | `lead`, step 10 |
-| `gate-and-push.sh` | Takes the lock, waits until no helper's engine or test runs, runs `make -C <tree> verify` alone, and pushes only on `VERIFY GREEN` with the tree unchanged. | `land`, step 7 |
-| `quiet.py` | Prints each process that is a helper's engine, test run or script; nothing means quiet. A script that only waits is left out: a shell script with only a `sleep` below it, and a Python script with nothing below it that sleeps and used no processor time for 2 s (`time.sleep`, M277). `gate-and-push.sh` calls it. | `land`, step 7 |
+| `gate-and-push.sh` | For a machine with no CI (a fork without Actions, an offline machine): takes the lock, waits until no helper's engine or test runs, runs `make -C <tree> verify` alone, and pushes only on `VERIFY GREEN` with the tree unchanged. Where CI runs, a landing is pushed on `make check` and CI's `verdict` gates it instead (`land`, steps 5 and 6). | `land`, step 18 |
+| `quiet.py` | Prints each process that is a helper's engine, test run or script; nothing means quiet. A script that only waits is left out: a shell script with only a `sleep` below it, and a Python script with nothing below it that sleeps and used no processor time for 2 s (`time.sleep`, M277). `gate-and-push.sh` calls it. | `land`, step 18 |
 | `workflows/roadmap-lane.js` | An example for a host that runs workflow scripts: build, attack and fix, 1 item per helper, rounds of items. | `lead`, steps 5 to 9 |
 | `workflows/second-attack.js` | The same: a second review of a piece the first called `not sound`, and its fix. | `lead`, step 9 |
 | `workflows/user-round.js` | The same: 3 users of different sizes on 1 board spec, and the ranking of what they hit. | `user-round`, steps 3 to 6 |
@@ -60,6 +60,17 @@ longer the lease, or 5 tries failed), 6 when the quiet check failed. A
 gate stopped by a signal ends `make verify` and every process it started
 before it removes the lock. Its header names its environment variables.
 `tests/test_lead.py` holds all 3 and the 3 scripts.
+
+## Where the gate runs
+
+The health gate runs on GitHub, in CI's `full` job
+(`ee-agent-kit/CI.md`, "Where the health gate runs"). A landing is pushed
+to the work branch on `make check`: `make lint` and the kit's own tests,
+with no engine and no lock. Nothing from the work branch is merged,
+released, or used as the start of other work until CI's `verdict` is
+green on that exact commit. So a landing does not need the machine alone,
+and the helpers go on working while it is gated. `gate-and-push.sh` and
+the rules below are for a gate on the machine, where there is no CI.
 
 A gate in the background gets a time limit of 2 hours: it waits for the
 engine lock and for quiet before its run, and 1 such wait took 50 minutes

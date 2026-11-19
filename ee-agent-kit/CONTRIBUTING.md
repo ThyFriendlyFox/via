@@ -14,9 +14,10 @@
 
 1. Branch from `main`: `feat/…`, `fix/…`, `docs/…`, `chore/…`.
 2. Change + tests for any behavior change.
-3. `make verify` green.
+3. `make check` green before each push. `make verify`, the whole health
+   gate, runs on the pull request in CI's `full` job.
 4. Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`,
    `test:`, `ci:`; `!` for breaking).
-5. PR against `main`; fill the template; CI green +
-   comments resolved before merge. Squash-merge; PR title becomes the
+5. PR against `main`; fill the template; CI's `verdict` green on the
+   head commit + comments resolved before merge. Squash-merge; PR title becomes the
    commit message, so make it a valid Conventional Commit.

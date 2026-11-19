@@ -436,7 +436,7 @@ images are drawn.
 
 ## Working on this repository
 
-`make verify` must be green before any push; a change `make scope` calls `fast` may be pushed on `make verify-site`.
+`main` takes no commit that `make verify` did not pass on that exact commit: CI's `full` job runs it on each pull request, and a pull request merges only when its `verdict` check is green on its head (with no CI, run `make verify` on the machine). A push to a work branch needs only `make check`. A change `make scope` calls `fast` may be pushed to `main` on `make verify-site`. [`ee-agent-kit/CI.md`](ee-agent-kit/CI.md#where-the-health-gate-runs) shows what runs where.
 [`ee-agent-kit/AGENTS.md`](ee-agent-kit/AGENTS.md) is binding;
 [`ee-agent-kit/ROADMAP.md`](ee-agent-kit/ROADMAP.md) decides what gets built.
 [`ee-agent-kit/CONTRIBUTING.md`](ee-agent-kit/CONTRIBUTING.md) has the rules

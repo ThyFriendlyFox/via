@@ -618,23 +618,40 @@ names has a "Done when" line.
 
 When: a change is about to be called done.
 
-1. `make verify` green locally; for a board, `workcenter gates .` GREEN
-   and the project's own CI checks run locally the way CI runs them (a
-   board repository regenerates every project with `workcenter design
-   <p>/design.py --out <scratch>` and needs exit 0, M85; `workcenter design
-   <p>/design.py --check` is that step for one project, and `workcenter ci
-   <repo>` replays the whole workflow and prints `CI REPLAY GREEN`). Run them
-   with an absolute path (`make -C /path verify`), never behind a `cd`, and
-   in the background with a log.
-2. Chain the commit and the push behind the verdict itself, never behind
-   a look at the log: `grep -q 'VERIFY GREEN' log && git push ...`. A
-   `tail` succeeds whatever the log says. Every check you run before a
-   push is in the chain (`ruff check ... && make test && git push`); a
-   check whose result only prints is not a gate. A rebase, a merge of
-   `main` or a renumbering of log entries after the run makes a new tree:
-   run `make verify` on it before its push, force-push included (M166).
+1. Before each push to a work branch of the workcenter, run the fast
+   checks, `make check`: `make -C /path check TESTS="<the test files of what the change
+   touches>"`. It runs `make lint` and the kit's own tests, starts no
+   engine, takes no lock, and does not need the machine alone. The whole
+   health gate, `make verify`, runs on GitHub (step 4). For a board,
+   `workcenter gates .` GREEN and the project's own CI checks run locally
+   the way CI runs them (a board repository regenerates every project with
+   `workcenter design <p>/design.py --out <scratch>` and needs exit 0, M85;
+   `workcenter design <p>/design.py --check` is that step for one project,
+   and `workcenter ci <repo>` replays the whole workflow and prints
+   `CI REPLAY GREEN`). Run them with an absolute path, never behind a `cd`.
+2. Chain the push behind the verdict itself, never behind a look at the
+   log: `make -C /path check TESTS="..." && git push ...`. A `tail`
+   succeeds whatever the log says. Every check you run before a push is in
+   the chain (`ruff check ... && make test && git push`); a check whose
+   result only prints is not a gate.
 3. Push, then confirm the remote holds it: `git ls-remote`.
-4. Watch CI to the end; red CI is work now, not later.
+4. `main` takes no commit that `make verify` did not pass on that exact
+   commit (a change `make scope` calls `fast`: `make verify-site`). On
+   GitHub that is CI's `full` job: the pull request's `verdict` check
+   green on its head commit. A work branch with no pull request asks for
+   a run by hand: `gh workflow run ci.yml --ref <branch>`, which is always
+   `full`. Watch CI to the end; red CI is work now, not later. Until
+   `verdict` is green on a commit, nobody merges it, releases from it, or
+   starts other work from it. A red `verdict` is answered with a new
+   commit; pushed history is not rewritten. A rebase, a merge of `main` or
+   a renumbering of log entries makes a new commit: it waits for its own
+   `verdict`, force-push included (M166). Merge only a head that holds
+   `main`'s tip, with `gh pr merge <number> --merge --match-head-commit
+   <sha>`: then the tree CI tested is the tree that lands. Where there is
+   no CI (a fork without Actions, an offline machine), run `make verify`
+   on the machine, alone (P31 step 6), in the background with a log, and
+   chain the push behind it: `grep -q 'VERIFY GREEN' log && git push ...`
+   (`ee-agent-kit/lead/gate-and-push.sh` does this).
 5. The report names the commit, the run link, and the numbers from the
    gate report; a skipped or blocked part is named as such. A board
    version's report carries its pictures (P23). It gives each verdict as
@@ -1390,7 +1407,10 @@ a task.
    started anew: its work so far is kept.
 6. Count the machine too: its memory, not only its processors. Helpers
    that run engines, a health gate and a browser do not run together.
-   The health gate that gates a push runs alone (M124).
+   A health gate on the machine runs alone (M124). Where CI runs, the
+   gate that lets a commit reach `main` runs on GitHub (P14 step 4), and
+   a push to a work branch needs only `make check`; steps 11 to 14 are
+   for a gate on the machine: one with no CI, or a run to see a fault.
 7. The workcenter's long commands take turns on the machine by themselves
    (`tools/enginelock.py`), and `make verify` holds that lock for the whole
    gate. A brief names no lock file for them and asks for no `flock`: a
@@ -1485,7 +1505,11 @@ author, a message line, a file that must leave every commit.
    check that is not yours: each new commit object from its old one and
    the rules, hashed, equal to the new id. Fix what it finds and have it
    checked again.
-5. Run `make verify` on the exact trees that will be pushed.
+5. Let the gate pass the exact commits that will be pushed. Push them
+   first to a new work branch, ask CI for a run by hand
+   (`gh workflow run ci.yml --ref <that branch>`), and go on only when
+   its `verdict` is green on each branch's head. Where there is no CI,
+   run `make verify` on each tree.
 6. Name what follows the default branch before it moves: CI, a deploy,
    another repository that clones it. Replay that repository's checks
    with the old tree and with the new one.
@@ -1495,9 +1519,9 @@ author, a message line, a file that must leave every commit.
    the push cannot change: the commits a pull request page keeps, a
    branch this session cannot delete, a clone that holds the old history.
 
-Done when: the remote's branches are the checked commits, `make verify`
-is GREEN on them, and the owner holds the old history and the list of
-step 8.
+Done when: the remote's branches are the checked commits, the gate
+passed them (CI's `verdict` green, or `VERIFY GREEN` where there is no
+CI), and the owner holds the old history and the list of step 8.
 
 ## P34 — The form of a new product
 
@@ -1553,8 +1577,9 @@ finding is a gap in the workcenter, never a board's own fault.
      line that cites one. Then read each log the copy touched: a 3-way
      apply puts an entry where its context matched, which can be the
      middle of the log. See each of its tests fail on `main`'s code.
-   Before the push, run the whole suite (`python3 -m pytest tests`),
-   not the tests of the files the merge touched: a branch older than a
+   Before the merge, the whole suite passes on the merged commit (CI's
+   `verdict` on its pull request, or `make verify` where there is no CI),
+   not only the tests of the files the merge touched: a branch older than a
    check of `main` fails it with no conflict in the check's file. 22
    library tables of 2 branches named this machine's paths, and `main`
    went red (M217).

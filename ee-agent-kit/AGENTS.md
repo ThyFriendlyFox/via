@@ -9,7 +9,8 @@ When this conflicts with intuition, this wins.
 make doctor      # build: a working toolchain is this repo's build artifact
 make test        # gate tests on the fixture boards
 make lint        # shellcheck + ruff
-make verify      # full health gate — must pass before any push
+make check       # fast checks before a push to a work branch: lint + the kit's tests, no engine
+make verify      # full health gate — must pass on a commit before `main` takes it (in CI)
 ```
 
 Requires Ubuntu 24.04, Python 3.12, KiCad 10.0, Java 21. `sudo ./install.sh`
@@ -161,9 +162,22 @@ provides them. `python3 tools/workcenter doctor` says what is present.
 ## Process rules
 
 - Branch from `main`; never commit to it directly.
-- `make verify` green before every push. Flaky gate → fix or
+- `main` takes no commit that `make verify` did not pass on that exact
+  commit. Where CI runs, that is CI's `full` job: merge a pull request
+  only when its `verdict` check is green on its head commit. Where there
+  is no CI (a fork without Actions, an offline machine), run
+  `make verify` on the machine before the push. Flaky gate → fix or
   quarantine in the same PR; never route around it.
-- A change that `make scope` (`tools/ci/scope.py`) calls `fast` may be pushed on `make verify-site`.
+- A push to a work branch, never to `main`, needs only the fast checks,
+  `make check`:
+  `make check TESTS="<the test files of what the change touches>"`. It
+  runs `make lint` and the kit's own tests, starts no engine and takes no
+  lock (3.4 s here with no `TESTS`). So a work branch can hold a commit the gate has
+  not passed yet. Nobody merges it, releases from it or starts other
+  work from it until `verdict` is green on that commit. A red `verdict`
+  is answered with a new commit; pushed history is not rewritten.
+- A change that `make scope` (`tools/ci/scope.py`) calls `fast` may be pushed to `main` on `make verify-site`.
+- The table of what runs where: `CI.md`, "Where the health gate runs".
 - After adding/removing/renaming source files, run the stack's
   regeneration step (project gen, lockfile, tidy) and commit the result.
 - Commit at boundaries; message says what changed and cites evidence.

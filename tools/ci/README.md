@@ -43,8 +43,14 @@ the minute the roadmap asks for.
 2. Run `make verify-site` for every answer. It ends with
    `VERIFY-SITE GREEN in <n>s`. Any other end is red: read the step above it.
    It is the only local run that hides KiCad's libraries, and CI's `fast`
-   job runs it on every change.
-3. If the answer is `full`, run `make verify` too. It ends with `VERIFY GREEN`.
+   job runs it on every change. A change whose answer is `fast` may be
+   pushed straight to `main`.
+3. If the answer is `full`, run `make check` and push to a work branch,
+   never to `main`. CI's `full` job runs `make verify` on the pull
+   request (or on a run by hand, `gh workflow run ci.yml --ref <branch>`);
+   merge only when its `verdict` is green on the head commit. Where
+   there is no CI, run `make verify` on the machine. It ends with
+   `VERIFY GREEN` (`ee-agent-kit/CI.md`, "Where the health gate runs").
 
 ## A test that starts an engine
 

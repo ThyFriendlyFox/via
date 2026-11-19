@@ -63,7 +63,7 @@ already defines.
 1. `SECURITY.md` overrides everything for security-shaped work.
 2. `AGENTS.md` is binding whenever code is touched; `PROCESSES.md` is binding whenever an action it names is taken; `TONE.md` is binding whenever the agent writes words. When any of them conflicts with intuition, it wins.
 3. `ROADMAP.md` decides what gets built. If requested work isn't on it, add it to the roadmap first (or get the human to), then build it. **The roadmap is not optional — every feature flows down from it.**
-4. `VERIFICATION.md`'s gate decides what ships. No green, no push.
+4. `VERIFICATION.md`'s gate decides what ships. No green, no merge: `main` takes only a commit the gate passed (`CI.md`, "Where the health gate runs").
 5. Everything else is reference.
 
 ## Standing rules (apply in every instance)
