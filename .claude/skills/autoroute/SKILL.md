@@ -94,11 +94,25 @@ The board file is written in place. Commit it, or work on a copy, first.
      the reasons; change the placement in KiCad and run again.
    - `- route: the router left N connections open (<log>)`: the same, by
      the router's own count.
-   - `ERROR autoroute <board> not read: Edge.Cuts: ...`: the outline is
-     no rectangle (a `gr_rect`, or `gr_line`s that close one). This first
-     cut refuses it; nothing is written.
+   - `SKIP autoroute ...; open connections not judged: <name>.kicad_pro
+     sets unconnected_items to ignore ...`: the board is written, but
+     KiCad's DRC checks no connection while the project ignores
+     unconnected items, and FreeRouting 1.9.0 logs no count. It is no
+     pass. In KiCad, Board Setup, Design Rules, Violation Severity, set "Missing
+     connection between items" to error, and run again.
+   - `ERROR autoroute <board> not read: Edge.Cuts: <what is drawn>: <why>`:
+     this first cut routes inside 1 rectangle (a `gr_rect`, or `gr_line`s
+     that close one) with nothing cut inside it. `no rectangle` is another
+     shape, `they close no rectangle` is lines with a gap or a slant, and
+     `a cutout or a second outline` is a second `gr_rect`. Refused; nothing
+     is written.
    - `ERROR autoroute <board> not read: <ref> pad <n>: a surface pad on
-     ...`: a surface pad on the side opposite its footprint. Refused.
+     ...`: a copper surface pad on the side opposite its footprint.
+     Refused. A paste or mask window with no copper is skipped.
+   - `ERROR autoroute <board> not read: <name>.kicad_pro: <place>: <value>`:
+     the project file holds a value this reader cannot take there (a
+     `null` track width, a list where an object belongs). Fix it in KiCad's
+     Board Setup and run again.
    - `FAIL autoroute route failed: ...; <board> is as it was`: the router
      failed or ran past `--timeout`. Read `build/route/freerouting.log`.
    - `SKIP autoroute engine missing: ...`: run `workcenter doctor`.

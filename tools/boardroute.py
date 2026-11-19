@@ -63,11 +63,14 @@ def _outline(root: list) -> tuple[float, float, float, float]:
     edges = [
         n for n in root[1:] if isinstance(n, list) and n and n[0] in EDGE_SHAPES and _layer(n) == "Edge.Cuts"
     ]
-    kinds = ", ".join(sorted({str(n[0]) for n in edges})) or "nothing"
-    refuse = ValueError(
-        f"Edge.Cuts: {kinds}: the outline is no rectangle; this first cut routes inside a rectangular "
-        "outline only (1 gr_rect, or gr_lines that close one)"
-    )
+    shapes = sorted(Counter(str(e[0]) for e in edges).items())
+    drawn = ", ".join(f"{count} {kind}" for kind, count in shapes) or "nothing"
+
+    def refuse(why: str) -> ValueError:
+        return ValueError(
+            f"Edge.Cuts: {drawn}: {why}; this first cut routes inside 1 rectangular outline with nothing "
+            "cut inside it (1 gr_rect, or gr_lines that close one)"
+        )
 
     def point(node: list, head: str) -> tuple[float, float]:
         vals = atoms(child(node, head))
@@ -76,46 +79,76 @@ def _outline(root: list) -> tuple[float, float, float, float]:
     if len(edges) == 1 and edges[0][0] == "gr_rect":
         (ax, ay), (bx, by) = point(edges[0], "start"), point(edges[0], "end")
         return (min(ax, bx), min(ay, by), max(ax, bx), max(ay, by))
-    if not edges or any(n[0] != "gr_line" for n in edges):
-        raise refuse
+    if not edges:
+        raise refuse("no outline")
+    if any(n[0] == "gr_rect" for n in edges):
+        raise refuse("a cutout or a second outline beside the board's rectangle")
+    if any(n[0] != "gr_line" for n in edges):
+        raise refuse("no rectangle")
+    refuse_lines = refuse("they close no rectangle")
     lines = [(point(n, "start"), point(n, "end")) for n in edges]
     xs = sorted({p[0] for line in lines for p in line})
     ys = sorted({p[1] for line in lines for p in line})
     if len(xs) != 2 or len(ys) != 2 or any(a[0] != b[0] and a[1] != b[1] for a, b in lines):
-        raise refuse
+        raise refuse_lines
     sides = {tuple(sorted(line)) for line in lines}
     corners = [(x, y) for x in xs for y in ys]
     needed = {
         tuple(sorted((a, b))) for a in corners for b in corners if a < b and (a[0] == b[0]) != (a[1] == b[1])
     }
     if sides != needed:
-        raise refuse
+        raise refuse_lines
     return (xs[0], ys[0], xs[1], ys[1])
 
 
 def _project_rules(d: BoardDesign, pro: Path) -> None:
     """The .kicad_pro's board rules and net classes onto the design: the Default class gives the track
     width, clearance and via; every other class takes the nets its patterns and assignments name."""
-    if not pro.is_file():
+    data = _project(pro)
+    if data is None:
         return
-    data = json.loads(pro.read_text(encoding="utf-8"))
-    rules = data.get("board", {}).get("design_settings", {}).get("rules", {})
+
+    def table(node: object, where: str) -> dict:
+        """A JSON object of the file, or {} where the file has none; any other value is refused."""
+        if node is None:
+            return {}
+        if not isinstance(node, dict):
+            raise ValueError(f"{pro.name}: {where}: {json.dumps(node)[:60]} is no JSON object")
+        return node
+
+    def mm(spec: dict, key: str, where: str, fallback: float) -> float:
+        value = spec.get(key, fallback)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"{pro.name}: {where}.{key}: {json.dumps(value)[:60]}")
+        return float(value)
+
+    design = table(table(data.get("board"), "board").get("design_settings"), "board.design_settings")
+    rules = table(design.get("rules"), "board.design_settings.rules")
     known = d.board_rules()
     d.rules = {k: v for k, v in rules.items() if k in known}
-    d.edge_clearance = float(rules.get("min_copper_edge_clearance", d.edge_clearance))
-    settings = data.get("net_settings", {})
-    classes = {c.get("name"): c for c in settings.get("classes", [])}
+    d.edge_clearance = mm(rules, "min_copper_edge_clearance", "board.design_settings.rules", d.edge_clearance)
+    settings = table(data.get("net_settings"), "net_settings")
+    listed = settings.get("classes") or []
+    if not isinstance(listed, list) or not all(isinstance(c, dict) for c in listed):
+        raise ValueError(f"{pro.name}: net_settings.classes: no list of JSON objects")
+    classes = {c.get("name"): c for c in listed}
     default = classes.get("Default", {})
-    d.track_width = float(default.get("track_width", d.track_width))
-    d.clearance = float(default.get("clearance", d.clearance))
-    d.via_size = float(default.get("via_diameter", d.via_size))
-    d.via_drill = float(default.get("via_drill", d.via_drill))
+    at = "net_settings.classes[Default]"
+    d.track_width = mm(default, "track_width", at, d.track_width)
+    d.clearance = mm(default, "clearance", at, d.clearance)
+    d.via_size = mm(default, "via_diameter", at, d.via_size)
+    d.via_drill = mm(default, "via_drill", at, d.via_drill)
     member: dict[str, str] = {}
-    for net, names in (settings.get("netclass_assignments") or {}).items():
+    for net, names in table(
+        settings.get("netclass_assignments"), "net_settings.netclass_assignments"
+    ).items():
         names = [names] if isinstance(names, str) else list(names)
         if names:
             member.setdefault(net, names[0])
-    for rule in settings.get("netclass_patterns") or []:
+    patterns = settings.get("netclass_patterns") or []
+    if not isinstance(patterns, list) or not all(isinstance(r, dict) for r in patterns):
+        raise ValueError(f"{pro.name}: net_settings.netclass_patterns: no list of JSON objects")
+    for rule in patterns:
         for net in d.board_nets:
             if fnmatch.fnmatchcase(net, str(rule.get("pattern", ""))):
                 member.setdefault(net, str(rule.get("netclass", "")))
@@ -123,13 +156,43 @@ def _project_rules(d: BoardDesign, pro: Path) -> None:
         nets = [n for n in d.board_nets if member.get(n) == name]
         if name == "Default" or not nets:
             continue
+        at = f"net_settings.classes[{name}]"
         d.net_classes[name] = {
-            "width": float(spec.get("track_width", d.track_width)),
-            "clearance": float(spec.get("clearance", d.clearance)),
-            "via": float(spec.get("via_diameter", d.via_size)),
-            "via_drill": float(spec.get("via_drill", d.via_drill)),
+            "width": mm(spec, "track_width", at, d.track_width),
+            "clearance": mm(spec, "clearance", at, d.clearance),
+            "via": mm(spec, "via_diameter", at, d.via_size),
+            "via_drill": mm(spec, "via_drill", at, d.via_drill),
             "nets": nets,
         }
+
+
+def _project(pro: Path) -> dict | None:
+    """The .kicad_pro as a JSON object, or None when there is none. A file that is no JSON object is
+    refused by its name."""
+    if not pro.is_file():
+        return None
+    try:
+        data = json.loads(pro.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{pro.name}: not JSON (line {exc.lineno}, column {exc.colno}: {exc.msg})") from None
+    if not isinstance(data, dict):
+        raise ValueError(f"{pro.name}: the file holds a {type(data).__name__}, not a JSON object")
+    return data
+
+
+def unconnected_ignored(pcb: Path) -> str:
+    """Why KiCad's DRC of `pcb` cannot list open connections, or "" when it can: the .kicad_pro beside
+    it sets board.design_settings.rule_severities.unconnected_items to "ignore", and the DRC then runs
+    no connection check at all. The caller judges by the router's own count where its log gives one."""
+    pro = Path(pcb).with_suffix(".kicad_pro")
+    data = _project(pro) or {}
+    design = (data.get("board") or {}).get("design_settings") or {}
+    if str((design.get("rule_severities") or {}).get("unconnected_items", "")) != "ignore":
+        return ""
+    return (
+        f"{pro.name} sets unconnected_items to ignore (board.design_settings.rule_severities), so KiCad's "
+        "DRC lists no open connection, and the router's log gives no count; set it to error"
+    )
 
 
 def read_board(pcb: Path) -> tuple[BoardDesign, list[str]]:
@@ -196,10 +259,12 @@ def read_board(pcb: Path) -> tuple[BoardDesign, list[str]]:
                 pad_layers = [UNFLIP.get(a, a) for a in pad_layers]
                 node = copy.deepcopy(p)
                 kicadgen.Design._flip(node)
+            if not any(a.endswith(".Cu") for a in pad_layers):
+                continue  # a paste or mask window: no copper, on its footprint's side, nothing to route
             if kind == "smd" and "F.Cu" not in pad_layers:
                 raise ValueError(
-                    f"{ref} pad {number}: a surface pad on {pad_layers} of a footprint on {_layer(fp)}; "
-                    "this first cut takes surface pads on their footprint's side only"
+                    f"{ref} pad {number or f'@{i}'}: a surface pad on {pad_layers} of a footprint on "
+                    f"{_layer(fp)}; this first cut takes surface pads on their footprint's side only"
                 )
             size = atoms(child(p, "size"))
             w, h = num(size[0]), num(size[1])

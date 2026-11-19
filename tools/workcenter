@@ -2427,11 +2427,14 @@ def autoroute_apply(
     if drc.status == "error":
         failures.append(f"drc: {drc.summary}")
     red = bool(failures) or drc.status != "pass"
+    # With unconnected_items ignored the DRC lists no open connection; only a count from the router's
+    # own log can judge them then (FreeRouting 1.9.0 logs none).
+    blind = boardroute.unconnected_ignored(project.pcb) if route["unrouted"] is None else ""
     return Result(
         "autoroute",
-        "fail" if red else "pass",
+        "fail" if red else ("skip" if blind else "pass"),
         f"routed {route['segments']} segments and {route['vias']} vias into {project.pcb.name}; "
-        f"DRC: {drc.summary}",
+        f"DRC: {drc.summary}" + (f"; open connections not judged: {blind}" if blind else ""),
         {
             "route": route,
             "drc": {

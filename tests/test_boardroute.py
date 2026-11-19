@@ -123,8 +123,206 @@ def test_an_outline_that_is_no_rectangle_is_refused(tmp_path):
     rect = "(gr_rect (start 100 100) (end 125 120)"
     poly = "(gr_poly (pts (xy 100 100) (xy 125 100) (xy 100 120))"
     text = PCB.read_text(encoding="utf-8").replace(rect, poly)
-    with pytest.raises(ValueError, match=r"Edge\.Cuts: gr_poly"):
+    with pytest.raises(ValueError, match=r"Edge\.Cuts: 1 gr_poly: no rectangle"):
         boardroute.read_board(copy_fixture(tmp_path, text))
+
+
+RECT = "(gr_rect (start 100 100) (end 125 120)"
+# The fixture's outline node, its 2 lines whole.
+RECT_LINE = (
+    "\t(gr_rect (start 100 100) (end 125 120)\n"
+    '\t\t(stroke (width 0.1) (type default)) (fill no) (layer "Edge.Cuts") '
+    '(uuid "e7ba35df-4f74-5324-a7c8-565e645a9388"))\n'
+)
+assert PCB.read_text(encoding="utf-8").count(RECT_LINE) == 1
+
+
+def edge_line(a: tuple[float, float], b: tuple[float, float]) -> str:
+    return (
+        f"\t(gr_line (start {a[0]} {a[1]}) (end {b[0]} {b[1]}) (stroke (width 0.05) (type default)) "
+        '(layer "Edge.Cuts"))\n'
+    )
+
+
+def test_gr_lines_that_close_a_rectangle_are_the_outline(tmp_path):
+    """The outline drawn as 4 gr_lines, one of them end to start, as KiCad's line tool leaves them:
+    (100,100)-(125,100), (125,120)-(125,100), (125,120)-(100,120), (100,120)-(100,100). They close the
+    same box as the fixture's gr_rect: (100, 100, 125, 120)."""
+    lines = (
+        edge_line((100, 100), (125, 100))
+        + edge_line((125, 120), (125, 100))
+        + edge_line((125, 120), (100, 120))
+        + edge_line((100, 120), (100, 100))
+    )
+    text = PCB.read_text(encoding="utf-8").replace(RECT_LINE, lines)
+    d, _ = boardroute.read_board(copy_fixture(tmp_path, text))
+    assert d.outline == (100.0, 100.0, 125.0, 120.0)
+
+
+def test_gr_lines_with_an_open_side_are_refused(tmp_path):
+    """3 sides of the box and no 4th: the corners are those of a rectangle, but the left side
+    (100,120)-(100,100) is missing, so the lines close nothing."""
+    lines = (
+        edge_line((100, 100), (125, 100))
+        + edge_line((125, 100), (125, 120))
+        + edge_line((125, 120), (100, 120))
+    )
+    text = PCB.read_text(encoding="utf-8").replace(RECT_LINE, lines)
+    with pytest.raises(ValueError, match=r"Edge\.Cuts: 3 gr_line: they close no rectangle"):
+        boardroute.read_board(copy_fixture(tmp_path, text))
+
+
+def test_a_cutout_inside_the_outline_is_refused_by_what_it_is(tmp_path):
+    """F5: an outline and a slot drawn as 2 gr_rects. The refusal names what is drawn, 2 gr_rect, and
+    says why, a cutout inside the outline; it does not say a gr_rect is no rectangle."""
+    slot = (
+        "\t(gr_rect (start 110 112) (end 112 114) (stroke (width 0.05) (type default)) (fill no) "
+        '(layer "Edge.Cuts"))\n'
+    )
+    text = PCB.read_text(encoding="utf-8").replace(RECT_LINE, RECT_LINE + slot)
+    with pytest.raises(ValueError, match=r"Edge\.Cuts: 2 gr_rect: a cutout") as caught:
+        boardroute.read_board(copy_fixture(tmp_path, text))
+    assert "no rectangle" not in str(caught.value)
+
+
+PASTE = '(pad "" smd rect (at 0 0) (size 0.3 0.3) (layers "F.Paste"))\n\t\t'
+R1_PAD1 = '(pad "1" smd roundrect (at -0.825 0) (size 0.8 0.95) (layers "F.Cu" "F.Mask" "F.Paste")'
+
+
+def test_a_paste_only_pad_carries_nothing_for_the_router(tmp_path):
+    """F2: a paste window with no number and no copper layer, as KiCad's QFN and LDO footprints draw
+    them, on R1 (a front part). It is on its footprint's side and holds no copper: it is skipped, and R1
+    keeps its 2 copper pads."""
+    text = PCB.read_text(encoding="utf-8").replace(R1_PAD1, PASTE + R1_PAD1, 1)
+    d, notes = boardroute.read_board(copy_fixture(tmp_path, text))
+    r1 = d.parts[1]
+    assert (r1.ref, [p.number for p in r1.footprint.pads]) == ("R1", ["1", "2"])
+    assert notes == []
+
+
+def write_pro(pcb: Path, edit) -> None:
+    """The fixture's .kicad_pro beside `pcb`, changed by `edit(data)`."""
+    data = json.loads((FIXTURE / "rc_divider.kicad_pro").read_text(encoding="utf-8"))
+    edit(data)
+    pcb.with_suffix(".kicad_pro").write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def test_net_classes_take_their_nets_by_pattern_and_by_assignment(tmp_path):
+    """A class Power (0.5 mm track, 0.3 mm clearance, 0.8/0.4 mm via) takes the nets that match the
+    pattern /V*: /VIN and /VOUT. A class Gnd with only a 0.4 mm track takes /GND by assignment; the rest
+    of its rules are the Default class's: 0.2 mm clearance, 0.6/0.3 mm via."""
+    pcb = copy_fixture(tmp_path)
+
+    def edit(data: dict) -> None:
+        ns = data["net_settings"]
+        ns["classes"] += [
+            {"name": "Power", "track_width": 0.5, "clearance": 0.3, "via_diameter": 0.8, "via_drill": 0.4},
+            {"name": "Gnd", "track_width": 0.4},
+        ]
+        ns["netclass_patterns"] = [{"netclass": "Power", "pattern": "/V*"}]
+        ns["netclass_assignments"] = {"/GND": ["Gnd"]}
+
+    write_pro(pcb, edit)
+    d, _ = boardroute.read_board(pcb)
+    assert d.net_classes == {
+        "Power": {"width": 0.5, "clearance": 0.3, "via": 0.8, "via_drill": 0.4, "nets": ["/VIN", "/VOUT"]},
+        "Gnd": {"width": 0.4, "clearance": 0.2, "via": 0.6, "via_drill": 0.3, "nets": ["/GND"]},
+    }
+
+
+def test_board_rules_and_the_fab_file_beside_the_board_are_read(tmp_path):
+    """The .kicad_pro's rules go to the design: min_hole_clearance 0.25 and min_via_diameter 0.5 as the
+    fixture's file holds them, and min_copper_edge_clearance changed here to 0.7. A rc_divider.kicad_dru
+    beside the board is the fab's rules; with none, the design names no fab."""
+    pcb = copy_fixture(tmp_path)
+    d, _ = boardroute.read_board(pcb)
+    assert d.fab == ""
+    write_pro(
+        pcb, lambda data: data["board"]["design_settings"]["rules"].update(min_copper_edge_clearance=0.7)
+    )
+    dru = pcb.with_suffix(".kicad_dru")
+    dru.write_text("(version 1)\n", encoding="utf-8")
+    d, _ = boardroute.read_board(pcb)
+    assert (d.rules["min_hole_clearance"], d.rules["min_via_diameter"], d.edge_clearance) == (0.25, 0.5, 0.7)
+    assert d.fab == str(dru)
+
+
+KEEPOUT = (
+    '\t(zone (net 0) (net_name "") (layers "F.Cu" "B.Cu") (uuid "00000000-0000-0000-0000-000000000003")\n'
+    "\t\t(keepout (tracks not_allowed) (vias not_allowed) (pads allowed) (copperpour not_allowed) "
+    "(footprints allowed))\n"
+    "\t\t(polygon (pts (xy 120 101) (xy 124 101) (xy 124 104) (xy 120 104)))\n\t)\n"
+)
+LOOSE = (
+    '\t(segment (start 121 115) (end 123 115) (width 0.25) (layer "F.Cu") (net 0) '
+    '(uuid "00000000-0000-0000-0000-000000000004"))\n'
+)
+FP_EDGE = (
+    '\t\t(fp_line (start -0.5 -0.2) (end 0.5 -0.2) (stroke (width 0.05) (type solid)) (layer "Edge.Cuts") '
+    '(uuid "00000000-0000-0000-0000-000000000005"))\n\t\t'
+)
+
+
+def test_a_keepout_edge_cuts_in_a_footprint_and_tracks_on_no_net_are_reported(tmp_path):
+    """The scope guard's other 3 notes, in the reader's order (footprints, tracks, zones): 1 Edge.Cuts
+    line drawn in R1, 1 segment on net 0 (no pad's net), and a keepout on F.Cu and B.Cu, which is named
+    a keepout, not a zone of a net."""
+    text = PCB.read_text(encoding="utf-8").replace(R1_PAD1, FP_EDGE + R1_PAD1, 1)
+    text = text.replace("\t(embedded_fonts no)\n)", LOOSE + KEEPOUT + "\t(embedded_fonts no)\n)")
+    _, notes = boardroute.read_board(copy_fixture(tmp_path, text))
+    assert notes == [
+        "not handed to the router: Edge.Cuts drawn in footprint R1 (1 shapes; the DRC judges them)",
+        "not handed to the router: 1 tracks and vias on no net of a pad (the DRC judges them)",
+        "not handed to the router: keepout zone on F.Cu, B.Cu (zones are out of this first cut; the DRC "
+        "judges it)",
+    ]
+
+
+def test_write_board_cuts_a_hand_track_the_route_dropped():
+    """The route holds 2 of the 3 VIN tracks: the 3rd, (109,103)-(111.175,103), uuid cf87de58..., goes
+    with its line, and nothing else changes: 3 segments in, 2 out."""
+    text = PCB.read_text(encoding="utf-8")
+    d, _ = boardroute.read_board(PCB)
+    d.segments = d.segments[:2]
+    out = boardroute.write_board(text, d)
+    dropped = next(ln for ln in text.splitlines(keepends=True) if "cf87de58" in ln)
+    assert out == text.replace(dropped, "")
+    assert out.count("(segment") == 2
+
+
+def test_write_board_puts_new_copper_before_embedded_fonts():
+    """KiCad writes (embedded_fonts no) last in the board: the 1 new GND segment goes on the line before
+    it, at the root's depth."""
+    text = PCB.read_text(encoding="utf-8")
+    d, _ = boardroute.read_board(PCB)
+    d.segments.append(("/GND", (105.0, 110.08), (110.0, 110.08), 0.25, "F.Cu"))
+    out = boardroute.write_board(text, d)
+    lines = out.splitlines()
+    assert lines[-3].startswith("\t(segment (start 105 110.08) (end 110 110.08)")
+    assert lines[-2:] == ["\t(embedded_fonts no)", ")"]
+
+
+@pytest.mark.parametrize(
+    ("pro_text", "said"),
+    [
+        (
+            (FIXTURE / "rc_divider.kicad_pro")
+            .read_text(encoding="utf-8")
+            .replace('"track_width": 0.25', '"track_width": null', 1),
+            r"rc_divider\.kicad_pro: net_settings\.classes\[Default\]\.track_width: null",
+        ),
+        ("[]", r"rc_divider\.kicad_pro: the file holds a list, not a JSON object"),
+        ("{", r"rc_divider\.kicad_pro: not JSON"),
+    ],
+    ids=["null-track-width", "a-list", "not-json"],
+)
+def test_a_wrong_project_file_is_refused_by_name(tmp_path, pro_text, said):
+    """F4: a wrong .kicad_pro is a refusal (ValueError) that names the file and the place, never a
+    traceback from inside the reader."""
+    pcb = copy_fixture(tmp_path)
+    pcb.with_suffix(".kicad_pro").write_text(pro_text, encoding="utf-8")
+    with pytest.raises(ValueError, match=said):
+        boardroute.read_board(pcb)
 
 
 def standin_env(tmp_path: Path, ses: str) -> dict[str, str]:
@@ -207,3 +405,55 @@ def test_a_router_that_fails_leaves_the_board_as_it_was(tmp_path, monkeypatch):
         "rc_divider.kicad_pro",
         "rc_divider.kicad_sch",
     ]
+
+
+def load_cli():
+    """tools/workcenter as a module, to call autoroute_apply with the DRC stood in for."""
+    import importlib.machinery
+    import types
+
+    cli = ROOT / "tools" / "workcenter"
+    loader = importlib.machinery.SourceFileLoader("workcenter_cli_r15", str(cli))
+    module = types.ModuleType("workcenter_cli_r15")
+    module.__file__ = str(cli)
+    sys.modules[module.__name__] = module
+    loader.exec_module(module)
+    return module
+
+
+# Only 1 GND track: VOUT's 4 pads and 1 of GND's 2 links stay open.
+GND_ONLY = (
+    '(session "rc_divider" (routes (resolution um 10) (network_out '
+    '(net "/GND" (wire (path F.Cu 2500 1050000 -1100800 1100000 -1100800))))))\n'
+)
+
+
+@pytest.mark.parametrize(("severity", "status"), [("error", "pass"), ("ignore", "skip")])
+def test_apply_passes_only_when_the_drc_can_list_open_connections(tmp_path, monkeypatch, severity, status):
+    """F1. FreeRouting 1.9.0 logs no count of open connections, so the DRC's unconnected list is the only
+    judge, and a .kicad_pro that sets unconnected_items to "ignore" empties it. The DRC is stood in for
+    by one that lists nothing, as KiCad does then. With the setting at "error" an empty list is a pass;
+    at "ignore" the open connections are not judged: no pass, and the line says why."""
+    cli = load_cli()
+    pcb = copy_fixture(tmp_path)
+    write_pro(pcb, lambda data: data["board"]["design_settings"]["rule_severities"].update(
+        unconnected_items=severity
+    ))  # fmt: skip
+    for key, value in standin_env(tmp_path, GND_ONLY).items():
+        monkeypatch.setenv(key, value)
+    clean = {"error": 0, "warning": 0, "other": 0}
+    drc = cli.Result(
+        "drc",
+        "pass",
+        "0 errors, 0 warnings (0 unconnected, 0 parity)",
+        {"counts": {"violations": clean, "unconnected_items": clean, "schematic_parity": clean}},
+    )
+    monkeypatch.setattr(cli, "gate_drc", lambda project, out: drc)
+    project = cli.Project(pcb.parent, "rc_divider", pcb.with_suffix(".kicad_pro"), None, pcb)
+    result = cli.autoroute_apply(project, tmp_path / "out", None, 1, 0, 60)
+    assert result.status == status, result
+    if severity == "ignore":
+        assert (
+            "open connections not judged: rc_divider.kicad_pro sets unconnected_items to ignore"
+            in result.summary
+        )
