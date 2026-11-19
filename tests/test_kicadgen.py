@@ -1874,6 +1874,12 @@ def test_every_fixture_is_what_its_design_file_writes(name):
     loaded = kicadgen.load_design(design)
     assert bool(loaded.zones) == (name in POURED), f"{name}: its pours changed; name it in POURED or not"
     bad = [f for f in report["files"] if f["state"] != "same"]
+    if name == "inspect-four-layer":
+        # Its rule file keeps the header written before 2026-11-19 on purpose, the sample of that form
+        # (tests/test_inspect.py, tests/test_product_name.py): the check names it, and `--rules-only`.
+        assert [(f["file"], f["header_only"]) for f in bad] == [("four_layer.kicad_dru", True)], bad
+        assert proc.returncode == 1 and report["step"] == f"workcenter design {design} --rules-only"
+        return
     assert (proc.returncode, bad) == (0, []), (
         f"tests/boards/{name} is not what its design.py writes: {bad}. "
         f"Write it again with `{report['step']}` and read the difference before committing it"
