@@ -84,7 +84,7 @@ honestly passes it.
 | kicad-python (kipy) | 0.8 | `/opt/workcenters/ee/venv/bin/python` | `install.sh` (PyPI) |
 | librsvg | 2.58 | `rsvg-convert` (SVG to PNG for `workcenter render`) | `install.sh` (Ubuntu 24.04 archive) |
 | FFmpeg | 6.1 | `ffmpeg` (the turning GIF of `workcenter render --views spin`) | `install.sh` (Ubuntu 24.04 archive) |
-| kicadgen | this repo | `workcenter design <design.py> [--route [--seed <board>]\|--check]`; `python3 tools/kicadgen.py pins\|footprint\|symbol-add` | `install.sh` (part of the checkout) |
+| kicadgen | this repo | `workcenter design <design.py> [--route [--seed <board>]\|--check\|--rules-only]`; `python3 tools/kicadgen.py pins\|footprint\|symbol-add` | `install.sh` (part of the checkout) |
 | pdfminer.six, PyYAML | 20260107, 6.0.3 | `workcenter curve` (a PDF page's vector paths), `workcenter ci` (a GitHub workflow), each run under the venv | `install.sh` (PyPI) |
 | workcenter CLI | this repo | `workcenter` | `install.sh` (symlink to `tools/workcenter`) |
 | Container image | this repo | `workcenter image [--rev REV] [--json]`; `docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work ghcr.io/<owner>/via:<tag> workcenter gates .` | `.github/workflows/image.yml` (the Dockerfile runs `install.sh`) |
@@ -619,6 +619,17 @@ project's library tables (`fp-lib-table`, `sym-lib-table`) to what the
 design writes in its own folder: each project library named from that
 folder, never by an absolute path. It exits 1 on a difference, and on the
 design step's own exit 1 even when every file is the same (M85).
+
+Not a gate: `workcenter design <design.py> --rules-only` writes the
+project's copied fab rule file (`<name>.kicad_dru`) again, and no other
+file: a routed board keeps its copper. It writes only when the file
+differs from what the design writes in its header line alone, as a rule
+file made before 2026-11-19 does (`Copied by the workcenter from`). Any
+other difference is refused with 1 line that names the lines, exit 1,
+and nothing written: a rule changed by hand, or a fab's source that moved
+since, could change the gates, so run `workcenter design` and the gates
+instead. A file that is already the design's is left as it is. `--check`
+does not compare the rule file.
 
 Not a gate: `workcenter ci [repo]` replays a repository's GitHub workflow
 here: every `run` step in order under `bash -e`, from the repository root,

@@ -25,4 +25,4 @@
 	(constraint clearance (min 0.2mm))
 	(condition "A.Type == 'Pad' && B.Type == 'Pad' && A.Reference == B.Reference"))
 
-# Copied by the workcenter from lark.kicad_dru (Design.fab); edit the source, not this file.
+# Copied by Via from lark.kicad_dru (Design.fab); edit the source, not this file.

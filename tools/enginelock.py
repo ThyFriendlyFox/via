@@ -110,7 +110,8 @@ def is_long(args: argparse.Namespace) -> bool:
     """True when this parsed command line takes the lock."""
     cmd = getattr(args, "command", None)
     if cmd == "design":
-        return bool(getattr(args, "route", False))
+        # `--rules-only` refuses --route before any engine starts: it waits for no one's turn.
+        return bool(getattr(args, "route", False)) and not getattr(args, "rules_only", False)
     if cmd == "verify":
         return not getattr(args, "init", False)
     if cmd == "chip":

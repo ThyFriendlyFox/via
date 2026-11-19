@@ -5090,6 +5090,85 @@ def cmd_mutate(args) -> int:
     return EXIT_FAIL if counts["survived"] or counts["no build"] else EXIT_PASS
 
 
+def rules_only_design(args) -> int:
+    """`design --rules-only`: write the project's copied fab rule file again, and no other file. A
+    routed board keeps its copper: without --route, `design` would write the board unrouted over it.
+    Written only when the file differs from the design's in its header line alone (the copier's name,
+    which changed on 2026-11-19); a rule that differs is someone's hand or a moved source, and the
+    gates could change with it, so it is refused, 1 line and exit 1, with nothing written."""
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import kicadgen
+
+    design_path = Path(args.design).resolve()
+    out_dir = Path(args.out).resolve() if args.out else design_path.parent
+    result: dict = {"design": str(design_path), "rule_file": None, "state": "", "lines": []}
+
+    def done(code: int, line: str) -> int:
+        result["exit"] = code
+        print(json.dumps(result, indent=2) if args.json else line)
+        return code
+
+    try:
+        design = kicadgen.load_design(design_path)
+        rules = design.rule_file()
+    except (TypeError, ValueError) as exc:
+        result["state"] = "refused"
+        return done(EXIT_FAIL, f"design {design_path.parent.name} red: {exc}; nothing written")
+    if rules is None:
+        result["state"] = "no fab"
+        return done(
+            EXIT_FAIL,
+            f"design {design.name} red: the design names no fab (Design.fab), so it has no rule file; "
+            "nothing written",
+        )
+    name, text = rules
+    dru = out_dir / name
+    result["rule_file"] = str(dru)
+    if not dru.is_file():
+        result["state"] = "missing"
+        return done(
+            EXIT_FAIL,
+            f"design {design.name} red: {out_dir} has no {name}: --rules-only writes a rule file again, "
+            "never a first one; `workcenter design` writes the whole project",
+        )
+    kept = dru.read_bytes().decode("utf-8", errors="replace")
+    if kept == text:
+        result["state"] = "same"
+        return done(EXIT_PASS, f"rules: {dru} is already what the design writes; nothing written")
+    changed = kicadgen.rule_file_changes(kept, text)
+    if changed:
+        result.update(state="differs", lines=changed)
+        shown = ", ".join(map(str, changed[:12])) + (", ..." if len(changed) > 12 else "")
+        return done(
+            EXIT_FAIL,
+            f"design {design.name} red: {dru} differs from what the design writes in line"
+            f"{'s' if len(changed) > 1 else ''} {shown}, not only in its header; nothing written. "
+            "A rule changed by hand, or the fab's source moved since: the gates could change, so run "
+            "`workcenter design` and the gates instead",
+        )
+    header = next(i for i, ln in enumerate(text.split("\n"), start=1) if kicadgen.RULE_HEADER.fullmatch(ln))
+    # Atomic: a temporary file in the same folder, then 1 rename over the old one. A rule file that is
+    # a link is written where it points, as `design` writes through it; the link stays.
+    target = dru.resolve()
+    fd, tmp = tempfile.mkstemp(prefix=f".{name}.", dir=target.parent)
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(text.encode("utf-8"))
+        os.chmod(tmp, target.stat().st_mode & 0o777)
+        os.replace(tmp, target)
+    except OSError as exc:
+        Path(tmp).unlink(missing_ok=True)
+        result["state"] = "unwritten"
+        return done(
+            EXIT_FAIL, f"design {design.name} red: {dru} could not be written: {exc}; it is as it was"
+        )
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+    result.update(state="written", lines=[header])
+    return done(EXIT_PASS, f"rules: wrote {dru}: its header, line {header}, only; every rule is as it was")
+
+
 def check_design(args) -> int:
     """`design --check`: regenerate the design into a scratch folder (or --out) and compare the project and
     schematic files, and the project's library tables, with the design's own, the way a board
@@ -6536,6 +6615,14 @@ def command(argv: list[str] | None = None) -> int:
         "the library tables with the design's own; exit 1 on a difference or a failed design step. "
         "Writes nothing in the project",
     )
+    p.add_argument(
+        "--rules-only",
+        action="store_true",
+        help="write the project's copied fab rule file (<name>.kicad_dru) again and no other file: only "
+        "when it differs from what the design writes in its header line alone; exit 1 and nothing "
+        "written when a rule differs. Never writes the .kicad_pcb, .kicad_sch or .kicad_pro. Refuses "
+        "--route, --check, --seed and --order; the router's numbers are ignored",
+    )
     p = sub.add_parser(
         "placement",
         help="run a kistack layout-placement check on a board file: " + ", ".join(PLACEMENT_CHECKS),
@@ -6690,6 +6777,15 @@ def dispatch(parser: argparse.ArgumentParser, args) -> int:
     if args.command == "inspect":
         return cmd_inspect(args)
     if args.command == "design":
+        if args.rules_only:
+            # The rule file alone: no flag that routes, compares or seeds the board goes with it.
+            # The router's numbers (--passes, --timeout, --threads, --router, --rounds) have defaults, so
+            # they cannot be told apart from absent; they are ignored, as the help says.
+            given_flags = (("--route", args.route), ("--check", args.check), ("--seed", args.seed))
+            for flag, given in (*given_flags, ("--order", args.order)):
+                if given:
+                    parser.error(f"design --rules-only cannot take {flag}: it writes the rule file only")
+            return rules_only_design(args)
         if args.seed and not args.route:
             parser.error("design --seed needs --route")
         if args.order and args.seed:

@@ -741,6 +741,8 @@ def test_the_long_commands_are_the_measured_ones():
         assert enginelock.is_long(ns(name)), name
     assert enginelock.is_long(ns("design", route=True))
     assert not enginelock.is_long(ns("design", route=False))
+    # `design --rules-only --route` is refused at once; it waited its turn first (2026-11-19, 12 min).
+    assert not enginelock.is_long(ns("design", route=True, rules_only=True))
     assert enginelock.is_long(ns("verify", init=False))
     assert not enginelock.is_long(ns("verify", init=True))
     # `inspect map` drew Last Hit v0.16 in 7.00 s; `inspect list` read it in 0.47 s.

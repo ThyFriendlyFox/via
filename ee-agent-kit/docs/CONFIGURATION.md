@@ -100,6 +100,7 @@ unset variable never causes a failure.
 | `--at X,...` | curve | none | Print each curve's y at these x values, interpolated in decades on a log axis. |
 | `--at-y Y,...` | curve | none | Print each curve's x at these y values. |
 | `--check` | design | off | Regenerate into a temporary folder (or `--out`) and compare the `.kicad_pro` and `.kicad_sch` with the design's own, as a board repository's CI does, and the project's `fp-lib-table` and `sym-lib-table` with what the design writes in its own folder. Exit 1 on a difference or on the design step's own exit 1 (M85). Writes nothing in the project. Refuses `--route`. |
+| `--rules-only` | design | off | Write the project's copied fab rule file (`<name>.kicad_dru`) again and no other file: never the `.kicad_pcb`, `.kicad_sch` or `.kicad_pro`. Written, atomically, only when the file differs from what the design writes in its header line alone; exit 0 and nothing written when it is already the design's; exit 1, 1 line naming the lines, and nothing written on any other difference, on a design with no `fab`, on an unknown fab, or on a project with no rule file; exit 1 and 1 line when the write itself fails, the file as it was. A rule file that is a link is written where it points, and its mode is kept. Starts no engine and waits for no engine turn. Refuses `--route`, `--check`, `--seed` and `--order`; the router's numbers are ignored. |
 | `REPO` | ci | `.` | The repository whose `.github/workflows/*.yml` the replay runs, from its root, as the runner's checkout. |
 | `--job ID` | ci | every job, each after the jobs it `needs` | Replay only this job (repeatable). |
 | `--workflow FILE` | ci | every workflow | One workflow: a file name in `.github/workflows/` or a path. |
@@ -227,6 +228,7 @@ exited 1 on the board's own findings.
 | `bench` | yes: it routes each board with each router | not measured | |
 | `ci` | yes: it replays a workflow, `make verify` among its steps | not measured | |
 | `design` (no `--route`) | no | 1.51 s | pass-first-design |
+| `design --rules-only` | no | not measured | |
 | `drc` | no | 0.84 s; 1.21 s | pass-rc-divider; Last Hit v0.16 |
 | `erc` | no | 0.49 s; 0.60 s | pass-rc-divider; Last Hit v0.16 |
 | `sources` | no | 1.36 s | Last Hit v0.16 |

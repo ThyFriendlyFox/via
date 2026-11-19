@@ -272,7 +272,7 @@ has every flag.
 | `next` | Name the one next step for a project. |
 | `new` | Start a board project in a folder: the template's design file under the folder's name, `.gitignore`, `parts.csv` and `library/sources.csv` with their headers. Refuses a folder that holds a design. |
 | `chip` | A chip project, from RTL to a GDSII layout: `chip init`, `chip gates`, 1 command for each of its 10 gates, and `chip render` for a picture of the layout. Tests hold all 10 gates. The acceptance design, an 8-bit processor of 760 cells on the sky130A process, is GREEN with `--strict` in under 4 minutes. |
-| `design` | Build a design file into a KiCad project; `--route` routes it; `--check` compares. |
+| `design` | Build a design file into a KiCad project; `--route` routes it; `--check` compares; `--rules-only` writes the copied fab rule file again and nothing else. |
 | `erc`, `drc`, `sim`, `export` | One gate, alone. |
 | `gates` | The 4 gates in order; the last line is the verdict. |
 | `verify` | Check a verification package against a fresh run; say whether the requirements are met. |

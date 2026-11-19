@@ -34,4 +34,4 @@
 	(constraint text_thickness (min 0.13mm))
 	(severity error))
 
-# Copied by the workcenter from sierra-circuits-web.kicad_dru (Design.fab); edit the source, not this file.
+# Copied by Via from sierra-circuits-web.kicad_dru (Design.fab); edit the source, not this file.
