@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 
 import pytest
+from conftest import no_home
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "verify"))
@@ -201,6 +202,21 @@ def test_each_shard_has_its_own_kicad_configuration_and_temporary_folder(tmp_pat
     args = [testshards.shard_args(name, work) for name in ("1", "2")]
     bases = {a[a.index("--basetemp") + 1] for a in args}
     assert len(bases) == 2 and all("-p" in a and "no:cacheprovider" in a for a in args)
+
+
+def test_with_no_home_folder_known_the_shards_start_with_an_empty_kicad_configuration(tmp_path):
+    """M299: HOME unset and a user id with no line in /etc/passwd (conftest.no_home), and no
+    KICAD_CONFIG_HOME or XDG_CONFIG_HOME: there is no configuration to copy, and each shard starts
+    with an empty folder of its own, as where ~/.config/kicad is not there."""
+    root = folder(tmp_path, {"test_a.py": PASSING})
+    env = {k: v for k, v in os.environ.items() if k not in ("KICAD_CONFIG_HOME", "XDG_CONFIG_HOME")}
+    work = tmp_path / "work"
+    args = ["run", "--root", root, "--table", root / "shards.csv", "--jobs", "1"]
+    args += ["--python", sys.executable, "--work", work]
+    ran = no_home(ROOT / "verify" / "testshards.py", *args, env=env, timeout=300)
+    assert ran.returncode == 0, ran.stdout + ran.stderr
+    assert "Traceback" not in ran.stdout + ran.stderr
+    assert [p.name for p in work.glob("shard-*/kicad")] == ["kicad"]
 
 
 def run_in_temp(root: Path, temp: Path) -> subprocess.CompletedProcess:

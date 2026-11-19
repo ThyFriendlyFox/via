@@ -5,7 +5,7 @@ tags: [examples, wyvern, usb-c, power, signal-integrity]
 image: /examples/wyvern/card.png
 ---
 
-Wyvern is a Snapdragon development board laid out like a Teensy. A Qualcomm QCS6490 module, which runs Linux or Android, shares the board with an RP2350 microcontroller on 30 pins. We're Team Reagent, and we asked for Wyvern as an example of what Via, our board design workcenter, can make. An AI agent designed it with Via's tools, skills and checks, and we read its work and its mistakes.
+Wyvern is a Snapdragon development board laid out like a Teensy. A Qualcomm QCS6490 module, which runs Linux or Android, shares the board with an RP2350 microcontroller on 30 pins. We're Team Reagent, and we asked for Wyvern as an example of what Via can make. An AI agent designed it with Via's tools, skills and checks, and we read its work and its mistakes.
 
 ![Wyvern v0.2 in 3D: a black board with a large gray module at one end, a USB-C receptacle and five buttons at the other, and a row of gold pins along each long edge](/examples/wyvern/card.png "Wyvern v0.2, rendered by KiCad, with a stand-in body for the module")
 

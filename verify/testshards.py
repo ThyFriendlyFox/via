@@ -276,13 +276,17 @@ def compare(collected: list[str], ran: dict[str, list[str]]) -> tuple[list[str],
     return missing, extra, twice
 
 
-def kicad_config_source(env: dict) -> Path:
+def kicad_config_source(env: dict) -> Path | None:
     """Where KiCad reads its configuration: $KICAD_CONFIG_HOME, else $XDG_CONFIG_HOME/kicad, else
-    ~/.config/kicad. Each holds 1 folder per version (`10.0/`)."""
+    ~/.config/kicad. Each holds 1 folder per version (`10.0/`). None with no home folder (M299): there
+    is nothing to copy, as where ~/.config/kicad is not there."""
     if env.get("KICAD_CONFIG_HOME"):
         return Path(env["KICAD_CONFIG_HOME"])
     xdg = env.get("XDG_CONFIG_HOME", "")
-    base = Path(xdg) if xdg and Path(xdg).is_absolute() else Path.home() / ".config"
+    try:
+        base = Path(xdg) if xdg and Path(xdg).is_absolute() else Path.home() / ".config"
+    except (RuntimeError, KeyError):
+        return None
     return base / "kicad"
 
 
@@ -363,7 +367,7 @@ def start(shard: Shard, root: Path, work: Path, python: str, base: dict, procs: 
     folder.mkdir(parents=True, exist_ok=True)
     env = shard_env(shard.name, work, base)
     source = kicad_config_source(base)
-    if source.is_dir():
+    if source is not None and source.is_dir():
         shutil.copytree(source, env["KICAD_CONFIG_HOME"], dirs_exist_ok=True)
     else:
         Path(env["KICAD_CONFIG_HOME"]).mkdir(parents=True, exist_ok=True)

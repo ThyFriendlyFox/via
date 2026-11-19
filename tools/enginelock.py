@@ -102,6 +102,7 @@ SHORT = (
     "standards",
     "new",
     "image",  # reads 3 files at a commit with git and starts no engine: 0.22 s on 2026-11-18
+    "mcp",  # a server that runs for a whole session; each command it starts takes the lock itself
 )
 
 

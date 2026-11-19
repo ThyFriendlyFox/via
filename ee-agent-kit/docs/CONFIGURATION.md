@@ -113,7 +113,8 @@ unset variable never causes a failure.
 | `--fab NAME` | gates, drc, legend | none | Also check a fab's limits: a rule set in `rules/` (`sierra-circuits-web`, `jlcpcb-2layer`, `pcbway-standard`, `oshpark-2layer`) or a `.kicad_dru` path, laid over the project's own rules on a copy in `<out>/fab-<name>/`. A design file's `fab` field does the same for good (`rules/README.md`). |
 | `--place OUT` | legend | none | Write a copy of the board to OUT (`.kicad_pcb`), every designator placed round its part; the project is not changed. |
 | `--show` | legend | off | Put every hidden designator back on the silkscreen first, where its footprint has it. |
-| `--dsn FILE` | autoroute | `<project>/<name>.dsn`, then `build/route/<name>.dsn` | Specctra DSN exported from KiCad. Absent means the command skips. |
+| `--dsn FILE` | autoroute | `<project>/<name>.dsn`, then `build/route/<name>.dsn` | Specctra DSN exported from KiCad. Absent means the command skips, unless `--apply` is given. |
+| `--apply` | autoroute | off | Read the project's `.kicad_pcb` and `.kicad_pro`, route the board with FreeRouting, write the copper into the board file in place (the board before the route is kept as `build/route/<name>.before.kicad_pcb`), then run the DRC gate on it. Takes no `--dsn`. Pass: the router counted nothing open, and the DRC has 0 errors and 0 unconnected items. While the project file sets `unconnected_items` to `ignore`, the open connections are not judged: SKIP, exit 2. |
 | `--passes N` | autoroute, design, bench | `20` autoroute and bench, `60` design | FreeRouting optimisation passes. bench takes a whole number above 0. |
 | `--threads N` | autoroute, design, bench | engine default; bench `2` | FreeRouting thread count (`-mt`). bench takes a whole number above 0 and also holds the JVM to N processors. |
 | `--order` | design (with `--route`), bench | off | design: route in 4 stages, 1 FreeRouting run each, each on the copper of the stages before it: poured nets and every net with copper drawn by hand, the nets of each part of 0.5 mm pitch or less, pairs (names that end in `_P`/`_N`, `D+`/`D-` or `DP`/`DN`), the rest. Writes `build/route/<name>.<n>-<stage>.dsn`, `.ses`, `.log`. Refuses `--seed`. bench: also run each router as `<router>+order`. |
@@ -129,6 +130,7 @@ unset variable never causes a failure.
 | `--left` | now | `nothing` | 1 thing left; repeatable. |
 | `--title` | now | off | Print the issue's title, `Work card: <the work>`, and nothing else. |
 | `--write` | now | off | A checkout of the `status` branch: the card goes under its title to its `now/<branch>.md`. |
+| `ROOT` (positional) | mcp | `.` | The folder the MCP tools may reach. Every path a call names (`project`, `out`, `dsn`, a `fab` given as a path) must resolve inside it, links followed; a call that names another is refused in 1 line. |
 | `--spec FILE` | fields | `<project>/fields.json` | The groups of nets, each group's band and its limits, each limit with its `source`. |
 | `--model` | fields | off | Write each group's `model.json` and the engine's input under `<out>/fields/<group>/`; run nothing. |
 | `--strict` (fields) | fields | off | A limit that is not judged fails the run. Without it the run exits 2 when no limit was held (`no limit stated: nothing judged`). |
@@ -551,6 +553,22 @@ checkout) and `--json` stand before the listing's name.
 |---|---|---|---|
 | `WORKCENTER_REPO` | URL | this repository | Where the cloud environment clones from. |
 | `WORKCENTER_REF` | branch or tag | `main` | What it checks out. |
+
+
+## `ee-agent-kit/lead/gate-and-push.sh` (the gate on a machine with no CI)
+
+| Name | Kind | Default | What it does |
+|---|---|---|---|
+| `GATE_DIR` | path | none (required) | The folder of the lock (`GATE.lock`) and of the run's files: `verify-<label>.log`, `gate-<label>.status`, `gate-<label>.foreign` and `gate-<label>.look`. |
+| `GATE_FOLDERS` | paths, `:` between them | none | More folders whose scripts count as a helper's work. |
+| `GATE_QUIET` | command | `quiet.py` beside the script | The program that prints busy processes; nothing means quiet. |
+| `GATE_QUIET_SECONDS` | seconds, a number, 0 or more | `15` | Between 2 looks for quiet before the gate; a fraction works. |
+| `GATE_QUIET_TRIES` | a whole number above 0 | `3` | Quiet looks in a row before the gate starts. |
+| `GATE_QUIET_LIMIT` | whole seconds, 0 or more | `3600` | How long to wait for quiet; then exit 4. The wait counts real seconds. |
+| `GATE_SAMPLE_SECONDS` | seconds, a number above 0 | `20` | Between 2 looks for helpers' work during the gate. |
+| `GATE_STOP_SECONDS` | whole seconds, 0 or more | `30` | What a stopped make and its process group get to end before SIGKILL. Keep it above what make's tests need to end their own children: testshards' shards run in sessions of their own. |
+
+Any other value of `GATE_QUIET_SECONDS`, `GATE_QUIET_TRIES`, `GATE_QUIET_LIMIT`, `GATE_SAMPLE_SECONDS` or `GATE_STOP_SECONDS` is a bad call: exit 2 with 1 line on stderr, before the lock.
 
 <!-- Rules for these tables:
      · Every shipped option appears here — an undocumented option is a

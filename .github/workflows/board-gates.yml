@@ -1,0 +1,246 @@
+# `workcenter gates` for a board repository, as 1 reusable workflow. A board repository calls it from 1
+# workflow of its own (.claude/skills/board-ci/SKILL.md):
+#
+#   jobs:
+#     gates:
+#       uses: ThyFriendlyFox/via/.github/workflows/board-gates.yml@<sha>
+#       with:
+#         workcenter-ref: <sha>
+#
+# The tools' ref is the input workcenter-ref (default main). It does not follow the ref of the `uses:`
+# line: a caller that pins `uses:` to a commit still runs the tools of main unless it passes the same
+# commit as workcenter-ref. The skill's caller pins 1 commit SHA in both places.
+#
+# Each project folder is 1 job. The check is the gates' exit code: GREEN is green, RED and SKIPPED are
+# red. A GREEN with ERC, DRC or EXPORT at skip is red too: no board was there to judge. The job's
+# summary holds the gates table that `workcenter gates --report` writes, and where the gates ran.
+# Nothing is posted to the pull request.
+#
+# Where the gates run: the workcenter's container image of the toolchain files at `workcenter-ref`
+# (tools/image.py tag) when the runner can pull it, else install.sh, as CI's install path runs it. The
+# package is public, so the image is the normal path; the install path is taken when the registry holds
+# no image of that toolchain, or when the caller sets use-image: false. The pull needs no login, so no
+# step holds the job's token, and the job asks for `contents: read` alone.
+#
+# The gates run the board's own code: ngspice runs a sim deck's `shell` lines with /bin/sh during SIM.
+# In the image the gates get no network (`--network none`), `.via` read-only, and of the runner's temp
+# folder only `board-gates/`, where the report goes. On the install path they run on the runner as its
+# user, who has sudo: nothing holds them there.
+#
+# Every input and the project's name reach a script through `env:` alone; no `run:` holds an expression.
+name: Board gates
+on:
+  workflow_call:
+    inputs:
+      projects:
+        description: 'The project folders to gate, as a JSON list; 1 job each. Default: ["."]'
+        type: string
+        default: '["."]'
+      strict:
+        description: Warnings fail the gates (`workcenter gates --strict`).
+        type: boolean
+        default: false
+      workcenter-repository:
+        description: The workcenter's repository; its owner also owns the image.
+        type: string
+        default: ThyFriendlyFox/via
+      workcenter-ref:
+        description: The workcenter's branch, tag or commit whose gates run.
+        type: string
+        default: main
+      use-image:
+        description: Try the container image first. false always installs with install.sh.
+        type: boolean
+        default: true
+      apt-ubuntu-archive:
+        description: On the install path, apt asks Ubuntu's own archive, not the runner's regional mirror.
+        type: boolean
+        default: true
+jobs:
+  gates:
+    name: gates ${{ matrix.project }}
+    runs-on: ubuntu-24.04
+    # The nightly run's 45 minutes: the apt step's worst case is 1058 s (ee-agent-kit/CI.md, "Toolchain
+    # step"), and the steps around it took 64 s; 1578 s are left for the checkouts, the pull and the
+    # gates. That is not a worst case: install.sh's main() also runs step_freerouting, step_openems and
+    # step_python (curl with no --max-time, and pip), and has no switch that skips them. Only these 45
+    # minutes bound them.
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        project: ${{ fromJSON(inputs.projects) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.workcenter-repository }}
+          ref: ${{ inputs.workcenter-ref }}
+          path: .via
+          persist-credentials: false
+      - name: The image of the workcenter's toolchain
+        id: tag
+        env:
+          REPOSITORY: ${{ inputs.workcenter-repository }}
+        run: python3 .via/tools/image.py tag --repo .via --owner "${REPOSITORY%%/*}" --github-output
+      - name: Where the gates run (the image of this toolchain, or install.sh) and why
+        id: where
+        env:
+          USE_IMAGE: ${{ inputs.use-image }}
+          IMAGE: ${{ steps.tag.outputs.image }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          ref="$IMAGE:$TAG"
+          where=install
+          if [ "$USE_IMAGE" != true ]; then
+            reason="the input use-image is $USE_IMAGE"
+          else
+            if said=$(docker pull --quiet "$ref" 2>&1); then
+              where=image
+              reason="the registry gave $ref"
+            else
+              code=$?
+              last=$(printf '%s\n' "$said" | tail -n 1)
+              reason="the registry gave no $ref: ${last:-docker pull exit code $code}"
+            fi
+          fi
+          echo "where: $where: $reason"
+          if [ "$where" = image ]; then pulled="$ref"; else pulled=""; fi
+          {
+            echo "where=$where"
+            echo "image=$pulled"
+            echo "reason=$reason"
+          } >> "$GITHUB_OUTPUT"
+      # CI's install path (ci.yml, `full`): the runner's regional mirror crawled to the download's bound
+      # in CI runs 44402154007 and 44432768560, and Ubuntu's own archive was fast (ee-agent-kit/CI.md,
+      # "Toolchain step"). The input apt-ubuntu-archive: false turns it off.
+      - name: Ask Ubuntu's own archive, not the runner's regional mirror
+        if: steps.where.outputs.where == 'install'
+        working-directory: .via
+        env:
+          ENABLED: ${{ inputs.apt-ubuntu-archive }}
+        run: |
+          if [ "$ENABLED" = false ]; then
+            echo "[apt-archive] off: the input apt-ubuntu-archive is false; apt keeps the runner's mirror"
+          else
+            sudo env APT_ARCHIVE_CI=1 bash tools/ci/apt_archive.sh /etc/apt
+          fi
+      # CI's 2 bounds of the apt step. No REQUIRE_FREEROUTING: the 4 gates route nothing.
+      - name: Install the workcenter toolchain (install.sh, with CI's 2 apt bounds)
+        if: steps.where.outputs.where == 'install'
+        working-directory: .via
+        run: sudo env APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh
+      - name: workcenter gates
+        env:
+          WHERE: ${{ steps.where.outputs.where }}
+          IMAGE: ${{ steps.where.outputs.image }}
+          PROJECT: ${{ matrix.project }}
+          STRICT: ${{ inputs.strict }}
+        run: |
+          # A folder of its own: the image path mounts it, and not the runner's file-command files.
+          out="$RUNNER_TEMP/board-gates"
+          mkdir -p "$out"
+          report="$out/board-gates.md"
+          # The name goes after `--`: a folder named `--help` is gated as a folder, not read as an
+          # option. An empty name, or one with a control character, is not 1 folder: refused, red.
+          if [ -z "$PROJECT" ] || [[ "$PROJECT" == *[[:cntrl:]]* ]]; then
+            printf 'RED: the project name %q is not a folder the gates can be given: %s\n' "$PROJECT" \
+              "it is empty or holds a control character"
+            exit 1
+          fi
+          args=(gates --report "$report")
+          if [ "$STRICT" = true ]; then args+=(--strict); fi
+          args+=(-- "$PROJECT")
+          case "$WHERE" in
+            install)
+              python3 .via/tools/workcenter "${args[@]}"
+              ;;
+            image)
+              # Each on its own line: inside docker's arguments a failing id is lost under bash -e (M269).
+              uid=$(id -u)
+              gid=$(id -g)
+              # The board's decks run here (ngspice `shell`): no network, `.via` read-only over the
+              # workspace's mount, and of the runner's temp folder only the report's folder.
+              docker run --rm --network none --user "$uid:$gid" -e CI -e GITHUB_ACTIONS \
+                -v "$GITHUB_WORKSPACE":"$GITHUB_WORKSPACE" \
+                -v "$GITHUB_WORKSPACE/.via":"$GITHUB_WORKSPACE/.via":ro \
+                -v "$out":"$out" -w "$GITHUB_WORKSPACE" \
+                "$IMAGE" bash -e -c 'python3 .via/tools/image.py check --src .via; python3 .via/tools/workcenter "$@"' \
+                workcenter "${args[@]}"
+              ;;
+            *)
+              echo "no path was decided"
+              exit 1
+              ;;
+          esac
+          # Exit code 0 is green only with the gates' own GREEN line in their report: a help text or an
+          # empty output writes none.
+          if ! grep -qE '^GREEN( |$)' "$report" 2> /dev/null; then
+            echo "RED: $PROJECT: the gates exited 0, but their report holds no GREEN line: nothing was judged"
+            exit 1
+          fi
+          # GREEN with ERC, DRC or EXPORT at skip judged no board: its schematic or its .kicad_pcb is not
+          # there; so did a GREEN with no row for one of them. SIM at skip (no sim/*.cir) stays green;
+          # the summary's table shows it.
+          not_judged=$(sed -nE 's/^\| (ERC|DRC|EXPORT) \| skip \| (.*) \|$/\1 \2/p' "$report")
+          for gate in ERC DRC EXPORT; do
+            if ! grep -qE "^\| $gate \| " "$report"; then
+              not_judged+="${not_judged:+$'\n'}$gate no row in the gates table"
+            fi
+          done
+          # Each such gate also goes into not-judged.txt, which the summary puts under the table.
+          if [ -n "$not_judged" ]; then
+            while read -r gate why; do
+              echo "RED: $PROJECT: $gate not judged: $why; this check is green only when ERC, DRC and" \
+                "EXPORT ran (.claude/skills/board-ci/SKILL.md, \"A board that is not there is red\")"
+              echo "$gate not judged: $why" >> "$out/not-judged.txt"
+            done <<< "$not_judged"
+            exit 1
+          fi
+      - name: The gates table into the job's summary
+        if: always()
+        env:
+          PROJECT: ${{ matrix.project }}
+          WHERE: ${{ steps.where.outputs.where }}
+          IMAGE: ${{ steps.where.outputs.image }}
+          REASON: ${{ steps.where.outputs.reason }}
+        run: |
+          report="$RUNNER_TEMP/board-gates/board-gates.md"
+          red="$RUNNER_TEMP/board-gates/not-judged.txt"
+          # The board's text and its name go in as text, not markup: every `<` of the report but its
+          # own `<!-- workcenter ... -->` markers is `&lt;`, and in the name each character but
+          # letters, digits and ` ._/:,=+@-` is a numeric entity.
+          text() {
+            local s=$1 c out="" i
+            for ((i = 0; i < ${#s}; i++)); do
+              c=${s:i:1}
+              case "$c" in
+                [[:alnum:]\ ._/:,=+@-]) out+=$c ;;
+                *) out+=$(printf '&#%d;' "'$c") ;;
+              esac
+            done
+            printf '%s' "$out"
+          }
+          {
+            if [ -s "$report" ]; then
+              sed -E '/^<!-- \/?workcenter [^>]* -->$/!s/</\&lt;/g' "$report"
+            else
+              echo "No gates table for <code>$(text "$PROJECT")</code>: the gates step wrote none; its log says why."
+            fi
+            if [ -s "$red" ]; then
+              echo
+              echo "This check is red: the gates said GREEN, but these gates judged nothing:"
+              echo
+              sed -e 's/</\&lt;/g' -e 's/^/- /' "$red"
+            fi
+            echo
+            case "$WHERE" in
+              image) echo "Where: the image $IMAGE." ;;
+              install) echo "Where: install.sh: $REASON." ;;
+              *) echo "Where: no path was decided: the job stopped before the step \`where\`." ;;
+            esac
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -181,7 +181,11 @@ the gate runs on the machine, alone, and the push waits for its
     - 1: `RED: no push`. Read the end of `<scratch>/verify-<label>.log`,
       fix the cause in tree A with a test, and go back to step 4.
     - 2: a bad call, 1 line on stderr: `GATE_DIR` is not set or is no
-      folder, or an argument is missing. Mend the call; no gate ran.
+      folder, `GATE_QUIET_SECONDS` is no number of seconds, 0 or more,
+      `GATE_QUIET_TRIES` is no whole number above 0, `GATE_QUIET_LIMIT` or
+      `GATE_STOP_SECONDS` is no whole number of seconds,
+      `GATE_SAMPLE_SECONDS` is no number above 0, or an argument is
+      missing. Mend the call; no gate ran.
     - 3: `STOP: ...`: the line says what: HEAD or the branch is not
       `<commit>`, the tree is not clean or changed during the gate, or
       another gate holds the lock. Mend that, and go back to step 17.
@@ -196,11 +200,20 @@ the gate runs on the machine, alone, and the push waits for its
     - 6: the quiet check failed: run it by hand,
       `python3 ee-agent-kit/lead/quiet.py $$ <scratch>`, and mend what it
       prints on stderr.
-    - 129, 130 or 143: the gate was stopped. It ended `make verify` before
-      it removed the lock. Step 18 again.
+    - 129, 130, 141 or 143: the gate was stopped (SIGHUP, SIGINT, a closed
+      stdout or stderr, SIGTERM). It ended `make verify` and its process
+      group, with SIGKILL after `GATE_STOP_SECONDS` (default 30), before it
+      removed the lock. A stop while `git push` ran waits for the push: if
+      the `ls-remote` above prints `<commit>`, it was pushed; go on to step
+      7. Else step 18 again.
+    - To stop a gate, send it SIGTERM. A stop sent in its first instants
+      may be lost: if the gate has not ended a few seconds later, send it
+      again.
     If `<scratch>/gate-<label>.foreign` is not empty, a helper ran a test or
     an engine during the gate: name it in your report, and remind it of the
-    lock in its next brief.
+    lock in its next brief. A line `the quiet check ... failed` there means
+    a look saw nothing: run the quiet check by hand (exit 6 above), and do
+    not read that time as quiet.
 
 ## Done when
 

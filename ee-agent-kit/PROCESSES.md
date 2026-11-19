@@ -356,6 +356,11 @@ axis it defines (a 3D model's rotation or offset, an export's origin).
     terminal's width, and what stood at the end of a long line is gone
     with no error. A test of such a check runs it once under a narrow
     COLUMNS, with a command line longer than that width (M281).
+12. A program that reads a stranger's input (a server's stdin, a file a
+    person sends) bounds every way the reader can be made to stop: the
+    nesting depth, the length of a line, the size of a number, how many
+    requests run or wait. A test sends each one past its bound and holds
+    that the program answers and goes on (M297).
 
 Done when: a test parses a real sample of each shape, failures among them,
 and the parser's assumptions are written next to it.
@@ -514,6 +519,26 @@ When: touching `tools/workcenter` or `tools/kicadgen.py`'s command line.
 8. A verdict that 2 commands print is 1 function they both call:
    `guide.ratings_state` is read by `gates` and `next`, and
    `tests/test_done.py` holds every kind of record to it (M251).
+9. A command that starts Python in or on a folder it does not own (a
+   board's, a project's) starts it isolated (`python3 -I`), so that a
+   module planted there (`kikit/`, `pcbnew.py`, `yaml.py`,
+   `sitecustomize.py`) is never imported; a probe that asks "is module X
+   there" is such a start too. A file the command hands to another tool is
+   refused when it names code for that tool to run. A test plants such a
+   module in the folder and holds that it was not imported (M295).
+10. A check on the paths a call names also holds the paths the command
+    will write by default: a default (`<project>/build`) is named by the
+    command and checked as a named one, and a test gives the default a
+    link out of the allowed folder (M298).
+11. Code that runs at import or at a command's start asks the machine
+    for nothing a container or a service may not have: a home folder
+    (`Path.home()`, `~`), a user name, a terminal. Each is asked where it
+    is used, through 1 function that says when there is none
+    (`home_folder()` in `tools/workcenter`), and the caller goes on or
+    refuses in 1 line that says what to set. A test starts the command
+    with no HOME and a user id /etc/passwd does not name
+    (`tests/conftest.py`'s `no_home`) and holds that it does its work
+    with no traceback (M299).
 
 Done when: `make verify` is green, the configuration table names the
 flag, and every document that writes the command writes one the parser
@@ -609,6 +634,15 @@ that may be absent.
     comparison under a wait, run it while a loop holds the lock in a folder
     of its own (`WORKCENTER_LOCK_DIR`) with
     `python3 tools/enginelock.py hold -- sleep 2` (M283).
+12. A test changes nothing another test imports: a folder it puts on
+    `sys.path` and the modules it imports from there leave when it ends (a
+    fixture restores both), and a test holds that a later `import` of a
+    name 2 folders hold gets the module the code means (M296). Such a
+    test asks the path search (`importlib.machinery.PathFinder`), never
+    `importlib.util.find_spec` or an `import`, which answer from
+    `sys.modules` first; it runs once alone and once after a test that
+    imported the name, and fails in both when the restore is taken out
+    (M300).
 
 Done when: the summary shows no unexpected skips, the engine test is
 green on the runner, and a run with an engine taken away is not GREEN.
@@ -651,6 +685,13 @@ When: a change is about to be called done.
    `workcenter design <p>/design.py --check` is that step for one project,
    and `workcenter ci <repo>` replays the whole workflow and prints
    `CI REPLAY GREEN`). Run them with an absolute path, never behind a `cd`.
+   Whoever lands a piece also runs, after each landing, the whole of
+   `tests/test_docs.py` with `-m "not engine"` (never a `-k` choice), and
+   the test files the landing touched the way CI's `fast` job runs them
+   (`verify/verify.sh site`: `KICAD_SYMBOL_DIR` and `KICAD_FOOTPRINT_DIR`
+   pointed at empty folders, `WORKCENTER_NO_ENGINES=1`, `-m "not
+   engine"`), and looks for processes those tests left running (a test
+   that starts a holder of a command ends the holder's whole group) (M293).
 2. Chain the push behind the verdict itself, never behind a look at the
    log: `make -C /path check TESTS="..." && git push ...`. A `tail`
    succeeds whatever the log says. Every check you run before a push is in
@@ -726,6 +767,12 @@ When: a change is about to be called done.
    shared line; a branch that still holds lines under `## [Unreleased]`
    moves them into change files before it merges `main`
    (`ee-agent-kit/changes/README.md`).
+10. Before a tool writes a person's file in place, it refuses a file that
+    is read-only, open in its editor (its lock file), or changed since the
+    tool read it, by name and with the file left as it was; it writes
+    through a link to its target and keeps the file's mode; it changes
+    only what it adds; and it never writes over an earlier backup. Each
+    of these has a test (M294).
 
 Done when: the remote has the commit, its CI run is green, and the report
 has been sent. For a gate's method: the attack's cases are tests; after 2
@@ -851,13 +898,21 @@ charger, or any other load from a battery.
    only after the whole list has run 3 times with the same count; a
    mutant caught on some runs and not others is not caught: find the
    order its test rests on and fix the test before the count is written.
-   A script that ends a background child keeps nothing it needs between
-   the child's `&` and the line that keeps its pid: it ends the child's
-   whole process group (made before the `&` returns), and a signal in that
-   gap is noted and taken once the pid is kept. Its test holds the script
-   at each such point (a BASH_ENV hook with a DEBUG trap, or a stand-in
-   that waits for a mark) and sends the kill there, so the order is chosen
-   and the test fails every time on the fault (M272). A process that
+   A script that ends a background child ends it without a signal by pid
+   where it can: the child waits on a pipe whose write end only the parent
+   holds, so the parent's close or its death ends it. A signal goes only to
+   a child the script has not reaped, and to a process group only while the
+   group has members. A signal that comes while a job starts, or while a
+   lock is made, is noted and taken once the pid or the lock is kept, in the
+   script's own shell, never in a subshell; every exit ignores further
+   signals and broken pipes before it runs the cleanup, and every wait in
+   the cleanup has a bound. Every setting the script reads is checked
+   before it acts. Its test holds the script at each such point (a
+   BASH_ENV hook with a DEBUG trap, or a stand-in that waits for a mark)
+   and sends the kill there, to the pid and to the process group, so the
+   order is chosen and the test fails every time on the fault, not 1 time
+   in 100; and one test runs the real program the script stops, not only a
+   stand-in (M272). A process that
    stops on a signal ignores a later stop until its clean-up is done: a
    parent that passes a signal on (`enginelock.py hold`) sends a second
    one to a child that already got it from its group. A test of a stop

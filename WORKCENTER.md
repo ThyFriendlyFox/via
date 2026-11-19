@@ -77,7 +77,7 @@ honestly passes it.
 |---|---|---|---|
 | KiCad | 10.0 | `kicad-cli` | `install.sh` (PPA kicad/kicad-10.0-releases) |
 | ngspice | 42 | `ngspice` | `install.sh` (Ubuntu 24.04 archive) |
-| FreeRouting | 1.9.0 | `workcenter design <design.py> --route [--seed <previous .kicad_pcb>\|--order] [--threads N]` (generated boards, headless); `workcenter bench <design.py>... --out <dir>` (the routing benchmark); `workcenter autoroute <project> [--dsn file]` (hand-drawn boards, DSN from KiCad) | `install.sh` (GitHub release, SHA-256 pinned; 2.1.0 hangs after routing when its GitHub version check cannot succeed) |
+| FreeRouting | 1.9.0 | `workcenter design <design.py> --route [--seed <previous .kicad_pcb>\|--order] [--threads N]` (generated boards, headless); `workcenter bench <design.py>... --out <dir>` (the routing benchmark); `workcenter autoroute --apply <project>` (hand-drawn boards, headless: the board file is read, routed and written in place) or `workcenter autoroute <project> --dsn <file>` (a DSN exported from KiCad, session only) | `install.sh` (GitHub release, SHA-256 pinned; 2.1.0 hangs after routing when its GitHub version check cannot succeed) |
 | FreeRouting 2 | 2.5.0 | `workcenter design <design.py> --route --router freerouting2`; `workcenter bench <design.py>... --out <dir> --router freerouting2` | `install.sh --freerouting2` (GitHub release, SHA-256 pinned, with a Temurin 25.0.5+8 JRE, SHA-256 pinned); opt-in. The default router stays FreeRouting 1.9.0. |
 | openEMS | 0.0.35 (Debian 12's `0.0.35+git20190103.6a75e98+dfsg.1-3.2`) | `workcenter fields <project>`, as its own program on an XML file the command writes; `OPENEMS` overrides the path | `install.sh` and `install.sh --openems` (Debian 12's 4 packages from `deb.debian.org`, each SHA-256 pinned; Ubuntu 24.04 has no package) |
 | KiKit | 1.8.1 | `tools/panel.py` under `KIKIT_PYTHON` (EXPORT's panel, for a project with `panel.json`); its `doPanelization`, not the `kikit` command, which imports wxPython | `install.sh` (PyPI, `requirements.txt`) |
@@ -109,10 +109,11 @@ file: it needs nothing else.
 | `attached-repos` | The session holds more than 1 repository. Run first. |
 | `board-design` | A board is designed from a spec, as a Python design file built from the KiCad libraries. |
 | `board-gates` | A board must pass ERC, DRC, simulation, and export. The fix loop. |
+| `board-ci` | A board repository is to run the gates on every pull request: 1 workflow that calls Via's reusable `board-gates.yml`, 1 job per project folder, the gates table in the job's summary, a red check on a red gate. |
 | `board-loop` | A board that passes its gates is to become compact, correct and good to look at: 1 prompt run again and again, with a reviewer who has not seen the earlier rounds. The project's `LOOP.md` holds the prompt, the checklist and the log. |
 | `chip-design` | A chip is designed from a spec: `chip.json`, the RTL, the benches, the constraints, the list of changes the benches must catch. |
 | `chip-gates` | A chip must pass the 10 chip gates to its GDSII layout. The fix loop, gate by gate. |
-| `autoroute` | A board has unrouted nets and FreeRouting should route them. Headless for generated designs. |
+| `autoroute` | A board has unrouted nets and FreeRouting should route them. Headless for generated designs (`design --route`) and for hand-drawn boards (`autoroute --apply`). |
 | `simulate` | A circuit must meet a measurable spec before layout; a part switches; a deck must run on another machine. Corners, the frequency plan, bundles. |
 | `blog-post` | A human asks for a public write-up of recent work. |
 | `procurement` | A human asks what a board costs, for its parts list, or to order its parts. |
@@ -124,6 +125,7 @@ file: it needs nothing else.
 | `references` | A rule cites a standard or a datasheet: get the copy it was written from with `workcenter references fetch`, judge a file a person downloaded with `workcenter references check`, and keep `workcenter references rules` passing. |
 | `legend` | A board's labels must be legible and not overlap: each designator placed by the generator, every text held by the DRC gate to the fab's least size and the legend's rules. |
 | `now` | Several agents work at once and a maintainer follows them on the project board: 1 work card per piece of work with `workcenter now`, its `**Status:**` line Todo, In progress or Done, in 1 GitHub issue's body rewritten at each landing, block and health gate, or on the `status` branch with `--write`. |
+| `mcp` | A host that is not Claude Code is to run the gates: `workcenter mcp <project>` serves `doctor`, `gates`, `erc`, `drc`, `sim`, `export` and `autoroute` as MCP tools over stdio, each answering its command's lines and exit code. |
 | `lead` | Roadmap work is to be done by helpers: a worktree and a brief per piece, a build, an attack and a fix, a second attack for a piece called not sound, and `ee-agent-kit/lead/landed.py` to see which pieces have finished. |
 | `land` | Finished pieces are to go onto the work branch, and later onto the default branch: commits in a straight line, docs files applied, a push on `make check`, CI's `verdict` green on the pushed commit before anything builds on it, a merge that names its head (`ee-agent-kit/lead/gate-and-push.sh` where there is no CI), a merge commit only at the owner's word. |
 | `user-round` | The roadmap is to be checked against the goal: 3 users of different sizes, 1 board spec, their logs checked and ranked into roadmap candidates, each with what the small user does after the change. |
@@ -699,6 +701,25 @@ git commands to commit and push it; it runs none. The workflow Board
 card in Done: on the card's own event, and once a day and by hand for every
 card (`--all`), so a missed run is put right; it needs the repository secret
 `BOARD_TOKEN`.
+
+Not a gate: `workcenter mcp [ROOT]` is an MCP server on stdio, revision
+2025-11-25, for a host that is not Claude Code. Its 7 tools are `doctor`,
+`gates`, `erc`, `drc`, `sim`, `export` and `autoroute`. Each runs
+`workcenter <tool>` as a child process and answers the lines it printed,
+stdout and stderr in order, then `exit code N`; `structuredContent` holds
+`exitCode` and the command line, and `isError` is true when the code is
+not 0. Every path a call names (`project`, `out`, `dsn`, a `fab` given as a
+path) must lie inside ROOT, links followed; any other is refused in 1 line
+and nothing runs. With no `out`, the server names `<project>/build` itself
+and holds it inside ROOT too. The server refuses `/` and the home folder as
+ROOT. It runs 4 commands at once; a further call waits its turn, and 1
+beyond 36 held is refused. A long tool waits its turn on the engine lock as its
+command does, and the server answers `ping` and other calls meanwhile;
+`notifications/cancelled` stops the command and its engines, and a
+`progressToken` gets each printed line as a progress notification. Closing
+stdin lets running calls finish; SIGTERM or Ctrl-C stops them, and on Linux
+so does a SIGKILL to the server. stdio only: no HTTP, no authentication.
+The `mcp` skill is the procedure.
 
 Not a gate: `workcenter highspeed <project> [--strict] [--verbose] [--out
 DIR]` holds the fast pairs `interfaces.json` names to their interface's

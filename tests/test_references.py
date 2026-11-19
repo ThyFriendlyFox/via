@@ -20,6 +20,7 @@ import threading
 from pathlib import Path
 
 import pytest
+from conftest import no_home
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
@@ -388,6 +389,34 @@ def test_fetch_ignores_a_relative_xdg_cache_home(site, tmp_path):
     assert code == 0, out
     assert [p for p in repo.rglob("*") if p.is_file()] == []
     assert (home / ".cache" / "ee-workcenter" / "references" / "ledger.json").is_file()
+
+
+def test_fetch_with_no_home_folder_known_refuses_a_folder_under_home_and_takes_a_whole_path(site, tmp_path):
+    """M299: HOME unset and a user id with no line in /etc/passwd (conftest.no_home). The default
+    folder and a --to that starts with ~ need a home: each is refused in 1 line that says what to set,
+    and nothing is asked. XDG_CACHE_HOME or a whole --to needs none."""
+    import os
+
+    index, refs = site
+    env = {k: v for k, v in os.environ.items() if k != "XDG_CACHE_HOME"}
+    fetch = (CLI, "references", "fetch", "an-17", "--index", index)
+    unknown = "no home folder is known (HOME is unset and the user id has no line in /etc/passwd)"
+    ran = no_home(*fetch, env=env)
+    assert ran.returncode == 1 and ran.stderr == "", ran
+    assert ran.stdout.splitlines() == [
+        f"references: {unknown} for the default folder ~/.cache/ee-workcenter/references; set HOME or "
+        "XDG_CACHE_HOME, or name a folder with --to"
+    ]
+    ran = no_home(*fetch, "--to", "~/refs", env=env)
+    assert ran.returncode == 1 and ran.stderr == "", ran
+    assert ran.stdout.splitlines() == [
+        f"references: ~/refs: {unknown} to expand ~ in it; set HOME, or name the folder by its whole path"
+    ]
+    assert Maker.asked == {}
+    ran = no_home(*fetch, "--to", refs, env=env)
+    assert ran.returncode == 0 and (refs / "ledger.json").is_file(), ran
+    ran = no_home(*fetch, env={**env, "XDG_CACHE_HOME": str(tmp_path / "cache")})
+    assert ran.returncode == 0 and (tmp_path / "cache" / "ee-workcenter" / "references").is_dir(), ran
 
 
 @pytest.mark.parametrize(

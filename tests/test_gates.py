@@ -224,6 +224,43 @@ def test_autoroute_without_dsn_skips_loudly(tmp_path):
     assert "DSN" in record["summary"] or "engine missing" in record["summary"]
 
 
+FREEROUTING_JAR = Path(
+    os.environ.get(
+        "FREEROUTING_JAR",
+        Path(os.environ.get("WORKCENTER_ROOT", "/opt/workcenters/ee")) / "freerouting" / "freerouting.jar",
+    )
+)
+
+
+@needs_kicad
+@pytest.mark.skipif(not FREEROUTING_JAR.is_file(), reason=f"freerouting: no jar at {FREEROUTING_JAR}")
+def test_autoroute_apply_routes_fixture(tmp_path):
+    """ROADMAP item 15's Evidence. route-me is a hand-drawn board: 4 parts (R2 on the back, C1 turned 90
+    degrees) and VIN drawn by hand. Open before the route: VOUT's 4 pads need 3 connections and GND's
+    3 pads need 2, 3 + 2 = 5. `autoroute --apply` reads the board, routes it with FreeRouting, writes the
+    copper into the board file, and the DRC of that file (with schematic parity) has 0 errors and 0
+    unconnected items. The run works on a copy of the fixture: the board file is written in place."""
+    board = tmp_path / "route-me"
+    shutil.copytree(BOARDS / "route-me", board)
+    code, records = run("drc", board, "--out", tmp_path / "before")
+    assert (
+        records[0]["details"]["counts"]["unconnected_items"]["error"]
+        + records[0]["details"]["counts"]["unconnected_items"]["warning"]
+        == 5
+    ), records
+    code, records = run("autoroute", board, "--apply", "--out", tmp_path / "out")
+    (record,) = records
+    assert record["status"] == "pass", record
+    assert code == 0
+    assert record["details"]["drc"]["unconnected"] == 0
+    assert record["details"]["drc"]["errors"] == 0
+    assert record["details"]["route"]["segments"] > 0
+    text = (board / "rc_divider.kicad_pcb").read_text(encoding="utf-8")
+    assert text.count("(segment") > 3
+    code, records = run("drc", board, "--out", tmp_path / "after", "--strict")
+    assert code == 0, records
+
+
 def test_every_cli_flag_is_in_the_configuration_table():
     """P10 step 4: each flag a command line takes has its row in docs/CONFIGURATION.md (M50).
     argparse flags, and kicadgen's, which it compares by hand (`a == "--lib"`)."""

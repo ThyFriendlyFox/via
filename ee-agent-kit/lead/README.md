@@ -54,11 +54,21 @@ python3 ee-agent-kit/lead/quiet.py <pid whose tree is left out> [folder]...
 `landed.py` exits 0 when a piece finished since its last run, 1 when none
 did, 2 on a bad call or a journal it cannot read. `gate-and-push.sh`
 exits 0 when it pushed, 1 on a red gate, 2 on a bad call (no `GATE_DIR`,
-or no such folder), 3 when it stopped (HEAD, branch, tree or lock), 4
-with no quiet in time, 5 when the push failed (the remote branch is no
-longer the lease, or 5 tries failed), 6 when the quiet check failed. A
-gate stopped by a signal ends `make verify` and every process it started
-before it removes the lock. Its header names its environment variables.
+or no such folder, or a `GATE_QUIET_SECONDS`, `GATE_QUIET_TRIES`,
+`GATE_QUIET_LIMIT`, `GATE_SAMPLE_SECONDS` or `GATE_STOP_SECONDS` it
+cannot use), 3 when it stopped (HEAD, branch, tree or lock), 4 with no
+quiet in time, 5 when the push failed (the remote branch is no longer the
+lease, or 5 tries failed), 6 when the quiet check failed, and 129, 130,
+141 or 143 when SIGHUP, SIGINT, a closed stdout or stderr, or SIGTERM
+stopped it. A stopped gate ends `make verify` and every process of its
+process group before it removes the lock, with SIGKILL to them after
+`GATE_STOP_SECONDS` (default 30). A signal that comes while `git push`
+runs ends the gate once the push has ended, so after 129, 130, 141 or
+143 the remote branch may hold the commit. A stop sent in the gate's
+first instants may be lost: if the gate does not end, send it again. A
+quiet look that fails while the gate runs is a line of the
+`.foreign` file, and a look that still runs 10 s after the gate's end
+is killed with the sampler. Its header names its environment variables.
 `tests/test_lead.py` holds all 3 and the 3 scripts.
 
 ## Where the gate runs

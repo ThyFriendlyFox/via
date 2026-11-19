@@ -8,6 +8,7 @@ one job that fails half way through a step. PyYAML reads the workflow under the 
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -79,11 +80,27 @@ def repo_with(tmp_path: Path, workflow: str = WORKFLOW) -> Path:
     return repo
 
 
-def ci(*args: object, json_out: bool = False) -> tuple[int, str, dict]:
+def ci(
+    *args: object, json_out: bool = False, cwd: Path | None = None, env: dict | None = None
+) -> tuple[int, str, dict]:
     cmd = [sys.executable, str(CLI), *(["--json"] if json_out else []), "ci", *map(str, args)]
-    proc = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=300)
+    full = {**os.environ, **env} if env else None
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=300, cwd=cwd, env=full)
     data = json.loads(proc.stdout) if json_out and proc.stdout.strip() else {}
     return proc.returncode, proc.stdout + proc.stderr, data
+
+
+def test_the_workflow_is_read_with_no_python_module_of_the_working_directory(tmp_path):
+    """R16-N1: PyYAML read the workflow under `python -c`, which puts the working directory first on
+    the import path: a board repository's own `yaml.py` there was imported. It runs isolated now."""
+    pytest.importorskip("yaml")
+    repo = repo_with(tmp_path)
+    marker = tmp_path / "planted-ran.txt"
+    (repo / "yaml.py").write_text(f"open({str(marker)!r}, 'a').write(__file__ + '\\n')\n", encoding="utf-8")
+    # The engine lock in a folder of this test's: the replay's steps start no engine.
+    code, text, _ = ci(repo, "--job", "first", cwd=repo, env={"WORKCENTER_LOCK_DIR": str(tmp_path / "lock")})
+    assert not marker.exists(), marker.read_text(encoding="utf-8")
+    assert code == 0 and text.splitlines()[-1] == "CI REPLAY GREEN", text
 
 
 def test_a_job_replays_green_with_its_environment_carried_between_steps(tmp_path):

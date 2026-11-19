@@ -264,7 +264,7 @@ has the procedure from a spec to a GREEN board.
 has every flag.
 
 <details>
-<summary>The 37 commands</summary>
+<summary>The 38 commands</summary>
 
 | Command | What |
 |---|---|
@@ -282,12 +282,13 @@ has every flag.
 | `now` | The work card of 1 piece of work in progress: its `**Status:**` line for the project board (Todo, In progress or Done), its branch and last commit, what is done now, the last health gate, what it waits for and what is left. 1 issue's body per piece of work, titled `Work card: ...` and rewritten in place; `--write` puts it on the `status` branch for a host without GitHub. |
 | `standards` | List each requirement of the product kind `product.json` names, from free documents, as held by a gate, held by a named test of the verification package, or not held, with the document and clause. A list, not a certificate. |
 | `image` | The content tag of the toolchain's files (`Dockerfile`, `install.sh`, `requirements.txt`) at a commit, the name of the image of that tag, and in the image the record of its build: tag, commit, machine, the tools' versions. Runs no engine. |
+| `mcp` | An MCP server on stdio (revision 2025-11-25) for a host that is not Claude Code: `doctor`, `gates`, `erc`, `drc`, `sim`, `export` and `autoroute` as tools, each running its command and answering its lines and exit code. Every path a call names must lie inside the folder the server was given. Writes only MCP messages to stdout. |
 | `legend` | Hold every text printed on a board to its fab's least height and stroke and to no overlap, no hidden or stray designator and 2 directions a side, from the board file; `--place OUT` writes a copy with each designator placed. |
 | `highspeed` | Hold the fast pairs that `interfaces.json` names to their interface's document: the width a cross-section solver gives for its impedance on the board's stackup at the gap the tracks have, the gap, the length, the skew within a pair, the vias, and an unbroken ground plane above and below; write the same limits as KiCad rules. |
 | `copper` | Hold a routed board's power nets to a greatest voltage drop and current density on their own copper and in each via's barrel, and the board to a greatest temperature from its parts' heat; draw each as a picture. Every constant names its document; every limit is the project's. |
 | `fields` | Simulate the critical nets `fields.json` names with openEMS, from the board file, and hold impedance, loss and coupling to their limits. |
 | `bench` | Route design files with each router and compare: time, share joined, DRC errors, commands, bytes read. |
-| `autoroute` | Write FreeRouting's session file for a hand-drawn board's DSN. The import into KiCad is by hand. |
+| `autoroute` | Route a hand-drawn board headless with `--apply`: the `.kicad_pcb` is read, routed by FreeRouting and written in place, then checked by DRC. Without `--apply`, write FreeRouting's session file for a DSN exported from KiCad. |
 | `inspect` | Read a routed board: `map`, `list`, `probe`, `net`, `islands`, `resistance`, `crossed`. |
 | `placement` | Run a kistack placement check on a board. |
 | `render`, `pictures` | Images of the schematic, the board, every layer; turning GIFs; assembly scenes. |
@@ -356,6 +357,8 @@ docker run --rm -v "%cd%:/work" ghcr.io/thyfriendlyfox/via:v0.1.0 workcenter gat
 - The chip engines are not in the image; `sudo ./install.sh --chip` installs them on Ubuntu 24.04.
 - The image build runs the Linux command on Linux; nobody has run these commands on Windows or macOS yet.
 
+A board repository gets the gates on every pull request from 1 workflow that calls `ThyFriendlyFox/via/.github/workflows/board-gates.yml@main`: 1 job per project folder, the gates table in the job's summary, a red check on RED, SKIPPED, or a project with no board to judge. It runs in Via's public image, and installs with install.sh where the registry holds no image of that toolchain. The `board-ci` skill holds the caller.
+
 ## The website
 
 `site/` is the project's website: a home page with real runs of the
@@ -399,11 +402,13 @@ images are drawn.
 | `tools/highspeed.py` | `workcenter highspeed`: the board's stackup, its fast pairs' widths, gaps, lengths, skew, vias and planes against `rules/interfaces/`, and the KiCad rules file. Standard library only. |
 | `tools/legend.py` | The legend check and the designator placer: `workcenter legend`, the DRC gate's legend lines, `Design.place_designators`. Standard library only. |
 | `tools/image.py` | `workcenter image` and the image's own command line: the content tag of the toolchain's files, where CI's `full` job runs (`decide`), the record the Dockerfile writes (`record`), the check inside CI (`check`). Standard library only. |
+| `tools/mcpserver.py` | `workcenter mcp`: the MCP server on stdio. Each tool call runs `tools/workcenter` as a child; the reader answers `ping` and a cancel while a gate runs. Standard library only. |
 | `tools/xsection.py` | The cross-section solver: a track's or a pair's impedance and eps_eff on a layer stack, and the width for a target. Needs numpy; `workcenter highspeed` runs it under the venv. |
 | `tools/copper.py` | `workcenter copper`: the board's copper on a grid, each cell weighted by its copper, the drop and the heat by conjugate gradients, the pictures and the report. Runs under the venv's Python (numpy, pcbnew, Pillow). |
 | `tools/fields.py` | `workcenter fields`: the model of a board's critical nets from its board file, the mesh, the ports, openEMS run as its own program, and the limits held. Standard library only. |
 | `tools/routebench.py` | `workcenter bench`: the routing benchmark and the router each board takes. Standard library only. |
 | `tools/routers.py` | The routers behind `workcenter design --route` and `bench`: FreeRouting 1.9.0 (the default) and 2.5.0, each with its presence, version and command line. Standard library only. |
+| `tools/boardroute.py` | `workcenter autoroute --apply`: a hand-drawn `.kicad_pcb` and its `.kicad_pro` read into kicadgen's DSN writer, the route written back into the board file in place (a kept track or via byte for byte). Standard library and `tools/kicadgen.py`. |
 | `tools/boardrules.py` | `workcenter drc` with a `board-rules.json`: a board held to a standard's rule pack, each gap to its nets' voltage and each track's width to its net's current; each net's vias to its current, against the wall `board-rules.json` states (`via_wall` or `hdi`). Standard library only. |
 | `tools/layoutrules.py` | `workcenter drc` with layout packs under `layout` in `board-rules.json`: ESD at each connector that leaves the device (TI SLVA680A) and power and ground traces at most 3:1 on a 2-layer board (TI SZZA009), measured along the copper. Standard library only. |
 | `tools/creepage.py` | `workcenter drc` with `creepage` in `board-rules.json`: clearance and creepage between each pair of nets on F.Cu and B.Cu, held to the voltage between them by a creepage pack (MIL-HDBK-454C table 69-I, TI SLUP419). Standard library only. |
@@ -420,7 +425,7 @@ images are drawn.
 | `tools/ci/` | `scope.py`: what a change needs, `fast` or `full`; the `engine` marker's plugin and its guard; `nightly_issue.py`: what the nightly run does with its `ci-failure` issue. `make scope`, `make verify-site`. |
 | `WORKCENTER.md` | The contract a project gets from this workcenter. |
 | `AGENTS.md`, `CLAUDE.md` | Where an agent starts. The same text. |
-| `.claude/skills/` | `attached-repos`, `autoroute`, `blocks`, `blog-post`, `board-design`, `board-gates`, `board-loop`, `board-rules`, `charger-block`, `chip-design`, `chip-gates`, `copper`, `fabrication`, `fields`, `highspeed`, `kistack`, `land`, `lead`, `legend`, `now`, `procurement`, `ratings`, `references`, `simulate`, `standards`, `user-round`, `verification`. |
+| `.claude/skills/` | `attached-repos`, `autoroute`, `blocks`, `blog-post`, `board-ci`, `board-design`, `board-gates`, `board-loop`, `board-rules`, `charger-block`, `chip-design`, `chip-gates`, `copper`, `fabrication`, `fields`, `highspeed`, `kistack`, `land`, `lead`, `legend`, `mcp`, `now`, `procurement`, `ratings`, `references`, `simulate`, `standards`, `user-round`, `verification`. |
 | `templates/` | A first design file, a version's README and gates report, `corners.json`, `frequency-plan.json`, the verification package. |
 | `rules/` | Fabrication houses' limits as KiCad design rules: Sierra Circuits, JLCPCB, PCBWay, OSH Park. `rules/ratings/`: 2 derating standards as packs for `workcenter ratings`, each limit with its table and page. `rules/board/`: ECSS-Q-ST-70-12C Rev.1 as a board rule pack for `workcenter drc`, each limit with its clause, table and page. `rules/copper/`: the 5 constants of `workcenter copper`, each with its document and page. `rules/interfaces/`: the fast interfaces `workcenter highspeed` holds a pair to, each limit with its document, clause and page. `rules/references/`: the index of the 18 documents the rules cite (7 standards, 2 application notes, 9 datasheets), each with its URL and SHA256; no document itself. |
 | `tests/` | The tests of the tools. `tests/boards/` holds the fixture boards and what each proves. |

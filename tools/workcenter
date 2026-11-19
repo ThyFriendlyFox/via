@@ -2297,7 +2297,9 @@ def export_panel(project: Project, fab: Path, facts: dict) -> tuple[dict, list[s
     Python, then the panel's Gerbers and drill files by kicad-cli. Returns (details, failure lines,
     why it was not judged)."""
     py = KIKIT_PYTHON or venv_python()
-    probe = run([py, "-c", "import kikit.panelize_ui"])
+    # Isolated (-I): `-c` puts the working directory first on the import path, and there a board
+    # repository's own `kikit/` would be imported. panel.py runs isolated too, so both find 1 KiKit.
+    probe = run([py, "-I", "-c", "import kikit.panelize_ui"], cwd=fab)
     if probe.returncode != 0:
         last = (probe.stderr.strip().splitlines() or ["no output"])[-1]
         return {"python": py}, [], f"KiKit does not import under {py} ({last}); set KIKIT_PYTHON"
@@ -2306,7 +2308,7 @@ def export_panel(project: Project, fab: Path, facts: dict) -> tuple[dict, list[s
     gerbers.mkdir(parents=True, exist_ok=True)
     board = folder / f"{project.name}-panel.kicad_pcb"
     proc = run(
-        [py, SRC_DIR / "tools" / "panel.py", project.pcb, board, project.dir / "panel.json"], cwd=folder
+        [py, "-I", SRC_DIR / "tools" / "panel.py", project.pcb, board, project.dir / "panel.json"], cwd=folder
     )
     said = proc.stdout.strip().splitlines()
     if proc.returncode != 0 or not board.is_file() or not said:
@@ -2339,9 +2341,12 @@ def gate_autoroute(
     passes: int = 20,
     threads: int = 0,
     timeout: int = 600,
+    apply: bool = False,
 ) -> Result:
     if not project.pcb:
         return Result("autoroute", "skip", "no board in project")
+    if apply:
+        return autoroute_apply(project, out, dsn, passes, threads, timeout)
     if not FREEROUTING_JAR.is_file():
         return Result(
             "autoroute",
@@ -2389,6 +2394,64 @@ def gate_autoroute(
             "then run drc"
         },
         [str(dsn_path), str(ses)],
+    )
+
+
+def autoroute_apply(
+    project: Project, out: Path, dsn: str | None, passes: int, threads: int, timeout: int
+) -> Result:
+    """`autoroute --apply` (ROADMAP item 15): tools/boardroute.py reads the board file into kicadgen's
+    DSN writer, FreeRouting routes it, the copper goes back into the board file, and the DRC gate judges
+    the written board. Pass only with nothing open by the router's count and a clean DRC with 0
+    unconnected items."""
+    if dsn:
+        return Result("autoroute", "error", "--apply writes the DSN from the board itself; it takes no --dsn")
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import boardroute
+
+    try:
+        route = boardroute.apply(project.pcb, out / "route", passes=passes, threads=threads, timeout=timeout)
+    except boardroute.NotWritten as exc:  # read-only, open in KiCad, changed meanwhile, or the write failed
+        return Result("autoroute", "error", str(exc))
+    except FileNotFoundError as exc:
+        return Result("autoroute", "skip", f"engine missing: {exc}", {"engine_missing": str(exc)})
+    except ValueError as exc:
+        return Result("autoroute", "error", f"{project.pcb.name} not read: {exc}")
+    except RuntimeError as exc:  # the router failed, wrote no session, or ran past the time limit
+        return Result("autoroute", "fail", f"route failed: {exc}; {project.pcb.name} is as it was")
+    drc = gate_drc(project, out)
+    counts = drc.details.get("counts", {})
+    unconnected = sum(counts.get("unconnected_items", {}).values())
+    errors = sum(c.get("error", 0) for c in counts.values())
+    failures = list(drc.details.get("failures", []))
+    if route["unrouted"]:
+        failures.insert(0, f"route: the router left {route['unrouted']} connections open ({route['log']})")
+    if unconnected:
+        failures.insert(0, f"route: {unconnected} unconnected (KiCad DRC of {project.pcb.name})")
+    if drc.status == "error":
+        failures.append(f"drc: {drc.summary}")
+    red = bool(failures) or drc.status != "pass"
+    # With unconnected_items ignored the DRC lists no open connection; only a count from the router's
+    # own log can judge them then (FreeRouting 1.9.0 logs none).
+    blind = boardroute.unconnected_ignored(project.pcb) if route["unrouted"] is None else ""
+    return Result(
+        "autoroute",
+        "fail" if red else ("skip" if blind else "pass"),
+        f"routed {route['segments']} segments and {route['vias']} vias into {project.pcb.name}; "
+        f"DRC: {drc.summary}" + (f"; open connections not judged: {blind}" if blind else ""),
+        {
+            "route": route,
+            "drc": {
+                "status": drc.status,
+                "errors": errors,
+                "unconnected": unconnected,
+                "summary": drc.summary,
+            },
+            "first": drc.details.get("first", []),
+            "failures": failures,
+            "warnings": route["notes"] + list(drc.details.get("warnings", [])),
+        },
+        [route["dsn"], route["ses"], route["log"], str(project.pcb), *drc.artifacts],
     )
 
 
@@ -4655,7 +4718,9 @@ def cmd_ci(args) -> int:
     specs = []
     for flow in flows:
         proc = subprocess.run(
-            [venv_python(), "-c", CI_YAML_TO_JSON, str(flow)],
+            # Isolated (-I): `-c` would put the working directory, a board repository, first on the
+            # import path, and its own `yaml.py` would be imported.
+            [venv_python(), "-I", "-c", CI_YAML_TO_JSON, str(flow)],
             capture_output=True,
             text=True,
             timeout=120,
@@ -5134,7 +5199,9 @@ def cmd_placement(args) -> int:
         raise SystemExit(f"placement: {project.dir} has no .kicad_pcb")
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     proc = subprocess.run(
-        [venv_python(), "-s", "-c", PLACEMENT_RUNNER, str(SRC_DIR / "tools"), str(script), str(project.pcb)]
+        # Isolated (-I, which also drops the user's site) and with no bytecode written (-B, as the
+        # environment asks): `-c` would put the working directory first on the import path.
+        [venv_python(), "-IB", "-c", PLACEMENT_RUNNER, str(SRC_DIR / "tools"), str(script), str(project.pcb)]
         + list(args.args),
         capture_output=True,
         text=True,
@@ -5267,19 +5334,50 @@ def cmd_copper(args) -> int:
     return proc.returncode if proc.returncode in (EXIT_PASS, EXIT_FAIL, EXIT_SKIP) else EXIT_FAIL
 
 
-USER_SETTINGS = Path.home() / ".claude" / "settings.json"
+NO_HOME = "no home folder is known (HOME is unset and the user id has no line in /etc/passwd)"
 
 
-def hook_installed(file_name: str, settings: Path = USER_SETTINGS) -> bool:
+def home_folder() -> Path | None:
+    """The user's home folder, or None where none is known: Path.home() raises there, as in a container
+    run as a user id its image never named. Nothing at import asks for it (M299)."""
+    try:
+        return Path.home()
+    except (RuntimeError, KeyError):
+        return None
+
+
+def user_settings() -> Path | None:
+    """The agent host's user-wide settings file, or None with no home folder."""
+    home = home_folder()
+    return home / ".claude" / "settings.json" if home else None
+
+
+def hook_installed(file_name: str, settings: Path | None = None) -> bool:
     """True when the user-wide Claude Code settings run the hook of that file name. A session opened
     outside this repository loads no hook of its own: tools/hooks/install_hooks.py puts them there, by
-    the user's hand (M35, M119)."""
+    the user's hand (M35, M119). With no home folder there are no such settings: False."""
+    settings = settings or user_settings()
+    if settings is None:
+        return False
     try:
         data = json.loads(settings.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return False
     entries = data.get("hooks", {}).get("PreToolUse", []) if isinstance(data, dict) else []
     return any(file_name in h.get("command", "") for e in entries for h in e.get("hooks", []))
+
+
+def hook_row(file_name: str) -> dict:
+    """Doctor's row for 1 hook. A hook is a habit of 1 agent host, not a part of the toolchain: its line
+    says whether it is there (P8 step 1 reads it), and its absence does not degrade Via. With no home
+    folder the path says so and what to set, and the doctor goes on."""
+    settings = user_settings()
+    return {
+        "required": False,
+        "advisory": True,
+        "ok": hook_installed(file_name, settings) if settings else False,
+        "path": str(settings) if settings else f"unknown: {NO_HOME}; set HOME",
+    }
 
 
 def freerouting2_row() -> dict:
@@ -5897,20 +5995,8 @@ def cmd_doctor(args) -> int:
             "ok": (SRC_DIR / "WORKCENTER.md").is_file(),
             "path": str(SRC_DIR / "WORKCENTER.md"),
         },
-        # A hook is a habit of 1 agent host, not a part of the toolchain: its line says whether it is
-        # there (P8 step 1 reads it), and its absence does not degrade Via.
-        "no-cd hook": {
-            "required": False,
-            "advisory": True,
-            "ok": hook_installed("no_cd.py"),
-            "path": str(USER_SETTINGS),
-        },
-        "test hook": {
-            "required": False,
-            "advisory": True,
-            "ok": hook_installed("no_script_test_edits.py"),
-            "path": str(USER_SETTINGS),
-        },
+        "no-cd hook": hook_row("no_cd.py"),
+        "test hook": hook_row("no_script_test_edits.py"),
         "kistack": {
             "required": False,
             "ok": (KISTACK_DIR / "skills" / "layout-placement" / "scripts").is_dir(),
@@ -6256,6 +6342,11 @@ def command(argv: list[str] | None = None) -> int:
     )
     p = add_project_cmd("autoroute", "run FreeRouting on the project's Specctra DSN, write a .ses")
     p.add_argument("--dsn", help="Specctra DSN exported from KiCad (default <project>/<name>.dsn)")
+    p.add_argument(
+        "--apply",
+        action="store_true",
+        help="read the .kicad_pcb itself, route it, write the copper into the board file, run DRC",
+    )
     p.add_argument("--passes", type=int, default=20)
     p.add_argument("--threads", type=int, default=0)
     p.add_argument("--timeout", type=int, default=600)
@@ -6556,6 +6647,9 @@ def command(argv: list[str] | None = None) -> int:
     import image
 
     image.register(sub, sys.modules[__name__])
+    import mcpserver
+
+    mcpserver.register(sub, sys.modules[__name__])
 
     # `--json` is read on either side of the command: `workcenter --json gates P` and `workcenter
     # gates P --json`. SUPPRESS keeps a command that does not carry the flag from clearing the one
@@ -6627,7 +6721,13 @@ def dispatch(parser: argparse.ArgumentParser, args) -> int:
         return cmd_mutate(args)
     if args.command == "autoroute":
         return cmd_gate(
-            args, gate_autoroute, dsn=args.dsn, passes=args.passes, threads=args.threads, timeout=args.timeout
+            args,
+            gate_autoroute,
+            dsn=args.dsn,
+            passes=args.passes,
+            threads=args.threads,
+            timeout=args.timeout,
+            apply=args.apply,
         )
     fn = {"erc": gate_erc, "drc": gate_drc, "sim": gate_sim, "export": gate_export}[args.command]
     kwargs = {"strict": args.strict}
