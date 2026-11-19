@@ -1,13 +1,13 @@
 # Wyvern board
 
-This folder is a **project**: a series of board prototypes that use the EE Workcenter (this
+This folder is a **project**: a series of board prototypes that use Via (this
 repository's `tools/`) for its tools and gates, laid out the way a board repository lays itself out
-(compare thyfriendlyfox/vape-prototype). It is the workcenter's example of what a design file can
-make; the workcenter itself stays as it is during board work.
+(compare thyfriendlyfox/vape-prototype). It is Via's example of what a design file can
+make; Via itself stays as it is during board work.
 
 - Each prototype is a folder, `v0.2/` and on, and each folder is a whole KiCad project. The highest
   version is the one in work. Every new feature is a new version: `workcenter version new . v0.3`
-  copies the latest folder and does the bookkeeping (workcenter PROCESSES.md P22).
+  copies the latest folder and does the bookkeeping (Via's PROCESSES.md P22).
 - `design.py` is the source of truth. Edit it, then regenerate: `workcenter design v0.2/design.py
   --route --seed v0.2/wyvern.kicad_pcb` (unseeded, v0.2's route leaves 1 link open; its README,
   "Working on this board"). Never hand-edit the `.kicad_*` files.

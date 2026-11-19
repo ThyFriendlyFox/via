@@ -16,7 +16,7 @@ at its left end. It is one board, 76.2 x 53.34 mm (3.0 x 2.1 inch) and 6 layers,
 the USB-C, the power and the RP2350 on its top face and the microSD slot and the pins' names on its
 bottom.
 
-This folder is a whole KiCad 10 project made with the EE Workcenter: `design.py` is the board, and
+This folder is a whole KiCad 10 project made with Via: `design.py` is the board, and
 the `.kicad_*` files beside it are what `workcenter design` writes from it.
 
 | Item | State |
@@ -104,7 +104,7 @@ No verification package yet ("Open items").
 ## What changed in v0.1: the first board
 
 The request: a new microcontroller development board, something like a Teensy but with a Snapdragon
-chip, compact, as the workcenter's example of what it can make. v0.1 carried a Snapdragon 845 on
+chip, compact, as Via's example of what it can make. v0.1 carried a Snapdragon 845 on
 Lantronix's Open-Q 845 uSOM, plugged into 3 DF40 sockets on a 61 x 30.5 mm stick, with an RP2350 on
 the pins; its folder, [`../v0.1/`](../v0.1/), tells the rest.
 
@@ -332,7 +332,7 @@ board's 1 % resistors, C30, C31 and C42 at 50 % either way and a cable from 0.5 
 
 ### Frequency plan
 
-`sim/frequency-plan.json` (workcenter PROCESSES.md P30); `workcenter sim .` holds each source's first
+`sim/frequency-plan.json` (Via's PROCESSES.md P30); `workcenter sim .` holds each source's first
 10 harmonics against each resonance's band.
 
 | Source | Frequency | From |
@@ -453,7 +453,7 @@ The bare board is off the board: `../parts/offboard/v0.2.csv`. The priced list i
 
 ## Working on this board
 
-The tools come from the EE Workcenter, this repository's `tools/`. Run the commands from this
+The tools come from Via, this repository's `tools/`. Run the commands from this
 folder.
 
 ```sh
@@ -486,8 +486,8 @@ unconnected).
 
 - **A soldered module** (v0.2). The owner asked for one board. An OSM module is made to be soldered:
   its 662 pads reflow with the rest, and its pinout and land pattern are a public standard. The
-  QCS6490 itself, like v0.1's SDA845, needs LPDDR5 and a PMIC routed on an HDI board, which the
-  workcenter's generator (through vias only) does not draw.
+  QCS6490 itself, like v0.1's SDA845, needs LPDDR5 and a PMIC routed on an HDI board, which
+  Via's generator (through vias only) does not draw.
 - **A buck-boost for 5.0 V** (v0.2). The module wants 4.8 to 5.2 V; a USB-C source gives 4.75 V at
   least and a cable carrying 3 A drops up to half a volt. TPS552892: no I2C to set it up, its 4
   switches inside, an 8 A limit over the 4.3 A the inductor carries at 3 A out from 4.0 V.
@@ -504,7 +504,7 @@ unconnected).
 - **6 layers** (v0.1). On 4 layers the bottom's pairs would reference In2, which carries signals; 6
   layers give both outer layers a ground plane under them.
 - **0.2 mm from copper to a hole or the edge** (v0.1). The receptacle's rear shell slot and its peg
-  are 0.375 mm apart, so no pad keeps a 6 mil ring and the workcenter's 0.3 mm. The 2 rear tabs carry
+  are 0.375 mm apart, so no pad keeps a 6 mil ring and Via's 0.3 mm. The 2 rear tabs carry
   copper on the outer layers only (they are unnumbered in `footprints/`); the shell is grounded by
   its front tabs.
 

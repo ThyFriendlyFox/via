@@ -5,11 +5,11 @@ The Lantronix Open-Q 845 uSOM stands 3.0 mm above the board's top face on the DF
 receptacles (its datasheet, 6.3), turned 180 degrees as `design.py` turns its land pattern, its
 Wi-Fi shield over the right end and its 2 U.FL antenna sockets at the far corner. The module's body
 is `models/open_q_845.wrl`. None of this changes the copper. The scene, the bodies the board names,
-the renders and the GIF come from the EE Workcenter's `tools/scene.py`; this file holds only
+the renders and the GIF come from Via's `tools/scene.py`; this file holds only
 Wyvern's placement.
 
     workcenter design design.py --route    # the routed board this reads
-    workcenter pictures .                  # runs this with the workcenter's tools/ on PYTHONPATH
+    workcenter pictures .                  # runs this with Via's tools/ on PYTHONPATH
 
 Writes build/assembly/: the scene's bodies, wyvern_assembly.kicad_pcb, the images
 assembly-{iso,top,bottom,end}.png and assembly-spin.gif, the assembly turning round once.

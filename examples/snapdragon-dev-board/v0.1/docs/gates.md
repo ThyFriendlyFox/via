@@ -72,7 +72,7 @@ route, and the route of every other design tried left a connection open.
 
 ## Pull check
 
-`check_pulls` is on (workcenter PROCESSES.md P16 step 5). Every control input has a resistor to a
+`check_pulls` is on (Via's PROCESSES.md P16 step 5). Every control input has a resistor to a
 rail or a driver, or is named in `defined_nets` with what holds it: the RP2350's own pull-ups on RUN,
 QSPI_SS, SWCLK and SWDIO (its datasheet's pin list), the PMIC's power key and RESIN inputs (the
 SOM's datasheet has them grounded by a button), the TPS62130's soft-start current source, the
@@ -99,4 +99,4 @@ to the back, each 100 nF faced its pin, and the pins were fanned out to vias by 
 tracks with 4.3 mil of clearance (`track_width=0.127`, `clearance=0.11`, inside Sierra's 4 mil)
 gave it the last room. The route is deterministic: 100 and 150 passes gave the same board, and the
 same command in this folder gives the board that is committed. A route seeded from a previous one
-lost connections its seed had, so none is used (workcenter MISTAKES.md M146, M147).
+lost connections its seed had, so none is used (Via's MISTAKES.md M146, M147).
