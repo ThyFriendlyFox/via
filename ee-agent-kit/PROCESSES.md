@@ -416,7 +416,7 @@ Edit tool.
    M168, M182). Read each Bash command for a write before it is sent:
    `>`, `tee`, `sed -i`, `printf` into a file, `write_text`, `open(`
    with `w`. When the path is in the repository and the text is your
-   own, not a command's of the workcenter, the write is the Edit or the
+   own, not a command's of Via, the write is the Edit or the
    Write tool's, with a hook loaded or without one (M183).
 6. Inside a quoted heredoc (`<<'EOF'`) the shell passes text through as
    written. Write no backslash escapes in it at all: `chr(10)` for a line
@@ -768,7 +768,7 @@ configures those pins compiles, and `workcenter design` reports no
 
 ## P17 — Copper the tools add
 
-When: changing code in the workcenter that places copper on its own
+When: changing code in Via that places copper on its own
 (stitching vias, reserved vias, generated tracks or pours).
 
 1. List every code path that places that copper: grep the generator for
@@ -1004,7 +1004,7 @@ after any change to what the boards look like in that version.
    M52), the GIFs, the scenes, then the copies into `docs/` and
    `docs/layers/`. It exits 1 on any failure. A still shows the board's
    own stackup colours: kicad-cli draws its preset's green unless it is
-   given `--use-board-stackup-colors`, which the workcenter passes (M134).
+   given `--use-board-stackup-colors`, which Via passes (M134).
 4. The README shows the GIFs beside the stills and the layer sheets, and
    names `workcenter pictures <version>` and its `pictures.json`, which
    the next version copies with the folder and so draws the same way.
@@ -1128,7 +1128,7 @@ written for the project, or a 3D body comes from a vendor.
    short, a web page, or a `.pdf` that does not start `%PDF` is refused and
    nothing is written. A file no site will serve is downloaded by a person
    and kept with `workcenter fetch --file <file> --url <url> --to ... --mpn
-   <MPN> --row`; its row says the workcenter did not fetch it. The part's
+   <MPN> --row`; its row says Via did not fetch it. The part's
    value on the schematic names the part those rows are for, copied from
    `sources.csv`, never typed from memory: a 2835 LED named after another
    maker's family sat on a board whose datasheet and model were
@@ -1412,7 +1412,7 @@ a task.
    gate that lets a commit reach `main` runs on GitHub (P14 step 4), and
    a push to a work branch needs only `make check`; steps 11 to 14 are
    for a gate on the machine: one with no CI, or a run to see a fault.
-7. The workcenter's long commands take turns on the machine by themselves
+7. Via's long commands take turns on the machine by themselves
    (`tools/enginelock.py`), and `make verify` holds that lock for the whole
    gate. A brief names no lock file for them and asks for no `flock`: a
    helper runs the commands as they are, and runs a test file or a bare
@@ -1554,12 +1554,12 @@ miss.
 ## P35 — Harvesting what the projects found
 
 When: a project's version has landed, a branch is about to be deleted, or
-the owner asks what the projects taught the workcenter.
+the owner asks what the projects taught Via.
 
 Every project leaves findings in 4 places: commits on a branch that never
-reached `main`, scripts it wrote because the workcenter had no tool, the
+reached `main`, scripts it wrote because Via had no tool, the
 mistakes log, and its own notes (`LOOP.md`, each version's README). A
-finding is a gap in the workcenter, never a board's own fault.
+finding is a gap in Via, never a board's own fault.
 
 1. Fetch every branch: `git fetch origin
    '+refs/heads/*:refs/remotes/origin/*'`. Run `python3 tools/harvest.py
@@ -1586,7 +1586,7 @@ finding is a gap in the workcenter, never a board's own fault.
    went red (M217).
    The work has landed when the listing shows the branch at 100 %.
 3. Run `python3 tools/harvest.py scripts`. A script that 2 or more
-   projects wrote is a tool the workcenter lacks. Read the newest file of
+   projects wrote is a tool Via lacks. Read the newest file of
    each project, and write the finding with the calls they share.
 4. Run `python3 tools/harvest.py mistakes`. An entry that names an
    earlier entry of its own process is a step that did not hold. A step
@@ -1635,7 +1635,7 @@ finding is a gap in the workcenter, never a board's own fault.
    read carries `no`, even when a script held its quotes to their files:
    22 rows of the first table's draft had a day they had not earned. In a
    row, a line number stays only with a file under `examples/`; a file of
-   the workcenter's own code is named with its function, since its lines
+   Via's own code is named with its function, since its lines
    move with every commit. The rows stand in order of rating, the highest
    first. `python3 tools/harvest.py later` holds each rating to its
    scores, each score to its anchors, the rows to their order and the

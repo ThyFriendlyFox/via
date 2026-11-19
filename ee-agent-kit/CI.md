@@ -104,7 +104,7 @@ A change writes its changelog line into `ee-agent-kit/changes/<yyyy-mm-dd>-<slug
 
 Done on 2026-11-18: steps 1 and 2. Pull request 92's `Image` run (44396387137) built both machines' images and pushed nothing; `build (amd64)` stopped on its first run on a 503 of the KiCad 10 source and passed on its 1 re-run. It was merged as 1fb707c, and the `Image` run on main (44402154037) built both images, pushed them, and its `publish` job passed at 21:36 UTC. Those images went to the old package, `ee-workcenter`. Step 3 for `via` waits for its first push. CI run 44409635104 took the image path first: the install step was skipped and `make verify` ran inside the image, 3732 of 3811 tests passed and 1 failed, a test of the gates step that read the machine's user list, fixed since.
 
-A user's commands for the image of a release: the README, "Run the workcenter from its container".
+A user's commands for the image of a release: the README, "Run Via from its container".
 
 The lines to read in the first runs:
 

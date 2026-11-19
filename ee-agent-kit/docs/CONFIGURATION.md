@@ -1,6 +1,6 @@
 # Configuration
 
-EE Workcenter reads environment variables and command-line flags. There
+Via reads environment variables and command-line flags. There
 is no configuration file. Defaults apply when a variable is unset; an
 unset variable never causes a failure.
 
@@ -77,9 +77,9 @@ unset variable never causes a failure.
 | `--trust-design` | next | off | Do not run `design --check` on the project's design file. That check takes a few seconds and needs the KiCad libraries; without it the KiCad files are taken to match the design file. |
 | `--nominal` | sim | off | Run each deck as written only. The corners of `sim/corners.json` are left out, and the result names that as a warning, so a quick run is never taken for a full one. |
 | `--bundle DIR` | sim | none | Also write each deck into `DIR/<deck>/` as a folder any machine with ngspice runs: `run.sp` (sets the mode the models need, changes to its own folder, then reads the deck), the deck with its includes pointing into `models/`, every included file there (the translated copy where its row lists fixes), the other files of the deck's folder, `expect.json`, `measures.json` and `README.md`. The command then runs each folder from a copy in another place with an empty home folder and fails when a measure differs from the gate's (M105). An earlier bundle in `DIR/<deck>/` is replaced; a folder of that name that holds no `run.sp` is refused. The receiver runs `ngspice -b run.sp`. |
-| `URL` | fetch | none; give it or `--file` | The maker's URL for one file. Fetched once under the workcenter's own user agent; a refusal is reported and never retried. A body that is empty, cut short, served as `text/html`, starting as an HTML page, or a `.pdf` that does not start `%PDF` is refused and nothing is written. |
+| `URL` | fetch | none; give it or `--file` | The maker's URL for one file. Fetched once under Via's own user agent; a refusal is reported and never retried. A body that is empty, cut short, served as `text/html`, starting as an HTML page, or a `.pdf` that does not start `%PDF` is refused and nothing is written. |
 | `--to FILE` | fetch | none (required) | Where the library keeps it, `<library>/<maker>/<file>`. An existing file that differs from the download is refused; the same file is left as it is. |
-| `--file FILE` | fetch | none | A file a person downloaded, taken instead of a fetch: judged like a fetched body, copied into `--to`, hashed, and its row's Note says the workcenter did not fetch it. Needs `--url`; refused with a URL argument. With `--member`, the member is read out of the zip and kept. |
+| `--file FILE` | fetch | none | A file a person downloaded, taken instead of a fetch: judged like a fetched body, copied into `--to`, hashed, and its row's Note says Via did not fetch it. Needs `--url`; refused with a URL argument. With `--member`, the member is read out of the zip and kept. |
 | `--url URL` | fetch | none | With `--file`: where the person downloaded it from; it is the row's `URL`. Refused without `--file`. |
 | `--mpn MPN` | fetch | none | The part number the row names. Needed for `--row`. |
 | `--kind KIND` | fetch | from the file's suffix: `.pdf` datasheet, `.lib` `.mod` `.cir` `.sub` `.spi` `.sp` `.ckt` spice, `.step` `.stp` step | `datasheet`, `spice` or `step`. A spice file that defines one `.SUBCKT` fills the row's `Subckt`. |
@@ -105,7 +105,7 @@ unset variable never causes a failure.
 | `--only TEXT` | mutate | every mutation | Run only the mutations whose name holds this text (repeatable). |
 | `--jobs N` | mutate, sim | mutate: `1`; sim: one per processor, 8 at most | Mutations run at once; for sim, corner runs of one deck at once. A whole number, 0 or more: anything else is a usage error, exit 2. |
 | `--work DIR` | mutate | a temporary folder, removed after | Keep the copies here, one folder per mutation. |
-| `--fetch` | sources | off | Read each row's URL once more under the workcenter's own user agent into `<out>/sources/fetched/` and report each as same, changed, new, refused, gone or unreachable; a refusal is never retried. The library is not written. |
+| `--fetch` | sources | off | Read each row's URL once more under Via's own user agent into `<out>/sources/fetched/` and report each as same, changed, new, refused, gone or unreachable; a refusal is never retried. The library is not written. |
 | `--package DIR` | verify | `<project>/verification` | The verification package (`PROCESSES.md` P28): requirements, system, simulations, calculations, traceability. |
 | `--init` | verify | off | Copy `templates/verification/` into the package and a writeup per `sim/*.cir` into `simulations/<deck>/`, never over a file that exists. `BRIEF.md` and `FACTS.md`, the helpers' brief and facts file, stay out. The new files fail the check until each `<!-- fill ... -->` is written. |
 | `--boards LIST` | procure, costs | `1,10` | Units to price, comma-separated; each gets its cheapest order and totals per supplier; for costs, a column each in the totals table, the largest also judging stock. |
@@ -117,7 +117,7 @@ unset variable never causes a failure.
 | `--passes N` | autoroute, design, bench | `20` autoroute and bench, `60` design | FreeRouting optimisation passes. bench takes a whole number above 0. |
 | `--threads N` | autoroute, design, bench | engine default; bench `2` | FreeRouting thread count (`-mt`). bench takes a whole number above 0 and also holds the JVM to N processors. |
 | `--order` | design (with `--route`), bench | off | design: route in 4 stages, 1 FreeRouting run each, each on the copper of the stages before it: poured nets and every net with copper drawn by hand, the nets of each part of 0.5 mm pitch or less, pairs (names that end in `_P`/`_N`, `D+`/`D-` or `DP`/`DN`), the rest. Writes `build/route/<name>.<n>-<stage>.dsn`, `.ses`, `.log`. Refuses `--seed`. bench: also run each router as `<router>+order`. |
-| `--router NAME` | design (with `--route`), bench | design: `freerouting`; bench: the workcenter's FreeRouting | design: the router, `freerouting` (FreeRouting 1.9.0) or `freerouting2` (FreeRouting 2.5.0). bench: a router by name, or `NAME=JAR` for a FreeRouting 1.9.0 jar, repeatable; the first is the default router. |
+| `--router NAME` | design (with `--route`), bench | design: `freerouting`; bench: Via's FreeRouting | design: the router, `freerouting` (FreeRouting 1.9.0) or `freerouting2` (FreeRouting 2.5.0). bench: a router by name, or `NAME=JAR` for a FreeRouting 1.9.0 jar, repeatable; the first is the default router. |
 | `--time-limit S` | bench | `300` | Seconds per route, a whole number above 0; a route past it is stopped and not judged (exit 2). |
 | `--out DIR` | bench (required) | none | The benchmark's folder: `<board>/<router>/` with the board, `route.txt`, `drc.txt` and `run.json`, and `bench.md`. A run empties its own folder first. |
 | `--strict` (highspeed) | highspeed | off | A limit not judged fails the run: one the documents do not set, and one they set that the command does not judge (TI's single-ended impedance and stubs, among others). |
@@ -344,9 +344,9 @@ part by `mpn` or `mpns` and whose `source.sha256` is a row of
 | `APT_UPDATE_TIMEOUT`, `APT_DOWNLOAD_TIMEOUT` | `docker build --build-arg` | empty | Handed to install.sh on the Dockerfile's install line. The image workflow passes `120` and `570`, as CI's full job sets them; a build without them has no bound. |
 | `HOME` | the image's environment | `/home/workcenter` (mode 1777) | KiCad and the CLI need a home they can write, for any `--user`. |
 | `--rev REV` | `workcenter image`, `image.py tag` | `HEAD` | The commit whose `Dockerfile`, `install.sh` and `requirements.txt` make the content tag. |
-| `--repo DIR`, `--owner OWNER`, `--json`, `--github-output` | `image.py tag` | repo: the workcenter's checkout | `--owner` also prints the image's name under that owner, in lower case; `--github-output` appends `tag=` (and `image=`) to `$GITHUB_OUTPUT`. |
+| `--repo DIR`, `--owner OWNER`, `--json`, `--github-output` | `image.py tag` | repo: Via's checkout | `--owner` also prints the image's name under that owner, in lower case; `--github-output` appends `tag=` (and `image=`) to `$GITHUB_OUTPUT`. |
 | `--base REV`, `--head REV`, `--enabled VALUE` | `image.py decide`, with `--repo DIR`, `--owner OWNER` (required) and `--github-output` | base: required (empty: none); head: `HEAD`; repo: the working folder | Where CI's `full` job runs: `where=image` and the image by digest, or `where=install`, with the reason. `--enabled` is the value of `CI_FULL_IN_IMAGE`. |
-| `--out FILE`, `--src DIR`, `--expect-tag TAG`, `--revision REV` | `image.py record` (the Dockerfile's last RUN) | out: `/opt/workcenters/ee/image.json`; src: the workcenter's checkout | Writes the image's record; exit 1 and nothing written on a doctor that does not pass or on another tag than `--expect-tag`. |
+| `--out FILE`, `--src DIR`, `--expect-tag TAG`, `--revision REV` | `image.py record` (the Dockerfile's last RUN) | out: `/opt/workcenters/ee/image.json`; src: Via's checkout | Writes the image's record; exit 1 and nothing written on a doctor that does not pass or on another tag than `--expect-tag`. |
 | `--src DIR`, `--record FILE` | `image.py check` (CI, inside the image) | src: the working folder; record: `/opt/workcenters/ee/image.json` | Exit 1 when a toolchain file of the checkout is not the one the image was built from. |
 
 ## The workflow Board (`.github/workflows/board.yml`, `tools/board.py`)
@@ -434,7 +434,7 @@ refused.
 
 ## `rules/legend.json` (for `workcenter legend` and the DRC gate)
 
-The workcenter's own numbers for the legend; none is from a standard. The least height and stroke come from the fab's rule set in `rules/`.
+Via's own numbers for the legend; none is from a standard. The least height and stroke come from the fab's rule set in `rules/`.
 
 | Key | Type | Default | Use |
 |---|---|---|---|
@@ -476,7 +476,7 @@ The workcenter's own numbers for the legend; none is from a standard. The least 
 |---|---|---|---|
 | `WORKCENTER_SPIN_FRAMES` | integer | the script's `frames` (36) | Frames in each turning GIF; `pictures --frames` sets it. |
 | `WORKCENTER_PICTURES_CHECK` | `0`/`1` | unset | Set by `pictures --frames`: `stills` draws nothing, `spin` writes a sheet of its frames and prints `frames: <path>`. |
-| `WORKCENTER_SRC` | path | set by `pictures` | The workcenter checkout, for a script that looks for its tools. |
+| `WORKCENTER_SRC` | path | set by `pictures` | Via's checkout, for a script that looks for its tools. |
 
 ## `tools/wrlgen.py`
 
@@ -503,14 +503,14 @@ Every number is millimetres; the file is written in KiCad's VRML unit (0.1 inch)
 
 ## `tools/harvest.py`
 
-What the projects taught the workcenter, read from the repository itself
+What the projects taught Via, read from the repository itself
 (`PROCESSES.md` P35). The first 3 listings read git objects; `later` reads
 the checkout's files. None writes anything. `--repo DIR` (default this
 checkout) and `--json` stand before the listing's name.
 
 | Command | Flags | Use |
 |---|---|---|
-| `branches` | `--main REF` (default `origin/main`), `--refs PREFIX` (default `refs/remotes/origin`) | Every branch under the prefix: its own commits, and the share of the lines they added to the workcenter itself that main holds. A line counts without the number of a mistake, a process or a step. |
+| `branches` | `--main REF` (default `origin/main`), `--refs PREFIX` (default `refs/remotes/origin`) | Every branch under the prefix: its own commits, and the share of the lines they added to Via itself that main holds. A line counts without the number of a mistake, a process or a step. |
 | `scripts` | `--ref REF` (default `HEAD`), `--root DIR` (default `examples`) | The scripts the projects wrote for themselves, by file name: the projects that wrote each, and the functions 2 or more of them define. |
 | `mistakes` | `--ref REF` (default `HEAD`) | The mistakes log by process: its entries, and the entries that name an earlier entry of the same process. |
 | `later` | none | The candidates under "Later" in the checkout's `ee-agent-kit/ROADMAP.md`, as the file stands: each row's rating against its 6 scores, each score against its anchors, the order, and the evidence (an entry of the mistakes log, a file in backticks, a line that the file has). Exit 1 with 1 line for each row that does not hold. |

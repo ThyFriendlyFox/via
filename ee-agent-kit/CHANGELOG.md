@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to EE Workcenter are documented here.
+All notable changes to Via are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/) · Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
