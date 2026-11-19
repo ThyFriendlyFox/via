@@ -768,7 +768,9 @@ def test_a_changed_file_keeps_its_mode(tmp_path):
 # ---------------------------------------------------------------- after a slow download pass
 # install.sh's watch ends a download pass too slow to finish and runs APT_SLOW_PASS_COMMAND with the
 # hosts of that pass, the most files first. CI names `--slow` of this script: the first of them that the
-# list holds goes last, so that the next pass asks another host first.
+# list holds goes last, so that the next pass asks another host first. install.sh runs the same command
+# between 2 tries of its update, after a try its bound ended, with the hosts of the mirror list's sources
+# that had not answered, in the list's order.
 
 ECTWO = "us-east-2.ec2.archive.ubuntu.com"
 PPA_HOST = "ppa.launchpadcontent.net"
@@ -776,7 +778,8 @@ PPA_HOST = "ppa.launchpadcontent.net"
 
 def slow_line(apt: Path, host: str, *uris: str) -> str:
     return (
-        f"{PREFIX} {apt}/apt-mirrors.txt: {host} served a download pass too slow to finish; "
+        f"{PREFIX} {apt}/apt-mirrors.txt: {host} was too slow (a download pass too slow to finish, or an "
+        "update try its bound ended); "
         f"apt asks {', then '.join(uris)}"
     )
 

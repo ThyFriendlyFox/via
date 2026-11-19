@@ -347,7 +347,7 @@ def test_index_on_the_first_try_then_the_download_then_the_install(tmp_path):
     computer sets no bound: no `timeout` runs, and apt's own per-file bounds stay."""
     code, out, err, calls = run(tmp_path)
     assert code == 0, err
-    assert updates(calls) == ["apt-get update -qq"]
+    assert updates(calls) == ["apt-get update -q"]
     assert of(calls, "sleep") == []
     assert of(calls, "apt-cache") == ["apt-cache policy kicad kicad-symbols kicad-footprints kicad-templates"]
     download, install = installs(calls)
@@ -434,7 +434,7 @@ def test_the_bounds_ci_sets_run_the_update_and_the_download_under_timeout(tmp_pa
     code, out, err, calls = run(tmp_path, env=CI)
     assert code == 0, err
     bounded = of(calls, "timeout")
-    assert bounded[0] == "timeout 120 apt-get update -qq"
+    assert bounded[0] == "timeout 120 apt-get update -q"
     assert bounded[1].startswith("timeout 570 apt-get install -y --no-install-recommends --download-only ")
     assert len(bounded) == 2
     assert out.splitlines()[-1] == "[install] apt: done; kicad-cli 10.0.8"
@@ -548,12 +548,12 @@ def test_an_update_that_does_not_end_is_a_failed_try(tmp_path):
     answer = '[[ "$*" == *update* ]] && exit 124; shift; exec "$@"'
     code, _, err, calls = run(tmp_path, {"timeout": answer}, env=CI)
     assert code == 1
-    assert of(calls, "timeout")[0] == "timeout 120 apt-get update -qq"
+    assert of(calls, "timeout")[0] == "timeout 120 apt-get update -q"
     assert len(of(calls, "timeout")) == 3
     stop = (
         "[install] ERROR: apt: the index of KiCad 10's package source did not arrive in 3 tries: "
         f"{SOURCE}; apt said: nothing: `apt-get update` of every package source did not end within 120 s "
-        "(APT_UPDATE_TIMEOUT)"
+        f"(APT_UPDATE_TIMEOUT); the sources that had not answered in try 3: {URL}/ noble"
     )
     advice = (
         f"{NONE} `apt-get update` fetches the index of every package source on this computer, and they did "
@@ -562,6 +562,155 @@ def test_an_update_that_does_not_end_is_a_failed_try(tmp_path):
     assert err.splitlines()[-2:] == [stop, advice]
     assert "Launchpad" not in err
     assert installs(calls) == []
+
+
+# The runner's layout (actions/runner-images, configure-apt-sources.sh, after tools/ci/apt_archive.sh): 2
+# suites through the mirror list, the security suite from 1 host, and a third party's one-line source.
+def runner_sources(tmp_path: Path) -> str:
+    """Write the sources and the mirror list into the test's folder; return the list's source address."""
+    listed = tmp_path / "apt-mirrors.txt"
+    listed.write_text(
+        "# the runner's list\nhttp://slow.example/ubuntu/\tpriority:1\nhttps://archive.ubuntu.com/ubuntu/\tpriority:2\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "sources.list.d").mkdir(exist_ok=True)
+    (tmp_path / "sources.list.d" / "ubuntu.sources").write_text(
+        f"Types: deb\nURIs: mirror+file:{listed}\nSuites: noble noble-updates\nComponents: main universe\n\n"
+        "Types: deb\nURIs: http://security.ubuntu.com/ubuntu/\nSuites: noble-security\nComponents: main\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "sources.list").write_text(
+        "# deb http://commented.example/ubuntu noble main\n"
+        "deb [arch=amd64] https://packages.example.com/repo stable main\n",
+        encoding="utf-8",
+    )
+    return f"mirror+file:{listed}"
+
+
+# What apt printed before the bound ended a try: every source but the mirror list's 2 suites answered.
+HEARD = (
+    "Hit:1 http://security.ubuntu.com/ubuntu noble-security InRelease",
+    f"Get:2 {URL} noble InRelease [24.3 kB]",
+    "Ign:3 https://packages.example.com/repo stable InRelease",
+)
+
+
+def cut_update(*lines: str) -> str:
+    """A `timeout` whose every update prints `lines` (apt's, on its standard output) and is cut (124)."""
+    printed = "; ".join(f"echo {shlex.quote(line)}" for line in lines) or ":"
+    return f'[[ "$*" == *update* ]] && {{ {printed}; exit 124; }}; shift; exec "$@"'
+
+
+def silent(listed: str) -> str:
+    """The mirror list's 2 suites, as a cut try names them: the list's hosts in its order."""
+    hosts = "(slow.example, archive.ubuntu.com)"
+    return f"{listed} noble {hosts}, {listed} noble-updates {hosts}"
+
+
+def silent_line(try_: int, listed: str, shown: int) -> str:
+    return (
+        f"[install] apt: update, try {try_} of 3, did not end within 120 s (APT_UPDATE_TIMEOUT); the sources "
+        f"that had not answered (no Hit, Get, Ign or Err line): {silent(listed)}; "
+        f"apt's last {shown} lines of that try:"
+    )
+
+
+def test_a_cut_try_names_the_sources_that_had_not_answered_and_shows_apts_last_lines(tmp_path):
+    """Job 135588570683 (2026-11-19): 3 tries of 120 s each, and the log said no more than that: -qq hid
+    which source stalled. Now each cut try says which sources printed no Hit, Get, Ign or Err line (a
+    mirror list's with its hosts in its order), then apt's own last lines of that try as apt printed
+    them. The stop repeats the sources of the last try."""
+    listed = runner_sources(tmp_path)
+    code, out, err, calls = run(tmp_path, {"timeout": cut_update(*HEARD)}, env=CI)
+    assert code == 1
+    assert [c for c in of(calls, "timeout") if "update" in c] == ["timeout 120 apt-get update -q"] * 3
+    lines = out.splitlines()
+    for try_ in (1, 2, 3):
+        at = lines.index(silent_line(try_, listed, 3))
+        assert lines[at + 1 : at + 4] == [f"[apt] {x}" for x in HEARD]
+    assert err.splitlines()[-2].endswith(f"; the sources that had not answered in try 3: {silent(listed)}")
+
+
+def test_a_cut_try_shows_at_most_its_last_10_lines(tmp_path):
+    """apt's lines of a cut try are shown unfiltered, but no more than the last 10: a try with 15 lines
+    shows lines 6 to 15. A try that printed nothing says so."""
+    runner_sources(tmp_path)
+    many = [f"Hit:{n} http://security.ubuntu.com/ubuntu noble-security InRelease {n}" for n in range(1, 16)]
+    code, out, _, _ = run(tmp_path, {"timeout": cut_update(*many)}, env=CI)
+    assert code == 1
+    lines = out.splitlines()
+    at = [i for i, x in enumerate(lines) if x.startswith("[install] apt: update, try 1 of 3, did not end")]
+    assert len(at) == 1 and lines[at[0]].endswith("; apt's last 10 lines of that try:")
+    assert lines[at[0] + 1 : at[0] + 11] == [f"[apt] {x}" for x in many[5:]]
+    (tmp_path / "quiet").mkdir()
+    code, out, _, _ = run(tmp_path / "quiet", {"timeout": cut_update()}, env=CI)
+    said = [x for x in out.splitlines() if "did not end within" in x]
+    assert len(said) == 3 and all(x.endswith("; apt printed no line in that try") for x in said)
+
+
+def test_between_2_cut_tries_the_named_command_moves_the_mirror_lists_silent_hosts(tmp_path):
+    """The hook of the download (APT_SLOW_PASS_COMMAND, CI: tools/ci/apt_archive.sh --slow) runs between
+    2 tries too, with the hosts of the mirror list's sources that had not answered, in the list's order:
+    the first goes last. It runs before the wait, and not after the last try."""
+    runner_sources(tmp_path)
+    hook = 'printf "%s\\n" "$*" >> "$STUB_DIR/hooked"; echo "[apt-archive] moved"'
+    env = {**CI, "APT_SLOW_PASS_COMMAND": "slow-pass --slow"}
+    code, out, err, calls = run(tmp_path, {"timeout": cut_update(*HEARD), "slow-pass": hook}, env=env)
+    assert code == 1
+    steps = [c.split(" ", 1)[0] for c in calls if c.split(" ", 1)[0] in ("timeout", "slow-pass", "sleep")]
+    assert steps == ["timeout", "slow-pass", "sleep", "timeout", "slow-pass", "sleep", "timeout"]
+    assert of(calls, "slow-pass") == ["slow-pass --slow slow.example archive.ubuntu.com"] * 2
+    said = "[install] apt: APT_SLOW_PASS_COMMAND: slow-pass --slow slow.example archive.ubuntu.com"
+    assert out.splitlines().count(said) == 2
+
+
+def test_a_silent_source_of_1_host_is_simply_tried_again(tmp_path):
+    """Only KiCad 10's source (1 host, Launchpad's PPA) printed nothing: no mirror list holds it, so no
+    command runs; the next try asks it again, and a hook that fails is said with the try's word."""
+    runner_sources(tmp_path)
+    heard = (
+        "Hit:1 http://slow.example/ubuntu noble InRelease",
+        "Get:2 https://archive.ubuntu.com/ubuntu noble-updates InRelease [126 kB]",
+        *HEARD[0::2],
+    )
+    env = {**CI, "APT_SLOW_PASS_COMMAND": "slow-pass --slow"}
+    code, out, err, calls = run(tmp_path, {"timeout": cut_update(*heard), "slow-pass": "exit 3"}, env=env)
+    assert code == 1
+    assert of(calls, "slow-pass") == [] and len(updates(calls)) == 0
+    assert len([c for c in of(calls, "timeout") if "update" in c]) == 3
+    assert err.splitlines()[-2].endswith(f"; the sources that had not answered in try 3: {URL}/ noble")
+
+
+def test_a_hook_that_fails_between_2_tries_is_said_and_the_next_try_runs(tmp_path):
+    runner_sources(tmp_path)
+    env = {**CI, "APT_SLOW_PASS_COMMAND": "slow-pass --slow"}
+    code, out, err, calls = run(tmp_path, {"timeout": cut_update(*HEARD), "slow-pass": "exit 3"}, env=env)
+    assert code == 1
+    failed = (
+        "[install] WARN: apt: APT_SLOW_PASS_COMMAND ended with exit code 3; the next try asks the hosts "
+        "in the order they had"
+    )
+    assert err.splitlines().count(failed) == 2
+    assert len([c for c in of(calls, "timeout") if "update" in c]) == 3
+
+
+def test_a_try_that_ends_shows_apts_warnings_but_not_its_progress(tmp_path):
+    """The update runs with -q, so apt prints a Hit, Get, Ign or Err line per index: a try that ends
+    shows apt's W: and E: lines and its Err: lines, as before, and not the others."""
+    azure = "http://azure.archive.ubuntu.com/ubuntu"
+    other = f"W: Failed to fetch {azure}/dists/noble/InRelease  503  Service Unavailable"
+    answer = f"""case "$*" in
+  *update*) echo {shlex.quote(HEARD[0])}; echo 'Err:4 {azure} noble InRelease'
+    echo '  503  Service Unavailable'; echo 'Reading package lists...'
+    echo {shlex.quote(other)} >&2; exit 0 ;;
+esac
+{DEFAULTS["apt-get"]}"""
+    code, out, err, calls = run(tmp_path, {"apt-get": answer})
+    assert code == 0, err
+    assert updates(calls) == ["apt-get update -q"]
+    assert "Hit:1" not in out + err and "Reading package lists" not in out + err
+    assert "Err:4 http://azure.archive.ubuntu.com/ubuntu noble InRelease" in err.splitlines()
+    assert other in err.splitlines()
 
 
 def test_another_sources_warning_is_not_kicads(tmp_path):

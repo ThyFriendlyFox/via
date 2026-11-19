@@ -41,7 +41,9 @@
 #                         cannot finish within APT_DOWNLOAD_TIMEOUT at that rate is ended (default 120)
 #   APT_SLOW_PASS_COMMAND a command run between 2 passes after a pass that was too slow, with the hosts
 #                         of that pass as its last words, split at blanks (default empty: none; CI names
-#                         a mode of tools/ci/apt_archive.sh that puts the slow host last)
+#                         a mode of tools/ci/apt_archive.sh that puts the slow host last); and between 2
+#                         tries of the update after a try APT_UPDATE_TIMEOUT ended, with the hosts of the
+#                         mirror lists whose sources had not answered
 #   KICAD_KEYRING, KICAD_SOURCES, WORKCENTER_LINK, OS_RELEASE, JVM_DIR, CA_BUNDLE, APT_ARCHIVES
 #                         the paths outside WORKCENTER_ROOT the script writes or reads (defaults
 #                         below); the tests point them into a folder of their own
@@ -150,6 +152,10 @@ KICAD_KEY_TIMEOUT="20"
 # apt's Err: and Ign: lines name the file and the host that failed: a cut download shows them. Its
 # "Need to get <size> of archives." line is the size the watch judges a pass by.
 APT_PROGRESS='^((Get|Err|Ign):[0-9]+|Setting up|Unpacking|Need to get) '
+# A try of `apt-get update` that APT_UPDATE_TIMEOUT ended shows at most this many of apt's last lines.
+# In job 135588570683 (2026-11-19) 3 tries of 120 s each ended so, and -qq had printed no line of any:
+# the log could not say which source stalled.
+APT_UPDATE_LINES="10"
 
 FREEROUTING_VERSION="${FREEROUTING_VERSION:-1.9.0}"
 FREEROUTING_SHA256="${FREEROUTING_SHA256:-9084a4888937a7f31f857ecc12aa7a37407f51160e4d2892dff9c9bb47ae3102}"
@@ -360,26 +366,153 @@ kicad_lasting() {
     *) return 1 ;;
   esac
 }
+# The package sources apt reads, 1 line each: "<address> <suite>". The files are those kicad_index_stop
+# reads: sources.list, then *.list and *.sources beside the script's file; a file of another name is not
+# read. A deb-src source counts: the update fetches its index too. A commented line names no type, and a
+# deb822 stanza gives 1 line per address and suite.
+apt_sources() {
+  local parts file
+  local -a files=()
+  parts="$(dirname "$KICAD_SOURCES")"
+  for file in "${parts%/*}/sources.list" "$parts"/*.list "$parts"/*.sources; do
+    if [[ -f "$file" ]]; then files+=("$file"); fi
+  done
+  if ((${#files[@]} == 0)); then return 0; fi
+  awk '
+    function flush(  a, b, n, m, x, y) {
+      if (u != "" && s != "") {
+        n = split(u, a, " "); m = split(s, b, " ")
+        for (x = 1; x <= n; x++) for (y = 1; y <= m; y++) print a[x], b[y]
+      }
+      u = ""; s = ""
+    }
+    FNR == 1 { flush() }
+    $1 ~ /^deb(-src)?$/ { i = 2; if ($i ~ /^\[/) { while (i <= NF && $i !~ /\]$/) i++; i++ } print $i, $(i + 1); next }
+    /^[[:space:]]*$/ { flush(); next }
+    $1 == "URIs:" { for (j = 2; j <= NF; j++) u = u (j == 2 ? "" : " ") $j; next }
+    $1 == "Suites:" { for (j = 2; j <= NF; j++) s = s (j == 2 ? "" : " ") $j; next }
+    END { flush() }' "${files[@]}"
+}
+
+# The host of an address: http://host:80/path -> host.
+uri_host() {
+  local rest="${1#*://}"
+  rest="${rest%%/*}"
+  printf '%s' "${rest%%:*}"
+}
+
+# The sources (apt_sources) that printed no Hit:, Get:, Ign: or Err: line in apt's lines $1. apt prints 1
+# such line per index file as its server answers or fails (apt 2.8.3, apt-private/acqprogress.cc), with the
+# host a mirror list gave it, so a source of a mirror list (mirror+file:<list>) is heard when any host of
+# its list is. Sets SILENT, the sources, a mirror list's with its hosts in the list's order, and
+# SILENT_HOSTS, the hosts of the silent sources of a list of more than 1 host: apt asks such a list's
+# first host first, and a command can put it last. A source of 1 host (KiCad 10's) is asked again as it is.
+silent_sources() {
+  local heard uri suite host said one
+  local -a list
+  SILENT=""
+  SILENT_HOSTS=""
+  heard="$(awk '$1 ~ /^(Hit|Get|Ign|Err):[0-9]+$/ && $2 ~ /^[a-z+]+:\/\// {
+      h = $2; sub(/^[a-z+]+:\/\//, "", h); sub(/[\/:].*$/, "", h); s = $3; sub(/[\/].*$/, "", s); print h " " s
+    }' <<< "$1")"
+  while read -r uri suite; do
+    list=()
+    if [[ "$uri" == mirror+file:* ]]; then
+      mapfile -t list < <(awk '!/^[[:space:]]*(#|$)/ { h = $1; sub(/^[a-z+]+:\/\//, "", h); sub(/[\/:].*$/, "", h); print h }' \
+        "${uri#mirror+file:}" 2> /dev/null || true)
+    else
+      list=("$(uri_host "$uri")")
+    fi
+    one=0
+    for host in "${list[@]}"; do
+      if grep -qxF -- "${host} ${suite}" <<< "$heard"; then one=1; fi
+    done
+    if ((one)); then continue; fi
+    said="${uri} ${suite}"
+    if [[ "$uri" == mirror+file:* ]]; then
+      said+=" ($(printf '%s, ' "${list[@]}" | sed 's/, $//'))"
+    fi
+    SILENT+="${SILENT:+, }${said}"
+    if ((${#list[@]} > 1)); then
+      for host in "${list[@]}"; do
+        if [[ " ${SILENT_HOSTS} " != *" ${host} "* ]]; then SILENT_HOSTS+="${SILENT_HOSTS:+ }${host}"; fi
+      done
+    fi
+  done < <(apt_sources)
+}
+
+# 1 try of `apt-get update`, try $1 of $2, within APT_UPDATE_TIMEOUT when it is set. With -q apt prints its
+# Hit:, Get:, Ign: and Err: lines (with -qq none). Sets UPDATE_OUT to apt's lines and UPDATE_RC to its
+# exit code. A try that ends shows apt's lines but its Hit:, Get:, Ign:, Fetched and Reading lines, as -qq
+# showed them. A cut try says which sources had not answered (silent_sources: SILENT and SILENT_HOSTS,
+# empty after a try that ends), then shows apt's last APT_UPDATE_LINES lines of the try as apt printed them.
+# The update gets no watch of its progress, as the download has: its bound, 120 s in CI, is 1
+# APT_WATCH_WINDOW, and the watch judges no pass before a whole window.
+update_try() {
+  local told n
+  UPDATE_RC=0
+  SILENT=""
+  SILENT_HOSTS=""
+  UPDATE_OUT="$(bounded "$APT_UPDATE_TIMEOUT" apt-get update -q 2>&1)" || UPDATE_RC=$?
+  if ((UPDATE_RC == 124)) && [[ -n "$APT_UPDATE_TIMEOUT" ]]; then
+    silent_sources "$UPDATE_OUT"
+    told="apt printed no line in that try"
+    if [[ -n "$UPDATE_OUT" ]]; then
+      n="$(tail -n "$APT_UPDATE_LINES" <<< "$UPDATE_OUT" | grep -c '')"
+      told="apt's last ${n} lines of that try:"
+      if ((n == 1)); then told="apt's last line of that try:"; fi
+    fi
+    log "apt: update, try $1 of $2, did not end within ${APT_UPDATE_TIMEOUT} s (APT_UPDATE_TIMEOUT); the sources that had not answered (no Hit, Get, Ign or Err line): ${SILENT:-none}; ${told}"
+    if [[ -n "$UPDATE_OUT" ]]; then
+      tail -n "$APT_UPDATE_LINES" <<< "$UPDATE_OUT" | sed 's/^/[apt] /'
+    fi
+    return 0
+  fi
+  told="$(grep -Ev '^((Hit|Get|Ign):[0-9]+ |Fetched |Reading package lists)' <<< "$UPDATE_OUT" || true)"
+  if [[ -n "$told" ]]; then printf '%s\n' "$told" >&2; fi
+}
+
+# APT_SLOW_PASS_COMMAND, when set, with the hosts $2... as its last words; $1 names what comes next ("pass"
+# of the download, "try" of the update). A command that fails is said, and the next $1 runs all the same.
+slow_hook() {
+  local next="$1" hooked=0
+  local -a hook
+  shift
+  if [[ -z "$APT_SLOW_PASS_COMMAND" ]]; then return 0; fi
+  read -r -a hook <<< "$APT_SLOW_PASS_COMMAND"
+  log "apt: APT_SLOW_PASS_COMMAND: ${APT_SLOW_PASS_COMMAND}${*:+ $*}"
+  command -- "${hook[@]}" "$@" || hooked=$?
+  if ((hooked != 0)); then
+    warn "apt: APT_SLOW_PASS_COMMAND ended with exit code ${hooked}; the next ${next} asks the hosts in the order they had"
+  fi
+}
+
 kicad_index() {
   local try out rc
+  local -a hosts
   for ((try = 1; try <= KICAD_INDEX_TRIES; try++)); do
     KICAD_TRIED=$try
     log "apt: update, try ${try} of ${KICAD_INDEX_TRIES}"
-    rc=0
-    out="$(bounded "$APT_UPDATE_TIMEOUT" apt-get update -qq 2>&1)" || rc=$?
-    if [[ -n "$out" ]]; then printf '%s\n' "$out" >&2; fi
+    update_try "$try" "$KICAD_INDEX_TRIES"
+    out="$UPDATE_OUT"
+    rc=$UPDATE_RC
     APT_SAID="$(grep -F "${KICAD_PPA_URL%/}" <<< "$out" | grep -E '^(W|E|Err):' | tail -n 1 || true)"
     if ((rc == 0)) && [[ -z "$APT_SAID" ]]; then
       return 0
     fi
     if ((rc == 124)) && [[ -n "$APT_UPDATE_TIMEOUT" ]]; then
-      APT_SAID="nothing: \`apt-get update\` of every package source did not end within ${APT_UPDATE_TIMEOUT} s (APT_UPDATE_TIMEOUT)"
+      APT_SAID="nothing: \`apt-get update\` of every package source did not end within ${APT_UPDATE_TIMEOUT} s (APT_UPDATE_TIMEOUT); the sources that had not answered in try ${try}: ${SILENT:-none}"
     elif [[ -z "$APT_SAID" ]]; then
       APT_SAID="$(grep -E '^E:' <<< "$out" | tail -n 1 || true)"
       APT_SAID="exit code ${rc}: ${APT_SAID:-$(tail -n 1 <<< "$out")}"
     fi
     if kicad_lasting "$APT_SAID"; then return 1; fi
     if ((try < KICAD_INDEX_TRIES)); then
+      # A mirror list's silent hosts go last before the next try, as after a slow download pass.
+      if [[ -n "$SILENT_HOSTS" ]]; then
+        read -r -a hosts <<< "$SILENT_HOSTS"
+        slow_hook try "${hosts[@]}"
+      fi
       log "apt: the index of KiCad 10's source is not there yet; waiting ${KICAD_INDEX_WAIT} s"
       sleep "$KICAD_INDEX_WAIT"
     fi
@@ -723,8 +856,8 @@ passes_made() {
 # download names the hosts asked, the bytes that arrived of the bytes apt named, the time and the rate.
 apt_download() {
   local pass left="$APT_DOWNLOAD_TIMEOUT" rc files began start base=0 watch passlog
-  local took got need rate rest gone pause needs hooked=0 hosts_said rated
-  local -a hook hosts
+  local took got need rate rest gone pause needs hosts_said rated
+  local -a hosts
   local later="A package source did not serve a file this time: run the script again later. ${KEPT}"
   watch="$(mktemp)"
   passlog="$(mktemp)"
@@ -763,15 +896,7 @@ apt_download() {
       hosts_said="${hosts_said:-no host}"
       rated="$(human "$rate")"
       log "apt: download pass ${pass} of ${APT_DOWNLOAD_TRIES} was too slow to finish: $(human "$got") of $(human "$need") arrived in ${took} s, ${rated}/s over the last ${APT_WATCH_WINDOW} s, leaving out a pause of $((pause / 1000)).$((pause % 1000 / 100)) s, from ${hosts_said}; ${needs}, and ${gone} s were left; waiting ${APT_DOWNLOAD_WAIT} s"
-      if [[ -n "$APT_SLOW_PASS_COMMAND" ]]; then
-        read -r -a hook <<< "$APT_SLOW_PASS_COMMAND"
-        log "apt: APT_SLOW_PASS_COMMAND: ${APT_SLOW_PASS_COMMAND}${APT_PASS_HOSTS:+ ${APT_PASS_HOSTS}}"
-        hooked=0
-        command -- "${hook[@]}" "${hosts[@]}" || hooked=$?
-        if ((hooked != 0)); then
-          warn "apt: APT_SLOW_PASS_COMMAND ended with exit code ${hooked}; the next pass asks the hosts in the order they had"
-        fi
-      fi
+      slow_hook pass "${hosts[@]}"
       sleep "$APT_DOWNLOAD_WAIT"
       continue
     fi

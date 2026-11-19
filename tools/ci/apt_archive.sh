@@ -8,9 +8,10 @@
 # The sample is a first guess only. In CI run 44506767788 (2026-11-19) the first host sent its MiB at
 # 2468910 bytes/s and, 17 s later, the download at 48.3 kB/s. install.sh watches its download passes and
 # ends one too slow to finish within its bound; then it runs its APT_SLOW_PASS_COMMAND, which CI sets to
-# the second form above, with the hosts of that pass, the most files first. The first of them that the
-# mirror list holds goes last, the others keep their order, and the priorities are written 1, 2, ...;
-# the next pass asks another host first. Nothing is probed. A list that holds none of them, or no list,
+# the second form above, with the hosts of that pass, the most files first. It runs the same command
+# between 2 tries of its `apt-get update` after a try its bound ended, with the hosts of the mirror list's
+# sources that had printed no line. The first of them that the mirror list holds goes last, the others
+# keep their order, and the priorities are written 1, 2, ...; the next pass or try asks another host first. Nothing is probed. A list that holds none of them, or no list,
 # is said and left as it is. The folder is $APT_DIR, else /etc/apt.
 #
 # In a folder of apt's files (the argument, else $APT_DIR, else /etc/apt):
@@ -208,7 +209,7 @@ if ((slow)); then
   reprioritize "$LIST" "$work/slow"
   cmp -s -- "$work/slow" "$LIST" || cp -- "$work/slow" "$LIST"
   joined="$(printf '%s\n' "${named_order[@]}" | paste -sd'\t' - | sed 's/\t/, then /g')"
-  say "$LIST: $late served a download pass too slow to finish; apt asks $joined"
+  say "$LIST: $late was too slow (a download pass too slow to finish, or an update try its bound ended); apt asks $joined"
   exit 0
 fi
 
