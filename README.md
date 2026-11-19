@@ -264,7 +264,7 @@ has the procedure from a spec to a GREEN board.
 has every flag.
 
 <details>
-<summary>The 37 commands</summary>
+<summary>The 38 commands</summary>
 
 | Command | What |
 |---|---|
@@ -282,6 +282,7 @@ has every flag.
 | `now` | The work card of 1 piece of work in progress: its `**Status:**` line for the project board (Todo, In progress or Done), its branch and last commit, what is done now, the last health gate, what it waits for and what is left. 1 issue's body per piece of work, titled `Work card: ...` and rewritten in place; `--write` puts it on the `status` branch for a host without GitHub. |
 | `standards` | List each requirement of the product kind `product.json` names, from free documents, as held by a gate, held by a named test of the verification package, or not held, with the document and clause. A list, not a certificate. |
 | `image` | The content tag of the toolchain's files (`Dockerfile`, `install.sh`, `requirements.txt`) at a commit, the name of the image of that tag, and in the image the record of its build: tag, commit, machine, the tools' versions. Runs no engine. |
+| `mcp` | An MCP server on stdio (revision 2025-11-25) for a host that is not Claude Code: `doctor`, `gates`, `erc`, `drc`, `sim`, `export` and `autoroute` as tools, each running its command and answering its lines and exit code. Every path a call names must lie inside the folder the server was given. Writes only MCP messages to stdout. |
 | `legend` | Hold every text printed on a board to its fab's least height and stroke and to no overlap, no hidden or stray designator and 2 directions a side, from the board file; `--place OUT` writes a copy with each designator placed. |
 | `highspeed` | Hold the fast pairs that `interfaces.json` names to their interface's document: the width a cross-section solver gives for its impedance on the board's stackup at the gap the tracks have, the gap, the length, the skew within a pair, the vias, and an unbroken ground plane above and below; write the same limits as KiCad rules. |
 | `copper` | Hold a routed board's power nets to a greatest voltage drop and current density on their own copper and in each via's barrel, and the board to a greatest temperature from its parts' heat; draw each as a picture. Every constant names its document; every limit is the project's. |
@@ -399,6 +400,7 @@ images are drawn.
 | `tools/highspeed.py` | `workcenter highspeed`: the board's stackup, its fast pairs' widths, gaps, lengths, skew, vias and planes against `rules/interfaces/`, and the KiCad rules file. Standard library only. |
 | `tools/legend.py` | The legend check and the designator placer: `workcenter legend`, the DRC gate's legend lines, `Design.place_designators`. Standard library only. |
 | `tools/image.py` | `workcenter image` and the image's own command line: the content tag of the toolchain's files, where CI's `full` job runs (`decide`), the record the Dockerfile writes (`record`), the check inside CI (`check`). Standard library only. |
+| `tools/mcpserver.py` | `workcenter mcp`: the MCP server on stdio. Each tool call runs `tools/workcenter` as a child; the reader answers `ping` and a cancel while a gate runs. Standard library only. |
 | `tools/xsection.py` | The cross-section solver: a track's or a pair's impedance and eps_eff on a layer stack, and the width for a target. Needs numpy; `workcenter highspeed` runs it under the venv. |
 | `tools/copper.py` | `workcenter copper`: the board's copper on a grid, each cell weighted by its copper, the drop and the heat by conjugate gradients, the pictures and the report. Runs under the venv's Python (numpy, pcbnew, Pillow). |
 | `tools/fields.py` | `workcenter fields`: the model of a board's critical nets from its board file, the mesh, the ports, openEMS run as its own program, and the limits held. Standard library only. |

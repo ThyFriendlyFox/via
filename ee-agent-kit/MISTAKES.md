@@ -1749,3 +1749,15 @@ What happened: The checker of doctor's new `requirements` row (commit 6c1af6e) m
 Cost: None on a machine: found before the branch landed. Had it landed, 1 old apt package with a Latin-1 author name in /usr/lib/python3/dist-packages would have stopped doctor, so every health gate and the image build on that machine.
 Root cause: The row read every distribution's metadata through importlib.metadata and caught nothing; the marker reader caught only the ValueError it raised itself; cmd_doctor called the row with no guard. Every test wrote the metadata it read, as pip writes it, in UTF-8: none held a file another program wrote badly. P7 step 6 asks that text not in the format be a problem named, never a traceback. The first fix (070bd7d) added the guard and a try per package, but left the version grouping outside that try: the checker's second round put a Version of 5000 digits on the path, int() raised there, the guard turned the whole row off, and doctor read `ok` beside a real fault. A guard that turns a whole check off is a fault hidden unless the status line says so; it now does, and the version readers no longer raise.
 Process: P7
+
+## M287 — 2026-11-19 — A test's path out of the root led back into it, and the call ran the gates
+What happened: A case of `tests/test_mcp.py` (roadmap item 17, `wip/r17`) meant a link out of the root and named `away/root`, which the link resolved back into the root. The call ran `gates` on the fixture, and the engine guard (`tools/ci/engine_marker.py`) caught kicad-cli and ngspice started by a test without the `engine` marker, in the first run.
+Cost: 1 red run of the builder's; no commit carried it.
+Root cause: The expected answer of each path case was not worked out by hand before the case was written: `away` is tmp_path, `away/lock` is tmp_path/lock, outside the root, and `away/root` is the root itself. Each case is now worked out that way. The guard of P12 step 7 did its work.
+Process: P12
+
+## M288 — 2026-11-19 — A command line of the keeper's used `cd` again
+What happened: Cleaning the batch's work folder after pull request 116, the keeper ran 1 shell command that began `cd <scratchpad>/batch4-work 2>/dev/null;` before an `rm -f` of named files by absolute path, against "Absolute paths, and no `cd`" (P8 step 1, M268) and 1 entry after M284, the same mistake by the same keeper.
+Cost: None seen: the `rm` named its files by absolute path, and only the keeper's own logs went. The rule was broken a second time.
+Root cause: As in M284: the habit of a terminal, and nothing in this session's shell refuses a `cd`: the repository's no-`cd` hook is not loaded in a session opened outside the repository (`workcenter doctor` here: `absent   no-cd hook`). P13 step 3 asks for a machine check after a second time; the check that exists is that hook, and this session does not load it.
+Process: P8

@@ -129,6 +129,7 @@ unset variable never causes a failure.
 | `--left` | now | `nothing` | 1 thing left; repeatable. |
 | `--title` | now | off | Print the issue's title, `Work card: <the work>`, and nothing else. |
 | `--write` | now | off | A checkout of the `status` branch: the card goes under its title to its `now/<branch>.md`. |
+| `ROOT` (positional) | mcp | `.` | The folder the MCP tools may reach. Every path a call names (`project`, `out`, `dsn`, a `fab` given as a path) must resolve inside it, links followed; a call that names another is refused in 1 line. |
 | `--spec FILE` | fields | `<project>/fields.json` | The groups of nets, each group's band and its limits, each limit with its `source`. |
 | `--model` | fields | off | Write each group's `model.json` and the engine's input under `<out>/fields/<group>/`; run nothing. |
 | `--strict` (fields) | fields | off | A limit that is not judged fails the run. Without it the run exits 2 when no limit was held (`no limit stated: nothing judged`). |

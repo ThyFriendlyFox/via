@@ -124,6 +124,7 @@ file: it needs nothing else.
 | `references` | A rule cites a standard or a datasheet: get the copy it was written from with `workcenter references fetch`, judge a file a person downloaded with `workcenter references check`, and keep `workcenter references rules` passing. |
 | `legend` | A board's labels must be legible and not overlap: each designator placed by the generator, every text held by the DRC gate to the fab's least size and the legend's rules. |
 | `now` | Several agents work at once and a maintainer follows them on the project board: 1 work card per piece of work with `workcenter now`, its `**Status:**` line Todo, In progress or Done, in 1 GitHub issue's body rewritten at each landing, block and health gate, or on the `status` branch with `--write`. |
+| `mcp` | A host that is not Claude Code is to run the gates: `workcenter mcp <project>` serves `doctor`, `gates`, `erc`, `drc`, `sim`, `export` and `autoroute` as MCP tools over stdio, each answering its command's lines and exit code. |
 | `lead` | Roadmap work is to be done by helpers: a worktree and a brief per piece, a build, an attack and a fix, a second attack for a piece called not sound, and `ee-agent-kit/lead/landed.py` to see which pieces have finished. |
 | `land` | Finished pieces are to go onto the work branch, and later onto the default branch: commits in a straight line, docs files applied, a push on `make check`, CI's `verdict` green on the pushed commit before anything builds on it, a merge that names its head (`ee-agent-kit/lead/gate-and-push.sh` where there is no CI), a merge commit only at the owner's word. |
 | `user-round` | The roadmap is to be checked against the goal: 3 users of different sizes, 1 board spec, their logs checked and ranked into roadmap candidates, each with what the small user does after the change. |
@@ -699,6 +700,22 @@ git commands to commit and push it; it runs none. The workflow Board
 card in Done: on the card's own event, and once a day and by hand for every
 card (`--all`), so a missed run is put right; it needs the repository secret
 `BOARD_TOKEN`.
+
+Not a gate: `workcenter mcp [ROOT]` is an MCP server on stdio, revision
+2025-11-25, for a host that is not Claude Code. Its 7 tools are `doctor`,
+`gates`, `erc`, `drc`, `sim`, `export` and `autoroute`. Each runs
+`workcenter <tool>` as a child process and answers the lines it printed,
+stdout and stderr in order, then `exit code N`; `structuredContent` holds
+`exitCode` and the command line, and `isError` is true when the code is
+not 0. Every path a call names (`project`, `out`, `dsn`, a `fab` given as a
+path) must lie inside ROOT, links followed; any other is refused in 1 line
+and nothing runs. A long tool waits its turn on the engine lock as its
+command does, and the server answers `ping` and other calls meanwhile;
+`notifications/cancelled` stops the command and its engines, and a
+`progressToken` gets each printed line as a progress notification. Closing
+stdin lets running calls finish; SIGTERM or Ctrl-C stops them, and on Linux
+so does a SIGKILL to the server. stdio only: no HTTP, no authentication.
+The `mcp` skill is the procedure.
 
 Not a gate: `workcenter highspeed <project> [--strict] [--verbose] [--out
 DIR]` holds the fast pairs `interfaces.json` names to their interface's
