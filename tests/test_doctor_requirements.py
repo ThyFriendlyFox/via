@@ -16,6 +16,8 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
 
@@ -261,6 +263,7 @@ def test_a_probe_that_does_not_answer_leaves_the_row_advisory(tmp_path):
     assert row["advisory"] is True and row["ok"] is False
     assert row.get("missing", []) == []
     assert len(row["lines"]) == 1 and row["lines"][0].startswith("not checked: the venv's Python ")
+    assert row["not_checked"] is True
     assert wc.doctor_checks_degraded({"requirements": row}) == []
     # No venv Python at all: the `venv` row degrades already; this one is advisory and says nothing.
     (venv / "bin" / "python").unlink()
@@ -347,8 +350,9 @@ LATIN1 = b"Metadata-Version: 2.1\nName: numpy\nVersion: 2.5.4\nAuthor: Jos\xe9\n
 
 def test_metadata_that_is_not_utf8_is_not_read_and_does_not_crash(tmp_path):
     """An old package with a Latin-1 author name anywhere on the path (apt fills
-    /usr/lib/python3/dist-packages) crashed doctor. Its folder is said under `not read`; a pin that
-    names it is not compared, never called missing; it degrades nothing."""
+    /usr/lib/python3/dist-packages) crashed doctor. Its folder is said under `not read`. A package no
+    line names stays a note; a PINNED one whose metadata cannot be read is a fault of that pin (the
+    venv cannot be shown to meet it), said with its folder, the reason and the put-right command."""
     site = tmp_path / "venv" / "lib" / "python3.12" / "site-packages"
     system = tmp_path / "system"
     dist(site, "kikit", "KiKit", "1.8.1")
@@ -357,30 +361,168 @@ def test_metadata_that_is_not_utf8_is_not_read_and_does_not_crash(tmp_path):
     req = tmp_path / "requirements.txt"
     req.write_text("kikit==1.8.1\nnumpy==2.5.4\n", encoding="utf-8")
     row = wc.requirements_row(req, [site, system], [site], ENV, fix="F")
-    assert row["ok"] is True and row["missing"] == [] and row["other"] == [] and row["extra"] == []
+    assert row["ok"] is False and row["missing"] == [] and row["other"] == [] and row["extra"] == []
     assert row["version"] == "1 of 2 pins met"
+    assert len(row["unread"]) == 2
     assert row["unread"][0].startswith(f"{bad}: metadata not read (UnicodeDecodeError: ")
     assert row["unread"][1].startswith(f"{old}: metadata not read (UnicodeDecodeError: ")
-    assert row["unread"][2] == (
-        "line 2: numpy==2.5.4 (installed in numpy-2.5.4.dist-info, its version not read, not compared)"
-    )
-    assert row["lines"][0].startswith(f"not read: {bad}: metadata not read (")
+    assert len(row["unreadable"]) == 1
+    assert row["unreadable"][0].startswith(f"numpy==2.5.4 ({bad}: metadata not read (UnicodeDecodeError: ")
+    said = [line for line in row["lines"] if line.startswith("unreadable: ")]
+    assert len(said) == 1 and said[0].startswith(f"unreadable: numpy==2.5.4 ({bad}: metadata not read (")
+    assert said[0].endswith("; put right with: F")
+    assert wc.doctor_checks_degraded({"requirements": row}) == ["requirements"]
+    # Only the unpinned one unreadable (the checker's root29): a note, never a fault.
+    req.write_text("kikit==1.8.1\n", encoding="utf-8")
+    row = wc.requirements_row(req, [site, system], [site], ENV, fix="F")
+    assert row["ok"] is True and row["version"] == "1 of 1 pins met" and row["unreadable"] == []
     assert wc.doctor_checks_degraded({"requirements": row}) == []
 
 
-def test_a_package_with_no_version_line_says_its_version_is_not_read(tmp_path):
+def test_a_pinned_package_with_no_version_line_is_a_fault_with_the_reason(tmp_path):
     site = tmp_path / "venv" / "lib" / "python3.12" / "site-packages"
     dist(site, "kikit", "KiKit", "1.8.1")
     info = raw_dist(site, "numpy-2.5.4.dist-info", b"Metadata-Version: 2.1\nName: numpy\n")
     req = tmp_path / "requirements.txt"
     req.write_text("kikit==1.8.1\nnumpy==2.5.4\n", encoding="utf-8")
     row = wc.requirements_row(req, [site], [site], ENV, fix="F")
-    assert row["ok"] is True and row["other"] == [] and row["extra"] == []
-    assert row["unread"] == [
-        f"{info}: no Version in its metadata",
-        "line 2: numpy==2.5.4 (installed in numpy-2.5.4.dist-info, its version not read, not compared)",
-    ]
+    assert row["ok"] is False and row["other"] == [] and row["missing"] == [] and row["extra"] == []
+    assert row["unread"] == [f"{info}: no Version in its metadata"]
+    assert row["unreadable"] == [f"numpy==2.5.4 ({info}: no Version in its metadata)"]
+    assert f"unreadable: numpy==2.5.4 ({info}: no Version in its metadata); put right with: F" in row["lines"]
     assert "( installed)" not in " ".join(row["lines"])
+
+
+def test_an_unreadable_pinned_package_first_on_the_path_is_a_fault_over_one_behind_it(tmp_path):
+    """The checker's R5: numpy-2.5.4.dist-info unreadable in the first folder, numpy 2.5.3 behind it.
+    The import takes the first, which cannot be shown to meet the pin: a fault, and the image is
+    refused (tools/image.py's judge_doctor, with no change of its own)."""
+    first, behind = tmp_path / "first", tmp_path / "behind"
+    bad = raw_dist(first, "numpy-2.5.4.dist-info", LATIN1)
+    dist(behind, "numpy", "numpy", "2.5.3")
+    req = tmp_path / "requirements.txt"
+    req.write_text("numpy==2.5.4\n", encoding="utf-8")
+    row = wc.requirements_row(req, [first, behind], [first], ENV, fix="F")
+    assert row["ok"] is False and row["version"] == "0 of 1 pins met"
+    assert row["unreadable"][0].startswith(f"numpy==2.5.4 ({bad}: metadata not read (")
+    image = load_image_module()
+    payload = {"status": "degraded", "checks": {"requirements": row}}
+    assert "requirements: not ok in the image" in image.judge_doctor(payload, "x86_64")
+
+
+def load_image_module():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("image_for_doctor_tests", ROOT / "tools" / "image.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+BOMB = "1" + "0" * 4999  # 5000 digits: int() refuses more than 4300
+
+
+def test_a_version_of_5000_digits_is_not_read_for_that_package_alone(tmp_path):
+    """The checker's R2: 1 such package anywhere on the path made int() raise in the version readers,
+    the guard turned the whole row off, and a real fault beside it went unsaid with doctor `ok`."""
+    site = tmp_path / "site"
+    dist(site, "numpy", "numpy", "2.5.3")
+    zz = raw_dist(site, "zz-1.dist-info", f"Name: zz\nVersion: {BOMB}\n".encode())
+    req = tmp_path / "requirements.txt"
+    req.write_text("numpy==2.5.4\n", encoding="utf-8")
+    row = wc.requirements_row(req, [site], [site], ENV, fix="F")
+    assert row["ok"] is False and row["other"] == ["numpy==2.5.4 (2.5.3 installed)"]
+    assert len(row["unread"]) == 1 and row["unread"][0].startswith(f"{zz}: Version not read (")
+    assert row["extra"] == []
+    # The readers themselves never raise.
+    assert wc.release_key(BOMB) == ((), BOMB) and wc.epoch_release(BOMB) is None
+    assert wc.release_parts(BOMB) is None and wc.spec_met(BOMB, ">=", "1") is None
+    assert wc.spec_met("1.0", "==", BOMB) is False and wc.version_matches(BOMB, "1.*") is None
+    with pytest.raises(ValueError):  # a marker not read, as every other the reader cannot read
+        wc.marker_true(f'python_version >= "{BOMB}"', ENV)
+
+
+def test_a_name_taken_from_a_folder_ends_at_the_last_dash_before_a_digit(tmp_path):
+    """A metadata folder with no METADATA: its name is the folder's up to the last `-` followed by a
+    digit, compared by PEP 503. It is pinned, so the pin is a fault (unreadable), never `missing`."""
+    for number, (folder, pin) in enumerate(
+        [
+            ("a-b-1.0.dist-info", "a-b==1.0"),
+            ("a_b-1.0.dist-info", "a-b==1.0"),
+            ("weird.dist-info", "weird==1.0"),
+            ("x-1.0-py3.13.egg-info", "x==1.0"),
+        ]
+    ):
+        site = tmp_path / str(number)
+        (site / folder).mkdir(parents=True)
+        req = tmp_path / f"{number}.txt"
+        req.write_text(pin + "\n", encoding="utf-8")
+        row = wc.requirements_row(req, [site], [site], ENV, fix="F")
+        assert row["missing"] == [], (folder, row)
+        assert row["unreadable"] == [f"{pin} ({site / folder}: no Name in its metadata)"], (folder, row)
+        assert row["ok"] is False
+
+
+def doctor_with_a_check_that_raises(tmp_path: Path, *argv: str) -> subprocess.CompletedProcess:
+    """The whole `doctor` in a subprocess, on a made-up root, with importlib.metadata.distributions
+    replaced by a stand-in that raises: the check fails inside, where only cmd_doctor's guard holds it.
+    kicad-cli, ngspice and java point at an absent path, so no engine starts."""
+    base = tmp_path / "root"
+    site = base / "venv" / "lib" / "python3.12" / "site-packages"
+    if not site.is_dir():
+        dist(site, "kikit", "KiKit", "1.8.1")
+    fake_venv(base, f"cat <<'EOF'\n{json.dumps({'path': [str(site)], 'env': ENV})}\nEOF")
+    absent = str(tmp_path / "absent")
+    env = {**os.environ, "WORKCENTER_ROOT": str(base), "HOME": str(tmp_path)}
+    env.update(KICAD_CLI=absent, NGSPICE=absent, JAVA=absent)
+    stand_in = (
+        "import importlib.metadata, runpy, sys\n"
+        "def boom(*a, **k):\n"
+        "    raise RuntimeError('a stand-in raised inside the check')\n"
+        "importlib.metadata.distributions = boom\n"
+        "cli = sys.argv[1]\n"
+        "sys.argv = [cli, *sys.argv[2:]]\n"
+        "runpy.run_path(cli, run_name='__main__')\n"
+    )
+    return subprocess.run(
+        [sys.executable, "-c", stand_in, str(CLI), *argv],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=str(tmp_path),
+        timeout=120,
+        check=False,
+    )
+
+
+def test_doctor_takes_the_requirements_row_through_its_guard_and_says_it_was_not_checked(tmp_path):
+    """cmd_doctor must call the guarded row: called directly, the stand-in's error is a traceback.
+    A row not checked is said on the status line and in --json, so nobody reads a plain `ok`."""
+    proc = doctor_with_a_check_that_raises(tmp_path, "doctor")
+    assert "Traceback" not in proc.stderr and "Traceback" not in proc.stdout, proc.stderr
+    lines = proc.stdout.splitlines()
+    assert "requirements not checked  (root " in lines[0], lines[0]
+    assert any(
+        line.strip() == "not checked: RuntimeError: a stand-in raised inside the check" for line in lines
+    ), proc.stdout
+    proc = doctor_with_a_check_that_raises(tmp_path, "--json", "doctor")
+    payload = json.loads(proc.stdout)
+    assert payload["not_checked"] == ["requirements"]
+    assert payload["checks"]["requirements"]["advisory"] is True
+    assert "requirements" not in payload["degraded"]
+
+
+def test_the_status_line_names_a_row_not_checked():
+    assert wc.doctor_status_words("ok", [], []) == "ok"
+    assert wc.doctor_status_words("ok", [], ["requirements"]) == "ok, requirements not checked"
+    assert (
+        wc.doctor_status_words("degraded", ["freerouting"], ["requirements"])
+        == "degraded, without freerouting; requirements not checked"
+    )
+    # The probe that did not answer is `not checked` too.
+    row = {"required": False, "advisory": True, "ok": False, "not_checked": True, "lines": []}
+    assert wc.doctor_not_checked({"requirements": row, "venv": {"ok": True}}) == ["requirements"]
 
 
 DEEP = "(" * 2000 + "python_version >= '3'" + ")" * 2000
@@ -487,6 +629,7 @@ def test_any_exception_in_the_requirements_check_is_an_advisory_line(monkeypatch
     row = wc.requirements_doctor_row_checked()
     assert row["advisory"] is True and row["ok"] is False
     assert row["lines"] == ["not checked: RuntimeError: boom second line"]
+    assert row["not_checked"] is True
     assert wc.doctor_checks_degraded({"requirements": row}) == []
 
 

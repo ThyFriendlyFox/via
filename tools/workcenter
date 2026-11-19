@@ -5355,13 +5355,23 @@ def parse_requirement(text: str) -> dict | None:
     return {"name": m.group("name"), "extras": extras, "spec": spec, "marker": m.group("marker")}
 
 
+def int_parts(release: str) -> tuple[int, ...] | None:
+    """`2.0.1` as (2, 0, 1); None where a part is a number int() refuses (more than 4300 digits): a
+    version reader never raises, since 1 such version anywhere on the path turned the whole check off."""
+    try:
+        return tuple(int(p) for p in release.split("."))
+    except ValueError:
+        return None
+
+
 def release_key(version: str) -> tuple:
     """A version as `==` compares it (PEP 440, in part): 1.0 and 1.0.0 are one, case and a `v` aside."""
     v = version.strip().lower().removeprefix("v")
     m = re.match(r"(\d+(?:\.\d+)*)(.*)", v)
-    if not m:
+    parts = int_parts(m.group(1)) if m else None
+    if parts is None:
         return ((), v)
-    release = [int(p) for p in m.group(1).split(".")]
+    release = list(parts)
     while len(release) > 1 and release[-1] == 0:
         release.pop()
     return (tuple(release), m.group(2))
@@ -5418,6 +5428,8 @@ def marker_true(marker: str | None, env: dict, extra: str = "") -> bool:
             return (left in right) == (op == "in")
         if op in ("<", "<=", ">", ">=", "~=") and re.fullmatch(r"\d+(\.\d+)*", left + "." + right):
             a, b = release_key(left)[0], release_key(right)[0]
+            if not a or not b:
+                raise ValueError(f"marker not read: a version int() refuses in {marker[:80]!r}")
             return {"<": a < b, "<=": a <= b, ">": a > b, ">=": a >= b, "~=": a >= b}[op]
         if op in ("==", "==="):
             return (
@@ -5451,18 +5463,19 @@ def marker_true(marker: str | None, env: dict, extra: str = "") -> bool:
 
 def installed(
     paths: list[Path],
-) -> tuple[dict[str, tuple[str, str | None, list[str], Path, str]], list[str], list[str]]:
+) -> tuple[dict[str, tuple[str, str | None, list[str], Path, str, str]], list[str], list[str]]:
     """Each package the paths hold, by its PEP 503 name: (name, version, Requires-Dist, path entry,
-    metadata folder's name). The earlier path wins, as an import does. Also each package with more than
-    1 metadata folder in 1 path entry, as `name 1.0 (<folder>) and 2.0 (<folder>) in <path>`: a broken
-    install, whose version hangs on folder order. And each metadata folder not read, with the reason.
+    metadata folder's name, why it was not read or ""). The earlier path wins, as an import does. Also
+    each package with more than 1 metadata folder in 1 path entry, as `name 1.0 (<folder>) and 2.0
+    (<folder>) in <path>`: a broken install, whose version hangs on folder order. And each metadata
+    folder not read, as `<folder>: <why>`.
 
-    A folder whose metadata cannot be read (not UTF-8, no Name, no Version) is never called missing:
-    its name is taken from its folder (`<name>-<version>.dist-info`, as pip writes it) and its version
-    is None, so a pin that names it is said not compared."""
+    A folder whose metadata, name or version cannot be read (not UTF-8, no Name, no Version, a version
+    int() refuses) has version None, and its name is taken from its folder: up to the last `-` that a
+    digit follows (`a-b-1.0.dist-info` is a-b, as pip writes it), else the whole stem."""
     import importlib.metadata
 
-    found: dict[str, tuple[str, str | None, list[str], Path, str]] = {}
+    found: dict[str, tuple[str, str | None, list[str], Path, str, str]] = {}
     broken: list[str] = []
     unread: list[str] = []
     for path in paths:
@@ -5474,20 +5487,24 @@ def installed(
                 name, version = meta.get("Name") or "", meta.get("Version")
                 requires = list(d.requires or [])
                 why = "" if name and version else f"no {'Version' if name else 'Name'} in its metadata"
+                if not why and re.match(r"v?\d", version.strip().lower()) and not release_key(version)[0]:
+                    why = f"Version not read ({short(version, 40)}, {len(version.strip())} characters)"
             except Exception as exc:  # 1 package's metadata is not read, never the whole row
                 name, version, requires = "", None, []
                 why = f"metadata not read ({type(exc).__name__}: {short(exc, 160)})"
             if why:
                 unread.append(f"{where}: {why}")
                 stem = re.sub(r"\.(dist|egg)-info$", "", where.name) if where != Path(path) else ""
-                name = name or stem.split("-", 1)[0]
+                cut = re.match(r"(.+)-\d", stem)
+                name = name or (cut.group(1) if cut else stem)
                 version = None
             if not name:
                 continue
             if version is not None:
                 here.setdefault(pep503(name), []).append((name, version, where.name))
             if pep503(name) not in found:
-                found[pep503(name)] = (name, version, requires, Path(path), where.name)
+                said = f"{where}: {why}" if why else ""
+                found[pep503(name)] = (name, version, requires, Path(path), where.name, said)
         for _, seen in sorted(here.items()):
             # 1 version in 2 metadata folders (Ubuntu's python3-cryptography ships a dist-info and an
             # egg-info) reads the same in either order: not a fault.
@@ -5519,6 +5536,7 @@ def requirements_row(req_file: Path, paths: list[Path], own: list[Path], env: di
         "extra": [],
         "unread": [],
         "broken": [],
+        "unreadable": [],
     }
     try:
         text = read_requirements(Path(req_file))
@@ -5548,8 +5566,9 @@ def requirements_row(req_file: Path, paths: list[Path], own: list[Path], env: di
             row["missing"].append(shown)
             continue
         if have[1] is None:
-            said_where = f"installed in {have[4]}, its version not read, not compared"
-            row["unread"].append(f"line {number}: {shown} ({said_where})")
+            # A pinned package whose metadata, name or version cannot be read is a broken install: the
+            # venv cannot be shown to meet the pin. Its folder is under `not read` too.
+            row["unreadable"].append(f"{shown} ({have[5]})")
             continue
         said = [spec_met(have[1], op, v.strip()) for op, v in re.findall(SPEC_ITEM, req["spec"])]
         if False in said:
@@ -5571,7 +5590,7 @@ def requirements_row(req_file: Path, paths: list[Path], own: list[Path], env: di
         if (key, frozenset(extras)) in accounted:
             continue
         accounted |= {key, (key, frozenset(extras))}
-        name, version, requires = found.get(key, ("", "", [], None, ""))[:3]
+        name, version, requires = found.get(key, ("", "", [], None, "", ""))[:3]
         for dep in requires:
             parsed = parse_requirement(dep)
             if parsed is None:
@@ -5590,12 +5609,12 @@ def requirements_row(req_file: Path, paths: list[Path], own: list[Path], env: di
     row["extra"] = sorted(
         (
             f"{name} {version}"
-            for key, (name, version, _, where, _) in found.items()
+            for key, (name, version, _, where, _, _) in found.items()
             if where in own_set and key not in accounted and version is not None
         ),
         key=str.lower,
     )
-    row["ok"] = not row["missing"] and not row["other"] and not row["broken"]
+    row["ok"] = not (row["missing"] or row["other"] or row["broken"] or row["unreadable"])
     row["version"] = f"{met} of {len(pins)} pins met"
     lines = []
     if row["broken"]:
@@ -5607,6 +5626,8 @@ def requirements_row(req_file: Path, paths: list[Path], own: list[Path], env: di
         lines.append(f"missing: {', '.join(row['missing'])}; put right with: {fix}")
     if row["other"]:
         lines.append(f"other version: {', '.join(row['other'])}; put right with: {fix}")
+    if row["unreadable"]:
+        lines.append(f"unreadable: {'; '.join(row['unreadable'])}; put right with: {fix}")
     if row["unread"]:
         lines.append(f"not read: {'; '.join(row['unread'])}")
     if row["extra"]:
@@ -5635,15 +5656,16 @@ def version_matches(have: str, pin: str) -> bool | None:
 def epoch_release(version: str) -> tuple[int, tuple, str] | None:
     """`1!2.5.4rc1` as (1, (2, 5, 4), 'rc1'), zeros kept; None where it does not start with a release."""
     m = re.fullmatch(r"(?:(\d+)!)?(\d+(?:\.\d+)*)(.*)", version.strip().lower().removeprefix("v"))
-    if not m:
+    epoch, release = (int_parts(m.group(1) or "0"), int_parts(m.group(2))) if m else (None, None)
+    if epoch is None or release is None:
         return None
-    return int(m.group(1) or 0), tuple(int(p) for p in m.group(2).split(".")), m.group(3)
+    return epoch[0], release, m.group(3)
 
 
 def release_parts(version: str) -> tuple | None:
     """`2.0.1` as (2, 0, 1), zeros kept (a `.*` prefix counts them); None where it is not only a release."""
     v = version.strip().lower().removeprefix("v")
-    return tuple(int(p) for p in v.split(".")) if re.fullmatch(r"\d+(\.\d+)*", v) else None
+    return int_parts(v) if re.fullmatch(r"\d+(\.\d+)*", v) else None
 
 
 # 1 specifier of a pin line: `>=2.5`, `==1.*`, `!=1.0`.
@@ -5768,7 +5790,14 @@ def requirements_doctor_row(venv: Path | None = None, src: Path | None = None) -
         paths, own, env = venv_site(venv)
     except ValueError as exc:
         line = f"not checked: the venv's Python did not say its path ({exc}); run doctor again"
-        return {"required": False, "advisory": True, "ok": False, "path": str(req), "lines": [line]}
+        return {
+            "required": False,
+            "advisory": True,
+            "ok": False,
+            "not_checked": True,
+            "path": str(req),
+            "lines": [line],
+        }
     return requirements_row(req, paths, own, env, requirements_fix(venv, src))
 
 
@@ -5780,7 +5809,29 @@ def requirements_doctor_row_checked() -> dict:
     except Exception as exc:
         line = f"not checked: {short(f'{type(exc).__name__}: {exc}', 200)}"
         path = str(SRC_DIR / "requirements.txt")
-        return {"required": False, "advisory": True, "ok": False, "path": path, "lines": [line]}
+        return {
+            "required": False,
+            "advisory": True,
+            "ok": False,
+            "not_checked": True,
+            "path": path,
+            "lines": [line],
+        }
+
+
+def doctor_not_checked(checks: dict) -> list[str]:
+    """The rows whose check did not run to its end (an error inside, a probe that did not answer):
+    advisory, so they degrade nothing, and named on the status line so that nobody reads a plain `ok`."""
+    return [k for k, v in checks.items() if v.get("not_checked")]
+
+
+def doctor_status_words(status: str, named: list[str], not_checked: list[str]) -> str:
+    """Doctor's first words: `ok`, `degraded, without a, b`, each followed by the rows not checked
+    (`ok, requirements not checked`; `degraded, without a; requirements not checked`)."""
+    words = status + (f", without {', '.join(named)}" if named else "")
+    if not_checked:
+        words += ("; " if named else ", ") + f"{', '.join(not_checked)} not checked"
+    return words
 
 
 def doctor_row_text(name: str, c: dict) -> list[str]:
@@ -5885,15 +5936,15 @@ def cmd_doctor(args) -> int:
         "checks": checks,
         "missing_required": missing_required,
         "degraded": degraded,
+        "not_checked": doctor_not_checked(checks),
         "chip_engines": chip_folder.is_dir(),
         "engine_lock": enginelock().state(),
     }
     if args.json:
         print(json.dumps(payload, indent=2))
     else:
-        named = missing_required or degraded
-        without = f", without {', '.join(named)}" if named else ""
-        print(f"workcenter ee: {status}{without}  (root {WC_ROOT}, src {SRC_DIR})")
+        words = doctor_status_words(status, missing_required or degraded, payload["not_checked"])
+        print(f"workcenter ee: {words}  (root {WC_ROOT}, src {SRC_DIR})")
         for name, c in checks.items():
             print("\n".join(doctor_row_text(name, c)))
         print(f"  {'':8} engine lock  {enginelock().status_line(payload['engine_lock'])}")
