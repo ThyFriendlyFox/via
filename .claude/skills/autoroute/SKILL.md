@@ -1,6 +1,6 @@
 ---
 name: Autoroute
-description: Routes a board with FreeRouting headless (1.9.0 by default, 2.5.0 with --router freerouting2); generated designs round-trip through Specctra DSN and SES automatically, hand-drawn boards supply the DSN; lists the rules Via keeps around every router.
+description: Routes a board with FreeRouting headless (1.9.0 by default, 2.5.0 with --router freerouting2); generated designs round-trip through Specctra DSN and SES automatically, a hand-drawn board's .kicad_pcb is read, routed and written in place with autoroute --apply; lists the rules Via keeps around every router.
 ---
 
 # Autoroute
@@ -11,9 +11,10 @@ session (`.ses`). There are 2 ways in:
 - **A kicadgen design** (`design.py`, see the `board-design` skill):
   `workcenter design design.py --route` writes the DSN itself, runs the
   router, and merges the session into the generated board. Fully headless.
-- **A hand-drawn board**: `kicad-cli` 10 has no Specctra export, so the
-  DSN comes from KiCad (File, Export, Specctra DSN) and the session goes
-  back in through KiCad (File, Import, Specctra Session).
+- **A hand-drawn board** (a `.kicad_pcb` drawn in KiCad, no `design.py`):
+  `workcenter autoroute --apply .` reads the board file itself, writes the
+  DSN with the same writer, runs the router, writes the copper into the
+  board file and runs the DRC on it. Fully headless (`tools/boardroute.py`).
 
 ## When
 
@@ -66,11 +67,49 @@ session (`.ses`). There are 2 ways in:
 
 ## Steps, hand-drawn board
 
-1. Export the DSN from KiCad to `<project>/<name>.dsn` or pass `--dsn`.
-2. `workcenter autoroute . --passes 20` writes `build/route/<name>.ses`.
-3. Import the session in KiCad and save. Without a display, hand the
-   `.ses` path to the human with that instruction.
-4. `workcenter drc .` again.
+The board file is written in place. Commit it, or work on a copy, first.
+
+1. `git status` in the project. Commit the board as it is, so the route
+   can be undone with git.
+2. `workcenter drc .` Fix courtyard overlaps and pad clearance in KiCad
+   first; the router cannot. Unconnected items are what the route is for.
+3. `workcenter autoroute --apply . --passes 20`. It reads the
+   `.kicad_pcb` (footprints, pads, outline, nets, tracks and vias) and
+   the `.kicad_pro` beside it (the Default net class: track width,
+   clearance, via; the other classes by their patterns; the board rules),
+   and a `<name>.kicad_dru` beside the board as the fab's rules. Tracks
+   and vias already drawn go to the router as fixed wiring. Read each line:
+   - `PASS autoroute routed N segments and M vias into <board>; DRC: ...`:
+     the board is routed, written, and its DRC has 0 errors and 0
+     unconnected items. Go to step 4.
+   - `- warning: not handed to the router: zone of <net> on <layer> ...`,
+     `... N arc track(s) ...`, `... keepout zone ...`, `... Edge.Cuts drawn
+     in footprint <ref> ...`, `... N tracks and vias on no net ...`: this
+     first cut does not give these to the router; it routes as if they
+     were not there and the DRC judges the result. A zone is filled by
+     KiCad, not here: fill it (`kicad-cli pcb drc --refill-zones
+     --save-board`) and run `workcenter drc .` again.
+   - `- route: N unconnected (KiCad DRC of <board>)`: the router left
+     connections open. Read step 3 of the generated-design steps above for
+     the reasons; change the placement in KiCad and run again.
+   - `- route: the router left N connections open (<log>)`: the same, by
+     the router's own count.
+   - `ERROR autoroute <board> not read: Edge.Cuts: ...`: the outline is
+     no rectangle (a `gr_rect`, or `gr_line`s that close one). This first
+     cut refuses it; nothing is written.
+   - `ERROR autoroute <board> not read: <ref> pad <n>: a surface pad on
+     ...`: a surface pad on the side opposite its footprint. Refused.
+   - `FAIL autoroute route failed: ...; <board> is as it was`: the router
+     failed or ran past `--timeout`. Read `build/route/freerouting.log`.
+   - `SKIP autoroute engine missing: ...`: run `workcenter doctor`.
+   The board before the route is kept as `build/route/<name>.before.kicad_pcb`;
+   the DSN, the session and the router's log are beside it.
+4. `workcenter gates .` must be GREEN before the board is called routed.
+
+`--apply` takes no `--dsn`. Without `--apply`, `workcenter autoroute .
+--dsn <file>` runs the router on a DSN exported from KiCad (File, Export,
+Specctra DSN) and writes only `build/route/<name>.ses`, which KiCad
+imports (File, Import, Specctra Session).
 
 ## Steps, the routing benchmark
 

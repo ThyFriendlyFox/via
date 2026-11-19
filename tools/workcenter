@@ -2339,9 +2339,12 @@ def gate_autoroute(
     passes: int = 20,
     threads: int = 0,
     timeout: int = 600,
+    apply: bool = False,
 ) -> Result:
     if not project.pcb:
         return Result("autoroute", "skip", "no board in project")
+    if apply:
+        return autoroute_apply(project, out, dsn, passes, threads, timeout)
     if not FREEROUTING_JAR.is_file():
         return Result(
             "autoroute",
@@ -2389,6 +2392,59 @@ def gate_autoroute(
             "then run drc"
         },
         [str(dsn_path), str(ses)],
+    )
+
+
+def autoroute_apply(
+    project: Project, out: Path, dsn: str | None, passes: int, threads: int, timeout: int
+) -> Result:
+    """`autoroute --apply` (ROADMAP item 15): tools/boardroute.py reads the board file into kicadgen's
+    DSN writer, FreeRouting routes it, the copper goes back into the board file, and the DRC gate judges
+    the written board. Pass only with nothing open by the router's count and a clean DRC with 0
+    unconnected items."""
+    if dsn:
+        return Result("autoroute", "error", "--apply writes the DSN from the board itself; it takes no --dsn")
+    sys.path.insert(0, str(SRC_DIR / "tools"))
+    import boardroute
+
+    try:
+        route = boardroute.apply(project.pcb, out / "route", passes=passes, threads=threads, timeout=timeout)
+    except FileNotFoundError as exc:
+        return Result("autoroute", "skip", f"engine missing: {exc}", {"engine_missing": str(exc)})
+    except ValueError as exc:
+        return Result("autoroute", "error", f"{project.pcb.name} not read: {exc}")
+    except RuntimeError as exc:  # the router failed, wrote no session, or ran past the time limit
+        return Result("autoroute", "fail", f"route failed: {exc}; {project.pcb.name} is as it was")
+    drc = gate_drc(project, out)
+    counts = drc.details.get("counts", {})
+    unconnected = sum(counts.get("unconnected_items", {}).values())
+    errors = sum(c.get("error", 0) for c in counts.values())
+    failures = list(drc.details.get("failures", []))
+    if route["unrouted"]:
+        failures.insert(0, f"route: the router left {route['unrouted']} connections open ({route['log']})")
+    if unconnected:
+        failures.insert(0, f"route: {unconnected} unconnected (KiCad DRC of {project.pcb.name})")
+    if drc.status == "error":
+        failures.append(f"drc: {drc.summary}")
+    red = bool(failures) or drc.status != "pass"
+    return Result(
+        "autoroute",
+        "fail" if red else "pass",
+        f"routed {route['segments']} segments and {route['vias']} vias into {project.pcb.name}; "
+        f"DRC: {drc.summary}",
+        {
+            "route": route,
+            "drc": {
+                "status": drc.status,
+                "errors": errors,
+                "unconnected": unconnected,
+                "summary": drc.summary,
+            },
+            "first": drc.details.get("first", []),
+            "failures": failures,
+            "warnings": route["notes"] + list(drc.details.get("warnings", [])),
+        },
+        [route["dsn"], route["ses"], route["log"], str(project.pcb), *drc.artifacts],
     )
 
 
@@ -6250,6 +6306,11 @@ def command(argv: list[str] | None = None) -> int:
     )
     p = add_project_cmd("autoroute", "run FreeRouting on the project's Specctra DSN, write a .ses")
     p.add_argument("--dsn", help="Specctra DSN exported from KiCad (default <project>/<name>.dsn)")
+    p.add_argument(
+        "--apply",
+        action="store_true",
+        help="read the .kicad_pcb itself, route it, write the copper into the board file, run DRC",
+    )
     p.add_argument("--passes", type=int, default=20)
     p.add_argument("--threads", type=int, default=0)
     p.add_argument("--timeout", type=int, default=600)
@@ -6624,7 +6685,13 @@ def dispatch(parser: argparse.ArgumentParser, args) -> int:
         return cmd_mutate(args)
     if args.command == "autoroute":
         return cmd_gate(
-            args, gate_autoroute, dsn=args.dsn, passes=args.passes, threads=args.threads, timeout=args.timeout
+            args,
+            gate_autoroute,
+            dsn=args.dsn,
+            passes=args.passes,
+            threads=args.threads,
+            timeout=args.timeout,
+            apply=args.apply,
         )
     fn = {"erc": gate_erc, "drc": gate_drc, "sim": gate_sim, "export": gate_export}[args.command]
     kwargs = {"strict": args.strict}
