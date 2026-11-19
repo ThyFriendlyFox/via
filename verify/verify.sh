@@ -100,7 +100,8 @@ if [[ "$mode" == site ]]; then
   # `-p testshards` ends the run with its `not judged:` lines: each test a mark skipped on this machine,
   # by reason, and each that skipped inside the test; the whole list is not-judged.txt in pytest's base
   # folder (pytest-of-<user>), which CI's kept logs copy. A test `-m "not engine"` leaves out is not named.
-  PYTHONPATH="verify${PYTHONPATH:+:$PYTHONPATH}" KICAD_SYMBOL_DIR="$nokicad/symbols" KICAD_FOOTPRINT_DIR="$nokicad/footprints" WORKCENTER_NO_ENGINES=1 "$PY" -m pytest -q -p testshards -p no:cacheprovider -m "not engine" tests
+  # TESTSHARDS_HIDES says what this lane hides on purpose: a mark's skip is then the run's, not the machine's.
+  TESTSHARDS_HIDES="KiCad's symbol and footprint libraries and every engine" PYTHONPATH="verify${PYTHONPATH:+:$PYTHONPATH}" KICAD_SYMBOL_DIR="$nokicad/symbols" KICAD_FOOTPRINT_DIR="$nokicad/footprints" WORKCENTER_NO_ENGINES=1 "$PY" -m pytest -q -p testshards -p no:cacheprovider -m "not engine" tests
   step "4/4 kit checks"
   kit_checks
   printf '\nVERIFY-SITE GREEN in %ss\n' "$SECONDS"

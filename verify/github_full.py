@@ -11,9 +11,16 @@ count, file by file (M307).
 Both paths of `full` run as user id 1001 with no chip folder and none of the chip engines, no FreeRouting
 2.5.0 (opt-in, `install.sh --freerouting2`), and no WORKCENTER_TEST_IMAGE_BUILD. As pytest is configured,
 before any test file is imported (a mark's condition is often evaluated as its file is imported), this
-process's user id reads 1001, WORKCENTER_CHIP_TOOLS and FREEROUTING2_JAR name paths that are not there, and
-shutil.which finds no chip engine. Everything else is this machine's: it must have what `full` installs
-(KiCad, its libraries, ngspice, FreeRouting 1.9.0 and its Java). Importing the module changes nothing.
+process's user id reads 1001 (os.geteuid, os.getuid), its user name reads `runner` (USER and LOGNAME,
+which getpass.getuser reads first), WORKCENTER_CHIP_TOOLS and FREEROUTING2_JAR name paths that are not
+there, and shutil.which finds no chip engine, by name or by path.
+
+Only those conditions are faked. Everything else is this machine's: it must have what `full` installs
+(KiCad, its libraries, ngspice, FreeRouting 1.9.0 and its Java). A skipif on any other condition is
+evaluated as on this machine, and the count it gives may be wrong for GitHub: a fixed path such as
+/opt/workcenters/ee/chip named without WORKCENTER_CHIP_TOOLS, os.access on a file root owns,
+pwd.getpwuid, the real user id read some other way. tests/ holds none today. Importing the module changes
+nothing.
 """
 
 from __future__ import annotations
@@ -21,7 +28,7 @@ from __future__ import annotations
 import os
 import shutil
 
-UID = 1001
+UID, USER = 1001, "runner"
 # The chip engines, as tools/chipflow.py ENGINES names them.
 CHIP_ENGINES = ("verilator", "iverilog", "vvp", "yosys", "klayout", "openroad", "sta", "magic", "netgen")
 NOWHERE = "/nonexistent/github-full"
@@ -31,6 +38,7 @@ def look_like_full() -> None:
     os.environ["WORKCENTER_CHIP_TOOLS"] = f"{NOWHERE}/chip"
     os.environ["FREEROUTING2_JAR"] = f"{NOWHERE}/freerouting2/freerouting.jar"
     os.environ.pop("WORKCENTER_TEST_IMAGE_BUILD", None)
+    os.environ["USER"] = os.environ["LOGNAME"] = USER
     os.geteuid = os.getuid = lambda: UID
     found = shutil.which
 

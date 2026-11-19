@@ -1046,16 +1046,17 @@ def test_a_green_run_with_skips_keeps_only_the_list_in_its_own_folder(tmp_path):
     (kept,) = list((tmp_path / "tg").iterdir())
     assert [p.name for p in kept.iterdir()] == [testshards.NOT_JUDGED]
     assert f"  not judged: the whole list of 1 is in {kept / testshards.NOT_JUDGED}" in proc.stdout
-    assert f"logs kept: {kept}" in proc.stdout
+    assert f"logs kept: {kept}, not-judged.txt alone" in proc.stdout.splitlines()
 
 
 # -- the fast lane: 1 pytest with `-p testshards`, no shards ------------------------------------------------
 
 
-def lane(root: Path, basetemp: Path) -> subprocess.CompletedProcess:
+def lane(root: Path, basetemp: Path, **more: str) -> subprocess.CompletedProcess:
     """pytest as `make verify-site` runs it: the tests that start no engine, the plugin loaded."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("TESTSHARDS_")}
     env["PYTHONPATH"] = os.pathsep.join(p for p in (str(ROOT / "verify"), env.get("PYTHONPATH", "")) if p)
+    env.update(more)
     cmd = [sys.executable, "-m", "pytest", "-q", "-p", "testshards", "-p", "no:cacheprovider"]
     cmd += ["-m", "not engine", "--basetemp", str(basetemp), "tests"]
     return subprocess.run(cmd, cwd=root, env=env, capture_output=True, text=True, timeout=300, check=False)
@@ -1114,3 +1115,124 @@ def test_a_red_runs_kept_logs_copy_the_list():
 def test_the_groups_are_ordered_by_size_then_reason():
     groups = testshards.skip_groups({"a": "r2", "b": "r1", "c": "r2", "d": "r0"})
     assert groups == [("r2", ["a", "c"]), ("r0", ["d"]), ("r1", ["b"])]
+
+
+def test_a_reason_of_200_characters_is_whole_and_of_201_is_cut_by_1():
+    assert testshards.shown_reason("y" * 200) == f"'{'y' * 200}'"
+    assert testshards.shown_reason("y" * 201) == f"'{'y' * 200}' [... 1 characters cut]"
+
+
+def test_a_group_of_exactly_3_names_its_3_ids_and_no_more():
+    line = testshards.group_line(testshards.MARK, "r", ["a", "b", "c"])
+    assert line == "  not judged: 3 tests skipped by a mark on this machine ('r'): a, b, c"
+
+
+# -- a file skipped whole as it is collected: importorskip, or pytest.skip(allow_module_level=True) -------
+
+IMPORTORSKIP = "import pytest\n\nnp = pytest.importorskip('nosuchmodule_xyz')\n\n\ndef test_i1():\n    pass\n"
+MODULE_SKIP = (
+    "import pytest\n\npytest.skip('no chip folder here', allow_module_level=True)\n\n\n"
+    "def test_s1():\n    pass\n"
+)
+
+
+def test_a_file_an_importorskip_skips_whole_is_named_by_the_runner(tmp_path):
+    """tests/test_copper.py calls `pytest.importorskip("numpy")` at its top level: on a machine with no
+    numpy the whole file goes unjudged. It shares a shard with a passing file here."""
+    proc = gate(folder(tmp_path, {"test_a.py": PASSING, "test_z.py": IMPORTORSKIP}), jobs=1)
+    assert proc.returncode == 0, proc.stdout
+    lines = not_judged(proc.stdout)
+    listed = tmp_path / "work" / testshards.NOT_JUDGED
+    assert len(lines) == 2, proc.stdout
+    assert re.fullmatch(
+        r"  not judged: tests/test_z\.py: skipped at collection "
+        r"\(\"could not import 'nosuchmodule_xyz'.*\"\)",
+        lines[0],
+    ), lines
+    assert lines[1] == f"  not judged: the whole list of 1 is in {listed}"
+    assert "TESTS GREEN: 2 tests in 1 shards; 1 file not judged (skipped at collection)" in proc.stdout
+    assert "  tests/test_z.py\n" in listed.read_text(encoding="utf-8")
+
+
+def test_a_shard_whose_only_file_is_skipped_at_collection_is_not_red(tmp_path):
+    """pytest exits 5 (no tests collected) for a shard that holds only a file skipped whole: a skip is
+    not a failure. A shard with no test and no skip stays red."""
+    proc = gate(folder(tmp_path, {"test_a.py": PASSING, "test_z.py": MODULE_SKIP}))
+    assert proc.returncode == 0, proc.stdout
+    assert "why:" not in proc.stdout
+    assert "  not judged: tests/test_z.py: skipped at collection ('no chip folder here')" in proc.stdout
+    assert "TESTS GREEN: 2 tests in 2 shards; 1 file not judged (skipped at collection)" in proc.stdout
+    empty = gate(folder(tmp_path / "e", {"test_a.py": PASSING, "test_e.py": "X = 1\n"}))
+    assert empty.returncode == 1, empty.stdout
+    assert "TESTS RED: shard " in empty.stdout
+
+
+def test_the_fast_lane_names_a_file_skipped_at_collection(tmp_path):
+    files = dict(FOUR)
+    files["test_z.py"] = MODULE_SKIP
+    base = tmp_path / "base"
+    proc = lane(folder(tmp_path, files), base)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert not_judged(proc.stdout) == [
+        "  not judged: tests/test_z.py: skipped at collection ('no chip folder here')",
+        f"  not judged: the whole list of 1 is in {base / testshards.NOT_JUDGED}",
+    ], proc.stdout
+
+
+# -- what the lane hides on purpose is not the machine's ------------------------------------------------
+
+
+def test_the_fast_lane_says_what_it_hides_and_does_not_blame_the_machine(tmp_path):
+    """`make verify-site` empties KiCad's library folders and refuses engines: a mark that skips for
+    that skips for the run. With TESTSHARDS_HIDES set, the first line says what the run hides, and the
+    groups say `in this run`, not `on this machine`."""
+    files = dict(FOUR)
+    files["test_s.py"] = skipped_by("KiCad symbol libraries are not installed", ["test_c"])
+    base = tmp_path / "base"
+    proc = lane(folder(tmp_path, files), base, TESTSHARDS_HIDES="KiCad's libraries")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert not_judged(proc.stdout) == [
+        "  not judged: this run hides KiCad's libraries on purpose: a mark below may skip a test for the "
+        "run, not for the machine",
+        "  not judged: 1 test skipped by a mark in this run ('KiCad symbol libraries are not installed'): "
+        "tests/test_s.py::test_c",
+        f"  not judged: the whole list of 1 is in {base / testshards.NOT_JUDGED}",
+    ], proc.stdout
+    assert "on this machine" not in proc.stdout
+
+
+def test_the_fast_gate_names_what_it_hides():
+    text = (ROOT / "verify" / "verify.sh").read_text(encoding="utf-8")
+    site = text.split('if [[ "$mode" == site ]]; then', 1)[1].split("\nfi\n", 1)[0]
+    (pytest_line,) = [line for line in site.splitlines() if "-m pytest" in line]
+    assert 'TESTSHARDS_HIDES="KiCad\'s symbol and footprint libraries and every engine"' in pytest_line
+
+
+# -- what is not a skip for the machine, and a shard's own pytest ---------------------------------------
+
+
+def test_the_fast_lane_does_not_name_an_xfail_by_mark_or_inside(tmp_path):
+    files = dict(FOUR)
+    files["test_x.py"] = (
+        "import pytest\n\n\n@pytest.mark.xfail(reason='known')\ndef test_x():\n    assert 0\n\n\n"
+        "def test_xi():\n    pytest.xfail('inside xfail')\n"
+    )
+    proc = lane(folder(tmp_path, files), tmp_path / "base")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "2 xfailed" in proc.stdout
+    assert "not judged" not in proc.stdout
+    assert not (tmp_path / "base" / testshards.NOT_JUDGED).exists()
+
+
+def test_a_shards_pytest_prints_no_line_and_writes_no_file(tmp_path):
+    """The runner joins its shards' logs and prints the lines once: a shard (TESTSHARDS_SHARD) prints none."""
+    files = dict(FOUR)
+    files["test_s.py"] = skipped_by("no chip folder", ["test_c"])
+    base = tmp_path / "base"
+    proc = lane(
+        folder(tmp_path, files), base, TESTSHARDS_SHARD="1", TESTSHARDS_LOG=str(tmp_path / "log.jsonl")
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "1 skipped" in proc.stdout
+    assert "not judged" not in proc.stdout
+    assert not (base / testshards.NOT_JUDGED).exists()

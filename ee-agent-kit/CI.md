@@ -149,22 +149,23 @@ One more path GitHub never takes: `tests/test_ci_apt_archive.py`'s `unprivileged
 
 A landing that changes what one of these tests holds is judged only where it runs (PROCESSES.md P12 step 13, M307).
 
-The run names these tests itself. `make verify` (verify/testshards.py) and `make verify-site` (pytest with `-p testshards`) end with `not judged:` lines. A test a skip mark skipped on that machine is in 1 line per reason, with the count and the first 3 ids. A test that skipped inside itself keeps its own line under `make verify`, and is grouped by reason under `make verify-site`. The last line names `not-judged.txt`, which holds every id and every whole reason. Under `make verify` it is in the run's logs folder (`ee-verify-*`), kept on a green run too, alone. Under `make verify-site` it is in pytest's base folder (`pytest-of-<user>/pytest-<n>/`). A test the lane leaves out on purpose (`-m "not engine"`) is never collected and is not named: the lane's own line says it. A red run's kept logs (tools/ci/kept_logs.py) copy the file: it ends in `.txt` and sits at the top of a folder both patterns name. A green run uploads no artifact, so there the lines in the job's log are the record. The table above stays the account of who must run each group.
+The run names these tests itself. `make verify` (verify/testshards.py) and `make verify-site` (pytest with `-p testshards`) end with `not judged:` lines. A test a skip mark skipped on that machine is in 1 line per reason, with the count and the first 3 ids. A test that skipped inside itself keeps its own line under `make verify`, and is grouped by reason under `make verify-site`. A test file skipped whole as it is collected (`pytest.importorskip` or `pytest.skip(..., allow_module_level=True)` at the top of the file) has 1 line of its own, `not judged: <file>: skipped at collection (<reason>)`. The last line names `not-judged.txt`, which holds every id and every whole reason. Under `make verify` it is in the run's logs folder (`ee-verify-*`), kept on a green run too, alone. Under `make verify-site` it is in pytest's base folder (`pytest-of-<user>/pytest-<n>/`). A test the lane leaves out on purpose (`-m "not engine"`) is never collected and is not named: the lane's own line says it. `make verify-site` also hides KiCad's libraries and refuses every engine on purpose, so a mark skips many tests for the lane, not for the machine. Its first `not judged:` line says what the lane hides, and its groups say "skipped by a mark in this run", not "on this machine". On GitHub's `fast` runner KiCad may be absent too; the words hold there as well. A red run's kept logs (tools/ci/kept_logs.py) copy the file: it ends in `.txt` and sits under a folder each pattern names, at its top under `make verify`, 1 folder down (`pytest-<n>/`) under `make verify-site`. A green run uploads no artifact, so there the lines in the job's log are the record. The table above stays the account of who must run each group.
 
-The counts, file by file, on GitHub's `full` job. `tests/test_ci_notjudged.py` collects the suite with `-p github_full` (verify/github_full.py: user id 1001, no chip folder and no chip engine on `PATH`, no FreeRouting 2.5.0, no `WORKCENTER_TEST_IMAGE_BUILD`), runs no test, and holds the first column to it. A skip inside a test is seen only when the test runs, so the second column is from the `full` log. A new skip mark that holds on GitHub fails that test, which names the file; correct this table in the same change.
+The counts on GitHub's `full` job, by file and by group. A group is a row of the table above: chip, root, second router, image build. `tests/test_ci_notjudged.py` collects the suite with `-p github_full` (verify/github_full.py: user id 1001, user name `runner`, no chip folder and no chip engine on `PATH`, no FreeRouting 2.5.0, no `WORKCENTER_TEST_IMAGE_BUILD`), runs no test, and holds the column "Skipped by a mark" to it. Its `GROUPS` give each skip reason its group by its words. A skip inside a test is seen only when the test runs, so the last column is from the `full` log. That test fails, and names the file, when a new skip mark holds on GitHub, when a reason moves to another group, when a reason is in no group, or when a file is skipped whole at collection. Correct this table, and the table above, in the same change. It sees only the conditions github_full fakes: the user id, the user name, `WORKCENTER_CHIP_TOOLS`, `FREEROUTING2_JAR`, `WORKCENTER_TEST_IMAGE_BUILD` and the 9 chip engines on `PATH`. A skipif on anything else (a fixed path, `os.access`, `pwd`) is evaluated as on the machine that runs the test; `tests/` holds none today.
 
-| File | Skipped by a mark | Skipped inside the test |
-|---|---|---|
-| `tests/test_chipback.py` | 23 | 1 |
-| `tests/test_chipfront.py` | 17 | 0 |
-| `tests/test_chips.py` | 12 | 0 |
-| `tests/test_chipflow.py` | 8 | 0 |
-| `tests/test_chipinstall.py` | 2 | 0 |
-| `tests/test_chipguide.py` | 1 | 0 |
-| `tests/test_image.py` | 2 | 0 |
-| `tests/test_lead.py` | 0 | 2 |
-| `tests/test_routers.py` | 1 | 0 |
-| all | 66 | 3 |
+| File | Group | Skipped by a mark | Skipped inside the test |
+|---|---|---|---|
+| `tests/test_chipback.py` | chip | 23 | 1 |
+| `tests/test_chipfront.py` | chip | 17 | 0 |
+| `tests/test_chips.py` | chip | 12 | 0 |
+| `tests/test_chipflow.py` | chip | 8 | 0 |
+| `tests/test_chipinstall.py` | chip | 2 | 0 |
+| `tests/test_chipguide.py` | chip | 1 | 0 |
+| `tests/test_image.py` | root | 1 | 0 |
+| `tests/test_image.py` | image build | 1 | 0 |
+| `tests/test_lead.py` | root | 0 | 2 |
+| `tests/test_routers.py` | second router | 1 | 0 |
+| all | | 66 | 3 |
 
 ## The nightly's ci-failure issue
 
