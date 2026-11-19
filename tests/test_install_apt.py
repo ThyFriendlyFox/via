@@ -1241,7 +1241,8 @@ def alive(tmp_path: Path, within: float = 3.0) -> list[int]:
 
 SLOW_LINE = (
     r"\[install\] apt: download pass 1 of 5 was too slow to finish: [0-9.]+ kB of 10\.0 MB arrived in "
-    r"[0-9]+ s, [0-9.]+ kB/s over the last 1 s from slow\.example; at that rate the rest needs [0-9]+ s, "
+    r"[0-9]+ s, [0-9.]+ kB/s over the last 1 s, leaving out a pause of 0\.[0-9] s, from slow\.example; "
+    r"at that rate the rest needs [0-9]+ s, "
     r"and [0-9]+ s were left; waiting 1 s"
 )
 
@@ -1453,32 +1454,356 @@ def test_a_signal_to_the_script_ends_the_watched_apt(tmp_path):
     assert alive(tmp_path) == []
 
 
+# ---------------------------------------------------------------- the rule of the watch, sample by sample
+# apt_watched with a stand-in clock and stand-in byte counts: the n-th sample reads the n-th line of
+# `times` (ms) and of `sizes` (bytes in the archives folder), so a test sets each number of the rule.
+# The command runs until the last size is read. The watch still waits its real tick between samples
+# (APT_WATCH_WINDOW=1: 41 ms).
+FAKES = r"""
+clock() {
+  local -a s t
+  mapfile -t s < "$STUB_DIR/sampled"
+  mapfile -t t < "$STUB_DIR/times"
+  local n=${#s[@]}
+  if ((n >= ${#t[@]})); then n=$((${#t[@]} - 1)); fi
+  printf '%s\n' "${t[n]}"
+}
+archive_bytes() {
+  local -a s b
+  echo x >> "$STUB_DIR/sampled"
+  mapfile -t s < "$STUB_DIR/sampled"
+  mapfile -t b < "$STUB_DIR/sizes"
+  local n=$((${#s[@]} - 1))
+  if ((n >= ${#b[@]} - 1)); then n=$((${#b[@]} - 1)); : > "$STUB_DIR/done"; fi
+  printf '%s\n' "${b[n]}"
+}
+partial_bytes() { printf '%s\n' "${PRIOR:-0}"; }
+shown="$STUB_DIR/shown"
+watch="$STUB_DIR/watch"
+: > "$watch"
+"""
+WAITS = 'while [[ ! -e "$STUB_DIR/done" ]]; do /bin/sleep 0.01; done; exit 0'
+STEP |= {"waits"}
+
+
+def judged_by_script(
+    tmp_path: Path, times: list, sizes: list, secs: int = 8, prior: int = 0, need: str = NEED
+):
+    """The watch line apt_watched writes for these samples ("" when it ends no pass)."""
+    (tmp_path / "times").write_text("".join(f"{t}\n" for t in times), encoding="utf-8")
+    (tmp_path / "sizes").write_text("".join(f"{b}\n" for b in sizes), encoding="utf-8")
+    (tmp_path / "sampled").write_text("", encoding="utf-8")
+    (tmp_path / "shown").write_text(f"[apt] {need}\n", encoding="utf-8")
+    body = FAKES + f'rc=0; apt_watched {secs} waits || rc=$?\ncat "$watch"'
+    env = {"APT_WATCH_WINDOW": "1", "PRIOR": str(prior)}
+    code, out, err, _ = run(tmp_path, {"waits": WAITS}, env=env, body=body)
+    assert code == 0, err
+    return out.strip()
+
+
+def judged(at: list, had: list, secs: int, began: int, need: int, window: int):
+    """install.sh's rule (pass_verdict), written again: the watch line's numbers when the pass is ended,
+    else None. After 1 window, the rate of the last window leaves out the longest stretch in which a
+    pause could hide (each run of samples with the same bytes, from the sample before it to the sample
+    after it), at most half a window; the pass ends when that rate, kept up, would not fetch the rest in
+    what is left of the bound."""
+    now, got = at[-1], had[-1]
+    if now - began < window * 1000:
+        return None
+    back = max(i for i, t in enumerate(at) if t <= now - window * 1000)
+    pause, j, n = 0, back, len(at)
+    while j < n:
+        k = j
+        while k + 1 < n and had[k + 1] == had[j]:
+            k += 1
+        lo, hi = (j - 1 if j > back else back), (k + 1 if k + 1 < n else n - 1)
+        pause = max(pause, at[hi] - at[lo])
+        j = k + 1
+    pause = min(pause, window * 500)
+    rate = (got - had[back]) * 1000 // (now - at[back] - pause)
+    rest, left = need - got, max(secs - (now - began) // 1000, 0)
+    if rate * left < rest:
+        return ((now - began) // 1000, got, need, rate, rest, left, pause)
+    return None
+
+
+def model(times: list, sizes: list, secs: int = 8, prior: int = 0, need: int = 10_000_000, window: int = 1):
+    """The watch line the rule writes for these samples, as text ("" when no pass is ended). Only growth
+    counts: bytes apt removes are not lost progress."""
+    at, had, got = [times[0]], [0], 0
+    for t, b, before in zip(times[1:], sizes[1:], sizes[:-1], strict=True):
+        got += max(b - before, 0)
+        at.append(t)
+        had.append(got)
+        verdict = judged(at, had, secs, times[0], need - prior, window)
+        if verdict:
+            return " ".join(str(x) for x in verdict)
+    return ""
+
+
+EVERY_50 = list(range(0, 1001, 50))
+
+
+@pytest.mark.parametrize(("got", "ended"), [(1_139_240, True), (1_139_241, False)])
+def test_the_rule_ends_a_pass_1_byte_under_its_line_and_keeps_one_on_it(tmp_path, got, ended):
+    """1 window (1000 ms), a sample every 50 ms, bytes growing evenly to `got`; 10 MB to fetch, 8 s
+    of bound, so 7 s left. Each sample differs, so the longest stretch a pause could hide in is 2
+    intervals, 100 ms: the rate is got / 0.9 s. got = 1139241: 1265823 B/s x 7 s = 8860761 >= the rest,
+    8860759: kept. 1 byte less: 1265822 x 7 = 8860754 < 8860760: ended."""
+    sizes = [got * i // 20 for i in range(21)]
+    want = model(EVERY_50, sizes)
+    assert bool(want) == ended
+    if ended:
+        assert want == "1 1139240 10000000 1265822 8860760 7 100"
+    assert judged_by_script(tmp_path, EVERY_50, sizes) == want
+
+
+def test_no_pass_is_judged_before_a_whole_window(tmp_path):
+    """A pass that sends 1 kB in 950 ms is far too slow, but 1 window has not gone by: not judged. The
+    same pass seen at 1000 ms is ended."""
+    sizes = [50 * i for i in range(21)]
+    assert judged_by_script(tmp_path, EVERY_50[:-1], sizes[:-1]) == ""
+    assert model(EVERY_50, sizes) != ""
+
+
+def test_a_late_pass_is_judged_by_the_time_left_not_by_the_bound(tmp_path):
+    """8.05 MB by 5 s, then 450 kB in the last window (500 kB/s less a 100 ms pause): at 6 s of an 8 s
+    bound, 2 s are left for the last 1.5 MB, so the pass is ended. With the whole bound, 8 s x 500 kB/s
+    would be enough."""
+    times = [0, *range(5000, 6001, 50)]
+    sizes = [0, *(8_050_000 + 450_000 * i // 20 for i in range(21))]
+    want = model(times, sizes)
+    assert want == "6 8500000 10000000 500000 1500000 2 100"
+    assert judged_by_script(tmp_path, times, sizes) == want
+
+
+def test_a_pass_that_has_all_it_needs_is_not_ended_even_past_its_bounds_time(tmp_path):
+    """9 MB by 1 s, then all 10 MB and 100 B more by 3.1 s of a 2 s bound (the watch can sample a little
+    after it): no time is left, and none is needed."""
+    times = [*EVERY_50, 3100]
+    sizes = [9_000_000 * i // 20 for i in range(21)] + [10_000_100]
+    assert model(times, sizes, secs=2) == ""
+    assert judged_by_script(tmp_path, times, sizes, secs=2) == ""
+
+
+def test_a_pause_of_half_a_window_is_left_out_of_the_rate(tmp_path):
+    """Scaled from CI (window 120 s, apt's own 60 s on a silent server): nothing for 500 ms, then 2 MB/s.
+    The window's rate, 1 MB/s, would need 9 s for the rest and 7 are left; the rate without the pause,
+    2 MB/s, needs 4.5 s: the pass is kept. It finishes at 5.5 s of the 8 s."""
+    sizes = [max(0, 2000 * (t - 500)) for t in EVERY_50]
+    assert model(EVERY_50, sizes) == ""
+    assert judged_by_script(tmp_path, EVERY_50, sizes) == ""
+
+
+def test_a_pause_longer_than_half_a_window_counts_beyond_the_half(tmp_path):
+    """Nothing for 800 ms, then 300 kB: only 500 ms are left out, so the rate is 600 kB/s, and 4.2 MB
+    in 7 s is not the rest. Left out whole it would be 2 MB/s, enough."""
+    sizes = [0 if t <= 800 else 300_000 * (t - 800) // 200 for t in EVERY_50]
+    want = model(EVERY_50, sizes)
+    assert want == "1 300000 10000000 600000 9700000 7 500"
+    assert judged_by_script(tmp_path, EVERY_50, sizes) == want
+
+
+def test_bytes_apt_removes_are_not_lost_progress(tmp_path):
+    """apt removes a file with a wrong hash, or a partial file larger than the one it asks for, and
+    fetches it again: 9 MB at once, removed at 800 ms, then 2 MB/s. The bytes that arrive count; the
+    drop does not."""
+    sizes = [9_000_000 if 0 < t < 800 else max(0, 2000 * (t - 800)) for t in EVERY_50]
+    assert model(EVERY_50, sizes) == ""
+    assert judged_by_script(tmp_path, EVERY_50, sizes) == ""
+
+
+def test_bytes_in_partial_at_the_start_are_not_in_the_rest(tmp_path):
+    """apt's "Need to get" counts a partial file at its full size (apt 2.8.3,
+    apt-private/private-install.cc:299, FetchNeeded; apt-pkg/acquire.cc:909), though 8 MB of it are
+    there. 400 kB arrive in the window: the rest is 1.6 MB, which 444 kB/s x 7 s fetch. Counted from
+    the 10 MB it would be 9.6 MB, and the pass would be ended."""
+    sizes = [8_000_000 + 400_000 * i // 20 for i in range(21)]
+    assert model(EVERY_50, sizes, prior=8_000_000) == ""
+    assert model(EVERY_50, sizes) != ""
+    assert judged_by_script(tmp_path, EVERY_50, sizes, prior=8_000_000) == ""
+
+
+def test_the_watch_samples_about_24_times_a_window(tmp_path):
+    """A pause shorter than a sample's interval hides between 2 samples: the watch samples every
+    APT_WATCH_WINDOW/24 s (5 s in CI). Over 1 s of real time with a window of 1 s, at least 12 samples
+    (24 less the time each takes on a busy machine)."""
+    waits = "/bin/sleep 1; exit 0"
+    (tmp_path / "times").write_text("0\n", encoding="utf-8")
+    (tmp_path / "sizes").write_text("0\n" * 1000, encoding="utf-8")
+    (tmp_path / "sampled").write_text("", encoding="utf-8")
+    (tmp_path / "shown").write_text(f"[apt] {NEED}\n", encoding="utf-8")
+    body = FAKES + "apt_watched 8 waits"
+    code, out, err, _ = run(tmp_path, {"waits": waits}, env={"APT_WATCH_WINDOW": "1"}, body=body)
+    assert code == 0, err
+    samples = len((tmp_path / "sampled").read_text().splitlines())
+    assert 12 <= samples <= 26, samples
+
+
+def test_the_watch_closes_what_it_opened(tmp_path):
+    """After a watched pass the script holds the same open files as before it: each pass of 5 would
+    leave 1 more."""
+    fds = 'fds() { local f n=0; for f in /proc/$BASHPID/fd/*; do n=$((n + 1)); done; echo "$n"; }\n'
+    body = FAKES + fds + 'before="$(fds)"; apt_watched 8 waits; echo "$before $(fds)"'
+    (tmp_path / "times").write_text("0\n50\n", encoding="utf-8")
+    (tmp_path / "sizes").write_text("0\n1\n", encoding="utf-8")
+    (tmp_path / "sampled").write_text("", encoding="utf-8")
+    (tmp_path / "shown").write_text(f"[apt] {NEED}\n", encoding="utf-8")
+    code, out, err, _ = run(tmp_path, {"waits": WAITS}, env={"APT_WATCH_WINDOW": "1"}, body=body)
+    assert code == 0, err
+    before, after = out.split()
+    assert before == after
+
+
+# ---------------------------------------------------------------- the watch on the stand-in apt
+
+
+def steady(stall: float, chunk: int, ticks: int, first: str = "") -> str:
+    """A pass that prints apt's size, runs `first`, pauses `stall` s, then writes `chunk` bytes into
+    partial/ every 0.05 s, `ticks` times, and ends with 0."""
+    return f"""echo {shlex.quote(NEED)}; echo {shlex.quote(FAST_GET)}
+        echo "$$" >> "$STUB_DIR/apt-pids"
+        {first or ":"}
+        /bin/sleep {stall}
+        for _ in $(seq {ticks}); do
+          printf '%0{chunk}d' 0 >> "$APT_ARCHIVES/partial/big.deb"; /bin/sleep 0.05
+        done
+        exit 0"""
+
+
+def test_a_pause_of_half_the_window_then_a_rate_that_finishes_is_not_cut(tmp_path):
+    """A pause of 0.5 s (half the window, as apt's 60 s is half of CI's 120 s), then 2 MB/s: the 10 MB are
+    in by about 5.5 s of the 8 s bound. 1 pass, no cut."""
+    code, out, err, calls = run(tmp_path, {"apt-get": by_pass(steady(0.5, 100000, 100))}, env=WATCH)
+    assert code == 0, err
+    assert " was too slow" not in out + err
+    assert len(downloads(calls)) == 1
+
+
+def test_a_file_removed_and_fetched_again_is_not_cut(tmp_path):
+    """9 MB arrive, apt removes them at 0.8 s (a wrong hash) and fetches 10 MB at 2 MB/s: 1 pass, no cut,
+    and no line with a negative number."""
+    first = 'head -c 9000000 /dev/zero > "$APT_ARCHIVES/partial/big.deb"; /bin/sleep 0.8; '
+    first += 'rm -f "$APT_ARCHIVES/partial/big.deb"'
+    code, out, err, calls = run(tmp_path, {"apt-get": by_pass(steady(0, 100000, 100, first))}, env=WATCH)
+    assert code == 0, err
+    assert " was too slow" not in out + err
+    assert len(downloads(calls)) == 1
+
+
+def test_a_partial_file_at_the_start_counts_as_fetched(tmp_path):
+    """8 MB of the 10 MB file are in partial/ from an earlier run; apt names 10 MB all the same. 2 MB come
+    at 400 kB/s, in 5 s of the 8 s: 1 pass, no cut."""
+    (tmp_path / "archives" / "partial").mkdir(parents=True)
+    (tmp_path / "archives" / "partial" / "big.deb").write_bytes(b"\0" * 8_000_000)
+    code, out, err, calls = run(tmp_path, {"apt-get": by_pass(steady(0, 20000, 100))}, env=WATCH)
+    assert code == 0, err
+    assert " was too slow" not in out + err
+    assert len(downloads(calls)) == 1
+
+
+def test_a_partial_file_apt_removes_is_0_bytes_in_the_stop_not_a_negative_number(tmp_path):
+    """apt removes a partial file larger than the one it asks for (apt 2.8.3, pkgAcqArchive), then
+    trickles: the stop says 0 B arrived."""
+    (tmp_path / "archives" / "partial").mkdir(parents=True)
+    (tmp_path / "archives" / "partial" / "old.deb").write_bytes(b"\0" * 5_000_000)
+    slow = trickle(chunk=20).replace(
+        'echo "$$" >> "$STUB_DIR/apt-pids"',
+        'echo "$$" >> "$STUB_DIR/apt-pids"; rm -f "$APT_ARCHIVES/partial/old.deb"',
+    )
+    env = {**WATCH, "APT_DOWNLOAD_TRIES": "1"}
+    code, out, err, calls = run(tmp_path, {"apt-get": by_pass(slow)}, env=env)
+    assert code == 1
+    stop = err.splitlines()[-2]
+    assert "-" not in stop.split("hosts asked:")[1], stop
+    assert "; 0 B of 10.0 MB arrived in " in stop, stop
+
+
+def test_a_successful_download_leaves_no_temporary_file(tmp_path):
+    """The watch's and the passes' files are removed when the download ends well, bounded or not."""
+    code, out, err, calls = run(tmp_path, {"apt-get": by_pass(served())}, env=WATCH)
+    assert code == 0, err
+    assert list((tmp_path / "tmp").iterdir()) == []
+
+
+def test_a_fetch_failure_after_a_slow_pass_is_not_taken_for_a_slow_pass(tmp_path):
+    """Pass 1 is too slow and ended; pass 2 fails on 1 file, as a source that answers 503 does; pass 3
+    gets it. Pass 2's line is that of a failed file: the watch's file of pass 1 does not speak for it."""
+    fails = f"echo {shlex.quote(E_KICAD)} >&2; echo {shlex.quote(E_FILES)} >&2; exit 100"
+    code, out, err, calls = run(tmp_path, {"apt-get": by_pass(trickle(), fails, served())}, env=WATCH)
+    assert code == 0, err
+    assert len(downloads(calls)) == 3
+    lines = out.splitlines()
+    assert pass_line(2, 5, 1, 1) in lines
+    assert len([x for x in lines if " was too slow to finish" in x]) == 1
+
+
+def test_a_rate_under_1_kB_s_still_says_how_long_the_rest_needs(tmp_path):
+    """400 B/s: the line says the seconds the rest needs at that rate, as for any rate above 0."""
+    env = {**WATCH, "APT_DOWNLOAD_TRIES": "2"}
+    code, out, err, calls = run(tmp_path, {"apt-get": by_pass(trickle(chunk=20))}, env=env)
+    assert code == 1
+    (line,) = [x for x in out.splitlines() if " was too slow to finish" in x]
+    assert re.search(r" [0-9]+ B/s over the last 1 s, .*; at that rate the rest needs [0-9]+ s, ", line), line
+
+
 def test_the_watch_ends_the_slow_pass_of_run_44506767788_in_time_for_a_second_host():
-    """R1's numbers, from the run and CI's arithmetic. The watch ends a pass when the rate of its last
-    APT_WATCH_WINDOW s, kept up, would not fetch the rest of what apt named within what is left of the
-    bound. Run 44506767788 (run-facts): us-east-2.ec2 completed 26600424 bytes in 550.7 s; the PPA's 4
-    files were 60.473 MB (when they ended is not in the log, so all of them may fall in the first window).
-    A passing run fetched 281.1 MB in 218 s (job 134889089620). CI: APT_DOWNLOAD_TIMEOUT=570.
-    1. With the PPA's bytes in the first window, the second window holds only the slow host's: the watch
-       ends the pass by 2 windows at the latest.
+    """R1's numbers, from the run and CI's arithmetic, with the rule written again above (`judged`),
+    sampled every APT_WATCH_WINDOW/24 s as the script samples. Run 44506767788 (run-facts):
+    us-east-2.ec2 completed 26600424 bytes in 550.7 s; the PPA's 4 files were 60.473 MB (when they ended
+    is not in the log, so all of them may fall in the first window). A passing run fetched 281.1 MB in
+    218 s (job 134889089620). CI: APT_DOWNLOAD_TIMEOUT=570.
+    1. With the PPA's bytes in the first 5 s, the watch ends the pass by 2 windows at the latest.
     2. The next pass, on a host as fast as the passing run's, fetches all 281.1 MB in what is left after
        the wait.
-    3. A healthy pass is never ended, even with a stall of APT_FILE_TIMEOUT s (apt's own bound on a
-       silent server) inside the window, at any second of the bound."""
+    3. A pass at a steady rate that, with 1 pause of up to half a window (APT_FILE_TIMEOUT, apt's own
+       60 s on a silent server), ends within the bound is never ended, wherever the pause falls: the
+       rule leaves the longest still stretch out of the rate. The first rule (the window's whole rate)
+       ended such a pass at 700 kB/s with a pause of 60 s at its start, at 120 s with 42 MB."""
     window = assigned("APT_WATCH_WINDOW")
-    stall = assigned("APT_FILE_TIMEOUT", env=False)
+    pause_max = assigned("APT_FILE_TIMEOUT", env=False)
     bound = int(ci_bounds()[0]["APT_DOWNLOAD_TIMEOUT"])
     wait = assigned("APT_DOWNLOAD_WAIT")
-    size, healthy = 281.1e6, 281.1e6 / 218
-    slow, ppa = 26600424 / 550.7, 60.473e6
-    cut = 2 * window
-    assert slow * (bound - cut) < size - ppa - slow * cut
-    assert size / healthy <= bound - cut - wait
-    assert stall < window
-    for t in range(window, bound):
-        rate = healthy * (window - stall) / window
-        rest = size - healthy * (t - stall)
-        assert rest <= 0 or rate * (bound - t) >= rest, t
+    size, healthy = 281_100_000, 281.1e6 / 218
+    slow, ppa = 26600424 / 550.7, 60_473_000
+    tick = window * 1000 // 24
+    assert pause_max * 2 == window
+
+    def pass_of(arrived, until: int) -> tuple:
+        """The first verdict of the rule on a pass whose bytes at t ms are arrived(t)."""
+        at, had = [], []
+        for t in range(0, until, tick):
+            at.append(t)
+            had.append(int(arrived(t)))
+            verdict = judged(at, had, bound, 0, size, window)
+            if verdict:
+                return verdict
+        return None
+
+    cut = pass_of(lambda t: min(ppa, ppa * t / 3000) + slow * t / 1000, bound * 1000)
+    assert cut and cut[0] <= 2 * window, cut
+    assert size / healthy <= bound - 2 * window - wait
+
+    def paused(rate: float, start: int, length: int):
+        return lambda t: rate * (t - min(max(t - start, 0), length)) / 1000
+
+    for length in (0, 10_000, 30_000, pause_max * 1000):
+        least = size / (bound - length / 1000)
+        for rate in (least * 1.001, least * 1.05, least * 1.5, healthy, 700_000, 986_000):
+            if rate < least * 1.001:
+                continue
+            ends = int((size / rate + length / 1000) * 1000)
+            for start in range(0, ends - length, 7_000):
+                assert pass_of(paused(rate, start, length), ends) is None, (length, rate, start)
+
+    def whole_rate(at, had, now):
+        back = max(i for i, t in enumerate(at) if t <= now - window * 1000)
+        return (had[-1] - had[back]) * 1000 // (now - at[back])
+
+    at = list(range(0, window * 1000 + 1, tick))
+    had = [int(paused(700_000, 0, pause_max * 1000)(t)) for t in at]
+    assert whole_rate(at, had, at[-1]) * (bound - window) < size - had[-1]
+    assert judged(at, had, bound, 0, size, window) is None
 
 
 def test_the_next_pass_starts_only_after_the_wait_has_ended(tmp_path):

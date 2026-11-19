@@ -125,12 +125,17 @@ APT_FILE_TIMEOUT="60"
 # 550.7 s (48.3 kB/s), and the bound of 570 s ended that pass: no other host was given a turn. So each
 # bounded pass is watched. Every APT_WATCH_WINDOW/24 s the watch counts the bytes in apt's archives
 # folder and its partial/, where a file grows while it comes (apt 2.8.3, apt-pkg/acquire-item.cc,
-# pkgAcqArchive::pkgAcqArchive). Once a window has gone by, it ends the pass when the rate of the last
-# APT_WATCH_WINDOW s, kept up, would not fetch the rest of what apt said it needs ("Need to get",
-# apt-private/private-install.cc) within what is left of the bound. The next pass asks again: apt keeps
-# each finished file and continues a partial one (the same place). The window is 2 x APT_FILE_TIMEOUT:
-# a stall that apt ends itself fills at most half of it. A pass that has all apt named, or that names
-# no size, is not judged; with no bound, nothing watches. tests/test_install_apt.py holds the numbers
+# pkgAcqArchive::pkgAcqArchive); only growth counts, so a file apt removes and fetches again is no lost
+# progress. Once a window has gone by, it ends the pass when the rate of the last APT_WATCH_WINDOW s,
+# kept up, would not fetch the rest within what is left of the bound. The rest is what apt said it
+# needs ("Need to get", apt-private/private-install.cc:299, which counts a partial file at its full
+# size) less the bytes in partial/ when the pass began and the bytes that arrived since. The rate leaves
+# out the longest stretch in which a pause could hide (from the sample before a run of equal counts to
+# the sample after it), at most half a window: the window is 2 x APT_FILE_TIMEOUT, apt's own bound on a
+# silent server. So a pass at a steady rate with 1 such pause, which at that rate ends within the bound,
+# is never ended, wherever the pause falls. The next pass asks again: apt keeps each finished file and
+# continues a partial one (the same place). A pass that has all apt named, or that names no size, is not
+# judged; with no bound, nothing watches. tests/test_install_apt.py holds the numbers
 # (test_the_watch_ends_the_slow_pass_of_run_44506767788_in_time_for_a_second_host).
 APT_WATCH_WINDOW="${APT_WATCH_WINDOW:-120}"
 APT_SLOW_PASS_COMMAND="${APT_SLOW_PASS_COMMAND:-}"
@@ -523,8 +528,15 @@ archive_bytes() {
     | awk '{ s += $1 } END { printf "%.0f\n", s }'
 }
 
-# The bytes of the first size of apt's first "Need to get <size>[/<size>] of archives." line in file $1
-# (what that run of apt fetches), read as apt writes sizes (SizeToStr: SI units); empty when there is none.
+# The bytes in apt's partial/: files apt has begun and continues.
+partial_bytes() {
+  { find "$APT_ARCHIVES/partial" -maxdepth 1 -type f -printf '%s\n' 2> /dev/null || true; } \
+    | awk '{ s += $1 } END { printf "%.0f\n", s }'
+}
+
+# The bytes of the first size of apt's first "Need to get <size>[/<size>] of archives." line in file $1,
+# read as apt writes sizes (SizeToStr: SI units); empty when there is none. It is FetchNeeded (apt 2.8.3,
+# apt-pkg/acquire.cc:909): the files that run of apt fetches, a partial one at its full size.
 need_bytes() {
   awk '$1 == "[apt]" && $2 == "Need" && $3 == "to" && $4 == "get" {
       m = 1; u = substr($6, 1, 1)
@@ -583,19 +595,57 @@ clock() {
   printf '%s\n' "$((${EPOCHREALTIME/[.,]/} / 1000))"
 }
 
+# The verdict on a watched pass (APT_WATCH_WINDOW above), from apt_watched's samples: `at`, ms of the
+# clock, and `had`, the bytes that had arrived. With a bound of $1 s from $2 ms and $3 bytes to fetch, it
+# sets `verdict` to "<s> <bytes> <need> <bytes/s> <rest> <s left> <pause ms>" when the pass cannot
+# finish at the rate of its last window, else to nothing.
+pass_verdict() {
+  local secs="$1" began="$2" need="$3" n now got back=0 i j k lo hi pause=0 rate rest left
+  verdict=""
+  n=${#at[@]}
+  now=${at[n - 1]}
+  got=${had[n - 1]}
+  if ((now - began < APT_WATCH_WINDOW * 1000)); then return 0; fi
+  for i in "${!at[@]}"; do
+    if ((at[i] <= now - APT_WATCH_WINDOW * 1000)); then
+      back=$i
+    fi
+  done
+  # Each run of samples with the same bytes, from the sample before it to the sample after it: a pause
+  # lies within one of them.
+  for ((j = back; j < n; j = k + 1)); do
+    for ((k = j; k + 1 < n && had[k + 1] == had[j]; k++)); do :; done
+    lo=$((j > back ? j - 1 : back))
+    hi=$((k + 1 < n ? k + 1 : n - 1))
+    if ((at[hi] - at[lo] > pause)); then pause=$((at[hi] - at[lo])); fi
+  done
+  if ((pause > APT_WATCH_WINDOW * 500)); then pause=$((APT_WATCH_WINDOW * 500)); fi
+  rate=$(((got - had[back]) * 1000 / (now - at[back] - pause)))
+  rest=$((need - got))
+  left=$((secs - (now - began) / 1000))
+  if ((left < 0)); then left=0; fi
+  if ((rate * left < rest)); then
+    verdict="$(((now - began) / 1000)) ${got} ${need} ${rate} ${rest} ${left} ${pause}"
+  fi
+}
+
 # Runs $2... under `timeout $1` and watches it (APT_WATCH_WINDOW above); with no bound $1 it runs $2...
 # alone, as before. The watch reads apt's lines from `shown`, apt_shown's file, and when it ends the pass
-# it writes what it saw to `watch`, apt_download's file: "<s> <bytes> <need> <bytes/s> <rest> <s left>".
+# it writes pass_verdict's line to `watch`, apt_download's file.
 # The command runs in a process substitution: its pid is known, its output goes where apt_shown's pipe
 # goes, and its end closes the pipe the watch waits on, which wakes the watch at once.
 apt_watched() {
-  local secs="$1" out wake pid rc=0 r=0 began now base got need rest rate left back i tick cut=0 gain span
+  local secs="$1" out wake pid rc=0 r=0 began now total last got=0 need prior tick cut=0 verdict
   local -a at had
   shift
   if [[ -z "$secs" ]]; then
     "$@"
     return
   fi
+  # Counted before the command starts, so that none of its bytes count as there before it.
+  began="$(clock)"
+  last="$(archive_bytes)"
+  prior="$(partial_bytes)"
   exec {out}>&1
   # The pipe stays open in the command as the descriptor `keep` names, until the command ends.
   # shellcheck disable=SC2034
@@ -607,8 +657,6 @@ apt_watched() {
   trap 'kill -TERM "$pid" 2> /dev/null; exit 130' INT
   trap 'kill -TERM "$pid" 2> /dev/null; exit 143' TERM
   trap 'kill -TERM "$pid" 2> /dev/null; exit 129' HUP
-  began="$(clock)"
-  base="$(archive_bytes)"
   at=("$began")
   had=(0)
   tick=$((APT_WATCH_WINDOW * 1000 / 24))
@@ -622,31 +670,19 @@ apt_watched() {
       continue
     fi
     now="$(clock)"
-    got=$(($(archive_bytes) - base))
+    total="$(archive_bytes)"
+    if ((total > last)); then got=$((got + total - last)); fi
+    last=$total
     at+=("$now")
     had+=("$got")
     need="$(need_bytes "$shown")"
-    if [[ -z "$need" ]] || ((now - began < APT_WATCH_WINDOW * 1000)); then
+    if [[ -z "$need" ]]; then
       continue
     fi
-    rest=$((need - got))
-    if ((rest <= 0)); then
-      continue
-    fi
-    back=0
-    for i in "${!at[@]}"; do
-      if ((at[i] <= now - APT_WATCH_WINDOW * 1000)); then
-        back=$i
-      fi
-    done
-    gain=$((got - had[back]))
-    span=$((now - at[back]))
-    rate=$((gain * 1000 / span))
-    span=$((now - began))
-    left=$((secs - span / 1000))
-    if ((rate * left < rest)); then
+    pass_verdict "$secs" "$began" "$((need - prior))"
+    if [[ -n "$verdict" ]]; then
       cut=1
-      printf '%s %s %s %s %s %s\n' "$((span / 1000))" "$got" "$need" "$rate" "$rest" "$left" > "$watch"
+      printf '%s\n' "$verdict" > "$watch"
       kill -TERM "$pid" 2> /dev/null || true
     fi
   done
@@ -687,7 +723,7 @@ passes_made() {
 # download names the hosts asked, the bytes that arrived of the bytes apt named, the time and the rate.
 apt_download() {
   local pass left="$APT_DOWNLOAD_TIMEOUT" rc files began start base=0 watch passlog
-  local took got need rate rest gone needs hooked=0 hosts_said rated
+  local took got need rate rest gone pause needs hooked=0 hosts_said rated
   local -a hook hosts
   local later="A package source did not serve a file this time: run the script again later. ${KEPT}"
   watch="$(mktemp)"
@@ -712,7 +748,7 @@ apt_download() {
       download_cut "$pass"
     fi
     if [[ -s "$watch" ]]; then
-      read -r took got need rate rest gone < "$watch"
+      read -r took got need rate rest gone pause < "$watch"
       left=$((left - (SECONDS - began)))
       if ((pass >= APT_DOWNLOAD_TRIES || left <= APT_DOWNLOAD_WAIT)); then
         download_stop "apt: the download stopped after $(passes_made "$pass"): pass ${pass} was too slow to finish within what was left of APT_DOWNLOAD_TIMEOUT=${APT_DOWNLOAD_TIMEOUT} s; $(download_seen); apt said: ${APT_SAID:-nothing}" \
@@ -726,7 +762,7 @@ apt_download() {
       hosts_said="${APT_PASS_HOSTS// /, }"
       hosts_said="${hosts_said:-no host}"
       rated="$(human "$rate")"
-      log "apt: download pass ${pass} of ${APT_DOWNLOAD_TRIES} was too slow to finish: $(human "$got") of $(human "$need") arrived in ${took} s, ${rated}/s over the last ${APT_WATCH_WINDOW} s from ${hosts_said}; ${needs}, and ${gone} s were left; waiting ${APT_DOWNLOAD_WAIT} s"
+      log "apt: download pass ${pass} of ${APT_DOWNLOAD_TRIES} was too slow to finish: $(human "$got") of $(human "$need") arrived in ${took} s, ${rated}/s over the last ${APT_WATCH_WINDOW} s, leaving out a pause of $((pause / 1000)).$((pause % 1000 / 100)) s, from ${hosts_said}; ${needs}, and ${gone} s were left; waiting ${APT_DOWNLOAD_WAIT} s"
       if [[ -n "$APT_SLOW_PASS_COMMAND" ]]; then
         read -r -a hook <<< "$APT_SLOW_PASS_COMMAND"
         log "apt: APT_SLOW_PASS_COMMAND: ${APT_SLOW_PASS_COMMAND}${APT_PASS_HOSTS:+ ${APT_PASS_HOSTS}}"
