@@ -12,10 +12,10 @@ neck sets what else it joins: Alexa (Zigbee 3.0, to an Echo with a Zigbee hub in
 (voice only), or Apple Home (HomeKit over Thread, to a HomePod or an Apple TV). An ESP32-C6 module
 runs that radio and the light.
 
-This folder is a whole project made with the EE Workcenter: `bulb.py` is the housing, each board's
+This folder is a whole project made with Via: `bulb.py` is the housing, each board's
 place in it, the solder joints between the boards and the fit check; each board's `design.py` is its
 schematic and layout; the `.kicad_*` files beside each are what `workcenter design` writes from it.
-The workcenter supplies the tools and the gates.
+Via supplies the tools and the gates.
 
 | Item | State |
 |---|---|
@@ -34,7 +34,7 @@ The workcenter supplies the tools and the gates.
 
 ## Images
 
-The bulb as it hangs, base-up, its neck and dome drawn clear (`assembly.py` on the workcenter's
+The bulb as it hangs, base-up, its neck and dome drawn clear (`assembly.py` on Via's
 `tools/scene.py`, drawn by `workcenter pictures .` from [`pictures.json`](pictures.json)):
 
 ![the bulb turning](docs/assembly-spin.gif)
