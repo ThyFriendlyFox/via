@@ -568,6 +568,15 @@ that may be absent.
    its seconds from a run, `engine` yes when a test of it carries the
    `engine` mark (`verify/README.md`, "Keeping the table true"). A file
    with no row takes the `*` row's seconds, and no check fails on it.
+10. A test that loads KiCad's symbol or footprint libraries (`tools/kicadgen.py`
+    `SYMBOL_DIR`, `FOOTPRINT_DIR`; `workcenter design` on a fixture loads them)
+    carries its file's `needs_libs` skip on `kicadgen.SYMBOL_DIR`, never a
+    path written out. It carries it even when it already skips on an
+    engine's presence, such as kicad-cli. CI's `fast` job, which has no
+    KiCad, runs on every change, and `make verify-site` sets both folders
+    to empty ones; on a machine with KiCad it keeps the engines on PATH and
+    runs a test that skips on them, so a test without the skip fails there
+    (M282).
 
 Done when: the summary shows no unexpected skips, the engine test is
 green on the runner, and a run with an engine taken away is not GREEN.

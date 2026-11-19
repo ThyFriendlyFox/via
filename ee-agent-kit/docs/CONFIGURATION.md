@@ -313,6 +313,7 @@ part by `mpn` or `mpns` and whose `source.sha256` is a row of
 |---|---|---|---|
 | `SCOPE_BASE` (make) | git ref | `origin/main` | `make scope` compares the working tree with `git merge-base SCOPE_BASE HEAD`. |
 | `WORKCENTER_NO_ENGINES` | `1` or unset | unset | `1` refuses every engine start in a test run (`make verify-site` sets it): the start raises FileNotFoundError, read as an absent engine. |
+| `KICAD_SYMBOL_DIR`, `KICAD_FOOTPRINT_DIR` | folder | `/usr/share/kicad/symbols`, `/usr/share/kicad/footprints` | The folders `tools/kicadgen.py` loads KiCad's symbols and footprints from. `make verify-site` sets both to empty folders of its own, as the fast job's runner has no KiCad; a test that loads them carries `needs_libs`. |
 | `WORKCENTER_ENGINE_LOG` | path | a temp file per pytest run | Where each engine start of a test run is written; the `engine` marker is held against it. |
 | `--repo`, `--base`, `--head`, `--paths`, `--github-output` | `tools/ci/scope.py` flags | repo: here; head: the working tree | The change to judge; an empty `--base` is full; `--github-output` appends `scope=<answer>` to `$GITHUB_OUTPUT`. |
 | `CI_APT_UBUNTU_ARCHIVE` | repository variable (Settings, Secrets and variables, Actions, Variables) | unset | `0` leaves the runner's apt mirror as it is on CI's install path and in the nightly run; anything else runs `tools/ci/apt_archive.sh`, which turns a regional or cloud mirror of Ubuntu's archive into archive.ubuntu.com (ports.ubuntu.com on arm). |

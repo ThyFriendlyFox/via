@@ -39,6 +39,12 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-19 — The quick CI check was red on main for 7 tests that needed KiCad
+
+Every site-only push to main showed a red CI. The quick check runs on a machine with no KiCad, and 7 tests read KiCad's parts libraries without saying so. They came in through pull requests that ran only the full check, where KiCad is installed, so nobody saw it. We marked the 7 to skip where the libraries are absent. The quick check now runs on every pull request, next to the full one, and both must pass. Run on a machine with KiCad, the quick check now hides KiCad's libraries, so it fails the same way the CI machine does. It found 6 more tests that way: they skipped where KiCad's program is absent, but read the libraries.
+
+Evidence: CI runs 44455634601 and 44462711649 (red); commits 7a63688 and 240ec4c on wip/fast-lane; M282.
+
 ## 2026-11-19 — A changelog line goes into a file of its own
 
 Another session pushes site changes straight to main, each with a line in CHANGELOG.md. From 00:00 to 05:04 UTC main gained 17 first-parent commits, and 15 of them changed that file. Each time main moved, the open pull request conflicted in CHANGELOG.md alone, GitHub ran no checks on it, and a lap of merge, test and push cost about 40 minutes. By the lead's count it happened 6 times that day, the last to pull request 98 at 07:49 UTC. The cause: 2 sessions write the same lines of 1 file. Now a change adds 1 small file under ee-agent-kit/changes/, and a release folds those files into CHANGELOG.md. A line written the old way still counts, so nothing broke on the day the rule changed. The batch's 12 lines under Unreleased moved into 5 change files, and its CHANGELOG.md now equals main's.
