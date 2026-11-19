@@ -1798,13 +1798,49 @@ Cost: Found before a person's board was written; a check round and a fix round o
 Root cause: The write was built and reviewed for the board, not for the file: a path written by the tool, as `workcenter design` writes its own output. Nothing asked who else owns the file (the person, KiCad, a link, an earlier run), and the session merge was free to rewrite the person's copper because the generated designs it was made for have none.
 Process: P14
 
-## M295 — 2026-11-19 — A host was judged by a sample, and a download pass had no bound of its own
+## M295 — 2026-11-19 — A probe asked "is KiKit there" with a board's folder first on Python's import path
+What happened: `workcenter gates` and `workcenter export` probed KiKit with `python -c "import kikit.panelize_ui"` in the board's working directory, and `-c` puts that directory first on the import path. A `kikit/` folder, a `pcbnew.py` or a `sitecustomize.py` at a board repository's root ran as Python during the gates, for every user of the command, and in the reusable workflow during a pull request's check. The third independent check of roadmap item 16 found it (R16-N3); `workcenter ci`'s PyYAML reader and `workcenter placement`'s runner started Python the same way. A KiKit preset could name Python too (a section's `code`, a text's `plugin`, `post.script`).
+Cost: None seen: found before a board repository called the workflow. Every gate run on a board from a stranger could have run its code.
+Root cause: The probe was written to ask a question of the toolchain, and was not read as a run of Python in a folder the tool does not own. `-c` and a script's own folder both go first on `sys.path`; nothing started those Pythons isolated, and no test planted a module in a board's folder.
+Process: P10
+
+## M296 — 2026-11-19 — A test put the site's folder first on the import path, and another test file imported the site's guide
+What happened: `tests/test_docs.py` inserted `site/` at the head of `sys.path` to import the site's generators (`blog`, `examples`) and left it there. `tests/test_legend.py`'s `import guide`, run later in the same session, then got `site/guide.py`, not `tools/guide.py`: 6 tests failed with `AttributeError: module 'guide' has no attribute 'trouble'` when test_docs and test_legend ran together without `tests/test_guide.py` between them (the keeper's run for pull request 125, 2026-11-19). The whole suite passed only because test_guide imported `tools/guide.py` first.
+Cost: A false red in a landing check, and a round to tell it from a fault of the change.
+Root cause: A test changed the session's import path for its own import and did not change it back; the result of a later test depended on which file ran first.
+Process: P12
+
+## M297 — 2026-11-19 — The MCP server parsed a stranger's line with no bound on its depth or its length
+What happened: `workcenter mcp` (roadmap item 17) read each line on stdin with Python's JSON reader and no bound. A second independent check sent a line nested 10000 deep: the server died with RecursionError, ending the session and its commands. A line had no length bound, an object with neither method nor id and an integer of more digits than Python reads were not refused, and calls had no bound on how many ran or waited. Fixed at 8948032: -32600 for each, the session goes on, a line over 4 MiB is skipped, 4 commands run and 32 wait.
+Cost: Found before the server reached main; a check and a fix round.
+Root cause: The reader was written for the messages a well-behaved host sends, and its tests sent only those. A server reads a stranger's input: every limit of the reader (depth, length, size of a number, count of calls) is a way to stop it.
+Process: P7
+
+## M298 — 2026-11-19 — A default path skipped the check a named path gets
+What happened: `workcenter mcp` held every path a call names inside ROOT, links followed. With no `out`, the command it ran chose `<project>/build` itself, and the server did not check it: a `build` link out of ROOT let a call write outside the root. The second independent check of item 17 found it (F2); the server now names `--out` itself and holds it to ROOT as a named one, and `/` and the home folder are refused as ROOT.
+Cost: Found before the server reached main.
+Root cause: The check was put on the arguments a caller names, not on the paths the command will write; a default was not read as a path the call writes.
+Process: P10
+
+## M299 — 2026-11-19 — The CLI asked for the home folder at import, and every command died where none is known
+What happened: `make verify` in Via's image on pull request 124 (job `full`, head 5633c75) ended `outcomes: 4189 passed, 1 failed, 69 skipped`. `tests/test_board_gates_workflow.py:410`, `test_a_project_named_help_is_judged_as_a_folder_by_the_real_workcenter`, ran the workflow's gate step with no HOME, as the runner's user id, which has no line in the image's /etc/passwd; the last line of stderr was `RuntimeError: Could not determine home directory.`, not `.../ws/--help: not found`. `tools/workcenter` set `USER_SETTINGS = Path.home() / ".claude" / "settings.json"` at import, for 2 rows of `doctor`: every command, `--help` included, ended in a traceback before it began wherever no home is known. `references fetch` with no `--to`, `tools/hooks/install_hooks.py` and `verify/testshards.py` asked `Path.home()` on their common path too.
+Cost: 1 red `full` job of the batch's pull request, and a fix round.
+Root cause: A path that 2 rows of 1 command read was computed at import, for every command, from something a container or a service may not have. Every test ran with HOME set and as a user /etc/passwd names; no test started the CLI with a bare environment.
+Process: P10
+
+## M300 — 2026-11-19 — A test of an order effect asked a question whose answer depends on the order
+What happened: The test that holds M296's fix, `tests/test_docs.py::test_a_site_generator_changes_nothing_a_later_import_of_guide_gets`, failed in pull request 124's `fast` job (job 135771280417) and passed in every run of the keeper's: `assert '/home/runner/.../tools/guide.py' == '/home/runner/.../site/guide.py'`. It asked `importlib.util.find_spec("guide")`, which answers from `sys.modules` before it searches the path. In the fast job an earlier test of the same process had already imported tools/guide.py, so the test's first assertion, that the site's folder first on the path shadows tools/guide.py, read the cached module. The keeper ran the file alone or after a selection that imported no `guide`. Reproduced here after `tests/test_guide.py`: `1 failed, 85 passed`.
+Cost: A red `fast` job on the batch's pull request, and a round to find that the fix was right and its test was not.
+Root cause: A test about what an import would find asked a question that `sys.modules` answers, and was run only in orders where nothing had imported the name. The test now asks the path search (`importlib.machinery.PathFinder`), which reads only `sys.path`, and it was run alone, after test_guide, and between test_legend and test_guide, and fails in each order when the restore does nothing.
+Process: P12
+
+## M301 — 2026-11-19 — A host was judged by a sample, and a download pass had no bound of its own
 What happened: The answer to M285 ranked the hosts of Ubuntu's archive by the first 1 MiB of an index, 3 s each, and gave up a host silent for 15 s. Its first run on GitHub, CI run 44506767788 (job 135500622487), measured us-east-2.ec2.archive.ubuntu.com at 2468910 bytes/s and put it first. 15 s later the download's 1 pass asked it for every file of the archive but 1, and 26.6 MB of its files completed in 550.7 s (48.3 kB/s). 342 `Ign:` lines from 10:41:36 to 10:41:46 named 152 files, and 151 of them were asked again of the same host, not of the next: install.sh's download passes `-o Acquire::Retries=3` and a timeout of 60 s on apt's command line, and those win over the step's file (apt.conf(5)). tools/ci/README.md already said so under "What it does not cover", and the design went ahead on it. The bound of 570 s ended the pass with `apt said: nothing`; no second pass and no other host had a turn.
 Cost: 1 red CI run of pull request 116 (about 10 minutes of the `full` job's install step), and a third design of the step.
 Root cause: A host was judged once, by a sample taken before the work, and never again by the work itself. A trickle is never silent, so a rule on silence cannot see it. The download's pass had no bound of its own: the only bound was the whole download's, so 1 slow pass could spend it all. And a setting written for the download was never read in the download's own log: the step's line said what the file sets, not what apt did.
 Process: P2
 
-## M296 — 2026-11-19 — doctor crashed on a java that names no version, and it reached main
+## M302 — 2026-11-19 — doctor crashed on a java that names no version, and it reached main
 What happened: Pull request 116 gave doctor's java row a new reading of `java -version`: the major number of the version it names, through `int()`. A java whose `-version` names no version (a stand-in that prints nothing, a broken or wrapped JVM) ended doctor in `ValueError: invalid literal for int()`, not in a row that says absent. The pull request merged to main with it. The fixer of the independent attack on the Java fix found it on the way (cbd6fb0); `tests/test_java.py` now holds a java that names no version (`-version names no version`).
 Cost: None seen on a machine: no run met such a java. On main since pull request 116, doctor, and so every health gate and the image build, would have stopped on 1 such java on PATH.
 Root cause: The new reading was tested only with the output it expected (`version "21.0.13"`, `version "17.0.21"`), never with an output it did not: no version, an empty line, another language. P7 asks for a sample of each shape a tool prints, failures among them, and the new row's tests had only the working shapes.

@@ -33,7 +33,8 @@ FLOWS = ROOT / ".github" / "workflows"
 FLOW = FLOWS / "board-gates.yml"
 FIXTURE_FLOW = FLOWS / "board-fixture.yml"
 SKILL = ROOT / ".claude" / "skills" / "board-ci" / "SKILL.md"
-USES = "ThyFriendlyFox/via/.github/workflows/board-gates.yml@main"
+USES = "ThyFriendlyFox/via/.github/workflows/board-gates.yml"
+PIN = "<sha>"
 INSTALL = "./install.sh"
 ARCHIVE = "sudo env APT_ARCHIVE_CI=1 bash tools/ci/apt_archive.sh /etc/apt"
 REAL_PYTHON = shutil.which("python3") or sys.executable
@@ -88,15 +89,16 @@ def test_a_caller_names_its_projects_and_every_input_has_its_default():
     assert all(spec.get("description") for spec in inputs.values())
 
 
-def test_1_job_per_project_reads_the_board_and_pulls_no_more_than_a_package():
+def test_1_job_per_project_reads_the_board_and_nothing_more():
     """P2 step 7: a step that loops over boards grows with each; each board is a job of its own, under
-    its own limit, and 1 red board does not cancel the others. The token reads the repository and a
-    package, and writes nothing: the check and the summary are the output (the item's scope guard)."""
+    its own limit, and 1 red board does not cancel the others. The token reads the repository and
+    writes nothing: the check and the summary are the output (the item's scope guard). R16-F2: the
+    package is public, so the job asks for no `packages: read`."""
     f = flow()
     assert list(f["jobs"]) == ["gates"]
     j = job()
     assert j["strategy"] == {"fail-fast": False, "matrix": {"project": "${{ fromJSON(inputs.projects) }}"}}
-    assert j["permissions"] == {"contents": "read", "packages": "read"}
+    assert j["permissions"] == {"contents": "read"}
     assert j["runs-on"] == "ubuntu-24.04"
     runs = "\n".join(s.get("run", "") for s in j["steps"])
     assert re.findall(r"\b(gh|curl|wget)\b", runs) == []
@@ -113,6 +115,17 @@ def test_the_board_then_the_workcenter_are_checked_out_and_keep_no_credentials()
         "path": ".via",
         "persist-credentials": False,
     }
+
+
+def test_no_step_logs_in_or_holds_the_jobs_token():
+    """R16-F2: `docker login` with the job's token stored it in ~/.docker/config.json, and on the install
+    path the gates and the board's decks then ran on the host as that user. The package is public: an
+    anonymous pull needs no login, so no step holds the token."""
+    text = FLOW.read_text(encoding="utf-8")
+    assert "docker login" not in text
+    assert "github.token" not in text and "secrets." not in text
+    for step in job()["steps"]:
+        assert "TOKEN" not in step.get("env", {}), step.get("name")
 
 
 def test_no_run_line_holds_an_expression():
@@ -180,6 +193,27 @@ def test_the_jobs_limit_holds_the_worst_apt_step_and_leaves_the_gates_their_time
     assert 45 * 60 - (88 + 3 * 120 + 2 * 20 + 570) - (9 + 27 + 28) == 1578
 
 
+def test_the_limits_comment_names_the_install_steps_with_no_bound_of_their_own():
+    """R16-F6: 1578 s is not a worst case. install.sh's main() also runs step_freerouting and step_openems
+    (curl with no --max-time) and step_python (pip), and has no switch that skips them; only the job's
+    45 minutes bounds them. The comment names them, and the skill gives a time it can source (CI.md: the
+    install step took 1 min 29 s in CI run 44444183056), not "2 to 10 minutes"."""
+    script = (ROOT / "install.sh").read_text(encoding="utf-8")
+    main = re.search(r"^main\(\) \{\n(.*?)^\}", script, re.S | re.M)
+    for name in ("step_freerouting", "step_openems", "step_python"):
+        assert re.search(rf"^\s+{name}$", main.group(1), re.M), name
+    comments = " ".join(
+        line.strip().lstrip("#").strip()
+        for line in FLOW.read_text(encoding="utf-8").splitlines()
+        if line.strip().startswith("#")
+    )
+    assert "step_freerouting, step_openems and step_python" in comments
+    assert "not a worst case" in comments
+    skill = " ".join(SKILL.read_text(encoding="utf-8").split())
+    assert "2 to 10 minutes" not in skill
+    assert "1 min 29 s" in skill and "44444183056" in skill
+
+
 @pytest.mark.parametrize("value", ["true", "false"])
 def test_the_archive_step_runs_under_sudo_unless_the_input_is_false(tmp_path, value):
     """`sudo` is a stand-in that writes its arguments and runs nothing. `false` turns the step off with
@@ -204,29 +238,26 @@ def test_the_archive_step_runs_under_sudo_unless_the_input_is_false(tmp_path, va
 # ---------------------------------------------------------------- where the gates run
 
 
-def where_case(tmp_path: Path, use: str, login: int, pull: int, said: str) -> tuple[int, str, dict, list]:
-    bin_ = tmp_path / f"bin-{use}-{login}-{pull}"
-    calls = tmp_path / f"calls-{use}-{login}-{pull}"
+def where_case(tmp_path: Path, use: str, pull: int, said: str) -> tuple[int, str, dict, list]:
+    bin_ = tmp_path / f"bin-{use}-{pull}"
+    calls = tmp_path / f"calls-{use}-{pull}"
     body = (
         f'printf "%s\\n" "$*" >> {calls}\n'
         'case "$1" in\n'
-        "  login) cat > /dev/null; exit $LOGIN ;;\n"
         '  pull) if [ "$PULL" = 0 ]; then echo "$3"; else printf "%b" "$SAID" >&2; fi; exit $PULL ;;\n'
         "esac\n"
         "exit 9"
     )
     stub(bin_, "docker", body)
-    out = tmp_path / f"out-{use}-{login}-{pull}"
+    out = tmp_path / f"out-{use}-{pull}"
     out.write_text("", encoding="utf-8")
     env = {
         "PATH": f"{bin_}:/usr/bin:/bin",
         "USE_IMAGE": use,
         "IMAGE": "ghcr.io/o/via",
         "TAG": "tc-0123456789abcdef",
-        "TOKEN": "t",
         "GITHUB_ACTOR": "a",
         "GITHUB_OUTPUT": str(out),
-        "LOGIN": str(login),
         "PULL": str(pull),
         "SAID": said,
     }
@@ -238,31 +269,29 @@ def where_case(tmp_path: Path, use: str, login: int, pull: int, said: str) -> tu
 
 
 def test_a_pulled_image_is_where_the_gates_run(tmp_path):
-    code, out, outputs, seen = where_case(tmp_path, "true", 0, 0, "")
+    code, out, outputs, seen = where_case(tmp_path, "true", 0, "")
     ref = "ghcr.io/o/via:tc-0123456789abcdef"
     assert code == 0
     assert outputs == {"where": "image", "image": ref, "reason": f"the registry gave {ref}"}
-    assert out.splitlines()[-1] == f"where: image: the registry gave {ref}"
-    assert seen == ["login ghcr.io -u a --password-stdin", f"pull --quiet {ref}"]
+    assert out.splitlines() == [f"where: image: the registry gave {ref}"]
+    assert seen == [f"pull --quiet {ref}"]
 
 
 def test_an_image_the_registry_refuses_sends_the_gates_to_install_sh_with_dockers_last_line(tmp_path):
-    """The registry refuses a pull when it holds no image of that toolchain, or refuses the token. A
-    login that fails is 1 line, not a red step: the package is public and needs none."""
+    """The registry refuses a pull when it holds no image of that toolchain, or when the package is not
+    public. No login is made (R16-F2)."""
     said = "Error response from daemon: Head x: unauthorized\\nError response from daemon: denied"
-    code, out, outputs, seen = where_case(tmp_path, "true", 1, 1, said)
+    code, out, outputs, seen = where_case(tmp_path, "true", 1, said)
     ref = "ghcr.io/o/via:tc-0123456789abcdef"
     reason = f"the registry gave no {ref}: Error response from daemon: denied"
     assert code == 0
     assert outputs == {"where": "install", "image": "", "reason": reason}
-    assert out.splitlines() == [
-        "no login to ghcr.io: only a public image can be pulled",
-        f"where: install: {reason}",
-    ]
+    assert out.splitlines() == [f"where: install: {reason}"]
+    assert seen == [f"pull --quiet {ref}"]
 
 
 def test_a_refusal_with_no_words_names_dockers_exit_code(tmp_path):
-    code, _, outputs, _ = where_case(tmp_path, "true", 0, 125, "")
+    code, _, outputs, _ = where_case(tmp_path, "true", 125, "")
     assert code == 0 and outputs["where"] == "install"
     assert (
         outputs["reason"]
@@ -271,7 +300,7 @@ def test_a_refusal_with_no_words_names_dockers_exit_code(tmp_path):
 
 
 def test_use_image_false_asks_no_registry(tmp_path):
-    code, out, outputs, seen = where_case(tmp_path, "false", 0, 0, "")
+    code, out, outputs, seen = where_case(tmp_path, "false", 0, "")
     assert code == 0 and seen == []
     assert outputs == {"where": "install", "image": "", "reason": "the input use-image is false"}
 
@@ -279,49 +308,168 @@ def test_use_image_false_asks_no_registry(tmp_path):
 # ---------------------------------------------------------------- the gates step
 
 
-def gates_case(tmp_path: Path, where: str, code: int = 0, strict: str = "false", id_code: int = 0):
+GREEN_TABLE = (
+    "| Gate | Status | Summary |\n|---|---|---|\n"
+    "| ERC | pass | 0 errors, 0 warnings |\n"
+    "| DRC | pass | 0 violations |\n"
+    "| SIM | pass | 1 decks, 46 corner runs, 0 failures |\n"
+    "| EXPORT | pass | gerbers |\n\n"
+    "GREEN on 2026-11-19: `workcenter gates` with KiCad 10.0.8, ngspice 42.\n"
+)
+# The stand-ins write $TABLE where --report names, as `workcenter gates` does.
+WRITES = 'prev=""; for a in "$@"; do [ "$prev" = --report ] && printf "%s" "$TABLE" > "$a"; prev=$a; done'
+
+
+def gates_case(
+    tmp_path: Path,
+    where: str,
+    code: int = 0,
+    strict: str = "false",
+    id_code: int = 0,
+    project: str = "v0.2/display",
+    table: str = GREEN_TABLE,
+    out: list | None = None,
+):
     bin_ = tmp_path / "bin"
     calls = tmp_path / "calls"
     calls.unlink(missing_ok=True)
-    stub(bin_, "python3", f'printf "python3 %s\\n" "$*" >> {calls}; exit $CODE')
-    stub(bin_, "docker", f'printf "docker %s\\n" "$*" >> {calls}; exit $CODE')
+    shutil.rmtree(tmp_path / "rt", ignore_errors=True)
+    stub(bin_, "python3", f'printf "python3 %s\\n" "$*" >> {calls}; {WRITES}; exit $CODE')
+    stub(bin_, "docker", f'printf "docker %s\\n" "$*" >> {calls}; {WRITES}; exit $CODE')
     stub(bin_, "id", 'case "$1" in -u) echo 1001; exit $ID_CODE ;; -g) echo 121 ;; esac')
     env = {
         "PATH": f"{bin_}:/usr/bin:/bin",
         "WHERE": where,
         "IMAGE": "ghcr.io/o/via:tc-x",
-        "PROJECT": "v0.2/display",
+        "PROJECT": project,
         "STRICT": strict,
-        "RUNNER_TEMP": "/rt",
+        "RUNNER_TEMP": str(tmp_path / "rt"),
         "GITHUB_WORKSPACE": "/ws",
         "CODE": str(code),
         "ID_CODE": str(id_code),
+        "TABLE": table,
     }
     ran = subprocess.run(
         ["bash", "-e", "-c", step_named("workcenter gates")["run"]], env=env, text=True, capture_output=True
     )
-    return ran.returncode, calls.read_text(encoding="utf-8").splitlines() if calls.exists() else []
+    if out is not None:
+        out[:] = ran.stdout.splitlines()
+    said = calls.read_text(encoding="utf-8").splitlines() if calls.exists() else []
+    return ran.returncode, [line.replace(str(tmp_path / "rt"), "/rt") for line in said]
 
 
 def test_the_install_path_runs_the_checkouts_workcenter_and_its_exit_code_is_the_check(tmp_path):
     """`workcenter gates` exits 0 on GREEN, 1 on RED and 2 on SKIPPED (tools/workcenter, gates_verdict):
-    the step ends with that code, so only GREEN is a green check."""
-    line = "python3 .via/tools/workcenter gates v0.2/display --report /rt/board-gates.md"
+    the step ends with that code, so only GREEN is a green check. R16-N2: the project comes after `--`."""
+    line = "python3 .via/tools/workcenter gates --report /rt/board-gates/board-gates.md"
     for code in (0, 1, 2):
-        assert gates_case(tmp_path, "install", code) == (code, [line])
-    assert gates_case(tmp_path, "install", 0, "true") == (0, [line + " --strict"])
+        assert gates_case(tmp_path, "install", code) == (code, [line + " -- v0.2/display"])
+    assert gates_case(tmp_path, "install", 0, "true") == (0, [line + " --strict -- v0.2/display"])
+
+
+@pytest.mark.parametrize("where", ["install", "image"])
+def test_a_project_named_like_an_option_goes_after_a_double_dash(tmp_path, where):
+    """R16-N2: `PROJECT=--help` reached argparse as an option: it printed its usage, exit 0, and the job
+    was green with nothing judged. The name now follows `--`, on both paths."""
+    code, calls = gates_case(tmp_path, where, 0, project="--help")
+    assert code == 0
+    (call,) = calls
+    assert call.endswith(" gates --report /rt/board-gates/board-gates.md -- --help"), call
+
+
+def test_a_project_named_help_is_judged_as_a_folder_by_the_real_workcenter(tmp_path):
+    """R16-N2 with the real `workcenter gates` (no engine starts: the folder is not there). Before the
+    fix the step printed argparse's usage and ended 0 with no report; now the gates judge `--help` as a
+    path, which is not found: red, and no usage text."""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / ".via").symlink_to(ROOT)
+    bin_ = tmp_path / "bin"
+    stub(bin_, "python3", f'exec {sys.executable} "$@"')
+    env = {
+        "PATH": f"{bin_}:/usr/bin:/bin",
+        "WHERE": "install",
+        "PROJECT": "--help",
+        "STRICT": "false",
+        "RUNNER_TEMP": str(tmp_path / "rt"),
+        "GITHUB_WORKSPACE": str(ws),
+        "PYTHONDONTWRITEBYTECODE": "1",
+        # The workcenter's own engine lock, in a folder of this test's: nothing here waits on another run.
+        "WORKCENTER_LOCK_DIR": str(tmp_path / "lock"),
+    }
+    ran = subprocess.run(
+        ["bash", "-e", "-c", step_named("workcenter gates")["run"]],
+        cwd=ws,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    assert ran.returncode == 1, ran.stdout + ran.stderr
+    assert "usage:" not in ran.stdout + ran.stderr
+    assert ran.stderr.strip().splitlines()[-1] == f"{ws / '--help'}: not found"
+
+
+@pytest.mark.parametrize("project", ["", "v1\nv2", "v1\r"])
+def test_a_project_name_that_cannot_be_passed_as_1_folder_is_refused_on_1_line(tmp_path, project):
+    """R16-N2: an empty name would gate the workspace's root under no name, and a newline splits the
+    log's and the summary's lines. The step runs nothing and says so on 1 line."""
+    out: list = []
+    assert gates_case(tmp_path, "install", 0, project=project, out=out) == (1, [])
+    assert len(out) == 1 and out[0].startswith("RED: the project name "), out
+    assert out[0].endswith("is not a folder the gates can be given: it is empty or holds a control character")
+
+
+@pytest.mark.parametrize("where", ["install", "image"])
+@pytest.mark.parametrize("table", ["", "usage: workcenter gates [-h] [--strict] project\n"])
+def test_an_exit_code_0_with_no_green_line_in_the_report_is_red(tmp_path, where, table):
+    """R16-N2: exit 0 alone was green; a help text or an empty output wrote no table and the check was
+    green with nothing judged. Green now rests on the gates' own GREEN line in the report."""
+    out: list = []
+    code, _ = gates_case(tmp_path, where, 0, table=table, out=out)
+    assert code == 1
+    assert out == [
+        "RED: v0.2/display: the gates exited 0, but their report holds no GREEN line: nothing was judged"
+    ]
+
+
+def test_a_green_report_with_no_row_for_a_gate_is_red(tmp_path):
+    """R16-N2: the rule `ERC, DRC and EXPORT ran` read only rows at skip; a report with no EXPORT row
+    passed it. A missing row is a gate not judged."""
+    table = GREEN_TABLE.replace("| EXPORT | pass | gerbers |\n", "")
+    out: list = []
+    assert gates_case(tmp_path, "install", 0, table=table, out=out)[0] == 1
+    assert out == [f"RED: v0.2/display: EXPORT not judged: no row in the gates table{NOT_JUDGED}"]
 
 
 def test_the_image_path_runs_the_same_command_inside_it_as_the_runners_user(tmp_path):
+    """R16-F1: the gates run the board's own sim decks, and ngspice runs a deck's `shell` lines with
+    /bin/sh. In the image they get no network, `.via` read-only (mounted after the workspace, so it
+    overlays it), and of the runner's temp folder only `board-gates/`, not the runner's file-command
+    files beside it."""
     code, calls = gates_case(tmp_path, "image", 0, "true")
     assert code == 0
     assert calls == [
-        "docker run --rm --user 1001:121 -e CI -e GITHUB_ACTIONS -v /ws:/ws -v /rt:/rt -w /ws "
+        "docker run --rm --network none --user 1001:121 -e CI -e GITHUB_ACTIONS "
+        "-v /ws:/ws -v /ws/.via:/ws/.via:ro -v /rt/board-gates:/rt/board-gates -w /ws "
         "ghcr.io/o/via:tc-x bash -e -c python3 .via/tools/image.py check --src .via; "
         'python3 .via/tools/workcenter "$@" workcenter '
-        "gates v0.2/display --report /rt/board-gates.md --strict"
+        "gates --report /rt/board-gates/board-gates.md --strict -- v0.2/display"
     ]
     assert gates_case(tmp_path, "image", 1)[0] == 1
+
+
+def test_the_image_paths_mounts_give_the_decks_no_more_than_the_board_and_the_report():
+    """R16-F1, held on the step's text: every `-v` of `docker run`, in its order, and `--network none`."""
+    run = step_named("workcenter gates")["run"]
+    (docker,) = re.findall(r"docker run (.*?)\n\s+\"\$IMAGE\"", run, re.S)
+    assert re.findall(r"-v (\S+)", docker) == [
+        '"$GITHUB_WORKSPACE":"$GITHUB_WORKSPACE"',
+        '"$GITHUB_WORKSPACE/.via":"$GITHUB_WORKSPACE/.via":ro',
+        '"$out":"$out"',
+    ]
+    assert "--network none" in docker
+    assert '"$RUNNER_TEMP":"$RUNNER_TEMP"' not in run
 
 
 def test_an_id_that_fails_stops_the_step_before_docker(tmp_path):
@@ -345,9 +493,8 @@ def table_case(tmp_path: Path, where: str, table: str) -> tuple[int, list[str]]:
     bin_ = tmp_path / "bin"
     temp = tmp_path / "rt"
     temp.mkdir()
-    writes = 'prev=""; for a in "$@"; do [ "$prev" = --report ] && printf "%s" "$TABLE" > "$a"; prev=$a; done'
-    stub(bin_, "python3", writes)
-    stub(bin_, "docker", writes)
+    stub(bin_, "python3", WRITES)
+    stub(bin_, "docker", WRITES)
     stub(bin_, "id", "echo 1001")
     env = {
         "PATH": f"{bin_}:/usr/bin:/bin",
@@ -391,6 +538,58 @@ def test_a_project_whose_board_is_gone_is_red_though_the_gates_say_green(tmp_pat
     ]
 
 
+NO_SCHEMATIC = (
+    "| Gate | Status | Summary |\n|---|---|---|\n"
+    "| ERC | skip | no schematic in project |\n"
+    "| DRC | pass | 0 violations |\n"
+    "| SIM | skip | no sim/*.cir in project |\n"
+    "| EXPORT | pass | gerbers |\n\n"
+    "GREEN (nothing to run for: erc, sim) on 2026-11-19\n"
+)
+
+
+def test_a_project_whose_schematic_is_gone_is_red_though_the_gates_say_green(tmp_path):
+    """R16-F4 (a): a pull request that deletes the .kicad_sch. ERC is `skip, no schematic in project`
+    (the checker's table); the step ends 1 with 1 line for ERC. SIM at skip adds no line."""
+    code, out = table_case(tmp_path, "install", NO_SCHEMATIC)
+    assert code == 1
+    assert out == [f"RED: v1: ERC not judged: no schematic in project{NOT_JUDGED}"]
+
+
+def test_a_red_checks_summary_says_why_it_is_red(tmp_path):
+    """R16-F5: the gates said GREEN and the step ended red; the summary held only the table and its
+    GREEN. The gates step writes each gate not judged into the report's folder, and the summary step
+    puts them under the table."""
+    assert table_case(tmp_path, "install", NO_SCHEMATIC)[0] == 1
+    assert (tmp_path / "rt" / "board-gates" / "not-judged.txt").read_text(encoding="utf-8") == (
+        "ERC not judged: no schematic in project\n"
+    )
+    code, text = summary_case(tmp_path, "install", NO_SCHEMATIC)
+    assert code == 0
+    assert text == (
+        NO_SCHEMATIC + "\nThis check is red: the gates said GREEN, but these gates judged nothing:\n\n"
+        "- ERC not judged: no schematic in project\n"
+        "\nWhere: install.sh: the input use-image is false.\n"
+    )
+
+
+def test_a_red_checks_summary_lists_every_gate_not_judged_in_the_tables_order(tmp_path):
+    """R16-N3: with 1 gate not judged, `>>` cut to `>` in the gates step, and `sed` cut to its first line
+    in the summary, both passed every test. NO_BOARD has 2: DRC, then EXPORT."""
+    assert table_case(tmp_path, "install", NO_BOARD)[0] == 1
+    assert (tmp_path / "rt" / "board-gates" / "not-judged.txt").read_text(encoding="utf-8") == (
+        "DRC not judged: no board in project\nEXPORT not judged: no board in project\n"
+    )
+    code, text = summary_case(tmp_path, "install", NO_BOARD)
+    assert code == 0
+    assert text == (
+        NO_BOARD + "\nThis check is red: the gates said GREEN, but these gates judged nothing:\n\n"
+        "- DRC not judged: no board in project\n"
+        "- EXPORT not judged: no board in project\n"
+        "\nWhere: install.sh: the input use-image is false.\n"
+    )
+
+
 def test_a_project_with_no_sim_decks_stays_green_and_the_table_names_it(tmp_path):
     """SIM with no deck is `skip, no sim/*.cir in project` (tools/workcenter, gate_sim): the board was
     judged by ERC, DRC and EXPORT, so the check stays green; the summary's table shows the skip row."""
@@ -405,19 +604,19 @@ def test_a_project_with_no_sim_decks_stays_green_and_the_table_names_it(tmp_path
 # ---------------------------------------------------------------- the summary
 
 
-def summary_case(tmp_path: Path, where: str, report: str | None) -> tuple[int, str]:
+def summary_case(tmp_path: Path, where: str, report: str | None, project: str = "v0.2") -> tuple[int, str]:
     temp = tmp_path / "rt"
-    temp.mkdir(exist_ok=True)
-    (temp / "board-gates.md").unlink(missing_ok=True)
+    (temp / "board-gates").mkdir(parents=True, exist_ok=True)
+    (temp / "board-gates" / "board-gates.md").unlink(missing_ok=True)
     if report is not None:
-        (temp / "board-gates.md").write_text(report, encoding="utf-8")
+        (temp / "board-gates" / "board-gates.md").write_text(report, encoding="utf-8")
     summary = tmp_path / "summary.md"
     summary.write_text("", encoding="utf-8")
     env = {
         "PATH": "/usr/bin:/bin",
         "RUNNER_TEMP": str(temp),
         "GITHUB_STEP_SUMMARY": str(summary),
-        "PROJECT": "v0.2",
+        "PROJECT": project,
         "WHERE": where,
         "IMAGE": "ghcr.io/o/via:tc-x",
         "REASON": "the input use-image is false",
@@ -428,7 +627,8 @@ def summary_case(tmp_path: Path, where: str, report: str | None) -> tuple[int, s
 
 
 def test_the_summary_holds_the_gates_table_and_where_the_gates_ran(tmp_path):
-    table = "| Gate | Status | Summary |\n|---|---|---|\n| ERC | pass | 0 errors |\n"
+    """R16-F4 (c): the whole table, every row and its verdict line, not its first lines."""
+    table = NO_BOARD.replace("skip | no board in project", "pass | 0 violations")
     assert summary_case(tmp_path, "image", table) == (0, table + "\nWhere: the image ghcr.io/o/via:tc-x.\n")
     assert summary_case(tmp_path, "install", table) == (
         0,
@@ -440,9 +640,46 @@ def test_a_run_with_no_table_says_so_and_names_no_path_it_did_not_take(tmp_path)
     code, text = summary_case(tmp_path, "", None)
     assert code == 0
     assert text == (
-        "No gates table for `v0.2`: the gates step wrote none; its log says why.\n"
+        "No gates table for <code>v0.2</code>: the gates step wrote none; its log says why.\n"
         "\nWhere: no path was decided: the job stopped before the step `where`.\n"
     )
+
+
+def test_the_projects_name_reaches_the_summary_as_text_not_markup(tmp_path):
+    """R16-N4: the name went into a code span as it was: a backtick closed the span, and `<` opened a
+    tag. Every character outside letters, digits and ` ._/:,=+@-` goes in as a numeric entity."""
+    code, text = summary_case(tmp_path, "", None, project="v1`<b>x</b>|*")
+    assert code == 0
+    first = text.splitlines()[0]
+    assert first == (
+        "No gates table for <code>v1&#96;&#60;b&#62;x&#60;/b&#62;&#124;&#42;</code>: "
+        "the gates step wrote none; its log says why."
+    )
+
+
+def test_board_text_in_the_table_reaches_the_summary_with_no_tag(tmp_path):
+    """R16-N4: a deck's first comment sentence goes into the decks table as written. In the summary every
+    `<` outside the report's own `<!-- workcenter ... -->` markers is `&lt;`, so board text opens no tag;
+    the markers stay comments."""
+    table = (
+        "# Gates report: board\n\n## board\n\n<!-- workcenter gates board -->\n"
+        + GREEN_TABLE
+        + "<!-- /workcenter gates board -->\n\n<!-- workcenter decks board -->\n"
+        "| Deck | What it simulates | Bounds | Corner runs | Result |\n|---|---|---|---|---|\n"
+        "| `sim/a.cir` | V(out) < 1 V <img src=x> | 1 | 2 | pass |\n"
+        "<!-- /workcenter decks board -->\n"
+    )
+    code, text = summary_case(tmp_path, "install", table)
+    assert code == 0
+    assert "| `sim/a.cir` | V(out) &lt; 1 V &lt;img src=x> | 1 | 2 | pass |" in text.splitlines()
+    assert "<img" not in text
+    markers = [line for line in text.splitlines() if line.startswith("<!--")]
+    assert markers == [
+        "<!-- workcenter gates board -->",
+        "<!-- /workcenter gates board -->",
+        "<!-- workcenter decks board -->",
+        "<!-- /workcenter decks board -->",
+    ]
 
 
 # ---------------------------------------------------------------- the whole job, on both paths
@@ -508,13 +745,17 @@ def whole_job(tmp_path: Path, pull: int, gates: int) -> tuple[list[tuple[str, in
     temp.mkdir()
     calls = tmp_path / "calls"
     bin_ = tmp_path / "bin"
+    # pull names the ref it pulls; run names the image it runs, the word after `-w <folder>`.
     stub(
         bin_,
         "docker",
-        f'printf "docker %s\\n" "$1" >> {calls}\n'
-        'case "$1" in login) cat > /dev/null; exit 0 ;; '
-        'pull) [ "$PULL" = 0 ] || echo denied >&2; exit $PULL ;; '
-        "run) exit $GATES ;; esac",
+        'case "$1" in\n'
+        f'  pull) printf "docker pull %s\\n" "$3" >> {calls}\n'
+        '    [ "$PULL" = 0 ] || echo denied >&2; exit $PULL ;;\n'
+        '  run) while [ "$1" != -w ]; do shift; done\n'
+        f'    printf "docker run %s\\n" "$3" >> {calls}; {WRITES}; exit $GATES ;;\n'
+        f'  *) printf "docker %s\\n" "$1" >> {calls}; cat > /dev/null; exit 0 ;;\n'
+        "esac",
     )
     stub(bin_, "sudo", f'printf "sudo %s\\n" "$*" >> {calls}')
     stub(bin_, "id", 'case "$1" in -u) echo 1001 ;; -g) echo 121 ;; esac')
@@ -522,8 +763,8 @@ def whole_job(tmp_path: Path, pull: int, gates: int) -> tuple[list[tuple[str, in
         bin_,
         "python3",
         f'if [ "$1" = .via/tools/image.py ]; then exec {REAL_PYTHON} "$@"; fi\n'
-        f'printf "python3 %s\\n" "$1 $2 $3" >> {calls}\n'
-        'prev=""; for a in "$@"; do [ "$prev" = --report ] && printf "%s\\n" "$TABLE" > "$a"; prev=$a; done\n'
+        f'printf "python3 %s\\n" "$1 $2 ${{*: -1}}" >> {calls}\n'
+        f"{WRITES}\n"
         "exit $GATES",
     )
     summary = tmp_path / "summary.md"
@@ -536,7 +777,6 @@ def whole_job(tmp_path: Path, pull: int, gates: int) -> tuple[list[tuple[str, in
         "inputs.use-image": "true",
         "inputs.apt-ubuntu-archive": "true",
         "matrix.project": ".",
-        "github.token": "t",
     }
     env = {
         "PATH": f"{bin_}:/usr/bin:/bin",
@@ -547,7 +787,7 @@ def whole_job(tmp_path: Path, pull: int, gates: int) -> tuple[list[tuple[str, in
         "GITHUB_STEP_SUMMARY": str(summary),
         "PULL": str(pull),
         "GATES": str(gates),
-        "TABLE": "| ERC | pass | 0 errors |",
+        "TABLE": GREEN_TABLE,
     }
     ran, ok = run_job(ws, ctx, env)
     return ran, ok, calls.read_text(encoding="utf-8").splitlines(), summary.read_text(encoding="utf-8")
@@ -568,27 +808,25 @@ def test_the_whole_job_falls_back_to_install_sh_when_the_image_is_refused(tmp_pa
         "The gates table into the job's summary",
     ]
     assert calls == [
-        "docker login",
-        "docker pull",
+        f"docker pull ghcr.io/thyfriendlyfox/via:{tag}",
         ARCHIVE,
         f"sudo env APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 {INSTALL}",
         "python3 .via/tools/workcenter gates .",
     ]
     assert summary == (
-        "| ERC | pass | 0 errors |\n\n"
-        f"Where: install.sh: the registry gave no ghcr.io/thyfriendlyfox/via:{tag}: denied.\n"
+        GREEN_TABLE + f"\nWhere: install.sh: the registry gave no ghcr.io/thyfriendlyfox/via:{tag}: denied.\n"
     )
 
 
 def test_the_whole_job_runs_in_the_image_when_it_is_pulled_and_installs_nothing(tmp_path):
+    """R16-F4 (d): `docker run` gets the `image:tag` that was pulled, not the tag step's name alone
+    (which docker would run as `:latest`). No login is made (R16-F2)."""
     tag = image.content_tag(image.from_git(ROOT, "HEAD"))
     ran, ok, calls, summary = whole_job(tmp_path, pull=0, gates=0)
     assert ok and len(ran) == 4
-    assert calls == ["docker login", "docker pull", "docker run"]
-    assert summary == (
-        "No gates table for `.`: the gates step wrote none; its log says why.\n\n"
-        f"Where: the image ghcr.io/thyfriendlyfox/via:{tag}.\n"
-    )
+    ref = f"ghcr.io/thyfriendlyfox/via:{tag}"
+    assert calls == [f"docker pull {ref}", f"docker run {ref}"]
+    assert summary == GREEN_TABLE + f"\nWhere: the image ghcr.io/thyfriendlyfox/via:{tag}.\n"
 
 
 @pytest.mark.parametrize("pull", [0, 1])
@@ -611,7 +849,7 @@ def test_this_repository_calls_it_on_pass_rc_divider_with_the_workcenter_under_t
     assert watched <= set(on["pull_request"]["paths"]) and watched <= set(on["push"]["paths"])
     assert on["pull_request"]["paths"] == on["push"]["paths"]
     assert on["push"]["branches"] == ["main"]
-    assert f["permissions"] == {"contents": "read", "packages": "read"}
+    assert f["permissions"] == {"contents": "read"}
     (caller,) = f["jobs"].values()
     assert caller["uses"] == "./.github/workflows/board-gates.yml"
     assert caller["with"] == {
@@ -643,11 +881,70 @@ def skill_callers() -> dict:
 def test_the_skills_caller_is_the_line_the_roadmap_names_and_passes_only_inputs_that_exist():
     caller = skill_callers()
     assert set(caller[True]) >= {"pull_request"}
-    assert caller["permissions"] == {"contents": "read", "packages": "read"}
+    assert caller["permissions"] == {"contents": "read"}
     inputs = flow()[True]["workflow_call"]["inputs"]
     for gates in caller["jobs"].values():
-        assert gates["uses"] == USES
+        assert gates["uses"].split("@")[0] == USES
         assert set(gates.get("with", {})) <= set(inputs)
+    assert "packages: read" not in SKILL.read_text(encoding="utf-8")
+
+
+def test_the_skills_caller_pins_the_workflow_and_the_tools_to_1_commit():
+    """R16-F3: `workcenter-ref` does not follow the ref of the `uses:` line, and both defaulted to the
+    moving `main`. The caller pins 1 commit SHA in both places in every call, and the skill names no tag:
+    none holds board-gates.yml yet. The workflow's header says the 2 refs are apart."""
+    for gates in skill_callers()["jobs"].values():
+        assert gates["uses"] == f"{USES}@{PIN}"
+        assert gates["with"]["workcenter-ref"] == PIN
+    skill = " ".join(SKILL.read_text(encoding="utf-8").split())
+    assert "v0.1.0" not in skill
+    assert "full commit SHA" in skill
+    head = FLOW.read_text(encoding="utf-8").split("\nname:")[0]
+    head = " ".join(line.lstrip("#").strip() for line in head.splitlines())
+    assert "does not follow the ref of the `uses:` line" in head
+
+
+def test_the_skill_says_the_check_runs_the_pull_requests_own_decks():
+    """R16-F1: ngspice runs a deck's `shell` lines, so a fork's check is only as trustworthy as its
+    diff; the skill says so, and what the image path holds the decks to."""
+    skill = " ".join(SKILL.read_text(encoding="utf-8").split())
+    assert "ngspice runs a deck's `shell` lines" in skill
+    assert "only as trustworthy as its diff" in skill
+    for point in ("`--network none`", "read-only", "`board-gates/`"):
+        assert point in skill, point
+
+
+def test_the_skill_names_every_file_of_a_board_repository_that_runs_code_during_the_gates():
+    """R16-N1 (b): the skill pointed a reviewer at `sim/*.cir` alone. ngspice also reads the deck
+    folder's `.spiceinit`, and a deck pulls in files (`.include`, `.lib`, `source`) and shared libraries
+    (`codemodel`, `pre_osdi`); a pull request can change the caller itself; KiKit's preset can name Python
+    (refused now); a planted Python module is not imported (tested below). The skill names each."""
+    skill = " ".join(SKILL.read_text(encoding="utf-8").split())
+    trust = skill.split("## The pull request's own files run")[1].split(" ## ")[0]
+    for point in (
+        "`sim/*.cir`",
+        "`sim/.spiceinit`",
+        "`.include`",
+        "`.lib`",
+        "`source`",
+        "`codemodel`",
+        "`pre_osdi`",
+        "`.github/workflows/`",
+        "`panel.json`",
+        "`kikit/`",
+        "`sitecustomize.py`",
+        "the whole diff",
+    ):
+        assert point in trust, point
+    assert "read a fork's `sim/*.cir` before you trust" not in skill
+
+
+def test_the_skill_names_the_check_of_each_call():
+    """R16-F7: the caller has 2 jobs, so a required check is `gates / gates <project>` or
+    `gates-strict / gates <project>`."""
+    skill = " ".join(SKILL.read_text(encoding="utf-8").split())
+    step5 = skill.split("5. Make the check required")[1].split("##")[0]
+    assert "`gates / gates <project>`" in step5 and "`gates-strict / gates <project>`" in step5
 
 
 def test_the_skills_caller_shows_that_strict_holds_for_every_project_of_1_call():
@@ -674,6 +971,7 @@ def test_the_docs_say_the_image_is_the_normal_path_and_name_what_only_a_real_run
     for text in (skill, " ".join(head.split()), ci):
         assert "every run takes the install path" not in text
         assert "While the package is private" not in text
+        assert "the caller's token" not in text and "with the job's token" not in text
     for text in (skill, ci):
         assert "The image path is the normal path" in text
         for point in ("`--user`", "`image.py check`", "`HOME`"):
@@ -685,16 +983,36 @@ def test_the_docs_say_the_image_is_the_normal_path_and_name_what_only_a_real_run
 needs_kicad = engine(pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not on PATH"))
 
 
-def real_gates(tmp_path: Path, fixture: str, strict: str, drop: str = "") -> tuple[int, str, str]:
+def plant(folder: Path, marker: Path) -> None:
+    """Python modules a board repository could carry, each writing 1 line to `marker` when imported:
+    a `kikit/` package (with the `panelize_ui` the KiKit probe imports), `pcbnew.py` and
+    `sitecustomize.py`."""
+    line = f"open({str(marker)!r}, 'a').write(__name__ + ' ' + __file__ + '\\n')\n"
+    (folder / "kikit").mkdir()
+    (folder / "kikit" / "__init__.py").write_text(line, encoding="utf-8")
+    (folder / "kikit" / "panelize_ui.py").write_text(line, encoding="utf-8")
+    (folder / "pcbnew.py").write_text(line, encoding="utf-8")
+    (folder / "sitecustomize.py").write_text(line, encoding="utf-8")
+
+
+def real_gates(
+    tmp_path: Path, fixture: str, strict: str, drop: str = "", planted: Path | None = None
+) -> tuple[int, str, str]:
     """The install path's gates step and the summary step, as the runner runs them, on a copy of 1
     fixture: `.via` is this repository, python3 the real one. `drop`: a glob of the copy's files to
-    delete first, as a pull request deletes them."""
+    delete first, as a pull request deletes them. `planted`: a marker file; the copy gets
+    tests/samples/fab/panel.json, and Python modules that write to the marker are planted at the
+    workspace's root and in the board's folder."""
     ws = tmp_path / "ws"
     ws.mkdir()
     (ws / ".via").symlink_to(ROOT)
-    shutil.copytree(ROOT / "tests" / "boards" / fixture, ws / "board")
+    shutil.copytree(ROOT / "tests" / "boards" / fixture, ws / "board", ignore=shutil.ignore_patterns("build"))
     for gone in (ws / "board").glob(drop) if drop else []:
         gone.unlink()
+    if planted is not None:
+        shutil.copy(ROOT / "tests" / "samples" / "fab" / "panel.json", ws / "board" / "panel.json")
+        plant(ws, planted)
+        plant(ws / "board", planted)
     temp = tmp_path / "rt"
     temp.mkdir()
     summary = tmp_path / "summary.md"
@@ -781,3 +1099,18 @@ def test_pass_rc_divider_without_its_board_is_a_red_step_with_strict(tmp_path):
         f"RED: board: DRC not judged: no board in project{NOT_JUDGED}",
         f"RED: board: EXPORT not judged: no board in project{NOT_JUDGED}",
     ]
+
+
+@needs_kicad
+def test_python_modules_a_board_repository_carries_are_not_imported_by_the_gates(tmp_path):
+    """R16-N1 (a): EXPORT probed KiKit with `python -c "import kikit.panelize_ui"` in the gates' working
+    directory, the workspace's root, which `-c` puts first on the import path: a `kikit/` folder in a
+    pull request ran there. pass-rc-divider with a panel.json, and `kikit/`, `pcbnew.py` and
+    `sitecustomize.py` that write a marker, at the root and in the board's folder: the gates are GREEN
+    with the panel made by the real KiKit, and the marker is never written."""
+    marker = tmp_path / "planted-ran.txt"
+    code, out, summary = real_gates(tmp_path, "pass-rc-divider", "true", planted=marker)
+    assert not marker.exists(), marker.read_text(encoding="utf-8")
+    assert code == 0, out
+    assert [r.split(" | ")[:2] for r in rows(summary)][-1] == ["| EXPORT", "pass"]
+    assert re.search(r"panel \d+ x \d+ boards", summary), summary

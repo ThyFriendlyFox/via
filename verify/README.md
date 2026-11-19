@@ -50,6 +50,9 @@ runs only when asked by name (`WORKCENTER_TEST_IMAGE_BUILD=1`). Inside
 CI's `full` job the build had taken about 669 s of the file's 674.6 s
 (job 135422229691).
 
+`tests/test_no_home.py`'s 1.5 s were measured alone on 2026-11-19, 1 run,
+with no lock (it starts no engine): `6 passed in 1.53s`.
+
 ## How the split works
 
 1. The files are sorted by their seconds, the longest first.

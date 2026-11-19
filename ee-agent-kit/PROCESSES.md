@@ -115,7 +115,7 @@ or any step that downloads, installs, or runs for more than a minute.
     bound watches its own progress, and ends a pass that cannot finish in
     the time left at the rate it gets, so that the next pass, or the next
     host, has time. A setting written for a step is checked in that
-    step's own log: a later command line can override it (M295).
+    step's own log: a later command line can override it (M301).
 
 Done when: the run is green, its log shows progress lines in every long
 step, no step used more than half its limit, and no step depended on a
@@ -363,11 +363,16 @@ axis it defines (a 3D model's rotation or offset, an export's origin).
     terminal's width, and what stood at the end of a long line is gone
     with no error. A test of such a check runs it once under a narrow
     COLUMNS, with a command line longer than that width (M281).
-12. A new reading of a tool's own output (a version, a count, a path)
+12. A program that reads a stranger's input (a server's stdin, a file a
+    person sends) bounds every way the reader can be made to stop: the
+    nesting depth, the length of a line, the size of a number, how many
+    requests run or wait. A test sends each one past its bound and holds
+    that the program answers and goes on (M297).
+13. A new reading of a tool's own output (a version, a count, a path)
     gets, before it lands, a test with an output it does not expect: no
     version, an empty line, another language. The reading then says what
     it could not read, in the row or line it fills, and never ends the
-    command (M296).
+    command (M302).
 
 Done when: a test parses a real sample of each shape, failures among them,
 and the parser's assumptions are written next to it.
@@ -526,6 +531,26 @@ When: touching `tools/workcenter` or `tools/kicadgen.py`'s command line.
 8. A verdict that 2 commands print is 1 function they both call:
    `guide.ratings_state` is read by `gates` and `next`, and
    `tests/test_done.py` holds every kind of record to it (M251).
+9. A command that starts Python in or on a folder it does not own (a
+   board's, a project's) starts it isolated (`python3 -I`), so that a
+   module planted there (`kikit/`, `pcbnew.py`, `yaml.py`,
+   `sitecustomize.py`) is never imported; a probe that asks "is module X
+   there" is such a start too. A file the command hands to another tool is
+   refused when it names code for that tool to run. A test plants such a
+   module in the folder and holds that it was not imported (M295).
+10. A check on the paths a call names also holds the paths the command
+    will write by default: a default (`<project>/build`) is named by the
+    command and checked as a named one, and a test gives the default a
+    link out of the allowed folder (M298).
+11. Code that runs at import or at a command's start asks the machine
+    for nothing a container or a service may not have: a home folder
+    (`Path.home()`, `~`), a user name, a terminal. Each is asked where it
+    is used, through 1 function that says when there is none
+    (`home_folder()` in `tools/workcenter`), and the caller goes on or
+    refuses in 1 line that says what to set. A test starts the command
+    with no HOME and a user id /etc/passwd does not name
+    (`tests/conftest.py`'s `no_home`) and holds that it does its work
+    with no traceback (M299).
 
 Done when: `make verify` is green, the configuration table names the
 flag, and every document that writes the command writes one the parser
@@ -621,6 +646,15 @@ that may be absent.
     comparison under a wait, run it while a loop holds the lock in a folder
     of its own (`WORKCENTER_LOCK_DIR`) with
     `python3 tools/enginelock.py hold -- sleep 2` (M283).
+12. A test changes nothing another test imports: a folder it puts on
+    `sys.path` and the modules it imports from there leave when it ends (a
+    fixture restores both), and a test holds that a later `import` of a
+    name 2 folders hold gets the module the code means (M296). Such a
+    test asks the path search (`importlib.machinery.PathFinder`), never
+    `importlib.util.find_spec` or an `import`, which answer from
+    `sys.modules` first; it runs once alone and once after a test that
+    imported the name, and fails in both when the restore is taken out
+    (M300).
 
 Done when: the summary shows no unexpected skips, the engine test is
 green on the runner, and a run with an engine taken away is not GREEN.

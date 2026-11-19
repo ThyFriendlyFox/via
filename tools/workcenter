@@ -2297,7 +2297,9 @@ def export_panel(project: Project, fab: Path, facts: dict) -> tuple[dict, list[s
     Python, then the panel's Gerbers and drill files by kicad-cli. Returns (details, failure lines,
     why it was not judged)."""
     py = KIKIT_PYTHON or venv_python()
-    probe = run([py, "-c", "import kikit.panelize_ui"])
+    # Isolated (-I): `-c` puts the working directory first on the import path, and there a board
+    # repository's own `kikit/` would be imported. panel.py runs isolated too, so both find 1 KiKit.
+    probe = run([py, "-I", "-c", "import kikit.panelize_ui"], cwd=fab)
     if probe.returncode != 0:
         last = (probe.stderr.strip().splitlines() or ["no output"])[-1]
         return {"python": py}, [], f"KiKit does not import under {py} ({last}); set KIKIT_PYTHON"
@@ -2306,7 +2308,7 @@ def export_panel(project: Project, fab: Path, facts: dict) -> tuple[dict, list[s
     gerbers.mkdir(parents=True, exist_ok=True)
     board = folder / f"{project.name}-panel.kicad_pcb"
     proc = run(
-        [py, SRC_DIR / "tools" / "panel.py", project.pcb, board, project.dir / "panel.json"], cwd=folder
+        [py, "-I", SRC_DIR / "tools" / "panel.py", project.pcb, board, project.dir / "panel.json"], cwd=folder
     )
     said = proc.stdout.strip().splitlines()
     if proc.returncode != 0 or not board.is_file() or not said:
@@ -4724,7 +4726,9 @@ def cmd_ci(args) -> int:
     specs = []
     for flow in flows:
         proc = subprocess.run(
-            [venv_python(), "-c", CI_YAML_TO_JSON, str(flow)],
+            # Isolated (-I): `-c` would put the working directory, a board repository, first on the
+            # import path, and its own `yaml.py` would be imported.
+            [venv_python(), "-I", "-c", CI_YAML_TO_JSON, str(flow)],
             capture_output=True,
             text=True,
             timeout=120,
@@ -5203,7 +5207,9 @@ def cmd_placement(args) -> int:
         raise SystemExit(f"placement: {project.dir} has no .kicad_pcb")
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     proc = subprocess.run(
-        [venv_python(), "-s", "-c", PLACEMENT_RUNNER, str(SRC_DIR / "tools"), str(script), str(project.pcb)]
+        # Isolated (-I, which also drops the user's site) and with no bytecode written (-B, as the
+        # environment asks): `-c` would put the working directory first on the import path.
+        [venv_python(), "-IB", "-c", PLACEMENT_RUNNER, str(SRC_DIR / "tools"), str(script), str(project.pcb)]
         + list(args.args),
         capture_output=True,
         text=True,
@@ -5336,19 +5342,50 @@ def cmd_copper(args) -> int:
     return proc.returncode if proc.returncode in (EXIT_PASS, EXIT_FAIL, EXIT_SKIP) else EXIT_FAIL
 
 
-USER_SETTINGS = Path.home() / ".claude" / "settings.json"
+NO_HOME = "no home folder is known (HOME is unset and the user id has no line in /etc/passwd)"
 
 
-def hook_installed(file_name: str, settings: Path = USER_SETTINGS) -> bool:
+def home_folder() -> Path | None:
+    """The user's home folder, or None where none is known: Path.home() raises there, as in a container
+    run as a user id its image never named. Nothing at import asks for it (M299)."""
+    try:
+        return Path.home()
+    except (RuntimeError, KeyError):
+        return None
+
+
+def user_settings() -> Path | None:
+    """The agent host's user-wide settings file, or None with no home folder."""
+    home = home_folder()
+    return home / ".claude" / "settings.json" if home else None
+
+
+def hook_installed(file_name: str, settings: Path | None = None) -> bool:
     """True when the user-wide Claude Code settings run the hook of that file name. A session opened
     outside this repository loads no hook of its own: tools/hooks/install_hooks.py puts them there, by
-    the user's hand (M35, M119)."""
+    the user's hand (M35, M119). With no home folder there are no such settings: False."""
+    settings = settings or user_settings()
+    if settings is None:
+        return False
     try:
         data = json.loads(settings.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return False
     entries = data.get("hooks", {}).get("PreToolUse", []) if isinstance(data, dict) else []
     return any(file_name in h.get("command", "") for e in entries for h in e.get("hooks", []))
+
+
+def hook_row(file_name: str) -> dict:
+    """Doctor's row for 1 hook. A hook is a habit of 1 agent host, not a part of the toolchain: its line
+    says whether it is there (P8 step 1 reads it), and its absence does not degrade Via. With no home
+    folder the path says so and what to set, and the doctor goes on."""
+    settings = user_settings()
+    return {
+        "required": False,
+        "advisory": True,
+        "ok": hook_installed(file_name, settings) if settings else False,
+        "path": str(settings) if settings else f"unknown: {NO_HOME}; set HOME",
+    }
 
 
 def freerouting2_row() -> dict:
@@ -5968,20 +6005,8 @@ def cmd_doctor(args) -> int:
             "ok": (SRC_DIR / "WORKCENTER.md").is_file(),
             "path": str(SRC_DIR / "WORKCENTER.md"),
         },
-        # A hook is a habit of 1 agent host, not a part of the toolchain: its line says whether it is
-        # there (P8 step 1 reads it), and its absence does not degrade Via.
-        "no-cd hook": {
-            "required": False,
-            "advisory": True,
-            "ok": hook_installed("no_cd.py"),
-            "path": str(USER_SETTINGS),
-        },
-        "test hook": {
-            "required": False,
-            "advisory": True,
-            "ok": hook_installed("no_script_test_edits.py"),
-            "path": str(USER_SETTINGS),
-        },
+        "no-cd hook": hook_row("no_cd.py"),
+        "test hook": hook_row("no_script_test_edits.py"),
         "kistack": {
             "required": False,
             "ok": (KISTACK_DIR / "skills" / "layout-placement" / "scripts").is_dir(),

@@ -24,7 +24,9 @@ gates ran. Nothing is posted to the pull request.
 
 Save this as `.github/workflows/gates.yml` in the board repository. Change
 `projects` to the folders that hold a `.kicad_pro`. Here `v1` is a board
-gated without `--strict`, and `v1/display` a board gated with it.
+gated without `--strict`, and `v1/display` a board gated with it. Replace
+every `<sha>` with 1 full commit SHA of Via's `main` that holds
+`.github/workflows/board-gates.yml`.
 
 ```yaml
 name: Gates
@@ -35,26 +37,34 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-  packages: read
 jobs:
   gates:
-    uses: ThyFriendlyFox/via/.github/workflows/board-gates.yml@main
+    uses: ThyFriendlyFox/via/.github/workflows/board-gates.yml@<sha>
     with:
       projects: '["v1"]'
+      workcenter-ref: <sha>
   gates-strict:
-    uses: ThyFriendlyFox/via/.github/workflows/board-gates.yml@main
+    uses: ThyFriendlyFox/via/.github/workflows/board-gates.yml@<sha>
     with:
       projects: '["v1/display"]'
       strict: true
+      workcenter-ref: <sha>
 ```
+
+Pin the same SHA in both places. The `uses:` ref picks the workflow's
+text; `workcenter-ref` picks the tools it runs. The 2 do not follow each
+other: a `uses:` line pinned to a commit still runs the tools of `main`
+when `workcenter-ref` is left out. `main` moves, and GitHub's hardening
+guide pins a third party's workflow to a full commit SHA. To take a newer
+Via, change both SHAs in 1 commit.
 
 `strict` holds for every project of 1 call. Gate each project as its own
 contract says: the projects gated with `--strict` go in 1 call with
 `strict: true`, the others in a second call. 1 call is enough when all of
 them are gated the same way.
 
-`permissions` must give `packages: read`: the called job asks for it, and
-GitHub refuses a called job more than its caller gives.
+`permissions` gives `contents: read` alone. The image is public, so the
+job pulls it with no login and holds no token of the job.
 
 ## Inputs
 
@@ -63,7 +73,7 @@ GitHub refuses a called job more than its caller gives.
 | `projects` | `["."]` | The project folders, as a JSON list. 1 job each. |
 | `strict` | `false` | `true` passes `--strict`: a warning fails the gate. |
 | `workcenter-repository` | `ThyFriendlyFox/via` | The repository of Via to run. Its owner also owns the image. |
-| `workcenter-ref` | `main` | Via's branch, tag or commit. A tag such as `v0.1.0` holds the gates still while `main` moves. |
+| `workcenter-ref` | `main` | The commit, branch or tag of Via whose tools run. It does not follow the `uses:` ref: pass the same SHA. |
 | `use-image` | `true` | `false` never asks the registry: always install.sh. |
 | `apt-ubuntu-archive` | `true` | `false` leaves the runner's apt mirror as it is on the install path. |
 
@@ -71,16 +81,16 @@ GitHub refuses a called job more than its caller gives.
 
 1. The job names the image of the toolchain files at `workcenter-ref`:
    `ghcr.io/<owner>/via:tc-<16 digits>` (`tools/image.py tag`).
-2. It logs in to ghcr.io with the job's token and pulls that image. Pulled:
-   the gates run inside it, as the runner's user, with Via's
-   checkout at `.via`.
+2. It pulls that image, with no login. Pulled: the gates run inside it,
+   as the runner's user, with Via's checkout at `.via`.
 3. Not pulled: the install path. `tools/ci/apt_archive.sh` turns apt to
    Ubuntu's own archive, then `install.sh` installs the toolchain with CI's
    2 apt bounds (120 s per index update, 570 s for the download). CI's own
    install path does the same: the runner's regional mirror crawled to the
    download's bound in 2 CI runs, and Ubuntu's own archive did not
-   (`ee-agent-kit/CI.md`, "Toolchain step"). The install path takes about
-   2 to 10 minutes before the gates start.
+   (`ee-agent-kit/CI.md`, "Toolchain step"). CI's install step took
+   1 min 29 s on Ubuntu's own archive in CI run 44444183056 (the same
+   section). No run of this workflow has timed it yet.
 
 The image path is the normal path. The package `ghcr.io/thyfriendlyfox/via`
 is public: on 2026-11-19 the registry gave its tag list and the manifest
@@ -110,7 +120,7 @@ the runner's user`.
    | The line says | It means |
    |---|---|
    | `where: image: the registry gave ghcr.io/...` | The gates run in the image. Nothing is installed. |
-   | `where: install: the registry gave no ghcr.io/...: <docker's last line>` | The image could not be pulled: `manifest unknown` when no image of that toolchain was built, `denied` or `unauthorized` when the registry refuses the token. The install path runs. |
+   | `where: install: the registry gave no ghcr.io/...: <docker's last line>` | The image could not be pulled: `manifest unknown` when no image of that toolchain was built, `denied` or `unauthorized` when the package is not public. The install path runs. |
    | `where: install: the input use-image is false` | The caller asked for the install path. |
 
 3. Read the step `workcenter gates`. Its last line is the verdict:
@@ -121,13 +131,24 @@ the runner's user`.
      the install step's log for the engine it names.
    - `RED: <project>: DRC not judged: no board in project; ...`: see
      "A board that is not there is red" below. The check is red.
+   - `RED: <project>: the gates exited 0, but their report holds no GREEN
+     line: nothing was judged`: exit code 0 alone is not green. The check
+     is red.
+   - `RED: the project name ... is not a folder the gates can be given`:
+     the name in `projects` is empty or holds a control character. The
+     project's name goes to the gates after `--`, so a folder named like an
+     option (`--help`) is gated as a folder.
 4. Open the run's summary page. Each project has its gates table, its
    decks when it has `sim/`, and a `Where:` line. A project with no table
    says `No gates table for <project>`: the gates step stopped before the
-   gates ran; its log says why.
+   gates ran; its log says why. A check that is red though its table says
+   GREEN has the line `This check is red: ...` under the table, with 1
+   line per gate that judged nothing.
 5. Make the check required: the repository's Settings, Branches, the rule
-   for `main`, Require status checks, `gates / gates <project>` for each
-   project.
+   for `main`, Require status checks. Each call's checks carry its job's
+   name: `gates / gates <project>` for each project of the call `gates`,
+   and `gates-strict / gates <project>` for each project of the call
+   `gates-strict`.
 
 ## A board that is not there is red
 
@@ -144,6 +165,46 @@ RED: v1: DRC not judged: no board in project; this check is green only when ERC,
 This holds with and without `strict`. SIM at `skip` (`no sim/*.cir in
 project`) stays green: the board was judged, and the summary's table shows
 the row.
+
+## The pull request's own files run
+
+The check runs code from the pull request, so a fork's check is only as
+trustworthy as its diff. A fork's green check proves nothing until a
+maintainer has read the whole diff. These files of a board repository can
+run code during the gates:
+
+- `.github/workflows/`: on a pull request GitHub runs the workflow files of
+  the pull request's head, so a pull request can change the caller itself,
+  and with it every step and input.
+- `sim/*.cir`: ngspice runs a deck's `shell` lines with `/bin/sh` during
+  SIM; `source` runs the commands of another file; `codemodel` and
+  `pre_osdi` load a shared library, which is machine code.
+- Every file a deck reads in with `.include` or `.lib`, wherever it is in
+  the repository: its lines are the deck's lines.
+- `sim/.spiceinit`: ngspice reads it before the deck, and the gates copy
+  it into each run folder. The gates
+  cannot start ngspice without start-up files: they write a `.spiceinit`
+  of their own that sets a model's mode, and a deck folder's own
+  `.spiceinit` is a documented setting (`WORKCENTER.md`).
+
+What the gates refuse or never import:
+
+- `panel.json`: a KiKit preset can name Python (a section's `code`, a
+  text's `plugin`, `post.script`). The gates refuse such a preset on 1
+  line, red, before KiKit reads it.
+- Python modules in the repository, such as a `kikit/` folder, `pcbnew.py`
+  or `sitecustomize.py`: a module of the board's folder or of the working
+  directory is never imported. Via starts its probes (`python -c`) and
+  KiKit isolated (`-I`); its other Python runs are scripts of `.via/tools`,
+  whose own folder is the one on the import path.
+- The KiCad files (`.kicad_pro`, `.kicad_sch`, `.kicad_pcb`, the library
+  tables, a `.kicad_dru`), `parts.csv` and the `sim/` JSON files are read
+  as data: Via starts no code they name.
+
+In the image the gates run with `--network none`, with `.via` mounted
+read-only, and with only `board-gates/` of the runner's temp folder
+mounted, where the report goes. On the install path they run on the runner
+as its user, who has sudo, and nothing holds them.
 
 ## What the workflow does not do
 
