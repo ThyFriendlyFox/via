@@ -198,7 +198,8 @@ def test_an_unknown_design_fab_is_refused():
 
 # ------------------------------------------------- design --rules-only
 
-# A design file the command line builds: a fab named, no parts, so nothing needs KiCad's libraries.
+# A design file the command line builds: a fab named, no parts; writing it still loads KiCad's power
+# symbols, so every test that builds it needs the libraries.
 RULES_DESIGN = """\
 import uuid
 import kicadgen
@@ -247,6 +248,7 @@ def project_bytes(folder: Path) -> dict[str, bytes]:
     return {p.name: p.read_bytes() for p in sorted(folder.iterdir()) if p.is_file()}
 
 
+@needs_libs
 def test_rules_only_writes_the_older_header_again_and_nothing_else(tmp_path):
     design = rules_project(tmp_path)
     dru = tmp_path / "t.kicad_dru"
@@ -268,6 +270,7 @@ def test_rules_only_writes_the_older_header_again_and_nothing_else(tmp_path):
     ]
 
 
+@needs_libs
 def test_rules_only_writes_nothing_when_the_file_is_already_the_designs(tmp_path):
     design = rules_project(tmp_path)
     dru = tmp_path / "t.kicad_dru"
@@ -280,6 +283,7 @@ def test_rules_only_writes_nothing_when_the_file_is_already_the_designs(tmp_path
     assert (dru.stat().st_ino, dru.stat().st_mtime_ns) == (inode, mtime)  # not even written over
 
 
+@needs_libs
 def test_rules_only_refuses_a_rule_file_changed_beyond_its_header(tmp_path):
     design = rules_project(tmp_path)
     dru = tmp_path / "t.kicad_dru"
@@ -298,6 +302,7 @@ def test_rules_only_refuses_a_rule_file_changed_beyond_its_header(tmp_path):
     assert project_bytes(tmp_path) == before
 
 
+@needs_libs
 def test_rules_only_refuses_a_header_that_names_another_source(tmp_path):
     design = rules_project(tmp_path)
     dru = tmp_path / "t.kicad_dru"
@@ -310,6 +315,7 @@ def test_rules_only_refuses_a_header_that_names_another_source(tmp_path):
     assert project_bytes(tmp_path) == before
 
 
+@needs_libs
 def test_rules_only_refuses_a_design_without_a_fab_and_a_missing_rule_file(tmp_path):
     plain = tmp_path / "plain"
     plain.mkdir()
@@ -334,6 +340,7 @@ def test_rules_only_refuses_a_design_without_a_fab_and_a_missing_rule_file(tmp_p
 
 
 @pytest.mark.parametrize("other", ["--route", "--check", "--seed", "--order"])
+@needs_libs
 def test_rules_only_goes_with_no_flag_that_writes_or_compares_the_board(tmp_path, other):
     design = rules_project(tmp_path)
     more = [other, str(tmp_path / "t.kicad_pcb")] if other == "--seed" else [other]
@@ -343,6 +350,7 @@ def test_rules_only_goes_with_no_flag_that_writes_or_compares_the_board(tmp_path
     assert project_bytes(tmp_path) == before
 
 
+@needs_libs
 def test_rules_only_json_names_the_state(tmp_path):
     design = rules_project(tmp_path)
     proc = rules_only(design, "--json")
@@ -378,6 +386,7 @@ def older_rule_file(folder: Path) -> tuple[Path, str]:
     return dru, written
 
 
+@needs_libs
 def test_rules_only_keeps_the_mode_of_the_file_it_writes_again(tmp_path):
     design = rules_project(tmp_path)
     dru, written = older_rule_file(tmp_path)
@@ -388,6 +397,7 @@ def test_rules_only_keeps_the_mode_of_the_file_it_writes_again(tmp_path):
     assert dru.stat().st_mode & 0o777 == 0o640  # a temporary file is made 0600; the old mode is kept
 
 
+@needs_libs
 def test_rules_only_writes_the_target_of_a_linked_rule_file(tmp_path):
     """A rule file may be a link to a shared one: `design` writes through the link, and so does this."""
     (tmp_path / "board").mkdir()
@@ -404,6 +414,7 @@ def test_rules_only_writes_the_target_of_a_linked_rule_file(tmp_path):
     assert sorted(p.name for p in tmp_path.iterdir()) == ["board", "shared.kicad_dru"]
 
 
+@needs_libs
 def test_rules_only_leaves_the_file_and_no_other_when_the_rename_fails(tmp_path, monkeypatch, capsys):
     design = rules_project(tmp_path)
     dru, _ = older_rule_file(tmp_path)
@@ -426,6 +437,7 @@ def test_rules_only_leaves_the_file_and_no_other_when_the_rename_fails(tmp_path,
     assert out[0].endswith("No space left on device; it is as it was")
 
 
+@needs_libs
 def test_rules_only_refuses_an_unknown_fab_in_1_line(tmp_path):
     design = rules_project(tmp_path)
     design.write_text(design.read_text(encoding="utf-8").replace(SIERRA, "nofab"), encoding="utf-8")
@@ -440,6 +452,7 @@ def test_rules_only_refuses_an_unknown_fab_in_1_line(tmp_path):
     assert project_bytes(tmp_path) == before
 
 
+@needs_libs
 def test_rules_only_json_names_the_lines_written_and_differing(tmp_path):
     design = rules_project(tmp_path)
     dru, written = older_rule_file(tmp_path)
@@ -456,6 +469,7 @@ def test_rules_only_json_names_the_lines_written_and_differing(tmp_path):
     assert (data["state"], data["lines"], data["exit"]) == ("differs", [first], 1)
 
 
+@needs_libs
 def test_rules_only_names_12_lines_and_the_json_names_them_all(tmp_path):
     design = rules_project(tmp_path)
     dru, written = older_rule_file(tmp_path)
