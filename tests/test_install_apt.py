@@ -35,10 +35,13 @@ from __future__ import annotations
 
 import ast
 import functools
+import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -263,6 +266,7 @@ def folder(tmp_path: Path, answers: dict | None = None, xawt: bool = True) -> di
         jvm.mkdir(parents=True)
         (jvm / "libawt_xawt.so").write_text("", encoding="utf-8")
     (tmp_path / "tmp").mkdir()
+    (tmp_path / "archives" / "partial").mkdir(parents=True, exist_ok=True)
     (tmp_path / "sources.list.d").mkdir(exist_ok=True)
     (tmp_path / "calls").write_text("", encoding="utf-8")
     return {
@@ -278,6 +282,7 @@ def folder(tmp_path: Path, answers: dict | None = None, xawt: bool = True) -> di
         "OS_RELEASE": str(tmp_path / "os-release"),
         "JVM_DIR": str(tmp_path / "jvm"),
         "CA_BUNDLE": str(tmp_path / "ca-certificates.crt"),
+        "APT_ARCHIVES": str(tmp_path / "archives"),
     }
 
 
@@ -944,8 +949,8 @@ def test_a_download_that_does_not_end_is_stopped_at_its_bound(tmp_path):
     (bounded,) = [c for c in of(calls, "timeout") if "--download-only" in c]
     assert bounded.startswith("timeout 9 apt-get install")
     assert [c for c in installs(calls) if "--download-only" not in c] == []
-    stop = cut_stop(9, 1, "nothing")
-    assert err.splitlines()[-2:] == [stop, CUT]
+    assert re.fullmatch(cut_stop(9, 1, "nothing"), err.splitlines()[-2]), err
+    assert err.splitlines()[-1] == CUT
 
 
 def test_a_cut_download_names_the_file_that_failed(tmp_path):
@@ -963,15 +968,29 @@ esac
     code, out, err, _ = run(tmp_path, {"apt-get": apt, "timeout": cut}, env=CI)
     assert code == 1
     assert f"[apt] {err_line}" in out
-    assert err.splitlines()[-2:] == [cut_stop(570, 1, err_line), CUT]
+    seen = "hosts asked: ppa.launchpadcontent.net (1 Get, 0 Ign, 1 Err); 0 B arrived in {S} s"
+    seen += ", of a size apt did not name"
+    assert re.fullmatch(cut_stop(570, 1, err_line, seen=seen), err.splitlines()[-2]), err
+    assert err.splitlines()[-1] == CUT
 
 
-def cut_stop(bound: int, passes: int, said: str, tries: int = 5) -> str:
-    """The stop when APT_DOWNLOAD_TIMEOUT ends: the bound, the passes made and apt's line."""
+# What the stops of a bounded download say they saw when apt asked no host and nothing arrived. `{S}`
+# stands for the whole seconds the shell counted, which a test cannot fix.
+NOTHING_SEEN = "no host was asked for a file; 0 B arrived in {S} s, of a size apt did not name"
+
+
+def pattern(text: str) -> str:
+    """`text` as a regular expression, each `{S}` a whole number of seconds."""
+    return re.escape(text).replace(re.escape("{S}"), r"[0-9]+")
+
+
+def cut_stop(bound: int, passes: int, said: str, tries: int = 5, seen: str = NOTHING_SEEN) -> str:
+    """The stop when APT_DOWNLOAD_TIMEOUT ends, as a pattern: the bound, the passes made, what arrived
+    from which hosts (run 44506767788 said only `apt said: nothing`), and apt's line."""
     made = "1 pass" if passes == 1 else f"{passes} passes"
-    return (
+    return pattern(
         f"[install] ERROR: apt: the download did not end within {bound} s (APT_DOWNLOAD_TIMEOUT), the bound "
-        f"of all its passes and waits, after {made} of {tries}; apt said: {said}"
+        f"of all its passes and waits, after {made} of {tries}; {seen}; apt said: {said}"
     )
 
 
@@ -1153,7 +1172,301 @@ shift; exec "$@\""""
     code, out, err, calls = run(tmp_path, answers, env={"APT_DOWNLOAD_TIMEOUT": "60"})
     assert code == 1
     assert len(bounds_of(calls)) == 2 and of(calls, "sleep") == ["sleep 20"]
-    assert err.splitlines()[-2:] == [cut_stop(60, 2, "nothing"), CUT]
+    assert re.fullmatch(cut_stop(60, 2, "nothing"), err.splitlines()[-2]), err
+    assert err.splitlines()[-1] == CUT
+
+
+# ---------------------------------------------------------------- the watch of a pass
+# CI run 44506767788 (job 135500622487, 2026-11-19): the download's 1 pass asked
+# us-east-2.ec2.archive.ubuntu.com, which the probe had measured at 2468910 bytes/s; 26.6 MB of its
+# files arrived in 550.7 s (48.3 kB/s), and the bound of 570 s ended the pass with `apt said: nothing`.
+# The stand-in apt-get below writes bytes into the stand-in archives folder (APT_ARCHIVES), as apt
+# does: a file grows in partial/. APT_WATCH_WINDOW=1 stands for CI's 120 s, so a test takes seconds.
+NEED = "Need to get 10.0 MB of archives."
+SLOW_GET = "Get:5 http://slow.example/ubuntu noble/main amd64 big amd64 1 [10.0 MB]"
+FAST_GET = "Get:5 http://fast.example/ubuntu noble/main amd64 big amd64 1 [10.0 MB]"
+WATCH = {"APT_DOWNLOAD_TIMEOUT": "8", "APT_DOWNLOAD_WAIT": "1", "APT_WATCH_WINDOW": "1"}
+
+
+def trickle(gets: tuple = (SLOW_GET,), chunk: int = 1000, ticks: int = 400, then: str = "exit 1") -> str:
+    """A pass that prints apt's size and its Get lines, then writes `chunk` bytes into partial/ every
+    0.05 s, `ticks` times (400: 20 s, so that no stand-in outlives a failed test by long), then `then`."""
+    printed = "; ".join(f"echo {shlex.quote(g)}" for g in gets)
+    return f"""echo {shlex.quote(NEED)}; {printed}
+        echo "$$" >> "$STUB_DIR/apt-pids"
+        for _ in $(seq {ticks}); do printf '%0{chunk}d' 0 >> "$APT_ARCHIVES/partial/big.deb"; /bin/sleep 0.05; done
+        {then}"""
+
+
+def served(get: str = FAST_GET) -> str:
+    """A pass that gets the whole 10 MB at once and ends with 0."""
+    return f"""echo {shlex.quote(NEED)}; echo {shlex.quote(get)}
+        head -c 10000000 /dev/zero > "$APT_ARCHIVES/big.deb"; exit 0"""
+
+
+def by_pass(*passes: str) -> str:
+    """An apt-get whose n-th download runs the n-th of `passes`, and any later one the last."""
+    arms = "\n".join(f"      {i})\n        {p} ;;" for i, p in enumerate(passes, 1))
+    return f"""case "$*" in
+  *--download-only*)
+    d="$(grep -c -- '^apt-get .*--download-only' "$STUB_DIR/calls")"
+    case "$d" in
+{arms}
+      *)
+        {passes[-1]} ;;
+    esac ;;
+esac
+{DEFAULTS["apt-get"]}"""
+
+
+def alive(tmp_path: Path, within: float = 3.0) -> list[int]:
+    """The stand-in apt-gets still running after `within` s: none may be left behind."""
+    listed = tmp_path / "apt-pids"
+    pids = [int(p) for p in listed.read_text().split()] if listed.exists() else []
+
+    def running(pid: int) -> bool:
+        try:
+            state = Path(f"/proc/{pid}/status").read_text()
+        except OSError:
+            return False
+        return "\nState:\tZ" not in state
+
+    deadline = time.monotonic() + within
+    while any(running(p) for p in pids) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    return [p for p in pids if running(p)]
+
+
+SLOW_LINE = (
+    r"\[install\] apt: download pass 1 of 5 was too slow to finish: [0-9.]+ kB of 10\.0 MB arrived in "
+    r"[0-9]+ s, [0-9.]+ kB/s over the last 1 s from slow\.example; at that rate the rest needs [0-9]+ s, "
+    r"and [0-9]+ s were left; waiting 1 s"
+)
+
+
+def test_a_pass_too_slow_to_finish_is_ended_and_the_next_pass_starts(tmp_path):
+    """R1, R2: pass 1 trickles 20 kB/s of a 10 MB need into partial/ and would never end; the watch ends
+    it after 1 window, says what it saw, and pass 2, after the wait, gets the file. Within the bound;
+    no stand-in apt-get is left running."""
+    began = time.monotonic()
+    code, out, err, calls = run(tmp_path, {"apt-get": by_pass(trickle(), served())}, env=WATCH)
+    took = time.monotonic() - began
+    assert code == 0, err
+    assert len(downloads(calls)) == 2 and of(calls, "sleep") == ["sleep 1"]
+    assert took < 8, took
+    (line,) = [x for x in out.splitlines() if " was too slow to finish" in x]
+    assert re.fullmatch(SLOW_LINE, line), line
+    assert f"[apt] {NEED}" in out.splitlines()
+    assert out.splitlines()[-1] == "[install] apt: done; kicad-cli 10.0.8"
+    assert alive(tmp_path) == []
+
+
+def test_a_fast_start_does_not_hide_a_slow_pass(tmp_path):
+    """Run 44506767788: the PPA's 4 files (60.5 MB) started in the first 3 s beside the slow host. Here
+    5 MB arrive at once, then 20 kB/s: the rate is that of the last window, not of the whole pass, so the
+    pass ends soon after 1 window (the whole pass's rate would keep it 4 s more)."""
+    burst = trickle().replace(
+        'echo "$$" >> "$STUB_DIR/apt-pids"',
+        'echo "$$" >> "$STUB_DIR/apt-pids"; head -c 5000000 /dev/zero >> "$APT_ARCHIVES/partial/big.deb"',
+    )
+    began = time.monotonic()
+    code, out, err, calls = run(tmp_path, {"apt-get": by_pass(burst)}, env={**WATCH, "APT_DOWNLOAD_TRIES": "1"})
+    took = time.monotonic() - began
+    assert code == 1
+    assert " was too slow to finish " in err.splitlines()[-2]
+    assert took < 3.5, took
+    assert alive(tmp_path) == []
+
+
+def test_files_already_in_the_folder_are_not_progress(tmp_path):
+    """apt's archives folder holds 10 MB from an earlier run: only the bytes that arrive in this pass
+    count, so a slow pass is still ended."""
+    (tmp_path / "archives").mkdir()
+    (tmp_path / "archives" / "old.deb").write_bytes(b"\0" * 10_000_000)
+    code, out, err, calls = run(tmp_path, {"apt-get": by_pass(trickle(), served())}, env=WATCH)
+    assert code == 0, err
+    (line,) = [x for x in out.splitlines() if " was too slow to finish" in x]
+    assert re.fullmatch(SLOW_LINE, line), line
+    assert alive(tmp_path) == []
+
+
+STEP |= {"slow-pass"}
+
+
+@pytest.mark.parametrize("ends", [0, 3], ids=["the command ends with 0", "the command fails"])
+def test_after_a_slow_pass_the_named_command_runs_with_its_hosts_before_the_next(tmp_path, ends):
+    """R2: APT_SLOW_PASS_COMMAND (CI: a mode of tools/ci/apt_archive.sh that puts the slow host last in
+    the mirror list) runs between the 2 passes with the hosts of the slow pass, the most files first;
+    pass 2 sees what it changed. A command that fails is said, and the next pass runs all the same."""
+    hook = f'printf "%s\\n" "$*" >> "$STUB_DIR/hooked"; echo "[apt-archive] moved"; exit {ends}'
+    second = f'[[ -e "$STUB_DIR/hooked" ]] && echo seen >> "$STUB_DIR/second"; {served()}'
+    # The PPA's 1 file comes first, slow.example's 2 after it: slow.example served more files.
+    gets = ("Get:172 https://ppa.launchpadcontent.net/x [48.0 MB]", SLOW_GET, SLOW_GET.replace("Get:5", "Get:6"))
+    two = trickle(gets)
+    env = {**WATCH, "APT_SLOW_PASS_COMMAND": "slow-pass --slow"}
+    code, out, err, calls = run(tmp_path, {"apt-get": by_pass(two, second), "slow-pass": hook}, env=env)
+    assert code == 0, err
+    steps = [c.split(" ", 1)[0] + (" download" if "--download-only" in c else "") for c in calls]
+    steps = [s for s in steps if s in ("timeout download", "slow-pass", "sleep")]
+    assert steps == ["timeout download", "slow-pass", "sleep", "timeout download"]
+    assert of(calls, "slow-pass") == ["slow-pass --slow slow.example ppa.launchpadcontent.net"]
+    assert (tmp_path / "second").read_text() == "seen\n"
+    lines = out.splitlines()
+    said = "[install] apt: APT_SLOW_PASS_COMMAND: slow-pass --slow slow.example ppa.launchpadcontent.net"
+    assert said in lines and "[apt-archive] moved" in lines
+    failed = (
+        "[install] WARN: apt: APT_SLOW_PASS_COMMAND ended with exit code 3; the next pass asks the hosts "
+        "in the order they had"
+    )
+    assert (failed in err.splitlines()) == (ends != 0)
+    assert alive(tmp_path) == []
+
+
+def test_without_the_variable_no_command_runs_and_the_next_pass_asks_again(tmp_path):
+    """R2 on a person's computer, or a list of 1 host: no command is named; the slow pass ends, and the
+    next asks again (apt keeps a finished file and continues a partial one: apt 2.8.3,
+    apt-pkg/acquire-item.cc, pkgAcqArchive::pkgAcqArchive)."""
+    code, out, err, calls = run(tmp_path, {"apt-get": by_pass(trickle(), served(SLOW_GET))}, env=WATCH)
+    assert code == 0, err
+    assert len(downloads(calls)) == 2
+    assert "APT_SLOW_PASS_COMMAND" not in out + err
+
+
+def slow_stop(passes: int, last: int, bound: int, tries: int = 5) -> str:
+    """The stop after a slow pass that no other pass can follow, as a pattern (R3)."""
+    made = "1 pass" if passes == 1 else f"{passes} passes"
+    return (
+        rf"\[install\] ERROR: apt: the download stopped after {made} of {tries}: pass {last} was too slow "
+        rf"to finish within what was left of APT_DOWNLOAD_TIMEOUT={bound} s; hosts asked: slow\.example "
+        rf"\({passes} Get, 0 Ign, 0 Err\); [0-9.]+ kB of 10\.0 MB arrived in [0-9]+ s, [0-9.]+ kB/s; "
+        r"apt said: nothing"
+    )
+
+
+@pytest.mark.parametrize(
+    ("env", "passes"),
+    [({"APT_DOWNLOAD_TRIES": "2"}, 2), ({"APT_DOWNLOAD_TIMEOUT": "3", "APT_DOWNLOAD_WAIT": "2"}, 1)],
+    ids=["the last pass", "no time for the wait"],
+)
+def test_a_slow_pass_that_no_pass_can_follow_stops_with_what_arrived_from_whom(tmp_path, env, passes):
+    """R3: the stop names the hosts asked with their Get, Ign and Err lines, the bytes that arrived of
+    the bytes apt named, the time and the rate, and the passes; then the advice for a slow line."""
+    full = {**WATCH, **env}
+    code, out, err, calls = run(tmp_path, {"apt-get": by_pass(trickle())}, env=full)
+    assert code == 1
+    assert len(downloads(calls)) == passes
+    lines = err.splitlines()
+    assert re.fullmatch(slow_stop(passes, passes, int(full["APT_DOWNLOAD_TIMEOUT"]), int(full.get("APT_DOWNLOAD_TRIES", 5))), lines[-2]), lines[-2]
+    assert lines[-1] == CUT
+    assert alive(tmp_path) == []
+
+
+def test_a_cut_at_the_bound_says_what_arrived_from_whom(tmp_path):
+    """R3: the bound ends a pass the watch kept (a window longer than the bound): the stop says the
+    hosts, the bytes of the bytes apt named, and the rate, where run 44506767788 said `apt said: nothing`."""
+    env = {"APT_DOWNLOAD_TIMEOUT": "2", "APT_WATCH_WINDOW": "999"}
+    cut = (
+        'if [[ "$*" == *--download-only* ]]; then shift; "$@" & p=$!; /bin/sleep 1.5; kill "$p"; '
+        'wait "$p"; exit 124; fi; shift; exec "$@"'
+    )
+    code, out, err, _ = run(tmp_path, {"apt-get": by_pass(trickle()), "timeout": cut}, env=env)
+    assert code == 1
+    seen = r"hosts asked: slow\.example \(1 Get, 0 Ign, 0 Err\); [0-9.]+ kB of 10\.0 MB arrived in [0-9]+ s"
+    stop = (
+        r"\[install\] ERROR: apt: the download did not end within 2 s \(APT_DOWNLOAD_TIMEOUT\), the bound "
+        rf"of all its passes and waits, after 1 pass of 5; {seen}(, [0-9.]+ kB/s)?; apt said: nothing"
+    )
+    assert re.fullmatch(stop, err.splitlines()[-2]), err
+    assert alive(tmp_path) == []
+
+
+def test_a_healthy_pass_is_not_cut(tmp_path):
+    """R5: 0.3 s before the first byte (apt reads its lists and connects), 1 big file (3 MB into
+    partial/ at 1 MB/s), a pause of half a window (APT_FILE_TIMEOUT is half of CI's window: a stall apt
+    ends itself), then 2 windows with nothing to fetch (apt's own work after the last byte): 1 pass,
+    no cut."""
+    grow = "for _ in $(seq {n}); do printf '%050000d' 0 >> \"$APT_ARCHIVES/partial/big.deb\"; /bin/sleep 0.05; done"
+    apt = (
+        'echo "Need to get 3000 kB of archives."; echo "Get:5 http://fast.example/ubuntu big [3000 kB]"; '
+        'echo "$$" >> "$STUB_DIR/apt-pids"; /bin/sleep 0.3; '
+        + grow.format(n=20)
+        + "; /bin/sleep 0.5; "
+        + grow.format(n=40)
+        + '; mv "$APT_ARCHIVES/partial/big.deb" "$APT_ARCHIVES/big.deb"; /bin/sleep 2; exit 0'
+    )
+    env = {"APT_DOWNLOAD_TIMEOUT": "10", "APT_WATCH_WINDOW": "1"}
+    code, out, err, calls = run(tmp_path, {"apt-get": by_pass(apt)}, env=env)
+    assert code == 0, err
+    assert len(downloads(calls)) == 1
+    assert " was too slow" not in out + err
+    assert out.splitlines()[-1] == "[install] apt: done; kicad-cli 10.0.8"
+
+
+def test_with_no_bound_nothing_watches_a_slow_pass(tmp_path):
+    """R5: a person's computer sets no APT_DOWNLOAD_TIMEOUT: a slow line that makes progress finishes, as
+    before; apt's size line is shown."""
+    apt = by_pass(trickle(ticks=40, then="exit 0"))
+    code, out, err, calls = run(tmp_path, {"apt-get": apt}, env={"APT_WATCH_WINDOW": "1"})
+    assert code == 0, err
+    assert len(downloads(calls)) == 1 and of(calls, "timeout") == []
+    assert " was too slow" not in out + err
+    assert f"[apt] {NEED}" in out.splitlines()
+
+
+def test_a_signal_to_the_script_ends_the_watched_apt(tmp_path):
+    """R5: Ctrl-C (SIGINT to the script's process group) while a watched pass runs. GNU timeout puts
+    itself and apt in a process group of their own (coreutils' timeout.c calls setpgid unless
+    --foreground), so Ctrl-C does not reach them; the stand-in timeout does the same with setsid. The
+    watch, in the script's group, gets the signal and ends the command it started."""
+    answers = {"apt-get": by_pass(trickle()), "timeout": 'shift; exec /usr/bin/setsid "$@"'}
+    env = {**folder(tmp_path, answers), "APT_DOWNLOAD_TIMEOUT": "60"}
+    env["APT_WATCH_WINDOW"] = "100"
+    proc = subprocess.Popen(
+        [BASH, "-c", script(INSTALL, "step_apt")],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+        cwd=tmp_path,
+        start_new_session=True,
+    )
+    deadline = time.monotonic() + 10
+    while not (tmp_path / "apt-pids").exists() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert (tmp_path / "apt-pids").exists()
+    time.sleep(0.3)
+    os.killpg(proc.pid, signal.SIGINT)
+    proc.communicate(timeout=20)
+    assert proc.returncode != 0
+    assert alive(tmp_path) == []
+
+
+def test_the_watch_ends_the_slow_pass_of_run_44506767788_in_time_for_a_second_host():
+    """R1's numbers, from the run and CI's arithmetic. The watch ends a pass when the rate of its last
+    APT_WATCH_WINDOW s, kept up, would not fetch the rest of what apt named within what is left of the
+    bound. Run 44506767788 (run-facts): us-east-2.ec2 completed 26600424 bytes in 550.7 s; the PPA's 4
+    files were 60.473 MB (when they ended is not in the log, so all of them may fall in the first window).
+    A passing run fetched 281.1 MB in 218 s (job 134889089620). CI: APT_DOWNLOAD_TIMEOUT=570.
+    1. With the PPA's bytes in the first window, the second window holds only the slow host's: the watch
+       ends the pass by 2 windows at the latest.
+    2. The next pass, on a host as fast as the passing run's, fetches all 281.1 MB in what is left after
+       the wait.
+    3. A healthy pass is never ended, even with a stall of APT_FILE_TIMEOUT s (apt's own bound on a
+       silent server) inside the window, at any second of the bound."""
+    window = assigned("APT_WATCH_WINDOW")
+    stall = assigned("APT_FILE_TIMEOUT", env=False)
+    bound = int(ci_bounds()[0]["APT_DOWNLOAD_TIMEOUT"])
+    wait = assigned("APT_DOWNLOAD_WAIT")
+    size, healthy = 281.1e6, 281.1e6 / 218
+    slow, ppa = 26600424 / 550.7, 60.473e6
+    cut = 2 * window
+    assert slow * (bound - cut) < size - ppa - slow * cut
+    assert size / healthy <= bound - cut - wait
+    assert stall < window
+    for t in range(window, bound):
+        rate = healthy * (window - stall) / window
+        rest = size - healthy * (t - stall)
+        assert rest <= 0 or rate * (bound - t) >= rest, t
 
 
 def test_the_next_pass_starts_only_after_the_wait_has_ended(tmp_path):
@@ -1238,6 +1551,10 @@ def test_the_passes_lose_only_the_time_they_took(tmp_path):
         ("APT_DOWNLOAD_WAIT", "1000"),
         ("APT_DOWNLOAD_WAIT", "1m"),
         ("APT_DOWNLOAD_WAIT", "007"),
+        ("APT_WATCH_WINDOW", "0"),
+        ("APT_WATCH_WINDOW", "1000"),
+        ("APT_WATCH_WINDOW", "2m"),
+        ("APT_WATCH_WINDOW", "060"),
     ],
 )
 def test_a_bad_number_of_passes_or_wait_stops_before_anything_runs(tmp_path, name, value):
@@ -1245,6 +1562,7 @@ def test_a_bad_number_of_passes_or_wait_stops_before_anything_runs(tmp_path, nam
     unit, top, default = {
         "APT_DOWNLOAD_TRIES": ("passes", "1 to 99", "5"),
         "APT_DOWNLOAD_WAIT": ("seconds", "0 to 999", "20"),
+        "APT_WATCH_WINDOW": ("seconds", "1 to 999", "120"),
     }[name]
     for skip in ("0", "1"):
         (tmp_path / skip).mkdir()
@@ -1256,7 +1574,10 @@ def test_a_bad_number_of_passes_or_wait_stops_before_anything_runs(tmp_path, nam
         )
 
 
-@pytest.mark.parametrize(("name", "value"), [("APT_DOWNLOAD_TRIES", "99"), ("APT_DOWNLOAD_WAIT", "0")])
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [("APT_DOWNLOAD_TRIES", "99"), ("APT_DOWNLOAD_WAIT", "0"), ("APT_WATCH_WINDOW", "1"), ("APT_WATCH_WINDOW", "999")],
+)
 def test_the_ends_of_the_ranges_are_taken(tmp_path, name, value):
     code, _, err, _ = run(tmp_path, env={name: value})
     assert code == 0, err
@@ -2013,6 +2334,8 @@ DEFAULT_LINES = [
     'OS_RELEASE="${OS_RELEASE:-/etc/os-release}"',
     'JVM_DIR="${JVM_DIR:-/usr/lib/jvm}"',
     'CA_BUNDLE="${CA_BUNDLE:-/etc/ssl/certs/ca-certificates.crt}"',
+    # apt's archives folder (Dir::Cache::Archives), which the watch of a download only reads.
+    'APT_ARCHIVES="${APT_ARCHIVES:-/var/cache/apt/archives}"',
 ]
 READ_ONLY = {"/dev/null", "/var/lib/dpkg/status"}
 PATH_IN_CODE = re.compile(r"(?<![\w:/.$}~\]])/[A-Za-z0-9_.][A-Za-z0-9_.+-]*(?:/[A-Za-z0-9_.+-]+)*/?")
@@ -2035,6 +2358,8 @@ def literal_paths(text: str) -> list[tuple[str, str]]:
 # BUILT is held to the same rule, so that the name cannot carry another path.
 MOVED = {"WC_ROOT", "KICAD_KEYRING", "KICAD_SOURCES", "WORKCENTER_LINK", "JVM_DIR"}
 BUILT = {"dir", "root", "venv", "env", "stamp", "deb", "jar", "tgz", "kit", "errors", "shown", "py"}
+# The download's 2 files of its own: what the watch saw of a pass, and every pass's progress lines.
+BUILT |= {"watch", "passlog"}
 INSIDE = re.compile(r'^"?\$\{?(' + "|".join(sorted(MOVED | BUILT)) + r")\b")
 # What a local of BUILT may be set to besides a path under INSIDE: a name on the closed PATH, a temp file.
 BUILT_ALSO = {'"python3"', '"$(mktemp)"'}
@@ -2197,8 +2522,11 @@ def _scan(code: str, found: list[str]) -> None:
                     k = code.index(code[k], k + 1)
                 k += 1
             target = code[j:k]
-            if code.startswith("&", j) and re.fullmatch(r"&[0-9-]", code[j : j + 2]):
-                k = j + 2
+            # `>&N`, `>&-` and `>&"$fd"` (a descriptor bash chose, `exec {fd}>&1`) copy or close a
+            # descriptor: no write to a path.
+            dup = re.match(r'&(?:[0-9-]|"\$\{?\w+\}?"|\$\{?\w+\}?)', code[j:])
+            if dup:
+                k = j + dup.end()
             elif target != "/dev/null" and not INSIDE.match(target):
                 found.append(f"redirection > {target}")
             i = k
@@ -2262,6 +2590,8 @@ def test_the_write_scan_sees_a_redirection_or_a_program_outside_the_moved_paths(
         '  log "link: ${WORKCENTER_LINK} -> ${SRC_DIR}/tools/workcenter"',
         "  if ((try < KICAD_INDEX_TRIES)); then [[ a > b ]]; fi",
         '  cat > "$KICAD_SOURCES" <<EOF\nx > /etc/y\nEOF',
+        "  exec {out}>&1; exec {out}>&-",
+        '  exec {wake}< <(exec {keep}>&1 >&"$out"; exec timeout "$secs" "$@")',
     ]:
         assert unfenced_writes(line) == [], line
 
