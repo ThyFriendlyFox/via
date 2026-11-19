@@ -70,6 +70,8 @@ awk '/^## M[0-9]+ /{if (h != "" && !p) {print h ": no Process line"; bad = 1}; h
 awk '/^## P[0-9]+ /{if (h != "" && !d) {print h ": no Done when line"; bad = 1}; h = $0; d = 0}
      /^Done when:/{d = 1}
      END{if (h != "" && !d) {print h ": no Done when line"; bad = 1}; exit bad}' ee-agent-kit/PROCESSES.md || exit 1
+# A change's changelog line is a file of its own under ee-agent-kit/changes/ (M279); each is well formed.
+python3 tools/ci/changes.py check || exit 1
 echo "kit checks ok"
 }
 

@@ -44,7 +44,9 @@ item's named evidence produced (screenshot, output, benchmark — attach
 or link it in the PR/commit).
 
 **5. Document — same branch, before merge.** Update in one commit:
-- `CHANGELOG.md` — under Unreleased, user-facing words.
+- A change file, `ee-agent-kit/changes/<yyyy-mm-dd>-<slug>.md`, user-facing
+  words; not `CHANGELOG.md` itself (the folder's README says the form; the
+  release folds the files into CHANGELOG.md).
 - `STATUS.md` — new state, with the evidence.
 - `ROADMAP.md` — item → Shipped table; promote the queue; refill to ≥3
   ready items (mark refills `provisional` if the human hasn't ranked them).

@@ -26,7 +26,8 @@ Never close silently; one sentence of why is the minimum.
 ## Deprecation policy
 
 Deprecate in release N with a warning; remove no earlier than N+2.
-Every deprecation gets a CHANGELOG entry under "Deprecated".
+Every deprecation gets a changelog line under `### Deprecated`, in a
+change file of its own under `ee-agent-kit/changes/` (its README says the form).
 
 ## Bus factor
 

@@ -21,6 +21,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools" / "ci"))
+import changes  # noqa: E402
 import scope  # noqa: E402
 
 CLI = ROOT / "tools" / "workcenter"
@@ -247,14 +248,19 @@ def test_a_pointer_to_a_roadmap_item_gives_its_number_and_its_title():
     """The queue is renumbered when an item ships. STATUS.md pointed at `ROADMAP item 2` for the
     autoroute work after that item had become item 4 (M160). A pointer carries the item's title, and
     the pair is a heading of the roadmap. ENGINES.md kept 2 bare `ROADMAP item 1` for that work through
-    3 renumberings, until the chip item shipped on 2026-11-12: it is read here too."""
+    3 renumberings, until the chip item shipped on 2026-11-12: it is read here too. A changelog line
+    stands in CHANGELOG.md or in a change file of `ee-agent-kit/changes/` (M279): both are read."""
     roadmap = (ROOT / "ee-agent-kit" / "ROADMAP.md").read_text(encoding="utf-8")
     items = dict(re.findall(r"^### (\d+)\. (.+)$", roadmap, re.M))
     assert len(items) >= 4
     pointers = []
-    documents = ("README.md", "WORKCENTER.md", "ee-agent-kit/STATUS.md", "ee-agent-kit/CHANGELOG.md")
-    for rel in (*documents, "ee-agent-kit/docs/USE-CASES.md", "ee-agent-kit/docs/ENGINES.md"):
-        text = (ROOT / rel).read_text(encoding="utf-8")
+    documents = ("README.md", "WORKCENTER.md", "ee-agent-kit/STATUS.md")
+    texts = [(rel, (ROOT / rel).read_text(encoding="utf-8")) for rel in documents]
+    texts += changes.unreleased_texts(ROOT)
+    for rel in ("ee-agent-kit/docs/USE-CASES.md", "ee-agent-kit/docs/ENGINES.md"):
+        texts.append((rel, (ROOT / rel).read_text(encoding="utf-8")))
+    assert "ee-agent-kit/CHANGELOG.md" in dict(texts)
+    for rel, text in texts:
         pointers += [(rel, n, title) for n, title in re.findall(r'ROADMAP item (\d+)(?:, "([^"]+)")?', text)]
     assert len(pointers) >= 4
     assert [p for p in pointers if items.get(p[1]) != p[2]] == []

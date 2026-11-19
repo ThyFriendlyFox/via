@@ -13,6 +13,7 @@ the minute the roadmap asks for.
 | `guard/engine_watch.py` | Writes a line for each engine a Python process starts; refuses it in the fast run. |
 | `guard/sitecustomize.py` | Loads the watch in every Python process that has `guard/` on PYTHONPATH. |
 | `apt_archive.sh` | On CI's install path, before install.sh: apt asks Ubuntu's own archive, not the runner's regional mirror. |
+| `changes.py` | A change's changelog line in a file of its own under `ee-agent-kit/changes/`: `check` (in the kit checks), `show`, and `fold <X.Y.Z> <date>` for a release. |
 | `nightly_issue.py` | The nightly run's last step: reads the night's outcome, the gate's log and the open `ci-failure` issues, and prints what to do (open, comment, close or nothing) with the text. |
 
 ## The rules of `scope.py`
@@ -82,6 +83,32 @@ only job that decides fast or full. `fast` runs `make verify-site` with no
 toolchain. `full` gets the toolchain and runs `make verify`. `verdict` always
 runs and passes only when the job the scope asked for passed: make `verdict`
 the required check. The nightly run (`nightly.yml`) stays the full gate.
+
+## A changelog line in a file of its own
+
+A change does not edit `ee-agent-kit/CHANGELOG.md`. It adds 1 file,
+`ee-agent-kit/changes/<yyyy-mm-dd>-<slug>.md`: line 1 is 1 of Keep a
+Changelog's headings (`### Added`, `### Changed`, `### Deprecated`,
+`### Removed`, `### Fixed`, `### Security`), then 1 or more `- ` lines as
+they will stand in CHANGELOG.md. 2 changes then never write the same
+place. On 2026-11-19 `main` moved under an open pull request 5 times, and
+each time the pull request conflicted in CHANGELOG.md alone (M279).
+
+1. `python3 tools/ci/changes.py check`: every change file is well formed.
+   A fault is 1 line, `<file>:<line>: <why>`, and the exit is 1. The kit
+   checks of `make verify` and `make verify-site` run it.
+2. `python3 tools/ci/changes.py show`: what `## [Unreleased]` holds today.
+   Under each heading, the change files' lines come first, newest first by
+   the date in the name, then CHANGELOG.md's own Unreleased lines.
+3. `python3 tools/ci/changes.py fold <X.Y.Z> <YYYY-MM-DD>`: the release
+   step (`ee-agent-kit/RELEASING.md` step 2). It writes the release's
+   section with both places' lines, leaves an empty `## [Unreleased]` and
+   deletes the folded files. A second run changes nothing. A version that
+   is already there, with lines still unreleased, is refused.
+
+A line written straight under `## [Unreleased]` stays valid: every action
+reads both places, and so does the roadmap pointer test in
+`tests/test_docs.py`. The script is Python's standard library only.
 
 ## The nightly's `ci-failure` issue
 
