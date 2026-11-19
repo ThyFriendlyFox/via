@@ -8,8 +8,9 @@
 #   apt_cache.sh restore <kept folder> <apt's archives folder>
 #       Copies each regular .deb file of the kept folder into apt's folder, under sudo. Never fails.
 #   apt_cache.sh keep <kept folder> <apt's archives folder> <output file>
-#       After the install: checks every .deb in apt's folder against the SHA256 of apt's signed indexes,
-#       then, for a run that saves, makes the kept folder anew from the files that match; output `save`.
+#       After the install, whatever its outcome: checks every .deb in apt's folder against the SHA256 of
+#       apt's signed indexes, then, for a run that saves after a good install, makes the kept folder anew
+#       from the files that match; output `save`.
 #       Reads EVENT (github.event_name), INSTALLED (the install step's outcome), HIT (the restore's
 #       cache-hit) and KEY. It fails only when a file's bytes are not what the index says.
 #
@@ -61,7 +62,11 @@ bytes_of() {
 
 do_restore() {
   local dir="$1" archives="$2" list n bytes others left=""
-  if [[ ! -d "$dir" || -L "$dir" ]]; then
+  if [[ -L "$dir" ]]; then
+    echo "${PREFIX} restored 0 files: ${dir} is a link, not a folder; apt gets every file"
+    return 0
+  fi
+  if [[ ! -d "$dir" ]]; then
     echo "${PREFIX} restored 0 files: ${dir} is not there (no save of this key or its fallbacks); apt gets every file"
     return 0
   fi
@@ -133,16 +138,19 @@ check() {
 
 do_keep() {
   local dir="$1" archives="$2" out="$3" matched n bytes list
-  if [[ "${INSTALLED:-}" != success ]]; then
-    echo "${PREFIX} not saved: the install step ended with ${INSTALLED:-no outcome}; only a good install saves"
-    echo "save=false" >> "$out"
-    return 0
-  fi
+  # The check runs after any install outcome: a forged file most likely breaks the install, and is
+  # named then too. Only a good install saves.
   matched="$(mktemp)"
   if ! check "$archives" "$matched"; then
     rm -f "$matched"
     echo "save=false" >> "$out"
     return 1
+  fi
+  if [[ "${INSTALLED:-}" != success ]]; then
+    rm -f "$matched"
+    echo "${PREFIX} not saved: the install step ended with ${INSTALLED:-no outcome}; only a good install saves"
+    echo "save=false" >> "$out"
+    return 0
   fi
   case "${EVENT:-}" in
     push | schedule | workflow_dispatch) ;;
