@@ -663,6 +663,16 @@ that may be absent.
     `sys.modules` first; it runs once alone and once after a test that
     imported the name, and fails in both when the restore is taken out
     (M300).
+13. A change of behaviour lands only after the tests that held the old
+    behaviour are found and run where they do not skip. Before such a
+    landing, the fixer and then the keeper grep `tests/` for the old
+    behaviour's words (its message, the name of what it raised, its exit
+    code) and run each test that names them. A test GitHub skips for who
+    or where it runs (CI.md, "What GitHub does not judge": root, setpriv,
+    a writable `/proc` file, the chip folder) runs on a machine where it
+    does not skip, behind the engine lock, whenever the touched code is
+    what it holds; the landing's report names that run. GitHub's green
+    says nothing about it (M307).
 
 Done when: the summary shows no unexpected skips, the engine test is
 green on the runner, and a run with an engine taken away is not GREEN.
