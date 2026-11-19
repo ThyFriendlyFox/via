@@ -651,6 +651,13 @@ When: a change is about to be called done.
    `workcenter design <p>/design.py --check` is that step for one project,
    and `workcenter ci <repo>` replays the whole workflow and prints
    `CI REPLAY GREEN`). Run them with an absolute path, never behind a `cd`.
+   Whoever lands a piece also runs, after each landing, the whole of
+   `tests/test_docs.py` with `-m "not engine"` (never a `-k` choice), and
+   the test files the landing touched the way CI's `fast` job runs them
+   (`verify/verify.sh site`: `KICAD_SYMBOL_DIR` and `KICAD_FOOTPRINT_DIR`
+   pointed at empty folders, `WORKCENTER_NO_ENGINES=1`, `-m "not
+   engine"`), and looks for processes those tests left running (a test
+   that starts a holder of a command ends the holder's whole group) (M293).
 2. Chain the push behind the verdict itself, never behind a look at the
    log: `make -C /path check TESTS="..." && git push ...`. A `tail`
    succeeds whatever the log says. Every check you run before a push is in

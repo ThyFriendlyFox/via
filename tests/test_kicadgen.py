@@ -167,6 +167,7 @@ def test_the_test_boards_print_a_legend_the_drc_gate_holds():
         assert [f.line for f in found] == [], d.name
 
 
+@needs_libs
 def test_a_titled_schematic_names_via_as_its_company():
     """A design that sets a title gives the schematic a title block whose company is the product, Via
     (docs/STYLE.md, Terms). A design without one writes no title block."""
