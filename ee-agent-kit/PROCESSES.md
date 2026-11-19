@@ -554,6 +554,10 @@ that may be absent.
    those forms, and the harness asserts the scan before it runs the script.
    The machine may run as root, so a test never relies on a permission
    error to stay safe (M261).
+9. A new test file gets its row in `verify/shards.csv` in the same commit:
+   its seconds from a run, `engine` yes when a test of it carries the
+   `engine` mark (`verify/README.md`, "Keeping the table true"). A file
+   with no row takes the `*` row's seconds, and no check fails on it.
 
 Done when: the summary shows no unexpected skips, the engine test is
 green on the runner, and a run with an engine taken away is not GREEN.

@@ -320,7 +320,7 @@ part by `mpn` or `mpns` and whose `source.sha256` is a row of
 
 | Field | Type | Default | Use |
 |---|---|---|---|
-| `verify/shards.csv` | CSV: `file`, `seconds`, `engine`, `alone` | 68 rows and `*` | Each test file's seconds in a shard, whether it starts an engine (its `no` files run first in a shard), and why it must run alone (it runs in the shard `serial`, after the others). `*` is the row for a file not listed (41.9 s). `verify/README.md` says how to keep it true. |
+| `verify/shards.csv` | CSV: `file`, `seconds`, `engine`, `alone` | 89 rows and `*` | Each test file's seconds in a shard, whether it starts an engine (its `no` files run first in a shard), and why it must run alone (it runs in the shard `serial`, after the others). `*` is the row for a file not listed (41.9 s). `verify/README.md` says how to keep it true. |
 | `--jobs` | flag of `verify/testshards.py run` | the processors (`os.cpu_count()`) | How many shards run side by side. |
 | `--work` | flag of `verify/testshards.py run` | a new folder under `$TMPDIR` | Where the shards' logs go. A folder named here is kept, and must be empty or new; a folder of its own is deleted when green and kept when red. |
 | `--table` | flag of `verify/testshards.py run` and `table` | `verify/shards.csv` | The table the files are split by, or written from. |
