@@ -446,7 +446,7 @@ says how to report a vulnerability.
 
 [`ee-agent-kit/STATUS.md`](ee-agent-kit/STATUS.md) has each area's state
 with its evidence. In short: the gates, the corners, the frequency plan and `workcenter next`
-run on the fixture boards in `make verify`. Via has no release yet. The
+run on the fixture boards in `make verify`. Via's first release is v0.1.0, of 2026-11-19. The
 cloud setup script has not run yet. The Docker image is built on GitHub,
 and its package is public.
 
