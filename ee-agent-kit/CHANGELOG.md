@@ -4,6 +4,8 @@ All notable changes to EE Workcenter are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/) · Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+- The lead's quiet check (`ee-agent-kit/lead/quiet.py`) leaves out a Python script with nothing below it that sleeps and used no processor time for 2 s, as it left out a shell script that only sleeps: a helper's script that waited for the gate's lock in `time.sleep` was counted as busy, and it and the gate waited for each other (M277). PROCESSES.md P31 steps 11 to 14, P14 step 9 and P5 step 7, with the `lead` skill, keep helpers' test commands to about 5 minutes, give the health gate 2 hours, keep a gate's tools from edits in place, and ask before a cleaning or a release lap (M273 to M280).
 
 ## [0.1.0] - 2026-11-19
 ### Changed

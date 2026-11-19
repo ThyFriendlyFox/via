@@ -126,7 +126,11 @@ journal lines of `ee-agent-kit/lead/README.md`, "The journal", itself.
     `workcenter doctor` names the holder. Memory still counts: a short
     command or a test file that starts no engine runs beside a gate (P31
     steps 6 and 7). Send no message to a helper a workflow runs (P31
-    step 8).
+    step 8). Each brief keeps runs short (P31 step 11): a test command
+    of at most about 5 minutes, a longer list split into parts, a look
+    for the gate's lock before each part and each run of a loop, a wait
+    in a sleep while it exists, and a run over 1 minute behind the
+    engine lock. Never end a helper's process to free the machine.
 14. Watch the disk before each new helper: `df -h <scratch>` and
     `du -sh <scratch>/wt/<a worktree>`.
     - The free space holds 2 more worktrees of that size: go on.
@@ -146,6 +150,16 @@ journal lines of `ee-agent-kit/lead/README.md`, "The journal", itself.
     5 GB free, clear the copies of landed pieces first (P31 step 10). The
     5 GB is the lead's choice: here a whole checkout with its build
     folders took about 410 MB, and a review's copies up to 2440 MB.
+    Remove only folders no running process uses: look with
+    `pgrep -a pytest` first, and never remove pytest's temp root while a
+    pytest runs (P31 step 14).
+16. Run the health gate (`ee-agent-kit/lead/gate-and-push.sh`) in the
+    background with a time limit of 2 hours: its wait for helpers can be
+    longer than its run (P31 step 12). While it runs, edit no tool it
+    calls: write the new version beside it and move it into place in 1
+    step, or stop the gate first (P31 step 13). Before a lap that ends in
+    a merge to `main`, ask the owner to hold other sessions' pushes to
+    `main`, and say what each move costs (P14 step 9).
 
 ## Done when
 
