@@ -31,15 +31,10 @@ ROOT = Path(__file__).resolve().parents[1]
 # Folders whose text another rule governs, or that are not this repository's words.
 OUTSIDE = ("blog/", "third_party/", "site/vendor/")
 # The places that keep the old name on purpose: a file (a regular expression of its path), the exact
-# words kept there, and why. Nothing else in that file is let through.
-KEPT = (
-    (
-        r"examples/snapdragon-dev-board/v0\.[12]/CONTENTS\.md",
-        "to keep the workcenter small",
-        "`workcenter docs` copies each part's note from library/sources.csv, and a sources.csv row "
-        "written before 2026-11-19 keeps its older words (docs/STYLE.md, Terms)",
-    ),
-)
+# words kept there, and why. Nothing else in that file is let through. None is left: Wyvern's
+# library/sources.csv says "to keep the repository small" since 2026-11-19, and `workcenter docs` copied
+# its notes into both CONTENTS.md again.
+KEPT: tuple[tuple[str, str, str], ...] = ()
 # Between 2 words: spaces, tabs, a non-breaking space, a hyphen, and emphasis marks around a word.
 GAP = r"[*_]*[ \t -]+[*_]*"
 OLD_NAME = re.compile(rf"\bEE{GAP}Work(?:{GAP})?center\b|\bthe{GAP}workcenter\b", re.IGNORECASE)
@@ -320,12 +315,25 @@ def test_the_page_reader_reads_what_a_visitor_reads():
     assert page_old_names(page) == [1, 4, 7, 11, 13]
 
 
-def test_a_place_kept_on_purpose_is_named_and_nothing_wider():
+def test_a_place_kept_on_purpose_is_named_and_nothing_wider(monkeypatch):
     for path, words, reason in KEPT:
         assert OLD_NAME.search(words) and reason, path
     row = "| J4 | none kept: Not kept in the repository, to keep the workcenter small; SHA256 |"
     kept = "examples/snapdragon-dev-board/v0.2/CONTENTS.md"
-    assert old_names(row, kept) == []
-    # The same words elsewhere, or other words in the same file, are read.
+    assert old_names(row, kept) == [1]  # nothing is kept today: the examples are read without exception
+    # The mechanism, for a place kept later: only the words named, only in the file named.
+    later = ((r"examples/x/CONTENTS\.md", "to keep the workcenter small", "why"),)
+    monkeypatch.setitem(globals(), "KEPT", later)
+    assert old_names(row, "examples/x/CONTENTS.md") == []
     assert old_names(row, "examples/fan-bulb/v0.1/CONTENTS.md") == [1]
-    assert old_names(row + " The workcenter ran.", kept) == [1]
+    assert old_names(row + " The workcenter ran.", "examples/x/CONTENTS.md") == [1]
+
+
+def test_no_example_rule_file_keeps_the_older_header():
+    """`workcenter design --rules-only` wrote each example's copied rule file again on 2026-11-19, and a
+    board routed since writes the header "Copied by Via from" (tools/kicadgen.py Design.rule_file). The
+    sample of the older form is tests/boards/inspect/four_layer.kicad_dru, outside examples/."""
+    files = tracked("examples/*.kicad_dru")
+    assert len(files) >= 5, files
+    older = [rel for rel in files if "# Copied by the workcenter from " in (ROOT / rel).read_text("utf-8")]
+    assert older == []
