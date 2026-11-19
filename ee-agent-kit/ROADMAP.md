@@ -141,7 +141,7 @@ owner cut the built board from item 12.
 - **Evidence:** A run link from a board repository, plus `tests/boards/pass-rc-divider` run through the workflow in this repository's CI.
 - **Use case:** Review a board PR.
 - **Scope guard:** No comments posted to the PR; the check and the summary are the output.
-- **Status:** ready
+- **Status:** built (2026-11-19, `wip/r16`, 4ec79a5): `.github/workflows/board-gates.yml`, `.github/workflows/board-fixture.yml`, the `board-ci` skill, `tests/test_board_gates_workflow.py` (35 tests, 3 of them `engine`). Reviewed 1 time, "sound with findings": 4 findings, all fixed (a pull request that deleted a project's `.kicad_pcb` gave a green check; the docs said the package is private, where it is public and the image path is the normal one; the skill's caller shows 2 calls for `strict`; the fixture's workflow runs when `tools/`, `install.sh`, `requirements.txt` or `Dockerfile` changes). Left: no run of `board-gates.yml` on GitHub yet: the run of `board-fixture.yml` comes with the pull request that carries it, and a board repository's run needs the workflow on `main`; the image path has run only with stand-ins (no Docker daemon on the machine that built it).
 
 ### 17. MCP server for hosts that are not Claude Code
 - **Promise:** `workcenter mcp` serves `doctor`, `gates`, `erc`, `drc`, `sim`, `export`, and `autoroute` as MCP tools over stdio, and the MCP inspector lists all 7 with their schemas.

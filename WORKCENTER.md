@@ -109,6 +109,7 @@ file: it needs nothing else.
 | `attached-repos` | The session holds more than 1 repository. Run first. |
 | `board-design` | A board is designed from a spec, as a Python design file built from the KiCad libraries. |
 | `board-gates` | A board must pass ERC, DRC, simulation, and export. The fix loop. |
+| `board-ci` | A board repository is to run the gates on every pull request: 1 workflow that calls Via's reusable `board-gates.yml`, 1 job per project folder, the gates table in the job's summary, a red check on a red gate. |
 | `board-loop` | A board that passes its gates is to become compact, correct and good to look at: 1 prompt run again and again, with a reviewer who has not seen the earlier rounds. The project's `LOOP.md` holds the prompt, the checklist and the log. |
 | `chip-design` | A chip is designed from a spec: `chip.json`, the RTL, the benches, the constraints, the list of changes the benches must catch. |
 | `chip-gates` | A chip must pass the 10 chip gates to its GDSII layout. The fix loop, gate by gate. |

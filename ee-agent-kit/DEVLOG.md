@@ -39,6 +39,16 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-19 — Board gates as a reusable workflow
+
+Roadmap item 16. A board repository installed Via by hand in its own CI and ran `workcenter gates` in a loop of 1 step. It now calls `board-gates.yml` from 1 workflow file. Each project folder is 1 job, so 1 slow board has its own limit. The job asks the registry for the image of Via's toolchain and falls back to install.sh, with the archive step first, as CI's install path does. The summary is the table `workcenter gates --report` already wrote into `docs/gates.md`; no new code makes it.
+
+GitHub does not run here. Each step's text runs under `bash -e` with stand-ins, and a small runner walks the whole job on both paths. The gates step also ran on this machine's toolchain: pass-rc-divider GREEN with `--strict`, fail-drc-clearance RED at DRC.
+
+The review found 4 things, all fixed the same day. The package is public, so a board repository's run takes the image path, not the install path the docs named. A pull request that deleted a project's `.kicad_pcb` got `GREEN (nothing to run for: drc, export)` and a green check, even with `strict: true`: the gates step now reads the table after a GREEN and ends red, 1 line for each of ERC, DRC and EXPORT at skip. The skill's caller shows 2 calls, since `strict` holds for every project of 1 call. The fixture's workflow now runs when `tools/`, `install.sh`, `requirements.txt` or `Dockerfile` changes. At landing, the skill and CI.md's new lines named the product by its old name 12 times; they say Via.
+
+Evidence: `tests/test_board_gates_workflow.py` (35 tests); with `tests/test_product_name.py`, behind the engine lock, 38 passed in 8.20 s on the batch. Branch `wip/r16`, 4ec79a5. No GitHub run yet.
+
 ## 2026-11-19 — The gates as MCP tools
 
 Roadmap item 17. A host that is not Claude Code can now run the gates: `workcenter mcp <project>` is an MCP server on stdio. It is written on Python's standard library from the specification, revision 2025-11-25, fetched under Via's own client name. The current revision, 2026-07-28, drops the `initialize` handshake; a client of both eras falls back to it, and a client of 2026-07-28 alone does not. Each tool runs its command as a child process, so there is 1 implementation of each gate. The reader never waits on a tool: a `ping` sent while `sim` waits on the engine lock is answered at once, and a cancel stops the command's whole process group. A review, "sound with findings", gave 6 findings, all fixed with tests: SIGINT now stops the commands and exits 130 without a traceback; on Linux a SIGKILL to the server stops its commands; a path with a NUL byte is refused in 1 line; a cancel stops the command's whole process group; a cancelled call sends no further progress; a count of 3.0 is taken as 3. At landing, 5 of its 16 tests failed in a test session: the lock's waiting lines went to the session's own file (`WORKCENTER_LOCK_LOG`, landed the same day), so the server had no line to pass on; the test's client now takes that variable out. The MCP inspector needs node, which the machine that built it lacks; the Evidence's screenshot waits for a machine that has it. The test drives the server with a scripted JSON-RPC session over a pipe instead.

@@ -357,6 +357,8 @@ docker run --rm -v "%cd%:/work" ghcr.io/thyfriendlyfox/via:v0.1.0 workcenter gat
 - The chip engines are not in the image; `sudo ./install.sh --chip` installs them on Ubuntu 24.04.
 - The image build runs the Linux command on Linux; nobody has run these commands on Windows or macOS yet.
 
+A board repository gets the gates on every pull request from 1 workflow that calls `ThyFriendlyFox/via/.github/workflows/board-gates.yml@main`: 1 job per project folder, the gates table in the job's summary, a red check on RED, SKIPPED, or a project with no board to judge. It runs in Via's public image, and installs with install.sh where the registry holds no image of that toolchain. The `board-ci` skill holds the caller.
+
 ## The website
 
 `site/` is the project's website: a home page with real runs of the
@@ -422,7 +424,7 @@ images are drawn.
 | `tools/ci/` | `scope.py`: what a change needs, `fast` or `full`; the `engine` marker's plugin and its guard; `nightly_issue.py`: what the nightly run does with its `ci-failure` issue. `make scope`, `make verify-site`. |
 | `WORKCENTER.md` | The contract a project gets from this workcenter. |
 | `AGENTS.md`, `CLAUDE.md` | Where an agent starts. The same text. |
-| `.claude/skills/` | `attached-repos`, `autoroute`, `blocks`, `blog-post`, `board-design`, `board-gates`, `board-loop`, `board-rules`, `charger-block`, `chip-design`, `chip-gates`, `copper`, `fabrication`, `fields`, `highspeed`, `kistack`, `land`, `lead`, `legend`, `now`, `procurement`, `ratings`, `references`, `simulate`, `standards`, `user-round`, `verification`. |
+| `.claude/skills/` | `attached-repos`, `autoroute`, `blocks`, `blog-post`, `board-ci`, `board-design`, `board-gates`, `board-loop`, `board-rules`, `charger-block`, `chip-design`, `chip-gates`, `copper`, `fabrication`, `fields`, `highspeed`, `kistack`, `land`, `lead`, `legend`, `mcp`, `now`, `procurement`, `ratings`, `references`, `simulate`, `standards`, `user-round`, `verification`. |
 | `templates/` | A first design file, a version's README and gates report, `corners.json`, `frequency-plan.json`, the verification package. |
 | `rules/` | Fabrication houses' limits as KiCad design rules: Sierra Circuits, JLCPCB, PCBWay, OSH Park. `rules/ratings/`: 2 derating standards as packs for `workcenter ratings`, each limit with its table and page. `rules/board/`: ECSS-Q-ST-70-12C Rev.1 as a board rule pack for `workcenter drc`, each limit with its clause, table and page. `rules/copper/`: the 5 constants of `workcenter copper`, each with its document and page. `rules/interfaces/`: the fast interfaces `workcenter highspeed` holds a pair to, each limit with its document, clause and page. `rules/references/`: the index of the 18 documents the rules cite (7 standards, 2 application notes, 9 datasheets), each with its URL and SHA256; no document itself. |
 | `tests/` | The tests of the tools. `tests/boards/` holds the fixture boards and what each proves. |
