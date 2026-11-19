@@ -184,6 +184,28 @@ def test_a_clouds_host_and_https_keep_their_scheme_and_path(tmp_path):
     )
 
 
+def test_the_line_names_only_the_hosts_it_changed(tmp_path):
+    """A host that only begins like a mirror (x.archive.ubuntu.com.cn) stays, and the line does not
+    name it. A host at the end of a line, or with a port, is named and changed."""
+    text = "deb http://my.archive.ubuntu.com.cn/ubuntu noble main\n"
+    text += "deb http://de.archive.ubuntu.com/ubuntu noble main\n"
+    text += "deb http://fr.archive.ubuntu.com:80/ubuntu noble main\n"
+    text += "# no path: http://nl.archive.ubuntu.com\nURIs: http://nl.archive.ubuntu.com\n"
+    apt = layout(tmp_path, {"sources.list.d/mixed.list": text})
+    ran = run(str(apt), tmp=tmp_path)
+    assert ran.returncode == 0, ran.stderr
+    assert lines(ran) == [
+        f"{PREFIX} {apt}/sources.list.d/mixed.list: de.archive.ubuntu.com -> archive.ubuntu.com, "
+        "fr.archive.ubuntu.com -> archive.ubuntu.com, nl.archive.ubuntu.com -> archive.ubuntu.com"
+    ]
+    assert snapshot(apt)["sources.list.d/mixed.list"] == (
+        "deb http://my.archive.ubuntu.com.cn/ubuntu noble main\n"
+        "deb http://archive.ubuntu.com/ubuntu noble main\n"
+        "deb http://archive.ubuntu.com:80/ubuntu noble main\n"
+        "# no path: http://nl.archive.ubuntu.com\nURIs: http://archive.ubuntu.com\n"
+    )
+
+
 def test_ubuntus_own_archive_already_changes_nothing(tmp_path):
     """This machine's layout (Ubuntu 24.04's own ubuntu.sources) and the mirror list after a first run."""
     apt = layout(

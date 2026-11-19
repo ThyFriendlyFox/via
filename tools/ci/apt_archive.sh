@@ -36,8 +36,9 @@ fi
 LIST="$dir/apt-mirrors.txt"
 KNOWN="mirror+file:/etc/apt/apt-mirrors.txt"
 # A host of the archive's own name with at least 1 label in front: archive.ubuntu.com alone, and
-# security.ubuntu.com, do not match.
-HOST='https?://([A-Za-z0-9-]+\.)+(archive|ports)\.ubuntu\.com'
+# security.ubuntu.com, do not match. HOST ends as EDIT ends, so the printed line names only the hosts
+# sed changed: my.archive.ubuntu.com.cn matches neither.
+HOST='https?://([A-Za-z0-9-]+\.)+(archive|ports)\.ubuntu\.com([/:[:space:]]|$)'
 EDIT="/^[[:space:]]*#/!s#(https?://)([A-Za-z0-9-]+\\.)+((archive|ports)\\.ubuntu\\.com)([/:[:space:]]|\$)#\\1\\3\\5#g"
 
 files=()
@@ -76,7 +77,7 @@ for f in "${files[@]}"; do
   n=$((n + 1))
   sed -E "$EDIT" -- "$f" > "$work/$n"
   if cmp -s -- "$f" "$work/$n"; then continue; fi
-  hosts="$(grep -v '^[[:space:]]*#' -- "$f" | grep -oE "$HOST" | sed -E 's#^https?://##' | sort -u)"
+  hosts="$(grep -v '^[[:space:]]*#' -- "$f" | grep -oE "$HOST" | sed -E 's#^https?://##; s#[/:[:space:]]$##' | sort -u)"
   note=""
   for h in $hosts; do
     note+="${note:+, }$h -> ${h#"${h%.*.ubuntu.com}".}"
