@@ -768,7 +768,7 @@ def test_each_fixture_is_routed_and_its_gates_are_green_with_the_2_not_judged_na
     assert [records[g]["status"] for g in ("erc", "drc", "sim", "export")] == ["pass"] * 4
     assert records["drc"]["summary"] == (
         "0 errors, 0 warnings (0 unconnected, 0 parity), legend (no fab named: held to the least of the 4 "
-        "fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer)): 0 fail, 0 not judged"
+        "fabs Via knows (height pcbway-standard, stroke oshpark-2layer)): 0 fail, 0 not judged"
     )
     assert records["sim"]["summary"] == "1 decks, 2 corner runs, 0 failures, 2 warnings"
     symbol, amps = SHOWN[name]

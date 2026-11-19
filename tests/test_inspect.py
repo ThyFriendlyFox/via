@@ -24,6 +24,7 @@ from conftest import engine
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import kicadgen  # noqa: E402
+import legend  # noqa: E402
 
 CLI = ROOT / "tools" / "workcenter"
 ENGINE = ROOT / "tools" / "inspect_board.py"
@@ -350,9 +351,19 @@ def test_the_inspect_fixture_is_what_its_design_writes(tmp_path):
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "island: C1.2 cut off" in proc.stdout  # the island the fixture keeps on purpose
-    for suffix in (".kicad_pro", ".kicad_sch", ".kicad_pcb", ".kicad_dru"):
+    for suffix in (".kicad_pro", ".kicad_sch", ".kicad_pcb"):
         name = f"four_layer{suffix}"
         assert (tmp_path / name).read_bytes() == (FIXTURE / name).read_bytes(), name
+    # The committed rule file stays in its older form on purpose: it is the sample of a board made before
+    # the product was Via, whose header reads "Copied by the workcenter from". Today's header says
+    # "Copied by Via from"; tools/legend.py reads both (tests/test_legend.py holds each form). The rest
+    # of the file is byte for byte what the generator writes.
+    older, today = "# Copied by the workcenter from ", "# Copied by Via from "
+    kept = (FIXTURE / "four_layer.kicad_dru").read_text(encoding="utf-8")
+    written = (tmp_path / "four_layer.kicad_dru").read_text(encoding="utf-8")
+    assert kept.count(older) == 1 and today not in kept
+    assert written == kept.replace(older, today)
+    assert legend.fab_named(FIXTURE, "four_layer") == "sierra-circuits-web"
 
 
 # ------------------------------------------------------------------ stretch

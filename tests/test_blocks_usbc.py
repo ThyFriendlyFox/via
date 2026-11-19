@@ -770,7 +770,7 @@ def test_the_fixture_is_routed_and_its_gates_are_green(tmp_path):
     ]
     assert records["drc"]["summary"] == (
         "0 errors, 0 warnings (0 unconnected, 0 parity), legend (no fab named: held to the least of the 4 "
-        "fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer)): 0 fail, 0 not judged"
+        "fabs Via knows (height pcbway-standard, stroke oshpark-2layer)): 0 fail, 0 not judged"
     )
     runs = json.loads((tmp_path / "sim" / "corners" / "cc" / "runs.json").read_text(encoding="utf-8"))
     for name, (low, high) in SPANS.items():

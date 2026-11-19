@@ -33,7 +33,7 @@ the report path.
 
 | Use | Do not use |
 |---|---|
-| Via (the product: capital V, no article); `workcenter` is its command, in a code span | `EE Workcenter`, `the workcenter` (the owner's words of 2026-11-19; `tests/test_product_name.py` holds the Markdown files, not the program's strings or other files) |
+| Via (the product: capital V, no article); `workcenter` is its command, in a code span | `EE Workcenter`, `the workcenter` (the owner's words of 2026-11-19; `tests/test_product_name.py` holds the Markdown files, not the program's strings or other files). The program's strings say Via too. 4 tokens keep the old name on purpose: the fetch client's name `EE-Workcenter/1` (sites' answers are recorded under it), the references cache `~/.cache/ee-workcenter`, the comments of `Dockerfile`, `install.sh` and `requirements.txt` (a change moves the image's content tag), and the doctor's line `workcenter ee: ok`. A rule file or a `sources.csv` row written before 2026-11-19 keeps its older words, and Via reads both forms |
 | workcenter (the kind of thing Via is) | toolbox, kit (the kit is `ee-agent-kit/`), environment (the cloud VM) |
 | project | board repo, target, design folder |
 | gate | check (that is `doctor`), test (those are in `tests/`), validation |

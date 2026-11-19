@@ -122,7 +122,8 @@ def test_design_fab_writes_the_rule_file_into_the_project(tmp_path):
     assert dru in written
     text = dru.read_text(encoding="utf-8")
     assert text.startswith("(version 1)") and "sierra-web: inner drill to copper 13 mil" in text
-    assert "Copied by the workcenter from sierra-circuits-web.kicad_dru" in text
+    assert "\n# Copied by Via from sierra-circuits-web.kicad_dru (Design.fab)" in text
+    assert "the workcenter" not in text  # the product is Via (docs/STYLE.md, Terms)
     plain = kicadgen.Design(name="p", namespace=uuid.UUID(int=13))
     plain.outline = (100.0, 100.0, 110.0, 110.0)
     plain.write(tmp_path)

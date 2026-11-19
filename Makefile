@@ -45,4 +45,4 @@ mutate-ratings:     ## every change of tests/ratings_mutations.py must fail the 
 	PYTHON=$(PY) python3 tools/workcenter mutate . --mutations tests/ratings_mutations.py --jobs 4
 
 image:              ## build the Docker image (needs a Docker daemon)
-	docker build -t ee-workcenter:dev .
+	docker build -t via:dev .

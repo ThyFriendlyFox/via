@@ -197,8 +197,34 @@ def test_a_downloaded_file_is_kept_hashed_and_given_its_row(site, tmp_path):
     row = rows[0]
     assert row["URL"] == where and row["File"] == "samsung/CL10A105KB8NNNC.pdf"
     assert row["SHA256"] == sha(PDF) and row["Kind"] == "datasheet"
-    assert "not fetched by the workcenter" in row["Note"]
+    assert row["Note"] == "downloaded by a person from the URL; not fetched by Via"
     assert Maker.agents == []  # no request to any site
+
+
+def test_an_older_downloaded_row_is_still_read_and_kept(site, tmp_path):
+    """A row written before the product was Via says "not fetched by the workcenter". A library keeps its
+    rows: the older note is read as it stands, and a new row added beside it leaves it unchanged."""
+    _, project = site
+    library = project / "library"
+    (library / "acme").mkdir(parents=True)
+    (library / "acme" / "old.pdf").write_bytes(PDF)
+    older = "downloaded by a person from the URL; not fetched by the workcenter"
+    old_row = f"OLD-1,datasheet,https://maker.example/old.pdf,acme/old.pdf,,,,,,{sha(PDF)},,{older}"
+    (library / "sources.csv").write_text(f"{HEADER}\n{old_row}\n", encoding="utf-8")
+    assert [(r.mpn, r.note) for r in load_cli().read_sources(library / "sources.csv")] == [("OLD-1", older)]
+    download = tmp_path / "new.pdf"
+    download.write_bytes(PDF)
+    code, report = fetch(
+        "--file", download, "--url", "https://maker.example/new.pdf", "--to", library / "acme" / "new.pdf",
+        "--mpn", "NEW-1", "--row",
+    )  # fmt: skip
+    assert code == 0, report
+    rows = load_cli().read_sources(library / "sources.csv")
+    assert [(r.mpn, r.note) for r in rows] == [
+        ("OLD-1", older),
+        ("NEW-1", "downloaded by a person from the URL; not fetched by Via"),
+    ]
+    assert (library / "sources.csv").read_text(encoding="utf-8").splitlines()[1] == old_row
 
 
 def test_a_downloaded_file_needs_its_url_and_only_one_source(site, tmp_path):

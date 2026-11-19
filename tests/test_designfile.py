@@ -143,7 +143,7 @@ def test_the_template_generates_routes_and_passes_erc_and_drc(tmp_path):
     # The DRC gate holds the board's printed text too (tools/legend.py): the template names no fab.
     assert records["drc"]["summary"] == (
         "0 errors, 0 warnings (0 unconnected, 0 parity), legend (no fab named: held to the least of the 4 "
-        "fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer)): 0 fail, 0 not judged"
+        "fabs Via knows (height pcbway-standard, stroke oshpark-2layer)): 0 fail, 0 not judged"
     )
     assert records["sim"]["summary"] == "1 decks, 46 corner runs, 0 failures"
     # The 2 bounds are the fixture's premise, and its row in tests/boards/README.md gives the span the

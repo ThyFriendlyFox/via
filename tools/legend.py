@@ -134,7 +134,7 @@ def limits(fab: str | None) -> Limit:
         thin["stroke"] if thin else None,
         low["page"] if low else "",
         thin["page"] if thin else "",
-        f"no fab named: held to the least of the {len(fabs)} fabs the workcenter knows "
+        f"no fab named: held to the least of the {len(fabs)} fabs Via knows "
         f"(height {low['name'] if low else 'none'}, stroke {thin['name'] if thin else 'none'})",
     )
 
@@ -142,11 +142,12 @@ def limits(fab: str | None) -> Limit:
 def fab_named(project_dir: Path, name: str) -> str | None:
     """The fab a project names: the rule set `workcenter design` copied in as <name>.kicad_dru. A copy of
     a set in rules/ gives that set's name; a copy of a set from elsewhere (Design.fab takes a path) gives
-    the project's own copy, whose rules are the fab's."""
+    the project's own copy, whose rules are the fab's. The header says "Copied by Via from"; a board made
+    before 2026-11-19 keeps its file, whose header says "Copied by the workcenter from": both are read."""
     dru = project_dir / f"{name}.kicad_dru"
     if not dru.is_file():
         return None
-    m = re.search(r"Copied by the workcenter from (\S+)\.kicad_dru", dru.read_text(encoding="utf-8"))
+    m = re.search(r"Copied by (?:Via|the workcenter) from (\S+)\.kicad_dru", dru.read_text(encoding="utf-8"))
     if not m:
         return None
     stem = m.group(1)
