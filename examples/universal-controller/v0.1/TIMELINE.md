@@ -78,7 +78,7 @@ hang over the board's edge on purpose. The firmware's host tests pass: `make -C 
 ```
 $ workcenter gates examples/universal-controller/v0.1
 PASS   erc        0 errors, 0 warnings  [0.48s]
-FAIL   drc        0 errors, 5 warnings (0 unconnected, 0 parity), legend (no fab named: held to the least of the 4 fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer)): 9 fail, 0 not judged  [1.48s]
+FAIL   drc        0 errors, 5 warnings (0 unconnected, 0 parity), legend (no fab named: held to the least of the 4 fabs Via knows (height pcbway-standard, stroke oshpark-2layer)): 9 fail, 0 not judged  [1.48s]
        - warning: silk_edge_clearance: Silkscreen clipped by board edge
        - warning: silk_edge_clearance: Silkscreen clipped by board edge
        - warning: silk_edge_clearance: Silkscreen clipped by board edge
