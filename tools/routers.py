@@ -35,30 +35,90 @@ WC_ROOT = Path(os.environ.get("WORKCENTER_ROOT", "/opt/workcenters/ee"))
 # score of ". 1 line per stage; the last is the board it writes. FreeRouting 1.9.0 logs no count.
 SCORE_RE = re.compile(r"(?:final score: |with the score of )[^()\n]*\((\d+) unrouted and (\d+) violations?\)")
 JAVA_VERSION_RE = re.compile(r'version "(\d+)(?:\.(\d+))?')
+# A Java exception's line: `java.awt.HeadlessException: ...`, as FreeRouting 1.9.0 logs it on a JVM
+# that cannot draw (its log on this machine, with a JVM without lib/libawt_xawt.so).
+JAVA_THROWN = re.compile(r"^\s*((?:[a-z_$][\w$]*\.)+[A-Z][\w$]*(?:Exception|Error)\b.*)$", re.MULTILINE)
 # The Java FreeRouting 1.9.0 is held to: ee-agent-kit/docs/ENGINES.md, "Needs Java 21". It is the Java
-# install.sh installs (openjdk-21-jre-headless) and records; install.sh's JAVA_MIN is the same number.
+# install.sh installs (openjdk-21-jre-headless and openjdk-21-jre) and records; install.sh's JAVA_MIN is
+# the same number.
 JAVA_MIN = 21
+# FreeRouting 1.9.0 draws a window even when it routes alone (it runs under xvfb-run), so its JVM needs
+# AWT's X11 library. Ubuntu's openjdk-21-jre-headless has none (its file list names lib/libawt.so and
+# lib/libawt_headless.so); openjdk-21-jre adds lib/libawt_xawt.so. In CI run 44515796762 install.sh
+# recorded the headless JVM, and every route there ended in "FreeRouting exited 1".
+AWT_X11 = Path("lib") / "libawt_xawt.so"
 
 
-def workcenter_java() -> tuple[str, str]:
-    """The java Via runs, and where it came from. This is the 1 place that decides it.
+def java_major(exe: str) -> int | None:
+    """The major version `exe -version` prints, or None when it does not run or prints none."""
+    found = shutil.which(exe)
+    if found is None:
+        return None
+    try:
+        proc = subprocess.run([found, "-version"], capture_output=True, text=True, timeout=60, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    m = JAVA_VERSION_RE.search((proc.stderr or "") + (proc.stdout or ""))
+    if m is None:
+        return None
+    major = int(m.group(1))
+    return int(m.group(2) or 0) if major == 1 else major  # "1.8.0" is Java 8
 
-    1. `JAVA`, when set: a test's stand-in or a user's choice ("set by JAVA").
+
+def java_refusal(exe: str, version: bool = False) -> str:
+    """Why FreeRouting 1.9.0 cannot run on `exe`, or "" when nothing here stops it: the java is there,
+    and its JVM (the folder above its bin/, links resolved) has lib/libawt_xawt.so. With `version`, it
+    must also be Java JAVA_MIN or newer (asked of a java install.sh did not record)."""
+    found = shutil.which(exe)
+    if found is None:
+        return "no java on PATH" if exe == "java" else f"no java at {exe}"
+    lib = Path(found).resolve().parent.parent / AWT_X11.parent
+    if not (lib / AWT_X11.name).is_file():
+        return (
+            f"{lib} has no {AWT_X11.name}: a headless Java runtime cannot draw FreeRouting 1.9.0's window "
+            "(openjdk-21-jre adds the library)"
+        )
+    if version:
+        major = java_major(found)
+        if major is None:
+            return f"{found} -version names no version"
+        if major < JAVA_MIN:
+            return f"{found} is Java {major}; FreeRouting 1.9.0 needs Java {JAVA_MIN}"
+    return ""
+
+
+def java_choice() -> tuple[str, str, str]:
+    """The java Via runs, where it came from, and why FreeRouting 1.9.0 cannot run on it ("" when it can).
+    This is the 1 place that decides it.
+
+    1. `JAVA`, when set: a test's stand-in or a user's choice ("set by JAVA"), taken as it is.
     2. Else the JVM install.sh installed, by the path it recorded in <WORKCENTER_ROOT>/java.path, whatever
        java stands first on PATH. On GitHub's runner that is the runner's own Java 17 (CI run
        44444183056: doctor read 17.0.21 after apt had set up openjdk-21-jre-headless 21.0.13.1).
+       When the recorded java is gone or cannot draw, and the first java on PATH can and is Java
+       JAVA_MIN or newer, that one, named with the reason the record was passed over.
     3. Else `java` on PATH: no record, so install.sh installed none here."""
     named = os.environ.get("JAVA")
     if named:
-        return named, "set by JAVA"
+        return named, "set by JAVA", ""
     record = Path(os.environ.get("WORKCENTER_ROOT", "/opt/workcenters/ee")) / "java.path"
     try:
         recorded = record.read_text(encoding="utf-8").strip()
     except OSError:
         recorded = ""
     if recorded:
-        return recorded, f"recorded by install.sh in {record}"
-    return "java", "the first java on PATH"
+        how = f"recorded by install.sh in {record}"
+        why = java_refusal(recorded)
+        if why and not java_refusal("java", version=True):
+            return "java", f"the first java on PATH: the java {how}, {recorded}, cannot run: {why}", ""
+        return recorded, how, why
+    return "java", "the first java on PATH", java_refusal("java")
+
+
+def workcenter_java() -> tuple[str, str]:
+    """The java Via runs and where it came from (java_choice, without the reason it cannot run)."""
+    exe, how, _ = java_choice()
+    return exe, how
 
 
 class RouterTimeout(RuntimeError):
@@ -93,26 +153,20 @@ class Router:
 
     def java_major(self) -> int | None:
         """The major version `java -version` prints, or None when it does not run or prints none."""
-        exe = shutil.which(self.java())
-        if exe is None:
-            return None
-        try:
-            proc = subprocess.run([exe, "-version"], capture_output=True, text=True, timeout=60, check=False)
-        except (OSError, subprocess.TimeoutExpired):
-            return None
-        m = JAVA_VERSION_RE.search((proc.stderr or "") + (proc.stdout or ""))
-        if m is None:
-            return None
-        major = int(m.group(1))
-        return int(m.group(2) or 0) if major == 1 else major  # "1.8.0" is Java 8
+        return java_major(self.java())
 
     def absent(self) -> str:
-        """Why the router cannot run here, or "" when it can. FreeRouting 1.9.0 is held to its jar alone,
-        as before this interface: a missing Java then fails the run as an absent engine
-        (FileNotFoundError)."""
+        """Why the router cannot run here, or "" when it can. FreeRouting 1.9.0 is held to its jar and to
+        Via's java (java_choice): a java that is not there or cannot draw its window is named with
+        where it came from and why (CI run 44515796762). A java given by JAVA or by the caller is taken
+        as it is."""
         jar = self.jar()
         if not jar.is_file():
             return f"{self.name}: no jar at {jar}"
+        if not self.java_env and not self.java_default:
+            exe, how, why = java_choice()
+            if why:
+                return f"{self.name}: {exe} ({how}) cannot run {self.label}: {why}"
         if self.java_min is not None:
             major = self.java_major()
             if major is None:
@@ -189,8 +243,15 @@ class Router:
         text = (out or "") + "\n" + (err or "")
         log.write_text(text, encoding="utf-8")
         if proc.returncode != 0 or not ses.is_file():
-            # The first word stays "FreeRouting exited N", as before this interface.
-            raise RuntimeError(f"FreeRouting exited {proc.returncode}; see {log}")
+            # The first words stay "FreeRouting exited N", as before this interface. Then the java that
+            # ran and what the router threw (its first Java exception line, which FreeRouting 1.9.0
+            # logs on stdout), else its last line on stderr: the reports of CI run 44515796762 showed
+            # only the exit code, and the log they named stayed on GitHub's runner.
+            thrown = JAVA_THROWN.search(text)
+            last = next((ln.strip() for ln in reversed((err or "").splitlines()) if ln.strip()), "")
+            said = thrown.group(1).strip() if thrown else last
+            said = f"; it said: {said}" if said else ""
+            raise RuntimeError(f"FreeRouting exited {proc.returncode} (java {self.java()}){said}; see {log}")
         return text
 
     def score(self, text: str) -> tuple[int, int] | None:

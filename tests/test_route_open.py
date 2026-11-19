@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from conftest import engine
+from conftest import engine, router_absent
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -31,10 +31,7 @@ LIBS = kicadgen.SYMBOL_DIR / "Device.kicad_sym"
 JAR = Path("/opt/workcenters/ee/freerouting/freerouting.jar")
 needs_engines = engine(
     pytest.mark.skipif(
-        not LIBS.is_file()
-        or shutil.which("kicad-cli") is None
-        or not JAR.is_file()
-        or not shutil.which("java"),
+        not LIBS.is_file() or shutil.which("kicad-cli") is None or not JAR.is_file() or bool(router_absent()),
         reason="the KiCad libraries, kicad-cli and FreeRouting are needed",
     )
 )

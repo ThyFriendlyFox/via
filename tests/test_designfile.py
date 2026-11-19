@@ -12,6 +12,7 @@ came out equal from the generator before it and the generator after it.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -20,7 +21,7 @@ import uuid
 from pathlib import Path
 
 import pytest
-from conftest import engine
+from conftest import engine, router_absent
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -38,7 +39,7 @@ needs_kicad = engine(
 )
 needs_router = engine(
     pytest.mark.skipif(
-        not JAR.is_file() or shutil.which("java") is None, reason="FreeRouting is not installed"
+        not JAR.is_file() or bool(router_absent()), reason=router_absent() or "FreeRouting is not installed"
     )
 )
 
@@ -399,11 +400,58 @@ def test_a_route_that_joins_nothing_is_exit_1_and_a_board_with_nothing_to_route_
     summary = json.loads(r.stdout)
     assert r.returncode == 1, r.stdout + r.stderr
     route = summary["route"]
+    # A route that failed or was skipped says why (CI run 44515796762 ended here in KeyError: 'segments').
+    assert "failed" not in route and "skip" not in route, route
     assert (route["segments"], route["vias"], route["unrouted"]) == (0, 0, 6)
     assert summary["part_problems"] == [] and summary["red"] == ["6 unrouted"]
     r = run("design", design_file(tmp_path / "alone", "del d.parts[1:]"), "--route")
     assert r.returncode == 0, r.stdout + r.stderr
     assert "  routed: 0 segments, 0 vias, DRC decides, 1 round(s)" in r.stdout
+
+
+# A java whose JVM has no lib/libawt_xawt.so, as Ubuntu's openjdk-21-jre-headless alone: FreeRouting 1.9.0
+# draws a window under xvfb-run, and the JVM stops. The words are the stand-in's, after a real one.
+HEADLESS_JAVA = """#!/bin/sh
+if [ "$1" = "-version" ]; then echo 'openjdk version "21.0.13" 2025-10-21' >&2; exit 0; fi
+echo 'Exception in thread "main" java.lang.UnsatisfiedLinkError: no awt_xawt' >&2
+exit 1
+"""
+
+
+@needs_libs
+def test_a_route_whose_only_java_cannot_draw_says_which_java_and_why(tmp_path):
+    """CI run 44515796762: install.sh recorded the JVM of openjdk-21-jre-headless, and every route ended
+    in `FreeRouting exited 1` with nothing of why; a test then read a summary without `segments`. Here
+    the record names such a JVM and PATH has no java: `design --route --json` exits 2 with a summary whose
+    route names the java, the record and the missing library, and runs no router."""
+    java = tmp_path / "jvm" / "java-21-openjdk-amd64" / "bin" / "java"
+    java.parent.mkdir(parents=True)
+    java.write_text(HEADLESS_JAVA, encoding="utf-8")
+    java.chmod(0o755)
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "java.path").write_text(f"{java}\n", encoding="utf-8")
+    jar = tmp_path / "freerouting.jar"
+    jar.write_text("", encoding="utf-8")
+    empty = tmp_path / "path"
+    empty.mkdir()
+    env = {k: v for k, v in os.environ.items() if k != "JAVA"}
+    env.update(
+        WORKCENTER_ROOT=str(root), FREEROUTING_JAR=str(jar), PATH=str(empty), DISPLAY=":0", HOME=str(tmp_path)
+    )
+    env["WORKCENTER_LOCK_DIR"] = str(tmp_path / "lock")
+    r = subprocess.run(
+        [sys.executable, str(CLI), "design", str(design_file(tmp_path / "b")), "--route", "--json"],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+    summary = json.loads(r.stdout)
+    assert r.returncode == 2, r.stdout + r.stderr
+    said = summary["route"]["skip"]
+    assert f"{java} (recorded by install.sh in {root / 'java.path'}) cannot run FreeRouting 1.9.0" in said
+    assert "libawt_xawt.so" in said, said
 
 
 # ------------------------------------------------------------------ the pull

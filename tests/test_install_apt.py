@@ -231,10 +231,11 @@ def unfenced_in_the_script() -> tuple:
     return tuple(literal_paths(text)) + tuple(unfenced_writes(text))
 
 
-def folder(tmp_path: Path, answers: dict | None = None) -> dict:
+def folder(tmp_path: Path, answers: dict | None = None, xawt: bool = True) -> dict:
     """Make the stand-ins, the readers and the folder's files; return the environment of a run. No test
     runs the script while the scans see a write that passes no fence: a redirection runs before any
-    test could fail on it."""
+    test could fail on it. `xawt`: the JVM of the 21 under JVM_DIR has AWT's X11 library, as after
+    openjdk-21-jre."""
     assert unfenced_in_the_script() == ()
     # No stand-in python3 may end before it has read the key's pipe (M270).
     assert {**DEFAULTS, **(answers or {})}["python3"].startswith(DRAINS)
@@ -256,9 +257,11 @@ def folder(tmp_path: Path, answers: dict | None = None) -> dict:
         (tools / name).symlink_to(real(name))
     (tmp_path / "os-release").write_text("VERSION_CODENAME=noble\n", encoding="utf-8")
     (tmp_path / "ca-certificates.crt").write_text("a bundle\n", encoding="utf-8")
-    jvm = tmp_path / "jvm" / "lib"
-    jvm.mkdir(parents=True)
-    (jvm / "libawt_xawt.so").write_text("", encoding="utf-8")
+    (tmp_path / "jvm").mkdir()
+    if xawt:
+        jvm = tmp_path / "jvm" / "java-21-openjdk-amd64" / "lib"
+        jvm.mkdir(parents=True)
+        (jvm / "libawt_xawt.so").write_text("", encoding="utf-8")
     (tmp_path / "tmp").mkdir()
     (tmp_path / "sources.list.d").mkdir(exist_ok=True)
     (tmp_path / "calls").write_text("", encoding="utf-8")
@@ -291,9 +294,15 @@ def script(path: Path, body: str) -> str:
     return f"set -euo pipefail\nsource {path}\n{body}\n"
 
 
-def run(tmp_path: Path, answers: dict | None = None, env: dict | None = None, body: str = "step_apt"):
+def run(
+    tmp_path: Path,
+    answers: dict | None = None,
+    env: dict | None = None,
+    body: str = "step_apt",
+    xawt: bool = True,
+):
     """Source install.sh and run `body` with the stand-ins; return (exit code, stdout, stderr, calls)."""
-    full_env = {**folder(tmp_path, answers), **(env or {})}
+    full_env = {**folder(tmp_path, answers, xawt=xawt), **(env or {})}
     proc = subprocess.run(
         [BASH, "-c", script(INSTALL, body)],
         capture_output=True,
@@ -1379,19 +1388,25 @@ def java_step(
     require: str = "1",
     stale: bool = False,
     jvms: dict | None = None,
+    headless: tuple = (),
 ):
     """Run step_java with a JVM of version `jvm` under JVM_DIR (none when empty) and a `java` of version
     `on_path` on the closed PATH (none when empty). `jvms` adds JVM folders: name to the script of its
-    bin/java, or to None for a folder without it. Returns (exit code, stdout, stderr, calls, record)."""
+    bin/java, or to None for a folder without it. Each JVM with a java has lib/libawt_xawt.so, as
+    openjdk-21-jre gives it, but those `headless` names (openjdk-21-jre-headless alone). Returns (exit
+    code, stdout, stderr, calls, record)."""
     answers = {"java": f"echo 'openjdk version \"{on_path}\" 2025-10-21' >&2"} if on_path else {}
-    env = {**folder(tmp_path, answers), "REQUIRE_FREEROUTING": require}
+    env = {**folder(tmp_path, answers, xawt=False), "REQUIRE_FREEROUTING": require}
     folders = {"java-21-openjdk-amd64": JVM_JAVA.replace("@VERSION@", jvm)} if jvm else {}
     for name, body in {**folders, **(jvms or {})}.items():
         exe = tmp_path / "jvm" / name / "bin" / "java"
-        (exe.parent if body is not None else exe.parent.parent / "lib").mkdir(parents=True)
+        (exe.parent.parent / "lib").mkdir(parents=True)
         if body is not None:
+            exe.parent.mkdir()
             exe.write_text(body, encoding="utf-8")
             exe.chmod(0o755)
+            if name not in headless:
+                (exe.parent.parent / "lib" / "libawt_xawt.so").write_text("", encoding="utf-8")
     record = tmp_path / "root" / "java.path"
     if stale:
         record.parent.mkdir()
@@ -1438,9 +1453,9 @@ def test_with_no_installed_jvm_a_java_21_on_path_is_used_and_no_record_is_left(t
 
 
 ADVICE = (
-    "[install] Install openjdk-21-jre-headless, the apt step's package, so that "
-    "its JVM is in {jvm} (java-21-openjdk-<arch>), then run the script again: install.sh records it for "
-    "Via."
+    "[install] Install openjdk-21-jre-headless and openjdk-21-jre, the apt step's packages, so that "
+    "their JVM is in {jvm} (java-21-openjdk-<arch>) with lib/libawt_xawt.so, then run the script again: "
+    "install.sh records it for Via."
 )
 
 
@@ -1600,6 +1615,134 @@ def test_install_sh_and_doctor_hold_freerouting_to_the_same_java():
     import routers
 
     assert assigned("JAVA_MIN", env=False) == routers.JAVA_MIN == 21
+
+
+# CI run 44515796762 (job 135531488086, 2026-11-19): the apt step installed openjdk-21-jre-headless, whose
+# JVM has no lib/libawt_xawt.so (this machine's /var/lib/dpkg/info/openjdk-21-jre-headless:amd64.list
+# names libawt.so and libawt_headless.so; openjdk-21-jre's names libawt_xawt.so). The step's check found
+# the library elsewhere under /usr/lib/jvm, in a JDK of the runner's own, and installed nothing more; the
+# java step recorded the headless JVM, and every route ended in "FreeRouting exited 1".
+JRE_ANSWER = f"""case "$*" in
+  *" openjdk-21-jre")
+    echo "Setting up openjdk-21-jre:amd64 (21.0.13.1+1~us1-0ubuntu1~24.04) ..."
+    touch "$STUB_DIR/jvm/java-21-openjdk-amd64/lib/libawt_xawt.so"
+    exit 0 ;;
+esac
+{DEFAULTS["apt-get"]}"""
+
+
+def test_the_x11_library_of_another_jdk_under_jvm_dir_does_not_stand_for_the_21s(tmp_path):
+    """The runner of run 44515796762: a JDK of the runner's own under JVM_DIR has libawt_xawt.so, the 21
+    of the apt step has none. The step installs openjdk-21-jre, which gives the 21 its library."""
+    other = tmp_path / "jvm" / "temurin-17-jdk-amd64" / "lib"
+    ours = tmp_path / "jvm" / "java-21-openjdk-amd64" / "lib"
+    answers = {"apt-get": JRE_ANSWER}
+    env = folder(tmp_path, answers, xawt=False)
+    other.mkdir(parents=True)
+    (other / "libawt_xawt.so").write_text("", encoding="utf-8")
+    ours.mkdir(parents=True)
+    proc = subprocess.run(
+        [BASH, "-c", script(INSTALL, "step_apt")],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=tmp_path,
+        timeout=60,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    calls = calls_of(tmp_path)
+    assert [c for c in installs(calls) if c.endswith(" openjdk-21-jre")] == [
+        "apt-get install -y --no-install-recommends openjdk-21-jre"
+    ]
+    assert (
+        "[install] apt: install openjdk-21-jre (the JVM of the 21 under "
+        f"{tmp_path}/jvm has no lib/libawt_xawt.so, which FreeRouting needs)"
+    ) in proc.stdout.splitlines()
+    assert (ours / "libawt_xawt.so").is_file()
+
+
+def test_a_21_still_without_its_x11_library_after_openjdk_21_jre_stops(tmp_path):
+    """openjdk-21-jre is installed and the 21's JVM still has no lib/libawt_xawt.so: the step stops and
+    says where it looked."""
+    env = folder(tmp_path, xawt=False)
+    (tmp_path / "jvm" / "java-21-openjdk-amd64" / "lib").mkdir(parents=True)
+    proc = subprocess.run(
+        [BASH, "-c", script(INSTALL, "step_apt")],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=tmp_path,
+        timeout=60,
+        check=False,
+    )
+    calls_of(tmp_path)
+    assert proc.returncode == 1
+    assert proc.stderr.splitlines()[-1] == (
+        f"[install] ERROR: lib/libawt_xawt.so not found in {tmp_path}/jvm/java-21-openjdk-* after "
+        "installing openjdk-21-jre: FreeRouting cannot run"
+    )
+
+
+def test_the_21_with_its_x11_library_installs_nothing_more(tmp_path):
+    """The 21's JVM has lib/libawt_xawt.so: no openjdk-21-jre is asked for."""
+    code, out, err, calls = run(tmp_path)
+    assert code == 0, err
+    assert [c for c in installs(calls) if c.endswith(" openjdk-21-jre")] == []
+
+
+NODRAW = ", whose JVM has no lib/libawt_xawt.so: a headless runtime, which cannot draw FreeRouting's window"
+
+
+def test_a_21_that_cannot_draw_is_recorded_and_stops_with_why(tmp_path):
+    """The only JVM of the 21 runs but has no lib/libawt_xawt.so, REQUIRE_FREEROUTING=1: the step records
+    it (Via names it when it refuses it) and stops with what is missing and what to install."""
+    code, out, err, calls, record = java_step(
+        tmp_path, jvm="21.0.13", on_path="17.0.21", headless=("java-21-openjdk-amd64",)
+    )
+    java = tmp_path / "jvm" / "java-21-openjdk-amd64" / "bin" / "java"
+    assert code == 1
+    assert "NEXT STEP" not in out
+    assert record.read_text(encoding="utf-8") == f"{java}\n"
+    assert err.splitlines()[-2:] == [
+        f"[install] ERROR: java: Via would run {java} (the JVM of the apt step's openjdk-21-jre-headless, "
+        f"recorded in {record}), Java 21{NODRAW}; {ENGINES_MD}, and REQUIRE_FREEROUTING=1",
+        ADVICE.format(jvm=tmp_path / "jvm"),
+    ]
+
+
+def test_of_2_jvms_of_the_21_that_cannot_draw_the_first_is_recorded(tmp_path):
+    """2 JVMs of the 21 that run, neither with lib/libawt_xawt.so: the first in glob order is recorded and
+    named, and the step stops."""
+    code, out, err, calls, record = java_step(
+        tmp_path,
+        on_path="17.0.21",
+        jvms={
+            "java-21-openjdk-amd64": JVM_JAVA.replace("@VERSION@", "21.0.13"),
+            "java-21-openjdk-arm64": JVM_JAVA.replace("@VERSION@", "21.0.4"),
+        },
+        headless=("java-21-openjdk-amd64", "java-21-openjdk-arm64"),
+    )
+    assert code == 1
+    assert record.read_text(encoding="utf-8") == f"{tmp_path}/jvm/java-21-openjdk-amd64/bin/java\n"
+    assert NODRAW in err
+
+
+def test_of_2_jvms_of_the_21_the_first_that_can_draw_is_recorded(tmp_path):
+    """2 JVMs of the 21 that both run; the first in glob order has no lib/libawt_xawt.so: the second,
+    which has it, is recorded, and the step passes."""
+    code, out, err, calls, record = java_step(
+        tmp_path,
+        on_path="17.0.21",
+        jvms={
+            "java-21-openjdk-amd64": JVM_JAVA.replace("@VERSION@", "21.0.13"),
+            "java-21-openjdk-arm64": JVM_JAVA.replace("@VERSION@", "21.0.4"),
+        },
+        headless=("java-21-openjdk-amd64",),
+    )
+    assert code == 0, err
+    assert record.read_text(encoding="utf-8") == f"{tmp_path}/jvm/java-21-openjdk-arm64/bin/java\n"
+    assert out.splitlines()[-1] == "NEXT STEP"
 
 
 # The first step (step_boot, from the container image's piece) looks for these 5 tools and the

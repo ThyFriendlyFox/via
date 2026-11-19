@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from conftest import router_absent
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools" / "ci"))
@@ -391,7 +392,7 @@ QUICK_START = {
 @pytest.mark.skipif(
     shutil.which("kicad-cli") is None
     or shutil.which("ngspice") is None
-    or shutil.which("java") is None
+    or bool(router_absent())
     or not Path("/opt/workcenters/ee/freerouting/freerouting.jar").is_file(),
     reason="kicad-cli, ngspice and FreeRouting run the commands of the quick start",
 )

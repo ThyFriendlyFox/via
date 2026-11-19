@@ -218,7 +218,7 @@ def test_a_session_an_earlier_run_left_is_never_read(tmp_path):
     old.write_text(session(["A", "B", "C"]), encoding="utf-8")
     code, text = route(tmp_path, env)
     assert code == 1, text
-    assert "route failed: FreeRouting exited 0; see" in text
+    assert f"route failed: FreeRouting exited 0 (java {env['JAVA']}); see" in text
     assert routed_line(text) == ""
     assert not (tmp_path / "out" / "rows.kicad_pcb").exists()
 
@@ -435,12 +435,13 @@ def test_the_routers_output_is_kept_in_the_route_log(tmp_path):
 @needs_libs
 def test_a_router_that_fails_is_1_line_and_writes_nothing(tmp_path):
     """Rule 14. The router exits 3 after writing a session: the route failed, in 1 line that names
-    the exit code and the log; nothing is merged and no board is written."""
+    the exit code, the java that ran (CI run 44515796762) and the log; nothing is merged and no board is
+    written."""
     env = standin(tmp_path, ses=session(["A", "B", "C"]), exit=3)
     code, text = route(tmp_path, env)
     assert code == 1, text
     log = tmp_path / "out" / "build" / "route" / "freerouting.log"
-    assert f"  route failed: FreeRouting exited 3; see {log}" in text.splitlines()
+    assert f"  route failed: FreeRouting exited 3 (java {env['JAVA']}); see {log}" in text.splitlines()
     assert "Traceback" not in text
     assert not (tmp_path / "out" / "rows.kicad_pcb").exists()
 

@@ -49,20 +49,38 @@ def stand_in(folder: Path, name: str, version: str, log: Path) -> Path:
     return exe
 
 
+def draws(exe: Path) -> Path:
+    """Give the stand-in's JVM the X11 library of AWT, lib/libawt_xawt.so, as openjdk-21-jre does."""
+    lib = exe.parent.parent / "lib"
+    lib.mkdir(parents=True, exist_ok=True)
+    (lib / "libawt_xawt.so").write_text("", encoding="utf-8")
+    return exe
+
+
 def case(tmp_path: Path, which: str) -> tuple[dict, dict]:
     """The environment of 1 case and the stand-ins' paths. `both`: a 17 first on PATH and a 21 at the
     path install.sh recorded in <root>/java.path; `old`: only a 17 on PATH, no record; `none`: no java
-    on PATH and no record. PATH holds only the stand-ins' folder (or an empty one)."""
+    on PATH and no record. `headless`: the record names a 21 whose JVM has no lib/libawt_xawt.so (Ubuntu's
+    openjdk-21-jre-headless alone, as on GitHub's runner in CI run 44515796762), and a 21 that has it
+    stands first on PATH; `headless-old`: the same record, a 17 first on PATH. PATH holds only the
+    stand-ins' folder (or an empty one). Every stand-in but the headless one has the library."""
     root, log = tmp_path / "root", tmp_path / "java-calls.log"
     root.mkdir()
     log.write_text("", encoding="utf-8")
     path_dir = tmp_path / "path"
     path_dir.mkdir()
     javas = {}
-    if which in ("both", "old"):
-        javas["17"] = stand_in(path_dir, "java17", "17.0.21", log)
-    if which == "both":
+    if which in ("both", "old", "headless-old"):
+        javas["17"] = draws(stand_in(path_dir, "java17", "17.0.21", log))
+    if which == "headless":
+        javas["path21"] = draws(stand_in(path_dir, "javapath21", "21.0.9", log))
+    if which in ("headless", "headless-old"):
         javas["21"] = stand_in(tmp_path / "jvm" / "java-21-openjdk-amd64" / "bin", "java21", "21.0.13", log)
+        (root / "java.path").write_text(f"{javas['21']}\n", encoding="utf-8")
+    if which == "both":
+        javas["21"] = draws(
+            stand_in(tmp_path / "jvm" / "java-21-openjdk-amd64" / "bin", "java21", "21.0.13", log)
+        )
         (root / "java.path").write_text(f"{javas['21']}\n", encoding="utf-8")
     env = {
         k: v for k, v in os.environ.items() if k not in ("JAVA", "KICAD_CLI", "NGSPICE", "FREEROUTING_JAR")
@@ -153,7 +171,7 @@ def test_no_java_at_all_is_absent_and_said_so(tmp_path):
 
 def test_a_record_whose_java_is_gone_is_named_and_not_replaced_by_paths(tmp_path):
     """A record that names a java no longer there: doctor says so and names the record. It does not fall
-    back to the 17 on PATH, which install.sh did not choose."""
+    back to the 17 on PATH, which FreeRouting 1.9.0 is not held to: the 17 is asked its version only."""
     env, paths = case(tmp_path, "both")
     paths["21"].unlink()
     row, line, _ = doctor(env)
@@ -173,7 +191,8 @@ def test_a_record_whose_java_is_gone_is_named_and_not_replaced_by_paths(tmp_path
         "in",
         str(record),
     ]
-    assert called(paths) == []
+    asked = paths["log"].read_text(encoding="utf-8").splitlines()
+    assert set(asked) <= {"java17 -version"}, asked
 
 
 def test_java_set_by_the_variable_comes_first(tmp_path):
@@ -232,3 +251,115 @@ def test_the_autoroute_gate_runs_the_recorded_java(tmp_path):
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert called(paths) == ["java21"]
+
+
+# CI run 44515796762 (job 135531488086, 2026-11-19): install.sh recorded
+# /usr/lib/jvm/java-21-openjdk-amd64/bin/java, the JVM of openjdk-21-jre-headless, and 13 routing tests
+# ended in "FreeRouting exited 1". FreeRouting 1.9.0 draws a window under xvfb-run; the headless runtime
+# has no lib/libawt_xawt.so (this machine's /var/lib/dpkg/info/openjdk-21-jre-headless:amd64.list names
+# libawt.so and libawt_headless.so only; openjdk-21-jre's list names libawt_xawt.so).
+
+
+def routers_env(monkeypatch, env: dict, tmp_path: Path) -> None:
+    """The case's environment in this process, with a jar of the test's own so that only Java decides."""
+    jar = tmp_path / "freerouting.jar"
+    jar.write_text("", encoding="utf-8")
+    for name in ("JAVA", "FREEROUTING_JAR"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("FREEROUTING_JAR", str(jar))
+    for name in ("WORKCENTER_ROOT", "PATH", "DISPLAY"):
+        monkeypatch.setenv(name, env[name])
+
+
+def test_a_recorded_jvm_that_cannot_draw_gives_way_to_a_java_on_path_that_can(tmp_path, monkeypatch):
+    """Case `headless`: the record names a 21 without lib/libawt_xawt.so, a 21 with it stands first on
+    PATH. Via runs the one on PATH: the pick, the router's command line and doctor's row agree, and
+    the pick says why the record was passed over."""
+    env, paths = case(tmp_path, "headless")
+    routers_env(monkeypatch, env, tmp_path)
+    record = paths["root"] / "java.path"
+    exe, how = routers.workcenter_java()
+    assert exe == "java"
+    assert str(paths["21"]) in how and str(record) in how and "libawt_xawt.so" in how
+    router = routers.get(routers.DEFAULT)
+    assert router.absent() == ""
+    assert router.command(tmp_path / "a.dsn", tmp_path / "a.ses", 20, 0, tmp_path)[0] == "java"
+    env["FREEROUTING_JAR"] = str(tmp_path / "freerouting.jar")
+    row, line, payload = doctor(env)
+    assert row["ok"] is True and row["path"] == str(paths["path21"]), line
+    assert "java" not in payload["degraded"]
+    assert line.split()[:4] == ["ok", "java", "21.0.9", "at"]
+
+
+def test_a_route_with_no_java_that_can_draw_is_refused_with_the_java_and_why(tmp_path, monkeypatch):
+    """Case `headless-old`: the record's 21 cannot draw and the 17 on PATH is older than FreeRouting's
+    Java. The record stays the pick; the router is absent, and its reason names the java, where it came
+    from and why it was refused; doctor's row names the same java and says absent."""
+    env, paths = case(tmp_path, "headless-old")
+    routers_env(monkeypatch, env, tmp_path)
+    record = paths["root"] / "java.path"
+    assert routers.workcenter_java()[0] == str(paths["21"])
+    why = routers.get(routers.DEFAULT).absent()
+    assert why.startswith(f"freerouting: {paths['21']} (recorded by install.sh in {record}) cannot run ")
+    assert f"{paths['21'].parent.parent / 'lib'} has no libawt_xawt.so" in why, why
+    with pytest.raises(FileNotFoundError, match="libawt_xawt.so"):
+        routers.get(routers.DEFAULT).run(
+            tmp_path / "a.dsn", tmp_path / "a.ses", tmp_path / "a.log", 20, 0, 60, tmp_path
+        )
+    assert "java21" not in called(paths)
+    row, line, payload = doctor(env)
+    assert row["ok"] is False and row["path"] == str(paths["21"])
+    assert "java" in payload["degraded"]
+    assert "libawt_xawt.so" in line, line
+
+
+def test_a_record_whose_java_is_gone_gives_way_to_a_21_on_path_that_can_draw(tmp_path, monkeypatch):
+    """The record names a java that was removed, and a 21 that can draw stands first on PATH: Via runs
+    the 21 on PATH, and the pick names the record it passed over."""
+    env, paths = case(tmp_path, "headless")
+    paths["21"].unlink()
+    routers_env(monkeypatch, env, tmp_path)
+    exe, how = routers.workcenter_java()
+    assert exe == "java" and f"no java at {paths['21']}" in how
+
+
+def test_a_router_that_fails_names_its_java_and_its_last_words(tmp_path, monkeypatch):
+    """A router that ends with exit 1: the error names the java that ran and the Java exception it
+    threw, not only the exit code. The 13 reports of run 44515796762 showed `FreeRouting exited 1; see
+    <log>` and nothing of what the router said. FreeRouting 1.9.0 logs it on stdout; these lines are its
+    log's on this machine with a JVM without lib/libawt_xawt.so."""
+    java = tmp_path / "java"
+    java.write_text(
+        "#!/bin/sh\necho '2026-11-19 12:25:38.683 [main] INFO  Freerouting v1.9.0 (build-date: 2023-10-30)'\n"
+        "echo '2026-11-19 12:25:38.761 [main] ERROR '\necho 'No X11 DISPLAY variable was set,'\n"
+        "echo 'java.awt.HeadlessException: '\n"
+        "echo '\tat sun.awt.HeadlessToolkit.getScreenSize(HeadlessToolkit.java:186) ~[?:?]'\n"
+        "echo 'a last word' >&2\nexit 1\n",
+        encoding="utf-8",
+    )
+    java.chmod(0o755)
+    jar = tmp_path / "freerouting.jar"
+    jar.write_text("", encoding="utf-8")
+    monkeypatch.setenv("JAVA", str(java))
+    monkeypatch.setenv("FREEROUTING_JAR", str(jar))
+    monkeypatch.setenv("DISPLAY", ":0")
+    with pytest.raises(RuntimeError) as caught:
+        routers.get(routers.DEFAULT).run(
+            tmp_path / "a.dsn", tmp_path / "a.ses", tmp_path / "a.log", 20, 0, 60, tmp_path
+        )
+    said = str(caught.value)
+    assert said.startswith("FreeRouting exited 1 "), said
+    assert f"(java {java}); it said: java.awt.HeadlessException:; see " in said, said
+
+
+def test_no_test_decides_on_the_first_java_on_path():
+    """A routing test skips on the same pick as the product (routers.workcenter_java, through the
+    router's absent()), not on `shutil.which("java")`: in run 44515796762 the tests saw a java on PATH,
+    did not skip, and ran a java the product picked elsewhere."""
+    found = [
+        f"{p.name}:{n}"
+        for p in sorted((ROOT / "tests").glob("*.py"))
+        for n, ln in enumerate(p.read_text(encoding="utf-8").splitlines(), start=1)
+        if 'which("java")' in ln and p.name != Path(__file__).name
+    ]
+    assert found == []

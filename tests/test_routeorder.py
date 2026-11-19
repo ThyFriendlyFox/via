@@ -15,7 +15,7 @@ import uuid
 from pathlib import Path
 
 import pytest
-from conftest import engine
+from conftest import engine, router_absent
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -31,7 +31,7 @@ needs_kicad = engine(
 )
 needs_router = engine(
     pytest.mark.skipif(
-        not JAR.is_file() or shutil.which("java") is None, reason="FreeRouting is not installed"
+        not JAR.is_file() or bool(router_absent()), reason=router_absent() or "FreeRouting is not installed"
     )
 )
 
