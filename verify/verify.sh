@@ -99,7 +99,7 @@ trap 'python3 tools/now.py record "$?" "$STEP" --head "$GATE_HEAD" --dirty "$GAT
   || echo "no gate record written" >&2' EXIT
 
 step "1/4 lint"
-shellcheck install.sh verify/verify.sh environment/setup.sh site/build.sh ee-agent-kit/lead/gate-and-push.sh
+shellcheck install.sh verify/verify.sh environment/setup.sh site/build.sh ee-agent-kit/lead/gate-and-push.sh tools/ci/apt_archive.sh
 "$PY" -m ruff check tools tests verify ee-agent-kit/lead
 "$PY" -m ruff format --check tools tests verify ee-agent-kit/lead
 

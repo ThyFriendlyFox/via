@@ -139,6 +139,13 @@ journal lines of `ee-agent-kit/lead/README.md`, "The journal", itself.
         and `git -C <scratch>/wt/lead branch -D wip/<short name>`.
       - A line starts with `+`: that commit is not on `<work>`. The piece
         has not landed; its worktree stays.
+15. When a landing is accepted, remove that piece's worktree (step 14's
+    `worktree remove`, which refuses a tree with changes) and the folders
+    of copies its reviews and its landing prep made. Before a health gate
+    and before sending helpers, read `df -h <scratch>`; with less than
+    5 GB free, clear the copies of landed pieces first (P31 step 10). The
+    5 GB is the lead's choice: here a whole checkout with its build
+    folders took about 410 MB, and a review's copies up to 2440 MB.
 
 ## Done when
 

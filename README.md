@@ -315,8 +315,45 @@ command. `workcenter next <project>` gives the step, and `make verify`
 the repository's health.
 
 **A Docker image.** With Docker instead of installing (amd64 or arm64; no openEMS on arm64):
-`docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work ghcr.io/thyfriendlyfox/ee-workcenter:main workcenter gates .`.
-The files the gates write belong to you. The image holds the toolchain install.sh installs and the workcenter, without the example boards and the site; `.github/workflows/image.yml` builds it on Ubuntu 24.04 and publishes it from `main`, a release's tag, each Monday and by hand. Pin a toolchain by its digest from the `Image` workflow's summary. The first image was built and pushed from `main` on 2026-11-18; the package is still private, so it cannot be pulled from outside the repository yet.
+`docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work ghcr.io/thyfriendlyfox/via:main workcenter gates .`.
+The files the gates write belong to you. The image holds the toolchain install.sh installs and the workcenter, without the example boards and the site; `.github/workflows/image.yml` builds it on Ubuntu 24.04 and publishes it from `main`, a release's tag, each Monday and by hand. Pin a toolchain by its digest from the `Image` workflow's summary. The package is named `via`. Its first image is pushed by the release's tag or the next push to `main`; the images built before the first release went to an older package, `ee-workcenter`, which is no longer updated.
+
+### Run the workcenter from its container
+
+The image of the release v0.1.0 has the tag `v0.1.0`.
+It mounts your project on `/work`, its working folder.
+
+Pull the image:
+
+```sh
+docker pull ghcr.io/thyfriendlyfox/via:v0.1.0
+```
+
+Run the gates on the project in the current folder, on Linux or macOS in a POSIX shell:
+
+```sh
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work ghcr.io/thyfriendlyfox/via:v0.1.0 workcenter gates .
+```
+
+On Windows, in PowerShell:
+
+```powershell
+docker run --rm -v "${PWD}:/work" ghcr.io/thyfriendlyfox/via:v0.1.0 workcenter gates .
+```
+
+On Windows, in cmd.exe:
+
+```bat
+docker run --rm -v "%cd%:/work" ghcr.io/thyfriendlyfox/via:v0.1.0 workcenter gates .
+```
+
+- On Linux, `--user` makes the files the gates write yours; the image's build checks this with the same command.
+- With no command, the image runs `workcenter doctor`.
+- The package is private until the owner makes it public; until then, a pull needs `docker login ghcr.io` with a token that can read it.
+- On arm64 (an Apple Silicon Mac, a Windows on Arm PC) the image has no openEMS; `--platform linux/amd64` runs the amd64 image, with openEMS, under emulation.
+- Docker Desktop on Windows and macOS runs Linux containers, and this image is a Linux image (Ubuntu 24.04).
+- The chip engines are not in the image; `sudo ./install.sh --chip` installs them on Ubuntu 24.04.
+- The image build runs the Linux command on Linux; nobody has run these commands on Windows or macOS yet.
 
 ## The website
 

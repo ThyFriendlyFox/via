@@ -325,13 +325,23 @@ def test_workcenter_image_is_the_same_function_on_the_workcenters_own_checkout()
     assert ran.returncode == 0, ran.stderr
     said = json.loads(ran.stdout)
     assert said["tag"] == image.content_tag(image.from_git(ROOT, "HEAD"))
-    assert said["image"] == "ghcr.io/<owner>/ee-workcenter"
+    assert said["image"] == "ghcr.io/<owner>/via"
 
 
 def test_the_image_name_is_the_owner_in_lower_case():
     """GitHub's container registry page writes the image's name in lower case (its workflow example
-    changes every upper-case letter to lower case before the push)."""
-    assert image.image_name("ThyFriendlyFox") == "ghcr.io/thyfriendlyfox/ee-workcenter"
+    changes every upper-case letter to lower case before the push). The package is named after the
+    product, via."""
+    assert image.image_name("ThyFriendlyFox") == "ghcr.io/thyfriendlyfox/via"
+
+
+def test_no_workflow_writes_the_images_name_itself():
+    """Every workflow step that pushes, pulls or names the image takes its name from tools/image.py
+    (`tag` or `decide`), so 1 constant names the package everywhere."""
+    for wf in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+        text = wf.read_text(encoding="utf-8")
+        assert not re.search(r"ghcr\.io/", text), wf.name
+        assert "ee-workcenter" not in text, wf.name
 
 
 # ---------------------------------------------------------------- where CI's full job runs
@@ -353,12 +363,10 @@ def test_the_full_job_runs_in_the_image_of_its_own_tag_when_the_registry_gives_i
         return pulled("sha256:" + "a" * 64)(ref)
 
     d = image.decide("", "tc-7b247424ac84899d", [], pull, "ThyFriendlyFox")
-    assert seen == ["ghcr.io/thyfriendlyfox/ee-workcenter:tc-7b247424ac84899d"]
+    assert seen == ["ghcr.io/thyfriendlyfox/via:tc-7b247424ac84899d"]
     assert d["where"] == "image"
-    assert d["image"] == "ghcr.io/thyfriendlyfox/ee-workcenter@sha256:" + "a" * 64
-    assert d["reason"].startswith(
-        "the registry holds ghcr.io/thyfriendlyfox/ee-workcenter:tc-7b247424ac84899d"
-    )
+    assert d["image"] == "ghcr.io/thyfriendlyfox/via@sha256:" + "a" * 64
+    assert d["reason"].startswith("the registry holds ghcr.io/thyfriendlyfox/via:tc-7b247424ac84899d")
 
 
 def test_each_other_case_installs_as_today_and_says_why():
@@ -378,7 +386,7 @@ def test_each_other_case_installs_as_today_and_says_why():
     assert asked == []
     missing = image.decide("", "tc-x", [], refused("manifest unknown"), "o")
     assert missing["where"] == "install"
-    assert missing["reason"] == "the registry gave no ghcr.io/o/ee-workcenter:tc-x: manifest unknown"
+    assert missing["reason"] == "the registry gave no ghcr.io/o/via:tc-x: manifest unknown"
     unread = image.decide("", None, None, must_not_pull, "o")
     assert unread["where"] == "install" and "toolchain's files" in unread["reason"]
 
@@ -407,7 +415,7 @@ def test_decide_writes_where_image_and_reason_to_the_github_output(repo, tmp_pat
     assert lines == [
         "where=install",
         "image=",
-        "reason=the registry gave no ghcr.io/o/ee-workcenter:tc-7b247424ac84899d: denied",
+        "reason=the registry gave no ghcr.io/o/via:tc-7b247424ac84899d: denied",
     ]
 
 
@@ -424,12 +432,12 @@ def test_pull_takes_the_image_by_its_digest_alone(tmp_path, monkeypatch):
     bin_ = tmp_path / "bin"
     stub(bin_, "docker", 'if [ "$1" = image ]; then echo "$SAID"; fi; exit 0')
     monkeypatch.setenv("PATH", f"{bin_}:{os.environ['PATH']}")
-    digest = "ghcr.io/o/ee-workcenter@sha256:" + "c" * 64
+    digest = "ghcr.io/o/via@sha256:" + "c" * 64
     monkeypatch.setenv("SAID", digest)
-    assert image.pull("ghcr.io/o/ee-workcenter:tc-x") == (True, digest)
-    monkeypatch.setenv("SAID", "ghcr.io/o/ee-workcenter:tc-x")
-    ok, said = image.pull("ghcr.io/o/ee-workcenter:tc-x")
-    assert not ok and said == "the image pulled has no digest: ghcr.io/o/ee-workcenter:tc-x"
+    assert image.pull("ghcr.io/o/via:tc-x") == (True, digest)
+    monkeypatch.setenv("SAID", "ghcr.io/o/via:tc-x")
+    ok, said = image.pull("ghcr.io/o/via:tc-x")
+    assert not ok and said == "the image pulled has no digest: ghcr.io/o/via:tc-x"
 
 
 def test_every_test_that_needs_node_is_routed_to_the_install_path_by_the_files_it_reads():
@@ -789,8 +797,10 @@ def test_the_full_job_decides_its_path_then_runs_the_same_make_verify_on_either(
     install = [s for s in steps if s.get("if") == "steps.where.outputs.where == 'install'"]
     inside = [s for s in steps if s.get("if") == "steps.where.outputs.where == 'image'"]
     # The install path's line carries CI's 2 bounds (the install script's piece; its tests read them).
+    # Before it, apt is turned to Ubuntu's own archive (tests/test_ci_apt_archive.py holds that step).
     bounded = "sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh"
-    assert [s["run"] for s in install] == [bounded, "make verify"]
+    assert [s["run"] for s in install][1:] == [bounded, "make verify"]
+    assert "tools/ci/apt_archive.sh" in install[0]["run"]
     (run,) = inside
     assert '--user "$(id -u):$(id -g)"' in run["run"] and "tools/image.py check" in run["run"]
     assert run["run"].rstrip().endswith("make verify'")
@@ -837,7 +847,7 @@ def daemon() -> bool:
 @pytest.mark.skipif(not daemon(), reason="docker: no daemon answers `docker info`; the image workflow builds")
 def test_the_image_builds_and_runs_the_gates_as_the_calling_user(tmp_path):
     tag = image.content_tag(image.from_disk(ROOT))
-    name = f"ee-workcenter-test:{tag}"
+    name = f"via-test:{tag}"
     built = subprocess.run(
         ["docker", "build", "--build-arg", f"TOOLCHAIN_TAG={tag}", "-t", name, str(ROOT)],
         capture_output=True,

@@ -1,0 +1,504 @@
+"""CI's install path asks Ubuntu's own archive, not the runner's regional mirror (tools/ci/apt_archive.sh).
+
+Run 44402154007 (2026-11-18) and run 44432768560 (2026-11-19) of CI's `full` job took the install path,
+and apt's download from us-east-2.ec2.archive.ubuntu.com crawled to the bound of 570 s. The image builds
+of the same hours asked archive.ubuntu.com and downloaded 377 files in 41 s.
+
+Each stand-in folder below is a layout GitHub's ubuntu-24.04 runner images are shown to hold, from the
+actions/runner-images repository read at commit fbb26cb (2026-11-18):
+- images/ubuntu/scripts/build/configure-apt-sources.sh since f2f9183 (2026-11-17): on Ubuntu 24.04,
+  /etc/apt/sources.list.d/ubuntu.sources names `mirror+file:/etc/apt/apt-mirrors.txt`, and the list's
+  first line is the cloud's mirror (azure.archive.ubuntu.com, or us-east-2.ec2.archive.ubuntu.com on
+  AWS) at priority 1, then https://archive.ubuntu.com/ubuntu/ at 2, https://security.ubuntu.com/ubuntu/
+  at 3.
+- the same script at 9b75b60 (2026-11-11), the one before AWS was named: it writes the Azure line
+  whatever the cloud, and its sed knows only azure.archive, archive and security, so an EC2 host that
+  cloud-init wrote stays in ubuntu.sources itself.
+- images/ubuntu/scripts/build/configure-apt.sh and scripts/tests/Apt.Tests.ps1 at fbb26cb: 24.04 on
+  arm64 is served by ports.ubuntu.com/ubuntu-ports, named in ubuntu.sources, with no mirror list.
+The regional forms of each host are cloud-init's (canonical/cloud-init config/cloud.cfg.tmpl at
+40336875, `package_mirrors`): `%(ec2_region)s.ec2.archive.ubuntu.com`, `%(region)s.clouds.archive...`,
+and the same under ports.ubuntu.com/ubuntu-ports.
+
+The script never needs /etc in a test: each test gives it a folder of its own. The 1 test that names
+the real /etc/apt runs the script as a user id that cannot write there.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import os
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = ROOT / "tools" / "ci" / "apt_archive.sh"
+FLOWS = ROOT / ".github" / "workflows"
+PREFIX = "[apt-archive]"
+OFF = "CI_APT_UBUNTU_ARCHIVE"
+CALL = "sudo env APT_ARCHIVE_CI=1 bash tools/ci/apt_archive.sh /etc/apt"
+
+KEY = "Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg"
+PARTS = "Components: main universe restricted multiverse"
+
+
+def deb822(main: str, security: str) -> str:
+    """ubuntu.sources as cloud-init's templates/sources.list.ubuntu.deb822.tmpl writes it for noble."""
+    return (
+        "## Ubuntu distribution repository\n#\n# See sources.list(5) for more details.\n\n"
+        f"Types: deb\nURIs: {main}\nSuites: noble noble-updates noble-backports\n{PARTS}\n{KEY}\n\n"
+        f"Types: deb\nURIs: {security}\nSuites: noble-security\n{PARTS}\n{KEY}\n"
+    )
+
+
+LIST = "mirror+file:/etc/apt/apt-mirrors.txt"
+
+
+def mirrors(first: str) -> str:
+    """apt-mirrors.txt as configure-apt-sources.sh (f2f9183) writes it: tab, then the priority."""
+    return (
+        f"{first}\tpriority:1\n"
+        "https://archive.ubuntu.com/ubuntu/\tpriority:2\n"
+        "https://security.ubuntu.com/ubuntu/\tpriority:3\n"
+    )
+
+
+EC2 = "http://us-east-2.ec2.archive.ubuntu.com/ubuntu/"
+AZURE = "http://azure.archive.ubuntu.com/ubuntu/"
+PPA_LIST = "deb https://ppa.launchpadcontent.net/kicad/kicad-10.0-releases/ubuntu noble main\n"
+KICAD_SOURCES = (
+    "Types: deb\nURIs: https://ppa.launchpadcontent.net/kicad/kicad-10.0-releases/ubuntu\n"
+    "Suites: noble\nComponents: main\nSigned-By: /etc/apt/keyrings/kicad-10.0-releases.gpg\n"
+)
+DOCKER = (
+    "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] "
+    "https://download.docker.com/linux/ubuntu noble stable\n"
+)
+
+
+def layout(tmp_path: Path, files: dict[str, str]) -> Path:
+    apt = tmp_path / "apt"
+    (apt / "sources.list.d").mkdir(parents=True)
+    for name, text in files.items():
+        (apt / name).write_text(text, encoding="utf-8")
+    return apt
+
+
+def snapshot(apt: Path) -> dict[str, str]:
+    return {
+        p.relative_to(apt).as_posix(): p.read_text(encoding="utf-8") for p in apt.rglob("*") if p.is_file()
+    }
+
+
+def run(*args: str, env: dict | None = None, tmp: Path | None = None) -> subprocess.CompletedProcess:
+    base = {"PATH": "/usr/bin:/bin", "LC_ALL": "C"}
+    if tmp is not None:
+        base["TMPDIR"] = str(tmp)
+    return subprocess.run(
+        ["bash", str(SCRIPT), *args], env={**base, **(env or {})}, capture_output=True, text=True, timeout=60
+    )
+
+
+def lines(ran: subprocess.CompletedProcess) -> list[str]:
+    return ran.stdout.splitlines()
+
+
+def none_line(apt: Path) -> str:
+    return f"{PREFIX} no regional or cloud mirror of Ubuntu's archive in {apt}; changed nothing"
+
+
+# ---------------------------------------------------------------- the layouts of the runner images
+
+
+def test_the_ec2_host_in_the_mirror_list_becomes_ubuntus_own_archive(tmp_path):
+    """The layout of run A and run B: f2f9183's script on AWS."""
+    apt = layout(
+        tmp_path, {"sources.list.d/ubuntu.sources": deb822(LIST, LIST), "apt-mirrors.txt": mirrors(EC2)}
+    )
+    before = snapshot(apt)
+    ran = run(str(apt), tmp=tmp_path)
+    assert ran.returncode == 0, ran.stderr
+    assert lines(ran) == [
+        f"{PREFIX} {apt}/apt-mirrors.txt: us-east-2.ec2.archive.ubuntu.com -> archive.ubuntu.com"
+    ]
+    after = snapshot(apt)
+    assert after["apt-mirrors.txt"] == mirrors("http://archive.ubuntu.com/ubuntu/")
+    assert after["sources.list.d/ubuntu.sources"] == before["sources.list.d/ubuntu.sources"]
+
+
+def test_the_azure_host_in_the_mirror_list_becomes_ubuntus_own_archive(tmp_path):
+    apt = layout(
+        tmp_path, {"sources.list.d/ubuntu.sources": deb822(LIST, LIST), "apt-mirrors.txt": mirrors(AZURE)}
+    )
+    ran = run(str(apt), tmp=tmp_path)
+    assert ran.returncode == 0, ran.stderr
+    assert lines(ran) == [f"{PREFIX} {apt}/apt-mirrors.txt: azure.archive.ubuntu.com -> archive.ubuntu.com"]
+    assert snapshot(apt)["apt-mirrors.txt"] == mirrors("http://archive.ubuntu.com/ubuntu/")
+
+
+def test_the_ec2_host_left_in_ubuntu_sources_and_the_azure_line_both_change(tmp_path):
+    """9b75b60's script on AWS: the EC2 host stays in the deb822 file, security goes through the list,
+    whose first line is Azure's. 1 line per file, in the order the files are read."""
+    old_list = mirrors(AZURE)
+    apt = layout(tmp_path, {"sources.list.d/ubuntu.sources": deb822(EC2, LIST), "apt-mirrors.txt": old_list})
+    ran = run(str(apt), tmp=tmp_path)
+    assert ran.returncode == 0, ran.stderr
+    assert lines(ran) == [
+        f"{PREFIX} {apt}/sources.list.d/ubuntu.sources: "
+        "us-east-2.ec2.archive.ubuntu.com -> archive.ubuntu.com",
+        f"{PREFIX} {apt}/apt-mirrors.txt: azure.archive.ubuntu.com -> archive.ubuntu.com",
+    ]
+    after = snapshot(apt)
+    assert after["sources.list.d/ubuntu.sources"] == deb822("http://archive.ubuntu.com/ubuntu/", LIST)
+    assert after["apt-mirrors.txt"] == old_list.replace(AZURE, "http://archive.ubuntu.com/ubuntu/")
+
+
+def test_a_country_mirror_in_a_one_line_file_becomes_ubuntus_own_archive(tmp_path):
+    text = "deb http://us.archive.ubuntu.com/ubuntu/ noble main restricted\n"
+    text += "deb-src http://us.archive.ubuntu.com/ubuntu/ noble main restricted\n"
+    text += "deb http://security.ubuntu.com/ubuntu noble-security main\n"
+    apt = layout(tmp_path, {"sources.list": text})
+    ran = run(str(apt), tmp=tmp_path)
+    assert ran.returncode == 0, ran.stderr
+    assert lines(ran) == [f"{PREFIX} {apt}/sources.list: us.archive.ubuntu.com -> archive.ubuntu.com"]
+    assert snapshot(apt)["sources.list"] == text.replace("us.archive", "archive")
+
+
+def test_a_clouds_host_and_https_keep_their_scheme_and_path(tmp_path):
+    text = "deb https://us-east-2.ec2.archive.ubuntu.com/ubuntu noble main\n"
+    text += "deb https://us-west-2.clouds.archive.ubuntu.com/ubuntu/ noble-updates main\n"
+    apt = layout(tmp_path, {"sources.list.d/cloud.list": text})
+    ran = run(str(apt), tmp=tmp_path)
+    assert ran.returncode == 0, ran.stderr
+    assert lines(ran) == [
+        f"{PREFIX} {apt}/sources.list.d/cloud.list: us-east-2.ec2.archive.ubuntu.com -> archive.ubuntu.com, "
+        "us-west-2.clouds.archive.ubuntu.com -> archive.ubuntu.com"
+    ]
+    assert snapshot(apt)["sources.list.d/cloud.list"] == (
+        "deb https://archive.ubuntu.com/ubuntu noble main\n"
+        "deb https://archive.ubuntu.com/ubuntu/ noble-updates main\n"
+    )
+
+
+def test_the_line_names_only_the_hosts_it_changed(tmp_path):
+    """A host that only begins like a mirror (x.archive.ubuntu.com.cn) stays, and the line does not
+    name it. A host at the end of a line, or with a port, is named and changed."""
+    text = "deb http://my.archive.ubuntu.com.cn/ubuntu noble main\n"
+    text += "deb http://de.archive.ubuntu.com/ubuntu noble main\n"
+    text += "deb http://fr.archive.ubuntu.com:80/ubuntu noble main\n"
+    text += "# no path: http://nl.archive.ubuntu.com\nURIs: http://nl.archive.ubuntu.com\n"
+    apt = layout(tmp_path, {"sources.list.d/mixed.list": text})
+    ran = run(str(apt), tmp=tmp_path)
+    assert ran.returncode == 0, ran.stderr
+    assert lines(ran) == [
+        f"{PREFIX} {apt}/sources.list.d/mixed.list: de.archive.ubuntu.com -> archive.ubuntu.com, "
+        "fr.archive.ubuntu.com -> archive.ubuntu.com, nl.archive.ubuntu.com -> archive.ubuntu.com"
+    ]
+    assert snapshot(apt)["sources.list.d/mixed.list"] == (
+        "deb http://my.archive.ubuntu.com.cn/ubuntu noble main\n"
+        "deb http://archive.ubuntu.com/ubuntu noble main\n"
+        "deb http://archive.ubuntu.com:80/ubuntu noble main\n"
+        "# no path: http://nl.archive.ubuntu.com\nURIs: http://archive.ubuntu.com\n"
+    )
+
+
+def test_ubuntus_own_archive_already_changes_nothing(tmp_path):
+    """This machine's layout (Ubuntu 24.04's own ubuntu.sources) and the mirror list after a first run."""
+    apt = layout(
+        tmp_path,
+        {
+            "sources.list.d/ubuntu.sources": deb822(
+                "http://archive.ubuntu.com/ubuntu/", "http://security.ubuntu.com/ubuntu/"
+            ),
+            "apt-mirrors.txt": mirrors("http://archive.ubuntu.com/ubuntu/"),
+        },
+    )
+    before = snapshot(apt)
+    ran = run(str(apt), tmp=tmp_path)
+    assert ran.returncode == 0, ran.stderr
+    assert lines(ran) == [none_line(apt)]
+    assert snapshot(apt) == before
+
+
+def test_an_arm_machines_ports_host_stays_and_its_regional_form_becomes_it(tmp_path):
+    ports = "http://ports.ubuntu.com/ubuntu-ports/"
+    apt = layout(tmp_path, {"sources.list.d/ubuntu.sources": deb822(ports, ports)})
+    ran = run(str(apt), tmp=tmp_path)
+    assert ran.returncode == 0 and lines(ran) == [none_line(apt)], ran.stdout + ran.stderr
+    regional = tmp_path / "regional"
+    regional.mkdir()
+    apt = layout(
+        regional,
+        {
+            "sources.list.d/ubuntu.sources": deb822(
+                "http://us-east-2.ec2.ports.ubuntu.com/ubuntu-ports/", ports
+            )
+        },
+    )
+    ran = run(str(apt), tmp=tmp_path)
+    assert ran.returncode == 0, ran.stderr
+    assert lines(ran) == [
+        f"{PREFIX} {apt}/sources.list.d/ubuntu.sources: us-east-2.ec2.ports.ubuntu.com -> ports.ubuntu.com"
+    ]
+    assert snapshot(apt)["sources.list.d/ubuntu.sources"] == deb822(ports, ports)
+
+
+def test_security_a_ppa_and_a_third_party_stay_as_they_are(tmp_path):
+    """Beside a file that changes, every other source is left byte for byte, comments with a mirror's
+    name included."""
+    comment = "# deb http://us-east-2.ec2.archive.ubuntu.com/ubuntu/ noble main\n"
+    apt = layout(
+        tmp_path,
+        {
+            "apt-mirrors.txt": mirrors(EC2),
+            "sources.list": comment + "deb http://security.ubuntu.com/ubuntu/ noble-security main\n",
+            "sources.list.d/kicad.list": PPA_LIST,
+            "sources.list.d/kicad-10.0-releases.sources": KICAD_SOURCES,
+            "sources.list.d/docker.list": DOCKER,
+            "sources.list.d/ubuntu.sources": deb822(LIST, LIST),
+        },
+    )
+    before = snapshot(apt)
+    ran = run(str(apt), tmp=tmp_path)
+    assert ran.returncode == 0, ran.stderr
+    assert lines(ran) == [
+        f"{PREFIX} {apt}/apt-mirrors.txt: us-east-2.ec2.archive.ubuntu.com -> archive.ubuntu.com"
+    ]
+    after = snapshot(apt)
+    assert {k for k in before if before[k] != after[k]} == {"apt-mirrors.txt"}
+
+
+def test_a_second_run_changes_nothing(tmp_path):
+    apt = layout(
+        tmp_path, {"sources.list.d/ubuntu.sources": deb822(EC2, LIST), "apt-mirrors.txt": mirrors(EC2)}
+    )
+    first = run(str(apt), tmp=tmp_path)
+    assert first.returncode == 0 and len(lines(first)) == 2, first.stdout + first.stderr
+    once = snapshot(apt)
+    second = run(str(apt), tmp=tmp_path)
+    assert second.returncode == 0 and lines(second) == [none_line(apt)]
+    assert snapshot(apt) == once
+
+
+def test_a_folder_with_no_source_file_says_so_and_makes_none(tmp_path):
+    apt = layout(tmp_path, {})
+    ran = run(str(apt), tmp=tmp_path)
+    assert ran.returncode == 0, ran.stderr
+    assert lines(ran) == [
+        f"{PREFIX} no apt source file in {apt}: a layout this script does not know; changed nothing"
+    ]
+    assert snapshot(apt) == {}
+
+
+@pytest.mark.parametrize(
+    "uri",
+    [
+        "mirror+file:/etc/apt/other-mirrors.txt",
+        "mirror://mirrors.ubuntu.com/mirrors.txt",
+        "mirror+https://x.example/m",
+    ],
+)
+def test_a_mirror_list_it_does_not_know_says_so_and_changes_nothing(tmp_path, uri):
+    """A layout no runner image is shown to hold: nothing changes, not even the file it knows."""
+    apt = layout(
+        tmp_path,
+        {"sources.list.d/ubuntu.sources": deb822(EC2, uri), "apt-mirrors.txt": mirrors(EC2)},
+    )
+    before = snapshot(apt)
+    ran = run(str(apt), tmp=tmp_path)
+    assert ran.returncode == 0, ran.stderr
+    assert lines(ran) == [
+        f"{PREFIX} {apt}/sources.list.d/ubuntu.sources names {uri}, a mirror list this script does not know; "
+        "changed nothing"
+    ]
+    assert snapshot(apt) == before
+
+
+def test_the_known_mirror_list_named_but_absent_changes_nothing(tmp_path):
+    apt = layout(tmp_path, {"sources.list.d/ubuntu.sources": deb822(EC2, LIST)})
+    before = snapshot(apt)
+    ran = run(str(apt), tmp=tmp_path)
+    assert ran.returncode == 0, ran.stderr
+    assert lines(ran) == [
+        f"{PREFIX} {apt}/sources.list.d/ubuntu.sources names {LIST}, and {apt}/apt-mirrors.txt is absent: "
+        "a layout this script does not know; changed nothing"
+    ]
+    assert snapshot(apt) == before
+
+
+def test_the_folder_comes_from_apt_dir_and_a_missing_folder_stops(tmp_path):
+    apt = layout(tmp_path, {"apt-mirrors.txt": mirrors(AZURE)})
+    ran = run(env={"APT_DIR": str(apt)}, tmp=tmp_path)
+    assert ran.returncode == 0 and lines(ran) == [
+        f"{PREFIX} {apt}/apt-mirrors.txt: azure.archive.ubuntu.com -> archive.ubuntu.com"
+    ], ran.stdout + ran.stderr
+    ran = run(str(tmp_path / "nope"), tmp=tmp_path)
+    assert ran.returncode == 2 and ran.stdout == ""
+    assert ran.stderr.strip() == f"{PREFIX} no folder {tmp_path / 'nope'}; changed nothing"
+
+
+def test_a_changed_file_keeps_its_mode(tmp_path):
+    apt = layout(tmp_path, {"apt-mirrors.txt": mirrors(EC2)})
+    (apt / "apt-mirrors.txt").chmod(0o644)
+    assert run(str(apt), tmp=tmp_path).returncode == 0
+    assert (apt / "apt-mirrors.txt").stat().st_mode & 0o777 == 0o644
+
+
+# ---------------------------------------------------------------- the refusal on the real /etc/apt
+
+SETPRIV = shutil.which("setpriv")
+UID = 12345
+
+
+def unprivileged(argv: list[str], env: dict[str, str]) -> subprocess.CompletedProcess:
+    """argv as a user id that cannot write /etc/apt: this one when it is not root, else user id 12345
+    with no groups through setpriv."""
+    if os.geteuid() != 0:
+        return subprocess.run(argv, env=env, capture_output=True, text=True, timeout=60)
+    cmd = [SETPRIV, "--reuid", str(UID), "--regid", str(UID), "--clear-groups", "env", "-i"]
+    cmd += [f"{k}={v}" for k, v in env.items()] + argv
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+
+
+def tree(path: Path) -> dict[str, str]:
+    found = {}
+    for p in sorted(path.rglob("*")):
+        if p.is_file() and os.access(p, os.R_OK):
+            found[str(p)] = hashlib.sha256(p.read_bytes()).hexdigest()
+    return found
+
+
+@pytest.mark.skipif(
+    os.geteuid() == 0 and SETPRIV is None,
+    reason="setpriv: as root, the refusal is judged only as another user id",
+)
+def test_the_real_etc_apt_is_refused_unless_ci_says_so(tmp_path):
+    """The script runs as a user id that cannot write /etc/apt, checked first, so a lost refusal fails
+    this test and writes nothing. The script's text is handed to bash on its command line (no file of
+    this checkout needs to be readable by that user). /etc/apt, by its own name or by a link to it,
+    with no variable, is refused with exit 2; so is the default folder; CI's variable set to another
+    value than 1 is no permission."""
+    real = Path("/etc/apt")
+    if not real.is_dir():
+        pytest.skip("this machine has no /etc/apt")
+    env = {"PATH": "/usr/bin:/bin", "LC_ALL": "C", "TMPDIR": "/tmp"}
+    probe = unprivileged(["bash", "-c", 'test -w /etc/apt || test -w "$(realpath /etc/apt)"'], env)
+    assert probe.returncode == 1, "the user id of this test can write /etc/apt: the refusal is not judged"
+    # The link's folder must be one that user id may enter, or realpath cannot follow it.
+    shared = Path(tempfile.mkdtemp(prefix="apt-archive-test-", dir="/tmp"))
+    try:
+        shared.chmod(0o755)
+        link = shared / "apt-link"
+        link.symlink_to(real)
+        text = SCRIPT.read_text(encoding="utf-8")
+        before = tree(real)
+        seen = {}
+        for name, args, extra in [
+            ("named", [str(real)], {}),
+            ("linked", [str(link)], {}),
+            ("by APT_DIR", [], {"APT_DIR": str(real)}),
+            ("default", [], {}),
+            ("not 1", [str(real)], {"APT_ARCHIVE_CI": "yes"}),
+        ]:
+            ran = unprivileged(["bash", "-c", text, "apt_archive.sh", *args], {**env, **extra})
+            seen[name] = (ran.returncode, ran.stdout, ran.stderr.strip())
+    finally:
+        shutil.rmtree(shared)
+    refused = (
+        f"{PREFIX} refused: {real} is this machine's own apt folder; CI says it may change it with "
+        "APT_ARCHIVE_CI=1 (.github/workflows/ci.yml); changed nothing"
+    )
+    assert seen == {name: (2, "", refused) for name in seen}
+    assert tree(real) == before
+
+
+# ---------------------------------------------------------------- the workflows
+
+
+def flow(name: str) -> dict:
+    yaml = pytest.importorskip("yaml")
+    return yaml.safe_load((FLOWS / name).read_text(encoding="utf-8"))
+
+
+def archive_steps(job: dict) -> list[tuple[int, dict]]:
+    return [(i, s) for i, s in enumerate(job["steps"]) if "tools/ci/apt_archive.sh" in s.get("run", "")]
+
+
+def install_index(job: dict) -> int:
+    (i,) = [i for i, s in enumerate(job["steps"]) if "./install.sh" in s.get("run", "")]
+    return i
+
+
+def test_ci_calls_the_script_on_the_install_path_only_right_before_install_sh():
+    job = flow("ci.yml")["jobs"]["full"]
+    ((i, step),) = archive_steps(job)
+    assert i == install_index(job) - 1
+    assert step["if"] == "steps.where.outputs.where == 'install'"
+    assert job["steps"][i + 1]["if"] == step["if"]
+    assert step["env"] == {"ENABLED": f"${{{{ vars.{OFF} }}}}"}
+    assert [x.strip() for x in step["run"].splitlines()].count(CALL) == 1
+    image_path = [s for s in job["steps"] if s.get("if") == "steps.where.outputs.where == 'image'"]
+    assert image_path and all("apt_archive" not in s.get("run", "") for s in image_path)
+    others = [name for name, j in flow("ci.yml")["jobs"].items() if name != "full" and archive_steps(j)]
+    assert others == []
+    assert "apt_archive" not in (FLOWS / "image.yml").read_text(encoding="utf-8")
+
+
+def test_the_nightly_run_calls_the_same_step_right_before_install_sh():
+    """The nightly run has 1 path, install.sh: its step has no `if`, and is ci.yml's in all else."""
+    job = flow("nightly.yml")["jobs"]["verify"]
+    ((i, step),) = archive_steps(job)
+    assert i == install_index(job) - 1 and "if" not in step
+    ((_, ours),) = archive_steps(flow("ci.yml")["jobs"]["full"])
+    assert {k: v for k, v in ours.items() if k != "if"} == step
+
+
+@pytest.mark.parametrize("value", ["", "1", "0", "no"])
+def test_the_step_runs_the_script_under_sudo_unless_the_variable_is_0(tmp_path, value):
+    """The step's script runs here under `bash -e` with a closed PATH: `sudo` is a stand-in that writes
+    its arguments and runs nothing. `0` turns it off with 1 line that names the variable; anything
+    else, unset included, runs it."""
+    ((_, step),) = archive_steps(flow("ci.yml")["jobs"]["full"])
+    bin_ = tmp_path / "bin"
+    bin_.mkdir()
+    calls = tmp_path / "calls"
+    (bin_ / "sudo").write_text(f'#!/bin/bash\nprintf "%s\\n" "$*" >> {calls}\n', encoding="utf-8")
+    (bin_ / "sudo").chmod(0o755)
+    env = {"PATH": str(bin_), "ENABLED": value}
+    ran = subprocess.run(["/bin/bash", "-e", "-c", step["run"]], env=env, capture_output=True, text=True)
+    assert ran.returncode == 0, ran.stderr
+    said = calls.read_text(encoding="utf-8").splitlines() if calls.exists() else []
+    if value == "0":
+        assert said == []
+        assert ran.stdout.splitlines() == [
+            f"{PREFIX} off: the repository variable {OFF} is 0; apt keeps the runner's mirror"
+        ]
+    else:
+        assert said == [CALL.removeprefix("sudo ")]
+
+
+def test_the_variable_the_step_sets_is_the_one_the_script_reads():
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert '[ "${APT_ARCHIVE_CI:-}" != 1 ]' in text
+
+
+# ---------------------------------------------------------------- lint
+
+
+def test_shellcheck_reads_the_script_as_the_lint_does():
+    """The Makefile's lint line and verify.sh's lint step name the script, and shellcheck passes on it."""
+    for path in (ROOT / "Makefile", ROOT / "verify" / "verify.sh"):
+        (line,) = [
+            x
+            for x in path.read_text(encoding="utf-8").splitlines()
+            if x.strip().startswith("shellcheck install.sh")
+        ]
+        assert "tools/ci/apt_archive.sh" in line.split(), path
+    if shutil.which("shellcheck") is None:
+        pytest.skip("shellcheck is not on PATH")
+    ran = subprocess.run(["shellcheck", str(SCRIPT)], capture_output=True, text=True)
+    assert ran.returncode == 0, ran.stdout

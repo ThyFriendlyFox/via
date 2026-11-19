@@ -4,8 +4,8 @@
 # workcenter without the example boards and the site (.dockerignore leaves out examples/ and site/):
 # no tool it runs reads them, and a project is mounted on /work.
 #
-#   docker build -t ee-workcenter .
-#   docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work ee-workcenter workcenter gates .
+#   docker build -t via .
+#   docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work via workcenter gates .
 #
 # No window: kicad-cli and the other engines run headless; KiCad's editors are not for a container.
 FROM ubuntu:24.04

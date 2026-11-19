@@ -33,7 +33,10 @@
 #                         no bound; CI sets 120)
 #   APT_DOWNLOAD_TIMEOUT  seconds the download of the packages may take (default empty: no bound;
 #                         CI sets 570). Under sudo, pass it with env: sudo drops a variable set
-#                         before it (`sudo env APT_DOWNLOAD_TIMEOUT=900 ./install.sh`)
+#                         before it (`sudo env APT_DOWNLOAD_TIMEOUT=900 ./install.sh`). It covers every
+#                         pass of the download and every wait between 2, together
+#   APT_DOWNLOAD_TRIES    passes of the download, when a package source does not serve a file (default 5)
+#   APT_DOWNLOAD_WAIT     seconds between 2 passes (default 20)
 #   KICAD_KEYRING, KICAD_SOURCES, WORKCENTER_LINK, OS_RELEASE, JVM_DIR, CA_BUNDLE
 #                         the paths outside WORKCENTER_ROOT the script writes or reads (defaults
 #                         below); the tests point them into a folder of their own
@@ -99,6 +102,14 @@ KICAD_INDEX_TRIES="${KICAD_INDEX_TRIES:-3}"
 KICAD_INDEX_WAIT="${KICAD_INDEX_WAIT:-20}"
 APT_UPDATE_TIMEOUT="${APT_UPDATE_TIMEOUT:-}"
 APT_DOWNLOAD_TIMEOUT="${APT_DOWNLOAD_TIMEOUT:-}"
+# The download: up to APT_DOWNLOAD_TRIES passes, APT_DOWNLOAD_WAIT s apart, and a pass is made again only
+# when a source did not serve a file. In its log, the amd64 image build of pull request 92 on 2026-11-18
+# fetched 377 files from Ubuntu and 2 from KiCad 10's source, then got 503 for `kicad` 3 times in 18 s
+# (Ign, Ign, Err: apt's own tries, 95.47 s to 113.4 s) and stopped after 1 pass. apt keeps each file it
+# has fetched, so a later pass asks only for the rest. APT_DOWNLOAD_TIMEOUT, when set, bounds all passes and waits together, so CI's worst case above
+# stays as it is. CI and the image build set neither: they run on these defaults.
+APT_DOWNLOAD_TRIES="${APT_DOWNLOAD_TRIES:-5}"
+APT_DOWNLOAD_WAIT="${APT_DOWNLOAD_WAIT:-20}"
 # apt's own bounds on 1 file, as before: 3 more tries, and a server silent for 60 s is given up. 4 x 60
 # = 240 s on 1 silent file stays within CI's download bound, so apt names that file before the cut.
 APT_FILE_RETRIES="3"
@@ -196,6 +207,14 @@ apt_bounds_check() {
       die "${name}=${value} is not a whole number of seconds above 0; set it to one, or leave ${name} unset for no bound"
     fi
   done
+  # The passes and the wait: whole numbers with no leading 0 (bash reads 08 as a bad octal number). The
+  # tops, 99 passes and 999 s, are no measurement: they refuse a typo, as 500 for 5 or 2000 for 20.
+  if [[ ! "$APT_DOWNLOAD_TRIES" =~ ^[1-9][0-9]?$ ]]; then
+    die "APT_DOWNLOAD_TRIES=${APT_DOWNLOAD_TRIES} is not a whole number of passes from 1 to 99; set it to one, or leave APT_DOWNLOAD_TRIES unset for 5"
+  fi
+  if [[ ! "$APT_DOWNLOAD_WAIT" =~ ^(0|[1-9][0-9]{0,2})$ ]]; then
+    die "APT_DOWNLOAD_WAIT=${APT_DOWNLOAD_WAIT} is not a whole number of seconds from 0 to 999; set it to one, or leave APT_DOWNLOAD_WAIT unset for 20"
+  fi
 }
 
 # 2 lines and exit 1: what failed, where, the value and apt's own line; then what to do.
@@ -448,7 +467,8 @@ kicad_candidates_check() {
 # when every package is installed already. Call it as `apt_shown ... || rc=$?`. apt prints its W: and
 # E: lines on stderr when it has fetched what it could; they are shown after the progress, as apt
 # printed them. APT_SAID keeps apt's first E: line, else its last Err: line (a cut download prints no
-# E: line).
+# E: line). APT_FETCH_SAID keeps apt's first `E: Failed to fetch` line, and APT_FETCH_COUNT the number of
+# them: apt prints 1 for each file it did not get (apt 2.8.3, apt-private/private-download.cc:117).
 apt_shown() {
   local codes errors shown
   errors="$(mktemp)"
@@ -456,12 +476,77 @@ apt_shown() {
   "$@" 2> "$errors" | grep --line-buffered -E "$APT_PROGRESS" | sed -u 's/^/[apt] /' | tee "$shown"
   codes=("${PIPESTATUS[@]}")
   cat "$errors" >&2
+  APT_FETCH_SAID="$(grep -m1 '^E: Failed to fetch ' "$errors" || true)"
+  APT_FETCH_COUNT="$(grep -c '^E: Failed to fetch ' "$errors" || true)"
   APT_SAID="$(grep -m1 '^E:' "$errors" || true)"
   if [[ -z "$APT_SAID" ]]; then
     APT_SAID="$(grep -E '^\[apt\] Err:' "$shown" | tail -n 1 | sed 's/^\[apt\] //' || true)"
   fi
   rm -f "$errors" "$shown"
   return "${codes[0]}"
+}
+
+# What a computer and an image build keep of a stopped download: a failed step of `docker build` keeps
+# no file it fetched.
+KEPT="On a computer, apt keeps the files it has downloaded and asks only for the rest; an image build keeps none from a failed step."
+
+# "1 pass" or "<n> passes" of APT_DOWNLOAD_TRIES.
+passes_made() {
+  if (($1 == 1)); then printf '1 pass of %s' "$APT_DOWNLOAD_TRIES"; else printf '%s passes of %s' "$1" "$APT_DOWNLOAD_TRIES"; fi
+}
+
+# The download of the packages $@ into apt's cache, nothing installed: up to APT_DOWNLOAD_TRIES passes,
+# APT_DOWNLOAD_WAIT s apart. A pass is made again only when the one before failed because a source did
+# not serve a file: under --download-only apt-get then prints 1 `E: Failed to fetch <address>  <reason>`
+# line per file (apt 2.8.3, apt-private/private-download.cc:117), then `E: Some files failed to
+# download` (apt-private/private-install.cc:399), and ends with 100 (apt-private/private-cmndline.cc:605).
+# Its Ign: and Err: progress lines (apt-private/acqprogress.cc:130 and :139) come before and decide
+# nothing here. Any other end of a pass stops at once. Each pass asks apt again: apt, not the
+# script, knows which files are there. APT_DOWNLOAD_TIMEOUT, when set, is the bound of all passes and
+# waits together: each pass gets what is left of it, a pass's time and the wait after it are taken from
+# what is left, and a wait starts only when at least 1 s is left after it. When it is not, the stop says
+# so and keeps the advice for apt's line: the bound has not ended and the line need not be slow. The
+# shell counts whole seconds, so a pass of 1.9 s can count as 1 s: the passes can overrun the bound by
+# less than 1 s each.
+apt_download() {
+  local pass left="$APT_DOWNLOAD_TIMEOUT" rc files began
+  local later="A package source did not serve a file this time: run the script again later. ${KEPT}"
+  for ((pass = 1; ; pass++)); do
+    rc=0
+    began=$SECONDS
+    apt_shown bounded "$left" apt-get install -y --no-install-recommends --download-only \
+      -o Acquire::Retries="$APT_FILE_RETRIES" \
+      -o Acquire::http::Timeout="$APT_FILE_TIMEOUT" -o Acquire::https::Timeout="$APT_FILE_TIMEOUT" \
+      "$@" || rc=$?
+    if ((rc == 0)); then
+      return 0
+    fi
+    if ((rc == 124)) && [[ -n "$APT_DOWNLOAD_TIMEOUT" ]]; then
+      download_cut "$pass"
+    fi
+    if ((rc != 100 || APT_FETCH_COUNT == 0 || pass >= APT_DOWNLOAD_TRIES)); then
+      stop "apt: the download ended with apt-get's exit code ${rc} after $(passes_made "$pass")${APT_DOWNLOAD_TIMEOUT:+, within its bound of ${APT_DOWNLOAD_TIMEOUT} s}; apt said: ${APT_SAID:-nothing}" \
+        "No package was installed. $(apt_advice "$APT_SAID" "$later")"
+    fi
+    if [[ -n "$APT_DOWNLOAD_TIMEOUT" ]]; then
+      left=$((left - (SECONDS - began)))
+      if ((left <= APT_DOWNLOAD_WAIT)); then
+        stop "apt: the download stopped after $(passes_made "$pass"): the next wait of ${APT_DOWNLOAD_WAIT} s would leave no time for another pass within APT_DOWNLOAD_TIMEOUT=${APT_DOWNLOAD_TIMEOUT} s; apt said: ${APT_SAID:-nothing}" \
+          "No package was installed. $(apt_advice "$APT_SAID" "$later")"
+      fi
+      left=$((left - APT_DOWNLOAD_WAIT))
+    fi
+    files="files"
+    if ((APT_FETCH_COUNT == 1)); then files="file"; fi
+    log "apt: download pass ${pass} of ${APT_DOWNLOAD_TRIES} failed on ${APT_FETCH_COUNT} ${files}; apt said: ${APT_FETCH_SAID}; waiting ${APT_DOWNLOAD_WAIT} s"
+    sleep "$APT_DOWNLOAD_WAIT"
+  done
+}
+
+# The stop when `timeout` cut pass $1 at what was left of APT_DOWNLOAD_TIMEOUT (code 124).
+download_cut() {
+  stop "apt: the download did not end within ${APT_DOWNLOAD_TIMEOUT} s (APT_DOWNLOAD_TIMEOUT), the bound of all its passes and waits, after $(passes_made "$1"); apt said: ${APT_SAID:-nothing}" \
+    "No package was installed. Run the script again. ${KEPT} On a slow line, give it more seconds: sudo env APT_DOWNLOAD_TIMEOUT=<seconds> ./install.sh (sudo drops a variable set before it)."
 }
 
 step_apt() {
@@ -493,19 +578,9 @@ step_apt() {
   # which hid every line for 50 minutes (M86). A stalled server is given up after APT_FILE_TIMEOUT and
   # retried, where the default waited on it. The download comes first and alone, within its bound when
   # one is set: stopping it changes nothing installed. The install then reads only the downloaded files.
-  rc=0
-  apt_shown bounded "$APT_DOWNLOAD_TIMEOUT" apt-get install -y --no-install-recommends --download-only \
-    -o Acquire::Retries="$APT_FILE_RETRIES" \
-    -o Acquire::http::Timeout="$APT_FILE_TIMEOUT" -o Acquire::https::Timeout="$APT_FILE_TIMEOUT" \
-    "${packages[@]}" || rc=$?
-  if ((rc == 124)) && [[ -n "$APT_DOWNLOAD_TIMEOUT" ]]; then
-    stop "apt: the download did not end within ${APT_DOWNLOAD_TIMEOUT} s (APT_DOWNLOAD_TIMEOUT); apt said: ${APT_SAID:-nothing}" \
-      "No package was installed. Run the script again now: apt keeps the files it has downloaded and goes on from them. On a slow line, give it more seconds: sudo env APT_DOWNLOAD_TIMEOUT=<seconds> ./install.sh (sudo drops a variable set before it)."
-  elif ((rc != 0)); then
-    stop "apt: the download ended with apt-get's exit code ${rc}${APT_DOWNLOAD_TIMEOUT:+, within its bound of ${APT_DOWNLOAD_TIMEOUT} s}; apt said: ${APT_SAID:-nothing}" \
-      "No package was installed. $(apt_advice "$APT_SAID" "A package source did not serve a file this time: run the script again later; apt keeps the files it has downloaded.")"
-  fi
+  apt_download "${packages[@]}"
   log "apt: install ${packages[*]}"
+  rc=0
   # Non-interactive so no debconf prompt can wait on a terminal. APT::Get::Download=false is the
   # setting behind apt-get's --no-download (apt 2.8.3): nothing more is fetched.
   apt_shown apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confnew \
@@ -535,6 +610,8 @@ step_apt() {
 # step installs nothing.
 BOOT_PACKAGES=(curl gnupg ca-certificates git make gcc libc6-dev)
 step_boot() {
+  # main runs this step first: a typo in the apt step's numbers stops here, before apt installs anything.
+  apt_bounds_check
   if [[ "$SKIP_APT" == "1" ]]; then
     return
   fi

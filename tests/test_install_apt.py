@@ -102,15 +102,32 @@ OUTRANKED = (
     "A pin (apt_preferences) or another package source outranks KiCad 10's package source; "
     "`apt-cache policy kicad` shows which. Remove it, then run the script again."
 )
+# Both stops of the download say what a person's computer keeps and what an image build keeps: a failed
+# step of a `docker build` keeps no file it fetched.
+KEPT = (
+    "On a computer, apt keeps the files it has downloaded and asks only for the rest; "
+    "an image build keeps none from a failed step."
+)
 LATER = (
     "[install] No package was installed. A package source did not serve a file this time: "
-    "run the script again later; apt keeps the files it has downloaded."
+    f"run the script again later. {KEPT}"
 )
 CUT = (
-    "[install] No package was installed. Run the script again now: apt keeps the files it has downloaded "
-    "and goes on from them. On a slow line, give it more seconds: sudo env APT_DOWNLOAD_TIMEOUT=<seconds> "
-    "./install.sh (sudo drops a variable set before it)."
+    f"[install] No package was installed. Run the script again. {KEPT} On a slow line, give it more "
+    "seconds: sudo env APT_DOWNLOAD_TIMEOUT=<seconds> ./install.sh (sudo drops a variable set before it)."
 )
+# Copied from the log of the amd64 image build of pull request 92 on 2026-11-18 (#9 113.4): under
+# --download-only apt-get prints 1 `E: Failed to fetch <address>  <reason>` line per file it did not get
+# (apt 2.8.3, apt-private/private-download.cc:117), then `E: Some files failed to download`
+# (apt-private/private-install.cc:399), and ends with 100 (apt-private/private-cmndline.cc:605).
+E_KICAD = (
+    "E: Failed to fetch https://ppa.launchpadcontent.net/kicad/kicad-10.0-releases/ubuntu/pool/main/k/kicad/"
+    "kicad_10.0.8%7eubuntu24.04.1_amd64.deb  503  Service Unavailable [IP: 185.125.189.187 443]"
+)
+E_FILES = "E: Some files failed to download"
+# Built from apt 2.8.3's template "You don't have enough free space in %s." (private-download.cc:156)
+# with apt's archives folder; not printed by a real apt here.
+E_SPACE = "E: You don't have enough free space in /var/cache/apt/archives/."
 
 STUB = """#!/bin/bash
 name="${0##*/}"
@@ -160,6 +177,13 @@ exec @REAL@ "$@"
 GUARDED = ["awk", "sed", "find"]
 READERS = ["basename", "cat", "dirname", "grep", "head", "readlink", "seq", "tail"]
 
+# The stand-in python3 on the key's pipe reads all its input before it ends, as the real one does
+# (json.load reads to the end first). One that ends unread races the stand-in curl: when python3 ends
+# first, curl's write dies of SIGPIPE, pipefail fails the pipeline, and a test's answer rests on which
+# process ended first (M270: IA82 survived 1 run in 3). Any other call of python3 reads nothing: its
+# input is the test's, which may be a terminal.
+DRAINS = 'case "$*" in *json.load*) cat > /dev/null ;; esac; '
+
 DEFAULTS = {
     # The real program after the bound: the test sees each bound as the step passes it.
     "timeout": 'shift; exec "$@"',
@@ -184,7 +208,7 @@ esac""",
 fi
 [[ "$*" == *--list-keys* ]] && echo "fpr:::::::::FDA854F61C4D0D9572BB95E5245D5502FAD7A805:"
 exit 0""",
-    "python3": "exit 7",
+    "python3": f"{DRAINS}exit 7",
 }
 
 # The programs the apt step may call. A call of any other program fails the test.
@@ -212,6 +236,8 @@ def folder(tmp_path: Path, answers: dict | None = None) -> dict:
     runs the script while the scans see a write that passes no fence: a redirection runs before any
     test could fail on it."""
     assert unfenced_in_the_script() == ()
+    # No stand-in python3 may end before it has read the key's pipe (M270).
+    assert {**DEFAULTS, **(answers or {})}["python3"].startswith(DRAINS)
     bin_dir, tools = tmp_path / "bin", tmp_path / "tools"
     bin_dir.mkdir()
     tools.mkdir()
@@ -365,12 +391,15 @@ esac"""
 def test_an_answer_that_holds_no_key_is_said_so(tmp_path, python3):
     """The keyserver answers nothing, and api.launchpad.net answers what is no JSON string (the stand-in
     python3 ends with 7) or an empty one (it prints nothing and ends with 0, so only the empty file
-    tells): curl said nothing, and the stop says the answer held no key."""
+    tells): curl said nothing, and the stop says the answer held no key. python3 reads curl's answer
+    before it ends (DRAINS), so curl ends with 0 and, for the empty string, every process of the
+    pipeline does: only the empty file can send the script to the stop, whichever process ends first."""
     curl = 'case "$*" in *keyserver.ubuntu.com*) exit 0 ;; *) echo "<html>"; exit 0 ;; esac'
     gpg = 'while (( $# )); do [[ "$1" == -o ]] && { cat > "$2"; exit 0; }; shift; done; exit 0'
-    answers = {"curl": curl, "gpg": gpg, "python3": python3}
+    answers = {"curl": curl, "gpg": gpg, "python3": DRAINS + python3}
     code, out, err, calls = run(tmp_path, answers, body="step_apt; echo NEXT STEP")
     assert code == 1, err
+    assert len(of(calls, "python3")) == 1
     nothing = "nothing; the answer held no key"
     assert err.splitlines()[-2:] == [key_stop(nothing, nothing), KEY_NOT_THERE]
 
@@ -441,7 +470,10 @@ def test_apts_own_code_124_with_no_bound_is_no_cut(tmp_path, step):
   *--download-only*) exit 124 ;;
 esac
 {DEFAULTS["apt-get"]}"""
-        said = "[install] ERROR: apt: the download ended with apt-get's exit code 124; apt said: nothing"
+        said = (
+            "[install] ERROR: apt: the download ended with apt-get's exit code 124 after 1 pass of 5; "
+            "apt said: nothing"
+        )
     code, _, err, calls = run(tmp_path, {"apt-get": answer})
     assert code == 1
     assert of(calls, "timeout") == []
@@ -837,8 +869,8 @@ esac
 
 @pytest.mark.parametrize("bounds", [{}, CI], ids=["no bound", "CI's bounds"])
 def test_a_failed_download_ends_with_apts_lines_and_stops_the_script(tmp_path, bounds):
-    """apt-get ends with 100 and its E: lines (job 134906707485 at 15:44:22): exit 1, no install, no
-    later step; with a bound or without."""
+    """apt-get ends with 100 and its E: lines (job 134906707485 at 15:44:22) at every pass: 5 passes, 4
+    waits of 20 s, then exit 1, no install, no later step; with a bound or without."""
     answer = f"""case "$*" in
   *--download-only*)
     echo "Get:172 https://ppa.launchpadcontent.net/x [48.0 MB]"
@@ -852,9 +884,11 @@ esac
     assert "[apt] Get:172 https://ppa.launchpadcontent.net/x [48.0 MB]" in out
     within = ", within its bound of 570 s" if bounds else ""
     stop = (
-        f"[install] ERROR: apt: the download ended with apt-get's exit code 100{within}; apt said: {E_FETCH}"
+        "[install] ERROR: apt: the download ended with apt-get's exit code 100 after 5 passes of 5"
+        f"{within}; apt said: {E_FETCH}"
     )
     assert err.splitlines()[-2:] == [stop, LATER]
+    assert len(installs(calls)) == 5 and of(calls, "sleep") == ["sleep 20"] * 4
     assert "NEXT STEP" not in out
     assert of(calls, "kicad-cli") == ["kicad-cli version"]
 
@@ -870,7 +904,8 @@ esac
     code, _, err, calls = run(tmp_path, {"apt-get": answer})
     assert code == 1
     assert err.splitlines()[-2:] == [
-        f"[install] ERROR: apt: the download ended with apt-get's exit code 100; apt said: {e_404}",
+        f"[install] ERROR: apt: the download ended with apt-get's exit code 100 after 5 passes of 5; "
+        f"apt said: {e_404}",
         "[install] No package was installed. Fix what apt said, then run the script again.",
     ]
 
@@ -886,7 +921,8 @@ esac
     assert code == 1
     assert [c for c in installs(calls) if "--download-only" not in c] == []
     assert err.splitlines()[-2:] == [
-        f"[install] ERROR: apt: the download ended with apt-get's exit code {rc}; apt said: nothing",
+        f"[install] ERROR: apt: the download ended with apt-get's exit code {rc} after 1 pass of 5; "
+        "apt said: nothing",
         "[install] No package was installed. Fix what apt said, then run the script again.",
     ]
 
@@ -899,8 +935,7 @@ def test_a_download_that_does_not_end_is_stopped_at_its_bound(tmp_path):
     (bounded,) = [c for c in of(calls, "timeout") if "--download-only" in c]
     assert bounded.startswith("timeout 9 apt-get install")
     assert [c for c in installs(calls) if "--download-only" not in c] == []
-    stop = "[install] ERROR: apt: the download did not end within 9 s (APT_DOWNLOAD_TIMEOUT); apt said: "
-    stop += "nothing"
+    stop = cut_stop(9, 1, "nothing")
     assert err.splitlines()[-2:] == [stop, CUT]
 
 
@@ -919,11 +954,312 @@ esac
     code, out, err, _ = run(tmp_path, {"apt-get": apt, "timeout": cut}, env=CI)
     assert code == 1
     assert f"[apt] {err_line}" in out
-    assert err.splitlines()[-2:] == [
-        "[install] ERROR: apt: the download did not end within 570 s (APT_DOWNLOAD_TIMEOUT); "
-        f"apt said: {err_line}",
-        CUT,
+    assert err.splitlines()[-2:] == [cut_stop(570, 1, err_line), CUT]
+
+
+def cut_stop(bound: int, passes: int, said: str, tries: int = 5) -> str:
+    """The stop when APT_DOWNLOAD_TIMEOUT ends: the bound, the passes made and apt's line."""
+    made = "1 pass" if passes == 1 else f"{passes} passes"
+    return (
+        f"[install] ERROR: apt: the download did not end within {bound} s (APT_DOWNLOAD_TIMEOUT), the bound "
+        f"of all its passes and waits, after {made} of {tries}; apt said: {said}"
+    )
+
+
+def no_time_stop(passes: int, wait: int, bound: int, said: str, tries: int = 5) -> str:
+    """The stop when a pass failed on a file and the wait would leave no time for another pass."""
+    made = "1 pass" if passes == 1 else f"{passes} passes"
+    return (
+        f"[install] ERROR: apt: the download stopped after {made} of {tries}: the next wait of {wait} s "
+        f"would leave no time for another pass within APT_DOWNLOAD_TIMEOUT={bound} s; apt said: {said}"
+    )
+
+
+def failed_stop(passes: int, said: str, tries: int = 5, rc: int = 100, bound: str = "") -> str:
+    made = "1 pass" if passes == 1 else f"{passes} passes"
+    within = f", within its bound of {bound} s" if bound else ""
+    return (
+        f"[install] ERROR: apt: the download ended with apt-get's exit code {rc} after {made} of {tries}"
+        f"{within}; apt said: {said}"
+    )
+
+
+def pass_line(n: int, tries: int, files: int, wait: int) -> str:
+    """The line of a failed pass that another follows."""
+    word = "file" if files == 1 else "files"
+    return (
+        f"[install] apt: download pass {n} of {tries} failed on {files} {word}; apt said: {E_KICAD}; "
+        f"waiting {wait} s"
+    )
+
+
+def download_fails(
+    passes: int | None, *lines: str, code: int = 100, then: str = "exit 0", pause: str = ""
+) -> str:
+    """An apt-get whose first `passes` downloads (every download: None) print `lines` on stderr and end with
+    `code`; a later one runs `then`. `pause` runs before either (a real wait, for the bound's tests)."""
+    printed = "; ".join(f"echo {shlex.quote(line)} >&2" for line in lines) or "true"
+    fails = "true" if passes is None else f"(( d <= {passes} ))"
+    return f"""case "$*" in
+  *--download-only*)
+    d="$(grep -c -- '^apt-get .*--download-only' "$STUB_DIR/calls")"
+    {pause or ":"}
+    if {fails}; then {printed}; exit {code}; fi
+    {then} ;;
+esac
+{DEFAULTS["apt-get"]}"""
+
+
+def downloads(calls):
+    return [c for c in installs(calls) if "--download-only" in c]
+
+
+def test_a_file_not_served_for_2_passes_then_served_ends_in_an_install(tmp_path):
+    """The amd64 image build of pull request 92 on 2026-11-18: KiCad 10's source answered 503 for 1 file.
+    Here it does so for 2 passes (the first names 2 files), then serves it: 3 downloads, each a new
+    `apt-get --download-only` (apt asks only for what it lacks), 1 line for each failed pass, 2 waits of
+    the default 20 s, then the install from the downloaded files alone."""
+    answer = f"""case "$*" in
+  *--download-only*)
+    d="$(grep -c -- '^apt-get .*--download-only' "$STUB_DIR/calls")"
+    if (( d <= 2 )); then echo {shlex.quote(E_KICAD)} >&2; fi
+    if (( d == 1 )); then echo {shlex.quote(E_FETCH)} >&2; fi
+    if (( d <= 2 )); then echo {shlex.quote(E_FILES)} >&2; exit 100; fi
+    exit 0 ;;
+esac
+{DEFAULTS["apt-get"]}"""
+    code, out, err, calls = run(tmp_path, {"apt-get": answer})
+    assert code == 0, err
+    assert len(downloads(calls)) == 3
+    assert len(set(downloads(calls))) == 1
+    assert of(calls, "sleep") == ["sleep 20", "sleep 20"]
+    lines = out.splitlines()
+    assert [line for line in lines if " download pass " in line] == [
+        pass_line(1, 5, 2, 20),
+        pass_line(2, 5, 1, 20),
     ]
+    (install,) = [c for c in installs(calls) if "--download-only" not in c]
+    assert "-o APT::Get::Download=false" in install
+    assert lines[-1] == "[install] apt: done; kicad-cli 10.0.8"
+
+
+def test_a_file_never_served_stops_after_the_passes_it_was_given(tmp_path):
+    """APT_DOWNLOAD_TRIES=3 and APT_DOWNLOAD_WAIT=7: 3 downloads, 2 waits of 7 s, 2 pass lines, then the
+    stop with the count of passes and apt's line, and nothing installed."""
+    env = {"APT_DOWNLOAD_TRIES": "3", "APT_DOWNLOAD_WAIT": "7"}
+    answer = download_fails(None, E_KICAD, E_FILES)
+    code, out, err, calls = run(tmp_path, {"apt-get": answer}, env=env, body="step_apt; echo NEXT STEP")
+    assert code == 1
+    assert len(downloads(calls)) == 3
+    assert of(calls, "sleep") == ["sleep 7", "sleep 7"]
+    assert [c for c in installs(calls) if "--download-only" not in c] == []
+    assert [line for line in out.splitlines() if " download pass " in line] == [
+        pass_line(1, 3, 1, 7),
+        pass_line(2, 3, 1, 7),
+    ]
+    assert err.splitlines()[-2:] == [failed_stop(3, E_KICAD, tries=3), LATER]
+    assert "NEXT STEP" not in out
+    assert not (tmp_path / "installed").exists()
+
+
+@pytest.mark.parametrize(
+    ("lines", "rc"),
+    [((E_SPACE,), 100), ((E_KICAD, E_FILES), 1), ((), 100)],
+    ids=["no space", "a fetch line with another code", "no line"],
+)
+def test_a_failure_that_is_not_a_fetch_failure_stops_after_1_pass(tmp_path, lines, rc):
+    """Only apt-get's code 100 with an `E: Failed to fetch` line is a source that did not serve a file:
+    a full disk, any other code, or 100 with no such line stops at once, with no wait."""
+    code, out, err, calls = run(tmp_path, {"apt-get": download_fails(None, *lines, code=rc)})
+    assert code == 1
+    assert len(downloads(calls)) == 1 and of(calls, "sleep") == []
+    said = lines[0] if lines else "nothing"
+    assert err.splitlines()[-2] == failed_stop(1, said, rc=rc)
+    assert " download pass " not in out
+
+
+def test_a_failure_of_another_kind_after_a_fetch_failure_stops_at_that_pass(tmp_path):
+    """Pass 1: a file not served; pass 2: a full disk. 2 passes, 1 wait, and the stop quotes the disk."""
+    answer = download_fails(1, E_KICAD, E_FILES, then=f"echo {shlex.quote(E_SPACE)} >&2; exit 100")
+    code, out, err, calls = run(tmp_path, {"apt-get": answer})
+    assert code == 1
+    assert len(downloads(calls)) == 2 and of(calls, "sleep") == ["sleep 20"]
+    assert err.splitlines()[-2:] == [
+        failed_stop(2, E_SPACE),
+        "[install] No package was installed. Fix what apt said, then run the script again.",
+    ]
+
+
+def bounds_of(calls) -> list[int]:
+    """The seconds `timeout` was given for each download."""
+    return [int(c.split()[1]) for c in of(calls, "timeout") if "--download-only" in c]
+
+
+def test_the_bound_covers_the_passes_and_the_waits_together(tmp_path):
+    """APT_DOWNLOAD_TIMEOUT=9, APT_DOWNLOAD_WAIT=1, 5 passes that fail at once: each pass gets what is left
+    of the 9 s, the wait counted (the stand-in sleep takes no time), so each bound is at least 1 s below
+    the one before. All 5 fit, and the stop is the passes', within the bound."""
+    env = {"APT_DOWNLOAD_TIMEOUT": "9", "APT_DOWNLOAD_WAIT": "1"}
+    code, out, err, calls = run(tmp_path, {"apt-get": download_fails(None, E_KICAD, E_FILES)}, env=env)
+    assert code == 1
+    given = bounds_of(calls)
+    assert len(given) == 5 and given[0] == 9
+    assert all(b - 2 <= a <= b - 1 for b, a in zip(given, given[1:], strict=False)), given
+    assert of(calls, "sleep") == ["sleep 1"] * 4
+    assert err.splitlines()[-2:] == [failed_stop(5, E_KICAD, bound="9"), LATER]
+
+
+def test_a_bound_too_short_for_the_next_wait_and_pass_stops_with_the_count(tmp_path):
+    """APT_DOWNLOAD_TIMEOUT=3, APT_DOWNLOAD_WAIT=1: no wait starts that would leave no second for the next
+    pass. 5 passes do not fit: the stop names the wait, the bound and the passes made, fewer than 5, and
+    no pass was given 0 s (which `timeout` reads as no bound)."""
+    env = {"APT_DOWNLOAD_TIMEOUT": "3", "APT_DOWNLOAD_WAIT": "1"}
+    code, out, err, calls = run(tmp_path, {"apt-get": download_fails(None, E_KICAD, E_FILES)}, env=env)
+    assert code == 1
+    given = bounds_of(calls)
+    assert given[0] == 3 and 2 <= len(given) <= 3 and min(given) >= 1, given
+    assert len(of(calls, "sleep")) == len(given) - 1
+    assert err.splitlines()[-2:] == [no_time_stop(len(given), 1, 3, E_KICAD), LATER]
+
+
+def test_the_time_apt_takes_counts_in_the_bound(tmp_path):
+    """APT_DOWNLOAD_TIMEOUT=2, APT_DOWNLOAD_WAIT=0, each pass takes 1.2 s of real time: the passes' own
+    time is taken from the bound, not only the waits. 1 or 2 passes (the shell counts whole seconds),
+    never 5."""
+    env = {"APT_DOWNLOAD_TIMEOUT": "2", "APT_DOWNLOAD_WAIT": "0"}
+    answer = download_fails(None, E_KICAD, E_FILES, pause="/bin/sleep 1.2")
+    code, out, err, calls = run(tmp_path, {"apt-get": answer}, env=env)
+    assert code == 1
+    given = bounds_of(calls)
+    assert given in ([2], [2, 1]), given
+    assert err.splitlines()[-2:] == [no_time_stop(len(given), 0, 2, E_KICAD), LATER]
+
+
+def test_a_pass_cut_by_the_bound_stops_at_once_with_the_count(tmp_path):
+    """Pass 1 is not served a file; `timeout` cuts pass 2 (124): no third pass, and the stop says 2."""
+    cut = """cuts="$(grep -c '^timeout .*--download-only' "$STUB_DIR/calls")"
+if [[ "$*" == *--download-only* ]] && (( cuts == 2 )); then exit 124; fi
+shift; exec "$@\""""
+    answers = {"apt-get": download_fails(None, E_KICAD, E_FILES), "timeout": cut}
+    code, out, err, calls = run(tmp_path, answers, env={"APT_DOWNLOAD_TIMEOUT": "60"})
+    assert code == 1
+    assert len(bounds_of(calls)) == 2 and of(calls, "sleep") == ["sleep 20"]
+    assert err.splitlines()[-2:] == [cut_stop(60, 2, "nothing"), CUT]
+
+
+def test_the_next_pass_starts_only_after_the_wait_has_ended(tmp_path):
+    """The stand-in sleep marks its end after 0.2 s of real time; each download first writes how many
+    waits had ended. A wait that runs beside the next pass (`sleep ... &`) gives 0, 0, 0: all passes back
+    to back, the 1-pass failure of the image build again."""
+    sleep = '/bin/sleep 0.2; echo ended >> "$STUB_DIR/slept"'
+    apt = download_fails(None, E_KICAD, E_FILES).replace(
+        '    d="$(grep',
+        '    { cat "$STUB_DIR/slept" 2> /dev/null || true; } | grep -c ended >> "$STUB_DIR/seen" || true\n'
+        '    d="$(grep',
+        1,
+    )
+    env = {"APT_DOWNLOAD_TRIES": "3", "APT_DOWNLOAD_WAIT": "1"}
+    code, _, err, _ = run(tmp_path, {"apt-get": apt, "sleep": sleep}, env=env)
+    assert code == 1, err
+    assert (tmp_path / "seen").read_text().split() == ["0", "1", "2"]
+
+
+def test_a_wait_starts_while_more_than_the_wait_is_left(tmp_path):
+    """APT_DOWNLOAD_TIMEOUT=60, APT_DOWNLOAD_WAIT=20, passes that fail at once: the passes get 60, 40 and
+    20 s, less the whole seconds the shell counts, which stay far below the 20 s wait. After the third,
+    20 s or less is left: no wait. Exactly 3 passes and 2 waits."""
+    env = {"APT_DOWNLOAD_TIMEOUT": "60", "APT_DOWNLOAD_WAIT": "20"}
+    code, out, err, calls = run(tmp_path, {"apt-get": download_fails(None, E_KICAD, E_FILES)}, env=env)
+    assert code == 1
+    given = bounds_of(calls)
+    assert len(given) == 3 and given[0] == 60, given
+    assert of(calls, "sleep") == ["sleep 20"] * 2
+    assert err.splitlines()[-2:] == [no_time_stop(3, 20, 60, E_KICAD), LATER]
+
+
+def test_a_wait_longer_than_the_time_left_says_so_and_keeps_apts_advice(tmp_path):
+    """APT_DOWNLOAD_TIMEOUT=10 and the default wait of 20 s; the source answers 503 at once. The bound did
+    not end and the line was not slow: the stop says the wait would leave no time, and keeps the advice
+    for apt's 503 (run again later), not the advice for a slow line."""
+    env = {"APT_DOWNLOAD_TIMEOUT": "10"}
+    code, out, err, calls = run(tmp_path, {"apt-get": download_fails(None, E_KICAD, E_FILES)}, env=env)
+    assert code == 1
+    assert bounds_of(calls) == [10] and of(calls, "sleep") == []
+    assert err.splitlines()[-2:] == [no_time_stop(1, 20, 10, E_KICAD), LATER]
+
+
+def test_a_full_disk_says_fix_what_apt_said_when_no_time_is_left(tmp_path):
+    """Pass 1: a file not served. Pass 2: 100 with a fetch line and a full disk first, with no time left
+    for a wait: the stop keeps apt_advice's text for apt's first E: line."""
+    env = {"APT_DOWNLOAD_TIMEOUT": "20", "APT_DOWNLOAD_WAIT": "10"}
+    then = f"echo {shlex.quote(E_SPACE)} >&2; echo {shlex.quote(E_KICAD)} >&2; exit 100"
+    answer = download_fails(1, E_KICAD, E_FILES, then=then)
+    code, out, err, calls = run(tmp_path, {"apt-get": answer}, env=env)
+    assert code == 1
+    given = bounds_of(calls)
+    assert len(given) == 2 and given[0] == 20, given
+    assert err.splitlines()[-2:] == [
+        no_time_stop(2, 10, 20, E_SPACE),
+        "[install] No package was installed. Fix what apt said, then run the script again.",
+    ]
+
+
+def test_the_passes_lose_only_the_time_they_took(tmp_path):
+    """APT_DOWNLOAD_TIMEOUT=100, APT_DOWNLOAD_WAIT=0, 5 passes that fail at once, well under 1 s in all:
+    the whole seconds the shell counts sum to at most 1 over the run, so the last pass gets 99 s or more."""
+    env = {"APT_DOWNLOAD_TIMEOUT": "100", "APT_DOWNLOAD_WAIT": "0"}
+    code, out, err, calls = run(tmp_path, {"apt-get": download_fails(None, E_KICAD, E_FILES)}, env=env)
+    assert code == 1
+    given = bounds_of(calls)
+    assert len(given) == 5 and given[0] == 100 and given[-1] >= 99, given
+    assert err.splitlines()[-2:] == [failed_stop(5, E_KICAD, bound="100"), LATER]
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("APT_DOWNLOAD_TRIES", "abc"),
+        ("APT_DOWNLOAD_TRIES", "0"),
+        ("APT_DOWNLOAD_TRIES", "-1"),
+        ("APT_DOWNLOAD_TRIES", "100"),
+        ("APT_DOWNLOAD_TRIES", "2.5"),
+        ("APT_DOWNLOAD_TRIES", "05"),
+        ("APT_DOWNLOAD_WAIT", "abc"),
+        ("APT_DOWNLOAD_WAIT", "-1"),
+        ("APT_DOWNLOAD_WAIT", "1000"),
+        ("APT_DOWNLOAD_WAIT", "1m"),
+        ("APT_DOWNLOAD_WAIT", "007"),
+    ],
+)
+def test_a_bad_number_of_passes_or_wait_stops_before_anything_runs(tmp_path, name, value):
+    """1 line that names the variable, its value and the range; no program ran, SKIP_APT or not."""
+    unit, top, default = {
+        "APT_DOWNLOAD_TRIES": ("passes", "1 to 99", "5"),
+        "APT_DOWNLOAD_WAIT": ("seconds", "0 to 999", "20"),
+    }[name]
+    for skip in ("0", "1"):
+        (tmp_path / skip).mkdir()
+        code, out, err, calls = run(tmp_path / skip, env={name: value, "SKIP_APT": skip})
+        assert (code, out, calls) == (1, "", [])
+        assert err == (
+            f"[install] ERROR: {name}={value} is not a whole number of {unit} from {top}; "
+            f"set it to one, or leave {name} unset for {default}\n"
+        )
+
+
+@pytest.mark.parametrize(("name", "value"), [("APT_DOWNLOAD_TRIES", "99"), ("APT_DOWNLOAD_WAIT", "0")])
+def test_the_ends_of_the_ranges_are_taken(tmp_path, name, value):
+    code, _, err, _ = run(tmp_path, env={name: value})
+    assert code == 0, err
+
+
+def test_ci_and_the_image_build_leave_the_passes_and_the_wait_to_the_script():
+    """No workflow that runs install.sh, and not the Dockerfile, sets APT_DOWNLOAD_TRIES or
+    APT_DOWNLOAD_WAIT: CI and the image build run on the script's defaults."""
+    texts = [path.read_text(encoding="utf-8") for path, _ in INSTALLING.values()]
+    texts.append((ROOT / "Dockerfile").read_text(encoding="utf-8"))
+    for text in texts:
+        assert "APT_DOWNLOAD_TRIES" not in text and "APT_DOWNLOAD_WAIT" not in text
 
 
 def test_a_progress_line_shows_while_apt_still_runs(tmp_path):
@@ -1049,6 +1385,25 @@ def test_the_first_step_installs_the_boot_packages_where_1_is_missing(tmp_path):
     assert apt[1].startswith("apt-get install -y --no-install-recommends ")
     assert apt[1].endswith(f" {BOOT_INSTALL}")
     assert len(apt) == 2
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("APT_DOWNLOAD_TRIES", "abc"),
+        ("APT_DOWNLOAD_WAIT", "1m"),
+        ("APT_DOWNLOAD_TIMEOUT", "0"),
+        ("APT_UPDATE_TIMEOUT", "2m"),
+    ],
+)
+def test_a_bad_value_stops_before_the_first_step_installs(tmp_path, name, value):
+    """main's order on a bare Ubuntu (no certificates file): a typo in a bound, the passes or the wait
+    stops the script with its 1 line before step_boot runs apt, not after it installed the boot packages."""
+    env = {name: value, "CA_BUNDLE": str(tmp_path / "no-bundle.crt")}
+    code, out, err, calls = run(tmp_path, BOOT_TOOLS, env=env, body="step_boot; step_apt")
+    assert (code, out, calls) == (1, "", [])
+    assert len(err.splitlines()) == 1
+    assert err.startswith(f"[install] ERROR: {name}={value} is not a whole number of ")
 
 
 @pytest.mark.parametrize(
@@ -1210,7 +1565,7 @@ def test_main_runs_every_step_in_order_and_hands_over_to_the_doctor(tmp_path):
     steps = ["step_boot", "step_apt", "step_freerouting", "step_openems", "step_python", "step_link"]
     others = ["step_java25", "step_freerouting2", "step_chip"]
     body = "\n".join(f'{s}() {{ log "ran {s}"; }}' for s in steps + others) + "\nmain"
-    env = folder(tmp_path, {"python3": "exit 5"})
+    env = folder(tmp_path, {"python3": f"{DRAINS}exit 5"})
     proc = subprocess.run(
         [BASH, "-c", script(copy, body)],
         capture_output=True,

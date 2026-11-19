@@ -32,7 +32,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 REGISTRY = "ghcr.io"
-NAME = "ee-workcenter"
+NAME = "via"
 # The files that define the toolchain, in the order their sums are written. requirements.txt is 1 of
 # them: an image of a tag holds the Python packages of that tag's requirements.txt and no other.
 TOOLCHAIN_FILES = ("Dockerfile", "install.sh", "requirements.txt")

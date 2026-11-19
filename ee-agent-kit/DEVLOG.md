@@ -39,6 +39,18 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-19 — The container image and its package are named via
+
+The owner asked that the package carry the product's name, via, not EE Workcenter. Before the first release's tag, the image's name changed from `ghcr.io/<owner>/ee-workcenter` to `ghcr.io/<owner>/via`. 1 constant in `tools/image.py` names it, and every workflow step takes it from there. The package `via` is made by its first push, the release's tag or the next push to main. Until then CI's `full` job finds no image of its tag and takes the install path. The old package keeps the images pushed before the release and is no longer updated. The fetch client's name, `ee-workcenter/1.0`, is not changed here.
+
+Evidence: `tests/test_image.py`; branch `wip/name`.
+
+## 2026-11-19 — CI's install path asks Ubuntu's own archive
+
+Twice CI's install step stopped at its bound of 570 s while apt downloaded from the runner's regional mirror, us-east-2.ec2.archive.ubuntu.com (runs 44402154007 and 44432768560). In the same minutes of the second, the image builds asked archive.ubuntu.com and built both machines in 5 minutes. A new script turns a regional or cloud mirror of Ubuntu's archive into the archive itself before install.sh runs, in CI and the nightly run only. It refuses a person's /etc/apt unless CI says so. It does not help when archive.ubuntu.com itself is slow, nor with KiCad 10's PPA. 1 review called it sound and found 1 low fault: the printed line could name a host the script had not changed. It is fixed. Its first run on a runner, CI run 44444183056 on this batch's pull request, passed, and the install step then took 1 min 29 s. The 3 runs before it on the regional mirror ran 9 min 43 s or more and stopped at the download's bound.
+
+Evidence: `tests/test_ci_apt_archive.py` (26 tests); branch `wip/mirror`, cfbff9a.
+
 ## 2026-11-18 — The website talks with its reader
 
 The owner read the first pass to the writing rules and said it still sounded bad: no soul, written
@@ -70,6 +82,12 @@ the version before.
 CI run 44409635104 was the first to take the image path. Its step "Decide where the gate runs" took 40 s, and `make verify` ran inside the image as the runner's user, a user id with no name: 3732 passed, 1 failed, 76 skipped, 2 xfailed, 1041 s on the wall clock. The failure was the test of the image's own gates step. It asked `id -un` for the user's name, and GNU `id -un` prints the number and ends with 1 for a user id with no passwd line (coreutils, `src/id.c`, `print_user`). The step was right; the test read the machine where it meant to judge the step. It now gives the step a stand-in `id`, as it gave `docker` and `find`. Its new case, an `id -un` that fails, passed the step: the substitution sat inside `test`'s arguments, where `bash -e` does not see it fail. The step takes it on its own line now. The log named the failed test and kept its report in a folder that went with the container, so the reason had to be read from the test's source. The gate now prints each failure's report, bounded, and the end of a shard that ended with no report.
 
 Evidence: `tests/test_image.py`, `tests/test_testshards.py` (49 tests); branch `wip/fix95`.
+
+## 2026-11-18 — install.sh tries the download again
+
+The amd64 image build of pull request 92 stopped after 1 pass of the download: KiCad 10's source answered 503 for `kicad`. The script now makes up to 5 passes, 20 s apart, when apt-get ends with 100 and prints an `E: Failed to fetch` line, and APT_DOWNLOAD_TIMEOUT covers all passes and waits together. 2 reviewers attacked it through 2 lenses. The behaviour review found 2 low faults. The tests review found 3 wrong versions of the retry that passed every test and every mutant. All 5 are fixed. No real apt has run the new passes; every test uses stand-ins. Landing it, a run of the mutation list let IA82, a mutant of the key step from the first install piece, survive: its test caught it on some runs only. The stand-in python3 of that test ended without reading curl's answer; when it ended first, curl died of SIGPIPE, and under pipefail the mutant took the script's own stop. The stand-in now reads its input, as the real python3 does, and IA82 was caught in 20 of 20 runs.
+
+Evidence: `tests/test_install_apt.py` (114 tests), `tests/install_mutations.py` (119 mutants); branch `wip/install2`.
 
 ## 2026-11-18 — Item 9's left-overs: the Wyvern lane judged, pairs, antennas, and a run ended by its ports
 
