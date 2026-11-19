@@ -3450,7 +3450,11 @@ def test_the_worst_case_of_the_apt_step_fits_the_jobs_limit(name):
     run only on a bare Ubuntu, the image's base (GitHub's runner has every tool: the passing run printed
     no `boot:` line): they count for image.yml, 120 + 300 more, 2583 s of its 3600. The nightly run and
     the image build are held to the same 805 s; neither has a passing run of its own measured (the image
-    build runs no `make verify`, but builds, checks and pushes)."""
+    build runs no `make verify`, but builds, checks and pushes).
+    ci.yml and nightly.yml also keep apt's package files between runs (tools/ci/apt_cache.sh): the
+    restore (2 min), the copy into apt's folder (1 min), the check that keeps them (1 min) and the save
+    (2 min) each have a bound, 360 s more: 2523 s, within `full`'s 45 minutes (2700 s) and the nightly
+    run's 45. The key step reads 1 file and has no bound."""
     bounds, limit = ci_bounds(*INSTALLING[name])
     assert bounds == {**CI, "APT_OTHER_TIMEOUT": "300"}
     tries, wait = assigned("KICAD_INDEX_TRIES"), assigned("KICAD_INDEX_WAIT")
@@ -3460,10 +3464,25 @@ def test_the_worst_case_of_the_apt_step_fits_the_jobs_limit(name):
     worst = key + tries * update + (tries - 1) * wait + download + other
     if name == "image.yml":
         worst += update + other
+    else:
+        assert cache_bounds(*INSTALLING[name]) == 360
+        worst += cache_bounds(*INSTALLING[name])
     assert sum(MEASURED.values()) == 805
     assert worst + sum(MEASURED.values()) <= limit, (worst, limit)
     if name == "ci.yml":
-        assert (worst + sum(MEASURED.values()), limit) == (2163, 2400)
+        assert (worst + sum(MEASURED.values()), limit) == (2523, 2700)
+
+
+def cache_bounds(path: Path, job: str) -> int:
+    """The bounds in s of the steps that keep apt's package files (tools/ci/apt_cache.sh, actions/cache)."""
+    yaml = pytest.importorskip("yaml")
+    steps = yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"][job]["steps"]
+    ours = [
+        s
+        for s in steps
+        if "apt_cache.sh" in s.get("run", "") or s.get("uses", "").startswith("actions/cache/")
+    ]
+    return sum(int(s.get("timeout-minutes", 0)) * 60 for s in ours)
 
 
 def test_one_silent_file_fits_the_download_bound():

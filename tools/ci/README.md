@@ -190,7 +190,7 @@ prints 1 line: `where: image: ...` or `where: install: ...`, with the reason.
 - `install`: `sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 APT_OTHER_TIMEOUT=300 ... ./install.sh`,
   then `make verify`, as before the image; the 3 bounds end a stalled
   index or download (the main one, and the openEMS step's and the boot
-  step's) with apt's own line within the job's 40 minutes (the nightly
+  step's) with apt's own line within the job's 45 minutes (the nightly
   run and the image build set the same 3; ee-agent-kit/CI.md has the
   arithmetic). It is taken when the change edits 1
   of the 3 files (the install path is their test), when the registry has
@@ -215,6 +215,33 @@ test refuses `continue-on-error`, and a shell other than GitHub's default
 `bash -e`, on the build job and on its Build and gates steps. On the install path the build took about
 669 s of the file's 674.6 s, and made its shard the longest, 991 s
 (job 135422229691).
+
+## apt's package files between runs of the install path
+
+`tools/ci/apt_cache.sh` keeps apt's `.deb` files between runs, so a run
+asks the package hosts only for what changed. ee-agent-kit/CI.md ("apt's
+package files kept between runs") has the why and the numbers.
+
+1. Before install.sh: `apt_cache.sh key install.sh "$GITHUB_OUTPUT"` makes
+   the key; `actions/cache/restore@v4` restores
+   `$RUNNER_TEMP/apt-archives`; `apt_cache.sh restore` copies each regular
+   `.deb` file into `/var/cache/apt/archives` with `sudo cp`. A link or a
+   file of another kind stays out. install.sh does not change.
+2. After install.sh: `apt_cache.sh keep` checks every `.deb` in apt's folder
+   against the SHA256 of apt's signed indexes (`apt-cache show
+   <package>=<version>`). A file whose bytes differ fails the run: apt
+   2.8.3 takes a file already there by its size alone. Then, for a push to
+   main, the nightly run or a run by hand, after a good install, it makes the
+   kept folder anew from the files that matched and sets `save=true`;
+   `actions/cache/save@v4` saves it.
+3. Each step prints 1 line: the key; `restored <n> files, <bytes> bytes`;
+   `checked <n> files ...: <m> match, <k> that no index lists are left
+   out`; `saving <n> files, <bytes> bytes, under <key>` or `not saved:`
+   and why. install.sh's `[apt] Need to get <to fetch>/<all> of archives.`
+   names what apt still fetched.
+
+To start the cache again: delete its entries in the repository's Actions,
+Caches page, or change `v1` in the key.
 
 ## The hosts of Ubuntu's archive on the install path
 
