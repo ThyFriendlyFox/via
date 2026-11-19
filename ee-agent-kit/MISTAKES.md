@@ -1750,19 +1750,31 @@ Cost: None on a machine: found before the branch landed. Had it landed, 1 old ap
 Root cause: The row read every distribution's metadata through importlib.metadata and caught nothing; the marker reader caught only the ValueError it raised itself; cmd_doctor called the row with no guard. Every test wrote the metadata it read, as pip writes it, in UTF-8: none held a file another program wrote badly. P7 step 6 asks that text not in the format be a problem named, never a traceback. The first fix (070bd7d) added the guard and a try per package, but left the version grouping outside that try: the checker's second round put a Version of 5000 digits on the path, int() raised there, the guard turned the whole row off, and doctor read `ok` beside a real fault. A guard that turns a whole check off is a fault hidden unless the status line says so; it now does, and the version readers no longer raise.
 Process: P7
 
-## M287 — 2026-11-19 — A test's path out of the root led back into it, and the call ran the gates
+## M287 — 2026-11-19 — The health gate's test run built the container image, and main's `full` job was cancelled at its limit
+What happened: The real build test of `tests/test_image.py` skipped only where `docker info` failed. On CI's install path a daemon answers, so every full run built the whole image inside `make verify` and ran the gates in it. In job 135422229691 it took about 669 s of the file's 674.6 s, and its shard took 991 s against 785, 579 and 385 s. Main's push run 44496113605 was cancelled at 30 minutes (Verify from 09:28:02 to 09:54:56).
+Cost: A cancelled gate on main for a change that was green on its pull request; install-path runs of 21 min and 22 min 44 s, over half the job's limit.
+Root cause: The skip asked whether a daemon answered, not whether the run wanted the build. The machines the test was written on had no daemon, so `verify/shards.csv` gave the file 5.3 s and no green run was read for its time (P2 step 7). The build was already `image.yml`'s job.
+Process: P2
+
+## M288 — 2026-11-19 — A second stop cut the shard runner's clean-up short, and a test of it failed on main by timing
+What happened: CI run 44496113605 on main (merge commit 41650f9), `fast` job, failed `tests/test_testshards.py::test_a_stop_by_signal_to_the_holders_group_ends_every_shard` with `ProcessLookupError: [Errno 3] No such process` (job 135463724770); the pull request's own run on the same tree (head 9fa8109) had passed it 25 minutes earlier. The traceback was in the test's `running()`, a read of `/proc/<pid>/stat`, not in `os.killpg`. `enginelock.py hold` passes its TERM on to the runner, so the runner got 2. The second raised `Stopped` inside `end_all`, and the runner exited without its stop line and without waiting for its shards; another process reaped them while the test read `/proc`, and a read after the reap fails with ESRCH. On the fixer's machine, at the base, 7 of 8 holder stops printed no stop line and 4 of 8 left a shard unreaped; the test itself passed there unless a 0.5 s stand-in delay sat between the open and the read, since that machine's init reaps an orphan about 1.7 s after it exits, where a CI runner's reaps at once. The first fix's test sent TERM in a loop with no time limit, which the review found.
+Cost: A red CI run on main for a change that did not touch the test, a helper's round to find the cause, and a review round for the test's missing time limit and its partial guard.
+Root cause: The runner's handler raised on every stop, so a stop that came during the clean-up of the first ended it. The test waited up to 10 s for the shards to go, a guessed time that hid the runner's fault, and its `/proc` helper caught only `FileNotFoundError`. A test that reads `/proc` for a child's grandchildren sees them only while no reaper has taken them, so it depends on the machine's init. The deterministic guards are `test_a_stop_signal_during_the_clean_up_does_not_cut_it_short` and `test_the_clean_up_kills_and_waits_for_every_shard_whoever_reaps_orphans`.
+Process: P18
+
+## M289 — 2026-11-19 — A test's path out of the root led back into it, and the call ran the gates
 What happened: A case of `tests/test_mcp.py` (roadmap item 17, `wip/r17`) meant a link out of the root and named `away/root`, which the link resolved back into the root. The call ran `gates` on the fixture, and the engine guard (`tools/ci/engine_marker.py`) caught kicad-cli and ngspice started by a test without the `engine` marker, in the first run.
 Cost: 1 red run of the builder's; no commit carried it.
 Root cause: The expected answer of each path case was not worked out by hand before the case was written: `away` is tmp_path, `away/lock` is tmp_path/lock, outside the root, and `away/root` is the root itself. Each case is now worked out that way. The guard of P12 step 7 did its work.
 Process: P12
 
-## M288 — 2026-11-19 — A command line of the keeper's used `cd` again
-What happened: Cleaning the batch's work folder after pull request 116, the keeper ran 1 shell command that began `cd <scratchpad>/batch4-work 2>/dev/null;` before an `rm -f` of named files by absolute path, against "Absolute paths, and no `cd`" (P8 step 1, M268) and 1 entry after M284, the same mistake by the same keeper.
+## M290 — 2026-11-19 — A command line of the keeper's used `cd` again
+What happened: Cleaning the batch's work folder after pull request 116, the keeper ran 1 shell command that began `cd <scratchpad>/batch4-work 2>/dev/null;` before an `rm -f` of named files by absolute path, against "Absolute paths, and no `cd`" (P8 step 1, M268): the same mistake as M284, by the same keeper.
 Cost: None seen: the `rm` named its files by absolute path, and only the keeper's own logs went. The rule was broken a second time.
 Root cause: As in M284: the habit of a terminal, and nothing in this session's shell refuses a `cd`: the repository's no-`cd` hook is not loaded in a session opened outside the repository (`workcenter doctor` here: `absent   no-cd hook`). P13 step 3 asks for a machine check after a second time; the check that exists is that hook, and this session does not load it.
 Process: P8
 
-## M289 — 2026-11-19 — A gate's pass rested on 1 judge that a project setting switches off
+## M291 — 2026-11-19 — A gate's pass rested on 1 judge that a project setting switches off
 What happened: `workcenter autoroute --apply` (roadmap item 15, `wip/r15`) passed when KiCad's DRC listed 0 unconnected items. A `.kicad_pro` with `unconnected_items` set to `ignore` makes that list empty on a board left mostly open, and FreeRouting 1.9.0 logs no count of open connections, so such a board passed. The review of item 15 found it (F1).
 Cost: None on a board: found before the branch landed. Had it landed, a project that ignores unconnected items would have got a pass for a board with open nets.
 Root cause: The check read an empty list as "nothing open" without asking whether the list could have been filled. Now, before a check passes on an empty list, it asks whether that list could have been filled; when it could not, the check prints not judged with the reason (SKIP, exit 2).

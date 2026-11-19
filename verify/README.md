@@ -78,7 +78,7 @@ CI's `full` job the build had taken about 669 s of the file's 674.6 s
 | `run 2 times: <id>` | 2 shards ran the same test. |
 | `marks differ: <id>: ...` | The test's skip or xfail marks say one thing in its shard and another in 1 process: the shard's environment changed the verdict. |
 | `not judged: <id>: skipped inside the test` | Not red: the test called `pytest.skip` in its shard. Whether 1 process skips it too is not known without running it there. |
-| `stopped by signal N` | The run got SIGTERM or SIGHUP. It killed every shard's process group before it exited 128 + N. |
+| `stopped by signal N` | The run got SIGTERM or SIGHUP. It killed every shard's process group and waited for each before it exited 128 + N. It ignores a second SIGTERM or SIGHUP while it does that: under `enginelock.py hold` it gets 2, 1 sent to its group and 1 the hold passes on. |
 | `--work <folder> holds the logs of an earlier run` | Exit 2. The logs are appended to: name an empty folder, or remove that one. |
 | `logs kept: <folder>` | Each shard's `pytest.log`, `log.jsonl` and tmp_path folders are there. A green run deletes its folder. |
 | `not in the table: <file>` | Not red: the file got the `*` seconds. Add its row with the seconds of a run. |

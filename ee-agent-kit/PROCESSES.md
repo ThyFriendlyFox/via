@@ -94,6 +94,11 @@ or any step that downloads, installs, or runs for more than a minute.
    file, and for every file that queues on that source in turn. Bound
    that sum within the step's own bound, with a test that computes it
    from the step's constants (M285).
+10. A workflow's own job is not repeated inside the health gate's test
+    run. A test that does that job (a whole image build) runs only when a
+    variable asks for it by name, its skip names the workflow and the 1
+    command that runs it, and the workflow checks every thing the test
+    checked, with no `continue-on-error` on the job or those steps (M287).
 
 Done when: the run is green, its log shows progress lines in every long
 step, no step used more than half its limit, and no step depended on a
@@ -842,7 +847,18 @@ charger, or any other load from a battery.
    gap is noted and taken once the pid is kept. Its test holds the script
    at each such point (a BASH_ENV hook with a DEBUG trap, or a stand-in
    that waits for a mark) and sends the kill there, so the order is chosen
-   and the test fails every time on the fault (M272).
+   and the test fails every time on the fault (M272). A process that
+   stops on a signal ignores a later stop until its clean-up is done: a
+   parent that passes a signal on (`enginelock.py hold`) sends a second
+   one to a child that already got it from its group. A test of a stop
+   never waits a guessed time for children to go: it asserts the state
+   the stopped process must leave once it has exited (every child reaped,
+   its stop line printed), and reads `/proc` only where a read that fails
+   with ESRCH counts as gone. Whether a grandchild is still in `/proc`
+   depends on who reaps orphans, so the wait for each child is also
+   tested where the test is the only parent. A loop that signals or polls
+   a process has a deadline and fails with a message that names what it
+   waited for (M288).
 
 Done when: the host tests cover steps 1, 2, 3 and 5, the mutation run
 catches every mutation after the last firmware change, and the cut-off

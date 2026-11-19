@@ -1,0 +1,2 @@
+### Fixed
+- A stop of the health gate in shards under `enginelock.py hold` now ends and waits for every shard. The runner got the TERM twice, 1 sent to its group and 1 the hold passes on, and the second cut its clean-up short: it exited with its shards unreaped and without its `stopped by signal` line, in 7 of 8 tries on 1 machine. It now ignores a stop that comes after the first. The test of that stop no longer reads `/proc` while another process reaps the shards: CI run 44496113605 on main failed it with `ProcessLookupError`, where the pull request's own run had passed it.
