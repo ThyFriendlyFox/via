@@ -770,6 +770,13 @@ charger, or any other load from a battery.
    only after the whole list has run 3 times with the same count; a
    mutant caught on some runs and not others is not caught: find the
    order its test rests on and fix the test before the count is written.
+   A script that ends a background child keeps nothing it needs between
+   the child's `&` and the line that keeps its pid: it ends the child's
+   whole process group (made before the `&` returns), and a signal in that
+   gap is noted and taken once the pid is kept. Its test holds the script
+   at each such point (a BASH_ENV hook with a DEBUG trap, or a stand-in
+   that waits for a mark) and sends the kill there, so the order is chosen
+   and the test fails every time on the fault (M272).
 
 Done when: the host tests cover steps 1, 2, 3 and 5, the mutation run
 catches every mutation after the last firmware change, and the cut-off
