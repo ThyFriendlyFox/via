@@ -803,6 +803,59 @@ def test_quiet_names_engines_tests_and_scripts_in_the_given_folders(tmp_path):
     ]
 
 
+STANDIN_SLEEPS = "import pathlib, sys, time; pathlib.Path(sys.argv[1]).write_text('up'); time.sleep(60)"
+STANDIN_WORKS = "import pathlib, sys; pathlib.Path(sys.argv[1]).write_text('up')\nwhile True: pass"
+STANDIN_WAITS_ON_A_CHILD = (
+    "import pathlib, subprocess, sys; pathlib.Path(sys.argv[1]).write_text('up')\n"
+    "subprocess.run(['sleep', '60'])"
+)
+
+
+def test_quiet_leaves_out_a_python_script_that_sleeps_with_nothing_below_it(tmp_path):
+    """A helper's script that waits for the gate's lock in `time.sleep` starts no `sleep` process
+    (M277). With nothing below it and no processor time used for 2 s, it is quiet; counted as busy, it
+    and the gate wait for each other. A script that works is busy, and so is one with a child: the
+    child may be its test run. The real `ps` and /proc; the folder is a name on each command line.
+    Only the 3 stand-ins' lines are read: the machine may run other things."""
+    import time
+
+    folder = f"/quiet-standins-{os.getpid()}"
+    gate = subprocess.Popen(["sleep", "60"])
+    standins = {}
+    try:
+        for name, code in (
+            ("sleeps", STANDIN_SLEEPS),
+            ("works", STANDIN_WORKS),
+            ("child", STANDIN_WAITS_ON_A_CHILD),
+        ):
+            up = tmp_path / f"{name}.up"
+            argv = [sys.executable, "-c", code, str(up), folder]
+            standins[name] = (subprocess.Popen(argv, start_new_session=True), up)
+        for _proc, up in standins.values():
+            for _ in range(100):
+                if up.exists():
+                    break
+                time.sleep(0.1)
+            assert up.exists(), "a stand-in did not start"
+        time.sleep(0.5)
+        run = subprocess.run(
+            [sys.executable, str(QUIET), str(gate.pid), folder], capture_output=True, text=True, timeout=60
+        )
+        assert run.returncode == 0, run.stderr
+        printed = {int(line.split()[0]) for line in run.stdout.splitlines()}
+        assert standins["sleeps"][0].pid not in printed
+        assert standins["works"][0].pid in printed
+        assert standins["child"][0].pid in printed
+    finally:
+        import signal
+
+        for proc, _ in standins.values():
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
+        gate.kill()
+        gate.wait()
+
+
 def test_quiet_refuses_a_root_that_is_no_number():
     run = subprocess.run([sys.executable, str(QUIET), "x"], capture_output=True, text=True)
     assert run.returncode == 2
