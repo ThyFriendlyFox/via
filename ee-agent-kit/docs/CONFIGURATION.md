@@ -54,6 +54,7 @@ unset variable never causes a failure.
 | `WORKCENTER_LOCK_DIR` | absolute path | `/tmp/workcenter-lock-<uid>` (`/tmp/workcenter-lock-0` for root), whatever TMPDIR says | The engine lock's folder: 1 per machine and user, never inside a project. Each run of a long command keeps 1 ticket file there while it waits and runs. A path that is a file, a link, relative or not writable, or (the default only) another user's folder, is refused in 1 line that names the setting, the path and why (exit 2). |
 | `WORKCENTER_LOCK` | `off` or empty | empty (on) | `off` (or `0`, `no`, `false`): no command takes the lock or waits on it. |
 | `WORKCENTER_LOCK_EVERY` | seconds | `30` | How often a waiting run repeats its line (at least 0.05). |
+| `WORKCENTER_LOCK_LOG` | path (absolute) | unset: stderr | Where a waiting run writes its 2 lines (`waiting on the engine lock`, `took the engine lock after`): appended to this file. A test session names 1 (`tests/conftest.py`), so another session's run adds no line to the stderr a test compares. A file that cannot be written loses no line: they go to stderr. Every other line, and the line of a run stopped by a signal, stays on stderr. |
 
 | Flag | Commands | Default | Use |
 |---|---|---|---|

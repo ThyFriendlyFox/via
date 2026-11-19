@@ -1725,3 +1725,15 @@ What happened: CI run 44462711649 on main (6f66757, a site-only push) ended `mak
 Cost: Every site-only push to main showed a red CI, and the site's own work could not tell its faults from this one.
 Root cause: The tests came in through pull requests whose scope was full. The full job installs KiCad, where they pass; the fast job, the only one without KiCad, ran only for fast changes. `make verify-site` on Via's own machine refused engines but read KiCad's installed libraries, so it did not see it either. A skip on an engine's presence does not stand in for a skip on the libraries: the first fix's own check hid kicad-cli from PATH, which turned the 6 into skips, and missed them.
 Process: P12
+
+## M283 — 2026-11-19 — Tests that compare stderr failed when another test session held the engine lock
+What happened: Helpers ran tests in their own worktrees on 1 machine at once. 1 helper's run of 17 test files, the run of M274, ended `2 failed, 548 passed, 1 skipped in 1207.75s`: `tests/test_chipflow.py::test_an_output_folder_that_the_gates_would_empty_the_project_in_is_refused` and `tests/test_designfile.py::test_power_nets_that_is_no_dict_is_refused_with_the_dict_to_write`. Each compares stderr exactly. Another worktree's test run held the engine lock (`/tmp/workcenter-lock-0`), so the command printed `workcenter: waiting on the engine lock: 1 run ahead; ...` and `workcenter: took the engine lock after 2 s` first. The same day `tests/test_ci.py` read `took the engine lock after 24 s` as its last line where it expected `CI REPLAY GREEN`, 3 times.
+Cost: 2 red tests in a run of 1207.75 s, 3 red tests in another, and a helper's round to find the cause.
+Root cause: The engine lock is shared by every run on the machine, test sessions too, and a waiting run wrote its 2 lines on stderr. The lock's tests used a lock folder of their own, so no test ran a long command while another session held the lock.
+Process: P12
+
+## M284 — 2026-11-19 — A command line of the keeper's used `cd`
+What happened: Landing item 7's piece, the keeper ran 1 shell command that began `cd /;` before a `grep`, against "Absolute paths, and no `cd`" (P8 step 1, M268). The brief also names the rule as checked.
+Cost: None seen: the `grep` read absolute paths, and no file changed. The rule was broken.
+Root cause: The habit of a terminal, where a folder stays chosen; nothing in this session's shell refuses a `cd` (the repository's PreToolUse hook is not loaded in a session opened outside it).
+Process: P8

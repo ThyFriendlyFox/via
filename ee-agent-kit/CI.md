@@ -25,6 +25,8 @@ The runner is `ubuntu-24.04`, so the PPA step, the Java package, and ngspice
 match the cloud environment. `REQUIRE_FREEROUTING=1` makes a blocked JAR
 download fail the run; a green CI proves the autoroute engine installs.
 
+`make verify` holds the engine lock for the whole gate, so its tests' commands never wait on it. `tests/conftest.py` still names a file for a waiting run's 2 lines (`WORKCENTER_LOCK_LOG`), so a test that compares stderr reads the same lines in CI and on a machine where another session holds the lock.
+
 Before install.sh, the install path and the nightly run turn apt from the runner's regional mirror to Ubuntu's own archive: `sudo env APT_ARCHIVE_CI=1 bash tools/ci/apt_archive.sh /etc/apt`. Twice the mirror us-east-2.ec2.archive.ubuntu.com crawled and the download hit its bound of 570 s (CI runs 44402154007 and 44432768560), while the image builds of the same hours asked archive.ubuntu.com and were fast (`Image` run 44432768632 built both machines between 00:54 and 00:59 UTC on 2026-11-19). The script changes only a regional or cloud host of archive.ubuntu.com or ports.ubuntu.com; a layout it does not know, it names and leaves. Setting the repository variable `CI_APT_UBUNTU_ARCHIVE` to `0` turns it off (tools/ci/README.md, "Ubuntu's own archive on the install path"). Its first run on a runner, CI run 44444183056 (2026-11-19), passed, and the install step then took 1 min 29 s, where the 3 runs before it on the regional mirror ran 9 min 43 s or more and stopped at the download's bound.
 
 ## The fast job on every change

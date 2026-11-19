@@ -577,6 +577,16 @@ that may be absent.
     to empty ones; on a machine with KiCad it keeps the engines on PATH and
     runs a test that skips on them, so a test without the skip fails there
     (M282).
+11. A test session shares the machine's engine lock with every other run:
+    its long commands wait while another session's run holds it. A waiting
+    run writes its 2 lines to the file `WORKCENTER_LOCK_LOG` names, and
+    `tests/conftest.py` names 1 for the session, so a test that compares
+    stderr is not broken by them. A test that starts a long command keeps
+    that variable in the environment it passes (start from `os.environ`);
+    a test of the lock itself takes it out. To see a test hold its
+    comparison under a wait, run it while a loop holds the lock in a folder
+    of its own (`WORKCENTER_LOCK_DIR`) with
+    `python3 tools/enginelock.py hold -- sleep 2` (M283).
 
 Done when: the summary shows no unexpected skips, the engine test is
 green on the runner, and a run with an engine taken away is not GREEN.

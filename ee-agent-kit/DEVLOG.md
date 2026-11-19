@@ -39,6 +39,12 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-19 — Test sessions wait for each other and do not fail for it
+
+Helpers ran tests in their own worktrees at once. A test that compares the whole of stderr failed when another worktree's run held the engine lock: the waiting command printed 2 lines first. 1 run of 17 test files ended `2 failed, 548 passed, 1 skipped in 1207.75s`, and `tests/test_ci.py` read `took the engine lock after 24 s` as its last line 3 times. The lock guards the machine's load: engines started beside a health gate killed the machine (M124). So the lock stays shared, and a test session sends the 2 lines to a file of its own (`WORKCENTER_LOCK_LOG`, named in `tests/conftest.py`); its summary prints them. A planted holder failed the 5 tests before the change (6 failed with the new test) and failed none after it (7 passed).
+
+Evidence: `tests/test_enginelock.py` (29 tests); branch `wip/tests-own-lock`, head e18f2b5; M283.
+
 ## 2026-11-19 — The quick CI check was red on main for 7 tests that needed KiCad
 
 Every site-only push to main showed a red CI. The quick check runs on a machine with no KiCad, and 7 tests read KiCad's parts libraries without saying so. They came in through pull requests that ran only the full check, where KiCad is installed, so nobody saw it. We marked the 7 to skip where the libraries are absent. The quick check now runs on every pull request, next to the full one, and both must pass. Run on a machine with KiCad, the quick check now hides KiCad's libraries, so it fails the same way the CI machine does. It found 6 more tests that way: they skipped where KiCad's program is absent, but read the libraries.
