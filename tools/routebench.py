@@ -23,6 +23,7 @@ import zipfile
 from pathlib import Path
 
 import kicadgen
+import routers
 
 RUN_FILE = "run.json"
 TABLE_FILE = "bench.md"
@@ -256,7 +257,18 @@ def timed_run(cmd: list[str], env: dict, limit: float) -> tuple[int | None, byte
         return None, out, time.monotonic() - t0
 
 
-def bench_one(design: Path, router: str, jar: Path, out: Path, args, cli, order: bool = False) -> dict:
+def bench_one(
+    design: Path,
+    router: str,
+    jar: Path,
+    out: Path,
+    args,
+    cli,
+    order: bool = False,
+    engine: str = "freerouting",
+) -> dict:
+    """1 run: `engine` is the router of routers.ROUTERS that `design --route --router` runs; for
+    FreeRouting 1.9.0 (`freerouting`) `jar` is the jar it runs, for another router its own jar."""
     board = label_of(design)
     router = f"{router}+order" if order else router
     folder = folder_of(out, design, router)
@@ -274,8 +286,12 @@ def bench_one(design: Path, router: str, jar: Path, out: Path, args, cli, order:
         "passes": args.passes,
         "seconds": 0.0,
     }
-    if not jar.is_file():
+    if engine == "freerouting" and not jar.is_file():
         run.update(status="not run", why=f"no router at {jar}")
+        return run
+    absent = routers.get(engine).absent() if engine != "freerouting" else ""
+    if absent:
+        run.update(status="not run", why=absent)
         return run
     wc = [sys.executable, str(Path(cli.__file__).resolve())]
     route = [
@@ -291,8 +307,9 @@ def bench_one(design: Path, router: str, jar: Path, out: Path, args, cli, order:
         "--threads",
         str(args.threads),
         *(["--order"] if order else []),
+        *(["--router", engine] if engine != "freerouting" else []),
     ]
-    env = dict(os.environ, FREEROUTING_JAR=str(jar))
+    env = dict(os.environ, FREEROUTING_JAR=str(jar)) if engine == "freerouting" else dict(os.environ)
     # The JVM sizes its own pools by the processors it sees: held to the threads asked for.
     env["JAVA_TOOL_OPTIONS"] = (
         env.get("JAVA_TOOL_OPTIONS", "") + f" -XX:ActiveProcessorCount={args.threads}"
@@ -350,30 +367,38 @@ def line_of(run: dict) -> str:
     return f"{head}: {run['status']}: {run['why']}"
 
 
-def parse_router(value: str) -> tuple[str, Path]:
+def parse_router(value: str) -> tuple[str, Path, str]:
+    """`--router NAME=JAR`: a FreeRouting 1.9.0 jar under a name of its own; `--router NAME`: a router of
+    routers.ROUTERS (`freerouting`, `freerouting2`). Returns (name in the table, jar, router)."""
     name, sep, jar = value.partition("=")
-    if not sep or not name or not jar:
-        raise ValueError(f"--router {value!r}: write NAME=JAR")
-    return name, Path(jar)
+    if sep:
+        if not name or not jar:
+            raise ValueError(f"--router {value!r}: write NAME=JAR or the name of a router")
+        return name, Path(jar), "freerouting"
+    if value not in routers.ROUTERS:
+        raise ValueError(f"--router {value!r}: write NAME=JAR or 1 of {', '.join(routers.ROUTERS)}")
+    return value, routers.get(value).jar(), value
 
 
 def cmd_bench(args, cli) -> int:
     out = Path(args.out).resolve()
     try:
-        routers = [parse_router(v) for v in args.router] if args.router else []
+        chosen = [parse_router(v) for v in args.router] if args.router else []
     except ValueError as exc:
         print(f"bench: {exc}")
         return cli.EXIT_FAIL
-    if not routers:
-        routers = [(jar_name(cli.FREEROUTING_JAR), cli.FREEROUTING_JAR)]
-    default = routers[0][0]
+    if not chosen:
+        chosen = [(jar_name(cli.FREEROUTING_JAR), cli.FREEROUTING_JAR, "freerouting")]
+    default = chosen[0][0]
     designs = [Path(d).resolve() for d in args.designs]
     for d in designs:
         if not d.is_file():
             print(f"bench: no design file {d}")
             return cli.EXIT_FAIL
     plan = [
-        (name, jar, order) for name, jar in routers for order in ((False, True) if args.order else (False,))
+        (name, jar, order, engine)
+        for name, jar, engine in chosen
+        for order in ((False, True) if args.order else (False,))
     ]
     # 1 folder per board: 2 designs with 1 label, or a folder that holds another design's run, would
     # put 1 board's numbers under another's name.
@@ -384,7 +409,7 @@ def cmd_bench(args, cli) -> int:
             print(f"bench: {seen[label]} and {design} are both {label_of(design)}; bench them into 2 folders")
             return cli.EXIT_FAIL
         seen[label] = design
-        for name, _, order in plan:
+        for name, _, order, _ in plan:
             folder = folder_of(out, design, f"{name}+order" if order else name)
             held = held_design(folder / RUN_FILE)
             if held and held != str(design):
@@ -392,8 +417,8 @@ def cmd_bench(args, cli) -> int:
                 return cli.EXIT_FAIL
     out.mkdir(parents=True, exist_ok=True)
     for design in designs:
-        for name, jar, order in plan:
-            run = bench_one(design, name, jar, out, args, cli, order)
+        for name, jar, order, engine in plan:
+            run = bench_one(design, name, jar, out, args, cli, order, engine)
             folder = folder_of(out, design, run["router"])
             (folder / RUN_FILE).write_text(json.dumps(run, indent=2) + "\n", encoding="utf-8")
             print(line_of(run))
@@ -445,8 +470,9 @@ def register(sub, cli) -> None:
     p.add_argument(
         "--router",
         action="append",
-        metavar="NAME=JAR",
-        help="a FreeRouting jar to run, repeatable; the first is the default (default: the workcenter's)",
+        metavar="NAME=JAR|NAME",
+        help="a FreeRouting 1.9.0 jar to run under a name, or a router by name (freerouting, freerouting2), "
+        "repeatable; the first is the default (default: the workcenter's)",
     )
     p.add_argument("--time-limit", type=above_0, default=300, help="seconds per route (default 300)")
     p.add_argument("--threads", type=above_0, default=2, help="router threads (default 2)")

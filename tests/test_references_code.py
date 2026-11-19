@@ -197,11 +197,13 @@ def test_a_capitalised_or_abbreviated_place_makes_a_citation():
 def test_documents_of_the_families_first_missed_are_found_and_fail():
     """code/families/tool.py: 9 citations on lines 8 to 16 (TI's SLAA, SLVAE and SPRAC numbers, J-STD,
     IPC-TM, IEC with a hyphen, MIL-STD, Analog Devices' AN and IEEE), none in the index: 9 fail lines,
-    9 named, 0 in the index. Before the fix no family found them: 0 named, exit 0."""
+    9 named, 0 in the index. Before the fix no family found them: 0 named, exit 0. The SLAA number is
+    390B, which the index lacks; the number it had first is the MCU block's note, which joined the index
+    on 2026-11-18."""
     path = "tests/boards/references/code/families/tool.py"
     code, lines = rules(CODE / "families", index=INDEX)
     cited = [
-        ("SLAA" + "322D", "section 2"),
+        ("SLAA" + "390B", "section 2"),
         ("SLVA" + "E57", "equation 3"),
         ("SPRA" + "CN0", "table 2"),
         ("J-STD-" + "020E", "table 4-1"),
@@ -385,23 +387,44 @@ def test_an_nxp_number_the_index_lacks_is_found_by_its_family(tmp_path):
     ]
 
 
+def test_the_linear_regulator_block_its_builder_and_its_tests_declare_their_documents():
+    """tools/blocks_ldo.py, tests/test_blocks_ldo.py and tests/boards/block_ldo.py cite the block's note
+    (ti-slva079) and the TLV755P datasheet (ti-sbvs320) by equation, section and page, and the test the
+    thermal metrics note (ti-spra953d), as tools/thermal.py does. The block was built before the check
+    read code: the note's entry had no `names`, so the note was not found by name, and no file had a
+    CITES: 7 fails. Each file's CITES names its documents now: 1 + 3 + 1 = 5 named."""
+    paths = (
+        ROOT / "tools" / "blocks_ldo.py",
+        ROOT / "tests" / "test_blocks_ldo.py",
+        ROOT / "tests" / "boards" / "block_ldo.py",
+    )
+    code, lines = rules(*paths, index=INDEX)
+    assert code == 0, lines
+    assert lines == ["references rules: 5 documents named in 3 files, 5 in the index, 0 not; 0 not judged"]
+
+
 def test_the_board_rules_tool_declares_the_pack_whose_tables_it_reads():
     """tools/boardrules.py reads tables 7-1 and 7-3 of the board pack's standard by number alone, with no
     name beside them, so no check can find them: its CITES names the standard of every pack in
     rules/board. Before, it had none: 0 named. The layout packs of roadmap item 11 (`"kind": "layout"`)
-    are read by tools/layoutrules.py, whose CITES names each one's document by its index id."""
+    are read by tools/layoutrules.py, and the creepage packs of item 11 (`"kind": "creepage"`) by
+    tools/creepage.py; the CITES of each names each of its packs' documents by its index id."""
     code, lines = rules(ROOT / "tools" / "boardrules.py", index=INDEX)
     assert code == 0, lines
     assert lines == ["references rules: 1 documents named in 1 files, 1 in the index, 0 not; 0 not judged"]
     sys.path.insert(0, str(ROOT / "tools"))
     import boardrules
+    import creepage
     import layoutrules
 
     data = [json.loads(p.read_text(encoding="utf-8")) for p in (ROOT / "rules" / "board").glob("*.json")]
-    packs = {d["pack"] for d in data if d.get("kind") != "layout"}
+    packs = {d["pack"] for d in data if d.get("kind") not in ("layout", "creepage")}
     assert packs and packs <= set(boardrules.CITES)
     entries = json.loads(INDEX.read_text(encoding="utf-8"))["documents"]
     by_number = {e["number"]: e["id"] for e in entries if "number" in e}
     layout = {by_number[d["document"]["number"]] for d in data if d.get("kind") == "layout"}
     assert layout == {"ti-slva680a", "ti-szza009"}
     assert layout <= set(layoutrules.CITES)
+    spacing = {by_number[d["document"]["number"]] for d in data if d.get("kind") == "creepage"}
+    assert spacing == {"mil-hdbk-454c", "ti-slup419"}
+    assert spacing <= set(creepage.CITES)

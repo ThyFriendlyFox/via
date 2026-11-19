@@ -1430,3 +1430,178 @@ What happened: The CI run of `main` for merge commit e471028 started at 23:53 UT
 Cost: A red run of `main` with no fault in the code, and a helper's time on a fault that was not there. A health gate takes 20 to 30 minutes, so every gate that started in a day's last half hour could fail the same way.
 Root cause: Each tool and each test read the clock where it needed a day, and nothing named 1 reading per run. `tools/clock.py` now holds the 1 reading a command takes at its start, SOURCE_DATE_EPOCH pins it, `tests/test_clock.py` holds every tool to reading the clock through it, and `tests/test_docs.py` holds every test file to reading no clock at load.
 Process: P10
+
+## M234 — 2026-11-17 — A parser tested on a line no router writes
+What happened: The router's count of open connections was read with a pattern, `(N unrouted)` after `Auto-routing was completed in ...`, that no router writes. Its test fed it a log line in that same invented shape, so the test passed and the rule held for no real router. FreeRouting 1.9.0 logs no count. FreeRouting 2.5.0 writes `(N unrouted and M violations)`, as the builder read from the pinned jar's `FRLogger.formatScore` with `javap -c -p`. A route that left connections open could end as `DRC decides`.
+Cost: Found by the item's review; the 3 rule 15 tests of `tests/test_routers.py` hold the jar's own formats.
+Root cause: The test's author wrote the tool's output from memory, and the test then agreed with the parser it was meant to check.
+Process: P4
+
+## M235 — 2026-11-17 — A test file run while a health gate held GATE.lock
+What happened: On `wip/ci` the 2 new test files were run once (0.10 s, a collection error) while `scratchpad/GATE.lock` existed; the brief says to run no test while it does. On 2026-11-18 the landing of the same piece chained a test run behind `ls GATE.lock` in 1 command; the lock had come 14 s after the last look, the run waited on the engine lock behind the gate, and was stopped before pytest started.
+Cost: None measured; the first run was 0.10 s. It could have slowed the gate's timing.
+Root cause: The lock was checked in the same command as the run, and its answer was read after.
+Process: P31
+
+## M236 — 2026-11-17 — A `cd` in a shell command
+What happened: On `wip/ci` a command held `( cd / ; true )`, a leftover with no effect. P8 forbids `cd` in any command.
+Cost: None; it ran in a child shell.
+Root cause: A command was assembled by hand without reading it whole before it ran.
+Process: P8
+
+## M237 — 2026-11-17 — A background job stopped by the terminal
+What happened: `make verify-site` started in the background under `flock` stopped at once ("Stopped"), twice, and wrote nothing; `setsid -w` ran it.
+Cost: 2 places in the engine lock's queue, about 20 minutes.
+Root cause: A job in the background of an interactive shell is stopped when a child touches the terminal; `< /dev/null` alone did not prevent it.
+Process: P8
+
+## M238 — 2026-11-17 — A block took the stock's nearest resistor and never checked the output it set
+What happened: The first build of `blocks.buck` chose R1 as the stock's nearest value to equation 11's result and did not work out the output that R1 sets. With only 100k in stock, a 3.3 V spec built a board at 1.2 V. `workcenter ratings --strict` and the gates passed it.
+Cost: Found by the first review of roadmap item 3; the block now works out the output by the datasheet's equation 2 and refuses it outside its span or 2 % off the output asked (`tests/test_blocks.py`).
+Root cause: Every later check judged the parts against what the block wrote, not against the spec. A block holds what each chosen part gives to what was asked, with the stated accuracy, and refuses on 1 line when it misses. Each check of a block has a test that fails when the check is removed.
+Process: P14
+
+## M239 — 2026-11-17 — A block held the least input to the output, not to the IC's dropout equation
+What happened: `blocks.buck` held the least input to the output asked, not to what the IC needs to hold its output: the top of the output's span plus the load's drop across the high-side FET and the inductor (SLVSDG1C section 7.3.2, equation 1). A 3.3 V output from 3.3 V at 1.2 A built and went GREEN.
+Cost: Found by the second review of roadmap item 3; the block now refuses it (`tests/test_blocks.py`).
+Root cause: A spec limit was held to a simpler rule than the datasheet's own equation for it. A block holds each spec limit to the datasheet's equation for it, at the worst end of every span it worked out.
+Process: P14
+
+## M240 — 2026-11-17 — A block's read-back check never asked that its nets differ
+What happened: `blocks.usbc` took 6 nets and checked each pin against its net, but never that the 6 nets were different. CC1 and CC2 on 1 net put the 2 Rd in parallel, 2.55 kohm, outside table 4-28; the port passed the check, `workcenter ratings --strict` and the SIM gate.
+Cost: Found by the review of the USB-C block (F1); the block now refuses 2 signals on 1 net, before it builds and in its check (`tests/test_blocks_usbc.py`).
+Root cause: A block that takes several nets checked each one alone. It refuses them when 2 are the same, unless its rules name the pair as allowed.
+Process: P14
+
+## M241 — 2026-11-17 — A comparator's threshold taken from the end of a range
+What happened: `blocks.usbc` handed the designer 0.746 V, the least of the vRd-1.5 range, as the CC threshold. Table 4-36 states the threshold as a band, 0.613 V to 0.745 V; a comparator set at 0.746 V misses compliant sources.
+Cost: Found by the review of the USB-C block (F4); the sums now give the band (`tests/test_blocks_usbc.py`).
+Root cause: A range end was read as a threshold. A requirement on a comparator cites the table's threshold row, never a range end.
+Process: P14
+
+## M242 — 2026-11-17 — A footprint from KiCad's library failed the board's own DRC
+What happened: The USB-C block first named GCT USB4105-GF-A. KiCad's footprint puts its GND pads 0.1944 mm from its pegs' holes, under the board's 0.25 mm, and the fixture failed DRC on 4 `hole_clearance` errors.
+Cost: A receptacle chosen and dropped; the block now names GCT USB4115-03-C, whose fixture is GREEN.
+Root cause: A footprint was taken on its name. Before a block names a footprint, generate and gate a board that holds it; the block's pass fixture does this.
+Process: P14
+
+## M243 — 2026-11-18 — A bus block checked each device pin's limits but not its net
+What happened: `blocks.i2c` checked the limits of each device pin it found on the lines, but not which net it sat on. Pull-ups to GND, SDA and SCL crossed at a device, and `nets=(SDA, SDA, VCC)` each passed the block and `workcenter ratings --strict`.
+Cost: Found by the review of the I2C block (I1 to I3); each is now refused, each with a test (`tests/test_blocks_i2c.py`).
+Root cause: The block judged the pins it found, not every pin its facts name. A block reads every pin its parts' facts name and refuses one on the wrong net.
+Process: P14
+
+## M244 — 2026-11-18 — A test run started while the health gate ran
+What happened: While `GATE.lock` existed, 1 run of `pytest tests/test_blocks_i2c.py` (1.3 s, no engine) was started before the lock was checked. On landing the blocks, a run under `ENGINE2.lock` was started in the same way, stopped before any test ran, and later a 15 s run of `tests/test_ratings_mutations.py` ran while a new gate held the lock.
+Cost: Time taken from a health gate on a machine of 4 processors.
+Root cause: The lock was read in 1 command and the run started in another. Check the lock in the same command as the run, and start nothing when it exists: `[ -e $S/GATE.lock ] || <the run>`.
+Process: P31
+
+## M245 — 2026-11-18 — A block printed "not judged" only in a comment of its deck
+What happened: The charger block's transistors passed SLUSBU9I section 9.2.2's check by 1 mV at their 25 C MAX and VGS = 3 V, where the note asks the on-resistance derated for heat and gate drive and the datasheet gives no number for either. It said "not judged" in a comment of its deck only, and `workcenter ratings --strict` passed with 0 not judged.
+Cost: Found by the review of the charger block (C1); its not-judged items now go into `ratings.json`'s `not_judged`, and `workcenter ratings` prints them.
+Root cause: A check passed on what it did not judge. A block's not-judged items go where a command prints them.
+Process: P14
+
+## M246 — 2026-11-18 — A block held a junction to the datasheet's limit, not to the pack's
+What happened: The charger block held the BQ21040's junction to SLUSCE2D's 125 C, while the SIM gate holds it to the rating pack's 110 C. The block named about 234 mA as the most, a current the gates refuse.
+Cost: Found by the review of the charger block (C6); the limit is now the least of the 2.
+Root cause: A block's limit is the least of the datasheet's and the rating pack's: the one the gates apply.
+Process: P14
+
+## M247 — 2026-11-17 — A crystal wired to a floating pad on a GREEN board
+What happened: `blocks.mcu` mapped the crystal symbol's pins 1 to 1 onto the footprint's pads. The fixture's ABS25 sat on pads 1 and 2; pad 2 floats and pad 4 was left open. ERC, DRC and EXPORT passed and the gates were GREEN.
+Cost: Found by the review of the microcontroller block (M1); the crystal's facts now give its `terminals`, and the block's check() reads the pads back from the footprint.
+Root cause: No gate knows which pads of a crystal hold the crystal. Read the pin arrangement from the maker's outline drawing into the part's facts, and have the block's own check read the pads back.
+Process: P14
+
+## M248 — 2026-11-17 — A helper held the engine lock while it waited for the gate lock
+What happened: A helper's script took `ENGINE.lock` for 2 runs of the health gate, then waited for `GATE.lock` to go before its next run, still holding `ENGINE.lock`. The lead's gate had made `GATE.lock` and waited for `ENGINE.lock`. Neither went on from the end of the helper's run at 23:14 UTC until its script was stopped at 23:22. Earlier the same helper checked `GATE.lock` only before it took `ENGINE.lock`, and 2 of its runs ran beside the lead's gate.
+Cost: 8 minutes of a stopped machine, and 2 measurements taken beside a gate that do not count.
+Root cause: The brief says to wait for `GATE.lock` before a run and to run behind `ENGINE.lock`, and the 2 orders were mixed. Wait for `GATE.lock` to go, then take `ENGINE.lock`; check `GATE.lock` again inside it, and if it is there, let `ENGINE.lock` go and wait again. Never wait for `GATE.lock` inside it.
+Process: P31
+
+## M249 — 2026-11-18 — A landing ran tests for 10 minutes after a gate began
+What happened: While landing the health gate in shards, a helper waited for `GATE.lock` to go (04:55:52 UTC), then ran short test files in a row for about 10 minutes: `tests/test_testshards.py` 17 times, 2 mutant copies, and `tests/test_fields_rerun.py`, `tests/test_clock.py`, `tests/test_now.py`. A new gate made `GATE.lock` at 04:58:30, and the runs went on beside it. The helper saw the lock only at 05:23, when it listed the engine lock's queue.
+Cost: about 7 minutes of tests beside a health gate, on a machine of 4 processors.
+Root cause: As M188 and M201: the lock was looked at once, not before each run. Each later run went through 1 script that waits for `GATE.lock`, takes the engine locks, and checks `GATE.lock` again inside them (M248).
+Process: P31
+
+## M250 — 2026-11-18 — A `-k` word chose engine tests that ran without the lock
+What happened: On `wip/l4`, `pytest -k initial` on `tests/test_partdata.py` was meant for 2 text tests. It also chose the 2 ngspice runs of `test_the_initial_condition_on_the_part_and_on_the_node_give_the_same_run`, and they ran without `flock` on the engine lock.
+Cost: 2 short ngspice runs outside the lock's queue.
+Root cause: A `-k` word matches every test whose name holds it.
+Process: P8
+
+## M251 — 2026-11-18 — A verdict that read as done when it was not
+What happened: In user round 1 (2026-11-17), `gates --strict` printed `GREEN (nothing to run for: sim)` on the medium user's board while its `ratings` run ended `RATINGS HELD, 3 NOT JUDGED`, and `next` asked for facts. WORKCENTER.md line 9 said done is GREEN; its `next` paragraph said a project with `ratings.json` is not done until `RATINGS HELD`.
+Cost: A user read GREEN as done on a board whose parts were not all held to their ratings; another read 100 lines of WORKCENTER.md to learn which of the 2 held.
+Root cause: 2 commands judged done, each in its own code: `gates` from the gates alone, `next` from the gates and the ratings record. Nothing held them to 1 answer.
+Process: P10
+
+## M252 — 2026-11-17 — A board reader that read a gap larger than it is
+What happened: On `wip/creepage` the creepage check read an arc track as the 2 chords `boardrules.read_board` gives, so a gap read up to R(1 - cos 45) = 0.879 mm larger than it is at R = 3 mm, and it turned a pad with no angle in the file by its footprint's angle. A reviewer's board read `0 fail, 0 not judged` with 2.5 mm where 3 mm is asked.
+Cost: 1 review round.
+Root cause: The reader took the shapes another reader gave, and no test held each shape KiCad writes.
+Process: P7
+
+## M253 — 2026-11-17 — What a check cannot judge said only in a note
+What happened: On `wip/creepage` the check listed "between the 2 faces" and "a third conductor" as not checked in a README and a note, but printed no `not judged` line for the pairs concerned, so the board read clean.
+Cost: 1 review round.
+Root cause: A limit of the check was written for a person and not printed for the pair.
+Process: P14
+
+## M254 — 2026-11-18 — A bound tested only with the walls it names
+What happened: On `wip/creepage` the bound between F.Cu and B.Cu took the edge and unplated holes as the only ways, and looked at copper with no net only after the bound had let the pair go. A via with no net between HV and GND (1.3 mm where 3 mm is asked) read `0 fail, 0 not judged`. A cut the check could not read counted as near at any distance, so a hole far off turned a fail into `not judged` and the default gate printed PASS.
+Cost: 1 review round; the critical finding of the second review.
+Root cause: The bound and the unknown were tested with the shapes they name, not with every conductor and every distance that can stand on the way.
+Process: P7
+
+## M255 — 2026-11-18 — A script that edits a file in place, stopped by SIGTERM
+What happened: On `wip/creepage` the first full mutation run was ended by a SIGTERM when GATE.lock was taken, and left a mutant in the scratch copy's `creepage.py`; the script had no handler, so `finally` did not run. The copy was put back by hand.
+Cost: 1 mutation run of 150 mutants lost its last result.
+Root cause: Only an exception restored the file, not a signal.
+Process: P9
+
+## M256 — 2026-11-18 — Commands started while GATE.lock existed
+What happened: On `wip/creepage` `workcenter design` of 2 fixtures (under 1 s each, no engine), and later 1 run of 8 unit tests (0.17 s), started while GATE.lock existed; the second printed `GATE` and went on.
+Cost: None measured.
+Root cause: The lock was looked at once per batch, or printed and not waited on.
+Process: P31
+
+## M257 — 2026-11-18 — A piece built before 2 trunk checks landed with neither
+What happened: `wip/creepage` was built before the `CITES` check of the references and before the engine marker. On the landing head `workcenter references rules` failed on 5 lines (2 test files with no `CITES`; the TI pack cited a table of the paid IEC 60664-1, which the index cannot hold), the test of the board rules' tool took the creepage packs for voltage packs, and the 5 DRC tests failed with `started kicad-cli and has no engine marker` when engines were refused.
+Cost: 2 commits on the landing branch.
+Root cause: A branch is checked against the trunk's checks when it lands, not while it is built.
+Process: P14
+
+## M258 — 2026-11-18 — A new test file started ngspice without the engine marker
+What happened: `tests/test_simneeds_cli.py` was written before the CI split landed and carried only a skip mark. Each of its 12 tests starts kicad-cli or ngspice; the fast run (`-m "not engine"`) took all 12, and the guard fails such a test in every run. The I2C and buck block tests had the same gap.
+Cost: Found when the piece was landed on the trunk; the 3 files carry the marker now.
+Root cause: A branch made before a rule lands does not meet the rule until it is landed. Before landing, run the piece's engine test files once on the trunk's head.
+Process: P12
+
+## M259 — 2026-11-17 — A shell command that began with `cd`
+What happened: A shell command of the legend's builder began with `cd /` (a DRC run of the fixtures in the background), against the rule "Absolute paths, and no `cd`".
+Cost: None: it ran kicad-cli on scratch copies. A command run in the wrong folder would have run quietly there.
+Root cause: The habit of a terminal, where a folder stays chosen; here parallel commands share 1 shell. `env -C <tree>` or absolute paths are the fix, as every other command of the piece used.
+Process: P8
+
+## M260 — 2026-11-18 — A block sized its parts from a spec it never checked
+What happened: `blocks.ldo` took `vin` and `ambient` as (least, greatest) without checking the order or that each number is finite. A range written greatest first took the dissipation at the least input and the junction at the least ambient, and built the SOT-23-5 where the WSON-6 was needed; a NaN ambient printed "TJ = nan C, under 85 C". Its deck also held the output to a bound it could not miss, since the deck draws the output as a constant (review findings LDO-1 to LDO-3 and LDO-5).
+Cost: Found by the block's 1 review before landing; fixed with tests.
+Root cause: The block's sums were checked against the cases the builder wrote, not against the spec a user can write. A bound on a value the deck draws holds nothing.
+Process: P14
+
+## M261 — 2026-11-18 — A test sourced install.sh as root, and main() ran on the shared machine
+What happened: The first run of `tests/test_install_apt.py` on `wip/install`, at 16:11 UTC, sourced install.sh to call `step_apt`, before the script had its source guard. Sourcing ran `main()`, and this machine runs as root, so the root check passed. It made 5 changes outside the test's folder. (1) It relinked /usr/local/bin/workcenter to the worktree. (2) It rewrote /opt/workcenters/ee/env.sh (WORKCENTER_SRC) and /opt/workcenters/ee/WORKCENTER.md from the worktree. (3) The environment's real pip installed 12 Python packages into the shared environment /opt/workcenters/ee/venv (kikit 1.8.1, PyYAML 6.0.3 and 10 dependencies). (4) It rewrote /etc/apt/sources.list.d/kicad-10.0-releases.sources, because the stand-in kicad-cli said KiCad 10 was absent. (5) It rewrote the link /opt/workcenters/ee/freerouting/freerouting.jar and the wrapper /opt/workcenters/ee/openems/bin/openEMS. apt-get, curl and kicad-cli were stand-ins, so no package of the system changed.
+The fence the piece then built was open 2 more times. The first 2 reviews found that `sed`, `awk`, `find` and `mktemp` were the real programs, so `sed -i` on a file outside the folder wrote there with no failed test; the fence compared `$STUB_DIR/../x` as text; and the test that checks the mutation list's anchors ran inside each mutant's copy, where it fails by design, so every mutant counted as caught. The second review found that the scan for what the fence cannot hold (a shell redirection) looked only for literal absolute paths: 3 edits (`>> ../escape-rel.txt`, `>> "${SRC_DIR}/escape-src.txt"`, `>> "/""<path>"`) wrote outside the test folders with every test passing.
+Cost: The lead restored the link and env.sh by hand (both dated 16:14 UTC now). The 12 packages stay, since requirements.txt pins them. The sources file holds the standard 5 lines. A second and a third round of review and fixes for the fence, the scan and the mutation list.
+Root cause: A test loaded a script that acts when it is loaded, on a machine that runs as root, with a PATH that still reached the real programs and with the script's paths written as literals. Then the fence was taken as closed because the programs it named were fenced, and the scan as complete because it saw the 1 form of write the code held.
+Process: P12
+
+## M262 — 2026-11-18 — The lead answered a helper of a scripted run, and 2 writers worked in 1 tree
+What happened: On 2026-11-18 a helper that was part of a scripted run asked the lead a question, and the lead answered it. The answer did not reach that helper: it started a second copy of it. For about 3 minutes the 2 copies wrote in the same tree, until 1 was stopped.
+Cost: About 3 minutes of 2 writers in 1 tree, and the time to find which files each had written.
+Root cause: P31 step 8 says to send no message to a helper that a workflow runs, but a question from the helper read as an invitation to answer, and nothing in the step says what to do when the helper asks first.
+Process: P31

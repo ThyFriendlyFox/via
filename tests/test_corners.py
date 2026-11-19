@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
@@ -24,7 +25,7 @@ BOARDS = ROOT / "tests" / "boards"
 sys.path.insert(0, str(ROOT / "tools"))
 import simcorners  # noqa: E402
 
-needs_ngspice = pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed")
+needs_ngspice = engine(pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed"))
 
 # ngspice 42's own line for each analysis it starts, copied from a run (PROCESSES.md P7 step 3).
 RAN_AT_85 = "Doing analysis at TEMP = 85.000000 and TNOM = 27.000000\n"

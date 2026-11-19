@@ -229,8 +229,14 @@ project and routes it with FreeRouting. No GUI at any step.
      board's outer face and a `board_body` has its origin at its mid-plane:
      a body at -T/2 lies flush with a board T thick (M131, P23 step 7).
    - `d.text(label, x, y, "F.SilkS", size, thickness)` for contact labels.
-     Below 0.8 mm text, set `d.rules = {"min_text_height": ..,
-     "min_text_thickness": ..}` or the DRC flags every label.
+     The DRC gate holds every text to the fab's least height and stroke
+     (0.8 mm high and 0.0762 mm stroke when the design names no fab), and
+     `d.rules` does not lower it: write each label at least that size.
+   - `d.place_designators = True` places every designator round its part
+     when the board is written, the same on every run; one with no room
+     goes to the Fab layer with a line. `d.designator("U1", x, y, angle)`
+     fixes one by hand. `workcenter legend .` judges every text without
+     KiCad (the `legend` skill).
    - `d.zone("GND", layers=("F.Cu", "B.Cu"), connect="solid")` for a
      ground pour on both faces. The router treats it as a plane and routes
      no ground track; KiCad fills it when the design is written. Prefer
@@ -276,7 +282,13 @@ project and routes it with FreeRouting. No GUI at any step.
    regenerate check fails on it (M85). A route that leaves every
    connection without copper (parts placed off the board, a width that
    enters no pad) prints the count as `unrouted` and exits 1; a board with
-   nothing to route exits 0. On a board copied from a routed
+   nothing to route exits 0. After the route the command reads KiCad's
+   DRC of the board it wrote and prints 1 `route:` line. `route: 0
+   unconnected`: every connection has copper. `route: N unconnected; first
+   <net>: <end> to <end>`: the route left N connections open and exits 1;
+   the next line, `inspect: workcenter inspect net <board> <net>`, is the
+   command that shows the net's pieces. Run it, then fix the first open
+   net as below and route again. On a board copied from a routed
    version, route with `--seed <previous>/<name>.kicad_pcb`: the old
    router copper that still fits stays and only the rest is rerouted, so a
    part placed on a routed path costs its own nets, not the whole board

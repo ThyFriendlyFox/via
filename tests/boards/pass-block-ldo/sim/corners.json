@@ -1,0 +1,9 @@
+{
+  "temperature": {
+    "values": [
+      0,
+      30
+    ],
+    "source": "the ambient of the ldo block U1: ldo(ambient=(0, 30))"
+  }
+}

@@ -15,6 +15,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
@@ -23,7 +24,9 @@ sys.path.insert(0, str(ROOT / "tools"))
 import kicadgen  # noqa: E402
 
 SIERRA = "sierra-circuits-web"
-needs_kicad = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+needs_kicad = engine(
+    pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+)
 
 
 def run(*args: object) -> tuple[int, list[dict]]:
@@ -57,9 +60,20 @@ def test_fixture_is_green_without_the_fab_and_red_with_it(tmp_path):
 
 @needs_kicad
 def test_the_passing_divider_meets_the_fab_and_the_project_is_untouched(tmp_path):
+    """Sierra's pages name no least text height, so the legend check leaves the divider's text height not
+    judged (tools/legend.py): the board meets every limit Sierra names, and only `--strict` fails it, on
+    that 1 line."""
     before = sorted(p.name for p in (BOARDS / "pass-rc-divider").iterdir())
-    code, records = run("drc", BOARDS / "pass-rc-divider", "--fab", SIERRA, "--strict", "--out", tmp_path)
+    code, records = run("drc", BOARDS / "pass-rc-divider", "--fab", SIERRA, "--out", tmp_path / "plain")
     assert code == 0, records
+    (drc,) = records
+    assert drc["details"]["failures"] == [] and drc["summary"].startswith("0 errors, 0 warnings")
+    (line,) = drc["details"]["warnings"]
+    assert line.startswith("legend not judged: text height on ")
+    assert f"fab {SIERRA} names no least height" in line
+    code, records = run("drc", BOARDS / "pass-rc-divider", "--fab", SIERRA, "--strict", "--out", tmp_path)
+    assert code == 1, records
+    assert records[0]["details"]["failures"] == [line]
     assert not (BOARDS / "pass-rc-divider" / "rc_divider.kicad_dru").exists()
     assert sorted(p.name for p in (BOARDS / "pass-rc-divider").iterdir() if p.name != "build") == [
         n for n in before if n != "build"

@@ -1,0 +1,100 @@
+{
+  "block": "ldo",
+  "note": {
+    "document": {
+      "issuer": "Texas Instruments",
+      "number": "SLVA079",
+      "title": "Understanding the Terms and Definitions of LDO Voltage Regulators",
+      "revision": "October 1999",
+      "url": "https://www.ti.com/lit/an/slva079/slva079.pdf",
+      "sha256": "c127ca08fbe2a63ff8b236ac67e7fe9ac58f7662450716e4a0d4dbaa2b65e2de",
+      "read": "2026-11-17"
+    },
+    "short": "TI SLVA079",
+    "equations": {
+      "1": {"page": 2, "says": "Vdropout = Io x Ron: in dropout the PMOS pass element is a resistor, section 1"},
+      "8": {"page": 9, "says": "CSR = RESR + Radd, held inside the stable range the maker's graph gives, section 10"},
+      "10": {"page": 11, "says": "PD(max) = (TJmax - TA) / RthetaJA, section 12"},
+      "11": {"page": 11, "says": "PD = (Vi - Vo) x Io, section 12"}
+    },
+    "not_used": "sections 2 to 9 and 11 (quiescent and standby current, efficiency, transient response, line and load regulation, supply rejection, noise, accuracy) size no part; equation 9's example accuracy is another IC's"
+  },
+  "ics": [
+    {
+      "mpn": "TLV75533PDBVR",
+      "maker": "Texas Instruments",
+      "value": "TLV75533P",
+      "symbol": "Regulator_Linear:TLV75533PDBV",
+      "footprint": "Package_TO_SOT_SMD:SOT-23-5",
+      "pins": {"IN": "1", "GND": "2", "EN": "3", "OUT": "5"},
+      "vout_nominal": {"value": 3.3, "where": "table 8-1, Device Nomenclature, page 23: xx in TLV755xxP is the nominal output, 33 = 3.3 V"},
+      "accuracy": {"value": 0.015, "where": "section 5.5, Output accuracy, VOUT >= 1 V, -1.5 % to 1.5 %, page 5"},
+      "source": {
+        "document": "TLV755P datasheet, SBVS320D",
+        "revision": "November 2017, revised September 2024",
+        "url": "https://www.ti.com/lit/ds/symlink/tlv755p.pdf",
+        "sha256": "96e2706d4b13656d2d550fdbb5be9861c56b058822109bb39a906d4ad1beb019",
+        "read": "2026-11-17"
+      },
+      "amps_max": {"value": 0.5, "where": "section 5.3, Recommended Operating Conditions, IOUT, page 4"},
+      "dropout": {
+        "value": 0.238,
+        "amps": 0.5,
+        "where": "section 5.5, VDO at IOUT = 500 mA and -40 C to 125 C, the row 3.3 V <= VOUT < 5.0 V, the column MAX, page 6; section 7.1.2, page 15: VDO scales linearly with the output current"
+      },
+      "normal": {"where": "table 6-1 and section 6.4.1, page 14: VIN > VOUT(NOM) + VDO"},
+      "output_effective": {
+        "value": 4.7e-7,
+        "where": "section 7.1.1, page 15, and table 4-1, note 1, page 3: the effective capacitance at the pin greater than 0.47 uF"
+      },
+      "output_span": {"value": [1e-6, 2e-4], "where": "section 5.3, Recommended Operating Conditions, COUT, page 4"},
+      "input_effective": {
+        "value": 4.7e-7,
+        "where": "table 4-1, note 1, page 3: the effective capacitance at the pin greater than 0.47 uF"
+      },
+      "input_least": {"value": 1e-6, "where": "section 5.3, Recommended Operating Conditions, CIN, page 4"},
+      "dielectrics": {"value": ["X5R", "X7R"], "where": "section 7.1.1, page 15: X5R- and X7R-type ceramic capacitors"},
+      "csr": {"where": "the datasheet gives no graph of a stable CSR; section 7.1.1, page 15, names X5R and X7R ceramics for their small change of ESR"},
+      "dissipation": {"where": "section 7.2.2.2, equations 6 and 7, page 20"},
+      "junction_span": {"value": [-40, 125], "where": "section 5.3, Recommended Operating Conditions, TJ, page 4"}
+    },
+    {
+      "mpn": "TLV75533PDRVR",
+      "maker": "Texas Instruments",
+      "value": "TLV75533P",
+      "symbol": "Regulator_Linear:TLV75533PDRV",
+      "footprint": "Package_SON:WSON-6-1EP_2x2mm_P0.65mm_EP1x1.6mm",
+      "pins": {"IN": "6", "GND": "3", "PAD": "7", "EN": "4", "OUT": "1"},
+      "vout_nominal": {"value": 3.3, "where": "table 8-1, Device Nomenclature, page 23: xx in TLV755xxP is the nominal output, 33 = 3.3 V"},
+      "accuracy": {"value": 0.015, "where": "section 5.5, Output accuracy, VOUT >= 1 V, -1.5 % to 1.5 %, page 5"},
+      "source": {
+        "document": "TLV755P datasheet, SBVS320D",
+        "revision": "November 2017, revised September 2024",
+        "url": "https://www.ti.com/lit/ds/symlink/tlv755p.pdf",
+        "sha256": "96e2706d4b13656d2d550fdbb5be9861c56b058822109bb39a906d4ad1beb019",
+        "read": "2026-11-17"
+      },
+      "amps_max": {"value": 0.5, "where": "section 5.3, Recommended Operating Conditions, IOUT, page 4"},
+      "dropout": {
+        "value": 0.238,
+        "amps": 0.5,
+        "where": "section 5.5, VDO at IOUT = 500 mA and -40 C to 125 C, the row 3.3 V <= VOUT < 5.0 V, the column MAX, page 6; section 7.1.2, page 15: VDO scales linearly with the output current"
+      },
+      "normal": {"where": "table 6-1 and section 6.4.1, page 14: VIN > VOUT(NOM) + VDO"},
+      "output_effective": {
+        "value": 4.7e-7,
+        "where": "section 7.1.1, page 15, and table 4-1, note 1, page 3: the effective capacitance at the pin greater than 0.47 uF"
+      },
+      "output_span": {"value": [1e-6, 2e-4], "where": "section 5.3, Recommended Operating Conditions, COUT, page 4"},
+      "input_effective": {
+        "value": 4.7e-7,
+        "where": "table 4-1, note 1, page 3: the effective capacitance at the pin greater than 0.47 uF"
+      },
+      "input_least": {"value": 1e-6, "where": "section 5.3, Recommended Operating Conditions, CIN, page 4"},
+      "dielectrics": {"value": ["X5R", "X7R"], "where": "section 7.1.1, page 15: X5R- and X7R-type ceramic capacitors"},
+      "csr": {"where": "the datasheet gives no graph of a stable CSR; section 7.1.1, page 15, names X5R and X7R ceramics for their small change of ESR"},
+      "dissipation": {"where": "section 7.2.2.2, equations 6 and 7, page 20"},
+      "junction_span": {"value": [-40, 125], "where": "section 5.3, Recommended Operating Conditions, TJ, page 4"}
+    }
+  ]
+}

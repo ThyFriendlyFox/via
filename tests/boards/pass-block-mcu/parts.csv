@@ -1,0 +1,10 @@
+Value,Footprint,Qty,Manufacturer,MPN,Supplier,SKU,Pack,Breaks
+MSP430FR5720,Package_DFN_QFN:Texas_RGE0024C_VQFN-24-1EP_4x4mm_P0.5mm_EP2.1x2.1mm,1,Texas Instruments,MSP430FR5720IRGE,,,,
+32.768k ABS25,Crystal:Crystal_SMD_Abracon_ABS25-4Pin_8.0x3.8mm,1,Abracon,ABS25-32.768KHZ-12-T,,,,
+22p,Capacitor_SMD:C_0603_1608Metric,2,Vishay,VJ0603A220JXAAC,,,,
+10u 16V,Capacitor_SMD:C_0805_2012Metric,1,made up,FIXTURE-10U-16V,,,,
+100n,Capacitor_SMD:C_0603_1608Metric,2,Vishay,VJ0603Y104KXJAC,,,,
+470n,Capacitor_SMD:C_0805_2012Metric,1,Vishay,VJ0805Y474KXJAC,,,,
+47k,Resistor_SMD:R_0603_1608Metric,1,Vishay,CRCW060347K0FKEA,,,,
+1n,Capacitor_SMD:C_0603_1608Metric,1,Vishay,VJ0603Y102KXJAC,,,,
+SBW,Connector_PinHeader_2.54mm:PinHeader_2x07_P2.54mm_Vertical,1,,,,,,

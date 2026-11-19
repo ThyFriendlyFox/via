@@ -465,7 +465,7 @@ OTHER_SHA = "0" * 64
         (
             [GOOD | {"kind": "note"}],
             "documents[0] acme-an-17: kind 'note' is none of standard, application note, datasheet, "
-            "report, web page, paper, book",
+            "report, user's guide, web page, paper, book",
         ),
         (
             [GOOD | {"id": "AN-17"}],
@@ -590,6 +590,38 @@ def test_a_document_served_in_a_zip_is_held_by_the_zips_sha256(tmp_path):
     assert lines[-1] == "references rules: 1 documents named in 1 files, 0 in the index, 1 not; 0 not judged"
 
 
+def test_a_table_entry_that_wraps_its_document_is_read_by_the_document(tmp_path):
+    """rules/blocks/usbc.json names its documents in a table whose entries hold the document under
+    `document`, beside a `member` and a `short` label: `documents: {id: {"document": {...}, ...}}`. The
+    document inside is the source; before, the entry itself was taken as the source and failed as
+    naming no URL and no SHA256."""
+    url = "https://maker.example/spec.zip"
+    index = tmp_path / "index.json"
+    entry = {
+        "id": "spec",
+        "kind": "standard",
+        "issuer": "A forum",
+        "number": "SPEC",
+        "title": "A specification",
+        "revision": "1.0",
+        "url": url,
+        "sha256": "cd" * 32,
+        "read": "2026-11-17",
+    }
+    index.write_text(json.dumps({"rules": ["rules/x/*.json"], "documents": [entry]}), encoding="utf-8")
+    rule = tmp_path / "block.json"
+    wrapped = {"document": {"number": "SPEC", "url": url, "sha256": "cd" * 32}, "short": "SPEC 1.0"}
+    rule.write_text(json.dumps({"documents": {"spec": wrapped}}), encoding="utf-8")
+    code, lines = rules(rule, index=index)
+    assert code == 0, lines
+    assert lines[-1] == "references rules: 1 documents named in 1 files, 1 in the index, 0 not; 0 not judged"
+    wrapped["document"]["sha256"] = "ef" * 32
+    rule.write_text(json.dumps({"documents": {"spec": wrapped}}), encoding="utf-8")
+    code, lines = rules(rule, index=index)
+    assert code == 1
+    assert lines[-1] == "references rules: 1 documents named in 1 files, 0 in the index, 1 not; 0 not judged"
+
+
 def test_every_document_a_rule_of_the_repository_names_is_in_the_index():
     """`make verify` runs this on the files the index's `rules` globs find (the code its `code` globs
     find is tests/test_references_code.py's). The rating packs name 2 standards, the board packs 3 (the
@@ -598,18 +630,41 @@ def test_every_document_a_rule_of_the_repository_names_is_in_the_index():
     (TI's USB layout note in the 2 TI files, the 3 usb.org specifications in usb2.json and usb3.json,
     NIST's 2 CODATA pages in constants.json), rules/products/vaping-device-lithium-cell.json 4 (47 CFR
     15 Subpart B, 49 CFR 173.185 and the 2 TI notes; a file's count is its own, so the notes count again
-    here), the 4 facts files of 1 part 4 datasheets, passives.json 4, fail-sim-bias's parts.json 2
-    (Samsung's page and Coilcraft's 806, which passives.json names too): 2 + 3 + 2 + 7 + 4 + 4 + 4 + 2
-    = 28 named. The 4 fab rule files name 1 + 1 + 1 + 2 = 5 pages: 33 in all. made-up.json's 4 parts
-    name no document, Sierra's fab file names IPC's class standard with no place beside it, and the
-    product kind names 2 IEC standards a laboratory uses, with none: 4 + 1 + 2 = 7 not judged. Files:
-    2 + 3 + 1 + 5 + 1 + 7 JSON and 4 fab rule files = 23."""
+    here), rules/blocks/buck.json 3 (the buck block's note, TI SLVA477C, its IC's datasheet, and the
+    output capacitor's text, which cites the note again with a place in it), the 5 facts files of
+    1 part 5 datasheets, passives.json 4, fail-sim-bias's parts.json 2 (Samsung's page and Coilcraft's
+    806, which passives.json names too): 2 + 3 + 2 + 7 + 4 + 3 + 5 + 4 + 2 = 32 named. The 4 fab rule
+    files name 1 + 1 + 1 + 2 = 5 pages: 37 in all. made-up.json's 4 parts name no document, Sierra's fab
+    file names IPC's class standard with no place beside it, and the product kind names 2 IEC standards a
+    laboratory uses, with none: 4 + 1 + 2 = 7 not judged. Files: 2 + 3 + 1 + 5 + 1 + 1 + 8 JSON and 4 fab
+    rule files = 25. The USB-C block adds rules/blocks/usbc.json, 4 (the 2 usb.org specifications, its
+    receptacle's drawing, its clamp's datasheet), and the facts of its receptacle, its clamp and its
+    capacitor, 1 each: 37 + 4 + 3 = 44 named in 25 + 4 = 29 files. The I2C block adds
+    rules/blocks/i2c.json, 2 (its note TI SLVA689A, and its `short` label, which names the note with no
+    place beside it and so is also 1 not judged), and the facts of its fixtures' TCA9534, its
+    datasheet: 44 + 2 + 1 = 47 named in 29 + 2 = 31 files, 7 + 1 = 8 not judged. Its fixtures'
+    made-up-i2c.json, the 32nd file, holds 1 made-up header that names no document: 8 + 1 = 9 not
+    judged. The charger block adds rules/blocks/charger.json, 3 (its charger's and its protector's
+    datasheets, each also named by a `short` label with no place beside it, 2 not judged, and its FET's
+    datasheet in a `where`), and the facts of its 3 parts, 1 each: 47 + 3 + 3 = 53 named in 32 + 4 = 36
+    files, 9 + 2 = 11 not judged. The microcontroller block adds rules/blocks/mcu.json, 8 (its note
+    SLAA322D, its IC's datasheet SLASE35C and the 2 user's guides SLAU278AH and SLAU272D, each named in
+    1 or more places), mcu-block.json 5 (ABS25, ABS07 and Vishay 45199 for 3 entries; its made-up
+    crystal and its header name no document, 2 not judged) and the MSP430's facts 1: 53 + 8 + 5 + 1 = 67
+    named in 36 + 3 = 39 files, 11 + 2 = 13 not judged. The 2 creepage packs of item 11's safety spacing
+    (rules/board/) add 1 document each, the US handbook's guideline 69 and TI's creepage note, and TI's
+    pack names the paid IEC standard its note reprints, with no place, 1 not judged: 67 + 2 = 69 named
+    in 39 + 2 = 41 files, 13 + 1 = 14 not judged. The linear regulator block adds rules/blocks/ldo.json,
+    3 (its note TI SLVA079, and the TLV755P datasheet SBVS320D for each of its 2 ICs; its `short` label
+    names the note with no place beside it, 1 not judged), and the facts of its second IC,
+    ti-tlv755p-drv.json, 1 (SBVS320D): 69 + 3 + 1 = 73 named in 41 + 2 = 43 files, 14 + 1 = 15 not
+    judged."""
     globs = json.loads(INDEX.read_text(encoding="utf-8"))["rules"]
     files = sorted({p for pattern in globs for p in ROOT.glob(pattern)})
     code, out = run("rules", *files)
     assert code == 0, out
     assert out.splitlines()[-1] == (
-        "references rules: 33 documents named in 23 files, 33 in the index, 0 not; 7 not judged"
+        "references rules: 73 documents named in 43 files, 73 in the index, 0 not; 15 not judged"
     )
 
 

@@ -659,11 +659,14 @@ def cmd_costs(args, cli) -> int:
 # ------------------------------------------------------------ gates report
 
 
-def gates_report(report: Path, project, results: list, cli) -> list[str]:
+def gates_report(
+    report: Path, project, results: list, cli, verdict: str | None = None, ratings: str = ""
+) -> list[str]:
     """Write or refresh the project's gates table and deck list in a Markdown report, between markers
-    named after the project; prose outside the markers is left as it is. Returns the blocks written."""
+    named after the project; prose outside the markers is left as it is. Returns the blocks written.
+    `verdict` and `ratings` are the last 2 lines `gates` printed, when it names them."""
     ran = {r.gate: r for r in results}
-    verdict = cli.gates_verdict(results)[0]
+    verdict = verdict or cli.gates_verdict(results)[0]
     kicad = cli.tool_version([cli.KICAD_CLI, "version"]) or "absent"
     ngspice = cli.tool_version([cli.NGSPICE, "--version"], r"(?<=ngspice-)\d+") or "absent"
     rows = ["| Gate | Status | Summary |", "|---|---|---|"]
@@ -674,8 +677,8 @@ def gates_report(report: Path, project, results: list, cli) -> list[str]:
                 [gate.upper(), r.status if r else "not run", r.summary if r else "an earlier gate was red"]
             )
         )
+    rows += [""] + ([ratings, ""] if ratings else [])
     rows += [
-        "",
         f"{verdict} on {clock.today().isoformat()}: "
         f"`workcenter gates` with KiCad {kicad}, ngspice {ngspice}.",
     ]

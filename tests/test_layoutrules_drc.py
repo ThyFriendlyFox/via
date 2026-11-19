@@ -17,7 +17,10 @@ CLI = ROOT / "tools" / "workcenter"
 BOARDS = ROOT / "tests" / "boards"
 CITES = {"ti-slva680a": "section 2.1", "ti-szza009": "section 2.1.1"}
 
-pytestmark = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+pytestmark = [
+    pytest.mark.engine,
+    pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed"),
+]
 
 
 def say(*args: object) -> tuple[int, str]:

@@ -20,6 +20,9 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools" / "ci"))
+import scope  # noqa: E402
+
 CLI = ROOT / "tools" / "workcenter"
 SITE = ROOT / "site"
 README = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -103,12 +106,9 @@ def test_a_command_written_ends_where_the_shell_line_goes_on():
 
 
 def as_document(path: Path) -> str:
-    """A file's text as these tests read a document. A page of the site gives each `<code>` span as
-    code, with its tags left out and its entities read."""
-    text = path.read_text(encoding="utf-8")
-    if path.suffix != ".html":
-        return text
-    return html.unescape(re.sub(r"<[^>]+>", "", re.sub(r"</?code>", "`", text)))
+    """A file's text as these tests read a document (tools/ci/scope.py `document_text`, the reader the
+    scope of a change uses too)."""
+    return scope.document_text(path.name, path.read_text(encoding="utf-8"))
 
 
 def test_every_flag_a_document_gives_a_command_is_a_flag_of_that_command():
@@ -143,9 +143,11 @@ def test_every_flag_a_document_gives_a_command_is_a_flag_of_that_command():
     assert wrong == []
 
 
+@pytest.mark.engine
 def test_json_is_read_on_either_side_of_the_command():
     """The skills write `workcenter gates <project> --json`. argparse alone reads a flag of the whole
-    program only before the command, and answers the other order with a usage error."""
+    program only before the command, and answers the other order with a usage error. `doctor` asks
+    each engine its version: it starts them."""
     for command in commands():
         assert "--json" in help_of(command), command
     runs = [
@@ -199,12 +201,15 @@ def test_a_count_of_tests_in_the_status_file_is_what_pytest_collects():
     status = (ROOT / "ee-agent-kit" / "STATUS.md").read_text(encoding="utf-8")
     stated = {name: int(count) for name, count in re.findall(r"`tests/(test_\w+\.py)` \((\d+)\b", status)}
     assert len(stated) >= 15
+    # The collection imports the test files, and some ask whether pcbnew imports: the run keeps its own
+    # log of engine starts (tools/ci/engine_marker.py), since collecting is no start of this test's.
     proc = subprocess.run(
         [sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider", "tests"],
         cwd=ROOT,
         capture_output=True,
         text=True,
         check=False,
+        env={k: v for k, v in os.environ.items() if k != "WORKCENTER_ENGINE_LOG"},
     )
     collected: dict[str, int] = {}
     for line in proc.stdout.splitlines():
@@ -278,20 +283,9 @@ def test_the_root_instruction_files_are_one_text():
         assert (ROOT / named).is_file(), named
 
 
-def runs_in(text: str) -> list[tuple[tuple[str, ...], list[str]]]:
-    """Each `$ workcenter ...` line of a document, with the lines printed under it up to the next
-    blank line or the end of its block."""
-    runs: list[tuple[tuple[str, ...], list[str]]] = []
-    in_run = False
-    for line in text.splitlines():
-        if line.startswith("$ workcenter "):
-            runs.append((tuple(line.split()[2:]), []))
-            in_run = True
-        elif not line.strip() or line.startswith("```"):
-            in_run = False
-        elif in_run:
-            runs[-1][1].append(line.rstrip())
-    return runs
+# Each `$ workcenter ...` line of a document with the lines printed under it. tools/ci/scope.py holds
+# the reader: a change inside a shown run needs these tests, and so the full gate.
+runs_in = scope.runs_in
 
 
 def chip_engines_absent() -> list[str]:
@@ -309,6 +303,7 @@ def masked(line: str) -> str:
     return re.sub(r"(report )\S*?((?:tests/boards|tests/chips|examples)/)", r"\1\2", line)
 
 
+@pytest.mark.engine
 @pytest.mark.skipif(
     shutil.which("kicad-cli") is None or shutil.which("ngspice") is None,
     reason="kicad-cli and ngspice run the gates the documents show",
@@ -378,6 +373,7 @@ QUICK_START = {
 }
 
 
+@pytest.mark.engine
 @pytest.mark.skipif(
     shutil.which("kicad-cli") is None
     or shutil.which("ngspice") is None
@@ -389,8 +385,7 @@ def test_the_quick_start_runs_as_written_and_ends_as_its_comments_say(tmp_path):
     """No test held the quick start: with a fixture's name misspelt in it every test here passed (a
     review of 2026-11-11). Each line of its 2 blocks runs as written and in its order. `workcenter`
     is this tree's CLI, the fixtures and the templates are copies, and `~` is a folder of the test."""
-    section = README.split("\n## Quick start\n", 1)[1].split("\n## ", 1)[0]
-    lines = [line for block in re.findall(r"```sh\n(.*?)```", section, re.S) for line in block.splitlines()]
+    lines = scope.quick_start(README)
     written = {line.partition("#")[0].strip(): line.partition("#")[2] for line in lines if line.strip()}
     assert list(written) == ["sudo ./install.sh", *QUICK_START]
     for command, (code, _) in QUICK_START.items():

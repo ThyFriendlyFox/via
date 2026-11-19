@@ -1,0 +1,10 @@
+Value,Footprint,Qty,Manufacturer,MPN,Supplier,SKU,Pack,Breaks
+BQ21040,Package_TO_SOT_SMD:SOT-23-6,1,Texas Instruments,BQ21040DBVR,,,,
+3.6k,Resistor_SMD:R_0603_1608Metric,1,Vishay,CRCW06033K60FKEA,,,,
+10k,Resistor_SMD:R_0603_1608Metric,1,Vishay,CRCW060310K0FKEA,,,,
+10u 10V,Capacitor_SMD:C_0603_1608Metric,2,Samsung,CL10A106KP8NNN,,,,
+BQ29700,Package_SON:WSON-6_1.5x1.5mm_P0.5mm,1,Texas Instruments,BQ29700DSER,,,,
+330,Resistor_SMD:R_0603_1608Metric,1,Vishay,CRCW0603330RFKEA,,,,
+100n 16V,Capacitor_SMD:C_0603_1608Metric,1,Vishay,VJ0603Y104KXJAC,,,,
+2.2k,Resistor_SMD:R_0603_1608Metric,1,Vishay,CRCW06032K20FKEA,,,,
+CSD17313Q2,Package_SON:Texas_DQK,2,Texas Instruments,CSD17313Q2,,,,

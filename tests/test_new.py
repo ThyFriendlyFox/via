@@ -134,7 +134,9 @@ def test_an_empty_folder_is_told_new_then_the_design_then_the_route(tmp_path):
     code, step = ask(board, env)
     assert (code, step["next"]) == (1, "Route the board before the gates: nets on it have no copper yet.")
     assert step["run"] == f"workcenter design {board}/design.py --route"
-    assert step["why"] == "9 pads on 3 nets have no track, via or pour: /OUT, GND, VCC"
+    # 9 pads on 3 nets with no copper are 9 - 3 = 6 connections, KiCad DRC's count (test_route_open.py)
+    assert step["why"] == "9 pads on 3 nets have no track, via or pour, 6 unconnected: /OUT, GND, VCC"
+    assert "prints `route: 0 unconnected`" in step["done_when"]
     assert not log.exists(), log.read_text(encoding="utf-8")
 
 
@@ -365,7 +367,8 @@ def test_the_route_step_comes_only_while_the_gates_are_to_run(tmp_path, monkeypa
     (board / "b.kicad_pcb").write_text(BOARD_9.format(copper=""), encoding="utf-8")
     step = guide.next_step(cli, str(board))
     assert step.next == "Route the board before the gates: nets on it have no copper yet."
-    assert step.why == "4 pads on 2 nets have no track, via or pour: OUT, VCC"
+    assert step.why == "4 pads on 2 nets have no track, via or pour, 2 unconnected: OUT, VCC"
+    assert step.done_when == guide.ROUTED
     (board / "build").mkdir()
     gates = board / "build" / "gates.json"
     gates.write_text(json.dumps([]), encoding="utf-8")

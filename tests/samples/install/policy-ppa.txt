@@ -1,0 +1,36 @@
+kicad:
+  Installed: 10.0.8~ubuntu24.04.1
+  Candidate: 10.0.8~ubuntu24.04.1
+  Version table:
+ *** 10.0.8~ubuntu24.04.1 500
+        500 https://ppa.launchpadcontent.net/kicad/kicad-10.0-releases/ubuntu noble/main amd64 Packages
+        100 /var/lib/dpkg/status
+     7.0.11+dfsg-1build4 500
+        500 http://archive.ubuntu.com/ubuntu noble/universe amd64 Packages
+kicad-symbols:
+  Installed: 10.0.8~ubuntu24.04.1
+  Candidate: 10.0.8~ubuntu24.04.1
+  Version table:
+ *** 10.0.8~ubuntu24.04.1 500
+        500 https://ppa.launchpadcontent.net/kicad/kicad-10.0-releases/ubuntu noble/main amd64 Packages
+        100 /var/lib/dpkg/status
+     7.0.11-1 500
+        500 http://archive.ubuntu.com/ubuntu noble/universe amd64 Packages
+kicad-footprints:
+  Installed: 10.0.8~ubuntu24.04.1
+  Candidate: 10.0.8~ubuntu24.04.1
+  Version table:
+ *** 10.0.8~ubuntu24.04.1 500
+        500 https://ppa.launchpadcontent.net/kicad/kicad-10.0-releases/ubuntu noble/main amd64 Packages
+        100 /var/lib/dpkg/status
+     7.0.11-1 500
+        500 http://archive.ubuntu.com/ubuntu noble/universe amd64 Packages
+kicad-templates:
+  Installed: 10.0.8~ubuntu24.04.1
+  Candidate: 10.0.8~ubuntu24.04.1
+  Version table:
+ *** 10.0.8~ubuntu24.04.1 500
+        500 https://ppa.launchpadcontent.net/kicad/kicad-10.0-releases/ubuntu noble/main amd64 Packages
+        100 /var/lib/dpkg/status
+     7.0.9-1 500
+        500 http://archive.ubuntu.com/ubuntu noble/universe amd64 Packages

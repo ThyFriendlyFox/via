@@ -16,9 +16,11 @@ from __future__ import annotations
 import csv
 import datetime
 import fnmatch
+import hashlib
 import itertools
 import json
 import math
+import os
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -972,12 +974,14 @@ class Project:
     # `U1`, or `U1.2` for 1 pad: the heat a part gives off, which `workcenter copper` spreads through
     # the board from its pads, or from the pad named
     watts: dict[str, float] = field(default_factory=dict)
+    # (part, text, source): what a block or the designer states it could not judge, printed as not judged
+    unjudged: list[tuple[str, str, str]] = field(default_factory=list)
 
 
 def read_project(path: Path, net: Netlist) -> Project:
     """A project's ratings.json, held to the netlist: a net or a part it names is one of the schematic."""
     name = path.name
-    data = _keys(name, _json(path), ("pack", "nets"), ("ambient", "parts", "accepted"))
+    data = _keys(name, _json(path), ("pack", "nets"), ("ambient", "parts", "accepted", "not_judged"))
     nets: dict[str, Span] = {}
     stated: dict[str, str] = {}  # a net of the schematic -> the key that states it
     for key, raw in _object(f"{name}: nets", data["nets"], "net").items():
@@ -1047,7 +1051,21 @@ def read_project(path: Path, net: Netlist) -> Project:
             raise Refusal(f"{where}: entry {first[(*key, piece)]} accepts the same part, rule and line")
         first[(*key, piece)] = i
         accepted.setdefault(key, []).append((piece, words))
-    return Project(_text(f"{name}: pack", data["pack"]), ambient, nets, amps, accepted, volts, watts)
+    unjudged: list[tuple[str, str, str]] = []
+    for key, raw in _object(f"{name}: not_judged", data.get("not_judged", {}), "item").items():
+        where = f"{name}: not_judged: {key}"
+        entry = _keys(where, raw, ("parts", "why", "source"))
+        refs = entry["parts"]
+        if (
+            not isinstance(refs, list)
+            or not refs
+            or any(not isinstance(r, str) or r not in net.parts for r in refs)
+        ):
+            raise Refusal(f"{where}: parts: a list of parts of the schematic is asked")
+        why, source = _text(f"{where}: why", entry["why"]), _text(f"{where}: source", entry["source"])
+        unjudged.append((refs[0], f"{key}: {why}", source))
+    pack = _text(f"{name}: pack", data["pack"])
+    return Project(pack, ambient, nets, amps, accepted, volts, watts, unjudged)
 
 
 # ---------------------------------------------------------------- the facts of a part
@@ -1056,15 +1074,20 @@ SOURCE_KEYS = (("document", "read", "second_reader"), ("revision", "url", "sha25
 WHICH = ("mpn", "mpns", "match", "symbol")  # how an entry names the parts it speaks of: exactly 1 of these
 # A capacitor's kind alone says it passes no steady current: an entry with no rating keeps its nets
 # judged, and the capacitor's own voltage is then the 1 thing the report cannot judge.
-CAPACITOR = ((), ("tolerance", "volts", "farads", "dielectric", "kept", "kept_celsius"))
+# `kept_celsius_at`, `esr` and `esl` are the SIM gate's (tools/partdata.py), not judged here.
+CAPACITOR = (
+    (),
+    ("tolerance", "volts", "farads", "dielectric", "kept", "kept_celsius", "kept_celsius_at", "esr", "esl"),
+)
 PASSIVE = {  # kind -> the keys an entry must hold, and those it may
     "resistor": (("tolerance", "watts", "volts"), ("ohms",)),
     "capacitor.ceramic": CAPACITOR,
     "capacitor.tantalum": CAPACITOR,
     "capacitor.film": CAPACITOR,
     "capacitor.electrolytic": CAPACITOR,
-    # an inductor's `kept` is pairs [amps, share of the value kept]: the SIM gate's, not judged here
-    "inductor": (("tolerance", "amps_saturation"), ("henries", "amps_rms", "kept")),
+    # an inductor's `kept` is pairs [amps, share of the value kept]: the SIM gate's, not judged here.
+    # `ohms_dc` is its DC resistance at the most, which a buck block's dropout sum reads
+    "inductor": (("tolerance", "amps_saturation"), ("henries", "amps_rms", "kept", "ohms_dc")),
     "ferrite": ((), ("amps", "volts")),
     "fuse": (("amps",), ("volts",)),  # a fuse of no style a pack names: held to its own rating
     "fuse.cartridge": (("amps",), ("volts",)),  # NASA EEE-INST-002, section F3, table 4
@@ -1073,6 +1096,12 @@ PASSIVE = {  # kind -> the keys an entry must hold, and those it may
     "switch": ((), ("amps", "volts")),
     "testpoint": ((), ()),
     "mechanical": ((), ()),
+    # a crystal passes no steady current; tools/blocks_mcu.py reads its figures, nothing here judges them
+    # farads_shunt: C0 typical; farads_shunt_max: C0 at the most; terminals: {"pads": [2 pads], "where"}
+    "crystal": (
+        ("hertz", "ohms_esr", "farads_load"),
+        ("farads_shunt", "farads_shunt_max", "watts_drive", "terminals"),
+    ),
 }
 OTHER = {
     "connector": ((), ("pins",)),
@@ -1106,6 +1135,12 @@ RATED = (
     "volts_drain_source",
     "volts_gate_source",
     "amps_forward",
+    "hertz",
+    "ohms_esr",
+    "farads_load",
+    "farads_shunt",
+    "farads_shunt_max",
+    "watts_drive",
 )
 # A pin's role -> the keys it must hold beside numbers, name, role and page, and those it may.
 # regulated: the pin its regulator holds at `volts`, or, with `set_by`, at what the divider on its
@@ -1114,11 +1149,13 @@ RATED = (
 ROLES = {
     "supply": (("abs",), ("operating", "amps")),
     "ground": ((), ()),
-    "input": (("abs",), ("operating",)),
+    # `farads`: the pin's greatest capacitance; `sink`: the current an open drain sinks at its low voltage,
+    # {"amps", "volts"}. The I2C block (tools/blocks_i2c.py) reads both.
+    "input": (("abs",), ("operating", "farads")),
     "analog": (("abs",), ("operating",)),
     "output": (("abs", "swing"), ("amps", "operating")),
-    "io": (("abs", "swing"), ("amps", "operating")),
-    "open_drain": (("abs", "swing"), ("amps", "operating")),
+    "io": (("abs", "swing"), ("amps", "operating", "farads", "sink")),
+    "open_drain": (("abs", "swing"), ("amps", "operating", "farads", "sink")),
     # a reference's output may stand in no table of limits: `abs` is then left out, and a note says so
     "regulated": ((), ("abs", "volts", "set_by", "amps", "from")),
     "feedback": (("abs", "volts"), ("amps", "from")),
@@ -1274,6 +1311,12 @@ def _pin_facts(where: str, pins: object) -> None:
             _number(f"{here}: amps", pin["amps"], above=0)
         elif "amps" in pin:
             _number(f"{here}: amps", pin["amps"], 0)
+        if "farads" in pin:
+            _number(f"{here}: farads", pin["farads"], above=0)
+        if "sink" in pin:
+            sink = _keys(f"{here}: sink", pin["sink"], ("amps", "volts"))
+            _number(f"{here}: sink: amps", sink["amps"], above=0)
+            _number(f"{here}: sink: volts", sink["volts"], 0)
         if "swing" in pin:
             swing = _names(f"{here}: swing", pin["swing"])
             if len(swing) != SWING[role] or any(s not in names for s in swing):
@@ -1332,8 +1375,9 @@ def _facts(where: str, raw: object) -> Facts:
     for key, value in source.items():
         _text(f"{where}: source: {key}", value)
     _source(f"{where}: source", source)
-    if "ohms" in data:  # 0 ohm is a link
-        _number(f"{where}: ohms", data["ohms"], 0)
+    for key in ("ohms", "ohms_dc"):  # 0 ohm is a link
+        if key in data:
+            _number(f"{where}: {key}", data[key], 0)
     for key in RATED:
         if key in data:
             _number(f"{where}: {key}", data[key], above=0)
@@ -1352,13 +1396,23 @@ def _facts(where: str, raw: object) -> Facts:
         _number(f"{where}: tolerance", data["tolerance"], 0, 0.99)
     # the share of its value a part keeps: a capacitor's at a voltage and at a temperature, an inductor's
     # at a current
-    for key, unit, least in (
-        ("kept", "amps" if kind == "inductor" else "volts", 0),
-        ("kept_celsius", "celsius", None),
+    # `kept_celsius_at`: the maker's temperature curve at 1 bias, {"volts": V, "kept": [celsius, share]}
+    if "kept_celsius_at" in data:
+        at = _keys(f"{where}: kept_celsius_at", data["kept_celsius_at"], ("volts", "kept"))
+        _number(f"{where}: kept_celsius_at: volts", at["volts"], above=0)
+    # `esr` and `esl`: a capacitor's series resistance and inductance at the frequency it was read at
+    for key, unit in (("esr", "ohms"), ("esl", "henries")):
+        if key in data:
+            part = _keys(f"{where}: {key}", data[key], (unit, "hz"))
+            _number(f"{where}: {key}: {unit}", part[unit], above=0)
+            _number(f"{where}: {key}: hz", part["hz"], above=0)
+    for key, unit, least, kept in (
+        ("kept", "amps" if kind == "inductor" else "volts", 0, data.get("kept")),
+        ("kept_celsius", "celsius", None, data.get("kept_celsius")),
+        ("kept_celsius_at: kept", "celsius", None, data.get("kept_celsius_at", {}).get("kept")),
     ):
-        if key not in data:
+        if kept is None:
             continue
-        kept = data[key]
         if (
             not isinstance(kept, list)
             or len(kept) < 2
@@ -2178,6 +2232,8 @@ def judge(net: Netlist, mpns: dict[str, str], facts: list[Facts], project: Proje
                 "and the command holds no pin's current to a limit"
             )
 
+    out += [Finding("not judged", ref, "stated", text, source) for ref, text, source in project.unjudged]
+
     # An acceptance is the owner's word on 1 failure. One that meets 1 failure accepts it. One that
     # meets 2 accepts neither: the second is a failure the owner has not seen. One that meets none
     # fails the run, unless its part is not judged now.
@@ -2884,6 +2940,27 @@ def find_pack(name: str, project_dir: Path, packs: Path) -> Path:
     raise Refusal(f"ratings.json: pack: `{name}` is no pack; the workcenter holds {known}")
 
 
+def read_by_run(project, parts: list[Path], cli) -> dict[str, Path]:
+    """The files a run of `project` with these parts files reads, each by its path from the project's
+    folder: the schematics, ratings.json, the parts files, the pack ratings.json names and every facts
+    file. A pack that cannot be found is left out: the run refuses ratings.json then."""
+    stated = project.dir / "ratings.json"
+    files = sorted(project.dir.glob("*.kicad_sch")) + [stated, *parts]
+    try:
+        name = json.loads(stated.read_text(encoding="utf-8")).get("pack")
+        packs = cli.SRC_DIR / "rules" / "ratings"
+        files.append(find_pack(name, project.dir, packs) if isinstance(name, str) else None)
+    except (OSError, ValueError, AttributeError):
+        pass
+    library = find_facts(project.dir)
+    files += sorted(library.glob("*.json")) if library else []
+    return {os.path.relpath(f, project.dir): f for f in files if f is not None}
+
+
+def sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def parts_rows(paths: list[Path], cli) -> list:
     """The rows of the parts files, as `procure` and `sources` read them. A file that is not there, that
     is no UTF-8, or that holds a row with fewer fields than its header is refused with its name and its
@@ -3052,10 +3129,16 @@ def gate_ratings(project, out: Path, parts: list[Path], strict: bool, cli):
     failures, warnings = failures[:SHOWN], warnings[: max(0, SHOWN - len(failures))]
     if more > 0:
         (failures if not warnings else warnings).append(f"... {more} more in {page}")
+    # what this run read, so that `gates` and `next` can tell a record of other files (guide.ratings_state)
+    inputs = {
+        "parts": [os.path.relpath(p, project.dir) for p in parts],
+        "files": {rel: sha256(path) for rel, path in read_by_run(project, parts, cli).items()},
+    }
     details = {
         "failures": failures,
         "warnings": warnings,
         "verdict": said,
+        "inputs": inputs,
         "pack": report.pack,
         "notes": report.notes,
         "findings": [vars(f) for f in report.findings],

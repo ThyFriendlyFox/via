@@ -31,17 +31,19 @@ fixture board with a clearance error on purpose.
 
 ```text
 $ workcenter gates tests/boards/pass-first-design
-PASS   erc        0 errors, 0 warnings  [0.41s]
-PASS   drc        0 errors, 0 warnings (0 unconnected, 0 parity)  [0.75s]
-PASS   sim        1 decks, 46 corner runs, 0 failures  [0.23s]
-PASS   export     7/7 outputs, 22 gerber files, 3 files read back  [1.8s]
+PASS   erc        0 errors, 0 warnings  [0.25s]
+PASS   drc        0 errors, 0 warnings (0 unconnected, 0 parity), legend (no fab named: held to the least of the 4 fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer)): 0 fail, 0 not judged  [0.8s]
+PASS   sim        1 decks, 46 corner runs, 0 failures  [0.16s]
+PASS   export     7/7 outputs, 22 gerber files, 3 files read back  [2.09s]
+RATINGS not asked for: no ratings.json beside the schematic
 GREEN: divider  report /home/user/via/tests/boards/pass-first-design/build/gates.json
 
 $ workcenter gates tests/boards/fail-drc-clearance
-PASS   erc        0 errors, 0 warnings  [0.27s]
-FAIL   drc        1 errors, 1 warnings (0 unconnected, 0 parity)  [0.63s]
+PASS   erc        0 errors, 0 warnings  [0.3s]
+FAIL   drc        1 errors, 1 warnings (0 unconnected, 0 parity), legend (no fab named: held to the least of the 4 fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer)): 0 fail, 0 not judged  [0.83s]
        - error: clearance: Clearance violation ( clearance 0.2000 mm; actual 0.0500 mm)
        - warning: track_dangling: Track has unconnected end
+RATINGS not asked for: no ratings.json beside the schematic
 RED: rc_divider  report /home/user/via/tests/boards/fail-drc-clearance/build/gates.json
 ```
 
@@ -201,7 +203,7 @@ the 9 fixture chips.
 | Part | In short |
 |---|---|
 | **Engines** | KiCad 10 (`kicad-cli`), ngspice, FreeRouting. |
-| **Gates** | ERC, DRC, SIM, EXPORT, in that order. A board is done when `workcenter gates <project>` prints GREEN. |
+| **Gates** | ERC, DRC, SIM, EXPORT, in that order. A board is done when `workcenter gates <project> --strict` prints GREEN; with a `ratings.json`, that needs its ratings held, and the line above the verdict says whether they are. |
 | **Design as code** | `workcenter design design.py --route` builds a schematic and a routed board from a Python file that names parts from the KiCad libraries. No GUI at any step. |
 | **A schematic that simulates** | The design file says how each part simulates (`d.sim`, `d.no_sim`), and the schematic KiCad opens exports a netlist ngspice runs. A pin map KiCad would complete by position is refused first. |
 | **Decks** | The SIM gate runs the decks under `sim/` and holds each measured value to its bound. A deck is a file of its own. Nothing holds a deck typed by hand to the schematic's parts yet: the roadmap names that gap. |
@@ -235,6 +237,8 @@ workcenter sim tests/boards/fail-sim-corner         # red at its corners, on pur
 workcenter sim tests/boards/fail-freq-overlap       # red on the frequency plan
 ```
 
+On your own computer the install has no time limit: a slow line finishes, and apt gives up a stalled file by itself; to set one, pass it through sudo with env (`sudo env APT_DOWNLOAD_TIMEOUT=900 ./install.sh`). CI sets `APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570`, so a stall ends with apt's own line before the job's limit. Run the script as a file, not through a pipe or `bash <(...)`.
+
 Output goes to `<project>/build/`: `erc.json`, `drc.json`, `sim/`,
 `fab/` (gerbers, drill, BOM, schematic PDF), `gates.json`.
 
@@ -258,7 +262,7 @@ has the procedure from a spec to a GREEN board.
 has every flag.
 
 <details>
-<summary>The 35 commands</summary>
+<summary>The 37 commands</summary>
 
 | Command | What |
 |---|---|
@@ -275,6 +279,8 @@ has every flag.
 | `measure` | Write the plan of measurements for a built board: for each sim bound the pad to probe, the reference pad, the instrument, the span the reading must fall in and the predicted value, as written and over the corners. |
 | `now` | The work card of 1 piece of work in progress: its `**Status:**` line for the project board (Todo, In progress or Done), its branch and last commit, what is done now, the last health gate, what it waits for and what is left. 1 issue's body per piece of work, titled `Work card: ...` and rewritten in place; `--write` puts it on the `status` branch for a host without GitHub. |
 | `standards` | List each requirement of the product kind `product.json` names, from free documents, as held by a gate, held by a named test of the verification package, or not held, with the document and clause. A list, not a certificate. |
+| `image` | The content tag of the toolchain's files (`Dockerfile`, `install.sh`, `requirements.txt`) at a commit, the name of the image of that tag, and in the image the record of its build: tag, commit, machine, the tools' versions. Runs no engine. |
+| `legend` | Hold every text printed on a board to its fab's least height and stroke and to no overlap, no hidden or stray designator and 2 directions a side, from the board file; `--place OUT` writes a copy with each designator placed. |
 | `highspeed` | Hold the fast pairs that `interfaces.json` names to their interface's document: the width a cross-section solver gives for its impedance on the board's stackup at the gap the tracks have, the gap, the length, the skew within a pair, the vias, and an unbroken ground plane above and below; write the same limits as KiCad rules. |
 | `copper` | Hold a routed board's power nets to a greatest voltage drop and current density on their own copper and in each via's barrel, and the board to a greatest temperature from its parts' heat; draw each as a picture. Every constant names its document; every limit is the project's. |
 | `fields` | Simulate the critical nets `fields.json` names with openEMS, from the board file, and hold impedance, loss and coupling to their limits. |
@@ -307,10 +313,9 @@ procedure is a Markdown file under `.claude/skills/`, and every check is a
 command. `workcenter next <project>` gives the step, and `make verify`
 the repository's health.
 
-**A Docker image.** `docker build -t ee-workcenter .` builds on the
-official `kicad/kicad:10.0` base. `release.yml` publishes the image to
-GHCR on a version tag (`v*.*.*`). No tag exists yet, and the build has
-not run.
+**A Docker image.** With Docker instead of installing (amd64 or arm64; no openEMS on arm64):
+`docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work ghcr.io/thyfriendlyfox/ee-workcenter:main workcenter gates .`.
+The files the gates write belong to you. The image holds the toolchain install.sh installs and the workcenter, without the example boards and the site; `.github/workflows/image.yml` builds it on Ubuntu 24.04 and publishes it from `main`, a release's tag, each Monday and by hand. Pin a toolchain by its digest from the `Image` workflow's summary. Not built yet: the first build is the pull request's.
 
 ## The website
 
@@ -332,27 +337,37 @@ images are drawn.
 | Path | What |
 |---|---|
 | `install.sh` | The only source of the toolchain. |
-| `Makefile`, `verify/verify.sh` | `make verify`: the repository's health gate, one command. |
+| `Makefile`, `verify/` | `make verify`: the repository's health gate, one command; `verify/testshards.py` runs its tests in shards side by side by `verify/shards.csv` (`verify/README.md`). |
 | `tools/workcenter` | The CLI and the gates. Standard library only. |
 | `tools/kicadgen.py` | Design a board in Python from the KiCad libraries; writes the KiCad project and routes it headless. |
-| `tools/simcorners.py`, `tools/freqplan.py`, `tools/thermal.py` | The corners a deck runs at; the frequency plan; each part's junction temperature at every run. Read by the SIM gate. |
+| `tools/simcorners.py`, `tools/freqplan.py`, `tools/thermal.py`, `tools/simneeds.py` | The corners a deck runs at; the frequency plan; each part's junction temperature at every run; the decks the schematic asks for. Read by the SIM gate. |
 | `tools/partdata.py` | The makers' data of a deck's capacitors and inductors: picks each curve from the part's facts when its maker's file has its row in `library/sources.csv`, and rewrites the deck's part as ngspice's behavioural element on it. Standard library only; the SIM gate runs it. |
 | `tools/guide.py` | `workcenter next`: the one next step and the fix for each kind of failure. |
 | `tools/newboard.py` | `workcenter new`: a board project from `templates/project/`, with the headers of the parts file and of `library/sources.csv`. Standard library only. |
 | `tools/enginelock.py` | The engine lock: long `workcenter` commands take turns on 1 machine in the order they came, and `make verify` holds it for the whole gate; `hold`, `held` and `state` on its own command line. Standard library only. |
 | `tools/clock.py` | The day and the time a command runs at: 1 reading at its start, pinned by `SOURCE_DATE_EPOCH`; the machine's day for a price's age and the machine's clock for the engine lock; and the reader of a file's calls of the clock that 2 tests hold the tools and the test files to. Standard library only. |
 | `tools/ratings.py` | `workcenter ratings`: the voltage span of each net, the facts of each part, and each stress against its limit. Standard library only. |
+| `tools/blocks.py` | Circuit blocks a design file adds in 1 call, each written from its maker's note: `blocks.buck`, a buck regulator by TI SLVA477C, and the entry points of the other blocks; their numbers in `rules/blocks/`. |
+| `tools/blocks_usbc.py` | `blocks.usbc`: a USB Type-C receptacle as a sink, by USB Type-C R2.5 and USB 2.0. |
+| `tools/blocks_i2c.py` | `blocks.i2c`: the 2 pull-ups of an I2C bus by TI SLVA689A, each device on the bus held to its facts. |
+| `tools/blocks_charger.py` | `blocks.charger`: a BQ21040 charger for 1 lithium cell with a BQ29700 protector, by their datasheets. |
+| `tools/blocks_mcu.py` | `blocks.mcu`: an MSP430FR5720 with its crystal and decoupling, by TI SLAA322D. |
+| `tools/blocks_ldo.py` | `blocks.ldo`: a fixed-output linear regulator and its 2 capacitors, by TI SLVA079 and the TLV755P datasheet. |
 | `tools/fabfiles.py`, `tools/panel.py` | EXPORT's files read back against the board: the placement file, the assembly pages, IPC-2581 and the panel. `panel.py` runs KiKit's panelization under `KIKIT_PYTHON`. |
 | `tools/measureplan.py` | `workcenter measure`: the plan of measurements from the decks' bounds and the board's nets. Standard library only. |
 | `tools/now.py` | `workcenter now`: the work card of 1 piece of work, and `record`, which `verify/verify.sh` runs on exit to leave the gate's verdict in `build/verify.json`. Standard library only. |
 | `tools/board.py`, `.github/workflows/board.yml` | The workflow Board: each issue titled `Work card: ...` stands on the owner's project board in the column its `**Status:**` line names, and a closed card is Done. Once a day and by hand (`--all`) it walks every card and puts right the ones that stand wrong. Standard library only; it needs the repository secret `BOARD_TOKEN`. |
 | `tools/highspeed.py` | `workcenter highspeed`: the board's stackup, its fast pairs' widths, gaps, lengths, skew, vias and planes against `rules/interfaces/`, and the KiCad rules file. Standard library only. |
+| `tools/legend.py` | The legend check and the designator placer: `workcenter legend`, the DRC gate's legend lines, `Design.place_designators`. Standard library only. |
+| `tools/image.py` | `workcenter image` and the image's own command line: the content tag of the toolchain's files, where CI's `full` job runs (`decide`), the record the Dockerfile writes (`record`), the check inside CI (`check`). Standard library only. |
 | `tools/xsection.py` | The cross-section solver: a track's or a pair's impedance and eps_eff on a layer stack, and the width for a target. Needs numpy; `workcenter highspeed` runs it under the venv. |
 | `tools/copper.py` | `workcenter copper`: the board's copper on a grid, each cell weighted by its copper, the drop and the heat by conjugate gradients, the pictures and the report. Runs under the venv's Python (numpy, pcbnew, Pillow). |
 | `tools/fields.py` | `workcenter fields`: the model of a board's critical nets from its board file, the mesh, the ports, openEMS run as its own program, and the limits held. Standard library only. |
 | `tools/routebench.py` | `workcenter bench`: the routing benchmark and the router each board takes. Standard library only. |
+| `tools/routers.py` | The routers behind `workcenter design --route` and `bench`: FreeRouting 1.9.0 (the default) and 2.5.0, each with its presence, version and command line. Standard library only. |
 | `tools/boardrules.py` | `workcenter drc` with a `board-rules.json`: a board held to a standard's rule pack, each gap to its nets' voltage and each track's width to its net's current; each net's vias to its current, against the wall `board-rules.json` states (`via_wall` or `hdi`). Standard library only. |
 | `tools/layoutrules.py` | `workcenter drc` with layout packs under `layout` in `board-rules.json`: ESD at each connector that leaves the device (TI SLVA680A) and power and ground traces at most 3:1 on a 2-layer board (TI SZZA009), measured along the copper. Standard library only. |
+| `tools/creepage.py` | `workcenter drc` with `creepage` in `board-rules.json`: clearance and creepage between each pair of nets on F.Cu and B.Cu, held to the voltage between them by a creepage pack (MIL-HDBK-454C table 69-I, TI SLUP419). Standard library only. |
 | `tools/standards.py` | `workcenter standards`: each requirement of the product kind `product.json` names, from `rules/products/`, as held by a gate, held by a named test, or not held. Standard library only. |
 | `tools/references.py` | `workcenter references`: the index of the documents the rules cite, the fetch that asks each URL once, and the check of a downloaded file and of the rules. Standard library only. |
 | `tools/chipflow.py` | `workcenter chip`: what the chip gates share. It reads `chip.json`, the constraints and a process table, selects the timing corners, starts the engines and drives the gates to a verdict. |
@@ -363,16 +378,17 @@ images are drawn.
 | `tools/pdfcurve.py`, `tools/kistack_board.py` | A PDF page's vector paths; the board reader kistack's checks run on. |
 | `tools/harvest.py` | What the projects taught the workcenter, read from the repository: each branch's work that main lacks, the scripts projects wrote for themselves, the mistakes made again; and the roadmap's rated candidates held to their scores. |
 | `tools/hooks/` | Claude Code hooks: no `cd` in a command, no test written by a script. |
+| `tools/ci/` | `scope.py`: what a change needs, `fast` or `full`; the `engine` marker's plugin and its guard. `make scope`, `make verify-site`. |
 | `WORKCENTER.md` | The contract a project gets from this workcenter. |
 | `AGENTS.md`, `CLAUDE.md` | Where an agent starts. The same text. |
-| `.claude/skills/` | `attached-repos`, `autoroute`, `blog-post`, `board-design`, `board-gates`, `board-loop`, `board-rules`, `chip-design`, `chip-gates`, `copper`, `fabrication`, `fields`, `highspeed`, `kistack`, `land`, `lead`, `now`, `procurement`, `ratings`, `references`, `simulate`, `standards`, `user-round`, `verification`. |
+| `.claude/skills/` | `attached-repos`, `autoroute`, `blocks`, `blog-post`, `board-design`, `board-gates`, `board-loop`, `board-rules`, `charger-block`, `chip-design`, `chip-gates`, `copper`, `fabrication`, `fields`, `highspeed`, `kistack`, `land`, `lead`, `legend`, `now`, `procurement`, `ratings`, `references`, `simulate`, `standards`, `user-round`, `verification`. |
 | `templates/` | A first design file, a version's README and gates report, `corners.json`, `frequency-plan.json`, the verification package. |
 | `rules/` | Fabrication houses' limits as KiCad design rules: Sierra Circuits, JLCPCB, PCBWay, OSH Park. `rules/ratings/`: 2 derating standards as packs for `workcenter ratings`, each limit with its table and page. `rules/board/`: ECSS-Q-ST-70-12C Rev.1 as a board rule pack for `workcenter drc`, each limit with its clause, table and page. `rules/copper/`: the 5 constants of `workcenter copper`, each with its document and page. `rules/interfaces/`: the fast interfaces `workcenter highspeed` holds a pair to, each limit with its document, clause and page. `rules/references/`: the index of the 18 documents the rules cite (7 standards, 2 application notes, 9 datasheets), each with its URL and SHA256; no document itself. |
 | `tests/` | The tests of the tools. `tests/boards/` holds the fixture boards and what each proves. |
 | `examples/` | Example projects made with the workcenter, each in version folders with its own README. |
 | `third_party/kistack/` | The vendored kistack skills. |
 | `environment/` | Cloud environment setup script and hosts. |
-| `Dockerfile`, `.github/workflows/` | The image. CI on each pull request and push to `main`, a nightly run, the release, stale issues, and Board: each `Work card: ...` issue in the column of the project board its `**Status:**` line names. |
+| `Dockerfile`, `.github/workflows/` | The image. `image.yml` builds it for amd64 and arm64. CI on each pull request and push to `main`, a nightly run, the release, stale issues, and Board: each `Work card: ...` issue in the column of the project board its `**Status:**` line names. |
 | `requirements.txt`, `pyproject.toml` | The venv's packages for tests and lint; the settings of ruff and pytest. |
 | `site/` | The website: 1 static page, its stylesheet, the Open Graph image. `site/media/` holds this file's pictures. |
 | `ee-agent-kit/` | How work on this repository is run. Start at `ee-agent-kit/ROUTING.md`. `ee-agent-kit/lead/` holds the lead's tools: `landed.py`, `gate-and-push.sh`, `quiet.py` and 3 example workflow scripts (`ee-agent-kit/lead/README.md`). |
@@ -381,7 +397,7 @@ images are drawn.
 
 ## Working on this repository
 
-`make verify` must be green before any push.
+`make verify` must be green before any push; a change `make scope` calls `fast` may be pushed on `make verify-site`.
 [`ee-agent-kit/AGENTS.md`](ee-agent-kit/AGENTS.md) is binding;
 [`ee-agent-kit/ROADMAP.md`](ee-agent-kit/ROADMAP.md) decides what gets built.
 [`ee-agent-kit/CONTRIBUTING.md`](ee-agent-kit/CONTRIBUTING.md) has the rules

@@ -15,6 +15,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -25,9 +26,13 @@ LIBS = kicadgen.SYMBOL_DIR / "Device.kicad_sym"
 JAR = Path("/opt/workcenters/ee/freerouting/freerouting.jar")
 
 needs_libs = pytest.mark.skipif(not LIBS.is_file(), reason="KiCad symbol libraries are not installed")
-needs_kicad = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
-needs_router = pytest.mark.skipif(
-    not JAR.is_file() or shutil.which("java") is None, reason="FreeRouting is not installed"
+needs_kicad = engine(
+    pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+)
+needs_router = engine(
+    pytest.mark.skipif(
+        not JAR.is_file() or shutil.which("java") is None, reason="FreeRouting is not installed"
+    )
 )
 
 R0402 = "Resistor_SMD:R_0402_1005Metric"
@@ -223,7 +228,22 @@ def inner_drill_board() -> kicadgen.Design:
         nets={"1": "GND"},
     )
     d.zone("GND", layers=("In1.Cu",), connect="solid")
+    d.place_designators = True  # the library puts J3's over the top edge, J1's and RT0's under J3
     return d
+
+
+@needs_libs
+def test_the_inner_drill_board_prints_a_legend_the_drc_gate_holds():
+    """The DRC gate holds every text a board prints (tools/legend.py). As the library places them, J3's
+    designator stands over the top edge, J1's under J3 and RT0's under J1 and J3: the gate was red on
+    the board the next test routes. Sierra names no least height: that is not judged, and not red."""
+    import legend
+
+    d = inner_drill_board()
+    board = legend.read_board(kicadgen.parse(d.board()))
+    found = legend.judge(board, legend.limits(d.fab), legend.read_pack())
+    assert [f.line for f in found if f.status == "fail"] == []
+    assert [f.rule for f in found] == ["size"] and found[0].status == "not judged"
 
 
 def hole_clearance_errors(project: Path) -> list[dict]:

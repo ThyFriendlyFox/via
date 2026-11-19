@@ -21,13 +21,16 @@ import types
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
 BOARDS = ROOT / "tests" / "boards"
 
-needs_ngspice = pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed")
-needs_kicad = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+needs_ngspice = engine(pytest.mark.skipif(shutil.which("ngspice") is None, reason="ngspice is not installed"))
+needs_kicad = engine(
+    pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+)
 
 DIVIDER = """* a divider: 5 V through 10k into 10k
 V1 in 0 DC 5
@@ -788,10 +791,12 @@ def test_every_warning_is_printed_and_the_verdict_is_the_last_line(tmp_path):
     # 7 decks with no bound, and no corners.json: 8 things named, each on its own line
     assert code == 0 and sum(ln.startswith("       - warning: ") for ln in lines) == 8
     assert lines[-1].startswith("GREEN with 8 warnings (nothing to run for: erc, drc, export): proj  report ")
-    # with --report the line about the report comes first: a reader takes the verdict from the end
+    # with --report the line about the report comes first, then the ratings' line: a reader takes the
+    # verdict from the end
     code, text = text_of("gates", proj, "--out", tmp_path / "o", "--report", tmp_path / "docs" / "gates.md")
     lines = text.splitlines()
-    assert lines[-2].startswith("wrote ") and lines[-1].startswith("GREEN with 8 warnings")
+    assert lines[-3].startswith("wrote ") and lines[-1].startswith("GREEN with 8 warnings")
+    assert lines[-2] == "RATINGS not asked for: no ratings.json beside the schematic"
     assert "GREEN with 8 warnings (nothing to run for: erc, drc, export) on" in (
         tmp_path / "docs" / "gates.md"
     ).read_text(encoding="utf-8")

@@ -16,6 +16,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -38,7 +39,7 @@ try:
     HAS_PCBNEW = True
 except ImportError:
     HAS_PCBNEW = False
-needs_pcbnew = pytest.mark.skipif(not HAS_PCBNEW, reason="KiCad's pcbnew module is not importable")
+needs_pcbnew = engine(pytest.mark.skipif(not HAS_PCBNEW, reason="KiCad's pcbnew module is not importable"))
 
 
 # ---------------------------------------------------------------- the drop

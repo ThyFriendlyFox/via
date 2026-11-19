@@ -1,0 +1,25 @@
+{
+  "kind": "ic",
+  "mpn": "BQ29700DSER",
+  "family": "linear",
+  "source": {
+    "document": "BQ297xx datasheet, SLUSBU9I",
+    "revision": "March 2014, revised August 2024",
+    "url": "https://www.ti.com/lit/ds/symlink/bq2970.pdf",
+    "sha256": "011527de4b541f4ce5170c7621b383cb5fcc5e2e01fee9caeaaaaa54cc495e56",
+    "read": "2026-11-17",
+    "second_reader": "no"
+  },
+  "note": "The DSE package, WSON-6, pins of table 5-1 on page 3. The absolute limits are section 6.1, page 4: BAT -0.3 V to 12 V, V- and COUT from BAT - 28 V to BAT + 0.3 V, DOUT from VSS - 0.3 V to BAT + 0.3 V. BAT's operating range is section 6.5's device operating range BAT - VSS, 1.5 V to 8 V, page 5; V-'s is section 6.3's, BAT - 25 V to BAT, page 5. The supply's current is INORMAL MAX, 5.5 uA, page 5. COUT swings from Pack-, the V- side, to BAT, and DOUT from VSS to BAT (sections 5.1.4 and 5.1.5, page 4). The capacitor is section 5.1.1's 0.1 uF on BAT, page 4, and figure 9-1's, page 19; no effective value is asked. The figure is section 6.4's RthetaJA, High K, page 5; no junction maximum is printed, so no thermal entry is held",
+  "needs": [
+    {"capacitor": {"from": "BAT", "to": "VSS", "farads_min": 1e-7}, "page": [4, 19]}
+  ],
+  "pins": [
+    {"numbers": ["1"], "name": "NC", "role": "nc"},
+    {"numbers": ["2"], "name": "COUT", "role": "output", "abs": [{"pin": "BAT", "plus": -28}, {"pin": "BAT", "plus": 0.3}], "swing": ["V-", "BAT"], "page": [3, 4]},
+    {"numbers": ["3"], "name": "DOUT", "role": "output", "abs": [-0.3, {"pin": "BAT", "plus": 0.3}], "swing": ["VSS", "BAT"], "page": [3, 4]},
+    {"numbers": ["4"], "name": "VSS", "role": "ground"},
+    {"numbers": ["5"], "name": "BAT", "role": "supply", "abs": [-0.3, 12], "operating": [1.5, 8], "amps": 5.5e-6, "page": [3, 4, 5]},
+    {"numbers": ["6"], "name": "V-", "role": "analog", "abs": [{"pin": "BAT", "plus": -28}, {"pin": "BAT", "plus": 0.3}], "operating": [{"pin": "BAT", "plus": -25}, {"pin": "BAT", "plus": 0}], "page": [3, 4, 5]}
+  ]
+}

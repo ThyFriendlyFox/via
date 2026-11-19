@@ -8,8 +8,7 @@ variable (`docs/CONFIGURATION.md`); the gate that uses it is fixed.
 
 KiCad 10's command line. Powers the ERC, DRC, and EXPORT gates and the
 DSN export step of autoroute. Headless; needs no display. Installed from
-the KiCad PPA by `install.sh`, or present in the official
-`kicad/kicad:10.0` image.
+the KiCad PPA by `install.sh`, in a machine or in the container image.
 
 ```sh
 KICAD_CLI=kicad-cli   # default
@@ -69,6 +68,15 @@ copper on that layer (M79).
 For a hand-drawn `.kicad_pcb` both ends still happen in KiCad. Reading an
 arbitrary board file into the DSN writer is
 ROADMAP item 15, "Headless autoroute for hand-drawn boards".
+
+## FreeRouting 2.5.0 (second router)
+
+Release 2.5.0, opt-in: `sudo ./install.sh --freerouting2` (or `INSTALL_FREEROUTING2=1`) downloads the jar (SHA256 f6f51bb02245e8e717f9359bd260cc9c5c0b1bc0acc8b7cb2cd5b8ffeb5de3c7) and a Temurin JRE 25.0.5+8 (SHA256 6fac98f0c8202efc3135a9e9e42aa61963ec42d1c5cbb40caf231e7b14a24ef6). Its classes are of version 69, so it needs Java 25; on an older Java it is an absent engine. `workcenter design --route --router freerouting2` runs it with `-da --gui.enabled=false` and its settings in `build/route/freerouting2`, with no xvfb-run. `-da` stops its usage data, not its version check: each run asks api.github.com for the latest release. `workcenter doctor` reports it in the `freerouting2` row. It is not the default: no benchmark of it exists.
+
+```sh
+FREEROUTING2_JAR=/opt/workcenters/ee/freerouting2/freerouting.jar   # default
+FREEROUTING2_JAVA=/opt/workcenters/ee/java25/bin/java              # default
+```
 
 ## kicadgen
 

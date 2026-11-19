@@ -77,14 +77,22 @@ hang over the board's edge on purpose. The firmware's host tests pass: `make -C 
 
 ```
 $ workcenter gates examples/universal-controller/v0.1
-PASS   erc        0 errors, 0 warnings  [0.64s]
-PASS   drc        0 errors, 5 warnings (0 unconnected, 0 parity)  [1.37s]
+PASS   erc        0 errors, 0 warnings  [0.48s]
+FAIL   drc        0 errors, 5 warnings (0 unconnected, 0 parity), legend (no fab named: held to the least of the 4 fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer)): 9 fail, 0 not judged  [1.48s]
        - warning: silk_edge_clearance: Silkscreen clipped by board edge
        - warning: silk_edge_clearance: Silkscreen clipped by board edge
        - warning: silk_edge_clearance: Silkscreen clipped by board edge
        - warning: silk_edge_clearance: Silkscreen clipped by board edge
        - warning: silk_edge_clearance: Silkscreen clipped by board edge
-PASS   sim        6 decks, 370 corner runs, 0 failures  [1.32s]
-PASS   export     8/8 outputs, 24 gerber files, 4 files read back  [4.48s]
-GREEN with 5 warnings: rosetta  report examples/universal-controller/v0.1/build/gates.json
+       - legend overlap: text "CAPTURE" at (150, 120) mm on F.SilkS: on via at (146.571, 119.401) by 0.2 x 0.076 mm (rules/legend.json)
+       - legend overlap: text "CAPTURE" at (150, 120) mm on F.SilkS: on via at (153.435, 119.844) by 0.2 x 0.2 mm (rules/legend.json)
+       - legend overlap: text "PS4" at (157.07, 117.8) mm on F.SilkS: on via at (158.121, 118.447) by 0.2 x 0.028 mm (rules/legend.json)
+       - legend overlap: text "XBOX" at (170, 109.6) mm on F.SilkS: on via at (170.881, 108.99) by 0.2 x 0.065 mm (rules/legend.json)
+       - legend overlap: text "XBOX" at (170, 109.6) mm on F.SilkS: on via at (168.36, 109.675) by 0.2 x 0.2 mm (rules/legend.json)
+       - legend overlap: text "XBOX" at (170, 109.6) mm on F.SilkS: on via at (169.594, 110.121) by 0.2 x 0.154 mm (rules/legend.json)
+       - legend overlap: text "XBOX" at (170, 109.6) mm on F.SilkS: on via at (169.109, 109.645) by 0.2 x 0.2 mm (rules/legend.json)
+       - legend overlap: text "SWITCH" at (177.99, 111) mm on F.SilkS: on via at (175.253, 111.477) by 0.2 x 0.198 mm (rules/legend.json)
+       - legend overlap: text "OPTIONS" at (190, 108.2) mm on F.SilkS: on via at (189.802, 107.704) by 0.2 x 0.179 mm (rules/legend.json)
+RATINGS not asked for: no ratings.json beside the schematic
+RED: rosetta  report examples/universal-controller/v0.1/build/gates.json
 ```

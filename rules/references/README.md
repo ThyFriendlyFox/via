@@ -12,7 +12,7 @@ holds the index and the rules, never a document: the makers' and the issuers' te
 
 An entry is 1 of 3 sorts:
 
-- **Held** (`standard`, `application note`, `datasheet`, `report`): the URL and the SHA256 of the copy
+- **Held** (`standard`, `application note`, `datasheet`, `report`, `user's guide`): the URL and the SHA256 of the copy
   the rule was written from. A report is a held copy that is no standard, note or datasheet: the Qucs
   project's technical papers, a laboratory's report.
 - **A web page** (`web page`): a page has no fixed copy. Samsung's part page carries a session token
@@ -38,6 +38,21 @@ An entry is 1 of 3 sorts:
 | `samsung-cl10a106kp8nnn` | web page | CL10A106KP8NNN | 5 values read on 2026-11-17 |
 | `coilcraft-806` | datasheet | 806 (XAL40xx) | Revised 02/25/26 |
 | `bourns-srn2010ta` | datasheet | SRN2010TA | REV. 06/25 |
+| `ti-slusce2` | datasheet | SLUSCE2D (bq21040, the charger block's charger) | April 2016, revised January 2019 |
+| `ti-slusbu9` | datasheet | SLUSBU9I (BQ297xx, the charger block's protector) | March 2014, revised August 2024 |
+| `ti-slps260` | datasheet | SLPS260E (CSD17313Q2, the charger block's transistors) | March 2010, revised September 2015 |
+| `usb-typec-r2.5` | standard | USB Type-C Cable and Connector Specification (a zip) | Release 2.5, March 2026 |
+| `ti-sllseg9c` | datasheet | SLLSEG9C (TPD2E2U06) | June 2013, revised December 2019 |
+| `gct-usb4115` | datasheet | USB4115 (a drawing) | revision B, 17/12/25 |
+| `samsung-cl10a475ko8nnn` | datasheet | CL10A475KO8NNN (the maker's page) | the page as fetched on 2026-11-17 |
+| `ti-slva689a` | application note | SLVA689A (I2C pull-ups) | February 2015, revised October 2026 |
+| `ti-scps197d` | datasheet | SCPS197D (TCA9534) | September 2014, revised October 2017 |
+| `ti-slaa322d` | application note | SLAA322D (MSP430 32-kHz crystal oscillators) | August 2006, revised July 2017 |
+| `ti-slase35` | datasheet | SLASE35C (MSP430FR572x) | May 2014, revised December 2017 |
+| `ti-slau278` | user's guide | SLAU278AH (MSP430 hardware tools) | May 2009, revised March 2021 |
+| `ti-slau272d` | user's guide | SLAU272D (MSP430FR57xx family) | May 2011, revised March 2018 |
+| `abracon-abs25` | datasheet | ABS25 | REVISED: 09-30-19 |
+| `abracon-abs07` | datasheet | ABS07 | REVISED: 08-10-22 |
 | `ti-sbvs320` | datasheet | SBVS320D (TLV755P) | November 2017, revised September 2024 |
 | `ti-slva477c` | application note | SLVA477C | December 2011, revised September 2026 |
 | `ti-spra953d` | application note | SPRA953D | December 2003, revised March 2024 |
@@ -91,6 +106,28 @@ at 10 V; temperature +2.279548422744333 % at -55 C and -14.72482795860936 % at 8
 `tests/boards/fail-sim-bias` take each as 1 + its value / 100. On 2026-11-17, 3 fetches each of
 Samsung's, JLCPCB's and OSH Park's pages gave 3 SHA256s for each page. Every value stood on the first
 copy and on the third; the second was not read for its values.
+
+`ti-slusce2`, `ti-slusbu9` and `ti-slps260`, the datasheets of the charger block
+(`rules/blocks/charger.json`) and of its parts' facts, were downloaded on 2026-11-17 under the
+workcenter's name. Their number, title and revision are those of their first page; the SHA256 is that
+of each copy, and `workcenter references fetch` has not asked for them yet.
+
+The 4 entries of the USB-C block (`rules/blocks/usbc.json`) were downloaded on 2026-11-17 under the
+workcenter's name. The USB Type-C specification is a zip: the SHA256 is the zip's, and the block's rules
+name each PDF inside with its own SHA256. The block's USB 2.0 zip is the index's `usb-20`, by the same
+SHA256. `samsung-cl10a475ko8nnn` is a page like `samsung-cl10a106kp8nnn`: a new fetch differs in its
+session token and its time stamp. ST's USBLC6-2 datasheet, asked first for the clamp, gave no answer to
+the workcenter's name; TI's TPD2E2U06 was taken instead.
+
+`ti-slva689a`, the note of the I2C block (`rules/blocks/i2c.json`), and `ti-scps197d`, the datasheet of
+its fixtures' TCA9534, were downloaded on 2026-11-17 under the workcenter's name; the number, title and
+revision of each are those of its first page. The block takes table 2-1 from SLVA689A, which quotes
+NXP's UM10204; the index holds UM10204 (`nxp-um10204`, fetched on 2026-11-18 for another piece), and the
+block does not read it yet.
+
+The 6 entries of the microcontroller block (`rules/blocks/mcu.json`,
+`tests/boards/library/facts/mcu-block.json`) were downloaded on 2026-11-17 under the workcenter's name.
+`ti-slau278` and `ti-slau272d` are TI's user's guides, held by their SHA256 as a datasheet is.
 
 ## The 3 commands
 

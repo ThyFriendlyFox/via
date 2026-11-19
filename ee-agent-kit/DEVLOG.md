@@ -65,6 +65,76 @@ post's numbers and links with the old one and read each against the checklist. N
 Evidence: the docs and forms tests 33 passed, 2 skipped (KiCad); each post's numbers and links match
 the version before.
 
+## 2026-11-18 — The install script when KiCad 10's package source does not answer
+
+On 2026-11-18 Launchpad's host answered 503 on and off. In 1 CI run the index of KiCad 10's source did not arrive, `apt-get update` ended with 0, and apt installed Ubuntu's KiCad 7. In another, a package file did not arrive and a pipe's `|| true` hid apt's exit code. Both ended with "kicad-cli 10.x not found after install". The apt step now tries the index 3 times, checks every KiCad candidate before it downloads anything, and stops with apt's own line and what to do. The first run of the new tests sourced the script on this machine, which runs as root, before it had its guard; main() ran and changed 5 things outside the test (M261). The tests then got a fence for every program that can write and a scan of the script's code, and 3 reviews found the fence open 2 times. The lead decided that a person's computer gets no total bound; CI, the nightly run and the image build set 120 s and 570 s. At landing, the container image's first step (step_boot) met the harness: its certificates' path was a literal, so every test refused to run, and its apt calls let a failure through; both fixed. The key fetch's stop now says the key did not arrive, where it said nothing.
+
+Evidence: `tests/test_install_apt.py` (81 tests), `tests/install_mutations.py` (83 caught); landing branch `wip/land-install`.
+
+## 2026-11-18 — The container image
+
+Launchpad's package host answered 503 on and off for more than an hour, and CI's runs failed or waited in their install step. The owner asked for the container image. It is built from the same install.sh as CI, on Ubuntu 24.04, for amd64 and arm64 (the KiCad 10 PPA serves both; GitHub gives public repositories arm64 runners); its tag is the sha256 of the toolchain's 3 files. CI's full job runs inside it when the registry has the image of its own files and installs as before when not. A user id with no home stops kicad-cli (`Environment variable HOME is empty`), so the image gives every user id a home. The image leaves out the example boards and the site (394 MB of the working tree): no tool it runs reads them. What the image saves first is the dependence on a third party's host, not time. Not built yet: the first build is the pull request's.
+
+Evidence: `tests/test_image.py` (44 tests); landing branch `wip/land-image`.
+
+## 2026-11-18 — The linear regulator, the sixth circuit block
+
+The linear regulator block was built after the buck and took its first review's lesson: a block checks the output it builds, not the output it was asked for. A fixed-output LDO builds its nominal, so the block reads it from the datasheet's device nomenclature (table 8-1) and refuses an IC whose nominal is not the output asked; an asked 3.26 V used to pass because it lay inside the 3.3 V part's 1.5 % accuracy. The second fixture doubles the load to 0.2 A: the SOT-23-5's junction would reach 122.44 C against the NASA pack's 85 C, so the block takes the WSON-6 (100.2 C/W, 70.078 C).
+
+Its review found that the block built parts from inputs it never read: an ambient or an input range written greatest first took the junction at the least ambient and the dissipation at the least input, and built the hot SOT-23-5 where the WSON-6 was needed; a NaN ambient printed "TJ = nan C, under 85 C". The block now refuses those on 1 line before it sizes anything, takes the dissipation at the least output its accuracy allows (a junction of 86.39 C at 0.122 A had passed as 85 C), holds the junction to the datasheet's -40 C to 125 C and each capacitor to its curve over temperature, and passes over an IC whose rules or facts it cannot read instead of failing with a traceback. The deck's bound on the output could not fail, since the deck draws the output: it is gone, and the deck says the output is not judged.
+
+Landing it on the trunk found what the trunk had learned since the block was built. The block cited its note and its datasheet with no `CITES`; its fixture tests started KiCad and ngspice with no `engine` marker; and the trunk's definition of done made its fixtures RED under `--strict`, on 2 things the block's deck does not judge: a load step, and the capacitors on their makers' data. The fixtures' plain runs are GREEN with those 2 warnings, and the tests say so.
+
+Evidence: `tests/test_blocks_ldo.py` (51 tests); landing branch `wip/land-b-ldo`.
+
+## 2026-11-18 — A board's printed text that can be read
+
+The owner asked on 2026-11-17 how to make the labels printed on the boards legible and not overlap. The DRC gate now judges every silkscreen text from the board file, and the generator places designators itself when a design asks. 2 reviews called it not sound; their 19 findings are fixed with tests. The owner decided that a label fault fails the gate at once. On scratch copies of the 17 example boards of the latest versions, 11 now fail on their own text, which the placer does not move: notes on vias, letters set close, text under 0.8 mm. Every example hides its designators; put back and placed, 831 went round their parts or to the Fab layer (186), with no failure of their own.
+
+Evidence: `tests/test_legend.py` (110 tests); landing branch `wip/land-legend`.
+
+## 2026-11-18 — A board asks for the decks its schematic implies
+
+The medium user's 400 kHz I2C board was GREEN under `--strict` with no deck. Now the SIM gate reads the schematic's netlist and asks each I2C line with a pull-up, and each regulator with a load in `ratings.json`, for a deck; `next` names the template to copy. The review found the first cut judged a deck by its `* deck:` line alone: a deck that ran 4.7k passed a board at 47k. The gate now holds the deck's pull-ups to the schematic's by reference and value. On the trunk the check met the circuit blocks: the I2C block's deck now says which lines it answers, and the buck block's fixtures carry a 4th warning, since no deck steps its load. 11 example boards and Last Hit's display are asked for an I2C deck.
+
+Evidence: branch `wip/land-u-sim`; `tests/test_simneeds.py` (20 tests), `tests/test_simneeds_cli.py` (12 tests), `tests/test_blocks_i2c.py`, `tests/test_blocks.py`.
+
+## 2026-11-18 — The DRC gate holds clearance and creepage to the voltage between nets
+
+A board can now name a creepage pack. The gate then measures each pair of nets on the outer layers, through air and along the surface, and holds it to the voltage between them. The numbers come from a free US handbook and from a TI note that reprints part of a paid IEC standard. 2 reviewers built boards that read clean while high voltage and ground sat too close: an arc read as 2 straight pieces, copper on the 2 faces near the edge, a via with no net between them. Each such board is now a test. What the check cannot measure, it names on a line: the way between the 2 faces beyond a bound, copper through the laminate, inner layers. The TI pack has no clearance table, so a board on it never passes the strict gate. A full mutation run left 272 of 777 mutants caught by no test; 11 got tests, and the other 261 were read in groups, not tested one by one.
+
+Evidence: `wip/land-creepage`; `tests/test_creepage.py` (101 tests) and `tests/test_creepage_drc.py` (6 tests).
+
+## 2026-11-18 — Done is 1 definition
+
+User round 1, C landed. In user round 1 the medium user's board printed GREEN under `gates --strict` while `workcenter ratings` left 3 parts not judged, and WORKCENTER.md said done in 2 ways. Now `gates` prints 1 line above its verdict that says whether the ratings are held, and `--strict` ends `RED (ratings not held)` while they are not. `next` reads the same function. The review found that a record could read as held after a facts file was deleted, so a ratings run now records each file it read with its SHA256. `design --route` now counts the connections it left open from KiCad's DRC and exits 1 on any. Landing found that `next`'s route step counted 9 pads where `design --route` would print 6 unconnected for the same board; the step now says both. 4 fixtures keep a `ratings.json` for `copper` and the ECSS DRC and judge nothing; their gates under `--strict` are RED, and a test names them. On the trunk the circuit blocks' fixtures hold a `ratings.json` as well; their tests now run `ratings` before `gates --strict`.
+
+Evidence: `tests/test_done.py` (26 tests), `tests/test_route_open.py` (6 tests); landing head 25b67ff.
+
+## 2026-11-18 — Roadmap item 4 further: makers' data in every deck form
+
+The SIM gate said nothing in 2 cases that the second sentence of item 4's Promise covers: a part 2 includes deep, and decks with no C or L. Both now get a line, as do a project with no schematic and a machine with no kicad-cli. A capacitor's starting voltage now runs on its data; a coupled inductor is named instead of failing the deck. Samsung's page, fetched again, gave C2's temperature curve at 5 V and its ESR. A review found 7 faults: 2 deck forms that ngspice accepts started from the wrong voltage, and a curve entered against the wrong reference undid the DC bias loss with the gate green. All 7 are fixed with tests, 2 in part. The temperature share between 0 V and the bias is still the gate's straight line, which no maker publishes, so item 4 stays in progress.
+
+Evidence: `tests/test_partdata.py` (47 tests); landing head of `wip/land-l4`.
+
+## 2026-11-18 — The health gate in shards
+
+Out of band. The health gate ran its tests in 1 process: 1557.70 s on 2026-11-17 for 1840 tests, and 1934 s on 2026-11-18 for 2233. It now runs them in 4 shards side by side, joined by `verify/testshards.py`. Side by side, 2 tests failed that pass alone: openEMS stopped the Wyvern lane's port 3 before its ports settled, because it checks its end criterion on the clock, and `workcenter fields` now runs such a port again deeper; and kicad-cli wrote a lock file into a fixture another test listed, so that file runs alone. A planted failure in each shard and a shard killed half-way each turned the gate red. A review found that a stop by signal left the shards running and that a skip only a shard gave turned the gate green; both were fixed with tests. At landing, the 1 whole run on the landing head took 763 s for 2873 tests and was red on 1 test of the trunk that counted a pack's rules by hand. The trunk had fixed that test in its own way; its fix was kept.
+
+Evidence: `tests/test_testshards.py` (38 tests), `tests/test_fields_rerun.py` (2 tests); landing head fa86215.
+
+## 2026-11-18 — 5 circuit blocks from their makers' notes, after 6 reviews
+
+Roadmap item 3 landed in part: 5 blocks of 6. Each block takes the spec and the designer's stock, works out each value by its note, and refuses on 1 line that names the equation when no stocked part meets it. The buck builds a TLV62569 from 5 V to 3.3 V by TI SLVA477C. R2 is the datasheet's own 100 kohm, and R1 is equation 11's 450 kohm, 453k from the stock: 3.318 V. At 0.5 A the peak is 828 mA and the block takes SRN2010TA-2R2M (1.26 A); at 1.0 A it is 1.33 A and it takes XAL4020-222MEC. Its 2 reviews both said "not sound": the block never checked the output its divider set, and it held the least input to the output, not to the datasheet's dropout equation. The USB-C port came from the USB-IF's own zips; a 10 uF capacitor on VBUS fails the 10 uF limit at its +10 %, so the block takes a 4.7 uF part that keeps 2.03 uF at 5.25 V. Its review found that 2 signals on 1 net passed the block's own check. The I2C bus follows TI SLVA689A: 100 pF takes 2.2k and 200 pF takes 1.5k. Its review built 3 broken buses that passed. The charger's equation 8 at 130.8 C/W allows about 193 mA from 5.25 V into a 2.5 V cell at 40 C under the rating pack's 110 C; the block first held the junction to the datasheet's 125 C and named a current the gates refuse. The microcontroller's review found its crystal on a floating pad, on a board the gates called GREEN: no gate knows which pads of a crystal hold the crystal. The block now reads them from the crystal's facts. On landing, 4 of the blocks cited their documents with no `CITES`, which the reference check of item 2 asks; they now do. The trunk's ESD layout pack, turned on for a scratch copy of the USB-C fixture, failed its routed copper on 11 lines; the fixture is left as it is, for a later piece.
+
+Evidence: branch `wip/land-blocks`; `tests/test_blocks.py`, `tests/test_blocks_usbc.py`, `tests/test_blocks_i2c.py`, `tests/test_blocks_charger.py`, `tests/test_blocks_mcu.py` pass on its head.
+
+## 2026-11-18 — CI by what a change needs
+
+A README fix waited for the same gate as a new solver: on 2026-11-17 a `make verify` ran more than 26 minutes here (read from `ps` by the piece's builder). `tools/ci/scope.py` now reads the diff and answers fast or full; the fast run builds the site, runs the tests that start no engine with every engine refused, and runs the kit's checks. The hard part was knowing which tests start an engine: a guard in every Python process the tests start writes each start down, and a test without the `engine` marker that wrote one fails. Its first run on the builder's branch found 64 such tests that no skip mark named. On the landing head it found 8 more in files the trunk added since: 2 doctor tests of `tests/test_enginelock.py`, the 4 of `tests/test_layoutrules_drc.py`, 1 of `tests/test_fetch_checks.py` and 1 of `tests/test_procure_rows.py`. With the marks, `make verify-site` ran 2519 tests in 423.29 s: GREEN, and still not the minute the roadmap asks.
+
+Evidence: `tests/test_ci_scope.py` (18 tests), `tests/test_engine_marker.py` (8 tests); landing head 013afc1.
+
 ## 2026-11-18 — The long commands take turns by themselves
 
 The roadmap's entry "Out of band: a lock the tools take themselves" landed (in part). Each long `workcenter` command takes a numbered ticket in `/tmp/workcenter-lock-<uid>` and runs when no live ticket has a lower number; a ticket is live while its process holds a flock on it, or while a process that run started still runs. A waiting run says so at once and every 30 s. `make verify` runs itself again under `enginelock.py hold`, so the gate runs alone and its tests' commands, its children, never wait. The review found 7 faults; all were fixed with tests. On landing, the 2 commands the trunk gained since (`new`, `standards`) were measured at 0.17 s and 0.24 s and named short, and a test now fails on any command named neither long nor short. The whole test file ran 20 times in a loop on the landing head with 0 failures.
@@ -144,6 +214,12 @@ Published post: Herald: answering a fire panel's phone call in firmware.
 Evidence: the docs tests 31 passed, 2 skipped (KiCad), with the forms tests; `site/blog.py
 --check`, `site/examples.py --check` and `site/forms.py --check` exit 0; each post passes the
 blog's sentence and word rules.
+
+## 2026-11-17 — Roadmap item 5 landed (in part): a second router behind 1 interface
+
+The route got a router interface. FreeRouting 1.9.0 moved behind it with its command line unchanged; FreeRouting 2.5.0 is the second router. The rules the workcenter keeps around a route are 20, listed in the autoroute skill, each held by a test with a stand-in router that writes a known session. On the way, the time limit was found to stop xvfb-run and not Java under it; the route now stops the whole process group. A reviewer found that the router's count of open connections was read with a pattern no router writes, so a route that left connections open could end as `DRC decides`; the count is now read from FreeRouting 2.5.0's own score line (M234). Nothing was installed on this machine: FreeRouting 2.5.0 needs Java 25, and this machine has Java 21. The default router stays FreeRouting 1.9.0 until a benchmark names another.
+
+Evidence: branch `wip/land-router2`; `tests/test_routers.py`.
 
 ## 2026-11-17 — Roadmap item 1 landed (in part): a fuse's rule, and the engine's mutation list
 

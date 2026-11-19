@@ -1,0 +1,33 @@
+{
+  "pack": "nasa-eee-inst-002",
+  "nets": {
+    "+3V3": {
+      "volts": [
+        3.2505,
+        3.3495
+      ],
+      "source": "the supply of the mcu block U1: mcu(vcc=(3.251, 3.349))"
+    },
+    "U1_RST": {
+      "volts": [
+        0,
+        3.3495
+      ],
+      "source": "J2: SLAU278AH, section 2.1, page 20: the tool senses the board's own VCC on pin 4 and adjusts its output signals to it"
+    },
+    "U1_TEST": {
+      "volts": [
+        0,
+        3.3495
+      ],
+      "source": "J2: SLAU278AH, section 2.1, page 20: the tool senses the board's own VCC on pin 4 and adjusts its output signals to it"
+    },
+    "GND": {
+      "volts": [
+        0,
+        0
+      ],
+      "source": "the reference: J1 pin 2"
+    }
+  }
+}

@@ -91,8 +91,10 @@ classes.
 
 1. Set `d.rules`, `d.net_classes`, `track_width`, `clearance`,
    `edge_clearance`, via sizes first, with the fab's limits in the README.
-2. Silkscreen text below 0.8 mm needs `min_text_height` and
-   `min_text_thickness` in `d.rules` or the DRC flags every label.
+2. Silkscreen text is at least the fab's least height and stroke (0.8 mm
+   and 0.0762 mm when the design names no fab): the DRC gate fails a
+   smaller one whatever `d.rules` says. Set `d.place_designators = True`
+   so the generator places each designator (the `legend` skill).
 3. Generate and run `workcenter erc .` and `workcenter drc .` on the
    unrouted board. Every error except unconnected items is a placement or
    rule mistake; fix it here, not after routing.
@@ -203,6 +205,9 @@ When: about to run `workcenter design --route` or `workcenter autoroute`.
     names the checkout as its source. A container image holds the copy of
     the tools it was built from. Read step 6 as the file says it now, not
     as an earlier session remembered it (M215).
+15. A parser of a tool's output is tested on a line in the tool's own
+    format, quoted with its source (a class or a document) and the tool's
+    version, never on a line the test's author wrote (M234).
 
 Done when: the DRC after the route lists 0 errors, or every remaining
 error is named in the next design change.
@@ -465,6 +470,9 @@ When: touching `tools/workcenter` or `tools/kicadgen.py`'s command line.
    `SOURCE_DATE_EPOCH`, or reads the day from what the command wrote. No
    test file reads the clock when it is loaded: `tests/test_docs.py`
    holds it (M233).
+8. A verdict that 2 commands print is 1 function they both call:
+   `guide.ratings_state` is read by `gates` and `next`, and
+   `tests/test_done.py` holds every kind of record to it (M251).
 
 Done when: `make verify` is green, the configuration table names the
 flag, and every document that writes the command writes one the parser
@@ -516,6 +524,27 @@ that may be absent.
    the engines' own folder set to one that is not there. A test that
    names the engine as present carries no mark, and fails only there
    (M170).
+7. A test that starts an engine carries `@pytest.mark.engine` (or a file's
+   `needs_*` mark built with `engine(...)` from `tests/conftest.py`). A
+   test without it that starts one fails in every run
+   (`tools/ci/engine_marker.py`); `make verify-site` finds such a test.
+8. A test that sources or imports a script which acts when it is loaded
+   (install.sh, a setup script) first gives the script its guard
+   (`if [[ "${BASH_SOURCE[0]}" == "$0" ]]`), with a test that sourcing runs
+   nothing and leaves the caller's shell options. Every path the script
+   writes or reads outside its folder is an environment variable the test
+   points into its own folder, and the folder is the working directory.
+   PATH holds only the test's stand-ins and programs that cannot write; a
+   program that can write when told to (`sed -i`, `awk` with `>`,
+   `find -delete`, `tee`, `mktemp`) is fenced like a writer, and every path
+   is compared after `..` is resolved. The fence has a test of its own that
+   tries each write outside the folder. A shell redirection, and a program
+   called by a path, pass no fence: a scan of the script's code allows them
+   only under a variable the test moves (relative paths, `..`, the checkout
+   and paths built from pieces refused), the scan's own test tries each of
+   those forms, and the harness asserts the scan before it runs the script.
+   The machine may run as root, so a test never relies on a permission
+   error to stay safe (M261).
 
 Done when: the summary shows no unexpected skips, the engine test is
 green on the runner, and a run with an engine taken away is not GREEN.
@@ -581,7 +610,10 @@ When: a change is about to be called done.
    requirement's own sentence, not from the code's restatement of it; for
    a check over copper, 1 case for each kind of copper item reaching each
    other kind (track, arc, via, pad, pour); for a check of a project, 1
-   case with a nested board (M224 to M228).
+   case with a nested board (M224 to M228). For a circuit block: each
+   value a chosen part gives is held to the spec, each spec limit to the
+   datasheet's own equation for it, and each item the block cannot judge
+   goes where a command prints it (M238 to M243, M245 to M247).
 
 7. A branch put on `main` without a pull request (a board repository's
    version, on the owner's word) goes by a fast-forward push, never by
@@ -695,6 +727,13 @@ charger, or any other load from a battery.
    <list>` runs again. A mutation whose anchor no longer matches is fixed
    in the same commit as the edit that moved it, never left to count as a
    survivor (M101).
+7. A test that checks the mutation list against the source (its anchors)
+   fails in every mutant's copy by design: the list's TEST deselects it,
+   and that test asserts the deselect. Before a mutation count is
+   reported, 1 mutant is seen to survive a run with the test that should
+   catch it removed. A stop's advice line, and its side effects on files
+   beside the script's own (a bystander file that must survive), each have
+   a mutant. The list copies every file its tests read (M261).
 
 Done when: the host tests cover steps 1, 2, 3 and 5, the mutation run
 catches every mutation after the last firmware change, and the cut-off
@@ -1279,7 +1318,11 @@ a task.
    starts a second runner from its transcript, and the 2 write the same
    files. The brief tells each helper the same: it sends no message to
    another helper's id or to its own. Talk to a running helper through
-   the files its brief names: the lock, and its notes file (M125).
+   the files its brief names: the lock, and its notes file. Before
+   answering a helper of a scripted run, the lead stops the run, or does
+   not answer: a question from such a helper is answered in the files its
+   brief names, or not at all. A second writer in a tree is found by
+   `git status` showing files the helper did not write (M125, M262).
 9. A helper has stopped when its task says so: the workflow's notice, or
    the stop the lead asked for. A quiet transcript is no stop. Change no
    file a helper owns before that (M125).

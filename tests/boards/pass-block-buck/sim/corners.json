@@ -1,0 +1,7 @@
+{
+  "tolerance": {
+    "L": 0.2,
+    "C": 0.1,
+    "source": "L1 from Bourns SRN2010TA series datasheet, REV. 06/25; C2, C3 from Samsung Electro-Mechanics component library, MLCC data sheet page of CL10A106KP8NNN, the page as fetched on 2026-11-17; it prints no revision"
+  }
+}

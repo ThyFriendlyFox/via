@@ -19,6 +19,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
+from conftest import engine
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -32,9 +33,13 @@ JAR = Path("/opt/workcenters/ee/freerouting/freerouting.jar")
 STAMP = "%Y-%m-%d %H:%M:%S.%f"
 
 needs_libs = pytest.mark.skipif(not LIBS.is_file(), reason="KiCad symbol libraries are not installed")
-needs_kicad = pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
-needs_router = pytest.mark.skipif(
-    not JAR.is_file() or shutil.which("java") is None, reason="FreeRouting is not installed"
+needs_kicad = engine(
+    pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="kicad-cli is not installed")
+)
+needs_router = engine(
+    pytest.mark.skipif(
+        not JAR.is_file() or shutil.which("java") is None, reason="FreeRouting is not installed"
+    )
 )
 
 
@@ -112,10 +117,12 @@ def divider() -> kicadgen.Design:
         name="gen_divider",
         namespace=uuid.UUID("1b2c3d4e-0000-4000-8000-000000000001"),
         outline=(100.0, 100.0, 112.0, 110.0),
-        title="GEN",
     )
     d.power_nets = {"GND": "GND", "VIN": "VBUS"}
     d.flagged_nets = ["GND", "VIN"]
+    # The board's legend: each designator placed by the generator, the name clear of J1's pads.
+    d.place_designators = True
+    d.text("GEN", 110.0, 108.9)
     r = "Resistor_SMD:R_0603_1608Metric"
     d.add(
         "J1",
@@ -145,6 +152,19 @@ def divider() -> kicadgen.Design:
         nets={"1": "OUT", "2": "GND"},
     )
     return d
+
+
+@needs_libs
+def test_the_test_boards_print_a_legend_the_drc_gate_holds():
+    """The DRC gate holds every text a board prints (tools/legend.py). The library put J1's designator
+    0.12 mm over the board's top edge (KiCad's silk_edge_clearance), and the generator's title "GEN" in
+    the board's corner on J1's pad 3: the 4 tests here that run the gates on this board were red."""
+    import legend
+
+    for d in (divider(), poured_divider(), four_layer_divider()):
+        board = legend.read_board(kicadgen.parse(d.board()))
+        found = legend.judge(board, legend.limits(None), legend.read_pack())
+        assert [f.line for f in found] == [], d.name
 
 
 @needs_libs
@@ -447,6 +467,7 @@ def test_hook_refuses_a_scripted_edit_to_a_test_file(command, blocked):
     assert proc.returncode == (2 if blocked else 0), (command, proc.stderr)
 
 
+@pytest.mark.engine
 def test_hook_installer_merges_once_into_user_settings(tmp_path):
     """The installer puts both hooks in the user settings (M35, M119): the one that refuses `cd` and the
     one that refuses a test edited by a script. Kept settings, each added once, then a no-op."""
@@ -553,6 +574,7 @@ def test_design_command_routes_a_poured_board_green(tmp_path):
         "    d.add('R2', 'Device:R', '10k', r, sch_at=(71.12, 58.42), pcb_at=(108.5, 106.5),\n"
         "          nets={'1': 'OUT', '2': 'GND'})\n"
         "    d.zone('GND', layers=('F.Cu', 'B.Cu'), connect='solid')\n"
+        "    d.place_designators = True  # the library puts J1's over the top edge\n"
         "    return d\n",
         encoding="utf-8",
     )

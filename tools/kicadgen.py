@@ -29,7 +29,9 @@ from __future__ import annotations
 
 import copy
 import csv
+import dataclasses
 import importlib.util
+import json
 import math
 import os
 import re
@@ -1102,6 +1104,9 @@ class Design:
     # Rounded board corners: one radius for all four (0 a rectangle, half the short side a stadium),
     # or four, (top-left, top-right, bottom-right, bottom-left), to round one end and square the other.
     corner_radius: float | tuple[float, float, float, float] = 0.0
+    # Rectangles cut through the board, (x1, y1, x2, y2): a slot that lengthens the way along the face
+    # between 2 nets (tools/creepage.py). The router does not see them: place no track across one.
+    cutouts: list[tuple[float, float, float, float]] = field(default_factory=list)
     thickness: float = 1.6  # the finished board, mm; any other value writes a stackup on two layers too
     # The solder mask's colour, the legend's colour and the pads' finish: a colour is one of COLOURS or
     # "#RRGGBBAA", a finish one of FINISHES. Each goes into the board's stackup, where the 3D renders
@@ -1138,9 +1143,17 @@ class Design:
     # The fab the board is made for: a rule set in rules/ (or a .kicad_dru path) written into the project
     # as <name>.kicad_dru, its board-wide minimums laid over the board's own (rules/README.md).
     fab: str = ""
+    # The legend (tools/legend.py): True places every designator round its part, the same on every run;
+    # `designators` holds those a design fixes by hand (designator()). Off by default, so boards made
+    # before the placer write the bytes they wrote. `legend_notes` names each designator the placer moved
+    # to the Fab layer.
+    place_designators: bool = False
+    designators: dict[str, tuple[float, float, float]] = field(default_factory=dict)
+    legend_notes: list[str] = field(default_factory=list)
     zones: list[dict] = field(default_factory=list)  # copper pours, see zone()
     keepouts: list[dict] = field(default_factory=list)  # areas no track, via or part enters, see keepout()
     islands: list[list[str]] = field(default_factory=list)  # pads cut off from their pour, set by write()
+    filled: dict = field(default_factory=dict)  # the DRC report of the last zone fill write() ran
     # Nets taken as held at a level though nothing on this board holds them, each with the reason: an
     # internal pull in a datasheet, a pull on the other board of a joint (undefined_inputs()).
     defined_nets: dict[str, str] = field(default_factory=dict)
@@ -1160,6 +1173,9 @@ class Design:
     # Each via write() adds through a pour's island after routing, with the island it ties, so a via
     # that moves between two runs can be traced to the pads it serves (stitch_zones()).
     stitches: list[dict] = field(default_factory=list)
+    # Text files write() puts beside the project, by their path under it: a block's deck, ratings.json and
+    # parts.csv (tools/blocks.py). A design that names none writes what it wrote before.
+    files: dict[str, str] = field(default_factory=dict)
     _holes_cache: tuple | None = field(default=None, repr=False)
     _symcache: dict[str, Symbol] = field(default_factory=dict, repr=False)
     _fpcache: dict[str, Footprint] = field(default_factory=dict, repr=False)
@@ -1551,6 +1567,11 @@ class Design:
         if any(item[0] in needed for item in (*self.segments, *self.vias)):
             return 0
         return sum(n - 1 for n in needed.values())
+
+    def designator(self, ref: str, x: float, y: float, angle: float = 0.0) -> None:
+        """Fix a part's designator by hand: its centre at (x, y) on the board, at `angle`. The placer
+        (place_designators) leaves it there, and `workcenter drc` still judges it."""
+        self.designators[ref] = (float(x), float(y), float(angle))
 
     def text(
         self,
@@ -3295,6 +3316,18 @@ class Design:
             if part.on_board and part.pcb_at:
                 pcb.append(self._footprint_instance(part, net_ids))
         pcb.extend(self._edge_cuts(ns))
+        for i, (cx1, cy1, cx2, cy2) in enumerate(self.cutouts):
+            pcb.append(
+                [
+                    "gr_rect",
+                    ["start", fmt(cx1), fmt(cy1)],
+                    ["end", fmt(cx2), fmt(cy2)],
+                    ["stroke", ["width", "0.1"], ["type", "default"]],
+                    ["fill", "no"],
+                    ["layer", Q("Edge.Cuts")],
+                    ["uuid", uid(ns, f"edge/cutout/{i}")],
+                ]
+            )
         if self.title:
             pcb.append(
                 [
@@ -3400,6 +3433,10 @@ class Design:
                     ["polygon", ["pts", *[["xy", fmt(px), fmt(py)] for px, py in k["polygon"]]]],
                 ]
             )
+        if self.place_designators or self.designators:
+            import legend  # tools/legend.py reads the board this method builds
+
+            self.legend_notes = legend.lay(pcb, self.fab or None, self.designators, self.place_designators)
         pcb.append(["embedded_fonts", "no"])
         return dumps(pcb) + "\n"
 
@@ -4287,17 +4324,28 @@ class Design:
                 + f"\n\n# Copied by the workcenter from {src.name} (Design.fab); edit the source, not this file.\n"
             )
         files.update(self.lib_tables(out_dir))
+        for rel in self.files:  # all are judged before any is written
+            if Path(rel).is_absolute() or ".." in Path(rel).parts:
+                raise ValueError(f"Design.files: {rel} is no path under the project")
+            if not Path(rel).parts:
+                raise ValueError(f"Design.files: {rel} names no file under the project")
+            if out_dir / rel in files:
+                raise ValueError(f"Design.files: {rel} is a file write() makes itself")
+        for rel, text in self.files.items():
+            (out_dir / rel).parent.mkdir(parents=True, exist_ok=True)
+            files[out_dir / rel] = text
         for p, text in files.items():
             p.write_text(text, encoding="utf-8")
         self.stitches = []
+        self.filled = {}
         if self.zones:
             pcb = out_dir / f"{self.name}.kicad_pcb"
-            fill_zones(pcb)
+            self.filled = fill_zones(pcb)
             if self.segments:  # a routed board: tracks cut the pours, stitch the pieces back together
                 added, self.islands = stitch_zones(self, pcb)
                 if added:
                     pcb.write_text(self.board(), encoding="utf-8")
-                    fill_zones(pcb)
+                    self.filled = fill_zones(pcb)
         return list(files)
 
 
@@ -4559,33 +4607,51 @@ def _via_spot(
     return None
 
 
-def fill_zones(pcb: Path, kicad_cli: str = "kicad-cli") -> None:
-    """Fill the board's zones in place with KiCad (headless) and save it in KiCad's own format."""
+def fill_zones(pcb: Path, kicad_cli: str = "kicad-cli") -> dict:
+    """Fill the board's zones in place with KiCad (headless) and save it in KiCad's own format. Returns
+    the DRC report of the filled board."""
+    return drc_report(pcb, kicad_cli, fill=True)
+
+
+def drc_report(pcb: Path, kicad_cli: str = "kicad-cli", fill: bool = False) -> dict:
+    """KiCad's DRC of a board as its JSON report; with `fill`, after it fills the zones and saves the
+    board."""
     exe = shutil.which(kicad_cli)
     if exe is None:
-        raise FileNotFoundError("kicad-cli is needed to fill zones")
+        raise FileNotFoundError("kicad-cli is needed to fill zones" if fill else "kicad-cli")
     with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "drc.json"
+        refill = ["--refill-zones", "--save-board"] if fill else []
         proc = subprocess.run(
-            [
-                exe,
-                "pcb",
-                "drc",
-                "--refill-zones",
-                "--save-board",
-                "--format",
-                "json",
-                "--output",
-                str(Path(tmp) / "fill.json"),
-                str(pcb),
-            ],
+            [exe, "pcb", "drc", *refill, "--format", "json", "--output", str(out), str(pcb)],
             capture_output=True,
             text=True,
             check=False,
         )
+        report = json.loads(out.read_text(encoding="utf-8")) if out.is_file() else {}
     if proc.returncode not in (0, 5):  # 5: violations found, the gates report those
-        raise RuntimeError(
-            f"kicad-cli could not fill the zones of {pcb}: {proc.stderr.strip() or proc.stdout.strip()}"
-        )
+        doing = "fill the zones of" if fill else "check"
+        raise RuntimeError(f"kicad-cli could not {doing} {pcb}: {proc.stderr.strip() or proc.stdout.strip()}")
+    return report
+
+
+NET_IN_ITEM_RE = re.compile(r"\[([^\]]+)\]")
+
+
+def open_connections(report: dict) -> tuple[int, dict | None]:
+    """The count of a DRC report's unconnected items, and the first: its net as the design names it
+    (KiCad writes a local net /NAME) and its 2 ends, each as KiCad describes it with its place."""
+    items = report.get("unconnected_items", [])
+    if not items:
+        return 0, None
+    ends = items[0].get("items", [])
+    m = next((NET_IN_ITEM_RE.search(e.get("description", "")) for e in ends), None)
+    net = m.group(1).removeprefix("/") if m else "?"
+    said = [
+        f"{e.get('description', '')} at ({e.get('pos', {}).get('x', 0):g}, {e.get('pos', {}).get('y', 0):g})"
+        for e in ends
+    ]
+    return len(items), {"net": net, "ends": said}
 
 
 # ------------------------------------------------------- design files, routing
@@ -4644,7 +4710,10 @@ def board_copper(path: Path) -> dict:
     return {"segments": segments, "vias": vias, "arcs": len(children(root, "arc"))}
 
 
-UNROUTED_RE = re.compile(r"Auto-routing was completed in .*?\((\d+) unrouted\)")
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+import routers  # noqa: E402  (tools/routers.py: the routers behind route())
+
 # A fine-pitch part: 0.5 mm pitch or less (PROCESSES.md P4 step 11). Its nets are the route's second stage.
 FINE_PITCH = 0.5
 # 2 nets are a pair when their names differ only in an ending of a pair: `TX_P` and `TX_N`, `USB_D+`
@@ -4689,21 +4758,33 @@ def route(
     jar: Path | None = None,
     passes: int = 60,
     timeout: int = 900,
-    java: str = "java",
+    java: str | None = None,
     seed: dict | None = None,
     threads: int = 0,
     order: bool = False,
+    router: str = routers.DEFAULT,
 ) -> dict:
-    """Export the DSN, run FreeRouting, merge the session into the design. Returns a summary.
-    `threads` above 0 is FreeRouting's `-mt`, the most threads it routes with. `order` routes the
-    stages of `Design.route_stages()` one after the other, a FreeRouting run each, and lists them in
-    the summary's "stages"; it takes no seed.
+    """Export the DSN, run the router, merge the session into the design. Returns a summary.
+    `router` names 1 of `routers.ROUTERS` (FreeRouting 1.9.0 by default); `jar` and `java`, when given,
+    replace its own. `threads` above 0 is the router's `-mt`. `order` routes the stages of
+    `Design.route_stages()` one after the other, a router run each, and lists them in the summary's
+    "stages"; it takes no seed.
     `seed` is a previous route's copper as `Design.seed_wiring()` keeps it. The summary's `unrouted` is
-    FreeRouting's own count when its log has one, else `Design.bare_connections()` when the route left
-    every connection without copper, else None."""
-    jar = jar or Path(os.environ.get("FREEROUTING_JAR", "/opt/workcenters/ee/freerouting/freerouting.jar"))
-    if not jar.is_file():
-        raise FileNotFoundError(str(jar))
+    the router's own count when its log has one, else `Design.bare_connections()` when the route left
+    every connection without copper, else None. Every rule here is the workcenter's: the router only
+    turns the DSN into a session (the autoroute skill's "The rules around a route")."""
+    engine = routers.get(router)
+    if jar is not None or java is not None:
+        engine = dataclasses.replace(
+            engine,
+            jar_env="",
+            jar_default=Path(jar) if jar is not None else engine.jar(),
+            java_env="",
+            java_default=java if java is not None else engine.java(),
+        )
+    why = engine.absent()
+    if why:
+        raise FileNotFoundError(why)
     build_dir = Path(build_dir)
     build_dir.mkdir(parents=True, exist_ok=True)
     dsn, ses, log = (
@@ -4713,23 +4794,7 @@ def route(
     )
 
     def freerouting(dsn: Path, ses: Path, log: Path) -> str:
-        ses.unlink(missing_ok=True)
-        # FreeRouting 1.9.0: -de, -do, -mp and -dct. Without `-dct 0` it waits 20 s for a click on a
-        # dialog that asks to confirm the start, and nobody sees a dialog here. It needs a display;
-        # xvfb-run provides one headless.
-        cmd = [java, "-jar", str(jar), "-de", str(dsn), "-do", str(ses), "-mp", str(passes), "-dct", "0"]
-        if threads > 0:
-            cmd += ["-mt", str(threads)]
-        if not os.environ.get("DISPLAY") and shutil.which("xvfb-run"):
-            cmd = ["xvfb-run", "-a", *cmd]
-        proc = subprocess.run(
-            cmd, cwd=build_dir, capture_output=True, text=True, timeout=timeout, check=False
-        )
-        text = (proc.stdout or "") + "\n" + (proc.stderr or "")
-        log.write_text(text, encoding="utf-8")
-        if proc.returncode != 0 or not ses.is_file():
-            raise RuntimeError(f"FreeRouting exited {proc.returncode}; see {log}")
-        return text
+        return engine.run(dsn, ses, log, passes, threads, timeout, build_dir)
 
     stages = []
     if order and seed:
@@ -4745,14 +4810,13 @@ def route(
             files[0].write_text(design.dsn(nets=done), encoding="utf-8")
             text = freerouting(*files)
             s, v = design.merge_ses(files[1].read_text(encoding="utf-8"))
-            m = UNROUTED_RE.search(text)
             stages.append(
                 {
                     "stage": stage,
                     "nets": nets,
                     "segments": s,
                     "vias": v,
-                    "unrouted": int(m.group(1)) if m else None,
+                    "unrouted": engine.unrouted(text),
                     "log": str(files[2]),
                 }
             )
@@ -4762,18 +4826,21 @@ def route(
         dsn.write_text(design.dsn(seed), encoding="utf-8")
         text = freerouting(dsn, ses, log)
         segments, vias = design.merge_ses(ses.read_text(encoding="utf-8"))
-    m = UNROUTED_RE.search(text)
     # FreeRouting 1.9.0 logs no count, and it ends with exit code 0 on a board where it joined nothing
     # (every part outside the outline, a width that enters no pad). Such a board holds no copper for any
     # net that needs it, and its connections are the count; with copper on one of them the DRC decides.
-    unrouted = int(m.group(1)) if m else design.bare_connections() or None
+    count = engine.unrouted(text)
+    unrouted = count if count is not None else design.bare_connections() or None
     return {
+        "router": engine.name,
         "dsn": str(dsn),
         "ses": str(ses),
         "log": str(log),
         "segments": segments,
         "vias": vias,
         "unrouted": unrouted,
+        # The router's own count of clearance violations, not judged here: the DRC judges clearances.
+        "violations": engine.violations(text),
         **({"stages": stages} if stages else {}),
     }
 
