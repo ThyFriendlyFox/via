@@ -851,13 +851,21 @@ charger, or any other load from a battery.
    only after the whole list has run 3 times with the same count; a
    mutant caught on some runs and not others is not caught: find the
    order its test rests on and fix the test before the count is written.
-   A script that ends a background child keeps nothing it needs between
-   the child's `&` and the line that keeps its pid: it ends the child's
-   whole process group (made before the `&` returns), and a signal in that
-   gap is noted and taken once the pid is kept. Its test holds the script
-   at each such point (a BASH_ENV hook with a DEBUG trap, or a stand-in
-   that waits for a mark) and sends the kill there, so the order is chosen
-   and the test fails every time on the fault (M272). A process that
+   A script that ends a background child ends it without a signal by pid
+   where it can: the child waits on a pipe whose write end only the parent
+   holds, so the parent's close or its death ends it. A signal goes only to
+   a child the script has not reaped, and to a process group only while the
+   group has members. A signal that comes while a job starts, or while a
+   lock is made, is noted and taken once the pid or the lock is kept, in the
+   script's own shell, never in a subshell; every exit ignores further
+   signals and broken pipes before it runs the cleanup, and every wait in
+   the cleanup has a bound. Every setting the script reads is checked
+   before it acts. Its test holds the script at each such point (a
+   BASH_ENV hook with a DEBUG trap, or a stand-in that waits for a mark)
+   and sends the kill there, to the pid and to the process group, so the
+   order is chosen and the test fails every time on the fault, not 1 time
+   in 100; and one test runs the real program the script stops, not only a
+   stand-in (M272). A process that
    stops on a signal ignores a later stop until its clean-up is done: a
    parent that passes a signal on (`enginelock.py hold`) sends a second
    one to a child that already got it from its group. A test of a stop

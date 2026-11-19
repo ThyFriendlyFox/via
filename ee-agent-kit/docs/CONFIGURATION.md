@@ -554,6 +554,22 @@ checkout) and `--json` stand before the listing's name.
 | `WORKCENTER_REPO` | URL | this repository | Where the cloud environment clones from. |
 | `WORKCENTER_REF` | branch or tag | `main` | What it checks out. |
 
+
+## `ee-agent-kit/lead/gate-and-push.sh` (the gate on a machine with no CI)
+
+| Name | Kind | Default | What it does |
+|---|---|---|---|
+| `GATE_DIR` | path | none (required) | The folder of the lock (`GATE.lock`) and of the run's files: `verify-<label>.log`, `gate-<label>.status`, `gate-<label>.foreign` and `gate-<label>.look`. |
+| `GATE_FOLDERS` | paths, `:` between them | none | More folders whose scripts count as a helper's work. |
+| `GATE_QUIET` | command | `quiet.py` beside the script | The program that prints busy processes; nothing means quiet. |
+| `GATE_QUIET_SECONDS` | seconds, a number, 0 or more | `15` | Between 2 looks for quiet before the gate; a fraction works. |
+| `GATE_QUIET_TRIES` | a whole number above 0 | `3` | Quiet looks in a row before the gate starts. |
+| `GATE_QUIET_LIMIT` | whole seconds, 0 or more | `3600` | How long to wait for quiet; then exit 4. The wait counts real seconds. |
+| `GATE_SAMPLE_SECONDS` | seconds, a number above 0 | `20` | Between 2 looks for helpers' work during the gate. |
+| `GATE_STOP_SECONDS` | whole seconds, 0 or more | `30` | What a stopped make and its process group get to end before SIGKILL. Keep it above what make's tests need to end their own children: testshards' shards run in sessions of their own. |
+
+Any other value of `GATE_QUIET_SECONDS`, `GATE_QUIET_TRIES`, `GATE_QUIET_LIMIT`, `GATE_SAMPLE_SECONDS` or `GATE_STOP_SECONDS` is a bad call: exit 2 with 1 line on stderr, before the lock.
+
 <!-- Rules for these tables:
      · Every shipped option appears here — an undocumented option is a
        defect.

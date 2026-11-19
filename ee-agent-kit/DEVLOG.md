@@ -39,6 +39,12 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-19 — The gate script no longer leaves its sampler, or its lock, behind
+
+The health gate of 2026-11-19 went red on 1 test: the lead's gate script waited 60 s for a sleep its sampler left behind when it was stopped. The sampler now sleeps on a pipe that ends with the gate, whatever ends the gate, so it needs no signal. 3 reviews then found more of the same kind: a second signal, a closed pipe, or a signal to the gate's whole process group at the wrong instant left the lock for good; a test that ignored the stop made the gate hang; a fraction of a second in the quiet wait made the gate push while helpers ran. Each is fixed, and each has a test that holds the script at that instant and sends the signal there. The fixer's last round (the lock in the gate's own shell, the quiet settings checked, no `$(...)` in the gate's own shell, a wait on a child bash had already reaped) had no further independent check. 1 limit is left: bash can lose a stop that comes in the gate's first instants, so a stop that does not end the gate is sent again. The gate runs only on a machine with no CI now; where CI runs, its `verdict` gates.
+
+Evidence: branch `wip/sampler` at 91eaf06; `tests/test_lead.py` (87 tests); M272.
+
 ## 2026-11-19 — The website and the example boards say Via
 
 The owner asked that the old name leave the website and the example boards. The name pass had left 5 program strings that the site and the boards quote: the gates' legend line, the rule file's header, the downloaded file's note, a titled schematic's company and the local image tag. They say Via now, and the readers take both forms, because boards made before today keep their files; only those 2 header forms name a fab. 1 helper per example board reworded its documents, Lark's light disc's rule file was written again by the tool, the example pages were rebuilt by `site/examples.py`, and Rosetta v0.1's shown gates run was brought to the program's new line. The name test now reads the examples' Markdown and the visible text of every site page. An independent check found 43 files under `examples/` changed, all Markdown or Python but 1 line of Lark's rule file, no schematic, board or picture; gates on 3 boards gave the same verdicts with only the name different, and the built site has 0 hits for the old name. 5 routed boards keep the old header in their copied rule files until they are next routed, and Wyvern's sources keep a phrase until a follow-up.
