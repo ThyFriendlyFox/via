@@ -36,7 +36,7 @@ folder). The 15 files new to the table on 2026-11-18 were marked by
 reading them: `yes` where a test runs kicad-cli or ngspice, or the engine
 lock's own commands.
 
-The 16 files new to the table on 2026-11-18 (77ad649) were measured
+The 16 files new to the table on 2026-11-18 were measured
 alone, 1 run each, under the engine lock at a load under 2. Their
 `engine` comes from their `engine` marks
 (`pytest --collect-only -m engine`). Seconds alone are lower than
