@@ -897,6 +897,33 @@ def fab_project_rules(text: str, board: dict[str, float]) -> str:
     return "".join(out)
 
 
+# The last line of a project's rule file: who copied it, and from which source. Before 2026-11-19 it
+# said "the workcenter", the product's older name (tools/legend.py fab_named reads both).
+RULE_HEADER = re.compile(
+    r"# Copied by (?:Via|the workcenter) from (\S+\.kicad_dru) \(Design\.fab\); "
+    r"edit the source, not this file\."
+)
+
+
+def rule_file_changes(kept: str, written: str) -> list[int]:
+    """The 1-based numbers of the lines where a project's rule file differs from the one the design
+    writes, besides its header's wording: a header line differs only when the copier's name does, and
+    the two name the same source. Lines one file has and the other lacks are counted as differing."""
+    old, new = kept.split("\n"), written.split("\n")
+    changed = []
+    for i in range(max(len(old), len(new))):
+        a = old[i] if i < len(old) else None
+        b = new[i] if i < len(new) else None
+        if a == b:
+            continue
+        ma = RULE_HEADER.fullmatch(a) if a is not None else None
+        mb = RULE_HEADER.fullmatch(b) if b is not None else None
+        if ma and mb and ma.group(1) == mb.group(1):
+            continue
+        changed.append(i + 1)
+    return changed
+
+
 def _inside_polygon(x: float, y: float, poly: list[tuple[float, float]]) -> bool:
     """Even-odd point-in-polygon test."""
     inside = False
@@ -4307,6 +4334,21 @@ class Design:
             tables[out_dir / name] = f"({head}\n  (version 7)\n" + "\n".join(rows) + "\n)\n"
         return tables
 
+    def rule_file(self) -> tuple[str, str] | None:
+        """The project's copy of its fab's rules: (file name, text), or None for a design that names no
+        fab. KiCad reads <name>.kicad_dru beside the project: its DRC, and so the gates, check the fab's
+        layer and condition rules with the board's own; the fab's board-wide limits are already the
+        board's own minimums (board_rules), where they cannot override a net class (M62). The text
+        depends on the design's rules and the fab's source only, never on the board's copper, so
+        `workcenter design --rules-only` writes it again without writing the board."""
+        if not self.fab:
+            return None
+        src = fab_rules(self.fab)
+        return f"{self.name}.kicad_dru", (
+            fab_project_rules(src.read_text(encoding="utf-8"), self.board_rules()).rstrip("\n")
+            + f"\n\n# Copied by Via from {src.name} (Design.fab); edit the source, not this file.\n"
+        )
+
     def write(self, out_dir: Path) -> list[Path]:
         out_dir.mkdir(parents=True, exist_ok=True)
         files = {
@@ -4314,15 +4356,9 @@ class Design:
             out_dir / f"{self.name}.kicad_sch": self.schematic(),
             out_dir / f"{self.name}.kicad_pcb": self.board(),
         }
-        if self.fab:
-            # KiCad reads <name>.kicad_dru beside the project: its DRC, and so the gates, check the fab's
-            # layer and condition rules with the board's own; the fab's board-wide limits are already
-            # the board's own minimums (board_rules), where they cannot override a net class (M62).
-            src = fab_rules(self.fab)
-            files[out_dir / f"{self.name}.kicad_dru"] = (
-                fab_project_rules(src.read_text(encoding="utf-8"), self.board_rules()).rstrip("\n")
-                + f"\n\n# Copied by Via from {src.name} (Design.fab); edit the source, not this file.\n"
-            )
+        rules = self.rule_file()
+        if rules is not None:
+            files[out_dir / rules[0]] = rules[1]
         files.update(self.lib_tables(out_dir))
         for rel in self.files:  # all are judged before any is written
             if Path(rel).is_absolute() or ".." in Path(rel).parts:
