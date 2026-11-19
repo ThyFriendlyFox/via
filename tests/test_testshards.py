@@ -12,6 +12,7 @@ import re
 import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -551,8 +552,14 @@ def test_a_stop_signal_during_the_clean_up_does_not_cut_it_short(tmp_path):
         while len(list(pids.iterdir())) < 2:
             assert time.monotonic() < deadline and proc.poll() is None, "the 2 shards did not start"
             time.sleep(0.1)
+        # The runner kills its shards (each sleeps 60 s) and waits for them, so it exits in well under
+        # 30 s. A runner that hangs, or that waits for shards it did not kill, fails here, not by a
+        # timeout outside the test; the finally then kills it with SIGKILL, which it cannot ignore.
+        deadline = time.monotonic() + 30
         while proc.poll() is None:
+            assert time.monotonic() < deadline, "the runner did not exit within 30 s of repeated TERM"
             proc.send_signal(signal.SIGTERM)
+            time.sleep(0.001)
         out = proc.stdout.read()
         left = [p.name for p in pids.iterdir() if Path(f"/proc/{p.name}").exists()]
         assert left == [], out
@@ -567,6 +574,30 @@ def test_a_stop_signal_during_the_clean_up_does_not_cut_it_short(tmp_path):
             proc.kill()
             proc.wait()
         proc.stdout.close()
+
+
+def test_the_clean_up_kills_and_waits_for_every_shard_whoever_reaps_orphans():
+    """The 2 stop tests above see a shard left unwaited only while it stays in /proc. Where a reaper
+    takes orphans at once (a CI runner's init, a child subreaper), a runner that skipped the wait could
+    pass them. Here the test itself is each child's parent, so no other process can reap it: `end_all`
+    must kill each one's group and wait for it. 3 children that sleep 60 s, each in its own session as a
+    shard is, and 1 that has already exited: each has a return code after, and the 3 died of SIGKILL."""
+    sleeper = [sys.executable, "-c", "import time; time.sleep(60)"]
+    procs = [subprocess.Popen(sleeper, start_new_session=True) for _ in range(3)]
+    done = subprocess.Popen([sys.executable, "-c", "pass"], start_new_session=True)
+    done.wait()
+    procs.insert(1, done)
+    try:
+        ended = threading.Thread(target=testshards.end_all, args=(procs,), daemon=True)
+        ended.start()
+        ended.join(timeout=30)
+        assert not ended.is_alive(), "end_all did not return within 30 s: a shard was not killed"
+        assert [p.returncode for p in procs] == [-signal.SIGKILL, 0, -signal.SIGKILL, -signal.SIGKILL]
+    finally:
+        for p in procs:
+            if p.returncode is None:
+                p.kill()
+                p.wait()
 
 
 # -- the work folder and the table ----------------------------------------------------------------------
