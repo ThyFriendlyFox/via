@@ -39,6 +39,12 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-19 — The example boards' rule files say Via, written again without routing
+
+Only `workcenter design` writes a project's rule file, and without `--route` it writes the board unrouted over the routed one. `--rules-only` writes the rule file alone, and only when its header line is all that differs. On the 5 routed boards (Lark's driver, brain and ear; Wyvern v0.1 and v0.2) it changed 1 line each. `design --check` printed the same lines before and after, the boards' other files kept their SHA256, and `gates` on Lark's driver and Wyvern v0.2 printed the same verdict lines (both RED before and after, for reasons of their own). Wyvern's notes called the product by its old name where they say why its datasheets are not kept; they say "to keep the repository small" now. `workcenter docs` wrote v0.1's CONTENTS.md again: 28 parts there got the datasheet rows the shared library gained with v0.2 on 2026-11-12, which v0.1's file never showed (M306). An independent check said the piece holds up; its 6 points are fixed.
+
+Evidence: `tests/test_fab.py` (26 tests), `tests/test_product_name.py` (9 tests); branch `wip/name-rest`, bb084ae, 9664d07, 3f41c3c, a8bf613; M306.
+
 ## 2026-11-19 — The gate script no longer leaves its sampler, or its lock, behind
 
 The health gate of 2026-11-19 went red on 1 test: the lead's gate script waited 60 s for a sleep its sampler left behind when it was stopped. The sampler now sleeps on a pipe that ends with the gate, whatever ends the gate, so it needs no signal. 3 reviews then found more of the same kind: a second signal, a closed pipe, or a signal to the gate's whole process group at the wrong instant left the lock for good; a test that ignored the stop made the gate hang; a fraction of a second in the quiet wait made the gate push while helpers ran. Each is fixed, and each has a test that holds the script at that instant and sends the signal there. The fixer's last round (the lock in the gate's own shell, the quiet settings checked, no `$(...)` in the gate's own shell, a wait on a child bash had already reaped) had no further independent check. 1 limit is left: bash can lose a stop that comes in the gate's first instants, so a stop that does not end the gate is sent again. The gate runs only on a machine with no CI now; where CI runs, its `verdict` gates.

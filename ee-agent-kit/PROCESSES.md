@@ -1072,7 +1072,9 @@ before the first edit of a request.
    tables come from `workcenter gates <project> --report docs/gates.md`, once
    per board. The version's `CONTENTS.md` and `datasheets/` come from
    `workcenter docs <version dir>`, after any change to the version's parts,
-   files or a datasheet.
+   files or a datasheet. A library 2 versions share is a part of both: after
+   a change to it, run `workcenter docs` on every version that reads it,
+   and last, after the README's last edit (M306).
 6. `git diff --stat <its last commit> -- <previous version>/` shows one
    file, its README, with one line changed: the banner of step 2.
 7. Before the first version of a board whose later versions add buses

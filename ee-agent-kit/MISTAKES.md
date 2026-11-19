@@ -1863,3 +1863,9 @@ What happened: The Java review's fix (73cb50e, on wip/install2) held the java th
 Cost: 1 red run by hand, and a fix of the stand-in (c49fece); found by GitHub, not here.
 Root cause: A change that widens what every caller's stand-in must satisfy was checked against the callers its branch knew; another branch added callers in the same hours, and the run after the merge chose its test files by what the pick had touched, not by who calls the changed check.
 Process: P14
+
+## M306 — 2026-11-19 — A shared library grew, and an archived version's CONTENTS.md was not written again
+What happened: Wyvern v0.2 (152eb4c, 2026-11-12) added 48 rows to `examples/snapdragon-dev-board/library/sources.csv`, which v0.1 and v0.2 share. Only v0.2's CONTENTS.md was written again. v0.1's kept "no row in `../library/sources.csv`" for 28 parts that had a row. v0.2's own CONTENTS.md, written in the same pull request, lacked its README's heading "What changed in v0.2: one flat board", which the README had at that commit. The name leftovers' builder found both on 2026-11-19 when `workcenter docs` wrote the 2 files again (9664d07).
+Cost: 2 CONTENTS.md files that `workcenter docs` did not reproduce for 7 days; a helper's round to find why.
+Root cause: `workcenter docs` was run for the version being built, not for every version that reads the library it changed, and once before the README's last heading. Nothing checks that a committed CONTENTS.md is what `workcenter docs` writes; that check is left.
+Process: P22
