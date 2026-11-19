@@ -329,8 +329,16 @@ def test_every_run_a_document_shows_is_what_the_command_prints(tmp_path):
         shown = {key: lines for key, lines in shown.items() if key[1][0] != "chip"}
     kept = ("tests/boards/", "tests/chips/", "examples/")
     boards = {arg for _, argv in shown for arg in argv if arg.startswith(kept)}
-    for board in boards:
-        shutil.copytree(ROOT / board, tmp_path / board, ignore=shutil.ignore_patterns("build", "__pycache__"))
+    # A board in the repository reads the library beside it (`tests/boards/library`: its facts tell the
+    # SIM gate which parts carry a thermal figure); the copy keeps it, as a run in the repository has it.
+    libraries = {str(Path(board).parent / "library") for board in boards}
+    for folder in sorted(boards | {lib for lib in libraries if (ROOT / lib).is_dir()}):
+        shutil.copytree(
+            ROOT / folder,
+            tmp_path / folder,
+            ignore=shutil.ignore_patterns("build", "__pycache__"),
+            dirs_exist_ok=True,
+        )
     printed: dict[tuple[str, ...], list[str]] = {}
     for _, argv in shown:
         if argv not in printed:
