@@ -82,7 +82,7 @@
             <h1 class="display" id="ex-title">Lark</h1>
             <p class="ex-tagline">A ceiling-fan bulb you talk to</p>
             <p class="lede">Lark is an A19 light bulb for a ceiling fan's light kit. It screws into the fan's E26 socket, hangs base-up, and takes 120 V mains like any bulb. Its light is 16 LEDs in 2 strings, warm (2700 K) and cool (5000 K), each driven with a steady current, so the light shows no 120 Hz ripple and no PWM: under a fan's turning blades a ripple shows as a strobe. It is built to be talked to: 2 microphones at the dome's tip face the room, and an ESP32-S3 with 8 MB of PSRAM runs Espressif's ESP-SR wake word and command models inside the bulb, with no hub, no app and no network. A 3-place slider on the neck sets what else it joins: Alexa (Zigbee 3.0, to an Echo with a Zigbee hub in it), nothing (voice only), or Apple Home (HomeKit over Thread, to a HomePod or an Apple TV). An ESP32-C6 module runs that radio and the light.</p>
-            <ul class="chips" aria-label="The board"><li>v0.1</li><li class="ok">GREEN on all 4 boards</li></ul>
+            <ul class="chips" aria-label="The board"><li>v0.1</li><li>4 boards</li><li class="ok">GREEN on all 4 boards</li></ul>
           </div>
           <div class="turntable" data-turntable data-frames="36" data-columns="6" tabindex="0" role="img" aria-label="Lark in 3D, turning; drag or use the arrow keys to turn it">
             <div class="tt-frames" style="aspect-ratio:616 / 368;background-image:url(lark/spin.webp)"></div>
@@ -98,6 +98,94 @@
             <h2 class="title" id="hard-title">What's hard about it, and where each part is</h2>
           </div>
           <div class="hard" data-reveal data-stagger><div><h3>A bulb's inside is a cone, a sphere and a 20 mm tube, and a mains supply, 2 LED drivers, 2 processors and 2 microphones must fit in it</h3><p>4 boards in 2 directions: 2 stand at 90 degrees to each other, 2 lie across them, joined by soldered tongues through slots. <code>bulb.py</code> holds the housing as numbers and every part's height, and stops a design whose part leaves the housing or meets another board</p></div><div><h3>Every node of a non-isolated bulb sits at mains potential</h3><p>IPC-2221B spacings in <a class="link" href="https://github.com/ThyFriendlyFox/via/blob/main/examples/fan-bulb/v0.1/rules/lark.kicad_dru"><code>rules/lark.kicad_dru</code></a>: 0.8 mm between the mains nets and the logic on the outer layers, 0.2 mm inside the board; the housing is the insulation</p></div><div><h3>A fan's blades turn any light ripple into a strobe</h3><p>average-current bucks with analog dimming (no PWM at the LEDs), and 9.9 uF of bulk that holds the bus over the strings' highest voltage through every 120 Hz valley: 117.0 V at the worst corner against the 103.3 V the controllers need</p></div><div><h3>A switch on the side of a mains-powered bulb</h3><p>the slider is a magnet outside the sealed housing over 2 Hall switches inside it: no contact, no hole, no insulation to bridge</p></div><div><h3>Voice in the bulb, with no cloud</h3><p>an ESP32-S3 with 8 MB of PSRAM for ESP-SR's front end, wake word and command models; its own radio is not wired, and it reaches the network only through the C6's UART, which carries commands, never sound</p></div><div><h3>The microphones in a hot, closed dome</h3><p>the ear at the dome's tip, the coolest place in a bulb that hangs base-up; SPH0641LU4H-1, rated to 100 C at 3.6 V</p></div></div>
+        </div>
+      </section>
+
+      <section class="section band" id="board" aria-labelledby="board-title">
+        <div class="wrap">
+          <div class="head" data-reveal data-stagger>
+            <p class="eyebrow">The boards, track by track</p>
+            <h2 class="title" id="board-title">Every track and part of the routed boards, drawn from their files</h2>
+            <p class="lede">Lark is four boards, each in a folder of its own. You can pick a board, point at a pad to see its part, and click a track, a via or a pad to follow its connection across the board.</p>
+          </div>
+          <div class="ex-boards" role="tablist" aria-label="The boards">
+            <button type="button" role="tab" id="tab-driver" aria-controls="board-driver" aria-selected="true" tabindex="0">Driver</button>
+            <button type="button" role="tab" id="tab-light" aria-controls="board-light" aria-selected="false" tabindex="-1">Light</button>
+            <button type="button" role="tab" id="tab-brain" aria-controls="board-brain" aria-selected="false" tabindex="-1">Brain</button>
+            <button type="button" role="tab" id="tab-ear" aria-controls="board-ear" aria-selected="false" tabindex="-1">Ear</button>
+          </div>
+          <div class="explorer" id="board-driver" role="tabpanel" aria-labelledby="tab-driver" data-explorer data-src="lark/board-driver.svg">
+            <p class="ex-facts"><code>examples/fan-bulb/v0.1/driver/lark_driver.kicad_pcb</code>: four copper layers, 56 parts, 380 track segments, 65 vias and 33 nets, 45 × 57.8 mm.</p>
+            <div class="ex-tools" role="toolbar" aria-label="The drawing">
+              <div class="ex-layers" aria-label="Layers">
+                <button type="button" aria-pressed="true" data-layer="F.Cu"><i></i>Front</button>
+                <button type="button" aria-pressed="true" data-layer="In1.Cu"><i></i>In1</button>
+                <button type="button" aria-pressed="true" data-layer="In2.Cu"><i></i>In2</button>
+                <button type="button" aria-pressed="true" data-layer="B.Cu"><i></i>Back</button>
+                <button type="button" aria-pressed="false" data-layer="refs"><i></i>Names</button>
+              </div>
+              <div class="ex-zoom">
+                <button type="button" data-zoom="out" aria-label="Zoom out">&#8722;</button>
+                <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
+                <button type="button" data-zoom="home">Whole board</button>
+              </div>
+            </div>
+            <div class="ex-view" data-view></div>
+            <p class="ex-info" data-info aria-live="polite">You can drag to move around, and pinch or hold Ctrl and scroll to zoom.</p>
+          </div>
+          <div class="explorer" id="board-light" role="tabpanel" aria-labelledby="tab-light" data-explorer data-src="lark/board-light.svg" hidden>
+            <p class="ex-facts"><code>examples/fan-bulb/v0.1/light/lark_light.kicad_pcb</code>: two copper layers, 23 parts, 185 track segments, no vias and 26 nets, 45.2 × 45.2 mm.</p>
+            <div class="ex-tools" role="toolbar" aria-label="The drawing">
+              <div class="ex-layers" aria-label="Layers">
+                <button type="button" aria-pressed="true" data-layer="F.Cu"><i></i>Front</button>
+                <button type="button" aria-pressed="true" data-layer="B.Cu"><i></i>Back</button>
+                <button type="button" aria-pressed="false" data-layer="refs"><i></i>Names</button>
+              </div>
+              <div class="ex-zoom">
+                <button type="button" data-zoom="out" aria-label="Zoom out">&#8722;</button>
+                <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
+                <button type="button" data-zoom="home">Whole board</button>
+              </div>
+            </div>
+            <div class="ex-view" data-view></div>
+            <p class="ex-info" data-info aria-live="polite">You can drag to move around, and pinch or hold Ctrl and scroll to zoom.</p>
+          </div>
+          <div class="explorer" id="board-brain" role="tabpanel" aria-labelledby="tab-brain" data-explorer data-src="lark/board-brain.svg" hidden>
+            <p class="ex-facts"><code>examples/fan-bulb/v0.1/brain/lark_brain.kicad_pcb</code>: four copper layers, 43 parts, 606 track segments, 72 vias and 34 nets, 16 × 45.5 mm.</p>
+            <div class="ex-tools" role="toolbar" aria-label="The drawing">
+              <div class="ex-layers" aria-label="Layers">
+                <button type="button" aria-pressed="true" data-layer="F.Cu"><i></i>Front</button>
+                <button type="button" aria-pressed="true" data-layer="In1.Cu"><i></i>In1</button>
+                <button type="button" aria-pressed="true" data-layer="In2.Cu"><i></i>In2</button>
+                <button type="button" aria-pressed="true" data-layer="B.Cu"><i></i>Back</button>
+                <button type="button" aria-pressed="false" data-layer="refs"><i></i>Names</button>
+              </div>
+              <div class="ex-zoom">
+                <button type="button" data-zoom="out" aria-label="Zoom out">&#8722;</button>
+                <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
+                <button type="button" data-zoom="home">Whole board</button>
+              </div>
+            </div>
+            <div class="ex-view" data-view></div>
+            <p class="ex-info" data-info aria-live="polite">You can drag to move around, and pinch or hold Ctrl and scroll to zoom.</p>
+          </div>
+          <div class="explorer" id="board-ear" role="tabpanel" aria-labelledby="tab-ear" data-explorer data-src="lark/board-ear.svg" hidden>
+            <p class="ex-facts"><code>examples/fan-bulb/v0.1/ear/lark_ear.kicad_pcb</code>: two copper layers, 10 parts, 88 track segments, 11 vias and five nets, 15 × 15 mm.</p>
+            <div class="ex-tools" role="toolbar" aria-label="The drawing">
+              <div class="ex-layers" aria-label="Layers">
+                <button type="button" aria-pressed="true" data-layer="F.Cu"><i></i>Front</button>
+                <button type="button" aria-pressed="true" data-layer="B.Cu"><i></i>Back</button>
+                <button type="button" aria-pressed="false" data-layer="refs"><i></i>Names</button>
+              </div>
+              <div class="ex-zoom">
+                <button type="button" data-zoom="out" aria-label="Zoom out">&#8722;</button>
+                <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
+                <button type="button" data-zoom="home">Whole board</button>
+              </div>
+            </div>
+            <div class="ex-view" data-view></div>
+            <p class="ex-info" data-info aria-live="polite">You can drag to move around, and pinch or hold Ctrl and scroll to zoom.</p>
+          </div>
         </div>
       </section>
 

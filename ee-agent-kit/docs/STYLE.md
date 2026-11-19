@@ -92,8 +92,9 @@ disagree, the file wins.
 The owner's own wording stands as the owner wrote it, and is the only
 exception to these rules:
 
-- The hero's headline, of 2026-11-12, in title case on 3 lines: "Circuit
-  Boards / From / AI".
+- The hero's headline, of 2026-11-12, in title case on 2 lines since
+  2026-11-19 (it was 3, "Circuit Boards / From / AI"): "Circuit Boards /
+  From AI".
 - The hero's paragraph, of 2026-11-14: "Via is our dream for lowering the
   difficulty to getting into electronics design. It's a package of tools,
   skills and gates an agent needs to make production-ready PCBs. Designed

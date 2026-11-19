@@ -75,7 +75,11 @@
   }
 
   // ---- the explorer: the board drawn from its own file; layers, zoom, pan, a net, a part --------
-  for (const box of document.querySelectorAll("[data-explorer]")) {
+  // An example of several boards has an explorer for each, as a tab's panel: a hidden one loads its
+  // drawing the first time its tab is picked.
+  const load = (box) => {
+    if (box.dataset.loaded) return;
+    box.dataset.loaded = "";
     const view = box.querySelector("[data-view]");
     const info = box.querySelector("[data-info]");
     const hint = info.textContent;
@@ -88,6 +92,31 @@
       .catch(() => {
         info.textContent = "The drawing did not load. The board is in the repository: open it in KiCad.";
       });
+  };
+  for (const box of document.querySelectorAll("[data-explorer]")) if (!box.hidden) load(box);
+
+  // The boards' tabs: a click or Enter picks one; the arrow keys, Home and End move between them.
+  for (const list of document.querySelectorAll(".ex-boards[role=tablist]")) {
+    const tabs = [...list.querySelectorAll("[role=tab]")];
+    const pick = (tab, focus) => {
+      for (const t of tabs) {
+        const on = t === tab;
+        t.setAttribute("aria-selected", String(on));
+        t.tabIndex = on ? 0 : -1;
+        document.getElementById(t.getAttribute("aria-controls")).hidden = !on;
+      }
+      load(document.getElementById(tab.getAttribute("aria-controls")));
+      if (focus) tab.focus();
+    };
+    for (const tab of tabs) tab.addEventListener("click", () => pick(tab, false));
+    list.addEventListener("keydown", (e) => {
+      const i = tabs.indexOf(document.activeElement);
+      if (i < 0) return;
+      const to = { ArrowRight: i + 1, ArrowDown: i + 1, ArrowLeft: i - 1, ArrowUp: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
+      if (to === undefined) return;
+      e.preventDefault();
+      pick(tabs[(to + tabs.length) % tabs.length], true);
+    });
   }
 
   function explore(box, svg, info, hint) {

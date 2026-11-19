@@ -19,7 +19,9 @@ slug is the README title's first word (`# Herald v0.1: ...` and `# Hush — boar
 - The checks: the verdict and the 4 gates' lines of that run, else of `docs/gates.md`.
 - From the board (`*.kicad_pcb` in the version folder): the size, the copper layers, the parts, the
   tracks and the vias, and `board.svg`, the board drawn from the file for the page's explorer. An
-  example of several boards, each in a folder of its own, has no explorer.
+  example of several boards, each in a folder of its own (`<folder>/*.kicad_pcb`), gets a drawing of
+  each, `board-<folder>.svg`, and a row of tabs over the explorer to pick one; the boards are in the
+  order of its gates report, the first shown.
 - With --pictures, from `docs/`: the board's 3D renders from the top and the bottom (or the
   assembly's, for an example with no board of its own) and its card (the assembly's render where
   there is one), with KiCad's backdrop taken out (`site/showcase/key.py`), in 256 colours; its
@@ -101,6 +103,7 @@ class Example:
     still_open: list[str] = field(default_factory=list)
     timeline: list[Entry] = field(default_factory=list)
     board: Path | None = None
+    boards: list[tuple[str, Path]] = field(default_factory=list)  # (folder, file), several boards
     verdict: str = ""
     checks: list[tuple[str, str, str]] = field(default_factory=list)  # (gate, status, summary)
     per_board: list[tuple[str, str]] = field(default_factory=list)  # (board, verdict), several boards
@@ -253,6 +256,18 @@ def read(versions: list[Path]) -> Example:
     run = next((b for b in runs if b.startswith("$ workcenter gates")), "")
     verdict, checks, per_board = (*checks_of(run), []) if run else gates_report(newest / "docs" / "gates.md")
     boards = sorted(newest.glob("*.kicad_pcb"))
+    # Several boards, each in a folder of its own: the gates report's order, then the folders' names.
+    several: dict[str, Path] = {}
+    if not boards:
+        for path in sorted(newest.glob("*/*.kicad_pcb")):
+            several.setdefault(path.parent.name, path)
+    order = [name for name, _ in per_board]
+
+    def rank(item: tuple[str, Path]) -> tuple[int, str]:
+        folder, path = item
+        named = [i for i, name in enumerate(order) if name in (folder, path.stem)]
+        return (named[0] if named else len(order), folder)
+
     return Example(
         folder=newest,
         slug=name.lower(),
@@ -264,6 +279,7 @@ def read(versions: list[Path]) -> Example:
         still_open=still_open,
         timeline=history,
         board=boards[0] if boards else None,
+        boards=sorted(several.items(), key=rank),
         verdict=verdict,
         checks=checks,
         per_board=per_board,
@@ -367,7 +383,8 @@ def openings(path: Path) -> int:
     loops = outline(k.parse(path.read_text(encoding="utf-8")))
     areas = sorted(
         (
-            abs(sum(x1 * y2 - x2 * y1 for (x1, y1), (x2, y2) in zip(loop, loop[1:] + loop[:1], strict=True))) / 2
+            abs(sum(x1 * y2 - x2 * y1 for (x1, y1), (x2, y2) in zip(loop, loop[1:] + loop[:1], strict=True)))
+            / 2
             for loop in loops
         ),
         reverse=True,
@@ -616,6 +633,8 @@ def mm(v: float) -> str:
 def stats(ex: Example, board: Board | None) -> list[str]:
     """The board's specification line: digits, as the site writes a specification (docs/STYLE.md)."""
     out = [ex.version]
+    if ex.boards:
+        out.append(f"{len(ex.boards)} boards")
     if board:
         out += [
             f"{mm(board.width)} × {mm(board.height)} mm",
@@ -655,7 +674,41 @@ CAPTIONS = {
 }
 
 
-def example_page(ex: Example, board: Board | None, pictures: set[str]) -> str:
+def explorer(
+    src: str, board: Board, ident: str = "", label: str = "", hidden: bool = False, facts: str = ""
+) -> str:
+    """The explorer of 1 board drawing: its layers' buttons, the zoom and the view. With `ident` it is
+    a tab's panel, labelled by the tab; a hidden panel loads its drawing when its tab is picked."""
+    buttons = "\n".join(
+        f'                <button type="button" aria-pressed="true" data-layer="{layer}"><i></i>{LAYER_NAMES.get(layer, layer.split(".")[0])}</button>'
+        for layer in board.signal
+    )
+    panel = f' id="{ident}" role="tabpanel" aria-labelledby="{label}"' if ident else ""
+    return f"""          <div class="explorer"{panel} data-explorer data-src="{src}"{" hidden" if hidden else ""}>{facts}
+            <div class="ex-tools" role="toolbar" aria-label="The drawing">
+              <div class="ex-layers" aria-label="Layers">
+{buttons}
+                <button type="button" aria-pressed="false" data-layer="refs"><i></i>Names</button>
+              </div>
+              <div class="ex-zoom">
+                <button type="button" data-zoom="out" aria-label="Zoom out">&#8722;</button>
+                <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
+                <button type="button" data-zoom="home">Whole board</button>
+              </div>
+            </div>
+            <div class="ex-view" data-view></div>
+            <p class="ex-info" data-info aria-live="polite">You can drag to move around, and pinch or hold Ctrl and scroll to zoom.</p>
+          </div>"""
+
+
+def board_title(folder: str) -> str:
+    """A board's tab: its folder's name, as words (`gauge` is Gauge)."""
+    return folder.replace("-", " ").replace("_", " ").capitalize()
+
+
+def example_page(
+    ex: Example, board: Board | None, pictures: set[str], several: list[tuple[str, Board]] | None = None
+) -> str:
     folder = f"{ex.slug}/"
     chips = "".join(
         ('<li class="ok">' if s.startswith("GREEN") else "<li>") + html.escape(s) + "</li>"
@@ -718,10 +771,6 @@ def example_page(ex: Example, board: Board | None, pictures: set[str]) -> str:
       </section>""")
 
     if board:
-        buttons = "\n".join(
-            f'                <button type="button" aria-pressed="true" data-layer="{layer}"><i></i>{LAYER_NAMES.get(layer, layer.split(".")[0])}</button>'
-            for layer in board.signal
-        )
         parts.append(f"""      <section class="section band" id="board" aria-labelledby="board-title">
         <div class="wrap">
           <div class="head" data-reveal data-stagger>
@@ -729,21 +778,38 @@ def example_page(ex: Example, board: Board | None, pictures: set[str]) -> str:
             <h2 class="title" id="board-title">Every track and part of the routed board, drawn from its file</h2>
             <p class="lede">The board as <code>{html.escape(board_rel(ex))}</code> holds it: {words(board.layers)} copper layers, {board.segments:,} track segments, {words(board.vias)} vias and {words(board.nets)} nets. Point at a pad to see its part, and click a track, a via or a pad to follow its connection across the board.</p>
           </div>
-          <div class="explorer" data-explorer data-src="{folder}board.svg">
-            <div class="ex-tools" role="toolbar" aria-label="The drawing">
-              <div class="ex-layers" aria-label="Layers">
-{buttons}
-                <button type="button" aria-pressed="false" data-layer="refs"><i></i>Names</button>
-              </div>
-              <div class="ex-zoom">
-                <button type="button" data-zoom="out" aria-label="Zoom out">&#8722;</button>
-                <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
-                <button type="button" data-zoom="home">Whole board</button>
-              </div>
-            </div>
-            <div class="ex-view" data-view></div>
-            <p class="ex-info" data-info aria-live="polite">You can drag to move around, and pinch or hold Ctrl and scroll to zoom.</p>
+{explorer(f"{folder}board.svg", board)}
+        </div>
+      </section>""")
+    elif several:
+        tabs = "\n".join(
+            f'            <button type="button" role="tab" id="tab-{name}" aria-controls="board-{name}" aria-selected="{"true" if i == 0 else "false"}" tabindex="{0 if i == 0 else -1}">{html.escape(board_title(name))}</button>'
+            for i, (name, _) in enumerate(several)
+        )
+        files = dict(ex.boards)
+        panels = "\n".join(
+            explorer(
+                f"{folder}board-{name}.svg",
+                b,
+                ident=f"board-{name}",
+                label=f"tab-{name}",
+                hidden=i > 0,
+                facts=f"""
+            <p class="ex-facts"><code>{html.escape(files[name].relative_to(ROOT).as_posix())}</code>: {words(b.layers)} copper layers, {b.parts} parts, {b.segments:,} track segments, {words(b.vias) if b.vias else "no"} vias and {words(b.nets)} nets, {mm(b.width)} × {mm(b.height)} mm.</p>""",
+            )
+            for i, (name, b) in enumerate(several)
+        )
+        parts.append(f"""      <section class="section band" id="board" aria-labelledby="board-title">
+        <div class="wrap">
+          <div class="head" data-reveal data-stagger>
+            <p class="eyebrow">The boards, track by track</p>
+            <h2 class="title" id="board-title">Every track and part of the routed boards, drawn from their files</h2>
+            <p class="lede">{html.escape(ex.name)} is {words(len(several))} boards, each in a folder of its own. You can pick a board, point at a pad to see its part, and click a track, a via or a pad to follow its connection across the board.</p>
           </div>
+          <div class="ex-boards" role="tablist" aria-label="The boards">
+{tabs}
+          </div>
+{panels}
         </div>
       </section>""")
 
@@ -911,7 +977,9 @@ def few_colours(picture):
     from PIL import Image
 
     clear = picture.getchannel("A").point(lambda a: 255 if a < CLEAR else 0)
-    picture = picture.quantize(colors=255, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.FLOYDSTEINBERG)
+    picture = picture.quantize(
+        colors=255, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.FLOYDSTEINBERG
+    )
     palette = picture.getpalette(rawmode="RGBA")
     palette += [0] * (256 * 4 - len(palette))
     palette[255 * 4 : 256 * 4] = [0, 0, 0, 0]
@@ -1003,10 +1071,13 @@ def pages() -> dict[Path, str]:
     pairs = []
     for ex in found:
         board = draw_board(ex.board) if ex.board else None
+        several = [(name, draw_board(path)) for name, path in ex.boards]
         pictures = {p.name for p in (OUT / ex.slug).glob("*")} if (OUT / ex.slug).is_dir() else set()
         if board:
             written[OUT / ex.slug / "board.svg"] = board.svg
-        written[OUT / f"{ex.slug}.html"] = example_page(ex, board, pictures)
+        for name, drawn in several:
+            written[OUT / ex.slug / f"board-{name}.svg"] = drawn.svg
+        written[OUT / f"{ex.slug}.html"] = example_page(ex, board, pictures, several)
         pairs.append((ex, board))
     written[SITE / "examples.html"] = index_page(pairs)
     return written
