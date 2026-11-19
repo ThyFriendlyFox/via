@@ -4,7 +4,7 @@
      messages, release notes. Based on Simplified Technical English.
      AGENTS.md house style governs code; this file governs words. -->
 
-EE Workcenter uses one voice for every text.
+Via uses one voice for every text.
 The rules keep the text short, clear and easy to translate.
 
 ## Rules
@@ -33,7 +33,8 @@ the report path.
 
 | Use | Do not use |
 |---|---|
-| workcenter | toolbox, kit (the kit is `ee-agent-kit/`), environment (the cloud VM) |
+| Via (the product: capital V, no article); `workcenter` is its command, in a code span | `EE Workcenter`, `the workcenter` (the owner's words of 2026-11-19; `tests/test_product_name.py`) |
+| workcenter (the kind of thing Via is) | toolbox, kit (the kit is `ee-agent-kit/`), environment (the cloud VM) |
 | project | board repo, target, design folder |
 | gate | check (that is `doctor`), test (those are in `tests/`), validation |
 | engine | tool, backend, adapter, provider |
