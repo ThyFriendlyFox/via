@@ -38,6 +38,8 @@ Before install.sh, the install path and the nightly run turn apt from the runner
 
 Done on 2026-11-18: steps 1 and 2. Pull request 92's `Image` run (44396387137) built both machines' images and pushed nothing; `build (amd64)` stopped on its first run on a 503 of the KiCad 10 source and passed on its 1 re-run. It was merged as 1fb707c, and the `Image` run on main (44402154037) built both images, pushed them, and its `publish` job passed at 21:36 UTC. Step 3 waits: the package is still private. CI run 44409635104 took the image path first: the install step was skipped and `make verify` ran inside the image, 3732 of 3811 tests passed and 1 failed, a test of the gates step that read the machine's user list, fixed since.
 
+A user's commands for the image of a release: the README, "Run the workcenter from its container".
+
 The lines to read in the first runs:
 
 - The build step: `[install] boot: ... missing; apt install curl gnupg ca-certificates git make gcc libc6-dev` (install.sh's first step), then `workcenter ee: ok` (amd64) or `degraded, without openems` (arm64), then `image tc-... (x86_64|aarch64) at /opt/workcenters/ee/image.json` with 6 version lines (`image.py record`). A line `image.py: record refused: ...` is a failed image.

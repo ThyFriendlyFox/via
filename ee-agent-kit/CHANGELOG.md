@@ -4,6 +4,8 @@ All notable changes to EE Workcenter are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/) · Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-11-19
 ### Changed
 - Once a suggestion is sent, the feedback page's big heading is "Thanks! Your suggestion's on its way to us." in place of "Give us suggestions", at the owner's word; the form goes too, with the page's script and without it.
 - The news bar has an X at its left, at the owner's ask: it closes the bar, which stays closed on every page until a newer post comes. "Join the community" stays a blue button, and its words glisten, at the owner's word: an orange glint sweeps across the gray words from left to right every 3.5 s, and the words stand still for a reader who asks for reduced motion. The footer has its own 3rem at the top and a hairline over it, where its first line sat on the edge of the section before it (the owner found it cramped).
