@@ -106,7 +106,7 @@ b91b4ac5acf1a0d28a676703db972d17b8f11ef26a85b58d60786a69246b921b  $KICAD10_3DMOD
 SUMS
 ```
 
-The workcenter draws the schematic, the layers and the GIF. `--strict`
+Via draws the schematic, the layers and the GIF. `--strict`
 fails the run when a part has no body:
 
 ```sh

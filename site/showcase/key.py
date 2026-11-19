@@ -12,7 +12,7 @@ wide area of the backdrop's own colour that the board encloses, such as a ring's
 shadow round it; it is not the default, since a board's metal lid mirrors the backdrop in colours
 close to it. --frame N takes
 frame N of an animated GIF; --crop trims the clear margin.
-Needs numpy and Pillow, both in the workcenter's venv.
+Needs numpy and Pillow, both in Via's venv.
 """
 
 from __future__ import annotations
