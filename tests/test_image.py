@@ -2,12 +2,14 @@
 CI's full job that runs inside it when the registry holds it, and a run as a user id with no home.
 
 No Docker daemon answers on the machines these tests were written on, and GitHub Actions does not run
-here: the Dockerfile and both workflows are held by their parsed text, and the 1 real build test skips
-by the tool's name where `docker info` fails. The real build is the `image` workflow's job.
+here: the Dockerfile and both workflows are held by their parsed text. The real build is the `image`
+workflow's job: the 1 real build test runs only when WORKCENTER_TEST_IMAGE_BUILD is 1 and `docker info`
+answers, and nothing sets the variable for the health gate.
 """
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import inspect
 import json
@@ -802,18 +804,26 @@ def test_the_gates_step_fails_unless_every_file_written_is_the_runners_user(tmp_
     prints is the owner find prints."""
     step = step_named(flow(IMAGE_FLOW)["jobs"]["build"], "The gates on a fixture")
     bin_ = tmp_path / "bin"
-    stub(bin_, "docker", "exit 0")
+    # The stand-in `docker` writes the gates' record into the folder mounted at /work when $WRITE is 1.
+    stub(
+        bin_,
+        "docker",
+        'while [ $# -gt 0 ]; do if [ "$1" = -v ]; then board="${2%:/work}"; fi; shift; done\n'
+        'if [ "$WRITE" = 1 ]; then mkdir -p "$board/build" && echo "{}" > "$board/build/gates.json"; fi',
+    )
     stub(bin_, "find", 'printf "$OWNERS\\n"')
     stub(bin_, "id", 'if [ "$1" = -un ]; then echo "$ME"; exit "$ID_CODE"; fi; echo 1001')
     cases = {
-        ("runner", "runner", 0): 0,
-        ("runner\\nnobody-else", "runner", 0): 1,
-        ("runner\\nzz-other", "runner", 0): 1,
-        ("nobody-else", "runner", 0): 1,
-        ("1001", "1001", 1): 1,
+        ("runner", "runner", 0, 1): 0,
+        ("runner\\nnobody-else", "runner", 0, 1): 1,
+        ("runner\\nzz-other", "runner", 0, 1): 1,
+        ("nobody-else", "runner", 0, 1): 1,
+        ("1001", "1001", 1, 1): 1,
+        # The gates ended 0 and wrote no build/gates.json: the record the gates write is missing.
+        ("runner", "runner", 0, 0): 1,
     }
     codes = {}
-    for owners, me, id_code in cases:
+    for owners, me, id_code, write in cases:
         env = {
             **os.environ,
             "PATH": f"{bin_}:{os.environ['PATH']}",
@@ -821,13 +831,85 @@ def test_the_gates_step_fails_unless_every_file_written_is_the_runners_user(tmp_
             "OWNERS": owners,
             "ME": me,
             "ID_CODE": str(id_code),
+            "WRITE": str(write),
         }
         env |= {"IMAGE": "i", "TAG": "t", "ARCH": "amd64"}
         ran = subprocess.run(
             ["bash", "-e", "-c", step["run"]], cwd=ROOT, env=env, capture_output=True, text=True
         )
-        codes[(owners, me, id_code)] = ran.returncode
+        codes[(owners, me, id_code, write)] = ran.returncode
     assert codes == cases
+
+
+def test_the_image_workflow_checks_on_every_machine_what_the_build_test_checked():
+    """The build test (run by name alone) asserted 4 things: the image builds, the gates on the fixture
+    end 0 as the calling user, they write build/gates.json, and that file is the calling user's. The
+    image workflow's build job holds each, on both machines, on every pull request that touches the
+    toolchain's files: the build step, the gates step under `bash -e`, `test -s` on the record, and the
+    owners of every file the gates wrote."""
+    holds_what_the_build_test_checked(flow(IMAGE_FLOW))
+
+
+def holds_what_the_build_test_checked(data: dict) -> None:
+    """Asserts that the image workflow's build job holds the 4 checks of the build test, and that a
+    failure of either step fails the run: no `continue-on-error`, and GitHub's default shell, `bash -e`."""
+    job = data["jobs"]["build"]
+    assert "if" not in job and "continue-on-error" not in job
+    assert "defaults" not in data and "defaults" not in job
+    build = step_named(job, "Build")
+    assert "if" not in build and build["run"].lstrip().startswith("docker build ")
+    gates = step_named(job, "The gates on a fixture")
+    assert "if" not in gates
+    for step in (build, gates):
+        assert "continue-on-error" not in step and "shell" not in step, step["name"]
+    lines = [line.strip() for line in gates["run"].splitlines()]
+    assert 'cp -r tests/boards/pass-rc-divider "$board"' in lines
+    run = next(i for i, line in enumerate(lines) if line.startswith("docker run "))
+    assert '--user "$(id -u):$(id -g)"' in lines[run] and lines[run].endswith("workcenter gates .")
+    written = lines.index('test -s "$board/build/gates.json"')
+    assert run < written < lines.index('test "$owners" = "$me"')
+
+
+def test_a_build_job_whose_failure_does_not_fail_the_run_holds_nothing():
+    """`continue-on-error` on the build job, the Build step or the gates step leaves the run green when
+    the build or the gates fail. A `shell` that is not GitHub's default `bash -e` (on the step, the job's
+    or the workflow's `defaults`) lets a failing line pass. Each planted key is refused."""
+    real = flow(IMAGE_FLOW)
+
+    def planted(where: str, key: str, value):
+        data = copy.deepcopy(real)
+        job = data["jobs"]["build"]
+        places = {
+            "job": job,
+            "Build": step_named(job, "Build"),
+            "gates": step_named(job, "The gates on a fixture"),
+            "workflow": data,
+        }
+        place = places[where]
+        if key == "defaults":
+            place["defaults"] = {"run": {"shell": value}}
+        else:
+            place[key] = value
+        return data
+
+    cases = [
+        ("job", "continue-on-error", True),
+        ("job", "continue-on-error", "${{ matrix.arch == 'arm64' }}"),
+        ("Build", "continue-on-error", True),
+        ("gates", "continue-on-error", True),
+        ("Build", "shell", "bash {0}"),
+        ("gates", "shell", "bash {0}"),
+        ("job", "defaults", "bash {0}"),
+        ("workflow", "defaults", "bash {0}"),
+    ]
+    held = []
+    for where, key, value in cases:
+        try:
+            holds_what_the_build_test_checked(planted(where, key, value))
+        except AssertionError:
+            continue
+        held.append((where, key, value))
+    assert held == []
 
 
 def test_the_image_path_runs_make_verify_only_after_its_check_passes(tmp_path):
@@ -915,8 +997,100 @@ def daemon() -> bool:
     return subprocess.run(["docker", "info"], capture_output=True).returncode == 0
 
 
+# The real build is the image workflow's job. Inside CI's full job it took about 669 s of 674.6 s for this
+# file (job 135422229691), so the health gate's test run does not repeat it: it runs when asked by name.
+BUILD_ASKED = "WORKCENTER_TEST_IMAGE_BUILD"
+BUILD_BY_HAND = (
+    "WORKCENTER_TEST_IMAGE_BUILD=1 python3 -m pytest "
+    "tests/test_image.py::test_the_image_builds_and_runs_the_gates_as_the_calling_user"
+)
+BUILD_ELSEWHERE = (
+    ".github/workflows/image.yml builds the image and runs the gates in it on amd64 and arm64, "
+    "on every pull request that touches the toolchain's files and on every push to main"
+)
+
+
+def build_skip(env, answers) -> str | None:
+    """Why the real build test does not run, or None when it runs: asked by name and a daemon answers.
+    `answers` (the daemon's check) is called only when the build is asked for."""
+    if env.get(BUILD_ASKED) != "1":
+        return f"{BUILD_ASKED} is not 1: {BUILD_ELSEWHERE}; by hand: {BUILD_BY_HAND}"
+    if not answers():
+        return "docker: no daemon answers `docker info`"
+    return None
+
+
+BUILD_SKIP = build_skip(os.environ, daemon)
+
+
+def test_the_build_test_runs_only_when_asked_by_name():
+    asked: list[bool] = []
+
+    def answers():
+        asked.append(True)
+        return True
+
+    for env in ({}, {BUILD_ASKED: "0"}, {BUILD_ASKED: "yes"}, {BUILD_ASKED: ""}):
+        said = build_skip(env, answers)
+        assert said and said.startswith(f"{BUILD_ASKED} is not 1: "), env
+        assert ".github/workflows/image.yml" in said and "every pull request" in said
+        assert "every push to main" in said and said.endswith(f"by hand: {BUILD_BY_HAND}")
+    assert asked == []
+    assert build_skip({BUILD_ASKED: "1"}, lambda: False) == "docker: no daemon answers `docker info`"
+    assert build_skip({BUILD_ASKED: "1"}, answers) is None and asked == [True]
+    marks = {m.name: m for m in test_the_image_builds_and_runs_the_gates_as_the_calling_user.pytestmark}
+    assert "engine" in marks
+    assert marks["skipif"].args == (BUILD_SKIP is not None,)
+    assert marks["skipif"].kwargs["reason"] == (BUILD_SKIP or "")
+
+
+def asking_for_the_build(root: Path) -> list[str]:
+    """The files of `root` that run tests or set them up and name the build's variable: every workflow,
+    the Makefile, every file under verify/ but its documents, pytest's configuration files and every
+    conftest.py at the root or under tests/ (pytest reads them before this file works out BUILD_SKIP)."""
+    places = [*sorted((root / ".github" / "workflows").glob("*.yml")), root / "Makefile"]
+    places += sorted(p for p in (root / "verify").iterdir() if p.is_file() and p.suffix != ".md")
+    places += [
+        root / name for name in ("pyproject.toml", "pytest.ini", "setup.cfg", "tox.ini", "conftest.py")
+    ]
+    places += sorted((root / "tests").rglob("conftest.py"))
+    places = [p for p in places if p.is_file()]
+    return [str(p.relative_to(root)) for p in places if BUILD_ASKED in p.read_text(encoding="utf-8")]
+
+
+def test_nothing_asks_for_the_build_test_by_default(tmp_path):
+    """Not CI's jobs, not the nightly run, not `make verify` or `make check`. A tree where a workflow or
+    the Makefile, pyproject.toml or a conftest.py sets the name is found by it."""
+    assert asking_for_the_build(ROOT) == []
+    planted = tmp_path / "tree"
+    flows = planted / ".github" / "workflows"
+    flows.mkdir(parents=True)
+    (planted / "verify").mkdir()
+    (flows / "ci.yml").write_text(f"env:\n  {BUILD_ASKED}: '1'\n", encoding="utf-8")
+    (planted / "Makefile").write_text(f"verify:\n\t{BUILD_ASKED}=1 bash verify/verify.sh\n", encoding="utf-8")
+    (planted / "verify" / "verify.sh").write_text("make lint\n", encoding="utf-8")
+    (planted / "verify" / "README.md").write_text(f"Not set: `{BUILD_ASKED}=1`.\n", encoding="utf-8")
+    # pytest reads conftest.py and pyproject.toml before this file works out BUILD_SKIP.
+    (planted / "tests" / "deep").mkdir(parents=True)
+    (planted / "tests" / "conftest.py").write_text(f'os.environ["{BUILD_ASKED}"] = "1"\n', encoding="utf-8")
+    (planted / "tests" / "deep" / "conftest.py").write_text(
+        f'os.environ["{BUILD_ASKED}"] = "1"\n', encoding="utf-8"
+    )
+    (planted / "conftest.py").write_text("import os\n", encoding="utf-8")
+    (planted / "pyproject.toml").write_text(
+        f'[tool.pytest.ini_options]\nenv = ["{BUILD_ASKED}=1"]\n', encoding="utf-8"
+    )
+    assert asking_for_the_build(planted) == [
+        ".github/workflows/ci.yml",
+        "Makefile",
+        "pyproject.toml",
+        "tests/conftest.py",
+        "tests/deep/conftest.py",
+    ]
+
+
 @pytest.mark.engine
-@pytest.mark.skipif(not daemon(), reason="docker: no daemon answers `docker info`; the image workflow builds")
+@pytest.mark.skipif(BUILD_SKIP is not None, reason=BUILD_SKIP or "")
 def test_the_image_builds_and_runs_the_gates_as_the_calling_user(tmp_path):
     tag = image.content_tag(image.from_disk(ROOT))
     name = f"via-test:{tag}"

@@ -43,6 +43,13 @@ alone, 1 run each, under the engine lock at a load under 2. Their
 seconds in a shard: the next whole run's `testshards.py table` replaces
 them.
 
+`tests/test_image.py`'s 6.5 s were measured alone on 2026-11-19, 1 run
+under the engine lock, on a machine with no Docker daemon:
+`51 passed, 1 skipped in 6.73s`. The skip is the real image build, which
+runs only when asked by name (`WORKCENTER_TEST_IMAGE_BUILD=1`). Inside
+CI's `full` job the build had taken about 669 s of the file's 674.6 s
+(job 135422229691).
+
 ## How the split works
 
 1. The files are sorted by their seconds, the longest first.

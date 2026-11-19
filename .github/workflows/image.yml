@@ -83,6 +83,8 @@ jobs:
           board=$(mktemp -d)/board
           cp -r tests/boards/pass-rc-divider "$board"
           docker run --rm --user "$(id -u):$(id -g)" -v "$board":/work "$IMAGE:$TAG-$ARCH" workcenter gates .
+          # The gates' record: the file the build test of tests/test_image.py read the owner of.
+          test -s "$board/build/gates.json"
           owners=$(find "$board/build" -printf '%u\n' | sort -u)
           echo "owners of the files written: $owners"
           # On its own line, so that bash -e stops the step when id -un fails: for a user id with no
