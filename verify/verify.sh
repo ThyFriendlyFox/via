@@ -7,11 +7,23 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# `verify.sh site` is the fast gate (make verify-site): for every change, and beside the full gate
+# for a change tools/ci/scope.py calls full. It hides KiCad's libraries.
+# It starts no engine: the tests marked `engine` are left out, and any other test that starts one
+# is refused (WORKCENTER_NO_ENGINES=1) and fails (tools/ci/engine_marker.py).
+# `verify.sh kit` runs the kit checks alone (make kit, inside make check): it reads a few files,
+# takes no lock and leaves no gate record.
+mode=${1:-full}
+case "$mode" in
+  full | site | kit) ;;
+  *) echo "usage: verify/verify.sh [site|kit]"; exit 2 ;;
+esac
+
 # The gate runs alone: it waits its turn on the machine's engine lock and holds it to its end. The
 # commands its tests start are its children and do not wait for it (tools/enginelock.py). The fast
 # gate (`verify.sh site`) takes it too, as `make verify-site`: it starts no engine, but its tests
 # fill the machine's processors for minutes.
-if ! python3 tools/enginelock.py held; then
+if [[ "$mode" != kit ]] && ! python3 tools/enginelock.py held; then
   exec python3 tools/enginelock.py hold --what "make verify${1:+-$1}" -- bash verify/verify.sh "$@"
 fi
 
@@ -31,16 +43,6 @@ step() {
   [[ -n "$current" ]] && STEP="$current" && printf '\n== %s\n' "$current"
   return 0
 }
-
-# `verify.sh site` is the fast gate (make verify-site): for every change, and beside the full gate
-# for a change tools/ci/scope.py calls full. It hides KiCad's libraries.
-# It starts no engine: the tests marked `engine` are left out, and any other test that starts one
-# is refused (WORKCENTER_NO_ENGINES=1) and fails (tools/ci/engine_marker.py).
-mode=${1:-full}
-case "$mode" in
-  full | site) ;;
-  *) echo "usage: verify/verify.sh [site]"; exit 2 ;;
-esac
 
 kit_checks() {
 # Kit placeholders may remain only in SETUP.md, whose table documents them.
@@ -75,6 +77,11 @@ awk '/^## P[0-9]+ /{if (h != "" && !d) {print h ": no Done when line"; bad = 1};
 python3 tools/ci/changes.py check || exit 1
 echo "kit checks ok"
 }
+
+if [[ "$mode" == kit ]]; then
+  kit_checks
+  exit 0
+fi
 
 # The fast gate leaves no gate record: build/verify.json speaks for the whole `make verify` only.
 if [[ "$mode" == site ]]; then

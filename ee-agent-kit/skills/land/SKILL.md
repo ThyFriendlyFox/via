@@ -69,9 +69,11 @@ Make tree A once: `git worktree add <scratch>/wt/int <work>`.
      pass, and commit both with the fault named in the message.
 5. Push on the fast checks, chained behind their verdict (P14 step 2):
    `make -C <scratch>/wt/int check && git -C <scratch>/wt/int push origin HEAD:refs/heads/<work>`.
-   `make check` is `make lint` and the kit's own tests (the 2 copies of
-   the lead's skills, the commits' authors, the rule's documents). It starts no
-   engine and takes no lock, so it runs while helpers work.
+   `make check` is `make lint`, the gate's kit checks (`make kit`: the
+   2 copies of every kit skill, each skill's frontmatter, CLAUDE.md =
+   AGENTS.md, every mistake's process and every process's Done when),
+   and the kit's own tests (the commits' authors, the rule's documents).
+   It starts no engine and takes no lock, so it runs while helpers work.
    - The push prints `HEAD -> <work>`: check the remote holds it,
      `git -C <scratch>/wt/int ls-remote origin refs/heads/<work>` prints
      `<commit>`. Go on to step 6.

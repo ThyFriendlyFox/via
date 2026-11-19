@@ -65,8 +65,8 @@ before it removes the lock. Its header names its environment variables.
 
 The health gate runs on GitHub, in CI's `full` job
 (`ee-agent-kit/CI.md`, "Where the health gate runs"). A landing is pushed
-to the work branch on `make check`: `make lint` and the kit's own tests,
-with no engine and no lock. Nothing from the work branch is merged,
+to the work branch on `make check`: `make lint`, the gate's kit checks
+and the kit's own tests, with no engine and no lock. Nothing from the work branch is merged,
 released, or used as the start of other work until CI's `verdict` is
 green on that exact commit. So a landing does not need the machine alone,
 and the helpers go on working while it is gated. `gate-and-push.sh` and

@@ -22,9 +22,13 @@ each boundary.
 
 **0. Preflight.** Fetch; branch from latest `main` as
 `feat/<slug>`. The baseline is `main`'s tip: CI's `verdict` must be
-green on it before feature work starts
-(`gh run list --workflow ci.yml --branch main --limit 1`; where there
-is no CI, `make verify` on it). A red baseline is this week's feature: fix it,
+green on it before feature work starts. Find the run of that exact
+commit, not the newest run of `main`, which can be an older commit's or
+cancelled:
+`gh run list --workflow ci.yml --commit $(git rev-parse origin/main) --json databaseId,status,conclusion`.
+When its `status` is `completed`, read its `verdict` job:
+`gh run view <databaseId> --json jobs --jq '.jobs[] | select(.name == "verdict") | .conclusion'`
+prints `success`. Where there is no CI, `make verify` on it. A red baseline is this week's feature: fix it,
 ship the fix as the weekly update, and record that in ROADMAP.md.
 
 **1. Pick.** Top unblocked item in the Feature Queue. Do not skip or

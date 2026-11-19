@@ -19,5 +19,8 @@
 4. Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`,
    `test:`, `ci:`; `!` for breaking).
 5. PR against `main`; fill the template; CI's `verdict` green on the
-   head commit + comments resolved before merge. Squash-merge; PR title becomes the
+   head commit, the branch holding `main`'s tip, and comments resolved
+   before merge. Name the head in the merge, so GitHub refuses it if the
+   head moved: `gh pr merge <number> --squash --match-head-commit <sha>`.
+   Squash-merge; PR title becomes the
    commit message, so make it a valid Conventional Commit.
