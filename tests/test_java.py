@@ -1,4 +1,4 @@
-"""The java the workcenter runs: the JVM install.sh installed, by the path it records, whatever java
+"""The java Via runs: the JVM install.sh installed, by the path it records, whatever java
 stands first on PATH; the java on PATH only when no record is there.
 
 CI run 44444183056 (2026-11-19): install.sh set up openjdk-21-jre-headless 21.0.13.1, and doctor then
@@ -121,7 +121,7 @@ def test_the_recorded_jvm_is_the_one_doctor_reads_whatever_stands_first_on_path(
 
 def test_only_an_older_java_on_path_is_absent_and_named(tmp_path):
     """Case `old`: no record, so doctor reads the first java on PATH, a 17. FreeRouting's Java is 21
-    (ee-agent-kit/docs/ENGINES.md): the row is absent, the workcenter degraded, and the line names the 17
+    (ee-agent-kit/docs/ENGINES.md): the row is absent, Via degraded, and the line names the 17
     and where it was found."""
     env, paths = case(tmp_path, "old")
     row, line, payload = doctor(env)

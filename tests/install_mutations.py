@@ -316,7 +316,7 @@ MUTATIONS = [
     ("IA119 B2 a bad value refused only after the first step installed", "install.sh",
      "  apt_bounds_check\n  if [[ \"$SKIP_APT\" == \"1\" ]]; then\n    return\n  fi\n  local missing=()",
      "  if [[ \"$SKIP_APT\" == \"1\" ]]; then\n    return\n  fi\n  local missing=()"),
-    # The java step: the workcenter runs the JVM install.sh installed, whatever java stands first on PATH
+    # The java step: Via runs the JVM install.sh installed, whatever java stands first on PATH
     # (CI run 44444183056 read the runner's own 17.0.21).
     ("IA120 java: the installed JVM not recorded", "install.sh",
      '    printf \'%s\\n\' "$found" > "${WC_ROOT}/java.path"\n', ""),
@@ -334,7 +334,7 @@ MUTATIONS = [
      '    rm -f "${WC_ROOT}/java.path"\n', ""),
     ("IA126 java: the stop without its advice", "install.sh",
      "\"Install openjdk-21-jre-headless, the apt step's package, so that its JVM is in ${JVM_DIR} "
-     "(java-21-openjdk-<arch>), then run the script again: install.sh records it for the workcenter.\"",
+     "(java-21-openjdk-<arch>), then run the script again: install.sh records it for Via.\"",
      '"Run the script again."'),
     ("IA127 java: the step not run", "install.sh",
      "  step_freerouting\n  step_java\n", "  step_freerouting\n"),

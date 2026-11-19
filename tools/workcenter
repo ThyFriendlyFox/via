@@ -5295,7 +5295,7 @@ def freerouting2_row() -> dict:
 
 
 def java_row() -> dict:
-    """Doctor's row for the java the workcenter runs (routers.workcenter_java): ok at Java JAVA_MIN or
+    """Doctor's row for the java Via runs (routers.workcenter_java): ok at Java JAVA_MIN or
     newer. Its line names the version, the path and where the path came from."""
     exe, how = routers().workcenter_java()
     found = shutil.which(exe)

@@ -41,7 +41,7 @@ JAVA_MIN = 21
 
 
 def workcenter_java() -> tuple[str, str]:
-    """The java the workcenter runs, and where it came from. This is the 1 place that decides it.
+    """The java Via runs, and where it came from. This is the 1 place that decides it.
 
     1. `JAVA`, when set: a test's stand-in or a user's choice ("set by JAVA").
     2. Else the JVM install.sh installed, by the path it recorded in <WORKCENTER_ROOT>/java.path, whatever
@@ -88,7 +88,7 @@ class Router:
         return Path(os.environ.get(self.jar_env) or self.jar_default)
 
     def java(self) -> str:
-        """The router's own Java when it names one; else the workcenter's (`workcenter_java`)."""
+        """The router's own Java when it names one; else Via's (`workcenter_java`)."""
         return os.environ.get(self.java_env) or self.java_default or workcenter_java()[0]
 
     def java_major(self) -> int | None:
@@ -216,7 +216,7 @@ ROUTERS = {
         label="FreeRouting 1.9.0",
         jar_env="FREEROUTING_JAR",
         jar_default=WC_ROOT / "freerouting" / "freerouting.jar",
-        # No Java of its own: the workcenter's, which `JAVA` overrides (workcenter_java).
+        # No Java of its own: Via's, which `JAVA` overrides (workcenter_java).
         java_env="",
         java_default="",
         java_min=None,  # held to its jar alone, as before this interface

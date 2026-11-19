@@ -1411,14 +1411,14 @@ def java_step(
 
 def test_the_installed_jvm_is_recorded_whatever_stands_first_on_path(tmp_path):
     """The runner of run 44444183056: a 21 from the apt step under JVM_DIR, a 17 first on PATH. The step
-    records the 21's path for the workcenter and passes with REQUIRE_FREEROUTING=1; the 17 is not asked."""
+    records the 21's path for Via and passes with REQUIRE_FREEROUTING=1; the 17 is not asked."""
     code, out, err, calls, record = java_step(tmp_path, jvm="21.0.13", on_path="17.0.21", stale=True)
     java = tmp_path / "jvm" / "java-21-openjdk-amd64" / "bin" / "java"
     assert code == 0, err
     assert record.read_text(encoding="utf-8") == f"{java}\n"
     assert out.splitlines() == [
         f"[install] java: {java} (the JVM of the apt step's openjdk-21-jre-headless, recorded in {record}),"
-        " Java 21: the workcenter runs it",
+        " Java 21: Via runs it",
         "NEXT STEP",
     ]
     assert of(calls, "jvm-java") == ["jvm-java -version"] and of(calls, "java") == []
@@ -1426,13 +1426,13 @@ def test_the_installed_jvm_is_recorded_whatever_stands_first_on_path(tmp_path):
 
 def test_with_no_installed_jvm_a_java_21_on_path_is_used_and_no_record_is_left(tmp_path):
     """No JVM under JVM_DIR (an image whose java came another way): the java on PATH, a 21, passes. An
-    earlier run's record is removed: the workcenter then reads PATH, as the step said."""
+    earlier run's record is removed: Via then reads PATH, as the step said."""
     code, out, err, calls, record = java_step(tmp_path, on_path="21.0.9", stale=True)
     assert code == 0, err
     assert not record.exists()
     assert out.splitlines()[0] == (
         f"[install] java: {tmp_path}/bin/java (the first java on PATH: no JVM of the apt step under "
-        f"{tmp_path}/jvm), Java 21: the workcenter runs it"
+        f"{tmp_path}/jvm), Java 21: Via runs it"
     )
     assert of(calls, "java") == ["java -version"]
 
@@ -1440,7 +1440,7 @@ def test_with_no_installed_jvm_a_java_21_on_path_is_used_and_no_record_is_left(t
 ADVICE = (
     "[install] Install openjdk-21-jre-headless, the apt step's package, so that "
     "its JVM is in {jvm} (java-21-openjdk-<arch>), then run the script again: install.sh records it for "
-    "the workcenter."
+    "Via."
 )
 
 
@@ -1465,14 +1465,14 @@ ADVICE = (
 def test_require_freerouting_ends_red_when_the_workcenters_java_is_not_freeroutings(
     tmp_path, jvm, on_path, what
 ):
-    """REQUIRE_FREEROUTING=1 and the java the step leaves for the workcenter is older than 21, or there is
+    """REQUIRE_FREEROUTING=1 and the java the step leaves for Via is older than 21, or there is
     none: the step stops with the java it named, the Java FreeRouting needs, and what to do."""
     code, out, err, calls, record = java_step(tmp_path, jvm=jvm, on_path=on_path)
     assert code == 1
     assert "NEXT STEP" not in out
     named = what.format(tmp=tmp_path)
     assert err.splitlines()[-2:] == [
-        f"[install] ERROR: java: the workcenter would run {named}; {ENGINES_MD}, and REQUIRE_FREEROUTING=1",
+        f"[install] ERROR: java: Via would run {named}; {ENGINES_MD}, and REQUIRE_FREEROUTING=1",
         ADVICE.format(jvm=tmp_path / "jvm"),
     ]
 
@@ -1483,7 +1483,7 @@ def test_without_require_freerouting_an_old_java_is_a_warning(tmp_path):
     assert code == 0, err
     assert out.splitlines()[-1] == "NEXT STEP"
     assert err.splitlines() == [
-        f"[install] WARN: java: the workcenter would run {tmp_path}/bin/java (the first java on PATH: no JVM"
+        f"[install] WARN: java: Via would run {tmp_path}/bin/java (the first java on PATH: no JVM"
         f" of the apt step under {tmp_path}/jvm), Java 17; {ENGINES_MD}; doctor says java is absent until"
         " `sudo ./install.sh` records a Java 21"
     ]
@@ -1511,7 +1511,7 @@ def test_a_jvm_folder_without_its_java_is_passed_over(tmp_path):
     assert not record.exists()
     assert out.splitlines()[0] == (
         f"[install] java: {tmp_path}/bin/java (the first java on PATH: no JVM of the apt step under "
-        f"{tmp_path}/jvm), Java 21: the workcenter runs it"
+        f"{tmp_path}/jvm), Java 21: Via runs it"
     )
 
 
@@ -1561,7 +1561,7 @@ def test_a_jvm_that_does_not_run_stops_with_what_it_said(tmp_path):
     assert "NEXT STEP" not in out
     assert record.read_text(encoding="utf-8") == f"{java}\n"
     assert err.splitlines()[-2:] == [
-        f"[install] ERROR: java: the workcenter would run {java} (the JVM of the apt step's "
+        f"[install] ERROR: java: Via would run {java} (the JVM of the apt step's "
         f"openjdk-21-jre-headless, recorded in {record}), whose -version said: cannot execute binary file: "
         f"Exec format error (exit 126); {ENGINES_MD}, and REQUIRE_FREEROUTING=1",
         ADVICE.format(jvm=tmp_path / "jvm"),
