@@ -1362,6 +1362,14 @@ a task.
 9. A helper has stopped when its task says so: the workflow's notice, or
    the stop the lead asked for. A quiet transcript is no stop. Change no
    file a helper owns before that (M125).
+10. When a landing is accepted, the lead removes that piece's worktree
+    (`git worktree remove`, which refuses a tree with changes) and the
+    folders of copies its reviews and its landing prep made. Before a
+    health gate and before sending helpers, the lead reads `df -h` on the
+    scratch folder; with less than 5 GB free, it clears the copies of
+    landed pieces first. The 5 GB is the lead's choice: here a whole
+    checkout with its build folders took about 410 MB, and a review's
+    copies up to 2440 MB (M271).
 
 Done when: every report is read, each helper's changes are merged or
 removed, and `git worktree list` shows only what is still in use.
