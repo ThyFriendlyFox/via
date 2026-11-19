@@ -35,6 +35,7 @@ PASS   erc        0 errors, 0 warnings  [0.25s]
 PASS   drc        0 errors, 0 warnings (0 unconnected, 0 parity), legend (no fab named: held to the least of the 4 fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer)): 0 fail, 0 not judged  [0.8s]
 PASS   sim        1 decks, 46 corner runs, 0 failures  [0.16s]
 PASS   export     7/7 outputs, 22 gerber files, 3 files read back  [2.09s]
+thermal: no part's junction is judged: sim/thermal.json is not there, and the gate judges only the parts it names (the simulate skill, A part's temperature)
 RATINGS not asked for: no ratings.json beside the schematic
 GREEN: divider  report /home/user/via/tests/boards/pass-first-design/build/gates.json
 
@@ -315,7 +316,7 @@ the repository's health.
 
 **A Docker image.** With Docker instead of installing (amd64 or arm64; no openEMS on arm64):
 `docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work ghcr.io/thyfriendlyfox/ee-workcenter:main workcenter gates .`.
-The files the gates write belong to you. The image holds the toolchain install.sh installs and the workcenter, without the example boards and the site; `.github/workflows/image.yml` builds it on Ubuntu 24.04 and publishes it from `main`, a release's tag, each Monday and by hand. Pin a toolchain by its digest from the `Image` workflow's summary. Not built yet: the first build is the pull request's.
+The files the gates write belong to you. The image holds the toolchain install.sh installs and the workcenter, without the example boards and the site; `.github/workflows/image.yml` builds it on Ubuntu 24.04 and publishes it from `main`, a release's tag, each Monday and by hand. Pin a toolchain by its digest from the `Image` workflow's summary. The first image was built and pushed from `main` on 2026-11-18; the package is still private, so it cannot be pulled from outside the repository yet.
 
 ## The website
 
@@ -409,7 +410,8 @@ says how to report a vulnerability.
 [`ee-agent-kit/STATUS.md`](ee-agent-kit/STATUS.md) has each area's state
 with its evidence. In short: the gates, the corners, the frequency plan and `workcenter next`
 run on the fixture boards in `make verify`. Via has no release yet. The
-cloud setup script and the Docker build have not run yet.
+cloud setup script has not run yet. The Docker image is built on GitHub,
+and the package is still private.
 
 ## License
 

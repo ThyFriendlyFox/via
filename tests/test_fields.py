@@ -81,7 +81,8 @@ def test_the_plane_and_the_dielectric_fill_the_box():
     z -3 to 3.2. The GND plane is a sheet at z 0 over the box; the dielectric fills z 0 to 0.2."""
     model = line_model()
     assert model["box"] == pytest.approx([97, 96.82, -3.0, 113, 103.18, 3.2])
-    assert model["planes"] == [{"layer": "B.Cu", "net": "GND", "z": 0.0}]
+    # t_cu: B.Cu's 0.035 mm of the stack-up, used by `copper` lossy alone
+    assert model["planes"] == [{"layer": "B.Cu", "net": "GND", "z": 0.0, "t_cu": 0.035}]
     (diel,) = model["dielectrics"]
     assert diel["z"] == pytest.approx([0.0, 0.2])
     assert (diel["er"], diel["tand"]) == (4.5, 0.02)
@@ -401,13 +402,13 @@ def test_s_parameters_from_port_voltages_and_currents():
 
 
 def test_the_openems_file_holds_the_model():
-    """The file openEMS reads: the track as a polygon at elevation 0.2, the dielectric as a box with
-    epsilon 4.5, port 1 as a 50 ohm lumped element along z (direction 2). Its start z 0 is under its stop
-    z 0.2, so the excitation points down, 0,0,-1, the voltage probe weighs -1 and the current probe 1
-    with its normal along z."""
+    """The file openEMS reads: the track as a polygon at elevation 0.2, the dielectric as a box of a
+    Debye material (its epsilon 4.5 at 5 GHz: tests/test_fields_measures.py), port 1 as a 50 ohm lumped
+    element along z (direction 2). Its start z 0 is under its stop z 0.2, so the excitation points down,
+    0,0,-1, the voltage probe weighs -1 and the current probe 1 with its normal along z."""
     text = fields.OpenEMS.xml(line_model(), driven=1)
     assert '<Polygon Priority="10" Elevation="0.2" NormDir="2">' in text
-    assert '<Property Epsilon="4.5"' in text
+    assert '<DebyeMaterial Name="dielectric_1"><Property Epsilon="' in text
     assert '<LumpedElement Name="port_resist_1" Direction="2" Caps="1" R="50">' in text
     assert '<Excitation Name="port_excite_1" Type="0" Excite="0,0,-1">' in text
     assert '<ProbeBox Name="port_ut1" Type="0" Weight="-1">' in text
@@ -427,6 +428,10 @@ def test_the_faults_openems_states_with_exit_0():
     late = "RunFDTD: Warning: Max. number of timesteps was reached before the end-criteria of -40dB"
     assert "did not fall to the end criterion" in fault(late)
     assert fault("Time for 3604 iterations with 55692.00 cells : 8.22 sec") is None
+    # openEMS 0.0.35 ended by its ABORT file prints the same warning after it (the line fixture with
+    # endCriteria 0, ended at 2773 steps, 2026-11-18): the command ended it, no fault.
+    aborted = 'openEMS::CheckAbortCond(): Found file "ABORT", aborting simulation...\n' + late
+    assert fault(aborted) is None
 
 
 def run_cli(*args, env=None):
@@ -605,6 +610,22 @@ def test_a_cutout_of_a_zone_is_a_hole(tmp_path):
             "stack-up layer dielectric 1: `epsilon_r` is 'FR4', not a number",
         ),
         ("(width 0.36)", "(width wide)", "segment 1: `width` is 'wide', not a number"),
+        # A dielectric with no loss tangent was modelled lossless, with no word in left_out, and an
+        # insertion-loss limit was held against it.
+        (
+            "(loss_tangent 0.02)",
+            "",
+            "stack-up layer dielectric 1: no `loss_tangent`: the model would make it lossless; state it "
+            "(0 for a lossless one)",
+        ),
+        # A negative loss tangent became Debye terms of negative weight, a gain medium: the 40 mm line
+        # read 0.043 dB of insertion loss where 0.02 reads 1.280, and printed FIELDS HELD.
+        (
+            "(loss_tangent 0.02)",
+            "(loss_tangent -0.02)",
+            "stack-up layer dielectric 1: loss_tangent -0.02 is under 0: a dielectric takes power, it "
+            "gives none",
+        ),
     ],
 )
 def test_a_mistake_in_the_board_file_is_refused_with_its_place(tmp_path, old, new, says):
@@ -696,10 +717,12 @@ def test_a_wave_that_never_arrives_is_no_measure():
     limits = [{"measure": "insertion_loss_db", "net": "X", "max": 3, "source": "d"}]
     fails, held, unjudged = fields.judge(limits, {"X": m})
     assert fails == [] and held == []
-    assert unjudged == [
+    assert unjudged[0] == (
         "X insertion_loss_db: not judged, |S| is 0 at 1 GHz: no wave reached the port, "
         "so nothing was measured"
-    ]
+    )
+    # the return loss the run made and no limit names (tests/test_fields_measures.py)
+    assert all(x.endswith("fields.json states no limit for it") for x in unjudged[1:])
 
 
 def stub_spec(**group):
@@ -829,9 +852,10 @@ def test_the_impedance_is_judged_on_a_uniform_line_alone():
     limits = [{"measure": "impedance_ohm", "net": "S", "min": 45, "max": 55, "source": "d"}]
     fails, held, unjudged = fields.judge(limits, out)
     assert fails == [] and held == []
-    assert unjudged == [
+    assert unjudged[0] == (
         "S impedance_ohm: not judged, S has 2 widths (0.3, 0.5 mm): the impedance is a uniform line's"
-    ]
+    )
+    assert all(x.endswith("fields.json states no limit for it") for x in unjudged[1:])
 
 
 def test_a_net_on_2_layers_has_no_impedance():
@@ -917,7 +941,7 @@ def test_where_openems_stops_does_not_change_the_result(tmp_path):
     up to where they stop: u1 = 0, 1, 0.5, then 0.001; u2 = 0, 0.5, 0.25, then 0.001; each i = u / 50.
     The port energy is 2 (u1^2 + u2^2): peak 2 x 1.25 = 2.5 at sample 1, 40 dB under it 2.5e-4. From
     sample 3 every sample is 2 x 2e-6 = 4e-6, so the ports settle at sample 2 + 5 = 7. Run A goes on
-    with 0.005 to sample 12 (2 x 2.5e-5 = 5e-5, quiet: openEMS stops 10 dB under the criterion), run
+    with 0.005 to sample 12 (2 x 2.5e-5 = 5e-5, quiet: a run ends once the box's energy too is under it), run
     B ends at sample 8: both columns are read from samples 0 to 7 and are the same. Run C ends at
     sample 5, before the ports settle: a fault, not a result."""
     tail = [0.001] * 6
@@ -970,3 +994,142 @@ def test_the_cut_waits_for_the_wave_to_cross_and_come_back(tmp_path):
     assert [abs(x) for x in s11] == pytest.approx([0.0, 0.0], abs=1e-12)
     energy = [2 * (a * a + b * b) for a, b in zip(u1, u2, strict=True)]
     assert fields.settled(energy, -40.0) == 26
+
+
+# The Wyvern lane's port-1 run (USB32_TX1 of tests/test_fields_solver.py, openEMS 0.0.35, 2026-11-18):
+# the ports' energy at each of its 47 samples in dB under its peak, sample 0 being 0 (none), from the
+# probes of the run that stopped at 13708 steps; the run that stopped at 13410 wrote the first 46 alike.
+LANE_PORT_DB = [-76.14, -75.23, -80.92, -62.44, -52.03, -44.63, -39.08, -35.13, -32.95, -33.23, -34.88]
+LANE_PORT_DB += [-26.32, -18.85, -13.83, -10.51, -8.61, -8.04, -8.68, -9.37, -7.51, -4.35, -1.93, -0.53]
+LANE_PORT_DB += [0.0, -0.21, -1.12, -2.74, -5.06, -7.48, -8.59, -8.4, -8.46, -9.48, -11.63, -14.97, -19.6]
+LANE_PORT_DB += [-25.4, -30.78, -33.12, -34.77, -37.51, -41.44, -46.39, -52.13, -58.31, -64.54]
+# The box's energy openEMS printed at a check, in dB, by sample (a sample every 298 steps): 9238,
+# 12516, 13112, 13410 and 13708 steps in the logs of the same runs.
+LANE_BOX_DB = {31: -8.52, 42: -41.95, 44: -48.58, 45: -50.33, 46: -51.43}
+
+
+def lane_log(sample: int) -> str:
+    db = LANE_BOX_DB[sample]
+    return f"[@ 1m31s] Timestep: {sample * 298:12d} || Speed: 27.6 MC/s || Energy: ~3.67e-19 ({db:.2f}dB)"
+
+
+def test_a_run_ends_only_when_the_lanes_ports_have_settled():
+    """openEMS stopped the lane where the box's energy first printed 50 dB under its peak at a check of
+    its own, every 4 s of the clock: 1 run printed -50.33 dB at 13410 steps, sample 45, and stopped
+    with 46 samples, and the ports had not settled: their last sample above -40 dB is 41 (-37.51 dB),
+    and 5 quiet samples after it end at 46. The other runs' checks fell at 13112 (-48.58 dB, on) and
+    13708 (-51.43 dB): 47 samples, settled at 46. The run is ended once the ports have settled and the
+    box's energy has printed under the end criterion, -40 dB (-41.95 at 12516 steps), not before: the
+    10 dB more openEMS was given only so that its own stop came after the ports settled. While the box
+    holds a wave (-8.52 dB at 9238 steps) the run goes on, whatever the ports."""
+    energy = [0.0] + [10 ** (d / 10) for d in LANE_PORT_DB]
+    assert fields.box_db(lane_log(45)) == -50.33
+    assert fields.settled(energy[:46], -40.0) is None
+    assert not fields.ended(energy[:46], lane_log(45), -40.0)
+    assert fields.settled(energy, -40.0) == 46
+    assert fields.ended(energy, lane_log(42), -40.0)
+    assert fields.ended(energy, lane_log(46), -40.0)
+    assert not fields.ended(energy, lane_log(31), -40.0)
+    assert not fields.ended(energy, "no energy printed yet", -40.0)
+
+
+FAKE_OPENEMS = """
+import json, re, sys, time
+from pathlib import Path
+
+if len(sys.argv) < 2:
+    print(" | openEMS 64bit -- version v0.0.35")
+    sys.exit(0)
+port_db, box_db = json.loads(Path(__file__).with_suffix(".json").read_text())
+xml = Path(sys.argv[1]).read_text()
+end = float(re.search(r'endCriteria="([^"]+)"', xml).group(1))
+probes = {name: open(name, "w") for name in re.findall(r'<ProbeBox Name="(port_[ui]t[0-9]+)"', xml)}
+for k, (pdb, bdb) in enumerate(zip(port_db, box_db)):
+    a = 0.0 if pdb is None else 10 ** (pdb / 20)
+    for name, f in probes.items():
+        f.write(f"{k * 1.247e-11:.6e}\\t{a if '_ut' in name else a / 50:.9e}\\n")
+        f.flush()
+    print(f"[@ 1s] Timestep: {k * 298:12d} || Speed: 1 MC/s || Energy: ~1e-19 ({bdb:.2f}dB)", flush=True)
+    if end > 0 and 10 ** (bdb / 10) < end:
+        print(f"Time for {k * 298} iterations", flush=True)
+        sys.exit(0)
+    if Path("ABORT").exists():
+        print('openEMS::CheckAbortCond(): Found file "ABORT", aborting simulation...', flush=True)
+        print("RunFDTD: Warning: Max. number of timesteps was reached before the end-criteria of -60dB "
+              "was reached... ", flush=True)
+        sys.exit(0)
+    time.sleep(0.02)
+print("RunFDTD: Warning: Max. number of timesteps was reached before the end-criteria of -50dB", flush=True)
+"""
+
+
+def test_the_lanes_samples_settle_whatever_step_openems_would_stop_at(tmp_path):
+    """A stand-in for openEMS writes the lane's samples (LANE_PORT_DB, then 6 dB less each sample to
+    sample 299, a series of this test's own) and the box's energy at each (LANE_BOX_DB; 0 dB before
+    sample 42, -45 dB at 43, then 1.5 dB less each sample after 46, also this test's own). Like openEMS
+    whose check falls at sample 45, it stops where the box's energy lies under the file's endCriteria:
+    the lane's -50 dB stopped it with 46 samples, `did not settle`. Off (0), it runs until the command
+    ends it once the ports have settled and the box's energy has fallen, and the line fixture without its
+    limits is measured: exit 2, nothing judged, no fault."""
+    import os
+    import shutil
+
+    port_db = [None] + LANE_PORT_DB + [LANE_PORT_DB[-1] - 6 * k for k in range(1, 254)]
+    box_db = [0.0] * 42 + [LANE_BOX_DB[42], -45.0, LANE_BOX_DB[44], LANE_BOX_DB[45], LANE_BOX_DB[46]]
+    box_db += [LANE_BOX_DB[46] - 1.5 * k for k in range(1, len(port_db) - len(box_db) + 1)]
+    fake = tmp_path / "fake_openems.py"
+    fake.write_text(FAKE_OPENEMS, encoding="utf-8")
+    fake.with_suffix(".json").write_text(json.dumps([port_db, box_db]), encoding="utf-8")
+    exe = tmp_path / "openEMS"
+    exe.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{fake}" "$@"\n', encoding="utf-8")
+    exe.chmod(0o755)
+    project = tmp_path / "line"
+    shutil.copytree(LINE, project)
+    spec = json.loads((project / "fields.json").read_text(encoding="utf-8"))
+    spec["groups"][0]["limits"] = []
+    (project / "fields.json").write_text(json.dumps(spec), encoding="utf-8")
+    proc = run_cli("fields", str(project), env={**os.environ, "OPENEMS": str(exe)})
+    assert "did not settle" not in proc.stdout, proc.stdout
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "no limit stated: nothing judged" in proc.stdout
+    log = (project / "build" / "fields" / "sig" / "openems" / "port1" / "openems.log").read_text()
+    assert 'Found file "ABORT"' in log
+    assert not (project / "build" / "fields" / "sig" / "openems" / "port1" / "ABORT").exists()
+
+
+def test_a_run_whose_ports_never_settle_ends_at_the_step_limit_and_is_refused(tmp_path, monkeypatch):
+    """The stand-in openEMS of the lane test, run through `OpenEMS.run` itself: its ports stay at their
+    peak and the box's energy at 0 dB for all 60 samples, so `ended` never holds and no ABORT file is
+    made. An ABORT file an earlier run left in the folder is taken away before the stand-in starts
+    (else it would stop at its first sample, and an abort is no fault). The stand-in stops at its step
+    limit with openEMS's warning and exit 0. The run ends on its own, well inside its timeout; it is
+    refused with the reason (the energy did not fall within the step limit), all 61 samples written,
+    and no ABORT file is left in the run's folder."""
+    import time
+
+    port_db = [None] + [0.0] * 60
+    box_db = [0.0] * len(port_db)
+    fake = tmp_path / "fake_openems.py"
+    fake.write_text(FAKE_OPENEMS, encoding="utf-8")
+    fake.with_suffix(".json").write_text(json.dumps([port_db, box_db]), encoding="utf-8")
+    exe = tmp_path / "stand-in"
+    exe.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{fake}" "$@"\n', encoding="utf-8")
+    exe.chmod(0o755)
+    monkeypatch.setenv("OPENEMS", str(exe))
+    run = tmp_path / "port1"
+    run.mkdir()
+    probes = "".join(f'<ProbeBox Name="port_{k}t{n}"/>' for n in (1, 2) for k in "ui")
+    (run / "model.xml").write_text(f'<FDTD endCriteria="0"/>{probes}', encoding="utf-8")
+    (run / "ABORT").write_text("left by an earlier run\n", encoding="utf-8")
+    model = {
+        "settings": {"port_ohm": 50.0, "end_criteria_db": -40.0},
+        "ports": [{"n": 1, "net": "S"}, {"n": 2, "net": "S"}],
+    }
+    start = time.monotonic()
+    ok, why = fields.OpenEMS.run(run, 60.0, model)
+    assert time.monotonic() - start < 30
+    assert not ok
+    assert why == "the energy in the box did not fall to the end criterion within the step limit"
+    assert "Max. number of timesteps was reached" in (run / "openems.log").read_text(encoding="utf-8")
+    assert len((run / "port_ut1").read_text(encoding="utf-8").splitlines()) == 61
+    assert not (run / "ABORT").exists()

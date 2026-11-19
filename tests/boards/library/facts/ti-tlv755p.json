@@ -8,10 +8,19 @@
     "url": "https://www.ti.com/lit/ds/symlink/tlv755p.pdf",
     "sha256": "96e2706d4b13656d2d550fdbb5be9861c56b058822109bb39a906d4ad1beb019",
     "read": "2026-11-17",
-    "second_reader": "no"
+    "second_reader": "2026-11-18"
   },
-  "note": "The DBV package, SOT-23-5, pins of table 4-1 on page 3. The output's span is section 5.5's accuracy for an output of 1 V or more, -1.5 % to 1.5 %, on page 5; from -40 to 85 C the DBV package holds -1 % to 1 %. The supply's current is the greatest ground current from -40 to 125 C with no load, 40 uA, page 5. The 5 figures are the JEDEC rows of section 5.4 for the DBV column, page 5: a 2s2p board with no vias to the inner planes and the bottom layer, its footnote 2; theta_jc is the row RthetaJC(top), and the DBV column has no RthetaJC(bot). The output's greatest voltage is the lower of IN + 0.3 V and 6.0 V, footnote 2 of section 5.1; the entry holds IN + 0.3 V. junction_max is the operating junction temperature of the absolute maximum ratings, page 4; the recommended operating conditions stop at 125 C",
-  "thermal": {"junction_max": 150, "theta_ja": 231.1, "theta_jc": 118.4, "theta_jb": 64.4, "psi_jt": 28.4, "psi_jb": 63.8, "page": [4, 5]},
+  "note": "The DBV package, SOT-23-5, pins of table 4-1 on page 3. The output's span is section 5.5's accuracy for an output of 1 V or more, -1.5 % to 1.5 %, on page 5; from -40 to 85 C the DBV package holds -1 % to 1 %. The supply's current is the greatest ground current from -40 to 125 C with no load, 40 uA, page 5. The 5 figures are the JEDEC rows of section 5.4 for the DBV column, page 5: a 2s2p board with no vias to the inner planes and the bottom layer, its footnote 2; theta_jc is the row RthetaJC(top), and the DBV column has no RthetaJC(bot). The output's greatest voltage is the lower of IN + 0.3 V and 6.0 V, footnote 2 of section 5.1; the entry holds IN + 0.3 V. junction_max is the operating junction temperature of the absolute maximum ratings, page 4; the recommended operating conditions stop at 125 C. `boards` is footnote 2 of section 5.4, page 5: the JEDEC rows apply to the JEDEC standard 2s2p board. The 3.3 V the output's span is taken around is the 33 of the part number, table 8-1 on page 23. A second reader compared every number with the datasheet on 2026-11-18",
+  "thermal": {
+    "junction_max": 150,
+    "theta_ja": 231.1,
+    "theta_jc": 118.4,
+    "theta_jb": 64.4,
+    "psi_jt": 28.4,
+    "psi_jb": 63.8,
+    "page": [4, 5],
+    "boards": {"theta_ja": "2s2p", "theta_jc": "2s2p", "theta_jb": "2s2p", "psi_jt": "2s2p", "psi_jb": "2s2p", "page": 5}
+  },
   "pins": [
     {"numbers": ["1"], "name": "IN", "role": "supply", "abs": [-0.3, 6.0], "operating": [1.45, 5.5], "amps": 0.00004, "page": [3, 4, 5]},
     {"numbers": ["2"], "name": "GND", "role": "ground"},
@@ -24,7 +33,7 @@
       "abs": [-0.3, {"pin": "IN", "plus": 0.3}],
       "volts": [3.2505, 3.3495],
       "amps": 0.5,
-      "page": [3, 4, 5]
+      "page": [3, 4, 5, 23]
     }
   ]
 }

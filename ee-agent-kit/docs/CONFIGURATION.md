@@ -366,22 +366,32 @@ part by `mpn` or `mpns` and whose `source.sha256` is a row of
 |---|---|---|---|
 | `engine` | name | `openems` | The field solver. |
 | `reference` | net | `GND` | The net whose pours are the reference planes. |
-| `groups` | list | none (required) | Each group: `name`, `nets`, `kind` (`lines`, the default, or `antenna`), `band_ghz` `[low, high]`, optional `ports` (pads that name a net's ends), and `limits`: `{"measure", "net", "min" and/or "max", "source"}`, the measure one of `impedance_ohm`, `return_loss_db`, `insertion_loss_db`, `next_db`, `fext_db`. |
-| `settings` | object | `margin_mm` 3, `cells_per_wavelength` 20, `cells_across_width` 3, `cells_per_dielectric` 4, `port_ohm` 50, `frequencies` 201, `end_criteria_db` -40, `absorbing_cells` 8, `max_timesteps` 200000, `timeout_s` 3600 | The model and the run. `cells_across_width` is the cells across a straight track inside its metal; its edges lie a third of a cell inside the outer 2 lines. `cells_across_width`, `cells_per_dielectric`, `absorbing_cells` and `max_timesteps` are whole numbers of 1 or more, `frequencies` 2 or more, `end_criteria_db` below 0 (openEMS itself runs 10 dB further). |
+| `groups` | list | none (required) | Each group: `name`, `nets`, `kind` (`lines`, the default, or `antenna`), `band_ghz` `[low, high]`, optional `ports` (pads that name a net's ends), and `limits`: `{"measure", "net", "min" and/or "max", "source"}`, the measure one of `impedance_ohm`, `return_loss_db`, `insertion_loss_db`, `next_db`, `fext_db`, `resonance_ghz`, `diff_impedance_ohm`, `diff_insertion_loss_db`, `diff_return_loss_db`. A differential limit's `net` is the group's first net and `pair` its second; the group has 2 nets. A limit may take `unstated` (why the document gives no bound) in place of `min`, `max` and `source`; it is printed not judged, and `--strict` fails it. A measure the run made and no limit names is printed not judged. |
+| `settings` | object | `copper` `sheet`, `conductivity_s_m` 58e6, `margin_mm` 3, `cells_per_wavelength` 20, `cells_across_width` 3, `cells_per_dielectric` 4, `port_ohm` 50, `frequencies` 201, `end_criteria_db` -40, `absorbing_cells` 8, `max_timesteps` 200000, `timeout_s` 3600 | The model and the run. `cells_across_width` is the cells across a straight track inside its metal; its edges lie a third of a cell inside the outer 2 lines. `cells_across_width`, `cells_per_dielectric`, `absorbing_cells` and `max_timesteps` are whole numbers of 1 or more, `frequencies` 2 or more, `end_criteria_db` below 0: the run ends once the ports' energy has stayed this far under its peak for 5 samples after its last sample above it and the box's energy is this far under its peak. `copper`: `sheet` (a perfect conductor of no thickness), `thick` (of its layer's stack-up thickness) or `lossy` (an openEMS conducting sheet of `conductivity_s_m`, S/m, default 58e6 from NIST Handbook 100, 1966, 1.2a, p. 2); `thick` and `lossy` need the copper layers' thickness in the stack-up. Every dielectric needs a `loss_tangent` of 0 or more. |
 
 ## `sim/thermal.json` (for the SIM gate's junction temperatures)
 
 | Field | Type | Default | Use |
 |---|---|---|---|
 | `pack` | name or path | none (required) | The rating pack whose `junction.temperature` rules give the derated limit: a file of `rules/ratings/` without `.json`, or a path from the project's folder. |
-| `parts` | object | none (required) | `{"U1": {"mpn": ..., "watts": "deck.measure", "source": ...}}`: each part's number and the deck measure that prints its power. No file: no junction is judged. |
+| `parts` | object | none (required) | `{"U1": {"mpn": ..., "watts": "deck.measure", "source": ..., "from": ...}}`: each part's number and the deck measure that prints its power. `from` (optional): `{"figure": "psi_jb", "celsius": {"85": 101.5}, "source": ...}`, the case's (`theta_jc`), the board's (`theta_jb`, `psi_jb`) or the package top's (`psi_jt`) temperature at each ambient of a run, in C, measured or computed; 2 keys within 0.01 C of each other are refused. With `theta_jc` only, `from` may hold `heat_sink`: `{"name": text, "theta_cs": C/W, "theta_sa": C/W, "source": text}`, each resistance above 0 C/W; text alone is refused. No file: no junction is judged, and SIM says so. |
 
 A part's facts take `thermal` on an `ic`, a diode or a MOSFET:
-`{"junction_max": C, "page": n or [n, ...]}` and 1 or more of `theta_ja`,
-`theta_jc`, `theta_jb`, `psi_jt`, `psi_jb` in C/W. Only `theta_ja` is
-judged. A pack's rule of stress `junction.temperature` holds `celsius`,
-`share` or `below_rating`, 1 at least; the limit is the least of those it
-names.
+`{"junction_max": C, "page": n or [n, ...]}`, 1 or more of `theta_ja`,
+`theta_jc`, `theta_jb`, `psi_jt`, `psi_jb` in C/W, and `boards`:
+`{"theta_ja": "2s2p", ..., "page": n}`, the JEDEC board each figure was
+measured on, `1s0p` or `2s2p`. A figure with no board holds no part.
+`theta_ja` is judged at every run; the others at a run whose ambient
+`from` states. Only theta_ja on the 2s2p board bounds a stated
+temperature; one at or under its run's ambient, or one nothing bounds,
+holds no part. On a heat sink, equation 5 from the ambient is worked at
+every run beside equation 4 from a stated case (or theta_ja where none is
+stated); the greater judges (SPRA953D, section 2.2, page 7). A pack's rule
+of stress `junction.temperature` holds `celsius`, `share` or
+`below_rating`, 1 at least, and may hold `second_reader` (a date or `no`;
+the document's when absent); the limit is the least of those it names. A
+`read` or `second_reader` date after the machine's UTC day plus 1 is
+refused.
 
 ## `panel.json` (beside a board, for EXPORT)
 

@@ -1,0 +1,20 @@
+{
+  "engine": "openems",
+  "reference": "GND",
+  "settings": {"margin_mm": 8},
+  "groups": [
+    {
+      "name": "patch",
+      "kind": "antenna",
+      "nets": ["ANT"],
+      "ports": ["J1.1"],
+      "band_ghz": [4, 8],
+      "limits": [
+        {"measure": "resonance_ghz", "net": "ANT", "min": 5.381, "max": 6.192,
+         "source": "worked by hand, margin 7 % written before the run: a patch 12 mm long and 12 mm wide over 0.8 mm of 4.5 resonates where 12 mm and 2 open ends are half a wavelength; eeff 4.06762 (Hammerstad and Jensen, Qucs Technical Papers 2014, eq. 11.15 to 11.18, p. 164), each end 0.42208 mm (Kirschning, Jansen and Koster, the same, eq. 11.185 to 11.190, p. 181): c / (2 x 12.84416 mm x sqrt(4.06762)) = 5.7865 GHz"},
+        {"measure": "return_loss_db", "net": "ANT",
+         "unstated": "no document gives this patch a return loss; the measure is the least over the band, and off its resonance a patch returns nearly all (0.21 dB at 7.62 GHz in a run of 2026-11-18); a bound of 0 dB, which any passive port meets, would be counted as held"}
+      ]
+    }
+  ]
+}

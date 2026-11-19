@@ -79,10 +79,19 @@ or any step that downloads, installs, or runs for more than a minute.
    them in 1 step. A green run is read for its time too: a step that
    used more than half its limit is split or given room before a merge
    rests on it (M180).
+8. A test of a workflow step runs the step's own text with a stand-in
+   for every command whose answer depends on the machine (`docker`,
+   `find`, `id`, the user's name, the network), so that the test holds
+   the step's logic and never the machine it runs on: the same on a
+   runner, in the image, as a user id with no name. Each such command's
+   failure is a case. A command whose failure must stop the step runs on
+   its own line (`me=$(id -un)`): inside another command's arguments its
+   exit status is lost under `bash -e` (M269).
 
 Done when: the run is green, its log shows progress lines in every long
 step, no step used more than half its limit, and no step depended on a
-terminal.
+terminal; each test of a step stands in for every command that reads the
+machine, and makes each fail.
 
 ## P3 — Design rules before geometry
 
@@ -622,8 +631,21 @@ When: a change is about to be called done.
    origin/<branch>:refs/heads/main`. A switch stopped half-way leaves a
    tree on neither branch (M177).
 
+8. When 2 reviews in a row of a check that prints a passing verdict each
+   find a new input of the same kind that passes, the next review stops
+   writing cases by hand. It writes a reference model of the rule from
+   the document, each rule with its section and page, never from the
+   check's code; generates cases over the whole input space with a fixed
+   seed, the inputs the check refuses included; runs each through the
+   check's own entry point and through the model; and explains every
+   disagreement. The model and a generator stay in the repository as a
+   test that runs in under 20 s and prints the smallest disagreeing case
+   (`tests/test_thermal_model.py`, M263).
+
 Done when: the remote has the commit, its CI run is green, and the report
-has been sent. For a gate's method: the attack's cases are tests.
+has been sent. For a gate's method: the attack's cases are tests; after 2
+reviews in a row found the same kind of hole, a reference model of the
+rule runs generated cases through the check's entry point as a test.
 
 ## P15 — A question that reveals a mismatch
 

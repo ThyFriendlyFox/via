@@ -712,27 +712,42 @@ def step_named(job: dict, start: str) -> dict:
 
 
 def test_the_gates_step_fails_unless_every_file_written_is_the_runners_user(tmp_path):
-    """The step runs here with a stub `docker` (the gates write nothing) and a stub `find` that prints the
-    owners $OWNERS names. Promise 3: 1 owner, the runner's user, passes; another owner beside it fails."""
+    """The step runs here with stand-ins: `docker` (the gates write nothing), `find` that prints the
+    owners $OWNERS names, and `id` whose `-un` prints $ME and ends with $ID_CODE. The step's logic is
+    judged, not this machine's user list: GNU `id -un` for a user id with no passwd line prints the number
+    and ends with 1 (coreutils v9.4 src/id.c, print_user), and the suite ran inside the image as such a
+    user (CI run 44409635104). Promise 3: 1 owner, the runner's user, passes; another owner beside it
+    fails, whether sort puts it before the runner's name or after (a step that keeps 1 owner fails 1
+    of the 2); another owner alone fails; and an `id -un` that fails fails the step, even when the number it
+    prints is the owner find prints."""
     step = step_named(flow(IMAGE_FLOW)["jobs"]["build"], "The gates on a fixture")
     bin_ = tmp_path / "bin"
     stub(bin_, "docker", "exit 0")
     stub(bin_, "find", 'printf "$OWNERS\\n"')
-    me = subprocess.run(["id", "-un"], capture_output=True, text=True, check=True).stdout.strip()
+    stub(bin_, "id", 'if [ "$1" = -un ]; then echo "$ME"; exit "$ID_CODE"; fi; echo 1001')
+    cases = {
+        ("runner", "runner", 0): 0,
+        ("runner\\nnobody-else", "runner", 0): 1,
+        ("runner\\nzz-other", "runner", 0): 1,
+        ("nobody-else", "runner", 0): 1,
+        ("1001", "1001", 1): 1,
+    }
     codes = {}
-    for owners in (me, f"{me}\\nnobody-else", "nobody-else"):
+    for owners, me, id_code in cases:
         env = {
             **os.environ,
             "PATH": f"{bin_}:{os.environ['PATH']}",
             "TMPDIR": str(tmp_path),
             "OWNERS": owners,
+            "ME": me,
+            "ID_CODE": str(id_code),
         }
         env |= {"IMAGE": "i", "TAG": "t", "ARCH": "amd64"}
         ran = subprocess.run(
             ["bash", "-e", "-c", step["run"]], cwd=ROOT, env=env, capture_output=True, text=True
         )
-        codes[owners] = ran.returncode
-    assert codes == {me: 0, f"{me}\\nnobody-else": 1, "nobody-else": 1}
+        codes[(owners, me, id_code)] = ran.returncode
+    assert codes == cases
 
 
 def test_the_image_path_runs_make_verify_only_after_its_check_passes(tmp_path):

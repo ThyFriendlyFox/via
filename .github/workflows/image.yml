@@ -85,7 +85,10 @@ jobs:
           docker run --rm --user "$(id -u):$(id -g)" -v "$board":/work "$IMAGE:$TAG-$ARCH" workcenter gates .
           owners=$(find "$board/build" -printf '%u\n' | sort -u)
           echo "owners of the files written: $owners"
-          test "$owners" = "$(id -un)"
+          # On its own line, so that bash -e stops the step when id -un fails: for a user id with no
+          # name it prints the number, which find prints too, and ends with 1.
+          me=$(id -un)
+          test "$owners" = "$me"
       - name: Push this machine's image (never from a pull request)
         if: github.event_name != 'pull_request'
         env:
