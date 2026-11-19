@@ -1791,3 +1791,9 @@ What happened: Pull request 124 (batch 5, head 864373c) was red in GitHub's `fas
 Cost: 1 red CI run of the batch's pull request, and a round of fixes before it could be pushed again.
 Root cause: After each landing the keeper ran a `-k` choice of `tests/test_docs.py` (count of tests, flags, links and the like), which left out the pointer test, and ran the touched test files with KiCad's libraries in place, not the way the fast job runs them (`verify/verify.sh site`: the libraries hidden, `WORKCENTER_NO_ENGINES=1`, `-m "not engine"`). No check looked for processes a test left behind.
 Process: P14
+
+## M294 — 2026-11-19 — A tool wrote into a person's board file as if it were its own output
+What happened: `workcenter autoroute --apply` (roadmap item 15, landed in batch 5 at cf5729c) wrote over a read-only board, replaced a symbolic link with a plain file, ignored KiCad's lock file and wrote over edits saved while the router ran (W1); it cut and redrew the person's own tracks without a line, and a locked track lost its lock and its uuid (W2); a second run wrote over the only copy of the board as drawn (W3). 19 of the check's 36 single-line mutants survived (T1). An independent last check of the landed state found them; a fixer closed them at 295c16a, and a second check said "lands as it is".
+Cost: Found before a person's board was written; a check round and a fix round on a piece already landed in the batch.
+Root cause: The write was built and reviewed for the board, not for the file: a path written by the tool, as `workcenter design` writes its own output. Nothing asked who else owns the file (the person, KiCad, a link, an earlier run), and the session merge was free to rewrite the person's copper because the generated designs it was made for have none.
+Process: P14

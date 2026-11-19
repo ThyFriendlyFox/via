@@ -55,7 +55,9 @@ Evidence: `tests/test_product_name.py` (7 tests); branch `wip/name-site`, d8da82
 
 Roadmap item 15. Before, a hand-drawn board went to FreeRouting through a DSN exported from KiCad by hand, and the session came back by hand too. `workcenter autoroute --apply <project>` now reads the `.kicad_pcb` and its `.kicad_pro` into the DSN writer `kicadgen` already has, routes under the same rules as `design --route`, writes the copper back into the board file in place, and runs the DRC gate on it. A track or via the route kept stays byte for byte; the board before the route is kept under `build/route/`. Zones, arcs and outlines that are not a rectangle are reported or refused, as the scope guard allows. The fixture `tests/boards/route-me` has 5 unconnected items before the route and 0 after. The review found that the pass rested on KiCad's list of unconnected items alone, which a project can switch off (M292); such a run is now not judged, SKIP, exit 2. It also found paste-only pads refused as pads on the wrong side, a wrong `.kicad_pro` ending in a traceback, and refused outlines that did not say what was drawn; all fixed with tests.
 
-Evidence: `tests/test_boardroute.py` (21 tests), `tests/test_gates.py::test_autoroute_apply_routes_fixture`; branch `wip/r15`, cf5729c.
+An independent last check of the landed state then found the write into the person's board unsafe and the merge too free with the person's tracks. `boardroute.apply` now checks the file before the route and again before the rename, and adds only the router's own copper: pieces of a hand track that the session merge split or de-duplicated are left out, and the hand track stays whole. KiCad joins a track end that lies on another track's middle; pass-rc-divider already holds such T joints and its DRC passes. A second independent check said "lands as it is" (M294).
+
+Evidence: `tests/test_boardroute.py` (46 tests), `tests/test_gates.py::test_autoroute_apply_routes_fixture`; branch `wip/r15`, cf5729c and 295c16a; M292, M294.
 
 ## 2026-11-19 — Board gates as a reusable workflow
 
