@@ -99,6 +99,16 @@ or any step that downloads, installs, or runs for more than a minute.
     variable asks for it by name, its skip names the workflow and the 1
     command that runs it, and the workflow checks every thing the test
     checked, with no `continue-on-error` on the job or those steps (M287).
+11. A check that a program can do its job looks where that program loads
+    from (the JVM Via records, not any folder under /usr/lib/jvm). A claim
+    about a package's files names its file list
+    (`/var/lib/dpkg/info/<package>.list`) or packages.ubuntu.com. A change
+    that moves which program a tool runs gets, before its first run on a
+    CI runner, a test with a stand-in that runs but cannot do the job (a
+    JVM without `lib/libawt_xawt.so`) and a test of the check with what the
+    runner carries beside it (another vendor's JDK under `JVM_DIR`); its
+    tests skip on the product's own pick, never on whatever stands first
+    on PATH (M289).
 
 Done when: the run is green, its log shows progress lines in every long
 step, no step used more than half its limit, and no step depended on a

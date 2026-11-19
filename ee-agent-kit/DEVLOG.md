@@ -69,6 +69,12 @@ At 03:00 UTC the runner's regional mirror, us-east-2.ec2.archive.ubuntu.com, cra
 
 Evidence: `tests/test_ci_apt_archive.py` (47 tests); branch `wip/apt-stall`, 976e544 and 899f449; M285.
 
+## 2026-11-19 — The Java Via installed could not draw FreeRouting's window
+
+The first full run of pull request 116 on GitHub's install path ended with 13 routing tests red (run 44515796762). Every route ended in `FreeRouting exited 1`, and the reports said nothing more. The java that install.sh now records was Ubuntu's headless Java 21. FreeRouting draws a window even when it routes alone, and the headless runtime has no library for one. The install step checks for that library, but it looked anywhere under /usr/lib/jvm, and a JDK of the runner's own had it. On our own machines and in the image the full runtime was already installed, so every test passed. A stand-in JVM without the library made the 13 fail here as on GitHub, and the fix made them pass. Now the check looks in the Java Via runs, Via passes over a Java that cannot draw, and a route that cannot run names the java and why. The mistake is M289; P2 step 11 asks for that stand-in before a first run on a CI runner. An independent attack on the fix is still running.
+
+Evidence: the log of job 135531488086, lines 759, 866, 871, 907 and 1208 (`outcomes: 3986 passed, 13 failed, 67 skipped`); branch `wip/pr116-full`, 44fc210, picked as 7560071; `tests/test_java.py` (14 tests), `tests/test_install_apt.py` (134 tests), `tests/install_mutations.py` (IA141 to IA149).
+
 ## 2026-11-19 — Via runs the Java it installed
 
 CI's install passed, and then doctor said Via was degraded, without java (run 44444183056). The install had set up Java 21. But the runner keeps its own Java 17 first on PATH, and doctor and the router both took whatever stood first. Doctor called the 17 too old. The router ran on it anyway. Now install.sh writes down the path of the Java it installed, and Via runs that one, wherever PATH points. Doctor's line says which Java it read and where the path came from. An install that must have the router now stops, with the reason, when the Java it leaves is too old. We also found that FreeRouting 1.9.0's own classes need only Java 17; Via keeps 21, the Java it installs and tests on.

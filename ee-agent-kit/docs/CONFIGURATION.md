@@ -32,7 +32,7 @@ unset variable never causes a failure.
 | `KICAD_SOURCES` | path | `/etc/apt/sources.list.d/kicad-10.0-releases.sources` | The PPA's sources file (the tests move it). A file there that is not what install.sh writes is left alone and stops the script; the script's own is removed on a stop for a second key or a release the PPA does not serve. |
 | `WORKCENTER_LINK` | path | `/usr/local/bin/workcenter` | The `workcenter` link (the tests move it). |
 | `OS_RELEASE` | path | `/etc/os-release` | Where the Ubuntu codename is read (the tests move it). |
-| `JVM_DIR` | path | `/usr/lib/jvm` | Where `libawt_xawt.so` is looked for, and the JVM of `openjdk-21-jre-headless` (`java-21-openjdk-<arch>/bin/java`, the first in name order whose java runs), whose path install.sh records in `$WORKCENTER_ROOT/java.path` (the tests move it). |
+| `JVM_DIR` | path | `/usr/lib/jvm` | Where the JVM of the 21 is looked for: `java-21-openjdk-<arch>/bin/java`, the first in name order whose java runs and whose `lib/libawt_xawt.so` is there. install.sh records its path in `$WORKCENTER_ROOT/java.path`, and installs `openjdk-21-jre` when no such JVM has the library; another JVM's library under this folder does not count (the tests move it). |
 | `CA_BUNDLE` | path | `/etc/ssl/certs/ca-certificates.crt` | The certificates the first step looks for; when it is empty or absent, the first step installs `ca-certificates` (the tests move it). |
 
 ## `tools/workcenter`
@@ -45,7 +45,7 @@ unset variable never causes a failure.
 | `FREEROUTING2_JAVA` | command | `$WORKCENTER_ROOT/java25/bin/java` | The Java that runs it; Java 25 or newer, else the router is absent. |
 | `KICAD_CLI` | command | `kicad-cli` | The KiCad engine. |
 | `NGSPICE` | command | `ngspice` | The simulation engine. |
-| `JAVA` | command | the path in `$WORKCENTER_ROOT/java.path`, else `java` from PATH | Runs the FreeRouting 1.9.0 JAR, for `autoroute` and for `design --route`; doctor reads the same java. Set, it comes before the record. |
+| `JAVA` | command | the path in `$WORKCENTER_ROOT/java.path`; the first java on PATH when there is no record, or when the recorded java is gone or has no `lib/libawt_xawt.so` and the one on PATH is a Java 21 that has it | Runs the FreeRouting 1.9.0 JAR, for `autoroute` and for `design --route`; doctor reads the same java. Set, it comes before the record and is taken as it is. When the picked java cannot run FreeRouting, the route is skipped with the java, where it came from and why. |
 | `KICAD10_3DMODEL_DIR` | path | `/usr/share/kicad/3dmodels` | Where `render` looks for the library 3D bodies footprints name, to list the parts drawn without one (`KICAD9_` and `KICAD8_3DMODEL_DIR` likewise). |
 | `OPENEMS` | command | `$WORKCENTER_ROOT/openems/bin/openEMS`, else `openEMS` on `PATH` | The field solver `workcenter fields` runs; `doctor` reports it. |
 | `KIKIT_PYTHON` | command | the venv's Python (`$WORKCENTER_ROOT/venv/bin/python`) | The Python that imports KiKit; EXPORT runs `tools/panel.py` with it for a project that holds `panel.json`. |
