@@ -7,7 +7,7 @@ platform): 4 DDR5 RDIMM slots, 3 PCI Express 5.0 x16 slots, 2 M.2 sockets, 14 ph
 stages for a 350 W processor, and the rear I/O, on 244 x 244 mm. No microATX TRX50 board has been
 made; the smallest is ATX.
 
-This folder is a whole KiCad 10 project made with the EE Workcenter, which supplies the tools and the
+This folder is a whole KiCad 10 project made with Via, which supplies the tools and the
 gates: `design.py` and the modules beside it are the board, the `.kicad_*` files are what
 `workcenter design` writes from them, and `footprints/`, `symbols/` and `models/` hold what KiCad's
 libraries lack, each written by a script from its maker's drawing.

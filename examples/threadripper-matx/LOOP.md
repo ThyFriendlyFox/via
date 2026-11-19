@@ -6,7 +6,7 @@ holds. The prompt is below as it was run; the passes are logged under it.
 
 ## The prompt
 
-> Basalt is a microATX motherboard for an AMD Threadripper on sTR5, made with the EE Workcenter in
+> Basalt is a microATX motherboard for an AMD Threadripper on sTR5, made with Via in
 > `examples/threadripper-matx/`, one version folder per feature (`PROCESSES.md` P22). Read the series
 > README, the latest version's README and its last gates report. Then do the 1 thing that moves the
 > board furthest, in this order of need:
@@ -49,7 +49,7 @@ Each pass ends by scoring the latest version on these lines; a pass that cannot 
 | 3 | v0.1 | the plane polygons widened to the land field; the cooler holes and the top phases moved out of the memory buses' path (found while planning v0.2) | DRC only connections left for the router |
 | 4 | v0.1 | first renders: near-black mask, darker metals, a grooved I/O cover; a headline script on a dark ground | the look holds; the right and lower quarters are empty until v0.4 |
 | 5 | v0.1 | the first route ran 20 minutes without an end: 10 stages' driver-supply pins were boxed in by their own sense tracks. Each phase's bootstrap, sense and supply links drawn by hand; BOOTR its own net (the switch node inside the package); the M.2 sockets turned to face the lanes' trunk; the DIMMs 0.9 mm up for a row of slot 1's capacitors (all found while planning v0.2 and v0.3) | ERC 0/0; DRC only the router's connections |
-| 6 | v0.1 | the second route of the 4 supply nets ran 20 minutes without finishing a pass and was stopped; the supplies drawn instead, as a motherboard carries them: +12V and +3V3 as pours round the whole of In5 and In7, +12V_CPU as a pour on In7 under the phases' inputs, +5V as 1 track on In6 (`supply.py`); the workcenter's via check made 200 times faster | ERC 0/0; DRC 0 errors, 0 unconnected, 4 warnings: the jacks' legend past the board edge |
+| 6 | v0.1 | the second route of the 4 supply nets ran 20 minutes without finishing a pass and was stopped; the supplies drawn instead, as a motherboard carries them: +12V and +3V3 as pours round the whole of In5 and In7, +12V_CPU as a pour on In7 under the phases' inputs, +5V as 1 track on In6 (`supply.py`); Via's check of the vias made 200 times faster | ERC 0/0; DRC 0 errors, 0 unconnected, 4 warnings: the jacks' legend past the board edge |
 | 7 | v0.1 | the jacks' legend cut at the edge; the sheet wired, each phase's 5 parts together; pictures looked at: the gold rings glared and the translucent mask rendered brown, so immersion silver and an opaque mask, rendered again | GREEN with no warning |
 | 8 | v0.1 | the sheet's phases packed tighter, a phase never split across 2 shelves; the owner asked for the ports and headers of a modern board, which became the next version | GREEN with no warning; pictures current |
 | 9 | v0.2 | `workcenter version new`; the 4 channels' buses drawn by `buses.py` (576 traces, 864 vias), first tried on a scratch copy; the bus nets as labels on the sheet, after the wired sheet took 10 minutes drawing them | GREEN with no warning, DRC 0 unconnected on the first run |

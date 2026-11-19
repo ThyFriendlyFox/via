@@ -5,7 +5,7 @@
 `workcenter render` draws the stills every version keeps; this adds 3 views it does not: a three-quarter
 view from the slots' corner, one from the 24-pin's corner and a top view, in the board's own colours
 (black mask, white legend, silver pads). KiCad renders each with a transparent background, and Pillow
-(in the workcenter's venv) lays it on a dark gradient. The images land in build/hero/.
+(in Via's venv) lays it on a dark gradient. The images land in build/hero/.
 """
 
 from __future__ import annotations
