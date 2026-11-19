@@ -5430,18 +5430,31 @@ def marker_true(marker: str | None, env: dict, extra: str = "") -> bool:
     return out
 
 
-def installed(paths: list[Path]) -> dict[str, tuple[str, str, list[str], Path]]:
+def installed(paths: list[Path]) -> tuple[dict[str, tuple[str, str, list[str], Path]], list[str]]:
     """Each package the paths hold, by its PEP 503 name: (name, version, Requires-Dist, folder). The
-    earlier path wins, as an import does."""
+    earlier path wins, as an import does. Also each package with more than 1 metadata folder in 1 path
+    entry, as `name 1.0 and 2.0 in <folder>`: a broken install, whose version hangs on folder order."""
     import importlib.metadata
 
     found: dict[str, tuple[str, str, list[str], Path]] = {}
+    broken: list[str] = []
     for path in paths:
+        here: dict[str, list[tuple[str, str]]] = {}
         for d in importlib.metadata.distributions(path=[str(path)]):
             name = d.metadata["Name"] or ""
-            if name and pep503(name) not in found:
+            if not name:
+                continue
+            here.setdefault(pep503(name), []).append((name, d.version or ""))
+            if pep503(name) not in found:
                 found[pep503(name)] = (name, d.version or "", list(d.requires or []), Path(path))
-    return found
+        for _, seen in sorted(here.items()):
+            # 1 version in 2 metadata folders (Ubuntu's python3-cryptography ships a dist-info and an
+            # egg-info) reads the same in either order: not a fault.
+            versions = {release_key(v): v for _, v in seen}
+            if len(versions) > 1:
+                said = " and ".join(versions[k] for k in sorted(versions))
+                broken.append(f"{seen[0][0]} {said} in {path}")
+    return found, broken
 
 
 def requirements_fix(venv: Path, src: Path) -> str:
@@ -5460,17 +5473,15 @@ def requirements_row(req_file: Path, paths: list[Path], own: list[Path], env: di
         "other": [],
         "extra": [],
         "unread": [],
+        "broken": [],
     }
     try:
         text = Path(req_file).read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         return {**row, "ok": False, "version": "not read", "lines": [f"not read: {req_file}: {exc}"]}
-    found = installed(paths)
-    pins: list[tuple[str, dict]] = []
-    for number, raw in enumerate(text.splitlines(), 1):
-        line = raw.split(" #", 1)[0].strip()
-        if not line or line.startswith("#"):
-            continue
+    found, row["broken"] = installed(paths)
+    pins: list[tuple[int, str, dict]] = []
+    for number, line in requirement_lines(text):
         req = parse_requirement(line) if not line.startswith("-") else None
         try:
             asked = req is not None and marker_true(req["marker"], env)
@@ -5479,22 +5490,23 @@ def requirements_row(req_file: Path, paths: list[Path], own: list[Path], env: di
         if req is None:
             row["unread"].append(f"line {number}: {line}")
         elif asked:
-            pins.append((line, req))
+            pins.append((number, line, req))
     met = 0
-    for line, req in pins:
+    for number, line, req in pins:
         shown = line.split(";", 1)[0].strip()
         have = found.get(pep503(req["name"]))
         if have is None:
             row["missing"].append(shown)
             continue
-        wanted = re.findall(r"(===|==)([^,]+)", req["spec"])
-        wrong = [v for op, v in wanted if (have[1] != v if op == "===" else not version_matches(have[1], v))]
-        if wrong:
+        said = [spec_met(have[1], op, v.strip()) for op, v in re.findall(SPEC_ITEM, req["spec"])]
+        if False in said:
             row["other"].append(f"{shown} ({have[1]} installed)")
+        elif None in said:
+            row["unread"].append(f"line {number}: {shown} ({have[1]} installed, not compared)")
         else:
             met += 1
     # What the pins account for: each pin, its dependencies (with the extras asked) and theirs.
-    accounted, queue = set(VENV_OWN), [(pep503(r["name"]), r["extras"]) for _, r in pins]
+    accounted, queue = set(VENV_OWN), [(pep503(r["name"]), r["extras"]) for _, _, r in pins]
     while queue:
         key, extras = queue.pop()
         if (key, frozenset(extras)) in accounted:
@@ -5519,9 +5531,14 @@ def requirements_row(req_file: Path, paths: list[Path], own: list[Path], env: di
         ),
         key=str.lower,
     )
-    row["ok"] = not row["missing"] and not row["other"]
+    row["ok"] = not row["missing"] and not row["other"] and not row["broken"]
     row["version"] = f"{met} of {len(pins)} pins met"
     lines = []
+    if row["broken"]:
+        said = "1 package installed more than once in 1 folder"
+        lines.append(
+            f"broken: {said}: {'; '.join(row['broken'])}; remove the stale *.dist-info folder, then: {fix}"
+        )
     if row["missing"]:
         lines.append(f"missing: {', '.join(row['missing'])}; put right with: {fix}")
     if row["other"]:
@@ -5538,12 +5555,71 @@ def requirements_row(req_file: Path, paths: list[Path], own: list[Path], env: di
 def version_matches(have: str, pin: str) -> bool:
     """`==pin` (PEP 440, in part): a trailing `.*` is a prefix; otherwise 1.0 and 1.0.0 are one."""
     if pin.endswith(".*"):
-        return release_key(have)[0][: len(release_key(pin[:-2])[0])] == release_key(pin[:-2])[0]
+        prefix = release_parts(pin[:-2])
+        got = release_parts(have)
+        return prefix is not None and got is not None and (got + (0,) * len(prefix))[: len(prefix)] == prefix
     return release_key(have) == release_key(pin)
 
 
+def release_parts(version: str) -> tuple | None:
+    """`2.0.1` as (2, 0, 1), zeros kept (a `.*` prefix counts them); None where it is not only a release."""
+    v = version.strip().lower().removeprefix("v")
+    return tuple(int(p) for p in v.split(".")) if re.fullmatch(r"\d+(\.\d+)*", v) else None
+
+
+# 1 specifier of a pin line: `>=2.5`, `==1.*`, `!=1.0`.
+SPEC_ITEM = re.compile(r"(===|==|!=|~=|<=|>=|<|>)([^,]+)")
+
+
+def spec_met(have: str, op: str, version: str) -> bool | None:
+    """Whether the installed version meets 1 specifier (PEP 440, in part). None where this does not
+    compare them: a range against a pre-release, post-release, local or epoch version, or a range with
+    a `.*`."""
+    if op == "===":
+        return have == version
+    if op in ("==", "!="):
+        return version_matches(have, version) == (op == "==")
+    if version.endswith(".*") or release_parts(have) is None or release_parts(version) is None:
+        return None
+    a, b = release_key(have)[0], release_key(version)[0]
+    if op == "~=":
+        parts = version.split(".")
+        if len(parts) < 2:
+            return None
+        return a >= b and version_matches(have, ".".join(parts[:-1]) + ".*")
+    return {"<": a < b, "<=": a <= b, ">": a > b, ">=": a >= b}[op]
+
+
+def requirement_lines(text: str) -> list[tuple[int, str]]:
+    """requirements.txt's logical lines by pip's own rules, each with the number of its first line: a
+    line ending in `\\` joins the next; `#` at the start or after white space starts a comment; a
+    `--hash` option is dropped (it checks the download, not the version)."""
+    out: list[tuple[int, str]] = []
+    held, start = "", 0
+    for number, raw in enumerate(text.splitlines(), 1):
+        if not held:
+            start = number
+        if raw.endswith("\\") and not re.match(r"\s*#", raw):
+            held += raw[:-1] + " "
+            continue
+        line = re.sub(r"(^|\s)#.*$", "", held + raw)
+        line = re.sub(r"\s--hash[=\s]\S+", " ", " " + line).strip()
+        held = ""
+        if line:
+            out.append((start, line))
+    if held.strip():
+        out.append((start, held.strip()))
+    return out
+
+
+# `-c` puts the folder it runs in first on sys.path, where a `platform.py` or `json.py` would shadow the
+# standard library: the probe takes it off before it imports. (`-I` would also drop the user's site,
+# which the venv's Python reads when the workcenter runs.)
 VENV_SITE_PROBE = (
-    "import json, os, platform, sys; print(json.dumps({'path': sys.path, 'env': {"
+    "import sys\n"
+    "if sys.path[:1] == ['']:\n"
+    "    del sys.path[0]\n"
+    "import json, os, platform; print(json.dumps({'path': sys.path, 'env': {"
     "'python_version': '{}.{}'.format(*sys.version_info[:2]),"
     "'python_full_version': platform.python_version(), 'sys_platform': sys.platform,"
     "'platform_system': platform.system(), 'platform_machine': platform.machine(), 'os_name': os.name,"
@@ -5554,45 +5630,50 @@ VENV_SITE_PROBE = (
 
 def venv_site(venv: Path) -> tuple[list[Path], list[Path], dict]:
     """Where the venv's Python finds packages, which of those are the venv's own, and its marker
-    environment. Its Python is asked (no pip); where it cannot answer, the venv's own site-packages and
-    this interpreter's environment."""
+    environment. Its Python is asked (no pip). ValueError, with the reason, where it does not answer:
+    no guess stands in for its path, since a guess calls the system's packages missing."""
     py = venv / "bin" / "python"
-    if py.exists():
-        try:
-            proc = subprocess.run(
-                [str(py), "-c", VENV_SITE_PROBE], capture_output=True, text=True, timeout=60
-            )
-            said = json.loads(proc.stdout)
-            paths = [Path(p) for p in said["path"] if p and Path(p).is_dir() and not p.endswith(".zip")]
-            own = [p for p in paths if p.resolve().is_relative_to(venv.resolve())]
-            return paths, own, dict(said["env"])
-        except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
-            pass
-    import platform
-
-    own = sorted((venv / "lib").glob("python*/site-packages"))
-    env = {
-        "python_version": f"{sys.version_info.major}.{sys.version_info.minor}",
-        "python_full_version": platform.python_version(),
-        "sys_platform": sys.platform,
-        "platform_system": platform.system(),
-        "platform_machine": platform.machine(),
-        "os_name": os.name,
-        "implementation_name": sys.implementation.name,
-        "platform_python_implementation": platform.python_implementation(),
-    }
-    return own, own, env
+    try:
+        proc = subprocess.run([str(py), "-c", VENV_SITE_PROBE], capture_output=True, text=True, timeout=60)
+    except subprocess.TimeoutExpired:
+        raise ValueError(f"{py} did not answer in 60 s") from None
+    except OSError as exc:
+        raise ValueError(f"{py} did not run: {exc}") from None
+    try:
+        said = json.loads(proc.stdout)
+        paths = [Path(p) for p in said["path"] if p and Path(p).is_dir() and not p.endswith(".zip")]
+        env = {str(k): str(v) for k, v in said["env"].items()}
+    except (ValueError, KeyError, TypeError, AttributeError):
+        tail = (proc.stderr or proc.stdout).strip().splitlines()[-1:] or [""]
+        raise ValueError(f"{py} exited {proc.returncode}: {tail[0][:200]}") from None
+    own = [p for p in paths if p.resolve().is_relative_to(venv.resolve())]
+    return paths, own, env
 
 
-def requirements_doctor_row() -> dict:
-    """The row for this workcenter: its venv against the requirements.txt of its source."""
-    venv = WC_ROOT / "venv"
-    req = SRC_DIR / "requirements.txt"
+def requirements_doctor_row(venv: Path | None = None, src: Path | None = None) -> dict:
+    """The row for this workcenter: its venv against the requirements.txt of its source. Advisory where
+    there is nothing to read: no venv Python (the `venv` row degrades already), or it did not answer."""
+    venv = venv or WC_ROOT / "venv"
+    src = src or SRC_DIR
+    req = src / "requirements.txt"
     if not (venv / "bin" / "python").exists():
         # The `venv` row says the venv is absent and degrades the workcenter; this row repeats nothing.
         return {"required": False, "advisory": True, "ok": False, "path": str(req), "lines": []}
-    paths, own, env = venv_site(venv)
-    return requirements_row(req, paths, own, env, requirements_fix(venv, SRC_DIR))
+    try:
+        paths, own, env = venv_site(venv)
+    except ValueError as exc:
+        line = f"not checked: the venv's Python did not say its path ({exc}); run doctor again"
+        return {"required": False, "advisory": True, "ok": False, "path": str(req), "lines": [line]}
+    return requirements_row(req, paths, own, env, requirements_fix(venv, src))
+
+
+def doctor_row_text(name: str, c: dict) -> list[str]:
+    """1 row of doctor's text output, and the row's lines under it."""
+    mark = "ok " if c["ok"] else ("MISSING" if c["required"] else "absent ")
+    extra = c.get("line") or c.get("version") or c.get("path") or ""
+    if c.get("for"):
+        extra = f"{extra}  ({c['for']})" if extra else f"({c['for']})"
+    return [f"  {mark:8} {name:12} {extra}"] + [f"  {'':8} {'':12} {line}" for line in c.get("lines", [])]
 
 
 def doctor_checks_degraded(checks: dict) -> list[str]:
@@ -5698,13 +5779,7 @@ def cmd_doctor(args) -> int:
         without = f", without {', '.join(named)}" if named else ""
         print(f"workcenter ee: {status}{without}  (root {WC_ROOT}, src {SRC_DIR})")
         for name, c in checks.items():
-            mark = "ok " if c["ok"] else ("MISSING" if c["required"] else "absent ")
-            extra = c.get("line") or c.get("version") or c.get("path") or ""
-            if c.get("for"):
-                extra = f"{extra}  ({c['for']})" if extra else f"({c['for']})"
-            print(f"  {mark:8} {name:12} {extra}")
-            for line in c.get("lines", []):
-                print(f"  {'':8} {'':12} {line}")
+            print("\n".join(doctor_row_text(name, c)))
         print(f"  {'':8} engine lock  {enginelock().status_line(payload['engine_lock'])}")
         if not chip_folder.is_dir():
             print(

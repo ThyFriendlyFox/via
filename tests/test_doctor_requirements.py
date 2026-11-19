@@ -9,6 +9,7 @@ a made-up folder of *.dist-info, never at the machine's own venv."""
 from __future__ import annotations
 
 import importlib.machinery
+import json
 import sys
 import types
 from pathlib import Path
@@ -204,14 +205,130 @@ def test_the_fix_is_the_command_install_sh_runs():
     assert wc.requirements_fix(venv, Path("/s")) == "/w/venv/bin/pip install -q -r /s/requirements.txt"
 
 
-def test_a_venv_without_its_python_reads_its_own_site_packages(tmp_path):
-    """No venv Python to ask for its path: the venv's lib/python*/site-packages, and this interpreter's
-    marker environment."""
+def fake_venv(tmp_path: Path, script: str) -> Path:
+    """A made-up venv whose bin/python is a shell script: the probe runs it, never a real venv's pip."""
+    venv = tmp_path / "venv"
+    (venv / "bin").mkdir(parents=True, exist_ok=True)
+    py = venv / "bin" / "python"
+    py.write_text("#!/bin/sh\n" + script + "\n", encoding="utf-8")
+    py.chmod(0o755)
+    return venv
+
+
+def test_the_probe_path_reads_the_system_site_and_keeps_extras_to_the_venv(tmp_path):
+    """The path every real machine takes: the venv's Python says its sys.path. A pin met in the system's
+    site-packages is met, not missing; a package there is not an extra; one in the venv is."""
+    own = tmp_path / "venv" / "lib" / "python3.12" / "site-packages"
+    system = tmp_path / "system"
+    dist(own, "kikit", "KiKit", "1.8.1")
+    dist(own, "zeta", "Zeta", "0.1")
+    dist(system, "pillow", "Pillow", "12.3.0")
+    dist(system, "requests", "requests", "2.34.2")
+    said = {"path": ["", str(own), str(system)], "env": ENV}
+    venv = fake_venv(tmp_path, f"cat <<'EOF'\n{json.dumps(said)}\nEOF")
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "requirements.txt").write_text("kikit==1.8.1\nPillow==12.3.0\n", encoding="utf-8")
+    row = wc.requirements_doctor_row(venv, src)
+    assert row["ok"] is True and row["version"] == "2 of 2 pins met"
+    assert row["missing"] == [] and row["extra"] == ["Zeta 0.1"]
+
+
+def test_the_probe_runs_no_code_from_the_folder_doctor_runs_in(tmp_path, monkeypatch):
+    """A `platform.py` in the folder doctor runs from would shadow the standard library in `-c`."""
+    here = tmp_path / "here"
+    here.mkdir()
+    ran = tmp_path / "ran"
+    (here / "platform.py").write_text(f"open({str(ran)!r}, 'w').close()\nraise SystemExit(3)\n")
+    monkeypatch.chdir(here)
+    venv = fake_venv(tmp_path, f'exec {sys.executable} "$@"')
+    paths, own, env = wc.venv_site(venv)
+    assert not ran.exists()
+    assert paths and own == [] and env["os_name"] == "posix"
+
+
+def test_a_probe_that_does_not_answer_leaves_the_row_advisory(tmp_path):
+    """The venv's Python failed (a timeout on a loaded machine, a shadowed module): nothing is read, so
+    no pin is called missing and the workcenter is not degraded by this row."""
+    venv = fake_venv(tmp_path, "echo broken; exit 3")
+    (venv / "lib" / "python3.12" / "site-packages").mkdir(parents=True)
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "requirements.txt").write_text("kikit==1.8.1\n", encoding="utf-8")
+    row = wc.requirements_doctor_row(venv, src)
+    assert row["advisory"] is True and row["ok"] is False
+    assert row.get("missing", []) == []
+    assert len(row["lines"]) == 1 and row["lines"][0].startswith("not checked: the venv's Python ")
+    assert wc.doctor_checks_degraded({"requirements": row}) == []
+    # No venv Python at all: the `venv` row degrades already; this one is advisory and says nothing.
+    (venv / "bin" / "python").unlink()
+    row = wc.requirements_doctor_row(venv, src)
+    assert row["advisory"] is True and row["lines"] == []
+
+
+def test_the_text_output_prints_a_row_and_its_lines_under_it():
+    row = {"required": False, "ok": False, "version": "1 of 2 pins met", "lines": ["missing: a", "b"]}
+    assert wc.doctor_row_text("requirements", row) == [
+        "  absent   requirements 1 of 2 pins met",
+        "                        missing: a",
+        "                        b",
+    ]
+
+
+def test_range_pins_are_compared(tmp_path):
+    """`>=`, `<`, `~=` and `!=` are held as `==` is; a line of 2 specifiers must meet both."""
+    cases = {
+        "numpy>=2.5\n": ("1.0", False),
+        "numpy>=2.5\n ": ("2.5.0", True),
+        "numpy<3\n": ("2.9", True),
+        "numpy!=1.0\n": ("1.0", False),
+        "numpy!=1.*\n": ("1.4", False),
+        "numpy~=2.5\n": ("1.0", False),
+        "numpy~=2.5\n ": ("3.0", False),
+        "numpy~=2.5\n  ": ("2.9", True),
+        "numpy>=2,==1.0\n": ("1.0", False),
+        "numpy==2.0.*\n": ("2.1", False),
+        "numpy==2.0.*\n ": ("2", True),
+    }
+    for number, (reqs, (have, ok)) in enumerate(cases.items()):
+        row = check(tmp_path / str(number), reqs, ("numpy", "numpy", have))
+        assert row["ok"] is ok, (reqs, have, row)
+        assert row["version"] == f"{int(ok)} of 1 pins met", (reqs, have, row)
+
+
+def test_a_range_pin_on_a_pre_release_is_said_not_read(tmp_path):
+    row = check(tmp_path, "numpy>=2.5\n", ("numpy", "numpy", "2.6rc1"))
+    assert row["ok"] is True and row["version"] == "0 of 1 pins met"
+    assert row["unread"] == ["line 1: numpy>=2.5 (2.6rc1 installed, not compared)"]
+
+
+def test_pip_comment_and_continuation_rules(tmp_path):
+    """A tab before `#` starts a comment; a `\\` joins the next line; `--hash=` is an option, not the pin."""
+    reqs = "a==1.0\t# c\nb==2.0 \\\n    --hash=sha256:ab \\\n    --hash=sha256:cd\nc==3.0\n"
+    row = check(tmp_path, reqs, ("a", "a", "1.0"))
+    assert row["unread"] == []
+    assert row["missing"] == ["b==2.0", "c==3.0"]
+    assert row["version"] == "1 of 3 pins met"
+
+
+def test_2_installs_of_1_package_in_1_folder_are_a_fault(tmp_path):
+    """Both metadata folders on disk: which version importlib reports hangs on the folder order."""
+    row = check(tmp_path, "a==1.0\n", ("a", "a", "1.0"), ("A", "a", "2.0"))
+    assert row["ok"] is False
     site = tmp_path / "venv" / "lib" / "python3.12" / "site-packages"
-    site.mkdir(parents=True)
-    paths, own, env = wc.venv_site(tmp_path / "venv")
-    assert paths == [site] and own == [site]
-    assert env["python_version"] == f"{sys.version_info.major}.{sys.version_info.minor}"
+    assert row["broken"] == [f"a 1.0 and 2.0 in {site}"]
+    assert row["lines"][0] == (
+        f"broken: 1 package installed more than once in 1 folder: a 1.0 and 2.0 in {site}; "
+        "remove the stale *.dist-info folder, then: PIP -r REQ"
+    )
+    # Every pin met, and 1 other package twice: still a fault.
+    row = check(tmp_path / "2", "a==1.0\n", ("a", "a", "1.0"), ("z", "z", "1.0"), ("Z", "z", "2.0"))
+    assert row["missing"] == [] and row["other"] == [] and row["version"] == "1 of 1 pins met"
+    assert row["ok"] is False and len(row["broken"]) == 1
+    # 2 metadata folders of 1 version (Ubuntu's python3-cryptography ships a dist-info and an
+    # egg-info): the version does not hang on the order, so no fault.
+    row = check(tmp_path / "3", "a==1.0\n", ("a", "a", "1.0"), ("y", "y", "41.0.7"), ("Y", "y", "41.0.7"))
+    assert row["ok"] is True and row["broken"] == []
 
 
 def test_doctor_has_a_requirements_row_that_degrades_and_extras_that_do_not(tmp_path, monkeypatch):
