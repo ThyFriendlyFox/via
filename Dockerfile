@@ -8,7 +8,7 @@
 #   docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work via workcenter gates .
 #
 # No window: kicad-cli and the other engines run headless; KiCad's editors are not for a container.
-FROM ubuntu:24.04
+FROM ubuntu:26.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /opt/workcenters/ee/src
