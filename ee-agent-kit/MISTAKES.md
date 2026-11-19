@@ -1761,3 +1761,9 @@ What happened: Cleaning the batch's work folder after pull request 116, the keep
 Cost: None seen: the `rm` named its files by absolute path, and only the keeper's own logs went. The rule was broken a second time.
 Root cause: As in M284: the habit of a terminal, and nothing in this session's shell refuses a `cd`: the repository's no-`cd` hook is not loaded in a session opened outside the repository (`workcenter doctor` here: `absent   no-cd hook`). P13 step 3 asks for a machine check after a second time; the check that exists is that hook, and this session does not load it.
 Process: P8
+
+## M289 — 2026-11-19 — A gate's pass rested on 1 judge that a project setting switches off
+What happened: `workcenter autoroute --apply` (roadmap item 15, `wip/r15`) passed when KiCad's DRC listed 0 unconnected items. A `.kicad_pro` with `unconnected_items` set to `ignore` makes that list empty on a board left mostly open, and FreeRouting 1.9.0 logs no count of open connections, so such a board passed. The review of item 15 found it (F1).
+Cost: None on a board: found before the branch landed. Had it landed, a project that ignores unconnected items would have got a pass for a board with open nets.
+Root cause: The check read an empty list as "nothing open" without asking whether the list could have been filled. Now, before a check passes on an empty list, it asks whether that list could have been filled; when it could not, the check prints not judged with the reason (SKIP, exit 2).
+Process: P14

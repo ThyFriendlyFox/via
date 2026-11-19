@@ -288,7 +288,7 @@ has every flag.
 | `copper` | Hold a routed board's power nets to a greatest voltage drop and current density on their own copper and in each via's barrel, and the board to a greatest temperature from its parts' heat; draw each as a picture. Every constant names its document; every limit is the project's. |
 | `fields` | Simulate the critical nets `fields.json` names with openEMS, from the board file, and hold impedance, loss and coupling to their limits. |
 | `bench` | Route design files with each router and compare: time, share joined, DRC errors, commands, bytes read. |
-| `autoroute` | Write FreeRouting's session file for a hand-drawn board's DSN. The import into KiCad is by hand. |
+| `autoroute` | Route a hand-drawn board headless with `--apply`: the `.kicad_pcb` is read, routed by FreeRouting and written in place, then checked by DRC. Without `--apply`, write FreeRouting's session file for a DSN exported from KiCad. |
 | `inspect` | Read a routed board: `map`, `list`, `probe`, `net`, `islands`, `resistance`, `crossed`. |
 | `placement` | Run a kistack placement check on a board. |
 | `render`, `pictures` | Images of the schematic, the board, every layer; turning GIFs; assembly scenes. |
@@ -408,6 +408,7 @@ images are drawn.
 | `tools/fields.py` | `workcenter fields`: the model of a board's critical nets from its board file, the mesh, the ports, openEMS run as its own program, and the limits held. Standard library only. |
 | `tools/routebench.py` | `workcenter bench`: the routing benchmark and the router each board takes. Standard library only. |
 | `tools/routers.py` | The routers behind `workcenter design --route` and `bench`: FreeRouting 1.9.0 (the default) and 2.5.0, each with its presence, version and command line. Standard library only. |
+| `tools/boardroute.py` | `workcenter autoroute --apply`: a hand-drawn `.kicad_pcb` and its `.kicad_pro` read into kicadgen's DSN writer, the route written back into the board file in place (a kept track or via byte for byte). Standard library and `tools/kicadgen.py`. |
 | `tools/boardrules.py` | `workcenter drc` with a `board-rules.json`: a board held to a standard's rule pack, each gap to its nets' voltage and each track's width to its net's current; each net's vias to its current, against the wall `board-rules.json` states (`via_wall` or `hdi`). Standard library only. |
 | `tools/layoutrules.py` | `workcenter drc` with layout packs under `layout` in `board-rules.json`: ESD at each connector that leaves the device (TI SLVA680A) and power and ground traces at most 3:1 on a 2-layer board (TI SZZA009), measured along the copper. Standard library only. |
 | `tools/creepage.py` | `workcenter drc` with `creepage` in `board-rules.json`: clearance and creepage between each pair of nets on F.Cu and B.Cu, held to the voltage between them by a creepage pack (MIL-HDBK-454C table 69-I, TI SLUP419). Standard library only. |

@@ -134,7 +134,7 @@ owner cut the built board from item 12.
 - **Evidence:** `tests/test_gates.py::test_autoroute_apply_routes_fixture` green in `make verify`; the fixture's DRC report attached to the PR.
 - **Use case:** Route a board (`docs/USE-CASES.md`).
 - **Scope guard:** No routing heuristics of our own. No GUI automation. The generated-design path already works (`workcenter design --route`); this item is the board-file parser in front of it. Zones and arcs may be out of scope for the first cut and must be reported, not silently dropped.
-- **Status:** ready
+- **Status:** shipped (first cut, 2026-11-19, `wip/r15`, cf5729c): zones, arcs and non-rectangular outlines reported or refused, as the scope guard allows. `tools/boardroute.py`, fixture `tests/boards/route-me` (5 unconnected items before the route, 0 after, DRC `--strict` clean), `tests/test_boardroute.py` (21 tests), `tests/test_gates.py::test_autoroute_apply_routes_fixture`. Reviewed 1 time, "sound with findings", all fixed (a project that ignores unconnected items no longer passes: SKIP, exit 2, "not judged"; paste-only pads skipped). Left: `--apply` does not count open connections itself, so while a project ignores unconnected items the answer is "not judged"; the fixture's DRC report is not attached to a pull request yet.
 
 ### 16. Board gates as a reusable GitHub workflow for board repositories
 - **Promise:** A board repository that adds 1 workflow calling `ThyFriendlyFox/via/.github/workflows/board-gates.yml@main` gets `workcenter gates` run on every PR, with the gates table in the job summary and a red check on a red gate.

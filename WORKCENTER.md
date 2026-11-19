@@ -77,7 +77,7 @@ honestly passes it.
 |---|---|---|---|
 | KiCad | 10.0 | `kicad-cli` | `install.sh` (PPA kicad/kicad-10.0-releases) |
 | ngspice | 42 | `ngspice` | `install.sh` (Ubuntu 24.04 archive) |
-| FreeRouting | 1.9.0 | `workcenter design <design.py> --route [--seed <previous .kicad_pcb>\|--order] [--threads N]` (generated boards, headless); `workcenter bench <design.py>... --out <dir>` (the routing benchmark); `workcenter autoroute <project> [--dsn file]` (hand-drawn boards, DSN from KiCad) | `install.sh` (GitHub release, SHA-256 pinned; 2.1.0 hangs after routing when its GitHub version check cannot succeed) |
+| FreeRouting | 1.9.0 | `workcenter design <design.py> --route [--seed <previous .kicad_pcb>\|--order] [--threads N]` (generated boards, headless); `workcenter bench <design.py>... --out <dir>` (the routing benchmark); `workcenter autoroute --apply <project>` (hand-drawn boards, headless: the board file is read, routed and written in place) or `workcenter autoroute <project> --dsn <file>` (a DSN exported from KiCad, session only) | `install.sh` (GitHub release, SHA-256 pinned; 2.1.0 hangs after routing when its GitHub version check cannot succeed) |
 | FreeRouting 2 | 2.5.0 | `workcenter design <design.py> --route --router freerouting2`; `workcenter bench <design.py>... --out <dir> --router freerouting2` | `install.sh --freerouting2` (GitHub release, SHA-256 pinned, with a Temurin 25.0.5+8 JRE, SHA-256 pinned); opt-in. The default router stays FreeRouting 1.9.0. |
 | openEMS | 0.0.35 (Debian 12's `0.0.35+git20190103.6a75e98+dfsg.1-3.2`) | `workcenter fields <project>`, as its own program on an XML file the command writes; `OPENEMS` overrides the path | `install.sh` and `install.sh --openems` (Debian 12's 4 packages from `deb.debian.org`, each SHA-256 pinned; Ubuntu 24.04 has no package) |
 | KiKit | 1.8.1 | `tools/panel.py` under `KIKIT_PYTHON` (EXPORT's panel, for a project with `panel.json`); its `doPanelization`, not the `kikit` command, which imports wxPython | `install.sh` (PyPI, `requirements.txt`) |
@@ -113,7 +113,7 @@ file: it needs nothing else.
 | `board-loop` | A board that passes its gates is to become compact, correct and good to look at: 1 prompt run again and again, with a reviewer who has not seen the earlier rounds. The project's `LOOP.md` holds the prompt, the checklist and the log. |
 | `chip-design` | A chip is designed from a spec: `chip.json`, the RTL, the benches, the constraints, the list of changes the benches must catch. |
 | `chip-gates` | A chip must pass the 10 chip gates to its GDSII layout. The fix loop, gate by gate. |
-| `autoroute` | A board has unrouted nets and FreeRouting should route them. Headless for generated designs. |
+| `autoroute` | A board has unrouted nets and FreeRouting should route them. Headless for generated designs (`design --route`) and for hand-drawn boards (`autoroute --apply`). |
 | `simulate` | A circuit must meet a measurable spec before layout; a part switches; a deck must run on another machine. Corners, the frequency plan, bundles. |
 | `blog-post` | A human asks for a public write-up of recent work. |
 | `procurement` | A human asks what a board costs, for its parts list, or to order its parts. |

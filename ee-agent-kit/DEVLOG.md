@@ -39,6 +39,12 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-19 — A hand-drawn board routed headless
+
+Roadmap item 15. Before, a hand-drawn board went to FreeRouting through a DSN exported from KiCad by hand, and the session came back by hand too. `workcenter autoroute --apply <project>` now reads the `.kicad_pcb` and its `.kicad_pro` into the DSN writer `kicadgen` already has, routes under the same rules as `design --route`, writes the copper back into the board file in place, and runs the DRC gate on it. A track or via the route kept stays byte for byte; the board before the route is kept under `build/route/`. Zones, arcs and outlines that are not a rectangle are reported or refused, as the scope guard allows. The fixture `tests/boards/route-me` has 5 unconnected items before the route and 0 after. The review found that the pass rested on KiCad's list of unconnected items alone, which a project can switch off (M289); such a run is now not judged, SKIP, exit 2. It also found paste-only pads refused as pads on the wrong side, a wrong `.kicad_pro` ending in a traceback, and refused outlines that did not say what was drawn; all fixed with tests.
+
+Evidence: `tests/test_boardroute.py` (21 tests), `tests/test_gates.py::test_autoroute_apply_routes_fixture`; branch `wip/r15`, cf5729c.
+
 ## 2026-11-19 — Board gates as a reusable workflow
 
 Roadmap item 16. A board repository installed Via by hand in its own CI and ran `workcenter gates` in a loop of 1 step. It now calls `board-gates.yml` from 1 workflow file. Each project folder is 1 job, so 1 slow board has its own limit. The job asks the registry for the image of Via's toolchain and falls back to install.sh, with the archive step first, as CI's install path does. The summary is the table `workcenter gates --report` already wrote into `docs/gates.md`; no new code makes it.
