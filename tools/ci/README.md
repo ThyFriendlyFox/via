@@ -198,6 +198,18 @@ prints 1 line: `where: image: ...` or `where: install: ...`, with the reason.
 
 The last step fails unless the decided path's verify step ran and passed.
 
+Neither path builds the image. `.github/workflows/image.yml` builds it on
+amd64 and arm64, on every pull request that touches the toolchain's files
+and on every push to main. It runs the gates on a fixture in it as the
+runner's user, checks that they wrote `build/gates.json`, and checks that
+every file they wrote is that user's. The real build test of
+`tests/test_image.py` runs only when asked by name:
+`WORKCENTER_TEST_IMAGE_BUILD=1 python3 -m pytest tests/test_image.py::test_the_image_builds_and_runs_the_gates_as_the_calling_user`,
+on a machine where `docker info` answers. Nothing sets the variable for
+`make verify` or `make check`. On the install path the build took about
+669 s of the file's 674.6 s, and made its shard the longest, 991 s
+(job 135422229691).
+
 ## The hosts of Ubuntu's archive on the install path
 
 Before install.sh, the install path (and the nightly run) runs
