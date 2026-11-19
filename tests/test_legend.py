@@ -1166,6 +1166,13 @@ def test_the_fab_is_read_from_the_project(tmp_path, header):
     assert result["red"] and "fab jlcpcb-2layer" in result["summary"]
 
 
+def test_a_header_in_neither_form_names_no_fab(tmp_path):
+    """Only the 2 header forms name a fab: a rule set copied by anyone else says nothing about its fab."""
+    dru = "(version 1)\n# Copied by Someone from jlcpcb-2layer.kicad_dru\n"
+    project(tmp_path, board(txt("AB", 120, 110)), dru)
+    assert legend.fab_named(tmp_path, "x") is None
+
+
 def test_a_fab_named_by_its_own_file_is_read_from_the_project(tmp_path):
     """A rule set copied from a fab file outside rules/ (Design.fab takes a path): its own text_height of
     1.2 mm holds, so 1.0 mm text fails."""
