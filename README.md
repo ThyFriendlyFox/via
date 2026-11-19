@@ -32,7 +32,7 @@ fixture board with a clearance error on purpose.
 ```text
 $ workcenter gates tests/boards/pass-first-design
 PASS   erc        0 errors, 0 warnings  [0.25s]
-PASS   drc        0 errors, 0 warnings (0 unconnected, 0 parity), legend (no fab named: held to the least of the 4 fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer)): 0 fail, 0 not judged  [0.8s]
+PASS   drc        0 errors, 0 warnings (0 unconnected, 0 parity), legend (no fab named: held to the least of the 4 fabs Via knows (height pcbway-standard, stroke oshpark-2layer)): 0 fail, 0 not judged  [0.76s]
 PASS   sim        1 decks, 46 corner runs, 0 failures  [0.16s]
 PASS   export     7/7 outputs, 22 gerber files, 3 files read back  [2.09s]
 thermal: no part's junction is judged: sim/thermal.json is not there (the simulate skill, A part's temperature, step 3)
@@ -42,7 +42,7 @@ GREEN: divider  report /home/user/via/tests/boards/pass-first-design/build/gates
 
 $ workcenter gates tests/boards/fail-drc-clearance
 PASS   erc        0 errors, 0 warnings  [0.3s]
-FAIL   drc        1 errors, 1 warnings (0 unconnected, 0 parity), legend (no fab named: held to the least of the 4 fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer)): 0 fail, 0 not judged  [0.83s]
+FAIL   drc        1 errors, 1 warnings (0 unconnected, 0 parity), legend (no fab named: held to the least of the 4 fabs Via knows (height pcbway-standard, stroke oshpark-2layer)): 0 fail, 0 not judged  [0.65s]
        - error: clearance: Clearance violation ( clearance 0.2000 mm; actual 0.0500 mm)
        - warning: track_dangling: Track has unconnected end
 RATINGS not asked for: no ratings.json beside the schematic

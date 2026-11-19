@@ -7,6 +7,12 @@ CHANGELOG.md and the MISTAKES.md entries that stood when the product became Via.
 after that is read. The website, the blog and the example projects have their own rules and are not
 read here. Only the Markdown files are read: the program's strings, the JSON notes, the workflow
 prompts and other files are not held by this test.
+
+The program's strings say Via as well; the tests of each tool hold them. 4 tokens keep the old name on
+purpose (docs/STYLE.md, Terms): the fetch client's name "EE-Workcenter/1", under which sites' answers
+are recorded; the references cache ~/.cache/ee-workcenter; the comments of the Dockerfile, install.sh
+and requirements.txt, whose change would move the image's content tag; and the doctor's line
+"workcenter ee: ok". A rule file or a sources.csv row written before the change keeps its older words.
 """
 
 from __future__ import annotations

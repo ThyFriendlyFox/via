@@ -407,7 +407,8 @@ The same steps keep a datasheet or a 3D body. Each step is 1 command.
 2. A person downloads the file in a browser, then:
    `workcenter fetch --file <downloaded file> --url <url> --to <project>/library/<maker>/<file> --mpn <MPN> --row`.
    The row records `--url` and the note `downloaded by a person from the
-   URL; not fetched by the workcenter`. For a zip, add `--member <name>`:
+   URL; not fetched by Via` (a row written before 2026-11-19 says `not
+   fetched by the workcenter`, and is read the same). For a zip, add `--member <name>`:
    the member is read out and kept, not the zip.
    - `fetch: <file> is an HTML page ...`, `is an empty file (0 bytes)` or
      `is a file that starts ..., not %PDF`: the browser saved something
