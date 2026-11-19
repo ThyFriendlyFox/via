@@ -2409,6 +2409,8 @@ def autoroute_apply(
 
     try:
         route = boardroute.apply(project.pcb, out / "route", passes=passes, threads=threads, timeout=timeout)
+    except boardroute.NotWritten as exc:  # read-only, open in KiCad, changed meanwhile, or the write failed
+        return Result("autoroute", "error", str(exc))
     except FileNotFoundError as exc:
         return Result("autoroute", "skip", f"engine missing: {exc}", {"engine_missing": str(exc)})
     except ValueError as exc:

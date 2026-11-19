@@ -116,8 +116,19 @@ The board file is written in place. Commit it, or work on a copy, first.
    - `FAIL autoroute route failed: ...; <board> is as it was`: the router
      failed or ran past `--timeout`. Read `build/route/freerouting.log`.
    - `SKIP autoroute engine missing: ...`: run `workcenter doctor`.
-   The board before the route is kept as `build/route/<name>.before.kicad_pcb`;
-   the DSN, the session and the router's log are beside it.
+   - `ERROR autoroute <board> is read-only; nothing written`, `... is open
+     in KiCad (~<board>.lck beside it) ...`, `... changed while the router
+     ran; nothing written`, `... not written (<why>); the board is as it
+     was`: the board file is untouched. Close the board in KiCad (or
+     remove a lock file KiCad left behind), give the file its write bit,
+     or free the disk, and run again.
+   The route only adds copper: the tracks and vias already in the board
+   stay as they are written, a locked one too. A board that is a link is
+   written through to its target, and the file keeps its mode. The board
+   before the first route is kept as `build/route/<name>.before.kicad_pcb`;
+   each later run keeps its own copy as `<name>.before-2.kicad_pcb`,
+   `-3`, ..., and never writes over an earlier one. The DSN, the session
+   and the router's log are beside them.
 4. `workcenter gates .` must be GREEN before the board is called routed.
 
 `--apply` takes no `--dsn`. Without `--apply`, `workcenter autoroute .
