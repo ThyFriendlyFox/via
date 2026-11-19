@@ -46,3 +46,5 @@ RUN HOME=/root workcenter doctor \
 ENV HOME=/home/workcenter
 WORKDIR /work
 CMD ["workcenter", "doctor"]
+# Throwaway line, branch wip/aptcache-run only, never merged: it changes the toolchain's content tag so
+# that a CI run by hand takes the install path and shows the apt cache's steps at work.
