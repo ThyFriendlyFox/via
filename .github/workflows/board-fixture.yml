@@ -27,7 +27,6 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-  packages: read
 jobs:
   fixture:
     uses: ./.github/workflows/board-gates.yml
