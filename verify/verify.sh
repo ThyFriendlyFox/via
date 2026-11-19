@@ -32,7 +32,8 @@ step() {
   return 0
 }
 
-# `verify.sh site` is the fast gate (make verify-site): for a change tools/ci/scope.py calls fast.
+# `verify.sh site` is the fast gate (make verify-site): for every change, and beside the full gate
+# for a change tools/ci/scope.py calls full. It hides KiCad's libraries.
 # It starts no engine: the tests marked `engine` are left out, and any other test that starts one
 # is refused (WORKCENTER_NO_ENGINES=1) and fails (tools/ci/engine_marker.py).
 mode=${1:-full}

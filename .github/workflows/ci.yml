@@ -127,8 +127,9 @@ jobs:
             *) echo "no path was decided"; exit 1 ;;
           esac
 
-  # Always runs, so a required check always resolves: green only when the job the scope asked for
-  # passed. A skipped job is not a pass, and a failed scope job leaves no answer.
+  # Always runs, so a required check always resolves: green only when fast passed on every change,
+  # and full passed as well for a full change. A skipped job is not a pass, and a failed scope job
+  # leaves no answer.
   verdict:
     needs: [scope, fast, full]
     if: always()

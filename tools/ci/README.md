@@ -40,9 +40,11 @@ the minute the roadmap asks for.
    - A line `fast  <path>: <why>`: this path needs no engine.
    - A line `full  <path>: <why>`: this path needs the full gate.
    - The last line is the answer: `fast` or `full`.
-2. If the answer is `fast`, run `make verify-site`. It ends with
+2. Run `make verify-site` for every answer. It ends with
    `VERIFY-SITE GREEN in <n>s`. Any other end is red: read the step above it.
-3. If the answer is `full`, run `make verify`. It ends with `VERIFY GREEN`.
+   It is the only local run that hides KiCad's libraries, and CI's `fast`
+   job runs it on every change.
+3. If the answer is `full`, run `make verify` too. It ends with `VERIFY GREEN`.
 
 ## A test that starts an engine
 
@@ -100,7 +102,9 @@ default `/usr/share/kicad/symbols` and `/usr/share/kicad/footprints`) carries
 the skip its file already has, `needs_libs`:
 `pytest.mark.skipif(not LIBS.is_file(), reason="KiCad symbol libraries are not installed")`
 with `LIBS = kicadgen.SYMBOL_DIR / "Device.kicad_sym"`. A test that starts
-`workcenter design` on a fixture board loads them too.
+`workcenter design` on a fixture board loads them too. It carries
+`needs_libs` even when it already skips where kicad-cli is absent: the fast
+gate on a machine with KiCad has kicad-cli and hides the libraries only.
 
 `make verify-site` sets both variables to empty folders of its own, so it
 finds such a test on a machine that has KiCad. To run 1 file that way:

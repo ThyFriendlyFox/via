@@ -26,7 +26,7 @@ test:               ## gate tests on the fixture boards
 scope:              ## fast or full: what the change from SCOPE_BASE to the working tree needs
 	$(PY) tools/ci/scope.py --base "$$(git merge-base $(SCOPE_BASE) HEAD)"
 
-verify-site:        ## the fast gate for a change `make scope` calls fast; starts no engine
+verify-site:        ## the fast gate for every change, KiCad's libraries hidden; starts no engine
 	verify/verify.sh site
 
 verify:             ## the full health gate: lint -> kit checks -> doctor -> tests in shards
