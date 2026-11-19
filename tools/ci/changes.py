@@ -3,9 +3,11 @@
 
 A change no longer edits `ee-agent-kit/CHANGELOG.md`. It adds 1 file, `ee-agent-kit/changes/<yyyy-mm-dd>-
 <slug>.md`: its first line 1 of Keep a Changelog's headings (`### Added`, `### Changed`, ...), then 1 or
-more `- ` lines as they will stand in CHANGELOG.md, and nothing else. 2 changes then never write the same
-place: on 2026-11-19 an open pull request conflicted in CHANGELOG.md alone each time `main` moved (M279).
-A line written straight under `## [Unreleased]` stays valid; every action reads both places.
+more `- ` lines as they will stand in CHANGELOG.md, and nothing else. 2 changes with 2 slugs then never
+write the same place: on 2026-11-19 an open pull request conflicted in CHANGELOG.md alone each time `main`
+moved (M279). 1 name in 2 branches is git's add/add conflict, as for any file. A `- ` line stands once:
+check refuses one that CHANGELOG.md, another change file or the same file holds, or that ends in white
+space. A line written straight under `## [Unreleased]` stays valid; every action reads both places.
 
     changes.py [--root DIR] check                  every change file well formed; exit 1 with file:line
     changes.py [--root DIR] show                   what ## [Unreleased] holds today, from both places
@@ -89,8 +91,12 @@ def change_files(root: Path) -> list[Path]:
     )
 
 
-def read_change(path: Path, released: dict[str, int]) -> tuple[str | None, list[str], list[tuple[int, str]]]:
-    """A change file's heading, its lines and its faults as (line number, why)."""
+def read_change(
+    path: Path, rel: str, seen: dict[str, str]
+) -> tuple[str | None, list[str], list[tuple[int, str]]]:
+    """A change file's heading, its lines and its faults as (line number, why). `seen` maps each '- '
+    line read so far (CHANGELOG.md's, then the change files', end white space cut) to where it stands;
+    this file's lines are added, so a line in 2 files, or 2 times in 1, is a fault."""
     match = NAME.match(path.name)
     if not match:
         return None, [], [(1, FORM)]
@@ -114,8 +120,14 @@ def read_change(path: Path, released: dict[str, int]) -> tuple[str | None, list[
             faults.append((n, f"not a '- ' line: {line!r}"))
         elif not line[2:].strip():
             faults.append((n, "a '- ' line with no words"))
-        elif line in released:
-            faults.append((n, f"this line is already in {CHANGELOG}, line {released[line]}"))
+        else:
+            if line != line.rstrip():
+                faults.append((n, "the line ends in white space"))
+            key = line.rstrip()
+            if key in seen:
+                faults.append((n, f"this line is already in {seen[key]}"))
+            else:
+                seen[key] = f"{rel}, line {n}"
     return heading, body, faults
 
 
@@ -124,14 +136,14 @@ def gather(root: Path) -> tuple[Section | None, list[tuple[Path, str, list[str]]
     text = (root / CHANGELOG).read_text(encoding="utf-8")
     section, faults = read_unreleased(text)
     out = [f"{CHANGELOG}:{n}: {why}" for n, why in faults]
-    released = {}
+    seen: dict[str, str] = {}
     for n, line in enumerate(text.splitlines(), start=1):
         if line.startswith("- "):
-            released.setdefault(line, n)
+            seen.setdefault(line.rstrip(), f"{CHANGELOG}, line {n}")
     files = []
     for path in change_files(root):
-        heading, body, faults = read_change(path, released)
         rel = f"{FOLDER}/{path.name}"
+        heading, body, faults = read_change(path, rel, seen)
         out += [f"{rel}:{n}: {why}" for n, why in sorted(faults)]
         if not faults:
             files.append((path, heading, body))

@@ -85,7 +85,7 @@ def test_check_names_the_file_and_line_of_each_fault(tmp_path):
         {
             "2026-11-19-heading.md": "### Improved\n- A line.\n",
             "2026-11-19-empty.md": "### Added\n",
-            "2026-11-19-prose.md": "### Changed\n- A line.\n\nSome prose.\n",
+            "2026-11-19-prose.md": "### Changed\n- A line with prose below.\n\nSome prose.\n",
             "2026-11-19-bare.md": "### Changed\n- \n",
             "2026-11-19-again.md": "### Changed\n- A fresh line.\n- An old line under Unreleased.\n",
             "2026-11-19-released.md": "### Added\n- The first release's line.\n",
@@ -146,6 +146,46 @@ def test_check_reads_the_unreleased_section_as_a_release_will(tmp_path):
     gone = run(tree(tmp_path / "b", {}, changelog=CHANGELOG.replace("## [Unreleased]\n", "")), "check")
     assert gone.returncode == 1
     assert gone.stdout.splitlines()[0] == "ee-agent-kit/CHANGELOG.md:1: no '## [Unreleased]' line"
+
+
+def test_check_refuses_a_line_that_another_change_file_or_the_same_file_already_holds(tmp_path):
+    """fold would write such a line 2 times into the release."""
+    root = tree(
+        tmp_path,
+        {
+            "2026-11-19-a.md": "### Fixed\n- Same line.\n",
+            "2026-11-19-b.md": "### Fixed\n- Same line.\n",
+            "2026-11-19-twice.md": "### Fixed\n- G.\n- G.\n",
+        },
+    )
+    done = run(root, "check")
+    assert done.returncode == 1
+    assert done.stdout.splitlines()[:-1] == [
+        "ee-agent-kit/changes/2026-11-19-b.md:2: this line is already in "
+        "ee-agent-kit/changes/2026-11-19-a.md, line 2",
+        "ee-agent-kit/changes/2026-11-19-twice.md:3: this line is already in "
+        "ee-agent-kit/changes/2026-11-19-twice.md, line 2",
+    ]
+    before = snapshot(root)
+    assert run(root, "fold", "0.1.1", "2026-11-20").returncode == 1
+    assert snapshot(root) == before
+
+
+def test_check_refuses_white_space_at_the_end_of_a_line_so_a_space_makes_no_second_copy(tmp_path):
+    root = tree(
+        tmp_path,
+        {
+            "2026-11-19-space.md": "### Changed\n- An old line under Unreleased. \n",
+            "2026-11-19-tab.md": "### Changed\n- A new line.\t\n",
+        },
+    )
+    done = run(root, "check")
+    assert done.returncode == 1
+    assert done.stdout.splitlines()[:-1] == [
+        "ee-agent-kit/changes/2026-11-19-space.md:2: the line ends in white space",
+        f"ee-agent-kit/changes/2026-11-19-space.md:2: {IN}, line 7",
+        "ee-agent-kit/changes/2026-11-19-tab.md:2: the line ends in white space",
+    ]
 
 
 def test_check_on_this_repository_passes_well_under_a_second():
@@ -324,6 +364,14 @@ def test_the_folder_readme_says_the_rule_in_10_lines_or_fewer():
     assert len(text.splitlines()) <= 10
     for word in ("<yyyy-mm-dd>-<slug>.md", "### Added", "tools/ci/changes.py", "fold"):
         assert word in text, word
+
+
+def test_both_readmes_say_2_files_of_1_name_conflict_and_how_to_keep_both_lines():
+    """2 different names merge clean; 1 name in 2 branches is git's add/add conflict."""
+    for path in ("ee-agent-kit/changes/README.md", "tools/ci/README.md"):
+        text = " ".join((ROOT / path).read_text(encoding="utf-8").split())
+        for word in ("a slug of your own", "add/add", "rename 1 file"):
+            assert word in text, (path, word)
 
 
 def test_the_module_reads_the_lines_of_both_places_for_other_readers(tmp_path):

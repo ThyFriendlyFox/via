@@ -90,9 +90,14 @@ A change does not edit `ee-agent-kit/CHANGELOG.md`. It adds 1 file,
 `ee-agent-kit/changes/<yyyy-mm-dd>-<slug>.md`: line 1 is 1 of Keep a
 Changelog's headings (`### Added`, `### Changed`, `### Deprecated`,
 `### Removed`, `### Fixed`, `### Security`), then 1 or more `- ` lines as
-they will stand in CHANGELOG.md. 2 changes then never write the same
-place. On 2026-11-19 `main` moved under an open pull request 5 times, and
-each time the pull request conflicted in CHANGELOG.md alone (M279).
+they will stand in CHANGELOG.md. 2 changes then write 2 files, and 2 files
+of 2 names merge clean. On 2026-11-19 `main` moved under an open pull
+request 5 times, and each time the pull request conflicted in CHANGELOG.md
+alone (M279). Pick a slug of your own: 1 name in 2 branches is git's
+add/add conflict, as for any file; keep both lines and rename 1 file.
+Each `- ` line stands once: `check` refuses a line that CHANGELOG.md,
+another change file or the same file already holds, and a line that ends
+in white space.
 
 1. `python3 tools/ci/changes.py check`: every change file is well formed.
    A fault is 1 line, `<file>:<line>: <why>`, and the exit is 1. The kit
