@@ -5334,19 +5334,50 @@ def cmd_copper(args) -> int:
     return proc.returncode if proc.returncode in (EXIT_PASS, EXIT_FAIL, EXIT_SKIP) else EXIT_FAIL
 
 
-USER_SETTINGS = Path.home() / ".claude" / "settings.json"
+NO_HOME = "no home folder is known (HOME is unset and the user id has no line in /etc/passwd)"
 
 
-def hook_installed(file_name: str, settings: Path = USER_SETTINGS) -> bool:
+def home_folder() -> Path | None:
+    """The user's home folder, or None where none is known: Path.home() raises there, as in a container
+    run as a user id its image never named. Nothing at import asks for it (M299)."""
+    try:
+        return Path.home()
+    except (RuntimeError, KeyError):
+        return None
+
+
+def user_settings() -> Path | None:
+    """The agent host's user-wide settings file, or None with no home folder."""
+    home = home_folder()
+    return home / ".claude" / "settings.json" if home else None
+
+
+def hook_installed(file_name: str, settings: Path | None = None) -> bool:
     """True when the user-wide Claude Code settings run the hook of that file name. A session opened
     outside this repository loads no hook of its own: tools/hooks/install_hooks.py puts them there, by
-    the user's hand (M35, M119)."""
+    the user's hand (M35, M119). With no home folder there are no such settings: False."""
+    settings = settings or user_settings()
+    if settings is None:
+        return False
     try:
         data = json.loads(settings.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return False
     entries = data.get("hooks", {}).get("PreToolUse", []) if isinstance(data, dict) else []
     return any(file_name in h.get("command", "") for e in entries for h in e.get("hooks", []))
+
+
+def hook_row(file_name: str) -> dict:
+    """Doctor's row for 1 hook. A hook is a habit of 1 agent host, not a part of the toolchain: its line
+    says whether it is there (P8 step 1 reads it), and its absence does not degrade Via. With no home
+    folder the path says so and what to set, and the doctor goes on."""
+    settings = user_settings()
+    return {
+        "required": False,
+        "advisory": True,
+        "ok": hook_installed(file_name, settings) if settings else False,
+        "path": str(settings) if settings else f"unknown: {NO_HOME}; set HOME",
+    }
 
 
 def freerouting2_row() -> dict:
@@ -5964,20 +5995,8 @@ def cmd_doctor(args) -> int:
             "ok": (SRC_DIR / "WORKCENTER.md").is_file(),
             "path": str(SRC_DIR / "WORKCENTER.md"),
         },
-        # A hook is a habit of 1 agent host, not a part of the toolchain: its line says whether it is
-        # there (P8 step 1 reads it), and its absence does not degrade Via.
-        "no-cd hook": {
-            "required": False,
-            "advisory": True,
-            "ok": hook_installed("no_cd.py"),
-            "path": str(USER_SETTINGS),
-        },
-        "test hook": {
-            "required": False,
-            "advisory": True,
-            "ok": hook_installed("no_script_test_edits.py"),
-            "path": str(USER_SETTINGS),
-        },
+        "no-cd hook": hook_row("no_cd.py"),
+        "test hook": hook_row("no_script_test_edits.py"),
         "kistack": {
             "required": False,
             "ok": (KISTACK_DIR / "skills" / "layout-placement" / "scripts").is_dir(),

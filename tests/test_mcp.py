@@ -27,7 +27,7 @@ import time
 from pathlib import Path
 
 import pytest
-from conftest import engine
+from conftest import engine, no_home
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "workcenter"
@@ -954,6 +954,19 @@ def test_a_root_that_is_the_whole_disk_or_home_is_refused(tmp_path):
         )
         assert run.returncode == 2 and run.stdout == "", (root, run)
         assert len(run.stderr.splitlines()) == 1 and "too wide" in run.stderr, (root, run.stderr)
+
+
+def test_with_no_home_folder_known_the_root_check_still_refuses_the_disk_and_a_project_serves(tmp_path):
+    """M299: HOME unset and a user id with no line in /etc/passwd (conftest.no_home). `/` is still too
+    wide; a project's folder is served, and the server ends when its input does, with no traceback."""
+    refused = no_home(CLI, "mcp", "/", stdin=subprocess.DEVNULL)
+    assert refused.returncode == 2 and refused.stdout == "", refused
+    assert len(refused.stderr.splitlines()) == 1 and "too wide" in refused.stderr, refused.stderr
+    project = tmp_path / "board"
+    project.mkdir()
+    served_ = no_home(CLI, "mcp", project, stdin=subprocess.DEVNULL, timeout=60)
+    assert served_.returncode == 0, served_
+    assert "Traceback" not in served_.stderr and "RuntimeError" not in served_.stderr, served_.stderr
 
 
 @needs_kicad

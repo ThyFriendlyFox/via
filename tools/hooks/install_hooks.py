@@ -50,8 +50,19 @@ def install(path: Path, hook: Path) -> bool:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--settings", type=Path, default=Path.home() / ".claude" / "settings.json")
+    ap.add_argument("--settings", type=Path, help="default: ~/.claude/settings.json")
     args = ap.parse_args(argv)
+    if args.settings is None:
+        try:
+            args.settings = Path.home() / ".claude" / "settings.json"
+        except (RuntimeError, KeyError):
+            # No HOME and a user id with no line in /etc/passwd (M299): the default has no folder.
+            print(
+                "hooks: no home folder is known (HOME is unset and the user id has no line in /etc/passwd): "
+                "set HOME, or name the settings file with --settings",
+                file=sys.stderr,
+            )
+            return 2
     for name, hook in HOOKS.items():
         changed = install(args.settings, hook)
         print(f"hooks: {name} {'added to' if changed else 'already in'} {args.settings}")

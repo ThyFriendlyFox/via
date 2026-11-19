@@ -12,6 +12,7 @@ summary prints what the file holds; the lock's own tests take the variable out a
 """
 
 import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -41,6 +42,27 @@ def router_absent() -> str:
     import routers
 
     return routers.get(routers.DEFAULT).absent()
+
+
+# A process that knows no home folder: HOME unset, and a user id with no line in /etc/passwd, as in a
+# container run as a user id its image never named (M299). Path.home() raises RuntimeError there. A
+# test cannot change its user id, so Python starts with pwd.getpwuid raising KeyError, as it does for
+# an unknown id, then runs the script named first with the rest as its arguments.
+NO_HOME = (
+    "import pwd, runpy, sys\n"
+    "def unknown(uid):\n"
+    "    raise KeyError(f'getpwuid(): uid not found: {uid}')\n"
+    "pwd.getpwuid = unknown\n"
+    "sys.argv = sys.argv[1:]\n"
+    "runpy.run_path(sys.argv[0], run_name='__main__')\n"
+)
+
+
+def no_home(script, *args, env: dict | None = None, **kwargs) -> subprocess.CompletedProcess:
+    """Run `script args` under NO_HOME, with `env` (else this process's environment) less HOME."""
+    bare = {k: v for k, v in (os.environ if env is None else env).items() if k != "HOME"}
+    cmd = [sys.executable, "-c", NO_HOME, str(script), *map(str, args)]
+    return subprocess.run(cmd, env=bare, capture_output=True, text=True, check=False, **kwargs)
 
 
 def pytest_configure(config):

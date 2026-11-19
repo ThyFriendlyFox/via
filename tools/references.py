@@ -267,12 +267,19 @@ def values_gone(doc: dict, body: bytes) -> list[dict]:
 # ------------------------------------------------------------------ fetch
 
 
-def default_folder() -> Path:
-    """$XDG_CACHE_HOME/ee-workcenter/references, else ~/.cache/... A relative XDG_CACHE_HOME is ignored:
-    XDG Base Directory Specification 0.8, section 2 calls such a path invalid. A relative one would also
-    put the folder under the working folder, which may lie in a repository."""
+NO_HOME = "no home folder is known (HOME is unset and the user id has no line in /etc/passwd)"
+
+
+def default_folder() -> Path | None:
+    """$XDG_CACHE_HOME/ee-workcenter/references, else ~/.cache/..., None with no home folder (M299). A
+    relative XDG_CACHE_HOME is ignored: XDG Base Directory Specification 0.8, section 2 calls such a
+    path invalid. A relative one would also put the folder under the working folder, which may lie in
+    a repository."""
     cache = os.environ.get("XDG_CACHE_HOME", "")
-    base = Path(cache) if cache and Path(cache).is_absolute() else Path.home() / ".cache"
+    try:
+        base = Path(cache) if cache and Path(cache).is_absolute() else Path.home() / ".cache"
+    except (RuntimeError, KeyError):
+        return None
     return (base / "ee-workcenter" / "references").resolve()
 
 
@@ -297,7 +304,18 @@ def outside_repositories(to: Path) -> str:
 
 def folder_for(given: str | None) -> tuple[Path, str]:
     """(the folder for the copies, '' or the 1 line that refuses it). The folder is made when it may be."""
-    to = Path(given).expanduser().resolve() if given else default_folder()
+    try:
+        to = Path(given).expanduser().resolve() if given else default_folder()
+    except (RuntimeError, KeyError):
+        return Path(given), (
+            f"references: {given}: {NO_HOME} to expand ~ in it; set HOME, or name the folder by its "
+            "whole path"
+        )
+    if to is None:
+        return Path(), (
+            f"references: {NO_HOME} for the default folder ~/.cache/ee-workcenter/references; set HOME or "
+            "XDG_CACHE_HOME, or name a folder with --to"
+        )
     refusal = outside_repositories(to)
     if refusal:
         return to, refusal
