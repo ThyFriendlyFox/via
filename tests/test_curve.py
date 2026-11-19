@@ -25,7 +25,7 @@ FRAME = ("--frame", "100,100,500,400", "--x", "log:0.1:100", "--y", "log:1e-3:1e
 VENV_PY = Path("/opt/workcenters/ee/venv/bin/python")
 
 
-@pytest.mark.skipif(not VENV_PY.exists(), reason="the workcenter venv is not installed")
+@pytest.mark.skipif(not VENV_PY.exists(), reason="Via's venv is not installed")
 def test_the_venv_holds_pdfminer_and_pyyaml_at_their_pins():
     """`curve` and `ci` run under the venv and skip without these (P12). Where the venv is installed (CI,
     the cloud environment) a skip would hide that; this test turns it red, and a lost pin with it (P6).

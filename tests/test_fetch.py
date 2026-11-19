@@ -1,4 +1,4 @@
-"""`workcenter fetch`: one file for a library, fetched once under the workcenter's own name, and its
+"""`workcenter fetch`: one file for a library, fetched once under Via's own name, and its
 sources.csv row (PROCESSES.md P27).
 
 A local server plays the maker's site: it serves the test's files, answers 403 under /refused, and
@@ -136,7 +136,7 @@ def test_fetch_keeps_the_file_and_prints_its_row(site):
     assert row["Checked"] in AROUND and row["Checked"] != "1980-01-01"  # the machine's day, not the pin
     assert row["Revision"] == "" and row["Dated"] == ""  # the reader fills these from the file
     assert report["revision_lines"] == ["Model Version: 2.1, Date: 02/02/2007"]
-    assert Maker.agents == [load_cli().FETCH_AGENT]  # one request, under the workcenter's own name
+    assert Maker.agents == [load_cli().FETCH_AGENT]  # one request, under Via's own name
     assert (lib / "sources.csv").read_bytes() == before  # without --row the library's rows stay as they are
     # the same file again: nothing to write
     code, report = fetch(f"{url}/rdiv.lib", "--to", kept)

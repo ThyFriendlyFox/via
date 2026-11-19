@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""workcenter — the EE Workcenter command line.
+"""workcenter — Via's command line.
 
 Runs the engines (KiCad 10 kicad-cli, ngspice, FreeRouting) against a
 KiCad project and reports pass or fail per gate. Standard library only,
@@ -1462,7 +1462,7 @@ def write_bundle(
         text = pd.apply(text, {c["ref"]: pd.Curve(**c) for c in record["curves"]})[0]
     (folder / deck.name).write_text(text, encoding="utf-8")
     wrapper = [
-        f"* {deck.stem}: sim/{deck.name} of {project.name} as the EE Workcenter's SIM gate runs it.",
+        f"* {deck.stem}: sim/{deck.name} of {project.name} as Via's SIM gate runs it.",
         f"* Run this file, not {deck.name}: ngspice -b {BUNDLE_RUN}",
         ".control",
         *setup,
@@ -1499,7 +1499,7 @@ def write_bundle(
     readme = [
         f"# {deck.stem}: one simulation deck, ready to run",
         "",
-        f"This folder holds `sim/{deck.name}` of {project.name} as the EE Workcenter's SIM gate runs it.",
+        f"This folder holds `sim/{deck.name}` of {project.name} as Via's SIM gate runs it.",
         f"The gate ran it with ngspice {version or 'of an unknown version'}. Run it in this folder, or",
         f"from any other folder with the path to `{BUNDLE_RUN}`:",
         "",
@@ -3806,7 +3806,7 @@ def cmd_sources(args) -> int:
 
 # ------------------------------------------------------------------ fetch
 #
-# One file for a library, a part's datasheet, model or body, fetched once under the workcenter's own
+# One file for a library, a part's datasheet, model or body, fetched once under Via's own
 # name, and the sources.csv row that records it (PROCESSES.md P27). For a part before any board names it.
 
 SOURCES_HEADER = ("MPN", "Kind", "URL", "File", "Member", "Revision", "Dated", "Subckt", "Ngspice", "SHA256")
@@ -5103,7 +5103,7 @@ KICAD_NOISE = re.compile(r"Debug: Adding duplicate image handler|property\.h\(\d
 
 
 def venv_python() -> str:
-    """The workcenter venv's Python (KiCad's pcbnew module, shapely), else this one."""
+    """Via's venv's Python (KiCad's pcbnew module, shapely), else this one."""
     py = WC_ROOT / "venv" / "bin" / "python"
     return str(py) if py.exists() else sys.executable
 
@@ -5305,7 +5305,7 @@ def cmd_doctor(args) -> int:
         "java": {"required": False, "ok": bool(java and int(java.split(".")[0]) >= 21), "version": java},
         "freerouting": {"required": False, "ok": FREEROUTING_JAR.is_file(), "path": str(FREEROUTING_JAR)},
         # The second router installs on request (install.sh --freerouting2): where it never was, its row
-        # is advisory; where its folder is and it cannot run, the workcenter is degraded.
+        # is advisory; where its folder is and it cannot run, Via is degraded.
         "freerouting2": freerouting2_row(),
         "venv": {
             "required": False,
@@ -5333,7 +5333,7 @@ def cmd_doctor(args) -> int:
             "path": str(SRC_DIR / "WORKCENTER.md"),
         },
         # A hook is a habit of 1 agent host, not a part of the toolchain: its line says whether it is
-        # there (P8 step 1 reads it), and its absence does not degrade the workcenter.
+        # there (P8 step 1 reads it), and its absence does not degrade Via.
         "no-cd hook": {
             "required": False,
             "advisory": True,
@@ -5737,7 +5737,7 @@ def command(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--fetch",
         action="store_true",
-        help="read every URL once more, under the workcenter's own name, into sources/fetched/, "
+        help="read every URL once more, under Via's own name, into sources/fetched/, "
         "and say which differ from the library's copy",
     )
     p = add_project_cmd(
@@ -5756,7 +5756,7 @@ def command(argv: list[str] | None = None) -> int:
     )
     p = sub.add_parser(
         "fetch",
-        help="GET one datasheet, SPICE model or 3D body once, under the workcenter's own name, into --to "
+        help="GET one datasheet, SPICE model or 3D body once, under Via's own name, into --to "
         "(or take a file a person downloaded, with --file and --url); refuse a body that is empty, cut "
         "short, or a web page; print its sources.csv row; --row appends it to the library's sources.csv, "
         "starting <project>/library/sources.csv when there is none. Writes those 2 files only",

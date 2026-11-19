@@ -3443,7 +3443,7 @@ class Design:
     # ---- project
 
     def board_rules(self) -> dict:
-        """The board's design rules as the project file carries them: the workcenter's defaults, raised
+        """The board's design rules as the project file carries them: Via's defaults, raised
         to the fab's board-wide minimums where `fab` names one, with `rules` laid over them. The key
         order is the file's; changing it changes every project."""
         base = {
@@ -4771,7 +4771,7 @@ def route(
     "stages"; it takes no seed.
     `seed` is a previous route's copper as `Design.seed_wiring()` keeps it. The summary's `unrouted` is
     the router's own count when its log has one, else `Design.bare_connections()` when the route left
-    every connection without copper, else None. Every rule here is the workcenter's: the router only
+    every connection without copper, else None. Every rule here is Via's: the router only
     turns the DSN into a session (the autoroute skill's "The rules around a route")."""
     engine = routers.get(router)
     if jar is not None or java is not None:

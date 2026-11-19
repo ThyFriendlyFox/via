@@ -237,7 +237,7 @@ def stated_wall(data: dict) -> tuple[Wall | None, str | None]:
 
 
 def find_pack(name: str, project_dir: Path) -> tuple[Path, str]:
-    """A pack by its name among the workcenter's, or by a path from the project's folder; and the name a
+    """A pack by its name among Via's, or by a path from the project's folder; and the name a
     report gives it."""
     shipped = PACKS / f"{name}.json"
     if "/" not in name and shipped.is_file():
@@ -245,7 +245,7 @@ def find_pack(name: str, project_dir: Path) -> tuple[Path, str]:
     if (project_dir / name).is_file():
         return project_dir / name, f"{name} (the project's own)"
     known = ", ".join(sorted(p.stem for p in PACKS.glob("*.json")))
-    raise Refusal(f"{PROJECT_FILE}: pack: `{name}` is no pack; the workcenter holds {known}")
+    raise Refusal(f"{PROJECT_FILE}: pack: `{name}` is no pack; Via holds {known}")
 
 
 # ---------------------------------------------------------------- the current model of annex D

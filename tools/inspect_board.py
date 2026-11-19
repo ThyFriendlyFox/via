@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """inspect_board: a board read with KiCad's own geometry, for `workcenter inspect`.
 
-`tools/workcenter` parses the arguments and runs this file under the workcenter venv's Python,
+`tools/workcenter` parses the arguments and runs this file under Via's venv's Python,
 which sees KiCad's `pcbnew` module and Pillow:
 
     python inspect_board.py '<the arguments as JSON>'

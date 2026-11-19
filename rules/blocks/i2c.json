@@ -43,6 +43,6 @@
       }
     ],
     "example": "section 4, equations 7 and 8, page 5: fast mode, Cb = 200 pF, VCC = 3.3 V gives RP(max) 1.77 kohm and RP(min) 966.667 ohm",
-    "not_used": "Figures 2-1 and 2-2, page 4, plot equations 1 and 6. NXP's I2C-bus specification UM10204, which table 2-1 is taken from, could not be had: www.nxp.com answered the workcenter's client name with a page that is not available on 2026-11-17. The 20 mA a fast mode plus device sinks in UM10204 is not in this note, so the block holds fast mode plus to the 3 mA of table 2-1"
+    "not_used": "Figures 2-1 and 2-2, page 4, plot equations 1 and 6. NXP's I2C-bus specification UM10204, which table 2-1 is taken from, could not be had: www.nxp.com answered Via's client name with a page that is not available on 2026-11-17. The 20 mA a fast mode plus device sinks in UM10204 is not in this note, so the block holds fast mode plus to the 3 mA of table 2-1"
   }
 }

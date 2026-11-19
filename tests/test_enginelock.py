@@ -519,7 +519,7 @@ def test_verify_takes_the_lock_for_the_whole_gate():
     )
 
 
-# --- the workcenter's own commands -------------------------------------------------------------------
+# --- Via's own commands ------------------------------------------------------------------------------
 
 
 def sim_project(bench: Bench) -> Path:

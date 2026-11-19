@@ -227,7 +227,7 @@ def test_every_cli_flag_is_in_the_configuration_table():
         "tools/wrlgen.py",
         "tools/hooks/install_hooks.py",
         "tools/stretch.py",
-        "tools/doctools.py",  # doctools adds its commands to the workcenter's parser
+        "tools/doctools.py",  # doctools adds its commands to Via's parser
         "tools/guide.py",  # so does guide
         "tools/ratings.py",  # and ratings
         "tools/references.py",  # and references

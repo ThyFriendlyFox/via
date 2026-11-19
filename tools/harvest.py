@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""harvest — what the projects taught the workcenter, read from the repository itself.
+"""harvest — what the projects taught Via, read from the repository itself.
 
-Every project built with the workcenter leaves findings behind: commits on a branch that never
-reached main, a script the project wrote because the workcenter had no tool, a mistake made again
+Every project built with Via leaves findings behind: commits on a branch that never
+reached main, a script the project wrote because Via had no tool, a mistake made again
 under a step that already forbade it. Each of the first 3 listings here finds 1 kind, from git
 objects alone. The fourth holds the rated findings in the roadmap to their own numbers. No engine
 runs and nothing is written.
 
     python3 tools/harvest.py branches   every branch: its own commits, and how much of what they
-                                        added to the workcenter itself main holds today
+                                        added to Via itself main holds today
     python3 tools/harvest.py scripts    the scripts the projects wrote for themselves, by name, with
                                         the projects that wrote each and the functions they share
     python3 tools/harvest.py mistakes   the mistakes log by process: its entries, and the entries
@@ -22,7 +22,7 @@ finding is rated and where it goes.
 
 How `branches` reads a branch. Its base is the last state it shares with main: the merge base, or for
 a branch from before main's history was rewritten the newest commit whose tree is a tree of main's
-history. Its own commits are the ones after the base. For each file of the workcenter itself that
+history. Its own commits are the ones after the base. For each file of Via itself that
 they change, a line the branch added counts as on main when main's file of that path holds it. A
 line is compared without the number of a mistake, a process or a list step: `M162` becomes `M167`
 when 2 branches land, and step 7 becomes step 8. A branch at 100 % has landed, whatever its commits
@@ -42,7 +42,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-# Where a path of the repository belongs. The first 6 areas are the workcenter itself: what a branch
+# Where a path of the repository belongs. The first 6 areas are Via itself: what a branch
 # added there and main lacks is a finding. A project's own files, the site and vendored code are not.
 AREAS = (
     (
@@ -239,17 +239,17 @@ def branches(repo: Path | str, main: str, prefix: str) -> list[dict]:
         entry["lacking"] = lacking
         missing = added_total - held_total
         if not added_total:
-            entry["state"] = "its own commits change nothing of the workcenter itself"
+            entry["state"] = "its own commits change nothing of Via itself"
         elif not missing:
-            entry["state"] = "landed: every line it added to the workcenter is on main"
+            entry["state"] = "landed: every line it added to Via is on main"
         else:
-            entry["state"] = f"{missing} of {added_total} lines it added to the workcenter are not on main"
+            entry["state"] = f"{missing} of {added_total} lines it added to Via are not on main"
     return out
 
 
 def scripts(repo: Path | str, ref: str, root: str = "examples") -> list[dict]:
     """The scripts the projects under `root` wrote for themselves, by file name. A name that 2 or more
-    projects wrote is a tool the workcenter lacks; the functions their newest files share are its
+    projects wrote is a tool Via lacks; the functions their newest files share are its
     first calls."""
     found: dict[str, dict[str, list[str]]] = {}
     for path in git(repo, "ls-tree", "-r", "--name-only", ref, "--", root).splitlines():
@@ -455,13 +455,13 @@ def print_branches(found: list[dict]) -> None:
     states = [entry["state"] for entry in found]
     held = sum("are not on main" in state for state in states)
     landed = sum(state.startswith("landed") for state in states)
-    beside = sum("nothing of the workcenter" in state for state in states)
+    beside = sum("nothing of Via" in state for state in states)
     empty = sum(
         state in ("is main", "in main's history") or "nothing of its own" in state for state in states
     )
     print(
-        f"{len(found)} branches: {held} hold lines of the workcenter that main lacks, {landed} landed, "
-        f"{beside} change nothing of the workcenter itself, {empty} hold nothing of their own"
+        f"{len(found)} branches: {held} hold lines of Via that main lacks, {landed} landed, "
+        f"{beside} change nothing of Via itself, {empty} hold nothing of their own"
     )
 
 
@@ -499,7 +499,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repo", default=str(ROOT), help="the repository to read (default: this checkout)")
     parser.add_argument("--json", action="store_true", help="print the listing as JSON")
     parts = parser.add_subparsers(dest="listing", required=True)
-    p = parts.add_parser("branches", help="every branch, and what it added to the workcenter that main lacks")
+    p = parts.add_parser("branches", help="every branch, and what it added to Via that main lacks")
     p.add_argument("--main", default="origin/main", help="the ref of main (default origin/main)")
     p.add_argument(
         "--refs", default="refs/remotes/origin", help="where the branches are (default refs/remotes/origin)"

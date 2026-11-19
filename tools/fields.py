@@ -1923,7 +1923,7 @@ def cmd_fields(args, cli) -> int:
 
 
 def register(sub, cli) -> None:
-    """Add `fields` to the workcenter's parser; it sets `run` to its handler."""
+    """Add `fields` to Via's parser; it sets `run` to its handler."""
     p = sub.add_parser(
         "fields",
         help="simulate the nets fields.json names as critical with a field solver (openEMS), from the board "

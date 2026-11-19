@@ -1,7 +1,7 @@
-# The EE Workcenter's image: the toolchain install.sh defines, and the workcenter at the commit it was
+# Via's image: the toolchain install.sh defines, and Via at the commit it was
 # built from. The image workflow (.github/workflows/image.yml) builds it, checks it and publishes it;
-# tools/image.py works out its tag from this file, install.sh and requirements.txt. It holds the
-# workcenter without the example boards and the site (.dockerignore leaves out examples/ and site/):
+# tools/image.py works out its tag from this file, install.sh and requirements.txt. It holds
+# Via without the example boards and the site (.dockerignore leaves out examples/ and site/):
 # no tool it runs reads them, and a project is mounted on /work.
 #
 #   docker build -t via .

@@ -104,7 +104,7 @@ def test_fab_minimums_are_the_board_wide_rules_only():
 def test_design_fab_raises_the_board_rules_and_refuses_the_fabs_vias(tmp_path):
     d = kicadgen.Design(name="t", namespace=uuid.UUID(int=11), fab=SIERRA)
     rules = d.board_rules()
-    assert rules["min_via_annular_width"] == 0.1524  # raised from the workcenter's 0.1
+    assert rules["min_via_annular_width"] == 0.1524  # raised from Via's 0.1
     assert rules["min_through_hole_diameter"] == 0.3  # the board's own is stricter and stays
     assert any("annular ring 0.15 is below the board's minimum 0.1524" in p for p in d.check_via_rules())
     d.via_size, d.via_drill = 0.65, 0.3  # a 0.175 mm ring

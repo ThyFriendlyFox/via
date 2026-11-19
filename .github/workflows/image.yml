@@ -1,5 +1,5 @@
 name: Image
-# The workcenter's container image: built from the Dockerfile, which runs install.sh, on both machines
+# Via's container image: built from the Dockerfile, which runs install.sh, on both machines
 # GitHub hosts for a public repository (amd64 and arm64), each checked by its own doctor and by the gates
 # on a fixture run as the runner's user. A pull request builds and pushes nothing: it is install.sh's run
 # on a clean machine. main, a release's tag, the weekly run and a run by hand push to ghcr.io under the
@@ -16,7 +16,7 @@ on:
       - tools/workcenter
       - .github/workflows/image.yml
   push:
-    # Every push to main, with no path filter: the image holds the workcenter at its commit, so `main`
+    # Every push to main, with no path filter: the image holds Via at its commit, so `main`
     # is main's code once its build ends, whichever file the push changed.
     branches: [main]
     tags: ['v*.*.*']
@@ -61,7 +61,7 @@ jobs:
             --build-arg APT_UPDATE_TIMEOUT=120 --build-arg APT_DOWNLOAD_TIMEOUT=570 \
             --label org.opencontainers.image.source="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
             --label org.opencontainers.image.revision="$GITHUB_SHA" \
-            --label org.opencontainers.image.description="EE Workcenter: KiCad 10, ngspice, FreeRouting, openEMS" \
+            --label org.opencontainers.image.description="Via: KiCad 10, ngspice, FreeRouting, openEMS" \
             -t "$IMAGE:$TAG-$ARCH" .
       - name: The tools' versions, read from the image
         env:

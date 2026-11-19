@@ -224,7 +224,7 @@ def test_a_test_not_in_the_package_is_not_held(tmp_path):
     [
         (
             {"kind": "toaster"},
-            "kind: `toaster` is no product kind; the workcenter holds vaping-device-lithium-cell",
+            "kind: `toaster` is no product kind; Via holds vaping-device-lithium-cell",
         ),
         ({"kind": KIND, "tests": {"no-such": ["REQ-A-01"]}}, "tests: `no-such` is no requirement of"),
         ({"kind": KIND, "extra": 1}, "`extra` is no key here"),

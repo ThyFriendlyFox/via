@@ -23,7 +23,7 @@ jobs:
           else
             sudo env APT_ARCHIVE_CI=1 bash tools/ci/apt_archive.sh /etc/apt
           fi
-      - name: Install the workcenter toolchain
+      - name: Install Via's toolchain
         id: install
         run: sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh
       - name: Verify

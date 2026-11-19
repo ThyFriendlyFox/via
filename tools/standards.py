@@ -33,7 +33,7 @@ def read_kind(name: str) -> dict:
     path = KINDS / f"{name}.json"
     if "/" in name or not path.is_file():
         known = ", ".join(sorted(p.stem for p in KINDS.glob("*.json")))
-        raise Refusal(f"{PROJECT_FILE}: kind: `{name}` is no product kind; the workcenter holds {known}")
+        raise Refusal(f"{PROJECT_FILE}: kind: `{name}` is no product kind; Via holds {known}")
     at = path.name
     data = ratings._keys(
         at,
@@ -276,7 +276,7 @@ def cmd_standards(args, cli) -> int:
 
 
 def register(sub, cli) -> None:
-    """Add `standards` to the workcenter's parser."""
+    """Add `standards` to Via's parser."""
     p = sub.add_parser(
         "standards",
         help="list each requirement of the product kind product.json names, from free documents, as held "

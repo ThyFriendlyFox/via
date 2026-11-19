@@ -1198,7 +1198,7 @@ def cmd_highspeed(args, cli) -> int:
 
 
 def register(sub, cli) -> None:
-    """Add `highspeed` to the workcenter's parser; it sets `run` to its handler."""
+    """Add `highspeed` to Via's parser; it sets `run` to its handler."""
     p = sub.add_parser(
         "highspeed",
         help="hold the fast nets that interfaces.json names to their interface's rules: width from the "

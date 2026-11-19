@@ -94,7 +94,7 @@ def written_commands(text: str) -> list[tuple[str, set[str]]]:
 
 def test_a_command_written_ends_where_the_shell_line_goes_on():
     """The `now` skill chains `workcenter now` with `>` and `&& gh issue edit N --body-file ...`: the
-    flags after a shell operator are gh's, not the workcenter command's."""
+    flags after a shell operator are gh's, not the `workcenter` command's."""
     span = (
         "`mkdir -p build && workcenter now . --item 7 > build/now.md"
         " && gh issue edit N --body-file build/now.md`"

@@ -3,7 +3,7 @@ of the fixture pass-first-design, and read back here by the test itself.
 
 The board has 4 parts on its top, C1, J1, R1 and R2, none on its back; 3 nets, VCC, /OUT and GND; 2
 copper layers; an outline 25 by 20 mm. A panel test needs a Python that imports KiKit: KIKIT_PYTHON,
-else the workcenter venv's. It skips, and says so, when there is none.
+else Via's venv's. It skips, and says so, when there is none.
 """
 
 from __future__ import annotations
@@ -127,7 +127,7 @@ def test_a_part_not_fitted_is_in_no_placement_file_and_not_drawn_on_the_assembly
 
 @needs_kicad
 def test_a_panel_asked_for_without_kikit_is_not_judged(tmp_path):
-    """A Python without KiKit stands in for the workcenter's: the panel cannot be made, so EXPORT is
+    """A Python without KiKit stands in for Via's: the panel cannot be made, so EXPORT is
     SKIPPED with exit 2 and says why, and the board's own files are still written and read back."""
     code, result = export(
         project(tmp_path, panel=True), tmp_path / "out", {"KIKIT_PYTHON": "/usr/bin/python3"}

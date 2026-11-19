@@ -1,4 +1,4 @@
-"""`tools/harvest.py`: what the projects taught the workcenter, read from the repository itself.
+"""`tools/harvest.py`: what the projects taught Via, read from the repository itself.
 
 Each test builds a small repository with git and reads it back: branches that landed, a branch from
 before main's history was rewritten, a branch whose mistake and step were renumbered when they landed,
@@ -121,9 +121,9 @@ def test_each_branch_is_read_for_what_it_added_to_the_workcenter_and_main_lacks(
         "main": "is main",
         "merged": "in main's history",
         "stale": "a state main had: nothing of its own",
-        "rewritten": "landed: every line it added to the workcenter is on main",
-        "open": "3 of 4 lines it added to the workcenter are not on main",
-        "project-only": "its own commits change nothing of the workcenter itself",
+        "rewritten": "landed: every line it added to Via is on main",
+        "open": "3 of 4 lines it added to Via are not on main",
+        "project-only": "its own commits change nothing of Via itself",
     }
     # A branch from before a rewrite shares no commit with main. Its base is the commit whose tree
     # main's history holds, and only the commit after it is its own.
@@ -158,7 +158,7 @@ def test_each_branch_is_read_for_what_it_added_to_the_workcenter_and_main_lacks(
 
 def test_a_short_line_counts_only_when_main_does_not_hold_it(repo):
     """A version pin or a 1-line fix is short, and it is a branch's whole work: 2 pins of a dependency
-    branch were under the limit, and the branch read as one that changes nothing of the workcenter.
+    branch were under the limit, and the branch read as one that changes nothing of Via.
     A short line that main's file holds anywhere proves nothing, and is left out as before."""
     pins = "ruff==0.1\npytest==9.1\n"
     commit(repo, "main pins 2 tools", {"requirements.txt": pins, "tools/a.py": A + LATE})
@@ -169,10 +169,10 @@ def test_a_short_line_counts_only_when_main_does_not_hold_it(repo):
     git(repo, "checkout", "-q", "main")
     commit(repo, "main gets 1 of them", {"tools/a.py": A + LATE + "x = 1\n"})
     found = {entry["branch"]: entry for entry in harvest.branches(repo, "main", "refs/heads")}
-    assert found["pins"]["state"] == "1 of 1 lines it added to the workcenter are not on main"
+    assert found["pins"]["state"] == "1 of 1 lines it added to Via are not on main"
     assert found["pins"]["lacking"][0]["first"] == ["ruff==0.2"]
     # `x = 1` is in main's file and proves nothing; `return 1` is in no line of it and is missing
-    assert found["short"]["state"] == "1 of 1 lines it added to the workcenter are not on main"
+    assert found["short"]["state"] == "1 of 1 lines it added to Via are not on main"
     assert found["short"]["lacking"][0]["first"] == ["return 1"]
 
 
@@ -184,7 +184,7 @@ def test_a_line_is_held_without_the_numbers_that_move_when_another_branch_lands(
     assert harvest.plain(kept) == kept
     paths = ("tools/x.py", "ee-agent-kit/MISTAKES.md", "examples/a/b.py", "x.txt", ".github/workflows/ci.yml")
     assert [harvest.area(p) for p in paths] == ["tools", "kit", "examples", "other", "ci"]
-    # CI is the workcenter's own: a branch that moves an action's version holds a line main lacks
+    # CI is Via's own: a branch that moves an action's version holds a line main lacks
     assert "ci" in harvest.OWN and "examples" not in harvest.OWN and "site" not in harvest.OWN
 
 
@@ -263,12 +263,12 @@ def test_the_command_prints_each_listing_and_writes_nothing(repo):
     assert (listed.returncode, listed.stderr) == (0, "")
     lines = listed.stdout.splitlines()
     assert lines[-1] == (
-        "6 branches: 1 hold lines of the workcenter that main lacks, 1 landed, 1 change nothing of the "
-        "workcenter itself, 3 hold nothing of their own"
+        "6 branches: 1 hold lines of Via that main lacks, 1 landed, 1 change nothing of "
+        "Via itself, 3 hold nothing of their own"
     )
     # the branch that holds the most of its own comes first, with the file and its first lines
     assert lines[0].split()[0] == "open" and lines[0].endswith(
-        "25% on main   3 of 4 lines it added to the workcenter are not on main"
+        "25% on main   3 of 4 lines it added to Via are not on main"
     )
     assert lines[1:3] == [
         "    tools/b.py: 3 of 3 lines (main has no file of this path)",

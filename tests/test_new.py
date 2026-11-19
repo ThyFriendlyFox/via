@@ -29,7 +29,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import guide  # noqa: E402
 import kicadgen  # noqa: E402
 
-# Every engine a command of the workcenter starts by name (tools/workcenter's doctor, the chip gates'
+# Every engine a command of Via starts by name (tools/workcenter's doctor, the chip gates'
 # engines, the display server of the renders), and `flock`, which the small user waited on.
 ENGINES = (
     "kicad-cli",

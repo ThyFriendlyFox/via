@@ -1,4 +1,4 @@
-"""`workcenter new <dir>`: a board project a user can edit, from the workcenter's template.
+"""`workcenter new <dir>`: a board project a user can edit, from Via's template.
 
 It writes the files `workcenter next` and the commands after it read first:
 
@@ -116,7 +116,7 @@ def cmd_new(args, cli) -> int:
 
 
 def register(sub, cli) -> None:
-    """Add `new` to the workcenter's parser."""
+    """Add `new` to Via's parser."""
     p = sub.add_parser(
         "new",
         help="start a board project in a folder: design.py from the template, .gitignore, parts.csv and "

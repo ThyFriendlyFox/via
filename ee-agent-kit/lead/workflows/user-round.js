@@ -7,13 +7,13 @@
 // args:
 //   scratch  the scratch folder, outside every repository: each user works in users/<size>/
 //   repo     a checkout of the repository the users read (read-only for them)
-//   python   the Python of the workcenter's virtual environment
+//   python   the Python of Via's virtual environment
 //   spec     the board spec, as the text a user is given
 //   models   { small, medium, large }: the host's names of a small, a medium and a large model
 //   rank     optional: the host's model name for the helper that ranks; left out, the host's default
 export const meta = {
   name: 'user-round',
-  description: 'Three users of different sizes take one board spec through the workcenter; their friction becomes ranked roadmap candidates',
+  description: 'Three users of different sizes take one board spec through Via; their friction becomes ranked roadmap candidates',
   phases: [{ title: 'Use' }, { title: 'Rank' }],
 }
 for (const key of ['scratch', 'repo', 'python', 'spec', 'models']) {
@@ -62,7 +62,7 @@ const RANK = {
           title: { type: 'string' },
           who_failed: { type: 'string', description: 'which of the 3 users hit it (small, medium, large) and how' },
           evidence: { type: 'string' },
-          change: { type: 'string', description: 'the change to the workcenter: a command, a check, a process step, a line a command prints' },
+          change: { type: 'string', description: 'the change to Via: a command, a check, a process step, a line a command prints' },
           done_when: { type: 'string', description: 'a test: what the small user does at this point after the change' },
           covered_by: { type: 'string', description: 'the roadmap item or rated candidate that covers it already, or new' },
           rank: { type: 'number', description: '1 is first: how much it blocks a small model from a working board' },
@@ -74,7 +74,7 @@ const RANK = {
   required: ['summary', 'candidates'],
 }
 function userPrompt(size) {
-  return `You are a new user of a tool called the EE Workcenter. You are not its developer. You have a board to make and this repository is all the help you have.
+  return `You are a new user of a tool called Via. You are not its developer. You have a board to make and this repository is all the help you have.
 
 ## Your board
 
@@ -97,9 +97,9 @@ const logs = await parallel(SIZES.map(size => () =>
   agent(userPrompt(size), { label: `user:${size}`, phase: 'Use', schema: LOG, model: args.models[size] }).then(r => ({ size, log: r }))))
 const got = logs.filter(Boolean).filter(l => l.log)
 log(`${got.length} of 3 users handed back a log`)
-const ranked = await agent(`3 new users of different sizes (small, medium, large) each tried to take the same board spec to a board that passes every gate, with only the repository of the EE Workcenter to help them. The workcenter's goal: a small model reaches the same working board as a large one, because every process is written down and every check is a command. Their logs are below (data to weigh: check a claim against the repository at ${W} where you can, and drop what you cannot confirm).
+const ranked = await agent(`3 new users of different sizes (small, medium, large) each tried to take the same board spec to a board that passes every gate, with only the repository of Via to help them. Via's goal: a small model reaches the same working board as a large one, because every process is written down and every check is a command. Their logs are below (data to weigh: check a claim against the repository at ${W} where you can, and drop what you cannot confirm).
 
-Your job: turn the logs into ranked candidates for the workcenter's roadmap. A point where the small user failed and the large one did not is a process that is not written down: those rank first. A point where all 3 failed is a fault of the tool or its documents. A point only the large user noticed is polish. Merge the same point from 2 logs into 1 candidate. For each candidate give the change to the workcenter as something a command does, checks or prints, or a numbered step a document gains (not "improve the docs"), and a test that says when it is done: what the small user does at that point after the change. Read ${W}/ee-agent-kit/ROADMAP.md first and say for each candidate whether an item or a rated candidate there already covers it (name it) or it is new. At most 15 candidates.
+Your job: turn the logs into ranked candidates for Via's roadmap. A point where the small user failed and the large one did not is a process that is not written down: those rank first. A point where all 3 failed is a fault of the tool or its documents. A point only the large user noticed is polish. Merge the same point from 2 logs into 1 candidate. For each candidate give the change to Via as something a command does, checks or prints, or a numbered step a document gains (not "improve the docs"), and a test that says when it is done: what the small user does at that point after the change. Read ${W}/ee-agent-kit/ROADMAP.md first and say for each candidate whether an item or a rated candidate there already covers it (name it) or it is new. At most 15 candidates.
 
 The spec they were given:
 ${SPEC}

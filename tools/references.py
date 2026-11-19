@@ -3,7 +3,7 @@
 The index (`rules/references/index.json`) names each standard, application note and datasheet a rule
 pack or a facts file cites: its maker or issuer, number, title, revision, URL and the SHA256 of the copy
 the rule was written from. The repository holds the index and never the documents: their terms forbid a
-copy. `fetch` asks each URL once under the workcenter's own name and keeps what it gets in a folder
+copy. `fetch` asks each URL once under Via's own name and keeps what it gets in a folder
 outside every repository, with a ledger of each answer; `check` judges a file a person downloaded;
 `rules` fails each document a rule names that the index lacks.
 
@@ -377,7 +377,7 @@ def now() -> str:
 
 
 def answered(status: str, detail: str) -> str:
-    """The state of a fetch that gave no copy. 401 and 403 refuse the workcenter's name and 404 and 410
+    """The state of a fetch that gave no copy. 401 and 403 refuse Via's name and 404 and 410
     say the file is gone: both are filed. 429 limits the rate (RFC 6585, section 4, p 3) and a 5xx says
     the server erred (RFC 9110, section 15.6): `not given`, filed nowhere and asked again. No answer at
     all is `not reached`."""
@@ -444,7 +444,7 @@ def line_of(doc: dict, result: dict, asked: bool) -> str:
         )
     elif state == "refused":
         text = (
-            f"refused {doc_id}: {url} answered {result['detail']} to the workcenter's name; not asked again, "
+            f"refused {doc_id}: {url} answered {result['detail']} to Via's name; not asked again, "
             f"under it or any other: download it by hand, then workcenter references check FILE --id {doc_id}"
         )
     elif state == "gone":
@@ -1011,7 +1011,7 @@ def cmd_rules(args, cli) -> int:
 
 
 def register(sub, cli) -> None:
-    """Add `references` to the workcenter's parser; each command sets `run` to its handler."""
+    """Add `references` to Via's parser; each command sets `run` to its handler."""
     p = sub.add_parser(
         "references",
         help="the index of the standards, makers' notes and datasheets the rules name: fetch each once "
@@ -1027,7 +1027,7 @@ def register(sub, cli) -> None:
 
     q = add(
         "fetch",
-        "GET each document of the index once, as the workcenter, into --to; a later run answers from the "
+        "GET each document of the index once, as Via, into --to; a later run answers from the "
         "folder's ledger.json and asks again for none",
     )
     q.add_argument("--json", dest="references_json", action="store_true", help="machine-readable output")

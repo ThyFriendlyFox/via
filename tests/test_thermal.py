@@ -530,7 +530,7 @@ def test_a_pack_the_workcenter_does_not_hold_fails_the_gate_on_1_line(tmp_path):
     code, record = gate(copied(tmp_path, {**PLAN, "pack": "nope"}), "--out", tmp_path / "out")
     assert code == 1
     assert record["details"]["failures"] == [
-        "thermal.json: pack: `nope` is no pack; the workcenter holds ecss-q-st-30-11c-rev2, nasa-eee-inst-002"
+        "thermal.json: pack: `nope` is no pack; Via holds ecss-q-st-30-11c-rev2, nasa-eee-inst-002"
     ]
 
 

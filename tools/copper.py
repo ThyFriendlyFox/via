@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """copper: the voltage drop, the current density and the temperature of a board, on its own copper.
 
-`tools/workcenter copper` runs this file under the workcenter venv's Python, which sees numpy, KiCad's
+`tools/workcenter copper` runs this file under Via's venv's Python, which sees numpy, KiCad's
 `pcbnew` module and Pillow:
 
     python copper.py '<the arguments as JSON>'

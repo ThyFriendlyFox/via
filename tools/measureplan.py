@@ -409,7 +409,7 @@ def cmd_measure_plan(args, cli) -> int:
 
 
 def register(sub, cli) -> None:
-    """Add `measure` to the workcenter's parser; it sets `run` to its handler."""
+    """Add `measure` to Via's parser; it sets `run` to its handler."""
     p = sub.add_parser(
         "measure",
         help="write the plan of measurements for a built board: for each sim bound the pad to probe, the "

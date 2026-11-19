@@ -77,7 +77,7 @@ def share(run: dict) -> float:
 
 
 def choose(runs: list[dict], default: str) -> dict[str, tuple[str, str]]:
-    """The router each board takes and why. Another router takes a board from the workcenter's own
+    """The router each board takes and why. Another router takes a board from Via's own
     only when it joins at least as large a share, with no more DRC errors, in no more time, and is
     better in 1 of the 3: a router that is slower or leaves more unrouted does not become the default."""
     boards: dict[str, list[dict]] = {}
@@ -87,7 +87,7 @@ def choose(runs: list[dict], default: str) -> dict[str, tuple[str, str]]:
     for board, rows in boards.items():
         done = [r for r in rows if r.get("status") == "judged"]
         if not done:
-            out[board] = (default, "no run finished: the workcenter's router stays")
+            out[board] = (default, "no run finished: Via's router stays")
             continue
         base = next((r for r in done if r["router"] == default), None)
 
@@ -458,7 +458,7 @@ def above_0(value: str) -> int:
 
 
 def register(sub, cli) -> None:
-    """Add `bench` to the workcenter's parser; it sets `run` to its handler."""
+    """Add `bench` to Via's parser; it sets `run` to its handler."""
     p = sub.add_parser(
         "bench",
         help="route design files with each router and record the time, the share of connections joined, "
@@ -472,7 +472,7 @@ def register(sub, cli) -> None:
         action="append",
         metavar="NAME=JAR|NAME",
         help="a FreeRouting 1.9.0 jar to run under a name, or a router by name (freerouting, freerouting2), "
-        "repeatable; the first is the default (default: the workcenter's)",
+        "repeatable; the first is the default (default: Via's)",
     )
     p.add_argument("--time-limit", type=above_0, default=300, help="seconds per route (default 300)")
     p.add_argument("--threads", type=above_0, default=2, help="router threads (default 2)")
