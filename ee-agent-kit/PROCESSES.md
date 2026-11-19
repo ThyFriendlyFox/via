@@ -1598,6 +1598,11 @@ a task.
     read against `main`, not the branch: each finding that holds on `main`
     is a defect of `main`, and its fix is the next landing, before any
     other piece on the same files (M309).
+16. A brief states another program's behaviour only as read in that
+    program's source or documentation, or as seen in a run, and names
+    which. A claim the design's safety rests on is checked that way before
+    the design rests on it; a helper who finds it false says so first,
+    and the documents carry the correction (M310).
 
 Done when: every report is read, each helper's changes are merged or
 removed, and `git worktree list` shows only what is still in use.
