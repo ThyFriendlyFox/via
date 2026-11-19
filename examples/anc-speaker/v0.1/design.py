@@ -725,6 +725,6 @@ def build() -> kicadgen.Design:
     # ---- labels on the front -------------------------------------------------------------------------
     # The mic's land pattern (Infineon's, KiCad's Infineon_PG-LLGA-5-2) seals its 0.8 mm port with a
     # ground ring 0.18 mm from the hole. KiCad's custom rules cannot loosen one item's clearance here
-    # (the workcenter raises a rule file to the board's own floor), so the board's floor is 0.18 mm.
+    # (Via raises a rule file to the board's own floor), so the board's floor is 0.18 mm.
     d.rules = {"min_text_height": 0.8, "min_text_thickness": 0.12, "min_hole_clearance": 0.18}
     return d

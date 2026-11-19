@@ -2480,7 +2480,7 @@ class Design:
             ["paper", Q(self.sheet)],
         ]
         if self.title:
-            sch.append(["title_block", ["title", Q(self.title)], ["company", Q("EE Workcenter")]])
+            sch.append(["title_block", ["title", Q(self.title)], ["company", Q("Via")]])
         sch.append(["lib_symbols", *lib_symbols.values()])
         sch.extend(body)
         # A text item that starts with a dot is a SPICE line to KiCad: it copies each into the netlist
@@ -4321,7 +4321,7 @@ class Design:
             src = fab_rules(self.fab)
             files[out_dir / f"{self.name}.kicad_dru"] = (
                 fab_project_rules(src.read_text(encoding="utf-8"), self.board_rules()).rstrip("\n")
-                + f"\n\n# Copied by the workcenter from {src.name} (Design.fab); edit the source, not this file.\n"
+                + f"\n\n# Copied by Via from {src.name} (Design.fab); edit the source, not this file.\n"
             )
         files.update(self.lib_tables(out_dir))
         for rel in self.files:  # all are judged before any is written

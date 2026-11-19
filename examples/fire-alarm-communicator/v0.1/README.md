@@ -5,9 +5,9 @@ monitoring station: over LTE-M first, over Wi-Fi when the cell path is down. It 
 signals 2 ways. It answers the panel's own phone dialer as if it were the phone line, and it reads
 3 supervised relay contacts. A relay tells the panel when Herald itself is in trouble.
 
-This folder is a whole KiCad 10 project made with the EE Workcenter: `design.py` is the board,
-and the `.kicad_*` files beside it are what `workcenter design` writes from it. It is one of the
-workcenter's example projects, laid out the way a board repository lays out a version.
+This folder is a whole KiCad 10 project made with Via: `design.py` is the board,
+and the `.kicad_*` files beside it are what `workcenter design` writes from it. It is one of
+Via's example projects, laid out the way a board repository lays out a version.
 
 <!-- pictures:begin -->
 <img src="docs/board-spin.gif" width="616" alt="Herald turning: a red board with the BG95 modem, the nano SIM, the ESP32-S3 module, the relay, the status lights, the USB-C port and the black screw terminals along its front edge">
@@ -21,7 +21,7 @@ workcenter's example projects, laid out the way a board repository lays out a ve
 | <img src="docs/layers.png" width="400" alt="Every layer of Herald on its own"> | <img src="docs/schematic.png" width="400" alt="Herald's schematic"> |
 
 From `workcenter render . --strict --views schematic,3d,layers,spin --width 1600 --spin-zoom 1.1`,
-with KiCad's 3D bodies in `KICAD10_3DMODEL_DIR` (the workcenter's `site/media/README.md` says how to
+with KiCad's 3D bodies in `KICAD10_3DMODEL_DIR` (Via's `site/media/README.md` says how to
 fetch them) and the 3 bodies in `models/`.
 <!-- pictures:end -->
 

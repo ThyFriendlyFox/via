@@ -4,21 +4,42 @@ The documents a person reads say "Via". They do not write "EE Workcenter" or "th
 prose. A code span and a fenced block are code: a command, a path or a printed line stays as the
 program has it. History stays as it was written: the DEVLOG.md entries, the released sections of
 CHANGELOG.md and the MISTAKES.md entries that stood when the product became Via. An entry written
-after that is read. The website, the blog and the example projects have their own rules and are not
-read here. Only the Markdown files are read: the program's strings, the JSON notes, the workflow
-prompts and other files are not held by this test.
+after that is read. The example projects' Markdown is read by the same rule, their dated timeline
+entries with it, and so is the site's: its Markdown, and on its pages the text a visitor reads,
+without what stands inside <pre>, <code>, <script> and <style> or in an attribute. The blog's sources
+in blog/ are not read here; the pages site/blog.py writes from them are. Only the Markdown files and
+the site's pages are read: the program's strings, the JSON notes, the workflow prompts and other
+files are not held by this test. A place that keeps the old name on purpose is named in KEPT, with
+its reason.
+
+The program's strings say Via as well; the tests of each tool hold them. 4 tokens keep the old name on
+purpose (docs/STYLE.md, Terms): the fetch client's name "EE-Workcenter/1", under which sites' answers
+are recorded; the references cache ~/.cache/ee-workcenter; the comments of the Dockerfile, install.sh
+and requirements.txt, whose change would move the image's content tag; and the doctor's line
+"workcenter ee: ok". A rule file or a sources.csv row written before the change keeps its older words.
 """
 
 from __future__ import annotations
 
 import re
 import subprocess
+from html.parser import HTMLParser
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
 # Folders whose text another rule governs, or that are not this repository's words.
-OUTSIDE = ("examples/", "site/", "blog/", "third_party/")
+OUTSIDE = ("blog/", "third_party/", "site/vendor/")
+# The places that keep the old name on purpose: a file (a regular expression of its path), the exact
+# words kept there, and why. Nothing else in that file is let through.
+KEPT = (
+    (
+        r"examples/snapdragon-dev-board/v0\.[12]/CONTENTS\.md",
+        "to keep the workcenter small",
+        "`workcenter docs` copies each part's note from library/sources.csv, and a sources.csv row "
+        "written before 2026-11-19 keeps its older words (docs/STYLE.md, Terms)",
+    ),
+)
 # Between 2 words: spaces, tabs, a non-breaking space, a hyphen, and emphasis marks around a word.
 GAP = r"[*_]*[ \t -]+[*_]*"
 OLD_NAME = re.compile(rf"\bEE{GAP}Work(?:{GAP})?center\b|\bthe{GAP}workcenter\b", re.IGNORECASE)
@@ -91,7 +112,15 @@ def prose(text: str) -> list[str]:
 def old_names(text: str, rel: str = "") -> list[int]:
     """The 1-based numbers of the lines that write the old name in prose, a name split over 2 lines
     counted on its first line."""
-    shown = prose("\n".join(without_history(rel, text.split("\n"))))
+    for path, words, _ in KEPT:
+        if re.fullmatch(path, rel):
+            text = text.replace(words, " " * len(words))
+    return named(prose("\n".join(without_history(rel, text.split("\n")))))
+
+
+def named(shown: list[str]) -> list[int]:
+    """The 1-based numbers of the lines that write the old name, a name split over 2 lines counted on
+    its first line."""
     found = []
     for i, line in enumerate(shown):
         following = shown[i + 1] if i + 1 < len(shown) else ""
@@ -103,11 +132,53 @@ def old_names(text: str, rel: str = "") -> list[int]:
     return found
 
 
-def documents() -> list[str]:
-    tracked = subprocess.run(
-        ["git", "-C", str(ROOT), "ls-files", "*.md"], capture_output=True, text=True, check=True
+def tracked(pattern: str) -> list[str]:
+    listed = subprocess.run(
+        ["git", "-C", str(ROOT), "ls-files", pattern], capture_output=True, text=True, check=True
     ).stdout.split("\n")
-    return [rel for rel in tracked if rel and not rel.startswith(OUTSIDE)]
+    return [rel for rel in listed if rel and not rel.startswith(OUTSIDE)]
+
+
+def documents() -> list[str]:
+    return tracked("*.md")
+
+
+def pages() -> list[str]:
+    """The site's pages: each HTML file under site/, the example pages and the blog's among them."""
+    return tracked("site/*.html")
+
+
+class Visible(HTMLParser):
+    """The text a visitor reads on a page, each piece on the line it stands on in the file. What
+    stands inside <pre>, <code>, <script> and <style>, a comment and an attribute are left out."""
+
+    HIDDEN = ("pre", "code", "script", "style")
+
+    def __init__(self, text: str) -> None:
+        super().__init__(convert_charrefs=True)
+        self.lines = [""] * (text.count("\n") + 1)
+        self.hidden = 0
+        self.feed(text)
+        self.close()
+
+    def handle_starttag(self, tag: str, attrs: list) -> None:
+        self.hidden += tag in self.HIDDEN
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self.HIDDEN and self.hidden:
+            self.hidden -= 1
+
+    def handle_data(self, data: str) -> None:
+        if self.hidden:
+            return
+        first = self.getpos()[0] - 1
+        for k, piece in enumerate(data.split("\n")):
+            self.lines[first + k] += piece
+
+
+def page_old_names(text: str) -> list[int]:
+    """The 1-based numbers of a page's lines whose visible text writes the old name."""
+    return named(Visible(text).lines)
 
 
 def test_no_document_calls_the_product_by_its_old_name():
@@ -167,3 +238,53 @@ def test_history_is_the_history_of_this_change_and_no_later_entry():
         "## M273 — 2026-11-20 — A new entry\nWhat happened: the workcenter\n"  # 9
     )
     assert old_names(mistakes, "ee-agent-kit/MISTAKES.md") == [3, 9]
+
+
+def test_the_examples_documents_and_the_sites_markdown_are_read():
+    read = documents()
+    assert "examples/fire-alarm-communicator/v0.1/README.md" in read
+    assert "examples/universal-controller/v0.1/TIMELINE.md" in read
+    assert "site/media/README.md" in read
+    # A vendor's license is not this repository's words.
+    assert not [rel for rel in read if rel.startswith(("site/vendor/", "third_party/"))]
+
+
+def test_no_site_page_calls_the_product_by_its_old_name():
+    found = []
+    for rel in pages():
+        text = (ROOT / rel).read_text(encoding="utf-8")
+        found += [f"{rel}:{n}: {text.split(chr(10))[n - 1].strip()[:160]}" for n in page_old_names(text)]
+    assert found == []
+
+
+def test_the_page_reader_reads_what_a_visitor_reads():
+    page = "\n".join(
+        [
+            "<!doctype html><title>Via, the workcenter</title>",  # 1: the tab's title is read
+            '<img alt="the workcenter" src="x.png">',  # 2: an attribute is not read
+            "<p>Via turns a project into fabrication outputs.</p>",  # 3
+            "<p>The <em>workcenter</em> runs.</p>",  # 4: a word in its own element
+            "<pre>the workcenter's printed line",  # 5: a <pre> is a printed run
+            "EE Workcenter</pre>",  # 6
+            "<p>Run <code>the workcenter</code>; EE&nbsp;Workcenter.</p>",  # 7: an entity is read
+            "<script>const s = 'the workcenter';</script>",  # 8
+            "<style>/* the workcenter */</style>",  # 9
+            "<!-- the workcenter -->",  # 10: a comment is not shown
+            "<p>A sentence that ends with the",  # 11: over 2 lines
+            "workcenter's image.</p>",  # 12
+            "<h2>EE-Workcenter</h2>",  # 13
+            '<a href="the-workcenter.html">Via</a>',  # 14
+        ]
+    )
+    assert page_old_names(page) == [1, 4, 7, 11, 13]
+
+
+def test_a_place_kept_on_purpose_is_named_and_nothing_wider():
+    for path, words, reason in KEPT:
+        assert OLD_NAME.search(words) and reason, path
+    row = "| J4 | none kept: Not kept in the repository, to keep the workcenter small; SHA256 |"
+    kept = "examples/snapdragon-dev-board/v0.2/CONTENTS.md"
+    assert old_names(row, kept) == []
+    # The same words elsewhere, or other words in the same file, are read.
+    assert old_names(row, "examples/fan-bulb/v0.1/CONTENTS.md") == [1]
+    assert old_names(row + " The workcenter ran.", kept) == [1]

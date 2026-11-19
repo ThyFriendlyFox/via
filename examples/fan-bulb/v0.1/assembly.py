@@ -5,10 +5,10 @@ The light disc is the scene's board; the driver, the brain and the ear are bodie
 routed boards, each turned into its plane (bulb.py: the frames). The housing is drawn round them:
 the E26 base's shell and eyelet, the neck and the dome, both clear enough to see the boards, and the
 mode slider's knob on the neck over the 2 Hall switches. The scene, the bodies, the renders and the
-GIF come from the EE Workcenter's `tools/scene.py`; this file holds only the bulb's placements.
+GIF come from Via's `tools/scene.py`; this file holds only the bulb's placements.
 
     workcenter design driver/design.py --route     # and each other board: the routed boards this reads
-    workcenter pictures .                          # runs this with the workcenter's tools/ on PYTHONPATH
+    workcenter pictures .                          # runs this with Via's tools/ on PYTHONPATH
 
 Writes build/assembly/: the scene's bodies, lark_assembly.kicad_pcb, the images assembly-iso.png,
 assembly-side.png, assembly-room.png (the dome's tip, as the room sees it) and assembly-top.png,

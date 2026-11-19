@@ -7,7 +7,7 @@ platform): 4 DDR5 RDIMM slots, 3 PCI Express 5.0 x16 slots, 2 M.2 sockets, 14 ph
 stages for a 350 W processor, and the rear I/O, on 244 x 244 mm. No microATX TRX50 board has been
 made; the smallest is ATX.
 
-This folder is a whole KiCad 10 project made with the EE Workcenter, which supplies the tools and the
+This folder is a whole KiCad 10 project made with Via, which supplies the tools and the
 gates: `design.py` and the modules beside it are the board, the `.kicad_*` files are what
 `workcenter design` writes from them, and `footprints/`, `symbols/` and `models/` hold what KiCad's
 libraries lack, each written by a script from its maker's drawing.
@@ -391,8 +391,8 @@ before it builds the board; `python3 models/make_models.py` writes the 3D bodies
 ## Decisions
 
 - **The ports' nets routed by the project's own grid router** (v0.3). FreeRouting given only these
-  nets finished in 0.3 s with none routed, every time, on this board; it did route the same
-  workcenter's smaller boards. `gridroute.py` searches F.Cu and B.Cu together and places a via
+  nets finished in 0.3 s with none routed, every time, on this board; it did route
+  Via's smaller boards. `gridroute.py` searches F.Cu and B.Cu together and places a via
   where both layers and every inner layer are clear; it joins all 51 nets.
 - **A board controller of the board's own** (v0.3). Desktop boards drive their RGB headers from a
   small controller that the host sees as a USB device; Basalt's also masters the fan controller's

@@ -3854,7 +3854,9 @@ def library_folder(start: Path) -> Path | None:
     return None
 
 
-DOWNLOADED_NOTE = "downloaded by a person from the URL; not fetched by the workcenter"
+# A row written before 2026-11-19 says "not fetched by the workcenter"; a library keeps its rows, and the
+# note is read as it stands (read_sources holds no form of it).
+DOWNLOADED_NOTE = "downloaded by a person from the URL; not fetched by Via"
 
 
 def cmd_fetch(args) -> int:

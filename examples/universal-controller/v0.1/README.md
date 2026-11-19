@@ -7,9 +7,9 @@ One controller for a PS4, a PS5, an Xbox, a Switch, or anything over Bluetooth. 
 knob on its face picks the console. The controller drops off the bus while the knob turns and
 comes back as the chosen console's own controller.
 
-This folder is a whole KiCad 10 project made with the EE Workcenter: `design.py` is the board,
-and the `.kicad_*` files beside it are what `workcenter design` writes from it. It is the
-workcenter's example project, laid out the way a board repository lays out a version.
+This folder is a whole KiCad 10 project made with Via: `design.py` is the board, and the
+`.kicad_*` files beside it are what `workcenter design` writes from it. It is Via's example
+project, laid out the way a board repository lays out a version.
 
 <!-- pictures:begin -->
 <img src="docs/board-spin.gif" width="616" alt="Rosetta turning: the front with its D-pad, face buttons, the knob and its ring of LEDs; the back with the RP2040 and the ESP32 over the notch">
@@ -23,7 +23,7 @@ workcenter's example project, laid out the way a board repository lays out a ver
 | <img src="docs/layers.png" width="400" alt="Every layer of Rosetta on its own"> | <img src="docs/schematic.png" width="400" alt="Rosetta's schematic"> |
 
 From `workcenter render . --strict --views schematic,3d,layers,spin --width 1600 --spin-zoom 1.1`, with
-KiCad's 3D bodies in `KICAD10_3DMODEL_DIR` (the workcenter's `site/media/README.md` says how to
+KiCad's 3D bodies in `KICAD10_3DMODEL_DIR` (Via's `site/media/README.md` says how to
 fetch them) and the 3 bodies in `models/`.
 <!-- pictures:end -->
 

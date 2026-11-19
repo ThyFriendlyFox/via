@@ -11,7 +11,7 @@ Each version is its own folder, and each folder is a whole KiCad 10 project:
 bodies, its ngspice decks, its README with what it must do, the circuit and
 the decisions, and its pictures under `docs/`. [`library/`](library/) holds
 the datasheets and models every version reads, with `library/sources.csv`
-naming each file's revision and hash. The EE Workcenter, this repository,
+naming each file's revision and hash. Via, this repository,
 supplies the tools and the gates.
 
 <img src="v0.1/docs/assembly-spin.gif" width="616" alt="Hush v0.1 on its speaker driver, turning: the black ring with three windows over the cone, the mic on the hub">

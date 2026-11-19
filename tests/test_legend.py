@@ -114,6 +114,8 @@ def test_no_fab_is_held_to_the_least_of_the_known_fabs():
     lim = legend.limits(None)
     assert (lim.height, lim.stroke) == (0.8, 0.0762)
     assert "no fab named" in lim.label and "pcbway-standard" in lim.label and "oshpark-2layer" in lim.label
+    # The product is Via (docs/STYLE.md, Terms): the label a person reads names it.
+    assert lim.label.startswith("no fab named: held to the least of the 4 fabs Via knows (height ")
     assert lim.height_source.startswith("pcbway-standard: https://www.pcbway.com/capabilities.html")
 
 
@@ -1146,14 +1148,29 @@ def test_the_gate_fails_what_was_not_judged_only_when_strict(tmp_path):
     assert (strict["red"], len(strict["failures"]), strict["warnings"]) == (True, 1, [])
 
 
-def test_the_fab_is_read_from_the_project(tmp_path):
+@pytest.mark.parametrize(
+    "header",
+    [
+        "# Copied by Via from jlcpcb-2layer.kicad_dru (Design.fab)",  # what `workcenter design` writes
+        # A board made before the product was Via keeps its file: its header names the workcenter.
+        "# Copied by the workcenter from jlcpcb-2layer.kicad_dru (Design.fab)",
+    ],
+)
+def test_the_fab_is_read_from_the_project(tmp_path, header):
     """A project whose rule set says it was copied from rules/jlcpcb-2layer is held to JLCPCB: 1.0 mm, so
-    0.9 mm text fails."""
-    dru = "(version 1)\n# Copied by the workcenter from jlcpcb-2layer.kicad_dru (Design.fab)\n"
+    0.9 mm text fails. The header is read in the form written today and in the older one."""
+    dru = f"(version 1)\n{header}\n"
     proj = project(tmp_path, board(txt("AB", 120, 110, size=0.9)), dru)
     assert legend.fab_named(tmp_path, "x") == "jlcpcb-2layer"
     result = legend.gate(proj, {}, False, None)
     assert result["red"] and "fab jlcpcb-2layer" in result["summary"]
+
+
+def test_a_header_in_neither_form_names_no_fab(tmp_path):
+    """Only the 2 header forms name a fab: a rule set copied by anyone else says nothing about its fab."""
+    dru = "(version 1)\n# Copied by Someone from jlcpcb-2layer.kicad_dru\n"
+    project(tmp_path, board(txt("AB", 120, 110)), dru)
+    assert legend.fab_named(tmp_path, "x") is None
 
 
 def test_a_fab_named_by_its_own_file_is_read_from_the_project(tmp_path):
@@ -1165,7 +1182,7 @@ def test_a_fab_named_by_its_own_file_is_read_from_the_project(tmp_path):
         "\t(condition \"A.Layer == 'F.Silkscreen' || A.Layer == 'B.Silkscreen'\")\n"
         "\t(constraint text_thickness (min 0.15mm))\n"
         "\t(constraint text_height (min 1.2mm)))\n\n"
-        "# Copied by the workcenter from myfab.kicad_dru (Design.fab); edit the source, not this file.\n"
+        "# Copied by Via from myfab.kicad_dru (Design.fab); edit the source, not this file.\n"
     )
     proj = project(tmp_path, board(txt("AB", 120, 110)), dru)
     result = legend.gate(proj, {}, False, None)
@@ -1299,7 +1316,7 @@ def test_the_command_reads_the_projects_fab(tmp_path, capsys):
     pcb.write_text(board(txt("AB", 120, 110, size=0.9)), encoding="utf-8")
     assert legend.main([str(tmp_path)]) == 0
     capsys.readouterr()
-    dru = "(version 1)\n# Copied by the workcenter from jlcpcb-2layer.kicad_dru (Design.fab)\n"
+    dru = "(version 1)\n# Copied by Via from jlcpcb-2layer.kicad_dru (Design.fab)\n"
     (tmp_path / "x.kicad_dru").write_text(dru, encoding="utf-8")
     assert legend.main([str(tmp_path)]) == 1
     assert "under the least 1 mm of fab jlcpcb-2layer" in capsys.readouterr().out

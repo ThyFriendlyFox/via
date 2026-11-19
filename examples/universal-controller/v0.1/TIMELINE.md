@@ -38,7 +38,7 @@ Evidence: mistake M126; process P19.
 
 ## 2026-11-11 · Tooling · The Docker image could not route
 
-The machine had no KiCad, so the workcenter ran in the repository's Docker image. The image could
+The machine had no KiCad, so Via ran in the repository's Docker image. The image could
 not route: Debian's headless Java has no X11 library, and FreeRouting stops without it.
 `install.sh` now adds the full Java runtime where the library is missing.
 
@@ -47,7 +47,7 @@ Evidence: `install.sh`; the changelog's Fixed entry.
 ## 2026-11-11 · Route · 60 passes and no session
 
 The first route ran FreeRouting with 60 passes, the number the skill gives for small boards. It
-ran for the workcenter's 15-minute limit and was killed, and a killed run writes no session. 12
+ran for Via's 15-minute limit and was killed, and a killed run writes no session. 12
 passes finished in 13 minutes; 20 passes in 12 minutes from a better placement.
 
 Evidence: mistake M128; process P4.
@@ -78,7 +78,7 @@ hang over the board's edge on purpose. The firmware's host tests pass: `make -C 
 ```
 $ workcenter gates examples/universal-controller/v0.1
 PASS   erc        0 errors, 0 warnings  [0.48s]
-FAIL   drc        0 errors, 5 warnings (0 unconnected, 0 parity), legend (no fab named: held to the least of the 4 fabs the workcenter knows (height pcbway-standard, stroke oshpark-2layer)): 9 fail, 0 not judged  [1.48s]
+FAIL   drc        0 errors, 5 warnings (0 unconnected, 0 parity), legend (no fab named: held to the least of the 4 fabs Via knows (height pcbway-standard, stroke oshpark-2layer)): 9 fail, 0 not judged  [1.48s]
        - warning: silk_edge_clearance: Silkscreen clipped by board edge
        - warning: silk_edge_clearance: Silkscreen clipped by board edge
        - warning: silk_edge_clearance: Silkscreen clipped by board edge

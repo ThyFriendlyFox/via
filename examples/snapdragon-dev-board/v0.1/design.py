@@ -509,14 +509,14 @@ def build() -> kicadgen.Design:
         track_width=0.127,  # 5 mil: the router needs the room round the RP2350 (M146)
         clearance=0.11,
         # 0.2 mm copper to an edge or a hole: the USB-C receptacle's rear shell slot and its locating peg
-        # are 0.375 mm apart, so a 6 mil ring leaves 0.22 mm, under the workcenter's 0.3 mm default.
+        # are 0.375 mm apart, so a 6 mil ring leaves 0.22 mm, under Via's 0.3 mm default.
         edge_clearance=0.2,
         # Sierra's 6 mil ring on a 0.2 mm hole.
         via_size=0.51,
         via_drill=0.2,
     )
     d.fab = "sierra-circuits-web"
-    # The fab's floors, not the workcenter's 0.3 mm hole: Sierra drills 6 mil and rings 6 mil (rules/README.md).
+    # The fab's floors, not Via's 0.3 mm hole: Sierra drills 6 mil and rings 6 mil (rules/README.md).
     d.rules = {"min_through_hole_diameter": 0.2, "min_hole_clearance": 0.2, "min_text_height": 0.6,
                "min_text_thickness": 0.13}
     d.symbol_dirs = {"Wyvern": HERE / "symbols" / "wyvern.kicad_sym"}
