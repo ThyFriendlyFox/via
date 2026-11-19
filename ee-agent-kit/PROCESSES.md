@@ -618,7 +618,7 @@ names has a "Done when" line.
 
 When: a change is about to be called done.
 
-1. Before each push to a work branch of the workcenter, run the fast
+1. Before each push to a work branch of Via, run the fast
    checks, `make check`: `make -C /path check TESTS="<the test files of what the change
    touches>"`. It runs `make lint`, the gate's kit checks (`make kit`) and the kit's own tests, starts no
    engine, takes no lock, and does not need the machine alone. The whole

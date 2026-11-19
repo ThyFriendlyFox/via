@@ -39,6 +39,12 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-19 — The product is called Via, and its command stays workcenter
+
+The owner asked that everything a person reads call the product Via, then "okay so don't change workcenter the command or the internal names, just the user-facing text is fine." 174 lines of the documents said "EE Workcenter" or "the workcenter" in prose; 0 do now, and a test holds it. History, code spans and the lines the gates print kept their words. At landing, 43 more lines that the batch had written since the change was branched said the old name, and they were renamed too.
+
+Evidence: `tests/test_product_name.py` (3 tests); branch `wip/via-name`, 165efc6.
+
 ## 2026-11-19 — The full health gate runs on GitHub
 
 The morning's gates showed the cost of a gate on the machine. It needs the machine alone. The gate push24 waited 50 min 31 s for quiet, and its 1-hour limit ended it. The release's gates made their locks from 05:06:51 UTC, and the one that passed started its tests at 05:26:16 and ran 906 s. While a gate waits or runs, no helper may start a test. CI's `full` job then ran the same `make verify` on the same commit, 9beca5b, in 14 min 58 s, while the machine went on working. So every landing ran the whole suite 2 times. The lead asked the owner to push the candidate, let GitHub test it, and merge only on green. Told that only an untested commit on a work branch changes, never on main, the owner answered: "sure, keep it well documented. Make sure the project board is reflecting these". Now `main` takes no commit that its gate did not pass on that exact commit, and a push to a work branch needs `make check`. A review then found that the first wording was false for a `fast` change and for a release (the release commit of v0.1.0 is `fast`), that a pull request could merge without `main`'s tip, and that `make check` passed a drifted copy of a kit skill. The rule now names both gates, the merge names its head, a tag needs a `full` run, and `make check` runs the gate's kit checks.
