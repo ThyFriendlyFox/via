@@ -27,6 +27,52 @@ import scope  # noqa: E402
 
 CLI = ROOT / "tools" / "workcenter"
 SITE = ROOT / "site"
+
+
+def site_module(name: str):
+    """The site's generator `site/<name>.py`, imported for 1 test. The fixture below takes its modules
+    and the folders it puts on `sys.path` out again: left there, `site/` stood first on the import path
+    and a later test file's `import guide` got `site/guide.py`, not `tools/guide.py` (M297)."""
+    import importlib
+
+    sys.path.insert(0, str(SITE))
+    return importlib.import_module(name)
+
+
+def restore_imports(path: list[str], modules: set[str]) -> None:
+    """`sys.path` as it was, and no module of the site's folder left in `sys.modules`."""
+    sys.path[:] = path
+    for name in set(sys.modules) - modules:
+        origin = str(getattr(sys.modules[name], "__file__", "") or "")
+        if origin.startswith(str(SITE)):
+            del sys.modules[name]
+
+
+@pytest.fixture(autouse=True)
+def _site_leaves_no_trace():
+    """No test of this file changes what another test file imports."""
+    path, modules = list(sys.path), set(sys.modules)
+    yield
+    restore_imports(path, modules)
+
+
+def test_a_site_generator_changes_nothing_a_later_import_of_guide_gets():
+    """After a site generator is imported and the test's imports restored, `import guide` with tools/
+    on the path finds tools/guide.py: the site's folder is gone from `sys.path`. Without the restore it
+    finds site/guide.py, which has no `trouble` (tests/test_legend.py's 6 failures, 2026-11-19)."""
+    import importlib.util
+
+    path, modules = list(sys.path), set(sys.modules)
+    sys.path.insert(0, str(ROOT / "tools"))
+    site_module("blog")
+    assert importlib.util.find_spec("guide").origin == str(SITE / "guide.py")  # the trap, as it was
+    restore_imports([str(ROOT / "tools"), *path], modules)
+    assert str(SITE) not in sys.path
+    assert importlib.util.find_spec("guide").origin == str(ROOT / "tools" / "guide.py")
+    assert "blog" not in sys.modules
+    restore_imports(path, modules)
+
+
 README = (ROOT / "README.md").read_text(encoding="utf-8")
 CONTRACT = (ROOT / "WORKCENTER.md").read_text(encoding="utf-8")
 MISTAKES = (ROOT / "ee-agent-kit" / "MISTAKES.md").read_text(encoding="utf-8")
@@ -788,8 +834,7 @@ def test_the_blog_is_what_site_blog_writes():
         [sys.executable, str(SITE / "blog.py"), "--check"], capture_output=True, text=True, check=False
     )
     assert proc.returncode == 0, proc.stderr
-    sys.path.insert(0, str(SITE))
-    import blog
+    blog = site_module("blog")
 
     found = blog.posts()
     assert found and {p.slug for p in found} == {p.stem for p in (SITE / "blog").glob("*.html")}
@@ -878,8 +923,7 @@ def test_the_example_pages_are_what_site_examples_writes():
         [sys.executable, str(SITE / "examples.py"), "--check"], capture_output=True, text=True, check=False
     )
     assert proc.returncode == 0, proc.stderr
-    sys.path.insert(0, str(SITE))
-    import examples
+    examples = site_module("examples")
 
     found = {ex.slug: ex for ex in examples.examples()}
     assert set(found) == {p.stem for p in (SITE / "examples").glob("*.html")}

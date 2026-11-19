@@ -257,6 +257,47 @@ def test_no_site_page_calls_the_product_by_its_old_name():
     assert found == []
 
 
+# On a page a visitor reads, the word itself is the command and nothing else (docs/STYLE.md, Terms):
+# "workcenter" outside <code>, <pre>, an attribute, a path, a file name or a URL, and not followed by
+# a command of the CLI, names the product in prose ("what Via, our board design workcenter, can make").
+BARE = re.compile(r"(?<![\w/.~@-])workcenters?(?![\w/.-])", re.IGNORECASE)
+
+
+def commands() -> set[str]:
+    """The CLI's commands, as README.md's table of commands names them."""
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    table = readme.split("<summary>The ", 1)[1].split("</details>", 1)[0]
+    return set(re.findall(r"^\| `([a-z][a-z0-9-]*)` \|", table, re.M))
+
+
+def bare_words(lines: list[str], known: set[str]) -> list[int]:
+    """The 1-based numbers of the lines that write the word "workcenter" in prose, not as a command."""
+    found = []
+    for i, line in enumerate(lines):
+        for m in BARE.finditer(line):
+            after = re.match(r"[ \t]+([a-z][a-z0-9-]*)", line[m.end() :])
+            if not (after and after.group(1) in known):
+                found.append(i + 1)
+                break
+    return found
+
+
+def test_no_site_page_calls_the_product_a_workcenter_in_prose():
+    known = commands()
+    assert {"gates", "next", "mcp", "doctor"} <= known
+    assert bare_words(["what Via, our board design workcenter, can make"], known) == [1]
+    assert (
+        bare_words(["workcenter next", "tools/workcenter", "WORKCENTER.md", "/opt/workcenters/ee"], known)
+        == []
+    )
+    found = []
+    for rel in pages():
+        text = (ROOT / rel).read_text(encoding="utf-8")
+        lines = Visible(text).lines
+        found += [f"{rel}:{n}: {lines[n - 1].strip()[:160]}" for n in bare_words(lines, known)]
+    assert found == []
+
+
 def test_the_page_reader_reads_what_a_visitor_reads():
     page = "\n".join(
         [
