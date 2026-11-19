@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import ast
 import bisect
+import codecs
 import contextlib
 import csv
 import datetime
@@ -5328,6 +5329,15 @@ MARKER_TOKEN = re.compile(
 )
 # install.sh's venv step puts pip there itself (`pip install --upgrade pip`): never an extra.
 VENV_OWN = {"pip"}
+MARKER_DEPTH = 50
+# The package a line names, read from its start: for a line that is not read as a pin.
+LINE_NAME = re.compile(r"([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)\s*(?=[\[@(;=!<>~\s]|$)")
+
+
+def short(text: str, width: int = 120) -> str:
+    """1 line of at most `width` characters, for a line that quotes what it could not read."""
+    text = " ".join(str(text).split())
+    return text if len(text) <= width else text[: width - 3] + "..."
 
 
 def pep503(name: str) -> str:
@@ -5369,6 +5379,15 @@ def marker_true(marker: str | None, env: dict, extra: str = "") -> bool:
         kind = m.lastgroup
         tokens.append((kind, " ".join(m.group(kind).split())))
         pos = m.end()
+    # Each `(` is 3 frames of the reader below: a marker nested deeper than any real one is not read,
+    # rather than a RecursionError (a 2000-deep one crashed doctor).
+    depth = deepest = 0
+    for kind, text in tokens:
+        if kind == "paren":
+            depth += 1 if text == "(" else -1
+            deepest = max(deepest, depth)
+    if deepest > MARKER_DEPTH:
+        raise ValueError(f"marker nested {deepest} deep, more than {MARKER_DEPTH}")
     values = {**env, "extra": extra}
     at = 0
 
@@ -5430,31 +5449,57 @@ def marker_true(marker: str | None, env: dict, extra: str = "") -> bool:
     return out
 
 
-def installed(paths: list[Path]) -> tuple[dict[str, tuple[str, str, list[str], Path]], list[str]]:
-    """Each package the paths hold, by its PEP 503 name: (name, version, Requires-Dist, folder). The
-    earlier path wins, as an import does. Also each package with more than 1 metadata folder in 1 path
-    entry, as `name 1.0 and 2.0 in <folder>`: a broken install, whose version hangs on folder order."""
+def installed(
+    paths: list[Path],
+) -> tuple[dict[str, tuple[str, str | None, list[str], Path, str]], list[str], list[str]]:
+    """Each package the paths hold, by its PEP 503 name: (name, version, Requires-Dist, path entry,
+    metadata folder's name). The earlier path wins, as an import does. Also each package with more than
+    1 metadata folder in 1 path entry, as `name 1.0 (<folder>) and 2.0 (<folder>) in <path>`: a broken
+    install, whose version hangs on folder order. And each metadata folder not read, with the reason.
+
+    A folder whose metadata cannot be read (not UTF-8, no Name, no Version) is never called missing:
+    its name is taken from its folder (`<name>-<version>.dist-info`, as pip writes it) and its version
+    is None, so a pin that names it is said not compared."""
     import importlib.metadata
 
-    found: dict[str, tuple[str, str, list[str], Path]] = {}
+    found: dict[str, tuple[str, str | None, list[str], Path, str]] = {}
     broken: list[str] = []
+    unread: list[str] = []
     for path in paths:
-        here: dict[str, list[tuple[str, str]]] = {}
+        here: dict[str, list[tuple[str, str, str]]] = {}
         for d in importlib.metadata.distributions(path=[str(path)]):
-            name = d.metadata["Name"] or ""
+            where = Path(getattr(d, "_path", path))
+            try:
+                meta = d.metadata
+                name, version = meta.get("Name") or "", meta.get("Version")
+                requires = list(d.requires or [])
+                why = "" if name and version else f"no {'Version' if name else 'Name'} in its metadata"
+            except Exception as exc:  # 1 package's metadata is not read, never the whole row
+                name, version, requires = "", None, []
+                why = f"metadata not read ({type(exc).__name__}: {short(exc, 160)})"
+            if why:
+                unread.append(f"{where}: {why}")
+                stem = re.sub(r"\.(dist|egg)-info$", "", where.name) if where != Path(path) else ""
+                name = name or stem.split("-", 1)[0]
+                version = None
             if not name:
                 continue
-            here.setdefault(pep503(name), []).append((name, d.version or ""))
+            if version is not None:
+                here.setdefault(pep503(name), []).append((name, version, where.name))
             if pep503(name) not in found:
-                found[pep503(name)] = (name, d.version or "", list(d.requires or []), Path(path))
+                found[pep503(name)] = (name, version, requires, Path(path), where.name)
         for _, seen in sorted(here.items()):
             # 1 version in 2 metadata folders (Ubuntu's python3-cryptography ships a dist-info and an
             # egg-info) reads the same in either order: not a fault.
-            versions = {release_key(v): v for _, v in seen}
+            versions: dict[tuple, tuple[str, list[str]]] = {}
+            for _, v, folder in seen:
+                versions.setdefault(release_key(v), (v, []))[1].append(folder)
             if len(versions) > 1:
-                said = " and ".join(versions[k] for k in sorted(versions))
+                said = " and ".join(
+                    f"{versions[k][0]} ({', '.join(sorted(versions[k][1]))})" for k in sorted(versions)
+                )
                 broken.append(f"{seen[0][0]} {said} in {path}")
-    return found, broken
+    return found, broken, unread
 
 
 def requirements_fix(venv: Path, src: Path) -> str:
@@ -5476,11 +5521,12 @@ def requirements_row(req_file: Path, paths: list[Path], own: list[Path], env: di
         "broken": [],
     }
     try:
-        text = Path(req_file).read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
+        text = read_requirements(Path(req_file))
+    except (OSError, UnicodeDecodeError, LookupError) as exc:
         return {**row, "ok": False, "version": "not read", "lines": [f"not read: {req_file}: {exc}"]}
-    found, row["broken"] = installed(paths)
+    found, row["broken"], row["unread"] = installed(paths)
     pins: list[tuple[int, str, dict]] = []
+    named: list[tuple[int, str]] = []  # (line, package key) of each line not read that names a package
     for number, line in requirement_lines(text):
         req = parse_requirement(line) if not line.startswith("-") else None
         try:
@@ -5488,7 +5534,10 @@ def requirements_row(req_file: Path, paths: list[Path], own: list[Path], env: di
         except ValueError:
             req = None
         if req is None:
-            row["unread"].append(f"line {number}: {line}")
+            row["unread"].append(f"line {number}: {short(line)}")
+            m = LINE_NAME.match(line)
+            if m and not line.startswith("-"):
+                named.append((number, pep503(m.group(1))))
         elif asked:
             pins.append((number, line, req))
     met = 0
@@ -5498,6 +5547,10 @@ def requirements_row(req_file: Path, paths: list[Path], own: list[Path], env: di
         if have is None:
             row["missing"].append(shown)
             continue
+        if have[1] is None:
+            said_where = f"installed in {have[4]}, its version not read, not compared"
+            row["unread"].append(f"line {number}: {shown} ({said_where})")
+            continue
         said = [spec_met(have[1], op, v.strip()) for op, v in re.findall(SPEC_ITEM, req["spec"])]
         if False in said:
             row["other"].append(f"{shown} ({have[1]} installed)")
@@ -5505,29 +5558,40 @@ def requirements_row(req_file: Path, paths: list[Path], own: list[Path], env: di
             row["unread"].append(f"line {number}: {shown} ({have[1]} installed, not compared)")
         else:
             met += 1
+    # A package that a line not read names is not an extra: the line is said not compared.
+    for number, key in named:
+        if key in found:
+            name, version = found[key][0], found[key][1] or "(version not read)"
+            row["unread"].append(f"line {number} names {name} {version} (installed, the line not compared)")
     # What the pins account for: each pin, its dependencies (with the extras asked) and theirs.
-    accounted, queue = set(VENV_OWN), [(pep503(r["name"]), r["extras"]) for _, _, r in pins]
+    accounted = set(VENV_OWN)
+    queue = [(pep503(r["name"]), r["extras"]) for _, _, r in pins] + [(k, set()) for _, k in named]
     while queue:
         key, extras = queue.pop()
         if (key, frozenset(extras)) in accounted:
             continue
         accounted |= {key, (key, frozenset(extras))}
-        for dep in found.get(key, ("", "", [], None))[2]:
+        name, version, requires = found.get(key, ("", "", [], None, ""))[:3]
+        for dep in requires:
             parsed = parse_requirement(dep)
             if parsed is None:
                 continue
             try:
                 asked = any(marker_true(parsed["marker"], env, e) for e in extras | {""})
             except ValueError:
-                asked = True  # a note only: a marker not read accounts for its package
+                asked = True  # a marker not read accounts for its package, and is said
+                said = f"{name} {version}: Requires-Dist {short(dep, 80)} (its marker not read)"
+                if said not in row["unread"]:
+                    row["unread"].append(said)
             if asked:
                 queue.append((pep503(parsed["name"]), parsed["extras"]))
     own_set = {Path(p) for p in own}
+    # A package whose metadata was not read is said under `not read` already, never as an extra.
     row["extra"] = sorted(
         (
             f"{name} {version}"
-            for key, (name, version, _, where) in found.items()
-            if where in own_set and key not in accounted
+            for key, (name, version, _, where, _) in found.items()
+            if where in own_set and key not in accounted and version is not None
         ),
         key=str.lower,
     )
@@ -5537,7 +5601,7 @@ def requirements_row(req_file: Path, paths: list[Path], own: list[Path], env: di
     if row["broken"]:
         said = "1 package installed more than once in 1 folder"
         lines.append(
-            f"broken: {said}: {'; '.join(row['broken'])}; remove the stale *.dist-info folder, then: {fix}"
+            f"broken: {said}: {'; '.join(row['broken'])}; remove the one whose version is stale, then: {fix}"
         )
     if row["missing"]:
         lines.append(f"missing: {', '.join(row['missing'])}; put right with: {fix}")
@@ -5552,13 +5616,28 @@ def requirements_row(req_file: Path, paths: list[Path], own: list[Path], env: di
     return row
 
 
-def version_matches(have: str, pin: str) -> bool:
-    """`==pin` (PEP 440, in part): a trailing `.*` is a prefix; otherwise 1.0 and 1.0.0 are one."""
+def version_matches(have: str, pin: str) -> bool | None:
+    """`==pin` (PEP 440, in part). A trailing `.*` is a prefix of the release segment: the epoch must be
+    the same, and a pre-, post-, dev or local part of the installed version is outside the prefix
+    (`==2.5.*` matches 2.5.4rc1). Otherwise 1.0 and 1.0.0 are one, and a public pin ignores the
+    installed version's local label (`==2.0` matches 2.0+cpu). None where this does not read them."""
     if pin.endswith(".*"):
-        prefix = release_parts(pin[:-2])
-        got = release_parts(have)
-        return prefix is not None and got is not None and (got + (0,) * len(prefix))[: len(prefix)] == prefix
+        prefix, got = epoch_release(pin[:-2]), epoch_release(have)
+        if prefix is None or got is None or prefix[2]:
+            return None
+        (pe, pr, _), (ge, gr, _) = prefix, got
+        return pe == ge and (gr + (0,) * len(pr))[: len(pr)] == pr
+    if "+" not in pin:
+        have = have.split("+", 1)[0]
     return release_key(have) == release_key(pin)
+
+
+def epoch_release(version: str) -> tuple[int, tuple, str] | None:
+    """`1!2.5.4rc1` as (1, (2, 5, 4), 'rc1'), zeros kept; None where it does not start with a release."""
+    m = re.fullmatch(r"(?:(\d+)!)?(\d+(?:\.\d+)*)(.*)", version.strip().lower().removeprefix("v"))
+    if not m:
+        return None
+    return int(m.group(1) or 0), tuple(int(p) for p in m.group(2).split(".")), m.group(3)
 
 
 def release_parts(version: str) -> tuple | None:
@@ -5578,7 +5657,8 @@ def spec_met(have: str, op: str, version: str) -> bool | None:
     if op == "===":
         return have == version
     if op in ("==", "!="):
-        return version_matches(have, version) == (op == "==")
+        same = version_matches(have, version)
+        return None if same is None else same == (op == "==")
     if version.endswith(".*") or release_parts(have) is None or release_parts(version) is None:
         return None
     a, b = release_key(have)[0], release_key(version)[0]
@@ -5588,6 +5668,31 @@ def spec_met(have: str, op: str, version: str) -> bool | None:
             return None
         return a >= b and version_matches(have, ".".join(parts[:-1]) + ".*")
     return {"<": a < b, "<=": a <= b, ">": a > b, ">=": a >= b}[op]
+
+
+REQ_BOMS = (
+    (codecs.BOM_UTF32_BE, "utf-32-be"),
+    (codecs.BOM_UTF32_LE, "utf-32-le"),
+    (codecs.BOM_UTF8, "utf-8"),
+    (codecs.BOM_UTF16_BE, "utf-16-be"),
+    (codecs.BOM_UTF16_LE, "utf-16-le"),
+)
+
+
+def read_requirements(path: Path) -> str:
+    """requirements.txt's text as pip decodes it (pip's `auto_decode`): by its byte order mark, else by
+    a `# -*- coding: x -*-` line among the first 2, else UTF-8 (where pip takes the locale's, which is
+    UTF-8 on the machines this runs on). UTF-32's marks are tried before UTF-16's, which they begin
+    with. UnicodeDecodeError or LookupError where it does not decode."""
+    data = path.read_bytes()
+    for bom, encoding in REQ_BOMS:
+        if data.startswith(bom):
+            return data[len(bom) :].decode(encoding)
+    for line in data.split(b"\n")[:2]:
+        m = re.match(rb"^#.*coding[:=]\s*([-\w.]+)", line)
+        if m:
+            return data.decode(m.group(1).decode("ascii"))
+    return data.decode("utf-8")
 
 
 def requirement_lines(text: str) -> list[tuple[int, str]]:
@@ -5667,6 +5772,17 @@ def requirements_doctor_row(venv: Path | None = None, src: Path | None = None) -
     return requirements_row(req, paths, own, env, requirements_fix(venv, src))
 
 
+def requirements_doctor_row_checked() -> dict:
+    """The row as cmd_doctor takes it: doctor runs first in every health gate and in the image's build,
+    so whatever the check raises is 1 advisory line, never a traceback and never `degraded` alone."""
+    try:
+        return requirements_doctor_row()
+    except Exception as exc:
+        line = f"not checked: {short(f'{type(exc).__name__}: {exc}', 200)}"
+        path = str(SRC_DIR / "requirements.txt")
+        return {"required": False, "advisory": True, "ok": False, "path": path, "lines": [line]}
+
+
 def doctor_row_text(name: str, c: dict) -> list[str]:
     """1 row of doctor's text output, and the row's lines under it."""
     mark = "ok " if c["ok"] else ("MISSING" if c["required"] else "absent ")
@@ -5703,7 +5819,7 @@ def cmd_doctor(args) -> int:
         },
         # The venv held to requirements.txt: a pin missing or at another version degrades; a package
         # nothing there accounts for is a note under the row.
-        "requirements": requirements_doctor_row(),
+        "requirements": requirements_doctor_row_checked(),
         "xvfb": {"required": False, "ok": shutil.which("Xvfb") is not None},
         "rsvg-convert": {"required": False, "ok": shutil.which("rsvg-convert") is not None},
         "ffmpeg": {"required": False, "ok": shutil.which("ffmpeg") is not None},

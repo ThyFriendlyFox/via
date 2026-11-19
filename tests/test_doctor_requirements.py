@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import importlib.machinery
 import json
+import os
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -316,10 +318,11 @@ def test_2_installs_of_1_package_in_1_folder_are_a_fault(tmp_path):
     row = check(tmp_path, "a==1.0\n", ("a", "a", "1.0"), ("A", "a", "2.0"))
     assert row["ok"] is False
     site = tmp_path / "venv" / "lib" / "python3.12" / "site-packages"
-    assert row["broken"] == [f"a 1.0 and 2.0 in {site}"]
+    assert row["broken"] == [f"a 1.0 (a-1.0.dist-info) and 2.0 (A-2.0.dist-info) in {site}"]
     assert row["lines"][0] == (
-        f"broken: 1 package installed more than once in 1 folder: a 1.0 and 2.0 in {site}; "
-        "remove the stale *.dist-info folder, then: PIP -r REQ"
+        "broken: 1 package installed more than once in 1 folder: "
+        f"a 1.0 (a-1.0.dist-info) and 2.0 (A-2.0.dist-info) in {site}; "
+        "remove the one whose version is stale, then: PIP -r REQ"
     )
     # Every pin met, and 1 other package twice: still a fault.
     row = check(tmp_path / "2", "a==1.0\n", ("a", "a", "1.0"), ("z", "z", "1.0"), ("Z", "z", "2.0"))
@@ -329,6 +332,202 @@ def test_2_installs_of_1_package_in_1_folder_are_a_fault(tmp_path):
     # egg-info): the version does not hang on the order, so no fault.
     row = check(tmp_path / "3", "a==1.0\n", ("a", "a", "1.0"), ("y", "y", "41.0.7"), ("Y", "y", "41.0.7"))
     assert row["ok"] is True and row["broken"] == []
+
+
+def raw_dist(site: Path, folder: str, metadata: bytes) -> Path:
+    """1 metadata folder with the METADATA bytes given: for files pip would never write."""
+    info = site / folder
+    info.mkdir(parents=True)
+    (info / "METADATA").write_bytes(metadata)
+    return info
+
+
+LATIN1 = b"Metadata-Version: 2.1\nName: numpy\nVersion: 2.5.4\nAuthor: Jos\xe9\n"
+
+
+def test_metadata_that_is_not_utf8_is_not_read_and_does_not_crash(tmp_path):
+    """An old package with a Latin-1 author name anywhere on the path (apt fills
+    /usr/lib/python3/dist-packages) crashed doctor. Its folder is said under `not read`; a pin that
+    names it is not compared, never called missing; it degrades nothing."""
+    site = tmp_path / "venv" / "lib" / "python3.12" / "site-packages"
+    system = tmp_path / "system"
+    dist(site, "kikit", "KiKit", "1.8.1")
+    bad = raw_dist(site, "numpy-2.5.4.dist-info", LATIN1)
+    old = raw_dist(system, "oldpkg-0.1.dist-info", b"Name: oldpkg\nVersion: 0.1\nAuthor: Jos\xe9\n")
+    req = tmp_path / "requirements.txt"
+    req.write_text("kikit==1.8.1\nnumpy==2.5.4\n", encoding="utf-8")
+    row = wc.requirements_row(req, [site, system], [site], ENV, fix="F")
+    assert row["ok"] is True and row["missing"] == [] and row["other"] == [] and row["extra"] == []
+    assert row["version"] == "1 of 2 pins met"
+    assert row["unread"][0].startswith(f"{bad}: metadata not read (UnicodeDecodeError: ")
+    assert row["unread"][1].startswith(f"{old}: metadata not read (UnicodeDecodeError: ")
+    assert row["unread"][2] == (
+        "line 2: numpy==2.5.4 (installed in numpy-2.5.4.dist-info, its version not read, not compared)"
+    )
+    assert row["lines"][0].startswith(f"not read: {bad}: metadata not read (")
+    assert wc.doctor_checks_degraded({"requirements": row}) == []
+
+
+def test_a_package_with_no_version_line_says_its_version_is_not_read(tmp_path):
+    site = tmp_path / "venv" / "lib" / "python3.12" / "site-packages"
+    dist(site, "kikit", "KiKit", "1.8.1")
+    info = raw_dist(site, "numpy-2.5.4.dist-info", b"Metadata-Version: 2.1\nName: numpy\n")
+    req = tmp_path / "requirements.txt"
+    req.write_text("kikit==1.8.1\nnumpy==2.5.4\n", encoding="utf-8")
+    row = wc.requirements_row(req, [site], [site], ENV, fix="F")
+    assert row["ok"] is True and row["other"] == [] and row["extra"] == []
+    assert row["unread"] == [
+        f"{info}: no Version in its metadata",
+        "line 2: numpy==2.5.4 (installed in numpy-2.5.4.dist-info, its version not read, not compared)",
+    ]
+    assert "( installed)" not in " ".join(row["lines"])
+
+
+DEEP = "(" * 2000 + "python_version >= '3'" + ")" * 2000
+
+
+def test_a_marker_nested_2000_deep_is_not_read_and_does_not_crash(tmp_path):
+    """In requirements.txt and in an installed package's Requires-Dist."""
+    row = check(tmp_path / "a", f"kikit==1.8.1 ; {DEEP}\n", ("kikit", "KiKit", "1.8.1"))
+    assert row["ok"] is True and row["extra"] == [] and len(row["unread"]) == 2
+    assert row["unread"][0].startswith("line 1: kikit==1.8.1 ; (((") and len(row["unread"][0]) < 200
+    assert row["unread"][1] == "line 1 names KiKit 1.8.1 (installed, the line not compared)"
+    row = check(
+        tmp_path / "b",
+        "kikit==1.8.1\n",
+        ("kikit", "KiKit", "1.8.1", f"zeta ; {DEEP}"),
+        ("zeta", "zeta", "0.1"),
+    )
+    assert row["ok"] is True and row["version"] == "1 of 1 pins met" and row["extra"] == []
+    assert len(row["unread"]) == 1 and len(row["unread"][0]) < 200
+    assert row["unread"][0].startswith("KiKit 1.8.1: Requires-Dist zeta ; (((")
+    assert row["unread"][0].endswith("(its marker not read)")
+
+
+def test_a_file_with_a_byte_order_mark_is_read_as_pip_reads_it(tmp_path):
+    """pip decodes requirements.txt by its BOM: a UTF-8 BOM hid the first pin, and UTF-16 was not read."""
+    for number, encoding in enumerate(("utf-8-sig", "utf-16")):
+        site = tmp_path / str(number) / "site"
+        dist(site, "kikit", "KiKit", "1.8.1")
+        req = tmp_path / str(number) / "requirements.txt"
+        req.write_text("kikit==1.8.1\nnumpy==9.9\n", encoding=encoding)
+        row = wc.requirements_row(req, [site], [site], ENV, fix="F")
+        assert row["unread"] == [] and row["extra"] == [], (encoding, row)
+        assert row["missing"] == ["numpy==9.9"] and row["version"] == "1 of 2 pins met"
+
+
+def test_a_package_named_by_a_line_not_read_is_never_an_extra(tmp_path):
+    """A URL requirement and a pin with a per-requirement option are not read; the package each names
+    is said to be named by a line not compared, not called unaccounted for."""
+    reqs = "kikit @ https://example.invalid/kikit-1.8.1.tar.gz\nnumpy==2.5.4 --config-settings x=y\n"
+    row = check(
+        tmp_path,
+        reqs,
+        ("kikit", "KiKit", "1.8.1", "pcbnewTransition>=0.5"),
+        ("pcbnewtransition", "pcbnewTransition", "0.5.2"),
+        ("numpy", "numpy", "2.5.4"),
+        ("zeta", "zeta", "0.1"),
+    )
+    assert row["ok"] is True and row["extra"] == ["zeta 0.1"]
+    assert row["unread"] == [
+        "line 1: kikit @ https://example.invalid/kikit-1.8.1.tar.gz",
+        "line 2: numpy==2.5.4 --config-settings x=y",
+        "line 1 names KiKit 1.8.1 (installed, the line not compared)",
+        "line 2 names numpy 2.5.4 (installed, the line not compared)",
+    ]
+
+
+def test_an_egg_info_beside_a_dist_info_is_named_as_it_is(tmp_path):
+    site = tmp_path / "site"
+    dist(site, "kikit", "KiKit", "1.8.1")
+    (site / "KiKit-1.7.0-py3.13.egg-info").write_text("Name: KiKit\nVersion: 1.7.0\n", encoding="utf-8")
+    req = tmp_path / "requirements.txt"
+    req.write_text("kikit==1.8.1\n", encoding="utf-8")
+    row = wc.requirements_row(req, [site], [site], ENV, fix="F")
+    assert row["ok"] is False
+    assert row["broken"] == [
+        f"KiKit 1.7.0 (KiKit-1.7.0-py3.13.egg-info) and 1.8.1 (kikit-1.8.1.dist-info) in {site}"
+    ]
+    assert row["lines"][0].endswith("; remove the one whose version is stale, then: F")
+    assert "*.dist-info" not in row["lines"][0]
+
+
+def test_pep_440_local_labels_and_prefix_matches(tmp_path):
+    """A public pin ignores a candidate's local label (`==2.0` matches `2.0+cpu`); a `.*` prefix
+    compares the release segment, so a pre-release, post-release or local version within it matches."""
+    cases = [
+        ("numpy==2.5.*", "2.5.4rc1", True),
+        ("numpy==2.5.*", "2.5.post1", True),
+        ("numpy==2.5.*", "2.5.4+cpu", True),
+        ("numpy==2.5.*", "2.6rc1", False),
+        ("numpy==2.*", "1!2.0", False),
+        ("numpy==1!2.*", "1!2.3", True),
+        ("torch==2.0", "2.0+cpu", True),
+        ("torch==2.0.0", "2.0+cpu", True),
+        ("torch==2.0+cpu", "2.0+cpu", True),
+        ("torch==2.0+cu121", "2.0+cpu", False),
+        ("torch==2.1", "2.0+cpu", False),
+        ("torch!=2.0", "2.0+cpu", False),
+    ]
+    for number, (pin, have, ok) in enumerate(cases):
+        name = pin.split("=")[0].rstrip("!")
+        row = check(tmp_path / str(number), pin + "\n", (name, name, have))
+        assert row["ok"] is ok and row["unread"] == [], (pin, have, row)
+        assert row["version"] == f"{int(ok)} of 1 pins met", (pin, have, row)
+
+
+def test_any_exception_in_the_requirements_check_is_an_advisory_line(monkeypatch):
+    """The row in cmd_doctor is guarded: whatever the check raises is 1 line, never a traceback and
+    never `degraded` on its own."""
+
+    def boom(*_a, **_k):
+        raise RuntimeError("boom\nsecond line")
+
+    monkeypatch.setattr(wc, "requirements_doctor_row", boom)
+    row = wc.requirements_doctor_row_checked()
+    assert row["advisory"] is True and row["ok"] is False
+    assert row["lines"] == ["not checked: RuntimeError: boom second line"]
+    assert wc.doctor_checks_degraded({"requirements": row}) == []
+
+
+def test_doctor_with_unreadable_metadata_on_the_venv_path_prints_its_row(tmp_path):
+    """The checker's reproducer: a made-up WORKCENTER_ROOT whose venv Python reports a folder holding
+    a METADATA that is not UTF-8. Doctor exits as it does without that folder, with no traceback."""
+
+    def root(name: str, with_bad: bool) -> Path:
+        base = tmp_path / name
+        site = base / "venv" / "lib" / "python3.12" / "site-packages"
+        dist(site, "kikit", "KiKit", "1.8.1")
+        paths = [str(site)]
+        if with_bad:
+            raw_dist(base / "badsite", "oldpkg-0.1.dist-info", b"Name: oldpkg\nAuthor: Jos\xe9\n")
+            paths.append(str(base / "badsite"))
+        fake_venv(base, f"cat <<'EOF'\n{json.dumps({'path': paths, 'env': ENV})}\nEOF")
+        return base
+
+    def doctor(base: Path) -> subprocess.CompletedProcess:
+        # No engine starts: kicad-cli, ngspice and java are pointed at a path that is not there, so
+        # doctor's exit code is the same `fail` on every machine, with or without the bad folder.
+        absent = str(tmp_path / "absent")
+        env = {**os.environ, "WORKCENTER_ROOT": str(base), "HOME": str(tmp_path)}
+        env.update(KICAD_CLI=absent, NGSPICE=absent, JAVA=absent)
+        return subprocess.run(
+            [sys.executable, str(CLI), "doctor"],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=str(tmp_path),
+            timeout=120,
+            check=False,
+        )
+
+    good, bad = doctor(root("good", False)), doctor(root("bad", True))
+    assert "Traceback" not in bad.stderr and "Traceback" not in bad.stdout, bad.stderr
+    assert bad.returncode == good.returncode
+    folder = tmp_path / "bad" / "badsite" / "oldpkg-0.1.dist-info"
+    row = [line for line in bad.stdout.splitlines() if f"{folder}: metadata not read (" in line]
+    assert len(row) == 1 and "UnicodeDecodeError" in row[0], bad.stdout
+    assert row[0].lstrip().startswith(f"not read: {folder}: metadata not read (UnicodeDecodeError: ")
 
 
 def test_doctor_has_a_requirements_row_that_degrades_and_extras_that_do_not(tmp_path, monkeypatch):
