@@ -8,7 +8,7 @@ time: Alexa over Zigbee 3.0, Apple Home over Thread, or neither. The light is 2 
 warm and cool, driven with steady current: no flicker under the fan's blades. v0.1 is the hardware
 and the light's own rules; the voice and radio firmware is not written yet.
 
-This folder is a project made with the EE Workcenter. Each version is its own folder; each board in
+This folder is a project made with Via. Each version is its own folder; each board in
 it is a whole KiCad project built from its `design.py`, with the housing, the joints and the fit
 check that every board shares in `bulb.py`. The versions came from a loop that judged each layout
 against the housing and the gates and made the next ([`LOOP.md`](LOOP.md)).
@@ -39,5 +39,5 @@ make -C firmware test                           # the firmware's host tests
 workcenter pictures .                           # every board's renders and GIF, and the assembly (assembly.py)
 ```
 
-`make_footprints.py` and `make_models.py` import the workcenter's `kicadgen` and `wrlgen`: run them
-with the workcenter's `tools/` on `PYTHONPATH`.
+`make_footprints.py` and `make_models.py` import Via's `kicadgen` and `wrlgen`: run them
+with Via's `tools/` on `PYTHONPATH`.
