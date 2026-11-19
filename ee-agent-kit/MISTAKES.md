@@ -1803,3 +1803,9 @@ What happened: The answer to M285 ranked the hosts of Ubuntu's archive by the fi
 Cost: 1 red CI run of pull request 116 (about 10 minutes of the `full` job's install step), and a third design of the step.
 Root cause: A host was judged once, by a sample taken before the work, and never again by the work itself. A trickle is never silent, so a rule on silence cannot see it. The download's pass had no bound of its own: the only bound was the whole download's, so 1 slow pass could spend it all. And a setting written for the download was never read in the download's own log: the step's line said what the file sets, not what apt did.
 Process: P2
+
+## M296 — 2026-11-19 — doctor crashed on a java that names no version, and it reached main
+What happened: Pull request 116 gave doctor's java row a new reading of `java -version`: the major number of the version it names, through `int()`. A java whose `-version` names no version (a stand-in that prints nothing, a broken or wrapped JVM) ended doctor in `ValueError: invalid literal for int()`, not in a row that says absent. The pull request merged to main with it. The fixer of the independent attack on the Java fix found it on the way (cbd6fb0); `tests/test_java.py` now holds a java that names no version (`-version names no version`).
+Cost: None seen on a machine: no run met such a java. On main since pull request 116, doctor, and so every health gate and the image build, would have stopped on 1 such java on PATH.
+Root cause: The new reading was tested only with the output it expected (`version "21.0.13"`, `version "17.0.21"`), never with an output it did not: no version, an empty line, another language. P7 asks for a sample of each shape a tool prints, failures among them, and the new row's tests had only the working shapes.
+Process: P7

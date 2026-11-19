@@ -108,7 +108,9 @@ or any step that downloads, installs, or runs for more than a minute.
     JVM without `lib/libawt_xawt.so`) and a test of the check with what the
     runner carries beside it (another vendor's JDK under `JVM_DIR`); its
     tests skip on the product's own pick, never on whatever stands first
-    on PATH (M289).
+    on PATH. Every command that runs the program, and doctor, read that 1
+    check (a second reader found `workcenter autoroute`, the router and
+    doctor judging the java in 3 ways) (M289).
 12. A host chosen by a sample is a first guess. A transfer that has a
     bound watches its own progress, and ends a pass that cannot finish in
     the time left at the rate it gets, so that the next pass, or the next
@@ -361,6 +363,11 @@ axis it defines (a 3D model's rotation or offset, an export's origin).
     terminal's width, and what stood at the end of a long line is gone
     with no error. A test of such a check runs it once under a narrow
     COLUMNS, with a command line longer than that width (M281).
+12. A new reading of a tool's own output (a version, a count, a path)
+    gets, before it lands, a test with an output it does not expect: no
+    version, an empty line, another language. The reading then says what
+    it could not read, in the row or line it fills, and never ends the
+    command (M296).
 
 Done when: a test parses a real sample of each shape, failures among them,
 and the parser's assumptions are written next to it.
