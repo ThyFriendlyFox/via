@@ -203,7 +203,9 @@ def silent(uri: str, why: str = "HTTP 000, 0 bytes") -> str:
 
 
 def order(apt: Path, *uris: str) -> str:
-    return f"{PREFIX} {apt}/apt-mirrors.txt: apt asks {', then '.join(uris)}: the fastest first"
+    """The line of the order chosen. It names what the order rests on, a sample of 1 MiB: in run
+    44506767788 the first host sent its MiB at 2468910 bytes/s and the download at 48.3 kB/s."""
+    return f"{PREFIX} {apt}/apt-mirrors.txt: apt asks {', then '.join(uris)}: the fastest in a 1 MiB sample first"
 
 
 def kept(apt: Path, *uris: str) -> str:
@@ -762,6 +764,88 @@ def test_a_changed_file_keeps_its_mode(tmp_path):
     assert (apt / CONF).stat().st_mode & 0o777 == 0o644
 
 
+# ---------------------------------------------------------------- after a slow download pass
+# install.sh's watch ends a download pass too slow to finish and runs APT_SLOW_PASS_COMMAND with the
+# hosts of that pass, the most files first. CI names `--slow` of this script: the first of them that the
+# list holds goes last, so that the next pass asks another host first.
+
+ECTWO = "us-east-2.ec2.archive.ubuntu.com"
+PPA_HOST = "ppa.launchpadcontent.net"
+
+
+def slow_line(apt: Path, host: str, *uris: str) -> str:
+    return (
+        f"{PREFIX} {apt}/apt-mirrors.txt: {host} served a download pass too slow to finish; "
+        f"apt asks {', then '.join(uris)}"
+    )
+
+
+def test_the_host_of_a_slow_pass_goes_last_and_the_others_keep_their_order(tmp_path):
+    """The list of run 44506767788 after its ranking (us-east-2.ec2 1, security 2, archive 3), and that
+    run's hosts as install.sh names them (us-east-2.ec2: 45 Get lines; the PPA: 4, and no line in the
+    list). us-east-2.ec2 goes last; nothing is probed and no other file changes. A second slow pass, on
+    security.ubuntu.com, sends it last in turn."""
+    apt = layout(
+        tmp_path,
+        {"sources.list.d/ubuntu.sources": deb822(LIST, LIST), "apt-mirrors.txt": mirrors(EC2, own=1, archive=3, security=2)},
+    )
+    before = snapshot(apt)
+    ran = run("--slow", ECTWO, PPA_HOST, tmp=tmp_path, env={"APT_DIR": str(apt)})
+    assert ran.returncode == 0, ran.stderr
+    assert lines(ran) == [slow_line(apt, ECTWO, SECURITY, ARCHIVE, EC2)]
+    after = snapshot(apt)
+    assert after.pop("apt-mirrors.txt") == mirrors(EC2, own=3, archive=2, security=1)
+    assert after == {k: v for k, v in before.items() if k != "apt-mirrors.txt"}
+    assert probed(tmp_path) == []
+    ran = run("--slow", "security.ubuntu.com", tmp=tmp_path, env={"APT_DIR": str(apt)})
+    assert lines(ran) == [slow_line(apt, "security.ubuntu.com", ARCHIVE, EC2, SECURITY)]
+    assert snapshot(apt)["apt-mirrors.txt"] == mirrors(EC2, own=2, archive=1, security=3)
+
+
+def test_a_list_with_comments_keeps_them_and_a_line_without_priority_gets_one(tmp_path):
+    lst = f"# the runner's\n{EC2}\tpriority:1\n{ARCHIVE}\n{SECURITY}\tpriority:2\n"
+    apt = layout(tmp_path, {"sources.list.d/ubuntu.sources": deb822(LIST, LIST), "apt-mirrors.txt": lst})
+    ran = run("--slow", ECTWO, tmp=tmp_path, env={"APT_DIR": str(apt)})
+    assert ran.returncode == 0, ran.stderr
+    assert lines(ran) == [slow_line(apt, ECTWO, SECURITY, ARCHIVE, EC2)]
+    assert (apt / "apt-mirrors.txt").read_text() == (
+        f"# the runner's\n{EC2}\tpriority:3\n{ARCHIVE}\tpriority:2\n{SECURITY}\tpriority:1\n"
+    )
+
+
+@pytest.mark.parametrize(
+    ("args", "files", "said"),
+    [
+        (
+            ["--slow", PPA_HOST],
+            {"apt-mirrors.txt": mirrors(EC2)},
+            "{apt}/apt-mirrors.txt holds none of the hosts of the slow pass (ppa.launchpadcontent.net); "
+            "changed nothing",
+        ),
+        (
+            ["--slow"],
+            {"apt-mirrors.txt": mirrors(EC2)},
+            "{apt}/apt-mirrors.txt holds none of the hosts of the slow pass (none named); changed nothing",
+        ),
+        (
+            ["--slow", ECTWO],
+            {},
+            "{apt}/apt-mirrors.txt is absent: no mirror list to reorder after a slow pass; changed nothing",
+        ),
+    ],
+    ids=["a host the list does not hold", "no host", "no list"],
+)
+def test_a_slow_pass_the_list_cannot_answer_changes_nothing(tmp_path, args, files, said):
+    """A person's computer with 1 host, or a runner whose step was off: 1 line, exit 0, nothing changed.
+    install.sh goes on with its next pass either way."""
+    apt = layout(tmp_path, {"sources.list.d/ubuntu.sources": deb822(EC2, SECURITY), **files})
+    before = snapshot(apt)
+    ran = run(*args, tmp=tmp_path, env={"APT_DIR": str(apt)})
+    assert ran.returncode == 0, ran.stderr
+    assert lines(ran) == [f"{PREFIX} " + said.format(apt=apt)]
+    assert snapshot(apt) == before
+
+
 # ---------------------------------------------------------------- the refusal on the real /etc/apt
 
 SETPRIV = shutil.which("setpriv")
@@ -820,6 +904,7 @@ def test_the_real_etc_apt_is_refused_unless_ci_says_so(tmp_path):
             ("by APT_DIR", [], {"APT_DIR": str(real)}),
             ("default", [], {}),
             ("not 1", [str(real)], {"APT_ARCHIVE_CI": "yes"}),
+            ("after a slow pass", ["--slow", "us-east-2.ec2.archive.ubuntu.com"], {}),
         ]:
             ran = unprivileged(["bash", "-c", text, "apt_archive.sh", *args], {**env, **extra})
             seen[name] = (ran.returncode, ran.stdout, ran.stderr.strip())
@@ -844,7 +929,8 @@ def flow(name: str) -> dict:
 
 
 def archive_steps(job: dict) -> list[tuple[int, dict]]:
-    return [(i, s) for i, s in enumerate(job["steps"]) if "tools/ci/apt_archive.sh" in s.get("run", "")]
+    """The steps that rank the hosts (the install step names the script too, for its `--slow` mode)."""
+    return [(i, s) for i, s in enumerate(job["steps"]) if "tools/ci/apt_archive.sh /etc/apt" in s.get("run", "")]
 
 
 def install_index(job: dict) -> int:
@@ -868,9 +954,11 @@ def test_ci_calls_the_script_on_the_install_path_only_right_before_install_sh():
 
 
 def test_the_step_is_named_for_what_it_does_now():
-    """The step keeps the hosts and ranks them: its name says so, in both workflows."""
+    """The step keeps the hosts and ranks them by a sample of 1 MiB: its name says so, and no more, in
+    both workflows. Its 15 s silence rule holds for `apt-get update` only (install.sh's download passes
+    its own per-file bounds on apt's command line, which win), so the name no longer promises it."""
     ((_, ours),) = archive_steps(flow("ci.yml")["jobs"]["full"])
-    assert ours["name"] == "Rank the hosts of Ubuntu's archive, fastest first; give up a silent one"
+    assert ours["name"] == "Rank the hosts of Ubuntu's archive by a 1 MiB sample, fastest first"
 
 
 def test_the_nightly_run_calls_the_same_step_right_before_install_sh():
@@ -906,6 +994,44 @@ def test_the_step_runs_the_script_under_sudo_unless_the_variable_is_0(tmp_path, 
         ]
     else:
         assert said == [CALL.removeprefix("sudo ")]
+
+
+HOOK = "env APT_ARCHIVE_CI=1 bash tools/ci/apt_archive.sh --slow"
+
+
+def install_step(name: str, job: str) -> dict:
+    (step,) = [s for s in flow(name)["jobs"][job]["steps"] if "./install.sh" in s.get("run", "")]
+    return step
+
+
+@pytest.mark.parametrize("value", ["", "1", "0"])
+def test_the_install_step_names_the_slow_mode_unless_the_variable_is_0(tmp_path, value):
+    """install.sh's APT_SLOW_PASS_COMMAND is this script's `--slow`, passed through `sudo env` (sudo
+    drops a variable set before it) with APT_ARCHIVE_CI=1, which lets it change /etc/apt. With
+    CI_APT_UBUNTU_ARCHIVE=0 the list stays the runner's: the variable is empty, and install.sh runs no
+    command. The step runs here with a stand-in sudo that writes each argument on a line of its own. The
+    nightly run's install step is the same."""
+    step = install_step("ci.yml", "full")
+    assert step["env"] == {"ENABLED": f"${{{{ vars.{OFF} }}}}"}
+    bin_ = tmp_path / "bin"
+    bin_.mkdir()
+    calls = tmp_path / "calls"
+    (bin_ / "sudo").write_text(f'#!/bin/bash\nprintf "%s\\n" "$@" >> {calls}\n', encoding="utf-8")
+    (bin_ / "sudo").chmod(0o755)
+    env = {"PATH": str(bin_), "ENABLED": value}
+    ran = subprocess.run(["/bin/bash", "-e", "-c", step["run"]], env=env, capture_output=True, text=True)
+    assert ran.returncode == 0, ran.stderr
+    hook = "" if value == "0" else HOOK
+    assert calls.read_text(encoding="utf-8").splitlines() == [
+        "env",
+        "REQUIRE_FREEROUTING=1",
+        "APT_UPDATE_TIMEOUT=120",
+        "APT_DOWNLOAD_TIMEOUT=570",
+        f"APT_SLOW_PASS_COMMAND={hook}",
+        "./install.sh",
+    ]
+    nightly = install_step("nightly.yml", "verify")
+    assert (nightly["run"], nightly["env"]) == (step["run"], step["env"])
 
 
 def test_the_variable_the_step_sets_is_the_one_the_script_reads():

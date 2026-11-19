@@ -12,8 +12,9 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      # As in ci.yml's install path: the hosts of Ubuntu's archive, fastest first; a silent one given up.
-      - name: Rank the hosts of Ubuntu's archive, fastest first; give up a silent one
+      # As in ci.yml's install path: the hosts of Ubuntu's archive, the fastest in a 1 MiB sample first;
+      # install.sh puts the host of a download pass too slow to finish last.
+      - name: Rank the hosts of Ubuntu's archive by a 1 MiB sample, fastest first
         id: archive
         env:
           ENABLED: ${{ vars.CI_APT_UBUNTU_ARCHIVE }}
@@ -25,7 +26,12 @@ jobs:
           fi
       - name: Install Via's toolchain
         id: install
-        run: sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh
+        env:
+          ENABLED: ${{ vars.CI_APT_UBUNTU_ARCHIVE }}
+        run: |
+          slow=""
+          if [ "$ENABLED" != 0 ]; then slow="env APT_ARCHIVE_CI=1 bash tools/ci/apt_archive.sh --slow"; fi
+          sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 APT_SLOW_PASS_COMMAND="$slow" ./install.sh
       - name: Verify
         id: verify
         # The gate's log is kept for the issue's step: its `why:` lines go into the issue.

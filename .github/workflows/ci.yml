@@ -90,10 +90,13 @@ jobs:
             --enabled "$ENABLED" --github-output
       # The runner's regional mirror crawled to the download's bound (runs 44402154007 and 44432768560),
       # and Ubuntu's own archive did not deliver the index within 120 s (run 44477966021). So apt keeps
-      # both, asks first the one a probe of a few seconds finds fastest, and sends a file to the next host
-      # after 15 s of silence (tools/ci/apt_archive.sh). A person's computer keeps its mirror: install.sh does not change
-      # it. The variable CI_APT_UBUNTU_ARCHIVE=0 turns it off.
-      - name: Rank the hosts of Ubuntu's archive, fastest first; give up a silent one
+      # both and asks first the one fastest in a sample of 1 MiB; in the update it sends a file to the
+      # next host after 15 s of silence (tools/ci/apt_archive.sh). The sample is a first guess: in run
+      # 44506767788 the first host sent its MiB at 2.47 MB/s and the download at 48.3 kB/s. So install.sh
+      # ends a download pass too slow to finish, and runs the script's --slow mode, which puts that host
+      # last, before the next pass. A person's computer keeps its mirror: install.sh does not change it.
+      # The variable CI_APT_UBUNTU_ARCHIVE=0 turns both off.
+      - name: Rank the hosts of Ubuntu's archive by a 1 MiB sample, fastest first
         if: steps.where.outputs.where == 'install'
         env:
           ENABLED: ${{ vars.CI_APT_UBUNTU_ARCHIVE }}
@@ -105,7 +108,12 @@ jobs:
           fi
       - name: Install Via's toolchain (same script as the cloud environment)
         if: steps.where.outputs.where == 'install'
-        run: sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh
+        env:
+          ENABLED: ${{ vars.CI_APT_UBUNTU_ARCHIVE }}
+        run: |
+          slow=""
+          if [ "$ENABLED" != 0 ]; then slow="env APT_ARCHIVE_CI=1 bash tools/ci/apt_archive.sh --slow"; fi
+          sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 APT_SLOW_PASS_COMMAND="$slow" ./install.sh
       - name: Verify
         id: verify
         if: steps.where.outputs.where == 'install'

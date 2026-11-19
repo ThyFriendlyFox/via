@@ -336,12 +336,20 @@ def test_the_workflow_is_1_workflow_whose_first_job_alone_decides_the_scope():
     assert jobs["full"]["if"] == "needs.scope.outputs.scope == 'full'"
 
 
+# CI's install line: the 2 bounds, and the command install.sh runs after a download pass too slow to
+# finish (tests/test_ci_apt_archive.py runs the step and reads what it hands to sudo).
+INSTALL_LINE = (
+    "sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 "
+    'APT_SLOW_PASS_COMMAND="$slow" ./install.sh'
+)
+
+
 def test_the_fast_job_installs_no_engine_and_the_full_job_is_the_gate_of_today():
     jobs = workflow()["jobs"]
     fast, full = run_lines(jobs["fast"]), run_lines(jobs["full"])
     assert "install.sh" not in fast and "make verify-site" in fast
     assert "make verify-site" not in full
-    install = "sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh"
+    install = INSTALL_LINE
     assert install in full.split("\n") and "make verify" in full.split("\n")
 
 
@@ -388,9 +396,7 @@ def test_the_nightly_run_stays_the_full_gate():
     # The gate's log is kept for the ci-failure issue (tools/ci/nightly_issue.py); pipefail keeps its code.
     assert "make verify 2>&1 | tee build/nightly-verify.log" in lines and "set -o pipefail" in lines
     # The nightly run installs as CI's full job does, with CI's 2 bounds.
-    assert (
-        "sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh" in lines
-    )
+    assert INSTALL_LINE in lines
 
 
 def test_the_makefile_asks_the_same_script_and_names_no_path_of_its_own():
