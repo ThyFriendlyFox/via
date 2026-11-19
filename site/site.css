@@ -463,6 +463,17 @@ main .section figcaption {
   -webkit-hyphens: auto;
 }
 
+/* On a phone a justified line has too few words to share its spaces, and the gaps grew wide. Lines
+   start at the left there. Centred lines were tried and lost their start under a left-aligned heading. */
+@media (max-width: 640px) {
+  main .section p:not(.eyebrow):not(.spec):not(.board3d-hint):not(.part-d):not(.fname):not(.meta):not(.message),
+  main .section figcaption {
+    text-align: left;
+    hyphens: manual;
+    -webkit-hyphens: manual;
+  }
+}
+
 .head.center .lede {
   text-align-last: center;
 }

@@ -59,7 +59,7 @@ disagree, the file wins.
 
 1. Lead with what the reader gets, then how Via does it.
 2. Write a headline as 1 plain sentence in sentence case, with no closing
-   period: "Four checks before any board is released".
+   period: "How we check a board".
 3. Do not write slogans: no run of fragments ("Design. Gate. Fix.
    Done."), no "X, not Y" ("Boards, not demos."), no maxim ("A bound holds
    at every corner, or it does not hold.").
@@ -73,7 +73,10 @@ disagree, the file wins.
    fault, and its caption calls it a test circuit.
 7. A claim still needs its evidence (`PROCESSES.md` P5). Marketing copy
    claims nothing a run, a file or a test does not show.
-8. Justify a paragraph to its column, with hyphenation on. A part's label
+8. Justify a paragraph to its column, with hyphenation on. On a phone
+   (640 px wide or less) its lines start at the left: a justified line
+   there had too few words, and its gaps grew wide (the owner's
+   screenshot, 2026-11-19). A part's label
    on the example's board is too narrow for it, and stays ragged.
 9. Write a blog post, and the blog's own words, by `WEBSITE-WRITING.md`.
    It replaced `TONE.md`'s Simplified Technical English on the blog on
@@ -105,6 +108,9 @@ exception to these rules:
   page, `/feedback`. The blog does not explain what a blog is.
 - The heading of the home page's example, of 2026-11-18, with its
   exclamation mark: "Here's a board made with Via!"
+- The heading of the home page's checks, of 2026-11-19: "How we check a
+  board". The section after it keeps "Free and open source under the MIT
+  license".
 - The line at the bottom of every page, of 2026-11-18, in title case:
   "Made by Team Reagent for Builders", a link to `reagent-systems.com`.
   The menu's and the footer's "Community" is the team's Discord server,
