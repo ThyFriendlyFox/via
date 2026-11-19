@@ -72,13 +72,14 @@ jobs:
   # toolchain files (tools/image.py) when the registry gives it, else install.sh as before: a change to
   # those files, the first run before any image, a registry that does not answer or will not give it.
   # Both paths end in the same `make verify`; the last step fails unless the decided path ran and passed.
-  # Its limit: the worst case of the install path, 2163 s (tests/test_install_apt.py,
-  # test_the_worst_case_of_the_apt_step_fits_the_jobs_limit; ee-agent-kit/CI.md), in 40 minutes.
+  # Its limit: the worst case of the install path, 2523 s with the bounds of apt's kept package files
+  # (tests/test_install_apt.py, test_the_worst_case_of_the_apt_step_fits_the_jobs_limit; ee-agent-kit/CI.md),
+  # in 45 minutes.
   full:
     needs: scope
     if: needs.scope.outputs.scope == 'full'
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: read
@@ -103,6 +104,29 @@ jobs:
             || echo "no login to ghcr.io: only a public image can be pulled"
           python3 tools/image.py decide --base "$base" --owner "$GITHUB_REPOSITORY_OWNER" \
             --enabled "$ENABLED" --github-output
+      # apt's package files kept between runs of the install path (ee-agent-kit/CI.md, "apt's package files
+      # kept between runs"): restored into apt's own folder before install.sh, so apt asks the package
+      # hosts only for what changed. A pull request's run restores and never saves; a push to main and a
+      # run by hand save after a good install. The restore, the copy and the save never fail the run.
+      - name: The key of apt's kept package files
+        id: apt-cache-key
+        if: steps.where.outputs.where == 'install'
+        run: bash tools/ci/apt_cache.sh key install.sh "$GITHUB_OUTPUT"
+      - name: Restore apt's package files kept by an earlier run
+        id: apt-cache-restore
+        if: steps.where.outputs.where == 'install'
+        uses: actions/cache/restore@v4
+        timeout-minutes: 2
+        continue-on-error: true
+        with:
+          path: ${{ runner.temp }}/apt-archives
+          key: ${{ steps.apt-cache-key.outputs.key }}
+          restore-keys: ${{ steps.apt-cache-key.outputs.restore-keys }}
+      - name: Give apt the kept package files
+        if: steps.where.outputs.where == 'install'
+        timeout-minutes: 1
+        continue-on-error: true
+        run: bash tools/ci/apt_cache.sh restore "$RUNNER_TEMP/apt-archives" /var/cache/apt/archives
       # The runner's regional mirror crawled to the download's bound (runs 44402154007 and 44432768560),
       # and Ubuntu's own archive did not deliver the index within 120 s (run 44477966021). So apt keeps
       # both and asks first the one fastest in a sample of 1 MiB; in the update it sends a file to the
@@ -125,6 +149,7 @@ jobs:
             sudo env APT_ARCHIVE_CI=1 bash tools/ci/apt_archive.sh /etc/apt
           fi
       - name: Install Via's toolchain (same script as the cloud environment)
+        id: install
         if: steps.where.outputs.where == 'install'
         env:
           ENABLED: ${{ vars.CI_APT_UBUNTU_ARCHIVE }}
@@ -132,6 +157,28 @@ jobs:
           slow="" retries=3 seconds=60
           if [ "$ENABLED" != 0 ]; then slow="env APT_ARCHIVE_CI=1 bash tools/ci/apt_archive.sh --slow"; retries=0; seconds=15; fi
           sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 APT_OTHER_TIMEOUT=300 APT_FILE_RETRIES="$retries" APT_FILE_TIMEOUT="$seconds" APT_SLOW_PASS_COMMAND="$slow" ./install.sh
+      # apt takes a file already in its folder by its size alone (apt 2.8.3): the check holds every file
+      # to the SHA256 of apt's signed indexes after the install (passed or not), fails the run on a file that is not the
+      # package, and keeps for the save only the files an index lists. It says why nothing is saved.
+      - name: Check apt's package files against its indexes and keep them for later runs
+        id: apt-cache-keep
+        if: "!cancelled() && steps.where.outputs.where == 'install'"
+        timeout-minutes: 1
+        env:
+          EVENT: ${{ github.event_name }}
+          INSTALLED: ${{ steps.install.outcome }}
+          HIT: ${{ steps.apt-cache-restore.outputs.cache-hit }}
+          KEY: ${{ steps.apt-cache-key.outputs.key }}
+        run: bash tools/ci/apt_cache.sh keep "$RUNNER_TEMP/apt-archives" /var/cache/apt/archives "$GITHUB_OUTPUT"
+      - name: Save apt's package files for later runs
+        id: apt-cache-save
+        if: steps.where.outputs.where == 'install' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && steps.install.outcome == 'success' && steps.apt-cache-keep.outputs.save == 'true'
+        uses: actions/cache/save@v4
+        timeout-minutes: 2
+        continue-on-error: true
+        with:
+          path: ${{ runner.temp }}/apt-archives
+          key: ${{ steps.apt-cache-key.outputs.key }}
       - name: Verify
         id: verify
         if: steps.where.outputs.where == 'install'

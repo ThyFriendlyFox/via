@@ -12,6 +12,24 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      # As in ci.yml's install path: apt's package files kept between runs (ee-agent-kit/CI.md, "apt's
+      # package files kept between runs"). A night and a run by hand save after a good install.
+      - name: The key of apt's kept package files
+        id: apt-cache-key
+        run: bash tools/ci/apt_cache.sh key install.sh "$GITHUB_OUTPUT"
+      - name: Restore apt's package files kept by an earlier run
+        id: apt-cache-restore
+        uses: actions/cache/restore@v4
+        timeout-minutes: 2
+        continue-on-error: true
+        with:
+          path: ${{ runner.temp }}/apt-archives
+          key: ${{ steps.apt-cache-key.outputs.key }}
+          restore-keys: ${{ steps.apt-cache-key.outputs.restore-keys }}
+      - name: Give apt the kept package files
+        timeout-minutes: 1
+        continue-on-error: true
+        run: bash tools/ci/apt_cache.sh restore "$RUNNER_TEMP/apt-archives" /var/cache/apt/archives
       # As in ci.yml's install path: the hosts of Ubuntu's archive, the fastest in a 1 MiB sample first;
       # install.sh puts the host of a download pass too slow to finish last.
       - name: Rank the hosts of Ubuntu's archive by a 1 MiB sample, fastest first
@@ -32,6 +50,25 @@ jobs:
           slow="" retries=3 seconds=60
           if [ "$ENABLED" != 0 ]; then slow="env APT_ARCHIVE_CI=1 bash tools/ci/apt_archive.sh --slow"; retries=0; seconds=15; fi
           sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 APT_OTHER_TIMEOUT=300 APT_FILE_RETRIES="$retries" APT_FILE_TIMEOUT="$seconds" APT_SLOW_PASS_COMMAND="$slow" ./install.sh
+      - name: Check apt's package files against its indexes and keep them for later runs
+        id: apt-cache-keep
+        if: "!cancelled()"
+        timeout-minutes: 1
+        env:
+          EVENT: ${{ github.event_name }}
+          INSTALLED: ${{ steps.install.outcome }}
+          HIT: ${{ steps.apt-cache-restore.outputs.cache-hit }}
+          KEY: ${{ steps.apt-cache-key.outputs.key }}
+        run: bash tools/ci/apt_cache.sh keep "$RUNNER_TEMP/apt-archives" /var/cache/apt/archives "$GITHUB_OUTPUT"
+      - name: Save apt's package files for later runs
+        id: apt-cache-save
+        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && steps.install.outcome == 'success' && steps.apt-cache-keep.outputs.save == 'true'
+        uses: actions/cache/save@v4
+        timeout-minutes: 2
+        continue-on-error: true
+        with:
+          path: ${{ runner.temp }}/apt-archives
+          key: ${{ steps.apt-cache-key.outputs.key }}
       - name: Verify
         id: verify
         # The gate's log is kept for the issue's step: its `why:` lines go into the issue.

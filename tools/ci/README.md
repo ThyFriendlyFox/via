@@ -190,7 +190,7 @@ prints 1 line: `where: image: ...` or `where: install: ...`, with the reason.
 - `install`: `sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 APT_OTHER_TIMEOUT=300 ... ./install.sh`,
   then `make verify`, as before the image; the 3 bounds end a stalled
   index or download (the main one, and the openEMS step's and the boot
-  step's) with apt's own line within the job's 40 minutes (the nightly
+  step's) with apt's own line within the job's 45 minutes (the nightly
   run and the image build set the same 3; ee-agent-kit/CI.md has the
   arithmetic). It is taken when the change edits 1
   of the 3 files (the install path is their test), when the registry has
@@ -216,6 +216,36 @@ test refuses `continue-on-error`, and a shell other than GitHub's default
 669 s of the file's 674.6 s, and made its shard the longest, 991 s
 (job 135422229691).
 
+## apt's package files between runs of the install path
+
+`tools/ci/apt_cache.sh` keeps apt's `.deb` files between runs, so a run
+asks the package hosts only for what changed. ee-agent-kit/CI.md ("apt's
+package files kept between runs") has the why and the numbers.
+
+1. Before install.sh: `apt_cache.sh key install.sh "$GITHUB_OUTPUT"` makes
+   the key; `actions/cache/restore@v4` restores
+   `$RUNNER_TEMP/apt-archives`; `apt_cache.sh restore` copies each regular
+   `.deb` file of the kept folder itself into `/var/cache/apt/archives`
+   with `sudo cp`. A link, a folder below it (`partial/`) or a file of
+   another kind stays out; a kept folder that is itself a link gives
+   nothing. install.sh does not change.
+2. After install.sh, whether it passed or not: `apt_cache.sh keep` checks
+   every `.deb` in apt's folder against the SHA256 of apt's signed indexes
+   (`apt-cache show <package>=<version>`). A file whose bytes differ fails
+   the run: apt 2.8.3 takes a file already there by its size alone. That
+   apt does so has been read in its source, not yet seen on a runner. Then, for a push to
+   main, the nightly run or a run by hand, after a good install, it makes the
+   kept folder anew from the files that matched and sets `save=true`;
+   `actions/cache/save@v4` saves it.
+3. Each step prints 1 line: the key; `restored <n> files, <bytes> bytes`;
+   `checked <n> files ...: <m> match, <k> that no index lists are left
+   out`; `saving <n> files, <bytes> bytes, under <key>` or `not saved:`
+   and why. install.sh's `[apt] Need to get <to fetch>/<all> of archives.`
+   names what apt still fetched.
+
+To start the cache again: delete its entries in the repository's Actions,
+Caches page, or change `v1` in the key.
+
 ## The hosts of Ubuntu's archive on the install path
 
 Before install.sh, the install path (and the nightly run) runs
@@ -234,8 +264,8 @@ index within 120 s in 3 tries (run 44477966021). So apt keeps more than
   and Ubuntu's own host (archive.ubuntu.com or ports.ubuntu.com) beside it.
 - A probe asks every host of the list for the first 1 MiB of
   `dists/<suite>/main/binary-<arch>/Packages.gz`, side by side, 3 s each,
-  ended at 4 s: at most 5 s in all, of the 237 s the `full` job's limit
-  leaves beside install.sh's worst case (2163 s of 2400). The list's priorities follow bytes a
+  ended at 4 s: at most 5 s in all, of the 177 s the `full` job's limit
+  leaves beside install.sh's worst case (2523 s of 2700). The list's priorities follow bytes a
   second of a 1 MiB sample: a first guess, not a promise for the download. A host that does not answer goes last and stays. With no answer
   at all the priorities stay as the runner wrote them; hosts of 1
   priority, or of none, apt asks in random order, and the line says so.

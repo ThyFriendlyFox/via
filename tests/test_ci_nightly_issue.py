@@ -262,8 +262,16 @@ def test_the_step_runs_on_a_passed_and_a_failed_night_and_after_every_other_step
     step = issue_step(job)
     assert job["steps"][-1] is step
     assert step["if"] == "success() || failure()"
-    ids = [s.get("id") for s in job["steps"][:-1] if s.get("id")]
+    # The steps of apt's kept package files (tests/test_ci_apt_cache.py) are no step of the issue: the
+    # restore and the save never fail the night, and the check's failure leaves verify skipped.
+    ids = [s.get("id") for s in job["steps"][:-1] if s.get("id") and not s["id"].startswith("apt-cache")]
     assert ids == ["archive", "install", "verify"]
+    assert [s.get("id") for s in job["steps"] if str(s.get("id", "")).startswith("apt-cache")] == [
+        "apt-cache-key",
+        "apt-cache-restore",
+        "apt-cache-keep",
+        "apt-cache-save",
+    ]
     assert all(f"steps.{i}.outcome" in step["env"][i.upper()] for i in ids)
     verify = [s for s in job["steps"] if s.get("id") == "verify"][0]
     assert "set -o pipefail" in verify["run"]

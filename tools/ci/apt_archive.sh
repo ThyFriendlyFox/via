@@ -23,8 +23,8 @@
 #    with the mirror's scheme and path, unless a line of that host is there.
 # 3. A probe asks each host of the list for the first 1 MiB of dists/<suite>/main/binary-<arch>/Packages.gz
 #    (an index every mirror of the archive has), all side by side, 3 s each (curl), ended at 4 s:
-#    the step waits at most 5 s, within the 237 s CI's `full` job leaves beside install.sh's worst case
-#    (tests/test_install_apt.py, the worst case of the apt step: 2163 s of 2400). The list's priorities are set by bytes a second, the fastest first;
+#    the step waits at most 5 s, within the 177 s CI's `full` job leaves beside install.sh's worst case
+#    (tests/test_install_apt.py, the worst case of the apt step: 2523 s of 2700). The list's priorities are set by bytes a second, the fastest first;
 #    a host that does not answer goes last, in the runner's order, and stays. The probe never fails the
 #    step: with no answer at all the priorities stay.
 # 4. apt.conf.d/80apt-archive-ci: a file whose host sends nothing for 15 s is not tried again there;
