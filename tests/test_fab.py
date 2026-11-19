@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import importlib.machinery
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -482,3 +483,180 @@ def test_rules_only_names_12_lines_and_the_json_names_them_all(tmp_path):
     assert f"differs from what the design writes in lines {shown}, not only in its header" in proc.stdout
     data = json.loads(rules_only(design, "--json").stdout)
     assert data["lines"] == added
+
+
+# ------------------------------------------------- design --check holds the rule file
+
+# A track the router would add: `--check` writes the board unrouted, and a board with more copper
+# than that is a routed board, which a plain `design` would write over.
+TRACK = '\t(segment (start 101 101) (end 102 101) (width 0.2) (layer "F.Cu") (net 0))\n'
+# A fab whose rules the empty design's default via meets: under Sierra's the design step exits 1 on
+# its annular ring, and `--check` fails on that exit (M85) whatever the files say.
+CLEAN = "jlcpcb-2layer"
+
+
+def check(design: Path, *before: str) -> subprocess.CompletedProcess:
+    """`workcenter [before] design <design> --check`; bytecode beside the design would be a file
+    written in the project."""
+    return subprocess.run(
+        [sys.executable, str(CLI), *before, "design", str(design), "--check"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+    )
+
+
+def check_json(design: Path) -> tuple[int, dict]:
+    proc = check(design, "--json")
+    return proc.returncode, json.loads(proc.stdout)
+
+
+def entry(report: dict, name: str) -> dict:
+    return next(f for f in report["files"] if f["file"] == name)
+
+
+def routed(folder: Path) -> None:
+    """Give the project's board 1 track more than the design writes, as the router would."""
+    pcb = folder / "t.kicad_pcb"
+    text = pcb.read_text(encoding="utf-8")
+    end = text.rstrip().rfind(")")
+    pcb.write_text(text[:end] + TRACK + text[end:], encoding="utf-8")
+
+
+@needs_libs
+def test_check_holds_the_rule_file_the_design_writes(tmp_path):
+    """5 routed example boards kept the rule file's older header while `design --check` was green:
+    it compared the .kicad_pro, the .kicad_sch and the library tables only (2026-11-19)."""
+    design = rules_project(tmp_path, CLEAN)
+    before = project_bytes(tmp_path)
+    code, report = check_json(design)
+    assert code == 0, report
+    assert [f["file"] for f in report["files"]] == ["t.kicad_pro", "t.kicad_sch", "t.kicad_dru"]
+    assert {f["state"] for f in report["files"]} == {"same"}
+    assert report["step"] is None
+    assert project_bytes(tmp_path) == before  # nothing written in the project
+
+
+@needs_libs
+def test_check_names_rules_only_when_only_the_rule_files_header_differs(tmp_path):
+    design = rules_project(tmp_path, CLEAN)
+    routed(tmp_path)
+    dru, written = older_rule_file(tmp_path)
+    header = next(i for i, ln in enumerate(written.split("\n"), start=1) if ln.startswith(TODAY))
+    code, report = check_json(design)
+    assert code == 1
+    rule = entry(report, "t.kicad_dru")
+    assert (rule["state"], rule["line"], rule["header_only"]) == ("differs", header, True)
+    assert rule["project"].startswith(OLDER.strip()) and rule["design"].startswith(TODAY.strip())
+    assert report["step"] == f"workcenter design {design} --rules-only"
+    proc = check(design)
+    assert proc.returncode == 1
+    out = proc.stdout.splitlines()
+    assert "check: differs  t.kicad_dru" in out
+    assert f"         line {header}: project {rule['project']!r}" in out
+    assert (
+        f"         only its header line differs: `workcenter design {design} --rules-only` writes it again"
+        in out
+    )
+    assert f"check: step: `workcenter design {design} --rules-only`" in out
+    assert out[-1] == f"check: {tmp_path.name}: red, 1 of 3 files differ from design.py"
+
+
+@needs_libs
+def test_check_names_a_whole_design_run_when_a_rule_differs(tmp_path):
+    """A rule that differs is a hand's edit or a moved source: `--rules-only` refuses it, so the step
+    is the design run, with `--route` for a routed board, since a plain run writes it unrouted."""
+    design = rules_project(tmp_path, CLEAN)
+    dru = tmp_path / "t.kicad_dru"
+    text = dru.read_text(encoding="utf-8")
+    dru.write_text(text.replace("(min ", "(min 0", 1), encoding="utf-8")
+    first = next(i for i, ln in enumerate(text.split("\n"), start=1) if "(min " in ln)
+    code, report = check_json(design)
+    assert code == 1
+    rule = entry(report, "t.kicad_dru")
+    assert (rule["state"], rule["line"], rule["header_only"]) == ("differs", first, False)
+    assert report["step"] == f"workcenter design {design}"  # the project's board has no track
+    routed(tmp_path)
+    code, report = check_json(design)
+    assert code == 1 and report["step"] == f"workcenter design {design} --route"
+    assert f"check: step: `workcenter design {design} --route`" in check(design).stdout.splitlines()
+
+
+@needs_libs
+def test_check_names_a_rule_file_the_design_would_not_write(tmp_path):
+    """A design with no fab writes no rule file; KiCad's DRC reads <name>.kicad_dru beside the project
+    all the same, so one left from an earlier fab is a difference the design cannot write away."""
+    design = rules_project(tmp_path, fab="")
+    assert not (tmp_path / "t.kicad_dru").exists()
+    code, report = check_json(design)
+    assert code == 0, report
+    assert [f["file"] for f in report["files"]] == ["t.kicad_pro", "t.kicad_sch"]
+    (tmp_path / "t.kicad_dru").write_text("(version 1)\n", encoding="utf-8")
+    (tmp_path / "other.kicad_dru").write_text("(version 1)\n", encoding="utf-8")  # KiCad does not read it
+    code, report = check_json(design)
+    assert code == 1
+    assert entry(report, "t.kicad_dru")["state"] == "extra"
+    assert [f["file"] for f in report["files"]] == ["t.kicad_pro", "t.kicad_sch", "t.kicad_dru"]
+    assert report["step"] == f"git rm {tmp_path / 't.kicad_dru'}"
+    out = check(design).stdout.splitlines()
+    assert "check: extra    t.kicad_dru" in out
+    assert (
+        "         the design names no fab (Design.fab), so it writes no rule file; KiCad's DRC reads this "
+        "one all the same: remove it, or name its fab in Design.fab"
+    ) in out
+
+
+@needs_libs
+def test_check_holds_the_files_the_design_names(tmp_path):
+    """Design.files: a file the design writes beside the KiCad files (a ratings.json, a parts.csv,
+    a deck) is the design's output as much as the schematic is."""
+    design = tmp_path / "design.py"
+    body = RULES_DESIGN.format(fab="").replace(
+        "    return d\n", "    d.files['notes/a.txt'] = 'one\\ntwo\\n'\n    return d\n"
+    )
+    design.write_text(body, encoding="utf-8")
+    kicadgen.load_design(design).write(tmp_path)
+    code, report = check_json(design)
+    assert code == 0, report
+    assert entry(report, "notes/a.txt")["state"] == "same"
+    (tmp_path / "notes" / "a.txt").write_text("one\nTWO\n", encoding="utf-8")
+    code, report = check_json(design)
+    assert code == 1
+    a = entry(report, "notes/a.txt")
+    assert (a["state"], a["line"], a["project"], a["design"]) == ("differs", 2, "TWO", "two")
+    assert report["step"] == f"workcenter design {design}"
+    (tmp_path / "notes" / "a.txt").unlink()
+    code, report = check_json(design)
+    assert code == 1 and entry(report, "notes/a.txt")["state"] == "missing"
+
+
+@needs_libs
+def test_check_json_holds_a_design_file_that_prints(tmp_path):
+    """Wyvern v0.2's design file prints its module's fan-out while it builds: `design --check --json`
+    read that line as the start of the design step's JSON and stopped with a traceback (2026-11-19)."""
+    design = tmp_path / "design.py"
+    body = RULES_DESIGN.format(fab="").replace(
+        "    return d\n", "    print('fan-out: 3 vias')\n    print('{not json')\n    return d\n"
+    )
+    design.write_text(body, encoding="utf-8")
+    kicadgen.load_design(design).write(tmp_path)
+    proc = check(design, "--json")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    report = json.loads(proc.stdout)
+    assert report["printed"] == ["fan-out: 3 vias", "{not json"]
+    assert report["design"]["name"] == "t" and report["exit"] == 0
+
+
+@needs_libs
+def test_check_says_the_board_is_not_compared_and_why(tmp_path):
+    design = rules_project(tmp_path, CLEAN)
+    proc = check(design)
+    assert proc.returncode == 0, proc.stdout
+    assert (
+        "check: not compared: t.kicad_pcb: --check writes the board unrouted; the project's holds the "
+        "router's tracks and vias, the vias it reserved for pour islands and KiCad's zone fill. "
+        "The gates' DRC holds the board to the schematic; no check holds a part's place to design.py"
+    ) in proc.stdout.splitlines()
+    code, report = check_json(design)
+    assert report["not_compared"] == ["t.kicad_pcb"]

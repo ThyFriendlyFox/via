@@ -23,6 +23,7 @@ import json
 import math
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -258,9 +259,12 @@ def contents_text(
     sources: Path,
     lists: Path,
     scripts: dict[str, str],
+    files: set[str] | None = None,
 ) -> str:
+    """CONTENTS.md's text. `files` is the folder's file list as `docs` leaves it (`docs --check`
+    passes it, having written nothing); by default the folder as it is."""
     version = vdir.name
-    files = project_files(vdir)
+    files = project_files(vdir) if files is None else files
     rel = lambda p: os.path.relpath(p, vdir).replace(os.sep, "/")  # noqa: E731
 
     def here(pattern_dir: str = "") -> list[str]:
@@ -473,26 +477,37 @@ def cmd_docs(args, cli) -> int:
             }
         except (ValueError, KeyError, AttributeError):
             scripts = {}
-    copied: dict[str, Path] = {}
+    # What docs copies (each datasheet a part names, from the library) and what it removes (a copy of
+    # a library file no part names); nothing at all while a board has no parts list.
+    wanted: dict[str, Path] = {}
+    stale: list[str] = []
+    ddir = vdir / "datasheets"
     if not missing:
         for r in lines:
             row = datasheet_for((r.get("MPN") or "").strip(), rows, series)
-            if row and row.get("File") and row["File"] not in copied:
+            if row and row.get("File") and row["File"] not in wanted:
                 src = sources.parent / row["File"]
                 if src.is_file():
-                    dest = vdir / "datasheets" / row["File"]
-                    dest.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copyfile(src, dest)
-                    copied[row["File"]] = dest
+                    wanted[row["File"]] = src
+        if ddir.is_dir():
+            # Only a copy of a library file goes: anything else in datasheets/ was put there by hand.
+            for f in sorted(p for p in ddir.rglob("*") if p.is_file()):
+                name = f.relative_to(ddir).as_posix()
+                if name not in wanted and (sources.parent / name).is_file():
+                    stale.append(name)
+    if args.check:
+        content = (boards, lines, rows, series, sources, lists, scripts)
+        return check_docs(args, cli, t0, vdir, missing, wanted, stale, content)
+    copied: dict[str, Path] = {}
+    for name, src in wanted.items():
+        dest = ddir / name
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, dest)
+        copied[name] = dest
     removed = []
-    ddir = vdir / "datasheets"
-    if not missing and ddir.is_dir():
-        # Only a copy of a library file goes: anything else in datasheets/ was put there by hand.
-        for f in sorted(p for p in ddir.rglob("*") if p.is_file()):
-            name = f.relative_to(ddir).as_posix()
-            if name not in copied and (sources.parent / name).is_file():
-                f.unlink()
-                removed.append(name)
+    for name in stale:
+        (ddir / name).unlink()
+        removed.append(name)
     text = contents_text(vdir, boards, lines, rows, series, sources, lists, scripts)
     (vdir / "CONTENTS.md").write_text(text, encoding="utf-8")
     absent = sorted(
@@ -512,6 +527,56 @@ def cmd_docs(args, cli) -> int:
         details["failures"] = [f"{m}: no {lists / (m + '.csv')}" for m in missing]
     status = "fail" if missing else "pass"
     return finish(cli, cli.Result("docs", status, summary, details, [str(vdir / "CONTENTS.md")]), t0, args)
+
+
+def check_docs(args, cli, t0: float, vdir: Path, missing: list, wanted: dict, stale: list, content) -> int:
+    """`docs <version> --check`: write nothing; compare the committed CONTENTS.md and datasheets/ with
+    what `docs` would leave. 1 line per difference (CONTENTS.md's first differing line, a copy that is
+    missing, extra or not the library's bytes) and the 1 step, `workcenter docs <version>`. A board
+    with no parts list is that board's failure, as it is for `docs`, and its step is `costs`."""
+    boards, lists = content[0], content[5]
+    version = shlex.quote(args.version)
+    if missing:
+        failures = [f"{m}: no {lists / (m + '.csv')}" for m in missing]
+        summary = (
+            f"no parts list for {', '.join(missing)} in {lists}; run "
+            f"`workcenter costs {shlex.quote(str(vdir.parent))}`, then `workcenter docs {version}`"
+        )
+        return finish(cli, cli.Result("docs", "fail", summary, {"failures": failures}), t0, args)
+    # The folder as docs leaves it: the copies made, the stale ones gone, CONTENTS.md there.
+    after = project_files(vdir)
+    after -= {f"datasheets/{name}" for name in stale}
+    after |= {f"datasheets/{name}" for name in wanted} | {"CONTENTS.md"}
+    text = contents_text(vdir, *content, files=after).encode("utf-8")
+    failures = []
+    committed = vdir / "CONTENTS.md"
+    if not committed.is_file():
+        failures.append("CONTENTS.md: missing")
+    elif committed.read_bytes() != text:
+        old, new = committed.read_bytes().splitlines(), text.splitlines()
+        pairs = enumerate(zip(old, new, strict=False))
+        at = next((i for i, (a, b) in pairs if a != b), min(len(old), len(new)))
+        said = [(f[at].decode(errors="replace")[:100] if at < len(f) else "(end)") for f in (old, new)]
+        failures.append(f"CONTENTS.md: line {at + 1}: committed {said[0]!r}; docs writes {said[1]!r}")
+    ddir = vdir / "datasheets"
+    for name in sorted({*wanted, *stale}):
+        if name in stale:
+            failures.append(f"datasheets/{name}: extra: no part names it; docs removes it")
+            continue
+        src = os.path.relpath(wanted[name], vdir).replace(os.sep, "/")
+        if not (ddir / name).is_file():
+            failures.append(f"datasheets/{name}: missing: docs copies it from {src}")
+        elif (ddir / name).read_bytes() != wanted[name].read_bytes():
+            failures.append(f"datasheets/{name}: differs from {src}")
+    if failures:
+        summary = (
+            f"{plural(len(failures), 'difference')} from what `workcenter docs` writes; "
+            f"run `workcenter docs {version}`"
+        )
+    else:
+        summary = f"CONTENTS.md and {plural(len(wanted), 'datasheet')} are what `workcenter docs` writes"
+    details = {"failures": failures, "boards": [b.id for b in boards]}
+    return finish(cli, cli.Result("docs", "fail" if failures else "pass", summary, details), t0, args)
 
 
 # ------------------------------------------------------------------- costs
@@ -1491,6 +1556,12 @@ def register(sub, cli) -> None:
     p.add_argument("--library", help="the library folder holding sources.csv (default: the nearest library/)")
     p.add_argument(
         "--lists", help="the priced parts lists (default <repo>/parts/lists, from `workcenter costs`)"
+    )
+    p.add_argument(
+        "--check",
+        action="store_true",
+        help="write nothing: compare CONTENTS.md and datasheets/ with what docs writes; 1 line per "
+        "difference and the step; exit 1 on a difference",
     )
     p.set_defaults(run=lambda a: cmd_docs(a, cli))
 

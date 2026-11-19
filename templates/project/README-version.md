@@ -144,12 +144,14 @@ folder instead.
 
 ```sh
 workcenter design design.py --route   # regenerate the KiCad project from the design file
+workcenter design design.py --check   # every file the design writes but the board, as CI compares
 workcenter gates .                    # ERC, DRC, simulation, export; GREEN means done
 workcenter sim .                      # the sim/ decks alone; one deck: --deck NAME --keep
 workcenter sources . --parts ../parts/catalog.csv   # every part against ../library/sources.csv
 workcenter verify .                   # the verification package against a fresh run
 workcenter pictures .                 # the renders, turning GIFs and scenes into docs/ (P23)
 workcenter docs .                     # CONTENTS.md and datasheets/
+workcenter docs . --check             # both against what docs writes; writes nothing
 ```
 
 <!-- fill: each nested board's commands, the firmware's, and what is generated from what. -->

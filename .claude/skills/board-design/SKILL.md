@@ -370,5 +370,20 @@ project and routes it with FreeRouting. No GUI at any step.
   clearance and courtyard warnings are not.
 - The design file is the only hand-written source; nobody edits the
   generated KiCad files. Hand-routed copper lives in `build()` too.
+- `workcenter design design.py --check` exits 0. It writes the design
+  into a scratch folder and compares every file it writes but the board:
+  the `.kicad_pro`, the `.kicad_sch`, the library tables, the copied rule
+  file (`<name>.kicad_dru`, when `d.fab` is set) and each file of
+  `d.files`. A `<name>.kicad_dru` the design would not write (no `d.fab`)
+  is a difference too: KiCad's DRC reads it. The line before the last
+  names the 1 step. It is `--rules-only` when only the rule file's header
+  line differs, and `git rm` for a rule file the design would not write.
+  Else it is `workcenter design design.py`, with `--route` when the
+  project's board has more tracks and vias than the design draws.
+- `--check` does not compare the `.kicad_pcb`. It writes the board
+  unrouted, and the project's holds the router's tracks and vias, the vias
+  reserved for pour islands and KiCad's zone fill. The gates' DRC holds the
+  board to the schematic. No check holds a part's place on the board to
+  `design.py`. A design with pours starts `kicad-cli` to fill them.
 - The README names each part choice and the reason, and lists every
   external contact with its net, pad and position.

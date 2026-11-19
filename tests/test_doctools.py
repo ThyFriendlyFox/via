@@ -228,6 +228,90 @@ def test_docs_without_a_parts_list_leaves_the_datasheets_alone(tmp_path):
     assert (repo / "v0.2" / "CONTENTS.md").is_file()
 
 
+def tree_bytes(folder: Path) -> dict[str, bytes]:
+    return {
+        p.relative_to(folder).as_posix(): p.read_bytes() for p in sorted(folder.rglob("*")) if p.is_file()
+    }
+
+
+def docs_check(v: Path) -> tuple[int, dict, list[str]]:
+    """`docs <v> --check` as a record and as the lines it prints."""
+    code, records = run("docs", v, "--check")
+    proc = subprocess.run(
+        [sys.executable, str(CLI), "docs", str(v), "--check"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, **PINNED},
+    )
+    assert proc.returncode == code
+    return code, records[0], proc.stdout.splitlines()
+
+
+def test_docs_check_holds_contents_and_datasheets_to_what_docs_writes(tmp_path):
+    """Wyvern v0.1's CONTENTS.md lacked 28 datasheet rows for a week after the library it shares with
+    v0.2 grew: nothing compared a committed CONTENTS.md with what `workcenter docs` writes (2026-11-19)."""
+    repo = docs_repo(tmp_path)
+    v = repo / "v0.2"
+    # before any docs run: no CONTENTS.md, 2 datasheets to copy and 1 copy to remove
+    before = tree_bytes(repo)
+    code, record, out = docs_check(v)
+    assert code == 1 and record["status"] == "fail"
+    assert record["details"]["failures"] == [
+        "CONTENTS.md: missing",
+        "datasheets/maker/old.pdf: extra: no part names it; docs removes it",
+        "datasheets/maker/rc.pdf: missing: docs copies it from ../library/maker/rc.pdf",
+        "datasheets/maker/u1.pdf: missing: docs copies it from ../library/maker/u1.pdf",
+    ]
+    assert record["summary"] == f"4 differences from what `workcenter docs` writes; run `workcenter docs {v}`"
+    assert tree_bytes(repo) == before  # nothing written
+    assert out[0].startswith("FAIL   docs       4 differences") and out[1:] == [
+        f"       - {line}" for line in record["details"]["failures"]
+    ]
+    # after it: the same
+    assert run("docs", v)[0] == 0
+    code, record, _ = docs_check(v)
+    assert code == 0, record
+    assert record["summary"] == "CONTENTS.md and 2 datasheets are what `workcenter docs` writes"
+    # a library that grew: a part's new datasheet row changes the table, and its file is to be copied
+    sources = repo / "library" / "sources.csv"
+    sources.write_text(
+        sources.read_text().replace(
+            "C100N,datasheet,,,,,,,,,2026-11-01,the maker refused the fetch",
+            "C100N,datasheet,https://example.com/c.pdf,maker/c.pdf,,A,2026-01,,,,2026-11-19,",
+        )
+    )
+    write(repo / "library" / "maker" / "c.pdf", "%PDF c.pdf")
+    code, record, _ = docs_check(v)
+    assert code == 1
+    contents, copy = record["details"]["failures"]
+    assert contents.startswith("CONTENTS.md: line ") and "| base | C1 | Murata C100N |" in contents
+    assert "committed '| base | C1 | Murata C100N | none kept: the maker refused the fetch |  |'" in contents
+    assert (
+        "docs writes '| base | C1 | Murata C100N | [maker/c.pdf](datasheets/maker/c.pdf) | A |'" in contents
+    )
+    assert copy == "datasheets/maker/c.pdf: missing: docs copies it from ../library/maker/c.pdf"
+    assert run("docs", v)[0] == 0 and docs_check(v)[0] == 0
+    # a copy that is not the library's file any more
+    write(v / "datasheets" / "maker" / "u1.pdf", "%PDF u1.pdf, an older revision")
+    code, record, _ = docs_check(v)
+    assert code == 1 and record["details"]["failures"] == [
+        "datasheets/maker/u1.pdf: differs from ../library/maker/u1.pdf"
+    ]
+
+
+def test_docs_check_names_costs_when_a_parts_list_is_missing(tmp_path):
+    repo = docs_repo(tmp_path)
+    assert run("docs", repo / "v0.2")[0] == 0
+    (repo / "parts" / "lists" / "v0.2-display.csv").unlink()
+    code, record, _ = docs_check(repo / "v0.2")
+    assert code == 1
+    assert record["summary"].startswith(f"no parts list for v0.2-display in {repo / 'parts' / 'lists'}")
+    assert record["summary"].endswith(
+        f"run `workcenter costs {repo}`, then `workcenter docs {repo / 'v0.2'}`"
+    )
+
+
 def test_docs_without_a_library_skips(tmp_path):
     write(tmp_path / "v0.1" / "README.md", "# v0.1\n")
     code, records = run("docs", tmp_path / "v0.1")

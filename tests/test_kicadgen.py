@@ -1826,6 +1826,60 @@ def test_design_check_fails_on_the_design_steps_own_failure(tmp_path):
     assert report["design"]["via_problems"] == ["VIN via at (109.325, 106.5): on R2.2 (GND, F.Cu)"]
 
 
+# ------------------------------------------------- every fixture's design file holds its files
+
+BOARDS = ROOT / "tests" / "boards"
+# Designs the generator refuses on purpose: each is held to its refusal by its own test, and `--check`
+# writes nothing for them to compare.
+REFUSED = {"fail-block-mcu-2x", "fail-block-usbc-2x", "refuse-block-charger-2x"}
+# Designs with pours: writing them fills the pours with kicad-cli, so their check is an engine run.
+POURED = {
+    "fail-highspeed-plane",
+    "fail-highspeed-skew",
+    "fail-highspeed-width",
+    "fail-layout-emi",
+    "fail-layout-esd",
+    "fail-layout-tee",
+    "inspect-four-layer",
+    "pass-block-ldo",
+    "pass-block-ldo-2x",
+    "pass-highspeed",
+    "pass-layout",
+}
+
+
+def fixture_param(name: str):
+    if name in POURED:
+        return pytest.param(name, marks=needs_kicad)
+    return name
+
+
+@needs_libs
+@pytest.mark.parametrize("name", [fixture_param(p.parent.name) for p in sorted(BOARDS.glob("*/design.py"))])
+def test_every_fixture_is_what_its_design_file_writes(name):
+    """A tool change that alters a file a fixture's design writes fails here, with the step that
+    writes it again. `design --check` compares every file but the board (2026-11-19)."""
+    design = BOARDS / name / "design.py"
+    proc = subprocess.run(
+        [sys.executable, str(CLI), "--json", "design", str(design), "--check"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+    )
+    report = json.loads(proc.stdout)
+    if name in REFUSED:
+        assert (proc.returncode, report["design_exit"], report["files"]) == (1, 1, []), report["files"]
+        return
+    loaded = kicadgen.load_design(design)
+    assert bool(loaded.zones) == (name in POURED), f"{name}: its pours changed; name it in POURED or not"
+    bad = [f for f in report["files"] if f["state"] != "same"]
+    assert (proc.returncode, bad) == (0, []), (
+        f"tests/boards/{name} is not what its design.py writes: {bad}. "
+        f"Write it again with `{report['step']}` and read the difference before committing it"
+    )
+
+
 # ------------------------------------------------- symbol-add (a symbol from a datasheet's pin table)
 
 COMPARATOR_PINS = (

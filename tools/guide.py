@@ -743,6 +743,52 @@ def copy_deck(cli, project, quoted: str, stem: str, line: str, gates: str) -> St
     )
 
 
+def docs_step(cli, folder: Path) -> Step | None:
+    """The step of a version whose CONTENTS.md or datasheets/ differ from what `workcenter docs` writes,
+    None when they match. The version is the project's folder or, for a nested board, the folder above,
+    whichever holds a CONTENTS.md; a version without one was never documented and is asked nothing."""
+    version = next((d for d in (folder, folder.parent) if (d / "CONTENTS.md").is_file()), None)
+    if version is None:
+        return None
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(cli.SRC_DIR / "tools" / "workcenter"),
+            "--json",
+            "docs",
+            str(version),
+            "--check",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 1:  # 0: the same; 2: no library to compare with
+        return None
+    try:
+        said = json.loads(proc.stdout)[0]
+    except (ValueError, IndexError, KeyError):
+        said = {}
+    failures = said.get("details", {}).get("failures", [])
+    summary = said.get("summary", "docs --check exited 1")
+    again = f"workcenter docs {shlex.quote(str(version))}"
+    costs = re.search(r"run `(workcenter costs [^`]+)`", summary)
+    do = (
+        "Price the version's boards first: `workcenter docs` reads each board's parts list, and one is "
+        "missing."
+        if costs
+        else "Write the version's CONTENTS.md and datasheets/ again: they differ from what `workcenter docs` "
+        "writes."
+    )
+    return Step(
+        do,
+        costs.group(1) if costs else again,
+        failures[0] if failures and not costs else summary,
+        "ee-agent-kit/PROCESSES.md, P22",
+        f"`{again} --check` exits 0",
+    )
+
+
 def next_step(cli, target: str, run_check=True) -> Step:
     """The first step a project has not done. `run_check` runs `design --check` for a project with a
     design file (a few seconds); without it the design file is trusted to match."""
@@ -865,6 +911,24 @@ def next_step(cli, target: str, run_check=True) -> Step:
                 if word in red
             ]
             first = next((ln for kind in kinds for ln in said if ln.startswith(f"{kind}: ")), None)
+            # The check names the 1 step that writes its difference away. 2 of them are no
+            # regeneration: a rule file whose header alone differs, and one the design would not write.
+            named = next((m.group(1) for ln in said if (m := re.match(r"check: step: `(.+)`$", ln))), "")
+            if not first and (named.endswith(" --rules-only") or named.startswith("git rm ")):
+                do = (
+                    "Write the project's rule file again: only its header line differs from what the design "
+                    "writes."
+                    if named.endswith(" --rules-only")
+                    else "Remove the project's rule file: the design names no fab, and KiCad's DRC reads it "
+                    "all the same."
+                )
+                return Step(
+                    do,
+                    named,
+                    said[-1],
+                    f'{DESIGN}, "Checks"',
+                    f"`{wc} design {shlex.quote(str(design))} --check` exits 0",
+                )
             if first:
                 do, read = hint("design", first)
                 return Step(
@@ -1011,12 +1075,16 @@ def next_step(cli, target: str, run_check=True) -> Step:
             line = failures[0] if failures else said
             do, read = hint("verify", line)
             return Step(do, verify, line, read, "the last line starts with REQUIREMENTS MET")
-        return Step(
+        return docs_step(cli, project.dir) or Step(
             "Nothing: the gates are GREEN with no warning and the requirements are met.",
             why="close out the change: ee-agent-kit/PROCESSES.md, P14",
             done=True,
         )
     # A finished project gets no RUN line: a reader who follows each line would run one more command.
+    # Its version's CONTENTS.md and datasheets/ are what `workcenter docs` writes first.
+    documented = docs_step(cli, project.dir)
+    if documented:
+        return documented
     if not has_kicad:
         return Step(
             "Nothing: every deck holds its bounds, GREEN with no warning.",
