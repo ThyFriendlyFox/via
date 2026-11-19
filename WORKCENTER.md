@@ -447,17 +447,34 @@ The SIM gate holds the junction of each part `sim/thermal.json` names
 (`tools/thermal.py`, the `simulate` skill). At every run it judges, the
 deck as written and each corner, TJ = TA + RthetaJA x P, with the run's
 temperature as TA and the power the named deck measure prints (TI SPRA953D,
-section 1.1, equation 1). RthetaJA and the greatest junction temperature
-come from the part's facts (`thermal`), and the derated limit from the
-pack's `junction.temperature` rules. A part past its limit fails on 1 line
-with the part, the ambient, the junction, the limit and the worst run.
-Every printed junction says that RthetaJA is the datasheet's test board's:
-SPRA953D calls the sum a misapplication on a system board, and a 2s2p
-board a best case. A part with no RthetaJA, only a case, board or top
-figure, or no facts is not judged: a warning, a failure with `--strict`.
-So is a part whose deck's corners were not all run (a `skip`,
-`temperature: false`, `--nominal`), and a run whose temperature is not
-known; such a part is never held.
+section 1.1, equation 1). Where the file states the part's case, board or
+package top's temperature at a run's ambient (`from`, measured or
+computed; a project copies `workcenter copper`'s number in with its
+source), TJ there is that temperature + theta_jc, theta_jb, psi_jt or
+psi_jb x P (SPRA953D, equations 4, 8 and 9), and the line names the
+temperature's source. Only theta_ja on the 2s2p board bounds a stated
+temperature, and SPRA953D calls that board a best case, not a bound
+(section 1.2, page 3): a stated temperature at or under its run's ambient,
+or one nothing bounds, holds no part. A case on a heat sink is stated with
+the sink's Rtheta(CS) and Rtheta(SA); at every run the greater of equation
+4 from the case and equation 5 from the ambient judges (section 2.2,
+page 7). The figures, the JEDEC board each was measured on (`1s0p` or
+`2s2p`) and the greatest junction temperature come from the part's facts
+(`thermal`), and the derated limit from the pack's `junction.temperature`
+rules. A part past its limit fails on 1 line with the part, the ambient,
+the junction, the sum, the board of the figure, the limit and the worst
+run. Every printed junction names the JEDEC board of its figure, and a
+part held on theta_ja on the 2s2p board says it is held with no margin. A
+figure whose board the facts do not name holds no part. A part with no
+figure the gate can use, or no facts, is not judged: a warning, a failure
+with `--strict`. So is a part whose deck's corners were not all run (a
+`skip`, `temperature: false`, a deck block that leaves out a temperature of
+the file, `--nominal`), and a run whose temperature is not known; such a
+part is never held. A deck block that leaves out a temperature of the file
+is itself a warning. With decks and no `sim/thermal.json`, SIM prints that
+no junction is judged; that line is no warning. `workcenter gates` prints
+each part's thermal line, and its `--report` writes them under the deck
+table.
 
 The gate reads what it is given strictly. An expect file with a key it does
 not know, a bound with neither `min` nor `max`, a bound that is no finite
@@ -487,15 +504,20 @@ FILE] [--out DIR]` reads `<project>/fields.json` and the `.kicad_pcb`. For
 each group of nets it builds a model from the board file with no
 hand-written mesh: the copper, the reference pour under each track, the
 dielectrics, a 50 ohm port at each end. It runs openEMS as its own
-program and holds impedance, return loss, insertion loss, NEXT and FEXT
-to the limits, each with its source. It writes
+program and holds impedance, return loss, insertion loss, NEXT and FEXT,
+a pair's differential impedance, return loss and insertion loss, and an
+antenna's resonance to the limits, each with its source; a limit marked
+`unstated` and a measure no limit names are printed not judged. It writes
 `build/fields/<group>/model.json`, the solver's input under
 `build/fields/<group>/openems/`, and `build/fields/report.md` and
 `report.json`. It refuses a track with no reference pour under it, a pour
 of another net between a track and its plane, a via through a plane, an
 open end as a port and a port on another net's pad. The impedance is
-judged only on a net of 2 ports, 1 width, 1 layer and no branch. The
-model has no conductor loss and no copper thickness. Exit 0 when every
+judged only on a net of 2 ports, 1 width, 1 layer and no branch. Copper
+is a sheet by default; `settings` makes it `thick` (its stack-up
+thickness) or `lossy` (its conductor loss), not both. A dielectric's loss
+tangent is held over the band by Debye terms. The command ends a run once
+its ports have settled, not by openEMS's clock. Exit 0 when every
 limit holds, 1 on a failure, a solver fault or a file it does not take, 2
 when openEMS is absent, there is no `fields.json`, or no limit was held.
 The `fields` skill is the procedure.
@@ -917,7 +939,7 @@ and no analog block. The engines install on request:
 
 ## The container image
 
-`ghcr.io/<owner>/ee-workcenter` holds the toolchain install.sh installs and the workcenter at the commit it was built from, without the example boards (`examples/`) and the site (`site/`), at `/opt/workcenters/ee`, with `workcenter` on PATH and `/work` for a mounted project. `docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work <image> workcenter gates .`: the files written belong to that user. Tags: `tc-<16 hex digits>` (the content of `Dockerfile`, `install.sh` and `requirements.txt`; `workcenter image` prints it; it moves to a new build on each push to main and each week), `tc-<16 hex digits>-<YYYYMMDD>`, `tc-<16 hex digits>-amd64` and `-arm64` (1 machine's), `main`, a release's `vX.Y.Z`; a digest never moves. `/opt/workcenters/ee/image.json` names its tag, commit and tools' versions (`python3 /opt/workcenters/ee/src/tools/image.py show`). It is not: a desktop (no window, no KiCad editor), a place to keep work (mount the project), or openEMS on arm64. Every image passed `workcenter doctor` in its build and ran the gates on a fixture as a user without root; no other is published. Its build bounds install.sh's apt step as CI does (`--build-arg APT_UPDATE_TIMEOUT=120 --build-arg APT_DOWNLOAD_TIMEOUT=570`); a build without them has no bound.
+`ghcr.io/<owner>/ee-workcenter` holds the toolchain install.sh installs and the workcenter at the commit it was built from, without the example boards (`examples/`) and the site (`site/`), at `/opt/workcenters/ee`, with `workcenter` on PATH and `/work` for a mounted project. `docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work <image> workcenter gates .`: the files written belong to that user. That user id has no name in the image: GNU `id -un` prints its number and ends with 1. The workcenter's tools ask for HOME, which the image sets, and never for a user name. Tags: `tc-<16 hex digits>` (the content of `Dockerfile`, `install.sh` and `requirements.txt`; `workcenter image` prints it; it moves to a new build on each push to main and each week), `tc-<16 hex digits>-<YYYYMMDD>`, `tc-<16 hex digits>-amd64` and `-arm64` (1 machine's), `main`, a release's `vX.Y.Z`; a digest never moves. `/opt/workcenters/ee/image.json` names its tag, commit and tools' versions (`python3 /opt/workcenters/ee/src/tools/image.py show`). It is not: a desktop (no window, no KiCad editor), a place to keep work (mount the project), or openEMS on arm64. Every image passed `workcenter doctor` in its build and ran the gates on a fixture as a user without root; no other is published. Its build bounds install.sh's apt step as CI does (`--build-arg APT_UPDATE_TIMEOUT=120 --build-arg APT_DOWNLOAD_TIMEOUT=570`); a build without them has no bound.
 
 Not a gate: `workcenter image [--rev REV] [--json]` prints the content tag of the toolchain's files at a commit and the name of the image of that tag; inside the image it also prints the record of its build. It runs no engine.
 

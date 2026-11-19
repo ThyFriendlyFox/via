@@ -1605,3 +1605,45 @@ What happened: On 2026-11-18 a helper that was part of a scripted run asked the 
 Cost: About 3 minutes of 2 writers in 1 tree, and the time to find which files each had written.
 Root cause: P31 step 8 says to send no message to a helper that a workflow runs, but a question from the helper read as an invitation to answer, and nothing in the step says what to do when the helper asks first.
 Process: P31
+
+## M263 — 2026-11-18 — 4 reviews found 4 false passes of 1 kind in the junction gate
+What happened: Each review of item 7's left-overs found a part over its limit that `--strict` passed on a stated temperature: a board under the air, then a board at the air, then 0.001 C above it with theta_ja on the 1s0p board, then a case on a heat sink named by text. Each fix closed that input alone. A rebase also changed `thermal.assumes`'s signature, and the trunk's caller in `tools/blocks_ldo.py` broke: only the branch's own test files had run. A reference model written from SPRA953D, and 66000 generated cases through `sim_thermal`, ended it: 1 class was left and is fixed, and the model is now `tests/test_thermal_model.py`.
+Cost: 4 reviews and 4 fix rounds; a fifth class (a part on a heat sink judged by equation 5 only where its case was stated) was still open after them; 32 tests of the linear regulator block failed until the fourth review ran them.
+Root cause: Cases were written by hand from the last hole, so each review found the next input of the same kind; nothing checked the rule over the whole input space. A switch that turned off a check (`heat_sink` as text) asked for no numbers in its place. After the rebase, no one looked for every caller of a function whose signature changed (`grep` on the trunk) and ran its test files.
+Process: P14
+
+## M264 — 2026-11-18 — A bound on a worst-over-band measure was written without reading what the measure is
+What happened: A made-up `return_loss_db` bound of 1 dB on the patch antenna failed its own fixture: the measure is the least over the band, and off resonance a patch returns nearly all (0.21 dB at 7.62 GHz). It was then made 0 dB, which any passive port meets, and counted as held.
+Cost: A fixture that failed, then a fixture that passed on a bound that judged nothing; a review finding.
+Root cause: A bound was written before what the measure takes over the band was read, and a bound nothing can fail was not told from one that holds.
+Process: P28
+
+## M265 — 2026-11-18 — A frequency-dependent quantity was checked at 1 frequency
+What happened: The first round's dielectric loss was read at 5 GHz, half the band's top, where openEMS's conductivity is right, and called 1 % off. At 1 and 10 GHz it was 5 times over and half. Later, a range read at 5 frequencies of 1 band (1.05 to 1.10) was written as the run's accuracy; under 2 GHz it is 0.95 to 2.1.
+Cost: A review round; a Debye material and the runs that proved it.
+Root cause: A check of a quantity that moves with frequency was read at the band's middle alone, and a range from 1 band was stated for every band.
+Process: P7
+
+## M266 — 2026-11-18 — An input was trusted to its names and its sign
+What happened: A pair's port order was trusted to the names fields.json gave, so N's far end could be taken as its near end and a wrong insertion loss held. A negative loss tangent was accepted and modelled as a gain medium, and a line passed its insertion-loss limit; the model's branch `tand > 0` hid it.
+Cost: 2 review findings, each fixed with a test.
+Root cause: The board's geometry was not checked against the names, and a stated input's sign was not checked where it is read.
+Process: P7
+
+## M267 — 2026-11-18 — An end condition of the engine's was taken as a property of the input
+What happened: openEMS checks its end criterion every 4 s of the clock. The settle check was run on whatever openEMS wrote, so 1 file of the Wyvern lane passed in some runs and failed in others, by the machine's load. 2 branches then fixed it 2 ways: the trunk ran such a run again deeper; the piece turned the criterion off and ended the run itself.
+Cost: A test that failed now and then, a round of work, and a conflict at landing.
+Root cause: A verdict rested on where the engine stopped, which no input fixes.
+Process: P7
+
+## M268 — 2026-11-18 — A command line used `cd`
+What happened: A helper of item 9's left-overs ran a command line with `cd /`, against the rule "Absolute paths, and no `cd`" (M259).
+Cost: None seen; the rule was broken.
+Root cause: The habit of a terminal, where a folder stays chosen.
+Process: P8
+
+## M269 — 2026-11-18 — A test of a workflow step read the machine's user list
+What happened: The first run of the suite inside the container image (CI run 44409635104) failed `tests/test_image.py::test_the_gates_step_fails_unless_every_file_written_is_the_runners_user`. The test asked `id -un` for the runner's name with `check=True`; inside the image the user id has no passwd line, and GNU `id -un` prints the number and ends with 1.
+Cost: A red run of 1041 s on the wall clock, and the reason read from the test's source: the gate's log did not hold it.
+Root cause: The test read the machine's user list where it meant to test a step's logic. It gave the step stand-ins for `docker` and `find`, not for `id`; and no case made `id -un` fail, so the step's own gap (the substitution inside `test`'s arguments, whose failure `bash -e` does not see) passed too.
+Process: P2

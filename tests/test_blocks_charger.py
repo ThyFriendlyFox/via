@@ -659,17 +659,26 @@ def test_the_fixture_is_routed_and_its_gates_are_green(tmp_path):
     assert (min(amps), max(amps)) == pytest.approx((0.162266, 0.165544), rel=1e-4)
     assert (min(watts), max(watts)) == pytest.approx((0.451482, 0.460496), rel=1e-4)
     u1 = records["sim"]["details"]["thermal"]["parts"]["U1"]
+    # Judged, not held: SLUSCE2D's thermal table (section 7.4, page 4) names no JEDEC board, so the facts
+    # give no `boards` and theta_ja holds no part (the SIM gate's thermal check, roadmap item 7).
     assert (u1["worst"]["run"], u1["worst"]["junction"], u1["limit"], u1["held"]) == (
         "40 C, R1 -1 %",
         pytest.approx(100.233, abs=1e-3),
         110.0,
-        True,
+        None,
     )
-    # The 1 warning: C1 and C2 hold their makers' data and the deck runs no capacitor, so no deck runs them
-    # on it (roadmap item 4's line). The deck holds nothing that moves with temperature, and is not warned
-    # of it: sim/thermal.json names it, so the ambient's corners are there for the junction, which the
-    # thermal check works out at each (the SIM gate's `heated`, from the linear regulator block).
+    not_held = (
+        "thermal: U1 (BQ21040DBVR) not held: its facts (ti-bq21040.json) name no JEDEC board for theta_ja: "
+        "write `boards` in `thermal` from the datasheet's thermal table"
+    )
+    assert records["sim"]["details"]["thermal"]["not_judged"] == [not_held], records["sim"]["details"]
+    # The 2 warnings. C1 and C2 hold their makers' data and the deck runs no capacitor, so no deck runs
+    # them on it (roadmap item 4's line). U1's junction is judged and not held, as above. The deck holds
+    # nothing that moves with temperature, and is not warned of it: sim/thermal.json names it, so the
+    # ambient's corners are there for the junction, which the thermal check works out at each (the SIM
+    # gate's `heated`, from the linear regulator block).
     assert records["sim"]["details"]["warnings"] == [
         "not judged: C1 and C2 hold their makers' data, and no deck holds a capacitor or an inductor: a deck "
         "runs a board part on it only under the part's reference",
+        not_held,
     ]

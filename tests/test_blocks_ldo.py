@@ -112,11 +112,12 @@ NOT_HOT = "its value over temperature is not judged: its facts give no kept_cels
 
 
 def assumes(theta: str) -> str:
-    """What a junction from RthetaJA rests on, as tools/thermal.py says it (SPRA953D)."""
+    """What a junction from RthetaJA rests on, as tools/thermal.py says it (SPRA953D): the board the
+    facts name for it, the high-k 2s2p board of both packages (SBVS320D, section 5.4, footnote 2, page 5)."""
     return (
-        f"theta_ja {theta} C/W is the datasheet's test board's: a JEDEC 2s2p board gives a best case and a "
-        "1s board a typical one (SPRA953D, section 1.2, page 3); a board unlike the test board changes it "
-        "(section 1.1, page 2)"
+        f"theta_ja {theta} C/W was measured on the high-k 2s2p board of JESD 51-7 (p 5): a 2s2p board gives "
+        "a best case and a 1s0p board a typical one (SPRA953D, section 1.2, page 3); a board unlike the test "
+        "board changes it (section 1.1, page 2)"
     )
 
 

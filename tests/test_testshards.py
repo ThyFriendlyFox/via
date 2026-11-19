@@ -120,7 +120,7 @@ def folder(tmp_path: Path, files: dict[str, str]) -> Path:
     return root
 
 
-def gate(root: Path, jobs: int = 2) -> subprocess.CompletedProcess:
+def gate(root: Path, jobs: int = 2, env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
     args = ["run", "--root", str(root), "--table", str(root / "shards.csv"), "--jobs", str(jobs)]
     args += ["--python", sys.executable, "--work", str(root.parent / "work")]
     return subprocess.run(
@@ -129,6 +129,7 @@ def gate(root: Path, jobs: int = 2) -> subprocess.CompletedProcess:
         text=True,
         timeout=300,
         check=False,
+        env=env,
     )
 
 
@@ -420,6 +421,10 @@ def test_a_stop_by_signal_ends_every_shard(tmp_path, sig):
         assert left == [], out
         assert proc.returncode == 128 + sig, out
         assert f"stopped by signal {int(sig)}: 3 pytest processes started, none left running" in out
+        # A stop is often a CI time limit on a test that hangs: each shard names the test it was running.
+        for name in ("test_x.py", "test_y.py"):
+            shard = shard_of(root, name)
+            assert f"why: shard {shard} was running tests/{name}::test_waits when stopped" in out, out
     finally:
         for p in pids.iterdir():
             try:
@@ -552,6 +557,228 @@ def test_a_wrong_table_is_refused_with_its_line_and_no_traceback(tmp_path, capsy
     assert testshards.main(["table", "--table", str(path), str(tmp_path / "w")]) == 2
     err = capsys.readouterr().err
     assert err.startswith(f"{path}:{where}: {message}"), err
+
+
+# -- why a test failed: what pytest reported, in the gate's own output ----------------------------------
+#
+# CI run 44409635104 named its failed test and kept the report in a folder nobody could read after the
+# run (inside the image it went with the container). The gate prints each report, bounded.
+
+
+def reason(stdout: str, header: str) -> list[str]:
+    """The lines of the reason block whose header line is `header`: the `  | ` lines under it."""
+    lines = stdout.splitlines()
+    at = lines.index(header)
+    block = []
+    for line in lines[at + 1 :]:
+        if not line.startswith("  | "):
+            break
+        block.append(line[4:])
+    return block
+
+
+def shard_of(root: Path, name: str, jobs: int = 2) -> str:
+    shards = testshards.plan(
+        sorted(f"tests/{p.name}" for p in (root / "tests").glob("test_*.py")),
+        testshards.read_table(root / "shards.csv"),
+        jobs=jobs,
+    )
+    return next(s.name for s in shards if f"tests/{name}" in s.files)
+
+
+def test_a_failing_assertions_message_its_line_and_its_output_are_in_the_gates_output(tmp_path):
+    """The assertion's message, the line that raised it (tests/test_s.py:12) and what the test printed
+    before it failed, under the FAILED line that existed before."""
+    files = dict(FOUR)
+    files["test_s.py"] = PASSING + (
+        "\n\ndef test_planted():\n    print('the divider gave 3.1 V')\n    x = 3\n"
+        "    assert x == 2, 'the planted message'\n"
+    )
+    root = folder(tmp_path, files)
+    shard = shard_of(root, "test_s.py")
+    proc = gate(root)
+    assert proc.returncode == 1, proc.stdout
+    failed = rf"^FAILED tests/test_s\.py::test_planted \(shard {shard}\) at \d+ s$"
+    assert re.search(failed, proc.stdout, re.M)
+    block = reason(proc.stdout, f"why: tests/test_s.py::test_planted, failed at call (shard {shard}):")
+    assert "E       AssertionError: the planted message" in block, proc.stdout
+    assert "tests/test_s.py:12: AssertionError" in block, proc.stdout
+    assert ">       assert x == 2, 'the planted message'" in block, proc.stdout
+    assert "the divider gave 3.1 V" in block, proc.stdout
+
+
+def test_an_error_at_setup_and_an_error_at_teardown_after_a_pass_are_each_in_the_gates_output(tmp_path):
+    """A fixture that raises before the test, and one that raises after a test that passed: pytest
+    calls both errors, and the second test's call passed."""
+    files = dict(FOUR)
+    files["test_s.py"] = PASSING + (
+        "\n\nimport pytest\n\n\n@pytest.fixture\ndef board():\n"
+        "    raise RuntimeError('no board at setup')\n\n\n"
+        "@pytest.fixture\ndef engine():\n    yield 1\n"
+        "    raise RuntimeError('the engine did not close')\n\n\n"
+        "def test_needs_board(board):\n    pass\n\n\n"
+        "def test_passes_then_errors(engine):\n    assert engine == 1\n"
+    )
+    root = folder(tmp_path, files)
+    shard = shard_of(root, "test_s.py")
+    proc = gate(root)
+    assert proc.returncode == 1, proc.stdout
+    setup = reason(proc.stdout, f"why: tests/test_s.py::test_needs_board, an error at setup (shard {shard}):")
+    assert "E       RuntimeError: no board at setup" in setup, proc.stdout
+    down = f"why: tests/test_s.py::test_passes_then_errors, an error at teardown (shard {shard}):"
+    assert "E       RuntimeError: the engine did not close" in reason(proc.stdout, down), proc.stdout
+
+
+def test_an_error_at_collection_is_in_the_gates_output_once(tmp_path):
+    """test_s.py raises as it is imported, in its shard and in 1 process: its shard stops with exit 2
+    and runs nothing. The reason is printed once, from the shard."""
+    files = dict(FOUR)
+    files["test_s.py"] = "raise RuntimeError('cannot import the board')\n"
+    root = folder(tmp_path, files)
+    shard = shard_of(root, "test_s.py")
+    proc = gate(root)
+    assert proc.returncode == 1, proc.stdout
+    block = reason(proc.stdout, f"why: tests/test_s.py could not be collected (shard {shard}):")
+    assert any("RuntimeError: cannot import the board" in line for line in block), proc.stdout
+    assert proc.stdout.count("could not be collected") == 1, proc.stdout
+
+
+def test_an_error_at_collection_in_1_process_alone_is_in_the_gates_output(tmp_path):
+    """test_s.py raises as it is imported outside a shard: only the collection in 1 process has it."""
+    files = dict(FOUR)
+    files["test_s.py"] = (
+        "import os\n\nif not os.environ.get('TESTSHARDS_SHARD'):\n    raise RuntimeError('not here')\n\n"
+    ) + PASSING
+    proc = gate(folder(tmp_path, files))
+    assert proc.returncode == 1, proc.stdout
+    block = reason(proc.stdout, "why: tests/test_s.py could not be collected (the collection in 1 process):")
+    assert any("RuntimeError: not here" in line for line in block), proc.stdout
+
+
+def test_a_shard_killed_mid_run_names_the_test_it_was_running_and_the_end_of_its_output(tmp_path):
+    """The test kills its own pytest with SIGKILL: no report, no end of session. The gate names the test
+    the shard started last and did not end, and the last lines of the shard's output."""
+    files = dict(FOUR)
+    files["test_s.py"] = (
+        "import os\nimport signal\n\n\ndef test_one():\n    pass\n\n\n"
+        "def test_kill():\n    os.kill(os.getpid(), signal.SIGKILL)\n\n\ndef test_after():\n    pass\n"
+    )
+    root = folder(tmp_path, files)
+    shard = shard_of(root, "test_s.py")
+    proc = gate(root)
+    assert proc.returncode == 1, proc.stdout
+    log = root.parent / "work" / f"shard-{shard}" / "pytest.log"
+    header = (
+        f"why: shard {shard} ended with no report from pytest (exit -9, killed by signal 9); "
+        f"the test it started last and did not end: tests/test_s.py::test_kill; "
+        f"the last lines of its output, {log}:"
+    )
+    assert header in proc.stdout.splitlines(), proc.stdout
+
+
+def test_a_shard_that_crashes_shows_the_crash_from_the_end_of_its_output(tmp_path):
+    """A segmentation fault in a test: pytest's faulthandler writes the Python stack to the shard's
+    output as the process dies, and the gate prints that end of the output."""
+    files = dict(FOUR)
+    files["test_s.py"] = (
+        "import os\nimport signal\n\n\ndef test_one():\n    pass\n\n\n"
+        "def test_crash():\n    os.kill(os.getpid(), signal.SIGSEGV)\n"
+    )
+    root = folder(tmp_path, files)
+    shard = shard_of(root, "test_s.py")
+    proc = gate(root)
+    assert proc.returncode == 1, proc.stdout
+    (header,) = [line for line in proc.stdout.splitlines() if line.startswith(f"why: shard {shard} ended")]
+    assert "the test it started last and did not end: tests/test_s.py::test_crash" in header
+    block = reason(proc.stdout, header)
+    assert "Fatal Python error: Segmentation fault" in block, proc.stdout
+    assert any('test_s.py", line 10 in test_crash' in line for line in block), proc.stdout
+
+
+def test_a_shard_that_exits_non_zero_with_no_failed_test_shows_the_end_of_its_output(tmp_path):
+    """test_q.py holds no test: its shard reaches its end of session and exits 5 (pytest's `no tests
+    collected`), with no failure to show. The gate prints the end of its output."""
+    root = folder(tmp_path, {"test_p.py": PASSING, "test_q.py": "VALUE = 1\n"})
+    shard = shard_of(root, "test_q.py")
+    proc = gate(root)
+    assert proc.returncode == 1, proc.stdout
+    log = root.parent / "work" / f"shard-{shard}" / "pytest.log"
+    header = (
+        f"why: shard {shard} exited 5 and no test failed; it ended no test; "
+        f"the last lines of its output, {log}:"
+    )
+    assert any("no tests ran" in line for line in reason(proc.stdout, header)), proc.stdout
+
+
+def test_many_failures_are_cut_at_the_bound_with_the_count_that_was_cut(tmp_path):
+    """25 failing tests: 25 FAILED lines, the reasons of the first testshards.REASONS (10), and 1 line
+    that says 25 - 10 = 15 were not printed and where the whole reports are."""
+    files = dict(FOUR)
+    files["test_s.py"] = (
+        "import pytest\n\n\n@pytest.mark.parametrize('n', range(25))\n"
+        "def test_planted(n):\n    assert n < 0\n"
+    )
+    root = folder(tmp_path, files)
+    proc = gate(root)
+    assert proc.returncode == 1, proc.stdout
+    assert len(re.findall(r"^FAILED tests/test_s\.py::test_planted\[\d+\]", proc.stdout, re.M)) == 25
+    assert testshards.REASONS == 10
+    assert len(re.findall(r"^why: tests/test_s\.py::test_planted\[\d+\]", proc.stdout, re.M)) == 10
+    work = root.parent / "work"
+    assert (
+        f"why: 15 more failed tests' reports are not printed here (the gate prints the first 10); "
+        f"each shard's whole report is its pytest.log under {work}"
+    ) in proc.stdout.splitlines(), proc.stdout
+    assert proc.stdout.splitlines()[-2].startswith("TESTS RED: "), proc.stdout
+
+
+def test_a_long_report_is_cut_to_its_first_and_last_lines_and_a_long_line_to_its_width(tmp_path):
+    """A failure 80 calls deep, with a message of 1000 characters: the block keeps the first
+    testshards.HEAD lines and the last testshards.TAIL, and says how many lines it cut; a line keeps
+    testshards.WIDTH characters and says how many it cut."""
+    files = dict(FOUR)
+    files["test_s.py"] = (
+        "def deep(n):\n    if n == 0:\n        raise ValueError('x' * 1000)\n    deep(n - 1)\n\n\n"
+        "def test_deep():\n    deep(80)\n"
+    )
+    root = folder(tmp_path, files)
+    shard = shard_of(root, "test_s.py")
+    proc = gate(root)
+    assert proc.returncode == 1, proc.stdout
+    block = reason(proc.stdout, f"why: tests/test_s.py::test_deep, failed at call (shard {shard}):")
+    assert len(block) == testshards.HEAD + 1 + testshards.TAIL, proc.stdout
+    assert re.fullmatch(r"\[\.\.\. \d+ lines cut here\]", block[testshards.HEAD]), block
+    assert "tests/test_s.py:3: ValueError" in block, block
+    (long,) = [line for line in block if "xxxxxxxxxx" in line]
+    assert re.fullmatch(rf".{{{testshards.WIDTH}}} \[\.\.\. \d+ characters cut\]", long), long
+
+
+def test_a_report_that_holds_a_lone_surrogate_leaves_the_verdict_under_a_strict_stdout(tmp_path):
+    """A string decoded with surrogateescape: pytest's diff prints its lone surrogate as it is. The gate's
+    stdout is strict UTF-8, as Python's is under a full UTF-8 locale such as en_US.UTF-8. The reason is
+    printed with the surrogate escaped, and the verdict follows."""
+    files = dict(FOUR)
+    files["test_s.py"] = PASSING + (
+        "\n\ndef test_surrogate():\n"
+        "    s = b'\\xff'.decode('utf-8', 'surrogateescape')\n    assert s == 'x'\n"
+    )
+    root = folder(tmp_path, files)
+    shard = shard_of(root, "test_s.py")
+    proc = gate(root, env={**os.environ, "PYTHONIOENCODING": "utf-8:strict"})
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    block = reason(proc.stdout, f"why: tests/test_s.py::test_surrogate, failed at call (shard {shard}):")
+    assert "E         + \\udcff" in block, proc.stdout
+    assert "Traceback" not in proc.stderr, proc.stderr
+    assert proc.stdout.splitlines()[-2].startswith("TESTS RED: "), proc.stdout
+
+
+def test_a_green_run_prints_no_reason(tmp_path):
+    """4 files that pass, 1 of them printing on stdout: no `why:` line and no `  | ` line."""
+    files = dict(FOUR)
+    files["test_s.py"] = PASSING + "\n\ndef test_says():\n    print('fine')\n"
+    proc = gate(folder(tmp_path, files))
+    assert proc.returncode == 0, proc.stdout
+    assert not re.search(r"^(why|  \| )", proc.stdout, re.M), proc.stdout
 
 
 def test_output_after_the_summary_line_leaves_a_green_shard_green(tmp_path):

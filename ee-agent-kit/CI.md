@@ -33,11 +33,13 @@ download fail the run; a green CI proves the autoroute engine installs.
 4. On the same page, under "Manage Actions access", the repository `via` should be listed with write (a package a workflow publishes is linked to it). If it is not: Add Repository, `via`, Write.
 5. Optional: Settings, Secrets and variables, Actions, Variables: `CI_FULL_IN_IMAGE` = `0` sends every full run to install.sh (to take a bad image out of CI at once). Unset or any other value: the image when the registry gives it.
 
+Done on 2026-11-18: steps 1 and 2. Pull request 92's `Image` run (44396387137) built both machines' images and pushed nothing; `build (amd64)` stopped on its first run on a 503 of the KiCad 10 source and passed on its 1 re-run. It was merged as 1fb707c, and the `Image` run on main (44402154037) built both images, pushed them, and its `publish` job passed at 21:36 UTC. Step 3 waits: the package is still private. CI run 44409635104 took the image path first: the install step was skipped and `make verify` ran inside the image, 3732 of 3811 tests passed and 1 failed, a test of the gates step that read the machine's user list, fixed since.
+
 The lines to read in the first runs:
 
 - The build step: `[install] boot: ... missing; apt install curl gnupg ca-certificates git make gcc libc6-dev` (install.sh's first step), then `workcenter ee: ok` (amd64) or `degraded, without openems` (arm64), then `image tc-... (x86_64|aarch64) at /opt/workcenters/ee/image.json` with 6 version lines (`image.py record`). A line `image.py: record refused: ...` is a failed image.
-- "The gates" step: `GREEN: rc_divider` and `owners of the files written: <the runner's user>`.
-- CI's `full` job: `where: image: the registry holds ...` or `where: install: ...` with its reason; on the image path `image: the checkout's Dockerfile, install.sh, requirements.txt are those the image was built from` before `make verify`. On the image's own pull request the job takes the install path (`where: install: this change edits Dockerfile, install.sh: the install path is their test`).
+- "The gates" step: `GREEN: rc_divider` and `owners of the files written: <the runner's user>`. A user id with no name prints its number from `id -un`, which then ends with 1, and the step stops.
+- CI's `full` job: `where: image: the registry holds ...` or `where: install: ...` with its reason; on the image path `image: the checkout's Dockerfile, install.sh, requirements.txt are those the image was built from` before `make verify`. On the image's own pull request the job takes the install path (`where: install: this change edits Dockerfile, install.sh: the install path is their test`). On the image path the shards' logs go with the container: a failed test's report follows its `FAILED` line under `why:`, and a shard that ended with no report prints the end of its output.
 
 ## What CI still needs from a third party
 
