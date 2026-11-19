@@ -27,6 +27,7 @@ Standard library only, as the CLI is (AGENTS.md invariant 3).
 
 from __future__ import annotations
 
+import ctypes
 import json
 import os
 import re
@@ -43,6 +44,8 @@ CLI = Path(__file__).resolve().parent / "workcenter"
 SERVER = {"name": "ee-workcenter", "version": "1.0"}
 # Seconds between SIGTERM and SIGKILL for a cancelled command's process group.
 GRACE = 10.0
+# prctl option 1: the signal a child gets when its parent dies (Linux <linux/prctl.h>).
+PR_SET_PDEATHSIG = 1
 
 PARSE_ERROR = -32700
 INVALID_REQUEST = -32600
@@ -165,7 +168,10 @@ def listing() -> list[dict]:
 
 def inside(root: Path, value: str, what: str) -> str:
     """`value` resolved against the root, links followed; refused when it lies outside."""
-    path = (root / value).resolve()
+    try:
+        path = (root / value).resolve()
+    except (ValueError, OSError) as exc:  # a NUL byte, a loop of links
+        raise Refused(f"refused: {what} {json.dumps(value)} is not a path: {exc}") from None
     if path != root and root not in path.parents:
         raise Refused(f"refused: {what} {value} is outside {root}, the folder this server was given")
     return str(path)
@@ -195,6 +201,10 @@ def command_line(root: Path, tool: str, arguments: dict) -> list[str]:
                 words.append(opt.flag)
             continue
         if opt.kind == "count":
+            # JSON Schema's "integer" matches any number with a zero fractional part (2020-12,
+            # draft-bhutton-json-schema-validation-01, 6.1.1 "type"): 3.0 is 3.
+            if isinstance(value, float) and value.is_integer():
+                value = int(value)
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
                 raise Refused(f"refused: {name} must be a whole number, 0 or more, not {json.dumps(value)}")
             words += [opt.flag, str(value)]
@@ -349,6 +359,7 @@ class Server:
                     cwd=self.root,
                     env=env,
                     start_new_session=True,
+                    preexec_fn=_dies_with(os.getpid()),
                 )
             except OSError as exc:
                 text = f"not run: workcenter {words[0]} could not start in {self.root}: {exc.strerror}"
@@ -359,6 +370,9 @@ class Server:
         for raw in proc.stdout:
             line = raw.decode("utf-8", errors="replace").rstrip("\r\n")
             lines.append(line)
+            with self.state:
+                if rid in self.cancelled:  # basic/utilities/cancellation: "Stop processing"
+                    continue
             if token is not None:
                 self.send(
                     {
@@ -422,6 +436,24 @@ def stop(proc: subprocess.Popen) -> None:
     threading.Thread(target=kill, daemon=True).start()
 
 
+def _dies_with(parent: int):
+    """A child's first step on Linux: SIGTERM to itself when the thread that started it dies, SIGKILL to
+    the server among the ways (prctl PR_SET_PDEATHSIG; the command passes SIGTERM on to its engines).
+    A server already gone between the fork and the prctl is caught by the parent pid. On another system
+    nothing is set, and a command can outlive a server killed by SIGKILL."""
+    try:
+        prctl = ctypes.CDLL(None, use_errno=True).prctl
+    except (OSError, AttributeError):
+        return None
+
+    def first():
+        prctl(PR_SET_PDEATHSIG, signal.SIGTERM, 0, 0, 0)
+        if os.getppid() != parent:
+            os.kill(os.getpid(), signal.SIGTERM)
+
+    return first
+
+
 def _valid_id(value) -> bool:
     return isinstance(value, str) or (isinstance(value, int) and not isinstance(value, bool))
 
@@ -439,7 +471,8 @@ def cmd_mcp(args) -> int:
         server.stop_all()
         raise SystemExit(128 + signum)
 
-    for signum in (signal.SIGTERM, signal.SIGHUP):
+    # SIGINT is a terminal's Ctrl-C: the same stop, exit 130, and no traceback.
+    for signum in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
         signal.signal(signum, stopped)
     return server.serve(sys.stdin.buffer)
 

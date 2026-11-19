@@ -43,10 +43,10 @@ needs_ngspice = engine(pytest.mark.skipif(shutil.which("ngspice") is None, reaso
 class Client:
     """A test client: starts `workcenter mcp ROOT` and speaks to it over its stdin and stdout."""
 
-    def __init__(self, root: Path, lock_dir: Path):
+    def __init__(self, root: Path, lock_dir: Path, every: str = "0.2"):
         env = dict(os.environ)
         env["WORKCENTER_LOCK_DIR"] = str(lock_dir)
-        env["WORKCENTER_LOCK_EVERY"] = "0.2"
+        env["WORKCENTER_LOCK_EVERY"] = every
         env.pop("WORKCENTER_LOCK_TICKET", None)
         env.pop("WORKCENTER_LOCK", None)
         self.proc = subprocess.Popen(
@@ -153,8 +153,8 @@ def lock_dir(tmp_path):
     return folder
 
 
-def served(root: Path, lock_dir: Path, request):
-    client = Client(root, lock_dir)
+def served(root: Path, lock_dir: Path, request, every: str = "0.2"):
+    client = Client(root, lock_dir, every)
 
     def done():
         if client.proc.poll() is None:
@@ -341,6 +341,10 @@ def test_a_waiting_gate_leaves_ping_answered_and_is_cancelled(tmp_path, lock_dir
     told = client.wait_for(lambda m: m.get("method") == "notifications/progress")
     assert told["params"]["progressToken"] == "s1" and told["params"]["progress"] == 1
     assert "waiting on the engine lock" in told["params"]["message"]
+    # The progress value "MUST increase with each notification" (basic/utilities/progress). The command
+    # says it still waits every WORKCENTER_LOCK_EVERY = 0.2 s, so a second line comes: 1 line, then 2.
+    again = client.wait_for(lambda m: m.get("method") == "notifications/progress")
+    assert again["params"]["progress"] > told["params"]["progress"]
     started = time.monotonic()
     assert client.call("ping", timeout=5)["result"] == {}
     assert time.monotonic() - started < 5
@@ -362,6 +366,10 @@ def test_a_waiting_gate_leaves_ping_answered_and_is_cancelled(tmp_path, lock_dir
         if msg is None:
             break
         late += [msg] if msg.get("id") == sim else []
+        late += [msg] if "stopped by signal" in msg.get("params", {}).get("message", "") else []
+    # Nothing more for the cancelled request, not even a progress notification of the line the command
+    # prints when the cancel's SIGTERM stops it (basic/utilities/cancellation: "Stop processing").
+    late += [m for m in client.kept if "stopped by signal" in m.get("params", {}).get("message", "")]
     assert late == [] and client.bad == []
     assert holder.poll() is None
 
@@ -415,6 +423,148 @@ def test_sigterm_stops_the_server_and_the_commands_it_started(tmp_path, lock_dir
     while waiting[0].exists():
         assert time.monotonic() < end, "the command outlived the server"
         time.sleep(0.05)
+
+
+def _waiting_sim(tmp_path: Path, lock_dir: Path, request, every: str = "0.2"):
+    """A served `sim` that waits on an engine lock held by a holder of the test's own: the client and the
+    /proc folder of the waiting command. `every`: seconds between the command's waiting lines."""
+    root = tmp_path / "root"
+    shutil.copytree(BOARDS / "pass-rc-divider", root)
+    env = dict(os.environ, WORKCENTER_LOCK_DIR=str(lock_dir))
+    env.pop("WORKCENTER_LOCK_TICKET", None)
+    holder = subprocess.Popen(
+        [sys.executable, str(LOCK_PY), "hold", "--what", "test holder", "--", "sleep", "120"], env=env
+    )
+    request.addfinalizer(lambda: (holder.kill(), holder.wait()))
+    end = time.monotonic() + 20
+    while not list(lock_dir.glob("*.held")):
+        assert time.monotonic() < end, "the holder never took the lock"
+        time.sleep(0.05)
+    client = served(root, lock_dir, request, every)
+    client.start()
+    client.request(
+        "tools/call", {"name": "sim", "arguments": {"project": "."}, "_meta": {"progressToken": 7}}
+    )
+    client.wait_for(lambda m: m.get("method") == "notifications/progress")
+    waiting = [p for p in Path("/proc").iterdir() if p.name.isdigit() and _runs_sim(p, root)]
+    assert len(waiting) == 1
+    request.addfinalizer(lambda: _kill(int(waiting[0].name)))
+    return client, waiting[0]
+
+
+def test_sigint_stops_the_commands_and_exits_130_without_a_traceback(tmp_path, lock_dir, request):
+    """A terminal's Ctrl-C is SIGINT. It stops the commands the server started, as SIGTERM does, and the
+    server exits as a shell reports a signal: 128 + 2 = 130. stderr carries no Python traceback."""
+    client, waiting = _waiting_sim(tmp_path, lock_dir, request)
+    client.proc.send_signal(2)
+    assert client.proc.wait(timeout=20) == 130
+    assert "Traceback" not in client.proc.stderr.read().decode(errors="replace")
+    end = time.monotonic() + 20
+    while _alive(waiting):
+        assert time.monotonic() < end, "the command outlived the server"
+        time.sleep(0.05)
+
+
+def test_sigkill_to_the_server_stops_the_commands_it_started(tmp_path, lock_dir, request):
+    """SIGKILL is the client's last step (basic/lifecycle, "Shutdown"); the server cannot trap it. Each
+    command learns that its parent died and stops: no command lives on to take the engine lock for a host
+    that is gone. The command writes its waiting line at the default interval, 30 s (enginelock.py EVERY),
+    so it is not stopped by a write into the dead server's pipe within the test's 20 s."""
+    client, waiting = _waiting_sim(tmp_path, lock_dir, request, every="30")
+    client.proc.kill()
+    assert client.proc.wait(timeout=20) == -9
+    end = time.monotonic() + 20
+    while _alive(waiting):
+        assert time.monotonic() < end, "the command outlived the server"
+        time.sleep(0.05)
+
+
+def test_a_path_with_a_nul_byte_is_refused_in_1_line(tmp_path, lock_dir, request):
+    """A NUL byte cannot be in a path. The call is refused as a tool execution error, in 1 line that
+    names the argument (server/tools, "Error Handling"), not answered with a protocol error."""
+    client = served(tmp_path, lock_dir, request)
+    client.start()
+    for args, named in (({"project": "x\u0000"}, "project"), ({"out": "x\u0000"}, "out")):
+        reply = client.call("tools/call", {"name": "drc", "arguments": args})
+        assert "result" in reply, reply
+        lines = tool_text(reply["result"])
+        assert reply["result"]["isError"] is True and len(lines) == 1, lines
+        assert lines[0].startswith(f"refused: {named} ") and "not a path" in lines[0], lines
+    assert client.close() == 0
+
+
+def test_a_count_with_a_zero_fractional_part_is_a_whole_number(tmp_path):
+    """The schema says `"type": "integer"`, which "matches any number with a zero fractional part" (JSON
+    Schema 2020-12, draft-bhutton-json-schema-validation-01, 6.1.1 "type"). So 3.0 passes as 3, and
+    3.5 and -1.0 are refused."""
+    import mcpserver
+
+    words = mcpserver.command_line(tmp_path, "autoroute", {"passes": 3.0})
+    assert words == ["autoroute", str(tmp_path), "--passes", "3"]
+    for value in (3.5, -1.0):
+        with pytest.raises(mcpserver.Refused):
+            mcpserver.command_line(tmp_path, "autoroute", {"passes": value})
+
+
+STUB = """\
+import subprocess, sys
+child = subprocess.Popen(["sleep", "120"])
+print(child.pid, flush=True)
+child.wait()
+"""
+
+
+class Collector:
+    """The server's stdout in the test's own process: each message it writes, parsed, into a queue."""
+
+    def __init__(self):
+        self.inbox: queue.Queue = queue.Queue()
+
+    def write(self, data: bytes):
+        self.inbox.put(json.loads(data))
+
+    def flush(self):
+        pass
+
+
+def test_a_cancel_stops_the_commands_whole_process_group(tmp_path, request):
+    """A command's engines are its children. A cancel stops them with it. A stub in place of the CLI
+    starts `sleep 120`, prints its pid and waits on it; after the cancel the sleep is gone too, not only
+    the stub."""
+    import mcpserver
+
+    stub = tmp_path / "stub.py"
+    stub.write_text(STUB)
+    out = Collector()
+    server = mcpserver.Server(tmp_path, out=out, cli=stub)
+    call = {"name": "doctor", "arguments": {}, "_meta": {"progressToken": "g"}}
+    server.handle(json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": call}).encode())
+    told = out.inbox.get(timeout=20)
+    pid = int(told["params"]["message"])
+    request.addfinalizer(lambda: _kill(pid))
+    assert _alive(Path(f"/proc/{pid}"))
+    cancel = {"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {"requestId": 1}}
+    server.handle(json.dumps(cancel).encode())
+    end = time.monotonic() + 20
+    while _alive(Path(f"/proc/{pid}")):
+        assert time.monotonic() < end, "the command's child outlived the cancel"
+        time.sleep(0.05)
+
+
+def _alive(proc: Path) -> bool:
+    """A process that exists and is not a zombie waiting to be reaped."""
+    try:
+        stat = (proc / "stat").read_text()
+    except OSError:
+        return False
+    return stat.rsplit(")", 1)[1].split()[0] != "Z"
+
+
+def _kill(pid: int):
+    try:
+        os.kill(pid, 9)
+    except OSError:
+        pass
 
 
 def _runs_sim(proc: Path, root: Path) -> bool:

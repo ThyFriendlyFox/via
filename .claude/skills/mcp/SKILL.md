@@ -65,6 +65,8 @@ later does not. stdio only: no HTTP, no authentication.
    - 1 line `refused: <tool> takes ..., not ...` or `refused: <name> must be
      ...`: an argument the tool does not take, or of the wrong kind. Nothing
      ran. Fix the argument.
+   - 1 line `refused: <what> "<value>" is not a path: ...`: the value cannot
+     be a path, for example it holds a NUL byte. Nothing ran.
 5. A long tool (`gates`, `sim`, `export`, `autoroute`) waits its turn on the
    machine's engine lock, as the command does. Meanwhile the server still
    answers `ping` and other calls.
@@ -75,7 +77,10 @@ later does not. stdio only: no HTTP, no authentication.
      The command and its engines stop, and no answer comes for that id.
 6. End the session: the host closes the server's stdin. Calls still running
    are answered first, then the server exits 0. A SIGTERM stops every
-   command it started and the server exits 143.
+   command it started and the server exits 143; a SIGINT (Ctrl-C) does the
+   same and exits 130. On Linux a SIGKILL to the server stops each command
+   too: the command gets SIGTERM when its parent dies. On another system a
+   command can outlive a server killed by SIGKILL.
 
 ## What it does not do
 
@@ -89,5 +94,6 @@ later does not. stdio only: no HTTP, no authentication.
 `tests/test_mcp.py` drives the server with a scripted JSON-RPC session over
 a pipe: the 7 tools and their schemas, each option a flag of its command, the
 refusals, the protocol's error codes, a `ping` answered while `sim` waits on
-the engine lock, a cancel, stdin closed, SIGTERM, and `erc` and `drc`
-answering the same lines and exit codes as the commands.
+the engine lock, a cancel that stops the command's whole process group and
+sends nothing after it, stdin closed, SIGTERM, SIGINT and SIGKILL, and `erc`
+and `drc` answering the same lines and exit codes as the commands.
