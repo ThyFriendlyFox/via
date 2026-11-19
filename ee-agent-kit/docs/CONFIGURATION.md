@@ -39,7 +39,7 @@ unset variable never causes a failure.
 
 | Field | Type | Default | Use |
 |---|---|---|---|
-| `WORKCENTER_ROOT` | path | `/opt/workcenters/ee` | Locates the venv and the JAR. |
+| `WORKCENTER_ROOT` | path | `/opt/workcenters/ee` | Locates the venv and the JAR. Doctor's `requirements` row holds the venv `$WORKCENTER_ROOT/venv` to the `requirements.txt` of the checkout the `workcenter` script lives in; the venv's Python is asked for its `sys.path` and marker environment (up to 60 s), and no pip runs. |
 | `FREEROUTING_JAR` | path | `$WORKCENTER_ROOT/freerouting/freerouting.jar` | The autoroute engine. |
 | `FREEROUTING2_JAR` | path | `$WORKCENTER_ROOT/freerouting2/freerouting.jar` | The jar of `--router freerouting2`, FreeRouting 2.5.0. |
 | `FREEROUTING2_JAVA` | command | `$WORKCENTER_ROOT/java25/bin/java` | The Java that runs it; Java 25 or newer, else the router is absent. |
@@ -347,7 +347,7 @@ part by `mpn` or `mpns` and whose `source.sha256` is a row of
 | `--rev REV` | `workcenter image`, `image.py tag` | `HEAD` | The commit whose `Dockerfile`, `install.sh` and `requirements.txt` make the content tag. |
 | `--repo DIR`, `--owner OWNER`, `--json`, `--github-output` | `image.py tag` | repo: Via's checkout | `--owner` also prints the image's name under that owner, in lower case; `--github-output` appends `tag=` (and `image=`) to `$GITHUB_OUTPUT`. |
 | `--base REV`, `--head REV`, `--enabled VALUE` | `image.py decide`, with `--repo DIR`, `--owner OWNER` (required) and `--github-output` | base: required (empty: none); head: `HEAD`; repo: the working folder | Where CI's `full` job runs: `where=image` and the image by digest, or `where=install`, with the reason. `--enabled` is the value of `CI_FULL_IN_IMAGE`. |
-| `--out FILE`, `--src DIR`, `--expect-tag TAG`, `--revision REV` | `image.py record` (the Dockerfile's last RUN) | out: `/opt/workcenters/ee/image.json`; src: Via's checkout | Writes the image's record, with the tools' versions (kicad, ngspice, java, python, freerouting, openems, node); exit 1 and nothing written on a doctor that does not pass, on an image without node, or on another tag than `--expect-tag`. |
+| `--out FILE`, `--src DIR`, `--expect-tag TAG`, `--revision REV` | `image.py record` (the Dockerfile's last RUN) | out: `/opt/workcenters/ee/image.json`; src: Via's checkout | Writes the image's record, with the tools' versions (kicad, ngspice, java, python, freerouting, openems, node); exit 1 and nothing written on a doctor that does not pass, on an image without node, on an image whose doctor row `requirements` is not ok (a pin missing, at another version, or whose package cannot be read) or could not be checked, or on another tag than `--expect-tag`. |
 | `--src DIR`, `--record FILE` | `image.py check` (CI, inside the image) | src: the working folder; record: `/opt/workcenters/ee/image.json` | Exit 1 when a toolchain file of the checkout is not the one the image was built from. |
 
 ## The workflow Board (`.github/workflows/board.yml`, `tools/board.py`)
