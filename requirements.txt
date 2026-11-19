@@ -1,11 +1,11 @@
 # Python tooling for the EE Workcenter venv (/opt/workcenters/ee/venv).
 # The `workcenter` CLI itself uses the standard library only.
 kicad-python==0.8.0
-pytest==9.1.1
-ruff==0.17.1
+pytest==9.2.0
+ruff==0.17.5
 # kistack's layout-placement checks (`workcenter placement`), at kistack's own pins
 shapely==2.2.0
-numpy==2.5.4
+numpy==2.5.5
 # Gerber layers as images, for kistack's Gerber review (`pygerber raster-2d`)
 pygerber==2.4.3
 # A PDF page's vector paths for `workcenter curve` (a datasheet's curves read from the drawing)
