@@ -620,7 +620,7 @@ When: a change is about to be called done.
 
 1. Before each push to a work branch of the workcenter, run the fast
    checks, `make check`: `make -C /path check TESTS="<the test files of what the change
-   touches>"`. It runs `make lint` and the kit's own tests, starts no
+   touches>"`. It runs `make lint`, the gate's kit checks (`make kit`) and the kit's own tests, starts no
    engine, takes no lock, and does not need the machine alone. The whole
    health gate, `make verify`, runs on GitHub (step 4). For a board,
    `workcenter gates .` GREEN and the project's own CI checks run locally
@@ -632,13 +632,14 @@ When: a change is about to be called done.
 2. Chain the push behind the verdict itself, never behind a look at the
    log: `make -C /path check TESTS="..." && git push ...`. A `tail`
    succeeds whatever the log says. Every check you run before a push is in
-   the chain (`ruff check ... && make test && git push`); a check whose
+   the chain (`make -C /path check TESTS="..." && git push ...`); a check whose
    result only prints is not a gate.
 3. Push, then confirm the remote holds it: `git ls-remote`.
-4. `main` takes no commit that `make verify` did not pass on that exact
-   commit (a change `make scope` calls `fast`: `make verify-site`). On
-   GitHub that is CI's `full` job: the pull request's `verdict` check
-   green on its head commit. A work branch with no pull request asks for
+4. `main` takes no commit that its gate did not pass on that exact
+   commit: `make verify` for a change `make scope` calls `full`, and
+   `make verify-site` for one it calls `fast`. On GitHub that is CI's
+   `fast` job, and its `full` job for a full change: the pull request's
+   `verdict` check green on its head commit. A work branch with no pull request asks for
    a run by hand: `gh workflow run ci.yml --ref <branch>`, which is always
    `full`. Watch CI to the end; red CI is work now, not later. Until
    `verdict` is green on a commit, nobody merges it, releases from it, or

@@ -5,7 +5,7 @@ file explains them and holds the repository settings that are not files.
 
 | File | Trigger | Does |
 |---|---|---|
-| `ci.yml` | push to `main`, every PR, manual | `fast` on every change: no toolchain, `make verify-site` (KiCad's libraries hidden, no engine started). `full`: the image of this commit's toolchain when the registry gives it, else `tools/ci/apt_archive.sh` (apt asks Ubuntu's own archive, not the runner's regional mirror), then `sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh`; then `make verify` (tools/ci/README.md, "Where `full` runs"). `verdict` passes when `fast` passed and, for a change `tools/ci/scope.py` calls full, `full` too. |
+| `ci.yml` | push to `main`, every PR, manual (`gh workflow run ci.yml --ref <branch>`: always `full`, the gate of a branch with no pull request) | `fast` on every change: no toolchain, `make verify-site` (KiCad's libraries hidden, no engine started). `full`: the image of this commit's toolchain when the registry gives it, else `tools/ci/apt_archive.sh` (apt asks Ubuntu's own archive, not the runner's regional mirror), then `sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh`; then `make verify` (tools/ci/README.md, "Where `full` runs"). `verdict` passes when `fast` passed and, for a change `tools/ci/scope.py` calls full, `full` too. |
 | `nightly.yml` | 06:17 UTC daily | `tools/ci/apt_archive.sh`, then `sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh` then `make verify`, always by install.sh. Keeps 1 `ci-failure` issue in step with the nights (`tools/ci/nightly_issue.py`): a failed night opens it or adds 1 comment with the run and the gate's `why:` lines; a passed night closes it with 1 comment naming the run; a second open one is closed as a duplicate of the oldest (tools/ci/README.md, "The nightly's `ci-failure` issue"). Catches a moved PPA, a new KiCad point release, a broken dependency. |
 | `image.yml` | PR on the files the build reads, every push to `main`, `v*.*.*`, Monday 04:17 UTC, manual | Builds the image on amd64 and arm64 from install.sh, with CI's 2 bounds of its apt step as build arguments, checks it with doctor and the gates as a user; pushes to `ghcr.io/<owner>/via` except on a PR. |
 | `release.yml` | tag `v*.*.*` | Publishes the GitHub Release with generated notes (the image comes from `image.yml`). |
@@ -15,27 +15,20 @@ file explains them and holds the repository settings that are not files.
 
 ## Where the health gate runs
 
-`main` takes no commit that `make verify` did not pass on that exact
-commit. The gate runs on GitHub, in the `full` job of `ci.yml`. It is the
+`main` takes no commit that its gate did not pass on that exact commit. The gate is `make verify` for a change `make scope` calls `full`, and `make verify-site` for one it calls `fast`. The full gate runs on GitHub, in the `full` job of `ci.yml`. It is the
 same `make verify` as on a machine. The owner chose this on 2026-11-19.
 
 | The change | Before its push | On GitHub | What may merge |
 |---|---|---|---|
-| Any change, pushed to a work branch with a pull request | `make check TESTS="<the test files of what it touches>"` | The push starts `ci.yml`. The `scope` job picks `fast` or `full`. `verdict` is green only when that job passed. | The head commit, when `verdict` is green on it and the branch holds `main`'s tip. |
+| Any change, pushed to a work branch with a pull request | `make check TESTS="<the test files of what it touches>"` | The push starts `ci.yml`. The `scope` job picks `fast` or `full`. `fast` runs on every change; `verdict` is green only when `fast` passed and, for a `full` change, `full` too. | The head commit, when `verdict` is green on it and the branch holds `main`'s tip. |
 | A work branch with no pull request yet | `make check TESTS="..."` | A run by hand: `gh workflow run ci.yml --ref <branch>` (`workflow_dispatch`). It is always `full`. | Nothing merges without a pull request. A green `verdict` lets others start work from that commit. |
 | A change `make scope` calls `fast`, pushed straight to `main` | `make verify-site` | The push to `main` runs `ci.yml`; its `fast` job runs `make verify-site` again. | It is on `main` already. |
-| A release | The release commit goes through a pull request like any change. | Its `verdict` on `main`. | The tag goes only on a commit whose `verdict` is green (RELEASING.md step 1). |
+| A release | The release commit goes through a pull request like any change. | Its `verdict` on `main`. | The tag goes only on a commit whose `full` job passed. A release commit is `fast`, so ask for a run by hand on `main`: `gh workflow run ci.yml --ref main` (RELEASING.md step 4). |
 | Any change, where there is no CI (a fork without Actions, an offline machine) | `make verify`, alone on the machine (`ee-agent-kit/lead/gate-and-push.sh` pushes only on `VERIFY GREEN`) | Nothing. | The commit that printed `VERIFY GREEN`. |
 
-`make check` is `make lint`, then pytest on the kit's own tests and the
-files in `TESTS`: the 2 copies of the lead's skills
-(`tests/test_lead_skills.py`), the commits' authors
-(`tests/test_docs.py`), and this rule's documents
-(`tests/test_gate_rule.py`). Engine starts are refused and the tests
-marked `engine` are left out, as in `make verify-site`. It takes no lock,
-so it does not need the machine alone. With no `TESTS` it took 3.4 s
-here: 3 runs of 3.38 s to 3.45 s on 4 processors, with helpers at work
-(load average 2.1), on 2026-11-19.
+`make check` is `make lint`, then the gate's kit checks (`make kit`, `verify/verify.sh kit`: the 2 copies of every kit skill, each skill's frontmatter, CLAUDE.md = AGENTS.md, every mistake's process and every process's Done when; 0.6 s to 0.75 s here), then pytest on the kit's own tests and the files in `TESTS`: the commits' authors (`tests/test_docs.py`), the 2 copies of the lead's skills (`tests/test_lead_skills.py`), and this rule's documents and kit checks (`tests/test_gate_rule.py`). Engine starts are refused and the tests marked `engine` are left out, as in `make verify-site`. It takes no lock, so it does not need the machine alone. With no `TESTS` it took 8.2 s to 14.5 s here, 3 runs on 4 processors with helpers at work (load average 5.2 to 6.5), on 2026-11-19.
+
+When CI itself cannot run for a cause outside the change, the gate is `make verify` on the machine on the exact commit, by the same rule as a machine with no CI. On 2026-11-19 at 07:14 UTC a package host was down: `apt-get update` did not end within 120 s on the runner, 3 tries, and the job stopped before any test.
 
 The rules that follow from it:
 

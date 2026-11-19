@@ -39,6 +39,12 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-19 — The full health gate runs on GitHub
+
+The morning's gates showed the cost of a gate on the machine. It needs the machine alone. The gate push24 waited 50 min 31 s for quiet, and its 1-hour limit ended it. The release's gates made their locks from 05:06:51 UTC, and the one that passed started its tests at 05:26:16 and ran 906 s. While a gate waits or runs, no helper may start a test. CI's `full` job then ran the same `make verify` on the same commit, 9beca5b, in 14 min 58 s, while the machine went on working. So every landing ran the whole suite 2 times. The lead asked the owner to push the candidate, let GitHub test it, and merge only on green. Told that only an untested commit on a work branch changes, never on main, the owner answered: "sure, keep it well documented. Make sure the project board is reflecting these". Now `main` takes no commit that its gate did not pass on that exact commit, and a push to a work branch needs `make check`. A review then found that the first wording was false for a `fast` change and for a release (the release commit of v0.1.0 is `fast`), that a pull request could merge without `main`'s tip, and that `make check` passed a drifted copy of a kit skill. The rule now names both gates, the merge names its head, a tag needs a `full` run, and `make check` runs the gate's kit checks.
+
+Evidence: CI runs 44466890200, 44428908528 and 44481658835; the gates push24 and push28 (M273, M274, M278); `tests/test_gate_rule.py`, `tests/test_ci_dispatch.py`; branch `wip/ci-gate`, 6bee1ce.
+
 ## 2026-11-19 — Test sessions wait for each other and do not fail for it
 
 Helpers ran tests in their own worktrees at once. A test that compares the whole of stderr failed when another worktree's run held the engine lock: the waiting command printed 2 lines first. 1 run of 17 test files ended `2 failed, 548 passed, 1 skipped in 1207.75s`, and `tests/test_ci.py` read `took the engine lock after 24 s` as its last line 3 times. The lock guards the machine's load: engines started beside a health gate killed the machine (M124). So the lock stays shared, and a test session sends the 2 lines to a file of its own (`WORKCENTER_LOCK_LOG`, named in `tests/conftest.py`); its summary prints them. A planted holder failed the 5 tests before the change (6 failed with the new test) and failed none after it (7 passed).

@@ -376,7 +376,7 @@ images are drawn.
 | Path | What |
 |---|---|
 | `install.sh` | The only source of the toolchain. |
-| `Makefile`, `verify/` | `make verify`: the repository's health gate, one command; `verify/testshards.py` runs its tests in shards side by side by `verify/shards.csv` (`verify/README.md`). |
+| `Makefile`, `verify/` | `make verify`: the repository's health gate, one command, run by CI's `full` job; `make check`: the fast checks before a push to a work branch, with `make kit`, the gate's kit checks alone; `verify/testshards.py` runs its tests in shards side by side by `verify/shards.csv` (`verify/README.md`). |
 | `tools/workcenter` | The CLI and the gates. Standard library only. |
 | `tools/kicadgen.py` | Design a board in Python from the KiCad libraries; writes the KiCad project and routes it headless. |
 | `tools/simcorners.py`, `tools/freqplan.py`, `tools/thermal.py`, `tools/simneeds.py` | The corners a deck runs at; the frequency plan; each part's junction temperature at every run; the decks the schematic asks for. Read by the SIM gate. |
@@ -436,7 +436,7 @@ images are drawn.
 
 ## Working on this repository
 
-`main` takes no commit that `make verify` did not pass on that exact commit: CI's `full` job runs it on each pull request, and a pull request merges only when its `verdict` check is green on its head (with no CI, run `make verify` on the machine). A push to a work branch needs only `make check`. A change `make scope` calls `fast` may be pushed to `main` on `make verify-site`. [`ee-agent-kit/CI.md`](ee-agent-kit/CI.md#where-the-health-gate-runs) shows what runs where.
+`main` takes no commit that its gate did not pass on that exact commit. The gate is `make verify` for a change `make scope` calls `full`, and `make verify-site` for one it calls `fast`; on GitHub it is the `verdict` check. A pull request merges only when `verdict` is green on its head and the branch holds `main`'s tip, by `gh pr merge <number> --merge --match-head-commit <sha>` (with no CI, run `make verify` on the machine). A push to a work branch needs only `make check`. A change `make scope` calls `fast` may be pushed straight to `main` on `make verify-site`. [`ee-agent-kit/CI.md`](ee-agent-kit/CI.md#where-the-health-gate-runs) shows what runs where.
 [`ee-agent-kit/AGENTS.md`](ee-agent-kit/AGENTS.md) is binding;
 [`ee-agent-kit/ROADMAP.md`](ee-agent-kit/ROADMAP.md) decides what gets built.
 [`ee-agent-kit/CONTRIBUTING.md`](ee-agent-kit/CONTRIBUTING.md) has the rules
