@@ -366,10 +366,12 @@ def test_the_default_routers_command_line_is_the_one_before_the_interface(
 ):
     """The default router keeps its command line: FreeRouting 1.9.0 gets, word for word, what it got
     before the interface, with and without threads, with a display and under xvfb-run. Only the Java
-    is now the one `JAVA` names (the CLI's `autoroute` reads it too)."""
+    is now the workcenter's (routers.workcenter_java, which the CLI's `autoroute` reads too): with no
+    `JAVA` and no record of install.sh's (an install root of the test's own), `java` from PATH."""
     jar = tmp_path / "freerouting.jar"
     dsn, ses = tmp_path / "rows.dsn", tmp_path / "rows.ses"
     monkeypatch.setenv("FREEROUTING_JAR", str(jar))
+    monkeypatch.setenv("WORKCENTER_ROOT", str(tmp_path))
     monkeypatch.delenv("JAVA", raising=False)
     if display:
         monkeypatch.setenv("DISPLAY", ":0")

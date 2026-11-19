@@ -1361,6 +1361,134 @@ def test_skip_apt_runs_nothing(tmp_path):
     assert calls == []
 
 
+# The java step. The apt step's package openjdk-21-jre-headless puts its java at
+# <JVM_DIR>/java-21-openjdk-<arch>/bin/java. CI run 44444183056 (2026-11-19): apt set up 21.0.13.1, and
+# doctor then read `absent   java         17.0.21`, the runner's own Java first on PATH. Each test puts a
+# stand-in JVM there (it writes `jvm-java` to the calls file) and a stand-in `java` on the closed PATH.
+JVM_JAVA = """#!/bin/bash
+printf 'jvm-java %s\\n' "$*" >> "$STUB_DIR/calls"
+echo 'openjdk version "@VERSION@" 2025-10-21' >&2
+"""
+ENGINES_MD = "FreeRouting needs Java 21 or newer (ee-agent-kit/docs/ENGINES.md)"
+
+
+def java_step(tmp_path: Path, jvm: str = "", on_path: str = "", require: str = "1", stale: bool = False):
+    """Run step_java with a JVM of version `jvm` under JVM_DIR (none when empty) and a `java` of version
+    `on_path` on the closed PATH (none when empty). Returns (exit code, stdout, stderr, calls, record)."""
+    answers = {"java": f"echo 'openjdk version \"{on_path}\" 2025-10-21' >&2"} if on_path else {}
+    env = {**folder(tmp_path, answers), "REQUIRE_FREEROUTING": require}
+    if jvm:
+        exe = tmp_path / "jvm" / "java-21-openjdk-amd64" / "bin" / "java"
+        exe.parent.mkdir(parents=True)
+        exe.write_text(JVM_JAVA.replace("@VERSION@", jvm), encoding="utf-8")
+        exe.chmod(0o755)
+    record = tmp_path / "root" / "java.path"
+    if stale:
+        record.parent.mkdir()
+        record.write_text("/gone/bin/java\n", encoding="utf-8")
+    proc = subprocess.run(
+        [BASH, "-c", script(INSTALL, "step_java; echo NEXT STEP")],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=tmp_path,
+        timeout=60,
+        check=False,
+    )
+    calls = calls_of(tmp_path, expect={"java", "jvm-java", "mkdir", "rm"})
+    return proc.returncode, proc.stdout, proc.stderr, calls, record
+
+
+def test_the_installed_jvm_is_recorded_whatever_stands_first_on_path(tmp_path):
+    """The runner of run 44444183056: a 21 from the apt step under JVM_DIR, a 17 first on PATH. The step
+    records the 21's path for the workcenter and passes with REQUIRE_FREEROUTING=1; the 17 is not asked."""
+    code, out, err, calls, record = java_step(tmp_path, jvm="21.0.13", on_path="17.0.21", stale=True)
+    java = tmp_path / "jvm" / "java-21-openjdk-amd64" / "bin" / "java"
+    assert code == 0, err
+    assert record.read_text(encoding="utf-8") == f"{java}\n"
+    assert out.splitlines() == [
+        f"[install] java: {java} (the JVM of the apt step's openjdk-21-jre-headless, recorded in {record}),"
+        " Java 21: the workcenter runs it",
+        "NEXT STEP",
+    ]
+    assert of(calls, "jvm-java") == ["jvm-java -version"] and of(calls, "java") == []
+
+
+def test_with_no_installed_jvm_a_java_21_on_path_is_used_and_no_record_is_left(tmp_path):
+    """No JVM under JVM_DIR (an image whose java came another way): the java on PATH, a 21, passes. An
+    earlier run's record is removed: the workcenter then reads PATH, as the step said."""
+    code, out, err, calls, record = java_step(tmp_path, on_path="21.0.9", stale=True)
+    assert code == 0, err
+    assert not record.exists()
+    assert out.splitlines()[0] == (
+        f"[install] java: {tmp_path}/bin/java (the first java on PATH: no JVM of the apt step under "
+        f"{tmp_path}/jvm), Java 21: the workcenter runs it"
+    )
+    assert of(calls, "java") == ["java -version"]
+
+
+ADVICE = (
+    "[install] Install openjdk-21-jre-headless, the apt step's package, so that "
+    "its JVM is in {jvm} (java-21-openjdk-<arch>), then run the script again: install.sh records it for "
+    "the workcenter."
+)
+
+
+@pytest.mark.parametrize(
+    ("jvm", "on_path", "what"),
+    [
+        (
+            "",
+            "17.0.21",
+            "{tmp}/bin/java (the first java on PATH: no JVM of the apt step under {tmp}/jvm), Java 17",
+        ),
+        ("", "", "no java (no JVM of the apt step under {tmp}/jvm, and none on PATH)"),
+        (
+            "17.0.2",
+            "21.0.9",
+            "{tmp}/jvm/java-21-openjdk-amd64/bin/java (the JVM of the apt step's openjdk-21-jre-headless, "
+            "recorded in {tmp}/root/java.path), Java 17",
+        ),
+    ],
+    ids=["only a 17 on PATH", "no java", "the recorded JVM is a 17"],
+)
+def test_require_freerouting_ends_red_when_the_workcenters_java_is_not_freeroutings(
+    tmp_path, jvm, on_path, what
+):
+    """REQUIRE_FREEROUTING=1 and the java the step leaves for the workcenter is older than 21, or there is
+    none: the step stops with the java it named, the Java FreeRouting needs, and what to do."""
+    code, out, err, calls, record = java_step(tmp_path, jvm=jvm, on_path=on_path)
+    assert code == 1
+    assert "NEXT STEP" not in out
+    named = what.format(tmp=tmp_path)
+    assert err.splitlines()[-2:] == [
+        f"[install] ERROR: java: the workcenter would run {named}; {ENGINES_MD}, and REQUIRE_FREEROUTING=1",
+        ADVICE.format(jvm=tmp_path / "jvm"),
+    ]
+
+
+def test_without_require_freerouting_an_old_java_is_a_warning(tmp_path):
+    """REQUIRE_FREEROUTING=0, only a 17 on PATH: a warning that names it, and the run goes on."""
+    code, out, err, calls, record = java_step(tmp_path, on_path="17.0.21", require="0")
+    assert code == 0, err
+    assert out.splitlines()[-1] == "NEXT STEP"
+    assert err.splitlines() == [
+        f"[install] WARN: java: the workcenter would run {tmp_path}/bin/java (the first java on PATH: no JVM"
+        f" of the apt step under {tmp_path}/jvm), Java 17; {ENGINES_MD}; doctor says java is absent until"
+        " `sudo ./install.sh` records a Java 21"
+    ]
+
+
+def test_install_sh_and_doctor_hold_freerouting_to_the_same_java():
+    """install.sh's JAVA_MIN and tools/routers.py's JAVA_MIN, which doctor reads, are 1 number."""
+    import sys
+
+    sys.path.insert(0, str(ROOT / "tools"))
+    import routers
+
+    assert assigned("JAVA_MIN", env=False) == routers.JAVA_MIN == 21
+
+
 # The first step (step_boot, from the container image's piece) looks for these 5 tools and the
 # certificates file. curl and gpg are stand-ins of every test; git, make and cc are stood in here.
 BOOT_TOOLS = {"git": "exit 0", "make": "exit 0", "cc": "exit 0"}
@@ -1554,7 +1682,7 @@ def test_sourcing_the_script_leaves_the_callers_shell_options(tmp_path):
 
 def test_main_runs_every_step_in_order_and_hands_over_to_the_doctor(tmp_path):
     """main() as it runs: each step replaced by 1 that logs its name, the root check by `true` in a copy.
-    The 6 steps run in their order, the first step (step_boot, a bare Ubuntu's tools) before the apt
+    The 7 steps run in their order, the first step (step_boot, a bare Ubuntu's tools) before the apt
     step, and the run ends with `workcenter doctor` and its exit code."""
     text = INSTALL.read_text(encoding="utf-8")
     root_check = '[[ "$EUID" -eq 0 ]] || die "run as root (sudo ./install.sh)"'
@@ -1562,7 +1690,15 @@ def test_main_runs_every_step_in_order_and_hands_over_to_the_doctor(tmp_path):
     copy = tmp_path / "src" / "install.sh"
     copy.parent.mkdir()
     copy.write_text(text.replace(root_check, "true"), encoding="utf-8")
-    steps = ["step_boot", "step_apt", "step_freerouting", "step_openems", "step_python", "step_link"]
+    steps = [
+        "step_boot",
+        "step_apt",
+        "step_freerouting",
+        "step_java",
+        "step_openems",
+        "step_python",
+        "step_link",
+    ]
     others = ["step_java25", "step_freerouting2", "step_chip"]
     body = "\n".join(f'{s}() {{ log "ran {s}"; }}' for s in steps + others) + "\nmain"
     env = folder(tmp_path, {"python3": f"{DRAINS}exit 5"})
@@ -1641,7 +1777,7 @@ def literal_paths(text: str) -> list[tuple[str, str]]:
 # must start with 1 of these, or be /dev/null. A program called by a path (not by its name on the closed
 # PATH) passes no fence either: its path must start with 1 of these too. Each assignment of a local of
 # BUILT is held to the same rule, so that the name cannot carry another path.
-MOVED = {"WC_ROOT", "KICAD_KEYRING", "KICAD_SOURCES", "WORKCENTER_LINK"}
+MOVED = {"WC_ROOT", "KICAD_KEYRING", "KICAD_SOURCES", "WORKCENTER_LINK", "JVM_DIR"}
 BUILT = {"dir", "root", "venv", "env", "stamp", "deb", "jar", "tgz", "kit", "errors", "shown", "py"}
 INSIDE = re.compile(r'^"?\$\{?(' + "|".join(sorted(MOVED | BUILT)) + r")\b")
 # What a local of BUILT may be set to besides a path under INSIDE: a name on the closed PATH, a temp file.

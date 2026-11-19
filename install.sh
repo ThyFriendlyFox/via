@@ -666,6 +666,52 @@ step_freerouting() {
   log "freerouting: ${jar}"
 }
 
+# The java the workcenter runs (tools/routers.py, workcenter_java): the JVM of the apt step's package
+# openjdk-21-jre-headless (BASE_PACKAGES), by the path this step records in WC_ROOT/java.path, whatever
+# java stands first on PATH; the java on PATH only when no such JVM is there. On GitHub's runner the first
+# java on PATH is the runner's own: in CI run 44444183056 apt set up openjdk-21-jre-headless 21.0.13.1,
+# and doctor then read `absent   java         17.0.21`. FreeRouting's Java is 21
+# (ee-agent-kit/docs/ENGINES.md); doctor holds it to JAVA_MIN in tools/routers.py, the same number.
+JAVA_MIN="21"
+step_java() {
+  local jvm found="" said="" major="" what re='version "([0-9]+)'
+  for jvm in "${JVM_DIR}/java-21-openjdk-"*; do
+    if [[ -x "${jvm}/bin/java" ]]; then
+      found="${jvm##*/}"
+      break
+    fi
+  done
+  mkdir -p "$WC_ROOT"
+  if [[ -n "$found" ]]; then
+    said="$("${JVM_DIR}/${found}/bin/java" -version 2>&1 || true)"
+    printf '%s\n' "${JVM_DIR}/${found}/bin/java" > "${WC_ROOT}/java.path"
+    what="${JVM_DIR}/${found}/bin/java (the JVM of the apt step's openjdk-21-jre-headless, recorded in ${WC_ROOT}/java.path)"
+  else
+    # No record: the workcenter reads PATH, as this step says.
+    rm -f "${WC_ROOT}/java.path"
+    if command -v java > /dev/null 2>&1; then
+      said="$(java -version 2>&1 || true)"
+      what="$(command -v java) (the first java on PATH: no JVM of the apt step under ${JVM_DIR})"
+    else
+      what="no java (no JVM of the apt step under ${JVM_DIR}, and none on PATH)"
+    fi
+  fi
+  if [[ "$said" =~ $re ]]; then
+    major="${BASH_REMATCH[1]}"
+    what+=", Java ${major}"
+  fi
+  if [[ -n "$major" ]] && ((major >= JAVA_MIN)); then
+    log "java: ${what}: the workcenter runs it"
+    return 0
+  fi
+  what="java: the workcenter would run ${what}; FreeRouting needs Java ${JAVA_MIN} or newer (ee-agent-kit/docs/ENGINES.md)"
+  if [[ "$REQUIRE_FREEROUTING" == "1" ]]; then
+    stop "${what}, and REQUIRE_FREEROUTING=1" \
+      "Install openjdk-21-jre-headless, the apt step's package, so that its JVM is in ${JVM_DIR} (java-21-openjdk-<arch>), then run the script again: install.sh records it for the workcenter."
+  fi
+  warn "${what}; doctor says java is absent until \`sudo ./install.sh\` records a Java ${JAVA_MIN}"
+}
+
 openems_fail() {
   if [[ "$REQUIRE_OPENEMS" == "1" ]]; then
     die "openems: $* and REQUIRE_OPENEMS=1"
@@ -912,6 +958,7 @@ main() {
   step_boot
   step_apt
   step_freerouting
+  step_java
   step_openems
   step_python
   step_link

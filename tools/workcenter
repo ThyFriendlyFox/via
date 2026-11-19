@@ -41,7 +41,8 @@ SRC_DIR = Path(__file__).resolve().parent.parent
 FREEROUTING_JAR = Path(os.environ.get("FREEROUTING_JAR", WC_ROOT / "freerouting" / "freerouting.jar"))
 KICAD_CLI = os.environ.get("KICAD_CLI", "kicad-cli")
 NGSPICE = os.environ.get("NGSPICE", "ngspice")
-JAVA = os.environ.get("JAVA", "java")
+# The java is decided in 1 place, tools/routers.py's workcenter_java(): JAVA, else the JVM install.sh
+# recorded, else the first java on PATH.
 
 EXIT_PASS, EXIT_FAIL, EXIT_SKIP = 0, 1, 2
 GATE_ORDER = ("erc", "drc", "sim", "export")
@@ -2347,8 +2348,9 @@ def gate_autoroute(
             f"engine missing: {FREEROUTING_JAR}",
             {"engine_missing": str(FREEROUTING_JAR)},
         )
-    if not shutil.which(JAVA):
-        return Result("autoroute", "skip", f"engine missing: {JAVA}", {"engine_missing": JAVA})
+    java = routers().workcenter_java()[0]
+    if not shutil.which(java):
+        return Result("autoroute", "skip", f"engine missing: {java}", {"engine_missing": java})
     # kicad-cli 10 has no Specctra export. The DSN comes from KiCad
     # (File > Export > Specctra DSN) next to the board, or from --dsn.
     candidates = (
@@ -2366,7 +2368,7 @@ def gate_autoroute(
     route.mkdir(parents=True, exist_ok=True)
     ses = route / f"{project.name}.ses"
     # `-dct 0`: no 20 s wait for a click on the dialog that asks to confirm the start.
-    cmd = [JAVA, "-jar", FREEROUTING_JAR, "-de", dsn_path, "-do", ses, "-mp", str(passes), "-dct", "0"]
+    cmd = [java, "-jar", FREEROUTING_JAR, "-de", dsn_path, "-do", ses, "-mp", str(passes), "-dct", "0"]
     if threads:
         cmd += ["-mt", str(threads)]
     proc = run(cmd, cwd=route, timeout=timeout)
@@ -5292,10 +5294,25 @@ def freerouting2_row() -> dict:
     return row
 
 
+def java_row() -> dict:
+    """Doctor's row for the java the workcenter runs (routers.workcenter_java): ok at Java JAVA_MIN or
+    newer. Its line names the version, the path and where the path came from."""
+    exe, how = routers().workcenter_java()
+    found = shutil.which(exe)
+    java = tool_version([exe, "-version"], r'(?<=version ")\d+(\.\d+)*') if found else None
+    ok = bool(java and int(java.split(".")[0]) >= routers().JAVA_MIN)
+    if found:
+        line = f"{java or 'none'} at {found}, {how}"
+    elif how == "the first java on PATH":
+        line = "none: no java on PATH"
+    else:
+        line = f"none: no java at {exe}, {how}"
+    return {"required": False, "ok": ok, "version": java, "path": found or exe, "from": how, "line": line}
+
+
 def cmd_doctor(args) -> int:
     kicad = tool_version([KICAD_CLI, "version"])
     ngspice = tool_version([NGSPICE, "--version"], r"(?<=ngspice-)\d+")
-    java = tool_version([JAVA, "-version"], r'(?<=version ")\d+(\.\d+)*')
     py = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
     openems = fields().OpenEMS.version()
     node = tool_version(["node", "--version"], r"(?<=v)\d+(\.\d+)+")
@@ -5303,7 +5320,7 @@ def cmd_doctor(args) -> int:
         "kicad-cli": {"required": True, "ok": bool(kicad and kicad.startswith("10.")), "version": kicad},
         "ngspice": {"required": True, "ok": bool(ngspice), "version": ngspice},
         "python": {"required": True, "ok": sys.version_info >= (3, 12), "version": py},
-        "java": {"required": False, "ok": bool(java and int(java.split(".")[0]) >= 21), "version": java},
+        "java": java_row(),
         "freerouting": {"required": False, "ok": FREEROUTING_JAR.is_file(), "path": str(FREEROUTING_JAR)},
         # The second router installs on request (install.sh --freerouting2): where it never was, its row
         # is advisory; where its folder is and it cannot run, Via is degraded.
@@ -5389,7 +5406,7 @@ def cmd_doctor(args) -> int:
         print(f"workcenter ee: {status}{without}  (root {WC_ROOT}, src {SRC_DIR})")
         for name, c in checks.items():
             mark = "ok " if c["ok"] else ("MISSING" if c["required"] else "absent ")
-            extra = c.get("version") or c.get("path") or ""
+            extra = c.get("line") or c.get("version") or c.get("path") or ""
             if c.get("for"):
                 extra = f"{extra}  ({c['for']})" if extra else f"({c['for']})"
             print(f"  {mark:8} {name:12} {extra}")

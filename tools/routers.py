@@ -35,6 +35,30 @@ WC_ROOT = Path(os.environ.get("WORKCENTER_ROOT", "/opt/workcenters/ee"))
 # score of ". 1 line per stage; the last is the board it writes. FreeRouting 1.9.0 logs no count.
 SCORE_RE = re.compile(r"(?:final score: |with the score of )[^()\n]*\((\d+) unrouted and (\d+) violations?\)")
 JAVA_VERSION_RE = re.compile(r'version "(\d+)(?:\.(\d+))?')
+# The Java FreeRouting 1.9.0 is held to: ee-agent-kit/docs/ENGINES.md, "Needs Java 21". It is the Java
+# install.sh installs (openjdk-21-jre-headless) and records; install.sh's JAVA_MIN is the same number.
+JAVA_MIN = 21
+
+
+def workcenter_java() -> tuple[str, str]:
+    """The java the workcenter runs, and where it came from. This is the 1 place that decides it.
+
+    1. `JAVA`, when set: a test's stand-in or a user's choice ("set by JAVA").
+    2. Else the JVM install.sh installed, by the path it recorded in <WORKCENTER_ROOT>/java.path, whatever
+       java stands first on PATH. On GitHub's runner that is the runner's own Java 17 (CI run
+       44444183056: doctor read 17.0.21 after apt had set up openjdk-21-jre-headless 21.0.13.1).
+    3. Else `java` on PATH: no record, so install.sh installed none here."""
+    named = os.environ.get("JAVA")
+    if named:
+        return named, "set by JAVA"
+    record = Path(os.environ.get("WORKCENTER_ROOT", "/opt/workcenters/ee")) / "java.path"
+    try:
+        recorded = record.read_text(encoding="utf-8").strip()
+    except OSError:
+        recorded = ""
+    if recorded:
+        return recorded, f"recorded by install.sh in {record}"
+    return "java", "the first java on PATH"
 
 
 class RouterTimeout(RuntimeError):
@@ -64,7 +88,8 @@ class Router:
         return Path(os.environ.get(self.jar_env) or self.jar_default)
 
     def java(self) -> str:
-        return os.environ.get(self.java_env) or self.java_default
+        """The router's own Java when it names one; else the workcenter's (`workcenter_java`)."""
+        return os.environ.get(self.java_env) or self.java_default or workcenter_java()[0]
 
     def java_major(self) -> int | None:
         """The major version `java -version` prints, or None when it does not run or prints none."""
@@ -191,8 +216,9 @@ ROUTERS = {
         label="FreeRouting 1.9.0",
         jar_env="FREEROUTING_JAR",
         jar_default=WC_ROOT / "freerouting" / "freerouting.jar",
-        java_env="JAVA",
-        java_default="java",
+        # No Java of its own: the workcenter's, which `JAVA` overrides (workcenter_java).
+        java_env="",
+        java_default="",
         java_min=None,  # held to its jar alone, as before this interface
         display=True,
     ),
