@@ -39,6 +39,12 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-19 — The website and the example boards say Via
+
+The owner asked that the old name leave the website and the example boards. The name pass had left 5 program strings that the site and the boards quote: the gates' legend line, the rule file's header, the downloaded file's note, a titled schematic's company and the local image tag. They say Via now, and the readers take both forms, because boards made before today keep their files; only those 2 header forms name a fab. 1 helper per example board reworded its documents, Lark's light disc's rule file was written again by the tool, the example pages were rebuilt by `site/examples.py`, and Rosetta v0.1's shown gates run was brought to the program's new line. The name test now reads the examples' Markdown and the visible text of every site page. An independent check found 43 files under `examples/` changed, all Markdown or Python but 1 line of Lark's rule file, no schematic, board or picture; gates on 3 boards gave the same verdicts with only the name different, and the built site has 0 hits for the old name. 5 routed boards keep the old header in their copied rule files until they are next routed, and Wyvern's sources keep a phrase until a follow-up.
+
+Evidence: `tests/test_product_name.py` (7 tests); branch `wip/name-site`, d8da829.
+
 ## 2026-11-19 — A hand-drawn board routed headless
 
 Roadmap item 15. Before, a hand-drawn board went to FreeRouting through a DSN exported from KiCad by hand, and the session came back by hand too. `workcenter autoroute --apply <project>` now reads the `.kicad_pcb` and its `.kicad_pro` into the DSN writer `kicadgen` already has, routes under the same rules as `design --route`, writes the copper back into the board file in place, and runs the DRC gate on it. A track or via the route kept stays byte for byte; the board before the route is kept under `build/route/`. Zones, arcs and outlines that are not a rectangle are reported or refused, as the scope guard allows. The fixture `tests/boards/route-me` has 5 unconnected items before the route and 0 after. The review found that the pass rested on KiCad's list of unconnected items alone, which a project can switch off (M291); such a run is now not judged, SKIP, exit 2. It also found paste-only pads refused as pads on the wrong side, a wrong `.kicad_pro` ending in a traceback, and refused outlines that did not say what was drawn; all fixed with tests.
