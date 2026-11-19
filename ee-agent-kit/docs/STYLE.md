@@ -108,6 +108,8 @@ exception to these rules:
   page, `/feedback`. The blog does not explain what a blog is.
 - The heading of the home page's example, of 2026-11-18, with its
   exclamation mark: "Here's a board made with Via!"
+- The heading over Herald's run of the checks on the home page, of
+  2026-11-19: "What Via looks like in the CLI".
 - The heading of the home page's checks, of 2026-11-19: "How we check a
   board". The section after it keeps "Free and open source under the MIT
   license".

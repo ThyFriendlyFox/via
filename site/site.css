@@ -1545,6 +1545,12 @@ html:not(.motion) .progress {
 .proof {
   margin-top: 4rem;
 }
+/* The owner's heading over Herald's run, of 2026-11-19. */
+.proof-title {
+  margin-bottom: 1rem;
+  font-size: 1.25rem;
+  font-weight: 500;
+}
 .built {
   display: grid;
   gap: 1.25rem;
