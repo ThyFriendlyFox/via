@@ -1709,7 +1709,7 @@ Root cause: Every change writes its line at 1 place in 1 file, the top of `## [U
 Process: P14
 
 ## M280 — 2026-11-19 — A sentence about the container package's visibility was written from an assumption
-What happened: README.md says of the container image: "The package is private until the owner makes it public; until then, a pull needs `docker login ghcr.io` with a token that can read it." The lead wrote it without a look at the package. The owner saw the earlier package, `ee-workcenter`, marked public. The sentence stays until the first push to the new package `via` shows what is true.
-Cost: A sentence in README.md that may be untrue, and the owner's time to find it.
+What happened: README.md said of the container image: "The package is private until the owner makes it public; until then, a pull needs `docker login ghcr.io` with a token that can read it." The lead wrote it without a look at the package. The owner saw the earlier package, `ee-workcenter`, marked public. At 06:00 UTC on 2026-11-19 a request with no login for the manifest of `ghcr.io/thyfriendlyfox/via:tc-ad6cb1705e532dcc` got HTTP 200, with linux/amd64 and linux/arm64 in it: the new package is public, and the sentence was false. The same claim stood in README.md's state paragraph, in STATUS.md (2 places) and in ROADMAP.md's entry for the image (2 places); each now says the package is public. CI.md's steps and the released section of CHANGELOG.md stay as written.
+Cost: A false sentence in README.md that told users to log in for a public image, 5 more in the kit's documents, and the owner's time to find it.
 Root cause: A claim about an outside service's state was written from what such a service usually does, not read from the service.
 Process: P5

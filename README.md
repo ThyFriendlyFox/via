@@ -349,7 +349,7 @@ docker run --rm -v "%cd%:/work" ghcr.io/thyfriendlyfox/via:v0.1.0 workcenter gat
 
 - On Linux, `--user` makes the files the gates write yours; the image's build checks this with the same command.
 - With no command, the image runs `workcenter doctor`.
-- The package is private until the owner makes it public; until then, a pull needs `docker login ghcr.io` with a token that can read it.
+- The package is public: a pull needs no login.
 - On arm64 (an Apple Silicon Mac, a Windows on Arm PC) the image has no openEMS; `--platform linux/amd64` runs the amd64 image, with openEMS, under emulation.
 - Docker Desktop on Windows and macOS runs Linux containers, and this image is a Linux image (Ubuntu 24.04).
 - The chip engines are not in the image; `sudo ./install.sh --chip` installs them on Ubuntu 24.04.
@@ -448,7 +448,7 @@ says how to report a vulnerability.
 with its evidence. In short: the gates, the corners, the frequency plan and `workcenter next`
 run on the fixture boards in `make verify`. Via has no release yet. The
 cloud setup script has not run yet. The Docker image is built on GitHub,
-and the package is still private.
+and its package is public.
 
 ## License
 
