@@ -2506,7 +2506,7 @@ html:not(.motion) .wordmark .wm-pt,
   }
 }
 
-/* The owner's headline, on 3 lines in title case (docs/STYLE.md, the website). */
+/* The owner's headline, on 2 lines in title case (docs/STYLE.md, the website). */
 .hero-title {
   margin-top: 0.5rem;
   font-size: var(--text-display);
@@ -3292,6 +3292,14 @@ html[data-shot] .ticker {
   .sticker:hover,
   .sticker:focus-within {
     scale: 1.05;
+  }
+}
+
+/* Under 1180 px the paragraph under the 2-line headline is as wide as the space between the cards'
+   inner corners, so the cards sit 3rem higher there, clear of it and of the wordmark. */
+@media (min-width: 1000px) and (max-width: 1179.98px) {
+  .sticker {
+    top: 21rem;
   }
 }
 

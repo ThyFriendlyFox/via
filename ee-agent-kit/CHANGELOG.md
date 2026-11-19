@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/) · Versioning: [SemVer](
 
 ## [Unreleased]
 ### Changed
+- The hero's headline is on 2 lines, "Circuit Boards / From AI", where it was 3 ("From" and "AI" apart), at the owner's ask. The paragraph under it rises a line, so from 1000 to 1179 px the 2 cards sit 3rem higher, 12 px or more clear of it; from 1180 px they stay where the owner placed them.
 - Once a suggestion is sent, the feedback page's big heading is "Thanks! Your suggestion's on its way to us." in place of "Give us suggestions", at the owner's word; the form goes too, with the page's script and without it.
 - The news bar has an X at its left, at the owner's ask: it closes the bar, which stays closed on every page until a newer post comes. "Join the community" stays a blue button, and its words glisten, at the owner's word: an orange glint sweeps across the gray words from left to right every 3.5 s, and the words stand still for a reader who asks for reduced motion. The footer has its own 3rem at the top and a hairline over it, where its first line sat on the edge of the section before it (the owner found it cramped).
 - Herald's run of the checks on the home page has a heading in the owner's words: "What Via looks like in the CLI".
