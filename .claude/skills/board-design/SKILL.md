@@ -382,8 +382,10 @@ project and routes it with FreeRouting. No GUI at any step.
   project's board has more tracks and vias than the design draws.
 - `--check` does not compare the `.kicad_pcb`. It writes the board
   unrouted, and the project's holds the router's tracks and vias, the vias
-  reserved for pour islands and KiCad's zone fill. The gates' DRC holds the
-  board to the schematic. No check holds a part's place on the board to
-  `design.py`. A design with pours starts `kicad-cli` to fill them.
+  reserved for pour islands and KiCad's zone fill. Even its designators can
+  stand elsewhere: the legend placer keeps them off the router's vias. The
+  gates' DRC holds the board to the schematic. No check holds a part's place
+  on the board to `design.py`. A design with pours starts `kicad-cli` to
+  fill them.
 - The README names each part choice and the reason, and lists every
   external contact with its net, pad and position.
