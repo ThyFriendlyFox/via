@@ -109,8 +109,12 @@ def session(nets: list[str], d: kicadgen.Design | None = None) -> str:
 
 def standin(tmp_path: Path, java_version: str = "21.0.13", **plan) -> dict[str, str]:
     """The environment that makes Via run the stand-in as FreeRouting 1.9.0 and 2.5.0: a
-    `java` that runs standin.py, and a jar that holds the plan."""
-    java = tmp_path / "java"
+    `java` that runs standin.py, and a jar that holds the plan. The java stands in a JVM folder with
+    lib/libawt_xawt.so, as Via holds the java given by JAVA to that library (routers.java_refusal)."""
+    java = tmp_path / "jvm" / "bin" / "java"
+    (tmp_path / "jvm" / "lib").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "jvm" / "lib" / "libawt_xawt.so").write_text("", encoding="utf-8")
+    java.parent.mkdir(exist_ok=True)
     java.write_text(
         f"#!{sys.executable}\nimport runpy\nrunpy.run_path({str(STANDIN)!r}, run_name='__main__')\n"
     )

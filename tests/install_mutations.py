@@ -463,5 +463,11 @@ MUTATIONS = [
      "if ((rate > 0)); then needs=", "if ((rate > 1000)); then needs="),
     ("IA181 the stops: a negative number of bytes said", "install.sh",
      "  if ((got < 0)); then got=0; fi\n", ""),
+    # The review of 2026-11-19: the recorded line named only the headless package for a JVM that draws,
+    # and the stop line of a JVM that cannot draw gave the Java version as the reason.
+    ("IA182 java: a JVM that draws named as the headless package's alone", "install.sh",
+     '        kind="openjdk-21-jre-headless and openjdk-21-jre"\n', "        :\n"),
+    ("IA183 java: a JVM that cannot draw stops for its Java version", "install.sh",
+     '  if [[ -n "$nodraw" ]]; then\n    need=', '  if false; then\n    need='),
 ]
 # fmt: on

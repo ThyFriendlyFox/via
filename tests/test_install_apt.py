@@ -2095,8 +2095,8 @@ def test_the_installed_jvm_is_recorded_whatever_stands_first_on_path(tmp_path):
     assert code == 0, err
     assert record.read_text(encoding="utf-8") == f"{java}\n"
     assert out.splitlines() == [
-        f"[install] java: {java} (the JVM of the apt step's openjdk-21-jre-headless, recorded in {record}),"
-        " Java 21: Via runs it",
+        f"[install] java: {java} (the JVM of the apt step's openjdk-21-jre-headless and openjdk-21-jre,"
+        f" recorded in {record}), Java 21: Via runs it",
         "NEXT STEP",
     ]
     assert of(calls, "jvm-java") == ["jvm-java -version"] and of(calls, "java") == []
@@ -2134,8 +2134,8 @@ ADVICE = (
         (
             "17.0.2",
             "21.0.9",
-            "{tmp}/jvm/java-21-openjdk-amd64/bin/java (the JVM of the apt step's openjdk-21-jre-headless, "
-            "recorded in {tmp}/root/java.path), Java 17",
+            "{tmp}/jvm/java-21-openjdk-amd64/bin/java (the JVM of the apt step's openjdk-21-jre-headless "
+            "and openjdk-21-jre, recorded in {tmp}/root/java.path), Java 17",
         ),
     ],
     ids=["only a 17 on PATH", "no java", "the recorded JVM is a 17"],
@@ -2265,8 +2265,8 @@ def test_a_proxy_port_printed_before_the_version_is_not_read_as_it(tmp_path, ver
     assert got == code
     major = version.split(".")[0]
     assert (
-        f"/bin/java (the JVM of the apt step's openjdk-21-jre-headless, recorded in {record}), Java {major}"
-        in (out + err)
+        f"/bin/java (the JVM of the apt step's openjdk-21-jre-headless and openjdk-21-jre, recorded in "
+        f"{record}), Java {major}" in (out + err)
     )
 
 
@@ -2355,11 +2355,16 @@ def test_the_21_with_its_x11_library_installs_nothing_more(tmp_path):
 
 
 NODRAW = ", whose JVM has no lib/libawt_xawt.so: a headless runtime, which cannot draw FreeRouting's window"
+# The stop line's reason for a JVM that cannot draw: the library, not the Java version, which is fine.
+NEEDS_X11 = (
+    "FreeRouting needs a JVM with lib/libawt_xawt.so to draw its window (ee-agent-kit/docs/ENGINES.md)"
+)
 
 
 def test_a_21_that_cannot_draw_is_recorded_and_stops_with_why(tmp_path):
     """The only JVM of the 21 runs but has no lib/libawt_xawt.so, REQUIRE_FREEROUTING=1: the step records
-    it (Via names it when it refuses it) and stops with what is missing and what to install."""
+    it (Via names it when it refuses it) and stops with what is missing and what to install. The line
+    names the headless package alone, and its reason is the library, not a Java version."""
     code, out, err, calls, record = java_step(
         tmp_path, jvm="21.0.13", on_path="17.0.21", headless=("java-21-openjdk-amd64",)
     )
@@ -2369,7 +2374,7 @@ def test_a_21_that_cannot_draw_is_recorded_and_stops_with_why(tmp_path):
     assert record.read_text(encoding="utf-8") == f"{java}\n"
     assert err.splitlines()[-2:] == [
         f"[install] ERROR: java: Via would run {java} (the JVM of the apt step's openjdk-21-jre-headless, "
-        f"recorded in {record}), Java 21{NODRAW}; {ENGINES_MD}, and REQUIRE_FREEROUTING=1",
+        f"recorded in {record}), Java 21{NODRAW}; {NEEDS_X11}, and REQUIRE_FREEROUTING=1",
         ADVICE.format(jvm=tmp_path / "jvm"),
     ]
 

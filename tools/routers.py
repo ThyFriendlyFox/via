@@ -65,59 +65,96 @@ def java_major(exe: str) -> int | None:
     return int(m.group(2) or 0) if major == 1 else major  # "1.8.0" is Java 8
 
 
-def java_refusal(exe: str, version: bool = False) -> str:
+RELEASE_VERSION_RE = re.compile(r'^JAVA_VERSION="(\d+)(?:\.(\d+))?', re.MULTILINE)
+
+
+def release_major(jvm: Path) -> int | None:
+    """The major version a JVM states in its `release` file (`JAVA_VERSION="21.0.13.0.3"` in Ubuntu's
+    /usr/lib/jvm/java-21-openjdk-amd64/release), or None when it has none. Read so that the check
+    starts no java: a routing test module asks it when it is imported, also inside `workcenter
+    design` for a design file that imports that module, in a test that starts no engine."""
+    try:
+        m = RELEASE_VERSION_RE.search((jvm / "release").read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        return None
+    if m is None:
+        return None
+    major = int(m.group(1))
+    return int(m.group(2) or 0) if major == 1 else major
+
+
+def java_refusal(exe: str) -> str:
     """Why FreeRouting 1.9.0 cannot run on `exe`, or "" when nothing here stops it: the java is there,
-    and its JVM (the folder above its bin/, links resolved) has lib/libawt_xawt.so. With `version`, it
-    must also be Java JAVA_MIN or newer (asked of a java install.sh did not record)."""
+    its JVM (the folder above its bin/, links resolved) has lib/libawt_xawt.so, and it is Java JAVA_MIN
+    or newer. Doctor's java row holds it to the same: the router and doctor never disagree."""
     found = shutil.which(exe)
     if found is None:
         return "no java on PATH" if exe == "java" else f"no java at {exe}"
-    lib = Path(found).resolve().parent.parent / AWT_X11.parent
+    home = Path(found).resolve().parent.parent
+    lib = home / AWT_X11.parent
     if not (lib / AWT_X11.name).is_file():
         return (
             f"{lib} has no {AWT_X11.name}: a headless Java runtime cannot draw FreeRouting 1.9.0's window "
             "(openjdk-21-jre adds the library)"
         )
-    if version:
+    # The JVM's release file when it has one; else its java is asked (`-version`).
+    major = release_major(home)
+    if major is None:
         major = java_major(found)
-        if major is None:
-            return f"{found} -version names no version"
-        if major < JAVA_MIN:
-            return f"{found} is Java {major}; FreeRouting 1.9.0 needs Java {JAVA_MIN}"
+    if major is None:
+        return f"{found} -version names no version"
+    if major < JAVA_MIN:
+        return f"{found} is Java {major}; FreeRouting 1.9.0 needs Java {JAVA_MIN}"
     return ""
 
 
-def java_choice() -> tuple[str, str, str]:
+def java_choice(refuse: bool = True) -> tuple[str, str, str]:
     """The java Via runs, where it came from, and why FreeRouting 1.9.0 cannot run on it ("" when it can).
-    This is the 1 place that decides it.
+    This is the 1 place that decides it; every java is held to java_refusal.
 
-    1. `JAVA`, when set: a test's stand-in or a user's choice ("set by JAVA"), taken as it is.
+    1. `JAVA`, when set: a test's stand-in or a user's choice ("set by JAVA"). Nothing replaces it.
     2. Else the JVM install.sh installed, by the path it recorded in <WORKCENTER_ROOT>/java.path, whatever
        java stands first on PATH. On GitHub's runner that is the runner's own Java 17 (CI run
        44444183056: doctor read 17.0.21 after apt had set up openjdk-21-jre-headless 21.0.13.1).
-       When the recorded java is gone or cannot draw, and the first java on PATH can and is Java
-       JAVA_MIN or newer, that one, named with the reason the record was passed over.
-    3. Else `java` on PATH: no record, so install.sh installed none here."""
+       When the record cannot be read, holds more than 1 line, or names a java that is gone, cannot
+       draw or is older than JAVA_MIN, and the first java on PATH passes, that one, named with the
+       reason the record was passed over.
+    3. Else `java` on PATH: no record, so install.sh installed none here.
+
+    Without `refuse`, the reason is "" wherever the pick does not rest on it (JAVA, no record): a
+    command line is built without starting a java."""
     named = os.environ.get("JAVA")
+
+    def refusal(exe: str) -> str:
+        return java_refusal(exe) if refuse else ""
+
     if named:
-        return named, "set by JAVA", ""
+        return named, "set by JAVA", refusal(named)
     record = Path(os.environ.get("WORKCENTER_ROOT", "/opt/workcenters/ee")) / "java.path"
     try:
-        recorded = record.read_text(encoding="utf-8").strip()
-    except OSError:
-        recorded = ""
-    if recorded:
-        how = f"recorded by install.sh in {record}"
-        why = java_refusal(recorded)
-        if why and not java_refusal("java", version=True):
-            return "java", f"the first java on PATH: the java {how}, {recorded}, cannot run: {why}", ""
-        return recorded, how, why
-    return "java", "the first java on PATH", java_refusal("java")
+        lines = record.read_text(encoding="utf-8").strip().splitlines()
+    except FileNotFoundError:
+        lines = []
+    except OSError as err:
+        # A record that is there but cannot be read (a folder, no permission) is named, not skipped.
+        unread = f"{record} cannot be read ({err.strerror or type(err).__name__})"
+        return "java", f"the first java on PATH: {unread}", refusal("java")
+    if not lines:
+        return "java", "the first java on PATH", refusal("java")
+    # install.sh writes 1 path. The first line stands for the record in every line Via prints, so that
+    # no line of doctor or of a route holds a raw line break.
+    recorded = lines[0].strip()
+    how = f"recorded by install.sh in {record}"
+    many = f"{record} holds {len(lines)} lines; install.sh writes 1 path"
+    why = many if len(lines) > 1 else java_refusal(recorded)
+    if why and not java_refusal("java"):
+        return "java", f"the first java on PATH: the java {how}, {recorded}, cannot run: {why}", ""
+    return recorded, how, why
 
 
 def workcenter_java() -> tuple[str, str]:
     """The java Via runs and where it came from (java_choice, without the reason it cannot run)."""
-    exe, how, _ = java_choice()
+    exe, how, _ = java_choice(refuse=False)
     return exe, how
 
 
@@ -157,9 +194,9 @@ class Router:
 
     def absent(self) -> str:
         """Why the router cannot run here, or "" when it can. FreeRouting 1.9.0 is held to its jar and to
-        Via's java (java_choice): a java that is not there or cannot draw its window is named with
-        where it came from and why (CI run 44515796762). A java given by JAVA or by the caller is taken
-        as it is."""
+        Via's java (java_choice), JAVA's too: a java that is not there, cannot draw its window or is
+        older than JAVA_MIN is named with where it came from and why (CI run 44515796762). A java the
+        router names of its own (FreeRouting 2.5.0's) is held to `java_min`."""
         jar = self.jar()
         if not jar.is_file():
             return f"{self.name}: no jar at {jar}"

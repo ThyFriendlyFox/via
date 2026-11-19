@@ -971,7 +971,7 @@ jvm21_draws() {
 
 step_java() {
   local jvm found="" said="" ran="" code unrun="" broke="" major="" what re='version "([0-9]+)'
-  local nodraw="" heard=""
+  local nodraw="" heard="" kind="openjdk-21-jre-headless" need
   # The first JVM whose java runs, names its version and can draw FreeRouting's window
   # (lib/libawt_xawt.so). On a multiarch machine the first folder in glob order can be another
   # architecture's, whose java does not run (exec gives 126).
@@ -984,6 +984,8 @@ step_java() {
     if ((code == 0)) && [[ "$ran" =~ $re ]]; then
       if [[ -f "${jvm}/lib/libawt_xawt.so" ]]; then
         found="${jvm}/bin/java"
+        # openjdk-21-jre gives the JVM its lib/libawt_xawt.so.
+        kind="openjdk-21-jre-headless and openjdk-21-jre"
         said="$ran"
         break
       fi
@@ -1012,7 +1014,7 @@ step_java() {
   mkdir -p "$WC_ROOT"
   if [[ -n "$found" ]]; then
     printf '%s\n' "$found" > "${WC_ROOT}/java.path"
-    what="${found} (the JVM of the apt step's openjdk-21-jre-headless, recorded in ${WC_ROOT}/java.path)"
+    what="${found} (the JVM of the apt step's ${kind}, recorded in ${WC_ROOT}/java.path)"
   else
     # No record: Via reads PATH, as this step says.
     rm -f "${WC_ROOT}/java.path"
@@ -1036,7 +1038,11 @@ step_java() {
     log "java: ${what}: Via runs it"
     return 0
   fi
-  what="java: Via would run ${what}; FreeRouting needs Java ${JAVA_MIN} or newer (ee-agent-kit/docs/ENGINES.md)"
+  need="FreeRouting needs Java ${JAVA_MIN} or newer"
+  if [[ -n "$nodraw" ]]; then
+    need="FreeRouting needs a JVM with lib/libawt_xawt.so to draw its window"
+  fi
+  what="java: Via would run ${what}; ${need} (ee-agent-kit/docs/ENGINES.md)"
   if [[ "$REQUIRE_FREEROUTING" == "1" ]]; then
     stop "${what}, and REQUIRE_FREEROUTING=1" \
       "Install openjdk-21-jre-headless and openjdk-21-jre, the apt step's packages, so that their JVM is in ${JVM_DIR} (java-21-openjdk-<arch>) with lib/libawt_xawt.so, then run the script again: install.sh records it for Via."
