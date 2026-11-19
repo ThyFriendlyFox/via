@@ -145,8 +145,16 @@ jobs:
           out="$RUNNER_TEMP/board-gates"
           mkdir -p "$out"
           report="$out/board-gates.md"
-          args=(gates "$PROJECT" --report "$report")
+          # The name goes after `--`: a folder named `--help` is gated as a folder, not read as an
+          # option. An empty name, or one with a control character, is not 1 folder: refused, red.
+          if [ -z "$PROJECT" ] || [[ "$PROJECT" == *[[:cntrl:]]* ]]; then
+            printf 'RED: the project name %q is not a folder the gates can be given: %s\n' "$PROJECT" \
+              "it is empty or holds a control character"
+            exit 1
+          fi
+          args=(gates --report "$report")
           if [ "$STRICT" = true ]; then args+=(--strict); fi
+          args+=(-- "$PROJECT")
           case "$WHERE" in
             install)
               python3 .via/tools/workcenter "${args[@]}"
@@ -169,12 +177,21 @@ jobs:
               exit 1
               ;;
           esac
-          # GREEN with ERC, DRC or EXPORT at skip judged no board: its schematic or its .kicad_pcb is not
-          # there. SIM at skip (no sim/*.cir) stays green; the summary's table shows it.
-          not_judged=""
-          if [ -s "$report" ]; then
-            not_judged=$(sed -nE 's/^\| (ERC|DRC|EXPORT) \| skip \| (.*) \|$/\1 \2/p' "$report")
+          # Exit code 0 is green only with the gates' own GREEN line in their report: a help text or an
+          # empty output writes none.
+          if ! grep -qE '^GREEN( |$)' "$report" 2> /dev/null; then
+            echo "RED: $PROJECT: the gates exited 0, but their report holds no GREEN line: nothing was judged"
+            exit 1
           fi
+          # GREEN with ERC, DRC or EXPORT at skip judged no board: its schematic or its .kicad_pcb is not
+          # there; so did a GREEN with no row for one of them. SIM at skip (no sim/*.cir) stays green;
+          # the summary's table shows it.
+          not_judged=$(sed -nE 's/^\| (ERC|DRC|EXPORT) \| skip \| (.*) \|$/\1 \2/p' "$report")
+          for gate in ERC DRC EXPORT; do
+            if ! grep -qE "^\| $gate \| " "$report"; then
+              not_judged+="${not_judged:+$'\n'}$gate no row in the gates table"
+            fi
+          done
           # Each such gate also goes into not-judged.txt, which the summary puts under the table.
           if [ -n "$not_judged" ]; then
             while read -r gate why; do
@@ -194,17 +211,31 @@ jobs:
         run: |
           report="$RUNNER_TEMP/board-gates/board-gates.md"
           red="$RUNNER_TEMP/board-gates/not-judged.txt"
+          # The board's text and its name go in as text, not markup: every `<` of the report but its
+          # own `<!-- workcenter ... -->` markers is `&lt;`, and in the name each character but
+          # letters, digits and ` ._/:,=+@-` is a numeric entity.
+          text() {
+            local s=$1 c out="" i
+            for ((i = 0; i < ${#s}; i++)); do
+              c=${s:i:1}
+              case "$c" in
+                [[:alnum:]\ ._/:,=+@-]) out+=$c ;;
+                *) out+=$(printf '&#%d;' "'$c") ;;
+              esac
+            done
+            printf '%s' "$out"
+          }
           {
             if [ -s "$report" ]; then
-              cat "$report"
+              sed -E '/^<!-- \/?workcenter [^>]* -->$/!s/</\&lt;/g' "$report"
             else
-              echo "No gates table for \`$PROJECT\`: the gates step wrote none; its log says why."
+              echo "No gates table for <code>$(text "$PROJECT")</code>: the gates step wrote none; its log says why."
             fi
             if [ -s "$red" ]; then
               echo
               echo "This check is red: the gates said GREEN, but these gates judged nothing:"
               echo
-              sed 's/^/- /' "$red"
+              sed -e 's/</\&lt;/g' -e 's/^/- /' "$red"
             fi
             echo
             case "$WHERE" in

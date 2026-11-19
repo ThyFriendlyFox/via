@@ -131,6 +131,13 @@ the runner's user`.
      the install step's log for the engine it names.
    - `RED: <project>: DRC not judged: no board in project; ...`: see
      "A board that is not there is red" below. The check is red.
+   - `RED: <project>: the gates exited 0, but their report holds no GREEN
+     line: nothing was judged`: exit code 0 alone is not green. The check
+     is red.
+   - `RED: the project name ... is not a folder the gates can be given`:
+     the name in `projects` is empty or holds a control character. The
+     project's name goes to the gates after `--`, so a folder named like an
+     option (`--help`) is gated as a folder.
 4. Open the run's summary page. Each project has its gates table, its
    decks when it has `sim/`, and a `Where:` line. A project with no table
    says `No gates table for <project>`: the gates step stopped before the
@@ -159,16 +166,45 @@ This holds with and without `strict`. SIM at `skip` (`no sim/*.cir in
 project`) stays green: the board was judged, and the summary's table shows
 the row.
 
-## The pull request's own decks run
+## The pull request's own files run
 
-The gates run the board's sim decks, and ngspice runs a deck's `shell`
-lines with `/bin/sh` during SIM. So the check runs code from the pull
-request, and a fork's check is only as trustworthy as its diff: read a
-fork's `sim/*.cir` before you trust its green check. In the image the
-gates run with `--network none`, with `.via` mounted read-only, and with
-only `board-gates/` of the runner's temp folder mounted, where the report
-goes. On the install path they run on the runner as its user, who has
-sudo, and nothing holds them.
+The check runs code from the pull request, so a fork's check is only as
+trustworthy as its diff. A fork's green check proves nothing until a
+maintainer has read the whole diff. These files of a board repository can
+run code during the gates:
+
+- `.github/workflows/`: on a pull request GitHub runs the workflow files of
+  the pull request's head, so a pull request can change the caller itself,
+  and with it every step and input.
+- `sim/*.cir`: ngspice runs a deck's `shell` lines with `/bin/sh` during
+  SIM; `source` runs the commands of another file; `codemodel` and
+  `pre_osdi` load a shared library, which is machine code.
+- Every file a deck reads in with `.include` or `.lib`, wherever it is in
+  the repository: its lines are the deck's lines.
+- `sim/.spiceinit`: ngspice reads it before the deck, and the gates copy
+  it into each run folder. The gates
+  cannot start ngspice without start-up files: they write a `.spiceinit`
+  of their own that sets a model's mode, and a deck folder's own
+  `.spiceinit` is a documented setting (`WORKCENTER.md`).
+
+What the gates refuse or never import:
+
+- `panel.json`: a KiKit preset can name Python (a section's `code`, a
+  text's `plugin`, `post.script`). The gates refuse such a preset on 1
+  line, red, before KiKit reads it.
+- Python modules in the repository, such as a `kikit/` folder, `pcbnew.py`
+  or `sitecustomize.py`: a module of the board's folder or of the working
+  directory is never imported. Via starts its probes (`python -c`) and
+  KiKit isolated (`-I`); its other Python runs are scripts of `.via/tools`,
+  whose own folder is the one on the import path.
+- The KiCad files (`.kicad_pro`, `.kicad_sch`, `.kicad_pcb`, the library
+  tables, a `.kicad_dru`), `parts.csv` and the `sim/` JSON files are read
+  as data: Via starts no code they name.
+
+In the image the gates run with `--network none`, with `.via` mounted
+read-only, and with only `board-gates/` of the runner's temp folder
+mounted, where the report goes. On the install path they run on the runner
+as its user, who has sudo, and nothing holds them.
 
 ## What the workflow does not do
 

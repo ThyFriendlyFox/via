@@ -2297,7 +2297,9 @@ def export_panel(project: Project, fab: Path, facts: dict) -> tuple[dict, list[s
     Python, then the panel's Gerbers and drill files by kicad-cli. Returns (details, failure lines,
     why it was not judged)."""
     py = KIKIT_PYTHON or venv_python()
-    probe = run([py, "-c", "import kikit.panelize_ui"])
+    # Isolated (-I): `-c` puts the working directory first on the import path, and there a board
+    # repository's own `kikit/` would be imported. panel.py runs isolated too, so both find 1 KiKit.
+    probe = run([py, "-I", "-c", "import kikit.panelize_ui"], cwd=fab)
     if probe.returncode != 0:
         last = (probe.stderr.strip().splitlines() or ["no output"])[-1]
         return {"python": py}, [], f"KiKit does not import under {py} ({last}); set KIKIT_PYTHON"
@@ -2306,7 +2308,7 @@ def export_panel(project: Project, fab: Path, facts: dict) -> tuple[dict, list[s
     gerbers.mkdir(parents=True, exist_ok=True)
     board = folder / f"{project.name}-panel.kicad_pcb"
     proc = run(
-        [py, SRC_DIR / "tools" / "panel.py", project.pcb, board, project.dir / "panel.json"], cwd=folder
+        [py, "-I", SRC_DIR / "tools" / "panel.py", project.pcb, board, project.dir / "panel.json"], cwd=folder
     )
     said = proc.stdout.strip().splitlines()
     if proc.returncode != 0 or not board.is_file() or not said:
@@ -4716,7 +4718,9 @@ def cmd_ci(args) -> int:
     specs = []
     for flow in flows:
         proc = subprocess.run(
-            [venv_python(), "-c", CI_YAML_TO_JSON, str(flow)],
+            # Isolated (-I): `-c` would put the working directory, a board repository, first on the
+            # import path, and its own `yaml.py` would be imported.
+            [venv_python(), "-I", "-c", CI_YAML_TO_JSON, str(flow)],
             capture_output=True,
             text=True,
             timeout=120,
@@ -5195,7 +5199,9 @@ def cmd_placement(args) -> int:
         raise SystemExit(f"placement: {project.dir} has no .kicad_pcb")
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     proc = subprocess.run(
-        [venv_python(), "-s", "-c", PLACEMENT_RUNNER, str(SRC_DIR / "tools"), str(script), str(project.pcb)]
+        # Isolated (-I, which also drops the user's site) and with no bytecode written (-B, as the
+        # environment asks): `-c` would put the working directory first on the import path.
+        [venv_python(), "-IB", "-c", PLACEMENT_RUNNER, str(SRC_DIR / "tools"), str(script), str(project.pcb)]
         + list(args.args),
         capture_output=True,
         text=True,

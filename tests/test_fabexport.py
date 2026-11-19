@@ -37,7 +37,9 @@ def kikit_python() -> str | None:
     venv = Path(os.environ.get("WORKCENTER_ROOT", "/opt/workcenters/ee")) / "venv" / "bin" / "python"
     for py in (os.environ.get("KIKIT_PYTHON"), str(venv)):
         if py and Path(py).exists():
-            probe = subprocess.run([py, "-c", "import kikit.panelize_ui"], capture_output=True, check=False)
+            probe = subprocess.run(
+                [py, "-I", "-c", "import kikit.panelize_ui"], capture_output=True, check=False, cwd=ROOT
+            )
             if probe.returncode == 0:
                 return py
     return None
@@ -51,15 +53,24 @@ def project(tmp_path: Path, panel: bool = False) -> Path:
     return folder
 
 
-def export(folder: Path, out: Path, env: dict | None = None) -> tuple[int, dict]:
+def export(folder: Path, out: Path, env: dict | None = None, cwd: Path | None = None) -> tuple[int, dict]:
     proc = subprocess.run(
         [sys.executable, str(CLI), "--json", "export", str(folder), "--out", str(out)],
         capture_output=True,
         text=True,
         check=False,
         env={**os.environ, **(env or {})},
+        cwd=cwd,
     )
     return proc.returncode, json.loads(proc.stdout)[0]
+
+
+def plant(folder: Path, marker: Path) -> None:
+    """Python modules a board repository could carry, each writing 1 line to `marker` when imported."""
+    line = f"open({str(marker)!r}, 'a').write(__name__ + ' ' + __file__ + '\\n')\n"
+    (folder / "kikit").mkdir()
+    for name in ("kikit/__init__.py", "kikit/panelize_ui.py", "pcbnew.py", "sitecustomize.py"):
+        (folder / name).write_text(line, encoding="utf-8")
 
 
 @needs_kicad
@@ -155,3 +166,60 @@ def test_a_panel_of_2_by_2_boards_is_made_and_read_back(tmp_path):
         gerbers
     )
     assert "panel 2 x 2 boards, 52 x 56 mm" in result["summary"], result["summary"]
+
+
+@needs_kicad
+@pytest.mark.skipif(kikit_python() is None, reason="no Python here imports KiKit (set KIKIT_PYTHON)")
+def test_export_imports_no_python_module_of_the_board_or_of_the_working_directory(tmp_path):
+    """R16-N1 (a): the KiKit probe was `python -c "import kikit.panelize_ui"` in the caller's working
+    directory, which `-c` puts first on the import path, so a `kikit/` folder there ran. `kikit/`,
+    `pcbnew.py` and `sitecustomize.py` that write a marker sit in the working directory and in the
+    project's folder: the panel is made by the real KiKit, and the marker is never written."""
+    marker = tmp_path / "planted-ran.txt"
+    folder = project(tmp_path, panel=True)
+    plant(tmp_path, marker)
+    plant(folder, marker)
+    code, result = export(folder, tmp_path / "out", {"KIKIT_PYTHON": kikit_python()}, cwd=tmp_path)
+    assert not marker.exists(), marker.read_text(encoding="utf-8")
+    assert code == 0 and result["status"] == "pass", result
+    assert "panel 2 x 2 boards, 52 x 56 mm" in result["summary"], result["summary"]
+
+
+PRESET_CODE = {
+    "tabs": {"type": "plugin", "code": "{evil}.Tabs"},
+    "text": {"type": "simple", "text": "x", "plugin": "{evil}.Text"},
+    "post": {"script": "{evil}"},
+}
+
+
+@pytest.mark.skipif(kikit_python() is None, reason="no Python here imports KiKit (set KIKIT_PYTHON)")
+@pytest.mark.parametrize("section", sorted(PRESET_CODE))
+def test_a_panel_preset_that_names_python_to_run_is_refused_before_kikit_reads_it(tmp_path, section):
+    """R16-N1: a KiKit preset runs Python of its own: a section's `code` plugin and a text's `plugin`
+    are loaded while KiKit reads the preset, and `post.script` after the panel is built. panel.json is
+    the board repository's file, so tools/panel.py refuses such a preset on 1 line before KiKit reads it,
+    and the file it names is never run. No board is loaded: the refusal comes first."""
+    marker = tmp_path / "planted-ran.txt"
+    evil = tmp_path / "evil.py"
+    evil.write_text(
+        f"open({str(marker)!r}, 'a').write('ran\\n')\nclass Tabs: ...\nclass Text: ...\n", "utf-8"
+    )
+    body = json.loads(json.dumps(PRESET_CODE[section]).replace("{evil}", str(evil)))
+    preset = tmp_path / "panel.json"
+    preset.write_text(json.dumps({"layout": {"type": "grid", "rows": 2, "cols": 2}, section: body}), "utf-8")
+    key = {"tabs": "tabs.code", "text": "text.plugin", "post": "post.script"}[section]
+    value = body[key.split(".")[1]]
+    proc = subprocess.run(
+        [kikit_python(), "-I", ROOT / "tools" / "panel.py", "no.kicad_pcb", "out.kicad_pcb", preset],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+    )
+    assert not marker.exists()
+    assert proc.returncode == 1, proc.stderr
+    assert proc.stderr.strip().splitlines()[-1] == (
+        f"{preset}: {key} names Python for KiKit to run ({value}): the gates run no code a "
+        "board's panel.json names; use a built-in KiKit type"
+    )
