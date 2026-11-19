@@ -1194,7 +1194,9 @@ def trickle(gets: tuple = (SLOW_GET,), chunk: int = 1000, ticks: int = 400, then
     printed = "; ".join(f"echo {shlex.quote(g)}" for g in gets)
     return f"""echo {shlex.quote(NEED)}; {printed}
         echo "$$" >> "$STUB_DIR/apt-pids"
-        for _ in $(seq {ticks}); do printf '%0{chunk}d' 0 >> "$APT_ARCHIVES/partial/big.deb"; /bin/sleep 0.05; done
+        for _ in $(seq {ticks}); do
+          printf '%0{chunk}d' 0 >> "$APT_ARCHIVES/partial/big.deb"; /bin/sleep 0.05
+        done
         {then}"""
 
 
@@ -1270,7 +1272,9 @@ def test_a_fast_start_does_not_hide_a_slow_pass(tmp_path):
         'echo "$$" >> "$STUB_DIR/apt-pids"; head -c 5000000 /dev/zero >> "$APT_ARCHIVES/partial/big.deb"',
     )
     began = time.monotonic()
-    code, out, err, calls = run(tmp_path, {"apt-get": by_pass(burst)}, env={**WATCH, "APT_DOWNLOAD_TRIES": "1"})
+    code, out, err, calls = run(
+        tmp_path, {"apt-get": by_pass(burst)}, env={**WATCH, "APT_DOWNLOAD_TRIES": "1"}
+    )
     took = time.monotonic() - began
     assert code == 1
     assert " was too slow to finish " in err.splitlines()[-2]
@@ -1301,7 +1305,11 @@ def test_after_a_slow_pass_the_named_command_runs_with_its_hosts_before_the_next
     hook = f'printf "%s\\n" "$*" >> "$STUB_DIR/hooked"; echo "[apt-archive] moved"; exit {ends}'
     second = f'[[ -e "$STUB_DIR/hooked" ]] && echo seen >> "$STUB_DIR/second"; {served()}'
     # The PPA's 1 file comes first, slow.example's 2 after it: slow.example served more files.
-    gets = ("Get:172 https://ppa.launchpadcontent.net/x [48.0 MB]", SLOW_GET, SLOW_GET.replace("Get:5", "Get:6"))
+    gets = (
+        "Get:172 https://ppa.launchpadcontent.net/x [48.0 MB]",
+        SLOW_GET,
+        SLOW_GET.replace("Get:5", "Get:6"),
+    )
     two = trickle(gets)
     env = {**WATCH, "APT_SLOW_PASS_COMMAND": "slow-pass --slow"}
     code, out, err, calls = run(tmp_path, {"apt-get": by_pass(two, second), "slow-pass": hook}, env=env)
@@ -1356,7 +1364,10 @@ def test_a_slow_pass_that_no_pass_can_follow_stops_with_what_arrived_from_whom(t
     assert code == 1
     assert len(downloads(calls)) == passes
     lines = err.splitlines()
-    assert re.fullmatch(slow_stop(passes, passes, int(full["APT_DOWNLOAD_TIMEOUT"]), int(full.get("APT_DOWNLOAD_TRIES", 5))), lines[-2]), lines[-2]
+    assert re.fullmatch(
+        slow_stop(passes, passes, int(full["APT_DOWNLOAD_TIMEOUT"]), int(full.get("APT_DOWNLOAD_TRIES", 5))),
+        lines[-2],
+    ), lines[-2]
     assert lines[-1] == CUT
     assert alive(tmp_path) == []
 
@@ -1385,7 +1396,8 @@ def test_a_healthy_pass_is_not_cut(tmp_path):
     partial/ at 1 MB/s), a pause of half a window (APT_FILE_TIMEOUT is half of CI's window: a stall apt
     ends itself), then 2 windows with nothing to fetch (apt's own work after the last byte): 1 pass,
     no cut."""
-    grow = "for _ in $(seq {n}); do printf '%050000d' 0 >> \"$APT_ARCHIVES/partial/big.deb\"; /bin/sleep 0.05; done"
+    grow = "for _ in $(seq {n}); do printf '%050000d' 0 >> \"$APT_ARCHIVES/partial/big.deb\"; "
+    grow += "/bin/sleep 0.05; done"
     apt = (
         'echo "Need to get 3000 kB of archives."; echo "Get:5 http://fast.example/ubuntu big [3000 kB]"; '
         'echo "$$" >> "$STUB_DIR/apt-pids"; /bin/sleep 0.3; '
@@ -1576,7 +1588,12 @@ def test_a_bad_number_of_passes_or_wait_stops_before_anything_runs(tmp_path, nam
 
 @pytest.mark.parametrize(
     ("name", "value"),
-    [("APT_DOWNLOAD_TRIES", "99"), ("APT_DOWNLOAD_WAIT", "0"), ("APT_WATCH_WINDOW", "1"), ("APT_WATCH_WINDOW", "999")],
+    [
+        ("APT_DOWNLOAD_TRIES", "99"),
+        ("APT_DOWNLOAD_WAIT", "0"),
+        ("APT_WATCH_WINDOW", "1"),
+        ("APT_WATCH_WINDOW", "999"),
+    ],
 )
 def test_the_ends_of_the_ranges_are_taken(tmp_path, name, value):
     code, _, err, _ = run(tmp_path, env={name: value})

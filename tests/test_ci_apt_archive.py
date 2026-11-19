@@ -205,7 +205,8 @@ def silent(uri: str, why: str = "HTTP 000, 0 bytes") -> str:
 def order(apt: Path, *uris: str) -> str:
     """The line of the order chosen. It names what the order rests on, a sample of 1 MiB: in run
     44506767788 the first host sent its MiB at 2468910 bytes/s and the download at 48.3 kB/s."""
-    return f"{PREFIX} {apt}/apt-mirrors.txt: apt asks {', then '.join(uris)}: the fastest in a 1 MiB sample first"
+    asks = ", then ".join(uris)
+    return f"{PREFIX} {apt}/apt-mirrors.txt: apt asks {asks}: the fastest in a 1 MiB sample first"
 
 
 def kept(apt: Path, *uris: str) -> str:
@@ -787,7 +788,10 @@ def test_the_host_of_a_slow_pass_goes_last_and_the_others_keep_their_order(tmp_p
     security.ubuntu.com, sends it last in turn."""
     apt = layout(
         tmp_path,
-        {"sources.list.d/ubuntu.sources": deb822(LIST, LIST), "apt-mirrors.txt": mirrors(EC2, own=1, archive=3, security=2)},
+        {
+            "sources.list.d/ubuntu.sources": deb822(LIST, LIST),
+            "apt-mirrors.txt": mirrors(EC2, own=1, archive=3, security=2),
+        },
     )
     before = snapshot(apt)
     ran = run("--slow", ECTWO, PPA_HOST, tmp=tmp_path, env={"APT_DIR": str(apt)})
@@ -930,7 +934,9 @@ def flow(name: str) -> dict:
 
 def archive_steps(job: dict) -> list[tuple[int, dict]]:
     """The steps that rank the hosts (the install step names the script too, for its `--slow` mode)."""
-    return [(i, s) for i, s in enumerate(job["steps"]) if "tools/ci/apt_archive.sh /etc/apt" in s.get("run", "")]
+    return [
+        (i, s) for i, s in enumerate(job["steps"]) if "tools/ci/apt_archive.sh /etc/apt" in s.get("run", "")
+    ]
 
 
 def install_index(job: dict) -> int:
