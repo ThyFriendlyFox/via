@@ -68,11 +68,12 @@ PACKAGES = f"dists/noble/main/binary-{ARCH}/Packages.gz"
 CONF = "apt.conf.d/80apt-archive-ci"
 CONF_TEXT = (
     "// Written by tools/ci/apt_archive.sh, on CI's install path only (APT_ARCHIVE_CI=1).\n"
-    "// A host that sends nothing for 15 s is given up; after 1 more try apt's mirror method asks\n"
-    "// the next host of the mirror list. apt's own defaults are 30 s and 3 more tries.\n"
+    "// A file whose host sends nothing for 15 s gets 0 more tries there; apt's mirror method\n"
+    "// asks the next host of the mirror list for it. apt's own defaults are 30 s and 3 more tries.\n"
+    "// It holds for every source: a source of 1 host gets 1 try.\n"
     'Acquire::http::Timeout "15";\n'
     'Acquire::https::Timeout "15";\n'
-    'Acquire::Retries "1";\n'
+    'Acquire::Retries "0";\n'
 )
 
 
@@ -143,6 +144,8 @@ printf '%s' "$m"
 CURL = """#!/bin/bash
 # curl's stand-in: records its arguments and reaches no host.
 printf '%s\\n' "$*" >> "$(dirname "$0")/curl-calls"
+# A test that writes curl-sleep makes it hang, as a name lookup that blocks would.
+if [[ -f "$(dirname "$0")/curl-sleep" ]]; then exec sleep "$(cat "$(dirname "$0")/curl-sleep")"; fi
 printf '000 0 0.000000'
 exit 7
 """
@@ -212,8 +215,8 @@ def kept(apt: Path, *uris: str) -> str:
 
 def conf_line(apt: Path) -> str:
     return (
-        f"{PREFIX} {apt}/{CONF}: a host silent for 15 s is tried 1 more time, then apt asks the next "
-        "(Acquire::http::Timeout 15, Acquire::https::Timeout 15, Acquire::Retries 1)"
+        f"{PREFIX} {apt}/{CONF}: a file whose host is silent for 15 s gets 0 more tries there, then apt "
+        "asks the next host (Acquire::http::Timeout 15, Acquire::https::Timeout 15, Acquire::Retries 0)"
     )
 
 
@@ -300,6 +303,43 @@ def test_no_answer_at_all_keeps_the_runners_order_and_says_so(tmp_path):
     assert snapshot(apt)["apt-mirrors.txt"] == mirrors(AZURE)
 
 
+@pytest.mark.parametrize(
+    "lst, said",
+    [
+        (
+            f"{AZURE}\tpriority:1\n{ARCHIVE}\tpriority:1\n{SECURITY}\tpriority:3\n",
+            f"by the runner's priorities: {AZURE} and {ARCHIVE} in random order, then {SECURITY}",
+        ),
+        (f"{AZURE}\n{ARCHIVE}\n", f"by the runner's priorities: {AZURE} and {ARCHIVE} in random order"),
+        (
+            f"{AZURE}\tpriority:1\n{ARCHIVE}\n{SECURITY}\n",
+            f"by the runner's priorities: {AZURE}, then {ARCHIVE} and {SECURITY} in random order",
+        ),
+        (
+            f"{AZURE}\tpriority:5\n{ARCHIVE}\tpriority:5\n{SECURITY}\tpriority:5\n",
+            f"by the runner's priorities: {AZURE}, {ARCHIVE} and {SECURITY} in random order",
+        ),
+        (
+            f"{AZURE}\tpriority:30\n{ARCHIVE}\tpriority:10\n{SECURITY}\tpriority:20\n",
+            f"in the runner's order: {ARCHIVE}, then {SECURITY}, then {AZURE}",
+        ),
+    ],
+    ids=["2 tie", "none", "1 then none", "all tie", "10 20 30"],
+)
+def test_no_answer_names_no_order_apt_takes_at_random_and_keeps_the_list(tmp_path, lst, said):
+    """apt-transport-mirror(1), "Fallback order for mirrors": hosts of 1 priority, or of none, are asked
+    in random order (apt 2.8.3's methods/mirror.cc sorts by priority, then by a random seed). With no
+    answer the list stays byte for byte, priorities other than 1 to n included."""
+    apt = layout(tmp_path, {"sources.list.d/ubuntu.sources": deb822(LIST, LIST), "apt-mirrors.txt": lst})
+    ran = run(str(apt), tmp=tmp_path)
+    assert ran.returncode == 0, ran.stderr
+    assert lines(ran)[-2:] == [
+        f"{PREFIX} {apt}/apt-mirrors.txt: no host answered the probe; apt asks {said}",
+        conf_line(apt),
+    ]
+    assert (apt / "apt-mirrors.txt").read_bytes() == lst.encode()
+
+
 def assigned(name: str) -> int:
     """A constant the script assigns once, as `NAME=<digits>`."""
     (value,) = re.findall(rf"^{name}=([0-9]+)$", SCRIPT.read_text(encoding="utf-8"), re.M)
@@ -314,6 +354,28 @@ def test_the_probe_fits_the_margin_the_jobs_limit_leaves():
     of 4.51 s, 2026-11-19): at most PROBE_BOUND + 2 s of the 8."""
     assert assigned("PROBE_SECONDS") < assigned("PROBE_BOUND")
     assert assigned("PROBE_BOUND") + 2 <= 1066 - 1058
+
+
+def update_bound() -> int:
+    """APT_UPDATE_TIMEOUT as CI's install step sets it: the bound of 1 try of install.sh's update."""
+    (value,) = set(re.findall(r"APT_UPDATE_TIMEOUT=([0-9]+)", (FLOWS / "ci.yml").read_text(encoding="utf-8")))
+    return int(value)
+
+
+def test_a_silent_first_host_costs_at_most_the_updates_bound():
+    """apt fetches the files of 1 host one after another: 1 queue per scheme and host, 1 worker per
+    queue (apt 2.8.3's apt-pkg/acquire.cc, QueueName and Queue::Startup). The runner's ubuntu.sources
+    sends 4 suites through the list (deb822 above), so `apt-get update` puts 4 InRelease files on the
+    first host. A host that accepts the connection and then sends nothing costs 2 timeouts per try
+    (methods/basehttp.cc, RUN_HEADERS_IO_ERROR: the item fails at the 2nd). A retry first waits 1, 2,
+    4 s (apt-pkg/acquire-worker.cc, HandleFailure). With apt's defaults (30 s, 3 retries) that is
+    4 x (4 x 60 + 7) = 988 s, and with 15 s and 1 retry 4 x (2 x 30 + 1) = 244 s. CI bounds 1 try of
+    the update at 120 s. This is an upper bound: a retry's wait can overlap another file's fetch."""
+    timeout, retries = assigned("TIMEOUT"), assigned("RETRIES")
+    files = sum(len(s.split()) for s in re.findall(r"^Suites: (.*)$", deb822(LIST, LIST), re.M))
+    assert files == 4
+    per_file = (retries + 1) * 2 * timeout + sum(2**k for k in range(retries))
+    assert files * per_file <= update_bound(), (files, per_file, update_bound())
 
 
 def test_a_probe_past_its_bound_is_no_answer_and_the_step_ends_within_the_bound(tmp_path):
@@ -363,6 +425,20 @@ def test_the_default_probe_asks_curl_for_the_first_mebibyte_within_3_s(tmp_path)
     expect += "-w %{http_code} %{size_download} %{time_total} -- "
     assert sorted(calls) == sorted(expect + u + PACKAGES for u in (AZURE, ARCHIVE, SECURITY))
     assert lines(ran)[3] == kept(apt, AZURE, ARCHIVE, SECURITY)
+
+
+def test_a_curl_that_hangs_is_ended_at_the_bound(tmp_path):
+    """curl's own --max-time does not bound everything: a name lookup that blocks is bounded only by
+    `timeout`. A stand-in curl that sleeps 30 s is ended at 4 s and killed 1 s later."""
+    apt = runner(tmp_path, AZURE)
+    (tmp_path / "standin").mkdir()
+    (tmp_path / "standin" / "curl-sleep").write_text("30\n", encoding="utf-8")
+    began = time.monotonic()
+    ran = run(str(apt), tmp=tmp_path, probe=False)
+    took = time.monotonic() - began
+    assert ran.returncode == 0, ran.stderr
+    assert took < 8, took
+    assert lines(ran)[:3] == [silent(u, "nothing within 4 s") for u in (AZURE, ARCHIVE, SECURITY)]
 
 
 def test_the_probe_file_follows_the_suite_and_the_ports_host(tmp_path):
@@ -630,6 +706,26 @@ def test_a_mirror_list_it_does_not_know_says_so_and_changes_nothing(tmp_path, ur
     assert lines(ran) == [
         f"{PREFIX} {apt}/sources.list.d/ubuntu.sources names {uri}, a mirror list this script does not know; "
         "changed nothing"
+    ]
+    assert snapshot(apt) == before
+    assert probed(tmp_path) == []
+
+
+@pytest.mark.parametrize("tail", [" priority:1", " priority:1\tarch:amd64", "  "])
+def test_a_list_line_with_a_blank_before_its_first_tab_changes_nothing(tmp_path, tail):
+    """apt's mirror method ends the URI at the first tab (apt 2.8.3's methods/mirror.cc, the list's
+    reading: `line.find('\\t')`, else the whole line is the URI). A line `<uri> priority:1` is then 1
+    URI with no priority, asked last; the step must not name it first. No runner image is shown to
+    write such a line: the step calls it a layout it does not know."""
+    lst = f"{AZURE}{tail}\n{ARCHIVE}\tpriority:2\n"
+    apt = layout(tmp_path, {"sources.list.d/ubuntu.sources": deb822(LIST, LIST), "apt-mirrors.txt": lst})
+    before = snapshot(apt)
+    ran = run(str(apt), tmp=tmp_path, measures={"azure.archive.ubuntu.com": FAST})
+    assert ran.returncode == 0, ran.stderr
+    uri = AZURE + tail.split("\t")[0]
+    assert lines(ran) == [
+        f"{PREFIX} {apt}/apt-mirrors.txt: a line has a blank before its first tab ({uri}),"
+        " and apt reads all of that as the URI: a layout this script does not know; changed nothing"
     ]
     assert snapshot(apt) == before
     assert probed(tmp_path) == []

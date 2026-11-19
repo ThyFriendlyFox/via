@@ -90,8 +90,8 @@ jobs:
             --enabled "$ENABLED" --github-output
       # The runner's regional mirror crawled to the download's bound (runs 44402154007 and 44432768560),
       # and Ubuntu's own archive did not deliver the index within 120 s (run 44477966021). So apt keeps
-      # both, asks first the one a probe of a few seconds finds fastest, and gives up a silent one after
-      # 15 s (tools/ci/apt_archive.sh). A person's computer keeps its mirror: install.sh does not change
+      # both, asks first the one a probe of a few seconds finds fastest, and sends a file to the next host
+      # after 15 s of silence (tools/ci/apt_archive.sh). A person's computer keeps its mirror: install.sh does not change
       # it. The variable CI_APT_UBUNTU_ARCHIVE=0 turns it off.
       - name: Rank the hosts of Ubuntu's archive, fastest first; give up a silent one
         if: steps.where.outputs.where == 'install'

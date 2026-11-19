@@ -219,16 +219,29 @@ index within 120 s in 3 tries (run 44477966021). So apt keeps more than
   ended at 4 s: at most 5 s in all, of the 8 s the `full` job's limit
   leaves beside install.sh's worst case. The list's priorities follow bytes a
   second. A host that does not answer goes last and stays. With no answer
-  at all the priorities stay as the runner wrote them.
+  at all the priorities stay as the runner wrote them; hosts of 1
+  priority, or of none, apt asks in random order, and the line says so.
 - `/etc/apt/apt.conf.d/80apt-archive-ci` sets apt's http and https
-  timeout to 15 s and `Acquire::Retries` to 1: a host that sends nothing
-  for 15 s is tried 1 more time, then apt's mirror method asks the next.
+  timeout to 15 s and `Acquire::Retries` to 0: a file whose host sends
+  nothing for 15 s goes to the next host of the list at once. A host that
+  accepts the connection and then sends nothing costs 2 timeouts, 30 s
+  (apt 2.8.3's `methods/basehttp.cc`). apt fetches the files of 1 host one
+  after another (`apt-pkg/acquire.cc`: 1 queue per host), and the
+  runner's `apt-get update` puts 4 InRelease files on the first host: a
+  silent first host costs 60 s (connections refused or dropped) to 120 s
+  (accepted, then silent). The latter is all of CI's 120 s for 1 try of
+  the update. With apt's defaults (30 s, 3 retries) it would be 988 s.
+- The list's tags follow a tab, as apt reads them (`methods/mirror.cc`).
+  A line with a blank before its first tab is a layout the script does
+  not know: it changes nothing.
 
 1. Read its lines in the step "Rank the hosts of Ubuntu's archive". A
    line `probe <host>: <n> bytes in <s> s, <r> bytes/s` or
    `probe <host>: no answer (...); it goes last` per host, then
    `apt-mirrors.txt: apt asks <first>, then ...: the fastest first`, or
-   `no host answered the probe; apt asks in the runner's order: ...`.
+   `no host answered the probe; apt asks in the runner's order: ...`
+   (`... by the runner's priorities: <a> and <b> in random order, ...`
+   when priorities tie or are missing).
    A line `<file>: <host> -> mirror+file:/etc/apt/apt-mirrors.txt` names a
    source file it pointed at the list, and `added ...` the hosts the list
    gained. A line `no regional or cloud mirror ...; changed nothing` says
@@ -249,8 +262,14 @@ What it does not cover:
 - install.sh's download passes its own `Acquire::http::Timeout=60` and
   `Acquire::Retries=3` on apt's command line, which win over the file: in
   the download a silent host is left after 4 tries of 60 s.
-- KiCad 10's source (the PPA) has 1 host. It gets the same 15 s and 1
-  retry, and nothing to fall back to.
+- KiCad 10's source (the PPA) has 1 host. `Acquire::Retries` holds for
+  every source, so in `apt-get update` the PPA gets 1 try of 15 s, not 4
+  of 30 s, and nothing to fall back to; install.sh tries the update again
+  as a whole.
+- A first host that accepts connections and then sends nothing can take
+  all 120 s of 1 try of the update. The probe puts a host that is silent
+  at the step's start last, so this needs a host that goes silent after
+  the probe.
 - An arm runner's `ports.ubuntu.com`, named alone with no list, stays 1
   host: the script knows no second host for it.
 - The image build: apt runs inside the container with Ubuntu's default

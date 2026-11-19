@@ -17,8 +17,12 @@
 #    the worst case of the apt step). The list's priorities are set by bytes a second, the fastest first;
 #    a host that does not answer goes last, in the runner's order, and stays. The probe never fails the
 #    step: with no answer at all the priorities stay.
-# 4. apt.conf.d/80apt-archive-ci: a host that sends nothing for 15 s is tried 1 more time, and then
-#    apt's mirror method asks the next host of the list.
+# 4. apt.conf.d/80apt-archive-ci: a file whose host sends nothing for 15 s is not tried again there;
+#    apt's mirror method asks the next host of the list for it. A host that accepts the connection and
+#    then sends nothing costs 2 timeouts, 30 s (methods/basehttp.cc). apt fetches the files of 1 host
+#    one after another (apt-pkg/acquire.cc: 1 queue per host), so the runner's 4 InRelease files on a
+#    silent first host cost 60 s to 120 s. apt's defaults (30 s, 3 more tries) would cost 988 s.
+#    The setting holds for every source: a source of 1 host (a PPA) gets 1 try, not 4.
 # security.ubuntu.com, a PPA, a third party's source, Ubuntu's own archive named alone and comments stay.
 #
 # The files read: sources.list, sources.list.d/*.list, sources.list.d/*.sources, and apt-mirrors.txt,
@@ -62,9 +66,11 @@ PROBE_BYTES=1048576
 PROBE_SECONDS=3
 PROBE_BOUND=4
 # apt's http and https methods: a host silent for TIMEOUT s fails the file; RETRIES more tries on the
-# same host, then the next host of the list. apt's defaults are 30 s (methods/basehttp.cc) and 3.
+# same host, then the next host of the list. apt's defaults are 30 s (methods/basehttp.cc) and 3. The
+# mirror list is the retry: 0 sends the file to the next host at once
+# (tests/test_ci_apt_archive.py, test_a_silent_first_host_costs_at_most_the_updates_bound).
 TIMEOUT=15
-RETRIES=1
+RETRIES=0
 # A host of the archive's own name with at least 1 label in front: archive.ubuntu.com alone, and
 # security.ubuntu.com, do not match. A URI ends at a blank or at the end of the line, so
 # my.archive.ubuntu.com.cn matches neither.
@@ -123,12 +129,19 @@ for f in "${files[@]}"; do
   notes+=("$work/$n|$hosts -> $KNOWN")
 done
 
-# The list's lines: URI, then its tags.
+# The list's lines: URI, a tab, then its tags. apt ends the URI at the first tab, else at the end of
+# the line (apt 2.8.3's methods/mirror.cc): a blank before the first tab would be part of the URI.
 entries=()
 if [[ -f "$LIST" ]]; then
   while IFS= read -r line || [[ -n "$line" ]]; do
     [[ "$line" =~ ^[[:space:]]*(#|$) ]] && continue
-    entries+=("${line%%[[:space:]]*}")
+    u="${line%%$'\t'*}"
+    if [[ "$u" =~ [[:space:]] ]]; then
+      say "$LIST: a line has a blank before its first tab ($u), and apt reads all of that as the URI:" \
+        "a layout this script does not know; changed nothing"
+      exit 0
+    fi
+    entries+=("$u")
   done < "$LIST"
 fi
 
@@ -183,7 +196,7 @@ uris=()
 prios=()
 while IFS= read -r line || [[ -n "$line" ]]; do
   [[ "$line" =~ ^[[:space:]]*(#|$) ]] && continue
-  u="${line%%[[:space:]]*}"
+  u="${line%%$'\t'*}"
   seen=0
   for x in "${uris[@]}"; do [[ "$x" == "$u" ]] && seen=1; done
   ((seen)) && continue
@@ -281,6 +294,30 @@ named=()
 for i in "${order[@]}"; do named+=("${uris[$i]}"); done
 joined="$(printf '%s\n' "${named[@]}" | paste -sd'\t' - | sed 's/\t/, then /g')"
 
+# With no answer apt keeps the runner's priorities, and takes hosts of 1 priority, or of none, in random
+# order (apt-transport-mirror(1), "Fallback order for mirrors"; methods/mirror.cc sorts by a random seed
+# after the priority). So the line names an order only between priorities.
+groups=()
+last=""
+for i in "${runners[@]}"; do
+  if ((${#groups[@]})) && [[ "${prios[$i]}" == "$last" ]]; then
+    groups[-1]+=$'\t'"${uris[$i]}"
+  else
+    groups+=("${uris[$i]}")
+  fi
+  last="${prios[$i]}"
+done
+random=0
+for k in "${!groups[@]}"; do
+  g="${groups[$k]}"
+  if [[ "$g" == *$'\t'* ]]; then
+    random=1
+    front="${g%$'\t'*}"
+    groups[k]="${front//$'\t'/, } and ${g##*$'\t'} in random order"
+  fi
+done
+kept="$(printf '%s\n' "${groups[@]}" | paste -sd'\t' - | sed 's/\t/, then /g')"
+
 # The new priorities: 1 for the first of the order. With no answer, the runner's priorities stay.
 if ((${#ranked[@]})); then
   new=()
@@ -288,7 +325,7 @@ if ((${#ranked[@]})); then
   : > "$work/ranked"
   while IFS= read -r line || [[ -n "$line" ]]; do
     if [[ "$line" =~ ^[[:space:]]*(#|$) ]]; then printf '%s\n' "$line" >> "$work/ranked"; continue; fi
-    u="${line%%[[:space:]]*}"
+    u="${line%%$'\t'*}"
     for i in "${!uris[@]}"; do [[ "${uris[$i]}" == "$u" ]] && p="${new[$i]}"; done
     if [[ "$line" =~ (^|[[:space:]])priority:[0-9]+ ]]; then
       line="$(sed -E "s/(^|[[:space:]])priority:[0-9]+/\\1priority:$p/" <<< "$line")"
@@ -304,8 +341,9 @@ fi
 
 cat > "$work/conf" << EOF
 // Written by tools/ci/apt_archive.sh, on CI's install path only (APT_ARCHIVE_CI=1).
-// A host that sends nothing for $TIMEOUT s is given up; after $RETRIES more try apt's mirror method asks
-// the next host of the mirror list. apt's own defaults are 30 s and 3 more tries.
+// A file whose host sends nothing for $TIMEOUT s gets $RETRIES more tries there; apt's mirror method
+// asks the next host of the mirror list for it. apt's own defaults are 30 s and 3 more tries.
+// It holds for every source: a source of 1 host gets 1 try.
 Acquire::http::Timeout "$TIMEOUT";
 Acquire::https::Timeout "$TIMEOUT";
 Acquire::Retries "$RETRIES";
@@ -327,10 +365,12 @@ fi
 for h in "${heard[@]}"; do say "$h"; done
 if ((${#ranked[@]})); then
   say "$LIST: apt asks $joined: the fastest first"
+elif ((random)); then
+  say "$LIST: no host answered the probe; apt asks by the runner's priorities: $kept"
 else
-  say "$LIST: no host answered the probe; apt asks in the runner's order: $joined"
+  say "$LIST: no host answered the probe; apt asks in the runner's order: $kept"
 fi
 mkdir -p -- "$dir/apt.conf.d"
 cmp -s -- "$work/conf" "$CONF" || install -m 0644 -- "$work/conf" "$CONF"
-say "$CONF: a host silent for $TIMEOUT s is tried $RETRIES more time, then apt asks the next" \
+say "$CONF: a file whose host is silent for $TIMEOUT s gets $RETRIES more tries there, then apt asks the next host" \
   "(Acquire::http::Timeout $TIMEOUT, Acquire::https::Timeout $TIMEOUT, Acquire::Retries $RETRIES)"
