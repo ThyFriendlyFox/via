@@ -2914,6 +2914,19 @@ main .post-card p {
   outline: none;
 }
 
+/* The feedback page, once a suggestion is sent: the thank-you line takes the heading's place and size,
+   and the heading and the form go (the owner's word, 2026-11-19). site.js shows it in place, or the
+   browser comes back at #sent when it posted the form itself. */
+.form-done.title {
+  margin-top: 0;
+  font-size: var(--text-title);
+}
+
+main:has(#sent:target, #sent[data-shown]) #feedback-title,
+#sent:target ~ .form {
+  display: none;
+}
+
 /* -------------------------------------------------------------- news bar */
 
 /* site.js builds it from blog/news.json: the newest posts run along the bottom of the screen, a

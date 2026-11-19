@@ -291,8 +291,10 @@ hidden field `website` is dropped, because a person does not see that
 field. A form posted from a page of another site gets 403. `site.js`
 sends a form and shows the answer in place. Without `site.js`, the
 browser posts the form, and the function sends the reader back to the
-page's thank-you line. `forms.py` writes the forms with the field names
-that `_forms.js` reads.
+page's thank-you line. On the feedback page the thank-you line takes the
+heading's place and size, and the heading and the form go, both ways
+(the owner's word, 2026-11-19). `forms.py` writes the forms with the
+field names that `_forms.js` reads.
 
 `package.json` pins the functions' only dependency, `@vercel/blob`, and
 `package-lock.json` locks it. Vercel installs it and builds `api/` from
