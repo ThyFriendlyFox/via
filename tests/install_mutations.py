@@ -493,7 +493,7 @@ MUTATIONS = [
     ("IA193 update: a try that ends shows its progress lines", "install.sh",
      "grep -Ev '^((Hit|Get|Ign):[0-9]+ |Fetched |Reading package lists)'", "grep -Ev '^$'"),
     ("IA194 update: the stop names no silent source", "install.sh",
-     " (APT_UPDATE_TIMEOUT); the sources that had not answered in try ${try}: ${SILENT:-none}\"",
+     " (APT_UPDATE_TIMEOUT); the sources that had not answered in try ${try}: ${SILENT:-$NOT_NAMED}\"",
      " (APT_UPDATE_TIMEOUT)\""),
     ("IA195 update: a one-line source's options read as its address", "install.sh",
      'if ($i ~ /^\\[/) { while (i <= NF && $i !~ /\\]$/) i++; i++ }', ""),
