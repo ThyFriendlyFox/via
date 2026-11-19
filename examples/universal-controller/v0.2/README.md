@@ -12,8 +12,8 @@ out like an Xbox 360 controller's main board, and everything a hand touches is o
 thumbsticks solder on, the triggers read Hall sensors on the shoulder horns, the bumpers stand on
 the horns' top edges, and the rumble motors plug in at the grips.
 
-This folder is a whole KiCad 10 project made with the EE Workcenter: `design.py` is the board,
-and the `.kicad_*` files beside it are what `workcenter design` writes from it.
+This folder is a whole KiCad 10 project made with Via: `design.py` is the board, and the
+`.kicad_*` files beside it are what `workcenter design` writes from it.
 
 <!-- pictures:begin -->
 <img src="docs/board-spin.gif" width="616" alt="Rosetta v0.2 turning: the front with 2 thumbsticks, the D-pad, A/B/X/Y, the knob and its ring, the bumpers on the horns; the back with the RP2040, the ESP32 and the power parts">
@@ -27,7 +27,7 @@ and the `.kicad_*` files beside it are what `workcenter design` writes from it.
 | <img src="docs/layers.png" width="400" alt="Every layer of Rosetta v0.2 on its own"> | <img src="docs/schematic.png" width="400" alt="Rosetta v0.2's schematic"> |
 
 From `workcenter render . --strict --views schematic,3d,layers,spin --width 1600 --spin-zoom 1.1`, with
-KiCad's 3D bodies in `KICAD10_3DMODEL_DIR` (the workcenter's `site/media/README.md` says how to
+KiCad's 3D bodies in `KICAD10_3DMODEL_DIR` (Via's `site/media/README.md` says how to
 fetch them) and the 4 bodies in `models/`.
 <!-- pictures:end -->
 
