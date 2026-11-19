@@ -39,6 +39,12 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-19 — CI's install path asks Ubuntu's own archive
+
+Twice CI's install step stopped at its bound of 570 s while apt downloaded from the runner's regional mirror, us-east-2.ec2.archive.ubuntu.com (runs 44402154007 and 44432768560). In the same minutes of the second, the image builds asked archive.ubuntu.com and built both machines in 5 minutes. A new script turns a regional or cloud mirror of Ubuntu's archive into the archive itself before install.sh runs, in CI and the nightly run only. It refuses a person's /etc/apt unless CI says so. It does not help when archive.ubuntu.com itself is slow, nor with KiCad 10's PPA. 1 review called it sound and found 1 low fault: the printed line could name a host the script had not changed. It is fixed. No run on GitHub has used the step yet; this batch's pull request will be its first real run.
+
+Evidence: `tests/test_ci_apt_archive.py` (26 tests); branch `wip/mirror`, cfbff9a.
+
 ## 2026-11-18 — The website talks with its reader
 
 The owner read the first pass to the writing rules and said it still sounded bad: no soul, written

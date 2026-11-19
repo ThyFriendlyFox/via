@@ -5,8 +5,8 @@ file explains them and holds the repository settings that are not files.
 
 | File | Trigger | Does |
 |---|---|---|
-| `ci.yml` | push to `main`, every PR, manual | `full`: the image of this commit's toolchain when the registry gives it, else `sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh`; then `make verify` (tools/ci/README.md, "Where `full` runs"). |
-| `nightly.yml` | 06:17 UTC daily | `sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh` then `make verify`, always by install.sh. Files 1 `ci-failure` issue on red when none is open. Catches a moved PPA, a new KiCad point release, a broken dependency. |
+| `ci.yml` | push to `main`, every PR, manual | `full`: the image of this commit's toolchain when the registry gives it, else `tools/ci/apt_archive.sh` (apt asks Ubuntu's own archive, not the runner's regional mirror), then `sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh`; then `make verify` (tools/ci/README.md, "Where `full` runs"). |
+| `nightly.yml` | 06:17 UTC daily | `tools/ci/apt_archive.sh`, then `sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh` then `make verify`, always by install.sh. Files 1 `ci-failure` issue on red when none is open. Catches a moved PPA, a new KiCad point release, a broken dependency. |
 | `image.yml` | PR on the files the build reads, every push to `main`, `v*.*.*`, Monday 04:17 UTC, manual | Builds the image on amd64 and arm64 from install.sh, with CI's 2 bounds of its apt step as build arguments, checks it with doctor and the gates as a user; pushes to `ghcr.io/<owner>/ee-workcenter` except on a PR. |
 | `release.yml` | tag `v*.*.*` | Publishes the GitHub Release with generated notes (the image comes from `image.yml`). |
 | `stale.yml` | Mondays | Marks issues stale after 60 days, closes after 14 more. `blocked`, `security`, `accepted` are exempt. |
@@ -25,6 +25,8 @@ The runner is `ubuntu-24.04`, so the PPA step, the Java package, and ngspice
 match the cloud environment. `REQUIRE_FREEROUTING=1` makes a blocked JAR
 download fail the run; a green CI proves the autoroute engine installs.
 
+Before install.sh, the install path and the nightly run turn apt from the runner's regional mirror to Ubuntu's own archive: `sudo env APT_ARCHIVE_CI=1 bash tools/ci/apt_archive.sh /etc/apt`. Twice the mirror us-east-2.ec2.archive.ubuntu.com crawled and the download hit its bound of 570 s (CI runs 44402154007 and 44432768560), while the image builds of the same hours asked archive.ubuntu.com and were fast (`Image` run 44432768632 built both machines between 00:54 and 00:59 UTC on 2026-11-19). The script changes only a regional or cloud host of archive.ubuntu.com or ports.ubuntu.com; a layout it does not know, it names and leaves. Setting the repository variable `CI_APT_UBUNTU_ARCHIVE` to `0` turns it off (tools/ci/README.md, "Ubuntu's own archive on the install path"). No run on GitHub has used the step yet.
+
 ## The container image: what the owner does once
 
 1. Merge the pull request that carries wip/image. Its `Image` workflow builds both machines' images on the pull request and pushes nothing: read that run first (lines below).
@@ -32,6 +34,7 @@ download fail the run; a green CI proves the autoroute engine installs.
 3. Open the package: the repository's page, Packages, `ee-workcenter` (or github.com/users/ThyFriendlyFox/packages/container/package/ee-workcenter). If it shows Private: Package settings, Danger Zone, Change visibility, Public, type the name, confirm ("Configuring a package's access control and visibility", "Configuring visibility of packages for your personal account"). Public cannot be made private again (same page). Until then users and forks cannot pull it; CI on the repository's own branches can (the label links the package before its first publish), and a fork's pull request falls back to install.sh.
 4. On the same page, under "Manage Actions access", the repository `via` should be listed with write (a package a workflow publishes is linked to it). If it is not: Add Repository, `via`, Write.
 5. Optional: Settings, Secrets and variables, Actions, Variables: `CI_FULL_IN_IMAGE` = `0` sends every full run to install.sh (to take a bad image out of CI at once). Unset or any other value: the image when the registry gives it.
+6. Optional: under the same Variables, `CI_APT_UBUNTU_ARCHIVE` = `0` leaves the runner's apt mirror as it is on the install path and the nightly run (to take the archive step out at once). Unset or any other value: apt asks Ubuntu's own archive.
 
 Done on 2026-11-18: steps 1 and 2. Pull request 92's `Image` run (44396387137) built both machines' images and pushed nothing; `build (amd64)` stopped on its first run on a 503 of the KiCad 10 source and passed on its 1 re-run. It was merged as 1fb707c, and the `Image` run on main (44402154037) built both images, pushed them, and its `publish` job passed at 21:36 UTC. Step 3 waits: the package is still private. CI run 44409635104 took the image path first: the install step was skipped and `make verify` ran inside the image, 3732 of 3811 tests passed and 1 failed, a test of the gates step that read the machine's user list, fixed since.
 
@@ -44,6 +47,8 @@ The lines to read in the first runs:
 ## What CI still needs from a third party
 
 CI's `full` job still needs Launchpad's host on every run that takes the install path. The owner chose the container image to end that: the `full` job runs in the image of its toolchain's content tag when the registry has it, and needs no third party then (`tools/image.py decide`). What stays open: a pull request that changes `Dockerfile`, `install.sh` or `requirements.txt` takes the install path, as its test, and needs Launchpad's host; and every push to main runs install.sh again inside the image build, so an outage of KiCad 10's package source turns that `Image` run red and leaves `main`'s image stale. Building the toolchain layer from install.sh and requirements.txt alone, kept between builds by the registry's cache, would let a push that changes neither run without a third party; it is not built.
+
+The install path also needs Ubuntu's archive. It asks archive.ubuntu.com (ports.ubuntu.com on an arm machine), not the runner's regional mirror, since the mirror crawled to the download's bound in CI runs 44402154007 and 44432768560. A slow or absent archive.ubuntu.com still turns the install path red; the image path does not use the runner's apt.
 
 ## The website (Vercel project settings)
 

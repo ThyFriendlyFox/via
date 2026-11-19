@@ -315,12 +315,14 @@ part by `mpn` or `mpns` and whose `source.sha256` is a row of
 | `WORKCENTER_NO_ENGINES` | `1` or unset | unset | `1` refuses every engine start in a test run (`make verify-site` sets it): the start raises FileNotFoundError, read as an absent engine. |
 | `WORKCENTER_ENGINE_LOG` | path | a temp file per pytest run | Where each engine start of a test run is written; the `engine` marker is held against it. |
 | `--repo`, `--base`, `--head`, `--paths`, `--github-output` | `tools/ci/scope.py` flags | repo: here; head: the working tree | The change to judge; an empty `--base` is full; `--github-output` appends `scope=<answer>` to `$GITHUB_OUTPUT`. |
+| `CI_APT_UBUNTU_ARCHIVE` | repository variable (Settings, Secrets and variables, Actions, Variables) | unset | `0` leaves the runner's apt mirror as it is on CI's install path and in the nightly run; anything else runs `tools/ci/apt_archive.sh`, which turns a regional or cloud mirror of Ubuntu's archive into archive.ubuntu.com (ports.ubuntu.com on arm). |
+| `APT_ARCHIVE_CI`, `APT_DIR` and the 1 argument | `tools/ci/apt_archive.sh` | the argument, else `APT_DIR`, else /etc/apt | The folder of apt's files to change. The script refuses /etc/apt unless `APT_ARCHIVE_CI=1`, which the workflows set; a test gives it a folder of its own. Exit 0 when it ran, 2 when it refused or found no folder. |
 
 ## `verify/testshards.py` and `verify/shards.csv` (the tests step of `make verify`)
 
 | Field | Type | Default | Use |
 |---|---|---|---|
-| `verify/shards.csv` | CSV: `file`, `seconds`, `engine`, `alone` | 89 rows and `*` | Each test file's seconds in a shard, whether it starts an engine (its `no` files run first in a shard), and why it must run alone (it runs in the shard `serial`, after the others). `*` is the row for a file not listed (41.9 s). `verify/README.md` says how to keep it true. |
+| `verify/shards.csv` | CSV: `file`, `seconds`, `engine`, `alone` | 90 rows and `*` | Each test file's seconds in a shard, whether it starts an engine (its `no` files run first in a shard), and why it must run alone (it runs in the shard `serial`, after the others). `*` is the row for a file not listed (41.9 s). `verify/README.md` says how to keep it true. |
 | `--jobs` | flag of `verify/testshards.py run` | the processors (`os.cpu_count()`) | How many shards run side by side. |
 | `--work` | flag of `verify/testshards.py run` | a new folder under `$TMPDIR` | Where the shards' logs go. A folder named here is kept, and must be empty or new; a folder of its own is deleted when green and kept when red. |
 | `--table` | flag of `verify/testshards.py run` and `table` | `verify/shards.csv` | The table the files are split by, or written from. |
