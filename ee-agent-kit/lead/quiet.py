@@ -75,8 +75,10 @@ def still_working(candidates: list[tuple[int, str, str]]) -> list[tuple[int, str
 
 
 def processes() -> dict[int, tuple[int, str, str]]:
+    # -ww: unlimited width. Without it `ps` cuts each line to COLUMNS (or a terminal's width), and a
+    # folder at the end of a long command line is lost with the rest of it (M281).
     listing = subprocess.run(
-        ["ps", "-eo", "pid=,ppid=,comm=,args="], capture_output=True, text=True, check=True
+        ["ps", "-ww", "-eo", "pid=,ppid=,comm=,args="], capture_output=True, text=True, check=True
     ).stdout
     procs = {}
     for line in listing.splitlines():

@@ -40,9 +40,19 @@ RECORD = Path("/opt/workcenters/ee/image.json")
 SRC = Path(__file__).resolve().parents[1]
 DISABLE = "CI_FULL_IN_IMAGE"
 # The image holds no node, so the tests that run it skip there. A change to a file they read takes the
-# install path, where node is: the 2 test files, the forms' functions test_forms.py runs and the
-# workflow scripts test_lead.py parses. tests/test_image.py finds every test that asks for node.
-NODE_PATHS = ("site/api/", "ee-agent-kit/lead/workflows/", "tests/test_forms.py", "tests/test_lead.py")
+# install path, where node is: the 3 test files, the forms' functions test_forms.py runs, the
+# workflow scripts test_lead.py parses, and the nightly's issue step test_ci_nightly_issue.py runs (its
+# script in nightly.yml and the nightly_issue.py that script runs). tests/test_image.py finds every
+# test that asks for node.
+NODE_PATHS = (
+    "site/api/",
+    "ee-agent-kit/lead/workflows/",
+    ".github/workflows/nightly.yml",
+    "tools/ci/nightly_issue.py",
+    "tests/test_ci_nightly_issue.py",
+    "tests/test_forms.py",
+    "tests/test_lead.py",
+)
 
 Reader = Callable[[str], bytes]
 
