@@ -18,6 +18,9 @@ A long command started by the holder, or by a process the holder started, runs a
 holder's pid is the process itself or one of its ancestors (/proc/<pid>/stat). The holder hands its
 children `WORKCENTER_LOCK_TICKET`, the path of its ticket; the variable alone opens nothing.
 
+A waiting run says so on stderr, or in the file `WORKCENTER_LOCK_LOG` names: a test session names one
+(tests/conftest.py), so a run of another session adds no line to the stderr a test compares.
+
 Standard library only, as the CLI is (AGENTS.md invariants 3 and 14). `python3 tools/enginelock.py hold
 -- CMD` runs any command under the lock, `held` answers whether this process may run without waiting,
 and `state` prints who holds it.
@@ -46,6 +49,7 @@ ENV_DIR = "WORKCENTER_LOCK_DIR"
 ENV_SWITCH = "WORKCENTER_LOCK"
 ENV_TICKET = "WORKCENTER_LOCK_TICKET"
 ENV_EVERY = "WORKCENTER_LOCK_EVERY"
+ENV_LOG = "WORKCENTER_LOCK_LOG"
 OFF = {"0", "off", "no", "false"}
 EVERY = 30.0
 POLL = 0.1
@@ -159,6 +163,21 @@ def every() -> float:
         return max(0.05, float(os.environ.get(ENV_EVERY, EVERY)))
     except ValueError:
         return EVERY
+
+
+def notice(line: str, stream) -> None:
+    """1 line that says a run waits for its turn or took it. It goes to the file `WORKCENTER_LOCK_LOG`
+    names, where a test session sends it (tests/conftest.py): another session's run on the machine then
+    adds no line to the stderr a test compares. Else, or when that file cannot be written, to `stream`."""
+    named = os.environ.get(ENV_LOG)
+    if named:
+        try:
+            with open(named, "a", encoding="utf-8") as log:
+                log.write(line + "\n")
+            return
+        except OSError:
+            pass
+    print(line, file=stream, flush=True)
 
 
 def _seq(name: str) -> int | None:
@@ -422,10 +441,10 @@ class Ticket:
             if told is None or time.monotonic() - told >= every():
                 told = time.monotonic()
                 line = f"workcenter: waiting on the engine lock: {_runs(len(ahead))}; {holder_text(ahead[0])}"
-                print(f"{line}; lock folder {self.folder}", file=stream, flush=True)
+                notice(f"{line}; lock folder {self.folder}", stream)
             time.sleep(POLL)
         if told is not None:
-            print(f"workcenter: took the engine lock after {_span(self.waited)}", file=stream, flush=True)
+            notice(f"workcenter: took the engine lock after {_span(self.waited)}", stream)
         held = self.path.with_suffix(".held")
         tmp = self.folder / f".held-{os.getpid()}-{self.seq}"
         tmp.write_text(repr(clock.stamp()), encoding="utf-8")

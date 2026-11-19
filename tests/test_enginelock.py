@@ -376,6 +376,65 @@ def test_the_lock_turned_off_never_waits(bench):
     assert bench.err("B") == ""
 
 
+def _refused_lint(bench: Bench, env: dict[str, str]) -> subprocess.CompletedProcess:
+    """`workcenter chip lint` of a folder with no chip.json: a long command that refuses on stderr and
+    starts no engine."""
+    argv = [PY, str(CLI), "chip", "lint", str(bench.tmp / "no-chip")]
+    return subprocess.run(argv, env=env, capture_output=True, text=True, timeout=60)
+
+
+def _behind_a_holder(bench: Bench, env: dict[str, str], tag: str) -> subprocess.CompletedProcess:
+    """The same command, started while the planted holder `engine <tag>` holds; the holder lets go once
+    the command's ticket is on disk and the waiting line was written."""
+    bench.hold(tag)
+    until(f"{tag} to start", lambda: started(bench, tag))
+    done: list[subprocess.CompletedProcess] = []
+    run = threading.Thread(target=lambda: done.append(_refused_lint(bench, env)))
+    run.start()
+    until("the command's ticket", lambda: len(bench.tickets()) == 2)
+    time.sleep(0.3)
+    bench.release(tag)
+    run.join(60)
+    return done[0]
+
+
+NOTICE = re.compile(r"workcenter: (waiting on the engine lock: .*|took the engine lock after .*)")
+
+
+def test_a_planted_holder_does_not_change_the_stderr_a_test_compares(bench):
+    """tests/conftest.py names 1 notice file for the session (`WORKCENTER_LOCK_LOG`), and every process
+    a test starts inherits it. A run that waits writes its 2 notice lines there, not to stderr: the stderr
+    of a refused long command is the same, byte for byte, with and without a second holder, and the file
+    gains the 2 lines that name the holder. The lock is the shared one: the command still waits."""
+    log = os.environ.get("WORKCENTER_LOCK_LOG", "")
+    assert log and Path(log).is_absolute() and Path(log).is_file(), log
+    env = {k: v for k, v in os.environ.items() if k not in ("WORKCENTER_LOCK", "WORKCENTER_LOCK_TICKET")}
+    env["WORKCENTER_LOCK_DIR"] = str(bench.dir)
+    alone = _refused_lint(bench, env)
+    assert alone.returncode != 0 and alone.stderr and not NOTICE.search(alone.stderr), alone.stderr
+    before = Path(log).stat().st_size
+    waited = _behind_a_holder(bench, env, "A")
+    assert (waited.returncode, waited.stdout, waited.stderr) == (alone.returncode, alone.stdout, alone.stderr)
+    with open(log, encoding="utf-8") as f:
+        f.seek(before)
+        lines = f.read().splitlines()
+    assert len(lines) == 2 and all(NOTICE.fullmatch(x) for x in lines), lines
+    assert "held by `engine A`" in lines[0] and lines[1].startswith("workcenter: took the engine lock"), lines
+
+
+def test_without_a_notice_file_the_waiting_run_says_so_on_stderr(bench):
+    """A person's run names no notice file (the bench takes every `WORKCENTER_LOCK*` out): the 2 lines go
+    to stderr, and they are the only lines the holder adds. A notice file that cannot be written (here a
+    folder) loses no line: they go to stderr too."""
+    alone = _refused_lint(bench, bench.env())
+    for tag, extra in (("B", {}), ("C", {"WORKCENTER_LOCK_LOG": str(bench.tmp)})):
+        waited = _behind_a_holder(bench, bench.env(**extra), tag)
+        lines = waited.stderr.splitlines(keepends=True)
+        said = [x for x in lines if NOTICE.fullmatch(x.rstrip("\n"))]
+        assert len(said) == 2 and f"held by `engine {tag}`" in said[0], waited.stderr
+        assert "".join(x for x in lines if x not in said) == alone.stderr, waited.stderr
+
+
 def test_two_runs_that_come_in_the_same_millisecond_get_2_tickets_and_take_turns(bench):
     """P and Q wait on 1 file and then both become the lock's command; 1 of them runs, then the other,
     never both: the log is start X, end X, start Y, end Y."""
