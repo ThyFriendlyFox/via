@@ -416,7 +416,7 @@ images are drawn.
 | `tools/pdfcurve.py`, `tools/kistack_board.py` | A PDF page's vector paths; the board reader kistack's checks run on. |
 | `tools/harvest.py` | What the projects taught the workcenter, read from the repository: each branch's work that main lacks, the scripts projects wrote for themselves, the mistakes made again; and the roadmap's rated candidates held to their scores. |
 | `tools/hooks/` | Claude Code hooks: no `cd` in a command, no test written by a script. |
-| `tools/ci/` | `scope.py`: what a change needs, `fast` or `full`; the `engine` marker's plugin and its guard. `make scope`, `make verify-site`. |
+| `tools/ci/` | `scope.py`: what a change needs, `fast` or `full`; the `engine` marker's plugin and its guard; `nightly_issue.py`: what the nightly run does with its `ci-failure` issue. `make scope`, `make verify-site`. |
 | `WORKCENTER.md` | The contract a project gets from this workcenter. |
 | `AGENTS.md`, `CLAUDE.md` | Where an agent starts. The same text. |
 | `.claude/skills/` | `attached-repos`, `autoroute`, `blocks`, `blog-post`, `board-design`, `board-gates`, `board-loop`, `board-rules`, `charger-block`, `chip-design`, `chip-gates`, `copper`, `fabrication`, `fields`, `highspeed`, `kistack`, `land`, `lead`, `legend`, `now`, `procurement`, `ratings`, `references`, `simulate`, `standards`, `user-round`, `verification`. |

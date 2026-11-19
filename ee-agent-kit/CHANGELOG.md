@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/) · Versioning: [SemVer](
 
 ## [Unreleased]
 ### Changed
+- The nightly run's `ci-failure` issue follows the nights. A failed night opens it, or adds 1 comment when it is open, with the run's address, the step that failed and the gate's `why:` lines, so a reader need not open the log. A passed night closes it with 1 comment that names the run. Before, a stale issue hid every later failure: issue 63 of 2026-11-17 stayed open after the next night passed, until it was closed by hand.
 - README.md, STATUS.md and ROADMAP.md say the container package `ghcr.io/thyfriendlyfox/via` is public, and a pull needs no login: at 06:00 UTC on 2026-11-19 a request with no login for its manifest got HTTP 200. README.md had said a pull needed `docker login ghcr.io` until the owner made the package public; that sentence was written without a look (M280).
 - The lead's quiet check (`ee-agent-kit/lead/quiet.py`) leaves out a Python script with nothing below it that sleeps and used no processor time for 2 s, as it left out a shell script that only sleeps: a helper's script that waited for the gate's lock in `time.sleep` was counted as busy, and it and the gate waited for each other (M277). PROCESSES.md P31 steps 11 to 14, P14 step 9 and P5 step 7, with the `lead` skill, keep helpers' test commands to about 5 minutes, give the health gate 2 hours, keep a gate's tools from edits in place, and ask before a cleaning or a release lap (M273 to M280).
 

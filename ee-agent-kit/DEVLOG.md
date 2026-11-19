@@ -39,6 +39,12 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-19 — The nightly's ci-failure issue opens, speaks and closes by itself
+
+Nightly run 44031336712 failed on 2026-11-17 and opened issue 63. Run 44251400298 passed the next morning. The old step runs only on failure and opens an issue only when none is open, so issue 63 stayed open until it was closed by hand at 20:58 UTC on 2026-11-18. While it was open, a new failure would have said nothing. Now `tools/ci/nightly_issue.py` decides from the night's outcome, the gate's log and the open issues, and the workflow's last step carries the answer to GitHub. A failed night opens or comments, with the gate's `why:` lines; a passed night closes. Of 2 open issues the oldest is spoken to and the other closed as its duplicate. 21 tests, seen failing first (18 failed before the script; the 3 a review added failed before their fix). No GitHub run has used it yet.
+
+Evidence: `tests/test_ci_nightly_issue.py` (21 tests); branch `wip/nightly-issue`, 3a59083.
+
 ## 2026-11-19 — 2 health gates ended with no verdict while helpers ran tests
 
 On the morning of the release the health gate waited on helpers 3 times. The first gate waited 50 minutes for the machine, and its 1-hour limit ended it after 9 minutes of `make verify`. Later, 1 helper's test command ran 20 minutes without the engine lock, and the next gate waited behind it. The lead could not end that run: the session refused it, since the run was another agent's. Then the quiet check counted a helper's script as busy while it only slept, waiting for the gate's lock. The script and the gate waited for each other. The lead fixed its copy of the check in 2 edits while the gate called it; between them the check failed and the gate stopped. A cleaning also removed pytest's temp root under a helper's running test. The repository's quiet check now leaves out a Python script that sleeps with nothing below it. P31 now keeps helpers' commands to about 5 minutes, gives the gate 2 hours, and forbids edits in place to a running gate's tools. main also moved under the release's pull request 4 times, and P14 now asks the owner to hold such pushes before a release lap.
