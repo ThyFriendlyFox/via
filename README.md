@@ -315,8 +315,8 @@ command. `workcenter next <project>` gives the step, and `make verify`
 the repository's health.
 
 **A Docker image.** With Docker instead of installing (amd64 or arm64; no openEMS on arm64):
-`docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work ghcr.io/thyfriendlyfox/ee-workcenter:main workcenter gates .`.
-The files the gates write belong to you. The image holds the toolchain install.sh installs and the workcenter, without the example boards and the site; `.github/workflows/image.yml` builds it on Ubuntu 24.04 and publishes it from `main`, a release's tag, each Monday and by hand. Pin a toolchain by its digest from the `Image` workflow's summary. The first image was built and pushed from `main` on 2026-11-18; the package is still private, so it cannot be pulled from outside the repository yet.
+`docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work ghcr.io/thyfriendlyfox/via:main workcenter gates .`.
+The files the gates write belong to you. The image holds the toolchain install.sh installs and the workcenter, without the example boards and the site; `.github/workflows/image.yml` builds it on Ubuntu 24.04 and publishes it from `main`, a release's tag, each Monday and by hand. Pin a toolchain by its digest from the `Image` workflow's summary. The package is named `via`. Its first image is pushed by the release's tag or the next push to `main`; the images built before the first release went to an older package, `ee-workcenter`, which is no longer updated.
 
 ### Run the workcenter from its container
 
@@ -326,25 +326,25 @@ It mounts your project on `/work`, its working folder.
 Pull the image:
 
 ```sh
-docker pull ghcr.io/thyfriendlyfox/ee-workcenter:v0.1.0
+docker pull ghcr.io/thyfriendlyfox/via:v0.1.0
 ```
 
 Run the gates on the project in the current folder, on Linux or macOS in a POSIX shell:
 
 ```sh
-docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work ghcr.io/thyfriendlyfox/ee-workcenter:v0.1.0 workcenter gates .
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work ghcr.io/thyfriendlyfox/via:v0.1.0 workcenter gates .
 ```
 
 On Windows, in PowerShell:
 
 ```powershell
-docker run --rm -v "${PWD}:/work" ghcr.io/thyfriendlyfox/ee-workcenter:v0.1.0 workcenter gates .
+docker run --rm -v "${PWD}:/work" ghcr.io/thyfriendlyfox/via:v0.1.0 workcenter gates .
 ```
 
 On Windows, in cmd.exe:
 
 ```bat
-docker run --rm -v "%cd%:/work" ghcr.io/thyfriendlyfox/ee-workcenter:v0.1.0 workcenter gates .
+docker run --rm -v "%cd%:/work" ghcr.io/thyfriendlyfox/via:v0.1.0 workcenter gates .
 ```
 
 - On Linux, `--user` makes the files the gates write yours; the image's build checks this with the same command.
