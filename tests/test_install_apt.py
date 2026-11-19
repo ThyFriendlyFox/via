@@ -3658,19 +3658,23 @@ MEASURED = {
 @pytest.mark.parametrize("name", list(INSTALLING))
 def test_the_worst_case_of_the_apt_step_fits_the_jobs_limit(name):
     """Each workflow that runs install.sh sets CI's 3 bounds, and its own job's limit is read from it
-    (ci.yml 40 minutes, nightly.yml 45, image.yml 60), so a change of either without the other fails
+    (ci.yml 45 minutes, nightly.yml 45, image.yml 60), so a change of either without the other fails
     here. The steps no bound holds take 805 s (MEASURED, job 135593285528). The key fetch runs on every
     fresh runner: each of its 2 addresses is tried while curl's retry timer is below KICAD_KEY_TIMEOUT
     (--retry-max-time), each try lasts at most KICAD_KEY_TIMEOUT (--max-time), and with --retry 3 curl
     waits 1, 2, then 4 s (curl 8.5.0's manual): at most 20 + 4 + 20 = 44 s an address, 88 s for both.
     Then 3 tries of the update and 2 waits, the main download, and the openEMS step's download (385 s in
     that run, with no bound): 88 + 3 x 120 + 2 x 20 + 570 + 300 = 1358 s, 2163 s with the 805: over
-    `full`'s former 30 minutes (1800 s), within 40 (2400 s). The boot step's update (the apt step's 3
+    `full`'s 30 minutes of 2026-11-18 (1800 s). The boot step's update (the apt step's 3
     tries and 2 waits) and download run only on a bare Ubuntu, the image's base (GitHub's runner has
     every tool: the passing run printed no `boot:` line): they count for image.yml, 3 x 120 + 2 x 20 +
     300 = 700 s more, 2863 s of its 3600. The nightly run and
     the image build are held to the same 805 s; neither has a passing run of its own measured (the image
-    build runs no `make verify`, but builds, checks and pushes)."""
+    build runs no `make verify`, but builds, checks and pushes).
+    ci.yml and nightly.yml also keep apt's package files between runs (tools/ci/apt_cache.sh): the
+    restore (2 min), the copy into apt's folder (1 min), the check that keeps them (1 min) and the save
+    (2 min) each have a bound, 360 s more: 2523 s, within `full`'s 45 minutes (2700 s) and the nightly
+    run's 45. The key step reads 1 file and has no bound."""
     bounds, limit = ci_bounds(*INSTALLING[name])
     assert bounds == {**CI, "APT_OTHER_TIMEOUT": "300"}
     tries, wait = assigned("KICAD_INDEX_TRIES"), assigned("KICAD_INDEX_WAIT")
@@ -3680,18 +3684,34 @@ def test_the_worst_case_of_the_apt_step_fits_the_jobs_limit(name):
     worst = key + tries * update + (tries - 1) * wait + download + other
     if name == "image.yml":
         worst += tries * update + (tries - 1) * wait + other
+    else:
+        assert cache_bounds(*INSTALLING[name]) == 360
+        worst += cache_bounds(*INSTALLING[name])
     assert sum(MEASURED.values()) == 805
     assert worst + sum(MEASURED.values()) <= limit, (worst, limit)
-    if name == "ci.yml":
-        assert (worst + sum(MEASURED.values()), limit) == (2163, 2400)
+    if name in ("ci.yml", "nightly.yml"):
+        assert (worst + sum(MEASURED.values()), limit) == (2523, 2700)
     if name == "image.yml":
         assert (worst + sum(MEASURED.values()), limit) == (2863, 3600)
 
 
+def cache_bounds(path: Path, job: str) -> int:
+    """The bounds in s of the steps that keep apt's package files (tools/ci/apt_cache.sh, actions/cache)."""
+    yaml = pytest.importorskip("yaml")
+    steps = yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"][job]["steps"]
+    ours = [
+        s
+        for s in steps
+        if "apt_cache.sh" in s.get("run", "") or s.get("uses", "").startswith("actions/cache/")
+    ]
+    return sum(int(s.get("timeout-minutes", 0)) * 60 for s in ours)
+
+
 def test_no_text_keeps_a_figure_of_the_former_arithmetic():
-    """The worst case is 2163 s of `full`'s 2400 (above): 237 s are left, not 8, and the bounded part is
-    1358 s, not 1058. CI passes 0 retries and 15 s per file where it keeps the mirror list, so no text may
-    say that install.sh's 3 and 60 s win in CI's download."""
+    """The worst case is 2523 s of `full`'s 2700 (above, with the package cache's 360 s): 177 s are left,
+    not 8 nor 237, and the bounded part of the apt step is 1358 s, not 1058. CI passes 0 retries and 15 s
+    per file where it keeps the mirror list, so no text may say that install.sh's 3 and 60 s win in CI's
+    download."""
     texts = {
         name: (ROOT / name).read_text(encoding="utf-8")
         for name in ("install.sh", "ee-agent-kit/CI.md", "tools/ci/apt_archive.sh", "tools/ci/README.md")
@@ -3704,10 +3724,13 @@ def test_no_text_keeps_a_figure_of_the_former_arithmetic():
         "8 s CI",
         "timeout-minutes: 30",
         "15 s rule does not hold",
+        "2163 s of",
+        "237 s",
+        "timeout-minutes: 40",
     )
     found = [(name, x) for name, text in texts.items() for x in stale if x in " ".join(text.split())]
     assert found == []
-    assert "2163 s" in " ".join(texts["install.sh"].split())
+    assert "2523 s" in " ".join(texts["install.sh"].split())
     gates = (ROOT / ".github" / "workflows" / "board-gates.yml").read_text(encoding="utf-8")
     assert "worst case is 1058 s" not in " ".join(gates.split())
 

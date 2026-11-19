@@ -352,11 +352,12 @@ def assigned(name: str) -> int:
 def test_the_probe_fits_the_margin_the_jobs_limit_leaves():
     """tests/test_install_apt.py (test_the_worst_case_of_the_apt_step_fits_the_jobs_limit) counts this
     step in the 25 s measured before install.sh (job 135593285528, where it took under 0.3 s), and the
-    `full` job's worst case at 2163 s of its 2400: 237 s are left. Its probe ends at PROBE_BOUND s,
-    `timeout` kills it 1 s later, and the rest of the step needs well under 1 s (on this machine 4.63 s
-    in all with a probe of 4.51 s, 2026-11-19): at most PROBE_BOUND + 2 s of the 237."""
+    `full` job's worst case at 2523 s of its 2700 (the bounds of apt's kept package files included):
+    177 s are left. Its probe ends at PROBE_BOUND s, `timeout` kills it 1 s later, and the rest of the
+    step needs well under 1 s (on this machine 4.63 s in all with a probe of 4.51 s, 2026-11-19): at
+    most PROBE_BOUND + 2 s of the 177."""
     assert assigned("PROBE_SECONDS") < assigned("PROBE_BOUND")
-    assert assigned("PROBE_BOUND") + 2 <= 2400 - 2163
+    assert assigned("PROBE_BOUND") + 2 <= 2700 - 2523
 
 
 def update_bound() -> int:

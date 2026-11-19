@@ -950,7 +950,15 @@ def test_the_full_job_decides_its_path_then_runs_the_same_make_verify_on_either(
     where = steps[1]
     assert where["id"] == "where" and "tools/image.py decide" in where["run"]
     assert where["env"]["ENABLED"] == "${{ vars.CI_FULL_IN_IMAGE }}"
-    install = [s for s in steps if s.get("if") == "steps.where.outputs.where == 'install'"]
+    # The steps of apt's kept package files run on the install path too (tests/test_ci_apt_cache.py).
+    install = [
+        s
+        for s in steps
+        if s.get("if") == "steps.where.outputs.where == 'install'"
+        and "apt_cache.sh" not in s.get("run", "")
+        and not s.get("uses", "").startswith("actions/cache/")
+    ]
+    assert len(install) == 3
     inside = [s for s in steps if s.get("if") == "steps.where.outputs.where == 'image'"]
     # The install path's line carries CI's 2 bounds (the install script's piece; its tests read them).
     # Before it, apt is turned to Ubuntu's own archive (tests/test_ci_apt_archive.py holds that step).
