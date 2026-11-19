@@ -11,7 +11,9 @@ permissions:
   contents: read
 jobs:
   # The 1 job that decides what the change needs: tools/ci/scope.py prints each path's answer and
-  # fast or full. A run with no base (workflow_dispatch) or a base it cannot read is full.
+  # fast or full. A run with no base or a base it cannot read is full. A run by hand
+  # (workflow_dispatch: `gh workflow run ci.yml --ref <branch>`) gates a candidate with no pull
+  # request; it is given no base, so it is always full (ee-agent-kit/CI.md, "Where the health gate runs").
   scope:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -31,6 +33,7 @@ jobs:
           case "$EVENT" in
             pull_request) base=$(git rev-parse HEAD^1) ;;
             push) git fetch --no-tags --depth=1 origin "$BEFORE" || true; base="$BEFORE" ;;
+            workflow_dispatch) base="" ;;
           esac
           python3 tools/ci/scope.py --base "$base" --head HEAD --github-output
 

@@ -380,6 +380,39 @@ def test_the_last_job_always_runs_and_passes_only_when_the_asked_jobs_passed(tmp
         assert ran.returncode == code, (asked, fast, full, ran.stdout, ran.stderr)
 
 
+def test_a_run_by_hand_gates_any_branch_and_is_full(repo, tmp_path):
+    """A candidate with no pull request is gated by a run by hand (`workflow_dispatch`, the owner's
+    decision of 2026-11-19). It has no base: the scope job names the event and gives it none, so the
+    run is full, and the verdict is green only when `full` passed. The scope step is run here as the
+    runner runs it, on a change of prose that a pull request would call fast."""
+    flow = workflow()
+    assert "workflow_dispatch" in flow[True]
+    (step,) = [s for s in flow["jobs"]["scope"]["steps"] if "scope.py" in s.get("run", "")]
+    assert step["env"]["EVENT"] == "${{ github.event_name }}"
+    assert 'workflow_dispatch) base="" ;;' in step["run"], "the scope step names a run by hand"
+    call = "python3 tools/ci/scope.py"
+    assert call in step["run"]
+    script = tmp_path / "scope.sh"
+    script.write_text(step["run"].replace(call, f"{sys.executable} {SCOPE}"), encoding="utf-8")
+    prose = README.replace("Each line names its gate.", "Each line names 1 gate.")
+    commit(repo, {"README.md": prose}, "prose")
+    answers = {}
+    for event in ("pull_request", "workflow_dispatch"):
+        out = tmp_path / f"output-{event}"
+        env = {**os.environ, "EVENT": event, "BEFORE": "", "GITHUB_OUTPUT": str(out)}
+        ran = subprocess.run(["bash", "-e", str(script)], cwd=repo, env=env, capture_output=True, text=True)
+        assert ran.returncode == 0, ran.stderr
+        answers[event] = out.read_text(encoding="utf-8")
+    assert answers == {"pull_request": "scope=fast\n", "workflow_dispatch": "scope=full\n"}
+    (check,) = flow["jobs"]["verdict"]["steps"]
+    verdict = tmp_path / "verdict.sh"
+    verdict.write_text(check["run"], encoding="utf-8")
+    for full, code in (("success", 0), ("skipped", 1), ("failure", 1), ("cancelled", 1)):
+        env = {**os.environ, "SCOPE": "full", "FAST": "skipped", "FULL": full}
+        ran = subprocess.run(["bash", "-e", str(verdict)], env=env, capture_output=True, text=True)
+        assert ran.returncode == code, (full, ran.stdout)
+
+
 def test_the_nightly_run_stays_the_full_gate():
     yaml = pytest.importorskip("yaml")
     nightly = yaml.safe_load((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))
