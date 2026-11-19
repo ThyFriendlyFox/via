@@ -469,3 +469,14 @@ def test_each_gate_takes_the_engine_lock_under_its_own_name():
         assert ran.returncode == 0, ran.stderr
         named[" ".join(argv)] = ran.stdout
     assert named == {"": "make verify", "site": "make verify-site"}
+
+
+# The longest `fast` job measured: 578 s on wip/install2 at c49fece (run 44585103119, a slow runner;
+# its step 3 of 4 still ran), against 502 s on 662fe5b (pull request 124's last run). The job's limit
+# keeps half as much again beyond the longest: one more batch of tests or a slower runner is not red.
+FAST_LONGEST = 578
+
+
+def test_the_fast_job_s_limit_keeps_half_again_beyond_its_longest_measured_run():
+    fast = workflow()["jobs"]["fast"]
+    assert fast["timeout-minutes"] * 60 >= 1.5 * FAST_LONGEST, fast["timeout-minutes"]
