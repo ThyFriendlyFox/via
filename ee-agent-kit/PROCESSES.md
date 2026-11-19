@@ -530,6 +530,15 @@ When: touching `tools/workcenter` or `tools/kicadgen.py`'s command line.
     will write by default: a default (`<project>/build`) is named by the
     command and checked as a named one, and a test gives the default a
     link out of the allowed folder (M298).
+11. Code that runs at import or at a command's start asks the machine
+    for nothing a container or a service may not have: a home folder
+    (`Path.home()`, `~`), a user name, a terminal. Each is asked where it
+    is used, through 1 function that says when there is none
+    (`home_folder()` in `tools/workcenter`), and the caller goes on or
+    refuses in 1 line that says what to set. A test starts the command
+    with no HOME and a user id /etc/passwd does not name
+    (`tests/conftest.py`'s `no_home`) and holds that it does its work
+    with no traceback (M299).
 
 Done when: `make verify` is green, the configuration table names the
 flag, and every document that writes the command writes one the parser

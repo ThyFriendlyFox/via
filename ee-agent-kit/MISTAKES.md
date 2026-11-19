@@ -1821,3 +1821,9 @@ What happened: `workcenter mcp` held every path a call names inside ROOT, links 
 Cost: Found before the server reached main.
 Root cause: The check was put on the arguments a caller names, not on the paths the command will write; a default was not read as a path the call writes.
 Process: P10
+
+## M299 — 2026-11-19 — The CLI asked for the home folder at import, and every command died where none is known
+What happened: `make verify` in Via's image on pull request 124 (job `full`, head 5633c75) ended `outcomes: 4189 passed, 1 failed, 69 skipped`. `tests/test_board_gates_workflow.py:410`, `test_a_project_named_help_is_judged_as_a_folder_by_the_real_workcenter`, ran the workflow's gate step with no HOME, as the runner's user id, which has no line in the image's /etc/passwd; the last line of stderr was `RuntimeError: Could not determine home directory.`, not `.../ws/--help: not found`. `tools/workcenter` set `USER_SETTINGS = Path.home() / ".claude" / "settings.json"` at import, for 2 rows of `doctor`: every command, `--help` included, ended in a traceback before it began wherever no home is known. `references fetch` with no `--to`, `tools/hooks/install_hooks.py` and `verify/testshards.py` asked `Path.home()` on their common path too.
+Cost: 1 red `full` job of the batch's pull request, and a fix round.
+Root cause: A path that 2 rows of 1 command read was computed at import, for every command, from something a container or a service may not have. Every test ran with HOME set and as a user /etc/passwd names; no test started the CLI with a bare environment.
+Process: P10
