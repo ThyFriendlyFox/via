@@ -34,6 +34,7 @@ OLD = (
     "the gate runs on it before any push",  # the land skill
     "Run `make verify` on the exact trees that will be pushed.",  # PROCESSES.md P33
     "push only on its verdict",  # the land skill's gate step
+    "`main` takes no commit that `make verify` did not pass on that exact commit",  # README.md, CI.md
 )
 
 # The old rule in other words: `make verify` and "before <a> push" in 1 clause. Nothing between them
@@ -77,7 +78,7 @@ FIRST = {
         RULE,
         *MERGE,
     ),
-    "README.md": ("`make check`", "`verdict`", "`make verify`", "`make verify-site`"),
+    "README.md": ("`make check`", "`verdict`", "`make verify`", "`make verify-site`", RULE, *MERGE),
     ".github/PULL_REQUEST_TEMPLATE.md": (
         "`make check`",
         "`verdict`",
@@ -91,6 +92,7 @@ FIRST = {
         "`make verify`",
         "`make verify-site`",
         "`workflow_dispatch`",
+        RULE,
         *MERGE,
     ),
     "ee-agent-kit/PROCESSES.md#P14 — Closing out a change": ("`make check`", "`verdict`", "`make verify`"),
@@ -115,6 +117,9 @@ KIT_FILES = (
     "WORKCENTER.md",
     "ee-agent-kit/MISTAKES.md",
     "ee-agent-kit/PROCESSES.md",
+    # The kit checks run `tools/ci/changes.py check` on the changelog and the change files.
+    "tools/ci/changes.py",
+    "ee-agent-kit/CHANGELOG.md",
 )
 
 
@@ -246,6 +251,7 @@ def kit_copy(dest: Path) -> Path:
     files = [*KIT_FILES]
     files += [str(p.relative_to(ROOT)) for p in sorted(ROOT.glob(".claude/skills/*/SKILL.md"))]
     files += [str(p.relative_to(ROOT)) for p in sorted(ROOT.glob("ee-agent-kit/skills/*/SKILL.md"))]
+    files += [str(p.relative_to(ROOT)) for p in sorted(ROOT.glob("ee-agent-kit/changes/*.md"))]
     for rel in files:
         (dest / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / rel, dest / rel)

@@ -20,7 +20,7 @@ from test_ci_scope import README, SCOPE, commit, git, workflow
 
 def test_a_run_by_hand_gates_any_branch_and_is_full(tmp_path: Path):
     """The scope job names the event and gives it no base, so the run is full; the verdict is green
-    only when `full` passed. The scope step is run here as the runner runs it, on a change of prose
+    only when `fast` and `full` passed. The scope step is run here as the runner runs it, on a change of prose
     that a pull request calls fast."""
     flow = workflow()
     assert "workflow_dispatch" in flow[True]
@@ -50,6 +50,7 @@ def test_a_run_by_hand_gates_any_branch_and_is_full(tmp_path: Path):
     verdict = tmp_path / "verdict.sh"
     verdict.write_text(check["run"], encoding="utf-8")
     for full, code in (("success", 0), ("skipped", 1), ("failure", 1), ("cancelled", 1)):
-        env = {**os.environ, "SCOPE": "full", "FAST": "skipped", "FULL": full}
+        # `fast` runs on every change, a run by hand too, and the verdict asks it (wip/fast-lane).
+        env = {**os.environ, "SCOPE": "full", "FAST": "success", "FULL": full}
         ran = subprocess.run(["bash", "-e", str(verdict)], env=env, capture_output=True, text=True)
         assert ran.returncode == code, (full, ran.stdout)
