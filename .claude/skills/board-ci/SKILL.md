@@ -1,12 +1,12 @@
 ---
 name: Board CI
-description: Gives a board repository a check on every pull request - `workcenter gates` on each project folder, the gates table in the job's summary, a red check on a red gate - with 1 workflow file that calls the workcenter's reusable workflow board-gates.yml.
+description: Gives a board repository a check on every pull request - `workcenter gates` on each project folder, the gates table in the job's summary, a red check on a red gate - with 1 workflow file that calls Via's reusable workflow board-gates.yml.
 ---
 
 # Board CI
 
 A board repository gets `workcenter gates` on every pull request from 1
-small workflow file. The file calls the workcenter's reusable workflow
+small workflow file. The file calls Via's reusable workflow
 `.github/workflows/board-gates.yml`. Each project folder is 1 job. The
 job's check is the gates' verdict: GREEN is green; RED and SKIPPED are
 red. A GREEN with ERC, DRC or EXPORT at skip is red: no board was there to
@@ -17,7 +17,7 @@ gates ran. Nothing is posted to the pull request.
 ## When
 
 - A board repository has no CI, or its CI does not run the gates.
-- A board repository's CI installs the workcenter by hand and runs
+- A board repository's CI installs Via by hand and runs
   `workcenter gates` in a loop: 1 call replaces those steps.
 
 ## The caller
@@ -62,8 +62,8 @@ GitHub refuses a called job more than its caller gives.
 |---|---|---|
 | `projects` | `["."]` | The project folders, as a JSON list. 1 job each. |
 | `strict` | `false` | `true` passes `--strict`: a warning fails the gate. |
-| `workcenter-repository` | `ThyFriendlyFox/via` | The workcenter to run. Its owner also owns the image. |
-| `workcenter-ref` | `main` | The workcenter's branch, tag or commit. A tag such as `v0.1.0` holds the gates still while `main` moves. |
+| `workcenter-repository` | `ThyFriendlyFox/via` | The repository of Via to run. Its owner also owns the image. |
+| `workcenter-ref` | `main` | Via's branch, tag or commit. A tag such as `v0.1.0` holds the gates still while `main` moves. |
 | `use-image` | `true` | `false` never asks the registry: always install.sh. |
 | `apt-ubuntu-archive` | `true` | `false` leaves the runner's apt mirror as it is on the install path. |
 
@@ -72,7 +72,7 @@ GitHub refuses a called job more than its caller gives.
 1. The job names the image of the toolchain files at `workcenter-ref`:
    `ghcr.io/<owner>/via:tc-<16 digits>` (`tools/image.py tag`).
 2. It logs in to ghcr.io with the job's token and pulls that image. Pulled:
-   the gates run inside it, as the runner's user, with the workcenter's
+   the gates run inside it, as the runner's user, with Via's
    checkout at `.via`.
 3. Not pulled: the install path. `tools/ci/apt_archive.sh` turns apt to
    Ubuntu's own archive, then `install.sh` installs the toolchain with CI's
@@ -93,8 +93,8 @@ whose image was not pushed), or when `use-image` is `false`. The step
 What only a run on GitHub shows of the image path: that `docker run
 --user` with the runner's user id and group can write the board's
 `build/` folder and the report in the runner's temp folder (`--user`);
-that `image.py check` passes on the workcenter's checkout inside the image
-(`image.py check`); and that the workcenter and KiCad run with no home of
+that `image.py check` passes on Via's checkout inside the image
+(`image.py check`); and that Via and KiCad run with no home of
 that user in the image, where `HOME` is not the runner's home (`HOME`).
 The same `docker run --user` runs `workcenter gates .` in the image's own
 workflow, `.github/workflows/image.yml`, step `The gates on a fixture, as
@@ -157,7 +157,7 @@ the row.
 
 This repository calls the workflow on its fixture
 `tests/boards/pass-rc-divider` with `strict: true`, from
-`.github/workflows/board-fixture.yml`, with the workcenter at the commit
+`.github/workflows/board-fixture.yml`, with Via at the commit
 under test. `tests/test_board_gates_workflow.py` runs each step's text
 with stand-ins for `docker`, `sudo` and `id`, walks the whole job on both
 paths, and runs the gates step on this machine's toolchain on
