@@ -1103,19 +1103,34 @@ step_boot() {
   fi
   log "boot: ${missing[*]} missing; apt install ${BOOT_PACKAGES[*]}"
   # As in the apt step: apt in the C locale, its progress shown, and its exit code stops the script with
-  # its own E: line (a pipe's `|| true` let a failed install through to the check below). 1 try of the
-  # update, within APT_UPDATE_TIMEOUT when it is set (a cut try names the sources that had not
-  # answered); then the download in passes within APT_OTHER_TIMEOUT, and the install from its files.
+  # its own E: line (a pipe's `|| true` let a failed install through to the check below). The update
+  # gets the apt step's tries, KICAD_INDEX_TRIES of them KICAD_INDEX_WAIT s apart, each within
+  # APT_UPDATE_TIMEOUT when it is set (a cut try names the sources that had not answered, and the
+  # command moves a silent mirror host before the next). The image build of job 135588402925 printed
+  # nothing for 271 s before its first Get, and -qq hid whether the update or the download took them.
+  # Then the download in passes within APT_OTHER_TIMEOUT, and the install from its files.
   local -x LC_ALL=C DEBIAN_FRONTEND=noninteractive
-  local rc=0
-  update_try 1 1
-  rc=$UPDATE_RC
+  local rc=0 try
+  local -a hosts
+  for ((try = 1; try <= KICAD_INDEX_TRIES; try++)); do
+    update_try "$try" "$KICAD_INDEX_TRIES"
+    rc=$UPDATE_RC
+    if ((rc == 0)); then break; fi
+    if ((try < KICAD_INDEX_TRIES)); then
+      if [[ -n "$SILENT_HOSTS" ]]; then
+        read -r -a hosts <<< "$SILENT_HOSTS"
+        slow_hook try "${hosts[@]}"
+      fi
+      log "boot: \`apt-get update\` ended with exit code ${rc} in try ${try} of ${KICAD_INDEX_TRIES}; waiting ${KICAD_INDEX_WAIT} s"
+      sleep "$KICAD_INDEX_WAIT"
+    fi
+  done
   if ((rc == 124)) && [[ -n "${APT_UPDATE_TIMEOUT}" ]]; then
     APT_SAID="nothing: \`apt-get update\` of every package source did not end within ${APT_UPDATE_TIMEOUT} s (APT_UPDATE_TIMEOUT); the sources that had not answered: ${SILENT:-$NOT_NAMED}"
   else
     APT_SAID="$(grep -m1 '^E:' <<< "$UPDATE_OUT" || true)"
   fi
-  ((rc == 0)) || die "boot: \`apt-get update\` ended with exit code ${rc}; apt said: ${APT_SAID:-nothing}"
+  ((rc == 0)) || die "boot: \`apt-get update\` ended with exit code ${rc} in try ${KICAD_INDEX_TRIES} of ${KICAD_INDEX_TRIES}; apt said: ${APT_SAID:-nothing}"
   other_download "${BOOT_PACKAGES[@]}" || stop "boot: ${OTHER_SAID}" "$OTHER_ADVICE"
   apt_shown apt-get install -y --no-install-recommends -o APT::Get::Download=false \
     "${BOOT_PACKAGES[@]}" || rc=$?

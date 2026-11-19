@@ -2870,20 +2870,45 @@ def test_a_stalled_openems_pass_is_ended_and_its_stop_names_its_own_bound(tmp_pa
 
 
 def test_a_boot_update_that_does_not_end_names_the_sources_that_had_not_answered(tmp_path):
-    """The boot step's 1 update within APT_UPDATE_TIMEOUT: a cut says which sources printed no line, as
-    the apt step's tries do, and the stop says so."""
+    """The boot step's update gets the apt step's tries (KICAD_INDEX_TRIES, KICAD_INDEX_WAIT), each within
+    APT_UPDATE_TIMEOUT: a cut says which sources printed no line, the command moves a silent mirror host
+    before the next try, and the stop after the last try says so. The image build of job 135588402925
+    printed nothing for 271 s between `boot:` and its first Get (#9 0.113 to #9 271.2): with -qq that
+    cannot be split between the update and the download, so 1 try of 120 s could have refused it."""
     listed = runner_sources(tmp_path)
-    env = {**OTHERS, "CA_BUNDLE": str(tmp_path / "no-bundle.crt")}
+    env = {**OTHERS, "CA_BUNDLE": str(tmp_path / "no-bundle.crt"), "APT_SLOW_PASS_COMMAND": "slow-pass --slow"}
     code, out, err, calls = run(
-        tmp_path, {**BOOT_TOOLS, "timeout": cut_update(*HEARD)}, env=env, body="step_boot"
+        tmp_path, {**BOOT_TOOLS, "timeout": cut_update(*HEARD), "slow-pass": "exit 0"}, env=env, body="step_boot"
     )
     assert code == 1
-    assert out.splitlines()[1] == silent_line(1, listed, 3).replace("try 1 of 3", "try 1 of 1")
+    lines = out.splitlines()
+    for try_ in (1, 2, 3):
+        assert silent_line(try_, listed, 3) in lines
+    steps = [c.split(" ", 1)[0] for c in calls if c.split(" ", 1)[0] in ("timeout", "slow-pass", "sleep")]
+    assert steps == ["timeout", "slow-pass", "sleep", "timeout", "slow-pass", "sleep", "timeout"]
+    assert of(calls, "slow-pass") == ["slow-pass --slow slow.example archive.ubuntu.com"] * 2
+    assert of(calls, "sleep") == ["sleep 20"] * 2
+    assert "[install] boot: `apt-get update` ended with exit code 124 in try 1 of 3; waiting 20 s" in lines
     assert err.splitlines()[-1] == (
-        "[install] ERROR: boot: `apt-get update` ended with exit code 124; apt said: nothing: "
+        "[install] ERROR: boot: `apt-get update` ended with exit code 124 in try 3 of 3; apt said: nothing: "
         "`apt-get update` of every package source did not end within 120 s (APT_UPDATE_TIMEOUT); the sources "
         f"that had not answered: {silent(listed)}"
     )
+
+
+def test_a_boot_update_cut_twice_goes_on_when_the_third_try_ends(tmp_path):
+    """2 cut tries, then 1 that ends: the boot step downloads and installs, as the apt step goes on."""
+    runner_sources(tmp_path)
+    env = {**OTHERS, "CA_BUNDLE": str(tmp_path / "no-bundle.crt")}
+    cut = cut_update(*HEARD).replace('[[ "$*" == *update* ]]', '[[ "$*" == *update* ]] && (( n <= 2 ))')
+    code, out, err, calls = run(
+        tmp_path, {**BOOT_TOOLS, "timeout": cut}, env=env, body="step_boot; echo NEXT STEP"
+    )
+    assert code == 0, err
+    assert out.splitlines()[-1] == "NEXT STEP"
+    assert len([c for c in of(calls, "timeout") if "update" in c]) == 3
+    assert of(calls, "sleep") == ["sleep 20"] * 2
+    assert len([c for c in of(calls, "apt-get") if "Download=false" in c]) == 1
 
 
 def test_a_slow_boot_download_stops_with_the_advice_for_its_own_bound(tmp_path):
@@ -2962,7 +2987,7 @@ def test_a_bad_value_stops_before_the_first_step_installs(tmp_path, name, value)
     [
         (
             update_says(E_LOCK, code=100),
-            f"[install] ERROR: boot: `apt-get update` ended with exit code 100; apt said: {E_LOCK}",
+            f"[install] ERROR: boot: `apt-get update` ended with exit code 100 in try 3 of 3; apt said: {E_LOCK}",
         ),
         (
             'case "$*" in *--download-only*) exit 0 ;; '
@@ -3521,9 +3546,10 @@ def test_the_worst_case_of_the_apt_step_fits_the_jobs_limit(name):
     waits 1, 2, then 4 s (curl 8.5.0's manual): at most 20 + 4 + 20 = 44 s an address, 88 s for both.
     Then 3 tries of the update and 2 waits, the main download, and the openEMS step's download (385 s in
     that run, with no bound): 88 + 3 x 120 + 2 x 20 + 570 + 300 = 1358 s, 2163 s with the 805: over
-    `full`'s former 30 minutes (1800 s), within 40 (2400 s). The boot step's update (1 try) and download
-    run only on a bare Ubuntu, the image's base (GitHub's runner has every tool: the passing run printed
-    no `boot:` line): they count for image.yml, 120 + 300 more, 2583 s of its 3600. The nightly run and
+    `full`'s former 30 minutes (1800 s), within 40 (2400 s). The boot step's update (the apt step's 3
+    tries and 2 waits) and download run only on a bare Ubuntu, the image's base (GitHub's runner has
+    every tool: the passing run printed no `boot:` line): they count for image.yml, 3 x 120 + 2 x 20 +
+    300 = 700 s more, 2863 s of its 3600. The nightly run and
     the image build are held to the same 805 s; neither has a passing run of its own measured (the image
     build runs no `make verify`, but builds, checks and pushes)."""
     bounds, limit = ci_bounds(*INSTALLING[name])
@@ -3534,11 +3560,13 @@ def test_the_worst_case_of_the_apt_step_fits_the_jobs_limit(name):
     key = 2 * (2 * assigned("KICAD_KEY_TIMEOUT", env=False) + 4)
     worst = key + tries * update + (tries - 1) * wait + download + other
     if name == "image.yml":
-        worst += update + other
+        worst += tries * update + (tries - 1) * wait + other
     assert sum(MEASURED.values()) == 805
     assert worst + sum(MEASURED.values()) <= limit, (worst, limit)
     if name == "ci.yml":
         assert (worst + sum(MEASURED.values()), limit) == (2163, 2400)
+    if name == "image.yml":
+        assert (worst + sum(MEASURED.values()), limit) == (2863, 3600)
 
 
 def test_one_silent_file_fits_the_download_bound():
