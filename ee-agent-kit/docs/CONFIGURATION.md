@@ -16,7 +16,7 @@ unset variable never causes a failure.
 | `FREEROUTING_VERSION` | string | `1.9.0` | Release to download. 2.1.0 hangs after routing in a proxied session (landmine map). |
 | `FREEROUTING_SHA256` | hex | pinned in the script | Expected JAR checksum. Empty skips the check with a warning. |
 | `FREEROUTING_URL` | URL | GitHub release asset for the version | Alternate download location. |
-| `REQUIRE_FREEROUTING` | `0`/`1` | `0` | `1` makes a failed JAR download fatal. CI sets `1`. |
+| `REQUIRE_FREEROUTING` | `0`/`1` | `0` | `1` makes a failed JAR download fatal, and a java for Via older than Java 21, or none, fatal too (`step_java`). CI sets `1`. |
 | `INSTALL_FREEROUTING2` | `0`/`1` | `0` | `1` also installs FreeRouting 2.5.0 and its Java 25 (as `--freerouting2`). |
 | `REQUIRE_FREEROUTING2` | `0`/`1` | `0` | `1` makes a failed second-router step fatal. |
 | `SKIP_APT` | `0`/`1` | `0` | `1` skips the apt step entirely. |
@@ -32,7 +32,7 @@ unset variable never causes a failure.
 | `KICAD_SOURCES` | path | `/etc/apt/sources.list.d/kicad-10.0-releases.sources` | The PPA's sources file (the tests move it). A file there that is not what install.sh writes is left alone and stops the script; the script's own is removed on a stop for a second key or a release the PPA does not serve. |
 | `WORKCENTER_LINK` | path | `/usr/local/bin/workcenter` | The `workcenter` link (the tests move it). |
 | `OS_RELEASE` | path | `/etc/os-release` | Where the Ubuntu codename is read (the tests move it). |
-| `JVM_DIR` | path | `/usr/lib/jvm` | Where `libawt_xawt.so` is looked for (the tests move it). |
+| `JVM_DIR` | path | `/usr/lib/jvm` | Where `libawt_xawt.so` is looked for, and the JVM of `openjdk-21-jre-headless` (`java-21-openjdk-<arch>/bin/java`, the first in name order whose java runs), whose path install.sh records in `$WORKCENTER_ROOT/java.path` (the tests move it). |
 | `CA_BUNDLE` | path | `/etc/ssl/certs/ca-certificates.crt` | The certificates the first step looks for; when it is empty or absent, the first step installs `ca-certificates` (the tests move it). |
 
 ## `tools/workcenter`
@@ -45,7 +45,7 @@ unset variable never causes a failure.
 | `FREEROUTING2_JAVA` | command | `$WORKCENTER_ROOT/java25/bin/java` | The Java that runs it; Java 25 or newer, else the router is absent. |
 | `KICAD_CLI` | command | `kicad-cli` | The KiCad engine. |
 | `NGSPICE` | command | `ngspice` | The simulation engine. |
-| `JAVA` | command | `java` | Runs the FreeRouting 1.9.0 JAR, for `autoroute` and for `design --route`. |
+| `JAVA` | command | the path in `$WORKCENTER_ROOT/java.path`, else `java` from PATH | Runs the FreeRouting 1.9.0 JAR, for `autoroute` and for `design --route`; doctor reads the same java. Set, it comes before the record. |
 | `KICAD10_3DMODEL_DIR` | path | `/usr/share/kicad/3dmodels` | Where `render` looks for the library 3D bodies footprints name, to list the parts drawn without one (`KICAD9_` and `KICAD8_3DMODEL_DIR` likewise). |
 | `OPENEMS` | command | `$WORKCENTER_ROOT/openems/bin/openEMS`, else `openEMS` on `PATH` | The field solver `workcenter fields` runs; `doctor` reports it. |
 | `KIKIT_PYTHON` | command | the venv's Python (`$WORKCENTER_ROOT/venv/bin/python`) | The Python that imports KiKit; EXPORT runs `tools/panel.py` with it for a project that holds `panel.json`. |
@@ -319,9 +319,10 @@ part by `mpn` or `mpns` and whose `source.sha256` is a row of
 | `KICAD_SYMBOL_DIR`, `KICAD_FOOTPRINT_DIR` | folder | `/usr/share/kicad/symbols`, `/usr/share/kicad/footprints` | The folders `tools/kicadgen.py` loads KiCad's symbols and footprints from. `make verify-site` sets both to empty folders of its own, as the fast job's runner has no KiCad; a test that loads them carries `needs_libs`. |
 | `WORKCENTER_ENGINE_LOG` | path | a temp file per pytest run | Where each engine start of a test run is written; the `engine` marker is held against it. |
 | `--repo`, `--base`, `--head`, `--paths`, `--github-output` | `tools/ci/scope.py` flags | repo: here; head: the working tree | The change to judge; an empty `--base` is full; `--github-output` appends `scope=<answer>` to `$GITHUB_OUTPUT`. |
-| `CI_APT_UBUNTU_ARCHIVE` | repository variable (Settings, Secrets and variables, Actions, Variables) | unset | `0` leaves the runner's apt mirror as it is on CI's install path and in the nightly run; anything else runs `tools/ci/apt_archive.sh`, which turns a regional or cloud mirror of Ubuntu's archive into archive.ubuntu.com (ports.ubuntu.com on arm). |
+| `CI_APT_UBUNTU_ARCHIVE` | repository variable (Settings, Secrets and variables, Actions, Variables) | unset | `0` leaves the runner's apt files as they are on CI's install path and in the nightly run; anything else runs `tools/ci/apt_archive.sh`, which keeps the runner's mirror and Ubuntu's own archive in the mirror list, sets their priorities fastest first by a probe of at most 5 s, and writes `/etc/apt/apt.conf.d/80apt-archive-ci` (a 15 s timeout and no retry on the same host: a file whose host is silent goes to the next host). |
 | `verdict` as a required check | the repository's settings (Settings, Branches, the rule of `main`) | not stated here | When it is required, GitHub refuses to merge a pull request whose `verdict` is not green. It is a setting, not a file; no document says whether it is on, nor whether GitHub's rule that a branch be up to date is on. |
 | `APT_ARCHIVE_CI`, `APT_DIR` and the 1 argument | `tools/ci/apt_archive.sh` | the argument, else `APT_DIR`, else /etc/apt | The folder of apt's files to change. The script refuses /etc/apt unless `APT_ARCHIVE_CI=1`, which the workflows set; a test gives it a folder of its own. Exit 0 when it ran, 2 when it refused or found no folder. |
+| `APT_ARCHIVE_PROBE` | `tools/ci/apt_archive.sh` | unset: curl | A command the probe runs in place of curl, with the URL; it prints `<HTTP code> <bytes> <seconds>`. The tests set it to a stand-in; on CI sudo drops it. The probe's own values are constants in the script: 1 MiB, 3 s, ended at 4 s. |
 | `--outcome`, `--log`, `--issues`, `--run`, `--date`, `--step` | `tools/ci/nightly_issue.py` flags | none; `--step` may be absent | The night's outcome (`success` or `failure`; any other is refused with exit 2), the gate's log (a path that holds no file: no log), GitHub's JSON list of the open `ci-failure` issues, the run's address, the date of the title, and each step's `name=outcome` in the job's order. Its bounds are constants: 20 FAILED lines, 10 `why:` blocks, 15 lines a block, 40 lines of a log with no `why:`, 300 characters a line, 20000 characters a text. |
 | `--root`, `check`, `show`, `fold <version> <date>` | `tools/ci/changes.py` | root: this repository | The repository whose `ee-agent-kit/CHANGELOG.md` and `ee-agent-kit/changes/` are read. `fold` takes a version X.Y.Z and a date YYYY-MM-DD; any other is refused with exit 1. No environment variable. |
 

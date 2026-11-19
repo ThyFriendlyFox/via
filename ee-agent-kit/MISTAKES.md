@@ -1737,3 +1737,9 @@ What happened: Landing item 7's piece, the keeper ran 1 shell command that began
 Cost: None seen: the `grep` read absolute paths, and no file changed. The rule was broken.
 Root cause: The habit of a terminal, where a folder stays chosen; nothing in this session's shell refuses a `cd` (the repository's PreToolUse hook is not loaded in a session opened outside it).
 Process: P8
+
+## M285 — 2026-11-19 — The answer to a slow mirror replaced 1 single point by another
+What happened: At 03:00 UTC the runner's regional mirror crawled, and 3 runs stopped at the download's bound of 570 s. The answer turned the regional mirror into archive.ubuntu.com in the runner's mirror list. The list then named archive.ubuntu.com twice and security.ubuntu.com: the runner's own mirror was gone. At 07:14 UTC, run 44477966021 (job 135403130537) turned azure.archive.ubuntu.com into archive.ubuntu.com, and `apt-get update` did not end within 120 s in 3 tries. At 07:21 UTC, from another network, archive.ubuntu.com's InRelease took 21.8 s and security.ubuntu.com's did not come within 40 s. The next answer kept every host, but counted a silent host's cost per file and per timeout: 31 s. A review read apt 2.8.3's source: apt fetches 1 host's files in turn, `apt-get update` puts 4 InRelease files on the first host, and a host that accepts and says nothing costs 2 timeouts per try. With 15 s and 1 retry that is 244 s, twice the update's 120 s; apt's defaults would spend 988 s.
+Cost: 1 failed install path on the morning of the release, the step's second rewrite, and a third change after the review.
+Root cause: A host that failed was replaced by another host, not ranked below it. The list's fallback was read as already there. Then apt's wait was counted for 1 file and 1 timeout, not for every file that queues on the host and for every timeout a try can spend.
+Process: P2

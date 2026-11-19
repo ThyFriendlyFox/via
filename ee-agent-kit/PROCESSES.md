@@ -87,6 +87,13 @@ or any step that downloads, installs, or runs for more than a minute.
    failure is a case. A command whose failure must stop the step runs on
    its own line (`me=$(id -un)`): inside another command's arguments its
    exit status is lost under `bash -e` (M269).
+9. A step that changes where a download comes from keeps the old source
+   as a fallback: it orders the sources, and does not replace one by
+   another. Where the tool has a fallback (apt's mirror list), read how
+   long it waits on a silent source before it moves on: per try, per
+   file, and for every file that queues on that source in turn. Bound
+   that sum within the step's own bound, with a test that computes it
+   from the step's constants (M285).
 
 Done when: the run is green, its log shows progress lines in every long
 step, no step used more than half its limit, and no step depended on a

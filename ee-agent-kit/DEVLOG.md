@@ -39,6 +39,18 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-19 — CI's install path keeps 2 hosts for Ubuntu's archive and asks the fastest first
+
+At 03:00 UTC the runner's regional mirror, us-east-2.ec2.archive.ubuntu.com, crawled: 1 file of 13.6 MB took over 2 minutes, and 3 runs stopped at the download's bound of 570 s. The answer that morning turned the regional mirror into archive.ubuntu.com. At 07:14 UTC, on Azure, run 44477966021 did that, and then archive.ubuntu.com did not deliver the index within 120 s in 3 tries. At 07:21 UTC archive.ubuntu.com's InRelease took 21.8 s from another network, and security.ubuntu.com's did not come within 40 s. So in 5 hours each of the 2 hosts was the slow one once, and the step had left apt 1 host. Now the mirror list keeps both, and security.ubuntu.com. A probe of at most 5 s ranks them by bytes a second. A CI-only apt file sends a file whose host is silent for 15 s to the next host, with no retry on the same. The first version kept 1 retry and counted 31 s for a silent host. A review read apt's source: apt fetches 1 host's files in turn, the update puts 4 InRelease files on the first host, and a host that accepts and says nothing costs 2 timeouts. That made 244 s, not 31 s. With no retry it is 120 s at most; apt's defaults would spend 988 s. A host that trickles without going silent is not left; KiCad 10's source still has 1 host, and now 1 try per update.
+
+Evidence: `tests/test_ci_apt_archive.py` (47 tests); branch `wip/apt-stall`, 976e544 and 899f449; M285.
+
+## 2026-11-19 — Via runs the Java it installed
+
+CI's install passed, and then doctor said Via was degraded, without java (run 44444183056). The install had set up Java 21. But the runner keeps its own Java 17 first on PATH, and doctor and the router both took whatever stood first. Doctor called the 17 too old. The router ran on it anyway. Now install.sh writes down the path of the Java it installed, and Via runs that one, wherever PATH points. Doctor's line says which Java it read and where the path came from. An install that must have the router now stops, with the reason, when the Java it leaves is too old. We also found that FreeRouting 1.9.0's own classes need only Java 17; Via keeps 21, the Java it installs and tests on.
+
+Evidence: `tests/test_java.py` (9 tests), `tests/test_install_apt.py` (128 tests), `tests/install_mutations.py` (140 mutants); branch `wip/java-path`, 47d9542.
+
 ## 2026-11-19 — The image holds node
 
 The image had no node, so the test files that run it skipped inside it (CI runs 44409635104 and 44428908528). To keep them judged, `decide` sent every change to a file they read to the install path. On 2026-11-19 a push of website work went there for that alone, and both its attempts stopped at the download's bound on a slow mirror (CI run 44432768560). A change that needs no new toolchain should not need the install path. The Dockerfile now installs Ubuntu 24.04's `nodejs`, 18.19.1, after install.sh and in the same layer, and `decide` lost its node rule. install.sh does not install node: a board needs none, only Via's own tests do. Node 18 has no global `crypto`, which the forms' rules use; the test driver now gives it from `node:crypto`. No image with node was built here, since no Docker daemon answers. At landing, the batch's nightly issue step had joined the node rule's list; that test runs node too, and now runs in the image.
