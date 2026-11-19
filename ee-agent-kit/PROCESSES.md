@@ -356,6 +356,11 @@ axis it defines (a 3D model's rotation or offset, an export's origin).
     terminal's width, and what stood at the end of a long line is gone
     with no error. A test of such a check runs it once under a narrow
     COLUMNS, with a command line longer than that width (M281).
+12. A program that reads a stranger's input (a server's stdin, a file a
+    person sends) bounds every way the reader can be made to stop: the
+    nesting depth, the length of a line, the size of a number, how many
+    requests run or wait. A test sends each one past its bound and holds
+    that the program answers and goes on (M297).
 
 Done when: a test parses a real sample of each shape, failures among them,
 and the parser's assumptions are written next to it.
@@ -521,6 +526,10 @@ When: touching `tools/workcenter` or `tools/kicadgen.py`'s command line.
    there" is such a start too. A file the command hands to another tool is
    refused when it names code for that tool to run. A test plants such a
    module in the folder and holds that it was not imported (M295).
+10. A check on the paths a call names also holds the paths the command
+    will write by default: a default (`<project>/build`) is named by the
+    command and checked as a named one, and a test gives the default a
+    link out of the allowed folder (M298).
 
 Done when: `make verify` is green, the configuration table names the
 flag, and every document that writes the command writes one the parser
@@ -616,6 +625,10 @@ that may be absent.
     comparison under a wait, run it while a loop holds the lock in a folder
     of its own (`WORKCENTER_LOCK_DIR`) with
     `python3 tools/enginelock.py hold -- sleep 2` (M283).
+12. A test changes nothing another test imports: a folder it puts on
+    `sys.path` and the modules it imports from there leave when it ends (a
+    fixture restores both), and a test holds that a later `import` of a
+    name 2 folders hold gets the module the code means (M296).
 
 Done when: the summary shows no unexpected skips, the engine test is
 green on the runner, and a run with an engine taken away is not GREEN.

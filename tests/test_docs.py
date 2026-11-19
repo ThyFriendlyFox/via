@@ -32,7 +32,7 @@ SITE = ROOT / "site"
 def site_module(name: str):
     """The site's generator `site/<name>.py`, imported for 1 test. The fixture below takes its modules
     and the folders it puts on `sys.path` out again: left there, `site/` stood first on the import path
-    and a later test file's `import guide` got `site/guide.py`, not `tools/guide.py` (M297)."""
+    and a later test file's `import guide` got `site/guide.py`, not `tools/guide.py` (M296)."""
     import importlib
 
     sys.path.insert(0, str(SITE))

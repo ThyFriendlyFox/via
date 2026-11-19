@@ -710,7 +710,10 @@ stdout and stderr in order, then `exit code N`; `structuredContent` holds
 `exitCode` and the command line, and `isError` is true when the code is
 not 0. Every path a call names (`project`, `out`, `dsn`, a `fab` given as a
 path) must lie inside ROOT, links followed; any other is refused in 1 line
-and nothing runs. A long tool waits its turn on the engine lock as its
+and nothing runs. With no `out`, the server names `<project>/build` itself
+and holds it inside ROOT too. The server refuses `/` and the home folder as
+ROOT. It runs 4 commands at once; a further call waits its turn, and 1
+beyond 36 held is refused. A long tool waits its turn on the engine lock as its
 command does, and the server answers `ping` and other calls meanwhile;
 `notifications/cancelled` stops the command and its engines, and a
 `progressToken` gets each printed line as a progress notification. Closing

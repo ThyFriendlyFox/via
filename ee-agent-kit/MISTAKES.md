@@ -1803,3 +1803,21 @@ What happened: `workcenter gates` and `workcenter export` probed KiKit with `pyt
 Cost: None seen: found before a board repository called the workflow. Every gate run on a board from a stranger could have run its code.
 Root cause: The probe was written to ask a question of the toolchain, and was not read as a run of Python in a folder the tool does not own. `-c` and a script's own folder both go first on `sys.path`; nothing started those Pythons isolated, and no test planted a module in a board's folder.
 Process: P10
+
+## M296 — 2026-11-19 — A test put the site's folder first on the import path, and another test file imported the site's guide
+What happened: `tests/test_docs.py` inserted `site/` at the head of `sys.path` to import the site's generators (`blog`, `examples`) and left it there. `tests/test_legend.py`'s `import guide`, run later in the same session, then got `site/guide.py`, not `tools/guide.py`: 6 tests failed with `AttributeError: module 'guide' has no attribute 'trouble'` when test_docs and test_legend ran together without `tests/test_guide.py` between them (the keeper's run for pull request 125, 2026-11-19). The whole suite passed only because test_guide imported `tools/guide.py` first.
+Cost: A false red in a landing check, and a round to tell it from a fault of the change.
+Root cause: A test changed the session's import path for its own import and did not change it back; the result of a later test depended on which file ran first.
+Process: P12
+
+## M297 — 2026-11-19 — The MCP server parsed a stranger's line with no bound on its depth or its length
+What happened: `workcenter mcp` (roadmap item 17) read each line on stdin with Python's JSON reader and no bound. A second independent check sent a line nested 10000 deep: the server died with RecursionError, ending the session and its commands. A line had no length bound, an object with neither method nor id and an integer of more digits than Python reads were not refused, and calls had no bound on how many ran or waited. Fixed at 8948032: -32600 for each, the session goes on, a line over 4 MiB is skipped, 4 commands run and 32 wait.
+Cost: Found before the server reached main; a check and a fix round.
+Root cause: The reader was written for the messages a well-behaved host sends, and its tests sent only those. A server reads a stranger's input: every limit of the reader (depth, length, size of a number, count of calls) is a way to stop it.
+Process: P7
+
+## M298 — 2026-11-19 — A default path skipped the check a named path gets
+What happened: `workcenter mcp` held every path a call names inside ROOT, links followed. With no `out`, the command it ran chose `<project>/build` itself, and the server did not check it: a `build` link out of ROOT let a call write outside the root. The second independent check of item 17 found it (F2); the server now names `--out` itself and holds it to ROOT as a named one, and `/` and the home folder are refused as ROOT.
+Cost: Found before the server reached main.
+Root cause: The check was put on the arguments a caller names, not on the paths the command will write; a default was not read as a path the call writes.
+Process: P10
