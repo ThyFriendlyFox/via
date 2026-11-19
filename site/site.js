@@ -120,9 +120,13 @@
         track.append(list);
         view.append(track);
         const join = document.createElement("a");
-        join.className = "btn ticker-join";
+        join.className = "btn btn-primary ticker-join";
         join.href = "https://discord.reagent-systems.com";
-        join.textContent = "Join the community";
+        // The words glisten: site.css paints them with a moving glint of orange.
+        const shine = document.createElement("span");
+        shine.className = "shine";
+        shine.textContent = "Join the community";
+        join.append(shine);
         const close = document.createElement("button");
         close.className = "ticker-close";
         close.type = "button";

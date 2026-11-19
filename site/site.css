@@ -3031,43 +3031,55 @@ main:has(#sent:target, #sent[data-shown]) #feedback-title,
   height: 1.125rem;
 }
 
-/* "Join the community" over a gradient of orange and gray that moves left to right, at the owner's
-   ask (2026-11-19). The gradient is 2 rounds of orange and gray at twice the button's width; moving it
-   by the button's width brings the second round where the first was, so the loop has no seam. White
-   words keep 4.5:1 on both colours. A reader who asks for reduced motion gets it still. */
-.ticker-join {
-  --join-orange: oklch(0.56 0.16 45);
-  --join-gray: oklch(0.45 0.005 60);
+/* "Join the community" stays a blue button, and its words glisten, at the owner's word (2026-11-19):
+   the words are painted with a gradient, gray with an orange glint in the middle, 3 times the words'
+   width. Moving it from one end to the other sweeps the glint across the words from left to right;
+   at both ends only gray shows, so the loop has no jump, and the glint rests for a moment between
+   sweeps. The gray is the button's own text colour in each theme. A reader who asks for reduced
+   motion gets plain gray words; a forced-colours screen gets the system's button text. */
+.ticker-join .shine {
+  --shine-base: oklch(0.27 0.01 60);
+  --shine-glint: oklch(0.6 0.19 42);
   background: linear-gradient(
-    100deg,
-    var(--join-orange) 0%,
-    var(--join-gray) 25%,
-    var(--join-orange) 50%,
-    var(--join-gray) 75%,
-    var(--join-orange) 100%
-  );
-  background-size: 200% 100%;
-  color: #fff;
+      100deg,
+      var(--shine-base) 0%,
+      var(--shine-base) 38%,
+      var(--shine-glint) 50%,
+      var(--shine-base) 62%,
+      var(--shine-base) 100%
+    )
+    0 0 / 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
   font-weight: 600;
-  text-shadow: 0 1px 1px oklch(0 0 0 / 25%);
 }
 
-.ticker-join:hover {
-  filter: brightness(1.08);
+html:not(.dark) .ticker-join .shine {
+  --shine-base: oklch(0.96 0.004 85);
+  --shine-glint: oklch(0.82 0.14 62);
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .ticker-join {
-    animation: join-flow 4s linear infinite;
+  .ticker-join .shine {
+    animation: join-shine 3.5s ease-in-out infinite;
   }
 }
 
-@keyframes join-flow {
-  from {
+@keyframes join-shine {
+  0% {
     background-position: 100% 0;
   }
-  to {
+  65%,
+  100% {
     background-position: 0% 0;
+  }
+}
+
+@media (forced-colors: active) {
+  .ticker-join .shine {
+    background: none;
+    color: ButtonText;
   }
 }
 
