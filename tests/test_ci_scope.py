@@ -339,7 +339,7 @@ def test_the_workflow_is_1_workflow_whose_first_job_alone_decides_the_scope():
 # CI's install line: the 2 bounds, and the command install.sh runs after a download pass too slow to
 # finish (tests/test_ci_apt_archive.py runs the step and reads what it hands to sudo).
 INSTALL_LINE = (
-    "sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 "
+    "sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 APT_OTHER_TIMEOUT=300 "
     'APT_FILE_RETRIES="$retries" APT_FILE_TIMEOUT="$seconds" APT_SLOW_PASS_COMMAND="$slow" ./install.sh'
 )
 

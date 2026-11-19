@@ -449,6 +449,8 @@ def test_the_bounds_ci_sets_run_the_update_and_the_download_under_timeout(tmp_pa
         ("APT_DOWNLOAD_TIMEOUT", "10m"),
         ("APT_UPDATE_TIMEOUT", "abc"),
         ("APT_UPDATE_TIMEOUT", "0"),
+        ("APT_OTHER_TIMEOUT", "5m"),
+        ("APT_OTHER_TIMEOUT", "0"),
     ],
 )
 def test_a_bound_that_is_not_a_whole_number_of_seconds_stops_before_anything_runs(tmp_path, name, value):
@@ -2639,17 +2641,226 @@ def test_the_first_step_installs_nothing_when_every_tool_is_there(tmp_path):
 
 
 def test_the_first_step_installs_the_boot_packages_where_1_is_missing(tmp_path):
-    """No certificates file: 1 update, then 1 install of the 7 packages; the run goes on."""
+    """No certificates file: 1 update, then the download of the 7 packages in passes, then the install
+    from the downloaded files; the run goes on. A person's computer sets no bound: no `timeout` runs."""
     env = {"CA_BUNDLE": str(tmp_path / "no-bundle.crt")}
     code, out, err, calls = run(tmp_path, BOOT_TOOLS, env=env, body="step_boot; echo NEXT STEP")
     assert code == 0, err
     assert out.splitlines()[0] == f"[install] boot: ca-certificates missing; apt install {BOOT_INSTALL}"
     assert out.splitlines()[-1] == "NEXT STEP"
     apt = of(calls, "apt-get")
-    assert apt[0] == "apt-get update -qq"
-    assert apt[1].startswith("apt-get install -y --no-install-recommends ")
-    assert apt[1].endswith(f" {BOOT_INSTALL}")
-    assert len(apt) == 2
+    assert apt[0] == "apt-get update -q"
+    assert apt[1].startswith("apt-get install -y --no-install-recommends --download-only ")
+    assert apt[2].startswith("apt-get install -y --no-install-recommends -o APT::Get::Download=false ")
+    assert apt[1].endswith(f" {BOOT_INSTALL}") and apt[2].endswith(f" {BOOT_INSTALL}")
+    assert len(apt) == 3 and of(calls, "timeout") == []
+
+
+# The 2 other downloads of CI's install path and the image build: each within APT_OTHER_TIMEOUT.
+OTHERS = {**CI, "APT_OTHER_TIMEOUT": "300"}
+# Copied from the log of the amd64 image build of 2026-11-19 (job 135588402925, #9 572.1): the openEMS
+# step's download got 520 for 1 file after a stall of 48 s, and openEMS then could not start.
+E_520 = (
+    "E: Failed to fetch http://archive.ubuntu.com/ubuntu/pool/universe/f/fparserc%2b%2b/"
+    "libfparser4_4.5.2-2build2_amd64.deb  520  <none> [IP: 172.66.152.176 80]"
+)
+OPENEMS_LIBS = "libfparser4 libtinyxml2.6.2v5 libboost-thread1.74.0 libvtk9.1t64 libhdf5-hl-100t64"
+# The first line of the stop of a download of 5 passes that got 520 for the same file each time.
+NEVER_SAID = (
+    "the download ended with apt-get's exit code 100 after 5 passes of 5, within its bound of 300 s; "
+    f"apt said: {E_520}"
+)
+
+
+def next_pass(first: str, second: str) -> bool:
+    """The same download again, given what was left of 300 s after the wait of 20 s: 280 s, or 279 when
+    the shell's whole seconds turned during the first pass."""
+    bound, rest = second.split(" ", 2)[1:]
+    return first == f"timeout 300 {rest}" and bound in ("279", "280")
+
+
+def test_the_boot_packages_come_in_bounded_passes_and_a_520_is_asked_again(tmp_path):
+    """The image build's first step (job 135588402925 printed nothing for 271 s before its first Get):
+    its update runs within APT_UPDATE_TIMEOUT, and its download in the main download's passes within
+    APT_OTHER_TIMEOUT. A file a host did not serve is asked again in the next pass."""
+    env = {**OTHERS, "CA_BUNDLE": str(tmp_path / "no-bundle.crt")}
+    answer = by_pass(f"echo {shlex.quote(E_520)} >&2; echo {shlex.quote(E_FILES)} >&2; exit 100", "exit 0")
+    code, out, err, calls = run(tmp_path, {**BOOT_TOOLS, "apt-get": answer}, env=env, body="step_boot")
+    assert code == 0, err
+    bounded = of(calls, "timeout")
+    assert bounded[0] == "timeout 120 apt-get update -q"
+    # The second pass gets what is left of the 300 s: the first took under 1 s, the wait 20.
+    assert len(bounded) == 3 and bounded[1].startswith("timeout 300 apt-get install -y ")
+    assert next_pass(bounded[1], bounded[2])
+    assert "--download-only" in bounded[1] and bounded[1].endswith(f" {BOOT_INSTALL}")
+    assert of(calls, "sleep") == ["sleep 20"]
+    said = f"[install] apt: download pass 1 of 5 failed on 1 file; apt said: {E_520}; waiting 20 s"
+    assert said in out.splitlines()
+
+
+def test_a_boot_download_that_never_comes_stops_with_the_file_and_the_host(tmp_path):
+    env = {**OTHERS, "CA_BUNDLE": str(tmp_path / "no-bundle.crt")}
+    answer = by_pass(f"echo {shlex.quote(E_520)} >&2; echo {shlex.quote(E_FILES)} >&2; exit 100")
+    code, out, err, calls = run(
+        tmp_path, {**BOOT_TOOLS, "apt-get": answer}, env=env, body="step_boot; echo NEXT"
+    )
+    assert code == 1 and "NEXT" not in out
+    assert err.splitlines()[-2:] == [f"[install] ERROR: boot: {NEVER_SAID}", LATER]
+
+
+STEP |= {"sha256sum", "cut"}
+
+
+def openems_folder(tmp_path: Path, starts: bool = True) -> dict:
+    """The openEMS step's own files as an earlier run left them: its 4 packages unpacked (the stamp
+    matches, so no package is fetched again), and openEMS itself, which prints its banner. The stand-in
+    sha256sum and cut give the stamp's value."""
+    root = tmp_path / "root" / "openems"
+    (root / "bin").mkdir(parents=True)
+    (root / ".debs-sha256").write_text("pinned\n", encoding="utf-8")
+    if starts:
+        program = root / "root" / "usr" / "bin" / "openEMS"
+        program.parent.mkdir(parents=True)
+        program.write_text("#!/bin/bash\necho ' ---- openEMS 64bit -- version v0.0.35 ----'\nexit 1\n")
+        program.chmod(0o755)
+    return {"sha256sum": "cat > /dev/null; echo 'pinned  -'", "cut": "cat > /dev/null; echo pinned"}
+
+
+def test_the_openems_libraries_come_in_bounded_passes_and_a_520_is_asked_again(tmp_path):
+    """Job 135588402925: the openEMS step's download got 520 for libfparser4, the step went on, and
+    openEMS could not start (`libfparser.so.4: cannot open shared object file`). Its download now runs
+    in the main download's passes within APT_OTHER_TIMEOUT: pass 2 asks for the file again. Then the
+    install reads only the downloaded files, and openEMS starts."""
+    answer = by_pass(f"echo {shlex.quote(E_520)} >&2; echo {shlex.quote(E_FILES)} >&2; exit 100", "exit 0")
+    stubs = {**openems_folder(tmp_path), "apt-get": answer}
+    code, out, err, calls = run(tmp_path, stubs, env=OTHERS, body="step_openems")
+    assert code == 0, err
+    first, second = of(calls, "timeout")
+    assert next_pass(first, second)
+    assert first.startswith("timeout 300 apt-get install -y --no-install-recommends ")
+    assert "--download-only" in first and first.endswith(f" {OPENEMS_LIBS}")
+    install = [c for c in of(calls, "apt-get") if "--download-only" not in c]
+    assert install == [
+        f"apt-get install -y --no-install-recommends -o APT::Get::Download=false {OPENEMS_LIBS}"
+    ]
+    assert f"[install] apt: download pass 1 of 5 failed on 1 file; apt said: {E_520}; waiting 20 s" in out
+    assert out.splitlines()[-1].startswith("[install] openems: v0.0.35 at ")
+    assert of(calls, "curl") == []
+
+
+def openems_warning(said: str) -> str:
+    return (
+        f"[install] WARN: openems: its libraries did not download: {said}; `workcenter fields` skips until "
+        "`sudo ./install.sh --openems` succeeds"
+    )
+
+
+@pytest.mark.parametrize("required", ["0", "1"])
+def test_an_openems_download_that_never_comes_warns_with_the_file_and_the_host(tmp_path, required):
+    """A file never served: after the passes the step ends as before, with 1 line that names the file and
+    its host (apt's own line), and no ERROR line: a WARN on a person's computer, a stop with
+    REQUIRE_OPENEMS=1. The image build still refuses an image without openEMS (tools/image.py record).
+    Nothing is installed and no package of openEMS is fetched."""
+    answer = by_pass(f"echo {shlex.quote(E_520)} >&2; echo {shlex.quote(E_FILES)} >&2; exit 100")
+    stubs = {**openems_folder(tmp_path), "apt-get": answer}
+    env = {**OTHERS, "REQUIRE_OPENEMS": required}
+    code, out, err, calls = run(tmp_path, stubs, env=env, body="step_openems; echo NEXT")
+    said = NEVER_SAID
+    if required == "0":
+        assert code == 0 and out.splitlines()[-1] == "NEXT"
+        assert err.splitlines()[-1] == openems_warning(said)
+    else:
+        assert code == 1 and "NEXT" not in out
+        assert (
+            err.splitlines()[-1]
+            == f"[install] ERROR: openems: its libraries did not download: {said} and REQUIRE_OPENEMS=1"
+        )
+    assert "ERROR: apt:" not in err
+    assert [c for c in of(calls, "apt-get") if "--download-only" not in c] == []
+    assert len([c for c in of(calls, "timeout") if "--download-only" in c]) == 5
+
+
+def test_a_stalled_openems_pass_is_ended_and_its_stop_names_its_own_bound(tmp_path):
+    """The passing run of job 135593285528: the openEMS step's download stalled 282.8 s, 385 s in all,
+    with no bound. Now the watch ends a pass too slow to finish within APT_OTHER_TIMEOUT, and its stop
+    names that variable, not the main download's."""
+    env = {**WATCH, "APT_DOWNLOAD_TIMEOUT": "570", "APT_OTHER_TIMEOUT": "8", "APT_DOWNLOAD_TRIES": "1"}
+    stubs = {**openems_folder(tmp_path), "apt-get": by_pass(trickle())}
+    code, out, err, calls = run(tmp_path, stubs, env=env, body="step_openems")
+    assert code == 0
+    (line,) = [x for x in err.splitlines() if x.startswith("[install] WARN: openems: ")]
+    assert "pass 1 was too slow to finish within what was left of APT_OTHER_TIMEOUT=8 s" in line
+    assert "APT_DOWNLOAD_TIMEOUT" not in err
+    assert alive(tmp_path) == []
+
+
+def test_a_boot_update_that_does_not_end_names_the_sources_that_had_not_answered(tmp_path):
+    """The boot step's 1 update within APT_UPDATE_TIMEOUT: a cut says which sources printed no line, as
+    the apt step's tries do, and the stop says so."""
+    listed = runner_sources(tmp_path)
+    env = {**OTHERS, "CA_BUNDLE": str(tmp_path / "no-bundle.crt")}
+    code, out, err, calls = run(
+        tmp_path, {**BOOT_TOOLS, "timeout": cut_update(*HEARD)}, env=env, body="step_boot"
+    )
+    assert code == 1
+    assert out.splitlines()[1] == silent_line(1, listed, 3).replace("try 1 of 3", "try 1 of 1")
+    assert err.splitlines()[-1] == (
+        "[install] ERROR: boot: `apt-get update` ended with exit code 124; apt said: nothing: "
+        "`apt-get update` of every package source did not end within 120 s (APT_UPDATE_TIMEOUT); the sources "
+        f"that had not answered: {silent(listed)}"
+    )
+
+
+def test_a_slow_boot_download_stops_with_the_advice_for_its_own_bound(tmp_path):
+    """The boot step's stop keeps both lines of the download's stop, and its advice names the bound a
+    person would raise: APT_OTHER_TIMEOUT, not the main download's."""
+    env = {**WATCH, "APT_OTHER_TIMEOUT": "8", "APT_DOWNLOAD_TRIES": "1", "CA_BUNDLE": str(tmp_path / "x.crt")}
+    code, out, err, calls = run(
+        tmp_path, {**BOOT_TOOLS, "apt-get": by_pass(trickle())}, env=env, body="step_boot"
+    )
+    assert code == 1
+    first, advice = err.splitlines()[-2:]
+    assert first.startswith(
+        "[install] ERROR: boot: the download stopped after 1 pass of 1: pass 1 was too slow"
+    )
+    assert "within what was left of APT_OTHER_TIMEOUT=8 s" in first
+    assert advice.endswith(
+        "give it more seconds: sudo env APT_OTHER_TIMEOUT=<seconds> ./install.sh "
+        "(sudo drops a variable set before it)."
+    )
+    assert alive(tmp_path) == []
+
+
+def test_the_openems_step_alone_checks_its_numbers_before_anything_runs(tmp_path):
+    """`sudo ./install.sh --openems` runs this step alone, without the boot step's check: a bad bound of
+    its download stops it with the 1 line, and no program runs."""
+    code, out, err, calls = run(
+        tmp_path, openems_folder(tmp_path), env={"APT_OTHER_TIMEOUT": "5m"}, body="step_openems"
+    )
+    assert (code, out, calls) == (1, "", [])
+    assert err.startswith("[install] ERROR: APT_OTHER_TIMEOUT=5m is not a whole number of seconds above 0")
+
+
+def test_an_openems_install_that_fails_after_its_download_warns(tmp_path):
+    answer = f"""case "$*" in
+  *--download-only*) exit 0 ;;
+  *install*) echo {shlex.quote(E_SPACE)} >&2; exit 100 ;;
+esac"""
+    stubs = {**openems_folder(tmp_path), "apt-get": answer}
+    code, out, err, calls = run(tmp_path, stubs, env=OTHERS, body="step_openems")
+    assert code == 0
+    said = f"the install of its libraries ended with apt-get's exit code 100; apt said: {E_SPACE}"
+    assert err.splitlines()[-1] == openems_warning(said).replace("its libraries did not download: ", "")
+
+
+def test_with_no_bound_the_openems_download_still_makes_its_passes(tmp_path):
+    """A person's computer: no `timeout`, the passes and the wait as in the main download."""
+    answer = by_pass(f"echo {shlex.quote(E_520)} >&2; echo {shlex.quote(E_FILES)} >&2; exit 100", "exit 0")
+    code, out, err, calls = run(
+        tmp_path, {**openems_folder(tmp_path), "apt-get": answer}, body="step_openems"
+    )
+    assert code == 0, err
+    assert of(calls, "timeout") == [] and len(downloads(calls)) == 2
 
 
 @pytest.mark.parametrize(
@@ -2679,12 +2890,17 @@ def test_a_bad_value_stops_before_the_first_step_installs(tmp_path, name, value)
             f"[install] ERROR: boot: `apt-get update` ended with exit code 100; apt said: {E_LOCK}",
         ),
         (
-            f"""case "$*" in *install*) echo {shlex.quote(E_SOME)} >&2; exit 100 ;; esac""",
+            'case "$*" in *--download-only*) exit 0 ;; '
+            f"*install*) echo {shlex.quote(E_SOME)} >&2; exit 100 ;; esac",
             "[install] ERROR: boot: the install of "
             f"{BOOT_INSTALL} ended with apt-get's exit code 100; apt said: {E_SOME}",
         ),
+        (
+            f"""case "$*" in *install*) echo {shlex.quote(E_SOME)} >&2; exit 100 ;; esac""",
+            "[install] No package was installed. Fix what apt said, then run the script again.",
+        ),
     ],
-    ids=["update", "install"],
+    ids=["update", "install", "download"],
 )
 def test_a_failing_apt_in_the_first_step_stops_with_apts_own_line(tmp_path, answer, said):
     """The image's bare Ubuntu: apt's exit code stops the script, with 1 line that quotes apt's E: line,
@@ -3188,7 +3404,7 @@ def ci_bounds(path: Path = WORKFLOW, job: str = "full") -> tuple[dict, int]:
     steps = yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"][job]
     runs = [s.get("run", "") for s in steps["steps"]]
     (install,) = [r for r in runs if "./install.sh" in r or "docker build" in r]
-    bounds = dict(re.findall(r"\b(APT_(?:UPDATE|DOWNLOAD)_TIMEOUT)=(\S+)", install))
+    bounds = dict(re.findall(r"\b(APT_(?:UPDATE|DOWNLOAD|OTHER)_TIMEOUT)=(\S+)", install))
     return bounds, int(steps["timeout-minutes"]) * 60
 
 
@@ -3200,28 +3416,54 @@ INSTALLING = {
 }
 
 
+# The steps of `full`'s install path that no bound holds, in s, as the first passing run without the
+# image build measured them (job 135593285528, 2026-11-19; its log, by line and time):
+MEASURED = {
+    # L1 13:27:43.042 to L212 13:28:07.889: set-up, checkout, the path's decision, the hosts' ranking.
+    "before install.sh": 25,
+    # L396 13:29:13.659 to L768 13:29:43.241: the main install from the downloaded files.
+    "unpack and set up": 30,
+    # L768 13:29:43.241 to L773 13:29:43.605: freerouting and java.
+    "freerouting and java": 1,
+    # L802 13:36:06.435 (openEMS's last Get) to L869 13:36:09.410: the install of its libraries.
+    "openEMS's unpack and set up": 3,
+    # L869 13:36:09.410 to L901 13:36:29.031: openEMS's own 4 packages, python, link, doctor.
+    "after openEMS": 20,
+    # L901 13:36:29.031 to L985 13:48:34.147 (the gate's own figure, L983: 725 s in all).
+    "make verify": 725,
+    # L985 13:48:34.147 to L1014 13:48:34.350: the path check and the clean-up.
+    "after make verify": 1,
+}
+
+
 @pytest.mark.parametrize("name", list(INSTALLING))
 def test_the_worst_case_of_the_apt_step_fits_the_jobs_limit(name):
-    """Each workflow that runs install.sh sets CI's 2 bounds, and its own job's limit is read from it
-    (ci.yml 30 minutes, nightly.yml 45, image.yml 60), so a change of either without the other fails
-    here. The newest passing run of 2026-11-18 (job 134941364976; log
-    lines 2, 169, 352, 710, 823, 843 and 933) used 9 s before install.sh (16:10:05.85 to 16:10:14.58),
-    27 s to unpack and set up (16:12:18.72 to 16:12:45.28), 28 s for the steps after apt (to 16:13:13.37)
-    and 670 s for `make verify` (16:13:13.86 to 16:24:23.84): of the job's 1800 s (timeout-minutes: 30),
-    1800 - 9 - 27 - 28 - 670 = 1066 s are left for the key, the updates, the waits and the download.
-    The key fetch runs on every fresh runner (the second review's S2-5): each of its 2 addresses is tried
-    while curl's retry timer is below KICAD_KEY_TIMEOUT (--retry-max-time), each try lasts at most
-    KICAD_KEY_TIMEOUT (--max-time), and with --retry 3 curl waits 1, 2, then 4 s (curl 8.5.0's manual,
-    --retry and --retry-max-time): at most 20 + 4 + 20 = 44 s an address, 88 s for both.
-    88 + 3 x 120 + 2 x 20 + 570 = 1058 s. The nightly run and the image build are held to the same 734 s
-    of other steps; neither has a passing run of its own measured (the image build runs no
-    `make verify`, but builds, checks and pushes)."""
+    """Each workflow that runs install.sh sets CI's 3 bounds, and its own job's limit is read from it
+    (ci.yml 40 minutes, nightly.yml 45, image.yml 60), so a change of either without the other fails
+    here. The steps no bound holds take 805 s (MEASURED, job 135593285528). The key fetch runs on every
+    fresh runner: each of its 2 addresses is tried while curl's retry timer is below KICAD_KEY_TIMEOUT
+    (--retry-max-time), each try lasts at most KICAD_KEY_TIMEOUT (--max-time), and with --retry 3 curl
+    waits 1, 2, then 4 s (curl 8.5.0's manual): at most 20 + 4 + 20 = 44 s an address, 88 s for both.
+    Then 3 tries of the update and 2 waits, the main download, and the openEMS step's download (385 s in
+    that run, with no bound): 88 + 3 x 120 + 2 x 20 + 570 + 300 = 1358 s, 2163 s with the 805: over
+    `full`'s former 30 minutes (1800 s), within 40 (2400 s). The boot step's update (1 try) and download
+    run only on a bare Ubuntu, the image's base (GitHub's runner has every tool: the passing run printed
+    no `boot:` line): they count for image.yml, 120 + 300 more, 2583 s of its 3600. The nightly run and
+    the image build are held to the same 805 s; neither has a passing run of its own measured (the image
+    build runs no `make verify`, but builds, checks and pushes)."""
     bounds, limit = ci_bounds(*INSTALLING[name])
-    assert bounds == CI
+    assert bounds == {**CI, "APT_OTHER_TIMEOUT": "300"}
     tries, wait = assigned("KICAD_INDEX_TRIES"), assigned("KICAD_INDEX_WAIT")
     update, download = int(bounds["APT_UPDATE_TIMEOUT"]), int(bounds["APT_DOWNLOAD_TIMEOUT"])
+    other = int(bounds["APT_OTHER_TIMEOUT"])
     key = 2 * (2 * assigned("KICAD_KEY_TIMEOUT", env=False) + 4)
-    assert key + tries * update + (tries - 1) * wait + download <= limit - 9 - 27 - 28 - 670
+    worst = key + tries * update + (tries - 1) * wait + download + other
+    if name == "image.yml":
+        worst += update + other
+    assert sum(MEASURED.values()) == 805
+    assert worst + sum(MEASURED.values()) <= limit, (worst, limit)
+    if name == "ci.yml":
+        assert (worst + sum(MEASURED.values()), limit) == (2163, 2400)
 
 
 def test_one_silent_file_fits_the_download_bound():

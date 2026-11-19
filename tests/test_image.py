@@ -122,14 +122,14 @@ def test_the_install_line_hands_install_sh_the_2_bounds_of_build_arguments_that_
     `docker build .` has no bound (install.sh reads an empty value as none)."""
     words = dockerfile()
     install = next(i for i, (w, a) in enumerate(words) if w == "RUN" and "./install.sh" in a)
-    for name in ("APT_UPDATE_TIMEOUT", "APT_DOWNLOAD_TIMEOUT"):
+    for name in ("APT_UPDATE_TIMEOUT", "APT_DOWNLOAD_TIMEOUT", "APT_OTHER_TIMEOUT"):
         declared = [i for i, (w, a) in enumerate(words) if w == "ARG" and a.split("=")[0] == name]
         assert len(declared) == 1 and declared[0] < install, name
         assert words[declared[0]][1] == f"{name}=", name
         assert f'{name}="${name}"' in words[install][1], name
     assert words[install][1].startswith(
         'REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT="$APT_UPDATE_TIMEOUT" '
-        'APT_DOWNLOAD_TIMEOUT="$APT_DOWNLOAD_TIMEOUT" ./install.sh'
+        'APT_DOWNLOAD_TIMEOUT="$APT_DOWNLOAD_TIMEOUT" APT_OTHER_TIMEOUT="$APT_OTHER_TIMEOUT" ./install.sh'
     )
 
 
@@ -784,8 +784,10 @@ def test_the_image_workflow_tags_by_content_main_a_release_and_the_day_and_summa
         "WORKCENTER_REVISION",
         "APT_UPDATE_TIMEOUT",
         "APT_DOWNLOAD_TIMEOUT",
+        "APT_OTHER_TIMEOUT",
     }
-    assert "--build-arg APT_UPDATE_TIMEOUT=120 --build-arg APT_DOWNLOAD_TIMEOUT=570" in build
+    args = "--build-arg APT_UPDATE_TIMEOUT=120 --build-arg APT_DOWNLOAD_TIMEOUT=570 "
+    assert f"{args}--build-arg APT_OTHER_TIMEOUT=300" in build
 
 
 def step_named(job: dict, start: str) -> dict:
@@ -957,7 +959,8 @@ def test_the_full_job_decides_its_path_then_runs_the_same_make_verify_on_either(
     # apt's per-file bounds, which the mirror list sets to 0 retries and 15 s.
     bounded = (
         "sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 "
-        'APT_FILE_RETRIES="$retries" APT_FILE_TIMEOUT="$seconds" APT_SLOW_PASS_COMMAND="$slow" ./install.sh'
+        'APT_OTHER_TIMEOUT=300 APT_FILE_RETRIES="$retries" APT_FILE_TIMEOUT="$seconds" '
+        'APT_SLOW_PASS_COMMAND="$slow" ./install.sh'
     )
     assert [s["run"].strip().splitlines()[-1] for s in install][1:] == [bounded, "make verify"]
     assert "tools/ci/apt_archive.sh" in install[0]["run"]

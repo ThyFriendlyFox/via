@@ -35,6 +35,8 @@
 #                         CI sets 570). Under sudo, pass it with env: sudo drops a variable set
 #                         before it (`sudo env APT_DOWNLOAD_TIMEOUT=900 ./install.sh`). It covers every
 #                         pass of the download and every wait between 2, together
+#   APT_OTHER_TIMEOUT     seconds each of the 2 other downloads may take, the boot step's and the openEMS
+#                         step's, all their passes and waits (default empty: no bound; CI sets 300)
 #   APT_DOWNLOAD_TRIES    passes of the download, when a package source does not serve a file (default 5)
 #   APT_DOWNLOAD_WAIT     seconds between 2 passes (default 20)
 #   APT_FILE_RETRIES      apt's further tries of 1 file on its host (default 3; CI sets 0 with a mirror list)
@@ -111,6 +113,14 @@ KICAD_INDEX_TRIES="${KICAD_INDEX_TRIES:-3}"
 KICAD_INDEX_WAIT="${KICAD_INDEX_WAIT:-20}"
 APT_UPDATE_TIMEOUT="${APT_UPDATE_TIMEOUT:-}"
 APT_DOWNLOAD_TIMEOUT="${APT_DOWNLOAD_TIMEOUT:-}"
+# The 2 other downloads, the boot step's (a bare Ubuntu, the image's base) and the openEMS step's, go
+# through the same passes and watch, each within APT_OTHER_TIMEOUT when it is set. In the image build of
+# job 135588402925 (2026-11-19) the openEMS step's download got 520 for 1 file after a stall of 48 s,
+# went on, and openEMS could not start; in the passing job 135593285528 it took 385 s with 1 stall of
+# 282.8 s, with no bound. The boot step printed nothing for 271 s in that image build. CI sets 300 s.
+APT_OTHER_TIMEOUT="${APT_OTHER_TIMEOUT:-}"
+# The name of the bound of the download that runs, for its lines: apt_download's callers set it.
+DL_NAME="APT_DOWNLOAD_TIMEOUT"
 # The download: up to APT_DOWNLOAD_TRIES passes, APT_DOWNLOAD_WAIT s apart, and a pass is made again only
 # when a source did not serve a file. In its log, the amd64 image build of pull request 92 on 2026-11-18
 # fetched 377 files from Ubuntu and 2 from KiCad 10's source, then got 503 for `kicad` 3 times in 18 s
@@ -242,7 +252,7 @@ bounded() {
 # Stops on a bound that is set but is not a whole number of seconds above 0, before anything runs.
 apt_bounds_check() {
   local name value
-  for name in APT_UPDATE_TIMEOUT APT_DOWNLOAD_TIMEOUT; do
+  for name in APT_UPDATE_TIMEOUT APT_DOWNLOAD_TIMEOUT APT_OTHER_TIMEOUT; do
     value="${!name}"
     if [[ -n "$value" && ! "$value" =~ ^[1-9][0-9]*$ ]]; then
       die "${name}=${value} is not a whole number of seconds above 0; set it to one, or leave ${name} unset for no bound"
@@ -898,8 +908,8 @@ apt_download() {
       read -r took got need rate rest gone pause < "$watch"
       left=$((left - (SECONDS - began)))
       if ((pass >= APT_DOWNLOAD_TRIES || left <= APT_DOWNLOAD_WAIT)); then
-        download_stop "apt: the download stopped after $(passes_made "$pass"): pass ${pass} was too slow to finish within what was left of APT_DOWNLOAD_TIMEOUT=${APT_DOWNLOAD_TIMEOUT} s; $(download_seen); apt said: ${APT_SAID:-nothing}" \
-          "No package was installed. ${SLOW_LINE}"
+        download_stop "apt: the download stopped after $(passes_made "$pass"): pass ${pass} was too slow to finish within what was left of ${DL_NAME}=${APT_DOWNLOAD_TIMEOUT} s; $(download_seen); apt said: ${APT_SAID:-nothing}" \
+          "No package was installed. ${SLOW_LINE//APT_DOWNLOAD_TIMEOUT/$DL_NAME}"
       fi
       left=$((left - APT_DOWNLOAD_WAIT))
       needs="at that rate the rest never arrives"
@@ -921,7 +931,7 @@ apt_download() {
     if [[ -n "$APT_DOWNLOAD_TIMEOUT" ]]; then
       left=$((left - (SECONDS - began)))
       if ((left <= APT_DOWNLOAD_WAIT)); then
-        download_stop "apt: the download stopped after $(passes_made "$pass"): the next wait of ${APT_DOWNLOAD_WAIT} s would leave no time for another pass within APT_DOWNLOAD_TIMEOUT=${APT_DOWNLOAD_TIMEOUT} s; apt said: ${APT_SAID:-nothing}" \
+        download_stop "apt: the download stopped after $(passes_made "$pass"): the next wait of ${APT_DOWNLOAD_WAIT} s would leave no time for another pass within ${DL_NAME}=${APT_DOWNLOAD_TIMEOUT} s; apt said: ${APT_SAID:-nothing}" \
           "No package was installed. $(apt_advice "$APT_SAID" "$later")"
       fi
       left=$((left - APT_DOWNLOAD_WAIT))
@@ -964,8 +974,34 @@ SLOW_LINE="Run the script again. ${KEPT} On a slow line, give it more seconds: s
 
 # The stop when `timeout` cut pass $1 at what was left of APT_DOWNLOAD_TIMEOUT (code 124).
 download_cut() {
-  download_stop "apt: the download did not end within ${APT_DOWNLOAD_TIMEOUT} s (APT_DOWNLOAD_TIMEOUT), the bound of all its passes and waits, after $(passes_made "$1"); $(download_seen); apt said: ${APT_SAID:-nothing}" \
-    "No package was installed. ${SLOW_LINE}"
+  download_stop "apt: the download did not end within ${APT_DOWNLOAD_TIMEOUT} s (${DL_NAME}), the bound of all its passes and waits, after $(passes_made "$1"); $(download_seen); apt said: ${APT_SAID:-nothing}" \
+    "No package was installed. ${SLOW_LINE//APT_DOWNLOAD_TIMEOUT/$DL_NAME}"
+}
+
+# The download of the packages $@ for 1 of the 2 other steps (boot, openEMS): apt_download's passes and
+# watch, within APT_OTHER_TIMEOUT, its lines naming that bound. It runs in a subshell whose stop only
+# keeps its 2 lines: OTHER_SAID, what stopped it (apt's own line names the file and its host), and
+# OTHER_ADVICE. The step decides what a stop means: the boot step stops the script, the openEMS step
+# warns (REQUIRE_OPENEMS=1: stops). Returns 0 when every file is there.
+OTHER_SAID=""
+OTHER_ADVICE=""
+other_download() {
+  local errors rc=0
+  errors="$(mktemp)"
+  (
+    APT_DOWNLOAD_TIMEOUT="$APT_OTHER_TIMEOUT"
+    DL_NAME="APT_OTHER_TIMEOUT"
+    stop() { printf '%s\n%s\n' "${1#apt: }" "$2" > "$errors"; exit 1; }
+    apt_download "$@"
+  ) || rc=$?
+  OTHER_SAID=""
+  OTHER_ADVICE=""
+  if ((rc != 0)); then
+    { read -r OTHER_SAID; read -r OTHER_ADVICE; } < "$errors" || true
+    OTHER_SAID="${OTHER_SAID:-the download ended with code ${rc}}"
+  fi
+  rm -f "$errors"
+  return "$rc"
 }
 
 step_apt() {
@@ -1046,12 +1082,21 @@ step_boot() {
   fi
   log "boot: ${missing[*]} missing; apt install ${BOOT_PACKAGES[*]}"
   # As in the apt step: apt in the C locale, its progress shown, and its exit code stops the script with
-  # its own E: line (a pipe's `|| true` let a failed install through to the check below).
+  # its own E: line (a pipe's `|| true` let a failed install through to the check below). 1 try of the
+  # update, within APT_UPDATE_TIMEOUT when it is set (a cut try names the sources that had not
+  # answered); then the download in passes within APT_OTHER_TIMEOUT, and the install from its files.
   local -x LC_ALL=C DEBIAN_FRONTEND=noninteractive
   local rc=0
-  apt_shown apt-get update -qq || rc=$?
+  update_try 1 1
+  rc=$UPDATE_RC
+  if ((rc == 124)) && [[ -n "${APT_UPDATE_TIMEOUT}" ]]; then
+    APT_SAID="nothing: \`apt-get update\` of every package source did not end within ${APT_UPDATE_TIMEOUT} s (APT_UPDATE_TIMEOUT); the sources that had not answered: ${SILENT:-none}"
+  else
+    APT_SAID="$(grep -m1 '^E:' <<< "$UPDATE_OUT" || true)"
+  fi
   ((rc == 0)) || die "boot: \`apt-get update\` ended with exit code ${rc}; apt said: ${APT_SAID:-nothing}"
-  apt_shown apt-get install -y --no-install-recommends -o Acquire::Retries="$APT_FILE_RETRIES" \
+  other_download "${BOOT_PACKAGES[@]}" || stop "boot: ${OTHER_SAID}" "$OTHER_ADVICE"
+  apt_shown apt-get install -y --no-install-recommends -o APT::Get::Download=false \
     "${BOOT_PACKAGES[@]}" || rc=$?
   ((rc == 0)) || die "boot: the install of ${BOOT_PACKAGES[*]} ended with apt-get's exit code ${rc}; apt said: ${APT_SAID:-nothing}"
   for tool in curl gpg git make cc; do
@@ -1197,14 +1242,26 @@ openems_fail() {
 }
 
 step_openems() {
-  local dir="${WC_ROOT}/openems" want stamp entry name sum deb banner
+  local dir="${WC_ROOT}/openems" want stamp entry name sum deb banner rc=0
+  # The `--openems` mode runs this step alone: the numbers of its download are checked here too.
+  apt_bounds_check
   want="$(printf '%s\n' "$OPENEMS_VERSION" "${OPENEMS_DEBS[@]}" | sha256sum | cut -d' ' -f1)"
   stamp="${dir}/.debs-sha256"
   if [[ "$SKIP_APT" != "1" ]]; then
+    # As the apt step's download: passes, the watch, a bound (APT_OTHER_TIMEOUT), then the install from
+    # the downloaded files alone. A library that does not arrive ends the step as a failed step of
+    # openEMS ends (job 135588402925: libfparser4 got 520, and openEMS could not start).
+    local -x LC_ALL=C DEBIAN_FRONTEND=noninteractive
     log "openems: apt install ${OPENEMS_LIBS[*]}"
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      -o Acquire::Retries=3 -o Acquire::http::Timeout=60 -o Acquire::https::Timeout=60 "${OPENEMS_LIBS[@]}" \
-      | grep --line-buffered -E '^(Get:[0-9]+|Setting up|Unpacking) ' | sed -u 's/^/[apt] /' || true
+    if ! other_download "${OPENEMS_LIBS[@]}"; then
+      openems_fail "its libraries did not download: ${OTHER_SAID}"
+      return
+    fi
+    apt_shown apt-get install -y --no-install-recommends -o APT::Get::Download=false "${OPENEMS_LIBS[@]}" || rc=$?
+    if ((rc != 0)); then
+      openems_fail "the install of its libraries ended with apt-get's exit code ${rc}; apt said: ${APT_SAID:-nothing}"
+      return
+    fi
   fi
   if [[ "$(cat "$stamp" 2>/dev/null)" != "$want" ]]; then
     rm -rf "${dir}/root" "${dir}/debs"

@@ -186,10 +186,12 @@ prints 1 line: `where: image: ...` or `where: install: ...`, with the reason.
   the runner's user, after `tools/image.py show` (the image's tag, commit
   and tools' versions) and `tools/image.py check` (the checkout's 3 files
   are those the image was built from; a difference fails the job).
-- `install`: `sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh`,
-  then `make verify`, as before the image; the 2 bounds end a stalled
-  index or download with apt's own line within the job's 30 minutes (the
-  nightly run and the image build set the same 2). It is taken when the change edits 1
+- `install`: `sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 APT_OTHER_TIMEOUT=300 ... ./install.sh`,
+  then `make verify`, as before the image; the 3 bounds end a stalled
+  index or download (the main one, and the openEMS step's and the boot
+  step's) with apt's own line within the job's 40 minutes (the nightly
+  run and the image build set the same 3; ee-agent-kit/CI.md has the
+  arithmetic). It is taken when the change edits 1
   of the 3 files (the install path is their test), when the registry has
   no image of the tag (the first run, a new toolchain not yet published),
   when the pull is refused or the registry does not answer, when the
