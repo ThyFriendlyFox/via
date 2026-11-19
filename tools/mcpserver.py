@@ -36,16 +36,25 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
 PROTOCOL = "2025-11-25"
 CLI = Path(__file__).resolve().parent / "workcenter"
 SERVER = {"name": "ee-workcenter", "version": "1.0"}
-# Seconds between SIGTERM and SIGKILL for a cancelled command's process group.
+# Seconds between SIGTERM and SIGKILL for a stopped command's process group.
 GRACE = 10.0
-# prctl option 1: the signal a child gets when its parent dies (Linux <linux/prctl.h>).
+# Commands that run at once. A further call waits for a slot in a thread of its own; the reader goes on.
+SLOTS = 4
+# Calls that may wait for a slot. A call beyond SLOTS + QUEUE is refused in 1 line.
+QUEUE = 32
+# The longest line read from stdin, in bytes. A longer line is answered -32600 and skipped to its end.
+LINE_LIMIT = 4 * 1024 * 1024
+# prctl options 1 and 2: set and get the signal a child gets when its parent dies (Linux <linux/prctl.h>).
 PR_SET_PDEATHSIG = 1
+PR_GET_PDEATHSIG = 2
+UNGUARDED = "This system has no prctl PR_SET_PDEATHSIG: a SIGKILL to this server leaves its commands running."
 
 PARSE_ERROR = -32700
 INVALID_REQUEST = -32600
@@ -66,6 +75,7 @@ class Option:
     kind: str
     flag: str | None
     description: str
+    maximum: int | None = None
 
 
 PROJECT = Option("project", "project", None, "the project folder or a KiCad file, relative to the root")
@@ -105,7 +115,9 @@ TOOLS: dict[str, dict] = {
             STRICT,
             Option("deck", "name", "--deck", "run only sim/DECK.cir; the frequency plan is not judged"),
             Option("nominal", "boolean", "--nominal", "each deck as written only; the corners are left out"),
-            Option("jobs", "count", "--jobs", "corners run at once (default: 1 per processor, 8 at most)"),
+            Option(
+                "jobs", "count", "--jobs", "corners run at once (default: 1 per processor, 8 at most)", 64
+            ),
         ],
     },
     "export": {
@@ -119,9 +131,9 @@ TOOLS: dict[str, dict] = {
             OUT,
             STRICT,
             Option("dsn", "path", "--dsn", "Specctra DSN inside the root (default <project>/<name>.dsn)"),
-            Option("passes", "count", "--passes", "router passes (default 20)"),
-            Option("threads", "count", "--threads", "router threads (default 0: its own)"),
-            Option("timeout", "count", "--timeout", "seconds (default 600)"),
+            Option("passes", "count", "--passes", "router passes (default 20)", 1000),
+            Option("threads", "count", "--threads", "router threads (default 0: its own)", 64),
+            Option("timeout", "count", "--timeout", "seconds (default 600, 1 day at most)", 86400),
         ],
     },
 }
@@ -148,6 +160,8 @@ def schema(tool: str) -> dict:
             props[opt.name] = {"type": "boolean", "description": opt.description}
         elif opt.kind == "count":
             props[opt.name] = {"type": "integer", "minimum": 0, "description": opt.description}
+            if opt.maximum is not None:
+                props[opt.name]["maximum"] = opt.maximum
         else:
             props[opt.name] = {"type": types[opt.kind], "description": opt.description}
     return {"type": "object", "properties": props, "additionalProperties": False}
@@ -158,7 +172,8 @@ def listing() -> list[dict]:
         {
             "name": name,
             "title": f"workcenter {name}",
-            "description": tool["description"],
+            "description": f"{tool['description']}. The server runs {SLOTS} commands at once; a further "
+            f"call waits its turn, and 1 beyond {SLOTS + QUEUE} held is refused",
             "inputSchema": schema(name),
             "outputSchema": OUTPUT_SCHEMA,
         }
@@ -190,6 +205,11 @@ def command_line(root: Path, tool: str, arguments: dict) -> list[str]:
         if not isinstance(project, str):
             raise Refused(f"refused: project must be a string, not {json.dumps(project)}")
         words.append(inside(root, project, "project"))
+    if "out" in options and "out" not in arguments:
+        # The command's default, <project>/build, named here so that it is held inside the root as a
+        # named `out` is: a `build` link out of the root is refused, not followed.
+        folder = Path(words[1]).parent if Path(words[1]).is_file() else Path(words[1])
+        words += ["--out", inside(root, str((folder / "build").relative_to(root)), "out")]
     for name, opt in options.items():
         if name not in arguments or opt.kind == "project":
             continue
@@ -205,8 +225,15 @@ def command_line(root: Path, tool: str, arguments: dict) -> list[str]:
             # draft-bhutton-json-schema-validation-01, 6.1.1 "type"): 3.0 is 3.
             if isinstance(value, float) and value.is_integer():
                 value = int(value)
-            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-                raise Refused(f"refused: {name} must be a whole number, 0 or more, not {json.dumps(value)}")
+            top = opt.maximum
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 0
+                or (top is not None and value > top)
+            ):
+                most = f"from 0 to {top}" if top is not None else "0 or more"
+                raise Refused(f"refused: {name} must be a whole number {most}, not {json.dumps(value)}")
             words += [opt.flag, str(value)]
             continue
         if not isinstance(value, str) or not value:
@@ -222,18 +249,30 @@ def command_line(root: Path, tool: str, arguments: dict) -> list[str]:
 class Server:
     """1 session on 1 stream pair. `serve` reads until stdin closes."""
 
-    def __init__(self, root: Path, out=None, cli: Path = CLI):
+    def __init__(self, root: Path, out=None, cli: Path | None = None):
         self.root = root
         self.out = out if out is not None else sys.stdout.buffer
-        self.cli = cli
+        self.cli = cli if cli is not None else CLI
         self.write_lock = threading.Lock()
         self.state = threading.Lock()
+        self.active: set = set()  # ids of the calls accepted and not yet answered or dropped
         self.running: dict = {}  # request id -> Popen
         self.cancelled: set = set()
         self.threads: list[threading.Thread] = []
+        self.slots = threading.BoundedSemaphore(SLOTS)
+        self.room = SLOTS + QUEUE
+        self.guarded = pdeathsig_works()
 
     def send(self, msg: dict) -> None:
-        data = json.dumps(msg, ensure_ascii=False, separators=(",", ":")).encode("utf-8") + b"\n"
+        try:
+            data = json.dumps(msg, ensure_ascii=False, separators=(",", ":")).encode("utf-8") + b"\n"
+        except (RecursionError, ValueError, TypeError) as exc:  # never a half line on stdout
+            text = f"Internal error: an answer that is not JSON: {type(exc).__name__}"
+            rid = msg.get("id") if _valid_id(msg.get("id")) else None
+            data = json.dumps(
+                {"jsonrpc": "2.0", "id": rid, "error": {"code": INTERNAL_ERROR, "message": text}}
+            )
+            data = data.encode("utf-8") + b"\n"
         with self.write_lock:
             try:
                 self.out.write(data)
@@ -250,7 +289,12 @@ class Server:
     def serve(self, stream) -> int:
         """Read until stdin closes, then answer the calls still running and return. A client that will
         not wait sends SIGTERM (basic/lifecycle, "Shutdown"), which `cmd_mcp` turns into `stop_all`."""
-        for raw in stream:
+        while raw := stream.readline(LINE_LIMIT):
+            if len(raw) == LINE_LIMIT and not raw.endswith(b"\n"):
+                while raw and not raw.endswith(b"\n"):  # the rest of the line, read and dropped
+                    raw = stream.readline(LINE_LIMIT)
+                self.error(None, INVALID_REQUEST, f"Invalid Request: a line longer than {LINE_LIMIT} bytes")
+                continue
             if raw.strip():
                 self.handle(raw)
         for thread in self.threads:
@@ -260,8 +304,15 @@ class Server:
     def handle(self, raw: bytes) -> None:
         try:
             msg = json.loads(raw.decode("utf-8"))
-        except (UnicodeDecodeError, ValueError):
-            self.error(None, PARSE_ERROR, "Parse error: a line that is not UTF-8 JSON")
+        except RecursionError:
+            self.error(None, INVALID_REQUEST, "Invalid Request: nested deeper than this server reads")
+            return
+        except (UnicodeDecodeError, ValueError) as exc:
+            # Valid JSON, but a number of more digits than Python reads: not a parse error.
+            if "integer string conversion" in str(exc):
+                self.error(None, INVALID_REQUEST, f"Invalid Request: a number of too many digits: {exc}")
+            else:
+                self.error(None, PARSE_ERROR, "Parse error: a line that is not UTF-8 JSON")
             return
         if not isinstance(msg, dict):
             self.error(None, INVALID_REQUEST, "Invalid Request: 1 JSON object per line, no batches")
@@ -276,7 +327,10 @@ class Server:
             return
         method = msg.get("method")
         if "method" not in msg:
-            return  # a response: this server sends no requests, so there is nothing to match it to
+            if "id" in msg and ("result" in msg or "error" in msg):
+                return  # a response: this server sends no requests, so there is nothing to match it to
+            self.error(rid if _valid_id(rid) else None, INVALID_REQUEST, "Invalid Request: no method")
+            return
         params = msg.get("params", {})
         if not is_request:
             self.notification(method, params if isinstance(params, dict) else {})
@@ -302,7 +356,8 @@ class Server:
                     "serverInfo": SERVER,
                     "instructions": f"Via's gates on the projects under {self.root}. Each "
                     "tool runs `workcenter <tool>` and answers its lines and its exit code: 0 pass, 1 fail, "
-                    "2 skip.",
+                    f"2 skip. {SLOTS} commands run at once; a further call waits its turn, and 1 beyond "
+                    f"{SLOTS + QUEUE} held is refused." + ("" if self.guarded else " " + UNGUARDED),
                 },
             )
         elif method == "ping":
@@ -322,6 +377,10 @@ class Server:
         # notifications/initialized and any other notification: nothing to answer (basic, "Notifications").
 
     def call(self, rid, params: dict) -> None:
+        with self.state:
+            if rid in self.active:  # basic, "Messages": an id "MUST NOT" be reused
+                self.error(rid, INVALID_REQUEST, f"Invalid Request: id {json.dumps(rid)} is in use by a call")
+                return
         name = params.get("name")
         if name not in TOOLS:
             self.error(rid, INVALID_PARAMS, f"Unknown tool: {name}")
@@ -339,12 +398,31 @@ class Server:
         except Refused as exc:
             self.result(rid, {"content": [{"type": "text", "text": str(exc)}], "isError": True})
             return
+        with self.state:
+            if len(self.active) >= self.room:
+                text = (
+                    f"refused: {len(self.active)} calls are running or waiting, the most this server holds; "
+                    "call again once 1 is answered"
+                )
+                self.result(rid, {"content": [{"type": "text", "text": text}], "isError": True})
+                return
+            self.active.add(rid)
+        self.threads = [thread for thread in self.threads if thread.is_alive()]
         thread = threading.Thread(target=self.run, args=(rid, words, token), daemon=True)
         self.threads.append(thread)
         thread.start()
 
     def run(self, rid, words: list[str], token) -> None:
-        """Run 1 command and answer with its lines; a cancelled one is not answered."""
+        """Wait for a slot, run 1 command and answer with its lines; a cancelled one is not answered."""
+        try:
+            with self.slots:
+                self.run_now(rid, words, token)
+        finally:
+            with self.state:
+                self.active.discard(rid)
+                self.cancelled.discard(rid)
+
+    def run_now(self, rid, words: list[str], token) -> None:
         env = dict(os.environ)
         env["PYTHONUNBUFFERED"] = "1"
         with self.state:
@@ -359,7 +437,7 @@ class Server:
                     cwd=self.root,
                     env=env,
                     start_new_session=True,
-                    preexec_fn=_dies_with(os.getpid()),
+                    preexec_fn=_dies_with(os.getpid()) if self.guarded else None,
                 )
             except OSError as exc:
                 text = f"not run: workcenter {words[0]} could not start in {self.root}: {exc.strerror}"
@@ -403,48 +481,76 @@ class Server:
 
     def cancel(self, rid) -> None:
         with self.state:
-            if rid not in self.running:
+            if rid not in self.active:
                 return  # unknown or finished: ignored (basic/utilities/cancellation, "Error Handling")
-            self.cancelled.add(rid)
-            proc = self.running[rid]
-        stop(proc)
+            self.cancelled.add(rid)  # a call that waits for a slot never starts
+            proc = self.running.get(rid)
+        if proc is not None:
+            stop(proc)
 
     def stop_all(self) -> None:
+        """SIGTERM to every command's process group, then SIGKILL to each still there after GRACE seconds.
+        It returns when every command it started is gone, so the server exits after them."""
         with self.state:
-            procs = list(self.running.items())
-            self.cancelled.update(rid for rid, _ in procs)
-        for _, proc in procs:
-            stop(proc)
+            self.cancelled.update(self.active)
+            procs = list(self.running.values())
+        for proc in procs:
+            _signal_group(proc, signal.SIGTERM)
+        end = time.monotonic() + GRACE
+        for proc in procs:
+            try:
+                proc.wait(timeout=max(0.0, end - time.monotonic()))
+            except subprocess.TimeoutExpired:
+                _signal_group(proc, signal.SIGKILL)
+
+
+def _signal_group(proc: subprocess.Popen, signum: int) -> bool:
+    try:
+        os.killpg(proc.pid, signum)
+    except ProcessLookupError:
+        return False
+    return True
 
 
 def stop(proc: subprocess.Popen) -> None:
     """SIGTERM to the command's process group, its engines with it; SIGKILL after GRACE seconds."""
-    try:
-        os.killpg(proc.pid, signal.SIGTERM)
-    except ProcessLookupError:
+    if not _signal_group(proc, signal.SIGTERM):
         return
 
     def kill():
         try:
             proc.wait(timeout=GRACE)
         except subprocess.TimeoutExpired:
-            try:
-                os.killpg(proc.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+            _signal_group(proc, signal.SIGKILL)
 
     threading.Thread(target=kill, daemon=True).start()
+
+
+def _prctl():
+    try:
+        return ctypes.CDLL(None, use_errno=True).prctl
+    except (OSError, AttributeError):
+        return None
+
+
+def pdeathsig_works() -> bool:
+    """True when prctl is there and answers: asked once, in the server, with PR_GET_PDEATHSIG, which
+    changes nothing."""
+    prctl = _prctl()
+    if prctl is None:
+        return False
+    value = ctypes.c_int(0)
+    return prctl(PR_GET_PDEATHSIG, ctypes.byref(value), 0, 0, 0) == 0
 
 
 def _dies_with(parent: int):
     """A child's first step on Linux: SIGTERM to itself when the thread that started it dies, SIGKILL to
     the server among the ways (prctl PR_SET_PDEATHSIG; the command passes SIGTERM on to its engines).
     A server already gone between the fork and the prctl is caught by the parent pid. On another system
-    nothing is set, and a command can outlive a server killed by SIGKILL."""
-    try:
-        prctl = ctypes.CDLL(None, use_errno=True).prctl
-    except (OSError, AttributeError):
+    nothing is set, a command can outlive a server killed by SIGKILL, and the server says so (UNGUARDED)."""
+    if not pdeathsig_works():
         return None
+    prctl = _prctl()
 
     def first():
         prctl(PR_SET_PDEATHSIG, signal.SIGTERM, 0, 0, 0)
@@ -463,7 +569,20 @@ def cmd_mcp(args) -> int:
     if not root.is_dir():
         print(f"workcenter mcp: {args.root}: not a folder", file=sys.stderr)
         return 2
+    try:
+        home = Path.home().resolve()
+    except (RuntimeError, KeyError):
+        home = None
+    if root == Path(root.anchor) or root == home:
+        print(
+            f"workcenter mcp: {args.root}: too wide a root ({root}); every path a call names is held inside "
+            "it, so name a project or a repository of versions",
+            file=sys.stderr,
+        )
+        return 2
     server = Server(root)
+    if not server.guarded:
+        print(f"workcenter mcp: {UNGUARDED}", file=sys.stderr)
 
     def stopped(signum, _frame):
         # Each command runs in a process group of its own, so a signal to the server reaches none of

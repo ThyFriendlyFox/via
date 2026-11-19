@@ -522,7 +522,7 @@ def test_a_count_with_a_zero_fractional_part_is_a_whole_number(tmp_path):
     import mcpserver
 
     words = mcpserver.command_line(tmp_path, "autoroute", {"passes": 3.0})
-    assert words == ["autoroute", str(tmp_path), "--passes", "3"]
+    assert words == ["autoroute", str(tmp_path), "--out", str(tmp_path / "build"), "--passes", "3"]
     for value in (3.5, -1.0):
         with pytest.raises(mcpserver.Refused):
             mcpserver.command_line(tmp_path, "autoroute", {"passes": value})
@@ -595,6 +595,365 @@ def _runs_sim(proc: Path, root: Path) -> bool:
     except OSError:
         return False
     return b"sim" in words and str(root).encode() in words and str(CLI).encode() in words
+
+
+def _stubbed(tmp_path: Path, body: str):
+    """A server in the test's own process whose CLI is a stub of `body`: the server and its stdout."""
+    import mcpserver
+
+    stub = tmp_path / "stub.py"
+    stub.write_text(body)
+    out = Collector()
+    return mcpserver.Server(tmp_path, out=out, cli=stub), out
+
+
+def _tools_call(server, rid, name: str = "doctor", arguments: dict | None = None, token=None):
+    params: dict = {"name": name, "arguments": arguments or {}}
+    if token is not None:
+        params["_meta"] = {"progressToken": token}
+    server.handle(
+        json.dumps({"jsonrpc": "2.0", "id": rid, "method": "tools/call", "params": params}).encode()
+    )
+
+
+def _cancel(server, rid):
+    msg = {"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {"requestId": rid}}
+    server.handle(json.dumps(msg).encode())
+
+
+def _next(out: Collector, match, timeout: float = 20.0) -> dict:
+    """The next message `match` takes; the others are dropped."""
+    end = time.monotonic() + timeout
+    while True:
+        left = end - time.monotonic()
+        assert left > 0, f"no such message in {timeout} s"
+        try:
+            msg = out.inbox.get(timeout=left)
+        except queue.Empty:
+            continue
+        if match(msg):
+            return msg
+
+
+def _stub_pids(stub: Path) -> list[int]:
+    """The live processes that run `stub`."""
+    pids = []
+    for proc in Path("/proc").iterdir():
+        if not proc.name.isdigit():
+            continue
+        try:
+            words = (proc / "cmdline").read_bytes().split(b"\0")
+        except OSError:
+            continue
+        if str(stub).encode() in words and _alive(proc):
+            pids.append(int(proc.name))
+    return pids
+
+
+PID_THEN_SLEEP = """\
+import os, time
+print(os.getpid(), flush=True)
+time.sleep(120)
+"""
+
+
+def test_a_deeply_nested_line_is_refused_and_the_session_goes_on(tmp_path, lock_dir, request):
+    """10000 nested arrays exceed Python's recursion limit in the JSON decoder. The line is answered with
+    -32600 and a null id, and the server goes on: the ping after it is answered, stderr holds no
+    traceback, and the server exits 0 when stdin closes."""
+    client = served(tmp_path, lock_dir, request)
+    client.start()
+    deep = "[" * 10000 + "]" * 10000
+    client.send_raw(
+        '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"erc","arguments":{"project":'
+        + deep
+        + "}}}"
+    )
+    refused = client.wait_for(lambda m: "error" in m)
+    assert refused["error"]["code"] == -32600 and refused["id"] is None, refused
+    assert client.call("ping")["result"] == {}
+    assert client.close() == 0
+    assert "Traceback" not in client.proc.stderr.read().decode(errors="replace")
+
+
+def test_protocol_gaps_are_answered_with_their_codes(tmp_path, lock_dir, request):
+    """Each malformed message gets -32600 or -32602 and the session goes on: a top-level string; an id that
+    is a float; params that are not an object (-32602); an object with neither method nor id; an integer id
+    of 5000 digits, valid JSON that Python will not read as a number (-32600, not a parse error); and a
+    line longer than the server reads (LINE_LIMIT bytes), skipped to its end."""
+    import mcpserver
+
+    client = served(tmp_path, lock_dir, request)
+    client.start()
+    for text in ('"hello"', '{"jsonrpc":"2.0","id":1.5,"method":"ping"}', '{"jsonrpc":"2.0"}'):
+        client.send_raw(text)
+        reply = client.wait_for(lambda m: "error" in m)
+        assert reply["error"]["code"] == -32600 and reply["id"] is None, (text, reply)
+    client.send({"jsonrpc": "2.0", "id": 40, "method": "ping", "params": []})
+    assert client.answer(40)["error"]["code"] == -32602
+    client.send_raw('{"jsonrpc":"2.0","id":' + "9" * 5000 + ',"method":"ping"}')
+    huge = client.wait_for(lambda m: "error" in m)
+    assert huge["error"]["code"] == -32600 and "digits" in huge["error"]["message"], huge
+    long = json.dumps(
+        {"jsonrpc": "2.0", "id": 41, "method": "ping", "params": {"x": "y" * mcpserver.LINE_LIMIT}}
+    )
+    client.send_raw(long)
+    over = client.wait_for(lambda m: "error" in m or m.get("id") == 41)
+    assert over.get("id") is None and over["error"]["code"] == -32600, over
+    assert client.call("ping")["result"] == {} and client.kept == []
+    assert client.close() == 0 and client.bad == []
+
+
+def test_the_default_out_is_held_inside_the_root(tmp_path):
+    """With no `out`, the command writes into <project>/build, the folder of a project named as a file.
+    The server names that folder itself as `--out`, held inside the root like a named one: a `build`
+    link out of the root is refused, and nothing runs."""
+    import mcpserver
+
+    root = tmp_path / "root"
+    (root / "a").mkdir(parents=True)
+    (root / "a" / "x.kicad_sch").write_text("")
+    assert mcpserver.command_line(root, "sim", {}) == ["sim", str(root), "--out", str(root / "build")]
+    words = mcpserver.command_line(root, "erc", {"project": "a/x.kicad_sch"})
+    assert words == ["erc", str(root / "a" / "x.kicad_sch"), "--out", str(root / "a" / "build")]
+    assert mcpserver.command_line(root, "doctor", {}) == ["doctor"]
+    (tmp_path / "outside").mkdir()
+    (root / "build").symlink_to(tmp_path / "outside")
+    with pytest.raises(mcpserver.Refused, match=r"refused: out build is outside"):
+        mcpserver.command_line(root, "sim", {"project": ".", "nominal": True})
+
+
+def test_each_value_is_checked_before_a_word_is_passed(tmp_path):
+    """strict false passes no flag; a deck or a rule set that starts with '-', or is empty, is refused; a
+    rule set named as a .kicad_dru is a path inside the root; a count above its schema maximum is refused,
+    and the maximum is in the schema."""
+    import mcpserver
+
+    assert mcpserver.command_line(tmp_path, "erc", {"strict": False})[:2] == ["erc", str(tmp_path)]
+    assert "--strict" not in mcpserver.command_line(tmp_path, "erc", {"strict": False})
+    for args in ({"deck": "-x"}, {"deck": ""}):
+        with pytest.raises(mcpserver.Refused):
+            mcpserver.command_line(tmp_path, "sim", args)
+    for args in ({"fab": "-x"}, {"fab": ""}):
+        with pytest.raises(mcpserver.Refused):
+            mcpserver.command_line(tmp_path, "drc", args)
+    words = mcpserver.command_line(tmp_path, "drc", {"fab": "r.kicad_dru"})
+    assert words[-2:] == ["--fab", str(tmp_path / "r.kicad_dru")]
+    assert mcpserver.command_line(tmp_path, "drc", {"fab": "jlcpcb"})[-2:] == ["--fab", "jlcpcb"]
+    for tool, name in (
+        ("sim", "jobs"),
+        ("autoroute", "passes"),
+        ("autoroute", "threads"),
+        ("autoroute", "timeout"),
+    ):
+        top = mcpserver.schema(tool)["properties"][name]["maximum"]
+        assert mcpserver.command_line(tmp_path, tool, {name: top})[-1] == str(top)
+        for value in (top + 1, 1e30):
+            with pytest.raises(mcpserver.Refused, match=name):
+                mcpserver.command_line(tmp_path, tool, {name: value})
+
+
+def test_exit_2_and_a_death_by_signal_are_errors(tmp_path):
+    """A skip, exit 2, is not a pass: isError is true. A command killed by SIGKILL is reported as a shell
+    reports it, 128 + 9 = 137."""
+    server, out = _stubbed(tmp_path, "import sys\nprint('SKIP   erc')\nsys.exit(2)\n")
+    _tools_call(server, 1)
+    result = _next(out, lambda m: m.get("id") == 1)["result"]
+    assert result["structuredContent"]["exitCode"] == 2 and result["isError"] is True
+    (tmp_path / "stub.py").write_text("import os, signal\nos.kill(os.getpid(), signal.SIGKILL)\n")
+    _tools_call(server, 2)
+    result = _next(out, lambda m: m.get("id") == 2)["result"]
+    assert result["structuredContent"]["exitCode"] == 137 and result["isError"] is True
+
+
+def test_ids_0_and_empty_are_cancelled_and_a_bad_token_gets_no_progress(tmp_path, request):
+    """0 and "" are ids like any other (basic, "Messages"): a cancel of each stops its command. A
+    progressToken that is neither a string nor an integer is not a token: no progress is sent to it."""
+    server, out = _stubbed(tmp_path, PID_THEN_SLEEP)
+    stub = tmp_path / "stub.py"
+    for rid in (0, ""):
+        _tools_call(server, rid, token="t")
+        pid = int(_next(out, lambda m: m.get("method") == "notifications/progress")["params"]["message"])
+        request.addfinalizer(lambda pid=pid: _kill(pid))
+        _cancel(server, rid)
+        end = time.monotonic() + 20
+        while _alive(Path(f"/proc/{pid}")):
+            assert time.monotonic() < end, f"the command of id {rid!r} outlived its cancel"
+            time.sleep(0.05)
+    _tools_call(server, 9, token=1.5)
+    end = time.monotonic() + 20
+    while not _stub_pids(stub):
+        assert time.monotonic() < end, "the stub never started"
+        time.sleep(0.05)
+    time.sleep(0.5)
+    assert out.inbox.empty(), out.inbox.get()
+    _cancel(server, 9)
+
+
+def test_a_duplicate_id_is_refused_while_its_call_runs(tmp_path, request):
+    """An id names 1 request (basic, "Messages": it "MUST NOT" be reused). A second tools/call with the id of
+    a call still running gets -32600 and starts nothing; the cancel of that id still stops the first."""
+    server, out = _stubbed(tmp_path, PID_THEN_SLEEP)
+    _tools_call(server, 1, token="a")
+    pid = int(_next(out, lambda m: m.get("method") == "notifications/progress")["params"]["message"])
+    request.addfinalizer(lambda: _kill(pid))
+    _tools_call(server, 1, token="b")
+    refused = _next(out, lambda m: m.get("id") == 1, timeout=5)
+    assert refused["error"]["code"] == -32600 and "in use" in refused["error"]["message"], refused
+    time.sleep(0.5)
+    assert _stub_pids(tmp_path / "stub.py") == [pid]
+    _cancel(server, 1)
+    end = time.monotonic() + 20
+    while _alive(Path(f"/proc/{pid}")):
+        assert time.monotonic() < end, "the cancel did not reach the call"
+        time.sleep(0.05)
+
+
+def test_running_commands_are_bounded_and_the_queue_too(tmp_path, monkeypatch):
+    """At most SLOTS commands run at once; the further calls wait their turn while the reader answers
+    ping, and once SLOTS + QUEUE calls are held 1 more is refused in 1 line. Here SLOTS 2 and QUEUE 3: 6
+    calls, 5 held, the 6th refused, never more than 2 stubs alive, and all 5 answered."""
+    import mcpserver
+
+    monkeypatch.setattr(mcpserver, "SLOTS", 2, raising=False)
+    monkeypatch.setattr(mcpserver, "QUEUE", 3, raising=False)
+    server, out = _stubbed(tmp_path, "import time\nprint('start', flush=True)\ntime.sleep(1)\n")
+    stub = tmp_path / "stub.py"
+    for rid in range(1, 7):
+        _tools_call(server, rid)
+    refused = _next(out, lambda m: m.get("id") == 6, timeout=5)["result"]
+    assert refused["isError"] is True and len(tool_text(refused)) == 1 and "refused" in tool_text(refused)[0]
+    server.handle(b'{"jsonrpc":"2.0","id":99,"method":"ping"}')
+    assert _next(out, lambda m: m.get("id") == 99, timeout=2)["result"] == {}
+    most, answered, end = 0, set(), time.monotonic() + 30
+    while len(answered) < 5:
+        assert time.monotonic() < end, f"answered {answered}"
+        most = max(most, len(_stub_pids(stub)))
+        try:
+            msg = out.inbox.get(timeout=0.05)
+        except queue.Empty:
+            continue
+        if msg.get("id") in range(1, 6):
+            assert msg["result"]["structuredContent"]["exitCode"] == 0
+            answered.add(msg["id"])
+    assert 1 <= most <= 2, most
+
+
+def test_a_cancelled_call_that_waits_for_a_slot_never_starts(tmp_path, monkeypatch, request):
+    """With 1 slot, a second call waits. Cancelled while it waits, it never starts once the slot frees:
+    no progress for it and no answer."""
+    import mcpserver
+
+    monkeypatch.setattr(mcpserver, "SLOTS", 1, raising=False)
+    server, out = _stubbed(tmp_path, PID_THEN_SLEEP)
+    _tools_call(server, 1, token="a")
+    pid = int(_next(out, lambda m: m.get("method") == "notifications/progress")["params"]["message"])
+    request.addfinalizer(lambda: _kill(pid))
+    _tools_call(server, 2, token="b")
+    _cancel(server, 2)
+    _cancel(server, 1)
+    time.sleep(1.5)
+    late = []
+    while not out.inbox.empty():
+        late.append(out.inbox.get())
+    assert late == [] and _stub_pids(tmp_path / "stub.py") == [], late
+
+
+SERVE_WITH_STUB = """\
+import sys, types
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import mcpserver
+mcpserver.GRACE = 0.5
+mcpserver.CLI = Path(sys.argv[2])
+sys.exit(mcpserver.cmd_mcp(types.SimpleNamespace(root=sys.argv[3])))
+"""
+
+IGNORES_SIGTERM = """\
+import os, signal, time
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+print(os.getpid(), flush=True)
+time.sleep(120)
+"""
+
+
+def test_sigterm_escalates_to_sigkill_for_a_command_that_ignores_it(tmp_path, request):
+    """A command that ignores SIGTERM still stops when the server is stopped: the server sends SIGTERM to
+    each command's group, waits GRACE seconds (0.5 here), sends SIGKILL to what is left, and exits 143.
+    The stub ignores SIGTERM, so neither PR_SET_PDEATHSIG nor the first signal stops it: only the server's
+    own SIGKILL does."""
+    (tmp_path / "serve.py").write_text(SERVE_WITH_STUB)
+    (tmp_path / "stub.py").write_text(IGNORES_SIGTERM)
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            str(tmp_path / "serve.py"),
+            str(ROOT / "tools"),
+            str(tmp_path / "stub.py"),
+            str(tmp_path),
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    request.addfinalizer(lambda: (proc.kill(), proc.wait()))
+    call = {"name": "doctor", "arguments": {}, "_meta": {"progressToken": "p"}}
+    proc.stdin.write(
+        json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": call}).encode() + b"\n"
+    )
+    proc.stdin.flush()
+    pid = int(json.loads(proc.stdout.readline())["params"]["message"])
+    request.addfinalizer(lambda: _kill(pid))
+    proc.terminate()
+    assert proc.wait(timeout=20) == 143
+    end = time.monotonic() + 5
+    while _alive(Path(f"/proc/{pid}")):
+        assert time.monotonic() < end, "the command that ignores SIGTERM outlived the server"
+        time.sleep(0.05)
+
+
+def test_without_pdeathsig_the_server_says_so(tmp_path, monkeypatch):
+    """Where prctl is missing, or answers -1, a SIGKILL to the server leaves its commands running. The
+    server says so in its initialize instructions; on Linux it says nothing of it."""
+    import ctypes
+
+    import mcpserver
+
+    def instructions():
+        out = Collector()
+        server = mcpserver.Server(tmp_path, out=out)
+        server.handle(b'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}')
+        return out.inbox.get(timeout=5)["result"]["instructions"]
+
+    assert "SIGKILL" not in instructions()
+
+    def nolib(*_args, **_kw):
+        raise OSError("no libc")
+
+    class Fails:
+        def __init__(self, *_args, **_kw):
+            self.prctl = lambda *_a: -1
+
+    for fake in (nolib, Fails):
+        monkeypatch.setattr(ctypes, "CDLL", fake)
+        assert mcpserver.UNGUARDED in instructions()
+        assert mcpserver._dies_with(os.getpid()) is None
+
+
+def test_a_root_that_is_the_whole_disk_or_home_is_refused(tmp_path):
+    """The root is the only boundary the paths are held to: `/` and the home folder hold everything, so
+    the server will not start on them. 1 line on stderr, exit 2."""
+    env = dict(os.environ, HOME=str(tmp_path))
+    for root in ("/", str(tmp_path)):
+        run = subprocess.run(
+            [sys.executable, str(CLI), "mcp", root],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        assert run.returncode == 2 and run.stdout == "", (root, run)
+        assert len(run.stderr.splitlines()) == 1 and "too wide" in run.stderr, (root, run.stderr)
 
 
 @needs_kicad
