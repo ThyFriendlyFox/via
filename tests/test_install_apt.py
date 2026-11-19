@@ -1372,16 +1372,26 @@ echo 'openjdk version "@VERSION@" 2025-10-21' >&2
 ENGINES_MD = "FreeRouting needs Java 21 or newer (ee-agent-kit/docs/ENGINES.md)"
 
 
-def java_step(tmp_path: Path, jvm: str = "", on_path: str = "", require: str = "1", stale: bool = False):
+def java_step(
+    tmp_path: Path,
+    jvm: str = "",
+    on_path: str = "",
+    require: str = "1",
+    stale: bool = False,
+    jvms: dict | None = None,
+):
     """Run step_java with a JVM of version `jvm` under JVM_DIR (none when empty) and a `java` of version
-    `on_path` on the closed PATH (none when empty). Returns (exit code, stdout, stderr, calls, record)."""
+    `on_path` on the closed PATH (none when empty). `jvms` adds JVM folders: name to the script of its
+    bin/java, or to None for a folder without it. Returns (exit code, stdout, stderr, calls, record)."""
     answers = {"java": f"echo 'openjdk version \"{on_path}\" 2025-10-21' >&2"} if on_path else {}
     env = {**folder(tmp_path, answers), "REQUIRE_FREEROUTING": require}
-    if jvm:
-        exe = tmp_path / "jvm" / "java-21-openjdk-amd64" / "bin" / "java"
-        exe.parent.mkdir(parents=True)
-        exe.write_text(JVM_JAVA.replace("@VERSION@", jvm), encoding="utf-8")
-        exe.chmod(0o755)
+    folders = {"java-21-openjdk-amd64": JVM_JAVA.replace("@VERSION@", jvm)} if jvm else {}
+    for name, body in {**folders, **(jvms or {})}.items():
+        exe = tmp_path / "jvm" / name / "bin" / "java"
+        (exe.parent if body is not None else exe.parent.parent / "lib").mkdir(parents=True)
+        if body is not None:
+            exe.write_text(body, encoding="utf-8")
+            exe.chmod(0o755)
     record = tmp_path / "root" / "java.path"
     if stale:
         record.parent.mkdir()
@@ -1477,6 +1487,109 @@ def test_without_require_freerouting_an_old_java_is_a_warning(tmp_path):
         f" of the apt step under {tmp_path}/jvm), Java 17; {ENGINES_MD}; doctor says java is absent until"
         " `sudo ./install.sh` records a Java 21"
     ]
+
+
+def test_a_jvm_of_another_java_beside_the_21_is_not_recorded(tmp_path):
+    """A JVM of openjdk-17 beside the 21 under JVM_DIR, a 17 first on PATH: the 21 is recorded."""
+    code, out, err, calls, record = java_step(
+        tmp_path,
+        jvm="21.0.13",
+        on_path="17.0.21",
+        jvms={"java-17-openjdk-amd64": JVM_JAVA.replace("@VERSION@", "17.0.2")},
+    )
+    assert code == 0, err
+    assert record.read_text(encoding="utf-8") == f"{tmp_path}/jvm/java-21-openjdk-amd64/bin/java\n"
+
+
+def test_a_jvm_folder_without_its_java_is_passed_over(tmp_path):
+    """A java-21-openjdk folder without bin/java (a package half removed), a 21 on PATH: the java on PATH
+    passes, and nothing is recorded."""
+    code, out, err, calls, record = java_step(
+        tmp_path, on_path="21.0.9", jvms={"java-21-openjdk-amd64": None}
+    )
+    assert code == 0, err
+    assert not record.exists()
+    assert out.splitlines()[0] == (
+        f"[install] java: {tmp_path}/bin/java (the first java on PATH: no JVM of the apt step under "
+        f"{tmp_path}/jvm), Java 21: the workcenter runs it"
+    )
+
+
+# A JVM of another architecture beside the machine's own (multiarch): exec gives the shell's 126.
+FOREIGN_JAVA = """#!/bin/bash
+printf 'jvm-java %s\\n' "$*" >> "$STUB_DIR/calls"
+echo 'cannot execute binary file: Exec format error' >&2
+exit 126
+"""
+
+
+@pytest.mark.parametrize(
+    ("amd64", "recorded"),
+    [
+        (JVM_JAVA.replace("@VERSION@", "21.0.13"), "java-21-openjdk-amd64"),
+        (FOREIGN_JAVA, "java-21-openjdk-arm64"),
+    ],
+    ids=["both run: the first", "the first does not run: the second"],
+)
+def test_of_2_jvms_of_the_21_the_first_that_runs_is_recorded(tmp_path, amd64, recorded):
+    """2 java-21-openjdk folders, a 21 on PATH: the first in glob order whose java runs and names its
+    version is recorded, and the step passes."""
+    code, out, err, calls, record = java_step(
+        tmp_path,
+        on_path="21.0.9",
+        jvms={
+            "java-21-openjdk-amd64": amd64,
+            "java-21-openjdk-arm64": JVM_JAVA.replace("@VERSION@", "21.0.4"),
+        },
+    )
+    assert code == 0, err
+    assert record.read_text(encoding="utf-8") == f"{tmp_path}/jvm/{recorded}/bin/java\n"
+    assert out.splitlines()[-1] == "NEXT STEP"
+
+
+def test_a_jvm_that_does_not_run_stops_with_what_it_said(tmp_path):
+    """No JVM under JVM_DIR runs, REQUIRE_FREEROUTING=1: the step records the first, ends red, and its
+    line says what that java printed and its exit code, not only that a Java 21 is needed."""
+    broken = '#!/bin/bash\necho "Error: could not open jvm.cfg" >&2\nexit 1\n'
+    code, out, err, calls, record = java_step(
+        tmp_path,
+        on_path="21.0.9",
+        jvms={"java-21-openjdk-amd64": FOREIGN_JAVA, "java-21-openjdk-arm64": broken},
+    )
+    java = tmp_path / "jvm" / "java-21-openjdk-amd64" / "bin" / "java"
+    assert code == 1
+    assert "NEXT STEP" not in out
+    assert record.read_text(encoding="utf-8") == f"{java}\n"
+    assert err.splitlines()[-2:] == [
+        f"[install] ERROR: java: the workcenter would run {java} (the JVM of the apt step's "
+        f"openjdk-21-jre-headless, recorded in {record}), whose -version said: cannot execute binary file: "
+        f"Exec format error (exit 126); {ENGINES_MD}, and REQUIRE_FREEROUTING=1",
+        ADVICE.format(jvm=tmp_path / "jvm"),
+    ]
+
+
+# Some images inject JAVA_TOOL_OPTIONS with a proxy address, and java prints it first
+# (ee-agent-kit/AGENTS.md, the row `tools/workcenter` doctor).
+PICKED_UP = """#!/bin/bash
+printf 'jvm-java %s\\n' "$*" >> "$STUB_DIR/calls"
+echo 'Picked up JAVA_TOOL_OPTIONS: -Dhttps.proxyHost=proxy -Dhttps.proxyPort=3128' >&2
+echo 'openjdk version "@VERSION@" 2025-10-21' >&2
+"""
+
+
+@pytest.mark.parametrize(("version", "code"), [("17.0.2", 1), ("21.0.13", 0)], ids=["a 17", "a 21"])
+def test_a_proxy_port_printed_before_the_version_is_not_read_as_it(tmp_path, version, code):
+    """The JVM prints a `Picked up JAVA_TOOL_OPTIONS` line with port 3128 before its version: the step
+    reads the version."""
+    got, out, err, calls, record = java_step(
+        tmp_path, on_path="21.0.9", jvms={"java-21-openjdk-amd64": PICKED_UP.replace("@VERSION@", version)}
+    )
+    assert got == code
+    major = version.split(".")[0]
+    assert (
+        f"/bin/java (the JVM of the apt step's openjdk-21-jre-headless, recorded in {record}), Java {major}"
+        in (out + err)
+    )
 
 
 def test_install_sh_and_doctor_hold_freerouting_to_the_same_java():

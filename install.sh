@@ -674,18 +674,33 @@ step_freerouting() {
 # (ee-agent-kit/docs/ENGINES.md); doctor holds it to JAVA_MIN in tools/routers.py, the same number.
 JAVA_MIN="21"
 step_java() {
-  local jvm found="" said="" major="" what re='version "([0-9]+)'
+  local jvm found="" said="" ran="" code unrun="" broke="" major="" what re='version "([0-9]+)'
+  # The first JVM whose java runs and names its version. On a multiarch machine the first folder in glob
+  # order can be another architecture's, whose java does not run (exec gives 126).
   for jvm in "${JVM_DIR}/java-21-openjdk-"*; do
-    if [[ -x "${jvm}/bin/java" ]]; then
-      found="${jvm##*/}"
+    if [[ ! -x "${jvm}/bin/java" ]]; then
+      continue
+    fi
+    code=0
+    ran="$("${JVM_DIR}/${jvm##*/}/bin/java" -version 2>&1)" || code=$?
+    if ((code == 0)) && [[ "$ran" =~ $re ]]; then
+      found="${jvm}/bin/java"
+      said="$ran"
       break
     fi
+    if [[ -z "$unrun" ]]; then
+      unrun="${jvm}/bin/java"
+      broke="${ran//$'\n'/ } (exit ${code})"
+    fi
   done
+  # None ran: the first is recorded all the same, and the step names what it said.
+  if [[ -z "$found" ]]; then
+    found="$unrun"
+  fi
   mkdir -p "$WC_ROOT"
   if [[ -n "$found" ]]; then
-    said="$("${JVM_DIR}/${found}/bin/java" -version 2>&1 || true)"
-    printf '%s\n' "${JVM_DIR}/${found}/bin/java" > "${WC_ROOT}/java.path"
-    what="${JVM_DIR}/${found}/bin/java (the JVM of the apt step's openjdk-21-jre-headless, recorded in ${WC_ROOT}/java.path)"
+    printf '%s\n' "$found" > "${WC_ROOT}/java.path"
+    what="${found} (the JVM of the apt step's openjdk-21-jre-headless, recorded in ${WC_ROOT}/java.path)"
   else
     # No record: the workcenter reads PATH, as this step says.
     rm -f "${WC_ROOT}/java.path"
@@ -699,6 +714,8 @@ step_java() {
   if [[ "$said" =~ $re ]]; then
     major="${BASH_REMATCH[1]}"
     what+=", Java ${major}"
+  elif [[ -n "$broke" ]]; then
+    what+=", whose -version said: ${broke}"
   fi
   if [[ -n "$major" ]] && ((major >= JAVA_MIN)); then
     log "java: ${what}: the workcenter runs it"
