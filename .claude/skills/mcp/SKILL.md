@@ -1,6 +1,6 @@
 ---
 name: MCP
-description: Serves the workcenter's doctor, gates, erc, drc, sim, export and autoroute to a host that is not Claude Code, as MCP tools over stdio, each tool running its own command and answering its lines and exit code.
+description: Serves Via's doctor, gates, erc, drc, sim, export and autoroute to a host that is not Claude Code, as MCP tools over stdio, each tool running its own command and answering its lines and exit code.
 ---
 
 # MCP
@@ -23,7 +23,7 @@ later does not. stdio only: no HTTP, no authentication.
 |---|---|
 | ROOT, the server's 1 argument | The folder the tools may reach: 1 project, or a repository of versions (`v0.1/` to `v0.16/`). Every path a call names must lie inside it. |
 | A tool's `project` | The project folder or a KiCad file, relative to ROOT. Default `.`. |
-| `out`, `dsn`, `fab` | Paths inside ROOT. `fab` may also be the name of a rule set in the workcenter's `rules/`. |
+| `out`, `dsn`, `fab` | Paths inside ROOT. `fab` may also be the name of a rule set in Via's `rules/`. |
 
 ## Steps
 

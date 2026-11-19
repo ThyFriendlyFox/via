@@ -75,7 +75,7 @@ FAB = Option(
     "fab",
     "fab",
     "--fab",
-    "also check a fab's limits: a rule set in the workcenter's rules/, or a .kicad_dru inside the root",
+    "also check a fab's limits: a rule set in Via's rules/, or a .kicad_dru inside the root",
 )
 STEP = Option("step", "boolean", "--step", "also export a STEP model")
 
@@ -300,7 +300,7 @@ class Server:
                     "protocolVersion": PROTOCOL,
                     "capabilities": {"tools": {"listChanged": False}},
                     "serverInfo": SERVER,
-                    "instructions": f"The EE workcenter's gates on the projects under {self.root}. Each "
+                    "instructions": f"Via's gates on the projects under {self.root}. Each "
                     "tool runs `workcenter <tool>` and answers its lines and its exit code: 0 pass, 1 fail, "
                     "2 skip.",
                 },
@@ -478,7 +478,7 @@ def cmd_mcp(args) -> int:
 
 
 def register(sub, cli) -> None:
-    """Add `mcp` to the workcenter's parser."""
+    """Add `mcp` to the CLI's parser."""
     p = sub.add_parser(
         "mcp",
         help="serve doctor, gates, erc, drc, sim, export and autoroute as MCP tools over stdio (revision "

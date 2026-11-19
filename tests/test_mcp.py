@@ -49,6 +49,9 @@ class Client:
         env["WORKCENTER_LOCK_EVERY"] = every
         env.pop("WORKCENTER_LOCK_TICKET", None)
         env.pop("WORKCENTER_LOCK", None)
+        # A test session sends the lock's waiting lines to a file of its own (tests/conftest.py); the
+        # server passes a command's lines on, so they must reach the command's stderr here.
+        env.pop("WORKCENTER_LOCK_LOG", None)
         self.proc = subprocess.Popen(
             [sys.executable, str(CLI), "mcp", str(root)],
             stdin=subprocess.PIPE,
