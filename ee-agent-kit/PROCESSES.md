@@ -113,7 +113,7 @@ or any step that downloads, installs, or runs for more than a minute.
     bound watches its own progress, and ends a pass that cannot finish in
     the time left at the rate it gets, so that the next pass, or the next
     host, has time. A setting written for a step is checked in that
-    step's own log: a later command line can override it (M294).
+    step's own log: a later command line can override it (M295).
 
 Done when: the run is green, its log shows progress lines in every long
 step, no step used more than half its limit, and no step depended on a
@@ -738,6 +738,12 @@ When: a change is about to be called done.
    shared line; a branch that still holds lines under `## [Unreleased]`
    moves them into change files before it merges `main`
    (`ee-agent-kit/changes/README.md`).
+10. Before a tool writes a person's file in place, it refuses a file that
+    is read-only, open in its editor (its lock file), or changed since the
+    tool read it, by name and with the file left as it was; it writes
+    through a link to its target and keeps the file's mode; it changes
+    only what it adds; and it never writes over an earlier backup. Each
+    of these has a test (M294).
 
 Done when: the remote has the commit, its CI run is green, and the report
 has been sent. For a gate's method: the attack's cases are tests; after 2

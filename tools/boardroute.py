@@ -6,8 +6,8 @@ kicad-cli 10 has no Specctra export, and a board drawn in KiCad has no design fi
 the `.kicad_pcb` (footprints, pads, outline, nets, tracks and vias) and its `.kicad_pro` (net classes,
 board rules) into a `kicadgen.Design`, so the DSN writer, the router run and the session merge are the
 ones a generated design uses (`kicadgen.route()`, the autoroute skill's "The rules around a route").
-The routed copper goes back into the board file's own text: every node the route did not change stays
-byte for byte.
+The routed copper goes back into the board file's own text: the route only adds, and every node already
+there, the person's tracks and vias among them, stays byte for byte.
 
 What this first cut does not hand to the router is said, never dropped (the item's scope guard): zones,
 arc tracks, Edge.Cuts drawn inside a footprint, tracks with no net. An outline other than a rectangle is
@@ -21,6 +21,8 @@ from __future__ import annotations
 import copy
 import fnmatch
 import json
+import os
+import stat
 import uuid
 from collections import Counter
 from dataclasses import dataclass, field
@@ -384,10 +386,22 @@ def _via_key(net: str, at, size: float, drill: float) -> tuple:
     return (net, fmt(at[0]), fmt(at[1]), fmt(size), fmt(drill))
 
 
-def write_board(text: str, d: BoardDesign) -> str:
-    """The board file's text with the design's tracks and vias: a track or via node the route kept stays
-    as it was written, one it no longer holds (a track the merge split at a T) goes, and each new one is
-    appended in the net form the file uses: `(net N)` with a table of numbered nets, else `(net "name")`."""
+def _locked(node: list) -> bool:
+    """KiCad 10 writes `(locked yes)`; older files a bare `locked` after the head."""
+    lock = child(node, "locked")
+    return "locked" in node[1:] or (lock is not None and str((atoms(lock) or ["yes"])[0]) == "yes")
+
+
+def _uuid(node: list) -> str:
+    vals = atoms(child(node, "uuid") or ["uuid"])
+    return str(vals[0]) if vals else "(no uuid)"
+
+
+def write_board(text: str, d: BoardDesign, said: list[str] | None = None) -> str:
+    """The board file's text with the design's tracks and vias: a track or via node the design holds
+    stays as it was written, one it no longer holds goes (a line for each in `said`, when given), and
+    each new one is appended in the net form the file uses: `(net N)` with a table of numbered nets,
+    else `(net "name")`. A locked track or via the design no longer holds is refused (ValueError)."""
     root = parse(text)
     table = {str(a[1]): str(a[0]) for a in (atoms(n) for n in children(root, "net")) if len(a) >= 2}
     by_number = {v: k for k, v in table.items()}
@@ -424,6 +438,11 @@ def write_board(text: str, d: BoardDesign) -> str:
         if pool[key] > 0:
             pool[key] -= 1
             continue
+        what = f"hand {'track' if head == 'segment' else 'via'} {_uuid(node)} on {net}"
+        if _locked(node):
+            raise ValueError(f"locked {what}: the route would remove it; nothing written")
+        if said is not None:
+            said.append(f"removed {what}: the route holds it no more")
         line = text.rfind("\n", 0, start) + 1
         stop = end + 1 if text[end : end + 1] == "\n" else end
         cut.append((line if not text[line:start].strip() else start, stop))
@@ -468,6 +487,72 @@ def write_board(text: str, d: BoardDesign) -> str:
     return "".join(out) + text[pos:]
 
 
+class NotWritten(Exception):
+    """The route was not written into the board file, and the message says why; the file is as it was."""
+
+
+# A router end this close to another end (a hand track's, a hand via's, the router's own) is that end.
+SNAP_MM = 0.001
+
+
+def _router_copper(d: BoardDesign, hand_s: list, hand_v: list) -> tuple[list, list]:
+    """The router's own tracks and vias in `d` after the route. The session merge splits a hand track
+    where the router ends on it, and keeps 1 of 2 tracks that overlap; those pieces of the person's
+    tracks are left out, so the hand tracks stay whole (KiCad joins a track end on a track's middle).
+    Each router end within SNAP_MM of an end before it is written at that end."""
+
+    def on(p: tuple[float, float], h: tuple) -> bool:
+        return kicadgen._seg_dist(p, h[1], h[2]) < 1e-4
+
+    own = [
+        s
+        for s in d.segments
+        if not any(s[0] == h[0] and s[4] == h[4] and on(s[1], h) and on(s[2], h) for h in hand_s)
+    ]
+    anchors = [p for h in hand_s for p in (h[1], h[2])] + [v[1] for v in hand_v]
+
+    def snap(p: tuple[float, float]) -> tuple[float, float]:
+        near = next((q for q in anchors if abs(p[0] - q[0]) < SNAP_MM and abs(p[1] - q[1]) < SNAP_MM), None)
+        if near is None:
+            anchors.append(p)
+        return near or p
+
+    segments = [(n, snap(a), snap(b), w, ly) for n, a, b, w, ly in own]
+    vias = [(n, snap(at), size, drill) for n, at, size, drill in d.vias[len(hand_v) :]]
+    return [s for s in segments if s[1] != s[2]], vias
+
+
+def _lock_file(pcb: Path, target: Path) -> Path | None:
+    """KiCad's lock file of the board, `~<name>.lck` beside it (or beside the file a link names)."""
+    return next(
+        (lock for p in (pcb, target) if (lock := p.with_name(f"~{p.name}.lck")).exists()),
+        None,
+    )
+
+
+def _check_writable(pcb: Path, target: Path) -> None:
+    """Refuse (NotWritten) a board file with no write bit or one KiCad holds open."""
+    mode = target.stat().st_mode
+    if not mode & 0o222 or not os.access(target, os.W_OK):
+        raise NotWritten(f"{pcb.name} is read-only; nothing written")
+    lock = _lock_file(pcb, target)
+    if lock is not None:
+        raise NotWritten(
+            f"{pcb.name} is open in KiCad ({lock.name} beside it); close it there (or remove a lock file "
+            "KiCad left behind) and run again; nothing written"
+        )
+
+
+def _before_path(build_dir: Path, name: str) -> Path:
+    """The first free `<name>.before.kicad_pcb`, `<name>.before-2.kicad_pcb`, ...: no run writes over
+    an earlier run's copy, so the first is the board as the person drew it."""
+    path, i = build_dir / f"{name}.before.kicad_pcb", 1
+    while path.exists():
+        i += 1
+        path = build_dir / f"{name}.before-{i}.kicad_pcb"
+    return path
+
+
 def apply(
     pcb: Path,
     build_dir: Path,
@@ -477,19 +562,48 @@ def apply(
     router: str = "freerouting",
 ) -> dict:
     """Route the board file `pcb` in place: read it, run the router through `kicadgen.route()` (which
-    writes the DSN, the session and the log in `build_dir`), write the copper back. The board before the
-    route is kept as `build_dir/<name>.before.kicad_pcb`. Returns route()'s summary with "notes", the
-    lines of what was not handed to the router. A router that fails or is absent raises, and the board
-    file is not touched."""
+    writes the DSN, the session and the log in `build_dir`), add the router's copper to the board's own
+    text (the person's tracks and vias stay as they are written). The board before the route is kept as
+    `build_dir/<name>.before.kicad_pcb`, or `.before-2`, ... when an earlier run's copy is there. A link
+    is written through to the file it names, and the file keeps its mode. Returns route()'s summary with
+    "notes", the lines of what was not handed to the router, and "before". A router that fails or is
+    absent raises, and the board file is not touched; a board that is read-only, open in KiCad, changed
+    while the router ran, or that cannot be written raises NotWritten, and the file is as it was."""
     pcb = Path(pcb)
+    target = pcb.resolve()
+    _check_writable(pcb, target)
+    raw = target.read_bytes()
+    text = raw.decode("utf-8")
     d, notes = read_board(pcb)
-    text = pcb.read_text(encoding="utf-8")
+    hand_s, hand_v = list(d.segments), list(d.vias)
     summary = kicadgen.route(
         d, Path(build_dir), passes=passes, threads=threads, timeout=timeout, router=router
     )
-    routed = write_board(text, d)
-    (Path(build_dir) / f"{d.name}.before.kicad_pcb").write_text(text, encoding="utf-8")
-    fresh = pcb.with_name(pcb.name + ".routing")
-    fresh.write_text(routed, encoding="utf-8")
-    fresh.replace(pcb)
-    return {**summary, "notes": notes, "board": str(pcb)}
+    segments, vias = _router_copper(d, hand_s, hand_v)
+    d.segments, d.vias = hand_s + segments, hand_v + vias
+    removed: list[str] = []
+    routed = write_board(text, d, removed)
+    fresh = target.with_name(target.name + ".routing")
+    before = _before_path(Path(build_dir), d.name)
+    try:
+        _check_writable(pcb, target)
+        if target.read_bytes() != raw:
+            raise NotWritten(f"{pcb.name} changed while the router ran; nothing written")
+        before.write_text(text, encoding="utf-8")
+        fresh.write_text(routed, encoding="utf-8")
+        os.chmod(fresh, stat.S_IMODE(target.stat().st_mode))
+        fresh.replace(target)
+    except OSError as exc:
+        fresh.unlink(missing_ok=True)
+        raise NotWritten(f"{pcb.name} not written ({exc}); the board is as it was") from None
+    except NotWritten:
+        fresh.unlink(missing_ok=True)
+        raise
+    return {
+        **summary,
+        "segments": len(segments),
+        "vias": len(vias),
+        "notes": notes + removed,
+        "board": str(pcb),
+        "before": str(before),
+    }

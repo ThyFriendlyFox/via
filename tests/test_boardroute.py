@@ -230,6 +230,31 @@ def test_net_classes_take_their_nets_by_pattern_and_by_assignment(tmp_path):
     }
 
 
+def test_an_assignment_beats_a_pattern_and_default_is_no_class_of_its_own(tmp_path):
+    """/VOUT is assigned to Gnd and matches Power's pattern /V*: the assignment wins. /VIN is assigned to
+    Default: it stays on the design's own rules, and Default is no entry among the net classes."""
+    pcb = copy_fixture(tmp_path)
+
+    def edit(data: dict) -> None:
+        ns = data["net_settings"]
+        ns["classes"] += [{"name": "Power", "track_width": 0.5}, {"name": "Gnd", "track_width": 0.4}]
+        ns["netclass_patterns"] = [{"netclass": "Power", "pattern": "/V*"}]
+        ns["netclass_assignments"] = {"/VOUT": ["Gnd"], "/VIN": "Default"}
+
+    write_pro(pcb, edit)
+    d, _ = boardroute.read_board(pcb)
+    assert {name: spec["nets"] for name, spec in d.net_classes.items()} == {"Gnd": ["/VOUT"]}
+
+
+def test_copper_layers_out_of_kicads_order_are_refused(tmp_path):
+    """B.Cu listed before F.Cu: the count is right, the order is not, and the reader refuses it."""
+    text = PCB.read_text(encoding="utf-8").replace(
+        '\t\t(0 "F.Cu" signal)\n\t\t(2 "B.Cu" signal)\n', '\t\t(2 "B.Cu" signal)\n\t\t(0 "F.Cu" signal)\n'
+    )
+    with pytest.raises(ValueError, match=r"copper layers \['B\.Cu', 'F\.Cu'\]"):
+        boardroute.read_board(copy_fixture(tmp_path, text))
+
+
 def test_board_rules_and_the_fab_file_beside_the_board_are_read(tmp_path):
     """The .kicad_pro's rules go to the design: min_hole_clearance 0.25 and min_via_diameter 0.5 as the
     fixture's file holds them, and min_copper_edge_clearance changed here to 0.7. A rc_divider.kicad_dru
@@ -428,7 +453,7 @@ GND_ONLY = (
 )
 
 
-@pytest.mark.parametrize(("severity", "status"), [("error", "pass"), ("ignore", "skip")])
+@pytest.mark.parametrize(("severity", "status"), [("error", "pass"), ("warning", "pass"), ("ignore", "skip")])
 def test_apply_passes_only_when_the_drc_can_list_open_connections(tmp_path, monkeypatch, severity, status):
     """F1. FreeRouting 1.9.0 logs no count of open connections, so the DRC's unconnected list is the only
     judge, and a .kicad_pro that sets unconnected_items to "ignore" empties it. The DRC is stood in for
@@ -457,3 +482,402 @@ def test_apply_passes_only_when_the_drc_can_list_open_connections(tmp_path, monk
             "open connections not judged: rc_divider.kicad_pro sets unconnected_items to ignore"
             in result.summary
         )
+
+
+# ---- the write into the person's board file (review W1, W3, L1)
+
+GND_TRACK = ("/GND", (105.0, 110.08), (110.0, 110.08), 0.25, "F.Cu")
+
+
+def stand_in_route(monkeypatch, during=None) -> list[int]:
+    """kicadgen.route stood in for: it adds GND_TRACK, after running `during()` when given. Returns the
+    list each call appends to, so a test can say the router never ran."""
+    calls: list[int] = []
+
+    def route(d, build_dir, **_):
+        calls.append(1)
+        Path(build_dir).mkdir(parents=True, exist_ok=True)
+        if during:
+            during()
+        d.segments.append(GND_TRACK)
+        return {"segments": 1, "vias": 0, "unrouted": None, "dsn": "", "ses": "", "log": ""}
+
+    monkeypatch.setattr(boardroute.kicadgen, "route", route)
+    return calls
+
+
+def test_a_read_only_board_is_refused_before_the_route(tmp_path, monkeypatch):
+    """W1: a board file with no write bit (chmod 0444) is the person's to keep as it is, root or not: it
+    is refused by name before the router runs, and the file is untouched, its mode too."""
+    pcb = copy_fixture(tmp_path)
+    before = pcb.read_bytes()
+    pcb.chmod(0o444)
+    calls = stand_in_route(monkeypatch)
+    with pytest.raises(boardroute.NotWritten, match=r"rc_divider\.kicad_pcb is read-only; nothing written"):
+        boardroute.apply(pcb, tmp_path / "build")
+    assert (pcb.read_bytes(), stat.S_IMODE(pcb.stat().st_mode), calls) == (before, 0o444, [])
+
+
+def test_the_board_keeps_its_mode_and_no_routing_file_is_left(tmp_path, monkeypatch):
+    """W1 and the atomic write: a board at mode 0640 is still 0640 after the route, holds the new GND
+    track, and nothing but the project's own files is left beside it (the .routing file was renamed
+    over the board, not copied into it)."""
+    pcb = copy_fixture(tmp_path)
+    pcb.chmod(0o640)
+    stand_in_route(monkeypatch)
+    boardroute.apply(pcb, tmp_path / "build")
+    assert stat.S_IMODE(pcb.stat().st_mode) == 0o640
+    assert "(segment (start 105 110.08) (end 110 110.08)" in pcb.read_text(encoding="utf-8")
+    assert sorted(os.listdir(pcb.parent)) == [
+        "rc_divider.kicad_pcb",
+        "rc_divider.kicad_pro",
+        "rc_divider.kicad_sch",
+    ]
+
+
+def test_a_symlinked_board_is_written_through_to_its_target(tmp_path, monkeypatch):
+    """W1: the board is a symbolic link to real.kicad_pcb. The link stays a link, and the route goes
+    into the file it names."""
+    pcb = copy_fixture(tmp_path)
+    real = pcb.with_name("real.kicad_pcb")
+    pcb.rename(real)
+    pcb.symlink_to(real.name)
+    stand_in_route(monkeypatch)
+    boardroute.apply(pcb, tmp_path / "build")
+    assert pcb.is_symlink()
+    assert "(segment (start 105 110.08) (end 110 110.08)" in real.read_text(encoding="utf-8")
+
+
+def test_a_board_open_in_kicad_is_refused(tmp_path, monkeypatch):
+    """W1: KiCad's lock file ~rc_divider.kicad_pcb.lck beside the board says the editor has it open; a
+    save there would undo the route, or the route the person's edits. Refused before the route."""
+    pcb = copy_fixture(tmp_path)
+    before = pcb.read_bytes()
+    (pcb.parent / "~rc_divider.kicad_pcb.lck").write_text('{"hostname":"h","username":"u"}')
+    calls = stand_in_route(monkeypatch)
+    with pytest.raises(boardroute.NotWritten, match=r"~rc_divider\.kicad_pcb\.lck.*nothing written"):
+        boardroute.apply(pcb, tmp_path / "build")
+    assert (pcb.read_bytes(), calls) == (before, [])
+
+
+def test_an_edit_saved_during_the_route_is_kept_and_the_route_refused(tmp_path, monkeypatch):
+    """W1: the person saves the board while the router runs (here: a comment line appended). The route
+    was made from the old text, so it is refused and the person's save stays as they made it."""
+    pcb = copy_fixture(tmp_path)
+
+    def save():
+        pcb.write_text(pcb.read_text(encoding="utf-8") + ";saved\n", encoding="utf-8")
+
+    stand_in_route(monkeypatch, during=save)
+    with pytest.raises(boardroute.NotWritten, match=r"rc_divider\.kicad_pcb changed while the router ran"):
+        boardroute.apply(pcb, tmp_path / "build")
+    text = pcb.read_text(encoding="utf-8")
+    assert text.endswith(";saved\n") and "110.08) (end 110 110.08)" not in text
+    assert not pcb.with_name(pcb.name + ".routing").exists()
+
+
+def test_a_failing_write_leaves_the_board_whole_and_nothing_beside_it(tmp_path, monkeypatch):
+    """L1: the disk fills while the .routing file is written (OSError 28 after half the text). The
+    refusal says the board is as it was, the board is byte for byte the same, and the half-written
+    .routing file is gone."""
+    pcb = copy_fixture(tmp_path)
+    before = pcb.read_bytes()
+    stand_in_route(monkeypatch)
+    real_write = Path.write_text
+
+    def full(self, data, *args, **kwargs):
+        if self.name.endswith(".routing"):
+            real_write(self, data[: len(data) // 2], *args, **kwargs)
+            raise OSError(28, "No space left on device")
+        return real_write(self, data, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", full)
+    with pytest.raises(boardroute.NotWritten, match=r"No space left on device.*is as it was"):
+        boardroute.apply(pcb, tmp_path / "build")
+    assert pcb.read_bytes() == before
+    assert not pcb.with_name(pcb.name + ".routing").exists()
+
+
+def test_a_second_route_keeps_the_first_before_file(tmp_path, monkeypatch):
+    """W3: the .before file is the way back. A second run keeps the first one (the board as the person
+    drew it) and puts the board before the second run in rc_divider.before-2.kicad_pcb."""
+    pcb = copy_fixture(tmp_path)
+    drawn = pcb.read_text(encoding="utf-8")
+    stand_in_route(monkeypatch)
+    first = boardroute.apply(pcb, tmp_path / "build")
+    once = pcb.read_text(encoding="utf-8")
+    second = boardroute.apply(pcb, tmp_path / "build")
+    assert (tmp_path / "build" / "rc_divider.before.kicad_pcb").read_text(encoding="utf-8") == drawn
+    assert (tmp_path / "build" / "rc_divider.before-2.kicad_pcb").read_text(encoding="utf-8") == once
+    assert (Path(first["before"]).name, Path(second["before"]).name) == (
+        "rc_divider.before.kicad_pcb",
+        "rc_divider.before-2.kicad_pcb",
+    )
+
+
+# ---- the person's own tracks (review W2, L2)
+
+LOCKED_LINE = (
+    '\t(segment (start 105 105) (end 109 105) (width 0.25) (locked yes) (layer "F.Cu") (net 1) '
+    '(uuid "9fb782b0-88c2-588c-a766-3541cf77e007"))\n'
+)
+# The router's T onto the middle of the first VIN track, (107, 105) down to (107, 108).
+T_SESSION = (
+    '(session "rc_divider" (routes (resolution um 10) (network_out '
+    '(net "/VIN" (wire (path F.Cu 2500 1070000 -1050000 1070000 -1080000))))))\n'
+)
+
+
+def locked_fixture(tmp_path: Path) -> Path:
+    text = PCB.read_text(encoding="utf-8")
+    line = next(ln for ln in text.splitlines(keepends=True) if "9fb782b0" in ln)
+    return copy_fixture(tmp_path, text.replace(line, LOCKED_LINE))
+
+
+def test_a_locked_hand_track_under_a_T_keeps_its_lock_and_uuid(tmp_path, monkeypatch):
+    """W2: the person's first VIN track is locked; the router (the stand-in, through the real session
+    merge) draws a T onto its middle. The locked track stays byte for byte, the other 2 hand tracks
+    too, and only the router's T is added: 3 + 1 segments. KiCad joins a track end that lies on another
+    track, so the hand track need not be cut at the T."""
+    pcb = locked_fixture(tmp_path)
+    before = pcb.read_text(encoding="utf-8")
+    for key, value in standin_env(tmp_path, T_SESSION).items():
+        monkeypatch.setenv(key, value)
+    summary = boardroute.apply(pcb, tmp_path / "build", passes=1)
+    after = pcb.read_text(encoding="utf-8")
+    assert LOCKED_LINE in after
+    old = [ln for ln in before.splitlines() if ln.strip().startswith("(segment")]
+    new = [ln for ln in after.splitlines() if ln.strip().startswith("(segment")]
+    assert new[:3] == old and len(new) == 4
+    assert new[3].startswith('\t(segment (start 107 105) (end 107 108) (width 0.25) (layer "F.Cu") (net 1)')
+    assert (summary["segments"], summary["notes"]) == (1, [])
+
+
+def test_write_board_never_cuts_a_locked_track():
+    """W2: a design that no longer holds the locked track is refused by the track's uuid, not written
+    without it."""
+    text = PCB.read_text(encoding="utf-8")
+    line = next(ln for ln in text.splitlines(keepends=True) if "9fb782b0" in ln)
+    text = text.replace(line, LOCKED_LINE)
+    d, _ = boardroute.read_board(PCB)
+    d.segments = d.segments[1:]
+    with pytest.raises(ValueError, match=r"locked hand track 9fb782b0-88c2-588c-a766-3541cf77e007 on /VIN"):
+        boardroute.write_board(text, d)
+
+
+def test_write_board_says_each_hand_track_it_removes():
+    """W2: the line for the 3rd VIN track the design dropped: its uuid, its net, and why."""
+    text = PCB.read_text(encoding="utf-8")
+    d, _ = boardroute.read_board(PCB)
+    d.segments = d.segments[:2]
+    said: list[str] = []
+    boardroute.write_board(text, d, said)
+    assert said == [
+        "removed hand track cf87de58-1965-564d-98b7-e3b5cd6f9614 on /VIN: the route holds it no more"
+    ]
+
+
+EMPTY_SESSION = '(session "rc_divider" (routes (resolution um 10) (network_out)))\n'
+
+
+def test_a_route_that_adds_nothing_leaves_a_board_with_a_T_byte_for_byte(tmp_path, monkeypatch):
+    """W2: pass-rc-divider holds hand tracks that end on another track's middle (a T at (115, 107.54)
+    and at (121, 107.54)). The stand-in's session adds nothing: the board file is byte for byte as it
+    was, no track cut, none moved to 107.539996."""
+    src = ROOT / "tests" / "boards" / "pass-rc-divider"
+    folder = tmp_path / "rc"
+    folder.mkdir()
+    for f in src.glob("rc_divider.kicad_p[cr]*"):
+        (folder / f.name).write_bytes(f.read_bytes())
+    pcb = folder / "rc_divider.kicad_pcb"
+    before = pcb.read_bytes()
+    for key, value in standin_env(tmp_path, EMPTY_SESSION).items():
+        monkeypatch.setenv(key, value)
+    boardroute.apply(pcb, tmp_path / "build", passes=1)
+    assert pcb.read_bytes() == before
+
+
+# The router's wire ends 0.4 um right of the hand track's end at (109, 105), then runs down to y 108.
+NEAR_SESSION = (
+    '(session "rc_divider" (routes (resolution um 10) (network_out '
+    '(net "/VIN" (wire (path F.Cu 2500 1090004 -1050000 1090004 -1080000))))))\n'
+)
+
+
+def test_a_router_end_within_1_um_of_a_hand_end_is_written_on_it(tmp_path, monkeypatch):
+    """L2: the router's end at (109.0004, 105) is 0.4 um from the hand tracks' corner (109, 105): it is
+    written at the corner, so the 2 ends meet in the file; its other end, 3 mm away from any, stays."""
+    pcb = copy_fixture(tmp_path)
+    for key, value in standin_env(tmp_path, NEAR_SESSION).items():
+        monkeypatch.setenv(key, value)
+    boardroute.apply(pcb, tmp_path / "build", passes=1)
+    assert "\t(segment (start 109 105) (end 109.0004 108) (width 0.25)" in pcb.read_text(encoding="utf-8")
+
+
+# ---- the reader's guards and the flip (review T1)
+
+R2_AT = '(layer "B.Cu") (uuid "13de3444-70c1-502f-8221-dd68243c2678") (at 118 107.54)'
+R2_PAD1 = '(pad "1" smd roundrect (at -0.825 0) (size 0.8 0.95) (layers "B.Cu"'
+R2_PAD2 = '(pad "2" smd roundrect (at 0.825 0) (size 0.8 0.95) (layers "B.Cu"'
+
+
+def dsn_pins(dsn: str) -> dict[str, tuple[float, float]]:
+    """Each pin's place on the board, in mm with y down, from the DSN: the image's pin, mirrored about
+    the Y axis on the back side, turned by the placement, moved to it."""
+    import math
+    import re
+
+    images: dict[str, dict[str, tuple[float, float]]] = {}
+    current: dict[str, tuple[float, float]] = {}
+    for line in dsn.splitlines():
+        m = re.match(r'\s*\(image "([^"]+)"', line)
+        if m:
+            current = images.setdefault(m.group(1), {})
+        m = re.match(r'\s*\(pin \S+ "([^"]+)" (-?\d+) (-?\d+)\)', line)
+        if m:
+            current[m.group(1)] = (int(m.group(2)) / 1e4, int(m.group(3)) / 1e4)
+    out = {}
+    for m in re.finditer(r'\(component "([^"]+)"\s*\(place "([^"]+)" (-?\d+) (-?\d+) (\w+) ([-\d.]+)\)', dsn):
+        image, ref, x, y, side, rot = m.groups()
+        a = math.radians(float(rot))
+        for number, (ix, iy) in images[image].items():
+            ix = -ix if side == "back" else ix
+            dx, dy = ix * math.cos(a) - iy * math.sin(a), ix * math.sin(a) + iy * math.cos(a)
+            out[f"{ref}-{number}"] = (round(int(x) / 1e4 + dx, 4), round(-(int(y) / 1e4 + dy), 4))
+    return out
+
+
+def test_a_back_part_turned_with_pads_off_its_axis_reaches_the_router_where_the_file_has_it(tmp_path):
+    """T1: R2 on the back, turned 30 degrees, its pads moved off its axis to (-0.825, 0.3) and (0.825,
+    -0.2) and written at 345 degrees, as KiCad writes a back pad of library angle 45 (30 - 45). The
+    reader gives the library frame: y negated, angle 45. Every pin of the DSN lands where the file puts
+    its pad: x = 118 + px cos 30 + py sin 30, y = 107.54 - px sin 30 + py cos 30 (KiCad's turn, y down)."""
+    import math
+
+    text = PCB.read_text(encoding="utf-8").replace(R2_AT, R2_AT[:-1] + " 30)")
+    text = text.replace(R2_PAD1, R2_PAD1.replace("(at -0.825 0)", "(at -0.825 0.3 345)"))
+    text = text.replace(R2_PAD2, R2_PAD2.replace("(at 0.825 0)", "(at 0.825 -0.2 345)"))
+    d, _ = boardroute.read_board(copy_fixture(tmp_path, text))
+    r2 = d.parts[2]
+    assert [(p.number, p.x, p.y, p.angle) for p in r2.footprint.pads] == [
+        ("1", -0.825, -0.3, 45.0),
+        ("2", 0.825, 0.2, 45.0),
+    ]
+    a = math.radians(30)
+    pins = dsn_pins(d.dsn())
+    for number, (px, py) in (("1", (-0.825, 0.3)), ("2", (0.825, -0.2))):
+        want = (118 + px * math.cos(a) + py * math.sin(a), 107.54 - px * math.sin(a) + py * math.cos(a))
+        got = pins[f"R2-{number}"]
+        assert math.hypot(got[0] - want[0], got[1] - want[1]) < 0.001, (number, got, want)
+
+
+def test_a_surface_pad_on_the_far_side_of_its_footprint_is_refused(tmp_path):
+    """T1: R1 is on the front and its pad 1 is a surface pad on B.Cu: this first cut refuses it by the
+    part and the pad, rather than hand the router a pad on the wrong side."""
+    text = PCB.read_text(encoding="utf-8").replace(
+        R1_PAD1, R1_PAD1.replace('(layers "F.Cu" "F.Mask" "F.Paste")', '(layers "B.Cu" "B.Mask")'), 1
+    )
+    with pytest.raises(ValueError, match=r"R1 pad 1: a surface pad on \['B\.Cu', 'B\.Mask'\]"):
+        boardroute.read_board(copy_fixture(tmp_path, text))
+
+
+VIA = (
+    '\t(via (at 110 110.08) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 3) '
+    '(uuid "00000000-0000-0000-0000-000000000006"))\n'
+)
+
+
+def test_a_hand_via_is_handed_to_the_router(tmp_path):
+    """T1: a GND via drawn by hand goes to the design as fixed copper, like the hand tracks."""
+    text = PCB.read_text(encoding="utf-8").replace(
+        "\t(embedded_fonts no)\n)", VIA + "\t(embedded_fonts no)\n)"
+    )
+    d, _ = boardroute.read_board(copy_fixture(tmp_path, text))
+    assert d.vias == [("/GND", (110.0, 110.08), 0.6, 0.3)]
+
+
+def test_write_board_leaves_a_track_on_no_net_of_a_pad_alone():
+    """T1: a track on net 0 was never handed to the router; writing the design back keeps it."""
+    text = PCB.read_text(encoding="utf-8").replace(
+        "\t(embedded_fonts no)\n)", LOOSE + "\t(embedded_fonts no)\n)"
+    )
+    d, _ = boardroute.read_board(PCB)
+    assert boardroute.write_board(text, d) == text
+
+
+def test_a_pad_with_no_number_is_no_pin_and_its_net_is_the_last_name(tmp_path):
+    """T1: on R1, a copper pad with no number but a net is in the router's way and on no net's pin
+    list; and a pad net written with its number quoted too, (net "2" "/VOUT"), is /VOUT, the last
+    name."""
+    extra = '(pad "" smd rect (at 0 0.6) (size 0.3 0.3) (layers "F.Cu") (net 2 "/VOUT"))\n\t\t'
+    text = PCB.read_text(encoding="utf-8").replace(R1_PAD1, extra + R1_PAD1, 1)
+    text = text.replace('(net 2 "/VOUT")', '(net "2" "/VOUT")')
+    d, _ = boardroute.read_board(copy_fixture(tmp_path, text))
+    r1 = d.parts[1]
+    assert [p.number for p in r1.footprint.pads] == ["@0", "1", "2"]
+    assert r1.nets == {"2": "/VOUT", "1": "/VIN"}
+
+
+def stood_in_cli(monkeypatch, tmp_path, route: dict, drc_status: str, unconnected: int, failures=()):
+    """tools/workcenter with boardroute.apply and the DRC stood in for: `route` is the router's summary,
+    the DRC says `drc_status` with `unconnected` open connections and `failures`."""
+    cli = load_cli()
+    pcb = copy_fixture(tmp_path)
+    summary = {"segments": 1, "vias": 0, "unrouted": None, "dsn": "d", "ses": "s", "log": "l", "notes": []}
+    monkeypatch.setattr(boardroute, "apply", lambda *a, **k: {**summary, **route})
+    counts = {
+        "violations": {"error": 0, "warning": 0, "other": 0},
+        "unconnected_items": {"error": unconnected, "warning": 0, "other": 0},
+        "schematic_parity": {"error": 0, "warning": 0, "other": 0},
+    }
+    drc = cli.Result("drc", drc_status, "the DRC", {"counts": counts, "failures": list(failures)})
+    monkeypatch.setattr(cli, "gate_drc", lambda project, out: drc)
+    return cli, cli.Project(pcb.parent, "rc_divider", pcb.with_suffix(".kicad_pro"), None, pcb)
+
+
+def test_apply_fails_on_the_routers_own_count_of_open_connections(tmp_path, monkeypatch):
+    """T1: the router's log says 2 connections are open; the DRC is clean. That is a fail, and says so."""
+    cli, project = stood_in_cli(monkeypatch, tmp_path, {"unrouted": 2}, "pass", 0)
+    result = cli.autoroute_apply(project, tmp_path / "out", None, 1, 0, 60)
+    assert result.status == "fail"
+    assert result.details["failures"] == ["route: the router left 2 connections open (l)"]
+
+
+def test_apply_names_the_drcs_count_of_unconnected_items(tmp_path, monkeypatch):
+    """T1: the DRC lists 3 unconnected items: the first failure line says 3 and whose DRC."""
+    cli, project = stood_in_cli(monkeypatch, tmp_path, {}, "fail", 3)
+    result = cli.autoroute_apply(project, tmp_path / "out", None, 1, 0, 60)
+    assert result.status == "fail"
+    assert result.details["failures"][0] == "route: 3 unconnected (KiCad DRC of rc_divider.kicad_pcb)"
+
+
+def test_apply_fails_when_the_drc_fails_with_no_line_of_its_own(tmp_path, monkeypatch):
+    """T1: a DRC that fails and lists no failure line is still a fail, never a pass."""
+    cli, project = stood_in_cli(monkeypatch, tmp_path, {}, "fail", 0)
+    result = cli.autoroute_apply(project, tmp_path / "out", None, 1, 0, 60)
+    assert (result.status, result.details["failures"]) == ("fail", [])
+
+
+def test_apply_takes_no_dsn(tmp_path, monkeypatch):
+    """T1: --apply writes its own DSN from the board; a --dsn beside it is an error, and nothing runs."""
+    cli, project = stood_in_cli(monkeypatch, tmp_path, {}, "pass", 0)
+    monkeypatch.setattr(boardroute, "apply", lambda *a, **k: pytest.fail("the route ran"))
+    result = cli.autoroute_apply(project, tmp_path / "out", "x.dsn", 1, 0, 60)
+    assert (result.status, result.summary) == (
+        "error",
+        "--apply writes the DSN from the board itself; it takes no --dsn",
+    )
+
+
+def test_a_board_not_written_is_an_error_that_says_the_board_is_as_it_was(tmp_path, monkeypatch):
+    """W1 and L1 at the command: the write refused (here a read-only board) is an error result, not a
+    traceback and not 'engine missing'."""
+    cli = load_cli()
+    pcb = copy_fixture(tmp_path)
+    pcb.chmod(0o444)
+    stand_in_route(monkeypatch)
+    monkeypatch.setattr(cli, "gate_drc", lambda project, out: pytest.fail("the DRC ran"))
+    project = cli.Project(pcb.parent, "rc_divider", pcb.with_suffix(".kicad_pro"), None, pcb)
+    result = cli.autoroute_apply(project, tmp_path / "out", None, 1, 0, 60)
+    assert result.status == "error"
+    assert result.summary == "rc_divider.kicad_pcb is read-only; nothing written"
