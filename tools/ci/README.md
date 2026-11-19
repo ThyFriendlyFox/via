@@ -14,6 +14,7 @@ the minute the roadmap asks for.
 | `guard/sitecustomize.py` | Loads the watch in every Python process that has `guard/` on PYTHONPATH. |
 | `apt_archive.sh` | On CI's install path, before install.sh: apt asks Ubuntu's own archive, not the runner's regional mirror. |
 | `changes.py` | A change's changelog line in a file of its own under `ee-agent-kit/changes/`: `check` (in the kit checks), `show`, and `fold <X.Y.Z> <date>` for a release. |
+| `kept_logs.py` | After a gate step that failed: copies the logs of the folder the gate kept (`.log`, `.jsonl`, `.txt`, `.rpt`; each file's last 2 MB, 50 MB in all, `KEPT.txt` names what it left out) for ci.yml's artifact, kept 7 days. |
 | `nightly_issue.py` | The nightly run's last step: reads the night's outcome, the gate's log and the open `ci-failure` issues, and prints what to do (open, comment, close or nothing) with the text. |
 
 ## The rules of `scope.py`
@@ -186,10 +187,12 @@ prints 1 line: `where: image: ...` or `where: install: ...`, with the reason.
   the runner's user, after `tools/image.py show` (the image's tag, commit
   and tools' versions) and `tools/image.py check` (the checkout's 3 files
   are those the image was built from; a difference fails the job).
-- `install`: `sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh`,
-  then `make verify`, as before the image; the 2 bounds end a stalled
-  index or download with apt's own line within the job's 30 minutes (the
-  nightly run and the image build set the same 2). It is taken when the change edits 1
+- `install`: `sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 APT_OTHER_TIMEOUT=300 ... ./install.sh`,
+  then `make verify`, as before the image; the 3 bounds end a stalled
+  index or download (the main one, and the openEMS step's and the boot
+  step's) with apt's own line within the job's 40 minutes (the nightly
+  run and the image build set the same 3; ee-agent-kit/CI.md has the
+  arithmetic). It is taken when the change edits 1
   of the 3 files (the install path is their test), when the registry has
   no image of the tag (the first run, a new toolchain not yet published),
   when the pull is refused or the registry does not answer, when the
@@ -233,7 +236,7 @@ index within 120 s in 3 tries (run 44477966021). So apt keeps more than
   `dists/<suite>/main/binary-<arch>/Packages.gz`, side by side, 3 s each,
   ended at 4 s: at most 5 s in all, of the 8 s the `full` job's limit
   leaves beside install.sh's worst case. The list's priorities follow bytes a
-  second. A host that does not answer goes last and stays. With no answer
+  second of a 1 MiB sample: a first guess, not a promise for the download. A host that does not answer goes last and stays. With no answer
   at all the priorities stay as the runner wrote them; hosts of 1
   priority, or of none, apt asks in random order, and the line says so.
 - `/etc/apt/apt.conf.d/80apt-archive-ci` sets apt's http and https
@@ -253,10 +256,13 @@ index within 120 s in 3 tries (run 44477966021). So apt keeps more than
 1. Read its lines in the step "Rank the hosts of Ubuntu's archive". A
    line `probe <host>: <n> bytes in <s> s, <r> bytes/s` or
    `probe <host>: no answer (...); it goes last` per host, then
-   `apt-mirrors.txt: apt asks <first>, then ...: the fastest first`, or
+   `apt-mirrors.txt: apt asks <first>, then ...: the fastest in a 1 MiB sample first`, or
    `no host answered the probe; apt asks in the runner's order: ...`
    (`... by the runner's priorities: <a> and <b> in random order, ...`
    when priorities tie or are missing).
+   After a slow download pass, the install step prints `[apt-archive]
+   /etc/apt/apt-mirrors.txt: <host> served a download pass too slow to
+   finish; apt asks ...`.
    A line `<file>: <host> -> mirror+file:/etc/apt/apt-mirrors.txt` names a
    source file it pointed at the list, and `added ...` the hosts the list
    gained. A line `no regional or cloud mirror ...; changed nothing` says
@@ -272,8 +278,13 @@ index within 120 s in 3 tries (run 44477966021). So apt keeps more than
 What it does not cover:
 
 - A host that keeps sending a trickle never goes silent for 15 s, so apt
-  does not leave it. The probe ranks it last only if it is slow at the
-  step's start.
+  does not leave it. install.sh does: it watches each bounded download
+  pass and ends one too slow to finish in the time left
+  (`APT_WATCH_WINDOW`, 120 s), and the install step's
+  `APT_SLOW_PASS_COMMAND` runs `tools/ci/apt_archive.sh --slow <hosts>`
+  before the next pass: the host that served the slow pass goes last (CI
+  run 44506767788: the first host sent its 1 MiB sample at 2.47 MB/s and
+  the download at 48.3 kB/s).
 - install.sh's download passes its own `Acquire::http::Timeout=60` and
   `Acquire::Retries=3` on apt's command line, which win over the file: in
   the download a silent host is left after 4 tries of 60 s.

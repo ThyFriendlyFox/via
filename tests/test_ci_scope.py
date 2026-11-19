@@ -336,12 +336,20 @@ def test_the_workflow_is_1_workflow_whose_first_job_alone_decides_the_scope():
     assert jobs["full"]["if"] == "needs.scope.outputs.scope == 'full'"
 
 
+# CI's install line: the 2 bounds, and the command install.sh runs after a download pass too slow to
+# finish (tests/test_ci_apt_archive.py runs the step and reads what it hands to sudo).
+INSTALL_LINE = (
+    "sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 APT_OTHER_TIMEOUT=300 "
+    'APT_FILE_RETRIES="$retries" APT_FILE_TIMEOUT="$seconds" APT_SLOW_PASS_COMMAND="$slow" ./install.sh'
+)
+
+
 def test_the_fast_job_installs_no_engine_and_the_full_job_is_the_gate_of_today():
     jobs = workflow()["jobs"]
     fast, full = run_lines(jobs["fast"]), run_lines(jobs["full"])
     assert "install.sh" not in fast and "make verify-site" in fast
     assert "make verify-site" not in full
-    install = "sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh"
+    install = INSTALL_LINE
     assert install in full.split("\n") and "make verify" in full.split("\n")
 
 
@@ -388,9 +396,7 @@ def test_the_nightly_run_stays_the_full_gate():
     # The gate's log is kept for the ci-failure issue (tools/ci/nightly_issue.py); pipefail keeps its code.
     assert "make verify 2>&1 | tee build/nightly-verify.log" in lines and "set -o pipefail" in lines
     # The nightly run installs as CI's full job does, with CI's 2 bounds.
-    assert (
-        "sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh" in lines
-    )
+    assert INSTALL_LINE in lines
 
 
 def test_the_makefile_asks_the_same_script_and_names_no_path_of_its_own():
@@ -463,3 +469,14 @@ def test_each_gate_takes_the_engine_lock_under_its_own_name():
         assert ran.returncode == 0, ran.stderr
         named[" ".join(argv)] = ran.stdout
     assert named == {"": "make verify", "site": "make verify-site"}
+
+
+# The longest `fast` job measured: 578 s on wip/install2 at c49fece (run 44585103119, a slow runner;
+# its step 3 of 4 still ran), against 502 s on 662fe5b (pull request 124's last run). The job's limit
+# keeps half as much again beyond the longest: one more batch of tests or a slower runner is not red.
+FAST_LONGEST = 578
+
+
+def test_the_fast_job_s_limit_keeps_half_again_beyond_its_longest_measured_run():
+    fast = workflow()["jobs"]["fast"]
+    assert fast["timeout-minutes"] * 60 >= 1.5 * FAST_LONGEST, fast["timeout-minutes"]

@@ -2354,9 +2354,6 @@ def gate_autoroute(
             f"engine missing: {FREEROUTING_JAR}",
             {"engine_missing": str(FREEROUTING_JAR)},
         )
-    java = routers().workcenter_java()[0]
-    if not shutil.which(java):
-        return Result("autoroute", "skip", f"engine missing: {java}", {"engine_missing": java})
     # kicad-cli 10 has no Specctra export. The DSN comes from KiCad
     # (File > Export > Specctra DSN) next to the board, or from --dsn.
     candidates = (
@@ -2369,6 +2366,17 @@ def gate_autoroute(
             "skip",
             "no Specctra DSN: kicad-cli 10 cannot export one; export it from KiCad or pass --dsn",
             {"looked_for": [str(c) for c in candidates]},
+        )
+    # The router's own pick and refusal (routers.java_choice), as `design --route` and doctor read them:
+    # a java that is gone, cannot draw FreeRouting's window or is older than Java 21 is never started to
+    # route. The check asks the java its version, so it comes after the DSN: no DSN, no java started.
+    java, how, why = routers().java_choice()
+    if why:
+        return Result(
+            "autoroute",
+            "skip",
+            f"engine missing: {java} ({how}) cannot run FreeRouting 1.9.0: {why}",
+            {"engine_missing": java, "from": how, "why": why},
         )
     route = out / "route"
     route.mkdir(parents=True, exist_ok=True)
@@ -5399,19 +5407,21 @@ def java_row() -> dict:
     """Doctor's row for the java Via runs (routers.java_choice, the router's own pick): ok at Java
     JAVA_MIN or newer when FreeRouting can run on it. Its line names the version, the path, where the
     path came from, and why FreeRouting cannot run on it when it cannot (CI run 44515796762: a JVM
-    without lib/libawt_xawt.so)."""
+    without lib/libawt_xawt.so). It is ok exactly when the router's refusal is empty: the version is
+    held to JAVA_MIN there (routers.java_refusal), so a java that names no version cannot crash it."""
     exe, how, why = routers().java_choice()
     found = shutil.which(exe)
     java = tool_version([exe, "-version"], r'(?<=version ")\d+(\.\d+)*') if found else None
-    ok = bool(java and int(java.split(".")[0]) >= routers().JAVA_MIN and not why)
+    ok = bool(found and not why)
     if found:
         line = f"{java or 'none'} at {found}, {how}" + (
             f"; FreeRouting cannot run on it: {why}" if why else ""
         )
-    elif how == "the first java on PATH":
-        line = "none: no java on PATH"
+    elif exe == "java":
+        # The rest of `how` after "the first java on PATH" is a record that could not be read.
+        line = "none: no java on PATH" + how.removeprefix("the first java on PATH")
     else:
-        line = f"none: no java at {exe}, {how}"
+        line = f"none: no java at {exe}, {how}" + (f"; {why}" if why != f"no java at {exe}" else "")
     return {"required": False, "ok": ok, "version": java, "path": found or exe, "from": how, "line": line}
 
 

@@ -351,8 +351,13 @@ def test_a_wrong_project_file_is_refused_by_name(tmp_path, pro_text, said):
 
 
 def standin_env(tmp_path: Path, ses: str) -> dict[str, str]:
-    """A `java` that runs the stand-in router and a jar that holds its plan: it writes `ses`."""
-    java = tmp_path / "java"
+    """A `java` that runs the stand-in router and a jar that holds its plan: it writes `ses`. The java
+    stands in a JVM folder with lib/libawt_xawt.so, as Via holds the java given by JAVA to that library
+    (routers.java_refusal), the way tests/test_routers.py's `standin` builds it."""
+    java = tmp_path / "jvm" / "bin" / "java"
+    (tmp_path / "jvm" / "lib").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "jvm" / "lib" / "libawt_xawt.so").write_text("", encoding="utf-8")
+    java.parent.mkdir(exist_ok=True)
     java.write_text(
         f"#!{sys.executable}\nimport runpy\nrunpy.run_path({str(STANDIN)!r}, run_name='__main__')\n"
     )

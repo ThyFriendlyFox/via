@@ -43,7 +43,7 @@ jobs:
   fast:
     needs: scope
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -53,17 +53,32 @@ jobs:
       - name: Install the Python packages the tests read (no engine)
         run: python -m pip install --progress-bar off -r requirements.txt
       - name: Verify the site, the documents and the kit
+        id: gate
         run: make verify-site
+      # A red gate keeps its evidence: its logs go into an artifact, bounded (tools/ci/kept_logs.py: 50 MB,
+      # each file's last 2 MB) and kept 7 days. Never on success; the job holds no secret.
+      - name: Keep the logs of the failed gate
+        if: failure() && steps.gate.outcome == 'failure'
+        run: python3 tools/ci/kept_logs.py "$RUNNER_TEMP/kept-logs" "${TMPDIR:-/tmp}/pytest-of-*"
+      - uses: actions/upload-artifact@v4
+        if: failure() && steps.gate.outcome == 'failure'
+        with:
+          name: gate-logs-fast-gate
+          path: ${{ runner.temp }}/kept-logs
+          retention-days: 7
+          if-no-files-found: ignore
 
   # Any other change: the toolchain and the full health gate. The toolchain is the image of this commit's
   # toolchain files (tools/image.py) when the registry gives it, else install.sh as before: a change to
   # those files, the first run before any image, a registry that does not answer or will not give it.
   # Both paths end in the same `make verify`; the last step fails unless the decided path ran and passed.
+  # Its limit: the worst case of the install path, 2163 s (tests/test_install_apt.py,
+  # test_the_worst_case_of_the_apt_step_fits_the_jobs_limit; ee-agent-kit/CI.md), in 40 minutes.
   full:
     needs: scope
     if: needs.scope.outputs.scope == 'full'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     permissions:
       contents: read
       packages: read
@@ -90,10 +105,16 @@ jobs:
             --enabled "$ENABLED" --github-output
       # The runner's regional mirror crawled to the download's bound (runs 44402154007 and 44432768560),
       # and Ubuntu's own archive did not deliver the index within 120 s (run 44477966021). So apt keeps
-      # both, asks first the one a probe of a few seconds finds fastest, and sends a file to the next host
-      # after 15 s of silence (tools/ci/apt_archive.sh). A person's computer keeps its mirror: install.sh does not change
-      # it. The variable CI_APT_UBUNTU_ARCHIVE=0 turns it off.
-      - name: Rank the hosts of Ubuntu's archive, fastest first; give up a silent one
+      # both and asks first the one fastest in a sample of 1 MiB; in the update it sends a file to the
+      # next host after 15 s of silence (tools/ci/apt_archive.sh). The sample is a first guess: in run
+      # 44506767788 the first host sent its MiB at 2.47 MB/s and the download at 48.3 kB/s. So install.sh
+      # ends a download pass too slow to finish, and runs the script's --slow mode, which puts that host
+      # last, before the next pass. A person's computer keeps its mirror: install.sh does not change it.
+      # With the list, install.sh's download gives a failed file's host up at once too (0 retries, 15 s of
+      # silence: APT_FILE_RETRIES, APT_FILE_TIMEOUT), and apt asks the list's next host for it; in run
+      # 44506767788 its own 3 retries and 60 s had sent 151 files back to the same slow host.
+      # The variable CI_APT_UBUNTU_ARCHIVE=0 turns all of it off.
+      - name: Rank the hosts of Ubuntu's archive by a 1 MiB sample, fastest first
         if: steps.where.outputs.where == 'install'
         env:
           ENABLED: ${{ vars.CI_APT_UBUNTU_ARCHIVE }}
@@ -105,20 +126,52 @@ jobs:
           fi
       - name: Install Via's toolchain (same script as the cloud environment)
         if: steps.where.outputs.where == 'install'
-        run: sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 ./install.sh
+        env:
+          ENABLED: ${{ vars.CI_APT_UBUNTU_ARCHIVE }}
+        run: |
+          slow="" retries=3 seconds=60
+          if [ "$ENABLED" != 0 ]; then slow="env APT_ARCHIVE_CI=1 bash tools/ci/apt_archive.sh --slow"; retries=0; seconds=15; fi
+          sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 APT_OTHER_TIMEOUT=300 APT_FILE_RETRIES="$retries" APT_FILE_TIMEOUT="$seconds" APT_SLOW_PASS_COMMAND="$slow" ./install.sh
       - name: Verify
         id: verify
         if: steps.where.outputs.where == 'install'
         run: make verify
+      # A red gate keeps its evidence: the folder verify/testshards.py keeps (`logs kept: <folder>`), as an
+      # artifact, bounded (tools/ci/kept_logs.py: 50 MB, each file's last 2 MB) and kept 7 days. On
+      # 2026-11-19 a red run said `see /tmp/ee-verify-.../freerouting.log`, and the file was gone with the
+      # runner. Never on success; the gate's steps and these hold no secret.
+      - name: Keep the logs of the failed gate
+        if: failure() && steps.verify.outcome == 'failure'
+        run: python3 tools/ci/kept_logs.py "$RUNNER_TEMP/kept-logs" "${TMPDIR:-/tmp}/ee-verify-*"
+      - uses: actions/upload-artifact@v4
+        if: failure() && steps.verify.outcome == 'failure'
+        with:
+          name: gate-logs-full-verify
+          path: ${{ runner.temp }}/kept-logs
+          retention-days: 7
+          if-no-files-found: ignore
+      # The container's /tmp is a folder of the runner's temp, so the folder the gate keeps outlives
+      # `docker run --rm`: it lands at $RUNNER_TEMP/image-tmp/ee-verify-*.
       - name: Verify inside the image, as the runner's user
         id: inside
         if: steps.where.outputs.where == 'image'
         env:
           IMAGE: ${{ steps.where.outputs.image }}
         run: |
+          mkdir -p "$RUNNER_TEMP/image-tmp"
           docker run --rm --user "$(id -u):$(id -g)" -e CI -e GITHUB_ACTIONS -e IMAGE \
-            -v "$GITHUB_WORKSPACE":"$GITHUB_WORKSPACE" -w "$GITHUB_WORKSPACE" "$IMAGE" \
+            -v "$GITHUB_WORKSPACE":"$GITHUB_WORKSPACE" -w "$GITHUB_WORKSPACE" -v "$RUNNER_TEMP/image-tmp":/tmp "$IMAGE" \
             bash -e -c 'echo "image: $IMAGE"; python3 tools/image.py show; python3 tools/image.py check; make verify'
+      - name: Keep the logs of the failed gate
+        if: failure() && steps.inside.outcome == 'failure'
+        run: python3 tools/ci/kept_logs.py "$RUNNER_TEMP/kept-logs" "$RUNNER_TEMP/image-tmp/ee-verify-*"
+      - uses: actions/upload-artifact@v4
+        if: failure() && steps.inside.outcome == 'failure'
+        with:
+          name: gate-logs-full-inside
+          path: ${{ runner.temp }}/kept-logs
+          retention-days: 7
+          if-no-files-found: ignore
       - name: The decided path ran and passed
         env:
           WHERE: ${{ steps.where.outputs.where }}

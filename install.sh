@@ -35,9 +35,20 @@
 #                         CI sets 570). Under sudo, pass it with env: sudo drops a variable set
 #                         before it (`sudo env APT_DOWNLOAD_TIMEOUT=900 ./install.sh`). It covers every
 #                         pass of the download and every wait between 2, together
+#   APT_OTHER_TIMEOUT     seconds each of the 2 other downloads may take, the boot step's and the openEMS
+#                         step's, all their passes and waits (default empty: no bound; CI sets 300)
 #   APT_DOWNLOAD_TRIES    passes of the download, when a package source does not serve a file (default 5)
 #   APT_DOWNLOAD_WAIT     seconds between 2 passes (default 20)
-#   KICAD_KEYRING, KICAD_SOURCES, WORKCENTER_LINK, OS_RELEASE, JVM_DIR, CA_BUNDLE
+#   APT_FILE_RETRIES      apt's further tries of 1 file on its host (default 3; CI sets 0 with a mirror list)
+#   APT_FILE_TIMEOUT      seconds of silence after which apt gives a file's host up (default 60; CI sets 15)
+#   APT_WATCH_WINDOW      seconds of progress by which a pass of a bounded download is judged: one that
+#                         cannot finish within APT_DOWNLOAD_TIMEOUT at that rate is ended (default 120)
+#   APT_SLOW_PASS_COMMAND a command run between 2 passes after a pass that was too slow, with the hosts
+#                         of that pass as its last words, split at blanks (default empty: none; CI names
+#                         a mode of tools/ci/apt_archive.sh that puts the slow host last); and between 2
+#                         tries of the update after a try APT_UPDATE_TIMEOUT ended, with the hosts of the
+#                         mirror lists whose sources had not answered
+#   KICAD_KEYRING, KICAD_SOURCES, WORKCENTER_LINK, OS_RELEASE, JVM_DIR, CA_BUNDLE, APT_ARCHIVES
 #                         the paths outside WORKCENTER_ROOT the script writes or reads (defaults
 #                         below); the tests point them into a folder of their own
 #   INSTALL_CHIP          1 also installs the chip engines and the sky130A
@@ -102,6 +113,14 @@ KICAD_INDEX_TRIES="${KICAD_INDEX_TRIES:-3}"
 KICAD_INDEX_WAIT="${KICAD_INDEX_WAIT:-20}"
 APT_UPDATE_TIMEOUT="${APT_UPDATE_TIMEOUT:-}"
 APT_DOWNLOAD_TIMEOUT="${APT_DOWNLOAD_TIMEOUT:-}"
+# The 2 other downloads, the boot step's (a bare Ubuntu, the image's base) and the openEMS step's, go
+# through the same passes and watch, each within APT_OTHER_TIMEOUT when it is set. In the image build of
+# job 135588402925 (2026-11-19) the openEMS step's download got 520 for 1 file after a stall of 48 s,
+# went on, and openEMS could not start; in the passing job 135593285528 it took 385 s with 1 stall of
+# 282.8 s, with no bound. The boot step printed nothing for 271 s in that image build. CI sets 300 s.
+APT_OTHER_TIMEOUT="${APT_OTHER_TIMEOUT:-}"
+# The name of the bound of the download that runs, for its lines: apt_download's callers set it.
+DL_NAME="APT_DOWNLOAD_TIMEOUT"
 # The download: up to APT_DOWNLOAD_TRIES passes, APT_DOWNLOAD_WAIT s apart, and a pass is made again only
 # when a source did not serve a file. In its log, the amd64 image build of pull request 92 on 2026-11-18
 # fetched 377 files from Ubuntu and 2 from KiCad 10's source, then got 503 for `kicad` 3 times in 18 s
@@ -112,16 +131,48 @@ APT_DOWNLOAD_TRIES="${APT_DOWNLOAD_TRIES:-5}"
 APT_DOWNLOAD_WAIT="${APT_DOWNLOAD_WAIT:-20}"
 # apt's own bounds on 1 file, as before: 3 more tries, and a server silent for 60 s is given up. 4 x 60
 # = 240 s on 1 silent file stays within CI's download bound, so apt names that file before the cut.
-APT_FILE_RETRIES="3"
-APT_FILE_TIMEOUT="60"
+# Both are set from outside, as CI does where it keeps a mirror list: there a file whose host fails goes
+# to the list's next host at once (0 retries, 15 s), as in tools/ci/apt_archive.sh's apt.conf.d file. On
+# apt's command line these win over that file (apt.conf(5)): in run 44506767788 (job 135500622487) 151
+# files were asked again of the same slow host. A source of 1 host (the PPA) then fails the file and the
+# pass, and the next pass asks for it again. apt_bounds_check holds both to a range.
+APT_FILE_RETRIES="${APT_FILE_RETRIES:-3}"
+APT_FILE_TIMEOUT="${APT_FILE_TIMEOUT:-60}"
+# The watch of a pass, when APT_DOWNLOAD_TIMEOUT is set. In CI run 44506767788 (2026-11-19, job
+# 135500622487) the probe of tools/ci/apt_archive.sh measured us-east-2.ec2.archive.ubuntu.com at
+# 2468910 bytes/s; 17 s later the download's 1 pass asked it for every file, 26.6 MB of them arrived in
+# 550.7 s (48.3 kB/s), and the bound of 570 s ended that pass: no other host was given a turn. So each
+# bounded pass is watched. Every APT_WATCH_WINDOW/24 s the watch counts the bytes in apt's archives
+# folder and its partial/, where a file grows while it comes (apt 2.8.3, apt-pkg/acquire-item.cc,
+# pkgAcqArchive::pkgAcqArchive); only growth counts, so a file apt removes and fetches again is no lost
+# progress. Once a window has gone by, it ends the pass when the rate of the last APT_WATCH_WINDOW s,
+# kept up, would not fetch the rest within what is left of the bound. The rest is what apt said it
+# needs ("Need to get", apt-private/private-install.cc:299, which counts a partial file at its full
+# size) less the bytes in partial/ when the pass began and the bytes that arrived since. The rate leaves
+# out the longest stretch in which a pause could hide (from the sample before a run of equal counts to
+# the sample after it), at most half a window: the window is 2 x APT_FILE_TIMEOUT, apt's own bound on a
+# silent server. So a pass at a steady rate with 1 such pause, which at that rate ends within the bound,
+# is never ended, wherever the pause falls. The next pass asks again: apt keeps each finished file and
+# continues a partial one (the same place). A pass that has all apt named, or that names no size, is not
+# judged; with no bound, nothing watches. tests/test_install_apt.py holds the numbers
+# (test_the_watch_ends_the_slow_pass_of_run_44506767788_in_time_for_a_second_host).
+APT_WATCH_WINDOW="${APT_WATCH_WINDOW:-120}"
+APT_SLOW_PASS_COMMAND="${APT_SLOW_PASS_COMMAND:-}"
+# apt's archives folder (Dir::Cache::Archives); the watch only reads it. A test points it into its folder.
+APT_ARCHIVES="${APT_ARCHIVES:-/var/cache/apt/archives}"
 # The key fetch, on every computer that has no key yet (every fresh CI runner): each of its 2 addresses
 # gets tries of at most KICAD_KEY_TIMEOUT s (curl --max-time), and a try is made again only while
 # curl's retry timer is below KICAD_KEY_TIMEOUT s (--retry-max-time). With --retry 3 curl waits 1, 2,
 # then 4 s (curl 8.5.0's manual, --retry and --retry-max-time): 20 + 4 + 20 = 44 s an address at most,
 # 88 s for both. The key is 1 small file: the passing run fetched it in 0.6 s (job 134941364976).
 KICAD_KEY_TIMEOUT="20"
-# apt's Err: and Ign: lines name the file and the host that failed: a cut download shows them.
-APT_PROGRESS='^((Get|Err|Ign):[0-9]+|Setting up|Unpacking) '
+# apt's Err: and Ign: lines name the file and the host that failed: a cut download shows them. Its
+# "Need to get <size> of archives." line is the size the watch judges a pass by.
+APT_PROGRESS='^((Get|Err|Ign):[0-9]+|Setting up|Unpacking|Need to get) '
+# A try of `apt-get update` that APT_UPDATE_TIMEOUT ended shows at most this many of apt's last lines.
+# In job 135588570683 (2026-11-19) 3 tries of 120 s each ended so, and -qq had printed no line of any:
+# the log could not say which source stalled.
+APT_UPDATE_LINES="10"
 
 FREEROUTING_VERSION="${FREEROUTING_VERSION:-1.9.0}"
 FREEROUTING_SHA256="${FREEROUTING_SHA256:-9084a4888937a7f31f857ecc12aa7a37407f51160e4d2892dff9c9bb47ae3102}"
@@ -201,7 +252,7 @@ bounded() {
 # Stops on a bound that is set but is not a whole number of seconds above 0, before anything runs.
 apt_bounds_check() {
   local name value
-  for name in APT_UPDATE_TIMEOUT APT_DOWNLOAD_TIMEOUT; do
+  for name in APT_UPDATE_TIMEOUT APT_DOWNLOAD_TIMEOUT APT_OTHER_TIMEOUT; do
     value="${!name}"
     if [[ -n "$value" && ! "$value" =~ ^[1-9][0-9]*$ ]]; then
       die "${name}=${value} is not a whole number of seconds above 0; set it to one, or leave ${name} unset for no bound"
@@ -214,6 +265,16 @@ apt_bounds_check() {
   fi
   if [[ ! "$APT_DOWNLOAD_WAIT" =~ ^(0|[1-9][0-9]{0,2})$ ]]; then
     die "APT_DOWNLOAD_WAIT=${APT_DOWNLOAD_WAIT} is not a whole number of seconds from 0 to 999; set it to one, or leave APT_DOWNLOAD_WAIT unset for 20"
+  fi
+  if [[ ! "$APT_WATCH_WINDOW" =~ ^[1-9][0-9]{0,2}$ ]]; then
+    die "APT_WATCH_WINDOW=${APT_WATCH_WINDOW} is not a whole number of seconds from 1 to 999; set it to one, or leave APT_WATCH_WINDOW unset for 120"
+  fi
+  # apt's bounds on 1 file: as the ones above, the tops refuse a typo.
+  if [[ ! "$APT_FILE_RETRIES" =~ ^[0-9]$ ]]; then
+    die "APT_FILE_RETRIES=${APT_FILE_RETRIES} is not a whole number of retries from 0 to 9; set it to one, or leave APT_FILE_RETRIES unset for 3"
+  fi
+  if [[ ! "$APT_FILE_TIMEOUT" =~ ^[1-9][0-9]{0,2}$ ]]; then
+    die "APT_FILE_TIMEOUT=${APT_FILE_TIMEOUT} is not a whole number of seconds from 1 to 999; set it to one, or leave APT_FILE_TIMEOUT unset for 60"
   fi
 }
 
@@ -329,26 +390,153 @@ kicad_lasting() {
     *) return 1 ;;
   esac
 }
+# The package sources apt reads, 1 line each: "<address> <suite>". The files are those kicad_index_stop
+# reads: sources.list, then *.list and *.sources beside the script's file; a file of another name is not
+# read. A deb-src source counts: the update fetches its index too. A commented line names no type, and a
+# deb822 stanza gives 1 line per address and suite.
+apt_sources() {
+  local parts file
+  local -a files=()
+  parts="$(dirname "$KICAD_SOURCES")"
+  for file in "${parts%/*}/sources.list" "$parts"/*.list "$parts"/*.sources; do
+    if [[ -f "$file" ]]; then files+=("$file"); fi
+  done
+  if ((${#files[@]} == 0)); then return 0; fi
+  awk '
+    function flush(  a, b, n, m, x, y) {
+      if (u != "" && s != "") {
+        n = split(u, a, " "); m = split(s, b, " ")
+        for (x = 1; x <= n; x++) for (y = 1; y <= m; y++) print a[x], b[y]
+      }
+      u = ""; s = ""
+    }
+    FNR == 1 { flush() }
+    $1 ~ /^deb(-src)?$/ { i = 2; if ($i ~ /^\[/) { while (i <= NF && $i !~ /\]$/) i++; i++ } print $i, $(i + 1); next }
+    /^[[:space:]]*$/ { flush(); next }
+    $1 == "URIs:" { for (j = 2; j <= NF; j++) u = u (j == 2 ? "" : " ") $j; next }
+    $1 == "Suites:" { for (j = 2; j <= NF; j++) s = s (j == 2 ? "" : " ") $j; next }
+    END { flush() }' "${files[@]}"
+}
+
+# The host of an address: http://host:80/path -> host.
+uri_host() {
+  local rest="${1#*://}"
+  rest="${rest%%/*}"
+  printf '%s' "${rest%%:*}"
+}
+
+# The sources (apt_sources) that printed no Hit:, Get:, Ign: or Err: line in apt's lines $1. apt prints 1
+# such line per index file as its server answers or fails (apt 2.8.3, apt-private/acqprogress.cc), with the
+# host a mirror list gave it, so a source of a mirror list (mirror+file:<list>) is heard when any host of
+# its list is. Sets SILENT, the sources, a mirror list's with its hosts in the list's order, and
+# SILENT_HOSTS, the hosts of the silent sources of a list of more than 1 host: apt asks such a list's
+# first host first, and a command can put it last. A source of 1 host (KiCad 10's) is asked again as it is.
+silent_sources() {
+  local heard uri suite host said one
+  local -a list
+  SILENT=""
+  SILENT_HOSTS=""
+  heard="$(awk '$1 ~ /^(Hit|Get|Ign|Err):[0-9]+$/ && $2 ~ /^[a-z+]+:\/\// {
+      h = $2; sub(/^[a-z+]+:\/\//, "", h); sub(/[\/:].*$/, "", h); s = $3; sub(/[\/].*$/, "", s); print h " " s
+    }' <<< "$1")"
+  while read -r uri suite; do
+    list=()
+    if [[ "$uri" == mirror+file:* ]]; then
+      mapfile -t list < <(awk '!/^[[:space:]]*(#|$)/ { h = $1; sub(/^[a-z+]+:\/\//, "", h); sub(/[\/:].*$/, "", h); print h }' \
+        "${uri#mirror+file:}" 2> /dev/null || true)
+    else
+      list=("$(uri_host "$uri")")
+    fi
+    one=0
+    for host in "${list[@]}"; do
+      if grep -qxF -- "${host} ${suite}" <<< "$heard"; then one=1; fi
+    done
+    if ((one)); then continue; fi
+    said="${uri} ${suite}"
+    if [[ "$uri" == mirror+file:* ]]; then
+      said+=" ($(printf '%s, ' "${list[@]}" | sed 's/, $//'))"
+    fi
+    SILENT+="${SILENT:+, }${said}"
+    if ((${#list[@]} > 1)); then
+      for host in "${list[@]}"; do
+        if [[ " ${SILENT_HOSTS} " != *" ${host} "* ]]; then SILENT_HOSTS+="${SILENT_HOSTS:+ }${host}"; fi
+      done
+    fi
+  done < <(apt_sources)
+}
+
+# 1 try of `apt-get update`, try $1 of $2, within APT_UPDATE_TIMEOUT when it is set. With -q apt prints its
+# Hit:, Get:, Ign: and Err: lines (with -qq none). Sets UPDATE_OUT to apt's lines and UPDATE_RC to its
+# exit code. A try that ends shows apt's lines but its Hit:, Get:, Ign:, Fetched and Reading lines, as -qq
+# showed them. A cut try says which sources had not answered (silent_sources: SILENT and SILENT_HOSTS,
+# empty after a try that ends), then shows apt's last APT_UPDATE_LINES lines of the try as apt printed them.
+# The update gets no watch of its progress, as the download has: its bound, 120 s in CI, is 1
+# APT_WATCH_WINDOW, and the watch judges no pass before a whole window.
+update_try() {
+  local told n
+  UPDATE_RC=0
+  SILENT=""
+  SILENT_HOSTS=""
+  UPDATE_OUT="$(bounded "$APT_UPDATE_TIMEOUT" apt-get update -q 2>&1)" || UPDATE_RC=$?
+  if ((UPDATE_RC == 124)) && [[ -n "$APT_UPDATE_TIMEOUT" ]]; then
+    silent_sources "$UPDATE_OUT"
+    told="apt printed no line in that try"
+    if [[ -n "$UPDATE_OUT" ]]; then
+      n="$(tail -n "$APT_UPDATE_LINES" <<< "$UPDATE_OUT" | grep -c '')"
+      told="apt's last ${n} lines of that try:"
+      if ((n == 1)); then told="apt's last line of that try:"; fi
+    fi
+    log "apt: update, try $1 of $2, did not end within ${APT_UPDATE_TIMEOUT} s (APT_UPDATE_TIMEOUT); the sources that had not answered (no Hit, Get, Ign or Err line): ${SILENT:-none}; ${told}"
+    if [[ -n "$UPDATE_OUT" ]]; then
+      tail -n "$APT_UPDATE_LINES" <<< "$UPDATE_OUT" | sed 's/^/[apt] /'
+    fi
+    return 0
+  fi
+  told="$(grep -Ev '^((Hit|Get|Ign):[0-9]+ |Fetched |Reading package lists)' <<< "$UPDATE_OUT" || true)"
+  if [[ -n "$told" ]]; then printf '%s\n' "$told" >&2; fi
+}
+
+# APT_SLOW_PASS_COMMAND, when set, with the hosts $2... as its last words; $1 names what comes next ("pass"
+# of the download, "try" of the update). A command that fails is said, and the next $1 runs all the same.
+slow_hook() {
+  local next="$1" hooked=0
+  local -a hook
+  shift
+  if [[ -z "$APT_SLOW_PASS_COMMAND" ]]; then return 0; fi
+  read -r -a hook <<< "$APT_SLOW_PASS_COMMAND"
+  log "apt: APT_SLOW_PASS_COMMAND: ${APT_SLOW_PASS_COMMAND}${*:+ $*}"
+  command -- "${hook[@]}" "$@" || hooked=$?
+  if ((hooked != 0)); then
+    warn "apt: APT_SLOW_PASS_COMMAND ended with exit code ${hooked}; the next ${next} asks the hosts in the order they had"
+  fi
+}
+
 kicad_index() {
   local try out rc
+  local -a hosts
   for ((try = 1; try <= KICAD_INDEX_TRIES; try++)); do
     KICAD_TRIED=$try
     log "apt: update, try ${try} of ${KICAD_INDEX_TRIES}"
-    rc=0
-    out="$(bounded "$APT_UPDATE_TIMEOUT" apt-get update -qq 2>&1)" || rc=$?
-    if [[ -n "$out" ]]; then printf '%s\n' "$out" >&2; fi
+    update_try "$try" "$KICAD_INDEX_TRIES"
+    out="$UPDATE_OUT"
+    rc=$UPDATE_RC
     APT_SAID="$(grep -F "${KICAD_PPA_URL%/}" <<< "$out" | grep -E '^(W|E|Err):' | tail -n 1 || true)"
     if ((rc == 0)) && [[ -z "$APT_SAID" ]]; then
       return 0
     fi
     if ((rc == 124)) && [[ -n "$APT_UPDATE_TIMEOUT" ]]; then
-      APT_SAID="nothing: \`apt-get update\` of every package source did not end within ${APT_UPDATE_TIMEOUT} s (APT_UPDATE_TIMEOUT)"
+      APT_SAID="nothing: \`apt-get update\` of every package source did not end within ${APT_UPDATE_TIMEOUT} s (APT_UPDATE_TIMEOUT); the sources that had not answered in try ${try}: ${SILENT:-none}"
     elif [[ -z "$APT_SAID" ]]; then
       APT_SAID="$(grep -E '^E:' <<< "$out" | tail -n 1 || true)"
       APT_SAID="exit code ${rc}: ${APT_SAID:-$(tail -n 1 <<< "$out")}"
     fi
     if kicad_lasting "$APT_SAID"; then return 1; fi
     if ((try < KICAD_INDEX_TRIES)); then
+      # A mirror list's silent hosts go last before the next try, as after a slow download pass.
+      if [[ -n "$SILENT_HOSTS" ]]; then
+        read -r -a hosts <<< "$SILENT_HOSTS"
+        slow_hook try "${hosts[@]}"
+      fi
       log "apt: the index of KiCad 10's source is not there yet; waiting ${KICAD_INDEX_WAIT} s"
       sleep "$KICAD_INDEX_WAIT"
     fi
@@ -482,8 +670,183 @@ apt_shown() {
   if [[ -z "$APT_SAID" ]]; then
     APT_SAID="$(grep -E '^\[apt\] Err:' "$shown" | tail -n 1 | sed 's/^\[apt\] //' || true)"
   fi
+  # For the download's watch and stops: the hosts of this run, and its lines kept in apt_download's file.
+  APT_PASS_HOSTS="$(apt_hosts names "$shown")"
+  if [[ -n "${passlog:-}" ]]; then
+    cat "$shown" >> "$passlog"
+  fi
   rm -f "$errors" "$shown"
   return "${codes[0]}"
+}
+
+# The bytes in apt's archives folder and its partial/: the files of a download, finished or coming.
+archive_bytes() {
+  { find "$APT_ARCHIVES" -maxdepth 2 -type f -printf '%s\n' 2> /dev/null || true; } \
+    | awk '{ s += $1 } END { printf "%.0f\n", s }'
+}
+
+# The bytes in apt's partial/: files apt has begun and continues.
+partial_bytes() {
+  { find "$APT_ARCHIVES/partial" -maxdepth 1 -type f -printf '%s\n' 2> /dev/null || true; } \
+    | awk '{ s += $1 } END { printf "%.0f\n", s }'
+}
+
+# The bytes of the first size of apt's first "Need to get <size>[/<size>] of archives." line in file $1,
+# read as apt writes sizes (SizeToStr: SI units); empty when there is none. It is FetchNeeded (apt 2.8.3,
+# apt-pkg/acquire.cc:909): the files that run of apt fetches, a partial one at its full size.
+need_bytes() {
+  awk '$1 == "[apt]" && $2 == "Need" && $3 == "to" && $4 == "get" {
+      m = 1; u = substr($6, 1, 1)
+      if (u == "k") m = 1e3
+      if (u == "M") m = 1e6
+      if (u == "G") m = 1e9
+      printf "%.0f\n", ($5 + 0) * m
+      exit
+    }' "$1"
+}
+
+# The hosts of the Get:, Ign: and Err: lines in file $2, the most Get: lines first: with $1 = names,
+# their names; else each with its 3 counts.
+apt_hosts() {
+  awk -v mode="$1" '
+    $1 == "[apt]" && $2 ~ /^(Get|Ign|Err):[0-9]+$/ && $3 ~ /^[a-z+]+:\/\// {
+      k = substr($2, 1, 3)
+      h = $3
+      sub(/^[a-z+]+:\/\//, "", h)
+      sub(/[\/:].*$/, "", h)
+      if (!(h in seen)) { n++; order[n] = h; seen[h] = 1 }
+      c[h "," k]++
+    }
+    END {
+      for (j = 1; j <= n; j++) {
+        b = 0
+        for (i = 1; i <= n; i++) {
+          if (i in done) continue
+          if (b == 0) b = i
+          else if (c[order[b] ",Get"] < c[order[i] ",Get"]) b = i
+        }
+        done[b] = 1
+        h = order[b]
+        if (mode == "names") printf "%s%s", (j == 1 ? "" : " "), h
+        else printf "%s%s (%d Get, %d Ign, %d Err)", (j == 1 ? "" : ", "), h, c[h ",Get"], c[h ",Ign"], c[h ",Err"]
+      }
+    }' "$2"
+}
+
+# A number of bytes as apt writes sizes (SI units), cut to 1 decimal.
+human() {
+  local b="$1"
+  if ((b < 1000)); then
+    printf '%s B' "$b"
+  elif ((b < 1000000)); then
+    printf '%s.%s kB' "$((b / 1000))" "$((b % 1000 / 100))"
+  elif ((b < 1000000000)); then
+    printf '%s.%s MB' "$((b / 1000000))" "$((b % 1000000 / 100000))"
+  else
+    printf '%s.%s GB' "$((b / 1000000000))" "$((b % 1000000000 / 100000000))"
+  fi
+}
+
+# Milliseconds of the clock.
+clock() {
+  printf '%s\n' "$((${EPOCHREALTIME/[.,]/} / 1000))"
+}
+
+# The verdict on a watched pass (APT_WATCH_WINDOW above), from apt_watched's samples: `at`, ms of the
+# clock, and `had`, the bytes that had arrived. With a bound of $1 s from $2 ms and $3 bytes to fetch, it
+# sets `verdict` to "<s> <bytes> <need> <bytes/s> <rest> <s left> <pause ms>" when the pass cannot
+# finish at the rate of its last window, else to nothing.
+pass_verdict() {
+  local secs="$1" began="$2" need="$3" n now got back=0 i j k lo hi pause=0 rate rest left
+  verdict=""
+  n=${#at[@]}
+  now=${at[n - 1]}
+  got=${had[n - 1]}
+  if ((now - began < APT_WATCH_WINDOW * 1000)); then return 0; fi
+  for i in "${!at[@]}"; do
+    if ((at[i] <= now - APT_WATCH_WINDOW * 1000)); then
+      back=$i
+    fi
+  done
+  # Each run of samples with the same bytes, from the sample before it to the sample after it: a pause
+  # lies within one of them.
+  for ((j = back; j < n; j = k + 1)); do
+    for ((k = j; k + 1 < n && had[k + 1] == had[j]; k++)); do :; done
+    lo=$((j > back ? j - 1 : back))
+    hi=$((k + 1 < n ? k + 1 : n - 1))
+    if ((at[hi] - at[lo] > pause)); then pause=$((at[hi] - at[lo])); fi
+  done
+  if ((pause > APT_WATCH_WINDOW * 500)); then pause=$((APT_WATCH_WINDOW * 500)); fi
+  rate=$(((got - had[back]) * 1000 / (now - at[back] - pause)))
+  rest=$((need - got))
+  left=$((secs - (now - began) / 1000))
+  if ((left < 0)); then left=0; fi
+  if ((rate * left < rest)); then
+    verdict="$(((now - began) / 1000)) ${got} ${need} ${rate} ${rest} ${left} ${pause}"
+  fi
+}
+
+# Runs $2... under `timeout $1` and watches it (APT_WATCH_WINDOW above); with no bound $1 it runs $2...
+# alone, as before. The watch reads apt's lines from `shown`, apt_shown's file, and when it ends the pass
+# it writes pass_verdict's line to `watch`, apt_download's file.
+# The command runs in a process substitution: its pid is known, its output goes where apt_shown's pipe
+# goes, and its end closes the pipe the watch waits on, which wakes the watch at once.
+apt_watched() {
+  local secs="$1" out wake pid rc=0 r=0 began now total last got=0 need prior tick cut=0 verdict
+  local -a at had
+  shift
+  if [[ -z "$secs" ]]; then
+    "$@"
+    return
+  fi
+  # Counted before the command starts, so that none of its bytes count as there before it.
+  began="$(clock)"
+  last="$(archive_bytes)"
+  prior="$(partial_bytes)"
+  exec {out}>&1
+  # The pipe stays open in the command as the descriptor `keep` names, until the command ends.
+  # shellcheck disable=SC2034
+  exec {wake}< <(exec {keep}>&1 >&"$out"; exec timeout "$secs" "$@")
+  pid=$!
+  exec {out}>&-
+  # GNU timeout puts itself and apt in a process group of their own: Ctrl-C reaches the watch, not them.
+  # A signal that ends the watch ends the command first.
+  trap 'kill -TERM "$pid" 2> /dev/null; exit 130' INT
+  trap 'kill -TERM "$pid" 2> /dev/null; exit 143' TERM
+  trap 'kill -TERM "$pid" 2> /dev/null; exit 129' HUP
+  at=("$began")
+  had=(0)
+  tick=$((APT_WATCH_WINDOW * 1000 / 24))
+  while :; do
+    r=0
+    read -r -t "$((tick / 1000)).$(printf '%03d' "$((tick % 1000))")" -u "$wake" _ || r=$?
+    if ((r <= 128)); then
+      break
+    fi
+    if ((cut)); then
+      continue
+    fi
+    now="$(clock)"
+    total="$(archive_bytes)"
+    if ((total > last)); then got=$((got + total - last)); fi
+    last=$total
+    at+=("$now")
+    had+=("$got")
+    need="$(need_bytes "$shown")"
+    if [[ -z "$need" ]]; then
+      continue
+    fi
+    pass_verdict "$secs" "$began" "$((need - prior))"
+    if [[ -n "$verdict" ]]; then
+      cut=1
+      printf '%s\n' "$verdict" > "$watch"
+      kill -TERM "$pid" 2> /dev/null || true
+    fi
+  done
+  exec {wake}<&-
+  wait "$pid" || rc=$?
+  trap - INT TERM HUP
+  return "$rc"
 }
 
 # What a computer and an image build keep of a stopped download: a failed step of `docker build` keeps
@@ -508,30 +871,67 @@ passes_made() {
 # so and keeps the advice for apt's line: the bound has not ended and the line need not be slow. The
 # shell counts whole seconds, so a pass of 1.9 s can count as 1 s: the passes can overrun the bound by
 # less than 1 s each.
+#
+# With APT_DOWNLOAD_TIMEOUT set, each pass is watched (apt_watched): a pass too slow to finish in what
+# is left of the bound is ended, its line says what arrived from which host at what rate, and the next
+# pass follows after the wait, as for a file not served. Before it, APT_SLOW_PASS_COMMAND, when set, runs
+# with the hosts of the slow pass: CI's names a mode of tools/ci/apt_archive.sh that puts the host that
+# served it last in the mirror list, so that the next pass asks another host first. A stop of a bounded
+# download names the hosts asked, the bytes that arrived of the bytes apt named, the time and the rate.
 apt_download() {
-  local pass left="$APT_DOWNLOAD_TIMEOUT" rc files began
+  local pass left="$APT_DOWNLOAD_TIMEOUT" rc files began start base=0 watch passlog
+  local took got need rate rest gone pause needs hosts_said rated
+  local -a hosts
   local later="A package source did not serve a file this time: run the script again later. ${KEPT}"
+  watch="$(mktemp)"
+  passlog="$(mktemp)"
+  start="$(clock)"
+  if [[ -n "$APT_DOWNLOAD_TIMEOUT" ]]; then
+    base="$(archive_bytes)"
+  fi
   for ((pass = 1; ; pass++)); do
     rc=0
     began=$SECONDS
-    apt_shown bounded "$left" apt-get install -y --no-install-recommends --download-only \
+    : > "$watch"
+    apt_shown apt_watched "$left" apt-get install -y --no-install-recommends --download-only \
       -o Acquire::Retries="$APT_FILE_RETRIES" \
       -o Acquire::http::Timeout="$APT_FILE_TIMEOUT" -o Acquire::https::Timeout="$APT_FILE_TIMEOUT" \
       "$@" || rc=$?
     if ((rc == 0)); then
+      rm -f "$watch" "$passlog"
       return 0
     fi
     if ((rc == 124)) && [[ -n "$APT_DOWNLOAD_TIMEOUT" ]]; then
       download_cut "$pass"
     fi
+    if [[ -s "$watch" ]]; then
+      read -r took got need rate rest gone pause < "$watch"
+      left=$((left - (SECONDS - began)))
+      if ((pass >= APT_DOWNLOAD_TRIES || left <= APT_DOWNLOAD_WAIT)); then
+        download_stop "apt: the download stopped after $(passes_made "$pass"): pass ${pass} was too slow to finish within what was left of ${DL_NAME}=${APT_DOWNLOAD_TIMEOUT} s; $(download_seen); apt said: ${APT_SAID:-nothing}" \
+          "No package was installed. ${SLOW_LINE//APT_DOWNLOAD_TIMEOUT/$DL_NAME}"
+      fi
+      left=$((left - APT_DOWNLOAD_WAIT))
+      needs="at that rate the rest never arrives"
+      if ((rate > 0)); then needs="at that rate the rest needs $((rest / rate)) s"; fi
+      hosts=()
+      read -r -a hosts <<< "$APT_PASS_HOSTS"
+      hosts_said="${APT_PASS_HOSTS// /, }"
+      hosts_said="${hosts_said:-no host}"
+      rated="$(human "$rate")"
+      log "apt: download pass ${pass} of ${APT_DOWNLOAD_TRIES} was too slow to finish: $(human "$got") of $(human "$need") arrived in ${took} s, ${rated}/s over the last ${APT_WATCH_WINDOW} s, leaving out a pause of $((pause / 1000)).$((pause % 1000 / 100)) s, from ${hosts_said}; ${needs}, and ${gone} s were left; waiting ${APT_DOWNLOAD_WAIT} s"
+      slow_hook pass "${hosts[@]}"
+      sleep "$APT_DOWNLOAD_WAIT"
+      continue
+    fi
     if ((rc != 100 || APT_FETCH_COUNT == 0 || pass >= APT_DOWNLOAD_TRIES)); then
-      stop "apt: the download ended with apt-get's exit code ${rc} after $(passes_made "$pass")${APT_DOWNLOAD_TIMEOUT:+, within its bound of ${APT_DOWNLOAD_TIMEOUT} s}; apt said: ${APT_SAID:-nothing}" \
+      download_stop "apt: the download ended with apt-get's exit code ${rc} after $(passes_made "$pass")${APT_DOWNLOAD_TIMEOUT:+, within its bound of ${APT_DOWNLOAD_TIMEOUT} s}; apt said: ${APT_SAID:-nothing}" \
         "No package was installed. $(apt_advice "$APT_SAID" "$later")"
     fi
     if [[ -n "$APT_DOWNLOAD_TIMEOUT" ]]; then
       left=$((left - (SECONDS - began)))
       if ((left <= APT_DOWNLOAD_WAIT)); then
-        stop "apt: the download stopped after $(passes_made "$pass"): the next wait of ${APT_DOWNLOAD_WAIT} s would leave no time for another pass within APT_DOWNLOAD_TIMEOUT=${APT_DOWNLOAD_TIMEOUT} s; apt said: ${APT_SAID:-nothing}" \
+        download_stop "apt: the download stopped after $(passes_made "$pass"): the next wait of ${APT_DOWNLOAD_WAIT} s would leave no time for another pass within ${DL_NAME}=${APT_DOWNLOAD_TIMEOUT} s; apt said: ${APT_SAID:-nothing}" \
           "No package was installed. $(apt_advice "$APT_SAID" "$later")"
       fi
       left=$((left - APT_DOWNLOAD_WAIT))
@@ -543,10 +943,65 @@ apt_download() {
   done
 }
 
+# What a bounded download saw, for its stops (apt_download's locals): the hosts asked with their Get:,
+# Ign: and Err: lines, the bytes that arrived of the bytes apt named in its first pass, the time, the rate.
+download_seen() {
+  local hosts got need ms text rated
+  hosts="$(apt_hosts counts "$passlog")"
+  got=$(($(archive_bytes) - base))
+  if ((got < 0)); then got=0; fi
+  need="$(need_bytes "$passlog")"
+  ms=$(($(clock) - start))
+  text="no host was asked for a file"
+  if [[ -n "$hosts" ]]; then text="hosts asked: ${hosts}"; fi
+  text+="; $(human "$got")${need:+ of $(human "$need")} arrived in $((ms / 1000)) s"
+  if ((got > 0 && ms > 0)); then
+    rated="$(human "$((got * 1000 / ms))")"
+    text+=", ${rated}/s"
+  fi
+  if [[ -z "$need" ]]; then text+=", of a size apt did not name"; fi
+  printf '%s' "$text"
+}
+
+# A stop of the download: its 2 files go first.
+download_stop() {
+  rm -f "$watch" "$passlog"
+  stop "$@"
+}
+
+# The advice after a download that was too slow or cut by its bound.
+SLOW_LINE="Run the script again. ${KEPT} On a slow line, give it more seconds: sudo env APT_DOWNLOAD_TIMEOUT=<seconds> ./install.sh (sudo drops a variable set before it)."
+
 # The stop when `timeout` cut pass $1 at what was left of APT_DOWNLOAD_TIMEOUT (code 124).
 download_cut() {
-  stop "apt: the download did not end within ${APT_DOWNLOAD_TIMEOUT} s (APT_DOWNLOAD_TIMEOUT), the bound of all its passes and waits, after $(passes_made "$1"); apt said: ${APT_SAID:-nothing}" \
-    "No package was installed. Run the script again. ${KEPT} On a slow line, give it more seconds: sudo env APT_DOWNLOAD_TIMEOUT=<seconds> ./install.sh (sudo drops a variable set before it)."
+  download_stop "apt: the download did not end within ${APT_DOWNLOAD_TIMEOUT} s (${DL_NAME}), the bound of all its passes and waits, after $(passes_made "$1"); $(download_seen); apt said: ${APT_SAID:-nothing}" \
+    "No package was installed. ${SLOW_LINE//APT_DOWNLOAD_TIMEOUT/$DL_NAME}"
+}
+
+# The download of the packages $@ for 1 of the 2 other steps (boot, openEMS): apt_download's passes and
+# watch, within APT_OTHER_TIMEOUT, its lines naming that bound. It runs in a subshell whose stop only
+# keeps its 2 lines: OTHER_SAID, what stopped it (apt's own line names the file and its host), and
+# OTHER_ADVICE. The step decides what a stop means: the boot step stops the script, the openEMS step
+# warns (REQUIRE_OPENEMS=1: stops). Returns 0 when every file is there.
+OTHER_SAID=""
+OTHER_ADVICE=""
+other_download() {
+  local errors rc=0
+  errors="$(mktemp)"
+  (
+    APT_DOWNLOAD_TIMEOUT="$APT_OTHER_TIMEOUT"
+    DL_NAME="APT_OTHER_TIMEOUT"
+    stop() { printf '%s\n%s\n' "${1#apt: }" "$2" > "$errors"; exit 1; }
+    apt_download "$@"
+  ) || rc=$?
+  OTHER_SAID=""
+  OTHER_ADVICE=""
+  if ((rc != 0)); then
+    { read -r OTHER_SAID; read -r OTHER_ADVICE; } < "$errors" || true
+    OTHER_SAID="${OTHER_SAID:-the download ended with code ${rc}}"
+  fi
+  rm -f "$errors"
+  return "$rc"
 }
 
 step_apt() {
@@ -627,12 +1082,21 @@ step_boot() {
   fi
   log "boot: ${missing[*]} missing; apt install ${BOOT_PACKAGES[*]}"
   # As in the apt step: apt in the C locale, its progress shown, and its exit code stops the script with
-  # its own E: line (a pipe's `|| true` let a failed install through to the check below).
+  # its own E: line (a pipe's `|| true` let a failed install through to the check below). 1 try of the
+  # update, within APT_UPDATE_TIMEOUT when it is set (a cut try names the sources that had not
+  # answered); then the download in passes within APT_OTHER_TIMEOUT, and the install from its files.
   local -x LC_ALL=C DEBIAN_FRONTEND=noninteractive
   local rc=0
-  apt_shown apt-get update -qq || rc=$?
+  update_try 1 1
+  rc=$UPDATE_RC
+  if ((rc == 124)) && [[ -n "${APT_UPDATE_TIMEOUT}" ]]; then
+    APT_SAID="nothing: \`apt-get update\` of every package source did not end within ${APT_UPDATE_TIMEOUT} s (APT_UPDATE_TIMEOUT); the sources that had not answered: ${SILENT:-none}"
+  else
+    APT_SAID="$(grep -m1 '^E:' <<< "$UPDATE_OUT" || true)"
+  fi
   ((rc == 0)) || die "boot: \`apt-get update\` ended with exit code ${rc}; apt said: ${APT_SAID:-nothing}"
-  apt_shown apt-get install -y --no-install-recommends -o Acquire::Retries="$APT_FILE_RETRIES" \
+  other_download "${BOOT_PACKAGES[@]}" || stop "boot: ${OTHER_SAID}" "$OTHER_ADVICE"
+  apt_shown apt-get install -y --no-install-recommends -o APT::Get::Download=false \
     "${BOOT_PACKAGES[@]}" || rc=$?
   ((rc == 0)) || die "boot: the install of ${BOOT_PACKAGES[*]} ended with apt-get's exit code ${rc}; apt said: ${APT_SAID:-nothing}"
   for tool in curl gpg git make cc; do
@@ -691,7 +1155,7 @@ jvm21_draws() {
 
 step_java() {
   local jvm found="" said="" ran="" code unrun="" broke="" major="" what re='version "([0-9]+)'
-  local nodraw="" heard=""
+  local nodraw="" heard="" kind="openjdk-21-jre-headless" need
   # The first JVM whose java runs, names its version and can draw FreeRouting's window
   # (lib/libawt_xawt.so). On a multiarch machine the first folder in glob order can be another
   # architecture's, whose java does not run (exec gives 126).
@@ -704,6 +1168,8 @@ step_java() {
     if ((code == 0)) && [[ "$ran" =~ $re ]]; then
       if [[ -f "${jvm}/lib/libawt_xawt.so" ]]; then
         found="${jvm}/bin/java"
+        # openjdk-21-jre gives the JVM its lib/libawt_xawt.so.
+        kind="openjdk-21-jre-headless and openjdk-21-jre"
         said="$ran"
         break
       fi
@@ -732,7 +1198,7 @@ step_java() {
   mkdir -p "$WC_ROOT"
   if [[ -n "$found" ]]; then
     printf '%s\n' "$found" > "${WC_ROOT}/java.path"
-    what="${found} (the JVM of the apt step's openjdk-21-jre-headless, recorded in ${WC_ROOT}/java.path)"
+    what="${found} (the JVM of the apt step's ${kind}, recorded in ${WC_ROOT}/java.path)"
   else
     # No record: Via reads PATH, as this step says.
     rm -f "${WC_ROOT}/java.path"
@@ -756,7 +1222,11 @@ step_java() {
     log "java: ${what}: Via runs it"
     return 0
   fi
-  what="java: Via would run ${what}; FreeRouting needs Java ${JAVA_MIN} or newer (ee-agent-kit/docs/ENGINES.md)"
+  need="FreeRouting needs Java ${JAVA_MIN} or newer"
+  if [[ -n "$nodraw" ]]; then
+    need="FreeRouting needs a JVM with lib/libawt_xawt.so to draw its window"
+  fi
+  what="java: Via would run ${what}; ${need} (ee-agent-kit/docs/ENGINES.md)"
   if [[ "$REQUIRE_FREEROUTING" == "1" ]]; then
     stop "${what}, and REQUIRE_FREEROUTING=1" \
       "Install openjdk-21-jre-headless and openjdk-21-jre, the apt step's packages, so that their JVM is in ${JVM_DIR} (java-21-openjdk-<arch>) with lib/libawt_xawt.so, then run the script again: install.sh records it for Via."
@@ -772,14 +1242,26 @@ openems_fail() {
 }
 
 step_openems() {
-  local dir="${WC_ROOT}/openems" want stamp entry name sum deb banner
+  local dir="${WC_ROOT}/openems" want stamp entry name sum deb banner rc=0
+  # The `--openems` mode runs this step alone: the numbers of its download are checked here too.
+  apt_bounds_check
   want="$(printf '%s\n' "$OPENEMS_VERSION" "${OPENEMS_DEBS[@]}" | sha256sum | cut -d' ' -f1)"
   stamp="${dir}/.debs-sha256"
   if [[ "$SKIP_APT" != "1" ]]; then
+    # As the apt step's download: passes, the watch, a bound (APT_OTHER_TIMEOUT), then the install from
+    # the downloaded files alone. A library that does not arrive ends the step as a failed step of
+    # openEMS ends (job 135588402925: libfparser4 got 520, and openEMS could not start).
+    local -x LC_ALL=C DEBIAN_FRONTEND=noninteractive
     log "openems: apt install ${OPENEMS_LIBS[*]}"
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      -o Acquire::Retries=3 -o Acquire::http::Timeout=60 -o Acquire::https::Timeout=60 "${OPENEMS_LIBS[@]}" \
-      | grep --line-buffered -E '^(Get:[0-9]+|Setting up|Unpacking) ' | sed -u 's/^/[apt] /' || true
+    if ! other_download "${OPENEMS_LIBS[@]}"; then
+      openems_fail "its libraries did not download: ${OTHER_SAID}"
+      return
+    fi
+    apt_shown apt-get install -y --no-install-recommends -o APT::Get::Download=false "${OPENEMS_LIBS[@]}" || rc=$?
+    if ((rc != 0)); then
+      openems_fail "the install of its libraries ended with apt-get's exit code ${rc}; apt said: ${APT_SAID:-nothing}"
+      return
+    fi
   fi
   if [[ "$(cat "$stamp" 2>/dev/null)" != "$want" ]]; then
     rm -rf "${dir}/root" "${dir}/debs"

@@ -1,8 +1,18 @@
 #!/usr/bin/env bash
-# CI's install path: apt keeps more than 1 host for Ubuntu's archive, asks the fastest first, and gives
-# up a host that goes silent.
+# CI's install path: apt keeps more than 1 host for Ubuntu's archive and asks first the one that was
+# fastest in a sample of 1 MiB; in `apt-get update` it gives up a host that goes silent.
 #
 #   sudo env APT_ARCHIVE_CI=1 bash tools/ci/apt_archive.sh /etc/apt
+#   env APT_ARCHIVE_CI=1 bash tools/ci/apt_archive.sh --slow <host>...
+#
+# The sample is a first guess only. In CI run 44506767788 (2026-11-19) the first host sent its MiB at
+# 2468910 bytes/s and, 17 s later, the download at 48.3 kB/s. install.sh watches its download passes and
+# ends one too slow to finish within its bound; then it runs its APT_SLOW_PASS_COMMAND, which CI sets to
+# the second form above, with the hosts of that pass, the most files first. It runs the same command
+# between 2 tries of its `apt-get update` after a try its bound ended, with the hosts of the mirror list's
+# sources that had printed no line. The first of them that the mirror list holds goes last, the others
+# keep their order, and the priorities are written 1, 2, ...; the next pass or try asks another host first. Nothing is probed. A list that holds none of them, or no list,
+# is said and left as it is. The folder is $APT_DIR, else /etc/apt.
 #
 # In a folder of apt's files (the argument, else $APT_DIR, else /etc/apt):
 # 1. A source line that names a mirror of Ubuntu's archive under its own name
@@ -22,7 +32,11 @@
 #    then sends nothing costs 2 timeouts, 30 s (methods/basehttp.cc). apt fetches the files of 1 host
 #    one after another (apt-pkg/acquire.cc: 1 queue per host), so the runner's 4 InRelease files on a
 #    silent first host cost 60 s to 120 s. apt's defaults (30 s, 3 more tries) would cost 988 s.
-#    The setting holds for every source: a source of 1 host (a PPA) gets 1 try, not 4.
+#    The setting holds for every source: a source of 1 host (a PPA) gets 1 try, not 4. install.sh's
+#    download sets Acquire::Retries and a timeout on apt's command line, which win over this file
+#    (apt.conf(5)): in run 44506767788 its 3 and 60 s sent 151 files that failed on the first host back to
+#    it, 2 or 3 times. So CI passes the same 0 and 15 s to install.sh (APT_FILE_RETRIES, APT_FILE_TIMEOUT)
+#    whenever this script runs.
 # security.ubuntu.com, a PPA, a third party's source, Ubuntu's own archive named alone and comments stay.
 #
 # The files read: sources.list, sources.list.d/*.list, sources.list.d/*.sources, and apt-mirrors.txt,
@@ -48,6 +62,14 @@ export LC_ALL=C
 say() { printf '[apt-archive] %s\n' "$*"; }
 stop() { printf '[apt-archive] %s\n' "$*" >&2; exit 2; }
 
+slow=0
+named=()
+if [[ "${1:-}" == --slow ]]; then
+  slow=1
+  shift
+  named=("$@")
+  set --
+fi
 dir="${1:-${APT_DIR:-/etc/apt}}"
 real="$(realpath -m -- "$dir")"
 etc="$(realpath -m -- /etc/apt)"
@@ -112,6 +134,85 @@ host() { local r="${1#*://}"; r="${r%%/*}"; printf '%s' "${r%%:*}"; }
 path() { local r="${1#*://}"; if [[ "$r" == */* ]]; then printf '/%s' "${r#*/}"; else printf '/'; fi; }
 # Ubuntu's own host for a regional one: us-east-2.ec2.archive.ubuntu.com -> archive.ubuntu.com.
 own() { local h; h="$(host "$1")"; printf '%s' "${1/"$h"/"${h#"${h%.*.ubuntu.com}".}"}"; }
+
+# Writes the list $1 with each URI's line at the priority new[<its index in uris>], into $2: a line's
+# priority tag is replaced, or 1 is added after a tab (apt ends the URI at the first tab).
+reprioritize() {
+  local line u i p
+  : > "$2"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$line" =~ ^[[:space:]]*(#|$) ]]; then printf '%s\n' "$line" >> "$2"; continue; fi
+    u="${line%%$'\t'*}"
+    for i in "${!uris[@]}"; do [[ "${uris[$i]}" == "$u" ]] && p="${new[$i]}"; done
+    if [[ "$line" =~ (^|[[:space:]])priority:[0-9]+ ]]; then
+      line="$(sed -E "s/(^|[[:space:]])priority:[0-9]+/\\1priority:$p/" <<< "$line")"
+    elif [[ "$line" == *[[:space:]]* ]]; then
+      line+=" priority:$p"
+    else
+      line+=$'\t'"priority:$p"
+    fi
+    printf '%s\n' "$line" >> "$2"
+  done < "$1"
+}
+
+# The hosts of a list, each URI once, in list order, with its priority (none: last).
+read_list() {
+  local line u x seen p
+  uris=()
+  prios=()
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ "$line" =~ ^[[:space:]]*(#|$) ]] && continue
+    u="${line%%$'\t'*}"
+    seen=0
+    for x in "${uris[@]}"; do [[ "$x" == "$u" ]] && seen=1; done
+    ((seen)) && continue
+    p="$(grep -oE '(^|[[:space:]])priority:[0-9]+' <<< "$line" | head -1 | sed 's/.*://' || true)"
+    uris+=("$u")
+    prios+=("${p:-999999}")
+  done < "$1"
+}
+
+# After a download pass too slow to finish (install.sh's APT_SLOW_PASS_COMMAND): the first host named
+# that the list holds goes last.
+if ((slow)); then
+  if [[ ! -f "$LIST" ]]; then
+    say "$LIST is absent: no mirror list to reorder after a slow pass; changed nothing"
+    exit 0
+  fi
+  read_list "$LIST"
+  late=""
+  for h in "${named[@]}"; do
+    for u in "${uris[@]}"; do
+      if [[ "$(host "$u")" == "$h" ]]; then late="$h"; fi
+    done
+    if [[ -n "$late" ]]; then break; fi
+  done
+  if [[ -z "$late" ]]; then
+    shown="${named[*]}"
+    say "$LIST holds none of the hosts of the slow pass (${shown:-none named}); changed nothing"
+    exit 0
+  fi
+  # Order: the others by priority, then line; the slow host's lines after them.
+  order=()
+  while read -r _ _ i; do order+=("$i"); done < <(
+    for i in "${!uris[@]}"; do
+      k=0
+      if [[ "$(host "${uris[$i]}")" == "$late" ]]; then k=1; fi
+      printf '%s %s %s\n' "$k" "${prios[$i]}" "$i"
+    done | sort -k1,1n -k2,2n -k3,3n
+  )
+  new=()
+  named_order=()
+  for k in "${!order[@]}"; do
+    new[${order[$k]}]=$((k + 1))
+    named_order+=("${uris[${order[$k]}]}")
+  done
+  reprioritize "$LIST" "$work/slow"
+  cmp -s -- "$work/slow" "$LIST" || cp -- "$work/slow" "$LIST"
+  joined="$(printf '%s\n' "${named_order[@]}" | paste -sd'\t' - | sed 's/\t/, then /g')"
+  say "$LIST: $late was too slow (a download pass too slow to finish, or an update try its bound ended); apt asks $joined"
+  exit 0
+fi
 
 # 1. The regional mirrors named in a source file, by file.
 direct=()
@@ -364,7 +465,7 @@ if ((${#added[@]})); then
 fi
 for h in "${heard[@]}"; do say "$h"; done
 if ((${#ranked[@]})); then
-  say "$LIST: apt asks $joined: the fastest first"
+  say "$LIST: apt asks $joined: the fastest in a 1 MiB sample first"
 elif ((random)); then
   say "$LIST: no host answered the probe; apt asks by the runner's priorities: $kept"
 else

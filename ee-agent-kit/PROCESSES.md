@@ -108,7 +108,22 @@ or any step that downloads, installs, or runs for more than a minute.
     JVM without `lib/libawt_xawt.so`) and a test of the check with what the
     runner carries beside it (another vendor's JDK under `JVM_DIR`); its
     tests skip on the product's own pick, never on whatever stands first
-    on PATH (M289).
+    on PATH. Every command that runs the program, and doctor, read that 1
+    check (a second reader found `workcenter autoroute`, the router and
+    doctor judging the java in 3 ways) (M289).
+12. A host chosen by a sample is a first guess. A transfer that has a
+    bound watches its own progress, and ends a pass that cannot finish in
+    the time left at the rate it gets, so that the next pass, or the next
+    host, has time. A setting written for a step is checked in that
+    step's own log: a later command line can override it (M301).
+13. Every transfer of a step gets the same bound, retries and watch as
+    the one that failed: list the step's downloads by name before the fix,
+    and the job's worst-case test sums each of them, with the figures of
+    the newest passing log (M303).
+14. A bounded try keeps its evidence: when the bound ends it, it prints
+    the program's own last lines and what had not answered. A red CI run
+    uploads the gate's kept folder as an artifact, bounded in size and
+    days (M304).
 
 Done when: the run is green, its log shows progress lines in every long
 step, no step used more than half its limit, and no step depended on a
@@ -361,6 +376,11 @@ axis it defines (a 3D model's rotation or offset, an export's origin).
     nesting depth, the length of a line, the size of a number, how many
     requests run or wait. A test sends each one past its bound and holds
     that the program answers and goes on (M297).
+13. A new reading of a tool's own output (a version, a count, a path)
+    gets, before it lands, a test with an output it does not expect: no
+    version, an empty line, another language. The reading then says what
+    it could not read, in the row or line it fills, and never ends the
+    command (M302).
 
 Done when: a test parses a real sample of each shape, failures among them,
 and the parser's assumptions are written next to it.
@@ -773,6 +793,11 @@ When: a change is about to be called done.
     through a link to its target and keeps the file's mode; it changes
     only what it adds; and it never writes over an earlier backup. Each
     of these has a test (M294).
+11. A change that widens what a check asks of a program (a java, an
+    engine) finds every test that gives that program a stand-in (`grep`
+    the tests for the variable or the name), in every branch about to
+    meet it, and runs them all after the merge, not only the files the
+    pick touched (M305).
 
 Done when: the remote has the commit, its CI run is green, and the report
 has been sent. For a gate's method: the attack's cases are tests; after 2

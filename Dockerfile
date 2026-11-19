@@ -16,8 +16,9 @@ COPY . .
 
 # The 1 definition of the toolchain: the script CI and the cloud environment run, as CI runs it. The
 # apt lists and the caches it made are removed in the layer that made them. The image workflow passes
-# CI's 2 bounds of the apt step (APT_UPDATE_TIMEOUT=120, APT_DOWNLOAD_TIMEOUT=570); a build that passes
-# none, as `docker build .` does, has no bound, as on a person's computer.
+# CI's 3 bounds of the apt downloads (APT_UPDATE_TIMEOUT=120, APT_DOWNLOAD_TIMEOUT=570, and
+# APT_OTHER_TIMEOUT=300 for the boot step's and the openEMS step's); a build that passes none, as
+# `docker build .` does, has no bound, as on a person's computer.
 #
 # Then node, from Ubuntu's own packages with the index install.sh fetched (24.04 gives nodejs 18.19.1):
 # the workcenter's own tests run it (tests/test_forms.py runs the site's forms functions,
@@ -25,7 +26,8 @@ COPY . .
 # board needs no node, so install.sh, what every user gets, does not install it.
 ARG APT_UPDATE_TIMEOUT=
 ARG APT_DOWNLOAD_TIMEOUT=
-RUN REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT="$APT_UPDATE_TIMEOUT" APT_DOWNLOAD_TIMEOUT="$APT_DOWNLOAD_TIMEOUT" ./install.sh \
+ARG APT_OTHER_TIMEOUT=
+RUN REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT="$APT_UPDATE_TIMEOUT" APT_DOWNLOAD_TIMEOUT="$APT_DOWNLOAD_TIMEOUT" APT_OTHER_TIMEOUT="$APT_OTHER_TIMEOUT" ./install.sh \
  && apt-get install -y --no-install-recommends nodejs \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/* /root/.cache
