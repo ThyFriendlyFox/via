@@ -46,7 +46,7 @@ STEPS = (
         "where",
         "Where Via runs",
         f"""<p>Via runs on Ubuntu 24.04. If that's your computer, you can go straight to step 2.</p>
-            <p>On Windows or a Mac, the way in today is a Claude Code cloud environment. It's a Linux machine in the cloud that you use from your browser, and our setup script installs Via on it. <a class="link" href="{REPO}/blob/main/environment/README.md">The environment's settings</a> are in the repository. We're also making a Docker image, but it isn't public yet.</p>""",
+            <p>On Windows or a Mac, the way in today is a Claude Code cloud environment. It's a Linux machine in the cloud that you use from your browser, and we've written a setup script that installs Via on it. Nobody has run that script on a real environment yet, so we'd like to hear how it goes. <a class="link" href="{REPO}/blob/main/environment/README.md">The environment's settings</a> are in the repository. We're also making a Docker image, but it isn't public yet.</p>""",
     ),
     (
         "install",
@@ -119,7 +119,7 @@ def guide_page() -> str:
           </header>
           <div class="prose">
 {steps}
-            <p>We're still early, and there's no release yet. If a step doesn't work for you, we'd like to hear about it on <a class="link" href="feedback.html">the feedback page</a> or in <a class="link" href="https://discord.reagent-systems.com">our Discord</a>.</p>
+            <p><a class="link" href="{REPO}/blob/main/ee-agent-kit/CHANGELOG.md">Version 0.1.0</a> is our first release, and we're still early. If a step doesn't work for you, we'd like to hear about it on <a class="link" href="feedback.html">the feedback page</a> or in <a class="link" href="https://discord.reagent-systems.com">our Discord</a>.</p>
           </div>
         </div>
       </article>"""
