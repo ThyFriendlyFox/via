@@ -26,6 +26,9 @@ COPY = [
     ".github/workflows/ci.yml",
     ".github/workflows/nightly.yml",
     ".github/workflows/image.yml",
+    # The texts that give the worst case: a test holds them to the current figures.
+    ".github/workflows/board-gates.yml",
+    "ee-agent-kit/CI.md",
 ]
 
 # fmt: off
