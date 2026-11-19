@@ -77,7 +77,7 @@ MUTATIONS = [
     ("IA22 download: another code than 100 tried again", "install.sh",
      "if ((rc != 100 || APT_FETCH_COUNT == 0 ||", "if ((APT_FETCH_COUNT == 0 ||"),
     ("IA23 1 silent file outlasts the download's bound", "install.sh",
-     'APT_FILE_TIMEOUT="60"', 'APT_FILE_TIMEOUT="600"'),
+     'APT_FILE_TIMEOUT="${APT_FILE_TIMEOUT:-60}"', 'APT_FILE_TIMEOUT="${APT_FILE_TIMEOUT:-600}"'),
     ("IA24 main returns after step_apt", "install.sh",
      "  step_apt\n  step_freerouting\n",
      '  step_apt\n  [[ -n "$WC_NAME" ]] && return 0\n  step_freerouting\n'),
@@ -499,5 +499,14 @@ MUTATIONS = [
      "for (y = 1; y <= m; y++) print a[x], b[y]", "print a[x], b[1]"),
     ("IA197 update: the silent sources of an earlier try kept", "install.sh",
      '  SILENT=""\n  SILENT_HOSTS=""\n  UPDATE_OUT=', "  UPDATE_OUT="),
+    # apt's per-file bounds from outside (job 135500622487: 151 files asked again of the same slow host).
+    ("IA196 file bounds: the retries fixed at 3", "install.sh",
+     'APT_FILE_RETRIES="${APT_FILE_RETRIES:-3}"', 'APT_FILE_RETRIES="3"'),
+    ("IA197 file bounds: the silence fixed at 60 s", "install.sh",
+     'APT_FILE_TIMEOUT="${APT_FILE_TIMEOUT:-60}"', 'APT_FILE_TIMEOUT="60"'),
+    ("IA198 file bounds: any number of retries", "install.sh",
+     '"$APT_FILE_RETRIES" =~ ^[0-9]$', '"$APT_FILE_RETRIES" =~ ^[0-9]+$'),
+    ("IA199 file bounds: any silence", "install.sh",
+     'if [[ ! "$APT_FILE_TIMEOUT" =~ ^[1-9][0-9]{0,2}$ ]]; then', "if false; then"),
 ]
 # fmt: on

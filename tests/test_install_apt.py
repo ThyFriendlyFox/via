@@ -1910,7 +1910,7 @@ def test_the_watch_ends_the_slow_pass_of_run_44506767788_in_time_for_a_second_ho
        rule leaves the longest still stretch out of the rate. The first rule (the window's whole rate)
        ended such a pass at 700 kB/s with a pause of 60 s at its start, at 120 s with 42 MB."""
     window = assigned("APT_WATCH_WINDOW")
-    pause_max = assigned("APT_FILE_TIMEOUT", env=False)
+    pause_max = assigned("APT_FILE_TIMEOUT")
     bound = int(ci_bounds()[0]["APT_DOWNLOAD_TIMEOUT"])
     wait = assigned("APT_DOWNLOAD_WAIT")
     size, healthy = 281_100_000, 281.1e6 / 218
@@ -2041,6 +2041,14 @@ def test_the_passes_lose_only_the_time_they_took(tmp_path):
         ("APT_WATCH_WINDOW", "1000"),
         ("APT_WATCH_WINDOW", "2m"),
         ("APT_WATCH_WINDOW", "060"),
+        ("APT_FILE_RETRIES", "10"),
+        ("APT_FILE_RETRIES", "-1"),
+        ("APT_FILE_RETRIES", "a"),
+        ("APT_FILE_RETRIES", "03"),
+        ("APT_FILE_TIMEOUT", "0"),
+        ("APT_FILE_TIMEOUT", "1000"),
+        ("APT_FILE_TIMEOUT", "15s"),
+        ("APT_FILE_TIMEOUT", "015"),
     ],
 )
 def test_a_bad_number_of_passes_or_wait_stops_before_anything_runs(tmp_path, name, value):
@@ -2049,6 +2057,8 @@ def test_a_bad_number_of_passes_or_wait_stops_before_anything_runs(tmp_path, nam
         "APT_DOWNLOAD_TRIES": ("passes", "1 to 99", "5"),
         "APT_DOWNLOAD_WAIT": ("seconds", "0 to 999", "20"),
         "APT_WATCH_WINDOW": ("seconds", "1 to 999", "120"),
+        "APT_FILE_RETRIES": ("retries", "0 to 9", "3"),
+        "APT_FILE_TIMEOUT": ("seconds", "1 to 999", "60"),
     }[name]
     for skip in ("0", "1"):
         (tmp_path / skip).mkdir()
@@ -2067,11 +2077,65 @@ def test_a_bad_number_of_passes_or_wait_stops_before_anything_runs(tmp_path, nam
         ("APT_DOWNLOAD_WAIT", "0"),
         ("APT_WATCH_WINDOW", "1"),
         ("APT_WATCH_WINDOW", "999"),
+        ("APT_FILE_RETRIES", "0"),
+        ("APT_FILE_RETRIES", "9"),
+        ("APT_FILE_TIMEOUT", "1"),
+        ("APT_FILE_TIMEOUT", "999"),
     ],
 )
 def test_the_ends_of_the_ranges_are_taken(tmp_path, name, value):
     code, _, err, _ = run(tmp_path, env={name: value})
     assert code == 0, err
+
+
+# CI's install path with a mirror list (ci.yml and nightly.yml, unless CI_APT_UBUNTU_ARCHIVE is 0): apt
+# leaves a file's host at its first failure, after 15 s of silence, and the mirror list's next host gets it.
+MIRRORED = {**CI, "APT_FILE_RETRIES": "0", "APT_FILE_TIMEOUT": "15"}
+
+
+def test_the_per_file_bounds_reach_every_pass_of_the_download_from_outside(tmp_path):
+    """Run 44506767788 (job 135500622487): install.sh's own `-o Acquire::Retries=3` and 60 s on apt's
+    command line won over the 0 retries and 15 s of the CI step's file (apt.conf(5)), and 151 files were
+    asked again of the same slow host. Now the 2 numbers come from the environment, so CI passes its own;
+    a person's computer keeps 3 and 60."""
+    code, _, err, calls = run(tmp_path, env=MIRRORED)
+    assert code == 0, err
+    (download,) = downloads(calls)
+    assert "-o Acquire::Retries=0 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 " in download
+    (tmp_path / "home").mkdir()
+    code, _, err, calls = run(tmp_path / "home")
+    (download,) = downloads(calls)
+    assert "-o Acquire::Retries=3 -o Acquire::http::Timeout=60 -o Acquire::https::Timeout=60 " in download
+
+
+def test_with_0_retries_a_file_the_ppa_did_not_serve_is_asked_again_in_the_next_pass(tmp_path):
+    """KiCad 10's source has 1 host: with 0 retries its first 503 fails the file and the pass (apt names
+    it, E: Failed to fetch). The next pass, after the wait, asks for it again and gets it."""
+    answer = by_pass(
+        f"echo {shlex.quote(E_KICAD)} >&2; echo {shlex.quote(E_FILES)} >&2; exit 100",
+        "exit 0",
+    )
+    code, out, err, calls = run(tmp_path, {"apt-get": answer}, env=MIRRORED)
+    assert code == 0, err
+    first, second = downloads(calls)
+    assert first == second and "-o Acquire::Retries=0 " in first
+    assert of(calls, "sleep") == ["sleep 20"]
+    assert pass_line(1, 5, 1, 20) in out.splitlines()
+    assert out.splitlines()[-1] == "[install] apt: done; kicad-cli 10.0.8"
+
+
+def test_the_passes_of_1_silent_file_fit_the_download_bound_with_cis_per_file_bounds():
+    """With CI's 0 retries and 15 s, a file whose host is silent costs 15 s a pass (apt fails it at the
+    first silence; with a mirror list it goes to the next host). A file the PPA, 1 host, never serves
+    costs every pass that much, and the waits between them: 5 x 15 + 4 x 20 = 155 s of CI's 570, so the
+    passes end with apt's own line before the bound cuts the download."""
+    flow = WORKFLOW.read_text(encoding="utf-8")
+    (retries,) = set(re.findall(r"retries=([0-9]+);", flow))
+    (seconds,) = set(re.findall(r"seconds=([0-9]+);", flow))
+    passes, wait = assigned("APT_DOWNLOAD_TRIES"), assigned("APT_DOWNLOAD_WAIT")
+    per_file = (int(retries) + 1) * int(seconds)
+    assert passes * per_file + (passes - 1) * wait < int(ci_bounds()[0]["APT_DOWNLOAD_TIMEOUT"])
+    assert (int(retries), int(seconds)) == (0, 15)
 
 
 def test_ci_and_the_image_build_leave_the_passes_and_the_wait_to_the_script():
@@ -3163,7 +3227,7 @@ def test_the_worst_case_of_the_apt_step_fits_the_jobs_limit(name):
 def test_one_silent_file_fits_the_download_bound():
     """apt gives a silent server APT_FILE_TIMEOUT s, APT_FILE_RETRIES + 1 times: that must end within
     the download's bound CI sets, so that apt names the file (Err:) before the bound cuts it."""
-    retries, timeout = assigned("APT_FILE_RETRIES", env=False), assigned("APT_FILE_TIMEOUT", env=False)
+    retries, timeout = assigned("APT_FILE_RETRIES"), assigned("APT_FILE_TIMEOUT")
     assert (retries + 1) * timeout < int(ci_bounds()[0]["APT_DOWNLOAD_TIMEOUT"])
 
 

@@ -95,7 +95,10 @@ jobs:
       # 44506767788 the first host sent its MiB at 2.47 MB/s and the download at 48.3 kB/s. So install.sh
       # ends a download pass too slow to finish, and runs the script's --slow mode, which puts that host
       # last, before the next pass. A person's computer keeps its mirror: install.sh does not change it.
-      # The variable CI_APT_UBUNTU_ARCHIVE=0 turns both off.
+      # With the list, install.sh's download gives a failed file's host up at once too (0 retries, 15 s of
+      # silence: APT_FILE_RETRIES, APT_FILE_TIMEOUT), and apt asks the list's next host for it; in run
+      # 44506767788 its own 3 retries and 60 s had sent 151 files back to the same slow host.
+      # The variable CI_APT_UBUNTU_ARCHIVE=0 turns all of it off.
       - name: Rank the hosts of Ubuntu's archive by a 1 MiB sample, fastest first
         if: steps.where.outputs.where == 'install'
         env:
@@ -111,9 +114,9 @@ jobs:
         env:
           ENABLED: ${{ vars.CI_APT_UBUNTU_ARCHIVE }}
         run: |
-          slow=""
-          if [ "$ENABLED" != 0 ]; then slow="env APT_ARCHIVE_CI=1 bash tools/ci/apt_archive.sh --slow"; fi
-          sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 APT_SLOW_PASS_COMMAND="$slow" ./install.sh
+          slow="" retries=3 seconds=60
+          if [ "$ENABLED" != 0 ]; then slow="env APT_ARCHIVE_CI=1 bash tools/ci/apt_archive.sh --slow"; retries=0; seconds=15; fi
+          sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 APT_FILE_RETRIES="$retries" APT_FILE_TIMEOUT="$seconds" APT_SLOW_PASS_COMMAND="$slow" ./install.sh
       - name: Verify
         id: verify
         if: steps.where.outputs.where == 'install'

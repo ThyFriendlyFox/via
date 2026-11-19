@@ -37,6 +37,8 @@
 #                         pass of the download and every wait between 2, together
 #   APT_DOWNLOAD_TRIES    passes of the download, when a package source does not serve a file (default 5)
 #   APT_DOWNLOAD_WAIT     seconds between 2 passes (default 20)
+#   APT_FILE_RETRIES      apt's further tries of 1 file on its host (default 3; CI sets 0 with a mirror list)
+#   APT_FILE_TIMEOUT      seconds of silence after which apt gives a file's host up (default 60; CI sets 15)
 #   APT_WATCH_WINDOW      seconds of progress by which a pass of a bounded download is judged: one that
 #                         cannot finish within APT_DOWNLOAD_TIMEOUT at that rate is ended (default 120)
 #   APT_SLOW_PASS_COMMAND a command run between 2 passes after a pass that was too slow, with the hosts
@@ -119,8 +121,13 @@ APT_DOWNLOAD_TRIES="${APT_DOWNLOAD_TRIES:-5}"
 APT_DOWNLOAD_WAIT="${APT_DOWNLOAD_WAIT:-20}"
 # apt's own bounds on 1 file, as before: 3 more tries, and a server silent for 60 s is given up. 4 x 60
 # = 240 s on 1 silent file stays within CI's download bound, so apt names that file before the cut.
-APT_FILE_RETRIES="3"
-APT_FILE_TIMEOUT="60"
+# Both are set from outside, as CI does where it keeps a mirror list: there a file whose host fails goes
+# to the list's next host at once (0 retries, 15 s), as in tools/ci/apt_archive.sh's apt.conf.d file. On
+# apt's command line these win over that file (apt.conf(5)): in run 44506767788 (job 135500622487) 151
+# files were asked again of the same slow host. A source of 1 host (the PPA) then fails the file and the
+# pass, and the next pass asks for it again. apt_bounds_check holds both to a range.
+APT_FILE_RETRIES="${APT_FILE_RETRIES:-3}"
+APT_FILE_TIMEOUT="${APT_FILE_TIMEOUT:-60}"
 # The watch of a pass, when APT_DOWNLOAD_TIMEOUT is set. In CI run 44506767788 (2026-11-19, job
 # 135500622487) the probe of tools/ci/apt_archive.sh measured us-east-2.ec2.archive.ubuntu.com at
 # 2468910 bytes/s; 17 s later the download's 1 pass asked it for every file, 26.6 MB of them arrived in
@@ -251,6 +258,13 @@ apt_bounds_check() {
   fi
   if [[ ! "$APT_WATCH_WINDOW" =~ ^[1-9][0-9]{0,2}$ ]]; then
     die "APT_WATCH_WINDOW=${APT_WATCH_WINDOW} is not a whole number of seconds from 1 to 999; set it to one, or leave APT_WATCH_WINDOW unset for 120"
+  fi
+  # apt's bounds on 1 file: as the ones above, the tops refuse a typo.
+  if [[ ! "$APT_FILE_RETRIES" =~ ^[0-9]$ ]]; then
+    die "APT_FILE_RETRIES=${APT_FILE_RETRIES} is not a whole number of retries from 0 to 9; set it to one, or leave APT_FILE_RETRIES unset for 3"
+  fi
+  if [[ ! "$APT_FILE_TIMEOUT" =~ ^[1-9][0-9]{0,2}$ ]]; then
+    die "APT_FILE_TIMEOUT=${APT_FILE_TIMEOUT} is not a whole number of seconds from 1 to 999; set it to one, or leave APT_FILE_TIMEOUT unset for 60"
   fi
 }
 

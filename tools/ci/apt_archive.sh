@@ -32,10 +32,11 @@
 #    then sends nothing costs 2 timeouts, 30 s (methods/basehttp.cc). apt fetches the files of 1 host
 #    one after another (apt-pkg/acquire.cc: 1 queue per host), so the runner's 4 InRelease files on a
 #    silent first host cost 60 s to 120 s. apt's defaults (30 s, 3 more tries) would cost 988 s.
-#    The setting holds for every source: a source of 1 host (a PPA) gets 1 try, not 4. It does not hold
-#    in install.sh's download, which sets Acquire::Retries=3 and a timeout of 60 s on apt's command
-#    line; those win (apt.conf(5)). In run 44506767788, 151 files that failed on the first host were
-#    asked of it again, 2 or 3 times, and not of the next host.
+#    The setting holds for every source: a source of 1 host (a PPA) gets 1 try, not 4. install.sh's
+#    download sets Acquire::Retries and a timeout on apt's command line, which win over this file
+#    (apt.conf(5)): in run 44506767788 its 3 and 60 s sent 151 files that failed on the first host back to
+#    it, 2 or 3 times. So CI passes the same 0 and 15 s to install.sh (APT_FILE_RETRIES, APT_FILE_TIMEOUT)
+#    whenever this script runs.
 # security.ubuntu.com, a PPA, a third party's source, Ubuntu's own archive named alone and comments stay.
 #
 # The files read: sources.list, sources.list.d/*.list, sources.list.d/*.sources, and apt-mirrors.txt,

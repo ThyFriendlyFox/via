@@ -953,10 +953,11 @@ def test_the_full_job_decides_its_path_then_runs_the_same_make_verify_on_either(
     # The install path's line carries CI's 2 bounds (the install script's piece; its tests read them).
     # Before it, apt is turned to Ubuntu's own archive (tests/test_ci_apt_archive.py holds that step).
     # Since the slow-download fix the line also passes the archive step's slow mode as
-    # APT_SLOW_PASS_COMMAND (tests/test_ci_apt_archive.py and tests/test_install_apt.py hold it).
+    # APT_SLOW_PASS_COMMAND (tests/test_ci_apt_archive.py and tests/test_install_apt.py hold it), and
+    # apt's per-file bounds, which the mirror list sets to 0 retries and 15 s.
     bounded = (
         "sudo env REQUIRE_FREEROUTING=1 APT_UPDATE_TIMEOUT=120 APT_DOWNLOAD_TIMEOUT=570 "
-        'APT_SLOW_PASS_COMMAND="$slow" ./install.sh'
+        'APT_FILE_RETRIES="$retries" APT_FILE_TIMEOUT="$seconds" APT_SLOW_PASS_COMMAND="$slow" ./install.sh'
     )
     assert [s["run"].strip().splitlines()[-1] for s in install][1:] == [bounded, "make verify"]
     assert "tools/ci/apt_archive.sh" in install[0]["run"]

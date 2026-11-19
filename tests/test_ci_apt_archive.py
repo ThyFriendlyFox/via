@@ -1069,11 +1069,16 @@ def test_the_install_step_names_the_slow_mode_unless_the_variable_is_0(tmp_path,
     ran = subprocess.run(["/bin/bash", "-e", "-c", step["run"]], env=env, capture_output=True, text=True)
     assert ran.returncode == 0, ran.stderr
     hook = "" if value == "0" else HOOK
+    # With the mirror list, a file whose host fails goes to the next host at once (0 retries, 15 s of
+    # silence), as in the update (this script's apt.conf.d file); without it, a person's 3 and 60 s.
+    retries, seconds = ("3", "60") if value == "0" else ("0", "15")
     assert calls.read_text(encoding="utf-8").splitlines() == [
         "env",
         "REQUIRE_FREEROUTING=1",
         "APT_UPDATE_TIMEOUT=120",
         "APT_DOWNLOAD_TIMEOUT=570",
+        f"APT_FILE_RETRIES={retries}",
+        f"APT_FILE_TIMEOUT={seconds}",
         f"APT_SLOW_PASS_COMMAND={hook}",
         "./install.sh",
     ]
