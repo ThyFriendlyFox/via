@@ -80,6 +80,12 @@ Make both once:
    is the hash `git -C <scratch>/wt/gate ls-remote origin refs/heads/<work>`
    prints. Then, in the background with its output in a file:
    `GATE_DIR=<scratch> bash ee-agent-kit/lead/gate-and-push.sh <scratch>/wt/gate wip/gate <commit> <lease> <label> <work>`.
+   Give that background run a time limit of 2 hours: the gate waits for
+   the engine lock and for quiet before `make verify`, and 1 such wait
+   took 50 minutes (P31 step 12). While it runs, edit no tool it calls
+   (`ee-agent-kit/lead/gate-and-push.sh`, `ee-agent-kit/lead/quiet.py`):
+   write the new version beside it and move it into place in 1 step, or
+   stop the gate first (P31 step 13).
    While it runs, go on with the next piece in tree A (steps 1 to 3); run
    no test until the lock is gone. When it ends, read its exit code:
    - 0: `PUSHED <commit> to <work>`. Check the remote holds it:
