@@ -3194,13 +3194,12 @@ html[data-shot] .ticker {
 }
 
 /* The guide's card is the forms' card in a mirror, left of the wordmark at -20 degrees: its right
-   edge is as far left of the middle as the forms' card's left edge is right of it. It is 1 button
-   shorter, so it sits 1.3em lower, which puts the 2 cards' middles level. */
+   edge is as far left of the middle as the forms' card's left edge is right of it, at the same
+   height. */
 @media (min-width: 1000px) {
   .sticker-guide {
     --tilt: -20deg;
     --swing: -5deg;
-    top: calc(24rem + 1.3em);
     right: calc(50% + 18rem + (min(50% - 1.5rem, 632px) - 18rem) / 2 - 8em);
     left: auto;
   }

@@ -120,3 +120,6 @@ exception to these rules:
   "Only Cool Kids Allowed!", "Building Tomorrow Today!", "We have a
   dog", "Check out our community!" (a link to the Discord server) and
   "Free inference found here!". They live in `QUIPS` in `site/blog.py`.
+- The button on the hero's guide card, of 2026-11-19, with its exclamation
+  mark: "Ask us for help!", a link to the Discord server. The card's
+  other button leads to the guide, `/guide`.
