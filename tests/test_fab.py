@@ -7,10 +7,13 @@ legend). KiCad-dependent tests skip when kicad-cli is absent.
 
 from __future__ import annotations
 
+import argparse
+import importlib.machinery
 import json
 import shutil
 import subprocess
 import sys
+import types
 import uuid
 from pathlib import Path
 
@@ -230,6 +233,16 @@ def rules_only(design: Path, *more: str) -> subprocess.CompletedProcess:
     )
 
 
+def load_cli() -> types.ModuleType:
+    """The command line as a module, to run `design --rules-only` in this process."""
+    loader = importlib.machinery.SourceFileLoader("workcenter_cli_fab", str(CLI))
+    module = types.ModuleType("workcenter_cli_fab")
+    module.__file__ = str(CLI)
+    sys.modules[module.__name__] = module  # dataclasses look the defining module up here
+    loader.exec_module(module)
+    return module
+
+
 def project_bytes(folder: Path) -> dict[str, bytes]:
     return {p.name: p.read_bytes() for p in sorted(folder.iterdir()) if p.is_file()}
 
@@ -320,7 +333,7 @@ def test_rules_only_refuses_a_design_without_a_fab_and_a_missing_rule_file(tmp_p
     assert project_bytes(missing) == before
 
 
-@pytest.mark.parametrize("other", ["--route", "--check", "--seed"])
+@pytest.mark.parametrize("other", ["--route", "--check", "--seed", "--order"])
 def test_rules_only_goes_with_no_flag_that_writes_or_compares_the_board(tmp_path, other):
     design = rules_project(tmp_path)
     more = [other, str(tmp_path / "t.kicad_pcb")] if other == "--seed" else [other]
@@ -351,3 +364,107 @@ def test_the_rule_file_lines_that_differ_beyond_the_header():
     assert kicadgen.rule_file_changes(kept + "(rule c)\n", today) == [5, 6]
     assert kicadgen.rule_file_changes("(version 1)\n", today) == [2, 3, 4, 5]
     assert kicadgen.rule_file_changes(kept.rstrip("\n"), today) == [5]
+    # The header names a .kicad_dru file, and the whole line is the header: words before it differ.
+    bare = kept.replace("x.kicad_dru", "x")
+    assert kicadgen.rule_file_changes(bare, bare.replace(OLDER, TODAY)) == [4]
+    assert kicadgen.rule_file_changes(kept, today.replace(TODAY, "; " + TODAY)) == [4]
+
+
+def older_rule_file(folder: Path) -> tuple[Path, str]:
+    """The project's rule file with the header written before 2026-11-19, and the text the design writes."""
+    dru = folder / "t.kicad_dru"
+    written = dru.read_text(encoding="utf-8")
+    dru.write_text(written.replace(TODAY, OLDER), encoding="utf-8")
+    return dru, written
+
+
+def test_rules_only_keeps_the_mode_of_the_file_it_writes_again(tmp_path):
+    design = rules_project(tmp_path)
+    dru, written = older_rule_file(tmp_path)
+    dru.chmod(0o640)
+    proc = rules_only(design)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert dru.read_text(encoding="utf-8") == written
+    assert dru.stat().st_mode & 0o777 == 0o640  # a temporary file is made 0600; the old mode is kept
+
+
+def test_rules_only_writes_the_target_of_a_linked_rule_file(tmp_path):
+    """A rule file may be a link to a shared one: `design` writes through the link, and so does this."""
+    (tmp_path / "board").mkdir()
+    design = rules_project(tmp_path / "board")
+    dru, written = older_rule_file(tmp_path / "board")
+    shared = tmp_path / "shared.kicad_dru"
+    shared.write_text(dru.read_text(encoding="utf-8"), encoding="utf-8")
+    dru.unlink()
+    dru.symlink_to(shared)
+    proc = rules_only(design)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert dru.is_symlink() and dru.resolve() == shared
+    assert shared.read_text(encoding="utf-8") == written
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["board", "shared.kicad_dru"]
+
+
+def test_rules_only_leaves_the_file_and_no_other_when_the_rename_fails(tmp_path, monkeypatch, capsys):
+    design = rules_project(tmp_path)
+    dru, _ = older_rule_file(tmp_path)
+    before = project_bytes(tmp_path)
+    cli = load_cli()
+    renamed = []
+
+    def refuse(src, dst):
+        renamed.append((Path(src), Path(dst)))
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(cli.os, "replace", refuse)
+    args = argparse.Namespace(design=str(design), out=None, json=False)
+    assert cli.rules_only_design(args) == 1
+    # The temporary file was in the rule file's own folder, so the rename is 1 step on 1 file system.
+    assert [(src.parent, dst) for src, dst in renamed] == [(dru.parent, dru)]
+    assert project_bytes(tmp_path) == before  # the temporary file is gone, the rule file as it was
+    out = capsys.readouterr().out.strip().split("\n")
+    assert len(out) == 1 and out[0].startswith(f"design t red: {dru} could not be written:"), out
+    assert out[0].endswith("No space left on device; it is as it was")
+
+
+def test_rules_only_refuses_an_unknown_fab_in_1_line(tmp_path):
+    design = rules_project(tmp_path)
+    design.write_text(design.read_text(encoding="utf-8").replace(SIERRA, "nofab"), encoding="utf-8")
+    before = project_bytes(tmp_path)
+    proc = rules_only(design)
+    assert proc.returncode == 1 and proc.stderr == "", proc.stderr
+    assert proc.stdout.strip().split("\n") == [
+        f"design {tmp_path.name} red: no fab rule set 'nofab': rules/ holds "
+        + ", ".join(sorted(p.stem for p in (ROOT / "rules").glob("*.kicad_dru")))
+        + ", or name a .kicad_dru file; nothing written"
+    ]
+    assert project_bytes(tmp_path) == before
+
+
+def test_rules_only_json_names_the_lines_written_and_differing(tmp_path):
+    design = rules_project(tmp_path)
+    dru, written = older_rule_file(tmp_path)
+    header = next(i for i, ln in enumerate(written.split("\n"), start=1) if ln.startswith(TODAY))
+    proc = rules_only(design, "--json")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    data = json.loads(proc.stdout)
+    assert (data["state"], data["lines"], data["exit"]) == ("written", [header], 0)
+
+    dru.write_text(written.replace("(min ", "(min 0", 1), encoding="utf-8")
+    first = next(i for i, ln in enumerate(written.split("\n"), start=1) if "(min " in ln)
+    proc = rules_only(design, "--json")
+    data = json.loads(proc.stdout)
+    assert (data["state"], data["lines"], data["exit"]) == ("differs", [first], 1)
+
+
+def test_rules_only_names_12_lines_and_the_json_names_them_all(tmp_path):
+    design = rules_project(tmp_path)
+    dru, written = older_rule_file(tmp_path)
+    end = len(written.split("\n"))  # the empty piece after the final newline
+    dru.write_text(dru.read_text(encoding="utf-8") + "(rule added)\n" * 14, encoding="utf-8")
+    added = list(range(end, end + 15))  # the 14 lines, and the empty piece that moved past them
+    proc = rules_only(design)
+    assert proc.returncode == 1
+    shown = ", ".join(map(str, added[:12])) + ", ..."
+    assert f"differs from what the design writes in lines {shown}, not only in its header" in proc.stdout
+    data = json.loads(rules_only(design, "--json").stdout)
+    assert data["lines"] == added

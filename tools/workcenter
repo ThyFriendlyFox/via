@@ -5147,13 +5147,21 @@ def rules_only_design(args) -> int:
             "`workcenter design` and the gates instead",
         )
     header = next(i for i, ln in enumerate(text.split("\n"), start=1) if kicadgen.RULE_HEADER.fullmatch(ln))
-    # Atomic: a temporary file in the same folder, then 1 rename over the old one.
-    fd, tmp = tempfile.mkstemp(prefix=f".{name}.", dir=dru.parent)
+    # Atomic: a temporary file in the same folder, then 1 rename over the old one. A rule file that is
+    # a link is written where it points, as `design` writes through it; the link stays.
+    target = dru.resolve()
+    fd, tmp = tempfile.mkstemp(prefix=f".{name}.", dir=target.parent)
     try:
         with os.fdopen(fd, "wb") as fh:
             fh.write(text.encode("utf-8"))
-        os.chmod(tmp, dru.stat().st_mode & 0o777)
-        os.replace(tmp, dru)
+        os.chmod(tmp, target.stat().st_mode & 0o777)
+        os.replace(tmp, target)
+    except OSError as exc:
+        Path(tmp).unlink(missing_ok=True)
+        result["state"] = "unwritten"
+        return done(
+            EXIT_FAIL, f"design {design.name} red: {dru} could not be written: {exc}; it is as it was"
+        )
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise
@@ -6612,7 +6620,8 @@ def command(argv: list[str] | None = None) -> int:
         action="store_true",
         help="write the project's copied fab rule file (<name>.kicad_dru) again and no other file: only "
         "when it differs from what the design writes in its header line alone; exit 1 and nothing "
-        "written when a rule differs. Never writes the .kicad_pcb, .kicad_sch or .kicad_pro",
+        "written when a rule differs. Never writes the .kicad_pcb, .kicad_sch or .kicad_pro. Refuses "
+        "--route, --check, --seed and --order; the router's numbers are ignored",
     )
     p = sub.add_parser(
         "placement",
@@ -6770,7 +6779,10 @@ def dispatch(parser: argparse.ArgumentParser, args) -> int:
     if args.command == "design":
         if args.rules_only:
             # The rule file alone: no flag that routes, compares or seeds the board goes with it.
-            for flag, given in (("--route", args.route), ("--check", args.check), ("--seed", args.seed)):
+            # The router's numbers (--passes, --timeout, --threads, --router, --rounds) have defaults, so
+            # they cannot be told apart from absent; they are ignored, as the help says.
+            given_flags = (("--route", args.route), ("--check", args.check), ("--seed", args.seed))
+            for flag, given in (*given_flags, ("--order", args.order)):
                 if given:
                     parser.error(f"design --rules-only cannot take {flag}: it writes the rule file only")
             return rules_only_design(args)

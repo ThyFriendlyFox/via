@@ -332,8 +332,11 @@ def test_a_place_kept_on_purpose_is_named_and_nothing_wider(monkeypatch):
 def test_no_example_rule_file_keeps_the_older_header():
     """`workcenter design --rules-only` wrote each example's copied rule file again on 2026-11-19, and a
     board routed since writes the header "Copied by Via from" (tools/kicadgen.py Design.rule_file). The
-    sample of the older form is tests/boards/inspect/four_layer.kicad_dru, outside examples/."""
+    sample of the older form is tests/boards/inspect-four-layer/four_layer.kicad_dru, outside examples/."""
     files = tracked("examples/*.kicad_dru")
     assert len(files) >= 5, files
     older = [rel for rel in files if "# Copied by the workcenter from " in (ROOT / rel).read_text("utf-8")]
     assert older == []
+    # The sample named above is where it is said to be, and keeps the older header (tests/test_inspect.py).
+    sample = ROOT / "tests" / "boards" / "inspect-four-layer" / "four_layer.kicad_dru"
+    assert "# Copied by the workcenter from " in sample.read_text("utf-8")
