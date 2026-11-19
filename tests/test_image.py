@@ -98,7 +98,8 @@ def test_the_toolchain_is_install_sh_and_node_for_the_tests_and_the_apt_lists_go
 
 def test_every_test_that_asks_for_node_finds_it_in_the_image():
     """The tests that run node: test_forms.py runs site/api/_forms.js, test_lead.py parses
-    ee-agent-kit/lead/workflows/*.js. Before node was in the image they skipped there (CI runs
+    ee-agent-kit/lead/workflows/*.js, test_ci_nightly_issue.py runs the nightly's issue step.
+    Before node was in the image they skipped there (CI runs
     44409635104 and 44428908528: `skipped inside the test in shard 1 ('node is not on PATH')`), and
     CI sent a change to what they read to the install path. Now the image holds node: the path rule
     is gone, and `decide` reads no path of the change but the toolchain's files."""
@@ -107,7 +108,7 @@ def test_every_test_that_asks_for_node_finds_it_in_the_image():
         for p in (ROOT / "tests").glob("test_*.py")
         if re.search(r"""which\(["']node["']\)""", p.read_text(encoding="utf-8"))
     )
-    assert asking == ["tests/test_forms.py", "tests/test_lead.py"]
+    assert asking == ["tests/test_ci_nightly_issue.py", "tests/test_forms.py", "tests/test_lead.py"]
     assert "nodejs" in " ".join(runs())
     assert not hasattr(image, "NODE_PATHS") and not hasattr(image, "needs_node")
     assert "node" not in inspect.signature(image.decide).parameters
@@ -488,11 +489,11 @@ def test_a_change_to_what_node_reads_runs_in_the_image_when_the_registry_holds_i
     git(repo, "commit", "-q", "-m", "node reads these")
     digest = "sha256:" + "e" * 64
     asked, lines = decided(repo, base, monkeypatch, tmp_path, pulled(digest))
-    ref = "ghcr.io/o/ee-workcenter:tc-7b247424ac84899d"
+    ref = "ghcr.io/o/via:tc-7b247424ac84899d"
     assert asked == [ref]
     assert lines == [
         "where=image",
-        f"image=ghcr.io/o/ee-workcenter@{digest}",
+        f"image=ghcr.io/o/via@{digest}",
         f"reason=the registry holds {ref} ({digest})",
     ]
 
@@ -508,7 +509,7 @@ def test_a_change_to_what_node_reads_still_installs_when_the_registry_lacks_its_
     git(repo, "add", ".")
     git(repo, "commit", "-q", "-m", "forms")
     asked, lines = decided(repo, base, monkeypatch, tmp_path, refused("manifest unknown"))
-    ref = "ghcr.io/o/ee-workcenter:tc-7b247424ac84899d"
+    ref = "ghcr.io/o/via:tc-7b247424ac84899d"
     assert asked == [ref]
     assert lines == ["where=install", "image=", f"reason=the registry gave no {ref}: manifest unknown"]
 
