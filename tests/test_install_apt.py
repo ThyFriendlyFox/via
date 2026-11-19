@@ -604,7 +604,8 @@ def cut_update(*lines: str) -> str:
 
 
 def silent(listed: str) -> str:
-    """The mirror list's 2 suites, as a cut try names them: the list's hosts in its order."""
+    """The mirror list's 2 suites, as a cut try names them: the list's hosts in the order apt asks them
+    (here the lines' order: their priorities are 1 and 2)."""
     hosts = "(slow.example, archive.ubuntu.com)"
     return f"{listed} noble {hosts}, {listed} noble-updates {hosts}"
 
@@ -650,10 +651,106 @@ def test_a_cut_try_shows_at_most_its_last_10_lines(tmp_path):
     assert len(said) == 3 and all(x.endswith("; apt printed no line in that try") for x in said)
 
 
+def first_cut(out: str) -> str:
+    """The line of the first cut try, from `the sources` on."""
+    (said, *_) = [x for x in out.splitlines() if "did not end within" in x]
+    return said.split("; the sources that had not answered (no Hit, Get, Ign or Err line): ", 1)[1]
+
+
+def test_a_deb_src_source_that_printed_nothing_is_named(tmp_path):
+    """The update fetches a deb-src source's index too: one that printed no line is named."""
+    runner_sources(tmp_path)
+    with (tmp_path / "sources.list").open("a", encoding="utf-8") as text:
+        text.write("deb-src http://src.example/ubuntu noble main\n")
+    code, out, _, _ = run(tmp_path, {"timeout": cut_update(*HEARD)}, env=CI)
+    assert code == 1
+    assert first_cut(out).startswith("http://src.example/ubuntu noble, mirror+file:")
+
+
+def test_a_source_whose_only_line_is_err_has_answered(tmp_path):
+    """An Err: line is the host's answer (a failure): that source is not named, as for Hit, Get and Ign."""
+    runner_sources(tmp_path)
+    heard = (
+        *HEARD,
+        "Err:4 http://slow.example/ubuntu noble InRelease",
+        "Err:5 http://slow.example/ubuntu noble-updates InRelease",
+    )
+    code, out, _, _ = run(tmp_path, {"timeout": cut_update(*heard)}, env=CI)
+    assert code == 1
+    assert first_cut(out).startswith(f"{NOT_NAMED}; ")
+
+
+def test_a_source_with_a_port_is_heard_by_its_host(tmp_path):
+    """apt's line names the address with its port; the source is heard by its host all the same."""
+    runner_sources(tmp_path)
+    with (tmp_path / "sources.list").open("a", encoding="utf-8") as text:
+        text.write("deb http://port.example:8080/ubuntu noble main\n")
+    heard = (*HEARD, "Hit:4 http://port.example:8080/ubuntu noble InRelease")
+    code, out, _, _ = run(tmp_path, {"timeout": cut_update(*heard)}, env=CI)
+    assert code == 1
+    assert "port.example" not in first_cut(out)
+
+
+def test_a_host_whose_name_holds_another_does_not_answer_for_it(tmp_path):
+    """us.archive.ubuntu.com answered for noble-updates; archive.ubuntu.com printed nothing for noble.
+    The match is of the whole host and suite, not of a part of a line."""
+    (tmp_path / "sources.list.d").mkdir()
+    (tmp_path / "sources.list").write_text(
+        "deb http://archive.ubuntu.com/ubuntu noble main\n"
+        "deb http://us.archive.ubuntu.com/ubuntu noble-updates main\n",
+        encoding="utf-8",
+    )
+    heard = (HEARD[1], "Hit:3 http://us.archive.ubuntu.com/ubuntu noble-updates InRelease")
+    code, out, _, _ = run(tmp_path, {"timeout": cut_update(*heard)}, env=CI)
+    assert code == 1
+    assert first_cut(out).startswith("http://archive.ubuntu.com/ubuntu noble; ")
+
+
+def test_an_update_that_ends_with_124_and_no_bound_is_not_said_as_cut(tmp_path):
+    """With no APT_UPDATE_TIMEOUT nothing cuts the update: an exit code 124 is apt's own, and the try is
+    not said as one its bound ended."""
+    runner_sources(tmp_path)
+    code, out, err, _ = run(tmp_path, {"apt-get": update_says(E_LOCK, code=124)})
+    assert code == 1
+    assert "did not end within" not in out + err
+    assert f"apt said: exit code 124: {E_LOCK}" in err
+
+
+def test_a_cut_try_of_1_line_says_its_last_line(tmp_path):
+    runner_sources(tmp_path)
+    code, out, _, _ = run(tmp_path, {"timeout": cut_update(HEARD[1])}, env=CI)
+    assert code == 1
+    assert first_cut(out).endswith("; apt's last line of that try:")
+
+
+def test_a_disabled_stanza_is_not_named_and_its_hosts_go_to_no_command(tmp_path):
+    """apt does not read a deb822 stanza with `Enabled: no`: it prints no line for it, and it is not named
+    or given to the command."""
+    runner_sources(tmp_path)
+    other = tmp_path / "other-mirrors.txt"
+    other.write_text(
+        "http://healthy.example/ubuntu/\tpriority:1\nhttp://b.example/ubuntu/\n", encoding="utf-8"
+    )
+    (tmp_path / "sources.list.d" / "off.sources").write_text(
+        f"Enabled: no\nTypes: deb\nURIs: mirror+file:{other}\nSuites: jammy\nComponents: main\n",
+        encoding="utf-8",
+    )
+    heard = (
+        *HEARD,
+        "Hit:4 http://slow.example/ubuntu noble InRelease",
+        "Hit:5 http://slow.example/ubuntu noble-updates InRelease",
+    )
+    env = {**CI, "APT_SLOW_PASS_COMMAND": "slow-pass --slow"}
+    code, out, _, calls = run(tmp_path, {"timeout": cut_update(*heard), "slow-pass": "exit 0"}, env=env)
+    assert code == 1
+    assert first_cut(out).startswith(f"{NOT_NAMED}; ")
+    assert of(calls, "slow-pass") == []
+
+
 def test_between_2_cut_tries_the_named_command_moves_the_mirror_lists_silent_hosts(tmp_path):
     """The hook of the download (APT_SLOW_PASS_COMMAND, CI: tools/ci/apt_archive.sh --slow) runs between
-    2 tries too, with the hosts of the mirror list's sources that had not answered, in the list's order:
-    the first goes last. It runs before the wait, and not after the last try."""
+    2 tries too, with the hosts of the mirror list's sources that had not answered, in the order apt
+    asks them: the first goes last. It runs before the wait, and not after the last try."""
     runner_sources(tmp_path)
     hook = 'printf "%s\\n" "$*" >> "$STUB_DIR/hooked"; echo "[apt-archive] moved"'
     env = {**CI, "APT_SLOW_PASS_COMMAND": "slow-pass --slow"}
@@ -664,6 +761,82 @@ def test_between_2_cut_tries_the_named_command_moves_the_mirror_lists_silent_hos
     assert of(calls, "slow-pass") == ["slow-pass --slow slow.example archive.ubuntu.com"] * 2
     said = "[install] apt: APT_SLOW_PASS_COMMAND: slow-pass --slow slow.example archive.ubuntu.com"
     assert out.splitlines().count(said) == 2
+
+
+APT_ARCHIVE = ROOT / "tools" / "ci" / "apt_archive.sh"
+
+
+def test_between_2_cut_tries_the_host_apt_asks_first_goes_last_each_time(tmp_path):
+    """The mirror list of job 135593285528 after its rank step: its lines are us-east-2, archive and
+    security, at priorities 3, 2 and 1, and its log says `apt asks https://security.ubuntu.com/ubuntu/,
+    then https://archive.ubuntu.com/ubuntu/, then http://us-east-2...`. The hook gets the silent list's
+    hosts in the order apt asks them (the lowest priority first, then the line), so the real
+    `tools/ci/apt_archive.sh --slow` moves the host apt asks first after each cut try: security, then
+    archive. In line order it moved us-east-2 twice and apt asked security first all 3 tries. A line
+    with no priority (azure, here the first line) is asked last, as apt_archive.sh's read_list has it."""
+    apt = tmp_path / "apt"
+    apt.mkdir()
+    listed = apt / "apt-mirrors.txt"
+    listed.write_text(
+        "http://azure.archive.ubuntu.com/ubuntu/\n"
+        "http://us-east-2.ec2.archive.ubuntu.com/ubuntu/\tpriority:3\n"
+        "https://archive.ubuntu.com/ubuntu/\tpriority:2\n"
+        "https://security.ubuntu.com/ubuntu/\tpriority:1\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "sources.list.d").mkdir()
+    (tmp_path / "sources.list.d" / "ubuntu.sources").write_text(
+        f"Types: deb\nURIs: mirror+file:{listed}\nSuites: noble noble-updates\nComponents: main\n",
+        encoding="utf-8",
+    )
+    hook = (
+        f'PATH=/usr/bin:/bin TMPDIR="$STUB_DIR/tmp" APT_DIR={apt} APT_ARCHIVE_CI=1 {BASH} {APT_ARCHIVE} "$@"'
+    )
+    env = {**CI, "APT_SLOW_PASS_COMMAND": "slow-pass --slow"}
+    code, out, err, calls = run(tmp_path, {"timeout": cut_update(*HEARD), "slow-pass": hook}, env=env)
+    assert code == 1, err
+    east, archive, security = "us-east-2.ec2.archive.ubuntu.com", "archive.ubuntu.com", "security.ubuntu.com"
+    azure = "azure.archive.ubuntu.com"
+    assert of(calls, "slow-pass") == [
+        f"slow-pass --slow {security} {archive} {east} {azure}",
+        f"slow-pass --slow {archive} {east} {azure} {security}",
+    ]
+    moved = [x.split(": ", 1)[1].split(" was too slow")[0] for x in out.splitlines() if "was too slow" in x]
+    assert moved == [security, archive]
+    assert listed.read_text(encoding="utf-8").splitlines() == [
+        f"http://{azure}/ubuntu/\tpriority:2",
+        f"http://{east}/ubuntu/\tpriority:1",
+        f"https://{archive}/ubuntu/\tpriority:4",
+        f"https://{security}/ubuntu/\tpriority:3",
+    ]
+    assert f"noble ({security}, {archive}, {east}, {azure})" in out
+
+
+NOT_NAMED = (
+    "none: each source printed a line, so a host that began a file and then slowed or stalled is not named "
+    "and not moved"
+)
+
+
+def test_a_cut_try_where_every_source_printed_a_line_says_a_slow_host_is_not_named(tmp_path):
+    """apt prints Get: when a file begins to arrive (apt 2.8.3, apt-private/acqprogress.cc, Fetch), and
+    no line when it ends. A host that sent its headers and then trickled or stalled has printed its Get:,
+    so it counts as having answered: the try cannot name it, and the command moves nothing. The line and
+    the stop say so, not a bare `none`. (Job 135588570683's log, with -qq, cannot tell which case it was.)"""
+    runner_sources(tmp_path)
+    heard = (
+        *HEARD,
+        "Get:4 http://slow.example/ubuntu noble InRelease [256 kB]",
+        "Get:5 http://slow.example/ubuntu noble-updates InRelease [126 kB]",
+    )
+    env = {**CI, "APT_SLOW_PASS_COMMAND": "slow-pass --slow"}
+    code, out, err, calls = run(tmp_path, {"timeout": cut_update(*heard), "slow-pass": "exit 0"}, env=env)
+    assert code == 1
+    said = [x for x in out.splitlines() if "did not end within" in x]
+    assert len(said) == 3
+    assert all(f"(no Hit, Get, Ign or Err line): {NOT_NAMED}; apt's last 5 lines" in x for x in said)
+    assert err.splitlines()[-2].endswith(f"; the sources that had not answered in try 3: {NOT_NAMED}")
+    assert of(calls, "slow-pass") == []
 
 
 def test_a_silent_source_of_1_host_is_simply_tried_again(tmp_path):
@@ -2780,6 +2953,19 @@ def test_an_openems_download_that_never_comes_warns_with_the_file_and_the_host(t
     assert len([c for c in of(calls, "timeout") if "--download-only" in c]) == 5
 
 
+@pytest.mark.parametrize("comes", [True, False], ids=["comes", "never"])
+def test_an_other_download_leaves_no_file_of_its_own(tmp_path, comes):
+    """The download of the openEMS step keeps its stop's lines in a temp file under TMPDIR: it is gone
+    after the step, whether the download came or not."""
+    never = f"echo {shlex.quote(E_520)} >&2; echo {shlex.quote(E_FILES)} >&2; exit 100"
+    answer = by_pass("exit 0") if comes else by_pass(never)
+    stubs = {**openems_folder(tmp_path), "apt-get": answer}
+    code, out, err, calls = run(tmp_path, stubs, env=OTHERS, body="step_openems")
+    assert code == 0, err
+    assert len(of(calls, "mktemp")) >= 1
+    assert sorted(p.name for p in (tmp_path / "tmp").iterdir()) == []
+
+
 def test_a_stalled_openems_pass_is_ended_and_its_stop_names_its_own_bound(tmp_path):
     """The passing run of job 135593285528: the openEMS step's download stalled 282.8 s, 385 s in all,
     with no bound. Now the watch ends a pass too slow to finish within APT_OTHER_TIMEOUT, and its stop
@@ -2795,20 +2981,52 @@ def test_a_stalled_openems_pass_is_ended_and_its_stop_names_its_own_bound(tmp_pa
 
 
 def test_a_boot_update_that_does_not_end_names_the_sources_that_had_not_answered(tmp_path):
-    """The boot step's 1 update within APT_UPDATE_TIMEOUT: a cut says which sources printed no line, as
-    the apt step's tries do, and the stop says so."""
+    """The boot step's update gets the apt step's tries (KICAD_INDEX_TRIES, KICAD_INDEX_WAIT), each within
+    APT_UPDATE_TIMEOUT: a cut says which sources printed no line, the command moves a silent mirror host
+    before the next try, and the stop after the last try says so. The image build of job 135588402925
+    printed nothing for 271 s between `boot:` and its first Get (#9 0.113 to #9 271.2): with -qq that
+    cannot be split between the update and the download, so 1 try of 120 s could have refused it."""
     listed = runner_sources(tmp_path)
-    env = {**OTHERS, "CA_BUNDLE": str(tmp_path / "no-bundle.crt")}
+    env = {
+        **OTHERS,
+        "CA_BUNDLE": str(tmp_path / "no-bundle.crt"),
+        "APT_SLOW_PASS_COMMAND": "slow-pass --slow",
+    }
     code, out, err, calls = run(
-        tmp_path, {**BOOT_TOOLS, "timeout": cut_update(*HEARD)}, env=env, body="step_boot"
+        tmp_path,
+        {**BOOT_TOOLS, "timeout": cut_update(*HEARD), "slow-pass": "exit 0"},
+        env=env,
+        body="step_boot",
     )
     assert code == 1
-    assert out.splitlines()[1] == silent_line(1, listed, 3).replace("try 1 of 3", "try 1 of 1")
+    lines = out.splitlines()
+    for try_ in (1, 2, 3):
+        assert silent_line(try_, listed, 3) in lines
+    steps = [c.split(" ", 1)[0] for c in calls if c.split(" ", 1)[0] in ("timeout", "slow-pass", "sleep")]
+    assert steps == ["timeout", "slow-pass", "sleep", "timeout", "slow-pass", "sleep", "timeout"]
+    assert of(calls, "slow-pass") == ["slow-pass --slow slow.example archive.ubuntu.com"] * 2
+    assert of(calls, "sleep") == ["sleep 20"] * 2
+    assert "[install] boot: `apt-get update` ended with exit code 124 in try 1 of 3; waiting 20 s" in lines
     assert err.splitlines()[-1] == (
-        "[install] ERROR: boot: `apt-get update` ended with exit code 124; apt said: nothing: "
+        "[install] ERROR: boot: `apt-get update` ended with exit code 124 in try 3 of 3; apt said: nothing: "
         "`apt-get update` of every package source did not end within 120 s (APT_UPDATE_TIMEOUT); the sources "
         f"that had not answered: {silent(listed)}"
     )
+
+
+def test_a_boot_update_cut_twice_goes_on_when_the_third_try_ends(tmp_path):
+    """2 cut tries, then 1 that ends: the boot step downloads and installs, as the apt step goes on."""
+    runner_sources(tmp_path)
+    env = {**OTHERS, "CA_BUNDLE": str(tmp_path / "no-bundle.crt")}
+    cut = cut_update(*HEARD).replace('[[ "$*" == *update* ]]', '[[ "$*" == *update* ]] && (( n <= 2 ))')
+    code, out, err, calls = run(
+        tmp_path, {**BOOT_TOOLS, "timeout": cut}, env=env, body="step_boot; echo NEXT STEP"
+    )
+    assert code == 0, err
+    assert out.splitlines()[-1] == "NEXT STEP"
+    assert len([c for c in of(calls, "timeout") if "update" in c]) == 3
+    assert of(calls, "sleep") == ["sleep 20"] * 2
+    assert len([c for c in of(calls, "apt-get") if "Download=false" in c]) == 1
 
 
 def test_a_slow_boot_download_stops_with_the_advice_for_its_own_bound(tmp_path):
@@ -2887,7 +3105,8 @@ def test_a_bad_value_stops_before_the_first_step_installs(tmp_path, name, value)
     [
         (
             update_says(E_LOCK, code=100),
-            f"[install] ERROR: boot: `apt-get update` ended with exit code 100; apt said: {E_LOCK}",
+            "[install] ERROR: boot: `apt-get update` ended with exit code 100 in try 3 of 3; "
+            f"apt said: {E_LOCK}",
         ),
         (
             'case "$*" in *--download-only*) exit 0 ;; '
@@ -3446,9 +3665,10 @@ def test_the_worst_case_of_the_apt_step_fits_the_jobs_limit(name):
     waits 1, 2, then 4 s (curl 8.5.0's manual): at most 20 + 4 + 20 = 44 s an address, 88 s for both.
     Then 3 tries of the update and 2 waits, the main download, and the openEMS step's download (385 s in
     that run, with no bound): 88 + 3 x 120 + 2 x 20 + 570 + 300 = 1358 s, 2163 s with the 805: over
-    `full`'s former 30 minutes (1800 s), within 40 (2400 s). The boot step's update (1 try) and download
-    run only on a bare Ubuntu, the image's base (GitHub's runner has every tool: the passing run printed
-    no `boot:` line): they count for image.yml, 120 + 300 more, 2583 s of its 3600. The nightly run and
+    `full`'s former 30 minutes (1800 s), within 40 (2400 s). The boot step's update (the apt step's 3
+    tries and 2 waits) and download run only on a bare Ubuntu, the image's base (GitHub's runner has
+    every tool: the passing run printed no `boot:` line): they count for image.yml, 3 x 120 + 2 x 20 +
+    300 = 700 s more, 2863 s of its 3600. The nightly run and
     the image build are held to the same 805 s; neither has a passing run of its own measured (the image
     build runs no `make verify`, but builds, checks and pushes)."""
     bounds, limit = ci_bounds(*INSTALLING[name])
@@ -3459,11 +3679,37 @@ def test_the_worst_case_of_the_apt_step_fits_the_jobs_limit(name):
     key = 2 * (2 * assigned("KICAD_KEY_TIMEOUT", env=False) + 4)
     worst = key + tries * update + (tries - 1) * wait + download + other
     if name == "image.yml":
-        worst += update + other
+        worst += tries * update + (tries - 1) * wait + other
     assert sum(MEASURED.values()) == 805
     assert worst + sum(MEASURED.values()) <= limit, (worst, limit)
     if name == "ci.yml":
         assert (worst + sum(MEASURED.values()), limit) == (2163, 2400)
+    if name == "image.yml":
+        assert (worst + sum(MEASURED.values()), limit) == (2863, 3600)
+
+
+def test_no_text_keeps_a_figure_of_the_former_arithmetic():
+    """The worst case is 2163 s of `full`'s 2400 (above): 237 s are left, not 8, and the bounded part is
+    1358 s, not 1058. CI passes 0 retries and 15 s per file where it keeps the mirror list, so no text may
+    say that install.sh's 3 and 60 s win in CI's download."""
+    texts = {
+        name: (ROOT / name).read_text(encoding="utf-8")
+        for name in ("install.sh", "ee-agent-kit/CI.md", "tools/ci/apt_archive.sh", "tools/ci/README.md")
+    }
+    stale = (
+        "1058 s",
+        "1066 s",
+        "8 s the",
+        "the 8 s",
+        "8 s CI",
+        "timeout-minutes: 30",
+        "15 s rule does not hold",
+    )
+    found = [(name, x) for name, text in texts.items() for x in stale if x in " ".join(text.split())]
+    assert found == []
+    assert "2163 s" in " ".join(texts["install.sh"].split())
+    gates = (ROOT / ".github" / "workflows" / "board-gates.yml").read_text(encoding="utf-8")
+    assert "worst case is 1058 s" not in " ".join(gates.split())
 
 
 def test_one_silent_file_fits_the_download_bound():

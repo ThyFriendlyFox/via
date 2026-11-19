@@ -234,8 +234,8 @@ index within 120 s in 3 tries (run 44477966021). So apt keeps more than
   and Ubuntu's own host (archive.ubuntu.com or ports.ubuntu.com) beside it.
 - A probe asks every host of the list for the first 1 MiB of
   `dists/<suite>/main/binary-<arch>/Packages.gz`, side by side, 3 s each,
-  ended at 4 s: at most 5 s in all, of the 8 s the `full` job's limit
-  leaves beside install.sh's worst case. The list's priorities follow bytes a
+  ended at 4 s: at most 5 s in all, of the 237 s the `full` job's limit
+  leaves beside install.sh's worst case (2163 s of 2400). The list's priorities follow bytes a
   second of a 1 MiB sample: a first guess, not a promise for the download. A host that does not answer goes last and stays. With no answer
   at all the priorities stay as the runner wrote them; hosts of 1
   priority, or of none, apt asks in random order, and the line says so.
@@ -285,9 +285,12 @@ What it does not cover:
   before the next pass: the host that served the slow pass goes last (CI
   run 44506767788: the first host sent its 1 MiB sample at 2.47 MB/s and
   the download at 48.3 kB/s).
-- install.sh's download passes its own `Acquire::http::Timeout=60` and
-  `Acquire::Retries=3` on apt's command line, which win over the file: in
-  the download a silent host is left after 4 tries of 60 s.
+- install.sh's download passes its own `Acquire::http::Timeout` and
+  `Acquire::Retries` on apt's command line, which win over the file. The
+  install step passes it 0 retries and 15 s (`APT_FILE_RETRIES`,
+  `APT_FILE_TIMEOUT`) whenever it keeps the mirror list, so in the download
+  too a failed file goes to the next host at once. With the list off, and
+  on a person's computer, they stay 3 and 60 s.
 - KiCad 10's source (the PPA) has 1 host. `Acquire::Retries` holds for
   every source, so in `apt-get update` the PPA gets 1 try of 15 s, not 4
   of 30 s, and nothing to fall back to; install.sh tries the update again

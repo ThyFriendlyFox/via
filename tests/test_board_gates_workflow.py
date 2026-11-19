@@ -185,10 +185,11 @@ def test_the_install_path_runs_the_archive_step_then_install_sh_with_cis_2_bound
 
 
 def test_the_jobs_limit_holds_the_worst_apt_step_and_leaves_the_gates_their_time():
-    """45 minutes, the nightly run's: 2700 s. The worst case of the apt step is 1058 s (ee-agent-kit/CI.md,
-    "Toolchain step": 88 + 3 x 120 + 2 x 20 + 570) and the steps around it took 9 + 27 + 28 = 64 s in
-    job 134941364976 (tests/test_install_apt.py, the worst case's docstring): 2700 - 1058 - 64 = 1578 s
-    are left for the checkouts, the pull and the gates."""
+    """45 minutes, the nightly run's: 2700 s. The job's 2 bounds hold the key, the update and the main
+    download to 88 + 3 x 120 + 2 x 20 + 570 = 1058 s (ee-agent-kit/CI.md, "Toolchain step"; this job sets
+    no APT_OTHER_TIMEOUT, so the openEMS step's download has no bound here) and the steps around it
+    took 9 + 27 + 28 = 64 s in job 134941364976 (tests/test_install_apt.py, the worst case's docstring):
+    2700 - 1058 - 64 = 1578 s are left for the checkouts, the pull and the gates."""
     assert job()["timeout-minutes"] == 45
     assert 45 * 60 - (88 + 3 * 120 + 2 * 20 + 570) - (9 + 27 + 28) == 1578
 

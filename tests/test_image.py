@@ -1182,9 +1182,12 @@ def as_uid(*argv: str, env: dict[str, str], stdin: bytes | None = None) -> subpr
 )
 def test_a_user_id_with_no_home_and_no_passwd_line_needs_the_home_the_image_sets():
     """What `docker run --user` gives the engines, without Docker: user id 12345, which has no line in
-    /etc/passwd here. With no HOME, kicad-cli stops (`Environment variable HOME is empty`) and the CLI
-    cannot start (Path.home()). With HOME a folder the user may write, as the image's
-    /home/workcenter (mode 1777), the gates are GREEN and every file they write is the user's."""
+    /etc/passwd here. With no HOME, kicad-cli stops (`Environment variable HOME is empty`). The CLI
+    starts (M299) and `doctor` says what is missing in its own lines, with no traceback: kicad-cli
+    MISSING, and the 2 hook rows' path unknown with what to do (set HOME). With HOME a folder the user
+    may write, as the image's /home/workcenter (mode 1777), the gates are GREEN and every file they
+    write is the user's. It runs only as root (setpriv), so GitHub never runs it (CI.md, "What GitHub
+    does not judge"); it kept M299's old expectation on main until M307."""
     assert subprocess.run(["getent", "passwd", str(UID)], capture_output=True).returncode != 0
     path = {"PATH": "/usr/local/bin:/usr/bin:/bin"}
     made = as_uid("mktemp", "-d", "/tmp/wc-image-test-XXXXXX", env=path)
@@ -1203,7 +1206,17 @@ def test_a_user_id_with_no_home_and_no_passwd_line_needs_the_home_the_image_sets
         bare = as_uid("kicad-cli", "version", env=path)
         assert bare.returncode != 0 and b"HOME is empty" in bare.stdout + bare.stderr
         cli = as_uid(sys.executable, f"{top}/tools/workcenter", "doctor", env=path)
-        assert cli.returncode != 0 and b"Path.home()" in cli.stderr
+        said = (cli.stdout + cli.stderr).decode()
+        assert cli.returncode == 1 and "Traceback" not in said and "RuntimeError" not in said, said
+        lines = cli.stdout.decode().splitlines()
+        assert lines[0].startswith("workcenter ee: fail, without kicad-cli "), said
+        assert any(line.startswith("  MISSING  kicad-cli ") for line in lines), said
+        unknown = (
+            "unknown: no home folder is known (HOME is unset and the user id has no line in /etc/passwd); "
+            "set HOME"
+        )
+        for row in ("no-cd hook", "test hook"):
+            assert f"  absent   {row:<12} {unknown}" in lines, said
         home = {**path, "HOME": f"{top}/home"}
         gates = as_uid(sys.executable, f"{top}/tools/workcenter", "gates", f"{top}/board", env=home)
         assert gates.returncode == 0, gates.stdout + gates.stderr

@@ -101,13 +101,14 @@ CA_BUNDLE="${CA_BUNDLE:-/etc/ssl/certs/ca-certificates.crt}"
 # A person's computer gets no total bound on `apt-get update` or on the download. A slow line that
 # makes progress finishes. apt ends a stall itself: a server silent for APT_FILE_TIMEOUT s is given up,
 # and tried APT_FILE_RETRIES times more. The progress lines show that the run is alive.
-# CI sets both bounds, in the install step of .github/workflows/ci.yml: APT_UPDATE_TIMEOUT=120 and
-# APT_DOWNLOAD_TIMEOUT=570. Its `full` job has 1800 s (timeout-minutes: 30), and a stall must end with
-# apt's line, not at the job's limit with none. The newest passing run (job 134941364976) used 9 s
-# before this script, 27 s to unpack and set up, 28 s for the steps after apt and 670 s for
-# `make verify`: 1066 s are left for the key, the updates, the waits and the download. The key fetch
-# takes at most 88 s (KICAD_KEY_TIMEOUT below); 88 + 3 x 120 + 2 x 20 + 570 = 1058 s. The slowest
-# update seen took 48 s (job 134906707485); the slowest download 218 s for 281.1 MB (job 134889089620).
+# CI sets the bounds, in the install step of .github/workflows/ci.yml: APT_UPDATE_TIMEOUT=120,
+# APT_DOWNLOAD_TIMEOUT=570 and APT_OTHER_TIMEOUT=300 (below). Its `full` job has 2400 s (40 minutes),
+# and a stall must end with apt's line, not at the job's limit with none. The passing run of job
+# 135593285528 used 805 s outside the bounds, 725 s of them for `make verify`. The key fetch takes at
+# most 88 s (KICAD_KEY_TIMEOUT below); 88 + 3 x 120 + 2 x 20 + 570 + 300 = 1358 s, 2163 s in all, 237 s
+# left (ee-agent-kit/CI.md, "Toolchain step"; test_the_worst_case_of_the_apt_step_fits_the_jobs_limit).
+# The slowest update seen took 48 s (job 134906707485); the slowest download 218 s for 281.1 MB (job
+# 134889089620).
 # Either bound is a whole number of seconds; empty, the default, means no bound.
 KICAD_INDEX_TRIES="${KICAD_INDEX_TRIES:-3}"
 KICAD_INDEX_WAIT="${KICAD_INDEX_WAIT:-20}"
@@ -393,7 +394,8 @@ kicad_lasting() {
 # The package sources apt reads, 1 line each: "<address> <suite>". The files are those kicad_index_stop
 # reads: sources.list, then *.list and *.sources beside the script's file; a file of another name is not
 # read. A deb-src source counts: the update fetches its index too. A commented line names no type, and a
-# deb822 stanza gives 1 line per address and suite.
+# deb822 stanza gives 1 line per address and suite. apt reads no stanza whose `Enabled:` is false (no,
+# false, off, without, disable or 0: apt-pkg/contrib/strutl.cc, StringToBool), so neither does this.
 apt_sources() {
   local parts file
   local -a files=()
@@ -404,15 +406,16 @@ apt_sources() {
   if ((${#files[@]} == 0)); then return 0; fi
   awk '
     function flush(  a, b, n, m, x, y) {
-      if (u != "" && s != "") {
+      if (u != "" && s != "" && !off) {
         n = split(u, a, " "); m = split(s, b, " ")
         for (x = 1; x <= n; x++) for (y = 1; y <= m; y++) print a[x], b[y]
       }
-      u = ""; s = ""
+      u = ""; s = ""; off = 0
     }
     FNR == 1 { flush() }
     $1 ~ /^deb(-src)?$/ { i = 2; if ($i ~ /^\[/) { while (i <= NF && $i !~ /\]$/) i++; i++ } print $i, $(i + 1); next }
     /^[[:space:]]*$/ { flush(); next }
+    $1 == "Enabled:" { off = (tolower($2) ~ /^(no|false|off|without|disable|0)$/); next }
     $1 == "URIs:" { for (j = 2; j <= NF; j++) u = u (j == 2 ? "" : " ") $j; next }
     $1 == "Suites:" { for (j = 2; j <= NF; j++) s = s (j == 2 ? "" : " ") $j; next }
     END { flush() }' "${files[@]}"
@@ -428,9 +431,9 @@ uri_host() {
 # The sources (apt_sources) that printed no Hit:, Get:, Ign: or Err: line in apt's lines $1. apt prints 1
 # such line per index file as its server answers or fails (apt 2.8.3, apt-private/acqprogress.cc), with the
 # host a mirror list gave it, so a source of a mirror list (mirror+file:<list>) is heard when any host of
-# its list is. Sets SILENT, the sources, a mirror list's with its hosts in the list's order, and
-# SILENT_HOSTS, the hosts of the silent sources of a list of more than 1 host: apt asks such a list's
-# first host first, and a command can put it last. A source of 1 host (KiCad 10's) is asked again as it is.
+# its list is. Sets SILENT, the sources, a mirror list's with its hosts in the order apt asks them, and
+# SILENT_HOSTS, the hosts of the silent sources of a list of more than 1 host, in that order: a command
+# can put the first last. A source of 1 host (KiCad 10's) is asked again as it is.
 silent_sources() {
   local heard uri suite host said one
   local -a list
@@ -442,8 +445,25 @@ silent_sources() {
   while read -r uri suite; do
     list=()
     if [[ "$uri" == mirror+file:* ]]; then
-      mapfile -t list < <(awk '!/^[[:space:]]*(#|$)/ { h = $1; sub(/^[a-z+]+:\/\//, "", h); sub(/[\/:].*$/, "", h); print h }' \
-        "${uri#mirror+file:}" 2> /dev/null || true)
+      # The hosts in the order apt asks them: the lowest priority first, a line with none last, then the
+      # line (apt-transport-mirror(1); tools/ci/apt_archive.sh's read_list). Its rank step and its --slow
+      # mode rewrite only the priorities: in job 135593285528 the lines were us-east-2, archive, security
+      # and apt asked security first.
+      mapfile -t list < <(awk '!/^[[:space:]]*(#|$)/ {
+          h = $1; sub(/^[a-z+]+:\/\//, "", h); sub(/[\/:].*$/, "", h)
+          if (h in seen) next
+          seen[h] = 1; p = 999999
+          if (match($0, /(^|[[:space:]])priority:[0-9]+/)) { p = substr($0, RSTART, RLENGTH); sub(/^[^:]*:/, "", p) }
+          n++; H[n] = h; P[n] = p + 0
+        }
+        END {
+          for (i = 2; i <= n; i++) {
+            h = H[i]; p = P[i]
+            for (j = i - 1; 1 <= j && p < P[j]; j--) { H[j + 1] = H[j]; P[j + 1] = P[j] }
+            H[j + 1] = h; P[j + 1] = p
+          }
+          for (i = 1; i <= n; i++) print H[i]
+        }' "${uri#mirror+file:}" 2> /dev/null || true)
     else
       list=("$(uri_host "$uri")")
     fi
@@ -472,6 +492,10 @@ silent_sources() {
 # empty after a try that ends), then shows apt's last APT_UPDATE_LINES lines of the try as apt printed them.
 # The update gets no watch of its progress, as the download has: its bound, 120 s in CI, is 1
 # APT_WATCH_WINDOW, and the watch judges no pass before a whole window.
+# apt prints Get: when a file begins to arrive (apt-private/acqprogress.cc, Fetch) and nothing when it
+# ends. So a host that sent its headers and then slowed or stalled has answered here: it is not named, and
+# the command does not move it. A cut try where every source printed a line says so (NOT_NAMED).
+NOT_NAMED="none: each source printed a line, so a host that began a file and then slowed or stalled is not named and not moved"
 update_try() {
   local told n
   UPDATE_RC=0
@@ -486,7 +510,7 @@ update_try() {
       told="apt's last ${n} lines of that try:"
       if ((n == 1)); then told="apt's last line of that try:"; fi
     fi
-    log "apt: update, try $1 of $2, did not end within ${APT_UPDATE_TIMEOUT} s (APT_UPDATE_TIMEOUT); the sources that had not answered (no Hit, Get, Ign or Err line): ${SILENT:-none}; ${told}"
+    log "apt: update, try $1 of $2, did not end within ${APT_UPDATE_TIMEOUT} s (APT_UPDATE_TIMEOUT); the sources that had not answered (no Hit, Get, Ign or Err line): ${SILENT:-$NOT_NAMED}; ${told}"
     if [[ -n "$UPDATE_OUT" ]]; then
       tail -n "$APT_UPDATE_LINES" <<< "$UPDATE_OUT" | sed 's/^/[apt] /'
     fi
@@ -525,7 +549,7 @@ kicad_index() {
       return 0
     fi
     if ((rc == 124)) && [[ -n "$APT_UPDATE_TIMEOUT" ]]; then
-      APT_SAID="nothing: \`apt-get update\` of every package source did not end within ${APT_UPDATE_TIMEOUT} s (APT_UPDATE_TIMEOUT); the sources that had not answered in try ${try}: ${SILENT:-none}"
+      APT_SAID="nothing: \`apt-get update\` of every package source did not end within ${APT_UPDATE_TIMEOUT} s (APT_UPDATE_TIMEOUT); the sources that had not answered in try ${try}: ${SILENT:-$NOT_NAMED}"
     elif [[ -z "$APT_SAID" ]]; then
       APT_SAID="$(grep -E '^E:' <<< "$out" | tail -n 1 || true)"
       APT_SAID="exit code ${rc}: ${APT_SAID:-$(tail -n 1 <<< "$out")}"
@@ -1082,19 +1106,34 @@ step_boot() {
   fi
   log "boot: ${missing[*]} missing; apt install ${BOOT_PACKAGES[*]}"
   # As in the apt step: apt in the C locale, its progress shown, and its exit code stops the script with
-  # its own E: line (a pipe's `|| true` let a failed install through to the check below). 1 try of the
-  # update, within APT_UPDATE_TIMEOUT when it is set (a cut try names the sources that had not
-  # answered); then the download in passes within APT_OTHER_TIMEOUT, and the install from its files.
+  # its own E: line (a pipe's `|| true` let a failed install through to the check below). The update
+  # gets the apt step's tries, KICAD_INDEX_TRIES of them KICAD_INDEX_WAIT s apart, each within
+  # APT_UPDATE_TIMEOUT when it is set (a cut try names the sources that had not answered, and the
+  # command moves a silent mirror host before the next). The image build of job 135588402925 printed
+  # nothing for 271 s before its first Get, and -qq hid whether the update or the download took them.
+  # Then the download in passes within APT_OTHER_TIMEOUT, and the install from its files.
   local -x LC_ALL=C DEBIAN_FRONTEND=noninteractive
-  local rc=0
-  update_try 1 1
-  rc=$UPDATE_RC
+  local rc=0 try
+  local -a hosts
+  for ((try = 1; try <= KICAD_INDEX_TRIES; try++)); do
+    update_try "$try" "$KICAD_INDEX_TRIES"
+    rc=$UPDATE_RC
+    if ((rc == 0)); then break; fi
+    if ((try < KICAD_INDEX_TRIES)); then
+      if [[ -n "$SILENT_HOSTS" ]]; then
+        read -r -a hosts <<< "$SILENT_HOSTS"
+        slow_hook try "${hosts[@]}"
+      fi
+      log "boot: \`apt-get update\` ended with exit code ${rc} in try ${try} of ${KICAD_INDEX_TRIES}; waiting ${KICAD_INDEX_WAIT} s"
+      sleep "$KICAD_INDEX_WAIT"
+    fi
+  done
   if ((rc == 124)) && [[ -n "${APT_UPDATE_TIMEOUT}" ]]; then
-    APT_SAID="nothing: \`apt-get update\` of every package source did not end within ${APT_UPDATE_TIMEOUT} s (APT_UPDATE_TIMEOUT); the sources that had not answered: ${SILENT:-none}"
+    APT_SAID="nothing: \`apt-get update\` of every package source did not end within ${APT_UPDATE_TIMEOUT} s (APT_UPDATE_TIMEOUT); the sources that had not answered: ${SILENT:-$NOT_NAMED}"
   else
     APT_SAID="$(grep -m1 '^E:' <<< "$UPDATE_OUT" || true)"
   fi
-  ((rc == 0)) || die "boot: \`apt-get update\` ended with exit code ${rc}; apt said: ${APT_SAID:-nothing}"
+  ((rc == 0)) || die "boot: \`apt-get update\` ended with exit code ${rc} in try ${KICAD_INDEX_TRIES} of ${KICAD_INDEX_TRIES}; apt said: ${APT_SAID:-nothing}"
   other_download "${BOOT_PACKAGES[@]}" || stop "boot: ${OTHER_SAID}" "$OTHER_ADVICE"
   apt_shown apt-get install -y --no-install-recommends -o APT::Get::Download=false \
     "${BOOT_PACKAGES[@]}" || rc=$?

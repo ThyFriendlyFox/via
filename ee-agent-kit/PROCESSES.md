@@ -124,6 +124,12 @@ or any step that downloads, installs, or runs for more than a minute.
     the program's own last lines and what had not answered. A red CI run
     uploads the gate's kept folder as an artifact, bounded in size and
     days (M304).
+15. A test of an order runs on an input whose orders differ: the order
+    the list is written in, and the order the program that reads it uses
+    (apt asks a mirror list's hosts by priority, not by line). When 1
+    program hands a list to another (a hook, a command named in a
+    variable), 1 test runs the real callee on the caller's real list and
+    checks what it did, not the arguments it got (M308).
 
 Done when: the run is green, its log shows progress lines in every long
 step, no step used more than half its limit, and no step depended on a
@@ -663,6 +669,16 @@ that may be absent.
     `sys.modules` first; it runs once alone and once after a test that
     imported the name, and fails in both when the restore is taken out
     (M300).
+13. A change of behaviour lands only after the tests that held the old
+    behaviour are found and run where they do not skip. Before such a
+    landing, the fixer and then the keeper grep `tests/` for the old
+    behaviour's words (its message, the name of what it raised, its exit
+    code) and run each test that names them. A test GitHub skips for who
+    or where it runs (CI.md, "What GitHub does not judge": root, setpriv,
+    a writable `/proc` file, the chip folder) runs on a machine where it
+    does not skip, behind the engine lock, whenever the touched code is
+    what it holds; the landing's report names that run. GitHub's green
+    says nothing about it (M307).
 
 Done when: the summary shows no unexpected skips, the engine test is
 green on the runner, and a run with an engine taken away is not GREEN.
@@ -1576,6 +1592,12 @@ a task.
     folder's name, P7 step 11). Never remove pytest's temp root (`/tmp/pytest-of-<user>`)
     while a pytest runs; a helper's own run takes `--basetemp` under its
     own folder (M276).
+15. A piece whose independent check is still running does not merge.
+    If the lead merges it anyway, it says so in the pull request and in
+    STATUS ("the check had not reported"), and the check's findings are
+    read against `main`, not the branch: each finding that holds on `main`
+    is a defect of `main`, and its fix is the next landing, before any
+    other piece on the same files (M309).
 
 Done when: every report is read, each helper's changes are merged or
 removed, and `git worktree list` shows only what is still in use.
