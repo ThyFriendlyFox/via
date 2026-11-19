@@ -4,10 +4,22 @@ All notable changes to EE Workcenter are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/) · Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- SIM asks for every part of the board whose facts carry a thermal figure. One that `sim/thermal.json` does not name is not judged, on 1 line that gives the row to write; `--strict` fails on it. `details.thermal.board` holds the board's line, the parts asked for (`asked`), those left out (`unplanned`) and the rows for no fitted part (`strays`).
+- SIM: a project with no deck is asked for its parts with a thermal figure all the same. A project with decks and no schematic is asked for each facts entry with a figure whose part number a deck names.
+- SIM: a part with no part number and no facts entry, whose pins fit an entry with a thermal figure, is not judged. This can be a false alarm; giving the part its number in `parts.csv` beside the schematic clears it.
+- `workcenter next`: each new thermal line names its own step.
+
 ### Changed
 - The nightly run's `ci-failure` issue follows the nights. A failed night opens it, or adds 1 comment when it is open, with the run's address, the step that failed and the gate's `why:` lines, so a reader need not open the log. A passed night closes it with 1 comment that names the run. Before, a stale issue hid every later failure: issue 63 of 2026-11-17 stayed open after the next night passed, until it was closed by hand.
 - README.md, STATUS.md and ROADMAP.md say the container package `ghcr.io/thyfriendlyfox/via` is public, and a pull needs no login: at 06:00 UTC on 2026-11-19 a request with no login for its manifest got HTTP 200. README.md had said a pull needed `docker login ghcr.io` until the owner made the package public; that sentence was written without a look (M280).
 - The lead's quiet check (`ee-agent-kit/lead/quiet.py`) leaves out a Python script with nothing below it that sleeps and used no processor time for 2 s, as it left out a shell script that only sleeps: a helper's script that waited for the gate's lock in `time.sleep` was counted as busy, and it and the gate waited for each other (M277). PROCESSES.md P31 steps 11 to 14, P14 step 9 and P5 step 7, with the `lead` skill, keep helpers' test commands to about 5 minutes, give the health gate 2 hours, keep a gate's tools from edits in place, and ask before a cleaning or a release lap (M273 to M280).
+
+### Fixed
+- SIM: a row of `sim/thermal.json` whose `mpn` is not the board part's number fails and holds nothing: the gate judged the part on another part's facts.
+- SIM: a row under a reference the board does not fit (another reference, or a part marked not fitted) is named, a warning (a failure with `--strict`), and is not judged: it failed the gate before at 106.26 C for a part the board does not have.
+- SIM: a run that SPRA953D's equation 5 judged names `theta_jc` as its figure in the record, with `equation` `5`; what theta_ja or the stated case gave stands under `beside`.
+- The fixtures `pass-sim-bus` and `pass-legend-dense` give their made-up U1 a number in `parts.csv`, so the SIM gate does not take it for a part with a thermal figure.
 
 ## [0.1.0] - 2026-11-19
 ### Changed

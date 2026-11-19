@@ -140,7 +140,7 @@ file: it needs nothing else.
 |---|---|---|---|
 | ERC | `workcenter erc <project>` | 0 errors in the ERC report | layout |
 | DRC | `workcenter drc <project>` | 0 errors, 0 unconnected items, 0 parity errors, 0 legend failures; with the project's fab rules (`<name>.kicad_dru`) when its design names a fab | export |
-| SIM | `workcenter sim <project>` | every `sim/*.cir` runs clean with no analysis aborted, every `*.expect.json` bound holds as written and at every corner of `sim/corners.json`, every overlap `sim/frequency-plan.json` shows is answered, every part `sim/thermal.json` names keeps its junction under its pack's derated limit at every run, and every library model a deck includes is unchanged since its `sources.csv` row, and every I2C line with a pull-up and every regulator with a load stated in ratings.json has a deck that names it (a warning; a failure with --strict) | export |
+| SIM | `workcenter sim <project>` | every `sim/*.cir` runs clean with no analysis aborted, every `*.expect.json` bound holds as written and at every corner of `sim/corners.json`, every overlap `sim/frequency-plan.json` shows is answered, every part `sim/thermal.json` names keeps its junction under its pack's derated limit at every run, every part of the board whose facts carry a thermal figure is named in `sim/thermal.json` (a warning; a failure with --strict), and every library model a deck includes is unchanged since its `sources.csv` row, and every I2C line with a pull-up and every regulator with a load stated in ratings.json has a deck that names it (a warning; a failure with --strict) | export |
 | EXPORT | `workcenter export <project>` | gerbers, drill, BOM, schematic PDF, placement file (each part at its place and rotation), an assembly page per side that holds a part (DNP parts hidden; each designator of that side drawn, read from the page's text), IPC-2581 produced, and each of the last 3 read back against the board; with `panel.json`, a KiKit panel of rows x cols boards in a closed outline at least their size, and its Gerbers | hand-off to fabrication |
 | ALL | `workcenter gates <project>` | the 4 gates above in order, none red, none skipped for a missing engine | a board is called done |
 
@@ -471,8 +471,18 @@ with `--strict`. So is a part whose deck's corners were not all run (a
 `skip`, `temperature: false`, a deck block that leaves out a temperature of
 the file, `--nominal`), and a run whose temperature is not known; such a
 part is never held. A deck block that leaves out a temperature of the file
-is itself a warning. With decks and no `sim/thermal.json`, SIM prints that
-no junction is judged; that line is no warning. `workcenter gates` prints
+is itself a warning. SIM asks for every part of the board whose facts
+carry a thermal figure. It reads the schematic's parts with kicad-cli and
+each part's number from `parts.csv` beside the schematic only. A part
+`sim/thermal.json` does not name is not judged (a warning, a failure with
+`--strict`); so is a part with no number whose pins fit an entry with a
+figure, which a number in `parts.csv` clears. A row must name the board
+part's own number: one that names another fails. A row under a reference
+the board does not fit is named and not judged. With no schematic, the
+gate asks for the facts entries with a figure whose part number a deck
+names. With decks and no `sim/thermal.json`, SIM prints that no junction
+is judged; that line is no warning, and the board's line follows it.
+`workcenter gates` prints
 each part's thermal line, and its `--report` writes them under the deck
 table.
 

@@ -39,6 +39,12 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-19 — The SIM gate asks for the parts that can get hot
+
+A model that never wrote `sim/thermal.json` got a pass with nothing judged. The SIM gate now reads the board's parts with kicad-cli and asks for each part whose facts carry a thermal figure. The first review found a row with the WSON part's number holding the SOT-23 part on the WSON's facts; the gate now compares the number. A parts list outside the project left the regulator with no number, and the line said no part carried a figure; the gate now asks for an unnumbered part whose pins fit an entry with a figure. The second review found that a project with decks and no schematic passed `--strict` at 124.97 C; the gate now reads the decks for part numbers with a figure. The third check found a row for no fitted part still judged and failing at 106.26 C; the board is now read first and such a row is left out of the judging. Landing found 2 fixtures named `pass-` that the new rule failed under `sim --strict`: each had a made-up U1 with no number and the pins of a real regulator. Each now gives its U1 a made-up number in `parts.csv`. The rule can raise a false alarm on an unnumbered part; the number clears it.
+
+Evidence: `tests/test_thermal_asked.py` (26 tests), `tests/test_thermal_asked_boards.py` (9 tests); branch `wip/land-l7b`, 95e097c.
+
 ## 2026-11-19 — The nightly's ci-failure issue opens, speaks and closes by itself
 
 Nightly run 44031336712 failed on 2026-11-17 and opened issue 63. Run 44251400298 passed the next morning. The old step runs only on failure and opens an issue only when none is open, so issue 63 stayed open until it was closed by hand at 20:58 UTC on 2026-11-18. While it was open, a new failure would have said nothing. Now `tools/ci/nightly_issue.py` decides from the night's outcome, the gate's log and the open issues, and the workflow's last step carries the answer to GitHub. A failed night opens or comments, with the gate's `why:` lines; a passed night closes. Of 2 open issues the oldest is spoken to and the other closed as its duplicate. 21 tests, seen failing first (18 failed before the script; the 3 a review added failed before their fix). No GitHub run has used it yet.
