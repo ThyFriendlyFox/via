@@ -684,7 +684,7 @@ def explorer(
         for layer in board.signal
     )
     panel = f' id="{ident}" role="tabpanel" aria-labelledby="{label}"' if ident else ""
-    return f"""          <div class="explorer"{panel} data-explorer data-src="{src}"{" hidden" if hidden else ""}>{facts}
+    return f"""          <div class="explorer"{panel} data-explorer data-src="{src}" data-board3d-src="../board3d.js"{" hidden" if hidden else ""}>{facts}
             <div class="ex-tools" role="toolbar" aria-label="The drawing">
               <div class="ex-layers" aria-label="Layers">
 {buttons}

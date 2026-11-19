@@ -2226,6 +2226,10 @@ html:not(.motion) .wordmark .wm-pt,
 .explorer {
   margin-top: 2.5rem;
 }
+/* A hidden button, slider or view in the explorer stays hidden, whatever display its own rule gives. */
+.explorer [hidden] {
+  display: none !important;
+}
 /* An example of several boards: a tab for each over its explorer, and the board's file and numbers. */
 .ex-boards {
   display: flex;
@@ -2331,6 +2335,45 @@ html:not(.motion) .wordmark .wm-pt,
 }
 .ex-view svg:active {
   cursor: grabbing;
+}
+/* The board in 3D (board3d.js): as wide as the view, its shape the board's within 1.2:1 to 2:1, square
+   on a phone; the slider that pulls its layers apart sits between the layers and the zoom. */
+.ex-view .ex-3d {
+  display: block;
+  width: 100%;
+  aspect-ratio: var(--ar, 1.6);
+  max-height: 80vh;
+  cursor: grab;
+  touch-action: none;
+}
+.ex-view .ex-3d:active {
+  cursor: grabbing;
+}
+.ex-view .ex-3d:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+@media (max-width: 640px) {
+  .ex-view .ex-3d {
+    aspect-ratio: 1;
+  }
+}
+.ex-zoom button[aria-pressed="true"] {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: none;
+}
+.ex-apart {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+.ex-apart input {
+  width: 9rem;
+  accent-color: var(--primary);
 }
 .ex-info {
   min-height: 1.6em;

@@ -514,6 +514,26 @@ def test_every_link_on_the_site_names_what_exists():
     assert missing == []
 
 
+def test_the_3d_view_imports_only_the_three_js_the_build_serves(tmp_path):
+    """Each example's explorer can turn to 3D (the owner's ask, 2026-11-19): `example.js` loads
+    `site/board3d.js`, and it imports three.js from `vendor/`. A module's import is no link of a page,
+    so the link test above does not see it: the file it names is here, with its license, and a build
+    serves both, and each explorer names the module."""
+    module = (SITE / "board3d.js").read_text(encoding="utf-8")
+    imports = re.findall(r'^import .* from "\./([^"]+)";$', module, re.M)
+    assert imports == ["vendor/three-0.170.0.module.min.js"]
+    license_text = (SITE / "vendor" / "THREE-LICENSE").read_text(encoding="utf-8")
+    assert (SITE / imports[0]).is_file() and "MIT" in license_text
+    served = tmp_path / "served"
+    build = ["sh", str(SITE / "build.sh"), str(served)]
+    run = subprocess.run(build, capture_output=True, text=True, check=False)
+    assert run.returncode == 0, run.stderr
+    for name in ("board3d.js", imports[0], "vendor/THREE-LICENSE"):
+        assert (served / name).is_file(), name
+    pages = sorted((SITE / "examples").glob("*.html"))
+    assert pages and all('data-board3d-src="../board3d.js"' in p.read_text(encoding="utf-8") for p in pages)
+
+
 def test_the_guide_is_what_site_guide_writes_and_names_what_exists():
     """The home page's left card leads to the guide, how to use Via step by step (the owner's ask,
     2026-11-19). `site/guide.py` writes it. Each `workcenter` command it shows is a command the tool
