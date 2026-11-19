@@ -198,28 +198,63 @@ prints 1 line: `where: image: ...` or `where: install: ...`, with the reason.
 
 The last step fails unless the decided path's verify step ran and passed.
 
-## Ubuntu's own archive on the install path
+## The hosts of Ubuntu's archive on the install path
 
 Before install.sh, the install path (and the nightly run) runs
-`sudo env APT_ARCHIVE_CI=1 bash tools/ci/apt_archive.sh /etc/apt`. The
-runner's apt asks a regional mirror of Ubuntu's archive, and twice it
-crawled to the download's bound of 570 s (CI runs 44402154007 and
-44432768560). The script changes such a host to archive.ubuntu.com, or
-ports.ubuntu.com on an arm machine, and nothing else.
+`sudo env APT_ARCHIVE_CI=1 bash tools/ci/apt_archive.sh /etc/apt`. On
+2026-11-19 each of 2 hosts was the slow one once: the runner's regional
+mirror crawled to the download's bound of 570 s (CI runs 44402154007 and
+44432768560), and at 07:14 UTC archive.ubuntu.com did not deliver the
+index within 120 s in 3 tries (run 44477966021). So apt keeps more than
+1 host and asks the fastest first:
 
-1. Read its lines in the step "Ask Ubuntu's own archive". A line
-   `<file>: <host> -> archive.ubuntu.com` names each file it changed.
-   A line `no regional or cloud mirror ...; changed nothing` says there was none.
+- The mirror list (`/etc/apt/apt-mirrors.txt`, which the runner's
+  `ubuntu.sources` names) keeps the runner's mirror, archive.ubuntu.com and
+  security.ubuntu.com. A source line that names a regional mirror itself
+  (us-east-2.ec2.archive.ubuntu.com, us.archive.ubuntu.com, the same under
+  ports.ubuntu.com) names the list instead, and the list gets the mirror
+  and Ubuntu's own host (archive.ubuntu.com or ports.ubuntu.com) beside it.
+- A probe asks every host of the list for the first 1 MiB of
+  `dists/<suite>/main/binary-<arch>/Packages.gz`, side by side, 3 s each,
+  ended at 4 s: at most 5 s in all, of the 8 s the `full` job's limit
+  leaves beside install.sh's worst case. The list's priorities follow bytes a
+  second. A host that does not answer goes last and stays. With no answer
+  at all the priorities stay as the runner wrote them.
+- `/etc/apt/apt.conf.d/80apt-archive-ci` sets apt's http and https
+  timeout to 15 s and `Acquire::Retries` to 1: a host that sends nothing
+  for 15 s is tried 1 more time, then apt's mirror method asks the next.
+
+1. Read its lines in the step "Rank the hosts of Ubuntu's archive". A
+   line `probe <host>: <n> bytes in <s> s, <r> bytes/s` or
+   `probe <host>: no answer (...); it goes last` per host, then
+   `apt-mirrors.txt: apt asks <first>, then ...: the fastest first`, or
+   `no host answered the probe; apt asks in the runner's order: ...`.
+   A line `<file>: <host> -> mirror+file:/etc/apt/apt-mirrors.txt` names a
+   source file it pointed at the list, and `added ...` the hosts the list
+   gained. A line `no regional or cloud mirror ...; changed nothing` says
+   no source uses a mirror list or names a regional mirror.
    A line `... a layout this script does not know; changed nothing` means
    the runner image changed its apt files: read them, then the script.
 2. To turn it off without a commit: the repository variable
    `CI_APT_UBUNTU_ARCHIVE` = `0`. The step then prints 1 line that names it.
 3. It refuses this machine's /etc/apt unless `APT_ARCHIVE_CI=1`: a
    person's computer keeps its mirror. Its tests run it on a folder of
-   their own (`tests/test_ci_apt_archive.py`).
+   their own, with a stand-in for the probe (`tests/test_ci_apt_archive.py`).
 
-It does not help when archive.ubuntu.com itself is slow or down, nor with
-KiCad 10's source (the PPA). The image build already asks archive.ubuntu.com.
+What it does not cover:
+
+- A host that keeps sending a trickle never goes silent for 15 s, so apt
+  does not leave it. The probe ranks it last only if it is slow at the
+  step's start.
+- install.sh's download passes its own `Acquire::http::Timeout=60` and
+  `Acquire::Retries=3` on apt's command line, which win over the file: in
+  the download a silent host is left after 4 tries of 60 s.
+- KiCad 10's source (the PPA) has 1 host. It gets the same 15 s and 1
+  retry, and nothing to fall back to.
+- An arm runner's `ports.ubuntu.com`, named alone with no list, stays 1
+  host: the script knows no second host for it.
+- The image build: apt runs inside the container with Ubuntu's default
+  sources, and this step does not run there.
 
 The image holds node, from Ubuntu 24.04's own `nodejs` (18.19.1), which
 the Dockerfile installs after install.sh: the tests that run it

@@ -12,8 +12,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      # As in ci.yml's install path: Ubuntu's own archive, not the runner's regional mirror.
-      - name: Ask Ubuntu's own archive, not the runner's regional mirror
+      # As in ci.yml's install path: the hosts of Ubuntu's archive, fastest first; a silent one given up.
+      - name: Rank the hosts of Ubuntu's archive, fastest first; give up a silent one
         id: archive
         env:
           ENABLED: ${{ vars.CI_APT_UBUNTU_ARCHIVE }}
