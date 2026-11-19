@@ -442,30 +442,48 @@ def test_pull_takes_the_image_by_its_digest_alone(tmp_path, monkeypatch):
 
 def test_every_test_that_needs_node_is_routed_to_the_install_path_by_the_files_it_reads():
     """The image holds no node, so on the image path the tests that run node skip. A change to a file
-    they read goes to the install path, where they run. The files, read from the 2 tests: test_forms.py
-    runs site/api/_forms.js (its API folder); test_lead.py parses ee-agent-kit/lead/workflows/*.js."""
+    they read goes to the install path, where they run. The files, read from the 3 tests:
+    test_ci_nightly_issue.py runs the script of the nightly's issue step, taken from
+    .github/workflows/nightly.yml, which runs tools/ci/nightly_issue.py; test_forms.py runs
+    site/api/_forms.js (its API folder); test_lead.py parses ee-agent-kit/lead/workflows/*.js."""
     asking = sorted(
         f"tests/{p.name}"
         for p in (ROOT / "tests").glob("test_*.py")
         if re.search(r"""which\(["']node["']\)""", p.read_text(encoding="utf-8"))
     )
-    assert asking == ["tests/test_forms.py", "tests/test_lead.py"]
-    assert set(image.NODE_PATHS) == {*asking, "site/api/", "ee-agent-kit/lead/workflows/"}
+    assert asking == ["tests/test_ci_nightly_issue.py", "tests/test_forms.py", "tests/test_lead.py"]
+    assert set(image.NODE_PATHS) == {
+        *asking,
+        "site/api/",
+        "ee-agent-kit/lead/workflows/",
+        ".github/workflows/nightly.yml",
+        "tools/ci/nightly_issue.py",
+    }
     assert image.needs_node(["tools/fields.py", "site/api/_forms.js"]) == ["site/api/_forms.js"]
     assert image.needs_node(["ee-agent-kit/lead/workflows/user-round.js"]) != []
     assert image.needs_node(["site/index.html", "tests/test_image.py", "ee-agent-kit/lead/x.md"]) == []
+    assert image.needs_node([".github/workflows/ci.yml", "tools/ci/apt_archive.sh", "tools/ci/x.py"]) == []
 
 
-def test_a_change_to_what_node_reads_runs_on_the_install_path():
+@pytest.mark.parametrize(
+    "path",
+    [
+        "site/api/_forms.js",
+        ".github/workflows/nightly.yml",
+        "tools/ci/nightly_issue.py",
+        "tests/test_ci_nightly_issue.py",
+    ],
+)
+def test_a_change_to_what_node_reads_runs_on_the_install_path(path):
     asked: list[str] = []
-    d = image.decide(
-        "", "tc-x", [], lambda r: asked.append(r) or (False, ""), "o", node=["site/api/_forms.js"]
-    )
+    node = image.needs_node(["tools/fields.py", path])
+    assert node == [path]
+    d = image.decide("", "tc-x", [], lambda r: asked.append(r) or (False, ""), "o", node=node)
     assert asked == []
     assert d == {
         "where": "install",
         "image": "",
-        "reason": "this change edits site/api/_forms.js: the tests that need node run on the install path "
+        "reason": f"this change edits {path}: the tests that need node run on the install path "
         "(the image holds no node)",
     }
 

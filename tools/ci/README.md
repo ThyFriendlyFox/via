@@ -155,9 +155,10 @@ KiCad 10's source (the PPA). The image build already asks archive.ubuntu.com.
 
 What differs inside the image: the runner has `node`, the image does not,
 so the tests that need it (6 of `tests/test_forms.py`, 1 of
-`tests/test_lead.py`) skip there. A change to a file they read
-(`site/api/`, `ee-agent-kit/lead/workflows/`, the 2 test files; the list
-is `NODE_PATHS` in `tools/image.py`) takes the install path, where they
+`tests/test_lead.py`, 3 of `tests/test_ci_nightly_issue.py`) skip there.
+A change to a file they read (`site/api/`, `ee-agent-kit/lead/workflows/`,
+`.github/workflows/nightly.yml`, `tools/ci/nightly_issue.py`, the 3 test
+files; the list is `NODE_PATHS` in `tools/image.py`) takes the install path, where they
 run. On the image path the `where:` line ends `not judged there: the
 tests that need node`, with the reason.
 
