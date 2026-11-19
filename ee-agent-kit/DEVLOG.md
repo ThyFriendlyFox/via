@@ -39,6 +39,12 @@ Evidence: <commit / tag / gate run / screenshot>
 
 ---
 
+## 2026-11-19 — A stopped test run waits for its shards even when it is told to stop twice
+
+Main's quick CI check went red on 1 test of the stop of the test shards, a test the change did not touch. The same tree had passed it 25 minutes earlier. The test read a process's file in `/proc` just as another process cleared that process away, and the read failed. The real fault was in the runner. Under the engine lock's `hold`, the runner hears the stop 2 times, from its group and from the hold. The second stop broke off its clean-up, so it left without waiting for its shards. The runner now ignores a stop after the first. The test now checks that the runner waited for every shard, and it no longer waits for a guessed time; a third test calls the clean-up on children only it can reap, and the stop tests fail in 30 s on a runner that hangs. The reviewer ran the holder test 100 times of 100 with no load and 100 of 100 beside 4 busy loops, and the new test failed 20 of 20 against the old runner. Left: a stop raised inside a shard's Popen, after the fork and before the handle is kept, loses that shard, with no test.
+
+Evidence: CI run 44496113605 (job 135463724770); `tests/test_testshards.py` (51 tests, 51 passed in 19.20 s at landing); commits 888ebad and d42e005 on `wip/shards-stop-race`; M288.
+
 ## 2026-11-19 — The ranked hosts met a host fast for the sample and slow for the download
 
 Pull request 116's `full` job (job 135500622487) took the install path and stopped in the download: `apt: the download did not end within 570 s ... after 1 pass of 5`. The ranking step had done what it says. At 10:34:24 UTC its probe measured the runner's regional mirror at 2468910 bytes/s, security.ubuntu.com at 1354840 and archive.ubuntu.com at 87922, and put them in that order. The download then took the regional mirror's files at 48.3 kB/s: 26.6 MB in 550.7 s, about 51 times slower than the sample. apt asked a second host for 1 file only, libva2 from security.ubuntu.com. In the download, install.sh's own options on apt's command line, `Acquire::Retries=3` and `Acquire::http::Timeout=60`, take the place of the step's 15 s and 0 retries, as tools/ci/README.md says under what the step does not cover. So 1 pass used the whole 570 s. 2 things are not held today: a host that is fast for the sample and slow for the download is not left, and a pass has no bound of its own. The fix is in work; its mistake entry and its process come with it.
