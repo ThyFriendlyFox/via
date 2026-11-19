@@ -1,7 +1,7 @@
 # 3D bodies
 
 KiCad's 3D library has no body for 4 of Hush's parts. `make_models.py` writes each from its
-footprint's fab outline and the maker's drawing, with the workcenter's `tools/wrlgen.py`:
+footprint's fab outline and the maker's drawing, with Via's `tools/wrlgen.py`:
 
 ```sh
 python3 models/make_models.py      # from the board's folder

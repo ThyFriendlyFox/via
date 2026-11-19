@@ -5,11 +5,11 @@ The Dayton Audio CE40-4 (library/dayton/CE40-4.pdf) sits under the board, its fr
 the back face from the opening to 20 mm out; the cone shows through the three windows, and the mic's
 port, on the hub, looks down at the dust cap. The speaker's two wires run from J3 down past the frame
 to the driver's tabs. None of this changes the copper. The scene, the bodies the board names, the
-renders and the GIF come from the EE Workcenter's `tools/scene.py`; this file holds only Hush's driver
+renders and the GIF come from Via's `tools/scene.py`; this file holds only Hush's driver
 and its placement.
 
     workcenter design design.py --route     # the routed board this reads
-    workcenter pictures .                   # runs this with the workcenter's tools/ on PYTHONPATH
+    workcenter pictures .                   # runs this with Via's tools/ on PYTHONPATH
 
 Writes build/assembly/: the scene's bodies, hush_assembly.kicad_pcb, the images
 assembly-{iso,front,side,back}.png and assembly-spin.gif, the assembly turning round once.

@@ -11,7 +11,7 @@ same time; the loop takes it as its target instead of cancelling it. There is no
 no firmware: the inverse is made by analog parts within a few microseconds, which a feedback loop
 through 4 mm of air needs.
 
-This folder is a whole KiCad 10 project made with the EE Workcenter: `design.py` is the board, and
+This folder is a whole KiCad 10 project made with Via: `design.py` is the board, and
 the `.kicad_*` files beside it are what `workcenter design` writes from it. The datasheets and
 models it reads are in [`../library/`](../library/), the decks that prove the loop in [`sim/`](sim/),
 the 3D bodies KiCad has none for in [`models/`](models/), the pictures in [`docs/`](docs/).
@@ -49,7 +49,7 @@ the 3D bodies KiCad has none for in [`models/`](models/), the pictures in [`docs
 
 `workcenter pictures .` draws them all from [`pictures.json`](pictures.json): the board's stills,
 layers and both turning GIFs in the board's own colours, and [`assembly.py`](assembly.py), the
-ring on its driver, on the workcenter's
+ring on its driver, on Via's
 `tools/scene.py`. The 3D bodies of the mic, the jack, the trimmer and the speaker's wires come from
 [`models/make_models.py`](models/make_models.py); every other body is KiCad's own
 (`KICAD10_3DMODEL_DIR`).
