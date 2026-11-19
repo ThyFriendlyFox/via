@@ -994,9 +994,9 @@ def test_the_build_test_runs_only_when_asked_by_name():
 
 def asking_for_the_build(root: Path) -> list[str]:
     """The files of `root` that run tests and name the build's variable: every workflow, the Makefile,
-    and every file under verify/."""
+    and every file under verify/ but its documents."""
     places = [*sorted((root / ".github" / "workflows").glob("*.yml")), root / "Makefile"]
-    places += sorted(p for p in (root / "verify").iterdir() if p.is_file())
+    places += sorted(p for p in (root / "verify").iterdir() if p.is_file() and p.suffix != ".md")
     return [str(p.relative_to(root)) for p in places if BUILD_ASKED in p.read_text(encoding="utf-8")]
 
 
@@ -1011,6 +1011,7 @@ def test_nothing_asks_for_the_build_test_by_default(tmp_path):
     (flows / "ci.yml").write_text(f"env:\n  {BUILD_ASKED}: '1'\n", encoding="utf-8")
     (planted / "Makefile").write_text(f"verify:\n\t{BUILD_ASKED}=1 bash verify/verify.sh\n", encoding="utf-8")
     (planted / "verify" / "verify.sh").write_text("make lint\n", encoding="utf-8")
+    (planted / "verify" / "README.md").write_text(f"Not set: `{BUILD_ASKED}=1`.\n", encoding="utf-8")
     assert asking_for_the_build(planted) == [".github/workflows/ci.yml", "Makefile"]
 
 
