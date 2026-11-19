@@ -33,7 +33,7 @@ the report path.
 
 | Use | Do not use |
 |---|---|
-| Via (the product: capital V, no article); `workcenter` is its command, in a code span | `EE Workcenter`, `the workcenter` (the owner's words of 2026-11-19; `tests/test_product_name.py`) |
+| Via (the product: capital V, no article); `workcenter` is its command, in a code span | `EE Workcenter`, `the workcenter` (the owner's words of 2026-11-19; `tests/test_product_name.py` holds the Markdown files, not the program's strings or other files) |
 | workcenter (the kind of thing Via is) | toolbox, kit (the kit is `ee-agent-kit/`), environment (the cloud VM) |
 | project | board repo, target, design folder |
 | gate | check (that is `doctor`), test (those are in `tests/`), validation |
