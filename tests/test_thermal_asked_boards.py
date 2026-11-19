@@ -238,6 +238,38 @@ def test_a_row_for_a_part_marked_not_fitted_is_not_judged_and_deleting_the_file_
 
 
 @needs_engines
+def test_pass_sim_bus_in_place_names_its_made_up_regulator_and_passes_strict(tmp_path):
+    """tests/boards/pass-sim-bus, in place beside tests/boards/library. Its U1 is the fixture's own
+    made-up regulator (sim/models/fixreg.lib) on KiCad's TLV75533PDBV symbol. With no parts list, U1 had
+    no number and the pins of TLV75533PDBVR's entry, which carries a thermal figure, so the gate could not
+    tell and failed --strict. Its parts.csv gives U1 the number FIXREG, which no facts entry names: a part
+    with no facts, asked for nothing, and the fixture is GREEN under `sim --strict` again."""
+    code, record = sim(BOARDS / "pass-sim-bus", tmp_path / "out")
+    assert code == 0 and record["status"] == "pass", record
+    assert not record["details"].get("failures"), record["details"]
+    board = record["details"]["thermal"]["board"]
+    assert board["line"] == (
+        "thermal: no part of the board carries a thermal figure in its facts, so no junction is asked for "
+        "(7 parts; 6 with no facts entry, which `workcenter ratings` names)"
+    ), board
+    assert board["unplanned"] == [] and board["asked"] == []
+
+
+@needs_engines
+def test_pass_legend_dense_in_place_is_what_it_was_before_the_rule(tmp_path):
+    """tests/boards/pass-legend-dense, in place beside tests/boards/library: a legend fixture with no deck.
+    Before item 7's rule `sim --strict` skipped it (no sim/*.cir). Its U1, a made-up 8-pin part on an
+    SOIC-8, had no number and the pins of 3 entries with a thermal figure, and the rule failed it. Its
+    parts.csv gives U1 the number FIXTURE-IC-SOIC-8, which no facts entry names: it skips again, on the
+    same line and with the same exit, 2. The record gains the board's thermal line."""
+    code, record = sim(BOARDS / "pass-legend-dense", tmp_path / "out")
+    assert code == 2 and record["status"] == "skip", record
+    assert record["summary"] == "no sim/*.cir in project", record
+    assert not record["details"].get("failures"), record["details"]
+    assert record["details"]["thermal"]["board"]["unplanned"] == []
+
+
+@needs_engines
 def test_a_board_with_no_deck_still_asks_for_its_charger_s_junction(tmp_path):
     """Finding L7B-3. pass-block-charger with its sim/ folder taken away: U1, BQ21040DBVR, whose facts
     carry junction_max 150 C and RthetaJA 130.8 C/W (BQ21040 datasheet, sections 7.1 and 7.4, pages 3 and

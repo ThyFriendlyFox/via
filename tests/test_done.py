@@ -197,11 +197,14 @@ def test_a_fixture_with_ratings_json_is_a_ratings_fixture_or_named_for_another_c
     for name in FOR_ANOTHER_COMMAND:
         proj = tmp_path / name
         shutil.copytree(BOARDS / name, proj, ignore=shutil.ignore_patterns("build"))
-        assert not list(proj.glob("*.csv")), name
+        # pass-sim-bus's parts.csv gives its made-up regulator a number, so that SIM does not take U1 for a
+        # part with a thermal figure (roadmap item 7): it holds that 1 row and nothing for the ratings.
+        listed = sorted(p.name for p in proj.glob("*.csv"))
+        assert listed == (["parts.csv"] if name == "pass-sim-bus" else []), (name, listed)
         code, lines = gates(proj, capsys, strict=True)
         assert code == 1 and lines[-2].startswith("RATINGS not held: no build/ratings/report.json yet"), lines
         project = cli.find_project(str(proj))
-        files = cli.ratings().read_by_run(project, [], cli)
+        files = cli.ratings().read_by_run(project, [proj / n for n in listed], cli)
         sums = {rel: hashlib.sha256(f.read_bytes()).hexdigest() for rel, f in files.items()}
         rated(proj, "NOTHING JUDGED (1 not judged)", "fail", inputs={"parts": [], "files": sums})
         code, lines = gates(proj, capsys, strict=True)
