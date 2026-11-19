@@ -124,6 +124,12 @@ or any step that downloads, installs, or runs for more than a minute.
     the program's own last lines and what had not answered. A red CI run
     uploads the gate's kept folder as an artifact, bounded in size and
     days (M304).
+15. A test of an order runs on an input whose orders differ: the order
+    the list is written in, and the order the program that reads it uses
+    (apt asks a mirror list's hosts by priority, not by line). When 1
+    program hands a list to another (a hook, a command named in a
+    variable), 1 test runs the real callee on the caller's real list and
+    checks what it did, not the arguments it got (M308).
 
 Done when: the run is green, its log shows progress lines in every long
 step, no step used more than half its limit, and no step depended on a
@@ -1586,6 +1592,12 @@ a task.
     folder's name, P7 step 11). Never remove pytest's temp root (`/tmp/pytest-of-<user>`)
     while a pytest runs; a helper's own run takes `--basetemp` under its
     own folder (M276).
+15. A piece whose independent check is still running does not merge.
+    If the lead merges it anyway, it says so in the pull request and in
+    STATUS ("the check had not reported"), and the check's findings are
+    read against `main`, not the branch: each finding that holds on `main`
+    is a defect of `main`, and its fix is the next landing, before any
+    other piece on the same files (M309).
 
 Done when: every report is read, each helper's changes are merged or
 removed, and `git worktree list` shows only what is still in use.
