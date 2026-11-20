@@ -300,6 +300,60 @@ def test_docs_check_holds_contents_and_datasheets_to_what_docs_writes(tmp_path):
     ]
 
 
+@pytest.mark.parametrize("relative", [False, True], ids=["absolute", "relative"])
+def test_docs_check_counts_a_link_as_no_copy_and_docs_copies_over_it(tmp_path, relative):
+    """A datasheet copy that was a link to the library file passed `docs --check`, and `docs`, the
+    step it names, stopped on shutil.SameFileError (a reviewer, 2026-11-20). Git keeps a link, not
+    the maker's bytes that P27 asks for."""
+    repo = docs_repo(tmp_path)
+    v = repo / "v0.2"
+    assert run("docs", v)[0] == 0
+    copy = v / "datasheets" / "maker" / "u1.pdf"
+    copy.unlink()
+    copy.symlink_to("../../../library/maker/u1.pdf" if relative else repo / "library" / "maker" / "u1.pdf")
+    assert copy.read_bytes() == b"%PDF u1.pdf"
+    code, record, _ = docs_check(v)
+    assert code == 1 and record["details"]["failures"] == [
+        "datasheets/maker/u1.pdf: a link, not a copy: docs copies ../library/maker/u1.pdf over it"
+    ]
+    code, records = run("docs", v)
+    assert code == 0, records
+    assert not copy.is_symlink() and copy.read_bytes() == b"%PDF u1.pdf"
+    assert (repo / "library" / "maker" / "u1.pdf").read_bytes() == b"%PDF u1.pdf"
+    assert docs_check(v)[0] == 0
+
+
+def test_docs_check_shows_a_line_end_it_differs_in(tmp_path):
+    """A CONTENTS.md with CRLF line ends printed `committed '(end)'; docs writes '(end)'`."""
+    repo = docs_repo(tmp_path)
+    v = repo / "v0.2"
+    assert run("docs", v)[0] == 0
+    contents = v / "CONTENTS.md"
+    contents.write_bytes(contents.read_bytes().replace(b"\n", b"\r\n"))
+    code, record, _ = docs_check(v)
+    assert code == 1 and record["details"]["failures"] == [
+        "CONTENTS.md: line 1: committed '# v0.2: contents\\r'; docs writes '# v0.2: contents'"
+    ]
+
+
+def test_docs_and_its_check_warn_of_a_library_row_whose_file_is_gone(tmp_path):
+    """A row of sources.csv whose file left the library: `docs` copies nothing for it and CONTENTS.md
+    still links its copy, so both say so. `workcenter sources` fails on that row."""
+    repo = docs_repo(tmp_path)
+    v = repo / "v0.2"
+    assert run("docs", v)[0] == 0
+    (repo / "library" / "maker" / "rc.pdf").unlink()
+    warning = (
+        "../library/maker/rc.pdf: ../library/sources.csv names it, and the library has no such file: "
+        "docs copies nothing for it; `workcenter sources` fails on its row"
+    )
+    code, record, out = docs_check(v)
+    assert code == 0 and record["details"]["warnings"] == [warning]
+    assert f"       - warning: {warning}" in out
+    code, records = run("docs", v)
+    assert code == 0 and records[0]["details"]["warnings"] == [warning]
+
+
 def test_docs_check_names_costs_when_a_parts_list_is_missing(tmp_path):
     repo = docs_repo(tmp_path)
     assert run("docs", repo / "v0.2")[0] == 0

@@ -914,7 +914,7 @@ def next_step(cli, target: str, run_check=True) -> Step:
             # The check names the 1 step that writes its difference away. 2 of them are no
             # regeneration: a rule file whose header alone differs, and one the design would not write.
             named = next((m.group(1) for ln in said if (m := re.match(r"check: step: `(.+)`$", ln))), "")
-            if not first and (named.endswith(" --rules-only") or named.startswith("git rm ")):
+            if not first and (named.endswith(" --rules-only") or named.startswith("rm ")):
                 do = (
                     "Write the project's rule file again: only its header line differs from what the design "
                     "writes."

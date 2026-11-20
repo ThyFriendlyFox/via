@@ -4397,6 +4397,9 @@ def cmd_design(args) -> int:
     t0 = time.monotonic()
     try:
         design = kicadgen.load_design(design_path)
+        # Every via size against the board's own rules, the fab's among them: a fab Via does not know
+        # is a refused design file too, before anything is written.
+        via_rules = design.check_via_rules()
     except (TypeError, ValueError) as exc:
         # A design file the generator refuses (a namespace that is no UUID, power_nets that is no dict)
         # is 1 line and exit 1, as every other refusal of this step is: the message says what to write,
@@ -4427,7 +4430,7 @@ def cmd_design(args) -> int:
     # rules, since the router places most vias and the DRC of an unrouted board sees none (M46); and
     # each hand via's place, since a via passes every layer, and one in a keepout or on another face's
     # pad is a short the DRC would only find later (M40, M41).
-    summary["via_problems"] = design.check_via_rules() + design.check_vias()
+    summary["via_problems"] = via_rules + design.check_vias()
     # A part inside an area the design keeps parts out of (a strip, a spacer, a body over the board, M87),
     # or with every pad outside the outline (placed from another origin than the board's).
     summary["part_problems"] = design.check_parts()
@@ -5182,13 +5185,14 @@ BOARD_NOT_COMPARED = (
 
 
 def first_difference(old: bytes, new: bytes) -> dict:
-    """The first line where a project's file and the design's differ: its number and both texts."""
-    a, b = old.splitlines(), new.splitlines()
+    """The first line where a project's file and the design's differ: its number and both texts, as
+    they are. Lines are cut at `\\n` alone, so a `\\r` or a space at a line's end is shown."""
+    a, b = old.split(b"\n"), new.split(b"\n")
     line = next((i for i, (x, y) in enumerate(zip(a, b, strict=False)) if x != y), min(len(a), len(b)))
     return {
         "line": line + 1,
-        "project": a[line].decode(errors="replace").strip()[:100] if line < len(a) else "(end)",
-        "design": b[line].decode(errors="replace").strip()[:100] if line < len(b) else "(end)",
+        "project": a[line].decode(errors="replace")[:100] if line < len(a) else "(end)",
+        "design": b[line].decode(errors="replace")[:100] if line < len(b) else "(end)",
     }
 
 
@@ -5254,13 +5258,15 @@ def check_design(args) -> int:
             if all(f["file"] == rule and f.get("header_only") for f in bad):
                 step = f"workcenter design {shlex.quote(str(design_path))} --rules-only"
             elif all(f["state"] == "extra" for f in bad):
-                step = f"git rm {shlex.quote(str(project_dir / rule))}"
+                # `rm`, not `git rm`: that refuses a file git does not track, and KiCad reads it too.
+                step = f"rm {shlex.quote(str(project_dir / rule))}"
             else:
                 step = f"workcenter design {shlex.quote(str(design_path))}"
                 mine_board = project_dir / board if board else None
-                if mine_board is None or not mine_board.is_file():
-                    step += " --out <a scratch folder>, then copy in the files named above"
-                else:
+                if mine_board is not None and not mine_board.is_file():
+                    # The project keeps no board (the ratings fixtures): the run writes one, removed again.
+                    step += f" && rm {shlex.quote(str(mine_board))}"
+                elif mine_board is not None:
                     ours = (out_dir / board).read_text(encoding="utf-8", errors="replace")
                     theirs = mine_board.read_text(encoding="utf-8", errors="replace")
                     if len(COPPER_ITEM.findall(theirs)) > len(COPPER_ITEM.findall(ours)):

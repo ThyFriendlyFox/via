@@ -377,9 +377,13 @@ project and routes it with FreeRouting. No GUI at any step.
   `d.files`. A `<name>.kicad_dru` the design would not write (no `d.fab`)
   is a difference too: KiCad's DRC reads it. The line before the last
   names the 1 step. It is `--rules-only` when only the rule file's header
-  line differs, and `git rm` for a rule file the design would not write.
+  line differs, and `rm` for a rule file the design would not write.
   Else it is `workcenter design design.py`, with `--route` when the
-  project's board has more tracks and vias than the design draws.
+  project's board has more tracks and vias than the design draws. For a
+  project that keeps no board it is `workcenter design design.py && rm
+  <name>.kicad_pcb`: the run writes the board, and the step removes it.
+  A difference line prints the first differing line as it is: a `\r` or a
+  space at its end shows.
 - `--check` does not compare the `.kicad_pcb`. It writes the board
   unrouted, and the project's holds the router's tracks and vias, the vias
   reserved for pour islands and KiCad's zone fill. Even its designators can
