@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/) · Versioning: [SemVer](
 
 ## [Unreleased]
 ### Changed
+- The home page's strip of agents has NeoAgent, at the owner's ask, from the mark the owner gave (`NeoAgent-logo-bw.svg`), drawn in the text colour like the others: 22 agents.
 - The website says version 0.1.0 is the first release, linked to its section of this file, where the home page's hero, its Get started section and the guide said there was no release yet, at the owner's word. The Get started section says the Docker image isn't public yet and the cloud setup script hasn't run on a real environment yet, as `STATUS.md` holds; the guide's step 1 no longer says the setup script installs Via, only that it is written to.
 
 ## [0.1.0] - 2026-11-19
