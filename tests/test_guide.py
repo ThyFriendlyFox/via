@@ -1098,10 +1098,12 @@ def test_a_version_whose_requirements_are_met_is_asked_its_contents_file_too(tmp
     version = documented(tmp_path)
     (version / "verification").mkdir()
     (version / "verification" / "README.md").write_text("# Package\n", encoding="utf-8")
-    assert subprocess.run([sys.executable, str(CLI), "docs", str(version)], capture_output=True).returncode == 0
+    made = subprocess.run([sys.executable, str(CLI), "docs", str(version)], capture_output=True, check=False)
+    assert made.returncode == 0
     report(version, [verified({"PASS": ["REQ-A-01"], "FAIL": [], "OPEN": []}, [])], "verify.json")
     code, step = ask(version)
-    assert code == 0 and step["next"] == "Nothing: the gates are GREEN with no warning and the requirements are met."
+    assert code == 0
+    assert step["next"] == "Nothing: the gates are GREEN with no warning and the requirements are met."
     contents = version / "CONTENTS.md"
     contents.write_text(contents.read_text() + "- a line by hand\n", encoding="utf-8")
     code, step = ask(version)

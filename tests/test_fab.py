@@ -643,7 +643,8 @@ def test_check_json_holds_a_design_file_that_prints(tmp_path):
     design = tmp_path / "design.py"
     body = RULES_DESIGN.format(fab="").replace(
         "    return d\n",
-        "    print('fan-out: 3 vias')\n    print('{not json')\n    print('{')\n    print('}')\n    return d\n",
+        "    print('fan-out: 3 vias')\n    print('{not json')\n    print('{')\n    print('}')\n"
+        "    return d\n",
     )
     design.write_text(body, encoding="utf-8")
     kicadgen.load_design(design).write(tmp_path)
