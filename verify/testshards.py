@@ -50,6 +50,22 @@ OUTCOMES = ("passed", "failed", "skipped", "xfailed", "xpassed")
 # it prints the last TAIL lines of output, or a crash's stack: its first HEAD and last TAIL lines.
 HEAD, TAIL, SECTION, WIDTH, REASONS = 10, 30, 10, 300, 10
 
+# The tests a run did not judge for a reason of the machine it ran on (M307): a skip or skipif mark that
+# holds here (no root, a tool or a folder not there, a variable not set), or a skip inside the test. The
+# summary prints 1 line for each reason with its count and its first IDS ids, the reason cut to
+# REASON_WIDTH characters; the file NOT_JUDGED in the run's logs folder holds every id and whole reason.
+# A test file skipped whole as it is collected (`pytest.importorskip` or `pytest.skip(...,
+# allow_module_level=True)` at its top) has no test to name: the file has a line of its own. A test the
+# run deselects (`-m "not engine"`) is never collected, so it is in neither. A run that hides a tool on
+# purpose (the fast lane empties KiCad's library folders and refuses engines) says what it hides in
+# TESTSHARDS_HIDES: its marks' groups are then `in this run`, as the run, not the machine, may be why.
+NOT_JUDGED = "not-judged.txt"
+IDS, REASON_WIDTH = 3, 200
+MARK = "skipped by a mark on this machine"
+MARK_RUN = "skipped by a mark in this run"
+INSIDE = "skipped inside the test"
+COLLECTED = "skipped at collection"
+
 
 # -- the pytest side: loaded with `-p testshards` ---------------------------------------------------
 
@@ -73,6 +89,61 @@ def bounded(lines: list[str], head: int, tail: int) -> list[str]:
     if len(out) > head + tail:
         out = [*out[:head], f"[... {len(out) - head - tail} lines cut here]", *out[len(out) - tail :]]
     return out
+
+
+def skip_groups(reasons: dict[str, str]) -> list[tuple[str, list[str]]]:
+    """Each reason with the ids it skipped, in the order given: the largest group first, then by reason."""
+    groups: dict[str, list[str]] = {}
+    for i, text in reasons.items():
+        groups.setdefault(text, []).append(i)
+    return sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+
+
+def shown_reason(text: str) -> str:
+    """A reason on 1 line (a newline is `\\n`), cut to REASON_WIDTH characters with what it cut."""
+    if len(text) <= REASON_WIDTH:
+        return printable(repr(text))
+    return printable(f"{text[:REASON_WIDTH]!r} [... {len(text) - REASON_WIDTH} characters cut]")
+
+
+def group_line(kind: str, reason: str, ids: list[str]) -> str:
+    """`  not judged: N tests <kind> (<reason>): <first IDS ids>, and M more`."""
+    word = "test" if len(ids) == 1 else "tests"
+    shown = ", ".join(ids[:IDS]) + (f", and {len(ids) - IDS} more" if len(ids) > IDS else "")
+    return printable(f"  not judged: {len(ids)} {word} {kind} ({shown_reason(reason)}): {shown}")
+
+
+def collected_line(name: str, reason: str) -> str:
+    """`  not judged: <file>: skipped at collection (<reason>)`."""
+    return printable(f"  not judged: {name}: {COLLECTED} ({shown_reason(reason)})")
+
+
+def write_not_judged(
+    path: Path,
+    marked: dict[str, str],
+    inside: dict[str, str],
+    files: dict[str, str] | None = None,
+    mark: str = MARK,
+) -> int:
+    """Write every id and file the run did not judge into `path`, by kind and reason, whole; return their
+    count."""
+    files = files or {}
+    count = len(marked) + len(inside) + len(files)
+    lines = [f"# The tests and files this run did not judge for a reason of where it ran: {count}."]
+    for kind, reasons, one, many in (
+        (mark, marked, "test", "tests"),
+        (INSIDE, inside, "test", "tests"),
+        (COLLECTED, files, "file", "files"),
+    ):
+        for text, ids in skip_groups(reasons):
+            lines.append(f"{len(ids)} {one if len(ids) == 1 else many} {kind} ({text!r}):")
+            lines += [f"  {i}" for i in sorted(ids)]
+    path.write_text(printable("\n".join(lines)) + "\n", encoding="utf-8")
+    return count
+
+
+def whole_list_line(count: int, path: Path) -> str:
+    return printable(f"  not judged: the whole list of {count} is in {path}")
 
 
 def why(report) -> list[str]:
@@ -109,8 +180,24 @@ def _marks(item) -> dict:
     return {"skip": None if skip is None else skip.reason, "xfail": None if xfail is None else xfail.reason}
 
 
+# What this process saw, for its own summary when it runs alone (the fast lane): each collected id a
+# skip mark skips here, with the mark's reason, and each id that was skipped, with the report's reason.
+_MARKED: dict[str, str] = {}
+_SKIPPED: dict[str, str] = {}
+_COLLECT_SKIPPED: dict[str, str] = {}
+
+
+def skip_reason(report) -> str:
+    """The reason pytest gives a skip: the third item of its long report, less `Skipped: `."""
+    if isinstance(report.longrepr, tuple) and len(report.longrepr) == 3:
+        return str(report.longrepr[2]).removeprefix("Skipped: ")
+    return ""
+
+
 def pytest_collection_finish(session) -> None:
-    _log([{"collected": item.nodeid, **_marks(item)} for item in session.items])
+    records = [{"collected": item.nodeid, **_marks(item)} for item in session.items]
+    _MARKED.update({rec["collected"]: rec["skip"] for rec in records if rec.get("skip") is not None})
+    _log(records)
 
 
 def pytest_runtest_logreport(report) -> None:
@@ -119,15 +206,55 @@ def pytest_runtest_logreport(report) -> None:
         record["xfail"] = True
     if report.skipped and isinstance(report.longrepr, tuple) and len(report.longrepr) == 3:
         record["reason"] = str(report.longrepr[2]).removeprefix("Skipped: ")
+    if report.skipped and "xfail" not in record:
+        _SKIPPED[report.nodeid] = record.get("reason", "")
     if report.failed:
         record["why"] = why(report)
     _log([record])
 
 
+def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
+    """In a pytest that runs alone with `-p testshards` (the fast lane, `make verify-site`): the tests it
+    did not judge, by kind and reason, and the file that holds them all, in pytest's base folder. A shard
+    prints nothing here: the runner joins its shards' logs and prints the same lines once."""
+    if os.environ.get("TESTSHARDS_SHARD") or config.option.collectonly:
+        return
+    if not _SKIPPED and not _COLLECT_SKIPPED:
+        return
+    marked = {i: _MARKED[i] for i in _SKIPPED if i in _MARKED}
+    inside = {i: text for i, text in _SKIPPED.items() if i not in _MARKED}
+    hides = os.environ.get("TESTSHARDS_HIDES", "")
+    mark = MARK_RUN if hides else MARK
+    try:
+        folder = Path(config._tmp_path_factory.getbasetemp())
+    except (AttributeError, OSError):
+        folder = Path(tempfile.mkdtemp(prefix="ee-verify-site-"))
+    path = folder / NOT_JUDGED
+    count = write_not_judged(path, marked, inside, _COLLECT_SKIPPED, mark=mark)
+    if hides and marked:
+        terminalreporter.write_line(
+            printable(
+                f"  not judged: this run hides {hides} on purpose: a mark below may skip a test for the run, "
+                "not for the machine"
+            )
+        )
+    for kind, reasons in ((mark, marked), (INSIDE, inside)):
+        for text, ids in skip_groups(reasons):
+            terminalreporter.write_line(group_line(kind, text, ids))
+    for name, text in sorted(_COLLECT_SKIPPED.items()):
+        terminalreporter.write_line(collected_line(name, text))
+    terminalreporter.write_line(whole_list_line(count, path))
+
+
 def pytest_collectreport(report) -> None:
-    """A file or a class that could not be collected: its record, with what pytest reports."""
+    """A file or a class that could not be collected: its record, with what pytest reports. A file
+    skipped whole as it is collected: its record, with the reason."""
     if report.failed:
         _log([{"collect_error": report.nodeid or ".", "why": why(report)}])
+    elif report.skipped:
+        name = report.nodeid or "."
+        _COLLECT_SKIPPED[name] = skip_reason(report)
+        _log([{"collect_skip": name, "reason": _COLLECT_SKIPPED[name]}])
 
 
 def pytest_sessionfinish(session, exitstatus) -> None:
@@ -240,6 +367,17 @@ def summary_line(text: str) -> str | None:
 def ended(log: list[dict]) -> bool:
     """Whether pytest reached its end of session: the record `pytest_sessionfinish` writes."""
     return any("finished" in rec for rec in log)
+
+
+def skipped_whole(code: int | None, log: list[dict]) -> bool:
+    """A shard whose files were all skipped as they were collected: pytest exits 5 (no tests collected),
+    and a skip is not a failure. It reached its end of session, ran no test and met no collection error."""
+    return (
+        code == 5
+        and ended(log)
+        and any("collect_skip" in rec for rec in log)
+        and not any("collect_error" in rec or rec.get("when") == "setup" for rec in log)
+    )
 
 
 def outcomes(logs: list[list[dict]]) -> dict[str, str]:
@@ -485,7 +623,8 @@ def watch(running: list[Started], told: Told) -> None:
                     f"{last or 'no summary line'}",
                     flush=True,
                 )
-                if not ended(log) or (r.code != 0 and not any("why" in rec for rec in log)):
+                quiet = r.code == 0 or skipped_whole(r.code, log)
+                if not ended(log) or (not quiet and not any("why" in rec for rec in log)):
                     print(ending(r, log), flush=True)
         if all(r.code is not None for r in running):
             return
@@ -592,9 +731,21 @@ def run(args: argparse.Namespace) -> int:
     wall = time.monotonic() - wall
     code = judge(started, collect.returncode, collect_log, collect_out, wall, told=told, work=work)
     # The shards' tmp_path folders of 1 whole run took 607 MB. A green run made its own folder and needs
-    # nothing in it; a red run, or a folder the caller named, is kept for its logs.
+    # nothing in it but the list of the tests it did not judge, which the summary names; a red run, or a
+    # folder the caller named, is kept for its logs.
     if code == 0 and not args.work:
-        shutil.rmtree(work, ignore_errors=True)
+        listed = work / NOT_JUDGED
+        if listed.is_file():
+            for path in work.iterdir():
+                if path == listed:
+                    continue
+                if path.is_dir() and not path.is_symlink():
+                    shutil.rmtree(path, ignore_errors=True)
+                else:
+                    path.unlink(missing_ok=True)
+            print(f"logs kept: {work}, {NOT_JUDGED} alone")
+        else:
+            shutil.rmtree(work, ignore_errors=True)
     else:
         print(f"logs kept: {work}")
     return code
@@ -613,7 +764,7 @@ def judge(
     red: list[str] = []
     logs = {r.shard.name: read_log(r.jsonl) for r in started}
     for r in started:
-        if r.code != 0:
+        if r.code != 0 and not skipped_whole(r.code, logs[r.shard.name]):
             red.append(f"shard {r.shard.name} exited {r.code}")
         if not ended(logs[r.shard.name]):
             red.append(f"shard {r.shard.name} ended before pytest's end of session (log: {r.log})")
@@ -670,14 +821,41 @@ def judge(
     # A skip inside the test (pytest.skip, importorskip) is not in its marks: whether 1 process skips it
     # too is not known without running it there.
     by_shard = {i: name for name, ids in ran.items() for i in ids}
-    reasons = {rec["id"]: rec.get("reason", "") for log in logs.values() for rec in log if "reason" in rec}
+    reasons = {
+        rec["id"]: rec["reason"] for log in logs.values() for rec in log if "id" in rec and "reason" in rec
+    }
     marked = {rec["collected"] for log in logs.values() for rec in log if rec.get("skip") is not None}
     inside = sorted(i for i, v in result.items() if v == "skipped" and i not in marked)
     for i in inside:
         print(
-            f"  not judged: {i}: skipped inside the test in shard {by_shard.get(i, '?')} "
-            f"({reasons.get(i, '')!r}); 1 process did not run it"
+            printable(
+                f"  not judged: {i}: skipped inside the test in shard {by_shard.get(i, '?')} "
+                f"({reasons.get(i, '')!r}); 1 process did not run it"
+            )
         )
+    # A test a skip mark skipped for this machine (M307): 1 line per reason, the whole list in a file. A
+    # test the run deselects is not collected, so it has no record here.
+    by_mark = {
+        rec["collected"]: rec["skip"]
+        for log in logs.values()
+        for rec in log
+        if rec.get("skip") is not None and result.get(rec["collected"]) == "skipped"
+    }
+    for text, ids in skip_groups(by_mark):
+        print(group_line(MARK, text, ids))
+    # A file skipped whole as it was collected: no test of it has a record, so it is named itself.
+    whole = {
+        rec["collect_skip"]: rec.get("reason", "")
+        for log in logs.values()
+        for rec in log
+        if "collect_skip" in rec
+    }
+    for name, text in sorted(whole.items()):
+        print(collected_line(name, text))
+    if (by_mark or inside or whole) and work is not None:
+        path = work / NOT_JUDGED
+        count = write_not_judged(path, by_mark, {i: reasons.get(i, "") for i in inside}, whole)
+        print(whole_list_line(count, path))
 
     per_file: dict[str, float] = {}
     where: dict[str, str] = {}
@@ -702,7 +880,10 @@ def judge(
     if red:
         print("TESTS RED: " + "; ".join(red))
         return 1
-    tail = f"; {len(inside)} not judged (skipped inside the test)" if inside else ""
+    tail = f"; {len(inside)} not judged ({INSIDE})" if inside else ""
+    tail += f"; {len(by_mark)} not judged ({MARK})" if by_mark else ""
+    if whole:
+        tail += f"; {len(whole)} {'file' if len(whole) == 1 else 'files'} not judged ({COLLECTED})"
     print(f"TESTS GREEN: {total} tests in {len(started)} shards{tail}")
     return 0
 

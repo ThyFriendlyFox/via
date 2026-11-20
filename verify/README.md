@@ -9,7 +9,8 @@ by side, and 1 verdict from all of them.
 | File | What it is |
 |---|---|
 | `verify.sh` | The health gate. Its last lines give each step's seconds. |
-| `testshards.py` | Splits `tests/` into shards, runs them, joins the results. Standard library only. Loaded into pytest with `-p testshards`, it logs each collected id and each test report. |
+| `testshards.py` | Splits `tests/` into shards, runs them, joins the results. Standard library only. Loaded into pytest with `-p testshards`, it logs each collected id and each test report. In a pytest that runs alone (`make verify-site`) it also ends the run with the `not judged:` lines below, and writes `not-judged.txt` into pytest's base folder. |
+| `github_full.py` | Loaded with `-p github_full` into `pytest --collect-only`: the process looks like a runner of GitHub's `full` job (user id 1001, user name `runner`, no chip folder or chip engine, no FreeRouting 2.5.0, no `WORKCENTER_TEST_IMAGE_BUILD`). Only those conditions are faked. `tests/test_ci_notjudged.py` counts the tests a mark skips there, by file and group, and holds ee-agent-kit/CI.md's table to them. |
 | `shards.csv` | Each test file's seconds, whether it starts an engine, and why it must run alone. |
 
 ## shards.csv
@@ -81,9 +82,13 @@ with no lock (it starts no engine): `6 passed in 1.53s`.
 | `run 2 times: <id>` | 2 shards ran the same test. |
 | `marks differ: <id>: ...` | The test's skip or xfail marks say one thing in its shard and another in 1 process: the shard's environment changed the verdict. |
 | `not judged: <id>: skipped inside the test` | Not red: the test called `pytest.skip` in its shard. Whether 1 process skips it too is not known without running it there. |
+| `not judged: N tests skipped by a mark on this machine ('<reason>'): <id>, <id>, <id>, and M more` | Not red: a skip or skipif mark held on this machine (no root, a tool or a folder not there, a variable not set). 1 line per reason, the largest first, its first 3 ids; a newline in the reason prints as `\n`, and a reason over 200 characters is cut with the count it cut. A test the run deselects (`-m "not engine"`) is not collected and not named. ee-agent-kit/CI.md, "What GitHub does not judge", says who must run each group GitHub skips. |
+| `not judged: <file>: skipped at collection ('<reason>')` | Not red: the whole file was skipped as it was collected (`pytest.importorskip`, or `pytest.skip(..., allow_module_level=True)` at its top), so it has no test to name. A shard that holds only such files exits 5 (no tests collected) and is not red. |
+| `not judged: this run hides <what> on purpose: ...` | Only in `make verify-site`, which empties KiCad's library folders and refuses every engine (`TESTSHARDS_HIDES` names it). Its groups then say `skipped by a mark in this run`: the lane, not the machine, may be why. |
+| `not judged: the whole list of N is in <folder>/not-judged.txt` | Every test of the lines above, by kind and whole reason. A green run keeps its folder with this file alone; a red run keeps it with the logs, and CI's kept logs copy it. |
 | `stopped by signal N` | The run got SIGTERM or SIGHUP. It killed every shard's process group and waited for each before it exited 128 + N. It ignores a second SIGTERM or SIGHUP while it does that: under `enginelock.py hold` it gets 2, 1 sent to its group and 1 the hold passes on. |
 | `--work <folder> holds the logs of an earlier run` | Exit 2. The logs are appended to: name an empty folder, or remove that one. |
-| `logs kept: <folder>` | Each shard's `pytest.log`, `log.jsonl` and tmp_path folders are there. A green run deletes its folder. |
+| `logs kept: <folder>` | Each shard's `pytest.log`, `log.jsonl` and tmp_path folders are there. A green run deletes its folder, or keeps only `not-judged.txt` in it (`logs kept: <folder>, not-judged.txt alone`). |
 | `not in the table: <file>` | Not red: the file got the `*` seconds. Add its row with the seconds of a run. |
 
 ## Keeping the table true

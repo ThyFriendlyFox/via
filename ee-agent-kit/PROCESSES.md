@@ -675,7 +675,10 @@ that may be absent.
     behaviour's words (its message, the name of what it raised, its exit
     code) and run each test that names them. A test GitHub skips for who
     or where it runs (CI.md, "What GitHub does not judge": root, setpriv,
-    a writable `/proc` file, the chip folder) runs on a machine where it
+    a writable `/proc` file, the chip folder; the run names each of them
+    in its `not judged:` lines, and `tests/test_ci_notjudged.py` fails
+    when a new one holds on GitHub or moves to another group, so CI.md's
+    section changes in the same change) runs on a machine where it
     does not skip, behind the engine lock, whenever the touched code is
     what it holds; the landing's report names that run. GitHub's green
     says nothing about it (M307).
@@ -728,6 +731,11 @@ When: a change is about to be called done.
    pointed at empty folders, `WORKCENTER_NO_ENGINES=1`, `-m "not
    engine"`), and looks for processes those tests left running (a test
    that starts a holder of a command ends the holder's whole group) (M293).
+   A landing that adds, renames or deletes a file runs the whole fast
+   lane before its push (`make -C /path verify-site`, its output kept in
+   a file, its last line read for `0 failed`), not only the test files it
+   touched: a test anywhere may scan a whole folder, every workflow or
+   every document, and meets a new file only in a whole run (M316).
 2. Chain the push behind the verdict itself, never behind a look at the
    log: `make -C /path check TESTS="..." && git push ...`. A `tail`
    succeeds whatever the log says. Every check you run before a push is in
