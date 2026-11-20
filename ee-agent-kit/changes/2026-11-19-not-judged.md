@@ -1,0 +1,2 @@
+### Added
+- The test run names every test it did not judge for its machine: `make verify` and `make verify-site` print 1 `not judged:` line per reason a skip mark gave, with its count and first 3 ids, 1 line per test file skipped whole at collection, and write every id into `not-judged.txt`; `make verify-site` says what it hides on purpose; `tests/test_ci_notjudged.py` holds CI.md's list of what GitHub skips, by file and group, to a collection made as on GitHub's `full` job (`verify/github_full.py`).

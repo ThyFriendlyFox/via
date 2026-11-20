@@ -675,7 +675,10 @@ that may be absent.
     behaviour's words (its message, the name of what it raised, its exit
     code) and run each test that names them. A test GitHub skips for who
     or where it runs (CI.md, "What GitHub does not judge": root, setpriv,
-    a writable `/proc` file, the chip folder) runs on a machine where it
+    a writable `/proc` file, the chip folder; the run names each of them
+    in its `not judged:` lines, and `tests/test_ci_notjudged.py` fails
+    when a new one holds on GitHub or moves to another group, so CI.md's
+    section changes in the same change) runs on a machine where it
     does not skip, behind the engine lock, whenever the touched code is
     what it holds; the landing's report names that run. GitHub's green
     says nothing about it (M307).
