@@ -9,7 +9,9 @@ tests/test_ci_notjudged.py holds ee-agent-kit/CI.md's section "What GitHub does 
 count, file by file (M307).
 
 Both paths of `full` run as user id 1001 with no chip folder and none of the chip engines, no FreeRouting
-2.5.0 (opt-in, `install.sh --freerouting2`), and no WORKCENTER_TEST_IMAGE_BUILD. As pytest is configured,
+2.5.0 (opt-in, `install.sh --freerouting2`), and none of the variable that asks tests/test_image.py for
+the image build (tests/test_image.py's scan of verify/ takes a line that names it for asking, unless
+the line only takes it away, as this file does below). As pytest is configured,
 before any test file is imported (a mark's condition is often evaluated as its file is imported), this
 process's user id reads 1001 (os.geteuid, os.getuid), its user name reads `runner` (USER and LOGNAME,
 which getpass.getuser reads first), WORKCENTER_CHIP_TOOLS and FREEROUTING2_JAR name paths that are not

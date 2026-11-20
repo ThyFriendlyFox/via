@@ -1061,10 +1061,21 @@ def test_the_build_test_runs_only_when_asked_by_name():
     assert marks["skipif"].kwargs["reason"] == (BUILD_SKIP or "")
 
 
+# The ways a line takes the build's variable away. A line that does only that asks for nothing; a
+# line that names the variable any other way asks for the build, the same line's removal or not.
+REMOVES = re.compile(
+    r"""os\.environ\.pop\(\s*["']{0}["']\s*(,\s*None\s*)?\)"""
+    r"""|del\s+os\.environ\[\s*["']{0}["']\s*\]"""
+    r"""|monkeypatch\.delenv\(\s*["']{0}["']\s*(,\s*raising\s*=\s*False\s*)?\)"""
+    r"""|\bunset\s+{0}\b|\benv\s+-u\s+{0}\b""".replace("{0}", BUILD_ASKED)
+)
+
+
 def asking_for_the_build(root: Path) -> list[str]:
-    """The files of `root` that run tests or set them up and name the build's variable: every workflow,
-    the Makefile, every file under verify/ but its documents, pytest's configuration files and every
-    conftest.py at the root or under tests/ (pytest reads them before this file works out BUILD_SKIP)."""
+    """The files of `root` that run tests or set them up and name the build's variable on a line that
+    does more than take it away: every workflow, the Makefile, every file under verify/ but its documents,
+    pytest's configuration files and every conftest.py at the root or under tests/ (pytest reads them
+    before this file works out BUILD_SKIP)."""
     places = [*sorted((root / ".github" / "workflows").glob("*.yml")), root / "Makefile"]
     places += sorted(p for p in (root / "verify").iterdir() if p.is_file() and p.suffix != ".md")
     places += [
@@ -1072,7 +1083,11 @@ def asking_for_the_build(root: Path) -> list[str]:
     ]
     places += sorted((root / "tests").rglob("conftest.py"))
     places = [p for p in places if p.is_file()]
-    return [str(p.relative_to(root)) for p in places if BUILD_ASKED in p.read_text(encoding="utf-8")]
+    return [
+        str(p.relative_to(root))
+        for p in places
+        if any(BUILD_ASKED in REMOVES.sub("", line) for line in p.read_text(encoding="utf-8").splitlines())
+    ]
 
 
 def test_nothing_asks_for_the_build_test_by_default(tmp_path):
@@ -1097,9 +1112,30 @@ def test_nothing_asks_for_the_build_test_by_default(tmp_path):
     (planted / "pyproject.toml").write_text(
         f'[tool.pytest.ini_options]\nenv = ["{BUILD_ASKED}=1"]\n', encoding="utf-8"
     )
+    # A file that only takes the name away does not ask for the build (verify/github_full.py makes a
+    # collection look like GitHub's `full` job, where nothing sets it); a line that takes it away and
+    # sets it again, or names it any other way, still asks.
+    (planted / "verify" / "removes.py").write_text(
+        f'os.environ.pop("{BUILD_ASKED}", None)\n'
+        f"os.environ.pop('{BUILD_ASKED}')\n"
+        f'del os.environ["{BUILD_ASKED}"]\n'
+        f'monkeypatch.delenv("{BUILD_ASKED}", raising=False)\n',
+        encoding="utf-8",
+    )
+    (planted / "verify" / "removes.sh").write_text(
+        f"unset {BUILD_ASKED}\nenv -u {BUILD_ASKED} make\n", encoding="utf-8"
+    )
+    (planted / "verify" / "resets.py").write_text(
+        f'os.environ.pop("{BUILD_ASKED}", None); os.environ["{BUILD_ASKED}"] = "1"\n', encoding="utf-8"
+    )
+    (planted / "verify" / "sets.py").write_text(
+        f'os.environ.setdefault("{BUILD_ASKED}", "1")\n', encoding="utf-8"
+    )
     assert asking_for_the_build(planted) == [
         ".github/workflows/ci.yml",
         "Makefile",
+        "verify/resets.py",
+        "verify/sets.py",
         "pyproject.toml",
         "tests/conftest.py",
         "tests/deep/conftest.py",
