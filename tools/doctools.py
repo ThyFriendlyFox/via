@@ -23,6 +23,7 @@ import json
 import math
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -259,6 +260,8 @@ def contents_text(
     lists: Path,
     scripts: dict[str, str],
 ) -> str:
+    """CONTENTS.md's text, from the folder as it is. It names no file of datasheets/ and not itself, so
+    `docs --check` gets from the folder before docs runs the text docs writes after its copies."""
     version = vdir.name
     files = project_files(vdir)
     rel = lambda p: os.path.relpath(p, vdir).replace(os.sep, "/")  # noqa: E731
@@ -473,26 +476,51 @@ def cmd_docs(args, cli) -> int:
             }
         except (ValueError, KeyError, AttributeError):
             scripts = {}
-    copied: dict[str, Path] = {}
+    # What docs copies (each datasheet a part names, from the library) and what it removes (a copy of
+    # a library file no part names); nothing at all while a board has no parts list.
+    wanted: dict[str, Path] = {}
+    stale: list[str] = []
+    # A row whose file left the library: nothing to copy, and CONTENTS.md links its copy all the same.
+    gone: list[Path] = []
+    ddir = vdir / "datasheets"
     if not missing:
         for r in lines:
             row = datasheet_for((r.get("MPN") or "").strip(), rows, series)
-            if row and row.get("File") and row["File"] not in copied:
+            if row and row.get("File") and row["File"] not in wanted:
                 src = sources.parent / row["File"]
                 if src.is_file():
-                    dest = vdir / "datasheets" / row["File"]
-                    dest.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copyfile(src, dest)
-                    copied[row["File"]] = dest
+                    wanted[row["File"]] = src
+                elif src not in gone:
+                    gone.append(src)
+        if ddir.is_dir():
+            # Only a copy of a library file goes: anything else in datasheets/ was put there by hand.
+            for f in sorted(p for p in ddir.rglob("*") if p.is_file()):
+                name = f.relative_to(ddir).as_posix()
+                if name not in wanted and (sources.parent / name).is_file():
+                    stale.append(name)
+    relative = lambda p: os.path.relpath(p, vdir).replace(os.sep, "/")  # noqa: E731
+    warnings = [
+        f"{relative(src)}: {relative(sources)} names it, and the library has no such file: docs copies "
+        "nothing for it; `workcenter sources` fails on its row"
+        for src in gone
+    ]
+    if args.check:
+        content = (boards, lines, rows, series, sources, lists, scripts)
+        return check_docs(args, cli, t0, vdir, missing, wanted, stale, content, warnings)
+    copied: dict[str, Path] = {}
+    for name, src in wanted.items():
+        dest = ddir / name
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if dest.is_symlink():
+            # A link to the library file is no copy (git keeps the link, P27 asks for the maker's
+            # bytes), and copying onto it would be copying the file onto itself.
+            dest.unlink()
+        shutil.copyfile(src, dest)
+        copied[name] = dest
     removed = []
-    ddir = vdir / "datasheets"
-    if not missing and ddir.is_dir():
-        # Only a copy of a library file goes: anything else in datasheets/ was put there by hand.
-        for f in sorted(p for p in ddir.rglob("*") if p.is_file()):
-            name = f.relative_to(ddir).as_posix()
-            if name not in copied and (sources.parent / name).is_file():
-                f.unlink()
-                removed.append(name)
+    for name in stale:
+        (ddir / name).unlink()
+        removed.append(name)
     text = contents_text(vdir, boards, lines, rows, series, sources, lists, scripts)
     (vdir / "CONTENTS.md").write_text(text, encoding="utf-8")
     absent = sorted(
@@ -505,6 +533,8 @@ def cmd_docs(args, cli) -> int:
         "no_row": absent,
         "boards": [b.id for b in boards],
     }
+    if warnings:
+        details["warnings"] = warnings
     if removed:
         summary += f"; {len(removed)} stale copies removed"
     if missing:
@@ -512,6 +542,60 @@ def cmd_docs(args, cli) -> int:
         details["failures"] = [f"{m}: no {lists / (m + '.csv')}" for m in missing]
     status = "fail" if missing else "pass"
     return finish(cli, cli.Result("docs", status, summary, details, [str(vdir / "CONTENTS.md")]), t0, args)
+
+
+def check_docs(
+    args, cli, t0: float, vdir: Path, missing: list, wanted: dict, stale: list, content, warnings: list
+) -> int:
+    """`docs <version> --check`: write nothing; compare the committed CONTENTS.md and datasheets/ with
+    what `docs` would leave. 1 line per difference (CONTENTS.md's first differing line, a copy that is
+    missing, extra, a link or not the library's bytes) and the 1 step, `workcenter docs <version>`. A
+    board with no parts list is that board's failure, as it is for `docs`, and its step is `costs`.
+    A library row whose file is gone is a warning, as in `docs`: docs cannot write it away."""
+    boards, lists = content[0], content[5]
+    version = shlex.quote(args.version)
+    if missing:
+        failures = [f"{m}: no {lists / (m + '.csv')}" for m in missing]
+        summary = (
+            f"no parts list for {', '.join(missing)} in {lists}; run "
+            f"`workcenter costs {shlex.quote(str(vdir.parent))}`, then `workcenter docs {version}`"
+        )
+        return finish(cli, cli.Result("docs", "fail", summary, {"failures": failures}), t0, args)
+    # CONTENTS.md names no file of datasheets/ and not itself, so the folder as it is gives the text
+    # docs writes after its copies.
+    text = contents_text(vdir, *content).encode("utf-8")
+    failures = []
+    committed = vdir / "CONTENTS.md"
+    if not committed.is_file():
+        failures.append("CONTENTS.md: missing")
+    elif committed.read_bytes() != text:
+        at = cli.first_difference(committed.read_bytes(), text)
+        failures.append(
+            f"CONTENTS.md: line {at['line']}: committed {at['project']!r}; docs writes {at['design']!r}"
+        )
+    ddir = vdir / "datasheets"
+    for name in sorted({*wanted, *stale}):
+        if name in stale:
+            failures.append(f"datasheets/{name}: extra: no part names it; docs removes it")
+            continue
+        src = os.path.relpath(wanted[name], vdir).replace(os.sep, "/")
+        if (ddir / name).is_symlink():
+            failures.append(f"datasheets/{name}: a link, not a copy: docs copies {src} over it")
+        elif not (ddir / name).is_file():
+            failures.append(f"datasheets/{name}: missing: docs copies it from {src}")
+        elif (ddir / name).read_bytes() != wanted[name].read_bytes():
+            failures.append(f"datasheets/{name}: differs from {src}")
+    if failures:
+        summary = (
+            f"{plural(len(failures), 'difference')} from what `workcenter docs` writes; "
+            f"run `workcenter docs {version}`"
+        )
+    else:
+        summary = f"CONTENTS.md and {plural(len(wanted), 'datasheet')} are what `workcenter docs` writes"
+    details = {"failures": failures, "boards": [b.id for b in boards]}
+    if warnings:
+        details["warnings"] = warnings
+    return finish(cli, cli.Result("docs", "fail" if failures else "pass", summary, details), t0, args)
 
 
 # ------------------------------------------------------------------- costs
@@ -1491,6 +1575,12 @@ def register(sub, cli) -> None:
     p.add_argument("--library", help="the library folder holding sources.csv (default: the nearest library/)")
     p.add_argument(
         "--lists", help="the priced parts lists (default <repo>/parts/lists, from `workcenter costs`)"
+    )
+    p.add_argument(
+        "--check",
+        action="store_true",
+        help="write nothing: compare CONTENTS.md and datasheets/ with what docs writes; 1 line per "
+        "difference and the step; exit 1 on a difference",
     )
     p.set_defaults(run=lambda a: cmd_docs(a, cli))
 

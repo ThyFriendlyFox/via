@@ -565,6 +565,12 @@ When: touching `tools/workcenter` or `tools/kicadgen.py`'s command line.
     with no HOME and a user id /etc/passwd does not name
     (`tests/conftest.py`'s `no_home`) and holds that it does its work
     with no traceback (M299).
+12. A check that holds a command's output compares the files the
+    command wrote, listed from what it wrote, not a list of the files
+    the check knows of. A step a check names is run by a test as it is
+    written, and the test then runs the check again and sees it pass;
+    each comparison is tried on a link, a line end and a missing source
+    (M317, M320).
 
 Done when: `make verify` is green, the configuration table names the
 flag, and every document that writes the command writes one the parser
@@ -1620,6 +1626,13 @@ a task.
     a test file whose tests start an engine runs whole only behind the
     lock, or with `-m "not engine"` without it, and that the helper reads
     the file's marks before it runs the file (M311).
+18. Before a helper changes a file a new check flags in a fixture or an
+    example, it reads the file's history (`git log -p -- <file>`) and
+    greps the tests and documents for its name: a file kept on purpose
+    (a sample of an older form) is held by the check as it is, not
+    rewritten (M318). A helper's engine script is bounded by the slowest
+    run measured on that machine, and a run that will not fit is split
+    into scripts it names before the first one starts (M319).
 
 Done when: every report is read, each helper's changes are merged or
 removed, and `git worktree list` shows only what is still in use.

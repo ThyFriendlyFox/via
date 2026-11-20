@@ -4397,6 +4397,9 @@ def cmd_design(args) -> int:
     t0 = time.monotonic()
     try:
         design = kicadgen.load_design(design_path)
+        # Every via size against the board's own rules, the fab's among them: a fab Via does not know
+        # is a refused design file too, before anything is written.
+        via_rules = design.check_via_rules()
     except (TypeError, ValueError) as exc:
         # A design file the generator refuses (a namespace that is no UUID, power_nets that is no dict)
         # is 1 line and exit 1, as every other refusal of this step is: the message says what to write,
@@ -4427,7 +4430,7 @@ def cmd_design(args) -> int:
     # rules, since the router places most vias and the DRC of an unrouted board sees none (M46); and
     # each hand via's place, since a via passes every layer, and one in a keepout or on another face's
     # pad is a short the DRC would only find later (M40, M41).
-    summary["via_problems"] = design.check_via_rules() + design.check_vias()
+    summary["via_problems"] = via_rules + design.check_vias()
     # A part inside an area the design keeps parts out of (a strip, a spacer, a body over the board, M87),
     # or with every pad outside the outline (placed from another origin than the board's).
     summary["part_problems"] = design.check_parts()
@@ -4515,6 +4518,7 @@ def cmd_design(args) -> int:
     summary["legend"] = design.legend_notes  # each designator the placer kept on the Fab layer
     summary["stitches"] = [{**s, "at": list(s["at"])} for s in design.stitches]
     summary["seconds"] = round(time.monotonic() - t0, 2)
+    args.written = list(summary["files"])  # what `design --check` compares, read back by it
     # The verdict is the exit code even though every file is written (M85): say so on the last line.
     red = []
     if summary["via_problems"]:
@@ -5169,11 +5173,36 @@ def rules_only_design(args) -> int:
     return done(EXIT_PASS, f"rules: wrote {dru}: its header, line {header}, only; every rule is as it was")
 
 
+# A track, a via or an arc on a board file: the copper the router adds. A project's board with more of
+# it than the design writes unrouted is a routed board, which a plain `design` would write over.
+COPPER_ITEM = re.compile(r"^\s*\((?:segment|via|arc)\b", re.M)
+# Why `design --check` holds every file the design writes but the board.
+BOARD_NOT_COMPARED = (
+    "--check writes the board unrouted; the project's holds the router's tracks and vias, the vias it "
+    "reserved for pour islands and KiCad's zone fill. The gates' DRC holds the board to the schematic; no "
+    "check holds a part's place to design.py"
+)
+
+
+def first_difference(old: bytes, new: bytes) -> dict:
+    """The first line where a project's file and the design's differ: its number and both texts, as
+    they are. Lines are cut at `\\n` alone, so a `\\r` or a space at a line's end is shown."""
+    a, b = old.split(b"\n"), new.split(b"\n")
+    line = next((i for i, (x, y) in enumerate(zip(a, b, strict=False)) if x != y), min(len(a), len(b)))
+    return {
+        "line": line + 1,
+        "project": a[line].decode(errors="replace")[:100] if line < len(a) else "(end)",
+        "design": b[line].decode(errors="replace")[:100] if line < len(b) else "(end)",
+    }
+
+
 def check_design(args) -> int:
-    """`design --check`: regenerate the design into a scratch folder (or --out) and compare the project and
-    schematic files, and the project's library tables, with the design's own, the way a board
-    repository's CI does. Exit 1 on a difference or on the design step's own failure (M85), whose files
-    CI would compare all the same."""
+    """`design --check`: regenerate the design into a scratch folder (or --out) and compare every file
+    it writes but the board with the project's, the way a board repository's CI does: the project and
+    schematic files, the library tables, the copied fab rule file and the files Design.files names. A
+    rule file the design would not write (it names no fab) is a difference too: KiCad's DRC reads it.
+    Exit 1 on a difference or on the design step's own failure (M85), whose files CI would compare all
+    the same. The 1 step that writes the difference away is named on the line before the last."""
     if args.route:
         raise SystemExit("design: --check regenerates without routing, as CI does; leave out --route")
     sys.path.insert(0, str(SRC_DIR / "tools"))
@@ -5184,55 +5213,111 @@ def check_design(args) -> int:
     keep = Path(args.out).resolve() if args.out else None
     if keep == project_dir:
         raise SystemExit("design: --check --out names the design's own folder; name a scratch folder")
+    step = None
+    not_compared: list[str] = []
     with contextlib.ExitStack() as stack:
         out_dir = keep or Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="workcenter-check-")))
         run_args = argparse.Namespace(**{**vars(args), "out": str(out_dir), "route": False, "check": False})
         printed = io.StringIO()
         with contextlib.redirect_stdout(printed) if args.json else contextlib.nullcontext():
             code = cmd_design(run_args)
-        regenerated = sorted(out_dir.glob("*.kicad_pro")) + sorted(out_dir.glob("*.kicad_sch"))
-        # A library table names each project library from the folder the table lies in, so the one
-        # written into the scratch folder is first read as the design's own folder would hold it.
-        tables = {
-            f.name: kicadgen.lib_table_at(f.read_text(encoding="utf-8"), out_dir, project_dir).encode()
-            for f in (out_dir / "fp-lib-table", out_dir / "sym-lib-table")
-            if f.is_file()
-        }
+        # What this run wrote, in the order the design writes it: never a file an earlier run left in
+        # a kept --out folder.
+        written_files = [Path(p) for p in getattr(run_args, "written", [])]
+        names = [p.relative_to(out_dir).as_posix() for p in written_files]
+        stem = next((Path(n).stem for n in names if n.endswith(".kicad_pro") and "/" not in n), None)
+        board = f"{stem}.kicad_pcb" if stem else None
+        rule = f"{stem}.kicad_dru" if stem else None
         files = []
-        for f in [*regenerated, *(out_dir / name for name in tables)]:
-            mine = project_dir / f.name
-            written = tables.get(f.name) or f.read_bytes()
-            entry = {"file": f.name, "state": "same"}
+        for name in names:
+            if name == board:
+                not_compared.append(name)
+                continue
+            f = out_dir / name
+            if name in ("fp-lib-table", "sym-lib-table"):
+                # A library table names each project library from the folder the table lies in, so the
+                # one written into the scratch folder is first read as the design's own folder holds it.
+                written = kicadgen.lib_table_at(f.read_text(encoding="utf-8"), out_dir, project_dir).encode()
+            else:
+                written = f.read_bytes()
+            mine = project_dir / name
+            entry: dict = {"file": name, "state": "same"}
             if not mine.is_file():
                 entry["state"] = "missing"
             elif mine.read_bytes() != written:
-                old, new = mine.read_bytes().splitlines(), written.splitlines()
-                pairs = enumerate(zip(old, new, strict=False))
-                line = next((i for i, (a, b) in pairs if a != b), min(len(old), len(new)))
-                entry.update(
-                    state="differs",
-                    line=line + 1,
-                    project=old[line].decode(errors="replace").strip()[:100] if line < len(old) else "(end)",
-                    design=new[line].decode(errors="replace").strip()[:100] if line < len(new) else "(end)",
-                )
+                entry.update(state="differs", **first_difference(mine.read_bytes(), written))
+                if name == rule:
+                    kept = mine.read_bytes().decode("utf-8", errors="replace")
+                    entry["header_only"] = not kicadgen.rule_file_changes(kept, written.decode("utf-8"))
             files.append(entry)
-    bad = [f for f in files if f["state"] != "same"]
+        if rule and rule not in names and (project_dir / rule).is_file():
+            # KiCad reads <name>.kicad_dru beside the project whatever the design says.
+            files.append({"file": rule, "state": "extra"})
+        bad = [f for f in files if f["state"] != "same"]
+        if bad and code != EXIT_FAIL:
+            if all(f["file"] == rule and f.get("header_only") for f in bad):
+                step = f"workcenter design {shlex.quote(str(design_path))} --rules-only"
+            elif all(f["state"] == "extra" for f in bad):
+                # `rm`, not `git rm`: that refuses a file git does not track, and KiCad reads it too.
+                step = f"rm {shlex.quote(str(project_dir / rule))}"
+            else:
+                step = f"workcenter design {shlex.quote(str(design_path))}"
+                mine_board = project_dir / board if board else None
+                if mine_board is not None and not mine_board.is_file():
+                    # The project keeps no board (the ratings fixtures): the run writes one, removed again.
+                    step += f" && rm {shlex.quote(str(mine_board))}"
+                elif mine_board is not None:
+                    ours = (out_dir / board).read_text(encoding="utf-8", errors="replace")
+                    theirs = mine_board.read_text(encoding="utf-8", errors="replace")
+                    if len(COPPER_ITEM.findall(theirs)) > len(COPPER_ITEM.findall(ours)):
+                        step += " --route"
     verdict = EXIT_FAIL if bad or code == EXIT_FAIL or not files else EXIT_PASS
     if args.json:
-        summary = json.loads(printed.getvalue() or "{}")
-        print(json.dumps({"design": summary, "design_exit": code, "files": files, "exit": verdict}, indent=2))
+        # The design step's JSON is the last thing it prints, from a line that is `{` alone. A design
+        # file may print lines of its own while it builds (Wyvern v0.2 prints its fan-out): kept apart.
+        said = printed.getvalue().splitlines()
+        start = max((i for i, ln in enumerate(said) if ln == "{"), default=len(said))
+        summary = json.loads("\n".join(said[start:]) or "{}")
+        print(
+            json.dumps(
+                {
+                    "design": summary,
+                    "printed": said[:start],
+                    "design_exit": code,
+                    "files": files,
+                    "not_compared": not_compared,
+                    "step": step,
+                    "exit": verdict,
+                },
+                indent=2,
+            )
+        )
         return verdict
     for f in files:
         print(f"check: {f['state']:8} {f['file']}")
         if f["state"] == "differs":
             print(f"         line {f['line']}: project {f['project']!r}")
             print(f"         line {f['line']}: design  {f['design']!r}")
+            if f.get("header_only"):
+                print(
+                    "         only its header line differs: "
+                    f"`workcenter design {shlex.quote(str(design_path))} --rules-only` writes it again"
+                )
         elif f["state"] == "missing":
             print(f"         {project_dir} has no {f['file']}: generate it and commit it")
+        elif f["state"] == "extra":
+            print(
+                "         the design names no fab (Design.fab), so it writes no rule file; KiCad's DRC reads "
+                "this one all the same: remove it, or name its fab in Design.fab"
+            )
+    for name in not_compared:
+        print(f"check: not compared: {name}: {BOARD_NOT_COMPARED}")
     if code == EXIT_FAIL:
         print(f"check: the design step exited {code}; a board repository's CI fails on it (M85)")
     if not files:
         print("check: the design wrote no .kicad_pro or .kicad_sch")
+    if step:
+        print(f"check: step: `{step}`")
     name = design_path.parent.name
     if verdict == EXIT_PASS:
         print(f"check: {name}: {len(files)} files match {design_path.name}")
@@ -6611,9 +6696,10 @@ def command(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--check",
         action="store_true",
-        help="regenerate into a temporary folder (or --out) and compare the .kicad_pro, the .kicad_sch and "
-        "the library tables with the design's own; exit 1 on a difference or a failed design step. "
-        "Writes nothing in the project",
+        help="regenerate into a temporary folder (or --out) and compare every file the design writes but "
+        "the board (the .kicad_pro, the .kicad_sch, the library tables, the copied rule file, Design.files) "
+        "with the project's, and a rule file the design would not write; name the 1 step; exit 1 on a "
+        "difference or a failed design step. Writes nothing in the project",
     )
     p.add_argument(
         "--rules-only",

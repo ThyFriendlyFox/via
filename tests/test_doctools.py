@@ -228,6 +228,144 @@ def test_docs_without_a_parts_list_leaves_the_datasheets_alone(tmp_path):
     assert (repo / "v0.2" / "CONTENTS.md").is_file()
 
 
+def tree_bytes(folder: Path) -> dict[str, bytes]:
+    return {
+        p.relative_to(folder).as_posix(): p.read_bytes() for p in sorted(folder.rglob("*")) if p.is_file()
+    }
+
+
+def docs_check(v: Path) -> tuple[int, dict, list[str]]:
+    """`docs <v> --check` as a record and as the lines it prints."""
+    code, records = run("docs", v, "--check")
+    proc = subprocess.run(
+        [sys.executable, str(CLI), "docs", str(v), "--check"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, **PINNED},
+    )
+    assert proc.returncode == code
+    return code, records[0], proc.stdout.splitlines()
+
+
+def test_docs_check_holds_contents_and_datasheets_to_what_docs_writes(tmp_path):
+    """Wyvern v0.1's CONTENTS.md lacked 28 datasheet rows for a week after the library it shares with
+    v0.2 grew: nothing compared a committed CONTENTS.md with what `workcenter docs` writes (2026-11-19)."""
+    repo = docs_repo(tmp_path)
+    v = repo / "v0.2"
+    # before any docs run: no CONTENTS.md, 2 datasheets to copy and 1 copy to remove
+    before = tree_bytes(repo)
+    code, record, out = docs_check(v)
+    assert code == 1 and record["status"] == "fail"
+    assert record["details"]["failures"] == [
+        "CONTENTS.md: missing",
+        "datasheets/maker/old.pdf: extra: no part names it; docs removes it",
+        "datasheets/maker/rc.pdf: missing: docs copies it from ../library/maker/rc.pdf",
+        "datasheets/maker/u1.pdf: missing: docs copies it from ../library/maker/u1.pdf",
+    ]
+    assert record["summary"] == f"4 differences from what `workcenter docs` writes; run `workcenter docs {v}`"
+    assert tree_bytes(repo) == before  # nothing written
+    assert out[0].startswith("FAIL   docs       4 differences") and out[1:] == [
+        f"       - {line}" for line in record["details"]["failures"]
+    ]
+    # after it: the same
+    assert run("docs", v)[0] == 0
+    code, record, _ = docs_check(v)
+    assert code == 0, record
+    assert record["summary"] == "CONTENTS.md and 2 datasheets are what `workcenter docs` writes"
+    # a library that grew: a part's new datasheet row changes the table, and its file is to be copied
+    sources = repo / "library" / "sources.csv"
+    sources.write_text(
+        sources.read_text().replace(
+            "C100N,datasheet,,,,,,,,,2026-11-01,the maker refused the fetch",
+            "C100N,datasheet,https://example.com/c.pdf,maker/c.pdf,,A,2026-01,,,,2026-11-19,",
+        )
+    )
+    write(repo / "library" / "maker" / "c.pdf", "%PDF c.pdf")
+    code, record, _ = docs_check(v)
+    assert code == 1
+    contents, copy = record["details"]["failures"]
+    assert contents.startswith("CONTENTS.md: line ") and "| base | C1 | Murata C100N |" in contents
+    assert "committed '| base | C1 | Murata C100N | none kept: the maker refused the fetch |  |'" in contents
+    assert (
+        "docs writes '| base | C1 | Murata C100N | [maker/c.pdf](datasheets/maker/c.pdf) | A |'" in contents
+    )
+    assert copy == "datasheets/maker/c.pdf: missing: docs copies it from ../library/maker/c.pdf"
+    assert run("docs", v)[0] == 0 and docs_check(v)[0] == 0
+    # a copy that is not the library's file any more
+    write(v / "datasheets" / "maker" / "u1.pdf", "%PDF u1.pdf, an older revision")
+    code, record, _ = docs_check(v)
+    assert code == 1 and record["details"]["failures"] == [
+        "datasheets/maker/u1.pdf: differs from ../library/maker/u1.pdf"
+    ]
+
+
+@pytest.mark.parametrize("relative", [False, True], ids=["absolute", "relative"])
+def test_docs_check_counts_a_link_as_no_copy_and_docs_copies_over_it(tmp_path, relative):
+    """A datasheet copy that was a link to the library file passed `docs --check`, and `docs`, the
+    step it names, stopped on shutil.SameFileError (a reviewer, 2026-11-20). Git keeps a link, not
+    the maker's bytes that P27 asks for."""
+    repo = docs_repo(tmp_path)
+    v = repo / "v0.2"
+    assert run("docs", v)[0] == 0
+    copy = v / "datasheets" / "maker" / "u1.pdf"
+    copy.unlink()
+    copy.symlink_to("../../../library/maker/u1.pdf" if relative else repo / "library" / "maker" / "u1.pdf")
+    assert copy.read_bytes() == b"%PDF u1.pdf"
+    code, record, _ = docs_check(v)
+    assert code == 1 and record["details"]["failures"] == [
+        "datasheets/maker/u1.pdf: a link, not a copy: docs copies ../library/maker/u1.pdf over it"
+    ]
+    code, records = run("docs", v)
+    assert code == 0, records
+    assert not copy.is_symlink() and copy.read_bytes() == b"%PDF u1.pdf"
+    assert (repo / "library" / "maker" / "u1.pdf").read_bytes() == b"%PDF u1.pdf"
+    assert docs_check(v)[0] == 0
+
+
+def test_docs_check_shows_a_line_end_it_differs_in(tmp_path):
+    """A CONTENTS.md with CRLF line ends printed `committed '(end)'; docs writes '(end)'`."""
+    repo = docs_repo(tmp_path)
+    v = repo / "v0.2"
+    assert run("docs", v)[0] == 0
+    contents = v / "CONTENTS.md"
+    contents.write_bytes(contents.read_bytes().replace(b"\n", b"\r\n"))
+    code, record, _ = docs_check(v)
+    assert code == 1 and record["details"]["failures"] == [
+        "CONTENTS.md: line 1: committed '# v0.2: contents\\r'; docs writes '# v0.2: contents'"
+    ]
+
+
+def test_docs_and_its_check_warn_of_a_library_row_whose_file_is_gone(tmp_path):
+    """A row of sources.csv whose file left the library: `docs` copies nothing for it and CONTENTS.md
+    still links its copy, so both say so. `workcenter sources` fails on that row."""
+    repo = docs_repo(tmp_path)
+    v = repo / "v0.2"
+    assert run("docs", v)[0] == 0
+    (repo / "library" / "maker" / "rc.pdf").unlink()
+    warning = (
+        "../library/maker/rc.pdf: ../library/sources.csv names it, and the library has no such file: "
+        "docs copies nothing for it; `workcenter sources` fails on its row"
+    )
+    code, record, out = docs_check(v)
+    assert code == 0 and record["details"]["warnings"] == [warning]
+    assert f"       - warning: {warning}" in out
+    code, records = run("docs", v)
+    assert code == 0 and records[0]["details"]["warnings"] == [warning]
+
+
+def test_docs_check_names_costs_when_a_parts_list_is_missing(tmp_path):
+    repo = docs_repo(tmp_path)
+    assert run("docs", repo / "v0.2")[0] == 0
+    (repo / "parts" / "lists" / "v0.2-display.csv").unlink()
+    code, record, _ = docs_check(repo / "v0.2")
+    assert code == 1
+    assert record["summary"].startswith(f"no parts list for v0.2-display in {repo / 'parts' / 'lists'}")
+    assert record["summary"].endswith(
+        f"run `workcenter costs {repo}`, then `workcenter docs {repo / 'v0.2'}`"
+    )
+
+
 def test_docs_without_a_library_skips(tmp_path):
     write(tmp_path / "v0.1" / "README.md", "# v0.1\n")
     code, records = run("docs", tmp_path / "v0.1")

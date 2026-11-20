@@ -1906,3 +1906,27 @@ Cost: A red `fast` and a red `full` on the pull request, and a fix round.
 Root cause: The landing's test run was chosen by the files it touched. A test that scans the repository (every file under a folder, every workflow, every document) holds files no list of touched test files names, so a new file meets it only in a whole run.
 Process: P14
 
+## M317 — 2026-11-19 — `design --check` held 4 of a design's files, and 5 rule files kept the older header
+What happened: `workcenter design --check` compared the .kicad_pro, the .kicad_sch and the 2 library tables, which it found by glob in its scratch folder. The copied rule file and Design.files were never compared. The 5 routed example boards kept the rule file's older header while every check was green (STATUS, "Name"). Its `--json` also read a design file's own printed line as the start of the JSON, and broke on Wyvern v0.2. Found and fixed on `wip/checkall`.
+Cost: 5 stale rule files found by hand; Wyvern v0.2 not judged by `--check --json`.
+Root cause: The check listed the files it knew of, not the files the design wrote.
+Process: P10
+
+## M318 — 2026-11-19 — A fixture's file kept on purpose was "fixed" by the check that found it
+What happened: The new fixture test of `wip/checkall` found inspect-four-layer's rule file with the older header, and the builder wrote the new header into it (88e8cec). STATUS ("Name"), test_inspect and test_product_name keep that header on purpose, as the sample of the older form. 855bed9 put it back, and the test now holds the fixture to exactly that difference.
+Cost: 1 commit and its revert; test_inspect's regenerate test and test_product_name would have failed at 88e8cec.
+Root cause: The file's history and the tests that read it were not read before it was changed.
+Process: P31
+
+## M319 — 2026-11-19 — A `cd` in a helper's command, and a helper's engine script past its bound
+What happened: The checkall builder put `cd /dev/null` in a survey command (it failed and changed nothing; M288's rule). Its single engine script ran into its 900 s bound with 2 of 84 designs left, and a second script ran them with the engine tests; that one hit its bound too, and threadripper-matx v0.3 was judged by neither.
+Cost: None on the machine; a piece's engine work in 1 script, as asked, was broken once, and 1 example design is not judged.
+Root cause: The bound was not set against the slowest board measured (threadripper-matx, 411 s for each design check in that survey).
+Process: P31
+
+## M320 — 2026-11-20 — The steps `design --check` and `docs --check` named did not all run, and a link passed as a copy
+What happened: An independent review of `wip/checkall` ran each step as written. `git rm` refused an untracked rule file (exit 128). The step for a project with no board held a placeholder and a hand copy. A datasheet copy that was a link to the library file passed `docs --check`, and `docs`, the step it names, stopped on shutil.SameFileError. The first differing line was stripped, so a CRLF file printed `'(end)'` twice. A fab Via does not know ended `design` in a traceback (before this piece too). 15 of 39 single-line mutants survived the tests. Fixed in a4a2ec1 and 6443fdf.
+Cost: 1 round of fixes, 10 tests new and 4 widened.
+Root cause: Each step was written as text and never run by a test; each comparison was tested on the files the builder made, not on links, line ends or a missing source.
+Process: P10
+

@@ -613,12 +613,22 @@ calculations take a number from (a fuse's time-current curve, a safe
 operating area), instead of reading the picture by eye.
 
 Not a gate: `workcenter design <design.py> --check` regenerates the design
-into a temporary folder and compares the `.kicad_pro` and `.kicad_sch` with
-the design's own, the step a board repository's CI runs. It holds the
-project's library tables (`fp-lib-table`, `sym-lib-table`) to what the
-design writes in its own folder: each project library named from that
-folder, never by an absolute path. It exits 1 on a difference, and on the
-design step's own exit 1 even when every file is the same (M85).
+into a temporary folder and compares every file it writes but the board
+with the project's, the step a board repository's CI runs: the `.kicad_pro`,
+the `.kicad_sch`, the library tables (each project library named from the
+project's folder, never by an absolute path), the copied rule file
+(`<name>.kicad_dru`, when the design names a fab) and each file of
+`Design.files`. A `<name>.kicad_dru` the design would not write is a
+difference too: KiCad's DRC reads it. It does not compare the `.kicad_pcb`:
+it writes the board unrouted, and the project's holds the router's tracks
+and vias and KiCad's zone fill; even a designator can stand elsewhere, since
+the legend placer keeps them off the router's vias. Its line before the last
+names the 1 step: `--rules-only` for a header that alone differs, `rm` for
+a rule file the design would not write, else `workcenter design`, with
+`--route` for a routed board, and `&& rm <name>.kicad_pcb` after it for a
+project that keeps no board. It exits 1 on a difference, and on the design
+step's own exit 1 even when every file is the same (M85). It starts
+kicad-cli for a design with pours.
 
 Not a gate: `workcenter design <design.py> --rules-only` writes the
 project's copied fab rule file (`<name>.kicad_dru`) again, and no other
@@ -629,7 +639,8 @@ other difference is refused with 1 line that names the lines, exit 1,
 and nothing written: a rule changed by hand, or a fab's source that moved
 since, could change the gates, so run `workcenter design` and the gates
 instead. A file that is already the design's is left as it is. `--check`
-does not compare the rule file.
+compares the rule file and names `--rules-only` when only its header
+differs.
 
 Not a gate: `workcenter ci [repo]` replays a repository's GitHub workflow
 here: every `run` step in order under `bash -e`, from the repository root,
@@ -902,6 +913,14 @@ stale (`tools/doctools.py`):
   (`Pattern,MPN`). A copy of a library file no part names any more is
   removed; with a board's list missing it copies and removes nothing and
   exits 1.
+- `workcenter docs <version> --check` writes nothing. It compares the
+  committed `CONTENTS.md` and `datasheets/` with what `docs` would leave:
+  CONTENTS.md's first differing line, a copy missing, extra, a link or not
+  the library file's bytes, 1 line each, and the step `workcenter docs
+  <version>`. Exit 0 when equal, 1 when not. A library row whose file is
+  gone is a warning in both `docs` and the check; `workcenter sources`
+  fails on that row. `workcenter next` runs it on a version that holds a
+  CONTENTS.md before it says nothing is left.
 - `workcenter costs <repo>` runs `procure` on every board of every version
   with `parts/version/<id>.csv` ahead of `parts/catalog.csv` and
   `parts/offboard/<id>.csv`, `<id>` being the version (`v0.16`) or the

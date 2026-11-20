@@ -447,6 +447,8 @@ def test_no_sentence_of_a_hint_or_of_a_step_is_over_20_words(tmp_path, monkeypat
     for printed in (
         "sim: U1: pins leaves out 3\ndesign proj red: 1 simulation problem\n",
         "check: differs  proj.kicad_sch\ncheck: proj: red, 1 of 2 files differ from design.py\n",
+        "check: differs  p.kicad_dru\ncheck: step: `workcenter design d.py --rules-only`\ncheck: p: red\n",
+        "check: extra    p.kicad_dru\ncheck: step: `rm p.kicad_dru`\ncheck: p: red\n",
     ):
         with monkeypatch.context() as patch:
             patch.setattr(guide, "subprocess", says(printed))
@@ -478,6 +480,19 @@ def test_no_sentence_of_a_hint_or_of_a_step_is_over_20_words(tmp_path, monkeypat
         asked = {"failures": [], "warnings": [f"not judged: U1; copy templates/project/sim/{stem}.cir"]}
         answer(project(f"asked-{stem}", record("sim", "pass", asked)))
     answer(project("decks", passed))
+    # a version's CONTENTS.md that is not what `docs` writes, and a board of it with no parts list
+    listed = project("listed", passed)
+    (listed / "CONTENTS.md").write_text("# v0.1: contents\n", encoding="utf-8")
+    for said in (
+        {"summary": "1 difference", "details": {"failures": ["CONTENTS.md: line 1: committed 'a'"]}},
+        {"summary": "no parts list for v0.1; run `workcenter costs r`, then `workcenter docs v`"},
+    ):
+        with monkeypatch.context() as patch:
+            out = types.SimpleNamespace(returncode=1, stdout=json.dumps([said]))
+            patch.setattr(
+                guide, "subprocess", types.SimpleNamespace(run=lambda *args, out=out, **kwargs: out)
+            )
+            answer(listed)
     board = tmp_path / "board"
     board.mkdir()
     (board / "b.kicad_sch").write_text("", encoding="utf-8")
@@ -980,3 +995,126 @@ def test_a_design_file_that_is_refused_is_answered_with_its_first_problem(tmp_pa
     src.write_text(body.replace("PINS", 'd.no_sim("D1", "left out of this test")'), encoding="utf-8")
     code, step = ask(proj)
     assert code == 1 and step["next"].startswith("Regenerate the KiCad project")
+
+
+RULED = """
+import uuid
+import kicadgen
+
+def build():
+    d = kicadgen.Design(name="ruled", namespace=uuid.UUID(int=77){fab})
+    d.outline = (100.0, 100.0, 110.0, 110.0)
+    return d
+"""
+
+
+@pytest.mark.skipif(
+    not (kicadgen.SYMBOL_DIR / "power.kicad_sym").is_file(),
+    reason="KiCad symbol libraries are not installed",
+)
+def test_a_rule_file_behind_its_design_is_answered_with_the_step_the_check_names(tmp_path):
+    """`design --check` holds the copied rule file (2026-11-19). A header that differs alone is
+    written again by `--rules-only`, which keeps a routed board; a rule file the design would not
+    write is no regeneration's to remove."""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    src = proj / "design.py"
+    src.write_text(RULED.format(fab=', fab="jlcpcb-2layer"'), encoding="utf-8")
+    kicadgen.load_design(src).write(proj)
+    dru = proj / "ruled.kicad_dru"
+    dru.write_text(dru.read_text().replace("# Copied by Via from ", "# Copied by the workcenter from "))
+    code, step = ask(proj)
+    assert code == 1
+    assert step["next"] == (
+        "Write the project's rule file again: only its header line differs from what the design writes."
+    )
+    assert step["run"] == f"workcenter design {src} --rules-only"
+    assert step["read"] == f'{guide.DESIGN}, "Checks"'
+    assert step["done_when"] == f"`workcenter design {src} --check` exits 0"
+    assert run_line(step).returncode == 0
+    assert ask(proj)[1]["next"] == "Run the gates."
+    # the fab taken out of the design and the project written again: its rule file stays, and KiCad's
+    # DRC reads it
+    src.write_text(RULED.format(fab=""), encoding="utf-8")
+    code, step = ask(proj)
+    assert code == 1 and step["next"].startswith("Regenerate the KiCad project")
+    kicadgen.load_design(src).write(proj)
+    code, step = ask(proj)
+    assert code == 1 and step["run"] == f"rm {dru}"
+    assert step["next"] == (
+        "Remove the project's rule file: the design names no fab, and KiCad's DRC reads it all the same."
+    )
+    dru.unlink()
+    assert ask(proj)[1]["next"] == "Run the gates."
+
+
+def documented(tmp_path: Path) -> Path:
+    """A version folder of decks that is done, its CONTENTS.md as `workcenter docs` writes it."""
+    repo = tmp_path / "repo"
+    (repo / "library").mkdir(parents=True)
+    (repo / "library" / "sources.csv").write_text("MPN,Kind,URL,File,Revision,Note\n", encoding="utf-8")
+    version = repo / "v0.1"
+    (version / "sim").mkdir(parents=True)
+    (version / "sim" / "d.cir").write_text(DECK, encoding="utf-8")
+    report(version, [record("sim", "pass", {"failures": [], "warnings": []})])
+    made = subprocess.run(
+        [sys.executable, str(CLI), "docs", str(version)], capture_output=True, text=True, check=False
+    )
+    assert made.returncode == 0, made.stdout + made.stderr
+    return version
+
+
+def test_a_contents_file_behind_its_version_is_answered_with_docs(tmp_path):
+    """Wyvern v0.1's CONTENTS.md lacked 28 datasheet rows for a week (2026-11-19): `next` called the
+    version done, since nothing compared the file with what `workcenter docs` writes."""
+    version = documented(tmp_path)
+    code, step = ask(version)
+    assert code == 0 and step["next"] == "Nothing: every deck holds its bounds, GREEN with no warning."
+    contents = version / "CONTENTS.md"
+    contents.write_text(contents.read_text() + "- a line by hand\n", encoding="utf-8")
+    code, step = ask(version)
+    assert code == 1 and step["done"] is False
+    assert step["next"] == (
+        "Write the version's CONTENTS.md and datasheets/ again: they differ from what `workcenter docs` "
+        "writes."
+    )
+    assert step["run"] == f"workcenter docs {version}"
+    assert step["why"].startswith("CONTENTS.md: line ") and "committed '- a line by hand'" in step["why"]
+    assert step["done_when"] == f"`workcenter docs {version} --check` exits 0"
+    assert run_line(step).returncode == 0
+    assert ask(version)[0] == 0
+    # a nested board's CONTENTS.md is its version's, the folder above
+    nested = version / "display"
+    shutil.copytree(version / "sim", nested / "sim")
+    report(nested, [record("sim", "pass", {"failures": [], "warnings": []})])
+    contents.write_text(contents.read_text() + "- a line by hand\n", encoding="utf-8")
+    code, step = ask(nested)
+    assert code == 1 and step["run"] == f"workcenter docs {version}"
+
+
+def test_a_version_whose_requirements_are_met_is_asked_its_contents_file_too(tmp_path):
+    """The answer of a project with a verification package says nothing is left only when its
+    CONTENTS.md is what `docs` writes; only the decks' answer was held to it (a reviewer, 2026-11-20)."""
+    version = documented(tmp_path)
+    (version / "verification").mkdir()
+    (version / "verification" / "README.md").write_text("# Package\n", encoding="utf-8")
+    made = subprocess.run([sys.executable, str(CLI), "docs", str(version)], capture_output=True, check=False)
+    assert made.returncode == 0
+    report(version, [verified({"PASS": ["REQ-A-01"], "FAIL": [], "OPEN": []}, [])], "verify.json")
+    code, step = ask(version)
+    assert code == 0
+    assert step["next"] == "Nothing: the gates are GREEN with no warning and the requirements are met."
+    contents = version / "CONTENTS.md"
+    contents.write_text(contents.read_text() + "- a line by hand\n", encoding="utf-8")
+    code, step = ask(version)
+    assert code == 1 and step["run"] == f"workcenter docs {version}"
+
+
+def test_a_version_whose_library_is_gone_is_not_asked_for_docs(tmp_path):
+    """`docs --check` exits 2 with no library to compare with: a skip, not a step."""
+    version = documented(tmp_path)
+    contents = version / "CONTENTS.md"
+    contents.write_text(contents.read_text() + "- a line by hand\n", encoding="utf-8")
+    (version.parent / "library" / "sources.csv").unlink()
+    code, step = ask(version)
+    assert code == 0 and step["next"] == "Nothing: every deck holds its bounds, GREEN with no warning."
