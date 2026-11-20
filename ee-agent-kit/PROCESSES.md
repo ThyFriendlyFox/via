@@ -731,6 +731,11 @@ When: a change is about to be called done.
    pointed at empty folders, `WORKCENTER_NO_ENGINES=1`, `-m "not
    engine"`), and looks for processes those tests left running (a test
    that starts a holder of a command ends the holder's whole group) (M293).
+   A landing that adds, renames or deletes a file runs the whole fast
+   lane before its push (`make -C /path verify-site`, its output kept in
+   a file, its last line read for `0 failed`), not only the test files it
+   touched: a test anywhere may scan a whole folder, every workflow or
+   every document, and meets a new file only in a whole run (M316).
 2. Chain the push behind the verdict itself, never behind a look at the
    log: `make -C /path check TESTS="..." && git push ...`. A `tail`
    succeeds whatever the log says. Every check you run before a push is in
